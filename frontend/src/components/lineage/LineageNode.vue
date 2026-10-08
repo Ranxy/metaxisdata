@@ -106,27 +106,73 @@
             class="cursor-pointer text-[11px] text-primary hover:underline"
             @click.stop="handleToggleFields"
           >
-            {{ showFields ? t("lineageGraph.hideFields") : t("lineageGraph.showFields") }}
+            {{ data.fieldsVisible ? t("lineageGraph.hideFields") : t("lineageGraph.showFields") }}
           </button>
         </div>
 
+        <!-- `nowheel`: the canvas zooms on the wheel, and its handler gives an element
+             the event only when the element (or an ancestor inside the card) says so.
+             Without it a wheel here zooms the graph instead of scrolling the list, and
+             the 1px scrollbar is all a reader has left. -->
         <div
-          v-if="showFields && data.columns.length > 0"
-          class="max-h-[200px] overflow-y-auto border-t"
+          v-if="data.fieldsVisible && data.columns.length > 0"
+          ref="fieldList"
+          class="nowheel max-h-[200px] overflow-y-auto border-t"
         >
-          <button
-            v-for="col in data.columns"
-            :key="col"
-            class="flex w-full cursor-pointer items-center gap-1.5 py-1 pl-2.5 pr-2 text-left text-xs transition-colors hover:bg-muted/50"
-            :class="{
-              'bg-primary/10 font-medium text-primary': data.selectedColumn === col,
-              'bg-accent/50 font-medium': data.selectedColumn !== col && data.highlightedColumns.has(col),
-            }"
-            @click.stop="$emit('select-column', data.guid, col)"
-          >
-            <Columns3 class="size-3 shrink-0 text-muted-foreground" />
-            <span class="truncate">{{ col }}</span>
-          </button>
+          <!-- Each field carries its own menu: a right-click on a field asks for
+               that field, and the node's own Expand items would answer with all of
+               it. The two are nested, and the inner trigger's `preventDefault`
+               keeps the outer menu shut. -->
+          <ContextMenu v-for="col in data.columns" :key="col">
+            <ContextMenuTrigger as-child>
+              <button
+                :data-column="col"
+                class="flex w-full cursor-pointer items-center gap-1.5 py-1 pl-2.5 pr-2 text-left text-xs transition-colors hover:bg-muted/50"
+                :class="{
+                  'bg-primary/10 font-medium text-primary': data.selectedColumn === col,
+                  'bg-accent/50 font-medium': data.selectedColumn !== col && data.highlightedColumns.has(col),
+                }"
+                @click.stop="$emit('select-column', data.guid, col)"
+              >
+                <Columns3 class="size-3 shrink-0 text-muted-foreground" />
+                <span class="truncate">{{ col }}</span>
+              </button>
+            </ContextMenuTrigger>
+
+            <ContextMenuContent class="w-52">
+              <ContextMenuLabel class="truncate" :title="`${data.fullLabel} · ${col}`">
+                {{ col }}
+              </ContextMenuLabel>
+              <ContextMenuSeparator />
+              <ContextMenuItem
+                :disabled="data.kind === 'external'"
+                @select="$emit('view-schema', data.guid)"
+              >
+                <Code class="size-3.5 text-muted-foreground" />
+                {{ t("metadataBrowser.viewSchema") }}
+              </ContextMenuItem>
+              <ContextMenuSeparator
+                v-if="
+                  canExpandColumn(col, 'upstream') ||
+                  canExpandColumn(col, 'downstream')
+                "
+              />
+              <ContextMenuItem
+                v-if="canExpandColumn(col, 'upstream')"
+                @select="$emit('expand-column', data.guid, col, 'upstream')"
+              >
+                <ArrowUp class="size-3.5 text-muted-foreground" />
+                {{ t("lineageGraph.expandColumnUpstream") }}
+              </ContextMenuItem>
+              <ContextMenuItem
+                v-if="canExpandColumn(col, 'downstream')"
+                @select="$emit('expand-column', data.guid, col, 'downstream')"
+              >
+                <ArrowDown class="size-3.5 text-muted-foreground" />
+                {{ t("lineageGraph.expandColumnDownstream") }}
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
         </div>
 
         <Handle
@@ -176,7 +222,7 @@
       </ContextMenuItem>
       <ContextMenuItem v-if="data.columns.length > 0" @select="handleToggleFields">
         <Columns3 class="size-3.5 text-muted-foreground" />
-        {{ showFields ? t("lineageGraph.hideFields") : t("lineageGraph.showFields") }}
+        {{ data.fieldsVisible ? t("lineageGraph.hideFields") : t("lineageGraph.showFields") }}
       </ContextMenuItem>
     </ContextMenuContent>
   </ContextMenu>
@@ -193,7 +239,7 @@ import {
   TableIcon,
   ViewIcon,
 } from "lucide-vue-next";
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -204,6 +250,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import type { LineageDirection } from "@/lib/lineageGraph";
 
 /** What the node's icon shows; a dataset outside every instance is `external`. */
 export type LineageNodeKind = "table" | "view" | "external";
@@ -235,8 +282,21 @@ export interface LineageNodeData {
   downstreamCount: number;
   columns: string[];
   selectedColumn: string | null;
+  /** Whether this node's field list is on screen. The page owns it, so an
+   * expansion can open the list of every node it reached. */
+  fieldsVisible: boolean;
   /** The columns of this node that the selected column's trail runs through. */
   highlightedColumns: Set<string>;
+  /** The fields of that direction a field expansion would still draw something for:
+   * it names a relation on this node's side, and its own lineage has not been walked
+   * as deep as the depth control now asks. Null means the direction was not fetched,
+   * and not fetched is not the same as nothing there. */
+  columnExpandableUpstream: Set<string> | null;
+  columnExpandableDownstream: Set<string> | null;
+  /** Bumped by the page when it wants this card to bring its field into view. The card
+   * reveals on the request, never on a redraw, so a reader who scrolled the list is not
+   * dragged back every time the graph redraws. */
+  revealToken: number;
 }
 
 const props = defineProps<{
@@ -244,7 +304,8 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  expand: [guid: string, direction: "upstream" | "downstream"];
+  expand: [guid: string, direction: LineageDirection];
+  "expand-column": [guid: string, column: string, direction: LineageDirection];
   "select-node": [guid: string];
   "select-column": [guid: string, column: string];
   "toggle-fields": [guid: string, visible: boolean];
@@ -253,11 +314,32 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 
-const showFields = ref(false);
+/** Whether the field list is on screen is the page's to say: it opens the lists of
+ * the nodes an expansion reached, so a revealed node shows the field that carries
+ * the lineage without a click. */
+const fieldList = ref<HTMLElement | null>(null);
 
 function handleToggleFields() {
-  showFields.value = !showFields.value;
-  emit("toggle-fields", props.data.guid, showFields.value);
+  emit("toggle-fields", props.data.guid, !props.data.fieldsVisible);
+}
+
+/**
+ * Whether one field can still be expanded that way. A direction the node itself has
+ * already expanded draws all of its relations — there is nothing left for a field to
+ * add — and the page says which fields would still add something: one whose side has
+ * no relation to name has nothing to draw, and one already walked to the depth the
+ * control asks for has nothing more to draw.
+ */
+function canExpandColumn(column: string, direction: LineageDirection): boolean {
+  const expandable =
+    direction === "upstream"
+      ? props.data.columnExpandableUpstream
+      : props.data.columnExpandableDownstream;
+  const wholeNode =
+    direction === "upstream"
+      ? props.data.upstreamExpanded
+      : props.data.downstreamExpanded;
+  return !wholeNode && (expandable === null || expandable.has(column));
 }
 
 const isExternal = computed(() => props.data.kind === "external");
@@ -290,5 +372,78 @@ const nodeIcon = computed(() => {
     return CloudIcon;
   }
   return props.data.kind === "view" ? ViewIcon : TableIcon;
+});
+
+/**
+ * Brings the field in hand into view: the one the reader just clicked when this card
+ * is the pivot, and the field the trail runs through on the cards an expansion opened.
+ * The list is alphabetical and capped at 200px, so that field can sit below the fold of
+ * the list's own scroll area. Only a row that is out of view moves, and only far enough
+ * to reach the edge. `scrollTop` is written rather than `scrollIntoView`, which would
+ * scroll every scrollable ancestor the row has.
+ *
+ * Returns whether there is nothing left to do, which lets the caller re-check while the
+ * layout settles — the card is restacked as an expansion finishes, so the row's place
+ * in the list can still move after the render that opened it.
+ */
+function revealTrailField(): boolean {
+  const list = fieldList.value;
+  const column = props.data.selectedColumn ?? trailColumns.value[0];
+  if (!props.data.fieldsVisible || !list || !column) {
+    return true;
+  }
+  const row = [
+    ...list.querySelectorAll<HTMLElement>("button[data-column]"),
+  ].find((candidate) => candidate.dataset.column === column);
+  if (!row) {
+    return true;
+  }
+
+  const listBox = list.getBoundingClientRect();
+  const rowBox = row.getBoundingClientRect();
+  // The canvas scales the cards, so a rect is in screen pixels while `scrollTop` and
+  // `offsetHeight` are in layout pixels. The list's own ratio converts between them:
+  // it is the layout height over the height it is drawn at. `clientTop` moves the
+  // origin past the list's top border, which is where the visible area starts. `top`
+  // is therefore the row's offset inside the visible area, which is what `scrollTop`
+  // moves.
+  const scale = listBox.height > 0 ? list.offsetHeight / listBox.height : 1;
+  const top = (rowBox.top - listBox.top) * scale - list.clientTop;
+  const bottom = top + row.offsetHeight;
+  // How far the row hangs over the edge it is out of, in the layout pixels `scrollTop`
+  // counts in. Zero means it is in view.
+  const overshoot =
+    top < 0 ? top : bottom > list.clientHeight ? bottom - list.clientHeight : 0;
+  if (Math.abs(overshoot) < 1) {
+    return true;
+  }
+  const limit = Math.max(list.scrollHeight - list.clientHeight, 0);
+  const target = Math.min(Math.max(list.scrollTop + overshoot, 0), limit);
+  if (target === list.scrollTop) {
+    // Already as close to the row as the list can scroll.
+    return true;
+  }
+  list.scrollTop = target;
+  return false;
+}
+
+/** Reveals the field now, and again over the next frames while the layout settles. */
+function scheduleReveal() {
+  let frames = 0;
+  const step = () => {
+    if (revealTrailField() || frames++ >= 20) {
+      return;
+    }
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+// One reveal per request, never per render: the page bumps the token when it wants
+// this card's field brought into view, and a redraw for any other reason leaves the
+// reader wherever they scrolled to.
+watch(() => props.data.revealToken, scheduleReveal, {
+  immediate: true,
+  flush: "post",
 });
 </script>

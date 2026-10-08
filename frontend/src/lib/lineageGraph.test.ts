@@ -7,6 +7,7 @@ import {
   assignLayers,
   buildLineageEdges,
   distinctRelationCounts,
+  fieldScopedRelations,
   layoutNodes,
   type NodeLineageData,
   nodeHeight,
@@ -202,6 +203,75 @@ describe("distinctRelationCounts", () => {
       node([rel({ sourceGuid: "x", targetGuid: "y" })], [])
     );
     expect(counts).toEqual({ upstream: 1, downstream: 0 });
+  });
+});
+
+describe("fieldScopedRelations", () => {
+  const byCustomer = rel({
+    sourceGuid: "orders",
+    sourceColumn: "customer_id",
+    targetGuid: "me",
+    targetColumn: "customer_id",
+  });
+  const byCountry = rel({
+    sourceGuid: "customers",
+    sourceColumn: "country",
+    targetGuid: "me",
+    targetColumn: "country",
+  });
+  const joinsOn = rel({
+    sourceGuid: "regions",
+    sourceColumn: "region_id",
+    targetGuid: "me",
+    targetColumn: "",
+    relationType: RelationType.JOIN,
+  });
+
+  it("keeps only the relations naming an expanded field, on the node's own side", () => {
+    expect(
+      fieldScopedRelations(
+        [byCustomer, byCountry, joinsOn],
+        "upstream",
+        new Set(["customer_id"])
+      )
+    ).toEqual([byCustomer]);
+  });
+
+  it("matches the source's field downstream, not the target's", () => {
+    const out = rel({
+      sourceGuid: "me",
+      sourceColumn: "customer_id",
+      targetGuid: "report",
+      targetColumn: "buyer",
+    });
+    const other = rel({
+      sourceGuid: "me",
+      sourceColumn: "country",
+      targetGuid: "report2",
+      targetColumn: "customer_id",
+    });
+
+    expect(
+      fieldScopedRelations([out, other], "downstream", new Set(["customer_id"]))
+    ).toEqual([out]);
+    // The same relations read as this node's upstream keep the other one: which
+    // side names the field is what decides, and it flips with the direction.
+    expect(
+      fieldScopedRelations([out, other], "upstream", new Set(["customer_id"]))
+    ).toEqual([other]);
+  });
+
+  it("keeps every relation the node's side names, and nothing without a scope", () => {
+    expect(
+      fieldScopedRelations(
+        [byCustomer, byCountry, joinsOn],
+        "upstream",
+        new Set(["customer_id", "country"])
+      )
+    ).toEqual([byCustomer, byCountry]);
+    expect(
+      fieldScopedRelations([byCustomer, byCountry], "upstream", new Set())
+    ).toEqual([]);
   });
 });
 

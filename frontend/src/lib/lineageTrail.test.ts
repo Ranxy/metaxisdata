@@ -4,7 +4,11 @@ import {
   RelationType,
 } from "@/types/proto-es/v1/lineage_service_pb";
 import type { NodeLineageData } from "./lineageGraph";
-import { collectFieldTrail } from "./lineageTrail";
+import {
+  collectFieldTrail,
+  columnStep,
+  walkColumnExpansion,
+} from "./lineageTrail";
 
 /** A column-level relation, the shape the analyzers store. */
 function rel(
@@ -269,5 +273,168 @@ describe("collectFieldTrail", () => {
     expect(trail.edgeIds.size).toBe(0);
     expect(trail.upstream.relationCount).toBe(0);
     expect(trail.downstream.relationCount).toBe(0);
+  });
+});
+
+describe("columnStep", () => {
+  it("lands on the field the far object names, one hop in one direction", () => {
+    const up = rel("orders", "buyer_id", "v", "customer_id");
+    const down = rel("v", "customer_id", "report", "buyer_id");
+    const sibling = rel("regions", "country", "v", "country");
+    const data = graph({ v: [up, sibling, down] }).get("v");
+
+    expect(
+      columnStep(data!, { guid: "v", column: "customer_id" }, "upstream")
+    ).toEqual({
+      pairs: [{ guid: "orders", column: "buyer_id" }],
+      objects: [],
+    });
+    expect(
+      columnStep(data!, { guid: "v", column: "customer_id" }, "downstream")
+    ).toEqual({
+      pairs: [{ guid: "report", column: "buyer_id" }],
+      objects: [],
+    });
+  });
+
+  it("ignores the relations that name another field, or another pair", () => {
+    const other = rel("orders", "country", "v", "country");
+    const elsewhere = rel("orders", "customer_id", "w", "customer_id");
+    const data = graph({ v: [other], w: [elsewhere] }).get("v");
+
+    // `elsewhere` belongs to `w`, so it is not this pair's hop however the server
+    // grouped the response it arrived in.
+    expect(
+      columnStep(data!, { guid: "v", column: "customer_id" }, "upstream")
+    ).toEqual({ pairs: [], objects: [] });
+  });
+
+  it("draws the object but names no next pair when the relation has no far field", () => {
+    // A table-level edge carries `customer_id` to `v` without saying which field of
+    // `regions` it came from, so `regions` is on the canvas and the walk stops.
+    const tableLevel = rel("regions", "", "v", "customer_id", {
+      relationType: RelationType.JOIN,
+    });
+    const data = graph({ v: [tableLevel] }).get("v");
+
+    expect(
+      columnStep(data!, { guid: "v", column: "customer_id" }, "upstream")
+    ).toEqual({ pairs: [], objects: ["regions"] });
+  });
+});
+
+describe("walkColumnExpansion", () => {
+  /** The walk over a fixed graph, with the fetch the caller would do. */
+  function walkOf(
+    nodes: Record<string, LineageRelation[]>,
+    start: { guid: string; column: string },
+    direction: "upstream" | "downstream",
+    depth: number
+  ) {
+    const map = graph(nodes);
+    return walkColumnExpansion({
+      start,
+      direction,
+      depth,
+      load: async (guid) => map.get(guid) ?? graph({}).get(guid)!,
+    });
+  }
+
+  it("scopes the pivot alone at depth 1, one level less for each hop below", async () => {
+    const one = rel("a", "id", "b", "id");
+    const two = rel("b", "id", "c", "id");
+    const three = rel("c", "id", "d", "id");
+    const nodes = { a: [one], b: [one, two], c: [two, three], d: [three] };
+
+    const shallow = await walkOf(
+      nodes,
+      { guid: "c", column: "id" },
+      "upstream",
+      1
+    );
+    expect(shallow.walked).toEqual([
+      { pair: { guid: "c", column: "id" }, depth: 0 },
+    ]);
+    // `b` is drawn by the pivot's own relations; `a` is one hop further, and a
+    // depth-1 walk never asks for it.
+    expect([...shallow.objects].sort()).toEqual(["b", "c"]);
+
+    const deep = await walkOf(
+      nodes,
+      { guid: "c", column: "id" },
+      "upstream",
+      3
+    );
+    expect(deep.walked).toEqual([
+      { pair: { guid: "c", column: "id" }, depth: 2 },
+      { pair: { guid: "b", column: "id" }, depth: 1 },
+      { pair: { guid: "a", column: "id" }, depth: 0 },
+    ]);
+    expect([...deep.objects].sort()).toEqual(["a", "b", "c"]);
+  });
+
+  it("keeps every object the walk draws, the ones with no field of their own included", async () => {
+    // `a` is reached through a table-level edge: drawn, never walked through.
+    const tableLevel = rel("a", "", "b", "id", {
+      relationType: RelationType.JOIN,
+    });
+    const beyond = rel("b", "id", "c", "id");
+    const walk = await walkOf(
+      { a: [tableLevel], b: [tableLevel, beyond], c: [beyond] },
+      { guid: "b", column: "id" },
+      "upstream",
+      3
+    );
+
+    expect(walk.walked.map((step) => step.pair.guid)).toEqual(["b"]);
+    expect([...walk.objects].sort()).toEqual(["a", "b"]);
+  });
+
+  it("walks a diamond once and never past the pairs it has seen", async () => {
+    const toA = rel("a", "id", "d", "id");
+    const left = rel("b", "id", "a", "id");
+    const right = rel("c", "id", "a", "id");
+    const apexLeft = rel("e", "id", "b", "id");
+    const apexRight = rel("e", "id", "c", "id");
+    const walk = await walkOf(
+      {
+        a: [toA, left, right],
+        b: [left, apexLeft],
+        c: [right, apexRight],
+        d: [toA],
+        e: [apexLeft, apexRight],
+      },
+      { guid: "d", column: "id" },
+      "upstream",
+      4
+    );
+
+    expect(walk.walked.map((step) => step.pair.guid)).toEqual([
+      "d",
+      "a",
+      "b",
+      "c",
+      "e",
+    ]);
+    expect([...walk.objects].sort()).toEqual(["a", "b", "c", "d", "e"]);
+  });
+
+  it("asks the loader for each object once, and only for the levels it walks", async () => {
+    const one = rel("a", "id", "b", "id");
+    const two = rel("b", "id", "c", "id");
+    const map = graph({ a: [one], b: [one, two], c: [two] });
+    const asked: string[] = [];
+
+    await walkColumnExpansion({
+      start: { guid: "b", column: "id" },
+      direction: "upstream",
+      depth: 2,
+      load: async (guid) => {
+        asked.push(guid);
+        return map.get(guid)!;
+      },
+    });
+
+    expect(asked).toEqual(["b", "a"]);
   });
 });

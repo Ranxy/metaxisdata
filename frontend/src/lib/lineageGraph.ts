@@ -34,6 +34,9 @@ export interface ColumnFilter {
   column: string;
 }
 
+/** The direction a lineage expansion walks in. */
+export type LineageDirection = "upstream" | "downstream";
+
 export interface NodePosition {
   x: number;
   y: number;
@@ -167,6 +170,25 @@ export function layoutNodes(
     }
   }
   return positions;
+}
+
+/**
+ * The relations of one direction that a field-scoped expansion may draw: only
+ * those naming one of the expanded fields *on this node's side* — the target's
+ * field for an upstream relation, the source's for a downstream one. A relation
+ * that names another field is not this field's lineage, so revealing its far
+ * object would put an object on the canvas that the field never reaches.
+ */
+export function fieldScopedRelations(
+  relations: readonly LineageRelation[],
+  direction: LineageDirection,
+  fields: ReadonlySet<string> | ReadonlyMap<string, number>
+): LineageRelation[] {
+  return relations.filter((relation) =>
+    fields.has(
+      direction === "upstream" ? relation.targetColumn : relation.sourceColumn
+    )
+  );
 }
 
 /**

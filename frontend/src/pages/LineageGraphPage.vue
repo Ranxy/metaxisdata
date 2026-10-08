@@ -67,6 +67,7 @@
             <LineageNode
               :data="nodeProps.data"
               @expand="handleExpandNode"
+              @expand-column="handleExpandColumn"
               @select-node="handleSelectNode"
               @select-column="handleSelectColumn"
               @toggle-fields="handleToggleFields"
@@ -386,6 +387,8 @@ import {
   buildLineageEdges,
   type ColumnFilter,
   distinctRelationCounts,
+  fieldScopedRelations,
+  type LineageDirection,
   layoutNodes,
   nodeHeight,
 } from "@/lib/lineageGraph";
@@ -396,7 +399,11 @@ import {
   originLabelKey,
   type RelationOrigin,
 } from "@/lib/lineageOrigin";
-import { collectFieldTrail, type FieldTrail } from "@/lib/lineageTrail";
+import {
+  collectFieldTrail,
+  type FieldTrail,
+  walkColumnExpansion,
+} from "@/lib/lineageTrail";
 
 // Loaded on demand: the dialog renders its definition in Monaco, and the lineage
 // canvas has no use for a 3MB editor until a reader asks for a schema.
@@ -432,8 +439,6 @@ const instanceStore = useInstanceStore();
 
 const OPENLINEAGE_META_TYPE = 100;
 
-type LineageDirection = "upstream" | "downstream";
-
 interface NodeLineageData {
   upstream: LineageRelation[];
   downstream: LineageRelation[];
@@ -457,6 +462,18 @@ const initialLoading = ref(true);
 // the data was fetched: selecting a node fetches both directions for the detail
 // panel without expanding anything, so a loaded node is not an expanded one.
 const expandedDirections = ref<Set<string>>(new Set());
+// The field-scoped expansions, keyed like `expandedDirections` and holding, per
+// field, how many levels below it the walk was taken: 0 is a field whose own
+// relations are drawn and nothing past them, which is where a depth-1 expansion
+// leaves its pivot. A direction is either expanded whole — `expandedDirections` —
+// or field by field, never both: a whole-node expansion supersedes the fields
+// recorded before it.
+const expandedColumns = ref<Map<string, Map<string, number>>>(new Map());
+// A request for one card to bring its field into view, counted per guid. The action
+// that opens a list bumps it, so the card reveals once for that action instead of on
+// every redraw — a redraw must not drag a reader back to a list they scrolled away
+// from.
+const revealRequest = ref<Map<string, number>>(new Map());
 const nodeDataMap = ref<Map<string, NodeLineageData>>(new Map());
 // Every visible node's degree, from the batched counts RPC: a node cannot be
 // labelled from its neighbours' relations, and fetching each node's relations
@@ -534,7 +551,12 @@ const fieldTrail = ref<FieldTrail | null>(null);
 const fieldsVisibleGuids = ref<Set<string>>(new Set());
 
 const hasExpandedBeyondRoot = computed(() => {
-  return expandedDirections.value.size > initialExpandedDirections.size;
+  // A field-scoped expansion counts as expanding, so it earns the Reset that
+  // takes it back — the root's own two directions are always expanded.
+  return (
+    expandedDirections.value.size > initialExpandedDirections.size ||
+    expandedColumns.value.size > 0
+  );
 });
 
 const selectedNodeGuid = computed(() => {
@@ -958,6 +980,80 @@ function isDirectionExpanded(
   return expandedDirections.value.has(expansionKey(guid, direction));
 }
 
+/** The fields this node's direction draws, for `directionView`. */
+function fieldScopesFor(
+  guid: string,
+  direction: LineageDirection
+): Map<string, number> | undefined {
+  return expandedColumns.value.get(expansionKey(guid, direction));
+}
+
+/**
+ * Records that one field's lineage is drawn on this node's direction, as deep as the
+ * walk took it. A direction the node itself has expanded draws all of its relations
+ * already, so nothing is recorded there — a field scope only exists while it is what
+ * narrows the canvas.
+ */
+function addColumnExpansion(
+  guid: string,
+  direction: LineageDirection,
+  column: string,
+  depth: number
+) {
+  if (isDirectionExpanded(guid, direction)) {
+    return;
+  }
+  const key = expansionKey(guid, direction);
+  let fields = expandedColumns.value.get(key);
+  if (!fields) {
+    fields = new Map<string, number>();
+    expandedColumns.value.set(key, fields);
+  }
+  fields.set(column, Math.max(fields.get(column) ?? 0, depth));
+}
+
+/**
+ * The fields of one direction that expanding right now would still draw something for:
+ * the field names a relation on this node's own side, and its walk has not already been
+ * taken as deep as the depth control now asks. `null` when the direction has not been
+ * fetched — not fetched is not nothing there, and answering "nothing" would hide an
+ * item that works.
+ */
+function expandableColumns(
+  guid: string,
+  direction: LineageDirection
+): Set<string> | null {
+  const data = getNodeLineageData(guid);
+  const loaded =
+    direction === "upstream" ? data.upstreamLoaded : data.downstreamLoaded;
+  if (!loaded) {
+    return null;
+  }
+
+  const depth = parseExpandDepth(expandDepth.value);
+  const fields = new Set<string>();
+  const scopes = fieldScopesFor(guid, direction);
+  for (const relation of direction === "upstream"
+    ? data.upstream
+    : data.downstream) {
+    const column =
+      direction === "upstream" ? relation.targetColumn : relation.sourceColumn;
+    // The field's own relations are the first level of its walk, so a field already
+    // walked to `depth - 1` levels below it has nothing further to draw.
+    if (column && (scopes?.get(column) ?? -1) < depth - 1) {
+      fields.add(column);
+    }
+  }
+  return fields;
+}
+
+/** Asks these cards to bring their field into view, once each. */
+function requestFieldReveal(guids: Iterable<string>) {
+  for (const guid of guids) {
+    revealRequest.value.set(guid, (revealRequest.value.get(guid) ?? 0) + 1);
+  }
+}
+
 /** A GUID may contain `:`, so the direction is the prefix, not part of the key. */
 function expansionKey(guid: string, direction: LineageDirection): string {
   return `${direction}:${guid}`;
@@ -1110,7 +1206,11 @@ function nodeDataFor(guid: string): LineageNodeData {
     columns: collectColumnsForGuid(guid),
     selectedColumn:
       selectedColumnGuid.value === guid ? selectedColumnName.value : null,
+    fieldsVisible: fieldsVisibleGuids.value.has(guid),
     highlightedColumns: fieldTrail.value?.columns.get(guid) ?? new Set(),
+    columnExpandableUpstream: expandableColumns(guid, "upstream"),
+    columnExpandableDownstream: expandableColumns(guid, "downstream"),
+    revealToken: revealRequest.value.get(guid) ?? 0,
     onTrail: fieldTrail.value?.nodeIds.has(guid) ?? false,
     dimmed:
       dimsOffTrail.value && !(fieldTrail.value?.nodeIds.has(guid) ?? false),
@@ -1142,15 +1242,31 @@ function graphView(): Map<string, NodeLineageData> {
   const view = new Map<string, NodeLineageData>();
   for (const [guid, data] of nodeDataMap.value) {
     view.set(guid, {
-      upstream: isDirectionExpanded(guid, "upstream") ? data.upstream : [],
-      downstream: isDirectionExpanded(guid, "downstream")
-        ? data.downstream
-        : [],
+      upstream: directionView(guid, "upstream", data.upstream),
+      downstream: directionView(guid, "downstream", data.downstream),
       upstreamLoaded: data.upstreamLoaded,
       downstreamLoaded: data.downstreamLoaded,
     });
   }
   return view;
+}
+
+/**
+ * What one node's direction contributes to the canvas: every relation once the
+ * node itself is expanded, only the ones a field-scoped expansion names while the
+ * expansion is those fields', and nothing until something is expanded there.
+ */
+function directionView(
+  guid: string,
+  direction: LineageDirection,
+  relations: LineageRelation[]
+): LineageRelation[] {
+  const key = expansionKey(guid, direction);
+  if (expandedDirections.value.has(key)) {
+    return relations;
+  }
+  const fields = expandedColumns.value.get(key);
+  return fields ? fieldScopedRelations(relations, direction, fields) : [];
 }
 
 /**
@@ -1254,23 +1370,31 @@ async function settleNodeHeights() {
 }
 
 /**
+ * The height the browser gave each drawn node, keyed by guid. `offsetHeight` is a
+ * layout measurement, so the canvas' zoom cannot distort it.
+ */
+function measuredHeights(): Map<string, number> {
+  const heights = new Map<string, number>();
+  for (const element of document.querySelectorAll<HTMLElement>(
+    ".vue-flow__node[data-id]"
+  )) {
+    if (element.dataset.id) {
+      heights.set(element.dataset.id, element.offsetHeight);
+    }
+  }
+  return heights;
+}
+
+/**
  * The height the browser gave each node, read off the rendered card. Vue Flow also
  * measures its nodes, but that number does not follow a card that grows in place —
  * opening a field list left it at the closed height — and a stack that is wrong
- * about a height overlaps the node below it. `offsetHeight` is a layout measurement,
- * so the canvas' zoom cannot distort it.
+ * about a height overlaps the node below it.
  */
 async function measureDrawnNodes(): Promise<Map<string, number> | null> {
   for (let attempt = 0; attempt < 10; attempt++) {
     await nextTick();
-    const heights = new Map<string, number>();
-    for (const element of document.querySelectorAll<HTMLElement>(
-      ".vue-flow__node[data-id]"
-    )) {
-      if (element.dataset.id) {
-        heights.set(element.dataset.id, element.offsetHeight);
-      }
-    }
+    const heights = measuredHeights();
     if (heights.size > 0 && heights.size === nodes.value.length) {
       return heights;
     }
@@ -1390,16 +1514,27 @@ function closeSelectedNode() {
 
 function handleToggleFields(guid: string, visible: boolean) {
   if (visible) {
-    fieldsVisibleGuids.value.add(guid);
+    openFieldLists([guid]);
+    // The list was opened on purpose, so if this node is on the selected field's
+    // trail, show that field rather than wherever the list happens to start.
+    requestFieldReveal([guid]);
   } else {
     fieldsVisibleGuids.value.delete(guid);
     clearColumnSelection();
+    renderedHeights.delete(guid);
   }
-  // The field list changes the node's height, so the column has to be stacked
-  // again: without this the grown node overlaps the one below it. The height this
-  // node last rendered at no longer describes it, so it goes back to the guess.
-  renderedHeights.delete(guid);
   void rebuildGraph();
+}
+
+/**
+ * Opens these nodes' field lists. The list changes the node's height, so the height
+ * the browser last gave it no longer describes it and goes back to the guess.
+ */
+function openFieldLists(guids: Iterable<string>) {
+  for (const guid of guids) {
+    fieldsVisibleGuids.value.add(guid);
+    renderedHeights.delete(guid);
+  }
 }
 
 async function handleSelectColumn(guid: string, column: string) {
@@ -1412,25 +1547,31 @@ async function handleSelectColumn(guid: string, column: string) {
     return;
   }
 
-  const selectingNode = selectedNodeGuid.value !== guid;
-  selectedColumnGuid.value = guid;
-  selectedColumnName.value = column;
-
-  // A field click has to do what a node click does — select the node and make sure
-  // its relations are loaded. Otherwise the detail panel stays empty (and with it
-  // the field's trail summary) for every node whose relations were never fetched,
-  // which is every node the user has not expanded or clicked before.
-  if (selectingNode) {
-    setSelectedNode(guid);
-    if (guid !== currentGuid.value) {
-      await fetchLineageForGuid(guid);
-    }
-  }
-
+  await markSelectedColumn(guid, column);
   // The trail is walked by `updateGraphState`, over the same drawn graph the edges
   // come from — one implementation for both, so a column can never be highlighted
   // without the edge that carries it.
   updateGraphState();
+}
+
+/**
+ * Points the detail panel and the trail at one field, without redrawing: the
+ * caller decides which redraw follows, so an action that expands a field only
+ * pays for one. A field click has to do what a node click does — select the node
+ * and make sure its relations are loaded. Otherwise the detail panel stays empty
+ * (and with it the field's trail summary) for every node whose relations were
+ * never fetched, which is every node the user has not expanded or clicked before.
+ */
+async function markSelectedColumn(guid: string, column: string) {
+  if (selectedNodeGuid.value !== guid) {
+    setSelectedNode(guid);
+  }
+  selectedColumnGuid.value = guid;
+  selectedColumnName.value = column;
+
+  if (guid !== currentGuid.value) {
+    await fetchLineageForGuid(guid);
+  }
 }
 
 /** The depth control's value, clamped to the one-to-three levels it offers. */
@@ -1495,32 +1636,91 @@ async function handleExpandNode(guid: string, direction: LineageDirection) {
 }
 
 /**
- * Fits the graph once Vue Flow holds the expanded node set with every node
- * measured. Both steps are asynchronous — the `nodes` prop is applied on a
- * later tick, and the sizes come from a resize observer — so fitting any
- * earlier frames the previous graph and leaves the new nodes off-screen.
+ * Expands one field instead of the whole node: the walk only follows relations
+ * that name the field, so every object it reveals carries that field's lineage
+ * and no other. Each pair it visits records a field-scoped expansion on its node,
+ * which is what `graphView` draws that direction from — the field is what
+ * narrows the canvas, and the node's own Expand still widens it afterwards.
+ *
+ * The depth control bounds the walk exactly as it does a node expansion, and the
+ * field is selected at the end so the trail it just drew is the one on screen.
+ */
+async function handleExpandColumn(
+  guid: string,
+  column: string,
+  direction: LineageDirection
+) {
+  if (isDirectionExpanded(guid, direction)) return;
+
+  const lineageType = directionToLineageType(direction);
+  const depth = parseExpandDepth(expandDepth.value);
+  const walk = await walkColumnExpansion({
+    start: { guid, column },
+    direction,
+    depth,
+    load: (candidate) => fetchLineageForGuid(candidate, lineageType),
+  });
+
+  for (const step of walk.walked) {
+    addColumnExpansion(step.pair.guid, direction, step.pair.column, step.depth);
+  }
+
+  // Every node the walk draws carries the field, so each one opens the list that names
+  // it — a revealed card that has to be clicked open first hides the very field the
+  // click was about — and each brings that field into view once. The view then frames
+  // what the click touched rather than the whole graph, so none of it is left off the
+  // bottom of the canvas.
+  const reached = Array.from(walk.objects);
+  openFieldLists(reached);
+  requestFieldReveal(reached);
+  await markSelectedColumn(guid, column);
+  await rebuildGraph();
+  fitViewWhenMeasured(reached);
+}
+
+/**
+ * Fits the graph — or, when `nodesToFit` names some, just those — once Vue Flow holds
+ * them with every node they will be drawn at. Both steps are asynchronous — the `nodes`
+ * prop is applied on a later tick, and the sizes come from a resize observer — so
+ * fitting any earlier frames the previous graph and leaves the new nodes off-screen.
+ * The heights are read off the DOM rather than taken from Vue Flow's own measurement: a
+ * card that grew in place, which is what opening a field list under it does, is the case
+ * where that number lags, and a fit that trusts it frames the card too short.
+ *
+ * The wait is bounded by wall clock, so a click can never hang on a card whose two
+ * heights disagree, and it watches only the nodes it is about to fit — an unrelated
+ * card that has not been measured yet has no say. Note that `fitView` frames *everything*
+ * when `nodes` is empty, so an empty list here is the whole graph, not nothing.
  * The `maxZoom` cap stops a click on a two-node graph from zooming past 1:1.
  */
-async function fitViewWhenMeasured() {
-  for (let attempt = 0; attempt < 20; attempt++) {
+async function fitViewWhenMeasured(nodesToFit?: string[]) {
+  const deadline = Date.now() + 300;
+  for (;;) {
     await nextTick();
+    const heights = measuredHeights();
+    const drawn = new Map(getNodes.value.map((node) => [node.id, node]));
+    const watched = nodesToFit ?? [...drawn.keys()];
     const settled =
       getNodes.value.length === nodes.value.length &&
-      getNodes.value.every(
-        (node) => node.dimensions.width > 0 && node.dimensions.height > 0
-      );
-    if (settled) {
+      watched.every((id) => {
+        const node = drawn.get(id);
+        return (
+          !node || Math.abs(node.dimensions.height - (heights.get(id) ?? 0)) < 2
+        );
+      });
+    if (settled || Date.now() >= deadline) {
       break;
     }
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
   }
-  fitView({ duration: 300, maxZoom: 1 });
+  fitView({ nodes: nodesToFit, duration: 300, maxZoom: 1 });
 }
 
 function handleReset() {
   // Restore the initial snapshot, the origin filter included: it is part of the
   // view the user is resetting away from.
   expandedDirections.value = new Set(initialExpandedDirections);
+  expandedColumns.value = new Map();
   nodeDataMap.value = new Map(
     Array.from(initialNodeDataMap.entries()).map(([k, v]) => [k, { ...v }])
   );
@@ -1590,6 +1790,12 @@ async function initializeGraph() {
 
   initialLoading.value = true;
   expandedDirections.value.clear();
+  expandedColumns.value.clear();
+  // A card's field list and the heights the browser gave it belong to the graph on
+  // screen: the next object starts with every list closed and nothing measured.
+  fieldsVisibleGuids.value.clear();
+  revealRequest.value.clear();
+  renderedHeights = new Map();
   nodeDataMap.value.clear();
   lineageCounts.value.clear();
   guidMetaTypeMap.value.clear();
@@ -1645,6 +1851,15 @@ watch(scopeTitles, () => {
 // Hiding a lineage source redraws the edges only: every node keeps its place, its
 // degree and its selection.
 watch(originFilter, () => {
+  if (nodes.value.length > 0) {
+    updateGraphState();
+  }
+});
+
+// How far a field expansion would go is part of what the field menu offers, so the
+// control has to reach the cards: raising the depth can make expanding a field worth
+// another click, and lowering it takes the offer away.
+watch(expandDepth, () => {
   if (nodes.value.length > 0) {
     updateGraphState();
   }
