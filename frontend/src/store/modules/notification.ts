@@ -50,6 +50,13 @@ let removeVisibilityListener: (() => void) | undefined;
 // new start for its own and keep reconnecting beside it.
 let generation = 0;
 
+// Tickets for the two values the server also pushes. A fetch that was already in flight
+// when a message arrived is older than that message, so it must not land on top of it:
+// only the newest writer of each value may write it. This is the guard `usePagedFetch`
+// uses for the same reason.
+let countTicket = 0;
+let recentTicket = 0;
+
 /** A wait that stopStreaming can cut short, so teardown never waits out a backoff. */
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -81,20 +88,34 @@ export const useNotificationStore = defineStore("notification", {
     /**
      * Counts the unread messages. The stream carries the count with every message it
      * delivers, so this is what answers when it could not, and what draws the badge
-     * before the first message arrives.
+     * before the first message arrives. A pushed count supersedes a fetch that was
+     * already in flight, so the fetched one is dropped rather than applied late.
      */
     async refreshUnreadCount() {
-      this.unreadCount = await getUnreadNotificationCount();
-      return this.unreadCount;
+      const mine = ++countTicket;
+      const count = await getUnreadNotificationCount();
+      if (mine === countTicket) {
+        this.unreadCount = count;
+      }
+      return count;
     },
 
-    /** Loads the messages the bell shows. */
+    /**
+     * Loads the messages the bell shows. Like the count, a message the stream delivered
+     * while this was in flight is newer than the list, so the list does not overwrite it.
+     */
     async refreshRecent() {
+      const mine = ++recentTicket;
       this.loadingRecent = true;
       try {
-        this.recent = await listRecentNotifications(RECENT_NOTIFICATION_LIMIT);
+        const recent = await listRecentNotifications(RECENT_NOTIFICATION_LIMIT);
+        if (mine === recentTicket) {
+          this.recent = recent;
+        }
       } finally {
-        this.loadingRecent = false;
+        if (mine === recentTicket) {
+          this.loadingRecent = false;
+        }
       }
     },
 
@@ -134,6 +155,9 @@ export const useNotificationStore = defineStore("notification", {
      */
     applyArrival(event: NotificationEvent) {
       if (event.unreadCount !== undefined) {
+        // The count the server computed with this message is newer than any fetch that
+        // was already running, so it takes the ticket and the fetch stands down.
+        countTicket += 1;
         this.unreadCount = event.unreadCount;
       } else {
         // The server could not read the count, so it sent none rather than a zero
@@ -147,6 +171,7 @@ export const useNotificationStore = defineStore("notification", {
         this.recent.length > 0 &&
         !this.recent.some((item) => item.name === message.name)
       ) {
+        recentTicket += 1;
         this.recent = [message, ...this.recent].slice(
           0,
           RECENT_NOTIFICATION_LIMIT
@@ -215,16 +240,26 @@ async function run(store: NotificationStore, mine: number) {
       // See startStreaming: one refresh per attempt.
       void store.refresh().catch(() => {});
       for await (const message of subscribeNotifications(controller.signal)) {
+        // Any frame at all — a keepalive included — means the connection is healthy, so
+        // the wait before the next one stays at its floor. Without this a quiet inbox
+        // would climb to the ceiling and then lose up to RECONNECT_MAX_MS after every
+        // stream the server ends on its own.
+        delay = RECONNECT_MIN_MS;
         if (message.event.case === "notification") {
           store.applyArrival(message.event.value);
-          delay = RECONNECT_MIN_MS;
         }
-        // A keepAlive carries nothing. It exists so an idle connection is not closed
-        // by a proxy, which is also why the loop ignores it.
+        // A keepAlive carries nothing else. It exists so an idle connection is not closed
+        // by a proxy, which is why the loop has nothing to do with it.
       }
     } catch (error) {
-      // A server that does not have this method cannot be talked into it.
-      if (error instanceof ConnectError && error.code === Code.Unimplemented) {
+      // A server that does not have this method cannot be talked into it. A failure that
+      // belongs to a superseded generation is ignored: it must not end the stream a later
+      // start opened.
+      if (
+        live() &&
+        error instanceof ConnectError &&
+        error.code === Code.Unimplemented
+      ) {
         store.stopStreaming();
         return;
       }

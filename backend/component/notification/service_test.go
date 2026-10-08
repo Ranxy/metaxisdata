@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -32,6 +33,22 @@ type fakeStore struct {
 
 	unreadCount int
 	countErr    error
+	// countSequence answers the count queries in order (the last value repeats), and
+	// countGate holds every one of them open until the test releases it. Together they
+	// let a test order two writes deliberately: whether the second write can reach its
+	// own count query while the first is still publishing is exactly the property under
+	// test.
+	countSequence []int
+	countGate     chan struct{}
+	countMu       sync.Mutex
+	countCalls    int
+}
+
+// countStarted reports how many count queries have been entered.
+func (f *fakeStore) countStarted() int {
+	f.countMu.Lock()
+	defer f.countMu.Unlock()
+	return f.countCalls
 }
 
 func (f *fakeStore) CreateNotification(_ context.Context, notification *storepb.Notification) (*storepb.Notification, error) {
@@ -49,10 +66,25 @@ func (f *fakeStore) CreateNotification(_ context.Context, notification *storepb.
 }
 
 func (f *fakeStore) CountUnreadNotifications(context.Context, int) (int, error) {
+	f.countMu.Lock()
+	index := f.countCalls
+	f.countCalls++
+	count := f.unreadCount
+	if index < len(f.countSequence) {
+		count = f.countSequence[index]
+	} else if len(f.countSequence) > 0 {
+		count = f.countSequence[len(f.countSequence)-1]
+	}
+	gate := f.countGate
+	f.countMu.Unlock()
+
+	if gate != nil {
+		<-gate
+	}
 	if f.countErr != nil {
 		return 0, f.countErr
 	}
-	return f.unreadCount, nil
+	return count, nil
 }
 
 func (f *fakeStore) GetWorkspaceID(context.Context) (string, error) {
@@ -444,4 +476,41 @@ func requireNoEvent(t *testing.T, events <-chan Event) {
 		t.Fatalf("an unexpected event was delivered (open=%t, recipient=%d)", ok, event.Notification.GetRecipientId())
 	default:
 	}
+}
+
+// Two messages written at nearly the same moment must not deliver their counts out of
+// order. The count is a snapshot taken after a write, so a client that applies the older
+// one shows a number that a later write already superseded.
+func TestMessagesWrittenTogetherDeliverTheirCountsInOrder(t *testing.T) {
+	t.Parallel()
+
+	// The first write is held inside its count query. While it is there, the second write
+	// must not be able to take a count of its own: that is what keeps the delivered
+	// numbers in step with the inserts. Without the lock it takes the higher count and
+	// publishes it first, and the stale one lands on top.
+	gate := make(chan struct{})
+	fake := &fakeStore{workspaceID: "ws-1", countSequence: []int{1, 2}, countGate: gate}
+	service := newServiceWithStore(fake)
+	events, unsubscribe, err := service.Subscribe(42)
+	require.NoError(t, err)
+	defer unsubscribe()
+
+	first := SchemaSyncMessage(42, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_INFO, &storepb.SchemaSyncDetail{})
+	second := SchemaSyncMessage(42, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_INFO, &storepb.SchemaSyncDetail{})
+
+	written := make(chan error, 2)
+	go func() { written <- service.Send(context.Background(), first) }()
+	require.Eventually(t, func() bool { return fake.countStarted() == 1 }, 2*time.Second, time.Millisecond,
+		"the first write never reached its count query")
+
+	go func() { written <- service.Send(context.Background(), second) }()
+	require.Never(t, func() bool { return fake.countStarted() > 1 }, 300*time.Millisecond, time.Millisecond,
+		"the second write read its own count while the first was still publishing")
+
+	close(gate)
+	require.NoError(t, <-written)
+	require.NoError(t, <-written)
+
+	require.Equal(t, int32(1), requireEvent(t, events).UnreadCount)
+	require.Equal(t, int32(2), requireEvent(t, events).UnreadCount)
 }

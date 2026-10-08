@@ -87,8 +87,11 @@ type Service struct {
 	store AdminStore
 	hub   *hub
 
-	mu     sync.Mutex
-	recent map[string]time.Time
+	// mu guards the suppression gate below. publishMu serializes "read the count, then
+	// hand the message over" — see publish.
+	mu        sync.Mutex
+	publishMu sync.Mutex
+	recent    map[string]time.Time
 }
 
 // New returns a notification service backed by the store.
@@ -374,11 +377,26 @@ func (s *Service) create(ctx context.Context, n *storepb.Notification) error {
 // shares one answer instead of each paying for its own query.
 func (s *Service) publish(ctx context.Context, n *storepb.Notification) {
 	recipientID := int(n.GetRecipientId())
+
+	// Reading the count and handing the message over happen under one lock, so two
+	// messages written at nearly the same moment cannot deliver their counts out of
+	// order and leave a client showing the older one. It is one mutex for the process
+	// rather than one per recipient: a notification write is rare, the section is one
+	// indexed count plus a non-blocking fan-out, and a map of per-recipient locks would
+	// need the bounding and sweeping every other process-local map here has.
+	//
+	// Waiting for it is not bounded by the caller's context, so the section has to stay
+	// short: the count is its only I/O, and it is answered by the partial index the badge
+	// itself reads from.
+	s.publishMu.Lock()
+	defer s.publishMu.Unlock()
+
 	event := Event{Notification: n}
 	if count, err := s.store.CountUnreadNotifications(ctx, recipientID); err != nil {
 		// A count that cannot be read is no reason to drop the message: the client
 		// receives the event without the count and asks for it itself.
-		LogFailure(err, slog.Int("recipient_id", recipientID))
+		slog.Error("Failed to read the unread count of a notification",
+			slog.Int("recipient_id", recipientID), clog.WithError(err))
 	} else {
 		event.UnreadCount, event.UnreadCountKnown = int32(count), true
 	}

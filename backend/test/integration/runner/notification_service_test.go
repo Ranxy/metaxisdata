@@ -211,7 +211,11 @@ func TestIngestionRefusalNotifiesTheAdministratorsOnceRealServerIntegration(t *t
 // with, so the badge and the list can both be updated from it.
 func TestSubscriptionPushesTheCallersMessageRealServerIntegration(t *testing.T) {
 	env, ctx, instanceID, _, databaseName := setupMySQLServiceDatabase(t)
-	notifications := v1connect.NewNotificationServiceClient(&http.Client{Timeout: 10 * time.Second}, env.BaseURL)
+	// A stream outlives the request that opened it, so the client that carries it must not
+	// have a whole-request deadline: the test bounds each wait itself. A 10 second timeout
+	// here ends the stream mid-test, which is what a silent, never-ending subscription
+	// looks like from this side.
+	notifications := v1connect.NewNotificationServiceClient(&http.Client{}, env.BaseURL)
 	token := env.AdminToken()
 
 	// Subscribed before the sync, so what arrives was written while the connection was
@@ -229,7 +233,10 @@ func TestSubscriptionPushesTheCallersMessageRealServerIntegration(t *testing.T) 
 	deadline := time.After(30 * time.Second)
 	for event == nil {
 		select {
-		case candidate := <-events:
+		case candidate, open := <-events:
+			if !open {
+				t.Fatalf("the stream ended before the sync's message arrived: %s", env.ServerLogs())
+			}
 			if namesTheSyncedDatabase(candidate, databaseName) {
 				event = candidate
 			}
@@ -273,8 +280,9 @@ func TestSubscriptionPushesTheCallersMessageRealServerIntegration(t *testing.T) 
 func TestSubscriptionIsScopedToTheCallerRealServerIntegration(t *testing.T) {
 	env, ctx, _, _, databaseName := setupMySQLServiceDatabase(t)
 	httpClient := &http.Client{Timeout: 10 * time.Second}
-	notifications := v1connect.NewNotificationServiceClient(httpClient, env.BaseURL)
+	// The unary calls get a deadline; the streams must not, for the reason above.
 	users := v1connect.NewUserServiceClient(httpClient, env.BaseURL)
+	notifications := v1connect.NewNotificationServiceClient(&http.Client{}, env.BaseURL)
 	adminToken := env.AdminToken()
 
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
@@ -300,17 +308,22 @@ func TestSubscriptionIsScopedToTheCallerRealServerIntegration(t *testing.T) {
 	env.SyncDatabase(ctx, t, databaseName)
 
 	// Wait for the first message the administrator's own inbox received — the sync's, or
-	// the fixture's instance-wide one; a fan-out that ignored the recipient would have
-	// delivered it to the member too.
+	// the fixture's instance-wide one. A fan-out that ignored the recipient would have
+	// delivered a copy to the member at the same moment, so the member's stream is then
+	// watched for long enough that the copy would have arrived, and it must have stayed
+	// open rather than merely been quiet for an instant.
 	select {
 	case <-adminEvents:
 	case <-time.After(30 * time.Second):
 		t.Fatalf("no message reached the administrator's stream: %s", env.ServerLogs())
 	}
 	select {
-	case event := <-memberEvents:
-		t.Fatalf("a member received another principal's message: %s", event.GetNotification().GetName())
-	default:
+	case event, open := <-memberEvents:
+		if open {
+			t.Fatalf("a member received another principal's message: %s", event.GetNotification().GetName())
+		}
+		t.Fatal("the member's stream ended instead of staying open")
+	case <-time.After(2 * time.Second):
 	}
 
 	count, err := notifications.GetUnreadNotificationCount(ctx, withToken(memberToken, &v1pb.GetUnreadNotificationCountRequest{
@@ -328,25 +341,40 @@ func namesTheSyncedDatabase(event *v1pb.NotificationEvent, database string) bool
 }
 
 // notificationEvents opens the caller's stream and forwards the messages it carries.
-// Keepalives exist so the connection is not idle and carry nothing, so they are
-// skipped. Receive blocks, so it runs on its own goroutine; closing the stream ends it.
+// Keepalives exist so the connection is not idle and carry nothing, so they are skipped.
+// Receive blocks, so it runs on its own goroutine. The channel is closed when the stream
+// ends, which is how a test tells a quiet stream from a dead one; the returned function
+// closes the stream, ends the goroutine even if it is mid-delivery, and is what every
+// caller defers.
 func notificationEvents(ctx context.Context, t *testing.T, client v1connect.NotificationServiceClient, token string) (<-chan *v1pb.NotificationEvent, *connect.ServerStreamForClient[v1pb.SubscribeNotificationsResponse], func()) {
 	t.Helper()
 
+	ctx, cancel := context.WithCancel(ctx)
 	stream, err := client.SubscribeNotifications(ctx, withToken(token, &v1pb.SubscribeNotificationsRequest{
 		Parent: "workspaces/-",
 	}))
-	require.NoError(t, err)
+	if err != nil {
+		cancel()
+		require.NoError(t, err)
+	}
 
 	events := make(chan *v1pb.NotificationEvent, 8)
 	go func() {
+		defer close(events)
 		for stream.Receive() {
 			event, ok := stream.Msg().GetEvent().(*v1pb.SubscribeNotificationsResponse_Notification)
 			if !ok {
 				continue
 			}
-			events <- event.Notification
+			select {
+			case events <- event.Notification:
+			case <-ctx.Done():
+				return
+			}
 		}
 	}()
-	return events, stream, func() { _ = stream.Close() }
+	return events, stream, func() {
+		cancel()
+		_ = stream.Close()
+	}
 }

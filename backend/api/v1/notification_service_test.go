@@ -217,12 +217,12 @@ func TestConvertToV1NotificationEventWithoutAKnownDetail(t *testing.T) {
 	require.Nil(t, event.Notification.GetNotification().GetDetail())
 }
 
-// A subscription is not reachable without credentials, and the caller's own id is
-// the scope: the handler refuses before it registers anything.
+// A subscription is not reachable without credentials: the handler refuses before it
+// registers anything or reads the store.
 func TestSubscribeNotificationsRequiresAuthentication(t *testing.T) {
 	t.Parallel()
 
-	service := NewNotificationService(nil, &fakeSubscriptions{})
+	service := NewNotificationService(nil, fakeSubscriptions{})
 	err := service.SubscribeNotifications(context.Background(), connect.NewRequest(&v1pb.SubscribeNotificationsRequest{
 		Parent: "workspaces/-",
 	}), nil)
@@ -232,14 +232,29 @@ func TestSubscribeNotificationsRequiresAuthentication(t *testing.T) {
 	require.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
 }
 
-// fakeSubscriptions records who subscribed, so a test can assert the scope without a
-// database or a live stream.
-type fakeSubscriptions struct {
-	recipientIDs []int
+// A service built without a push channel refuses the stream instead of accepting one that
+// could never deliver anything. The nil store proves the refusal comes before the
+// workspace read: a request that reached that read would panic instead of answering.
+func TestSubscribeNotificationsWithoutAPushChannel(t *testing.T) {
+	t.Parallel()
+
+	service := NewNotificationService(nil, nil)
+	ctx := context.WithValue(context.Background(), common.UserContextKey, &store.UserMessage{ID: 7})
+	err := service.SubscribeNotifications(ctx, connect.NewRequest(&v1pb.SubscribeNotificationsRequest{
+		Parent: "workspaces/-",
+	}), nil)
+
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	require.Equal(t, connect.CodeUnimplemented, connectErr.Code())
 }
 
-func (f *fakeSubscriptions) Subscribe(recipientID int) (<-chan notification.Event, func(), error) {
-	f.recipientIDs = append(f.recipientIDs, recipientID)
+// fakeSubscriptions satisfies the push interface. Nothing is asserted through it: the
+// scope it would record is covered end to end, by the integration test that connects two
+// principals at once, because reaching the registration needs a workspace read.
+type fakeSubscriptions struct{}
+
+func (fakeSubscriptions) Subscribe(int) (<-chan notification.Event, func(), error) {
 	events := make(chan notification.Event)
 	return events, func() {}, nil
 }

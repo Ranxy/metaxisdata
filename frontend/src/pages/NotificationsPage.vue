@@ -232,7 +232,7 @@ import {
   Info,
   RefreshCcw,
 } from "lucide-vue-next";
-import { ref, watch } from "vue";
+import { onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { listNotificationsPage } from "@/api/notification";
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
@@ -311,6 +311,12 @@ watch(
     }
   }
 );
+
+// The pager loads when it is told to. Arriving at the page is the first of those, and
+// without it the inbox shows its empty state until something else asks for a page.
+onMounted(() => {
+  void resetPages();
+});
 
 function textOf(notification: Notification) {
   return describeNotification(notification);

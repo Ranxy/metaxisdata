@@ -116,9 +116,9 @@ func (s *NotificationService) ListNotifications(ctx context.Context, req *connec
 	return connect.NewResponse(response), nil
 }
 
-// GetUnreadNotificationCount counts the caller's unread notifications. The
-// notification bell polls this, so it answers from a partial index rather than
-// reading the messages themselves.
+// GetUnreadNotificationCount counts the caller's unread notifications. The stream carries
+// the count with every message it delivers, so this is the badge's fallback: it answers
+// from a partial index rather than reading the messages themselves.
 func (s *NotificationService) GetUnreadNotificationCount(ctx context.Context, req *connect.Request[v1pb.GetUnreadNotificationCountRequest]) (*connect.Response[v1pb.GetUnreadNotificationCountResponse], error) {
 	user, err := notificationCaller(ctx)
 	if err != nil {
@@ -223,14 +223,17 @@ func (s *NotificationService) SubscribeNotifications(ctx context.Context, req *c
 	if err != nil {
 		return err
 	}
+	// A server built without a push channel refuses the stream before it reads anything:
+	// accepting one that can never deliver would leave the client waiting on a silent
+	// connection, and checking it here keeps the refusal independent of the store.
+	if s.subscriptions == nil {
+		return connect.NewError(connect.CodeUnimplemented, errors.New("live notifications are not configured"))
+	}
 	// Resolved once per connection: every message this stream carries is named under
 	// the same workspace, and the name is the one field the write path does not have.
 	workspaceID, err := s.workspaceID(ctx, req.Msg.GetParent())
 	if err != nil {
 		return err
-	}
-	if s.subscriptions == nil {
-		return connect.NewError(connect.CodeUnimplemented, errors.New("live notifications are not configured"))
 	}
 	events, unsubscribe, err := s.subscriptions.Subscribe(user.ID)
 	if err != nil {
