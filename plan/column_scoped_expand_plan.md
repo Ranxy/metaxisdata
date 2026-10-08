@@ -46,6 +46,27 @@ Shipped in `feat/column-expand`.
   field` and `Field trail` sections either way, and highlights the relations the
   action just drew. `markSelectedColumn` points the panel and the trail at a field
   without redrawing, so the action pays for one redraw (`rebuildGraph`), not two.
+- **Every node the expansion reached opens its field list.** The field that ties a
+  revealed card to the pivot is the thing the reader came to see, and a card that has
+  to be clicked open first hides it. The page therefore owns whether a list is on
+  screen (`fieldsVisible` in the node data, from `fieldsVisibleGuids`) rather than the
+  card keeping a private flag — a node can be opened by an expansion it did not ask
+  for. `reached` collects the walk's pairs *and* the neighbours it only lands on at the
+  last level, since those carry the field too.
+- **The view frames what the click touched, not the whole graph.** Both the pivot and
+  the nodes it reached are fitted (`fitView({ nodes })`), so a card opened near the
+  bottom of the canvas — where its list used to run off the edge, or under the minimap
+  — is brought back into the visible area instead of being left where the click found
+  it. The fit reads its heights off the DOM first: Vue Flow's own measurement of a card
+  that grew in place lags, and fitting against it frames the card too short.
+- **The field the trail runs through is scrolled into view.** An open list is
+  alphabetical and capped at 200px, so on a wide table the field the graph is about
+  sorts below the fold. Each card brings that row into view — only when it is out of
+  view, and only far enough to reach the edge, so a reader who scrolled the list
+  themselves is left alone. It re-checks over the next frames because the card is
+  restacked while an expansion finishes, and the row's place in the list can still
+  move after the render that opened it. The correction is computed in layout pixels
+  (`scrollTop`'s own unit) from screen-space rects scaled by the canvas' zoom.
 - **The field menu is a nested context menu.** Each field row carries its own
   `ContextMenu` inside the node's trigger; radix-vue's trigger calls
   `preventDefault()` on a handled `contextmenu`, and its ancestor's handler checks
@@ -59,8 +80,8 @@ Shipped in `feat/column-expand`.
 | --- | --- |
 | `frontend/src/lib/lineageGraph.ts` | `LineageDirection` moves here from the page. `fieldScopedRelations(relations, direction, fields)` keeps the relations that name one of `fields` on **this node's side** — the target's field for an upstream relation, the source's for a downstream one. |
 | `frontend/src/lib/lineageTrail.ts` | `ColumnPair` / `columnPairKey` are exported (the trail's private `pairKey` became public). `columnNeighbourPairs(data, pair, direction)` is the one-hop step a field expansion walks. |
-| `frontend/src/components/lineage/LineageNode.vue` | One context menu per field row: `View Schema`, then `Expand column upstream` / `Expand column downstream`, each hidden when it would do nothing (`canExpandColumn`). New `columnExpandedUpstream` / `columnExpandedDownstream` data and an `expand-column` emit. |
-| `frontend/src/pages/LineageGraphPage.vue` | `expandedColumns`, `addColumnExpansion`, `directionView`, `handleExpandColumn`, and `markSelectedColumn` (the field click's select half, factored out of `handleSelectColumn`). Reset and object change clear the field scopes too; `hasExpandedBeyondRoot` counts them, so a field expansion earns the Reset that takes it back. |
+| `frontend/src/components/lineage/LineageNode.vue` | One context menu per field row: `View Schema`, then `Expand column upstream` / `Expand column downstream`, each hidden when it would do nothing (`canExpandColumn`). The field list renders from `data.fieldsVisible`, and the card reveals the trail's field in it (`revealTrailField`, re-checked over the next frames) whenever the card re-renders. New `columnExpandedUpstream` / `columnExpandedDownstream` data and an `expand-column` emit. |
+| `frontend/src/pages/LineageGraphPage.vue` | `expandedColumns`, `addColumnExpansion`, `directionView`, `handleExpandColumn`, `openFieldLists`, and `markSelectedColumn` (the field click's select half, factored out of `handleSelectColumn`). Reset and object change clear the field scopes too; `hasExpandedBeyondRoot` counts them, so a field expansion earns the Reset that takes it back. |
 | `frontend/src/locales/{en-US,zh-CN}.json` | `lineageGraph.expandColumnUpstream` / `expandColumnDownstream`. |
 
 ## Testing
@@ -79,6 +100,12 @@ items, exactly the named field's relations are drawn, the trail and the detail p
 follow the field, the node's `Expand upstream` afterwards draws all four objects and
 then leaves the field menu with nothing to expand, and Reset returns the graph to its
 initial twelve nodes.
+
+The reveal was checked where it is hardest: `dwd_order_fact.region` upstream reaches
+`v_order_base`, a 31-field table whose list is 200px of a 744px column with `region` at
+index 22. After the click the card's list came up scrolled to `region` (scrollTop 354 =
+the row's own offset), and the fit brought both cards inside the canvas — the pivot's
+list is the one that used to run off the bottom edge.
 
 ## Not covered
 

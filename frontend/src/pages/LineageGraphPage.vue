@@ -1157,6 +1157,7 @@ function nodeDataFor(guid: string): LineageNodeData {
     columns: collectColumnsForGuid(guid),
     selectedColumn:
       selectedColumnGuid.value === guid ? selectedColumnName.value : null,
+    fieldsVisible: fieldsVisibleGuids.value.has(guid),
     highlightedColumns: fieldTrail.value?.columns.get(guid) ?? new Set(),
     columnExpandedUpstream: expandedColumnsFor(guid, "upstream"),
     columnExpandedDownstream: expandedColumnsFor(guid, "downstream"),
@@ -1455,16 +1456,24 @@ function closeSelectedNode() {
 
 function handleToggleFields(guid: string, visible: boolean) {
   if (visible) {
-    fieldsVisibleGuids.value.add(guid);
+    openFieldLists([guid]);
   } else {
     fieldsVisibleGuids.value.delete(guid);
     clearColumnSelection();
+    renderedHeights.delete(guid);
   }
-  // The field list changes the node's height, so the column has to be stacked
-  // again: without this the grown node overlaps the one below it. The height this
-  // node last rendered at no longer describes it, so it goes back to the guess.
-  renderedHeights.delete(guid);
   void rebuildGraph();
+}
+
+/**
+ * Opens these nodes' field lists. The list changes the node's height, so the height
+ * the browser last gave it no longer describes it and goes back to the guess.
+ */
+function openFieldLists(guids: Iterable<string>) {
+  for (const guid of guids) {
+    fieldsVisibleGuids.value.add(guid);
+    renderedHeights.delete(guid);
+  }
 }
 
 async function handleSelectColumn(guid: string, column: string) {
@@ -1587,6 +1596,9 @@ async function handleExpandColumn(
   // Deduplicated across the whole walk: a diamond is walked once, and a pair
   // reached at a shallower level is not walked again from a deeper one.
   const walked = new Set<string>();
+  // Every node the walk draws, the ones it only reaches at the last level included:
+  // they carry the field even though their own direction is not scoped for it.
+  const reached = new Set<string>([guid]);
   let frontier: ColumnPair[] = [{ guid, column }];
 
   for (let level = 0; level < depth && frontier.length > 0; level++) {
@@ -1613,6 +1625,7 @@ async function handleExpandColumn(
         direction
       )) {
         const key = columnPairKey(neighbour.guid, neighbour.column);
+        reached.add(neighbour.guid);
         if (!walked.has(key)) {
           next.set(key, neighbour);
         }
@@ -1621,35 +1634,49 @@ async function handleExpandColumn(
     frontier = Array.from(next.values());
   }
 
+  // Every node the walk reached carries the field, so each one opens the list that
+  // names it — a revealed card that has to be clicked open first hides the very
+  // field the click was about. The view then frames what the click touched rather
+  // than the whole graph, so none of it is left off the bottom of the canvas.
+  openFieldLists(reached);
   await markSelectedColumn(guid, column);
   await rebuildGraph();
-
-  if (walked.size > 0) {
-    fitViewWhenMeasured();
-  }
+  fitViewWhenMeasured(Array.from(reached));
 }
 
 /**
- * Fits the graph once Vue Flow holds the expanded node set with every node
- * measured. Both steps are asynchronous — the `nodes` prop is applied on a
- * later tick, and the sizes come from a resize observer — so fitting any
- * earlier frames the previous graph and leaves the new nodes off-screen.
+ * Fits the graph — or, when `nodesToFit` names some, just those — once Vue Flow
+ * holds them with every node measured. Both steps are asynchronous — the `nodes`
+ * prop is applied on a later tick, and the sizes come from a resize observer — so
+ * fitting any earlier frames the previous graph and leaves the new nodes
+ * off-screen. The heights are read off the DOM rather than taken from Vue Flow's own
+ * measurement: a card that grew in place, which is what opening a field list under
+ * it does, is the case where that number lags, and a fit that trusts it frames the
+ * card too short.
  * The `maxZoom` cap stops a click on a two-node graph from zooming past 1:1.
  */
-async function fitViewWhenMeasured() {
+async function fitViewWhenMeasured(nodesToFit?: string[]) {
   for (let attempt = 0; attempt < 20; attempt++) {
     await nextTick();
+    const heights = await measureDrawnNodes();
+    if (heights === null) {
+      // Nothing to compare Vue Flow's numbers against, so fit with what it has
+      // rather than waiting out the whole loop.
+      break;
+    }
     const settled =
       getNodes.value.length === nodes.value.length &&
       getNodes.value.every(
-        (node) => node.dimensions.width > 0 && node.dimensions.height > 0
+        (node) =>
+          node.dimensions.width > 0 &&
+          Math.abs(node.dimensions.height - (heights.get(node.id) ?? 0)) < 2
       );
     if (settled) {
       break;
     }
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
-  fitView({ duration: 300, maxZoom: 1 });
+  fitView({ nodes: nodesToFit, duration: 300, maxZoom: 1 });
 }
 
 function handleReset() {

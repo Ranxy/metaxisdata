@@ -106,12 +106,13 @@
             class="cursor-pointer text-[11px] text-primary hover:underline"
             @click.stop="handleToggleFields"
           >
-            {{ showFields ? t("lineageGraph.hideFields") : t("lineageGraph.showFields") }}
+            {{ data.fieldsVisible ? t("lineageGraph.hideFields") : t("lineageGraph.showFields") }}
           </button>
         </div>
 
         <div
-          v-if="showFields && data.columns.length > 0"
+          v-if="data.fieldsVisible && data.columns.length > 0"
+          ref="fieldList"
           class="max-h-[200px] overflow-y-auto border-t"
         >
           <!-- Each field carries its own menu: a right-click on a field asks for
@@ -121,6 +122,7 @@
           <ContextMenu v-for="col in data.columns" :key="col">
             <ContextMenuTrigger as-child>
               <button
+                :data-column="col"
                 class="flex w-full cursor-pointer items-center gap-1.5 py-1 pl-2.5 pr-2 text-left text-xs transition-colors hover:bg-muted/50"
                 :class="{
                   'bg-primary/10 font-medium text-primary': data.selectedColumn === col,
@@ -211,7 +213,7 @@
       </ContextMenuItem>
       <ContextMenuItem v-if="data.columns.length > 0" @select="handleToggleFields">
         <Columns3 class="size-3.5 text-muted-foreground" />
-        {{ showFields ? t("lineageGraph.hideFields") : t("lineageGraph.showFields") }}
+        {{ data.fieldsVisible ? t("lineageGraph.hideFields") : t("lineageGraph.showFields") }}
       </ContextMenuItem>
     </ContextMenuContent>
   </ContextMenu>
@@ -228,7 +230,7 @@ import {
   TableIcon,
   ViewIcon,
 } from "lucide-vue-next";
-import { computed, ref } from "vue";
+import { computed, onMounted, onUpdated, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -270,6 +272,9 @@ export interface LineageNodeData {
   downstreamCount: number;
   columns: string[];
   selectedColumn: string | null;
+  /** Whether this node's field list is on screen. The page owns it, so an
+   * expansion can open the list of every node it reached. */
+  fieldsVisible: boolean;
   /** The columns of this node that the selected column's trail runs through. */
   highlightedColumns: Set<string>;
   /** The fields whose own lineage has been expanded that way, so the node's
@@ -297,11 +302,13 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 
-const showFields = ref(false);
+/** Whether the field list is on screen is the page's to say: it opens the lists of
+ * the nodes an expansion reached, so a revealed node shows the field that carries
+ * the lineage without a click. */
+const fieldList = ref<HTMLElement | null>(null);
 
 function handleToggleFields() {
-  showFields.value = !showFields.value;
-  emit("toggle-fields", props.data.guid, showFields.value);
+  emit("toggle-fields", props.data.guid, !props.data.fieldsVisible);
 }
 
 /**
@@ -355,4 +362,63 @@ const nodeIcon = computed(() => {
   }
   return props.data.kind === "view" ? ViewIcon : TableIcon;
 });
+
+/**
+ * Brings the field the trail runs through into view. The list is alphabetical and
+ * capped at 200px, so the field the graph is about can sit below the fold of the
+ * list's own scroll area — which is exactly what happens to a node whose list was
+ * opened for an expansion. Only a row that is out of view moves, and only far enough
+ * to reach the edge, so a reader who scrolled the list themselves is left alone.
+ * `scrollTop` is written rather than `scrollIntoView`, which would scroll every
+ * scrollable ancestor the row has.
+ *
+ * Returns whether there is nothing left to do, which lets the caller re-check after
+ * the layout settles — the card is restacked while an expansion finishes, so the
+ * row's place inside the list can still move after the render that opened it.
+ */
+function revealTrailField(): boolean {
+  const list = fieldList.value;
+  const column = trailColumns.value[0];
+  if (!props.data.fieldsVisible || !list || !column) {
+    return true;
+  }
+  const row = [
+    ...list.querySelectorAll<HTMLElement>("button[data-column]"),
+  ].find((candidate) => candidate.dataset.column === column);
+  if (!row) {
+    return true;
+  }
+
+  const listBox = list.getBoundingClientRect();
+  const rowBox = row.getBoundingClientRect();
+  // The canvas scales the cards, so a rect is in screen pixels while `scrollTop`
+  // and `offsetHeight` are in layout pixels. The list's own ratio converts: it is
+  // the layout height over the height it is drawn at.
+  const scale = listBox.height > 0 ? list.offsetHeight / listBox.height : 1;
+  const top = (rowBox.top - listBox.top) * scale;
+  const bottom = top + row.offsetHeight;
+  if (top < 0) {
+    list.scrollTop += top;
+  } else if (bottom > list.clientHeight) {
+    list.scrollTop += bottom - list.clientHeight;
+  } else {
+    return true;
+  }
+  return false;
+}
+
+/** Reveals the field now, and again over the next frames while the layout settles. */
+function scheduleReveal() {
+  let frames = 0;
+  const step = () => {
+    if (revealTrailField() || frames++ >= 20) {
+      return;
+    }
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+onMounted(scheduleReveal);
+onUpdated(scheduleReveal);
 </script>
