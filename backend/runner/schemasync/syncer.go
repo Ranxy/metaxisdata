@@ -120,6 +120,16 @@ func (g *databaseSyncGate) acquire(key string) (call *databaseSyncCall, owner bo
 	return call, true
 }
 
+// owns reports whether some caller currently holds this database's sync. A
+// database being synced has already been dequeued, so it is invisible to the queue
+// and only this knows it is still in progress.
+func (g *databaseSyncGate) owns(key string) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	_, ok := g.inFlight[key]
+	return ok
+}
+
 // finish publishes the owner's result and releases the waiters. The entry is
 // removed before done is closed, so a caller arriving after this point starts a
 // fresh sync instead of reusing a finished one.

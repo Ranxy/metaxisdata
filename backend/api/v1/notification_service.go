@@ -15,6 +15,12 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
+// maxNotificationsPerBatch bounds one mark-read request. The request body limit alone
+// allows tens of thousands of names, and every one of them becomes an id in the
+// update's array; a page of an inbox is at most a thousand, like the other batches
+// this API accepts.
+const maxNotificationsPerBatch = 1000
+
 // NotificationService serves the caller's own in-app messages: the outcome of a
 // sync operation they asked for, and the ingestion failures a workspace
 // administrator needs to see.
@@ -106,11 +112,17 @@ func (s *NotificationService) BatchMarkNotificationsRead(ctx context.Context, re
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.workspaceID(ctx, req.Msg.GetParent()); err != nil {
-		return nil, err
-	}
+	// The request's own shape is checked before the workspace is resolved: a malformed
+	// batch is refused without a query, and the refusal reads the same whether or not
+	// the workspace happens to exist.
 	if len(req.Msg.GetNames()) == 0 {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("names must not be empty"))
+	}
+	if len(req.Msg.GetNames()) > maxNotificationsPerBatch {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("a batch can contain at most %d notifications", maxNotificationsPerBatch))
+	}
+	if _, err := s.workspaceID(ctx, req.Msg.GetParent()); err != nil {
+		return nil, err
 	}
 
 	ids := make([]int64, 0, len(req.Msg.GetNames()))

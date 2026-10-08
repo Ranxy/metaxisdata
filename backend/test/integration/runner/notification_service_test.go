@@ -3,8 +3,10 @@
 package runner
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -140,4 +142,66 @@ func TestNotificationInboxIsPersonalRealServerIntegration(t *testing.T) {
 	}))
 	require.NoError(t, err)
 	require.NotEmpty(t, admin.Msg.GetNotifications())
+}
+
+// Every ingestion request this server refuses is an administrator's business, and one
+// misbehaving producer must not be able to fill their inbox: two identical refusals
+// inside the suppression window leave exactly one message, addressed to the
+// workspace administrators rather than to the ingestion key's owner.
+func TestIngestionRefusalNotifiesTheAdministratorsOnceRealServerIntegration(t *testing.T) {
+	env := sharedPostgresServiceEnvNoReset(t)
+	ctx := context.Background()
+	httpClient := &http.Client{Timeout: 10 * time.Second}
+
+	key, keyMessage, err := env.Store.CreateOpenLineageAPIKey(ctx, "integration-notify-refusal", "integration-test", "")
+	require.NoError(t, err)
+
+	// An event the limits reject: the run has no runId, so nothing in the request can
+	// be parsed. Sent twice, the second refusal is inside the same window.
+	body := `[{"eventType":"START","run":{},"job":{"namespace":"integration-notify-ns","name":"job"}}]`
+	post := func() int {
+		t.Helper()
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, env.BaseURL+"/api/v1/lineage/batch", strings.NewReader(body))
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+key)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := httpClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		return resp.StatusCode
+	}
+	require.Equal(t, http.StatusBadRequest, post(), "an unparseable batch is refused")
+	require.Equal(t, http.StatusBadRequest, post())
+
+	notifications := v1connect.NewNotificationServiceClient(httpClient, env.BaseURL)
+	var refused []*v1pb.Notification
+	require.Eventually(t, func() bool {
+		response, err := notifications.ListNotifications(ctx, withToken(env.AdminToken(), &v1pb.ListNotificationsRequest{
+			Parent:   "workspaces/-",
+			PageSize: 100,
+		}))
+		if err != nil {
+			return false
+		}
+		refused = refused[:0]
+		for _, candidate := range response.Msg.GetNotifications() {
+			// The key's masked identifier is what makes this the test's own message and
+			// not another scenario's refusal.
+			if candidate.GetOpenlineage().GetKind() == v1pb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_INVALID_EVENT &&
+				candidate.GetOpenlineage().GetApiKey() == keyMessage.MaskedKey {
+				refused = append(refused, candidate)
+			}
+		}
+		return len(refused) > 0
+	}, 30*time.Second, 200*time.Millisecond, "the refusal never reached an administrator: %s", env.ServerLogs())
+
+	// The second refusal was already answered by the time this runs, so one row is the
+	// settled state, not a race.
+	require.Len(t, refused, 1, "a repeated refusal inside the window must not add a message")
+	require.Equal(t, v1pb.NotificationSeverity_NOTIFICATION_SEVERITY_WARNING, refused[0].GetSeverity())
+	require.Equal(t, keyMessage.MaskedKey, refused[0].GetOpenlineage().GetApiKey())
+
+	// The administrator is the recipient: the message is in their inbox, which is
+	// theirs alone, and nobody asked for this ingestion.
+	require.NotEmpty(t, refused[0].GetName())
 }

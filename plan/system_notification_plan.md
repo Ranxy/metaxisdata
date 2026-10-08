@@ -33,6 +33,28 @@
 6. **eslint 的 `no-unused-keys` 需要显式 ignores**：`src/lib/notificationText.ts` 返回的 key 那条规则追不到（`scripts/check-vue-i18n.mjs` 的 `KEY_PROP_RE` 追得到），所以按 `relationType` 的先例把这一族加进了 `eslint.config.mjs`。
 7. **铃铛承担轮询的生命周期**：它只在登录后的侧边栏里存在，挂载即开始、卸载即停止，正是会话本身的生命周期。
 
+## 对抗性 review：发现与处理
+
+一次独立上下文的对抗性 review（只读、不改代码）跑完后，逐条核实并处理如下。**没有 blocking 级问题。**
+
+| # | 级别 | 发现 | 处理 |
+| --- | --- | --- | --- |
+| 1 | should-fix | 分页 page token 只装 `{limit, offset}`、不绑定查询条件；页面在筛选或每页条数变化时用 `refresh()` 会沿用旧 offset，读到新结果集的中间 | 改为 `reset()`（`frontend/src/pages/NotificationsPage.vue`），与 `AuditLogsPage.vue` 的既有做法一致 |
+| 2 | should-fix | 通知写入脱离了请求取消，但没有超时：一次卡住的连接能把 caller（常常是 runner goroutine）拖到进程退出阶段 | 改成 `context.WithTimeout(context.WithoutCancel(ctx), 10s)`，与 `audit.AuditWriteTimeout` / explain SQL 缓存的写法一致 |
+| 3 | should-fix | 2 小时 deadline 会把"慢"误判成"卡住"：一千个库、100 并发、每个最长 15 分钟的全量同步可以超过一个窗口，于是消息里出现假的"未完成" | 还有库在队列里或正在同步就续窗（`hasWorkInProgressLocked` + `databaseSyncGate.owns`）：deadline 只用来兜"结果永远不会来"，不切"还在跑" |
+| 4 | nit | `BatchMarkNotificationsRead` 的 names 没有上界，请求体限制允许几万个 | 加 1000 上限，并把入参校验挪到 workspace 解析之前（畸形请求不再多打一次查询，也能单测） |
+| 5 | nit | 抑制键有"认领后写入失败"的窄窗口：A 认领、B 被抑制直接返回、A 写库失败后释放——这一窗口内那次真实失败没留下消息 | 保留行为（释放是对的，否则一次抖动会静默整个窗口），下一窗口自愈；记在此处 |
+
+已用真东西核实成立的（不是读代码得出的结论）：
+
+- **收件人作用域**：`ListNotifications` / `MarkNotificationsRead` / `DeleteNotification` / `CountUnreadNotifications` 全部按 `recipient_id` 作用域——B 看不到、标不动、删不掉 A 的行，A 自己可以。证据：reviewer 留了一个直接调 store 的探针程序，对着真 PostgreSQL + 真 DDL 跑出 `ALL PROBES PASSED`（我复跑过；容器与临时文件已清理）。
+- **去重语义**：同一 `(recipient_id, dedupe_key)` 第二次 `INSERT ... ON CONFLICT DO NOTHING ... RETURNING` 返回 0 行（即 store 判 `sql.ErrNoRows` 的那条路径）；同一个键换收件人是另一行；空键对同一用户连插两条都不冲突。
+- **payload 契约**：库里那条 JSONB 实际是 `{"type":..., "parent":..., "severity":..., "schemaSync":{...}}`，`id` / `createTime` / `recipientId` / `readTime` / `dedupeKey` 一个都不在。
+- **索引真的被用上**：未读计数是 `Index Only Scan using idx_notification_recipient_unread`，未读列表也走它；`UPDATE ... AND read_at IS NULL` 只动未读行。
+- **去重端到端**：新增集成用例——同一个 key 连发两次非法 OpenLineage 事件，管理员收件箱里只多一条 `INVALID_EVENT`。
+- **迁移不漂移**：`LATEST.sql` 与 `0017##notification.sql` 的 DDL 逐字一致；`make test-integration-smoke`（含 migrator 的建库/升级/legacy 采纳路径）全绿。
+- **并发**：`go test -race` 跑 `schemasync` / `component/notification` / `store` 干净。
+
 ---
 
 ## 已确认的决定

@@ -273,6 +273,7 @@ const {
   isLoading,
   hasNext,
   hasPrevious,
+  reset: resetPages,
   refresh,
   goNext,
   goPrevious,
@@ -291,10 +292,12 @@ const {
   },
 });
 
-// A bigger page restarts the walk: a cursor belongs to the query that produced
-// it, and the server refuses a token whose parameters changed.
+// A different query restarts the walk. The page token is a limit and an offset that
+// are not bound to the filter or the page size, so reusing one after either changed
+// would answer with rows from the middle of the new result — the reason the audit
+// log page calls its own reset for a filter change too.
 watch(pageSize, () => {
-  void refresh();
+  void resetPages();
 });
 
 function textOf(notification: Notification) {
@@ -384,7 +387,7 @@ function setFilter(onlyUnread: boolean) {
     return;
   }
   unreadOnly.value = onlyUnread;
-  void refresh();
+  void resetPages();
 }
 
 function setPageSize(size: number) {

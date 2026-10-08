@@ -36,19 +36,17 @@ func (f *fakeNotifier) SendToWorkspaceAdmins(_ context.Context, message *storepb
 	return nil
 }
 
+// testOperation registers an operation over databases and takes them back out of the
+// checker's queue: the checker dequeues a database before syncing it, so what is left
+// in the operation's pending set is what the tests drive by hand.
 func testOperation(syncer *Syncer, initiatorID int, databases ...*store.DatabaseMessage) *SyncOperation {
 	instance := &store.InstanceMessage{ResourceID: "inst-1", Metadata: &storepb.Instance{Title: "prod"}}
 	operation := syncer.StartOperation(storepb.SyncTrigger_SYNC_TRIGGER_MANUAL, initiatorID, instance)
 	syncer.RecordInstanceResult(context.Background(), operation, nil)
+	syncer.EnqueueDatabases(context.Background(), operation, databases)
 	for _, database := range databases {
-		syncer.enqueueDatabase(database, operation)
-		operation.mu.Lock()
-		operation.pending[database.String()] = database
-		operation.mu.Unlock()
+		syncer.databaseSyncMap.Delete(database.String())
 	}
-	operation.mu.Lock()
-	operation.sealed = true
-	operation.mu.Unlock()
 	return operation
 }
 
@@ -185,6 +183,43 @@ func TestOperationReportsUnfinishedDatabasesAtTheDeadline(t *testing.T) {
 	// The deadline does not fire twice for the same operation.
 	syncer.expireOperations(context.Background(), time.Now())
 	require.Len(t, notifier.sent, 1)
+}
+
+// A database still waiting for its turn is progress, not a stall: the deadline is
+// there to catch a result that will never come, not to cut off a slow one.
+func TestOperationDeadlineRenewsWhileADatabaseIsStillQueued(t *testing.T) {
+	t.Parallel()
+
+	notifier := &fakeNotifier{}
+	syncer := &Syncer{notifier: notifier}
+	instance := &store.InstanceMessage{ResourceID: "inst-1", Metadata: &storepb.Instance{Title: "prod"}}
+	database := &store.DatabaseMessage{InstanceID: "inst-1", DatabaseName: "app"}
+
+	operation := syncer.StartOperation(storepb.SyncTrigger_SYNC_TRIGGER_MANUAL, 7, instance)
+	syncer.RecordInstanceResult(context.Background(), operation, nil)
+	syncer.EnqueueDatabases(context.Background(), operation, []*store.DatabaseMessage{database})
+
+	operation.mu.Lock()
+	operation.deadline = time.Now().Add(-time.Minute)
+	operation.mu.Unlock()
+	syncer.expireOperations(context.Background(), time.Now())
+
+	require.Empty(t, notifier.sent, "a queued database is progress, not a stall")
+	operation.mu.Lock()
+	renewed := operation.deadline.After(time.Now())
+	operation.mu.Unlock()
+	require.True(t, renewed, "the window is renewed while there is work in progress")
+
+	// The queue drops it without a result — the instance disappeared, say, and no
+	// completion ever arrives: the window now closes and the database is reported.
+	syncer.databaseSyncMap.Delete(database.String())
+	operation.mu.Lock()
+	operation.deadline = time.Now().Add(-time.Minute)
+	operation.mu.Unlock()
+	syncer.expireOperations(context.Background(), time.Now())
+
+	require.Len(t, notifier.sent, 1)
+	require.Equal(t, int32(1), notifier.sent[0].GetSchemaSync().GetUnfinishedCount())
 }
 
 // The API and the periodic scan can queue the same database, and the checker

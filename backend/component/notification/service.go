@@ -56,6 +56,11 @@ const (
 	// MaxErrorBytes bounds one recorded error. A driver error can quote a whole
 	// statement, and the row is kept forever, so it is trimmed at the door.
 	MaxErrorBytes = 2 << 10
+
+	// writeTimeout bounds a notification write. It runs detached from the request
+	// that triggered it — see Send — so the bound has to come from here, the way
+	// audit.AuditWriteTimeout bounds the ledger's.
+	writeTimeout = 10 * time.Second
 )
 
 // AdminStore is the subset of *store.Store this package reads. Narrowing it
@@ -204,10 +209,12 @@ func (s *Service) Send(ctx context.Context, n *storepb.Notification) error {
 	if n.GetRecipientId() <= 0 {
 		return errors.New("notification recipient is required")
 	}
-	// The write is detached from the caller's cancellation. It reports work that
-	// already happened, and the caller is often an HTTP request: a user who closed
-	// the tab must not take the record of what the server did with it.
-	ctx = context.WithoutCancel(ctx)
+	// The write is detached from the caller's cancellation but not left unbounded:
+	// it reports work that already happened, so a user who closed the tab must not
+	// take the record with them, and a dead connection must not hold the caller —
+	// often a runner goroutine — open either.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), writeTimeout)
+	defer cancel()
 
 	key := n.GetDedupeKey()
 	if !s.claim(key) {
@@ -229,8 +236,9 @@ func (s *Service) SendToWorkspaceAdmins(ctx context.Context, n *storepb.Notifica
 	if n == nil {
 		return errors.New("notification is required")
 	}
-	// See Send: the message describes something that already happened.
-	ctx = context.WithoutCancel(ctx)
+	// See Send: detached from the caller's cancellation, bounded in time.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), writeTimeout)
+	defer cancel()
 
 	key := n.GetDedupeKey()
 	if !s.claim(key) {

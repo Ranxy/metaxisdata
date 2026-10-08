@@ -2,6 +2,7 @@ package v1
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -10,6 +11,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
+	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
 func TestNotificationCallerRequiresAuthentication(t *testing.T) {
@@ -114,6 +116,34 @@ func TestConvertToV1NotificationHandlesNil(t *testing.T) {
 	require.Nil(t, convertToV1Notification(nil, "ws"))
 	require.Nil(t, convertSchemaSyncDetail(nil))
 	require.Nil(t, convertOpenLineageDetail(nil))
+}
+
+// A mark-read batch is refused on its own shape before anything is read: the request
+// body limit allows tens of thousands of names, and each one would be an id in the
+// update's array. The nil store proves no query runs for a malformed batch.
+func TestBatchMarkNotificationsReadValidatesTheBatch(t *testing.T) {
+	t.Parallel()
+
+	service := NewNotificationService(nil)
+	ctx := context.WithValue(context.Background(), common.UserContextKey, &store.UserMessage{ID: 7})
+
+	_, err := service.BatchMarkNotificationsRead(ctx, connect.NewRequest(&v1pb.BatchMarkNotificationsReadRequest{
+		Parent: "workspaces/-",
+	}))
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	require.Equal(t, connect.CodeInvalidArgument, connectErr.Code(), "an empty batch is refused")
+
+	tooMany := make([]string, maxNotificationsPerBatch+1)
+	for i := range tooMany {
+		tooMany[i] = fmt.Sprintf("workspaces/ws/notifications/%d", i+1)
+	}
+	_, err = service.BatchMarkNotificationsRead(ctx, connect.NewRequest(&v1pb.BatchMarkNotificationsReadRequest{
+		Parent: "workspaces/-",
+		Names:  tooMany,
+	}))
+	require.ErrorAs(t, err, &connectErr)
+	require.Equal(t, connect.CodeInvalidArgument, connectErr.Code(), "an over-long batch is refused")
 }
 
 func TestFormatNotificationRoundTrips(t *testing.T) {

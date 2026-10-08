@@ -174,12 +174,23 @@ func (s *Syncer) completeDatabase(ctx context.Context, database *store.DatabaseM
 // the databases that never reported. An operation that is waiting on a database
 // the checker will never see again — the instance was deleted while its sync was
 // queued — reaches the inbox this way instead of waiting forever.
+//
+// An operation that is merely slow is not expired: the deadline is a window, and a
+// database still queued or being synced renews it. Without that, a full sync of a
+// large estate — a thousand databases at a hundred concurrent, each with its own
+// fifteen-minute deadline — could outlive the first window and be reported as
+// unfinished while it is in fact still running.
 func (s *Syncer) expireOperations(ctx context.Context, now time.Time) {
 	s.operationMu.Lock()
 	var expired []*SyncOperation
 	for _, operation := range s.operations {
 		operation.mu.Lock()
 		if operation.done || now.Before(operation.deadline) {
+			operation.mu.Unlock()
+			continue
+		}
+		if s.hasWorkInProgressLocked(operation) {
+			operation.deadline = now.Add(operationTimeout)
 			operation.mu.Unlock()
 			continue
 		}
@@ -203,6 +214,24 @@ func (s *Syncer) expireOperations(ctx context.Context, now time.Time) {
 	for _, operation := range expired {
 		s.maybeFinishOperation(ctx, operation)
 	}
+}
+
+// hasWorkInProgressLocked reports whether any database the operation waits for is
+// still queued or being synced. The caller must hold operation.mu.
+//
+// A queued database is one the checker has not started yet — it may be waiting out a
+// retry's backoff — and an in-flight one has been dequeued but not reported, so it is
+// in neither the queue nor the finished set. Both mean the result is still coming.
+func (s *Syncer) hasWorkInProgressLocked(operation *SyncOperation) bool {
+	for key := range operation.pending {
+		if _, queued := s.databaseSyncMap.Load(key); queued {
+			return true
+		}
+		if s.databaseSyncGate.owns(key) {
+			return true
+		}
+	}
+	return false
 }
 
 // maybeFinishOperation finishes the operation for the one caller that finds it
