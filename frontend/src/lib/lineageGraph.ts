@@ -170,62 +170,32 @@ export function layoutNodes(
 }
 
 /**
- * The ids of the edges whose relation has the selected column on either end, in
- * either direction. Only those edges stay highlighted; the rest are dimmed.
- */
-export function collectColumnEdgeIds(
-  nodeDataMap: Map<string, NodeLineageData>,
-  filter: ColumnFilter | null
-): Set<string> {
-  const edgeIds = new Set<string>();
-  if (!filter) {
-    return edgeIds;
-  }
-
-  const touches = (guid: string, column: string) =>
-    guid === filter.guid && column === filter.column;
-
-  for (const [guid, data] of nodeDataMap) {
-    for (const rel of data.upstream) {
-      if (
-        touches(rel.targetGuid, rel.targetColumn) ||
-        touches(rel.sourceGuid, rel.sourceColumn)
-      ) {
-        edgeIds.add(`${rel.sourceGuid}->${guid}`);
-      }
-    }
-    for (const rel of data.downstream) {
-      if (
-        touches(rel.sourceGuid, rel.sourceColumn) ||
-        touches(rel.targetGuid, rel.targetColumn)
-      ) {
-        edgeIds.add(`${guid}->${rel.targetGuid}`);
-      }
-    }
-  }
-  return edgeIds;
-}
-
-/**
  * The Vue Flow edges for every loaded relation whose two ends are known nodes.
  *
  * One edge per object pair, coloured and patterned by which writer stored its
- * relations, with an arrowhead for the direction. While a column is selected
- * every unrelated edge is dimmed — including when nothing matches it — and an
- * origin filter hides the edges of the origins it excludes.
+ * relations, with an arrowhead for the direction. `highlightedEdgeIds` is the
+ * selected column's trail (see `lineageTrail`): the edges on it stay at full
+ * strength and every other edge is dimmed. A null set dims nothing — an empty
+ * trail is a real answer, and fading the whole canvas for a field whose relations
+ * merely are not drawn would read as "this field has no lineage".
+ *
+ * An origin filter hides the edges of the origins it excludes, including trail
+ * edges: the trail is computed over the drawn relations before that filter, so
+ * hiding a source breaks the trail visibly rather than quietly rewriting it.
  */
 export function buildLineageEdges(
   nodeDataMap: Map<string, NodeLineageData>,
   options: {
     validNodeIds: ReadonlySet<string>;
-    columnFilter: ColumnFilter | null;
+    /** The trail's edges; every other edge is dimmed. Null dims nothing. */
+    highlightedEdgeIds?: ReadonlySet<string> | null;
     /** Origins to keep; `null` keeps every origin. A bundled edge survives any
      * filter it shares at least one origin with. */
     originFilter?: ReadonlySet<RelationOrigin> | null;
   }
 ): Edge<{ origin: LineageOrigin }>[] {
-  const columnEdgeIds = collectColumnEdgeIds(nodeDataMap, options.columnFilter);
-  const hasColumnFilter = options.columnFilter !== null;
+  const highlighted = options.highlightedEdgeIds ?? null;
+  const dimsOthers = highlighted !== null;
   const originFilter = options.originFilter ?? null;
   const edges: Edge<{ origin: LineageOrigin }>[] = [];
   const seen = new Set<string>();
@@ -255,8 +225,8 @@ export function buildLineageEdges(
     // Bundling relations of one pair can yield both writers, and the edge says
     // so rather than claiming the origin of whichever relation was stored first.
     const origin: LineageOrigin = origins.size > 1 ? "mixed" : [...origins][0];
-    const highlighted = columnEdgeIds.has(id);
-    const dimmed = hasColumnFilter && !highlighted;
+    const onTrail = highlighted?.has(id) ?? false;
+    const dimmed = dimsOthers && !onTrail;
 
     edges.push({
       id,
@@ -275,13 +245,13 @@ export function buildLineageEdges(
       style: {
         stroke: dimmed
           ? "hsl(var(--muted-foreground) / 0.2)"
-          : highlighted
+          : onTrail
             ? originColor(origin)
-            : // Faded enough to sit behind the highlighted edge, strong enough to
-              // stay above 3:1 against the canvas: the tokens carry the contrast,
-              // and an edge must not lean on its opacity to stay legible.
+            : // Faded enough to sit behind the trail, strong enough to stay above
+              // 3:1 against the canvas: the tokens carry the contrast, and an edge
+              // must not lean on its opacity to stay legible.
               originColor(origin, 0.85),
-        strokeWidth: highlighted ? 3 : 2,
+        strokeWidth: onTrail ? 3 : 2,
         strokeDasharray: LINEAGE_ORIGIN_DASH[origin],
       },
       label: rel.relationType === RelationType.DIRECT ? "" : "T",

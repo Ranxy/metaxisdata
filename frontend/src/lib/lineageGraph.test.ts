@@ -6,7 +6,6 @@ import {
 import {
   assignLayers,
   buildLineageEdges,
-  collectColumnEdgeIds,
   distinctRelationCounts,
   layoutNodes,
   type NodeLineageData,
@@ -83,28 +82,20 @@ describe("layoutNodes", () => {
   });
 });
 
-describe("column filtering", () => {
+describe("trail highlighting", () => {
   const map = new Map([
     ["b", node([rel({ sourceGuid: "a", targetGuid: "b", targetColumn: "x" })])],
     ["c", node([rel({ sourceGuid: "b", targetGuid: "c", sourceColumn: "x" })])],
   ]);
+  const onTrail = new Set(["a->b", "b->c"]);
 
-  it("collects the edges that touch the selected column", () => {
-    const ids = collectColumnEdgeIds(map, { guid: "b", column: "x" });
-    expect([...ids].sort()).toEqual(["a->b", "b->c"]);
-  });
-
-  it("collects nothing without a selection", () => {
-    expect(collectColumnEdgeIds(map, null).size).toBe(0);
-  });
-
-  it("dims every unrelated edge once a column is selected", () => {
+  it("dims every edge off the trail and keeps the trail at full strength", () => {
     const all = buildLineageEdges(map, {
       validNodeIds: new Set(["a", "b", "c"]),
-      columnFilter: null,
+      highlightedEdgeIds: null,
     });
-    // Nothing is selected, so no edge is dimmed: each keeps its origin's colour at
-    // the faded weight, and its full-strength arrowhead.
+    // No trail, so no edge is dimmed: each keeps its origin's colour at the faded
+    // weight and its full-strength arrowhead.
     expect(
       all.every(
         (edge) => (edge.style as { strokeWidth?: number }).strokeWidth === 2
@@ -118,7 +109,7 @@ describe("column filtering", () => {
 
     const filtered = buildLineageEdges(map, {
       validNodeIds: new Set(["a", "b", "c"]),
-      columnFilter: { guid: "b", column: "x" },
+      highlightedEdgeIds: onTrail,
     });
     expect(filtered).toHaveLength(2);
     expect(
@@ -129,11 +120,11 @@ describe("column filtering", () => {
       )
     ).toBe(true);
 
-    // A selection that matches nothing dims the whole canvas, which is what tells
-    // the user the column they picked has no lineage here.
+    // An empty trail dims the whole canvas, which is what tells the user the column
+    // they picked has no lineage on this canvas.
     const unrelated = buildLineageEdges(map, {
       validNodeIds: new Set(["a", "b", "c"]),
-      columnFilter: { guid: "b", column: "nope" },
+      highlightedEdgeIds: new Set(),
     });
     expect(unrelated).toHaveLength(2);
     expect(
@@ -163,7 +154,7 @@ describe("column filtering", () => {
     ]);
     const edges = buildLineageEdges(derived, {
       validNodeIds: new Set(["a", "b"]),
-      columnFilter: null,
+      highlightedEdgeIds: null,
     });
     expect(edges).toHaveLength(1);
     expect(edges[0].label).toBe("T");
@@ -176,7 +167,7 @@ describe("column filtering", () => {
     ]);
     const edges = buildLineageEdges(both, {
       validNodeIds: new Set(["a", "b"]),
-      columnFilter: null,
+      highlightedEdgeIds: null,
     });
     expect(edges.map((edge) => edge.id)).toEqual(["a->b"]);
   });
@@ -226,7 +217,10 @@ describe("edge origins", () => {
         valid.add(relation.targetGuid);
       }
     }
-    return buildLineageEdges(map, { validNodeIds: valid, columnFilter: null });
+    return buildLineageEdges(map, {
+      validNodeIds: valid,
+      highlightedEdgeIds: null,
+    });
   };
 
   it("colours an analyzer relation and dashes an OpenLineage one", () => {
@@ -290,7 +284,7 @@ describe("edge origins", () => {
     const kept = (origin: "sql" | "openlineage") =>
       buildLineageEdges(map, {
         validNodeIds: new Set(["a", "b", "c"]),
-        columnFilter: null,
+        highlightedEdgeIds: null,
         originFilter: new Set([origin]),
       }).map((edge) => edge.id);
 
@@ -300,7 +294,7 @@ describe("edge origins", () => {
     expect(
       buildLineageEdges(map, {
         validNodeIds: new Set(["a", "b", "c"]),
-        columnFilter: null,
+        highlightedEdgeIds: null,
         originFilter: new Set(),
       })
     ).toEqual([]);
@@ -320,7 +314,7 @@ describe("edge origins", () => {
     for (const origin of ["sql", "openlineage"] as const) {
       const edges = buildLineageEdges(mixed, {
         validNodeIds: new Set(["a", "b"]),
-        columnFilter: null,
+        highlightedEdgeIds: null,
         originFilter: new Set([origin]),
       });
       expect(edges.map((edge) => edge.id)).toEqual(["a->b"]);
@@ -343,7 +337,7 @@ describe("edge origins", () => {
     ]);
     const [edge] = buildLineageEdges(map, {
       validNodeIds: new Set(["a", "b"]),
-      columnFilter: { guid: "b", column: "x" },
+      highlightedEdgeIds: new Set(["a->b"]),
     });
 
     expect((edge.style as { stroke?: string }).stroke).toBe(
@@ -360,7 +354,7 @@ describe("edge origins", () => {
     ]);
     const [edge] = buildLineageEdges(map, {
       validNodeIds: new Set(["a", "b"]),
-      columnFilter: { guid: "b", column: "missing" },
+      highlightedEdgeIds: new Set(),
     });
 
     expect(edge.markerEnd).toMatchObject({

@@ -164,6 +164,53 @@
                 </div>
               </div>
 
+              <!-- How far the field runs across the canvas. The trail is walked
+                   over the drawn graph, so these counts are about what is here,
+                   not about the whole stored graph. -->
+              <div v-if="fieldTrailSummary" class="space-y-2">
+                <div class="text-xs uppercase tracking-wide text-muted-foreground">
+                  {{ t("lineageGraph.fieldTrail") }}
+                </div>
+                <p class="text-xs text-muted-foreground">
+                  {{ t("lineageGraph.fieldTrailHint") }}
+                </p>
+                <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                  <div
+                    v-for="side in [
+                      { key: 'up', label: t('metadataBrowser.upstream'), data: fieldTrailSummary.upstream },
+                      { key: 'down', label: t('metadataBrowser.downstream'), data: fieldTrailSummary.downstream },
+                    ]"
+                    :key="side.key"
+                    class="rounded-md border p-3"
+                  >
+                    <div class="text-xs text-muted-foreground">{{ side.label }}</div>
+                    <div class="mt-1 text-sm font-medium">
+                      {{ t("lineageGraph.legendObjectCount", { count: side.data.nodeIds.size }) }}
+                      ·
+                      {{
+                        t("lineageGraph.fieldTrailRelationCount", {
+                          count: side.data.relationCount,
+                        })
+                      }}
+                    </div>
+                  </div>
+                </div>
+                <p
+                  v-if="fieldTrailSummary.truncated"
+                  class="text-xs text-muted-foreground"
+                >
+                  {{ t("lineageGraph.fieldTrailTruncated") }}
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  :disabled="!dimsOffTrail"
+                  @click="handleFitTrail"
+                >
+                  {{ t("lineageGraph.fieldTrailFit") }}
+                </Button>
+              </div>
+
               <!-- Which writers reached this object, before the graph's own
                    origin filter: the number is about the stored graph, not
                    about what happens to be drawn. -->
@@ -320,6 +367,7 @@ import {
   originLabelKey,
   type RelationOrigin,
 } from "@/lib/lineageOrigin";
+import { collectFieldTrail, type FieldTrail } from "@/lib/lineageTrail";
 import { openlineageRunLabel } from "@/lib/openlineageRun";
 import { useInstanceStore } from "@/store/modules/instance";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
@@ -428,8 +476,11 @@ let initialNodeDataMap = new Map<string, NodeLineageData>();
 // Field-level column selection state
 const selectedColumnGuid = ref<string | null>(null);
 const selectedColumnName = ref<string | null>(null);
-// guid -> Set<column> for columns that should be highlighted on neighbour nodes
-const highlightedColumnsMap = ref<Map<string, Set<string>>>(new Map());
+/**
+ * The trail the selected column runs through the drawn graph, refreshed whenever
+ * the graph is. Null when no column is selected.
+ */
+const fieldTrail = ref<FieldTrail | null>(null);
 
 // Track which nodes have their fields panel visible (for layout height calculation)
 const fieldsVisibleGuids = ref<Set<string>>(new Set());
@@ -556,6 +607,23 @@ const legendOrigins = computed<LegendOrigin[]>(() => {
     rows.push({ origin: "mixed", count: drawn.get("mixed") ?? 0 });
   }
   return rows;
+});
+
+/**
+ * The selected field's trail, summarised for the detail panel: how far it reaches
+ * on each side of the pivot. An empty side is not an error — it says this field is
+ * a source or a sink in what is drawn.
+ */
+const fieldTrailSummary = computed(() => {
+  const trail = fieldTrail.value;
+  if (!trail) {
+    return null;
+  }
+  return {
+    upstream: trail.upstream,
+    downstream: trail.downstream,
+    truncated: trail.truncated,
+  };
 });
 
 const selectedColumnContext = computed(() => {
@@ -980,8 +1048,26 @@ function nodeDataFor(guid: string): LineageNodeData {
     columns: collectColumnsForGuid(guid),
     selectedColumn:
       selectedColumnGuid.value === guid ? selectedColumnName.value : null,
-    highlightedColumns: highlightedColumnsMap.value.get(guid) ?? new Set(),
+    highlightedColumns: fieldTrail.value?.columns.get(guid) ?? new Set(),
+    onTrail: fieldTrail.value?.nodeIds.has(guid) ?? false,
+    dimmed:
+      dimsOffTrail.value && !(fieldTrail.value?.nodeIds.has(guid) ?? false),
   };
+}
+
+/**
+ * Every object the drawn graph will hold: the view's own keys plus both ends of
+ * every relation in it, which is what `assignLayers` lays out.
+ */
+function allGuidsIn(view: Map<string, NodeLineageData>): Set<string> {
+  const guids = new Set<string>(view.keys());
+  for (const data of view.values()) {
+    for (const relation of [...data.upstream, ...data.downstream]) {
+      guids.add(relation.sourceGuid);
+      guids.add(relation.targetGuid);
+    }
+  }
+  return guids;
 }
 
 /**
@@ -1005,15 +1091,35 @@ function graphView(): Map<string, NodeLineageData> {
   return view;
 }
 
-/** The canvas' edges: the loaded relations, the selected column's emphasis, and
- * the origins the legend's filter currently keeps. */
+/**
+ * Whether the canvas should step back around the trail. A selected column whose
+ * relations are simply not drawn has an empty trail, and fading the whole graph
+ * for it would read as "this field has no lineage" rather than "nothing here
+ * carries it yet".
+ */
+const dimsOffTrail = computed(() => (fieldTrail.value?.edgeIds.size ?? 0) > 0);
+
+/** Recomputes the selected column's trail over the graph about to be drawn. */
+function refreshFieldTrail(
+  view: Map<string, NodeLineageData>,
+  validNodeIds: ReadonlySet<string>
+) {
+  const pivot = columnFilter.value;
+  fieldTrail.value = pivot
+    ? collectFieldTrail(view, { pivot, validNodeIds })
+    : null;
+}
+
+/** The canvas' edges: the loaded relations, the selected column's trail, and the
+ * origins the legend's filter currently keeps. */
 function buildEdges(
   view: Map<string, NodeLineageData>,
   validNodeIds: ReadonlySet<string>
 ) {
+  const trail = fieldTrail.value;
   return buildLineageEdges(view, {
     validNodeIds,
-    columnFilter: columnFilter.value,
+    highlightedEdgeIds: trail && trail.edgeIds.size > 0 ? trail.edgeIds : null,
     originFilter: new Set(originFilter.value),
   });
 }
@@ -1021,6 +1127,9 @@ function buildEdges(
 /** Rebuilds every node from scratch, which also re-runs the layer layout. */
 function rebuildGraph() {
   const view = graphView();
+  // The trail is computed over the graph about to be drawn, so it can only ever
+  // highlight a path the canvas shows.
+  refreshFieldTrail(view, allGuidsIn(view));
   const layers = assignLayers(currentGuid.value, view);
   const positions = layoutNodes(layers, (guid) =>
     nodeHeight(
@@ -1086,21 +1195,20 @@ function updateGraphState() {
     currentPositions.set(node.id, { ...node.position });
   }
 
+  const view = graphView();
+  refreshFieldTrail(view, new Set(nodes.value.map((node) => node.id)));
+
   nodes.value = nodes.value.map((node) => ({
     ...node,
     position: currentPositions.get(node.id) ?? node.position,
     data: nodeDataFor(node.id),
   }));
-  edges.value = buildEdges(
-    graphView(),
-    new Set(nodes.value.map((node) => node.id))
-  );
+  edges.value = buildEdges(view, new Set(nodes.value.map((node) => node.id)));
 }
 
 function clearColumnSelection() {
   selectedColumnGuid.value = null;
   selectedColumnName.value = null;
-  highlightedColumnsMap.value.clear();
   updateGraphState();
 }
 
@@ -1145,11 +1253,7 @@ function handleToggleFields(guid: string, visible: boolean) {
   rebuildGraph();
 }
 
-function handleSelectColumn(guid: string, column: string) {
-  if (selectedNodeGuid.value !== guid) {
-    setSelectedNode(guid);
-  }
-
+async function handleSelectColumn(guid: string, column: string) {
   // Toggle off if same column clicked again
   if (
     selectedColumnGuid.value === guid &&
@@ -1159,38 +1263,24 @@ function handleSelectColumn(guid: string, column: string) {
     return;
   }
 
+  const selectingNode = selectedNodeGuid.value !== guid;
   selectedColumnGuid.value = guid;
   selectedColumnName.value = column;
 
-  // Find related columns on neighbouring nodes
-  const highlighted = new Map<string, Set<string>>();
-
-  for (const [nodeGuid, data] of nodeDataMap.value) {
-    for (const rel of data.upstream) {
-      if (rel.targetGuid === guid && rel.targetColumn === column) {
-        if (!highlighted.has(rel.sourceGuid))
-          highlighted.set(rel.sourceGuid, new Set());
-        highlighted.get(rel.sourceGuid)!.add(rel.sourceColumn);
-      }
-      if (rel.sourceGuid === guid && rel.sourceColumn === column) {
-        if (!highlighted.has(nodeGuid)) highlighted.set(nodeGuid, new Set());
-        highlighted.get(nodeGuid)!.add(rel.targetColumn);
-      }
-    }
-    for (const rel of data.downstream) {
-      if (rel.sourceGuid === guid && rel.sourceColumn === column) {
-        if (!highlighted.has(rel.targetGuid))
-          highlighted.set(rel.targetGuid, new Set());
-        highlighted.get(rel.targetGuid)!.add(rel.targetColumn);
-      }
-      if (rel.targetGuid === guid && rel.targetColumn === column) {
-        if (!highlighted.has(nodeGuid)) highlighted.set(nodeGuid, new Set());
-        highlighted.get(nodeGuid)!.add(rel.sourceColumn);
-      }
+  // A field click has to do what a node click does — select the node and make sure
+  // its relations are loaded. Otherwise the detail panel stays empty (and with it
+  // the field's trail summary) for every node whose relations were never fetched,
+  // which is every node the user has not expanded or clicked before.
+  if (selectingNode) {
+    setSelectedNode(guid);
+    if (guid !== currentGuid.value) {
+      await fetchLineageForGuid(guid);
     }
   }
 
-  highlightedColumnsMap.value = highlighted;
+  // The trail is walked by `updateGraphState`, over the same drawn graph the edges
+  // come from — one implementation for both, so a column can never be highlighted
+  // without the edge that carries it.
   updateGraphState();
 }
 
@@ -1287,7 +1377,6 @@ function handleReset() {
   );
   selectedColumnGuid.value = null;
   selectedColumnName.value = null;
-  highlightedColumnsMap.value.clear();
   fieldsVisibleGuids.value.clear();
   originFilter.value = [...LINEAGE_ORIGINS];
   rebuildGraph();
@@ -1299,6 +1388,17 @@ function handleReset() {
 
 function handleFitView() {
   fitView({ duration: 300 });
+}
+
+/** Frames the canvas on the selected field's trail, so a long flow can be read
+ * without hunting for it. Falls back to the whole graph when there is no trail. */
+function handleFitTrail() {
+  const trail = fieldTrail.value;
+  if (!trail || trail.edgeIds.size === 0) {
+    handleFitView();
+    return;
+  }
+  fitView({ nodes: [...trail.nodeIds], duration: 300, maxZoom: 1 });
 }
 
 function handleBackToMetadata() {
@@ -1345,7 +1445,6 @@ async function initializeGraph() {
   guidMetaTypeMap.value.clear();
   selectedColumnGuid.value = null;
   selectedColumnName.value = null;
-  highlightedColumnsMap.value.clear();
   // A new object starts from the whole picture. A filter left over from the
   // previous one would draw an empty canvas — and the legend's zeroes would read
   // as "this object has no lineage" rather than "you hid its only source".
