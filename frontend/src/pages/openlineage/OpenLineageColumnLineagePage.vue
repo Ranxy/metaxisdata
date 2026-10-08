@@ -11,8 +11,11 @@
       </template>
     </OpenLineageSectionHeader>
 
-    <p class="-mt-2 break-all font-mono text-sm text-muted-foreground">
-      {{ currentGuid }}
+    <p
+      class="-mt-2 break-all text-sm text-muted-foreground"
+      :title="currentGuid"
+    >
+      {{ currentAssetLabel }}
     </p>
 
     <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,18rem)]">
@@ -86,6 +89,12 @@
                       <span v-if="rel.relationType" class="rounded bg-muted px-1.5 py-0.5 text-[10px]">
                         {{ formatRelationType(rel.relationType) }}
                       </span>
+                      <span
+                        class="rounded border px-1.5 py-0.5 text-[10px]"
+                        :style="{ borderColor: originColor(relationOrigin(rel)), color: originColor(relationOrigin(rel)) }"
+                      >
+                        {{ t(originLabelKey(relationOrigin(rel))) }}
+                      </span>
                       <span v-if="formatTransformation(rel.transformations)" class="rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono">
                         {{ formatTransformation(rel.transformations) }}
                       </span>
@@ -107,6 +116,12 @@
                     <div class="mt-1 flex flex-wrap gap-1">
                       <span v-if="rel.relationType" class="rounded bg-muted px-1.5 py-0.5 text-[10px]">
                         {{ formatRelationType(rel.relationType) }}
+                      </span>
+                      <span
+                        class="rounded border px-1.5 py-0.5 text-[10px]"
+                        :style="{ borderColor: originColor(relationOrigin(rel)), color: originColor(relationOrigin(rel)) }"
+                      >
+                        {{ t(originLabelKey(relationOrigin(rel))) }}
                       </span>
                       <span v-if="formatTransformation(rel.transformations)" class="rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono">
                         {{ formatTransformation(rel.transformations) }}
@@ -166,7 +181,7 @@
 
 <script setup lang="ts">
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
-import { computed, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { getLineage } from "@/api/lineage";
@@ -176,7 +191,14 @@ import OpenLineageSectionHeader from "@/components/openlineage/OpenLineageSectio
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useErrorMessage } from "@/composables/useErrorHandler";
+import {
+  originColor,
+  originLabelKey,
+  relationOrigin,
+} from "@/lib/lineageOrigin";
+import { openlineageRunLabel } from "@/lib/openlineageRun";
 import { relationTypeKey } from "@/lib/relationType";
+import { useInstanceStore } from "@/store/modules/instance";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import type {
   LineageRelation,
@@ -184,6 +206,7 @@ import type {
 } from "@/types/proto-es/v1/lineage_service_pb";
 import { formatDateTime } from "@/utils/datetime";
 import { guidToRouteParams, routeParamToGuid } from "@/utils/guid";
+import { lineageAssetView } from "@/utils/lineageAsset";
 import { parseMetaType } from "@/utils/metaType";
 
 const OPENLINEAGE_META_TYPE = 100;
@@ -199,6 +222,17 @@ const { t, locale } = useI18n();
 const { formatError } = useErrorMessage();
 const route = useRoute();
 const router = useRouter();
+const instanceStore = useInstanceStore();
+
+/** The workspace instances, keyed by the resource id a GUID starts with. */
+const scopeTitles = computed<Map<string, string>>(() => {
+  const titles = new Map<string, string>();
+  for (const instance of instanceStore.instances) {
+    const id = instance.name.split("/").pop() ?? instance.name;
+    titles.set(id, instance.title || id);
+  }
+  return titles;
+});
 
 const isEvidenceLoading = ref(false);
 const evidenceError = ref("");
@@ -206,6 +240,12 @@ const upstreamRelations = ref<LineageRelation[]>([]);
 const downstreamRelations = ref<LineageRelation[]>([]);
 
 const currentGuid = computed(() => routeParamToGuid(route.params.guid));
+
+/** Instance-qualified, so the page names the object the same way the graph does;
+ * the raw GUID stays in the tooltip and in the identity card beside it. */
+const currentAssetLabel = computed(
+  () => lineageAssetView(currentGuid.value, scopeTitles.value).fullLabel
+);
 
 const currentMetaType = computed(
   () => parseMetaType(route.query.metaType) ?? MetaType.TABLE
@@ -300,7 +340,7 @@ const relatedRuns = computed<RunSummary[]>(() => {
     ) {
       runs.set(relation.metaGuid, {
         guid: relation.metaGuid,
-        label: formatOpenLineageRunLabel(relation.metaGuid),
+        label: openlineageRunLabel(relation.metaGuid),
         updatedAt: relation.updatedAt,
         updatedAtLabel: formatTimestamp(relation.updatedAt),
       });
@@ -381,26 +421,6 @@ function openRunDetail(guid: string) {
   });
 }
 
-function formatOpenLineageRunLabel(guid: string): string {
-  const prefix = "openlineage:run:";
-  if (!guid.startsWith(prefix)) {
-    return guid;
-  }
-
-  const segments = guid
-    .substring(prefix.length)
-    .split(":")
-    .map((segment) => decodeURIComponent(segment));
-
-  if (segments.length >= 3) {
-    const runID = segments[segments.length - 1];
-    const jobName = segments[segments.length - 2];
-    return `${jobName} · ${runID}`;
-  }
-
-  return segments.join(" · ") || guid;
-}
-
 function formatTimestamp(ts: Timestamp | undefined): string {
   return formatDateTime(ts, locale.value);
 }
@@ -417,9 +437,10 @@ function compareTimestamps(
   return leftSeconds > rightSeconds ? 1 : -1;
 }
 
+/** `scope · path.name`, so two same-named objects in different instances never
+ * render identically in the relation lists. */
 function formatGuidLabel(guid: string): string {
-  const segments = guid.split(";").filter(Boolean);
-  return segments[segments.length - 1] || guid;
+  return lineageAssetView(guid, scopeTitles.value).fullLabel;
 }
 
 // formatTransformation renders the structured transformation steps as a short
@@ -441,4 +462,11 @@ function formatRelationType(relationType: number): string {
   const key = relationTypeKey(relationType);
   return key ? t(key) : "";
 }
+
+// The scope labels come from the shared instance list; a cold cache still renders
+// the relations and relabels them once the titles arrive.
+onMounted(() => {
+  // A failed list leaves the labels as instance ids rather than breaking the page.
+  instanceStore.ensureLoaded().catch(() => undefined);
+});
 </script>

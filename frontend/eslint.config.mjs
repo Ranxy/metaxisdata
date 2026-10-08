@@ -110,6 +110,15 @@ export default [
             "metadataBrowser.relationIntersect",
             "metadataBrowser.relationExcept",
             "metadataBrowser.relationUnknown",
+            // Dynamically used via originLabelKey() in src/lib/lineageOrigin.ts, and
+            // via the originHintKey the lineage table rows carry. The rule cannot
+            // follow a key a helper returns.
+            "lineageGraph.originSql",
+            "lineageGraph.originSqlHint",
+            "lineageGraph.originOpenlineage",
+            "lineageGraph.originOpenlineageHint",
+            "lineageGraph.originMixed",
+            "lineageGraph.originMixedHint",
             // Dynamically used: the notification catalog in
             // src/lib/notificationText.ts maps a message type to these keys, and
             // the page reaches its own through handleError / showSuccess. The rule

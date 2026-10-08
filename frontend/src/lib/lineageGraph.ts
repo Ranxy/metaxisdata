@@ -1,8 +1,15 @@
-import type { Edge } from "@vue-flow/core";
+import { type Edge, MarkerType } from "@vue-flow/core";
 import {
   type LineageRelation,
   RelationType,
 } from "@/types/proto-es/v1/lineage_service_pb";
+import {
+  LINEAGE_ORIGIN_DASH,
+  type LineageOrigin,
+  originColor,
+  type RelationOrigin,
+  relationOrigin,
+} from "./lineageOrigin";
 
 /**
  * The lineage graph engine: which layer a node sits in, where it is drawn, and
@@ -201,26 +208,34 @@ export function collectColumnEdgeIds(
 
 /**
  * The Vue Flow edges for every loaded relation whose two ends are known nodes.
- * Relations that are not `DIRECT` carry a transformation mark, and while a column
- * is selected every unrelated edge is dimmed — including when nothing matches it.
+ *
+ * One edge per object pair, coloured and patterned by which writer stored its
+ * relations, with an arrowhead for the direction. While a column is selected
+ * every unrelated edge is dimmed — including when nothing matches it — and an
+ * origin filter hides the edges of the origins it excludes.
  */
 export function buildLineageEdges(
   nodeDataMap: Map<string, NodeLineageData>,
   options: {
     validNodeIds: ReadonlySet<string>;
     columnFilter: ColumnFilter | null;
+    /** Origins to keep; `null` keeps every origin. A bundled edge survives any
+     * filter it shares at least one origin with. */
+    originFilter?: ReadonlySet<RelationOrigin> | null;
   }
-): Edge[] {
+): Edge<{ origin: LineageOrigin }>[] {
   const columnEdgeIds = collectColumnEdgeIds(nodeDataMap, options.columnFilter);
   const hasColumnFilter = options.columnFilter !== null;
-  const edges: Edge[] = [];
+  const originFilter = options.originFilter ?? null;
+  const edges: Edge<{ origin: LineageOrigin }>[] = [];
   const seen = new Set<string>();
 
   const add = (
     id: string,
     source: string,
     target: string,
-    rel: LineageRelation
+    rel: LineageRelation,
+    origins: ReadonlySet<RelationOrigin>
   ) => {
     if (
       seen.has(id) ||
@@ -229,21 +244,45 @@ export function buildLineageEdges(
     ) {
       return;
     }
+    if (
+      originFilter &&
+      ![...origins].some((origin) => originFilter.has(origin))
+    ) {
+      return;
+    }
     seen.add(id);
+
+    // Bundling relations of one pair can yield both writers, and the edge says
+    // so rather than claiming the origin of whichever relation was stored first.
+    const origin: LineageOrigin = origins.size > 1 ? "mixed" : [...origins][0];
     const highlighted = columnEdgeIds.has(id);
     const dimmed = hasColumnFilter && !highlighted;
+
     edges.push({
       id,
       source,
       target,
-      animated: !dimmed,
+      data: { origin },
+      animated: !dimmed && origin !== "sql",
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: dimmed
+          ? "hsl(var(--muted-foreground) / 0.4)"
+          : originColor(origin),
+        width: 14,
+        height: 14,
+      },
       style: {
         stroke: dimmed
           ? "hsl(var(--muted-foreground) / 0.2)"
           : highlighted
-            ? "hsl(var(--primary))"
-            : "hsl(var(--primary) / 0.6)",
+            ? originColor(origin)
+            : // Faded enough to sit behind the highlighted edge, strong enough to
+              // stay above 3:1 against the canvas: the tokens carry the contrast,
+              // and an edge must not lean on its opacity to stay legible.
+              originColor(origin, 0.85),
         strokeWidth: highlighted ? 3 : 2,
+        strokeDasharray: LINEAGE_ORIGIN_DASH[origin],
       },
       label: rel.relationType === RelationType.DIRECT ? "" : "T",
       labelStyle: {
@@ -253,13 +292,48 @@ export function buildLineageEdges(
     });
   };
 
+  // The relations of one pair are bundled into one edge, so their origins are
+  // collected first: whether the bundle is `sql`, `openlineage` or both is a
+  // property of the pair, not of the relation the loop happens to meet first.
+  const bundles = new Map<
+    string,
+    {
+      source: string;
+      target: string;
+      rel: LineageRelation;
+      origins: Set<RelationOrigin>;
+    }
+  >();
+  const bundle = (
+    id: string,
+    source: string,
+    target: string,
+    rel: LineageRelation
+  ) => {
+    const existing = bundles.get(id);
+    if (existing) {
+      existing.origins.add(relationOrigin(rel));
+      return;
+    }
+    bundles.set(id, {
+      source,
+      target,
+      rel,
+      origins: new Set([relationOrigin(rel)]),
+    });
+  };
+
   for (const [guid, data] of nodeDataMap) {
     for (const rel of data.upstream) {
-      add(`${rel.sourceGuid}->${guid}`, rel.sourceGuid, guid, rel);
+      bundle(`${rel.sourceGuid}->${guid}`, rel.sourceGuid, guid, rel);
     }
     for (const rel of data.downstream) {
-      add(`${guid}->${rel.targetGuid}`, guid, rel.targetGuid, rel);
+      bundle(`${guid}->${rel.targetGuid}`, guid, rel.targetGuid, rel);
     }
+  }
+
+  for (const [id, item] of bundles) {
+    add(id, item.source, item.target, item.rel, item.origins);
   }
 
   return edges;

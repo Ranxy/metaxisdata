@@ -5,6 +5,7 @@
         <Badge
           variant="outline"
           class="max-w-64 truncate"
+          :title="focusAssetLabel"
         >
           {{ focusAssetLabel }}
         </Badge>
@@ -56,7 +57,11 @@
         >
           <Background />
           <Controls />
-          <MiniMap />
+          <MiniMap
+            :node-color="miniMapNodeColor"
+            :node-stroke-color="miniMapNodeColor"
+            :node-border-radius="3"
+          />
 
           <template #node-lineage="nodeProps">
             <LineageNode
@@ -68,6 +73,17 @@
             />
           </template>
         </VueFlow>
+
+        <!-- The legend is also the origin filter: an edge's colour and stroke
+             say which writer stored the relation, and a row strips that writer
+             off the canvas. -->
+        <div class="pointer-events-none absolute left-3 top-3 z-10">
+          <LineageLegend
+            v-model:selected="originFilter"
+            :scopes="legendScopes"
+            :origins="legendOrigins"
+          />
+        </div>
       </Card>
 
       <!-- Always rendered: reserving a 24rem column only while a node happened
@@ -76,15 +92,19 @@
       <Card class="overflow-hidden xl:h-full xl:min-h-0">
         <CardContent v-if="selectedNodeSummary" class="flex h-full flex-col p-0">
           <div class="flex items-start justify-between gap-3 border-b px-5 py-4">
-            <div class="space-y-1">
+            <div class="min-w-0 space-y-1">
               <div class="text-xs uppercase tracking-wide text-muted-foreground">
                 {{ t("common.details") }}
               </div>
-              <h2 class="text-lg font-semibold leading-tight">
-                {{ selectedNodeSummary.label }}
+              <h2 class="flex items-center gap-2 text-lg font-semibold leading-tight">
+                <span
+                  class="size-2.5 shrink-0 rounded-full"
+                  :style="{ backgroundColor: selectedNodeSummary.scopeColor }"
+                />
+                <span class="truncate">{{ selectedNodeSummary.label }}</span>
               </h2>
-              <p class="break-all text-xs text-muted-foreground">
-                {{ selectedNodeSummary.guid }}
+              <p class="truncate text-xs text-muted-foreground" :title="selectedNodeSummary.guid">
+                {{ selectedNodeSummary.fullLabel }}
               </p>
             </div>
             <Button variant="ghost" size="sm" @click="closeSelectedNode">
@@ -101,15 +121,22 @@
                 <Badge variant="outline">
                   {{ selectedNodeSummary.metaTypeLabel }}
                 </Badge>
-                <Badge v-if="selectedNodeSummary.isRoot" variant="secondary">
-                  {{ t("lineageGraph.rootNode") }}
-                </Badge>
               </div>
 
               <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
                 <div class="rounded-md border p-3">
-                  <div class="text-xs text-muted-foreground">{{ t("lineageGraph.shortPath") }}</div>
-                  <div class="mt-1 break-all text-sm font-medium">{{ selectedNodeSummary.shortPath }}</div>
+                  <div class="text-xs text-muted-foreground">{{ t("lineageGraph.scope") }}</div>
+                  <div class="mt-1 flex items-center gap-2 text-sm font-medium">
+                    <span
+                      class="size-2.5 shrink-0 rounded-full"
+                      :style="{ backgroundColor: selectedNodeSummary.scopeColor }"
+                    />
+                    <span class="truncate">{{ selectedNodeSummary.scopeLabel || "-" }}</span>
+                  </div>
+                </div>
+                <div class="rounded-md border p-3">
+                  <div class="text-xs text-muted-foreground">{{ t("lineageGraph.qualifiedName") }}</div>
+                  <div class="mt-1 break-all text-sm font-medium">{{ selectedNodeSummary.fullLabel }}</div>
                 </div>
                 <div class="rounded-md border p-3">
                   <div class="text-xs text-muted-foreground">{{ t("lineageGraph.fieldCount") }}</div>
@@ -134,6 +161,29 @@
                 <div v-if="selectedColumnContext" class="rounded-md border p-3 sm:col-span-2 xl:col-span-1">
                   <div class="text-xs text-muted-foreground">{{ t("lineageGraph.selectedField") }}</div>
                   <div class="mt-1 text-sm font-medium">{{ selectedColumnContext }}</div>
+                </div>
+              </div>
+
+              <!-- Which writers reached this object, before the graph's own
+                   origin filter: the number is about the stored graph, not
+                   about what happens to be drawn. -->
+              <div v-if="selectedNodeOrigins.length > 0" class="space-y-2">
+                <div class="text-xs uppercase tracking-wide text-muted-foreground">
+                  {{ t("lineageGraph.originLabel") }}
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <span
+                    v-for="item in selectedNodeOrigins"
+                    :key="item.origin"
+                    class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs"
+                  >
+                    <OriginSwatch :origin="item.origin" :width="18" />
+                    {{ t(originLabelKey(item.origin)) }}
+                    <span class="tabular-nums text-muted-foreground">
+                      {{ item.count }}
+                      {{ t("metadataBrowser.lineageRelationsCount") }}
+                    </span>
+                  </span>
                 </div>
               </div>
 
@@ -210,7 +260,13 @@
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { Background } from "@vue-flow/background";
 import { Controls } from "@vue-flow/controls";
-import { type Edge, type Node, useVueFlow, VueFlow } from "@vue-flow/core";
+import {
+  type Edge,
+  type GraphNode,
+  type Node,
+  useVueFlow,
+  VueFlow,
+} from "@vue-flow/core";
 import { MiniMap } from "@vue-flow/minimap";
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -229,8 +285,16 @@ import { getLineage, getLineageCounts, type LineageCount } from "@/api/lineage";
 import AppLoading from "@/components/common/AppLoading.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
-import type { LineageNodeData } from "@/components/lineage/LineageNode.vue";
+import LineageLegend, {
+  type LegendOrigin,
+  type LegendScope,
+} from "@/components/lineage/LineageLegend.vue";
+import type {
+  LineageNodeData,
+  LineageNodeKind,
+} from "@/components/lineage/LineageNode.vue";
 import LineageNode from "@/components/lineage/LineageNode.vue";
+import OriginSwatch from "@/components/lineage/OriginSwatch.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -249,6 +313,15 @@ import {
   layoutNodes,
   nodeHeight,
 } from "@/lib/lineageGraph";
+import {
+  countRelationsByOrigin,
+  LINEAGE_ORIGINS,
+  type LineageOrigin,
+  originLabelKey,
+  type RelationOrigin,
+} from "@/lib/lineageOrigin";
+import { openlineageRunLabel } from "@/lib/openlineageRun";
+import { useInstanceStore } from "@/store/modules/instance";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import type {
   ExternalDatasetInfo,
@@ -258,18 +331,20 @@ import { LineageType } from "@/types/proto-es/v1/lineage_service_pb";
 import { formatDateTime } from "@/utils/datetime";
 import { extractErrorMessage } from "@/utils/error";
 import { guidToRouteParams, routeParamToGuid } from "@/utils/guid";
+import {
+  buildLineageScopeColors,
+  isExternalGuid,
+  type LineageAssetView,
+  lineageAssetView,
+  scopeColor,
+} from "@/utils/lineageAsset";
 import { metaTypeLabel, parseMetaType } from "@/utils/metaType";
-
-const EXTERNAL_PREFIX = "external:";
-
-function isExternalGuid(guid: string): boolean {
-  return guid.startsWith(EXTERNAL_PREFIX);
-}
 
 const { t, locale } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const { fitView, getNodes } = useVueFlow();
+const instanceStore = useInstanceStore();
 
 const OPENLINEAGE_META_TYPE = 100;
 
@@ -307,7 +382,7 @@ const lineageCounts = ref<Map<string, LineageCount>>(new Map());
 const expandDepth = ref("1");
 
 const focusAssetLabel = computed(() => {
-  return formatGuidLabel(currentGuid.value);
+  return assetViewFor(currentGuid.value).fullLabel;
 });
 
 // Track actual MetaType per guid, derived from lineage relation sourceType/targetType
@@ -315,6 +390,36 @@ const guidMetaTypeMap = ref<Map<string, MetaType>>(new Map());
 
 // External dataset info cache: guid -> ExternalDatasetInfo
 const externalDatasetMap = ref<Map<string, ExternalDatasetInfo>>(new Map());
+
+/**
+ * The instance titles the graph labels its nodes with. An instance is what tells
+ * two objects with the same database, schema and table name apart, so the label
+ * and the accent both come from here rather than from the GUID's trailing
+ * segments.
+ */
+const scopeTitles = computed<Map<string, string>>(() => {
+  const titles = new Map<string, string>();
+  for (const instance of instanceStore.instances) {
+    const id = instance.name.split("/").pop() ?? instance.name;
+    titles.set(id, instance.title || id);
+  }
+  return titles;
+});
+
+/**
+ * One accent per scope. Instances come first in sorted order and external
+ * namespaces after them, so expanding the graph to a dataset outside every
+ * instance never recolours the instances already on screen.
+ */
+const scopeColorMap = computed(() =>
+  buildLineageScopeColors({
+    instanceIds: scopeTitles.value.keys(),
+    externalDatasetGuids: externalDatasetMap.value.keys(),
+    externalOf: (guid) => externalDatasetMap.value.get(guid),
+  })
+);
+
+const originFilter = ref<RelationOrigin[]>([...LINEAGE_ORIGINS]);
 
 // Snapshot of initial state for reset
 let initialExpandedDirections = new Set<string>();
@@ -362,13 +467,16 @@ const selectedNodeSummary = computed(() => {
     guidMetaTypeMap.value.get(selectedNodeGuid.value) ?? currentMetaType.value;
 
   const counts = lineageCountFor(selectedNodeGuid.value);
+  const view = assetViewFor(selectedNodeGuid.value);
 
   return {
     guid: selectedNodeGuid.value,
-    label: formatGuidLabel(selectedNodeGuid.value),
-    shortPath: formatGuidShort(selectedNodeGuid.value),
+    label: view.name,
+    fullLabel: view.fullLabel,
+    scopeLabel: view.scopeLabel,
+    scopeColor: scopeColor(scopeColorMap.value, view.scopeKey),
     isRoot: selectedNodeGuid.value === currentGuid.value,
-    isExternal: isExternalGuid(selectedNodeGuid.value),
+    isExternal: view.isExternal,
     metaTypeValue,
     metaTypeLabel: metaTypeLabel(metaTypeValue, t),
     upstreamCount: counts.upstream,
@@ -377,6 +485,77 @@ const selectedNodeSummary = computed(() => {
     externalNamespace: externalInfo?.namespace ?? "",
     externalDatasetType: externalInfo?.datasetType ?? "",
   };
+});
+
+/**
+ * Which writers reached the selected object, from its loaded relations. This is a
+ * property of the stored graph, so it is reported before the canvas' origin filter
+ * — the graph can hide an origin, but the detail panel still says it is there.
+ */
+const selectedNodeOrigins = computed<LegendOrigin[]>(() => {
+  if (!selectedNodeGuid.value) {
+    return [];
+  }
+
+  const data = getNodeLineageData(selectedNodeGuid.value);
+  const counts = countRelationsByOrigin([...data.upstream, ...data.downstream]);
+  return LINEAGE_ORIGINS.filter((origin) => counts[origin] > 0).map(
+    (origin) => ({
+      origin,
+      count: counts[origin],
+    })
+  );
+});
+
+/**
+ * The scopes the drawn nodes belong to, with how many nodes each contributes, so
+ * a reader can see at a glance that e.g. two of the six nodes are in another
+ * instance.
+ */
+const legendScopes = computed<LegendScope[]>(() => {
+  const byScope = new Map<string, LegendScope>();
+  for (const node of nodes.value) {
+    const view = assetViewFor(node.id);
+    const entry = byScope.get(view.scopeKey);
+    if (entry) {
+      entry.count += 1;
+      continue;
+    }
+    byScope.set(view.scopeKey, {
+      key: view.scopeKey,
+      label: view.scopeLabel || t("lineageGraph.unknownScope"),
+      color: scopeColor(scopeColorMap.value, view.scopeKey),
+      count: 1,
+    });
+  }
+  return [...byScope.values()].sort((left, right) =>
+    left.label.localeCompare(right.label)
+  );
+});
+
+/**
+ * The origin rows of the legend: every origin a filter can name, plus `mixed`
+ * once the canvas actually bundles two writers into one edge. Counts are of drawn
+ * edges, so a filtered-out origin reads as zero.
+ */
+const legendOrigins = computed<LegendOrigin[]>(() => {
+  const drawn = new Map<LineageOrigin, number>();
+  for (const edge of edges.value) {
+    const origin = (edge.data as { origin?: LineageOrigin } | undefined)
+      ?.origin;
+    if (origin) {
+      drawn.set(origin, (drawn.get(origin) ?? 0) + 1);
+    }
+  }
+
+  const rows: LegendOrigin[] = LINEAGE_ORIGINS.map((origin) => ({
+    origin,
+    count: drawn.get(origin) ?? 0,
+  }));
+  if (drawn.has("mixed")) {
+    rows.push({ origin: "mixed", count: drawn.get("mixed") ?? 0 });
+  }
+  return rows;
 });
 
 const selectedColumnContext = computed(() => {
@@ -429,7 +608,7 @@ const selectedNodeRelatedRuns = computed<NodeRunSummary[]>(() => {
     ) {
       runs.set(relation.metaGuid, {
         guid: relation.metaGuid,
-        label: formatOpenLineageRunLabel(relation.metaGuid),
+        label: openlineageRunLabel(relation.metaGuid),
         updatedAt: relation.updatedAt,
         updatedAtLabel: formatTimestamp(relation.updatedAt),
       });
@@ -448,39 +627,62 @@ const selectedNodeRelatedRuns = computed<NodeRunSummary[]>(() => {
   );
 });
 
-function formatGuidShort(guid: string): string {
-  if (!guid) return "";
-  if (isExternalGuid(guid)) {
-    const ext = externalDatasetMap.value.get(guid);
-    if (ext) return `${ext.namespace} / ${ext.name}`;
-    return guid.substring(EXTERNAL_PREFIX.length);
+/** The scope, name and path of one object, from the instance titles and the
+ * external dataset metadata the graph has gathered so far. */
+function assetViewFor(guid: string): LineageAssetView {
+  if (!guid) {
+    return {
+      scopeKey: "",
+      scopeLabel: "",
+      name: "",
+      qualifier: "",
+      fullLabel: "",
+      isExternal: false,
+    };
   }
-  const segments = guid.split(";").filter(Boolean);
-  if (segments.length === 0) return guid;
-  return segments.slice(-3).join(".");
+  return lineageAssetView(
+    guid,
+    scopeTitles.value,
+    externalDatasetMap.value.get(guid)
+  );
 }
 
-function formatGuidLabel(guid: string): string {
-  if (!guid) return "";
-  if (isExternalGuid(guid)) {
-    const ext = externalDatasetMap.value.get(guid);
-    if (ext) {
-      const nameParts = ext.name.split(".");
-      return nameParts[nameParts.length - 1] || ext.name;
-    }
-    const parts = guid.substring(EXTERNAL_PREFIX.length).split(":");
-    return parts[parts.length - 1] || guid;
+/**
+ * The metadata type a node's icon and type badge use. A GUID names its own type by
+ * how many segments it has — and a MySQL schema is an empty segment, not a missing
+ * one — so the count is positional. The type the relations report wins whenever
+ * they report one; this is what a node nothing has described yet falls back to.
+ */
+function fallbackMetaType(guid: string): MetaType {
+  if (isExternalGuid(guid)) return MetaType.EXTERNAL_DATASET;
+  const segments = guid.split(";");
+  while (segments.length > 0 && segments[segments.length - 1] === "") {
+    segments.pop();
   }
-  const segments = guid.split(";").filter(Boolean);
-  return segments[segments.length - 1] || guid;
+  if (segments.length >= 4) return MetaType.TABLE;
+  if (segments.length === 3) return MetaType.SCHEMA;
+  if (segments.length === 2) return MetaType.DATABASE;
+  return MetaType.INSTANCE;
 }
 
-function guidToMetaType(guid: string): string {
-  if (isExternalGuid(guid)) return "external";
-  const segments = guid.split(";").filter(Boolean);
-  if (segments.length <= 1) return "instance";
-  if (segments.length === 2) return "database";
-  if (segments.length === 3) return "schema";
+/** The minimap keeps the canvas' scope colours, so the overview reads like the
+ * graph it summarises rather than as anonymous grey blocks. */
+function miniMapNodeColor(node: GraphNode): string {
+  const data = node.data as LineageNodeData | undefined;
+  return data?.scopeColor ?? "hsl(var(--muted-foreground))";
+}
+
+function nodeKind(metaType: MetaType, external: boolean): LineageNodeKind {
+  if (
+    external ||
+    metaType === MetaType.EXTERNAL_DATASET ||
+    metaType === MetaType.EXTERNAL_TABLE
+  ) {
+    return "external";
+  }
+  if (metaType === MetaType.VIEW || metaType === MetaType.MATERIALIZED_VIEW) {
+    return "view";
+  }
   return "table";
 }
 
@@ -500,26 +702,6 @@ function relationMatchesSelectedColumn(rel: LineageRelation): boolean {
     (rel.targetGuid === selectedColumnGuid.value &&
       rel.targetColumn === selectedColumnName.value)
   );
-}
-
-function formatOpenLineageRunLabel(guid: string): string {
-  const prefix = "openlineage:run:";
-  if (!guid.startsWith(prefix)) {
-    return guid;
-  }
-
-  const segments = guid
-    .substring(prefix.length)
-    .split(":")
-    .map((segment) => decodeURIComponent(segment));
-
-  if (segments.length >= 3) {
-    const runID = segments[segments.length - 1];
-    const jobName = segments[segments.length - 2];
-    return `${jobName} · ${runID}`;
-  }
-
-  return segments.join(" · ") || guid;
 }
 
 function formatTimestamp(ts: Timestamp | undefined): string {
@@ -775,16 +957,26 @@ function lineageCountFor(guid: string): {
 
 function nodeDataFor(guid: string): LineageNodeData {
   const counts = lineageCountFor(guid);
+  const view = assetViewFor(guid);
+  // The type is resolved from the lineage relations (or the route) rather than
+  // guessed from the GUID, which cannot name a MySQL object's level.
+  const metaTypeValue =
+    guidMetaTypeMap.value.get(guid) ?? fallbackMetaType(guid);
+
   return {
     guid,
-    label: formatGuidLabel(guid),
-    shortPath: formatGuidShort(guid),
+    label: view.name,
+    scopeLabel: view.scopeLabel,
+    scopeColor: scopeColor(scopeColorMap.value, view.scopeKey),
+    qualifier: view.qualifier,
+    fullLabel: view.fullLabel,
+    typeLabel: metaTypeLabel(metaTypeValue, t),
+    kind: nodeKind(metaTypeValue, view.isExternal),
     isRoot: guid === currentGuid.value,
     upstreamExpanded: isDirectionExpanded(guid, "upstream"),
     downstreamExpanded: isDirectionExpanded(guid, "downstream"),
     upstreamCount: counts.upstream,
     downstreamCount: counts.downstream,
-    metaType: guidToMetaType(guid),
     columns: collectColumnsForGuid(guid),
     selectedColumn:
       selectedColumnGuid.value === guid ? selectedColumnName.value : null,
@@ -813,6 +1005,19 @@ function graphView(): Map<string, NodeLineageData> {
   return view;
 }
 
+/** The canvas' edges: the loaded relations, the selected column's emphasis, and
+ * the origins the legend's filter currently keeps. */
+function buildEdges(
+  view: Map<string, NodeLineageData>,
+  validNodeIds: ReadonlySet<string>
+) {
+  return buildLineageEdges(view, {
+    validNodeIds,
+    columnFilter: columnFilter.value,
+    originFilter: new Set(originFilter.value),
+  });
+}
+
 /** Rebuilds every node from scratch, which also re-runs the layer layout. */
 function rebuildGraph() {
   const view = graphView();
@@ -835,10 +1040,7 @@ function rebuildGraph() {
   }
 
   nodes.value = Array.from(nodeMap.values());
-  edges.value = buildLineageEdges(view, {
-    validNodeIds: new Set(nodeMap.keys()),
-    columnFilter: columnFilter.value,
-  });
+  edges.value = buildEdges(view, new Set(nodeMap.keys()));
 
   // The canvas changed, so the newly drawn nodes have no degree yet. Expanding
   // the graph is the only way nodes appear, so this is where they are asked for.
@@ -889,10 +1091,10 @@ function updateGraphState() {
     position: currentPositions.get(node.id) ?? node.position,
     data: nodeDataFor(node.id),
   }));
-  edges.value = buildLineageEdges(graphView(), {
-    validNodeIds: new Set(nodes.value.map((node) => node.id)),
-    columnFilter: columnFilter.value,
-  });
+  edges.value = buildEdges(
+    graphView(),
+    new Set(nodes.value.map((node) => node.id))
+  );
 }
 
 function clearColumnSelection() {
@@ -909,10 +1111,14 @@ async function handleSelectNode(guid: string) {
   }
   setSelectedNode(guid);
 
-  // Pre-fetch lineage data for non-root nodes so the drawer shows
-  // accurate upstream/downstream counts and related runs immediately,
-  // without expanding the graph (the user can do that via "Expand").
-  if (guid !== currentGuid.value && !nodeDataMap.value.has(guid)) {
+  // Pre-fetch lineage data for non-root nodes so the drawer shows accurate
+  // upstream/downstream counts and related runs immediately, without expanding
+  // the graph (the user can do that via "Expand"). Every non-root node is asked,
+  // not just the ones the map has never seen: a node the user expanded in one
+  // direction only holds an empty list for the other, and the detail panel would
+  // otherwise report that empty direction as "no lineage". `fetchLineageForGuid`
+  // is the cache — it returns at once when both directions are already loaded.
+  if (guid !== currentGuid.value) {
     await fetchLineageForGuid(guid);
     // The fetch marks both directions as loaded but deliberately leaves the
     // graph alone, so the node still renders the pre-fetch state. Refresh the
@@ -1073,7 +1279,8 @@ async function fitViewWhenMeasured() {
 }
 
 function handleReset() {
-  // Restore the initial snapshot
+  // Restore the initial snapshot, the origin filter included: it is part of the
+  // view the user is resetting away from.
   expandedDirections.value = new Set(initialExpandedDirections);
   nodeDataMap.value = new Map(
     Array.from(initialNodeDataMap.entries()).map(([k, v]) => [k, { ...v }])
@@ -1082,6 +1289,7 @@ function handleReset() {
   selectedColumnName.value = null;
   highlightedColumnsMap.value.clear();
   fieldsVisibleGuids.value.clear();
+  originFilter.value = [...LINEAGE_ORIGINS];
   rebuildGraph();
   if (selectedNodeGuid.value && selectedNodeGuid.value !== currentGuid.value) {
     closeSelectedNode();
@@ -1138,14 +1346,25 @@ async function initializeGraph() {
   selectedColumnGuid.value = null;
   selectedColumnName.value = null;
   highlightedColumnsMap.value.clear();
+  // A new object starts from the whole picture. A filter left over from the
+  // previous one would draw an empty canvas — and the legend's zeroes would read
+  // as "this object has no lineage" rather than "you hid its only source".
+  originFilter.value = [...LINEAGE_ORIGINS];
 
   // The initial fetch draws the root's immediate neighbours, so both of its
   // directions count as expanded — that is what hides its expand buttons and
-  // keeps "Reset" hidden until the user expands something else.
+  // keeps "Reset" hidden until the user expands something else. The instance
+  // titles are fetched alongside: they are what names and colours every node, and
+  // they are one cached list shared with the rest of the app.
   expandedDirections.value.add(expansionKey(currentGuid.value, "upstream"));
   expandedDirections.value.add(expansionKey(currentGuid.value, "downstream"));
   guidMetaTypeMap.value.set(currentGuid.value, currentMetaType.value);
-  await fetchLineageForGuid(currentGuid.value);
+  // A failed instance list leaves the nodes labelled by instance id; it must not
+  // cost the whole graph.
+  await Promise.all([
+    fetchLineageForGuid(currentGuid.value),
+    instanceStore.ensureLoaded().catch(() => undefined),
+  ]);
   rebuildGraph();
   syncSelectedNodeVisibility();
   saveInitialSnapshot();
@@ -1164,5 +1383,21 @@ watch(currentGuid, () => {
 
 watch(nodes, () => {
   syncSelectedNodeVisibility();
+});
+
+// Instance titles arrive after the first paint on a cold cache, and the layout
+// they colour is already drawn: relabel it in place rather than waiting.
+watch(scopeTitles, () => {
+  if (nodes.value.length > 0) {
+    updateGraphState();
+  }
+});
+
+// Hiding a lineage source redraws the edges only: every node keeps its place, its
+// degree and its selection.
+watch(originFilter, () => {
+  if (nodes.value.length > 0) {
+    updateGraphState();
+  }
 });
 </script>
