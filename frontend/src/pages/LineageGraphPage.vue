@@ -1124,19 +1124,30 @@ function buildEdges(
   });
 }
 
-/** Rebuilds every node from scratch, which also re-runs the layer layout. */
-function rebuildGraph() {
-  const view = graphView();
-  // The trail is computed over the graph about to be drawn, so it can only ever
-  // highlight a path the canvas shows.
-  refreshFieldTrail(view, allGuidsIn(view));
-  const layers = assignLayers(currentGuid.value, view);
-  const positions = layoutNodes(layers, (guid) =>
+/**
+ * The height each node actually rendered at. `nodeHeight` can only guess: how many
+ * lines a node's action row wraps to depends on the locale and on which actions
+ * the node offers, so a node with all three of them came out 15px taller than its
+ * slot and the node below crowded its footer. The browser is the only thing that
+ * knows, so its answer is kept and used for the next stack.
+ */
+let renderedHeights = new Map<string, number>();
+
+/** The height to place a node at: what it rendered at last, or a first guess. */
+function heightFor(guid: string): number {
+  return (
+    renderedHeights.get(guid) ??
     nodeHeight(
       collectColumnsForGuid(guid).length,
       fieldsVisibleGuids.value.has(guid)
     )
   );
+}
+
+/** Stacks every node in its layer, and rebuilds the edges between them. */
+function stack(view: Map<string, NodeLineageData>) {
+  const layers = assignLayers(currentGuid.value, view);
+  const positions = layoutNodes(layers, heightFor);
 
   const nodeMap = new Map<string, Node>();
   for (const [guid, position] of positions) {
@@ -1150,10 +1161,79 @@ function rebuildGraph() {
 
   nodes.value = Array.from(nodeMap.values());
   edges.value = buildEdges(view, new Set(nodeMap.keys()));
+}
+
+/**
+ * Re-stacks the layers with the heights the browser gave the cards, once the
+ * renderer has measured them. Only ever one pass: positions do not feed back into
+ * heights, so the second measurement agrees with the first.
+ */
+async function settleNodeHeights() {
+  // Positions do not feed back into heights, so this converges in one or two
+  // passes; the loop is here because the first measurement can be taken before the
+  // browser has finished laying the cards out.
+  for (let pass = 0; pass < 4; pass++) {
+    const heights = await measureDrawnNodes();
+    if (!heights) {
+      return;
+    }
+
+    let changed = false;
+    for (const [guid, height] of heights) {
+      changed ||= renderedHeights.get(guid) !== height;
+    }
+    if (!changed) {
+      return;
+    }
+
+    renderedHeights = heights;
+    stack(graphView());
+  }
+}
+
+/**
+ * The height the browser gave each node, read off the rendered card. Vue Flow also
+ * measures its nodes, but that number does not follow a card that grows in place —
+ * opening a field list left it at the closed height — and a stack that is wrong
+ * about a height overlaps the node below it. `offsetHeight` is a layout measurement,
+ * so the canvas' zoom cannot distort it.
+ */
+async function measureDrawnNodes(): Promise<Map<string, number> | null> {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    await nextTick();
+    const heights = new Map<string, number>();
+    for (const element of document.querySelectorAll<HTMLElement>(
+      ".vue-flow__node[data-id]"
+    )) {
+      if (element.dataset.id) {
+        heights.set(element.dataset.id, element.offsetHeight);
+      }
+    }
+    if (heights.size > 0 && heights.size === nodes.value.length) {
+      return heights;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return null;
+}
+
+/**
+ * Rebuilds every node from scratch, which also re-runs the layer layout. Awaiting
+ * it means awaiting the stack the browser actually rendered, so a caller that fits
+ * the view afterwards frames the graph it will really see.
+ */
+async function rebuildGraph() {
+  const view = graphView();
+  // The trail is computed over the graph about to be drawn, so it can only ever
+  // highlight a path the canvas shows.
+  refreshFieldTrail(view, allGuidsIn(view));
+  stack(view);
 
   // The canvas changed, so the newly drawn nodes have no degree yet. Expanding
   // the graph is the only way nodes appear, so this is where they are asked for.
   ensureLineageCounts();
+
+  await settleNodeHeights();
 }
 
 /**
@@ -1204,6 +1284,11 @@ function updateGraphState() {
     data: nodeDataFor(node.id),
   }));
   edges.value = buildEdges(view, new Set(nodes.value.map((node) => node.id)));
+
+  // A node's box can change without its position being recomputed — the trail
+  // names a column on a node whose path line was empty until now. Restacking is a
+  // no-op unless a box really did change.
+  void settleNodeHeights();
 }
 
 function clearColumnSelection() {
@@ -1249,8 +1334,10 @@ function handleToggleFields(guid: string, visible: boolean) {
     clearColumnSelection();
   }
   // The field list changes the node's height, so the column has to be stacked
-  // again: without this the grown node overlaps the one below it.
-  rebuildGraph();
+  // again: without this the grown node overlaps the one below it. The height this
+  // node last rendered at no longer describes it, so it goes back to the guess.
+  renderedHeights.delete(guid);
+  void rebuildGraph();
 }
 
 async function handleSelectColumn(guid: string, column: string) {
@@ -1338,7 +1425,7 @@ async function handleExpandNode(guid: string, direction: LineageDirection) {
     frontier = Array.from(next);
   }
 
-  rebuildGraph();
+  await rebuildGraph();
 
   if (revealed.size > 0) {
     fitViewWhenMeasured();
@@ -1379,7 +1466,8 @@ function handleReset() {
   selectedColumnName.value = null;
   fieldsVisibleGuids.value.clear();
   originFilter.value = [...LINEAGE_ORIGINS];
-  rebuildGraph();
+  renderedHeights = new Map();
+  void rebuildGraph();
   if (selectedNodeGuid.value && selectedNodeGuid.value !== currentGuid.value) {
     closeSelectedNode();
   }
@@ -1464,7 +1552,7 @@ async function initializeGraph() {
     fetchLineageForGuid(currentGuid.value),
     instanceStore.ensureLoaded().catch(() => undefined),
   ]);
-  rebuildGraph();
+  await rebuildGraph();
   syncSelectedNodeVisibility();
   saveInitialSnapshot();
 
