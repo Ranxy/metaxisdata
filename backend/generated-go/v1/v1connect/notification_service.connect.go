@@ -49,6 +49,9 @@ const (
 	// NotificationServiceDeleteNotificationProcedure is the fully-qualified name of the
 	// NotificationService's DeleteNotification RPC.
 	NotificationServiceDeleteNotificationProcedure = "/metaxisdata.v1.NotificationService/DeleteNotification"
+	// NotificationServiceSubscribeNotificationsProcedure is the fully-qualified name of the
+	// NotificationService's SubscribeNotifications RPC.
+	NotificationServiceSubscribeNotificationsProcedure = "/metaxisdata.v1.NotificationService/SubscribeNotifications"
 )
 
 // NotificationServiceClient is a client for the metaxisdata.v1.NotificationService service.
@@ -64,6 +67,15 @@ type NotificationServiceClient interface {
 	MarkAllNotificationsRead(context.Context, *connect.Request[v1.MarkAllNotificationsReadRequest]) (*connect.Response[emptypb.Empty], error)
 	// Delete one of the caller's notifications.
 	DeleteNotification(context.Context, *connect.Request[v1.DeleteNotificationRequest]) (*connect.Response[emptypb.Empty], error)
+	// Stream the caller's notifications as they are written, until the connection
+	// ends or the server ends it.
+	//
+	// No (google.api.http) annotation: this is a server-streaming method, and the
+	// REST gateway cannot carry one — it answers "streaming calls are not yet
+	// supported in the in-process transport", as the generated ExplainSQL gateway
+	// route does. The browser reaches the Connect endpoint directly, the way it does
+	// for ExplainSQL.
+	SubscribeNotifications(context.Context, *connect.Request[v1.SubscribeNotificationsRequest]) (*connect.ServerStreamForClient[v1.SubscribeNotificationsResponse], error)
 }
 
 // NewNotificationServiceClient constructs a client for the metaxisdata.v1.NotificationService
@@ -107,6 +119,12 @@ func NewNotificationServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(notificationServiceMethods.ByName("DeleteNotification")),
 			connect.WithClientOptions(opts...),
 		),
+		subscribeNotifications: connect.NewClient[v1.SubscribeNotificationsRequest, v1.SubscribeNotificationsResponse](
+			httpClient,
+			baseURL+NotificationServiceSubscribeNotificationsProcedure,
+			connect.WithSchema(notificationServiceMethods.ByName("SubscribeNotifications")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -117,6 +135,7 @@ type notificationServiceClient struct {
 	batchMarkNotificationsRead *connect.Client[v1.BatchMarkNotificationsReadRequest, emptypb.Empty]
 	markAllNotificationsRead   *connect.Client[v1.MarkAllNotificationsReadRequest, emptypb.Empty]
 	deleteNotification         *connect.Client[v1.DeleteNotificationRequest, emptypb.Empty]
+	subscribeNotifications     *connect.Client[v1.SubscribeNotificationsRequest, v1.SubscribeNotificationsResponse]
 }
 
 // ListNotifications calls metaxisdata.v1.NotificationService.ListNotifications.
@@ -144,6 +163,11 @@ func (c *notificationServiceClient) DeleteNotification(ctx context.Context, req 
 	return c.deleteNotification.CallUnary(ctx, req)
 }
 
+// SubscribeNotifications calls metaxisdata.v1.NotificationService.SubscribeNotifications.
+func (c *notificationServiceClient) SubscribeNotifications(ctx context.Context, req *connect.Request[v1.SubscribeNotificationsRequest]) (*connect.ServerStreamForClient[v1.SubscribeNotificationsResponse], error) {
+	return c.subscribeNotifications.CallServerStream(ctx, req)
+}
+
 // NotificationServiceHandler is an implementation of the metaxisdata.v1.NotificationService
 // service.
 type NotificationServiceHandler interface {
@@ -158,6 +182,15 @@ type NotificationServiceHandler interface {
 	MarkAllNotificationsRead(context.Context, *connect.Request[v1.MarkAllNotificationsReadRequest]) (*connect.Response[emptypb.Empty], error)
 	// Delete one of the caller's notifications.
 	DeleteNotification(context.Context, *connect.Request[v1.DeleteNotificationRequest]) (*connect.Response[emptypb.Empty], error)
+	// Stream the caller's notifications as they are written, until the connection
+	// ends or the server ends it.
+	//
+	// No (google.api.http) annotation: this is a server-streaming method, and the
+	// REST gateway cannot carry one — it answers "streaming calls are not yet
+	// supported in the in-process transport", as the generated ExplainSQL gateway
+	// route does. The browser reaches the Connect endpoint directly, the way it does
+	// for ExplainSQL.
+	SubscribeNotifications(context.Context, *connect.Request[v1.SubscribeNotificationsRequest], *connect.ServerStream[v1.SubscribeNotificationsResponse]) error
 }
 
 // NewNotificationServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -197,6 +230,12 @@ func NewNotificationServiceHandler(svc NotificationServiceHandler, opts ...conne
 		connect.WithSchema(notificationServiceMethods.ByName("DeleteNotification")),
 		connect.WithHandlerOptions(opts...),
 	)
+	notificationServiceSubscribeNotificationsHandler := connect.NewServerStreamHandler(
+		NotificationServiceSubscribeNotificationsProcedure,
+		svc.SubscribeNotifications,
+		connect.WithSchema(notificationServiceMethods.ByName("SubscribeNotifications")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/metaxisdata.v1.NotificationService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case NotificationServiceListNotificationsProcedure:
@@ -209,6 +248,8 @@ func NewNotificationServiceHandler(svc NotificationServiceHandler, opts ...conne
 			notificationServiceMarkAllNotificationsReadHandler.ServeHTTP(w, r)
 		case NotificationServiceDeleteNotificationProcedure:
 			notificationServiceDeleteNotificationHandler.ServeHTTP(w, r)
+		case NotificationServiceSubscribeNotificationsProcedure:
+			notificationServiceSubscribeNotificationsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -236,4 +277,8 @@ func (UnimplementedNotificationServiceHandler) MarkAllNotificationsRead(context.
 
 func (UnimplementedNotificationServiceHandler) DeleteNotification(context.Context, *connect.Request[v1.DeleteNotificationRequest]) (*connect.Response[emptypb.Empty], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.NotificationService.DeleteNotification is not implemented"))
+}
+
+func (UnimplementedNotificationServiceHandler) SubscribeNotifications(context.Context, *connect.Request[v1.SubscribeNotificationsRequest], *connect.ServerStream[v1.SubscribeNotificationsResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.NotificationService.SubscribeNotifications is not implemented"))
 }

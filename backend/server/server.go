@@ -218,6 +218,13 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	if s.runnerCancel != nil {
 		s.runnerCancel()
 	}
+	// End the live notification subscriptions before draining the web server. A
+	// stream is an in-flight request that never finishes on its own, and Shutdown
+	// waits for those: without this, every stop spends the graceful period waiting
+	// for clients to close their tabs.
+	if s.notifier != nil {
+		s.notifier.Close()
+	}
 	// Shutdown echo. A failure is logged rather than fatal: os.Exit here would
 	// skip closing the store and running the stoppers.
 	if s.echoServer != nil {

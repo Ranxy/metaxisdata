@@ -6,6 +6,7 @@ import {
   ListNotificationsRequestSchema,
   MarkAllNotificationsReadRequestSchema,
   type Notification,
+  SubscribeNotificationsRequestSchema,
 } from "@/types/proto-es/v1/notification_service_pb";
 import { notificationClient } from "./client";
 import type { ListPage } from "./list";
@@ -80,5 +81,19 @@ export async function markAllNotificationsRead(): Promise<void> {
 export async function deleteNotification(name: string): Promise<void> {
   await notificationClient.deleteNotification(
     create(DeleteNotificationRequestSchema, { name })
+  );
+}
+
+/**
+ * The caller's live notifications, newest last. The stream is the push channel:
+ * the server sends a message as it is written, and a `keepAlive` so an idle
+ * connection is not closed by a proxy. It runs until `signal` aborts or the
+ * server ends it — reconnecting is the caller's business, because only it knows
+ * what the inbox on screen still needs.
+ */
+export function subscribeNotifications(signal?: AbortSignal) {
+  return notificationClient.subscribeNotifications(
+    create(SubscribeNotificationsRequestSchema, { parent: WORKSPACE_PARENT }),
+    { signal }
   );
 }

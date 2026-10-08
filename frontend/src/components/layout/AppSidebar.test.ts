@@ -1,11 +1,12 @@
 import { create } from "@bufbuild/protobuf";
 import { mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
 import { i18n } from "@/locales";
 import { useAppStore } from "@/store/modules/app";
 import { useAuthStore } from "@/store/modules/auth";
+import { useNotificationStore } from "@/store/modules/notification";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
 import AppSidebar from "./AppSidebar.vue";
 
@@ -65,6 +66,12 @@ describe("AppSidebar", () => {
     localStorage.clear();
     setActivePinia(createPinia());
     useAuthStore().user = create(UserSchema, { permissions: PERMISSIONS });
+  });
+
+  // The sidebar owns the notification stream, so a mounted one has to be told to let
+  // go of it: the test never navigates away, and the connection outlives the wrapper.
+  afterEach(() => {
+    useNotificationStore().stopStreaming();
   });
 
   it("shows only the top-level entries while every section is closed", async () => {

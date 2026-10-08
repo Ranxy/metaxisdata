@@ -399,6 +399,97 @@ export declare type DeleteNotificationRequest = Message<"metaxisdata.v1.DeleteNo
 export declare const DeleteNotificationRequestSchema: GenMessage<DeleteNotificationRequest>;
 
 /**
+ * @generated from message metaxisdata.v1.SubscribeNotificationsRequest
+ */
+export declare type SubscribeNotificationsRequest = Message<"metaxisdata.v1.SubscribeNotificationsRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.SubscribeNotificationsRequest.
+ * Use `create(SubscribeNotificationsRequestSchema)` to create a new message.
+ */
+export declare const SubscribeNotificationsRequestSchema: GenMessage<SubscribeNotificationsRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.SubscribeNotificationsResponse
+ */
+export declare type SubscribeNotificationsResponse = Message<"metaxisdata.v1.SubscribeNotificationsResponse"> & {
+  /**
+   * @generated from oneof metaxisdata.v1.SubscribeNotificationsResponse.event
+   */
+  event: {
+    /**
+     * A notification written while the caller was connected.
+     *
+     * @generated from field: metaxisdata.v1.NotificationEvent notification = 1;
+     */
+    value: NotificationEvent;
+    case: "notification";
+  } | {
+    /**
+     * An empty message sent while nothing happens, so a proxy does not end an idle
+     * stream — nginx would after proxy_read_timeout, which is 60 seconds by
+     * default. The client ignores it.
+     *
+     * @generated from field: metaxisdata.v1.KeepAlive keep_alive = 2;
+     */
+    value: KeepAlive;
+    case: "keepAlive";
+  } | { case: undefined; value?: undefined };
+};
+
+/**
+ * Describes the message metaxisdata.v1.SubscribeNotificationsResponse.
+ * Use `create(SubscribeNotificationsResponseSchema)` to create a new message.
+ */
+export declare const SubscribeNotificationsResponseSchema: GenMessage<SubscribeNotificationsResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.NotificationEvent
+ */
+export declare type NotificationEvent = Message<"metaxisdata.v1.NotificationEvent"> & {
+  /**
+   * @generated from field: metaxisdata.v1.Notification notification = 1;
+   */
+  notification?: Notification;
+
+  /**
+   * The recipient's unread count after this notification was written. Absent when
+   * it could not be read, in which case the client asks for the count itself
+   * rather than showing a wrong number.
+   *
+   * @generated from field: optional int32 unread_count = 2;
+   */
+  unreadCount?: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.NotificationEvent.
+ * Use `create(NotificationEventSchema)` to create a new message.
+ */
+export declare const NotificationEventSchema: GenMessage<NotificationEvent>;
+
+/**
+ * KeepAlive is the notification stream's heartbeat. It carries no data.
+ *
+ * @generated from message metaxisdata.v1.KeepAlive
+ */
+export declare type KeepAlive = Message<"metaxisdata.v1.KeepAlive"> & {
+};
+
+/**
+ * Describes the message metaxisdata.v1.KeepAlive.
+ * Use `create(KeepAliveSchema)` to create a new message.
+ */
+export declare const KeepAliveSchema: GenMessage<KeepAlive>;
+
+/**
  * NotificationType is what a notification is about. It selects which detail
  * message the notification carries.
  *
@@ -657,6 +748,23 @@ export declare const NotificationService: GenService<{
     methodKind: "unary";
     input: typeof DeleteNotificationRequestSchema;
     output: typeof EmptySchema;
+  },
+  /**
+   * Stream the caller's notifications as they are written, until the connection
+   * ends or the server ends it.
+   *
+   * No (google.api.http) annotation: this is a server-streaming method, and the
+   * REST gateway cannot carry one — it answers "streaming calls are not yet
+   * supported in the in-process transport", as the generated ExplainSQL gateway
+   * route does. The browser reaches the Connect endpoint directly, the way it does
+   * for ExplainSQL.
+   *
+   * @generated from rpc metaxisdata.v1.NotificationService.SubscribeNotifications
+   */
+  subscribeNotifications: {
+    methodKind: "server_streaming";
+    input: typeof SubscribeNotificationsRequestSchema;
+    output: typeof SubscribeNotificationsResponseSchema;
   },
 }>;
 

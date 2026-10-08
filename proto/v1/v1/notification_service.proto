@@ -55,6 +55,16 @@ service NotificationService {
     option (google.api.http) = {delete: "/v1/{name=workspaces/*/notifications/*}"};
     option (google.api.method_signature) = "name";
   }
+
+  // Stream the caller's notifications as they are written, until the connection
+  // ends or the server ends it.
+  //
+  // No (google.api.http) annotation: this is a server-streaming method, and the
+  // REST gateway cannot carry one — it answers "streaming calls are not yet
+  // supported in the in-process transport", as the generated ExplainSQL gateway
+  // route does. The browser reaches the Connect endpoint directly, the way it does
+  // for ExplainSQL.
+  rpc SubscribeNotifications(SubscribeNotificationsRequest) returns (stream SubscribeNotificationsResponse) {}
 }
 
 // NotificationType is what a notification is about. It selects which detail
@@ -235,3 +245,31 @@ message DeleteNotificationRequest {
     (google.api.resource_reference) = {type: "metaxisdata/Notification"}
   ];
 }
+
+message SubscribeNotificationsRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message SubscribeNotificationsResponse {
+  oneof event {
+    // A notification written while the caller was connected.
+    NotificationEvent notification = 1;
+    // An empty message sent while nothing happens, so a proxy does not end an idle
+    // stream — nginx would after proxy_read_timeout, which is 60 seconds by
+    // default. The client ignores it.
+    KeepAlive keep_alive = 2;
+  }
+}
+
+message NotificationEvent {
+  Notification notification = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The recipient's unread count after this notification was written. Absent when
+  // it could not be read, in which case the client asks for the count itself
+  // rather than showing a wrong number.
+  optional int32 unread_count = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// KeepAlive is the notification stream's heartbeat. It carries no data.
+message KeepAlive {}

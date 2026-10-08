@@ -1174,6 +1174,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.KeepAlive"><span class="badge">M</span>KeepAlive</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.ListNotificationsRequest"><span class="badge">M</span>ListNotificationsRequest</a>
                 </li>
               
@@ -1190,11 +1194,23 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.NotificationEvent"><span class="badge">M</span>NotificationEvent</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.OpenLineageDetail"><span class="badge">M</span>OpenLineageDetail</a>
                 </li>
               
                 <li>
                   <a href="#metaxisdata.v1.SchemaSyncDetail"><span class="badge">M</span>SchemaSyncDetail</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.SubscribeNotificationsRequest"><span class="badge">M</span>SubscribeNotificationsRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.SubscribeNotificationsResponse"><span class="badge">M</span>SubscribeNotificationsResponse</a>
                 </li>
               
                 <li>
@@ -12536,6 +12552,13 @@ GetLineage.</p></td>
 
         
       
+        <h3 id="metaxisdata.v1.KeepAlive">KeepAlive</h3>
+        <p>KeepAlive is the notification stream's heartbeat. It carries no data.</p>
+
+        
+
+        
+      
         <h3 id="metaxisdata.v1.ListNotificationsRequest">ListNotificationsRequest</h3>
         <p></p>
 
@@ -12705,6 +12728,39 @@ to retrieve the subsequent page. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.NotificationEvent">NotificationEvent</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>notification</td>
+                  <td><a href="#metaxisdata.v1.Notification">Notification</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>unread_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td>optional</td>
+                  <td><p>The recipient&#39;s unread count after this notification was written. Absent when
+it could not be read, in which case the client asks for the count itself
+rather than showing a wrong number. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.OpenLineageDetail">OpenLineageDetail</h3>
         <p>OpenLineageDetail reports an OpenLineage ingestion failure, or a dataset that</p><p>fell through to an external dataset.</p>
 
@@ -12853,6 +12909,63 @@ of one database. Successful databases are counted rather than listed. </p></td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.SubscribeNotificationsRequest">SubscribeNotificationsRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.SubscribeNotificationsResponse">SubscribeNotificationsResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>notification</td>
+                  <td><a href="#metaxisdata.v1.NotificationEvent">NotificationEvent</a></td>
+                  <td></td>
+                  <td><p>A notification written while the caller was connected. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>keep_alive</td>
+                  <td><a href="#metaxisdata.v1.KeepAlive">KeepAlive</a></td>
+                  <td></td>
+                  <td><p>An empty message sent while nothing happens, so a proxy does not end an idle
+stream — nginx would after proxy_read_timeout, which is 60 seconds by
+default. The client ignores it. </p></td>
                 </tr>
               
             </tbody>
@@ -13135,6 +13248,20 @@ alone, so the call is idempotent.</p></td>
                 <td><a href="#metaxisdata.v1.DeleteNotificationRequest">DeleteNotificationRequest</a></td>
                 <td><a href="#google.protobuf.Empty">.google.protobuf.Empty</a></td>
                 <td><p>Delete one of the caller&#39;s notifications.</p></td>
+              </tr>
+            
+              <tr>
+                <td>SubscribeNotifications</td>
+                <td><a href="#metaxisdata.v1.SubscribeNotificationsRequest">SubscribeNotificationsRequest</a></td>
+                <td><a href="#metaxisdata.v1.SubscribeNotificationsResponse">SubscribeNotificationsResponse</a> stream</td>
+                <td><p>Stream the caller&#39;s notifications as they are written, until the connection
+ends or the server ends it.
+
+No (google.api.http) annotation: this is a server-streaming method, and the
+REST gateway cannot carry one — it answers &#34;streaming calls are not yet
+supported in the in-process transport&#34;, as the generated ExplainSQL gateway
+route does. The browser reaches the Connect endpoint directly, the way it does
+for ExplainSQL.</p></td>
               </tr>
             
           </tbody>

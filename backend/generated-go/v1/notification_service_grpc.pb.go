@@ -25,6 +25,7 @@ const (
 	NotificationService_BatchMarkNotificationsRead_FullMethodName = "/metaxisdata.v1.NotificationService/BatchMarkNotificationsRead"
 	NotificationService_MarkAllNotificationsRead_FullMethodName   = "/metaxisdata.v1.NotificationService/MarkAllNotificationsRead"
 	NotificationService_DeleteNotification_FullMethodName         = "/metaxisdata.v1.NotificationService/DeleteNotification"
+	NotificationService_SubscribeNotifications_FullMethodName     = "/metaxisdata.v1.NotificationService/SubscribeNotifications"
 )
 
 // NotificationServiceClient is the client API for NotificationService service.
@@ -53,6 +54,15 @@ type NotificationServiceClient interface {
 	MarkAllNotificationsRead(ctx context.Context, in *MarkAllNotificationsReadRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// Delete one of the caller's notifications.
 	DeleteNotification(ctx context.Context, in *DeleteNotificationRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// Stream the caller's notifications as they are written, until the connection
+	// ends or the server ends it.
+	//
+	// No (google.api.http) annotation: this is a server-streaming method, and the
+	// REST gateway cannot carry one — it answers "streaming calls are not yet
+	// supported in the in-process transport", as the generated ExplainSQL gateway
+	// route does. The browser reaches the Connect endpoint directly, the way it does
+	// for ExplainSQL.
+	SubscribeNotifications(ctx context.Context, in *SubscribeNotificationsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SubscribeNotificationsResponse], error)
 }
 
 type notificationServiceClient struct {
@@ -113,6 +123,25 @@ func (c *notificationServiceClient) DeleteNotification(ctx context.Context, in *
 	return out, nil
 }
 
+func (c *notificationServiceClient) SubscribeNotifications(ctx context.Context, in *SubscribeNotificationsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SubscribeNotificationsResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &NotificationService_ServiceDesc.Streams[0], NotificationService_SubscribeNotifications_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[SubscribeNotificationsRequest, SubscribeNotificationsResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NotificationService_SubscribeNotificationsClient = grpc.ServerStreamingClient[SubscribeNotificationsResponse]
+
 // NotificationServiceServer is the server API for NotificationService service.
 // All implementations must embed UnimplementedNotificationServiceServer
 // for forward compatibility.
@@ -139,6 +168,15 @@ type NotificationServiceServer interface {
 	MarkAllNotificationsRead(context.Context, *MarkAllNotificationsReadRequest) (*emptypb.Empty, error)
 	// Delete one of the caller's notifications.
 	DeleteNotification(context.Context, *DeleteNotificationRequest) (*emptypb.Empty, error)
+	// Stream the caller's notifications as they are written, until the connection
+	// ends or the server ends it.
+	//
+	// No (google.api.http) annotation: this is a server-streaming method, and the
+	// REST gateway cannot carry one — it answers "streaming calls are not yet
+	// supported in the in-process transport", as the generated ExplainSQL gateway
+	// route does. The browser reaches the Connect endpoint directly, the way it does
+	// for ExplainSQL.
+	SubscribeNotifications(*SubscribeNotificationsRequest, grpc.ServerStreamingServer[SubscribeNotificationsResponse]) error
 	mustEmbedUnimplementedNotificationServiceServer()
 }
 
@@ -163,6 +201,9 @@ func (UnimplementedNotificationServiceServer) MarkAllNotificationsRead(context.C
 }
 func (UnimplementedNotificationServiceServer) DeleteNotification(context.Context, *DeleteNotificationRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteNotification not implemented")
+}
+func (UnimplementedNotificationServiceServer) SubscribeNotifications(*SubscribeNotificationsRequest, grpc.ServerStreamingServer[SubscribeNotificationsResponse]) error {
+	return status.Error(codes.Unimplemented, "method SubscribeNotifications not implemented")
 }
 func (UnimplementedNotificationServiceServer) mustEmbedUnimplementedNotificationServiceServer() {}
 func (UnimplementedNotificationServiceServer) testEmbeddedByValue()                             {}
@@ -275,6 +316,17 @@ func _NotificationService_DeleteNotification_Handler(srv interface{}, ctx contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NotificationService_SubscribeNotifications_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(SubscribeNotificationsRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(NotificationServiceServer).SubscribeNotifications(m, &grpc.GenericServerStream[SubscribeNotificationsRequest, SubscribeNotificationsResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NotificationService_SubscribeNotificationsServer = grpc.ServerStreamingServer[SubscribeNotificationsResponse]
+
 // NotificationService_ServiceDesc is the grpc.ServiceDesc for NotificationService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -303,6 +355,12 @@ var NotificationService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _NotificationService_DeleteNotification_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "SubscribeNotifications",
+			Handler:       _NotificationService_SubscribeNotifications_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "v1/notification_service.proto",
 }

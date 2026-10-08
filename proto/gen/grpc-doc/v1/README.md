@@ -262,12 +262,16 @@
     - [DeleteNotificationRequest](#metaxisdata-v1-DeleteNotificationRequest)
     - [GetUnreadNotificationCountRequest](#metaxisdata-v1-GetUnreadNotificationCountRequest)
     - [GetUnreadNotificationCountResponse](#metaxisdata-v1-GetUnreadNotificationCountResponse)
+    - [KeepAlive](#metaxisdata-v1-KeepAlive)
     - [ListNotificationsRequest](#metaxisdata-v1-ListNotificationsRequest)
     - [ListNotificationsResponse](#metaxisdata-v1-ListNotificationsResponse)
     - [MarkAllNotificationsReadRequest](#metaxisdata-v1-MarkAllNotificationsReadRequest)
     - [Notification](#metaxisdata-v1-Notification)
+    - [NotificationEvent](#metaxisdata-v1-NotificationEvent)
     - [OpenLineageDetail](#metaxisdata-v1-OpenLineageDetail)
     - [SchemaSyncDetail](#metaxisdata-v1-SchemaSyncDetail)
+    - [SubscribeNotificationsRequest](#metaxisdata-v1-SubscribeNotificationsRequest)
+    - [SubscribeNotificationsResponse](#metaxisdata-v1-SubscribeNotificationsResponse)
     - [SyncDatabaseResult](#metaxisdata-v1-SyncDatabaseResult)
   
     - [NotificationSeverity](#metaxisdata-v1-NotificationSeverity)
@@ -4374,6 +4378,16 @@ usually the SQL naming something the analyzer cannot see.
 
 
 
+<a name="metaxisdata-v1-KeepAlive"></a>
+
+### KeepAlive
+KeepAlive is the notification stream&#39;s heartbeat. It carries no data.
+
+
+
+
+
+
 <a name="metaxisdata-v1-ListNotificationsRequest"></a>
 
 ### ListNotificationsRequest
@@ -4444,6 +4458,22 @@ Notification is one in-app message for one recipient.
 
 
 
+<a name="metaxisdata-v1-NotificationEvent"></a>
+
+### NotificationEvent
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| notification | [Notification](#metaxisdata-v1-Notification) |  |  |
+| unread_count | [int32](#int32) | optional | The recipient&#39;s unread count after this notification was written. Absent when it could not be read, in which case the client asks for the count itself rather than showing a wrong number. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-OpenLineageDetail"></a>
 
 ### OpenLineageDetail
@@ -4485,6 +4515,37 @@ every database that operation queued.
 | succeeded_count | [int32](#int32) |  |  |
 | failed_count | [int32](#int32) |  |  |
 | unfinished_count | [int32](#int32) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-SubscribeNotificationsRequest"></a>
+
+### SubscribeNotificationsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-SubscribeNotificationsResponse"></a>
+
+### SubscribeNotificationsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| notification | [NotificationEvent](#metaxisdata-v1-NotificationEvent) |  | A notification written while the caller was connected. |
+| keep_alive | [KeepAlive](#metaxisdata-v1-KeepAlive) |  | An empty message sent while nothing happens, so a proxy does not end an idle stream — nginx would after proxy_read_timeout, which is 60 seconds by default. The client ignores it. |
 
 
 
@@ -4607,6 +4668,9 @@ lock a custom role out of its own messages.
 | BatchMarkNotificationsRead | [BatchMarkNotificationsReadRequest](#metaxisdata-v1-BatchMarkNotificationsReadRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Mark the named notifications read. Already-read notifications are left alone, so the call is idempotent. |
 | MarkAllNotificationsRead | [MarkAllNotificationsReadRequest](#metaxisdata-v1-MarkAllNotificationsReadRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Mark every unread notification of the caller read. |
 | DeleteNotification | [DeleteNotificationRequest](#metaxisdata-v1-DeleteNotificationRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Delete one of the caller&#39;s notifications. |
+| SubscribeNotifications | [SubscribeNotificationsRequest](#metaxisdata-v1-SubscribeNotificationsRequest) | [SubscribeNotificationsResponse](#metaxisdata-v1-SubscribeNotificationsResponse) stream | Stream the caller&#39;s notifications as they are written, until the connection ends or the server ends it.
+
+No (google.api.http) annotation: this is a server-streaming method, and the REST gateway cannot carry one — it answers &#34;streaming calls are not yet supported in the in-process transport&#34;, as the generated ExplainSQL gateway route does. The browser reaches the Connect endpoint directly, the way it does for ExplainSQL. |
 
  
 

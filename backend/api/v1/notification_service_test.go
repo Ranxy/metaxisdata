@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/component/notification"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -124,7 +125,7 @@ func TestConvertToV1NotificationHandlesNil(t *testing.T) {
 func TestBatchMarkNotificationsReadValidatesTheBatch(t *testing.T) {
 	t.Parallel()
 
-	service := NewNotificationService(nil)
+	service := NewNotificationService(nil, nil)
 	ctx := context.WithValue(context.Background(), common.UserContextKey, &store.UserMessage{ID: 7})
 
 	_, err := service.BatchMarkNotificationsRead(ctx, connect.NewRequest(&v1pb.BatchMarkNotificationsReadRequest{
@@ -159,4 +160,101 @@ func TestFormatNotificationRoundTrips(t *testing.T) {
 	require.Error(t, err)
 	_, err = common.GetNotificationID("notifications/12")
 	require.Error(t, err)
+}
+
+// A streamed message is the same envelope the list serves, so a client renders both
+// with one code path.
+func TestConvertToV1NotificationEventNamesAndCounts(t *testing.T) {
+	t.Parallel()
+
+	converted := convertToV1NotificationEvent(notification.Event{
+		Notification: &storepb.Notification{
+			Id:       9,
+			Parent:   "workspaces/ws",
+			Type:     storepb.NotificationType_NOTIFICATION_TYPE_SCHEMA_SYNC,
+			Severity: storepb.NotificationSeverity_NOTIFICATION_SEVERITY_INFO,
+			Detail: &storepb.Notification_SchemaSync{
+				SchemaSync: &storepb.SchemaSyncDetail{Instance: "instances/inst1"},
+			},
+		},
+		UnreadCount:      4,
+		UnreadCountKnown: true,
+	}, "ws")
+
+	event, ok := converted.GetEvent().(*v1pb.SubscribeNotificationsResponse_Notification)
+	require.True(t, ok)
+	require.Equal(t, "workspaces/ws/notifications/9", event.Notification.GetNotification().GetName())
+	require.Equal(t, "instances/inst1", event.Notification.GetNotification().GetSchemaSync().GetInstance())
+	require.Equal(t, int32(4), event.Notification.GetUnreadCount())
+}
+
+// A count the store could not answer must stay absent rather than arrive as a zero
+// the client would read as "everything is read".
+func TestConvertToV1NotificationEventWithoutACount(t *testing.T) {
+	t.Parallel()
+
+	converted := convertToV1NotificationEvent(notification.Event{
+		Notification: &storepb.Notification{Id: 3, Parent: "workspaces/ws"},
+	}, "ws")
+
+	event, ok := converted.GetEvent().(*v1pb.SubscribeNotificationsResponse_Notification)
+	require.True(t, ok)
+	require.Nil(t, event.Notification.UnreadCount)
+	require.Equal(t, int32(0), event.Notification.GetUnreadCount())
+}
+
+// A detail written by a newer server still streams: the envelope renders and the
+// client falls back to a generic line.
+func TestConvertToV1NotificationEventWithoutAKnownDetail(t *testing.T) {
+	t.Parallel()
+
+	converted := convertToV1NotificationEvent(notification.Event{
+		Notification: &storepb.Notification{Id: 5, Parent: "workspaces/ws"},
+	}, "ws")
+
+	event, ok := converted.GetEvent().(*v1pb.SubscribeNotificationsResponse_Notification)
+	require.True(t, ok)
+	require.Nil(t, event.Notification.GetNotification().GetDetail())
+}
+
+// A subscription is not reachable without credentials: the handler refuses before it
+// registers anything or reads the store.
+func TestSubscribeNotificationsRequiresAuthentication(t *testing.T) {
+	t.Parallel()
+
+	service := NewNotificationService(nil, fakeSubscriptions{})
+	err := service.SubscribeNotifications(context.Background(), connect.NewRequest(&v1pb.SubscribeNotificationsRequest{
+		Parent: "workspaces/-",
+	}), nil)
+
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	require.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
+}
+
+// A service built without a push channel refuses the stream instead of accepting one that
+// could never deliver anything. The nil store proves the refusal comes before the
+// workspace read: a request that reached that read would panic instead of answering.
+func TestSubscribeNotificationsWithoutAPushChannel(t *testing.T) {
+	t.Parallel()
+
+	service := NewNotificationService(nil, nil)
+	ctx := context.WithValue(context.Background(), common.UserContextKey, &store.UserMessage{ID: 7})
+	err := service.SubscribeNotifications(ctx, connect.NewRequest(&v1pb.SubscribeNotificationsRequest{
+		Parent: "workspaces/-",
+	}), nil)
+
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	require.Equal(t, connect.CodeUnimplemented, connectErr.Code())
+}
+
+// fakeSubscriptions satisfies the push interface. Nothing is asserted through it: the
+// scope it would record is covered end to end, by the integration test that connects two
+// principals at once, because reaching the registration needs a workspace read.
+type fakeSubscriptions struct{}
+
+func (fakeSubscriptions) Subscribe(int) (<-chan notification.Event, func(), error) {
+	events := make(chan notification.Event)
+	return events, func() {}, nil
 }

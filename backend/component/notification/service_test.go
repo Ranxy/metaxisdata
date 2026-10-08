@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -26,6 +27,28 @@ type fakeStore struct {
 
 	created  []*storepb.Notification
 	failNext error
+	// suppressNext makes the next write answer the way the unique index on
+	// (recipient_id, dedupe_key) does when it refuses a repeat: no row.
+	suppressNext bool
+
+	unreadCount int
+	countErr    error
+	// countSequence answers the count queries in order (the last value repeats), and
+	// countGate holds every one of them open until the test releases it. Together they
+	// let a test order two writes deliberately: whether the second write can reach its
+	// own count query while the first is still publishing is exactly the property under
+	// test.
+	countSequence []int
+	countGate     chan struct{}
+	countMu       sync.Mutex
+	countCalls    int
+}
+
+// countStarted reports how many count queries have been entered.
+func (f *fakeStore) countStarted() int {
+	f.countMu.Lock()
+	defer f.countMu.Unlock()
+	return f.countCalls
 }
 
 func (f *fakeStore) CreateNotification(_ context.Context, notification *storepb.Notification) (*storepb.Notification, error) {
@@ -35,7 +58,33 @@ func (f *fakeStore) CreateNotification(_ context.Context, notification *storepb.
 		return nil, err
 	}
 	f.created = append(f.created, notification)
+	if f.suppressNext {
+		f.suppressNext = false
+		return nil, nil
+	}
 	return notification, nil
+}
+
+func (f *fakeStore) CountUnreadNotifications(context.Context, int) (int, error) {
+	f.countMu.Lock()
+	index := f.countCalls
+	f.countCalls++
+	count := f.unreadCount
+	if index < len(f.countSequence) {
+		count = f.countSequence[index]
+	} else if len(f.countSequence) > 0 {
+		count = f.countSequence[len(f.countSequence)-1]
+	}
+	gate := f.countGate
+	f.countMu.Unlock()
+
+	if gate != nil {
+		<-gate
+	}
+	if f.countErr != nil {
+		return 0, f.countErr
+	}
+	return count, nil
 }
 
 func (f *fakeStore) GetWorkspaceID(context.Context) (string, error) {
@@ -298,4 +347,170 @@ func TestReportUnmatchedNamespaceNotifiesTheAdministrators(t *testing.T) {
 	require.Equal(t, "mysql://db:3306", message.GetOpenlineage().GetNamespace())
 	require.Equal(t, "shop.orders", message.GetOpenlineage().GetDataset())
 	require.Contains(t, message.GetDedupeKey(), "openlineage.namespace-unmapped:mysql://db:3306:")
+}
+
+// A message that reached an inbox is handed to the live subscriptions of its
+// recipient, with the count the store reports: the connection is what a signed-in
+// client waits on instead of polling.
+func TestAWrittenMessageIsPushedWithTheUnreadCount(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeStore{workspaceID: "ws-1", unreadCount: 3}
+	service := newServiceWithStore(fake)
+	events, unsubscribe, err := service.Subscribe(42)
+	require.NoError(t, err)
+	defer unsubscribe()
+
+	message := SchemaSyncMessage(42, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_INFO, &storepb.SchemaSyncDetail{})
+	require.NoError(t, service.Send(context.Background(), message))
+
+	event := requireEvent(t, events)
+	require.Equal(t, message, event.Notification)
+	require.True(t, event.UnreadCountKnown)
+	require.Equal(t, int32(3), event.UnreadCount)
+
+	// A count the store cannot answer is not a reason to drop the message: the
+	// event goes out without it, and the client asks for the count itself rather
+	// than showing a wrong one.
+	fake.countErr = errors.New("boom")
+	require.NoError(t, service.Send(context.Background(), message))
+	event = requireEvent(t, events)
+	require.Equal(t, message, event.Notification)
+	require.False(t, event.UnreadCountKnown)
+}
+
+// A write the dedupe index refused changed nothing, so there is nothing to push:
+// the message it repeats is already in the inbox.
+func TestASuppressedWriteIsNotPushed(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeStore{workspaceID: "ws-1", suppressNext: true}
+	service := newServiceWithStore(fake)
+	events, unsubscribe, err := service.Subscribe(42)
+	require.NoError(t, err)
+	defer unsubscribe()
+
+	message := newOpenLineageMessage()
+	message.RecipientId = 42
+	require.NoError(t, service.Send(context.Background(), message))
+
+	requireNoEvent(t, events)
+}
+
+// A background failure goes to every administrator, and each of them has their own
+// inbox: the push follows the row, not the message that produced it.
+func TestAdminMessagesArePushedToOneInboxEach(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeStore{
+		workspaceID: "ws-1",
+		policy: &storepb.IamPolicy{Bindings: []*storepb.Binding{{
+			Role:    common.FormatRole(common.WorkspaceAdmin),
+			Members: []string{"users/2", "users/3"},
+		}}},
+		users: map[int]*store.UserMessage{
+			2: {ID: 2, Name: "alice"},
+			3: {ID: 3, Name: "bob"},
+		},
+		unreadCount: 1,
+	}
+	service := newServiceWithStore(fake)
+	alice, releaseAlice, err := service.Subscribe(2)
+	require.NoError(t, err)
+	defer releaseAlice()
+	bob, releaseBob, err := service.Subscribe(3)
+	require.NoError(t, err)
+	defer releaseBob()
+	outsider, releaseOutsider, err := service.Subscribe(4)
+	require.NoError(t, err)
+	defer releaseOutsider()
+
+	require.NoError(t, service.SendToWorkspaceAdmins(context.Background(), newOpenLineageMessage()))
+
+	require.Equal(t, int32(2), requireEvent(t, alice).Notification.GetRecipientId())
+	require.Equal(t, int32(3), requireEvent(t, bob).Notification.GetRecipientId())
+	requireNoEvent(t, outsider)
+}
+
+// Close is how the server drains: a stream that never ends on its own would hold
+// the HTTP server's shutdown open.
+func TestCloseEndsTheServicesSubscriptions(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeStore{workspaceID: "ws-1"}
+	service := newServiceWithStore(fake)
+	events, unsubscribe, err := service.Subscribe(42)
+	require.NoError(t, err)
+	defer unsubscribe()
+
+	service.Close()
+	_, ok := <-events
+	require.False(t, ok, "Close must end an open subscription")
+
+	// A connection that arrives while the server is draining ends at once.
+	duringShutdown, unsubscribeLate, err := service.Subscribe(42)
+	require.NoError(t, err)
+	defer unsubscribeLate()
+	_, ok = <-duringShutdown
+	require.False(t, ok)
+}
+
+func requireEvent(t *testing.T, events <-chan Event) Event {
+	t.Helper()
+
+	select {
+	case event, ok := <-events:
+		require.True(t, ok, "the subscription ended instead of delivering an event")
+		return event
+	case <-time.After(2 * time.Second):
+		t.Fatal("no event was delivered")
+		return Event{}
+	}
+}
+
+func requireNoEvent(t *testing.T, events <-chan Event) {
+	t.Helper()
+
+	select {
+	case event, ok := <-events:
+		t.Fatalf("an unexpected event was delivered (open=%t, recipient=%d)", ok, event.Notification.GetRecipientId())
+	default:
+	}
+}
+
+// Two messages written at nearly the same moment must not deliver their counts out of
+// order. The count is a snapshot taken after a write, so a client that applies the older
+// one shows a number that a later write already superseded.
+func TestMessagesWrittenTogetherDeliverTheirCountsInOrder(t *testing.T) {
+	t.Parallel()
+
+	// The first write is held inside its count query. While it is there, the second write
+	// must not be able to take a count of its own: that is what keeps the delivered
+	// numbers in step with the inserts. Without the lock it takes the higher count and
+	// publishes it first, and the stale one lands on top.
+	gate := make(chan struct{})
+	fake := &fakeStore{workspaceID: "ws-1", countSequence: []int{1, 2}, countGate: gate}
+	service := newServiceWithStore(fake)
+	events, unsubscribe, err := service.Subscribe(42)
+	require.NoError(t, err)
+	defer unsubscribe()
+
+	first := SchemaSyncMessage(42, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_INFO, &storepb.SchemaSyncDetail{})
+	second := SchemaSyncMessage(42, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_INFO, &storepb.SchemaSyncDetail{})
+
+	written := make(chan error, 2)
+	go func() { written <- service.Send(context.Background(), first) }()
+	require.Eventually(t, func() bool { return fake.countStarted() == 1 }, 2*time.Second, time.Millisecond,
+		"the first write never reached its count query")
+
+	go func() { written <- service.Send(context.Background(), second) }()
+	require.Never(t, func() bool { return fake.countStarted() > 1 }, 300*time.Millisecond, time.Millisecond,
+		"the second write read its own count while the first was still publishing")
+
+	close(gate)
+	require.NoError(t, <-written)
+	require.NoError(t, <-written)
+
+	require.Equal(t, int32(1), requireEvent(t, events).UnreadCount)
+	require.Equal(t, int32(2), requireEvent(t, events).UnreadCount)
 }

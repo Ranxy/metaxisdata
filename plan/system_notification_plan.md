@@ -1,6 +1,6 @@
 # Plan: 站内信 / 系统通知
 
-> **Status: 已实现**（Phase 1–4；Phase 5 的可选增强未做）。收件人、粒度、事件范围、渠道、保留策略已按评审定稿（见"已确认的决定"），实现与设计的偏差记在"实现状态"。
+> **Status: 已实现**（Phase 1–4；Phase 5 的可选增强里"轮询发现新消息"已由 [notification_push_plan.md](notification_push_plan.md) 改成服务端推送，toast 与邮件 / webhook 仍未做）。收件人、粒度、事件范围、渠道、保留策略已按评审定稿（见"已确认的决定"），实现与设计的偏差记在"实现状态"。
 
 ## TL;DR
 
@@ -31,7 +31,7 @@
 4. **单库同步不走操作聚合器**：`Syncer.SyncDatabaseForUser` 在请求内同步执行、直接投递；只有实例同步、批量同步、建实例这三条有异步尾巴的路径登记 `SyncOperation`。
 5. **载荷边界放在 `component/notification` 的构造函数里**（`MaxFailureEntries = 100`、`MaxErrorBytes = 2KiB`，按 rune 截断），调用方传什么都不会撑大那条永久保留的行。
 6. **eslint 的 `no-unused-keys` 需要显式 ignores**：`src/lib/notificationText.ts` 返回的 key 那条规则追不到（`scripts/check-vue-i18n.mjs` 的 `KEY_PROP_RE` 追得到），所以按 `relationType` 的先例把这一族加进了 `eslint.config.mjs`。
-7. **铃铛承担轮询的生命周期**：它只在登录后的侧边栏里存在，挂载即开始、卸载即停止，正是会话本身的生命周期。
+7. **铃铛承担订阅流的生命周期**：它只在登录后的侧边栏里存在，挂载即开始、卸载即停止，正是会话本身的生命周期。投递方式已按 [notification_push_plan.md](notification_push_plan.md) 从轮询换成 `SubscribeNotifications` 服务端推送，这个归属没有变。
 
 ## 对抗性 review：发现与处理
 
@@ -94,7 +94,7 @@ CI 上的两处红灯来自 `main`（#24 合并时把 CI 跑红了），与本�
 4. **可复用的既有模式**：`audit_log`（`BIGSERIAL + created_at + JSONB payload`，JSONB 绑定 `proto/store` 消息，[LATEST.sql:532-544](../backend/migrator/migration/LATEST.sql#L532-L544)）+ `AuditLogService`（分页、`workspaces/-` 解析、资源名 `{parent}/auditLogs/{id}`、store/v1 两份消息 + converter）。站内信照抄骨架，只多一个 `recipient_id`。
 5. **权限模型不表达"个人数据"**：单租户、workspace 级能力（[predefined_roles.go:33-48](../backend/store/predefined_roles.go#L33-L48)）。但 ACL 拦截器对**无 permission 注解**的方法不设门（[acl_interceptor.go:74](../backend/api/v1/acl_interceptor.go#L74)），而认证默认必需（[auth.go:89-95](../backend/api/auth/auth.go#L89-L95)）——这正是"登录即可、handler 自己作用域"的现成通道，不需要往 `permission.json` 加东西（给收件箱加权限反而会出现"自定义角色看不到自己消息"的怪相）。
 6. **管理员解析可行**：`GetWorkspaceIamPolicy` + `utils.GetUsersByMember`（已支持 `users/{id}` 与 `groups/{email}` 展开，[member.go:36-66](../backend/utils/member.go#L36-L66)）；`allUsers` 按不变式不可能绑到 `roles/workspaceAdmin`（[policy.go:40-60](../backend/store/policy.go#L40-L60)），管理员集合一定是有名有姓的用户。
-7. **前端没有推送通道**（SSE 只出现在 LLM 客户端与 MCP），实时性只能轮询；账号区在侧边栏底部 `UserMenu`（[AppSidebar.vue:169-173](../frontend/src/components/layout/AppSidebar.vue#L169-L173)）。
+7. **前端原本没有推送通道**，实时性只能轮询；这一条已由 [notification_push_plan.md](notification_push_plan.md) 取代——`NotificationService.SubscribeNotifications`（server streaming）+ 进程内 hub，前端不再轮询。账号区在侧边栏底部 `UserMenu`（[AppSidebar.vue:169-173](../frontend/src/components/layout/AppSidebar.vue#L169-L173)）。
 8. **`src/lib/`、`src/utils/`、`src/composables/` 有覆盖率门槛**（95% lines / 85% branches），新增文件必须带测试。
 9. **OpenLineage 摄取是同步 HTTP 路径，异常只进日志**：拒收（400/403/413）与服务端失败（500）都只 `slog.Warn/Error` 后直接返回（[openlineage_handler.go:106-137](../backend/api/v1/openlineage_handler.go#L106-L137)、[:171-249](../backend/api/v1/openlineage_handler.go#L171-L249)）；"数据集没匹配到任何实例、被存成 external dataset"只在 `Resolver` 里每进程每 namespace Warn 一次（[resolver.go:135-152](../backend/plugin/openlineage/resolver.go#L135-L152)）。摄取用 API key 认证，**没有发起用户**，所以这些异常只可能投给管理员。
 10. **系统身份现成**：`common.SystemBotID = 1`（[const.go:10-11](../backend/common/const.go#L10-L11)）。
@@ -387,7 +387,7 @@ func (h *OpenLineageHandler) reportIngestionFailure(c echo.Context, key *store.O
 | RPC | HTTP | 说明 |
 | --- | --- | --- |
 | `ListNotifications` | `GET /v1/{parent=workspaces/*}/notifications` | `unread_only` 过滤；分页沿用 `parseLimitAndOffset` / `paginate`（[common.go:156-183](../backend/api/v1/common.go#L156-L183)）；支持 `workspaces/-` 表示当前工作区 |
-| `GetUnreadNotificationCount` | `GET /v1/{parent=workspaces/*}/notifications:unreadCount` | 铃铛轮询专用，走 partial index |
+| `GetUnreadNotificationCount` | `GET /v1/{parent=workspaces/*}/notifications:unreadCount` | 铃铛专用，走 partial index：流的每条事件都带计数，读不到时用它兜底 |
 | `BatchMarkNotificationsRead` | `POST /v1/{parent=workspaces/*}/notifications:batchMarkRead` | 幂等，只置 `read_at IS NULL` 的行 |
 | `MarkAllNotificationsRead` | `POST /v1/{parent=workspaces/*}/notifications:markAllRead` | 全部已读 |
 | `DeleteNotification` | `DELETE /v1/{name=workspaces/*/notifications/*}` | 用户删自己的消息 |
@@ -405,15 +405,15 @@ func (h *OpenLineageHandler) reportIngestionFailure(c echo.Context, key *store.O
 
 | 文件 | 职责 | 层 |
 | --- | --- | --- |
-| `src/api/notification.ts` | 5 个 RPC 的调用与 `listAll` 分页 | api |
-| `src/store/modules/notification.ts` | Pinia：`unreadCount`、最近消息、`startPolling()` / `stopPolling()` | store |
+| `src/api/notification.ts` | 6 个 RPC 的调用、`listAll` 分页与订阅流 | api |
+| `src/store/modules/notification.ts` | Pinia：`unreadCount`、最近消息、`startStreaming()` / `stopStreaming()` | store |
 | `src/lib/notificationText.ts` | **纯函数**：type + detail → `{titleKey, titleParams, messageKey, messageParams, href}` | lib（有覆盖率门槛） |
 | `src/components/layout/NotificationBell.vue` | 侧边栏底部（`UserMenu` 之上；折叠态为图标按钮）：红点计数（99+）、下拉最近 10 条、"查看全部" | components |
 | `src/pages/NotificationsPage.vue` | `/notifications`：全部/未读切换、单条已读、全部已读、删除、分页、跳转源对象 | pages |
 
 - **文案渲染**：正文由 `notificationText.ts` 决定 i18n key + 参数，组件再 `t()`，服务端不存文案。未知 `type` / 未知 detail 走 fallback 文案——老前端遇到新类型不会炸。
 - **i18n**：`notifications.*` 同时进 `en-US.json` 与 `zh-CN.json`，跑 `pnpm --dir frontend i18n:sort`。注意 `scripts/check-vue-i18n.mjs` 的 `KEY_PROP_RE` 能静态追踪 `titleKey` / `messageKey` 这类**字面量属性**（[check-vue-i18n.mjs:60-61](../frontend/scripts/check-vue-i18n.mjs#L60-L61)），所以返回值用这两个属性名即可被追踪；若改用别的属性名，需要把 `"notifications."` 加进 `DYNAMIC_PREFIXES`。
-- **轮询**：登录后启动，`document.visibilityState === "visible"` 时每 30s 拉一次未读数；失败静默（轮询失败不应弹 toast）。在 `DefaultLayout.vue`（或 `App.vue`）挂载时 start、卸载/登出时 stop。
+- **实时性**：已由 [notification_push_plan.md](notification_push_plan.md) 从"登录后每 30s 拉一次未读数"改成一条常驻的 `SubscribeNotifications` 流（断线指数退避重连，每次重连与标签页重新可见时各刷新一次）。铃铛仍然只在挂载时 `startStreaming()`、卸载/登出时 `stopStreaming()`；失败静默，不弹 toast。
 - **深链**：schema 同步 → `/instances/{instanceId}`；OpenLineage 的拒收/失败 → `/openlineage/events`（`NAMESPACE_UNMAPPED` → `/settings/openlineage`，直接落到 namespace mapping 页面）。
 - **入口**：铃铛放在侧边栏底部而不是顶部栏——桌面端没有顶部栏，账号区就在侧边栏底部；移动端抽屉里有同一个铃铛。`/notifications` 不需要在 `menuItems` 再占一行，通过铃铛下拉的"查看全部"进入。
 - 顺手清理：`frontend/src/types/index.ts` 整个文件没有任何 import，其中那个同名的 `Notification` 接口在新类型（`@/types/proto-es/v1/notification_service_pb`）出现后只会误导，已随本特性删除。
@@ -428,7 +428,7 @@ func (h *OpenLineageHandler) reportIngestionFailure(c echo.Context, key *store.O
 - **永久保留**：表无界增长。`audit_log` 已被接受永久保留（见 [docs/security-posture.md](../docs/security-posture.md)），站内信沿用同一取向；量级变大后的话题是分区 / 归档，不是 TTL。
 - **消息文案演进**：老前端对新类型/新字段只做优雅降级（fallback 文案 + 忽略未知字段），与 proto3 前向兼容一致。
 - **拒收也通知，靠分桶收敛噪声**：一个持续发垃圾事件的生产者最多每小时给管理员一条，且消息里带着 key 的掩码标识，管理员能直接找到是哪个接入方。`NAMESPACE_UNMAPPED` 用 24 小时桶，因为它更像"配置没配好"而不是"服务出故障"。`processor.go` 里"事件合法但提不出血缘"的 Warn 刻意不在此列——那是数据质量，不是摄取失败。
-- **轮询成本**：每用户 30s 一次计数查询，走 partial index；总量由既有 throttle interceptor 的请求预算兜底。
+- **投递成本**：原先每用户 30s 一次计数查询，现在是每用户一条常驻连接（每条消息一次计数查询、25s 一次心跳）。代价与边界见 [notification_push_plan.md](notification_push_plan.md) 第八节；写入侧的请求量由既有 throttle interceptor 的请求预算兜底，连接数由每收件人 8 条的上限兜底。
 - **审计边界**：读收件箱、标已读、删除都**不审计**；后台失败通知本身也不写审计（它是通知，不是管理动作）。
 - **两层抑制的一致性**：进程内闸门与数据库桶用同一个窗口，所以单副本下两者等价；数据库那层才是多副本/重启后的正确性来源。若把窗口调大，两处必须一起调。
 
@@ -442,7 +442,7 @@ func (h *OpenLineageHandler) reportIngestionFailure(c echo.Context, key *store.O
 | **Phase 2 组件与 API ✅** | `backend/component/notification/`；`backend/api/v1/notification_service.go` + `grpc_routes.go` 注册；前端 `api/` + `store` + `NotificationBell` + `NotificationsPage` + i18n | 手工造一条消息 → 铃铛计数、单条已读、全部已读、删除都正确；`type-check` / `test run` / `i18n` 通过 |
 | **Phase 3 同步聚合 ✅** | `schemasync/operation.go` + `syncer.go` 改造（enqueue 带 op、结果回报、超时收尾、放弃重试时通知管理员）+ 三处 API 调用点 | 一个实例全量同步 → **恰好一条**消息，含成功/失败计数；单库同步 → 一条；后台失败 → 管理员一条且每小时最多一条 |
 | **Phase 4 OpenLineage ✅** | handler 的拒收分支收成 `reportIngestionFailure`（400/403/413 全覆盖）+ 两个 5xx 分支投递；`openlineage.Resolver` 注入 `UnmatchedNamespaceReporter` 并在闸门触发时通知；`grpc_routes.go` 接线 | 400 / 403 / 413 / 500 各制造一次 → 管理员各收到一条且 kind 正确；同一 key 连续发垃圾 10 次只落一条；未映射 namespace 只通知一次（24 小时内） |
-| **Phase 5 可选** | 轮询发现新消息 → `notify` toast；浏览器原生 Notification；邮件 / webhook | — |
+| **Phase 5 可选** | ~~轮询发现新消息~~（已由 [notification_push_plan.md](notification_push_plan.md) 换成 `SubscribeNotifications` 推送）；`notify` toast；浏览器原生 Notification；邮件 / webhook | — |
 
 ---
 
@@ -451,8 +451,8 @@ func (h *OpenLineageHandler) reportIngestionFailure(c echo.Context, key *store.O
 - **store**（hermetic，scanner stub 模式见 [audit_log_test.go](../backend/store/audit_log_test.go)）：`scanNotification`、列表/计数/标已读/删除的 SQL 形状，**作用域守卫测试**断言每个查询都带 `recipient_id`。
 - **schemasync**（hermetic）：operation 聚合——多库出一个结果、两库共享的扇出、超时 → `UNFINISHED`、`FinishOperation` 的幂等、`DedupeKey` 的时间桶。
 - **api/v1**：`NotificationService` 的 self-scoping（用户 A 看不到 B 的消息）、分页、未知类型降级、`workspaces/-` 解析；handler 每个拒收分支的 `kind` / 主体选择（事件可解析时用 namespace，否则用 key id）；注入 reporter 后 `Resolver` 只在闸门首次触发时通知一次（reporter 为 nil 时行为不变）。
-- **前端**：`notificationText.ts`（lib 层覆盖率门槛，覆盖全部 `OpenLineageFailureKind`）、notification store 的轮询/未读状态。
-- **集成**（`backend/test/integration/runner/notification_service_test.go`，真 server + PostgreSQL + MySQL，已通过）：`TestSyncWritesTheCallerAMessageRealServerIntegration` 触发一次库同步 → 等到消息出现 → 断言类型/trigger/计数/点名的库/未读态，并走通未读数、标已读、删除、重复删除 NotFound；`TestNotificationInboxIsPersonalRealServerIntegration` 新建一个成员账号登录 → 其收件箱为空且未读数为 0，而管理员自己的收件箱里有那条消息。
+- **前端**：`notificationText.ts`（lib 层覆盖率门槛，覆盖全部 `OpenLineageFailureKind`）、notification store 的未读状态与订阅流（消息入账、keepalive 忽略、缺计数时回退查询、断线重连、stop 不再重连、重新可见时刷新——见 [notification_push_plan.md](notification_push_plan.md)）。
+- **集成**（`backend/test/integration/runner/notification_service_test.go`，真 server + PostgreSQL + MySQL，已通过）：`TestSyncWritesTheCallerAMessageRealServerIntegration` 触发一次库同步 → 等到消息出现 → 断言类型/trigger/计数/点名的库/未读态，并走通未读数、标已读、删除、重复删除 NotFound；`TestNotificationInboxIsPersonalRealServerIntegration` 新建一个成员账号登录 → 其收件箱为空且未读数为 0，而管理员自己的收件箱里有那条消息；`TestSubscriptionPushesTheCallersMessageRealServerIntegration` 在同步之前先连上流 → 断言那条消息是从流上推来的（带未读数、且与列表同名）；`TestSubscriptionIsScopedToTheCallerRealServerIntegration` 管理员与成员同时连上流 → 管理员收到消息而成员的流上没有它。
 
 ---
 

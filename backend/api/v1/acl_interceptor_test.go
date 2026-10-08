@@ -139,6 +139,10 @@ var unannotatedMethods = map[string]bool{
 	"metaxisdata.v1.NotificationService.BatchMarkNotificationsRead": true,
 	"metaxisdata.v1.NotificationService.MarkAllNotificationsRead":   true,
 	"metaxisdata.v1.NotificationService.DeleteNotification":         true,
+	// The live stream subscribes to that same inbox, under the same rule: the
+	// subscription is registered for the authenticated caller's own id, and no
+	// permission in the catalog says "only mine".
+	"metaxisdata.v1.NotificationService.SubscribeNotifications": true,
 }
 
 // TestEveryMethodIsPermissionGated is the read-path guard the authorization

@@ -141,18 +141,18 @@ function text(item: Notification) {
   return describeNotification(item);
 }
 
-// The count is the one thing a glance has to deliver, so the trigger loads it
-// even when the dropdown was opened before the first poll answered. A failed
-// load is not worth a toast here: the page reports it, and the poll retries.
+// The count is the one thing a glance has to deliver, so the trigger loads it even
+// when the dropdown is opened before the first stream message arrived. A failed load
+// is not worth a toast here: the page reports it, and the next reconnect retries.
 function refreshRecent() {
   void store.refreshRecent().catch(() => {});
 }
 
-// The sidebar exists only inside the authenticated shell, so it owns the poll:
+// The sidebar exists only inside the authenticated shell, so it owns the stream:
 // there is nothing to notify a signed-out visitor about, and the sidebar's own
 // lifetime is exactly the session's.
-onMounted(() => store.startPolling());
-onBeforeUnmount(() => store.stopPolling());
+onMounted(() => store.startStreaming());
+onBeforeUnmount(() => store.stopStreaming());
 
 function openNotification(item: Notification) {
   if (!item.readTime) {

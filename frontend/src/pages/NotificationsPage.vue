@@ -232,7 +232,7 @@ import {
   Info,
   RefreshCcw,
 } from "lucide-vue-next";
-import { ref, watch } from "vue";
+import { onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { listNotificationsPage } from "@/api/notification";
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
@@ -297,6 +297,24 @@ const {
 // would answer with rows from the middle of the new result — the reason the audit
 // log page calls its own reset for a filter change too.
 watch(pageSize, () => {
+  void resetPages();
+});
+
+// A message the stream delivered belongs on the first page. Reloading while the reader
+// is further in would throw them back to the newest rows, so only the first page is kept
+// fresh; anything written while they are elsewhere is there when they walk back to it.
+watch(
+  () => store.arrivalSeq,
+  () => {
+    if (!hasPrevious.value) {
+      void refresh();
+    }
+  }
+);
+
+// The pager loads when it is told to. Arriving at the page is the first of those, and
+// without it the inbox shows its empty state until something else asks for a page.
+onMounted(() => {
   void resetPages();
 });
 
