@@ -5,13 +5,14 @@ package runner
 import (
 	"context"
 
-	"connectrpc.com/connect"
 	"fmt"
 	"hash/fnv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"connectrpc.com/connect"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -354,7 +355,7 @@ WHERE datname = '%s' AND pid <> pg_backend_pid();
 `, quotePostgresStringLiteral(sourceDatabase))))
 	require.NoError(t, env.ExecPostgres(ctx, "postgres", fmt.Sprintf("DROP DATABASE IF EXISTS %s;", quotePostgresIdentifier(sourceDatabase))))
 
-	requireDroppedDatabaseHidden(t, ctx, env, instanceID, sourceDatabase, databaseName)
+	requireDroppedDatabaseHidden(ctx, t, env, instanceID, sourceDatabase, databaseName)
 }
 
 // requireDroppedDatabaseHidden drives the per-database sync of a database the target has
@@ -367,7 +368,7 @@ WHERE datname = '%s' AND pid <> pg_backend_pid();
 // own direct sync. The server refuses to sync an already-hidden database rather than
 // hiding it again, so NotFound from this call is the same observation arriving first —
 // what the test pins is the end state.
-func requireDroppedDatabaseHidden(t *testing.T, ctx context.Context, env *integrationenv.ServiceEnv, instanceID, sourceDatabase, databaseName string) {
+func requireDroppedDatabaseHidden(ctx context.Context, t *testing.T, env *integrationenv.ServiceEnv, instanceID, sourceDatabase, databaseName string) {
 	t.Helper()
 
 	if err := env.SyncDatabaseRaw(ctx, databaseName); err != nil {

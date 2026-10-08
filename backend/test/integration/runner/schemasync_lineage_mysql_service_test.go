@@ -306,7 +306,7 @@ func TestMySQLPerDatabaseSyncHidesDroppedDatabaseRealServerIntegration(t *testin
 
 	require.NoError(t, env.ExecMySQL(ctx, fmt.Sprintf("DROP DATABASE IF EXISTS %s;", quoteMySQLIdentifier(sourceDatabase))))
 
-	requireDroppedDatabaseHidden(t, ctx, env, instanceID, sourceDatabase, databaseName)
+	requireDroppedDatabaseHidden(ctx, t, env, instanceID, sourceDatabase, databaseName)
 }
 
 func setupMySQLServiceDatabase(t *testing.T) (*integrationenv.ServiceEnv, context.Context, string, string, string) {
