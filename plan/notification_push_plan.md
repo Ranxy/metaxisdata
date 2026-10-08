@@ -50,7 +50,23 @@
 
 reviewer 尝试证伪但没打破的（摘要）：hub 在 `-race` + overlay 并发压力下无 panic/无死锁/无丢消息；停机守卫不是同义反复（去掉 `Close()` 后它以 10.0003s 失败）；`X-Accel-Buffering` 确实随第一帧发出；8 条上限按调用者计且 `ResourceExhausted`；生成本就是新鲜的（`git archive` 到 `/tmp` 重新 `buf generate` 后逐字节一致）；proto3 optional 的"0 与缺失"可区分；`grpcreflect` 按服务名注册，无需改动。
 
-reviewer 明确**未能**验证、留给后续的：浏览器里 connect-web 流式端到端的真机验证（本次靠 Go 客户端 + 线格式 + 源码推理）、流上收到已过期 token 时的 401 行为、静默消失的客户端在下次心跳前占着订阅。
+reviewer 明确**未能**验证、留给后续的：浏览器里 connect-web 流式端到端的真机验证（部分由下面的补充验证覆盖）、静默消失的客户端在下次心跳前占着订阅。
+
+### 补充验证：流上的过期 / 吊销会话（reviewer 的遗留项之一）
+
+**服务端**（集成用例 `TestSubscribeNotificationsRefusesAnExpiredOrRevokedSessionRealServerIntegration`，真 server + PostgreSQL）：
+
+- 一条真实的 `Logout` 之后，同一个 token 在**一元调用**上被拒（对照，证明它确实被吊销），在**流**上也在第一次 `Receive` 时被拒，`Unauthenticated`。
+- 用部署自己的密钥签一个**已过期一小时**的 token：同密钥签的有效 token 在一元调用上通过（对照，证明签名与 audience 都是对的），过期的那个在一元与流上都被拒，`Unauthenticated`。
+- 负向验证：把 `WrapStreamingHandler` 的鉴权短路后用例变红（拿到的是 ACL 拦截器的 `Internal` 而不是 `Unauthenticated`），说明它守的是**流**这条鉴权路径，而不只是复用一元那套。
+- 这一条顺带纠正了一个客户端认知：**connect-go 的服务端流式客户端在请求发出后就返回**，握手结果不在调用本身而在第一次 `Receive`/`Err()`。用例的注释写明了这一点，探针也据此有界（否则一个"本该被拒却被接受"的流会挂住用例而不是失败）。
+
+**客户端**（`frontend/src/api/notification.test.ts`，真 `connect-web` transport + 真 `sessionInterceptor` + 手工构造的 Connect 流帧）：
+
+- connect-web 在**调用时**就暴露握手失败（transport 先 `await fetch` 再 `validateResponse`），所以拦截器捕获得到它：会话确实被续期（refresher 调一次），且**不会**误判为登出（handler 没被调用）。
+- **但拦截器那一次重放对 server streaming 无效**：connect-web 把请求体构造成"消费一次性的 async iterable"，重放时抛 `missing request message`（`Code.Unknown`），而不是重发那次调用。续期已经发生，流由 connect loop 的**下一次重连**（全新的调用）接上——store 层用例 `reconnects after a refused handshake and applies what it then delivers` 把这条链路钉住了（负向验证：让循环对 `Unauthenticated` 直接放弃后它变红）。
+- 续期本身被拒时：`Unauthenticated` + 会话结束 handler 触发一次（登出），循环不会拿着死凭据空转。
+- 影响范围与建议：这**不是本次改动引入的**，`ExplainSQL`（同样是 server streaming）今天也一样——刷新成功了，但那一次重放会以一个 `Unknown` 错误回到调用方，页面表现为报错、再点一次就好。要根治得改 `frontend/src/api/session.ts`：为 streaming 请求把唯一那条输入消息缓存下来，重放时交给 transport 一个新的 iterable（约十几行）。它动的是共享的会话路径、影响所有流式方法，值得单独一次评审，所以本次只把它记在这里。
 
 ---
 

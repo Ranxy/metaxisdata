@@ -12,8 +12,11 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/Ranxy/metaxisdata/backend/api/auth"
 	"github.com/Ranxy/metaxisdata/backend/common"
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
 )
@@ -338,6 +341,96 @@ func TestSubscriptionIsScopedToTheCallerRealServerIntegration(t *testing.T) {
 func namesTheSyncedDatabase(event *v1pb.NotificationEvent, database string) bool {
 	databases := event.GetNotification().GetSchemaSync().GetDatabases()
 	return len(databases) == 1 && databases[0].GetDatabase() == database
+}
+
+// A subscription is authenticated once, at the handshake, and that is what the client's
+// reconnect relies on: an access token that expired while a tab sat idle, or a session
+// that was logged out elsewhere, must be refused before any subscription exists — there is
+// nothing left to tear down, and the reconnect is what re-authenticates the caller.
+//
+// The same credentials are accepted while they are valid, so each refusal below is the
+// state of the credential rather than a stream that never worked. That control is a unary
+// call: connect-go's server-streaming client returns as soon as the request is sent, so a
+// stream's handshake result only surfaces on the first receive — which is what `refused`
+// reads, and why it is only used where a refusal is expected (a live subscription says
+// nothing until an event or the heartbeat).
+func TestSubscribeNotificationsRefusesAnExpiredOrRevokedSessionRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env := sharedPostgresServiceEnvNoReset(t)
+	ctx := context.Background()
+	httpClient := &http.Client{Timeout: 10 * time.Second}
+	notifications := v1connect.NewNotificationServiceClient(&http.Client{}, env.BaseURL)
+	authClient := v1connect.NewAuthServiceClient(httpClient, env.BaseURL)
+	userClient := v1connect.NewUserServiceClient(httpClient, env.BaseURL)
+	adminToken := env.AdminToken()
+
+	refused := func(token string) error {
+		// A refusal answers at once; a stream that should have been refused but was not says
+		// nothing until the heartbeat, so the probe is bounded rather than left to hang the
+		// test — a timeout then fails the assertion below instead of stalling.
+		probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		stream, err := notifications.SubscribeNotifications(probeCtx, withToken(token, &v1pb.SubscribeNotificationsRequest{
+			Parent: "workspaces/-",
+		}))
+		if err != nil {
+			return err
+		}
+		defer func() { _ = stream.Close() }()
+		stream.Receive()
+		return stream.Err()
+	}
+	accepted := func(token string) error {
+		_, err := userClient.GetCurrentUser(ctx, withToken(token, &emptypb.Empty{}))
+		return err
+	}
+
+	// A session of its own, so revoking it cannot disturb the shared admin token.
+	const password = "Integration-pass-1!"
+	email := fmt.Sprintf("stream-session-%d@example.com", time.Now().UnixNano())
+	created, err := userClient.CreateUser(ctx, withToken(adminToken, &v1pb.CreateUserRequest{
+		User: &v1pb.User{
+			Email:    email,
+			Title:    "Notification stream session",
+			Password: password,
+			UserType: v1pb.UserType_END_USER,
+		},
+	}))
+	require.NoError(t, err)
+	login, err := authClient.Login(ctx, connect.NewRequest(&v1pb.LoginRequest{Email: email, Password: password}))
+	require.NoError(t, err)
+	token := login.Msg.GetToken()
+	require.NoError(t, accepted(token), "the session must work before it is logged out")
+
+	_, err = authClient.Logout(ctx, withToken(token, &v1pb.LogoutRequest{}))
+	require.NoError(t, err)
+	require.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(accepted(token)),
+		"the session really is revoked")
+	streamErr := refused(token)
+	require.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(streamErr),
+		"a logged-out session must not be able to open the stream: %v", streamErr)
+
+	// The deployment's own key signs a token that is valid and one that expired an hour
+	// ago: the only difference between them is the expiry, so the second refusal is the
+	// expiry check and not a claim the server would have rejected anyway.
+	secret, err := env.Store.GetSetting(ctx, storepb.SettingName_AUTH_SECRET)
+	require.NoError(t, err)
+	userID, err := common.GetUserID(created.Msg.GetName())
+	require.NoError(t, err)
+	// The harness starts the server without the release tag, so it runs the dev profile.
+	mint := func(duration time.Duration) string {
+		t.Helper()
+		signed, err := auth.GenerateAccessToken(created.Msg.GetName(), userID, common.ReleaseModeDev, secret.Value, duration)
+		require.NoError(t, err)
+		return signed
+	}
+	require.NoError(t, accepted(mint(time.Hour)), "a token with a later expiry must be accepted")
+	require.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(accepted(mint(-time.Hour))),
+		"an expired token is refused")
+	streamErr = refused(mint(-time.Hour))
+	require.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(streamErr),
+		"an expired token must not be able to open the stream: %v", streamErr)
 }
 
 // notificationEvents opens the caller's stream and forwards the messages it carries.

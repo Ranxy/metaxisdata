@@ -436,6 +436,31 @@ describe("notification store", () => {
     expect(streams).toHaveLength(3);
   });
 
+  // A refused handshake — the server answering the stream opening with Unauthenticated — is
+  // not fatal for the loop. The session interceptor renews the cookie, and the next attempt
+  // is a fresh call with a fresh request, which is what makes the loop's plain retry the
+  // recovery path. src/api/notification.test.ts pins the transport half of this.
+  it("reconnects after a refused handshake and applies what it then delivers", async () => {
+    vi.useFakeTimers();
+    const store = useNotificationStore();
+
+    store.startStreaming();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(streams).toHaveLength(1);
+
+    streams[0].fail(
+      new ConnectError("unauthenticated", Code.Unauthenticated) as unknown
+    );
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(streams).toHaveLength(2);
+
+    streams[1].deliver(arrival(1, 1));
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(store.unreadCount).toBe(1);
+    expect(store.arrivalSeq).toBe(1);
+  });
+
   // A failure that belongs to a superseded generation must not end the stream a later
   // start opened. It is the race an in-flight "method not supported" answer runs against
   // the abort that a restart sends: both land before the old loop resumes.
