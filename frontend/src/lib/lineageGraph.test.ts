@@ -103,7 +103,18 @@ describe("column filtering", () => {
       validNodeIds: new Set(["a", "b", "c"]),
       columnFilter: null,
     });
-    expect(all.every((edge) => edge.animated === false)).toBe(true);
+    // Nothing is selected, so no edge is dimmed: each keeps its origin's colour at
+    // the faded weight, and its full-strength arrowhead.
+    expect(
+      all.every(
+        (edge) => (edge.style as { strokeWidth?: number }).strokeWidth === 2
+      )
+    ).toBe(true);
+    expect(
+      all.every(
+        (edge) => (edge.style as { stroke?: string }).stroke !== undefined
+      )
+    ).toBe(true);
 
     const filtered = buildLineageEdges(map, {
       validNodeIds: new Set(["a", "b", "c"]),
@@ -118,11 +129,22 @@ describe("column filtering", () => {
       )
     ).toBe(true);
 
+    // A selection that matches nothing dims the whole canvas, which is what tells
+    // the user the column they picked has no lineage here.
     const unrelated = buildLineageEdges(map, {
       validNodeIds: new Set(["a", "b", "c"]),
       columnFilter: { guid: "b", column: "nope" },
     });
-    expect(unrelated.every((edge) => edge.animated === false)).toBe(true);
+    expect(unrelated).toHaveLength(2);
+    expect(
+      unrelated.every(
+        (edge) =>
+          (edge.style as { stroke?: string }).stroke ===
+            "hsl(var(--muted-foreground) / 0.2)" &&
+          (edge.markerEnd as { color?: string }).color ===
+            "hsl(var(--muted-foreground) / 0.4)"
+      )
+    ).toBe(true);
   });
 
   it("marks only the transformed relations and drops edges to unknown nodes", () => {
@@ -224,13 +246,13 @@ describe("edge origins", () => {
     ]);
     const [sql, ol] = edges;
     expect((sql.style as { stroke?: string }).stroke).toBe(
-      "hsl(var(--lineage-sql) / 0.65)"
+      "hsl(var(--lineage-sql) / 0.85)"
     );
     expect((sql.style as { strokeDasharray?: string }).strokeDasharray).toBe(
       undefined
     );
     expect((ol.style as { stroke?: string }).stroke).toBe(
-      "hsl(var(--lineage-openlineage) / 0.65)"
+      "hsl(var(--lineage-openlineage) / 0.85)"
     );
     expect((ol.style as { strokeDasharray?: string }).strokeDasharray).toBe(
       "7 5"

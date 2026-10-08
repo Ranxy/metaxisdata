@@ -1,18 +1,16 @@
 <template>
+  <!-- The instance's accent is the card's left border rather than an absolutely
+       positioned strip: the node must not clip its overflow, because Vue Flow's
+       connection handles sit astride the border box and an `overflow-hidden`
+       card cuts them — and their drag targets — in half. -->
   <div
-    class="relative w-[232px] overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm"
+    class="w-[232px] rounded-lg border border-l-4 bg-card text-card-foreground shadow-sm"
     :class="data.isRoot ? 'ring-2 ring-ring' : 'hover:border-foreground/30'"
+    :style="{ borderLeftColor: data.scopeColor }"
     @click="$emit('select-node', data.guid)"
   >
-    <!-- The scope's accent: the one mark that stays on screen when two objects
-         in different instances share a database, schema and name. -->
     <div
-      class="absolute inset-y-0 left-0 w-1"
-      :style="{ backgroundColor: data.scopeColor }"
-    />
-
-    <div
-      class="flex items-center gap-1.5 border-b py-1.5 pl-3 pr-2"
+      class="flex items-center gap-1.5 border-b py-1.5 pl-2.5 pr-2"
       :class="data.isRoot ? 'bg-accent/60' : 'bg-muted/40'"
     >
       <span
@@ -38,7 +36,7 @@
       />
     </div>
 
-    <div class="space-y-0.5 py-2 pl-3 pr-2" :title="data.fullLabel">
+    <div class="space-y-0.5 py-2 pl-2.5 pr-2" :title="data.fullLabel">
       <div class="truncate text-sm font-medium">
         {{ data.label }}
       </div>
@@ -65,7 +63,7 @@
       </div>
     </div>
 
-    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t py-1.5 pl-3 pr-2">
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t py-1.5 pl-2.5 pr-2">
       <button
         v-if="!data.upstreamExpanded"
         class="cursor-pointer text-[11px] text-primary hover:underline"
@@ -93,7 +91,7 @@
       <button
         v-for="col in data.columns"
         :key="col"
-        class="flex w-full cursor-pointer items-center gap-1.5 py-1 pl-3 pr-2 text-left text-xs transition-colors hover:bg-muted/50"
+        class="flex w-full cursor-pointer items-center gap-1.5 py-1 pl-2.5 pr-2 text-left text-xs transition-colors hover:bg-muted/50"
         :class="{
           'bg-primary/10 font-medium text-primary': data.selectedColumn === col,
           'bg-accent/50 font-medium': data.selectedColumn !== col && data.highlightedColumns.has(col),

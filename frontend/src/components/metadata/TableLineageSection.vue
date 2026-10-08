@@ -206,8 +206,7 @@ import {
 } from "@/types/proto-es/v1/lineage_service_pb";
 import { guidToRouteParams } from "@/utils/guid";
 import {
-  buildScopeColorMap,
-  compareScopeKeys,
+  buildLineageScopeColors,
   lineageAssetView,
   scopeColor,
 } from "@/utils/lineageAsset";
@@ -268,18 +267,14 @@ const scopeTitles = computed<Map<string, string>>(() => {
   return titles;
 });
 
-/**
- * The accent of every scope this table can name — the instances, and the external
- * namespaces its datasets belong to. Instances are listed first so their colours
- * never move when a relation reaches outside the workspace.
- */
-const scopeColorMap = computed(() => {
-  const instanceKeys = [...scopeTitles.value.keys()].sort(compareScopeKeys);
-  const externalKeys = [...externalDatasetMap.value.keys()].sort(
-    compareScopeKeys
-  );
-  return buildScopeColorMap([...instanceKeys, ...externalKeys]);
-});
+/** The accent of every scope this table can name, shared with the graph. */
+const scopeColorMap = computed(() =>
+  buildLineageScopeColors({
+    instanceIds: scopeTitles.value.keys(),
+    externalDatasetGuids: externalDatasetMap.value.keys(),
+    externalOf: (guid) => externalDatasetMap.value.get(guid),
+  })
+);
 
 const lineageGraphRoute = computed(() => {
   const query: LocationQueryRaw = {

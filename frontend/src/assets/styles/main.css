@@ -34,16 +34,20 @@
        these accents; the two lineages that reach an object — the analyzer that
        read its SQL definition, and the OpenLineage events ingested from a
        producer — get their own colours instead, so a node's scope and an edge's
-       origin never read as the same thing. */
-    --lineage-scope-1: 28 92% 48%;
+       origin never read as the same thing.
+
+       Every accent clears 3:1 against the canvas (the WCAG floor for a graphic),
+       and the three origin colours clear 4.5:1 too, because the origin badges
+       render them as 12px text. */
+    --lineage-scope-1: 28 92% 44%;
     --lineage-scope-2: 160 84% 32%;
     --lineage-scope-3: 262 83% 58%;
     --lineage-scope-4: 347 77% 50%;
-    --lineage-scope-5: 189 90% 38%;
+    --lineage-scope-5: 189 90% 34%;
     --lineage-scope-6: 243 75% 59%;
-    --lineage-sql: 217 91% 55%;
-    --lineage-openlineage: 292 84% 56%;
-    --lineage-mixed: 174 84% 32%;
+    --lineage-sql: 217 91% 50%;
+    --lineage-openlineage: 292 84% 46%;
+    --lineage-mixed: 174 84% 28%;
   }
   .dark {
     --background: 0 0% 3.9%;

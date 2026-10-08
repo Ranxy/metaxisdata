@@ -95,15 +95,27 @@ function externalAssetView(
   const scopeLabel = namespace;
 
   return {
-    // Namespaced so a namespace that reads like an instance id is still a
-    // different scope: the two are not the same object even when they match.
-    scopeKey: `${EXTERNAL_PREFIX}${namespace || datasetName}`,
+    scopeKey: externalScopeKey(guid, external),
     scopeLabel,
     name,
     qualifier,
     fullLabel: joinAssetLabel(scopeLabel, qualifier, name),
     isExternal: true,
   };
+}
+
+/**
+ * The scope key of a dataset outside every managed instance: its namespace, so
+ * every dataset one producer reports shares one accent. Namespaced, so a namespace
+ * that reads like an instance id still colours apart from that instance.
+ */
+function externalScopeKey(
+  guid: string,
+  external?: ExternalDatasetInfo
+): string {
+  const namespace = external?.namespace || namespaceFromExternalGuid(guid);
+  const datasetName = external?.name || nameFromExternalGuid(guid) || guid;
+  return `${EXTERNAL_PREFIX}${namespace || datasetName}`;
 }
 
 function joinAssetLabel(
@@ -170,4 +182,26 @@ export function scopeColor(
   scopeKey: string
 ): string {
   return colorMap.get(scopeKey) ?? "hsl(var(--muted-foreground))";
+}
+
+/**
+ * The accent of every scope a lineage view has to colour: the workspace instances,
+ * then the namespaces of the external datasets it knows about.
+ *
+ * One function for both the canvas and the relation tables, because the two used to
+ * build this map from different keys — the graph from scope keys, the table from
+ * raw external GUIDs — and the table's lookup then missed every time, leaving each
+ * dataset a neutral dot.
+ */
+export function buildLineageScopeColors(options: {
+  instanceIds: Iterable<string>;
+  /** The GUIDs of the external datasets the view has metadata for. */
+  externalDatasetGuids: Iterable<string>;
+  externalOf: (guid: string) => ExternalDatasetInfo | undefined;
+}): Map<string, string> {
+  const instanceKeys = [...new Set(options.instanceIds)].sort(compareScopeKeys);
+  const externalKeys = [...new Set(options.externalDatasetGuids)]
+    .map((guid) => externalScopeKey(guid, options.externalOf(guid)))
+    .sort(compareScopeKeys);
+  return buildScopeColorMap([...instanceKeys, ...externalKeys]);
 }

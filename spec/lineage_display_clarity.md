@@ -16,16 +16,17 @@
 
 ## 二、视觉编码
 
-- **节点 = 实例**：左侧 1px 色条 + 表头色点 + 表头实例名，同一实例的节点同色；节点标题只放对象名，第二行放 `database.schema` 限定路径，完整名 `实例 · 路径.对象` 放在 tooltip。MiniMap 沿用同一套颜色。
+- **节点 = 实例**：左侧 4px 色条 + 表头色点 + 表头实例名，同一实例的节点同色；节点标题只放对象名，第二行放 `database.schema` 限定路径，完整名 `实例 · 路径.对象` 放在 tooltip。MiniMap 沿用同一套颜色。（色条用 `border-l-4` 而不是绝对定位的色块：节点不能 `overflow-hidden`，否则会把骑在边框上的连接点 Handle 裁掉一半、拖拽热区减半。）
 - **边 = 来源**：`SQL 解析` 为蓝色实线，`OpenLineage` 为紫色虚线，同一个对象对同时被两者写入时为第三色点线（`mixed`）。颜色之外还有线型，灰度/色盲下同样可辨；所有边补了箭头，方向不再只靠流动动画表达。
-- **图例即过滤器**：画布左上角的图例列出当前图中的实例（名称 + 节点数）和两种来源（带线型样例 + 边数），点击来源行即隐藏该来源的边。节点位置、度数、选中态不受影响。
+- **对比度**：浅色主题下所有 accent 对画布 ≥3:1（WCAG 对图形的下限），三个来源色额外 ≥4.5:1，因为来源徽标把它们当 12px 文字用。未高亮的边用 0.85 透明度而不是更低——可见性由 token 承担，不能靠透明度兜底。
+- **图例即过滤器**：画布左上角的图例列出当前图中的实例（名称 + 对象数）和两种来源（带线型样例 + 边数），点击来源行即隐藏该来源的边。节点位置、度数、选中态不受影响；`mixed` 是两种来源的合体，没有自己的过滤语义，因此渲染成不可点击的一行。切换对象或点"Reset"都会把过滤恢复为全选——否则上一个对象的过滤会让新对象看起来"没有血缘"。
 - **调色板**：`--lineage-scope-1..6` 与 `--lineage-sql/-openlineage/-mixed` 定义在 `main.css` 的 `:root` / `.dark`。实例颜色按"实例 id 排序 → 外部 namespace 排序"分配，因此展开图里出现外部数据集时已上屏的实例不会换色；排序用 `compareScopeKeys`（码点序而非 locale 序），避免不同语言的浏览器给出不同配色。
 
 ## 三、代码落点
 
 | 文件 | 职责 |
 | --- | --- |
-| `src/utils/lineageAsset.ts` | 纯函数：GUID/外部数据集 → `{scopeKey, scopeLabel, name, qualifier, fullLabel}`；scope 调色板分配 |
+| `src/utils/lineageAsset.ts` | 纯函数：GUID/外部数据集 → `{scopeKey, scopeLabel, name, qualifier, fullLabel}`；`buildLineageScopeColors()` 同时服务画布与关系表（两处各写一份正是外部数据集色点永远灰色的成因） |
 | `src/lib/lineageOrigin.ts` | 纯函数：`relationOrigin(rel)` 由 `metaType` 判定来源；来源色/线型/文案键；按来源统计关系数 |
 | `src/lib/openlineageRun.ts` | 解析 `openlineage:run:<jobType>:<namespace>:<job>:<runId>`，给出 job/run 标签（原先两个页面各有一份副本） |
 | `src/lib/lineageGraph.ts` | 建边：按对象对聚合来源、着色/线型/箭头、`originFilter` 过滤 |

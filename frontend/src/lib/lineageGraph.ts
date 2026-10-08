@@ -277,7 +277,10 @@ export function buildLineageEdges(
           ? "hsl(var(--muted-foreground) / 0.2)"
           : highlighted
             ? originColor(origin)
-            : originColor(origin, 0.65),
+            : // Faded enough to sit behind the highlighted edge, strong enough to
+              // stay above 3:1 against the canvas: the tokens carry the contrast,
+              // and an edge must not lean on its opacity to stay legible.
+              originColor(origin, 0.85),
         strokeWidth: highlighted ? 3 : 2,
         strokeDasharray: LINEAGE_ORIGIN_DASH[origin],
       },

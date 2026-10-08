@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ExternalDatasetInfo } from "@/types/proto-es/v1/lineage_service_pb";
 import {
+  buildLineageScopeColors,
   buildScopeColorMap,
   compareScopeKeys,
   isExternalGuid,
@@ -158,5 +159,61 @@ describe("buildScopeColorMap", () => {
 
   it("returns a neutral accent for an unknown scope", () => {
     expect(scopeColor(new Map(), "nope")).toBe("hsl(var(--muted-foreground))");
+  });
+});
+
+describe("buildLineageScopeColors", () => {
+  const datasets = new Map([
+    [
+      "external:postgres://127.0.0.1:5432:e2e.e2e_dwd.dwd_order_fact",
+      external({
+        namespace: "postgres://127.0.0.1:5432",
+        name: "e2e.e2e_dwd.dwd_order_fact",
+      }),
+    ],
+  ]);
+
+  it("colours the instances first, then one accent per external namespace", () => {
+    const map = buildLineageScopeColors({
+      instanceIds: ["test-pg-1"],
+      externalDatasetGuids: datasets.keys(),
+      externalOf: (guid) => datasets.get(guid),
+    });
+
+    expect([...map.keys()]).toEqual([
+      "test-pg-1",
+      "external:postgres://127.0.0.1:5432",
+    ]);
+    // The lookup a row performs is by scope key, so the map has to be keyed that
+    // way — keying it by the raw GUID is what left every dataset a neutral dot.
+    expect(scopeColor(map, "external:postgres://127.0.0.1:5432")).toBe(
+      "hsl(var(--lineage-scope-2))"
+    );
+  });
+
+  it("keeps an instance's accent when an external dataset appears later", () => {
+    const before = buildLineageScopeColors({
+      instanceIds: ["a", "b"],
+      externalDatasetGuids: [],
+      externalOf: () => undefined,
+    });
+    const after = buildLineageScopeColors({
+      instanceIds: ["a", "b"],
+      externalDatasetGuids: datasets.keys(),
+      externalOf: (guid) => datasets.get(guid),
+    });
+
+    for (const key of ["a", "b"]) {
+      expect(after.get(key)).toBe(before.get(key));
+    }
+  });
+
+  it("gives an undescribed external dataset its own scope", () => {
+    const map = buildLineageScopeColors({
+      instanceIds: [],
+      externalDatasetGuids: ["external:unknown-producer:orders"],
+      externalOf: () => undefined,
+    });
+    expect([...map.keys()]).toEqual(["external:unknown-producer"]);
   });
 });

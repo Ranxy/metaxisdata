@@ -18,38 +18,42 @@
     <div v-if="!collapsed" class="space-y-3 border-t px-3 py-2">
       <!-- Origin: an edge's colour and stroke say which writer stored it, and
            the rows themselves are the filter, so the legend doubles as a way to
-           strip one source off a busy canvas. -->
+           strip one source off a busy canvas. A `mixed` edge bundles both writers,
+           so it has nothing of its own to filter and is not a button. -->
       <section class="space-y-1.5">
         <div
           class="text-[11px] uppercase tracking-wide text-muted-foreground"
           :title="t('lineageGraph.filterOriginHint')"
         >
-          {{ t("lineageGraph.legendSource") }}
+          {{ t("lineageGraph.originLabel") }}
         </div>
-        <button
-          v-for="item in origins"
-          :key="item.origin"
-          class="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left hover:bg-muted/60"
-          :class="{ 'opacity-40': !isOriginDrawn(item.origin) }"
-          :title="t(originHintKey(item.origin))"
-          @click="toggleOrigin(item.origin)"
-        >
-          <svg class="shrink-0" width="26" height="10" aria-hidden="true">
-            <line
-              x1="1"
-              y1="5"
-              x2="25"
-              y2="5"
-              stroke-width="2"
-              :stroke="originColor(item.origin)"
-              :stroke-dasharray="LINEAGE_ORIGIN_DASH[item.origin]"
-            />
-          </svg>
-          <span class="truncate">{{ t(originLabelKey(item.origin)) }}</span>
-          <span class="ml-auto tabular-nums text-muted-foreground">
-            {{ item.count }}
-          </span>
-        </button>
+        <template v-for="item in origins" :key="item.origin">
+          <button
+            v-if="item.origin !== 'mixed'"
+            type="button"
+            class="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left hover:bg-muted/60"
+            :class="{ 'opacity-40': !isOriginDrawn(item.origin) }"
+            :title="t(originHintKey(item.origin))"
+            @click="toggleOrigin(item.origin)"
+          >
+            <OriginSwatch :origin="item.origin" />
+            <span class="truncate">{{ t(originLabelKey(item.origin)) }}</span>
+            <span class="ml-auto whitespace-nowrap tabular-nums text-muted-foreground">
+              {{ t("lineageGraph.legendEdgeCount", { count: item.count }) }}
+            </span>
+          </button>
+          <div
+            v-else
+            class="flex w-full items-center gap-2 rounded px-1 py-0.5"
+            :title="t(originHintKey(item.origin))"
+          >
+            <OriginSwatch :origin="item.origin" />
+            <span class="truncate">{{ t(originLabelKey(item.origin)) }}</span>
+            <span class="ml-auto whitespace-nowrap tabular-nums text-muted-foreground">
+              {{ t("lineageGraph.legendEdgeCount", { count: item.count }) }}
+            </span>
+          </div>
+        </template>
       </section>
 
       <!-- Scope: two objects in different instances can share a name, so every
@@ -69,8 +73,8 @@
             :style="{ backgroundColor: scope.color }"
           />
           <span class="truncate">{{ scope.label }}</span>
-          <span class="ml-auto tabular-nums text-muted-foreground">
-            {{ scope.count }}
+          <span class="ml-auto whitespace-nowrap tabular-nums text-muted-foreground">
+            {{ t("lineageGraph.legendObjectCount", { count: scope.count }) }}
           </span>
         </div>
       </section>
@@ -82,10 +86,9 @@
 import { ChevronDown, ChevronUp, ListTree } from "lucide-vue-next";
 import { ref } from "vue";
 import { useI18n } from "vue-i18n";
+import OriginSwatch from "@/components/lineage/OriginSwatch.vue";
 import {
-  LINEAGE_ORIGIN_DASH,
   type LineageOrigin,
-  originColor,
   originLabelKey,
   type RelationOrigin,
 } from "@/lib/lineageOrigin";

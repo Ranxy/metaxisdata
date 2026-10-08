@@ -169,7 +169,7 @@
                    about what happens to be drawn. -->
               <div v-if="selectedNodeOrigins.length > 0" class="space-y-2">
                 <div class="text-xs uppercase tracking-wide text-muted-foreground">
-                  {{ t("lineageGraph.legendSource") }}
+                  {{ t("lineageGraph.originLabel") }}
                 </div>
                 <div class="flex flex-wrap gap-2">
                   <span
@@ -177,20 +177,11 @@
                     :key="item.origin"
                     class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs"
                   >
-                    <svg class="shrink-0" width="18" height="8" aria-hidden="true">
-                      <line
-                        x1="1"
-                        y1="4"
-                        x2="17"
-                        y2="4"
-                        stroke-width="2"
-                        :stroke="originColor(item.origin)"
-                        :stroke-dasharray="LINEAGE_ORIGIN_DASH[item.origin]"
-                      />
-                    </svg>
+                    <OriginSwatch :origin="item.origin" :width="18" />
                     {{ t(originLabelKey(item.origin)) }}
                     <span class="tabular-nums text-muted-foreground">
-                      {{ item.count }} {{ t("metadataBrowser.lineageRelationsCount") }}
+                      {{ item.count }}
+                      {{ t("metadataBrowser.lineageRelationsCount") }}
                     </span>
                   </span>
                 </div>
@@ -303,6 +294,7 @@ import type {
   LineageNodeKind,
 } from "@/components/lineage/LineageNode.vue";
 import LineageNode from "@/components/lineage/LineageNode.vue";
+import OriginSwatch from "@/components/lineage/OriginSwatch.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -323,10 +315,8 @@ import {
 } from "@/lib/lineageGraph";
 import {
   countRelationsByOrigin,
-  LINEAGE_ORIGIN_DASH,
   LINEAGE_ORIGINS,
   type LineageOrigin,
-  originColor,
   originLabelKey,
   type RelationOrigin,
 } from "@/lib/lineageOrigin";
@@ -342,8 +332,7 @@ import { formatDateTime } from "@/utils/datetime";
 import { extractErrorMessage } from "@/utils/error";
 import { guidToRouteParams, routeParamToGuid } from "@/utils/guid";
 import {
-  buildScopeColorMap,
-  compareScopeKeys,
+  buildLineageScopeColors,
   isExternalGuid,
   type LineageAssetView,
   lineageAssetView,
@@ -422,14 +411,13 @@ const scopeTitles = computed<Map<string, string>>(() => {
  * namespaces after them, so expanding the graph to a dataset outside every
  * instance never recolours the instances already on screen.
  */
-const scopeColorMap = computed(() => {
-  const instanceKeys = [...scopeTitles.value.keys()].sort(compareScopeKeys);
-  const externalKeys = [...externalDatasetMap.value.keys()]
-    .filter((guid) => isExternalGuid(guid))
-    .map((guid) => assetViewFor(guid).scopeKey)
-    .sort(compareScopeKeys);
-  return buildScopeColorMap([...instanceKeys, ...new Set(externalKeys)]);
-});
+const scopeColorMap = computed(() =>
+  buildLineageScopeColors({
+    instanceIds: scopeTitles.value.keys(),
+    externalDatasetGuids: externalDatasetMap.value.keys(),
+    externalOf: (guid) => externalDatasetMap.value.get(guid),
+  })
+);
 
 const originFilter = ref<RelationOrigin[]>([...LINEAGE_ORIGINS]);
 
@@ -1123,10 +1111,14 @@ async function handleSelectNode(guid: string) {
   }
   setSelectedNode(guid);
 
-  // Pre-fetch lineage data for non-root nodes so the drawer shows
-  // accurate upstream/downstream counts and related runs immediately,
-  // without expanding the graph (the user can do that via "Expand").
-  if (guid !== currentGuid.value && !nodeDataMap.value.has(guid)) {
+  // Pre-fetch lineage data for non-root nodes so the drawer shows accurate
+  // upstream/downstream counts and related runs immediately, without expanding
+  // the graph (the user can do that via "Expand"). Every non-root node is asked,
+  // not just the ones the map has never seen: a node the user expanded in one
+  // direction only holds an empty list for the other, and the detail panel would
+  // otherwise report that empty direction as "no lineage". `fetchLineageForGuid`
+  // is the cache — it returns at once when both directions are already loaded.
+  if (guid !== currentGuid.value) {
     await fetchLineageForGuid(guid);
     // The fetch marks both directions as loaded but deliberately leaves the
     // graph alone, so the node still renders the pre-fetch state. Refresh the
@@ -1287,7 +1279,8 @@ async function fitViewWhenMeasured() {
 }
 
 function handleReset() {
-  // Restore the initial snapshot
+  // Restore the initial snapshot, the origin filter included: it is part of the
+  // view the user is resetting away from.
   expandedDirections.value = new Set(initialExpandedDirections);
   nodeDataMap.value = new Map(
     Array.from(initialNodeDataMap.entries()).map(([k, v]) => [k, { ...v }])
@@ -1296,6 +1289,7 @@ function handleReset() {
   selectedColumnName.value = null;
   highlightedColumnsMap.value.clear();
   fieldsVisibleGuids.value.clear();
+  originFilter.value = [...LINEAGE_ORIGINS];
   rebuildGraph();
   if (selectedNodeGuid.value && selectedNodeGuid.value !== currentGuid.value) {
     closeSelectedNode();
@@ -1352,6 +1346,10 @@ async function initializeGraph() {
   selectedColumnGuid.value = null;
   selectedColumnName.value = null;
   highlightedColumnsMap.value.clear();
+  // A new object starts from the whole picture. A filter left over from the
+  // previous one would draw an empty canvas — and the legend's zeroes would read
+  // as "this object has no lineage" rather than "you hid its only source".
+  originFilter.value = [...LINEAGE_ORIGINS];
 
   // The initial fetch draws the root's immediate neighbours, so both of its
   // directions count as expanded — that is what hides its expand buttons and
