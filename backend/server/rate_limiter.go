@@ -44,9 +44,13 @@ func rateLimitSourceKey(c echo.Context, trustedProxies []string) string {
 // owner a fresh budget, never deny it, so the ceiling bounds the memory a
 // caller's identifiers may cost and cannot become a denial of service of its
 // own — as long as making room stays constant-time, which is why the victim is
-// arbitrary rather than the oldest. It does not bound the rate of a caller that
-// rotates identifiers freely; that needs a per-source dimension, which is the
-// general rate-limit work.
+// arbitrary rather than the oldest. The identifier ceiling does not bound the
+// rate of a caller that rotates identifiers freely; where that matters the route
+// adds a second dimension keyed by the resolved client address, which the caller
+// cannot choose (see openLineageIngestionMiddleware). A deployment-wide bucket
+// shared by every identifier was tried and removed: a caller rotating keys
+// exhausted it and denied every other producer on the route, which is a worse
+// failure than the rate it was meant to bound.
 type boundedRateLimiterStore struct {
 	mu       sync.Mutex
 	visitors map[string]*boundedVisitor

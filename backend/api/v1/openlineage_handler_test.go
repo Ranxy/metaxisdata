@@ -143,6 +143,51 @@ func TestParseEventTime(t *testing.T) {
 	require.Error(t, err)
 }
 
+// A run row must never carry an empty event time: the retention prune skips NULL
+// (`event_time IS NOT NULL AND event_time < $1`), so a producer that omits the
+// field — or sends one that does not parse — would make its events immortal and
+// silently break the deployment's retention setting. The receipt time is the
+// fallback, which keeps the event and ages it normally.
+func TestEventTimeForEventIsNeverZero(t *testing.T) {
+	t.Parallel()
+
+	exact := eventTimeForEvent("2024-01-02T03:04:05+08:00")
+	require.Equal(t, "2024-01-01T19:04:05Z", exact.Format(time.RFC3339))
+
+	for _, raw := range []string{"", "   ", "not-a-time"} {
+		got := eventTimeForEvent(raw)
+		require.False(t, got.IsZero(), "input %q must still produce a time", raw)
+		require.WithinDuration(t, time.Now(), got, time.Minute,
+			"input %q must fall back to the receipt time, not to the epoch", raw)
+	}
+}
+
+// The row the handler writes is what the prune reads, so pin the fallback at that
+// level too: a run row with no event time is what the retention policy cannot see.
+func TestRunMessageForEventAlwaysCarriesAnEventTime(t *testing.T) {
+	t.Parallel()
+
+	handler := &OpenLineageHandler{}
+	event := func(eventTime string) *openlineage.RunEvent {
+		return &openlineage.RunEvent{
+			EventTime: eventTime,
+			EventType: "START",
+			Run:       openlineage.Run{RunID: "run-1"},
+			Job:       openlineage.Job{Namespace: "ns", Name: "job"},
+		}
+	}
+
+	for _, raw := range []string{"", "not-a-time"} {
+		message := handler.runMessageForEvent(event(raw))
+		require.NotNil(t, message.EventTime, "input %q must not store a NULL event time", raw)
+		require.False(t, message.EventTime.IsZero())
+	}
+
+	message := handler.runMessageForEvent(event("2024-01-02T03:04:05Z"))
+	require.NotNil(t, message.EventTime)
+	require.Equal(t, "2024-01-02T03:04:05Z", message.EventTime.Format(time.RFC3339))
+}
+
 // Ingestion audit rows reuse the Connect audit mapping, so the HTTP status has
 // to be turned back into the error shape those helpers understand.
 func TestAuditErrorForHTTPStatus(t *testing.T) {

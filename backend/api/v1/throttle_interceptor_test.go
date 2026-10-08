@@ -216,3 +216,26 @@ func TestThrottleInterceptorRunsInTheConnectChain(t *testing.T) {
 	_, err = client.Login(ctx, connect.NewRequest(&v1pb.LoginRequest{Email: "nobody@example.com", Password: "x"}))
 	requireResourceExhausted(t, err)
 }
+
+// The streaming path has to spend the same budget as the unary one. It used to be
+// a pass-through, so an anonymous method implemented as a stream would have been
+// in limiterFor — passing every guard — and never counted at all.
+func TestThrottleInterceptorStreamingHandlerAppliesTheBudget(t *testing.T) {
+	t.Parallel()
+
+	interceptor := newTestThrottleInterceptor(t, nil)
+	procedure := v1connect.AuthServiceCreateDeviceLoginProcedure
+
+	called := 0
+	handler := interceptor.WrapStreamingHandler(func(context.Context, connect.StreamingHandlerConn) error {
+		called++
+		return nil
+	})
+	conn := &fakeStreamingConn{procedure: procedure}
+
+	for i := range deviceLoginCreateSourceBudget {
+		require.NoError(t, handler(context.Background(), conn), "stream %d is inside the budget", i+1)
+	}
+	requireResourceExhausted(t, handler(context.Background(), conn))
+	require.Equal(t, deviceLoginCreateSourceBudget, called, "a refused stream must not reach the handler")
+}

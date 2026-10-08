@@ -130,6 +130,10 @@ func configureGrpcRouters(
 			// After auth so it can tell a signed-in caller from an anonymous one,
 			// before audit so a request refused by the budget leaves no ledger row.
 			apiv1.NewThrottleInterceptor(stateCfg, profile.TrustedProxies),
+			// The same rule for a signed-in caller: the methods that write a
+			// permanent ledger row or reach an LLM are bounded per principal,
+			// again before audit so a refusal is not itself recorded.
+			apiv1.NewPrincipalThrottleInterceptor(stateCfg),
 			apiv1.NewAuditInterceptor(stores, profile.TrustedProxies),
 			apiv1.NewACLInterceptor(iamManager),
 			// Innermost, so the audit interceptor records the status the client
@@ -323,15 +327,16 @@ func configureGrpcRouters(
 	// the same service instances the ConnectRPC API mounts, so a tool and its RPC
 	// cannot answer differently.
 	mcpServer := mcp.NewServer(mcp.Config{
-		Instances:      instanceService,
-		Databases:      databaseService,
-		Lineage:        lineageService,
-		Principals:     userService,
-		Checker:        iamManager,
-		CallLimiter:    stateCfg.MCPCallLimiter,
-		Stores:         stores,
-		TrustedProxies: profile.TrustedProxies,
-		Endpoints:      oauth.WorkspaceEndpoints(stores),
+		Instances:         instanceService,
+		Databases:         databaseService,
+		Lineage:           lineageService,
+		Principals:        userService,
+		Checker:           iamManager,
+		CallLimiter:       stateCfg.MCPCallLimiter,
+		SourceCallLimiter: stateCfg.MCPSourceCallLimiter,
+		Stores:            stores,
+		TrustedProxies:    profile.TrustedProxies,
+		Endpoints:         oauth.WorkspaceEndpoints(stores),
 	})
 	mcpHandler := http.NewCrossOriginProtection().Handler(mcpServer.Handler(tokenAuthenticator))
 	// This endpoint sits outside the Connect interceptor chain, so it carries its

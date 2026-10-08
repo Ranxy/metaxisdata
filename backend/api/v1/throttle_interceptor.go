@@ -32,6 +32,12 @@ import (
 // users in bulk and bounding an authenticated principal per user is the general
 // rate-limit work (M24). Login does not: it is not a normal signed-in call, and
 // every request still spends bcrypt on whoever the address names.
+//
+// Logout is here because it is the one other anonymous and audited method: it
+// writes a ledger row per call, and a token this server signed can be replayed
+// against it without limit even though revoking it twice changes nothing. The
+// authenticated methods are bounded per principal by PrincipalThrottleInterceptor
+// instead.
 type ThrottleInterceptor struct {
 	stateCfg       *state.State
 	trustedProxies []string
@@ -76,8 +82,20 @@ func (*ThrottleInterceptor) WrapStreamingClient(next connect.StreamingClientFunc
 	return next
 }
 
-func (*ThrottleInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
-	return next
+// WrapStreamingHandler applies the same budget as the unary path. It used to be a
+// pass-through, which left a hole no test could see: an anonymous, audited method
+// implemented as a stream would pass the guard (its limiter is in limiterFor) and
+// then never be counted at all, writing permanent ledger rows without any bound.
+// There is no such method today — the one streaming RPC, ExplainSQL, requires a
+// credential and is bounded per principal — so this is the shape being kept
+// symmetric rather than a behaviour that changed in production.
+func (in *ThrottleInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
+		if err := in.check(ctx, conn.Spec().Procedure, conn.RequestHeader(), conn.Peer().Addr, time.Now()); err != nil {
+			return err
+		}
+		return next(ctx, conn)
+	}
 }
 
 // limiterFor returns the budget for a procedure and whether a signed-in caller is
@@ -93,6 +111,20 @@ func (in *ThrottleInterceptor) limiterFor(procedure string) (*state.WindowLimite
 		return in.stateCfg.LoginRequestLimiter, false
 	case v1connect.UserServiceCreateUserProcedure:
 		return in.stateCfg.CreateUserRequestLimiter, true
+	case v1connect.AuthServiceLogoutProcedure:
+		// Logout is anonymous, audited and idempotent: a caller holding one valid
+		// token can replay it, and each replay writes a permanent ledger row even
+		// though the revocation itself is a no-op. It spends no bcrypt and writes
+		// no new revocation record, so it gets its own budget rather than
+		// consuming Login's.
+		return in.stateCfg.LogoutRequestLimiter, false
+	case v1connect.AuthServiceCreateDeviceLoginProcedure:
+		// The budget for this one used to live inside the handler, which let an
+		// unauthenticated caller write a permanent ledger row per refused request:
+		// the audit interceptor wraps the handler, so a refusal it produced was
+		// still recorded, and nothing bounded the request rate. On the chain the
+		// refusal happens before the audit interceptor and leaves no row.
+		return in.stateCfg.DeviceLoginLimiter, false
 	case v1connect.AuthServiceCreateSSOStateProcedure:
 		// Cheap for the server, but each call writes one nonce into the bounded
 		// state cache that in-flight SSO flows occupy, and it is the only way to

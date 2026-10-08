@@ -174,3 +174,32 @@ func TestSSOStateFloodCannotEvictAValidNonce(t *testing.T) {
 	require.True(t, stateCfg.SSOStateCache.Contains(victim),
 		"a nonce a user just minted must survive the anonymous flood for its whole TTL")
 }
+
+// The principal limiter tracks (principal, procedure) pairs rather than sources,
+// so its constants have to describe that set: a budget that bounds a loop of
+// ledger writes, one shared global counter across every covered method, and a
+// capacity above what a deployment's users times the covered methods reach.
+func TestPrincipalRequestLimiterIsSizedForItsKeys(t *testing.T) {
+	t.Parallel()
+
+	limiter := newPrincipalRequestLimiter()
+	require.Equal(t, principalMethodLimit, limiter.sourceLimit)
+	require.Equal(t, principalGlobalLimit, limiter.globalLimit)
+	require.Equal(t, principalLimiterCapacity, limiter.capacity)
+	require.Greater(t, limiter.capacity, limiterCapacity,
+		"principal keys are server-chosen pairs, a larger set than anonymous sources")
+	require.Greater(t, principalGlobalLimit, principalMethodLimit,
+		"the deployment ceiling spans every covered method, so it is above one key's")
+}
+
+// Logout is anonymous, audited and replayable, so it needs a budget of its own;
+// sharing Login's would let a token replay spend the sign-in budget.
+func TestLogoutRequestLimiterIsItsOwnBudget(t *testing.T) {
+	t.Parallel()
+
+	logout := newLogoutRequestLimiter()
+	login := newLoginRequestLimiter()
+	require.NotSame(t, logout, login)
+	require.Equal(t, logoutRequestSourceLimit, logout.sourceLimit)
+	require.Equal(t, logoutRequestGlobalLimit, logout.globalLimit)
+}
