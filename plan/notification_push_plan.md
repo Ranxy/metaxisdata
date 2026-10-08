@@ -1,6 +1,8 @@
 # Plan: 通知的服务端推送（订阅流）
 
-> **Status: 已实现**（Phase 1–5，分支 `feat/notification-push`，rebase 到 `main` 的 `feat(lineage): highlight a field's whole flow` 之上）。门禁全绿：`buf format/lint/generate`（幂等）、`gofmt`、`golangci-lint run --allow-parallel-runners`（0 issues）、`go test ./...`、`go build`、`make test-integration-smoke`，以及通知这一族在真 server + PostgreSQL + MySQL 上的集成用例（5 条）；前端 `biome:check` / `lint` / `i18n` / `type-check` / `test run` 全绿。
+> **Status: 已实现并过了对抗性 review**（Phase 1–5，分支 `feat/notification-push`，rebase 到 `main` 的 `feat(lineage): highlight a field's whole flow` 之上）。门禁全绿：`buf format/lint/generate`（幂等）、`gofmt`、`golangci-lint run --allow-parallel-runners`（0 issues）、`go test ./...`、`go build`、`make test-integration-smoke`，以及通知这一族在真 server + PostgreSQL + MySQL 上的集成用例（5 条，含 `-race`）；前端 `biome:check` / `lint` / `i18n` / `type-check` / `test run` 全绿。
+>
+> review 的每条发现都做过负向验证（去掉修复后对应用例必须变红）：停机顺序、计数投递顺序、计数/列表的旧响应、退避、旧代失败、页面挂载加载，逐条见下面的"对抗性 review"。
 >
 > 实现与设计不一致或设计未覆盖的地方记在下面的"实现状态"。
 
@@ -20,9 +22,35 @@
 2. **集成用例不能"取流上第一条消息"**：fixture（`setupMySQLServiceDatabase` → `EnsureDatabaseVisible` → `SyncInstance`）自己那次实例级同步有异步尾巴，它的消息可能先到，而且它只列失败的库。用例改成按 `databases[0].database == <本用例的库>` 认领自己的那条，否则读到的是 fixture 的消息（实现时正是这样红过一次）。
 3. **反代开关用集成断言钉住**：`X-Accel-Buffering: no` 在客户端侧靠 `stream.ResponseHeader()`（connect-go 该访问器在首次 `Receive` 返回后才可用，所以断言放在收到事件之后）验证，避免以后有人重构 handler 时把它默默删掉。
 4. **停机顺序有专门的回归测试**：设计只写了"`Shutdown` 前先 `Close()`"，实现补了 `TestShutdownEndsAnOpenNotificationStream`——它挂一条真的常驻流，断言 `Shutdown` 在 2s 内返回、客户端看到的是干净结束而不是被掐断。做了负向验证：注释掉 `s.notifier.Close()` 后它确实以 10.0009s（整个 `gracefulShutdownPeriod`）失败。
-5. **连接循环放在 store 模块层**：`stopped` / `controller` 与循环都在 `defineStore` 之外；`startStreaming()` 幂等（`stopped` 为 false 时直接返回），`stopStreaming()` 无条件清理（中止流、打断退避等待、摘掉可见性监听），因为服务端返回 `Unimplemented` 时循环会自行收尾并把 `stopped` 置回 true。
+5. **连接循环放在 store 模块层**：`running` / `generation` / `controller` 与循环都在 `defineStore` 之外；`startStreaming()` 幂等（`running` 为 true 时直接返回），`stopStreaming()` 无条件清理（中止流、打断退避等待、摘掉可见性监听），因为服务端返回 `Unimplemented` 时循环会自行收尾（`stopStreaming()` 把 `running` 置回 false）。
 6. **连接循环用 generation 而不是布尔量把守**：`startStreaming()` / `stopStreaming()` 都在改 `generation`，每条循环只在"自己那一代"里重连。原因是卸载与随后挂载可能落在同一个 tick（布局切换就是如此），只用一个"是否停止"的布尔量时，被停止的那条循环会把新的开始误认成自己的，于是每次切换多留一条常驻流，直到服务端每账号 8 条的上限把新连接全部拒掉。store 测试里专门有一条：停掉再立刻启动后，5 分钟内必须只有 2 条流（负向验证：去掉 generation 判断后它变成 3 条）。
 7. **测试卫生**：`AppSidebar.test.ts` 会挂载铃铛，所以它加了 `afterEach(() => useNotificationStore().stopStreaming())`——否则每条用例都会留下一个后台重连循环（这一点在改动前同样存在，只是那时是 30s 的轮询）。
+
+---
+
+## 对抗性 review：发现与处理
+
+一次独立上下文、只读的对抗性 review（跑测试、跑探针，不改仓库）跑完后逐条核实并处理如下。**没有 blocking 级问题。**
+
+| # | 级别 | 发现 | 处理 |
+| --- | --- | --- | --- |
+| 1 | should-fix | 连接时的 `refresh()` 是即发即弃的：一个**旧**的未读数可能在一条更新的流事件之后落地，把角标退回旧值（reviewer 用探针复现：事件带 1、随后的计数返回 0 → 最终 0） | 两个被服务端同时推送的值各加一张票（`countTicket` / `recentTicket`）：只有最新的写者能写。推送事件会推进票号，于是已过期的请求自然让位（`refreshUnreadCount` / `refreshRecent`），与 `usePagedFetch` 的既有做法一致 |
+| 2 | should-fix | 退避只在**真消息**上重置：空闲收件箱只有 keepalive，于是每次服务端 30 分钟收尾后都要等满 30s；这与服务端"到点收尾不是错误"的注释自相矛盾 | 任何一帧（含 keepalive）都重置退避；25s 心跳因此把健康连接的等待钉在下限 |
+| 3 | should-fix | 未读计数在 hub 锁**之外**读，两个几乎同时的写入可能把计数按相反顺序投递（reviewer 用 overlay 探针复现 `2 then 1`），客户端照单全收 | `Service.publish` 用一个进程级 `publishMu` 把"读计数 + 交给订阅者"串起来：投递顺序与快照顺序一致。代价与边界写在代码注释里（临界区只有一次走 partial index 的计数 + 非阻塞扇出） |
+| 4 | should-fix | 隔离用例的反向断言是**零等待** `default:`：即使成员真收到了管理员的消息也可能通过（reviewer 把第二个流故意换成管理员 token，用例照样 PASS） | 改成 2s 有界等待；同时让 helper 在**流结束**时关闭通道，于是"安静"与"已死"可区分。这一改立刻暴露出另一个既有问题：用例给流式客户端设了 `http.Client{Timeout: 10s}`，**整个请求**的超时会在用例中途掐断流——旧断言正是因此空过的。两条流式用例改用无总超时的客户端（单发调用仍保留 10s），并用 reviewer 的实验做负向验证：把第二个流换成管理员 token 后，用例确实变红 |
+| 5 | should-fix | 两个声称存在的测试其实没有：`fakeSubscriptions.recipientIDs` 只写不读；`subscriptions == nil → Unimplemented` 没有用例 | 把 nil 检查挪到 auth 之后（在任何 store 读取之前，因此可用 nil store 单测），补上该用例；删掉那个没人读的字段，并把"作用域"归口到端到端集成用例（在那里它才真正可观测）；前端补 `applyArrival` 的重复 / 截断 / 空消息用例 |
+| 6 | nit | "subscribed before the sync" 只保证 client-send 顺序，connect-go 的 `CallServerStream` 在服务端注册之前就返回；窗口内写出的消息会漏 | 保留（一次同步远慢于握手），记在此处 |
+| 7 | nit | `notificationEvents` 的 goroutine 在缓冲写满时会泄漏（`Close()` 解不开一个阻塞的 send） | helper 自建可取消 ctx，返回的 close 同时 cancel；send 上 select `ctx.Done()` |
+| 8 | nit | `GetUnreadNotificationCount` 的注释还写着"铃铛轮询专用" | 改成"流的兜底" |
+| 9 | nit | 计数查询失败走 `LogFailure`，日志说"Failed to write a notification"，而写入其实成功了 | 换成计数专属的日志行 |
+| 10 | nit | `Unimplemented` 分支不看 `live()`：一个迟到于重启的失败会顺手关掉新一代刚开的流 | 加 `live()` 守卫，并补一条用例（旧代的失败与中止同时到达） |
+| 11 | nit | 安全态势里写成"白名单条目放行了这个方法和另外五个"——生产里没有白名单，是 ACL 拦截器对无注解方法不放门 | 改成"ACL 拦截器不放门，白名单只是守卫测试在记录这个决定" |
+| 12 | nit（既有） | `/notifications` **从来没有在挂载时加载第一页**：`usePagedFetch` 只被显式调用才拉，页面没有 `onMounted`，所以打开页面看到的是空态，直到手动刷新——这正是用户最初抱怨的一部分 | 补 `onMounted(() => void resetPages())`（与 `AuditLogsPage` 同一做法），并新增页面级用例：挂载即加载、到达新消息重载首页、停在第 2 页的读者不被打断 |
+| 13 | nit | 设计文档把循环守卫写成布尔量 `stopped`，代码用的是 `running` + `generation` | 文档改成与代码一致 |
+
+reviewer 尝试证伪但没打破的（摘要）：hub 在 `-race` + overlay 并发压力下无 panic/无死锁/无丢消息；停机守卫不是同义反复（去掉 `Close()` 后它以 10.0003s 失败）；`X-Accel-Buffering` 确实随第一帧发出；8 条上限按调用者计且 `ResourceExhausted`；生成本就是新鲜的（`git archive` 到 `/tmp` 重新 `buf generate` 后逐字节一致）；proto3 optional 的"0 与缺失"可区分；`grpcreflect` 按服务名注册，无需改动。
+
+reviewer 明确**未能**验证、留给后续的：浏览器里 connect-web 流式端到端的真机验证（本次靠 Go 客户端 + 线格式 + 源码推理）、流上收到已过期 token 时的 401 行为、静默消失的客户端在下次心跳前占着订阅。
 
 ---
 
@@ -416,12 +444,18 @@ const RECONNECT_MIN_MS = 1_000;
 const RECONNECT_MAX_MS = 30_000;
 
 let controller: AbortController | undefined;
-let stopped = true;
+let running = false;
 let wake: (() => void) | undefined;
+// 每次 start/stop 都会推进：异步循环没有别的办法判断自己还是不是连接的主人。
+let generation = 0;
+// 服务端也会推的两个值各有一张票：消息到达时还在飞的请求比消息旧，不能覆盖它。
+let countTicket = 0;
+let recentTicket = 0;
 
-async function run(store: NotificationStore) {
+async function run(store: NotificationStore, mine: number) {
+  const live = () => running && generation === mine;
   let delay = RECONNECT_MIN_MS;
-  while (!stopped) {
+  while (live()) {
     controller = new AbortController();
     try {
       // One refresh per (re)connect. It is what makes every gap harmless: a
@@ -430,20 +464,23 @@ async function run(store: NotificationStore) {
       // up covered by this one call.
       void store.refresh().catch(() => {});
       for await (const message of subscribeNotifications(controller.signal)) {
+        // 任何一帧（含 keepalive）都说明连接是健康的，退避回到下限。
+        delay = RECONNECT_MIN_MS;
         if (message.event.case === "notification") {
           store.applyArrival(message.event.value);
-          delay = RECONNECT_MIN_MS;
         }
         // A keepalive carries nothing; it exists so the connection is not idle.
       }
-    } catch {
-      // A failed attempt is not worth a toast: the backoff below retries, and the
-      // handshake runs through the session interceptor, so an expired session is
-      // refreshed (or ends the session) there rather than here.
+    } catch (error) {
+      if (live() && error instanceof ConnectError && error.code === Code.Unimplemented) {
+        store.stopStreaming();
+        return;
+      }
     }
+    // 一旦有更新的一代接管了连接，这条循环不能再碰任何外部状态。
+    if (!live()) return;
     controller = undefined;
-    if (stopped) return;
-    await sleep(delay);
+    await wait(delay);
     delay = Math.min(delay * 2, RECONNECT_MAX_MS);
   }
 }
