@@ -3,12 +3,15 @@ package v1
 import (
 	"context"
 	"strings"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/component/notification"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
@@ -20,6 +23,29 @@ import (
 // update's array; a page of an inbox is at most a thousand, like the other batches
 // this API accepts.
 const maxNotificationsPerBatch = 1000
+
+const (
+	// notificationHeartbeat is how often an idle subscription is poked. It has to
+	// stay under a proxy's read timeout — nginx defaults to sixty seconds — and it is
+	// also how a peer that is gone is noticed: the write fails and the handler
+	// returns instead of holding a goroutine for a connection nobody is reading.
+	notificationHeartbeat = 25 * time.Second
+	// notificationStreamLifetime bounds one subscription. A stream is authenticated
+	// once, when it is opened, so it ends itself well before a session decision could
+	// go stale: the client reconnects, which is what re-authenticates it and what
+	// makes a logout or a revocation take effect. Ending the stream is not an error —
+	// the client opens the next one.
+	notificationStreamLifetime = 30 * time.Minute
+)
+
+// NotificationSubscriptions is the push side of the notification component: what
+// SubscribeNotifications listens to while a caller's browser is connected.
+// *notification.Service is the production implementation; the interface keeps this
+// handler from depending on how a message is fanned out, and lets a test drive it
+// without a database.
+type NotificationSubscriptions interface {
+	Subscribe(recipientID int) (<-chan notification.Event, func(), error)
+}
 
 // NotificationService serves the caller's own in-app messages: the outcome of a
 // sync operation they asked for, and the ingestion failures a workspace
@@ -33,12 +59,16 @@ const maxNotificationsPerBatch = 1000
 // of its own messages.
 type NotificationService struct {
 	v1connect.UnimplementedNotificationServiceHandler
-	store *store.Store
+	store         *store.Store
+	subscriptions NotificationSubscriptions
 }
 
-// NewNotificationService returns a notification service.
-func NewNotificationService(store *store.Store) *NotificationService {
-	return &NotificationService{store: store}
+// NewNotificationService returns a notification service. subscriptions is what
+// carries a written message to a connected caller; a service built without one
+// refuses SubscribeNotifications rather than accepting a stream that would never
+// deliver anything.
+func NewNotificationService(store *store.Store, subscriptions NotificationSubscriptions) *NotificationService {
+	return &NotificationService{store: store, subscriptions: subscriptions}
 }
 
 // ListNotifications lists the caller's notifications, newest first.
@@ -178,6 +208,73 @@ func (s *NotificationService) DeleteNotification(ctx context.Context, req *conne
 	return connect.NewResponse(&emptypb.Empty{}), nil
 }
 
+// SubscribeNotifications streams the caller's notifications as they are written.
+//
+// The stream is the replacement for polling: a client holds one connection and is
+// told about a message when it exists, so a background sync's outcome reaches the
+// user without a page reload. It is scoped like every other method here — the
+// subscription is registered for the authenticated caller's own inbox.
+//
+// Nothing about it is audited: a connection that lasts half an hour is not an
+// administrative action, and a ledger row per connection would be noise in a table
+// that is kept forever.
+func (s *NotificationService) SubscribeNotifications(ctx context.Context, req *connect.Request[v1pb.SubscribeNotificationsRequest], stream *connect.ServerStream[v1pb.SubscribeNotificationsResponse]) error {
+	user, err := notificationCaller(ctx)
+	if err != nil {
+		return err
+	}
+	// Resolved once per connection: every message this stream carries is named under
+	// the same workspace, and the name is the one field the write path does not have.
+	workspaceID, err := s.workspaceID(ctx, req.Msg.GetParent())
+	if err != nil {
+		return err
+	}
+	if s.subscriptions == nil {
+		return connect.NewError(connect.CodeUnimplemented, errors.New("live notifications are not configured"))
+	}
+	events, unsubscribe, err := s.subscriptions.Subscribe(user.ID)
+	if err != nil {
+		return connect.NewError(connect.CodeResourceExhausted, err)
+	}
+	defer unsubscribe()
+
+	// nginx buffers a proxied response body until a buffer fills, which would hold
+	// every event in the proxy. This is the per-response switch it honours, and it
+	// has to be set before the first Send: connect-go emits the headers with it.
+	stream.ResponseHeader().Set("X-Accel-Buffering", "no")
+
+	heartbeat := time.NewTicker(notificationHeartbeat)
+	defer heartbeat.Stop()
+	lifetime := time.After(notificationStreamLifetime)
+
+	for {
+		select {
+		case <-ctx.Done():
+			// The caller closed the connection or it dropped.
+			return nil
+		case <-lifetime:
+			// See notificationStreamLifetime: ending the stream is how the client
+			// re-authenticates.
+			return nil
+		case event, ok := <-events:
+			if !ok {
+				// The subscription was dropped because it fell behind, or the server
+				// is draining. The client reconnects and refreshes either way.
+				return nil
+			}
+			if err := stream.Send(convertToV1NotificationEvent(event, workspaceID)); err != nil {
+				return err
+			}
+		case <-heartbeat.C:
+			if err := stream.Send(&v1pb.SubscribeNotificationsResponse{
+				Event: &v1pb.SubscribeNotificationsResponse_KeepAlive{KeepAlive: &v1pb.KeepAlive{}},
+			}); err != nil {
+				return err
+			}
+		}
+	}
+}
+
 // notificationCaller returns the authenticated caller. Every RPC of this
 // service starts here, because the caller's id is the scope.
 func notificationCaller(ctx context.Context) (*store.UserMessage, error) {
@@ -208,6 +305,23 @@ func (s *NotificationService) workspaceID(ctx context.Context, parent string) (s
 		return "", connect.NewError(connect.CodeNotFound, errors.Errorf("workspace %q not found", parent))
 	}
 	return workspaceID, nil
+}
+
+// convertToV1NotificationEvent builds one streamed event. An unknown detail is left
+// to convertToV1Notification, which degrades it to the envelope: a client older than
+// the server still renders the message instead of choking on it.
+func convertToV1NotificationEvent(event notification.Event, workspaceID string) *v1pb.SubscribeNotificationsResponse {
+	converted := &v1pb.NotificationEvent{
+		Notification: convertToV1Notification(event.Notification, workspaceID),
+	}
+	if event.UnreadCountKnown {
+		// Absent when the count could not be read, so the client asks for it rather
+		// than showing the zero this would otherwise be indistinguishable from.
+		converted.UnreadCount = proto.Int32(event.UnreadCount)
+	}
+	return &v1pb.SubscribeNotificationsResponse{
+		Event: &v1pb.SubscribeNotificationsResponse_Notification{Notification: converted},
+	}
 }
 
 func convertToV1Notification(notification *storepb.Notification, workspaceID string) *v1pb.Notification {

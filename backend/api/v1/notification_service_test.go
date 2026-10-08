@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/component/notification"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -124,7 +125,7 @@ func TestConvertToV1NotificationHandlesNil(t *testing.T) {
 func TestBatchMarkNotificationsReadValidatesTheBatch(t *testing.T) {
 	t.Parallel()
 
-	service := NewNotificationService(nil)
+	service := NewNotificationService(nil, nil)
 	ctx := context.WithValue(context.Background(), common.UserContextKey, &store.UserMessage{ID: 7})
 
 	_, err := service.BatchMarkNotificationsRead(ctx, connect.NewRequest(&v1pb.BatchMarkNotificationsReadRequest{
@@ -159,4 +160,86 @@ func TestFormatNotificationRoundTrips(t *testing.T) {
 	require.Error(t, err)
 	_, err = common.GetNotificationID("notifications/12")
 	require.Error(t, err)
+}
+
+// A streamed message is the same envelope the list serves, so a client renders both
+// with one code path.
+func TestConvertToV1NotificationEventNamesAndCounts(t *testing.T) {
+	t.Parallel()
+
+	converted := convertToV1NotificationEvent(notification.Event{
+		Notification: &storepb.Notification{
+			Id:       9,
+			Parent:   "workspaces/ws",
+			Type:     storepb.NotificationType_NOTIFICATION_TYPE_SCHEMA_SYNC,
+			Severity: storepb.NotificationSeverity_NOTIFICATION_SEVERITY_INFO,
+			Detail: &storepb.Notification_SchemaSync{
+				SchemaSync: &storepb.SchemaSyncDetail{Instance: "instances/inst1"},
+			},
+		},
+		UnreadCount:      4,
+		UnreadCountKnown: true,
+	}, "ws")
+
+	event, ok := converted.GetEvent().(*v1pb.SubscribeNotificationsResponse_Notification)
+	require.True(t, ok)
+	require.Equal(t, "workspaces/ws/notifications/9", event.Notification.GetNotification().GetName())
+	require.Equal(t, "instances/inst1", event.Notification.GetNotification().GetSchemaSync().GetInstance())
+	require.Equal(t, int32(4), event.Notification.GetUnreadCount())
+}
+
+// A count the store could not answer must stay absent rather than arrive as a zero
+// the client would read as "everything is read".
+func TestConvertToV1NotificationEventWithoutACount(t *testing.T) {
+	t.Parallel()
+
+	converted := convertToV1NotificationEvent(notification.Event{
+		Notification: &storepb.Notification{Id: 3, Parent: "workspaces/ws"},
+	}, "ws")
+
+	event, ok := converted.GetEvent().(*v1pb.SubscribeNotificationsResponse_Notification)
+	require.True(t, ok)
+	require.Nil(t, event.Notification.UnreadCount)
+	require.Equal(t, int32(0), event.Notification.GetUnreadCount())
+}
+
+// A detail written by a newer server still streams: the envelope renders and the
+// client falls back to a generic line.
+func TestConvertToV1NotificationEventWithoutAKnownDetail(t *testing.T) {
+	t.Parallel()
+
+	converted := convertToV1NotificationEvent(notification.Event{
+		Notification: &storepb.Notification{Id: 5, Parent: "workspaces/ws"},
+	}, "ws")
+
+	event, ok := converted.GetEvent().(*v1pb.SubscribeNotificationsResponse_Notification)
+	require.True(t, ok)
+	require.Nil(t, event.Notification.GetNotification().GetDetail())
+}
+
+// A subscription is not reachable without credentials, and the caller's own id is
+// the scope: the handler refuses before it registers anything.
+func TestSubscribeNotificationsRequiresAuthentication(t *testing.T) {
+	t.Parallel()
+
+	service := NewNotificationService(nil, &fakeSubscriptions{})
+	err := service.SubscribeNotifications(context.Background(), connect.NewRequest(&v1pb.SubscribeNotificationsRequest{
+		Parent: "workspaces/-",
+	}), nil)
+
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	require.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
+}
+
+// fakeSubscriptions records who subscribed, so a test can assert the scope without a
+// database or a live stream.
+type fakeSubscriptions struct {
+	recipientIDs []int
+}
+
+func (f *fakeSubscriptions) Subscribe(recipientID int) (<-chan notification.Event, func(), error) {
+	f.recipientIDs = append(f.recipientIDs, recipientID)
+	events := make(chan notification.Event)
+	return events, func() {}, nil
 }

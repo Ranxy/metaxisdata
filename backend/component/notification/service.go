@@ -8,6 +8,11 @@
 // cleanup path, and none of them may fail because a message could not be
 // written: they log the error and carry on, the same way the audit interceptor
 // treats its ledger writes.
+//
+// A written message is also handed to the recipient's live subscriptions (see
+// Subscribe), which is how a signed-in client learns about it without polling.
+// That channel is process-local and cannot fail a write: a subscription that has
+// stopped reading is dropped rather than allowed to hold the writer open.
 package notification
 
 import (
@@ -68,15 +73,19 @@ const (
 // exactly what delivering a message costs.
 type AdminStore interface {
 	CreateNotification(ctx context.Context, notification *storepb.Notification) (*storepb.Notification, error)
+	CountUnreadNotifications(ctx context.Context, recipientID int) (int, error)
 	GetWorkspaceID(ctx context.Context) (string, error)
 	GetWorkspaceIamPolicy(ctx context.Context) (*store.IamPolicyMessage, error)
 	GetGroup(ctx context.Context, email string) (*store.GroupMessage, error)
 	GetUserByID(ctx context.Context, id int) (*store.UserMessage, error)
 }
 
-// Service writes notifications and works out who receives them.
+// Service writes notifications and works out who receives them. It is also where
+// the live push channel starts: a message it writes is handed to the subscriptions
+// of its recipient, so a signed-in client sees it without asking.
 type Service struct {
 	store AdminStore
+	hub   *hub
 
 	mu     sync.Mutex
 	recent map[string]time.Time
@@ -90,8 +99,28 @@ func New(stores *store.Store) *Service {
 func newServiceWithStore(stores AdminStore) *Service {
 	return &Service{
 		store:  stores,
+		hub:    newHub(),
 		recent: make(map[string]time.Time),
 	}
+}
+
+// Subscribe registers a live subscription for one recipient's inbox. The returned
+// channel is closed when the subscription ends — the server is shutting down, the
+// connection could not keep up, or the caller unsubscribed — and the returned
+// function releases it. Releasing is safe to call more than once.
+func (s *Service) Subscribe(recipientID int) (<-chan Event, func(), error) {
+	sub, err := s.hub.subscribe(recipientID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return sub.ch, func() { s.hub.unsubscribe(recipientID, sub) }, nil
+}
+
+// Close ends every live subscription. It is what lets the server drain: the HTTP
+// server's shutdown waits for in-flight requests, and a notification stream is one
+// that never ends on its own.
+func (s *Service) Close() {
+	s.hub.close()
 }
 
 // SchemaSyncMessage builds the message one sync operation reports its outcome
@@ -314,9 +343,10 @@ func (s *Service) WorkspaceAdminIDs(ctx context.Context) ([]int, error) {
 	return ids, nil
 }
 
-// create stamps the workspace on the message and writes it. The workspace is
-// single tenant, but the resource name and the list path both carry it, so the
-// row records which one it belongs to rather than relying on the caller.
+// create stamps the workspace on the message, writes it and reports it to the live
+// subscriptions of its recipient. The workspace is single tenant, but the resource
+// name and the list path both carry it, so the row records which one it belongs to
+// rather than relying on the caller.
 func (s *Service) create(ctx context.Context, n *storepb.Notification) error {
 	if strings.TrimSpace(n.GetParent()) == "" {
 		workspaceID, err := s.store.GetWorkspaceID(ctx)
@@ -325,8 +355,34 @@ func (s *Service) create(ctx context.Context, n *storepb.Notification) error {
 		}
 		n.Parent = common.FormatWorkspace(workspaceID)
 	}
-	_, err := s.store.CreateNotification(ctx, n)
-	return err
+	created, err := s.store.CreateNotification(ctx, n)
+	if err != nil {
+		return err
+	}
+	if created == nil {
+		// The unique index on (recipient_id, dedupe_key) refused a repeat, so no row
+		// was written and there is no new message to push: the inbox already holds
+		// the one this repeats.
+		return nil
+	}
+	s.publish(ctx, created)
+	return nil
+}
+
+// publish hands one written message to the live subscriptions of its recipient. The
+// unread count is read here, once per message, so every connection of the same inbox
+// shares one answer instead of each paying for its own query.
+func (s *Service) publish(ctx context.Context, n *storepb.Notification) {
+	recipientID := int(n.GetRecipientId())
+	event := Event{Notification: n}
+	if count, err := s.store.CountUnreadNotifications(ctx, recipientID); err != nil {
+		// A count that cannot be read is no reason to drop the message: the client
+		// receives the event without the count and asks for it itself.
+		LogFailure(err, slog.Int("recipient_id", recipientID))
+	} else {
+		event.UnreadCount, event.UnreadCountKnown = int32(count), true
+	}
+	s.hub.publish(recipientID, event)
 }
 
 // claim reports whether this dedupe key may be delivered, remembering it when

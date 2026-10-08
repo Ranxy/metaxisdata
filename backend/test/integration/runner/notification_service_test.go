@@ -205,3 +205,148 @@ func TestIngestionRefusalNotifiesTheAdministratorsOnceRealServerIntegration(t *t
 	// theirs alone, and nobody asked for this ingestion.
 	require.NotEmpty(t, refused[0].GetName())
 }
+
+// The stream is what replaces polling: a message written while the caller is connected
+// reaches them without a reload, and the event carries the count the inbox would answer
+// with, so the badge and the list can both be updated from it.
+func TestSubscriptionPushesTheCallersMessageRealServerIntegration(t *testing.T) {
+	env, ctx, instanceID, _, databaseName := setupMySQLServiceDatabase(t)
+	notifications := v1connect.NewNotificationServiceClient(&http.Client{Timeout: 10 * time.Second}, env.BaseURL)
+	token := env.AdminToken()
+
+	// Subscribed before the sync, so what arrives was written while the connection was
+	// open rather than read back from the inbox. The fixture already synced this database
+	// once, and a manual sync carries no suppression key, so its older message must not
+	// be what the stream delivers.
+	events, stream, closeStream := notificationEvents(ctx, t, notifications, token)
+	defer closeStream()
+	env.SyncDatabase(ctx, t, databaseName)
+
+	// The fixture's instance-wide sync has an asynchronous tail of its own, so the stream
+	// can carry that message first — it lists only the databases that failed. Wait for the
+	// one that names this database, which is what a per-database sync reports.
+	var event *v1pb.NotificationEvent
+	deadline := time.After(30 * time.Second)
+	for event == nil {
+		select {
+		case candidate := <-events:
+			if namesTheSyncedDatabase(candidate, databaseName) {
+				event = candidate
+			}
+		case <-deadline:
+			t.Fatalf("the sync's message never reached the connected caller: %s", env.ServerLogs())
+		}
+	}
+
+	// A reverse proxy that buffers the response body would hold every event in its
+	// buffer, and this per-response switch is nginx's way out. The client is the only
+	// place it can be observed.
+	require.Equal(t, "no", stream.ResponseHeader().Get("X-Accel-Buffering"))
+
+	message := event.GetNotification()
+	require.Equal(t, v1pb.NotificationType_NOTIFICATION_TYPE_SCHEMA_SYNC, message.GetType())
+	require.Equal(t, v1pb.NotificationSeverity_NOTIFICATION_SEVERITY_INFO, message.GetSeverity())
+	require.Equal(t, common.FormatInstance(instanceID), message.GetSchemaSync().GetInstance())
+	require.Equal(t, databaseName, message.GetSchemaSync().GetDatabases()[0].GetDatabase())
+	require.Nil(t, message.GetReadTime(), "a streamed message is unread")
+
+	// A count the store answered travels with the event; one it could not answer is
+	// absent, which is how the client tells "nothing is unread" from "ask me again".
+	require.NotNil(t, event.UnreadCount, "the event carries the count of the inbox it was written to")
+	require.GreaterOrEqual(t, event.GetUnreadCount(), int32(1))
+
+	// The stream and the list are the same message, named the same way.
+	listed, err := notifications.ListNotifications(ctx, withToken(token, &v1pb.ListNotificationsRequest{
+		Parent:   "workspaces/-",
+		PageSize: 100,
+	}))
+	require.NoError(t, err)
+	names := make([]string, 0, len(listed.Msg.GetNotifications()))
+	for _, candidate := range listed.Msg.GetNotifications() {
+		names = append(names, candidate.GetName())
+	}
+	require.Contains(t, names, message.GetName(), "the streamed message is one the inbox lists")
+}
+
+// The subscription is the authenticated caller's own inbox: a member of the same
+// workspace connected at the same time is not told about the administrator's message.
+func TestSubscriptionIsScopedToTheCallerRealServerIntegration(t *testing.T) {
+	env, ctx, _, _, databaseName := setupMySQLServiceDatabase(t)
+	httpClient := &http.Client{Timeout: 10 * time.Second}
+	notifications := v1connect.NewNotificationServiceClient(httpClient, env.BaseURL)
+	users := v1connect.NewUserServiceClient(httpClient, env.BaseURL)
+	adminToken := env.AdminToken()
+
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	email := fmt.Sprintf("stream-%s@example.com", suffix)
+	const password = "Integration-Password-1!"
+	_, err := users.CreateUser(ctx, withToken(adminToken, &v1pb.CreateUserRequest{
+		User: &v1pb.User{
+			Email:    email,
+			Title:    "Notification stream integration member",
+			Password: password,
+			UserType: v1pb.UserType_END_USER,
+		},
+	}))
+	require.NoError(t, err)
+	memberToken, err := env.LoginAs(ctx, email, password)
+	require.NoError(t, err)
+
+	adminEvents, _, closeAdmin := notificationEvents(ctx, t, notifications, adminToken)
+	defer closeAdmin()
+	memberEvents, _, closeMember := notificationEvents(ctx, t, notifications, memberToken)
+	defer closeMember()
+
+	env.SyncDatabase(ctx, t, databaseName)
+
+	// Wait for the first message the administrator's own inbox received — the sync's, or
+	// the fixture's instance-wide one; a fan-out that ignored the recipient would have
+	// delivered it to the member too.
+	select {
+	case <-adminEvents:
+	case <-time.After(30 * time.Second):
+		t.Fatalf("no message reached the administrator's stream: %s", env.ServerLogs())
+	}
+	select {
+	case event := <-memberEvents:
+		t.Fatalf("a member received another principal's message: %s", event.GetNotification().GetName())
+	default:
+	}
+
+	count, err := notifications.GetUnreadNotificationCount(ctx, withToken(memberToken, &v1pb.GetUnreadNotificationCountRequest{
+		Parent: "workspaces/-",
+	}))
+	require.NoError(t, err)
+	require.Zero(t, count.Msg.GetUnreadCount(), "the member's own inbox is still empty")
+}
+
+// namesTheSyncedDatabase reports whether one streamed event is the per-database sync's
+// message: it names exactly one database, and names this one.
+func namesTheSyncedDatabase(event *v1pb.NotificationEvent, database string) bool {
+	databases := event.GetNotification().GetSchemaSync().GetDatabases()
+	return len(databases) == 1 && databases[0].GetDatabase() == database
+}
+
+// notificationEvents opens the caller's stream and forwards the messages it carries.
+// Keepalives exist so the connection is not idle and carry nothing, so they are
+// skipped. Receive blocks, so it runs on its own goroutine; closing the stream ends it.
+func notificationEvents(ctx context.Context, t *testing.T, client v1connect.NotificationServiceClient, token string) (<-chan *v1pb.NotificationEvent, *connect.ServerStreamForClient[v1pb.SubscribeNotificationsResponse], func()) {
+	t.Helper()
+
+	stream, err := client.SubscribeNotifications(ctx, withToken(token, &v1pb.SubscribeNotificationsRequest{
+		Parent: "workspaces/-",
+	}))
+	require.NoError(t, err)
+
+	events := make(chan *v1pb.NotificationEvent, 8)
+	go func() {
+		for stream.Receive() {
+			event, ok := stream.Msg().GetEvent().(*v1pb.SubscribeNotificationsResponse_Notification)
+			if !ok {
+				continue
+			}
+			events <- event.Notification
+		}
+	}()
+	return events, stream, func() { _ = stream.Close() }
+}

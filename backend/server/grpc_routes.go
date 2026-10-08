@@ -96,7 +96,7 @@ func configureGrpcRouters(
 	userService := apiv1.NewUserService(stores, iamManager, profile)
 	authService := apiv1.NewAuthService(stores, secret, profile, stateCfg)
 	auditLogService := apiv1.NewAuditLogService(stores)
-	notificationService := apiv1.NewNotificationService(stores)
+	notificationService := apiv1.NewNotificationService(stores, notifier)
 	instanceService := apiv1.NewInstanceService(stores, dbFactory, schemaSync, stateCfg)
 	databaseService := apiv1.NewDatabaseService(stores, schemaSync)
 	lineageService := apiv1.NewLineageService(stores, lineageAnalyzer)
