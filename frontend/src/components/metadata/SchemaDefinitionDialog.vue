@@ -1,6 +1,6 @@
 <template>
   <Dialog v-model:open="isOpen">
-    <DialogTrigger asChild>
+    <DialogTrigger v-if="!controlled" asChild>
       <slot>
         <Button
           variant="outline"
@@ -43,7 +43,7 @@
 
 <script setup lang="ts">
 import { Code } from "lucide-vue-next";
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { getSchemaString } from "@/api/database";
 import AppLoading from "@/components/common/AppLoading.vue";
@@ -64,14 +64,36 @@ interface Props {
   guid: string;
   metaType: MetaType;
   objectName: string;
+  /**
+   * Whether the dialog is open. A caller that passes this one owns the dialog and
+   * opens it itself — the lineage graph opens this from a context menu as well as
+   * from its details panel — so the built-in trigger is not rendered. Left out, the
+   * component keeps its own state and the trigger, as every metadata page uses it.
+   */
+  open?: boolean;
 }
 
-const props = defineProps<Props>();
+// `open: undefined` is stated because Vue casts an absent boolean prop to `false`,
+// which would read as a caller that controls the dialog and hide the trigger on
+// every metadata page.
+const props = withDefaults(defineProps<Props>(), { open: undefined });
+
+const emit = defineEmits<{
+  "update:open": [open: boolean];
+}>();
 
 const { t } = useI18n();
 const { formatError } = useErrorMessage();
 
-const isOpen = ref(false);
+const controlled = computed(() => props.open !== undefined);
+const ownOpen = ref(false);
+const isOpen = computed({
+  get: () => props.open ?? ownOpen.value,
+  set: (open: boolean) => {
+    ownOpen.value = open;
+    emit("update:open", open);
+  },
+});
 const isLoading = ref(false);
 const error = ref<string | null>(null);
 const schemaContent = ref("");
@@ -94,9 +116,17 @@ async function fetchSchema() {
   }
 }
 
-watch(isOpen, (open) => {
-  if (open) {
-    fetchSchema();
-  }
-});
+// The object as well as the visibility, and `immediate`, because a caller that
+// controls this dialog can mount it already open and can also point it at another
+// object without closing it first — a lineage node's context menu does both. The
+// definition on screen must never belong to the object named in the title.
+watch(
+  [isOpen, () => props.guid, () => props.metaType],
+  ([open]) => {
+    if (open) {
+      fetchSchema();
+    }
+  },
+  { immediate: true }
+);
 </script>

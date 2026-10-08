@@ -70,6 +70,7 @@
               @select-node="handleSelectNode"
               @select-column="handleSelectColumn"
               @toggle-fields="handleToggleFields"
+              @view-schema="openSchemaFor"
             />
           </template>
         </VueFlow>
@@ -235,6 +236,18 @@
               </div>
 
               <div class="flex flex-wrap gap-2">
+                <!-- The same overlay the metadata pages show, so a reader never has
+                     to leave the graph to read an object's definition. A dataset
+                     outside every instance has no definition to read. -->
+                <Button
+                  variant="outline"
+                  size="sm"
+                  :disabled="selectedNodeSummary.isExternal"
+                  @click="openSchemaFor(selectedNodeSummary.guid)"
+                >
+                  <Code class="mr-1 size-3.5" />
+                  {{ t("metadataBrowser.viewSchema") }}
+                </Button>
                 <Button variant="outline" size="sm" @click="refocusOnSelectedNode">
                   {{ t("lineageGraph.refocusGraph") }}
                 </Button>
@@ -300,6 +313,14 @@
         </CardContent>
       </Card>
     </div>
+
+    <SchemaDefinitionDialog
+      v-if="schemaTarget"
+      v-model:open="schemaOpen"
+      :guid="schemaTarget.guid"
+      :meta-type="schemaTarget.metaType"
+      :object-name="schemaTarget.objectName"
+    />
   </div>
 </template>
 
@@ -315,7 +336,14 @@ import {
   VueFlow,
 } from "@vue-flow/core";
 import { MiniMap } from "@vue-flow/minimap";
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import {
+  computed,
+  defineAsyncComponent,
+  nextTick,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import "@vue-flow/core/dist/style.css";
@@ -324,6 +352,7 @@ import "@vue-flow/controls/dist/style.css";
 import "@vue-flow/minimap/dist/style.css";
 import {
   ArrowLeft,
+  Code,
   Maximize2,
   MousePointerClick,
   RotateCcw,
@@ -368,6 +397,13 @@ import {
   type RelationOrigin,
 } from "@/lib/lineageOrigin";
 import { collectFieldTrail, type FieldTrail } from "@/lib/lineageTrail";
+
+// Loaded on demand: the dialog renders its definition in Monaco, and the lineage
+// canvas has no use for a 3MB editor until a reader asks for a schema.
+const SchemaDefinitionDialog = defineAsyncComponent(
+  () => import("@/components/metadata/SchemaDefinitionDialog.vue")
+);
+
 import { openlineageRunLabel } from "@/lib/openlineageRun";
 import { useInstanceStore } from "@/store/modules/instance";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
@@ -468,6 +504,18 @@ const scopeColorMap = computed(() =>
 );
 
 const originFilter = ref<RelationOrigin[]>([...LINEAGE_ORIGINS]);
+
+/**
+ * The object whose schema is on screen, and whether that overlay is open. It is
+ * held apart from the selection because both the details panel and a node's
+ * context menu open it, and the context menu does not have to select anything.
+ */
+const schemaTarget = ref<{
+  guid: string;
+  metaType: MetaType;
+  objectName: string;
+} | null>(null);
+const schemaOpen = ref(false);
 
 // Snapshot of initial state for reset
 let initialExpandedDirections = new Set<string>();
@@ -804,6 +852,20 @@ function openOpenLineageRun(guid: string) {
     params: { guid },
     query: { from: route.fullPath },
   });
+}
+
+/** Opens the same schema overlay the metadata pages show, for one node. */
+function openSchemaFor(guid: string) {
+  if (!guid || isExternalGuid(guid)) {
+    return;
+  }
+  const view = assetViewFor(guid);
+  schemaTarget.value = {
+    guid,
+    metaType: guidMetaTypeMap.value.get(guid) ?? fallbackMetaType(guid),
+    objectName: view.name,
+  };
+  schemaOpen.value = true;
 }
 
 function openSelectedNodeMetadata() {
