@@ -110,10 +110,14 @@
           </button>
         </div>
 
+        <!-- `nowheel`: the canvas zooms on the wheel, and its handler gives an element
+             the event only when the element (or an ancestor inside the card) says so.
+             Without it a wheel here zooms the graph instead of scrolling the list, and
+             the 1px scrollbar is all a reader has left. -->
         <div
           v-if="data.fieldsVisible && data.columns.length > 0"
           ref="fieldList"
-          class="max-h-[200px] overflow-y-auto border-t"
+          class="nowheel max-h-[200px] overflow-y-auto border-t"
         >
           <!-- Each field carries its own menu: a right-click on a field asks for
                that field, and the node's own Expand items would answer with all of
@@ -147,7 +151,12 @@
                 <Code class="size-3.5 text-muted-foreground" />
                 {{ t("metadataBrowser.viewSchema") }}
               </ContextMenuItem>
-              <ContextMenuSeparator />
+              <ContextMenuSeparator
+                v-if="
+                  canExpandColumn(col, 'upstream') ||
+                  canExpandColumn(col, 'downstream')
+                "
+              />
               <ContextMenuItem
                 v-if="canExpandColumn(col, 'upstream')"
                 @select="$emit('expand-column', data.guid, col, 'upstream')"
@@ -230,7 +239,7 @@ import {
   TableIcon,
   ViewIcon,
 } from "lucide-vue-next";
-import { computed, onMounted, onUpdated, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -241,6 +250,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import type { LineageDirection } from "@/lib/lineageGraph";
 
 /** What the node's icon shows; a dataset outside every instance is `external`. */
 export type LineageNodeKind = "table" | "view" | "external";
@@ -277,10 +287,16 @@ export interface LineageNodeData {
   fieldsVisible: boolean;
   /** The columns of this node that the selected column's trail runs through. */
   highlightedColumns: Set<string>;
-  /** The fields whose own lineage has been expanded that way, so the node's
-   * direction draws only what those fields reach. */
-  columnExpandedUpstream: Set<string>;
-  columnExpandedDownstream: Set<string>;
+  /** The fields of that direction a field expansion would still draw something for:
+   * it names a relation on this node's side, and its own lineage has not been walked
+   * as deep as the depth control now asks. Null means the direction was not fetched,
+   * and not fetched is not the same as nothing there. */
+  columnExpandableUpstream: Set<string> | null;
+  columnExpandableDownstream: Set<string> | null;
+  /** Bumped by the page when it wants this card to bring its field into view. The card
+   * reveals on the request, never on a redraw, so a reader who scrolled the list is not
+   * dragged back every time the graph redraws. */
+  revealToken: number;
 }
 
 const props = defineProps<{
@@ -288,12 +304,8 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  expand: [guid: string, direction: "upstream" | "downstream"];
-  "expand-column": [
-    guid: string,
-    column: string,
-    direction: "upstream" | "downstream",
-  ];
+  expand: [guid: string, direction: LineageDirection];
+  "expand-column": [guid: string, column: string, direction: LineageDirection];
   "select-node": [guid: string];
   "select-column": [guid: string, column: string];
   "toggle-fields": [guid: string, visible: boolean];
@@ -312,23 +324,22 @@ function handleToggleFields() {
 }
 
 /**
- * Whether one field can still be expanded that way. A direction the node itself
- * has already expanded draws all of its relations — there is nothing left for a
- * field to add — and a field that was expanded this way is drawn already.
+ * Whether one field can still be expanded that way. A direction the node itself has
+ * already expanded draws all of its relations — there is nothing left for a field to
+ * add — and the page says which fields would still add something: one whose side has
+ * no relation to name has nothing to draw, and one already walked to the depth the
+ * control asks for has nothing more to draw.
  */
-function canExpandColumn(
-  column: string,
-  direction: "upstream" | "downstream"
-): boolean {
-  const expanded =
+function canExpandColumn(column: string, direction: LineageDirection): boolean {
+  const expandable =
     direction === "upstream"
-      ? props.data.columnExpandedUpstream
-      : props.data.columnExpandedDownstream;
+      ? props.data.columnExpandableUpstream
+      : props.data.columnExpandableDownstream;
   const wholeNode =
     direction === "upstream"
       ? props.data.upstreamExpanded
       : props.data.downstreamExpanded;
-  return !wholeNode && !expanded.has(column);
+  return !wholeNode && (expandable === null || expandable.has(column));
 }
 
 const isExternal = computed(() => props.data.kind === "external");
@@ -364,21 +375,20 @@ const nodeIcon = computed(() => {
 });
 
 /**
- * Brings the field the trail runs through into view. The list is alphabetical and
- * capped at 200px, so the field the graph is about can sit below the fold of the
- * list's own scroll area — which is exactly what happens to a node whose list was
- * opened for an expansion. Only a row that is out of view moves, and only far enough
- * to reach the edge, so a reader who scrolled the list themselves is left alone.
- * `scrollTop` is written rather than `scrollIntoView`, which would scroll every
- * scrollable ancestor the row has.
+ * Brings the field in hand into view: the one the reader just clicked when this card
+ * is the pivot, and the field the trail runs through on the cards an expansion opened.
+ * The list is alphabetical and capped at 200px, so that field can sit below the fold of
+ * the list's own scroll area. Only a row that is out of view moves, and only far enough
+ * to reach the edge. `scrollTop` is written rather than `scrollIntoView`, which would
+ * scroll every scrollable ancestor the row has.
  *
- * Returns whether there is nothing left to do, which lets the caller re-check after
- * the layout settles — the card is restacked while an expansion finishes, so the
- * row's place inside the list can still move after the render that opened it.
+ * Returns whether there is nothing left to do, which lets the caller re-check while the
+ * layout settles — the card is restacked as an expansion finishes, so the row's place
+ * in the list can still move after the render that opened it.
  */
 function revealTrailField(): boolean {
   const list = fieldList.value;
-  const column = trailColumns.value[0];
+  const column = props.data.selectedColumn ?? trailColumns.value[0];
   if (!props.data.fieldsVisible || !list || !column) {
     return true;
   }
@@ -391,19 +401,29 @@ function revealTrailField(): boolean {
 
   const listBox = list.getBoundingClientRect();
   const rowBox = row.getBoundingClientRect();
-  // The canvas scales the cards, so a rect is in screen pixels while `scrollTop`
-  // and `offsetHeight` are in layout pixels. The list's own ratio converts: it is
-  // the layout height over the height it is drawn at.
+  // The canvas scales the cards, so a rect is in screen pixels while `scrollTop` and
+  // `offsetHeight` are in layout pixels. The list's own ratio converts between them:
+  // it is the layout height over the height it is drawn at. `clientTop` moves the
+  // origin past the list's top border, which is where the visible area starts. `top`
+  // is therefore the row's offset inside the visible area, which is what `scrollTop`
+  // moves.
   const scale = listBox.height > 0 ? list.offsetHeight / listBox.height : 1;
-  const top = (rowBox.top - listBox.top) * scale;
+  const top = (rowBox.top - listBox.top) * scale - list.clientTop;
   const bottom = top + row.offsetHeight;
-  if (top < 0) {
-    list.scrollTop += top;
-  } else if (bottom > list.clientHeight) {
-    list.scrollTop += bottom - list.clientHeight;
-  } else {
+  // How far the row hangs over the edge it is out of, in the layout pixels `scrollTop`
+  // counts in. Zero means it is in view.
+  const overshoot =
+    top < 0 ? top : bottom > list.clientHeight ? bottom - list.clientHeight : 0;
+  if (Math.abs(overshoot) < 1) {
     return true;
   }
+  const limit = Math.max(list.scrollHeight - list.clientHeight, 0);
+  const target = Math.min(Math.max(list.scrollTop + overshoot, 0), limit);
+  if (target === list.scrollTop) {
+    // Already as close to the row as the list can scroll.
+    return true;
+  }
+  list.scrollTop = target;
   return false;
 }
 
@@ -419,6 +439,11 @@ function scheduleReveal() {
   requestAnimationFrame(step);
 }
 
-onMounted(scheduleReveal);
-onUpdated(scheduleReveal);
+// One reveal per request, never per render: the page bumps the token when it wants
+// this card's field brought into view, and a redraw for any other reason leaves the
+// reader wherever they scrolled to.
+watch(() => props.data.revealToken, scheduleReveal, {
+  immediate: true,
+  flush: "post",
+});
 </script>

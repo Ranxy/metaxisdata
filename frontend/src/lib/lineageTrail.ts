@@ -253,38 +253,131 @@ export function collectFieldTrail(
   return trail;
 }
 
+/** One hop of a field expansion, before the walk decides what to do with it. */
+export interface ColumnStep {
+  /** The pairs the walk goes on with: the far object's own field. */
+  pairs: ColumnPair[];
+  /**
+   * The far objects this hop draws whose relation names no field of theirs — a join
+   * key, a table-level edge. They are the field's lineage and they are on the canvas,
+   * but there is no field to carry the walk on with.
+   */
+  objects: string[];
+}
+
 /**
- * One hop of a field expansion: the fields this pair reaches in `direction`
- * through relations that name its own field. `data` is the loaded lineage of
- * `pair.guid`, so the walk only sees relations the server has answered with.
+ * One hop of a field expansion: the fields this pair reaches in `direction` through
+ * relations that name its own field. `data` is the loaded lineage of `pair.guid`, so
+ * the walk only sees relations the server has answered with.
  *
- * It is the same step `collectFieldTrail` takes, and it stops the same way: a
- * relation that reaches the far object without naming a field of it is the
- * field's lineage, but the walk cannot go on through a field it does not know,
- * so that object is left without a next pair.
+ * It is the same step `collectFieldTrail` takes, and it stops the same way: a relation
+ * that reaches the far object without naming a field of it ends the walk there.
  */
-export function columnNeighbourPairs(
+export function columnStep(
   data: NodeLineageData,
   pair: ColumnPair,
   direction: LineageDirection
-): ColumnPair[] {
+): ColumnStep {
   const relations = direction === "upstream" ? data.upstream : data.downstream;
   const pairs: ColumnPair[] = [];
+  const objects: string[] = [];
   for (const relation of relations) {
-    const named =
-      direction === "upstream" ? relation.targetColumn : relation.sourceColumn;
-    if (named !== pair.column) {
+    // The server answers with this node's own relations, but the pair is the contract:
+    // a relation belongs to this hop only when this node is the end it names.
+    const near =
+      direction === "upstream"
+        ? { guid: relation.targetGuid, column: relation.targetColumn }
+        : { guid: relation.sourceGuid, column: relation.sourceColumn };
+    if (near.guid !== pair.guid || near.column !== pair.column) {
       continue;
     }
-    const neighbour =
+    const far =
       direction === "upstream"
         ? { guid: relation.sourceGuid, column: relation.sourceColumn }
         : { guid: relation.targetGuid, column: relation.targetColumn };
-    if (neighbour.column) {
-      pairs.push(neighbour);
+    if (far.column) {
+      pairs.push(far);
+    } else {
+      objects.push(far.guid);
     }
   }
-  return pairs;
+  return { pairs, objects };
+}
+
+/** One pair a field expansion expanded, and how far below it the walk went. */
+export interface ColumnWalkStep {
+  pair: ColumnPair;
+  /**
+   * The levels the walk still had below this pair, the pivot of a depth-1 expansion
+   * being 0. It is what tells "already drawn, nothing more to gain" from "drawn, and
+   * a deeper expansion would still add a hop".
+   */
+  depth: number;
+}
+
+export interface ColumnWalk {
+  /** Every pair the walk expanded, the pivot first. */
+  walked: ColumnWalkStep[];
+  /** Every object the walk draws, the pairs' own objects included. */
+  objects: Set<string>;
+}
+
+/**
+ * The field expansion of one node's direction, level by level: `load` is the caller's
+ * fetch, so a node's relations are in hand before the level below it is walked, and a
+ * caller that has already fetched them pays only the cache hit.
+ *
+ * Deduplicated across the whole walk, so a diamond is walked once and a pair reached at
+ * a shallower level is not walked again from a deeper one.
+ */
+export async function walkColumnExpansion(options: {
+  start: ColumnFilter;
+  direction: LineageDirection;
+  /** How many levels to walk, the pivot's own relations being the first. */
+  depth: number;
+  load: (guid: string) => Promise<NodeLineageData>;
+}): Promise<ColumnWalk> {
+  const walked: ColumnWalkStep[] = [];
+  const objects = new Set<string>([options.start.guid]);
+  const seen = new Set<string>([
+    columnPairKey(options.start.guid, options.start.column),
+  ]);
+  let frontier: ColumnPair[] = [
+    { guid: options.start.guid, column: options.start.column },
+  ];
+
+  for (let level = 0; level < options.depth && frontier.length > 0; level++) {
+    const pending = frontier;
+    for (const pair of pending) {
+      walked.push({ pair, depth: options.depth - 1 - level });
+    }
+
+    const loaded = await Promise.all(
+      pending.map((pair) => options.load(pair.guid))
+    );
+
+    const next: ColumnPair[] = [];
+    for (let index = 0; index < pending.length; index++) {
+      const step = columnStep(loaded[index], pending[index], options.direction);
+      for (const guid of step.objects) {
+        objects.add(guid);
+      }
+      for (const pair of step.pairs) {
+        const key = columnPairKey(pair.guid, pair.column);
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        // Every pair the walk reaches is drawn, whether or not the walk goes on
+        // through it: the last level's neighbours are on the canvas too.
+        objects.add(pair.guid);
+        next.push(pair);
+      }
+    }
+    frontier = next;
+  }
+
+  return { walked, objects };
 }
 
 function side(result: WalkResult, pivot: ColumnFilter): FieldTrailSide {

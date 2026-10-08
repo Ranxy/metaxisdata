@@ -182,7 +182,7 @@ export function layoutNodes(
 export function fieldScopedRelations(
   relations: readonly LineageRelation[],
   direction: LineageDirection,
-  fields: ReadonlySet<string>
+  fields: ReadonlySet<string> | ReadonlyMap<string, number>
 ): LineageRelation[] {
   return relations.filter((relation) =>
     fields.has(
