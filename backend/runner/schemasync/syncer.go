@@ -151,9 +151,13 @@ func databaseSyncRetryBackoff(attempts int) time.Duration {
 	}
 }
 
-// enqueueDatabase queues a database for the checker. A fresh request (an API
-// full sync or the periodic scan) supersedes any pending backoff.
+// enqueueDatabase queues a database for the checker. A fresh request (an API full
+// sync or the periodic scan) supersedes any pending backoff. A deleted row is never
+// queued: it is kept as history, and only the instance enumeration revives it.
 func (s *Syncer) enqueueDatabase(database *store.DatabaseMessage, _ *SyncOperation) {
+	if database == nil || database.Deleted {
+		return
+	}
 	key := database.String()
 	s.databaseSyncRetryMap.Delete(key)
 	s.databaseSyncMap.Store(key, database)
@@ -369,9 +373,6 @@ func (s *Syncer) trySyncAll(ctx context.Context) {
 	}
 	for _, database := range databases {
 		database := database
-		if database.Deleted {
-			continue
-		}
 		instance, ok := instancesMap[database.InstanceID]
 		if !ok {
 			continue
@@ -401,15 +402,6 @@ func (s *Syncer) SyncAllDatabases(ctx context.Context, operation *SyncOperation,
 		databases = nil
 	}
 	s.EnqueueDatabases(ctx, operation, databases)
-}
-
-// SyncDatabaseAsync queues one database for the periodic scan, which has no
-// operation to report to.
-func (s *Syncer) SyncDatabaseAsync(database *store.DatabaseMessage) {
-	if database == nil || database.Deleted {
-		return
-	}
-	s.enqueueDatabase(database, nil)
 }
 
 func (s *Syncer) QueueLineageAnalysis(metaGUID string, metaType storepb.MetaType) {

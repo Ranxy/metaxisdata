@@ -204,6 +204,10 @@ func (s *Service) Send(ctx context.Context, n *storepb.Notification) error {
 	if n.GetRecipientId() <= 0 {
 		return errors.New("notification recipient is required")
 	}
+	// The write is detached from the caller's cancellation. It reports work that
+	// already happened, and the caller is often an HTTP request: a user who closed
+	// the tab must not take the record of what the server did with it.
+	ctx = context.WithoutCancel(ctx)
 
 	key := n.GetDedupeKey()
 	if !s.claim(key) {
@@ -225,6 +229,8 @@ func (s *Service) SendToWorkspaceAdmins(ctx context.Context, n *storepb.Notifica
 	if n == nil {
 		return errors.New("notification is required")
 	}
+	// See Send: the message describes something that already happened.
+	ctx = context.WithoutCancel(ctx)
 
 	key := n.GetDedupeKey()
 	if !s.claim(key) {

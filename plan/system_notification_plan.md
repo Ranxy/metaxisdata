@@ -386,7 +386,7 @@ func (h *OpenLineageHandler) reportIngestionFailure(c echo.Context, key *store.O
 - **轮询**：登录后启动，`document.visibilityState === "visible"` 时每 30s 拉一次未读数；失败静默（轮询失败不应弹 toast）。在 `DefaultLayout.vue`（或 `App.vue`）挂载时 start、卸载/登出时 stop。
 - **深链**：schema 同步 → `/instances/{instanceId}`；OpenLineage 的拒收/失败 → `/openlineage/events`（`NAMESPACE_UNMAPPED` → `/settings/openlineage`，直接落到 namespace mapping 页面）。
 - **入口**：铃铛放在侧边栏底部而不是顶部栏——桌面端没有顶部栏，账号区就在侧边栏底部；移动端抽屉里有同一个铃铛。`/notifications` 不需要在 `menuItems` 再占一行，通过铃铛下拉的"查看全部"进入。
-- 顺手发现：`frontend/src/types/index.ts` 整个文件没有任何 import（其中的 `Notification` 接口是死代码）。新类型来自 `@/types/proto-es/v1/notification_service_pb`，建议一并删掉该文件或至少删掉那个同名接口，避免混淆。
+- 顺手清理：`frontend/src/types/index.ts` 整个文件没有任何 import，其中那个同名的 `Notification` 接口在新类型（`@/types/proto-es/v1/notification_service_pb`）出现后只会误导，已随本特性删除。
 
 ---
 

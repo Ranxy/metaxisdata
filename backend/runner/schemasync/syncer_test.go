@@ -299,18 +299,18 @@ func TestAcquireInstanceConnectionEnforcesTheLimit(t *testing.T) {
 	releaseThird()
 }
 
-func TestSyncDatabaseAsync(t *testing.T) {
+// A soft-deleted row is history, and only the instance enumeration revives it, so
+// the queue never grows one for the checker to open.
+func TestEnqueueDatabaseSkipsDeletedDatabases(t *testing.T) {
 	t.Parallel()
 
 	s := &Syncer{}
 
-	s.SyncDatabaseAsync(nil)
+	s.enqueueDatabase(nil, nil)
+	s.enqueueDatabase(&store.DatabaseMessage{Deleted: true}, nil)
 	require.Equal(t, 0, countDatabaseSyncMapItems(&s.databaseSyncMap))
 
-	s.SyncDatabaseAsync(&store.DatabaseMessage{Deleted: true})
-	require.Equal(t, 0, countDatabaseSyncMapItems(&s.databaseSyncMap))
-
-	s.SyncDatabaseAsync(&store.DatabaseMessage{InstanceID: "i1", DatabaseName: "d1"})
+	s.enqueueDatabase(&store.DatabaseMessage{InstanceID: "i1", DatabaseName: "d1"}, nil)
 	require.Equal(t, 1, countDatabaseSyncMapItems(&s.databaseSyncMap))
 }
 

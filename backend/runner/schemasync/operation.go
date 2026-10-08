@@ -107,6 +107,8 @@ func (s *Syncer) EnqueueDatabases(ctx context.Context, operation *SyncOperation,
 	}
 
 	for _, database := range databases {
+		// A database that cannot be synced is not registered either, or the
+		// operation would wait for a result that can never come.
 		if database == nil || database.Deleted {
 			continue
 		}
