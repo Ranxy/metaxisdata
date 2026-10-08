@@ -300,6 +300,18 @@ watch(pageSize, () => {
   void resetPages();
 });
 
+// A message the stream delivered belongs on the first page. Reloading while the reader
+// is further in would throw them back to the newest rows, so only the first page is kept
+// fresh; anything written while they are elsewhere is there when they walk back to it.
+watch(
+  () => store.arrivalSeq,
+  () => {
+    if (!hasPrevious.value) {
+      void refresh();
+    }
+  }
+);
+
 function textOf(notification: Notification) {
   return describeNotification(notification);
 }
