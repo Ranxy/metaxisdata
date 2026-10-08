@@ -12,7 +12,7 @@ import (
 //
 // omni's parseCreateView feeds the body to parseSelectStmt, which accepts only
 // a plain SELECT: a WITH clause, a set operation or a parenthesized body fails
-// with a syntax error (finding F2 in plan/starrocks_lineage_plan.md). Those
+// with a syntax error (finding F2 in .agents/docs/lineage-semantics.md). Those
 // bodies are extracted here and parsed as a top-level query, where all three
 // forms are supported.
 type viewDDL struct {

@@ -1,6 +1,6 @@
 name: TestRegressionLineage_Table
 # Regression cases for the defects tracked in
-# plan/mysql_lineage_optimization_plan.md. Edges are compared exactly, so an
+# .agents/docs/lineage-semantics.md. Edges are compared exactly, so an
 # unexpected extra edge fails the case.
 cases:
     - name: aliased star without catalog

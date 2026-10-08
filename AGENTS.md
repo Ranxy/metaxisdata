@@ -13,8 +13,6 @@ This file is the router: it holds only rules that apply across the whole reposit
 | `frontend/` — Vue 3 SPA | [frontend/AGENTS.md](frontend/AGENTS.md) |
 | `proto/` — ConnectRPC and store schemas | [proto/AGENTS.md](proto/AGENTS.md) |
 | `cli/` — the `mxd` client | [cli/AGENTS.md](cli/AGENTS.md) |
-| Connecting an MCP client, and what the endpoint promises | [docs/mcp.md](docs/mcp.md) |
-| Behavior that looks like a bug | [docs/security-posture.md](docs/security-posture.md) |
 
 ## What Metaxisdata Is
 
@@ -30,7 +28,19 @@ Product surface (routes in `frontend/src/router/index.ts`, sidebar in `frontend/
 - **Device** — the `/device` page approves a command line client's device login.
 - **MCP** — when `mcp_enabled` is on, `/mcp` serves the registry as read-only tools over the Model Context Protocol, and the same server is the OAuth 2.1 authorization server those clients register and authorize against (`/oauth/consent` is the page that records a user's decision).
 
-Feature design documents live in `spec/` (product/UX specs) and `plan/` (implementation plans). Read the matching doc before reworking one of these subsystems, and add one there for new subsystem-scale features.
+Feature design documents live in `.agents/docs/`, as maintenance references to the shipped feature. Read the matching one before reworking a subsystem, and write a new one there for a new subsystem-scale feature — there is no separate `plan/` or `spec/` tree.
+
+## Documentation
+
+Two trees, split by audience. `docs/` is read by operators and integrators; `.agents/docs/` holds the maintenance references an agent needs before changing a subsystem — what the feature is, what must not break, and where the code and tests live.
+
+| Read | When |
+| --- | --- |
+| [docs/mcp.md](docs/mcp.md) | Connecting an MCP client, and what the endpoint promises |
+| [docs/security-posture.md](docs/security-posture.md) | Behavior that looks like a bug — the deliberate, accepted decisions |
+| [.agents/docs/README.md](.agents/docs/README.md) | The index of maintenance references: lineage, MCP, IAM, notifications, schema sync, migrations, rate limiting, credentials, refresh tokens, environments, the CLI, the frontend |
+| [.agents/docs/security-open-items.md](.agents/docs/security-open-items.md) | Which security findings are still open |
+| [.agents/docs/backend-open-items.md](.agents/docs/backend-open-items.md) | Open engineering debt that has no subsystem reference of its own |
 
 ## Cross-Directory Invariants
 
@@ -67,6 +77,7 @@ Go integration suites run the real server against PostgreSQL + MySQL behind the 
 These look like defects but were chosen knowingly. Read [docs/security-posture.md](docs/security-posture.md) before "fixing" any of them.
 
 - **Authorization is workspace-scoped (single tenant)** — every member reads everything; writes need `workspaceAdmin`.
+- **Signup is open until an operator closes it, and the first account becomes the workspace administrator** — `DisallowSignup` is off by default.
 - **Stored credentials are encrypted with a per-deployment data key** (`v1:` AES-256-GCM, `backend/common/crypto`) — database read access recovers them all unless `METAXISDATA_ENCRYPTION_KEY` wraps that key with one kept outside the database.
 - **The CLI stores its token in clear text** (mode 0600).
 - **Analysis scopes live only in the process environment** (`METAXISDATA_SCOPES`), never persisted.

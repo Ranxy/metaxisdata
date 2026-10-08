@@ -20,6 +20,10 @@ Rule of thumb: once a helper grows a `ref`, imports `@/api`, or calls `useI18n()
 
 `utils/`, `lib/` and `composables/` are the coverage-guarded layer: `vitest.config.ts` sets per-file thresholds (95% lines/functions/statements, 85% branches) and scopes `coverage.include` to those three directories, so a new file there with no test fails the run at 0% instead of being absent from the report. Components and pages are outside the thresholds deliberately — test a concrete interaction, not a percentage.
 
+## Bundle Shape: Monaco
+
+`src/components/monaco-editor/monaco.ts` imports `monaco-editor/esm/vs/editor/editor.api` and side-effect imports the twelve editor contributions it needs, registering SQL from `basic-languages/sql/sql.js` by hand. Do **not** switch to `sql.contribution`: it imports `basic-languages/_contribution`, which side-effect imports every editor contribution, undoing the trim (measured: 7.0 MB `dist` / 3.51 MB chunk, against 6.4 MB / 2.94 MB assembled by hand). `Language` is `"sql" | "plaintext"`, only `editor.worker` is emitted, and `monaco.test.ts` pins the registered language set.
+
 ## i18n
 
 - All user-facing display text goes through vue-i18n in `src/locales/{en-US,zh-CN}.json` — add the key to both locales. ESLint enforces missing and unused keys.
@@ -67,6 +71,7 @@ Vitest with jsdom (`vitest.config.ts`), colocated with source as `*.test.ts(x)`;
 
 ## Conventions
 
+- Layout and information-architecture invariants — no desktop top bar, one scroll container, the width policy, and the lineage canvas' visual encoding — are in [.agents/docs/frontend-ui.md](../.agents/docs/frontend-ui.md). Do not break the skeleton; `pnpm --dir frontend audit:ui` catches the measurable regressions.
 - Prefer shared shadcn-vue primitives from `src/components/ui/` over hand-rolled markup.
 - Call the API through the ConnectRPC clients in `src/api/client.ts`, not ad-hoc fetch.
 - `src/types/proto-es/` is buf output — regenerate with `cd proto && buf generate`, never hand-edit.

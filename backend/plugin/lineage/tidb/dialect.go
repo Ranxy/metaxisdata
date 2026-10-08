@@ -7,8 +7,8 @@
 // `go generate ./backend/plugin/lineage/mysql`.
 //
 // Known gaps and their intended resolution are tracked in
-// plan/mysql_lineage_optimization_plan.md; defects in omni itself are recorded
-// in docs/omni_upstream_defects.md.
+// .agents/docs/lineage-semantics.md; defects in omni itself are recorded
+// in .agents/docs/omni-upstream-defects.md.
 package tidb
 
 import (
@@ -41,7 +41,7 @@ func Registration() lineage.EngineRegistration {
 // valuesQueryPrimary returns the VALUES query primary of a select statement. This
 // dialect's AST has no field for the form — omni models a VALUES row set only as a
 // standalone statement here — so a `VALUES` primary in a derived table or a set
-// operation stays unrepresentable. See docs/omni_upstream_defects.md.
+// operation stays unrepresentable. See .agents/docs/omni-upstream-defects.md.
 func valuesQueryPrimary(*nodes.SelectStmt) *nodes.ValuesStmt {
 	return nil
 }

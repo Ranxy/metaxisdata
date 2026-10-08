@@ -1,6 +1,6 @@
 package mcp_test
 
-// Phase 0 spike for plan/mcp_server_plan.md.
+// Phase 0 spike for .agents/docs/mcp-server.md.
 //
 // These tests touch no Backend code: they exercise only the MCP Go SDK, to pin
 // the behaviors the server-side MCP design depends on. They are kept as a

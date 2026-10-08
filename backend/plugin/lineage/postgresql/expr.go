@@ -193,7 +193,7 @@ func stringList(list *pgast.List) []string {
 // materialise parentheses as nodes, so an operation can never be wrapped in a
 // non-operation node and the top-level switch is decisive. Classification is a
 // pure function of the AST; no source text is scanned (see
-// plan/postgresql_expression_transformation_plan.md).
+// .agents/docs/lineage-semantics.md).
 // ---------------------------------------------------------------------------
 
 // isExpressionDerived reports whether a target expression derives from its

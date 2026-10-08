@@ -314,7 +314,7 @@ func configureGrpcRouters(
 	// same ceiling as the endpoints that mint credentials. Each route carries its
 	// own per-address budget: pointing all four at one limiter would tighten the
 	// anonymous OAuth surface four-fold, which is the open I2 question in
-	// docs/security-review-2026-10.md rather than a decision to make here.
+	// .agents/docs/security-open-items.md rather than a decision to make here.
 	e.GET("/oauth/authorize", echo.WrapHandler(oauthServer.Audited(oauthServer.AuthorizeHandler())), oauthEndpointMiddleware(profile.TrustedProxies))
 	e.GET("/oauth/authorize/complete", echo.WrapHandler(oauthServer.Audited(oauthServer.CompletionHandler())), oauthEndpointMiddleware(profile.TrustedProxies))
 	e.POST("/oauth/token", echo.WrapHandler(oauthServer.Audited(oauthServer.TokenHandler())), oauthEndpointMiddleware(profile.TrustedProxies))

@@ -7,8 +7,8 @@
 // `go generate ./backend/plugin/lineage/mysql`.
 //
 // Known gaps and their intended resolution are tracked in
-// plan/mysql_lineage_optimization_plan.md; defects in omni itself are recorded
-// in docs/omni_upstream_defects.md.
+// .agents/docs/lineage-semantics.md; defects in omni itself are recorded
+// in .agents/docs/omni-upstream-defects.md.
 package mariadb
 
 import (
@@ -48,7 +48,7 @@ func valuesQueryPrimary(stmt *nodes.SelectStmt) *nodes.ValuesStmt {
 // rowAliasNames returns the row alias an INSERT's VALUES row declares. MariaDB has
 // no row aliases in INSERT ... VALUES ... ON DUPLICATE KEY UPDATE, and omni's
 // MariaDB AST has no field for one either, so the form is absent in this dialect.
-// See docs/omni_upstream_defects.md.
+// See .agents/docs/omni-upstream-defects.md.
 func rowAliasNames(*nodes.InsertStmt) (string, []string) {
 	return "", nil
 }
