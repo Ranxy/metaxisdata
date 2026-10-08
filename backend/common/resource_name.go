@@ -32,6 +32,7 @@ const (
 	OpenLineageRunPrefix       = "openlineage/runs/"
 	OpenLineageTaskPrefix      = "openlineage/tasks/"
 	APIKeyPrefix               = "openlineage/apiKeys/"
+	NotificationPrefix         = "notifications/"
 )
 
 // GetOpenLineageToken returns the last segment of an OpenLineage resource name.
@@ -206,6 +207,24 @@ func GetNameParentTokens(name string, tokenPrefixes ...string) ([]string, error)
 
 func FormatWorkspace(id string) string {
 	return fmt.Sprintf("%s%s", WorkspacePrefix, id)
+}
+
+// GetNotificationID returns the notification ID from its resource name.
+func GetNotificationID(name string) (int64, error) {
+	tokens, err := GetNameParentTokens(name, WorkspacePrefix, NotificationPrefix)
+	if err != nil {
+		return 0, err
+	}
+	id, err := strconv.ParseInt(tokens[1], 10, 64)
+	if err != nil {
+		return 0, errors.Errorf("invalid notification ID %q", tokens[1])
+	}
+	return id, nil
+}
+
+// FormatNotification formats a notification resource name.
+func FormatNotification(workspaceID string, id int64) string {
+	return fmt.Sprintf("%s/%s%d", FormatWorkspace(workspaceID), NotificationPrefix, id)
 }
 
 func FormatUserUID(uid int) string {

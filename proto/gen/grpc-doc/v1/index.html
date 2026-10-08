@@ -1154,6 +1154,85 @@
         
           
           <li>
+            <a href="#v1%2fnotification_service.proto">v1/notification_service.proto</a>
+            <ul>
+              
+                <li>
+                  <a href="#metaxisdata.v1.BatchMarkNotificationsReadRequest"><span class="badge">M</span>BatchMarkNotificationsReadRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.DeleteNotificationRequest"><span class="badge">M</span>DeleteNotificationRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetUnreadNotificationCountRequest"><span class="badge">M</span>GetUnreadNotificationCountRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetUnreadNotificationCountResponse"><span class="badge">M</span>GetUnreadNotificationCountResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListNotificationsRequest"><span class="badge">M</span>ListNotificationsRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListNotificationsResponse"><span class="badge">M</span>ListNotificationsResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.MarkAllNotificationsReadRequest"><span class="badge">M</span>MarkAllNotificationsReadRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.Notification"><span class="badge">M</span>Notification</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.OpenLineageDetail"><span class="badge">M</span>OpenLineageDetail</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.SchemaSyncDetail"><span class="badge">M</span>SchemaSyncDetail</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.SyncDatabaseResult"><span class="badge">M</span>SyncDatabaseResult</a>
+                </li>
+              
+              
+                <li>
+                  <a href="#metaxisdata.v1.NotificationSeverity"><span class="badge">E</span>NotificationSeverity</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.NotificationType"><span class="badge">E</span>NotificationType</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.OpenLineageFailureKind"><span class="badge">E</span>OpenLineageFailureKind</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.SyncDatabaseState"><span class="badge">E</span>SyncDatabaseState</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.SyncTrigger"><span class="badge">E</span>SyncTrigger</a>
+                </li>
+              
+              
+              
+                <li>
+                  <a href="#metaxisdata.v1.NotificationService"><span class="badge">S</span>NotificationService</a>
+                </li>
+              
+            </ul>
+          </li>
+        
+          
+          <li>
             <a href="#v1%2foauth_service.proto">v1/oauth_service.proto</a>
             <ul>
               
@@ -12339,6 +12418,790 @@ GetLineage.</p></td>
                 <td>POST</td>
                 <td>/v1/llm-provider-profiles:fetchModels</td>
                 <td>*</td>
+              </tr>
+              
+            
+            </tbody>
+          </table>
+          
+        
+    
+      
+      <div class="file-heading">
+        <h2 id="v1/notification_service.proto">v1/notification_service.proto</h2><a href="#title">Top</a>
+      </div>
+      <p></p>
+
+      
+        <h3 id="metaxisdata.v1.BatchMarkNotificationsReadRequest">BatchMarkNotificationsReadRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>names</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>Format: workspaces/{workspace}/notifications/{id} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.DeleteNotificationRequest">DeleteNotificationRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/notifications/{id} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.GetUnreadNotificationCountRequest">GetUnreadNotificationCountRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.GetUnreadNotificationCountResponse">GetUnreadNotificationCountResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>unread_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListNotificationsRequest">ListNotificationsRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The maximum number of notifications to return. If unspecified, at most 50
+are returned. The maximum value is 1000; values above 1000 are coerced to
+1000. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A page token, received from a previous ListNotifications call. Provide this
+to retrieve the subsequent page. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>unread_only</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Return only unread notifications. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListNotificationsResponse">ListNotificationsResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>notifications</td>
+                  <td><a href="#metaxisdata.v1.Notification">Notification</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.MarkAllNotificationsReadRequest">MarkAllNotificationsReadRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.Notification">Notification</h3>
+        <p>Notification is one in-app message for one recipient.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/notifications/{id} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>create_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>type</td>
+                  <td><a href="#metaxisdata.v1.NotificationType">NotificationType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>severity</td>
+                  <td><a href="#metaxisdata.v1.NotificationSeverity">NotificationSeverity</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>read_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p>When the recipient read it. Unset means unread. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>schema_sync</td>
+                  <td><a href="#metaxisdata.v1.SchemaSyncDetail">SchemaSyncDetail</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>openlineage</td>
+                  <td><a href="#metaxisdata.v1.OpenLineageDetail">OpenLineageDetail</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.OpenLineageDetail">OpenLineageDetail</h3>
+        <p>OpenLineageDetail reports an OpenLineage ingestion failure, or a dataset that</p><p>fell through to an external dataset.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>kind</td>
+                  <td><a href="#metaxisdata.v1.OpenLineageFailureKind">OpenLineageFailureKind</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>namespace</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The namespace named by the event. Empty when the event did not parse. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>job</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>run_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>dataset</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The dataset that did not resolve. Only set for NAMESPACE_UNMAPPED. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>api_key</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The masked identifier of the ingestion key that submitted the request,
+never the key itself. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>received_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many events the request carried and how many of them failed. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>failed_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>error</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.SchemaSyncDetail">SchemaSyncDetail</h3>
+        <p>SchemaSyncDetail reports one sync operation: the instance metadata step plus</p><p>every database that operation queued.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>instance</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: instances/{instance} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>instance_title</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The instance&#39;s display name, so the client can render the message without a
+second read. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>trigger</td>
+                  <td><a href="#metaxisdata.v1.SyncTrigger">SyncTrigger</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>instance_error</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Why the instance metadata step failed. Empty when it succeeded. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>databases</td>
+                  <td><a href="#metaxisdata.v1.SyncDatabaseResult">SyncDatabaseResult</a></td>
+                  <td>repeated</td>
+                  <td><p>The databases this message names, each with its outcome: the ones that failed
+or never reported for an instance-wide sync, and the database itself for a sync
+of one database. Successful databases are counted rather than listed. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>succeeded_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>failed_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>unfinished_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.SyncDatabaseResult">SyncDatabaseResult</h3>
+        <p>SyncDatabaseResult is one database's outcome in a schema sync operation.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>database</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: instances/{instance}/databases/{database} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>state</td>
+                  <td><a href="#metaxisdata.v1.SyncDatabaseState">SyncDatabaseState</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>error</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The sync error. Empty for UNFINISHED. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+
+      
+        <h3 id="metaxisdata.v1.NotificationSeverity">NotificationSeverity</h3>
+        <p>NotificationSeverity ranks a notification for its recipient.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>NOTIFICATION_SEVERITY_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>NOTIFICATION_SEVERITY_INFO</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>NOTIFICATION_SEVERITY_WARNING</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>NOTIFICATION_SEVERITY_ERROR</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.NotificationType">NotificationType</h3>
+        <p>NotificationType is what a notification is about. It selects which detail</p><p>message the notification carries.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>NOTIFICATION_TYPE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>NOTIFICATION_TYPE_SCHEMA_SYNC</td>
+                <td>1</td>
+                <td><p>The outcome of one schema sync operation.</p></td>
+              </tr>
+            
+              <tr>
+                <td>NOTIFICATION_TYPE_OPENLINEAGE</td>
+                <td>2</td>
+                <td><p>An OpenLineage ingestion failure, or a dataset that could not be matched
+to a registered instance.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.OpenLineageFailureKind">OpenLineageFailureKind</h3>
+        <p>OpenLineageFailureKind is why an OpenLineage request produced no lineage.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>OPENLINEAGE_FAILURE_KIND_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>OPENLINEAGE_FAILURE_KIND_INVALID_EVENT</td>
+                <td>1</td>
+                <td><p>The event could not be parsed, or crossed a per-event limit.</p></td>
+              </tr>
+            
+              <tr>
+                <td>OPENLINEAGE_FAILURE_KIND_LIMIT_EXCEEDED</td>
+                <td>2</td>
+                <td><p>The request body or the batch crossed a transport limit.</p></td>
+              </tr>
+            
+              <tr>
+                <td>OPENLINEAGE_FAILURE_KIND_SCOPE_MISMATCH</td>
+                <td>3</td>
+                <td><p>The event&#39;s namespace is not the one the ingestion key is scoped to.</p></td>
+              </tr>
+            
+              <tr>
+                <td>OPENLINEAGE_FAILURE_KIND_PERSIST_FAILED</td>
+                <td>4</td>
+                <td><p>The event could not be persisted.</p></td>
+              </tr>
+            
+              <tr>
+                <td>OPENLINEAGE_FAILURE_KIND_PROCESS_FAILED</td>
+                <td>5</td>
+                <td><p>The event was persisted but its lineage could not be derived.</p></td>
+              </tr>
+            
+              <tr>
+                <td>OPENLINEAGE_FAILURE_KIND_NAMESPACE_UNMAPPED</td>
+                <td>6</td>
+                <td><p>The dataset matched no registered instance and was stored as an external
+dataset, so any lineage naming it points at something the registry does not
+describe. Check the instance&#39;s data source host and port, or add a
+namespace mapping.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.SyncDatabaseState">SyncDatabaseState</h3>
+        <p>SyncDatabaseState is one database's outcome within a sync operation.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>SYNC_DATABASE_STATE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>SYNC_DATABASE_STATE_SUCCEEDED</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>SYNC_DATABASE_STATE_FAILED</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>SYNC_DATABASE_STATE_UNFINISHED</td>
+                <td>3</td>
+                <td><p>The operation ended before this database produced a result, because its
+deadline passed or its instance disappeared.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.SyncTrigger">SyncTrigger</h3>
+        <p>SyncTrigger is what started the sync operation a notification reports.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>SYNC_TRIGGER_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>SYNC_TRIGGER_MANUAL</td>
+                <td>1</td>
+                <td><p>A user asked for it. The initiator is the recipient.</p></td>
+              </tr>
+            
+              <tr>
+                <td>SYNC_TRIGGER_BACKGROUND</td>
+                <td>2</td>
+                <td><p>The periodic scan asked for it, so there is no initiator and the workspace
+administrators are the recipients.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+
+      
+
+      
+        <h3 id="metaxisdata.v1.NotificationService">NotificationService</h3>
+        <p>NotificationService serves the caller's own in-app messages: the outcome of a</p><p>sync operation they asked for, and the ingestion failures a workspace</p><p>administrator needs to see.</p><p>No method here carries a (metaxisdata.v1.permission) annotation, and none is</p><p>reachable without credentials. An inbox belongs to one principal, which the</p><p>workspace-scoped IAM catalog cannot express: every handler therefore scopes</p><p>its query by the authenticated caller's id, the same way UserService's</p><p>self-service paths do. Gating these methods on a permission instead would</p><p>lock a custom role out of its own messages.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Method Name</td><td>Request Type</td><td>Response Type</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>ListNotifications</td>
+                <td><a href="#metaxisdata.v1.ListNotificationsRequest">ListNotificationsRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListNotificationsResponse">ListNotificationsResponse</a></td>
+                <td><p>List the caller&#39;s notifications, newest first.</p></td>
+              </tr>
+            
+              <tr>
+                <td>GetUnreadNotificationCount</td>
+                <td><a href="#metaxisdata.v1.GetUnreadNotificationCountRequest">GetUnreadNotificationCountRequest</a></td>
+                <td><a href="#metaxisdata.v1.GetUnreadNotificationCountResponse">GetUnreadNotificationCountResponse</a></td>
+                <td><p>Count the caller&#39;s unread notifications.</p></td>
+              </tr>
+            
+              <tr>
+                <td>BatchMarkNotificationsRead</td>
+                <td><a href="#metaxisdata.v1.BatchMarkNotificationsReadRequest">BatchMarkNotificationsReadRequest</a></td>
+                <td><a href="#google.protobuf.Empty">.google.protobuf.Empty</a></td>
+                <td><p>Mark the named notifications read. Already-read notifications are left
+alone, so the call is idempotent.</p></td>
+              </tr>
+            
+              <tr>
+                <td>MarkAllNotificationsRead</td>
+                <td><a href="#metaxisdata.v1.MarkAllNotificationsReadRequest">MarkAllNotificationsReadRequest</a></td>
+                <td><a href="#google.protobuf.Empty">.google.protobuf.Empty</a></td>
+                <td><p>Mark every unread notification of the caller read.</p></td>
+              </tr>
+            
+              <tr>
+                <td>DeleteNotification</td>
+                <td><a href="#metaxisdata.v1.DeleteNotificationRequest">DeleteNotificationRequest</a></td>
+                <td><a href="#google.protobuf.Empty">.google.protobuf.Empty</a></td>
+                <td><p>Delete one of the caller&#39;s notifications.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+
+        
+          
+          
+          <h4>Methods with HTTP bindings</h4>
+          <table>
+            <thead>
+              <tr>
+                <td>Method Name</td>
+                <td>Method</td>
+                <td>Pattern</td>
+                <td>Body</td>
+              </tr>
+            </thead>
+            <tbody>
+            
+              
+              
+              <tr>
+                <td>ListNotifications</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/notifications</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetUnreadNotificationCount</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/notifications:unreadCount</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>BatchMarkNotificationsRead</td>
+                <td>POST</td>
+                <td>/v1/{parent=workspaces/*}/notifications:batchMarkRead</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>MarkAllNotificationsRead</td>
+                <td>POST</td>
+                <td>/v1/{parent=workspaces/*}/notifications:markAllRead</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>DeleteNotification</td>
+                <td>DELETE</td>
+                <td>/v1/{name=workspaces/*/notifications/*}</td>
+                <td></td>
               </tr>
               
             

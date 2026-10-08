@@ -1,0 +1,150 @@
+syntax = "proto3";
+
+package metaxisdata.store;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "generated-go/store";
+
+// NotificationType is what a notification is about. It selects which detail
+// message the notification carries.
+enum NotificationType {
+  NOTIFICATION_TYPE_UNSPECIFIED = 0;
+  // The outcome of one schema sync operation.
+  NOTIFICATION_TYPE_SCHEMA_SYNC = 1;
+  // An OpenLineage ingestion failure, or a dataset that could not be matched
+  // to a registered instance.
+  NOTIFICATION_TYPE_OPENLINEAGE = 2;
+}
+
+// NotificationSeverity ranks a notification for the recipient.
+enum NotificationSeverity {
+  NOTIFICATION_SEVERITY_UNSPECIFIED = 0;
+  NOTIFICATION_SEVERITY_INFO = 1;
+  NOTIFICATION_SEVERITY_WARNING = 2;
+  NOTIFICATION_SEVERITY_ERROR = 3;
+}
+
+// SyncTrigger is what started the sync operation a notification reports.
+enum SyncTrigger {
+  SYNC_TRIGGER_UNSPECIFIED = 0;
+  // A user asked for it, through an API call or in the UI. The initiator is the
+  // recipient.
+  SYNC_TRIGGER_MANUAL = 1;
+  // The periodic scan asked for it, so there is no initiator; the workspace
+  // administrators are the recipients.
+  SYNC_TRIGGER_BACKGROUND = 2;
+}
+
+// SyncDatabaseState is one database's outcome within a sync operation.
+enum SyncDatabaseState {
+  SYNC_DATABASE_STATE_UNSPECIFIED = 0;
+  SYNC_DATABASE_STATE_SUCCEEDED = 1;
+  SYNC_DATABASE_STATE_FAILED = 2;
+  // The operation ended before this database produced a result, because its
+  // deadline passed or its instance disappeared.
+  SYNC_DATABASE_STATE_UNFINISHED = 3;
+}
+
+// OpenLineageFailureKind is why an OpenLineage request produced no lineage.
+enum OpenLineageFailureKind {
+  OPENLINEAGE_FAILURE_KIND_UNSPECIFIED = 0;
+  // The event could not be parsed, or crossed a per-event limit.
+  OPENLINEAGE_FAILURE_KIND_INVALID_EVENT = 1;
+  // The request body or the batch crossed a transport limit.
+  OPENLINEAGE_FAILURE_KIND_LIMIT_EXCEEDED = 2;
+  // The event's namespace is not the one the ingestion key is scoped to.
+  OPENLINEAGE_FAILURE_KIND_SCOPE_MISMATCH = 3;
+  // The event could not be persisted.
+  OPENLINEAGE_FAILURE_KIND_PERSIST_FAILED = 4;
+  // The event was persisted but its lineage could not be derived.
+  OPENLINEAGE_FAILURE_KIND_PROCESS_FAILED = 5;
+  // The dataset matched no registered instance and was stored as an external
+  // dataset, so any lineage naming it points at something the registry does not
+  // describe.
+  OPENLINEAGE_FAILURE_KIND_NAMESPACE_UNMAPPED = 6;
+}
+
+// Notification is one in-app message for one recipient: the outcome of a sync
+// operation the recipient asked for, or an ingestion failure the workspace
+// administrators need to see. It is personal data, so every read is scoped by
+// recipient_id rather than by the workspace.
+//
+// id, create_time, recipient_id, read_time and dedupe_key are columns of the
+// notification table and are not written into the payload; the store stamps
+// them on insert and fills them from the row on read, so the payload and the
+// columns cannot disagree. The payload holds only the message proper.
+message Notification {
+  // The notification row's primary key.
+  int64 id = 1;
+  google.protobuf.Timestamp create_time = 2;
+  // Format: workspaces/{workspace}
+  string parent = 3;
+  // The principal id this message is for.
+  int32 recipient_id = 4;
+  NotificationType type = 5;
+  NotificationSeverity severity = 6;
+  // When the recipient read it. Unset means unread. Backed by notification.read_at,
+  // not by the payload, so the unread count can be answered from a partial index.
+  google.protobuf.Timestamp read_time = 7;
+  // Notification deduplication key, empty when the message is not deduplicated.
+  // Format: <event>:<target>:<bucket>, where the bucket is a timestamp aligned
+  // to the event's suppression window.
+  string dedupe_key = 8;
+
+  // The body, interpreted by type. The server stores no prose: the client
+  // renders the localized text from the detail and its own catalogs.
+  oneof detail {
+    SchemaSyncDetail schema_sync = 9;
+    OpenLineageDetail openlineage = 10;
+  }
+}
+
+// SchemaSyncDetail reports one sync operation: the instance metadata step plus
+// every database that was queued by it.
+message SchemaSyncDetail {
+  // Format: instances/{instance}
+  string instance = 1;
+  // The instance's display name, so a client can render the message without a
+  // second read.
+  string instance_title = 2;
+  SyncTrigger trigger = 3;
+  // Why the instance metadata step failed. Empty when it succeeded.
+  string instance_error = 4;
+  // The databases this message names, each with its outcome: the ones that failed
+  // or never reported for an instance-wide sync, and the database itself for a sync
+  // of one database. Successful databases are counted rather than listed, and the
+  // list is capped; the counts below carry the whole picture.
+  repeated SyncDatabaseResult databases = 5;
+  int32 succeeded_count = 6;
+  int32 failed_count = 7;
+  int32 unfinished_count = 8;
+}
+
+// SyncDatabaseResult is one database's outcome in a schema sync operation.
+message SyncDatabaseResult {
+  // Format: instances/{instance}/databases/{database}
+  string database = 1;
+  SyncDatabaseState state = 2;
+  // Truncated before it is stored, so one runaway error cannot bloat the row.
+  string error = 3;
+}
+
+// OpenLineageDetail reports an OpenLineage ingestion failure, or a dataset that
+// fell through to an external dataset.
+message OpenLineageDetail {
+  OpenLineageFailureKind kind = 1;
+  // The namespace named by the event. Empty when the event did not parse.
+  string namespace = 2;
+  string job = 3;
+  string run_id = 4;
+  // The dataset that did not resolve. Only set for NAMESPACE_UNMAPPED.
+  string dataset = 5;
+  // The masked identifier of the ingestion key that submitted the request.
+  string api_key = 6;
+  // How many events this request carried and how many of them failed.
+  int32 received_count = 7;
+  int32 failed_count = 8;
+  // Truncated before it is stored.
+  string error = 9;
+}

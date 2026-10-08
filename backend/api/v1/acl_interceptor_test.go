@@ -130,6 +130,15 @@ var unannotatedMethods = map[string]bool{
 	"metaxisdata.v1.UserService.GetCurrentUser":                    true,
 	"metaxisdata.v1.UserService.CreateUser":                        true,
 	"metaxisdata.v1.UserService.UpdateUser":                        true,
+	// An inbox belongs to one principal. The workspace-scoped catalog cannot say
+	// "only mine", so these methods scope every query by the authenticated
+	// caller's id instead of naming a permission: gating them would lock a custom
+	// role out of its own messages.
+	"metaxisdata.v1.NotificationService.ListNotifications":          true,
+	"metaxisdata.v1.NotificationService.GetUnreadNotificationCount": true,
+	"metaxisdata.v1.NotificationService.BatchMarkNotificationsRead": true,
+	"metaxisdata.v1.NotificationService.MarkAllNotificationsRead":   true,
+	"metaxisdata.v1.NotificationService.DeleteNotification":         true,
 }
 
 // TestEveryMethodIsPermissionGated is the read-path guard the authorization

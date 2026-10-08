@@ -39,6 +39,11 @@ type ResolutionStore interface {
 type Resolver struct {
 	store ResolutionStore
 
+	// reporter is what turns "this dataset fell through to an external dataset"
+	// into something an administrator sees. It is only reached for ingestion: the
+	// read paths resolve previews, which never warn.
+	reporter UnmatchedNamespaceReporter
+
 	// requestScoped enables per-request memoization of dataset previews, of what
 	// one namespace resolves to, and of the instance list. Without it a read
 	// endpoint re-resolves every dataset once per run, lists every instance once per
@@ -86,9 +91,17 @@ type resolvedInstance struct {
 	database string
 }
 
-// NewResolver creates a new Resolver.
-func NewResolver(s ResolutionStore) *Resolver {
-	return &Resolver{store: s, warnedNamespaces: make(map[string]struct{})}
+// UnmatchedNamespaceReporter is told about a dataset that matched no registered
+// instance and was stored as an external dataset, so the lineage naming it points
+// at something the registry does not describe. Ingestion wires the workspace
+// notification service here; a nil reporter leaves the log as the record.
+type UnmatchedNamespaceReporter interface {
+	ReportUnmatchedNamespace(ctx context.Context, namespace, dataset string)
+}
+
+// NewResolver creates a new Resolver. reporter may be nil.
+func NewResolver(s ResolutionStore, reporter UnmatchedNamespaceReporter) *Resolver {
+	return &Resolver{store: s, reporter: reporter, warnedNamespaces: make(map[string]struct{})}
 }
 
 // NewRequestScopedResolver creates a Resolver that memoizes lookups for the
@@ -118,7 +131,7 @@ func (r *Resolver) ResolveDataset(ctx context.Context, namespace, datasetName st
 		return resolved, nil
 	}
 
-	r.warnUnmatchedNamespace(namespace, datasetName)
+	r.warnUnmatchedNamespace(ctx, namespace, datasetName)
 
 	if _, err := r.store.GetOrCreateExternalDataset(ctx, namespace, datasetName, datasetTypeFromNamespace(namespace)); err != nil {
 		return nil, errors.Wrap(err, "failed to get or create external dataset")
@@ -132,7 +145,7 @@ func (r *Resolver) ResolveDataset(ctx context.Context, namespace, datasetName st
 // with one spelling of an address and the producer using another - a host alias
 // or a different port - which used to leave no trace at all: the lineage simply
 // pointed at an external dataset that looked deliberate.
-func (r *Resolver) warnUnmatchedNamespace(namespace, datasetName string) {
+func (r *Resolver) warnUnmatchedNamespace(ctx context.Context, namespace, datasetName string) {
 	r.warnedMu.Lock()
 	if _, seen := r.warnedNamespaces[namespace]; seen {
 		r.warnedMu.Unlock()
@@ -149,6 +162,12 @@ func (r *Resolver) warnUnmatchedNamespace(namespace, datasetName string) {
 		"port", port,
 		"hint", "check the instance's data source host and port, or add a namespace mapping to associate them",
 	)
+
+	// The gate above is also what keeps the notification to one per namespace per
+	// process; the sink deduplicates across restarts and replicas on top of that.
+	if r.reporter != nil {
+		r.reporter.ReportUnmatchedNamespace(ctx, namespace, datasetName)
+	}
 }
 
 // ResolveDatasetPreview resolves an OpenLineage dataset without creating external-dataset rows.

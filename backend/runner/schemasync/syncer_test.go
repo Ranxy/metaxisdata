@@ -299,26 +299,51 @@ func TestAcquireInstanceConnectionEnforcesTheLimit(t *testing.T) {
 	releaseThird()
 }
 
-func TestSyncDatabaseAsync(t *testing.T) {
+// A soft-deleted row is history, and only the instance enumeration revives it, so
+// the queue never grows one for the checker to open.
+func TestEnqueueDatabaseSkipsDeletedDatabases(t *testing.T) {
 	t.Parallel()
 
 	s := &Syncer{}
 
-	s.SyncDatabaseAsync(nil)
+	s.enqueueDatabase(nil, nil)
+	s.enqueueDatabase(&store.DatabaseMessage{Deleted: true}, nil)
 	require.Equal(t, 0, countDatabaseSyncMapItems(&s.databaseSyncMap))
 
-	s.SyncDatabaseAsync(&store.DatabaseMessage{Deleted: true})
-	require.Equal(t, 0, countDatabaseSyncMapItems(&s.databaseSyncMap))
-
-	s.SyncDatabaseAsync(&store.DatabaseMessage{InstanceID: "i1", DatabaseName: "d1"})
+	s.enqueueDatabase(&store.DatabaseMessage{InstanceID: "i1", DatabaseName: "d1"}, nil)
 	require.Equal(t, 1, countDatabaseSyncMapItems(&s.databaseSyncMap))
+}
 
-	s.SyncDatabasesAsync([]*store.DatabaseMessage{
-		{InstanceID: "i1", DatabaseName: "d2"},
+// An operation waits for the databases it queued: they are registered before they
+// are queued, and the ones that can never be synced are not registered at all.
+func TestEnqueueDatabasesRegistersWhatTheOperationWaitsFor(t *testing.T) {
+	t.Parallel()
+
+	s := &Syncer{}
+	instance := &store.InstanceMessage{ResourceID: "inst-1"}
+	databases := []*store.DatabaseMessage{
+		{InstanceID: "inst-1", DatabaseName: "d1"},
 		nil,
-		{InstanceID: "i1", DatabaseName: "d3", Deleted: true},
-	})
+		{InstanceID: "inst-1", DatabaseName: "gone", Deleted: true},
+		{InstanceID: "inst-1", DatabaseName: "d2"},
+	}
+
+	operation := s.StartOperation(storepb.SyncTrigger_SYNC_TRIGGER_MANUAL, 7, instance)
+	s.RecordInstanceResult(context.Background(), operation, nil)
+	s.EnqueueDatabases(context.Background(), operation, databases)
+
 	require.Equal(t, 2, countDatabaseSyncMapItems(&s.databaseSyncMap))
+	operation.mu.Lock()
+	require.Len(t, operation.pending, 2)
+	require.True(t, operation.sealed)
+	operation.mu.Unlock()
+
+	// Both databases report, and the operation finishes into exactly one message.
+	s.completeDatabase(context.Background(), databases[0], nil)
+	s.completeDatabase(context.Background(), databases[3], nil)
+
+	require.Empty(t, s.operations)
+	require.Equal(t, 2, operation.succeeded)
 }
 
 func countDatabaseSyncMapItems(m *sync.Map) int {
@@ -435,7 +460,7 @@ func TestScheduleRetryBacksOffAndGivesUp(t *testing.T) {
 	require.Equal(t, 2, mustDatabaseRetry(t, syncer, key).attempts)
 
 	// A fresh enqueue supersedes the pending backoff.
-	syncer.enqueueDatabase(database)
+	syncer.enqueueDatabase(database, nil)
 	_, ok := syncer.databaseSyncRetryMap.Load(key)
 	require.False(t, ok)
 
@@ -464,7 +489,7 @@ func TestRetryDueHonorsBackoff(t *testing.T) {
 	require.False(t, syncer.retryDue(key, time.Now()), "a failed database must not be retried before its backoff")
 	require.True(t, syncer.retryDue(key, time.Now().Add(databaseSyncRetryBackoff(1)+time.Second)))
 
-	syncer.enqueueDatabase(database)
+	syncer.enqueueDatabase(database, nil)
 	require.True(t, syncer.retryDue(key, time.Now()), "a fresh enqueue clears the backoff")
 }
 

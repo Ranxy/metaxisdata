@@ -92,6 +92,18 @@
 - [store/meta.proto](#store_meta-proto)
     - [MetaType](#metaxisdata-store-MetaType)
   
+- [store/notification.proto](#store_notification-proto)
+    - [Notification](#metaxisdata-store-Notification)
+    - [OpenLineageDetail](#metaxisdata-store-OpenLineageDetail)
+    - [SchemaSyncDetail](#metaxisdata-store-SchemaSyncDetail)
+    - [SyncDatabaseResult](#metaxisdata-store-SyncDatabaseResult)
+  
+    - [NotificationSeverity](#metaxisdata-store-NotificationSeverity)
+    - [NotificationType](#metaxisdata-store-NotificationType)
+    - [OpenLineageFailureKind](#metaxisdata-store-OpenLineageFailureKind)
+    - [SyncDatabaseState](#metaxisdata-store-SyncDatabaseState)
+    - [SyncTrigger](#metaxisdata-store-SyncTrigger)
+  
 - [store/policy.proto](#store_policy-proto)
     - [Binding](#metaxisdata-store-Binding)
     - [IamPolicy](#metaxisdata-store-IamPolicy)
@@ -1592,6 +1604,190 @@ Instance is the proto for instances.
 | FUNCTION | 11 |  |
 | SEQUENCE | 12 |  |
 | OPENLINEAGE | 100 | for Non-database internal structure |
+
+
+ 
+
+ 
+
+ 
+
+
+
+<a name="store_notification-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## store/notification.proto
+
+
+
+<a name="metaxisdata-store-Notification"></a>
+
+### Notification
+Notification is one in-app message for one recipient: the outcome of a sync
+operation the recipient asked for, or an ingestion failure the workspace
+administrators need to see. It is personal data, so every read is scoped by
+recipient_id rather than by the workspace.
+
+id, create_time, recipient_id, read_time and dedupe_key are columns of the
+notification table and are not written into the payload; the store stamps
+them on insert and fills them from the row on read, so the payload and the
+columns cannot disagree. The payload holds only the message proper.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [int64](#int64) |  | The notification row&#39;s primary key. |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| parent | [string](#string) |  | Format: workspaces/{workspace} |
+| recipient_id | [int32](#int32) |  | The principal id this message is for. |
+| type | [NotificationType](#metaxisdata-store-NotificationType) |  |  |
+| severity | [NotificationSeverity](#metaxisdata-store-NotificationSeverity) |  |  |
+| read_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When the recipient read it. Unset means unread. Backed by notification.read_at, not by the payload, so the unread count can be answered from a partial index. |
+| dedupe_key | [string](#string) |  | Notification deduplication key, empty when the message is not deduplicated. Format: &lt;event&gt;:&lt;target&gt;:&lt;bucket&gt;, where the bucket is a timestamp aligned to the event&#39;s suppression window. |
+| schema_sync | [SchemaSyncDetail](#metaxisdata-store-SchemaSyncDetail) |  |  |
+| openlineage | [OpenLineageDetail](#metaxisdata-store-OpenLineageDetail) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-OpenLineageDetail"></a>
+
+### OpenLineageDetail
+OpenLineageDetail reports an OpenLineage ingestion failure, or a dataset that
+fell through to an external dataset.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| kind | [OpenLineageFailureKind](#metaxisdata-store-OpenLineageFailureKind) |  |  |
+| namespace | [string](#string) |  | The namespace named by the event. Empty when the event did not parse. |
+| job | [string](#string) |  |  |
+| run_id | [string](#string) |  |  |
+| dataset | [string](#string) |  | The dataset that did not resolve. Only set for NAMESPACE_UNMAPPED. |
+| api_key | [string](#string) |  | The masked identifier of the ingestion key that submitted the request. |
+| received_count | [int32](#int32) |  | How many events this request carried and how many of them failed. |
+| failed_count | [int32](#int32) |  |  |
+| error | [string](#string) |  | Truncated before it is stored. |
+
+
+
+
+
+
+<a name="metaxisdata-store-SchemaSyncDetail"></a>
+
+### SchemaSyncDetail
+SchemaSyncDetail reports one sync operation: the instance metadata step plus
+every database that was queued by it.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| instance | [string](#string) |  | Format: instances/{instance} |
+| instance_title | [string](#string) |  | The instance&#39;s display name, so a client can render the message without a second read. |
+| trigger | [SyncTrigger](#metaxisdata-store-SyncTrigger) |  |  |
+| instance_error | [string](#string) |  | Why the instance metadata step failed. Empty when it succeeded. |
+| databases | [SyncDatabaseResult](#metaxisdata-store-SyncDatabaseResult) | repeated | The databases this message names, each with its outcome: the ones that failed or never reported for an instance-wide sync, and the database itself for a sync of one database. Successful databases are counted rather than listed, and the list is capped; the counts below carry the whole picture. |
+| succeeded_count | [int32](#int32) |  |  |
+| failed_count | [int32](#int32) |  |  |
+| unfinished_count | [int32](#int32) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-SyncDatabaseResult"></a>
+
+### SyncDatabaseResult
+SyncDatabaseResult is one database&#39;s outcome in a schema sync operation.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| database | [string](#string) |  | Format: instances/{instance}/databases/{database} |
+| state | [SyncDatabaseState](#metaxisdata-store-SyncDatabaseState) |  |  |
+| error | [string](#string) |  | Truncated before it is stored, so one runaway error cannot bloat the row. |
+
+
+
+
+
+ 
+
+
+<a name="metaxisdata-store-NotificationSeverity"></a>
+
+### NotificationSeverity
+NotificationSeverity ranks a notification for the recipient.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| NOTIFICATION_SEVERITY_UNSPECIFIED | 0 |  |
+| NOTIFICATION_SEVERITY_INFO | 1 |  |
+| NOTIFICATION_SEVERITY_WARNING | 2 |  |
+| NOTIFICATION_SEVERITY_ERROR | 3 |  |
+
+
+
+<a name="metaxisdata-store-NotificationType"></a>
+
+### NotificationType
+NotificationType is what a notification is about. It selects which detail
+message the notification carries.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| NOTIFICATION_TYPE_UNSPECIFIED | 0 |  |
+| NOTIFICATION_TYPE_SCHEMA_SYNC | 1 | The outcome of one schema sync operation. |
+| NOTIFICATION_TYPE_OPENLINEAGE | 2 | An OpenLineage ingestion failure, or a dataset that could not be matched to a registered instance. |
+
+
+
+<a name="metaxisdata-store-OpenLineageFailureKind"></a>
+
+### OpenLineageFailureKind
+OpenLineageFailureKind is why an OpenLineage request produced no lineage.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| OPENLINEAGE_FAILURE_KIND_UNSPECIFIED | 0 |  |
+| OPENLINEAGE_FAILURE_KIND_INVALID_EVENT | 1 | The event could not be parsed, or crossed a per-event limit. |
+| OPENLINEAGE_FAILURE_KIND_LIMIT_EXCEEDED | 2 | The request body or the batch crossed a transport limit. |
+| OPENLINEAGE_FAILURE_KIND_SCOPE_MISMATCH | 3 | The event&#39;s namespace is not the one the ingestion key is scoped to. |
+| OPENLINEAGE_FAILURE_KIND_PERSIST_FAILED | 4 | The event could not be persisted. |
+| OPENLINEAGE_FAILURE_KIND_PROCESS_FAILED | 5 | The event was persisted but its lineage could not be derived. |
+| OPENLINEAGE_FAILURE_KIND_NAMESPACE_UNMAPPED | 6 | The dataset matched no registered instance and was stored as an external dataset, so any lineage naming it points at something the registry does not describe. |
+
+
+
+<a name="metaxisdata-store-SyncDatabaseState"></a>
+
+### SyncDatabaseState
+SyncDatabaseState is one database&#39;s outcome within a sync operation.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| SYNC_DATABASE_STATE_UNSPECIFIED | 0 |  |
+| SYNC_DATABASE_STATE_SUCCEEDED | 1 |  |
+| SYNC_DATABASE_STATE_FAILED | 2 |  |
+| SYNC_DATABASE_STATE_UNFINISHED | 3 | The operation ended before this database produced a result, because its deadline passed or its instance disappeared. |
+
+
+
+<a name="metaxisdata-store-SyncTrigger"></a>
+
+### SyncTrigger
+SyncTrigger is what started the sync operation a notification reports.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| SYNC_TRIGGER_UNSPECIFIED | 0 |  |
+| SYNC_TRIGGER_MANUAL | 1 | A user asked for it, through an API call or in the UI. The initiator is the recipient. |
+| SYNC_TRIGGER_BACKGROUND | 2 | The periodic scan asked for it, so there is no initiator; the workspace administrators are the recipients. |
 
 
  

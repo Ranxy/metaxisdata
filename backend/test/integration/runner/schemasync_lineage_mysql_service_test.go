@@ -306,12 +306,7 @@ func TestMySQLPerDatabaseSyncHidesDroppedDatabaseRealServerIntegration(t *testin
 
 	require.NoError(t, env.ExecMySQL(ctx, fmt.Sprintf("DROP DATABASE IF EXISTS %s;", quoteMySQLIdentifier(sourceDatabase))))
 
-	require.NoError(t, env.SyncDatabaseRaw(ctx, databaseName))
-
-	row, err := env.Store.GetDatabase(ctx, &store.FindDatabaseMessage{InstanceID: &instanceID, DatabaseName: &sourceDatabase, ShowDeleted: true})
-	require.NoError(t, err)
-	require.NotNil(t, row)
-	require.True(t, row.Deleted, "a database the target no longer has must not stay visible")
+	requireDroppedDatabaseHidden(ctx, t, env, instanceID, sourceDatabase, databaseName)
 }
 
 func setupMySQLServiceDatabase(t *testing.T) (*integrationenv.ServiceEnv, context.Context, string, string, string) {

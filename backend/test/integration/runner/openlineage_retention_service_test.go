@@ -20,7 +20,13 @@ import (
 // graph kept showing lineage derived from data the operator had asked to drop.
 // The prune has to take the edges and the analysis-version rows with the run.
 func TestRetentionPrunesTheLineageOfADeletedRunRealServerIntegration(t *testing.T) {
-	t.Parallel()
+	// Not parallel, alone among the tests that prune. DeleteOpenLineageRunsBefore is
+	// global — it deletes every run older than its cutoff, not the caller's — and this
+	// is the one test whose cutoff is wall-clock (two days ago). Running beside the
+	// parallel tests, it therefore deleted the runs they seed with year-2000 event
+	// times to pin their own windows, and their assertions failed; its own count
+	// assertion failed in the same breath, because the count is the whole database's.
+	// The sequential phase runs it before those tests have seeded anything.
 
 	env := sharedPostgresServiceEnvNoReset(t)
 	ctx := context.Background()
@@ -59,7 +65,14 @@ func TestRetentionPrunesTheLineageOfADeletedRunRealServerIntegration(t *testing.
 
 	deleted, err := env.Store.DeleteOpenLineageRunsBefore(ctx, expired.Add(24*time.Hour))
 	require.NoError(t, err)
-	require.Equal(t, int64(1), deleted, "the run is inside the retention window")
+	// The count is the whole table's, so it is not this test's to pin exactly; what
+	// it pins is that its own run is inside the window and goes with everything
+	// derived from it.
+	require.GreaterOrEqual(t, deleted, int64(1), "the prune has to take the expired run")
+	var runs int
+	require.NoError(t, env.Store.GetDB().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM openlineage_run WHERE guid = $1`, runGUID).Scan(&runs))
+	require.Zero(t, runs, "the run is inside the retention window")
 
 	require.Zero(t, count("column_lineage"),
 		"a pruned run must not keep contributing edges to the lineage graph")

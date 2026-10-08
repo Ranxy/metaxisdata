@@ -40,7 +40,9 @@ func (s *DatabaseService) SyncDatabase(ctx context.Context, req *connect.Request
 		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("database %q has been deleted", req.Msg.Name))
 	}
 
-	if err := s.schemaSyncer.SyncDatabaseSchema(ctx, database); err != nil {
+	// The caller is waiting for this sync, so the error still answers the request;
+	// the message is what the user keeps when they close the tab.
+	if err := s.schemaSyncer.SyncDatabaseForUser(ctx, database, currentUserID(ctx)); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to sync database"))
 	}
 

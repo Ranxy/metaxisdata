@@ -38,14 +38,18 @@ const (
 	maxDatabaseSyncRetries = 3
 )
 
-// NewSyncer creates a schema syncer.
-func NewSyncer(stores *store.Store, dbFactory *dbfactory.DBFactory, stateCfg *state.State, lineageAnalyzer *lineageanalyzer.Analyzer, lineageRevalidator LineageRevalidator) *Syncer {
+// NewSyncer creates a schema syncer. notifier reports the outcome of a sync
+// operation to the user who asked for it, and a background failure to the
+// workspace administrators; a nil notifier leaves the runner silent, which is
+// what its own tests want.
+func NewSyncer(stores *store.Store, dbFactory *dbfactory.DBFactory, stateCfg *state.State, lineageAnalyzer *lineageanalyzer.Analyzer, lineageRevalidator LineageRevalidator, notifier Notifier) *Syncer {
 	return &Syncer{
 		store:              stores,
 		dbFactory:          dbFactory,
 		stateCfg:           stateCfg,
 		lineageAnalyzer:    lineageAnalyzer,
 		lineageRevalidator: lineageRevalidator,
+		notifier:           notifier,
 	}
 }
 
@@ -73,6 +77,14 @@ type Syncer struct {
 	// above is drained on dequeue, so it is not an in-flight guard by itself,
 	// and the API path calls SyncDatabaseSchema directly.
 	databaseSyncGate databaseSyncGate
+	// notifier writes the messages a sync operation produces. See operation.go.
+	notifier Notifier
+	// operations are the user-visible sync operations still waiting for their
+	// databases. The slice is short — one entry per API-triggered sync in flight —
+	// and is guarded by operationMu because the API registers them while the
+	// checker reports their databases.
+	operationMu sync.Mutex
+	operations  []*SyncOperation
 }
 
 // databaseSyncGate makes one schema sync per database run at a time inside the
@@ -108,6 +120,16 @@ func (g *databaseSyncGate) acquire(key string) (call *databaseSyncCall, owner bo
 	return call, true
 }
 
+// owns reports whether some caller currently holds this database's sync. A
+// database being synced has already been dequeued, so it is invisible to the queue
+// and only this knows it is still in progress.
+func (g *databaseSyncGate) owns(key string) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	_, ok := g.inFlight[key]
+	return ok
+}
+
 // finish publishes the owner's result and releases the waiters. The entry is
 // removed before done is closed, so a caller arriving after this point starts a
 // fresh sync instead of reusing a finished one.
@@ -139,9 +161,13 @@ func databaseSyncRetryBackoff(attempts int) time.Duration {
 	}
 }
 
-// enqueueDatabase queues a database for the checker. A fresh request (an API
-// full sync or the periodic scan) supersedes any pending backoff.
-func (s *Syncer) enqueueDatabase(database *store.DatabaseMessage) {
+// enqueueDatabase queues a database for the checker. A fresh request (an API full
+// sync or the periodic scan) supersedes any pending backoff. A deleted row is never
+// queued: it is kept as history, and only the instance enumeration revives it.
+func (s *Syncer) enqueueDatabase(database *store.DatabaseMessage, _ *SyncOperation) {
+	if database == nil || database.Deleted {
+		return
+	}
 	key := database.String()
 	s.databaseSyncRetryMap.Delete(key)
 	s.databaseSyncMap.Store(key, database)
@@ -149,8 +175,10 @@ func (s *Syncer) enqueueDatabase(database *store.DatabaseMessage) {
 
 // scheduleRetry re-queues a failed database with a bounded backoff; the checker
 // skips it until nextAt. After the last attempt the database is left to the next
-// instance-level scan instead of backing off forever.
-func (s *Syncer) scheduleRetry(database *store.DatabaseMessage) {
+// instance-level scan instead of backing off forever. It reports whether the
+// retries are exhausted, which is the point at which a background failure is
+// worth telling the administrators about.
+func (s *Syncer) scheduleRetry(database *store.DatabaseMessage) bool {
 	key := database.String()
 	attempts := 1
 	if v, ok := s.databaseSyncRetryMap.Load(key); ok {
@@ -163,10 +191,11 @@ func (s *Syncer) scheduleRetry(database *store.DatabaseMessage) {
 		slog.Warn("Database schema sync gave up after repeated failures; waiting for the next instance scan",
 			slog.String("instance", database.InstanceID),
 			slog.String("database", database.DatabaseName))
-		return
+		return true
 	}
 	s.databaseSyncRetryMap.Store(key, databaseRetry{attempts: attempts, nextAt: time.Now().Add(databaseSyncRetryBackoff(attempts))})
 	s.databaseSyncMap.Store(key, database)
+	return false
 }
 
 // retryDue reports whether a queued database may be synced at now. A database
@@ -210,6 +239,7 @@ func (s *Syncer) Run(ctx context.Context, wg *sync.WaitGroup) {
 		for {
 			select {
 			case <-ticker.C:
+				s.expireOperations(ctx, time.Now())
 				instances, err := s.store.ListInstances(ctx, &store.FindInstanceMessage{})
 				if err != nil {
 					// A transient store error must not stop the checker for the
@@ -234,9 +264,11 @@ func (s *Syncer) Run(ctx context.Context, wg *sync.WaitGroup) {
 							slog.String("instance", database.InstanceID))
 						// The instance is gone (or not visible any more); drop the
 						// entry instead of retrying and logging it every tick
-						// forever.
+						// forever. An operation waiting for this database is told:
+						// no further attempt will ever report for it.
 						s.databaseSyncRetryMap.Delete(key)
 						s.databaseSyncMap.Delete(key)
+						s.completeDatabase(ctx, database, errors.Errorf("instance %q is no longer there", database.InstanceID))
 						return true
 					}
 
@@ -261,6 +293,7 @@ func (s *Syncer) Run(ctx context.Context, wg *sync.WaitGroup) {
 									slog.String("instance", database.InstanceID),
 									slog.String("database", database.DatabaseName),
 									log.WithError(err))
+								s.completeDatabase(ctx, database, err)
 								s.scheduleRetry(database)
 							}
 						}()
@@ -278,10 +311,17 @@ func (s *Syncer) Run(ctx context.Context, wg *sync.WaitGroup) {
 								slog.String("instance", database.InstanceID),
 								slog.String("databaseName", database.DatabaseName),
 								log.WithError(err))
-							s.scheduleRetry(database)
+							// The operation reports this first result; the retries below
+							// are the checker's own recovery, and only their exhaustion is
+							// worth interrupting an administrator for.
+							s.completeDatabase(ctx, database, err)
+							if s.scheduleRetry(database) {
+								s.notifyBackgroundDatabaseFailure(ctx, instanceMap[database.InstanceID], database, err)
+							}
 							return
 						}
 						s.databaseSyncRetryMap.Delete(database.String())
+						s.completeDatabase(ctx, database, nil)
 					})
 					return true
 				})
@@ -323,6 +363,9 @@ func (s *Syncer) trySyncAll(ctx context.Context) {
 				slog.Warn("Failed to sync instance",
 					slog.String("instance", instance.ResourceID),
 					log.WithError(err))
+				// Nobody asked for this sync, so the failure would otherwise leave
+				// no trace anyone reads until the next scheduled attempt.
+				s.notifyBackgroundInstanceFailure(ctx, instance, err)
 			}
 		})
 	}
@@ -340,9 +383,6 @@ func (s *Syncer) trySyncAll(ctx context.Context) {
 	}
 	for _, database := range databases {
 		database := database
-		if database.Deleted {
-			continue
-		}
 		instance, ok := instancesMap[database.InstanceID]
 		if !ok {
 			continue
@@ -352,11 +392,15 @@ func (s *Syncer) trySyncAll(ctx context.Context) {
 			continue
 		}
 
-		s.enqueueDatabase(database)
+		s.enqueueDatabase(database, nil)
 	}
 }
 
-func (s *Syncer) SyncAllDatabases(ctx context.Context, instance *store.InstanceMessage) {
+// SyncAllDatabases queues every database of an instance for the operation that
+// asked for it, and seals the operation: a list it could not read leaves the
+// operation reporting the instance step alone instead of waiting for databases
+// that were never queued.
+func (s *Syncer) SyncAllDatabases(ctx context.Context, operation *SyncOperation, instance *store.InstanceMessage) {
 	find := &store.FindDatabaseMessage{}
 	if instance != nil {
 		find.InstanceID = &instance.ResourceID
@@ -365,29 +409,9 @@ func (s *Syncer) SyncAllDatabases(ctx context.Context, instance *store.InstanceM
 	if err != nil {
 		slog.Debug("Failed to find databases to sync",
 			slog.String("error", err.Error()))
-		return
+		databases = nil
 	}
-
-	for _, database := range databases {
-		// Skip deleted databases.
-		if database.Deleted {
-			continue
-		}
-		s.enqueueDatabase(database)
-	}
-}
-
-func (s *Syncer) SyncDatabaseAsync(database *store.DatabaseMessage) {
-	if database == nil || database.Deleted {
-		return
-	}
-	s.enqueueDatabase(database)
-}
-
-func (s *Syncer) SyncDatabasesAsync(databases []*store.DatabaseMessage) {
-	for _, database := range databases {
-		s.SyncDatabaseAsync(database)
-	}
+	s.EnqueueDatabases(ctx, operation, databases)
 }
 
 func (s *Syncer) QueueLineageAnalysis(metaGUID string, metaType storepb.MetaType) {

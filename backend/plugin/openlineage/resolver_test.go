@@ -577,6 +577,45 @@ func TestRequestScopedResolverMemoizesPreview(t *testing.T) {
 
 func TestNewResolverDoesNotMemoize(t *testing.T) {
 	// Ingestion resolvers outlive one resolution, so they must not cache.
-	assert.False(t, NewResolver(nil).requestScoped)
+	assert.False(t, NewResolver(nil, nil).requestScoped)
 	assert.True(t, NewRequestScopedResolver(nil).requestScoped)
+}
+
+// fakeNamespaceReporter records the datasets that fell through to an external
+// dataset, which is what ingestion turns into an administrator's notification.
+type fakeNamespaceReporter struct {
+	namespaces []string
+	datasets   []string
+}
+
+func (f *fakeNamespaceReporter) ReportUnmatchedNamespace(_ context.Context, namespace, dataset string) {
+	f.namespaces = append(f.namespaces, namespace)
+	f.datasets = append(f.datasets, dataset)
+}
+
+// A dataset that matched nothing is reported once per namespace per resolver, not
+// once per dataset or per event: an unmapped producer sends every event it has
+// through the same miss. The notification sink adds its own window on top, for the
+// restarts and replicas the process gate cannot see.
+func TestWarnUnmatchedNamespaceReportsOncePerNamespace(t *testing.T) {
+	t.Parallel()
+
+	reporter := &fakeNamespaceReporter{}
+	resolver := NewResolver(nil, reporter)
+
+	resolver.warnUnmatchedNamespace(context.Background(), "mysql://db:3306", "shop.orders")
+	resolver.warnUnmatchedNamespace(context.Background(), "mysql://db:3306", "shop.customers")
+	resolver.warnUnmatchedNamespace(context.Background(), "mysql://other:3306", "shop.orders")
+
+	assert.Equal(t, []string{"mysql://db:3306", "mysql://other:3306"}, reporter.namespaces)
+	assert.Equal(t, []string{"shop.orders", "shop.orders"}, reporter.datasets)
+}
+
+// A resolver built without a reporter — the read paths, and the revalidation
+// processor — only logs.
+func TestWarnUnmatchedNamespaceWithoutAReporter(t *testing.T) {
+	t.Parallel()
+
+	resolver := NewResolver(nil, nil)
+	resolver.warnUnmatchedNamespace(context.Background(), "mysql://db:3306", "shop.orders")
 }

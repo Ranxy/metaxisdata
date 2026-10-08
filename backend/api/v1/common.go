@@ -253,6 +253,17 @@ func GetUserFromContext(ctx context.Context) (*store.UserMessage, bool) {
 	return user, ok
 }
 
+// currentUserID returns the authenticated caller's principal id, or 0 for a
+// request that carries no principal. It is what tells a background runner who to
+// report an asynchronous result to, so 0 means "nobody is waiting".
+func currentUserID(ctx context.Context) int {
+	user, ok := GetUserFromContext(ctx)
+	if !ok || user == nil {
+		return 0
+	}
+	return user.ID
+}
+
 // GetTokenRestrictionFromContext returns the restriction carried by the access
 // token that authenticated the request. The second result is false for a
 // full-access token.

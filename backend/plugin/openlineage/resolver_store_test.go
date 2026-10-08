@@ -131,7 +131,7 @@ func TestResolverOutsideARequestMemoizesNothing(t *testing.T) {
 		instancesByID: map[string]*store.InstanceMessage{"inst-a": instance},
 		instances:     []*store.InstanceMessage{instance},
 	}
-	resolver := NewResolver(fake)
+	resolver := NewResolver(fake, nil)
 
 	for range 3 {
 		_, err := resolver.ResolveDatasetPreview(context.Background(), "postgres://warehouse:5432/app", "public.orders")
