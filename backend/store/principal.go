@@ -56,6 +56,10 @@ type UpdateUserMessage struct {
 	Delete       *bool
 	Profile      *storepb.UserProfile
 	Phone        *string
+	// Language replaces the profile's language key instead of the whole column,
+	// so a preference change cannot write a stale copy of the rest of the
+	// profile back into the row.
+	Language *string
 }
 
 // UserMessage is the message for an user.
@@ -468,6 +472,39 @@ func (s *Store) CreateUser(ctx context.Context, create *UserMessage, binding *ID
 	return user, nil
 }
 
+// profileAssignments returns the SET fragments and arguments that persist the
+// profile parts of a patch, numbered after the arguments the caller already
+// collected.
+//
+// A language on its own is written as a single JSONB key. That matters: a
+// whole-column write carries the profile this caller read back into the row, so
+// it would resurrect whatever a concurrent write changed in it — including the
+// password change time that retires sessions, which is the failure the
+// targeted write in RecordLastLogin exists to avoid. A patch that already
+// carries a whole profile (the password branch builds one) absorbs the language
+// into that value instead.
+func profileAssignments(set []string, args []any, patch *UpdateUserMessage) ([]string, []any, error) {
+	profile := patch.Profile
+	if patch.Language != nil {
+		if profile == nil {
+			set = append(set, fmt.Sprintf("profile = jsonb_set(profile, ARRAY[$%d], to_jsonb($%d::text))", len(args)+1, len(args)+2))
+			return set, append(args, userProfileLanguageKey, *patch.Language), nil
+		}
+		merged := proto.CloneOf(profile)
+		merged.Language = *patch.Language
+		profile = merged
+	}
+	if profile != nil {
+		profileBytes, err := protojson.Marshal(profile)
+		if err != nil {
+			return set, args, err
+		}
+		set = append(set, fmt.Sprintf("profile = $%d", len(args)+1))
+		args = append(args, profileBytes)
+	}
+	return set, args, nil
+}
+
 // UpdateUser updates a user.
 func (s *Store) UpdateUser(ctx context.Context, currentUser *UserMessage, patch *UpdateUserMessage) (*UserMessage, error) {
 	if currentUser.ID == common.SystemBotID {
@@ -502,12 +539,10 @@ func (s *Store) UpdateUser(ctx context.Context, currentUser *UserMessage, patch 
 	if v := patch.Phone; v != nil {
 		principalSet, principalArgs = append(principalSet, fmt.Sprintf("phone = $%d", len(principalArgs)+1)), append(principalArgs, *v)
 	}
-	if v := patch.Profile; v != nil {
-		profileBytes, err := protojson.Marshal(v)
-		if err != nil {
-			return nil, err
-		}
-		principalSet, principalArgs = append(principalSet, fmt.Sprintf("profile = $%d", len(principalArgs)+1)), append(principalArgs, profileBytes)
+	var err error
+	principalSet, principalArgs, err = profileAssignments(principalSet, principalArgs, patch)
+	if err != nil {
+		return nil, err
 	}
 	principalArgs = append(principalArgs, currentUser.ID)
 
@@ -554,6 +589,11 @@ func (s *Store) UpdateUser(ctx context.Context, currentUser *UserMessage, patch 
 // UserProfile.last_login_time. RecordLastLogin writes that key directly, so a
 // rename of the proto field would silently stop recording logins.
 const userProfileLastLoginKey = "lastLoginTime"
+
+// userProfileLanguageKey is the JSONB key protojson produces for
+// UserProfile.language. A language update writes that key on its own, so the
+// same rename would silently stop recording the preference.
+const userProfileLanguageKey = "language"
 
 // RecordLastLogin stamps the last login time in the profile without rewriting the
 // rest of the column. A login used to write the whole profile back from the row it

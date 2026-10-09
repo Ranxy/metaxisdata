@@ -4,10 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -84,6 +82,50 @@ func TestBuildSystemPromptWritesInTheRequestedLanguage(t *testing.T) {
 	require.Equal(t, en, buildSystemPrompt("fr-FR", storepb.MetaType_VIEW, nil))
 }
 
+// Each heading has to sit directly above the section it names. Presence alone is
+// not enough, and neither is "position i is followed by brief i": that holds for
+// any heading text put at position i, so swapping two headings in the table still
+// passes while pairing "Execution Logic" with the objects brief — an answer that
+// reads as if the model misunderstood the request, with nothing failing
+// anywhere. The expectations below are therefore spelled out rather than read
+// from the table they check.
+func TestBuildSystemPromptPairsEachHeadingWithItsSection(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		language string
+		want     []string
+	}{
+		{
+			language: "en-US",
+			want: []string{
+				"## Execution Logic\n(step-by-step breakdown:",
+				"## Objects Involved\n(list tables, views,",
+				"## Potential Problems\n(performance issues,",
+				"## Optimization Suggestions\n(concrete improvements:",
+			},
+		},
+		{
+			language: "zh-CN",
+			want: []string{
+				"## 执行逻辑\n(step-by-step breakdown:",
+				"## 涉及对象\n(list tables, views,",
+				"## 潜在问题\n(performance issues,",
+				"## 优化建议\n(concrete improvements:",
+			},
+		},
+	} {
+		t.Run(test.language, func(t *testing.T) {
+			t.Parallel()
+			require.Len(t, test.want, explainSectionCount)
+			prompt := buildSystemPrompt(test.language, storepb.MetaType_VIEW, nil)
+			for _, pair := range test.want {
+				require.Contains(t, prompt, pair)
+			}
+		})
+	}
+}
+
 func TestExplainSQLCacheKeySeparatesLanguages(t *testing.T) {
 	t.Parallel()
 
@@ -93,29 +135,10 @@ func TestExplainSQLCacheKeySeparatesLanguages(t *testing.T) {
 	// One reader's explanation is not the other's: same SQL, different language.
 	require.NotEqual(t, english, explainSQLCacheKey("sql:abc", "instance-1", "profiles/1", "gpt", "zh-CN"))
 	require.NotEqual(t, english, explainSQLCacheKey("sql:abc", "instance-1", "profiles/1", "other", "en-US"))
-}
 
-func TestProfileWithLanguageCarriesTheRestOfTheProfile(t *testing.T) {
-	t.Parallel()
-
-	lastLogin := timestamppb.New(time.Now().Truncate(time.Second))
-	changedAt := timestamppb.New(time.Now().Add(-time.Hour).Truncate(time.Second))
-	profile := &storepb.UserProfile{
-		LastLoginTime:          lastLogin,
-		LastChangePasswordTime: changedAt,
-		Language:               "zh-CN",
-	}
-
-	updated := profileWithLanguage(profile, "en-US")
-	require.Equal(t, "en-US", updated.Language)
-	// The store writes the whole column back, so dropping the password change
-	// time here would retire sessions that are still valid.
-	require.Equal(t, lastLogin, updated.LastLoginTime)
-	require.Equal(t, changedAt, updated.LastChangePasswordTime)
-	// The profile the caller read may be the store's cached entry.
-	require.Equal(t, "zh-CN", profile.Language)
-
-	fresh := profileWithLanguage(nil, "zh-CN")
-	require.Equal(t, "zh-CN", fresh.Language)
-	require.Nil(t, fresh.LastLoginTime)
+	// The handler normalizes before keying, so an account that never chose a
+	// language shares the default language's entry instead of regenerating it.
+	require.Equal(t,
+		explainSQLCacheKey("sql:abc", "instance-1", "profiles/1", "gpt", normalizeLanguage("")),
+		english)
 }

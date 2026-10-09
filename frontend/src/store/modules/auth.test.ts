@@ -177,6 +177,60 @@ describe("language", () => {
     expect(useAppStore().locale).toBe("zh-CN");
   });
 
+  it("sends rapid switches in the order they were made", async () => {
+    const store = useAuthStore();
+    store.user = create(UserSchema, { name: "users/1", language: "en-US" });
+
+    const written: string[] = [];
+    let releaseFirst: () => void = () => {};
+    mocks.updateUser.mockImplementation((user: { language?: string }) => {
+      written.push(user.language ?? "");
+      if (written.length === 1) {
+        return new Promise<void>((resolve) => {
+          releaseFirst = resolve;
+        });
+      }
+      return Promise.resolve();
+    });
+
+    const first = store.changeLanguage("zh-CN");
+    const second = store.changeLanguage("en-US");
+    await Promise.resolve();
+    // The second write waits for the first: fired concurrently, the first could
+    // land last and leave the profile in a language the user has already left.
+    expect(written).toEqual(["zh-CN"]);
+
+    releaseFirst();
+    await Promise.all([first, second]);
+
+    expect(written).toEqual(["zh-CN", "en-US"]);
+    expect(store.user?.language).toBe("en-US");
+  });
+
+  it("retries a failed write when an answer is about to depend on it", async () => {
+    const store = useAuthStore();
+    store.user = create(UserSchema, { name: "users/1", language: "en-US" });
+    mocks.updateUser.mockRejectedValueOnce(new Error("network"));
+
+    await store.changeLanguage("zh-CN");
+    expect(store.user?.language).toBe("en-US");
+
+    // Explain SQL reads the stored language, so the retry happens before it.
+    await store.ensureLanguagePersisted();
+
+    expect(mocks.updateUser).toHaveBeenCalledTimes(2);
+    expect(store.user?.language).toBe("zh-CN");
+  });
+
+  it("writes nothing before an answer when the profile is already in step", async () => {
+    const store = useAuthStore();
+    store.user = create(UserSchema, { name: "users/1", language: "en-US" });
+
+    await store.ensureLanguagePersisted();
+
+    expect(mocks.updateUser).not.toHaveBeenCalled();
+  });
+
   it("switches the UI before there is a session to write to", async () => {
     const store = useAuthStore();
 
@@ -211,12 +265,26 @@ describe("language", () => {
     expect(mocks.updateUser).not.toHaveBeenCalled();
   });
 
+  it("leaves a stored language this SPA does not ship alone", async () => {
+    mocks.getCurrentUser.mockResolvedValue(
+      create(UserSchema, { name: "users/1", language: "ja-JP" })
+    );
+
+    const store = useAuthStore();
+    await store.fetchCurrentUser();
+
+    // Overwriting it with this browser's locale would discard the user's choice
+    // for nothing: this interface cannot render ja-JP either way.
+    expect(mocks.updateUser).not.toHaveBeenCalled();
+    expect(store.user?.language).toBe("ja-JP");
+    expect(useAppStore().locale).toBe("en-US");
+  });
+
   it("fills an unset profile with the locale this browser already reads", async () => {
     useAppStore().setLocale("zh-CN");
     mocks.getCurrentUser.mockResolvedValue(
       create(UserSchema, { name: "users/1" })
     );
-
     const store = useAuthStore();
     await store.fetchCurrentUser();
 

@@ -12,7 +12,6 @@ import (
 	"github.com/pkg/errors"
 
 	"golang.org/x/crypto/bcrypt"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
@@ -430,7 +429,10 @@ func (s *UserService) UpdateUser(ctx context.Context, request *connect.Request[v
 			if language != "" && !isSupportedLanguage(language) {
 				return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("unsupported language %q", language))
 			}
-			patch.Profile = profileWithLanguage(user.Profile, language)
+			// A targeted write: the store touches one profile key, so the rest of
+			// the profile is not rewritten from whatever this caller happened to
+			// read.
+			patch.Language = &language
 		default:
 		}
 	}
@@ -484,19 +486,6 @@ func applyUpdateMaskToUser(user *v1pb.User, paths []string) *v1pb.User {
 		}
 	}
 	return masked
-}
-
-// profileWithLanguage returns the user's profile with only the language
-// replaced. The store writes the whole profile JSONB back, so every other field
-// — including the password change time that retires sessions — has to be carried
-// over; `profile` may be nil for an account whose profile was never written.
-func profileWithLanguage(profile *storepb.UserProfile, language string) *storepb.UserProfile {
-	updated := proto.CloneOf(profile)
-	if updated == nil {
-		updated = &storepb.UserProfile{}
-	}
-	updated.Language = language
-	return updated
 }
 
 // DeleteUser deletes a user.

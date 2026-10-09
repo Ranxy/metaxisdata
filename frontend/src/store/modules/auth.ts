@@ -11,6 +11,12 @@ import { useAppStore } from "./app";
 // and two navigations in the same tick must share one request.
 let inFlightProfile: Promise<void> | undefined;
 
+// The language writes, chained rather than fired concurrently: two switches in
+// quick succession must reach the server in the order they were made, or the
+// first one can land last and leave the profile in a language the user has
+// already left. Every link swallows its own failure, so the chain never rejects.
+let languageWrites: Promise<void> = Promise.resolve();
+
 interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
@@ -85,37 +91,70 @@ export const useAuthStore = defineStore("auth", {
      * browser-local preference.
      *
      * The switch is applied locally first — it must be instant, and it also has
-     * to work on the login page, before there is a session to write to. Saving is
-     * best-effort: a failed write must not undo the language the user just chose,
-     * and the next switch or sign-in retries it.
+     * to work on the login page, before there is a session to write to. The write
+     * itself is queued, so the language the user chose last is the one the server
+     * ends up with.
      */
     async changeLanguage(locale: AppLocale) {
       useAppStore().setLocale(locale);
-      if (!this.user || this.user.language === locale) {
+      const pending = languageWrites.then(() => this.persistLanguage(locale));
+      languageWrites = pending;
+      await pending;
+    },
+
+    /**
+     * Writes one language to the profile, or does nothing when the profile
+     * already carries it. Failure is swallowed: it must not undo the language the
+     * user just chose, and ensureLanguagePersisted retries before an answer
+     * depends on the stored value.
+     */
+    async persistLanguage(locale: AppLocale) {
+      const user = this.user;
+      if (!user || user.language === locale) {
         return;
       }
       try {
-        await userApi.updateUser({ name: this.user.name, language: locale }, [
+        await userApi.updateUser({ name: user.name, language: locale }, [
           "language",
         ]);
-        this.user.language = locale;
+        user.language = locale;
       } catch {
-        // The profile keeps its old value; the UI stays in the chosen language.
+        // The profile keeps its old value.
       }
     },
 
     /**
-     * Aligns the UI language with the profile once it is known. The profile is
-     * the source of truth, so a language chosen on another device applies here
-     * too. An account that never chose one adopts the locale this browser is
-     * already reading, which keeps the interface and the Explain SQL answer from
-     * drifting apart on the first request.
+     * Returns once the profile carries the language the interface is in, so a
+     * caller whose answer depends on it — an Explain SQL request, which the
+     * server writes in the stored language — does not race a switch or a failed
+     * write. A write that already matches costs nothing.
+     */
+    async ensureLanguagePersisted() {
+      await languageWrites;
+      await this.persistLanguage(useAppStore().locale);
+    },
+
+    /**
+     * Aligns the UI language with the profile once it is known. A language the
+     * SPA ships is the source of truth, so a choice made on another device
+     * applies here too; an account that never chose one adopts the locale this
+     * browser already reads, which keeps the interface and the Explain SQL answer
+     * from drifting apart on the first request.
+     *
+     * A stored tag this SPA does not ship — a newer client, or a locale the
+     * server added — is left alone: overwriting it with this browser's locale
+     * would discard the user's choice in exchange for nothing, since this
+     * interface cannot render it either way.
      */
     async syncLanguage() {
       const stored = this.user?.language ?? "";
-      await this.changeLanguage(
-        isAppLocale(stored) ? stored : useAppStore().locale
-      );
+      if (stored === "") {
+        await this.changeLanguage(useAppStore().locale);
+        return;
+      }
+      if (isAppLocale(stored)) {
+        await this.changeLanguage(stored);
+      }
     },
 
     // Drops everything the session carried. Called by logout, by the global
