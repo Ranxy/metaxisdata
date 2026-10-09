@@ -245,6 +245,12 @@ message User {
   // so the frontend can gate navigation and actions without probing each RPC.
   repeated string permissions = 15 [(google.api.field_behavior) = OUTPUT_ONLY];
 
+  // The BCP-47 tag of the language the user reads the UI in, so server-side
+  // prose — the Explain SQL answer — is written in the language the user
+  // selected. The SPA records it when the user switches language; empty means
+  // never chosen, and server-side prose then falls back to en-US.
+  string language = 16;
+
   reserved 11;
   reserved "recovery_codes";
 }

@@ -62,7 +62,7 @@
           <DropdownMenuItem
             v-for="item in locales"
             :key="item.value"
-            @click="appStore.setLocale(item.value)"
+            @click="authStore.changeLanguage(item.value)"
           >
             <span class="flex-1">{{ item.label }}</span>
             <Check

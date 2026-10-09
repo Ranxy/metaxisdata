@@ -21,6 +21,11 @@ message UserProfile {
   google.protobuf.Timestamp last_login_time = 1;
   google.protobuf.Timestamp last_change_password_time = 2;
 
+  // The BCP-47 tag of the language the user reads the UI in, so server-side
+  // prose — the Explain SQL answer — comes back in the same language. Empty
+  // means never chosen, which reads as the default language.
+  string language = 4;
+
   reserved 3;
   reserved "source";
 }

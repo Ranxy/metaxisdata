@@ -317,6 +317,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useAuthStore } from "@/store/modules/auth";
 import { useInstanceStore } from "@/store/modules/instance";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import type { ExplainSQLProgress } from "@/types/proto-es/v1/explain_sql_service_pb";
@@ -327,6 +328,7 @@ import { metaTypeLabel, parseMetaType } from "@/utils/metaType";
 
 const { t, locale } = useI18n();
 const route = useRoute();
+const authStore = useAuthStore();
 const instanceStore = useInstanceStore();
 
 // ---- types ----
@@ -719,6 +721,11 @@ async function startExplain(forceRegen = false) {
   explainMeta.value = null;
   progressSteps.value = [];
   showProgress.value = true;
+
+  // The server writes the answer in the language stored on the profile, so a
+  // switch that is still in flight — or one whose write failed — is settled
+  // first: explaining right after switching must not answer in the old language.
+  await authStore.ensureLanguagePersisted();
 
   const input =
     sourceMode.value === "metadata" && selectedMeta.value
