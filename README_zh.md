@@ -1,33 +1,21 @@
 > **语言 / Language:** [English](README.md) | [中文](README_zh.md)
 
-> **注意:** Metaxisdata 只以容器镜像的形式发布，面向 `linux/amd64` 与 `linux/arm64`；任何平台都没有预编译二进制。
-
 # Metaxisdata
 
-Metaxisdata 是一个自托管的**数据治理与元数据平台**。它把数据库实例的 schema 同步进一个统一的元数据注册中心，并从 SQL 定义和摄入的 OpenLineage 事件中推导**表级与列级血缘**。
+Metaxisdata 是一个自托管的数据治理与元数据平台。它连接 MySQL/TiDB 与 PostgreSQL 实例，把它们的 schema 同步进一个可搜索的元数据注册中心，并从 SQL 定义和摄入的 OpenLineage 事件中推导表级与列级血缘。
 
-## 它能做什么
+## 功能
 
-- **元数据注册中心**：把实例的 schema 同步进一个可搜索的注册中心，每个对象的 DDL 就存放在它旁边，并保留变更历史。
-- **表级与列级血缘**：从视图、物化视图和手动 SQL 中分析出精确到列的血缘，支持按深度和按字段展开。
-- **OpenLineage**：摄入 OpenLineage 的 run 事件，映射 namespace，签发 API key，并浏览 job、dataset、event，附带跳回 Airflow 的链接。
-- **IAM 与审计**：用户、用户组、命名角色和访问策略编辑器；需要审计的操作会写入永久保留的审计日志。
-- **Agent 集成**：`mxd` 命令行客户端让 Agent 每条命令只拿到一个 JSON 文档，退出码稳定，并支持设备码登录（[cli/README.md](cli/README.md)）。启用 MCP 后，注册中心还会以只读工具的形式提供，并由 OAuth 2.1 授权服务器保护（[docs/mcp.md](docs/mcp.md)）。
+- **元数据注册中心** —— 把各实例的 schema 同步进一个统一且可搜索的注册中心，每个表和每个列都保存着自己的 DDL 与变更历史。
+- **表级与列级血缘** —— 血缘从视图、物化视图和手动 SQL 中分析得来，精确到列。血缘图可以按深度展开，也可以沿着单个列的轨迹往下追踪。
+- **OpenLineage** —— 摄入 run 事件，映射 namespace，签发 API key；浏览 job、dataset 和 event，并提供跳回 Airflow 的链接。
+- **SQL 解释** —— 借助 LLM 解释一条 SQL 语句，解释范围限定在你所选的元数据之内，并带缓存。
+- **访问控制与审计** —— 用户、用户组、命名角色和访问策略编辑器；需要审计的操作会写入一份永久保留的审计日志。
+- **Agent 集成** —— `mxd` 命令行客户端（[cli/README.md](cli/README.md)）让 Agent 每条命令只拿到一个 JSON 文档，退出码稳定，并支持设备码登录。启用 MCP 后，注册中心还会以只读工具的形式提供，由 OAuth 2.1 授权服务器保护（[docs/mcp.md](docs/mcp.md)）。
 
-## 架构概览
+## 快速上手
 
-Metaxisdata 是一个由 PostgreSQL 支撑的 Go 服务端二进制：
-
-- 服务端提供 ConnectRPC API、其 REST 网关和 Vue 3 单页应用（已内嵌进发布镜像），并在启用时提供 MCP 端点。
-- PostgreSQL 是唯一的外部依赖。schema 在启动时自动迁移，因此一个全新的数据库只需要一个连接串。
-- 后台 runner 负责同步 schema、分析并校验血缘，以及执行维护性任务。
-- `mxd` 是独立的产物，从不包含在服务端镜像中。
-
-## 快速开始
-
-### 正式部署
-
-每次发布 GitHub Release 都会把镜像推送到 GHCR，支持 `linux/amd64` 与 `linux/arm64`：
+需要准备 Docker，以及一个容器可达的 PostgreSQL 数据库。镜像发布在 GHCR，覆盖 `linux/amd64` 与 `linux/arm64`：
 
 ```bash
 docker run -d --name metaxisdata \
@@ -36,38 +24,46 @@ docker run -d --name metaxisdata \
   ghcr.io/ranxy/metaxisdata:latest
 ```
 
-如果拉取失败，说明还没有发布过 Release：用 `make docker-build` 从本地检出目录构建同一个镜像。
+打开 `http://<host>:8083`，然后：
 
-然后打开 `http://<host>:8083`（上面发布的端口）：
+1. **创建第一个账号。** 它会成为工作区管理员。
+2. **添加一个实例并同步它的 schema。**
 
-1. **准备 PostgreSQL**，并把 `PG_URL` 指向它；首次启动时 schema 会自动迁移。
-2. **立刻创建第一个账号。** 它会成为工作区管理员；在管理员于 *设置* → *通用设置* 中开启「禁止自助注册」之前，注册通道一直是开放的。
-3. **在界面中添加一个实例**，并同步它的 schema。
-4. **可选**：在 *设置* → *通用设置* 中启用 MCP 端点——这还需要先配置工作区的「外部访问地址」。
-5. **在服务端前面用反向代理终止 HTTPS**：镜像有意只提供明文 HTTP。请把 `METAXISDATA_TRUSTED_PROXIES` 设为代理的地址，否则审计日志会把代理记成每个请求的来源。
+后续步骤（可选）：
+
+- **关闭自助注册。** 在 *设置* → *通用设置* 中开启「禁止自助注册」，此后只有管理员能创建用户。
+- **启用 HTTPS。** 容器按设计只提供明文 HTTP。请在它前面用反向代理终止 HTTPS，并把 `METAXISDATA_TRUSTED_PROXIES` 设为代理地址，让审计日志记录客户端而不是代理。
+- **保护已存凭据。** 设置 `METAXISDATA_ENCRYPTION_KEY`，这样仅凭一份数据库转储将无法解密平台为各实例保存的凭据——并妥善保管这把密钥：一旦丢失，已存的凭据将无法读取。
+- **接入 MCP 客户端。** 在 *设置* → *通用设置* 中启用 MCP 端点（需要先配置工作区外部地址），再参照 [docs/mcp.md](docs/mcp.md) 配置客户端。
 
 > 完整的部署指南——每个环境变量、健康检查与版本端点，以及如何自行构建镜像——见 [docs/deploy_zh.md](docs/deploy_zh.md)。
 
-### 本地试用
+## 本地试用
 
-还没有自己的 PostgreSQL？[docker-compose.yml](docker-compose.yml) 会把两者一起启动，所以 `make docker-up` 就够你看一眼构建出来的镜像：
+[docker-compose.yml](docker-compose.yml) 会把 PostgreSQL 和服务端一起启动，因此在你的机器上看一眼构建出来的镜像，只需要一条命令：
 
 ```bash
-make docker-up      # 构建并启动 PostgreSQL + 服务端，访问 http://localhost:8083
-make docker-down    # 停止两者；执行 `docker compose down -v` 可连数据卷一起删除
+make docker-up      # 构建镜像，然后启动 PostgreSQL + 服务端，访问 http://localhost:8083
+make docker-down    # 停止两者；compose 的数据卷会保留
 ```
 
-打开 <http://localhost:8083>，创建第一个账号——它会成为该工作区的管理员。端口是对外发布的，开发用密码是硬编码的，所以它只是用来查看一个构建出来的镜像，并不是生产拓扑。compose 文件本身、如何改用已发布镜像、以及 `:dev` 标签的注意事项，见 [docs/local-trial_zh.md](docs/local-trial_zh.md)。
+打开 <http://localhost:8083> 并创建第一个账号。这个栈为「快速试一个构建产物」而生——端口对外发布、开发密码硬编码——并不是为生产环境准备的。细节与注意事项见 [docs/local-trial_zh.md](docs/local-trial_zh.md)。
 
 ## 截图
 
-**元数据浏览** —— 一个已同步数据库的全部表，附带行数、大小、列数和索引。
+**元数据浏览** —— 一个已同步数据库的表清单，附带行数、大小、列数与索引。
 
 ![元数据浏览：已同步数据库的表清单，含行数、大小、列数与索引](docs/images/metaxisdata_metadata_small.png)
 
-**表级与列级血缘** —— 上下游血缘边，可一直展开到逐列的字段轨迹。
+**表级与列级血缘** —— 某张表的上下游血缘边，已展开到逐列的字段轨迹。
 
 ![血缘图：某张表的上下游血缘边，已展开到列级字段轨迹](docs/images/metaxisdata_lineage_small.png)
+
+## 工作原理
+
+- 服务端是一个 Go 二进制，在同一端口（8083）上提供 ConnectRPC API 和前端——一个内嵌进镜像的 Vue 3 单页应用。启用 MCP 时，MCP 端点也在同一端口上。
+- PostgreSQL 是唯一的外部依赖。schema 在启动时自动迁移，因此一个全新的数据库只需要一个连接串。
+- 后台 runner 负责同步 schema、分析并校验血缘，以及执行维护任务。
 
 ## 开发
 
@@ -86,9 +82,9 @@ make build-embed     # release profile，并把单页应用内嵌进二进制
 make build-cli       # mxd 客户端，产物为 ./build/mxd
 ```
 
-`make build` 生成的二进制不会内嵌前端：它只会返回一个占位页面，所以本地开发请运行 Vite 开发服务器，或者改用 `make build-embed` 构建。
+不带内嵌 tag 的构建只会用占位页面顶替单页应用：要么运行 Vite 开发服务器，要么用 `make build-embed` 构建。
 
-`go test ./...` 是纯本地测试，不需要数据库。下面的集成测试套件在 `integration` build tag 下，用真实服务端跑在真实的 PostgreSQL 和 MySQL 上；Docker 不可用时会自动跳过：
+`go test ./...` 不需要数据库。集成测试套件在 `integration` build tag 下用真实服务端跑在真实的 PostgreSQL 和 MySQL 上；Docker 不可用时会自动跳过：
 
 ```bash
 make test-integration-smoke
