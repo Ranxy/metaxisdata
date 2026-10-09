@@ -40,6 +40,10 @@ docker run -d --name metaxisdata \
   ghcr.io/ranxy/metaxisdata:latest
 ```
 
+Without Docker at hand, every release also publishes the same server as
+static binaries for five platforms — download one from GitHub Releases and
+run it directly; the deploy guide's *Get the server* section shows how.
+
 Open `http://<host>:8083` and:
 
 1. **Create the first account.** It becomes the workspace administrator.
@@ -60,8 +64,8 @@ Optional next steps:
   [docs/mcp.md](docs/mcp.md).
 
 > The complete deployment guide — every environment variable, the health and
-> version endpoints, and building the image yourself — is
-> [docs/deploy.md](docs/deploy.md).
+> version endpoints, the prebuilt binary, and building the image or the binary
+> yourself — is [docs/deploy.md](docs/deploy.md).
 
 ## Trying it locally
 

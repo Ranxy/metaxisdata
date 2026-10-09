@@ -2,12 +2,14 @@
 
 # Deploying Metaxisdata
 
-Metaxisdata ships as a single container image: the server binary with the web
-app embedded, running the release profile. PostgreSQL is the only external
-dependency, and the schema migrates itself on startup, so an empty database
-needs nothing but a connection URL.
+Metaxisdata ships as a single self-contained binary: the server with the web
+app embedded, running the release profile. Every release publishes it two
+ways — a container image on GHCR, and prebuilt binaries on GitHub Releases
+for hosts that run the binary directly — and both deliver the same server.
+PostgreSQL is the only external dependency, and the schema migrates itself
+on startup, so an empty database needs nothing but a connection URL.
 
-The container serves plain HTTP on port 8083. For production, terminate HTTPS
+The server serves plain HTTP on port 8083. For production, terminate HTTPS
 in a reverse proxy in front of it — step 4.
 
 ## Prerequisites
@@ -18,11 +20,23 @@ in a reverse proxy in front of it — step 4.
   search index (step 2).
 - Docker — there are no other host dependencies; everything needed at runtime
   is inside the image.
+- For the prebuilt binary, no Docker and no other runtime dependency either:
+  the binary is static and embeds the web app. Outgoing TLS needs a CA
+  certificate bundle, and an MSSQL source configured with a `timezone`
+  parameter needs a zone database (IANA tzdata) — the image ships both for
+  these two reasons; mainstream distributions provide them already.
 - To build the image yourself: BuildKit (Docker 20.10+; recent Docker Desktop
   and Engine enable it by default) and outbound access for the Go modules and
   the npm install.
+- To build the binary yourself: the Go toolchain and the frontend's pinned
+  pnpm release (scripts/build_metaxisdata.sh resolves it via corepack), with
+  outbound access for the Go modules and the npm install.
 
-## 1. Get the image
+## 1. Get the server
+
+Both channels publish the same artifact: the SPA is embedded, the prod
+profile is compiled in, and `GET /api/version` reports the release the binary
+came from. Pick the one that fits the host.
 
 ### Pull the released image
 
@@ -80,6 +94,73 @@ variables into every stage, including the runtime stage, credentials included.
 `BUILD_PROXY` is a custom argument that only the build stages declare, so the
 value you pass stays confined to the build.
 
+### Download the prebuilt binary
+
+For hosts that do not run Docker, every release publishes static binaries for
+five platforms, plus a `SHA256SUMS` listing every asset's checksum:
+
+| Platform | Asset |
+| --- | --- |
+| Linux (amd64) | `metaxisdata-linux-amd64` |
+| Linux (arm64) | `metaxisdata-linux-arm64` |
+| macOS (Apple Silicon) | `metaxisdata-darwin-arm64` |
+| macOS (Intel) | `metaxisdata-darwin-amd64` |
+| Windows (amd64) | `metaxisdata-windows-amd64.exe` |
+
+```bash
+# Linux (amd64)
+curl -fsSL -o metaxisdata https://github.com/Ranxy/metaxisdata/releases/latest/download/metaxisdata-linux-amd64
+chmod +x metaxisdata
+
+# Linux (arm64)
+curl -fsSL -o metaxisdata https://github.com/Ranxy/metaxisdata/releases/latest/download/metaxisdata-linux-arm64
+chmod +x metaxisdata
+
+# macOS (Apple Silicon)
+curl -fsSL -o metaxisdata https://github.com/Ranxy/metaxisdata/releases/latest/download/metaxisdata-darwin-arm64
+chmod +x metaxisdata
+
+# macOS (Intel)
+curl -fsSL -o metaxisdata https://github.com/Ranxy/metaxisdata/releases/latest/download/metaxisdata-darwin-amd64
+chmod +x metaxisdata
+```
+
+```powershell
+# Windows (PowerShell)
+curl.exe -fsSL -o metaxisdata.exe https://github.com/Ranxy/metaxisdata/releases/latest/download/metaxisdata-windows-amd64.exe
+```
+
+The `releases/latest/download/…` URL resolves to the newest release that is
+**not** a prerelease, so a prerelease will not answer it; name the tag in the
+URL instead — `…/releases/download/v1.2.3-rc.1/metaxisdata-linux-amd64`.
+
+The downloaded binary is the one [scripts/build_metaxisdata.sh](../scripts/build_metaxisdata.sh)
+produces: SPA embedded, prod profile, and `metaxisdata --version` reports the
+release tag.
+
+### Build the binary yourself
+
+[scripts/build_metaxisdata.sh](../scripts/build_metaxisdata.sh) builds the SPA
+and compiles the self-contained binary (`make build-binary` runs the same
+script):
+
+```bash
+scripts/build_metaxisdata.sh                # release profile -> build/metaxisdata
+VERSION=v1.2.3 scripts/build_metaxisdata.sh
+make build-binary                           # same as the first command
+
+scripts/build_metaxisdata.sh --dev          # dev profile, local experiments only
+
+scripts/build_metaxisdata.sh --release-assets   # the five release-platform assets + SHA256SUMS -> build/
+```
+
+The binary reports its version, commit, and build time from the
+`VERSION`, `GIT_COMMIT`, and `BUILD_TIME` environment variables, so the last
+command with the release tag set reproduces exactly what
+[release-binaries.yml](../.github/workflows/release-binaries.yml) uploads —
+that workflow is one script invocation plus the upload; `--dev` builds are
+for local experiments only.
+
 ## 2. Prepare PostgreSQL
 
 Point `PG_URL` at an existing database. The migrator creates its tables on the
@@ -113,6 +194,34 @@ The container runs as uid 1001 and reports health at `/healthz`:
 
 ```bash
 curl -fsS http://localhost:8083/healthz
+```
+
+### Run the binary directly
+
+The prebuilt binary (or `build/metaxisdata` from
+[scripts/build_metaxisdata.sh](../scripts/build_metaxisdata.sh)) takes the
+same `PG_URL` and runs in the foreground — put it behind your service manager
+(systemd, launchd, NSSM) just like the container is behind Docker:
+
+```bash
+PG_URL='postgres://<user>:<password>@<db-host>:5432/<database>?sslmode=disable' \
+  ./metaxisdata --port 8083
+```
+
+`metaxisdata --version` prints the version, commit, and build time. Upgrading
+is replacing the binary and restarting: pending migrations apply on startup,
+so keep the PostgreSQL backup discipline of the container flow (the notes
+below).
+
+The `PG_URL` and encryption-key variables below are read by the server itself
+and work identically for the binary. The other `METAXISDATA_*` variables are
+the image entrypoint's mappings — on a bare host, pass the matching flags
+instead: `--port`, `--debug`, `--enable-json-logging`, `--cors-allow-origins`,
+`--trusted-proxies`.
+
+```bash
+PG_URL='postgres://<user>:<password>@<db-host>:5432/<database>?sslmode=disable' \
+  ./metaxisdata --trusted-proxies 10.0.0.0/8 --cors-allow-origins https://metaxisdata.example.com
 ```
 
 ### First steps
@@ -173,6 +282,10 @@ proxy — set `METAXISDATA_TRUSTED_PROXIES` to the proxy's address or CIDR:
 
 Without it, the audit log records the proxy's address as the source of every
 request.
+
+`METAXISDATA_TRUSTED_PROXIES` is the image entrypoint's mapping of the
+flag; a binary run directly takes the flag itself
+(`./metaxisdata --trusted-proxies 10.0.0.0/8`).
 
 The notification stream needs no proxy timeout tuning: the server sends
 keep-alive heartbeats, so an idle connection outlives a proxy's default read

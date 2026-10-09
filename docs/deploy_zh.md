@@ -2,18 +2,22 @@
 
 # 部署 Metaxisdata
 
-Metaxisdata 以单个容器镜像交付：服务端二进制内嵌 Web 应用，以 release profile 运行。PostgreSQL 是唯一的外部依赖，schema 在启动时自动迁移，因此一个空数据库只需要一个连接串。
+Metaxisdata 以一个自包含的二进制交付：服务端内嵌 Web 应用，以 release profile 运行。每次 release 会以两种方式发布它——GHCR 上的容器镜像，以及可直接在宿主机上运行的 GitHub Releases 预编译二进制——两者交付的是同一个服务端。PostgreSQL 是唯一的外部依赖，schema 在启动时自动迁移，因此一个空数据库只需要一个连接串。
 
-容器只提供明文 HTTP，监听 8083。生产环境请在它前面用反向代理终止 HTTPS——见第 4 步。
+服务端只提供明文 HTTP，监听 8083。生产环境请在它前面用反向代理终止 HTTPS——见第 4 步。
 
 ## 前置条件
 
 - 一个服务端可访问的 PostgreSQL，且库本身已经创建。
 - 一个可在该库中创建表**和扩展**的数据库用户：迁移会执行 `CREATE EXTENSION IF NOT EXISTS pg_trgm`，用于元数据搜索索引（第 2 步）。
 - Docker——没有其他宿主机依赖，运行所需的一切都在镜像内。
+- 使用预编译二进制时同样不需要 Docker，也没有其他运行时依赖：二进制是静态的、内嵌 Web 应用。出站 TLS 需要 CA 证书包；仅当 MSSQL 数据源配置了 `timezone` 参数时还需要时区数据库（IANA tzdata）。镜像安装 `ca-certificates` 与 `tzdata` 正是这两个用途；主流发行版默认都已提供。
 - 如需自行构建镜像：还需要启用 BuildKit 的 Docker（Docker 20.10+；较新的 Docker Desktop 与 Engine 默认已启用），以及能访问 Go module 与 npm install 的网络。
+- 如需自行构建二进制：需要 Go 工具链与前端钉钉的 pnpm 版本（脚本会经 corepack 解析它），以及能访问 Go module 与 npm install 的网络。
 
-## 1. 获取镜像
+## 1. 获取服务端
+
+两条渠道发布的是同一个产物：SPA 已内嵌、prod profile 已编译进去，`GET /api/version` 会报告该二进制来自哪个 release。按宿主机情况选择其一。
 
 ### 拉取已发布的镜像
 
@@ -59,6 +63,61 @@ make docker-build-dev
 
 不要为构建全局 export `HTTPS_PROXY`：BuildKit 会把标准代理变量注入每个构建阶段，运行时阶段也在内，凭据会一并带过去。`BUILD_PROXY` 是只有构建阶段声明的自定义参数，因此传入的值只停留在构建之内。
 
+### 下载预编译二进制
+
+对于不跑 Docker 的宿主机，每次 release 都会发布五个平台的静态二进制，以及列出所有资产校验和的 `SHA256SUMS`：
+
+| 平台 | 文件 |
+| --- | --- |
+| Linux (amd64) | `metaxisdata-linux-amd64` |
+| Linux (arm64) | `metaxisdata-linux-arm64` |
+| macOS (Apple Silicon) | `metaxisdata-darwin-arm64` |
+| macOS (Intel) | `metaxisdata-darwin-amd64` |
+| Windows (amd64) | `metaxisdata-windows-amd64.exe` |
+
+```bash
+# Linux (amd64)
+curl -fsSL -o metaxisdata https://github.com/Ranxy/metaxisdata/releases/latest/download/metaxisdata-linux-amd64
+chmod +x metaxisdata
+
+# Linux (arm64)
+curl -fsSL -o metaxisdata https://github.com/Ranxy/metaxisdata/releases/latest/download/metaxisdata-linux-arm64
+chmod +x metaxisdata
+
+# macOS (Apple Silicon)
+curl -fsSL -o metaxisdata https://github.com/Ranxy/metaxisdata/releases/latest/download/metaxisdata-darwin-arm64
+chmod +x metaxisdata
+
+# macOS (Intel)
+curl -fsSL -o metaxisdata https://github.com/Ranxy/metaxisdata/releases/latest/download/metaxisdata-darwin-amd64
+chmod +x metaxisdata
+```
+
+```powershell
+# Windows（PowerShell）
+curl.exe -fsSL -o metaxisdata.exe https://github.com/Ranxy/metaxisdata/releases/latest/download/metaxisdata-windows-amd64.exe
+```
+
+`releases/latest/download/…` 指向最新的**非预发布** release，预发布版本不会应答这个 URL；预发布请在 URL 里带 tag——`…/releases/download/v1.2.3-rc.1/metaxisdata-linux-amd64`。
+
+下载的二进制与 [scripts/build_metaxisdata.sh](../scripts/build_metaxisdata.sh) 产出的一致：SPA 已内嵌、prod profile，`metaxisdata --version` 会报告 release 标签。
+
+### 自行构建二进制
+
+[scripts/build_metaxisdata.sh](../scripts/build_metaxisdata.sh) 构建前端 SPA 并编译出自包含二进制（`make build-binary` 运行的就是同一个脚本）：
+
+```bash
+scripts/build_metaxisdata.sh                # release profile -> build/metaxisdata
+VERSION=v1.2.3 scripts/build_metaxisdata.sh
+make build-binary                           # 等同于第一条命令
+
+scripts/build_metaxisdata.sh --dev          # dev profile，仅用于本地试验
+
+scripts/build_metaxisdata.sh --release-assets   # 五个 release 平台的资产 + SHA256SUMS -> build/
+```
+
+二进制对外报告的版本、提交与构建时间来自 `VERSION`、`GIT_COMMIT` 与 `BUILD_TIME` 环境变量；带 release 标签运行最后一条命令，即可在本地逐资产复现 [release-binaries.yml](../.github/workflows/release-binaries.yml) 上传的内容——该工作流就是一次脚本调用加上传；`--dev` 构建仅用于本地试验。
+
 ## 2. 准备 PostgreSQL
 
 把 `PG_URL` 指向一个已存在的数据库。迁移器会在首次启动时创建自己的表，所以空数据库即可：
@@ -88,6 +147,24 @@ docker run -d --name metaxisdata \
 
 ```bash
 curl -fsS http://localhost:8083/healthz
+```
+
+### 直接运行二进制
+
+预编译二进制（或 [scripts/build_metaxisdata.sh](../scripts/build_metaxisdata.sh) 产出的 `build/metaxisdata`）接受同样的 `PG_URL`，并以前台方式运行——把它交给 systemd 等服务管理器托管，就像容器交给 Docker 一样：
+
+```bash
+PG_URL='postgres://<user>:<password>@<db-host>:5432/<database>?sslmode=disable' \
+  ./metaxisdata --port 8083
+```
+
+`metaxisdata --version` 会打印版本、提交与构建时间。升级就是替换二进制并重启：待执行的迁移会在启动时自动应用，因此备份纪律仍按下文的运维说明执行（面向容器的部分）。
+
+`PG_URL` 与加密密钥两个变量由服务端自身读取，对二进制同样有效。其余 `METAXISDATA_*` 变量属于镜像入口脚本的映射——在裸宿主机上请改用与之对应的 flag：`--port`、`--debug`、`--enable-json-logging`、`--cors-allow-origins`、`--trusted-proxies`。
+
+```bash
+PG_URL='postgres://<user>:<password>@<db-host>:5432/<database>?sslmode=disable' \
+  ./metaxisdata --trusted-proxies 10.0.0.0/8 --cors-allow-origins https://metaxisdata.example.com
 ```
 
 ### 首次启动
@@ -135,6 +212,8 @@ curl -fsS http://localhost:8083/healthz
 ```
 
 不设置它的话，审计日志会把代理地址记成每个请求的来源。
+
+`METAXISDATA_TRUSTED_PROXIES` 是镜像入口脚本对 flag 的映射；直接运行二进制时请改传 flag 本身（`./metaxisdata --trusted-proxies 10.0.0.0/8`）。
 
 通知流不需要为代理调整超时：服务端会发送 keep-alive 心跳，空闲连接不会被代理的默认读取超时切断。
 

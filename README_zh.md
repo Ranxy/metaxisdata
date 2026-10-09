@@ -24,6 +24,8 @@ docker run -d --name metaxisdata \
   ghcr.io/ranxy/metaxisdata:latest
 ```
 
+手头没有 Docker?每次 release 也会把同一个服务端以静态二进制发布到五个平台——从 GitHub Releases 下载后直接运行；部署指南的「获取服务端」一节给出了做法。
+
 打开 `http://<host>:8083`，然后：
 
 1. **创建第一个账号。** 它会成为工作区管理员。
@@ -36,7 +38,7 @@ docker run -d --name metaxisdata \
 - **保护已存凭据。** 设置 `METAXISDATA_ENCRYPTION_KEY`，这样仅凭一份数据库转储将无法解密平台为各实例保存的凭据——并妥善保管这把密钥：一旦丢失，已存的凭据将无法读取。
 - **接入 MCP 客户端。** 在 *设置* → *通用设置* 中启用 MCP 端点（需要先配置工作区外部地址），再参照 [docs/mcp.md](docs/mcp.md) 配置客户端。
 
-> 完整的部署指南——每个环境变量、健康检查与版本端点，以及如何自行构建镜像——见 [docs/deploy_zh.md](docs/deploy_zh.md)。
+> 完整的部署指南——每个环境变量、健康检查与版本端点、预编译二进制，以及如何自行构建镜像或二进制——见 [docs/deploy_zh.md](docs/deploy_zh.md)。
 
 ## 本地试用
 
