@@ -293,7 +293,9 @@ const router = createRouter({
   routes,
 });
 
-router.beforeEach(async (to, _from, next) => {
+// vue-router 5 deprecates the `next` callback: a guard states its outcome by
+// returning it, and falling off the end of the function means "carry on".
+router.beforeEach(async (to) => {
   const authStore = useAuthStore();
 
   // An authenticated page may only render once the permission-bearing profile
@@ -306,7 +308,7 @@ router.beforeEach(async (to, _from, next) => {
   }
 
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
-    next({
+    return {
       name: "Login",
       query: {
         redirect: to.fullPath,
@@ -314,23 +316,27 @@ router.beforeEach(async (to, _from, next) => {
         // form instead of showing a bare login page.
         ...(authStore.sessionExpired ? { expired: "1" } : {}),
       },
-    });
-  } else if (authStore.requireResetPassword && to.name !== "Login") {
+    };
+  }
+
+  if (authStore.requireResetPassword && to.name !== "Login") {
     // A forced password reset has to be completed first: the server only
     // accepts the password change from the token the login issued.
-    next({ name: "Login" });
-  } else if (to.name === "Login" && authStore.isAuthenticated) {
-    next({ name: "Home" });
-  } else if (
+    return { name: "Login" };
+  }
+
+  if (to.name === "Login" && authStore.isAuthenticated) {
+    return { name: "Home" };
+  }
+
+  if (
     typeof to.meta.permission === "string" &&
     authStore.isAuthenticated &&
     !authStore.hasPermission(to.meta.permission)
   ) {
     // The server enforces the same permission on every RPC; this only keeps a
     // caller from landing on a page whose every request would be denied.
-    next({ name: "Home" });
-  } else {
-    next();
+    return { name: "Home" };
   }
 });
 
