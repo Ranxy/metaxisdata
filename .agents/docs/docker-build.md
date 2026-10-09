@@ -19,7 +19,7 @@
 | 版本元数据用 `-ldflags -X backend/common/version.{Version,GitCommit,BuildTime}` 注入 | laelia 每个服务一个 `version` 包，本项目只有一个服务，一个共享包就够；`mxd` 不能导入 `backend/`（depguard），所以 CLI 不带这些信息。 |
 | 代理走自定义构建参数 `BUILD_PROXY`，不导出全局 `HTTPS_PROXY` | BuildKit 会把标准 `http_proxy` 等参数自动注入**每个** stage，包括最终运行镜像；自定义参数只有构建 stage 声明。npm 走 `NPM_REGISTRY`，Go 走 `GOPROXY`。三者都按 `${ARG:-上游默认}` 取值，所以 compose 可以无条件转发 `${GOPROXY:-}` 这类空值而不必知道默认值。 |
 | compose 的 `make docker-up` 目标从本机取 `GOPROXY`/`NPM_REGISTRY` 与 `GIT_COMMIT`/`BUILD_TIME` 传给构建 | compose 自己读不到 git/`go env`；不接管的话，`docker compose up --build` 在需要镜像源的网络上会失败，镜像也会自称 `unknown` 构建。 |
-| pnpm 固定 `10.24.0` | `frontend/package.json` 的 `packageManager` 与 CI 都用它，`pnpm-lock.yaml` 也是它写的。 |
+| pnpm 固定 `12.10.1` | `frontend/package.json` 的 `packageManager` 与 CI 都用它，`pnpm-lock.yaml` 也是它写的。 |
 | 只有 release 构建打 `:latest` | `:latest` 应当指向“部署预期运行的配置”，本地实验不是。注意 `:dev` 同时是 `make docker-build`（release）和 `make docker-build-dev`（dev profile）的标签，所以 compose 永远用 `--build`（`make docker-up` 已如此），避免拿 dev 构建当 release 跑。 |
 | 运行镜像用 alpine + `ca-certificates` + `tzdata`，uid 1001，无卷 | 二进制 `CGO_ENABLED=0`，状态全在 PostgreSQL；TLS 只用于出站（源库、LLM、IdP）。`tzdata` 是为源库配置：MSSQL 实例可以带 `timezone` DSN 参数，`go-mssqldb` 用 `time.LoadLocation` 解析，没有 zoneinfo 就会报 `unknown time zone`，而这个配置在宿主机上能跑。`/tmp` 是唯一可写路径（MSSQL driver 的临时文件），要加固就用 `--read-only --tmpfs /tmp`，裸 `--read-only` 会把它也拿掉。 |
 | `IMAGE` 默认 `metaxisdata/metaxisdata`，`IMAGE_ALT` 默认 `ghcr.io/ranxy/metaxisdata` | 两个名字同时打标签；`IMAGE_ALT=` 置空即只打一个。 |
@@ -53,7 +53,7 @@
 | 没设 `PG_URL` | 进程打印 `must set PG_URL environment variable` 后从 `start()` 返回，日志走完就 **`Exited (0)`**（`root.go` 不调 `os.Exit`），容器不会进入 unhealthy——healthcheck 对已退出的容器根本不运行，所以编排侧要靠 `restart:` 或退出码判断。 |
 | 数据库不可达 | 启动即失败，schema 迁移在 `server.NewServer` 里做，迁移失败同样退出。 |
 | 前端请求 `/api/version` 失败（老镜像没有该路由、代理只转发 `/v1`） | `useBuildInfo` 返回 `failed` 状态、不抛错：用户菜单整块不渲染，设置→通用里那行显示 `—` 而不是一直「Loading…」。 |
-| 构建机 `pnpm` 版本 ≠ 10.24.0 时执行 `pnpm --dir frontend …` | 被 `packageManager` 校验拒绝（本机 pnpm 11 shim 的现象）；`cd frontend && pnpm …` 可自动切到 10.24.0，`scripts/build_metaxisdata.sh` 因此优先经 corepack（在 `frontend/` 内解析 pin）运行，无 corepack 才用 PATH 上的 pnpm。注意仓库根目录没有 `package.json`，`pnpm --version` 在根上探测**不触发**钉住校验——不能用它当探针。这与镜像构建无关，镜像里用的是固定版本。 |
+| 构建机 `pnpm` 版本 ≠ 12.10.1 时执行 `pnpm --dir frontend …` | 被 `packageManager` 校验拒绝；`cd frontend && pnpm …` 可自动切到 12.10.1（pnpm ≥11 会自行下载该版本，`pnpm` ≥11 的 `bin/pnpm.mjs` 引导脚本还会拉取原生二进制，均需出网），`scripts/build_metaxisdata.sh` 因此优先经 corepack（在 `frontend/` 内解析 pin）运行，无 corepack 才用 PATH 上的 pnpm。注意仓库根目录没有 `package.json`，`pnpm --version` 在根上探测**不触发**钉住校验——不能用它当探针。这与镜像构建无关，镜像里用的是固定版本。 |
 | `APK_MIRROR` 设成了非 alpine 镜像站 | 只替换 `https://dl-cdn.alpinelinux.org/alpine` 前缀，`apk add` 失败即构建失败。 |
 | 同时设 `METAXISDATA_PORT` 又显式传 `--port` | 入口脚本的派生值是默认，调用方参数在后、pflag 后者生效，于是服务监听 `--port`、healthcheck 探 `METAXISDATA_PORT`，容器一直 unhealthy 但服务正常。只改端口就用 `METAXISDATA_PORT`。 |
 

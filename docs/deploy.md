@@ -28,9 +28,10 @@ in a reverse proxy in front of it — step 4.
 - To build the image yourself: BuildKit (Docker 20.10+; recent Docker Desktop
   and Engine enable it by default) and outbound access for the Go modules and
   the npm install.
-- To build the binary yourself: the Go toolchain and the frontend's pinned
-  pnpm release (scripts/build_metaxisdata.sh resolves it via corepack), with
-  outbound access for the Go modules and the npm install.
+- To build the binary yourself: the Go toolchain, Node 24 (the frontend's
+  `engines` field) and the frontend's pinned pnpm release
+  (scripts/build_metaxisdata.sh resolves it via corepack), with outbound access
+  for the Go modules and the npm install.
 
 ## 1. Get the server
 

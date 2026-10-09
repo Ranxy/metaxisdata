@@ -40,15 +40,19 @@ describe("guid routes", () => {
     expect(currentGuid()).toBe(guid);
   });
 
-  it.each(
-    GUID_ROUTES
-  )("%s keeps a name that contains a slash in one segment", async (name) => {
-    const guid = "inst;db;public;order/items";
+  it.each(GUID_ROUTES)(
+    "%s keeps a name that contains a slash in one segment",
+    async (name) => {
+      const guid = "inst;db;public;order/items";
 
-    await guidRouter.push({ name, params: { guid: guidToRouteParams(guid) } });
+      await guidRouter.push({
+        name,
+        params: { guid: guidToRouteParams(guid) },
+      });
 
-    expect(currentGuid()).toBe(guid);
-  });
+      expect(currentGuid()).toBe(guid);
+    }
+  );
 
   it("keeps the empty MySQL schema segment", async () => {
     const guid = "inst;db;;orders";

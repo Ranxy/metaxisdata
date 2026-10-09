@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.3.8/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
     "ignoreUnknown": true,
@@ -20,22 +20,16 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": false,
+      "preset": "none",
       "complexity": {
         "noUselessEscapeInRegex": "error",
-        "noUselessTypeConstraint": "error"
+        "noUselessTypeConstraint": "error",
+        "useArrayFind": "error"
       },
       "correctness": {
         "noEmptyPattern": "error",
-        "noUnusedVariables": "error"
-      },
-      "nursery": {
-        "noForIn": "error",
+        "noUnusedVariables": "error",
         "noVueVIfWithVFor": "error",
-        "useArraySortCompare": "error",
-        "useFind": "error",
-        "useSpread": "error",
-        "useVueHyphenatedAttributes": "error",
         "useVueValidVBind": "error",
         "useVueValidVElse": "error",
         "useVueValidVElseIf": "error",
@@ -49,7 +43,9 @@
         "noNamespace": "error",
         "useArrayLiterals": "error",
         "useAsConstAssertion": "error",
-        "useBlockStatements": "off"
+        "useBlockStatements": "off",
+        "useSpreadOverApply": "error",
+        "useVueHyphenatedAttributes": "error"
       },
       "suspicious": {
         "noConsole": {
@@ -62,7 +58,9 @@
         "noMisleadingInstantiator": "error",
         "noNonNullAssertedOptionalChain": "error",
         "noUnsafeDeclarationMerging": "error",
-        "useNamespaceKeyword": "error"
+        "useNamespaceKeyword": "error",
+        "noForIn": "error",
+        "useArraySortCompare": "error"
       }
     }
   },

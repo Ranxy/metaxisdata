@@ -343,6 +343,7 @@ import {
   nextTick,
   onMounted,
   ref,
+  shallowRef,
   watch,
 } from "vue";
 import { useI18n } from "vue-i18n";
@@ -453,8 +454,12 @@ type NodeRunSummary = {
   updatedAtLabel: string;
 };
 
-const nodes = ref<Node[]>([]);
-const edges = ref<Edge[]>([]);
+// `shallowRef` rather than `ref`: vue-flow's generic `Node`/`Edge` types push
+// Vue's `UnwrapRef` recursion past TypeScript 6's instantiation depth limit, and
+// this page always replaces the whole array instead of mutating a node in
+// place, which is all shallow reactivity has to observe.
+const nodes = shallowRef<Node[]>([]);
+const edges = shallowRef<Edge[]>([]);
 const initialLoading = ref(true);
 
 // Which (node, direction) pairs the user has drawn into the graph. This is
@@ -1162,7 +1167,9 @@ function collectColumnsForGuid(guid: string): string[] {
         columns.add(rel.targetColumn);
     }
   }
-  return Array.from(columns).sort();
+  // Stated comparator: code-unit order, same as the default `sort()` would give
+  // these strings, but spelled out for `useArraySortCompare`.
+  return Array.from(columns).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 }
 
 /**

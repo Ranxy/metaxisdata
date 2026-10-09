@@ -95,7 +95,6 @@ function generateUniqueId(): string {
 const searchQuery = ref("");
 const activeFilters = ref<ActiveFilter[]>([]);
 const showFilterMenu = ref(false);
-const searchInputRef = ref<HTMLInputElement>();
 const filterSearchQuery = ref("");
 const categorySearchQuery = ref("");
 
@@ -467,7 +466,6 @@ watch(searchQuery, () => {
 
       <!-- Search Input -->
       <input
-        ref="searchInputRef"
         v-model="searchQuery"
         type="text"
         :placeholder="searchPlaceholder ?? t('databaseManagement.searchPlaceholder')"

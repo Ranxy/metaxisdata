@@ -109,12 +109,12 @@ jobs:
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 10.24.0
+          version: 12.10.1
 
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
@@ -149,7 +149,7 @@ jobs:
       - name: Build
         run: pnpm --dir frontend build
 
-      # Observation, not a gate: type-check heap, bundle size, test count and
+      # Observation, not a gate: type-check time, bundle size, test count and
       # the shared layer's coverage, appended to this run's summary so drift is
       # visible next to the run.
       - name: Report frontend metrics
