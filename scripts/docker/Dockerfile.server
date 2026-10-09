@@ -54,8 +54,10 @@ ARG TARGETARCH
 # to the upstream default (Go's own default is the same), which is what lets a
 # caller forward `${GOPROXY:-}` from a compose file.
 ARG GOPROXY
-# RELEASE=true selects the prod profile. The dev profile installs a wide-open
-# CORS middleware, so a deployment image must not default to it.
+# RELEASE=true selects the prod profile. The dev profile is not a CORS hole —
+# its only extra is the two Vite dev origins in the CORS allowlist — but the
+# profile a deployment runs should be the one it was tested as, so prod is the
+# default and dev is opt-in.
 ARG RELEASE=true
 ENV GOPROXY=${GOPROXY:-https://proxy.golang.org,direct}
 ENV http_proxy=${BUILD_PROXY} https_proxy=${BUILD_PROXY} no_proxy=localhost,127.0.0.1
@@ -82,6 +84,10 @@ ARG VERSION=dev
 ARG GIT_COMMIT=unknown
 ARG BUILD_TIME=unknown
 # APK_MIRROR replaces the Alpine CDN, e.g. https://mirrors.aliyun.com/alpine.
+# Whatever is passed is written verbatim into /etc/apk/repositories *inside the
+# published image* and printed by `docker history`, so never put credentials in
+# it: authenticate a private mirror with a build secret or a client certificate
+# instead.
 ARG APK_MIRROR
 LABEL org.opencontainers.image.title="Metaxisdata" \
 	org.opencontainers.image.description="Self-hosted data governance and metadata platform" \
@@ -90,14 +96,20 @@ LABEL org.opencontainers.image.title="Metaxisdata" \
 	org.opencontainers.image.revision=${GIT_COMMIT} \
 	org.opencontainers.image.created=${BUILD_TIME} \
 	org.opencontainers.image.licenses="Apache-2.0"
-# ca-certificates is the only runtime dependency: the server talks TLS to source
-# databases, LLM providers and OIDC/LDAP identity providers, and writes nothing
-# to disk (its state is PostgreSQL). busybox wget serves the health check.
+# ca-certificates is the only thing the server itself needs: it talks TLS to
+# source databases, LLM providers and OIDC/LDAP identity providers, and writes
+# nothing to disk (its state is PostgreSQL). tzdata is for a source's own
+# configuration rather than for the server: an MSSQL instance may carry a
+# `timezone` DSN parameter, and go-mssqldb resolves it with time.LoadLocation,
+# which fails on a host with no zone database. busybox wget serves the health
+# check. The home directory is real (no -H) so anything that writes to $HOME
+# does not fail; /tmp stays the one writable path, so a hardened run wants
+# `--read-only --tmpfs /tmp`.
 RUN if [ -n "${APK_MIRROR}" ]; then \
 		sed -i "s|https://dl-cdn.alpinelinux.org/alpine|${APK_MIRROR%/}|g" /etc/apk/repositories; \
 	fi \
-	&& apk add --no-cache ca-certificates \
-	&& adduser -D -u 1001 -H -s /sbin/nologin metaxisdata
+	&& apk add --no-cache ca-certificates tzdata \
+	&& adduser -D -u 1001 -s /sbin/nologin metaxisdata
 COPY --from=server-build /out/metaxisdata /usr/local/bin/metaxisdata
 COPY scripts/docker/metaxisdata-entrypoint.sh /usr/local/bin/metaxisdata-entrypoint
 USER 1001

@@ -16,8 +16,9 @@ run:
 	go run ./backend/bin/server/main.go
 
 # Development build: the server runs with the dev profile (ReleaseModeDev),
-# which installs a wide-open CORS middleware. Use build-release for anything
-# that is not a local development machine.
+# which adds the two Vite dev origins to the CORS allowlist. Use build-release
+# for anything that is not a local development machine: the prod profile is the
+# one a deployment was tested as.
 build:
 	go build -ldflags "$(LDFLAGS)" -p=16 -o ./build/metaxisdata ./backend/bin/server/main.go
 
@@ -50,7 +51,9 @@ docker-build:
 	scripts/build_metaxisdata_docker.sh
 
 # Dev-profile image for local experiments. It is deliberately not tagged
-# :latest, so it cannot become what a deployment pulls.
+# :latest, and it overwrites the :dev tag the default build also uses, so run
+# `make docker-up` (which rebuilds) rather than a stale `docker compose up`
+# after this.
 docker-build-dev:
 	scripts/build_metaxisdata_docker.sh --dev
 

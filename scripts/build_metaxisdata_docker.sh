@@ -5,19 +5,22 @@
 # Usage:
 #   scripts/build_metaxisdata_docker.sh                  # -> metaxisdata/metaxisdata:dev
 #   VERSION=v1.2.3 scripts/build_metaxisdata_docker.sh  # -> metaxisdata/metaxisdata:v1.2.3
-#   scripts/build_metaxisdata_docker.sh --dev           # dev profile (local only)
+#   scripts/build_metaxisdata_docker.sh --dev           # dev profile, :dev only (no :latest)
 #   IMAGE=registry.internal/metaxisdata IMAGE_ALT= scripts/build_metaxisdata_docker.sh
 #
 # Network knobs, all optional:
-#   BUILD_PROXY     proxy for the Go module download and the npm install, passed
-#                   under a custom arg name so BuildKit never injects it into
-#                   the runtime image. Do not export a global HTTPS_PROXY
-#                   instead: BuildKit auto-injects the standard names into every
-#                   stage, including the shipped one.
+#   BUILD_PROXY     proxy for the Go module download and the npm install. It is a
+#                   custom argument name so the value only reaches the build
+#                   stages' own env, instead of BuildKit injecting a standard
+#                   http_proxy into every stage: a proxy set through the docker
+#                   CLI config is applied by the builder itself, credentials
+#                   included, and this Dockerfile cannot stop that.
 #   GOPROXY         Go module proxy; defaults to this machine's `go env GOPROXY`.
 #   NPM_REGISTRY    npm registry; defaults to this machine's `npm config get
 #                   registry`.
-#   APK_MIRROR      Alpine CDN replacement, e.g. https://mirrors.aliyun.com/alpine
+#   APK_MIRROR      Alpine CDN replacement, e.g. https://mirrors.aliyun.com/alpine.
+#                   Written verbatim into /etc/apk/repositories inside the image,
+#                   so it must never carry credentials.
 #
 # The image is tagged once per name with VERSION; a release build also claims
 # :latest. IMAGE_ALT defaults to the ghcr.io mirror; set IMAGE_ALT= to build
@@ -76,8 +79,9 @@ TAGS=(--tag "${IMAGE}:${VERSION}")
 if [[ -n "${IMAGE_ALT}" ]]; then
   TAGS+=(--tag "${IMAGE_ALT}:${VERSION}")
 fi
-# Only a release build may claim :latest — a dev image is the wide-open-CORS
-# profile, and it must not become the tag a deployment pulls by default.
+# Only a release build may claim :latest. The dev profile is not a CORS hole,
+# but :latest should name the configuration a deployment is expected to run,
+# and a local experiment is not that.
 if [[ "${RELEASE}" == "true" ]]; then
   TAGS+=(--tag "${IMAGE}:latest")
   if [[ -n "${IMAGE_ALT}" ]]; then
@@ -96,10 +100,19 @@ docker build -f ./scripts/docker/Dockerfile.server \
 	"${TAGS[@]}" \
 	.
 
+# Print every tag that was created, including the alias: IMAGE_ALT= leaves
+# :latest on IMAGE alone, and a reader of this summary should not have to
+# remember the rules to know what just appeared in the local store.
 echo ""
 echo "Images:"
 echo "  ${IMAGE}:${VERSION}"
+if [[ "${RELEASE}" == "true" ]]; then
+  echo "  ${IMAGE}:latest"
+fi
 if [[ -n "${IMAGE_ALT}" ]]; then
   echo "  ${IMAGE_ALT}:${VERSION}"
+  if [[ "${RELEASE}" == "true" ]]; then
+    echo "  ${IMAGE_ALT}:latest"
+  fi
 fi
 echo "Run one with PG_URL pointing at PostgreSQL, or use make docker-up for a local trial."

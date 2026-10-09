@@ -2,10 +2,11 @@ name: Release image
 
 # Publishing a GitHub Release is what ships a version: the image is built from
 # the commit the release points at and pushed to GHCR under the release tag.
-# A prerelease gets its own tag but never :latest, so a deployment tracking
-# :latest is not handed a release candidate. workflow_dispatch is the manual
-# rebuild path and pushes only :sha-<commit>, because a branch name is not a
-# version.
+# A prerelease gets its own tag but never moves :latest or the minor line, so a
+# deployment tracking an alias is not handed a release candidate.
+# workflow_dispatch is the manual rebuild path: on a branch it publishes only
+# :sha-<commit> (a branch name is not a version), while dispatched on a tag it
+# republishes that tag's set, still without touching the aliases.
 on:
   release:
     types: [published]
@@ -57,28 +58,48 @@ jobs:
         id: image
         run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
+      # The commit is read from the checked-out checkout rather than from
+      # github.sha: for a release event the latter is documented as the last
+      # commit of the tagged release, and for an annotated tag it may name the
+      # tag object. HEAD after checking out the tag is the commit the binary was
+      # actually built from, which is what the OCI revision label must record.
       - name: Resolve the build metadata
         id: build
         run: |
           echo "version=${{ github.event.release.tag_name || github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       # Tags: the release tag as published (v1.2.3), the bare semver (1.2.3),
       # the minor line (1.2), the commit (sha-abc1234), and :latest for a
-      # release that is not a prerelease. Only the tag list comes from here:
-      # the image's OCI labels are built from the Dockerfile's build args, so a
-      # label and `metaxisdata --version` cannot disagree.
+      # release that is not a prerelease.
+      #
+      # flavor.latest=false is what makes the prerelease rule real, not the
+      # enable expressions below. metadata-action sorts the tag list by
+      # descending priority (semver 900, ref 600, raw 200, sha 100), and
+      # version.latest is decided by the FIRST entry that yields a value and is
+      # never revised: with the default `latest=auto`, a semver tag lets
+      # semver's own prerelease rule decide (correct), but a tag semver cannot
+      # parse — `rc-2026` — leaves the decision to the ref entry, which claims
+      # latest=true, so a prerelease would move :latest. Turning the flavor off
+      # removes every implicit source and leaves the gated raw entry as the only
+      # one. Verified against docker/metadata-action@v5's own code.
+      #
+      # Aliases (1.2, latest) are stable-release only; the exact version and
+      # sha tags publish on every release so an RC is still identifiable.
       - name: Resolve tags
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ steps.image.outputs.name }}
+          flavor: |
+            latest=false
           tags: |
             type=ref,event=tag
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name != 'release' || github.event.release.prerelease == false }}
             type=sha,format=short
-            type=raw,value=latest,enable=${{ github.event_name == 'release' && !github.event.release.prerelease }}
+            type=raw,value=latest,enable=${{ github.event_name == 'release' && github.event.release.prerelease == false }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -90,7 +111,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           build-args: |
             VERSION=${{ steps.build.outputs.version }}
-            GIT_COMMIT=${{ github.sha }}
+            GIT_COMMIT=${{ steps.build.outputs.commit }}
             BUILD_TIME=${{ steps.build.outputs.time }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

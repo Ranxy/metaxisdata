@@ -216,12 +216,12 @@
           </CardHeader>
           <CardContent class="space-y-1 text-sm">
             <p
-              v-if="!buildInfo"
+              v-if="buildInfoState === 'loading'"
               class="text-muted-foreground"
             >
               {{ t("common.loading") }}
             </p>
-            <template v-else>
+            <template v-else-if="buildInfo">
               <div>
                 {{ t("common.version") }}: {{ buildInfo.version }}
               </div>
@@ -232,6 +232,15 @@
                 {{ t("common.buildTime") }}: {{ buildInfo.build_time }}
               </div>
             </template>
+            <!-- A server that does not answer at all (an older build, a proxy
+                 that strips the path) says so once, instead of claiming to
+                 still be loading forever. -->
+            <p
+              v-else
+              class="text-muted-foreground"
+            >
+              —
+            </p>
           </CardContent>
         </Card>
 
@@ -294,7 +303,7 @@ import { useAuthStore } from "@/store/modules/auth";
 const { t } = useI18n();
 const authStore = useAuthStore();
 const { formatError, handleError, showSuccess } = useErrorHandler();
-const { buildInfo } = useBuildInfo();
+const { buildInfo, buildInfoState } = useBuildInfo();
 
 // The setting is readable by every member (the login page reads it too), but
 // only metaxisdata.settings.update may change it.

@@ -1,38 +1,24 @@
 import { onMounted, ref } from "vue";
+import { type BuildInfo, fetchBuildInfo } from "@/api/version";
 
-/**
- * The build metadata `GET /api/version` reports. It describes the server the
- * SPA was served by, which is what an operator comparing a running deployment
- * against a release needs — not the bundle's own build.
- */
-export interface BuildInfo {
-  version: string;
-  git_commit: string;
-  build_time: string;
-}
+/** How far the build metadata request has got. */
+export type BuildInfoState = "loading" | "ready" | "failed";
 
 /**
  * Reads the server's build metadata once, when the calling component mounts.
  *
- * The endpoint is anonymous and the display is decorative, so nothing here
- * throws or toasts: a server predating the route, or a proxy that forwards only
- * `/v1`, leaves `buildInfo` empty and the caller renders nothing.
+ * `state` exists so a caller can tell "not answered yet" from "will never
+ * answer": `buildInfo` alone stays `null` for both, and a caller that renders
+ * a loading placeholder for the second case would show it forever.
  */
 export function useBuildInfo() {
-  const baseUrl = import.meta.env.VITE_API_BASE_URL || "";
   const buildInfo = ref<BuildInfo | null>(null);
+  const buildInfoState = ref<BuildInfoState>("loading");
 
   onMounted(async () => {
-    try {
-      const response = await fetch(`${baseUrl}/api/version`);
-      if (!response.ok) {
-        return;
-      }
-      buildInfo.value = (await response.json()) as BuildInfo;
-    } catch {
-      // Decorative metadata: a failure must not surface as an error.
-    }
+    buildInfo.value = await fetchBuildInfo();
+    buildInfoState.value = buildInfo.value ? "ready" : "failed";
   });
 
-  return { buildInfo };
+  return { buildInfo, buildInfoState };
 }

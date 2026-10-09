@@ -7,6 +7,10 @@
 #   docker compose logs -f server
 #   docker compose down              # keep the store: add -v to drop it
 #
+# Always pass --build (or use `make docker-up`, which does): the default tag is
+# also what `make docker-build-dev` overwrites, so an image left over from a dev
+# build would otherwise be started as if it were the release profile.
+#
 # See docs/deployment.md for the flags and environment variables behind this.
 name: metaxisdata
 
@@ -30,9 +34,11 @@ services:
     #   - "5432:5432"
 
   server:
-    # Tagged `dev` by default: the local build nobody named. The profile is
-    # still the release one — RELEASE below is what decides that, not the tag.
-    image: ${METAXISDATA_IMAGE:-metaxisdata/metaxisdata:dev}
+    # VERSION is both the tag and the version baked into the binary, so the two
+    # cannot disagree. METAXISDATA_IMAGE overrides the repository name only, so
+    # a published image can be run locally with
+    # `METAXISDATA_IMAGE=ghcr.io/ranxy/metaxisdata VERSION=v1.2.3 make docker-up`.
+    image: ${METAXISDATA_IMAGE:-metaxisdata/metaxisdata}:${VERSION:-dev}
     build:
       context: .
       dockerfile: scripts/docker/Dockerfile.server

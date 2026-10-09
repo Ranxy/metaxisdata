@@ -43,25 +43,38 @@ describe("useBuildInfo", () => {
 
     expect(fetchMock).toHaveBeenCalledWith("/api/version");
     expect(wrapper.vm.buildInfo).toEqual(info);
+    expect(wrapper.vm.buildInfoState).toBe("ready");
+  });
+
+  // "loading" is only the state before the request settles: a caller that shows
+  // a placeholder must be able to tell it from a route that will never answer.
+  it("reports loading until the request settles", () => {
+    mockFetch({ ok: false } as Partial<Response>);
+
+    const wrapper = mount(Host);
+
+    expect(wrapper.vm.buildInfoState).toBe("loading");
   });
 
   // An older server (or a proxy that only forwards /v1) answers the route with
   // something else entirely; the metadata must stay absent rather than throw.
-  it("leaves the metadata empty when the route does not answer", async () => {
+  it("reports a failure when the route does not answer", async () => {
     mockFetch({ ok: false } as Partial<Response>);
 
     const wrapper = mount(Host);
     await flushPromises();
 
     expect(wrapper.vm.buildInfo).toBeNull();
+    expect(wrapper.vm.buildInfoState).toBe("failed");
   });
 
-  it("leaves the metadata empty when the request fails", async () => {
+  it("reports a failure when the request fails", async () => {
     mockFetch(new Error("network down"));
 
     const wrapper = mount(Host);
     await flushPromises();
 
     expect(wrapper.vm.buildInfo).toBeNull();
+    expect(wrapper.vm.buildInfoState).toBe("failed");
   });
 });
