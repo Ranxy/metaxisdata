@@ -29,13 +29,28 @@ Every build tags the image under `IMAGE` (default `metaxisdata/metaxisdata`) and
 
 Do not export a global `HTTPS_PROXY` for the build instead of `BUILD_PROXY`: BuildKit auto-injects the standard proxy variables into every stage, including the runtime image. `BUILD_PROXY` is a custom argument that only the build stages declare, so nothing about the build environment is shipped.
 
+## Released images
+
+Publishing a GitHub Release builds both `linux/amd64` and `linux/arm64` and pushes them to GHCR ([workflow](../.github/workflows/release-image.yml)):
+
+```bash
+docker pull ghcr.io/ranxy/metaxisdata:v1.2.3   # the release tag as published
+docker pull ghcr.io/ranxy/metaxisdata:1.2.3    # the bare semver
+docker pull ghcr.io/ranxy/metaxisdata:1.2      # the minor line
+docker pull ghcr.io/ranxy/metaxisdata:latest   # the newest non-prerelease
+```
+
+A prerelease gets its tag but never moves `:latest`, so a deployment tracking `:latest` is not handed a release candidate. A manual run of the workflow publishes `:sha-<commit>` only, because a branch name is not a version. The build stages run natively and the Go binary is cross-compiled, so arm64 costs a few minutes rather than an hour of emulation.
+
+GHCR packages start private even when the repository is public: make the package public in its settings for an anonymous `docker pull`, or `docker login ghcr.io` first.
+
 ## Run
 
 ```bash
 docker run -d --name metaxisdata \
   -p 8083:8083 \
   -e PG_URL='postgres://user:password@db-host:5432/metaxisdata?sslmode=disable' \
-  metaxisdata/metaxisdata:v1.2.3
+  ghcr.io/ranxy/metaxisdata:v1.2.3
 ```
 
 The container runs as uid 1001 with no writable volume: all state is in PostgreSQL. The one exception is a scratch file the MSSQL driver writes under `/tmp`, which is writable in the image. The clock and all log timestamps are UTC.

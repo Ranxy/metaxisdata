@@ -3,9 +3,16 @@
 # frontend -> server-build -> server. The runtime image is a single static
 # binary plus the SPA it embeds — there is no second service to build and no
 # cross-compiled artifact to download, unlike a manager/agent/provisioner fleet.
+#
+# Multi-platform: the two build stages run on $BUILDPLATFORM and the Go binary is
+# cross-compiled with GOOS/GOARCH, because neither stage's output depends on the
+# host architecture (the SPA is JavaScript, CGO is off). Only the runtime stage
+# runs under emulation, for one `apk add`. Building both platforms that way is
+# minutes rather than the tens of minutes emulating vue-tsc would cost. BuildKit
+# is therefore required (`# syntax` above already implies it).
 
 # --- frontend: the SPA the server embeds -------------------------------------
-FROM node:24.12.0-slim AS frontend
+FROM --platform=$BUILDPLATFORM node:24.12.0-slim AS frontend
 # Custom arg names on purpose: BuildKit auto-injects the standard http_proxy/…
 # args into every stage, including the runtime image, so a proxy must be passed
 # under a name only the build stages declare. Same reasoning as the Go stages.
@@ -33,11 +40,15 @@ ENV NODE_OPTIONS=--max-old-space-size=4096
 RUN pnpm build
 
 # --- server-build: the SPA is compiled into the binary ----------------------
-FROM golang:1.26.5-alpine3.23 AS server-build
+FROM --platform=$BUILDPLATFORM golang:1.26.5-alpine3.23 AS server-build
 ARG VERSION=dev
 ARG GIT_COMMIT=unknown
 ARG BUILD_TIME=unknown
 ARG BUILD_PROXY
+# TARGETOS/TARGETARCH are the platform the image is being built *for*; the
+# builder itself runs on $BUILDPLATFORM, so this is a cross-compile.
+ARG TARGETOS
+ARG TARGETARCH
 # GOPROXY is a build arg because the image is built where the module proxy has
 # to be reachable; it is never exported into the runtime image. Empty falls back
 # to the upstream default (Go's own default is the same), which is what lets a
@@ -59,7 +70,7 @@ RUN rm -rf ./backend/server/frontend_dist
 COPY --from=frontend /frontend/dist ./backend/server/frontend_dist
 RUN BUILD_TAGS="embed_frontend" \
 	&& if [ "${RELEASE}" = "true" ]; then BUILD_TAGS="${BUILD_TAGS} release"; fi \
-	&& CGO_ENABLED=0 go build -tags "${BUILD_TAGS}" -ldflags "-w -s \
+	&& CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" go build -tags "${BUILD_TAGS}" -ldflags "-w -s \
 	-X github.com/Ranxy/metaxisdata/backend/common/version.Version=${VERSION} \
 	-X github.com/Ranxy/metaxisdata/backend/common/version.GitCommit=${GIT_COMMIT} \
 	-X github.com/Ranxy/metaxisdata/backend/common/version.BuildTime=${BUILD_TIME}" -p=16 \
@@ -74,6 +85,7 @@ ARG BUILD_TIME=unknown
 ARG APK_MIRROR
 LABEL org.opencontainers.image.title="Metaxisdata" \
 	org.opencontainers.image.description="Self-hosted data governance and metadata platform" \
+	org.opencontainers.image.source="https://github.com/Ranxy/metaxisdata" \
 	org.opencontainers.image.version=${VERSION} \
 	org.opencontainers.image.revision=${GIT_COMMIT} \
 	org.opencontainers.image.created=${BUILD_TIME} \

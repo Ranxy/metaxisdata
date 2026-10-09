@@ -1,0 +1,103 @@
+name: Release image
+
+# Publishing a GitHub Release is what ships a version: the image is built from
+# the commit the release points at and pushed to GHCR under the release tag.
+# A prerelease gets its own tag but never :latest, so a deployment tracking
+# :latest is not handed a release candidate. workflow_dispatch is the manual
+# rebuild path and pushes only :sha-<commit>, because a branch name is not a
+# version.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # The only write this workflow needs: pushing to the repository's own GHCR
+  # package. It never writes to the repository.
+  packages: write
+
+concurrency:
+  group: release-image-${{ github.ref }}
+  # A release must not be cancelled half-pushed, so nothing cancels anything.
+  cancel-in-progress: false
+
+jobs:
+  image:
+    name: Build and push the multi-platform image
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out the released tag
+        uses: actions/checkout@v4
+        with:
+          # On a release event this is the tag; on a manual run it is the
+          # branch the run was started from.
+          ref: ${{ github.event.release.tag_name || github.ref }}
+
+      # arm64 needs emulation for the runtime stage only — the build stages are
+      # pinned to $BUILDPLATFORM and cross-compile, so vue-tsc and the Go
+      # toolchain never run under QEMU.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Lowercased explicitly: GHCR rejects an uppercase owner path, and the
+      # repository's owner is spelled Ranxy in its module path.
+      - name: Resolve the image name
+        id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve the build metadata
+        id: build
+        run: |
+          echo "version=${{ github.event.release.tag_name || github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      # Tags: the release tag as published (v1.2.3), the bare semver (1.2.3),
+      # the minor line (1.2), the commit (sha-abc1234), and :latest for a
+      # release that is not a prerelease. Only the tag list comes from here:
+      # the image's OCI labels are built from the Dockerfile's build args, so a
+      # label and `metaxisdata --version` cannot disagree.
+      - name: Resolve tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.name }}
+          tags: |
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+            type=raw,value=latest,enable=${{ github.event_name == 'release' && !github.event.release.prerelease }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: scripts/docker/Dockerfile.server
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          build-args: |
+            VERSION=${{ steps.build.outputs.version }}
+            GIT_COMMIT=${{ github.sha }}
+            BUILD_TIME=${{ steps.build.outputs.time }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # The push is the deliverable, so show the manifest it produced: a partial
+      # or missing platform is then visible in the run instead of only at pull
+      # time. Skipped on a manual run, whose tags are commit-derived.
+      - name: Inspect the published manifest
+        if: github.event_name == 'release'
+        run: docker buildx imagetools inspect "${{ steps.image.outputs.name }}:${{ github.event.release.tag_name }}"
