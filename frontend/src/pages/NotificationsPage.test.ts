@@ -15,19 +15,21 @@ import NotificationsPage from "./NotificationsPage.vue";
 
 const mocks = vi.hoisted(() => ({
   listNotificationsPage: vi.fn(),
-  getUnreadNotificationCount: vi.fn(),
+  getNotificationCounts: vi.fn(),
   listRecentNotifications: vi.fn(),
   markNotificationsRead: vi.fn(),
   markAllNotificationsRead: vi.fn(),
+  markNotificationsSeen: vi.fn(),
   deleteNotification: vi.fn(),
 }));
 
 vi.mock("@/api/notification", () => ({
   listNotificationsPage: mocks.listNotificationsPage,
-  getUnreadNotificationCount: mocks.getUnreadNotificationCount,
+  getNotificationCounts: mocks.getNotificationCounts,
   listRecentNotifications: mocks.listRecentNotifications,
   markNotificationsRead: mocks.markNotificationsRead,
   markAllNotificationsRead: mocks.markAllNotificationsRead,
+  markNotificationsSeen: mocks.markNotificationsSeen,
   deleteNotification: mocks.deleteNotification,
   subscribeNotifications: vi.fn(),
 }));
@@ -60,12 +62,40 @@ async function mountPage() {
 describe("notifications page", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getUnreadNotificationCount.mockResolvedValue(0);
+    mocks.getNotificationCounts.mockResolvedValue({
+      unreadCount: 0,
+      unseenCount: 0,
+    });
     mocks.listRecentNotifications.mockResolvedValue([]);
+    mocks.markNotificationsSeen.mockResolvedValue(undefined);
     mocks.listNotificationsPage.mockResolvedValue({
       items: [message(1)],
       nextPageToken: "",
     });
+  });
+
+  // Opening the inbox is the second half of the badge rule: the badge goes dark here,
+  // and the messages keep their unread state, which is what the "mark all read" button
+  // and the unread filter read. A count that arrives while the page is open must not
+  // relight it, and leaving the page must let a new message light it again.
+  it("clears the badge when it is opened, and leaves the messages unread", async () => {
+    mocks.getNotificationCounts.mockResolvedValue({
+      unreadCount: 2,
+      unseenCount: 2,
+    });
+    const wrapper = await mountPage();
+    const store = useNotificationStore();
+
+    expect(mocks.markNotificationsSeen).toHaveBeenCalledTimes(1);
+
+    await store.refreshCounts();
+    expect(store.unreadCount).toBe(2);
+    expect(store.hasUnread).toBe(true);
+    expect(store.hasUnseen).toBe(false);
+
+    wrapper.unmount();
+    await store.refreshCounts();
+    expect(store.hasUnseen).toBe(true);
   });
 
   // The pager loads when it is told to, so opening the page is what has to tell it: the

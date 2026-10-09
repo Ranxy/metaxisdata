@@ -329,6 +329,16 @@ export declare type GetUnreadNotificationCountResponse = Message<"metaxisdata.v1
    * @generated from field: int32 unread_count = 1;
    */
   unreadCount: number;
+
+  /**
+   * The subset of unread_count written after the caller last opened the inbox.
+   * This is the number the badge shows: opening the inbox clears it without
+   * marking anything read, so an unread message stays unread until it is
+   * clicked.
+   *
+   * @generated from field: int32 unseen_count = 2;
+   */
+  unseenCount: number;
 };
 
 /**
@@ -336,6 +346,24 @@ export declare type GetUnreadNotificationCountResponse = Message<"metaxisdata.v1
  * Use `create(GetUnreadNotificationCountResponseSchema)` to create a new message.
  */
 export declare const GetUnreadNotificationCountResponseSchema: GenMessage<GetUnreadNotificationCountResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.MarkNotificationsSeenRequest
+ */
+export declare type MarkNotificationsSeenRequest = Message<"metaxisdata.v1.MarkNotificationsSeenRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.MarkNotificationsSeenRequest.
+ * Use `create(MarkNotificationsSeenRequestSchema)` to create a new message.
+ */
+export declare const MarkNotificationsSeenRequestSchema: GenMessage<MarkNotificationsSeenRequest>;
 
 /**
  * @generated from message metaxisdata.v1.BatchMarkNotificationsReadRequest
@@ -467,6 +495,15 @@ export declare type NotificationEvent = Message<"metaxisdata.v1.NotificationEven
    * @generated from field: optional int32 unread_count = 2;
    */
   unreadCount?: number;
+
+  /**
+   * The recipient's unseen count after this notification was written — see
+   * GetUnreadNotificationCountResponse.unseen_count. Absent under the same
+   * condition as unread_count.
+   *
+   * @generated from field: optional int32 unseen_count = 3;
+   */
+  unseenCount?: number;
 };
 
 /**
@@ -709,7 +746,8 @@ export declare const NotificationService: GenService<{
     output: typeof ListNotificationsResponseSchema;
   },
   /**
-   * Count the caller's unread notifications.
+   * Count the caller's unread notifications, and the subset of them written
+   * since the caller last opened the inbox.
    *
    * @generated from rpc metaxisdata.v1.NotificationService.GetUnreadNotificationCount
    */
@@ -717,6 +755,18 @@ export declare const NotificationService: GenService<{
     methodKind: "unary";
     input: typeof GetUnreadNotificationCountRequestSchema;
     output: typeof GetUnreadNotificationCountResponseSchema;
+  },
+  /**
+   * Record that the caller has opened the inbox, which clears the badge. No
+   * notification is marked read: a message stays unread until it is clicked or
+   * the caller marks everything read.
+   *
+   * @generated from rpc metaxisdata.v1.NotificationService.MarkNotificationsSeen
+   */
+  markNotificationsSeen: {
+    methodKind: "unary";
+    input: typeof MarkNotificationsSeenRequestSchema;
+    output: typeof EmptySchema;
   },
   /**
    * Mark the named notifications read. Already-read notifications are left

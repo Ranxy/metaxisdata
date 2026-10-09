@@ -32,12 +32,14 @@ type fakeStore struct {
 	suppressNext bool
 
 	unreadCount int
+	unseenCount int
 	countErr    error
-	// countSequence answers the count queries in order (the last value repeats), and
-	// countGate holds every one of them open until the test releases it. Together they
-	// let a test order two writes deliberately: whether the second write can reach its
-	// own count query while the first is still publishing is exactly the property under
-	// test.
+	// countSequence answers the unread count queries in order (the last value
+	// repeats), and countGate holds every one of them open until the test releases
+	// it. Together they let a test order two writes deliberately: whether the second
+	// write can reach its own count query while the first is still publishing is
+	// exactly the property under test. The unseen count is a plain field: it is the
+	// badge's number, and no test orders writes by it.
 	countSequence []int
 	countGate     chan struct{}
 	countMu       sync.Mutex
@@ -65,15 +67,19 @@ func (f *fakeStore) CreateNotification(_ context.Context, notification *storepb.
 	return notification, nil
 }
 
-func (f *fakeStore) CountUnreadNotifications(context.Context, int) (int, error) {
+// CountNotificationCounts answers the pair the real store answers with one query. The
+// unread number follows countSequence (the last value repeats) and countGate holds every
+// call open until the test releases it; the unseen number is a plain field, because no
+// test orders writes by the badge. countErr fails the pair, as one failing query would.
+func (f *fakeStore) CountNotificationCounts(context.Context, int) (int, int, error) {
 	f.countMu.Lock()
 	index := f.countCalls
 	f.countCalls++
-	count := f.unreadCount
+	unread := f.unreadCount
 	if index < len(f.countSequence) {
-		count = f.countSequence[index]
+		unread = f.countSequence[index]
 	} else if len(f.countSequence) > 0 {
-		count = f.countSequence[len(f.countSequence)-1]
+		unread = f.countSequence[len(f.countSequence)-1]
 	}
 	gate := f.countGate
 	f.countMu.Unlock()
@@ -82,9 +88,9 @@ func (f *fakeStore) CountUnreadNotifications(context.Context, int) (int, error) 
 		<-gate
 	}
 	if f.countErr != nil {
-		return 0, f.countErr
+		return 0, 0, f.countErr
 	}
-	return count, nil
+	return unread, f.unseenCount, nil
 }
 
 func (f *fakeStore) GetWorkspaceID(context.Context) (string, error) {
@@ -350,12 +356,13 @@ func TestReportUnmatchedNamespaceNotifiesTheAdministrators(t *testing.T) {
 }
 
 // A message that reached an inbox is handed to the live subscriptions of its
-// recipient, with the count the store reports: the connection is what a signed-in
-// client waits on instead of polling.
-func TestAWrittenMessageIsPushedWithTheUnreadCount(t *testing.T) {
+// recipient, with the counts the store reports: the connection is what a signed-in
+// client waits on instead of polling. The two counts differ once the recipient has
+// opened the inbox and left a message unread, which is why both are sent.
+func TestAWrittenMessageIsPushedWithTheCounts(t *testing.T) {
 	t.Parallel()
 
-	fake := &fakeStore{workspaceID: "ws-1", unreadCount: 3}
+	fake := &fakeStore{workspaceID: "ws-1", unreadCount: 3, unseenCount: 1}
 	service := newServiceWithStore(fake)
 	events, unsubscribe, err := service.Subscribe(42)
 	require.NoError(t, err)
@@ -366,8 +373,9 @@ func TestAWrittenMessageIsPushedWithTheUnreadCount(t *testing.T) {
 
 	event := requireEvent(t, events)
 	require.Equal(t, message, event.Notification)
-	require.True(t, event.UnreadCountKnown)
+	require.True(t, event.CountsKnown)
 	require.Equal(t, int32(3), event.UnreadCount)
+	require.Equal(t, int32(1), event.UnseenCount)
 
 	// A count the store cannot answer is not a reason to drop the message: the
 	// event goes out without it, and the client asks for the count itself rather
@@ -376,7 +384,7 @@ func TestAWrittenMessageIsPushedWithTheUnreadCount(t *testing.T) {
 	require.NoError(t, service.Send(context.Background(), message))
 	event = requireEvent(t, events)
 	require.Equal(t, message, event.Notification)
-	require.False(t, event.UnreadCountKnown)
+	require.False(t, event.CountsKnown)
 }
 
 // A write the dedupe index refused changed nothing, so there is nothing to push:

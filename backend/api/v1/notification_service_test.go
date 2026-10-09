@@ -177,8 +177,9 @@ func TestConvertToV1NotificationEventNamesAndCounts(t *testing.T) {
 				SchemaSync: &storepb.SchemaSyncDetail{Instance: "instances/inst1"},
 			},
 		},
-		UnreadCount:      4,
-		UnreadCountKnown: true,
+		UnreadCount: 4,
+		UnseenCount: 2,
+		CountsKnown: true,
 	}, "ws")
 
 	event, ok := converted.GetEvent().(*v1pb.SubscribeNotificationsResponse_Notification)
@@ -186,6 +187,7 @@ func TestConvertToV1NotificationEventNamesAndCounts(t *testing.T) {
 	require.Equal(t, "workspaces/ws/notifications/9", event.Notification.GetNotification().GetName())
 	require.Equal(t, "instances/inst1", event.Notification.GetNotification().GetSchemaSync().GetInstance())
 	require.Equal(t, int32(4), event.Notification.GetUnreadCount())
+	require.Equal(t, int32(2), event.Notification.GetUnseenCount())
 }
 
 // A count the store could not answer must stay absent rather than arrive as a zero
@@ -201,6 +203,8 @@ func TestConvertToV1NotificationEventWithoutACount(t *testing.T) {
 	require.True(t, ok)
 	require.Nil(t, event.Notification.UnreadCount)
 	require.Equal(t, int32(0), event.Notification.GetUnreadCount())
+	require.Nil(t, event.Notification.UnseenCount)
+	require.Equal(t, int32(0), event.Notification.GetUnseenCount())
 }
 
 // A detail written by a newer server still streams: the envelope renders and the
@@ -215,6 +219,22 @@ func TestConvertToV1NotificationEventWithoutAKnownDetail(t *testing.T) {
 	event, ok := converted.GetEvent().(*v1pb.SubscribeNotificationsResponse_Notification)
 	require.True(t, ok)
 	require.Nil(t, event.Notification.GetNotification().GetDetail())
+}
+
+// Opening the inbox is a write to the caller's own watermark, so it is refused without
+// credentials like every other method here — before the store is touched, which the nil
+// store proves: reaching the update would panic instead of answering.
+func TestMarkNotificationsSeenRequiresAuthentication(t *testing.T) {
+	t.Parallel()
+
+	service := NewNotificationService(nil, nil)
+	_, err := service.MarkNotificationsSeen(context.Background(), connect.NewRequest(&v1pb.MarkNotificationsSeenRequest{
+		Parent: "workspaces/-",
+	}))
+
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	require.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
 }
 
 // A subscription is not reachable without credentials: the handler refuses before it

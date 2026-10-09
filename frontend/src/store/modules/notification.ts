@@ -2,10 +2,11 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { defineStore } from "pinia";
 import {
   deleteNotification,
-  getUnreadNotificationCount,
+  getNotificationCounts,
   listRecentNotifications,
   markAllNotificationsRead,
   markNotificationsRead,
+  markNotificationsSeen,
   subscribeNotifications,
 } from "@/api/notification";
 import type {
@@ -26,7 +27,18 @@ export const RECONNECT_MIN_MS = 1_000;
 export const RECONNECT_MAX_MS = 30_000;
 
 interface NotificationState {
+  /**
+   * Every unread message. The inbox page reads this one: it decides whether
+   * "mark all read" is enabled, and clicking one message lowers it. It is not the
+   * badge — see unseenCount.
+   */
   unreadCount: number;
+  /**
+   * The unread messages written since the user last opened the inbox. This is the
+   * red badge: opening the bell's dropdown or the inbox page clears it, and nothing
+   * is marked read by that, so a message keeps its unread state until it is clicked.
+   */
+  unseenCount: number;
   recent: Notification[];
   loadingRecent: boolean;
   /**
@@ -35,6 +47,13 @@ interface NotificationState {
    * page that a newly written message does not belong on.
    */
   arrivalSeq: number;
+  /**
+   * How many surfaces showing the inbox are open right now: the bell's dropdown and
+   * the inbox page. A message delivered while one of them is open is on screen, so it
+   * must not light the badge; applyArrival keeps it dark and moves the server's
+   * watermark past that message.
+   */
+  openInboxCount: number;
 }
 
 // The connection lives outside the store: it has to survive re-renders and be torn
@@ -75,33 +94,51 @@ function wait(ms: number): Promise<void> {
 export const useNotificationStore = defineStore("notification", {
   state: (): NotificationState => ({
     unreadCount: 0,
+    unseenCount: 0,
     recent: [],
     loadingRecent: false,
     arrivalSeq: 0,
+    openInboxCount: 0,
   }),
 
   getters: {
     hasUnread: (state) => state.unreadCount > 0,
+    hasUnseen: (state) => state.unseenCount > 0,
   },
 
   actions: {
     /**
-     * Counts the unread messages. The stream carries the count with every message it
-     * delivers, so this is what answers when it could not, and what draws the badge
-     * before the first message arrives. A pushed count supersedes a fetch that was
-     * already in flight, so the fetched one is dropped rather than applied late.
+     * Loads both counts. The stream carries them with every message it delivers, so this
+     * is what answers when it could not, and what draws the badge before the first message
+     * arrives. A pushed count supersedes a fetch that was already in flight, so the fetched
+     * one is dropped rather than applied late.
      */
-    async refreshUnreadCount() {
+    async refreshCounts() {
       const mine = ++countTicket;
-      const count = await getUnreadNotificationCount();
+      const counts = await getNotificationCounts();
       if (mine === countTicket) {
-        this.unreadCount = count;
+        this.unreadCount = counts.unreadCount;
+        if (this.openInboxCount > 0) {
+          // See openInboxCount: what is on screen has been seen, whatever the server
+          // counted before the watermark moved.
+          this.unseenCount = 0;
+          if (counts.unseenCount > 0) {
+            // The server still counts something as new that is on screen. This is the path
+            // a message the stream missed arrives by — a reconnect or a tab becoming visible
+            // reloads the list and answers the counts together — so the watermark is moved
+            // over it here too, or closing the inbox would light the badge for a message the
+            // user just read on screen.
+            void markNotificationsSeen().catch(() => {});
+          }
+        } else {
+          this.unseenCount = counts.unseenCount;
+        }
       }
-      return count;
+      return counts;
     },
 
     /**
-     * Loads the messages the bell shows. Like the count, a message the stream delivered
+     * Loads the messages the bell shows. Like the counts, a message the stream delivered
      * while this was in flight is newer than the list, so the list does not overwrite it.
      */
     async refreshRecent() {
@@ -117,6 +154,29 @@ export const useNotificationStore = defineStore("notification", {
           this.loadingRecent = false;
         }
       }
+    },
+
+    /**
+     * Records that a surface showing the inbox was opened: the badge clears at once, and
+     * the server is told so a reload, another tab or another device does not bring it
+     * back. Nothing is marked read — a message is read when it is clicked.
+     *
+     * The server call is best effort. A badge that comes back on the next refresh is a
+     * smaller failure than an open that throws, and the next open moves the watermark
+     * again.
+     */
+    openInbox() {
+      this.openInboxCount += 1;
+      this.unseenCount = 0;
+      void markNotificationsSeen().catch(() => {});
+    },
+
+    /**
+     * Records that a surface showing the inbox went away. New messages light the badge
+     * again, because nothing on screen would show them.
+     */
+    closeInbox() {
+      this.openInboxCount = Math.max(0, this.openInboxCount - 1);
     },
 
     /**
@@ -139,36 +199,53 @@ export const useNotificationStore = defineStore("notification", {
       await this.refresh();
     },
 
-    /** Reloads the count and, when the messages are on screen, the list. */
+    /** Reloads the counts and, when the messages are on screen, the list. */
     async refresh() {
       await Promise.all([
-        this.refreshUnreadCount(),
+        this.refreshCounts(),
         this.recent.length > 0 ? this.refreshRecent() : Promise.resolve(),
       ]);
     },
 
     /**
-     * Takes in one message the stream delivered: the count the server computed
-     * alongside it, and the message itself when the bell has a list to put it in.
-     * Until the dropdown has been opened there is nothing on screen to update, which
-     * is the same reason `refresh` only reloads the list once it is showing.
+     * Takes in one message the stream delivered: the counts the server computed alongside
+     * it, and the message itself when the bell has a list to put it in. Until the dropdown
+     * has been opened there is nothing on screen to update, which is the same reason
+     * `refresh` only reloads the list once it is showing.
      */
     applyArrival(event: NotificationEvent) {
-      if (event.unreadCount !== undefined) {
-        // The count the server computed with this message is newer than any fetch that
-        // was already running, so it takes the ticket and the fetch stands down.
+      const { unreadCount, unseenCount } = event;
+      if (unreadCount !== undefined || unseenCount !== undefined) {
+        // What the server computed with this message is newer than any fetch that was
+        // already running, so it takes the ticket and that fetch stands down.
         countTicket += 1;
-        this.unreadCount = event.unreadCount;
-      } else {
-        // The server could not read the count, so it sent none rather than a zero
-        // that would read as "everything is read": ask for it here.
-        void this.refreshUnreadCount().catch(() => {});
+      }
+      if (unreadCount !== undefined) {
+        this.unreadCount = unreadCount;
+      }
+      if (unseenCount !== undefined) {
+        if (this.openInboxCount > 0) {
+          // The message arrived in a list the user is looking at, so it has been seen:
+          // keep the badge dark and move the watermark past it.
+          this.unseenCount = 0;
+          void markNotificationsSeen().catch(() => {});
+        } else {
+          this.unseenCount = unseenCount;
+        }
+      }
+      if (unreadCount === undefined || unseenCount === undefined) {
+        // A count the server could not read is sent as nothing rather than as a zero that
+        // would read as "everything is read": ask for both here.
+        void this.refreshCounts().catch(() => {});
       }
 
+      // A list that has rows is on screen. So is an empty one on an open inbox, and that
+      // case must put the message in it: the watermark is about to be moved past this
+      // message on the grounds that the user can see it, so it has to be visible.
       const message = event.notification;
       if (
         message &&
-        this.recent.length > 0 &&
+        (this.recent.length > 0 || this.openInboxCount > 0) &&
         !this.recent.some((item) => item.name === message.name)
       ) {
         recentTicket += 1;

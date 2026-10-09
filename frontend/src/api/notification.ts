@@ -5,6 +5,7 @@ import {
   GetUnreadNotificationCountRequestSchema,
   ListNotificationsRequestSchema,
   MarkAllNotificationsReadRequestSchema,
+  MarkNotificationsSeenRequestSchema,
   type Notification,
   SubscribeNotificationsRequestSchema,
 } from "@/types/proto-es/v1/notification_service_pb";
@@ -49,16 +50,42 @@ export async function listRecentNotifications(
   return page.items;
 }
 
-export async function getUnreadNotificationCount(
+/** The two numbers the inbox surfaces read: everything unread, and the badge. */
+export interface NotificationCounts {
+  unreadCount: number;
+  unseenCount: number;
+}
+
+/**
+ * Both counts of the caller's inbox. `unreadCount` is what the inbox page works with;
+ * `unseenCount` is the red badge, and it is the unread messages written since the
+ * caller last opened the inbox.
+ */
+export async function getNotificationCounts(
   signal?: AbortSignal
-): Promise<number> {
+): Promise<NotificationCounts> {
   const response = await notificationClient.getUnreadNotificationCount(
     create(GetUnreadNotificationCountRequestSchema, {
       parent: WORKSPACE_PARENT,
     }),
     { signal }
   );
-  return response.unreadCount;
+  return {
+    unreadCount: response.unreadCount,
+    unseenCount: response.unseenCount,
+  };
+}
+
+/**
+ * Records that the caller has opened the inbox, which clears the badge. No message is
+ * marked read: each one keeps its unread state until it is clicked.
+ */
+export async function markNotificationsSeen(): Promise<void> {
+  await notificationClient.markNotificationsSeen(
+    create(MarkNotificationsSeenRequestSchema, {
+      parent: WORKSPACE_PARENT,
+    })
+  );
 }
 
 export async function markNotificationsRead(names: string[]): Promise<void> {

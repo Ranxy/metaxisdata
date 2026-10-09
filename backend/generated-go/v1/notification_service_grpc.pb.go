@@ -22,6 +22,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	NotificationService_ListNotifications_FullMethodName          = "/metaxisdata.v1.NotificationService/ListNotifications"
 	NotificationService_GetUnreadNotificationCount_FullMethodName = "/metaxisdata.v1.NotificationService/GetUnreadNotificationCount"
+	NotificationService_MarkNotificationsSeen_FullMethodName      = "/metaxisdata.v1.NotificationService/MarkNotificationsSeen"
 	NotificationService_BatchMarkNotificationsRead_FullMethodName = "/metaxisdata.v1.NotificationService/BatchMarkNotificationsRead"
 	NotificationService_MarkAllNotificationsRead_FullMethodName   = "/metaxisdata.v1.NotificationService/MarkAllNotificationsRead"
 	NotificationService_DeleteNotification_FullMethodName         = "/metaxisdata.v1.NotificationService/DeleteNotification"
@@ -45,8 +46,13 @@ const (
 type NotificationServiceClient interface {
 	// List the caller's notifications, newest first.
 	ListNotifications(ctx context.Context, in *ListNotificationsRequest, opts ...grpc.CallOption) (*ListNotificationsResponse, error)
-	// Count the caller's unread notifications.
+	// Count the caller's unread notifications, and the subset of them written
+	// since the caller last opened the inbox.
 	GetUnreadNotificationCount(ctx context.Context, in *GetUnreadNotificationCountRequest, opts ...grpc.CallOption) (*GetUnreadNotificationCountResponse, error)
+	// Record that the caller has opened the inbox, which clears the badge. No
+	// notification is marked read: a message stays unread until it is clicked or
+	// the caller marks everything read.
+	MarkNotificationsSeen(ctx context.Context, in *MarkNotificationsSeenRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// Mark the named notifications read. Already-read notifications are left
 	// alone, so the call is idempotent.
 	BatchMarkNotificationsRead(ctx context.Context, in *BatchMarkNotificationsReadRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -87,6 +93,16 @@ func (c *notificationServiceClient) GetUnreadNotificationCount(ctx context.Conte
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetUnreadNotificationCountResponse)
 	err := c.cc.Invoke(ctx, NotificationService_GetUnreadNotificationCount_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *notificationServiceClient) MarkNotificationsSeen(ctx context.Context, in *MarkNotificationsSeenRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, NotificationService_MarkNotificationsSeen_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -159,8 +175,13 @@ type NotificationService_SubscribeNotificationsClient = grpc.ServerStreamingClie
 type NotificationServiceServer interface {
 	// List the caller's notifications, newest first.
 	ListNotifications(context.Context, *ListNotificationsRequest) (*ListNotificationsResponse, error)
-	// Count the caller's unread notifications.
+	// Count the caller's unread notifications, and the subset of them written
+	// since the caller last opened the inbox.
 	GetUnreadNotificationCount(context.Context, *GetUnreadNotificationCountRequest) (*GetUnreadNotificationCountResponse, error)
+	// Record that the caller has opened the inbox, which clears the badge. No
+	// notification is marked read: a message stays unread until it is clicked or
+	// the caller marks everything read.
+	MarkNotificationsSeen(context.Context, *MarkNotificationsSeenRequest) (*emptypb.Empty, error)
 	// Mark the named notifications read. Already-read notifications are left
 	// alone, so the call is idempotent.
 	BatchMarkNotificationsRead(context.Context, *BatchMarkNotificationsReadRequest) (*emptypb.Empty, error)
@@ -192,6 +213,9 @@ func (UnimplementedNotificationServiceServer) ListNotifications(context.Context,
 }
 func (UnimplementedNotificationServiceServer) GetUnreadNotificationCount(context.Context, *GetUnreadNotificationCountRequest) (*GetUnreadNotificationCountResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetUnreadNotificationCount not implemented")
+}
+func (UnimplementedNotificationServiceServer) MarkNotificationsSeen(context.Context, *MarkNotificationsSeenRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method MarkNotificationsSeen not implemented")
 }
 func (UnimplementedNotificationServiceServer) BatchMarkNotificationsRead(context.Context, *BatchMarkNotificationsReadRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method BatchMarkNotificationsRead not implemented")
@@ -258,6 +282,24 @@ func _NotificationService_GetUnreadNotificationCount_Handler(srv interface{}, ct
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(NotificationServiceServer).GetUnreadNotificationCount(ctx, req.(*GetUnreadNotificationCountRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NotificationService_MarkNotificationsSeen_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MarkNotificationsSeenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NotificationServiceServer).MarkNotificationsSeen(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NotificationService_MarkNotificationsSeen_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NotificationServiceServer).MarkNotificationsSeen(ctx, req.(*MarkNotificationsSeenRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -341,6 +383,10 @@ var NotificationService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetUnreadNotificationCount",
 			Handler:    _NotificationService_GetUnreadNotificationCount_Handler,
+		},
+		{
+			MethodName: "MarkNotificationsSeen",
+			Handler:    _NotificationService_MarkNotificationsSeen_Handler,
 		},
 		{
 			MethodName: "BatchMarkNotificationsRead",

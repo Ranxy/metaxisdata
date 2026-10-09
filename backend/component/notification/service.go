@@ -73,7 +73,7 @@ const (
 // exactly what delivering a message costs.
 type AdminStore interface {
 	CreateNotification(ctx context.Context, notification *storepb.Notification) (*storepb.Notification, error)
-	CountUnreadNotifications(ctx context.Context, recipientID int) (int, error)
+	CountNotificationCounts(ctx context.Context, recipientID int) (unread int, unseen int, err error)
 	GetWorkspaceID(ctx context.Context) (string, error)
 	GetWorkspaceIamPolicy(ctx context.Context) (*store.IamPolicyMessage, error)
 	GetGroup(ctx context.Context, email string) (*store.GroupMessage, error)
@@ -373,12 +373,12 @@ func (s *Service) create(ctx context.Context, n *storepb.Notification) error {
 }
 
 // publish hands one written message to the live subscriptions of its recipient. The
-// unread count is read here, once per message, so every connection of the same inbox
+// counts are read here, once per message, so every connection of the same inbox
 // shares one answer instead of each paying for its own query.
 func (s *Service) publish(ctx context.Context, n *storepb.Notification) {
 	recipientID := int(n.GetRecipientId())
 
-	// Reading the count and handing the message over happen under one lock, so two
+	// Reading the counts and handing the message over happen under one lock, so two
 	// messages written at nearly the same moment cannot deliver their counts out of
 	// order and leave a client showing the older one. It is one mutex for the process
 	// rather than one per recipient: a notification write is rare, the section is one
@@ -392,13 +392,13 @@ func (s *Service) publish(ctx context.Context, n *storepb.Notification) {
 	defer s.publishMu.Unlock()
 
 	event := Event{Notification: n}
-	if count, err := s.store.CountUnreadNotifications(ctx, recipientID); err != nil {
-		// A count that cannot be read is no reason to drop the message: the client
-		// receives the event without the count and asks for it itself.
-		slog.Error("Failed to read the unread count of a notification",
+	// A count that cannot be read is no reason to drop the message: the client
+	// receives the event without it and asks for the counts itself.
+	if unread, unseen, err := s.store.CountNotificationCounts(ctx, recipientID); err != nil {
+		slog.Error("Failed to read the notification counts of a message",
 			slog.Int("recipient_id", recipientID), clog.WithError(err))
 	} else {
-		event.UnreadCount, event.UnreadCountKnown = int32(count), true
+		event.UnreadCount, event.UnseenCount, event.CountsKnown = int32(unread), int32(unseen), true
 	}
 	s.hub.publish(recipientID, event)
 }

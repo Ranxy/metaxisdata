@@ -27,7 +27,12 @@ CREATE TABLE principal (
     password_hash text NOT NULL,
     phone text NOT NULL DEFAULT '',
     -- Stored as UserProfile (proto/store/store/user.proto)
-    profile jsonb NOT NULL DEFAULT '{}'
+    profile jsonb NOT NULL DEFAULT '{}',
+    -- When this user last opened the inbox. The bell's badge counts unread
+    -- messages created after this instant, so opening the inbox clears it
+    -- without making anything read. NULL means the inbox was never opened,
+    -- which reads as "everything unread is new".
+    notification_seen_at timestamptz
 );
 
 -- Emails are lower-cased on write. The unique expression index is what rejects
