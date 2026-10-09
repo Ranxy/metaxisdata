@@ -1,3 +1,14 @@
-onlyBuiltDependencies:
-  - esbuild
-  - vue-demi
+# Build-script approvals. pnpm 11 merged onlyBuiltDependencies,
+# neverBuiltDependencies and ignoredBuiltDependencies into this single map, and
+# without it esbuild's postinstall never runs (Vite loses its bundler) and
+# vue-demi cannot pick its Vue 2/3 shim.
+allowBuilds:
+  esbuild: true
+  vue-demi: true
+
+# pnpm 12's supply-chain policy refuses any lockfile entry published within the
+# default minimum-release-age window. baseline-browser-mapping 2.11.28 was
+# pulled in while the upgrade was written, so it is listed as the one deliberate
+# exception; drop this line once the package ages past the window.
+minimumReleaseAgeExclude:
+  - baseline-browser-mapping@2.11.28

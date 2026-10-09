@@ -15,7 +15,9 @@ export default [
   }),
   ...vueI18n.configs["flat/recommended"],
   {
-    ignores: ["**/dist/**", "**/node_modules/**", "**/proto-es/**"],
+    // ESLint 10 no longer skips what .gitignore lists, so the coverage report
+    // `vitest --coverage` writes has to be named here.
+    ignores: ["**/dist/**", "**/node_modules/**", "**/proto-es/**", "**/coverage/**"],
   },
   {
     rules: {
@@ -159,15 +161,18 @@ export default [
       "vue/no-undef-components": [
         "error",
         {
+          // Regex sources, not literals: eslint-plugin-vue 10.11 types these as
+          // strings and compiles each with `new RegExp(pattern)`; ESLint 10
+          // rejects a RegExp literal against that schema.
           ignorePatterns: [
-            /^heroicons(-solid|-outline)?:/,
-            /^carbon:/,
-            /^tabler:/,
-            /^octicon:/,
-            /^router-view$/,
-            /^router-link$/,
-            /^i18n-t$/,
-            /^highlight-code-block$/,
+            "^heroicons(-solid|-outline)?:",
+            "^carbon:",
+            "^tabler:",
+            "^octicon:",
+            "^router-view$",
+            "^router-link$",
+            "^i18n-t$",
+            "^highlight-code-block$",
           ],
         },
       ],
@@ -176,7 +181,7 @@ export default [
     settings: {
       "vue-i18n": {
         localeDir: "./src/locales/*.json",
-        messageSyntaxVersion: "^9.0.0",
+        messageSyntaxVersion: "^11.0.0",
       },
     },
   },

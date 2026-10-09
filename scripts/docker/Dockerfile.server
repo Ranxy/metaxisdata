@@ -12,7 +12,7 @@
 # is therefore required (`# syntax` above already implies it).
 
 # --- frontend: the SPA the server embeds -------------------------------------
-FROM --platform=$BUILDPLATFORM node:24.12.0-slim AS frontend
+FROM --platform=$BUILDPLATFORM node:24.21.0-slim AS frontend
 # Custom arg names on purpose: BuildKit auto-injects the standard http_proxy/…
 # args into every stage, including the runtime image, so a proxy must be passed
 # under a name only the build stages declare. Same reasoning as the Go stages.
@@ -24,11 +24,11 @@ ENV NPM_REGISTRY=${NPM_REGISTRY:-https://registry.npmjs.org/}
 ENV http_proxy=${BUILD_PROXY} https_proxy=${BUILD_PROXY} no_proxy=localhost,127.0.0.1
 ENV HTTP_PROXY=${BUILD_PROXY} HTTPS_PROXY=${BUILD_PROXY} NO_PROXY=localhost,127.0.0.1
 WORKDIR /frontend
-# package.json pins packageManager pnpm@10.24.0, the version CI uses and the one
-# that wrote pnpm-lock.yaml (lockfileVersion 9.0). Install exactly that, not
-# whatever the base image would default to.
-RUN npm i -g pnpm@10.24.0 --registry="${NPM_REGISTRY}"
-# pnpm-workspace.yaml carries onlyBuiltDependencies, without which pnpm skips
+# package.json pins packageManager pnpm@12.10.1, the release CI uses and the one
+# that wrote pnpm-lock.yaml. Install exactly that, not whatever the base image
+# would default to.
+RUN npm i -g pnpm@12.10.1 --registry="${NPM_REGISTRY}"
+# pnpm-workspace.yaml carries allowBuilds, without which pnpm 11+ skips
 # esbuild's postinstall and `vite build` loses its bundler.
 COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
 RUN pnpm i --frozen-lockfile --registry="${NPM_REGISTRY}"

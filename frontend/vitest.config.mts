@@ -26,7 +26,7 @@ const SHARED_LAYER = [
 export default defineConfig({
   plugins: [vue()],
   define: {
-    // The same flag vite.config.ts sets, so the suite compiles messages the way
+    // The same flag vite.config.mts sets, so the suite compiles messages the way
     // the shipped bundle does (see the comment there).
     __INTLIFY_JIT_COMPILATION__: true,
   },

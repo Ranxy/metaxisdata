@@ -18,11 +18,11 @@ Where a new module belongs follows from what it depends on, not from its size. F
 
 Rule of thumb: once a helper grows a `ref`, imports `@/api`, or calls `useI18n()`, it has outgrown `utils/`. When domain logic needs no reactivity, keep it in `lib/` — `src/lib/lineageGraph.ts` and `src/utils/dateRange.ts` are pure functions precisely so they can be unit tested without mounting anything.
 
-`utils/`, `lib/` and `composables/` are the coverage-guarded layer: `vitest.config.ts` sets per-file thresholds (95% lines/functions/statements, 85% branches) and scopes `coverage.include` to those three directories, so a new file there with no test fails the run at 0% instead of being absent from the report. Components and pages are outside the thresholds deliberately — test a concrete interaction, not a percentage.
+`utils/`, `lib/` and `composables/` are the coverage-guarded layer: `vitest.config.mts` sets per-file thresholds (95% lines/functions/statements, 85% branches) and scopes `coverage.include` to those three directories, so a new file there with no test fails the run at 0% instead of being absent from the report. Components and pages are outside the thresholds deliberately — test a concrete interaction, not a percentage.
 
 ## Bundle Shape: Monaco
 
-`src/components/monaco-editor/monaco.ts` imports `monaco-editor/esm/vs/editor/editor.api` and side-effect imports the twelve editor contributions it needs, registering SQL from `basic-languages/sql/sql.js` by hand. Do **not** switch to `sql.contribution`: it imports `basic-languages/_contribution`, which side-effect imports every editor contribution, undoing the trim (measured: 7.0 MB `dist` / 3.51 MB chunk, against 6.4 MB / 2.94 MB assembled by hand). `Language` is `"sql" | "plaintext"`, only `editor.worker` is emitted, and `monaco.test.ts` pins the registered language set.
+`src/components/monaco-editor/monaco.ts` imports `monaco-editor/editor/editor.api` and side-effect imports the twelve editor contributions it needs, registering the SQL definition from `monaco-editor/languages/definitions/sql/sql.js` by hand. Monaco 0.57 routes those subpaths through its own `exports` field, so the specifiers carry no `esm/vs` prefix, and it moved the language definitions out of `basic-languages/` into `languages/definitions/` — the old `sql.contribution` route no longer exists. Do **not** switch to the `monaco-editor` barrel (nor to `languages/register.all.js`): it registers every language and drags in the JSON/CSS/HTML/TypeScript services, undoing the trim (measured on 0.57.0 with Vite 8: 17.3 MB `dist` with a 6.7 MB `ts.worker` chunk, against 6.9 MB / 3.3 MB assembled by hand). `Language` is `"sql" | "plaintext"`, only `editor.worker` is emitted, and `monaco.test.ts` pins the registered language set.
 
 ## i18n
 
@@ -67,7 +67,7 @@ pnpm --dir frontend build             # production build
 
 ## Testing
 
-Vitest with jsdom (`vitest.config.ts`), colocated with source as `*.test.ts(x)`; tests for the `scripts/*.mjs` tooling run in the node environment. Coverage is scoped to the shared layer with per-file thresholds — see "Module Boundaries".
+Vitest with jsdom (`vitest.config.mts`), colocated with source as `*.test.ts(x)`; tests for the `scripts/*.mjs` tooling run in the node environment. Coverage is scoped to the shared layer with per-file thresholds — see "Module Boundaries".
 
 ## Conventions
 

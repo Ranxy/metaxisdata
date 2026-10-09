@@ -1,9 +1,10 @@
 // frontend/scripts/frontend-metrics.mjs
 //
 // Collects the numbers this project wants to watch but not enforce: the
-// type-check's peak heap, the production bundle, the test count and the shared
-// layer's coverage. CI appends the result to the job summary, so a drift shows
-// up as a diff next to the run instead of landing silently.
+// type-check's time (TypeScript 6 dropped the aggregate heap and file counts),
+// the production bundle, the test count and the shared layer's coverage. CI
+// appends the result to the job summary, so a drift shows up as a diff next to
+// the run instead of landing silently.
 //
 //   node frontend/scripts/frontend-metrics.mjs
 //
@@ -33,7 +34,12 @@ const DEFAULTS = {
   summary: process.env.GITHUB_STEP_SUMMARY ?? "",
 };
 
-/** The tail of `vue-tsc --build --force --extendedDiagnostics`. */
+/**
+ * The tail of `vue-tsc --build --force --extendedDiagnostics`. A TypeScript 6
+ * run prints only the timings — 5.9's `Aggregate Memory used` and `Aggregate
+ * Files` lines are gone — so the two stay optional and the renderer reports
+ * just the build time.
+ */
 export function parseTypeCheckDiagnostics(text) {
   const memory = /Aggregate Memory used:\s+(\d+)K/.exec(text);
   const files = /Aggregate Files:\s+(\d+)/.exec(text);

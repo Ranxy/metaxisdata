@@ -4,6 +4,9 @@
     "useDefineForClassFields": true,
     "module": "ESNext",
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    // TypeScript 6 no longer picks up node_modules/@types on its own, and the
+    // tooling tests under src/ import node:fs/node:path/node:url.
+    "types": ["node"],
     "skipLibCheck": true,
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
@@ -15,7 +18,13 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "baseUrl": ".",
+    // monaco-editor ships the twelve editor contributions as plain JS with no
+    // declarations; TypeScript 6 turns "side-effect import of an untyped
+    // module" into an error by default, which is what this repo deliberately
+    // does in src/components/monaco-editor/monaco.ts.
+    "noUncheckedSideEffectImports": false,
+    // No `baseUrl`: TypeScript 6 deprecates it, and `paths` alone already
+    // resolves relative to this file.
     "paths": {
       "@/*": ["./src/*"]
     }

@@ -31,7 +31,7 @@
 | 项 | 事实（基线 `89a51cc`） |
 | --- | --- |
 | CI 实跑 | 已在 GitHub 实跑：`.github/workflows/ci.yml` 共 78 次 run，最近的 main push（`89a51cc`）与同分支 PR run 均为 `success`。旧 E7「从未实跑」作废 |
-| 覆盖率门禁 | 前端已有：`frontend/vitest.config.ts:50-58` 对 `src/utils`、`src/lib`、`src/composables` 设 per-file 阈值，CI `frontend` job 跑 `test:ci` 强制（`.github/workflows/ci.yml:144-145`）。Go 侧只有 `go test -race -count=1 -cover ./...`（`:55`），无阈值 |
+| 覆盖率门禁 | 前端已有：`frontend/vitest.config.mts:50-58` 对 `src/utils`、`src/lib`、`src/composables` 设 per-file 阈值，CI `frontend` job 跑 `test:ci` 强制（`.github/workflows/ci.yml:144-145`）。Go 侧只有 `go test -race -count=1 -cover ./...`（`:55`），无阈值 |
 | 0 个 `_test.go` 的包（E12） | 11 个可补测的：`backend/bin/server`（main）、`backend/bin/server/cmd`、`backend/common/log`、`backend/common/stacktrace`、`backend/component/dbfactory`、`backend/config`、`backend/plugin/db/mssql`、`backend/plugin/idp`、`backend/plugin/schema/mssql`、`backend/runner/maintenance`、`backend/utils`；另有 buf 生成的 `backend/common/permission/gen`（不必补测） |
 | 文件级缺口（E13） | `backend/api/v1/group_service.go`、`role_service.go` 无测试文件；store 只剩 `column_lineage.go`/`openlineage_run.go`/`namespace_mapping.go`/`external_dataset.go`/`llm.go` 无直接测试（10 个 store 测试集中在 database/instance/manual_sql/meta_resource/encryption/audit_log/env 等）；`backend/runner/schemasync` 已有 `syncer_test.go`/`operation_test.go`/`object_definition_test.go`，主循环缺口已收窄 |
 | 测试基建遗留（E3 余半） | 启动 seed 仍建 `it_app`（`backend/test/integration/env/testenv.go:96`、`:125`），reset 仍清 `it_drop_me` 的连接与库（`:111`、`:152`、`:156`），但仓库已无用例创建它（只在 `backend/test/integration/README.md:54` 被提到）；`it_app` 仍被 `backend/test/integration/runner/instance_data_source_service_test.go:69` 当作 data source 的 database 值，删启动库前要先改该用例 |
@@ -46,7 +46,7 @@
 | 凭证仍是「同库 `AUTH_SECRET` 种子 XOR」，只补威胁模型文档（A1/F3/C12、`07 U-H2`、`04 M18`、`05 C-H3`、`backend-review/README` 阶段 5 的回滚） | `v1:` 前缀 AES-256-GCM + 12B nonce + 16B tag（`backend/common/crypto/crypto.go:29`、`:113-118`）；数据密钥由 `backend/store/encryption.go:85` 解析，可用 `METAXISDATA_ENCRYPTION_KEY` 包裹，取舍见 `docs/security-posture.md:7` |
 | 令牌吊销仍是进程内 LRU，跨副本失效（A2） | 已落库 `revoked_token`（`backend/store/revoked_token.go` + `backend/migrator/migration/0.1/0013##revoked_token.sql`）；进程内只剩 ≤30s 决策缓存，见 `docs/security-posture.md:19` |
 | CI 从未在 GitHub 上实跑（E7） | 78 次 run，最近 `89a51cc` 与同分支 PR 均 `success` |
-| 前端无覆盖率门禁（E6 前半） | `frontend/vitest.config.ts:50-58` per-file 阈值 + CI `test:ci` 强制 |
+| 前端无覆盖率门禁（E6 前半） | `frontend/vitest.config.mts:50-58` per-file 阈值 + CI `test:ci` 强制 |
 | 模块报告里的 `✅/◐/⏳` 标记与 backend-review 的 open 清单 | 标记两个方向都严重过期（旧 `13-remaining-work.md:3-5` 自述，该文件已随整组删除）；本文件是唯一收敛结果，历史见 git |
 
 ## 复核方式

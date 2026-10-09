@@ -13,7 +13,7 @@ Metaxisdata 以一个自包含的二进制交付：服务端内嵌 Web 应用，
 - Docker——没有其他宿主机依赖，运行所需的一切都在镜像内。
 - 使用预编译二进制时同样不需要 Docker，也没有其他运行时依赖：二进制是静态的、内嵌 Web 应用。出站 TLS 需要 CA 证书包；仅当 MSSQL 数据源配置了 `timezone` 参数时还需要时区数据库（IANA tzdata）。镜像安装 `ca-certificates` 与 `tzdata` 正是这两个用途；主流发行版默认都已提供。
 - 如需自行构建镜像：还需要启用 BuildKit 的 Docker（Docker 20.10+；较新的 Docker Desktop 与 Engine 默认已启用），以及能访问 Go module 与 npm install 的网络。
-- 如需自行构建二进制：需要 Go 工具链与前端钉钉的 pnpm 版本（脚本会经 corepack 解析它），以及能访问 Go module 与 npm install 的网络。
+- 如需自行构建二进制：需要 Go 工具链、Node 24（前端 `engines` 字段）与前端钉钉的 pnpm 版本（脚本会经 corepack 解析它），以及能访问 Go module 与 npm install 的网络。
 
 ## 1. 获取服务端
 

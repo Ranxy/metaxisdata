@@ -111,7 +111,7 @@ expanded down to per-column trails.
 # Backend — requires PG_URL; port 8083 matches the Vite proxy
 PG_URL='postgres://dev:dev@localhost:5432/metaxisdata?sslmode=disable' go run ./backend/bin/server/main.go --debug
 
-# Frontend — Vite on :3000, proxying API, OAuth, and MCP routes to the backend
+# Frontend — Node 24+, Vite on :3000, proxying API, OAuth, and MCP routes to the backend
 pnpm --dir frontend install
 pnpm --dir frontend dev
 
