@@ -1,0 +1,22 @@
+# Build context exclusions for scripts/docker/Dockerfile.server. The context is
+# the repo root, so anything the build stages do not read is uploaded for
+# nothing — and node_modules/build/temp together dwarf the sources.
+
+# Git metadata and agent configuration; the build reads none of it.
+.git
+.gitignore
+.agents
+.vscode
+
+# The build's own outputs, plus local tool caches.
+build
+temp
+**/node_modules
+**/dist
+
+# The SPA the server embeds is rebuilt from frontend/ in its own stage, so a
+# stale local copy must never reach the Go build.
+backend/server/frontend_dist
+
+# Operator documentation.
+docs

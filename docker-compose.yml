@@ -1,0 +1,71 @@
+# A local trial deployment: PostgreSQL and the server image built from
+# scripts/docker/Dockerfile.server. It is deliberately not a production
+# topology — one replica, a published port, and a password in the file — and it
+# exists so `docker compose up -d` is enough to look at a built image.
+#
+#   docker compose up -d --build     # build the image and start both services
+#   docker compose logs -f server
+#   docker compose down              # keep the store: add -v to drop it
+#
+# See docs/deployment.md for the flags and environment variables behind this.
+name: metaxisdata
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: metaxisdata
+      POSTGRES_PASSWORD: metaxisdata
+      POSTGRES_DB: metaxisdata
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U metaxisdata -d metaxisdata"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # Not published: only the server needs to reach it. Uncomment to inspect the
+    # store with psql from the host.
+    # ports:
+    #   - "5432:5432"
+
+  server:
+    # Tagged `dev` by default: the local build nobody named. The profile is
+    # still the release one — RELEASE below is what decides that, not the tag.
+    image: ${METAXISDATA_IMAGE:-metaxisdata/metaxisdata:dev}
+    build:
+      context: .
+      dockerfile: scripts/docker/Dockerfile.server
+      args:
+        VERSION: ${VERSION:-dev}
+        # `make docker-up` fills these in from the checkout; a bare
+        # `docker compose up` leaves the binary reporting unknown, which is
+        # honest — compose cannot read the commit on its own.
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
+        RELEASE: "true"
+        # Forwarded from the shell, and empty by default: the Dockerfile then
+        # falls back to the upstream proxy and registry. Set them when the
+        # network needs a mirror, e.g.
+        #   make docker-up GOPROXY=https://goproxy.cn,direct
+        BUILD_PROXY: ${BUILD_PROXY:-}
+        GOPROXY: ${GOPROXY:-}
+        NPM_REGISTRY: ${NPM_REGISTRY:-}
+        APK_MIRROR: ${APK_MIRROR:-}
+    environment:
+      # The schema is migrated on startup, so a fresh database needs nothing but
+      # this URL. sslmode=disable is safe here and nowhere the network is not
+      # the compose bridge.
+      PG_URL: postgres://metaxisdata:metaxisdata@postgres:5432/metaxisdata?sslmode=disable
+      METAXISDATA_JSON_LOGGING: "true"
+      # Optional: set a stable key to wrap the per-deployment data key, so a
+      # database dump alone cannot decrypt stored source credentials.
+      # METAXISDATA_ENCRYPTION_KEY: ""
+    ports:
+      - "8083:8083"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres-data:

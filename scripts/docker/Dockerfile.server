@@ -1,0 +1,100 @@
+# syntax=docker/dockerfile:1
+# Build context must be the repo root (.). Builds the metaxisdata server image:
+# frontend -> server-build -> server. The runtime image is a single static
+# binary plus the SPA it embeds — there is no second service to build and no
+# cross-compiled artifact to download, unlike a manager/agent/provisioner fleet.
+
+# --- frontend: the SPA the server embeds -------------------------------------
+FROM node:24.12.0-slim AS frontend
+# Custom arg names on purpose: BuildKit auto-injects the standard http_proxy/…
+# args into every stage, including the runtime image, so a proxy must be passed
+# under a name only the build stages declare. Same reasoning as the Go stages.
+ARG BUILD_PROXY
+ARG NPM_REGISTRY
+# An empty value falls back to the upstream default, so a caller can forward the
+# variable from its own environment without having to know what that default is.
+ENV NPM_REGISTRY=${NPM_REGISTRY:-https://registry.npmjs.org/}
+ENV http_proxy=${BUILD_PROXY} https_proxy=${BUILD_PROXY} no_proxy=localhost,127.0.0.1
+ENV HTTP_PROXY=${BUILD_PROXY} HTTPS_PROXY=${BUILD_PROXY} NO_PROXY=localhost,127.0.0.1
+WORKDIR /frontend
+# package.json pins packageManager pnpm@10.24.0, the version CI uses and the one
+# that wrote pnpm-lock.yaml (lockfileVersion 9.0). Install exactly that, not
+# whatever the base image would default to.
+RUN npm i -g pnpm@10.24.0 --registry="${NPM_REGISTRY}"
+# pnpm-workspace.yaml carries onlyBuiltDependencies, without which pnpm skips
+# esbuild's postinstall and `vite build` loses its bundler.
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
+RUN pnpm i --frozen-lockfile --registry="${NPM_REGISTRY}"
+COPY frontend/ ./
+# `pnpm build` runs `vue-tsc -b && vite build`, so the type check of the whole
+# SPA happens here too. CI raises the heap for it; this is the same idea with
+# less headroom, since a container that OOMs is worse than a slow one.
+ENV NODE_OPTIONS=--max-old-space-size=4096
+RUN pnpm build
+
+# --- server-build: the SPA is compiled into the binary ----------------------
+FROM golang:1.26.5-alpine3.23 AS server-build
+ARG VERSION=dev
+ARG GIT_COMMIT=unknown
+ARG BUILD_TIME=unknown
+ARG BUILD_PROXY
+# GOPROXY is a build arg because the image is built where the module proxy has
+# to be reachable; it is never exported into the runtime image. Empty falls back
+# to the upstream default (Go's own default is the same), which is what lets a
+# caller forward `${GOPROXY:-}` from a compose file.
+ARG GOPROXY
+# RELEASE=true selects the prod profile. The dev profile installs a wide-open
+# CORS middleware, so a deployment image must not default to it.
+ARG RELEASE=true
+ENV GOPROXY=${GOPROXY:-https://proxy.golang.org,direct}
+ENV http_proxy=${BUILD_PROXY} https_proxy=${BUILD_PROXY} no_proxy=localhost,127.0.0.1
+ENV HTTP_PROXY=${BUILD_PROXY} HTTPS_PROXY=${BUILD_PROXY} NO_PROXY=localhost,127.0.0.1
+WORKDIR /build
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+# Start from an empty SPA directory: the //go:embed pattern resolves either way,
+# and a stale frontend_dist in the context would otherwise be compiled in.
+RUN rm -rf ./backend/server/frontend_dist
+COPY --from=frontend /frontend/dist ./backend/server/frontend_dist
+RUN BUILD_TAGS="embed_frontend" \
+	&& if [ "${RELEASE}" = "true" ]; then BUILD_TAGS="${BUILD_TAGS} release"; fi \
+	&& CGO_ENABLED=0 go build -tags "${BUILD_TAGS}" -ldflags "-w -s \
+	-X github.com/Ranxy/metaxisdata/backend/common/version.Version=${VERSION} \
+	-X github.com/Ranxy/metaxisdata/backend/common/version.GitCommit=${GIT_COMMIT} \
+	-X github.com/Ranxy/metaxisdata/backend/common/version.BuildTime=${BUILD_TIME}" -p=16 \
+	-o /out/metaxisdata ./backend/bin/server/main.go
+
+# --- server: the runtime image ----------------------------------------------
+FROM alpine:3.23 AS server
+ARG VERSION=dev
+ARG GIT_COMMIT=unknown
+ARG BUILD_TIME=unknown
+# APK_MIRROR replaces the Alpine CDN, e.g. https://mirrors.aliyun.com/alpine.
+ARG APK_MIRROR
+LABEL org.opencontainers.image.title="Metaxisdata" \
+	org.opencontainers.image.description="Self-hosted data governance and metadata platform" \
+	org.opencontainers.image.version=${VERSION} \
+	org.opencontainers.image.revision=${GIT_COMMIT} \
+	org.opencontainers.image.created=${BUILD_TIME} \
+	org.opencontainers.image.licenses="Apache-2.0"
+# ca-certificates is the only runtime dependency: the server talks TLS to source
+# databases, LLM providers and OIDC/LDAP identity providers, and writes nothing
+# to disk (its state is PostgreSQL). busybox wget serves the health check.
+RUN if [ -n "${APK_MIRROR}" ]; then \
+		sed -i "s|https://dl-cdn.alpinelinux.org/alpine|${APK_MIRROR%/}|g" /etc/apk/repositories; \
+	fi \
+	&& apk add --no-cache ca-certificates \
+	&& adduser -D -u 1001 -H -s /sbin/nologin metaxisdata
+COPY --from=server-build /out/metaxisdata /usr/local/bin/metaxisdata
+COPY scripts/docker/metaxisdata-entrypoint.sh /usr/local/bin/metaxisdata-entrypoint
+USER 1001
+# PG_URL is the one required setting; the entrypoint maps the METAXISDATA_* ones
+# onto flags. Both stay overridable at `docker run`.
+ENV PG_URL=
+EXPOSE 8083
+# The health check follows METAXISDATA_PORT, which the entrypoint reads, so a
+# container started on another port still reports its real health.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+	CMD wget -q -O- "http://localhost:${METAXISDATA_PORT:-8083}/healthz" || exit 1
+ENTRYPOINT ["metaxisdata-entrypoint"]

@@ -53,8 +53,10 @@
     "actions": "Actions",
     "apply": "Apply",
     "back": "Back",
+    "buildTime": "Build time",
     "cancel": "Cancel",
     "close": "Close",
+    "commit": "Commit",
     "confirm": "Confirm",
     "copied": "Copied!",
     "copy": "Copy",
@@ -81,6 +83,7 @@
     "stateDeleted": "Deleted",
     "stateUnknown": "Unknown",
     "stateUnspecified": "Unspecified",
+    "version": "Version",
     "viewFullContent": "View full content"
   },
   "databaseManagement": {
@@ -212,6 +215,8 @@
     "viewInBrowser": "View in Metadata Browser"
   },
   "generalSettings": {
+    "aboutSection": "About",
+    "aboutSectionDescription": "The build metadata of the server that served this page.",
     "debugMode": "Enable runtime debug mode",
     "debugModeHint": "Switches server logging to debug level, turns on verbose request logs and /debug/pprof, and lets panic handlers return stack traces to clients. Turn it off again once you are done.",
     "debugSection": "Debug mode",

@@ -53,8 +53,10 @@
     "actions": "操作",
     "apply": "应用",
     "back": "返回",
+    "buildTime": "构建时间",
     "cancel": "取消",
     "close": "关闭",
+    "commit": "提交",
     "confirm": "确认",
     "copied": "已复制！",
     "copy": "复制",
@@ -81,6 +83,7 @@
     "stateDeleted": "已删除",
     "stateUnknown": "未知",
     "stateUnspecified": "未指定",
+    "version": "版本",
     "viewFullContent": "查看完整内容"
   },
   "databaseManagement": {
@@ -212,6 +215,8 @@
     "viewInBrowser": "在元数据浏览器中查看"
   },
   "generalSettings": {
+    "aboutSection": "关于",
+    "aboutSectionDescription": "当前页面对应的服务端构建信息。",
     "debugMode": "开启运行时调试模式",
     "debugModeHint": "将服务端日志级别切换为 debug，开启详细请求日志与 /debug/pprof，并允许 panic 处理把堆栈返回给调用方。排查完成后请及时关闭。",
     "debugSection": "调试模式",

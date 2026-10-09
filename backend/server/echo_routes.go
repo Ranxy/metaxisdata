@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Ranxy/metaxisdata/backend/common/log"
+	"github.com/Ranxy/metaxisdata/backend/common/version"
 	"github.com/Ranxy/metaxisdata/backend/config"
 
 	connectcors "connectrpc.com/cors"
@@ -68,6 +69,18 @@ func configureEchoRouters(
 			return nil
 		},
 	}))
+
+	// /api/version reports the build metadata the binary was produced from,
+	// which the SPA renders in its user menu. It is registered before the SPA
+	// catch-all and is anonymous like /healthz: a version is not a secret and
+	// an operator's uptime check should not need a session.
+	e.GET("/api/version", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]string{
+			"version":    version.Version,
+			"git_commit": version.GitCommit,
+			"build_time": version.BuildTime,
+		})
+	})
 
 	embedFrontend(e)
 

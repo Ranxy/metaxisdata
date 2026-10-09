@@ -102,6 +102,27 @@
 
       <DropdownMenuSeparator />
 
+      <!-- The build metadata of the server that served this bundle, one click
+           from any page (Settings → General shows the same values). It renders
+           nothing when the server did not answer, so an old build stays clean
+           instead of claiming a version it does not know. -->
+      <div
+        v-if="buildInfo"
+        class="px-2 py-1.5 text-xs text-muted-foreground"
+      >
+        <div class="truncate">
+          {{ t("common.version") }}: {{ buildInfo.version }}
+        </div>
+        <div class="truncate">
+          {{ t("common.commit") }}: {{ shortCommit }}
+        </div>
+        <div class="truncate">
+          {{ t("common.buildTime") }}: {{ buildInfo.build_time }}
+        </div>
+      </div>
+
+      <DropdownMenuSeparator />
+
       <DropdownMenuItem
         class="text-destructive focus:text-destructive"
         @click="handleLogout"
@@ -139,6 +160,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useBuildInfo } from "@/composables/useBuildInfo";
 import type { AppLocale } from "@/locales";
 import { useAppStore } from "@/store/modules/app";
 import { useAuthStore } from "@/store/modules/auth";
@@ -147,10 +169,15 @@ const { t } = useI18n();
 const router = useRouter();
 const appStore = useAppStore();
 const authStore = useAuthStore();
+const { buildInfo } = useBuildInfo();
 
 const userName = computed(() => authStore.userName || "User");
 const userEmail = computed(() => authStore.userEmail || "");
 const userInitial = computed(() => userName.value.charAt(0).toUpperCase());
+
+// The commit is a 40-character hash whose leading 8 characters identify it, and
+// the full value would be truncated by the menu anyway.
+const shortCommit = computed(() => buildInfo.value?.git_commit.slice(0, 8));
 
 const locales: Array<{ value: AppLocale; label: string }> = [
   { value: "zh-CN", label: "简体中文" },

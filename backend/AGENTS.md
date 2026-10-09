@@ -58,8 +58,16 @@ go build -ldflags "-w -s" -p=16 -tags release -o ./build/metaxisdata ./backend/b
 # Dev build: dev profile, wide-open CORS. Local development only.
 go build -ldflags "-w -s" -p=16 -o ./build/metaxisdata ./backend/bin/server/main.go
 
+# The build metadata (`--version` and GET /api/version) comes from
+# -X github.com/Ranxy/metaxisdata/backend/common/version.{Version,GitCommit,BuildTime};
+# the Makefile targets inject it, a bare `go build` leaves the dev/unknown defaults.
+
 # Run the server (requires PG_URL; port 8083 matches the frontend vite proxy)
 PG_URL='postgres://dev:dev@localhost:5432/metaxisdata?sslmode=disable' go run ./backend/bin/server/main.go --port 8083 --debug
+
+# Deployment image (SPA embedded, prod profile) and the local compose trial
+make docker-build
+make docker-up
 
 # A single test, or several
 go test -v -count=1 github.com/Ranxy/metaxisdata/backend/store -run ^TestFunctionName$
@@ -69,7 +77,7 @@ go test -v -count=1 github.com/Ranxy/metaxisdata/backend/api/v1 -run ^(TestOne|T
 psql -h localhost -p 5432 -U <user> -d metaxisdata -c "sql"
 ```
 
-The default build does **not** embed the frontend: `backend/server/server_frontend_not_embed.go` serves a placeholder page, so run the frontend dev server or host the built `frontend/dist` separately. `make build-embed` builds the SPA and bundles it into the binary via the `embed_frontend` tag (`backend/server/server_frontend_embed.go`, which serves `frontend/dist` with an SPA fallback).
+The default build does **not** embed the frontend: `backend/server/server_frontend_not_embed.go` serves a placeholder page, so run the frontend dev server or host the built `frontend/dist` separately. `make build-embed` builds the SPA and bundles it into the binary via the `embed_frontend` tag (`backend/server/server_frontend_embed.go`, which serves `frontend/dist` with an SPA fallback); the Docker image does the same build inside its own stage — see [docs/deployment.md](../docs/deployment.md).
 
 ## Testing
 

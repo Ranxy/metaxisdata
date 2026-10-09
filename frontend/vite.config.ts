@@ -61,6 +61,13 @@ export default defineConfig({
       "/mcp": {
         target: "http://localhost:8083",
       },
+      // The build metadata the user menu shows. It is same-origin in
+      // production; the dev server has no route of its own for it, so without
+      // this the request would fall through to the SPA and the menu would stay
+      // empty.
+      "/api": {
+        target: "http://localhost:8083",
+      },
     },
   },
 });
