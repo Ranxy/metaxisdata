@@ -60,7 +60,7 @@ func TestOAuthEndpointMiddlewareIgnoresAnUntrustedForwardedHeader(t *testing.T) 
 
 // Each anonymous OAuth route carries its own per-address budget: sharing one
 // across the four would tighten the surface four-fold, which is the open I2
-// question in docs/security-review-2026-10.md. One route's traffic therefore
+// question in .agents/docs/security-open-items.md. One route's traffic therefore
 // does not spend another's budget.
 func TestOAuthEndpointsCarrySeparateBudgets(t *testing.T) {
 	t.Parallel()

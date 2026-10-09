@@ -9,7 +9,7 @@
 //
 // Engine registration is deliberately scoped to STARROCKS. DORIS keeps
 // resolving to lineage.ErrorEngineNotSupported, which the runner records as a
-// deliberate per-object skip; see plan/starrocks_lineage_plan.md.
+// deliberate per-object skip; see .agents/docs/lineage-semantics.md.
 //
 // A statement kind the analyzer cannot model yet (MERGE) is reported as a gap
 // beside the edges the other statements produced, so a coverage gap never

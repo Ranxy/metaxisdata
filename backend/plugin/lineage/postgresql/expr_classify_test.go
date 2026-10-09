@@ -66,7 +66,7 @@ func TestIsExpressionDerived(t *testing.T) {
 }
 
 // TestClassifyExpression pins the structural classification, including the
-// decisions from plan/postgresql_expression_transformation_plan.md.
+// decisions from .agents/docs/lineage-semantics.md.
 func TestClassifyExpression(t *testing.T) {
 	cases := []struct {
 		expr        string

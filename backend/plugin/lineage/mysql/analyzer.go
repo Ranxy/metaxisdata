@@ -5,8 +5,8 @@
 // parity-verified against it over the golden corpus and then removed.
 //
 // Known gaps and their intended resolution are tracked in
-// plan/mysql_lineage_optimization_plan.md; defects in omni itself are recorded
-// in docs/omni_upstream_defects.md.
+// .agents/docs/lineage-semantics.md; defects in omni itself are recorded
+// in .agents/docs/omni-upstream-defects.md.
 package mysql
 
 //go:generate go run ./gen
@@ -215,7 +215,7 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 // InsertStmt/UpdateStmt/DeleteStmt carry no CTEs, so the WITH clause is dropped and
 // the CTE name would be treated as a real table — a wrong edge is worse than a
 // reported gap, so the statement is not analyzed. The note is what keeps the skip
-// from reading as "this statement has no lineage" (see docs/omni_upstream_defects.md).
+// from reading as "this statement has no lineage" (see .agents/docs/omni-upstream-defects.md).
 func (a *Analyzer) skipLeadingWith(statement string) bool {
 	if !hasLeadingWith(a.sql) {
 		return false
@@ -263,7 +263,7 @@ var locFieldCache sync.Map // map[reflect.Type]int (-1 when absent)
 
 // nodeLoc reads the Loc field every omni AST node carries. omni exposes no
 // location interface: Loc is a named field, so its methods are not promoted and
-// an interface assertion fails (docs/omni_upstream_defects.md item 2).
+// an interface assertion fails (.agents/docs/omni-upstream-defects.md item 2).
 // Reflection is therefore required; the field index is cached per type.
 func nodeLoc(n nodes.Node) nodes.Loc {
 	if n == nil {
@@ -309,7 +309,7 @@ func locFieldIndex(t reflect.Type) (int, bool) {
 
 // exprSpan returns the source span of a node, widening an infix node's span to
 // the earliest child offset because omni anchors its Loc at the operator
-// (docs/omni_upstream_defects.md item 1). ok is false when the span is unusable.
+// (.agents/docs/omni-upstream-defects.md item 1). ok is false when the span is unusable.
 func (a *Analyzer) exprSpan(n nodes.Node) (start, end int, ok bool) {
 	if n == nil {
 		return 0, 0, false

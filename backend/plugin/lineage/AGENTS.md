@@ -21,6 +21,7 @@ go generate ./backend/plugin/lineage/mysql
 
 ## Design Docs
 
-- `plan/lineage_analyze_plan.md`, `plan/lineage_analyzer_wiring_plan.md` — analyzer design and startup wiring.
-- `plan/lineage_mysql_family_generation_plan.md`, `plan/mysql_family_dialect_lineage_plan.md` — the shared-body generation and dialect coverage.
-- `plan/lineage_package_architecture_review.md`, `plan/lineage_ast_field_coverage_audit.md`, `plan/lineage_transformation_model.md` — architecture, AST coverage, and the transformation model.
+- [.agents/docs/lineage-analyzer.md](../../../.agents/docs/lineage-analyzer.md) — package layout, assembly, runner lifecycle, the MySQL-family generator, and the AST coverage audit method.
+- [.agents/docs/lineage-semantics.md](../../../.agents/docs/lineage-semantics.md) — what each dialect must keep producing: the transformation model, per-dialect semantics, engine-measured clause visibility.
+- [.agents/docs/lineage-graph.md](../../../.agents/docs/lineage-graph.md) — the field trail and field-scoped expansion on the graph page.
+- [.agents/docs/omni-upstream-defects.md](../../../.agents/docs/omni-upstream-defects.md) — upstream parser/AST defects and the deliberate no-patch policy.

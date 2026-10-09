@@ -1,6 +1,6 @@
 name: TestExpressionTransformation_Table
 # Pins the structural expression classification introduced by PG-FU-1
-# (plan/postgresql_expression_transformation_plan.md): relation_type and
+# (.agents/docs/lineage-semantics.md): relation_type and
 # has_transform were previously wrong or absent for these shapes.
 cases:
     - name: comparison operator is indirect

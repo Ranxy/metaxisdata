@@ -14,7 +14,7 @@ import (
 // derives a lineage source GUID from the analyzer's names, and GetMetaRegistry
 // matches GUIDs exactly, so this alignment is what lets a source node resolve.
 //
-// See plan/postgresql_omni_parser_migration_plan.md (PG-FU-3 and Appendix C).
+// See .agents/docs/lineage-semantics.md (PG-FU-3).
 func TestUnquotedIdentifiersMatchRegistryCase(t *testing.T) {
 	const instance, database = "inst-1", "appdb"
 

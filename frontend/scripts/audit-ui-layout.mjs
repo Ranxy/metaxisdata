@@ -2,7 +2,7 @@
 /**
  * Layout regression audit.
  *
- * Measures the content-first criteria from `spec/frontend_ux_redesign.md`
+ * Measures the content-first criteria from `.agents/docs/frontend-ui.md`
  * against a running dev server, so a later change cannot quietly push the page
  * chrome back up. It reports, per route:
  *
