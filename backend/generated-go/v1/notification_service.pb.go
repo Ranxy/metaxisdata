@@ -900,8 +900,13 @@ func (x *GetUnreadNotificationCountRequest) GetParent() string {
 }
 
 type GetUnreadNotificationCountResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	UnreadCount   int32                  `protobuf:"varint,1,opt,name=unread_count,json=unreadCount,proto3" json:"unread_count,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	UnreadCount int32                  `protobuf:"varint,1,opt,name=unread_count,json=unreadCount,proto3" json:"unread_count,omitempty"`
+	// The subset of unread_count written after the caller last opened the inbox.
+	// This is the number the badge shows: opening the inbox clears it without
+	// marking anything read, so an unread message stays unread until it is
+	// clicked.
+	UnseenCount   int32 `protobuf:"varint,2,opt,name=unseen_count,json=unseenCount,proto3" json:"unseen_count,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -943,6 +948,58 @@ func (x *GetUnreadNotificationCountResponse) GetUnreadCount() int32 {
 	return 0
 }
 
+func (x *GetUnreadNotificationCountResponse) GetUnseenCount() int32 {
+	if x != nil {
+		return x.UnseenCount
+	}
+	return 0
+}
+
+type MarkNotificationsSeenRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+	Parent        string `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MarkNotificationsSeenRequest) Reset() {
+	*x = MarkNotificationsSeenRequest{}
+	mi := &file_v1_notification_service_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MarkNotificationsSeenRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MarkNotificationsSeenRequest) ProtoMessage() {}
+
+func (x *MarkNotificationsSeenRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_notification_service_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MarkNotificationsSeenRequest.ProtoReflect.Descriptor instead.
+func (*MarkNotificationsSeenRequest) Descriptor() ([]byte, []int) {
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *MarkNotificationsSeenRequest) GetParent() string {
+	if x != nil {
+		return x.Parent
+	}
+	return ""
+}
+
 type BatchMarkNotificationsReadRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
@@ -955,7 +1012,7 @@ type BatchMarkNotificationsReadRequest struct {
 
 func (x *BatchMarkNotificationsReadRequest) Reset() {
 	*x = BatchMarkNotificationsReadRequest{}
-	mi := &file_v1_notification_service_proto_msgTypes[8]
+	mi := &file_v1_notification_service_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -967,7 +1024,7 @@ func (x *BatchMarkNotificationsReadRequest) String() string {
 func (*BatchMarkNotificationsReadRequest) ProtoMessage() {}
 
 func (x *BatchMarkNotificationsReadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_notification_service_proto_msgTypes[8]
+	mi := &file_v1_notification_service_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -980,7 +1037,7 @@ func (x *BatchMarkNotificationsReadRequest) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use BatchMarkNotificationsReadRequest.ProtoReflect.Descriptor instead.
 func (*BatchMarkNotificationsReadRequest) Descriptor() ([]byte, []int) {
-	return file_v1_notification_service_proto_rawDescGZIP(), []int{8}
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *BatchMarkNotificationsReadRequest) GetParent() string {
@@ -1007,7 +1064,7 @@ type MarkAllNotificationsReadRequest struct {
 
 func (x *MarkAllNotificationsReadRequest) Reset() {
 	*x = MarkAllNotificationsReadRequest{}
-	mi := &file_v1_notification_service_proto_msgTypes[9]
+	mi := &file_v1_notification_service_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1019,7 +1076,7 @@ func (x *MarkAllNotificationsReadRequest) String() string {
 func (*MarkAllNotificationsReadRequest) ProtoMessage() {}
 
 func (x *MarkAllNotificationsReadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_notification_service_proto_msgTypes[9]
+	mi := &file_v1_notification_service_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1032,7 +1089,7 @@ func (x *MarkAllNotificationsReadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MarkAllNotificationsReadRequest.ProtoReflect.Descriptor instead.
 func (*MarkAllNotificationsReadRequest) Descriptor() ([]byte, []int) {
-	return file_v1_notification_service_proto_rawDescGZIP(), []int{9}
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *MarkAllNotificationsReadRequest) GetParent() string {
@@ -1052,7 +1109,7 @@ type DeleteNotificationRequest struct {
 
 func (x *DeleteNotificationRequest) Reset() {
 	*x = DeleteNotificationRequest{}
-	mi := &file_v1_notification_service_proto_msgTypes[10]
+	mi := &file_v1_notification_service_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1064,7 +1121,7 @@ func (x *DeleteNotificationRequest) String() string {
 func (*DeleteNotificationRequest) ProtoMessage() {}
 
 func (x *DeleteNotificationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_notification_service_proto_msgTypes[10]
+	mi := &file_v1_notification_service_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1077,7 +1134,7 @@ func (x *DeleteNotificationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteNotificationRequest.ProtoReflect.Descriptor instead.
 func (*DeleteNotificationRequest) Descriptor() ([]byte, []int) {
-	return file_v1_notification_service_proto_rawDescGZIP(), []int{10}
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *DeleteNotificationRequest) GetName() string {
@@ -1097,7 +1154,7 @@ type SubscribeNotificationsRequest struct {
 
 func (x *SubscribeNotificationsRequest) Reset() {
 	*x = SubscribeNotificationsRequest{}
-	mi := &file_v1_notification_service_proto_msgTypes[11]
+	mi := &file_v1_notification_service_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1109,7 +1166,7 @@ func (x *SubscribeNotificationsRequest) String() string {
 func (*SubscribeNotificationsRequest) ProtoMessage() {}
 
 func (x *SubscribeNotificationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_notification_service_proto_msgTypes[11]
+	mi := &file_v1_notification_service_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1122,7 +1179,7 @@ func (x *SubscribeNotificationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubscribeNotificationsRequest.ProtoReflect.Descriptor instead.
 func (*SubscribeNotificationsRequest) Descriptor() ([]byte, []int) {
-	return file_v1_notification_service_proto_rawDescGZIP(), []int{11}
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *SubscribeNotificationsRequest) GetParent() string {
@@ -1145,7 +1202,7 @@ type SubscribeNotificationsResponse struct {
 
 func (x *SubscribeNotificationsResponse) Reset() {
 	*x = SubscribeNotificationsResponse{}
-	mi := &file_v1_notification_service_proto_msgTypes[12]
+	mi := &file_v1_notification_service_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1157,7 +1214,7 @@ func (x *SubscribeNotificationsResponse) String() string {
 func (*SubscribeNotificationsResponse) ProtoMessage() {}
 
 func (x *SubscribeNotificationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_notification_service_proto_msgTypes[12]
+	mi := &file_v1_notification_service_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1170,7 +1227,7 @@ func (x *SubscribeNotificationsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubscribeNotificationsResponse.ProtoReflect.Descriptor instead.
 func (*SubscribeNotificationsResponse) Descriptor() ([]byte, []int) {
-	return file_v1_notification_service_proto_rawDescGZIP(), []int{12}
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *SubscribeNotificationsResponse) GetEvent() isSubscribeNotificationsResponse_Event {
@@ -1224,14 +1281,18 @@ type NotificationEvent struct {
 	// The recipient's unread count after this notification was written. Absent when
 	// it could not be read, in which case the client asks for the count itself
 	// rather than showing a wrong number.
-	UnreadCount   *int32 `protobuf:"varint,2,opt,name=unread_count,json=unreadCount,proto3,oneof" json:"unread_count,omitempty"`
+	UnreadCount *int32 `protobuf:"varint,2,opt,name=unread_count,json=unreadCount,proto3,oneof" json:"unread_count,omitempty"`
+	// The recipient's unseen count after this notification was written — see
+	// GetUnreadNotificationCountResponse.unseen_count. Absent under the same
+	// condition as unread_count.
+	UnseenCount   *int32 `protobuf:"varint,3,opt,name=unseen_count,json=unseenCount,proto3,oneof" json:"unseen_count,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *NotificationEvent) Reset() {
 	*x = NotificationEvent{}
-	mi := &file_v1_notification_service_proto_msgTypes[13]
+	mi := &file_v1_notification_service_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1243,7 +1304,7 @@ func (x *NotificationEvent) String() string {
 func (*NotificationEvent) ProtoMessage() {}
 
 func (x *NotificationEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_notification_service_proto_msgTypes[13]
+	mi := &file_v1_notification_service_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1256,7 +1317,7 @@ func (x *NotificationEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NotificationEvent.ProtoReflect.Descriptor instead.
 func (*NotificationEvent) Descriptor() ([]byte, []int) {
-	return file_v1_notification_service_proto_rawDescGZIP(), []int{13}
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *NotificationEvent) GetNotification() *Notification {
@@ -1273,6 +1334,13 @@ func (x *NotificationEvent) GetUnreadCount() int32 {
 	return 0
 }
 
+func (x *NotificationEvent) GetUnseenCount() int32 {
+	if x != nil && x.UnseenCount != nil {
+		return *x.UnseenCount
+	}
+	return 0
+}
+
 // KeepAlive is the notification stream's heartbeat. It carries no data.
 type KeepAlive struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -1282,7 +1350,7 @@ type KeepAlive struct {
 
 func (x *KeepAlive) Reset() {
 	*x = KeepAlive{}
-	mi := &file_v1_notification_service_proto_msgTypes[14]
+	mi := &file_v1_notification_service_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1294,7 +1362,7 @@ func (x *KeepAlive) String() string {
 func (*KeepAlive) ProtoMessage() {}
 
 func (x *KeepAlive) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_notification_service_proto_msgTypes[14]
+	mi := &file_v1_notification_service_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1307,7 +1375,7 @@ func (x *KeepAlive) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KeepAlive.ProtoReflect.Descriptor instead.
 func (*KeepAlive) Descriptor() ([]byte, []int) {
-	return file_v1_notification_service_proto_rawDescGZIP(), []int{14}
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{15}
 }
 
 var File_v1_notification_service_proto protoreflect.FileDescriptor
@@ -1360,9 +1428,12 @@ const file_v1_notification_service_proto_rawDesc = "" +
 	"\rnotifications\x18\x01 \x03(\v2\x1c.metaxisdata.v1.NotificationR\rnotifications\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"@\n" +
 	"!GetUnreadNotificationCountRequest\x12\x1b\n" +
-	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\"G\n" +
+	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\"j\n" +
 	"\"GetUnreadNotificationCountResponse\x12!\n" +
-	"\funread_count\x18\x01 \x01(\x05R\vunreadCount\"[\n" +
+	"\funread_count\x18\x01 \x01(\x05R\vunreadCount\x12!\n" +
+	"\funseen_count\x18\x02 \x01(\x05R\vunseenCount\";\n" +
+	"\x1cMarkNotificationsSeenRequest\x12\x1b\n" +
+	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\"[\n" +
 	"!BatchMarkNotificationsReadRequest\x12\x1b\n" +
 	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\x12\x19\n" +
 	"\x05names\x18\x02 \x03(\tB\x03\xe0A\x02R\x05names\">\n" +
@@ -1377,11 +1448,13 @@ const file_v1_notification_service_proto_rawDesc = "" +
 	"\fnotification\x18\x01 \x01(\v2!.metaxisdata.v1.NotificationEventH\x00R\fnotification\x12:\n" +
 	"\n" +
 	"keep_alive\x18\x02 \x01(\v2\x19.metaxisdata.v1.KeepAliveH\x00R\tkeepAliveB\a\n" +
-	"\x05event\"\x98\x01\n" +
+	"\x05event\"\xd6\x01\n" +
 	"\x11NotificationEvent\x12E\n" +
 	"\fnotification\x18\x01 \x01(\v2\x1c.metaxisdata.v1.NotificationB\x03\xe0A\x03R\fnotification\x12+\n" +
-	"\funread_count\x18\x02 \x01(\x05B\x03\xe0A\x03H\x00R\vunreadCount\x88\x01\x01B\x0f\n" +
-	"\r_unread_count\"\v\n" +
+	"\funread_count\x18\x02 \x01(\x05B\x03\xe0A\x03H\x00R\vunreadCount\x88\x01\x01\x12+\n" +
+	"\funseen_count\x18\x03 \x01(\x05B\x03\xe0A\x03H\x01R\vunseenCount\x88\x01\x01B\x0f\n" +
+	"\r_unread_countB\x0f\n" +
+	"\r_unseen_count\"\v\n" +
 	"\tKeepAlive*{\n" +
 	"\x10NotificationType\x12!\n" +
 	"\x1dNOTIFICATION_TYPE_UNSPECIFIED\x10\x00\x12!\n" +
@@ -1408,10 +1481,11 @@ const file_v1_notification_service_proto_rawDesc = "" +
 	"'OPENLINEAGE_FAILURE_KIND_SCOPE_MISMATCH\x10\x03\x12+\n" +
 	"'OPENLINEAGE_FAILURE_KIND_PERSIST_FAILED\x10\x04\x12+\n" +
 	"'OPENLINEAGE_FAILURE_KIND_PROCESS_FAILED\x10\x05\x12/\n" +
-	"+OPENLINEAGE_FAILURE_KIND_NAMESPACE_UNMAPPED\x10\x062\xde\a\n" +
+	"+OPENLINEAGE_FAILURE_KIND_NAMESPACE_UNMAPPED\x10\x062\xfb\b\n" +
 	"\x13NotificationService\x12\xa2\x01\n" +
 	"\x11ListNotifications\x12(.metaxisdata.v1.ListNotificationsRequest\x1a).metaxisdata.v1.ListNotificationsResponse\"8\xdaA\x06parent\x82\xd3\xe4\x93\x02)\x12'/v1/{parent=workspaces/*}/notifications\x12\xc0\x01\n" +
-	"\x1aGetUnreadNotificationCount\x121.metaxisdata.v1.GetUnreadNotificationCountRequest\x1a2.metaxisdata.v1.GetUnreadNotificationCountResponse\";\x82\xd3\xe4\x93\x025\x123/v1/{parent=workspaces/*}/notifications:unreadCount\x12\xa9\x01\n" +
+	"\x1aGetUnreadNotificationCount\x121.metaxisdata.v1.GetUnreadNotificationCountRequest\x1a2.metaxisdata.v1.GetUnreadNotificationCountResponse\";\x82\xd3\xe4\x93\x025\x123/v1/{parent=workspaces/*}/notifications:unreadCount\x12\x9a\x01\n" +
+	"\x15MarkNotificationsSeen\x12,.metaxisdata.v1.MarkNotificationsSeenRequest\x1a\x16.google.protobuf.Empty\";\x82\xd3\xe4\x93\x025:\x01*\"0/v1/{parent=workspaces/*}/notifications:markSeen\x12\xa9\x01\n" +
 	"\x1aBatchMarkNotificationsRead\x121.metaxisdata.v1.BatchMarkNotificationsReadRequest\x1a\x16.google.protobuf.Empty\"@\x82\xd3\xe4\x93\x02::\x01*\"5/v1/{parent=workspaces/*}/notifications:batchMarkRead\x12\xa3\x01\n" +
 	"\x18MarkAllNotificationsRead\x12/.metaxisdata.v1.MarkAllNotificationsReadRequest\x1a\x16.google.protobuf.Empty\">\x82\xd3\xe4\x93\x028:\x01*\"3/v1/{parent=workspaces/*}/notifications:markAllRead\x12\x8f\x01\n" +
 	"\x12DeleteNotification\x12).metaxisdata.v1.DeleteNotificationRequest\x1a\x16.google.protobuf.Empty\"6\xdaA\x04name\x82\xd3\xe4\x93\x02)*'/v1/{name=workspaces/*/notifications/*}\x12{\n" +
@@ -1430,7 +1504,7 @@ func file_v1_notification_service_proto_rawDescGZIP() []byte {
 }
 
 var file_v1_notification_service_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_v1_notification_service_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_v1_notification_service_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_v1_notification_service_proto_goTypes = []any{
 	(NotificationType)(0),                      // 0: metaxisdata.v1.NotificationType
 	(NotificationSeverity)(0),                  // 1: metaxisdata.v1.NotificationSeverity
@@ -1445,21 +1519,22 @@ var file_v1_notification_service_proto_goTypes = []any{
 	(*ListNotificationsResponse)(nil),          // 10: metaxisdata.v1.ListNotificationsResponse
 	(*GetUnreadNotificationCountRequest)(nil),  // 11: metaxisdata.v1.GetUnreadNotificationCountRequest
 	(*GetUnreadNotificationCountResponse)(nil), // 12: metaxisdata.v1.GetUnreadNotificationCountResponse
-	(*BatchMarkNotificationsReadRequest)(nil),  // 13: metaxisdata.v1.BatchMarkNotificationsReadRequest
-	(*MarkAllNotificationsReadRequest)(nil),    // 14: metaxisdata.v1.MarkAllNotificationsReadRequest
-	(*DeleteNotificationRequest)(nil),          // 15: metaxisdata.v1.DeleteNotificationRequest
-	(*SubscribeNotificationsRequest)(nil),      // 16: metaxisdata.v1.SubscribeNotificationsRequest
-	(*SubscribeNotificationsResponse)(nil),     // 17: metaxisdata.v1.SubscribeNotificationsResponse
-	(*NotificationEvent)(nil),                  // 18: metaxisdata.v1.NotificationEvent
-	(*KeepAlive)(nil),                          // 19: metaxisdata.v1.KeepAlive
-	(*timestamppb.Timestamp)(nil),              // 20: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),                      // 21: google.protobuf.Empty
+	(*MarkNotificationsSeenRequest)(nil),       // 13: metaxisdata.v1.MarkNotificationsSeenRequest
+	(*BatchMarkNotificationsReadRequest)(nil),  // 14: metaxisdata.v1.BatchMarkNotificationsReadRequest
+	(*MarkAllNotificationsReadRequest)(nil),    // 15: metaxisdata.v1.MarkAllNotificationsReadRequest
+	(*DeleteNotificationRequest)(nil),          // 16: metaxisdata.v1.DeleteNotificationRequest
+	(*SubscribeNotificationsRequest)(nil),      // 17: metaxisdata.v1.SubscribeNotificationsRequest
+	(*SubscribeNotificationsResponse)(nil),     // 18: metaxisdata.v1.SubscribeNotificationsResponse
+	(*NotificationEvent)(nil),                  // 19: metaxisdata.v1.NotificationEvent
+	(*KeepAlive)(nil),                          // 20: metaxisdata.v1.KeepAlive
+	(*timestamppb.Timestamp)(nil),              // 21: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),                      // 22: google.protobuf.Empty
 }
 var file_v1_notification_service_proto_depIdxs = []int32{
-	20, // 0: metaxisdata.v1.Notification.create_time:type_name -> google.protobuf.Timestamp
+	21, // 0: metaxisdata.v1.Notification.create_time:type_name -> google.protobuf.Timestamp
 	0,  // 1: metaxisdata.v1.Notification.type:type_name -> metaxisdata.v1.NotificationType
 	1,  // 2: metaxisdata.v1.Notification.severity:type_name -> metaxisdata.v1.NotificationSeverity
-	20, // 3: metaxisdata.v1.Notification.read_time:type_name -> google.protobuf.Timestamp
+	21, // 3: metaxisdata.v1.Notification.read_time:type_name -> google.protobuf.Timestamp
 	6,  // 4: metaxisdata.v1.Notification.schema_sync:type_name -> metaxisdata.v1.SchemaSyncDetail
 	8,  // 5: metaxisdata.v1.Notification.openlineage:type_name -> metaxisdata.v1.OpenLineageDetail
 	2,  // 6: metaxisdata.v1.SchemaSyncDetail.trigger:type_name -> metaxisdata.v1.SyncTrigger
@@ -1467,23 +1542,25 @@ var file_v1_notification_service_proto_depIdxs = []int32{
 	3,  // 8: metaxisdata.v1.SyncDatabaseResult.state:type_name -> metaxisdata.v1.SyncDatabaseState
 	4,  // 9: metaxisdata.v1.OpenLineageDetail.kind:type_name -> metaxisdata.v1.OpenLineageFailureKind
 	5,  // 10: metaxisdata.v1.ListNotificationsResponse.notifications:type_name -> metaxisdata.v1.Notification
-	18, // 11: metaxisdata.v1.SubscribeNotificationsResponse.notification:type_name -> metaxisdata.v1.NotificationEvent
-	19, // 12: metaxisdata.v1.SubscribeNotificationsResponse.keep_alive:type_name -> metaxisdata.v1.KeepAlive
+	19, // 11: metaxisdata.v1.SubscribeNotificationsResponse.notification:type_name -> metaxisdata.v1.NotificationEvent
+	20, // 12: metaxisdata.v1.SubscribeNotificationsResponse.keep_alive:type_name -> metaxisdata.v1.KeepAlive
 	5,  // 13: metaxisdata.v1.NotificationEvent.notification:type_name -> metaxisdata.v1.Notification
 	9,  // 14: metaxisdata.v1.NotificationService.ListNotifications:input_type -> metaxisdata.v1.ListNotificationsRequest
 	11, // 15: metaxisdata.v1.NotificationService.GetUnreadNotificationCount:input_type -> metaxisdata.v1.GetUnreadNotificationCountRequest
-	13, // 16: metaxisdata.v1.NotificationService.BatchMarkNotificationsRead:input_type -> metaxisdata.v1.BatchMarkNotificationsReadRequest
-	14, // 17: metaxisdata.v1.NotificationService.MarkAllNotificationsRead:input_type -> metaxisdata.v1.MarkAllNotificationsReadRequest
-	15, // 18: metaxisdata.v1.NotificationService.DeleteNotification:input_type -> metaxisdata.v1.DeleteNotificationRequest
-	16, // 19: metaxisdata.v1.NotificationService.SubscribeNotifications:input_type -> metaxisdata.v1.SubscribeNotificationsRequest
-	10, // 20: metaxisdata.v1.NotificationService.ListNotifications:output_type -> metaxisdata.v1.ListNotificationsResponse
-	12, // 21: metaxisdata.v1.NotificationService.GetUnreadNotificationCount:output_type -> metaxisdata.v1.GetUnreadNotificationCountResponse
-	21, // 22: metaxisdata.v1.NotificationService.BatchMarkNotificationsRead:output_type -> google.protobuf.Empty
-	21, // 23: metaxisdata.v1.NotificationService.MarkAllNotificationsRead:output_type -> google.protobuf.Empty
-	21, // 24: metaxisdata.v1.NotificationService.DeleteNotification:output_type -> google.protobuf.Empty
-	17, // 25: metaxisdata.v1.NotificationService.SubscribeNotifications:output_type -> metaxisdata.v1.SubscribeNotificationsResponse
-	20, // [20:26] is the sub-list for method output_type
-	14, // [14:20] is the sub-list for method input_type
+	13, // 16: metaxisdata.v1.NotificationService.MarkNotificationsSeen:input_type -> metaxisdata.v1.MarkNotificationsSeenRequest
+	14, // 17: metaxisdata.v1.NotificationService.BatchMarkNotificationsRead:input_type -> metaxisdata.v1.BatchMarkNotificationsReadRequest
+	15, // 18: metaxisdata.v1.NotificationService.MarkAllNotificationsRead:input_type -> metaxisdata.v1.MarkAllNotificationsReadRequest
+	16, // 19: metaxisdata.v1.NotificationService.DeleteNotification:input_type -> metaxisdata.v1.DeleteNotificationRequest
+	17, // 20: metaxisdata.v1.NotificationService.SubscribeNotifications:input_type -> metaxisdata.v1.SubscribeNotificationsRequest
+	10, // 21: metaxisdata.v1.NotificationService.ListNotifications:output_type -> metaxisdata.v1.ListNotificationsResponse
+	12, // 22: metaxisdata.v1.NotificationService.GetUnreadNotificationCount:output_type -> metaxisdata.v1.GetUnreadNotificationCountResponse
+	22, // 23: metaxisdata.v1.NotificationService.MarkNotificationsSeen:output_type -> google.protobuf.Empty
+	22, // 24: metaxisdata.v1.NotificationService.BatchMarkNotificationsRead:output_type -> google.protobuf.Empty
+	22, // 25: metaxisdata.v1.NotificationService.MarkAllNotificationsRead:output_type -> google.protobuf.Empty
+	22, // 26: metaxisdata.v1.NotificationService.DeleteNotification:output_type -> google.protobuf.Empty
+	18, // 27: metaxisdata.v1.NotificationService.SubscribeNotifications:output_type -> metaxisdata.v1.SubscribeNotificationsResponse
+	21, // [21:28] is the sub-list for method output_type
+	14, // [14:21] is the sub-list for method input_type
 	14, // [14:14] is the sub-list for extension type_name
 	14, // [14:14] is the sub-list for extension extendee
 	0,  // [0:14] is the sub-list for field type_name
@@ -1498,18 +1575,18 @@ func file_v1_notification_service_proto_init() {
 		(*Notification_SchemaSync)(nil),
 		(*Notification_Openlineage)(nil),
 	}
-	file_v1_notification_service_proto_msgTypes[12].OneofWrappers = []any{
+	file_v1_notification_service_proto_msgTypes[13].OneofWrappers = []any{
 		(*SubscribeNotificationsResponse_Notification)(nil),
 		(*SubscribeNotificationsResponse_KeepAlive)(nil),
 	}
-	file_v1_notification_service_proto_msgTypes[13].OneofWrappers = []any{}
+	file_v1_notification_service_proto_msgTypes[14].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_notification_service_proto_rawDesc), len(file_v1_notification_service_proto_rawDesc)),
 			NumEnums:      5,
-			NumMessages:   15,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

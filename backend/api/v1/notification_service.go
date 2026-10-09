@@ -116,9 +116,10 @@ func (s *NotificationService) ListNotifications(ctx context.Context, req *connec
 	return connect.NewResponse(response), nil
 }
 
-// GetUnreadNotificationCount counts the caller's unread notifications. The stream carries
-// the count with every message it delivers, so this is the badge's fallback: it answers
-// from a partial index rather than reading the messages themselves.
+// GetUnreadNotificationCount counts the caller's unread notifications and the subset
+// of them written since the caller last opened the inbox. The stream carries both with
+// every message it delivers, so this is their fallback: it answers from a partial index
+// rather than reading the messages themselves.
 func (s *NotificationService) GetUnreadNotificationCount(ctx context.Context, req *connect.Request[v1pb.GetUnreadNotificationCountRequest]) (*connect.Response[v1pb.GetUnreadNotificationCountResponse], error) {
 	user, err := notificationCaller(ctx)
 	if err != nil {
@@ -132,7 +133,33 @@ func (s *NotificationService) GetUnreadNotificationCount(ctx context.Context, re
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to count unread notifications"))
 	}
-	return connect.NewResponse(&v1pb.GetUnreadNotificationCountResponse{UnreadCount: int32(count)}), nil
+	unseen, err := s.store.CountUnseenNotifications(ctx, user.ID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to count unseen notifications"))
+	}
+	return connect.NewResponse(&v1pb.GetUnreadNotificationCountResponse{
+		UnreadCount: int32(count),
+		UnseenCount: int32(unseen),
+	}), nil
+}
+
+// MarkNotificationsSeen records that the caller has opened the inbox, which clears the
+// badge every connected tab of that inbox shows. It is not a mark-read call: the messages
+// stay unread, and each one is read when it is clicked. Calling it twice is harmless —
+// the second call only moves the watermark further forward.
+func (s *NotificationService) MarkNotificationsSeen(ctx context.Context, req *connect.Request[v1pb.MarkNotificationsSeenRequest]) (*connect.Response[emptypb.Empty], error) {
+	user, err := notificationCaller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.workspaceID(ctx, req.Msg.GetParent()); err != nil {
+		return nil, err
+	}
+
+	if err := s.store.MarkNotificationsSeen(ctx, user.ID); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to mark notifications seen"))
+	}
+	return connect.NewResponse(&emptypb.Empty{}), nil
 }
 
 // BatchMarkNotificationsRead marks the named notifications read. A name that
@@ -321,6 +348,11 @@ func convertToV1NotificationEvent(event notification.Event, workspaceID string) 
 		// Absent when the count could not be read, so the client asks for it rather
 		// than showing the zero this would otherwise be indistinguishable from.
 		converted.UnreadCount = proto.Int32(event.UnreadCount)
+	}
+	if event.UnseenCountKnown {
+		// The number the badge shows: unread messages the recipient has not seen
+		// since opening the inbox. Absent under the same condition as unread_count.
+		converted.UnseenCount = proto.Int32(event.UnseenCount)
 	}
 	return &v1pb.SubscribeNotificationsResponse{
 		Event: &v1pb.SubscribeNotificationsResponse_Notification{Notification: converted},

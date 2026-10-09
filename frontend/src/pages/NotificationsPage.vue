@@ -232,7 +232,7 @@ import {
   Info,
   RefreshCcw,
 } from "lucide-vue-next";
-import { onMounted, ref, watch } from "vue";
+import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { listNotificationsPage } from "@/api/notification";
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
@@ -314,9 +314,16 @@ watch(
 
 // The pager loads when it is told to. Arriving at the page is the first of those, and
 // without it the inbox shows its empty state until something else asks for a page.
+//
+// Arriving here is also the other way the user opens notifications, so it clears the
+// badge: nothing is marked read, and a message that arrives while the page is on screen
+// does not light the badge again. The messages keep their own unread state, and the
+// unread filter and the "mark all read" button keep reading the unread count.
 onMounted(() => {
+  store.openInbox();
   void resetPages();
 });
+onBeforeUnmount(() => store.closeInbox());
 
 function textOf(notification: Notification) {
   return describeNotification(notification);

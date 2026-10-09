@@ -40,6 +40,9 @@ const (
 	// NotificationServiceGetUnreadNotificationCountProcedure is the fully-qualified name of the
 	// NotificationService's GetUnreadNotificationCount RPC.
 	NotificationServiceGetUnreadNotificationCountProcedure = "/metaxisdata.v1.NotificationService/GetUnreadNotificationCount"
+	// NotificationServiceMarkNotificationsSeenProcedure is the fully-qualified name of the
+	// NotificationService's MarkNotificationsSeen RPC.
+	NotificationServiceMarkNotificationsSeenProcedure = "/metaxisdata.v1.NotificationService/MarkNotificationsSeen"
 	// NotificationServiceBatchMarkNotificationsReadProcedure is the fully-qualified name of the
 	// NotificationService's BatchMarkNotificationsRead RPC.
 	NotificationServiceBatchMarkNotificationsReadProcedure = "/metaxisdata.v1.NotificationService/BatchMarkNotificationsRead"
@@ -58,8 +61,13 @@ const (
 type NotificationServiceClient interface {
 	// List the caller's notifications, newest first.
 	ListNotifications(context.Context, *connect.Request[v1.ListNotificationsRequest]) (*connect.Response[v1.ListNotificationsResponse], error)
-	// Count the caller's unread notifications.
+	// Count the caller's unread notifications, and the subset of them written
+	// since the caller last opened the inbox.
 	GetUnreadNotificationCount(context.Context, *connect.Request[v1.GetUnreadNotificationCountRequest]) (*connect.Response[v1.GetUnreadNotificationCountResponse], error)
+	// Record that the caller has opened the inbox, which clears the badge. No
+	// notification is marked read: a message stays unread until it is clicked or
+	// the caller marks everything read.
+	MarkNotificationsSeen(context.Context, *connect.Request[v1.MarkNotificationsSeenRequest]) (*connect.Response[emptypb.Empty], error)
 	// Mark the named notifications read. Already-read notifications are left
 	// alone, so the call is idempotent.
 	BatchMarkNotificationsRead(context.Context, *connect.Request[v1.BatchMarkNotificationsReadRequest]) (*connect.Response[emptypb.Empty], error)
@@ -101,6 +109,12 @@ func NewNotificationServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(notificationServiceMethods.ByName("GetUnreadNotificationCount")),
 			connect.WithClientOptions(opts...),
 		),
+		markNotificationsSeen: connect.NewClient[v1.MarkNotificationsSeenRequest, emptypb.Empty](
+			httpClient,
+			baseURL+NotificationServiceMarkNotificationsSeenProcedure,
+			connect.WithSchema(notificationServiceMethods.ByName("MarkNotificationsSeen")),
+			connect.WithClientOptions(opts...),
+		),
 		batchMarkNotificationsRead: connect.NewClient[v1.BatchMarkNotificationsReadRequest, emptypb.Empty](
 			httpClient,
 			baseURL+NotificationServiceBatchMarkNotificationsReadProcedure,
@@ -132,6 +146,7 @@ func NewNotificationServiceClient(httpClient connect.HTTPClient, baseURL string,
 type notificationServiceClient struct {
 	listNotifications          *connect.Client[v1.ListNotificationsRequest, v1.ListNotificationsResponse]
 	getUnreadNotificationCount *connect.Client[v1.GetUnreadNotificationCountRequest, v1.GetUnreadNotificationCountResponse]
+	markNotificationsSeen      *connect.Client[v1.MarkNotificationsSeenRequest, emptypb.Empty]
 	batchMarkNotificationsRead *connect.Client[v1.BatchMarkNotificationsReadRequest, emptypb.Empty]
 	markAllNotificationsRead   *connect.Client[v1.MarkAllNotificationsReadRequest, emptypb.Empty]
 	deleteNotification         *connect.Client[v1.DeleteNotificationRequest, emptypb.Empty]
@@ -146,6 +161,11 @@ func (c *notificationServiceClient) ListNotifications(ctx context.Context, req *
 // GetUnreadNotificationCount calls metaxisdata.v1.NotificationService.GetUnreadNotificationCount.
 func (c *notificationServiceClient) GetUnreadNotificationCount(ctx context.Context, req *connect.Request[v1.GetUnreadNotificationCountRequest]) (*connect.Response[v1.GetUnreadNotificationCountResponse], error) {
 	return c.getUnreadNotificationCount.CallUnary(ctx, req)
+}
+
+// MarkNotificationsSeen calls metaxisdata.v1.NotificationService.MarkNotificationsSeen.
+func (c *notificationServiceClient) MarkNotificationsSeen(ctx context.Context, req *connect.Request[v1.MarkNotificationsSeenRequest]) (*connect.Response[emptypb.Empty], error) {
+	return c.markNotificationsSeen.CallUnary(ctx, req)
 }
 
 // BatchMarkNotificationsRead calls metaxisdata.v1.NotificationService.BatchMarkNotificationsRead.
@@ -173,8 +193,13 @@ func (c *notificationServiceClient) SubscribeNotifications(ctx context.Context, 
 type NotificationServiceHandler interface {
 	// List the caller's notifications, newest first.
 	ListNotifications(context.Context, *connect.Request[v1.ListNotificationsRequest]) (*connect.Response[v1.ListNotificationsResponse], error)
-	// Count the caller's unread notifications.
+	// Count the caller's unread notifications, and the subset of them written
+	// since the caller last opened the inbox.
 	GetUnreadNotificationCount(context.Context, *connect.Request[v1.GetUnreadNotificationCountRequest]) (*connect.Response[v1.GetUnreadNotificationCountResponse], error)
+	// Record that the caller has opened the inbox, which clears the badge. No
+	// notification is marked read: a message stays unread until it is clicked or
+	// the caller marks everything read.
+	MarkNotificationsSeen(context.Context, *connect.Request[v1.MarkNotificationsSeenRequest]) (*connect.Response[emptypb.Empty], error)
 	// Mark the named notifications read. Already-read notifications are left
 	// alone, so the call is idempotent.
 	BatchMarkNotificationsRead(context.Context, *connect.Request[v1.BatchMarkNotificationsReadRequest]) (*connect.Response[emptypb.Empty], error)
@@ -212,6 +237,12 @@ func NewNotificationServiceHandler(svc NotificationServiceHandler, opts ...conne
 		connect.WithSchema(notificationServiceMethods.ByName("GetUnreadNotificationCount")),
 		connect.WithHandlerOptions(opts...),
 	)
+	notificationServiceMarkNotificationsSeenHandler := connect.NewUnaryHandler(
+		NotificationServiceMarkNotificationsSeenProcedure,
+		svc.MarkNotificationsSeen,
+		connect.WithSchema(notificationServiceMethods.ByName("MarkNotificationsSeen")),
+		connect.WithHandlerOptions(opts...),
+	)
 	notificationServiceBatchMarkNotificationsReadHandler := connect.NewUnaryHandler(
 		NotificationServiceBatchMarkNotificationsReadProcedure,
 		svc.BatchMarkNotificationsRead,
@@ -242,6 +273,8 @@ func NewNotificationServiceHandler(svc NotificationServiceHandler, opts ...conne
 			notificationServiceListNotificationsHandler.ServeHTTP(w, r)
 		case NotificationServiceGetUnreadNotificationCountProcedure:
 			notificationServiceGetUnreadNotificationCountHandler.ServeHTTP(w, r)
+		case NotificationServiceMarkNotificationsSeenProcedure:
+			notificationServiceMarkNotificationsSeenHandler.ServeHTTP(w, r)
 		case NotificationServiceBatchMarkNotificationsReadProcedure:
 			notificationServiceBatchMarkNotificationsReadHandler.ServeHTTP(w, r)
 		case NotificationServiceMarkAllNotificationsReadProcedure:
@@ -265,6 +298,10 @@ func (UnimplementedNotificationServiceHandler) ListNotifications(context.Context
 
 func (UnimplementedNotificationServiceHandler) GetUnreadNotificationCount(context.Context, *connect.Request[v1.GetUnreadNotificationCountRequest]) (*connect.Response[v1.GetUnreadNotificationCountResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.NotificationService.GetUnreadNotificationCount is not implemented"))
+}
+
+func (UnimplementedNotificationServiceHandler) MarkNotificationsSeen(context.Context, *connect.Request[v1.MarkNotificationsSeenRequest]) (*connect.Response[emptypb.Empty], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.NotificationService.MarkNotificationsSeen is not implemented"))
 }
 
 func (UnimplementedNotificationServiceHandler) BatchMarkNotificationsRead(context.Context, *connect.Request[v1.BatchMarkNotificationsReadRequest]) (*connect.Response[emptypb.Empty], error) {

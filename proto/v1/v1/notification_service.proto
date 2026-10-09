@@ -28,9 +28,20 @@ service NotificationService {
     option (google.api.method_signature) = "parent";
   }
 
-  // Count the caller's unread notifications.
+  // Count the caller's unread notifications, and the subset of them written
+  // since the caller last opened the inbox.
   rpc GetUnreadNotificationCount(GetUnreadNotificationCountRequest) returns (GetUnreadNotificationCountResponse) {
     option (google.api.http) = {get: "/v1/{parent=workspaces/*}/notifications:unreadCount"};
+  }
+
+  // Record that the caller has opened the inbox, which clears the badge. No
+  // notification is marked read: a message stays unread until it is clicked or
+  // the caller marks everything read.
+  rpc MarkNotificationsSeen(MarkNotificationsSeenRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      post: "/v1/{parent=workspaces/*}/notifications:markSeen"
+      body: "*"
+    };
   }
 
   // Mark the named notifications read. Already-read notifications are left
@@ -223,6 +234,17 @@ message GetUnreadNotificationCountRequest {
 
 message GetUnreadNotificationCountResponse {
   int32 unread_count = 1;
+
+  // The subset of unread_count written after the caller last opened the inbox.
+  // This is the number the badge shows: opening the inbox clears it without
+  // marking anything read, so an unread message stays unread until it is
+  // clicked.
+  int32 unseen_count = 2;
+}
+
+message MarkNotificationsSeenRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
 message BatchMarkNotificationsReadRequest {
@@ -269,6 +291,11 @@ message NotificationEvent {
   // it could not be read, in which case the client asks for the count itself
   // rather than showing a wrong number.
   optional int32 unread_count = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The recipient's unseen count after this notification was written — see
+  // GetUnreadNotificationCountResponse.unseen_count. Absent under the same
+  // condition as unread_count.
+  optional int32 unseen_count = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // KeepAlive is the notification stream's heartbeat. It carries no data.

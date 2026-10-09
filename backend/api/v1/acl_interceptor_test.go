@@ -136,6 +136,7 @@ var unannotatedMethods = map[string]bool{
 	// role out of its own messages.
 	"metaxisdata.v1.NotificationService.ListNotifications":          true,
 	"metaxisdata.v1.NotificationService.GetUnreadNotificationCount": true,
+	"metaxisdata.v1.NotificationService.MarkNotificationsSeen":      true,
 	"metaxisdata.v1.NotificationService.BatchMarkNotificationsRead": true,
 	"metaxisdata.v1.NotificationService.MarkAllNotificationsRead":   true,
 	"metaxisdata.v1.NotificationService.DeleteNotification":         true,

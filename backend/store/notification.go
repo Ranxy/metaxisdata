@@ -152,6 +152,43 @@ func (s *Store) CountUnreadNotifications(ctx context.Context, recipientID int) (
 	return count, nil
 }
 
+// CountUnseenNotifications counts the recipient's unread notifications written
+// after they last opened the inbox — the number the bell's badge shows. It is a
+// subset of CountUnreadNotifications: opening the inbox moves the watermark
+// forward and makes a message seen without making it read. A recipient who never
+// opened the inbox has a NULL watermark, so every unread message is unseen.
+func (s *Store) CountUnseenNotifications(ctx context.Context, recipientID int) (int, error) {
+	var count int
+	err := s.GetDB().QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM notification
+		JOIN principal ON principal.id = notification.recipient_id
+		WHERE notification.recipient_id = $1 AND notification.read_at IS NULL
+			AND (principal.notification_seen_at IS NULL OR notification.created_at > principal.notification_seen_at)
+	`, recipientID).Scan(&count)
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to count unseen notifications")
+	}
+	return count, nil
+}
+
+// MarkNotificationsSeen records that one recipient has now opened the inbox,
+// which clears the badge. The server stamps the time, as it does for read_at, so
+// a caller cannot claim to have opened the inbox before a message it should see
+// was written. Nothing is marked read here: an unread message stays unread until
+// it is clicked.
+func (s *Store) MarkNotificationsSeen(ctx context.Context, recipientID int) error {
+	_, err := s.GetDB().ExecContext(ctx, `
+		UPDATE principal
+		SET notification_seen_at = NOW()
+		WHERE id = $1
+	`, recipientID)
+	if err != nil {
+		return errors.Wrap(err, "failed to mark notifications seen")
+	}
+	return nil
+}
+
 // MarkNotificationsRead marks the named notifications of one recipient read and
 // returns how many rows changed. Already-read rows are left alone, so the count
 // is the number of messages this call actually turned unread → read.

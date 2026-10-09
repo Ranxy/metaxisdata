@@ -74,6 +74,7 @@ const (
 type AdminStore interface {
 	CreateNotification(ctx context.Context, notification *storepb.Notification) (*storepb.Notification, error)
 	CountUnreadNotifications(ctx context.Context, recipientID int) (int, error)
+	CountUnseenNotifications(ctx context.Context, recipientID int) (int, error)
 	GetWorkspaceID(ctx context.Context) (string, error)
 	GetWorkspaceIamPolicy(ctx context.Context) (*store.IamPolicyMessage, error)
 	GetGroup(ctx context.Context, email string) (*store.GroupMessage, error)
@@ -373,32 +374,38 @@ func (s *Service) create(ctx context.Context, n *storepb.Notification) error {
 }
 
 // publish hands one written message to the live subscriptions of its recipient. The
-// unread count is read here, once per message, so every connection of the same inbox
+// counts are read here, once per message, so every connection of the same inbox
 // shares one answer instead of each paying for its own query.
 func (s *Service) publish(ctx context.Context, n *storepb.Notification) {
 	recipientID := int(n.GetRecipientId())
 
-	// Reading the count and handing the message over happen under one lock, so two
+	// Reading the counts and handing the message over happen under one lock, so two
 	// messages written at nearly the same moment cannot deliver their counts out of
 	// order and leave a client showing the older one. It is one mutex for the process
-	// rather than one per recipient: a notification write is rare, the section is one
-	// indexed count plus a non-blocking fan-out, and a map of per-recipient locks would
+	// rather than one per recipient: a notification write is rare, the section is two
+	// indexed counts plus a non-blocking fan-out, and a map of per-recipient locks would
 	// need the bounding and sweeping every other process-local map here has.
 	//
 	// Waiting for it is not bounded by the caller's context, so the section has to stay
-	// short: the count is its only I/O, and it is answered by the partial index the badge
-	// itself reads from.
+	// short: the counts are its only I/O, and both are answered by the partial index the
+	// badge itself reads from.
 	s.publishMu.Lock()
 	defer s.publishMu.Unlock()
 
 	event := Event{Notification: n}
+	// A count that cannot be read is no reason to drop the message: the client
+	// receives the event without it and asks for the counts itself.
 	if count, err := s.store.CountUnreadNotifications(ctx, recipientID); err != nil {
-		// A count that cannot be read is no reason to drop the message: the client
-		// receives the event without the count and asks for it itself.
 		slog.Error("Failed to read the unread count of a notification",
 			slog.Int("recipient_id", recipientID), clog.WithError(err))
 	} else {
 		event.UnreadCount, event.UnreadCountKnown = int32(count), true
+	}
+	if count, err := s.store.CountUnseenNotifications(ctx, recipientID); err != nil {
+		slog.Error("Failed to read the unseen count of a notification",
+			slog.Int("recipient_id", recipientID), clog.WithError(err))
+	} else {
+		event.UnseenCount, event.UnseenCountKnown = int32(count), true
 	}
 	s.hub.publish(recipientID, event)
 }

@@ -3360,11 +3360,45 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/notifications:markSeen:
+        post:
+            tags:
+                - NotificationService
+            description: |-
+                Record that the caller has opened the inbox, which clears the badge. No
+                 notification is marked read: a message stays unread until it is clicked or
+                 the caller marks everything read.
+            operationId: NotificationService_MarkNotificationsSeen
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/MarkNotificationsSeenRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/notifications:unreadCount:
         get:
             tags:
                 - NotificationService
-            description: Count the caller's unread notifications.
+            description: |-
+                Count the caller's unread notifications, and the subset of them written
+                 since the caller last opened the inbox.
             operationId: NotificationService_GetUnreadNotificationCount
             parameters:
                 - name: workspace
@@ -4787,6 +4821,14 @@ components:
                 unreadCount:
                     type: integer
                     format: int32
+                unseenCount:
+                    type: integer
+                    description: |-
+                        The subset of unread_count written after the caller last opened the inbox.
+                         This is the number the badge shows: opening the inbox clears it without
+                         marking anything read, so an unread message stays unread until it is
+                         clicked.
+                    format: int32
         GoogleProtobufAny:
             type: object
             properties:
@@ -5562,6 +5604,14 @@ components:
                     description: The database name in the instance.
             description: ManualSQLMetadata is the metadata for a user-maintained SQL definition.
         MarkAllNotificationsReadRequest:
+            required:
+                - parent
+            type: object
+            properties:
+                parent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
+        MarkNotificationsSeenRequest:
             required:
                 - parent
             type: object

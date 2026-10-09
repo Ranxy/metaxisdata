@@ -9,14 +9,21 @@ import (
 )
 
 // Event is one message handed to the live subscriptions of an inbox: the row a
-// write produced, and the recipient's unread count right after it.
+// write produced, and the recipient's counts right after it.
 type Event struct {
 	Notification *storepb.Notification
-	UnreadCount  int32
+	// UnreadCount is every unread message, and UnseenCount is the subset written
+	// since the recipient last opened the inbox. They differ once the recipient
+	// has opened the inbox and left a message unread: nothing is marked read there.
+	UnreadCount int32
+	UnseenCount int32
 	// UnreadCountKnown is false when the count could not be read. The message
 	// itself is still worth delivering; the badge is not, because a zero would
 	// read as "everything is read".
 	UnreadCountKnown bool
+	// UnseenCountKnown is false under the same condition, for the number the
+	// badge itself shows.
+	UnseenCountKnown bool
 }
 
 const (

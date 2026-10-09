@@ -1190,6 +1190,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.MarkNotificationsSeenRequest"><span class="badge">M</span>MarkNotificationsSeenRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.Notification"><span class="badge">M</span>Notification</a>
                 </li>
               
@@ -12545,6 +12549,16 @@ GetLineage.</p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>unseen_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The subset of unread_count written after the caller last opened the inbox.
+This is the number the badge shows: opening the inbox clears it without
+marking anything read, so an unread message stays unread until it is
+clicked. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -12662,6 +12676,30 @@ to retrieve the subsequent page. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.MarkNotificationsSeenRequest">MarkNotificationsSeenRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.Notification">Notification</h3>
         <p>Notification is one in-app message for one recipient.</p>
 
@@ -12752,6 +12790,15 @@ to retrieve the subsequent page. </p></td>
                   <td><p>The recipient&#39;s unread count after this notification was written. Absent when
 it could not be read, in which case the client asks for the count itself
 rather than showing a wrong number. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>unseen_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td>optional</td>
+                  <td><p>The recipient&#39;s unseen count after this notification was written — see
+GetUnreadNotificationCountResponse.unseen_count. Absent under the same
+condition as unread_count. </p></td>
                 </tr>
               
             </tbody>
@@ -13225,7 +13272,17 @@ administrators are the recipients.</p></td>
                 <td>GetUnreadNotificationCount</td>
                 <td><a href="#metaxisdata.v1.GetUnreadNotificationCountRequest">GetUnreadNotificationCountRequest</a></td>
                 <td><a href="#metaxisdata.v1.GetUnreadNotificationCountResponse">GetUnreadNotificationCountResponse</a></td>
-                <td><p>Count the caller&#39;s unread notifications.</p></td>
+                <td><p>Count the caller&#39;s unread notifications, and the subset of them written
+since the caller last opened the inbox.</p></td>
+              </tr>
+            
+              <tr>
+                <td>MarkNotificationsSeen</td>
+                <td><a href="#metaxisdata.v1.MarkNotificationsSeenRequest">MarkNotificationsSeenRequest</a></td>
+                <td><a href="#google.protobuf.Empty">.google.protobuf.Empty</a></td>
+                <td><p>Record that the caller has opened the inbox, which clears the badge. No
+notification is marked read: a message stays unread until it is clicked or
+the caller marks everything read.</p></td>
               </tr>
             
               <tr>
@@ -13299,6 +13356,16 @@ for ExplainSQL.</p></td>
                 <td>GET</td>
                 <td>/v1/{parent=workspaces/*}/notifications:unreadCount</td>
                 <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>MarkNotificationsSeen</td>
+                <td>POST</td>
+                <td>/v1/{parent=workspaces/*}/notifications:markSeen</td>
+                <td>*</td>
               </tr>
               
             

@@ -95,6 +95,80 @@ func TestSyncWritesTheCallerAMessageRealServerIntegration(t *testing.T) {
 	require.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
 }
 
+// Opening the inbox clears the badge without reading anything: the unread count stays
+// where it was, the message keeps its unread state, and only the unseen count — the
+// messages written since that moment — goes to zero. A message written afterwards is new
+// again, which is what makes the badge a "since last opened" indicator rather than a
+// second read state.
+func TestOpeningTheInboxClearsTheBadgeOnlyRealServerIntegration(t *testing.T) {
+	env, ctx, _, _, databaseName := setupMySQLServiceDatabase(t)
+	notifications := v1connect.NewNotificationServiceClient(&http.Client{Timeout: 10 * time.Second}, env.BaseURL)
+	token := env.AdminToken()
+
+	env.SyncDatabase(ctx, t, databaseName)
+
+	// The setup syncs the database too, so wait for the count the inbox will be opened
+	// with rather than for the write the call above made.
+	var before *v1pb.GetUnreadNotificationCountResponse
+	require.Eventually(t, func() bool {
+		response, err := notifications.GetUnreadNotificationCount(ctx, withToken(token, &v1pb.GetUnreadNotificationCountRequest{
+			Parent: "workspaces/-",
+		}))
+		if err != nil || response.Msg.GetUnreadCount() == 0 {
+			return false
+		}
+		before = response.Msg
+		return true
+	}, 30*time.Second, 200*time.Millisecond, "the inbox never received a message: %s", env.ServerLogs())
+	require.GreaterOrEqual(t, before.GetUnseenCount(), int32(1),
+		"a message written before the inbox was ever opened is unseen")
+
+	_, err := notifications.MarkNotificationsSeen(ctx, withToken(token, &v1pb.MarkNotificationsSeenRequest{
+		Parent: "workspaces/-",
+	}))
+	require.NoError(t, err)
+
+	after, err := notifications.GetUnreadNotificationCount(ctx, withToken(token, &v1pb.GetUnreadNotificationCountRequest{
+		Parent: "workspaces/-",
+	}))
+	require.NoError(t, err)
+	require.Zero(t, after.Msg.GetUnseenCount(), "opening the inbox clears the badge")
+	require.Equal(t, before.GetUnreadCount(), after.Msg.GetUnreadCount(), "opening the inbox reads nothing")
+
+	unread, err := notifications.ListNotifications(ctx, withToken(token, &v1pb.ListNotificationsRequest{
+		Parent:     "workspaces/-",
+		PageSize:   100,
+		UnreadOnly: true,
+	}))
+	require.NoError(t, err)
+	require.NotEmpty(t, unread.Msg.GetNotifications(), "the messages are still unread after the badge was cleared")
+	for _, candidate := range unread.Msg.GetNotifications() {
+		require.Nil(t, candidate.GetReadTime())
+	}
+
+	// Marking seen twice is harmless: the second call only moves the watermark, and the
+	// count stays where the first one left it.
+	_, err = notifications.MarkNotificationsSeen(ctx, withToken(token, &v1pb.MarkNotificationsSeenRequest{
+		Parent: "workspaces/-",
+	}))
+	require.NoError(t, err)
+	repeated, err := notifications.GetUnreadNotificationCount(ctx, withToken(token, &v1pb.GetUnreadNotificationCountRequest{
+		Parent: "workspaces/-",
+	}))
+	require.NoError(t, err)
+	require.Zero(t, repeated.Msg.GetUnseenCount())
+	require.Equal(t, before.GetUnreadCount(), repeated.Msg.GetUnreadCount())
+
+	// A message written after that moment is unseen again.
+	env.SyncDatabase(ctx, t, databaseName)
+	require.Eventually(t, func() bool {
+		response, err := notifications.GetUnreadNotificationCount(ctx, withToken(token, &v1pb.GetUnreadNotificationCountRequest{
+			Parent: "workspaces/-",
+		}))
+		return err == nil && response.Msg.GetUnseenCount() >= 1
+	}, 30*time.Second, 200*time.Millisecond, "a message written after the inbox was opened is not seen as new: %s", env.ServerLogs())
+}
+
 // The inbox is one principal's, which is the one thing the workspace-scoped
 // authorization model does not cover. A member of the same workspace sees their own
 // empty inbox, not the administrator's messages.

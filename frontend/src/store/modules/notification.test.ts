@@ -2,6 +2,7 @@ import { create } from "@bufbuild/protobuf";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { NotificationCounts } from "@/api/notification";
 import {
   KeepAliveSchema,
   NotificationEventSchema,
@@ -17,18 +18,20 @@ import {
 } from "./notification";
 
 const mocks = vi.hoisted(() => ({
-  getUnreadNotificationCount: vi.fn(),
+  getNotificationCounts: vi.fn(),
   listRecentNotifications: vi.fn(),
   markNotificationsRead: vi.fn(),
   markAllNotificationsRead: vi.fn(),
+  markNotificationsSeen: vi.fn(),
   deleteNotification: vi.fn(),
 }));
 
 vi.mock("@/api/notification", () => ({
-  getUnreadNotificationCount: mocks.getUnreadNotificationCount,
+  getNotificationCounts: mocks.getNotificationCounts,
   listRecentNotifications: mocks.listRecentNotifications,
   markNotificationsRead: mocks.markNotificationsRead,
   markAllNotificationsRead: mocks.markAllNotificationsRead,
+  markNotificationsSeen: mocks.markNotificationsSeen,
   deleteNotification: mocks.deleteNotification,
   subscribeNotifications: (signal?: AbortSignal) => openStream(signal),
 }));
@@ -42,13 +45,19 @@ function message(id: number, read = false) {
   });
 }
 
-function arrival(id: number, unreadCount?: number) {
+/**
+ * One streamed message with the counts the server computed alongside it. `unseenCount`
+ * defaults to `unreadCount`, which is the state of an inbox nobody has opened yet, so a
+ * test that does not care about the badge only has to name the unread count.
+ */
+function arrival(id: number, unreadCount?: number, unseenCount = unreadCount) {
   return create(SubscribeNotificationsResponseSchema, {
     event: {
       case: "notification",
       value: create(NotificationEventSchema, {
         notification: message(id),
         unreadCount,
+        unseenCount,
       }),
     },
   });
@@ -142,10 +151,14 @@ describe("notification store", () => {
     vi.clearAllMocks();
     setActivePinia(createPinia());
     streams = [];
-    mocks.getUnreadNotificationCount.mockResolvedValue(0);
+    mocks.getNotificationCounts.mockResolvedValue({
+      unreadCount: 0,
+      unseenCount: 0,
+    });
     mocks.listRecentNotifications.mockResolvedValue([]);
     mocks.markNotificationsRead.mockResolvedValue(undefined);
     mocks.markAllNotificationsRead.mockResolvedValue(undefined);
+    mocks.markNotificationsSeen.mockResolvedValue(undefined);
     mocks.deleteNotification.mockResolvedValue(undefined);
   });
 
@@ -154,13 +167,111 @@ describe("notification store", () => {
     vi.useRealTimers();
   });
 
-  it("tracks the unread count the server reports", async () => {
-    mocks.getUnreadNotificationCount.mockResolvedValue(3);
+  it("tracks the two counts the server reports", async () => {
+    mocks.getNotificationCounts.mockResolvedValue({
+      unreadCount: 3,
+      unseenCount: 1,
+    });
     const store = useNotificationStore();
 
-    await expect(store.refreshUnreadCount()).resolves.toBe(3);
+    await expect(store.refreshCounts()).resolves.toEqual({
+      unreadCount: 3,
+      unseenCount: 1,
+    });
     expect(store.unreadCount).toBe(3);
     expect(store.hasUnread).toBe(true);
+    expect(store.unseenCount).toBe(1);
+    expect(store.hasUnseen).toBe(true);
+  });
+
+  // Opening the inbox is what clears the badge. It must not mark anything read: the
+  // messages keep their unread state, and the page's "mark all read" stays enabled.
+  it("clears the badge when the inbox is opened, and leaves every message unread", async () => {
+    mocks.getNotificationCounts.mockResolvedValue({
+      unreadCount: 3,
+      unseenCount: 3,
+    });
+    const store = useNotificationStore();
+    await store.refreshCounts();
+    expect(store.hasUnseen).toBe(true);
+
+    store.openInbox();
+    expect(store.unseenCount).toBe(0);
+    expect(store.hasUnseen).toBe(false);
+    expect(store.unreadCount).toBe(3);
+    expect(store.hasUnread).toBe(true);
+    expect(mocks.markNotificationsSeen).toHaveBeenCalledTimes(1);
+
+    // Closing it is symmetric, and the count never goes negative.
+    store.closeInbox();
+    store.closeInbox();
+    expect(store.openInboxCount).toBe(0);
+  });
+
+  // A count that comes back while the inbox is open must not relight the badge. A
+  // reconnect or a tab becoming visible refreshes, and the server may not have seen the
+  // mark-seen yet.
+  it("keeps the badge dark when a refresh lands with the inbox open", async () => {
+    mocks.getNotificationCounts.mockResolvedValue({
+      unreadCount: 5,
+      unseenCount: 5,
+    });
+    const store = useNotificationStore();
+
+    store.openInbox();
+    await store.refreshCounts();
+
+    expect(store.unreadCount).toBe(5);
+    expect(store.unseenCount).toBe(0);
+  });
+
+  // What is on screen has been seen: a message that arrives while the list is open must
+  // not light the badge, and the server's watermark is moved over it so a later refresh
+  // does not bring it back.
+  it("keeps the badge dark for a message that arrives while the inbox is open", async () => {
+    const store = useNotificationStore();
+
+    store.startStreaming();
+    await settle();
+    store.openInbox();
+    mocks.markNotificationsSeen.mockClear();
+
+    streams[0].deliver(arrival(1, 4, 3));
+    await settle();
+
+    expect(store.unreadCount).toBe(4);
+    expect(store.unseenCount).toBe(0);
+    expect(mocks.markNotificationsSeen).toHaveBeenCalledTimes(1);
+  });
+
+  it("lights the badge again once the inbox is closed", async () => {
+    const store = useNotificationStore();
+
+    store.startStreaming();
+    await settle();
+    store.openInbox();
+    store.closeInbox();
+
+    streams[0].deliver(arrival(1, 2, 1));
+    await settle();
+
+    expect(store.unseenCount).toBe(1);
+  });
+
+  // A failed mark-seen is a badge that comes back on the next refresh, not a rejected
+  // open: the store clears the badge either way and never throws at its caller.
+  it("clears the badge even when the server cannot record it", async () => {
+    mocks.markNotificationsSeen.mockRejectedValue(new Error("offline"));
+    mocks.getNotificationCounts.mockResolvedValue({
+      unreadCount: 1,
+      unseenCount: 1,
+    });
+    const store = useNotificationStore();
+    await store.refreshCounts();
+
+    expect(() => store.openInbox()).not.toThrow();
+    await settle();
+    expect(store.unseenCount).toBe(0);
   });
 
   it("asks for the bell's page size", async () => {
@@ -176,7 +287,10 @@ describe("notification store", () => {
   // The count comes from the server: a name that was already read changes
   // nothing, so subtracting the names locally would drift.
   it("refreshes the count after marking messages read", async () => {
-    mocks.getUnreadNotificationCount.mockResolvedValue(1);
+    mocks.getNotificationCounts.mockResolvedValue({
+      unreadCount: 1,
+      unseenCount: 0,
+    });
     const store = useNotificationStore();
 
     await store.markRead(["workspaces/ws/notifications/1"]);
@@ -256,23 +370,27 @@ describe("notification store", () => {
     expect(store.unreadCount).toBe(0);
   });
 
-  // The count is absent when the server could not read it, and a zero would read as
+  // The counts are absent when the server could not read them, and a zero would read as
   // "everything is read": the store asks instead of showing it.
-  it("asks for the count when the event carries none", async () => {
+  it("asks for the counts when the event carries none", async () => {
     const store = useNotificationStore();
 
     store.startStreaming();
     await settle();
-    const afterConnect = mocks.getUnreadNotificationCount.mock.calls.length;
+    const afterConnect = mocks.getNotificationCounts.mock.calls.length;
 
-    mocks.getUnreadNotificationCount.mockResolvedValue(7);
+    mocks.getNotificationCounts.mockResolvedValue({
+      unreadCount: 7,
+      unseenCount: 7,
+    });
     streams[0].deliver(arrival(1));
     await settle();
 
-    expect(mocks.getUnreadNotificationCount.mock.calls.length).toBe(
+    expect(mocks.getNotificationCounts.mock.calls.length).toBe(
       afterConnect + 1
     );
     expect(store.unreadCount).toBe(7);
+    expect(store.unseenCount).toBe(7);
   });
 
   // Every connect refreshes: that one call is what covers a message written while the
@@ -285,13 +403,13 @@ describe("notification store", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(streams).toHaveLength(1);
     await settle();
-    const refreshes = mocks.getUnreadNotificationCount.mock.calls.length;
+    const refreshes = mocks.getNotificationCounts.mock.calls.length;
 
     streams[0].end();
     await vi.advanceTimersByTimeAsync(1_000);
 
     expect(streams).toHaveLength(2);
-    expect(mocks.getUnreadNotificationCount.mock.calls.length).toBeGreaterThan(
+    expect(mocks.getNotificationCounts.mock.calls.length).toBeGreaterThan(
       refreshes
     );
   });
@@ -343,13 +461,13 @@ describe("notification store", () => {
 
     store.startStreaming();
     await settle();
-    const before = mocks.getUnreadNotificationCount.mock.calls.length;
+    const before = mocks.getNotificationCounts.mock.calls.length;
 
     visibility = "visible";
     document.dispatchEvent(new Event("visibilitychange"));
     await settle();
 
-    expect(mocks.getUnreadNotificationCount.mock.calls.length).toBeGreaterThan(
+    expect(mocks.getNotificationCounts.mock.calls.length).toBeGreaterThan(
       before
     );
   });
@@ -357,10 +475,10 @@ describe("notification store", () => {
   // A count that was already being fetched when a message arrived is older than that
   // message: applying it would drop the badge back to a number the message superseded.
   it("drops a count that a pushed message already superseded", async () => {
-    let release: ((count: number) => void) | undefined;
-    mocks.getUnreadNotificationCount.mockImplementation(
+    let release: ((counts: NotificationCounts) => void) | undefined;
+    mocks.getNotificationCounts.mockImplementation(
       () =>
-        new Promise<number>((resolve) => {
+        new Promise<NotificationCounts>((resolve) => {
           release = resolve;
         })
     );
@@ -372,7 +490,7 @@ describe("notification store", () => {
     await settle();
     expect(store.unreadCount).toBe(1);
 
-    release?.(0);
+    release?.({ unreadCount: 0, unseenCount: 0 });
     await settle();
     expect(store.unreadCount).toBe(1);
   });
@@ -510,7 +628,7 @@ describe("notification store", () => {
   });
 
   // An event that carries no message at all must not be able to break the badge or the
-  // list; the count is still applied.
+  // list; the counts are still applied.
   it("survives an event without a message", async () => {
     const store = useNotificationStore();
     store.startStreaming();
@@ -521,13 +639,17 @@ describe("notification store", () => {
       create(SubscribeNotificationsResponseSchema, {
         event: {
           case: "notification",
-          value: create(NotificationEventSchema, { unreadCount: 3 }),
+          value: create(NotificationEventSchema, {
+            unreadCount: 3,
+            unseenCount: 2,
+          }),
         },
       })
     );
     await settle();
 
     expect(store.unreadCount).toBe(3);
+    expect(store.unseenCount).toBe(2);
     expect(store.recent.map((item) => item.name)).toEqual([
       "workspaces/ws/notifications/1",
     ]);

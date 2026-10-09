@@ -266,6 +266,7 @@
     - [ListNotificationsRequest](#metaxisdata-v1-ListNotificationsRequest)
     - [ListNotificationsResponse](#metaxisdata-v1-ListNotificationsResponse)
     - [MarkAllNotificationsReadRequest](#metaxisdata-v1-MarkAllNotificationsReadRequest)
+    - [MarkNotificationsSeenRequest](#metaxisdata-v1-MarkNotificationsSeenRequest)
     - [Notification](#metaxisdata-v1-Notification)
     - [NotificationEvent](#metaxisdata-v1-NotificationEvent)
     - [OpenLineageDetail](#metaxisdata-v1-OpenLineageDetail)
@@ -4372,6 +4373,7 @@ usually the SQL naming something the analyzer cannot see.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | unread_count | [int32](#int32) |  |  |
+| unseen_count | [int32](#int32) |  | The subset of unread_count written after the caller last opened the inbox. This is the number the badge shows: opening the inbox clears it without marking anything read, so an unread message stays unread until it is clicked. |
 
 
 
@@ -4437,6 +4439,21 @@ KeepAlive is the notification stream&#39;s heartbeat. It carries no data.
 
 
 
+<a name="metaxisdata-v1-MarkNotificationsSeenRequest"></a>
+
+### MarkNotificationsSeenRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-Notification"></a>
 
 ### Notification
@@ -4468,6 +4485,7 @@ Notification is one in-app message for one recipient.
 | ----- | ---- | ----- | ----------- |
 | notification | [Notification](#metaxisdata-v1-Notification) |  |  |
 | unread_count | [int32](#int32) | optional | The recipient&#39;s unread count after this notification was written. Absent when it could not be read, in which case the client asks for the count itself rather than showing a wrong number. |
+| unseen_count | [int32](#int32) | optional | The recipient&#39;s unseen count after this notification was written — see GetUnreadNotificationCountResponse.unseen_count. Absent under the same condition as unread_count. |
 
 
 
@@ -4664,7 +4682,8 @@ lock a custom role out of its own messages.
 | Method Name | Request Type | Response Type | Description |
 | ----------- | ------------ | ------------- | ------------|
 | ListNotifications | [ListNotificationsRequest](#metaxisdata-v1-ListNotificationsRequest) | [ListNotificationsResponse](#metaxisdata-v1-ListNotificationsResponse) | List the caller&#39;s notifications, newest first. |
-| GetUnreadNotificationCount | [GetUnreadNotificationCountRequest](#metaxisdata-v1-GetUnreadNotificationCountRequest) | [GetUnreadNotificationCountResponse](#metaxisdata-v1-GetUnreadNotificationCountResponse) | Count the caller&#39;s unread notifications. |
+| GetUnreadNotificationCount | [GetUnreadNotificationCountRequest](#metaxisdata-v1-GetUnreadNotificationCountRequest) | [GetUnreadNotificationCountResponse](#metaxisdata-v1-GetUnreadNotificationCountResponse) | Count the caller&#39;s unread notifications, and the subset of them written since the caller last opened the inbox. |
+| MarkNotificationsSeen | [MarkNotificationsSeenRequest](#metaxisdata-v1-MarkNotificationsSeenRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Record that the caller has opened the inbox, which clears the badge. No notification is marked read: a message stays unread until it is clicked or the caller marks everything read. |
 | BatchMarkNotificationsRead | [BatchMarkNotificationsReadRequest](#metaxisdata-v1-BatchMarkNotificationsReadRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Mark the named notifications read. Already-read notifications are left alone, so the call is idempotent. |
 | MarkAllNotificationsRead | [MarkAllNotificationsReadRequest](#metaxisdata-v1-MarkAllNotificationsReadRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Mark every unread notification of the caller read. |
 | DeleteNotification | [DeleteNotificationRequest](#metaxisdata-v1-DeleteNotificationRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Delete one of the caller&#39;s notifications. |

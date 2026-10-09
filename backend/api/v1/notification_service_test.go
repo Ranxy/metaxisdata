@@ -178,7 +178,9 @@ func TestConvertToV1NotificationEventNamesAndCounts(t *testing.T) {
 			},
 		},
 		UnreadCount:      4,
+		UnseenCount:      2,
 		UnreadCountKnown: true,
+		UnseenCountKnown: true,
 	}, "ws")
 
 	event, ok := converted.GetEvent().(*v1pb.SubscribeNotificationsResponse_Notification)
@@ -186,6 +188,7 @@ func TestConvertToV1NotificationEventNamesAndCounts(t *testing.T) {
 	require.Equal(t, "workspaces/ws/notifications/9", event.Notification.GetNotification().GetName())
 	require.Equal(t, "instances/inst1", event.Notification.GetNotification().GetSchemaSync().GetInstance())
 	require.Equal(t, int32(4), event.Notification.GetUnreadCount())
+	require.Equal(t, int32(2), event.Notification.GetUnseenCount())
 }
 
 // A count the store could not answer must stay absent rather than arrive as a zero
@@ -201,6 +204,8 @@ func TestConvertToV1NotificationEventWithoutACount(t *testing.T) {
 	require.True(t, ok)
 	require.Nil(t, event.Notification.UnreadCount)
 	require.Equal(t, int32(0), event.Notification.GetUnreadCount())
+	require.Nil(t, event.Notification.UnseenCount)
+	require.Equal(t, int32(0), event.Notification.GetUnseenCount())
 }
 
 // A detail written by a newer server still streams: the envelope renders and the

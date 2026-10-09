@@ -1,5 +1,5 @@
 <template>
-  <DropdownMenu>
+  <DropdownMenu v-model:open="open">
     <DropdownMenuTrigger as-child>
       <Button
         variant="ghost"
@@ -10,15 +10,16 @@
             ? 'mx-auto h-10 w-10 justify-center p-0'
             : 'h-auto w-full justify-start gap-2 px-2 py-2'
         "
-        @click="refreshRecent"
       >
         <span class="relative">
           <Bell class="h-5 w-5 shrink-0" />
           <!-- The dot is the only indicator the collapsed rail can carry; its
                count is unreadable at 16px, so it is a dot there and a number in
-               the dropdown and the expanded row. -->
+               the dropdown and the expanded row. It marks messages the user has
+               not seen since opening the inbox, not unread messages: opening the
+               dropdown clears it while every message keeps its unread state. -->
           <span
-            v-if="store.hasUnread"
+            v-if="store.hasUnseen"
             class="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-destructive"
             aria-hidden="true"
           />
@@ -29,11 +30,11 @@
             {{ t("notifications.title") }}
           </span>
           <Badge
-            v-if="store.hasUnread"
+            v-if="store.hasUnseen"
             variant="destructive"
             class="shrink-0 tabular-nums"
           >
-            {{ unreadLabel }}
+            {{ unseenLabel }}
           </Badge>
         </template>
       </Button>
@@ -104,7 +105,7 @@
 
 <script setup lang="ts">
 import { Bell, BellOff } from "lucide-vue-next";
-import { computed, onBeforeUnmount, onMounted } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import EmptyState from "@/components/common/EmptyState.vue";
@@ -133,26 +134,43 @@ const { t, locale } = useI18n();
 const router = useRouter();
 const store = useNotificationStore();
 
-const unreadLabel = computed(() =>
-  store.unreadCount > 99 ? "99+" : String(store.unreadCount)
+const unseenLabel = computed(() =>
+  store.unseenCount > 99 ? "99+" : String(store.unseenCount)
 );
 
 function text(item: Notification) {
   return describeNotification(item);
 }
 
-// The count is the one thing a glance has to deliver, so the trigger loads it even
-// when the dropdown is opened before the first stream message arrived. A failed load
-// is not worth a toast here: the page reports it, and the next reconnect retries.
-function refreshRecent() {
-  void store.refreshRecent().catch(() => {});
-}
+const open = ref(false);
+
+// Opening the dropdown is one of the two ways a user opens notifications, so it is what
+// clears the badge: the store tells the server and keeps every message unread, and a
+// message that arrives while the list is on screen does not light the badge again. The
+// list is loaded here too, because the count is the one thing a glance has to deliver
+// even when the dropdown opens before the first stream message arrived. A failed load is
+// not worth a toast: the page reports it, and the next reconnect retries.
+watch(open, (isOpen) => {
+  if (isOpen) {
+    store.openInbox();
+    void store.refreshRecent().catch(() => {});
+    return;
+  }
+  store.closeInbox();
+});
 
 // The sidebar exists only inside the authenticated shell, so it owns the stream:
 // there is nothing to notify a signed-out visitor about, and the sidebar's own
 // lifetime is exactly the session's.
 onMounted(() => store.startStreaming());
-onBeforeUnmount(() => store.stopStreaming());
+onBeforeUnmount(() => {
+  // A menu that unmounts while it is open never reports that it closed, and the surface
+  // count is what keeps a new message from lighting the badge.
+  if (open.value) {
+    store.closeInbox();
+  }
+  store.stopStreaming();
+});
 
 function openNotification(item: Notification) {
   if (!item.readTime) {

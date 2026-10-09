@@ -17,6 +17,8 @@
 
 `notification` 表是**个人数据**：与其余所有表不同，读路径按 `recipient_id` 作用域而不是 workspace，因此表本身没有 workspace 列（[0017##notification.sql:1-8](backend/migrator/migration/0.1/0017%23%23notification.sql#L1-L8)）。
 
+**两个数不是一回事**：`unread`（未读，`read_at IS NULL`）是消息自身的状态，只有点开某一条或"全部已读"才变；`unseen`（未查看）是未读里、`created_at > principal.notification_seen_at` 的那些，是铃铛红点的数字。打开通知（铃铛下拉或 `/notifications`）只把 `notification_seen_at` 推到当前时间，红点清零而消息仍未读——用户点了哪条，哪条才变已读。
+
 ## Decisions
 
 站内信侧（写入口径）：
@@ -34,13 +36,17 @@
 | 9 | OpenLineage 的 **4xx 拒收**与 **namespace 未映射**都通知管理员 | 通知点覆盖全部拒收分支 + resolver |
 | 10 | 管理员手动发消息**不做** | 正文仍全部走 i18n，不引入自由文本 |
 | 11 | 一个库在"这次操作"里的结果 = **它的第一次结果** | 退避重试（1m/5m/15m）不改写消息、不补发；代价是瞬时失败也出现在消息里 |
+| 12 | **红点数字 = 上次打开通知之后写入的未读消息数**（`principal.notification_seen_at` 水位），不是未读数 | 用户看的是"有没有新的"，不是"还有几条没点"；未读态留在列表里由用户自己清 |
+| 13 | 打开通知**只推水位、不改读态** | 打开下拉/页面就清红点，消息仍需用户点开才变已读；`read_at` 只有 `BatchMarkNotificationsRead` / `MarkAllNotificationsRead` 能写 |
+| 14 | 下拉/页面**打开期间**到达的消息不点亮红点，并顺带推进水位 | 它此刻正出现在用户看的列表里；否则刚看完列表又被提示"有新消息" |
+| 15 | 水位由**服务端 `NOW()`** 打戳 | 与 `read_at` 同约定：客户端不能自报"我在某条消息之前就看过" |
 
 推送侧：
 
 | # | 决定 | 理由 / 影响 |
 | --- | --- | --- |
 | 1 | 用 ConnectRPC **server-streaming RPC**，不用字面 SSE/`EventSource` | 复用 `ExplainSQL` 先例；auth/throttle/error-mapping 拦截器免费；前端保持 100% 收敛在 ConnectRPC client |
-| 2 | 事件**带消息本身 + 最新未读数** | 铃铛收到即更新，零额外往返；服务端每条消息多一次计数查询 |
+| 2 | 事件**带消息本身 + 两个最新计数**（`unread_count` + `unseen_count`） | 铃铛收到即更新，零额外往返；服务端每条消息多两次计数查询（都走同一个 partial index） |
 | 3 | **单副本 / 进程内 hub** | 与"设备登录状态进程内""操作聚合器进程内"同取向；跨副本投递不做 |
 | 4 | 覆盖铃铛 + `/notifications` **仅第一页**自动刷新 | 不打断分页阅读 |
 | 5 | 去掉 30s 轮询，只在"重连成功"与"标签页重新可见"时各刷新一次 | 不再有周期性请求 |
@@ -48,6 +54,7 @@
 | 7 | 心跳 **25s** 常驻显式 `KeepAlive` 空消息 | Connect protocol 无注释帧；同时是"对端已死"的写失败探测点；小于 nginx 默认 `proxy_read_timeout` 60s |
 | 8 | 背压 = **丢订阅、不丢消息** | 订阅者缓冲满就关它的流，消息已在库里，客户端重连刷新 |
 | 9 | **已读状态变化不推送** | 另一标签页标已读后角标要等刷新/重连/重新可见；推送它需要再定"谁改的、多标签页回声" |
+| 10 | **水位的推进也不推送** | 与 9 同一取舍：标签页 A 清掉红点后，标签页 B 要等刷新/重连/重新可见（切过去就会触发可见性刷新） |
 
 ## 数据模型
 
@@ -65,6 +72,14 @@
 
 **读态为什么是列**：未读计数是角标热路径，`payload->>'readTime' IS NULL` 走不了 partial index；`read_at` + 部分索引让计数成为一次索引探针。
 
+水位在 `principal` 上（[0018##notification_seen.sql](backend/migrator/migration/0.1/0018%23%23notification_seen.sql)、[LATEST.sql:29-35](backend/migrator/migration/LATEST.sql#L29-L35)）：
+
+| 列 | 形状 | 作用 |
+| --- | --- | --- |
+| `principal.notification_seen_at` | `TIMESTAMPTZ`，`NULL` = 从没打开过通知 | 红点的水位；`NULL` 时读作"所有未读都是新的"。**不在 `notification` 表上**：它是"我上次看收件箱是什么时候"，一行一个用户，而给每条消息记一个"看过"标志会让每次打开都 UPDATE 一整批行 |
+
+`CountUnseenNotifications` 因此要 join `principal`（`recipient_id` 仍是第一个谓词，唯一索引与未读 partial index 照旧能用）。
+
 ## 写入路径
 
 唯一写入口是 `notification.Service`（[service.go:83-95](backend/component/notification/service.go#L83-L95)），它同时是推送的起点：
@@ -74,7 +89,7 @@
 | `Send(ctx, n)` | 投给一个收件人；`recipient_id` 必须 > 0 |
 | `SendToWorkspaceAdmins(ctx, n)` | 解析 `roles/workspaceAdmin`（含组展开，跳过 `allUsers` 与 system bot）后逐条克隆投递，每人一行、各自读态；无管理员只记日志 |
 | `create(ctx, n)` | 补齐 workspace 名 → 写库 → 若真写出新行则 `publish`；被 dedupe 抑制（`CreateNotification` 返回 `(nil, nil)`）时**不发布** |
-| `publish(ctx, n)` | 在 `publishMu` 内"读计数 + 交给订阅者"，保证投递顺序与快照顺序一致；计数读不到仍投递消息本身 |
+| `publish(ctx, n)` | 在 `publishMu` 内"读两个计数 + 交给订阅者"，保证投递顺序与快照顺序一致；计数读不到仍投递消息本身（`UnreadCountKnown` / `UnseenCountKnown` 各自为 false，前端自己去问） |
 | `Subscribe(recipientID) / Close()` | 订阅/停机收尾（见下节） |
 | `DedupeKey(event, target, now, window)` | 生成 `<event>:<target>:<bucket>`；`window <= 0` 返回空串（不去重） |
 
@@ -121,18 +136,21 @@
 
 ## 对外 API
 
-`NotificationService` 共 6 个方法（[notification_service.proto](proto/v1/v1/notification_service.proto)）。**不加 `(metaxisdata.v1.permission)` 注解，也不加 `allow_without_credential`，不加 `(metaxisdata.v1.audit)`**：登录必需，作用域由 handler 按当前用户保证，读收件箱不是管理动作、不该进永久审计账本（[notification_service.proto:15-22](proto/v1/v1/notification_service.proto#L15-L22)、[:211-220](backend/api/v1/notification_service.go#L211-L220)）。
+`NotificationService` 共 7 个方法（[notification_service.proto](proto/v1/v1/notification_service.proto)）。**不加 `(metaxisdata.v1.permission)` 注解，也不加 `allow_without_credential`，不加 `(metaxisdata.v1.audit)`**：登录必需，作用域由 handler 按当前用户保证，读收件箱不是管理动作、不该进永久审计账本（[notification_service.proto:14-23](proto/v1/v1/notification_service.proto#L14-L23)、[notification_service.go:50-59](backend/api/v1/notification_service.go#L50-L59)）。
 
 | RPC | HTTP | 说明 |
 | --- | --- | --- |
 | `ListNotifications` | `GET /v1/{parent=workspaces/*}/notifications` | `unread_only` 过滤；`parseLimitAndOffset`/`paginate`；支持 `workspaces/-` |
-| `GetUnreadNotificationCount` | `GET .../notifications:unreadCount` | 走 partial index；流的兜底 |
+| `GetUnreadNotificationCount` | `GET .../notifications:unreadCount` | 一次返回 `unread_count` 与 `unseen_count` 两个数（名字只说了前一个，保留是为了兼容老前端）；都走 partial index；流的兜底 |
+| `MarkNotificationsSeen` | `POST .../notifications:markSeen` | 幂等：把水位推到 `NOW()`，不写 `read_at`；红点清零、未读不变 |
 | `BatchMarkNotificationsRead` | `POST .../notifications:batchMarkRead` | 幂等（只置 `read_at IS NULL`）；names 非空且 ≤ `maxNotificationsPerBatch = 1000`，校验在 workspace 解析**之前** |
 | `MarkAllNotificationsRead` | `POST .../notifications:markAllRead` | 全部已读 |
 | `DeleteNotification` | `DELETE /v1/{name=workspaces/*/notifications/*}` | 删自己的；删不到（不存在或别人的）返回 `NotFound`，不区分 |
 | `SubscribeNotifications` | —（无 `google.api.http`） | server streaming，见下节 |
 
 不加 CEL `filter`：`unread_only` 一个布尔覆盖实际需求（全部/未读两个态）。
+
+**没把两个数合成一个 RPC**：`GetUnreadNotificationCount` 已经是红点的兜底调用，多一个字段就够；改成一个新名字会让"前端比服务端新"的窗口里老前端直接 404。代价是方法名只描述了其中一个数。
 
 **流无 REST 路由**：grpc-gateway 不能代理 server streaming（`ExplainSQL` 的生成网关直接返回 `Unimplemented`），浏览器直接打 Connect 端点。注册处：`connectHandlers` map + `grpcreflect` 静态列表按服务名注册（[grpc_routes.go:99](backend/server/grpc_routes.go#L99)、[:162](backend/server/grpc_routes.go#L162)、[:192](backend/server/grpc_routes.go#L192)）。
 
@@ -148,7 +166,7 @@
 | `close()` | 结束所有订阅并拒绝新订阅；此后 `subscribe` 立刻返回已关闭通道 | 停机期间新建的流立即正常结束，而非挂住 |
 | 锁 | 所有对 `ch` 的 send/close 都在 hub 锁内 | 不存在"关掉之后又 send"的窗口 |
 
-`SubscribeNotifications` handler（[notification_service.go:221-279](backend/api/v1/notification_service.go#L221-L279)）：先 `notificationCaller`（未登录 `Unauthenticated`）→ `subscriptions == nil` 时 `Unimplemented`（在任何 store 读取之前，因此可用 nil store 单测）→ 解析一次 workspace（流的每条消息共用）→ `Subscribe` → 设 `X-Accel-Buffering: no`（必须在第一次 `Send` 前，connect-go 随首帧发头）→ `heartbeat = 25s` / `lifetime = 30min` 循环。超时收尾与客户端断开都 `return nil`（**不是错误**）。
+`SubscribeNotifications` handler（[notification_service.go:248-306](backend/api/v1/notification_service.go#L248-L306)）：先 `notificationCaller`（未登录 `Unauthenticated`）→ `subscriptions == nil` 时 `Unimplemented`（在任何 store 读取之前，因此可用 nil store 单测）→ 解析一次 workspace（流的每条消息共用）→ `Subscribe` → 设 `X-Accel-Buffering: no`（必须在第一次 `Send` 前，connect-go 随首帧发头）→ `heartbeat = 25s` / `lifetime = 30min` 循环。超时收尾与客户端断开都 `return nil`（**不是错误**）。
 
 **停机顺序**：`server.Shutdown` 在 `echoServer.Shutdown(ctx)` **之前** `s.notifier.Close()`（[server.go:225-226](backend/server/server.go#L225-L226)）。常驻流是永不结束的 in-flight 请求，Echo 的 Shutdown 会等它到 `gracefulShutdownPeriod`（10s）。对 nil 的守卫是必须的（`server_lifecycle_test.go` 手工构造的 `Server{}` 没有 notifier）。
 
@@ -156,18 +174,21 @@
 
 | 文件 | 职责 |
 | --- | --- |
-| `frontend/src/api/notification.ts` | 6 个 RPC 的调用、`listAll` 分页与 `subscribeNotifications(signal)` 薄封装 |
-| `frontend/src/store/modules/notification.ts` | Pinia：`unreadCount`、`recent`、`arrivalSeq`、`startStreaming()`/`stopStreaming()` |
+| `frontend/src/api/notification.ts` | 7 个 RPC 的调用、`listAll` 分页与 `subscribeNotifications(signal)` 薄封装；`getNotificationCounts()` 一次拿两个数 |
+| `frontend/src/store/modules/notification.ts` | Pinia：`unreadCount`、`unseenCount`、`recent`、`arrivalSeq`、`openInboxCount`、`openInbox()`/`closeInbox()`、`startStreaming()`/`stopStreaming()` |
 | `frontend/src/lib/notificationText.ts` | **纯函数**：type + detail → `{titleKey, titleParams, messageKey, messageParams, href}`（有覆盖率门槛） |
 | `frontend/src/components/layout/NotificationBell.vue` | 侧栏底部（`UserMenu` 之上）：红点计数（99+）、下拉最近 `RECENT_NOTIFICATION_LIMIT = 8` 条、"查看全部" |
 | `frontend/src/pages/NotificationsPage.vue` | `/notifications`：全部/未读、单条已读、全部已读、删除、分页、跳转源对象 |
 
 行为要点：
 
-- **流的生命周期归铃铛**：`onMounted → startStreaming()`、`onBeforeUnmount → stopStreaming()`（[NotificationBell.vue:154-155](frontend/src/components/layout/NotificationBell.vue#L154-L155)）。侧栏只在登录后的壳里存在，它的生命周期就是会话的生命周期。
+- **流的生命周期归铃铛**：`onMounted → startStreaming()`、`onBeforeUnmount → stopStreaming()`（[NotificationBell.vue:165-175](frontend/src/components/layout/NotificationBell.vue#L165-L175)）。侧栏只在登录后的壳里存在，它的生命周期就是会话的生命周期。
+- **红点由 `unseenCount` 驱动，页面的两处由 `unreadCount` 驱动**：`store.hasUnseen` 画铃铛的红点与数字，`store.hasUnread` 决定"全部已读"按钮可不可点。把其中一个换到另一个上，要么红点清不掉，要么按钮在还有未读时是灰的。
+- **`openInbox()` / `closeInbox()` 是"通知正开着"的登记**：`openInboxCount` 是计数而不是布尔量（铃铛下拉与页面可能同时挂着），为 0 时新消息才点亮红点。打开时乐观清零 `unseenCount` 再调 `MarkNotificationsSeen`（失败只吞掉：下次刷新红点会回来，比开一次通知抛错好）。下拉/页面卸载时必须 `closeInbox()`，否则残留的计数会让红点永远不再亮。
+- **页面打开也算打开通知**：`NotificationsPage.vue` 的 `onMounted` 调 `openInbox()`，`onBeforeUnmount` 调 `closeInbox()`；深链或刷新直接进页面时红点同样是清的。
 - **`generation` 把守连接循环**（[notification.ts:47-58](frontend/src/store/modules/notification.ts#L47-L58)）：`startStreaming`/`stopStreaming` 都推进 `generation`，每条循环只在自己那一代里重连。卸载与随后挂载可能落在同一 tick（布局切换），只用布尔量会让被停止的循环把新的开始误认成自己的，于是每次切换多留一条常驻流，直到 8 条上限把新连接全拒掉。
-- **每次（重）连都 `refresh()` 一次**：这是"丢事件/缓冲溢出被丢订阅/进程重启/标签页被冻结"的统一兜底。任何一帧（含 `KeepAlive`）都重置退避到 `RECONNECT_MIN_MS = 1s`，上限 `RECONNECT_MAX_MS = 30s`。
-- **两张票防止旧响应覆盖新值**（`countTicket` / `recentTicket`）：推送到达会推进票号，已过期的 fetch 让位。
+- **每次（重）连都 `refresh()` 一次**：这是"丢事件/缓冲溢出被丢订阅/进程重启/标签页被冻结"的统一兜底。任何一帧（含 `KeepAlive`）都重置退避到 `RECONNECT_MIN_MS = 1s`，上限 `RECONNECT_MAX_MS = 30s`。`refreshCounts()` 落地时若 `openInboxCount > 0` 会把 `unseenCount` 压回 0：服务端可能还没处理完那次 mark-seen，红点不能因为一次刷新又亮起来。
+- **两张票防止旧响应覆盖新值**（`countTicket` / `recentTicket`）：推送到达会推进票号，已过期的 fetch 让位；两个计数共用一张 `countTicket`，因为它们来自同一次服务端计算。
 - **`arrivalSeq`**：每收到一条推送 +1；页面 `watch` 它，只在 `!hasPrevious`（停在第 1 页）时重载首页，不把第 2 页的读者弹回去。
 - **`Unimplemented` 是唯一不重试的错误**（前端比服务端新）：安静停掉；其余交给退避重连，重连的握手会再走一遍 `sessionInterceptor` 的会话刷新。
 - **可见性监听保留**，动作从"拉一次计数"升级为 `refresh()`（计数 + 已加载过的列表）。
@@ -180,6 +201,10 @@
 | --- | --- |
 | 每个读/写查询都必须带 `recipient_id` 作用域 | B 能看到/标已读/删除 A 的消息；`backend/store/notification_test.go:35` 的作用域守卫测试会变红 |
 | 读态必须是 `read_at` 列 + `idx_notification_recipient_unread` partial index | 未读计数无法走索引，角标热路径退化为全表 `payload->>` 扫描 |
+| 打开通知只能推 `principal.notification_seen_at`，**绝不能**顺手写 `read_at` | 用户没点过的消息被标已读，未读筛选与"全部已读"从此说不清；这是本特性唯一的行为红线 |
+| 水位必须由服务端 `NOW()` 打戳，客户端只发"我打开了" | 客户端可控时间就能把某条消息永久排除在"新消息"之外 |
+| 红点只能由 `unseen_count`（`unreadCount` 与它分开）驱动 | 用 `unread_count` 画红点 = 回到"必须点开每条才能清"；用 `unseen_count` 画页面按钮 = 还有未读时按钮变灰 |
+| `openInbox()` 与 `closeInbox()` 必须成对，卸载也要 `closeInbox()` | 残留的 `openInboxCount` 让红点永远不再亮，且只有刷新页面才恢复 |
 | 去重必须靠 `idx_notification_dedupe` 唯一索引 + `ON CONFLICT DO NOTHING` | 只有进程内闸门时，多副本/重启后重复通知会穿过去；单副本下两层等价，调窗口必须一起调 |
 | 写通知必须保持 best-effort，失败只记日志 | 同步/摄取路径会因一条消息写不进而失败 |
 | `publish` 必须非阻塞、缓冲满即丢订阅 | 慢客户端会拖住 runner goroutine（写入方），同步被客户端拖死 |
@@ -209,12 +234,15 @@
 | **server-streaming 请求遇到 401 重放** | `sessionInterceptor` 的重放对 server streaming 无效：connect-web 把请求体构造成一次性 async iterable，重放抛 `missing request message`（`Code.Unknown`）。**`frontend/src/api/session.ts` 至今没有为 streaming 缓存输入消息**（[session.ts:73-101](frontend/src/api/session.ts#L73-L101) 无条件 `await next(request)`）。续期已发生，流由连接循环的下一次重连接上；调用方看到一次 `Unknown` 错误。**`ExplainSQL`（同样 server streaming）受影响相同**，是既有缺陷、非本特性引入 |
 | 多副本 | 用户在副本 A、消息由副本 B 写出 → 推不到，靠重连/重新可见那次刷新兜；`LISTEN/NOTIFY` 不做 |
 | 另一个标签页改已读 | 本标签页角标要等刷新/重连/重新可见才对齐 |
+| 另一个标签页打开通知 | 同样要等那次刷新：水位在服务端已经推进，红点下一次 `refreshCounts()` 就灭 |
+| `MarkNotificationsSeen` 写库失败 | 前端已经本地清零（乐观），下次刷新红点会回来；不弹错、不阻塞打开，再打开一次就修好 |
+| 前端比服务端新（旧服务端没有 `markSeen` / `unseen_count`） | `markSeen` 报错被吞掉，`unseen_count` 读作 0 → 红点不亮。两者同镜像发布，升级服务端即恢复 |
 
 ## Open items
 
 1. **修 `frontend/src/api/session.ts` 的 streaming 重放**：为 streaming 请求把唯一那条输入消息缓存下来，重放时交给 transport 一个新的 iterable。它动的是共享会话路径、影响所有流式方法（含 `ExplainSQL`），值得单独一次评审——本特性只记录，未修。
 2. 跨副本投递（PostgreSQL `LISTEN/NOTIFY`）：一旦真出现多副本再说；需要一条常驻连接、断线重连与去重语义。
-3. 推送已读状态变化，让多标签页角标严格一致：需要先定"谁改的、改了哪些行、多标签页回声"。
+3. 推送已读状态变化，让多标签页角标严格一致：需要先定"谁改的、改了哪些行、多标签页回声"。**水位的推进（`markSeen`）同理**，今天只靠刷新/重新可见对齐。
 4. 桌面通知 / toast：有了这条流，`notify` 是 `applyArrival` 里多一个分支。
 5. 心跳期复查 token 撤销，把 30 分钟上界收紧到心跳间隔（要把 `stateCfg` 的撤销缓存接进 API 层）。
 6. `processor.go` 里"事件合法但提不出血缘"的 Warn 是否也要通知（数据质量问题，今天只记日志）。
@@ -226,7 +254,7 @@
 
 代码：
 
-- 迁移：[backend/migrator/migration/0.1/0017##notification.sql](backend/migrator/migration/0.1/0017%23%23notification.sql)、[LATEST.sql:673-698](backend/migrator/migration/LATEST.sql#L673-L698)。
+- 迁移：[backend/migrator/migration/0.1/0017##notification.sql](backend/migrator/migration/0.1/0017%23%23notification.sql)、[0018##notification_seen.sql](backend/migrator/migration/0.1/0018%23%23notification_seen.sql)（`principal.notification_seen_at`）、[LATEST.sql:673-698](backend/migrator/migration/LATEST.sql#L673-L698)。
 - 组件（写入口 + 推送 hub）：[backend/component/notification/service.go](backend/component/notification/service.go)、[hub.go](backend/component/notification/hub.go)。
 - store：[backend/store/notification.go](backend/store/notification.go)。
 - API handler 与转换：[backend/api/v1/notification_service.go](backend/api/v1/notification_service.go)。
@@ -244,6 +272,7 @@
 - API（转换、鉴权、nil 通道、批次校验）：[backend/api/v1/notification_service_test.go](backend/api/v1/notification_service_test.go) → `go test ./backend/api/v1/...`。
 - ACL 守卫（无注解方法必须登记）：[backend/api/v1/acl_interceptor_test.go:145](backend/api/v1/acl_interceptor_test.go#L145)。
 - 生命周期回归：[backend/server/server_lifecycle_test.go](backend/server/server_lifecycle_test.go)。
-- 集成（真 server + PG + MySQL）：[backend/test/integration/runner/notification_service_test.go](backend/test/integration/runner/notification_service_test.go)（6 条，含收件人隔离、流推送、过期/吊销会话、摄取拒收去重）→ `make test-integration-smoke && make test-integration`。
+- 集成（真 server + PG + MySQL）：[backend/test/integration/runner/notification_service_test.go](backend/test/integration/runner/notification_service_test.go)（7 条，含收件人隔离、流推送、过期/吊销会话、摄取拒收去重、"打开通知只清红点不改读态"）→ `make test-integration-smoke && make test-integration`。迁移链一致性由 `TestMigrateSchemaLATESTMatchesTheIncrementChain` 钉住（`-tags integration ./backend/migrator/`）。
 - 前端 store/api/lib：[store/modules/notification.test.ts](frontend/src/store/modules/notification.test.ts)、[api/notification.test.ts](frontend/src/api/notification.test.ts)、[lib/notificationText.test.ts](frontend/src/lib/notificationText.test.ts) → `pnpm --dir frontend test run`（`src/lib/`、`src/utils/` 有 95% 行 / 85% 分支门槛）。
+- 前端组件交互：[components/layout/NotificationBell.test.ts](frontend/src/components/layout/NotificationBell.test.ts)（"点开铃铛 = 清红点且不标已读"、"点某条消息才标已读"）、[pages/NotificationsPage.test.ts](frontend/src/pages/NotificationsPage.test.ts)（"进页面清红点、离开后新消息又能点亮"）。
 - proto 门禁：`buf format -w proto && buf lint proto && (cd proto && buf generate)`。
