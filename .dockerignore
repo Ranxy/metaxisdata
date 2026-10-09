@@ -1,0 +1,31 @@
+# Build context exclusions for scripts/docker/Dockerfile.server. The context is
+# the repo root, so anything the build stages do not read is uploaded for
+# nothing — and node_modules/build/temp together dwarf the sources.
+
+# Git metadata and agent configuration; the build reads none of it.
+.git
+.gitignore
+.agents
+.vscode
+
+# The build's own outputs, plus local tool caches.
+build
+temp
+**/node_modules
+**/dist
+
+# Machine-local frontend overrides. frontend/.gitignore ignores exactly these,
+# so a developer's checkout is expected to have them, and Vite loads
+# .env.<mode>.local last — in production mode too. Copying one in would bake a
+# developer's API base URL into the shipped SPA. tsconfig.tsbuildinfo is the
+# same class: it can make vue-tsc -b skip a type check it should have run.
+**/.env*.local
+**/*.tsbuildinfo
+**/coverage
+
+# The SPA the server embeds is rebuilt from frontend/ in its own stage, so a
+# stale local copy must never reach the Go build.
+backend/server/frontend_dist
+
+# Operator documentation.
+docs

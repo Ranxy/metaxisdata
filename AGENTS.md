@@ -36,6 +36,7 @@ Two trees, split by audience. `docs/` is read by operators and integrators; `.ag
 
 | Read | When |
 | --- | --- |
+| [docs/deployment.md](docs/deployment.md) | Building and running the container image, and every environment variable it reads |
 | [docs/mcp.md](docs/mcp.md) | Connecting an MCP client, and what the endpoint promises |
 | [docs/security-posture.md](docs/security-posture.md) | Behavior that looks like a bug — the deliberate, accepted decisions |
 | [.agents/docs/README.md](.agents/docs/README.md) | The index of maintenance references: lineage, MCP, IAM, notifications, schema sync, migrations, rate limiting, credentials, refresh tokens, environments, the CLI, the frontend |

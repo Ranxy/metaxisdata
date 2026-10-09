@@ -205,6 +205,45 @@
           </CardContent>
         </Card>
 
+        <!-- Read-only, and outside the form snapshot: the build metadata is a
+             property of the running server, not a setting anyone can save. -->
+        <Card>
+          <CardHeader>
+            <CardTitle>{{ t("generalSettings.aboutSection") }}</CardTitle>
+            <CardDescription>{{
+              t("generalSettings.aboutSectionDescription")
+            }}</CardDescription>
+          </CardHeader>
+          <CardContent class="space-y-1 text-sm">
+            <p
+              v-if="buildInfoState === 'loading'"
+              class="text-muted-foreground"
+            >
+              {{ t("common.loading") }}
+            </p>
+            <template v-else-if="buildInfo">
+              <div>
+                {{ t("common.version") }}: {{ buildInfo.version }}
+              </div>
+              <div>
+                {{ t("common.commit") }}: {{ buildInfo.git_commit }}
+              </div>
+              <div>
+                {{ t("common.buildTime") }}: {{ buildInfo.build_time }}
+              </div>
+            </template>
+            <!-- A server that does not answer at all (an older build, a proxy
+                 that strips the path) says so once, instead of claiming to
+                 still be loading forever. -->
+            <p
+              v-else
+              class="text-muted-foreground"
+            >
+              —
+            </p>
+          </CardContent>
+        </Card>
+
         <!-- One save for the whole form. Debug mode is deliberately excluded:
              it applies immediately through its own RPC. -->
         <div
@@ -257,12 +296,14 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { FormField } from "@/components/ui/form-field";
 import { Label } from "@/components/ui/label";
+import { useBuildInfo } from "@/composables/useBuildInfo";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { useAuthStore } from "@/store/modules/auth";
 
 const { t } = useI18n();
 const authStore = useAuthStore();
 const { formatError, handleError, showSuccess } = useErrorHandler();
+const { buildInfo, buildInfoState } = useBuildInfo();
 
 // The setting is readable by every member (the login page reads it too), but
 // only metaxisdata.settings.update may change it.

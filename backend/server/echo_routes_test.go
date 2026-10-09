@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -11,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/version"
 	"github.com/Ranxy/metaxisdata/backend/config"
 )
 
@@ -76,6 +78,22 @@ func TestConfigureEchoRoutersServesHealthz(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Equal(t, "OK", recorder.Body.String())
+}
+
+// The SPA's user menu reads the build metadata from here, so the route has to
+// answer without a session (like /healthz) and carry all three fields even when
+// nothing was injected at build time.
+func TestConfigureEchoRoutersServesBuildInfo(t *testing.T) {
+	t.Parallel()
+
+	recorder := doRequest(prodTestServer(), http.MethodGet, "/api/version", nil)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var body map[string]string
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &body))
+	require.Equal(t, version.Version, body["version"])
+	require.Equal(t, version.GitCommit, body["git_commit"])
+	require.Equal(t, version.BuildTime, body["build_time"])
 }
 
 // CORS is an explicit allowlist now. A credentialed policy that echoes any

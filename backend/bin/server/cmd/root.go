@@ -16,6 +16,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
+	"github.com/Ranxy/metaxisdata/backend/common/version"
 	"github.com/Ranxy/metaxisdata/backend/server"
 )
 
@@ -67,6 +68,15 @@ func Execute() error {
 }
 
 func init() {
+	// Cobra adds --version itself once Version is set; the template prints the
+	// commit and build time the -ldflags injection recorded, so a running
+	// container can be traced back to exactly one build.
+	rootCmd.Version = version.Version
+	rootCmd.SetVersionTemplate(fmt.Sprintf(
+		"metaxisdata version %s\ncommit %s\nbuild time %s\n",
+		version.Version, version.GitCommit, version.BuildTime,
+	))
+
 	rootCmd.PersistentFlags().IntVar(&flags.port, "port", 8083, "port where server runs. Default to 8083")
 	rootCmd.PersistentFlags().BoolVar(&flags.enableJSONLogging, "enable-json-logging", false, "enable output logs in json format")
 	rootCmd.PersistentFlags().BoolVar(&flags.debug, "debug", false, "whether to enable debug level logging")

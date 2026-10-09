@@ -61,6 +61,14 @@ export default defineConfig({
       "/mcp": {
         target: "http://localhost:8083",
       },
+      // The build metadata the user menu shows. The committed
+      // frontend/.env.development points VITE_API_BASE_URL straight at the
+      // backend, so in a normal dev checkout the request never reaches this
+      // server; the proxy is what keeps a checkout without that variable from
+      // falling through to the SPA and showing nothing.
+      "/api": {
+        target: "http://localhost:8083",
+      },
     },
   },
 });
