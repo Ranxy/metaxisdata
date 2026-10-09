@@ -141,7 +141,7 @@ jobs:
           pnpm --dir frontend type-check:diagnostics | tee "$RUNNER_TEMP/typecheck.txt"
 
       # Fails on the shared layer's per-file coverage thresholds (lines and
-      # functions 95%, branches 85%) — see frontend/vitest.config.ts. The json
+      # functions 95%, branches 85%) — see frontend/vitest.config.mts. The json
       # report beside the coverage summary feeds the metrics step.
       - name: Test with coverage
         run: pnpm --dir frontend test:ci

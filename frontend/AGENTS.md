@@ -18,7 +18,7 @@ Where a new module belongs follows from what it depends on, not from its size. F
 
 Rule of thumb: once a helper grows a `ref`, imports `@/api`, or calls `useI18n()`, it has outgrown `utils/`. When domain logic needs no reactivity, keep it in `lib/` — `src/lib/lineageGraph.ts` and `src/utils/dateRange.ts` are pure functions precisely so they can be unit tested without mounting anything.
 
-`utils/`, `lib/` and `composables/` are the coverage-guarded layer: `vitest.config.ts` sets per-file thresholds (95% lines/functions/statements, 85% branches) and scopes `coverage.include` to those three directories, so a new file there with no test fails the run at 0% instead of being absent from the report. Components and pages are outside the thresholds deliberately — test a concrete interaction, not a percentage.
+`utils/`, `lib/` and `composables/` are the coverage-guarded layer: `vitest.config.mts` sets per-file thresholds (95% lines/functions/statements, 85% branches) and scopes `coverage.include` to those three directories, so a new file there with no test fails the run at 0% instead of being absent from the report. Components and pages are outside the thresholds deliberately — test a concrete interaction, not a percentage.
 
 ## Bundle Shape: Monaco
 
@@ -67,7 +67,7 @@ pnpm --dir frontend build             # production build
 
 ## Testing
 
-Vitest with jsdom (`vitest.config.ts`), colocated with source as `*.test.ts(x)`; tests for the `scripts/*.mjs` tooling run in the node environment. Coverage is scoped to the shared layer with per-file thresholds — see "Module Boundaries".
+Vitest with jsdom (`vitest.config.mts`), colocated with source as `*.test.ts(x)`; tests for the `scripts/*.mjs` tooling run in the node environment. Coverage is scoped to the shared layer with per-file thresholds — see "Module Boundaries".
 
 ## Conventions
 
