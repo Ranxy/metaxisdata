@@ -417,24 +417,50 @@ func TestPostgresConcurrentDatabaseSyncCoalescesRealServerIntegration(t *testing
 	t.Parallel()
 
 	env, ctx, instanceID, _, databaseName := setupPostgresServiceDatabase(t)
-
-	// CreateInstance queues every database, and the checker drains that queue
-	// within a tick; let it finish so no periodic sync competes below.
-	time.Sleep(11 * time.Second)
 	require.NoError(t, env.SetInstanceMaximumConnections(ctx, common.FormatInstance(instanceID), 1))
 
-	const callers = 4
-	start := make(chan struct{})
-	errs := make([]error, callers)
-	var wg sync.WaitGroup
-	for i := range errs {
-		wg.Go(func() {
-			<-start
-			errs[i] = env.SyncDatabaseRaw(ctx, databaseName)
-		})
+	// The periodic checker can take the instance's only connection slot for any
+	// other database of it at any moment, and CreateInstance queued every
+	// database the shared source server has. A burst that lands in such a window
+	// fails with a capacity error from a database this test never asked about,
+	// which says nothing about the gate, so retry until a burst lands on an idle
+	// instance. The retry does not weaken the assertion: four callers that did
+	// not coalesce would need four connections and fail every attempt.
+	const (
+		callers        = 4
+		burstAttempts  = 20
+		burstRetryWait = 500 * time.Millisecond
+	)
+	var errs []error
+	for attempt := 1; ; attempt++ {
+		start := make(chan struct{})
+		errs = make([]error, callers)
+		var wg sync.WaitGroup
+		for i := range errs {
+			wg.Go(func() {
+				<-start
+				errs[i] = env.SyncDatabaseRaw(ctx, databaseName)
+			})
+		}
+		close(start)
+		wg.Wait()
+
+		allSucceeded := true
+		for _, err := range errs {
+			if err != nil {
+				allSucceeded = false
+				break
+			}
+		}
+		if allSucceeded || attempt >= burstAttempts {
+			// On failure the count separates a contended instance - the burst
+			// spent its whole budget losing the slot - from a gate that never
+			// coalesced.
+			t.Logf("a coalescing burst finished after %d attempt(s)", attempt)
+			break
+		}
+		time.Sleep(burstRetryWait)
 	}
-	close(start)
-	wg.Wait()
 
 	for i, err := range errs {
 		require.NoErrorf(t, err, "concurrent sync %d must reuse the running sync's result", i)
