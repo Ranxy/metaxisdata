@@ -1,7 +1,7 @@
 # 容器镜像构建（Docker）— Reference
 
 > Status：**implemented**（本分支）。维护参考，对应 `scripts/docker/Dockerfile.server`、`scripts/docker/metaxisdata-entrypoint.sh`、`scripts/build_init.sh`、`scripts/build_docker_common.sh`、`scripts/build_metaxisdata_docker.sh`、`.dockerignore`、`docker-compose.yml`。
-> Related：`docs/deployment.md`（面向运维的构建与运行说明）、`backend/common/version`（构建元数据）、`docs/security-posture.md`（部署侧已知取舍）。
+> Related：`docs/deploy.md`（面向运维的构建与运行说明）、`docs/local-trial.md`（compose 本地试用）、`backend/common/version`（构建元数据）、`docs/security-posture.md`（部署侧已知取舍）。
 
 ## 这是什么
 

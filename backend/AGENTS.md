@@ -77,7 +77,7 @@ go test -v -count=1 github.com/Ranxy/metaxisdata/backend/api/v1 -run ^(TestOne|T
 psql -h localhost -p 5432 -U <user> -d metaxisdata -c "sql"
 ```
 
-The default build does **not** embed the frontend: `backend/server/server_frontend_not_embed.go` serves a placeholder page, so run the frontend dev server or host the built `frontend/dist` separately. `make build-embed` builds the SPA and bundles it into the binary via the `embed_frontend` tag (`backend/server/server_frontend_embed.go`, which serves `frontend/dist` with an SPA fallback); the Docker image does the same build inside its own stage — see [docs/deployment.md](../docs/deployment.md).
+The default build does **not** embed the frontend: `backend/server/server_frontend_not_embed.go` serves a placeholder page, so run the frontend dev server or host the built `frontend/dist` separately. `make build-embed` builds the SPA and bundles it into the binary via the `embed_frontend` tag (`backend/server/server_frontend_embed.go`, which serves `frontend/dist` with an SPA fallback); the Docker image does the same build inside its own stage — see [docs/deploy.md](../docs/deploy.md).
 
 ## Testing
 

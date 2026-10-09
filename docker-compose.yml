@@ -11,7 +11,8 @@
 # also what `make docker-build-dev` overwrites, so an image left over from a dev
 # build would otherwise be started as if it were the release profile.
 #
-# See docs/deployment.md for the flags and environment variables behind this.
+# See docs/deploy.md for the flags and environment variables behind this; the
+# local trial itself is documented in docs/local-trial.md.
 name: metaxisdata
 
 services:
@@ -36,8 +37,11 @@ services:
   server:
     # VERSION is both the tag and the version baked into the binary, so the two
     # cannot disagree. METAXISDATA_IMAGE overrides the repository name only, so
-    # a published image can be run locally with
-    # `METAXISDATA_IMAGE=ghcr.io/ranxy/metaxisdata VERSION=v1.2.3 make docker-up`.
+    # an already-published image can be run locally by pulling it and then
+    # starting without a rebuild — `make docker-up` always passes --build and
+    # would build over the tag instead:
+    #   docker pull ghcr.io/ranxy/metaxisdata:v1.2.3
+    #   METAXISDATA_IMAGE=ghcr.io/ranxy/metaxisdata VERSION=v1.2.3 docker compose up -d
     image: ${METAXISDATA_IMAGE:-metaxisdata/metaxisdata}:${VERSION:-dev}
     build:
       context: .
