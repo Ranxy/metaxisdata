@@ -1,6 +1,7 @@
 import {
   createRouter,
   createWebHistory,
+  type NavigationGuard,
   type RouteRecordRaw,
 } from "vue-router";
 import { useAuthStore } from "@/store/modules/auth";
@@ -295,7 +296,12 @@ const router = createRouter({
 
 // vue-router 5 deprecates the `next` callback: a guard states its outcome by
 // returning it, and falling off the end of the function means "carry on".
-router.beforeEach(async (to) => {
+//
+// Exported for the test to call directly: the redirect below and the login-form
+// shortcut further down could bounce a caller between `Login` and `Home`, and a
+// router-level test would hang rather than fail, because that cycle is pure
+// microtasks and starves the timer queue a test timeout would need.
+export const authGuard: NavigationGuard = async (to) => {
   const authStore = useAuthStore();
 
   // An authenticated page may only render once the permission-bearing profile
@@ -325,7 +331,15 @@ router.beforeEach(async (to) => {
     return { name: "Login" };
   }
 
-  if (to.name === "Login" && authStore.isAuthenticated) {
+  // A pending reset owns the login form — `ensurePermissionsLoaded` leaves that
+  // session alone for the same reason — so the shortcut below must not send the
+  // caller back into the app, where the redirect above would only return them
+  // here. That pair is what would otherwise never settle.
+  if (
+    to.name === "Login" &&
+    authStore.isAuthenticated &&
+    !authStore.requireResetPassword
+  ) {
     return { name: "Home" };
   }
 
@@ -338,6 +352,8 @@ router.beforeEach(async (to) => {
     // caller from landing on a page whose every request would be denied.
     return { name: "Home" };
   }
-});
+};
+
+router.beforeEach(authGuard);
 
 export default router;
