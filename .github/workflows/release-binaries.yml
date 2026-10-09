@@ -1,0 +1,85 @@
+name: Release binaries
+
+# Attached to the same release event as release-image.yml, which ships the
+# container image: a published release gets both. The binaries are the same
+# self-contained server the image carries — SPA embedded, prod profile — built
+# by scripts/build_metaxisdata.sh for hosts that run the binary directly.
+# There is no manual dispatch: a repo release is the deliverable, and a
+# rebuild starts at it (re-run the failed run, or delete and re-publish).
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  # The only write this workflow needs: uploading assets to the release this
+  # event published. It never touches the repository's branches.
+  contents: write
+
+concurrency:
+  group: release-binaries-${{ github.ref }}
+  # A release must not be cancelled half-uploaded, so nothing cancels anything.
+  cancel-in-progress: false
+
+env:
+  VERSION: ${{ github.event.release.tag_name }}
+
+jobs:
+  binaries:
+    name: Build and upload the release binaries
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out the released tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.24.0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      # Same three values the image job passes: the tag, the commit HEAD
+      # actually points at after checking out the tag, and a build timestamp.
+      - name: Resolve the build metadata
+        run: |
+          echo "GIT_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      # One script invocation produces the whole asset set: it builds the SPA
+      # once, then every platform binary with an explicit GOOS/GOARCH
+      # (linux/amd64 included, so the runner's own platform plays no part) and
+      # SHA256SUMS. $VERSION reaches it through the workflow-level env,
+      # GIT_COMMIT/BUILD_TIME through the step above.
+      - name: Build the release assets
+        run: scripts/build_metaxisdata.sh --release-assets
+
+      # v2 of this action is end-of-life (Node 20 runtime deprecated); v3 runs
+      # on Node 24. It only appends assets: the release already exists, and
+      # with no other inputs set the action keeps the release's own info
+      # (name, body, and the prerelease/Latest marking included).
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          fail_on_unmatched_files: true
+          files: |
+            build/metaxisdata-linux-amd64
+            build/metaxisdata-linux-arm64
+            build/metaxisdata-windows-amd64.exe
+            build/metaxisdata-darwin-arm64
+            build/metaxisdata-darwin-amd64
+            build/SHA256SUMS

@@ -36,7 +36,7 @@ Two trees, split by audience. `docs/` is read by operators and integrators; `.ag
 
 | Read | When |
 | --- | --- |
-| [docs/deploy.md](docs/deploy.md) | Building and running the container image, and every environment variable it reads |
+| [docs/deploy.md](docs/deploy.md) | Building and running the container image or the prebuilt binary, and every environment variable it reads |
 | [docs/local-trial.md](docs/local-trial.md) | The compose stack for a throwaway instance on a development machine |
 | [docs/mcp.md](docs/mcp.md) | Connecting an MCP client, and what the endpoint promises |
 | [docs/security-posture.md](docs/security-posture.md) | Behavior that looks like a bug — the deliberate, accepted decisions |

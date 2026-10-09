@@ -25,6 +25,6 @@ Everything here describes **shipped behavior**, not a plan: implementation steps
 | [lineage-graph.md](lineage-graph.md) | The field trail and the field-scoped expansion on the lineage graph page | Touching the lineage canvas interaction |
 | [openlineage-lineage.md](openlineage-lineage.md) | How an ingested OpenLineage run becomes lineage edges, and why the producer's column facet is not trusted | Touching OpenLineage ingestion or its lineage writer |
 | [omni-upstream-defects.md](omni-upstream-defects.md) | Defects in the pinned `bytebase/omni` dependency, and the deliberate no-patch/no-report policy | Debugging a parser or AST surprise, or considering a dependency bump |
-| [docker-build.md](docker-build.md) | The container image: build stages, proxy and mirror arguments, runtime environment, and the build metadata it reports | Changing the Dockerfile, the build scripts, the runtime image, or the injected version metadata |
+| [docker-build.md](docker-build.md) | The container image and the release binaries: build stages, proxy and mirror arguments, runtime environment, and the build metadata they report | Changing the Dockerfile, the build scripts, the release workflows, or the injected version metadata |
 
 A new subsystem-scale design belongs here: add the reference file and a row in this table, rather than a separate plan document.

@@ -1,4 +1,4 @@
-.PHONY: run build build-release build-cli build-embed frontend-dist docker-build docker-build-dev docker-up docker-down test-integration-smoke test-integration-mysql test-integration
+.PHONY: run build build-release build-cli build-embed build-binary frontend-dist docker-build docker-build-dev docker-up docker-down test-integration-smoke test-integration-mysql test-integration
 
 # Build metadata baked into the binary: `metaxisdata --version` and the SPA's
 # user menu read it, so a binary built here can be matched to a commit. The
@@ -44,6 +44,12 @@ frontend-dist:
 # the binary, so the server can be deployed without hosting frontend/dist.
 build-embed: frontend-dist
 	go build -ldflags "$(LDFLAGS)" -p=16 -tags "release embed_frontend" -o ./build/metaxisdata ./backend/bin/server/main.go
+
+# Same build via scripts/build_metaxisdata.sh: it installs the frontend's
+# node_modules when missing, produces a static (CGO disabled) binary, and
+# stamps the build metadata — the path the release binaries are produced with.
+build-binary:
+	scripts/build_metaxisdata.sh
 
 # The deployment image: SPA embedded, prod profile. Tags, mirrors and proxy
 # build args: docs/deployment.md.
