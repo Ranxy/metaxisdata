@@ -134,6 +134,10 @@ func TestOpeningTheInboxClearsTheBadgeOnlyRealServerIntegration(t *testing.T) {
 	require.NoError(t, err)
 	require.Zero(t, after.Msg.GetUnseenCount(), "opening the inbox clears the badge")
 	require.Equal(t, before.GetUnreadCount(), after.Msg.GetUnreadCount(), "opening the inbox reads nothing")
+	// The badge counts a subset of the unread messages, and one statement answers both, so
+	// the two numbers can never contradict each other on the wire.
+	require.LessOrEqual(t, after.Msg.GetUnseenCount(), after.Msg.GetUnreadCount())
+	require.LessOrEqual(t, before.GetUnseenCount(), before.GetUnreadCount())
 
 	unread, err := notifications.ListNotifications(ctx, withToken(token, &v1pb.ListNotificationsRequest{
 		Parent:     "workspaces/-",

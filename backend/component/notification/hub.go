@@ -17,13 +17,10 @@ type Event struct {
 	// has opened the inbox and left a message unread: nothing is marked read there.
 	UnreadCount int32
 	UnseenCount int32
-	// UnreadCountKnown is false when the count could not be read. The message
-	// itself is still worth delivering; the badge is not, because a zero would
-	// read as "everything is read".
-	UnreadCountKnown bool
-	// UnseenCountKnown is false under the same condition, for the number the
-	// badge itself shows.
-	UnseenCountKnown bool
+	// CountsKnown is false when the counts could not be read. The message itself is
+	// still worth delivering; the badge is not, because a zero would read as
+	// "everything is read".
+	CountsKnown bool
 }
 
 const (

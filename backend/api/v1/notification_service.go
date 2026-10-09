@@ -129,16 +129,12 @@ func (s *NotificationService) GetUnreadNotificationCount(ctx context.Context, re
 		return nil, err
 	}
 
-	count, err := s.store.CountUnreadNotifications(ctx, user.ID)
+	unread, unseen, err := s.store.CountNotificationCounts(ctx, user.ID)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to count unread notifications"))
-	}
-	unseen, err := s.store.CountUnseenNotifications(ctx, user.ID)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to count unseen notifications"))
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to count notifications"))
 	}
 	return connect.NewResponse(&v1pb.GetUnreadNotificationCountResponse{
-		UnreadCount: int32(count),
+		UnreadCount: int32(unread),
 		UnseenCount: int32(unseen),
 	}), nil
 }
@@ -344,14 +340,12 @@ func convertToV1NotificationEvent(event notification.Event, workspaceID string) 
 	converted := &v1pb.NotificationEvent{
 		Notification: convertToV1Notification(event.Notification, workspaceID),
 	}
-	if event.UnreadCountKnown {
-		// Absent when the count could not be read, so the client asks for it rather
+	if event.CountsKnown {
+		// Absent when the counts could not be read, so the client asks for them rather
 		// than showing the zero this would otherwise be indistinguishable from.
 		converted.UnreadCount = proto.Int32(event.UnreadCount)
-	}
-	if event.UnseenCountKnown {
 		// The number the badge shows: unread messages the recipient has not seen
-		// since opening the inbox. Absent under the same condition as unread_count.
+		// since opening the inbox.
 		converted.UnseenCount = proto.Int32(event.UnseenCount)
 	}
 	return &v1pb.SubscribeNotificationsResponse{

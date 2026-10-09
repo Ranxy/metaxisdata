@@ -20,7 +20,7 @@ func TestHubFansOutToTheRecipientsSubscriptions(t *testing.T) {
 	other, err := hub.subscribe(8)
 	require.NoError(t, err)
 
-	hub.publish(7, Event{Notification: &storepb.Notification{Id: 1}, UnreadCount: 2, UnreadCountKnown: true})
+	hub.publish(7, Event{Notification: &storepb.Notification{Id: 1}, UnreadCount: 2, CountsKnown: true})
 
 	require.Equal(t, int64(1), (<-first.ch).Notification.GetId())
 	require.Equal(t, int64(1), (<-second.ch).Notification.GetId())

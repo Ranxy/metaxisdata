@@ -118,9 +118,21 @@ export const useNotificationStore = defineStore("notification", {
       const counts = await getNotificationCounts();
       if (mine === countTicket) {
         this.unreadCount = counts.unreadCount;
-        // See openInboxCount: what is on screen has been seen, whatever the server
-        // counted before the watermark moved.
-        this.unseenCount = this.openInboxCount > 0 ? 0 : counts.unseenCount;
+        if (this.openInboxCount > 0) {
+          // See openInboxCount: what is on screen has been seen, whatever the server
+          // counted before the watermark moved.
+          this.unseenCount = 0;
+          if (counts.unseenCount > 0) {
+            // The server still counts something as new that is on screen. This is the path
+            // a message the stream missed arrives by — a reconnect or a tab becoming visible
+            // reloads the list and answers the counts together — so the watermark is moved
+            // over it here too, or closing the inbox would light the badge for a message the
+            // user just read on screen.
+            void markNotificationsSeen().catch(() => {});
+          }
+        } else {
+          this.unseenCount = counts.unseenCount;
+        }
       }
       return counts;
     },
@@ -227,10 +239,13 @@ export const useNotificationStore = defineStore("notification", {
         void this.refreshCounts().catch(() => {});
       }
 
+      // A list that has rows is on screen. So is an empty one on an open inbox, and that
+      // case must put the message in it: the watermark is about to be moved past this
+      // message on the grounds that the user can see it, so it has to be visible.
       const message = event.notification;
       if (
         message &&
-        this.recent.length > 0 &&
+        (this.recent.length > 0 || this.openInboxCount > 0) &&
         !this.recent.some((item) => item.name === message.name)
       ) {
         recentTicket += 1;

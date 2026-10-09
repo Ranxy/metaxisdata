@@ -136,4 +136,20 @@ describe("NotificationBell", () => {
     expect(store.openInboxCount).toBe(0);
     wrapper.unmount();
   });
+
+  // A menu that unmounts while it is open never reports that it closed. The surface count
+  // decides whether a new message may light the badge, so it has to be released here: a
+  // leaked count would keep the red dot dark for the rest of the session.
+  it("releases the open inbox when it unmounts with the dropdown open", async () => {
+    const wrapper = await mountBell(pinia);
+    const store = useNotificationStore();
+    await settle();
+
+    await wrapper.find("button").trigger("click");
+    await settle();
+    expect(store.openInboxCount).toBe(1);
+
+    wrapper.unmount();
+    expect(store.openInboxCount).toBe(0);
+  });
 });

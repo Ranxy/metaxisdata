@@ -177,10 +177,9 @@ func TestConvertToV1NotificationEventNamesAndCounts(t *testing.T) {
 				SchemaSync: &storepb.SchemaSyncDetail{Instance: "instances/inst1"},
 			},
 		},
-		UnreadCount:      4,
-		UnseenCount:      2,
-		UnreadCountKnown: true,
-		UnseenCountKnown: true,
+		UnreadCount: 4,
+		UnseenCount: 2,
+		CountsKnown: true,
 	}, "ws")
 
 	event, ok := converted.GetEvent().(*v1pb.SubscribeNotificationsResponse_Notification)
@@ -220,6 +219,22 @@ func TestConvertToV1NotificationEventWithoutAKnownDetail(t *testing.T) {
 	event, ok := converted.GetEvent().(*v1pb.SubscribeNotificationsResponse_Notification)
 	require.True(t, ok)
 	require.Nil(t, event.Notification.GetNotification().GetDetail())
+}
+
+// Opening the inbox is a write to the caller's own watermark, so it is refused without
+// credentials like every other method here — before the store is touched, which the nil
+// store proves: reaching the update would panic instead of answering.
+func TestMarkNotificationsSeenRequiresAuthentication(t *testing.T) {
+	t.Parallel()
+
+	service := NewNotificationService(nil, nil)
+	_, err := service.MarkNotificationsSeen(context.Background(), connect.NewRequest(&v1pb.MarkNotificationsSeenRequest{
+		Parent: "workspaces/-",
+	}))
+
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	require.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
 }
 
 // A subscription is not reachable without credentials: the handler refuses before it

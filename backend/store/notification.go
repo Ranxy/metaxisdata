@@ -139,37 +139,31 @@ func (s *Store) ListNotifications(ctx context.Context, find *FindNotificationMes
 	return notifications, nil
 }
 
-// CountUnreadNotifications counts one recipient's unread notifications.
-func (s *Store) CountUnreadNotifications(ctx context.Context, recipientID int) (int, error) {
-	var count int
-	if err := s.GetDB().QueryRowContext(ctx, `
-		SELECT COUNT(*)
-		FROM notification
-		WHERE recipient_id = $1 AND read_at IS NULL
-	`, recipientID).Scan(&count); err != nil {
-		return 0, errors.Wrap(err, "failed to count unread notifications")
-	}
-	return count, nil
-}
-
-// CountUnseenNotifications counts the recipient's unread notifications written
-// after they last opened the inbox — the number the bell's badge shows. It is a
-// subset of CountUnreadNotifications: opening the inbox moves the watermark
-// forward and makes a message seen without making it read. A recipient who never
-// opened the inbox has a NULL watermark, so every unread message is unseen.
-func (s *Store) CountUnseenNotifications(ctx context.Context, recipientID int) (int, error) {
-	var count int
-	err := s.GetDB().QueryRowContext(ctx, `
-		SELECT COUNT(*)
+// CountNotificationCounts counts one recipient's unread notifications and the
+// subset of them written after they last opened the inbox — the number the inbox
+// page works with and the number the bell's badge shows. Both come from one
+// statement, so the subset can never come out larger than the whole: two reads
+// would answer with two snapshots, and a message written between them would make
+// the badge claim more new messages than there are unread ones.
+//
+// A recipient who never opened the inbox has no watermark, and every unread
+// message is new: -infinity is what "no watermark" compares as.
+func (s *Store) CountNotificationCounts(ctx context.Context, recipientID int) (unread int, unseen int, err error) {
+	where, args := notificationScope(recipientID, true)
+	err = s.GetDB().QueryRowContext(ctx, `
+		SELECT
+			COUNT(*),
+			COUNT(*) FILTER (
+				WHERE notification.created_at > COALESCE(principal.notification_seen_at, '-infinity'::timestamptz)
+			)
 		FROM notification
 		JOIN principal ON principal.id = notification.recipient_id
-		WHERE notification.recipient_id = $1 AND notification.read_at IS NULL
-			AND (principal.notification_seen_at IS NULL OR notification.created_at > principal.notification_seen_at)
-	`, recipientID).Scan(&count)
+		WHERE `+where,
+		args...).Scan(&unread, &unseen)
 	if err != nil {
-		return 0, errors.Wrap(err, "failed to count unseen notifications")
+		return 0, 0, errors.Wrap(err, "failed to count notifications")
 	}
-	return count, nil
+	return unread, unseen, nil
 }
 
 // MarkNotificationsSeen records that one recipient has now opened the inbox,
@@ -177,6 +171,9 @@ func (s *Store) CountUnseenNotifications(ctx context.Context, recipientID int) (
 // a caller cannot claim to have opened the inbox before a message it should see
 // was written. Nothing is marked read here: an unread message stays unread until
 // it is clicked.
+//
+// The comparison the count makes is between this database clock and the
+// application clock that stamped created_at, so the two hosts are assumed to agree.
 func (s *Store) MarkNotificationsSeen(ctx context.Context, recipientID int) error {
 	_, err := s.GetDB().ExecContext(ctx, `
 		UPDATE principal

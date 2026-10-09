@@ -67,15 +67,19 @@ func (f *fakeStore) CreateNotification(_ context.Context, notification *storepb.
 	return notification, nil
 }
 
-func (f *fakeStore) CountUnreadNotifications(context.Context, int) (int, error) {
+// CountNotificationCounts answers the pair the real store answers with one query. The
+// unread number follows countSequence (the last value repeats) and countGate holds every
+// call open until the test releases it; the unseen number is a plain field, because no
+// test orders writes by the badge. countErr fails the pair, as one failing query would.
+func (f *fakeStore) CountNotificationCounts(context.Context, int) (int, int, error) {
 	f.countMu.Lock()
 	index := f.countCalls
 	f.countCalls++
-	count := f.unreadCount
+	unread := f.unreadCount
 	if index < len(f.countSequence) {
-		count = f.countSequence[index]
+		unread = f.countSequence[index]
 	} else if len(f.countSequence) > 0 {
-		count = f.countSequence[len(f.countSequence)-1]
+		unread = f.countSequence[len(f.countSequence)-1]
 	}
 	gate := f.countGate
 	f.countMu.Unlock()
@@ -84,21 +88,9 @@ func (f *fakeStore) CountUnreadNotifications(context.Context, int) (int, error) 
 		<-gate
 	}
 	if f.countErr != nil {
-		return 0, f.countErr
+		return 0, 0, f.countErr
 	}
-	return count, nil
-}
-
-// CountUnseenNotifications answers the badge's number. countErr fails it too, so a
-// store that cannot count leaves the event without either number.
-func (f *fakeStore) CountUnseenNotifications(context.Context, int) (int, error) {
-	f.countMu.Lock()
-	defer f.countMu.Unlock()
-
-	if f.countErr != nil {
-		return 0, f.countErr
-	}
-	return f.unseenCount, nil
+	return unread, f.unseenCount, nil
 }
 
 func (f *fakeStore) GetWorkspaceID(context.Context) (string, error) {
@@ -381,9 +373,8 @@ func TestAWrittenMessageIsPushedWithTheCounts(t *testing.T) {
 
 	event := requireEvent(t, events)
 	require.Equal(t, message, event.Notification)
-	require.True(t, event.UnreadCountKnown)
+	require.True(t, event.CountsKnown)
 	require.Equal(t, int32(3), event.UnreadCount)
-	require.True(t, event.UnseenCountKnown)
 	require.Equal(t, int32(1), event.UnseenCount)
 
 	// A count the store cannot answer is not a reason to drop the message: the
@@ -393,8 +384,7 @@ func TestAWrittenMessageIsPushedWithTheCounts(t *testing.T) {
 	require.NoError(t, service.Send(context.Background(), message))
 	event = requireEvent(t, events)
 	require.Equal(t, message, event.Notification)
-	require.False(t, event.UnreadCountKnown)
-	require.False(t, event.UnseenCountKnown)
+	require.False(t, event.CountsKnown)
 }
 
 // A write the dedupe index refused changed nothing, so there is nothing to push:

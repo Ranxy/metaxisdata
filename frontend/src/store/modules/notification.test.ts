@@ -36,12 +36,11 @@ vi.mock("@/api/notification", () => ({
   subscribeNotifications: (signal?: AbortSignal) => openStream(signal),
 }));
 
-function message(id: number, read = false) {
+function message(id: number) {
   return create(NotificationSchema, {
     name: `workspaces/ws/notifications/${id}`,
     type: NotificationType.SCHEMA_SYNC,
     severity: NotificationSeverity.INFO,
-    readTime: read ? undefined : undefined,
   });
 }
 
@@ -208,31 +207,46 @@ describe("notification store", () => {
     expect(store.openInboxCount).toBe(0);
   });
 
-  // A count that comes back while the inbox is open must not relight the badge. A
-  // reconnect or a tab becoming visible refreshes, and the server may not have seen the
-  // mark-seen yet.
-  it("keeps the badge dark when a refresh lands with the inbox open", async () => {
+  // A count that comes back while the inbox is open must not relight the badge, and the
+  // watermark has to move over what the count called new: this refresh is the path a
+  // message the stream missed arrives by (a reconnect or a visible tab reloads the list
+  // with the counts), and the user can see it. Without the second half, closing the inbox
+  // would light the badge for a message that was just on screen.
+  it("keeps the badge dark, and advances the watermark, when a refresh lands with the inbox open", async () => {
     mocks.getNotificationCounts.mockResolvedValue({
       unreadCount: 5,
-      unseenCount: 5,
+      unseenCount: 2,
     });
     const store = useNotificationStore();
 
     store.openInbox();
+    mocks.markNotificationsSeen.mockClear();
     await store.refreshCounts();
 
     expect(store.unreadCount).toBe(5);
     expect(store.unseenCount).toBe(0);
+    expect(mocks.markNotificationsSeen).toHaveBeenCalledTimes(1);
+
+    // Nothing new to move over: the refresh is silent.
+    mocks.getNotificationCounts.mockResolvedValue({
+      unreadCount: 5,
+      unseenCount: 0,
+    });
+    await store.refreshCounts();
+    expect(mocks.markNotificationsSeen).toHaveBeenCalledTimes(1);
   });
 
   // What is on screen has been seen: a message that arrives while the list is open must
   // not light the badge, and the server's watermark is moved over it so a later refresh
-  // does not bring it back.
-  it("keeps the badge dark for a message that arrives while the inbox is open", async () => {
+  // does not bring it back. An inbox opened while empty is still on screen, so the message
+  // has to land in that empty list — otherwise the watermark moves past a message nobody
+  // was ever shown.
+  it("keeps the badge dark for a message that arrives while the inbox is open, and shows it", async () => {
     const store = useNotificationStore();
 
     store.startStreaming();
     await settle();
+    expect(store.recent).toEqual([]);
     store.openInbox();
     mocks.markNotificationsSeen.mockClear();
 
@@ -242,6 +256,9 @@ describe("notification store", () => {
     expect(store.unreadCount).toBe(4);
     expect(store.unseenCount).toBe(0);
     expect(mocks.markNotificationsSeen).toHaveBeenCalledTimes(1);
+    expect(store.recent.map((item) => item.name)).toEqual([
+      "workspaces/ws/notifications/1",
+    ]);
   });
 
   it("lights the badge again once the inbox is closed", async () => {
