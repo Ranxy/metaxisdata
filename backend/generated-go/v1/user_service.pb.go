@@ -610,7 +610,12 @@ type User struct {
 	// The effective workspace permissions of the caller, as a list of
 	// `metaxisdata.<resource>.<verb>` strings. Populated by GetCurrentUser only,
 	// so the frontend can gate navigation and actions without probing each RPC.
-	Permissions   []string `protobuf:"bytes,15,rep,name=permissions,proto3" json:"permissions,omitempty"`
+	Permissions []string `protobuf:"bytes,15,rep,name=permissions,proto3" json:"permissions,omitempty"`
+	// The BCP-47 tag of the language the user reads the UI in, so server-side
+	// prose — the Explain SQL answer — is written in the language the user
+	// selected. The SPA records it when the user switches language; empty means
+	// never chosen, and server-side prose then falls back to en-US.
+	Language      string `protobuf:"bytes,16,opt,name=language,proto3" json:"language,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -722,6 +727,13 @@ func (x *User) GetPermissions() []string {
 	return nil
 }
 
+func (x *User) GetLanguage() string {
+	if x != nil {
+		return x.Language
+	}
+	return ""
+}
+
 type UserProfile struct {
 	state                  protoimpl.MessageState `protogen:"open.v1"`
 	LastLoginTime          *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=last_login_time,json=lastLoginTime,proto3" json:"last_login_time,omitempty"`
@@ -809,7 +821,7 @@ const file_v1_user_service_proto_rawDesc = "" +
 	"\x10metaxisdata/UserR\x04name\"C\n" +
 	"\x13UndeleteUserRequest\x12,\n" +
 	"\x04name\x18\x01 \x01(\tB\x18\xe0A\x02\xfaA\x12\n" +
-	"\x10metaxisdata/UserR\x04name\"\xc2\x03\n" +
+	"\x10metaxisdata/UserR\x04name\"\xde\x03\n" +
 	"\x04User\x12\x17\n" +
 	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x03R\x04name\x12+\n" +
 	"\x05state\x18\x02 \x01(\x0e2\x15.metaxisdata.v1.StateR\x05state\x12\x14\n" +
@@ -822,7 +834,8 @@ const file_v1_user_service_proto_rawDesc = "" +
 	"\x05phone\x18\f \x01(\tR\x05phone\x125\n" +
 	"\aprofile\x18\r \x01(\v2\x1b.metaxisdata.v1.UserProfileR\aprofile\x12\x1b\n" +
 	"\x06groups\x18\x0e \x03(\tB\x03\xe0A\x03R\x06groups\x12%\n" +
-	"\vpermissions\x18\x0f \x03(\tB\x03\xe0A\x03R\vpermissions:#\xeaA \n" +
+	"\vpermissions\x18\x0f \x03(\tB\x03\xe0A\x03R\vpermissions\x12\x1a\n" +
+	"\blanguage\x18\x10 \x01(\tR\blanguage:#\xeaA \n" +
 	"\x10metaxisdata/User\x12\fusers/{user}J\x04\b\v\x10\fR\x0erecovery_codes\"\xb6\x01\n" +
 	"\vUserProfile\x12B\n" +
 	"\x0flast_login_time\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\rlastLoginTime\x12U\n" +

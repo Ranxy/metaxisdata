@@ -740,6 +740,7 @@ The user&#39;s `name` field is used to identify the user to update. Format: user
 | profile | [UserProfile](#metaxisdata-v1-UserProfile) |  |  |
 | groups | [string](#string) | repeated | The groups for the user. Format: groups/{email} |
 | permissions | [string](#string) | repeated | The effective workspace permissions of the caller, as a list of `metaxisdata.&lt;resource&gt;.&lt;verb&gt;` strings. Populated by GetCurrentUser only, so the frontend can gate navigation and actions without probing each RPC. |
+| language | [string](#string) |  | The BCP-47 tag of the language the user reads the UI in, so server-side prose — the Explain SQL answer — is written in the language the user selected. The SPA records it when the user switches language; empty means never chosen, and server-side prose then falls back to en-US. |
 
 
 

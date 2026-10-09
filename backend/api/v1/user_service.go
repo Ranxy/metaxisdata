@@ -12,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 
 	"golang.org/x/crypto/bcrypt"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
@@ -174,6 +175,11 @@ func (s *UserService) CreateUser(ctx context.Context, request *connect.Request[v
 			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid phone %q, error: %v", request.Msg.User.Phone, err))
 		}
 	}
+	// Signup carries no language, and an unset one is left unset so that the SPA
+	// can fill it in from the locale the user is actually reading.
+	if request.Msg.User.Language != "" && !isSupportedLanguage(request.Msg.User.Language) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("unsupported language %q", request.Msg.User.Language))
+	}
 
 	if err := validateEmailWithDomains(ctx, s.store, request.Msg.User.Email, principalType == storepb.PrincipalType_SERVICE_ACCOUNT); err != nil {
 		return nil, err
@@ -216,6 +222,9 @@ func (s *UserService) CreateUser(ctx context.Context, request *connect.Request[v
 		Phone:        request.Msg.User.Phone,
 		Type:         principalType,
 		PasswordHash: string(passwordHash),
+	}
+	if request.Msg.User.Language != "" {
+		userMessage.Profile = &storepb.UserProfile{Language: request.Msg.User.Language}
 	}
 
 	// A password account carries no identity provider binding.
@@ -413,6 +422,15 @@ func (s *UserService) UpdateUser(ctx context.Context, request *connect.Request[v
 				}
 			}
 			patch.Phone = &request.Msg.User.Phone
+		case "language":
+			// A preference the server cannot prompt in is refused here rather
+			// than stored: it would only be answered in the default language.
+			// Empty clears it back to the default.
+			language := request.Msg.User.Language
+			if language != "" && !isSupportedLanguage(language) {
+				return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("unsupported language %q", language))
+			}
+			patch.Profile = profileWithLanguage(user.Profile, language)
 		default:
 		}
 	}
@@ -460,10 +478,25 @@ func applyUpdateMaskToUser(user *v1pb.User, paths []string) *v1pb.User {
 			masked.Phone = user.Phone
 		case "user_type":
 			masked.UserType = user.UserType
+		case "language":
+			masked.Language = user.Language
 		default:
 		}
 	}
 	return masked
+}
+
+// profileWithLanguage returns the user's profile with only the language
+// replaced. The store writes the whole profile JSONB back, so every other field
+// — including the password change time that retires sessions — has to be carried
+// over; `profile` may be nil for an account whose profile was never written.
+func profileWithLanguage(profile *storepb.UserProfile, language string) *storepb.UserProfile {
+	updated := proto.CloneOf(profile)
+	if updated == nil {
+		updated = &storepb.UserProfile{}
+	}
+	updated.Language = language
+	return updated
 }
 
 // DeleteUser deletes a user.
@@ -560,6 +593,7 @@ func convertToUser(user *store.UserMessage) *v1pb.User {
 		Phone:    user.Phone,
 		Title:    user.Name,
 		UserType: convertToV1UserType(user.Type),
+		Language: user.Profile.GetLanguage(),
 		Profile: &v1pb.UserProfile{
 			LastLoginTime:          user.Profile.LastLoginTime,
 			LastChangePasswordTime: user.Profile.LastChangePasswordTime,

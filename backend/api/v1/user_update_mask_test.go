@@ -41,6 +41,7 @@ func TestApplyUpdateMaskToUser(t *testing.T) {
 		Password: "s3cret-password",
 		Phone:    "+8613800000000",
 		UserType: v1pb.UserType_END_USER,
+		Language: "zh-CN",
 	}
 
 	tests := []struct {
@@ -67,6 +68,11 @@ func TestApplyUpdateMaskToUser(t *testing.T) {
 			name:  "user_type selects the kind of principal",
 			paths: []string{"email", "user_type"},
 			want:  &v1pb.User{Email: body.Email, UserType: v1pb.UserType_END_USER},
+		},
+		{
+			name:  "language survives the mask",
+			paths: []string{"language"},
+			want:  &v1pb.User{Language: body.Language},
 		},
 		{
 			name:  "an unknown path is ignored",

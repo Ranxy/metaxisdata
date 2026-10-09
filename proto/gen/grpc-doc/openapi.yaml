@@ -7164,6 +7164,13 @@ components:
                         The effective workspace permissions of the caller, as a list of
                          `metaxisdata.<resource>.<verb>` strings. Populated by GetCurrentUser only,
                          so the frontend can gate navigation and actions without probing each RPC.
+                language:
+                    type: string
+                    description: |-
+                        The BCP-47 tag of the language the user reads the UI in, so server-side
+                         prose — the Explain SQL answer — is written in the language the user
+                         selected. The SPA records it when the user switches language; empty means
+                         never chosen, and server-side prose then falls back to en-US.
         UserProfile:
             type: object
             properties:

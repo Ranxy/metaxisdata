@@ -85,6 +85,7 @@ export async function updateUser(
     title?: string;
     phone?: string;
     password?: string;
+    language?: string;
   },
   updateMask?: string[],
   currentPassword?: string
@@ -96,6 +97,7 @@ export async function updateUser(
       title: user.title ?? "",
       phone: user.phone ?? "",
       password: user.password ?? "",
+      language: user.language ?? "",
     }),
     updateMask: updateMask
       ? { paths: updateMask }

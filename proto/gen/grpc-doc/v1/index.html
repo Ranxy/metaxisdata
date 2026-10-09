@@ -2415,6 +2415,16 @@ Format: groups/{email} </p></td>
 so the frontend can gate navigation and actions without probing each RPC. </p></td>
                 </tr>
               
+                <tr>
+                  <td>language</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The BCP-47 tag of the language the user reads the UI in, so server-side
+prose — the Explain SQL answer — is written in the language the user
+selected. The SPA records it when the user switches language; empty means
+never chosen, and server-side prose then falls back to en-US. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 

@@ -2071,6 +2071,7 @@ leftovers keep their numbers reserved.
 | ----- | ---- | ----- | ----------- |
 | last_login_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | last_change_password_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| language | [string](#string) |  | The BCP-47 tag of the language the user reads the UI in, so server-side prose — the Explain SQL answer — comes back in the same language. Empty means never chosen, which reads as the default language. |
 
 
 

@@ -337,6 +337,16 @@ export declare type User = Message<"metaxisdata.v1.User"> & {
    * @generated from field: repeated string permissions = 15;
    */
   permissions: string[];
+
+  /**
+   * The BCP-47 tag of the language the user reads the UI in, so server-side
+   * prose — the Explain SQL answer — is written in the language the user
+   * selected. The SPA records it when the user switches language; empty means
+   * never chosen, and server-side prose then falls back to en-US.
+   *
+   * @generated from field: string language = 16;
+   */
+  language: string;
 };
 
 /**

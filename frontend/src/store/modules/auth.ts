@@ -2,8 +2,10 @@ import { Code } from "@connectrpc/connect";
 import { defineStore } from "pinia";
 import * as authApi from "@/api/auth";
 import * as userApi from "@/api/user";
+import { type AppLocale, isAppLocale } from "@/locales";
 import type { User } from "@/types/proto-es/v1/user_service_pb";
 import { errorCode } from "@/utils/error";
+import { useAppStore } from "./app";
 
 // The in-flight GetCurrentUser, kept outside the store: a promise is not state,
 // and two navigations in the same tick must share one request.
@@ -76,6 +78,46 @@ export const useAuthStore = defineStore("auth", {
       this.requireResetPassword = false;
     },
 
+    /**
+     * Switches the UI language and records it on the profile. This is the one
+     * entry point for the switch: the server answers the Explain SQL question in
+     * the language the user reads the UI in, so the locale has to be more than a
+     * browser-local preference.
+     *
+     * The switch is applied locally first — it must be instant, and it also has
+     * to work on the login page, before there is a session to write to. Saving is
+     * best-effort: a failed write must not undo the language the user just chose,
+     * and the next switch or sign-in retries it.
+     */
+    async changeLanguage(locale: AppLocale) {
+      useAppStore().setLocale(locale);
+      if (!this.user || this.user.language === locale) {
+        return;
+      }
+      try {
+        await userApi.updateUser({ name: this.user.name, language: locale }, [
+          "language",
+        ]);
+        this.user.language = locale;
+      } catch {
+        // The profile keeps its old value; the UI stays in the chosen language.
+      }
+    },
+
+    /**
+     * Aligns the UI language with the profile once it is known. The profile is
+     * the source of truth, so a language chosen on another device applies here
+     * too. An account that never chose one adopts the locale this browser is
+     * already reading, which keeps the interface and the Explain SQL answer from
+     * drifting apart on the first request.
+     */
+    async syncLanguage() {
+      const stored = this.user?.language ?? "";
+      await this.changeLanguage(
+        isAppLocale(stored) ? stored : useAppStore().locale
+      );
+    },
+
     // Drops everything the session carried. Called by logout, by the global
     // Unauthenticated interceptor, and when GetCurrentUser reports the cookie is
     // gone — one definition so no call site can forget a field.
@@ -117,6 +159,7 @@ export const useAuthStore = defineStore("auth", {
         this.isAuthenticated = true;
         this.requireResetPassword = false;
         this.permissionsLoaded = true;
+        await this.syncLanguage(); // a failed write is swallowed; see changeLanguage
       } catch (error) {
         // Only the server rejecting the session ends it. A network blip or a 5xx
         // must not look like a logout: the router sends an unauthenticated user

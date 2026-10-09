@@ -2,7 +2,9 @@ import { create } from "@bufbuild/protobuf";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { i18n } from "@/locales";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
+import { useAppStore } from "./app";
 import { useAuthStore } from "./auth";
 
 const mocks = vi.hoisted(() => ({
@@ -134,6 +136,96 @@ describe("ensurePermissionsLoaded", () => {
 
     expect(mocks.getCurrentUser).toHaveBeenCalledTimes(1);
     expect(store.permissionsLoaded).toBe(true);
+  });
+});
+
+describe("language", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // clearAllMocks keeps implementations, so a rejection mocked by one test
+    // would otherwise leak into the next.
+    mocks.updateUser.mockResolvedValue(undefined);
+    setActivePinia(createPinia());
+    localStorage.clear();
+    i18n.global.locale.value = "en-US";
+  });
+
+  it("switches the UI and records the language on the profile", async () => {
+    const store = useAuthStore();
+    store.user = create(UserSchema, { name: "users/1", language: "en-US" });
+
+    await store.changeLanguage("zh-CN");
+
+    // The server answers Explain SQL in the language stored here, so the switch
+    // has to reach the profile, not just the browser.
+    expect(mocks.updateUser).toHaveBeenCalledWith(
+      { name: "users/1", language: "zh-CN" },
+      ["language"]
+    );
+    expect(store.user?.language).toBe("zh-CN");
+    expect(useAppStore().locale).toBe("zh-CN");
+    expect(i18n.global.locale.value).toBe("zh-CN");
+  });
+
+  it("does not write a language the profile already carries", async () => {
+    const store = useAuthStore();
+    store.user = create(UserSchema, { name: "users/1", language: "zh-CN" });
+
+    await store.changeLanguage("zh-CN");
+
+    expect(mocks.updateUser).not.toHaveBeenCalled();
+    expect(useAppStore().locale).toBe("zh-CN");
+  });
+
+  it("switches the UI before there is a session to write to", async () => {
+    const store = useAuthStore();
+
+    await store.changeLanguage("zh-CN");
+
+    // The login page has a language menu and no profile to save it to.
+    expect(useAppStore().locale).toBe("zh-CN");
+    expect(mocks.updateUser).not.toHaveBeenCalled();
+  });
+
+  it("keeps the chosen language when the write fails", async () => {
+    const store = useAuthStore();
+    store.user = create(UserSchema, { name: "users/1", language: "en-US" });
+    mocks.updateUser.mockRejectedValue(new Error("network"));
+
+    await store.changeLanguage("zh-CN");
+
+    // A preference that could not be saved must not undo the UI the user chose.
+    expect(useAppStore().locale).toBe("zh-CN");
+    expect(store.user?.language).toBe("en-US");
+  });
+
+  it("adopts the language stored on the profile, which wins over this browser", async () => {
+    mocks.getCurrentUser.mockResolvedValue(
+      create(UserSchema, { name: "users/1", language: "zh-CN" })
+    );
+
+    const store = useAuthStore();
+    await store.fetchCurrentUser();
+
+    expect(useAppStore().locale).toBe("zh-CN");
+    expect(mocks.updateUser).not.toHaveBeenCalled();
+  });
+
+  it("fills an unset profile with the locale this browser already reads", async () => {
+    useAppStore().setLocale("zh-CN");
+    mocks.getCurrentUser.mockResolvedValue(
+      create(UserSchema, { name: "users/1" })
+    );
+
+    const store = useAuthStore();
+    await store.fetchCurrentUser();
+
+    // Otherwise the UI would be Chinese while Explain SQL answered in English.
+    expect(mocks.updateUser).toHaveBeenCalledWith(
+      { name: "users/1", language: "zh-CN" },
+      ["language"]
+    );
+    expect(store.user?.language).toBe("zh-CN");
   });
 });
 

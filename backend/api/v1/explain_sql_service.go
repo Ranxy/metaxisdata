@@ -74,7 +74,12 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 	}
 	instanceID := scopeInstanceID(scopePrefix)
 
-	cacheKey := explainSQLCacheKey(cacheIdentity, scopePrefix, resolvedConfig.ProfileName, resolvedConfig.ModelName)
+	// The answer is written in the language the caller's UI is in, so the
+	// language belongs in what a cached explanation is valid for: the same SQL
+	// explained for a reader of another language is a different answer.
+	language := normalizeLanguage(currentUserLanguage(ctx))
+
+	cacheKey := explainSQLCacheKey(cacheIdentity, scopePrefix, resolvedConfig.ProfileName, resolvedConfig.ModelName, language)
 
 	// Check cache.
 	if !req.Msg.ForceRegenerate {
@@ -134,7 +139,7 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 	var fullResponse strings.Builder
 	cfg := llm.AgentConfig{
 		Provider:             *resolvedConfig,
-		SystemPrompt:         buildSystemPrompt(sqlText, metaGUID, metaType, ctxObjects),
+		SystemPrompt:         buildSystemPrompt(language, metaType, ctxObjects),
 		UserPrompt:           sqlText,
 		Tools:                tools,
 		Executor:             executor,
@@ -253,11 +258,13 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 const explainSQLCacheWriteTimeout = 5 * time.Second
 
 // explainSQLCacheKey scopes a cached explanation to the instance (or object)
-// identity it was built for, and to the provider/model that produced it. The
-// old key was the bare SQL or metadata hash, so two instances with the same SQL
-// text shared an answer and switching provider returned the stale one.
-func explainSQLCacheKey(cacheIdentity, scopePrefix, provider, model string) string {
-	return fmt.Sprintf("%s|scope:%s|provider:%s|model:%s", cacheIdentity, scopePrefix, provider, model)
+// identity it was built for, and to the provider/model and language that
+// produced it. The old key was the bare SQL or metadata hash, so two instances
+// with the same SQL text shared an answer and switching provider returned the
+// stale one. The language is normalized by the caller, so an unset profile and
+// an explicit default share one entry.
+func explainSQLCacheKey(cacheIdentity, scopePrefix, provider, model, language string) string {
+	return fmt.Sprintf("%s|scope:%s|provider:%s|model:%s|lang:%s", cacheIdentity, scopePrefix, provider, model, language)
 }
 
 func scopeInstanceID(scopePrefix string) string {
@@ -695,30 +702,38 @@ func (s *ExplainSQLService) resolveSource(ctx context.Context, req *v1pb.Explain
 	return "", "", storepb.MetaType_UNSPECIFIED, "", "", connect.NewError(connect.CodeInvalidArgument, errors.New("either sql_text or meta_guid is required"))
 }
 
-func buildSystemPrompt(_ string, _ string, metaType storepb.MetaType, ctx *llm.SchemaContext) string {
+// buildSystemPrompt writes the explanation brief in the requested language: the
+// headings and the instruction to follow them, so a reader of that language gets
+// a wholly translated answer instead of prose in one language under headings in
+// another. The language is normalized here as well, so the prompt cannot fall
+// back to Chinese headings for an unrecognized tag.
+func buildSystemPrompt(language string, metaType storepb.MetaType, ctx *llm.SchemaContext) string {
 	typeLabel := metaType.String()
 	if metaType == storepb.MetaType_UNSPECIFIED {
 		typeLabel = "SQL"
 	}
 
+	prompt := languagePrompts[normalizeLanguage(language)]
 	contextText := buildContextText(ctx)
 	return fmt.Sprintf(`You are an expert SQL analyst. Explain the following %s in detail.
+Write the entire answer, headings included, in %s.
 
 Start with a one-sentence summary. Then provide four sections using ## headings. Follow this exact structure:
 
-## 执行逻辑
+## %s
 (step-by-step breakdown: execution flow, data transformations, join order, filter conditions)
 
-## 涉及对象
+## %s
 (list tables, views, functions, procedures with their columns, types, and relevant structure)
 
-## 潜在问题
+## %s
 (performance issues, edge cases, null handling, missing indexes, security concerns)
 
-## 优化建议
+## %s
 (concrete improvements: index recommendations, query rewrites, partitioning, caching)
 
 Rules:
+- Write in %s
 - Use markdown code blocks for SQL snippets
 - Use bullet lists for enumeration
 - Keep exactly four ## headings as specified above
@@ -726,7 +741,9 @@ Rules:
 - Do not wrap response in JSON or code fences
 
 You have tools to query schema information — use them when needed.
-%s`, typeLabel, contextText)
+%s`, typeLabel, prompt.name,
+		prompt.headings[0], prompt.headings[1], prompt.headings[2], prompt.headings[3],
+		prompt.name, contextText)
 }
 
 func buildContextText(ctx *llm.SchemaContext) string {
