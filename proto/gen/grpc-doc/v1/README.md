@@ -3013,6 +3013,7 @@ ViewMetadata is the metadata for views.
 | EXTERNAL_TABLE | 16 |  |
 | EXTERNAL_DATASET | 17 |  |
 | MANUAL_SQL | 18 |  |
+| APPLICATION_SQL | 19 |  |
 | VIEW | 5 |  |
 | MATERIALIZED_VIEW | 6 |  |
 | COLUMN | 7 |  |

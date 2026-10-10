@@ -244,6 +244,10 @@
             <ul>
               
                 <li>
+                  <a href="#metaxisdata.store.ApplicationSQLMetadata"><span class="badge">M</span>ApplicationSQLMetadata</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.BoundingBox"><span class="badge">M</span>BoundingBox</a>
                 </li>
               
@@ -1261,6 +1265,69 @@ identified by an opaque server-generated id. </p></td>
       </div>
       <p></p>
 
+      
+        <h3 id="metaxisdata.store.ApplicationSQLMetadata">ApplicationSQLMetadata</h3>
+        <p>ApplicationSQLMetadata is one statement an application reported, with every literal</p><p>already replaced by `?`. The row is per distinct statement, not per application: which</p><p>applications ran it is recorded in application_sql_observation.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>application_sql_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The stable identifier of the statement, generated when it is first received. It
+survives a change to the fingerprint rules, which is what keeps the object&#39;s lineage
+and history attached. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A display label taken from the statement&#39;s first line. The full text is in
+sql_text. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>sql_text</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The parameterized statement. This is the only form ever stored: the text an
+application sends is rewritten before it reaches this table. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>instance_resource</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The instance that reported it. Format: instances/{instance} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>database_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The database the statement ran against. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>schema_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The schema, empty for the MySQL family. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
       
         <h3 id="metaxisdata.store.BoundingBox">BoundingBox</h3>
         <p>BoundingBox is the bounding box of a spatial index.</p>
@@ -3304,6 +3371,13 @@ It is an empty string for databases without such concept such as MySQL. </p></td
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>application_sql_metadata</td>
+                  <td><a href="#metaxisdata.store.ApplicationSQLMetadata">ApplicationSQLMetadata</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -4911,6 +4985,12 @@ exposes the ciphertext through the API. </p></td>
               <tr>
                 <td>MANUAL_SQL</td>
                 <td>18</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>APPLICATION_SQL</td>
+                <td>19</td>
                 <td><p></p></td>
               </tr>
             

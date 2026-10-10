@@ -1445,6 +1445,7 @@ paths:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -1555,6 +1556,7 @@ paths:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -1658,6 +1660,7 @@ paths:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -1858,6 +1861,7 @@ paths:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -1948,6 +1952,7 @@ paths:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -2003,6 +2008,7 @@ paths:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -2096,6 +2102,7 @@ paths:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -2147,6 +2154,7 @@ paths:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -2198,6 +2206,7 @@ paths:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -3521,6 +3530,7 @@ components:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -3551,6 +3561,7 @@ components:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -5100,6 +5111,7 @@ components:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -5146,6 +5158,7 @@ components:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -5171,6 +5184,7 @@ components:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -5196,6 +5210,7 @@ components:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -5794,6 +5809,7 @@ components:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -5849,6 +5865,7 @@ components:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -6087,6 +6104,7 @@ components:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -6553,6 +6571,7 @@ components:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN

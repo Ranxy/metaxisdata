@@ -141,20 +141,21 @@ TargetColumn: rel.Target.Name,  // 原本是 __result__ 的列名
 
 ### 3.2 `application_sql_api_key` — 摄取凭据
 
-照抄 `openlineage_api_key` 的形状(`backend/migrator/migration/LATEST.sql:518`),把 `scope_namespace` 换成 `application_id`,并加上 §5.5 的聚合计数：
+照抄 `openlineage_api_key` 的形状(`backend/migrator/migration/LATEST.sql:518`),把 `scope_namespace` 换成 `application_id`,并加上 §5.5 的聚合计数(**P1 已落地**,见 §3.7)：
 
 | 列 | 说明 |
 | --- | --- |
 | `id BIGSERIAL PK` | |
-| `application_id BIGINT NOT NULL REFERENCES application(id) ON DELETE CASCADE` | 每个 key 只绑定一个应用(D7)。**不加 `UNIQUE`**:轮换期需要新旧 key 并存,所以是"多 key → 一应用"。若要严格 1:1,加唯一约束即可 |
+| `application_id TEXT NOT NULL REFERENCES application(application_id) ON DELETE CASCADE` | 每个 key 只绑定一个应用(D7)。引用**公开 id** 而不是 `application(id)`,这样 store 的每一处都按同一个 id 寻址应用。**不加 `UNIQUE`**:轮换期需要新旧 key 并存,所以是"多 key → 一应用" |
 | `key_hash TEXT NOT NULL` | bcrypt,真正决定接受与否 |
+| `key_digest TEXT NOT NULL` | 明文 key 的 SHA-256,带唯一索引,只用于**查行** |
 | `masked_key TEXT NOT NULL` | 展示用,`xxxx…last4` |
 | `description`, `created_by`, `created_at`, `revoked_at` | |
 | `last_used_at TIMESTAMPTZ` | |
-| `last_report_id TEXT` | 可选,见 §5.3 的重试幂等 |
+| `last_report_id TEXT NOT NULL DEFAULT ''` | 见 §5.3 的重试幂等;空串表示还没有接受过任何上报 |
 | `request_count`, `statement_accepted_count`, `statement_rejected_count BIGINT NOT NULL DEFAULT 0` | §5.5 的聚合计数,替代逐请求审计行 |
 
-**没有 `key_digest`**:`openlineage_api_key` 那一列存在的唯一理由是给限流器提供一个不走 bcrypt 的比较(`backend/server/openlineage_ingestion.go:63`)。本端点按 D6 不限流,聚合计数又挂在 key 行上,不需要一个额外的密钥摘要——少一列就少一处泄漏面。
+**`key_digest` 是 P1 写实现时改回来的**(原设计说不要它):当初的理由只想到限流器,漏了**查行**。没有这一列,每个请求都要对**所有**未撤销的 key 逐个跑 bcrypt——而 bcrypt 是故意慢的。所以它回来,职责和 `openlineage_api_key` 那一列一样:摘要负责找到唯一那一行,bcrypt 只对那一行做一次比较。它不是密码哈希(SHA-256 over 256 位随机 key,不可爆破),也不扩大泄漏面——库里本来就有 bcrypt 哈希。
 
 凭据与 OpenLineage 的**不复用、不互通**:key 表不同、校验路径不同,两个凭据空间互不相交——一个泄漏的 OpenLineage key 写不了应用 SQL,反之亦然。HTTP 头沿用标准的 `Authorization: Bearer`(§5.1),分离由凭据本身保证,不靠改头名。
 
@@ -176,9 +177,13 @@ TargetColumn: rel.Target.Name,  // 原本是 __result__ 的列名
 | `execution_count BIGINT NOT NULL DEFAULT 0` | 所有应用求和(可由观测表重算) |
 | `first_seen_at TIMESTAMPTZ NOT NULL` | 所有应用中最早的 |
 | `last_seen_at TIMESTAMPTZ NOT NULL` | 所有应用中最晚的 |
+| `content_search TEXT NOT NULL DEFAULT ''` | 检索文本(就是 `sql_text`),供 §7.1 的文本检索 |
+| `search_vector TSVECTOR NOT NULL DEFAULT ''::tsvector` | `to_tsvector('simple', content_search)`,带 GIN 索引;照 `manual_sql` 的形状 |
 | `created_at`, `updated_at` | |
 
-唯一键:`UNIQUE (instance_resource_id, database_name, schema_name, fingerprint)`。
+唯一键:`UNIQUE (instance_resource_id, database_name, schema_name, fingerprint)`;另有 `guid`、`application_sql_id` 两个唯一索引。
+
+**外键只到实例,不到库**:`instance_resource_id` 引用 `instance(resource_id)`(实例与库都是软删,不会真的级联),但 `database_name` **不**引用 `db`。理由是应用经常在元数据同步覆盖到它的库之前就开始上报,要求 `db` 行已存在会让上线期的上报整批失败。
 
 **为什么语句身份里带实例**:血缘 GUID 是 `instance;db;schema;object` 的形状,同一个 `sales.orders` 在两个实例上是两个对象,分析作用域(instance/database/schema)也必须逐实例确定。把实例拿掉只会在图上把两个实例的对象错并成一条。
 
@@ -188,8 +193,8 @@ TargetColumn: rel.Target.Name,  // 原本是 __result__ 的列名
 
 | 列 | 说明 |
 | --- | --- |
-| `application_sql_id BIGINT NOT NULL REFERENCES application_sql(id) ON DELETE CASCADE` | |
-| `application_id BIGINT NOT NULL REFERENCES application(id) ON DELETE CASCADE` | |
+| `application_sql_id BIGINT NOT NULL REFERENCES application_sql(id) ON DELETE CASCADE` | 语句是内部对象,按行 id 关联 |
+| `application_id TEXT NOT NULL REFERENCES application(application_id) ON DELETE CASCADE` | 应用按公开 id 关联,于是删应用会级联带走它的观测 |
 | `first_seen_at`, `last_seen_at TIMESTAMPTZ NOT NULL` | 该应用自己的首末时间 |
 | `execution_count BIGINT NOT NULL DEFAULT 0` | 该应用自己的次数 |
 | `updated_at` | |
@@ -595,7 +600,7 @@ default:
 | --- | --- |
 | 上报了新语句 | 插 `application_sql` + 观测行 + registry 镜像(总是),`QueueLineageAnalysis` |
 | 语句的写入型判定翻转 | runner 按当前分析结果重写该对象的边(`BatchReplaceColumnLineage` 本来就是替换语义,只多/少那条出边),并回写 `kind`(§6.1);镜像行始终保留 |
-| 应用被删 | 观测行级联删除;**孤语句**(观测数为 0)连 `application_sql` 行、registry 镜像、血缘、版本行一起删除,形状照 `DeleteManualSQL`(`backend/store/manual_sql.go:408`) |
+| 应用被删(硬删,不是停用) | key 与观测行随 FK 级联删除;**孤语句**(观测数为 0)连 `application_sql` 行、registry 镜像、血缘、版本行一起删除,形状照 `DeleteManualSQL`(`backend/store/manual_sql.go:408`) |
 | 应用被停用 | 只拒 key,不删任何历史 |
 | 语句长期无上报 | **不自动删除**。`last_seen_at` 已经表达了它;页面上按时间筛即可 |
 
@@ -614,7 +619,7 @@ default:
 | ~~**P0 spike**~~ **已完成** | 三件事全部结案,见 §13:①字面量判定改用 token 源文本切片,不依赖上游未导出的类型常量;②在仓库自带语料(642 条可分析语句)上跑完脱敏幂等性与血缘等价性;③取表助手在真实触发面上 25/25 | 实测报告见 §13;表级边能被图读取已加为常驻测试 `TestBuildLineageGraphDrawsTableLevelEdges` |
 | ~~**P2 脱敏与指纹**~~ **已完成** | `backend/plugin/sqlsanitize/`:`Sanitize` / `Analyzable` / `Statement{Text, Canonical, Fingerprint}` / `Version`,含语料等价性、幂等性、字面量分类与中性字面量矩阵四组测试 | `go test ./backend/plugin/sqlsanitize/`;`golangci-lint` 0 issues |
 | ~~**D9 取表助手**~~ **已完成** | `backend/plugin/dmltarget/`:`Targets` / `ErrNoTarget`,含触发面 25 例、边界与拒答三组测试 | `go test ./backend/plugin/dmltarget/`;`golangci-lint` 0 issues |
-| **P1 数据模型** | 四张表 + 增量迁移 + `application`/`application_sql`/观测的 store 层 | `go test ./backend/store/`;schema 守卫测试(唯一键、级联、汇总重算) |
+| ~~**P1 数据模型**~~ **已完成** | 四张表 + `0019##application_sql.sql` 增量 + `backend/store/{application,application_api_key,application_sql}.go`;见 §13.9 | `go test ./backend/store/`、`./backend/migrator/`;`golangci-lint` 0 issues;两份 schema 已在真 PostgreSQL 上跑过并验幂等 |
 | **P3 摄入与管理 API** | 上报端点(含 §5.4 的分析器闸门)+ key 认证 + `ApplicationService` 的 CRUD 与 key 管理 + 权限常量与角色 | handler 单测(无 key / 坏 key / 停用 / 逐项 REJECTED / 超体超批 / `reportId` 去重);`go test ./backend/api/v1/` |
 | **P4 血缘接入** | `MetaType_APPLICATION_SQL` + registry 镜像 + runner 的 `buildSQL` 分支 + 分析器分支 + 写入/只读分类(消费 P2 与 D9 两个包) | `go test ./backend/plugin/lineage/...`、`go test ./backend/runner/lineageanalyzer/`;集成:`make test-integration`(上报 → 图上可见边) |
 | **P5 前端** | 应用管理页、应用 SQL 页、origin 第三类、图例、i18n | `pnpm --dir frontend biome:check && lint && i18n && type-check && test run` |
@@ -755,6 +760,22 @@ P2 与 D9 先于 P1 落地是有意的:两者都是纯函数包,不依赖数据�
 
 - **`strings.Builder.WriteString` 在本仓库会触发 `revive` 的 `unhandled-error`。** 既有写法是 `_, _ = b.WriteString(...)`(`backend/plugin/lineage/starrocks/rawsql.go:84`)。两个包都已经是这个写法,`golangci-lint` 0 issues。
 - **`rawsql.go` 是"按 token span 重建源文本"的现成先例**,与 `sqlsanitize` 完全同构(`exprText` 从 `Loc.Start:Loc.End` 拼回文本)。改这个包之前先读它。
+
+### 13.9 P1 数据模型落地记录
+
+四张表、一份增量迁移、三个 store 文件。两份 schema 文件(`LATEST.sql` 与 `0019##application_sql.sql`)都在 PostgreSQL 16 上实跑过,增量在已建好的库上重跑只有 `NOTICE ... already exists`,没有报错。
+
+三个只有**真跑**才会暴露的问题,记下来免得再犯:
+
+| 问题 | 症状 | 处理 |
+| --- | --- | --- |
+| `last_report_id` 可空 | `Scan error: converting NULL to string is unsupported` | 改成 `NOT NULL DEFAULT ''`,空串即"还没接受过上报" |
+| `Authenticate` 的 JOIN 用错键 | `operator does not exist: bigint = text` | `application_id` 改成公开 id 之后,JOIN 要写 `a.application_id = k.application_id` |
+| `INSERT ... RETURNING s.guid` 没有别名可绑 | `missing FROM-clause entry for table "s"` | 列列表统一用表名限定而不是别名——`INSERT ... RETURNING` 没有 `FROM`,`s` 绑不上 |
+
+store 的守门测试照仓库惯例放在纯逻辑上(`application_sql_pure_test.go`):冲突目标是语句身份、**冲突时不重写 `guid`/`application_sql_id`/`sql_text`**、观测是累加而不是覆盖、汇总从观测算出、孤语句清理以"没有观测"为条件。这五条都被断言,而不是靠读代码。
+
+端到端行为(建应用 → 发 key → 认证 → 上报 → 跨应用去重 → 汇总 → 镜像 → 读回 → 撤销 key → 删应用保语句 → 删最后一个应用清理孤语句与镜像)本轮用一个连真库的一次性探针跑通过,**但那个探针已删除**;它要由 P3 的集成测试补成常驻用例,否则 P1 之后的 SQL 改动没有回归保护。
 
 ## 附:一句话总览
 

@@ -864,6 +864,33 @@ message ManualSQLMetadata {
   string database_name = 10;
 }
 
+// ApplicationSQLMetadata is one statement an application reported, with every literal
+// already replaced by `?`. The row is per distinct statement, not per application: which
+// applications ran it is recorded in application_sql_observation.
+message ApplicationSQLMetadata {
+  // The stable identifier of the statement, generated when it is first received. It
+  // survives a change to the fingerprint rules, which is what keeps the object's lineage
+  // and history attached.
+  string application_sql_id = 1;
+
+  // A display label taken from the statement's first line. The full text is in
+  // sql_text.
+  string name = 2;
+
+  // The parameterized statement. This is the only form ever stored: the text an
+  // application sends is rewritten before it reaches this table.
+  string sql_text = 3;
+
+  // The instance that reported it. Format: instances/{instance}
+  string instance_resource = 4;
+
+  // The database the statement ran against.
+  string database_name = 5;
+
+  // The schema, empty for the MySQL family.
+  string schema_name = 6;
+}
+
 message StoredMetadata {
   oneof type {
     DatabaseSchemaMetadata database_schema_metadata = 1;
@@ -879,6 +906,7 @@ message StoredMetadata {
     OpenLineageTaskSummary openlineage_task_summary = 14;
     ManualSQLMetadata manual_sql_metadata = 15;
     ColumnMetadata column_metadata = 16;
+    ApplicationSQLMetadata application_sql_metadata = 17;
   }
 
   reserved 9, 11, 12;

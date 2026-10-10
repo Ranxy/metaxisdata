@@ -3606,6 +3606,11 @@ export enum MetaType {
   MANUAL_SQL = 18,
 
   /**
+   * @generated from enum value: APPLICATION_SQL = 19;
+   */
+  APPLICATION_SQL = 19,
+
+  /**
    * @generated from enum value: VIEW = 5;
    */
   VIEW = 5,
