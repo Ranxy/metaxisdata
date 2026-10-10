@@ -19,119 +19,121 @@
     />
 
     <Card>
-      <PageState
-        :loading="isLoading"
-        :error="error"
-      >
-        <EmptyState
-          v-if="manualSqls.length === 0"
-          :icon="FileCode2"
-          :title="t('manualSqlManagement.empty')"
-        />
-
-        <div v-else>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{{ t("manualSqlManagement.titleColumn") }}</TableHead>
-                <TableHead>{{ t("manualSqlManagement.schema") }}</TableHead>
-                <TableHead>{{ t("manualSqlManagement.tags") }}</TableHead>
-                <TableHead>{{ t("manualSqlManagement.updatedAt") }}</TableHead>
-                <TableHead class="w-44 text-right">{{ t("manualSqlManagement.actions") }}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <TableRow
-                v-for="item in manualSqls"
-                :key="item.name"
-              >
-                <TableCell>
-                  <div class="font-medium">{{ item.title || extractManualSqlId(item.name) }}</div>
-                  <div
-                    v-if="showsIdentifier(item)"
-                    class="mt-1 text-xs text-muted-foreground"
-                  >
-                    {{ extractManualSqlId(item.name) }}
-                  </div>
-                  <div
-                    v-if="item.comment"
-                    class="mt-2 line-clamp-2 max-w-xl text-xs text-muted-foreground"
-                  >
-                    {{ item.comment }}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  {{ item.schemaName || t("metadataBrowser.defaultSchema") }}
-                </TableCell>
-                <TableCell>
-                  <div class="flex flex-wrap gap-2">
-                    <Badge
-                      v-for="tag in item.tags"
-                      :key="tag"
-                      variant="secondary"
-                    >
-                      {{ tag }}
-                    </Badge>
-                    <span
-                      v-if="item.tags.length === 0"
-                      class="text-muted-foreground"
-                    >
-                      -
-                    </span>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  {{ formatTimestamp(item.updatedAt) }}
-                </TableCell>
-                <TableCell class="text-right">
-                  <div class="flex items-center justify-end gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      @click="openMetadata(item.guid)"
-                    >
-                      {{ t("manualSqlManagement.metadata") }}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      @click="openLineage(item.guid)"
-                    >
-                      {{ t("manualSqlManagement.lineage") }}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      :aria-label="t('common.edit')"
-                      @click="openEditModal(item)"
-                    >
-                      <Pencil class="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      class="text-destructive"
-                      :aria-label="t('common.delete')"
-                      @click="openDeleteModal(item)"
-                    >
-                      <Trash2 class="h-4 w-4" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
-
-          <TablePager
-            v-model:page-size="pageSize"
-            :has-previous="hasPrevious"
-            :has-next="hasNext"
-            :disabled="isLoading"
-            @previous="goToPreviousPage"
-            @next="goToNextPage"
+      <CardContent>
+        <PageState
+          :loading="isLoading"
+          :error="error"
+        >
+          <EmptyState
+            v-if="manualSqls.length === 0"
+            :icon="FileCode2"
+            :title="t('manualSqlManagement.empty')"
           />
-        </div>
-      </PageState>
+
+          <div v-else>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{{ t("manualSqlManagement.titleColumn") }}</TableHead>
+                  <TableHead>{{ t("manualSqlManagement.schema") }}</TableHead>
+                  <TableHead>{{ t("manualSqlManagement.tags") }}</TableHead>
+                  <TableHead>{{ t("manualSqlManagement.updatedAt") }}</TableHead>
+                  <TableHead class="w-44 text-right">{{ t("manualSqlManagement.actions") }}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow
+                  v-for="item in manualSqls"
+                  :key="item.name"
+                >
+                  <TableCell>
+                    <div class="font-medium">{{ item.title || extractManualSqlId(item.name) }}</div>
+                    <div
+                      v-if="showsIdentifier(item)"
+                      class="mt-1 text-xs text-muted-foreground"
+                    >
+                      {{ extractManualSqlId(item.name) }}
+                    </div>
+                    <div
+                      v-if="item.comment"
+                      class="mt-2 line-clamp-2 max-w-xl text-xs text-muted-foreground"
+                    >
+                      {{ item.comment }}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    {{ item.schemaName || t("metadataBrowser.defaultSchema") }}
+                  </TableCell>
+                  <TableCell>
+                    <div class="flex flex-wrap gap-2">
+                      <Badge
+                        v-for="tag in item.tags"
+                        :key="tag"
+                        variant="secondary"
+                      >
+                        {{ tag }}
+                      </Badge>
+                      <span
+                        v-if="item.tags.length === 0"
+                        class="text-muted-foreground"
+                      >
+                        -
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    {{ formatTimestamp(item.updatedAt) }}
+                  </TableCell>
+                  <TableCell class="text-right">
+                    <div class="flex items-center justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        @click="openMetadata(item.guid)"
+                      >
+                        {{ t("manualSqlManagement.metadata") }}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        @click="openLineage(item.guid)"
+                      >
+                        {{ t("manualSqlManagement.lineage") }}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        :aria-label="t('common.edit')"
+                        @click="openEditModal(item)"
+                      >
+                        <Pencil class="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        class="text-destructive"
+                        :aria-label="t('common.delete')"
+                        @click="openDeleteModal(item)"
+                      >
+                        <Trash2 class="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+
+            <TablePager
+              v-model:page-size="pageSize"
+              :has-previous="hasPrevious"
+              :has-next="hasNext"
+              :disabled="isLoading"
+              @previous="goToPreviousPage"
+              @next="goToNextPage"
+            />
+          </div>
+        </PageState>
+      </CardContent>
     </Card>
 
     <Dialog v-model:open="showFormModal">
@@ -358,7 +360,7 @@ import TablePager from "@/components/common/TablePager.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
