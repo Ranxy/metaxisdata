@@ -32,7 +32,7 @@
 | --- | --- | --- | --- | --- |
 | MySQL `LOAD DATA INFILE …` / `FIELDS TERMINATED BY …` | ✗ | ✗ | — | ✓ |
 | MySQL `JSON_TABLE(… , '<path>' COLUMNS (x INT PATH '<p>'))` | ✗ | ✗ | — | ✓ |
-| PostgreSQL `COPY … FROM '…'` | ✗ | ✗ | ✗ | ✓ |
+| PostgreSQL `COPY … FROM '…'` | ✓ | ✗ | ✗ | ✓ |
 | PostgreSQL `… - INTERVAL '1 year'` | ✗ | ✗ | ✗ | ✓ |
 | StarRocks `COPY INTO t FROM '…'` | ✗ | ✗ | — | ✓ |
 | 其余全部位置(20 个抽查形状 + 语料里的其余部分) | ✓ | ✓ | ✓ | ✓ |
@@ -510,7 +510,9 @@ default:
 
 实测 25 个触发面的形状 **25/25 全部取对**(见 §13)。所以这个助手只需要读 `InsertStmt` 与 `DeleteStmt` 的目标关系,不需要处理 JOIN 树、别名回解、DDL——**三个方言族合计几十行,不是各 60 行**。
 
-**代码落点。** 并入 `sqlsanitize`(它本来就在做 lexer 层的工作),或新包 `backend/plugin/lineage/appsqltarget/`(如果按"它是不是血缘概念"来划)。不改分析器契约,不改语料契约,也不碰 omni——这又是一处"在 omni 缺口处就地补一小段"的先例,和 `starrocks/viewbody.go` 同类。
+**代码落点(已定):`backend/plugin/dmltarget/`**,与 `sqlsanitize` 并列的一个小包,不塞进 `lineage/` 那棵树——那里有一套针对分析器的规则(生成物、语料门禁),而这个助手不是分析器。不改分析器契约,不改语料契约,也不碰 omni。
+
+一个 MySQL 特有的坑,已在实现时堵住:`DELETE o FROM orders o JOIN users u …` 这种形式把**别名**放进 delete 目标列表,`o` 不是表。规则是"带 `USING` 子句的 DELETE 一律拒答",而不是猜——这类语句引用列,分析器本来就给了答案,不会问到我们。
 
 **考虑过但不采用:**
 
@@ -609,13 +611,16 @@ default:
 
 | 阶段 | 交付 | 验证 |
 | --- | --- | --- |
-| ~~**P0 spike**~~ **已完成** | 三件事全部结案,见 §13:①字面量判定改用 token 源文本切片,不依赖上游未导出的类型常量;②在仓库自带语料(642 条可分析语句)上跑完脱敏幂等性与血缘等价性;③D9 取表助手在真实触发面上 25/25。探针留在 `backend/spike/`(标注为一次性),开工 P2 时删除或提升 | 实测报告见 §13;表级边能被图读取已加为常驻测试 `TestBuildLineageGraphDrawsTableLevelEdges` |
+| ~~**P0 spike**~~ **已完成** | 三件事全部结案,见 §13:①字面量判定改用 token 源文本切片,不依赖上游未导出的类型常量;②在仓库自带语料(642 条可分析语句)上跑完脱敏幂等性与血缘等价性;③取表助手在真实触发面上 25/25 | 实测报告见 §13;表级边能被图读取已加为常驻测试 `TestBuildLineageGraphDrawsTableLevelEdges` |
+| ~~**P2 脱敏与指纹**~~ **已完成** | `backend/plugin/sqlsanitize/`:`Sanitize` / `Analyzable` / `Statement{Text, Canonical, Fingerprint}` / `Version`,含语料等价性、幂等性、字面量分类与中性字面量矩阵四组测试 | `go test ./backend/plugin/sqlsanitize/`;`golangci-lint` 0 issues |
+| ~~**D9 取表助手**~~ **已完成** | `backend/plugin/dmltarget/`:`Targets` / `ErrNoTarget`,含触发面 25 例、边界与拒答三组测试 | `go test ./backend/plugin/dmltarget/`;`golangci-lint` 0 issues |
 | **P1 数据模型** | 四张表 + 增量迁移 + `application`/`application_sql`/观测的 store 层 | `go test ./backend/store/`;schema 守卫测试(唯一键、级联、汇总重算) |
-| **P2 脱敏与指纹** | `backend/plugin/sqlsanitize` 包 + 幂等性/语料测试 | `go test ./backend/plugin/sqlsanitize/` |
-| **P3 摄入与管理 API** | 上报端点 + key 认证 + `ApplicationService` 的 CRUD 与 key 管理 + 权限常量与角色 | handler 单测(无 key / 坏 key / 停用 / 逐项 REJECTED / 超体超批 / `reportId` 去重);`go test ./backend/api/v1/` |
-| **P4 血缘接入** | `MetaType_APPLICATION_SQL` + registry 镜像 + runner 的 `buildSQL` 分支 + 分析器分支 + 写入/只读分类 + §6.4 的服务端取表(D9) | `go test ./backend/plugin/lineage/...`、`go test ./backend/runner/lineageanalyzer/`;集成:`make test-integration`(上报 → 图上可见边) |
+| **P3 摄入与管理 API** | 上报端点(含 §5.4 的分析器闸门)+ key 认证 + `ApplicationService` 的 CRUD 与 key 管理 + 权限常量与角色 | handler 单测(无 key / 坏 key / 停用 / 逐项 REJECTED / 超体超批 / `reportId` 去重);`go test ./backend/api/v1/` |
+| **P4 血缘接入** | `MetaType_APPLICATION_SQL` + registry 镜像 + runner 的 `buildSQL` 分支 + 分析器分支 + 写入/只读分类(消费 P2 与 D9 两个包) | `go test ./backend/plugin/lineage/...`、`go test ./backend/runner/lineageanalyzer/`;集成:`make test-integration`(上报 → 图上可见边) |
 | **P5 前端** | 应用管理页、应用 SQL 页、origin 第三类、图例、i18n | `pnpm --dir frontend biome:check && lint && i18n && type-check && test run` |
 | **P6 收尾** | 把本文件改写成维护参考并在 `.agents/docs/README.md` 加行;`docs/` 里补一份面向接入方的接口文档(上报格式、key 申请、重试语义、占位符约定) | 文档 review |
+
+P2 与 D9 先于 P1 落地是有意的:两者都是纯函数包,不依赖数据模型,先把它们做成可测的实体,后面接摄入路径时就只剩接线。
 
 ## 11. 风险与未决问题
 
@@ -646,13 +651,13 @@ default:
 ### 待决(不影响动工,但要在 P0 定)
 
 - **N8 关键字大小写归一**是否做(§4.3)。建议推迟。
-- **§6.4 取表助手(D9)的代码落点**:并入 `sqlsanitize` 还是新包 `backend/plugin/lineage/appsqltarget/`。P0 按"它是不是血缘概念"来定。
+- **N4–N6 何时加**:折叠规则改的是"什么算同一条语句",要等 §13.7 那份真实应用语料才能量出过并的代价。加之前不动 `sqlsanitize.Version`。
 
 ## 12. 验收与测试
 
 | 层 | 断言 |
 | --- | --- |
-| `sqlsanitize` | `Sanitize` 幂等;字符串里的 `?` 与注释里的字面量不被误替换;`'`/`"`/`` ` ``/`$$`/`x'..'` 各形态的字面量判定逐例;存储文本保留原始空白、只删注释;N4–N6 的折叠逐例;`Analyzable` 产出的文本能被三个方言族的分析器接受 |
+| `sqlsanitize`(**已实现**) | `Sanitize` 幂等;字符串里的 `?` 与注释里的字面量不被误替换;`'`/`"`/`` ` ``/`$$`/`x'..'` 各形态的字面量判定逐例;存储文本保留原始空白、只删注释;`Analyzable` 产出的文本能被三个方言族的分析器接受。N4–N6 未实现,见 §13.7 |
 | 指纹 | 同义语句(IN 长度不同、批量行数不同、`1+1` vs `2`、字面量不同)得到同一指纹;不同表/不同列名**不**合并;`fingerprint_version` 变更后重算 pass 能合并并保住计数等于各自之和 |
 | 摄入 handler | 无 key / 坏 key / 撤销 / 停用 → 401 且不落库;逐项 REJECTED 不连坐;超体 413、超批 400;`reportId` 重放不重复计数;`WARN` 日志含语句摘要与原因 |
 | store | 唯一键冲突走 upsert 而不是插重复;观测首末时间取极值、次数累加;汇总与观测表一致;删应用级联后孤语句及其 registry/血缘/版本行一并消失 |
@@ -663,7 +668,7 @@ default:
 
 ## 13. P0 spike 结论(已完成)
 
-> 探针留在 `backend/spike/`(一次性,开工 P2 时删除或提升),外加一条常驻测试 `TestBuildLineageGraphDrawsTableLevelEdges`(`backend/api/v1/lineage_service_graph_test.go`)。本节记录的每个数字都来自这两处的实跑。
+> 本节记录的每个数字都来自实跑。探针已提升为 `backend/plugin/sqlsanitize/` 与 `backend/plugin/dmltarget/` 两个包(§13.8),外加一条常驻测试 `TestBuildLineageGraphDrawsTableLevelEdges`(`backend/api/v1/lineage_service_graph_test.go`)。
 
 ### 13.1 语料
 
@@ -677,7 +682,7 @@ default:
 | --- | --- |
 | 字面量判定要不要依赖上游的 token 类型常量? | **不要。** `Token` 的 `Loc`/`End` 给出原始文本切片,按首字符形状判定即可,与上游常量、与 `Str` 的解码方式都无关。上游改编号不会再静默失效——§11 原先那条残余风险因此消失 |
 | 注释要自己识别吗? | **不要。** 两个方言族的 lexer 都不把注释产出成 token,按 span 重建天然丢弃 |
-| 中性字面量选什么? | **任何字符串字面量**,取 `'?'`。`NULL` / `0` 在 MySQL `LOAD DATA`、`JSON_TABLE PATH` 与 PostgreSQL `INTERVAL`、`COPY` 上被拒;`$n` 在 PostgreSQL 的 `INTERVAL` / `COPY` 上被拒,于是"PostgreSQL 用 `$n`"被推翻,三套方言派生塌成一条规则 |
+| 中性字面量选什么? | **任何字符串字面量**,取 `'?'`。`NULL` 与 `0` 在 MySQL `LOAD DATA`、`JSON_TABLE PATH`、PostgreSQL `INTERVAL`、StarRocks `COPY INTO` 上被拒(`NULL` 唯独在 PostgreSQL `COPY` 上侥幸通过);`$n` 在 PostgreSQL 的 `COPY` / `INTERVAL` 上被拒——于是"PostgreSQL 用 `$n`"被推翻,三套方言派生塌成一条规则。完整矩阵已固化在 `TestNeutralLiteralIsTheOnlySubstituteThatParsesEverywhere` |
 
 ### 13.3 脱敏的质量(642 条)
 
@@ -725,18 +730,31 @@ default:
 - **N4 / N5 / N6 未实现**:`IN` 列表折叠、`VALUES` 组折叠、常量表达式折叠只影响**指纹粒度**,不影响血缘等价性;本轮实现的是 N1–N3,折叠规则的收益要用真实语料量。
 - **TiDB / MariaDB 未单独跑**:它们与 MySQL 共享同一份分析器正文(生成物),行为一致,但两条独立语料仍应各跑一遍。
 
-### 13.8 留在 `backend/spike/` 的三个探针
+### 13.8 探针已提升为仓库包
 
-| 探针 | 钉住什么 |
+一次性探针(`backend/spike/`)已删除,内容落成两个包。它们都是纯函数、不依赖数据模型,所以先于 P1 落地。
+
+**`backend/plugin/sqlsanitize/`**
+
+| 文件 | 内容 / 钉住什么 |
 | --- | --- |
-| `TestCorpusSanitize` | §13.3 的四项指标(拒绝数 / 幂等 / 等价 / 差异数) |
-| `TestD9TriggerPopulation` | §13.4:每个形状先断言"分析器确实给零关系",再检查取表 |
-| `TestSubstituteHypothesis` | §13.2 的那张中性字面量表 |
+| `sanitize.go` | `Sanitize(engine, sql) (Statement, error)`、`Analyzable(engine, text) string`、`Statement{Text, Canonical, Fingerprint}`、`Version`、`ErrUnlexable` |
+| `token.go` | `tokenSpans`(三方言的字节偏移)、`isLiteral`(按源文本切片判定)、`stripComments` |
+| `sanitize_test.go` | 字面量分类逐形态、字面量替换与留白、注释删除、幂等、引号标识符里的 `?`、指纹忽略空白 |
+| `corpus_test.go` | §13.3 的验收:642 条语料上 0 拒绝、100% 幂等、≥98% 逐边相同,且**绝对要求**"脱敏前能分析、脱敏后仍能分析" |
+| `neutral_test.go` | §13.2 的完整替换矩阵(含 `NULL` 唯独在 PostgreSQL `COPY` 上通过、`$n` 在 `COPY`/`INTERVAL` 上失败的细节) |
 
-两条实现经验,顺手记下免得 P2 再踩:
+**`backend/plugin/dmltarget/`**
 
-- **`strings.Builder.WriteString` 在本仓库会触发 `revive` 的 `unhandled-error`。** 既有写法是 `_, _ = b.WriteString(...)`(`backend/plugin/lineage/starrocks/rawsql.go:84`)。本轮探针已改成这个写法,`golangci-lint run ./backend/spike/...` 为 0 issues。
-- **`rawsql.go` 就是"按 token span 重建源文本"的现成先例**,与 sanitizer 要做的完全同构(`exprText` 从 `Loc.Start:Loc.End` 拼回文本)。P2 实现时先读它,而不是从零设计。
+| 文件 | 内容 / 钉住什么 |
+| --- | --- |
+| `target.go` | `Targets(engine, sql) ([]model.ObjectIdentifier, error)`、`ErrNoTarget`;各方言的限定名规则与 MySQL 的 `USING` 拒答规则 |
+| `target_test.go` | 触发面 25 例逐条取对;边界侧断言"助手拒答的这些形状,分析器本来就给了答案";拒答侧防"发明一张表" |
+
+两条实现经验,顺手记下:
+
+- **`strings.Builder.WriteString` 在本仓库会触发 `revive` 的 `unhandled-error`。** 既有写法是 `_, _ = b.WriteString(...)`(`backend/plugin/lineage/starrocks/rawsql.go:84`)。两个包都已经是这个写法,`golangci-lint` 0 issues。
+- **`rawsql.go` 是"按 token span 重建源文本"的现成先例**,与 `sqlsanitize` 完全同构(`exprText` 从 `Loc.Start:Loc.End` 拼回文本)。改这个包之前先读它。
 
 ## 附:一句话总览
 
