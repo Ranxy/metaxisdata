@@ -455,7 +455,20 @@ D1' 的直接后果是**画布上多出等于"不同语句数"的节点**。三�
 
 选 C 的理由:这是唯一既不给应用加负担、又不放弃图覆盖的解,而且改动被限制在一个窄分支里,和仓库已有的"在 omni 缺口处就地补一小段解析"的先例一致(`starrocks/viewbody.go`)。它要新增一个 `sqlsanitize` 之外的方言小助手,建议放在 `backend/plugin/lineage/appsqltarget/` 或直接并入 `sqlsanitize` 包,由 P0 spike 定。
 
-拿到目标表后,零关系写入型的边是**表级边**:`语句.guid → 目标表`(列名为空)。表级边是本仓库已有的形状(谓词影响边的 target 列为空,`algorithm/influence.go:122`;OpenLineage 的 `tableLevelLineage` 也是表级边),图的收敛逻辑按 (source_guid, target_guid) 折叠,不依赖列名,因此能被正常画出来。**这一条要在实现时用一个图读取的测试确认**,列在 §12。
+拿到目标表后,零关系写入型的边是**表级边**:`语句.guid → 目标表`(列名为空)。表级边是本仓库已有的形状(谓词影响边的 target 列为空,`algorithm/influence.go:122`;OpenLineage 的 `tableLevelLineage` 也是表级边),能被正常画出来——这一点已经**读码确认**,不再是待验项:
+
+`buildLineageGraph`(`backend/api/v1/lineage_service_graph.go:123`)的邻居发现只用两端 GUID:
+
+```go
+case edge.TargetGUID == node.guid && edge.SourceGUID != node.guid:
+    peer, distance = edge.SourceGUID, node.distance-1
+case edge.SourceGUID == node.guid && edge.TargetGUID != node.guid:
+    peer, distance = edge.TargetGUID, node.distance+1
+default:
+    continue                       // 唯一被丢掉的是自环
+```
+
+列名只在 `columnLineageKey`(`:205`)里参与去重,从不参与"这条边算不算一个邻居"。而 `语句 → 目标表` 的两端 GUID 不同,不是自环,所以两个节点都会被收进结果。
 
 ### 6.5 新增第三类 origin
 
