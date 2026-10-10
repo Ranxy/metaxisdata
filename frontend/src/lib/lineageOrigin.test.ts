@@ -17,6 +17,12 @@ describe("relationOrigin", () => {
     expect(relationOrigin(rel(MetaType.OPENLINEAGE))).toBe("openlineage");
   });
 
+  it("reads a reported statement as application SQL", () => {
+    expect(relationOrigin(rel(MetaType.APPLICATION_SQL))).toBe(
+      "applicationsql"
+    );
+  });
+
   it("reads every analyzer meta type as SQL", () => {
     expect(relationOrigin(rel(MetaType.VIEW))).toBe("sql");
     expect(relationOrigin(rel(MetaType.TABLE))).toBe("sql");
@@ -31,6 +37,7 @@ describe("originColor", () => {
     expect(originColor("openlineage", 0.5)).toBe(
       "hsl(var(--lineage-openlineage) / 0.5)"
     );
+    expect(originColor("applicationsql")).toBe("hsl(var(--lineage-appsql))");
     expect(originColor("mixed")).toBe("hsl(var(--lineage-mixed))");
   });
 });
@@ -40,6 +47,9 @@ describe("originLabelKey", () => {
     expect(originLabelKey("sql")).toBe("lineageGraph.originSql");
     expect(originLabelKey("openlineage")).toBe(
       "lineageGraph.originOpenlineage"
+    );
+    expect(originLabelKey("applicationsql")).toBe(
+      "lineageGraph.originApplicationSql"
     );
     expect(originLabelKey("mixed")).toBe("lineageGraph.originMixed");
   });
@@ -52,11 +62,16 @@ describe("countRelationsByOrigin", () => {
         rel(MetaType.VIEW),
         rel(MetaType.VIEW),
         rel(MetaType.OPENLINEAGE),
+        rel(MetaType.APPLICATION_SQL),
       ])
-    ).toEqual({ sql: 2, openlineage: 1 });
+    ).toEqual({ sql: 2, openlineage: 1, applicationsql: 1 });
   });
 
   it("reports zeroes for no relations", () => {
-    expect(countRelationsByOrigin([])).toEqual({ sql: 0, openlineage: 0 });
+    expect(countRelationsByOrigin([])).toEqual({
+      sql: 0,
+      openlineage: 0,
+      applicationsql: 0,
+    });
   });
 });

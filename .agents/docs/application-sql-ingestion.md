@@ -623,7 +623,7 @@ default:
 | ~~**P1 数据模型**~~ **已完成** | 四张表 + `0019##application_sql.sql` 增量 + `backend/store/{application,application_api_key,application_sql}.go`;见 §13.9 | `go test ./backend/store/`、`./backend/migrator/`;`golangci-lint` 0 issues;两份 schema 已在真 PostgreSQL 上跑过并验幂等 |
 | ~~**P3 摄入与管理 API**~~ **已完成** | 上报端点(含 §5.4 的分析器闸门)+ key 认证 + `ApplicationService` 的十个 RPC + 权限目录与成员基线;见 §13.10 | handler 单测(无 key / 坏 key / 超体 / 超批 / 作用域 / 逐项 REJECTED / `reportId` 去重);`TestEveryMethodIsPermissionGated` 与 `TestCatalogMatchesSource` 通过;`go test ./backend/...` 全绿 |
 | ~~**P4 血缘接入**~~ **已完成** | runner 扫描 `APPLICATION_SQL`、`buildSQL` 返回送分析文本、与 manual SQL 同形的边、读/写分类 + `kind` 回写 + D9 表级出边;`GetMetadataSchema` 分支;见 §13.11 | `go test ./backend/runner/lineageanalyzer/`(分类逐例);`go test ./backend/...` 全绿 |
-| **P5 前端** | 应用管理页、应用 SQL 页、origin 第三类、图例、i18n | `pnpm --dir frontend biome:check && lint && i18n && type-check && test run` |
+| **P5 前端** | ①origin 第三类(已完成,§13.12);②应用管理页与应用 SQL 页;③图节点标签 | `pnpm --dir frontend biome:check && lint && i18n && type-check && test run` |
 | **P6 收尾** | 把本文件改写成维护参考并在 `.agents/docs/README.md` 加行;`docs/` 里补一份面向接入方的接口文档(上报格式、key 申请、重试语义、占位符约定) | 文档 review |
 
 P2 与 D9 先于 P1 落地是有意的:两者都是纯函数包,不依赖数据模型,先把它们做成可测的实体,后面接摄入路径时就只剩接线。
@@ -813,6 +813,24 @@ runner 现在把上报的语句当一等对象处理:
 分类函数是纯的(吃 `catalog.AnalysisContext` + 关系列表),所以 `TestClassifyApplicationSQL` 逐例钉住了六种形状:分析器给了答案的写、常量 INSERT(未限定与限定)、裸 DELETE、PG 常量 INSERT、读、以及"既没边也不是写"的 `SELECT 1`。另有两条:目标解析回自身时**不写自环**(图的遍历只丢这一种形状),以及同一张表提两次只写一条边。
 
 **留给 P5 的一件事**:图节点的标签。`convertLineageGraphNode` 对注册表里的对象一律回退到 GUID 最后一段,所以应用 SQL 节点现在显示成 `__application_sql__/<id>`——manual SQL 节点同样是 `__manual_sql__/<id>`,不是我引入的退步,但一个随机 id 当标签对使用者毫无意义。`ApplicationSQLMetadata.name`(语句首行)已经在镜像里备好,`lineageAsset.ts` 的 `assetViewFor` 读它即可。
+
+### 13.12 P5 第一步:origin 第三类(已完成)
+
+血缘图现在把关系分成三类,判据是关系自带的 `meta_type`:
+
+| 改动 | 位置 |
+| --- | --- |
+| `LineageOrigin` 加 `"applicationsql"`,色板/虚线/图例/hint 各加一项 | `frontend/src/lib/lineageOrigin.ts`、`LineageLegend.vue` |
+| 琥珀色 `--lineage-appsql`,两个主题各一条 | `frontend/src/assets/styles/main.css` |
+| 虚线样式 `1 3`(sql 实线、openlineage `7 5`、mixed `2 3`),让来源在色盲或灰度下也分得清 | `LINEAGE_ORIGIN_DASH` |
+| i18n 两份 | `lineageGraph.originApplicationSql{,Hint}` |
+| 测试 | `lineageOrigin.test.ts` 加三类断言;`lineageTokens.test.ts` 的 token 计数从 `+3` 改 `+4` |
+
+顺带修了一处真实缺口:`TableLineageSection.vue` 自己那份 `originHintKey` 原来只认 sql / openlineage 两种,表血缘列表里应用 SQL 的边会显示成"SQL 分析"的提示。现在改成三分支。
+
+`eslint.config.mjs` 的 `no-unused-keys` 忽略表加了这两条键:该规则跟不了 `originLabelKey()` 这种"由 helper 返回的键",既有三个 origin 的键本来就在同一张表里、同一条注释下。
+
+**P5 剩下的一件事,以及它为什么比看起来大**:图节点标签。后端已经为 `GetLineageGraph` 的 `APPLICATION_SQL` 节点回填了 `LineageNode.name`(语句首行,§13.11),但**图页根本不读它**——页面自己的画布是从 `GetLineage` 的关系流里搭起来的,而关系里没有名字字段;`lineageAssetView` 只从 GUID 的分段推名字。所以要让节点显示成人能读的标签,得先给页面补一条"GUID → 名字"的来源(比如按需 `GetMetadata` 那几个应用 SQL 节点),那是一个独立的改动,不该混在这一步里。今天 manual SQL 节点同样显示成 `__manual_sql__/<id>`,所以这不是本方案引入的退步。
 
 ## 附:一句话总览
 

@@ -47,6 +47,7 @@
     --lineage-scope-6: 243 75% 59%;
     --lineage-sql: 217 91% 50%;
     --lineage-openlineage: 292 84% 46%;
+    --lineage-appsql: 32 95% 44%;
     --lineage-mixed: 174 84% 28%;
   }
   .dark {
@@ -83,6 +84,7 @@
     --lineage-scope-6: 243 85% 72%;
     --lineage-sql: 213 94% 68%;
     --lineage-openlineage: 291 86% 72%;
+    --lineage-appsql: 32 95% 62%;
     --lineage-mixed: 172 70% 50%;
   }
 }

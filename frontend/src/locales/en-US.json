@@ -527,6 +527,8 @@
     "legendScopes": "Instances in this graph",
     "noRelatedRuns": "No persisted OpenLineage runs are connected to the selected node.",
     "openColumnLineage": "Open column lineage",
+    "originApplicationSql": "Application SQL",
+    "originApplicationSqlHint": "Reported by an application, with every literal replaced by a placeholder.",
     "originLabel": "Lineage source",
     "originMixed": "Both sources",
     "originMixedHint": "One edge bundled both an SQL analysis and an OpenLineage relation.",

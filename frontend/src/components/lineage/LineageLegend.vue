@@ -162,12 +162,14 @@ function originHintKey(origin: LineageOrigin): string {
       return "lineageGraph.originSqlHint";
     case "openlineage":
       return "lineageGraph.originOpenlineageHint";
+    case "applicationsql":
+      return "lineageGraph.originApplicationSqlHint";
     case "mixed":
       return "lineageGraph.originMixedHint";
   }
 }
 
-/** `mixed` is a bundle of both origins rather than a filter of its own, so it is
+/** `mixed` is a bundle of every origin rather than a filter of its own, so it is
  * never dimmed and never toggles. */
 function isOriginDrawn(origin: LineageOrigin): boolean {
   return origin === "mixed" || props.selected.includes(origin);

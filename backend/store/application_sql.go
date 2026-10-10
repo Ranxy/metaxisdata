@@ -513,3 +513,36 @@ func (s *Store) ListApplicationSQLObservations(ctx context.Context, applicationS
 	}
 	return result, nil
 }
+
+// FindApplicationSQLLabels returns a display label per statement GUID, for the callers that
+// only have a GUID and need something a person can read. The graph is that caller: its node
+// names fall back to the last GUID segment, which for a statement is a generated identifier.
+//
+// A GUID the registry does not have is simply absent from the result.
+func (s *Store) FindApplicationSQLLabels(ctx context.Context, guids []string) (map[string]string, error) {
+	result := make(map[string]string, len(guids))
+	if len(guids) == 0 {
+		return result, nil
+	}
+	rows, err := s.GetDB().QueryContext(ctx, `
+		SELECT guid, sql_text FROM application_sql WHERE guid = ANY($1)
+	`, pq.Array(guids))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to query the reported statement labels")
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var guid, sqlText string
+		if err := rows.Scan(&guid, &sqlText); err != nil {
+			return nil, errors.Wrap(err, "failed to scan a reported statement label")
+		}
+		if label := statementLabel(sqlText); label != "" {
+			result[guid] = label
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "rows iteration error for the reported statement labels")
+	}
+	return result, nil
+}

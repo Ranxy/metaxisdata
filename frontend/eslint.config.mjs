@@ -119,6 +119,8 @@ export default [
             "lineageGraph.originSqlHint",
             "lineageGraph.originOpenlineage",
             "lineageGraph.originOpenlineageHint",
+            "lineageGraph.originApplicationSql",
+            "lineageGraph.originApplicationSqlHint",
             "lineageGraph.originMixed",
             "lineageGraph.originMixedHint",
             // Dynamically used: the notification catalog in

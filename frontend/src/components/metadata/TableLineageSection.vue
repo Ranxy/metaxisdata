@@ -536,9 +536,14 @@ function relationOriginDetail(
 }
 
 function originHintKey(origin: RelationOrigin): string {
-  return origin === "openlineage"
-    ? "lineageGraph.originOpenlineageHint"
-    : "lineageGraph.originSqlHint";
+  switch (origin) {
+    case "openlineage":
+      return "lineageGraph.originOpenlineageHint";
+    case "applicationsql":
+      return "lineageGraph.originApplicationSqlHint";
+    case "sql":
+      return "lineageGraph.originSqlHint";
+  }
 }
 
 function assetViewFor(guid: string, external?: ExternalDatasetInfo) {
