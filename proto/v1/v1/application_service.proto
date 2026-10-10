@@ -1,0 +1,296 @@
+syntax = "proto3";
+
+package metaxisdata.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/api/resource.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/timestamp.proto";
+import "v1/annotation.proto";
+import "v1/common.proto";
+
+option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
+
+// ApplicationService manages the applications that report the SQL they run, and the
+// statements they have reported.
+//
+// An application is deliberately not a metadata resource: it has no schema, no columns and
+// no lineage of its own. Creating one issues its first API key, which is the credential the
+// reporting endpoint authenticates; the key names the application, so a report cannot claim
+// to be another one.
+service ApplicationService {
+  rpc CreateApplication(CreateApplicationRequest) returns (CreateApplicationResponse) {
+    option (google.api.http) = {
+      post: "/v1/applications"
+      body: "application"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.applications.create";
+  }
+
+  rpc ListApplications(ListApplicationsRequest) returns (ListApplicationsResponse) {
+    option (google.api.http) = {get: "/v1/applications"};
+    option (metaxisdata.v1.permission) = "metaxisdata.applications.list";
+  }
+
+  rpc UpdateApplication(UpdateApplicationRequest) returns (Application) {
+    option (google.api.http) = {
+      patch: "/v1/{application.name=applications/*}"
+      body: "application"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.applications.update";
+  }
+
+  rpc DeleteApplication(DeleteApplicationRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/{name=applications/*}"};
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.applications.delete";
+  }
+
+  rpc CreateApplicationAPIKey(CreateApplicationAPIKeyRequest) returns (CreateApplicationAPIKeyResponse) {
+    option (google.api.http) = {
+      post: "/v1/{parent=applications/*}/apiKeys"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.applications.apiKeys.create";
+  }
+
+  rpc ListApplicationAPIKeys(ListApplicationAPIKeysRequest) returns (ListApplicationAPIKeysResponse) {
+    option (google.api.http) = {get: "/v1/{parent=applications/*}/apiKeys"};
+    option (metaxisdata.v1.permission) = "metaxisdata.applications.apiKeys.list";
+  }
+
+  rpc RevokeApplicationAPIKey(RevokeApplicationAPIKeyRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/{name=applications/*/apiKeys/*}"};
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.applications.apiKeys.delete";
+  }
+
+  // Lists reported statements. The parent scopes the result to one instance and database.
+  rpc ListApplicationSQLs(ListApplicationSQLsRequest) returns (ListApplicationSQLsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=instances/*/databases/*}/applicationSqls"};
+    option (metaxisdata.v1.permission) = "metaxisdata.applicationSqls.list";
+  }
+
+  // Reads one reported statement. It is addressed by GUID rather than by resource name
+  // because every entry point to a statement already holds a GUID: the lineage graph, the
+  // history page and GetMetadata.
+  rpc GetApplicationSQL(GetApplicationSQLRequest) returns (ApplicationSQL) {
+    option (google.api.http) = {get: "/v1/applicationSqls:get"};
+    option (metaxisdata.v1.permission) = "metaxisdata.applicationSqls.get";
+  }
+
+  rpc DeleteApplicationSQL(DeleteApplicationSQLRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/applicationSqls"};
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.applicationSqls.delete";
+  }
+}
+
+// Application is one application whose statements are reported to the workspace.
+message Application {
+  option (google.api.resource) = {
+    type: "metaxisdata/Application"
+    pattern: "applications/{application}"
+  };
+
+  // The resource name.
+  // Format: applications/{application_id}
+  string name = 1;
+
+  // The stable identifier, equal to the last segment of `name`.
+  string application_id = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The display name. It is unique: it is how a person names the application.
+  string display_name = 3 [(google.api.field_behavior) = REQUIRED];
+
+  string description = 4;
+
+  // A stopped application keeps every row it ever reported, and none of its keys report
+  // anything any more.
+  bool disabled = 5;
+
+  // How many statements the application has reported, over every key it holds.
+  int64 statement_count = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  google.protobuf.Timestamp created_at = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+  google.protobuf.Timestamp updated_at = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// ApplicationAPIKey is one reporting credential. Only its masked form is ever returned
+// after creation.
+message ApplicationAPIKey {
+  // The resource name.
+  // Format: applications/{application_id}/apiKeys/{api_key}
+  string name = 1;
+
+  string api_key_id = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The masked key, safe to display.
+  string masked_key = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  string description = 4;
+
+  google.protobuf.Timestamp created_at = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The last request this key was used for, and how many it has made.
+  google.protobuf.Timestamp last_used_at = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Per-key counters. They stand in for one audit row per request: the audit ledger is kept
+  // forever, so auditing machine traffic would grow it with request volume rather than with
+  // distinct statements.
+  int64 request_count = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+  int64 statement_accepted_count = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+  int64 statement_rejected_count = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// ApplicationSQLEngineKind is the read/write classification of a statement.
+enum ApplicationSQLKind {
+  APPLICATION_SQL_KIND_UNSPECIFIED = 0;
+  // Not analyzed yet: the runner writes the classification after it analyzes the statement.
+  APPLICATION_SQL_KIND_UNKNOWN = 1;
+  APPLICATION_SQL_KIND_READ = 2;
+  APPLICATION_SQL_KIND_WRITE = 3;
+}
+
+// ApplicationSQL is one distinct statement an application reported, with every literal
+// already replaced by `?`.
+message ApplicationSQL {
+  // The globally unique metadata GUID.
+  string guid = 1;
+
+  string application_sql_id = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  string instance_resource_id = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  string database_name = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  string schema_name = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  Engine engine = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The parameterized statement. This is the only form ever stored.
+  string sql_text = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  ApplicationSQLKind kind = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The fingerprint that identifies the statement within its scope, and the version of the
+  // rules that produced it.
+  string fingerprint = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
+  int32 fingerprint_version = 10 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // How many times every application ran it, and when it was first and last seen.
+  int64 execution_count = 11 [(google.api.field_behavior) = OUTPUT_ONLY];
+  google.protobuf.Timestamp first_seen_at = 12 [(google.api.field_behavior) = OUTPUT_ONLY];
+  google.protobuf.Timestamp last_seen_at = 13 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The applications that reported it, with each one's own history.
+  repeated ApplicationSQLObservation observations = 14 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// ApplicationSQLObservation is one application's own history with one statement.
+message ApplicationSQLObservation {
+  string application = 1;
+  string application_display_name = 2;
+  int64 execution_count = 3;
+  google.protobuf.Timestamp first_seen_at = 4;
+  google.protobuf.Timestamp last_seen_at = 5;
+}
+
+message CreateApplicationRequest {
+  Application application = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The first API key's description, so the credential that a fresh application reports with
+  // can be told apart from the ones issued later.
+  string api_key_description = 2;
+}
+
+message CreateApplicationResponse {
+  Application application = 1;
+
+  // The plaintext API key. It is returned once and never stored in a recoverable form.
+  string api_key = 2;
+  ApplicationAPIKey key = 3;
+}
+
+message ListApplicationsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+  // Include stopped applications. The default lists only the ones a report may still come
+  // from.
+  bool show_disabled = 3;
+}
+
+message ListApplicationsResponse {
+  repeated Application applications = 1;
+  string next_page_token = 2;
+}
+
+message UpdateApplicationRequest {
+  Application application = 1 [(google.api.field_behavior) = REQUIRED];
+  google.protobuf.FieldMask update_mask = 2;
+}
+
+message DeleteApplicationRequest {
+  // Format: applications/{application_id}
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message CreateApplicationAPIKeyRequest {
+  // Format: applications/{application_id}
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+  string description = 2;
+}
+
+message CreateApplicationAPIKeyResponse {
+  string api_key = 1;
+  ApplicationAPIKey key = 2;
+}
+
+message ListApplicationAPIKeysRequest {
+  // Format: applications/{application_id}
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListApplicationAPIKeysResponse {
+  repeated ApplicationAPIKey keys = 1;
+}
+
+message RevokeApplicationAPIKeyRequest {
+  // Format: applications/{application_id}/apiKeys/{api_key_id}
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListApplicationSQLsRequest {
+  // Format: instances/{instance}/databases/{database}
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  int32 page_size = 2;
+  string page_token = 3;
+
+  // Only the statements this application has reported.
+  string application = 4;
+  string schema_name = 5;
+  ApplicationSQLKind kind = 6;
+  // Full-text search over the parameterized statements.
+  string query = 7;
+}
+
+message ListApplicationSQLsResponse {
+  repeated ApplicationSQL application_sqls = 1;
+  string next_page_token = 2;
+}
+
+message GetApplicationSQLRequest {
+  // The globally unique metadata GUID of the statement.
+  string guid = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message DeleteApplicationSQLRequest {
+  // The globally unique metadata GUID of the statement.
+  string guid = 1 [(google.api.field_behavior) = REQUIRED];
+}

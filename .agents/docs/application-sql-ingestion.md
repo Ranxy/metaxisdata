@@ -297,12 +297,13 @@ StarRocks 略有不同:它的 `Token` 用 `Kind` + `ast.Loc{Start,End}`,并提�
 ### 5.1 端点与认证
 
 ```
-POST /v1/applicationSql:report
+POST /api/v1/applicationSql/report
 Authorization: Bearer <application-sql-key>
 Content-Type: application/json
 ```
 
-- 普通 Echo 路由(与 OpenLineage 摄入同层,`backend/server/` 注册),不进 ConnectRPC 拦截器链。
+- 普通 Echo 路由(与 OpenLineage 摄入同层,`backend/server/grpc_routes.go` 注册),不进 ConnectRPC 拦截器链。
+- **路径是 `/api/v1/applicationSql/report` 而不是 `/v1/applicationSql:report`**(实现时改的):ConnectRPC 网关占着 `/v1/*`,而服务器上唯一的另一个机器摄入端点就放在 `/api/v1/` 下,跟着它走比把一条非 ConnectRPC 路由塞进 ConnectRPC 的命名空间清楚。
 - 认证:**只认这个头发。**缺头、头的格式不对、key 已撤销、密钥无效、应用已 `disabled` —— 一律 401,不进入处理。
 - **应用身份取自 key,不取自 payload**。payload 里即便带了应用名也被忽略,响应里回显 key 所属的应用。这样 key 与应用的对应关系是服务端事实,不靠应用自觉。
 
@@ -620,7 +621,7 @@ default:
 | ~~**P2 脱敏与指纹**~~ **已完成** | `backend/plugin/sqlsanitize/`:`Sanitize` / `Analyzable` / `Statement{Text, Canonical, Fingerprint}` / `Version`,含语料等价性、幂等性、字面量分类与中性字面量矩阵四组测试 | `go test ./backend/plugin/sqlsanitize/`;`golangci-lint` 0 issues |
 | ~~**D9 取表助手**~~ **已完成** | `backend/plugin/dmltarget/`:`Targets` / `ErrNoTarget`,含触发面 25 例、边界与拒答三组测试 | `go test ./backend/plugin/dmltarget/`;`golangci-lint` 0 issues |
 | ~~**P1 数据模型**~~ **已完成** | 四张表 + `0019##application_sql.sql` 增量 + `backend/store/{application,application_api_key,application_sql}.go`;见 §13.9 | `go test ./backend/store/`、`./backend/migrator/`;`golangci-lint` 0 issues;两份 schema 已在真 PostgreSQL 上跑过并验幂等 |
-| **P3 摄入与管理 API** | 上报端点(含 §5.4 的分析器闸门)+ key 认证 + `ApplicationService` 的 CRUD 与 key 管理 + 权限常量与角色 | handler 单测(无 key / 坏 key / 停用 / 逐项 REJECTED / 超体超批 / `reportId` 去重);`go test ./backend/api/v1/` |
+| ~~**P3 摄入与管理 API**~~ **已完成** | 上报端点(含 §5.4 的分析器闸门)+ key 认证 + `ApplicationService` 的十个 RPC + 权限目录与成员基线;见 §13.10 | handler 单测(无 key / 坏 key / 超体 / 超批 / 作用域 / 逐项 REJECTED / `reportId` 去重);`TestEveryMethodIsPermissionGated` 与 `TestCatalogMatchesSource` 通过;`go test ./backend/...` 全绿 |
 | **P4 血缘接入** | `MetaType_APPLICATION_SQL` + registry 镜像 + runner 的 `buildSQL` 分支 + 分析器分支 + 写入/只读分类(消费 P2 与 D9 两个包) | `go test ./backend/plugin/lineage/...`、`go test ./backend/runner/lineageanalyzer/`;集成:`make test-integration`(上报 → 图上可见边) |
 | **P5 前端** | 应用管理页、应用 SQL 页、origin 第三类、图例、i18n | `pnpm --dir frontend biome:check && lint && i18n && type-check && test run` |
 | **P6 收尾** | 把本文件改写成维护参考并在 `.agents/docs/README.md` 加行;`docs/` 里补一份面向接入方的接口文档(上报格式、key 申请、重试语义、占位符约定) | 文档 review |
@@ -776,6 +777,26 @@ P2 与 D9 先于 P1 落地是有意的:两者都是纯函数包,不依赖数据�
 store 的守门测试照仓库惯例放在纯逻辑上(`application_sql_pure_test.go`):冲突目标是语句身份、**冲突时不重写 `guid`/`application_sql_id`/`sql_text`**、观测是累加而不是覆盖、汇总从观测算出、孤语句清理以"没有观测"为条件。这五条都被断言,而不是靠读代码。
 
 端到端行为(建应用 → 发 key → 认证 → 上报 → 跨应用去重 → 汇总 → 镜像 → 读回 → 撤销 key → 删应用保语句 → 删最后一个应用清理孤语句与镜像)本轮用一个连真库的一次性探针跑通过,**但那个探针已删除**;它要由 P3 的集成测试补成常驻用例,否则 P1 之后的 SQL 改动没有回归保护。
+
+### 13.10 P3 摄入与管理 API 落地记录
+
+两半:一个普通 HTTP 摄入端点,和一个 ConnectRPC 管理服务。
+
+**摄入端点** `POST /api/v1/applicationSql/report`。身份取自 key 而不是 payload,所以一个上报无法冒充另一个应用。两道闸门都过了才落库,任一道不过只拒那一条,不连坐整批:
+
+1. `sqlsanitize` 把每个字面量换成 `?`——这是 D2"双保险"的**强制**那一半,不是检查应用有没有守约;
+2. 送分析文本必须被**分析器**接受——闸门是分析器本身,不是 parser 调用,因为 StarRocks 那类靠 view-body 兜底能产出完整血缘的 DDL 会被裸 parser 拒掉。
+
+被拒的语句留一条 WARN(应用、引擎、原因、SQL 首行)。两道闸门都不落库,这正是"每一行都存在即有意义"的来源:库里每一行都能被分析。
+
+handler 依赖一个接口而不是 `*store.Store`,所以它的每一种拒绝都能不用数据库测到:无 key、坏 key、超体、超批、无语句、实例名非法、实例不存在、引擎没有分析器、逐项拒绝不连坐、`reportId` 重放不重复计数。
+
+**管理服务** `ApplicationService`,十个 RPC:应用的 CRUD、key 的签发/列出/撤销、语句的列出/读取/删除。建应用时顺带签发第一个 key——没有 key 这份应用什么也做不了。
+
+顺带做的两处改动:
+
+- `lineage.Analyzer` 加了 `Supports` 与 `SplitScript`:摄入端要问"这个引擎有没有分析器",还要**用分析器切分脚本的同一把刀**去切分,否则两个切分器早晚会对"什么算一条语句"产生分歧。
+- 权限目录加了 11 条(`applications.*` 8 条、`applicationSqls.*` 3 条),成员基线只加读的 4 条。**签发 key 是能写入数据的凭据,不进成员基线**——它留在 `workspaceAdmin` 或自定义角色里。
 
 ## 附:一句话总览
 

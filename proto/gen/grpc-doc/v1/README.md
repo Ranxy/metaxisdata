@@ -8,6 +8,35 @@
     - [File-level Extensions](#v1_annotation-proto-extensions)
     - [File-level Extensions](#v1_annotation-proto-extensions)
   
+- [v1/common.proto](#v1_common-proto)
+    - [Engine](#metaxisdata-v1-Engine)
+    - [State](#metaxisdata-v1-State)
+  
+- [v1/application_service.proto](#v1_application_service-proto)
+    - [Application](#metaxisdata-v1-Application)
+    - [ApplicationAPIKey](#metaxisdata-v1-ApplicationAPIKey)
+    - [ApplicationSQL](#metaxisdata-v1-ApplicationSQL)
+    - [ApplicationSQLObservation](#metaxisdata-v1-ApplicationSQLObservation)
+    - [CreateApplicationAPIKeyRequest](#metaxisdata-v1-CreateApplicationAPIKeyRequest)
+    - [CreateApplicationAPIKeyResponse](#metaxisdata-v1-CreateApplicationAPIKeyResponse)
+    - [CreateApplicationRequest](#metaxisdata-v1-CreateApplicationRequest)
+    - [CreateApplicationResponse](#metaxisdata-v1-CreateApplicationResponse)
+    - [DeleteApplicationRequest](#metaxisdata-v1-DeleteApplicationRequest)
+    - [DeleteApplicationSQLRequest](#metaxisdata-v1-DeleteApplicationSQLRequest)
+    - [GetApplicationSQLRequest](#metaxisdata-v1-GetApplicationSQLRequest)
+    - [ListApplicationAPIKeysRequest](#metaxisdata-v1-ListApplicationAPIKeysRequest)
+    - [ListApplicationAPIKeysResponse](#metaxisdata-v1-ListApplicationAPIKeysResponse)
+    - [ListApplicationSQLsRequest](#metaxisdata-v1-ListApplicationSQLsRequest)
+    - [ListApplicationSQLsResponse](#metaxisdata-v1-ListApplicationSQLsResponse)
+    - [ListApplicationsRequest](#metaxisdata-v1-ListApplicationsRequest)
+    - [ListApplicationsResponse](#metaxisdata-v1-ListApplicationsResponse)
+    - [RevokeApplicationAPIKeyRequest](#metaxisdata-v1-RevokeApplicationAPIKeyRequest)
+    - [UpdateApplicationRequest](#metaxisdata-v1-UpdateApplicationRequest)
+  
+    - [ApplicationSQLKind](#metaxisdata-v1-ApplicationSQLKind)
+  
+    - [ApplicationService](#metaxisdata-v1-ApplicationService)
+  
 - [v1/audit_log_service.proto](#v1_audit_log_service-proto)
     - [AuditLog](#metaxisdata-v1-AuditLog)
     - [AuditLogStatus](#metaxisdata-v1-AuditLogStatus)
@@ -18,10 +47,6 @@
     - [AuditLogSeverity](#metaxisdata-v1-AuditLogSeverity)
   
     - [AuditLogService](#metaxisdata-v1-AuditLogService)
-  
-- [v1/common.proto](#v1_common-proto)
-    - [Engine](#metaxisdata-v1-Engine)
-    - [State](#metaxisdata-v1-State)
   
 - [v1/user_service.proto](#v1_user_service-proto)
     - [BatchGetUsersRequest](#metaxisdata-v1-BatchGetUsersRequest)
@@ -379,6 +404,448 @@
 
 
 
+<a name="v1_common-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## v1/common.proto
+
+
+ 
+
+
+<a name="metaxisdata-v1-Engine"></a>
+
+### Engine
+Engine is the database engine of an instance. Only the engines the product
+actually supports are kept: MySQL-compatible ones (MySQL, TiDB, MariaDB,
+OceanBase, StarRocks, Doris), PostgreSQL and SQL Server. The other removed
+values keep their numbers reserved so they can never be silently reused for
+something else.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| ENGINE_UNSPECIFIED | 0 |  |
+| MSSQL | 1 |  |
+| MYSQL | 2 |  |
+| POSTGRES | 3 |  |
+| TIDB | 6 |  |
+| MARIADB | 13 |  |
+| OCEANBASE | 14 |  |
+| STARROCKS | 15 |  |
+| DORIS | 16 |  |
+
+
+
+<a name="metaxisdata-v1-State"></a>
+
+### State
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| STATE_UNSPECIFIED | 0 |  |
+| ACTIVE | 1 |  |
+| DELETED | 2 |  |
+
+
+ 
+
+ 
+
+ 
+
+
+
+<a name="v1_application_service-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## v1/application_service.proto
+
+
+
+<a name="metaxisdata-v1-Application"></a>
+
+### Application
+Application is one application whose statements are reported to the workspace.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | The resource name. Format: applications/{application_id} |
+| application_id | [string](#string) |  | The stable identifier, equal to the last segment of `name`. |
+| display_name | [string](#string) |  | The display name. It is unique: it is how a person names the application. |
+| description | [string](#string) |  |  |
+| disabled | [bool](#bool) |  | A stopped application keeps every row it ever reported, and none of its keys report anything any more. |
+| statement_count | [int64](#int64) |  | How many statements the application has reported, over every key it holds. |
+| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ApplicationAPIKey"></a>
+
+### ApplicationAPIKey
+ApplicationAPIKey is one reporting credential. Only its masked form is ever returned
+after creation.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | The resource name. Format: applications/{application_id}/apiKeys/{api_key} |
+| api_key_id | [string](#string) |  |  |
+| masked_key | [string](#string) |  | The masked key, safe to display. |
+| description | [string](#string) |  |  |
+| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| last_used_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | The last request this key was used for, and how many it has made. |
+| request_count | [int64](#int64) |  | Per-key counters. They stand in for one audit row per request: the audit ledger is kept forever, so auditing machine traffic would grow it with request volume rather than with distinct statements. |
+| statement_accepted_count | [int64](#int64) |  |  |
+| statement_rejected_count | [int64](#int64) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ApplicationSQL"></a>
+
+### ApplicationSQL
+ApplicationSQL is one distinct statement an application reported, with every literal
+already replaced by `?`.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| guid | [string](#string) |  | The globally unique metadata GUID. |
+| application_sql_id | [string](#string) |  |  |
+| instance_resource_id | [string](#string) |  |  |
+| database_name | [string](#string) |  |  |
+| schema_name | [string](#string) |  |  |
+| engine | [Engine](#metaxisdata-v1-Engine) |  |  |
+| sql_text | [string](#string) |  | The parameterized statement. This is the only form ever stored. |
+| kind | [ApplicationSQLKind](#metaxisdata-v1-ApplicationSQLKind) |  |  |
+| fingerprint | [string](#string) |  | The fingerprint that identifies the statement within its scope, and the version of the rules that produced it. |
+| fingerprint_version | [int32](#int32) |  |  |
+| execution_count | [int64](#int64) |  | How many times every application ran it, and when it was first and last seen. |
+| first_seen_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| last_seen_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| observations | [ApplicationSQLObservation](#metaxisdata-v1-ApplicationSQLObservation) | repeated | The applications that reported it, with each one&#39;s own history. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ApplicationSQLObservation"></a>
+
+### ApplicationSQLObservation
+ApplicationSQLObservation is one application&#39;s own history with one statement.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| application | [string](#string) |  |  |
+| application_display_name | [string](#string) |  |  |
+| execution_count | [int64](#int64) |  |  |
+| first_seen_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| last_seen_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-CreateApplicationAPIKeyRequest"></a>
+
+### CreateApplicationAPIKeyRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: applications/{application_id} |
+| description | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-CreateApplicationAPIKeyResponse"></a>
+
+### CreateApplicationAPIKeyResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| api_key | [string](#string) |  |  |
+| key | [ApplicationAPIKey](#metaxisdata-v1-ApplicationAPIKey) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-CreateApplicationRequest"></a>
+
+### CreateApplicationRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| application | [Application](#metaxisdata-v1-Application) |  |  |
+| api_key_description | [string](#string) |  | The first API key&#39;s description, so the credential that a fresh application reports with can be told apart from the ones issued later. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-CreateApplicationResponse"></a>
+
+### CreateApplicationResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| application | [Application](#metaxisdata-v1-Application) |  |  |
+| api_key | [string](#string) |  | The plaintext API key. It is returned once and never stored in a recoverable form. |
+| key | [ApplicationAPIKey](#metaxisdata-v1-ApplicationAPIKey) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-DeleteApplicationRequest"></a>
+
+### DeleteApplicationRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: applications/{application_id} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-DeleteApplicationSQLRequest"></a>
+
+### DeleteApplicationSQLRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| guid | [string](#string) |  | The globally unique metadata GUID of the statement. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetApplicationSQLRequest"></a>
+
+### GetApplicationSQLRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| guid | [string](#string) |  | The globally unique metadata GUID of the statement. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListApplicationAPIKeysRequest"></a>
+
+### ListApplicationAPIKeysRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: applications/{application_id} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListApplicationAPIKeysResponse"></a>
+
+### ListApplicationAPIKeysResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| keys | [ApplicationAPIKey](#metaxisdata-v1-ApplicationAPIKey) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListApplicationSQLsRequest"></a>
+
+### ListApplicationSQLsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: instances/{instance}/databases/{database} |
+| page_size | [int32](#int32) |  |  |
+| page_token | [string](#string) |  |  |
+| application | [string](#string) |  | Only the statements this application has reported. |
+| schema_name | [string](#string) |  |  |
+| kind | [ApplicationSQLKind](#metaxisdata-v1-ApplicationSQLKind) |  |  |
+| query | [string](#string) |  | Full-text search over the parameterized statements. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListApplicationSQLsResponse"></a>
+
+### ListApplicationSQLsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| application_sqls | [ApplicationSQL](#metaxisdata-v1-ApplicationSQL) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListApplicationsRequest"></a>
+
+### ListApplicationsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| page_size | [int32](#int32) |  |  |
+| page_token | [string](#string) |  |  |
+| show_disabled | [bool](#bool) |  | Include stopped applications. The default lists only the ones a report may still come from. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListApplicationsResponse"></a>
+
+### ListApplicationsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| applications | [Application](#metaxisdata-v1-Application) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-RevokeApplicationAPIKeyRequest"></a>
+
+### RevokeApplicationAPIKeyRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: applications/{application_id}/apiKeys/{api_key_id} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-UpdateApplicationRequest"></a>
+
+### UpdateApplicationRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| application | [Application](#metaxisdata-v1-Application) |  |  |
+| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  |  |
+
+
+
+
+
+ 
+
+
+<a name="metaxisdata-v1-ApplicationSQLKind"></a>
+
+### ApplicationSQLKind
+ApplicationSQLEngineKind is the read/write classification of a statement.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| APPLICATION_SQL_KIND_UNSPECIFIED | 0 |  |
+| APPLICATION_SQL_KIND_UNKNOWN | 1 | Not analyzed yet: the runner writes the classification after it analyzes the statement. |
+| APPLICATION_SQL_KIND_READ | 2 |  |
+| APPLICATION_SQL_KIND_WRITE | 3 |  |
+
+
+ 
+
+ 
+
+
+<a name="metaxisdata-v1-ApplicationService"></a>
+
+### ApplicationService
+ApplicationService manages the applications that report the SQL they run, and the
+statements they have reported.
+
+An application is deliberately not a metadata resource: it has no schema, no columns and
+no lineage of its own. Creating one issues its first API key, which is the credential the
+reporting endpoint authenticates; the key names the application, so a report cannot claim
+to be another one.
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+| CreateApplication | [CreateApplicationRequest](#metaxisdata-v1-CreateApplicationRequest) | [CreateApplicationResponse](#metaxisdata-v1-CreateApplicationResponse) |  |
+| ListApplications | [ListApplicationsRequest](#metaxisdata-v1-ListApplicationsRequest) | [ListApplicationsResponse](#metaxisdata-v1-ListApplicationsResponse) |  |
+| UpdateApplication | [UpdateApplicationRequest](#metaxisdata-v1-UpdateApplicationRequest) | [Application](#metaxisdata-v1-Application) |  |
+| DeleteApplication | [DeleteApplicationRequest](#metaxisdata-v1-DeleteApplicationRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) |  |
+| CreateApplicationAPIKey | [CreateApplicationAPIKeyRequest](#metaxisdata-v1-CreateApplicationAPIKeyRequest) | [CreateApplicationAPIKeyResponse](#metaxisdata-v1-CreateApplicationAPIKeyResponse) |  |
+| ListApplicationAPIKeys | [ListApplicationAPIKeysRequest](#metaxisdata-v1-ListApplicationAPIKeysRequest) | [ListApplicationAPIKeysResponse](#metaxisdata-v1-ListApplicationAPIKeysResponse) |  |
+| RevokeApplicationAPIKey | [RevokeApplicationAPIKeyRequest](#metaxisdata-v1-RevokeApplicationAPIKeyRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) |  |
+| ListApplicationSQLs | [ListApplicationSQLsRequest](#metaxisdata-v1-ListApplicationSQLsRequest) | [ListApplicationSQLsResponse](#metaxisdata-v1-ListApplicationSQLsResponse) | Lists reported statements. The parent scopes the result to one instance and database. |
+| GetApplicationSQL | [GetApplicationSQLRequest](#metaxisdata-v1-GetApplicationSQLRequest) | [ApplicationSQL](#metaxisdata-v1-ApplicationSQL) | Reads one reported statement. It is addressed by GUID rather than by resource name because every entry point to a statement already holds a GUID: the lineage graph, the history page and GetMetadata. |
+| DeleteApplicationSQL | [DeleteApplicationSQLRequest](#metaxisdata-v1-DeleteApplicationSQLRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) |  |
+
+ 
+
+
+
 <a name="v1_audit_log_service-proto"></a>
 <p align="right"><a href="#top">Top</a></p>
 
@@ -507,58 +974,6 @@
 | Method Name | Request Type | Response Type | Description |
 | ----------- | ------------ | ------------- | ------------|
 | ListAuditLogs | [ListAuditLogsRequest](#metaxisdata-v1-ListAuditLogsRequest) | [ListAuditLogsResponse](#metaxisdata-v1-ListAuditLogsResponse) |  |
-
- 
-
-
-
-<a name="v1_common-proto"></a>
-<p align="right"><a href="#top">Top</a></p>
-
-## v1/common.proto
-
-
- 
-
-
-<a name="metaxisdata-v1-Engine"></a>
-
-### Engine
-Engine is the database engine of an instance. Only the engines the product
-actually supports are kept: MySQL-compatible ones (MySQL, TiDB, MariaDB,
-OceanBase, StarRocks, Doris), PostgreSQL and SQL Server. The other removed
-values keep their numbers reserved so they can never be silently reused for
-something else.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| ENGINE_UNSPECIFIED | 0 |  |
-| MSSQL | 1 |  |
-| MYSQL | 2 |  |
-| POSTGRES | 3 |  |
-| TIDB | 6 |  |
-| MARIADB | 13 |  |
-| OCEANBASE | 14 |  |
-| STARROCKS | 15 |  |
-| DORIS | 16 |  |
-
-
-
-<a name="metaxisdata-v1-State"></a>
-
-### State
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| STATE_UNSPECIFIED | 0 |  |
-| ACTIVE | 1 |  |
-| DELETED | 2 |  |
-
-
- 
-
- 
 
  
 

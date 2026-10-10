@@ -198,6 +198,120 @@
         
           
           <li>
+            <a href="#v1%2fcommon.proto">v1/common.proto</a>
+            <ul>
+              
+              
+                <li>
+                  <a href="#metaxisdata.v1.Engine"><span class="badge">E</span>Engine</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.State"><span class="badge">E</span>State</a>
+                </li>
+              
+              
+              
+            </ul>
+          </li>
+        
+          
+          <li>
+            <a href="#v1%2fapplication_service.proto">v1/application_service.proto</a>
+            <ul>
+              
+                <li>
+                  <a href="#metaxisdata.v1.Application"><span class="badge">M</span>Application</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ApplicationAPIKey"><span class="badge">M</span>ApplicationAPIKey</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ApplicationSQL"><span class="badge">M</span>ApplicationSQL</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ApplicationSQLObservation"><span class="badge">M</span>ApplicationSQLObservation</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.CreateApplicationAPIKeyRequest"><span class="badge">M</span>CreateApplicationAPIKeyRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.CreateApplicationAPIKeyResponse"><span class="badge">M</span>CreateApplicationAPIKeyResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.CreateApplicationRequest"><span class="badge">M</span>CreateApplicationRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.CreateApplicationResponse"><span class="badge">M</span>CreateApplicationResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.DeleteApplicationRequest"><span class="badge">M</span>DeleteApplicationRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.DeleteApplicationSQLRequest"><span class="badge">M</span>DeleteApplicationSQLRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetApplicationSQLRequest"><span class="badge">M</span>GetApplicationSQLRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListApplicationAPIKeysRequest"><span class="badge">M</span>ListApplicationAPIKeysRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListApplicationAPIKeysResponse"><span class="badge">M</span>ListApplicationAPIKeysResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListApplicationSQLsRequest"><span class="badge">M</span>ListApplicationSQLsRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListApplicationSQLsResponse"><span class="badge">M</span>ListApplicationSQLsResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListApplicationsRequest"><span class="badge">M</span>ListApplicationsRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListApplicationsResponse"><span class="badge">M</span>ListApplicationsResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.RevokeApplicationAPIKeyRequest"><span class="badge">M</span>RevokeApplicationAPIKeyRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.UpdateApplicationRequest"><span class="badge">M</span>UpdateApplicationRequest</a>
+                </li>
+              
+              
+                <li>
+                  <a href="#metaxisdata.v1.ApplicationSQLKind"><span class="badge">E</span>ApplicationSQLKind</a>
+                </li>
+              
+              
+              
+                <li>
+                  <a href="#metaxisdata.v1.ApplicationService"><span class="badge">S</span>ApplicationService</a>
+                </li>
+              
+            </ul>
+          </li>
+        
+          
+          <li>
             <a href="#v1%2faudit_log_service.proto">v1/audit_log_service.proto</a>
             <ul>
               
@@ -231,25 +345,6 @@
                 <li>
                   <a href="#metaxisdata.v1.AuditLogService"><span class="badge">S</span>AuditLogService</a>
                 </li>
-              
-            </ul>
-          </li>
-        
-          
-          <li>
-            <a href="#v1%2fcommon.proto">v1/common.proto</a>
-            <ul>
-              
-              
-                <li>
-                  <a href="#metaxisdata.v1.Engine"><span class="badge">E</span>Engine</a>
-                </li>
-              
-                <li>
-                  <a href="#metaxisdata.v1.State"><span class="badge">E</span>State</a>
-                </li>
-              
-              
               
             </ul>
           </li>
@@ -1562,6 +1657,1165 @@
     
       
       <div class="file-heading">
+        <h2 id="v1/common.proto">v1/common.proto</h2><a href="#title">Top</a>
+      </div>
+      <p></p>
+
+      
+
+      
+        <h3 id="metaxisdata.v1.Engine">Engine</h3>
+        <p>Engine is the database engine of an instance. Only the engines the product</p><p>actually supports are kept: MySQL-compatible ones (MySQL, TiDB, MariaDB,</p><p>OceanBase, StarRocks, Doris), PostgreSQL and SQL Server. The other removed</p><p>values keep their numbers reserved so they can never be silently reused for</p><p>something else.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>ENGINE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>MSSQL</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>MYSQL</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>POSTGRES</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>TIDB</td>
+                <td>6</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>MARIADB</td>
+                <td>13</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>OCEANBASE</td>
+                <td>14</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>STARROCKS</td>
+                <td>15</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DORIS</td>
+                <td>16</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.State">State</h3>
+        <p></p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>STATE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>ACTIVE</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DELETED</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+
+      
+
+      
+    
+      
+      <div class="file-heading">
+        <h2 id="v1/application_service.proto">v1/application_service.proto</h2><a href="#title">Top</a>
+      </div>
+      <p></p>
+
+      
+        <h3 id="metaxisdata.v1.Application">Application</h3>
+        <p>Application is one application whose statements are reported to the workspace.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The resource name.
+Format: applications/{application_id} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>application_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The stable identifier, equal to the last segment of `name`. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>display_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The display name. It is unique: it is how a person names the application. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>description</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>disabled</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>A stopped application keeps every row it ever reported, and none of its keys report
+anything any more. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>statement_count</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p>How many statements the application has reported, over every key it holds. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>created_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>updated_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ApplicationAPIKey">ApplicationAPIKey</h3>
+        <p>ApplicationAPIKey is one reporting credential. Only its masked form is ever returned</p><p>after creation.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The resource name.
+Format: applications/{application_id}/apiKeys/{api_key} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>api_key_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>masked_key</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The masked key, safe to display. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>description</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>created_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>last_used_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p>The last request this key was used for, and how many it has made. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>request_count</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p>Per-key counters. They stand in for one audit row per request: the audit ledger is kept
+forever, so auditing machine traffic would grow it with request volume rather than with
+distinct statements. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>statement_accepted_count</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>statement_rejected_count</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ApplicationSQL">ApplicationSQL</h3>
+        <p>ApplicationSQL is one distinct statement an application reported, with every literal</p><p>already replaced by `?`.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The globally unique metadata GUID. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>application_sql_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>instance_resource_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>database_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>schema_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>engine</td>
+                  <td><a href="#metaxisdata.v1.Engine">Engine</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>sql_text</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The parameterized statement. This is the only form ever stored. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>kind</td>
+                  <td><a href="#metaxisdata.v1.ApplicationSQLKind">ApplicationSQLKind</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>fingerprint</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The fingerprint that identifies the statement within its scope, and the version of the
+rules that produced it. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>fingerprint_version</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>execution_count</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p>How many times every application ran it, and when it was first and last seen. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>first_seen_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>last_seen_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>observations</td>
+                  <td><a href="#metaxisdata.v1.ApplicationSQLObservation">ApplicationSQLObservation</a></td>
+                  <td>repeated</td>
+                  <td><p>The applications that reported it, with each one&#39;s own history. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ApplicationSQLObservation">ApplicationSQLObservation</h3>
+        <p>ApplicationSQLObservation is one application's own history with one statement.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>application</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>application_display_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>execution_count</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>first_seen_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>last_seen_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.CreateApplicationAPIKeyRequest">CreateApplicationAPIKeyRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: applications/{application_id} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>description</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.CreateApplicationAPIKeyResponse">CreateApplicationAPIKeyResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>api_key</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>key</td>
+                  <td><a href="#metaxisdata.v1.ApplicationAPIKey">ApplicationAPIKey</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.CreateApplicationRequest">CreateApplicationRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>application</td>
+                  <td><a href="#metaxisdata.v1.Application">Application</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>api_key_description</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The first API key&#39;s description, so the credential that a fresh application reports with
+can be told apart from the ones issued later. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.CreateApplicationResponse">CreateApplicationResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>application</td>
+                  <td><a href="#metaxisdata.v1.Application">Application</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>api_key</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The plaintext API key. It is returned once and never stored in a recoverable form. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>key</td>
+                  <td><a href="#metaxisdata.v1.ApplicationAPIKey">ApplicationAPIKey</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.DeleteApplicationRequest">DeleteApplicationRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: applications/{application_id} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.DeleteApplicationSQLRequest">DeleteApplicationSQLRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The globally unique metadata GUID of the statement. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.GetApplicationSQLRequest">GetApplicationSQLRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The globally unique metadata GUID of the statement. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListApplicationAPIKeysRequest">ListApplicationAPIKeysRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: applications/{application_id} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListApplicationAPIKeysResponse">ListApplicationAPIKeysResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>keys</td>
+                  <td><a href="#metaxisdata.v1.ApplicationAPIKey">ApplicationAPIKey</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListApplicationSQLsRequest">ListApplicationSQLsRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: instances/{instance}/databases/{database} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>application</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Only the statements this application has reported. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>schema_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>kind</td>
+                  <td><a href="#metaxisdata.v1.ApplicationSQLKind">ApplicationSQLKind</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>query</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Full-text search over the parameterized statements. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListApplicationSQLsResponse">ListApplicationSQLsResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>application_sqls</td>
+                  <td><a href="#metaxisdata.v1.ApplicationSQL">ApplicationSQL</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListApplicationsRequest">ListApplicationsRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>show_disabled</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Include stopped applications. The default lists only the ones a report may still come
+from. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListApplicationsResponse">ListApplicationsResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>applications</td>
+                  <td><a href="#metaxisdata.v1.Application">Application</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.RevokeApplicationAPIKeyRequest">RevokeApplicationAPIKeyRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: applications/{application_id}/apiKeys/{api_key_id} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.UpdateApplicationRequest">UpdateApplicationRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>application</td>
+                  <td><a href="#metaxisdata.v1.Application">Application</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>update_mask</td>
+                  <td><a href="#google.protobuf.FieldMask">google.protobuf.FieldMask</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+
+      
+        <h3 id="metaxisdata.v1.ApplicationSQLKind">ApplicationSQLKind</h3>
+        <p>ApplicationSQLEngineKind is the read/write classification of a statement.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>APPLICATION_SQL_KIND_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>APPLICATION_SQL_KIND_UNKNOWN</td>
+                <td>1</td>
+                <td><p>Not analyzed yet: the runner writes the classification after it analyzes the statement.</p></td>
+              </tr>
+            
+              <tr>
+                <td>APPLICATION_SQL_KIND_READ</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>APPLICATION_SQL_KIND_WRITE</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+
+      
+
+      
+        <h3 id="metaxisdata.v1.ApplicationService">ApplicationService</h3>
+        <p>ApplicationService manages the applications that report the SQL they run, and the</p><p>statements they have reported.</p><p>An application is deliberately not a metadata resource: it has no schema, no columns and</p><p>no lineage of its own. Creating one issues its first API key, which is the credential the</p><p>reporting endpoint authenticates; the key names the application, so a report cannot claim</p><p>to be another one.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Method Name</td><td>Request Type</td><td>Response Type</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>CreateApplication</td>
+                <td><a href="#metaxisdata.v1.CreateApplicationRequest">CreateApplicationRequest</a></td>
+                <td><a href="#metaxisdata.v1.CreateApplicationResponse">CreateApplicationResponse</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>ListApplications</td>
+                <td><a href="#metaxisdata.v1.ListApplicationsRequest">ListApplicationsRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListApplicationsResponse">ListApplicationsResponse</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>UpdateApplication</td>
+                <td><a href="#metaxisdata.v1.UpdateApplicationRequest">UpdateApplicationRequest</a></td>
+                <td><a href="#metaxisdata.v1.Application">Application</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DeleteApplication</td>
+                <td><a href="#metaxisdata.v1.DeleteApplicationRequest">DeleteApplicationRequest</a></td>
+                <td><a href="#google.protobuf.Empty">.google.protobuf.Empty</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>CreateApplicationAPIKey</td>
+                <td><a href="#metaxisdata.v1.CreateApplicationAPIKeyRequest">CreateApplicationAPIKeyRequest</a></td>
+                <td><a href="#metaxisdata.v1.CreateApplicationAPIKeyResponse">CreateApplicationAPIKeyResponse</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>ListApplicationAPIKeys</td>
+                <td><a href="#metaxisdata.v1.ListApplicationAPIKeysRequest">ListApplicationAPIKeysRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListApplicationAPIKeysResponse">ListApplicationAPIKeysResponse</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>RevokeApplicationAPIKey</td>
+                <td><a href="#metaxisdata.v1.RevokeApplicationAPIKeyRequest">RevokeApplicationAPIKeyRequest</a></td>
+                <td><a href="#google.protobuf.Empty">.google.protobuf.Empty</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>ListApplicationSQLs</td>
+                <td><a href="#metaxisdata.v1.ListApplicationSQLsRequest">ListApplicationSQLsRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListApplicationSQLsResponse">ListApplicationSQLsResponse</a></td>
+                <td><p>Lists reported statements. The parent scopes the result to one instance and database.</p></td>
+              </tr>
+            
+              <tr>
+                <td>GetApplicationSQL</td>
+                <td><a href="#metaxisdata.v1.GetApplicationSQLRequest">GetApplicationSQLRequest</a></td>
+                <td><a href="#metaxisdata.v1.ApplicationSQL">ApplicationSQL</a></td>
+                <td><p>Reads one reported statement. It is addressed by GUID rather than by resource name
+because every entry point to a statement already holds a GUID: the lineage graph, the
+history page and GetMetadata.</p></td>
+              </tr>
+            
+              <tr>
+                <td>DeleteApplicationSQL</td>
+                <td><a href="#metaxisdata.v1.DeleteApplicationSQLRequest">DeleteApplicationSQLRequest</a></td>
+                <td><a href="#google.protobuf.Empty">.google.protobuf.Empty</a></td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+
+        
+          
+          
+          <h4>Methods with HTTP bindings</h4>
+          <table>
+            <thead>
+              <tr>
+                <td>Method Name</td>
+                <td>Method</td>
+                <td>Pattern</td>
+                <td>Body</td>
+              </tr>
+            </thead>
+            <tbody>
+            
+              
+              
+              <tr>
+                <td>CreateApplication</td>
+                <td>POST</td>
+                <td>/v1/applications</td>
+                <td>application</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListApplications</td>
+                <td>GET</td>
+                <td>/v1/applications</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>UpdateApplication</td>
+                <td>PATCH</td>
+                <td>/v1/{application.name=applications/*}</td>
+                <td>application</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>DeleteApplication</td>
+                <td>DELETE</td>
+                <td>/v1/{name=applications/*}</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>CreateApplicationAPIKey</td>
+                <td>POST</td>
+                <td>/v1/{parent=applications/*}/apiKeys</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListApplicationAPIKeys</td>
+                <td>GET</td>
+                <td>/v1/{parent=applications/*}/apiKeys</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>RevokeApplicationAPIKey</td>
+                <td>DELETE</td>
+                <td>/v1/{name=applications/*/apiKeys/*}</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListApplicationSQLs</td>
+                <td>GET</td>
+                <td>/v1/{parent=instances/*/databases/*}/applicationSqls</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetApplicationSQL</td>
+                <td>GET</td>
+                <td>/v1/applicationSqls:get</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>DeleteApplicationSQL</td>
+                <td>DELETE</td>
+                <td>/v1/applicationSqls</td>
+                <td></td>
+              </tr>
+              
+            
+            </tbody>
+          </table>
+          
+        
+    
+      
+      <div class="file-heading">
         <h2 id="v1/audit_log_service.proto">v1/audit_log_service.proto</h2><a href="#title">Top</a>
       </div>
       <p></p>
@@ -1901,114 +3155,6 @@
           </table>
           
         
-    
-      
-      <div class="file-heading">
-        <h2 id="v1/common.proto">v1/common.proto</h2><a href="#title">Top</a>
-      </div>
-      <p></p>
-
-      
-
-      
-        <h3 id="metaxisdata.v1.Engine">Engine</h3>
-        <p>Engine is the database engine of an instance. Only the engines the product</p><p>actually supports are kept: MySQL-compatible ones (MySQL, TiDB, MariaDB,</p><p>OceanBase, StarRocks, Doris), PostgreSQL and SQL Server. The other removed</p><p>values keep their numbers reserved so they can never be silently reused for</p><p>something else.</p>
-        <table class="enum-table">
-          <thead>
-            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
-          </thead>
-          <tbody>
-            
-              <tr>
-                <td>ENGINE_UNSPECIFIED</td>
-                <td>0</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>MSSQL</td>
-                <td>1</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>MYSQL</td>
-                <td>2</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>POSTGRES</td>
-                <td>3</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>TIDB</td>
-                <td>6</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>MARIADB</td>
-                <td>13</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>OCEANBASE</td>
-                <td>14</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>STARROCKS</td>
-                <td>15</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>DORIS</td>
-                <td>16</td>
-                <td><p></p></td>
-              </tr>
-            
-          </tbody>
-        </table>
-      
-        <h3 id="metaxisdata.v1.State">State</h3>
-        <p></p>
-        <table class="enum-table">
-          <thead>
-            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
-          </thead>
-          <tbody>
-            
-              <tr>
-                <td>STATE_UNSPECIFIED</td>
-                <td>0</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>ACTIVE</td>
-                <td>1</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>DELETED</td>
-                <td>2</td>
-                <td><p></p></td>
-              </tr>
-            
-          </tbody>
-        </table>
-      
-
-      
-
-      
     
       
       <div class="file-heading">

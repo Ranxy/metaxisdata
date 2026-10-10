@@ -101,6 +101,7 @@ func configureGrpcRouters(
 	databaseService := apiv1.NewDatabaseService(stores, schemaSync)
 	lineageService := apiv1.NewLineageService(stores, lineageAnalyzer)
 	openLineageService := apiv1.NewOpenLineageService(stores)
+	applicationService := apiv1.NewApplicationService(stores)
 	llmService := apiv1.NewLLMService(stores, llmRegistry)
 	explainSQLService := apiv1.NewExplainSQLService(stores, llmRegistry, lineageAnalyzer)
 	settingService := apiv1.NewSettingService(stores, profile)
@@ -169,6 +170,8 @@ func configureGrpcRouters(
 	connectHandlers[lineagePath] = lineageHandler
 	openLineagePath, openLineageHandler := v1connect.NewOpenLineageServiceHandler(openLineageService, handlerOpts)
 	connectHandlers[openLineagePath] = openLineageHandler
+	applicationPath, applicationHandler := v1connect.NewApplicationServiceHandler(applicationService, handlerOpts)
+	connectHandlers[applicationPath] = applicationHandler
 	llmPath, llmHandler := v1connect.NewLLMServiceHandler(llmService, handlerOpts)
 	connectHandlers[llmPath] = llmHandler
 	explainSQLPath, explainSQLHandler := v1connect.NewExplainSQLServiceHandler(explainSQLService, handlerOpts)
@@ -203,6 +206,7 @@ func configureGrpcRouters(
 		v1connect.GroupServiceName,
 		v1connect.IamServiceName,
 		v1connect.OAuthServiceName,
+		v1connect.ApplicationServiceName,
 	)
 	reflectPath, reflectHandler := grpcreflect.NewHandlerV1(reflector, connect.WithReadMaxBytes(maxConnectRequestBytes))
 	connectHandlers[reflectPath] = reflectHandler

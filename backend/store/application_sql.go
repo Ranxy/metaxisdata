@@ -57,6 +57,9 @@ type ApplicationSQLMessage struct {
 	LastSeenAt         time.Time
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
+	// Observations is the per-application breakdown. The detail read fills it in; a list row
+	// leaves it empty, because resolving every statement's reporters would be a query per row.
+	Observations []*ApplicationSQLObservationMessage
 }
 
 // ReportApplicationSQLMessage is one statement an application reported. The text fields
@@ -469,4 +472,44 @@ func isForeignKeyViolation(err error) bool {
 	}
 	var pqErr *pq.Error
 	return errors.As(err, &pqErr) && pqErr.Code == "23503"
+}
+
+// ApplicationSQLObservationMessage is one application's own history with one statement.
+type ApplicationSQLObservationMessage struct {
+	ApplicationID string
+	// ApplicationName is the application's display name, read with the observation so the
+	// detail page does not have to resolve each one.
+	ApplicationName string
+	ExecutionCount  int64
+	FirstSeenAt     time.Time
+	LastSeenAt      time.Time
+}
+
+// ListApplicationSQLObservations returns who reports one statement, and how much. It is read
+// on the statement's detail view rather than with every list row.
+func (s *Store) ListApplicationSQLObservations(ctx context.Context, applicationSQLID int64) ([]*ApplicationSQLObservationMessage, error) {
+	rows, err := s.GetDB().QueryContext(ctx, `
+		SELECT o.application_id, a.name, o.execution_count, o.first_seen_at, o.last_seen_at
+		FROM application_sql_observation o
+		JOIN application a ON a.application_id = o.application_id
+		WHERE o.application_sql_id = $1
+		ORDER BY o.execution_count DESC, o.application_id ASC
+	`, applicationSQLID)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to query the statement observations")
+	}
+	defer rows.Close()
+
+	var result []*ApplicationSQLObservationMessage
+	for rows.Next() {
+		msg := &ApplicationSQLObservationMessage{}
+		if err := rows.Scan(&msg.ApplicationID, &msg.ApplicationName, &msg.ExecutionCount, &msg.FirstSeenAt, &msg.LastSeenAt); err != nil {
+			return nil, errors.Wrap(err, "failed to scan a statement observation")
+		}
+		result = append(result, msg)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "rows iteration error for the statement observations")
+	}
+	return result, nil
 }

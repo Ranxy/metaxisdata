@@ -49,6 +49,27 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     ],
   },
   {
+    resource: "applications",
+    permissions: [
+      "metaxisdata.applications.get",
+      "metaxisdata.applications.list",
+      "metaxisdata.applications.create",
+      "metaxisdata.applications.update",
+      "metaxisdata.applications.delete",
+      "metaxisdata.applications.apiKeys.list",
+      "metaxisdata.applications.apiKeys.create",
+      "metaxisdata.applications.apiKeys.delete",
+    ],
+  },
+  {
+    resource: "applicationSqls",
+    permissions: [
+      "metaxisdata.applicationSqls.get",
+      "metaxisdata.applicationSqls.list",
+      "metaxisdata.applicationSqls.delete",
+    ],
+  },
+  {
     resource: "manualSqls",
     permissions: [
       "metaxisdata.manualSqls.get",
