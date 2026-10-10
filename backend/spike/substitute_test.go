@@ -12,7 +12,7 @@ import (
 // found: each one is a position where the grammar demands a string literal, so
 // NULL and $n are rejected while a string is not. If a string works everywhere,
 // the neutral substitute is one rule for every dialect instead of three.
-func TestSubstituteHypothesis(t *testing.T) {
+func TestSubstituteHypothesis(_ *testing.T) {
 	cases := []struct {
 		engine storepb.Engine
 		shape  string // with %s where the substitute goes

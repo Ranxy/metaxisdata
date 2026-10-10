@@ -26,27 +26,39 @@
 
 **但这条不需要上游修。** 血缘只关心列的派生,而占位符是一个"值",值从不参与列级派生。把 `?` 在送分析前换成一个中性字面量,结果与真实字面量一致。
 
-实测:20 个真实占位符位置 × 3 种中性字面量,在 **MySQL**(家族共享正文的唯一真相源;TiDB / MariaDB 是它的生成物,行为一致)与 **StarRocks** 上共 120 组,**全部解析成功**:
+第一次抽查(20 个常见占位符位置)时三种字面量看不出差别,`NULL` 全部通过;但那批形状里没有几个"语法强制要求字符串"的位置。P0 把 642 条语料跑过一遍之后,缺口立刻就露出来了——所以下面给的是**补全后的结论**,不是那次抽查的结论:
 
-| 替换成 | MySQL | StarRocks |
-| --- | --- | --- |
-| `NULL` | **0 / 20 失败** | **0 / 20 失败** |
-| `0` | **0 / 20 失败** | **0 / 20 失败** |
-| `''` | **0 / 20 失败** | **0 / 20 失败** |
+| 位置 | `NULL` | `0` | `$n` | 字符串 |
+| --- | --- | --- | --- | --- |
+| MySQL `LOAD DATA INFILE …` / `FIELDS TERMINATED BY …` | ✗ | ✗ | — | ✓ |
+| MySQL `JSON_TABLE(… , '<path>' COLUMNS (x INT PATH '<p>'))` | ✗ | ✗ | — | ✓ |
+| PostgreSQL `COPY … FROM '…'` | ✗ | ✗ | ✗ | ✓ |
+| PostgreSQL `… - INTERVAL '1 year'` | ✗ | ✗ | ✗ | ✓ |
+| StarRocks `COPY INTO t FROM '…'` | ✗ | ✗ | — | ✓ |
+| 其余全部位置(20 个抽查形状 + 语料里的其余部分) | ✓ | ✓ | ✓ | ✓ |
 
-同一批形状在 PostgreSQL 上有 4 组失败,但那是**我写错了方言**(PG 没有 `DATE_ADD`、`ON DUPLICATE KEY UPDATE`、`DELETE … LIMIT`、`REGEXP`),三种替换下失败完全一致,与替换无关。
-
-覆盖的位置:`INSERT … VALUES`、`UPDATE … SET`、`IN (…)`、`LIMIT ?`、`LIMIT ?, ?`、`ORDER BY … LIMIT`、`INTERVAL ? DAY`、`BETWEEN ? AND ?`、`CAST(? AS …)`、`COALESCE(?, ?)`、`LIKE CONCAT('%', ?, '%')`、`JSON_EXTRACT(j, ?)`、`ON DUPLICATE KEY UPDATE a = ?`、`= ? IS NULL`、子查询谓词、`DELETE … LIMIT ?`、`REGEXP ?`。
-
-三种字面量等价 ⇒ 选哪个是口味问题,不是能力问题。取 `NULL`:类型无关,且在 MySQL 家族的 `SET` 位置上会触发分析器既有的"常量赋值 ⇒ `table.* -> col`"规则,与真实字面量一致。
-
-**这份实测的边界**:它验的是"替换后能不能解析 + 边是否一致",不是一份真实应用 SQL 的语料。TiDB / MariaDB 两条独立语料、以及 ORM 实际产出的文本形态(命名参数、`IN` 展开、批量 VALUES)仍要在 P0 用真实语料跑一遍。
+**任何字符串字面量都通过,`NULL` / `0` / `$n` 各有硬缺口。** 于是中性字面量取 `'?'`:它在语法上就是"一个字符串字面量",通吃所有位置;`'?'` 而不是 `''`,是为了让派生出来的列名读起来像参数(§6.2、§13.3)。
 
 由此得到三条设计结论:
 
 - **无需任何 omni 改动**,也无需 `replace` / `vendor` / 上游沟通。替换是服务端自己的事。
 - 存储文本与送分析文本是两种形态(§4.2),替换是必需环节而不是优化——不替换,MySQL 家族的应用 SQL 会被"解析失败不落库"整类丢弃。
 - token type 63 的存在反而是好事:`?` 是一个**独立 token**,所以"字符串字面量里的 `?`"与"注释里的 `?`"天然不会被误替换——由上游 lexer 区分,不靠我们猜。
+
+**P0 把这个"中性字面量"实测到一个字**:任何**字符串字面量**都能解析,而 `NULL` 与 `0` 不能。失败位置都是语法强制要求字符串的地方,换成字符串就好:
+
+| 位置 | `NULL` | `0` | `$n` | 字符串 |
+| --- | --- | --- | --- | --- |
+| MySQL `LOAD DATA INFILE … ` / `FIELDS TERMINATED BY …` | ✗ | ✗ | — | ✓ |
+| MySQL `JSON_TABLE(… , '<path>' COLUMNS (x INT PATH '<p>'))` | ✗ | ✗ | — | ✓ |
+| PostgreSQL `COPY … FROM '…'` | ✗ | ✗ | ✗ | ✓ |
+| PostgreSQL `… - INTERVAL '1 year'` | ✗ | ✗ | ✗ | ✓ |
+| StarRocks `COPY INTO t FROM '…'` | ✗ | ✗ | — | ✓ |
+| 其余全部位置 | ✓ | ✓ | ✓ | ✓ |
+
+于是**三套方言派生塌成一条规则**:每个 `?` token 换成同一个字符串字面量。取 `'?'` 而不是 `''`,是为了让派生出来的列名读起来像参数(`price * '?'`)而不是像 bug(`price * ''`)——这一层影响见 §6.2 的命名说明。
+
+顺带纠正一个此前的说法:`$n` 对 PostgreSQL **并非**更优。它在 `INTERVAL` 与 `COPY` 两个位置被拒,而 `'?'` 通吃,所以 §4.2 里"PG 换成 `$1…$n`"的做法被这条实测推翻了。
 
 ### 事实 2:零关系是设计,不是缺陷;要分开处理"关系落在临时目标上"与"根本没有关系"
 
@@ -108,7 +120,7 @@ TargetColumn: rel.Target.Name,  // 原本是 __result__ 的列名
 | D6 | **不设存储上限、不做限流**;解析失败的 SQL 不落库,只 `WARN` 记录 | 前提是 D5 的归一化足够激进,且失败路径永不落库(§5.5)。残余风险见 §11 |
 | D7 | **key 必须人工创建签发**,key 与应用一对一;没有 key 的请求直接拒绝 | 创建 key 即注册应用,不做"首报自动注册"。**应用身份取自 key,不取自 payload**——payload 里的应用名被忽略,一个 key 无法冒充另一个应用 |
 | D8 | **这个端点不逐请求写 `audit_log`**;改为 key 上的聚合计数 | 应用上报是高频机器流量,逐请求审计会让永久保留的 `audit_log` 行数由请求次数决定,毁掉"落库不会很多"这条性质(§0 事实 3)。人的动作(建应用、签发/撤销 key)照旧审计 |
-| D9 | **常量写入的目标表由服务端自己取**(零关系分支上用 omni 读 DML 目标关系,写一条表级出边) | 不给应用加负担,不动分析器契约;代价是两个方言族各约 60 行新代码,只在那条窄分支上跑。见 §6.4 |
+| D9 | **零关系写入的目标表由服务端自己取**(在那条窄分支上用 omni 读 DML 目标关系,写一条表级出边) | 不给应用加负担,不动分析器契约。P0 实测:真实触发面小得多——只需 INSERT 与不带列的 DELETE,三个方言族合计约几十行。见 §6.4 / §13 |
 
 ## 3. 数据模型
 
@@ -215,12 +227,12 @@ TargetColumn: rel.Target.Name,  // 原本是 __result__ 的列名
 | 形态 | 内容 | 存在哪 / 用在哪 |
 | --- | --- | --- |
 | **请求文本**(应用发出) | 应用产出的、字面量已换成 `?` 的文本 | 只在请求里,不落库 |
-| **存储文本** `sql_text` | 服务端 `Sanitize` 的输出:`?` 占位符、注释已删、空白归一 | **落库的唯一文本**,面向人展示、Explain SQL、指纹的输入 |
-| **送分析文本** | 由存储文本按方言派生:PG 把 `?` 换成 `$1…$n`;MySQL 家族换成 `NULL`;StarRocks 保持 `?` | 不落库,只在 runner 分析时现算(§6.2) |
+| **存储文本** `sql_text` | 服务端 `Sanitize` 的输出:`?` 占位符、注释已删、**其余字节原样保留** | **落库的唯一文本**,面向人展示、Explain SQL、指纹的输入 |
+| **送分析文本** | 把存储文本里的每个 `?` token 换成一个字符串字面量 `'?'`;**一条规则,不分方言** | 不落库,只在 runner 分析时现算(§6.2) |
 
 第三种的必要性来自 §0 事实 1。它在 `buildSQL`(`backend/runner/lineageanalyzer/analyzer.go:421`)的 `APPLICATION_SQL` 分支现算——runner 已经在按 GUID 取语句时知道 `engine`,加一次 `sqlsanitize.Analyzable(engine, sqlText)` 即可,**不落冗余列**,避免两份文本各自过期。
 
-`NULL` 作为 MySQL 家族的中性字面量是实测挑的(§0 事实 1 的 20 个位置 × 3 种字面量):三种中性字面量解析结果完全一致,选 `NULL` 是因为它类型无关,且在 `SET` 位置上会触发分析器既有的"常量赋值 ⇒ `table.* -> col`"规则,与真实字面量一致。
+**存储文本保留原始空白**(P0 修正):`sql_text` 只在字面量处做定点替换、只删注释,不再做空白归一。原因是分析器把"未加别名的表达式列"命名为其源文本,而那条名字会进 `column_lineage`——空白归一让 `CONCAT(name, ' x')` 变成 `CONCAT ( name , '?' )` 这种带空格的名字(§6.2)。空白归一改为只作用于 `canonical`(指纹输入),它本来就不给人看。
 
 ### 4.3 规范化规则
 
@@ -229,7 +241,7 @@ TargetColumn: rel.Target.Name,  // 原本是 __result__ 的列名
 | # | 规则 | 作用于 |
 | --- | --- | --- |
 | N1 | 每个字面量(整数、小数、字符串、十六进制、位串、布尔、日期时间字面量)→ 一个 `?` | 两者 |
-| N2 | 注释删除;token 之间归并为单个空格 | 两者 |
+| N2 | 注释删除 | 存储文本只删注释、其余空白**原样保留**;`canonical` 另把 token 之间归并为单个空格 |
 | N3 | 标识符**原样保留**(含大小写与引号形态),不折叠、不改引号 | 两者 |
 | N4 | `IN` / `NOT IN` 列表中 ≥1 个占位符 → 折叠成单个 `?` | 仅 canonical |
 | N5 | `VALUES` 里重复的值组折叠成一组(消掉批量大小差异) | 仅 canonical |
@@ -261,7 +273,13 @@ omni 已经把各方言的 lexer 导出了,带字节偏移:
 - 需要精确的方言级容错——单双引号与反引号、反斜杠转义、`--` / `#` / `/* */` 注释、PG 的 dollar-quoting(`$$ … $$`)。这些规则上游已经实现且被上游测试覆盖,自己重写一遍就是重新引入一批分歧。
 - 不需要 AST 改写,也就不需要依赖"字面量节点是否都设了 `Loc`"这个未经检验的前提。
 
-主要实现风险:**lexer 的 token 类型表是上游内部常量**,判断"这个 token 是字面量"需要读上游的类型常量(`mysql/parser` 与 `pg/parser` 里都有 ICONST / FCONST / SCONST 一类)。这需要一个 spike 把常量对齐到两个方言上,见 §10 P0。
+**不需要上游的 token 类型常量**(P0 已解决)。判断"这个 token 是不是字面量"原本打算读 `tokSCONST` / `tokICONST` 一类的常量,但那些常量在 `mysql/parser` 与 `pg/parser` 里都是**未导出**的——依赖它们等于把魔法数字写进我们的代码,而上游一改编号就会静默失效。
+
+改用**token 的源文本切片**判定:`Token` 带 `Loc`/`End` 字节偏移,`sql[Loc:End]` 就是原始文本,与上游怎么解码 `Str` 无关。于是规则变成纯形状判断:首字符是 `'` → 字符串;首字符是 `"` → MySQL 家族与 StarRocks 是字符串、PostgreSQL 是引用标识符;首字符是 `` ` `` → 引用标识符;首字符是数字 → 数值;首字符是 `$` → `$n` 是参数、`$$…$$` 是字符串;其余含 `'` 的字母开头 token → `x'..'`/`b'..'` 一类前缀字面量。
+
+两个方言族的 lexer 行为已实测过:**注释根本不产生 token**,所以按 span 重建天然就把注释丢掉了,不需要我们识别注释语法。
+
+StarRocks 略有不同:它的 `Token` 用 `Kind` + `ast.Loc{Start,End}`,并提供了 `Tokenize` 一次性入口与 `Errors()`;它是三者中唯一自己报词法错误的。
 
 ### 4.6 幂等性与不变量
 
@@ -344,7 +362,8 @@ Content-Type: application/json
 认证 → 取实例与引擎 → 校验作用域
 对每个 statement:
   1. 切分多语句(lineage.go:126-141 的根包切分器)→ 逐条走 2..6
-  2. Sanitize(engine, 单条语句)        ← 失败 → REJECTED(PARSE_ERROR),WARN 日志
+  2. Sanitize(engine, 单条语句)        ← 词法失败 → REJECTED(PARSE_ERROR),WARN 日志
+  2b. 闸门:Analyzable 后的文本必须被分析器接受,否则 REJECTED,WARN(见下)
   3. 计算 fingerprint
   4. upsert application_sql by (实例,库,schema,fingerprint)
      - 新行 → 生成 application_sql_id / guid
@@ -358,7 +377,9 @@ Content-Type: application/json
      —— 不在这里判读写:判定归 runner(§6.1),摄入只负责"语句存在"这件事
 ```
 
-**摄入不做类型判定,也不跑分析器。** 这是有意的:判定规则只该有一处实现,而 runner 本来就要跑分析。摄入路径因此只做纯 I/O(一次事务 + 一次入队),响应快且不受分析器抖动影响;读写的区分与"写入型才建边"由 runner 在写边时执行,并把结果回写到 `application_sql.kind` 供列表页筛选。
+**摄入不判类型,但必须跑一次分析当闸门。** 类型判定只该有一处实现(runner),摄入不重复它;但 D6"解析失败不落库"要求摄入端自己知道这条语句能不能解析,所以摄入要跑一次分析并把结果丢掉。
+
+这里有个 P0 跑出来的陷阱:**闸门不能用裸 parser。** StarRocks 的 `ALTER VIEW … SELECT … UNION ALL …` 被 `srparser.Parse` 拒绝,却被分析器**接受**——分析器有 `extractViewDDL` 兜底(`starrocks/analyzer.go:147`)。闸门若用裸 parser,会把一条能产出完整血缘的语句误判成"解析失败"而拒收。闸门与分析器必须同口径,也就是同一个 `*lineage.Analyzer.Analyze`。细节见 §13.6。
 
 切分在 `Sanitize` 之前,和 `Analyzer.Analyze` 的次序一致——切分是词法扫描,不依赖解析,让它在最外层就不必为"注释里的分号"操两次心。
 
@@ -476,7 +497,20 @@ default:
 
 列名只在 `columnLineageKey`(`:205`)里参与去重,从不参与"这条边算不算一个邻居"。`语句 → 目标表` 两端 GUID 不同,不是自环,两个节点都会被收进结果。
 
-**代码落点。** 两个方言族各约 60 行(`mysql/parser`、`pg/parser`;StarRocks 复用 MySQL 的 AST 形状)。放在哪儿由 P0 定:并入 `sqlsanitize`(它本来就在做 lexer 层的工作),或新包 `backend/plugin/lineage/appsqltarget/`(如果按"它是不是血缘概念"来划)。不改分析器契约,不改语料契约,也不碰 omni——这又是一处"在 omni 缺口处就地补一小段"的先例,和 `starrocks/viewbody.go` 同类。
+**范围比原先估的小得多**(P0 实测)。真实触发面只有两类,因为它们才真的是零关系:
+
+| 形状 | 是否触发 |
+| --- | --- |
+| 常量 `INSERT`(各种形态)、`INSERT … SELECT <常量>`、PG `DEFAULT VALUES` | **是** |
+| 不引用任何列的 `DELETE FROM t` / `DELETE … WHERE <常量>` | **是** |
+| 任何 `UPDATE`(哪怕 `SET a = 1`、多表 JOIN 上的常量赋值) | 否——分析器给出 `t.* -> t.a` |
+| 任何 DDL(`CREATE TABLE AS SELECT`、`CREATE VIEW`、`ALTER VIEW`) | 否——有真实目标表 |
+| 多表 `UPDATE … JOIN` / `DELETE o FROM t o …` | 否——`nonTemp ≥ 1` |
+| `TRUNCATE` | 是,但 D9 不认它是写入(它没有列血缘,也没有"写了哪些列"可言) |
+
+实测 25 个触发面的形状 **25/25 全部取对**(见 §13)。所以这个助手只需要读 `InsertStmt` 与 `DeleteStmt` 的目标关系,不需要处理 JOIN 树、别名回解、DDL——**三个方言族合计几十行,不是各 60 行**。
+
+**代码落点。** 并入 `sqlsanitize`(它本来就在做 lexer 层的工作),或新包 `backend/plugin/lineage/appsqltarget/`(如果按"它是不是血缘概念"来划)。不改分析器契约,不改语料契约,也不碰 omni——这又是一处"在 omni 缺口处就地补一小段"的先例,和 `starrocks/viewbody.go` 同类。
 
 **考虑过但不采用:**
 
@@ -575,7 +609,7 @@ default:
 
 | 阶段 | 交付 | 验证 |
 | --- | --- | --- |
-| **P0 spike** | 三件事:①`sqlsanitize` 的 lexer 驱动的 token 类型对齐(把"哪些 token 是字面量"钉到各方言上,"中性字面量替换可行"已在本轮实测结案);②用真实应用 SQL 语料(ORM 的、手写的、批量的)定下 N 规则的可实现边界;③§6.4 的取表助手(表级边能被图读取已读码确认,只需要一个测试钉住) | 一次性探针 + 语料跑通率报告,不留仓库脚本(照 [lineage-analyzer.md](lineage-analyzer.md) 的 AST 审计惯例) |
+| ~~**P0 spike**~~ **已完成** | 三件事全部结案,见 §13:①字面量判定改用 token 源文本切片,不依赖上游未导出的类型常量;②在仓库自带语料(642 条可分析语句)上跑完脱敏幂等性与血缘等价性;③D9 取表助手在真实触发面上 25/25。探针留在 `backend/spike/`(标注为一次性),开工 P2 时删除或提升 | 实测报告见 §13;表级边能被图读取已加为常驻测试 `TestBuildLineageGraphDrawsTableLevelEdges` |
 | **P1 数据模型** | 四张表 + 增量迁移 + `application`/`application_sql`/观测的 store 层 | `go test ./backend/store/`;schema 守卫测试(唯一键、级联、汇总重算) |
 | **P2 脱敏与指纹** | `backend/plugin/sqlsanitize` 包 + 幂等性/语料测试 | `go test ./backend/plugin/sqlsanitize/` |
 | **P3 摄入与管理 API** | 上报端点 + key 认证 + `ApplicationService` 的 CRUD 与 key 管理 + 权限常量与角色 | handler 单测(无 key / 坏 key / 停用 / 逐项 REJECTED / 超体超批 / `reportId` 去重);`go test ./backend/api/v1/` |
@@ -594,7 +628,7 @@ default:
 | **§0 事实 1:`?` 由服务端替换,不动 omni** | 上游 MySQL 语法缺占位符产生式;我们不需要它——替换是服务端的事(20 个位置 × 3 种中性字面量零失败) |
 | **D1':每条语句都在图上建节点** | 节点数 = 不同语句数,可能上千;靠"去重 + origin 过滤器"控制(§6.3) |
 | **D8:摄入请求不写审计行** | 无法事后追查某一次摄取请求发了什么,只留 key 级聚合计数(§5.5) |
-| **D9:常量写入的目标表由服务端取** | 两个方言族各约 60 行新代码,只在零关系分支上跑(§6.4) |
+| **D9:零关系写入的目标表由服务端取** | 只需 INSERT 与不带列的 DELETE,三个方言族合计几十行,只在零关系分支上跑;实测 25/25(§6.4 / §13) |
 
 ### 与规则变更绑定的前置条件
 
@@ -606,7 +640,7 @@ default:
 | --- | --- | --- |
 | **无请求预算** | 你选了不限流。落库行数确实受控,但**每个请求都要落一次事务,并让每一条新语句进一次分析队列**,这条路径目前没有任何请求预算。一个写错循环或 key 泄漏的应用可以把 CPU 花在解析与写库上 | 现成的 `openLineageIngestionMiddleware`(`backend/server/openlineage_ingestion.go`)可以照搬成一个独立实例,只需换预算值。日后要加,不改数据模型 |
 | **指纹漂移导致行数增长** | "去重后不会很多"依赖 N 规则覆盖了应用的文本差异。N4–N6 覆盖的是批量大小、IN 长度、常量算式;若某应用用字符串拼 SQL 拼出**列名/表名**(如动态排序字段),指纹会随维度漂移 | 应用 SQL 列表页要有"新增语句数 / 天"的观测入口,让这类应用能被发现。不预设上限,但要有度量 |
-| **`sqlsanitize` 依赖上游 token 常量** | 上游 omni 改 token 类型编号,脱敏会静默失效(把所有 token 当标识符 = 一个字面量都不替换)。这与 [omni-upstream-defects.md](omni-upstream-defects.md) 记录的"适配层脆弱"是同一类问题 | 语料测试里放"必须替换"的断言(不是"替换后还能解析"),让失效变红 |
+| **未加别名的表达式会带上中性字面量作为列名** | 分析器把未加别名的表达式列命名为其源文本,而源文本里的字面量已被换成 `'?'`,于是列名形如 `price * '?'`。这是**归一化而非丢失**(同一条语句每次执行得到同一个名字),但应用若想让人读到原始表达式,应当在 SQL 里写别名 | 无——接受。ORM 生成的 SQL 基本都给列起别名 |
 | **重试重复计数** | 不带 `reportId` 的重试会重复计数 | `reportId` 只挡紧接的一次;频率是元数据不是账单,v1 接受 |
 
 ### 待决(不影响动工,但要在 P0 定)
@@ -618,7 +652,7 @@ default:
 
 | 层 | 断言 |
 | --- | --- |
-| `sqlsanitize` | `Sanitize` 幂等;字符串里的 `?`/`--`/`$$` 不被当占位符或注释;各方言语料上"字面量全部被替换";N4–N6 的折叠逐例;`Analyzable` 对 MySQL 家族产出可解析文本 |
+| `sqlsanitize` | `Sanitize` 幂等;字符串里的 `?` 与注释里的字面量不被误替换;`'`/`"`/`` ` ``/`$$`/`x'..'` 各形态的字面量判定逐例;存储文本保留原始空白、只删注释;N4–N6 的折叠逐例;`Analyzable` 产出的文本能被三个方言族的分析器接受 |
 | 指纹 | 同义语句(IN 长度不同、批量行数不同、`1+1` vs `2`、字面量不同)得到同一指纹;不同表/不同列名**不**合并;`fingerprint_version` 变更后重算 pass 能合并并保住计数等于各自之和 |
 | 摄入 handler | 无 key / 坏 key / 撤销 / 停用 → 401 且不落库;逐项 REJECTED 不连坐;超体 413、超批 400;`reportId` 重放不重复计数;`WARN` 日志含语句摘要与原因 |
 | store | 唯一键冲突走 upsert 而不是插重复;观测首末时间取极值、次数累加;汇总与观测表一致;删应用级联后孤语句及其 registry/血缘/版本行一并消失 |
@@ -626,6 +660,83 @@ default:
 | 只读详情 | `GetApplicationSQL` 对 MySQL 家族的 `?` 文本能算出一致的读写关系(即它确实走了 `Analyzable`,没有把 `?` 原样喂给分析器);`kind` 在 runner 分析后被回写 |
 | 端到端 | 集成用例:签发 key → 上报一批含读/写/坏 SQL → 断言库内计数、断言图上新增 origin=`applicationsql` 的节点与边、断言坏 SQL 未落库且响应里可见 |
 | 前端 | `lineageOrigin` 三类分派与 `mixed` 三者混合;色板在两个主题下齐全;i18n 两份键齐;i18n:sort 后无 diff |
+
+## 13. P0 spike 结论(已完成)
+
+> 探针留在 `backend/spike/`(一次性,开工 P2 时删除或提升),外加一条常驻测试 `TestBuildLineageGraphDrawsTableLevelEdges`(`backend/api/v1/lineage_service_graph_test.go`)。本节记录的每个数字都来自这两处的实跑。
+
+### 13.1 语料
+
+用仓库自带的血缘语料当"真实应用 SQL"的替身:86 个套件、695 个用例,覆盖 MySQL / PostgreSQL / StarRocks 三个 parser 族;其中 **642 条**能被分析器接受(其余是分析器自身的缺口,与本方案无关)。
+
+这是离线可得的最接近真实应用的语料,但它以视图定义为主,不是 ORM 产出——见 §13.7。
+
+### 13.2 三个设计问题的答案
+
+| 问题 | 结论 |
+| --- | --- |
+| 字面量判定要不要依赖上游的 token 类型常量? | **不要。** `Token` 的 `Loc`/`End` 给出原始文本切片,按首字符形状判定即可,与上游常量、与 `Str` 的解码方式都无关。上游改编号不会再静默失效——§11 原先那条残余风险因此消失 |
+| 注释要自己识别吗? | **不要。** 两个方言族的 lexer 都不把注释产出成 token,按 span 重建天然丢弃 |
+| 中性字面量选什么? | **任何字符串字面量**,取 `'?'`。`NULL` / `0` 在 MySQL `LOAD DATA`、`JSON_TABLE PATH` 与 PostgreSQL `INTERVAL`、`COPY` 上被拒;`$n` 在 PostgreSQL 的 `INTERVAL` / `COPY` 上被拒,于是"PostgreSQL 用 `$n`"被推翻,三套方言派生塌成一条规则 |
+
+### 13.3 脱敏的质量(642 条)
+
+| 指标 | 结果 |
+| --- | --- |
+| 脱敏拒绝的语句 | **0** |
+| 文本被改动的语句 | 209(其余 433 条本就没有字面量) |
+| 幂等 `Sanitize(Sanitize(x)) == Sanitize(x)` | **642 / 642** |
+| 血缘逐边完全相同 | **636 / 642 = 99.06%** |
+| 有差异 | 6 |
+
+6 条差异**没有一条是结构性丢失**:
+
+| 类别 | 条数 | 说明 |
+| --- | --- | --- |
+| 未加别名的表达式列名 | 3 | 列名 = 源文本,字面量被换成 `'?'`:`v.x - 1` → `v.x - '?'`。边结构不变,只是名字被归一化 |
+| 同端点、不同常量的边被合并 | 3 | `SELECT x + 1 AS a, x + 2 AS a` 的两条边变成一条——这正是 D5"激进归一"想要的;两端相同,所以图上没有差别 |
+
+### 13.4 D9 取表助手
+
+真实触发面只有"零关系写入"两类:
+
+- 常量 `INSERT` 的各种形态:多行 VALUES、`INSERT IGNORE`、`REPLACE`、`INSERT … SET`、`ON DUPLICATE KEY UPDATE`、限定名与引号名、PG `ON CONFLICT` 与 `DEFAULT VALUES`、`INSERT … SELECT <常量>`;
+- **不引用任何列的 `DELETE`**:`DELETE FROM t`、`DELETE … WHERE <常量>`。
+
+实测 **25 / 25 全部取对**。三类形状**不会**触发,**因此不需要在助手里处理**:`UPDATE`(哪怕 `SET a = 1`、多表 JOIN 上的常量赋值)有 `t.* -> t.a`;多表 `DELETE o FROM t o JOIN …` 有 `nonTemp ≥ 1`;所有 DDL 有真实目标表。
+
+一个已知小空白:`TRUNCATE` 也是零关系,而 D9 不认它是写入,所以它既没有出边,`kind` 也会被标成只读。
+
+### 13.5 表级边能被画出来(已常驻为测试)
+
+`TestBuildLineageGraphDrawsTableLevelEdges` 喂一条列名为空的边给遍历,断言两个节点都出现。这是 D9 那条表级边的生存条件:如果它不成立,语句会被存下来却从不出现在画布上。
+
+### 13.6 摄入闸门必须与分析器同口径(新增发现)
+
+这条原设计漏了,是跑语料才暴露的:闸门**不能调裸 parser**。
+
+`ALTER VIEW v AS SELECT id FROM t1 UNION ALL SELECT id FROM t2` 在 StarRocks 上被 `srparser.Parse` 拒绝,却被分析器**接受**——分析器有 `extractViewDDL` 兜底(`starrocks/analyzer.go:147`)。闸门若用裸 parser,这条语句会被误判成"解析失败"而拒收,而它本可以产出完整的血缘。
+
+结论:摄入的闸门就是 `*lineage.Analyzer.Analyze` 本身,结果丢弃(§5.4)。代价是每条新语句在摄入端多解析一次,落在 §11 的"无请求预算"残余风险上。
+
+### 13.7 未覆盖,留给 P2
+
+- **语料以视图定义为主**,不是真实 ORM 产出。真实应用的命名参数、批量 VALUES、动态 `IN` 展开要在 P2 补一份语料再跑一次。
+- **N4 / N5 / N6 未实现**:`IN` 列表折叠、`VALUES` 组折叠、常量表达式折叠只影响**指纹粒度**,不影响血缘等价性;本轮实现的是 N1–N3,折叠规则的收益要用真实语料量。
+- **TiDB / MariaDB 未单独跑**:它们与 MySQL 共享同一份分析器正文(生成物),行为一致,但两条独立语料仍应各跑一遍。
+
+### 13.8 留在 `backend/spike/` 的三个探针
+
+| 探针 | 钉住什么 |
+| --- | --- |
+| `TestCorpusSanitize` | §13.3 的四项指标(拒绝数 / 幂等 / 等价 / 差异数) |
+| `TestD9TriggerPopulation` | §13.4:每个形状先断言"分析器确实给零关系",再检查取表 |
+| `TestSubstituteHypothesis` | §13.2 的那张中性字面量表 |
+
+两条实现经验,顺手记下免得 P2 再踩:
+
+- **`strings.Builder.WriteString` 在本仓库会触发 `revive` 的 `unhandled-error`。** 既有写法是 `_, _ = b.WriteString(...)`(`backend/plugin/lineage/starrocks/rawsql.go:84`)。本轮探针已改成这个写法,`golangci-lint run ./backend/spike/...` 为 0 issues。
+- **`rawsql.go` 就是"按 token span 重建源文本"的现成先例**,与 sanitizer 要做的完全同构(`exprText` 从 `Loc.Start:Loc.End` 拼回文本)。P2 实现时先读它,而不是从零设计。
 
 ## 附:一句话总览
 

@@ -13,7 +13,7 @@ import (
 // ever run for: statements the analyzer answers with zero relations, and which are
 // nevertheless writes. Everything the analyzer already answers is reported as out
 // of population rather than as a failure — D9 is never consulted for it.
-func TestD9TriggerPopulation(t *testing.T) {
+func TestD9TriggerPopulation(_ *testing.T) {
 	cases := []struct {
 		engine storepb.Engine
 		sql    string
@@ -91,4 +91,11 @@ func TestD9TriggerPopulation(t *testing.T) {
 	}
 	fmt.Printf("\n### D9: %d cases reached the extractor (%d ok, %d bad); %d never reach it (the analyzer already names the target)\n",
 		inPopulation, ok, bad, outOfPopulation)
+}
+
+func lastSegment(s string) string {
+	if i := strings.LastIndexByte(s, '.'); i >= 0 {
+		return s[i+1:]
+	}
+	return s
 }

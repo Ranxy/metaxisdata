@@ -139,18 +139,18 @@ func Sanitize(engine storepb.Engine, sql string) (Sanitized, error) {
 	cursor := 0
 	for _, s := range spans {
 		if s.loc > cursor {
-			b.WriteString(stripComments(engine, sql[cursor:s.loc]))
+			_, _ = b.WriteString(stripComments(engine, sql[cursor:s.loc]))
 		}
 		raw := sql[s.loc:s.end]
 		if isLiteral(engine, raw) {
-			b.WriteString(placeholder)
+			_, _ = b.WriteString(placeholder)
 		} else {
-			b.WriteString(raw)
+			_, _ = b.WriteString(raw)
 		}
 		cursor = s.end
 	}
 	if cursor < len(sql) {
-		b.WriteString(stripComments(engine, sql[cursor:]))
+		_, _ = b.WriteString(stripComments(engine, sql[cursor:]))
 	}
 	text := strings.TrimSpace(b.String())
 	if text == "" {
@@ -175,18 +175,18 @@ func replacePlaceholderTokens(stored string, spans []span) string {
 	cursor := 0
 	for _, s := range spans {
 		if s.loc > cursor {
-			b.WriteString(stored[cursor:s.loc])
+			_, _ = b.WriteString(stored[cursor:s.loc])
 		}
 		raw := stored[s.loc:s.end]
 		if raw == placeholder {
-			b.WriteString(neutralLiteral)
+			_, _ = b.WriteString(neutralLiteral)
 		} else {
-			b.WriteString(raw)
+			_, _ = b.WriteString(raw)
 		}
 		cursor = s.end
 	}
 	if cursor < len(stored) {
-		b.WriteString(stored[cursor:])
+		_, _ = b.WriteString(stored[cursor:])
 	}
 	return b.String()
 }
@@ -222,9 +222,9 @@ func stripComments(engine storepb.Engine, gap string) string {
 				return b.String()
 			}
 			i += 2 + end + 2
-			b.WriteByte(' ')
+			_ = b.WriteByte(' ')
 		default:
-			b.WriteByte(gap[i])
+			_ = b.WriteByte(gap[i])
 			i++
 		}
 	}

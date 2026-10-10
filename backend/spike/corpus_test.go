@@ -1,11 +1,12 @@
 package spike
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 
@@ -70,11 +71,11 @@ func loadCorpus(t *testing.T) []corpusEntry {
 			}
 		}
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].engine != out[j].engine {
-			return out[i].engine < out[j].engine
+	slices.SortFunc(out, func(a, b corpusEntry) int {
+		if a.engine != b.engine {
+			return cmp.Compare(a.engine, b.engine)
 		}
-		return out[i].sql < out[j].sql
+		return cmp.Compare(a.sql, b.sql)
 	})
 	return out
 }
@@ -83,7 +84,7 @@ func loadCorpus(t *testing.T) []corpusEntry {
 // depend on the analyzer's emission order.
 func sortedRelations(rendered string) string {
 	lines := strings.Split(strings.TrimSpace(rendered), "\n")
-	sort.Strings(lines)
+	slices.Sort(lines)
 	return strings.Join(lines, "\n")
 }
 
