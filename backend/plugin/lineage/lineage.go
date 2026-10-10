@@ -101,6 +101,32 @@ func NewAnalyzer(cat catalog.Provide, registrations ...EngineRegistration) *Anal
 	return &Analyzer{catalog: cat, engines: engines}
 }
 
+// Supports reports whether engine has a registered analyzer.
+func (a *Analyzer) Supports(engine storepb.Engine) bool {
+	_, ok := a.engines[engine]
+	return ok
+}
+
+// SplitScript splits a script into the statements it holds, using engine's splitter.
+//
+// Analyze splits internally, so a caller that has to see each statement on its own —
+// the application-SQL ingest path fingerprints them separately — must cut the script
+// exactly the same way. It asks here rather than reaching for a splitter of its own,
+// because two splitters would eventually disagree about what one statement is.
+//
+// An unregistered engine yields nothing; an engine registered without a splitter
+// yields its input whole, which is what Analyze does with it.
+func (a *Analyzer) SplitScript(engine storepb.Engine, sql string) []string {
+	registered, ok := a.engines[engine]
+	if !ok {
+		return nil
+	}
+	if registered.split == nil {
+		return []string{sql}
+	}
+	return registered.split(sql)
+}
+
 // Analyze analyzes every statement in sql and returns their merged column
 // relations.
 //
