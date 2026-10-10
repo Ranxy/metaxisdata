@@ -113,6 +113,13 @@ func parseCORSAllowOrigins(raw string) []string {
 	return origins
 }
 
+// greetingText renders the startup banner for a human reader. It must not go
+// through slog: both handlers quote a message that contains a newline, so
+// logging the banner collapsed the whole art into one line of `\n` escapes.
+func greetingText(port int) string {
+	return fmt.Sprintf(greetingBanner, fmt.Sprintf("Server has started on port %d 🚀", port))
+}
+
 // setupLogging installs the process-wide logger. Without it slog.Default keeps
 // its built-in TextHandler pinned at Info, so --debug and --enable-json-logging
 // had no effect and log.Replace never ran.
@@ -177,7 +184,13 @@ func start() {
 		return
 	}
 
-	slog.Info(fmt.Sprintf(greetingBanner, fmt.Sprintf("Server has started on port %d 🚀", flags.port)))
+	if flags.enableJSONLogging {
+		// A multi-line banner is not valid JSON, so machine-readable logging gets
+		// the structured event instead of the art.
+		slog.Info("Server has started", "port", flags.port)
+	} else {
+		_, _ = os.Stdout.WriteString(greetingText(flags.port))
+	}
 
 	// Execute program.
 	if err := s.Run(ctx, flags.port); err != nil {
