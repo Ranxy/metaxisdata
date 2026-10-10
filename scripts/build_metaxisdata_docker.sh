@@ -4,7 +4,7 @@
 #
 # Usage:
 #   scripts/build_metaxisdata_docker.sh                  # -> metaxisdata/metaxisdata:dev
-#   VERSION=v1.2.3 scripts/build_metaxisdata_docker.sh  # -> metaxisdata/metaxisdata:v1.2.3
+#   VERSION=v0.1.0 scripts/build_metaxisdata_docker.sh  # -> metaxisdata/metaxisdata:v0.1.0
 #   scripts/build_metaxisdata_docker.sh --dev           # dev profile, :dev only (no :latest)
 #   IMAGE=registry.internal/metaxisdata IMAGE_ALT= scripts/build_metaxisdata_docker.sh
 #

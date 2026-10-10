@@ -70,8 +70,8 @@ jobs:
           echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
-      # Tags: the release tag as published (v1.2.3), the bare semver (1.2.3),
-      # the minor line (1.2), the commit (sha-abc1234), and :latest for a
+      # Tags: the release tag as published (v0.1.0), the bare semver (0.1.0),
+      # the minor line (0.1), the commit (sha-abc1234), and :latest for a
       # release that is not a prerelease.
       #
       # flavor.latest=false is what makes the prerelease rule real, not the
@@ -85,7 +85,7 @@ jobs:
       # removes every implicit source and leaves the gated raw entry as the only
       # one. Verified against docker/metadata-action@v5's own code.
       #
-      # Aliases (1.2, latest) are stable-release only; the exact version and
+      # Aliases (0.1, latest) are stable-release only; the exact version and
       # sha tags publish on every release so an RC is still identifiable.
       - name: Resolve tags
         id: meta
