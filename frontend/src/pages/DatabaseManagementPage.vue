@@ -12,128 +12,130 @@
 
     <!-- Databases Table -->
     <Card>
-      <PageState
-        :loading="isLoading"
-        :error="error"
-      >
-        <!-- Empty State -->
-        <EmptyState
-          v-if="databases.length === 0"
-          :icon="Database"
-          :title="t('databaseManagement.noDatabases')"
-        />
+      <CardContent>
+        <PageState
+          :loading="isLoading"
+          :error="error"
+        >
+          <!-- Empty State -->
+          <EmptyState
+            v-if="databases.length === 0"
+            :icon="Database"
+            :title="t('databaseManagement.noDatabases')"
+          />
 
-        <!-- Databases List -->
-        <div v-else>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{{ t("databaseManagement.database") }}</TableHead>
-                <TableHead>{{ t("databaseManagement.instance") }}</TableHead>
-                <TableHead>{{ t("databaseManagement.engine") }}</TableHead>
-                <TableHead>{{ t("databaseManagement.environment") }}</TableHead>
-                <TableHead>{{ t("databaseManagement.lastSync") }}</TableHead>
-                <TableHead>{{ t("databaseManagement.status") }}</TableHead>
-                <TableHead class="w-36 text-right">{{ t("databaseManagement.actions") }}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <TableRow
-                v-for="database in databases"
-                :key="database.name"
-                class="cursor-pointer hover:bg-muted/50"
-              >
-                <TableCell>
-                  <div class="flex items-center">
-                    <Database class="h-5 w-5 mr-2 text-muted-foreground" />
+          <!-- Databases List -->
+          <div v-else>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{{ t("databaseManagement.database") }}</TableHead>
+                  <TableHead>{{ t("databaseManagement.instance") }}</TableHead>
+                  <TableHead>{{ t("databaseManagement.engine") }}</TableHead>
+                  <TableHead>{{ t("databaseManagement.environment") }}</TableHead>
+                  <TableHead>{{ t("databaseManagement.lastSync") }}</TableHead>
+                  <TableHead>{{ t("databaseManagement.status") }}</TableHead>
+                  <TableHead class="w-36 text-right">{{ t("databaseManagement.actions") }}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow
+                  v-for="database in databases"
+                  :key="database.name"
+                  class="cursor-pointer hover:bg-muted/50"
+                >
+                  <TableCell>
+                    <div class="flex items-center">
+                      <Database class="h-5 w-5 mr-2 text-muted-foreground" />
+                      <div>
+                        <div class="font-medium">
+                          {{ getDatabaseName(database.name) }}
+                        </div>
+                        <div
+                          v-if="database.drifted"
+                          class="text-xs text-orange-600"
+                        >
+                          {{ t("databaseManagement.drifted") }}
+                        </div>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
                     <div>
                       <div class="font-medium">
-                        {{ getDatabaseName(database.name) }}
+                        {{ database.instanceResource?.title || getInstanceName(database.name) }}
                       </div>
                       <div
-                        v-if="database.drifted"
-                        class="text-xs text-orange-600"
+                        v-if="database.instanceResource?.title"
+                        class="text-xs text-muted-foreground"
                       >
-                        {{ t("databaseManagement.drifted") }}
+                        {{ getInstanceName(database.name) }}
                       </div>
                     </div>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div>
-                    <div class="font-medium">
-                      {{ database.instanceResource?.title || getInstanceName(database.name) }}
-                    </div>
-                    <div
-                      v-if="database.instanceResource?.title"
-                      class="text-xs text-muted-foreground"
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      variant="secondary"
+                      :class="engineBadgeClass(database.instanceResource?.engine)"
                     >
-                      {{ getInstanceName(database.name) }}
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <Badge
-                    variant="secondary"
-                    :class="engineBadgeClass(database.instanceResource?.engine)"
-                  >
-                    {{ engineLabel(database.instanceResource?.engine) }}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <EnvironmentLabel
-                    :environment="database.effectiveEnvironment"
-                  />
-                </TableCell>
-                <TableCell>
-                  <div
-                    v-if="database.successfulSyncTime"
-                    class="text-sm"
-                  >
-                    {{ formatLastSync(database.successfulSyncTime) }}
-                  </div>
-                  <span
-                    v-else
-                    class="text-muted-foreground"
-                  >-</span>
-                </TableCell>
-                <TableCell>
-                  <Badge :variant="stateBadgeVariant(database.state)">
-                    {{ stateLabel(database.state, t) }}
-                  </Badge>
-                </TableCell>
-                <TableCell class="w-36 text-right">
-                  <Button
-                    v-if="canSync"
-                    class="w-28 justify-center"
-                    variant="outline"
-                    size="sm"
-                    :disabled="isDatabaseSyncing(database.name)"
-                    @click.stop="handleSyncDatabase(database.name)"
-                  >
-                    <Loader2
-                      v-if="isDatabaseSyncing(database.name)"
-                      class="h-4 w-4 mr-2 animate-spin"
+                      {{ engineLabel(database.instanceResource?.engine) }}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <EnvironmentLabel
+                      :environment="database.effectiveEnvironment"
                     />
-                    <span>
-                      {{ isDatabaseSyncing(database.name) ? t("databaseManagement.syncing") : t("databaseManagement.sync") }}
-                    </span>
-                  </Button>
-                </TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
+                  </TableCell>
+                  <TableCell>
+                    <div
+                      v-if="database.successfulSyncTime"
+                      class="text-sm"
+                    >
+                      {{ formatLastSync(database.successfulSyncTime) }}
+                    </div>
+                    <span
+                      v-else
+                      class="text-muted-foreground"
+                    >-</span>
+                  </TableCell>
+                  <TableCell>
+                    <Badge :variant="stateBadgeVariant(database.state)">
+                      {{ stateLabel(database.state, t) }}
+                    </Badge>
+                  </TableCell>
+                  <TableCell class="w-36 text-right">
+                    <Button
+                      v-if="canSync"
+                      class="w-28 justify-center"
+                      variant="outline"
+                      size="sm"
+                      :disabled="isDatabaseSyncing(database.name)"
+                      @click.stop="handleSyncDatabase(database.name)"
+                    >
+                      <Loader2
+                        v-if="isDatabaseSyncing(database.name)"
+                        class="h-4 w-4 mr-2 animate-spin"
+                      />
+                      <span>
+                        {{ isDatabaseSyncing(database.name) ? t("databaseManagement.syncing") : t("databaseManagement.sync") }}
+                      </span>
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
 
-          <TablePager
-            v-model:page-size="pageSize"
-            :has-previous="hasPrevious"
-            :has-next="hasNext"
-            :disabled="isLoading"
-            @previous="goToPreviousPage"
-            @next="goToNextPage"
-          />
-        </div>
-      </PageState>
+            <TablePager
+              v-model:page-size="pageSize"
+              :has-previous="hasPrevious"
+              :has-next="hasNext"
+              :disabled="isLoading"
+              @previous="goToPreviousPage"
+              @next="goToNextPage"
+            />
+          </div>
+        </PageState>
+      </CardContent>
     </Card>
   </div>
 </template>
@@ -154,6 +156,7 @@ import PageHeader from "@/components/layout/PageHeader.vue";
 import Badge from "@/components/ui/badge/Badge.vue";
 import Button from "@/components/ui/button/Button.vue";
 import Card from "@/components/ui/card/Card.vue";
+import CardContent from "@/components/ui/card/CardContent.vue";
 import Table from "@/components/ui/table/Table.vue";
 import TableBody from "@/components/ui/table/TableBody.vue";
 import TableCell from "@/components/ui/table/TableCell.vue";
