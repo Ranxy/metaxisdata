@@ -1,0 +1,548 @@
+# 应用 SQL 摄入与血缘(Application SQL Ingestion)— 设计方案
+
+> 状态:**设计稿,未实现**。本文件描述的是待建子系统,不是已交付行为。实现落地后应把本文件改写成维护参考,并在 [README.md](README.md) 的索引表里加一行——现在不加,以免索引表宣称一件并不存在的东西。
+>
+> 关联:[lineage-analyzer.md](lineage-analyzer.md)(分析器装配与 runner 生命周期)、[lineage-semantics.md](lineage-semantics.md)(边与 transformation 的语义)、[openlineage-lineage.md](openlineage-lineage.md)(另一条外部摄入路径)、[rate-limiting.md](rate-limiting.md)(本仓库对机器摄入的既有做法)。
+
+## 0. 结论
+
+想法成立,而且与仓库里已有的两条路径同构:manual SQL 提供"SQL 文本 → 血缘",OpenLineage 提供"外部系统 → 摄入 → 血缘"。应用 SQL 是这两者的交集:像 OpenLineage 一样由外部系统主动推送,像 manual SQL 一样以 SQL 文本为血缘来源。改动集中在新增一条摄入链路,不需要改分析器语义,也不需要改图的读取模型。
+
+但有三个必须先正面处理的事实,它们决定了方案的形状。三条都是实测或读码得出,不是推测。
+
+### 事实 1:MySQL 家族的分析器不接受 `?`,参数化文本不能直接喂给分析器
+
+用仓库自己的分析器实测(`lineage.NewAnalyzer(nil, engines.Registrations()...)`,与 `backend/plugin/lineage/lineage_test.go` 同一装配):
+
+| 引擎 | 语句 | 结果 |
+| --- | --- | --- |
+| MYSQL | `INSERT INTO t (a, b) VALUES (?, ?)` | **parse error: syntax error at or near "?"** |
+| MYSQL | `SELECT a FROM t WHERE c = ?` | **parse error** |
+| MYSQL | `UPDATE t SET a = ? WHERE b = ?` | **parse error** |
+| MYSQL | `SELECT a + ? AS x FROM t` | **parse error** |
+| POSTGRES | `INSERT INTO t (a, b) VALUES ($1, $2)` | 正常,`$1`/`$2` 是 `pg/ast.ParamRef`,分析器把它当叶子 |
+| POSTGRES | `SELECT a + $1 AS x FROM t` | 正常 |
+| STARROCKS | `SELECT a FROM t WHERE c = ?` | 正常,StarRocks 有自己的 parser |
+| MYSQL | 同上四条,把 `?` 换成 `NULL` | **全部正常**,边与用真实字面量时一致 |
+
+也就是说:PostgreSQL 与 StarRocks 的分析器能吃占位符,MySQL 家族(MySQL / TiDB / MariaDB)不能。而按已对齐的决策"解析失败不落库",若把 `?` 形态的文本直接存下来、直接交给 runner,**整个 MySQL 家族的应用 SQL 会被全部丢弃**。这不是可接受的降级,是功能对 MySQL 用户完全不生效。
+
+结论:**存储文本与送分析文本必须是两种形态**(见 §4.2),`?` → 方言中性字面量的替换是必需环节而不是优化。
+
+### 事实 2:常量写入在列级血缘上产生零关系,"写入型语句建节点"因此需要一个额外的分类来源
+
+实测,三种方言一致:
+
+| 语句 | relations | 有非临时 target 的 relation |
+| --- | --- | --- |
+| `INSERT INTO t (a, b) VALUES (1, 2)` | **0** | 0 |
+| `INSERT INTO t (a, b) SELECT x, y FROM s` | 2 | 2 |
+| `UPDATE t SET a = 1 WHERE b = 2` | 1 | 1 |
+| `DELETE FROM t WHERE a = 1` | 1 | 1 |
+| `SELECT a FROM t WHERE c = 1` | 1 | 0(target 是 `__result__`,临时) |
+
+原因在[lineage-semantics.md](lineage-semantics.md) 已记录的语义:血缘是列级派生关系,`VALUES (?, ?)` 不派生自任何列,所以没有边。"是否有非临时 target"因此可以用来区分读与写——**除了**常量写入,它一条关系都没有,会被误判成读。
+
+`INSERT INTO t (a, b) VALUES (?, ?)` 恰恰是 ORM 整行插入的形态,是应用写入里最常见的一种。如果按"有非临时 target"分类,应用对表的写入在图上基本不可见——这与你选的"只有写入型语句建节点"直接冲突。
+
+结论:需要一个不依赖列表的写入判定来源。三个候选见 §6.3,我推荐在"零关系"分支上用 omni 取目标表。
+
+### 事实 3:逐请求审计会让"落库的 SQL 不会很多"不成立
+
+`audit_log` 是永久保留的(根 [AGENTS.md](../../AGENTS.md) 的既定决策),而现有的 OpenLineage 摄入**每个请求写一条审计行**(`auditIngestion`,`backend/api/v1/openlineage_handler.go:690`,[rate-limiting.md](rate-limiting.md) 第 80 行也把"每个请求一条审计行"记作该路径的已知量级)。
+
+你的判断——"因为去重、归一化,落库的 SQL 不会很多,所以不需要上限"——对 `application_sql` 与 `application_sql_observation` 成立:这两个表的行数由**不同语句数**决定,而不是执行次数,而不同语句数由应用代码决定。但如果这个端点也逐请求审计,那么**审计表的行数由请求次数决定**,应用每次调用都写一行,无界。
+
+结论:建议这个端点**不逐请求审计**,改为在 key 行上累计聚合计数(见 §5.5)。这是与 OpenLineage 路径的有意分歧,理由写在该节。
+
+## 1. 与现有两条路径的关系
+
+| | manual SQL | OpenLineage | 应用 SQL(本方案) |
+| --- | --- | --- | --- |
+| 谁写入 | 人在界面上录入 | 外部调度器推送事件 | 应用自动上报参数化 SQL |
+| SQL 来源 | 用户输入 | 事件的 `sql` facet | 上报 payload |
+| 是否分析 SQL | 是 | 是(不信 producer 的列级 facet) | 是 |
+| 表级实体 | `manual_sql` 表 + registry 镜像 | `openlineage_run` + 数据集 | `application_sql` 表 + registry 镜像 |
+| 图上形态 | **节点**(表→语句→表) | **不是节点**,边落表↔表,靠 origin 区分 | **写入型是节点**,只读型无图(见 §2) |
+| 频率类元数据 | 无 | run 的 event_time | **first/last seen + 执行次数**(两级) |
+| 凭据 | 人登录,ConnectRPC | API key(`openlineage_api_key`) | **API key,key ↔ 应用一对一**(见 §2) |
+
+三条路径共用同一个进程级 `*lineage.Analyzer`(`backend/server/server.go:107`),不做第二个实例——这条不变量照旧。
+
+## 2. 已对齐的决策
+
+本次问答得到的七条,连同我据此推出的推论。每条都标注了它的代价,便于日后回溯。
+
+| # | 决策 | 推论与代价 |
+| --- | --- | --- |
+| D1 | **只有写入型语句在图上建节点**:表→语句→目标表;只读语句不产生边 | 语句本身仍入库、仍在"应用 SQL"列表里可查可筛;图的节点数由"写入型语句数"决定,不再是全部语句数。代价:图的读路径上问不了"这个表被哪些应用读",需要靠语句详情页补(§6.2) |
+| D2 | **双保险脱敏**:应用侧按契约替换字面量,服务端再跑一次参数化兜底,只保存服务端结果 | 原始 SQL 永不落库。接口对应用是契约,对服务端是强制——不依赖应用守约 |
+| D3 | **两级聚合**:语句表按(实例, 库, schema, 指纹)唯一;观测表按(语句, 应用)记 first/last seen 与次数 | 观测表不需要再带实例/库/schema——那些已经在语句行上。见 §3.4 |
+| D4 | **专用 REST+JSON 批量端点**,按应用签发的 API key 认证 | 不复用 OpenLineage 通道(会把两个概念混在一起),也不做 ConnectRPC 服务(非 Go 应用接入成本高)。HTTP 状态码与逐项结果见 §5.3 |
+| D5 | **指纹尽量激进**:字面量→占位符、`IN` 列表折叠、常量表达式折叠、空白/注释归一 | 这是 D6"不设上限"能成立的前提。规则必须写死并带版本号,见 §4.3 / §4.4 |
+| D6 | **不设存储上限、不做限流**;解析失败的 SQL 不落库,只 `WARN` 记录 | 前提是 D5 的归一化足够激进,且失败路径永不落库(§5.5)。残余风险见 §11 |
+| D7 | **key 必须人工创建签发**,key 与应用一对一;没有 key 的请求直接拒绝 | 创建 key 即注册应用,不做"首报自动注册"。**应用身份取自 key,不取自 payload**——payload 里的应用名被忽略,一个 key 无法冒充另一个应用 |
+
+## 3. 数据模型
+
+四张表。前两张是"谁在发",后两张是"发了什么、发了多少次"。
+
+### 3.1 `application` — 应用实体
+
+| 列 | 说明 |
+| --- | --- |
+| `id BIGSERIAL PK` | |
+| `application_id TEXT UNIQUE` | 服务端生成的可读 id,作为 AIP 资源名末段 |
+| `name TEXT NOT NULL` | 展示名 |
+| `description TEXT` | |
+| `disabled BOOLEAN NOT NULL DEFAULT FALSE` | 停用即拒绝其 key,但保留历史 |
+| `created_by TEXT` / `created_at` / `updated_at` | |
+
+**应用不是 meta registry 对象,没有 MetaType,没有 GUID。** 它是纯粹的归属标签,像 OpenLineage 的 namespace mapping 一样只是普通表行:它没有 schema、没有列、没有血缘,把它塞进 `meta_registry_resource` 只会污染那张表的语义。
+
+### 3.2 `application_sql_api_key` — 摄取凭据
+
+照抄 `openlineage_api_key` 的形状(`backend/migrator/migration/LATEST.sql:518`),把 `scope_namespace` 换成 `application_id`,并加上 §5.5 的聚合计数：
+
+| 列 | 说明 |
+| --- | --- |
+| `id BIGSERIAL PK` | |
+| `application_id BIGINT NOT NULL REFERENCES application(id) ON DELETE CASCADE` | 每个 key 只绑定一个应用(D7)。**不加 `UNIQUE`**:轮换期需要新旧 key 并存,所以是"多 key → 一应用"。若要严格 1:1,加唯一约束即可 |
+| `key_hash TEXT NOT NULL` | bcrypt,真正决定接受与否 |
+| `masked_key TEXT NOT NULL` | 展示用,`xxxx…last4` |
+| `description`, `created_by`, `created_at`, `revoked_at` | |
+| `last_used_at TIMESTAMPTZ` | |
+| `last_report_id TEXT` | 可选,见 §5.3 的重试幂等 |
+| `request_count`, `statement_accepted_count`, `statement_rejected_count BIGINT NOT NULL DEFAULT 0` | §5.5 的聚合计数,替代逐请求审计行 |
+
+**没有 `key_digest`**:`openlineage_api_key` 那一列存在的唯一理由是给限流器提供一个不走 bcrypt 的比较(`backend/server/openlineage_ingestion.go:63`)。本端点按 D6 不限流,聚合计数又挂在 key 行上,不需要一个额外的密钥摘要——少一列就少一处泄漏面。
+
+凭据与 OpenLineage 的**不复用、不互通**:key 表不同、校验路径不同,两个凭据空间互不相交——一个泄漏的 OpenLineage key 写不了应用 SQL,反之亦然。HTTP 头沿用标准的 `Authorization: Bearer`(§5.1),分离由凭据本身保证,不靠改头名。
+
+### 3.3 `application_sql` — 语句(第一级)
+
+| 列 | 说明 |
+| --- | --- |
+| `id BIGSERIAL PK` | |
+| `guid TEXT` | meta registry GUID,`BuildMetaGUID(instance, database, schema, "__application_sql__/"+application_sql_id)` |
+| `application_sql_id TEXT NOT NULL` | 服务端生成的不透明 id,资源名末段 |
+| `instance_resource_id TEXT NOT NULL` | |
+| `database_name TEXT NOT NULL` | |
+| `schema_name TEXT NOT NULL DEFAULT ''` | MySQL 家族可为空;PG 类必填(§5.2) |
+| `engine INT2 NOT NULL` | 冗余自实例,便于按引擎筛与取分析器;实例引擎变化时刷新 |
+| `fingerprint TEXT NOT NULL` | sha256 hex,§4.4 |
+| `fingerprint_version INT2 NOT NULL` | 归一化规则版本;规则变更时靠它做重算 pass(§9.3) |
+| `sql_text TEXT NOT NULL` | **参数化后的展示文本**,`?` 占位符形态。库里永远只有这一种文本 |
+| `kind INT2 NOT NULL DEFAULT 0` | `UNKNOWN` / `READ` / `WRITE`,由 runner 分析后回写(§6.1);只是给列表页筛选用的一份缓存,不是判定来源 |
+| `execution_count BIGINT NOT NULL DEFAULT 0` | 所有应用求和(可由观测表重算) |
+| `first_seen_at TIMESTAMPTZ NOT NULL` | 所有应用中最早的 |
+| `last_seen_at TIMESTAMPTZ NOT NULL` | 所有应用中最晚的 |
+| `created_at`, `updated_at` | |
+
+唯一键:`UNIQUE (instance_resource_id, database_name, schema_name, fingerprint)`。
+
+**为什么语句身份里带实例**:血缘 GUID 是 `instance;db;schema;object` 的形状,同一个 `sales.orders` 在两个实例上是两个对象,分析作用域(instance/database/schema)也必须逐实例确定。把实例拿掉只会在图上把两个实例的对象错并成一条。
+
+**为什么语句身份里带 schema**:PG 下 `public.orders` 与 `archive.orders` 是不同对象。MySQL 家族 schema 恒为空,不影响。
+
+### 3.4 `application_sql_observation` — 观测(第二级)
+
+| 列 | 说明 |
+| --- | --- |
+| `application_sql_id BIGINT NOT NULL REFERENCES application_sql(id) ON DELETE CASCADE` | |
+| `application_id BIGINT NOT NULL REFERENCES application(id) ON DELETE CASCADE` | |
+| `first_seen_at`, `last_seen_at TIMESTAMPTZ NOT NULL` | 该应用自己的首末时间 |
+| `execution_count BIGINT NOT NULL DEFAULT 0` | 该应用自己的次数 |
+| `updated_at` | |
+
+唯一键:`UNIQUE (application_sql_id, application_id)`。
+
+这里相对 D3 的原话做了一处**简化并明确说明**:观测表只按(语句, 应用)两级,不再重复实例/库/schema,因为语句行已经唯一确定了那三者。若日后要支持"同一指纹在不同作用域出现",那是语句行多一行,而不是观测表多一维。
+
+`application_sql.execution_count` / `first_seen_at` / `last_seen_at` 是观测表的**汇总**,在同一事务里维护;一条语句被删或观测被级联删除时重算。汇总冗余的理由:列表页默认按"热度/最近"排序并分页,每次都去 `SUM` 观测表会在最热的查询上做聚合。
+
+### 3.5 与 `meta_registry_resource` 的关系
+
+- **每一条语句都有 registry 镜像行**(`MetaType_APPLICATION_SQL`),不论读还是写。理由:镜像行是"这个对象在系统里存在"的唯一凭证,GUID 寻址的读取(`GetMetadata`、`ListMetadataHistory`、历史 diff、Explain SQL)全部依赖它;只给写入型建镜像会让只读语句在除列表页以外的每个入口都变成"不存在的对象",并逼出一套按资源名寻址的平行 API。
+- **只有写入型语句产生 `column_lineage` 边**(D1)。图的节点集合由边推导,所以只读语句不进画布——这正是 D1 想要的,不需要靠"不建镜像"来实现。
+- 因此 `meta_registry_resource` 的行数等于**不同语句数**,和 `application_sql` 同阶;它不会随执行次数或请求次数增长。
+- `getNextLevelObjectType`(`backend/store/meta_resource.go:563`)**不添加** `APPLICATION_SQL`——镜像行存在不等于要在元数据浏览器树上列出来,否则每个 schema 下会挂上成百上千个语句条目。浏览入口是专用的"应用 SQL"页面。
+- `GetMetadataSchema`(`backend/api/v1/database_metadata.go:129` 的 MANUAL_SQL 分支)需要为 `APPLICATION_SQL` 加一个分支,返回 `sql_text`,让"看定义"和"Explain SQL"照旧可用。
+
+### 3.6 元数据类型与枚举
+
+- `proto/store/store/meta.proto` 的 `MetaType` 加 `APPLICATION_SQL = 19`(13/14/15 是 reserved,16/17 已给 EXTERNAL_TABLE / EXTERNAL_DATASET,18 是 MANUAL_SQL,100 是 OPENLINEAGE,19 空闲)。
+- `proto/v1/v1/database_service.proto:1495` 的 v1 侧枚举同步加一项;`proto/store` 的 `StoredMetadata` 加 `ApplicationSQLMetadata{application_sql_id, name, sql_text, instance_resource, database_name, schema_name}` —— 镜像 manual SQL 的 `ManualSQLMetadata`。
+- 生成物按 `cd proto && buf generate` 重新生成,不手改。
+
+## 4. 脱敏与参数化:`backend/plugin/sqlsanitize`
+
+新包。它是本方案唯一真正需要新算法的部分,单独成包、单独成语料测试,不让血缘包承担它。
+
+### 4.1 线上契约:占位符统一写成 `?`
+
+上报 payload 不论方言,占位符一律是 `?`。理由:MySQL 用户熟悉它,ORM 与各种驱动都能产出它,不需要应用知道"我们后端在 PG 上用 `$n`"。方言差异由服务端在派生送分析文本时补上。
+
+### 4.2 一条语句的三种形态
+
+| 形态 | 内容 | 存在哪 / 用在哪 |
+| --- | --- | --- |
+| **请求文本**(应用发出) | 应用产出的、字面量已换成 `?` 的文本 | 只在请求里,不落库 |
+| **存储文本** `sql_text` | 服务端 `Sanitize` 的输出:`?` 占位符、注释已删、空白归一 | **落库的唯一文本**,面向人展示、Explain SQL、指纹的输入 |
+| **送分析文本** | 由存储文本按方言派生:PG 把 `?` 换成 `$1…$n`;MySQL 家族换成 `NULL`;StarRocks 保持 `?` | 不落库,只在 runner 分析时现算(§6.2) |
+
+第三种的必要性来自 §0 事实 1。它在 `buildSQL`(`backend/runner/lineageanalyzer/analyzer.go:421`)的 `APPLICATION_SQL` 分支现算——runner 已经在按 GUID 取语句时知道 `engine`,加一次 `sqlsanitize.Analyzable(engine, sqlText)` 即可,**不落冗余列**,避免两份文本各自过期。
+
+`NULL` 作为 MySQL 家族的中性字面量是实测挑的:它在 `VALUES`、`IN`、`BETWEEN`、`LIKE`、`LIMIT`、`SET`、`ON DUPLICATE KEY UPDATE` 位置都能被解析,且产生的边与用真实字面量时一致。
+
+### 4.3 规范化规则
+
+产出 `sql_text`(展示/存储)与 `canonical`(指纹输入)两串。规则编号固定,便于写测试与日后回溯。
+
+| # | 规则 | 作用于 |
+| --- | --- | --- |
+| N1 | 每个字面量(整数、小数、字符串、十六进制、位串、布尔、日期时间字面量)→ 一个 `?` | 两者 |
+| N2 | 注释删除;token 之间归并为单个空格 | 两者 |
+| N3 | 标识符**原样保留**(含大小写与引号形态),不折叠、不改引号 | 两者 |
+| N4 | `IN` / `NOT IN` 列表中 ≥1 个占位符 → 折叠成单个 `?` | 仅 canonical |
+| N5 | `VALUES` 里重复的值组折叠成一组(消掉批量大小差异) | 仅 canonical |
+| N6 | 只含占位符、运算符、括号的最大表达式片段 → 折叠成单个 `?`(使 `1+1` ≡ `2`)。**逗号切开片段**,所以 `f(?, ?)` 不会塌成 `f(?)`;`IN (…)` 的逗号由 N4 单独处理 | 仅 canonical |
+| N7 | PG 的参数编号 `$n` 在 canonical 里写成 `?`(使 `$1`/`$2` 不分裂指纹) | 仅 canonical |
+
+**明确不做**:不改写标识符与函数名(不做大小写折叠、不加引号);不做真正的常量求值(不折叠 `CONCAT('a','b')` 与 `'ab'`,那需要求值器,收益不抵风险);不改语句顺序;不合并语义不同但文本相同的语句。关键字大小写归一(N8)可选,**建议推迟**:应用对同一条语句每次发的文本是固定的,关键字大小写只在跨应用去重时有影响,而收益不足以抵消"依赖各方言关键字表"的耦合。记录在 §11 待决。
+
+N4–N6 正是字面量之外唯一会随执行批次漂移的差异(IN 元素个数、批量行数、常量算式写法),也就是 D5"激进"的实际内容。
+
+### 4.4 指纹与版本
+
+- `canonical` 经 sha256 得到 `fingerprint`(hex)。
+- `fingerprint_version` 从 1 开始,随 N 规则变更递增。
+- **规范化规则是破坏性变更**:改了 N4–N6,同一个语句的指纹就变了,同一行会分裂成两行。因此必须同时提供一次性的重算 pass(§9.3)。这条写进包文档与 `fingerprint_version` 的列注释里,不靠人记。
+
+### 4.5 实现方式:上游 lexer 驱动,不是自己写词法
+
+omni 已经把各方言的 lexer 导出了,带字节偏移:
+
+| 方言 | 构造 | token |
+| --- | --- | --- |
+| MySQL 家族 | `mysql/parser.NewLexer(input)` | `Token{Type, Str, Ival, Loc, End}` |
+| PostgreSQL | `pg/parser.NewLexer(input)` | 同上 |
+| StarRocks | `starrocks/parser.NewLexer(input)` | 同上 |
+
+用 `Loc`/`End` 做**源文本区间替换**,不碰 AST、不依赖 `nodeLoc` 那套反射(分析器里 `mysql/analyzer.go:264` 的注释已经说明 omni 没有位置接口,`Loc` 是具名字段,零值意味着"解析器没设")。选 lexer 而不是 AST 的理由:
+
+- 需要精确的方言级容错——单双引号与反引号、反斜杠转义、`--` / `#` / `/* */` 注释、PG 的 dollar-quoting(`$$ … $$`)。这些规则上游已经实现且被上游测试覆盖,自己重写一遍就是重新引入一批分歧。
+- 不需要 AST 改写,也就不需要依赖"字面量节点是否都设了 `Loc`"这个未经检验的前提。
+
+主要实现风险:**lexer 的 token 类型表是上游内部常量**,判断"这个 token 是字面量"需要读上游的类型常量(`mysql/parser` 与 `pg/parser` 里都有 ICONST / FCONST / SCONST 一类)。这需要一个 spike 把常量对齐到两个方言上,见 §10 P0。
+
+### 4.6 幂等性与不变量
+
+- `Sanitize(Sanitize(x)) == Sanitize(x)`:语料测试逐例断言。它是"双保险"的前提——应用侧做过一次,服务端再做一次必须不变形。
+- **落库文本永远是 `Sanitize` 的输出**,而不是请求里的文本。这条是安全不变量,在 handler 里只有一个写入口。
+- `Sanitize` 失败 ⇒ 该上报项不落库(§5.5)。
+
+## 5. 上报接口
+
+### 5.1 端点与认证
+
+```
+POST /v1/applicationSql:report
+Authorization: Bearer <application-sql-key>
+Content-Type: application/json
+```
+
+- 普通 Echo 路由(与 OpenLineage 摄入同层,`backend/server/` 注册),不进 ConnectRPC 拦截器链。
+- 认证:**只认这个头发。**缺头、头的格式不对、key 已撤销、密钥无效、应用已 `disabled` —— 一律 401,不进入处理。
+- **应用身份取自 key,不取自 payload**。payload 里即便带了应用名也被忽略,响应里回显 key 所属的应用。这样 key 与应用的对应关系是服务端事实,不靠应用自觉。
+
+### 5.2 请求
+
+```json
+{
+  "instance": "instances/inst-abc",
+  "database": "sales",
+  "schema": "public",
+  "reportId": "optional-opaque-id-for-retry-dedup",
+  "statements": [
+    {
+      "sql": "SELECT o.id, o.total FROM orders o WHERE o.id = ? AND o.status = ?",
+      "count": 128,
+      "firstSeenAt": "2025-01-01T00:00:00Z",
+      "lastSeenAt": "2025-01-02T00:00:00Z"
+    }
+  ]
+}
+```
+
+| 字段 | 规则 |
+| --- | --- |
+| `instance` | 必填,`instances/{id}` 形状。必须是注册表里已存在的实例,否则整请求 400 |
+| `database` | 必填 |
+| `schema` | PG 类引擎必填;MySQL 家族可空(空即"无默认 schema") |
+| `reportId` | 可选;见 §5.3 的重试去重 |
+| `statements` | 必填,1..1000 项 |
+| `sql` | 必填,单条语句;字面量应已替换为 `?` |
+| `count` | 可选,默认 1;**表示本次上报窗口内的增量次数** |
+| `firstSeenAt` / `lastSeenAt` | 可选,默认服务端收件时间;应用比服务端更清楚何时第一次执行 |
+
+**`engine` 不由应用声明**,服务端从实例取。理由:血缘分析器按引擎注册,实例的引擎是注册表的事实;让应用声明就会引入"应用说的是 MySQL、实例是 TiDB"这类不一致。
+
+**多语句脚本**:`sql` 里若含多条语句,服务端用根包的切分器(`lineage.go:126-141`)切开,**每条各自成为一行语句**,`count` 施加到每一条。接口文档要写明这一点,避免应用以为"一个上报项 = 一行记录"。
+
+**请求体上限**:8 MiB,与 `maxOpenLineageBodySize` 一致;**每请求语句数上限 1000**,与 `maxOpenLineageBatchEvents` 一致。这两个是**请求形状**的边界,不是存储上限——它们只约束单次请求的内存与事务规模,不与你选的 D6 冲突。
+
+### 5.3 响应
+
+```json
+{
+  "application": "applications/app-1",
+  "accepted": 12,
+  "rejected": 2,
+  "results": [
+    { "index": 0, "status": "ACCEPTED", "guid": "inst-abc;sales;public;__application_sql__/01H…" },
+    { "index": 1, "status": "REJECTED", "reason": "PARSE_ERROR", "detail": "syntax error at or near \"SELECT\"" }
+  ]
+}
+```
+
+- 逐项结果,而不是整请求成败:一个应用的批次里混着一条坏 SQL 时,好语句不该被连坐。
+- `reason` 是枚举字符串:`PARSE_ERROR` / `EMPTY_STATEMENT` / `ENGINE_UNSUPPORTED` / `SCOPE_NOT_FOUND`。应用可以据此定位自己发错了什么。
+- 整请求级别失败用 HTTP 4xx:401 凭据缺失/无效/已撤销/应用停用、400 payload 形状不合法、404 实例不存在、413 超体、400 超批。
+- **重试幂等**:`reportId` 与 `application_sql_api_key.last_report_id` 比较,相同则直接返回 200 且不再累计计数(只有最近一次,所以只挡"紧接的一次重试",挡不住乱序补发)。不带 `reportId` 的上报是**增量语义**,重试会重复计数。接口文档必须写明这一点。v1 接受这个近似:频率是元数据不是账单,少几次数不影响它要回答的问题。
+
+### 5.4 服务端处理流程
+
+```
+认证 → 取实例与引擎 → 校验作用域
+对每个 statement:
+  1. 切分多语句(lineage.go:126-141 的根包切分器)→ 逐条走 2..6
+  2. Sanitize(engine, 单条语句)        ← 失败 → REJECTED(PARSE_ERROR),WARN 日志
+  3. 计算 fingerprint
+  4. upsert application_sql by (实例,库,schema,fingerprint)
+     - 新行 → 生成 application_sql_id / guid
+     - 已有行 → 更新 last_seen_at、累加 execution_count
+  5. upsert application_sql_observation by (语句,应用)
+     - first_seen_at 取最早,last_seen_at 取最晚,execution_count 累加
+  6. 取汇总回写 application_sql;upsert meta registry 镜像
+     —— 镜像与语句行同一事务,照 CreateManualSQL 的写法
+事务提交后:
+  7. QueueLineageAnalysis(guid, APPLICATION_SQL)
+     —— 不在这里判读写:判定归 runner(§6.1),摄入只负责"语句存在"这件事
+```
+
+**摄入不做类型判定,也不跑分析器。** 这是有意的:判定规则只该有一处实现,而 runner 本来就要跑分析。摄入路径因此只做纯 I/O(一次事务 + 一次入队),响应快且不受分析器抖动影响;读写的区分与"写入型才建边"由 runner 在写边时执行,并把结果回写到 `application_sql.kind` 供列表页筛选。
+
+切分在 `Sanitize` 之前,和 `Analyzer.Analyze` 的次序一致——切分是词法扫描,不依赖解析,让它在最外层就不必为"注释里的分号"操两次心。
+
+入队放在事务提交之后,是因为计数与元数据是"应用发了什么"的事实,不该因为分析器抖动而回滚。分析失败只影响图,不影响频率统计——与 [lineage-analyzer.md](lineage-analyzer.md) 的"解析失败清血缘、未建模留血缘 + 缺口"是同一套处理哲学。
+
+### 5.5 不落库的分支,以及为什么这里不逐请求审计
+
+不落库的分支穷举:
+
+| 分支 | 处理 |
+| --- | --- |
+| 无 key / key 无效 / 已撤销 / 应用停用 | 401,不落库,`slog.Warn` |
+| payload 形状不合法、实例不存在、作用域不合法 | 4xx,不落库,`slog.Warn` |
+| 超体 / 超批 | 413 / 400,不落库 |
+| 单条 SQL `Sanitize` 失败(解析不了) | 该条不落库,逐项 `REJECTED`,**`slog.Warn`**(D6 明确要求) |
+| 单条 SQL 解析成了但没建模 | 正常落库;缺口交给血缘侧按既有机制处理 |
+
+**审计**(与 [openlineage-lineage.md](openlineage-lineage.md) 的 OpenLineage 路径有意分歧):
+
+- 审计**人的动作**:创建/停用应用、签发/撤销 key —— 走 ConnectRPC 的 `audit` 注解,与其余管理接口一致。
+- 摄入请求**不逐请求写审计行**,改为在 `application_sql_api_key` 上累计:`last_used_at`、`request_count`、`statement_accepted_count`、`statement_rejected_count`。
+
+理由就是 §0 事实 3:`audit_log` 永久保留,逐请求审计会让这张表的行数由请求次数决定,直接否掉 D6 想保住的性质。代价是失去了"某次具体请求发生了什么"的逐条记录——保留的是"这个 key 一共发过多少、被拒多少、最后何时用"。这个取舍需要在实现前被明确接受,已列入 §11。
+
+代价的另一面:每个请求会多一次对 key 行的 `UPDATE`。它不增加行数,也不进永久账本,是刻意的交易。若日后这一步在写负载里显现出来,把它合并成"最多每分钟落一次"即可,不影响任何读路径。
+
+## 6. 血缘接入
+
+### 6.1 分类规则:写入型还是只读型
+
+```
+relations := analyzer.Analyze(engine, analyzableText)
+
+写入型 ⟺ ∃ rel ∈ relations : !rel.IsTemp          // 有真实目标表
+       或 (relations 为空 ∧ 能取出目标表)          // 常量写入的补丁,§6.3
+只读型 ⟺ 其余
+```
+
+- 只读 `SELECT` 的 target 是 `__result__`(`model.ResultTableName`),`IsTemp` 为真 ⇒ 只读型,不建节点(实测:`SELECT a FROM t WHERE c = 1` 有 1 条关系、非临时 target 数 0)。
+- `UPDATE` / `DELETE` 的 target 是真实表 ⇒ 写入型(实测各 1 条非临时 target)。
+- `INSERT … SELECT` ⇒ 写入型(实测 2 条非临时 target)。
+- `INSERT … VALUES` ⇒ 0 条关系,需要 §6.3 的补丁,否则被误判成只读。
+
+**这条规则跑在 runner 里,不在摄入路径上**(§5.4)。`backend/runner/lineageanalyzer/analyzer.go` 的 `APPLICATION_SQL` 分支在 `Analyze` 之后按上面的判据决定写不写边,并把 `READ`/`WRITE` 回写 `application_sql.kind`。于是:
+
+- 判定只有一处实现,摄入路径不重复它,也不因为要判定而多跑一次分析器。
+- 分类只决定"写不写边",不决定"落不落库"——两类都落库、都有 `application_sql` 行与频率,这是 D1 的完整含义。
+- 写入型判定翻转(例如目标表被删后不再有非临时 target)时,分支按既有机制清掉该对象的 `column_lineage`(照"解析失败清血缘"那条路径),节点随之从图上消失,`kind` 跟着回写。
+
+### 6.2 边形状
+
+写入型语句沿用 MANUAL_SQL 的边形状(`backend/runner/lineageanalyzer/analyzer.go:334-370` 那段分支),换成 `MetaType_APPLICATION_SQL`:
+
+| 边 | 含义 |
+| --- | --- |
+| `源表.列 → 语句.guid.列` | 语句读到的列 |
+| `语句.guid.列 → 目标表.列` | 语句写下的列,与上面同列名 |
+
+于是图上出现 `t1 → [应用: <语句摘要>] → t2` 的链,与 manual SQL 节点同构。`guidLookupSet` 里额外补 `MetaType_APPLICATION_SQL` 的类型解析,和现有分支一致。
+
+**只读语句补读路径**:只读语句不进 `column_lineage`,所以"这个表被哪些应用读"在图上答不了。补法是页面级的,不是边级的——`GetApplicationSQL` 在打开详情时**服务端现算一次**该语句的分析结果(用 `sqlsanitize.Analyzable` 译成送分析文本再调 `lineage.Analyzer.Analyze`),把读写关系列出来;一次人打开的抽屉 = 一次解析,代价可以忽略。
+
+注意这里**不能直接复用 `AnalyzeSQL`**:那个 RPC 把 `sql_text` 原样交给分析器(`backend/api/v1/lineage_service_analyze.go`),而 MySQL 家族的存储文本带 `?`,原样送进去必然解析失败。要么让 `GetApplicationSQL` 自己走 `Analyzable`,要么给 `AnalyzeSQL` 加一个"文本已参数化,请按方言翻译"的开关——前者不动既有 RPC 的语义,推荐前者。表详情页要列"读它的应用语句"则需要一个输入表索引,属于 P5 的增强项,不是 v1 必需。
+
+### 6.3 常量写入的缺口与三个候选解
+
+`INSERT INTO t (a, b) VALUES (?, ?)` 一条关系都没有(§0 事实 2),因此"按关系判类型"判不出它。三个候选:
+
+| 候选 | 做法 | 代价 |
+| --- | --- | --- |
+| A | 接受它被判成"只读"(于是不上图),语句仍在列表里可见 | 实现最省;但 ORM 整行插入 —— 应用写入里最常见的一种 —— 在图上不可见,连 `kind` 都会标错,D1 的价值大打折扣 |
+| B | payload 增加可选的 `operation` + `target`,由应用声明目标表 | 服务端零解析;但把"我知道我写哪张表"变成应用侧义务,和你"不考虑应用那边实现"的取向相反 |
+| **C(推荐)** | 服务端在"零关系"这一条窄分支上用 omni 取目标表:INSERT/UPDATE/DELETE/MERGE 的目标 `Relation` | 两个方言各约 60 行(`mysql/parser`、`pg/parser`,StarRocks 复用 MySQL 形状);只在这一条分支上跑,不影响主路径;不改分析器契约与语料契约 |
+
+选 C 的理由:这是唯一既不给应用加负担、又不放弃图覆盖的解,而且改动被限制在一个窄分支里,和仓库已有的"在 omni 缺口处就地补一小段解析"的先例一致(`starrocks/viewbody.go`)。它要新增一个 `sqlsanitize` 之外的方言小助手,建议放在 `backend/plugin/lineage/appsqltarget/` 或直接并入 `sqlsanitize` 包,由 P0 spike 定。
+
+拿到目标表后,零关系写入型的边是**表级边**:`语句.guid → 目标表`(列名为空)。表级边是本仓库已有的形状(谓词影响边的 target 列为空,`algorithm/influence.go:122`;OpenLineage 的 `tableLevelLineage` 也是表级边),图的收敛逻辑按 (source_guid, target_guid) 折叠,不依赖列名,因此能被正常画出来。**这一条要在实现时用一个图读取的测试确认**,列在 §12。
+
+### 6.4 新增第三类 origin
+
+前端 `frontend/src/lib/lineageOrigin.ts` 现在把关系分成两类:`sql`(定义型)与 `openlineage`(摄入型),判据是 `relation.metaType === MetaType.OPENLINEAGE`。加第三类:
+
+| 改动 | 位置 |
+| --- | --- |
+| `LineageOrigin` 联合类型加 `"applicationsql"` | `lineageOrigin.ts:16` |
+| 色板加 `--lineage-appsql` 三元组与虚线样式(`sql` 实线、`openlineage` `7 5`;应用 SQL 取第三种,例如 `1 4`) | `lineageOrigin.ts:22,39` + `lineageTokens`/CSS 变量 |
+| `relationOrigin()` 按三种 meta type 分派 | `lineageOrigin.ts:49` |
+| `LINEAGE_ORIGINS` 与 `countRelationsByOrigin` 加一个键 | `lineageOrigin.ts:46,74` |
+| 图例与提示的 i18n 键 | `lineageGraph.originApplicationSql` / `…Hint`,两个 locale 都加 |
+| `lineageOrigin.test.ts`、`lineageTokens.test.ts`(后者断言"每种 origin 在两个主题都有颜色")同步 | 测试 |
+
+注意 `mixed` 的语义现在是"两个写入者的边被折叠到一起",加第三类后它自然变成三者任意组合——`mixed` 的实现是"不在 `LINEAGE_ORIGINS` 里"的兜底,不需要改逻辑,但测试要补一条三者混合的用例。
+
+## 7. 服务端 API 与权限
+
+### 7.1 ConnectRPC 服务
+
+新增 `ApplicationService`(`proto/v1/v1/application_service.proto`),照 AIP 与 `openlineage_service.proto` 的形状:
+
+| RPC | HTTP | 权限 | 说明 |
+| --- | --- | --- | --- |
+| `CreateApplication` | `POST /v1/applications` | `metaxisdata.applications.create` | 创建应用,**同时签发第一个 key**(D7:创建 key 即注册应用) |
+| `ListApplications` | `GET /v1/applications` | `metaxisdata.applications.list` | |
+| `UpdateApplication` | `PATCH /v1/{application.name=applications/*}` | `metaxisdata.applications.update` | 改名、描述、`disabled` |
+| `DeleteApplication` | `DELETE /v1/{name=applications/*}` | `metaxisdata.applications.delete` | 级联删观测;孤语句随之清理(§9.2) |
+| `CreateApplicationAPIKey` | `POST /v1/{parent=applications/*}/apiKeys` | `metaxisdata.applications.apiKeys.create` | 轮换用;明文 key 只在响应里出现一次 |
+| `ListApplicationAPIKeys` | `GET /v1/{parent=applications/*}/apiKeys` | `metaxisdata.applications.apiKeys.list` | 只回 masked |
+| `RevokeApplicationAPIKey` | `DELETE /v1/{name=applications/*/apiKeys/*}` | `metaxisdata.applications.apiKeys.delete` | |
+| `ListApplicationSQLs` | `GET /v1/{parent=instances/*/databases/*}/applicationSqls` | `metaxisdata.applicationSqls.list` | 过滤:应用 / schema / 类型 / 文本检索 / 时间窗(`parent` 已定实例与库);排序:最近出现、出现次数 |
+| `GetApplicationSQL` | `GET /v1/applicationSqls:get?guid=…` | `metaxisdata.applicationSqls.get` | 单条详情:SQL 文本、`kind`、逐应用首末时间与次数、按需现算的读写关系 |
+| `DeleteApplicationSQL` | `POST /v1/applicationSqls:delete`(body 带 `guid`) | `metaxisdata.applicationSqls.delete` | 人工清理误报;清镜像 + 血缘 + 版本行;`audit` |
+
+语句是**对象级一律按 guid 寻址**的服务(带 body 的 POST 有先例:`GetLineageCounts` 是 `POST /v1/lineages:counts`),理由是拿到语句的入口几乎都给的是 GUID:图上的节点、Explain SQL 的历史入口、`GetMetadata` 的返回。GUID 里含 `;` 和 `/`(`__application_sql__/<id>`),塞进 URL 路径段需要额外转义,而 `GetLineage` 早已采用 guid 查询参数的形式(`/v1/lineages?guid=…`)。只有 `ListApplicationSQLs` 需要一个 `parent` 来做作用域收敛,沿用 manual SQL 的嵌套形状(`database_service.proto:74,506`)。于是 `application_sql_id` 完全不进 API 表面,只是内部构造资源名与 GUID 的原料。
+
+**不新增"读语句"的 RPC**:语句已经是 registry 对象,`GetMetadata`(`GET /v1/metadata?guid=…`)与 `ListMetadataHistory` 对 `APPLICATION_SQL` 直接可用,只要 §3.6 的 `StoredMetadata` 分支补上。
+
+### 7.2 权限与预定义角色
+
+- 新增权限常量加到 `backend/common/permission/permission_gen.go`(生成物,按该包的方式生成)。
+- `memberBaselinePermissions`(`backend/store/predefined_roles.go:39`)**只加读**:`ApplicationsList`、`ApplicationSQLsList`、`ApplicationSQLsGet`。理由:工作区是单租户、读是所有人的基线(见根 [AGENTS.md](../../AGENTS.md) 的"授权按工作区划定"),但**签发 key 是能写入数据的凭据**,必须留在 `workspaceAdmin` 或自定义角色里,和 OpenLineage 的写权限同一档。
+- `ApplicationsApiKeysCreate` 等高危项**不加进 member 基线**。
+- `predefined_roles_test.go` 会因权限集变化而需要同步。
+
+## 8. 前端
+
+| 新增 | 说明 |
+| --- | --- |
+| `pages/ApplicationManagementPage.vue` | 应用列表 + 创建(创建时展示一次明文 key)+ 停用 + key 轮换 |
+| `pages/ApplicationSQLPage.vue` | 语句列表:筛选(应用、实例、库、schema、类型、时间)、排序(最近出现、出现次数)、分页;详情抽屉含只读 Monaco 展示参数化 SQL、逐应用首末时间与次数、读写关系 |
+| `api/application.ts` | 每服务一模块,照 [frontend/AGENTS.md](../../frontend/AGENTS.md) 的分层 |
+| 侧边栏 | `AppSidebar.vue` 加两个入口,绑到对应权限 |
+| 血缘图 | §6.4 的 origin 第三类;节点渲染按 `MetaType.APPLICATION_SQL` 与 manual SQL 节点共用一个形状(它是"一个 SQL 节点",不是表) |
+| i18n | `en-US.json` / `zh-CN.json` 两份都加,跑 `pnpm --dir frontend i18n:sort` |
+
+参数化 SQL 的展示**必须只读**且不提供"编辑后保存"——语句是机器事实,不是人工资产。与 manual SQL 的差别正在于此,页面上要说清。
+
+## 9. 迁移与生命周期
+
+### 9.1 迁移
+
+按 [backend/migrator/AGENTS.md](../../backend/migrator/AGENTS.md) 的两文件规则:
+
+- `backend/migrator/migration/LATEST.sql` 追加四张表的幂等 DDL。
+- `backend/migrator/migration/0.1/0019##application_sql.sql` 增量(当前目录最高是 `0018##notification_seen.sql`)。
+- `backend/store` 的查询同批完成。
+
+### 9.2 生命周期与清理
+
+| 触发 | 行为 |
+| --- | --- |
+| 上报了新语句 | 插 `application_sql` + 观测行 + registry 镜像(总是),`QueueLineageAnalysis` |
+| 语句的写入型判定翻转 | runner 按当前分析结果决定写边或清边,并回写 `kind`(§6.1);镜像行始终保留 |
+| 应用被删 | 观测行级联删除;**孤语句**(观测数为 0)连 `application_sql` 行、registry 镜像、血缘、版本行一起删除,形状照 `DeleteManualSQL`(`backend/store/manual_sql.go:408`) |
+| 应用被停用 | 只拒 key,不删任何历史 |
+| 语句长期无上报 | **不自动删除**。`last_seen_at` 已经表达了它;页面上按时间筛即可 |
+
+### 9.3 归一化规则变更时的重算
+
+`fingerprint_version` 变化时,`application_sql` 里旧版本的行需要重算指纹,并按 (实例, 库, schema, 新指纹) 合并重复行:合并时观测行按 `application_id` 去重,`first_seen_at` 取最早、`last_seen_at` 取最晚、`execution_count` 取和;被合并掉的行连同其 registry 镜像与血缘一起删除(血缘由保留行的 `QueueLineageAnalysis` 重建)。
+
+这是一个 maintenance runner 里的独立 pass(`backend/runner/maintenance/`),不是迁移的一部分——因为它要跑分析器、要重写血缘,而迁移只该做 DDL。规则变更时手动触发一次。**这条不做的话,改一次 N 规则就永久留下两套语句行**,所以它必须和规则变更同批交付。
+
+## 10. 实施阶段
+
+每个阶段都独立可验证、独立可回滚。P0 是 spike,结论不成立就改方案而不是硬推。
+
+| 阶段 | 交付 | 验证 |
+| --- | --- | --- |
+| **P0 spike** | 用真实应用 SQL 语料(ORM 的、手写的、批量的)验证 `sqlsanitize` 在各方言 lexer 上的可行性与 token 类型对齐;定下 N 规则的可实现边界;验证 §6.3 候选 C 的方言取表助手;确认表级边能被图读取画出来 | 一次性探针 + 语料跑通率报告,不留仓库脚本(照 [lineage-analyzer.md](lineage-analyzer.md) 的 AST 审计惯例) |
+| **P1 数据模型** | 四张表 + 增量迁移 + `application`/`application_sql`/观测的 store 层 | `go test ./backend/store/`;schema 守卫测试(唯一键、级联、汇总重算) |
+| **P2 脱敏与指纹** | `backend/plugin/sqlsanitize` 包 + 幂等性/语料测试 | `go test ./backend/plugin/sqlsanitize/` |
+| **P3 摄入与管理 API** | 上报端点 + key 认证 + `ApplicationService` 的 CRUD 与 key 管理 + 权限常量与角色 | handler 单测(无 key / 坏 key / 停用 / 逐项 REJECTED / 超体超批 / `reportId` 去重);`go test ./backend/api/v1/` |
+| **P4 血缘接入** | `MetaType_APPLICATION_SQL` + registry 镜像 + runner 的 `buildSQL` 分支 + 分析器分支 + 写入/只读分类 + 常量写入补丁 | `go test ./backend/plugin/lineage/...`、`go test ./backend/runner/lineageanalyzer/`;集成:`make test-integration`(上报 → 图上可见边) |
+| **P5 前端** | 应用管理页、应用 SQL 页、origin 第三类、图例、i18n | `pnpm --dir frontend biome:check && lint && i18n && type-check && test run` |
+| **P6 收尾** | 把本文件改写成维护参考并在 `.agents/docs/README.md` 加行;`docs/` 里补一份面向接入方的接口文档(上报格式、key 申请、重试语义、占位符约定) | 文档 review |
+
+## 11. 风险与未决问题
+
+### 已明确、需要你点头的三条
+
+1. **摄入请求不写审计行**(§5.5)。这是与 OpenLineage 路径的有意分歧,换来的是"存储行数由不同语句数决定"这个性质。代价:无法事后追查"某一次摄取请求到底发了什么",只留 key 级聚合计数。如果你要逐请求审计,那 D6 的"不设上限"就需要重新考虑——因为永久保留的 `audit_log` 行数会由请求次数决定。
+2. **§6.3 候选 C**(服务端在零关系分支取目标表)。不做的话,D1 在 ORM 整行插入上基本不生效。
+3. **§9.3 的重算 pass** 与 N 规则同批交付。不做的话,改一次规则就永久留下两套行。
+
+### 残余风险,接受但不隐瞒
+
+| 风险 | 说明 | 可用的缓解 |
+| --- | --- | --- |
+| **无请求预算** | 你选了不限流。落库行数确实受控,但**每个请求都要落一次事务,并让每一条新语句进一次分析队列**,这条路径目前没有任何请求预算。一个写错循环或 key 泄漏的应用可以把 CPU 花在解析与写库上 | 现成的 `openLineageIngestionMiddleware`(`backend/server/openlineage_ingestion.go`)可以照搬成一个独立实例,只需换预算值。日后要加,不改数据模型 |
+| **指纹漂移导致行数增长** | "去重后不会很多"依赖 N 规则覆盖了应用的文本差异。N4–N6 覆盖的是批量大小、IN 长度、常量算式;若某应用用字符串拼 SQL 拼出**列名/表名**(如动态排序字段),指纹会随维度漂移 | 应用 SQL 列表页要有"新增语句数 / 天"的观测入口,让这类应用能被发现。不预设上限,但要有度量 |
+| **`sqlsanitize` 依赖上游 token 常量** | 上游 omni 改 token 类型编号,脱敏会静默失效(把所有 token 当标识符 = 一个字面量都不替换)。这与 [omni-upstream-defects.md](omni-upstream-defects.md) 记录的"适配层脆弱"是同一类问题 | 语料测试里放"必须替换"的断言(不是"替换后还能解析"),让失效变红 |
+| **重试重复计数** | 不带 `reportId` 的重试会重复计数 | `reportId` 只挡紧接的一次;频率是元数据不是账单,v1 接受 |
+
+### 待决(不影响动工,但要在 P0 定)
+
+- **N8 关键字大小写归一**是否做(§4.3)。建议推迟。
+- **§6.3 候选 C 的代码落点**:并入 `sqlsanitize` 还是新包 `backend/plugin/lineage/appsqltarget/`。P0 按"它是不是血缘概念"来定。
+
+## 12. 验收与测试
+
+| 层 | 断言 |
+| --- | --- |
+| `sqlsanitize` | `Sanitize` 幂等;字符串里的 `?`/`--`/`$$` 不被当占位符或注释;各方言语料上"字面量全部被替换";N4–N6 的折叠逐例;`Analyzable` 对 MySQL 家族产出可解析文本 |
+| 指纹 | 同义语句(IN 长度不同、批量行数不同、`1+1` vs `2`、字面量不同)得到同一指纹;不同表/不同列名**不**合并;`fingerprint_version` 变更后重算 pass 能合并并保住计数等于各自之和 |
+| 摄入 handler | 无 key / 坏 key / 撤销 / 停用 → 401 且不落库;逐项 REJECTED 不连坐;超体 413、超批 400;`reportId` 重放不重复计数;`WARN` 日志含语句摘要与原因 |
+| store | 唯一键冲突走 upsert 而不是插重复;观测首末时间取极值、次数累加;汇总与观测表一致;删应用级联后孤语句及其 registry/血缘/版本行一并消失 |
+| 分析器 | 读/写分类逐例(`INSERT VALUES` 为写入型依赖 §6.3 的补丁);写入型边形状为 表→语句→表;只读型不产生任何 `column_lineage` 行;**表级边(空列名)能被 `GetLineageGraph` 画成节点** |
+| 只读详情 | `GetApplicationSQL` 对 MySQL 家族的 `?` 文本能算出一致的读写关系(即它确实走了 `Analyzable`,没有把 `?` 原样喂给分析器);`kind` 在 runner 分析后被回写 |
+| 端到端 | 集成用例:签发 key → 上报一批含读/写/坏 SQL → 断言库内计数、断言图上新增 origin=`applicationsql` 的节点与边、断言坏 SQL 未落库且响应里可见 |
+| 前端 | `lineageOrigin` 三类分派与 `mixed` 三者混合;色板在两个主题下齐全;i18n 两份键齐;i18n:sort 后无 diff |
+
+## 附:一句话总览
+
+应用 SQL 走的是"OpenLineage 的管道形态 + manual SQL 的血缘形态",新增的是**脱敏与指纹**这一段算法和**应用/key** 这一层归属;图与运行时的改动是加一个 origin、加一个 MetaType、加一个分析器分支,不动语义。
