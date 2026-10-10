@@ -1,7 +1,10 @@
 import { ref } from "vue";
-import * as monaco from "../monaco";
+// Type-only on purpose: a value import of `../monaco` here would make the whole
+// editor bundle a static dependency of every consumer of these composables —
+// see the note in `lazy-editor.ts`. The module is passed in at run time instead.
+import type * as monaco from "../monaco";
 import { formatSQL } from "../sqlFormatter";
-import type { SQLDialect } from "../types";
+import type { MonacoModule, SQLDialect } from "../types";
 
 export function useTextModelLanguage(
   editor: monaco.editor.IStandaloneCodeEditor
@@ -29,6 +32,7 @@ function getModelLanguage(editor: monaco.editor.IStandaloneCodeEditor): string {
 }
 
 export async function formatEditorContent(
+  monaco: MonacoModule,
   editor: monaco.editor.IStandaloneCodeEditor,
   dialect: SQLDialect | undefined
 ) {
@@ -43,10 +47,11 @@ export async function formatEditorContent(
     return;
   }
 
-  trySetContentWithUndo(editor, model, data, "Format SQL");
+  trySetContentWithUndo(monaco, editor, model, data, "Format SQL");
 }
 
 export function trySetContentWithUndo(
+  monaco: MonacoModule,
   editor: monaco.editor.IStandaloneCodeEditor,
   model: monaco.editor.ITextModel,
   content: string,
