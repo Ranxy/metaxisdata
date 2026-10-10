@@ -140,6 +140,26 @@ const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    path: "/applications",
+    name: "ApplicationManagement",
+    component: () => import("@/pages/ApplicationManagementPage.vue"),
+    meta: {
+      requiresAuth: true,
+      layout: "default",
+      contentWidth: "full",
+    },
+  },
+  {
+    path: "/application-sql",
+    name: "ApplicationSQL",
+    component: () => import("@/pages/ApplicationSQLPage.vue"),
+    meta: {
+      requiresAuth: true,
+      layout: "default",
+      contentWidth: "full",
+    },
+  },
+  {
     path: "/explain-sql",
     name: "ExplainSQL",
     component: () => import("@/pages/ExplainSQLPage.vue"),

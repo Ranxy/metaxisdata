@@ -180,6 +180,7 @@
 <script setup lang="ts">
 import { useMediaQuery } from "@vueuse/core";
 import {
+  AppWindow,
   ChevronRight,
   Database,
   FileCode2,
@@ -189,6 +190,7 @@ import {
   Network,
   PanelLeftClose,
   PanelLeftOpen,
+  ScrollText,
   Server,
   Settings,
   Sparkles,
@@ -293,6 +295,20 @@ function buildMenuItems(): MenuItem[] {
           path: "/manual-sql",
           icon: FileCode2,
           permission: "metaxisdata.manualSqls.list",
+        },
+        {
+          key: "applications",
+          label: t("menu.applications"),
+          path: "/applications",
+          icon: AppWindow,
+          permission: "metaxisdata.applications.list",
+        },
+        {
+          key: "applicationSql",
+          label: t("menu.applicationSql"),
+          path: "/application-sql",
+          icon: ScrollText,
+          permission: "metaxisdata.applicationSqls.list",
         },
       ],
     },

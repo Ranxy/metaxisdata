@@ -1,5 +1,6 @@
 import { createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
+import { ApplicationService } from "@/types/proto-es/v1/application_service_pb";
 import { AuditLogService } from "@/types/proto-es/v1/audit_log_service_pb";
 import { AuthService } from "@/types/proto-es/v1/auth_service_pb";
 import { DatabaseService } from "@/types/proto-es/v1/database_service_pb";
@@ -26,6 +27,7 @@ const transport = createConnectTransport({
   fetch: (input, init) => fetch(input, { ...init, credentials: "include" }),
 });
 
+export const applicationClient = createClient(ApplicationService, transport);
 export const authClient = createClient(AuthService, transport);
 export const auditLogClient = createClient(AuditLogService, transport);
 export const userClient = createClient(UserService, transport);
