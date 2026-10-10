@@ -23,15 +23,15 @@ docker compose up -d --build   # ……并先重新构建镜像
 
 ## `make docker-up` 做了什么
 
-它总是从当前检出目录重新构建，所以你运行的镜像和你手上的代码一致。`VERSION` 既是镜像标签也是二进制对外报告的版本，两者不可能不一致：`VERSION=v1.2.3 make docker-up` 运行的镜像名是 `metaxisdata/metaxisdata:v1.2.3`。
+它总是从当前检出目录重新构建，所以你运行的镜像和你手上的代码一致。`VERSION` 既是镜像标签也是二进制对外报告的版本，两者不可能不一致：`VERSION=v0.1.0 make docker-up` 运行的镜像名是 `metaxisdata/metaxisdata:v0.1.0`。
 
 ## 改用已发布的镜像
 
 先拉取镜像，然后不带重新构建地启动整个栈——`make docker-up` 总会带上 `--build`，那会用构建产物覆盖这个标签，而不是使用拉取到的镜像：
 
 ```bash
-docker pull ghcr.io/ranxy/metaxisdata:v1.2.3
-METAXISDATA_IMAGE=ghcr.io/ranxy/metaxisdata VERSION=v1.2.3 docker compose up -d
+docker pull ghcr.io/ranxy/metaxisdata:v0.1.0
+METAXISDATA_IMAGE=ghcr.io/ranxy/metaxisdata VERSION=v0.1.0 docker compose up -d
 ```
 
 ## `:dev` 标签的注意事项

@@ -42,19 +42,20 @@ came from. Pick the one that fits the host.
 ### Pull the released image
 
 Every release publishes the image to GHCR for `linux/amd64` and `linux/arm64`.
-Pull the tag you want to track:
+These are the tags the newest release, `v0.1.0`, published; pull the one you
+want to track:
 
 ```bash
-docker pull ghcr.io/ranxy/metaxisdata:v1.2.3   # the release tag as published
-docker pull ghcr.io/ranxy/metaxisdata:1.2.3    # the bare semver
-docker pull ghcr.io/ranxy/metaxisdata:1.2      # the minor line
+docker pull ghcr.io/ranxy/metaxisdata:v0.1.0   # the release tag as published
+docker pull ghcr.io/ranxy/metaxisdata:0.1.0    # the bare semver
+docker pull ghcr.io/ranxy/metaxisdata:0.1      # the minor line
 docker pull ghcr.io/ranxy/metaxisdata:latest   # the newest non-prerelease
 ```
 
-- `v1.2.3` and `1.2.3` name that exact release.
-- `1.2` follows the newest release on the minor line.
+- `v0.1.0` and `0.1.0` name that exact release.
+- `0.1` follows the newest release on the minor line.
 - `latest` follows the newest release that is not a prerelease. Prereleases
-  publish their own tags, such as `v1.2.3-rc.1`, but never move an alias — a
+  publish their own tags, such as `v0.2.0-rc.1`, but never move an alias — a
   deployment tracking `latest` never receives a release candidate.
 - Every release also carries a `sha-<commit>` tag, pinned to its exact commit.
 
@@ -67,7 +68,7 @@ builds the image from
 
 ```bash
 scripts/build_metaxisdata_docker.sh                  # release profile -> :dev and :latest
-VERSION=v1.2.3 scripts/build_metaxisdata_docker.sh   # release profile -> :v1.2.3 and :latest
+VERSION=v0.1.0 scripts/build_metaxisdata_docker.sh   # release profile -> :v0.1.0 and :latest
 make docker-build                                    # same as the first command
 
 scripts/build_metaxisdata_docker.sh --dev            # dev profile, local experiments only
@@ -133,7 +134,7 @@ curl.exe -fsSL -o metaxisdata.exe https://github.com/Ranxy/metaxisdata/releases/
 
 The `releases/latest/download/…` URL resolves to the newest release that is
 **not** a prerelease, so a prerelease will not answer it; name the tag in the
-URL instead — `…/releases/download/v1.2.3-rc.1/metaxisdata-linux-amd64`.
+URL instead — `…/releases/download/<tag>/metaxisdata-linux-amd64`.
 
 The downloaded binary is the one [scripts/build_metaxisdata.sh](../scripts/build_metaxisdata.sh)
 produces: SPA embedded, prod profile, and `metaxisdata --version` reports the
@@ -147,7 +148,7 @@ script):
 
 ```bash
 scripts/build_metaxisdata.sh                # release profile -> build/metaxisdata
-VERSION=v1.2.3 scripts/build_metaxisdata.sh
+VERSION=v0.1.0 scripts/build_metaxisdata.sh
 make build-binary                           # same as the first command
 
 scripts/build_metaxisdata.sh --dev          # dev profile, local experiments only
@@ -188,7 +189,7 @@ present.
 docker run -d --name metaxisdata \
   -p 8083:8083 \
   -e PG_URL='postgres://<user>:<password>@<db-host>:5432/<database>?sslmode=disable' \
-  ghcr.io/ranxy/metaxisdata:v1.2.3
+  ghcr.io/ranxy/metaxisdata:v0.1.0
 ```
 
 The container runs as uid 1001 and reports health at `/healthz`:
@@ -268,7 +269,7 @@ running.
 - Without `TZ`, the clock and every log timestamp are UTC.
 - The entrypoint maps the environment variables above onto server flags and
   passes the rest of the command through unchanged. An explicit argument wins
-  over a mapped one, so `docker run … ghcr.io/ranxy/metaxisdata:v1.2.3 --debug`
+  over a mapped one, so `docker run … ghcr.io/ranxy/metaxisdata:v0.1.0 --debug`
   still works.
 
 ## 4. Terminate HTTPS in a reverse proxy

@@ -40,8 +40,8 @@ services:
     # an already-published image can be run locally by pulling it and then
     # starting without a rebuild — `make docker-up` always passes --build and
     # would build over the tag instead:
-    #   docker pull ghcr.io/ranxy/metaxisdata:v1.2.3
-    #   METAXISDATA_IMAGE=ghcr.io/ranxy/metaxisdata VERSION=v1.2.3 docker compose up -d
+    #   docker pull ghcr.io/ranxy/metaxisdata:v0.1.0
+    #   METAXISDATA_IMAGE=ghcr.io/ranxy/metaxisdata VERSION=v0.1.0 docker compose up -d
     image: ${METAXISDATA_IMAGE:-metaxisdata/metaxisdata}:${VERSION:-dev}
     build:
       context: .
