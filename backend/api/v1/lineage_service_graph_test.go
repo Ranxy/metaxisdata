@@ -280,3 +280,29 @@ func TestConvertLineageGraphNodeDescribesUnsynchronisedObjects(t *testing.T) {
 	require.Equal(t, "db.schema.t", external.GetName())
 	require.Equal(t, v1pb.MetaType_EXTERNAL_DATASET, external.GetMetaType())
 }
+
+// TestBuildLineageGraphDrawsTableLevelEdges pins the shape the application-SQL
+// writer relies on when a statement's analysis yields no column relation at all —
+// a constant INSERT, or a DELETE that references no column. Those are stored as one
+// table-level edge with both column names empty. The traversal discovers neighbours
+// from the two GUIDs alone, so such an edge has to yield both nodes; if it did not,
+// the statement would be stored and never drawn.
+func TestBuildLineageGraphDrawsTableLevelEdges(t *testing.T) {
+	t.Parallel()
+
+	const statement = "inst;db;public;__application_sql__/01H"
+	const target = "inst;db;public;orders"
+
+	graph := &fakeGraph{edges: []*store.ColumnLineage{{
+		ID:         1,
+		SourceGUID: statement,
+		TargetGUID: target,
+	}}}
+
+	nodes, edges, _, truncated, err := buildLineageGraph(context.Background(), target, 2,
+		lineageGraphLimits{nodes: 100, edges: 100}, graph.fetcher(true, true))
+	require.NoError(t, err)
+	require.False(t, truncated)
+	require.Len(t, edges, 1)
+	require.Equal(t, map[string]int32{target: 0, statement: -1}, graphGUIDs(nodes))
+}
