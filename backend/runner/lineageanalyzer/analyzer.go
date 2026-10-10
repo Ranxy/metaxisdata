@@ -16,9 +16,11 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	"github.com/Ranxy/metaxisdata/backend/plugin/dmltarget"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/catalog"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
+	"github.com/Ranxy/metaxisdata/backend/plugin/sqlsanitize"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
@@ -157,8 +159,9 @@ func (a *Analyzer) queueAll(ctx context.Context) {
 	viewType := storepb.MetaType_VIEW
 	mvType := storepb.MetaType_MATERIALIZED_VIEW
 	manualSQLType := storepb.MetaType_MANUAL_SQL
+	applicationSQLType := storepb.MetaType_APPLICATION_SQL
 
-	for _, objType := range []storepb.MetaType{viewType, mvType, manualSQLType} {
+	for _, objType := range []storepb.MetaType{viewType, mvType, manualSQLType, applicationSQLType} {
 		t := objType
 		list, err := a.store.ListMetaRegistryResourceDigest(ctx, &store.FindMetaRegistryResourceMessage{
 			ObjectType: &t,
@@ -331,7 +334,7 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 		}
 		srcGUID := sourceID.GUID()
 
-		if metaType == storepb.MetaType_MANUAL_SQL {
+		if metaType == storepb.MetaType_MANUAL_SQL || metaType == storepb.MetaType_APPLICATION_SQL {
 			guidLookupSet[srcGUID] = struct{}{}
 			lineages = append(lineages, &store.ColumnLineage{
 				MetaGUID:       metaGUID,
@@ -382,6 +385,19 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 		})
 	}
 
+	// A reported statement is classified here and nowhere else: ingestion stores the
+	// statement without deciding, and this is the one place the read/write rule lives.
+	if metaType == storepb.MetaType_APPLICATION_SQL {
+		kind, targetEdges := classifyApplicationSQL(ac, engine, definition, relations, metaGUID)
+		lineages = append(lineages, targetEdges...)
+		if err := a.store.SetApplicationSQLKind(ctx, metaGUID, kind); err != nil {
+			// The kind is a filter cache for the list page; the edges are the point, and a
+			// failure to write the cache must not discard them.
+			slog.Warn("Lineage analyzer failed to record the statement kind",
+				slog.String("guid", metaGUID), log.WithError(err))
+		}
+	}
+
 	for guid := range guidLookupSet {
 		if guid == metaGUID {
 			continue
@@ -426,6 +442,8 @@ func buildSQL(name string, engine storepb.Engine, metaType storepb.MetaType, res
 		definition = res.Metadata.GetMaterializedViewMetadata().GetDefinition()
 	case storepb.MetaType_MANUAL_SQL:
 		definition = res.Metadata.GetManualSqlMetadata().GetSqlText()
+	case storepb.MetaType_APPLICATION_SQL:
+		definition = res.Metadata.GetApplicationSqlMetadata().GetSqlText()
 	default:
 		return "", "", errors.Errorf("unsupported meta type %v", metaType)
 	}
@@ -434,6 +452,12 @@ func buildSQL(name string, engine storepb.Engine, metaType storepb.MetaType, res
 	}
 	if metaType == storepb.MetaType_MANUAL_SQL {
 		return definition, definition, nil
+	}
+	if metaType == storepb.MetaType_APPLICATION_SQL {
+		// The stored text is the parameterized one, and the MySQL family's grammar has no
+		// production that accepts a placeholder, so the analyzer is handed the substituted
+		// form. The stored text stays the definition: it is what the object is.
+		return definition, sqlsanitize.Analyzable(engine, definition), nil
 	}
 	// A stored definition that is already a complete statement is used as-is.
 	// StarRocks keeps the whole SHOW CREATE MATERIALIZED VIEW output in
@@ -516,4 +540,64 @@ func markAnalysisFailed(ctx context.Context, s *store.Store, metaGUID string, me
 	}
 	return markAnalyzed(ctx, s, metaGUID, metaType, metaHash,
 		fmt.Sprintf("lineage analysis failed: %v", cause))
+}
+
+// classifyApplicationSQL decides whether a reported statement is a read or a write, and
+// returns the graph edge a write with no column relation still needs.
+//
+// The rule, and why it is not simply "the analysis produced a relation": the analyzers
+// record column-level derivation, so a statement that reads a column produces a relation
+// whose target is the statement, while a statement that writes values from nowhere — the
+// ORM's `INSERT INTO t (a, b) VALUES (?, ?)`, or a `DELETE` that references no column —
+// produces none at all in every dialect. Those are writes all the same, and without a target
+// the graph would show nothing about them, so the target is read from the statement itself.
+//
+// The table-level edge carries no columns and no transformations, which is the shape the
+// OpenLineage table-level path already stores. See
+// .agents/docs/application-sql-ingestion.md sections 6.1 and 6.4.
+func classifyApplicationSQL(
+	ac catalog.AnalysisContext,
+	engine storepb.Engine,
+	definition string,
+	relations []model.ColumnRelation,
+	metaGUID string,
+) (store.ApplicationSQLKind, []*store.ColumnLineage) {
+	for _, rel := range relations {
+		if !rel.IsTemp {
+			return store.ApplicationSQLKindWrite, nil
+		}
+	}
+
+	targets, err := dmltarget.Targets(engine, sqlsanitize.Analyzable(engine, definition))
+	if err != nil {
+		// Not a write, or one this package cannot name. Either way it has no out-edge, and a
+		// SELECT with no source column is not drawn at all — manual SQL has the same hole.
+		return store.ApplicationSQLKindRead, nil
+	}
+
+	var edges []*store.ColumnLineage
+	seen := make(map[string]struct{}, len(targets))
+	for _, target := range targets {
+		guid := ac.Complete(target).GUID()
+		if guid == metaGUID {
+			continue
+		}
+		if _, ok := seen[guid]; ok {
+			continue
+		}
+		seen[guid] = struct{}{}
+		edges = append(edges, &store.ColumnLineage{
+			MetaGUID:     metaGUID,
+			MetaType:     storepb.MetaType_APPLICATION_SQL,
+			SourceGUID:   metaGUID,
+			SourceType:   storepb.MetaType_APPLICATION_SQL,
+			TargetGUID:   guid,
+			TargetColumn: "",
+			RelationType: model.RelationTypeOf(nil),
+		})
+	}
+	if len(edges) == 0 {
+		return store.ApplicationSQLKindRead, nil
+	}
+	return store.ApplicationSQLKindWrite, edges
 }

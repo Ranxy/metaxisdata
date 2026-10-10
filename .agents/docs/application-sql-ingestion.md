@@ -622,7 +622,7 @@ default:
 | ~~**D9 取表助手**~~ **已完成** | `backend/plugin/dmltarget/`:`Targets` / `ErrNoTarget`,含触发面 25 例、边界与拒答三组测试 | `go test ./backend/plugin/dmltarget/`;`golangci-lint` 0 issues |
 | ~~**P1 数据模型**~~ **已完成** | 四张表 + `0019##application_sql.sql` 增量 + `backend/store/{application,application_api_key,application_sql}.go`;见 §13.9 | `go test ./backend/store/`、`./backend/migrator/`;`golangci-lint` 0 issues;两份 schema 已在真 PostgreSQL 上跑过并验幂等 |
 | ~~**P3 摄入与管理 API**~~ **已完成** | 上报端点(含 §5.4 的分析器闸门)+ key 认证 + `ApplicationService` 的十个 RPC + 权限目录与成员基线;见 §13.10 | handler 单测(无 key / 坏 key / 超体 / 超批 / 作用域 / 逐项 REJECTED / `reportId` 去重);`TestEveryMethodIsPermissionGated` 与 `TestCatalogMatchesSource` 通过;`go test ./backend/...` 全绿 |
-| **P4 血缘接入** | `MetaType_APPLICATION_SQL` + registry 镜像 + runner 的 `buildSQL` 分支 + 分析器分支 + 写入/只读分类(消费 P2 与 D9 两个包) | `go test ./backend/plugin/lineage/...`、`go test ./backend/runner/lineageanalyzer/`;集成:`make test-integration`(上报 → 图上可见边) |
+| ~~**P4 血缘接入**~~ **已完成** | runner 扫描 `APPLICATION_SQL`、`buildSQL` 返回送分析文本、与 manual SQL 同形的边、读/写分类 + `kind` 回写 + D9 表级出边;`GetMetadataSchema` 分支;见 §13.11 | `go test ./backend/runner/lineageanalyzer/`(分类逐例);`go test ./backend/...` 全绿 |
 | **P5 前端** | 应用管理页、应用 SQL 页、origin 第三类、图例、i18n | `pnpm --dir frontend biome:check && lint && i18n && type-check && test run` |
 | **P6 收尾** | 把本文件改写成维护参考并在 `.agents/docs/README.md` 加行;`docs/` 里补一份面向接入方的接口文档(上报格式、key 申请、重试语义、占位符约定) | 文档 review |
 
@@ -797,6 +797,22 @@ handler 依赖一个接口而不是 `*store.Store`,所以它的每一种拒绝�
 
 - `lineage.Analyzer` 加了 `Supports` 与 `SplitScript`:摄入端要问"这个引擎有没有分析器",还要**用分析器切分脚本的同一把刀**去切分,否则两个切分器早晚会对"什么算一条语句"产生分歧。
 - 权限目录加了 11 条(`applications.*` 8 条、`applicationSqls.*` 3 条),成员基线只加读的 4 条。**签发 key 是能写入数据的凭据,不进成员基线**——它留在 `workspaceAdmin` 或自定义角色里。
+
+### 13.11 P4 血缘接入落地记录
+
+runner 现在把上报的语句当一等对象处理:
+
+| 环节 | 动作 |
+| --- | --- |
+| 扫描 | `queueAll` 的对象类型加了 `APPLICATION_SQL`,与 VIEW / MV / manual SQL 并列,靠 metahash 变更检测 |
+| 取文本 | `buildSQL` 的 `APPLICATION_SQL` 分支:`definition` 是**存储文本**(展示与血缘的对象),`wrappedSQL` 是 `sqlsanitize.Analyzable(engine, definition)`——送分析的是替换后的形态 |
+| 建边 | 复用 manual SQL 那条分支:每条关系写 `源表.列 → 语句.列`;非临时目标再加 `语句.列 → 目标表.列`。于是读语句靠入边、写入型靠出入边出现在图上 |
+| 分类 | `classifyApplicationSQL`:有非临时目标 ⇒ 写;否则问 `dmltarget`;拿到目标就再写一条**表级出边**(列名为空、变换为空、`RelationTypeDirect`)并判为写 |
+| 回写 | `SetApplicationSQLKind` 把读/写写回 `application_sql.kind`。它只是列表页的筛选缓存,写失败只 WARN,不牵连边 |
+
+分类函数是纯的(吃 `catalog.AnalysisContext` + 关系列表),所以 `TestClassifyApplicationSQL` 逐例钉住了六种形状:分析器给了答案的写、常量 INSERT(未限定与限定)、裸 DELETE、PG 常量 INSERT、读、以及"既没边也不是写"的 `SELECT 1`。另有两条:目标解析回自身时**不写自环**(图的遍历只丢这一种形状),以及同一张表提两次只写一条边。
+
+**留给 P5 的一件事**:图节点的标签。`convertLineageGraphNode` 对注册表里的对象一律回退到 GUID 最后一段,所以应用 SQL 节点现在显示成 `__application_sql__/<id>`——manual SQL 节点同样是 `__manual_sql__/<id>`,不是我引入的退步,但一个随机 id 当标签对使用者毫无意义。`ApplicationSQLMetadata.name`(语句首行)已经在镜像里备好,`lineageAsset.ts` 的 `assetViewFor` 读它即可。
 
 ## 附:一句话总览
 
