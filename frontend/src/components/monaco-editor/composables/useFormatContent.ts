@@ -56,7 +56,7 @@ export function useFormatContent(
             monaco.editor.EditorOption.readOnly
           );
           if (readonly) return;
-          await formatEditorContent(editor, dialect.value);
+          await formatEditorContent(monaco, editor, dialect.value);
         },
       });
     }

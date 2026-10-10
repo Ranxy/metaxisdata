@@ -20,9 +20,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from "vue";
-import { formatSQL } from "@/components/monaco-editor";
-import MonacoEditor from "@/components/monaco-editor/MonacoEditor.vue";
+import {
+  computed,
+  defineAsyncComponent,
+  onBeforeUnmount,
+  ref,
+  watch,
+} from "vue";
+// The concrete module, not the `@/components/monaco-editor` barrel: the barrel
+// also exports `MonacoEditor.vue` and its composables, so importing it here made
+// the editor part of every chunk that only wants to format SQL.
+import { formatSQL } from "@/components/monaco-editor/sqlFormatter";
 import type {
   IStandaloneCodeEditor,
   IStandaloneEditorConstructionOptions,
@@ -30,6 +38,13 @@ import type {
   MonacoModule,
   SQLDialect,
 } from "@/components/monaco-editor/types";
+
+// A chunk of its own: a definition rendered as plain text (every table, view and
+// manual-SQL page renders this component with no content until the dialog opens)
+// must not carry the editor either.
+const MonacoEditor = defineAsyncComponent(
+  () => import("@/components/monaco-editor/MonacoEditor.vue")
+);
 
 interface Props {
   content?: string;
