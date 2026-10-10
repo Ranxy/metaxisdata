@@ -593,7 +593,10 @@ func classifyApplicationSQL(
 			SourceType:   storepb.MetaType_APPLICATION_SQL,
 			TargetGUID:   guid,
 			TargetColumn: "",
-			RelationType: model.RelationTypeOf(nil),
+			// The column is not null in the schema, so an empty list is required rather than a
+			// nil one; RelationTypeOf reads it as `direct`.
+			Transformation: make([]model.Transformation, 0),
+			RelationType:   model.RelationTypeOf(nil),
 		})
 	}
 	if len(edges) == 0 {

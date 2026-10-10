@@ -624,6 +624,7 @@ default:
 | ~~**P3 摄入与管理 API**~~ **已完成** | 上报端点(含 §5.4 的分析器闸门)+ key 认证 + `ApplicationService` 的十个 RPC + 权限目录与成员基线;见 §13.10 | handler 单测(无 key / 坏 key / 超体 / 超批 / 作用域 / 逐项 REJECTED / `reportId` 去重);`TestEveryMethodIsPermissionGated` 与 `TestCatalogMatchesSource` 通过;`go test ./backend/...` 全绿 |
 | ~~**P4 血缘接入**~~ **已完成** | runner 扫描 `APPLICATION_SQL`、`buildSQL` 返回送分析文本、与 manual SQL 同形的边、读/写分类 + `kind` 回写 + D9 表级出边;`GetMetadataSchema` 分支;见 §13.11 | `go test ./backend/runner/lineageanalyzer/`(分类逐例);`go test ./backend/...` 全绿 |
 | **P5 前端** | ①origin 第三类(已完成,§13.12);②应用管理页与应用 SQL 页;③图节点标签 | `pnpm --dir frontend biome:check && lint && i18n && type-check && test run` |
+| ~~**端到端集成测试**~~ **已完成** | `backend/test/integration/runner/application_sql_service_test.go`,见 §13.13。它抓到了两个只有真跑才暴露的 bug | `go test -tags=integration -run ApplicationSQLReport ./backend/test/integration/runner` |
 | **P6 收尾** | 把本文件改写成维护参考并在 `.agents/docs/README.md` 加行;`docs/` 里补一份面向接入方的接口文档(上报格式、key 申请、重试语义、占位符约定) | 文档 review |
 
 P2 与 D9 先于 P1 落地是有意的:两者都是纯函数包,不依赖数据模型,先把它们做成可测的实体,后面接摄入路径时就只剩接线。
@@ -831,6 +832,23 @@ runner 现在把上报的语句当一等对象处理:
 `eslint.config.mjs` 的 `no-unused-keys` 忽略表加了这两条键:该规则跟不了 `originLabelKey()` 这种"由 helper 返回的键",既有三个 origin 的键本来就在同一张表里、同一条注释下。
 
 **P5 剩下的一件事,以及它为什么比看起来大**:图节点标签。后端已经为 `GetLineageGraph` 的 `APPLICATION_SQL` 节点回填了 `LineageNode.name`(语句首行,§13.11),但**图页根本不读它**——页面自己的画布是从 `GetLineage` 的关系流里搭起来的,而关系里没有名字字段;`lineageAssetView` 只从 GUID 的分段推名字。所以要让节点显示成人能读的标签,得先给页面补一条"GUID → 名字"的来源(比如按需 `GetMetadata` 那几个应用 SQL 节点),那是一个独立的改动,不该混在这一步里。今天 manual SQL 节点同样显示成 `__manual_sql__/<id>`,所以这不是本方案引入的退步。
+
+### 13.13 端到端集成测试,以及它抓到的两个真 bug
+
+`TestApplicationSQLReportReachesTheLineageGraphRealServerIntegration`(`backend/test/integration/runner/application_sql_service_test.go`,真 PostgreSQL、真服务器进程)把整条链路跑通:建应用 → 发 key → 上报三条语句(一条写入、一条读取、一条坏的)→ 落库 → 镜像 → runner 分析 → 边与 `kind`。
+
+它一次就抓到两个 hermetic 测试永远看不到的 bug:
+
+| bug | 症状 | 根因与修法 |
+| --- | --- | --- |
+| D9 的表级出边没写 `Transformation` | `null value in column "transformation" ... violates not-null constraint`,整批边写失败,语句一个边都没有 | 该列非空,`nil` 切片序列化成 `null`。改成空切片(`make([]model.Transformation, 0)`)。语义不变,`RelationTypeOf` 读它仍是 `direct` |
+| PostgreSQL 的 lexer 把字面量后面的空白一起给了 token | `WHERE status = 'new' AND total > 10` 存成 `... = ?AND total > ?`——**少了一个空格,而且是合法 SQL**,所以任何"能不能解析"的检查都发现不了 | `tokenSpans` 原样采信 `End`。`'new' AND` 在 PG 的 lexer 里是**一个** token,跨到 `'new' `。修法:`trimTrailingSpace` 把 token 末尾的空白移回去——任何 token 自身的文本都不会以空白结尾,所以这样裁是安全的 |
+
+第二条尤其值得记:它只在**字符串字面量后面接关键字**时出现。数字字面量、`IN` 列表、PG 以外的方言全都不受影响,所以 P0 那批语料与等价性测试(642 条、636 条逐边相同)完全没碰到它——那批语料里的字符串几乎都紧跟 `)` 或 `,`。
+
+两个 bug 都补了 hermetic 回归测试(`TestSanitizeKeepsTheSpaceTheLexerSwallowed`、分类测试里对表级边 `Transformation` 非空的断言)。
+
+**这条测试现在是这套功能的跨层护栏**:handler 的单测止于 store 接口、store 测试是 hermetic 的、分类测试看不到注册表——中间任何一处断掉,原先所有套件都会保持绿。
 
 ## 附:一句话总览
 

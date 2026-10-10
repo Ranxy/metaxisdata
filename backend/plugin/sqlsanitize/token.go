@@ -19,6 +19,24 @@ type span struct {
 	loc, end int
 }
 
+// trimTrailingSpace moves a token's end back over whitespace the lexer swallowed.
+//
+// PostgreSQL's lexer hands a string constant the whitespace that follows it: in
+// `status = 'new' AND total > 10` the constant comes back as one token spanning `'new' `. A
+// span taken at face value would replace that space along with the literal and turn `= ? AND`
+// into `= ?AND`. No token's own text ever ends in whitespace, so trimming it is safe.
+func trimTrailingSpace(sql string, s span) span {
+	for s.end > s.loc {
+		switch sql[s.end-1] {
+		case ' ', '\t', '\r', '\n':
+			s.end--
+		default:
+			return s
+		}
+	}
+	return s
+}
+
 // tokenSpans returns every token's byte range for one dialect.
 //
 // Locations are all this reads. Reading the token *type* would mean depending on
@@ -38,7 +56,7 @@ func tokenSpans(engine storepb.Engine, sql string) []span {
 			if t.Type == 0 || t.End <= t.Loc {
 				break
 			}
-			spans = append(spans, span{t.Loc, t.End})
+			spans = append(spans, trimTrailingSpace(sql, span{t.Loc, t.End}))
 		}
 	case storepb.Engine_STARROCKS:
 		// StarRocks exposes a one-shot tokenizer and is the only dialect that reports
@@ -49,7 +67,7 @@ func tokenSpans(engine storepb.Engine, sql string) []span {
 		}
 		for _, t := range tokens {
 			if t.Loc.End > t.Loc.Start {
-				spans = append(spans, span{t.Loc.Start, t.Loc.End})
+				spans = append(spans, trimTrailingSpace(sql, span{t.Loc.Start, t.Loc.End}))
 			}
 		}
 	default:
@@ -59,7 +77,7 @@ func tokenSpans(engine storepb.Engine, sql string) []span {
 			if t.Type == 0 || t.End <= t.Loc {
 				break
 			}
-			spans = append(spans, span{t.Loc, t.End})
+			spans = append(spans, trimTrailingSpace(sql, span{t.Loc, t.End}))
 		}
 	}
 	return spans

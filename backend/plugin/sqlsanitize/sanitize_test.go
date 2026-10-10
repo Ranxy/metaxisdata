@@ -117,6 +117,42 @@ func TestSanitizeReplacesLiteralsAndKeepsSpacing(t *testing.T) {
 	}
 }
 
+// TestSanitizeKeepsTheSpaceTheLexerSwallowed pins a PostgreSQL lexer quirk that a naive span
+// rewrite gets wrong: it hands a string constant the whitespace that follows it, so
+// `'new' AND` is one token spanning `'new' `. Replacing that whole span turned `= ? AND` into
+// `= ?AND`, which is still valid SQL and therefore fails silently.
+func TestSanitizeKeepsTheSpaceTheLexerSwallowed(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		dialect storepb.Engine
+		sql     string
+		want    string
+	}{
+		{
+			storepb.Engine_POSTGRES,
+			"SELECT id FROM t WHERE status = 'new' AND total > 10",
+			"SELECT id FROM t WHERE status = ? AND total > ?",
+		},
+		{
+			storepb.Engine_POSTGRES,
+			"SELECT id FROM t WHERE a = 'x' AND b = 'y'",
+			"SELECT id FROM t WHERE a = ? AND b = ?",
+		},
+		{
+			// The newline cases matter most: a swallowed newline would join two lines.
+			storepb.Engine_POSTGRES,
+			"SELECT a\nFROM t\nWHERE b = 'c'",
+			"SELECT a\nFROM t\nWHERE b = ?",
+		},
+	}
+	for _, c := range cases {
+		got, err := Sanitize(c.dialect, c.sql)
+		require.NoError(t, err)
+		require.Equal(t, c.want, got.Text)
+	}
+}
+
 func TestSanitizeRemovesComments(t *testing.T) {
 	t.Parallel()
 
