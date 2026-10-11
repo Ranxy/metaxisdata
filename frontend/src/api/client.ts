@@ -7,6 +7,7 @@ import { EnvironmentService } from "@/types/proto-es/v1/environment_service_pb";
 import { ExplainSQLService } from "@/types/proto-es/v1/explain_sql_service_pb";
 import { GroupService } from "@/types/proto-es/v1/group_service_pb";
 import { IamService } from "@/types/proto-es/v1/iam_service_pb";
+import { IdentityProviderService } from "@/types/proto-es/v1/identity_provider_service_pb";
 import { InstanceService } from "@/types/proto-es/v1/instance_service_pb";
 import { LineageService } from "@/types/proto-es/v1/lineage_service_pb";
 import { LLMService } from "@/types/proto-es/v1/llm_service_pb";
@@ -42,3 +43,7 @@ export const roleClient = createClient(RoleService, transport);
 export const groupClient = createClient(GroupService, transport);
 export const iamClient = createClient(IamService, transport);
 export const oauthClient = createClient(OAuthService, transport);
+export const identityProviderClient = createClient(
+  IdentityProviderService,
+  transport
+);

@@ -65,7 +65,11 @@ func New(ctx context.Context, pgURL string, opts ...Option) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	idpCache, err := lru.New[string, *IdentityProviderMessage](4)
+	// A workspace configures a handful of identity providers, not four: the
+	// previous capacity evicted a valid entry as soon as a fifth was read, and
+	// the entry carries the decrypted client secret, so a re-read after every
+	// eviction meant a decrypt per login.
+	idpCache, err := lru.New[string, *IdentityProviderMessage](256)
 	if err != nil {
 		return nil, err
 	}

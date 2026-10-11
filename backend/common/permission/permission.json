@@ -54,6 +54,11 @@
     {"name": "IAMSetPolicy", "id": "metaxisdata.iam.setPolicy"},
     {"name": "SettingsGet", "id": "metaxisdata.settings.get"},
     {"name": "SettingsUpdate", "id": "metaxisdata.settings.update"},
+    {"name": "IdentityProvidersGet", "id": "metaxisdata.identityProviders.get"},
+    {"name": "IdentityProvidersList", "id": "metaxisdata.identityProviders.list"},
+    {"name": "IdentityProvidersCreate", "id": "metaxisdata.identityProviders.create"},
+    {"name": "IdentityProvidersUpdate", "id": "metaxisdata.identityProviders.update"},
+    {"name": "IdentityProvidersDelete", "id": "metaxisdata.identityProviders.delete"},
     {"name": "AuditLogsSearch", "id": "metaxisdata.auditLogs.search"}
   ]
 }

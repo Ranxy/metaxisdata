@@ -186,6 +186,80 @@ func TestIdentityProvider(t *testing.T) {
 	assert.Equal(t, wantUserInfo, userInfoResult)
 }
 
+// The group claim is what makes group-based role granting reachable. The plugin
+// used to leave HasGroups false, so every syncUserGroups branch in the login path
+// was dead code for the only implemented provider type.
+func TestUserInfoReadsTheGroupClaim(t *testing.T) {
+	testCases := []struct {
+		name          string
+		claims        map[string]any
+		groupsField   string
+		wantGroups    []string
+		wantHasGroups bool
+	}{
+		{
+			name:          "array claim",
+			claims:        map[string]any{"email": "person@example.com", "groups": []any{"admin", "auditor"}},
+			groupsField:   "groups",
+			wantGroups:    []string{"admin", "auditor"},
+			wantHasGroups: true,
+		},
+		{
+			name:          "dotted nested claim",
+			claims:        map[string]any{"email": "person@example.com", "realm_access": map[string]any{"roles": []any{"admin"}}},
+			groupsField:   "realm_access.roles",
+			wantGroups:    []string{"admin"},
+			wantHasGroups: true,
+		},
+		{
+			name:          "delimited string claim",
+			claims:        map[string]any{"email": "person@example.com", "groups": "admin auditor"},
+			groupsField:   "groups",
+			wantGroups:    []string{"admin", "auditor"},
+			wantHasGroups: true,
+		},
+		{
+			name:        "claim absent",
+			claims:      map[string]any{"email": "person@example.com"},
+			groupsField: "groups",
+		},
+		{
+			// Nothing is configured to sync from, so the login must not touch
+			// memberships.
+			name:        "groups not configured",
+			claims:      map[string]any{"email": "person@example.com", "groups": []any{"admin"}},
+			groupsField: "",
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			body, err := json.Marshal(tc.claims)
+			require.NoError(t, err)
+			s := newMockServer(t, false, "group-claim-code", "group-claim-token", body)
+
+			provider, err := NewIdentityProvider(&storepb.OAuth2IdentityProviderConfig{
+				ClientId:     "test-client-id",
+				ClientSecret: "test-client-secret",
+				TokenUrl:     fmt.Sprintf("%s/oauth2/token", s.URL),
+				UserInfoUrl:  fmt.Sprintf("%s/oauth2/userinfo", s.URL),
+				FieldMapping: &storepb.FieldMapping{
+					Identifier: "email",
+					Groups:     tc.groupsField,
+				},
+			})
+			require.NoError(t, err)
+
+			token, err := provider.ExchangeToken(t.Context(), "https://example.com/oauth/callback", "group-claim-code", "")
+			require.NoError(t, err)
+
+			info, _, err := provider.UserInfo(t.Context(), token)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantGroups, info.GetGroups())
+			require.Equal(t, tc.wantHasGroups, info.GetHasGroups())
+		})
+	}
+}
+
 func TestIdentityProvider_SelfSigned(t *testing.T) {
 	ctx := context.Background()
 

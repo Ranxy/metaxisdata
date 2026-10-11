@@ -27,10 +27,10 @@ Instance/data-source credentials and the LLM profile API key are stored as `"v1:
 
 ## Open items
 
-Also on `.agents/docs/security-open-items.md` (the AAD residual, the IdP secret and L5); kept here because they bound what this subsystem does.
+Also on `.agents/docs/security-open-items.md` (the AAD residual and L5); kept here because they bound what this subsystem does.
 
 - **No AAD binding.** The ciphertext is not bound to its field or row (`Seal(..., nil)`, `crypto.go:135`): database *write* access can move one instance's ciphertext into another's row. That access already permits repointing the row, so an AAD is the remedy only if it ever matters.
-- **`idp.config.client_secret` is still plaintext** (`proto/store/store/idp.proto:37`); its only write path is hand-edited SQL, so encrypting it would force an operator to compute a ciphertext by hand.
+- **`idp.config.client_secret` is encrypted in place** by `backend/store/idp.go` (`decryptIdentityProviderConfig` / `encryptIdentityProviderConfig`), and the field is registered in that package's `idpCredentialFields` with a guard test. It uses no `_ciphertext` sibling — the whole config is one JSONB column — so the ciphertext replaces the field, and a row written before the encryption existed is **refused** rather than read as plaintext. See `.agents/docs/sso.md`.
 - **`AUTH_SECRET` still lives in the database**, so database read access still forges a token; moving the signing key out is a separate decision.
 - **No data-key rotation.** Replacing the data key would require re-encrypting every credential, which nothing needs before the deployment ships.
 - **Nothing re-verifies the data key while the process runs** (see invariant 5).

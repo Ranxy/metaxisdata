@@ -162,5 +162,18 @@ func (p *IdentityProvider) UserInfo(ctx context.Context, token string) (*storepb
 			}
 		}
 	}
+	// Group membership is what lets an IAM policy grant roles by group, so a
+	// configured claim is read here. HasGroups is set only when the claim's shape
+	// was understood: the login syncs memberships from a set of groups, and an
+	// unreadable claim must not be read as "no groups" and clear them.
+	if p.config.FieldMapping.Groups != "" {
+		if groups, ok := idp.GroupValues(idp.GetValueWithKey(claims, p.config.FieldMapping.Groups)); ok {
+			userInfo.Groups = groups
+			userInfo.HasGroups = true
+		} else {
+			slog.Warn("The group claim could not be read; group membership is left unchanged",
+				slog.String("claim", p.config.FieldMapping.Groups))
+		}
+	}
 	return userInfo, claims, nil
 }

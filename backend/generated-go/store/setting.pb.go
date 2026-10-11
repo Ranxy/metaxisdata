@@ -116,7 +116,8 @@ type WorkspaceProfileSetting struct {
 	// external_url, which is where its issuer and resource identifiers come from.
 	McpEnabled bool `protobuf:"varint,16,opt,name=mcp_enabled,json=mcpEnabled,proto3" json:"mcp_enabled,omitempty"`
 	// The identity providers whose email claim may stand in for a subject, by the
-	// resource id that idps/{idp} names (the idp table has no API that lists them).
+	// resource id that idps/{idp} names. The settings page picks them from
+	// IdentityProviderService.ListIdentityProviders.
 	//
 	// For those providers — and only those, because one workspace can configure
 	// several, trusted to different degrees — an SSO login may be identified by the

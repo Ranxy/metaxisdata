@@ -143,25 +143,38 @@
               </Button>
             </form>
 
-            <!-- Divider -->
-            <div class="relative my-6">
-              <div class="absolute inset-0 flex items-center">
-                <Separator class="w-full" />
+            <!-- SSO Login -->
+            <template v-if="oauthProviders.length > 0">
+              <div class="relative my-6">
+                <div class="absolute inset-0 flex items-center">
+                  <Separator class="w-full" />
+                </div>
+                <div class="relative flex justify-center text-xs uppercase">
+                  <span class="bg-card px-2 text-muted-foreground">{{ t("login.or") }}</span>
+                </div>
               </div>
-              <div class="relative flex justify-center text-xs uppercase">
-                <span class="bg-card px-2 text-muted-foreground">{{ t("login.or") }}</span>
-              </div>
-            </div>
 
-            <!-- SSO Login (Disabled) -->
-            <Button
-              variant="outline"
-              class="w-full"
-              disabled
-            >
-              <Lock class="mr-2 h-4 w-4" />
-              {{ t("login.sso") }}
-            </Button>
+              <div class="space-y-2">
+                <Button
+                  v-for="provider in oauthProviders"
+                  :key="provider.name"
+                  variant="outline"
+                  class="w-full"
+                  :disabled="isStartingSSO"
+                  @click="handleSSOLogin(provider)"
+                >
+                  <Loader2
+                    v-if="isStartingSSO"
+                    class="mr-2 h-4 w-4 animate-spin"
+                  />
+                  <Lock
+                    v-else
+                    class="mr-2 h-4 w-4"
+                  />
+                  {{ t("login.ssoWith", { provider: provider.title }) }}
+                </Button>
+              </div>
+            </template>
 
             <!-- Switch to Register -->
             <div
@@ -303,6 +316,7 @@ import {
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
+import { listIdentityProviders } from "@/api/identity-provider";
 import { getWorkspaceProfileSetting } from "@/api/setting";
 import * as userApi from "@/api/user";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -316,10 +330,15 @@ import {
 import { FormField } from "@/components/ui/form-field";
 import { Separator } from "@/components/ui/separator";
 import { useErrorHandler } from "@/composables/useErrorHandler";
+import { useSSOLogin } from "@/composables/useSSOLogin";
 import { notify } from "@/lib/notify";
 import type { AppLocale } from "@/locales";
 import { useAppStore } from "@/store/modules/app";
 import { useAuthStore } from "@/store/modules/auth";
+import {
+  type IdentityProvider,
+  IdentityProviderType,
+} from "@/types/proto-es/v1/identity_provider_service_pb";
 
 const { t } = useI18n();
 const router = useRouter();
@@ -332,6 +351,46 @@ const { formatError } = useErrorHandler();
 const isRegisterMode = ref(false);
 // Signup can be disabled workspace-wide; hide the register entry then.
 const allowSignup = ref(true);
+// The configured identity providers, listed anonymously so the buttons can be
+// rendered before there is a session. A failed load leaves the list empty and the
+// password form untouched: SSO being unavailable must not block signing in.
+const identityProviders = ref<IdentityProvider[]>([]);
+const { isStarting: isStartingSSO, start: startSSOLogin } = useSSOLogin();
+
+const oauthProviders = computed(() =>
+  identityProviders.value.filter(
+    (provider) => provider.type === IdentityProviderType.OAUTH2
+  )
+);
+
+// A direct entry point, `?sso=idps/acme` (a bare id is accepted too). It is what
+// a workspace hands out when password sign-in is turned off, and it is matched
+// against the full resource name rather than by suffix: a suffix match would let
+// `?sso=acme` start the flow for `idps/other-acme`.
+function findSSOProvider(target: string): IdentityProvider | undefined {
+  if (!target) {
+    return undefined;
+  }
+  const wanted = target.startsWith("idps/") ? target : `idps/${target}`;
+  return identityProviders.value.find(
+    (provider) =>
+      provider.name === wanted && provider.type === IdentityProviderType.OAUTH2
+  );
+}
+
+async function handleSSOLogin(provider: IdentityProvider) {
+  errorMessage.value = "";
+  try {
+    const started = await startSSOLogin(provider, {
+      redirect: route.query.redirect as string | undefined,
+    });
+    if (!started) {
+      errorMessage.value = t("login.ssoUnavailable");
+    }
+  } catch (error) {
+    errorMessage.value = formatError(error);
+  }
+}
 
 // Login form
 const loginForm = ref({
@@ -539,6 +598,25 @@ onMounted(async () => {
   } catch {
     // Keep signup visible if the setting cannot be loaded; the server still
     // enforces the policy.
+  }
+  try {
+    identityProviders.value = await listIdentityProviders();
+  } catch {
+    // The password form still works; a workspace with no reachable provider list
+    // simply shows no SSO buttons.
+  }
+
+  // `?sso=` starts the flow without a click. It runs after the list is known, and
+  // an unknown target is reported rather than silently ignored: a link that does
+  // nothing is worse than one that says why.
+  const target = route.query.sso;
+  if (typeof target === "string" && target) {
+    const provider = findSSOProvider(target);
+    if (provider) {
+      await handleSSOLogin(provider);
+    } else {
+      errorMessage.value = t("login.ssoUnavailable");
+    }
   }
 });
 </script>
