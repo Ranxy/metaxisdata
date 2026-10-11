@@ -135,6 +135,10 @@ var unencryptedCredentialLikeFields = map[string]string{
 	"auth_url":   "the authorization endpoint a browser is sent to, not a credential",
 	"token_url":  "the token endpoint's address, not the token it issues",
 	"auth_style": "which transport carries the client credentials, not the credentials",
+	// A oneof selector names which protocol's config follows; it holds no value of
+	// its own, and the walk recurses into the message it selects, so a credential
+	// inside that config is still checked.
+	"oauth2_config": "a oneof selector naming the OAuth2 config, not a value",
 }
 
 func looksLikeACredential(name string) bool {

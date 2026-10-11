@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"github.com/Ranxy/metaxisdata/backend/common/crypto"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -115,28 +116,51 @@ func TestUpdateIdentityProviderRejectsAnEmptyPatch(t *testing.T) {
 	require.Contains(t, err.Error(), "no field to update")
 }
 
-// Every credential-like field of the stored identity provider config must be
-// registered with the cipher. `client_secret` is stored encrypted in place, so
-// there is no `_ciphertext` sibling to catch it: this walk is what fails if a
-// future field is added that looks like a credential and is written in the clear.
+// Every credential-like field of the stored config must be in the registry that
+// actually drives encryption. `client_secret` is stored encrypted in place, so
+// there is no `_ciphertext` sibling to catch it: this walk is what fails when a
+// future field is added and forgotten, and forgetting it means writing that
+// credential to the database in the clear.
 func TestEveryIdentityProviderCredentialIsEncrypted(t *testing.T) {
 	t.Parallel()
 
 	registered := map[string]bool{}
-	for _, name := range idpCredentialFields {
-		registered[name] = true
-	}
-
-	fields := (&storepb.OAuth2IdentityProviderConfig{}).ProtoReflect().Descriptor().Fields()
-	for i := range fields.Len() {
-		name := string(fields.Get(i).Name())
-		if !looksLikeACredential(name) {
-			continue
-		}
-		require.True(t, registered[name],
-			"the stored field %s looks like a credential but is not registered with the credential cipher", name)
+	for _, field := range idpCredentialFields() {
+		registered[field.name] = true
 	}
 	require.True(t, registered["client_secret"], "client_secret must be registered")
+
+	// Walk the outer message and everything nested in it. A credential on
+	// IdentityProviderConfig itself, or inside FieldMapping or a future nested
+	// block, is exactly as exposed as one on the OAuth2 config.
+	visited := map[protoreflect.FullName]bool{}
+	var walk func(descriptor protoreflect.MessageDescriptor)
+	walk = func(descriptor protoreflect.MessageDescriptor) {
+		if visited[descriptor.FullName()] {
+			return
+		}
+		visited[descriptor.FullName()] = true
+		fields := descriptor.Fields()
+		for i := range fields.Len() {
+			field := fields.Get(i)
+			if looksLikeACredential(string(field.Name())) {
+				require.True(t, registered[string(field.Name())],
+					"the stored field %s looks like a credential but is not registered with the credential cipher", field.Name())
+			}
+			if field.Kind() == protoreflect.MessageKind && !field.IsMap() {
+				walk(field.Message())
+			}
+		}
+	}
+	walk((&storepb.IdentityProviderConfig{}).ProtoReflect().Descriptor())
+
+	// And the registry must not name a field that no longer exists, which would
+	// otherwise encrypt nothing while reading as if it did.
+	inner := (&storepb.OAuth2IdentityProviderConfig{}).ProtoReflect().Descriptor().Fields()
+	for name := range registered {
+		require.NotNil(t, inner.ByName(protoreflect.Name(name)),
+			"registered credential field %q has no stored counterpart", name)
+	}
 }
 
 // The config JSONB holds the marshalled **outer** `IdentityProviderConfig`, so

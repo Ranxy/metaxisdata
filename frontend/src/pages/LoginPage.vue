@@ -332,6 +332,7 @@ import { Separator } from "@/components/ui/separator";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { useSSOLogin } from "@/composables/useSSOLogin";
 import { notify } from "@/lib/notify";
+import { resolveSignInTarget } from "@/lib/signInRedirect";
 import type { AppLocale } from "@/locales";
 import { useAppStore } from "@/store/modules/app";
 import { useAuthStore } from "@/store/modules/auth";
@@ -470,18 +471,19 @@ async function handleLogin() {
 
     // Redirect to the original destination or home. The server sends a signed-out
     // user here with the path it was asked for, and that path may not be an SPA
-    // route at all: the OAuth flow's /oauth/authorize is the one that matters, and
-    // the router would answer NotFound instead of resuming the authorization. A
-    // server path is loaded from the server; only a same-origin absolute path
-    // qualifies, so a redirect value cannot become an open redirect.
-    const redirect = route.query.redirect as string;
-    const isServerPath =
-      redirect && redirect.startsWith("/") && !redirect.startsWith("//");
-    if (isServerPath && !router.resolve(redirect).matched.length) {
-      window.location.assign(redirect);
+    // route at all: the MCP client's /oauth/authorize is the one that matters, and
+    // the router would answer NotFound instead of resuming the authorization.
+    // `matched.length` cannot tell the two apart — the catch-all route matches
+    // everything — so the decision is made on whether a real route has that name.
+    const target = resolveSignInTarget(
+      route.query.redirect as string | undefined,
+      (path) => router.resolve(path).name !== "NotFound"
+    );
+    if (target.kind === "server") {
+      window.location.assign(target.path);
       return;
     }
-    router.push(redirect || { name: "Home" });
+    router.push(target.kind === "spa" ? target.path : { name: "Home" });
   } catch (error) {
     errorMessage.value = formatError(error, "login.loginFailed");
     console.error("Login error:", error);
@@ -611,6 +613,17 @@ onMounted(async () => {
   // nothing is worse than one that says why.
   const target = route.query.sso;
   if (typeof target === "string" && target) {
+    // Drop the parameter before leaving. It is a one-shot, and leaving it in the
+    // URL means a browser Back from the provider starts the flow again, with no
+    // way for the user to reach the form.
+    const remaining: Record<string, string> = {};
+    for (const [key, value] of Object.entries(route.query)) {
+      if (key !== "sso" && typeof value === "string") {
+        remaining[key] = value;
+      }
+    }
+    void router.replace({ query: remaining });
+
     const provider = findSSOProvider(target);
     if (provider) {
       await handleSSOLogin(provider);

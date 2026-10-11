@@ -28,6 +28,10 @@ func GetValueWithKey(data map[string]any, key string) any {
 // rather than as an empty list: an empty list is a provider saying "no groups",
 // and acting on that would remove every membership of an account whose provider
 // merely changed the claim's type.
+//
+// That last point is why an array that yielded no name at all — every entry a
+// number, or an object such as `{"id":"dev"}` — is reported as not understood too.
+// It is a shape this cannot read, not a provider saying the account has no groups.
 func GroupValues(claim any) ([]string, bool) {
 	switch value := claim.(type) {
 	case nil:
@@ -38,6 +42,9 @@ func GroupValues(claim any) ([]string, bool) {
 			if name, ok := entry.(string); ok && name != "" {
 				groups = append(groups, name)
 			}
+		}
+		if len(value) > 0 && len(groups) == 0 {
+			return nil, false
 		}
 		return groups, true
 	case []string:

@@ -6,9 +6,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -33,6 +35,11 @@ type fakeIdentityProvider struct {
 
 	mu     sync.Mutex
 	claims map[string]any
+	// The client credentials the token endpoint last received, so a test can prove
+	// which secret the server actually presented rather than only that the call
+	// succeeded.
+	lastClientID     string
+	lastClientSecret string
 }
 
 func newFakeIdentityProvider(t *testing.T) *fakeIdentityProvider {
@@ -40,7 +47,21 @@ func newFakeIdentityProvider(t *testing.T) *fakeIdentityProvider {
 
 	provider := &fakeIdentityProvider{}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/token", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		values, err := url.ParseQuery(string(body))
+		require.NoError(t, err)
+		// The default auth style puts the credentials in the body; a provider
+		// configured for IN_HEADER would present them as basic authorization.
+		clientID, clientSecret := values.Get("client_id"), values.Get("client_secret")
+		if basicID, basicSecret, ok := r.BasicAuth(); ok {
+			clientID, clientSecret = basicID, basicSecret
+		}
+		provider.mu.Lock()
+		provider.lastClientID, provider.lastClientSecret = clientID, clientSecret
+		provider.mu.Unlock()
+
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"access_token": "fake-access-token",
@@ -59,6 +80,13 @@ func newFakeIdentityProvider(t *testing.T) *fakeIdentityProvider {
 	provider.srv = httptest.NewServer(mux)
 	t.Cleanup(provider.srv.Close)
 	return provider
+}
+
+// presentedClientSecret is the client secret the token endpoint last received.
+func (p *fakeIdentityProvider) presentedClientSecret() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.lastClientSecret
 }
 
 // setClaims makes the provider report the given person.

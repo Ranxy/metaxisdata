@@ -59,6 +59,11 @@ func TestGroupValues(t *testing.T) {
 		{name: "array of strings", claim: []any{"admin", "auditor"}, want: []string{"admin", "auditor"}, wantRead: true},
 		{name: "empty array", claim: []any{}, want: []string{}, wantRead: true},
 		{name: "array skips non-strings", claim: []any{"admin", 7, nil, "auditor"}, want: []string{"admin", "auditor"}, wantRead: true},
+		// An array this cannot name a single group from is an unreadable shape,
+		// not a provider saying the account has no groups: reading it as the
+		// latter would clear every membership.
+		{name: "array of objects", claim: []any{map[string]any{"id": "dev"}}, want: nil, wantRead: false},
+		{name: "array of numbers", claim: []any{1, 2}, want: nil, wantRead: false},
 		{name: "space delimited", claim: "openid email profile", want: []string{"openid", "email", "profile"}, wantRead: true},
 		{name: "comma delimited", claim: "admin,auditor", want: []string{"admin", "auditor"}, wantRead: true},
 		{name: "empty string", claim: "", want: []string{}, wantRead: true},

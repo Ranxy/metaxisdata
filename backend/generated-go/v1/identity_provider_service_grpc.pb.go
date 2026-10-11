@@ -96,6 +96,10 @@ type IdentityProviderServiceClient interface {
 	// it changes. Deleting the last binding of an account whose password was
 	// replaced on adoption leaves it reachable only by an administrator resetting
 	// the password, so the caller is expected to confirm before doing it.
+	//
+	// It is gated by `update`, not `delete`, and the settings page hides the button
+	// behind the same permission: this edits a provider's configuration, and
+	// `delete` is reserved for removing a provider outright.
 	DeleteIdentityProviderBinding(ctx context.Context, in *DeleteIdentityProviderBindingRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
@@ -253,6 +257,10 @@ type IdentityProviderServiceServer interface {
 	// it changes. Deleting the last binding of an account whose password was
 	// replaced on adoption leaves it reachable only by an administrator resetting
 	// the password, so the caller is expected to confirm before doing it.
+	//
+	// It is gated by `update`, not `delete`, and the settings page hides the button
+	// behind the same permission: this edits a provider's configuration, and
+	// `delete` is reserved for removing a provider outright.
 	DeleteIdentityProviderBinding(context.Context, *DeleteIdentityProviderBindingRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedIdentityProviderServiceServer()
 }

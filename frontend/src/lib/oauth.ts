@@ -3,6 +3,7 @@ import {
   IdentityProviderType,
   type OAuth2IdentityProviderConfig,
 } from "@/types/proto-es/v1/identity_provider_service_pb";
+import { sanitizeRedirect } from "./signInRedirect";
 
 /**
  * The client half of the OAuth2 authorization-code flow.
@@ -37,23 +38,6 @@ export interface SSOStateRecord {
   /** The PKCE verifier matching the challenge sent to the provider. */
   codeVerifier: string;
   createdAt: number;
-}
-
-/**
- * Only a same-origin absolute path is a redirect target. Anything else — an
- * absolute URL, a protocol-relative `//host` path, or a value the provider
- * echoed back — would turn the callback into an open redirect.
- */
-export function sanitizeRedirect(
-  redirect: string | null | undefined
-): string | undefined {
-  if (!redirect) {
-    return undefined;
-  }
-  if (!redirect.startsWith("/") || redirect.startsWith("//")) {
-    return undefined;
-  }
-  return redirect;
 }
 
 /**
@@ -164,10 +148,10 @@ function storeSSOState(
   try {
     storage.setItem(SSO_STATE_PREFIX + record.token, JSON.stringify(record));
   } catch {
-    // A browser that refuses session storage (privacy mode, a full quota) still
-    // completes the flow; only the redirect target and the mode are lost, and
-    // the callback then reports an unknown state rather than signing anyone in
-    // twice.
+    // A browser that refuses session storage (privacy mode, a full quota) cannot
+    // finish the flow at all: the callback finds no record, refuses the code and
+    // says the link is invalid, which is accurate. Failing here rather than
+    // throwing keeps the caller's error path about the provider, not the storage.
   }
 }
 

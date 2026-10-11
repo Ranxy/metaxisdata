@@ -96,7 +96,8 @@ import {
 } from "@/components/ui/card";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { notify } from "@/lib/notify";
-import { consumeSSOState, sanitizeRedirect } from "@/lib/oauth";
+import { consumeSSOState } from "@/lib/oauth";
+import { resolveSignInTarget } from "@/lib/signInRedirect";
 import { useAuthStore } from "@/store/modules/auth";
 import type { IdentityProviderUserInfo } from "@/types/proto-es/v1/identity_provider_service_pb";
 
@@ -186,7 +187,20 @@ async function exchange(code: string, state: string) {
       // password attempt looks like a stolen account.
       notify.warning(t("login.passwordInvalidated"));
     }
-    await router.replace(sanitizeRedirect(record.redirect) ?? "/");
+    const target = resolveSignInTarget(
+      record.redirect,
+      // The router's catch-all answers every unknown path, so only a real match
+      // counts as an in-app route.
+      (path) => router.resolve(path).name !== "NotFound"
+    );
+    if (target.kind === "server") {
+      // A server route has to be loaded from the server. The one that matters is
+      // the MCP client's /oauth/authorize, whose round trip through the sign-in
+      // page is how a signed-out user resumes an authorization.
+      window.location.assign(target.path);
+      return;
+    }
+    await router.replace(target.kind === "spa" ? target.path : "/");
   } catch (error) {
     errorMessage.value = formatError(error);
     settled.value = true;

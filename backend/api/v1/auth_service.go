@@ -588,20 +588,28 @@ func (s *AuthService) syncUserGroups(ctx context.Context, user *store.UserMessag
 			}
 		}
 		if isMember != isGroupMember {
+			// The list came out of the group cache, so the mutation has to happen on
+			// a copy: writing through it would leave the cache claiming a membership
+			// the database does not have if the update below fails, and a concurrent
+			// reader would see the state before the commit.
+			payload, ok := proto.Clone(groupMessage.Payload).(*storepb.GroupPayload)
+			if !ok {
+				return connect.NewError(connect.CodeInternal, errors.Errorf("failed to clone the payload of group %q", groupMessage.Email))
+			}
 			if isMember {
 				// Add the user to the group.
-				groupMessage.Payload.Members = append(groupMessage.Payload.Members, &storepb.GroupMember{
+				payload.Members = append(payload.Members, &storepb.GroupMember{
 					Role:   storepb.GroupMember_MEMBER,
 					Member: common.FormatUserUID(user.ID),
 				})
 			} else {
 				// Remove the user from the group.
-				groupMessage.Payload.Members = slices.DeleteFunc(groupMessage.Payload.Members, func(member *storepb.GroupMember) bool {
+				payload.Members = slices.DeleteFunc(payload.Members, func(member *storepb.GroupMember) bool {
 					return member.Member == common.FormatUserUID(user.ID)
 				})
 			}
 			if _, err := s.store.UpdateGroup(ctx, groupMessage.Email, &store.UpdateGroupMessage{
-				Payload: groupMessage.Payload,
+				Payload: payload,
 			}); err != nil {
 				return connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to update group %q", groupMessage.Email))
 			}

@@ -7,7 +7,6 @@ import {
   consumeSSOState,
   createPKCEPair,
   SSO_STATE_TTL_MS,
-  sanitizeRedirect,
   ssoCallbackUrl,
 } from "@/lib/oauth";
 import {
@@ -62,23 +61,6 @@ function memoryStorage(initial: Record<string, string> = {}) {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
-});
-
-describe("sanitizeRedirect", () => {
-  it("accepts a same-origin absolute path", () => {
-    expect(sanitizeRedirect("/instances/3")).toBe("/instances/3");
-  });
-
-  it.each([
-    ["an absolute URL", "https://evil.example.com/"],
-    ["a protocol-relative path", "//evil.example.com/"],
-    ["a relative path", "instances"],
-    ["an empty value", ""],
-    ["nothing", undefined],
-    ["nothing at all", null],
-  ])("rejects %s", (_label, value) => {
-    expect(sanitizeRedirect(value)).toBeUndefined();
-  });
 });
 
 describe("ssoCallbackUrl", () => {

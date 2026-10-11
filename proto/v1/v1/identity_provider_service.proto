@@ -80,7 +80,7 @@ service IdentityProviderService {
   rpc DeleteIdentityProvider(DeleteIdentityProviderRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {delete: "/v1/{name=idps/*}"};
     option (google.api.method_signature) = "name";
-    option (metaxisdata.v1.permission) = "metaxisdata.identityProviders.update";
+    option (metaxisdata.v1.permission) = "metaxisdata.identityProviders.delete";
     option (metaxisdata.v1.audit) = true;
   }
 
@@ -122,6 +122,10 @@ service IdentityProviderService {
   // it changes. Deleting the last binding of an account whose password was
   // replaced on adoption leaves it reachable only by an administrator resetting
   // the password, so the caller is expected to confirm before doing it.
+  //
+  // It is gated by `update`, not `delete`, and the settings page hides the button
+  // behind the same permission: this edits a provider's configuration, and
+  // `delete` is reserved for removing a provider outright.
   rpc DeleteIdentityProviderBinding(DeleteIdentityProviderBindingRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {
       post: "/v1/identityProviderBindings:delete"

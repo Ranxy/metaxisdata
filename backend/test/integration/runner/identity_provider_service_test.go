@@ -31,6 +31,28 @@ func storedIdentityProviderConfig(ctx context.Context, t *testing.T, env *integr
 	return config
 }
 
+// identityProviderConfigForUpdate is the config a client sends back after loading
+// a provider: every non-secret field as stored, and the secret only when the
+// operator typed a new one.
+func identityProviderConfigForUpdate(baseURL, clientSecret string) *v1pb.IdentityProviderConfig {
+	return &v1pb.IdentityProviderConfig{
+		Config: &v1pb.IdentityProviderConfig_Oauth2Config{
+			Oauth2Config: &v1pb.OAuth2IdentityProviderConfig{
+				AuthUrl:      baseURL + "/authorize",
+				TokenUrl:     baseURL + "/token",
+				UserInfoUrl:  baseURL + "/userinfo",
+				ClientId:     "admin-surface-client",
+				ClientSecret: clientSecret,
+				FieldMapping: &v1pb.FieldMapping{
+					Identifier:  "email",
+					Subject:     "sub",
+					DisplayName: "name",
+				},
+			},
+		},
+	}
+}
+
 func createIdentityProviderThroughAPI(ctx context.Context, t *testing.T, client v1connect.IdentityProviderServiceClient, token, resourceID string, baseURL string) *v1pb.IdentityProvider {
 	t.Helper()
 
@@ -40,22 +62,7 @@ func createIdentityProviderThroughAPI(ctx context.Context, t *testing.T, client 
 			Title:  "Admin Surface SSO",
 			Domain: "example.com",
 			Type:   v1pb.IdentityProviderType_OAUTH2,
-			Config: &v1pb.IdentityProviderConfig{
-				Config: &v1pb.IdentityProviderConfig_Oauth2Config{
-					Oauth2Config: &v1pb.OAuth2IdentityProviderConfig{
-						AuthUrl:      baseURL + "/authorize",
-						TokenUrl:     baseURL + "/token",
-						UserInfoUrl:  baseURL + "/userinfo",
-						ClientId:     "admin-surface-client",
-						ClientSecret: "admin-surface-secret",
-						FieldMapping: &v1pb.FieldMapping{
-							Identifier:  "email",
-							Subject:     "sub",
-							DisplayName: "name",
-						},
-					},
-				},
-			},
+			Config: identityProviderConfigForUpdate(baseURL, "admin-surface-secret"),
 		},
 	}))
 	require.NoError(t, err)
@@ -88,9 +95,10 @@ func TestIdentityProviderAdminSurfaceRealServerIntegration(t *testing.T) {
 	})
 
 	t.Run("the login page can list providers without credentials", func(t *testing.T) {
-		response, err := idpClient.ListIdentityProviders(ctx, connect.NewRequest(&v1pb.ListIdentityProvidersRequest{}))
+		// No token on the request: this is exactly the call the login page makes
+		// before anyone has signed in. What it must not do is require a session.
+		_, err := idpClient.ListIdentityProviders(ctx, connect.NewRequest(&v1pb.ListIdentityProvidersRequest{}))
 		require.NoError(t, err)
-		require.NotNil(t, response.Msg)
 	})
 
 	t.Run("an anonymous caller cannot configure a provider", func(t *testing.T) {
@@ -179,7 +187,7 @@ func TestIdentityProviderAdminSurfaceRealServerIntegration(t *testing.T) {
 		require.Equal(t, connect.CodeAlreadyExists, connect.CodeOf(err))
 	})
 
-	t.Run("an update that sends no secret keeps the stored one", func(t *testing.T) {
+	t.Run("a title-only update does not rewrite the config", func(t *testing.T) {
 		_, err := idpClient.UpdateIdentityProvider(ctx, withToken(adminToken, &v1pb.UpdateIdentityProviderRequest{
 			IdentityProvider: &v1pb.IdentityProvider{
 				Name:  idpName,
@@ -200,6 +208,55 @@ func TestIdentityProviderAdminSurfaceRealServerIntegration(t *testing.T) {
 
 		require.Equal(t, storedAfterCreate, storedIdentityProviderConfig(ctx, t, env, idpResourceID),
 			"a title-only update rewrote the encrypted config")
+	})
+
+	t.Run("a config update that sends no secret keeps the stored one", func(t *testing.T) {
+		// The read path never returned the secret, so this is exactly what a client
+		// sends when the operator opens the provider and saves without retyping it.
+		// The update is accepted only because the server put the stored secret back:
+		// validation rejects an empty one.
+		_, err := idpClient.UpdateIdentityProvider(ctx, withToken(adminToken, &v1pb.UpdateIdentityProviderRequest{
+			IdentityProvider: &v1pb.IdentityProvider{
+				Name:   idpName,
+				Title:  "Renamed SSO",
+				Config: identityProviderConfigForUpdate(provider.srv.URL, ""),
+			},
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"config"}},
+		}))
+		require.NoError(t, err)
+
+		require.Contains(t, storedIdentityProviderConfig(ctx, t, env, idpResourceID), "v1:",
+			"the config update left no ciphertext behind")
+
+		// And the secret the server presents is still the original one.
+		_, err = loginViaIntegrationIdentityProvider(ctx, t, authClient, idpResourceID)
+		require.NoError(t, err)
+		require.Equal(t, "admin-surface-secret", provider.presentedClientSecret(),
+			"the server presented something other than the stored secret")
+	})
+
+	t.Run("a config update that replaces the secret encrypts and presents the replacement", func(t *testing.T) {
+		before := storedIdentityProviderConfig(ctx, t, env, idpResourceID)
+
+		_, err := idpClient.UpdateIdentityProvider(ctx, withToken(adminToken, &v1pb.UpdateIdentityProviderRequest{
+			IdentityProvider: &v1pb.IdentityProvider{
+				Name:   idpName,
+				Title:  "Renamed SSO",
+				Config: identityProviderConfigForUpdate(provider.srv.URL, "replacement-secret"),
+			},
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"config"}},
+		}))
+		require.NoError(t, err)
+
+		stored := storedIdentityProviderConfig(ctx, t, env, idpResourceID)
+		require.NotEqual(t, before, stored, "the config was not rewritten")
+		require.Contains(t, stored, "v1:")
+		require.NotContains(t, stored, "replacement-secret",
+			"the replacement secret reached the row in the clear")
+
+		_, err = loginViaIntegrationIdentityProvider(ctx, t, authClient, idpResourceID)
+		require.NoError(t, err)
+		require.Equal(t, "replacement-secret", provider.presentedClientSecret())
 	})
 
 	t.Run("the stored secret still authenticates a login", func(t *testing.T) {

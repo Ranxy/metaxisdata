@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -11,6 +12,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/log"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
@@ -37,27 +39,69 @@ type UpdateIdentityProviderMessage struct {
 	Config     *storepb.IdentityProviderConfig
 }
 
-// idpCredentialFields names the identity provider config fields stored
-// encrypted with the deployment data key. The guard test
-// TestEveryIdentityProviderCredentialIsEncrypted walks the stored message and
-// fails when a credential-like field is missing here.
+// idpCredentialField is one credential of the stored config, with the accessors
+// that read and write it. The registry below — not the encrypt and decrypt
+// helpers — is what decides which fields are encrypted, so adding an entry is
+// what encrypts a new field. The guard test
+// TestEveryIdentityProviderCredentialIsEncrypted walks every message reachable
+// from the stored config and fails when a credential-like field is missing here.
 //
 // Unlike an instance credential, the ciphertext replaces the field in place
 // rather than moving to a sibling `_ciphertext` field: the whole config is one
 // JSONB column, the proto message has no second field to write, and no caller
 // reads the raw row.
-var idpCredentialFields = []string{"client_secret"}
+type idpCredentialField struct {
+	// name is the proto field name, which is what the guard test matches against.
+	name string
+	get  func(*storepb.IdentityProviderConfig) string
+	set  func(*storepb.IdentityProviderConfig, string)
+}
+
+func idpCredentialFields() []idpCredentialField {
+	return []idpCredentialField{
+		{
+			name: "client_secret",
+			get: func(config *storepb.IdentityProviderConfig) string {
+				return config.GetOauth2Config().GetClientSecret()
+			},
+			set: func(config *storepb.IdentityProviderConfig, value string) {
+				if oauth2Config := config.GetOauth2Config(); oauth2Config != nil {
+					oauth2Config.ClientSecret = value
+				}
+			},
+		},
+	}
+}
+
+// idpCredentialIsSet reports whether any registered credential carries a value,
+// which is what decides whether a cipher is needed at all: a config with no
+// credential is stored and read without one.
+func idpCredentialIsSet(config *storepb.IdentityProviderConfig) bool {
+	for _, field := range idpCredentialFields() {
+		if field.get(config) != "" {
+			return true
+		}
+	}
+	return false
+}
 
 // GetIdentityProvider gets an identity provider, with its client secret
 // decrypted.
 func (s *Store) GetIdentityProvider(ctx context.Context, find *FindIdentityProviderMessage) (*IdentityProviderMessage, error) {
+	// The read lock spans the whole read-and-populate rather than just the cache
+	// access: a delete landing between the SELECT and the Add would otherwise
+	// leave the deleted provider cached, and the login path resolves a provider
+	// from this cache, so its accounts would keep signing in until eviction.
+	s.idpMu.RLock()
+	defer s.idpMu.RUnlock()
+
 	if find.ResourceID != nil {
 		if v, ok := s.idpCache.Get(*find.ResourceID); ok && !s.cacheDisabled {
 			return v, nil
 		}
 	}
 
-	identityProviders, err := s.readIdentityProviders(ctx, find)
+	identityProviders, err := s.readIdentityProviders(ctx, find, false)
 	if err != nil {
 		return nil, err
 	}
@@ -75,11 +119,19 @@ func (s *Store) GetIdentityProvider(ctx context.Context, find *FindIdentityProvi
 
 // ListIdentityProviders lists identity providers, with their client secrets
 // decrypted.
+//
+// A row this build cannot read is skipped rather than reported: this list is what
+// the login page renders for an anonymous visitor, and one hand-edited row must
+// not remove every other provider's sign-in button. Get and the login path still
+// fail loudly for it.
 func (s *Store) ListIdentityProviders(ctx context.Context, find *FindIdentityProviderMessage) ([]*IdentityProviderMessage, error) {
 	if find == nil {
 		find = &FindIdentityProviderMessage{}
 	}
-	identityProviders, err := s.readIdentityProviders(ctx, find)
+	s.idpMu.RLock()
+	defer s.idpMu.RUnlock()
+
+	identityProviders, err := s.readIdentityProviders(ctx, find, true)
 	if err != nil {
 		return nil, err
 	}
@@ -89,14 +141,19 @@ func (s *Store) ListIdentityProviders(ctx context.Context, find *FindIdentityPro
 	return identityProviders, nil
 }
 
-func (s *Store) readIdentityProviders(ctx context.Context, find *FindIdentityProviderMessage) ([]*IdentityProviderMessage, error) {
+// readIdentityProviders reads the rows. A row whose config cannot be decoded or
+// decrypted is reported only when that row was asked for by name: the list is
+// what the login page renders anonymously, and one unreadable row — a hand-edited
+// one from before this table had a write path, say — must not remove every other
+// provider's sign-in button from every visitor.
+func (s *Store) readIdentityProviders(ctx context.Context, find *FindIdentityProviderMessage, skipUnreadable bool) ([]*IdentityProviderMessage, error) {
 	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
 
-	identityProviders, err := s.listIdentityProvidersImpl(ctx, tx, find)
+	identityProviders, err := s.listIdentityProvidersImpl(ctx, tx, find, skipUnreadable)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +163,7 @@ func (s *Store) readIdentityProviders(ctx context.Context, find *FindIdentityPro
 	return identityProviders, nil
 }
 
-func (s *Store) listIdentityProvidersImpl(ctx context.Context, txn *sql.Tx, find *FindIdentityProviderMessage) ([]*IdentityProviderMessage, error) {
+func (s *Store) listIdentityProvidersImpl(ctx context.Context, txn *sql.Tx, find *FindIdentityProviderMessage, skipUnreadable bool) ([]*IdentityProviderMessage, error) {
 	where, args := []string{"TRUE"}, []any{}
 	if v := find.ResourceID; v != nil {
 		where, args = append(where, fmt.Sprintf("resource_id = $%d", len(args)+1)), append(args, *v)
@@ -145,7 +202,12 @@ func (s *Store) listIdentityProvidersImpl(ctx context.Context, txn *sql.Tx, find
 		identityProviderMessage.Type = convertIdentityProviderType(identityProviderType)
 		config, err := s.convertIdentityProviderConfigString(identityProviderMessage.Type, identityProviderConfig)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to read the config of identity provider %q", identityProviderMessage.ResourceID)
+			if !skipUnreadable {
+				return nil, errors.Wrapf(err, "failed to read the config of identity provider %q", identityProviderMessage.ResourceID)
+			}
+			slog.Warn("Skipping an identity provider whose config cannot be read",
+				slog.String("identityProvider", identityProviderMessage.ResourceID), log.WithError(err))
+			continue
 		}
 		identityProviderMessage.Config = config
 		identityProviderMessages = append(identityProviderMessages, &identityProviderMessage)
@@ -168,6 +230,9 @@ func (s *Store) CreateIdentityProvider(ctx context.Context, create *IdentityProv
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to marshal the identity provider config")
 	}
+
+	s.idpMu.Lock()
+	defer s.idpMu.Unlock()
 
 	tx, err := s.GetDB().BeginTx(ctx, nil)
 	if err != nil {
@@ -225,6 +290,9 @@ func (s *Store) UpdateIdentityProvider(ctx context.Context, patch *UpdateIdentit
 	args = append(args, patch.ResourceID)
 	resourceIDArg := fmt.Sprintf("$%d", len(args))
 
+	s.idpMu.Lock()
+	defer s.idpMu.Unlock()
+
 	tx, err := s.GetDB().BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -274,6 +342,9 @@ func (s *Store) UpdateIdentityProvider(ctx context.Context, patch *UpdateIdentit
 // their binding rows; those bindings stop resolving until a provider with the
 // same id exists again.
 func (s *Store) DeleteIdentityProvider(ctx context.Context, resourceID string) error {
+	s.idpMu.Lock()
+	defer s.idpMu.Unlock()
+
 	tx, err := s.GetDB().BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -298,23 +369,30 @@ func (s *Store) DeleteIdentityProvider(ctx context.Context, resourceID string) e
 // encrypted. An empty secret stays empty, and a config with no OAuth2 half is
 // returned unchanged.
 func (s *Store) encryptIdentityProviderConfig(config *storepb.IdentityProviderConfig) (*storepb.IdentityProviderConfig, error) {
-	oauth2Config := config.GetOauth2Config()
-	if oauth2Config == nil || oauth2Config.GetClientSecret() == "" {
+	if config == nil || config.GetOauth2Config() == nil || !idpCredentialIsSet(config) {
 		return config, nil
-	}
-	cipher, err := s.credentialCipher()
-	if err != nil {
-		return nil, err
-	}
-	sealed, err := cipher.Encrypt(oauth2Config.GetClientSecret())
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to encrypt the identity provider client secret")
 	}
 	encrypted, ok := proto.Clone(config).(*storepb.IdentityProviderConfig)
 	if !ok {
 		return nil, errors.New("failed to clone the identity provider config")
 	}
-	encrypted.GetOauth2Config().ClientSecret = sealed
+	// A cipher is resolved only because a credential is present, so a config that
+	// carries none is still writable by a store that has no key installed.
+	cipher, err := s.credentialCipher()
+	if err != nil {
+		return nil, err
+	}
+	for _, field := range idpCredentialFields() {
+		plaintext := field.get(encrypted)
+		if plaintext == "" {
+			continue
+		}
+		sealed, err := cipher.Encrypt(plaintext)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to encrypt the %s of the identity provider", field.name)
+		}
+		field.set(encrypted, sealed)
+	}
 	return encrypted, nil
 }
 
@@ -327,23 +405,28 @@ func (s *Store) encryptIdentityProviderConfig(config *storepb.IdentityProviderCo
 // the credential would turn a key mistake into an authentication failure that
 // looks like a wrong secret.
 func (s *Store) decryptIdentityProviderConfig(config *storepb.IdentityProviderConfig) (*storepb.IdentityProviderConfig, error) {
-	oauth2Config := config.GetOauth2Config()
-	if oauth2Config == nil || oauth2Config.GetClientSecret() == "" {
+	if config == nil || config.GetOauth2Config() == nil || !idpCredentialIsSet(config) {
 		return config, nil
-	}
-	cipher, err := s.credentialCipher()
-	if err != nil {
-		return nil, err
-	}
-	plaintext, err := cipher.Decrypt(oauth2Config.GetClientSecret())
-	if err != nil {
-		return nil, errors.Wrap(err, "the client secret is not readable with this deployment's data key; re-create the identity provider through the admin API")
 	}
 	decrypted, ok := proto.Clone(config).(*storepb.IdentityProviderConfig)
 	if !ok {
 		return nil, errors.New("failed to clone the identity provider config")
 	}
-	decrypted.GetOauth2Config().ClientSecret = plaintext
+	cipher, err := s.credentialCipher()
+	if err != nil {
+		return nil, err
+	}
+	for _, field := range idpCredentialFields() {
+		ciphertext := field.get(decrypted)
+		if ciphertext == "" {
+			continue
+		}
+		plaintext, err := cipher.Decrypt(ciphertext)
+		if err != nil {
+			return nil, errors.Wrapf(err, "the %s is not readable with this deployment's data key; re-create the identity provider through the admin API", field.name)
+		}
+		field.set(decrypted, plaintext)
+	}
 	return decrypted, nil
 }
 

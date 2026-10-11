@@ -4051,7 +4051,9 @@ This verifies the client id and secret end to end, which endpoint reachability a
 A binding is what a login resolves against, so this is the read an administrator needs before moving or deleting an account: without it the only way to see why a login lands on an account is SQL. |
 | DeleteIdentityProviderBinding | [DeleteIdentityProviderBindingRequest](#metaxisdata-v1-DeleteIdentityProviderBindingRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | DeleteIdentityProviderBinding unbinds one account from one provider subject.
 
-The account loses that way in but keeps every other one; nothing else about it changes. Deleting the last binding of an account whose password was replaced on adoption leaves it reachable only by an administrator resetting the password, so the caller is expected to confirm before doing it. |
+The account loses that way in but keeps every other one; nothing else about it changes. Deleting the last binding of an account whose password was replaced on adoption leaves it reachable only by an administrator resetting the password, so the caller is expected to confirm before doing it.
+
+It is gated by `update`, not `delete`, and the settings page hides the button behind the same permission: this edits a provider&#39;s configuration, and `delete` is reserved for removing a provider outright. |
 
  
 

@@ -27,10 +27,16 @@ type Store struct {
 	cacheDisabled bool
 
 	// Cache
-	userIDCache           *lru.Cache[int, *UserMessage]
-	userEmailCache        *lru.Cache[string, *UserMessage]
-	groupCache            *lru.Cache[string, *GroupMessage]
-	idpCache              *lru.Cache[string, *IdentityProviderMessage]
+	userIDCache    *lru.Cache[int, *UserMessage]
+	userEmailCache *lru.Cache[string, *UserMessage]
+	groupCache     *lru.Cache[string, *GroupMessage]
+	idpCache       *lru.Cache[string, *IdentityProviderMessage]
+	// idpMu orders the identity provider cache against its own writes. It is the
+	// one cache here that needs it: a stale entry for a provider that was just
+	// deleted would keep authenticating accounts, because the login path resolves
+	// a provider from this cache and a deleted provider's bindings survive on
+	// purpose. The other caches hold rows whose staleness is only cosmetic.
+	idpMu                 sync.RWMutex
 	instanceCache         *lru.Cache[string, *InstanceMessage]
 	databaseCache         *lru.Cache[string, *DatabaseMessage]
 	metaRegistryGUIDCache *lru.Cache[MetaGUIDKey, *MetaRegistryResource]
