@@ -2,7 +2,7 @@
 // application-SQL ingest path keeps: a literal-free text that is safe to store, and a
 // canonical form whose hash is the statement's deduplication key.
 //
-// The rules it applies are N1-N3 of .agents/docs/application-sql-ingestion.md:
+// The rules it applies are N1-N3 of .agents/docs/application-sql-ingestion.md ("Decisions"):
 //
 //	N1  every literal becomes `?`, and a PostgreSQL `$n` is rewritten to the same `?`
 //	    so that one statement has one stored form however the application wrote it.

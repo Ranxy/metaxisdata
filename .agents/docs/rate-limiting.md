@@ -25,6 +25,7 @@ Both are fixed windows: a key's window opens with its first allowed request and 
 | Device login (handler) | `GetDeviceLogin`, `ApproveDeviceLogin` | caller (`user:` or `ip:`) | 60/min | 600/min |
 | MCP (`Server.invoke`) | tool calls | principal | 600/min | 6000/min |
 | MCP (`Server.Handler`) | every request, before the bearer check | resolved address | 6000/min | 60000/min |
+| *(none)* | Application SQL reporting, `POST /api/v1/applicationSql/report` | — | **no budget** | **no budget** |
 | `boundedRateLimiterStore` | OpenLineage ingestion | ingestion-key digest, else resolved address | 50/s, burst 100 | — |
 | `boundedRateLimiterStore` | OpenLineage ingestion | resolved address, whatever key presented | 2000/s, burst 4000 | — |
 | `boundedRateLimiterStore` | each `/oauth/*` route | resolved address | 10/s, burst 20 | — |

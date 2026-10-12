@@ -6,7 +6,8 @@
 // relation in any dialect — `INSERT INTO t (a, b) VALUES (?, ?)`, or a `DELETE` that
 // references no column. Nothing in the analysis then names the table being written, so
 // the statement can neither be classified as a write nor drawn with an edge to its
-// target. See .agents/docs/application-sql-ingestion.md sections 6.4 and 13.4.
+// target. See .agents/docs/application-sql-ingestion.md, "Classification and the table-level
+// edge".
 //
 // The caller is expected to ask only because the analysis came back empty. That
 // population is narrow: an UPDATE answers with `t.* -> t.a` even for a constant

@@ -212,7 +212,7 @@ func statementLabel(text string) string {
 // The statements a report creates are mirrored whether or not they turn out to be writes.
 // The mirror is what makes an object addressable by GUID — GetMetadata, history and Explain
 // SQL all read it — while the graph node set is derived from lineage edges, which only a
-// write gets. See .agents/docs/application-sql-ingestion.md section 3.5.
+// write gets. See .agents/docs/application-sql-ingestion.md, "Data model".
 func (s *Store) ReportApplicationSQL(ctx context.Context, report *ReportApplicationSQLMessage) (*ApplicationSQLMessage, error) {
 	if report == nil {
 		return nil, common.Errorf(common.Invalid, "a report is required")

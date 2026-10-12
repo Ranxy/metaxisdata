@@ -50,7 +50,7 @@ type applicationSQLLineageQueue interface {
 //
 // It is a plain Echo route, so it never reaches the ConnectRPC interceptor chain: its
 // authentication is the API key below, and its authorization is the scope the key's
-// application reported. See .agents/docs/application-sql-ingestion.md section 5.
+// application reported. See .agents/docs/application-sql-ingestion.md, "The reporting contract".
 type ApplicationSQLHandler struct {
 	store    applicationSQLStore
 	analyzer *lineage.Analyzer

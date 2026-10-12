@@ -554,7 +554,7 @@ func markAnalysisFailed(ctx context.Context, s *store.Store, metaGUID string, me
 //
 // The table-level edge carries no columns and no transformations, which is the shape the
 // OpenLineage table-level path already stores. See
-// .agents/docs/application-sql-ingestion.md sections 6.1 and 6.4.
+// .agents/docs/application-sql-ingestion.md, "Classification and the table-level edge".
 func classifyApplicationSQL(
 	ac catalog.AnalysisContext,
 	engine storepb.Engine,
