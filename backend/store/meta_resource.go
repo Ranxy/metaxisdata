@@ -565,7 +565,11 @@ func getNextLevelObjectType(metaType storepb.MetaType) []storepb.MetaType {
 	case storepb.MetaType_INSTANCE:
 		return []storepb.MetaType{storepb.MetaType_DATABASE}
 	case storepb.MetaType_DATABASE:
-		return []storepb.MetaType{storepb.MetaType_SCHEMA, storepb.MetaType_MANUAL_SQL}
+		return []storepb.MetaType{
+			storepb.MetaType_SCHEMA,
+			storepb.MetaType_MANUAL_SQL,
+			storepb.MetaType_APPLICATION_SQL,
+		}
 	case storepb.MetaType_SCHEMA:
 		return []storepb.MetaType{
 			storepb.MetaType_TABLE,
@@ -576,6 +580,7 @@ func getNextLevelObjectType(metaType storepb.MetaType) []storepb.MetaType {
 			storepb.MetaType_PROCEDURE,
 			storepb.MetaType_SEQUENCE,
 			storepb.MetaType_MANUAL_SQL,
+			storepb.MetaType_APPLICATION_SQL,
 		}
 	case storepb.MetaType_TABLE:
 		return []storepb.MetaType{storepb.MetaType_COLUMN}

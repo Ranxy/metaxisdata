@@ -115,6 +115,7 @@
     - [InstanceService](#metaxisdata-v1-InstanceService)
   
 - [v1/database_service.proto](#v1_database_service-proto)
+    - [ApplicationSQLMetadata](#metaxisdata-v1-ApplicationSQLMetadata)
     - [BoundingBox](#metaxisdata-v1-BoundingBox)
     - [CheckConstraintMetadata](#metaxisdata-v1-CheckConstraintMetadata)
     - [ColumnMetadata](#metaxisdata-v1-ColumnMetadata)
@@ -1961,6 +1962,29 @@ The instance&#39;s `name` field is used to identify the instance to update. Form
 
 
 
+<a name="metaxisdata-v1-ApplicationSQLMetadata"></a>
+
+### ApplicationSQLMetadata
+ApplicationSQLMetadata is one statement an application reported, with every literal
+already replaced by `?`. It is the metadata browser&#39;s view of the object; how often it
+ran and which applications reported it are on the Application SQL page, because the
+registry row is written once and those numbers change with every report.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| application_sql_id | [string](#string) |  |  |
+| name | [string](#string) |  | A display label taken from the statement&#39;s first line. |
+| sql_text | [string](#string) |  | The parameterized statement, exactly as it is stored. |
+| instance_resource | [string](#string) |  | Format: instances/{instance} |
+| database_name | [string](#string) |  |  |
+| schema_name | [string](#string) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-BoundingBox"></a>
 
 ### BoundingBox
@@ -3212,6 +3236,7 @@ serialized as an empty StoredMetadata.
 | sequence_metadata | [SequenceMetadata](#metaxisdata-v1-SequenceMetadata) |  |  |
 | manual_sql_metadata | [ManualSQLMetadata](#metaxisdata-v1-ManualSQLMetadata) |  |  |
 | column_metadata | [ColumnMetadata](#metaxisdata-v1-ColumnMetadata) |  |  |
+| application_sql_metadata | [ApplicationSQLMetadata](#metaxisdata-v1-ApplicationSQLMetadata) |  |  |
 | guid | [string](#string) |  | The globally unique metadata GUID of this object, e.g. &#34;instance_1;db2;schema3;table4&#34;. It is what ListMetadata results are addressed by in GetMetadata, GetSchemaString and the lineage methods. |
 
 

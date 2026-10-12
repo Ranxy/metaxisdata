@@ -269,6 +269,15 @@
         </div>
 
         <DialogFooter>
+          <!-- The registry row is the object; this page is the operational view of it. -->
+          <Button
+            v-if="detail"
+            variant="outline"
+            @click="openMetadata"
+          >
+            <ExternalLink class="mr-1 h-4 w-4" />
+            {{ t("openlineage.openMetadata") }}
+          </Button>
           <Button @click="detailOpen = false">{{ t("common.close") }}</Button>
         </DialogFooter>
       </DialogContent>
@@ -285,10 +294,10 @@
 </template>
 
 <script setup lang="ts">
-import { FileCode2, Trash2 } from "lucide-vue-next";
+import { ExternalLink, FileCode2, Trash2 } from "lucide-vue-next";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import {
   deleteApplicationSQL,
   getApplicationSQL,
@@ -331,7 +340,9 @@ import {
   type ApplicationSQL,
   ApplicationSQLKind,
 } from "@/types/proto-es/v1/application_service_pb";
+import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { formatDateTime } from "@/utils/datetime";
+import { guidToRouteParams } from "@/utils/guid";
 
 const { t, locale } = useI18n();
 const { handleError } = useErrorHandler();
@@ -343,6 +354,7 @@ const canDelete = computed(() =>
 );
 
 const route = useRoute();
+const router = useRouter();
 const error = ref("");
 const saving = ref(false);
 const pageSize = ref(50);
@@ -448,6 +460,22 @@ async function openDetail(guid: string) {
   } catch (e: unknown) {
     handleError(e, "applicationSql.detailFetchError");
   }
+}
+
+// The statement is a registry object, so it has a metadata page: definition, history and
+// the lineage it already draws on the canvas.
+function openMetadata() {
+  if (!detail.value) {
+    return;
+  }
+  void router.push({
+    name: "MetadataDetail",
+    params: { guid: guidToRouteParams(detail.value.guid) },
+    query: {
+      metaType: String(MetaType.APPLICATION_SQL),
+      from: route.fullPath,
+    },
+  });
 }
 
 function confirmDelete(guid: string) {

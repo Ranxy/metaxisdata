@@ -4132,6 +4132,38 @@ components:
             description: |-
                 ApplicationSQL is one distinct statement an application reported, with every literal
                  already replaced by `?`.
+        ApplicationSQLMetadata:
+            type: object
+            properties:
+                applicationSqlId:
+                    type: string
+                    description: |-
+                        The stable identifier of the statement, generated when it is first received. It
+                         survives a change to the fingerprint rules, which is what keeps the object's lineage
+                         and history attached.
+                name:
+                    type: string
+                    description: |-
+                        A display label taken from the statement's first line. The full text is in
+                         sql_text.
+                sqlText:
+                    type: string
+                    description: |-
+                        The parameterized statement. This is the only form ever stored: the text an
+                         application sends is rewritten before it reaches this table.
+                instanceResource:
+                    type: string
+                    description: 'The instance that reported it. Format: instances/{instance}'
+                databaseName:
+                    type: string
+                    description: The database the statement ran against.
+                schemaName:
+                    type: string
+                    description: The schema, empty for the MySQL family.
+            description: |-
+                ApplicationSQLMetadata is one statement an application reported, with every literal
+                 already replaced by `?`. The row is per distinct statement, not per application: which
+                 applications ran it is recorded in application_sql_observation.
         ApplicationSQLObservation:
             type: object
             properties:
@@ -7284,6 +7316,8 @@ components:
                     $ref: '#/components/schemas/ManualSQLMetadata'
                 columnMetadata:
                     $ref: '#/components/schemas/ColumnMetadata'
+                applicationSqlMetadata:
+                    $ref: '#/components/schemas/ApplicationSQLMetadata'
                 guid:
                     readOnly: true
                     type: string

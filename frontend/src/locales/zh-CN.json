@@ -762,6 +762,7 @@
   },
   "metadataBrowser": {
     "active": "已激活",
+    "applicationSqlDetail": "应用 SQL 详情",
     "applicationSqls": "应用 SQL",
     "arguments": "参数",
     "attributes": "属性",
@@ -876,6 +877,8 @@
     "minValue": "最小值",
     "namespace": "命名空间",
     "no": "否",
+    "noApplicationSqls": "没有应用 SQL",
+    "noApplicationSqlsHint": "应用上报后,语句会出现在这里。",
     "noColumns": "暂无字段",
     "noDatabases": "暂无数据库",
     "noExternalTables": "暂无外部表",

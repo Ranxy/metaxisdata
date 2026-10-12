@@ -276,6 +276,9 @@ func metadataName(before, after *v1pb.StoredMetadata) string {
 				return value.ManualSqlMetadata.GetTitle()
 			}
 			return value.ManualSqlMetadata.GetName()
+		case *v1pb.StoredMetadata_ApplicationSqlMetadata:
+			// A statement's label already is its first line, so there is nothing to prefer.
+			return value.ApplicationSqlMetadata.GetName()
 		}
 	}
 	return ""

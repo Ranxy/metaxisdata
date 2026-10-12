@@ -762,6 +762,7 @@
   },
   "metadataBrowser": {
     "active": "Active",
+    "applicationSqlDetail": "Application SQL Detail",
     "applicationSqls": "Application SQL",
     "arguments": "Arguments",
     "attributes": "Attributes",
@@ -876,6 +877,8 @@
     "minValue": "Min",
     "namespace": "Namespace",
     "no": "No",
+    "noApplicationSqls": "No application SQL",
+    "noApplicationSqlsHint": "A statement appears here once an application reports it.",
     "noColumns": "No columns",
     "noDatabases": "No databases",
     "noExternalTables": "No external tables",

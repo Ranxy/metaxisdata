@@ -266,11 +266,7 @@
                   :disabled="selectedNodeSummary.isExternal"
                   @click="openSelectedNodeMetadata"
                 >
-                  {{
-                    selectedNodeIsStatement
-                      ? t("applicationSql.viewStatement")
-                      : t("openlineage.openMetadata")
-                  }}
+                  {{ t("openlineage.openMetadata") }}
                 </Button>
               </div>
             </section>
@@ -591,10 +587,6 @@ const currentMetaType = computed(
   () => parseMetaType(route.query.metaType) ?? MetaType.TABLE
 );
 
-const selectedNodeIsStatement = computed(
-  () => selectedNodeSummary.value?.isStatement === true
-);
-
 const selectedNodeSummary = computed(() => {
   if (!selectedNodeGuid.value) {
     return null;
@@ -624,7 +616,6 @@ const selectedNodeSummary = computed(() => {
     isRoot: selectedNodeGuid.value === currentGuid.value,
     isExternal: view.isExternal,
     metaTypeValue,
-    isStatement: metaTypeValue === MetaType.APPLICATION_SQL,
     metaTypeLabel: metaTypeLabel(metaTypeValue, t),
     upstreamCount: counts.upstream,
     downstreamCount: counts.downstream,
@@ -965,17 +956,6 @@ function openSchemaFor(guid: string) {
 
 function openSelectedNodeMetadata() {
   if (!selectedNodeSummary.value || selectedNodeSummary.value.isExternal) {
-    return;
-  }
-
-  // A reported statement's object page is the statement list, not the metadata tree: the tree
-  // deliberately does not list statements (one database can hold thousands), so the metadata
-  // detail route would land on a page whose only content is the GUID's last segment.
-  if (selectedNodeIsStatement.value) {
-    void router.push({
-      name: "ApplicationSQL",
-      query: { guid: selectedNodeSummary.value.guid },
-    });
     return;
   }
 

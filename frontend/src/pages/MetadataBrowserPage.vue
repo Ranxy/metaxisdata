@@ -176,6 +176,15 @@
           </CardContent>
         </template>
 
+        <template v-else-if="leaf?.metaType === MetaType.APPLICATION_SQL">
+          <CardContent class="p-0">
+            <ApplicationSQLMetadataDetail
+              :application-sql="leaf.applicationSql"
+              :guid="currentGuid"
+            />
+          </CardContent>
+        </template>
+
         <template v-else-if="isExternalDatasetDetailView && externalDatasetDetail">
           <CardContent class="p-0">
             <ExternalDatasetMetadataDetail
@@ -266,6 +275,9 @@ const FunctionMetadataDetail = defineAsyncComponent(
 const ManualSQLMetadataDetail = defineAsyncComponent(
   () => import("@/components/metadata/ManualSQLMetadataDetail.vue")
 );
+const ApplicationSQLMetadataDetail = defineAsyncComponent(
+  () => import("@/components/metadata/ApplicationSQLMetadataDetail.vue")
+);
 const MaterializedViewMetadataDetail = defineAsyncComponent(
   () => import("@/components/metadata/MaterializedViewMetadataDetail.vue")
 );
@@ -293,6 +305,7 @@ import { useErrorMessage } from "@/composables/useErrorHandler";
 import { useInstanceStore } from "@/store/modules/instance";
 import { Engine } from "@/types/proto-es/v1/common_pb";
 import {
+  type ApplicationSQLMetadata,
   type ExternalTableMetadata,
   type FunctionMetadata,
   type ManualSQLMetadata,
@@ -440,6 +453,7 @@ const searchableMetaTypes = [
   MetaType.PROCEDURE,
   MetaType.SEQUENCE,
   MetaType.MANUAL_SQL,
+  MetaType.APPLICATION_SQL,
 ];
 
 const instances = computed(() => instanceStore.active);
@@ -472,7 +486,11 @@ type Leaf =
   | { metaType: MetaType.FUNCTION; fn: FunctionMetadata }
   | { metaType: MetaType.PROCEDURE; proc: ProcedureMetadata }
   | { metaType: MetaType.SEQUENCE; seq: SequenceMetadata }
-  | { metaType: MetaType.MANUAL_SQL; manualSql: ManualSQLMetadata };
+  | { metaType: MetaType.MANUAL_SQL; manualSql: ManualSQLMetadata }
+  | {
+      metaType: MetaType.APPLICATION_SQL;
+      applicationSql: ApplicationSQLMetadata;
+    };
 
 const leaf = ref<Leaf | null>(null);
 
@@ -488,6 +506,7 @@ interface LeafValueMap {
   procedureMetadata: ProcedureMetadata;
   sequenceMetadata: SequenceMetadata;
   manualSqlMetadata: ManualSQLMetadata;
+  applicationSqlMetadata: ApplicationSQLMetadata;
 }
 
 /**
@@ -553,7 +572,26 @@ const LEAF_LOADERS: Record<LeafType, (guid: string) => Promise<Leaf>> = {
       "manualSqlMetadata"
     ),
   }),
+  [MetaType.APPLICATION_SQL]: async (guid) => ({
+    metaType: MetaType.APPLICATION_SQL,
+    applicationSql: await getLeafValue(
+      guid,
+      MetaType.APPLICATION_SQL,
+      "applicationSqlMetadata"
+    ),
+  }),
 };
+
+/** The name a SQL object is known by; other leaves are already named after their segment. */
+function leafDisplayName(value: Leaf): string {
+  if (value.metaType === MetaType.MANUAL_SQL) {
+    return value.manualSql.title || value.manualSql.name;
+  }
+  if (value.metaType === MetaType.APPLICATION_SQL) {
+    return value.applicationSql.name;
+  }
+  return "";
+}
 
 function isLeafType(metaType: MetaType | null): metaType is LeafType {
   return metaType != null && metaType in LEAF_LOADERS;
@@ -642,6 +680,13 @@ const breadcrumbItems = computed(() => {
   }
 
   const items = trimmed.map((label, guidIndex) => ({ label, guidIndex }));
+
+  // A SQL object's last segment is generated (`__manual_sql__/<id>`), so the crumb reads
+  // the object's name once the leaf has loaded rather than the identifier.
+  const leafName = leaf.value ? leafDisplayName(leaf.value) : "";
+  if (leafName && items.length > 0) {
+    items[items.length - 1].label = leafName;
+  }
 
   if (!isMySQLInstance.value) return items;
 
@@ -882,12 +927,34 @@ function getMetadataName(item: StoredMetadata): string {
       return item.type.value.name;
     case "manualSqlMetadata":
       return item.type.value.title || item.type.value.name;
+    case "applicationSqlMetadata":
+      return item.type.value.name;
     default:
       return "";
   }
 }
 
 function handleSelectMetadata(item: StoredMetadata, metaType: MetaType) {
+  // Both SQL object types end in a generated segment (`__manual_sql__/<id>`,
+  // `__application_sql__/<id>`), so the route cannot be derived from the name the way a
+  // table's can: it is the scope being browsed plus that segment.
+  if (item.type.case === "applicationSqlMetadata") {
+    const statement = item.type.value;
+    router.push({
+      name: "MetadataDetail",
+      params: {
+        guid: guidSegmentsToRouteParams([
+          guidSegments.value[0] || "",
+          guidSegments.value[1] || "",
+          statement.schemaName || "",
+          `__application_sql__/${statement.applicationSqlId}`,
+        ]),
+      },
+      query: { metaType: String(MetaType.APPLICATION_SQL) },
+    });
+    return;
+  }
+
   if (item.type.case === "manualSqlMetadata") {
     const manualSQL = item.type.value;
     const segments = [
@@ -949,7 +1016,8 @@ function handleSelectMetadata(item: StoredMetadata, metaType: MetaType) {
     metaType === MetaType.FUNCTION ||
     metaType === MetaType.PROCEDURE ||
     metaType === MetaType.SEQUENCE ||
-    metaType === MetaType.MANUAL_SQL
+    metaType === MetaType.MANUAL_SQL ||
+    metaType === MetaType.APPLICATION_SQL
       ? { metaType: String(metaType) }
       : undefined;
 
@@ -1034,6 +1102,7 @@ const leafMetaTypes = new Set<MetaType>([
   MetaType.PROCEDURE,
   MetaType.SEQUENCE,
   MetaType.MANUAL_SQL,
+  MetaType.APPLICATION_SQL,
 ]);
 
 function handleSelectSearchResult(result: SearchMetadataResult) {

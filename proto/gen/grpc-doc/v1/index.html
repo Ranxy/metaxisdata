@@ -604,6 +604,10 @@
             <ul>
               
                 <li>
+                  <a href="#metaxisdata.v1.ApplicationSQLMetadata"><span class="badge">M</span>ApplicationSQLMetadata</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.BoundingBox"><span class="badge">M</span>BoundingBox</a>
                 </li>
               
@@ -5853,6 +5857,65 @@ Format: instances/{instance} </p></td>
       <p></p>
 
       
+        <h3 id="metaxisdata.v1.ApplicationSQLMetadata">ApplicationSQLMetadata</h3>
+        <p>ApplicationSQLMetadata is one statement an application reported, with every literal</p><p>already replaced by `?`. It is the metadata browser's view of the object; how often it</p><p>ran and which applications reported it are on the Application SQL page, because the</p><p>registry row is written once and those numbers change with every report.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>application_sql_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A display label taken from the statement&#39;s first line. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>sql_text</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The parameterized statement, exactly as it is stored. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>instance_resource</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: instances/{instance} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>database_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>schema_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.BoundingBox">BoundingBox</h3>
         <p>BoundingBox is the bounding box of a spatial index.</p>
 
@@ -9358,6 +9421,13 @@ If this field is omitted, there are no subsequent pages. </p></td>
                 <tr>
                   <td>column_metadata</td>
                   <td><a href="#metaxisdata.v1.ColumnMetadata">ColumnMetadata</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>application_sql_metadata</td>
+                  <td><a href="#metaxisdata.v1.ApplicationSQLMetadata">ApplicationSQLMetadata</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>

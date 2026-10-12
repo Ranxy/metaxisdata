@@ -73,8 +73,16 @@ The mirror of a statement is a `meta_registry_resource` row of type `MetaType_AP
 holding `ApplicationSQLMetadata{application_sql_id, name, sql_text, instance_resource,
 database_name, schema_name}`. **Every statement is mirrored, read or write** — the mirror is what
 makes the object addressable by GUID (`GetMetadata`, history, Explain SQL) — while the canvas node
-set stays derived from lineage edges, which only a write gets. `getNextLevelObjectType` deliberately
-does not list the type, so the metadata browser tree does not grow a sub-level per statement.
+set stays derived from lineage edges, which only a write gets.
+
+The type is browsable like manual SQL: `getNextLevelObjectType` lists it under the database for the
+MySQL family and under the schema for PostgreSQL, so a statement appears beside the objects of the
+scope it ran in, and the metadata detail renders its definition, its history and its edges. Two
+things bound it. The registry row carries no counts: `kind`, `execution_count` and the per-application
+breakdown live in `application_sql`, which changes with every report, and a mirror that carried them
+would write a history row per report into a ledger that is kept forever — the detail links to the
+Application SQL page for them instead. And the level is paginated like any other, so a database
+holding thousands of statements shows a page of them rather than all of them.
 
 The GUID is `instance;database;schema;__application_sql__/<application_sql_id>`. The identifier is
 generated rather than derived from the fingerprint, so a change to the fingerprint rules can rewrite
@@ -315,7 +323,8 @@ statement under the same dialect.
 | A conflict on the statement upsert never rewrites `guid`, `application_sql_id` or `sql_text` | the object detaches from its lineage and history |
 | `sqlsanitize` reads token source slices, not token-type constants | a dependency on unexported upstream numbers, failing silently when they change |
 | A table-level edge carries a non-nil `Transformation` | the whole edge batch fails on a `NOT NULL` column |
-| Every statement is mirrored; only writes get edges | the metadata browser tree grows a sub-level per statement, or reads vanish from the canvas |
+| Every statement is mirrored; only writes get edges | a reported statement has no object to hang lineage or history on, or reads vanish from the canvas |
+| The mirror carries no counts, and every level of the tree is paginated | a row changes on every report, so the forever-kept registry history grows with traffic rather than with statements |
 | Changing any rule that shapes the stored text or the canonical form bumps `sqlsanitize.Version` | one statement splits into two rows, and a deployment holding the old ones has nothing to tell it apart |
 | The `db` table is not a foreign key of `application_sql` | reporting fails until the schema sync reaches the database |
 
@@ -355,7 +364,7 @@ makes that change, against a deployment that actually has the rows.
 | Management service | [backend/api/v1/application_service.go](../../backend/api/v1/application_service.go), `proto/v1/v1/application_service.proto` |
 | Runner | [backend/runner/lineageanalyzer/analyzer.go](../../backend/runner/lineageanalyzer/analyzer.go) — `queueAll`, `buildSQL`, `classifyApplicationSQL` |
 | Schema | `backend/migrator/migration/LATEST.sql` and `0.1/0019##application_sql.sql` |
-| SPA | `frontend/src/pages/ApplicationManagementPage.vue` (under `/settings/applications`), `ApplicationSQLPage.vue`, `src/components/application/ApplicationSelect.vue`, `src/api/application.ts`, `src/lib/lineageOrigin.ts` |
+| SPA | `frontend/src/pages/ApplicationManagementPage.vue` (under `/settings/applications`), `ApplicationSQLPage.vue`, `src/components/application/ApplicationSelect.vue`, `src/components/metadata/ApplicationSQL{List,MetadataDetail}.vue`, `src/api/application.ts`, `src/lib/lineageOrigin.ts` |
 | Permissions | `backend/common/permission/permission.json` (`applications.*`, `applicationSqls.*`), `backend/store/predefined_roles.go` |
 
 Tests and their gates:

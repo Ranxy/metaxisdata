@@ -12,6 +12,7 @@ import {
   MetaType,
   type StoredMetadata,
 } from "@/types/proto-es/v1/database_service_pb";
+import ApplicationSQLList from "./ApplicationSQLList.vue";
 import DatabaseList from "./DatabaseList.vue";
 import ExternalTableList from "./ExternalTableList.vue";
 import FunctionList from "./FunctionList.vue";
@@ -54,6 +55,8 @@ const listComponent = computed(() => {
       return SequenceList;
     case MetaType.MANUAL_SQL:
       return ManualSQLList;
+    case MetaType.APPLICATION_SQL:
+      return ApplicationSQLList;
     default:
       return DatabaseList;
   }

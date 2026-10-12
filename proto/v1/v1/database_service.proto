@@ -643,6 +643,27 @@ message ManualSQLMetadata {
   string database_name = 10;
 }
 
+// ApplicationSQLMetadata is one statement an application reported, with every literal
+// already replaced by `?`. It is the metadata browser's view of the object; how often it
+// ran and which applications reported it are on the Application SQL page, because the
+// registry row is written once and those numbers change with every report.
+message ApplicationSQLMetadata {
+  string application_sql_id = 1;
+
+  // A display label taken from the statement's first line.
+  string name = 2;
+
+  // The parameterized statement, exactly as it is stored.
+  string sql_text = 3;
+
+  // Format: instances/{instance}
+  string instance_resource = 4;
+
+  string database_name = 5;
+
+  string schema_name = 6;
+}
+
 // StoredMetadata is the v1 view of one meta_registry_resource row.
 //
 // OpenLineage registry rows (store.MetaType_OPENLINEAGE) have no v1
@@ -663,6 +684,7 @@ message StoredMetadata {
     SequenceMetadata sequence_metadata = 10;
     ManualSQLMetadata manual_sql_metadata = 15;
     ColumnMetadata column_metadata = 16;
+    ApplicationSQLMetadata application_sql_metadata = 18;
   }
 
   // The globally unique metadata GUID of this object, e.g.
