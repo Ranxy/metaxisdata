@@ -240,6 +240,31 @@
   
     - [IamService](#metaxisdata-v1-IamService)
   
+- [v1/identity_provider_service.proto](#v1_identity_provider_service-proto)
+    - [CreateIdentityProviderRequest](#metaxisdata-v1-CreateIdentityProviderRequest)
+    - [DeleteIdentityProviderBindingRequest](#metaxisdata-v1-DeleteIdentityProviderBindingRequest)
+    - [DeleteIdentityProviderRequest](#metaxisdata-v1-DeleteIdentityProviderRequest)
+    - [FieldMapping](#metaxisdata-v1-FieldMapping)
+    - [GetIdentityProviderRequest](#metaxisdata-v1-GetIdentityProviderRequest)
+    - [IdentityProvider](#metaxisdata-v1-IdentityProvider)
+    - [IdentityProviderBinding](#metaxisdata-v1-IdentityProviderBinding)
+    - [IdentityProviderConfig](#metaxisdata-v1-IdentityProviderConfig)
+    - [IdentityProviderUserInfo](#metaxisdata-v1-IdentityProviderUserInfo)
+    - [ListIdentityProviderBindingsRequest](#metaxisdata-v1-ListIdentityProviderBindingsRequest)
+    - [ListIdentityProviderBindingsResponse](#metaxisdata-v1-ListIdentityProviderBindingsResponse)
+    - [ListIdentityProvidersRequest](#metaxisdata-v1-ListIdentityProvidersRequest)
+    - [ListIdentityProvidersResponse](#metaxisdata-v1-ListIdentityProvidersResponse)
+    - [OAuth2IdentityProviderConfig](#metaxisdata-v1-OAuth2IdentityProviderConfig)
+    - [OAuth2IdentityProviderTestRequestContext](#metaxisdata-v1-OAuth2IdentityProviderTestRequestContext)
+    - [TestIdentityProviderRequest](#metaxisdata-v1-TestIdentityProviderRequest)
+    - [TestIdentityProviderResponse](#metaxisdata-v1-TestIdentityProviderResponse)
+    - [UpdateIdentityProviderRequest](#metaxisdata-v1-UpdateIdentityProviderRequest)
+  
+    - [IdentityProviderType](#metaxisdata-v1-IdentityProviderType)
+    - [OAuth2AuthStyle](#metaxisdata-v1-OAuth2AuthStyle)
+  
+    - [IdentityProviderService](#metaxisdata-v1-IdentityProviderService)
+  
 - [v1/lineage_service.proto](#v1_lineage_service-proto)
     - [AnalysisScope](#metaxisdata-v1-AnalysisScope)
     - [AnalyzeSQLDiagnostic](#metaxisdata-v1-AnalyzeSQLDiagnostic)
@@ -4086,6 +4111,389 @@ by metaxisdata.iam.getPolicy / metaxisdata.iam.setPolicy.
 | ----------- | ------------ | ------------- | ------------|
 | GetWorkspaceIamPolicy | [GetWorkspaceIamPolicyRequest](#metaxisdata-v1-GetWorkspaceIamPolicyRequest) | [IamPolicyView](#metaxisdata-v1-IamPolicyView) | Get the workspace IAM policy. |
 | SetWorkspaceIamPolicy | [SetWorkspaceIamPolicyRequest](#metaxisdata-v1-SetWorkspaceIamPolicyRequest) | [IamPolicyView](#metaxisdata-v1-IamPolicyView) | Set the workspace IAM policy (full replace, etag-guarded). |
+
+ 
+
+
+
+<a name="v1_identity_provider_service-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## v1/identity_provider_service.proto
+
+
+
+<a name="metaxisdata-v1-CreateIdentityProviderRequest"></a>
+
+### CreateIdentityProviderRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| identity_provider | [IdentityProvider](#metaxisdata-v1-IdentityProvider) |  | The identity provider to create. |
+| identity_provider_id | [string](#string) |  | The id to use, which becomes the final segment of the resource name. Format: a lower-case letter followed by up to 62 lower-case letters, digits or hyphens. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-DeleteIdentityProviderBindingRequest"></a>
+
+### DeleteIdentityProviderBindingRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| user | [string](#string) |  | The account to unbind. Format: users/{user} |
+| idp | [string](#string) |  | The identity provider to unbind from. Format: idps/{idp} |
+| subject | [string](#string) |  | The subject to unbind. The binding row is keyed by (idp, subject), so this pins exactly one row: an account may in principle carry several subjects from the same provider. It is a plain field rather than a segment of the resource name because a subject is an opaque provider string that can contain `/`, `@` and `:`. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-DeleteIdentityProviderRequest"></a>
+
+### DeleteIdentityProviderRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | The name of the identity provider to delete. Format: idps/{idp} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-FieldMapping"></a>
+
+### FieldMapping
+FieldMapping names the claims that carry each field of the identity.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| identifier | [string](#string) |  | The claim holding the identifier, normally the address. Required. |
+| display_name | [string](#string) |  | The claim holding the display name. Optional; defaults to the identifier. |
+| phone | [string](#string) |  | The claim holding the phone number. Optional. |
+| subject | [string](#string) |  | The claim holding the provider-assigned, immutable subject. Optional here but required in effect: a login is bound to it, and the server refuses a provider that maps no subject unless the workspace lists the provider as one whose address claim may stand in for it (`sso_email_identity_idps`). |
+| groups | [string](#string) |  | The claim holding group memberships. Optional. When set, each login syncs the account&#39;s group membership to the matching workspace groups, which is what lets an IAM policy grant roles by group. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetIdentityProviderRequest"></a>
+
+### GetIdentityProviderRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | The name of the identity provider to get. Format: idps/{idp} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-IdentityProvider"></a>
+
+### IdentityProvider
+IdentityProvider is a configured SSO provider.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | The resource name. Format: idps/{idp}. Output only: the id is set on create and cannot change, because accounts are bound to (id, subject) pairs. |
+| title | [string](#string) |  | The display title, e.g. &#34;Acme SSO&#34;. The login page shows it on the button. |
+| domain | [string](#string) |  | The email domain whose users this provider serves, e.g. &#34;example.com&#34;. Used as a fallback when a provider reports an identifier that is not an address: the login then tries &#34;{identifier}@{domain}&#34;. Empty disables the fallback. |
+| type | [IdentityProviderType](#metaxisdata-v1-IdentityProviderType) |  | The protocol. Only OAUTH2 is implemented; the login path rejects anything else and no other value can be created. |
+| config | [IdentityProviderConfig](#metaxisdata-v1-IdentityProviderConfig) |  | The protocol configuration. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-IdentityProviderBinding"></a>
+
+### IdentityProviderBinding
+IdentityProviderBinding is one account&#39;s way in through one identity provider.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| user | [string](#string) |  | The account. Format: users/{user} |
+| user_email | [string](#string) |  | The account&#39;s address, for display. Read-only. |
+| user_title | [string](#string) |  | The account&#39;s display name, for display. Read-only. |
+| idp | [string](#string) |  | The identity provider. Format: idps/{idp} |
+| subject | [string](#string) |  | The provider-assigned subject the account is bound to. This is the value a login resolves against; it is not necessarily the address. |
+| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When the binding was written. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-IdentityProviderConfig"></a>
+
+### IdentityProviderConfig
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| oauth2_config | [OAuth2IdentityProviderConfig](#metaxisdata-v1-OAuth2IdentityProviderConfig) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-IdentityProviderUserInfo"></a>
+
+### IdentityProviderUserInfo
+IdentityProviderUserInfo is the identity a login resolved from the claims.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| identifier | [string](#string) |  | The identifier claim, normally the address. |
+| subject | [string](#string) |  | The subject claim: the value the account is bound to. |
+| display_name | [string](#string) |  | The display name. |
+| phone | [string](#string) |  | The phone number. |
+| groups | [string](#string) | repeated | The group claims. |
+| has_groups | [bool](#bool) |  | Whether the provider returned a group claim at all. Distinguishes &#34;no groups&#34; from &#34;groups not configured&#34;, so an empty list does not clear a membership. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListIdentityProviderBindingsRequest"></a>
+
+### ListIdentityProviderBindingsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| idp | [string](#string) |  | Optional. Restrict the answer to one identity provider. Format: idps/{idp} |
+| user | [string](#string) |  | Optional. Restrict the answer to one account. Format: users/{user} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListIdentityProviderBindingsResponse"></a>
+
+### ListIdentityProviderBindingsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| identity_provider_bindings | [IdentityProviderBinding](#metaxisdata-v1-IdentityProviderBinding) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListIdentityProvidersRequest"></a>
+
+### ListIdentityProvidersRequest
+
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListIdentityProvidersResponse"></a>
+
+### ListIdentityProvidersResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| identity_providers | [IdentityProvider](#metaxisdata-v1-IdentityProvider) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-OAuth2IdentityProviderConfig"></a>
+
+### OAuth2IdentityProviderConfig
+OAuth2IdentityProviderConfig is an OAuth2 provider&#39;s configuration.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| auth_url | [string](#string) |  | The authorization endpoint the browser is sent to. Not used by the server: the client builds the authorize URL from it. |
+| token_url | [string](#string) |  | The token endpoint. Required. |
+| user_info_url | [string](#string) |  | The userinfo endpoint. Required: the login reads the claims from here. |
+| client_id | [string](#string) |  | The client id. Required. Not a secret; it travels in the authorize URL. |
+| client_secret | [string](#string) |  | The client secret. Required on create. Never returned by a read, and an empty value on update keeps the stored one.
+
+It is stored encrypted with the deployment&#39;s data key (see `backend/common/crypto`), so a database reader without the key cannot authenticate as this application to the provider. |
+| scopes | [string](#string) | repeated | The scopes to request. |
+| field_mapping | [FieldMapping](#metaxisdata-v1-FieldMapping) |  | The claim mapping. |
+| skip_tls_verify | [bool](#bool) |  | Whether to skip TLS certificate verification on the provider&#39;s endpoints.
+
+Off by default and off is the only safe setting: with it on, anyone able to intercept the connection can forge the userinfo response and take over every account bound to this provider. The settings page warns when it is enabled. |
+| auth_style | [OAuth2AuthStyle](#metaxisdata-v1-OAuth2AuthStyle) |  | How the client id and secret are sent to the token endpoint. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-OAuth2IdentityProviderTestRequestContext"></a>
+
+### OAuth2IdentityProviderTestRequestContext
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| code | [string](#string) |  | The authorization code the provider returned to the callback. |
+| code_verifier | [string](#string) |  | The code_verifier matching the code_challenge sent to the provider. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-TestIdentityProviderRequest"></a>
+
+### TestIdentityProviderRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | The name of the stored identity provider to test. Format: idps/{idp} |
+| oauth2_context | [OAuth2IdentityProviderTestRequestContext](#metaxisdata-v1-OAuth2IdentityProviderTestRequestContext) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-TestIdentityProviderResponse"></a>
+
+### TestIdentityProviderResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| user_info | [IdentityProviderUserInfo](#metaxisdata-v1-IdentityProviderUserInfo) |  | The identity the provider resolved. Field mapping is applied, so a claim that did not resolve is visible as an empty field here. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-UpdateIdentityProviderRequest"></a>
+
+### UpdateIdentityProviderRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| identity_provider | [IdentityProvider](#metaxisdata-v1-IdentityProvider) |  | The identity provider to update. Its `name` field identifies the row. |
+| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | The fields to update. Only `title`, `domain` and `config` are mutable. |
+
+
+
+
+
+ 
+
+
+<a name="metaxisdata-v1-IdentityProviderType"></a>
+
+### IdentityProviderType
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| IDENTITY_PROVIDER_TYPE_UNSPECIFIED | 0 |  |
+| OAUTH2 | 1 | OAuth 2.0 authorization-code flow. |
+
+
+
+<a name="metaxisdata-v1-OAuth2AuthStyle"></a>
+
+### OAuth2AuthStyle
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| OAUTH2_AUTH_STYLE_UNSPECIFIED | 0 |  |
+| IN_PARAMS | 1 | IN_PARAMS sends the &#34;client_id&#34; and &#34;client_secret&#34; in the POST body as application/x-www-form-urlencoded parameters. |
+| IN_HEADER | 2 | IN_HEADER sends the client_id and client_secret using HTTP Basic Authorization, as described in the OAuth2 RFC 6749 section 2.3.1. |
+
+
+ 
+
+ 
+
+
+<a name="metaxisdata-v1-IdentityProviderService"></a>
+
+### IdentityProviderService
+IdentityProviderService is the admin surface for SSO.
+
+It is the write path for the `idp` table: before it existed the only way to
+configure a provider was to insert SQL by hand, so the login page had nothing
+to point at and `client_secret` could not be encrypted on write.
+
+ListIdentityProviders is deliberately readable without credentials: the login
+page renders one button per configured provider before the visitor has a
+session. It never returns a secret, so a provider&#39;s non-secret half (auth URL,
+client id, scopes, mapping) is what an anonymous caller can see.
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+| GetIdentityProvider | [GetIdentityProviderRequest](#metaxisdata-v1-GetIdentityProviderRequest) | [IdentityProvider](#metaxisdata-v1-IdentityProvider) | Get an identity provider, including the non-secret half of its config. |
+| ListIdentityProviders | [ListIdentityProvidersRequest](#metaxisdata-v1-ListIdentityProvidersRequest) | [ListIdentityProvidersResponse](#metaxisdata-v1-ListIdentityProvidersResponse) | List every configured identity provider. Public so the login page can render the enabled SSO targets without credentials.
+
+The `permission` annotation is kept beside `allow_without_credential`, as on `SettingService.GetWorkspaceProfileSetting`: the latter wins in the interceptor, and the annotation is what records the permission this read belongs to in the catalog. |
+| CreateIdentityProvider | [CreateIdentityProviderRequest](#metaxisdata-v1-CreateIdentityProviderRequest) | [IdentityProvider](#metaxisdata-v1-IdentityProvider) | Create an identity provider. The id becomes the final segment of the resource name and is immutable, so it is derived from the title by the client and checked here. |
+| UpdateIdentityProvider | [UpdateIdentityProviderRequest](#metaxisdata-v1-UpdateIdentityProviderRequest) | [IdentityProvider](#metaxisdata-v1-IdentityProvider) | Update an identity provider. Only title, domain and config are mutable; the resource name is not. An empty secret in the config means &#34;keep the stored one&#34;, because the read path never hands the stored secret back. |
+| DeleteIdentityProvider | [DeleteIdentityProviderRequest](#metaxisdata-v1-DeleteIdentityProviderRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Delete an identity provider.
+
+Accounts bound to it keep their binding rows but can no longer sign in through it: the binding records the subject the provider assigned, which no longer resolves to a configured provider. Re-creating the provider with the same id makes those accounts reachable again, which is why the id matters. |
+| TestIdentityProvider | [TestIdentityProviderRequest](#metaxisdata-v1-TestIdentityProviderRequest) | [TestIdentityProviderResponse](#metaxisdata-v1-TestIdentityProviderResponse) | TestIdentityProvider completes a real authorization-code exchange against a stored provider and reports the identity it resolves.
+
+The provider has to be saved first: the exchange needs the stored client secret, and the browser is never given it. The caller obtains an authorization code by sending an administrator&#39;s browser to the provider&#39;s authorization endpoint with `{external_url}/oauth/callback` as the redirect URI — the same URI a login uses — so no extra callback has to be registered with the provider. The client marks that state record as a test so the callback page tests instead of signing the administrator in.
+
+This verifies the client id and secret end to end, which endpoint reachability alone cannot. |
+| ListIdentityProviderBindings | [ListIdentityProviderBindingsRequest](#metaxisdata-v1-ListIdentityProviderBindingsRequest) | [ListIdentityProviderBindingsResponse](#metaxisdata-v1-ListIdentityProviderBindingsResponse) | List the accounts bound to an identity provider subject.
+
+A binding is what a login resolves against, so this is the read an administrator needs before moving or deleting an account: without it the only way to see why a login lands on an account is SQL. |
+| DeleteIdentityProviderBinding | [DeleteIdentityProviderBindingRequest](#metaxisdata-v1-DeleteIdentityProviderBindingRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | DeleteIdentityProviderBinding unbinds one account from one provider subject.
+
+The account loses that way in but keeps every other one; nothing else about it changes. Deleting the last binding of an account whose password was replaced on adoption leaves it reachable only by an administrator resetting the password, so the caller is expected to confirm before doing it.
+
+It is gated by `update`, not `delete`, and the settings page hides the button behind the same permission: this edits a provider&#39;s configuration, and `delete` is reserved for removing a provider outright. |
 
  
 

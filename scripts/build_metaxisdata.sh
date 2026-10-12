@@ -7,7 +7,7 @@
 # Usage:
 #   scripts/build_metaxisdata.sh                       # release profile -> build/metaxisdata
 #   scripts/build_metaxisdata.sh --dev                 # dev profile, local development only
-#   VERSION=v1.2.3 scripts/build_metaxisdata.sh
+#   VERSION=v0.1.0 scripts/build_metaxisdata.sh
 #   scripts/build_metaxisdata.sh --release-assets      # the release assets + SHA256SUMS -> build/
 #
 # --release / --dev (or RELEASE=true/false) select the profile: the release tag

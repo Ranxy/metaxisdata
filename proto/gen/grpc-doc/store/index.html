@@ -4336,7 +4336,7 @@ Mainly used for OIDC: https://developer.okta.com/docs/guides/customize-tokens-gr
 
       
         <h3 id="metaxisdata.store.IdentityProviderType">IdentityProviderType</h3>
-        <p>IdentityProviderType is the type of a configured identity provider. Only</p><p>OAuth2 is implemented: the login path rejects anything else, and there is no</p><p>admin API that could create an OIDC/LDAP row.</p>
+        <p>IdentityProviderType is the type of a configured identity provider. Only</p><p>OAuth2 is implemented: the login path rejects anything else, and</p><p>IdentityProviderService creates nothing else.</p>
         <table class="enum-table">
           <thead>
             <tr><td>Name</td><td>Number</td><td>Description</td></tr>
@@ -5983,7 +5983,8 @@ external_url, which is where its issuer and resource identifiers come from. </p>
                   <td><a href="#string">string</a></td>
                   <td>repeated</td>
                   <td><p>The identity providers whose email claim may stand in for a subject, by the
-resource id that idps/{idp} names (the idp table has no API that lists them).
+resource id that idps/{idp} names. The settings page picks them from
+IdentityProviderService.ListIdentityProviders.
 
 For those providers — and only those, because one workspace can configure
 several, trusted to different degrees — an SSO login may be identified by the

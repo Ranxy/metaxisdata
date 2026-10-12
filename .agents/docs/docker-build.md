@@ -24,7 +24,7 @@
 | 运行镜像用 alpine + `ca-certificates` + `tzdata`，uid 1001，无卷 | 二进制 `CGO_ENABLED=0`，状态全在 PostgreSQL；TLS 只用于出站（源库、LLM、IdP）。`tzdata` 是为源库配置：MSSQL 实例可以带 `timezone` DSN 参数，`go-mssqldb` 用 `time.LoadLocation` 解析，没有 zoneinfo 就会报 `unknown time zone`，而这个配置在宿主机上能跑。`/tmp` 是唯一可写路径（MSSQL driver 的临时文件），要加固就用 `--read-only --tmpfs /tmp`，裸 `--read-only` 会把它也拿掉。 |
 | `IMAGE` 默认 `metaxisdata/metaxisdata`，`IMAGE_ALT` 默认 `ghcr.io/ranxy/metaxisdata` | 两个名字同时打标签；`IMAGE_ALT=` 置空即只打一个。 |
 | 多平台用「构建阶段固定 `$BUILDPLATFORM` + `GOOS/GOARCH` 交叉编译」，只有运行阶段的 `apk add` 走 QEMU | 两个构建阶段的产物本来就与宿主架构无关（SPA 是 JS，CGO 关闭）；如果在 arm64 上模拟跑 `vue-tsc`，一次构建要几十分钟。 |
-| 只在 GitHub Release `published` 时推 GHCR；别名（`:latest`、`:1.2`）只由非预发布产生 | 镜像与 Release 一一对应；跟踪别名的部署不会被塞进 RC。手动 `workflow_dispatch` 在分支上只推 `:sha-<commit>`（分支名不是版本），在 tag 上重推该 tag 的集合、同样不动别名。 |
+| 只在 GitHub Release `published` 时推 GHCR；别名（`:latest`、`:0.1`）只由非预发布产生 | 镜像与 Release 一一对应；跟踪别名的部署不会被塞进 RC。手动 `workflow_dispatch` 在分支上只推 `:sha-<commit>`（分支名不是版本），在 tag 上重推该 tag 的集合、同样不动别名。 |
 | 二进制脚本默认 `release`（prod profile），`--dev` 才用 dev，与镜像构建同向 | `scripts/build_metaxisdata.sh` 是部署产物路径，镜像构建就是这套判断；与 laelia 脚本默认 dev 正相反，沿用本项目的既有约定。 |
 | Release 只发布服务端二进制，五个平台各一个资产 + `SHA256SUMS`，不含 `mxd` | 本次只覆盖部署文档需要的产物（laelia 同样只在脚本里处理可部署服务）；CLI 资产需要时再加。 |
 | `release-binaries.yml` 与 `release-image.yml` 同触发但分成两个文件 | 上传资产要 `contents: write`，镜像 job 只拿 `packages: write` + workflow 级 `contents: read`；job 各自最小授权，互不牵连。 |
@@ -37,7 +37,7 @@
 | release 的五个资产必须出自同一次脚本的 `--release-assets` 调用（单一 staged SPA、单一 `LDFLAGS`，linux/amd64 也走显式 `GOOS/GOARCH`，不依赖 runner 自身架构） | 手写配方分叉后，某个平台的资产会带错 profile/元数据；runner 换架构时还会把错误命名的资产上传。 |
 | `.dockerignore` 必须排除 `frontend/node_modules`、`**/dist`、`backend/server/frontend_dist`，且 Dockerfile 在拷贝新 SPA 前仍 `rm -rf backend/server/frontend_dist` | 构建机上残留的旧 SPA 会被编进镜像，页面看起来"没更新"。 |
 | 先有 SPA 再编译，且带 `embed_frontend` 标签 | 否则 `server_frontend_not_embed.go` 的占位页会被部署出去。 |
-| 别名 tag（`:latest`、`:1.2`）的产出必须经 `flavor: latest=false`，不能只靠 `type=raw` 的 `enable` | `docker/metadata-action` 按**优先级降序**处理标签（semver 900、ref 600、raw 200、sha 100，见 `tag.ts` 的 `DefaultPriorities`），`version.latest` 由**第一个**产出值的条目定下且不再改（`setVersion()`）。默认 `flavor.latest=auto` 时：semver tag 由 semver 自己的预发布规则决定（正确），但 semver 解析不了的 tag（如 `rc-2026`）会把决定权交给 ref 条目，它直接置 `latest=true`——**实测该情形下预发布会推 `:latest`**；稳定发布还会把 `latest` 输出两次（semver 一次 + raw 落进 partial 一次）。`flavor: latest=false` 掐掉所有隐式来源，`:latest` 只由带 `enable` 的 raw 条目产生，与顺序无关。 |
+| 别名 tag（`:latest`、`:0.1`）的产出必须经 `flavor: latest=false`，不能只靠 `type=raw` 的 `enable` | `docker/metadata-action` 按**优先级降序**处理标签（semver 900、ref 600、raw 200、sha 100，见 `tag.ts` 的 `DefaultPriorities`），`version.latest` 由**第一个**产出值的条目定下且不再改（`setVersion()`）。默认 `flavor.latest=auto` 时：semver tag 由 semver 自己的预发布规则决定（正确），但 semver 解析不了的 tag（如 `rc-2026`）会把决定权交给 ref 条目，它直接置 `latest=true`——**实测该情形下预发布会推 `:latest`**；稳定发布还会把 `latest` 输出两次（semver 一次 + raw 落进 partial 一次）。`flavor: latest=false` 掐掉所有隐式来源，`:latest` 只由带 `enable` 的 raw 条目产生，与顺序无关。 |
 | 入口脚本派生的 flag 必须排在调用方参数之前（`set -- --flag value "$@"`） | 同名 flag 后者生效；顺序反了，`docker run … --port 9090` 会被派生值静默覆盖。 |
 | 构建阶段必须留在 `--platform=$BUILDPLATFORM` 上，`GOOS/GOARCH` 只由 `TARGETOS/TARGETARCH` 决定 | 把构建阶段放到目标平台上，arm64 构建会退回 QEMU 模拟（CI 从几分钟变成几十分钟）。 |
 | workflow 里的 OCI labels 只由 Dockerfile 的构建参数产生，不叠加 `docker/metadata-action` 的 `labels` | 两处各写一份 `org.opencontainers.image.version`，标签会和 `metaxisdata --version` 说不同的版本号。 |

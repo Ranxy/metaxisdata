@@ -1,6 +1,6 @@
 # 仍未开放的安全问题 — Reference
 
-> Status: **活跃清单**(核对基线 `89a51cc`,2026-10-08)。只列今天仍成立、尚未修复、也尚未被接受为新决策的条目;每条都已对当前 HEAD 的代码复核过。
+> Status: **活跃清单**。只列今天仍成立、尚未修复、也尚未被接受为新决策的条目;每条都已对当前 HEAD 的代码复核过。
 > 已接受的设计决策见 [docs/security-posture.md](docs/security-posture.md)(唯一权威,本文不重复其正文)。已修复的历史不在此逐条保留,需要时查 git 历史与提交信息。
 
 ## 仍开放
@@ -8,12 +8,11 @@
 | # | 位置 | 问题 | 影响 | 建议 |
 | --- | --- | --- | --- | --- |
 | M22/D7 | [backend/plugin/db/util/ssl.go:28](backend/plugin/db/util/ssl.go#L28) | `verify_tls_certificate=false`(默认)时直接 `cfg.InsecureSkipVerify = true`(:31),无任何提示 | 目标库 TLS 只是未认证加密,同网段可中间人 | 校验默认开启,UI 显式提示降级 |
-| M22/D7 | [backend/plugin/idp/oauth2/oauth2.go:65](backend/plugin/idp/oauth2/oauth2.go#L65) | IdP `skip_tls_verify` 直接进 `InsecureSkipVerify`,无告警 | 能 MITM 者可伪造 userinfo 主体,接管已按 subject 绑定的账号 | 默认关闭 + 设置页显著警告 |
+| M22/D7 | [backend/plugin/idp/oauth2/oauth2.go:65](backend/plugin/idp/oauth2/oauth2.go#L65) | IdP `skip_tls_verify` 直接进 `InsecureSkipVerify`。配置入口已补:表单默认关闭并在开启时显示显著警告 | 能 MITM 者可伪造 userinfo 主体,接管已按 subject 绑定的账号。警告不阻止开启,残余是「可以关掉校验」本身 | 保留默认关闭与警告;若要彻底封住,需按部署策略拒绝 `skip_tls_verify=true` |
 | M22/D7 | [backend/plugin/db/util/ssh.go:68](backend/plugin/db/util/ssh.go#L68) | `ssh_private_key` 为空时回退进程自身的 `SSH_AUTH_SOCK`,把运维者 agent 的全部密钥交给用户指定的 ssh_host(:59-71) | 公钥枚举;匹配则以运维者身份完成认证。主机密钥校验已随 H7 修复,此回退未动 | 删除 agent 回退,或改为显式配置项 |
 | M23 | [backend/component/llm/fetcher.go:34](backend/component/llm/fetcher.go#L34) | `ValidateBaseURL` 只校验绝对 http/https + host 非空:不拒私网、不强制 https | 能配置 LLM profile 者可把平台当带 key 的内网探测器;明文 http 时 key 明文过网 | 内网黑名单/告警,非 loopback 拒绝明文 http(「改 base_url 须同请求给 key」已封住旧 key 外带,见 [llm_service.go:157](backend/api/v1/llm_service.go#L157)) |
 | M23 | [backend/component/llm/agent.go:72](backend/component/llm/agent.go#L72) | 共享 `llmHTTPClient` 无 `CheckRedirect` | 上游可 302 到任意主机并带走 Bearer key | 加 `CheckRedirect`,限制同 host |
 | M25/D8 | [backend/server/pprof.go:15](backend/server/pprof.go#L15) | `/debug/pprof/*` 只由 `RuntimeDebug` 开关控制,**无认证**;`/metrics` 同一把闸([echo_routes.go:81](backend/server/echo_routes.go#L81)) | 任一持 `settings.update` 者开启后,匿名可取 heap/goroutine/cmdline/profile;heap 含常驻 JWT 签名密钥([server.go:186](backend/server/server.go#L186))与解密后的凭据 | pprof/metrics 独立开关 + 管理员认证或只绑回环;运行期开启时告警 |
-| (新)IdP secret | [proto/store/store/idp.proto:37](proto/store/store/idp.proto#L37) | `idp.config.client_secret` 明文入库:[store/idp.go:118](backend/store/idp.go#L118) 直接 protojson 解析,无加密/混淆,`security-posture.md` 未收录 | 任何数据库读权限者都能拿到并以本应用身份访问企业 IdP | 提供配置入口,并用现有凭据加密存 client_secret(先给生成密文的工具) |
 | M6 | [backend/api/auth/auth.go:44](backend/api/auth/auth.go#L44) | 会话 cookie 名仍是 `access-token`:无 `__Host-` 前缀、无重复同名拒绝,:260 取第一个同名 cookie | 共享父域下可控兄弟子域可种 `Domain=` 同名 cookie 抢占 `/v1`,受害者以攻击者身份执行 | HTTPS 下改 `__Host-access-token`;遇多个同名 cookie 直接拒绝 |
 | D3 | [backend/server/csrf.go:53](backend/server/csrf.go#L53) | CSRF 中间件复制 `access-token` 字面量,与 [auth.go:44](backend/api/auth/auth.go#L44) 无编译期关联;server 包无 csrf 测试 | 任一侧改名会让 CSRF 静默失效 | 共享常量;补 csrf 测试 |
 | M8 | [backend/api/v1/acl_interceptor.go:74](backend/api/v1/acl_interceptor.go#L74) | `AllowWithoutCredential \|\| Permission == ""` 直接放行,acw 架空 `permission` 注解;守护测试 [acl_interceptor_test.go:52](backend/api/v1/acl_interceptor_test.go#L52) 反把二者并存当合法 | 日后任何方法同时带 acw+permission 即静默失去权限闸门,测试不红 | 断言 `acw ⇒ permission==""`,或对 acw 方法仍执行权限检查 + 显式匿名名单 |

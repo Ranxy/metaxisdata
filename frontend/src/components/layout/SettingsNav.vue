@@ -31,6 +31,7 @@ import {
   KeyRound,
   Network,
   Shield,
+  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   UserRound,
@@ -45,8 +46,8 @@ const { t } = useI18n();
 const route = useRoute();
 const authStore = useAuthStore();
 
-// Settings is a local section: its nine pages live behind one sidebar entry and
-// are navigated here, so they stop competing with the product navigation.
+// Settings is a local section: its pages live behind one sidebar entry and are
+// navigated here, so they stop competing with the product navigation.
 const ALL_ITEMS = computed(() => [
   {
     key: "general",
@@ -68,6 +69,13 @@ const ALL_ITEMS = computed(() => [
     path: "/settings/iam",
     icon: KeyRound,
     permission: "metaxisdata.iam.getPolicy",
+  },
+  {
+    key: "identityProviders",
+    label: t("menu.identityProviders"),
+    path: "/settings/identity-providers",
+    icon: ShieldCheck,
+    permission: "metaxisdata.identityProviders.list",
   },
   {
     key: "roles",

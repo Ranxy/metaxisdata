@@ -121,11 +121,24 @@ var credentialWords = []string{
 }
 
 // unencryptedCredentialLikeFields are the fields whose names match a credential
-// word but hold material that is public by design, with the reason.
+// word but hold material that is public by design, with the reason. It is one
+// registry for every stored message, so an exemption is argued once and applies
+// wherever a guard walks a descriptor.
 var unencryptedCredentialLikeFields = map[string]string{
 	// A bastion's public host key is pinned, not hidden: it is what the SSH client
 	// compares the presented key against, and the operator pastes it in.
 	"ssh_host_key": "a public host key, not a credential",
+	// An OAuth2 identity provider advertises these to the browser: the client
+	// builds the authorize URL from them, and every value is visible in the URL a
+	// visitor is redirected to. The secret they are paired with is client_secret,
+	// which is encrypted.
+	"auth_url":   "the authorization endpoint a browser is sent to, not a credential",
+	"token_url":  "the token endpoint's address, not the token it issues",
+	"auth_style": "which transport carries the client credentials, not the credentials",
+	// A oneof selector names which protocol's config follows; it holds no value of
+	// its own, and the walk recurses into the message it selects, so a credential
+	// inside that config is still checked.
+	"oauth2_config": "a oneof selector naming the OAuth2 config, not a value",
 }
 
 func looksLikeACredential(name string) bool {

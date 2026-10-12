@@ -928,6 +928,278 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/identityProviderBindings:
+        get:
+            tags:
+                - IdentityProviderService
+            description: |-
+                List the accounts bound to an identity provider subject.
+
+                 A binding is what a login resolves against, so this is the read an
+                 administrator needs before moving or deleting an account: without it the
+                 only way to see why a login lands on an account is SQL.
+            operationId: IdentityProviderService_ListIdentityProviderBindings
+            parameters:
+                - name: idp
+                  in: query
+                  description: |-
+                    Optional. Restrict the answer to one identity provider.
+                     Format: idps/{idp}
+                  schema:
+                    type: string
+                - name: user
+                  in: query
+                  description: |-
+                    Optional. Restrict the answer to one account.
+                     Format: users/{user}
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListIdentityProviderBindingsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/identityProviderBindings:delete:
+        post:
+            tags:
+                - IdentityProviderService
+            description: |-
+                DeleteIdentityProviderBinding unbinds one account from one provider subject.
+
+                 The account loses that way in but keeps every other one; nothing else about
+                 it changes. Deleting the last binding of an account whose password was
+                 replaced on adoption leaves it reachable only by an administrator resetting
+                 the password, so the caller is expected to confirm before doing it.
+
+                 It is gated by `update`, not `delete`, and the settings page hides the button
+                 behind the same permission: this edits a provider's configuration, and
+                 `delete` is reserved for removing a provider outright.
+            operationId: IdentityProviderService_DeleteIdentityProviderBinding
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/DeleteIdentityProviderBindingRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/idps:
+        get:
+            tags:
+                - IdentityProviderService
+            description: |-
+                List every configured identity provider. Public so the login page can render
+                 the enabled SSO targets without credentials.
+
+                 The `permission` annotation is kept beside `allow_without_credential`, as on
+                 `SettingService.GetWorkspaceProfileSetting`: the latter wins in the
+                 interceptor, and the annotation is what records the permission this read
+                 belongs to in the catalog.
+            operationId: IdentityProviderService_ListIdentityProviders
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListIdentityProvidersResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        post:
+            tags:
+                - IdentityProviderService
+            description: |-
+                Create an identity provider. The id becomes the final segment of the
+                 resource name and is immutable, so it is derived from the title by the
+                 client and checked here.
+            operationId: IdentityProviderService_CreateIdentityProvider
+            parameters:
+                - name: identityProviderId
+                  in: query
+                  description: |-
+                    The id to use, which becomes the final segment of the resource name.
+                     Format: a lower-case letter followed by up to 62 lower-case letters, digits
+                     or hyphens.
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/IdentityProvider'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/IdentityProvider'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/idps/{idp}:
+        get:
+            tags:
+                - IdentityProviderService
+            description: Get an identity provider, including the non-secret half of its config.
+            operationId: IdentityProviderService_GetIdentityProvider
+            parameters:
+                - name: idp
+                  in: path
+                  description: The idp id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/IdentityProvider'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        delete:
+            tags:
+                - IdentityProviderService
+            description: |-
+                Delete an identity provider.
+
+                 Accounts bound to it keep their binding rows but can no longer sign in
+                 through it: the binding records the subject the provider assigned, which no
+                 longer resolves to a configured provider. Re-creating the provider with the
+                 same id makes those accounts reachable again, which is why the id matters.
+            operationId: IdentityProviderService_DeleteIdentityProvider
+            parameters:
+                - name: idp
+                  in: path
+                  description: The idp id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        patch:
+            tags:
+                - IdentityProviderService
+            description: |-
+                Update an identity provider. Only title, domain and config are mutable; the
+                 resource name is not. An empty secret in the config means "keep the stored
+                 one", because the read path never hands the stored secret back.
+            operationId: IdentityProviderService_UpdateIdentityProvider
+            parameters:
+                - name: idp
+                  in: path
+                  description: The idp id.
+                  required: true
+                  schema:
+                    type: string
+                - name: updateMask
+                  in: query
+                  description: The fields to update. Only `title`, `domain` and `config` are mutable.
+                  schema:
+                    type: string
+                    format: field-mask
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/IdentityProvider'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/IdentityProvider'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/idps/{idp}:test:
+        post:
+            tags:
+                - IdentityProviderService
+            description: |-
+                TestIdentityProvider completes a real authorization-code exchange against a
+                 stored provider and reports the identity it resolves.
+
+                 The provider has to be saved first: the exchange needs the stored client
+                 secret, and the browser is never given it. The caller obtains an
+                 authorization code by sending an administrator's browser to the provider's
+                 authorization endpoint with `{external_url}/oauth/callback` as the redirect
+                 URI — the same URI a login uses — so no extra callback has to be registered
+                 with the provider. The client marks that state record as a test so the
+                 callback page tests instead of signing the administrator in.
+
+                 This verifies the client id and secret end to end, which endpoint
+                 reachability alone cannot.
+            operationId: IdentityProviderService_TestIdentityProvider
+            parameters:
+                - name: idp
+                  in: path
+                  description: The idp id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TestIdentityProviderRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TestIdentityProviderResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/instances:
         get:
             tags:
@@ -4776,6 +5048,27 @@ components:
                         The list of event triggers in a database (PostgreSQL specific).
                          Event triggers are database-level objects, not schema-scoped.
             description: DatabaseSchemaMetadata is the schema metadata for databases.
+        DeleteIdentityProviderBindingRequest:
+            required:
+                - user
+                - idp
+                - subject
+            type: object
+            properties:
+                user:
+                    type: string
+                    description: 'The account to unbind. Format: users/{user}'
+                idp:
+                    type: string
+                    description: 'The identity provider to unbind from. Format: idps/{idp}'
+                subject:
+                    type: string
+                    description: |-
+                        The subject to unbind. The binding row is keyed by (idp, subject), so this
+                         pins exactly one row: an account may in principle carry several subjects
+                         from the same provider. It is a plain field rather than a segment of the
+                         resource name because a subject is an opaque provider string that can
+                         contain `/`, `@` and `:`.
         DependencyColumn:
             type: object
             properties:
@@ -5198,6 +5491,32 @@ components:
                     type: array
                     items:
                         type: string
+        FieldMapping:
+            type: object
+            properties:
+                identifier:
+                    type: string
+                    description: The claim holding the identifier, normally the address. Required.
+                displayName:
+                    type: string
+                    description: The claim holding the display name. Optional; defaults to the identifier.
+                phone:
+                    type: string
+                    description: The claim holding the phone number. Optional.
+                subject:
+                    type: string
+                    description: |-
+                        The claim holding the provider-assigned, immutable subject. Optional here
+                         but required in effect: a login is bound to it, and the server refuses a
+                         provider that maps no subject unless the workspace lists the provider as one
+                         whose address claim may stand in for it (`sso_email_identity_idps`).
+                groups:
+                    type: string
+                    description: |-
+                        The claim holding group memberships. Optional. When set, each login syncs
+                         the account's group membership to the matching workspace groups, which is
+                         what lets an IAM policy grant roles by group.
+            description: FieldMapping names the claims that carry each field of the identity.
         ForeignKeyMetadata:
             type: object
             properties:
@@ -5468,11 +5787,107 @@ components:
                  etag does not match the stored policy's etag is rejected with
                  connect.CodeAborted so the caller can re-fetch and retry. An empty etag
                  skips the check (first write).
+        IdentityProvider:
+            required:
+                - title
+                - type
+                - config
+            type: object
+            properties:
+                name:
+                    readOnly: true
+                    type: string
+                    description: |-
+                        The resource name. Format: idps/{idp}. Output only: the id is set on create
+                         and cannot change, because accounts are bound to (id, subject) pairs.
+                title:
+                    type: string
+                    description: The display title, e.g. "Acme SSO". The login page shows it on the button.
+                domain:
+                    type: string
+                    description: |-
+                        The email domain whose users this provider serves, e.g. "example.com". Used
+                         as a fallback when a provider reports an identifier that is not an address:
+                         the login then tries "{identifier}@{domain}". Empty disables the fallback.
+                type:
+                    enum:
+                        - IDENTITY_PROVIDER_TYPE_UNSPECIFIED
+                        - OAUTH2
+                    type: string
+                    description: |-
+                        The protocol. Only OAUTH2 is implemented; the login path rejects anything
+                         else and no other value can be created.
+                    format: enum
+                config:
+                    allOf:
+                        - $ref: '#/components/schemas/IdentityProviderConfig'
+                    description: The protocol configuration.
+            description: IdentityProvider is a configured SSO provider.
+        IdentityProviderBinding:
+            type: object
+            properties:
+                user:
+                    type: string
+                    description: 'The account. Format: users/{user}'
+                userEmail:
+                    readOnly: true
+                    type: string
+                    description: The account's address, for display. Read-only.
+                userTitle:
+                    readOnly: true
+                    type: string
+                    description: The account's display name, for display. Read-only.
+                idp:
+                    type: string
+                    description: 'The identity provider. Format: idps/{idp}'
+                subject:
+                    type: string
+                    description: |-
+                        The provider-assigned subject the account is bound to. This is the value a
+                         login resolves against; it is not necessarily the address.
+                createdAt:
+                    readOnly: true
+                    type: string
+                    description: When the binding was written.
+                    format: date-time
+            description: IdentityProviderBinding is one account's way in through one identity provider.
+        IdentityProviderConfig:
+            type: object
+            properties:
+                oauth2Config:
+                    $ref: '#/components/schemas/OAuth2IdentityProviderConfig'
         IdentityProviderContext:
             type: object
             properties:
                 oauth2Context:
                     $ref: '#/components/schemas/OAuth2IdentityProviderContext'
+        IdentityProviderUserInfo:
+            type: object
+            properties:
+                identifier:
+                    type: string
+                    description: The identifier claim, normally the address.
+                subject:
+                    type: string
+                    description: 'The subject claim: the value the account is bound to.'
+                displayName:
+                    type: string
+                    description: The display name.
+                phone:
+                    type: string
+                    description: The phone number.
+                groups:
+                    type: array
+                    items:
+                        type: string
+                    description: The group claims.
+                hasGroups:
+                    type: boolean
+                    description: |-
+                        Whether the provider returned a group claim at all. Distinguishes "no
+                         groups" from "groups not configured", so an empty list does not clear a
+                         membership.
+            description: IdentityProviderUserInfo is the identity a login resolved from the claims.
         IndexMetadata:
             type: object
             properties:
@@ -5863,6 +6278,20 @@ components:
                         $ref: '#/components/schemas/Group'
                 nextPageToken:
                     type: string
+        ListIdentityProviderBindingsResponse:
+            type: object
+            properties:
+                identityProviderBindings:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/IdentityProviderBinding'
+        ListIdentityProvidersResponse:
+            type: object
+            properties:
+                identityProviders:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/IdentityProvider'
         ListInstancesResponse:
             type: object
             properties:
@@ -6547,6 +6976,61 @@ components:
                  notification table and are not written into the payload; the store stamps
                  them on insert and fills them from the row on read, so the payload and the
                  columns cannot disagree. The payload holds only the message proper.
+        OAuth2IdentityProviderConfig:
+            required:
+                - fieldMapping
+            type: object
+            properties:
+                authUrl:
+                    type: string
+                    description: |-
+                        The authorization endpoint the browser is sent to. Not used by the server:
+                         the client builds the authorize URL from it.
+                tokenUrl:
+                    type: string
+                    description: The token endpoint. Required.
+                userInfoUrl:
+                    type: string
+                    description: 'The userinfo endpoint. Required: the login reads the claims from here.'
+                clientId:
+                    type: string
+                    description: The client id. Required. Not a secret; it travels in the authorize URL.
+                clientSecret:
+                    writeOnly: true
+                    type: string
+                    description: |-
+                        The client secret. Required on create. Never returned by a read, and an
+                         empty value on update keeps the stored one.
+
+                         It is stored encrypted with the deployment's data key (see
+                         `backend/common/crypto`), so a database reader without the key cannot
+                         authenticate as this application to the provider.
+                scopes:
+                    type: array
+                    items:
+                        type: string
+                    description: The scopes to request.
+                fieldMapping:
+                    allOf:
+                        - $ref: '#/components/schemas/FieldMapping'
+                    description: The claim mapping.
+                skipTlsVerify:
+                    type: boolean
+                    description: |-
+                        Whether to skip TLS certificate verification on the provider's endpoints.
+
+                         Off by default and off is the only safe setting: with it on, anyone able to
+                         intercept the connection can forge the userinfo response and take over every
+                         account bound to this provider. The settings page warns when it is enabled.
+                authStyle:
+                    enum:
+                        - OAUTH2_AUTH_STYLE_UNSPECIFIED
+                        - IN_PARAMS
+                        - IN_HEADER
+                    type: string
+                    description: How the client id and secret are sent to the token endpoint.
+                    format: enum
+            description: OAuth2IdentityProviderConfig is an OAuth2 provider's configuration.
         OAuth2IdentityProviderContext:
             type: object
             properties:
@@ -6562,6 +7046,15 @@ components:
                     description: |-
                         code_verifier is the PKCE verifier matching the code_challenge sent to the
                          identity provider. Optional; providers that do not use PKCE ignore it.
+        OAuth2IdentityProviderTestRequestContext:
+            type: object
+            properties:
+                code:
+                    type: string
+                    description: The authorization code the provider returned to the callback.
+                codeVerifier:
+                    type: string
+                    description: The code_verifier matching the code_challenge sent to the provider.
         OAuthAuthorizationRequest:
             type: object
             properties:
@@ -7573,6 +8066,27 @@ components:
                     description: The number of cells per object. (SQL Server specific).
                     format: int32
             description: TessellationConfig is the tessellation configuration of a spatial index.
+        TestIdentityProviderRequest:
+            required:
+                - name
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: |-
+                        The name of the stored identity provider to test.
+                         Format: idps/{idp}
+                oauth2Context:
+                    $ref: '#/components/schemas/OAuth2IdentityProviderTestRequestContext'
+        TestIdentityProviderResponse:
+            type: object
+            properties:
+                userInfo:
+                    allOf:
+                        - $ref: '#/components/schemas/IdentityProviderUserInfo'
+                    description: |-
+                        The identity the provider resolved. Field mapping is applied, so a claim
+                         that did not resolve is visible as an empty field here.
         Transformation:
             type: object
             properties:
@@ -7855,7 +8369,8 @@ components:
                         type: string
                     description: |-
                         The identity providers whose email claim may stand in for a subject, by the
-                         resource id that idps/{idp} names (the idp table has no API that lists them).
+                         resource id that idps/{idp} names. The settings page picks them from
+                         IdentityProviderService.ListIdentityProviders.
 
                          For those providers — and only those, because one workspace can configure
                          several, trusted to different degrees — an SSO login may be identified by the
@@ -7904,6 +8419,18 @@ tags:
         IamService exposes the workspace IAM policy for management. Get reads the
          whole policy; Set replaces it whole, guarded by the etag. Both RPCs are gated
          by metaxisdata.iam.getPolicy / metaxisdata.iam.setPolicy.
+    - name: IdentityProviderService
+      description: |-
+        IdentityProviderService is the admin surface for SSO.
+
+         It is the write path for the `idp` table: before it existed the only way to
+         configure a provider was to insert SQL by hand, so the login page had nothing
+         to point at and `client_secret` could not be encrypted on write.
+
+         ListIdentityProviders is deliberately readable without credentials: the login
+         page renders one button per configured provider before the visitor has a
+         session. It never returns a secret, so a provider's non-secret half (auth URL,
+         client id, scopes, mapping) is what an anonymous caller can see.
     - name: InstanceService
     - name: LLMService
     - name: LineageService

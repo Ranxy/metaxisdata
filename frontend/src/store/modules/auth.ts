@@ -56,18 +56,38 @@ export const useAuthStore = defineStore("auth", {
     async login(email: string, password: string) {
       this.isLoading = true;
       try {
-        const response = await authApi.login(email, password);
-        this.user = response.user ?? null;
-        this.isAuthenticated = true;
-        this.requireResetPassword = response.requireResetPassword;
-        // The login response has no permissions; ensurePermissionsLoaded()
-        // resolves them once the caller enters an authenticated page.
-        this.permissionsLoaded = false;
-        this.sessionExpired = false;
-        return response;
+        return this.adoptLoginResponse(await authApi.login(email, password));
       } finally {
         this.isLoading = false;
       }
+    },
+
+    /**
+     * Completes a login through an identity provider. The account is resolved by
+     * the provider subject server-side, so there is no email or password to send:
+     * only the authorization code, the nonce the flow was bound to, and the PKCE
+     * verifier.
+     */
+    async loginWithSSO(context: authApi.SSOLoginContext) {
+      this.isLoading = true;
+      try {
+        return this.adoptLoginResponse(await authApi.login("", "", context));
+      } finally {
+        this.isLoading = false;
+      }
+    },
+
+    // The session a login establishes, applied identically however the user
+    // proved who they are.
+    adoptLoginResponse(response: Awaited<ReturnType<typeof authApi.login>>) {
+      this.user = response.user ?? null;
+      this.isAuthenticated = true;
+      this.requireResetPassword = response.requireResetPassword;
+      // The login response has no permissions; ensurePermissionsLoaded()
+      // resolves them once the caller enters an authenticated page.
+      this.permissionsLoaded = false;
+      this.sessionExpired = false;
+      return response;
     },
 
     // Completes a forced password reset. The server only accepts this call from

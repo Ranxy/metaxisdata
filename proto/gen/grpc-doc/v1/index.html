@@ -1091,6 +1091,101 @@
         
           
           <li>
+            <a href="#v1%2fidentity_provider_service.proto">v1/identity_provider_service.proto</a>
+            <ul>
+              
+                <li>
+                  <a href="#metaxisdata.v1.CreateIdentityProviderRequest"><span class="badge">M</span>CreateIdentityProviderRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.DeleteIdentityProviderBindingRequest"><span class="badge">M</span>DeleteIdentityProviderBindingRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.DeleteIdentityProviderRequest"><span class="badge">M</span>DeleteIdentityProviderRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.FieldMapping"><span class="badge">M</span>FieldMapping</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetIdentityProviderRequest"><span class="badge">M</span>GetIdentityProviderRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.IdentityProvider"><span class="badge">M</span>IdentityProvider</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.IdentityProviderBinding"><span class="badge">M</span>IdentityProviderBinding</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.IdentityProviderConfig"><span class="badge">M</span>IdentityProviderConfig</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.IdentityProviderUserInfo"><span class="badge">M</span>IdentityProviderUserInfo</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListIdentityProviderBindingsRequest"><span class="badge">M</span>ListIdentityProviderBindingsRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListIdentityProviderBindingsResponse"><span class="badge">M</span>ListIdentityProviderBindingsResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListIdentityProvidersRequest"><span class="badge">M</span>ListIdentityProvidersRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListIdentityProvidersResponse"><span class="badge">M</span>ListIdentityProvidersResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.OAuth2IdentityProviderConfig"><span class="badge">M</span>OAuth2IdentityProviderConfig</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.OAuth2IdentityProviderTestRequestContext"><span class="badge">M</span>OAuth2IdentityProviderTestRequestContext</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.TestIdentityProviderRequest"><span class="badge">M</span>TestIdentityProviderRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.TestIdentityProviderResponse"><span class="badge">M</span>TestIdentityProviderResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.UpdateIdentityProviderRequest"><span class="badge">M</span>UpdateIdentityProviderRequest</a>
+                </li>
+              
+              
+                <li>
+                  <a href="#metaxisdata.v1.IdentityProviderType"><span class="badge">E</span>IdentityProviderType</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.OAuth2AuthStyle"><span class="badge">E</span>OAuth2AuthStyle</a>
+                </li>
+              
+              
+              
+                <li>
+                  <a href="#metaxisdata.v1.IdentityProviderService"><span class="badge">S</span>IdentityProviderService</a>
+                </li>
+              
+            </ul>
+          </li>
+        
+          
+          <li>
             <a href="#v1%2flineage_service.proto">v1/lineage_service.proto</a>
             <ul>
               
@@ -11867,6 +11962,960 @@ binding applies only while the condition evaluates to true. </p></td>
                 <td>SetWorkspaceIamPolicy</td>
                 <td>PUT</td>
                 <td>/v1/iamPolicy</td>
+                <td>*</td>
+              </tr>
+              
+            
+            </tbody>
+          </table>
+          
+        
+    
+      
+      <div class="file-heading">
+        <h2 id="v1/identity_provider_service.proto">v1/identity_provider_service.proto</h2><a href="#title">Top</a>
+      </div>
+      <p></p>
+
+      
+        <h3 id="metaxisdata.v1.CreateIdentityProviderRequest">CreateIdentityProviderRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>identity_provider</td>
+                  <td><a href="#metaxisdata.v1.IdentityProvider">IdentityProvider</a></td>
+                  <td></td>
+                  <td><p>The identity provider to create. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>identity_provider_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The id to use, which becomes the final segment of the resource name.
+Format: a lower-case letter followed by up to 62 lower-case letters, digits
+or hyphens. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.DeleteIdentityProviderBindingRequest">DeleteIdentityProviderBindingRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>user</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The account to unbind. Format: users/{user} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>idp</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The identity provider to unbind from. Format: idps/{idp} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>subject</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The subject to unbind. The binding row is keyed by (idp, subject), so this
+pins exactly one row: an account may in principle carry several subjects
+from the same provider. It is a plain field rather than a segment of the
+resource name because a subject is an opaque provider string that can
+contain `/`, `@` and `:`. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.DeleteIdentityProviderRequest">DeleteIdentityProviderRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The name of the identity provider to delete.
+Format: idps/{idp} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.FieldMapping">FieldMapping</h3>
+        <p>FieldMapping names the claims that carry each field of the identity.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>identifier</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The claim holding the identifier, normally the address. Required. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>display_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The claim holding the display name. Optional; defaults to the identifier. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>phone</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The claim holding the phone number. Optional. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>subject</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The claim holding the provider-assigned, immutable subject. Optional here
+but required in effect: a login is bound to it, and the server refuses a
+provider that maps no subject unless the workspace lists the provider as one
+whose address claim may stand in for it (`sso_email_identity_idps`). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>groups</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The claim holding group memberships. Optional. When set, each login syncs
+the account&#39;s group membership to the matching workspace groups, which is
+what lets an IAM policy grant roles by group. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.GetIdentityProviderRequest">GetIdentityProviderRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The name of the identity provider to get.
+Format: idps/{idp} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.IdentityProvider">IdentityProvider</h3>
+        <p>IdentityProvider is a configured SSO provider.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The resource name. Format: idps/{idp}. Output only: the id is set on create
+and cannot change, because accounts are bound to (id, subject) pairs. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>title</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The display title, e.g. &#34;Acme SSO&#34;. The login page shows it on the button. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>domain</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The email domain whose users this provider serves, e.g. &#34;example.com&#34;. Used
+as a fallback when a provider reports an identifier that is not an address:
+the login then tries &#34;{identifier}@{domain}&#34;. Empty disables the fallback. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>type</td>
+                  <td><a href="#metaxisdata.v1.IdentityProviderType">IdentityProviderType</a></td>
+                  <td></td>
+                  <td><p>The protocol. Only OAUTH2 is implemented; the login path rejects anything
+else and no other value can be created. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>config</td>
+                  <td><a href="#metaxisdata.v1.IdentityProviderConfig">IdentityProviderConfig</a></td>
+                  <td></td>
+                  <td><p>The protocol configuration. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.IdentityProviderBinding">IdentityProviderBinding</h3>
+        <p>IdentityProviderBinding is one account's way in through one identity provider.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>user</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The account. Format: users/{user} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>user_email</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The account&#39;s address, for display. Read-only. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>user_title</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The account&#39;s display name, for display. Read-only. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>idp</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The identity provider. Format: idps/{idp} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>subject</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The provider-assigned subject the account is bound to. This is the value a
+login resolves against; it is not necessarily the address. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>created_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p>When the binding was written. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.IdentityProviderConfig">IdentityProviderConfig</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>oauth2_config</td>
+                  <td><a href="#metaxisdata.v1.OAuth2IdentityProviderConfig">OAuth2IdentityProviderConfig</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.IdentityProviderUserInfo">IdentityProviderUserInfo</h3>
+        <p>IdentityProviderUserInfo is the identity a login resolved from the claims.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>identifier</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The identifier claim, normally the address. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>subject</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The subject claim: the value the account is bound to. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>display_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The display name. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>phone</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The phone number. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>groups</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>The group claims. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>has_groups</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether the provider returned a group claim at all. Distinguishes &#34;no
+groups&#34; from &#34;groups not configured&#34;, so an empty list does not clear a
+membership. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListIdentityProviderBindingsRequest">ListIdentityProviderBindingsRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>idp</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Optional. Restrict the answer to one identity provider.
+Format: idps/{idp} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>user</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Optional. Restrict the answer to one account.
+Format: users/{user} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListIdentityProviderBindingsResponse">ListIdentityProviderBindingsResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>identity_provider_bindings</td>
+                  <td><a href="#metaxisdata.v1.IdentityProviderBinding">IdentityProviderBinding</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListIdentityProvidersRequest">ListIdentityProvidersRequest</h3>
+        <p></p>
+
+        
+
+        
+      
+        <h3 id="metaxisdata.v1.ListIdentityProvidersResponse">ListIdentityProvidersResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>identity_providers</td>
+                  <td><a href="#metaxisdata.v1.IdentityProvider">IdentityProvider</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.OAuth2IdentityProviderConfig">OAuth2IdentityProviderConfig</h3>
+        <p>OAuth2IdentityProviderConfig is an OAuth2 provider's configuration.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>auth_url</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The authorization endpoint the browser is sent to. Not used by the server:
+the client builds the authorize URL from it. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>token_url</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The token endpoint. Required. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>user_info_url</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The userinfo endpoint. Required: the login reads the claims from here. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>client_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The client id. Required. Not a secret; it travels in the authorize URL. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>client_secret</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The client secret. Required on create. Never returned by a read, and an
+empty value on update keeps the stored one.
+
+It is stored encrypted with the deployment&#39;s data key (see
+`backend/common/crypto`), so a database reader without the key cannot
+authenticate as this application to the provider. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>scopes</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>The scopes to request. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>field_mapping</td>
+                  <td><a href="#metaxisdata.v1.FieldMapping">FieldMapping</a></td>
+                  <td></td>
+                  <td><p>The claim mapping. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>skip_tls_verify</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether to skip TLS certificate verification on the provider&#39;s endpoints.
+
+Off by default and off is the only safe setting: with it on, anyone able to
+intercept the connection can forge the userinfo response and take over every
+account bound to this provider. The settings page warns when it is enabled. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>auth_style</td>
+                  <td><a href="#metaxisdata.v1.OAuth2AuthStyle">OAuth2AuthStyle</a></td>
+                  <td></td>
+                  <td><p>How the client id and secret are sent to the token endpoint. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.OAuth2IdentityProviderTestRequestContext">OAuth2IdentityProviderTestRequestContext</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>code</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The authorization code the provider returned to the callback. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>code_verifier</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The code_verifier matching the code_challenge sent to the provider. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.TestIdentityProviderRequest">TestIdentityProviderRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The name of the stored identity provider to test.
+Format: idps/{idp} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>oauth2_context</td>
+                  <td><a href="#metaxisdata.v1.OAuth2IdentityProviderTestRequestContext">OAuth2IdentityProviderTestRequestContext</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.TestIdentityProviderResponse">TestIdentityProviderResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>user_info</td>
+                  <td><a href="#metaxisdata.v1.IdentityProviderUserInfo">IdentityProviderUserInfo</a></td>
+                  <td></td>
+                  <td><p>The identity the provider resolved. Field mapping is applied, so a claim
+that did not resolve is visible as an empty field here. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.UpdateIdentityProviderRequest">UpdateIdentityProviderRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>identity_provider</td>
+                  <td><a href="#metaxisdata.v1.IdentityProvider">IdentityProvider</a></td>
+                  <td></td>
+                  <td><p>The identity provider to update. Its `name` field identifies the row. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>update_mask</td>
+                  <td><a href="#google.protobuf.FieldMask">google.protobuf.FieldMask</a></td>
+                  <td></td>
+                  <td><p>The fields to update. Only `title`, `domain` and `config` are mutable. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+
+      
+        <h3 id="metaxisdata.v1.IdentityProviderType">IdentityProviderType</h3>
+        <p></p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>IDENTITY_PROVIDER_TYPE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>OAUTH2</td>
+                <td>1</td>
+                <td><p>OAuth 2.0 authorization-code flow.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.OAuth2AuthStyle">OAuth2AuthStyle</h3>
+        <p></p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>OAUTH2_AUTH_STYLE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>IN_PARAMS</td>
+                <td>1</td>
+                <td><p>IN_PARAMS sends the &#34;client_id&#34; and &#34;client_secret&#34; in the POST body as
+application/x-www-form-urlencoded parameters.</p></td>
+              </tr>
+            
+              <tr>
+                <td>IN_HEADER</td>
+                <td>2</td>
+                <td><p>IN_HEADER sends the client_id and client_secret using HTTP Basic
+Authorization, as described in the OAuth2 RFC 6749 section 2.3.1.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+
+      
+
+      
+        <h3 id="metaxisdata.v1.IdentityProviderService">IdentityProviderService</h3>
+        <p>IdentityProviderService is the admin surface for SSO.</p><p>It is the write path for the `idp` table: before it existed the only way to</p><p>configure a provider was to insert SQL by hand, so the login page had nothing</p><p>to point at and `client_secret` could not be encrypted on write.</p><p>ListIdentityProviders is deliberately readable without credentials: the login</p><p>page renders one button per configured provider before the visitor has a</p><p>session. It never returns a secret, so a provider's non-secret half (auth URL,</p><p>client id, scopes, mapping) is what an anonymous caller can see.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Method Name</td><td>Request Type</td><td>Response Type</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>GetIdentityProvider</td>
+                <td><a href="#metaxisdata.v1.GetIdentityProviderRequest">GetIdentityProviderRequest</a></td>
+                <td><a href="#metaxisdata.v1.IdentityProvider">IdentityProvider</a></td>
+                <td><p>Get an identity provider, including the non-secret half of its config.</p></td>
+              </tr>
+            
+              <tr>
+                <td>ListIdentityProviders</td>
+                <td><a href="#metaxisdata.v1.ListIdentityProvidersRequest">ListIdentityProvidersRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListIdentityProvidersResponse">ListIdentityProvidersResponse</a></td>
+                <td><p>List every configured identity provider. Public so the login page can render
+the enabled SSO targets without credentials.
+
+The `permission` annotation is kept beside `allow_without_credential`, as on
+`SettingService.GetWorkspaceProfileSetting`: the latter wins in the
+interceptor, and the annotation is what records the permission this read
+belongs to in the catalog.</p></td>
+              </tr>
+            
+              <tr>
+                <td>CreateIdentityProvider</td>
+                <td><a href="#metaxisdata.v1.CreateIdentityProviderRequest">CreateIdentityProviderRequest</a></td>
+                <td><a href="#metaxisdata.v1.IdentityProvider">IdentityProvider</a></td>
+                <td><p>Create an identity provider. The id becomes the final segment of the
+resource name and is immutable, so it is derived from the title by the
+client and checked here.</p></td>
+              </tr>
+            
+              <tr>
+                <td>UpdateIdentityProvider</td>
+                <td><a href="#metaxisdata.v1.UpdateIdentityProviderRequest">UpdateIdentityProviderRequest</a></td>
+                <td><a href="#metaxisdata.v1.IdentityProvider">IdentityProvider</a></td>
+                <td><p>Update an identity provider. Only title, domain and config are mutable; the
+resource name is not. An empty secret in the config means &#34;keep the stored
+one&#34;, because the read path never hands the stored secret back.</p></td>
+              </tr>
+            
+              <tr>
+                <td>DeleteIdentityProvider</td>
+                <td><a href="#metaxisdata.v1.DeleteIdentityProviderRequest">DeleteIdentityProviderRequest</a></td>
+                <td><a href="#google.protobuf.Empty">.google.protobuf.Empty</a></td>
+                <td><p>Delete an identity provider.
+
+Accounts bound to it keep their binding rows but can no longer sign in
+through it: the binding records the subject the provider assigned, which no
+longer resolves to a configured provider. Re-creating the provider with the
+same id makes those accounts reachable again, which is why the id matters.</p></td>
+              </tr>
+            
+              <tr>
+                <td>TestIdentityProvider</td>
+                <td><a href="#metaxisdata.v1.TestIdentityProviderRequest">TestIdentityProviderRequest</a></td>
+                <td><a href="#metaxisdata.v1.TestIdentityProviderResponse">TestIdentityProviderResponse</a></td>
+                <td><p>TestIdentityProvider completes a real authorization-code exchange against a
+stored provider and reports the identity it resolves.
+
+The provider has to be saved first: the exchange needs the stored client
+secret, and the browser is never given it. The caller obtains an
+authorization code by sending an administrator&#39;s browser to the provider&#39;s
+authorization endpoint with `{external_url}/oauth/callback` as the redirect
+URI — the same URI a login uses — so no extra callback has to be registered
+with the provider. The client marks that state record as a test so the
+callback page tests instead of signing the administrator in.
+
+This verifies the client id and secret end to end, which endpoint
+reachability alone cannot.</p></td>
+              </tr>
+            
+              <tr>
+                <td>ListIdentityProviderBindings</td>
+                <td><a href="#metaxisdata.v1.ListIdentityProviderBindingsRequest">ListIdentityProviderBindingsRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListIdentityProviderBindingsResponse">ListIdentityProviderBindingsResponse</a></td>
+                <td><p>List the accounts bound to an identity provider subject.
+
+A binding is what a login resolves against, so this is the read an
+administrator needs before moving or deleting an account: without it the
+only way to see why a login lands on an account is SQL.</p></td>
+              </tr>
+            
+              <tr>
+                <td>DeleteIdentityProviderBinding</td>
+                <td><a href="#metaxisdata.v1.DeleteIdentityProviderBindingRequest">DeleteIdentityProviderBindingRequest</a></td>
+                <td><a href="#google.protobuf.Empty">.google.protobuf.Empty</a></td>
+                <td><p>DeleteIdentityProviderBinding unbinds one account from one provider subject.
+
+The account loses that way in but keeps every other one; nothing else about
+it changes. Deleting the last binding of an account whose password was
+replaced on adoption leaves it reachable only by an administrator resetting
+the password, so the caller is expected to confirm before doing it.
+
+It is gated by `update`, not `delete`, and the settings page hides the button
+behind the same permission: this edits a provider&#39;s configuration, and
+`delete` is reserved for removing a provider outright.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+
+        
+          
+          
+          <h4>Methods with HTTP bindings</h4>
+          <table>
+            <thead>
+              <tr>
+                <td>Method Name</td>
+                <td>Method</td>
+                <td>Pattern</td>
+                <td>Body</td>
+              </tr>
+            </thead>
+            <tbody>
+            
+              
+              
+              <tr>
+                <td>GetIdentityProvider</td>
+                <td>GET</td>
+                <td>/v1/{name=idps/*}</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListIdentityProviders</td>
+                <td>GET</td>
+                <td>/v1/idps</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>CreateIdentityProvider</td>
+                <td>POST</td>
+                <td>/v1/idps</td>
+                <td>identity_provider</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>UpdateIdentityProvider</td>
+                <td>PATCH</td>
+                <td>/v1/{identity_provider.name=idps/*}</td>
+                <td>identity_provider</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>DeleteIdentityProvider</td>
+                <td>DELETE</td>
+                <td>/v1/{name=idps/*}</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>TestIdentityProvider</td>
+                <td>POST</td>
+                <td>/v1/{name=idps/*}:test</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListIdentityProviderBindings</td>
+                <td>GET</td>
+                <td>/v1/identityProviderBindings</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>DeleteIdentityProviderBinding</td>
+                <td>POST</td>
+                <td>/v1/identityProviderBindings:delete</td>
                 <td>*</td>
               </tr>
               

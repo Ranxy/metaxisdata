@@ -21,18 +21,18 @@ Metaxisdata 以一个自包含的二进制交付：服务端内嵌 Web 应用，
 
 ### 拉取已发布的镜像
 
-每次 release 都会把镜像发布到 GHCR，覆盖 `linux/amd64` 与 `linux/arm64`。按你想跟踪的标签拉取：
+每次 release 都会把镜像发布到 GHCR，覆盖 `linux/amd64` 与 `linux/arm64`。以下是最新 release `v0.1.0` 发布的标签，按你想跟踪的标签拉取：
 
 ```bash
-docker pull ghcr.io/ranxy/metaxisdata:v1.2.3   # 发布时的 release 标签
-docker pull ghcr.io/ranxy/metaxisdata:1.2.3    # 去掉 v 的语义化版本
-docker pull ghcr.io/ranxy/metaxisdata:1.2      # 次版本线
+docker pull ghcr.io/ranxy/metaxisdata:v0.1.0   # 发布时的 release 标签
+docker pull ghcr.io/ranxy/metaxisdata:0.1.0    # 去掉 v 的语义化版本
+docker pull ghcr.io/ranxy/metaxisdata:0.1      # 次版本线
 docker pull ghcr.io/ranxy/metaxisdata:latest   # 最新的非预发布版本
 ```
 
-- `v1.2.3` 与 `1.2.3` 指向同一个确切的 release。
-- `1.2` 跟踪次版本线上最新的 release。
-- `latest` 跟踪最新的非预发布 release。预发布版本会发布自己的标签（如 `v1.2.3-rc.1`），但从不移动别名——跟踪 `latest` 的部署绝不会拿到候选版本。
+- `v0.1.0` 与 `0.1.0` 指向同一个确切的 release。
+- `0.1` 跟踪次版本线上最新的 release。
+- `latest` 跟踪最新的非预发布 release。预发布版本会发布自己的标签（如 `v0.2.0-rc.1`），但从不移动别名——跟踪 `latest` 的部署绝不会拿到候选版本。
 - 每个 release 还携带一个 `sha-<commit>` 标签，对应确切的提交。
 
 ### 自行构建镜像
@@ -41,7 +41,7 @@ docker pull ghcr.io/ranxy/metaxisdata:latest   # 最新的非预发布版本
 
 ```bash
 scripts/build_metaxisdata_docker.sh                  # release profile -> :dev 与 :latest
-VERSION=v1.2.3 scripts/build_metaxisdata_docker.sh   # release profile -> :v1.2.3 与 :latest
+VERSION=v0.1.0 scripts/build_metaxisdata_docker.sh   # release profile -> :v0.1.0 与 :latest
 make docker-build                                    # 等同于第一条命令
 
 scripts/build_metaxisdata_docker.sh --dev            # dev profile，仅用于本地试验
@@ -98,7 +98,7 @@ chmod +x metaxisdata
 curl.exe -fsSL -o metaxisdata.exe https://github.com/Ranxy/metaxisdata/releases/latest/download/metaxisdata-windows-amd64.exe
 ```
 
-`releases/latest/download/…` 指向最新的**非预发布** release，预发布版本不会应答这个 URL；预发布请在 URL 里带 tag——`…/releases/download/v1.2.3-rc.1/metaxisdata-linux-amd64`。
+`releases/latest/download/…` 指向最新的**非预发布** release，预发布版本不会应答这个 URL；预发布请在 URL 里带 tag——`…/releases/download/<tag>/metaxisdata-linux-amd64`。
 
 下载的二进制与 [scripts/build_metaxisdata.sh](../scripts/build_metaxisdata.sh) 产出的一致：SPA 已内嵌、prod profile，`metaxisdata --version` 会报告 release 标签。
 
@@ -108,7 +108,7 @@ curl.exe -fsSL -o metaxisdata.exe https://github.com/Ranxy/metaxisdata/releases/
 
 ```bash
 scripts/build_metaxisdata.sh                # release profile -> build/metaxisdata
-VERSION=v1.2.3 scripts/build_metaxisdata.sh
+VERSION=v0.1.0 scripts/build_metaxisdata.sh
 make build-binary                           # 等同于第一条命令
 
 scripts/build_metaxisdata.sh --dev          # dev profile，仅用于本地试验
@@ -140,7 +140,7 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 docker run -d --name metaxisdata \
   -p 8083:8083 \
   -e PG_URL='postgres://<user>:<password>@<db-host>:5432/<database>?sslmode=disable' \
-  ghcr.io/ranxy/metaxisdata:v1.2.3
+  ghcr.io/ranxy/metaxisdata:v0.1.0
 ```
 
 容器以 uid 1001 运行，健康状态在 `/healthz` 上报告：
@@ -201,7 +201,7 @@ PG_URL='postgres://<user>:<password>@<db-host>:5432/<database>?sslmode=disable' 
 - 要备份的是数据库，而不是容器：容器不挂载任何卷，也不保存本地状态。
 - 镜像需要一个可写路径 `/tmp`，MSSQL 驱动会用到其中的临时文件。加固部署请使用 `--read-only --tmpfs /tmp`；裸的 `--read-only` 会移除镜像里唯一可写的目录。
 - 不设置 `TZ` 时，时钟与所有日志时间戳都是 UTC。
-- 入口脚本把上述环境变量映射为服务端 flag，其余命令参数原样向后传递。显式参数优先于映射来的参数，因此 `docker run … ghcr.io/ranxy/metaxisdata:v1.2.3 --debug` 依然有效。
+- 入口脚本把上述环境变量映射为服务端 flag，其余命令参数原样向后传递。显式参数优先于映射来的参数，因此 `docker run … ghcr.io/ranxy/metaxisdata:v0.1.0 --debug` 依然有效。
 
 ## 4. 用反向代理终止 HTTPS
 

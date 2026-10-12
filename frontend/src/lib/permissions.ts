@@ -150,6 +150,16 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     permissions: ["metaxisdata.settings.get", "metaxisdata.settings.update"],
   },
   {
+    resource: "identityProviders",
+    permissions: [
+      "metaxisdata.identityProviders.get",
+      "metaxisdata.identityProviders.list",
+      "metaxisdata.identityProviders.create",
+      "metaxisdata.identityProviders.update",
+      "metaxisdata.identityProviders.delete",
+    ],
+  },
+  {
     resource: "auditLogs",
     permissions: ["metaxisdata.auditLogs.search"],
   },

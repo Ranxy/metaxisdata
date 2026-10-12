@@ -109,7 +109,7 @@ func TestSSOEmailIdentityAdoptsAnAccountRealServerIntegration(t *testing.T) {
 	registerIntegrationIdentityProvider(ctx, t, env, emailProvider, emailIdentityIDP, &storepb.FieldMapping{
 		Identifier:  "email",
 		DisplayName: "name",
-	})
+	}, adminToken)
 
 	subjectProvider := newFakeIdentityProvider(t)
 	subjectIDP := fmt.Sprintf("sso-subject-%d", time.Now().UnixNano())
@@ -117,7 +117,7 @@ func TestSSOEmailIdentityAdoptsAnAccountRealServerIntegration(t *testing.T) {
 		Identifier:  "email",
 		Subject:     "sub",
 		DisplayName: "name",
-	})
+	}, adminToken)
 
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 	const password = "Integration-Pass-1!"

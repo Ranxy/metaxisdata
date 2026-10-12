@@ -9,6 +9,7 @@ Everything here describes **shipped behavior**, not a plan: implementation steps
 | [security-open-items.md](security-open-items.md) | Security findings that are still open, verified against the current code | Touching auth, credentials, outbound connections, pprof or the audit ledger |
 | [backend-open-items.md](backend-open-items.md) | Open engineering debt that has no subsystem reference of its own | Touching `store`, `runner`, the request path or test infrastructure |
 | [iam-and-permissions.md](iam-and-permissions.md) | Permission catalog, predefined and custom roles, the workspace IAM policy, the ACL interceptor | Touching authorization or adding an RPC |
+| [sso.md](sso.md) | SSO: the identity provider admin surface, the OAuth2 login flow, subject binding and account adoption, the encrypted client secret | Touching auth, the `idp` tables, the login page or the provider settings page |
 | [environments.md](environments.md) | The environment catalog, `EnvironmentService` and the selection UI | Touching instances, sync or environment scoping |
 | [schemasync.md](schemasync.md) | Schema sync: what it writes, its deliberate log-only deletion, its known issues | Touching `backend/runner/schemasync/` |
 | [notifications.md](notifications.md) | Inbox messages: recipient and dedup rules, the server-push subscription stream | Touching sync results, ingestion failures or the notification UI |

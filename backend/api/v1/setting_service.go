@@ -139,8 +139,8 @@ func formatIdentityProviderNames(idps []string) []string {
 
 // normalizeSSOEmailIdentityIdps normalizes the identity providers allowed to
 // stand in for a stable subject with their address claim. Entries are resource ids
-// as idps/{idp} names them; a bare id is accepted too, because there is no API
-// that hands them out and an operator reads them from the database.
+// as idps/{idp} names them; a bare id is accepted too, because that is the form a
+// client may hold from before the provider was renamed into a resource name.
 func normalizeSSOEmailIdentityIdps(idps []string) ([]string, error) {
 	result := make([]string, 0, len(idps))
 	for _, idp := range idps {

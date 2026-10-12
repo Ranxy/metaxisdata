@@ -110,6 +110,7 @@ func configureGrpcRouters(
 	groupService := apiv1.NewGroupService(stores)
 	iamService := apiv1.NewIamService(stores)
 	oauthService := apiv1.NewOAuthService(stores, profile, stateCfg)
+	identityProviderService := apiv1.NewIdentityProviderService(stores)
 
 	onPanic := func(_ context.Context, s connect.Spec, _ http.Header, p any) error {
 		stack := stacktrace.TakeStacktrace(20 /* n */, 5 /* skip */)
@@ -188,6 +189,8 @@ func configureGrpcRouters(
 	connectHandlers[iamPath] = iamHandler
 	oauthPath, oauthHandler := v1connect.NewOAuthServiceHandler(oauthService, handlerOpts)
 	connectHandlers[oauthPath] = oauthHandler
+	identityProviderPath, identityProviderHandler := v1connect.NewIdentityProviderServiceHandler(identityProviderService, handlerOpts)
+	connectHandlers[identityProviderPath] = identityProviderHandler
 	// grpc reflection handlers.
 	reflector := grpcreflect.NewStaticReflector(
 		v1connect.AuthServiceName,
@@ -207,6 +210,7 @@ func configureGrpcRouters(
 		v1connect.IamServiceName,
 		v1connect.OAuthServiceName,
 		v1connect.ApplicationServiceName,
+		v1connect.IdentityProviderServiceName,
 	)
 	reflectPath, reflectHandler := grpcreflect.NewHandlerV1(reflector, connect.WithReadMaxBytes(maxConnectRequestBytes))
 	connectHandlers[reflectPath] = reflectHandler
@@ -276,6 +280,9 @@ func configureGrpcRouters(
 		return err
 	}
 	if err := v1pb.RegisterOAuthServiceHandler(ctx, mux, grpcConn); err != nil {
+		return err
+	}
+	if err := v1pb.RegisterIdentityProviderServiceHandler(ctx, mux, grpcConn); err != nil {
 		return err
 	}
 

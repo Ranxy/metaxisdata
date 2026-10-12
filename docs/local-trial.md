@@ -35,8 +35,8 @@ this: GNU make takes it as its own flag, and the target never runs.
 
 It always rebuilds from this checkout, so the image you run matches the code
 you have. `VERSION` is both the image tag and the version the binary reports,
-so the two cannot disagree: `VERSION=v1.2.3 make docker-up` runs
-`metaxisdata/metaxisdata:v1.2.3`.
+so the two cannot disagree: `VERSION=v0.1.0 make docker-up` runs
+`metaxisdata/metaxisdata:v0.1.0`.
 
 ## Running a published image instead
 
@@ -44,8 +44,8 @@ Pull the image, then start the stack without a rebuild — `make docker-up`
 always passes `--build`, which would build over the tag instead of using it:
 
 ```bash
-docker pull ghcr.io/ranxy/metaxisdata:v1.2.3
-METAXISDATA_IMAGE=ghcr.io/ranxy/metaxisdata VERSION=v1.2.3 docker compose up -d
+docker pull ghcr.io/ranxy/metaxisdata:v0.1.0
+METAXISDATA_IMAGE=ghcr.io/ranxy/metaxisdata VERSION=v0.1.0 docker compose up -d
 ```
 
 ## The `:dev` tag caveat

@@ -6,9 +6,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -16,7 +18,6 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
@@ -34,6 +35,11 @@ type fakeIdentityProvider struct {
 
 	mu     sync.Mutex
 	claims map[string]any
+	// The client credentials the token endpoint last received, so a test can prove
+	// which secret the server actually presented rather than only that the call
+	// succeeded.
+	lastClientID     string
+	lastClientSecret string
 }
 
 func newFakeIdentityProvider(t *testing.T) *fakeIdentityProvider {
@@ -41,7 +47,21 @@ func newFakeIdentityProvider(t *testing.T) *fakeIdentityProvider {
 
 	provider := &fakeIdentityProvider{}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/token", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		values, err := url.ParseQuery(string(body))
+		require.NoError(t, err)
+		// The default auth style puts the credentials in the body; a provider
+		// configured for IN_HEADER would present them as basic authorization.
+		clientID, clientSecret := values.Get("client_id"), values.Get("client_secret")
+		if basicID, basicSecret, ok := r.BasicAuth(); ok {
+			clientID, clientSecret = basicID, basicSecret
+		}
+		provider.mu.Lock()
+		provider.lastClientID, provider.lastClientSecret = clientID, clientSecret
+		provider.mu.Unlock()
+
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"access_token": "fake-access-token",
@@ -60,6 +80,13 @@ func newFakeIdentityProvider(t *testing.T) *fakeIdentityProvider {
 	provider.srv = httptest.NewServer(mux)
 	t.Cleanup(provider.srv.Close)
 	return provider
+}
+
+// presentedClientSecret is the client secret the token endpoint last received.
+func (p *fakeIdentityProvider) presentedClientSecret() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.lastClientSecret
 }
 
 // setClaims makes the provider report the given person.
@@ -94,25 +121,50 @@ func ensureIntegrationExternalURL(ctx context.Context, t *testing.T, env *integr
 	})
 }
 
-// registerIntegrationIdentityProvider writes an identity provider row pointing at
-// the stand-in provider. There is no API that configures one; the row is written
-// straight into the metadata database, exactly as an operator would.
-func registerIntegrationIdentityProvider(ctx context.Context, t *testing.T, env *integrationenv.ServiceEnv, provider *fakeIdentityProvider, resourceID string, mapping *storepb.FieldMapping) {
+// registerIntegrationIdentityProvider configures an identity provider pointing at
+// the stand-in provider, through the admin API the way an operator would.
+//
+// It used to write the row with SQL, which stopped being possible once the store
+// began encrypting the client secret: a hand-written row carries a plaintext
+// secret the server refuses to read.
+func registerIntegrationIdentityProvider(ctx context.Context, t *testing.T, env *integrationenv.ServiceEnv, provider *fakeIdentityProvider, resourceID string, mapping *storepb.FieldMapping, adminToken string) {
 	t.Helper()
 
-	config, err := protojson.Marshal(&storepb.OAuth2IdentityProviderConfig{
-		AuthUrl:      provider.srv.URL + "/authorize",
-		TokenUrl:     provider.srv.URL + "/token",
-		UserInfoUrl:  provider.srv.URL + "/userinfo",
-		ClientId:     "integration-client",
-		ClientSecret: "integration-secret",
-		FieldMapping: mapping,
+	httpClient := &http.Client{Timeout: 15 * time.Second}
+	client := v1connect.NewIdentityProviderServiceClient(httpClient, env.BaseURL)
+	_, err := client.CreateIdentityProvider(ctx, withToken(adminToken, &v1pb.CreateIdentityProviderRequest{
+		IdentityProviderId: resourceID,
+		IdentityProvider: &v1pb.IdentityProvider{
+			Title:  "Integration SSO",
+			Domain: "example.com",
+			Type:   v1pb.IdentityProviderType_OAUTH2,
+			Config: &v1pb.IdentityProviderConfig{
+				Config: &v1pb.IdentityProviderConfig_Oauth2Config{
+					Oauth2Config: &v1pb.OAuth2IdentityProviderConfig{
+						AuthUrl:      provider.srv.URL + "/authorize",
+						TokenUrl:     provider.srv.URL + "/token",
+						UserInfoUrl:  provider.srv.URL + "/userinfo",
+						ClientId:     "integration-client",
+						ClientSecret: "integration-secret",
+						FieldMapping: &v1pb.FieldMapping{
+							Identifier:  mapping.GetIdentifier(),
+							DisplayName: mapping.GetDisplayName(),
+							Phone:       mapping.GetPhone(),
+							Subject:     mapping.GetSubject(),
+							Groups:      mapping.GetGroups(),
+						},
+					},
+				},
+			},
+		},
+	}))
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		_, _ = client.DeleteIdentityProvider(context.Background(), withToken(adminToken, &v1pb.DeleteIdentityProviderRequest{
+			Name: "idps/" + resourceID,
+		}))
 	})
-	require.NoError(t, err)
-	_, err = env.Store.GetDB().ExecContext(ctx,
-		`INSERT INTO idp (resource_id, name, domain, type, config) VALUES ($1, $2, $3, $4, $5)`,
-		resourceID, "Integration SSO", "example.com", storepb.IdentityProviderType_OAUTH2.String(), config)
-	require.NoError(t, err)
 }
 
 // loginViaIntegrationIdentityProvider runs one authorization-code flow: fetch a
@@ -165,7 +217,7 @@ func TestSSOLoginBindsToTheIdentityProviderSubjectRealServerIntegration(t *testi
 		Identifier:  "email",
 		Subject:     "sub",
 		DisplayName: "name",
-	})
+	}, adminToken)
 
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 	subject := "employee-" + suffix
@@ -393,7 +445,7 @@ func TestSSOLoginStopsWhenTheCallerGivesUpRealServerIntegration(t *testing.T) {
 		Identifier:  "email",
 		Subject:     "sub",
 		DisplayName: "name",
-	})
+	}, env.AdminToken())
 
 	authClient := v1connect.NewAuthServiceClient(httpClient, env.BaseURL)
 	state, err := authClient.CreateSSOState(ctx, connect.NewRequest(&emptypb.Empty{}))

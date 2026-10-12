@@ -5,8 +5,8 @@ package metaxisdata.store;
 option go_package = "generated-go/store";
 
 // IdentityProviderType is the type of a configured identity provider. Only
-// OAuth2 is implemented: the login path rejects anything else, and there is no
-// admin API that could create an OIDC/LDAP row.
+// OAuth2 is implemented: the login path rejects anything else, and
+// IdentityProviderService creates nothing else.
 enum IdentityProviderType {
   IDENTITY_PROVIDER_TYPE_UNSPECIFIED = 0;
   OAUTH2 = 1;
