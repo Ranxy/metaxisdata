@@ -1,7 +1,6 @@
 package sqlsanitize
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -53,15 +52,6 @@ func TestFoldingMergesOneStatementWrittenDifferently(t *testing.T) {
 				"INSERT INTO t (a, b) VALUES (1, 2), (3, 4), (5, 6)",
 			},
 			want: "INSERT INTO t ( a , b ) VALUES ( ? , ? )",
-		},
-		{
-			name: "a constant written differently",
-			sqls: []string{
-				"SELECT a FROM t WHERE x = 2",
-				"SELECT a FROM t WHERE x = 1 + 1",
-				"SELECT a FROM t WHERE x = 5 - 3",
-			},
-			want: "SELECT a FROM t WHERE x = ?",
 		},
 	}
 
@@ -154,6 +144,54 @@ func TestFoldingKeepsDifferentStatementsApart(t *testing.T) {
 				"INSERT INTO t (a) SELECT 1, 2",
 			},
 		},
+		{
+			// The operator is part of the statement. A fingerprint that folded a constant
+			// run across it would put a lower bound and an upper bound on one row.
+			name: "the same expression under a different comparison",
+			sqls: []string{
+				"SELECT a FROM t WHERE price * 100 >= 5000",
+				"SELECT a FROM t WHERE price * 100 <= 2000",
+				"SELECT a FROM t WHERE price * 100 = 5000",
+			},
+		},
+		{
+			name: "the same operator on a differently written constant",
+			sqls: []string{
+				"SELECT a FROM t WHERE x = 1 + 1",
+				"SELECT a FROM t WHERE x = 1 * 2",
+				"SELECT a FROM t WHERE x = 5 - 3",
+				"SELECT a FROM t WHERE x = 2",
+			},
+		},
+		{
+			// How many values a statement binds is part of it: one bound value and two are
+			// two prepared statements, whatever the driver does with them.
+			name: "a different number of placeholders in one expression",
+			sqls: []string{
+				"SELECT a FROM t WHERE id = ?",
+				"SELECT a FROM t WHERE id = ? - ?",
+				"SELECT a FROM t WHERE id = ? + ? + ?",
+			},
+		},
+		{
+			// An operator on its own is a statement too: `a - 1` is a row filter, `a - 1 > 0`
+			// compares.
+			name: "a bare expression and a comparison of it",
+			sqls: []string{
+				"SELECT a FROM t WHERE a - 1",
+				"SELECT a FROM t WHERE a - 1 > 0",
+				"SELECT a FROM t WHERE a - 1 = 0",
+			},
+		},
+		{
+			// A sign is a token of its own, so a signed constant is not the bare one.
+			name: "a signed constant and a bare one",
+			sqls: []string{
+				"SELECT a FROM t WHERE x = -1",
+				"SELECT a FROM t WHERE x = 1",
+				"SELECT a FROM t WHERE x = 1 * -1",
+			},
+		},
 	}
 
 	for _, group := range groups {
@@ -173,23 +211,23 @@ func TestFoldingKeepsDifferentStatementsApart(t *testing.T) {
 	}
 }
 
-// TestConstantRunMustBeginAtThePlaceholder pins the trap: a run that may begin at an operator
-// swallows the identifier before it. `WHERE a - 1 > 0` is `a - ? > ?`, and folding `- ? > ?` would
-// leave `a ?` — which collides with statements that share nothing but the identifier.
-func TestConstantRunMustBeginAtThePlaceholder(t *testing.T) {
+// TestFoldingKeepsOperatorsAndRunLengthApart pins what the rules deliberately do *not* do, after a
+// constant-run folding that did more was removed. `WHERE a - 1 > 0` keeps its comparison:
+//
+//	SELECT a FROM t WHERE a - ? > ?
+//
+// Folding the run would have stored `SELECT a FROM t WHERE a - ?`, and then `> 0`, `= 0` and the
+// bare `a - ?` would be one row — three different statements sharing one text, one count and one
+// kind. The reference fingerprinter in this space states the same limit as its whole principle:
+// it replaces numbers, quoted strings and value lists, and nothing else.
+func TestFoldingKeepsOperatorsAndRunLengthApart(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, "SELECT a FROM t WHERE a - ?", canonicalOf(t, "SELECT a FROM t WHERE a - 1 > 0"))
-	require.Equal(t, "SELECT a FROM t WHERE a = ?", canonicalOf(t, "SELECT a FROM t WHERE a = 1"))
-
-	// The two are different statements, and stay different.
-	left, err := Sanitize(storepb.Engine_MYSQL, "SELECT a FROM t WHERE a - 1 > 0")
-	require.NoError(t, err)
-	right, err := Sanitize(storepb.Engine_MYSQL, "SELECT a FROM t WHERE a = 1")
-	require.NoError(t, err)
-	require.NotEqual(t, left.Fingerprint, right.Fingerprint)
-	require.False(t, strings.Contains(left.Canonical, "a ?"),
-		"the identifier must not be joined by a folded run: %q", left.Canonical)
+	require.Equal(t, "SELECT a FROM t WHERE a - ? > ?", canonicalOf(t, "SELECT a FROM t WHERE a - 1 > 0"))
+	require.Equal(t, "SELECT a FROM t WHERE a - ? = ?", canonicalOf(t, "SELECT a FROM t WHERE a - 1 = 0"))
+	require.Equal(t, "SELECT a FROM t WHERE a - ?", canonicalOf(t, "SELECT a FROM t WHERE a - 1"))
+	require.Equal(t, "SELECT a FROM t WHERE x = ? + ?", canonicalOf(t, "SELECT a FROM t WHERE x = 1 + 1"))
+	require.Equal(t, "SELECT a FROM t WHERE x = ?", canonicalOf(t, "SELECT a FROM t WHERE x = 1"))
 }
 
 // TestFoldingIsIdempotent pins that folding an already folded form changes nothing. Without it a

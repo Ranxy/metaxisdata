@@ -20,7 +20,7 @@ import (
 
 // The YAML corpus in testdata is this package's contract. Each case pins, for one
 // statement, the stored text and the canonical form exactly; a case that names no engine
-// runs under all three dialects, because nothing in N1-N6 is allowed to depend on which
+// runs under all three dialects, because nothing in N1-N5 is allowed to depend on which
 // lexer produced the tokens.
 //
 // Pinning the canonical form pins the fingerprint too, and that is how the corpus states

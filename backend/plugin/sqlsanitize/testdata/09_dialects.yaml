@@ -32,8 +32,8 @@ cases:
     text: SELECT ?
     canonical: SELECT ?
 
-  # PostgreSQL joins adjacent string constants over a line break into one token; the MySQL
-  # family keeps two, which the constant-run rule then folds back into one placeholder.
+  # PostgreSQL joins adjacent string constants over a line break into one token; the MySQL family
+  # keeps two, and two placeholders stay two: they are two tokens in that statement.
   - name: adjacent string constants in postgres
     engine: postgres
     sql: "SELECT a FROM t WHERE x = 'a'\n'b'"
@@ -44,7 +44,7 @@ cases:
     engine: [mysql, starrocks]
     sql: "SELECT a FROM t WHERE x = 'a'\n'b'"
     text: "SELECT a FROM t WHERE x = ?\n?"
-    canonical: SELECT a FROM t WHERE x = ?
+    canonical: SELECT a FROM t WHERE x = ? ?
 
   # An escape string is one token in PostgreSQL and a letter followed by a string in the
   # MySQL family, so the stored text differs while the canonical form agrees.

@@ -12,11 +12,10 @@
 //	N3  identifiers and keywords are copied verbatim, quotes and case included
 //	N4  an IN list of placeholders is one placeholder
 //	N5  a VALUES list of repeated placeholder groups is one group
-//	N6  a run beginning with a placeholder and holding only placeholders and
-//	    operators is one placeholder
 //
-// N1-N3 shape both forms; N4-N6 shape the fingerprint alone, so the stored text keeps
-// what the application wrote. See fold.go for why N6 has to begin at the placeholder.
+// N1-N3 shape both forms; N4 and N5 shape the fingerprint alone, so the stored text keeps
+// what the application wrote. Nothing else folds: an operator and a placeholder count are
+// part of a statement's identity. See fold.go.
 // Any later change to these rules must bump Version, so that a deployment can tell
 // which rows were fingerprinted under which rules.
 //
@@ -172,9 +171,10 @@ func rewriteLiterals(engine storepb.Engine, sql string, spans []span) string {
 }
 
 // canonicalForm turns the stored text into the fingerprint's input: its tokens joined by single
-// spaces, with the literal-shape differences folded away. Whitespace alone must not split one
-// statement into two, and neither must the length of an IN list, the size of a batch insert, or the
-// way a constant was written. See fold.go.
+// spaces, with the two list shapes folded away. Whitespace alone must not split one statement into
+// two, and neither must the length of an IN list or the size of a batch insert. Nothing else is
+// normalized — a differently written constant or a different operator is a different statement.
+// See fold.go.
 func canonicalForm(engine storepb.Engine, text string) string {
 	spans := tokenSpans(engine, text)
 	parts := make([]string, 0, len(spans))
@@ -183,6 +183,5 @@ func canonicalForm(engine storepb.Engine, text string) string {
 	}
 	parts = foldInLists(parts)
 	parts = foldValueGroups(parts)
-	parts = foldConstantRuns(parts)
 	return strings.Join(parts, " ")
 }

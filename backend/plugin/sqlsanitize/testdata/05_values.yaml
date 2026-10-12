@@ -54,12 +54,12 @@ cases:
     text: INSERT INTO t (a, b) VALUES (NOW(), ?)
     canonical: INSERT INTO t ( a , b ) VALUES ( NOW ( ) , ? )
 
-  # The constant run is folded afterwards, so a computed constant lands on the same
-  # canonical form as the plain one: both are a row of constants.
+  # A group folds only when every element of it is a placeholder, so a computed constant keeps
+  # its shape: `VALUES (? + ?, ?)` is not `VALUES (?, ?)`.
   - name: a group holding an arithmetic constant
     sql: INSERT INTO t (a, b) VALUES (1 + 1, 2)
     text: INSERT INTO t (a, b) VALUES (? + ?, ?)
-    canonical: INSERT INTO t ( a , b ) VALUES ( ? , ? )
+    canonical: INSERT INTO t ( a , b ) VALUES ( ? + ? , ? )
 
   - name: a group holding a nested parenthesized constant
     sql: INSERT INTO t (a) VALUES ((1))

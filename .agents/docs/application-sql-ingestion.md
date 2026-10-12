@@ -41,13 +41,13 @@ Choices inside those decisions, each of which a reader would otherwise re-litiga
   parses in every position tested; `NULL` and `0` fail MySQL's `LOAD DATA` / `JSON_TABLE PATH` and
   PostgreSQL's `INTERVAL`, and `$n` fails PostgreSQL's `COPY` and `INTERVAL`. A PostgreSQL `$n` is
   normalized to `?` on the way in, so one statement has one stored form.
-- **Six normalization rules shape the statement; N4–N6 change the fingerprint alone.** N1 turns
+- **Five normalization rules shape the statement; N4 and N5 change the fingerprint alone.** N1 turns
   every literal into `?` (and a PostgreSQL `$n` into the same `?`); N2 removes comments and preserves
   all other spacing; N3 copies identifiers and keywords verbatim; N4 folds an all-placeholder `IN`
-  list to one element; N5 folds a `VALUES` list of repeated placeholder groups to the first; N6
-  folds a run beginning with a placeholder and holding only placeholders and operators to one. Only
+  list to one element; N5 folds a `VALUES` list of repeated placeholder groups to the first. Only
   N1–N3 shape the stored text — a person reads it, so its spacing and its literal *positions* stay
-  as the application wrote them. See "The rules that shape the fingerprint" below.
+  as the application wrote them. **Nothing else folds**, and that is a rule rather than an omission:
+  see "The rules that shape the fingerprint" below.
 - **`key_digest` exists.** A design draft dropped it; without a lookup column every request would
   bcrypt-compare against every live key.
 - **A statement the lexer cannot walk to its end is refused.** Every lexer here stops on a
@@ -176,25 +176,37 @@ first sight of an `APPLICATION_SQL` GUID it calls `GetApplicationSQL` once and h
 first line to `lineageAssetView` as a name override. Only statement nodes cost a request, and a
 failed lookup is only logged.
 
-### The rules that shape the fingerprint (N4–N6)
+### The rules that shape the fingerprint (N4–N5)
 
 These shape the canonical form and nothing else — not the lineage, not the stored text. They exist
-because one statement in an application's code otherwise becomes one row per shape of its literals:
-an `IN` list of varying length, a batch insert of varying size, a constant written differently. That
-is what makes D6's bound — rows counted by distinct statement — true of the application's *source
-code* rather than of its execution pattern.
+because a *list* in an application's code changes length from execution to execution: an `IN` list
+whose length depends on how many values were bound, a batch insert whose size depends on how many
+rows were batched. That is what makes D6's bound — rows counted by distinct statement — true of the
+application's *source code* rather than of its execution pattern.
 
 | Rule | Folds | Example |
 | --- | --- | --- |
 | N4 | an all-placeholder `IN` / `NOT IN` list, to one element | `IN (?, ?, ?)` → `IN (?)` |
 | N5 | a `VALUES` list of repeated placeholder groups, to the first | `VALUES (?, ?), (?, ?)` → `VALUES (?, ?)` |
-| N6 | a run beginning with a placeholder and holding only placeholders and operators, to one | `? + ?` → `?`, so `1 + 1`, `2` and `5 - 3` are one statement |
 
-**N6 must begin at the placeholder, and that is not a detail.** A run that may begin at an operator
-swallows the identifier before it: `WHERE a - 1 > 0` stores as `WHERE a - ? > ?`, whose run would be
-`- ? > ?` and would fold to `WHERE a ?` — colliding with statements that share nothing but the
-identifier. Beginning at the placeholder leaves `WHERE a - ?`. N4 and N5 have no such trap, because
-their lists are delimited.
+**Nothing else folds, and a constant is not folded at all.** A constant becomes `?` and stays where
+it is, so the operator around it and the number of placeholders the statement carries are both part
+of its identity. The rule was not always this narrow: a "constant run" folding used to collapse a
+run of placeholders and operators into one `?`, which meant `price * 100 >= 5000` and
+`price * 100 <= 2000` were one row, and `id = ? - ?` — two bound values — was one row with `id = ?` —
+one. Both are silent data corruption of exactly the kind D5 exists to prevent, one statement's text,
+count and kind attributed to another. It was removed; what it merged is in
+`testdata/06_operators.yaml`, pinned the other way round.
+
+This limit is the accepted practice in this space rather than a local preference: the reference
+fingerprinter (`query.Fingerprint` in Percona's `go-mysql`, the query ID of `pt-query-digest`) states
+its whole principle as *"we only replace numbers, quoted strings, and value lists"*. It also folds
+value lists, and it folds them more aggressively than N4/N5 do — it does not look inside the
+parentheses, so `IN (a, b)` and `IN (1, 2, 3)` are one fingerprint there, and it lowercases the whole
+statement. Those two choices are worth *not* copying: for a digest of a slow-query log a coarse
+grouping is cheap, while for a registry that attaches lineage and counts to the row it is not, and
+lowercasing would merge `"Foo"` with `"foo"` in the PostgreSQL family, where those are different
+columns.
 
 The rules stay inside the shape they fold, which is the property that matters more than folding
 enough:
@@ -202,10 +214,11 @@ enough:
 | Kept apart | By |
 | --- | --- |
 | `IN (a, b)` from `IN (a, b, c)` | only an all-placeholder list folds; a column list names different columns |
-| `IN (?, b)` from `IN (?, ?)` | a mixed list is left alone |
+| `IN (?, b)` from `IN (?, ?)` | a mixed list is left alone, and so is a subquery |
 | `VALUES (?)` from `VALUES (?, ?)` | the first group keeps its arity |
-| `a = ?` from `a = ? AND b = ?` | a keyword ends a run |
-| `f(?)` from `f(?, ?)` | a comma and a parenthesis end a run |
+| `value * ? >= ?` from `value * ? <= ?` | the operator is part of the statement |
+| `id = ?` from `id = ? - ?` | so is how many values it binds |
+| `f(?)` from `f(?, ?)` | a comma and a parenthesis end a group |
 | `x = NULL` from `x = ?` | `NULL` is a keyword, and says something a placeholder does not |
 
 Every folding is idempotent — `fold(fold(x)) == fold(x)` — or a statement reported twice would be
@@ -216,14 +229,14 @@ disagree about. They are pinned in `testdata/09_dialects.yaml` and beside the ca
 
 | Difference | Effect |
 | --- | --- |
-| PostgreSQL lexes `?` as an operator character, so `-?` and `+?` come back as single operator tokens | a signed constant folds in the MySQL family and not in PostgreSQL: `x = -1 + 2` is `x = - ?` there and `x = -? + ?` here. Fingerprints are scoped to an instance, so the two forms never meet in one table. |
+| PostgreSQL lexes `?` as an operator character, so `-?` and `+?` come back as single operator tokens | a signed constant is spaced differently in the two: `x = -1 + 2` is `x = - ? + ?` in the MySQL family, where `-` and `?` are two tokens, and `x = -? + ?` in PostgreSQL, where they are one. Fingerprints are scoped to an instance, so the two forms never meet in one table. |
 | StarRocks tokenizes a `/*+ … */` hint as code rather than as a comment | the hint is stored and fingerprinted with the statement — but its body is tokenized like any expression, so a literal inside it is still rewritten. MySQL and PostgreSQL drop it as a comment. |
 | MySQL tokenizes a `/*! … */` executable comment into unusable fragments | the statement is refused, like any statement the lexer cannot walk to its end. |
 
 ### The corpus
 
 `sanitize_test.go` and `fold_test.go` are the hand-written cases for one behavior each.
-`testdata/*.yaml` is the contract at statement scale: 214 statements in nine suites, each run under
+`testdata/*.yaml` is the contract at statement scale: 220 statements in nine suites, each run under
 every dialect unless it names the ones it is valid in (`engine: postgres`, `engine: [mysql,
 starrocks]`).
 
@@ -246,7 +259,7 @@ statement under the same dialect.
 | `03_identifiers` | N3, quoting and case, and where a double quote or a backtick changes meaning |
 | `04_in_lists` | N4, and every list that must keep its shape |
 | `05_values` | N5, batch size against group arity |
-| `06_constant_runs` | N6, including the run that must begin at the placeholder |
+| `06_operators` | the operators and placeholder counts that are part of a statement's identity, including the two pairs that used to share a row |
 | `07_statement_shapes` | realistic application statements, so a rule change has to answer for one |
 | `08_refusals` | what must not be stored — text that is not valid UTF-8 is refused too, but YAML cannot carry an invalid byte, so `sanitize_test.go` pins that one |
 | `09_dialects` | the asymmetries above, written out
@@ -325,7 +338,7 @@ Tests and their gates:
 Two sanitizer suites guard a rule change from opposite ends. `TestSanitizedStatementsKeepTheirLineage`
 is the acceptance gate: it runs 642 statements from the repository's own lineage corpus and requires
 that sanitizing never makes an analyzable statement unanalyzable, with 0 refusals and 100%
-idempotency. `TestSanitizeYAMLCorpus` is the contract: 214 statements whose stored text and canonical
+idempotency. `TestSanitizeYAMLCorpus` is the contract: 220 statements whose stored text and canonical
 form are pinned exactly, so a change has to be stated as a deliberate edit to a written expectation
 rather than discovered as a moving fingerprint.
 
