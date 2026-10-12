@@ -1,10 +1,21 @@
 <template>
   <div class="p-4 space-y-4">
-    <div class="space-y-1">
-      <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <div class="text-lg font-semibold wrap-break-word">
+    <!-- Identity on the left, actions pinned to the right edge. Inline actions rode the
+         length of the title, which here is a statement label and not a short name, so the
+         two buttons moved with every row a reader opened. The left column is `flex-1` and
+         not merely `min-w-0`: a flex item's automatic basis is its content, so a long title
+         would push the actions onto their own line instead of being truncated. -->
+    <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+      <div class="min-w-0 flex-1 space-y-1">
+        <div class="truncate text-lg font-semibold">
           {{ displayTitle }}
         </div>
+        <div class="text-sm text-muted-foreground wrap-break-word">
+          {{ summaryLine }}
+        </div>
+      </div>
+
+      <div class="flex shrink-0 flex-wrap items-center gap-2">
         <!-- The statement is read in the same dialog every other metadata page reads its
              definition in. The trigger says statement rather than schema: what is stored
              here is not a definition reconstructed from a schema, and the dialog's
@@ -33,9 +44,6 @@
           <Sparkles class="h-3.5 w-3.5 mr-1" />
           {{ t("explainSQL.explain") }}
         </Button>
-      </div>
-      <div class="text-sm text-muted-foreground wrap-break-word">
-        {{ summaryLine }}
       </div>
     </div>
 
