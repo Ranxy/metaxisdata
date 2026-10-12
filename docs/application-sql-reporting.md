@@ -10,9 +10,10 @@ are sensitive.
 
 ## 1. Register the application and issue a key
 
-An administrator does this once per application, in **Settings → Applications → New application**. Creating an
-application issues its first API key; the plaintext is shown once and cannot be retrieved again.
-Issue another from **Keys** to rotate one, and revoke the old one afterwards.
+An administrator does this once per application, in **Settings → Application SQL Ingestion → New
+application**. Creating an application issues its first API key; the plaintext is shown once and
+cannot be retrieved again. Issue another from **Keys** to rotate one, and revoke the old one
+afterwards.
 
 A key belongs to exactly one application. Reports are attributed to the key, never to anything in
 the request body, so a leaked key can only impersonate its own application — revoke it and issue a

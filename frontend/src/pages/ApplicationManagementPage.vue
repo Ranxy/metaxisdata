@@ -1,6 +1,9 @@
 <template>
   <div class="space-y-4">
-    <PageHeader :title="t('applicationManagement.title')">
+    <PageHeader
+      :title="t('applicationManagement.title')"
+      :description="t('applicationManagement.pageDescription')"
+    >
       <template #actions>
         <Button
           v-if="canCreate"

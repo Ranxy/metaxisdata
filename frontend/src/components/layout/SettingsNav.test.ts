@@ -45,7 +45,7 @@ describe("SettingsNav", () => {
     });
     const { wrapper } = await mountNav();
 
-    expect(wrapper.text()).toContain("Applications");
+    expect(wrapper.text()).toContain("Application SQL Ingestion");
     expect(wrapper.text()).not.toContain("Roles");
   });
 

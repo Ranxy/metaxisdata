@@ -87,8 +87,10 @@ describe("AppSidebar", () => {
     const dataTrigger = sectionTrigger(wrapper, "Data");
     await dataTrigger.trigger("click");
 
+    // The data view of the statements is here; the page that registers the applications
+    // that report them is in Settings, under its own longer name.
     expect(wrapper.text()).toContain("Application SQL");
-    expect(wrapper.text()).not.toContain("Applications");
+    expect(wrapper.text()).not.toContain("Application SQL Ingestion");
   });
 
   it("shows only the top-level entries while every section is closed", async () => {

@@ -30,11 +30,12 @@
     "lastUsedAt": "最近使用",
     "noApplications": "没有应用",
     "noApplicationsHint": "新建一个应用以签发它上报用的密钥。",
+    "pageDescription": "注册上报 SQL 的应用、签发它们上报用的 API 密钥,并查看每个应用的上报情况。",
     "revoke": "撤销",
     "state": "状态",
     "stop": "停用",
     "stopped": "已停止",
-    "title": "应用",
+    "title": "应用 SQL 接入",
     "updateError": "更新应用失败。"
   },
   "applicationSql": {
@@ -745,7 +746,6 @@
   },
   "menu": {
     "applicationSql": "应用 SQL",
-    "applications": "应用",
     "auditLogs": "审计日志",
     "data": "数据",
     "databases": "数据库",

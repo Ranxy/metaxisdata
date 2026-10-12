@@ -30,11 +30,12 @@
     "lastUsedAt": "Last used",
     "noApplications": "No applications",
     "noApplicationsHint": "Create one to issue the key an application reports with.",
+    "pageDescription": "Register the applications that report SQL, issue the API keys they report with, and see what each one has sent.",
     "revoke": "Revoke",
     "state": "State",
     "stop": "Stop",
     "stopped": "Stopped",
-    "title": "Applications",
+    "title": "Application SQL Ingestion",
     "updateError": "Failed to update the application."
   },
   "applicationSql": {
@@ -745,7 +746,6 @@
   },
   "menu": {
     "applicationSql": "Application SQL",
-    "applications": "Applications",
     "auditLogs": "Audit Logs",
     "data": "Data",
     "databases": "Databases",

@@ -57,7 +57,9 @@ const ALL_ITEMS = computed(() => [
   },
   {
     key: "applications",
-    label: t("menu.applications"),
+    // The page's own title, not a second key: the entry and the heading it opens have to
+    // read the same, and two keys holding one string drift apart.
+    label: t("applicationManagement.title"),
     path: "/settings/applications",
     icon: AppWindow,
     permission: "metaxisdata.applications.list",
