@@ -64,6 +64,8 @@ const ROUTES = [
   { path: "/databases", name: "databases", tableTopMaxY: 160 },
   { path: "/manual-sql", name: "manual sql", tableTopMaxY: 160 },
   { path: "/explain-sql", name: "explain sql" },
+  { path: "/applications", name: "applications", tableTopMaxY: 160 },
+  { path: "/application-sql", name: "application sql", tableTopMaxY: 220 },
   // The OpenLineage directory pages. Their budgets are on `tableTopY` like the
   // rest; what they were really failing was `overflowingTables`, which none of
   // them could previously report because the audit did not look for it.

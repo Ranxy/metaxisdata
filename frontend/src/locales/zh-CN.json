@@ -66,6 +66,7 @@
     "statement": "语句",
     "title": "应用 SQL",
     "unknownKind": "尚未分析",
+    "viewStatement": "查看语句",
     "write": "写入"
   },
   "auditLogs": {
@@ -759,6 +760,7 @@
   },
   "metadataBrowser": {
     "active": "已激活",
+    "applicationSqls": "应用 SQL",
     "arguments": "参数",
     "attributes": "属性",
     "cacheSize": "缓存大小",

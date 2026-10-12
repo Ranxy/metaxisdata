@@ -66,6 +66,7 @@
     "statement": "Statement",
     "title": "Application SQL",
     "unknownKind": "Not analyzed yet",
+    "viewStatement": "View statement",
     "write": "Write"
   },
   "auditLogs": {
@@ -759,6 +760,7 @@
   },
   "metadataBrowser": {
     "active": "Active",
+    "applicationSqls": "Application SQL",
     "arguments": "Arguments",
     "attributes": "Attributes",
     "cacheSize": "Cache Size",

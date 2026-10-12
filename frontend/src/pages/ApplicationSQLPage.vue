@@ -52,7 +52,9 @@
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">
+              <!-- `-` is the wildcard the instance filter also uses: radix refuses an
+                   empty value, and the service reads `-` as "any". -->
+              <SelectItem value="-">
                 {{ t("applicationSql.anyKind") }}
               </SelectItem>
               <SelectItem value="read">
@@ -274,6 +276,7 @@
 import { FileCode2, Trash2 } from "lucide-vue-next";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { useRoute } from "vue-router";
 import {
   deleteApplicationSQL,
   getApplicationSQL,
@@ -326,6 +329,7 @@ const canDelete = computed(() =>
   authStore.hasPermission("metaxisdata.applicationSqls.delete")
 );
 
+const route = useRoute();
 const error = ref("");
 const saving = ref(false);
 const pageSize = ref(50);
@@ -336,9 +340,9 @@ const appliedInstanceID = ref("-");
 const applicationID = ref("");
 const appliedApplicationID = ref("");
 // The select's own values are strings; the enum is built at the request boundary, where it
-// belongs.
-const kind = ref("");
-const appliedKind = ref("");
+// belongs. `-` is the "any kind" item and the value the filter starts on.
+const kind = ref("-");
+const appliedKind = ref("-");
 const query = ref("");
 const appliedQuery = ref("");
 
@@ -389,6 +393,7 @@ function applyFilters() {
   void resetPage();
 }
 
+// `-`, and anything the select does not know, means the filter is off.
 function kindFromFilter(value: string): ApplicationSQLKind {
   switch (value) {
     case "read":
@@ -453,5 +458,12 @@ async function handleDelete() {
 
 onMounted(async () => {
   await Promise.all([instanceStore.ensureLoaded(), resetPage()]);
+
+  // A link can name one statement, which is how the lineage canvas opens the row it drew: the
+  // dialog is fetched by GUID, so it does not need the statement to be on the page it landed on.
+  const guid = typeof route.query.guid === "string" ? route.query.guid : "";
+  if (guid) {
+    await openDetail(guid);
+  }
 });
 </script>

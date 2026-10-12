@@ -230,14 +230,17 @@
               v-for="key in keys"
               :key="key.name"
             >
-              <TableCell class="font-mono text-xs">
+              <!-- A masked key is 60 characters of monospace; allowed to size the
+                   column it pushes the revoke button out of the dialog. It wraps
+                   instead, which keeps every character of the mask visible. -->
+              <TableCell class="max-w-[18rem] break-all font-mono text-xs">
                 {{ key.maskedKey }}
               </TableCell>
               <TableCell class="text-sm">{{ key.description || "-" }}</TableCell>
               <TableCell class="text-sm">
                 {{ key.lastUsedAt ? formatDateTime(key.lastUsedAt, locale) : "-" }}
               </TableCell>
-              <TableCell class="text-xs text-muted-foreground">
+              <TableCell class="whitespace-nowrap text-xs text-muted-foreground">
                 {{ t("applicationManagement.counterValue", {
                   accepted: key.statementAcceptedCount,
                   rejected: key.statementRejectedCount,

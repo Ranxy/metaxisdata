@@ -65,6 +65,8 @@ export function metaTypeLabel(metaType: MetaType, t: Translate): string {
       return t("metadataBrowser.sequences");
     case MetaType.MANUAL_SQL:
       return t("metadataBrowser.manualSqls");
+    case MetaType.APPLICATION_SQL:
+      return t("metadataBrowser.applicationSqls");
     case MetaType.OPENLINEAGE:
       return t("openlineage.title");
     default:

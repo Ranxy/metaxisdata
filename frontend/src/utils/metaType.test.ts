@@ -23,6 +23,9 @@ describe("metaTypeLabel", () => {
     expect(metaTypeLabel(MetaType.MANUAL_SQL, t)).toBe(
       "metadataBrowser.manualSqls"
     );
+    expect(metaTypeLabel(MetaType.APPLICATION_SQL, t)).toBe(
+      "metadataBrowser.applicationSqls"
+    );
   });
 
   it("names the object kinds that only appear as list rows", () => {
