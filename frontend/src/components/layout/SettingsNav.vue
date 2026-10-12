@@ -56,15 +56,6 @@ const ALL_ITEMS = computed(() => [
     permission: "metaxisdata.settings.get",
   },
   {
-    key: "applications",
-    // The page's own title, not a second key: the entry and the heading it opens have to
-    // read the same, and two keys holding one string drift apart.
-    label: t("applicationManagement.title"),
-    path: "/settings/applications",
-    icon: AppWindow,
-    permission: "metaxisdata.applications.list",
-  },
-  {
     key: "environments",
     label: t("menu.environments"),
     path: "/settings/environments",
@@ -112,6 +103,17 @@ const ALL_ITEMS = computed(() => [
     path: "/settings/llm-providers",
     icon: Sparkles,
     permission: "metaxisdata.llm.profiles.list",
+  },
+  // The two ingestion surfaces sit together, after everything an administrator sets up
+  // once for the workspace itself. The application-SQL entry takes the page's own title
+  // key rather than holding a second copy of the string: the entry and the heading it
+  // opens have to read the same, and two keys drift apart.
+  {
+    key: "applications",
+    label: t("applicationManagement.title"),
+    path: "/settings/applications",
+    icon: AppWindow,
+    permission: "metaxisdata.applications.list",
   },
   {
     key: "openlineage",
