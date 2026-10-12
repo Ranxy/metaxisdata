@@ -77,11 +77,13 @@ set stays derived from lineage edges, which only a write gets.
 
 The type is browsable like manual SQL: `getNextLevelObjectType` lists it under the database for the
 MySQL family and under the schema for PostgreSQL, so a statement appears beside the objects of the
-scope it ran in, and the metadata detail renders its definition, its history and its edges. Two
-things bound it. The registry row carries no counts: `kind`, `execution_count` and the per-application
-breakdown live in `application_sql`, which changes with every report, and a mirror that carried them
-would write a history row per report into a ledger that is kept forever — the detail links to the
-Application SQL page for them instead. And the level is paginated like any other, so a database
+scope it ran in. The metadata detail shows its scope, its facts, its history and its edges; the
+statement itself is read in the shared `SchemaDefinitionDialog`, the dialog a table's or a manual
+SQL's definition opens in, behind a trigger that says statement rather than schema. Two things bound
+it. The registry row carries no counts: `kind`, `execution_count` and the per-application breakdown
+live in `application_sql`, which changes with every report, and a mirror that carried them would
+write a history row per report into a ledger that is kept forever — so the detail reads them with one
+extra call, gated on `applicationSqls.get`. And the level is paginated like any other, so a database
 holding thousands of statements shows a page of them rather than all of them.
 
 The GUID is `instance;database;schema;__application_sql__/<application_sql_id>`. The identifier is
@@ -395,7 +397,7 @@ Tests and their gates:
 | Endpoint | `api/v1/application_sql_handler_test.go` | `go test ./backend/api/v1/` |
 | Graph edge shape | `api/v1/lineage_service_graph_test.go` (`TestBuildLineageGraphDrawsTableLevelEdges`) | same |
 | Whole chain | `test/integration/runner/application_sql_service_test.go` | `go test -tags=integration -run ApplicationSQLReport ./backend/test/integration/runner` |
-| SPA | `lineageOrigin.test.ts`, `lineageAsset.test.ts`, `permissions.test.ts`, `ApplicationSQLFacts.test.ts`, `TableLineageSection.test.ts`, `statementLabel.test.ts` | `pnpm --dir frontend biome:check && lint && i18n && type-check && test run` |
+| SPA | `lineageOrigin.test.ts`, `lineageAsset.test.ts`, `permissions.test.ts`, `ApplicationSQLFacts.test.ts`, `TableLineageSection.test.ts`, `statementLabel.test.ts`, `SchemaDefinitionDialog.test.ts` | `pnpm --dir frontend biome:check && lint && i18n && type-check && test run` |
 | Cost | `sqlsanitize/benchmark_test.go`, `sqlsanitize/ingest_benchmark_test.go`, `sqlsanitize/allocation_budget_test.go` | `go test ./backend/plugin/sqlsanitize/ -bench . -benchmem` |
 
 Two sanitizer suites guard a rule change from opposite ends. `TestSanitizedStatementsKeepTheirLineage`

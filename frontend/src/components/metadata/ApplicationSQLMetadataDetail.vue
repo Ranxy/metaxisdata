@@ -5,6 +5,25 @@
         <div class="text-lg font-semibold wrap-break-word">
           {{ displayTitle }}
         </div>
+        <!-- The statement is read in the same dialog every other metadata page reads its
+             definition in. The trigger says statement rather than schema: what is stored
+             here is not a definition reconstructed from a schema, and the dialog's
+             description says what it is instead. -->
+        <SchemaDefinitionDialog
+          v-if="guid"
+          :guid="guid"
+          :meta-type="MetaType.APPLICATION_SQL"
+          :object-name="displayTitle"
+          :description="t('applicationSql.detailHint')"
+        >
+          <Button
+            variant="outline"
+            size="sm"
+          >
+            <Code class="h-4 w-4 mr-2" />
+            {{ t("applicationSql.viewStatement") }}
+          </Button>
+        </SchemaDefinitionDialog>
         <Button
           v-if="guid"
           variant="outline"
@@ -61,23 +80,6 @@
         </div>
       </div>
 
-      <!-- The definition is the whole statement; the title is only its first line,
-           trimmed to a label by the server. -->
-      <div class="space-y-2">
-        <h2 class="text-sm font-medium">
-          {{ t("metadataBrowser.definition") }}
-        </h2>
-        <!-- Bounded like every other definition viewer in the app (the Monaco one caps at
-             520px): a statement can run to hundreds of lines, and an unbounded block would
-             push the facts and the lineage that follow it off the page. -->
-        <pre
-          class="max-h-[32rem] overflow-auto rounded-md border bg-muted/40 p-3 font-mono text-xs whitespace-pre-wrap"
-        >{{ applicationSql.sqlText }}</pre>
-        <p class="text-xs text-muted-foreground">
-          {{ t("applicationSql.detailHint") }}
-        </p>
-      </div>
-
       <!-- What the statement has actually done, read from its row rather than from the
            registry mirror: these numbers change with every report, and the mirror is
            written once. It is the same block the statement list shows. -->
@@ -108,7 +110,7 @@
 </template>
 
 <script setup lang="ts">
-import { Sparkles } from "lucide-vue-next";
+import { Code, Sparkles } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
@@ -116,6 +118,7 @@ import { getApplicationSQL } from "@/api/application";
 import ApplicationSQLFacts from "@/components/application/ApplicationSQLFacts.vue";
 import MetadataHistorySection from "@/components/metadata/MetadataHistorySection.vue";
 import MetadataTabGroup from "@/components/metadata/MetadataTabGroup.vue";
+import SchemaDefinitionDialog from "@/components/metadata/SchemaDefinitionDialog.vue";
 import TableLineageSection from "@/components/metadata/TableLineageSection.vue";
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/store/modules/auth";

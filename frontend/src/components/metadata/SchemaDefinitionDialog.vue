@@ -14,9 +14,7 @@
     <DialogContent class="max-w-4xl h-[80vh] flex flex-col overflow-hidden">
       <DialogHeader>
         <DialogTitle>{{ objectName }}</DialogTitle>
-        <DialogDescription>
-          {{ t("metadataBrowser.schemaDefinition") }}
-        </DialogDescription>
+        <DialogDescription>{{ descriptionText }}</DialogDescription>
       </DialogHeader>
       <div class="flex-1 min-h-0 overflow-hidden">
         <div
@@ -65,6 +63,13 @@ interface Props {
   metaType: MetaType;
   objectName: string;
   /**
+   * The line under the title. Left out, it says what a schema-driven page shows: the
+   * object's DDL. A reported statement passes its own wording, because a definition
+   * reconstructed from a schema and a statement an application sent are not the same
+   * claim.
+   */
+  description?: string;
+  /**
    * Whether the dialog is open. A caller that passes this one owns the dialog and
    * opens it itself — the lineage graph opens this from a context menu as well as
    * from its details panel — so the built-in trigger is not rendered. Left out, the
@@ -84,6 +89,10 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 const { formatError } = useErrorMessage();
+
+const descriptionText = computed(
+  () => props.description || t("metadataBrowser.schemaDefinition")
+);
 
 const controlled = computed(() => props.open !== undefined);
 const ownOpen = ref(false);

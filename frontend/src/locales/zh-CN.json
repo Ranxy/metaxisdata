@@ -70,6 +70,7 @@
     "statement": "语句",
     "title": "应用 SQL",
     "unknownKind": "尚未分析",
+    "viewStatement": "查看语句",
     "write": "写入"
   },
   "auditLogs": {
