@@ -2,7 +2,7 @@
 // application-SQL ingest path keeps: a literal-free text that is safe to store, and a
 // canonical form whose hash is the statement's deduplication key.
 //
-// The rules it applies are N1-N3 of .agents/docs/application-sql-ingestion.md ("Decisions"):
+// The rules it applies are:
 //
 //	N1  every literal becomes `?`, and a PostgreSQL `$n` is rewritten to the same `?`
 //	    so that one statement has one stored form however the application wrote it.
@@ -10,12 +10,15 @@
 //	    rewrite has to be idempotent
 //	N2  comments are removed; all other spacing is preserved byte for byte
 //	N3  identifiers and keywords are copied verbatim, quotes and case included
+//	N4  an IN list of placeholders is one placeholder
+//	N5  a VALUES list of repeated placeholder groups is one group
+//	N6  a run beginning with a placeholder and holding only placeholders and
+//	    operators is one placeholder
 //
-// N4-N6 — collapsing IN lists, VALUES row groups, and constant-only expressions — are
-// deliberately not applied yet. They change what counts as one statement, so they
-// belong with a corpus of real application SQL that can measure over-merging; the
-// design's section 13.7 records that corpus as still to come. Applying any of them
-// bumps Version and requires the one-off re-fingerprint pass the design describes.
+// N1-N3 shape both forms; N4-N6 shape the fingerprint alone, so the stored text keeps
+// what the application wrote. See fold.go for why N6 has to begin at the placeholder.
+// Changing any of them bumps Version and needs the one-off re-fingerprint pass the
+// design describes.
 //
 // Classification reads the token's source text rather than omni's token-type
 // constants, which are unexported in every dialect package. See token.go.
@@ -34,7 +37,9 @@ const (
 	// Version identifies the normalization rules applied by this package. It is
 	// stored beside every fingerprint because a change to the rules silently splits
 	// one statement into several rows until the re-fingerprint pass has run.
-	Version = 1
+	//
+	// 2 added the foldings in fold.go: IN lists, VALUES groups, constant runs.
+	Version = 2
 
 	// Placeholder is the wire and stored form of every literal. Applications send
 	// it, and it is the only form that is ever persisted.
@@ -145,13 +150,18 @@ func rewriteLiterals(engine storepb.Engine, sql string, spans []span) string {
 	return b.String()
 }
 
-// canonicalForm re-joins the tokens with single spaces, so that whitespace cannot
-// split one statement into two fingerprints.
+// canonicalForm turns the stored text into the fingerprint's input: its tokens joined by single
+// spaces, with the literal-shape differences folded away. Whitespace alone must not split one
+// statement into two, and neither must the length of an IN list, the size of a batch insert, or the
+// way a constant was written. See fold.go.
 func canonicalForm(engine storepb.Engine, text string) string {
 	spans := tokenSpans(engine, text)
 	parts := make([]string, 0, len(spans))
 	for _, s := range spans {
 		parts = append(parts, text[s.loc:s.end])
 	}
+	parts = foldInLists(parts)
+	parts = foldValueGroups(parts)
+	parts = foldConstantRuns(parts)
 	return strings.Join(parts, " ")
 }

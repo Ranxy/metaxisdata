@@ -41,12 +41,13 @@ Choices inside those decisions, each of which a reader would otherwise re-litiga
   parses in every position tested; `NULL` and `0` fail MySQL's `LOAD DATA` / `JSON_TABLE PATH` and
   PostgreSQL's `INTERVAL`, and `$n` fails PostgreSQL's `COPY` and `INTERVAL`. A PostgreSQL `$n` is
   normalized to `?` on the way in, so one statement has one stored form.
-- **The normalization rules applied are N1–N3 only.** N1 turns every literal into `?` (and a
-  PostgreSQL `$n` into the same `?`); N2 removes comments and preserves all other spacing; N3 copies
-  identifiers and keywords verbatim. **N4–N6 — collapsing `IN` lists, `VALUES` groups and
-  constant-only expressions — are not applied.** They change what counts as one statement, so they
-  belong with a corpus of real application SQL that can measure over-merging. Applying any of them
-  must bump `sqlsanitize.Version` and run the re-fingerprint pass below.
+- **Six normalization rules shape the statement; N4–N6 change the fingerprint alone.** N1 turns
+  every literal into `?` (and a PostgreSQL `$n` into the same `?`); N2 removes comments and preserves
+  all other spacing; N3 copies identifiers and keywords verbatim; N4 folds an all-placeholder `IN`
+  list to one element; N5 folds a `VALUES` list of repeated placeholder groups to the first; N6
+  folds a run beginning with a placeholder and holding only placeholders and operators to one. Only
+  N1–N3 shape the stored text — a person reads it, so its spacing and its literal *positions* stay
+  as the application wrote them. See "The rules that shape the fingerprint" below.
 - **`key_digest` exists.** A design draft dropped it; without a lookup column every request would
   bcrypt-compare against every live key.
 - **`application_sql` has a foreign key to the instance but not to `db`.** An application commonly
@@ -157,30 +158,40 @@ first sight of an `APPLICATION_SQL` GUID it calls `GetApplicationSQL` once and h
 first line to `lineageAssetView` as a name override. Only statement nodes cost a request, and a
 failed lookup is only logged.
 
-### The rules deliberately not applied (N4–N6)
+### The rules that shape the fingerprint (N4–N6)
 
-These affect the fingerprint and nothing else — not the lineage, not the stored text. Without them a
-single statement in an application's code can fragment into several rows as the shape of its
-literals varies, which is the one soft spot in D6's bound: it counts distinct statements as the
-sanitizer sees them, not as the application wrote them.
+These shape the canonical form and nothing else — not the lineage, not the stored text. They exist
+because one statement in an application's code otherwise becomes one row per shape of its literals:
+an `IN` list of varying length, a batch insert of varying size, a constant written differently. That
+is what makes D6's bound — rows counted by distinct statement — true of the application's *source
+code* rather than of its execution pattern.
 
-| Rule | Collapses | Example |
+| Rule | Folds | Example |
 | --- | --- | --- |
-| N4 | an `IN` / `NOT IN` list of placeholders, to one | `IN (?, ?, ?)` → `IN (?)`, so an ORM building a list of varying length is one statement |
-| N5 | repeated `VALUES` row groups, to one | `VALUES (?, ?), (?, ?)` → `VALUES (?, ?)`, so a varying batch size is one statement |
-| N6 | a run of placeholders and operators, to one | `? + ?` → `?`, so `1 + 1` and `2` are one statement |
+| N4 | an all-placeholder `IN` / `NOT IN` list, to one element | `IN (?, ?, ?)` → `IN (?)` |
+| N5 | a `VALUES` list of repeated placeholder groups, to the first | `VALUES (?, ?), (?, ?)` → `VALUES (?, ?)` |
+| N6 | a run beginning with a placeholder and holding only placeholders and operators, to one | `? + ?` → `?`, so `1 + 1`, `2` and `5 - 3` are one statement |
 
-All three apply to the canonical form only; the stored text keeps what the application wrote, because
-a person reads it.
+**N6 must begin at the placeholder, and that is not a detail.** A run that may begin at an operator
+swallows the identifier before it: `WHERE a - 1 > 0` stores as `WHERE a - ? > ?`, whose run would be
+`- ? > ?` and would fold to `WHERE a ?` — colliding with statements that share nothing but the
+identifier. Beginning at the placeholder leaves `WHERE a - ?`. N4 and N5 have no such trap, because
+their lists are delimited.
 
-**N6 as it was first drafted is wrong and must not be implemented that way.** "A maximal run of
-placeholders, operators and parentheses" also matches the run that *follows* an identifier:
-`WHERE a - 1 > 0` stores as `WHERE a - ? > ?`, whose maximal run is `- ? > ?`, and collapsing that
-yields `WHERE a ?` — which then collides with structurally different statements. The run has to
-*start* with a placeholder and contain at least two, which leaves `WHERE a - ?`. N4 and N5 have no
-such trap: their lists are delimited.
+The rules stay inside the shape they fold, which is the property that matters more than folding
+enough:
 
-Today, with none of the three, `IN (1, 2)` and `IN (1, 2, 3)` are two fingerprints and two rows.
+| Kept apart | By |
+| --- | --- |
+| `IN (a, b)` from `IN (a, b, c)` | only an all-placeholder list folds; a column list names different columns |
+| `IN (?, b)` from `IN (?, ?)` | a mixed list is left alone |
+| `VALUES (?)` from `VALUES (?, ?)` | the first group keeps its arity |
+| `a = ?` from `a = ? AND b = ?` | a keyword ends a run |
+| `f(?)` from `f(?, ?)` | a comma and a parenthesis end a run |
+| `x = NULL` from `x = ?` | `NULL` is a keyword, and says something a placeholder does not |
+
+Every folding is idempotent — `fold(fold(x)) == fold(x)` — or a statement reported twice would be
+two rows. `fold_test.go` asserts both halves: what must merge, and what must not.
 
 ## Invariants
 
@@ -194,7 +205,7 @@ Today, with none of the three, `IN (1, 2)` and `IN (1, 2, 3)` are two fingerprin
 | `sqlsanitize` reads token source slices, not token-type constants | a dependency on unexported upstream numbers, failing silently when they change |
 | A table-level edge carries a non-nil `Transformation` | the whole edge batch fails on a `NOT NULL` column |
 | Every statement is mirrored; only writes get edges | the metadata browser tree grows a sub-level per statement, or reads vanish from the canvas |
-| Changing N1–N3 bumps `sqlsanitize.Version` and runs the re-fingerprint pass | one statement splits into two rows permanently |
+| Changing any rule that shapes the stored text or the canonical form bumps `sqlsanitize.Version` and runs the re-fingerprint pass | one statement splits into two rows permanently |
 | The `db` table is not a foreign key of `application_sql` | reporting fails until the schema sync reaches the database |
 
 **The re-fingerprint pass** (not implemented; required when N1–N3 change): recompute every old-version
@@ -219,7 +230,7 @@ losers with their mirrors and lineage. Nothing in the code does this today.
 
 | Concern | Path |
 | --- | --- |
-| Sanitizer, fingerprint, analyzable form | [backend/plugin/sqlsanitize/](../../backend/plugin/sqlsanitize/) — `sanitize.go`, `token.go` |
+| Sanitizer, fingerprint, analyzable form | [backend/plugin/sqlsanitize/](../../backend/plugin/sqlsanitize/) — `sanitize.go`, `token.go`, `fold.go` |
 | Zero-relation write target | [backend/plugin/dmltarget/](../../backend/plugin/dmltarget/) — `target.go` |
 | Store | [backend/store/](../../backend/store/) — `application.go`, `application_api_key.go`, `application_sql.go` |
 | Ingest endpoint | [backend/api/v1/application_sql_handler.go](../../backend/api/v1/application_sql_handler.go); route in `backend/server/grpc_routes.go` |
@@ -233,7 +244,7 @@ Tests and their gates:
 
 | Layer | Test | Gate |
 | --- | --- | --- |
-| Sanitizer | `sqlsanitize/{sanitize,neutral,corpus}_test.go` | `go test ./backend/plugin/sqlsanitize/` |
+| Sanitizer | `sqlsanitize/{sanitize,fold,neutral,corpus}_test.go` | `go test ./backend/plugin/sqlsanitize/` |
 | Target | `dmltarget/target_test.go` | `go test ./backend/plugin/dmltarget/` |
 | Store | `store/application{,_sql}_pure_test.go` | `go test ./backend/store/` |
 | Classification | `runner/lineageanalyzer/classify_test.go` | `go test ./backend/runner/lineageanalyzer/` |
@@ -246,7 +257,11 @@ The corpus test in `sqlsanitize` is the acceptance gate for any change to the ru
 statements from the repository's own lineage corpus and requires that sanitizing never makes an
 analyzable statement unanalyzable, with 0 refusals and 100% idempotency.
 
-Known gaps: N4–N6 as above; the re-fingerprint pass; the two SPA pages have no runtime coverage
-(`pnpm audit:ui` needs a browser on the DevTools port); the corpus is view definitions rather than
-real ORM output, so the fingerprint's granularity has never been measured against real application
-SQL.
+`Version` is 2: the foldings were the first change to the rules, and **the re-fingerprint pass they
+require does not exist**. Nothing has shipped, so no deployment should hold version-1 rows; one that
+does will keep them beside the version-2 rows a re-report creates, until the pass is written.
+
+Known gaps: the re-fingerprint pass; the two SPA pages have no runtime coverage (`pnpm audit:ui`
+needs a browser on the DevTools port); the corpus is view definitions rather than real ORM output, so
+how much the foldings merge *enough* has never been measured against real application SQL — only
+that they never merge what they should not.
