@@ -205,12 +205,18 @@ two rows. `fold_test.go` asserts both halves: what must merge, and what must not
 | `sqlsanitize` reads token source slices, not token-type constants | a dependency on unexported upstream numbers, failing silently when they change |
 | A table-level edge carries a non-nil `Transformation` | the whole edge batch fails on a `NOT NULL` column |
 | Every statement is mirrored; only writes get edges | the metadata browser tree grows a sub-level per statement, or reads vanish from the canvas |
-| Changing any rule that shapes the stored text or the canonical form bumps `sqlsanitize.Version` and runs the re-fingerprint pass | one statement splits into two rows permanently |
+| Changing any rule that shapes the stored text or the canonical form bumps `sqlsanitize.Version` | one statement splits into two rows, and a deployment holding the old ones has nothing to tell it apart |
 | The `db` table is not a foreign key of `application_sql` | reporting fails until the schema sync reaches the database |
 
-**The re-fingerprint pass** (not implemented; required when N1–N3 change): recompute every old-version
-row's fingerprint, merge rows that collide on the new one, union their observations, and delete the
-losers with their mirrors and lineage. Nothing in the code does this today.
+`Version` is **1**, and that is not a placeholder: the foldings were added while this feature was
+still unreleased, so they are part of the first rule set rather than a second one with rows to
+migrate. Nothing has been deployed, so there is no historical fingerprint to reconcile and no
+migration logic to write — building one now would be machinery for a past that does not exist.
+
+What `Version` is for is the *next* change, after this ships: rewriting a rule splits one statement
+into rows fingerprinted under the old one, and a deployment that holds rows needs to find out. The
+column is the hook for that, and it costs one `INT2`. Writing the pass itself belongs to whoever
+makes that change, against a deployment that actually has the rows.
 
 ## Failure modes
 
@@ -257,11 +263,7 @@ The corpus test in `sqlsanitize` is the acceptance gate for any change to the ru
 statements from the repository's own lineage corpus and requires that sanitizing never makes an
 analyzable statement unanalyzable, with 0 refusals and 100% idempotency.
 
-`Version` is 2: the foldings were the first change to the rules, and **the re-fingerprint pass they
-require does not exist**. Nothing has shipped, so no deployment should hold version-1 rows; one that
-does will keep them beside the version-2 rows a re-report creates, until the pass is written.
-
-Known gaps: the re-fingerprint pass; the two SPA pages have no runtime coverage (`pnpm audit:ui`
+Known gaps: the two SPA pages have no runtime coverage (`pnpm audit:ui`
 needs a browser on the DevTools port); the corpus is view definitions rather than real ORM output, so
 how much the foldings merge *enough* has never been measured against real application SQL — only
 that they never merge what they should not.

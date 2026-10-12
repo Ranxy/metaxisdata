@@ -17,8 +17,8 @@
 //
 // N1-N3 shape both forms; N4-N6 shape the fingerprint alone, so the stored text keeps
 // what the application wrote. See fold.go for why N6 has to begin at the placeholder.
-// Changing any of them bumps Version and needs the one-off re-fingerprint pass the
-// design describes.
+// Any later change to these rules must bump Version, so that a deployment can tell
+// which rows were fingerprinted under which rules.
 //
 // Classification reads the token's source text rather than omni's token-type
 // constants, which are unexported in every dialect package. See token.go.
@@ -34,12 +34,15 @@ import (
 )
 
 const (
-	// Version identifies the normalization rules applied by this package. It is
-	// stored beside every fingerprint because a change to the rules silently splits
-	// one statement into several rows until the re-fingerprint pass has run.
+	// Version identifies the rules applied by this package, and is stored beside every
+	// fingerprint. It is 1 because this is the first rule set to run anywhere: the
+	// foldings in fold.go were added while the feature was still unreleased, so they are
+	// part of version 1 rather than a second version with rows to migrate.
 	//
-	// 2 added the foldings in fold.go: IN lists, VALUES groups, constant runs.
-	Version = 2
+	// Its whole purpose is the next change. Rewriting a rule splits one statement into
+	// rows fingerprinted under the old one, and a deployment that already holds rows
+	// needs to know that happened; Version is how it finds out.
+	Version = 1
 
 	// Placeholder is the wire and stored form of every literal. Applications send
 	// it, and it is the only form that is ever persisted.
