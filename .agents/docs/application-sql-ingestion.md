@@ -157,6 +157,31 @@ first sight of an `APPLICATION_SQL` GUID it calls `GetApplicationSQL` once and h
 first line to `lineageAssetView` as a name override. Only statement nodes cost a request, and a
 failed lookup is only logged.
 
+### The rules deliberately not applied (N4–N6)
+
+These affect the fingerprint and nothing else — not the lineage, not the stored text. Without them a
+single statement in an application's code can fragment into several rows as the shape of its
+literals varies, which is the one soft spot in D6's bound: it counts distinct statements as the
+sanitizer sees them, not as the application wrote them.
+
+| Rule | Collapses | Example |
+| --- | --- | --- |
+| N4 | an `IN` / `NOT IN` list of placeholders, to one | `IN (?, ?, ?)` → `IN (?)`, so an ORM building a list of varying length is one statement |
+| N5 | repeated `VALUES` row groups, to one | `VALUES (?, ?), (?, ?)` → `VALUES (?, ?)`, so a varying batch size is one statement |
+| N6 | a run of placeholders and operators, to one | `? + ?` → `?`, so `1 + 1` and `2` are one statement |
+
+All three apply to the canonical form only; the stored text keeps what the application wrote, because
+a person reads it.
+
+**N6 as it was first drafted is wrong and must not be implemented that way.** "A maximal run of
+placeholders, operators and parentheses" also matches the run that *follows* an identifier:
+`WHERE a - 1 > 0` stores as `WHERE a - ? > ?`, whose maximal run is `- ? > ?`, and collapsing that
+yields `WHERE a ?` — which then collides with structurally different statements. The run has to
+*start* with a placeholder and contain at least two, which leaves `WHERE a - ?`. N4 and N5 have no
+such trap: their lists are delimited.
+
+Today, with none of the three, `IN (1, 2)` and `IN (1, 2, 3)` are two fingerprints and two rows.
+
 ## Invariants
 
 | Rule | Breakage |
