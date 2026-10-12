@@ -198,8 +198,15 @@
           v-if="detail"
           class="space-y-3"
         >
+          <!-- Wrapped, and with `anywhere` rather than `break-word`: a statement is one long
+               line far more often than it is many short ones, and a `<pre>` that neither
+               wraps nor is width-constrained grows to its content instead of scrolling — it
+               took the dialog's Close button off the right edge with it. `anywhere` is what
+               changes the intrinsic size, so a run with no break opportunity left in it (the
+               sanitizer removes the literals, not the long identifiers) cannot widen the
+               dialog; `break-word` renders the same and still blows it out. -->
           <pre
-            class="max-h-72 overflow-auto rounded-md border bg-muted p-3 text-xs"
+            class="max-h-72 overflow-auto rounded-md border bg-muted p-3 text-xs whitespace-pre-wrap wrap-anywhere"
             data-testid="statement-text"
           >{{ detail.sqlText }}</pre>
 
