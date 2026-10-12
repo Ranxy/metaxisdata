@@ -208,6 +208,42 @@ grouping is cheap, while for a registry that attaches lineage and counts to the 
 lowercasing would merge `"Foo"` with `"foo"` in the PostgreSQL family, where those are different
 columns.
 
+#### How close the two rule sets are, and what a state machine costs
+
+Both were run over the same 414 statements (the lineage corpus plus this package's own suites, MySQL)
+and compared after removing the typography they differ in: theirs lowercases and copies the source
+spacing, ours keeps the case and spaces every token.
+
+| Agreement | Statements | What it is |
+| --- | --- | --- |
+| same shape | 333 | the two rule sets agree |
+| their `(?+)` marker | 24 | the same fold, written differently |
+| they fold what we keep | 29 | our deliberate narrowing: their list collapse ignores what is inside the parentheses |
+| different | 24 | below |
+
+The 24 are where a lexer and a hand-written state machine part ways. Eight lose information that
+ours keeps: `'it''s'` and `"a""b"` fingerprint as `??`, because the doubled-quote escape is not
+handled; `SELECT 1 /* a /* b */ */` keeps a `*/`, because block comments are not nested; a word
+immediately before a comment is dropped, so `SELECT a/* c */FROM t` is `select from t` and the column
+is gone; `.5` fingerprints as `.?`; `1_000` is not a number at all. Four truncate a malformed
+statement — an unterminated string, or a backtick — instead of refusing it, which turns a reported
+statement into whatever came before the break. Ten are choices we disagree with: `NULL` becomes `?`,
+a leading sign is dropped, `ORDER BY ... ASC` is removed, and `$1` keeps its parameter index, so a
+driver's `$1` and a written `?` never meet. Two are PostgreSQL dollar-quoting read by a MySQL-only
+state machine, where neither implementation is right.
+
+Performance, on the 225-statement MySQL lineage corpus: theirs is 2.5us per statement (553us,
+33 MB/s) and ours is 7.5us (1.68ms, 11 MB/s) — 3x, widening to 7-8x on token-dense statements (a
+1000-row batch insert: 296us against 2.24ms), because it allocates per token: 10 allocations for that
+statement against our 28000, all of them inside the omni lexer. One pass of theirs costs about what
+one omni lex pass costs us, and the trade is that we pay for three passes and hand back three
+artifacts — the spacing-preserving text, the canonical form and the analyzable form — in three
+dialects, with the lexing done by a real lexer instead of a state machine.
+
+These numbers came from a throwaway module that required both implementations side by side, since
+this repository does not depend on the reference one. They are an ordering rather than a benchmark
+the build runs; re-deriving them means recreating that module.
+
 The rules stay inside the shape they fold, which is the property that matters more than folding
 enough:
 
