@@ -26,8 +26,17 @@ func TestStatementLabel(t *testing.T) {
 		want string
 	}{
 		{"single line", "SELECT a FROM t", "SELECT a FROM t"},
-		{"first line only", "SELECT a\nFROM t\nWHERE b = ?", "SELECT a"},
+		// The label is the whole statement on one line: an application's formatting is not
+		// what identifies it, and line one alone names a multi-line statement badly.
+		{"lines are joined", "SELECT a\nFROM t\nWHERE b = ?", "SELECT a FROM t WHERE b = ?"},
+		{"runs of space collapse", "SELECT  a\n\t\tFROM   t", "SELECT a FROM t"},
 		{"surrounding space is trimmed", "  SELECT a FROM t  ", "SELECT a FROM t"},
+		{"a leading comment does not hide the statement", "\n\nSELECT a\nFROM t", "SELECT a FROM t"},
+		{
+			"a CTE is named by the whole statement, not by its first line",
+			"WITH recent AS (\n    SELECT id\n    FROM t\n)\nINSERT INTO audit (id)\nSELECT id FROM recent",
+			"WITH recent AS ( SELECT id FROM t ) INSERT INTO audit (id) SELECT id FROM recent",
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

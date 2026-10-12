@@ -1323,7 +1323,8 @@ export declare type ApplicationSQLMetadata = Message<"metaxisdata.v1.Application
   applicationSqlId: string;
 
   /**
-   * A display label taken from the statement's first line.
+   * A display label for a one-line context: the whole statement with every run of
+   * whitespace collapsed to a single space, and bounded. The full text is in sql_text.
    *
    * @generated from field: string name = 2;
    */

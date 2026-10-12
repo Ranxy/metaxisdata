@@ -134,7 +134,7 @@
                     :title="statement.sqlText"
                     @click="openDetail(statement.guid)"
                   >
-                    {{ firstLine(statement.sqlText) }}
+                    {{ statementLabel(statement.sqlText) }}
                   </button>
                 </TableCell>
                 <TableCell>
@@ -282,6 +282,7 @@ import TableRow from "@/components/ui/table/TableRow.vue";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { usePagedFetch } from "@/composables/usePagedFetch";
 import { notify } from "@/lib/notify";
+import { statementLabel } from "@/lib/statementLabel";
 import { useAuthStore } from "@/store/modules/auth";
 import { useInstanceStore } from "@/store/modules/instance";
 import {
@@ -376,10 +377,6 @@ function kindFromFilter(value: string): ApplicationSQLKind {
     default:
       return ApplicationSQLKind.APPLICATION_SQL_KIND_UNSPECIFIED;
   }
-}
-
-function firstLine(text: string): string {
-  return text.split("\n")[0] ?? "";
 }
 
 function kindLabel(value: ApplicationSQLKind): string {

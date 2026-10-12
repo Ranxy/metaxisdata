@@ -2995,7 +2995,8 @@ func (x *ManualSQLMetadata) GetDatabaseName() string {
 type ApplicationSQLMetadata struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	ApplicationSqlId string                 `protobuf:"bytes,1,opt,name=application_sql_id,json=applicationSqlId,proto3" json:"application_sql_id,omitempty"`
-	// A display label taken from the statement's first line.
+	// A display label for a one-line context: the whole statement with every run of
+	// whitespace collapsed to a single space, and bounded. The full text is in sql_text.
 	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	// The parameterized statement, exactly as it is stored.
 	SqlText string `protobuf:"bytes,3,opt,name=sql_text,json=sqlText,proto3" json:"sql_text,omitempty"`

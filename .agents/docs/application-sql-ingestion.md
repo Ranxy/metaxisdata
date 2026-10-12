@@ -181,8 +181,18 @@ Relations are coloured by which writer stored them: `sql`, `openlineage`, `appli
 
 A statement node's GUID ends in a generated identifier, so the page resolves a label for it: on
 first sight of an `APPLICATION_SQL` GUID it calls `GetApplicationSQL` once and hands the statement's
-first line to `lineageAssetView` as a name override. Only statement nodes cost a request, and a
-failed lookup is only logged.
+label to `lineageAssetView` as a name override. The root's own type is seeded before the relations
+arrive, which is what makes that lookup skip it, so the root asks for its label separately — it is
+the one node always on screen. Only statement nodes cost a request, and a failed lookup is only
+logged.
+
+The label itself is `statementLabel`: every run of whitespace collapsed to a single space, bounded to
+120 runes. It is computed twice — `backend/store/application_sql.go` fills the mirror's `name`, and
+`frontend/src/lib/statementLabel.ts` serves the two places that hold the text rather than the mirror
+row (the Application SQL list, and the graph's per-node lookup). The two implementations have to
+agree: they are the same statement read through a breadcrumb and through a canvas node. Taking the
+first line instead, as it did at first, labels a multi-line statement `WITH recent AS (` or
+`INSERT INTO orders (` and labels a statement that opens with a comment by the keyword after it.
 
 `TableLineageSection` renders the same writer as a column value, and a relation's meta GUID is the
 object whose definition the analyzer read — so on that object's own page the writer is the page
@@ -371,7 +381,7 @@ makes that change, against a deployment that actually has the rows.
 | Management service | [backend/api/v1/application_service.go](../../backend/api/v1/application_service.go), `proto/v1/v1/application_service.proto` |
 | Runner | [backend/runner/lineageanalyzer/analyzer.go](../../backend/runner/lineageanalyzer/analyzer.go) — `queueAll`, `buildSQL`, `classifyApplicationSQL` |
 | Schema | `backend/migrator/migration/LATEST.sql` and `0.1/0019##application_sql.sql` |
-| SPA | `frontend/src/pages/ApplicationManagementPage.vue` (under `/settings/applications`), `ApplicationSQLPage.vue`, `src/components/application/ApplicationSelect.vue`, `src/components/metadata/ApplicationSQL{List,MetadataDetail}.vue`, `src/api/application.ts`, `src/lib/lineageOrigin.ts` |
+| SPA | `frontend/src/pages/ApplicationManagementPage.vue` (under `/settings/applications`), `ApplicationSQLPage.vue`, `src/components/application/ApplicationSelect.vue`, `src/components/metadata/ApplicationSQL{List,MetadataDetail}.vue`, `src/api/application.ts`, `src/lib/lineageOrigin.ts`, `src/lib/statementLabel.ts` |
 | Permissions | `backend/common/permission/permission.json` (`applications.*`, `applicationSqls.*`), `backend/store/predefined_roles.go` |
 
 Tests and their gates:
@@ -385,7 +395,7 @@ Tests and their gates:
 | Endpoint | `api/v1/application_sql_handler_test.go` | `go test ./backend/api/v1/` |
 | Graph edge shape | `api/v1/lineage_service_graph_test.go` (`TestBuildLineageGraphDrawsTableLevelEdges`) | same |
 | Whole chain | `test/integration/runner/application_sql_service_test.go` | `go test -tags=integration -run ApplicationSQLReport ./backend/test/integration/runner` |
-| SPA | `lineageOrigin.test.ts`, `lineageAsset.test.ts`, `permissions.test.ts`, `ApplicationSQLFacts.test.ts`, `TableLineageSection.test.ts` | `pnpm --dir frontend biome:check && lint && i18n && type-check && test run` |
+| SPA | `lineageOrigin.test.ts`, `lineageAsset.test.ts`, `permissions.test.ts`, `ApplicationSQLFacts.test.ts`, `TableLineageSection.test.ts`, `statementLabel.test.ts` | `pnpm --dir frontend biome:check && lint && i18n && type-check && test run` |
 | Cost | `sqlsanitize/benchmark_test.go`, `sqlsanitize/ingest_benchmark_test.go`, `sqlsanitize/allocation_budget_test.go` | `go test ./backend/plugin/sqlsanitize/ -bench . -benchmem` |
 
 Two sanitizer suites guard a rule change from opposite ends. `TestSanitizedStatementsKeepTheirLineage`

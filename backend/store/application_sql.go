@@ -25,7 +25,7 @@ const applicationSQLGUIDPrefix = "__application_sql__/"
 // without detaching the object from its lineage and history.
 const applicationSQLIDLength = 16
 
-// applicationSQLLabelRunes bounds the display label taken from a statement's first line.
+// applicationSQLLabelRunes bounds the display label of a statement.
 const applicationSQLLabelRunes = 120
 
 // ApplicationSQLKind is the read/write classification of a statement. It is written by the
@@ -192,17 +192,21 @@ func buildApplicationSQLGUID(instanceResourceID, databaseName, schemaName, appli
 	return common.BuildMetaGUID(instanceResourceID, databaseName, schemaName, applicationSQLGUIDPrefix+applicationSQLID)
 }
 
-// statementLabel is the display name of a statement: its first line, bounded. The full text
-// is in SQLText.
+// statementLabel is the display name of a statement for a one-line context: every run of
+// whitespace collapsed to a single space, then bounded. The full text is in SQLText.
+//
+// The whole statement is the label, not its first line. An application reports the
+// statement as it wrote it, so a multi-line one would otherwise be named by whatever
+// happens to sit on line one — `WITH recent AS (` or `INSERT INTO orders (` — and a
+// statement that opens with a comment would be named by the line after it. Collapsing
+// keeps the identifying part (the target, the tables it reads) in the label.
 func statementLabel(text string) string {
-	if i := strings.IndexByte(text, '\n'); i >= 0 {
-		text = text[:i]
-	}
-	runes := []rune(strings.TrimSpace(text))
+	label := strings.Join(strings.Fields(text), " ")
+	runes := []rune(label)
 	if len(runes) > applicationSQLLabelRunes {
 		return string(runes[:applicationSQLLabelRunes]) + "…"
 	}
-	return string(runes)
+	return label
 }
 
 // ReportApplicationSQLs records one reported entry, whose statements share a transaction:

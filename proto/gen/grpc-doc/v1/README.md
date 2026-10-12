@@ -1974,7 +1974,7 @@ registry row is written once and those numbers change with every report.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | application_sql_id | [string](#string) |  |  |
-| name | [string](#string) |  | A display label taken from the statement&#39;s first line. |
+| name | [string](#string) |  | A display label for a one-line context: the whole statement with every run of whitespace collapsed to a single space, and bounded. The full text is in sql_text. |
 | sql_text | [string](#string) |  | The parameterized statement, exactly as it is stored. |
 | instance_resource | [string](#string) |  | Format: instances/{instance} |
 | database_name | [string](#string) |  |  |

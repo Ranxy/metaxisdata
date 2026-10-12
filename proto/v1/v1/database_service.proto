@@ -650,7 +650,8 @@ message ManualSQLMetadata {
 message ApplicationSQLMetadata {
   string application_sql_id = 1;
 
-  // A display label taken from the statement's first line.
+  // A display label for a one-line context: the whole statement with every run of
+  // whitespace collapsed to a single space, and bounded. The full text is in sql_text.
   string name = 2;
 
   // The parameterized statement, exactly as it is stored.

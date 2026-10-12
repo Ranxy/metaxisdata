@@ -67,8 +67,11 @@
         <h2 class="text-sm font-medium">
           {{ t("metadataBrowser.definition") }}
         </h2>
+        <!-- Bounded like every other definition viewer in the app (the Monaco one caps at
+             520px): a statement can run to hundreds of lines, and an unbounded block would
+             push the facts and the lineage that follow it off the page. -->
         <pre
-          class="overflow-x-auto rounded-md border bg-muted/40 p-3 font-mono text-xs whitespace-pre-wrap"
+          class="max-h-[32rem] overflow-auto rounded-md border bg-muted/40 p-3 font-mono text-xs whitespace-pre-wrap"
         >{{ applicationSql.sqlText }}</pre>
         <p class="text-xs text-muted-foreground">
           {{ t("applicationSql.detailHint") }}

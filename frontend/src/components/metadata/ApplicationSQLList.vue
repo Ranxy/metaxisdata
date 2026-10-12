@@ -24,15 +24,8 @@
           <TableCell>
             <div class="flex items-center gap-2">
               <TerminalSquare class="h-4 w-4 shrink-0 text-muted-foreground" />
+              <!-- The label is the whole statement on one line, so it is the row. -->
               <span class="truncate font-mono text-xs">{{ row.value.name }}</span>
-            </div>
-            <!-- The stored text is what the object is; the label above is its first
-                 line, so the rest is worth showing when it is not the same thing. -->
-            <div
-              v-if="restOfStatement(row.value) !== ''"
-              class="mt-1 truncate text-xs text-muted-foreground"
-            >
-              {{ restOfStatement(row.value) }}
             </div>
           </TableCell>
           <TableCell class="text-muted-foreground">
@@ -84,15 +77,4 @@ const rows = computed(() => {
   }
   return found;
 });
-
-/** The statement with the label's first line taken off the front. */
-function restOfStatement(value: ApplicationSQLMetadata): string {
-  const firstLineEnd = value.sqlText.indexOf("\n");
-  if (firstLineEnd < 0) {
-    return value.sqlText.length > value.name.length
-      ? value.sqlText.slice(value.name.length).trim()
-      : "";
-  }
-  return value.sqlText.slice(firstLineEnd + 1).trim();
-}
 </script>
