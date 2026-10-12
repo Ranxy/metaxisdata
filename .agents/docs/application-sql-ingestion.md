@@ -623,7 +623,7 @@ default:
 | ~~**P1 数据模型**~~ **已完成** | 四张表 + `0019##application_sql.sql` 增量 + `backend/store/{application,application_api_key,application_sql}.go`;见 §13.9 | `go test ./backend/store/`、`./backend/migrator/`;`golangci-lint` 0 issues;两份 schema 已在真 PostgreSQL 上跑过并验幂等 |
 | ~~**P3 摄入与管理 API**~~ **已完成** | 上报端点(含 §5.4 的分析器闸门)+ key 认证 + `ApplicationService` 的十个 RPC + 权限目录与成员基线;见 §13.10 | handler 单测(无 key / 坏 key / 超体 / 超批 / 作用域 / 逐项 REJECTED / `reportId` 去重);`TestEveryMethodIsPermissionGated` 与 `TestCatalogMatchesSource` 通过;`go test ./backend/...` 全绿 |
 | ~~**P4 血缘接入**~~ **已完成** | runner 扫描 `APPLICATION_SQL`、`buildSQL` 返回送分析文本、与 manual SQL 同形的边、读/写分类 + `kind` 回写 + D9 表级出边;`GetMetadataSchema` 分支;见 §13.11 | `go test ./backend/runner/lineageanalyzer/`(分类逐例);`go test ./backend/...` 全绿 |
-| **P5 前端** | ①origin 第三类(已完成,§13.12);②应用管理页与应用 SQL 页;③图节点标签 | `pnpm --dir frontend biome:check && lint && i18n && type-check && test run` |
+| ~~**P5 前端**~~ **已完成** | ①origin 第三类(§13.12);②应用管理页与应用 SQL 页(§13.14);③图节点标签(§13.15) | `pnpm --dir frontend biome:check && lint && i18n && type-check && test run` |
 | ~~**端到端集成测试**~~ **已完成** | `backend/test/integration/runner/application_sql_service_test.go`,见 §13.13。它抓到了两个只有真跑才暴露的 bug | `go test -tags=integration -run ApplicationSQLReport ./backend/test/integration/runner` |
 | **P6 收尾** | 把本文件改写成维护参考并在 `.agents/docs/README.md` 加行;`docs/` 里补一份面向接入方的接口文档(上报格式、key 申请、重试语义、占位符约定) | 文档 review |
 
@@ -831,7 +831,7 @@ runner 现在把上报的语句当一等对象处理:
 
 `eslint.config.mjs` 的 `no-unused-keys` 忽略表加了这两条键:该规则跟不了 `originLabelKey()` 这种"由 helper 返回的键",既有三个 origin 的键本来就在同一张表里、同一条注释下。
 
-**P5 剩下的一件事,以及它为什么比看起来大**:图节点标签。后端已经为 `GetLineageGraph` 的 `APPLICATION_SQL` 节点回填了 `LineageNode.name`(语句首行,§13.11),但**图页根本不读它**——页面自己的画布是从 `GetLineage` 的关系流里搭起来的,而关系里没有名字字段;`lineageAssetView` 只从 GUID 的分段推名字。所以要让节点显示成人能读的标签,得先给页面补一条"GUID → 名字"的来源(比如按需 `GetMetadata` 那几个应用 SQL 节点),那是一个独立的改动,不该混在这一步里。今天 manual SQL 节点同样显示成 `__manual_sql__/<id>`,所以这不是本方案引入的退步。
+图节点标签这一步已经补上,见 §13.15。
 
 ### 13.13 端到端集成测试,以及它抓到的两个真 bug
 
@@ -849,6 +849,31 @@ runner 现在把上报的语句当一等对象处理:
 两个 bug 都补了 hermetic 回归测试(`TestSanitizeKeepsTheSpaceTheLexerSwallowed`、分类测试里对表级边 `Transformation` 非空的断言)。
 
 **这条测试现在是这套功能的跨层护栏**:handler 的单测止于 store 接口、store 测试是 hermetic 的、分类测试看不到注册表——中间任何一处断掉,原先所有套件都会保持绿。
+
+### 13.14 P5 第二步:两个页面
+
+| 页面 | 内容 |
+| --- | --- |
+| 应用管理页 `/applications` | 新建应用(同时签发第一个 key,明文**停在屏幕上**直到操作者关掉,而不是做成会淡出的 toast)、列出掩码 key 与逐 key 计数、再签发一个做轮换、撤销、停用/恢复、删除 |
+| 应用 SQL 页 `/application-sql` | 参数化语句、类型、作用域、执行次数,按实例/应用/类型/全文筛;详情对话框把存储文本**只读**展示,旁边是逐应用的上报明细与指纹 |
+
+两页都不改语句文本。它是机器事实,不是资产:改文本会让它和标识它的指纹脱钩。应用身份也不可编辑——它来自 key。
+
+通过 `handleError` 到达 locale 的 10 个键加入了 `no-unused-keys` 忽略表,理由与表里已有的错误键一致:规则跟不了"由 helper 返回的键",而 `scripts/check-vue-i18n.mjs` 会追踪它们。
+
+**未验证**:两页过了类型检查、lint 与测试套件(461 个测试),但**没有任何东西在运行时跑过它们**;`pnpm audit:ui` 需要一个开着 DevTools 端口的浏览器,本环境没有。
+
+### 13.15 P5 第三步:图节点标签
+
+后端在 §13.11 已经为 `GetLineageGraph` 的 `APPLICATION_SQL` 节点回填了 `LineageNode.name`,但**图页不读它**——画布是从 `GetLineage` 的**关系流**搭起来的,而 `LineageRelation` 没有名字字段。所以真正要做的是给页面补一条"GUID → 名字"的来源:
+
+- `lineageAssetView` 加了第四个可选参数 `nameOverride`,非空时优先于 GUID 分段推出的名字;
+- 图页维护 `guidNameMap`,在**首次**看到某个 `APPLICATION_SQL` 类型的 GUID 时调一次 `GetApplicationSQL(guid)`,取语句首行作为标签。只对应用 SQL 节点发请求(一次一个),其余对象一个请求都不多花;
+- 失败只打日志:标签是装饰,节点照旧按 GUID 画。
+
+顺带把页面里重复两遍的关系遍历收敛成一个 `recordGuids`。
+
+测试:`lineageAsset.test.ts` 加了一条(解析出的名字优先;空串不算名字)。页面本身仍然没有运行时验证——那条限制见 §13.14。
 
 ## 附:一句话总览
 
