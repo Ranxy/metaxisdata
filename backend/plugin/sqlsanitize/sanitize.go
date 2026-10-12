@@ -29,6 +29,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"strings"
+	"unicode/utf8"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
@@ -57,8 +58,8 @@ const (
 	neutralLiteral = "'?'"
 )
 
-// ErrUnlexable reports a statement that could not be tokenized: empty input, or a
-// dialect whose lexer stopped on a malformed token. Such a statement is never
+// ErrUnlexable reports a statement that could not be tokenized: empty input, text that is not
+// UTF-8 at all, or a dialect whose lexer stopped on a malformed token. Such a statement is never
 // stored.
 var ErrUnlexable = errors.New("statement could not be lexed")
 
@@ -81,6 +82,13 @@ type Statement struct {
 // Sanitize rewrites one statement. The caller splits a multi-statement script first:
 // this package is defined for exactly one statement, like the analyzers it feeds.
 func Sanitize(engine storepb.Engine, sql string) (Statement, error) {
+	// The stored text goes into `TEXT` columns of a UTF-8 database, and a byte that is not UTF-8
+	// has no valid form to store. Both dialect families copy an identifier verbatim, so an
+	// invalid byte inside one would be carried all the way to the write and fail there, as a
+	// store error the application would be told to retry forever.
+	if !utf8.ValidString(sql) {
+		return Statement{}, ErrUnlexable
+	}
 	spans := tokenSpans(engine, sql)
 	if len(spans) == 0 {
 		return Statement{}, ErrUnlexable

@@ -476,7 +476,6 @@ Application is one application whose statements are reported to the workspace.
 | display_name | [string](#string) |  | The display name. It is unique: it is how a person names the application. |
 | description | [string](#string) |  |  |
 | disabled | [bool](#bool) |  | A stopped application keeps every row it ever reported, and none of its keys report anything any more. |
-| statement_count | [int64](#int64) |  | How many statements the application has reported, over every key it holds. |
 | created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 
@@ -501,7 +500,7 @@ after creation.
 | created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | last_used_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | The last request this key was used for, and how many it has made. |
 | request_count | [int64](#int64) |  | Per-key counters. They stand in for one audit row per request: the audit ledger is kept forever, so auditing machine traffic would grow it with request volume rather than with distinct statements. |
-| statement_accepted_count | [int64](#int64) |  |  |
+| statement_accepted_count | [int64](#int64) |  | Statements rather than reports: a report whose entry carried a script counts once per statement in it. |
 | statement_rejected_count | [int64](#int64) |  |  |
 
 

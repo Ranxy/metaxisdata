@@ -90,11 +90,12 @@ what matters here:
 | Rule | Behavior |
 | --- | --- |
 | Identity | From the key. A payload naming an application is ignored. |
-| Body | 8 MiB, at most 1000 statements, unknown JSON fields rejected. |
+| Body | 8 MiB, exactly one JSON object, at most 1000 statements, `count` at least 1, unknown JSON fields rejected. |
 | Scope | `instance` must resolve, and its engine must have a registered analyzer, or the whole report is refused. `database` is required, `schema` for the PostgreSQL family. |
 | Splitting | A reported item is one statement; a script is split by the analyzer's own splitter and each statement is fingerprinted on its own. The count applies to each. |
-| Per item | Sanitize, then the gate; a failure refuses that item alone. |
-| Retry | Repeating the last accepted `reportId` is answered from the previous outcome without counting twice. |
+| Per item | Sanitize and gate **every** statement of the item first, then store the item in one transaction. A failure refuses that item alone and stores none of it; its neighbours are unaffected. |
+| Counters | The response counts entries; the key's `statement_*_count` counters count the statements inside them, so a script entry counts once per statement. |
+| Retry | Repeating the `reportId` of a report that landed whole is answered from the previous outcome without counting twice. A report with any refusal is not remembered, so its id stays usable for resending the refused entries. The check reads the key row before anything is written, so two copies of one `reportId` arriving at once are both processed — a retry is assumed to be sequential, which is what a client that did not see the answer does. |
 
 ## Core mechanics
 
@@ -104,6 +105,12 @@ A statement is stored only if `lineage.Analyzer.Analyze` accepts it. A raw parse
 equivalent: StarRocks view DDL that the analyzer handles through its view-body fallback is rejected
 by the bare parser, so a parser gate would refuse statements that can produce complete lineage. The
 cost is one parse per statement at ingest, and the runner parses again.
+
+"Accepts it" means the same thing at ingest as it does in the runner, which is why an
+`UnsupportedStatementError` is **not** a refusal: the analyzer returns the edges it did find beside
+the gap, and the runner stores both — the edges on the statement and the gap on its lineage version.
+Refusing at ingest would throw away lineage the graph can draw. Only an error that carries no
+analysis at all (a hard parse failure) refuses the statement.
 
 ### `sqlsanitize` — three forms of one statement
 
@@ -241,7 +248,7 @@ statement under the same dialect.
 | `05_values` | N5, batch size against group arity |
 | `06_constant_runs` | N6, including the run that must begin at the placeholder |
 | `07_statement_shapes` | realistic application statements, so a rule change has to answer for one |
-| `08_refusals` | what must not be stored |
+| `08_refusals` | what must not be stored — text that is not valid UTF-8 is refused too, but YAML cannot carry an invalid byte, so `sanitize_test.go` pins that one |
 | `09_dialects` | the asymmetries above, written out
 
 ## Invariants
@@ -250,6 +257,9 @@ statement under the same dialect.
 | --- | --- |
 | Only `sqlsanitize.Sanitize`'s output is stored | the original text, with its literals, reaches the database |
 | Only a statement the lexer walks to its end is sanitized | a stretch no rule inspected — an unterminated PostgreSQL string holds a literal — is copied into the store |
+| Only text that is valid UTF-8 is sanitized | an invalid byte is copied into `sql_text` and the write fails there, as a `STORE_FAILED` the caller is told to retry forever |
+| No log line carries a statement the sanitizer could not rewrite | the one input that still holds its literals reaches the log |
+| One entry's statements are stored in one transaction | a retry of the entry counts the statements that did land a second time |
 | The gate is `lineage.Analyzer.Analyze`, not a dialect parser | statements the analyzer accepts are refused |
 | A refusal stores nothing | rows accumulate that can never produce lineage |
 | The reported identity comes from the key | a report can claim to be another application |
@@ -274,11 +284,12 @@ makes that change, against a deployment that actually has the rows.
 
 | Symptom | Behavior |
 | --- | --- |
-| No key, an unknown key, a revoked key, a stopped application | 401, nothing stored, `slog.Warn` |
+| No key, an unknown key, a revoked key, a stopped application | 401, nothing stored, and no log line: the key is the credential, and a rejected one is not worth a line per request |
 | Malformed payload, unknown instance, engine without an analyzer | 4xx, nothing stored |
 | Body over 8 MiB, more than 1000 statements | 413 / 400, nothing stored |
-| One statement fails sanitize or the gate | that item is `REJECTED` with a reason; its neighbours are stored, and a WARN carries the application, engine, reason and the SQL's first line |
+| One statement of an item fails sanitize or the gate | the whole item is `REJECTED` with the reason, and the store is never asked, so none of the item's statements is counted; its neighbours are stored, and a WARN carries the application, engine, reason and, when the statement has a sanitized form, its first line |
 | The analysis fails after a successful ingest | the version row carries the error and the edges are cleared; the statement row stays |
+| Recording the report outcome fails after the entries were stored | the statements are stored and counted, but the report is not remembered as the last one, so a retry of it counts again; a WARN names the failure |
 | A statement has no relation and is not a write | it stays in the registry and the list, and never appears on the canvas |
 | An application is deleted | its keys and observations cascade; statements no other application reports are deleted with their mirror, lineage and version |
 | A statement is deleted by hand | the same, for that statement |

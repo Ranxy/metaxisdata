@@ -54,13 +54,6 @@ export declare type Application = Message<"metaxisdata.v1.Application"> & {
   disabled: boolean;
 
   /**
-   * How many statements the application has reported, over every key it holds.
-   *
-   * @generated from field: int64 statement_count = 6;
-   */
-  statementCount: bigint;
-
-  /**
    * @generated from field: google.protobuf.Timestamp created_at = 7;
    */
   createdAt?: Timestamp;
@@ -131,6 +124,9 @@ export declare type ApplicationAPIKey = Message<"metaxisdata.v1.ApplicationAPIKe
   requestCount: bigint;
 
   /**
+   * Statements rather than reports: a report whose entry carried a script counts once per
+   * statement in it.
+   *
    * @generated from field: int64 statement_accepted_count = 8;
    */
   statementAcceptedCount: bigint;

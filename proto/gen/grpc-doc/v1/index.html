@@ -1818,13 +1818,6 @@ anything any more. </p></td>
                 </tr>
               
                 <tr>
-                  <td>statement_count</td>
-                  <td><a href="#int64">int64</a></td>
-                  <td></td>
-                  <td><p>How many statements the application has reported, over every key it holds. </p></td>
-                </tr>
-              
-                <tr>
                   <td>created_at</td>
                   <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
                   <td></td>
@@ -1911,7 +1904,8 @@ distinct statements. </p></td>
                   <td>statement_accepted_count</td>
                   <td><a href="#int64">int64</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>Statements rather than reports: a report whose entry carried a script counts once per
+statement in it. </p></td>
                 </tr>
               
                 <tr>

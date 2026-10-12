@@ -114,9 +114,6 @@ message Application {
   // anything any more.
   bool disabled = 5;
 
-  // How many statements the application has reported, over every key it holds.
-  int64 statement_count = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
-
   google.protobuf.Timestamp created_at = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
   google.protobuf.Timestamp updated_at = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
@@ -144,6 +141,9 @@ message ApplicationAPIKey {
   // forever, so auditing machine traffic would grow it with request volume rather than with
   // distinct statements.
   int64 request_count = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Statements rather than reports: a report whose entry carried a script counts once per
+  // statement in it.
   int64 statement_accepted_count = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
   int64 statement_rejected_count = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
 }

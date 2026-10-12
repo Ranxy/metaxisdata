@@ -166,8 +166,10 @@ func TestSanitizeRemovesComments(t *testing.T) {
 		// A block comment becomes one space so that a and b do not fuse.
 		{storepb.Engine_MYSQL, "SELECT a/* c */FROM t", "SELECT a FROM t"},
 		{storepb.Engine_POSTGRES, "SELECT a /* c */ FROM t WHERE b = 1", "SELECT a   FROM t WHERE b = ?"},
-		// `#` is not a comment in PostgreSQL.
-		{storepb.Engine_POSTGRES, "SELECT a FROM t", "SELECT a FROM t"},
+		// A block comment nests: stopping at the first `*/` would leave the outer close behind.
+		{storepb.Engine_MYSQL, "SELECT 1 /* a /* b */ */ AS c", "SELECT ?   AS c"},
+		// `#` is not a comment in PostgreSQL, so it stays in the text as an operator.
+		{storepb.Engine_POSTGRES, "SELECT a#b FROM t", "SELECT a#b FROM t"},
 		// A comment inside a gap is dropped; the comment's own text never reaches the store.
 		{storepb.Engine_MYSQL, "SELECT /* user=alice@example.com */ a FROM t", "SELECT   a FROM t"},
 	}
@@ -176,6 +178,25 @@ func TestSanitizeRemovesComments(t *testing.T) {
 		got, err := Sanitize(c.dialect, c.sql)
 		require.NoError(t, err, c.sql)
 		require.Equal(t, c.want, got.Text, c.sql)
+	}
+}
+
+// TestSanitizeRejectsInvalidUTF8 pins that a statement is only stored if it can be stored: the
+// two dialect families copy an identifier verbatim, so an invalid byte inside one would reach
+// the write and fail there, as a store error the application would be told to retry forever.
+func TestSanitizeRejectsInvalidUTF8(t *testing.T) {
+	t.Parallel()
+
+	statements := []string{
+		"SELECT `a\xffb` FROM t",
+		"SELECT '\xc3' AS s",
+		"SELECT a FROM t WHERE b = '\xff\xfe'",
+	}
+	for _, engine := range []storepb.Engine{storepb.Engine_MYSQL, storepb.Engine_POSTGRES, storepb.Engine_STARROCKS} {
+		for _, sql := range statements {
+			_, err := Sanitize(engine, sql)
+			require.ErrorIsf(t, err, ErrUnlexable, "%s %q", engine, sql)
+		}
 	}
 }
 

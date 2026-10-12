@@ -826,7 +826,12 @@ async function resolveStatementName(guid: string, metaType: MetaType) {
   pendingNameFetch.add(guid);
   try {
     const statement = await getApplicationSQL(guid);
-    const label = statement.sqlText.split("\n")[0]?.trim();
+    // The relations this page draws from carry no name, so a statement node's label has to be
+    // fetched. Bound it the way the server bounds the label it serves: the first line, and 120
+    // runes of it.
+    const label = Array.from(statement.sqlText.split("\n")[0]?.trim() ?? "")
+      .slice(0, 120)
+      .join("");
     if (label) {
       // A new Map so the ref is seen to change: the view is computed from it.
       const next = new Map(guidNameMap.value);

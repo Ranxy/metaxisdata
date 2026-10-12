@@ -37,14 +37,17 @@ CREATE TABLE IF NOT EXISTS application_sql_api_key (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_used_at TIMESTAMPTZ,
     revoked_at TIMESTAMPTZ,
-    -- Swallows one immediate client retry: a repeat of the last accepted report id is
-    -- answered with the previous outcome instead of counting twice. Empty means no report
-    -- has been accepted yet.
+    -- Swallows one immediate client retry: a repeat of the last report id that landed whole
+    -- is answered with the previous outcome instead of counting twice. A report with a
+    -- refusal is not remembered here, because the application has to be able to send that
+    -- report again. Empty means no report has landed whole yet.
     last_report_id TEXT NOT NULL DEFAULT '',
     -- Per-key counters, which is what this endpoint keeps instead of one audit row per
     -- request. audit_log is kept forever, so auditing machine traffic would make it grow
     -- with request volume rather than with distinct statements.
     request_count BIGINT NOT NULL DEFAULT 0,
+    -- Statements, not entries: an entry carrying a script counts once per statement in it.
+    -- The response counts entries, because its results are one per entry.
     statement_accepted_count BIGINT NOT NULL DEFAULT 0,
     statement_rejected_count BIGINT NOT NULL DEFAULT 0
 );
@@ -69,24 +72,25 @@ CREATE TABLE IF NOT EXISTS application_sql (
     database_name TEXT NOT NULL,
     schema_name TEXT NOT NULL DEFAULT '',
     -- The engine of the reporting instance, cached so the runner and the list filters do
-    -- not have to join. Refreshed when the instance's engine is re-read.
+    -- not have to join. It follows the reporting instance's next report; nothing re-reads an
+    -- instance's engine on its own.
     engine INT2 NOT NULL,
     -- sha256 of the canonical form. Stored as hex so it can be compared and debugged.
     fingerprint TEXT NOT NULL,
-    -- The rule version that produced the fingerprint. A rule change silently splits one
-    -- statement into several rows until the re-fingerprint pass has run, so the version is
-    -- recorded per row rather than assumed.
+    -- The rule version that produced the fingerprint. A rule change splits one statement
+    -- into rows fingerprinted under two versions, and this column is how a deployment finds
+    -- out; reconciling them is that change's business, not this schema's.
     fingerprint_version INT2 NOT NULL,
     -- The parameterized statement: every literal is `?` and comments are gone. This is the
     -- only form of a statement that is ever stored.
     sql_text TEXT NOT NULL,
-    -- 0 UNKNOWN, 1 READ, 2 WRITE. Written by the runner once it has analyzed the
-    -- statement; it is a filter cache, never the source of the classification.
+    -- 0 UNKNOWN, 1 READ, 2 WRITE. Written by the runner before the analysis writes the
+    -- statement's edges; it is a filter cache, never the source of the classification, so a
+    -- failed edge write leaves it set until the next analysis rewrites both.
     kind INT2 NOT NULL DEFAULT 0,
     execution_count BIGINT NOT NULL DEFAULT 0,
     first_seen_at TIMESTAMPTZ NOT NULL,
     last_seen_at TIMESTAMPTZ NOT NULL,
-    content_search TEXT NOT NULL DEFAULT '',
     search_vector TSVECTOR NOT NULL DEFAULT ''::tsvector,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

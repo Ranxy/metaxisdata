@@ -92,13 +92,11 @@ type Application struct {
 	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
 	// A stopped application keeps every row it ever reported, and none of its keys report
 	// anything any more.
-	Disabled bool `protobuf:"varint,5,opt,name=disabled,proto3" json:"disabled,omitempty"`
-	// How many statements the application has reported, over every key it holds.
-	StatementCount int64                  `protobuf:"varint,6,opt,name=statement_count,json=statementCount,proto3" json:"statement_count,omitempty"`
-	CreatedAt      *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt      *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	Disabled      bool                   `protobuf:"varint,5,opt,name=disabled,proto3" json:"disabled,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Application) Reset() {
@@ -166,13 +164,6 @@ func (x *Application) GetDisabled() bool {
 	return false
 }
 
-func (x *Application) GetStatementCount() int64 {
-	if x != nil {
-		return x.StatementCount
-	}
-	return 0
-}
-
 func (x *Application) GetCreatedAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.CreatedAt
@@ -204,7 +195,9 @@ type ApplicationAPIKey struct {
 	// Per-key counters. They stand in for one audit row per request: the audit ledger is kept
 	// forever, so auditing machine traffic would grow it with request volume rather than with
 	// distinct statements.
-	RequestCount           int64 `protobuf:"varint,7,opt,name=request_count,json=requestCount,proto3" json:"request_count,omitempty"`
+	RequestCount int64 `protobuf:"varint,7,opt,name=request_count,json=requestCount,proto3" json:"request_count,omitempty"`
+	// Statements rather than reports: a report whose entry carried a script counts once per
+	// statement in it.
 	StatementAcceptedCount int64 `protobuf:"varint,8,opt,name=statement_accepted_count,json=statementAcceptedCount,proto3" json:"statement_accepted_count,omitempty"`
 	StatementRejectedCount int64 `protobuf:"varint,9,opt,name=statement_rejected_count,json=statementRejectedCount,proto3" json:"statement_rejected_count,omitempty"`
 	unknownFields          protoimpl.UnknownFields
@@ -1343,14 +1336,13 @@ var File_v1_application_service_proto protoreflect.FileDescriptor
 
 const file_v1_application_service_proto_rawDesc = "" +
 	"\n" +
-	"\x1cv1/application_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x13v1/annotation.proto\x1a\x0fv1/common.proto\"\x9b\x03\n" +
+	"\x1cv1/application_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x13v1/annotation.proto\x1a\x0fv1/common.proto\"\xed\x02\n" +
 	"\vApplication\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12*\n" +
 	"\x0eapplication_id\x18\x02 \x01(\tB\x03\xe0A\x03R\rapplicationId\x12&\n" +
 	"\fdisplay_name\x18\x03 \x01(\tB\x03\xe0A\x02R\vdisplayName\x12 \n" +
 	"\vdescription\x18\x04 \x01(\tR\vdescription\x12\x1a\n" +
-	"\bdisabled\x18\x05 \x01(\bR\bdisabled\x12,\n" +
-	"\x0fstatement_count\x18\x06 \x01(\x03B\x03\xe0A\x03R\x0estatementCount\x12>\n" +
+	"\bdisabled\x18\x05 \x01(\bR\bdisabled\x12>\n" +
 	"\n" +
 	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\tcreatedAt\x12>\n" +
 	"\n" +

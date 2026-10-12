@@ -118,9 +118,9 @@ func placeholderListEnd(raws []string, open int) (int, bool) {
 	return i, true
 }
 
-// placeholderGroupEnd matches `( ? (, ?)* )` at open and returns the index of the closing
-// parenthesis. It differs from placeholderListEnd only in reading as a VALUES row group, where
-// the empty group `()` is also allowed to end the match.
+// placeholderGroupEnd matches a `( ? (, ?)* )` group as a VALUES row group. It reads only the
+// parenthesis, because a group of a VALUES list is the same shape as an IN list; the two rules
+// differ in which list they were called for, not in what they match.
 func placeholderGroupEnd(raws []string, open int) (int, bool) {
 	if open >= len(raws) || raws[open] != "(" {
 		return 0, false

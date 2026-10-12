@@ -26,6 +26,7 @@
 | I2 | [backend/server/grpc_routes.go:318](backend/server/grpc_routes.go#L318) | 四条匿名 OAuth 路由各自调用 `oauthEndpointMiddleware`,每次新建独立 store([oauth_endpoints.go:26](backend/server/oauth_endpoints.go#L26)),实际是 4 份配额;早先文档写作「共享一份上限」 | 匿名调用方可按 4 倍速率打这四条路由(每路由 10/s、burst 20) | 待决策:合并为只创建一次的 middleware(会收紧 4 倍,曾因集成用例回退)或保留现状并只按实现描述文档 |
 | D16 | [backend/api/v1/iam_helpers.go:28](backend/api/v1/iam_helpers.go#L28) | 「最后管理员」不变式只认 `roles/workspaceAdmin` 精确字符串(:36);自定义角色即使持全部权限也不计入 | guard 与实际授权能力脱节:无法以自定义角色表达「唯一管理员」,workspace 永远脱离不了预定义角色(偏保守,不会误判为仍有管理员) | 按权限判定管理员,或把该限制写进 `security-posture.md` |
 | D17 | [backend/api/v1/role_service.go:110](backend/api/v1/role_service.go#L110) | `UpdateRole` 收缩已绑定角色权限无任何影响提示;`DeleteRole` 反而拒绝删除仍被绑定的角色(:155) | 管理员可无意清空已绑定角色权限,让用户静默失去访问 | 返回受影响绑定/用户数并要求确认 |
+| (新)GUID 转义 | [backend/common/guid.go:16](backend/common/guid.go#L16) | `EscapeGUIDPart` 只把 `;` 换成 `%3B`,而 `%3B` 自身不转义,转义不单射;应用 SQL 上报的 `database`/`schema` 是任意 payload 文本、无形状校验 | 同一指纹的语句在 `database=";"` 与 `database="%3B"` 下生成同一 GUID,第二条撞 `guid` 唯一索引后永远 `STORE_FAILED`(需持有效 key,自伤);若与真实对象的 GUID 相撞,`GetMetaRegistry` 会返回 "found multiple meta registry" | 上报入口对 `database`/`schema` 做字符集/长度校验并拒绝含 `;` 的值;直接改转义须同时转义 `%`,会改变已入库 GUID,不能轻动 |
 
 ## 已失去意义的旧结论(勿再引用)
 

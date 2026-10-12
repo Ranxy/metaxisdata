@@ -4002,10 +4002,6 @@ components:
                     description: |-
                         A stopped application keeps every row it ever reported, and none of its keys report
                          anything any more.
-                statementCount:
-                    readOnly: true
-                    type: string
-                    description: How many statements the application has reported, over every key it holds.
                 createdAt:
                     readOnly: true
                     type: string
@@ -4051,6 +4047,9 @@ components:
                 statementAcceptedCount:
                     readOnly: true
                     type: string
+                    description: |-
+                        Statements rather than reports: a report whose entry carried a script counts once per
+                         statement in it.
                 statementRejectedCount:
                     readOnly: true
                     type: string

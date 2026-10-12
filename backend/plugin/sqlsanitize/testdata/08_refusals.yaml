@@ -2,6 +2,9 @@ name: Refusals
 # The cases the sanitizer must not accept. Each one is a statement a lexer cannot walk to its
 # end, and accepting one would store bytes no rule inspected: in PostgreSQL an unterminated
 # string is not a token at all, so the literal would be copied into the store verbatim.
+#
+# One refusal cannot be written here: YAML has no way to carry a byte that is not UTF-8, so the
+# statement whose identifier holds one is pinned by TestSanitizeRejectsInvalidUTF8 instead.
 cases:
   - name: an empty statement
     sql: ""

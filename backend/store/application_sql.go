@@ -120,9 +120,9 @@ const applicationSQLColumns = `application_sql.id, application_sql.guid, applica
 const applicationSQLUpsertStatement = `
 	INSERT INTO application_sql (
 		guid, application_sql_id, instance_resource_id, database_name, schema_name, engine,
-		fingerprint, fingerprint_version, sql_text, first_seen_at, last_seen_at, content_search, search_vector
+		fingerprint, fingerprint_version, sql_text, first_seen_at, last_seen_at, search_vector
 	)
-	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $9, to_tsvector('simple', $9))
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, to_tsvector('simple', $9))
 	ON CONFLICT (instance_resource_id, database_name, schema_name, fingerprint) DO UPDATE SET
 		engine = EXCLUDED.engine,
 		first_seen_at = LEAST(application_sql.first_seen_at, EXCLUDED.first_seen_at),
@@ -205,15 +205,45 @@ func statementLabel(text string) string {
 	return string(runes)
 }
 
-// ReportApplicationSQL records one reported statement: it upserts the statement by its
-// scope and fingerprint, folds the report into that application's observation, recomputes
-// the statement's rollups, and mirrors the statement into the meta registry.
+// ReportApplicationSQLs records one reported entry, whose statements share a transaction:
+// either every statement lands with its observation and its mirror, or none does.
 //
-// The statements a report creates are mirrored whether or not they turn out to be writes.
-// The mirror is what makes an object addressable by GUID — GetMetadata, history and Explain
-// SQL all read it — while the graph node set is derived from lineage edges, which only a
-// write gets. See .agents/docs/application-sql-ingestion.md, "Data model".
-func (s *Store) ReportApplicationSQL(ctx context.Context, report *ReportApplicationSQLMessage) (*ApplicationSQLMessage, error) {
+// An entry is the unit the application retries, so a half-written entry is worse than a
+// refused one — the retry would count the statements that did land a second time. The entry
+// is also the natural unit for the mirror: a statement is mirrored exactly when it is stored.
+//
+// Each statement is upserted by its scope and fingerprint, folded into that application's
+// observation, rolled up, and mirrored into the meta registry. Statements are mirrored whether
+// or not they turn out to be writes: the mirror is what makes an object addressable by GUID —
+// GetMetadata, history and Explain SQL all read it — while the graph node set is derived from
+// lineage edges, which only a write gets. See .agents/docs/application-sql-ingestion.md,
+// "Data model".
+func (s *Store) ReportApplicationSQLs(ctx context.Context, reports []*ReportApplicationSQLMessage) ([]*ApplicationSQLMessage, error) {
+	if len(reports) == 0 {
+		return nil, nil
+	}
+	tx, err := s.GetDB().BeginTx(ctx, nil)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to begin transaction")
+	}
+	defer tx.Rollback()
+
+	statements := make([]*ApplicationSQLMessage, 0, len(reports))
+	for _, report := range reports {
+		statement, err := s.reportApplicationSQLAt(ctx, tx, report)
+		if err != nil {
+			return nil, err
+		}
+		statements = append(statements, statement)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, errors.Wrap(err, "failed to commit transaction")
+	}
+	return statements, nil
+}
+
+// reportApplicationSQLAt is one statement's share of the entry's transaction.
+func (s *Store) reportApplicationSQLAt(ctx context.Context, tx *sql.Tx, report *ReportApplicationSQLMessage) (*ApplicationSQLMessage, error) {
 	if report == nil {
 		return nil, common.Errorf(common.Invalid, "a report is required")
 	}
@@ -238,12 +268,6 @@ func (s *Store) ReportApplicationSQL(ctx context.Context, report *ReportApplicat
 	if lastSeenAt.Before(firstSeenAt) {
 		firstSeenAt, lastSeenAt = lastSeenAt, firstSeenAt
 	}
-
-	tx, err := s.GetDB().BeginTx(ctx, nil)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to begin transaction")
-	}
-	defer tx.Rollback()
 
 	applicationSQLID, err := common.RandomString(applicationSQLIDLength)
 	if err != nil {
@@ -274,9 +298,6 @@ func (s *Store) ReportApplicationSQL(ctx context.Context, report *ReportApplicat
 		return nil, err
 	}
 
-	if err := tx.Commit(); err != nil {
-		return nil, errors.Wrap(err, "failed to commit transaction")
-	}
 	return statement, nil
 }
 
@@ -368,8 +389,9 @@ func (s *Store) ListApplicationSQLs(ctx context.Context, find *FindApplicationSQ
 	return result, nil
 }
 
-// SetApplicationSQLKind records the read/write classification the runner derived. It is
-// written after the lineage is written, so a statement's kind and its edges agree.
+// SetApplicationSQLKind records the read/write classification the runner derived. It is a filter
+// cache written before the edges, not a claim about them: a failed edge write leaves the kind set
+// until the next analysis rewrites both, and the lineage version records the failure meanwhile.
 func (s *Store) SetApplicationSQLKind(ctx context.Context, guid string, kind ApplicationSQLKind) error {
 	if _, err := s.GetDB().ExecContext(ctx, `
 		UPDATE application_sql SET kind = $2, updated_at = NOW() WHERE guid = $1

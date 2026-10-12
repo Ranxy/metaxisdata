@@ -147,6 +147,7 @@ const routes: RouteRecordRaw[] = [
       requiresAuth: true,
       layout: "default",
       contentWidth: "full",
+      permission: "metaxisdata.applications.list",
     },
   },
   {
@@ -157,6 +158,7 @@ const routes: RouteRecordRaw[] = [
       requiresAuth: true,
       layout: "default",
       contentWidth: "full",
+      permission: "metaxisdata.applicationSqls.list",
     },
   },
   {

@@ -71,7 +71,9 @@ Rules worth knowing:
 - **Send one statement per entry.** If an entry contains a script, the server splits it and each
   statement becomes its own row, with the same `count`.
 - **Unknown JSON fields are rejected**, so a misspelled field is an error rather than a silently
-  ignored value.
+  ignored value. The body is exactly one JSON object; a second one after it is rejected too.
+- **`count` is at least 1.** Omit it for a statement that ran once. `0` and negative values are
+  rejected with the body rather than read as "did not run".
 - Limits: 8 MiB per request, at most 1000 statements.
 
 ## 3. Read the response
@@ -90,11 +92,15 @@ Rules worth knowing:
 }
 ```
 
+`accepted` and `rejected` count **entries**, so the counts add up to `results`. The per-key counters
+on the Applications page count the **statements** inside those entries, so a report whose entry
+carried a script contributes more than one there.
+
 A refused entry carries a reason:
 
 | `reason` | Meaning |
 | --- | --- |
-| `PARSE_ERROR` | The statement could not be tokenized, or this deployment's SQL analyzer cannot parse it. Usually a multi-statement entry, an unescaped quote, or a dialect the instance does not match. |
+| `PARSE_ERROR` | The statement could not be tokenized to its end, or this deployment's SQL analyzer cannot parse it at all. Usually a dialect the instance does not match or an escape the dialect does not accept. An unterminated string is refused in PostgreSQL and StarRocks; the MySQL family's lexer reads one as a single literal token, so there it is stored as `?` instead. |
 | `EMPTY_STATEMENT` | The entry's `sql` was empty. |
 | `STORE_FAILED` | The server failed to store it. Retry the report. |
 
@@ -103,19 +109,26 @@ Whole-request failures use HTTP status codes: `401` for a missing, unknown, revo
 whose engine has no SQL analyzer; `404` for an unknown instance; `413` for a body over 8 MiB.
 
 A refused statement is never stored, and the server logs a warning naming the application, the
-engine and the reason.
+engine and the reason. The warning names the statement only in its sanitized form; when the server
+could not sanitize it, the line carries no statement text at all.
 
 ## 4. Retries
 
-Reports are counted, so a retry that is processed twice reports everything twice.
+Reports are counted, so a retry that is processed twice reports everything twice. An **entry**
+(one element of `statements`) is the unit that is stored: either every statement in it lands or none
+does, so a refusal never leaves a statement counted behind it.
 
-- **Send a `reportId`.** Repeating the *last accepted* `reportId` is answered with
+- **Send a `reportId`.** Repeating the `reportId` of a report that landed **whole** is answered with
   `{"duplicate": true}` and changes nothing. This covers a client that retries a request it did not
   see the answer to, which is the common case.
-- **Advance your cursor only after a `200`.** If you report a window of statements and the request
-  fails, send the same window again; do not advance to the next one.
-- A retry with no `reportId`, or one that is not the last accepted one, is counted again. The
-  frequencies are metadata rather than billing, so the count may drift slightly.
+- **Resend only the entries that were refused.** A report that had any refusal is *not* remembered,
+  so sending it again is processed again — and its accepted entries would be counted twice. Take the
+  `index` of every `REJECTED` result, fix those entries, and send them as a new report with a new
+  `reportId`.
+- **Advance your cursor only after a whole report landed**, meaning `rejected` is `0`: either every
+  entry was accepted, or the ones that were not have been resent successfully.
+- A retry with no `reportId`, or with one that is not the last report that landed whole, is counted
+  again. The frequencies are metadata rather than billing, so the count may drift slightly.
 
 ## 5. What you get
 
