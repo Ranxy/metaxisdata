@@ -50,6 +50,12 @@ Choices inside those decisions, each of which a reader would otherwise re-litiga
   as the application wrote them. See "The rules that shape the fingerprint" below.
 - **`key_digest` exists.** A design draft dropped it; without a lookup column every request would
   bcrypt-compare against every live key.
+- **A statement the lexer cannot walk to its end is refused.** Every lexer here stops on a
+  malformed token instead of reporting one, and only bytes inside a token are inspected, so
+  accepting such a statement would copy a stretch no rule ever looked at into the store. In
+  PostgreSQL an unterminated string is not a token at all, so `SELECT 'a` would have stored the
+  literal. This is the lexer-level half of D6: a statement that cannot be tokenized is a
+  statement that cannot be sanitized.
 - **`application_sql` has a foreign key to the instance but not to `db`.** An application commonly
   starts reporting before the sync has reached its database.
 - **`kind` is a filter cache, not a classification.** The runner derives it and writes it back.
@@ -110,6 +116,11 @@ cost is one parse per statement at ingest, and the runner parses again.
 Classification reads the token's source slice (`input[Loc:End]`), not omni's token-type constants,
 which are unexported in every dialect package and would have to be hardcoded. Comments never appear
 as tokens, so rebuilding from spans drops them.
+
+`isLiteral` is the same kind of heuristic: a leading quote, a leading digit or a dot, a `$` that is
+not a numbered parameter, or a letter-led token that quotes (`x'AB'`). `.5` is why the leading-dot
+case is spelled out — a number that starts with a dot is still a number, and before it was
+recognized the literal survived into the stored text.
 
 `tokenSpans` trims trailing whitespace off a token's end: PostgreSQL's lexer hands a string constant
 the whitespace that follows it, so `status = 'new' AND total > 10` arrives as one token spanning
@@ -193,11 +204,52 @@ enough:
 Every folding is idempotent — `fold(fold(x)) == fold(x)` — or a statement reported twice would be
 two rows. `fold_test.go` asserts both halves: what must merge, and what must not.
 
+Three asymmetries between the dialects follow from the shared rules running over tokens the lexers
+disagree about. They are pinned in `testdata/09_dialects.yaml` and beside the cases they affect:
+
+| Difference | Effect |
+| --- | --- |
+| PostgreSQL lexes `?` as an operator character, so `-?` and `+?` come back as single operator tokens | a signed constant folds in the MySQL family and not in PostgreSQL: `x = -1 + 2` is `x = - ?` there and `x = -? + ?` here. Fingerprints are scoped to an instance, so the two forms never meet in one table. |
+| StarRocks tokenizes a `/*+ … */` hint as code rather than as a comment | the hint is stored and fingerprinted with the statement — but its body is tokenized like any expression, so a literal inside it is still rewritten. MySQL and PostgreSQL drop it as a comment. |
+| MySQL tokenizes a `/*! … */` executable comment into unusable fragments | the statement is refused, like any statement the lexer cannot walk to its end. |
+
+### The corpus
+
+`sanitize_test.go` and `fold_test.go` are the hand-written cases for one behavior each.
+`testdata/*.yaml` is the contract at statement scale: 214 statements in nine suites, each run under
+every dialect unless it names the ones it is valid in (`engine: postgres`, `engine: [mysql,
+starrocks]`).
+
+A case pins `text` and `canonical` exactly and nothing else, and both are required. Pinning both is
+what states the deduplication contract with no second mechanism: two cases whose canonical forms are
+written identically must merge, and cases whose canonical forms differ must not, so a folding suite
+reads as a list of equivalence classes — and a case cannot assert only the safe half of it.
+
+The runner adds what has to hold for every statement whatever its case asserts: no token is a
+literal, every byte between tokens is whitespace, the fingerprint is the canonical form's hash,
+re-sanitizing the stored text is a no-op, and folding the canonical form again is a no-op. The
+loader refuses the two YAML spellings that would silently weaken a case — a ` #` in a plain scalar
+is a comment, and trailing whitespace is stripped — and refuses two cases covering the same
+statement under the same dialect.
+
+| Suite | Rule |
+| --- | --- |
+| `01_literals` | N1, every literal form the three lexers emit, and the numbered-parameter rewrite |
+| `02_comments` | N2, including the forms that are *not* comments: a string, a quoted identifier, a StarRocks hint, a MySQL executable comment |
+| `03_identifiers` | N3, quoting and case, and where a double quote or a backtick changes meaning |
+| `04_in_lists` | N4, and every list that must keep its shape |
+| `05_values` | N5, batch size against group arity |
+| `06_constant_runs` | N6, including the run that must begin at the placeholder |
+| `07_statement_shapes` | realistic application statements, so a rule change has to answer for one |
+| `08_refusals` | what must not be stored |
+| `09_dialects` | the asymmetries above, written out
+
 ## Invariants
 
 | Rule | Breakage |
 | --- | --- |
 | Only `sqlsanitize.Sanitize`'s output is stored | the original text, with its literals, reaches the database |
+| Only a statement the lexer walks to its end is sanitized | a stretch no rule inspected — an unterminated PostgreSQL string holds a literal — is copied into the store |
 | The gate is `lineage.Analyzer.Analyze`, not a dialect parser | statements the analyzer accepts are refused |
 | A refusal stores nothing | rows accumulate that can never produce lineage |
 | The reported identity comes from the key | a report can claim to be another application |
@@ -250,7 +302,7 @@ Tests and their gates:
 
 | Layer | Test | Gate |
 | --- | --- | --- |
-| Sanitizer | `sqlsanitize/{sanitize,fold,neutral,corpus}_test.go` | `go test ./backend/plugin/sqlsanitize/` |
+| Sanitizer | `sqlsanitize/{sanitize,token,fold,neutral,corpus,yaml}_test.go` and `sqlsanitize/testdata/*.yaml` | `go test ./backend/plugin/sqlsanitize/` |
 | Target | `dmltarget/target_test.go` | `go test ./backend/plugin/dmltarget/` |
 | Store | `store/application{,_sql}_pure_test.go` | `go test ./backend/store/` |
 | Classification | `runner/lineageanalyzer/classify_test.go` | `go test ./backend/runner/lineageanalyzer/` |
@@ -259,11 +311,14 @@ Tests and their gates:
 | Whole chain | `test/integration/runner/application_sql_service_test.go` | `go test -tags=integration -run ApplicationSQLReport ./backend/test/integration/runner` |
 | SPA | `lineageOrigin.test.ts`, `lineageAsset.test.ts`, `permissions.test.ts` | `pnpm --dir frontend biome:check && lint && i18n && type-check && test run` |
 
-The corpus test in `sqlsanitize` is the acceptance gate for any change to the rules: it runs 642
-statements from the repository's own lineage corpus and requires that sanitizing never makes an
-analyzable statement unanalyzable, with 0 refusals and 100% idempotency.
+Two sanitizer suites guard a rule change from opposite ends. `TestSanitizedStatementsKeepTheirLineage`
+is the acceptance gate: it runs 642 statements from the repository's own lineage corpus and requires
+that sanitizing never makes an analyzable statement unanalyzable, with 0 refusals and 100%
+idempotency. `TestSanitizeYAMLCorpus` is the contract: 214 statements whose stored text and canonical
+form are pinned exactly, so a change has to be stated as a deliberate edit to a written expectation
+rather than discovered as a moving fingerprint.
 
 Known gaps: the two SPA pages have no runtime coverage (`pnpm audit:ui`
-needs a browser on the DevTools port); the corpus is view definitions rather than real ORM output, so
-how much the foldings merge *enough* has never been measured against real application SQL — only
-that they never merge what they should not.
+needs a browser on the DevTools port); both corpora are hand-written statements rather than real ORM
+output, so how much the foldings merge *enough* has never been measured against real application SQL
+— only that they never merge what they should not.

@@ -99,7 +99,7 @@ func isPlaceholder(raw string) bool {
 //	'...'            string literal everywhere
 //	"..."            string in the MySQL family and StarRocks, quoted identifier in PostgreSQL
 //	`...`            quoted identifier (MySQL family, StarRocks)
-//	123 / 1.5        numeric literal
+//	123 / 1.5 / .5   numeric literal, including the leading-dot spelling
 //	x'..' b'..'      prefixed literals: one lexer token that starts with a letter
 //	$$..$$ $tag$..$  PostgreSQL dollar-quoted string
 //	$1               PostgreSQL placeholder, not a literal
@@ -120,6 +120,9 @@ func isLiteral(engine storepb.Engine, raw string) bool {
 	case '@':
 		// @var and @@system_var are variables, not literals.
 		return false
+	case '.':
+		// `.5` is a number; the tokenizer keeps the dot, so the digit after it decides.
+		return len(raw) > 1 && raw[1] >= '0' && raw[1] <= '9'
 	}
 	if raw[0] >= '0' && raw[0] <= '9' {
 		return true
@@ -144,11 +147,11 @@ func stripComments(engine storepb.Engine, gap string) string {
 			}
 			i += nl
 		case strings.HasPrefix(gap[i:], "/*"):
-			end := strings.Index(gap[i+2:], "*/")
-			if end < 0 {
+			consumed := blockCommentEnd(gap[i:])
+			if consumed < 0 {
 				return b.String()
 			}
-			i += 2 + end + 2
+			i += consumed
 			_ = b.WriteByte(' ')
 		default:
 			_ = b.WriteByte(gap[i])
@@ -156,4 +159,28 @@ func stripComments(engine storepb.Engine, gap string) string {
 		}
 	}
 	return b.String()
+}
+
+// blockCommentEnd returns the length of the block comment starting at s, or -1 when it is
+// never closed. Comments nest, which is what every lexer here does with `/* a /* b */ */`:
+// stopping at the first `*/` would leave the rest of the comment in the stored text, and
+// the same mistake makes the closed-comment check in Sanitize reject a valid statement.
+func blockCommentEnd(s string) int {
+	depth := 0
+	for i := 0; i+1 < len(s); {
+		switch {
+		case s[i] == '/' && s[i+1] == '*':
+			depth++
+			i += 2
+		case s[i] == '*' && s[i+1] == '/':
+			depth--
+			i += 2
+			if depth == 0 {
+				return i
+			}
+		default:
+			i++
+		}
+	}
+	return -1
 }

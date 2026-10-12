@@ -1,0 +1,245 @@
+name: Literals
+# N1. Every literal form the three lexers emit, and the spacing the rewrite leaves behind.
+# The stored text and the canonical form are written out separately because they answer
+# different questions: the first is what a person reads and what the analyzer names columns
+# from, the second is what the fingerprint hashes.
+cases:
+  - name: a string literal
+    sql: SELECT name FROM users WHERE email = 'alice@example.com'
+    text: SELECT name FROM users WHERE email = ?
+    canonical: SELECT name FROM users WHERE email = ?
+
+  - name: an empty string
+    sql: SELECT '' AS empty_value
+    text: SELECT ? AS empty_value
+    canonical: SELECT ? AS empty_value
+
+  - name: a string holding an escaped quote
+    sql: SELECT 'it''s' AS s
+    text: SELECT ? AS s
+    canonical: SELECT ? AS s
+
+  - name: a string holding a line comment marker
+    sql: SELECT 'a -- b' AS s
+    text: SELECT ? AS s
+    canonical: SELECT ? AS s
+
+  - name: a string holding a block comment marker
+    sql: SELECT '/* not a comment */' AS s
+    text: SELECT ? AS s
+    canonical: SELECT ? AS s
+
+  - name: a string holding the placeholder itself
+    sql: SELECT '?' AS s
+    text: SELECT ? AS s
+    canonical: SELECT ? AS s
+
+  - name: a string holding a semicolon
+    sql: SELECT 'a;b' AS s
+    text: SELECT ? AS s
+    canonical: SELECT ? AS s
+
+  - name: a string with a non-ascii body
+    sql: SELECT 'héllo wörld' AS s
+    text: SELECT ? AS s
+    canonical: SELECT ? AS s
+
+  - name: an integer
+    sql: SELECT id FROM users WHERE id = 42
+    text: SELECT id FROM users WHERE id = ?
+    canonical: SELECT id FROM users WHERE id = ?
+
+  - name: a decimal
+    sql: SELECT price FROM items WHERE price > 19.99
+    text: SELECT price FROM items WHERE price > ?
+    canonical: SELECT price FROM items WHERE price > ?
+
+  - name: a leading dot decimal
+    sql: SELECT .5 AS half
+    text: SELECT ? AS half
+    canonical: SELECT ? AS half
+
+  - name: a leading dot decimal with an exponent
+    sql: SELECT .5e3 AS big
+    text: SELECT ? AS big
+    canonical: SELECT ? AS big
+
+  - name: an exponent
+    sql: SELECT 1e5 AS big
+    text: SELECT ? AS big
+    canonical: SELECT ? AS big
+
+  - name: a negative exponent
+    sql: SELECT 1e-5 AS small
+    text: SELECT ? AS small
+    canonical: SELECT ? AS small
+
+  - name: a hexadecimal number
+    sql: SELECT 0x1f AS n
+    text: SELECT ? AS n
+    canonical: SELECT ? AS n
+
+  - name: a hexadecimal string literal
+    sql: SELECT x'AB' AS n
+    text: SELECT ? AS n
+    canonical: SELECT ? AS n
+
+  - name: a bit string literal
+    sql: SELECT b'101' AS n
+    text: SELECT ? AS n
+    canonical: SELECT ? AS n
+
+  # The tokenizer splits `1_000` after the first digit in the MySQL family and StarRocks,
+  # and keeps it as one token in PostgreSQL, so the two stored forms differ.
+  - name: a digit separator in the mysql family
+    engine: [mysql, starrocks]
+    sql: SELECT 1_000 AS n
+    text: SELECT ?_000 AS n
+    canonical: SELECT ? _000 AS n
+
+  - name: a digit separator in postgres
+    engine: postgres
+    sql: SELECT 1_000 AS n
+    text: SELECT ? AS n
+    canonical: SELECT ? AS n
+
+  # A sign is its own token in every dialect, but PostgreSQL lexes `-?` and `+?` back as one
+  # operator token, which is why the two canonical forms differ by a space.
+  - name: a negative number in the mysql family
+    engine: [mysql, starrocks]
+    sql: SELECT -1 AS n
+    text: SELECT -? AS n
+    canonical: SELECT - ? AS n
+
+  - name: a negative number in postgres
+    engine: postgres
+    sql: SELECT -1 AS n
+    text: SELECT -? AS n
+    canonical: SELECT -? AS n
+
+  - name: an explicitly positive number in the mysql family
+    engine: [mysql, starrocks]
+    sql: SELECT +1 AS n
+    text: SELECT +? AS n
+    canonical: SELECT + ? AS n
+
+  - name: an explicitly positive number in postgres
+    engine: postgres
+    sql: SELECT +1 AS n
+    text: SELECT +? AS n
+    canonical: SELECT +? AS n
+
+  - name: NULL is a keyword and stays
+    sql: SELECT NULL AS v
+    text: SELECT NULL AS v
+    canonical: SELECT NULL AS v
+
+  - name: booleans keep the case they were written in
+    sql: SELECT TRUE, false FROM t
+    text: SELECT TRUE, false FROM t
+    canonical: SELECT TRUE , false FROM t
+
+  - name: a function call with no arguments
+    sql: SELECT CURRENT_TIMESTAMP FROM t
+    text: SELECT CURRENT_TIMESTAMP FROM t
+    canonical: SELECT CURRENT_TIMESTAMP FROM t
+
+  - name: a typed date literal
+    sql: SELECT DATE '2024-01-01' AS d
+    text: SELECT DATE ? AS d
+    canonical: SELECT DATE ? AS d
+
+  - name: an interval literal
+    sql: SELECT NOW() - INTERVAL '1 day' AS d
+    text: SELECT NOW() - INTERVAL ? AS d
+    canonical: SELECT NOW ( ) - INTERVAL ? AS d
+
+  - name: a placeholder that is already the wire form
+    sql: SELECT a FROM t WHERE b = ?
+    text: SELECT a FROM t WHERE b = ?
+    canonical: SELECT a FROM t WHERE b = ?
+
+  - name: two literals in one predicate
+    sql: SELECT a FROM t WHERE b = 'x' AND c = 2
+    text: SELECT a FROM t WHERE b = ? AND c = ?
+    canonical: SELECT a FROM t WHERE b = ? AND c = ?
+
+  - name: a limit and an offset
+    sql: SELECT a FROM t LIMIT 10 OFFSET 20
+    text: SELECT a FROM t LIMIT ? OFFSET ?
+    canonical: SELECT a FROM t LIMIT ? OFFSET ?
+
+  - name: the mysql comma limit form
+    engine: [mysql, starrocks]
+    sql: SELECT a FROM t LIMIT 10, 20
+    text: SELECT a FROM t LIMIT ?, ?
+    canonical: SELECT a FROM t LIMIT ? , ?
+
+  - name: an insert with mixed literals
+    sql: INSERT INTO t (a, b) VALUES (1, 'x')
+    text: INSERT INTO t (a, b) VALUES (?, ?)
+    canonical: INSERT INTO t ( a , b ) VALUES ( ? , ? )
+
+  - name: a value in a like predicate
+    sql: SELECT a FROM t WHERE b LIKE '%x%'
+    text: SELECT a FROM t WHERE b LIKE ?
+    canonical: SELECT a FROM t WHERE b LIKE ?
+
+  - name: a literal inside a function call
+    sql: SELECT CONCAT(first_name, ' ', last_name) AS full_name FROM users
+    text: SELECT CONCAT(first_name, ?, last_name) AS full_name FROM users
+    canonical: SELECT CONCAT ( first_name , ? , last_name ) AS full_name FROM users
+
+  # PostgreSQL's numbered placeholders land on the same stored form as the wire placeholder,
+  # so a driver that sends `$1` and one that sends `?` fingerprint one statement. The
+  # repetition case is deliberate: `$1` twice and `$1 $2` are one row.
+  - name: a postgres numbered placeholder
+    engine: postgres
+    sql: SELECT a FROM t WHERE b = $1 AND c = $2
+    text: SELECT a FROM t WHERE b = ? AND c = ?
+    canonical: SELECT a FROM t WHERE b = ? AND c = ?
+
+  - name: a repeated postgres numbered placeholder
+    engine: postgres
+    sql: SELECT a FROM t WHERE b = $1 AND c = $1
+    text: SELECT a FROM t WHERE b = ? AND c = ?
+    canonical: SELECT a FROM t WHERE b = ? AND c = ?
+
+  - name: a postgres placeholder in a cast
+    engine: postgres
+    sql: SELECT a FROM t WHERE b = $1::int
+    text: SELECT a FROM t WHERE b = ?::int
+    canonical: "SELECT a FROM t WHERE b = ? :: int"
+
+  # MySQL and StarRocks split `::` into two tokens where PostgreSQL has one, so the
+  # canonical forms differ.
+  - name: a cast in the mysql family
+    engine: [mysql, starrocks]
+    sql: SELECT 1::int AS n
+    text: SELECT ?::int AS n
+    canonical: "SELECT ? : : int AS n"
+
+  - name: a postgres dollar quoted string
+    engine: postgres
+    sql: SELECT $$a 'quoted' body$$ AS s
+    text: SELECT ? AS s
+    canonical: SELECT ? AS s
+
+  - name: a postgres tagged dollar quoted string
+    engine: postgres
+    sql: SELECT $tag$body 'x'$tag$ AS s
+    text: SELECT ? AS s
+    canonical: SELECT ? AS s
+
+  - name: a postgres unicode escape string
+    engine: postgres
+    sql: SELECT U&'\0041' AS s
+    text: SELECT ? AS s
+    canonical: SELECT ? AS s
+
+  # A charset introducer is two tokens in every dialect here, so the literal is rewritten
+  # and the introducer keeps its position. The stored text is odd but carries no literal.
+  - name: a mysql charset introducer
+    sql: SELECT _utf8'x' AS s
+    text: SELECT _utf8? AS s
+    canonical: SELECT _utf8 ? AS s

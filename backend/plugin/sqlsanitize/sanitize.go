@@ -85,6 +85,16 @@ func Sanitize(engine storepb.Engine, sql string) (Statement, error) {
 	if len(spans) == 0 {
 		return Statement{}, ErrUnlexable
 	}
+	// The MySQL-family and PostgreSQL lexers stop on a malformed token rather than
+	// reporting one, and only the bytes inside a token are ever inspected. Whatever follows
+	// the last token is copied verbatim, so accepting a statement such a lexer abandoned
+	// would store bytes no rule looked at — an unterminated string in PostgreSQL is not a
+	// token at all, and `SELECT 'a` would store the literal. A statement that cannot be
+	// tokenized to its end is a statement that cannot be sanitized. StarRocks reports its
+	// own lex errors, so it is already refused above.
+	if tail := sql[spans[len(spans)-1].end:]; strings.TrimSpace(stripComments(engine, tail)) != "" {
+		return Statement{}, ErrUnlexable
+	}
 	text := strings.TrimSpace(rewriteLiterals(engine, sql, spans))
 	if text == "" {
 		return Statement{}, ErrUnlexable

@@ -1,0 +1,143 @@
+name: Comments
+# N2. A comment is removed and the whitespace around it is left alone, because the stored
+# text is what a person reads and what the analyzer names an unaliased column from.
+#
+# The cases that matter most are the ones where a comment is *not* a comment: inside a
+# string, inside a quoted identifier, and the two forms that are code rather than comment —
+# a StarRocks hint and a MySQL executable comment.
+cases:
+  - name: a line comment before a newline
+    sql: "SELECT a -- trailing\nFROM t"
+    text: "SELECT a \nFROM t"
+    canonical: SELECT a FROM t
+
+  - name: a line comment at the end of the statement
+    sql: SELECT a FROM t -- trailing
+    text: SELECT a FROM t
+    canonical: SELECT a FROM t
+
+  - name: a line comment between two predicates
+    sql: "SELECT a FROM t WHERE x = 1 -- c\nAND y = 2"
+    text: "SELECT a FROM t WHERE x = ? \nAND y = ?"
+    canonical: SELECT a FROM t WHERE x = ? AND y = ?
+
+  - name: a comment holding an address is not stored
+    sql: "SELECT a FROM t -- user=alice@example.com\n"
+    text: SELECT a FROM t
+    canonical: SELECT a FROM t
+
+  - name: a comment holding a literal is not stored
+    sql: SELECT a FROM t WHERE b = 1 /* 'secret' */
+    text: SELECT a FROM t WHERE b = ?
+    canonical: SELECT a FROM t WHERE b = ?
+
+  - name: a hash comment in the mysql family
+    engine: [mysql, starrocks]
+    sql: "SELECT a # hash\nFROM t"
+    text: "SELECT a \nFROM t"
+    canonical: SELECT a FROM t
+
+  - name: a hash comment at the end of the statement
+    engine: [mysql, starrocks]
+    sql: "SELECT a FROM t # hidden"
+    text: SELECT a FROM t
+    canonical: SELECT a FROM t
+
+  - name: a hash is an operator in postgres, not a comment
+    engine: postgres
+    sql: SELECT a#b FROM t
+    text: SELECT a#b FROM t
+    canonical: "SELECT a # b FROM t"
+
+  - name: a block comment between two tokens becomes one space
+    sql: SELECT a/* c */FROM t
+    text: SELECT a FROM t
+    canonical: SELECT a FROM t
+
+  - name: a block comment keeps the spaces around it
+    sql: SELECT a /* c */ FROM t WHERE b = 1
+    text: SELECT a   FROM t WHERE b = ?
+    canonical: SELECT a FROM t WHERE b = ?
+
+  - name: a block comment spanning a line break
+    sql: "SELECT a /* c\n   d */ , b FROM t"
+    text: SELECT a   , b FROM t
+    canonical: SELECT a , b FROM t
+
+  # A block comment nests in the MySQL family and in PostgreSQL, so removing only up to the
+  # first `*/` would leave the outer comment's tail in the stored text.
+  - name: a nested block comment in the mysql family and postgres
+    engine: [mysql, postgres]
+    sql: SELECT 1 /* a /* b */ */ AS c
+    text: SELECT ?   AS c
+    canonical: SELECT ? AS c
+
+  # StarRocks ends a block comment at the first `*/`, so the outer close is a token there.
+  - name: a nested block comment in starrocks
+    engine: starrocks
+    sql: SELECT 1 /* a /* b */ */ AS c
+    text: SELECT ? */ AS c
+    canonical: SELECT ? */ AS c
+
+  - name: an optimizer hint is a comment in the mysql family and postgres
+    engine: [mysql, postgres]
+    sql: SELECT /*+ INDEX(t) */ a FROM t
+    text: SELECT   a FROM t
+    canonical: SELECT a FROM t
+
+  # A StarRocks hint is executable, not a comment: its lexer emits the body as tokens, so it
+  # is stored and fingerprinted with the statement. Only tokens can leak a literal, and the
+  # hint body is tokenized like any other expression, so nothing is hidden inside it.
+  - name: an optimizer hint is code in starrocks
+    engine: starrocks
+    sql: SELECT /*+ INDEX(t) */ a FROM t
+    text: SELECT /*+ INDEX(t) */ a FROM t
+    canonical: SELECT /*+ INDEX ( t ) */ a FROM t
+
+  - name: a starrocks hint holding a number still rewrites the number
+    engine: starrocks
+    sql: SELECT /*+ SET_VAR(query_timeout=10) */ a FROM t
+    text: SELECT /*+ SET_VAR(query_timeout=?) */ a FROM t
+    canonical: SELECT /*+ SET_VAR ( query_timeout = ? ) */ a FROM t
+
+  - name: a mysql executable comment is refused
+    engine: mysql
+    sql: SELECT /*! STRAIGHT_JOIN */ a FROM t
+    expect_error: true
+
+  - name: a postgres executable comment is an ordinary comment
+    engine: postgres
+    sql: SELECT /*! STRAIGHT_JOIN */ a FROM t
+    text: SELECT   a FROM t
+    canonical: SELECT a FROM t
+
+  - name: an unterminated block comment leaves nothing behind
+    engine: [mysql, postgres]
+    sql: SELECT 1 /* unterminated
+    text: SELECT ?
+    canonical: SELECT ?
+
+  # The comment markers are inside a token here, which is why the sanitizer reads tokens
+  # rather than searching the text for `--` and `/*`.
+  - name: a quoted identifier holding a line comment marker
+    engine: postgres
+    sql: SELECT "a--b" FROM t
+    text: SELECT "a--b" FROM t
+    canonical: SELECT "a--b" FROM t
+
+  - name: a quoted identifier holding a block comment marker
+    engine: postgres
+    sql: SELECT "a/*b*/" FROM t
+    text: SELECT "a/*b*/" FROM t
+    canonical: SELECT "a/*b*/" FROM t
+
+  - name: a backtick identifier holding a block comment marker
+    engine: [mysql, starrocks]
+    sql: SELECT `a/*b*/` FROM t
+    text: SELECT `a/*b*/` FROM t
+    canonical: SELECT `a/*b*/` FROM t
+
+  - name: a line comment before the closing parenthesis of a list
+    sql: "SELECT a FROM t WHERE x IN (1, 2 -- c\n)"
+    text: "SELECT a FROM t WHERE x IN (?, ? \n)"
+    canonical: SELECT a FROM t WHERE x IN ( ? )

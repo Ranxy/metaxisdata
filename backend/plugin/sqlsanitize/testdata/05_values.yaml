@@ -1,0 +1,129 @@
+name: ValuesFolding
+# N5. A VALUES list of repeated all-placeholder groups becomes one group, so a batch insert
+# of any size is one row. The first group keeps its arity, which is what keeps two inserts
+# with a different column count apart.
+cases:
+  - name: a one row insert
+    sql: INSERT INTO t (a, b) VALUES (1, 2)
+    text: INSERT INTO t (a, b) VALUES (?, ?)
+    canonical: INSERT INTO t ( a , b ) VALUES ( ? , ? )
+
+  - name: a two row insert
+    sql: INSERT INTO t (a, b) VALUES (1, 2), (3, 4)
+    text: INSERT INTO t (a, b) VALUES (?, ?), (?, ?)
+    canonical: INSERT INTO t ( a , b ) VALUES ( ? , ? )
+
+  - name: a five row insert
+    sql: INSERT INTO t (a, b) VALUES (1, 2), (3, 4), (5, 6), (7, 8), (9, 10)
+    text: INSERT INTO t (a, b) VALUES (?, ?), (?, ?), (?, ?), (?, ?), (?, ?)
+    canonical: INSERT INTO t ( a , b ) VALUES ( ? , ? )
+
+  - name: a one column insert
+    sql: INSERT INTO t (a) VALUES (1), (2)
+    text: INSERT INTO t (a) VALUES (?), (?)
+    canonical: INSERT INTO t ( a ) VALUES ( ? )
+
+  - name: a three column insert
+    sql: INSERT INTO t (a, b, c) VALUES (1, 2, 3)
+    text: INSERT INTO t (a, b, c) VALUES (?, ?, ?)
+    canonical: INSERT INTO t ( a , b , c ) VALUES ( ? , ? , ? )
+
+  # The column list is not a VALUES group: it is a shape of its own and is never folded.
+  - name: a three column insert with a repeated batch
+    sql: INSERT INTO t (a, b, c) VALUES (1, 2, 3), (4, 5, 6)
+    text: INSERT INTO t (a, b, c) VALUES (?, ?, ?), (?, ?, ?)
+    canonical: INSERT INTO t ( a , b , c ) VALUES ( ? , ? , ? )
+
+  - name: a batch of string rows
+    sql: INSERT INTO t (a, b) VALUES ('x', 'y'), ('z', 'w')
+    text: INSERT INTO t (a, b) VALUES (?, ?), (?, ?)
+    canonical: INSERT INTO t ( a , b ) VALUES ( ? , ? )
+
+  - name: a batch that already holds placeholders
+    sql: INSERT INTO t (a, b) VALUES (?, ?), (?, ?)
+    text: INSERT INTO t (a, b) VALUES (?, ?), (?, ?)
+    canonical: INSERT INTO t ( a , b ) VALUES ( ? , ? )
+
+  - name: an insert with no column list
+    sql: INSERT INTO t VALUES (1, 2), (3, 4)
+    text: INSERT INTO t VALUES (?, ?), (?, ?)
+    canonical: INSERT INTO t VALUES ( ? , ? )
+
+  - name: a group holding a call does not fold
+    sql: INSERT INTO t (a, b) VALUES (NOW(), 1)
+    text: INSERT INTO t (a, b) VALUES (NOW(), ?)
+    canonical: INSERT INTO t ( a , b ) VALUES ( NOW ( ) , ? )
+
+  # The constant run is folded afterwards, so a computed constant lands on the same
+  # canonical form as the plain one: both are a row of constants.
+  - name: a group holding an arithmetic constant
+    sql: INSERT INTO t (a, b) VALUES (1 + 1, 2)
+    text: INSERT INTO t (a, b) VALUES (? + ?, ?)
+    canonical: INSERT INTO t ( a , b ) VALUES ( ? , ? )
+
+  - name: a group holding a nested parenthesized constant
+    sql: INSERT INTO t (a) VALUES ((1))
+    text: INSERT INTO t (a) VALUES ((?))
+    canonical: INSERT INTO t ( a ) VALUES ( ( ? ) )
+
+  # Only the first group's arity is kept, so a ragged list folds as far as it can.
+  - name: a ragged list of placeholders
+    sql: INSERT INTO t (a, b) VALUES (1, 2), (3)
+    text: INSERT INTO t (a, b) VALUES (?, ?), (?)
+    canonical: INSERT INTO t ( a , b ) VALUES ( ? , ? )
+
+  - name: a ragged list of a wider second group
+    sql: INSERT INTO t (a, b) VALUES (1, 2), (3, 4, 5)
+    text: INSERT INTO t (a, b) VALUES (?, ?), (?, ?, ?)
+    canonical: INSERT INTO t ( a , b ) VALUES ( ? , ? )
+
+  - name: a mysql upsert
+    sql: INSERT INTO t (a, b) VALUES (1, 2) ON DUPLICATE KEY UPDATE b = 5
+    text: INSERT INTO t (a, b) VALUES (?, ?) ON DUPLICATE KEY UPDATE b = ?
+    canonical: INSERT INTO t ( a , b ) VALUES ( ? , ? ) ON DUPLICATE KEY UPDATE b = ?
+
+  - name: a mysql replace
+    sql: REPLACE INTO t (a) VALUES (1)
+    text: REPLACE INTO t (a) VALUES (?)
+    canonical: REPLACE INTO t ( a ) VALUES ( ? )
+
+  - name: a postgres upsert
+    engine: postgres
+    sql: INSERT INTO t (a, b) VALUES (1, 2) ON CONFLICT (a) DO UPDATE SET b = 3
+    text: INSERT INTO t (a, b) VALUES (?, ?) ON CONFLICT (a) DO UPDATE SET b = ?
+    canonical: INSERT INTO t ( a , b ) VALUES ( ? , ? ) ON CONFLICT ( a ) DO UPDATE SET b = ?
+
+  - name: a postgres conflict with no action
+    engine: postgres
+    sql: INSERT INTO t (a) VALUES (1) ON CONFLICT DO NOTHING
+    text: INSERT INTO t (a) VALUES (?) ON CONFLICT DO NOTHING
+    canonical: INSERT INTO t ( a ) VALUES ( ? ) ON CONFLICT DO NOTHING
+
+  - name: a postgres returning clause
+    engine: postgres
+    sql: INSERT INTO t (a) VALUES (1) RETURNING id
+    text: INSERT INTO t (a) VALUES (?) RETURNING id
+    canonical: INSERT INTO t ( a ) VALUES ( ? ) RETURNING id
+
+  # VALUES only folds a VALUES list: an insert that selects is a different shape, and its
+  # two column counts stay two statements.
+  - name: an insert that selects one column
+    sql: INSERT INTO t (a) SELECT 1
+    text: INSERT INTO t (a) SELECT ?
+    canonical: INSERT INTO t ( a ) SELECT ?
+
+  - name: an insert that selects two columns
+    sql: INSERT INTO t (a) SELECT 1, 2
+    text: INSERT INTO t (a) SELECT ?, ?
+    canonical: INSERT INTO t ( a ) SELECT ? , ?
+
+  - name: the mysql row constructor form
+    sql: INSERT INTO t VALUES ROW(1, 2), ROW(3, 4)
+    text: INSERT INTO t VALUES ROW(?, ?), ROW(?, ?)
+    canonical: INSERT INTO t VALUES ROW ( ? , ? ) , ROW ( ? , ? )
+
+  - name: the mysql set form
+    engine: [mysql, starrocks]
+    sql: INSERT INTO t SET a = 1, b = 'x'
+    text: INSERT INTO t SET a = ?, b = ?
+    canonical: INSERT INTO t SET a = ? , b = ?

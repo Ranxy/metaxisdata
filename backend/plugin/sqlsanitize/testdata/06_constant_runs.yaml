@@ -1,0 +1,170 @@
+name: ConstantRunFolding
+# N6, and the trap that shapes it. A run folds only when it *begins* at a placeholder and
+# holds nothing but placeholders and operators, which is what keeps `a - 1 > 0` from folding
+# the identifier into the constant: `a - ? > ?` becomes `a - ?`, not `a ?`.
+cases:
+  - name: a single constant
+    sql: SELECT a FROM t WHERE x = 1
+    text: SELECT a FROM t WHERE x = ?
+    canonical: SELECT a FROM t WHERE x = ?
+
+  - name: an addition
+    sql: SELECT a FROM t WHERE x = 1 + 1
+    text: SELECT a FROM t WHERE x = ? + ?
+    canonical: SELECT a FROM t WHERE x = ?
+
+  - name: a subtraction
+    sql: SELECT a FROM t WHERE x = 5 - 3
+    text: SELECT a FROM t WHERE x = ? - ?
+    canonical: SELECT a FROM t WHERE x = ?
+
+  - name: a longer arithmetic expression
+    sql: SELECT a FROM t WHERE x = 1 + 2 * 3
+    text: SELECT a FROM t WHERE x = ? + ? * ?
+    canonical: SELECT a FROM t WHERE x = ?
+
+  - name: a run of four constants
+    sql: SELECT a FROM t WHERE x = 1 + 1 + 1 + 1
+    text: SELECT a FROM t WHERE x = ? + ? + ? + ?
+    canonical: SELECT a FROM t WHERE x = ?
+
+  - name: placeholders the application already wrote
+    sql: SELECT a FROM t WHERE x = ? + ?
+    text: SELECT a FROM t WHERE x = ? + ?
+    canonical: SELECT a FROM t WHERE x = ?
+
+  - name: three placeholders in a run
+    sql: SELECT a FROM t WHERE x = ? + ? + ?
+    text: SELECT a FROM t WHERE x = ? + ? + ?
+    canonical: SELECT a FROM t WHERE x = ?
+
+  # PostgreSQL lexes `-?` back into one operator token, which is not a placeholder, so the
+  # run it leaves behind has a single placeholder and keeps its shape there.
+  - name: a multiply by a negative constant in the mysql family
+    engine: [mysql, starrocks]
+    sql: SELECT a FROM t WHERE x = 1 * -1
+    text: SELECT a FROM t WHERE x = ? * -?
+    canonical: SELECT a FROM t WHERE x = ?
+
+  - name: a multiply by a negative constant in postgres
+    engine: postgres
+    sql: SELECT a FROM t WHERE x = 1 * -1
+    text: SELECT a FROM t WHERE x = ? * -?
+    canonical: SELECT a FROM t WHERE x = ? * -?
+
+  - name: a constant inside a call
+    sql: SELECT a FROM t WHERE x = f(1 + 1)
+    text: SELECT a FROM t WHERE x = f(? + ?)
+    canonical: SELECT a FROM t WHERE x = f ( ? )
+
+  # A parenthesis ends a run, so this is not the same statement as `x = 1`.
+  - name: a parenthesized constant
+    sql: SELECT a FROM t WHERE x = (1)
+    text: SELECT a FROM t WHERE x = (?)
+    canonical: SELECT a FROM t WHERE x = ( ? )
+
+  - name: a parenthesized sum multiplied out
+    sql: SELECT a FROM t WHERE x = (1 + 2) * 3
+    text: SELECT a FROM t WHERE x = (? + ?) * ?
+    canonical: SELECT a FROM t WHERE x = ( ? ) * ?
+
+  - name: two parenthesized constants
+    sql: SELECT a FROM t WHERE x = (1) + (2)
+    text: SELECT a FROM t WHERE x = (?) + (?)
+    canonical: SELECT a FROM t WHERE x = ( ? ) + ( ? )
+
+  # The trap: the run must begin at a placeholder, so the identifier before it stays out.
+  - name: a run after an identifier
+    sql: SELECT a FROM t WHERE a - 1 > 0
+    text: SELECT a FROM t WHERE a - ? > ?
+    canonical: SELECT a FROM t WHERE a - ?
+
+  - name: a longer run after an identifier
+    sql: SELECT a FROM t WHERE a * 2 + 3 > 0
+    text: SELECT a FROM t WHERE a * ? + ? > ?
+    canonical: SELECT a FROM t WHERE a * ?
+
+  - name: the same identifier with a plain comparison
+    sql: SELECT a FROM t WHERE a = 1
+    text: SELECT a FROM t WHERE a = ?
+    canonical: SELECT a FROM t WHERE a = ?
+
+  # A keyword ends a run, which is what keeps two comparisons two comparisons.
+  - name: two comparisons joined by AND
+    sql: SELECT a FROM t WHERE a = 1 AND b = 2
+    text: SELECT a FROM t WHERE a = ? AND b = ?
+    canonical: SELECT a FROM t WHERE a = ? AND b = ?
+
+  - name: two comparisons joined by OR
+    sql: SELECT a FROM t WHERE a = 1 OR b = 2
+    text: SELECT a FROM t WHERE a = ? OR b = ?
+    canonical: SELECT a FROM t WHERE a = ? OR b = ?
+
+  - name: three comparisons
+    sql: SELECT a FROM t WHERE a = 1 AND b = 2 AND c = 3
+    text: SELECT a FROM t WHERE a = ? AND b = ? AND c = ?
+    canonical: SELECT a FROM t WHERE a = ? AND b = ? AND c = ?
+
+  - name: two runs held apart by a keyword
+    sql: SELECT a FROM t WHERE x = 1 + 1 AND y = 2 + 2
+    text: SELECT a FROM t WHERE x = ? + ? AND y = ? + ?
+    canonical: SELECT a FROM t WHERE x = ? AND y = ?
+
+  - name: a run held apart by a limit keyword
+    sql: SELECT a FROM t WHERE x = 1 LIMIT 1
+    text: SELECT a FROM t WHERE x = ? LIMIT ?
+    canonical: SELECT a FROM t WHERE x = ? LIMIT ?
+
+  # A comma ends a run, so a select list keeps one placeholder per literal.
+  - name: a select list of constants
+    sql: SELECT 1, 2, 3 FROM t
+    text: SELECT ?, ?, ? FROM t
+    canonical: SELECT ? , ? , ? FROM t
+
+  # A comma also keeps a call's arguments apart.
+  - name: a call of one argument
+    sql: SELECT a FROM t WHERE f(1) = 3
+    text: SELECT a FROM t WHERE f(?) = ?
+    canonical: SELECT a FROM t WHERE f ( ? ) = ?
+
+  - name: a call of two arguments
+    sql: SELECT a FROM t WHERE f(1, 2) = 3
+    text: SELECT a FROM t WHERE f(?, ?) = ?
+    canonical: SELECT a FROM t WHERE f ( ? , ? ) = ?
+
+  # NULL is a keyword and says something a placeholder does not.
+  - name: a comparison against NULL
+    sql: SELECT a FROM t WHERE x = NULL
+    text: SELECT a FROM t WHERE x = NULL
+    canonical: SELECT a FROM t WHERE x = NULL
+
+  - name: an IS NULL predicate
+    sql: SELECT a FROM t WHERE x IS NULL
+    text: SELECT a FROM t WHERE x IS NULL
+    canonical: SELECT a FROM t WHERE x IS NULL
+
+  - name: a BETWEEN predicate
+    sql: SELECT a FROM t WHERE x BETWEEN 1 AND 10
+    text: SELECT a FROM t WHERE x BETWEEN ? AND ?
+    canonical: SELECT a FROM t WHERE x BETWEEN ? AND ?
+
+  # `||` is one operator in PostgreSQL and two `|` tokens in the MySQL family; both fold the
+  # same way, so this case needs no dialect.
+  - name: a concatenation of two literals
+    sql: SELECT a FROM t WHERE name = 'a' || 'b'
+    text: SELECT a FROM t WHERE name = ? || ?
+    canonical: SELECT a FROM t WHERE name = ?
+
+  # A sign is one token, but PostgreSQL lexes `-?` back into a single operator token, so the
+  # canonical form keeps the run that the MySQL family folds.
+  - name: a signed constant in the mysql family
+    engine: [mysql, starrocks]
+    sql: SELECT a FROM t WHERE x = -1 + 2
+    text: SELECT a FROM t WHERE x = -? + ?
+    canonical: SELECT a FROM t WHERE x = - ?
+
+  - name: a signed constant in postgres
+    engine: postgres
+    sql: SELECT a FROM t WHERE x = -1 + 2
+    text: SELECT a FROM t WHERE x = -? + ?
+    canonical: SELECT a FROM t WHERE x = -? + ?

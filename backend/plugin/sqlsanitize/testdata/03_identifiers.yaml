@@ -1,0 +1,107 @@
+name: Identifiers
+# N3. Identifiers and keywords are copied verbatim — quotes and case included — and only the
+# spacing around them is the canonical form's business.
+cases:
+  - name: a backtick identifier in the mysql family
+    engine: [mysql, starrocks]
+    sql: SELECT `odd name` FROM t
+    text: SELECT `odd name` FROM t
+    canonical: SELECT `odd name` FROM t
+
+  - name: a backtick identifier holding the placeholder character
+    engine: [mysql, starrocks]
+    sql: SELECT `wei?rd` FROM t
+    text: SELECT `wei?rd` FROM t
+    canonical: SELECT `wei?rd` FROM t
+
+  - name: a postgres quoted identifier
+    engine: postgres
+    sql: SELECT "Weird Col" FROM t WHERE a = 'x'
+    text: SELECT "Weird Col" FROM t WHERE a = ?
+    canonical: SELECT "Weird Col" FROM t WHERE a = ?
+
+  - name: a postgres quoted identifier holding the placeholder character
+    engine: postgres
+    sql: SELECT "wei?rd" FROM t
+    text: SELECT "wei?rd" FROM t
+    canonical: SELECT "wei?rd" FROM t
+
+  - name: a postgres quoted identifier holding doubled quotes
+    engine: postgres
+    sql: SELECT "a""b" FROM t
+    text: SELECT "a""b" FROM t
+    canonical: SELECT "a""b" FROM t
+
+  # A double quote is a string in the MySQL family and an identifier in PostgreSQL. The
+  # stored text is identical in both cases; only the corpus case that pins it differs.
+  - name: a double quoted string in the mysql family
+    engine: [mysql, starrocks]
+    sql: SELECT "not an identifier" AS s
+    text: SELECT ? AS s
+    canonical: SELECT ? AS s
+
+  # A backtick is not an identifier outside the MySQL family: PostgreSQL lexes it as an
+  # operator, so the `?` inside is a placeholder rather than part of a name.
+  - name: a backtick is not an identifier in postgres
+    engine: postgres
+    sql: SELECT `wei?rd` FROM t
+    text: SELECT `wei?rd` FROM t
+    canonical: SELECT ` wei ? rd ` FROM t
+
+  - name: keywords used as a quoted identifier
+    engine: [mysql, starrocks]
+    sql: SELECT `select`, `from` FROM t
+    text: SELECT `select`, `from` FROM t
+    canonical: SELECT `select` , `from` FROM t
+
+  - name: mixed case identifiers and functions
+    sql: SELECT OrderID, order_id FROM Orders
+    text: SELECT OrderID, order_id FROM Orders
+    canonical: SELECT OrderID , order_id FROM Orders
+
+  - name: qualified names keep their dots, the canonical form spaces them
+    sql: SELECT t.a,b FROM t
+    text: SELECT t.a,b FROM t
+    canonical: SELECT t . a , b FROM t
+
+  - name: a non-ascii identifier
+    sql: SELECT 名前 FROM t
+    text: SELECT 名前 FROM t
+    canonical: SELECT 名前 FROM t
+
+  - name: a postgres identifier holding a dollar sign
+    engine: postgres
+    sql: SELECT a$b FROM t
+    text: SELECT a$b FROM t
+    canonical: SELECT a$b FROM t
+
+  - name: tabs and line breaks survive in the stored text only
+    sql: "SELECT\ta\nFROM  t"
+    text: "SELECT\ta\nFROM  t"
+    canonical: SELECT a FROM t
+
+  - name: leading underscores and trailing digits
+    sql: SELECT _col1, col_2 FROM t
+    text: SELECT _col1, col_2 FROM t
+    canonical: SELECT _col1 , col_2 FROM t
+
+  - name: an aggregate list
+    sql: SELECT COUNT(*), MAX(a) FROM t WHERE b = 1
+    text: SELECT COUNT(*), MAX(a) FROM t WHERE b = ?
+    canonical: SELECT COUNT ( * ) , MAX ( a ) FROM t WHERE b = ?
+
+  - name: a star argument
+    sql: SELECT * FROM t
+    text: SELECT * FROM t
+    canonical: SELECT * FROM t
+
+  - name: a table alias
+    sql: SELECT o.id FROM orders AS o
+    text: SELECT o.id FROM orders AS o
+    canonical: SELECT o . id FROM orders AS o
+
+  - name: a quoted schema qualified name in postgres
+    engine: postgres
+    sql: SELECT "public"."users"."id" FROM "public"."users"
+    text: SELECT "public"."users"."id" FROM "public"."users"
+    canonical: SELECT "public" . "users" . "id" FROM "public" . "users"
