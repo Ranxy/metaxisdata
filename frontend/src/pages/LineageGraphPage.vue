@@ -359,6 +359,7 @@ import {
   MousePointerClick,
   RotateCcw,
 } from "lucide-vue-next";
+import { getApplicationSQL } from "@/api/application";
 import { getLineage, getLineageCounts, type LineageCount } from "@/api/lineage";
 import AppLoading from "@/components/common/AppLoading.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
@@ -413,6 +414,7 @@ const SchemaDefinitionDialog = defineAsyncComponent(
 );
 
 import { openlineageRunLabel } from "@/lib/openlineageRun";
+import { statementLabel } from "@/lib/statementLabel";
 import { useInstanceStore } from "@/store/modules/instance";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import type {
@@ -493,6 +495,17 @@ const focusAssetLabel = computed(() => {
 
 // Track actual MetaType per guid, derived from lineage relation sourceType/targetType
 const guidMetaTypeMap = ref<Map<string, MetaType>>(new Map());
+
+/**
+ * A readable name per reported statement.
+ *
+ * A statement's GUID ends in a generated identifier, so the label the canvas would
+ * derive from it (`__application_sql__/kR3f...`) tells a reader nothing. The
+ * server holds the statement's first line, and this is where it is fetched — only
+ * for the nodes whose type says they are statements, and only once each.
+ */
+const guidNameMap = ref<Map<string, string>>(new Map());
+const pendingNameFetch = new Set<string>();
 
 // External dataset info cache: guid -> ExternalDatasetInfo
 const externalDatasetMap = ref<Map<string, ExternalDatasetInfo>>(new Map());
@@ -786,8 +799,53 @@ function assetViewFor(guid: string): LineageAssetView {
   return lineageAssetView(
     guid,
     scopeTitles.value,
-    externalDatasetMap.value.get(guid)
+    externalDatasetMap.value.get(guid),
+    guidNameMap.value.get(guid)
   );
+}
+
+/**
+ * Records the meta types the relations carry, and asks for a statement's label the
+ * first time one appears. A node that is never drawn is never resolved.
+ */
+function recordGuids(relations: LineageRelation[]) {
+  for (const rel of relations) {
+    if (rel.sourceType && !guidMetaTypeMap.value.has(rel.sourceGuid)) {
+      guidMetaTypeMap.value.set(rel.sourceGuid, rel.sourceType);
+      void resolveStatementName(rel.sourceGuid, rel.sourceType);
+    }
+    if (rel.targetType && !guidMetaTypeMap.value.has(rel.targetGuid)) {
+      guidMetaTypeMap.value.set(rel.targetGuid, rel.targetType);
+      void resolveStatementName(rel.targetGuid, rel.targetType);
+    }
+  }
+}
+
+async function resolveStatementName(guid: string, metaType: MetaType) {
+  if (metaType !== MetaType.APPLICATION_SQL) return;
+  if (guidNameMap.value.has(guid) || pendingNameFetch.has(guid)) return;
+  pendingNameFetch.add(guid);
+  try {
+    const statement = await getApplicationSQL(guid);
+    // The relations this page draws from carry no name, so a statement node's label has to
+    // be fetched. `statementLabel` is the same rule the server fills the mirror's name
+    // with, so a node reads like the breadcrumb above it.
+    const label = statementLabel(statement.sqlText);
+    if (label) {
+      // A new Map so the ref is seen to change: the view is computed from it.
+      const next = new Map(guidNameMap.value);
+      next.set(guid, label);
+      guidNameMap.value = next;
+    }
+  } catch (e: unknown) {
+    // A label is cosmetic; the node still draws from its GUID.
+    console.error(
+      `Failed to resolve the statement label for ${guid}:`,
+      extractErrorMessage(e)
+    );
+  } finally {
+    pendingNameFetch.delete(guid);
+  }
 }
 
 /**
@@ -1111,22 +1169,8 @@ async function fetchLineageForGuid(
     }
 
     // Record metaType for all guids referenced in the relations
-    for (const rel of data.upstream) {
-      if (rel.sourceType && !guidMetaTypeMap.value.has(rel.sourceGuid)) {
-        guidMetaTypeMap.value.set(rel.sourceGuid, rel.sourceType);
-      }
-      if (rel.targetType && !guidMetaTypeMap.value.has(rel.targetGuid)) {
-        guidMetaTypeMap.value.set(rel.targetGuid, rel.targetType);
-      }
-    }
-    for (const rel of data.downstream) {
-      if (rel.sourceType && !guidMetaTypeMap.value.has(rel.sourceGuid)) {
-        guidMetaTypeMap.value.set(rel.sourceGuid, rel.sourceType);
-      }
-      if (rel.targetType && !guidMetaTypeMap.value.has(rel.targetGuid)) {
-        guidMetaTypeMap.value.set(rel.targetGuid, rel.targetType);
-      }
-    }
+    recordGuids(data.upstream);
+    recordGuids(data.downstream);
 
     return data;
   } catch (e) {
@@ -1806,6 +1850,8 @@ async function initializeGraph() {
   nodeDataMap.value.clear();
   lineageCounts.value.clear();
   guidMetaTypeMap.value.clear();
+  guidNameMap.value.clear();
+  pendingNameFetch.clear();
   selectedColumnGuid.value = null;
   selectedColumnName.value = null;
   // A new object starts from the whole picture. A filter left over from the
@@ -1821,6 +1867,13 @@ async function initializeGraph() {
   expandedDirections.value.add(expansionKey(currentGuid.value, "upstream"));
   expandedDirections.value.add(expansionKey(currentGuid.value, "downstream"));
   guidMetaTypeMap.value.set(currentGuid.value, currentMetaType.value);
+  // Knowing the root's type is what makes `recordGuids` skip it — the guard is "resolve a
+  // GUID the first time it appears" — so the root, which is on screen from the first
+  // frame, has to ask for its own label here. Without this the one node the reader is
+  // looking at was the one node drawn from its GUID.
+  if (currentMetaType.value === MetaType.APPLICATION_SQL) {
+    void resolveStatementName(currentGuid.value, currentMetaType.value);
+  }
   // A failed instance list leaves the nodes labelled by instance id; it must not
   // cost the whole graph.
   await Promise.all([

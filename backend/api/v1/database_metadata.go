@@ -134,6 +134,16 @@ func (s *DatabaseService) GetSchemaString(ctx context.Context, req *connect.Requ
 
 		return connect.NewResponse(&v1pb.MetadataSchemaString{Schema: manualSQLMeta.SqlText}), nil
 
+	case v1pb.MetaType_APPLICATION_SQL:
+		// A reported statement has no definition to show: the statement itself is the
+		// object, already parameterized.
+		applicationSQLMeta := meta.Metadata.GetApplicationSqlMetadata()
+		if applicationSQLMeta == nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.New("application SQL metadata is nil"))
+		}
+
+		return connect.NewResponse(&v1pb.MetadataSchemaString{Schema: applicationSQLMeta.GetSqlText()}), nil
+
 	default:
 		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("GetMetadataSchema is not implemented for this meta type"))
 	}

@@ -52,7 +52,14 @@ export interface LineageAssetView {
 export function lineageAssetView(
   guid: string,
   scopeTitles: ReadonlyMap<string, string>,
-  external?: ExternalDatasetInfo
+  external?: ExternalDatasetInfo,
+  /**
+   * The object's own name, when the server knows one that reads better than the
+   * GUID's last segment. A reported statement's GUID ends in a generated
+   * identifier, so its label comes from the statement's metadata instead; every
+   * other object's last segment already is its name, and passes nothing.
+   */
+  nameOverride?: string
 ): LineageAssetView {
   if (isExternalGuid(guid)) {
     return externalAssetView(guid, external);
@@ -66,7 +73,9 @@ export function lineageAssetView(
   }
 
   const scopeKey = segments[0] ?? "";
-  const name = segments.length <= 1 ? scopeKey : segments[segments.length - 1];
+  const name =
+    nameOverride ||
+    (segments.length <= 1 ? scopeKey : segments[segments.length - 1]);
   const qualifier = segments.slice(1, -1).filter(Boolean).join(".");
   const scopeLabel = scopeTitles.get(scopeKey) || scopeKey;
 

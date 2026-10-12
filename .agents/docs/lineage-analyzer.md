@@ -8,7 +8,7 @@
 从 SQL 定义推导表级 / 字段级血缘的三段链路,外加一条 OpenLineage 摄入路径:
 
 - **分析器包** `backend/plugin/lineage/`:把一条 SQL 解析成 `[]model.ColumnRelation`。
-- **runner** `backend/runner/lineageanalyzer/`:周期 + 事件驱动地取 VIEW / MATERIALIZED_VIEW / MANUAL_SQL 的定义,调用分析器,把边写进 `column_lineage`。
+- **runner** `backend/runner/lineageanalyzer/`:周期 + 事件驱动地取 VIEW / MATERIALIZED_VIEW / MANUAL_SQL / APPLICATION_SQL 的定义,调用分析器,把边写进 `column_lineage`。
 - **API** `backend/api/v1/lineage_service_analyze.go`:无状态 `AnalyzeSQL`,同一套分析与 GUID 补全逻辑,供图页面/CLI 手工分析。
 
 契约是 `lineage.Analyzer.Analyze(ctx, engine, sql) ([]model.ColumnRelation, error)`(`backend/plugin/lineage/lineage.go:118`)。`sql` 可以是多语句脚本:根包在方言之上切分,逐条交给**单语句**方言分析器(切分循环 `lineage.go:126-141`;方言契约见 `lineage.go:56-60` 的 `AnalyzeRelationFunc` 注释),因此跨语句不共享 scope。
@@ -44,7 +44,7 @@ OceanBase 与 Doris 刻意不注册(`engines.go:10-11`),`Analyze` 对它们返�
 | --- | --- | --- |
 | 周期全扫 | `backend/runner/lineageanalyzer/analyzer.go:26,124` | `lineageAnalysisInterval = 1h`,启动时先扫一次 |
 | 队列消费 | `analyzer.go:27,138` | `analyzeCheckerInterval = 10s`,并发池 `MaxGoroutines = 10` |
-| 事件驱动 | `analyzer.go:84`;`backend/runner/schemasync/syncer.go:417-422,783-787` | schema sync 提交**之后**把变更的 VIEW / MV 入队;MANUAL_SQL 由 `backend/api/v1/database_manual_sql.go:72,269` 入队 |
+| 事件驱动 | `analyzer.go:84`;`backend/runner/schemasync/syncer.go:417-422,783-787` | schema sync 提交**之后**把变更的 VIEW / MV 入队;MANUAL_SQL 由 `backend/api/v1/database_manual_sql.go:72,269` 入队,APPLICATION_SQL 由上报端点入队([application-sql-ingestion.md](application-sql-ingestion.md)) |
 | 变更检测 | `analyzer.go:156-180` | 比较 `meta_registry_resource.metahash` 与 `column_lineage_version.meta_hash`;相同则跳过 |
 | 分析写入 | `analyzer.go:238-417` | 包成 `CREATE VIEW name AS <definition>` → `Analyze` → 过滤 `IsTemp` → `BatchReplaceColumnLineage` → `UpsertColumnLineageVersion` |
 | 失败(解析) | `analyzer.go:513-519` | `markAnalysisFailed`:清空该对象血缘 + 写 `error_message`,并**存当前 meta_hash**(否则小时扫描会反复重排) |
@@ -165,7 +165,7 @@ TiDB 和 MariaDB **没有自己的遍历**。`mysql/analyzer.go` 哨兵之下的
 4. **跨包共享分析器基状态未做** — 仍开放。`pushScope` / `popScope` / `currentScope` / `attachColumnLookup` 在每个方言各一份(`mysql/analyzer.go:2205-2245`、`starrocks/analyzer.go:1190-1210`、`postgresql/analyzer.go:1759-1780`),只因绑定接收者状态(`a.catalog`、`a.scopeStack`)而未下沉;另有各包私有的 `locFieldCache sync.Map`(`mysql/analyzer.go:262`)。抽出共享基状态类型才能继续收敛。
 5. **StarRocks `LOAD` 的 SET/WHERE 无列级血缘** — 仍开放。`starrocks/analyzer.go:892-896` 明确:omni 只把 SET 子句当原文保存,分析器只读 target 与 column list,不二次解析 SET/WHERE。
 6. **MariaDB 三层以上括号 join 树缺口** — 仍开放。`mariadb/analyze_test.go:15-22` 的 `knownParserGaps` 共 5 条,其中 4 条是该缺口(mysqldump 视图会撞上);需上游修 omni 的 MariaDB parser。
-7. **函数 / 存储过程血缘未覆盖** — 仍开放。`analyzer.go:156-159` 只扫 VIEW、MATERIALIZED_VIEW、MANUAL_SQL;FUNCTION / PROCEDURE 不在任何队列里。
+7. **函数 / 存储过程血缘未覆盖** — 仍开放。`analyzer.go` 的 `queueAll` 只扫 VIEW、MATERIALIZED_VIEW、MANUAL_SQL、APPLICATION_SQL;FUNCTION / PROCEDURE 不在任何队列里。
 8. **`OutputColumn.IsDerived` 无消费者** — 仍开放。定义 `backend/plugin/lineage/scope/types.go:163`;只被写入或自或合并(`mysql/analyzer.go:1012,1221`、`starrocks/analyzer.go:720,1047`、`postgresql/analyzer.go:999` 等),全仓没有任何读取它做决策的地方。
 
 已复核后**删除**的原登记项:PG-FU-1(结构化表达式分类,已落地)、PG-FU-3(未加引号标识符折叠,已 document-only 结案)、PG-FU-5(`ON CONFLICT … EXCLUDED.col`,已落地)、ANTLR 迁移(依赖已移除)。

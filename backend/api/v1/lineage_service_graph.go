@@ -311,10 +311,40 @@ func (s *LineageService) enrichLineageGraph(ctx context.Context, nodes []*lineag
 		}
 	}
 
+	// A reported statement's node name would otherwise be its GUID's last segment, which is a
+	// generated identifier. Its label is read for exactly those nodes, in one query.
+	labels, err := s.applicationSQLLabels(ctx, nodes, types)
+	if err != nil {
+		return nil, err
+	}
+
 	for _, node := range nodes {
-		response.Nodes = append(response.Nodes, convertLineageGraphNode(node, types[node.guid], externalByGUID[node.guid]))
+		converted := convertLineageGraphNode(node, types[node.guid], externalByGUID[node.guid])
+		if label, ok := labels[node.guid]; ok {
+			converted.Name = label
+		}
+		response.Nodes = append(response.Nodes, converted)
 	}
 	return external, nil
+}
+
+// applicationSQLLabels resolves the display label of every reported-statement node in the
+// graph. An empty result is the common case: a graph usually holds no such node at all.
+func (s *LineageService) applicationSQLLabels(ctx context.Context, nodes []*lineageGraphNode, types map[string]v1pb.MetaType) (map[string]string, error) {
+	var guids []string
+	for _, node := range nodes {
+		if types[node.guid] == v1pb.MetaType_APPLICATION_SQL {
+			guids = append(guids, node.guid)
+		}
+	}
+	if len(guids) == 0 {
+		return nil, nil
+	}
+	labels, err := s.store.FindApplicationSQLLabels(ctx, guids)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to resolve the reported statement labels"))
+	}
+	return labels, nil
 }
 
 // convertLineageGraphNode describes one node. Every GUID is

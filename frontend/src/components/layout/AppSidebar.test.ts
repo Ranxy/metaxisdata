@@ -28,9 +28,12 @@ const PERMISSIONS = [
   "metaxisdata.users.list",
   "metaxisdata.auditLogs.search",
   "metaxisdata.llm.profiles.list",
+  "metaxisdata.applications.list",
+  "metaxisdata.applicationSqls.list",
 ];
 
-// The discovery/read baseline: no administration permission at all.
+// The member baseline, as backend/store/predefined_roles.go defines it: read-only, and it
+// includes reading the applications that report their SQL.
 const MEMBER_PERMISSIONS = [
   "metaxisdata.explainSql.explain",
   "metaxisdata.instances.list",
@@ -38,7 +41,12 @@ const MEMBER_PERMISSIONS = [
   "metaxisdata.databases.read",
   "metaxisdata.manualSqls.list",
   "metaxisdata.openlineage.read",
+  "metaxisdata.applications.get",
+  "metaxisdata.applications.list",
 ];
+
+// A caller with no permission at all: every section that gates an entry is hidden.
+const NO_PERMISSIONS: string[] = [];
 
 async function mountSidebar(path = "/") {
   const router = createRouter({
@@ -72,6 +80,17 @@ describe("AppSidebar", () => {
   // go of it: the test never navigates away, and the connection outlives the wrapper.
   afterEach(() => {
     useNotificationStore().stopStreaming();
+  });
+
+  it("keeps the applications page out of the product navigation", async () => {
+    const { wrapper } = await mountSidebar();
+    const dataTrigger = sectionTrigger(wrapper, "Data");
+    await dataTrigger.trigger("click");
+
+    // The data view of the statements is here; the page that registers the applications
+    // that report them is in Settings, under its own longer name.
+    expect(wrapper.text()).toContain("Application SQL");
+    expect(wrapper.text()).not.toContain("Application SQL Ingestion");
   });
 
   it("shows only the top-level entries while every section is closed", async () => {
@@ -145,9 +164,18 @@ describe("AppSidebar", () => {
     expect(link?.attributes("href")).toBe("/settings");
   });
 
-  it("hides Settings from a caller without any administration permission", async () => {
+  it("shows Settings to a member, whose baseline now reaches the applications page", async () => {
     useAuthStore().user = create(UserSchema, {
       permissions: MEMBER_PERMISSIONS,
+    });
+    const { wrapper } = await mountSidebar();
+
+    expect(wrapper.text()).toContain("Settings");
+  });
+
+  it("hides Settings from a caller without any permission at all", async () => {
+    useAuthStore().user = create(UserSchema, {
+      permissions: NO_PERMISSIONS,
     });
     const { wrapper } = await mountSidebar();
 

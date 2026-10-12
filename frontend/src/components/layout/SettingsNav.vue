@@ -25,6 +25,7 @@
 
 <script setup lang="ts">
 import {
+  AppWindow,
   ClipboardList,
   Globe,
   KeyRound,
@@ -110,6 +111,17 @@ const ALL_ITEMS = computed(() => [
     path: "/settings/llm-providers",
     icon: Sparkles,
     permission: "metaxisdata.llm.profiles.list",
+  },
+  // The two ingestion surfaces sit together, after everything an administrator sets up
+  // once for the workspace itself. The application-SQL entry takes the page's own title
+  // key rather than holding a second copy of the string: the entry and the heading it
+  // opens have to read the same, and two keys drift apart.
+  {
+    key: "applications",
+    label: t("applicationManagement.title"),
+    path: "/settings/applications",
+    icon: AppWindow,
+    permission: "metaxisdata.applications.list",
   },
   {
     key: "openlineage",

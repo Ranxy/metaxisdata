@@ -20,6 +20,7 @@
     - [OpenLineageTaskSummary](#metaxisdata-store-OpenLineageTaskSummary)
   
 - [store/database.proto](#store_database-proto)
+    - [ApplicationSQLMetadata](#metaxisdata-store-ApplicationSQLMetadata)
     - [BoundingBox](#metaxisdata-store-BoundingBox)
     - [CheckConstraintMetadata](#metaxisdata-store-CheckConstraintMetadata)
     - [ColumnMetadata](#metaxisdata-store-ColumnMetadata)
@@ -365,6 +366,28 @@ run for those.
 <p align="right"><a href="#top">Top</a></p>
 
 ## store/database.proto
+
+
+
+<a name="metaxisdata-store-ApplicationSQLMetadata"></a>
+
+### ApplicationSQLMetadata
+ApplicationSQLMetadata is one statement an application reported, with every literal
+already replaced by `?`. The row is per distinct statement, not per application: which
+applications ran it is recorded in application_sql_observation.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| application_sql_id | [string](#string) |  | The stable identifier of the statement, generated when it is first received. It survives a change to the fingerprint rules, which is what keeps the object&#39;s lineage and history attached. |
+| name | [string](#string) |  | A display label taken from the statement&#39;s first line. The full text is in sql_text. |
+| sql_text | [string](#string) |  | The parameterized statement. This is the only form ever stored: the text an application sends is rewritten before it reaches this table. |
+| instance_resource | [string](#string) |  | The instance that reported it. Format: instances/{instance} |
+| database_name | [string](#string) |  | The database the statement ran against. |
+| schema_name | [string](#string) |  | The schema, empty for the MySQL family. |
+
+
+
 
 
 
@@ -1018,6 +1041,7 @@ StorageConfig holds storage and performance parameters of an index.
 | openlineage_task_summary | [OpenLineageTaskSummary](#metaxisdata-store-OpenLineageTaskSummary) |  |  |
 | manual_sql_metadata | [ManualSQLMetadata](#metaxisdata-store-ManualSQLMetadata) |  |  |
 | column_metadata | [ColumnMetadata](#metaxisdata-store-ColumnMetadata) |  |  |
+| application_sql_metadata | [ApplicationSQLMetadata](#metaxisdata-store-ApplicationSQLMetadata) |  |  |
 
 
 
@@ -1595,6 +1619,7 @@ Instance is the proto for instances.
 | EXTERNAL_TABLE | 16 |  |
 | EXTERNAL_DATASET | 17 |  |
 | MANUAL_SQL | 18 |  |
+| APPLICATION_SQL | 19 |  |
 | VIEW | 5 |  |
 | MATERIALIZED_VIEW | 6 |  |
 | COLUMN | 7 |  |

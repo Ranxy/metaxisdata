@@ -32,6 +32,7 @@ const (
 	OpenLineageRunPrefix       = "openlineage/runs/"
 	OpenLineageTaskPrefix      = "openlineage/tasks/"
 	APIKeyPrefix               = "openlineage/apiKeys/"
+	ApplicationNamePrefix      = "applications/"
 	NotificationPrefix         = "notifications/"
 )
 
@@ -99,6 +100,41 @@ func FormatOpenLineageTask(guid string) string {
 // FormatAPIKey formats an API key resource name.
 func FormatAPIKey(id int64) string {
 	return fmt.Sprintf("%s%d", APIKeyPrefix, id)
+}
+
+// FormatApplication formats an application resource name.
+func FormatApplication(applicationID string) string {
+	return ApplicationNamePrefix + applicationID
+}
+
+// FormatApplicationAPIKey formats a reporting key's resource name, which is nested under the
+// application that owns it.
+func FormatApplicationAPIKey(applicationID string, keyID int64) string {
+	return fmt.Sprintf("%s%s/%s%d", ApplicationNamePrefix, applicationID, "apiKeys/", keyID)
+}
+
+// GetApplicationID returns the application id from a resource name, for a report that names
+// the credential's owner.
+func GetApplicationID(name string) (string, error) {
+	tokens, err := GetNameParentTokens(name, ApplicationNamePrefix)
+	if err != nil {
+		return "", err
+	}
+	return tokens[0], nil
+}
+
+// GetApplicationAPIKeyID returns the application id and the numeric key id from a key's
+// resource name.
+func GetApplicationAPIKeyID(name string) (string, int64, error) {
+	tokens, err := GetNameParentTokens(name, ApplicationNamePrefix, "apiKeys/")
+	if err != nil {
+		return "", 0, err
+	}
+	id, err := strconv.ParseInt(tokens[1], 10, 64)
+	if err != nil {
+		return "", 0, errors.Errorf("invalid API key id %q", tokens[1])
+	}
+	return tokens[0], id, nil
 }
 
 // GetUIDFromName returns the UID from a resource name.

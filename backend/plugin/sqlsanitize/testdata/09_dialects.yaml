@@ -1,0 +1,69 @@
+name: Dialects
+# Where the three lexers genuinely disagree, written out rather than left to a shared case.
+# The sanitizer's rules do not branch on the dialect; these cases pin what the shared rules
+# produce from the tokens each lexer hands them.
+cases:
+  # A numbered parameter is a placeholder in every dialect's lexer, so the wire form
+  # `?` and the PostgreSQL form `$1` land on one stored form everywhere.
+  - name: a numbered parameter in the mysql family
+    engine: [mysql, starrocks]
+    sql: SELECT a FROM t WHERE b = $1
+    text: SELECT a FROM t WHERE b = ?
+    canonical: SELECT a FROM t WHERE b = ?
+
+  - name: a numbered parameter in postgres
+    engine: postgres
+    sql: SELECT a FROM t WHERE b = $1
+    text: SELECT a FROM t WHERE b = ?
+    canonical: SELECT a FROM t WHERE b = ?
+
+  # MySQL hands an unterminated string back as one literal token, so it is rewritten like any
+  # other string rather than refused. StarRocks reports a lex error for the same input and
+  # refuses it; see 08_refusals.yaml.
+  - name: an unterminated string in mysql
+    engine: mysql
+    sql: SELECT 'unterminated
+    text: SELECT ?
+    canonical: SELECT ?
+
+  - name: an unterminated double quoted string in mysql
+    engine: mysql
+    sql: SELECT "unterminated
+    text: SELECT ?
+    canonical: SELECT ?
+
+  # PostgreSQL joins adjacent string constants over a line break into one token; the MySQL family
+  # keeps two, and two placeholders stay two: they are two tokens in that statement.
+  - name: adjacent string constants in postgres
+    engine: postgres
+    sql: "SELECT a FROM t WHERE x = 'a'\n'b'"
+    text: SELECT a FROM t WHERE x = ?
+    canonical: SELECT a FROM t WHERE x = ?
+
+  - name: adjacent string constants in the mysql family
+    engine: [mysql, starrocks]
+    sql: "SELECT a FROM t WHERE x = 'a'\n'b'"
+    text: "SELECT a FROM t WHERE x = ?\n?"
+    canonical: SELECT a FROM t WHERE x = ? ?
+
+  # An escape string is one token in PostgreSQL and a letter followed by a string in the
+  # MySQL family, so the stored text differs while the canonical form agrees.
+  - name: an escape string in postgres
+    engine: postgres
+    sql: SELECT E'a\nb' AS s
+    text: SELECT ? AS s
+    canonical: SELECT ? AS s
+
+  - name: an escape string in the mysql family
+    engine: [mysql, starrocks]
+    sql: SELECT E'a\nb' AS s
+    text: SELECT E? AS s
+    canonical: SELECT E ? AS s
+
+  # A backslash is an ordinary token in the MySQL family and in PostgreSQL, and a lex error
+  # in StarRocks.
+  - name: a bare backslash in the mysql family and postgres
+    engine: [mysql, postgres]
+    sql: SELECT \ FROM t
+    text: SELECT \ FROM t
+    canonical: SELECT \ FROM t

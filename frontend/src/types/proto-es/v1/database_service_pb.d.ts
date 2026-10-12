@@ -1309,6 +1309,59 @@ export declare type ManualSQLMetadata = Message<"metaxisdata.v1.ManualSQLMetadat
 export declare const ManualSQLMetadataSchema: GenMessage<ManualSQLMetadata>;
 
 /**
+ * ApplicationSQLMetadata is one statement an application reported, with every literal
+ * already replaced by `?`. It is the metadata browser's view of the object; how often it
+ * ran and which applications reported it are on the Application SQL page, because the
+ * registry row is written once and those numbers change with every report.
+ *
+ * @generated from message metaxisdata.v1.ApplicationSQLMetadata
+ */
+export declare type ApplicationSQLMetadata = Message<"metaxisdata.v1.ApplicationSQLMetadata"> & {
+  /**
+   * @generated from field: string application_sql_id = 1;
+   */
+  applicationSqlId: string;
+
+  /**
+   * A display label for a one-line context: the whole statement with every run of
+   * whitespace collapsed to a single space, and bounded. The full text is in sql_text.
+   *
+   * @generated from field: string name = 2;
+   */
+  name: string;
+
+  /**
+   * The parameterized statement, exactly as it is stored.
+   *
+   * @generated from field: string sql_text = 3;
+   */
+  sqlText: string;
+
+  /**
+   * Format: instances/{instance}
+   *
+   * @generated from field: string instance_resource = 4;
+   */
+  instanceResource: string;
+
+  /**
+   * @generated from field: string database_name = 5;
+   */
+  databaseName: string;
+
+  /**
+   * @generated from field: string schema_name = 6;
+   */
+  schemaName: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ApplicationSQLMetadata.
+ * Use `create(ApplicationSQLMetadataSchema)` to create a new message.
+ */
+export declare const ApplicationSQLMetadataSchema: GenMessage<ApplicationSQLMetadata>;
+
+/**
  * StoredMetadata is the v1 view of one meta_registry_resource row.
  *
  * OpenLineage registry rows (store.MetaType_OPENLINEAGE) have no v1
@@ -1389,6 +1442,12 @@ export declare type StoredMetadata = Message<"metaxisdata.v1.StoredMetadata"> & 
      */
     value: ColumnMetadata;
     case: "columnMetadata";
+  } | {
+    /**
+     * @generated from field: metaxisdata.v1.ApplicationSQLMetadata application_sql_metadata = 18;
+     */
+    value: ApplicationSQLMetadata;
+    case: "applicationSqlMetadata";
   } | { case: undefined; value?: undefined };
 
   /**
@@ -3604,6 +3663,11 @@ export enum MetaType {
    * @generated from enum value: MANUAL_SQL = 18;
    */
   MANUAL_SQL = 18,
+
+  /**
+   * @generated from enum value: APPLICATION_SQL = 19;
+   */
+  APPLICATION_SQL = 19,
 
   /**
    * @generated from enum value: VIEW = 5;

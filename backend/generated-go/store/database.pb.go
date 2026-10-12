@@ -3599,6 +3599,103 @@ func (x *ManualSQLMetadata) GetDatabaseName() string {
 	return ""
 }
 
+// ApplicationSQLMetadata is one statement an application reported, with every literal
+// already replaced by `?`. The row is per distinct statement, not per application: which
+// applications ran it is recorded in application_sql_observation.
+type ApplicationSQLMetadata struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The stable identifier of the statement, generated when it is first received. It
+	// survives a change to the fingerprint rules, which is what keeps the object's lineage
+	// and history attached.
+	ApplicationSqlId string `protobuf:"bytes,1,opt,name=application_sql_id,json=applicationSqlId,proto3" json:"application_sql_id,omitempty"`
+	// A display label taken from the statement's first line. The full text is in
+	// sql_text.
+	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	// The parameterized statement. This is the only form ever stored: the text an
+	// application sends is rewritten before it reaches this table.
+	SqlText string `protobuf:"bytes,3,opt,name=sql_text,json=sqlText,proto3" json:"sql_text,omitempty"`
+	// The instance that reported it. Format: instances/{instance}
+	InstanceResource string `protobuf:"bytes,4,opt,name=instance_resource,json=instanceResource,proto3" json:"instance_resource,omitempty"`
+	// The database the statement ran against.
+	DatabaseName string `protobuf:"bytes,5,opt,name=database_name,json=databaseName,proto3" json:"database_name,omitempty"`
+	// The schema, empty for the MySQL family.
+	SchemaName    string `protobuf:"bytes,6,opt,name=schema_name,json=schemaName,proto3" json:"schema_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ApplicationSQLMetadata) Reset() {
+	*x = ApplicationSQLMetadata{}
+	mi := &file_store_database_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ApplicationSQLMetadata) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ApplicationSQLMetadata) ProtoMessage() {}
+
+func (x *ApplicationSQLMetadata) ProtoReflect() protoreflect.Message {
+	mi := &file_store_database_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ApplicationSQLMetadata.ProtoReflect.Descriptor instead.
+func (*ApplicationSQLMetadata) Descriptor() ([]byte, []int) {
+	return file_store_database_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *ApplicationSQLMetadata) GetApplicationSqlId() string {
+	if x != nil {
+		return x.ApplicationSqlId
+	}
+	return ""
+}
+
+func (x *ApplicationSQLMetadata) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ApplicationSQLMetadata) GetSqlText() string {
+	if x != nil {
+		return x.SqlText
+	}
+	return ""
+}
+
+func (x *ApplicationSQLMetadata) GetInstanceResource() string {
+	if x != nil {
+		return x.InstanceResource
+	}
+	return ""
+}
+
+func (x *ApplicationSQLMetadata) GetDatabaseName() string {
+	if x != nil {
+		return x.DatabaseName
+	}
+	return ""
+}
+
+func (x *ApplicationSQLMetadata) GetSchemaName() string {
+	if x != nil {
+		return x.SchemaName
+	}
+	return ""
+}
+
 type StoredMetadata struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Type:
@@ -3616,6 +3713,7 @@ type StoredMetadata struct {
 	//	*StoredMetadata_OpenlineageTaskSummary
 	//	*StoredMetadata_ManualSqlMetadata
 	//	*StoredMetadata_ColumnMetadata
+	//	*StoredMetadata_ApplicationSqlMetadata
 	Type          isStoredMetadata_Type `protobuf_oneof:"type"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -3623,7 +3721,7 @@ type StoredMetadata struct {
 
 func (x *StoredMetadata) Reset() {
 	*x = StoredMetadata{}
-	mi := &file_store_database_proto_msgTypes[32]
+	mi := &file_store_database_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3635,7 +3733,7 @@ func (x *StoredMetadata) String() string {
 func (*StoredMetadata) ProtoMessage() {}
 
 func (x *StoredMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_store_database_proto_msgTypes[32]
+	mi := &file_store_database_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3648,7 +3746,7 @@ func (x *StoredMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StoredMetadata.ProtoReflect.Descriptor instead.
 func (*StoredMetadata) Descriptor() ([]byte, []int) {
-	return file_store_database_proto_rawDescGZIP(), []int{32}
+	return file_store_database_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *StoredMetadata) GetType() isStoredMetadata_Type {
@@ -3775,6 +3873,15 @@ func (x *StoredMetadata) GetColumnMetadata() *ColumnMetadata {
 	return nil
 }
 
+func (x *StoredMetadata) GetApplicationSqlMetadata() *ApplicationSQLMetadata {
+	if x != nil {
+		if x, ok := x.Type.(*StoredMetadata_ApplicationSqlMetadata); ok {
+			return x.ApplicationSqlMetadata
+		}
+	}
+	return nil
+}
+
 type isStoredMetadata_Type interface {
 	isStoredMetadata_Type()
 }
@@ -3831,6 +3938,10 @@ type StoredMetadata_ColumnMetadata struct {
 	ColumnMetadata *ColumnMetadata `protobuf:"bytes,16,opt,name=column_metadata,json=columnMetadata,proto3,oneof"`
 }
 
+type StoredMetadata_ApplicationSqlMetadata struct {
+	ApplicationSqlMetadata *ApplicationSQLMetadata `protobuf:"bytes,17,opt,name=application_sql_metadata,json=applicationSqlMetadata,proto3,oneof"`
+}
+
 func (*StoredMetadata_DatabaseSchemaMetadata) isStoredMetadata_Type() {}
 
 func (*StoredMetadata_SchemaMetadata) isStoredMetadata_Type() {}
@@ -3856,6 +3967,8 @@ func (*StoredMetadata_OpenlineageTaskSummary) isStoredMetadata_Type() {}
 func (*StoredMetadata_ManualSqlMetadata) isStoredMetadata_Type() {}
 
 func (*StoredMetadata_ColumnMetadata) isStoredMetadata_Type() {}
+
+func (*StoredMetadata_ApplicationSqlMetadata) isStoredMetadata_Type() {}
 
 var File_store_database_proto protoreflect.FileDescriptor
 
@@ -4237,7 +4350,16 @@ const file_store_database_proto_rawDesc = "" +
 	" \x01(\tR\fdatabaseName\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xe5\t\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xe8\x01\n" +
+	"\x16ApplicationSQLMetadata\x12,\n" +
+	"\x12application_sql_id\x18\x01 \x01(\tR\x10applicationSqlId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x19\n" +
+	"\bsql_text\x18\x03 \x01(\tR\asqlText\x12+\n" +
+	"\x11instance_resource\x18\x04 \x01(\tR\x10instanceResource\x12#\n" +
+	"\rdatabase_name\x18\x05 \x01(\tR\fdatabaseName\x12\x1f\n" +
+	"\vschema_name\x18\x06 \x01(\tR\n" +
+	"schemaName\"\xcc\n" +
+	"\n" +
 	"\x0eStoredMetadata\x12e\n" +
 	"\x18database_schema_metadata\x18\x01 \x01(\v2).metaxisdata.store.DatabaseSchemaMetadataH\x00R\x16databaseSchemaMetadata\x12L\n" +
 	"\x0fschema_metadata\x18\x02 \x01(\v2!.metaxisdata.store.SchemaMetadataH\x00R\x0eschemaMetadata\x12I\n" +
@@ -4252,7 +4374,8 @@ const file_store_database_proto_rawDesc = "" +
 	"\x17openlineage_run_summary\x18\r \x01(\v2(.metaxisdata.store.OpenLineageRunSummaryH\x00R\x15openlineageRunSummary\x12e\n" +
 	"\x18openlineage_task_summary\x18\x0e \x01(\v2).metaxisdata.store.OpenLineageTaskSummaryH\x00R\x16openlineageTaskSummary\x12V\n" +
 	"\x13manual_sql_metadata\x18\x0f \x01(\v2$.metaxisdata.store.ManualSQLMetadataH\x00R\x11manualSqlMetadata\x12L\n" +
-	"\x0fcolumn_metadata\x18\x10 \x01(\v2!.metaxisdata.store.ColumnMetadataH\x00R\x0ecolumnMetadataB\x06\n" +
+	"\x0fcolumn_metadata\x18\x10 \x01(\v2!.metaxisdata.store.ColumnMetadataH\x00R\x0ecolumnMetadata\x12e\n" +
+	"\x18application_sql_metadata\x18\x11 \x01(\v2).metaxisdata.store.ApplicationSQLMetadataH\x00R\x16applicationSqlMetadataB\x06\n" +
 	"\x04typeJ\x04\b\t\x10\n" +
 	"J\x04\b\v\x10\fJ\x04\b\f\x10\rR\x10package_metadataR\x0fstream_metadataR\rtask_metadataB\x14Z\x12generated-go/storeb\x06proto3"
 
@@ -4269,7 +4392,7 @@ func file_store_database_proto_rawDescGZIP() []byte {
 }
 
 var file_store_database_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_store_database_proto_msgTypes = make([]protoimpl.MessageInfo, 36)
+var file_store_database_proto_msgTypes = make([]protoimpl.MessageInfo, 37)
 var file_store_database_proto_goTypes = []any{
 	(TablePartitionMetadata_Type)(0),       // 0: metaxisdata.store.TablePartitionMetadata.Type
 	(ColumnMetadata_IdentityGeneration)(0), // 1: metaxisdata.store.ColumnMetadata.IdentityGeneration
@@ -4306,17 +4429,18 @@ var file_store_database_proto_goTypes = []any{
 	(*EventTriggerMetadata)(nil),           // 32: metaxisdata.store.EventTriggerMetadata
 	(*ForeignKeyMetadata)(nil),             // 33: metaxisdata.store.ForeignKeyMetadata
 	(*ManualSQLMetadata)(nil),              // 34: metaxisdata.store.ManualSQLMetadata
-	(*StoredMetadata)(nil),                 // 35: metaxisdata.store.StoredMetadata
-	nil,                                    // 36: metaxisdata.store.DatabaseMetadata.LabelsEntry
-	nil,                                    // 37: metaxisdata.store.SpatialIndexConfig.EngineSpecificEntry
-	nil,                                    // 38: metaxisdata.store.ManualSQLMetadata.AttributesEntry
-	(*timestamppb.Timestamp)(nil),          // 39: google.protobuf.Timestamp
-	(*OpenLineageRunSummary)(nil),          // 40: metaxisdata.store.OpenLineageRunSummary
-	(*OpenLineageTaskSummary)(nil),         // 41: metaxisdata.store.OpenLineageTaskSummary
+	(*ApplicationSQLMetadata)(nil),         // 35: metaxisdata.store.ApplicationSQLMetadata
+	(*StoredMetadata)(nil),                 // 36: metaxisdata.store.StoredMetadata
+	nil,                                    // 37: metaxisdata.store.DatabaseMetadata.LabelsEntry
+	nil,                                    // 38: metaxisdata.store.SpatialIndexConfig.EngineSpecificEntry
+	nil,                                    // 39: metaxisdata.store.ManualSQLMetadata.AttributesEntry
+	(*timestamppb.Timestamp)(nil),          // 40: google.protobuf.Timestamp
+	(*OpenLineageRunSummary)(nil),          // 41: metaxisdata.store.OpenLineageRunSummary
+	(*OpenLineageTaskSummary)(nil),         // 42: metaxisdata.store.OpenLineageTaskSummary
 }
 var file_store_database_proto_depIdxs = []int32{
-	36, // 0: metaxisdata.store.DatabaseMetadata.labels:type_name -> metaxisdata.store.DatabaseMetadata.LabelsEntry
-	39, // 1: metaxisdata.store.DatabaseMetadata.last_sync_time:type_name -> google.protobuf.Timestamp
+	37, // 0: metaxisdata.store.DatabaseMetadata.labels:type_name -> metaxisdata.store.DatabaseMetadata.LabelsEntry
+	40, // 1: metaxisdata.store.DatabaseMetadata.last_sync_time:type_name -> google.protobuf.Timestamp
 	5,  // 2: metaxisdata.store.DatabaseSchemaMetadata.schemas:type_name -> metaxisdata.store.SchemaMetadata
 	31, // 3: metaxisdata.store.DatabaseSchemaMetadata.extensions:type_name -> metaxisdata.store.ExtensionMetadata
 	32, // 4: metaxisdata.store.DatabaseSchemaMetadata.event_triggers:type_name -> metaxisdata.store.EventTriggerMetadata
@@ -4358,10 +4482,10 @@ var file_store_database_proto_depIdxs = []int32{
 	26, // 40: metaxisdata.store.SpatialIndexConfig.tessellation:type_name -> metaxisdata.store.TessellationConfig
 	29, // 41: metaxisdata.store.SpatialIndexConfig.storage:type_name -> metaxisdata.store.StorageConfig
 	30, // 42: metaxisdata.store.SpatialIndexConfig.dimensional:type_name -> metaxisdata.store.DimensionalConfig
-	37, // 43: metaxisdata.store.SpatialIndexConfig.engine_specific:type_name -> metaxisdata.store.SpatialIndexConfig.EngineSpecificEntry
+	38, // 43: metaxisdata.store.SpatialIndexConfig.engine_specific:type_name -> metaxisdata.store.SpatialIndexConfig.EngineSpecificEntry
 	27, // 44: metaxisdata.store.TessellationConfig.bounding_box:type_name -> metaxisdata.store.BoundingBox
 	28, // 45: metaxisdata.store.TessellationConfig.grid_levels:type_name -> metaxisdata.store.GridLevel
-	38, // 46: metaxisdata.store.ManualSQLMetadata.attributes:type_name -> metaxisdata.store.ManualSQLMetadata.AttributesEntry
+	39, // 46: metaxisdata.store.ManualSQLMetadata.attributes:type_name -> metaxisdata.store.ManualSQLMetadata.AttributesEntry
 	4,  // 47: metaxisdata.store.StoredMetadata.database_schema_metadata:type_name -> metaxisdata.store.DatabaseSchemaMetadata
 	5,  // 48: metaxisdata.store.StoredMetadata.schema_metadata:type_name -> metaxisdata.store.SchemaMetadata
 	11, // 49: metaxisdata.store.StoredMetadata.table_metadata:type_name -> metaxisdata.store.TableMetadata
@@ -4371,15 +4495,16 @@ var file_store_database_proto_depIdxs = []int32{
 	22, // 53: metaxisdata.store.StoredMetadata.function_metadata:type_name -> metaxisdata.store.FunctionMetadata
 	23, // 54: metaxisdata.store.StoredMetadata.procedure_metadata:type_name -> metaxisdata.store.ProcedureMetadata
 	8,  // 55: metaxisdata.store.StoredMetadata.sequence_metadata:type_name -> metaxisdata.store.SequenceMetadata
-	40, // 56: metaxisdata.store.StoredMetadata.openlineage_run_summary:type_name -> metaxisdata.store.OpenLineageRunSummary
-	41, // 57: metaxisdata.store.StoredMetadata.openlineage_task_summary:type_name -> metaxisdata.store.OpenLineageTaskSummary
+	41, // 56: metaxisdata.store.StoredMetadata.openlineage_run_summary:type_name -> metaxisdata.store.OpenLineageRunSummary
+	42, // 57: metaxisdata.store.StoredMetadata.openlineage_task_summary:type_name -> metaxisdata.store.OpenLineageTaskSummary
 	34, // 58: metaxisdata.store.StoredMetadata.manual_sql_metadata:type_name -> metaxisdata.store.ManualSQLMetadata
 	16, // 59: metaxisdata.store.StoredMetadata.column_metadata:type_name -> metaxisdata.store.ColumnMetadata
-	60, // [60:60] is the sub-list for method output_type
-	60, // [60:60] is the sub-list for method input_type
-	60, // [60:60] is the sub-list for extension type_name
-	60, // [60:60] is the sub-list for extension extendee
-	0,  // [0:60] is the sub-list for field type_name
+	35, // 60: metaxisdata.store.StoredMetadata.application_sql_metadata:type_name -> metaxisdata.store.ApplicationSQLMetadata
+	61, // [61:61] is the sub-list for method output_type
+	61, // [61:61] is the sub-list for method input_type
+	61, // [61:61] is the sub-list for extension type_name
+	61, // [61:61] is the sub-list for extension extendee
+	0,  // [0:61] is the sub-list for field type_name
 }
 
 func init() { file_store_database_proto_init() }
@@ -4388,7 +4513,7 @@ func file_store_database_proto_init() {
 		return
 	}
 	file_store_openlineage_proto_init()
-	file_store_database_proto_msgTypes[32].OneofWrappers = []any{
+	file_store_database_proto_msgTypes[33].OneofWrappers = []any{
 		(*StoredMetadata_DatabaseSchemaMetadata)(nil),
 		(*StoredMetadata_SchemaMetadata)(nil),
 		(*StoredMetadata_TableMetadata)(nil),
@@ -4402,6 +4527,7 @@ func file_store_database_proto_init() {
 		(*StoredMetadata_OpenlineageTaskSummary)(nil),
 		(*StoredMetadata_ManualSqlMetadata)(nil),
 		(*StoredMetadata_ColumnMetadata)(nil),
+		(*StoredMetadata_ApplicationSqlMetadata)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -4409,7 +4535,7 @@ func file_store_database_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_store_database_proto_rawDesc), len(file_store_database_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   36,
+			NumMessages:   37,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

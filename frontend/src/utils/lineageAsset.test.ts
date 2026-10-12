@@ -70,6 +70,27 @@ describe("lineageAssetView", () => {
     expect(view.fullLabel).toBe("ghost · db.t");
   });
 
+  it("prefers a name the caller resolved over the GUID's last segment", () => {
+    // A reported statement's GUID ends in a generated identifier, so its label has to come
+    // from its metadata; every other object passes no override and keeps the segment-derived
+    // name.
+    const guid = "test-pg-1;e2e;public;__application_sql__/kR3f9Q";
+    const view = lineageAssetView(
+      guid,
+      titles,
+      undefined,
+      "SELECT id FROM orders WHERE status = ?"
+    );
+
+    expect(view.name).toBe("SELECT id FROM orders WHERE status = ?");
+    expect(view.qualifier).toBe("e2e.public");
+
+    // An empty override is not a name: the segment-derived one stands.
+    expect(lineageAssetView(guid, titles, undefined, "").name).toBe(
+      "__application_sql__/kR3f9Q"
+    );
+  });
+
   it("drops a trailing empty segment instead of naming the object empty", () => {
     const view = lineageAssetView("mysql-dev-1;eve;", titles);
     expect(view.name).toBe("eve");

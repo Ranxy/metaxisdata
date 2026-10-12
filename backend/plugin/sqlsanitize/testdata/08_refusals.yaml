@@ -1,0 +1,76 @@
+name: Refusals
+# The cases the sanitizer must not accept. Each one is a statement a lexer cannot walk to its
+# end, and accepting one would store bytes no rule inspected: in PostgreSQL an unterminated
+# string is not a token at all, so the literal would be copied into the store verbatim.
+#
+# One refusal cannot be written here: YAML has no way to carry a byte that is not UTF-8, so the
+# statement whose identifier holds one is pinned by TestSanitizeRejectsInvalidUTF8 instead.
+cases:
+  - name: an empty statement
+    sql: ""
+    expect_error: true
+
+  - name: only whitespace
+    sql: "   "
+    expect_error: true
+
+  - name: only a line break and a tab
+    sql: "\n\t"
+    expect_error: true
+
+  - name: only a line comment
+    sql: "-- nothing to run"
+    expect_error: true
+
+  - name: only a block comment
+    sql: "/* nothing to run */"
+    expect_error: true
+
+  - name: an unterminated string in postgres
+    engine: postgres
+    sql: SELECT a FROM t WHERE b = 'unterminated
+    expect_error: true
+
+  - name: an unterminated quoted identifier in postgres
+    engine: postgres
+    sql: SELECT "unterminated
+    expect_error: true
+
+  - name: a malformed number in postgres
+    engine: postgres
+    sql: SELECT a FROM t WHERE x = 1e
+    expect_error: true
+
+  - name: a backslash escape in postgres
+    engine: postgres
+    sql: SELECT 'a\'b' FROM t
+    expect_error: true
+
+  # StarRocks reports its own lex errors, so a trailing token it cannot finish is a refusal
+  # rather than a truncated token list.
+  - name: an unterminated string in starrocks
+    engine: starrocks
+    sql: SELECT 'unterminated
+    expect_error: true
+
+  - name: an unterminated backtick in starrocks
+    engine: starrocks
+    sql: SELECT `unterminated
+    expect_error: true
+
+  - name: a bare backslash in starrocks
+    engine: starrocks
+    sql: SELECT \ FROM t
+    expect_error: true
+
+  - name: an unterminated block comment in starrocks
+    engine: starrocks
+    sql: SELECT 1 /* unterminated
+    expect_error: true
+
+  # A versioned executable comment is code, not a comment, and the MySQL lexer cannot walk
+  # its body: the tail after the last token is what refuses this one.
+  - name: a mysql versioned comment
+    engine: mysql
+    sql: SELECT /*!40101 SET @a=1 */ a FROM t
+    expect_error: true

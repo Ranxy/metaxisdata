@@ -58,9 +58,27 @@ func convertStoredMetadataMessage(meta *storepb.StoredMetadata) *v1pb.StoredMeta
 		result.Type = &v1pb.StoredMetadata_ColumnMetadata{
 			ColumnMetadata: convertColumnMetadata(v.ColumnMetadata),
 		}
+	case *storepb.StoredMetadata_ApplicationSqlMetadata:
+		result.Type = &v1pb.StoredMetadata_ApplicationSqlMetadata{
+			ApplicationSqlMetadata: convertApplicationSQLMetadata(v.ApplicationSqlMetadata),
+		}
 	default:
 	}
 	return result
+}
+
+func convertApplicationSQLMetadata(meta *storepb.ApplicationSQLMetadata) *v1pb.ApplicationSQLMetadata {
+	if meta == nil {
+		return nil
+	}
+	return &v1pb.ApplicationSQLMetadata{
+		ApplicationSqlId: meta.ApplicationSqlId,
+		Name:             meta.Name,
+		SqlText:          meta.SqlText,
+		InstanceResource: meta.InstanceResource,
+		DatabaseName:     meta.DatabaseName,
+		SchemaName:       meta.SchemaName,
+	}
 }
 
 func convertDatabaseSchemaMetadata(meta *storepb.DatabaseSchemaMetadata) *v1pb.DatabaseSchemaMetadata {

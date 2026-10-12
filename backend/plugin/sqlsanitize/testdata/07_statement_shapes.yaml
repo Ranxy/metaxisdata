@@ -1,0 +1,151 @@
+name: StatementShapes
+# The statements an application actually sends. Each one pins the stored text and the
+# canonical form so that a change to any rule has to answer for a realistic statement and
+# not only for the minimal one that isolates it.
+cases:
+  - name: a select with a join
+    sql: SELECT u.id, o.total FROM users u JOIN orders o ON u.id = o.user_id WHERE o.status = 'paid'
+    text: SELECT u.id, o.total FROM users u JOIN orders o ON u.id = o.user_id WHERE o.status = ?
+    canonical: SELECT u . id , o . total FROM users u JOIN orders o ON u . id = o . user_id WHERE o . status = ?
+
+  - name: an aggregate report
+    sql: SELECT o.id, SUM(o.total) AS revenue FROM orders o WHERE o.created_at >= '2024-01-01' GROUP BY o.id ORDER BY revenue DESC LIMIT 100
+    text: SELECT o.id, SUM(o.total) AS revenue FROM orders o WHERE o.created_at >= ? GROUP BY o.id ORDER BY revenue DESC LIMIT ?
+    canonical: SELECT o . id , SUM ( o . total ) AS revenue FROM orders o WHERE o . created_at >= ? GROUP BY o . id ORDER BY revenue DESC LIMIT ?
+
+  - name: a common table expression
+    sql: WITH recent AS (SELECT id FROM orders WHERE created_at > '2024-01-01') SELECT * FROM recent
+    text: WITH recent AS (SELECT id FROM orders WHERE created_at > ?) SELECT * FROM recent
+    canonical: WITH recent AS ( SELECT id FROM orders WHERE created_at > ? ) SELECT * FROM recent
+
+  - name: a window function
+    sql: SELECT a, ROW_NUMBER() OVER (PARTITION BY b ORDER BY 1) FROM t
+    text: SELECT a, ROW_NUMBER() OVER (PARTITION BY b ORDER BY ?) FROM t
+    canonical: SELECT a , ROW_NUMBER ( ) OVER ( PARTITION BY b ORDER BY ? ) FROM t
+
+  - name: a case expression
+    sql: SELECT CASE WHEN a = 1 THEN 2 ELSE 3 END FROM t
+    text: SELECT CASE WHEN a = ? THEN ? ELSE ? END FROM t
+    canonical: SELECT CASE WHEN a = ? THEN ? ELSE ? END FROM t
+
+  - name: a group by and having
+    sql: SELECT a, COUNT(*) FROM t WHERE b = 1 GROUP BY a HAVING COUNT(*) > 2
+    text: SELECT a, COUNT(*) FROM t WHERE b = ? GROUP BY a HAVING COUNT(*) > ?
+    canonical: SELECT a , COUNT ( * ) FROM t WHERE b = ? GROUP BY a HAVING COUNT ( * ) > ?
+
+  - name: a distinct aggregate
+    sql: SELECT COUNT(DISTINCT a) FROM t WHERE b = 1
+    text: SELECT COUNT(DISTINCT a) FROM t WHERE b = ?
+    canonical: SELECT COUNT ( DISTINCT a ) FROM t WHERE b = ?
+
+  - name: an ordered and limited select
+    sql: SELECT DISTINCT a FROM t WHERE b = 1 ORDER BY a LIMIT 5 OFFSET 10
+    text: SELECT DISTINCT a FROM t WHERE b = ? ORDER BY a LIMIT ? OFFSET ?
+    canonical: SELECT DISTINCT a FROM t WHERE b = ? ORDER BY a LIMIT ? OFFSET ?
+
+  - name: an order by position list
+    sql: SELECT a FROM t ORDER BY 1 DESC, 2 ASC
+    text: SELECT a FROM t ORDER BY ? DESC, ? ASC
+    canonical: SELECT a FROM t ORDER BY ? DESC , ? ASC
+
+  - name: a set operation
+    sql: SELECT a FROM t UNION ALL SELECT a FROM u WHERE b = 1
+    text: SELECT a FROM t UNION ALL SELECT a FROM u WHERE b = ?
+    canonical: SELECT a FROM t UNION ALL SELECT a FROM u WHERE b = ?
+
+  - name: a correlated subquery
+    sql: SELECT (SELECT MAX(x) FROM u WHERE k = 1) AS m FROM t
+    text: SELECT (SELECT MAX(x) FROM u WHERE k = ?) AS m FROM t
+    canonical: SELECT ( SELECT MAX ( x ) FROM u WHERE k = ? ) AS m FROM t
+
+  - name: a negation around a comparison
+    sql: SELECT a FROM t WHERE NOT (b = 1)
+    text: SELECT a FROM t WHERE NOT (b = ?)
+    canonical: SELECT a FROM t WHERE NOT ( b = ? )
+
+  - name: a cast
+    sql: SELECT CAST(a AS CHAR) FROM t WHERE b = 1
+    text: SELECT CAST(a AS CHAR) FROM t WHERE b = ?
+    canonical: SELECT CAST ( a AS CHAR ) FROM t WHERE b = ?
+
+  - name: a coalesce with a default
+    sql: SELECT COALESCE(a, 0) FROM t
+    text: SELECT COALESCE(a, ?) FROM t
+    canonical: SELECT COALESCE ( a , ? ) FROM t
+
+  - name: a json path predicate
+    sql: SELECT a FROM t WHERE JSON_EXTRACT(b, '$.c') = 'd'
+    text: SELECT a FROM t WHERE JSON_EXTRACT(b, ?) = ?
+    canonical: SELECT a FROM t WHERE JSON_EXTRACT ( b , ? ) = ?
+
+  - name: a like with an escape
+    sql: SELECT a FROM t WHERE b LIKE '%x%' ESCAPE '!'
+    text: SELECT a FROM t WHERE b LIKE ? ESCAPE ?
+    canonical: SELECT a FROM t WHERE b LIKE ? ESCAPE ?
+
+  - name: a regular expression predicate
+    sql: SELECT a FROM t WHERE b REGEXP '^x'
+    text: SELECT a FROM t WHERE b REGEXP ?
+    canonical: SELECT a FROM t WHERE b REGEXP ?
+
+  - name: a conditional expression
+    sql: SELECT IF(a = 1, 'y', 'n') FROM t
+    text: SELECT IF(a = ?, ?, ?) FROM t
+    canonical: SELECT IF ( a = ? , ? , ? ) FROM t
+
+  - name: an update of one column from itself
+    sql: UPDATE t SET a = a + 1 WHERE b = 2
+    text: UPDATE t SET a = a + ? WHERE b = ?
+    canonical: UPDATE t SET a = a + ? WHERE b = ?
+
+  - name: an update of several columns
+    sql: UPDATE t SET a = 1, b = 2 WHERE c = 3
+    text: UPDATE t SET a = ?, b = ? WHERE c = ?
+    canonical: UPDATE t SET a = ? , b = ? WHERE c = ?
+
+  - name: an update to the default value
+    sql: UPDATE t SET a = DEFAULT WHERE b = 1
+    text: UPDATE t SET a = DEFAULT WHERE b = ?
+    canonical: UPDATE t SET a = DEFAULT WHERE b = ?
+
+  - name: a delete with a list
+    sql: DELETE FROM t WHERE a = 1 AND b IN (2, 3)
+    text: DELETE FROM t WHERE a = ? AND b IN (?, ?)
+    canonical: DELETE FROM t WHERE a = ? AND b IN ( ? )
+
+  - name: a delete of everything carries no literal
+    sql: DELETE FROM t
+    text: DELETE FROM t
+    canonical: DELETE FROM t
+
+  - name: a truncate
+    sql: TRUNCATE TABLE t
+    text: TRUNCATE TABLE t
+    canonical: TRUNCATE TABLE t
+
+  - name: three predicates mixing the rules
+    sql: SELECT a FROM t WHERE b = 'x' AND c IN (1, 2) AND d > 3
+    text: SELECT a FROM t WHERE b = ? AND c IN (?, ?) AND d > ?
+    canonical: SELECT a FROM t WHERE b = ? AND c IN ( ? ) AND d > ?
+
+  - name: two lists beside each other
+    sql: SELECT a FROM t WHERE b IN (1, 2, 3) AND c NOT IN (4, 5)
+    text: SELECT a FROM t WHERE b IN (?, ?, ?) AND c NOT IN (?, ?)
+    canonical: SELECT a FROM t WHERE b IN ( ? ) AND c NOT IN ( ? )
+
+  - name: an insert that selects
+    sql: INSERT INTO t (a, b) SELECT x, 1 FROM u
+    text: INSERT INTO t (a, b) SELECT x, ? FROM u
+    canonical: INSERT INTO t ( a , b ) SELECT x , ? FROM u
+
+  - name: a lock clause
+    sql: SELECT a FROM t WHERE b = 1 FOR UPDATE
+    text: SELECT a FROM t WHERE b = ? FOR UPDATE
+    canonical: SELECT a FROM t WHERE b = ? FOR UPDATE
+
+  # The caller splits a script before calling; this pins what the package does if it is given
+  # one anyway, which is to treat the whole text as one statement.
+  - name: two statements in one input
+    sql: SELECT 1; SELECT 2
+    text: SELECT ?; SELECT ?
+    canonical: SELECT ? ; SELECT ?

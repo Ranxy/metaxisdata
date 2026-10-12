@@ -32,10 +32,11 @@ var allPermissionSet = func() map[permission.Permission]bool {
 // memberBaselinePermissions is the permission set granted to any authenticated
 // principal (roles/workspaceMember). It is the discovery/read baseline: browse
 // instances and metadata, read and author manual SQL, read lineage, browse
-// OpenLineage, and explain SQL. Administration (user/group/role/IAM, instance
-// and data source writes, settings writes, audit logs, OpenLineage writes, LLM
-// profiles) is deliberately absent and reachable only through workspaceAdmin or
-// a custom role.
+// OpenLineage, read the applications that report their SQL, and explain SQL.
+// Administration (user/group/role/IAM, instance and data source writes, settings
+// writes, audit logs, OpenLineage writes, LLM profiles, and — because issuing a key
+// is a credential that writes data — the application key endpoints) is deliberately
+// absent and reachable only through workspaceAdmin or a custom role.
 var memberBaselinePermissions = permissionSet(
 	permission.InstancesGet,
 	permission.InstancesList,
@@ -49,6 +50,10 @@ var memberBaselinePermissions = permissionSet(
 	permission.ManualSQLsDelete,
 	permission.LineageGet,
 	permission.OpenLineageRead,
+	permission.ApplicationsGet,
+	permission.ApplicationsList,
+	permission.ApplicationSQLsGet,
+	permission.ApplicationSQLsList,
 	permission.ExplainSQLExplain,
 )
 

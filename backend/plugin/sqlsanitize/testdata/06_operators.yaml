@@ -1,0 +1,199 @@
+name: OperatorsAndConstants
+# A constant is rewritten, never folded. The operator around it and the number of placeholders
+# the statement carries are part of its identity, so `price * 100 >= 5000` is not
+# `price * 100 <= 2000`, and `id = ?` — one bound value — is not `id = ? - ?` — two.
+#
+# This is the reference fingerprinter's whole principle: replace numbers, quoted strings and
+# value lists, and nothing else. Only a list folds here (N4 in `04_in_lists`, N5 in `05_values`),
+# because a list's length varies per execution while a constant's spelling does not.
+cases:
+  - name: a single constant
+    sql: SELECT a FROM t WHERE x = 1
+    text: SELECT a FROM t WHERE x = ?
+    canonical: SELECT a FROM t WHERE x = ?
+
+  - name: an addition keeps its operator
+    sql: SELECT a FROM t WHERE x = 1 + 1
+    text: SELECT a FROM t WHERE x = ? + ?
+    canonical: SELECT a FROM t WHERE x = ? + ?
+
+  - name: a subtraction keeps its operator
+    sql: SELECT a FROM t WHERE x = 5 - 3
+    text: SELECT a FROM t WHERE x = ? - ?
+    canonical: SELECT a FROM t WHERE x = ? - ?
+
+  - name: a longer arithmetic expression keeps every operator
+    sql: SELECT a FROM t WHERE x = 1 + 2 * 3
+    text: SELECT a FROM t WHERE x = ? + ? * ?
+    canonical: SELECT a FROM t WHERE x = ? + ? * ?
+
+  - name: a run of four constants keeps its length
+    sql: SELECT a FROM t WHERE x = 1 + 1 + 1 + 1
+    text: SELECT a FROM t WHERE x = ? + ? + ? + ?
+    canonical: SELECT a FROM t WHERE x = ? + ? + ? + ?
+
+  - name: placeholders the application already wrote keep their length
+    sql: SELECT a FROM t WHERE x = ? + ?
+    text: SELECT a FROM t WHERE x = ? + ?
+    canonical: SELECT a FROM t WHERE x = ? + ?
+
+  - name: three placeholders in one expression
+    sql: SELECT a FROM t WHERE x = ? + ? + ?
+    text: SELECT a FROM t WHERE x = ? + ? + ?
+    canonical: SELECT a FROM t WHERE x = ? + ? + ?
+
+  # A sign is a token of its own in the MySQL family, and PostgreSQL lexes `-?` back into one
+  # operator token, so the canonical forms differ by a space.
+  - name: a multiply by a negative constant in the mysql family
+    engine: [mysql, starrocks]
+    sql: SELECT a FROM t WHERE x = 1 * -1
+    text: SELECT a FROM t WHERE x = ? * -?
+    canonical: SELECT a FROM t WHERE x = ? * - ?
+
+  - name: a multiply by a negative constant in postgres
+    engine: postgres
+    sql: SELECT a FROM t WHERE x = 1 * -1
+    text: SELECT a FROM t WHERE x = ? * -?
+    canonical: SELECT a FROM t WHERE x = ? * -?
+
+  - name: a constant inside a call
+    sql: SELECT a FROM t WHERE x = f(1 + 1)
+    text: SELECT a FROM t WHERE x = f(? + ?)
+    canonical: SELECT a FROM t WHERE x = f ( ? + ? )
+
+  - name: a parenthesized constant
+    sql: SELECT a FROM t WHERE x = (1)
+    text: SELECT a FROM t WHERE x = (?)
+    canonical: SELECT a FROM t WHERE x = ( ? )
+
+  - name: a parenthesized sum multiplied out
+    sql: SELECT a FROM t WHERE x = (1 + 2) * 3
+    text: SELECT a FROM t WHERE x = (? + ?) * ?
+    canonical: SELECT a FROM t WHERE x = ( ? + ? ) * ?
+
+  - name: two parenthesized constants
+    sql: SELECT a FROM t WHERE x = (1) + (2)
+    text: SELECT a FROM t WHERE x = (?) + (?)
+    canonical: SELECT a FROM t WHERE x = ( ? ) + ( ? )
+
+  # The pair that used to share a row: a lower bound and an upper bound on the same expression.
+  - name: a lower bound on a scaled column
+    sql: SELECT a FROM t WHERE price * 100 >= 5000
+    text: SELECT a FROM t WHERE price * ? >= ?
+    canonical: SELECT a FROM t WHERE price * ? >= ?
+
+  - name: an upper bound on a scaled column
+    sql: SELECT a FROM t WHERE price * 100 <= 2000
+    text: SELECT a FROM t WHERE price * ? <= ?
+    canonical: SELECT a FROM t WHERE price * ? <= ?
+
+  - name: an equality on a scaled column
+    sql: SELECT a FROM t WHERE price * 100 = 5000
+    text: SELECT a FROM t WHERE price * ? = ?
+    canonical: SELECT a FROM t WHERE price * ? = ?
+
+  # The other pair that used to share a row: one bound value against two.
+  - name: one bound value
+    sql: SELECT a FROM t WHERE id = ?
+    text: SELECT a FROM t WHERE id = ?
+    canonical: SELECT a FROM t WHERE id = ?
+
+  - name: two bound values
+    sql: SELECT a FROM t WHERE id = ? - ?
+    text: SELECT a FROM t WHERE id = ? - ?
+    canonical: SELECT a FROM t WHERE id = ? - ?
+
+  - name: an expression on the left of a comparison
+    sql: SELECT a FROM t WHERE a - 1 > 0
+    text: SELECT a FROM t WHERE a - ? > ?
+    canonical: SELECT a FROM t WHERE a - ? > ?
+
+  - name: the same expression compared for equality
+    sql: SELECT a FROM t WHERE a - 1 = 0
+    text: SELECT a FROM t WHERE a - ? = ?
+    canonical: SELECT a FROM t WHERE a - ? = ?
+
+  - name: the same expression as a bare filter
+    sql: SELECT a FROM t WHERE a - 1
+    text: SELECT a FROM t WHERE a - ?
+    canonical: SELECT a FROM t WHERE a - ?
+
+  - name: a longer expression after an identifier
+    sql: SELECT a FROM t WHERE a * 2 + 3 > 0
+    text: SELECT a FROM t WHERE a * ? + ? > ?
+    canonical: SELECT a FROM t WHERE a * ? + ? > ?
+
+  - name: a plain comparison
+    sql: SELECT a FROM t WHERE a = 1
+    text: SELECT a FROM t WHERE a = ?
+    canonical: SELECT a FROM t WHERE a = ?
+
+  - name: two comparisons joined by AND
+    sql: SELECT a FROM t WHERE a = 1 AND b = 2
+    text: SELECT a FROM t WHERE a = ? AND b = ?
+    canonical: SELECT a FROM t WHERE a = ? AND b = ?
+
+  - name: two comparisons joined by OR
+    sql: SELECT a FROM t WHERE a = 1 OR b = 2
+    text: SELECT a FROM t WHERE a = ? OR b = ?
+    canonical: SELECT a FROM t WHERE a = ? OR b = ?
+
+  - name: three comparisons
+    sql: SELECT a FROM t WHERE a = 1 AND b = 2 AND c = 3
+    text: SELECT a FROM t WHERE a = ? AND b = ? AND c = ?
+    canonical: SELECT a FROM t WHERE a = ? AND b = ? AND c = ?
+
+  - name: two expressions held apart by a keyword
+    sql: SELECT a FROM t WHERE x = 1 + 1 AND y = 2 + 2
+    text: SELECT a FROM t WHERE x = ? + ? AND y = ? + ?
+    canonical: SELECT a FROM t WHERE x = ? + ? AND y = ? + ?
+
+  - name: an expression held apart by a limit keyword
+    sql: SELECT a FROM t WHERE x = 1 LIMIT 1
+    text: SELECT a FROM t WHERE x = ? LIMIT ?
+    canonical: SELECT a FROM t WHERE x = ? LIMIT ?
+
+  - name: a select list of constants
+    sql: SELECT 1, 2, 3 FROM t
+    text: SELECT ?, ?, ? FROM t
+    canonical: SELECT ? , ? , ? FROM t
+
+  - name: a call of one argument
+    sql: SELECT a FROM t WHERE f(1) = 3
+    text: SELECT a FROM t WHERE f(?) = ?
+    canonical: SELECT a FROM t WHERE f ( ? ) = ?
+
+  - name: a call of two arguments
+    sql: SELECT a FROM t WHERE f(1, 2) = 3
+    text: SELECT a FROM t WHERE f(?, ?) = ?
+    canonical: SELECT a FROM t WHERE f ( ? , ? ) = ?
+
+  - name: a comparison against NULL
+    sql: SELECT a FROM t WHERE x = NULL
+    text: SELECT a FROM t WHERE x = NULL
+    canonical: SELECT a FROM t WHERE x = NULL
+
+  - name: an IS NULL predicate
+    sql: SELECT a FROM t WHERE x IS NULL
+    text: SELECT a FROM t WHERE x IS NULL
+    canonical: SELECT a FROM t WHERE x IS NULL
+
+  - name: a BETWEEN predicate
+    sql: SELECT a FROM t WHERE x BETWEEN 1 AND 10
+    text: SELECT a FROM t WHERE x BETWEEN ? AND ?
+    canonical: SELECT a FROM t WHERE x BETWEEN ? AND ?
+
+  # `||` is one operator token in PostgreSQL and StarRocks, and two `|` tokens in MySQL, where it
+  # means OR rather than concatenation. Keeping the two apart is the point: they are not the same
+  # statement, and a fingerprint that folded the run would have made them one.
+  - name: a concatenation of two literals in postgres and starrocks
+    engine: [postgres, starrocks]
+    sql: SELECT a FROM t WHERE name = 'a' || 'b'
+    text: SELECT a FROM t WHERE name = ? || ?
+    canonical: SELECT a FROM t WHERE name = ? || ?
+
+  - name: a concatenation of two literals in mysql
+    engine: mysql
+    sql: SELECT a FROM t WHERE name = 'a' || 'b'
+    text: SELECT a FROM t WHERE name = ? || ?
+    canonical: SELECT a FROM t WHERE name = ? | | ?

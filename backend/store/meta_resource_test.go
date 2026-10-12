@@ -36,14 +36,16 @@ func TestBuildMetaRegistryWhereClauseBatchesGUIDs(t *testing.T) {
 	require.Empty(t, args)
 }
 
-func TestGetNextLevelObjectTypeIncludesManualSQLUnderSchema(t *testing.T) {
+func TestGetNextLevelObjectTypeIncludesSQLObjectsUnderTheirScope(t *testing.T) {
 	t.Parallel()
 
-	require.Contains(
-		t,
-		getNextLevelObjectType(storepb.MetaType_SCHEMA),
-		storepb.MetaType_MANUAL_SQL,
-	)
+	// A manual SQL object and a reported statement are both addressed by a scope and
+	// browse beside the schema objects it belongs to: the database level for the MySQL
+	// family, the schema level for PostgreSQL.
+	for _, parent := range []storepb.MetaType{storepb.MetaType_DATABASE, storepb.MetaType_SCHEMA} {
+		require.Contains(t, getNextLevelObjectType(parent), storepb.MetaType_MANUAL_SQL)
+		require.Contains(t, getNextLevelObjectType(parent), storepb.MetaType_APPLICATION_SQL)
+	}
 }
 
 // Views keep their columns inside their own metadata and have no COLUMN

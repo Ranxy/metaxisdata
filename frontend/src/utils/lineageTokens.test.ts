@@ -34,6 +34,7 @@ describe("lineage tokens", () => {
     for (const token of [
       "--lineage-sql:",
       "--lineage-openlineage:",
+      "--lineage-appsql:",
       "--lineage-mixed:",
     ]) {
       expect(css).toContain(token);
@@ -45,7 +46,7 @@ describe("lineage tokens", () => {
     const declaration = /--lineage-[a-z0-9-]+:\s*([^;]+);/g;
     const found = [...css.matchAll(declaration)];
     // Both themes declare the same names, so every token appears twice.
-    expect(found.length).toBeGreaterThanOrEqual((LINEAGE_SCOPE_COUNT + 3) * 2);
+    expect(found.length).toBeGreaterThanOrEqual((LINEAGE_SCOPE_COUNT + 4) * 2);
     for (const [, value] of found) {
       expect(value.trim()).toMatch(/^\d+(\.\d+)? \d+(\.\d+)?% \d+(\.\d+)?%$/);
     }

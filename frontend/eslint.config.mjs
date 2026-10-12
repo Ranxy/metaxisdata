@@ -57,6 +57,16 @@ export default [
             // Dynamically used via showSuccess / handleError / formatError.
             // This rule cannot follow a key held by our own handler, while
             // scripts/check-vue-i18n.mjs does trace it and still fails a typo.
+            "applicationManagement.createError",
+            "applicationManagement.deleteError",
+            "applicationManagement.fetchError",
+            "applicationManagement.keyCreateError",
+            "applicationManagement.keyRevokeError",
+            "applicationManagement.keysFetchError",
+            "applicationManagement.updateError",
+            "applicationSql.deleteError",
+            "applicationSql.detailFetchError",
+            "applicationSql.fetchError",
             "databaseManagement.fetchError",
             "databaseManagement.syncError",
             "generalSettings.loadError",
@@ -119,6 +129,8 @@ export default [
             "lineageGraph.originSqlHint",
             "lineageGraph.originOpenlineage",
             "lineageGraph.originOpenlineageHint",
+            "lineageGraph.originApplicationSql",
+            "lineageGraph.originApplicationSqlHint",
             "lineageGraph.originMixed",
             "lineageGraph.originMixedHint",
             // Dynamically used: the notification catalog in

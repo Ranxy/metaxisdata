@@ -19,6 +19,17 @@ const (
 	DatabasesList                      Permission = "metaxisdata.databases.list"
 	DatabasesRead                      Permission = "metaxisdata.databases.read"
 	DatabasesSync                      Permission = "metaxisdata.databases.sync"
+	ApplicationsGet                    Permission = "metaxisdata.applications.get"
+	ApplicationsList                   Permission = "metaxisdata.applications.list"
+	ApplicationsCreate                 Permission = "metaxisdata.applications.create"
+	ApplicationsUpdate                 Permission = "metaxisdata.applications.update"
+	ApplicationsDelete                 Permission = "metaxisdata.applications.delete"
+	ApplicationsApiKeysList            Permission = "metaxisdata.applications.apiKeys.list"
+	ApplicationsApiKeysCreate          Permission = "metaxisdata.applications.apiKeys.create"
+	ApplicationsApiKeysDelete          Permission = "metaxisdata.applications.apiKeys.delete"
+	ApplicationSQLsGet                 Permission = "metaxisdata.applicationSqls.get"
+	ApplicationSQLsList                Permission = "metaxisdata.applicationSqls.list"
+	ApplicationSQLsDelete              Permission = "metaxisdata.applicationSqls.delete"
 	ManualSQLsGet                      Permission = "metaxisdata.manualSqls.get"
 	ManualSQLsList                     Permission = "metaxisdata.manualSqls.list"
 	ManualSQLsCreate                   Permission = "metaxisdata.manualSqls.create"
@@ -85,6 +96,17 @@ var allPermissions = []Permission{
 	DatabasesList,
 	DatabasesRead,
 	DatabasesSync,
+	ApplicationsGet,
+	ApplicationsList,
+	ApplicationsCreate,
+	ApplicationsUpdate,
+	ApplicationsDelete,
+	ApplicationsApiKeysList,
+	ApplicationsApiKeysCreate,
+	ApplicationsApiKeysDelete,
+	ApplicationSQLsGet,
+	ApplicationSQLsList,
+	ApplicationSQLsDelete,
 	ManualSQLsGet,
 	ManualSQLsList,
 	ManualSQLsCreate,

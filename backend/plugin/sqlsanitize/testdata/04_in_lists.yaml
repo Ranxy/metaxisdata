@@ -1,0 +1,131 @@
+name: InListFolding
+# N4. Every case here pins both forms, so the equivalence classes are readable: the cases
+# whose canonical forms are written identically must merge into one row, and the ones whose
+# canonical forms differ must not. A list merges only when every element is a placeholder.
+cases:
+  - name: a one element list
+    sql: SELECT a FROM t WHERE x IN (1)
+    text: SELECT a FROM t WHERE x IN (?)
+    canonical: SELECT a FROM t WHERE x IN ( ? )
+
+  - name: a two element list
+    sql: SELECT a FROM t WHERE x IN (1, 2)
+    text: SELECT a FROM t WHERE x IN (?, ?)
+    canonical: SELECT a FROM t WHERE x IN ( ? )
+
+  - name: a five element list
+    sql: SELECT a FROM t WHERE x IN (1, 2, 3, 4, 5)
+    text: SELECT a FROM t WHERE x IN (?, ?, ?, ?, ?)
+    canonical: SELECT a FROM t WHERE x IN ( ? )
+
+  - name: a ten element list
+    sql: SELECT a FROM t WHERE x IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+    text: SELECT a FROM t WHERE x IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    canonical: SELECT a FROM t WHERE x IN ( ? )
+
+  - name: a twenty element list
+    sql: SELECT a FROM t WHERE x IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20)
+    text: SELECT a FROM t WHERE x IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    canonical: SELECT a FROM t WHERE x IN ( ? )
+
+  - name: a list of strings
+    sql: SELECT a FROM t WHERE x IN ('a', 'b')
+    text: SELECT a FROM t WHERE x IN (?, ?)
+    canonical: SELECT a FROM t WHERE x IN ( ? )
+
+  - name: a list that already holds a placeholder
+    sql: SELECT a FROM t WHERE x IN (1, ?)
+    text: SELECT a FROM t WHERE x IN (?, ?)
+    canonical: SELECT a FROM t WHERE x IN ( ? )
+
+  - name: the lowercase keyword
+    sql: SELECT a FROM t WHERE x in (1, 2)
+    text: SELECT a FROM t WHERE x in (?, ?)
+    canonical: SELECT a FROM t WHERE x in ( ? )
+
+  - name: a NOT IN list
+    sql: SELECT a FROM t WHERE x NOT IN (1, 2)
+    text: SELECT a FROM t WHERE x NOT IN (?, ?)
+    canonical: SELECT a FROM t WHERE x NOT IN ( ? )
+
+  - name: two lists in one predicate
+    sql: SELECT a FROM t WHERE x IN (1) OR y IN (2, 3)
+    text: SELECT a FROM t WHERE x IN (?) OR y IN (?, ?)
+    canonical: SELECT a FROM t WHERE x IN ( ? ) OR y IN ( ? )
+
+  - name: an IN list beside a comparison
+    sql: SELECT a FROM t WHERE x IN (1, 2, 3) AND y = 4
+    text: SELECT a FROM t WHERE x IN (?, ?, ?) AND y = ?
+    canonical: SELECT a FROM t WHERE x IN ( ? ) AND y = ?
+
+  - name: an IN list inside a CASE
+    sql: SELECT CASE WHEN a IN (1, 2) THEN 1 ELSE 0 END FROM t
+    text: SELECT CASE WHEN a IN (?, ?) THEN ? ELSE ? END FROM t
+    canonical: SELECT CASE WHEN a IN ( ? ) THEN ? ELSE ? END FROM t
+
+  - name: an IN list in a HAVING clause
+    sql: SELECT a FROM t GROUP BY a HAVING COUNT(*) IN (1, 2)
+    text: SELECT a FROM t GROUP BY a HAVING COUNT(*) IN (?, ?)
+    canonical: SELECT a FROM t GROUP BY a HAVING COUNT ( * ) IN ( ? )
+
+  - name: an IN list inside a subquery
+    sql: SELECT a FROM t WHERE x IN (SELECT id FROM u WHERE k IN (1, 2))
+    text: SELECT a FROM t WHERE x IN (SELECT id FROM u WHERE k IN (?, ?))
+    canonical: SELECT a FROM t WHERE x IN ( SELECT id FROM u WHERE k IN ( ? ) )
+
+  # A list of columns keeps its shape: it names different columns at each length, so the
+  # statements are not the same statement.
+  - name: a one column list
+    sql: SELECT a FROM t WHERE x IN (a)
+    text: SELECT a FROM t WHERE x IN (a)
+    canonical: SELECT a FROM t WHERE x IN ( a )
+
+  - name: a two column list
+    sql: SELECT a FROM t WHERE x IN (a, b)
+    text: SELECT a FROM t WHERE x IN (a, b)
+    canonical: SELECT a FROM t WHERE x IN ( a , b )
+
+  - name: a three column list
+    sql: SELECT a FROM t WHERE x IN (a, b, c)
+    text: SELECT a FROM t WHERE x IN (a, b, c)
+    canonical: SELECT a FROM t WHERE x IN ( a , b , c )
+
+  - name: a mixed list of one literal and a column
+    sql: SELECT a FROM t WHERE x IN (1, b)
+    text: SELECT a FROM t WHERE x IN (?, b)
+    canonical: SELECT a FROM t WHERE x IN ( ? , b )
+
+  - name: a mixed list of two literals and a column
+    sql: SELECT a FROM t WHERE x IN (1, 2, b)
+    text: SELECT a FROM t WHERE x IN (?, ?, b)
+    canonical: SELECT a FROM t WHERE x IN ( ? , ? , b )
+
+  - name: a list holding NULL
+    sql: SELECT a FROM t WHERE x IN (1, NULL)
+    text: SELECT a FROM t WHERE x IN (?, NULL)
+    canonical: SELECT a FROM t WHERE x IN ( ? , NULL )
+
+  - name: a list holding a call
+    sql: SELECT a FROM t WHERE x IN (f(1), 2)
+    text: SELECT a FROM t WHERE x IN (f(?), ?)
+    canonical: SELECT a FROM t WHERE x IN ( f ( ? ) , ? )
+
+  - name: a nested parenthesized element
+    sql: SELECT a FROM t WHERE x IN ((1))
+    text: SELECT a FROM t WHERE x IN ((?))
+    canonical: SELECT a FROM t WHERE x IN ( ( ? ) )
+
+  - name: an empty list
+    sql: SELECT a FROM t WHERE x IN ()
+    text: SELECT a FROM t WHERE x IN ()
+    canonical: SELECT a FROM t WHERE x IN ( )
+
+  - name: a list with a trailing comma
+    sql: SELECT a FROM t WHERE x IN (1,)
+    text: SELECT a FROM t WHERE x IN (?,)
+    canonical: SELECT a FROM t WHERE x IN ( ? , )
+
+  - name: a subquery is not a list of placeholders
+    sql: SELECT a FROM t WHERE x IN (SELECT id FROM u WHERE k = 1)
+    text: SELECT a FROM t WHERE x IN (SELECT id FROM u WHERE k = ?)
+    canonical: SELECT a FROM t WHERE x IN ( SELECT id FROM u WHERE k = ? )

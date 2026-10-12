@@ -101,6 +101,7 @@ func configureGrpcRouters(
 	databaseService := apiv1.NewDatabaseService(stores, schemaSync)
 	lineageService := apiv1.NewLineageService(stores, lineageAnalyzer)
 	openLineageService := apiv1.NewOpenLineageService(stores)
+	applicationService := apiv1.NewApplicationService(stores)
 	llmService := apiv1.NewLLMService(stores, llmRegistry)
 	explainSQLService := apiv1.NewExplainSQLService(stores, llmRegistry, lineageAnalyzer)
 	settingService := apiv1.NewSettingService(stores, profile)
@@ -170,6 +171,8 @@ func configureGrpcRouters(
 	connectHandlers[lineagePath] = lineageHandler
 	openLineagePath, openLineageHandler := v1connect.NewOpenLineageServiceHandler(openLineageService, handlerOpts)
 	connectHandlers[openLineagePath] = openLineageHandler
+	applicationPath, applicationHandler := v1connect.NewApplicationServiceHandler(applicationService, handlerOpts)
+	connectHandlers[applicationPath] = applicationHandler
 	llmPath, llmHandler := v1connect.NewLLMServiceHandler(llmService, handlerOpts)
 	connectHandlers[llmPath] = llmHandler
 	explainSQLPath, explainSQLHandler := v1connect.NewExplainSQLServiceHandler(explainSQLService, handlerOpts)
@@ -206,6 +209,7 @@ func configureGrpcRouters(
 		v1connect.GroupServiceName,
 		v1connect.IamServiceName,
 		v1connect.OAuthServiceName,
+		v1connect.ApplicationServiceName,
 		v1connect.IdentityProviderServiceName,
 	)
 	reflectPath, reflectHandler := grpcreflect.NewHandlerV1(reflector, connect.WithReadMaxBytes(maxConnectRequestBytes))
@@ -291,6 +295,16 @@ func configureGrpcRouters(
 	// client address, so the same trusted-proxy rules as the audit record apply.
 	olGroup.Use(openLineageIngestionMiddleware(profile.TrustedProxies))
 	olHandler.RegisterRoutes(olGroup)
+
+	// Application SQL ingestion, also plain REST: the producers are applications, not
+	// browsers, and they authenticate with a key the workspace issued for them. It sits
+	// under /api/v1 alongside the OpenLineage route because the ConnectRPC gateway owns
+	// /v1/*. Unlike OpenLineage ingestion it carries no rate limit, which is a recorded
+	// decision rather than an oversight: a report deduplicates into rows counted by
+	// distinct statement, so the storage it can add is bounded by what the application
+	// contains. See .agents/docs/application-sql-ingestion.md, decision D6.
+	appSQLHandler := apiv1.NewApplicationSQLHandler(stores, lineageAnalyzer, schemaSync)
+	appSQLHandler.RegisterRoutes(e.Group("/api/v1/applicationSql"))
 
 	// The OAuth 2.1 authorization server behind the MCP endpoint. Its routes are
 	// plain HTTP because OAuth clients do not speak ConnectRPC, so they sit

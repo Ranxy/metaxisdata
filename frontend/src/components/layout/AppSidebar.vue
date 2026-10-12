@@ -189,6 +189,7 @@ import {
   Network,
   PanelLeftClose,
   PanelLeftOpen,
+  ScrollText,
   Server,
   Settings,
   Sparkles,
@@ -235,6 +236,9 @@ interface MenuItem {
 // Settings is one destination with its own in-page navigation, so the nine
 // administration pages no longer occupy nine permanent sidebar rows.
 const SETTINGS_PERMISSIONS = [
+  // Reading the applications that report SQL is part of the member baseline, so the
+  // section entry has to appear for a member too: it is the only way to the page.
+  "metaxisdata.applications.list",
   "metaxisdata.settings.get",
   "metaxisdata.iam.getPolicy",
   "metaxisdata.roles.list",
@@ -293,6 +297,13 @@ function buildMenuItems(): MenuItem[] {
           path: "/manual-sql",
           icon: FileCode2,
           permission: "metaxisdata.manualSqls.list",
+        },
+        {
+          key: "applicationSql",
+          label: t("menu.applicationSql"),
+          path: "/application-sql",
+          icon: ScrollText,
+          permission: "metaxisdata.applicationSqls.list",
         },
       ],
     },

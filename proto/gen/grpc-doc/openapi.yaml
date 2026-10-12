@@ -38,6 +38,261 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/applicationSqls:
+        delete:
+            tags:
+                - ApplicationService
+            operationId: ApplicationService_DeleteApplicationSQL
+            parameters:
+                - name: guid
+                  in: query
+                  description: The globally unique metadata GUID of the statement.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/applicationSqls:get:
+        get:
+            tags:
+                - ApplicationService
+            description: |-
+                Reads one reported statement. It is addressed by GUID rather than by resource name
+                 because every entry point to a statement already holds a GUID: the lineage graph, the
+                 history page and GetMetadata.
+            operationId: ApplicationService_GetApplicationSQL
+            parameters:
+                - name: guid
+                  in: query
+                  description: The globally unique metadata GUID of the statement.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ApplicationSQL'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/applications:
+        get:
+            tags:
+                - ApplicationService
+            operationId: ApplicationService_ListApplications
+            parameters:
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+                - name: showDisabled
+                  in: query
+                  description: |-
+                    Include stopped applications. The default lists only the ones a report may still come
+                     from.
+                  schema:
+                    type: boolean
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListApplicationsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        post:
+            tags:
+                - ApplicationService
+            operationId: ApplicationService_CreateApplication
+            parameters:
+                - name: apiKeyDescription
+                  in: query
+                  description: |-
+                    The first API key's description, so the credential that a fresh application reports with
+                     can be told apart from the ones issued later.
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/Application'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CreateApplicationResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/applications/{application}:
+        delete:
+            tags:
+                - ApplicationService
+            operationId: ApplicationService_DeleteApplication
+            parameters:
+                - name: application
+                  in: path
+                  description: The application id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        patch:
+            tags:
+                - ApplicationService
+            operationId: ApplicationService_UpdateApplication
+            parameters:
+                - name: application
+                  in: path
+                  description: The application id.
+                  required: true
+                  schema:
+                    type: string
+                - name: updateMask
+                  in: query
+                  schema:
+                    type: string
+                    format: field-mask
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/Application'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Application'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/applications/{application}/apiKeys:
+        get:
+            tags:
+                - ApplicationService
+            operationId: ApplicationService_ListApplicationAPIKeys
+            parameters:
+                - name: application
+                  in: path
+                  description: The application id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListApplicationAPIKeysResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        post:
+            tags:
+                - ApplicationService
+            operationId: ApplicationService_CreateApplicationAPIKey
+            parameters:
+                - name: application
+                  in: path
+                  description: The application id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CreateApplicationAPIKeyRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CreateApplicationAPIKeyResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/applications/{application}/apiKeys/{apiKey}:
+        delete:
+            tags:
+                - ApplicationService
+            operationId: ApplicationService_RevokeApplicationAPIKey
+            parameters:
+                - name: application
+                  in: path
+                  description: The application id.
+                  required: true
+                  schema:
+                    type: string
+                - name: apiKey
+                  in: path
+                  description: The apiKey id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/auth/deviceLogins:
         post:
             tags:
@@ -1267,6 +1522,71 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/instances/{instance}/databases/{database}/applicationSqls:
+        get:
+            tags:
+                - ApplicationService
+            description: Lists reported statements. The parent scopes the result to one instance and database.
+            operationId: ApplicationService_ListApplicationSQLs
+            parameters:
+                - name: instance
+                  in: path
+                  description: The instance id.
+                  required: true
+                  schema:
+                    type: string
+                - name: database
+                  in: path
+                  description: The database id.
+                  required: true
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+                - name: application
+                  in: query
+                  description: Only the statements this application has reported.
+                  schema:
+                    type: string
+                - name: schemaName
+                  in: query
+                  schema:
+                    type: string
+                - name: kind
+                  in: query
+                  schema:
+                    enum:
+                        - APPLICATION_SQL_KIND_UNSPECIFIED
+                        - APPLICATION_SQL_KIND_UNKNOWN
+                        - APPLICATION_SQL_KIND_READ
+                        - APPLICATION_SQL_KIND_WRITE
+                    type: string
+                    format: enum
+                - name: query
+                  in: query
+                  description: Full-text search over the parameterized statements.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListApplicationSQLsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/instances/{instance}/databases/{database}/manualSqls:
         get:
             tags:
@@ -1717,6 +2037,7 @@ paths:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -1827,6 +2148,7 @@ paths:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -1930,6 +2252,7 @@ paths:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -2130,6 +2453,7 @@ paths:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -2220,6 +2544,7 @@ paths:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -2275,6 +2600,7 @@ paths:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -2368,6 +2694,7 @@ paths:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -2419,6 +2746,7 @@ paths:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -2470,6 +2798,7 @@ paths:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -3793,6 +4122,7 @@ components:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -3823,6 +4153,7 @@ components:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -3919,6 +4250,208 @@ components:
                         How many diagnostics the server's per-analysis bound left out, so a caller
                          can tell a complete list from a truncated one.
                     format: int32
+        Application:
+            required:
+                - displayName
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: |-
+                        The resource name.
+                         Format: applications/{application_id}
+                applicationId:
+                    readOnly: true
+                    type: string
+                    description: The stable identifier, equal to the last segment of `name`.
+                displayName:
+                    type: string
+                    description: 'The display name. It is unique: it is how a person names the application.'
+                description:
+                    type: string
+                disabled:
+                    type: boolean
+                    description: |-
+                        A stopped application keeps every row it ever reported, and none of its keys report
+                         anything any more.
+                createdAt:
+                    readOnly: true
+                    type: string
+                    format: date-time
+                updatedAt:
+                    readOnly: true
+                    type: string
+                    format: date-time
+            description: Application is one application whose statements are reported to the workspace.
+        ApplicationAPIKey:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: |-
+                        The resource name.
+                         Format: applications/{application_id}/apiKeys/{api_key}
+                apiKeyId:
+                    readOnly: true
+                    type: string
+                maskedKey:
+                    readOnly: true
+                    type: string
+                    description: The masked key, safe to display.
+                description:
+                    type: string
+                createdAt:
+                    readOnly: true
+                    type: string
+                    format: date-time
+                lastUsedAt:
+                    readOnly: true
+                    type: string
+                    description: The last request this key was used for, and how many it has made.
+                    format: date-time
+                requestCount:
+                    readOnly: true
+                    type: string
+                    description: |-
+                        Per-key counters. They stand in for one audit row per request: the audit ledger is kept
+                         forever, so auditing machine traffic would grow it with request volume rather than with
+                         distinct statements.
+                statementAcceptedCount:
+                    readOnly: true
+                    type: string
+                    description: |-
+                        Statements rather than reports: a report whose entry carried a script counts once per
+                         statement in it.
+                statementRejectedCount:
+                    readOnly: true
+                    type: string
+            description: |-
+                ApplicationAPIKey is one reporting credential. Only its masked form is ever returned
+                 after creation.
+        ApplicationSQL:
+            type: object
+            properties:
+                guid:
+                    type: string
+                    description: The globally unique metadata GUID.
+                applicationSqlId:
+                    readOnly: true
+                    type: string
+                instanceResourceId:
+                    readOnly: true
+                    type: string
+                databaseName:
+                    readOnly: true
+                    type: string
+                schemaName:
+                    readOnly: true
+                    type: string
+                engine:
+                    readOnly: true
+                    enum:
+                        - ENGINE_UNSPECIFIED
+                        - MSSQL
+                        - MYSQL
+                        - POSTGRES
+                        - TIDB
+                        - MARIADB
+                        - OCEANBASE
+                        - STARROCKS
+                        - DORIS
+                    type: string
+                    format: enum
+                sqlText:
+                    readOnly: true
+                    type: string
+                    description: The parameterized statement. This is the only form ever stored.
+                kind:
+                    readOnly: true
+                    enum:
+                        - APPLICATION_SQL_KIND_UNSPECIFIED
+                        - APPLICATION_SQL_KIND_UNKNOWN
+                        - APPLICATION_SQL_KIND_READ
+                        - APPLICATION_SQL_KIND_WRITE
+                    type: string
+                    format: enum
+                fingerprint:
+                    readOnly: true
+                    type: string
+                    description: |-
+                        The fingerprint that identifies the statement within its scope, and the version of the
+                         rules that produced it.
+                fingerprintVersion:
+                    readOnly: true
+                    type: integer
+                    format: int32
+                executionCount:
+                    readOnly: true
+                    type: string
+                    description: How many times every application ran it, and when it was first and last seen.
+                firstSeenAt:
+                    readOnly: true
+                    type: string
+                    format: date-time
+                lastSeenAt:
+                    readOnly: true
+                    type: string
+                    format: date-time
+                observations:
+                    readOnly: true
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ApplicationSQLObservation'
+                    description: The applications that reported it, with each one's own history.
+            description: |-
+                ApplicationSQL is one distinct statement an application reported, with every literal
+                 already replaced by `?`.
+        ApplicationSQLMetadata:
+            type: object
+            properties:
+                applicationSqlId:
+                    type: string
+                    description: |-
+                        The stable identifier of the statement, generated when it is first received. It
+                         survives a change to the fingerprint rules, which is what keeps the object's lineage
+                         and history attached.
+                name:
+                    type: string
+                    description: |-
+                        A display label taken from the statement's first line. The full text is in
+                         sql_text.
+                sqlText:
+                    type: string
+                    description: |-
+                        The parameterized statement. This is the only form ever stored: the text an
+                         application sends is rewritten before it reaches this table.
+                instanceResource:
+                    type: string
+                    description: 'The instance that reported it. Format: instances/{instance}'
+                databaseName:
+                    type: string
+                    description: The database the statement ran against.
+                schemaName:
+                    type: string
+                    description: The schema, empty for the MySQL family.
+            description: |-
+                ApplicationSQLMetadata is one statement an application reported, with every literal
+                 already replaced by `?`. The row is per distinct statement, not per application: which
+                 applications ran it is recorded in application_sql_observation.
+        ApplicationSQLObservation:
+            type: object
+            properties:
+                application:
+                    type: string
+                applicationDisplayName:
+                    type: string
+                executionCount:
+                    type: string
+                firstSeenAt:
+                    type: string
+                    format: date-time
+                lastSeenAt:
+                    type: string
+                    format: date-time
+            description: ApplicationSQLObservation is one application's own history with one statement.
         ApproveDeviceLoginRequest:
             required:
                 - name
@@ -4258,6 +4791,33 @@ components:
                     description: The plain-text API key. Only returned once at creation time.
                 apiKey:
                     $ref: '#/components/schemas/APIKey'
+        CreateApplicationAPIKeyRequest:
+            required:
+                - parent
+            type: object
+            properties:
+                parent:
+                    type: string
+                    description: 'Format: applications/{application_id}'
+                description:
+                    type: string
+        CreateApplicationAPIKeyResponse:
+            type: object
+            properties:
+                apiKey:
+                    type: string
+                key:
+                    $ref: '#/components/schemas/ApplicationAPIKey'
+        CreateApplicationResponse:
+            type: object
+            properties:
+                application:
+                    $ref: '#/components/schemas/Application'
+                apiKey:
+                    type: string
+                    description: The plaintext API key. It is returned once and never stored in a recoverable form.
+                key:
+                    $ref: '#/components/schemas/ApplicationAPIKey'
         CreateDeviceLoginRequest:
             type: object
             properties:
@@ -5515,6 +6075,7 @@ components:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -5561,6 +6122,7 @@ components:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -5586,6 +6148,7 @@ components:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -5611,6 +6174,7 @@ components:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -5649,6 +6213,31 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/APIKey'
+        ListApplicationAPIKeysResponse:
+            type: object
+            properties:
+                keys:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ApplicationAPIKey'
+        ListApplicationSQLsResponse:
+            type: object
+            properties:
+                applicationSqls:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ApplicationSQL'
+                nextPageToken:
+                    type: string
+        ListApplicationsResponse:
+            type: object
+            properties:
+                applications:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Application'
+                nextPageToken:
+                    type: string
         ListAuditLogsResponse:
             type: object
             properties:
@@ -6223,6 +6812,7 @@ components:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -6278,6 +6868,7 @@ components:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -6580,6 +7171,7 @@ components:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -7046,6 +7638,7 @@ components:
                         - EXTERNAL_TABLE
                         - EXTERNAL_DATASET
                         - MANUAL_SQL
+                        - APPLICATION_SQL
                         - VIEW
                         - MATERIALIZED_VIEW
                         - COLUMN
@@ -7216,6 +7809,8 @@ components:
                     $ref: '#/components/schemas/ManualSQLMetadata'
                 columnMetadata:
                     $ref: '#/components/schemas/ColumnMetadata'
+                applicationSqlMetadata:
+                    $ref: '#/components/schemas/ApplicationSQLMetadata'
                 guid:
                     readOnly: true
                     type: string
@@ -7791,6 +8386,15 @@ components:
                          trusted. For a listed provider, field_mapping.subject becomes optional and
                          falls back to the identifier claim.
 tags:
+    - name: ApplicationService
+      description: |-
+        ApplicationService manages the applications that report the SQL they run, and the
+         statements they have reported.
+
+         An application is deliberately not a metadata resource: it has no schema, no columns and
+         no lineage of its own. Creating one issues its first API key, which is the credential the
+         reporting endpoint authenticates; the key names the application, so a report cannot claim
+         to be another one.
     - name: AuditLogService
     - name: AuthService
     - name: DatabaseService

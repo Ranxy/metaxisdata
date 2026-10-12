@@ -20,7 +20,7 @@ One permission catalog, roles as named permission bundles (predefined in Go, cus
 
 ## Permission catalog
 
-`metaxisdata.<resource>.<verb>`, single-sourced from `backend/common/permission/permission.json` (55 entries) and regenerated into `backend/common/permission/permission_gen.go`:
+`metaxisdata.<resource>.<verb>`, single-sourced from `backend/common/permission/permission.json` (66 entries) and regenerated into `backend/common/permission/permission_gen.go`:
 
 | Resource | Permissions |
 | --- | --- |
@@ -29,13 +29,15 @@ One permission catalog, roles as named permission bundles (predefined in Go, cus
 | `dataSources` | `create` `update` `delete` |
 | `databases` | `list` `read` `sync` |
 | `manualSqls` | `get` `list` `create` `update` `delete` |
+| `applications` | `get` `list` `create` `update` `delete`; `apiKeys.{list,create,delete}` |
+| `applicationSqls` | `get` `list` `delete` |
 | `lineage` · `explainSql` | `get` · `explain` |
 | `openlineage` | `read`; `namespaceMappings.{list,create,update,delete}`; `apiKeys.{list,create,delete}` |
 | `llm` | `profiles.{list,create,update,delete}` `profiles.fetchModels` |
 | `users` · `groups` · `roles` | `{get,list,create,update,delete}` (`users` also `undelete`) |
 | `iam` · `settings` · `auditLogs` | `{getPolicy,setPolicy}` · `{get,update}` · `search` |
 
-Predefined roles (`backend/store/predefined_roles.go:60`), read-only over `RoleService`, never a row in `role`: **`workspaceAdmin`** holds the whole catalog; **`workspaceMember`** is the authenticated-principal baseline of 13 entries — `instances.get/list`, `environments.list`, `databases.list/read`, `manualSqls.{get,list,create,update,delete}`, `lineage.get`, `openlineage.read`, `explainSql.explain`. Deliberately absent: user/group/role/IAM administration, instance and data-source writes, `settings.get`/`settings.update`, audit logs, OpenLineage writes, LLM profiles.
+Predefined roles (`backend/store/predefined_roles.go:60`), read-only over `RoleService`, never a row in `role`: **`workspaceAdmin`** holds the whole catalog; **`workspaceMember`** is the authenticated-principal baseline of 17 entries — `instances.get/list`, `environments.list`, `databases.list/read`, `manualSqls.{get,list,create,update,delete}`, `lineage.get`, `openlineage.read`, `applications.{get,list}`, `applicationSqls.{get,list}`, `explainSql.explain`. Issuing a reporting key is a credential that writes data, so no `applications.apiKeys.*` permission is in the baseline. Deliberately absent: user/group/role/IAM administration, instance and data-source writes, `settings.get`/`settings.update`, audit logs, OpenLineage writes, LLM profiles.
 
 ## Invariants
 
