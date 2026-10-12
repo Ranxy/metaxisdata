@@ -390,6 +390,13 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 	if metaType == storepb.MetaType_APPLICATION_SQL {
 		kind, targetEdges := classifyApplicationSQL(ac, engine, definition, relations, metaGUID)
 		lineages = append(lineages, targetEdges...)
+		// The edge names its target by GUID alone, so the lookup below is what
+		// gives the target its type. Without it the relation reaches the API with
+		// an unspecified target type, and every client that routes by type — the
+		// metadata browser's lineage table, for one — loses the link.
+		for _, edge := range targetEdges {
+			guidLookupSet[edge.TargetGUID] = struct{}{}
+		}
 		if err := a.store.SetApplicationSQLKind(ctx, metaGUID, kind); err != nil {
 			// The kind is a filter cache for the list page; the edges are the point, and a
 			// failure to write the cache must not discard them.

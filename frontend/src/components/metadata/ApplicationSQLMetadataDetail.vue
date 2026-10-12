@@ -61,6 +61,20 @@
         </div>
       </div>
 
+      <!-- The definition is the whole statement; the title is only its first line,
+           trimmed to a label by the server. -->
+      <div class="space-y-2">
+        <h2 class="text-sm font-medium">
+          {{ t("metadataBrowser.definition") }}
+        </h2>
+        <pre
+          class="overflow-x-auto rounded-md border bg-muted/40 p-3 font-mono text-xs whitespace-pre-wrap"
+        >{{ applicationSql.sqlText }}</pre>
+        <p class="text-xs text-muted-foreground">
+          {{ t("applicationSql.detailHint") }}
+        </p>
+      </div>
+
       <!-- What the statement has actually done, read from its row rather than from the
            registry mirror: these numbers change with every report, and the mirror is
            written once. It is the same block the statement list shows. -->
@@ -72,18 +86,6 @@
           {{ t("applicationSql.runtimeFacts") }}
         </h2>
         <ApplicationSQLFacts :statement="statement" />
-      </div>
-
-      <div class="space-y-2">
-        <h2 class="text-sm font-medium">
-          {{ t("metadataBrowser.definition") }}
-        </h2>
-        <pre
-          class="overflow-x-auto rounded-md border bg-muted/40 p-3 font-mono text-xs whitespace-pre-wrap"
-        >{{ applicationSql.sqlText }}</pre>
-        <p class="text-xs text-muted-foreground">
-          {{ t("applicationSql.detailHint") }}
-        </p>
       </div>
 
       <TableLineageSection

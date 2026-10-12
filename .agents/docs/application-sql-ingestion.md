@@ -323,6 +323,7 @@ statement under the same dialect.
 | A conflict on the statement upsert never rewrites `guid`, `application_sql_id` or `sql_text` | the object detaches from its lineage and history |
 | `sqlsanitize` reads token source slices, not token-type constants | a dependency on unexported upstream numbers, failing silently when they change |
 | A table-level edge carries a non-nil `Transformation` | the whole edge batch fails on a `NOT NULL` column |
+| Every relation endpoint's meta type is resolved from the registry, the table-level edge's target included | the API answers with an untyped target, and every client that routes by type links to a list instead of the object |
 | Every statement is mirrored; only writes get edges | a reported statement has no object to hang lineage or history on, or reads vanish from the canvas |
 | The mirror carries no counts, and every level of the tree is paginated | a row changes on every report, so the forever-kept registry history grows with traffic rather than with statements |
 | Changing any rule that shapes the stored text or the canonical form bumps `sqlsanitize.Version` | one statement splits into two rows, and a deployment holding the old ones has nothing to tell it apart |
@@ -378,7 +379,7 @@ Tests and their gates:
 | Endpoint | `api/v1/application_sql_handler_test.go` | `go test ./backend/api/v1/` |
 | Graph edge shape | `api/v1/lineage_service_graph_test.go` (`TestBuildLineageGraphDrawsTableLevelEdges`) | same |
 | Whole chain | `test/integration/runner/application_sql_service_test.go` | `go test -tags=integration -run ApplicationSQLReport ./backend/test/integration/runner` |
-| SPA | `lineageOrigin.test.ts`, `lineageAsset.test.ts`, `permissions.test.ts` | `pnpm --dir frontend biome:check && lint && i18n && type-check && test run` |
+| SPA | `lineageOrigin.test.ts`, `lineageAsset.test.ts`, `permissions.test.ts`, `ApplicationSQLFacts.test.ts` | `pnpm --dir frontend biome:check && lint && i18n && type-check && test run` |
 | Cost | `sqlsanitize/benchmark_test.go`, `sqlsanitize/ingest_benchmark_test.go`, `sqlsanitize/allocation_budget_test.go` | `go test ./backend/plugin/sqlsanitize/ -bench . -benchmem` |
 
 Two sanitizer suites guard a rule change from opposite ends. `TestSanitizedStatementsKeepTheirLineage`

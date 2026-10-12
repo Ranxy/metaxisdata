@@ -127,6 +127,18 @@ CREATE TABLE public.appsql_orders (id INT, total NUMERIC(12,2), status TEXT);
 	require.True(t, hasEdgeTo(insertEdges, ordersGUID),
 		"a constant INSERT has no column relation, so its out-edge is the table-level one: %v", describeEdges(insertEdges))
 
+	// A relation names its endpoints by GUID, so the registry lookup the runner runs after
+	// classifying is the only thing that gives the target a type. Left unspecified, the API
+	// answers with an untyped relation and the metadata browser builds a link without
+	// `?metaType=`, which lands the user on a list instead of the table.
+	for _, edge := range insertEdges {
+		if edge.TargetGUID == ordersGUID {
+			require.Equal(t, storepb.MetaType_TABLE, edge.TargetType,
+				"the out-edge must carry its target's type: %v", describeEdges(insertEdges))
+			require.Equal(t, storepb.MetaType_APPLICATION_SQL, edge.SourceType)
+		}
+	}
+
 	selectEdges, err := env.Store.ListColumnLineage(ctx, &store.FindColumnLineageMessage{MetaGUID: &selectGUID})
 	require.NoError(t, err)
 	require.True(t, hasEdgeFrom(selectEdges, ordersGUID),
