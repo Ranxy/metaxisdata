@@ -14,6 +14,16 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: false, layout: "auth" },
   },
   {
+    // Where the identity provider sends the browser back. Public: the guard must
+    // not bounce a signed-out user mid-flow, and the page exchanges the code
+    // itself. A provider test also lands here, so it has to render for an
+    // authenticated administrator too.
+    path: "/oauth/callback",
+    name: "OAuthCallback",
+    component: () => import("@/pages/LoginCallbackPage.vue"),
+    meta: { requiresAuth: false, layout: "auth" },
+  },
+  {
     path: "/",
     name: "Home",
     component: () => import("@/pages/HomePage.vue"),
@@ -108,6 +118,17 @@ const routes: RouteRecordRaw[] = [
           requiresAuth: true,
           layout: "default",
           permission: "metaxisdata.iam.getPolicy",
+        },
+      },
+      {
+        path: "identity-providers",
+        name: "IdentityProviderSettings",
+        component: () =>
+          import("@/pages/settings/IdentityProviderSettingsPage.vue"),
+        meta: {
+          requiresAuth: true,
+          layout: "default",
+          permission: "metaxisdata.identityProviders.list",
         },
       },
       {

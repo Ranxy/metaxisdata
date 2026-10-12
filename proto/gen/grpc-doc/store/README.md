@@ -1364,8 +1364,8 @@ OAuth2IdentityProviderConfig is the structure for OAuth2 identity provider confi
 
 ### IdentityProviderType
 IdentityProviderType is the type of a configured identity provider. Only
-OAuth2 is implemented: the login path rejects anything else, and there is no
-admin API that could create an OIDC/LDAP row.
+OAuth2 is implemented: the login path rejects anything else, and
+IdentityProviderService creates nothing else.
 
 | Name | Number | Description |
 | ---- | ------ | ----------- |
@@ -2014,7 +2014,7 @@ roles have a row here.
 | openlineage_retention_days | [int32](#int32) |  | openlineage_retention_days bounds how long persisted OpenLineage runs are kept. Zero (the default) keeps them forever: they are audit data. |
 | allowed_llm_provider_profiles | [string](#string) | repeated | The LLM provider profiles ExplainSQL may use, as profile resource names. Empty means every enabled profile is allowed. |
 | mcp_enabled | [bool](#bool) |  | Whether the MCP endpoint and its OAuth 2.1 authorization server are served. Off by default: the surface is new, and enabling it requires a configured external_url, which is where its issuer and resource identifiers come from. |
-| sso_email_identity_idps | [string](#string) | repeated | The identity providers whose email claim may stand in for a subject, by the resource id that idps/{idp} names (the idp table has no API that lists them).
+| sso_email_identity_idps | [string](#string) | repeated | The identity providers whose email claim may stand in for a subject, by the resource id that idps/{idp} names. The settings page picks them from IdentityProviderService.ListIdentityProviders.
 
 For those providers — and only those, because one workspace can configure several, trusted to different degrees — an SSO login may be identified by the address claim instead of a stable subject, and may make an existing account with that address reachable through the provider. An account that had no provider binding is adopted by doing so: its password is replaced with a random one.
 

@@ -22,8 +22,8 @@ const (
 )
 
 // IdentityProviderType is the type of a configured identity provider. Only
-// OAuth2 is implemented: the login path rejects anything else, and there is no
-// admin API that could create an OIDC/LDAP row.
+// OAuth2 is implemented: the login path rejects anything else, and
+// IdentityProviderService creates nothing else.
 type IdentityProviderType int32
 
 const (

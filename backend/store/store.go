@@ -27,10 +27,16 @@ type Store struct {
 	cacheDisabled bool
 
 	// Cache
-	userIDCache           *lru.Cache[int, *UserMessage]
-	userEmailCache        *lru.Cache[string, *UserMessage]
-	groupCache            *lru.Cache[string, *GroupMessage]
-	idpCache              *lru.Cache[string, *IdentityProviderMessage]
+	userIDCache    *lru.Cache[int, *UserMessage]
+	userEmailCache *lru.Cache[string, *UserMessage]
+	groupCache     *lru.Cache[string, *GroupMessage]
+	idpCache       *lru.Cache[string, *IdentityProviderMessage]
+	// idpMu orders the identity provider cache against its own writes. It is the
+	// one cache here that needs it: a stale entry for a provider that was just
+	// deleted would keep authenticating accounts, because the login path resolves
+	// a provider from this cache and a deleted provider's bindings survive on
+	// purpose. The other caches hold rows whose staleness is only cosmetic.
+	idpMu                 sync.RWMutex
 	instanceCache         *lru.Cache[string, *InstanceMessage]
 	databaseCache         *lru.Cache[string, *DatabaseMessage]
 	metaRegistryGUIDCache *lru.Cache[MetaGUIDKey, *MetaRegistryResource]
@@ -65,7 +71,11 @@ func New(ctx context.Context, pgURL string, opts ...Option) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	idpCache, err := lru.New[string, *IdentityProviderMessage](4)
+	// A workspace configures a handful of identity providers, not four: the
+	// previous capacity evicted a valid entry as soon as a fifth was read, and
+	// the entry carries the decrypted client secret, so a re-read after every
+	// eviction meant a decrypt per login.
+	idpCache, err := lru.New[string, *IdentityProviderMessage](256)
 	if err != nil {
 		return nil, err
 	}

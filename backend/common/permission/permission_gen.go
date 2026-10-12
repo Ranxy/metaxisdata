@@ -59,6 +59,11 @@ const (
 	IAMSetPolicy                       Permission = "metaxisdata.iam.setPolicy"
 	SettingsGet                        Permission = "metaxisdata.settings.get"
 	SettingsUpdate                     Permission = "metaxisdata.settings.update"
+	IdentityProvidersGet               Permission = "metaxisdata.identityProviders.get"
+	IdentityProvidersList              Permission = "metaxisdata.identityProviders.list"
+	IdentityProvidersCreate            Permission = "metaxisdata.identityProviders.create"
+	IdentityProvidersUpdate            Permission = "metaxisdata.identityProviders.update"
+	IdentityProvidersDelete            Permission = "metaxisdata.identityProviders.delete"
 	AuditLogsSearch                    Permission = "metaxisdata.auditLogs.search"
 )
 
@@ -120,6 +125,11 @@ var allPermissions = []Permission{
 	IAMSetPolicy,
 	SettingsGet,
 	SettingsUpdate,
+	IdentityProvidersGet,
+	IdentityProvidersList,
+	IdentityProvidersCreate,
+	IdentityProvidersUpdate,
+	IdentityProvidersDelete,
 	AuditLogsSearch,
 }
 

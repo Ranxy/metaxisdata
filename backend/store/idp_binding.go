@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -147,4 +149,103 @@ func (s *Store) BindAccountForSSO(ctx context.Context, account *UserMessage, bin
 	s.userIDCache.Remove(account.ID)
 	s.userEmailCache.Remove(account.Email)
 	return adopted, nil
+}
+
+// IdentityProviderBindingMessage is one account's way in through one identity
+// provider.
+type IdentityProviderBindingMessage struct {
+	PrincipalID   int
+	UserEmail     string
+	UserTitle     string
+	IdpResourceID string
+	Subject       string
+	CreatedAt     time.Time
+}
+
+// FindIdentityProviderBindingMessage filters the binding list. Both fields are
+// optional; an unset field does not narrow the query.
+type FindIdentityProviderBindingMessage struct {
+	IdpResourceID *string
+	PrincipalID   *int
+}
+
+// ListIdentityProviderBindings lists the bindings an administrator can see: which
+// account signs in through which provider subject. It is the read that makes a
+// login landing on an unexpected account explainable without SQL.
+//
+// Soft-deleted accounts are included on purpose: their bindings still exist, and
+// hiding them would make the row that blocks a subject reuse invisible.
+func (s *Store) ListIdentityProviderBindings(ctx context.Context, find *FindIdentityProviderBindingMessage) ([]*IdentityProviderBindingMessage, error) {
+	if find == nil {
+		find = &FindIdentityProviderBindingMessage{}
+	}
+	where, args := []string{"TRUE"}, []any{}
+	if v := find.IdpResourceID; v != nil {
+		args = append(args, *v)
+		where = append(where, fmt.Sprintf("binding.idp_resource_id = $%d", len(args)))
+	}
+	if v := find.PrincipalID; v != nil {
+		args = append(args, *v)
+		where = append(where, fmt.Sprintf("binding.principal_id = $%d", len(args)))
+	}
+
+	rows, err := s.GetDB().QueryContext(ctx, `
+		SELECT
+			binding.principal_id,
+			principal.email,
+			principal.name,
+			binding.idp_resource_id,
+			binding.subject,
+			binding.created_at
+		FROM principal_idp_binding AS binding
+		JOIN principal ON principal.id = binding.principal_id
+		WHERE `+strings.Join(where, " AND ")+`
+		ORDER BY binding.idp_resource_id ASC, binding.created_at ASC`,
+		args...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var bindings []*IdentityProviderBindingMessage
+	for rows.Next() {
+		var binding IdentityProviderBindingMessage
+		if err := rows.Scan(
+			&binding.PrincipalID,
+			&binding.UserEmail,
+			&binding.UserTitle,
+			&binding.IdpResourceID,
+			&binding.Subject,
+			&binding.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		bindings = append(bindings, &binding)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return bindings, nil
+}
+
+// DeleteIdentityProviderBinding removes one account's binding to one provider
+// subject. The subject pins a single row, because the primary key is
+// (idp_resource_id, subject).
+//
+// The principal id is part of the WHERE clause rather than assumed: the caller
+// addresses the binding by account, and matching on (idp, subject) alone would
+// delete another account's binding if the two disagreed.
+func (s *Store) DeleteIdentityProviderBinding(ctx context.Context, principalID int, idpResourceID, subject string) error {
+	result, err := s.GetDB().ExecContext(ctx, `
+		DELETE FROM principal_idp_binding
+		WHERE principal_id = $1 AND idp_resource_id = $2 AND subject = $3`,
+		principalID, idpResourceID, subject)
+	if err != nil {
+		return err
+	}
+	if rows, err := result.RowsAffected(); err == nil && rows == 0 {
+		return common.Errorf(common.NotFound, "no binding of identity provider %q for that account", idpResourceID)
+	}
+	return nil
 }
