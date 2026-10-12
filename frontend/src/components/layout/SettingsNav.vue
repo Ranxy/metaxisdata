@@ -25,6 +25,7 @@
 
 <script setup lang="ts">
 import {
+  AppWindow,
   ClipboardList,
   Globe,
   KeyRound,
@@ -53,6 +54,13 @@ const ALL_ITEMS = computed(() => [
     path: "/settings/general",
     icon: SlidersHorizontal,
     permission: "metaxisdata.settings.get",
+  },
+  {
+    key: "applications",
+    label: t("menu.applications"),
+    path: "/settings/applications",
+    icon: AppWindow,
+    permission: "metaxisdata.applications.list",
   },
   {
     key: "environments",

@@ -355,7 +355,7 @@ makes that change, against a deployment that actually has the rows.
 | Management service | [backend/api/v1/application_service.go](../../backend/api/v1/application_service.go), `proto/v1/v1/application_service.proto` |
 | Runner | [backend/runner/lineageanalyzer/analyzer.go](../../backend/runner/lineageanalyzer/analyzer.go) — `queueAll`, `buildSQL`, `classifyApplicationSQL` |
 | Schema | `backend/migrator/migration/LATEST.sql` and `0.1/0019##application_sql.sql` |
-| SPA | `frontend/src/pages/ApplicationManagementPage.vue`, `ApplicationSQLPage.vue`, `src/api/application.ts`, `src/lib/lineageOrigin.ts` |
+| SPA | `frontend/src/pages/ApplicationManagementPage.vue` (under `/settings/applications`), `ApplicationSQLPage.vue`, `src/components/application/ApplicationSelect.vue`, `src/api/application.ts`, `src/lib/lineageOrigin.ts` |
 | Permissions | `backend/common/permission/permission.json` (`applications.*`, `applicationSqls.*`), `backend/store/predefined_roles.go` |
 
 Tests and their gates:

@@ -10,7 +10,7 @@ are sensitive.
 
 ## 1. Register the application and issue a key
 
-An administrator does this once per application, in **Applications → New application**. Creating an
+An administrator does this once per application, in **Settings → Applications → New application**. Creating an
 application issues its first API key; the plaintext is shown once and cannot be retrieved again.
 Issue another from **Keys** to rotate one, and revoke the old one afterwards.
 

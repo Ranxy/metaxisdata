@@ -180,7 +180,6 @@
 <script setup lang="ts">
 import { useMediaQuery } from "@vueuse/core";
 import {
-  AppWindow,
   ChevronRight,
   Database,
   FileCode2,
@@ -237,6 +236,9 @@ interface MenuItem {
 // Settings is one destination with its own in-page navigation, so the nine
 // administration pages no longer occupy nine permanent sidebar rows.
 const SETTINGS_PERMISSIONS = [
+  // Reading the applications that report SQL is part of the member baseline, so the
+  // section entry has to appear for a member too: it is the only way to the page.
+  "metaxisdata.applications.list",
   "metaxisdata.settings.get",
   "metaxisdata.iam.getPolicy",
   "metaxisdata.roles.list",
@@ -295,13 +297,6 @@ function buildMenuItems(): MenuItem[] {
           path: "/manual-sql",
           icon: FileCode2,
           permission: "metaxisdata.manualSqls.list",
-        },
-        {
-          key: "applications",
-          label: t("menu.applications"),
-          path: "/applications",
-          icon: AppWindow,
-          permission: "metaxisdata.applications.list",
         },
         {
           key: "applicationSql",

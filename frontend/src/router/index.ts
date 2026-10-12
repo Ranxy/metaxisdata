@@ -119,6 +119,20 @@ const routes: RouteRecordRaw[] = [
         meta: { requiresAuth: true, layout: "default" },
       },
       {
+        path: "applications",
+        name: "ApplicationManagement",
+        component: () => import("@/pages/ApplicationManagementPage.vue"),
+        // Managing applications is an administrative errand, not daily work, so it lives
+        // in the settings section beside the other credential pages. Its table is six
+        // columns wide and opts out of the section's reading column.
+        meta: {
+          requiresAuth: true,
+          layout: "default",
+          permission: "metaxisdata.applications.list",
+          settingsContentWidth: "full",
+        },
+      },
+      {
         path: "openlineage",
         name: "OpenLineageSettings",
         component: () => import("@/pages/settings/OpenLineageSettingsPage.vue"),
@@ -138,17 +152,6 @@ const routes: RouteRecordRaw[] = [
         },
       },
     ],
-  },
-  {
-    path: "/applications",
-    name: "ApplicationManagement",
-    component: () => import("@/pages/ApplicationManagementPage.vue"),
-    meta: {
-      requiresAuth: true,
-      layout: "default",
-      contentWidth: "full",
-      permission: "metaxisdata.applications.list",
-    },
   },
   {
     path: "/application-sql",

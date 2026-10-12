@@ -3,15 +3,22 @@
     <PageHeader :title="t('applicationSql.title')" />
 
     <Card>
+      <!-- One row of fields. Every field is the same shape — a label over a 40px control —
+           so the labels share one baseline and the controls, including the button, share
+           another. A radix Select renders a hidden 1px native <select> inside its wrapper,
+           which is what used to push its label 4px above the others. -->
       <div class="flex flex-wrap items-end gap-3 border-b p-4">
-        <div class="space-y-1">
-          <Label for="application-sql-instance">
+        <div class="flex flex-col gap-1.5 [&>select]:hidden">
+          <Label
+            for="application-sql-instance"
+            class="text-sm font-medium leading-none"
+          >
             {{ t("applicationSql.instance") }}
           </Label>
           <Select v-model="instanceID">
             <SelectTrigger
               id="application-sql-instance"
-              class="w-56"
+              class="w-44"
             >
               <SelectValue :placeholder="t('applicationSql.allInstances')" />
             </SelectTrigger>
@@ -30,24 +37,24 @@
           </Select>
         </div>
 
-        <div class="space-y-1">
-          <Label for="application-sql-application">
-            {{ t("applicationSql.application") }}
-          </Label>
-          <Input
-            id="application-sql-application"
-            v-model="applicationID"
-            class="w-48"
-            :placeholder="t('applicationSql.anyApplication')"
-          />
-        </div>
+        <ApplicationSelect
+          v-model="applicationID"
+          :label="t('applicationSql.application')"
+          :placeholder="t('applicationSql.anyApplication')"
+          class="w-56"
+        />
 
-        <div class="space-y-1">
-          <Label for="application-sql-kind">{{ t("applicationSql.kind") }}</Label>
+        <div class="flex flex-col gap-1.5 [&>select]:hidden">
+          <Label
+            for="application-sql-kind"
+            class="text-sm font-medium leading-none"
+          >
+            {{ t("applicationSql.kind") }}
+          </Label>
           <Select v-model="kind">
             <SelectTrigger
               id="application-sql-kind"
-              class="w-40"
+              class="w-32"
             >
               <SelectValue />
             </SelectTrigger>
@@ -67,8 +74,13 @@
           </Select>
         </div>
 
-        <div class="space-y-1">
-          <Label for="application-sql-query">{{ t("applicationSql.search") }}</Label>
+        <div class="flex flex-col gap-1.5">
+          <Label
+            for="application-sql-query"
+            class="text-sm font-medium leading-none"
+          >
+            {{ t("applicationSql.search") }}
+          </Label>
           <Input
             id="application-sql-query"
             v-model="query"
@@ -282,6 +294,7 @@ import {
   getApplicationSQL,
   listApplicationSQLs,
 } from "@/api/application";
+import ApplicationSelect from "@/components/application/ApplicationSelect.vue";
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
