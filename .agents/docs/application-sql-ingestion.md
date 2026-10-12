@@ -334,6 +334,7 @@ Tests and their gates:
 | Graph edge shape | `api/v1/lineage_service_graph_test.go` (`TestBuildLineageGraphDrawsTableLevelEdges`) | same |
 | Whole chain | `test/integration/runner/application_sql_service_test.go` | `go test -tags=integration -run ApplicationSQLReport ./backend/test/integration/runner` |
 | SPA | `lineageOrigin.test.ts`, `lineageAsset.test.ts`, `permissions.test.ts` | `pnpm --dir frontend biome:check && lint && i18n && type-check && test run` |
+| Cost | `sqlsanitize/benchmark_test.go`, `sqlsanitize/ingest_benchmark_test.go`, `sqlsanitize/allocation_budget_test.go` | `go test ./backend/plugin/sqlsanitize/ -bench . -benchmem` |
 
 Two sanitizer suites guard a rule change from opposite ends. `TestSanitizedStatementsKeepTheirLineage`
 is the acceptance gate: it runs 642 statements from the repository's own lineage corpus and requires
@@ -342,7 +343,18 @@ idempotency. `TestSanitizeYAMLCorpus` is the contract: 220 statements whose stor
 form are pinned exactly, so a change has to be stated as a deliberate edit to a written expectation
 rather than discovered as a moving fingerprint.
 
+The sanitizer's cost is measured rather than assumed, and the measurement is the argument for not
+optimizing it: `BenchmarkIngestCost` puts it beside the analyzer it feeds, and over the lineage corpus
+the whole sanitizer — the stored text, the canonical form and the analyzable form, three lexer passes
+— is about a quarter of what the ingest path spends per statement, while the analyzer's own parse is
+roughly three times the sanitizer. A per-statement table and the layer split are in
+`BenchmarkSanitize` and `BenchmarkSanitizeLayers`; the counts that must not creep are in
+`TestSanitizeAllocationBudget`, which budgets allocations rather than nanoseconds because they do not
+depend on the machine running the test.
+
 Known gaps: the two SPA pages have no runtime coverage (`pnpm audit:ui`
 needs a browser on the DevTools port); both corpora are hand-written statements rather than real ORM
 output, so how much the foldings merge *enough* has never been measured against real application SQL
-— only that they never merge what they should not.
+— only that they never merge what they should not. The benchmarks measure the shapes those corpora
+contain, which are views and small statements: a real ORM's token-dense queries are represented only by
+the synthetic shapes in `benchmark_test.go`.
