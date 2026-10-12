@@ -602,6 +602,7 @@
     "openColumnLineage": "打开列级血缘",
     "originApplicationSql": "应用 SQL",
     "originApplicationSqlHint": "由应用上报的字面量已脱敏的语句。",
+    "originCurrentObject": "当前对象",
     "originLabel": "血缘来源",
     "originMixed": "两种来源",
     "originMixedHint": "该连线同时包含 SQL 解析和 OpenLineage 两种血缘。",

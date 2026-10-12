@@ -515,6 +515,13 @@ function relationOriginSource(
   if (!relation.metaGuid) {
     return "";
   }
+  // Every relation the SQL analyzer stores is keyed by the object whose definition it
+  // read, so on that object's own page the writer is the page itself. Its GUID segment
+  // is a generated identifier rather than a name, so the row says what it is instead of
+  // printing the identifier back at the reader.
+  if (origin !== "openlineage" && relation.metaGuid === props.guid) {
+    return t("lineageGraph.originCurrentObject");
+  }
   if (origin === "openlineage") {
     return openlineageJobName(relation.metaGuid);
   }

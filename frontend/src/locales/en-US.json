@@ -602,6 +602,7 @@
     "openColumnLineage": "Open column lineage",
     "originApplicationSql": "Application SQL",
     "originApplicationSqlHint": "Reported by an application, with every literal replaced by a placeholder.",
+    "originCurrentObject": "This object",
     "originLabel": "Lineage source",
     "originMixed": "Both sources",
     "originMixedHint": "One edge bundled both an SQL analysis and an OpenLineage relation.",

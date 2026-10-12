@@ -184,6 +184,12 @@ first sight of an `APPLICATION_SQL` GUID it calls `GetApplicationSQL` once and h
 first line to `lineageAssetView` as a name override. Only statement nodes cost a request, and a
 failed lookup is only logged.
 
+`TableLineageSection` renders the same writer as a column value, and a relation's meta GUID is the
+object whose definition the analyzer read — so on that object's own page the writer is the page
+itself. The cell says so (`lineageGraph.originCurrentObject`) instead of printing the generated GUID
+back at the reader. On *other* pages a reported statement is still named by that GUID, because only
+the canvas resolves a label; giving the table the same lookup is the open piece.
+
 ### The rules that shape the fingerprint (N4–N5)
 
 These shape the canonical form and nothing else — not the lineage, not the stored text. They exist
@@ -379,7 +385,7 @@ Tests and their gates:
 | Endpoint | `api/v1/application_sql_handler_test.go` | `go test ./backend/api/v1/` |
 | Graph edge shape | `api/v1/lineage_service_graph_test.go` (`TestBuildLineageGraphDrawsTableLevelEdges`) | same |
 | Whole chain | `test/integration/runner/application_sql_service_test.go` | `go test -tags=integration -run ApplicationSQLReport ./backend/test/integration/runner` |
-| SPA | `lineageOrigin.test.ts`, `lineageAsset.test.ts`, `permissions.test.ts`, `ApplicationSQLFacts.test.ts` | `pnpm --dir frontend biome:check && lint && i18n && type-check && test run` |
+| SPA | `lineageOrigin.test.ts`, `lineageAsset.test.ts`, `permissions.test.ts`, `ApplicationSQLFacts.test.ts`, `TableLineageSection.test.ts` | `pnpm --dir frontend biome:check && lint && i18n && type-check && test run` |
 | Cost | `sqlsanitize/benchmark_test.go`, `sqlsanitize/ingest_benchmark_test.go`, `sqlsanitize/allocation_budget_test.go` | `go test ./backend/plugin/sqlsanitize/ -bench . -benchmem` |
 
 Two sanitizer suites guard a rule change from opposite ends. `TestSanitizedStatementsKeepTheirLineage`
