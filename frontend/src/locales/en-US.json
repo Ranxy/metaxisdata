@@ -61,6 +61,7 @@
     "noStatementsHint": "Statements appear here once an application reports them.",
     "read": "Read",
     "reportedBy": "Reported by",
+    "runtimeFacts": "Runtime facts",
     "scope": "Scope",
     "search": "Search",
     "searchApplication": "Search applications",
@@ -68,7 +69,6 @@
     "statement": "Statement",
     "title": "Application SQL",
     "unknownKind": "Not analyzed yet",
-    "viewStatement": "View statement",
     "write": "Write"
   },
   "auditLogs": {

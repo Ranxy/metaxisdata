@@ -210,62 +210,9 @@
               </div>
               <div>{{ scopeLabel(detail) }}</div>
             </div>
-            <div>
-              <div class="text-xs text-muted-foreground">
-                {{ t("applicationSql.kind") }}
-              </div>
-              <div>{{ kindLabel(detail.kind) }}</div>
-            </div>
-            <div>
-              <div class="text-xs text-muted-foreground">
-                {{ t("applicationSql.firstSeen") }}
-              </div>
-              <div>{{ formatDateTime(detail.firstSeenAt, locale) }}</div>
-            </div>
-            <div>
-              <div class="text-xs text-muted-foreground">
-                {{ t("applicationSql.lastSeen") }}
-              </div>
-              <div>{{ formatDateTime(detail.lastSeenAt, locale) }}</div>
-            </div>
           </div>
 
-          <div>
-            <div class="mb-1 text-xs text-muted-foreground">
-              {{ t("applicationSql.reportedBy") }}
-            </div>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{{ t("applicationSql.application") }}</TableHead>
-                  <TableHead class="w-28 text-right">
-                    {{ t("applicationSql.executions") }}
-                  </TableHead>
-                  <TableHead class="w-44">{{ t("applicationSql.lastSeen") }}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                <TableRow
-                  v-for="observation in detail.observations"
-                  :key="observation.application"
-                >
-                  <TableCell>
-                    {{ observation.applicationDisplayName || observation.application }}
-                  </TableCell>
-                  <TableCell class="text-right text-sm tabular-nums">
-                    {{ observation.executionCount }}
-                  </TableCell>
-                  <TableCell class="text-sm">
-                    {{ formatDateTime(observation.lastSeenAt, locale) }}
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </div>
-
-          <div class="font-mono text-xs text-muted-foreground">
-            {{ detail.fingerprint }}
-          </div>
+          <ApplicationSQLFacts :statement="detail" />
         </div>
 
         <DialogFooter>
@@ -304,6 +251,7 @@ import {
   listApplicationSQLs,
 } from "@/api/application";
 import ApplicationSelect from "@/components/application/ApplicationSelect.vue";
+import ApplicationSQLFacts from "@/components/application/ApplicationSQLFacts.vue";
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";

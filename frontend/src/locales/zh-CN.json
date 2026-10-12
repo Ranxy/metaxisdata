@@ -61,6 +61,7 @@
     "noStatementsHint": "应用开始上报后,语句会出现在这里。",
     "read": "只读",
     "reportedBy": "上报者",
+    "runtimeFacts": "运行事实",
     "scope": "作用域",
     "search": "检索",
     "searchApplication": "搜索应用",
@@ -68,7 +69,6 @@
     "statement": "语句",
     "title": "应用 SQL",
     "unknownKind": "尚未分析",
-    "viewStatement": "查看语句",
     "write": "写入"
   },
   "auditLogs": {

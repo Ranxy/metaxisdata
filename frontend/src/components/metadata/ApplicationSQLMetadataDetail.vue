@@ -9,15 +9,6 @@
           v-if="guid"
           variant="outline"
           size="sm"
-          @click="openStatement"
-        >
-          <TerminalSquare class="h-3.5 w-3.5 mr-1" />
-          {{ t("applicationSql.viewStatement") }}
-        </Button>
-        <Button
-          v-if="guid"
-          variant="outline"
-          size="sm"
           @click="openExplainSQL"
         >
           <Sparkles class="h-3.5 w-3.5 mr-1" />
@@ -70,6 +61,19 @@
         </div>
       </div>
 
+      <!-- What the statement has actually done, read from its row rather than from the
+           registry mirror: these numbers change with every report, and the mirror is
+           written once. It is the same block the statement list shows. -->
+      <div
+        v-if="statement"
+        class="space-y-2"
+      >
+        <h2 class="text-sm font-medium">
+          {{ t("applicationSql.runtimeFacts") }}
+        </h2>
+        <ApplicationSQLFacts :statement="statement" />
+      </div>
+
       <div class="space-y-2">
         <h2 class="text-sm font-medium">
           {{ t("metadataBrowser.definition") }}
@@ -99,14 +103,18 @@
 </template>
 
 <script setup lang="ts">
-import { Sparkles, TerminalSquare } from "lucide-vue-next";
-import { computed, ref } from "vue";
+import { Sparkles } from "lucide-vue-next";
+import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
+import { getApplicationSQL } from "@/api/application";
+import ApplicationSQLFacts from "@/components/application/ApplicationSQLFacts.vue";
 import MetadataHistorySection from "@/components/metadata/MetadataHistorySection.vue";
 import MetadataTabGroup from "@/components/metadata/MetadataTabGroup.vue";
 import TableLineageSection from "@/components/metadata/TableLineageSection.vue";
 import { Button } from "@/components/ui/button";
+import { useAuthStore } from "@/store/modules/auth";
+import { type ApplicationSQL } from "@/types/proto-es/v1/application_service_pb";
 import {
   type ApplicationSQLMetadata,
   MetaType,
@@ -120,6 +128,7 @@ const props = defineProps<{
 
 const { t } = useI18n();
 const router = useRouter();
+const authStore = useAuthStore();
 
 const activeTab = ref<"details" | "history">("details");
 
@@ -130,6 +139,24 @@ const tabs = computed(() => [
   },
   { value: "history" as const, label: t("metadataBrowser.historyTitle") },
 ]);
+
+const statement = ref<ApplicationSQL | null>(null);
+
+// The facts need the statement's own row, which is a different read from the mirror and
+// one the viewer may not hold; without it the page still shows the definition and history.
+onMounted(async () => {
+  if (
+    !props.guid ||
+    !authStore.hasPermission("metaxisdata.applicationSqls.get")
+  ) {
+    return;
+  }
+  try {
+    statement.value = await getApplicationSQL(props.guid);
+  } catch (error) {
+    console.warn(`Failed to read the statement's numbers: ${String(error)}`);
+  }
+});
 
 const displayTitle = computed(() => props.applicationSql.name);
 
@@ -143,15 +170,6 @@ const summaryLine = computed(() =>
     `${t("metadataBrowser.schemaName")}: ${schemaDisplayName.value}`,
   ].join(" · ")
 );
-
-// Counts, kind and the applications that reported it live on the statement's own page:
-// the registry row is written once, so it does not carry numbers that change per report.
-function openStatement() {
-  if (!props.guid) {
-    return;
-  }
-  void router.push({ name: "ApplicationSQL", query: { guid: props.guid } });
-}
 
 function openExplainSQL() {
   if (!props.guid) {
