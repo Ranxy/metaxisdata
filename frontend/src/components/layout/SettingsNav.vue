@@ -63,12 +63,22 @@ const ALL_ITEMS = computed(() => [
     icon: Globe,
     permission: "metaxisdata.settings.get",
   },
+  // The policy page and the account list it governs are one job, so they stay
+  // adjacent: a reader looking for "who is in this workspace" should not have
+  // to notice that the answer is spread across two entries.
   {
     key: "iam",
     label: t("menu.iam"),
     path: "/settings/iam",
     icon: KeyRound,
     permission: "metaxisdata.iam.getPolicy",
+  },
+  {
+    key: "users",
+    label: t("menu.users"),
+    path: "/settings/users",
+    icon: Users,
+    permission: "metaxisdata.users.list",
   },
   {
     key: "identityProviders",
@@ -90,20 +100,6 @@ const ALL_ITEMS = computed(() => [
     path: "/settings/groups",
     icon: UserRound,
     permission: "metaxisdata.groups.list",
-  },
-  {
-    key: "users",
-    label: t("menu.users"),
-    path: "/settings/users",
-    icon: Users,
-    permission: "metaxisdata.users.list",
-  },
-  {
-    key: "auditLogs",
-    label: t("menu.auditLogs"),
-    path: "/settings/audit-logs",
-    icon: ClipboardList,
-    permission: "metaxisdata.auditLogs.search",
   },
   {
     key: "llmProviders",
@@ -129,6 +125,16 @@ const ALL_ITEMS = computed(() => [
     path: "/settings/openlineage",
     icon: Network,
     permission: "metaxisdata.openlineage.namespaceMappings.list",
+  },
+  // The audit ledger is a read-only record of what the rest of the section
+  // configured, not a setting, so it closes the list rather than interleaving
+  // with the pages an administrator changes.
+  {
+    key: "auditLogs",
+    label: t("menu.auditLogs"),
+    path: "/settings/audit-logs",
+    icon: ClipboardList,
+    permission: "metaxisdata.auditLogs.search",
   },
 ]);
 
