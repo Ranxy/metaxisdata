@@ -41,6 +41,7 @@ Two trees, split by audience. `docs/` is read by operators and integrators; `.ag
 | [docs/mcp.md](docs/mcp.md) | Connecting an MCP client, and what the endpoint promises |
 | [docs/security-posture.md](docs/security-posture.md) | Behavior that looks like a bug — the deliberate, accepted decisions |
 | [.agents/docs/README.md](.agents/docs/README.md) | The index of maintenance references: lineage, MCP, IAM, notifications, schema sync, migrations, rate limiting, credentials, refresh tokens, environments, the CLI, the frontend |
+| [.agents/docs/i18n-glossary.md](.agents/docs/i18n-glossary.md) | The one accepted rendering of each professional term per locale — read before writing user-facing copy in either language |
 | [.agents/docs/security-open-items.md](.agents/docs/security-open-items.md) | Which security findings are still open |
 | [.agents/docs/backend-open-items.md](.agents/docs/backend-open-items.md) | Open engineering debt that has no subsystem reference of its own |
 
