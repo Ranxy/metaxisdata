@@ -32,6 +32,7 @@ Rule of thumb: once a helper grows a `ref`, imports `@/api`, or calls `useI18n()
 - Keys are kept sorted: run `pnpm --dir frontend i18n:sort` after editing locale files.
 - vue-i18n uses single-brace `{name}` placeholders and pipe-separated plurals, unlike react-i18next. A double-brace `{{name}}` renders literally and is flagged.
 - `scripts/check-vue-i18n.mjs` (part of `pnpm --dir frontend i18n`) checks cross-locale key and `{name}` placeholder parity. Indirect keys it cannot trace statically — template-literal or variable keys such as `t(messageKey)` — must be listed in its `DYNAMIC_PREFIXES`.
+- Professional terms have exactly one accepted rendering per language in `glossary.json`. Read it before writing copy; `pnpm --dir frontend i18n:glossary --show <term>` looks one up. `scripts/check-i18n-glossary.mjs` (part of `pnpm --dir frontend i18n`) fails on a forbidden variant and keeps the generated table in [.agents/docs/i18n-glossary.md](../.agents/docs/i18n-glossary.md) in sync — run `i18n:glossary --write-doc` after editing terminology, never the table by hand.
 
 ## Frontend Workflow
 
@@ -39,7 +40,7 @@ After any frontend change, run the gate in this order — exact commands below:
 
 1. **Format + lint + imports** — `biome:check`
 2. **Lint** — `lint` (applies `--fix`)
-3. **i18n** — `i18n`, plus `i18n:sort` if you touched locale files
+3. **i18n** — `i18n`, plus `i18n:sort` if you touched locale files and `i18n:glossary --write-doc` if you changed terminology
 4. **Type check** — `type-check`
 5. **Test** — `test run`
 
@@ -51,7 +52,8 @@ pnpm --dir frontend dev               # dev server; http://localhost:3000, proxi
 
 pnpm --dir frontend biome:check       # format + lint + organize imports (src/, excluding generated src/types/proto-es/)
 pnpm --dir frontend lint              # ESLint (Vue + i18n rules), applies --fix
-pnpm --dir frontend i18n              # missing/unused keys, cross-locale parity, sort check
+pnpm --dir frontend i18n              # missing/unused keys, cross-locale parity, sort check, terms
+pnpm --dir frontend i18n:glossary     # term consistency; --show <term> to look one up
 pnpm --dir frontend i18n:sort         # rewrite locale catalogs with recursively sorted keys
 pnpm --dir frontend type-check
 pnpm --dir frontend test              # watch mode

@@ -21,6 +21,7 @@ Everything here describes **shipped behavior**, not a plan: implementation steps
 | [starrocks-doris-driver.md](starrocks-doris-driver.md) | The StarRocks/Doris driver over the MySQL wire protocol and its engine plumbing | Touching `backend/plugin/db/starrocks/` |
 | [cli-mxd.md](cli-mxd.md) | The `mxd` client: addressing, exit codes, scopes, device login | Touching `cli/` |
 | [frontend-ui.md](frontend-ui.md) | Layout and information-architecture conventions, the OpenLineage pages, lineage node/edge encoding | Touching the shell, a page header, settings navigation, or the lineage canvas |
+| [i18n-glossary.md](i18n-glossary.md) | The one accepted rendering of every professional term per locale, the rule model behind it, and the generated term table | Writing user-facing copy, translating `src/locales/*.json`, or renaming a concept |
 | [lineage-analyzer.md](lineage-analyzer.md) | Lineage package layout, assembly, runner lifecycle and change detection, the MySQL-family generator, the AST coverage audit method | Touching `backend/plugin/lineage/` or the lineage runner |
 | [lineage-semantics.md](lineage-semantics.md) | What each analyzer must keep producing: the transformation model, per-dialect semantics, engine-measured clause visibility | Changing what an analyzer emits |
 | [lineage-graph.md](lineage-graph.md) | The field trail and the field-scoped expansion on the lineage graph page | Touching the lineage canvas interaction |

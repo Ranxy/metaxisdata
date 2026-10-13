@@ -1,0 +1,811 @@
+{
+  "categories": {
+    "Access": "Workspace identity and authorization.",
+    "Conventions": "Voice, casing and spelling rules for both languages.",
+    "Data": "Metadata objects the registry syncs.",
+    "Identity": "Browser login and credentials.",
+    "Ingestion": "Applications reporting the SQL they run.",
+    "Integration": "Protocols and endpoints this deployment exposes.",
+    "Lineage": "How a derivation and its parts are named.",
+    "OpenLineage": "The event-ingestion vocabulary.",
+    "Platform": "Deployment-level concepts."
+  },
+  "description": "Canonical terminology for user-facing copy. `translations` fixes the one accepted rendering of a term per locale; `scope` limits the rules to the i18n key prefixes where the term applies (absent scope = every key); `when` fires a rule only on keys whose value in the named locale matches (usually the English source); an `avoid` pattern is a literal substring unless it is written as /regex/flags. Enforced by scripts/check-i18n-glossary.mjs and rendered into .agents/docs/i18n-glossary.md.",
+  "locales": [
+    "en-US",
+    "zh-CN"
+  ],
+  "terms": [
+    {
+      "id": "instance",
+      "category": "Data",
+      "definition": "A registered connection to one database server whose schemas are synced.",
+      "translations": {
+        "en-US": "instance",
+        "zh-CN": "实例"
+      }
+    },
+    {
+      "id": "database",
+      "category": "Data",
+      "definition": "A database inside an instance.",
+      "translations": {
+        "en-US": "database",
+        "zh-CN": "数据库"
+      }
+    },
+    {
+      "id": "schema",
+      "category": "Data",
+      "definition": "The namespace holding a database's tables, views and sequences. Kept in Latin script in Chinese copy.",
+      "translations": {
+        "en-US": "schema",
+        "zh-CN": "Schema"
+      },
+      "scope": [
+        "manualSqlManagement.",
+        "metadataBrowser.",
+        "openlineage.",
+        "explainSQL.",
+        "instanceDetail.",
+        "oauthConsent.",
+        "home."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "/(?<!\\{)schema/",
+          "模式"
+        ]
+      }
+    },
+    {
+      "id": "table",
+      "category": "Data",
+      "definition": "A relation in a schema; its definition is synced and analyzed for lineage.",
+      "translations": {
+        "en-US": "table",
+        "zh-CN": "表"
+      }
+    },
+    {
+      "id": "column",
+      "category": "Data",
+      "definition": "A field of a table or view, and the unit of column-level lineage.",
+      "translations": {
+        "en-US": "column",
+        "zh-CN": "字段"
+      },
+      "scope": [
+        "applicationSql.",
+        "home.",
+        "metadataBrowser.",
+        "lineageGraph.",
+        "openlineage.",
+        "oauthConsent.",
+        "manualSqlManagement.",
+        "instanceDetail.",
+        "explainSQL.",
+        "databaseManagement."
+      ],
+      "when": {
+        "en-US": "/\\bcolumns?\\b/i"
+      },
+      "avoid": {
+        "zh-CN": [
+          "/列(?!级|表)/"
+        ]
+      }
+    },
+    {
+      "id": "sequence",
+      "category": "Data",
+      "definition": "A database sequence object the metadata browser tracks.",
+      "translations": {
+        "en-US": "sequence",
+        "zh-CN": "序列"
+      }
+    },
+    {
+      "id": "view",
+      "category": "Data",
+      "definition": "A database view, as opposed to the verb \"view\" (查看).",
+      "translations": {
+        "en-US": "view",
+        "zh-CN": "视图"
+      }
+    },
+    {
+      "id": "materialized-view",
+      "category": "Data",
+      "definition": "A materialized view; its definition is analyzed for lineage like a view's.",
+      "translations": {
+        "en-US": "materialized view",
+        "zh-CN": "物化视图"
+      }
+    },
+    {
+      "id": "ddl",
+      "category": "Data",
+      "definition": "The DDL statement that defines a database object.",
+      "translations": {
+        "en-US": "DDL",
+        "zh-CN": "DDL"
+      }
+    },
+    {
+      "id": "metadata",
+      "category": "Data",
+      "definition": "The registry's record of an object's structure and attributes.",
+      "translations": {
+        "en-US": "metadata",
+        "zh-CN": "元数据"
+      }
+    },
+    {
+      "id": "metadata-browser",
+      "category": "Data",
+      "definition": "The page that walks instance → database → schema → table → column.",
+      "translations": {
+        "en-US": "Metadata Browser",
+        "zh-CN": "元数据浏览器"
+      }
+    },
+    {
+      "id": "manual-sql",
+      "category": "Data",
+      "definition": "A hand-written SQL definition stored with an object so it takes part in lineage analysis.",
+      "translations": {
+        "en-US": "Manual SQL",
+        "zh-CN": "手动 SQL"
+      }
+    },
+    {
+      "id": "lineage",
+      "category": "Lineage",
+      "definition": "The derivation of one object or field from another.",
+      "translations": {
+        "en-US": "lineage",
+        "zh-CN": "血缘"
+      }
+    },
+    {
+      "id": "table-level-lineage",
+      "category": "Lineage",
+      "definition": "Lineage between whole tables or views.",
+      "translations": {
+        "en-US": "table-level lineage",
+        "zh-CN": "表级血缘"
+      }
+    },
+    {
+      "id": "column-level-lineage",
+      "category": "Lineage",
+      "definition": "Lineage between individual columns; the phrase is fixed, whatever the noun used for a column elsewhere.",
+      "translations": {
+        "en-US": "column-level lineage",
+        "zh-CN": "列级血缘"
+      },
+      "scope": [
+        "lineageGraph.",
+        "openlineage."
+      ],
+      "avoid": {
+        "en-US": [
+          "/field[- ]?(level )?lineage/i"
+        ],
+        "zh-CN": [
+          "字段血缘",
+          "字段级血缘"
+        ]
+      }
+    },
+    {
+      "id": "lineage-graph",
+      "category": "Lineage",
+      "definition": "The canvas that draws lineage nodes and edges.",
+      "translations": {
+        "en-US": "lineage graph",
+        "zh-CN": "血缘图"
+      },
+      "scope": [
+        "lineageGraph.",
+        "openlineage."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "图谱"
+        ]
+      }
+    },
+    {
+      "id": "upstream",
+      "category": "Lineage",
+      "definition": "The side a lineage edge comes from.",
+      "translations": {
+        "en-US": "upstream",
+        "zh-CN": "上游"
+      }
+    },
+    {
+      "id": "downstream",
+      "category": "Lineage",
+      "definition": "The side a lineage edge points to.",
+      "translations": {
+        "en-US": "downstream",
+        "zh-CN": "下游"
+      }
+    },
+    {
+      "id": "field-trail",
+      "category": "Lineage",
+      "definition": "The chain of column-level hops followed from one field.",
+      "translations": {
+        "en-US": "field trail",
+        "zh-CN": "字段轨迹"
+      }
+    },
+    {
+      "id": "node",
+      "category": "Lineage",
+      "definition": "One object drawn on the lineage canvas.",
+      "translations": {
+        "en-US": "node",
+        "zh-CN": "节点"
+      }
+    },
+    {
+      "id": "edge",
+      "category": "Lineage",
+      "definition": "One lineage relation drawn between two nodes.",
+      "translations": {
+        "en-US": "edge",
+        "zh-CN": "边"
+      }
+    },
+    {
+      "id": "openlineage",
+      "category": "OpenLineage",
+      "definition": "The OpenLineage event standard, and the feature that ingests its events. One word, capital O and L.",
+      "translations": {
+        "en-US": "OpenLineage",
+        "zh-CN": "OpenLineage"
+      },
+      "avoid": {
+        "en-US": [
+          "/Openlineage/"
+        ],
+        "zh-CN": [
+          "/Openlineage/"
+        ]
+      }
+    },
+    {
+      "id": "job",
+      "category": "OpenLineage",
+      "definition": "A unit of work named by an OpenLineage producer; its runs carry the lineage.",
+      "translations": {
+        "en-US": "job",
+        "zh-CN": "作业"
+      },
+      "scope": [
+        "openlineage.",
+        "openlineageSettings.",
+        "home."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "任务"
+        ]
+      }
+    },
+    {
+      "id": "run",
+      "category": "OpenLineage",
+      "definition": "One execution of a job, with the events it reported. In Chinese copy the noun is 运行记录, not the bare English word.",
+      "translations": {
+        "en-US": "run",
+        "zh-CN": "运行记录"
+      },
+      "scope": [
+        "lineageGraph.",
+        "openlineage.",
+        "generalSettings."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "/\\bruns?\\b/i"
+        ]
+      }
+    },
+    {
+      "id": "event",
+      "category": "OpenLineage",
+      "definition": "A single reported OpenLineage event.",
+      "translations": {
+        "en-US": "event",
+        "zh-CN": "事件"
+      }
+    },
+    {
+      "id": "dataset",
+      "category": "OpenLineage",
+      "definition": "An input or output asset named by an OpenLineage event.",
+      "translations": {
+        "en-US": "dataset",
+        "zh-CN": "数据集"
+      }
+    },
+    {
+      "id": "external-dataset",
+      "category": "OpenLineage",
+      "definition": "A dataset that resolves to no registered instance.",
+      "translations": {
+        "en-US": "external dataset",
+        "zh-CN": "外部数据集"
+      },
+      "scope": [
+        "notifications.",
+        "openlineage.",
+        "openlineageSettings."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "external dataset"
+        ]
+      }
+    },
+    {
+      "id": "namespace",
+      "category": "OpenLineage",
+      "definition": "The OpenLineage namespace that scopes job and dataset names.",
+      "translations": {
+        "en-US": "namespace",
+        "zh-CN": "命名空间"
+      },
+      "scope": [
+        "notifications.",
+        "openlineage.",
+        "openlineageSettings."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "/(?<!\\{)namespace(?!\\})/i"
+        ]
+      }
+    },
+    {
+      "id": "producer",
+      "category": "OpenLineage",
+      "definition": "The OpenLineage producer URI that identifies the emitting integration.",
+      "translations": {
+        "en-US": "producer",
+        "zh-CN": "生产者"
+      }
+    },
+    {
+      "id": "integration",
+      "category": "OpenLineage",
+      "definition": "A tool that posts OpenLineage events to the ingestion endpoint.",
+      "translations": {
+        "en-US": "integration",
+        "zh-CN": "集成"
+      }
+    },
+    {
+      "id": "ingest",
+      "category": "OpenLineage",
+      "definition": "Receiving OpenLineage events into the workspace.",
+      "translations": {
+        "en-US": "ingest",
+        "zh-CN": "接入"
+      },
+      "scope": [
+        "notifications.",
+        "generalSettings.",
+        "openlineageSettings.",
+        "home."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "摄取"
+        ]
+      }
+    },
+    {
+      "id": "retention",
+      "category": "OpenLineage",
+      "definition": "How long persisted OpenLineage runs are kept.",
+      "translations": {
+        "en-US": "retention",
+        "zh-CN": "保留时长"
+      }
+    },
+    {
+      "id": "application",
+      "category": "Ingestion",
+      "definition": "A registered application that reports the SQL it runs.",
+      "translations": {
+        "en-US": "application",
+        "zh-CN": "应用"
+      }
+    },
+    {
+      "id": "statement",
+      "category": "Ingestion",
+      "definition": "A sanitized SQL statement an application reported.",
+      "translations": {
+        "en-US": "statement",
+        "zh-CN": "语句"
+      }
+    },
+    {
+      "id": "report",
+      "category": "Ingestion",
+      "definition": "What an application does with the SQL it runs.",
+      "translations": {
+        "en-US": "report",
+        "zh-CN": "上报"
+      }
+    },
+    {
+      "id": "api-key",
+      "category": "Ingestion",
+      "definition": "The credential an application or an OpenLineage producer authenticates with.",
+      "translations": {
+        "en-US": "API key",
+        "zh-CN": "API 密钥"
+      },
+      "avoid": {
+        "zh-CN": [
+          "/API [Kk]ey/",
+          "/OpenLineage key/",
+          "/\\bKey\\b/"
+        ]
+      }
+    },
+    {
+      "id": "fingerprint",
+      "category": "Ingestion",
+      "definition": "The stable hash of a sanitized statement that identifies it across reports.",
+      "translations": {
+        "en-US": "fingerprint",
+        "zh-CN": "指纹"
+      }
+    },
+    {
+      "id": "sanitize",
+      "category": "Ingestion",
+      "definition": "Replacing literals and stripping comments before a statement is stored.",
+      "translations": {
+        "en-US": "sanitize",
+        "zh-CN": "脱敏"
+      }
+    },
+    {
+      "id": "workspace",
+      "category": "Access",
+      "definition": "The single tenant a deployment serves; every member sees its data.",
+      "translations": {
+        "en-US": "workspace",
+        "zh-CN": "工作区"
+      }
+    },
+    {
+      "id": "member",
+      "category": "Access",
+      "definition": "An account that can read the workspace.",
+      "translations": {
+        "en-US": "member",
+        "zh-CN": "成员"
+      }
+    },
+    {
+      "id": "user",
+      "category": "Access",
+      "definition": "An account the server knows; every user is a workspace member.",
+      "translations": {
+        "en-US": "user",
+        "zh-CN": "用户"
+      }
+    },
+    {
+      "id": "group",
+      "category": "Access",
+      "definition": "Several users merged into one IAM subject.",
+      "translations": {
+        "en-US": "group",
+        "zh-CN": "用户组"
+      }
+    },
+    {
+      "id": "role",
+      "category": "Access",
+      "definition": "A named set of permissions granted to users and groups.",
+      "translations": {
+        "en-US": "role",
+        "zh-CN": "角色"
+      }
+    },
+    {
+      "id": "permission",
+      "category": "Access",
+      "definition": "One allowed action inside the workspace.",
+      "translations": {
+        "en-US": "permission",
+        "zh-CN": "权限"
+      }
+    },
+    {
+      "id": "audit-log",
+      "category": "Access",
+      "definition": "The append-only ledger of auditable actions.",
+      "translations": {
+        "en-US": "audit log",
+        "zh-CN": "审计日志"
+      }
+    },
+    {
+      "id": "sso",
+      "category": "Identity",
+      "definition": "Single sign-on through a configured identity provider.",
+      "translations": {
+        "en-US": "SSO",
+        "zh-CN": "SSO"
+      }
+    },
+    {
+      "id": "identity-provider",
+      "category": "Identity",
+      "definition": "An OAuth2/OIDC provider configured for browser login.",
+      "translations": {
+        "en-US": "identity provider",
+        "zh-CN": "身份提供商"
+      }
+    },
+    {
+      "id": "provider",
+      "category": "Identity",
+      "definition": "A vendor that supplies something (an identity, an LLM); 提供商, never 提供方.",
+      "translations": {
+        "en-US": "provider",
+        "zh-CN": "提供商"
+      },
+      "scope": [
+        "identityProviderSettings.",
+        "generalSettings.",
+        "llmProvider.",
+        "explainSQL.",
+        "home.",
+        "login.",
+        "ssoCallback."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "提供方",
+          "/(?<!\\{)[Pp]rovider(?!\\})/"
+        ]
+      }
+    },
+    {
+      "id": "sign-in",
+      "category": "Identity",
+      "definition": "Authenticating. Verb \"sign in\"; noun and adjective \"sign-in\".",
+      "translations": {
+        "en-US": "sign in",
+        "zh-CN": "登录"
+      },
+      "scope": [
+        "generalSettings.",
+        "login.",
+        "ssoCallback.",
+        "oauthConsent.",
+        "deviceLogin.",
+        "identityProviderSettings."
+      ],
+      "avoid": {
+        "en-US": [
+          "/\\bsignin\\b/i"
+        ]
+      }
+    },
+    {
+      "id": "sign-up",
+      "category": "Identity",
+      "definition": "Creating an account. Verb \"sign up\"; noun and adjective \"sign-up\".",
+      "translations": {
+        "en-US": "sign up",
+        "zh-CN": "注册"
+      },
+      "scope": [
+        "generalSettings.",
+        "register.",
+        "login."
+      ],
+      "avoid": {
+        "en-US": [
+          "/\\bsignup\\b/i"
+        ]
+      }
+    },
+    {
+      "id": "password",
+      "category": "Identity",
+      "definition": "The local credential of a user account.",
+      "translations": {
+        "en-US": "password",
+        "zh-CN": "密码"
+      }
+    },
+    {
+      "id": "session",
+      "category": "Identity",
+      "definition": "A signed-in browser session, and the token it carries.",
+      "translations": {
+        "en-US": "session",
+        "zh-CN": "会话"
+      }
+    },
+    {
+      "id": "mcp",
+      "category": "Integration",
+      "definition": "The Model Context Protocol endpoint the server exposes when enabled.",
+      "translations": {
+        "en-US": "MCP",
+        "zh-CN": "MCP"
+      }
+    },
+    {
+      "id": "oauth",
+      "category": "Integration",
+      "definition": "The OAuth 2.1 authorization server that backs MCP clients.",
+      "translations": {
+        "en-US": "OAuth 2.1",
+        "zh-CN": "OAuth 2.1"
+      }
+    },
+    {
+      "id": "external-url",
+      "category": "Integration",
+      "definition": "The address this deployment is reached at, which MCP tokens are bound to.",
+      "translations": {
+        "en-US": "external URL",
+        "zh-CN": "外部地址"
+      },
+      "scope": [
+        "generalSettings.",
+        "openlineageSettings."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "external URL",
+          "external url"
+        ]
+      }
+    },
+    {
+      "id": "environment",
+      "category": "Platform",
+      "definition": "A catalogue label instances can be assigned to.",
+      "translations": {
+        "en-US": "environment",
+        "zh-CN": "环境"
+      }
+    },
+    {
+      "id": "sync",
+      "category": "Platform",
+      "definition": "Pulling a source's schema into the registry.",
+      "translations": {
+        "en-US": "sync",
+        "zh-CN": "同步"
+      }
+    },
+    {
+      "id": "llm-provider",
+      "category": "Platform",
+      "definition": "A configured model endpoint that Explain SQL can call.",
+      "translations": {
+        "en-US": "LLM provider",
+        "zh-CN": "LLM 提供商"
+      }
+    },
+    {
+      "id": "explain-sql",
+      "category": "Platform",
+      "definition": "The LLM-assisted SQL explanation feature.",
+      "translations": {
+        "en-US": "Explain SQL",
+        "zh-CN": "解释 SQL"
+      }
+    },
+    {
+      "id": "canceled",
+      "category": "Conventions",
+      "definition": "American English spelling, one l: canceled.",
+      "translations": {
+        "en-US": "canceled",
+        "zh-CN": "已取消"
+      },
+      "scope": [
+        "error.",
+        "common.",
+        "environment."
+      ],
+      "avoid": {
+        "en-US": [
+          "cancelled"
+        ]
+      }
+    },
+    {
+      "id": "email",
+      "category": "Conventions",
+      "definition": "One word, no hyphen.",
+      "translations": {
+        "en-US": "email",
+        "zh-CN": "邮箱"
+      },
+      "avoid": {
+        "en-US": [
+          "e-mail"
+        ]
+      }
+    },
+    {
+      "id": "filter",
+      "category": "Conventions",
+      "definition": "Narrowing a list. The noun and the verb are 筛选.",
+      "translations": {
+        "en-US": "filter",
+        "zh-CN": "筛选"
+      },
+      "scope": [
+        "manualSqlManagement.",
+        "metadataBrowser.",
+        "auditLogs.",
+        "applicationSql.",
+        "home."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "过滤"
+        ]
+      }
+    },
+    {
+      "id": "sql",
+      "category": "Conventions",
+      "definition": "Always upper case, including inside Chinese copy.",
+      "translations": {
+        "en-US": "SQL",
+        "zh-CN": "SQL"
+      },
+      "avoid": {
+        "en-US": [
+          "/\\bSql\\b/"
+        ],
+        "zh-CN": [
+          "/\\bSql\\b/"
+        ]
+      }
+    },
+    {
+      "id": "create",
+      "category": "Conventions",
+      "definition": "A button that opens a blank form is 新建; the imperative and the past tense are 创建 (创建时间).",
+      "translations": {
+        "en-US": "create",
+        "zh-CN": "创建"
+      }
+    },
+    {
+      "id": "refresh",
+      "category": "Conventions",
+      "definition": "Refresh is 刷新. Reloading a stored definition is 重新加载; Regenerate is 重新生成.",
+      "translations": {
+        "en-US": "refresh",
+        "zh-CN": "刷新"
+      }
+    }
+  ]
+}
