@@ -22,6 +22,20 @@ const ADMINISTRATOR_PERMISSIONS = [
   "metaxisdata.applications.list",
 ];
 
+// Every entry in the rail, so the rendered order is the full order.
+const ALL_PERMISSIONS = [
+  "metaxisdata.settings.get",
+  "metaxisdata.iam.getPolicy",
+  "metaxisdata.users.list",
+  "metaxisdata.identityProviders.list",
+  "metaxisdata.roles.list",
+  "metaxisdata.groups.list",
+  "metaxisdata.llm.profiles.list",
+  "metaxisdata.applications.list",
+  "metaxisdata.openlineage.namespaceMappings.list",
+  "metaxisdata.auditLogs.search",
+];
+
 async function mountNav() {
   const router = createRouter({
     history: createMemoryHistory(),
@@ -57,5 +71,15 @@ describe("SettingsNav", () => {
 
     expect(wrapper.text()).toContain("Roles");
     expect(wrapper.text()).not.toContain("Audit Logs");
+  });
+
+  it("keeps user management next to the policy page and audit logs last", async () => {
+    useAuthStore().user = create(UserSchema, { permissions: ALL_PERMISSIONS });
+    const { wrapper } = await mountNav();
+
+    const hrefs = wrapper.findAll("a").map((link) => link.attributes("href"));
+
+    expect(hrefs[hrefs.indexOf("/settings/iam") + 1]).toBe("/settings/users");
+    expect(hrefs[hrefs.length - 1]).toBe("/settings/audit-logs");
   });
 });
