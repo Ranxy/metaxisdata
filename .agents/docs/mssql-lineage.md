@@ -102,7 +102,8 @@ MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关�
 | 装配 | `backend/plugin/lineage/engines/engines.go`、`engines_test.go` | `go test ./backend/plugin/lineage/engines/` |
 | 共享机制守门 | `backend/plugin/lineage/shared_analysis_test.go`(`dialectPackages` 含 `mssql`) | `go test ./backend/plugin/lineage/ -run TestSharedAnalysisStaysShared` |
 | 黄金语料 | `backend/plugin/lineage/mssql/testdata/analyze/`(14 套 / 101 例) | `TestAnalyzeYAML`、`TestCorpusIsFullyAnnotated` |
-| 切分与别名复核 | `analyzer_test.go`(`TestSplitStatements`、`TestKeywordAliasIsNotAnAlias`) | 同上 |
+| 切分与别名复核 | `analyzer_test.go`(`TestSplitStatements`、`TestClauseKeywordAliasGuard`) | 同上 |
+| APPLICATION_SQL 的写目标分类 | `backend/plugin/dmltarget/target.go`(MSSQL 分支:INSERT/UPDATE/DELETE/MERGE/BULK INSERT;表变量与 `#temp` 拒绝) | `go test ./backend/plugin/dmltarget/` |
 | 跨库限定符 | `analyzer_test.go`(`TestCrossDatabaseQualifierIsReported`) | 同上 |
 | 上游缺陷记录 | `.agents/docs/omni-upstream-defects.md` §10 | — |
 | 端到端 | — | `make test-integration`(真实 PostgreSQL + MySQL;MSSQL 不在集成测试矩阵内) |

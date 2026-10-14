@@ -19,7 +19,10 @@ package dmltarget
 
 import (
 	"errors"
+	"strings"
 
+	omnimssql "github.com/bytebase/omni/mssql"
+	mssqlnodes "github.com/bytebase/omni/mssql/ast"
 	mysqlnodes "github.com/bytebase/omni/mysql/ast"
 	mysqlparser "github.com/bytebase/omni/mysql/parser"
 	omnipg "github.com/bytebase/omni/pg"
@@ -47,6 +50,8 @@ func Targets(engine storepb.Engine, sql string) ([]model.ObjectIdentifier, error
 		return postgresTargets(sql)
 	case storepb.Engine_STARROCKS:
 		return starrocksTargets(sql)
+	case storepb.Engine_MSSQL:
+		return mssqlTargets(sql)
 	default:
 		return mysqlTargets(sql)
 	}
@@ -143,6 +148,48 @@ func postgresIdentifier(ref *pgast.RangeVar) model.ObjectIdentifier {
 		Schema:   ref.Schemaname,
 		Name:     ref.Relname,
 	}
+}
+
+// mssqlTargets reads a T-SQL statement's write target. MERGE is the shape only this dialect
+// has — T-SQL's upsert — and it writes the target named after INTO.
+//
+// A `WITH` clause in front of a data-modification statement is not attached to it by omni, so
+// the statement arrives as a second item; the loop reads whichever item is a write.
+func mssqlTargets(sql string) ([]model.ObjectIdentifier, error) {
+	statements, err := omnimssql.Parse(sql)
+	if err != nil {
+		return nil, err
+	}
+	for _, statement := range statements {
+		switch s := statement.AST.(type) {
+		case *mssqlnodes.InsertStmt:
+			return one(mssqlIdentifier(s.Relation))
+		case *mssqlnodes.UpdateStmt:
+			return one(mssqlIdentifier(s.Relation))
+		case *mssqlnodes.DeleteStmt:
+			return one(mssqlIdentifier(s.Relation))
+		case *mssqlnodes.MergeStmt:
+			return one(mssqlIdentifier(s.Target))
+		case *mssqlnodes.BulkInsertStmt:
+			return one(mssqlIdentifier(s.Table))
+		default:
+			// A SELECT, a batch separator, a statement that writes nothing, or the empty node a
+			// dropped WITH clause leaves behind: this is not the write being looked for.
+		}
+	}
+	return nil, ErrNoTarget
+}
+
+// mssqlIdentifier maps a T-SQL object name onto the registry's fields: T-SQL's schema is the
+// schema and its database is the database, the way the analyzer names them. A name that is no
+// registry object at all — a table variable, a `#temp` table — yields no identifier rather than
+// a name the registry can never hold.
+func mssqlIdentifier(expr mssqlnodes.TableExpr) model.ObjectIdentifier {
+	ref, ok := expr.(*mssqlnodes.TableRef)
+	if !ok || ref == nil || ref.Object == "" || strings.HasPrefix(ref.Object, "#") {
+		return model.ObjectIdentifier{}
+	}
+	return model.ObjectIdentifier{Database: ref.Database, Schema: ref.Schema, Name: ref.Object}
 }
 
 func starrocksTargets(sql string) ([]model.ObjectIdentifier, error) {
