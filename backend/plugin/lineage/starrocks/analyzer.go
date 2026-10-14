@@ -142,8 +142,8 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 		return nil, errors.Errorf("expected exactly 1 statement, got %d", len(segments))
 	}
 
-	file, errs := starrocksparser.Parse(a.sql)
-	if len(errs) > 0 {
+	file, err := starrocksparser.Parse(a.sql)
+	if err != nil {
 		// omni's CREATE VIEW grammar accepts only a plain SELECT body (finding
 		// F2). A WITH / set-operation / parenthesized body is analyzed from the
 		// extracted query instead; anything else is still a hard failure.
@@ -151,7 +151,7 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 			a.processViewDDL(ddl)
 			return a.partialOrComplete()
 		}
-		return nil, errors.Wrap(&errs[0], "failed to parse StarRocks SQL")
+		return nil, errors.Wrap(err, "failed to parse StarRocks SQL")
 	}
 	if file == nil || len(file.Stmts) != 1 {
 		return nil, errors.New("expected exactly 1 statement")

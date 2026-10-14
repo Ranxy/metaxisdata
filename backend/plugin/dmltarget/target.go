@@ -197,9 +197,9 @@ func mssqlIdentifier(expr mssqlnodes.TableExpr) model.ObjectIdentifier {
 }
 
 func starrocksTargets(sql string) ([]model.ObjectIdentifier, error) {
-	file, errs := srparser.Parse(sql)
-	if len(errs) > 0 {
-		return nil, &errs[0]
+	file, err := srparser.Parse(sql)
+	if err != nil {
+		return nil, err
 	}
 	if file == nil {
 		return nil, ErrNoTarget

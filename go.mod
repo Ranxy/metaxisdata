@@ -7,7 +7,7 @@ require (
 	connectrpc.com/cors v0.1.0
 	connectrpc.com/grpcreflect v1.3.0
 	github.com/blang/semver/v4 v4.0.0
-	github.com/bytebase/omni v0.0.0-20260912023254-4574e69bb9f1
+	github.com/bytebase/omni v0.0.0-20261014102304-038210857601
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/cel-go v0.26.1

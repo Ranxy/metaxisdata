@@ -32,6 +32,9 @@ type Analyzer struct {
 	sql string
 	// tokens backs whitespace-free expression text reconstruction.
 	tokens []mysqlparser.Token
+	// tokenErr is why the statement could not be tokenized at all, which only a parser
+	// panic produces. The statement is refused rather than analyzed without tokens.
+	tokenErr error
 	// Current scope stack
 	scopeStack []*scope.Scope
 	// Collected column relations
@@ -86,16 +89,48 @@ func SplitStatements(sql string) []string {
 // NewAnalyzer creates a new MySQL lineage analyzer.
 func NewAnalyzer(ctx context.Context, sql string, catalogProvide catalog.Provide) *Analyzer {
 	diagnostics := algorithm.NewDiagnostics()
+	tokens, tokenErr := tokenizeStatement(sql)
 	return &Analyzer{
 		ctx:         ctx,
 		sql:         sql,
-		tokens:      mysqlparser.Tokenize(sql),
+		tokens:      tokens,
+		tokenErr:    tokenErr,
 		scopeStack:  []*scope.Scope{scope.NewScope(nil)}, // Root scope
 		edges:       algorithm.NewEdgeSet(),
 		catalog:     catalog.NewCache(catalogProvide),
 		influences:  algorithm.NewInfluences(diagnostics),
 		diagnostics: diagnostics,
 	}
+}
+
+// parseStatement parses the one statement this analyzer is defined for.
+//
+// It recovers from a panic in the dialect's parser. omni's MariaDB and TiDB lexers panic on a
+// `/*!` executable comment that never closes — they splice the comment's inner text with an
+// offset computed past the end of the input — where MySQL's own lexer reports the same input
+// as an unterminated comment. A panic is not a failure a caller can see, and this analyzer
+// promises a hard failure for a statement it cannot parse, so it is turned into one here.
+// See .agents/docs/omni-upstream-defects.md.
+func parseStatement(sql string) (list *nodes.List, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = errors.Errorf("the parser panicked: %v", r)
+		}
+	}()
+	return mysqlparser.Parse(sql)
+}
+
+// tokenizeStatement is parseStatement's counterpart for the token stream that expression text
+// is reconstructed from. A statement whose tokens are unknown must not be analyzed at all:
+// every transformation it records would carry empty expression text, which is a wrong answer
+// rather than a missing one.
+func tokenizeStatement(sql string) (tokens []mysqlparser.Token, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = errors.Errorf("the parser panicked while tokenizing: %v", r)
+		}
+	}()
+	return mysqlparser.Tokenize(sql), nil
 }
 
 // AnalyzeRelations parses the SQL and returns column relations.
@@ -106,7 +141,10 @@ func NewAnalyzer(ctx context.Context, sql string, catalogProvide catalog.Provide
 // statement. A statement shape the analyzer cannot represent is reported as a gap
 // beside the edges it found, never as a silent empty result.
 func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
-	list, err := mysqlparser.Parse(a.sql)
+	if a.tokenErr != nil {
+		return nil, errors.Wrap(a.tokenErr, "failed to parse MySQL SQL")
+	}
+	list, err := parseStatement(a.sql)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to parse MySQL SQL")
 	}

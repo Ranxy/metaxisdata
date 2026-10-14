@@ -238,9 +238,11 @@ func stripComments(engine storepb.Engine, gap string) string {
 }
 
 // blockCommentEnd returns the length of the block comment starting at s, or -1 when it is
-// never closed. Comments nest, which is what every lexer here does with `/* a /* b */ */`:
-// stopping at the first `*/` would leave the rest of the comment in the stored text, and
-// the same mistake makes the closed-comment check in Sanitize reject a valid statement.
+// never closed. PostgreSQL and T-SQL nest block comments, so stopping at the first `*/` would
+// leave the rest of the comment in the stored text, and the same mistake makes the
+// closed-comment check in Sanitize reject a valid statement. The MySQL family and StarRocks
+// do not nest: their lexers ended the comment at the first `*/`, so a gap between tokens never
+// holds a nested one, and a `*/` left in a gap is not part of a comment at all.
 func blockCommentEnd(s string) int {
 	depth := 0
 	for i := 0; i+1 < len(s); {

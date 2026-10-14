@@ -124,7 +124,7 @@ TiDB 和 MariaDB **没有自己的遍历**。`mysql/analyzer.go` 哨兵之下的
 
 ## 上游依赖政策
 
-五个解析器同属一个模块,钉在 `go.mod:10` `github.com/bytebase/omni v0.0.0-20260912023254-4574e69bb9f1`。政策是**不 patch、不 fork、不 vendor、不向上游反馈**(见 [omni-upstream-defects.md](omni-upstream-defects.md));代价是适配层脆弱,omni 任何 AST/Loc 微调只能靠语料事后发现。
+五个解析器同属一个模块,钉在 `go.mod:10` `github.com/bytebase/omni v0.0.0-20261014102304-038210857601`。政策是**不 patch、不 fork、不 vendor、不向上游反馈**(见 [omni-upstream-defects.md](omni-upstream-defects.md));代价是适配层脆弱,omni 任何 AST/Loc 微调只能靠语料事后发现。
 
 - **升级流程缺失**:没有"带验收门槛的升级流程"(全语料 + 输出 diff)是唯一未决的依赖策略项(T5),go.mod 里没有任何 `replace`,仓库没有 `vendor/`。
 - **ANTLR 已移除**:`go.mod:49` 只剩 `github.com/antlr4-go/antlr/v4 // indirect`,仓库里已无 `github.com/bytebase/parser` 依赖,`postgresqlantlr/` 目录不存在。

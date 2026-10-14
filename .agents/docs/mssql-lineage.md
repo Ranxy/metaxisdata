@@ -55,9 +55,7 @@ MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关�
 
 **两处按 catalog 决定的行为**:PIVOT 会保留源表中"聚合函数与 FOR 列都没消费"的列作为分组列,但语句从不写出它们 —— 源关系的列清单已知(catalog 命中 / CTE / 内联表)时按 `源列 → PIVOT 列`(direct,值原样带过)记录,未知时只暴露 IN 值列(不猜);MERGE 的 `WHEN … AND <条件>` 记为该目标行的 FILTER 影响,与 ON 条件同一机制。PIVOT/UNPIVOT、表值函数与内联 VALUES 的源在**独立子作用域**里分析——它是关系内部的行源,留在外层会让 `SELECT *` 把它当成第二个关系展开;手写的内部 lineage 也必须像 `tempTableLineage` 一样**展平查询本地来源**(CTE/派生表),否则 CTE 名会变成落库的边端点(语料 `12_test_pivot_lineage_table.yaml` / `16_test_extended_forms_lineage_table.yaml` 各四例钉住,含派生表叠 CTE)。
 
-**上游语法缺口(硬失败,不建模)**:`JOIN … USING (…)`、`OPENROWSET(BULK …)`、表值函数的带类型列定义、`CREATE VIEW v AS (SELECT …)` 的括号体、`GROUP BY ALL`(omni 直接报 `syntax error at end of input`)、表提示与别名并存(两种顺序都失败)。`NATURAL JOIN` 不在此列:它不是 T-SQL 语法,解析器把 NATURAL 读成别名,由 §别名复核那一条按后随 token 处理(`t1 NATURAL JOIN t2` 仍能把 `t1.a` 解析出来)。明细见 [omni-upstream-defects.md](omni-upstream-defects.md) §10。
-
-**`WITH` 在 DML 之前**:omni 读到 CTE 列表后若下一个词不是 SELECT,就丢掉整段 `WITH` 并留下一个空语句,紧随的 INSERT/UPDATE/DELETE/MERGE 其文本跨度也会变成空。CTE 定义在树里不可达,任何引用都可能指向其中一个,所以方言包在分析前**从源文本恢复 CTE 列表**(`withclause.go`:切出第一个顶层 DML 关键字之前的前缀,补一个 `SELECT 1` 解析出 `WithClause`,再挂回该语句)。前缀是原文本的前缀,因此 CTE 体内的偏移量仍然有效。恢复失败才硬失败——文本已被丢弃一部分时不能拿错误的边冒充部分结果。做法与 StarRocks 的 `viewbody.go` 同类。
+**上游语法缺口(硬失败,不建模)**:`JOIN … USING (…)`、`OPENROWSET(BULK …)`、表值函数的带类型列定义、`CREATE VIEW v AS (SELECT …)` 的括号体、`GROUP BY ALL`(omni 直接报 `syntax error at end of input`)、表提示与别名并存(两种顺序都失败)。`NATURAL JOIN` 不在此列:它不是 T-SQL 语法,解析器把 NATURAL 读成别名,由 §别名复核那一条按后随 token 处理(`t1 NATURAL JOIN t2` 仍能把 `t1.a` 解析出来)。明细见 [omni-upstream-defects.md](omni-upstream-defects.md) §9。
 
 ## 切分(ScriptSplitter)
 
@@ -72,7 +70,6 @@ MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关�
 | 场景 | 行为 |
 | --- | --- |
 | omni 解析失败(含括号视图体、OPENROWSET(BULK)、表提示+别名) | 硬失败:无部分结果;runner 清该对象血缘 + `error_message` |
-| `WITH` + DML(上游丢 CTE) | 从源文本恢复 CTE 列表后正常分析;恢复失败才硬失败(文本已被丢弃一部分,不可信) |
 | 某子句没建模(表变量目标、INSERT EXEC、EXEC、例程体、SEMANTIC 表) | 部分分析:兄弟边照存,缺口写 version 行 / RPC diagnostics |
 | 引用解析不到(未解析列 / 通配符限定符 / 跨库名 / 查询本地关系答不出的列) | 部分分析 + 对应 `model.Diagnostic` |
 | catalog 查询失败 | `DiagnosticCatalogUnavailable` + 通配符回退,分析继续 |
@@ -99,25 +96,24 @@ MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关�
 3. ~~**MERGE 的 WHEN 条件**~~ — **已落地**。`WHEN MATCHED AND …` / `WHEN NOT MATCHED AND …` 的条件现在以 FILTER 影响记在目标行上,由两条语料钉住。
 4. ~~**PIVOT 的隐式分组列**~~ — **已落地**(按 catalog 能力分级):源关系列清单已知时列出未消费列并按 direct 带过,未知时只暴露 IN 值列。顺带修掉一个真实作用域缺陷:PIVOT/UNPIVOT 的源曾留在外层作用域,`SELECT *` 会把源表当第二个关系展开(语料 `12_test_pivot_lineage_table.yaml` 的 star expansion 两例钉住)。
 5. **命名窗口跨语句不可见** — `WINDOW w AS …` 只在处理该查询期间有效(`namedWindows`),这是 SQL 的作用域,不是限制。
-6. ~~**上游 `WITH` + DML 缺陷的本地绕行**~~ — **已落地**。`withclause.go` 恢复 CTE 列表(StarRocks `viewbody.go` 的同类做法),四种 DML 与"CTE 体变换透传"都由语料钉住;`withclause_test.go` 钉住边界判定与只挂 DML 两半。上游缺陷记录见 [omni-upstream-defects.md](omni-upstream-defects.md) §10.1。
-7. ~~**空结果被当成"没有血缘"**~~ — **已落地**:查询本地关系答不出的列、`EXEC`、`CREATE PROCEDURE`/`CREATE FUNCTION` 的例程体现在都报缺口(不变量 11),`17_test_diagnostics_lineage_table.yaml` 四例钉住。
-8. **表变量作为源仍静默跳过** — 有意保留(静态分析不知道它的列,产品也不建模表变量):`SELECT * FROM @tv` 依旧"无边无缺口",引用它的列只以"未解析列"出现。修法是 `addTableSource` 那一个 `case *nodes.TableVarRef` 里加一行 `not modelled`(AST 已经能识别表变量——目标侧就是这么报的),等需要时再补。
-9. **表提示 + 别名的两种顺序都硬失败** — 上游缺口,已记 §10.4;要支持得等 omni 的语法,不能自行改上游。
+6. ~~**空结果被当成"没有血缘"**~~ — **已落地**:查询本地关系答不出的列、`EXEC`、`CREATE PROCEDURE`/`CREATE FUNCTION` 的例程体现在都报缺口(不变量 11),`17_test_diagnostics_lineage_table.yaml` 四例钉住。
+7. **表变量作为源仍静默跳过** — 有意保留(静态分析不知道它的列,产品也不建模表变量):`SELECT * FROM @tv` 依旧"无边无缺口",引用它的列只以"未解析列"出现。修法是 `addTableSource` 那一个 `case *nodes.TableVarRef` 里加一行 `not modelled`(AST 已经能识别表变量——目标侧就是这么报的),等需要时再补。
+8. **表提示 + 别名的两种顺序都硬失败** — 上游缺口,已记 §9.3;要支持得等 omni 的语法,不能自行改上游。
 
 ## Where things live
 
 | 关注点 | 代码 | 测试 / 门禁 |
 | --- | --- | --- |
-| 方言包 | `backend/plugin/lineage/mssql/{analyzer,expr,predicate,split,withclause}.go` | `go test ./backend/plugin/lineage/mssql/` |
+| 方言包 | `backend/plugin/lineage/mssql/{analyzer,expr,predicate,split}.go` | `go test ./backend/plugin/lineage/mssql/` |
 | 装配 | `backend/plugin/lineage/engines/engines.go`、`engines_test.go` | `go test ./backend/plugin/lineage/engines/` |
 | 共享机制守门 | `backend/plugin/lineage/shared_analysis_test.go`(`dialectPackages` 含 `mssql`) | `go test ./backend/plugin/lineage/ -run TestSharedAnalysisStaysShared` |
 | 黄金语料 | `backend/plugin/lineage/mssql/testdata/analyze/`(14 套 / 143 例) | `TestAnalyzeYAML`、`TestCorpusIsFullyAnnotated` |
-| 切分与别名复核 | `analyzer_test.go`(`TestSplitStatements`、`TestClauseKeywordAliasGuard`) | 同上 |
+| 切分与别名复核 | `analyzer_test.go`(`TestSplitStatements`、`TestClauseKeywordAliasGuard`、`TestWithClauseBeforeEachDMLKindIsAnalyzed`) | 同上 |
 | APPLICATION_SQL 的写目标分类 | `backend/plugin/dmltarget/target.go`(MSSQL 分支:INSERT/UPDATE/DELETE/MERGE/BULK INSERT;表变量与 `#temp` 拒绝) | `go test ./backend/plugin/dmltarget/` |
 | 跨库限定符 | `analyzer_test.go`(`TestCrossDatabaseQualifierIsReported`) | 同上 |
 | 查询本地关系的回答 | `analyzer.go`(`queryLocalAnswers`、三个穿透入口) | `17_test_diagnostics_lineage_table.yaml`、`analyzer_test.go`(`TestAQueryLocalColumnWithNoSourceIsNotAGap`) |
 | 分组子句的键 | `expr.go`(`groupByKeys`) | `01_test_select_lineage_table.yaml` 的 CUBE/GROUPING SETS/ROLLUP 三例 |
-| 上游缺陷记录 | `.agents/docs/omni-upstream-defects.md` §10 | — |
+| 上游缺陷记录 | `.agents/docs/omni-upstream-defects.md` §9 | — |
 | 端到端 | `backend/test/integration/runner/mssql_lineage_identifier_case_test.go`(手工注册 MSSQL 实例、`db` 行与注册表行;分析不连实例,所以不需要真实 SQL Server) | `make test-integration` 或 `go test -tags integration -run TestMSSQLLineageRecordsTheRegisteredRelationRealServerIntegration ./backend/test/integration/runner` |
 
 不在本篇范围:transformation 模型的字段含义见 [lineage-semantics.md](lineage-semantics.md);装配与 runner 生命周期见 [lineage-analyzer.md](lineage-analyzer.md);上游缺陷与不修改政策见 [omni-upstream-defects.md](omni-upstream-defects.md)。
