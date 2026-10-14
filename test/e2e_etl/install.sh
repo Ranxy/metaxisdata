@@ -8,10 +8,12 @@
 # Airflow Home is /home/ran/airflow; the fixture is deployed to
 # $AIRFLOW_HOME/e2e_etl and the DAG files to $AIRFLOW_HOME/dags.
 #
-# The MSSQL hop needs the local container's sa password. It is read from
+# The MSSQL hop needs the local container's sa password. This script reads it from
 # MSSQL_SA_PASSWORD, or from the mssql_e2e Airflow connection when that variable is
-# not set, and it is written into the deployed DataX job copies only: the copies
-# under test/e2e_etl/datax carry no credential, because this repository is public.
+# not set, and ensures the connection exists - the DAGs render their credential from
+# that connection, because a task process cannot read the metadata database itself.
+# The password is written into the deployed DataX job copies only: the copies under
+# test/e2e_etl/datax carry no credential, because this repository is public.
 set -euo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -27,9 +29,26 @@ SR_CONTAINER="${SR_CONTAINER:-starrocks}"
 
 airflow() { (cd "$AIRFLOW_DIR" && uv run airflow "$@"); }
 
-# mssql_password prints the local SQL Server password, or nothing. The wrapper owns
-# the lookup order, so a shell, a DAG task and this script cannot disagree about it.
-mssql_password() { "$SRC/tools/mssql_sqlcmd.sh" --print-password 2>/dev/null || true; }
+# mssql_password prints the local SQL Server password, or nothing.
+#
+# install.sh runs outside a task, so unlike a DAG task it can read the Airflow
+# connection itself; MSSQL_SA_PASSWORD wins when it is set, so a deployment that
+# already exports the credential needs nothing else.
+mssql_password() {
+  if [ -n "${MSSQL_SA_PASSWORD:-}" ]; then
+    printf '%s' "$MSSQL_SA_PASSWORD"
+    return
+  fi
+  airflow connections get mssql_e2e -o json 2>/dev/null |
+    python3 -c 'import json,sys
+try:
+    found = json.load(sys.stdin)
+    if isinstance(found, list):
+        found = found[0] if found else {}
+    print(found.get("password") or "", end="")
+except Exception:
+    pass' 2>/dev/null || true
+}
 
 bootstrap() {
   echo "== bootstrap PostgreSQL database e2e"
@@ -56,7 +75,7 @@ bootstrap() {
   if [ -z "$MSSQL_PASSWORD" ]; then
     echo "   skipped: no SQL Server password (set MSSQL_SA_PASSWORD, or create the mssql_e2e connection)"
   else
-    "$SRC/tools/mssql_sqlcmd.sh" "$SRC/mssql/00_bootstrap.sql" >/dev/null
+    MSSQL_SA_PASSWORD="$MSSQL_PASSWORD" "$SRC/tools/mssql_sqlcmd.sh" "$SRC/mssql/00_bootstrap.sql" >/dev/null
     echo "   the e2e database and its three schemas are there; 10_ods_ddl creates the tables"
   fi
 }

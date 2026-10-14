@@ -25,6 +25,17 @@ OL_URL = os.environ.get("OPENLINEAGE_URL", "http://localhost:8083")
 SR_MYSQL = "docker exec -i starrocks mysql -uroot -h127.0.0.1 -P9030"
 SQLCMD = E2E_ROOT / "tools" / "mssql_sqlcmd.sh"
 
+# Templated from the connection: a task cannot read the metadata database itself
+# (Airflow points a task's AIRFLOW__DATABASE__SQL_ALCHEMY_CONN at a non-url), so the
+# task runner renders the credential into the task's environment instead. PATH comes
+# along because a BashOperator's `env` replaces the environment rather than extending
+# it, and a program that resolves its own executable through PATH needs it.
+MSSQL_ENV = {
+    "PATH": os.environ.get("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"),
+    "HOME": os.environ.get("HOME", "/home/ran"),
+    "SQLCMDPASSWORD": "{{ conn.mssql_e2e.password }}",
+}
+
 sys.path.insert(0, str(E2E_ROOT / "tools"))
 from datax_lineage_mssql import MssqlLineagePlugin  # noqa: E402
 
@@ -61,6 +72,7 @@ with DAG(
 
     verify = BashOperator(
         task_id="verify_counts",
+        env=MSSQL_ENV,
         bash_command=f"""
 set -euo pipefail
 echo "--- MSSQL"

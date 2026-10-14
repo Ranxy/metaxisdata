@@ -30,6 +30,22 @@ OL_URL = os.environ.get("OPENLINEAGE_URL", "http://localhost:8083")
 SQLCMD = E2E_ROOT / "tools" / "mssql_sqlcmd.sh"
 MSSQL_DIR = E2E_ROOT / "mssql"
 
+# The credential the tasks run sqlcmd with. It is templated from the connection
+# because a task cannot read the metadata database itself: Airflow points a task's
+# AIRFLOW__DATABASE__SQL_ALCHEMY_CONN at a non-url on purpose, so a hook or the CLI
+# inside the task fails, and the task runner is what has to render the connection in.
+#
+# PATH travels with it because a BashOperator's `env` replaces the task's environment
+# rather than extending it (the standard provider passes `env if env else os.environ`).
+# Without PATH, bash still finds a command through its built-in default, but a program
+# that resolves its own executable through PATH fails: psql answers
+# "could not find own program executable" when the verification task tries to run it.
+MSSQL_ENV = {
+    "PATH": os.environ.get("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"),
+    "HOME": os.environ.get("HOME", "/home/ran"),
+    "SQLCMDPASSWORD": "{{ conn.mssql_e2e.password }}",
+}
+
 # The DataX OpenLineage provider ships no plugin for sqlserverreader/sqlserverwriter,
 # and a hop it cannot name is a hop that emits no datasets at all. The fixture
 # supplies the plugin; it is deployed beside the fixtures rather than installed.
@@ -48,6 +64,7 @@ def apply_sql(name: str, task_id: str) -> BashOperator:
     # master and the script decides where it lands.
     return BashOperator(
         task_id=task_id,
+        env=MSSQL_ENV,
         bash_command=f"set -euo pipefail; {SQLCMD} {MSSQL_DIR}/{name}",
     )
 
@@ -86,6 +103,7 @@ with DAG(
 
     verify = BashOperator(
         task_id="verify_counts",
+        env=MSSQL_ENV,
         bash_command=f"""
 set -euo pipefail
 echo "--- PostgreSQL"
@@ -100,7 +118,7 @@ MSSQL_DB=e2e {SQLCMD} -q "
   union all select 'e2e_dwd.fact_daily_sales', count(*) from e2e_dwd.fact_daily_sales
   union all select 'e2e_ads.v_kpi_daily', count(*) from e2e_ads.v_kpi_daily
   union all select 'e2e_ads.v_pivot_channel', count(*) from e2e_ads.v_pivot_channel
-  union all select 'e2e_ads.v_customer_value', count(*) from e2e_ads.v_customer_value"
+  union all select 'e2e_dwd.v_customer_value', count(*) from e2e_dwd.v_customer_value"
 """,
     )
 
