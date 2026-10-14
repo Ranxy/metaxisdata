@@ -120,21 +120,29 @@ func TestClauseKeywordAliasGuard(t *testing.T) {
 	}
 }
 
-// TestAliasCaseIsNotFolded pins the third half of the case story, which this dialect cannot fix
-// on its own. T-SQL compares identifiers case-insensitively, so `SELECT X.a FROM t AS x` is
-// valid, but the shared scope matches a qualifier against a relation's alias byte for byte and
-// the reference resolves to nothing. Folding the alias would mean folding both sides of the
-// scope's keys — the keys CTEs and temporary relations are also looked up by — so the behaviour
-// is pinned as it stands; see .agents/docs/mssql-lineage.md, Open items.
-func TestAliasCaseIsNotFolded(t *testing.T) {
+// TestIdentifierCaseIsFolded pins the third half of the case story: a T-SQL identifier is bound
+// by the database's collation, which is case-insensitive by default, so a qualifier written in
+// another case than the relation, its alias or a CTE was written in still names it. The scope
+// asks each dialect for its rule (`scope.SetFoldNames`), and this dialect is the one that asks
+// for folding.
+func TestIdentifierCaseIsFolded(t *testing.T) {
 	t.Parallel()
 
-	relations, err := analyzeSQL("SELECT X.a FROM t AS x", nil)
-	require.Error(t, err, "an unresolved reference is the behaviour being pinned")
-	require.Empty(t, relations)
-
-	// The same reference spelled the way the alias is resolves.
-	relations, err = analyzeSQL("SELECT x.a FROM t AS x", nil)
-	require.NoError(t, err)
-	require.Len(t, relations, 1)
+	for _, tc := range []struct{ name, sql, wantTable string }{
+		{"table name as a qualifier", "SELECT T.a FROM t", "t"},
+		{"schema qualified name", "SELECT dbo.T.a FROM dbo.t", "t"},
+		{"relation alias", "SELECT X.a FROM t AS x", "t"},
+		{"alias written in another case", "SELECT x.a FROM T AS X", "T"},
+		{"cte named as a qualifier", "WITH c AS (SELECT a FROM t) SELECT C.a FROM c", "t"},
+		{"cte written in another case", "WITH C AS (SELECT a FROM t) SELECT c.a FROM C", "t"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			relations, err := analyzeSQL(tc.sql, nil)
+			require.NoError(t, err, tc.sql)
+			require.Len(t, relations, 1, tc.sql)
+			require.Equal(t, tc.wantTable, relations[0].Source.Table.Name)
+			require.Equal(t, "a", relations[0].Source.Name)
+		})
+	}
 }

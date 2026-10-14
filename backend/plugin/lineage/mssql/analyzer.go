@@ -98,10 +98,17 @@ func Analyze(ctx context.Context, sql string, cat catalog.Provide) ([]model.Colu
 // NewAnalyzer creates a T-SQL lineage analyzer for a single statement.
 func NewAnalyzer(ctx context.Context, sql string, catalogProvide catalog.Provide) *Analyzer {
 	diagnostics := algorithm.NewDiagnostics()
+	// A T-SQL identifier is bound by the database's collation, which is case-insensitive by
+	// default, so `SELECT T.a FROM t`, `SELECT X.a FROM t AS x` and a CTE named in another case
+	// than it was written all name the relation they were written as. The scope resolves names
+	// byte for byte unless a dialect says otherwise, and this is the dialect that does; every
+	// child scope inherits it.
+	root := scope.NewScope(nil)
+	root.SetFoldNames(true)
 	analyzer := &Analyzer{
 		ctx:         ctx,
 		sql:         sql,
-		scopeStack:  []*scope.Scope{scope.NewScope(nil)}, // root scope
+		scopeStack:  []*scope.Scope{root},
 		edges:       algorithm.NewEdgeSet(),
 		catalog:     catalog.NewCache(catalogProvide),
 		influences:  algorithm.NewInfluences(diagnostics),

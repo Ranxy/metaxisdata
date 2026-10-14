@@ -23,6 +23,13 @@ type Scope struct {
 	// name when they come from different qualifiers (db1.t and db2.t), and both
 	// have to stay addressable: a map keyed by name silently keeps only one.
 	relations []*TableRef
+	// foldNames makes a relation's and a CTE's name compare case-insensitively, which is how
+	// an engine whose identifiers are case-insensitive binds a reference: `SELECT T.a FROM t`
+	// reads the table `t`. It is off by default, because a case-sensitive engine really does
+	// treat `T` and `t` as different objects — MySQL's table names on a case-sensitive
+	// filesystem, a PostgreSQL quoted alias — and a dialect turns it on for itself
+	// (Scope.SetFoldNames). A child scope inherits it from its parent.
+	foldNames bool
 	// CTEs available in this scope
 	ctes map[string]*CTEDefinition
 	// Output columns for this scope (for SELECT statements)
@@ -31,12 +38,39 @@ type Scope struct {
 
 // NewScope creates a new scope with an optional parent.
 func NewScope(parent *Scope) *Scope {
+	fold := false
+	if parent != nil {
+		fold = parent.foldNames
+	}
 	return &Scope{
 		parent:        parent,
+		foldNames:     fold,
 		relations:     make([]*TableRef, 0),
 		ctes:          make(map[string]*CTEDefinition),
 		outputColumns: make([]OutputColumn, 0),
 	}
+}
+
+// SetFoldNames declares that this scope's engine binds identifiers case-insensitively, so a
+// reference that differs only in case from the name a relation or a CTE was written with
+// resolves to it. It is set on a root scope, and every child scope created afterwards inherits
+// it; the default is the byte-for-byte comparison every other dialect keeps.
+//
+// The dialect that sets it is the one whose engine is case-insensitive: a T-SQL identifier is
+// bound by the database's collation, which is case-insensitive by default, so
+// `SELECT T.a FROM t` is valid and has lineage. A case-sensitive engine must not set it —
+// MySQL on a case-sensitive filesystem and a PostgreSQL quoted alias both name different
+// objects with `T` and `t` — and a missing reference is reported as a gap by the caller rather
+// than silently bound to the wrong relation.
+func (s *Scope) SetFoldNames(fold bool) {
+	s.foldNames = fold
+}
+
+// sameAddress reports whether two relation keys address one relation, under this scope's
+// name rule. Two relations that differ only in case are one relation to a case-insensitive
+// engine, so registering the second replaces the first rather than coexisting with it.
+func (s *Scope) sameAddress(a, b RelationKey) bool {
+	return namesMatch(a.Name, b.Name, s.foldNames) && namesMatch(a.Qualifier, b.Qualifier, s.foldNames)
 }
 
 // NewScopeWithDefinitions creates a scope that resolves the CTE definitions of
@@ -57,7 +91,7 @@ func NewScopeWithDefinitions(parent, definitions *Scope) *Scope {
 func (s *Scope) AddTable(ref *TableRef) {
 	key := ref.Key()
 	for i, existing := range s.relations {
-		if existing.Key() == key {
+		if s.sameAddress(existing.Key(), key) {
 			s.relations[i] = ref
 			return
 		}
@@ -81,12 +115,12 @@ func (s *Scope) AddOutputColumn(col OutputColumn) {
 // is returned.
 func (s *Scope) FindRelation(key RelationKey) (*TableRef, bool) {
 	for _, ref := range s.relations {
-		if ref.Key() == key {
+		if s.sameAddress(ref.Key(), key) {
 			return ref, true
 		}
 	}
 	for _, ref := range s.relations {
-		if ref.addresses(key) {
+		if ref.addresses(key, s.foldNames) {
 			return ref, true
 		}
 	}
@@ -108,7 +142,7 @@ func (s *Scope) FindTable(name string) (*TableRef, bool) {
 // resolution path uses findCTEQualifier instead.
 func (s *Scope) FindCTE(name string) (*CTEDefinition, bool) {
 	// Check current scope
-	if cte, ok := s.ctes[name]; ok {
+	if cte, ok := s.lookupCTE(name); ok {
 		return cte, true
 	}
 	// A scope that reads another scope's definitions does not also read its
@@ -130,11 +164,39 @@ func (s *Scope) FindCTE(name string) (*CTEDefinition, bool) {
 // ("missing FROM-clause entry for table c", verified on 16.15). A qualifier
 // reaches exactly the parent chain.
 func (s *Scope) findCTEQualifier(name string) (*CTEDefinition, bool) {
-	if cte, ok := s.ctes[name]; ok {
+	if cte, ok := s.lookupCTE(name); ok {
 		return cte, true
 	}
 	if s.parent != nil {
 		return s.parent.findCTEQualifier(name)
+	}
+	return nil, false
+}
+
+// lookupCTE finds this scope's own definition of name. The map is keyed by the name the query
+// wrote, so a case-insensitive dialect scans it instead of looking up: a WITH clause holds a
+// handful of definitions, and two of them differing only in case cannot be told apart by an
+// engine that cannot tell them apart either.
+func (s *Scope) lookupCTE(name string) (*CTEDefinition, bool) {
+	if cte, ok := s.ctes[name]; ok {
+		return cte, true
+	}
+	if !s.foldNames {
+		return nil, false
+	}
+	// The scan is ordered rather than a map range: two definitions that differ only in case
+	// cannot both exist under a collation that binds them the same way, but if one is written in
+	// a scope whose engine is case-sensitive after all, the answer must not come out of Go's map
+	// order.
+	keys := make([]string, 0, len(s.ctes))
+	for key := range s.ctes {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	for _, key := range keys {
+		if strings.EqualFold(key, name) {
+			return s.ctes[key], true
+		}
 	}
 	return nil, false
 }

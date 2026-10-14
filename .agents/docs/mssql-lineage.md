@@ -25,7 +25,7 @@ MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关�
 | `SelectStmt.All` 与 `SELECT ALL` 复用同一个字段 | **只在 `Op != SetOpNone` 时**把它当"保留重复行"读,否则 `SELECT ALL` 会被误判成 UNION ALL | `setOpTransformation` |
 | 限定符是 schema(`TableRef.Schema/Object`,列的末段叫 `Column`) | 所有边用 `scope.NewSchemaLineageEdge`,与 PostgreSQL 同类;`catalogTable` 也按 `{Schema, Name}` 查 | `expr.go`、`analyzer.go` |
 | 支持 `db.schema.table` 三部分名,而 `scope.ColumnRef` 只带 schema | 数据库限定符与 analysis context 的 database 比对:相同(或没有 context)则按 schema 限定名正常分析;不同则**报告缺口**而不是把它读成本库同名对象 | `databaseMatches` |
-| 标识符大小写:引擎默认排序规则下**不敏感**,而注册表按 meta GUID **精确**匹配 | 源列名(catalog 命中 / CTE / 内联表知道列清单时)与 **DML 目标列名**(写入的是一等注册对象)都记录**注册表里的拼写**,精确拼写优先(大小写敏感排序规则的库可能同时有 `id` 与 `ID`);`CREATE VIEW` / `SELECT INTO` 的列名是语句自己定义的,保持原样;表/模式名仍是语句原样——见 Open items #1 | `columnSpelling`、`canonicalResolution`、`canonicalPredicateRef`、`registeredColumn` |
+| 标识符大小写:引擎默认排序规则下**不敏感**,而注册表按 meta GUID **精确**匹配 | **语句内**按引擎规则折叠:`scope.SetFoldNames(true)`,于是 `SELECT T.a FROM t`、`SELECT X.a FROM t AS x`、CTE 名大小写不同都能解析;但**记录下来的名字保持语句原样**(折叠只决定引用指向哪个关系,不决定它在边上叫什么)。**列名**再按注册表拼写归一(源列名 + DML 目标列名,精确拼写优先);`CREATE VIEW` / `SELECT INTO` 的列名是语句自己定义的,保持原样。**关系名与注册表之间的那一步仍不折叠**——见 Open items #1 | `scope.SetFoldNames`、`columnSpelling`、`canonicalResolution`、`canonicalPredicateRef`、`registeredColumn` |
 | 视图定义是完整语句,不是裸查询体 | 不需要 StarRocks 式的 viewbody 提取;唯一例外见 §缺口 | `processCreateView` |
 | `[bracketed]` 标识符由解析器去括号 | 边的字段名是去括号后的名字;`Loc` 仍能取回带括号的原文 | `identifierOf` |
 | 若干节点的 `Loc.End` 为 -1:标量子查询、`AliasedTableRef`、所有名字列表(`*List`/`*String`)、`SetExpr.Column` | 表达式文本取不到源切片时按节点重建(见 `rebuiltText`);名字列表一律读 `.Str`,绝不读文本;`SetExpr.Column` 读字段 | `expr.go` |
@@ -84,11 +84,12 @@ MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关�
 6. **`nodeOrNil` 是每个入口的第一行**:类型化 nil 会让 omni 的 walker 崩溃。
 7. **切分器宁可回退到词法扫描,也不返回空列表或空字符串**。
 8. **任何输出变更必须过黄金语料**,语料用精确边匹配(`subset` 未使用)。
-9. **目标不可寻址 ⇒ 不产出边**:表变量、`#temp`、跨库目标一律以 `not modelled` 或 unresolved 缺口说明,绝不以空标识符落边;也不把语句的读改挂到 `__result__` 上(这些语句不返回结果集)。
+9. **标识符折叠是引擎事实,不是方言偏好**:`scope.SetFoldNames` 默认关;只有标识符比较不敏感的引擎(T-SQL,默认排序规则下不敏感)可以打开。折叠只影响"引用指向哪个关系",绝不改写记录下来的名字——MySQL 在大小写敏感文件系统上的表名、PostgreSQL 的带引号别名都真的把 `t` 与 `T` 当成两个对象。
+10. **目标不可寻址 ⇒ 不产出边**:表变量、`#temp`、跨库目标一律以 `not modelled` 或 unresolved 缺口说明,绝不以空标识符落边;也不把语句的读改挂到 `__result__` 上(这些语句不返回结果集)。
 
 ## Open items
 
-1. **标识符大小写(已落地大部分)** — 列名这一半已修:源列名按注册表里的拼写记录(含影响边),精确拼写优先,由 `identifier_case_test.go` 与 `02_test_join_lineage_table.yaml` 钉住。**仍未解决的一半是表名/模式名**:`FROM users` 与注册表里的 `Users` 不是同一个 meta GUID,`catalog.Provide.GetTable` 是精确查询,于是查不到元数据、边就记成 `users`,图上是悬空节点。它不能在方言层修——方言只能折叠自己写下的名字,折叠后反而更对不上注册表里已存的拼写。可行的做法是**按引擎分级的注册表回退查询**(精确未命中时用 `lower(name)`/`lower(guid)` 再查一次,配一个函数索引迁移),只对标识符比较不敏感的引擎(MSSQL)开启,MySQL 在 Linux 上表名大小写敏感、PG 的解析器本就折成小写,两者都不需要。这属于 store/migrator 的范围,单独立项。**第三半是别名的大小写**:`SELECT X.a FROM t AS x` 在 T-SQL 里合法(别名比较不敏感),但 `scope.TableRef.addresses` 逐字节比较名字,于是解析不到。修它需要把别名两侧一起折叠,而别名同时是共享 `scope` 的键、CTE 键与临时关系名——改动面在共享层而不是方言层,先用 `TestAliasCaseIsNotFolded` 把现状钉住。
+1. **标识符大小写(已落地大部分)** — 列名这一半已修:源列名按注册表里的拼写记录(含影响边),精确拼写优先,由 `identifier_case_test.go` 与 `02_test_join_lineage_table.yaml` 钉住。**仍未解决的一半是表名/模式名**:`FROM users` 与注册表里的 `Users` 不是同一个 meta GUID,`catalog.Provide.GetTable` 是精确查询,于是查不到元数据、边就记成 `users`,图上是悬空节点。它不能在方言层修——方言只能折叠自己写下的名字,折叠后反而更对不上注册表里已存的拼写。可行的做法是**按引擎分级的注册表回退查询**(精确未命中时用 `lower(name)`/`lower(guid)` 再查一次,配一个函数索引迁移),只对标识符比较不敏感的引擎(MSSQL)开启,MySQL 在 Linux 上表名大小写敏感、PG 的解析器本就折成小写,两者都不需要。这属于 store/migrator 的范围,单独立项。**第三半(别名/限定符的大小写)已落地**:共享 `scope` 新增 `SetFoldNames`(默认关,只由 MSSQL 打开,子作用域继承),关系名、别名、CTE 名与 schema 限定符都按引擎规则比较;`TestIdentifierCaseIsFolded`、`scope` 包的两条单测与四条语料钉住。注意它只解决**语句内**解析:折叠后的引用仍以语句写下的拼写落边,若该拼写与注册表里的对象拼写不同,GUID 依旧对不上——那是上面"仍未解决的一半",与折叠彼此独立。
 2. ~~**APPLICATION_SQL 的词法器**~~ — **已落地**。`sqlsanitize` 现在对 MSSQL 走 `mssql/parser` 的 lexer 分支(`tokenSpans` + `isLiteral` 的 `[`/`#`/`"` 规则 + `stripComments` 不再把 `#` 当注释),并用 `testdata/10_mssql.yaml` 与 MSSQL 语料回归钉住;细节见 [application-sql-ingestion.md](application-sql-ingestion.md)。
 3. ~~**MERGE 的 WHEN 条件**~~ — **已落地**。`WHEN MATCHED AND …` / `WHEN NOT MATCHED AND …` 的条件现在以 FILTER 影响记在目标行上,由两条语料钉住。
 4. ~~**PIVOT 的隐式分组列**~~ — **已落地**(按 catalog 能力分级):源关系列清单已知时列出未消费列并按 direct 带过,未知时只暴露 IN 值列。顺带修掉一个真实作用域缺陷:PIVOT/UNPIVOT 的源曾留在外层作用域,`SELECT *` 会把源表当第二个关系展开(语料 `12_test_pivot_lineage_table.yaml` 的 star expansion 两例钉住)。
@@ -102,7 +103,7 @@ MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关�
 | 方言包 | `backend/plugin/lineage/mssql/{analyzer,expr,predicate,split,withclause}.go` | `go test ./backend/plugin/lineage/mssql/` |
 | 装配 | `backend/plugin/lineage/engines/engines.go`、`engines_test.go` | `go test ./backend/plugin/lineage/engines/` |
 | 共享机制守门 | `backend/plugin/lineage/shared_analysis_test.go`(`dialectPackages` 含 `mssql`) | `go test ./backend/plugin/lineage/ -run TestSharedAnalysisStaysShared` |
-| 黄金语料 | `backend/plugin/lineage/mssql/testdata/analyze/`(14 套 / 129 例) | `TestAnalyzeYAML`、`TestCorpusIsFullyAnnotated` |
+| 黄金语料 | `backend/plugin/lineage/mssql/testdata/analyze/`(14 套 / 133 例) | `TestAnalyzeYAML`、`TestCorpusIsFullyAnnotated` |
 | 切分与别名复核 | `analyzer_test.go`(`TestSplitStatements`、`TestClauseKeywordAliasGuard`) | 同上 |
 | APPLICATION_SQL 的写目标分类 | `backend/plugin/dmltarget/target.go`(MSSQL 分支:INSERT/UPDATE/DELETE/MERGE/BULK INSERT;表变量与 `#temp` 拒绝) | `go test ./backend/plugin/dmltarget/` |
 | 跨库限定符 | `analyzer_test.go`(`TestCrossDatabaseQualifierIsReported`) | 同上 |
