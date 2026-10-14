@@ -247,6 +247,23 @@ func (a *Analyzer) processQueryNode(node nodes.Node) {
 	a.processSelectStatement(stmt)
 }
 
+// reportTargetWithoutIdentity records why a statement's target cannot be named in the
+// registry, so a statement that writes nowhere the graph can follow says so instead of
+// emitting nothing. A table variable and a `#temp` table are session-local state the
+// registry never holds; a name in another database is reported where it is read
+// (targetAddress), because that one has a statement-written name to point at.
+func (a *Analyzer) reportTargetWithoutIdentity(target nodes.Node) {
+	switch t := nodeOrNil(target).(type) {
+	case *nodes.TableVarRef:
+		a.diagnostics.NotModelled("a target the registry cannot address", "the table variable "+t.Name)
+	case *nodes.TableRef:
+		if strings.HasPrefix(t.Object, "#") {
+			a.diagnostics.NotModelled("a target the registry cannot address", "the temporary table "+t.Object)
+		}
+	default:
+	}
+}
+
 // processSelectInto processes SELECT ... INTO, which creates the table it names and
 // fills it: the created table is the target and the query's columns map onto it
 // positionally, exactly as CREATE VIEW maps its own.
@@ -260,8 +277,10 @@ func (a *Analyzer) processSelectInto(stmt *nodes.SelectStmt) {
 
 	schema, table, ok := a.targetAddress(stmt.IntoTable)
 	if !ok {
-		// An unrecordable target still has to emit what the query reads.
-		a.generateEdges(sp)
+		// The rows are written into something the registry has no identity for, so the reads
+		// are not re-pointed at the statement's own result either: SELECT ... INTO returns no
+		// rows, and an edge to __result__ would say it does.
+		a.reportTargetWithoutIdentity(stmt.IntoTable)
 		return
 	}
 	a.generateEdgesForTarget(sp, schema, table, nil)
@@ -406,6 +425,13 @@ func (a *Analyzer) addBaseTable(ref *nodes.TableRef) {
 		a.diagnostics.UnresolvedQualifier("a relation", objectName(ref.Database, ref.Schema, ref.Object))
 		return
 	}
+	// A `#temp` table is session-local state rather than a registry object. Registering it
+	// anyway made every reference to it an edge endpoint naming an object no registry holds;
+	// leaving it out reports each reference as unresolved instead.
+	if strings.HasPrefix(ref.Object, "#") {
+		a.diagnostics.NotModelled("a relation the registry cannot address", "the temporary table "+ref.Object)
+		return
+	}
 	alias := a.relationAlias(ref)
 
 	// A CTE is query-local and is only ever named from a FROM clause, and a qualified
@@ -531,6 +557,11 @@ func (a *Analyzer) targetAddress(te nodes.Node) (schema, table string, ok bool) 
 	}
 	if !a.databaseMatches(ref.Database) {
 		a.diagnostics.UnresolvedQualifier("a target relation", objectName(ref.Database, ref.Schema, ref.Object))
+		return "", "", false
+	}
+	// A `#temp` table lives in tempdb for the session and is never a registry object, so a
+	// statement writing into one has no target the graph can follow.
+	if strings.HasPrefix(ref.Object, "#") {
 		return "", "", false
 	}
 	return ref.Schema, ref.Object, true
@@ -1138,12 +1169,10 @@ func (a *Analyzer) processInsertStatement(stmt *nodes.InsertStmt) {
 
 	if !ok {
 		// The rows are written into something the registry has no identity for — a table
-		// variable, or a table in another database — so there is no target to record
-		// them against. The statement's reads are not re-pointed at its own result
+		// variable, a temp table, or a table in another database — so there is no target to
+		// record them against. The statement's reads are not re-pointed at its own result
 		// either: an INSERT returns no rows, and an edge to __result__ would say it does.
-		if _, isVariable := nodeOrNil(stmt.Relation).(*nodes.TableVarRef); isVariable {
-			a.diagnostics.NotModelled("an INSERT into a table variable", "INSERT")
-		}
+		a.reportTargetWithoutIdentity(stmt.Relation)
 		return
 	}
 	a.generateEdgesForTarget(a.currentScope(), schema, table, targetColumns)
@@ -1186,8 +1215,8 @@ func (a *Analyzer) processUpdateStatement(stmt *nodes.UpdateStmt) {
 	}
 	schema, table, ok := a.registerTargetRelation(stmt.Relation)
 	a.processFromClause(stmt.FromClause)
-
 	if !ok {
+		a.reportTargetWithoutIdentity(stmt.Relation)
 		return
 	}
 	a.processSetClause(stmt.SetClause, schema, table)
@@ -1269,6 +1298,7 @@ func (a *Analyzer) processDeleteStatement(stmt *nodes.DeleteStmt) {
 	schema, table, ok := a.registerTargetRelation(stmt.Relation)
 	a.processFromClause(stmt.FromClause)
 	if !ok {
+		a.reportTargetWithoutIdentity(stmt.Relation)
 		return
 	}
 	if stmt.WhereClause == nil {
@@ -1316,6 +1346,13 @@ func (a *Analyzer) processMergeStatement(stmt *nodes.MergeStmt) {
 	}
 	schema, table, ok := a.registerTargetRelation(stmt.Target)
 	a.processTableExpr(stmt.Source)
+	if !ok {
+		// Every WHEN clause writes the target, so a target the registry cannot address leaves
+		// nothing to write to: running the clauses anyway recorded edges whose target had no
+		// schema and no name at all, and the runner persists what the analyzer returns.
+		a.reportTargetWithoutIdentity(stmt.Target)
+		return
+	}
 
 	sp := a.currentScope()
 	if stmt.OnCondition != nil {
@@ -1326,9 +1363,7 @@ func (a *Analyzer) processMergeStatement(stmt *nodes.MergeStmt) {
 			a.processMergeWhenClause(item, schema, table)
 		}
 	}
-	if ok {
-		a.emitPredicateInfluences(sp, schema, table)
-	}
+	a.emitPredicateInfluences(sp, schema, table)
 }
 
 // processMergeWhenClause processes one WHEN clause of a MERGE.

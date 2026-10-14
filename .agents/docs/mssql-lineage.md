@@ -43,7 +43,7 @@ MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关�
 | `OUTPUT` / `OUTPUT … INTO` | 不产出边,与 PostgreSQL 的 `RETURNING` 同一决策:返回给客户端的结果集不是血缘,写才是 |
 | `SELECT @v = expr` | 变量赋值不是结果列,不产出行;它读到的列也不记为影响 |
 | UPDATE 的 `WHERE` / `FROM` join 谓词 | 不记影响边(与 PostgreSQL / MySQL 一致);DELETE 有 WHERE 时记 `__deletion__`,没有 WHERE 时把 FROM 的 join 谓词记为 DELETE 目标行的影响 |
-| 表变量(`@tv`)、`SEMANTIC` 模型表 | 无注册表身份 → `not modelled` 缺口;引用它的列报"未解析" |
+| 表变量(`@tv`)、`#temp` 临时表、`SEMANTIC` 模型表 | 无注册表身份 → `not modelled` 缺口;引用它的列报"未解析"。**DML 目标不可寻址时不产出任何边**:INSERT/UPDATE/DELETE/MERGE/SELECT INTO 走同一条规则——MERGE 的每个 WHEN 子句都写目标,过去会写出目标 schema 与名字都是空串的边,而 runner 照单入库 |
 | `INSERT … EXEC` | 源是存储过程的结果集 → 缺口 |
 | 行集函数(`OPENJSON … WITH (…)`、`OPENROWSET`)的自身列清单 | 按函数名建列,别名列清单不建模 |
 | 递归 CTE 的不动点 | 与其他方言相同,单遍分析 |
@@ -83,6 +83,7 @@ MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关�
 6. **`nodeOrNil` 是每个入口的第一行**:类型化 nil 会让 omni 的 walker 崩溃。
 7. **切分器宁可回退到词法扫描,也不返回空列表或空字符串**。
 8. **任何输出变更必须过黄金语料**,语料用精确边匹配(`subset` 未使用)。
+9. **目标不可寻址 ⇒ 不产出边**:表变量、`#temp`、跨库目标一律以 `not modelled` 或 unresolved 缺口说明,绝不以空标识符落边;也不把语句的读改挂到 `__result__` 上(这些语句不返回结果集)。
 
 ## Open items
 

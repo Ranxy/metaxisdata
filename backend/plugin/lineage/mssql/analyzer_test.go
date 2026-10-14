@@ -182,6 +182,35 @@ func TestCatalogIsReadOncePerRelation(t *testing.T) {
 	require.Equal(t, 1, cat.Calls(), "the same relation was read more than once")
 }
 
+// TestUnaddressableTargetRecordsNoEdge pins that a data-modification statement whose target
+// the registry cannot address returns no edge at all, rather than edges whose target has no
+// schema and no name. MERGE is the shape that used to slip: every WHEN clause writes the
+// target, so running them against an unknown target recorded `src.a -> .a` and
+// `.* -> .__deletion__`, and the runner persists whatever the analyzer returns.
+func TestUnaddressableTargetRecordsNoEdge(t *testing.T) {
+	t.Parallel()
+
+	ctx := catalog.WithAnalysisContext(context.TODO(), catalog.AnalysisContext{
+		InstanceID: "i", Database: "main", Schema: "dbo",
+	})
+	for _, tc := range []struct{ name, sql string }{
+		{"merge update", "MERGE INTO other.dbo.tgt USING src ON 1 = 1 WHEN MATCHED THEN UPDATE SET a = src.a"},
+		{"merge delete", "MERGE INTO other.dbo.tgt USING src ON 1 = 1 WHEN NOT MATCHED BY SOURCE THEN DELETE"},
+		{"merge insert", "MERGE INTO other.dbo.tgt USING src ON 1 = 1 WHEN NOT MATCHED THEN INSERT (a) VALUES (src.a)"},
+		{"insert", "INSERT INTO other.dbo.t2 (a) SELECT b FROM t1"},
+		{"update", "UPDATE other.dbo.t2 SET a = b"},
+		{"delete", "DELETE FROM other.dbo.t2 WHERE a = 1"},
+		{"select into", "SELECT a INTO other.dbo.t2 FROM t1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			relations, err := NewAnalyzer(ctx, tc.sql, nil).AnalyzeRelations()
+			require.Error(t, err)
+			require.Empty(t, relations, "an edge into another database would name the wrong object")
+		})
+	}
+}
+
 // TestCatalogFailureIsReportedAsAGap pins that a lookup the catalog could not answer is
 // visible in the result: an outage must not be indistinguishable from a complete
 // analysis.

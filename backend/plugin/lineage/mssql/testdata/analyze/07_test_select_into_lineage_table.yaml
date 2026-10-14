@@ -31,6 +31,12 @@ cases:
             - operation: OPERATOR
               expression: a + 1
               op_type: ADDITION
+    - name: select into a temporary table is reported as a gap
+      sql: 'SELECT a INTO #stage FROM t1'
+      expect_error: true
+      error_contains: 'a target the registry cannot address: the temporary table #stage'
+      expected_edges:
+        []
     - name: bulk insert reads a file
       sql: 'BULK INSERT t FROM ''file.csv'' WITH (FIELDTERMINATOR = '','')'
       expected_edges:

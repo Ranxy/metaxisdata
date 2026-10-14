@@ -64,7 +64,19 @@ cases:
     - name: insert into a table variable is reported as a gap
       sql: 'INSERT INTO @tv (a) SELECT b FROM t1'
       expect_error: true
-      error_contains: an INSERT into a table variable
+      error_contains: 'a target the registry cannot address: the table variable @tv'
+      expected_edges:
+        []
+    - name: insert into a temporary table is reported as a gap
+      sql: 'INSERT INTO #stage (a) SELECT b FROM t1'
+      expect_error: true
+      error_contains: 'a target the registry cannot address: the temporary table #stage'
+      expected_edges:
+        []
+    - name: insert from a temporary table is reported as a gap
+      sql: 'INSERT INTO t2 (a) SELECT b FROM #stage'
+      expect_error: true
+      error_contains: 'a relation the registry cannot address: the temporary table #stage'
       expected_edges:
         []
     - name: insert exec is reported as a gap

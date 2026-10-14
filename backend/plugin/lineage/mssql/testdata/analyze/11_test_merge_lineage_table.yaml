@@ -122,6 +122,20 @@ cases:
           transformations:
             - operation: JOIN
               condition: t.id = s.id
+    # Every WHEN clause writes the target, so a target the registry cannot address has nowhere
+    # to write: the clauses are not run at all rather than recording edges with an empty name.
+    - name: merge into a table variable is reported as a gap
+      sql: 'MERGE INTO @tv USING src ON 1 = 1 WHEN MATCHED THEN UPDATE SET a = src.a'
+      expect_error: true
+      error_contains: 'a target the registry cannot address: the table variable @tv'
+      expected_edges:
+        []
+    - name: merge into a temporary table is reported as a gap
+      sql: 'MERGE INTO #stage USING src ON 1 = 1 WHEN NOT MATCHED BY SOURCE THEN DELETE'
+      expect_error: true
+      error_contains: 'a target the registry cannot address: the temporary table #stage'
+      expected_edges:
+        []
     # A WHEN clause's own AND condition decides which of the matched rows this action writes,
     # so the columns it names are a row-set influence on the target, like the ON condition.
     - name: merge update under a when condition
