@@ -180,6 +180,12 @@ writes the target with no relation at all — and it refuses a target that is no
 (a `@table` variable, a `#temp` table) rather than naming one the registry can never hold. A table-level edge must carry a non-nil `Transformation` — the column is `NOT NULL`, so a
 nil slice serializes to `null` and fails the whole batch.
 
+A statement that parses but has no lineage to record is not drawn, and the analysis says why: the
+analyzer reports a shape it cannot see (`EXEC`, a routine body) as a gap, so the version row
+explains a blank statement instead of leaving it looking like a statement with no lineage at all.
+`SELECT 1`, `SET` and `TRUNCATE` stay silent, because there is nothing to record — that is what
+"no lineage" means.
+
 A zero-relation write target is named by the statement, so it is also the one resolution this
 classifier does itself: it asks the lineage analyzer for the registry's identity
 (`Analyzer.CanonicalIdentifier`), which an engine that binds identifiers case-insensitively needs —

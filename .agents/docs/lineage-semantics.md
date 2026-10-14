@@ -151,10 +151,10 @@ Implementation: `resolveUnqualified` walks outward and stops at the first scope 
 | PostgreSQL | 40 | 250 |
 | MySQL (corpus shared with TiDB and MariaDB) | 24 | 225 |
 | StarRocks | 20 | 185 |
-| MSSQL | 14 | 136 |
+| MSSQL | 14 | 143 |
 | TiDB (dialect suite, on top of the shared corpus) | 1 | 15 |
 | MariaDB (dialect suite, on top of the shared corpus) | 1 | 20 |
-| **total** | **100** | **831** |
+| **total** | **100** | **838** |
 
 ### StarRocks
 
@@ -200,6 +200,8 @@ A source *column* then takes the spelling the registry knows (`SELECT id FROM Us
 
 A relation's *name and schema* take the registry's identity, because a name is not an object: `FROM users` against a registry entry named `Users` used to record `users` — a meta GUID the registry does not have, which the graph drew as a floating node beside the table it reads. `catalog.Provide.GetTable` now falls back to a case-folded lookup **only for an engine that declares folding**, and answers with the identity it registered; the two places where a stored relation's address is settled (a FROM item, a data-modification target) take it, and every edge reads the address from there (`canonicalRelation`). The lookup is `lower(guid COLLATE "default") = lower($1)` over `idx_meta_registry_resource_guid_folded`; folding follows the database's default collation, so a database whose default collation is C folds ASCII alone, and a name nobody can resolve is kept exactly as written. The reported-statement classifier resolves its write target the same way (`Analyzer.CanonicalIdentifier`); see [mssql-lineage.md](mssql-lineage.md).
 
+**Empty results are gaps, not silence.** A reference that resolved to a *query-local* relation the relation cannot answer — a table function whose result columns the query never declared, a `PIVOT` grouping column whose source columns the catalog does not know — used to produce no edge and no diagnostic, which is indistinguishable from "this statement has no lineage". The relation was found, so nothing else reports it; the dialect now reports it (`queryLocalAnswers`, MS SQL only for now — see Open items). A column the relation *does* offer and whose lineage names no source is not a gap: it is a column built from constants, and it has no lineage to record. The same reasoning made `EXEC`/`sp_executesql` and a `CREATE PROCEDURE`/`CREATE FUNCTION` body — statements whose lineage is not in the text — into reported gaps.
+
 **Workarounds it carries for upstream defects** (details in [omni-upstream-defects.md](omni-upstream-defects.md) §10): `relationAlias` re-checks a recorded alias against the source text so `NATURAL JOIN` and `MERGE … USING` do not turn a clause into a relation name; every entry point normalizes a typed-nil node, which omni's walker would otherwise dereference; the script splitter verifies the statement text spans the parser hands it before trusting them, falling back to a lexical scan; and a `WITH` clause in front of a DML statement — which the parser drops whole — is recovered from the source text before the statement is analyzed (`mssql/withclause.go`), failing the statement only when that recovery itself fails.
 
 ## Cross-dialect naming and edge rules
@@ -226,6 +228,8 @@ Rules that hold across all dialects; changing one is changing all of them.
 1. **PG-FU-4 — cross-dialect expression-classification unification.** PostgreSQL classifies the governing top-level node and emits the source operator token. MySQL handles only `CaseExpr`, `BinaryExpr`, `UnaryExpr`, `BetweenExpr` and `InExpr` before falling back to the *first function call in the tree* (`analyzeExpressionOperator`, `mysql/analyzer.go:1912-1941`, `firstFuncCall` at `:1925`), and names operators with words (`binaryOperatorName`, `:1967`). So wrapper nodes the MySQL AST carries (`IsExpr`, `LikeExpr`, `CastExpr`, `ExistsExpr`) are classified from whatever function they contain — `sum(x) IS NULL` reports the inner `SUM` where PostgreSQL reports `OPERATOR "IS NULL"` — and the shared shapes differ in vocabulary (`ADDITION` vs `+`). Recorded here because the plan that named it is retired.
 2. **MySQL ODKU constant-assignment asymmetry.** PostgreSQL `ON CONFLICT … DO UPDATE SET b = 'x'` produces `t.* -> t.b`; MySQL `ON DUPLICATE KEY UPDATE a = 1` produces **zero edges**, because `len(sourceColumns) == 0` continues without the `table.*` fallback that the plain `UPDATE t SET a = 1` path has (`mysql/analyzer.go:1244-1246` vs `:1471-1481`). Decide first whether a constant write deserves a `t.*` edge, then align.
 3. **Deliberately missing shapes** (not defects): StarRocks `* REPLACE`, `GROUP BY ALL`, `SECURITY NONE`, cross-catalog references; MSSQL `OUTPUT`, table variables, `INSERT … EXEC`; `DORIS` unregistered. Upstream parser gaps are recorded in [omni-upstream-defects.md](omni-upstream-defects.md).
+4. **An unanswered query-local reference is a gap only in MSSQL.** A reference that resolves to a CTE, a derived table, a table function or a pivot whose own lineage says nothing about the column is dropped silently by every dialect: the shared tracers (`algorithm/temp.go:14`, `:34`, `:92`) report nothing, and only the MSSQL wrappers ask first (`queryLocalAnswers`). The shape is reachable with valid SQL wherever a query-local relation's column list is narrower than the references to it — a table function whose result columns the query never declared, a `PIVOT` grouping column over a source the catalog cannot describe. Making it a shared rule means deciding it once and re-checking every dialect's corpus, which is a change of its own; recorded here so the divergence is not read as an MSSQL quirk.
+5. **MSSQL drops a linked server's name on purpose.** `srv.db.dbo.t` is analyzed as the local `db.dbo.t`, because this product registers one instance per logical database and does not model linked servers; a deployment where a *foreign* instance exposes a database of the same name would get a silently local edge instead of a gap. Recorded in [mssql-lineage.md](mssql-lineage.md) with the assumption it rests on.
 
 ## Where things live
 

@@ -393,11 +393,12 @@ empty for a statement that follows a node with no `Loc.End`.
 | `CREATE VIEW v WITH CHECK OPTION AS SELECT a FROM t` | syntax error at or near `WITH` (the valid order, trailing `WITH CHECK OPTION`, parses) |
 | `SELECT a, COUNT(*) FROM t GROUP BY ALL` | syntax error at end of input — the form is valid (if deprecated) T-SQL, and `SelectStmt.GroupByAll` exists in the AST, so the field is unreachable from a parsed statement |
 | `SELECT * FROM t WITH (NOLOCK) x JOIN u ON …` | syntax error at or near `x` — **no** alias is accepted after a table hint, with or without `AS`, while `t NOLOCK JOIN u` parses (`NOLOCK` read as the alias). The hint itself is modelled; a hint *and* an alias together is a hard failure. Found while reviewing the alias workaround, not caused by it |
+| `SELECT a FROM t AS x (NOLOCK)` | syntax error at or near `(` — the other order fails too: an alias **before** the hint, which is valid T-SQL, is not accepted either. Neither order can be worked around in the dialect: the failure is in the parser |
 | `SELECT a, b = 1 FROM t` | **accepted** — `ResTarget{Name: "b"}` |
 | `SELECT @v = a FROM t` | **accepted** — `ResTarget{Val: SelectAssign}` |
 
-The last two are recorded in the module's own `SCENARIOS-mssql-syntax-gaps.md` as
-gaps; they are not. `NATURAL JOIN` (§10.2) is the mirror image: accepted, with the
+The two `SELECT … = …` rows are recorded in the module's own
+`SCENARIOS-mssql-syntax-gaps.md` as gaps; they are not. `NATURAL JOIN` (§10.2) is the mirror image: accepted, with the
 wrong tree.
 
 ### 10.5 Checked and *not* defects (the AST the dialect relies on)
@@ -417,6 +418,10 @@ wrong tree.
 - Bracketed identifiers lose their brackets in the node (`[dbo].[t]` →
   `Schema "dbo"`, `Object "t"`), and `db.dbo.t.a` fills
   `Database/Schema/Table/Column`; `Loc` still recovers the literal text.
+- A four-part name keeps its server: `SELECT a FROM srv.db.dbo.t` parses to
+  `Server "srv"`, `Database "db"`, `Schema "dbo"`, `Object "t"`. The dialect decides
+  what to do with the server — it drops it, on purpose (see
+  [mssql-lineage.md](mssql-lineage.md)) — rather than the parser hiding it.
 - `parser.Parse` returns `(*ast.List, error)`; there is **no** `ast.File` and **no**
   `mssql.Split` or `mssql.Tokenize` (the one-shot tokenizer is `parser.Tokenize`,
   and `parser.TokenName` names a token type). `mssql.Parse` splits and parses in one
