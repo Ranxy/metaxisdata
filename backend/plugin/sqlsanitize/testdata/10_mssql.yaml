@@ -95,3 +95,43 @@ cases:
     sql: "INSERT INTO #stage (a) VALUES ('x')"
     text: "INSERT INTO #stage (a) VALUES (?)"
     canonical: "INSERT INTO #stage ( a ) VALUES ( ? )"
+
+  # The T-SQL lexer is the only one here that reports what it could not finish — an
+  # unterminated string, quoted identifier, bracketed name or block comment sets its error and
+  # hands back a token that swallows the rest of the input. Accepting one would store bytes no
+  # rule inspected: the MySQL family stores `SELECT ?` for the same string, and StarRocks
+  # refuses it too.
+  - name: an unterminated bracketed name
+    engine: mssql
+    sql: SELECT [my col FROM t WHERE b = 'x'
+    expect_error: true
+
+  - name: an unterminated quoted identifier
+    engine: mssql
+    sql: SELECT "my col FROM t WHERE b = 'x'
+    expect_error: true
+
+  - name: an unterminated string
+    engine: mssql
+    sql: SELECT name FROM users WHERE email = 'a@b.c
+    expect_error: true
+
+  - name: an unterminated block comment
+    engine: mssql
+    sql: SELECT a FROM t /* unterminated
+    expect_error: true
+
+  # Money is a currency symbol followed by a number, and the symbol is not a digit — the
+  # digit-led rule reads it as an identifier and stores the literal.
+  - name: money literals in every currency symbol
+    engine: mssql
+    sql: SELECT a FROM t WHERE b = £10 AND c = €7 AND d = ¥2 AND e = ¤5
+    text: SELECT a FROM t WHERE b = ? AND c = ? AND d = ? AND e = ?
+    canonical: SELECT a FROM t WHERE b = ? AND c = ? AND d = ? AND e = ?
+
+  # `$action` is the pseudo-column an OUTPUT clause reads, not money.
+  - name: the output pseudo column
+    engine: mssql
+    sql: MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN DELETE OUTPUT $action
+    text: MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN DELETE OUTPUT $action
+    canonical: MERGE INTO t USING s ON t . id = s . id WHEN MATCHED THEN DELETE OUTPUT $action

@@ -78,9 +78,18 @@ func tokenSpans(engine storepb.Engine, sql string) []span {
 		// is the only one that reads `N'…'`, `[…]`, `"…"`, `#tmp`, `0x1f`, `$12.50` and
 		// `@@ROWCOUNT` as one token each. Falling through to the MySQL family's lexer split
 		// several of them, so `N'abc'` was stored as `N?`.
+		//
+		// It is also the only lexer here that says what it could not finish: an unterminated
+		// string, quoted identifier, bracketed name or block comment sets Err and hands back a
+		// token that swallows the rest of the input, so an empty tail is no evidence that a
+		// rule looked at every byte. A statement it abandoned is refused, the way StarRocks
+		// refuses its own lex errors.
 		l := omnimssql.NewLexer(sql)
 		for i := 0; i <= len(sql); i++ {
 			t := l.NextToken()
+			if l.Err != nil {
+				return nil
+			}
 			if t.Type == 0 || t.End <= t.Loc {
 				break
 			}
@@ -119,7 +128,9 @@ func isPlaceholder(raw string) bool {
 //	`...`            quoted identifier (MySQL family, StarRocks)
 //	#...             a temporary table's name in T-SQL, a line comment in the MySQL family
 //	123 / 1.5 / .5   numeric literal, including the leading-dot spelling
-//	$12.50           0x1f  T-SQL money and binary literals
+//	$12.50 £10 €7     T-SQL money literals: a currency symbol and a number
+//	$action           T-SQL pseudo-column, not a literal
+//	0x1f              T-SQL binary literal
 //	x'..' b'..'      prefixed literals: one lexer token that starts with a letter
 //	$$..$$ $tag$..$  PostgreSQL dollar-quoted string
 //	$1               PostgreSQL placeholder, not a literal
@@ -127,6 +138,11 @@ func isPlaceholder(raw string) bool {
 func isLiteral(engine storepb.Engine, raw string) bool {
 	if raw == "" || raw == Placeholder {
 		return false
+	}
+	// T-SQL spells money as a currency symbol followed by digits, and the symbol is not a
+	// digit, so the rules below would read it as an identifier and store the literal.
+	if engine == storepb.Engine_MSSQL && tSQLMoneyLiteral(raw) {
+		return true
 	}
 	switch raw[0] {
 	case '\'':
@@ -143,7 +159,9 @@ func isLiteral(engine storepb.Engine, raw string) bool {
 	case '`':
 		return false
 	case '$':
-		return !dollarParam.MatchString(raw)
+		// A `$`-led token that is not money is a T-SQL pseudo-column (`$action`,
+		// `$identity`), and in PostgreSQL it is a numbered placeholder.
+		return engine != storepb.Engine_MSSQL && !dollarParam.MatchString(raw)
 	case '@':
 		// @var and @@system_var are variables, not literals.
 		return false
@@ -156,6 +174,28 @@ func isLiteral(engine storepb.Engine, raw string) bool {
 	}
 	// x'AB', b'01', n'..', e'..', u&'..', _utf8'..': one token, letter-led, quoting.
 	return strings.ContainsRune(raw, '\'')
+}
+
+// tSQLMoneyLiteral reports whether a token is a T-SQL money literal: one of the currency
+// symbols the T-SQL lexer recognises, followed by a number. `$action` shares the `$` and is a
+// pseudo-column rather than money, and a bare currency symbol is neither.
+func tSQLMoneyLiteral(raw string) bool {
+	rest := raw
+	found := false
+	for _, symbol := range []string{"$", "£", "€", "¥", "¤"} {
+		if strings.HasPrefix(raw, symbol) {
+			rest, found = raw[len(symbol):], true
+			break
+		}
+	}
+	if !found {
+		return false
+	}
+	rest = strings.TrimLeft(rest, " \t")
+	if rest == "" {
+		return false
+	}
+	return (rest[0] >= '0' && rest[0] <= '9') || rest[0] == '.'
 }
 
 // stripComments removes the comments a gap between two tokens can hold and leaves the

@@ -13,7 +13,7 @@
 | --- | --- | --- |
 | VIEW | `sys.sql_modules.definition` 的**完整 `CREATE VIEW … AS …`** | runner 的 `buildSQL` 用 `isCompleteStatement` 原样放行(不会二次包裹);`ALTER VIEW` 也被 omni 解析成 `CreateViewStmt`,而 SQL Server 本身在存储时把它归一成 `CREATE VIEW` |
 | MANUAL_SQL | 用户粘贴的脚本 | 支持 `GO` 批分隔符;见 §切分 |
-| APPLICATION_SQL | 参数化语句 | 走 `sqlsanitize.Analyzable`,该函数对 MSSQL 用 **T-SQL 词法器**(`mssql/parser`),字面量与引号标识符的边界由它决定 |
+| APPLICATION_SQL | 参数化语句 | 走 `sqlsanitize.Analyzable`,该函数对 MSSQL 用 **T-SQL 词法器**(`mssql/parser`)决定字面量与引号标识符的边界;词法器报出"没走完"的语句(未闭合的字符串、引号标识符、`[` 括号名、块注释)一律拒绝,不写入库 |
 
 MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关。
 
