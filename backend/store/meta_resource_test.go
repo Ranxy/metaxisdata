@@ -36,6 +36,20 @@ func TestBuildMetaRegistryWhereClauseBatchesGUIDs(t *testing.T) {
 	require.Empty(t, args)
 }
 
+// The folded filter is what lets an engine that binds identifiers case-insensitively
+// find the object a statement spelled differently. It has to fold both sides, and it
+// has to name the collation: guid carries COLLATE "C", whose lowering leaves a
+// non-ASCII letter alone, so folding under the column's own collation would only ever
+// match ASCII.
+func TestBuildMetaRegistryWhereClauseFoldsGUIDs(t *testing.T) {
+	t.Parallel()
+
+	guid := "inst;db;dbo;users"
+	where, args := buildMetaRegistryWhereClause("meta_registry_resource", &FindMetaRegistryResourceMessage{GUIDFolded: &guid})
+	require.Equal(t, []string{"TRUE", `lower(meta_registry_resource.guid COLLATE "default") = lower($1)`}, where)
+	require.Equal(t, []any{guid}, args)
+}
+
 func TestGetNextLevelObjectTypeIncludesSQLObjectsUnderTheirScope(t *testing.T) {
 	t.Parallel()
 

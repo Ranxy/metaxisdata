@@ -41,7 +41,20 @@ type FindMetaRegistryResourceMessage struct {
 	// GUIDs is the batch form of GUID: it restricts the lookup to a set of
 	// known GUIDs. An empty but non-nil slice matches nothing, so a caller that
 	// collected no GUIDs cannot accidentally read the whole table.
-	GUIDs      *[]string
+	GUIDs *[]string
+	// GUIDFolded matches a row whose GUID differs from this one only in case.
+	// A metadata object is named by the registry under the spelling the sync
+	// read from the instance, while a SQL statement may spell the same name in
+	// any case; an engine that binds identifiers case-insensitively (T-SQL under
+	// its default collation) is the only caller entitled to set this, and it
+	// does so through the catalog layer.
+	//
+	// The folded comparison is `lower(...)`, so it follows the database's default
+	// collation: an ASCII name folds everywhere, and a name outside ASCII folds
+	// only where that collation does — a database whose default collation is C
+	// folds ASCII alone, and a caller must treat a miss as "the registry does not
+	// know this name" rather than as "the name is not registered".
+	GUIDFolded *string
 	ObjectType *storepb.MetaType
 	Limit      *int
 	Offset     *int
@@ -358,6 +371,13 @@ func buildMetaRegistryWhereClause(tableName string, find *FindMetaRegistryResour
 		} else {
 			where, args = append(where, fmt.Sprintf("%s.guid = ANY($%d)", tableName, len(args)+1)), append(args, pq.Array(*v))
 		}
+	}
+	if v := find.GUIDFolded; v != nil {
+		// Both sides are folded by the database, so the comparison applies one
+		// collation to both. The explicit COLLATE names the database default
+		// because the guid column carries COLLATE "C", whose lowering leaves a
+		// non-ASCII letter alone.
+		where, args = append(where, fmt.Sprintf(`lower(%s.guid COLLATE "default") = lower($%d)`, tableName, len(args)+1)), append(args, *v)
 	}
 	if v := find.ObjectType; v != nil {
 		where, args = append(where, fmt.Sprintf("%s.object_type = $%d", tableName, len(args)+1)), append(args, *v)
