@@ -44,16 +44,6 @@ func SplitStatements(sql string) []string {
 	return splitLexically(sql)
 }
 
-// isDataModification reports whether a statement writes stored rows.
-func isDataModification(node nodes.Node) bool {
-	switch nodeOrNil(node).(type) {
-	case *nodes.InsertStmt, *nodes.UpdateStmt, *nodes.DeleteStmt, *nodes.MergeStmt:
-		return true
-	default:
-		return false
-	}
-}
-
 // isBatchSeparator reports whether a parsed statement is the `GO` batch separator.
 // It carries no SQL and is not a statement an analyzer can refuse.
 func isBatchSeparator(node nodes.Node) bool {

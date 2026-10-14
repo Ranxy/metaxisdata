@@ -145,12 +145,6 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to parse MSSQL SQL")
 	}
-	// A WITH clause in front of a data-modification statement is not attached to it:
-	// omni reads the CTE list, finds no SELECT to attach it to, and leaves an empty
-	// statement followed by the statement it belonged to. The list is recovered from the
-	// source text below, before the statement is analyzed; see withclause.go.
-	cteCarrier := len(statements) > 1 && nodeOrNil(statements[0].AST) == nil && isDataModification(statements[1].AST)
-
 	parsed := make([]nodes.Node, 0, len(statements))
 	for _, statement := range statements {
 		if nodeOrNil(statement.AST) == nil || isBatchSeparator(statement.AST) {
@@ -160,17 +154,6 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 	}
 	if len(parsed) != 1 {
 		return nil, errors.Errorf("expected exactly 1 statement, got %d", len(parsed))
-	}
-
-	if cteCarrier {
-		// The parser dropped the CTE list, so it is recovered from the source text before the
-		// statement is analyzed: a reference anywhere in it may name a definition that is not
-		// in the tree, and an edge from a statement that lost part of its text cannot be
-		// trusted. A recovery that fails is still a hard failure, not a gap.
-		withClause, recovered := recoverWithClause(a.sql)
-		if !recovered || !attachWithClause(parsed[0], withClause) {
-			return nil, errors.New("analysis errors: a WITH clause in front of a data-modification statement is dropped by the T-SQL parser")
-		}
 	}
 
 	a.dispatch(parsed[0])
@@ -606,6 +589,20 @@ func skipTableHint(sql string, tokens []mssqlparser.Token, index int) int {
 // swallowed removed.
 func tokenText(sql string, token mssqlparser.Token) string {
 	return strings.ToUpper(sql[token.Loc:trimEnd(sql, token.End)])
+}
+
+// trimEnd drops trailing whitespace a lexer may have swallowed with the token, so the raw
+// slice is the keyword itself.
+func trimEnd(sql string, end int) int {
+	for end > 0 && end <= len(sql) {
+		switch sql[end-1] {
+		case ' ', '\t', '\r', '\n':
+			end--
+		default:
+			return end
+		}
+	}
+	return end
 }
 
 // attachColumnLookup lets the scope resolver disambiguate an unqualified column with

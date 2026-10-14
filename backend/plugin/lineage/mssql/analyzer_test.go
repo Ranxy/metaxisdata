@@ -246,3 +246,23 @@ func TestAQueryLocalColumnWithNoSourceIsNotAGap(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, relations)
 }
+
+// TestWithClauseBeforeEachDMLKindIsAnalyzed pins that a WITH clause in front of a
+// data-modification statement is analyzed with its definitions. The parser attaches the CTE
+// list to the DML statement, and every DML kind has to resolve its references through it; a
+// regression that dropped the list again would leave those references unresolved. The edges each
+// one produces are pinned by the corpus, so what is checked here is that none of them fails.
+func TestWithClauseBeforeEachDMLKindIsAnalyzed(t *testing.T) {
+	t.Parallel()
+
+	for _, sql := range []string{
+		"WITH c AS (SELECT a FROM t) INSERT INTO t2 (a) SELECT a FROM c",
+		"WITH c AS (SELECT id FROM t) UPDATE x SET a = 1 FROM x JOIN c ON x.id = c.id",
+		"WITH c AS (SELECT id FROM t) DELETE x FROM x JOIN c ON x.id = c.id",
+		"WITH c AS (SELECT a FROM s) MERGE INTO tgt USING c ON tgt.a = c.a WHEN MATCHED THEN UPDATE SET tgt.a = c.a",
+	} {
+		relations, err := analyzeSQL(sql, nil)
+		require.NoError(t, err, sql)
+		require.NotEmpty(t, relations, sql)
+	}
+}

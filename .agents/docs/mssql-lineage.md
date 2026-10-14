@@ -57,7 +57,7 @@ MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关�
 
 **上游语法缺口(硬失败,不建模)**:`JOIN … USING (…)`、`OPENROWSET(BULK …)`、表值函数的带类型列定义、`CREATE VIEW v AS (SELECT …)` 的括号体、`GROUP BY ALL`(omni 直接报 `syntax error at end of input`)、表提示与别名并存(两种顺序都失败)。`NATURAL JOIN` 不在此列:它不是 T-SQL 语法,解析器把 NATURAL 读成别名,由 §别名复核那一条按后随 token 处理(`t1 NATURAL JOIN t2` 仍能把 `t1.a` 解析出来)。明细见 [omni-upstream-defects.md](omni-upstream-defects.md) §10。
 
-**`WITH` 在 DML 之前**:omni 读到 CTE 列表后若下一个词不是 SELECT,就丢掉整段 `WITH` 并留下一个空语句,紧随的 INSERT/UPDATE/DELETE/MERGE 其文本跨度也会变成空。CTE 定义在树里不可达,任何引用都可能指向其中一个,所以方言包在分析前**从源文本恢复 CTE 列表**(`withclause.go`:切出第一个顶层 DML 关键字之前的前缀,补一个 `SELECT 1` 解析出 `WithClause`,再挂回该语句)。前缀是原文本的前缀,因此 CTE 体内的偏移量仍然有效。恢复失败才硬失败——文本已被丢弃一部分时不能拿错误的边冒充部分结果。做法与 StarRocks 的 `viewbody.go` 同类。
+**`WITH` 在 DML 之前**:上游旧版读到 CTE 列表后若下一个词不是 SELECT,就丢掉整段 `WITH` 并留下一个空语句,紧随的 INSERT/UPDATE/DELETE/MERGE 其文本跨度也会变成空;当时方言包在分析前从源文本恢复 CTE 列表(`withclause.go`)。当前 pin 的解析器已按 T-SQL 语义把 CTE 列表挂到紧随的 SELECT/INSERT/UPDATE/DELETE/MERGE 上(`parseWithStmt`),恢复代码随之删除;`TestWithClauseBeforeEachDMLKindIsAnalyzed` 钉住四种 DML 都仍然解析得到 CTE 定义(上游改动记录见 [omni-upstream-defects.md](omni-upstream-defects.md) §10.1)。
 
 ## 切分(ScriptSplitter)
 
@@ -72,7 +72,7 @@ MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关�
 | 场景 | 行为 |
 | --- | --- |
 | omni 解析失败(含括号视图体、OPENROWSET(BULK)、表提示+别名) | 硬失败:无部分结果;runner 清该对象血缘 + `error_message` |
-| `WITH` + DML(上游丢 CTE) | 从源文本恢复 CTE 列表后正常分析;恢复失败才硬失败(文本已被丢弃一部分,不可信) |
+| `WITH` + DML | 正常分析:`WithClause` 由解析器直接挂在该语句上,`processCTEs` 解析出定义 |
 | 某子句没建模(表变量目标、INSERT EXEC、EXEC、例程体、SEMANTIC 表) | 部分分析:兄弟边照存,缺口写 version 行 / RPC diagnostics |
 | 引用解析不到(未解析列 / 通配符限定符 / 跨库名 / 查询本地关系答不出的列) | 部分分析 + 对应 `model.Diagnostic` |
 | catalog 查询失败 | `DiagnosticCatalogUnavailable` + 通配符回退,分析继续 |
@@ -99,7 +99,7 @@ MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关�
 3. ~~**MERGE 的 WHEN 条件**~~ — **已落地**。`WHEN MATCHED AND …` / `WHEN NOT MATCHED AND …` 的条件现在以 FILTER 影响记在目标行上,由两条语料钉住。
 4. ~~**PIVOT 的隐式分组列**~~ — **已落地**(按 catalog 能力分级):源关系列清单已知时列出未消费列并按 direct 带过,未知时只暴露 IN 值列。顺带修掉一个真实作用域缺陷:PIVOT/UNPIVOT 的源曾留在外层作用域,`SELECT *` 会把源表当第二个关系展开(语料 `12_test_pivot_lineage_table.yaml` 的 star expansion 两例钉住)。
 5. **命名窗口跨语句不可见** — `WINDOW w AS …` 只在处理该查询期间有效(`namedWindows`),这是 SQL 的作用域,不是限制。
-6. ~~**上游 `WITH` + DML 缺陷的本地绕行**~~ — **已落地**。`withclause.go` 恢复 CTE 列表(StarRocks `viewbody.go` 的同类做法),四种 DML 与"CTE 体变换透传"都由语料钉住;`withclause_test.go` 钉住边界判定与只挂 DML 两半。上游缺陷记录见 [omni-upstream-defects.md](omni-upstream-defects.md) §10.1。
+6. ~~**上游 `WITH` + DML 缺陷的本地绕行**~~ — **已删除**。当前 pin 的解析器已修复该缺陷并把 CTE 列表挂到 DML 语句上,`withclause.go` 与其单测随 bump 一并移除;四种 DML 的解析与边由语料和 `TestWithClauseBeforeEachDMLKindIsAnalyzed` 继续钉住。上游改动记录见 [omni-upstream-defects.md](omni-upstream-defects.md) §10.1。
 7. ~~**空结果被当成"没有血缘"**~~ — **已落地**:查询本地关系答不出的列、`EXEC`、`CREATE PROCEDURE`/`CREATE FUNCTION` 的例程体现在都报缺口(不变量 11),`17_test_diagnostics_lineage_table.yaml` 四例钉住。
 8. **表变量作为源仍静默跳过** — 有意保留(静态分析不知道它的列,产品也不建模表变量):`SELECT * FROM @tv` 依旧"无边无缺口",引用它的列只以"未解析列"出现。修法是 `addTableSource` 那一个 `case *nodes.TableVarRef` 里加一行 `not modelled`(AST 已经能识别表变量——目标侧就是这么报的),等需要时再补。
 9. **表提示 + 别名的两种顺序都硬失败** — 上游缺口,已记 §10.4;要支持得等 omni 的语法,不能自行改上游。
@@ -108,7 +108,7 @@ MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关�
 
 | 关注点 | 代码 | 测试 / 门禁 |
 | --- | --- | --- |
-| 方言包 | `backend/plugin/lineage/mssql/{analyzer,expr,predicate,split,withclause}.go` | `go test ./backend/plugin/lineage/mssql/` |
+| 方言包 | `backend/plugin/lineage/mssql/{analyzer,expr,predicate,split}.go` | `go test ./backend/plugin/lineage/mssql/` |
 | 装配 | `backend/plugin/lineage/engines/engines.go`、`engines_test.go` | `go test ./backend/plugin/lineage/engines/` |
 | 共享机制守门 | `backend/plugin/lineage/shared_analysis_test.go`(`dialectPackages` 含 `mssql`) | `go test ./backend/plugin/lineage/ -run TestSharedAnalysisStaysShared` |
 | 黄金语料 | `backend/plugin/lineage/mssql/testdata/analyze/`(14 套 / 143 例) | `TestAnalyzeYAML`、`TestCorpusIsFullyAnnotated` |
