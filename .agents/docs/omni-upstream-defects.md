@@ -10,37 +10,8 @@
 > Module: `github.com/bytebase/omni v0.0.0-20261014102304-038210857601`
 > (`go.mod`). Packages inspected: `mysql/parser` (`Parse`, `Tokenize`, `Split`) and
 > `mysql/ast`; `mssql/parser` (`Parse`, `Tokenize`, `NewLexer`) and `mssql/ast`
-> (§10); `mariadb/parser`, `tidb/parser` and `starrocks/parser` for the dialect
-> notes in §9.
-
-## Status at the current pin
-
-Every item below was re-run against the current pin by compiling one probe program
-against both the previous and the current version and diffing the two outputs. Items
-1–5, 9 and 10.2–10.5 are unchanged (§7 is the not-a-defect list and did not flip); two
-were fixed upstream, and the two local workarounds died with them (§6, §10.1). §11
-lists the changes the bump itself forced on this repo, §12 what the re-run found that
-this record had not — each of those reproduced on both pins, so none of them arrived
-with the bump.
-
-| § | Subject | At the current pin |
-| --- | --- | --- |
-| 1 | Infix nodes anchor `Loc.Start` at the operator | present |
-| 2 | `LocStart()`/`LocEnd()` are not promoted; no `Loc` accessor | present |
-| 3 | Set-operation gaps, `MINUS` over-acceptance | present (see §12.1) |
-| 4 | `WITH` before MySQL DML is dropped | present |
-| 5 | omni's own `Loc` test cannot catch §1 | present |
-| 6 | MariaDB parenthesised join tree depth | **fixed** — the skip list is gone |
-| 7 | The "checked and not defects" list | no flips |
-| 9.1 | TiDB `SelectStmt` has no VALUES query primary | present (see §12.2) |
-| 9.2 | MariaDB `InsertStmt` has no row alias | present |
-| 9.3 | MariaDB parser and engine disagree about `VALUES` | present |
-| 9.4 | StarRocks window clause, inline table | present |
-| 10.1 | MSSQL `WITH` before DML is dropped | **fixed** — the recovery is gone |
-| 10.2 | MSSQL consumes `NATURAL`/`USING` as a table alias | present |
-| 10.3 | MSSQL `Loc.End == -1`, `NoLoc` lists, empty `Statement.Text` | present |
-| 10.4 | MSSQL grammar gaps and over-acceptance | present |
-| 10.5 | The MSSQL "checked and not defects" invariants | unchanged |
+> (§9); `mariadb/parser`, `tidb/parser` and `starrocks/parser` for the dialect
+> notes in §8.
 
 ## How this was gathered
 
@@ -51,11 +22,10 @@ module file was modified. Build note for anyone reproducing this: the default
 `~/.cache/go-build` may be read-only in this environment; use
 `GOCACHE=/tmp/gocache-probe`.
 
-The status above and the notes in §6, §10.1, §11 and §12 come from re-running one
-probe program per dialect family against both pins — the module cache holds the old
-version, so a scratch module can `require` either and the two outputs diff — and
-from reading the source diff between the two module trees. A note that names a pin
-says where that behaviour was observed.
+The notes in §10 and §11 come from re-running one probe program per dialect family
+against both pins — the module cache holds the old version, so a scratch module can
+`require` either and the two outputs diff — and from reading the source diff between
+the two module trees. A note that names a pin says where that behaviour was observed.
 
 The analyzer consumes `Loc` in two ways — `exprTextOf` reconstructs expression
 text by concatenating the tokens whose spans fall inside `[Loc.Start, Loc.End)`
@@ -218,24 +188,7 @@ accepts a non-MySQL keyword.
 It has no notion of "the span must cover the node's own source text", which is
 exactly why the infix anchoring defect survives upstream's suite.
 
-## 6. MariaDB parser gap: parenthesised join trees (fixed)
-
-`omni/mariadb` used to accept a parenthesised join tree nested at most two levels:
-the third level failed with `expected SELECT, TABLE, VALUES, or '('`, while
-`omni/mysql` accepts any depth. `mysqldump` emits three-level trees for views, so
-affected MariaDB views hard-failed analysis.
-
-**Fixed at `v0.0.0-20261014102304-038210857601`.** Depth 3 and 4 now parse, and the
-four shared-corpus cases the dialect used to skip analyze to their golden edges, so
-`knownParserGaps` in `backend/plugin/lineage/mariadb/analyze_test.go` no longer lists
-them (the row-alias entry of §9.2 stays). The fix is in the MariaDB select parser:
-`isQueryExpressionStart` scans the whole run of `(` through `firstTokenPastParens`
-instead of peeking one token (`mariadb/parser/select.go`). The skip list was not
-silent about it — `TestKnownParserGapsAreStillGaps` asserts every listed case still
-fails, which is what surfaced the fix — so the note that used to close this section
-("nothing asserts the skip list is still needed") no longer applies.
-
-## 7. Checked and *not* defects
+## 6. Checked and *not* defects
 
 Recording these so nobody re-investigates them as bugs. Every row was re-run against
 the current pin (15 rejected and 20 accepted statements) and none flipped.
@@ -265,7 +218,7 @@ optimizer hints; window frames (`ROWS/RANGE/GROUPS BETWEEN …`); `DUAL`;
 `DELIMITER`-separated procedures; row alias `INSERT … AS new ON DUPLICATE KEY
 UPDATE`; `LATERAL`; `MEMBER OF`.
 
-## 8. Summary for the analyzer
+## 7. Summary for the analyzer
 
 The parser is good enough for AST-walk-based lineage: column edges are correct
 even where `Loc` is not. Everything **text-derived** from `Loc` is wrong for
@@ -282,14 +235,14 @@ the typed AST — `CaseExpr`, `detectInfixOperator`, or the first function call 
 its `Over` clause — never from a substring. This file remains the record of the
 upstream defect itself, which is still unfixed.
 
-## 9. MySQL-family dialect copies: AST gaps and a grammar/engine mismatch
+## 8. MySQL-family dialect copies: AST gaps and a grammar/engine mismatch
 
 Found while auditing AST field coverage across the MySQL-family analyzers (see
 `lineage-analyzer.md` for the audit method). None of these is a defect in the MySQL parser; they are the reason the shared
 traversal needs a per-dialect accessor, and they are recorded here so the next
 reader does not mistake an accessor for dead weight.
 
-### 9.1 TiDB: `SelectStmt` has no VALUES query primary
+### 8.1 TiDB: `SelectStmt` has no VALUES query primary
 
 `omni/tidb/ast.SelectStmt` has no field for a VALUES query primary, and
 `omni/tidb/parser` rejects the shape outright:
@@ -306,7 +259,7 @@ shared body marker). The TiDB copy lists the statement in `knownParserGaps`
 (`backend/plugin/lineage/tidb/analyze_test.go`), so the shared corpus stays honest
 instead of being narrowed.
 
-### 9.2 MariaDB: `InsertStmt` has no row alias
+### 8.2 MariaDB: `InsertStmt` has no row alias
 
 `omni/mariadb/ast.InsertStmt` has no `RowAlias`/`ColAliases` field and
 `omni/mariadb/parser` rejects the syntax — correctly, because MariaDB has no row
@@ -316,7 +269,7 @@ The analyzer reads the form through `rowAliasNames(stmt)` (real accessor for
 mysql/tidb, empty for mariadb) and the shared corpus case is listed in
 `backend/plugin/lineage/mariadb/analyze_test.go`'s `knownParserGaps`.
 
-### 9.3 MariaDB parser and MariaDB engine disagree about `VALUES`
+### 8.3 MariaDB parser and MariaDB engine disagree about `VALUES`
 
 | SQL | omni/mariadb | MariaDB 11.8.9 engine |
 | --- | --- | --- |
@@ -331,7 +284,7 @@ hard-fails. Neither outcome is a silent wrong answer, but the mismatch means the
 mariadb dialect's reachable syntax is not what a MariaDB user would write. Worth
 re-checking if the parser is ever aligned with the engine.
 
-### 9.4 StarRocks: no `SelectStmt.WindowClause`, and an engine-rejected inline table
+### 8.4 StarRocks: no `SelectStmt.WindowClause`, and an engine-rejected inline table
 
 Two observations from the same batch, recorded for completeness:
 
@@ -348,7 +301,7 @@ Two observations from the same batch, recorded for completeness:
   their columns `column_0`, `column_1` — the same 0-based placeholders the MySQL
   engines use.
 
-## 10. MSSQL (T-SQL) parser and AST
+## 9. MSSQL (T-SQL) parser and AST
 
 Gathered while writing `backend/plugin/lineage/mssql` against the same pin, with a
 throwaway probe package (`.probe-mssql/`, deleted afterwards: 87 numbered statements
@@ -356,49 +309,7 @@ plus 105 extra shapes) and by reading `mssql/parser` and `mssql/ast` in the modu
 cache. The dialect's own record of what it does about each item is
 [mssql-lineage.md](mssql-lineage.md).
 
-### 10.1 A `WITH` clause in front of a DML statement is dropped, and the following statement's text span with it (fixed)
-
-**Fixed at `v0.0.0-20261014102304-038210857601`.** The old behaviour, kept for the
-record: `WITH c AS (SELECT a FROM t) INSERT INTO t2 (a) SELECT a FROM c` parsed
-"successfully" into **two** items:
-
-| # | AST | `Text` |
-| --- | --- | --- |
-| 0 | a **typed nil** `*SelectStmt` | the whole input |
-| 1 | `*InsertStmt` | `""` |
-
-`parseSelectStmt` read the CTE list and then returned `(nil, nil)` when the token
-after it was not `SELECT`, so the `WithClause` node it built was unreachable, and the
-top-level loop in `parser.Parse` appended the nil node because a nil `*SelectStmt`
-inside a `nodes.Node` interface is not `== nil`. `WITH … UPDATE`, `WITH … DELETE` and
-`WITH … MERGE` behaved the same way; `WITH … SELECT` was unaffected.
-
-The current parser routes a leading `WITH` through `parseWithStmt`
-(`mssql/parser/parser.go`), which parses the CTE list once and attaches it to the
-`SELECT` / `INSERT` / `UPDATE` / `DELETE` / `MERGE` that follows, sets the statement's
-`Loc.Start` to the `WITH` keyword, and rejects a `WITH` followed by none of the five
-with a syntax error. `Parse` also converts a typed-nil sub-parser result into an error
-(`isNilNode`), so no phantom statement is produced at all. Upstream's new
-`mssql/parser/with_dml_test.go` and `with_nested_test.go` pin the behaviour, both in
-statement positions and in procedure / trigger / `BEGIN … END` bodies.
-
-Local consequences of the fix:
-
-- The recovery the dialect carried for this defect
-  (`backend/plugin/lineage/mssql/withclause.go`: cut the source text at the first
-  top-level `INSERT` / `UPDATE` / `DELETE` / `MERGE` keyword, re-parse the prefix with a
-  `SELECT 1` appended, attach the `WithClause` it yields) is gone with the defect, as
-  are its unit tests. `TestWithClauseBeforeEachDMLKindIsAnalyzed` remains and pins that
-  every DML kind still resolves its CTE definitions, so a parser regression fails
-  loudly rather than silently dropping edges.
-- The `Statement.Empty()` caveat (`AST == nil` answers false for a typed nil) no longer
-  has a producer in the parser, but `nodeOrNil` stays: `ast.NodeLoc` still panics on a
-  typed-nil node (§12.5), so nothing here may hand one to it.
-- The splitter still verifies every span it is handed and falls back to a lexical scan
-  when one is empty. That fallback was written for the empty DML text here, but the
-  other `Loc.End == -1` nodes of §10.3 produce empty spans too, so it stays.
-
-### 10.2 Two keywords are consumed as a table alias
+### 9.1 Two keywords are consumed as a table alias
 
 | SQL | Observed | Consequence |
 | --- | --- | --- |
@@ -415,7 +326,7 @@ neither word is a T-SQL reserved keyword — only an ODBC and a future one — s
 `FROM t NATURAL`, `FROM t USING` and `MERGE INTO [tgt] AS [USING]` are valid
 statements whose alias has to be kept.
 
-### 10.3 Many nodes carry `Loc.End == -1`, and the statement text depends on `Loc`
+### 9.2 Many nodes carry `Loc.End == -1`, and the statement text depends on `Loc`
 
 Measured with `sql[Loc.Start:Loc.End]` on each node:
 
@@ -433,7 +344,7 @@ debug comparison format, **not** a SQL deparser, and cannot be used for it), and
 `Statement.Text`, which is derived from the previous statement's end offset, is
 empty for a statement that follows a node with no `Loc.End`.
 
-### 10.4 Grammar gaps and over-acceptance (all reproduced)
+### 9.3 Grammar gaps and over-acceptance (all reproduced)
 
 | Input | Result |
 | --- | --- |
@@ -450,10 +361,10 @@ empty for a statement that follows a node with no `Loc.End`.
 | `SELECT @v = a FROM t` | **accepted** — `ResTarget{Val: SelectAssign}` |
 
 The two `SELECT … = …` rows are recorded in the module's own
-`SCENARIOS-mssql-syntax-gaps.md` as gaps; they are not. `NATURAL JOIN` (§10.2) is the mirror image: accepted, with the
+`SCENARIOS-mssql-syntax-gaps.md` as gaps; they are not. `NATURAL JOIN` (§9.1) is the mirror image: accepted, with the
 wrong tree.
 
-### 10.5 Checked and *not* defects (the AST the dialect relies on)
+### 9.4 Checked and *not* defects (the AST the dialect relies on)
 
 - Set operations are distinguishable: `UNION ALL` sets `SelectStmt.All = true` where
   `UNION` leaves it false, both with `Op = SetOpUnion`. `All` doubles as `SELECT ALL`,
@@ -480,9 +391,9 @@ wrong tree.
   call and is the only thing that knows where a `GO` batch ends.
 - Empty, whitespace-only and comment-only input all return `(nil, nil)` from
   `mssql.Parse`, and a UTF-8 BOM is a lexer error (`syntax error at or near "\ufeffSELECT"`
-  — §12.6 corrects the shorter message this file used to quote).
+  — §11.6 corrects the shorter message this file used to quote).
 
-## 11. What the bump itself changed
+## 10. What the bump itself changed
 
 Not defects: deliberate upstream changes that this repo had to absorb. Each is one of the
 engines' own rules, which is why it is recorded here rather than worked around.
@@ -521,19 +432,20 @@ engines' own rules, which is why it is recorded here rather than worked around.
   (`validateRawQueries`). Both make the parser stricter and neither is silent; the same
   release also removed a panic we were exposed to, `CREATE TABLE t AS ` (no query), which
   used to slice out of range in `starrocks/parser/create_table.go`.
-- **MSSQL** attaches `WITH` to the statement it introduces (§10.1), rejects a `WITH` that
-  introduces nothing (bare `WITH c AS (…)`, a dangling comma after `XMLNAMESPACES`) and one
-  in a nested query position, and `Walk`/`Inspect` in `mssql/ast` and `pg/ast` now skip a
+- **MSSQL** attaches the CTE list a leading `WITH` introduces to the statement that
+  follows it, which is what the dialect's handlers read; it rejects a `WITH` that
+  introduces nothing (bare `WITH c AS (…)`, a dangling comma after `XMLNAMESPACES`) and
+  one in a nested query position; and `Walk`/`Inspect` in `mssql/ast` and `pg/ast` skip a
   typed-nil node instead of dereferencing it.
 - **`mssql.Position.Column` and `pg.Position.Column` are now code-point columns**, not byte
   columns. Nothing in this repo reads `Statement.Start`/`End`/`Position`.
 
-## 12. Found while re-running this record
+## 11. Found while re-running this record
 
 All of these are pre-existing: each was reproduced identically on the previous pin, so none
 arrived with the bump. They were simply not recorded before.
 
-### 12.1 MySQL: an unknown word after a table is read as its alias, and the rest parses as a second statement
+### 11.1 MySQL: an unknown word after a table is read as its alias, and the rest parses as a second statement
 
 §3 records `SELECT a FROM t MINUS SELECT b FROM s` as set-operator over-acceptance. It is not
 a set operation at all: `MINUS` is taken as the alias of `t`, and `Parse` then returns **two**
@@ -544,15 +456,15 @@ statements, one of them carrying a fabricated alias. The analyzer is not misled,
 parses one `Split` segment at a time and rejects the segment whose parse yields two items, but
 a caller that hands `Parse` a whole script can be.
 
-### 12.2 TiDB: the FROM-side `VALUES` gap is wider than §9.1 records
+### 11.2 TiDB: the FROM-side `VALUES` gap is wider than §8.1 records
 
 `SELECT * FROM (VALUES ROW(1)) v(a)` fails with `expected identifier` (column 16) — not only
-the subquery-row spelling §9.1 lists — so the missing `SelectStmt` field is not the only
-reachable consequence of the gap. Related, and recorded here for the same reason: the §9.3
+the subquery-row spelling §8.1 lists — so the missing `SelectStmt` field is not the only
+reachable consequence of the gap. Related, and recorded here for the same reason: the §8.3
 row-3 SQL, `SELECT * FROM (VALUES ((SELECT MAX(x) FROM other))) v(a)`, is rejected by
-`omni/mysql` too (`unexpected token`, column 23), where §9.3 names only MariaDB's engine.
+`omni/mysql` too (`unexpected token`, column 23), where §8.3 names only MariaDB's engine.
 
-### 12.3 MariaDB and TiDB panic on an executable comment that is never closed
+### 11.3 MariaDB and TiDB panic on an executable comment that is never closed
 
 `omni/mariadb/parser` and `omni/tidb/parser` panic with `slice bounds out of range` on any
 input whose `/*!` executable comment does not close. Minimal reproductions, all of them
@@ -568,33 +480,34 @@ The crash is in `skipWhitespaceAndComments` (`mariadb/parser/lexer.go:1920`, the
 both pins): the versioned-comment branch finds no closing `*/`, leaves `end == len(input)` and
 then slices `input[end+2:]`. The non-nesting rewrite below it did not touch this branch.
 
-It is reachable from the request path: `lineage.Analyze(MARIADB|TIDB, sql)` panics on `/*!` —
-probed end to end — and the analyzers call the parser with no `recover`. It does not take the
-process down, because `recoverMiddleware` (`backend/server/echo_routes.go`) answers 500 and the
-lineage runner recovers per object and schedules a retry, but it turns caller-supplied SQL into
-a crash path with no test. A `recover` at the dialect's `Parse` call — the shared MySQL-family
-body, so all three dialects get it — would turn it into the hard failure the analyzers already
-promise; nothing here depends on a panic passing through.
+It is reachable from the request path: `lineage.Analyze(MARIADB|TIDB, sql)` panics on `/*!`,
+which is why the family body converts a parser panic into the parse failure the analyzers
+promise (`parseStatement`/`tokenizeStatement` in `backend/plugin/lineage/mysql/analyzer.go`,
+generated into mariadb and tidb; pinned by the shared corpus case "an unterminated
+executable comment is a parse failure, not a panic"). Without that, a caller-supplied
+statement would be a crash path: the process survives it — `recoverMiddleware`
+(`backend/server/echo_routes.go`) answers 500 and the lineage runner recovers per object and
+schedules a retry — but nothing below the request would have reported what failed.
 
-### 12.4 `CREATE PROCEDURE` parses to `CreateFunctionStmt`
+### 11.4 `CREATE PROCEDURE` parses to `CreateFunctionStmt`
 
 `mysql/ast` has no procedure node: `DELIMITER // CREATE PROCEDURE p() BEGIN … END//` yields a
 `*CreateFunctionStmt`. A consumer switching on the statement type must not read that type as
 "function only". `mssql/ast` does distinguish `CreateProcedureStmt` from `CreateFunctionStmt`.
 
-### 12.5 `mssql/ast.NodeLoc` panics on a typed-nil node
+### 11.5 `mssql/ast.NodeLoc` panics on a typed-nil node
 
 `NodeLoc` guards only the interface nil, then dereferences the pointer in each of its
-concrete-type arms: `var p *ast.SelectStmt; ast.NodeLoc(p)` panics. That was reachable through
-`mssql.Parse` before §10.1's fix — it is how the old `WITH … DML` shape crashed — and is latent
-now. `mssql/ast.SpanNodes` has the same exposure through its `NodeLoc` call, and the fallback
-branch `nodeLocFromField` does nil-guard, so only the explicit arms are unguarded. The
-dialect's `nodeOrNil` stays for this reason.
+concrete-type arms: `var p *ast.SelectStmt; ast.NodeLoc(p)` panics. Nothing in a parsed
+`mssql.Parse` result is a typed-nil node today, so the exposure is latent rather than
+reachable — but the arms are unguarded, `mssql/ast.SpanNodes` has the same exposure through
+its `NodeLoc` call, and only the fallback branch `nodeLocFromField` nil-guards. That is why
+the dialect normalizes every node through `nodeOrNil` before it dereferences one.
 
-### 12.6 Two claims in this file were imprecise
+### 11.6 Two claims in this file were imprecise
 
-- §10.4 says `SelectStmt.GroupByAll` "is unreachable from a parsed statement". Only the bare
+- §9.3 says `SelectStmt.GroupByAll` "is unreachable from a parsed statement". Only the bare
   `GROUP BY ALL` fails; `GROUP BY ALL a` parses and sets the field (it is not valid T-SQL,
   which is a different complaint). Unchanged on both pins.
-- §10.5 quotes the BOM lexer error as `syntax error at or near "\ufeff"`; the message is
+- §9.4 quotes the BOM lexer error as `syntax error at or near "\ufeff"`; the message is
   `syntax error at or near "\ufeffSELECT"`.

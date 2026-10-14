@@ -471,7 +471,7 @@ func (a *Analyzer) addBaseTable(ref *nodes.TableRef) {
 // alias. Both keywords are only ODBC and future reserved words rather than T-SQL reserved ones,
 // so the statement may also have written one as a genuine alias (`FROM t1 NATURAL`); what tells
 // the two apart is the token that follows. Omni is not patched or reported to; see
-// .agents/docs/omni-upstream-defects.md section 10.2.
+// .agents/docs/omni-upstream-defects.md §9.1.
 func (a *Analyzer) relationAlias(ref *nodes.TableRef) string {
 	if ref.Alias == "" {
 		return ""
