@@ -48,7 +48,7 @@ MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关�
 | 行集函数(`OPENJSON … WITH (…)`、`OPENROWSET`)的自身列清单 | 按函数名建列,别名列清单不建模 |
 | 递归 CTE 的不动点 | 与其他方言相同,单遍分析 |
 
-**两处按 catalog 决定的行为**:PIVOT 会保留源表中"聚合函数与 FOR 列都没消费"的列作为分组列,但语句从不写出它们 —— 源关系的列清单已知(catalog 命中 / CTE / 内联表)时按 `源列 → PIVOT 列`(direct,值原样带过)记录,未知时只暴露 IN 值列(不猜);MERGE 的 `WHEN … AND <条件>` 记为该目标行的 FILTER 影响,与 ON 条件同一机制。PIVOT/UNPIVOT 的源在**独立子作用域**里分析:它是关系内部的行源,留在外层会让 `SELECT *` 把它当成第二个关系展开。
+**两处按 catalog 决定的行为**:PIVOT 会保留源表中"聚合函数与 FOR 列都没消费"的列作为分组列,但语句从不写出它们 —— 源关系的列清单已知(catalog 命中 / CTE / 内联表)时按 `源列 → PIVOT 列`(direct,值原样带过)记录,未知时只暴露 IN 值列(不猜);MERGE 的 `WHEN … AND <条件>` 记为该目标行的 FILTER 影响,与 ON 条件同一机制。PIVOT/UNPIVOT、表值函数与内联 VALUES 的源在**独立子作用域**里分析——它是关系内部的行源,留在外层会让 `SELECT *` 把它当成第二个关系展开;手写的内部 lineage 也必须像 `tempTableLineage` 一样**展平查询本地来源**(CTE/派生表),否则 CTE 名会变成落库的边端点(语料 `12_test_pivot_lineage_table.yaml` / `16_test_extended_forms_lineage_table.yaml` 各四例钉住,含派生表叠 CTE)。
 
 **上游语法缺口(硬失败,不建模)**:`JOIN … USING (…)`、`NATURAL JOIN`(静默误读为别名,已在本地复核)、`OPENROWSET(BULK …)`、表值函数的带类型列定义、`CREATE VIEW v AS (SELECT …)` 的括号体。明细见 [omni-upstream-defects.md](omni-upstream-defects.md) §10。
 

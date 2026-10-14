@@ -680,6 +680,9 @@ func (a *Analyzer) processTableFunction(call *nodes.FuncCallExpr, alias string, 
 			}
 			for _, res := range resolutions {
 				res = a.canonicalResolution(res)
+				if a.flattenTempSourceLineage(sp, res.Relation, res.Ref.Column, alias, column, nil, &lineage) {
+					continue
+				}
 				lineage = append(lineage, scope.NewSchemaLineageEdge(
 					res.Ref.Schema, res.Ref.Table, res.Ref.Column,
 					"", alias, column,
@@ -726,6 +729,9 @@ func (a *Analyzer) processInlineValues(values *nodes.ValuesClause, alias string,
 				}
 				for _, res := range resolutions {
 					res = a.canonicalResolution(res)
+					if a.flattenTempSourceLineage(sp, res.Relation, res.Ref.Column, alias, names[i], nil, &lineage) {
+						continue
+					}
 					lineage = append(lineage, scope.NewSchemaLineageEdge(
 						res.Ref.Schema, res.Ref.Table, res.Ref.Column,
 						"", alias, names[i],
@@ -809,6 +815,9 @@ func (a *Analyzer) processPivot(pivot *nodes.PivotExpr, alias string) {
 			}
 			for _, res := range resolutions {
 				res = a.canonicalResolution(res)
+				if a.flattenTempSourceLineage(sourceScope, res.Relation, res.Ref.Column, alias, value, transform, &lineage) {
+					continue
+				}
 				lineage = append(lineage, scope.NewSchemaLineageEdge(
 					res.Ref.Schema, res.Ref.Table, res.Ref.Column,
 					"", alias, value,
@@ -865,6 +874,9 @@ func (a *Analyzer) pivotGroupingColumns(pivot *nodes.PivotExpr, alias string, so
 			}
 			consumed[strings.ToLower(name)] = struct{}{}
 			names = append(names, name)
+			if a.flattenTempSourceLineage(sp, relation, name, alias, name, nil, &lineage) {
+				continue
+			}
 			lineage = append(lineage, scope.NewSchemaLineageEdge(
 				relation.Schema, relation.Table, name,
 				"", alias, name,
@@ -912,6 +924,9 @@ func (a *Analyzer) processUnpivot(pivot *nodes.UnpivotExpr, alias string) {
 		}
 		for _, res := range resolutions {
 			res = a.canonicalResolution(res)
+			if a.flattenTempSourceLineage(sourceScope, res.Relation, res.Ref.Column, alias, pivot.ValueCol, transform, &lineage) {
+				continue
+			}
 			lineage = append(lineage, scope.NewSchemaLineageEdge(
 				res.Ref.Schema, res.Ref.Table, res.Ref.Column,
 				"", alias, pivot.ValueCol,

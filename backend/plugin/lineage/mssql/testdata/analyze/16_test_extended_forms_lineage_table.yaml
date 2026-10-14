@@ -203,3 +203,26 @@ cases:
           transformations:
             - operation: PROJECT
               expression: (SELECT MAX(y) FROM s)
+    # A table function and an inline table build their own lineage by hand; a query-local
+    # argument or row has to be flattened the same way, or the function's own alias would be
+    # recorded as the relation the column came from.
+    - name: table function over a cte argument
+      sql: WITH c AS (SELECT id FROM t) SELECT f.val FROM c CROSS APPLY fn(c.id) AS f(val)
+      expected_edges:
+        - from_table: t
+          from_field: id
+          to_table: __result__
+          to_field: val
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+    - name: inline values row over a cte
+      sql: WITH c AS (SELECT a FROM t) SELECT v.x FROM (VALUES ((SELECT MAX(a) FROM c))) v(x)
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: x
+          relation_type: direct
+          has_transform: false
+          is_temp: true
