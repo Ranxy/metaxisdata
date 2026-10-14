@@ -1,0 +1,176 @@
+name: TestUnionLineageTable
+cases:
+    - name: union all keeps every arm
+      sql: SELECT a FROM t1 UNION ALL SELECT b FROM t2
+      expected_edges:
+        - from_table: t1
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: union
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: UNION
+              all: true
+        - from_table: t2
+          from_field: b
+          to_table: __result__
+          to_field: a
+          relation_type: union
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: UNION
+              all: true
+    - name: union removes duplicates
+      sql: SELECT a FROM t1 UNION SELECT b FROM t2
+      expected_edges:
+        - from_table: t1
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: union
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: UNION
+              all: false
+        - from_table: t2
+          from_field: b
+          to_table: __result__
+          to_field: a
+          relation_type: union
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: UNION
+              all: false
+    - name: except
+      sql: SELECT a FROM t1 EXCEPT SELECT b FROM t2
+      expected_edges:
+        - from_table: t1
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: except
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: EXCEPT
+              all: false
+        - from_table: t2
+          from_field: b
+          to_table: __result__
+          to_field: a
+          relation_type: except
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: EXCEPT
+              all: false
+    - name: intersect
+      sql: SELECT a FROM t1 INTERSECT SELECT b FROM t2
+      expected_edges:
+        - from_table: t1
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: intersect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: INTERSECT
+              all: false
+        - from_table: t2
+          from_field: b
+          to_table: __result__
+          to_field: a
+          relation_type: intersect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: INTERSECT
+              all: false
+    - name: three arms
+      sql: SELECT a FROM t1 UNION ALL SELECT b FROM t2 UNION ALL SELECT c FROM t3
+      expected_edges:
+        - from_table: t1
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: union
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: UNION
+              all: true
+        - from_table: t2
+          from_field: b
+          to_table: __result__
+          to_field: a
+          relation_type: union
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: UNION
+              all: true
+        - from_table: t3
+          from_field: c
+          to_table: __result__
+          to_field: a
+          relation_type: union
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: UNION
+              all: true
+    - name: set operation inside a cte
+      sql: WITH c AS (SELECT a FROM t1 UNION ALL SELECT b FROM t2) SELECT a FROM c
+      expected_edges:
+        - from_table: t1
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: union
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: UNION
+              all: true
+        - from_table: t2
+          from_field: b
+          to_table: __result__
+          to_field: a
+          relation_type: union
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: UNION
+              all: true
+    - name: set operation arms keep their own transformations
+      sql: SELECT a + 1 FROM t1 UNION ALL SELECT b FROM t2
+      expected_edges:
+        - from_table: t1
+          from_field: a
+          to_table: __result__
+          to_field: a + 1
+          relation_type: union
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: UNION
+              all: true
+            - operation: OPERATOR
+              expression: a + 1
+              op_type: ADDITION
+        - from_table: t2
+          from_field: b
+          to_table: __result__
+          to_field: a + 1
+          relation_type: union
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: UNION
+              all: true

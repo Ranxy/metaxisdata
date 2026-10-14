@@ -1,0 +1,321 @@
+name: TestJoinLineageTable
+cases:
+    - name: inner join records the join predicate
+      sql: SELECT a FROM t1 JOIN t2 ON t1.id = t2.id
+      expected_edges:
+        - from_table: t1
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+        - from_table: t1
+          from_field: id
+          to_table: __result__
+          to_field: ''
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: t1.id = t2.id
+        - from_table: t2
+          from_field: id
+          to_table: __result__
+          to_field: ''
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: t1.id = t2.id
+    - name: left join
+      sql: SELECT t1.a FROM t1 LEFT JOIN t2 ON t1.id = t2.id
+      expected_edges:
+        - from_table: t1
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+        - from_table: t1
+          from_field: id
+          to_table: __result__
+          to_field: ''
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: t1.id = t2.id
+        - from_table: t2
+          from_field: id
+          to_table: __result__
+          to_field: ''
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: t1.id = t2.id
+    - name: cross join has no predicate
+      sql: SELECT t1.a FROM t1 CROSS JOIN t2
+      expected_edges:
+        - from_table: t1
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+    - name: comma separated from
+      sql: SELECT t1.a FROM t1, t2
+      expected_edges:
+        - from_table: t1
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+    - name: aliased relations
+      sql: SELECT x.a FROM t1 x JOIN t2 y ON x.id = y.id
+      expected_edges:
+        - from_table: t1
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+        - from_table: t1
+          from_field: id
+          to_table: __result__
+          to_field: ''
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: x.id = y.id
+        - from_table: t2
+          from_field: id
+          to_table: __result__
+          to_field: ''
+          relation_type: join
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: x.id = y.id
+    - name: natural join is not read as an alias
+      sql: SELECT t1.a FROM t1 NATURAL JOIN t2
+      expected_edges:
+        - from_table: t1
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+    - name: table hint
+      sql: SELECT a FROM t WITH (NOLOCK)
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+    - name: unqualified column resolved with catalog metadata
+      sql: SELECT id FROM users
+      catalog:
+        tables:
+          users: [id, name]
+      expected_edges:
+        - from_table: users
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+    - name: star expanded with catalog metadata
+      sql: 'SELECT * FROM users'
+      catalog:
+        tables:
+          users: [id, name]
+      expected_edges:
+        - from_table: users
+          from_field: '*'
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+        - from_table: users
+          from_field: '*'
+          to_table: __result__
+          to_field: name
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+    - name: qualified table star with catalog metadata
+      sql: 'SELECT o.* FROM dbo.orders o'
+      catalog:
+        schemas:
+          dbo:
+            orders: [order_id, amount]
+      expected_edges:
+        - from_table: orders
+          from_schema: dbo
+          from_field: '*'
+          to_table: __result__
+          to_field: order_id
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+        - from_table: orders
+          from_schema: dbo
+          from_field: '*'
+          to_table: __result__
+          to_field: amount
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+    # SQL Server compares identifiers case-insensitively, so a source column is recorded under
+    # the spelling the registry knows, while the statement's own output column keeps the spelling
+    # the statement wrote.
+    - name: a source column takes the registered spelling
+      sql: SELECT id, name FROM Users
+      catalog:
+        tables:
+          Users: [ID, Name]
+      expected_edges:
+        - from_table: Users
+          from_field: ID
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+        - from_table: Users
+          from_field: Name
+          to_table: __result__
+          to_field: name
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+    - name: a predicate column takes the registered spelling
+      sql: SELECT A FROM Users WHERE name = 'x'
+      catalog:
+        tables:
+          Users: [A, Name]
+      expected_edges:
+        - from_table: Users
+          from_field: A
+          to_table: __result__
+          to_field: A
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+        - from_table: Users
+          from_field: Name
+          to_table: __result__
+          to_field: ''
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FILTER
+              condition: name = 'x'
+    # T-SQL binds identifiers by the database's collation, which is case-insensitive by default,
+    # so a qualifier written in another case than the relation was still names it. What is
+    # recorded keeps the spelling the statement wrote; folding only decides what a reference
+    # addresses.
+    - name: a qualifier resolves whatever its case
+      sql: SELECT T.a FROM t
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+    - name: an aliased relation resolves whatever its case
+      sql: SELECT X.a FROM t AS x
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+    - name: a cte named as a qualifier resolves whatever its case
+      sql: WITH c AS (SELECT a FROM t) SELECT C.a FROM c
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+    # The folded qualifier still goes through the registry's spelling for the column, so the two
+    # halves of the case rule meet here.
+    - name: a folded qualifier still takes the registered column spelling
+      sql: SELECT O.ORDER_ID FROM dbo.orders O
+      catalog:
+        schemas:
+          dbo:
+            orders: [order_id, amount]
+      expected_edges:
+        - from_table: orders
+          from_schema: dbo
+          from_field: order_id
+          to_table: __result__
+          to_field: ORDER_ID
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+    # The other half of the case rule: an engine that binds identifiers case-insensitively reaches
+    # a registered object through any spelling of its name, and the edge has to name that object.
+    # A meta GUID is compared byte for byte, so a relation recorded in another case is a relation
+    # the registry does not have, and the graph draws a node beside the object instead of it.
+    - name: a relation named in another case is recorded as the registry knows it
+      sql: SELECT u.ID FROM dbo.users AS u
+      catalog:
+        schemas:
+          dbo:
+            Users: [ID, Name]
+      expected_edges:
+        - from_table: Users
+          from_schema: dbo
+          from_field: ID
+          to_table: __result__
+          to_field: ID
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+    # Nothing is invented: a relation the registry does not hold under any spelling keeps the name
+    # and the schema the statement wrote, and its columns stay as written too.
+    - name: a relation the registry does not know keeps the statement's spelling
+      sql: SELECT id FROM other.users
+      catalog:
+        schemas:
+          dbo:
+            Users: [ID]
+      expected_edges:
+        - from_table: users
+          from_schema: other
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          has_transform: false
+          is_temp: true

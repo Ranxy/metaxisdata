@@ -22,6 +22,7 @@ var supported = []storepb.Engine{
 	storepb.Engine_MARIADB,
 	storepb.Engine_POSTGRES,
 	storepb.Engine_STARROCKS,
+	storepb.Engine_MSSQL,
 }
 
 // unanalyzable are the engines that have a driver but deliberately no analyzer:
@@ -30,7 +31,6 @@ var supported = []storepb.Engine{
 var unanalyzable = []storepb.Engine{
 	storepb.Engine_OCEANBASE,
 	storepb.Engine_DORIS,
-	storepb.Engine_MSSQL,
 }
 
 // TestAssemblyCoversEveryAnalyzedEngine pins the list the process builds its

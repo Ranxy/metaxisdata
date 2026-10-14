@@ -388,7 +388,7 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 	// A reported statement is classified here and nowhere else: ingestion stores the
 	// statement without deciding, and this is the one place the read/write rule lives.
 	if metaType == storepb.MetaType_APPLICATION_SQL {
-		kind, targetEdges := classifyApplicationSQL(ac, engine, definition, relations, metaGUID)
+		kind, targetEdges := a.classifyApplicationSQL(ctx, ac, engine, definition, relations, metaGUID)
 		lineages = append(lineages, targetEdges...)
 		// The edge names its target by GUID alone, so the lookup below is what
 		// gives the target its type. Without it the relation reaches the API with
@@ -562,7 +562,8 @@ func markAnalysisFailed(ctx context.Context, s *store.Store, metaGUID string, me
 // The table-level edge carries no columns and no transformations, which is the shape the
 // OpenLineage table-level path already stores. See
 // .agents/docs/application-sql-ingestion.md, "Classification and the table-level edge".
-func classifyApplicationSQL(
+func (a *Analyzer) classifyApplicationSQL(
+	ctx context.Context,
 	ac catalog.AnalysisContext,
 	engine storepb.Engine,
 	definition string,
@@ -585,7 +586,12 @@ func classifyApplicationSQL(
 	var edges []*store.ColumnLineage
 	seen := make(map[string]struct{}, len(targets))
 	for _, target := range targets {
-		guid := ac.Complete(target).GUID()
+		// The analyzer produced no relation here, so the name is read from the statement and the
+		// registry is asked for the object it belongs to: an engine that binds identifiers
+		// case-insensitively may have written `orders` for the object the registry holds as
+		// `Orders`, and an edge into a GUID the registry does not have points at nothing.
+		id := a.lineage.CanonicalIdentifier(ctx, engine, ac.Complete(target))
+		guid := id.GUID()
 		if guid == metaGUID {
 			continue
 		}

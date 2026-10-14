@@ -1,5 +1,5 @@
 name: Literals
-# N1. Every literal form the three lexers emit, and the spacing the rewrite leaves behind.
+# N1. Every literal form the four lexers emit, and the spacing the rewrite leaves behind.
 # The stored text and the canonical form are written out separately because they answer
 # different questions: the first is what a person reads and what the analyzer names columns
 # from, the second is what the fingerprint hashes.
@@ -79,12 +79,17 @@ cases:
     text: SELECT ? AS n
     canonical: SELECT ? AS n
 
+  # `x'AB'` and `b'101'` are one literal token in PostgreSQL and in the MySQL family, but T-SQL
+  # has neither form: its binary literal is `0xAB`, and its lexer reads `x'AB'` as an identifier
+  # followed by a string. Pinned to the dialects whose lexer agrees.
   - name: a hexadecimal string literal
+    engine: [mysql, starrocks, postgres]
     sql: SELECT x'AB' AS n
     text: SELECT ? AS n
     canonical: SELECT ? AS n
 
   - name: a bit string literal
+    engine: [mysql, starrocks, postgres]
     sql: SELECT b'101' AS n
     text: SELECT ? AS n
     canonical: SELECT ? AS n

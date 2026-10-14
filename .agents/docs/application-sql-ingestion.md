@@ -172,8 +172,27 @@ The runner derives the kind, and it is the only place the read/write rule lives:
 Zero-relation writes are constant `INSERT`s in every form and a `DELETE` that references no column.
 Everything else is already answered: an `UPDATE` records `t.* -> t.a` even for a constant
 assignment, a multi-table `UPDATE`/`DELETE` references columns, and every DDL statement has a real
-target. A table-level edge must carry a non-nil `Transformation` — the column is `NOT NULL`, so a
+target. A statement the analyzer cannot parse never reaches this package at all: the ingest gate
+refuses it first (`application_sql_handler.go`, `PARSE_ERROR`), so `INSERT … EXEC @p` — which omni's
+grammar rejects — is not a misclassified write but a statement that was never stored. T-SQL adds a
+shape of its own — `MERGE … WHEN NOT MATCHED THEN INSERT (a) VALUES (<constant>)`
+writes the target with no relation at all — and it refuses a target that is not a registry object
+(a `@table` variable, a `#temp` table) rather than naming one the registry can never hold. A table-level edge must carry a non-nil `Transformation` — the column is `NOT NULL`, so a
 nil slice serializes to `null` and fails the whole batch.
+
+A statement that parses but has no lineage to record is not drawn, and the analysis says why: the
+analyzer reports a shape it cannot see (`EXEC`, a routine body) as a gap, so the version row
+explains a blank statement instead of leaving it looking like a statement with no lineage at all.
+`SELECT 1`, `SET` and `TRUNCATE` stay silent, because there is nothing to record — that is what
+"no lineage" means.
+
+A zero-relation write target is named by the statement, so it is also the one resolution this
+classifier does itself: it asks the lineage analyzer for the registry's identity
+(`Analyzer.CanonicalIdentifier`), which an engine that binds identifiers case-insensitively needs —
+`INSERT INTO orders` for the object the registry holds as `Orders` otherwise becomes an edge into a
+GUID the registry does not have, and the canvas draws a node beside the table instead of the table.
+The engine's rule is declared once, in its registration (`EngineRegistration.FoldIdentifierNames`),
+and an engine that does not declare it keeps the name the statement wrote.
 
 ### The canvas category
 
@@ -286,21 +305,27 @@ enough:
 Every folding is idempotent — `fold(fold(x)) == fold(x)` — or a statement reported twice would be
 two rows. `fold_test.go` asserts both halves: what must merge, and what must not.
 
-Three asymmetries between the dialects follow from the shared rules running over tokens the lexers
-disagree about. They are pinned in `testdata/09_dialects.yaml` and beside the cases they affect:
+Four asymmetries between the dialects follow from the shared rules running over tokens the lexers
+disagree about. They are pinned in `testdata/09_dialects.yaml`, `testdata/10_mssql.yaml` and beside
+the cases they affect:
 
 | Difference | Effect |
 | --- | --- |
 | PostgreSQL lexes `?` as an operator character, so `-?` and `+?` come back as single operator tokens | a signed constant is spaced differently in the two: `x = -1 + 2` is `x = - ? + ?` in the MySQL family, where `-` and `?` are two tokens, and `x = -? + ?` in PostgreSQL, where they are one. Fingerprints are scoped to an instance, so the two forms never meet in one table. |
 | StarRocks tokenizes a `/*+ … */` hint as code rather than as a comment | the hint is stored and fingerprinted with the statement — but its body is tokenized like any expression, so a literal inside it is still rewritten. MySQL and PostgreSQL drop it as a comment. |
 | MySQL tokenizes a `/*! … */` executable comment into unusable fragments | the statement is refused, like any statement the lexer cannot walk to its end. |
+| T-SQL keeps `N'…'`, `[…]`, `"…"` and `#tmp` whole, where the MySQL family's lexer split them, and it refuses what its lexer could not finish | the dialect has its own branch in `tokenSpans` (`mssql/parser`'s lexer). Without it `N'abc'` was one token in no dialect but two in the lexer used, so the stored text was `N?`; a `FROM #tmp` had everything after the `#` deleted as a line comment; and `"col"` — an identifier under T-SQL's default `QUOTED_IDENTIFIER ON` — was replaced by a placeholder. `x'AB'` and `b'101'` are the reverse: one literal token in PostgreSQL and the MySQL family, two in T-SQL, so T-SQL stores `x?` there. T-SQL's lexer also *reports* what it could not finish — an unterminated string, quoted identifier, bracketed name or block comment sets its error while handing back a token that swallows the rest — so those statements are refused here, where the MySQL family stores the string as one literal (`SELECT ?`, pinned in `09_dialects.yaml`). |
 
 ### The corpus
 
+`Version` stays 1 through the T-SQL branch: no rule changed for a dialect that already had rows, and
+T-SQL reports were refused until the engine had a lineage analyzer, so no MSSQL statement was ever
+fingerprinted under the old tokenization.
+
 `sanitize_test.go` and `fold_test.go` are the hand-written cases for one behavior each.
-`testdata/*.yaml` is the contract at statement scale: 220 statements in nine suites, each run under
+`testdata/*.yaml` is the contract at statement scale: 234 statements in ten suites, each run under
 every dialect unless it names the ones it is valid in (`engine: postgres`, `engine: [mysql,
-starrocks]`).
+starrocks]`, `engine: mssql`).
 
 A case pins `text` and `canonical` exactly and nothing else, and both are required. Pinning both is
 what states the deduplication contract with no second mechanism: two cases whose canonical forms are
@@ -316,7 +341,7 @@ statement under the same dialect.
 
 | Suite | Rule |
 | --- | --- |
-| `01_literals` | N1, every literal form the three lexers emit, and the numbered-parameter rewrite |
+| `01_literals` | N1, every literal form the four lexers emit, and the numbered-parameter rewrite |
 | `02_comments` | N2, including the forms that are *not* comments: a string, a quoted identifier, a StarRocks hint, a MySQL executable comment |
 | `03_identifiers` | N3, quoting and case, and where a double quote or a backtick changes meaning |
 | `04_in_lists` | N4, and every list that must keep its shape |
@@ -325,6 +350,7 @@ statement under the same dialect.
 | `07_statement_shapes` | realistic application statements, so a rule change has to answer for one |
 | `08_refusals` | what must not be stored — text that is not valid UTF-8 is refused too, but YAML cannot carry an invalid byte, so `sanitize_test.go` pins that one |
 | `09_dialects` | the asymmetries above, written out
+| `10_mssql` | the T-SQL branch of `tokenSpans`: `N'…'`, `[bracketed]` and `"quoted"` names, `#temp` tables, `0x1f`/`$12.50` literals, `@@ROWCOUNT`, nested block comments |
 
 ## Invariants
 

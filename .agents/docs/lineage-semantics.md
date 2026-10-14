@@ -151,9 +151,10 @@ Implementation: `resolveUnqualified` walks outward and stops at the first scope 
 | PostgreSQL | 40 | 250 |
 | MySQL (corpus shared with TiDB and MariaDB) | 24 | 225 |
 | StarRocks | 20 | 185 |
+| MSSQL | 14 | 143 |
 | TiDB (dialect suite, on top of the shared corpus) | 1 | 15 |
 | MariaDB (dialect suite, on top of the shared corpus) | 1 | 20 |
-| **total** | **86** | **695** |
+| **total** | **100** | **838** |
 
 ### StarRocks
 
@@ -175,6 +176,34 @@ Implementation: `resolveUnqualified` walks outward and stops at the first scope 
 
 **Reported as gaps rather than failures:** `MERGE INTO` and an unmodelled query expression raise `not modelled:` diagnostics and keep the surrounding edges (`starrocks/analyzer.go:207`, `:248`; `starrocks/analyzer_test.go:112`). **Not modelled at all:** `SELECT * REPLACE`, `GROUP BY ALL`, cross-catalog references (the registry has no catalog dimension). **`DORIS` stays unregistered** by decision (`backend/plugin/lineage/engines/engines.go:10`).
 
+### MSSQL
+
+**Typed AST, no raw bodies.** Unlike StarRocks, omni's T-SQL AST keeps every query body typed — a derived table is `AliasedTableRef > SubqueryExpr > *SelectStmt`, an expression subquery is a `SubqueryExpr` (or an `ExistsExpr.Subquery`, a bare `*SelectStmt`), a CTE body is `CommonTableExpr.Query`, and the generated walker reaches all of them. So the dialect owns no re-parse machinery, and a set operation is not a node of its own but fields on the `SelectStmt` that combines the arms.
+
+**Decisions that differ from its siblings:**
+
+| Decision | Detail |
+| --- | --- |
+| `SelectStmt.All` is read only when `Op != SetOpNone` | The same field carries `SELECT ALL`, so a UNION ALL and a UNION are told apart by `All`, and a plain query's `All` says nothing about duplicates |
+| The qualifier is the schema | `scope.NewSchemaLineageEdge`, as PostgreSQL; a `db.schema.table` name's database is compared against the analysis context and a name in another database is a reported gap, never read as a same-named object of the current one |
+| The governing node decides the transformation | An enum-driven AST like MySQL's, so operators are named with the MySQL family's words (`ADDITION`), not PostgreSQL's source token — the PG-FU-4 divergence, not a third vocabulary |
+| `OUTPUT` is not modelled | A data-modification statement's client-facing result is not lineage, which is PostgreSQL's `RETURNING` decision (`mssql/analyzer.go` `processInsertStatement`) |
+| A DELETE without a `WHERE` | Its FROM clause's join predicates are recorded as influences on the target's rows; with a `WHERE` the row set is attributed to the condition columns as `source.x -> target.__deletion__`, as everywhere else |
+| `MERGE` is modelled | The one statement PostgreSQL, MySQL and StarRocks all report as a gap. Its ON condition is a join influence on the target, each WHEN clause's own AND condition a filter influence on it, and each action writes what the statement it stands for would |
+| A `PIVOT`'s grouping columns | The source's columns that neither the aggregate nor the FOR column consumes are carried through, which the statement never names: they are read from the catalog when it knows the source's columns, and the relation exposes the pivot columns alone when it does not. A pivot's source is analyzed in a scope of its own, so a `SELECT *` beside it cannot read the source table as a second relation |
+
+**Known deviation (the approximation is deliberate).** SQL Server compares identifiers case-insensitively, while the registry looks an object up by its meta GUID, which is case-sensitive. Three layers carry that fact, and all three follow the engine rather than a default:
+
+*Inside* a statement the dialect folds, because that is what its engine binds: `scope.SetFoldNames` is declared per dialect — off by default, on for MSSQL — so `SELECT T.a FROM t`, `SELECT X.a FROM t AS x` and a CTE named in another case all resolve (`TestIdentifierCaseIsFolded`). Folding decides which relation a reference addresses.
+
+A source *column* then takes the spelling the registry knows (`SELECT id FROM Users` records `ID`), preferring an exact match so that a case-sensitive collation holding both `id` and `ID` still resolves to the one the statement named; the statement's own result columns keep what it wrote.
+
+A relation's *name and schema* take the registry's identity, because a name is not an object: `FROM users` against a registry entry named `Users` used to record `users` — a meta GUID the registry does not have, which the graph drew as a floating node beside the table it reads. `catalog.Provide.GetTable` now falls back to a case-folded lookup **only for an engine that declares folding**, and answers with the identity it registered; the two places where a stored relation's address is settled (a FROM item, a data-modification target) take it, and every edge reads the address from there (`canonicalRelation`). The lookup is `lower(guid COLLATE "default") = lower($1)` over `idx_meta_registry_resource_guid_folded`; folding follows the database's default collation, so a database whose default collation is C folds ASCII alone, and a name nobody can resolve is kept exactly as written. The reported-statement classifier resolves its write target the same way (`Analyzer.CanonicalIdentifier`); see [mssql-lineage.md](mssql-lineage.md).
+
+**Empty results are gaps, not silence.** A reference that resolved to a *query-local* relation the relation cannot answer — a table function whose result columns the query never declared, a `PIVOT` grouping column whose source columns the catalog does not know — used to produce no edge and no diagnostic, which is indistinguishable from "this statement has no lineage". The relation was found, so nothing else reports it; the dialect now reports it (`queryLocalAnswers`, MS SQL only for now — see Open items). A column the relation *does* offer and whose lineage names no source is not a gap: it is a column built from constants, and it has no lineage to record. The same reasoning made `EXEC`/`sp_executesql` and a `CREATE PROCEDURE`/`CREATE FUNCTION` body — statements whose lineage is not in the text — into reported gaps.
+
+**Workarounds it carries for upstream defects** (details in [omni-upstream-defects.md](omni-upstream-defects.md) §10): `relationAlias` re-checks a recorded alias against the source text so `NATURAL JOIN` and `MERGE … USING` do not turn a clause into a relation name; every entry point normalizes a typed-nil node, which omni's walker would otherwise dereference; the script splitter verifies the statement text spans the parser hands it before trusting them, falling back to a lexical scan; and a `WITH` clause in front of a DML statement — which the parser drops whole — is recovered from the source text before the statement is analyzed (`mssql/withclause.go`), failing the statement only when that recovery itself fails.
+
 ## Cross-dialect naming and edge rules
 
 Rules that hold across all dialects; changing one is changing all of them.
@@ -189,6 +218,8 @@ Rules that hold across all dialects; changing one is changing all of them.
 | Predicate influences belong to the scope whose rows they decide and are inherited by its consumer; an unconsumed scope's predicates are dropped | `algorithm/influence.go:31`, `:75`, `:87` |
 | A predicate edge's target column is empty — it decides rows, not a column's value | `algorithm/influence.go:122-144` |
 | `HAVING` may name a select-list alias; the alias resolves to that output column's own sources | `algorithm/influence.go:154` |
+| An identifier's case is the dialect's rule to declare, never a shared default | `scope.SetFoldNames` (`scope/scope.go`), on for MSSQL only; the same fact gates the registry's folded lookup (`EngineRegistration.FoldIdentifierNames` → `catalog.WithIdentifierFolding`) |
+| A relation's identity in an analysis is the identity the registry registered, not the name the statement wrote | `catalog.Provide.GetTable` (`catalog/provide.go`), `Analyzer.CanonicalIdentifier` (`lineage/lineage.go`) |
 | `*` answers only when no named column does | `model/relation.go:53` |
 | Every corpus edge states its relation type, temp flag and transformation operations | `testutil/lineage_test_helper.go:337` |
 
@@ -196,7 +227,9 @@ Rules that hold across all dialects; changing one is changing all of them.
 
 1. **PG-FU-4 — cross-dialect expression-classification unification.** PostgreSQL classifies the governing top-level node and emits the source operator token. MySQL handles only `CaseExpr`, `BinaryExpr`, `UnaryExpr`, `BetweenExpr` and `InExpr` before falling back to the *first function call in the tree* (`analyzeExpressionOperator`, `mysql/analyzer.go:1912-1941`, `firstFuncCall` at `:1925`), and names operators with words (`binaryOperatorName`, `:1967`). So wrapper nodes the MySQL AST carries (`IsExpr`, `LikeExpr`, `CastExpr`, `ExistsExpr`) are classified from whatever function they contain — `sum(x) IS NULL` reports the inner `SUM` where PostgreSQL reports `OPERATOR "IS NULL"` — and the shared shapes differ in vocabulary (`ADDITION` vs `+`). Recorded here because the plan that named it is retired.
 2. **MySQL ODKU constant-assignment asymmetry.** PostgreSQL `ON CONFLICT … DO UPDATE SET b = 'x'` produces `t.* -> t.b`; MySQL `ON DUPLICATE KEY UPDATE a = 1` produces **zero edges**, because `len(sourceColumns) == 0` continues without the `table.*` fallback that the plain `UPDATE t SET a = 1` path has (`mysql/analyzer.go:1244-1246` vs `:1471-1481`). Decide first whether a constant write deserves a `t.*` edge, then align.
-3. **Deliberately missing shapes** (not defects): StarRocks `* REPLACE`, `GROUP BY ALL`, `SECURITY NONE`, cross-catalog references; `DORIS` unregistered. Upstream parser gaps are recorded in [omni-upstream-defects.md](omni-upstream-defects.md).
+3. **Deliberately missing shapes** (not defects): StarRocks `* REPLACE`, `GROUP BY ALL`, `SECURITY NONE`, cross-catalog references; MSSQL `OUTPUT`, table variables, `INSERT … EXEC`; `DORIS` unregistered. Upstream parser gaps are recorded in [omni-upstream-defects.md](omni-upstream-defects.md).
+4. **An unanswered query-local reference is a gap only in MSSQL.** A reference that resolves to a CTE, a derived table, a table function or a pivot whose own lineage says nothing about the column is dropped silently by every dialect: the shared tracers (`algorithm/temp.go:14`, `:34`, `:92`) report nothing, and only the MSSQL wrappers ask first (`queryLocalAnswers`). The shape is reachable with valid SQL wherever a query-local relation's column list is narrower than the references to it — a table function whose result columns the query never declared, a `PIVOT` grouping column over a source the catalog cannot describe. Making it a shared rule means deciding it once and re-checking every dialect's corpus, which is a change of its own; recorded here so the divergence is not read as an MSSQL quirk.
+5. **MSSQL drops a linked server's name on purpose.** `srv.db.dbo.t` is analyzed as the local `db.dbo.t`, because this product registers one instance per logical database and does not model linked servers; a deployment where a *foreign* instance exposes a database of the same name would get a silently local edge instead of a gap. Recorded in [mssql-lineage.md](mssql-lineage.md) with the assumption it rests on.
 
 ## Where things live
 
@@ -208,9 +241,10 @@ Rules that hold across all dialects; changing one is changing all of them.
 | PostgreSQL analyzer | [backend/plugin/lineage/postgresql/](../../backend/plugin/lineage/postgresql/) — `analyzer.go`, `expr.go`, `predicate.go`; corpus in `testdata/analyze/` |
 | MySQL family | `mysql/analyzer.go` (shared body) with `tidb/`, `mariadb/` generated; corpora in each `testdata/analyze/` |
 | StarRocks analyzer | [backend/plugin/lineage/starrocks/](../../backend/plugin/lineage/starrocks/) — `analyzer.go`, `expr.go`, `rawsql.go`, `viewbody.go` |
+| MSSQL analyzer | [backend/plugin/lineage/mssql/](../../backend/plugin/lineage/mssql/) — `analyzer.go`, `expr.go`, `predicate.go`, `split.go`; corpus in `testdata/analyze/` |
 | Engine set / wiring | [engines.go](../../backend/plugin/lineage/engines/engines.go), built once in [backend/server/server.go:107](../../backend/server/server.go#L107) |
 | Invariant test | [testutil/lineage_test_helper.go:337](../../backend/plugin/lineage/testutil/lineage_test_helper.go#L337) |
-| Unit tests worth reading | `postgresql/expr_classify_test.go` (`TestIsExpressionDerived`, `TestClassifyExpression`, `TestSourceLessFallback`), `postgresql/onconflict_test.go`, `starrocks/viewbody_test.go`, `scope/scope_test.go` |
+| Unit tests worth reading | `postgresql/expr_classify_test.go` (`TestIsExpressionDerived`, `TestClassifyExpression`, `TestSourceLessFallback`), `postgresql/onconflict_test.go`, `starrocks/viewbody_test.go`, `mssql/analyzer_test.go` (`TestSplitStatements`, `TestKeywordAliasIsNotAnAlias`), `scope/scope_test.go` |
 | Gates | `go test ./backend/plugin/lineage/... -count=1`; `gofmt`; `golangci-lint run --allow-parallel-runners`; corpus test `TestAnalyzeYAML`, annotation test `TestCorpusIsFullyAnnotated` |
 | Assembly, runner, generator, AST audit | [lineage-analyzer.md](lineage-analyzer.md) |
 | Graph-side field lineage | [lineage-graph.md](lineage-graph.md) |

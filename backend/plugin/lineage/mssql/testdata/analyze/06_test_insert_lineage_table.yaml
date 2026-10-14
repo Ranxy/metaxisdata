@@ -1,0 +1,118 @@
+name: TestInsertLineageTable
+cases:
+    - name: insert select
+      sql: INSERT INTO t2 (a, b) SELECT c, d FROM t1
+      expected_edges:
+        - from_table: t1
+          from_field: c
+          to_table: t2
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+        - from_table: t1
+          from_field: d
+          to_table: t2
+          to_field: b
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+    - name: insert select without a column list
+      sql: INSERT INTO t2 SELECT c AS a, d AS b FROM t1
+      expected_edges:
+        - from_table: t1
+          from_field: c
+          to_table: t2
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+        - from_table: t1
+          from_field: d
+          to_table: t2
+          to_field: b
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+    - name: insert values of literals has no lineage
+      sql: INSERT INTO t2 (a) VALUES (1)
+      expected_edges:
+        []
+    - name: insert values with a subquery
+      sql: INSERT INTO t2 (a) VALUES ((SELECT MAX(x) FROM s))
+      expected_edges:
+        - from_table: s
+          from_field: x
+          to_table: t2
+          to_field: a
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: (SELECT MAX(x) FROM s)
+    - name: insert with an output clause still writes the target
+      sql: INSERT INTO t2 (a) OUTPUT inserted.a SELECT b FROM t1
+      expected_edges:
+        - from_table: t1
+          from_field: b
+          to_table: t2
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+    - name: insert into a table variable is reported as a gap
+      sql: 'INSERT INTO @tv (a) SELECT b FROM t1'
+      expect_error: true
+      error_contains: 'a target the registry cannot address: the table variable @tv'
+      expected_edges:
+        []
+    - name: insert into a temporary table is reported as a gap
+      sql: 'INSERT INTO #stage (a) SELECT b FROM t1'
+      expect_error: true
+      error_contains: 'a target the registry cannot address: the temporary table #stage'
+      expected_edges:
+        []
+    - name: insert from a temporary table is reported as a gap
+      sql: 'INSERT INTO t2 (a) SELECT b FROM #stage'
+      expect_error: true
+      error_contains: 'a relation the registry cannot address: the temporary table #stage'
+      expected_edges:
+        []
+    - name: insert exec is reported as a gap
+      sql: INSERT INTO t2 (a) EXEC p 1
+      expect_error: true
+      error_contains: not modelled
+      expected_edges:
+        []
+    # The target is a stored object too, so its columns take the registry's spelling as well:
+    # one edge must not name one field two ways.
+    - name: an insert target takes the registered spelling
+      sql: INSERT INTO Users (id) SELECT id FROM Users
+      catalog:
+        tables:
+          Users: [ID, Name]
+      expected_edges:
+        - from_table: Users
+          from_field: ID
+          to_table: Users
+          to_field: ID
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+    # A data-modification target is settled where a FROM item is, so an object the statement spelled
+    # in another case is recorded as the object the registry has rather than as a meta GUID that does
+    # not exist.
+    - name: an insert target named in another case is recorded as the registry knows it
+      sql: INSERT INTO logs (msg) SELECT name FROM t
+      catalog:
+        tables:
+          Logs: [msg]
+      expected_edges:
+        - from_table: t
+          from_field: name
+          to_table: Logs
+          to_field: msg
+          relation_type: direct
+          has_transform: false
+          is_temp: false

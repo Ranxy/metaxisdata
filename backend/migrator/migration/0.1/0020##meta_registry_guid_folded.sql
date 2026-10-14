@@ -1,0 +1,11 @@
+-- The lineage analyzer resolves the name a SQL statement wrote against the metadata the sync
+-- registered. The registry names an object under the spelling the instance reported, and a
+-- statement may spell the same name in any case: an engine that binds identifiers
+-- case-insensitively (T-SQL under its default collation) needs a case-folded comparison of the
+-- GUID, which the byte-exact index on guid cannot serve.
+--
+-- The folding names the database default collation explicitly because guid is COLLATE "C",
+-- whose lowering leaves a non-ASCII letter alone. A database whose default collation is C
+-- therefore folds ASCII only, and a lookup that misses there means "the registry does not know
+-- this name", never "this name is not registered".
+CREATE INDEX IF NOT EXISTS idx_meta_registry_resource_guid_folded ON meta_registry_resource (lower(guid COLLATE "default"));

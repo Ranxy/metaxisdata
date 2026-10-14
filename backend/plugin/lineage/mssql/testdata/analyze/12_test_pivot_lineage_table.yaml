@@ -1,0 +1,286 @@
+name: TestPivotLineageTable
+cases:
+    - name: pivot reads the aggregate and the for column
+      sql: 'SELECT p.[1], p.[2] FROM t1 PIVOT (SUM(b) FOR c IN ([1], [2])) p'
+      expected_edges:
+        - from_table: t1
+          from_field: b
+          to_table: __result__
+          to_field: 1
+          relation_type: group
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: SUM
+              expression: SUM(b)
+              group_keys:
+                - c
+        - from_table: t1
+          from_field: b
+          to_table: __result__
+          to_field: 2
+          relation_type: group
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: SUM
+              expression: SUM(b)
+              group_keys:
+                - c
+    - name: unpivot reads every listed column
+      sql: SELECT u.val FROM t1 UNPIVOT (val FOR col IN (x, y)) u
+      expected_edges:
+        - from_table: t1
+          from_field: x
+          to_table: __result__
+          to_field: val
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: UNPIVOT(x,y)
+        - from_table: t1
+          from_field: y
+          to_table: __result__
+          to_field: val
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: UNPIVOT(x,y)
+    # A pivot keeps the source columns neither the aggregate nor the FOR column consumes, as
+    # grouping columns. The statement never names them, so they are enumerated from the catalog
+    # when it knows the source's columns — and this is the only case where they appear at all.
+    - name: pivot grouping column read from the catalog
+      sql: 'SELECT p.id, p.[1] FROM t1 PIVOT (SUM(b) FOR c IN ([1], [2])) p'
+      catalog:
+        tables:
+          t1: [id, b, c]
+      expected_edges:
+        - from_table: t1
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+        - from_table: t1
+          from_field: b
+          to_table: __result__
+          to_field: 1
+          relation_type: group
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: SUM
+              expression: SUM(b)
+              group_keys:
+                - c
+    # The pivot's source is internal to it: a `SELECT *` beside it reads the pivot's own row set
+    # and not the table inside it, which used to be expanded as a second relation.
+    - name: pivot star expansion with the catalog
+      sql: 'SELECT * FROM t1 PIVOT (SUM(b) FOR c IN ([1], [2])) p'
+      catalog:
+        tables:
+          t1: [id, b, c]
+      expected_edges:
+        - from_table: t1
+          from_field: b
+          to_table: __result__
+          to_field: 1
+          relation_type: group
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: SUM
+              expression: SUM(b)
+              group_keys:
+                - c
+        - from_table: t1
+          from_field: b
+          to_table: __result__
+          to_field: 2
+          relation_type: group
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: SUM
+              expression: SUM(b)
+              group_keys:
+                - c
+        - from_table: t1
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+    - name: pivot star expansion without the catalog
+      sql: 'SELECT * FROM t1 PIVOT (SUM(b) FOR c IN ([1], [2])) p'
+      expected_edges:
+        - from_table: t1
+          from_field: b
+          to_table: __result__
+          to_field: 1
+          relation_type: group
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: SUM
+              expression: SUM(b)
+              group_keys:
+                - c
+        - from_table: t1
+          from_field: b
+          to_table: __result__
+          to_field: 2
+          relation_type: group
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: SUM
+              expression: SUM(b)
+              group_keys:
+                - c
+    - name: unpivot star expansion
+      sql: SELECT * FROM t1 UNPIVOT (val FOR col IN (x, y)) u
+      expected_edges:
+        - from_table: t1
+          from_field: x
+          to_table: __result__
+          to_field: val
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: UNPIVOT(x,y)
+        - from_table: t1
+          from_field: y
+          to_table: __result__
+          to_field: val
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: UNPIVOT(x,y)
+    # The pivot's source may itself be query-local. Its columns were recorded where they came
+    # from when the CTE or derived table was built, so the pivot's lineage has to flatten them:
+    # a query-local relation is never an edge endpoint.
+    - name: pivot over a cte
+      sql: 'WITH c AS (SELECT a, b FROM t) SELECT p.[1], p.[2] FROM c PIVOT (SUM(b) FOR a IN ([1], [2])) p'
+      expected_edges:
+        - from_table: t
+          from_field: b
+          to_table: __result__
+          to_field: 1
+          relation_type: group
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: SUM
+              expression: SUM(b)
+              group_keys:
+                - a
+        - from_table: t
+          from_field: b
+          to_table: __result__
+          to_field: 2
+          relation_type: group
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: SUM
+              expression: SUM(b)
+              group_keys:
+                - a
+    - name: pivot over a derived table
+      sql: 'SELECT p.[1] FROM (SELECT a, b FROM t) d PIVOT (SUM(b) FOR a IN ([1])) p'
+      expected_edges:
+        - from_table: t
+          from_field: b
+          to_table: __result__
+          to_field: 1
+          relation_type: group
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: SUM
+              expression: SUM(b)
+              group_keys:
+                - a
+    - name: pivot over a derived table built on a cte
+      sql: 'WITH c AS (SELECT a, b FROM t) SELECT p.[1] FROM (SELECT a, b FROM c) d PIVOT (SUM(b) FOR a IN ([1])) p'
+      expected_edges:
+        - from_table: t
+          from_field: b
+          to_table: __result__
+          to_field: 1
+          relation_type: group
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: SUM
+              expression: SUM(b)
+              group_keys:
+                - a
+    - name: pivot grouping column over a cte
+      sql: 'WITH c AS (SELECT id, a, b FROM t) SELECT p.id, p.[1] FROM c PIVOT (SUM(b) FOR a IN ([1])) p'
+      expected_edges:
+        - from_table: t
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+        - from_table: t
+          from_field: b
+          to_table: __result__
+          to_field: 1
+          relation_type: group
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: SUM
+              expression: SUM(b)
+              group_keys:
+                - a
+    - name: unpivot over a cte
+      sql: 'WITH c AS (SELECT x, y FROM t) SELECT u.val FROM c UNPIVOT (val FOR col IN (x, y)) u'
+      expected_edges:
+        - from_table: t
+          from_field: x
+          to_table: __result__
+          to_field: val
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: UNPIVOT(x,y)
+        - from_table: t
+          from_field: y
+          to_table: __result__
+          to_field: val
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: UNPIVOT(x,y)

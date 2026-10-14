@@ -616,3 +616,101 @@ func TestScope_NestedScopes(t *testing.T) {
 	_, ok = root.FindTable("child2_table")
 	require.False(t, ok)
 }
+
+// TestScope_NamesCompareCaseSensitivelyByDefault pins the default every dialect but T-SQL
+// keeps: a reference that differs in case from the relation's name addresses nothing. A
+// case-sensitive engine really does name two objects with `t` and `T` — MySQL's table names on
+// a case-sensitive filesystem, a PostgreSQL quoted alias — so a dialect has to ask for the
+// other rule.
+func TestScope_NamesCompareCaseSensitivelyByDefault(t *testing.T) {
+	scope := NewScope(nil)
+	scope.AddTable(&TableRef{Table: "t"})
+	scope.AddTable(&TableRef{Table: "with alias", Alias: "x"})
+	scope.AddCTE(&CTEDefinition{Name: "c"})
+
+	_, ok := scope.FindRelation(RelationKey{Name: "T"})
+	require.False(t, ok)
+	_, ok = scope.FindRelation(RelationKey{Name: "X"})
+	require.False(t, ok)
+	_, ok = scope.FindCTE("C")
+	require.False(t, ok)
+	_, ok = scope.findCTEQualifier("C")
+	require.False(t, ok)
+}
+
+// TestScope_FoldNamesBindsCaseInsensitively pins the rule a case-insensitive engine needs, the
+// one T-SQL turns on: `SELECT T.a FROM t` reads the table `t`, whichever case either side was
+// written in, for a relation, an alias and a CTE alike. A child scope inherits the rule,
+// because every query level of one statement is bound by the same collation.
+func TestScope_FoldNamesBindsCaseInsensitively(t *testing.T) {
+	root := NewScope(nil)
+	root.SetFoldNames(true)
+	root.AddTable(&TableRef{Table: "t"})
+	root.AddTable(&TableRef{Table: "with alias", Alias: "x"})
+	root.AddCTE(&CTEDefinition{Name: "c"})
+
+	for _, tc := range []RelationKey{{Name: "T"}, {Name: "t"}} {
+		ref, ok := root.FindRelation(tc)
+		require.True(t, ok, tc)
+		require.Equal(t, "t", ref.Table)
+	}
+	ref, ok := root.FindRelation(RelationKey{Name: "X"})
+	require.True(t, ok)
+	require.Equal(t, "with alias", ref.Table)
+	_, ok = root.FindCTE("C")
+	require.True(t, ok)
+	_, ok = root.findCTEQualifier("C")
+	require.True(t, ok)
+
+	// A qualifier's case folds too: a schema is an identifier like any other.
+	root.AddTable(&TableRef{Schema: "dbo", Table: "orders"})
+	ref, ok = root.FindRelation(RelationKey{Qualifier: "DBO", Name: "ORDERS"})
+	require.True(t, ok)
+	require.Equal(t, "orders", ref.Table)
+
+	child := NewScope(root)
+	_, ok = child.FindRelation(RelationKey{Name: "T"})
+	require.True(t, ok, "a child scope inherits the rule from its parent")
+	_, ok = child.FindCTE("C")
+	require.True(t, ok, "a child scope looks a CTE up under the same rule")
+
+	// What is recorded keeps the spelling the statement wrote: folding decides which relation a
+	// reference addresses, never how that relation is named on an edge.
+	resolved, relation, err := root.ResolveColumnRef(ColumnRef{Table: "T", Column: "a"})
+	require.NoError(t, err)
+	require.Equal(t, "t", resolved.Table)
+	require.Equal(t, "t", relation.Table)
+}
+
+// TestScope_FoldNamesRegistersOneRelation pins that a case-insensitive scope does not hold the
+// same relation twice under two spellings: `FROM t, T` names one table, and two registrations
+// would make a wildcard emit every column twice.
+func TestScope_FoldNamesRegistersOneRelation(t *testing.T) {
+	scope := NewScope(nil)
+	scope.SetFoldNames(true)
+	scope.AddTable(&TableRef{Table: "t"})
+	scope.AddTable(&TableRef{Table: "T"})
+	require.Len(t, scope.Tables(), 1)
+
+	sensitive := NewScope(nil)
+	sensitive.AddTable(&TableRef{Table: "t"})
+	sensitive.AddTable(&TableRef{Table: "T"})
+	require.Len(t, sensitive.Tables(), 2)
+}
+
+// TestScope_FoldedLookupsAreDeterministic pins that a folded lookup does not answer from Go's
+// map order: two definitions that differ only in case are one definition to an engine that
+// binds them the same way, and a scope that somehow holds both still has to answer the same
+// way every time.
+func TestScope_FoldedLookupsAreDeterministic(t *testing.T) {
+	scope := NewScope(nil)
+	scope.SetFoldNames(true)
+	scope.AddCTE(&CTEDefinition{Name: "c", Columns: []string{"lower"}})
+	scope.AddCTE(&CTEDefinition{Name: "C", Columns: []string{"upper"}})
+
+	for i := 0; i < 100; i++ {
+		cte, ok := scope.findCTEQualifier("c")
+		require.True(t, ok)
+		require.Equal(t, []string{"lower"}, cte.Columns)
+	}
+}

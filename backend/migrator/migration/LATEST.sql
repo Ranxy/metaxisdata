@@ -205,6 +205,10 @@ CREATE UNIQUE INDEX idx_meta_registry_resource_guid_object_type ON meta_registry
 -- led by guid and cannot.
 CREATE INDEX idx_meta_registry_resource_object_type ON meta_registry_resource(object_type);
 CREATE INDEX idx_meta_registry_resource_search_text ON meta_registry_resource USING GIN (search_text gin_trgm_ops);
+-- Serves the lineage analyzer's lookup of the name a statement wrote against the
+-- spelling the sync registered. guid is COLLATE "C", which lowers ASCII alone, so
+-- the folding names the database default collation explicitly.
+CREATE INDEX idx_meta_registry_resource_guid_folded ON meta_registry_resource (lower(guid COLLATE "default"));
 
 CREATE TABLE meta_registry_resource_history (
     id BIGSERIAL PRIMARY KEY,

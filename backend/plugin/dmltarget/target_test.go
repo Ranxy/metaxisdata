@@ -51,6 +51,17 @@ func TestTargetsCoversEveryZeroRelationWrite(t *testing.T) {
 		{"starrocks single row", storepb.Engine_STARROCKS, "INSERT INTO t (a, b) VALUES (1, 2)", "t", false},
 		{"starrocks many rows", storepb.Engine_STARROCKS, "INSERT INTO t VALUES (1), (2)", "t", false},
 		{"starrocks bare delete", storepb.Engine_STARROCKS, "DELETE FROM t", "t", false},
+		{"mssql single row", storepb.Engine_MSSQL, "INSERT INTO t (a, b) VALUES (1, 2)", "t", false},
+		{"mssql many rows", storepb.Engine_MSSQL, "INSERT INTO t (a, b) VALUES (1, 2), (3, 4)", "t", false},
+		{"mssql bracketed names", storepb.Engine_MSSQL, "INSERT INTO [dbo].[t] ([a]) VALUES (1)", "dbo.t", false},
+		{"mssql three part name", storepb.Engine_MSSQL, "INSERT INTO db1.dbo.t (a) VALUES (1)", "db1.dbo.t", false},
+		{"mssql constant select", storepb.Engine_MSSQL, "INSERT INTO t (a) SELECT 1", "t", false},
+		{"mssql default values", storepb.Engine_MSSQL, "INSERT INTO t DEFAULT VALUES", "t", false},
+		{"mssql merge insert of a constant", storepb.Engine_MSSQL, "MERGE INTO tgt USING src ON src.id = 1 WHEN NOT MATCHED THEN INSERT (a) VALUES (1)", "tgt", false},
+		{"mssql select into a constant", storepb.Engine_MSSQL, "SELECT 1 AS x INTO t2", "t2", false},
+		{"mssql select into a qualified table", storepb.Engine_MSSQL, "SELECT 1 INTO db1.dbo.t2", "db1.dbo.t2", false},
+		{"mssql bare delete", storepb.Engine_MSSQL, "DELETE FROM t", "t", false},
+		{"mssql constant delete", storepb.Engine_MSSQL, "DELETE FROM t WHERE 1 = 1", "t", false},
 	}
 
 	for _, c := range cases {
@@ -87,6 +98,11 @@ func TestTargetsIsOnlyAskedWhenTheAnalysisIsEmpty(t *testing.T) {
 		{"multi-table delete", storepb.Engine_MYSQL, "DELETE o FROM orders o JOIN users u ON o.user_id = u.id WHERE u.status = 'deleted'"},
 		{"create table as select", storepb.Engine_MYSQL, "CREATE TABLE summary AS SELECT category, COUNT(*) AS cnt FROM products GROUP BY category"},
 		{"postgres update", storepb.Engine_POSTGRES, "UPDATE t SET a = 1 WHERE b = 2 AND c = 3"},
+		{"mssql update", storepb.Engine_MSSQL, "UPDATE t SET a = 1 WHERE b = 2"},
+		{"mssql delete by column", storepb.Engine_MSSQL, "DELETE FROM t WHERE a = 1"},
+		{"mssql merge update", storepb.Engine_MSSQL, "MERGE INTO tgt AS t USING src AS s ON t.id = s.id WHEN MATCHED THEN UPDATE SET t.a = 1"},
+		{"mssql bulk insert", storepb.Engine_MSSQL, "BULK INSERT t FROM 'file.csv' WITH (FIELDTERMINATOR = ',')"},
+		{"mssql select into", storepb.Engine_MSSQL, "SELECT a INTO t2 FROM t1"},
 	}
 
 	for _, c := range cases {
@@ -120,6 +136,12 @@ func TestTargetsRefusesWhatItCannotName(t *testing.T) {
 		{storepb.Engine_MYSQL, "DELETE FROM orders USING users WHERE orders.uid = users.id"},
 		{storepb.Engine_POSTGRES, "SELECT a FROM t"},
 		{storepb.Engine_STARROCKS, "SELECT a FROM t"},
+		{storepb.Engine_MSSQL, "SELECT a FROM t"},
+		{storepb.Engine_MSSQL, "TRUNCATE TABLE t"},
+		// Neither a table variable nor a `#temp` table is a registry object, so there is no
+		// table to name.
+		{storepb.Engine_MSSQL, "INSERT INTO @tv (a) VALUES (1)"},
+		{storepb.Engine_MSSQL, "INSERT INTO #stage (a) VALUES (1)"},
 	}
 
 	for _, c := range cases {

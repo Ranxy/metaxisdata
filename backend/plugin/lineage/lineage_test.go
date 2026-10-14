@@ -11,6 +11,7 @@ import (
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/catalog"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/engines"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/testutil"
@@ -181,4 +182,49 @@ func hasScriptEdge(relations []model.ColumnRelation, sourceTable, sourceColumn, 
 		}
 	}
 	return false
+}
+
+// Which engines bind an identifier case-insensitively is the engine's own fact, and the
+// dialect states it once: T-SQL under its default collation does, and every other engine
+// this build supports does not — MySQL on a case-sensitive filesystem and PostgreSQL's
+// unquoted names really do treat `t` and `T` as two objects. An engine nothing is
+// registered for answers false, because nothing is known about how it names things.
+func TestFoldingIsDeclaredByTheDialect(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, analyzer.FoldsIdentifiers(storepb.Engine_MSSQL))
+	for _, engine := range []storepb.Engine{
+		storepb.Engine_MYSQL,
+		storepb.Engine_TIDB,
+		storepb.Engine_MARIADB,
+		storepb.Engine_POSTGRES,
+		storepb.Engine_STARROCKS,
+		storepb.Engine_OCEANBASE,
+	} {
+		require.False(t, analyzer.FoldsIdentifiers(engine), "%s must not fold identifiers", engine)
+	}
+}
+
+// A producer outside the analyzers records edges from SQL it parses itself, so it needs the
+// registry's identity for the name the statement wrote — the reported-statement classifier
+// is the one this exists for. An engine that does not fold keeps the name it was given, and
+// so does an object the registry does not know or cannot answer for.
+func TestCanonicalIdentifierAnswersWithTheRegisteredSpelling(t *testing.T) {
+	t.Parallel()
+
+	cat := testutil.NewMemoryCatalogProvide()
+	cat.AddTable(&catalog.TableMeta{ID: model.ObjectIdentifier{Schema: "dbo", Name: "Users"}})
+	folding := lineage.NewAnalyzer(cat, engines.Registrations()...)
+
+	named := model.ObjectIdentifier{Schema: "dbo", Name: "users"}
+	require.Equal(t, model.ObjectIdentifier{Schema: "dbo", Name: "Users"},
+		folding.CanonicalIdentifier(context.Background(), storepb.Engine_MSSQL, named))
+	require.Equal(t, named,
+		folding.CanonicalIdentifier(context.Background(), storepb.Engine_MYSQL, named),
+		"an engine whose identifiers are case-sensitive must keep the name it was given")
+	require.Equal(t, model.ObjectIdentifier{Schema: "dbo", Name: "absent"},
+		folding.CanonicalIdentifier(context.Background(), storepb.Engine_MSSQL, model.ObjectIdentifier{Schema: "dbo", Name: "absent"}),
+		"an object the registry does not know keeps the name the statement wrote")
+	require.Equal(t, named, analyzer.CanonicalIdentifier(context.Background(), storepb.Engine_MSSQL, named),
+		"a caller with no catalog cannot resolve anything, and records the name as written")
 }

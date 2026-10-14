@@ -55,6 +55,7 @@ func TestSanitizedStatementsKeepTheirLineage(t *testing.T) {
 		"mysql":      storepb.Engine_MYSQL,
 		"postgresql": storepb.Engine_POSTGRES,
 		"starrocks":  storepb.Engine_STARROCKS,
+		"mssql":      storepb.Engine_MSSQL,
 	}
 
 	var (

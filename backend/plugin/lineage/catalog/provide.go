@@ -10,6 +10,30 @@ import (
 
 type analysisContextKey struct{}
 
+type identifierFoldingKey struct{}
+
+// WithIdentifierFolding records that the analysis's engine binds an identifier by its
+// content rather than by its bytes, so a name the registry registered as `Users` is the
+// object a statement named `users`. A dialect sets it for the engines whose identifiers
+// are case-insensitive — T-SQL under its default collation is the one this build has — and
+// it is the same fact that dialect applies to the scope resolver, which binds references by
+// the rule its engine uses (`scope.SetFoldNames`). Here it reaches the registry lookup, so
+// a name the statement spelled in another case still finds the object.
+//
+// It is never set by a caller of the lineage API: the engine is the fact, and the dialect
+// is the one place that knows it. An engine whose identifiers are case-sensitive —
+// MySQL on a case-sensitive filesystem, PostgreSQL's quoted aliases — must not set it.
+func WithIdentifierFolding(ctx context.Context) context.Context {
+	return context.WithValue(ctx, identifierFoldingKey{}, true)
+}
+
+// IdentifierFolding reports whether the analysis's engine binds identifiers
+// case-insensitively. The zero value, false, is the strict byte comparison.
+func IdentifierFolding(ctx context.Context) bool {
+	fold, ok := ctx.Value(identifierFoldingKey{}).(bool)
+	return ok && fold
+}
+
 // AnalysisContext carries the default instance/database/schema for unqualified
 // object identifiers produced during SQL lineage analysis.
 type AnalysisContext struct {
@@ -53,6 +77,10 @@ type Provide interface {
 	GetTable(ctx context.Context, id model.ObjectIdentifier) (*TableMeta, error)
 }
 
+// TableMeta is what the registry knows about a relation. ID is the identity the
+// registry registered, which is the spelling it holds the object under: a lookup that
+// had to fold the name answers with the registered one, so a caller records the object
+// the registry has rather than the name the statement wrote.
 type TableMeta struct {
 	ID      model.ObjectIdentifier
 	Columns []ColumnMeta
@@ -63,6 +91,13 @@ type ColumnMeta struct {
 	Nullable bool
 }
 
+// metaRegistryReader is the part of the store this package reads. It is an interface so
+// that the lookup decisions — an exact miss followed by a folded one, and nothing else —
+// are testable without a database.
+type metaRegistryReader interface {
+	GetMetaRegistry(ctx context.Context, find *store.FindMetaRegistryResourceMessage) (*store.MetaRegistryResource, error)
+}
+
 func NewCatalogProvide(store *store.Store) Provide {
 	return &provideImpl{
 		store: store,
@@ -70,19 +105,34 @@ func NewCatalogProvide(store *store.Store) Provide {
 }
 
 type provideImpl struct {
-	store *store.Store
+	store metaRegistryReader
 }
 
+// GetTable returns the metadata for id, consulting the wrapped provider at most once per
+// identifier. A nil result with a nil error means the registry does not know the object,
+// which is a normal answer.
+//
+// An engine that binds identifiers case-insensitively gets a second chance: the name the
+// statement wrote may differ from the registered spelling in case alone, and the exact
+// probe cannot see through that. The fallback runs only after an exact miss, so an object
+// the registry really holds under two spellings settles on the exact one, and a registry
+// that answers with neither (impossible for a statement that ran, but a stored definition
+// outlives the collation it was written under) reports ambiguity instead of a guess.
 func (p *provideImpl) GetTable(ctx context.Context, id model.ObjectIdentifier) (*TableMeta, error) {
 	// Fill missing parts from AnalysisContext so unqualified names resolve correctly.
 	if ac, ok := GetAnalysisContext(ctx); ok {
 		id = ac.Complete(id)
 	}
 
-	guid := id.GUID()
-	res, err := p.store.GetMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{GUID: &guid})
+	res, err := p.lookup(ctx, id, false)
 	if err != nil {
 		return nil, err
+	}
+	if res == nil && IdentifierFolding(ctx) {
+		res, err = p.lookup(ctx, id, true)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if res == nil {
 		return nil, nil
@@ -91,7 +141,26 @@ func (p *provideImpl) GetTable(ctx context.Context, id model.ObjectIdentifier) (
 	if !known {
 		return nil, nil
 	}
-	return &TableMeta{ID: id, Columns: columns}, nil
+	// The registered identity, not the requested one. They are the same identifier when
+	// the exact probe answered, so only a folded lookup can tell the two apart — and that
+	// is exactly the case where the difference is the point.
+	identity, ok := model.GUIDToObjectIdentifier(res.GUID)
+	if !ok {
+		identity = id
+	}
+	return &TableMeta{ID: identity, Columns: columns}, nil
+}
+
+// lookup asks the registry for one identifier, by its bytes or by a comparison that
+// ignores case. A folded lookup folds both sides in the database, so the collation that
+// decides which characters fold is the database's, not this process's.
+func (p *provideImpl) lookup(ctx context.Context, id model.ObjectIdentifier, folded bool) (*store.MetaRegistryResource, error) {
+	guid := id.GUID()
+	find := &store.FindMetaRegistryResourceMessage{GUID: &guid}
+	if folded {
+		find = &store.FindMetaRegistryResourceMessage{GUIDFolded: &guid}
+	}
+	return p.store.GetMetaRegistry(ctx, find)
 }
 
 // outputColumns returns the columns a registered relation exposes to a

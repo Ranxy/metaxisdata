@@ -1,6 +1,10 @@
 package scope
 
-import "github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
+import (
+	"strings"
+
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
+)
 
 // ColumnRef represents a reference to a column in the query.
 type ColumnRef struct {
@@ -52,11 +56,25 @@ func (r *TableRef) addressName() string {
 // reference qualifier has to agree with the relation's own, except that a
 // relation registered without a qualifier accepts any, because the analyzer does
 // not know which database or schema an unqualified FROM clause resolves in.
-func (r *TableRef) addresses(key RelationKey) bool {
-	if key.Name != r.addressName() {
+//
+// fold says whether the engine binds identifiers case-insensitively; see
+// Scope.SetFoldNames.
+func (r *TableRef) addresses(key RelationKey, fold bool) bool {
+	if !namesMatch(key.Name, r.addressName(), fold) {
 		return false
 	}
-	return key.Qualifier == "" || r.Schema == "" || key.Qualifier == r.Schema
+	return key.Qualifier == "" || r.Schema == "" || namesMatch(key.Qualifier, r.Schema, fold)
+}
+
+// namesMatch compares two identifier names the way the engine's scope binds them: byte for
+// byte, or case-insensitively when the dialect's identifiers are, which is what
+// Scope.SetFoldNames decides. A column name is compared the same way wherever it is matched
+// (`resolveInScope`), so this is one rule for names and columns alike.
+func namesMatch(a, b string, fold bool) bool {
+	if fold {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
 }
 
 // RelationKeyOf builds the key of a relation endpoint recorded on an edge. The

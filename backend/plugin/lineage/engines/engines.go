@@ -14,6 +14,7 @@ package engines
 import (
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/mariadb"
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/mssql"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/mysql"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/postgresql"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/starrocks"
@@ -30,5 +31,6 @@ func Registrations() []lineage.EngineRegistration {
 		mariadb.Registration(),
 		postgresql.Registration(),
 		starrocks.Registration(),
+		mssql.Registration(),
 	}
 }

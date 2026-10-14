@@ -1,0 +1,49 @@
+name: TestSelectIntoLineageTable
+cases:
+    - name: select into creates the named table
+      sql: SELECT a, b INTO t2 FROM t1
+      expected_edges:
+        - from_table: t1
+          from_field: a
+          to_table: t2
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+        - from_table: t1
+          from_field: b
+          to_table: t2
+          to_field: b
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+    - name: select into with an expression
+      sql: SELECT a + 1 AS b INTO t2 FROM t1
+      expected_edges:
+        - from_table: t1
+          from_field: a
+          to_table: t2
+          to_field: b
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: OPERATOR
+              expression: a + 1
+              op_type: ADDITION
+    - name: select into a temporary table is reported as a gap
+      sql: 'SELECT a INTO #stage FROM t1'
+      expect_error: true
+      error_contains: 'a target the registry cannot address: the temporary table #stage'
+      expected_edges:
+        []
+    - name: bulk insert reads a file
+      sql: 'BULK INSERT t FROM ''file.csv'' WITH (FIELDTERMINATOR = '','')'
+      expected_edges:
+        - from_table: __file__
+          from_field: '*'
+          to_table: t
+          to_field: '*'
+          relation_type: direct
+          has_transform: false
+          is_temp: false

@@ -71,3 +71,21 @@ func StrToObjectIdentifier(s string) ObjectIdentifier {
 		return ObjectIdentifier{Name: s}
 	}
 }
+
+// GUIDToObjectIdentifier turns a meta GUID back into the identifier it addresses, so a
+// caller that looked an object up can record the identity the registry knows — the spelling
+// it registered — rather than the one it asked with. It reports false for a GUID that does
+// not name an object of its own: a GUID has one segment per identifier part, and a
+// scope-only GUID has fewer.
+func GUIDToObjectIdentifier(guid string) (ObjectIdentifier, bool) {
+	parts := common.SplitMetaGUID(guid)
+	if len(parts) != 4 || parts[3] == "" {
+		return ObjectIdentifier{}, false
+	}
+	return ObjectIdentifier{
+		InstanceID: parts[0],
+		Database:   parts[1],
+		Schema:     parts[2],
+		Name:       parts[3],
+	}, true
+}

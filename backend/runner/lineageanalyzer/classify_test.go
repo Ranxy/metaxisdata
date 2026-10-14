@@ -1,19 +1,30 @@
 package lineageanalyzer
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/catalog"
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/engines"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/testutil"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
 // classifyContext is the scope a reported statement is resolved against: the statement itself
 // only ever names objects down to database/schema level.
 var classifyContext = catalog.AnalysisContext{InstanceID: "inst-1", Database: "shop"}
+
+// classifier is the runner a reported statement is classified by. The classifier reads the
+// registry through the lineage analyzers the process assembled, so a case that needs the
+// registry's identity registers it in the catalog and leaves the store out.
+func classifier(cat catalog.Provide) *Analyzer {
+	return &Analyzer{lineage: lineage.NewAnalyzer(cat, engines.Registrations()...)}
+}
 
 const classifyStatementGUID = "inst-1;shop;;__application_sql__/abc123"
 
@@ -98,7 +109,7 @@ func TestClassifyApplicationSQL(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 
-			kind, edges := classifyApplicationSQL(classifyContext, c.engine, c.definition, c.relations, classifyStatementGUID)
+			kind, edges := classifier(nil).classifyApplicationSQL(context.Background(), classifyContext, c.engine, c.definition, c.relations, classifyStatementGUID)
 			require.Equal(t, c.wantKind, kind)
 
 			var targets []string
@@ -124,7 +135,7 @@ func TestClassifyApplicationSQL(t *testing.T) {
 func TestClassifyApplicationSQLNeverPointsAtItself(t *testing.T) {
 	t.Parallel()
 
-	_, edges := classifyApplicationSQL(classifyContext, storepb.Engine_MYSQL,
+	_, edges := classifier(nil).classifyApplicationSQL(context.Background(), classifyContext, storepb.Engine_MYSQL,
 		"INSERT INTO __application_sql__/abc123 (a) VALUES (?)", nil, classifyStatementGUID)
 	require.Empty(t, edges)
 }
@@ -134,8 +145,36 @@ func TestClassifyApplicationSQLNeverPointsAtItself(t *testing.T) {
 func TestClassifyApplicationSQLDeduplicatesTargets(t *testing.T) {
 	t.Parallel()
 
-	kind, edges := classifyApplicationSQL(classifyContext, storepb.Engine_MYSQL,
+	kind, edges := classifier(nil).classifyApplicationSQL(context.Background(), classifyContext, storepb.Engine_MYSQL,
 		"INSERT INTO orders (a) VALUES (?), (?)", nil, classifyStatementGUID)
 	require.Equal(t, store.ApplicationSQLKindWrite, kind)
 	require.Len(t, edges, 1)
+}
+
+// TestClassifyApplicationSQLRecordsTheIdentityTheRegistryKnows pins the one resolution this
+// classifier has to do itself. The analyzer produced no relation for this statement — every
+// value came from a placeholder — so the target is read from the SQL, and an engine that binds
+// identifiers case-insensitively may have named an object the registry holds under another
+// spelling. An edge into that GUID would point at nothing: the graph would show the statement
+// writing a table that does not exist instead of the one it writes.
+func TestClassifyApplicationSQLRecordsTheIdentityTheRegistryKnows(t *testing.T) {
+	t.Parallel()
+
+	cat := testutil.NewMemoryCatalogProvide()
+	cat.AddTable(&catalog.TableMeta{ID: model.ObjectIdentifier{InstanceID: "inst-1", Database: "shop", Name: "Orders"}})
+	runner := classifier(cat)
+
+	const definition = "INSERT INTO orders (id) VALUES (?)"
+	kind, edges := runner.classifyApplicationSQL(context.Background(), classifyContext, storepb.Engine_MSSQL,
+		definition, nil, classifyStatementGUID)
+	require.Equal(t, store.ApplicationSQLKindWrite, kind)
+	require.Len(t, edges, 1)
+	require.Equal(t, "inst-1;shop;;Orders", edges[0].TargetGUID)
+
+	// The same statement reported by an engine whose identifiers are case-sensitive keeps the
+	// name it wrote: that name is the object, whether the registry has it or not.
+	_, edges = runner.classifyApplicationSQL(context.Background(), classifyContext, storepb.Engine_MYSQL,
+		definition, nil, classifyStatementGUID)
+	require.Len(t, edges, 1)
+	require.Equal(t, "inst-1;shop;;orders", edges[0].TargetGUID)
 }
