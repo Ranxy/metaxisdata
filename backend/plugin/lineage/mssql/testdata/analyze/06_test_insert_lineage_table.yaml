@@ -100,3 +100,19 @@ cases:
           relation_type: direct
           has_transform: false
           is_temp: false
+    # A data-modification target is settled where a FROM item is, so an object the statement spelled
+    # in another case is recorded as the object the registry has rather than as a meta GUID that does
+    # not exist.
+    - name: an insert target named in another case is recorded as the registry knows it
+      sql: INSERT INTO logs (msg) SELECT name FROM t
+      catalog:
+        tables:
+          Logs: [msg]
+      expected_edges:
+        - from_table: t
+          from_field: name
+          to_table: Logs
+          to_field: msg
+          relation_type: direct
+          has_transform: false
+          is_temp: false

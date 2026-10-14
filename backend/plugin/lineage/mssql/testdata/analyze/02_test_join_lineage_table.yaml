@@ -283,3 +283,39 @@ cases:
           relation_type: direct
           has_transform: false
           is_temp: true
+    # The other half of the case rule: an engine that binds identifiers case-insensitively reaches
+    # a registered object through any spelling of its name, and the edge has to name that object.
+    # A meta GUID is compared byte for byte, so a relation recorded in another case is a relation
+    # the registry does not have, and the graph draws a node beside the object instead of it.
+    - name: a relation named in another case is recorded as the registry knows it
+      sql: SELECT u.ID FROM dbo.users AS u
+      catalog:
+        schemas:
+          dbo:
+            Users: [ID, Name]
+      expected_edges:
+        - from_table: Users
+          from_schema: dbo
+          from_field: ID
+          to_table: __result__
+          to_field: ID
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+    # Nothing is invented: a relation the registry does not hold under any spelling keeps the name
+    # and the schema the statement wrote, and its columns stay as written too.
+    - name: a relation the registry does not know keeps the statement's spelling
+      sql: SELECT id FROM other.users
+      catalog:
+        schemas:
+          dbo:
+            Users: [ID]
+      expected_edges:
+        - from_table: users
+          from_schema: other
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          has_transform: false
+          is_temp: true

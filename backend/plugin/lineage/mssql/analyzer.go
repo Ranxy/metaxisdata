@@ -464,6 +464,7 @@ func (a *Analyzer) addBaseTable(ref *nodes.TableRef) {
 	}
 
 	tableRef := &scope.TableRef{Schema: ref.Schema, Table: ref.Object, Alias: alias}
+	a.canonicalRelation(tableRef)
 	a.attachColumnLookup(tableRef)
 	a.currentScope().AddTable(tableRef)
 }
@@ -678,7 +679,33 @@ func (a *Analyzer) targetAddress(te nodes.Node) (schema, table string, ok bool) 
 	if strings.HasPrefix(ref.Object, "#") {
 		return "", "", false
 	}
-	return ref.Schema, ref.Object, true
+	tableRef := &scope.TableRef{Schema: ref.Schema, Table: ref.Object}
+	a.canonicalRelation(tableRef)
+	return tableRef.Schema, tableRef.Table, true
+}
+
+// canonicalRelation rewrites a stored relation's address to the identity the registry knows it
+// by, which is the spelling the sync registered rather than the one the statement wrote.
+//
+// This dialect binds identifiers case-insensitively, so `FROM users` and the registered `Users`
+// are one object — but an edge records a name, and the registry is addressed by a meta GUID that
+// is compared byte for byte. Recording the statement's spelling therefore named an object the
+// registry does not have, and the graph drew a node beside the object instead of the object. The
+// two registration points for stored relations — a FROM item and a data-modification target —
+// are where the address is settled, and every edge reads it from there afterwards.
+//
+// A relation the registry does not know keeps the statement's spelling, and so does one whose
+// lookup failed: a name nobody could resolve is better recorded as written than dropped, and the
+// failed lookup is already reported as a gap by catalogTable.
+func (a *Analyzer) canonicalRelation(tableRef *scope.TableRef) {
+	if a.catalog == nil || tableRef == nil || tableRef.Table == "" {
+		return
+	}
+	meta := a.catalogTable(tableRef)
+	if meta == nil || meta.ID.Name == "" {
+		return
+	}
+	tableRef.Schema, tableRef.Table = meta.ID.Schema, meta.ID.Name
 }
 
 // registerTargetRelation registers a data-modification target in the current scope,

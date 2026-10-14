@@ -55,5 +55,13 @@ func (c *Cache) GetTable(ctx context.Context, id model.ObjectIdentifier) (*Table
 		return nil, err
 	}
 	c.entries[id] = meta
+	// The provider answers with the identity the registry knows, which is the object a
+	// caller records; the same metadata is what a later lookup under that identity gets.
+	// An engine that binds identifiers case-insensitively makes the two names differ, and
+	// asking the registry twice for one object would be the analysis paying for its own
+	// correction.
+	if meta != nil && meta.ID != id {
+		c.entries[meta.ID] = meta
+	}
 	return meta, nil
 }

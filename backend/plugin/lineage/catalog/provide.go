@@ -29,8 +29,8 @@ func WithIdentifierFolding(ctx context.Context) context.Context {
 // IdentifierFolding reports whether the analysis's engine binds identifiers
 // case-insensitively. The zero value, false, is the strict byte comparison.
 func IdentifierFolding(ctx context.Context) bool {
-	fold, _ := ctx.Value(identifierFoldingKey{}).(bool)
-	return fold
+	fold, ok := ctx.Value(identifierFoldingKey{}).(bool)
+	return ok && fold
 }
 
 // AnalysisContext carries the default instance/database/schema for unqualified

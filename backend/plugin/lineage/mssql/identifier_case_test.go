@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/catalog"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/testutil"
@@ -68,23 +69,66 @@ func TestPredicateColumnTakesTheRegisteredSpelling(t *testing.T) {
 	}
 }
 
-// TestFoldReachesTheCatalogButNotTheRecordedName pins the half of the rule that is in place
-// so far. Folding is the engine's rule, and it reaches the catalog layer too: a relation
-// written `users` is looked up as the `Users` the registry holds, so its columns are known and
-// a column takes the registered spelling.
-//
-// The relation's own name is still the one the statement wrote. The registry is addressed by
-// meta GUID, and only a lookup that answers with the registered identity can turn the name
-// into the object; until an edge records that identity, a table written in another case stays
-// a name the registry does not have. See .agents/docs/mssql-lineage.md.
-func TestFoldReachesTheCatalogButNotTheRecordedName(t *testing.T) {
+// TestARelationIsRecordedUnderTheNameTheRegistryKnows pins the rule the catalog lookup could not
+// carry before it could fold: SQL Server binds an identifier by the database collation, so
+// `users` is the relation the registry holds as `Users`, and the edge has to name that object.
+// Recording the statement's spelling addressed a meta GUID the registry does not have, and the
+// graph drew a floating node beside the object instead of the object.
+func TestARelationIsRecordedUnderTheNameTheRegistryKnows(t *testing.T) {
 	t.Parallel()
 
 	relations, err := analyzeSQL("SELECT id FROM users", catalogOf("Users", "ID", "Name"))
 	require.NoError(t, err)
 	require.Len(t, relations, 1)
+	require.Equal(t, "Users", relations[0].Source.Table.Name)
+	require.Equal(t, "ID", relations[0].Source.Name)
+
+	// A data-modification target is a stored relation too, and it is settled at the same
+	// place, so the edge leaving the statement names the object the statement wrote.
+	relations, err = analyzeSQL("INSERT INTO logs (msg) SELECT name FROM t", catalogOf("Logs", "msg"))
+	require.NoError(t, err)
+	require.NotEmpty(t, relations)
+	for _, relation := range relations {
+		require.Equal(t, "Logs", relation.Target.Table.Name, "the target kept the statement's spelling")
+	}
+}
+
+// TestANameTheRegistryDoesNotKnowStaysAsWritten pins the other side of the rule: nothing is
+// invented. A relation no spelling of which the registry holds keeps the name the statement
+// wrote, and the schema the statement wrote with it.
+func TestANameTheRegistryDoesNotKnowStaysAsWritten(t *testing.T) {
+	t.Parallel()
+
+	relations, err := analyzeSQL("SELECT id FROM other.users", catalogOf("Users", "ID"))
+	require.NoError(t, err)
+	require.Len(t, relations, 1)
 	require.Equal(t, "users", relations[0].Source.Table.Name)
-	require.Equal(t, "ID", relations[0].Source.Name, "the columns are the registry's, though the relation is not")
+	require.Equal(t, "other", relations[0].Source.Table.Schema)
+	require.Equal(t, "id", relations[0].Source.Name)
+}
+
+// TestAnAmbiguousFoldedNameIsReportedAndNotChosen pins the one answer the lookup must not give.
+// A case-sensitive collation can hold `Users` and `USERS` as two objects, and then a third
+// spelling names neither of them; picking one would be an edge into the wrong object, so the
+// analysis reports the gap and keeps the name as written.
+func TestAnAmbiguousFoldedNameIsReportedAndNotChosen(t *testing.T) {
+	t.Parallel()
+
+	cat := testutil.NewMemoryCatalogProvide()
+	for _, name := range []string{"Users", "USERS"} {
+		cat.AddTable(&catalog.TableMeta{
+			ID:      model.ObjectIdentifier{Name: name},
+			Columns: []catalog.ColumnMeta{{Name: "ID"}},
+		})
+	}
+
+	relations, err := analyzeSQL("SELECT id FROM users", cat)
+	var unsupported *lineage.UnsupportedStatementError
+	require.ErrorAs(t, err, &unsupported)
+	require.Contains(t, unsupported.Error(), "catalog lookup failed for users")
+	require.Len(t, relations, 1)
+	require.Equal(t, "users", relations[0].Source.Table.Name)
+	require.Equal(t, "id", relations[0].Source.Name)
 }
 
 // TestClauseKeywordAliasGuard pins both halves of the alias workaround. The parser consumes a
