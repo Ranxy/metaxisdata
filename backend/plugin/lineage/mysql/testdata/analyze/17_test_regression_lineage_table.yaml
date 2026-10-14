@@ -851,3 +851,12 @@ cases:
       expect_error: true
       error_contains: "unresolved reference in a wildcard qualifier: unknown_alias"
       expected_edges: []
+
+    # An executable comment that never closes: the MariaDB and TiDB lexers panic on it, so the
+    # family body converts the panic into the parse failure it promises. MySQL's own lexer
+    # reports an unterminated comment for the same statement. See
+    # .agents/docs/omni-upstream-defects.md.
+    - name: an unterminated executable comment is a parse failure, not a panic
+      sql: SELECT 1 /*! a /* b */ FROM t
+      expect_error: true
+      error_contains: "failed to parse MySQL SQL"
