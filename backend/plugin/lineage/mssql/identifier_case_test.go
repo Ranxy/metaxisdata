@@ -68,20 +68,23 @@ func TestPredicateColumnTakesTheRegisteredSpelling(t *testing.T) {
 	}
 }
 
-// TestTableNameCaseIsNotFolded pins the half of the rule this dialect cannot carry. A
-// relation's name is looked up in the registry by its meta GUID, which is case-sensitive, so
-// a table written in another case is a table the registry does not know — the edge names what
-// the statement wrote, and nothing canonicalizes it. Resolving it needs a case-insensitive
-// registry lookup, which is a store change rather than a dialect one; see
-// .agents/docs/mssql-lineage.md.
-func TestTableNameCaseIsNotFolded(t *testing.T) {
+// TestFoldReachesTheCatalogButNotTheRecordedName pins the half of the rule that is in place
+// so far. Folding is the engine's rule, and it reaches the catalog layer too: a relation
+// written `users` is looked up as the `Users` the registry holds, so its columns are known and
+// a column takes the registered spelling.
+//
+// The relation's own name is still the one the statement wrote. The registry is addressed by
+// meta GUID, and only a lookup that answers with the registered identity can turn the name
+// into the object; until an edge records that identity, a table written in another case stays
+// a name the registry does not have. See .agents/docs/mssql-lineage.md.
+func TestFoldReachesTheCatalogButNotTheRecordedName(t *testing.T) {
 	t.Parallel()
 
 	relations, err := analyzeSQL("SELECT id FROM users", catalogOf("Users", "ID", "Name"))
 	require.NoError(t, err)
 	require.Len(t, relations, 1)
 	require.Equal(t, "users", relations[0].Source.Table.Name)
-	require.Equal(t, "id", relations[0].Source.Name)
+	require.Equal(t, "ID", relations[0].Source.Name, "the columns are the registry's, though the relation is not")
 }
 
 // TestClauseKeywordAliasGuard pins both halves of the alias workaround. The parser consumes a

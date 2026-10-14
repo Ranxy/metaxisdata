@@ -53,11 +53,20 @@ const (
 // register itself into package state.
 func Registration() lineage.EngineRegistration {
 	return lineage.EngineRegistration{
-		Engine:  storepb.Engine_MSSQL,
-		Analyze: Analyze,
-		Split:   SplitStatements,
+		Engine:              storepb.Engine_MSSQL,
+		Analyze:             Analyze,
+		Split:               SplitStatements,
+		FoldIdentifierNames: identifierNamesAreCaseInsensitive,
 	}
 }
+
+// identifierNamesAreCaseInsensitive is the dialect's one statement of a fact two layers
+// obey. T-SQL binds an identifier by the database collation, which is case-insensitive by
+// default, so `SELECT T.a FROM t` and a CTE named in another case than it was written all
+// name the relation they were written as; the scope resolves names by this rule, and the
+// catalog layer folds its registry lookups by it, so both agree on which object a
+// statement named. Registration exports it so a caller outside this package can ask too.
+const identifierNamesAreCaseInsensitive = true
 
 // Analyzer analyzes one T-SQL statement.
 type Analyzer struct {
@@ -102,9 +111,14 @@ func NewAnalyzer(ctx context.Context, sql string, catalogProvide catalog.Provide
 	// default, so `SELECT T.a FROM t`, `SELECT X.a FROM t AS x` and a CTE named in another case
 	// than it was written all name the relation they were written as. The scope resolves names
 	// byte for byte unless a dialect says otherwise, and this is the dialect that does; every
-	// child scope inherits it.
+	// child scope inherits it. The same fact reaches the catalog layer, which folds the
+	// registry lookups it makes for this analysis: without it a name the statement spelled in
+	// another case than the sync registered would find no metadata at all.
+	if identifierNamesAreCaseInsensitive {
+		ctx = catalog.WithIdentifierFolding(ctx)
+	}
 	root := scope.NewScope(nil)
-	root.SetFoldNames(true)
+	root.SetFoldNames(identifierNamesAreCaseInsensitive)
 	analyzer := &Analyzer{
 		ctx:         ctx,
 		sql:         sql,

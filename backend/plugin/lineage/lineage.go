@@ -64,6 +64,16 @@ type EngineRegistration struct {
 	Analyze AnalyzeRelationFunc
 	// Split may be nil for an analyzer defined for a whole script.
 	Split ScriptSplitter
+	// FoldIdentifierNames declares that the engine binds an identifier by its content
+	// rather than by its bytes, so `users` and `Users` name one object. It is a fact
+	// about the engine's SQL dialect, and the dialect is the only one that can state it:
+	// T-SQL under its default collation sets it, MySQL on a case-sensitive filesystem
+	// and PostgreSQL's unquoted names do not.
+	//
+	// The dialect's own analyzer obeys it too — the scope resolver compares names by the
+	// same rule — and this field is how the layers above learn it: see
+	// Analyzer.FoldsIdentifiers and Analyzer.CanonicalIdentifier.
+	FoldIdentifierNames bool
 }
 
 // Analyzer resolves SQL against an explicit set of per-engine analyzers and the
@@ -82,6 +92,10 @@ type Analyzer struct {
 type engineAnalyzer struct {
 	analyze AnalyzeRelationFunc
 	split   ScriptSplitter
+	// foldIdentifierNames is the registration's own answer to
+	// EngineRegistration.FoldIdentifierNames, kept so a caller can ask the engine's rule
+	// without an analysis.
+	foldIdentifierNames bool
 }
 
 // NewAnalyzer assembles an analyzer over cat and an explicit set of engines. A
@@ -94,8 +108,9 @@ func NewAnalyzer(cat catalog.Provide, registrations ...EngineRegistration) *Anal
 			panic(fmt.Sprintf("two lineage analyzers registered for %s", registration.Engine))
 		}
 		engines[registration.Engine] = engineAnalyzer{
-			analyze: registration.Analyze,
-			split:   registration.Split,
+			analyze:             registration.Analyze,
+			split:               registration.Split,
+			foldIdentifierNames: registration.FoldIdentifierNames,
 		}
 	}
 	return &Analyzer{catalog: cat, engines: engines}
@@ -105,6 +120,37 @@ func NewAnalyzer(cat catalog.Provide, registrations ...EngineRegistration) *Anal
 func (a *Analyzer) Supports(engine storepb.Engine) bool {
 	_, ok := a.engines[engine]
 	return ok
+}
+
+// FoldsIdentifiers reports whether engine binds an identifier case-insensitively. A
+// caller that records an object a statement named asks here before comparing that name
+// with the registry's own spelling; an engine that is not registered answers false,
+// because nothing is known about how it names things.
+func (a *Analyzer) FoldsIdentifiers(engine storepb.Engine) bool {
+	return a.engines[engine].foldIdentifierNames
+}
+
+// CanonicalIdentifier returns the registry's identity for an object a statement names,
+// which is the spelling the registry registered it under. A producer outside the
+// analyzers — the reported-statement classifier, for one — records edges from SQL it
+// parses itself, and an engine that binds identifiers case-insensitively may have it
+// name `users` for the object the registry holds as `Users`; without this the edge would
+// point at a GUID the registry does not have, and the graph would draw a node beside the
+// object it belongs to instead of the object itself.
+//
+// It answers id unchanged when the engine does not fold, when the registry does not know
+// the object, or when the registry could not be read: a name no one can resolve is better
+// recorded as written than dropped, and the analyzer reports the catalog failure as its
+// own gap.
+func (a *Analyzer) CanonicalIdentifier(ctx context.Context, engine storepb.Engine, id model.ObjectIdentifier) model.ObjectIdentifier {
+	if a.catalog == nil || !a.FoldsIdentifiers(engine) {
+		return id
+	}
+	meta, err := a.catalog.GetTable(catalog.WithIdentifierFolding(ctx), id)
+	if err != nil || meta == nil || meta.ID.Name == "" {
+		return id
+	}
+	return meta.ID
 }
 
 // SplitScript splits a script into the statements it holds, using engine's splitter.
