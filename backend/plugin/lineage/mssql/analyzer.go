@@ -134,9 +134,8 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 	}
 	// A WITH clause in front of a data-modification statement is not attached to it:
 	// omni reads the CTE list, finds no SELECT to attach it to, and leaves an empty
-	// statement followed by the statement it belonged to. The definitions are gone by
-	// the time the analyzer sees the tree, so what is dropped is reported rather than
-	// silently analyzed without them.
+	// statement followed by the statement it belonged to. The list is recovered from the
+	// source text below, before the statement is analyzed; see withclause.go.
 	cteCarrier := len(statements) > 1 && nodeOrNil(statements[0].AST) == nil && isDataModification(statements[1].AST)
 
 	parsed := make([]nodes.Node, 0, len(statements))
@@ -151,11 +150,14 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 	}
 
 	if cteCarrier {
-		// The CTE definitions are gone by the time the tree exists, so a reference
-		// anywhere in the statement may name one of them and no edge from it can be
-		// trusted. That is the boundary a parse failure sits on, not the one a coverage
-		// gap does.
-		return nil, errors.New("analysis errors: a WITH clause in front of a data-modification statement is dropped by the T-SQL parser")
+		// The parser dropped the CTE list, so it is recovered from the source text before the
+		// statement is analyzed: a reference anywhere in it may name a definition that is not
+		// in the tree, and an edge from a statement that lost part of its text cannot be
+		// trusted. A recovery that fails is still a hard failure, not a gap.
+		withClause, recovered := recoverWithClause(a.sql)
+		if !recovered || !attachWithClause(parsed[0], withClause) {
+			return nil, errors.New("analysis errors: a WITH clause in front of a data-modification statement is dropped by the T-SQL parser")
+		}
 	}
 
 	a.dispatch(parsed[0])

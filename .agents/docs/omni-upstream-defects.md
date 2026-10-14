@@ -335,8 +335,14 @@ unaffected. Consequences the dialect had to handle:
 - `Statement.Empty()` (`AST == nil`) answers false for the nil node, so a filter
   written on it keeps a statement that has no content; the dialect filters on a nil
   check that sees through the interface instead.
-- Because the CTE definitions are gone, no edge from the statement can be trusted.
-  The dialect fails the statement whole rather than reporting a partial analysis.
+- Because the CTE definitions are gone, no edge from the statement can be trusted. The
+  dialect recovers the list instead of giving the statement up: it cuts the source text at
+  the first top-level `INSERT` / `UPDATE` / `DELETE` / `MERGE` keyword, parses that prefix
+  with a `SELECT 1` appended to obtain the `WithClause` node, and attaches it to the
+  statement the parser did hand it (`backend/plugin/lineage/mssql/withclause.go`, pinned by
+  `withclause_test.go` and four corpus cases). The prefix is a prefix of the original text,
+  so the offsets inside the CTE bodies still address the statement being analyzed. Nothing
+  is patched or reported upstream; if the recovery fails, the statement fails whole.
 - The text spans are unusable for the DML item, so the splitter verifies every span
   it is handed and falls back to a lexical scan when one is empty.
 

@@ -50,7 +50,7 @@ MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关�
 
 **上游语法缺口(硬失败,不建模)**:`JOIN … USING (…)`、`NATURAL JOIN`(静默误读为别名,已在本地复核)、`OPENROWSET(BULK …)`、表值函数的带类型列定义、`CREATE VIEW v AS (SELECT …)` 的括号体。明细见 [omni-upstream-defects.md](omni-upstream-defects.md) §10。
 
-**`WITH` 在 DML 之前**:omni 读到 CTE 列表后若下一个词不是 SELECT,就丢掉整段 `WITH` 并留下一个空语句,紧随的 INSERT/UPDATE/DELETE 其文本跨度也会变成空。CTE 定义在分析器看到树之前就不存在了,任何引用都可能指向其中一个,因此**整条语句硬失败**(不是"缺口"),避免用错误的边冒充部分结果。
+**`WITH` 在 DML 之前**:omni 读到 CTE 列表后若下一个词不是 SELECT,就丢掉整段 `WITH` 并留下一个空语句,紧随的 INSERT/UPDATE/DELETE/MERGE 其文本跨度也会变成空。CTE 定义在树里不可达,任何引用都可能指向其中一个,所以方言包在分析前**从源文本恢复 CTE 列表**(`withclause.go`:切出第一个顶层 DML 关键字之前的前缀,补一个 `SELECT 1` 解析出 `WithClause`,再挂回该语句)。前缀是原文本的前缀,因此 CTE 体内的偏移量仍然有效。恢复失败才硬失败——文本已被丢弃一部分时不能拿错误的边冒充部分结果。做法与 StarRocks 的 `viewbody.go` 同类。
 
 ## 切分(ScriptSplitter)
 
@@ -65,7 +65,7 @@ MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关�
 | 场景 | 行为 |
 | --- | --- |
 | omni 解析失败(含括号视图体、OPENROWSET(BULK)) | 硬失败:无部分结果;runner 清该对象血缘 + `error_message` |
-| `WITH` + DML(上游丢 CTE) | 硬失败,理由是文本已被丢弃一部分,不可信 |
+| `WITH` + DML(上游丢 CTE) | 从源文本恢复 CTE 列表后正常分析;恢复失败才硬失败(文本已被丢弃一部分,不可信) |
 | 某子句没建模(表变量、INSERT EXEC、SEMANTIC 表) | 部分分析:兄弟边照存,缺口写 version 行 / RPC diagnostics |
 | 引用解析不到(未解析列 / 通配符限定符 / 跨库名) | 部分分析 + 对应 `model.Diagnostic` |
 | catalog 查询失败 | `DiagnosticCatalogUnavailable` + 通配符回退,分析继续 |
@@ -89,13 +89,13 @@ MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关�
 3. **MERGE 的 WHEN 条件** — `WHEN MATCHED AND …` / `WHEN NOT MATCHED AND …` 的条件不记为影响边;目前只有 ON 条件记 join 影响。
 4. **PIVOT 的隐式分组列** — PIVOT 会保留源表中未参与聚合/FOR 的列,只有 catalog 能说出它们是谁;现在这些列在 PIVOT 关系里不存在,`SELECT *` 走通配符回退。
 5. **命名窗口跨语句不可见** — `WINDOW w AS …` 只在处理该查询期间有效(`namedWindows`),这是 SQL 的作用域,不是限制。
-6. **上游 `WITH` + DML 缺陷的本地绕行** — 可以在方言层解析文本恢复 CTE 列表(StarRocks 的 `viewbody.go` 是同类做法),本轮选择硬失败;若真实语料大量出现再补。
+6. ~~**上游 `WITH` + DML 缺陷的本地绕行**~~ — **已落地**。`withclause.go` 恢复 CTE 列表(StarRocks `viewbody.go` 的同类做法),四种 DML 与"CTE 体变换透传"都由语料钉住;`withclause_test.go` 钉住边界判定与只挂 DML 两半。上游缺陷记录见 [omni-upstream-defects.md](omni-upstream-defects.md) §10.1。
 
 ## Where things live
 
 | 关注点 | 代码 | 测试 / 门禁 |
 | --- | --- | --- |
-| 方言包 | `backend/plugin/lineage/mssql/{analyzer,expr,predicate,split}.go` | `go test ./backend/plugin/lineage/mssql/` |
+| 方言包 | `backend/plugin/lineage/mssql/{analyzer,expr,predicate,split,withclause}.go` | `go test ./backend/plugin/lineage/mssql/` |
 | 装配 | `backend/plugin/lineage/engines/engines.go`、`engines_test.go` | `go test ./backend/plugin/lineage/engines/` |
 | 共享机制守门 | `backend/plugin/lineage/shared_analysis_test.go`(`dialectPackages` 含 `mssql`) | `go test ./backend/plugin/lineage/ -run TestSharedAnalysisStaysShared` |
 | 黄金语料 | `backend/plugin/lineage/mssql/testdata/analyze/`(14 套 / 101 例) | `TestAnalyzeYAML`、`TestCorpusIsFullyAnnotated` |
