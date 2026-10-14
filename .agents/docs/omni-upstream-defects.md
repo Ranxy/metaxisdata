@@ -354,10 +354,14 @@ unaffected. Consequences the dialect had to handle:
 | `MERGE INTO tgt USING src ON …` | `MergeStmt.Target` is a `TableRef` with `Alias: "USING"` | the target is addressed as `USING`, so `tgt.a` resolves to nothing |
 
 `MergeStmt.SourceAlias` is never populated either: an aliased source keeps its alias
-on `TableRef.Alias`. Both mis-parses are silent — no error, no marker anywhere in
-the AST. The dialect re-checks the recorded alias against the source text
-(`relationAlias` in `analyzer.go`) and drops it when the statement wrote a clause
-there; `AS [USING]` and other bracketed uses are kept as aliases.
+on `TableRef.Alias`. Both mis-parses are silent — no error, no marker anywhere in the
+AST. The dialect decides on the token stream instead (`relationAlias` /
+`aliasIsFollowingClause` in `analyzer.go`): NATURAL is a clause only when `JOIN`
+follows it, USING only when the row source it introduces follows, comments are not
+tokens and a `WITH (…)` table hint is skipped whole. The distinction matters because
+neither word is a T-SQL reserved keyword — only an ODBC and a future one — so
+`FROM t NATURAL`, `FROM t USING` and `MERGE INTO [tgt] AS [USING]` are valid
+statements whose alias has to be kept.
 
 ### 10.3 Many nodes carry `Loc.End == -1`, and the statement text depends on `Loc`
 

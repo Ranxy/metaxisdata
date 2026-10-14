@@ -30,6 +30,7 @@ import (
 
 	omnimssql "github.com/bytebase/omni/mssql"
 	nodes "github.com/bytebase/omni/mssql/ast"
+	mssqlparser "github.com/bytebase/omni/mssql/parser"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
@@ -46,15 +47,6 @@ const (
 	wildcardColumn    = model.WildcardColumn
 	fileSourceMarker  = model.FileSourceName
 )
-
-// reservedAliasKeywords are the keywords omni's T-SQL parser can consume as a
-// table alias while the statement has none. No unquoted T-SQL identifier can be one
-// of them, so seeing one means the parser read the next clause as an alias.
-var reservedAliasKeywords = map[string]bool{
-	"NATURAL": true,
-	"USING":   true,
-	"FROM":    true,
-}
 
 // Registration binds MSSQL to the analyzer this package provides. The process
 // assembles the registered engines where it is built, so this package does not
@@ -455,27 +447,53 @@ func (a *Analyzer) addBaseTable(ref *nodes.TableRef) {
 	a.currentScope().AddTable(tableRef)
 }
 
-// relationAlias returns the name a SQL reference addresses a relation by, or an
-// empty string when the statement gave it none.
+// relationAlias returns the name a SQL reference addresses a relation by, or an empty string
+// when the statement gave it none.
 //
-// omni's T-SQL parser reads a clause keyword as a table alias in two shapes —
-// `FROM t1 NATURAL JOIN t2` makes NATURAL t1's alias, and `MERGE INTO tgt USING src`
-// makes USING the target's alias. The recorded alias is therefore confirmed against
-// the source text: a reserved keyword that the statement did not write as an alias
-// is the clause that follows, and the relation keeps its own name. Omni is not
-// patched or reported to; see .agents/docs/omni-upstream-defects.md.
+// omni's T-SQL parser reads a clause keyword as a table alias in two shapes — `FROM t1 NATURAL
+// JOIN t2` makes NATURAL t1's alias, and `MERGE INTO tgt USING src` makes USING the target's
+// alias. Both keywords are only ODBC and future reserved words rather than T-SQL reserved ones,
+// so the statement may also have written one as a genuine alias (`FROM t1 NATURAL`); what tells
+// the two apart is the token that follows. Omni is not patched or reported to; see
+// .agents/docs/omni-upstream-defects.md section 10.2.
 func (a *Analyzer) relationAlias(ref *nodes.TableRef) string {
 	if ref.Alias == "" {
 		return ""
 	}
-	if reservedAliasKeywords[strings.ToUpper(ref.Alias)] && a.aliasIsFollowingClause(ref) {
+	if clauseKeywordAliases[strings.ToUpper(ref.Alias)] && a.aliasIsFollowingClause(ref) {
 		return ""
 	}
 	return ref.Alias
 }
 
-// aliasIsFollowingClause reports whether the alias the parser recorded is really the
-// text that follows the relation's own name.
+// clauseKeywordAliases are the keywords the parser can consume as an alias while the statement
+// has none, and the token that proves the alias is really the clause: NATURAL is followed by
+// JOIN in the shape the parser mis-reads, and USING by the row source it introduces.
+var clauseKeywordAliases = map[string]bool{"NATURAL": true, "USING": true}
+
+// fromItemEnd reports whether a token ends a FROM item rather than starting the row source a
+// USING clause introduces. It is a deny list because the row source may be a name, a bracketed
+// name, a function call or a parenthesised query.
+func fromItemEnd(text string) bool {
+	switch text {
+	case ",", ";", ")", "JOIN", "INNER", "LEFT", "RIGHT", "FULL", "CROSS", "OUTER",
+		"WHERE", "GROUP", "ORDER", "HAVING", "UNION", "EXCEPT", "INTERSECT",
+		"ON", "WHEN", "OPTION", "FOR", "PIVOT", "UNPIVOT", "WITH", "TABLESAMPLE":
+		return true
+	default:
+		return false
+	}
+}
+
+// aliasIsFollowingClause reports whether the alias the parser recorded is really the clause
+// that follows the relation's own name.
+//
+// The recorded alias sits either inside the relation's own span (`t1 NATURAL`, whose Loc covers
+// both) or in the token after it (`tgt USING`, whose Loc covers only the name), so the decision
+// is made on the token stream: comments are not tokens, and a table hint between the name and
+// the clause is skipped with its parentheses, so `MERGE INTO tgt /* c */ WITH (READPAST) USING
+// src` reads the same as the plain form. An `AS` before the token means the statement wrote the
+// alias.
 func (a *Analyzer) aliasIsFollowingClause(ref *nodes.TableRef) bool {
 	loc := ref.Loc
 	if !loc.IsValid() || loc.Start < 0 || loc.End > len(a.sql) {
@@ -485,21 +503,76 @@ func (a *Analyzer) aliasIsFollowingClause(ref *nodes.TableRef) bool {
 	text := strings.ToUpper(normalizeExpressionText(a.sql[loc.Start:loc.End]))
 	switch {
 	case strings.HasSuffix(text, " AS "+alias), strings.HasSuffix(text, "["+alias+"]"):
-		// The statement wrote the alias; it is one however reserved it looks.
+		// The statement wrote the alias; it is one however much it looks like a clause.
 		return false
-	case strings.HasSuffix(text, " "+alias):
-		// The parser consumed the following keyword as the alias.
-		return true
 	default:
 	}
-	rest := normalizeExpressionText(a.sql[loc.End:])
-	if rest == "" {
+
+	tokens := mssqlparser.Tokenize(a.sql)
+	index := firstTokenAtOrAfter(tokens, loc.End)
+	if index < 0 {
 		return false
 	}
-	if index := strings.IndexByte(rest, ' '); index >= 0 {
-		rest = rest[:index]
+	if tokenText(a.sql, tokens[index]) == "AS" {
+		return false
 	}
-	return strings.EqualFold(rest, ref.Alias)
+	index = skipTableHint(a.sql, tokens, index)
+	if index < 0 {
+		return false
+	}
+	if tokenText(a.sql, tokens[index]) == alias {
+		// The parser recorded the keyword as the next token rather than inside the span.
+		index = skipTableHint(a.sql, tokens, index+1)
+		if index < 0 {
+			return false
+		}
+	}
+	switch alias {
+	case "NATURAL":
+		return tokenText(a.sql, tokens[index]) == "JOIN"
+	case "USING":
+		return !fromItemEnd(tokenText(a.sql, tokens[index]))
+	default:
+		return false
+	}
+}
+
+// firstTokenAtOrAfter returns the index of the first token starting at or after offset.
+func firstTokenAtOrAfter(tokens []mssqlparser.Token, offset int) int {
+	for i, token := range tokens {
+		if token.Loc >= offset {
+			return i
+		}
+	}
+	return -1
+}
+
+// skipTableHint returns the index of the first token after a `WITH (…)` table hint, or index
+// itself when the tokens there are not a hint.
+func skipTableHint(sql string, tokens []mssqlparser.Token, index int) int {
+	if index >= 0 && index < len(tokens) && tokenText(sql, tokens[index]) == "WITH" {
+		depth := 0
+		for ; index < len(tokens); index++ {
+			switch tokens[index].Type {
+			case '(':
+				depth++
+			case ')':
+				depth--
+				if depth == 0 {
+					return index + 1
+				}
+			default:
+			}
+		}
+		return -1
+	}
+	return index
+}
+
+// tokenText returns a token's source text, uppercased, with any trailing space the lexer
+// swallowed removed.
+func tokenText(sql string, token mssqlparser.Token) string {
+	return strings.ToUpper(sql[token.Loc:trimEnd(sql, token.End)])
 }
 
 // attachColumnLookup lets the scope resolver disambiguate an unqualified column with
@@ -1265,10 +1338,12 @@ func (a *Analyzer) processSetClause(assignments *nodes.List, targetSchema, targe
 
 		sourceColumns := a.extractColumnsFromNode(assignment.Value, sp)
 		if len(sourceColumns) == 0 {
-			// A constant assignment rewrites the row without reading a column: the
-			// row itself is the source, which is the same rule the MySQL family and
-			// PostgreSQL record.
-			sourceColumns = []scope.ColumnRef{{Schema: targetSchema, Table: targetTable, Column: wildcardColumn}}
+			// A constant assignment rewrites the row without reading a column: the row itself is
+			// the source, which is the same rule the MySQL family and PostgreSQL record. The
+			// reference is marked resolved because the target is already identified here: looking
+			// it up by name would fail whenever the statement addressed it by an alias, as a
+			// MERGE target may (`MERGE INTO tgt AS x`).
+			sourceColumns = []scope.ColumnRef{{Schema: targetSchema, Table: targetTable, Column: wildcardColumn, Resolved: true}}
 		}
 		var transform []model.Transformation
 		if isExpressionDerived(assignment.Value) {

@@ -30,7 +30,7 @@ MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关�
 | `[bracketed]` 标识符由解析器去括号 | 边的字段名是去括号后的名字;`Loc` 仍能取回带括号的原文 | `identifierOf` |
 | 若干节点的 `Loc.End` 为 -1:标量子查询、`AliasedTableRef`、所有名字列表(`*List`/`*String`)、`SetExpr.Column` | 表达式文本取不到源切片时按节点重建(见 `rebuiltText`);名字列表一律读 `.Str`,绝不读文本;`SetExpr.Column` 读字段 | `expr.go` |
 | 解析器偶尔返回**类型化 nil**(`AST` 是 `*(*SelectStmt)(nil)`) | `x == nil` 判不出来,而 omni 的 walker 会解引用它:所有入口先过 `nodeOrNil` | `expr.go` `nodeOrNil` |
-| 两个关键字会被当成表别名:NATURAL(join)、USING(MERGE 目标) | `relationAlias` 用源文本复核别名,是子句就丢掉;写出来的 `AS [USING]` 保留 | `analyzer.go` |
+| 两个关键字会被当成表别名:NATURAL(`t1 NATURAL JOIN t2`)、USING(MERGE 目标) | 按**关键字之后的 token** 判定别名是不是子句:NATURAL 后跟 `JOIN`、USING 后跟行源(名字/括号/函数)才是子句;注释不是 token、`WITH (…)` 表提示整组跳过,所以带注释或表提示的 MERGE 也能识别。NATURAL/USING 只是 ODBC/未来保留字,**不是** T-SQL 保留字,因此 `FROM t NATURAL`、`FROM t USING` 是合法别名,必须保留;写出来的 `AS [USING]` 同理 | `analyzer.go` `aliasIsFollowingClause` |
 
 ## 能力矩阵
 

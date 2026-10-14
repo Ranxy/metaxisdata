@@ -83,3 +83,39 @@ func TestTableNameCaseIsNotFolded(t *testing.T) {
 	require.Equal(t, "users", relations[0].Source.Table.Name)
 	require.Equal(t, "id", relations[0].Source.Name)
 }
+
+// TestClauseKeywordAliasGuard pins both halves of the alias workaround. The parser consumes a
+// clause keyword as a relation alias in two shapes, and the dialect drops the alias when the
+// token after it continues the clause — but NATURAL and USING are ODBC and future reserved
+// words rather than T-SQL reserved ones, so a statement may also have written one as a genuine
+// alias, and then it has to be kept.
+func TestClauseKeywordAliasGuard(t *testing.T) {
+	t.Parallel()
+
+	// The clause forms: the relation keeps its own name, so a reference to it resolves.
+	for _, tc := range []struct{ name, sql string }{
+		{"natural join", "SELECT t1.a FROM t1 NATURAL JOIN t2"},
+		{"merge using", "MERGE INTO tgt USING src ON tgt.id = src.id WHEN MATCHED THEN UPDATE SET tgt.a = src.a"},
+		{"merge using after a table hint", "MERGE INTO tgt WITH (READPAST) USING src ON tgt.id = src.id WHEN MATCHED THEN UPDATE SET tgt.a = src.a"},
+		{"merge using after a comment", "MERGE INTO tgt /* c */ USING src ON tgt.id = src.id WHEN MATCHED THEN UPDATE SET tgt.a = src.a"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			relations, err := analyzeSQL(tc.sql, nil)
+			require.NoError(t, err, tc.sql)
+			require.NotEmpty(t, relations, tc.sql)
+		})
+	}
+
+	// The alias forms: the statement wrote the keyword as the relation's own alias.
+	for _, sql := range []string{
+		"SELECT NATURAL.a FROM t1 NATURAL",
+		"SELECT USING.a FROM t1 USING",
+		"SELECT NATURAL.a FROM t1 NATURAL, t2",
+		"MERGE INTO [tgt] AS [USING] USING src ON 1 = 1 WHEN MATCHED THEN UPDATE SET [USING].a = 1",
+	} {
+		relations, err := analyzeSQL(sql, nil)
+		require.NoError(t, err, sql)
+		require.NotEmpty(t, relations, sql)
+	}
+}
