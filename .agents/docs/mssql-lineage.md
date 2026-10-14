@@ -50,7 +50,7 @@ MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关�
 
 **两处按 catalog 决定的行为**:PIVOT 会保留源表中"聚合函数与 FOR 列都没消费"的列作为分组列,但语句从不写出它们 —— 源关系的列清单已知(catalog 命中 / CTE / 内联表)时按 `源列 → PIVOT 列`(direct,值原样带过)记录,未知时只暴露 IN 值列(不猜);MERGE 的 `WHEN … AND <条件>` 记为该目标行的 FILTER 影响,与 ON 条件同一机制。PIVOT/UNPIVOT、表值函数与内联 VALUES 的源在**独立子作用域**里分析——它是关系内部的行源,留在外层会让 `SELECT *` 把它当成第二个关系展开;手写的内部 lineage 也必须像 `tempTableLineage` 一样**展平查询本地来源**(CTE/派生表),否则 CTE 名会变成落库的边端点(语料 `12_test_pivot_lineage_table.yaml` / `16_test_extended_forms_lineage_table.yaml` 各四例钉住,含派生表叠 CTE)。
 
-**上游语法缺口(硬失败,不建模)**:`JOIN … USING (…)`、`NATURAL JOIN`(静默误读为别名,已在本地复核)、`OPENROWSET(BULK …)`、表值函数的带类型列定义、`CREATE VIEW v AS (SELECT …)` 的括号体。明细见 [omni-upstream-defects.md](omni-upstream-defects.md) §10。
+**上游语法缺口(硬失败,不建模)**:`JOIN … USING (…)`、`OPENROWSET(BULK …)`、表值函数的带类型列定义、`CREATE VIEW v AS (SELECT …)` 的括号体、`GROUP BY ALL`(omni 直接报 `syntax error at end of input`)。`NATURAL JOIN` 不在此列:它不是 T-SQL 语法,解析器把 NATURAL 读成别名,由 §别名复核那一条按后随 token 处理(`t1 NATURAL JOIN t2` 仍能把 `t1.a` 解析出来)。明细见 [omni-upstream-defects.md](omni-upstream-defects.md) §10。
 
 **`WITH` 在 DML 之前**:omni 读到 CTE 列表后若下一个词不是 SELECT,就丢掉整段 `WITH` 并留下一个空语句,紧随的 INSERT/UPDATE/DELETE/MERGE 其文本跨度也会变成空。CTE 定义在树里不可达,任何引用都可能指向其中一个,所以方言包在分析前**从源文本恢复 CTE 列表**(`withclause.go`:切出第一个顶层 DML 关键字之前的前缀,补一个 `SELECT 1` 解析出 `WithClause`,再挂回该语句)。前缀是原文本的前缀,因此 CTE 体内的偏移量仍然有效。恢复失败才硬失败——文本已被丢弃一部分时不能拿错误的边冒充部分结果。做法与 StarRocks 的 `viewbody.go` 同类。
 
@@ -87,7 +87,7 @@ MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关�
 
 ## Open items
 
-1. **标识符大小写(已落地一半)** — 列名这一半已修:源列名按注册表里的拼写记录(含影响边),精确拼写优先,由 `identifier_case_test.go` 与 `02_test_join_lineage_table.yaml` 钉住。**仍未解决的一半是表名/模式名**:`FROM users` 与注册表里的 `Users` 不是同一个 meta GUID,`catalog.Provide.GetTable` 是精确查询,于是查不到元数据、边就记成 `users`,图上是悬空节点。它不能在方言层修——方言只能折叠自己写下的名字,折叠后反而更对不上注册表里已存的拼写。可行的做法是**按引擎分级的注册表回退查询**(精确未命中时用 `lower(name)`/`lower(guid)` 再查一次,配一个函数索引迁移),只对标识符比较不敏感的引擎(MSSQL)开启,MySQL 在 Linux 上表名大小写敏感、PG 的解析器本就折成小写,两者都不需要。这属于 store/migrator 的范围,单独立项。
+1. **标识符大小写(已落地大部分)** — 列名这一半已修:源列名按注册表里的拼写记录(含影响边),精确拼写优先,由 `identifier_case_test.go` 与 `02_test_join_lineage_table.yaml` 钉住。**仍未解决的一半是表名/模式名**:`FROM users` 与注册表里的 `Users` 不是同一个 meta GUID,`catalog.Provide.GetTable` 是精确查询,于是查不到元数据、边就记成 `users`,图上是悬空节点。它不能在方言层修——方言只能折叠自己写下的名字,折叠后反而更对不上注册表里已存的拼写。可行的做法是**按引擎分级的注册表回退查询**(精确未命中时用 `lower(name)`/`lower(guid)` 再查一次,配一个函数索引迁移),只对标识符比较不敏感的引擎(MSSQL)开启,MySQL 在 Linux 上表名大小写敏感、PG 的解析器本就折成小写,两者都不需要。这属于 store/migrator 的范围,单独立项。**第三半是别名的大小写**:`SELECT X.a FROM t AS x` 在 T-SQL 里合法(别名比较不敏感),但 `scope.TableRef.addresses` 逐字节比较名字,于是解析不到。修它需要把别名两侧一起折叠,而别名同时是共享 `scope` 的键、CTE 键与临时关系名——改动面在共享层而不是方言层,先用 `TestAliasCaseIsNotFolded` 把现状钉住。
 2. ~~**APPLICATION_SQL 的词法器**~~ — **已落地**。`sqlsanitize` 现在对 MSSQL 走 `mssql/parser` 的 lexer 分支(`tokenSpans` + `isLiteral` 的 `[`/`#`/`"` 规则 + `stripComments` 不再把 `#` 当注释),并用 `testdata/10_mssql.yaml` 与 MSSQL 语料回归钉住;细节见 [application-sql-ingestion.md](application-sql-ingestion.md)。
 3. ~~**MERGE 的 WHEN 条件**~~ — **已落地**。`WHEN MATCHED AND …` / `WHEN NOT MATCHED AND …` 的条件现在以 FILTER 影响记在目标行上,由两条语料钉住。
 4. ~~**PIVOT 的隐式分组列**~~ — **已落地**(按 catalog 能力分级):源关系列清单已知时列出未消费列并按 direct 带过,未知时只暴露 IN 值列。顺带修掉一个真实作用域缺陷:PIVOT/UNPIVOT 的源曾留在外层作用域,`SELECT *` 会把源表当第二个关系展开(语料 `12_test_pivot_lineage_table.yaml` 的 star expansion 两例钉住)。
@@ -101,7 +101,7 @@ MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关�
 | 方言包 | `backend/plugin/lineage/mssql/{analyzer,expr,predicate,split,withclause}.go` | `go test ./backend/plugin/lineage/mssql/` |
 | 装配 | `backend/plugin/lineage/engines/engines.go`、`engines_test.go` | `go test ./backend/plugin/lineage/engines/` |
 | 共享机制守门 | `backend/plugin/lineage/shared_analysis_test.go`(`dialectPackages` 含 `mssql`) | `go test ./backend/plugin/lineage/ -run TestSharedAnalysisStaysShared` |
-| 黄金语料 | `backend/plugin/lineage/mssql/testdata/analyze/`(14 套 / 101 例) | `TestAnalyzeYAML`、`TestCorpusIsFullyAnnotated` |
+| 黄金语料 | `backend/plugin/lineage/mssql/testdata/analyze/`(14 套 / 129 例) | `TestAnalyzeYAML`、`TestCorpusIsFullyAnnotated` |
 | 切分与别名复核 | `analyzer_test.go`(`TestSplitStatements`、`TestClauseKeywordAliasGuard`) | 同上 |
 | APPLICATION_SQL 的写目标分类 | `backend/plugin/dmltarget/target.go`(MSSQL 分支:INSERT/UPDATE/DELETE/MERGE/BULK INSERT;表变量与 `#temp` 拒绝) | `go test ./backend/plugin/dmltarget/` |
 | 跨库限定符 | `analyzer_test.go`(`TestCrossDatabaseQualifierIsReported`) | 同上 |

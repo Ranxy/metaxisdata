@@ -129,11 +129,13 @@ func columnList(list *nodes.List) []string {
 
 // exprTextOf renders an expression the way the statement wrote it.
 //
-// Most T-SQL nodes carry exact byte offsets, so the text is the source slice with
-// whitespace runs collapsed — spaces inside a string literal are content, so they
-// are never removed. A few nodes carry no end offset at all (a scalar subquery,
-// an aliased table reference, every declared name list), and for those the text
-// is rebuilt from the node they wrap.
+// Most T-SQL nodes carry exact byte offsets, so the text is the source slice with every
+// whitespace run collapsed to one space — including a run inside a string literal, which is
+// content there. Collapsing is what the sibling dialects do as well, and it is observable: a
+// column named from an unaliased expression (`SELECT CONCAT('a  b', c)`) carries the collapsed
+// text while the sanitizer's stored form keeps the literal's own spacing. A few nodes carry no
+// end offset at all (a scalar subquery, an aliased table reference, every declared name list),
+// and for those the text is rebuilt from the node they wrap.
 func (a *Analyzer) exprTextOf(node nodes.Node) string {
 	node = nodeOrNil(node)
 	if node == nil {
@@ -507,8 +509,10 @@ func (a *Analyzer) orderByTexts(list *nodes.List) []string {
 	return out
 }
 
-// groupByKeys renders the GROUP BY items of a query in source order, the way this
-// analyzer renders PARTITION BY and ORDER BY. GROUP BY ALL carries no key list.
+// groupByKeys renders the GROUP BY items of a query in source order, the way this analyzer
+// renders PARTITION BY and ORDER BY. `GROUP BY ALL` has no key list to render, and omni's
+// T-SQL grammar rejects the form outright, so a statement that uses it fails to parse rather
+// than being analyzed without keys.
 func (a *Analyzer) groupByKeys(list *nodes.List) []string {
 	return a.listTexts(list)
 }

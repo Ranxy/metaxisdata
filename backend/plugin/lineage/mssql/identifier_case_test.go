@@ -119,3 +119,22 @@ func TestClauseKeywordAliasGuard(t *testing.T) {
 		require.NotEmpty(t, relations, sql)
 	}
 }
+
+// TestAliasCaseIsNotFolded pins the third half of the case story, which this dialect cannot fix
+// on its own. T-SQL compares identifiers case-insensitively, so `SELECT X.a FROM t AS x` is
+// valid, but the shared scope matches a qualifier against a relation's alias byte for byte and
+// the reference resolves to nothing. Folding the alias would mean folding both sides of the
+// scope's keys — the keys CTEs and temporary relations are also looked up by — so the behaviour
+// is pinned as it stands; see .agents/docs/mssql-lineage.md, Open items.
+func TestAliasCaseIsNotFolded(t *testing.T) {
+	t.Parallel()
+
+	relations, err := analyzeSQL("SELECT X.a FROM t AS x", nil)
+	require.Error(t, err, "an unresolved reference is the behaviour being pinned")
+	require.Empty(t, relations)
+
+	// The same reference spelled the way the alias is resolves.
+	relations, err = analyzeSQL("SELECT x.a FROM t AS x", nil)
+	require.NoError(t, err)
+	require.Len(t, relations, 1)
+}

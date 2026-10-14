@@ -185,6 +185,6 @@ TiDB 和 MariaDB **没有自己的遍历**。`mysql/analyzer.go` 哨兵之下的
 | 共享机制守门 | `backend/plugin/lineage/shared_analysis_test.go` | `go test ./backend/plugin/lineage/ -run TestSharedAnalysisStaysShared` |
 | 端到端 | — | `make test-integration`(真实 PostgreSQL + MySQL) |
 
-语料计数取法(2026-10 复核):`for d in backend/plugin/lineage/*/testdata/analyze; do grep -hcE '^\s*- name:' $d/*.yaml; done` → mysql 225、tidb 自有 15、mariadb 自有 20、postgresql 250、starrocks 185、mssql 101;MySQL 族共享语料 225 例在 TiDB / MariaDB 各跳过 1 / 5 例。非测试代码 17,860 行、测试 4,340 行取法:`find backend/plugin/lineage -name '*.go' ! -name '*_test.go' | xargs wc -l`(及去掉 `!` 的测试侧)。
+语料计数取法(2026-10 复核):`for d in backend/plugin/lineage/*/testdata/analyze; do grep -hcE '^\s*- name:' $d/*.yaml; done` → mysql 225、tidb 自有 15、mariadb 自有 20、postgresql 250、starrocks 185、mssql 129;MySQL 族共享语料 225 例在 TiDB / MariaDB 各跳过 1 / 5 例。非测试代码 18,275 行、测试 4,584 行取法:`find backend/plugin/lineage -name '*.go' ! -name '*_test.go' | xargs wc -l`(及去掉 `!` 的测试侧)。
 
 不在本篇范围:各引擎"什么 clause 可见 / 什么必须保持产出"属语义决策,见 [lineage-semantics.md](lineage-semantics.md);图上字段级血缘的读取与展开见 [lineage-graph.md](lineage-graph.md);omni 缺陷明细与不修改政策见 [omni-upstream-defects.md](omni-upstream-defects.md)。

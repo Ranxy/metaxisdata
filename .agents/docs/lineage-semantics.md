@@ -151,10 +151,10 @@ Implementation: `resolveUnqualified` walks outward and stops at the first scope 
 | PostgreSQL | 40 | 250 |
 | MySQL (corpus shared with TiDB and MariaDB) | 24 | 225 |
 | StarRocks | 20 | 185 |
-| MSSQL | 14 | 101 |
+| MSSQL | 14 | 129 |
 | TiDB (dialect suite, on top of the shared corpus) | 1 | 15 |
 | MariaDB (dialect suite, on top of the shared corpus) | 1 | 20 |
-| **total** | **100** | **796** |
+| **total** | **100** | **824** |
 
 ### StarRocks
 
@@ -192,7 +192,7 @@ Implementation: `resolveUnqualified` walks outward and stops at the first scope 
 | `MERGE` is modelled | The one statement PostgreSQL, MySQL and StarRocks all report as a gap. Its ON condition is a join influence on the target, each WHEN clause's own AND condition a filter influence on it, and each action writes what the statement it stands for would |
 | A `PIVOT`'s grouping columns | The source's columns that neither the aggregate nor the FOR column consumes are carried through, which the statement never names: they are read from the catalog when it knows the source's columns, and the relation exposes the pivot columns alone when it does not. A pivot's source is analyzed in a scope of its own, so a `SELECT *` beside it cannot read the source table as a second relation |
 
-**Known deviation (half of it kept by decision).** SQL Server compares identifiers case-insensitively, while the registry looks an object up by its meta GUID, which is case-sensitive. A source *column* therefore takes the spelling the registry knows (`SELECT id FROM Users` records `ID`), preferring an exact match so that a case-sensitive collation holding both `id` and `ID` still resolves to the one the statement named; the statement's own result columns keep what it wrote. A relation's *name* is not folded: `FROM users` against a registry entry named `Users` misses the lookup and the edge names what the statement wrote, with no metadata to canonicalize against. Fixing that needs a case-insensitive registry lookup gated by engine plus an index migration — a store change, recorded in [mssql-lineage.md](mssql-lineage.md).
+**Known deviation (half of it kept by decision).** SQL Server compares identifiers case-insensitively, while the registry looks an object up by its meta GUID, which is case-sensitive. A source *column* therefore takes the spelling the registry knows (`SELECT id FROM Users` records `ID`), preferring an exact match so that a case-sensitive collation holding both `id` and `ID` still resolves to the one the statement named; the statement's own result columns keep what it wrote. A relation's *name* is not folded: `FROM users` against a registry entry named `Users` misses the lookup and the edge names what the statement wrote, with no metadata to canonicalize against. A relation's *alias* is not folded either, so `SELECT X.a FROM t AS x` — valid T-SQL, where aliases compare case-insensitively — resolves to nothing, because the shared scope compares the name byte for byte; folding it would touch the same scope keys that CTEs and temporary relations use, so it is pinned as it stands (`identifier_case_test.go`, `TestAliasCaseIsNotFolded`). Fixing the name half needs a case-insensitive registry lookup gated by engine plus an index migration — a store change, recorded in [mssql-lineage.md](mssql-lineage.md). The same document's decision row lists which column spellings are canonicalized instead.
 
 **Workarounds it carries for upstream defects** (details in [omni-upstream-defects.md](omni-upstream-defects.md) §10): `relationAlias` re-checks a recorded alias against the source text so `NATURAL JOIN` and `MERGE … USING` do not turn a clause into a relation name; every entry point normalizes a typed-nil node, which omni's walker would otherwise dereference; the script splitter verifies the statement text spans the parser hands it before trusting them, falling back to a lexical scan; and a `WITH` clause in front of a DML statement — which the parser drops whole — is recovered from the source text before the statement is analyzed (`mssql/withclause.go`), failing the statement only when that recovery itself fails.
 
