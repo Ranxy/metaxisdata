@@ -1,0 +1,102 @@
+{
+  "job": {
+    "setting": {
+      "speed": {
+        "channel": 1
+      },
+      "errorLimit": {
+        "record": 0,
+        "percentage": 0.02
+      }
+    },
+    "content": [
+      {
+        "reader": {
+          "name": "postgresqlreader",
+          "parameter": {
+            "username": "dev",
+            "password": "dev",
+            "column": [
+              "customer_id",
+              "customer_code",
+              "customer_name",
+              "country",
+              "region",
+              "sub_region",
+              "city",
+              "status",
+              "loyalty_tier",
+              "tenure_days",
+              "order_count",
+              "lifetime_gross",
+              "lifetime_net",
+              "avg_order_value",
+              "lifetime_units",
+              "paid_amount",
+              "refund_amount",
+              "net_collected",
+              "balance_due",
+              "collection_rate",
+              "customer_segment",
+              "value_rank",
+              "loaded_at"
+            ],
+            "connection": [
+              {
+                "jdbcUrl": [
+                  "jdbc:postgresql://localhost:5432/e2e"
+                ],
+                "table": [
+                  "e2e_dwd.dwd_customer_360"
+                ]
+              }
+            ]
+          }
+        },
+        "writer": {
+          "name": "sqlserverwriter",
+          "parameter": {
+            "username": "sa",
+            "password": "",
+            "column": [
+              "customer_id",
+              "customer_code",
+              "customer_name",
+              "country",
+              "region",
+              "sub_region",
+              "city",
+              "status",
+              "loyalty_tier",
+              "tenure_days",
+              "order_count",
+              "lifetime_gross",
+              "lifetime_net",
+              "avg_order_value",
+              "lifetime_units",
+              "paid_amount",
+              "refund_amount",
+              "net_collected",
+              "balance_due",
+              "collection_rate",
+              "customer_segment",
+              "value_rank",
+              "loaded_at"
+            ],
+            "preSql": [
+              "delete from e2e_ods.dwd_customer_360"
+            ],
+            "connection": [
+              {
+                "jdbcUrl": "jdbc:sqlserver://127.0.0.1:1433;databaseName=e2e",
+                "table": [
+                  "e2e_ods.dwd_customer_360"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

@@ -1,4 +1,4 @@
-# Findings from the first full three-engine lineage run
+# Findings from the full e2e lineage runs
 
 Scope: MySQL `e2e_ods` → PG `e2e` (`e2e_ods` → `e2e_dwd`/`e2e_ads`) → StarRocks
 `e2e_ods`/`e2e_ads`, driven by Airflow DAGs `e2e_01`…`e2e_04`, with lineage
@@ -18,6 +18,11 @@ re-run through `run_chain.sh` afterwards (4 DAGs, 26 tasks, all green, 50 s).
 Row counts and every finding below reproduced byte-for-byte — same pre-fix hop
 edge counts (5 / 8 / 44 / 5 / 4), same 5 phantom StarRocks GUIDs, same 2 CTE
 phantoms, 0 analyzer errors.
+
+Everything above is the first run, on the three-engine chain. The MSSQL hop was
+added later and has its own run and its own section: ["The MSSQL hop (fourth
+engine)"](#the-mssql-hop-fourth-engine), before "Remaining limitations". Its
+sections of `verify_chain.sql` are 14-22.
 
 ## How to read the numbers
 
@@ -574,6 +579,62 @@ counts in StarRocks, and the StarRocks views and async materialized view return
 | Data flow | 8 tables MySQL → PG; 2 000/300/1 921/1 921/38 rows in the PG layers; identical counts in StarRocks; SR views and async MV return 75 / 24 454 / 1 723 rows |
 | Relation typing | analyzer edges carry `AGGREGATE` (4) vs `DIRECT` (1) correctly, e.g. `v_order_line.line_amount → mv_daily_sales.net_line_amount` |
 
+## The MSSQL hop (fourth engine)
+
+The chain above visits three engines. MSSQL was added to it as a fourth, so that the
+T-SQL analyzer meets the same fixture the other dialects do: `e2e_05` lands PostgreSQL
+`e2e_dwd`/`e2e_ads` in `e2e.e2e_ods` over DataX, loads a small MSSQL layer with a
+`MERGE` and an `INSERT … SELECT`, and creates ten views; `e2e_06` copies one of those
+views into StarRocks, so the chain is MySQL → PostgreSQL → MSSQL → StarRocks and an
+analyzer edge meets an ingested edge at one node.
+
+The run: `install.sh --bootstrap`, then `run_chain.sh` driving all six DAGs green in
+100 s (60 s for the four original hops, 20 s each for `e2e_05` with its 9 tasks and
+`e2e_06` with its 3), then one full sync of `ms-sql-1` and a few seconds for the
+analysis. A second `install.sh --bootstrap` + `run_chain.sh` + sync reproduced every
+number below exactly. Distinct counts throughout.
+
+| Check | Result |
+| --- | --- |
+| PG → MSSQL copy (§14, §15) | 37 edges, one per landed column (23 + 14); **0** shifted mappings — every source column is the same-named target column |
+| MSSQL-internal analyzer edges (§14) | 92, over **13 analysed views** (§10) |
+| MSSQL → StarRocks (§17) | 11 edges, all from `ms-sql-1;e2e;e2e_ads;v_kpi_daily` — a *view* the analyzer produced, on the GUID the event's name resolved to |
+| View-over-view lineage (§16) | `v_kpi_daily.net_line_amount → v_region_revenue.net_line_amount → fact_daily_sales.net_line_amount`, the last hop `AGGREGATE` |
+| Grouped-clause keys (§18) | `CUBE(channel, region)`, `ROLLUP(sales_date, channel)` and `GROUPING SETS (…)` all record base-table keys, never the grouped expression or a pseudo-column |
+| Reported gaps (§19) | exactly three: the unparseable view, the derived-table PIVOT, the table-valued function |
+| Partial analysis keeps its edges (§20) | the PIVOT view keeps 3 aggregate edges, the TVF view keeps the joined view's 2 |
+| Invented endpoints (§21) | **0** — no edge names a pivot alias, a function call or a table variable |
+| Unparseable definition (§22) | **0** edges and a recorded parse error; procedures and functions have **0** analysis rows |
+| Data flow | 300 + 1 921 rows PostgreSQL → MSSQL, 300 dimension + 1 921 fact rows loaded, the copied view returns 3, StarRocks holds the same 3 |
+
+No analyzer defect surfaced. What the run exercised is the identifier rule the engine
+makes unavoidable — `<instance>;<database>;<schema>;<name>`, four parts where every
+other engine here uses three or four — and the three answers an analysis gives about a
+shape it cannot model: keep the edges and report (PIVOT, TVF), fail whole and record
+(the parenthesised body), or never analyse (routines). Sections 19-22 are those three
+answers as assertions rather than prose.
+
+Three environment facts cost time and are worth writing down, because none of them is
+about lineage and all three fail quietly:
+
+1. **An instance with no sync interval is never synced.** The MSSQL instance was
+   registered for the schema-sync work with `activation` on and no interval, and
+   `trySyncAll` skips exactly that: the new `e2e` database and its ten views stayed
+   invisible until something called `BatchSyncInstances` with `enableFullSync`. The
+   other three instances carry `900s`. `tools/trigger_sync.py` is that call; without it
+   the hop produces data and no lineage.
+2. **A `BashOperator`'s `env` replaces the task environment instead of extending it**
+   (the standard provider passes `env if env else os.environ`). Handing the task the
+   SQL Server credential through `env` therefore also removed `PATH`: bash still found
+   `psql` through its built-in default, but `psql` could not resolve its own executable
+   and failed with `could not find own program executable`. The fixture carries `PATH`
+   with the credential for exactly this reason.
+3. **A task cannot read the Airflow metadata database.** Airflow sets
+   `AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=airflow-db-not-allowed:///` inside a task on
+   purpose, so a hook or the `airflow` CLI inside the task fails, and a DAG that wants
+   a connection's password has to template it into the task's environment
+   (`{{ conn.mssql_e2e.password }}`, which the DAGs do) rather than look it up.
+
 ## Remaining limitations
 
 1. **View and materialized-view column claims are not validated.** Only a TABLE
@@ -637,6 +698,9 @@ counts in StarRocks, and the StarRocks views and async materialized view return
 ## Reproducing the checks
 
 ```bash
+MSSQL_SA_PASSWORD=… ./install.sh --bootstrap
+./run_chain.sh
+python3 tools/trigger_sync.py --email … --password … ms-sql-1
 PGPASSWORD=dev psql -h localhost -U dev -d metaxisdata -f verify_chain.sql
 ```
 
@@ -646,3 +710,9 @@ the ingestion path, so the server has to be rebuilt and restarted after a change
 there. Sections 9-13 produce the counts "Post-fix verification" reports: distinct
 `e2e` edges, analysed objects, bogus column claims anywhere, positional columns
 and external endpoints, and the run totals.
+
+For the MSSQL hop, sections 4, 6, 15 and 21 must be empty and the first number of
+section 22 must be 0; section 14 has to show all three rows with a non-zero count,
+and section 19 has to name exactly the three boundary objects. The analysis runs
+behind the sync, so `verify_chain.sql` on its own is not the gate: the objects are
+what it reads.
