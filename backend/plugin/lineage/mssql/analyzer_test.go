@@ -226,3 +226,23 @@ func TestCatalogFailureIsReportedAsAGap(t *testing.T) {
 	require.Len(t, unsupported.Diagnostics, 1)
 	require.Equal(t, model.DiagnosticCatalogUnavailable, unsupported.Diagnostics[0].Category)
 }
+
+// TestAQueryLocalColumnWithNoSourceIsNotAGap pins the other half of the rule that a query-local
+// relation has to answer a reference. A column the relation does offer, but whose own lineage
+// names no source, is a column built from constants: reporting it would turn every derived table
+// that computes a literal into a partial analysis.
+func TestAQueryLocalColumnWithNoSourceIsNotAGap(t *testing.T) {
+	t.Parallel()
+
+	relations, err := analyzeSQL("SELECT d.a, d.b FROM (SELECT a, 1 AS b FROM t) d", nil)
+	require.NoError(t, err)
+	require.Len(t, relations, 1)
+	require.Equal(t, "t", relations[0].Source.Table.Name)
+	require.Equal(t, "a", relations[0].Source.Name)
+
+	// The same rule for an inline table: its rows are literals, so it has no lineage to record and
+	// a reference to it is not a gap.
+	relations, err = analyzeSQL("SELECT v.x FROM (VALUES (1), (2)) v(x)", nil)
+	require.NoError(t, err)
+	require.Empty(t, relations)
+}

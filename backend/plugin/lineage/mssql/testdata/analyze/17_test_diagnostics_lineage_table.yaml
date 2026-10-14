@@ -12,3 +12,44 @@ cases:
       error_contains: unresolved reference in a wildcard qualifier
       expected_edges:
         []
+    # A query-local relation answers the columns its body produced. A reference to one it never
+    # produced used to record nothing at all and say nothing, which is what a statement with no
+    # lineage looks like; it is a gap, not an empty result.
+    - name: a table function whose columns the query does not declare is reported
+      sql: SELECT f.val FROM t1 CROSS APPLY fn(t1.id) AS f
+      expect_error: true
+      error_contains: 'unresolved reference in an output column: f.val'
+      expected_edges:
+        []
+    - name: a pivot grouping column the source cannot describe is reported
+      sql: SELECT id, [1] FROM t PIVOT (SUM(x) FOR y IN ([1], [2])) p
+      expect_error: true
+      error_contains: 'unresolved reference in an output column: p.id'
+      expected_edges:
+        - from_table: t
+          from_field: x
+          to_table: __result__
+          to_field: '1'
+          relation_type: group
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: SUM
+              expression: SUM(x)
+              group_keys:
+                - y
+    # A statement the analysis cannot see has no edge to record, and saying so is what keeps it
+    # from reading as "this statement has no lineage".
+    - name: exec is reported as a statement the analyzer cannot see
+      sql: EXEC('SELECT a FROM t')
+      expect_error: true
+      error_contains: 'not modelled: a statement the analyzer cannot see: EXEC'
+      expected_edges:
+        []
+    - name: a procedure body is reported as unmodelled
+      sql: CREATE PROCEDURE p AS SELECT a FROM t
+      expect_error: true
+      error_contains: 'not modelled: a routine body: CREATE PROCEDURE'
+      expected_edges:
+        []

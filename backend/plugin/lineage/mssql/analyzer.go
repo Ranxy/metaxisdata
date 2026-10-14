@@ -212,6 +212,17 @@ func (a *Analyzer) dispatch(stmt nodes.Node) {
 		a.processMergeStatement(s)
 	case *nodes.BulkInsertStmt:
 		a.processBulkInsert(s)
+	case *nodes.ExecStmt:
+		// EXEC runs a statement that is not in the text being analyzed: dynamic SQL through a
+		// literal (`EXEC('…')`, `sp_executesql`) as well as a procedure whose body lives in the
+		// instance. An INSERT … EXEC reports the gap where its source belongs; on its own the
+		// statement has no edge to record, and saying so is what keeps `EXEC …` from reading as
+		// "this statement has no lineage".
+		a.diagnostics.NotModelled("a statement the analyzer cannot see", "EXEC")
+	case *nodes.CreateProcedureStmt:
+		a.diagnostics.NotModelled("a routine body", "CREATE PROCEDURE")
+	case *nodes.CreateFunctionStmt:
+		a.diagnostics.NotModelled("a routine body", "CREATE FUNCTION")
 	default:
 		// Statement kinds that carry no column lineage are ignored, as in the other
 		// analyzers: DDL other than a view, permissions, transactions, batches,
@@ -1867,19 +1878,80 @@ func (a *Analyzer) currentScope() *scope.Scope {
 // traceThroughTableLineage traces lineage through a CTE or derived table to the
 // result table.
 func (a *Analyzer) traceThroughTableLineage(tableRef *scope.TableRef, columnName, outputAlias string, transform []model.Transformation) {
+	if !a.queryLocalAnswers(tableRef, columnName, "an output column") {
+		return
+	}
 	algorithm.TraceThroughTableLineage(scope.NewSchemaLineageEdge, a.addRelation, tableRef, columnName, outputAlias, transform)
 }
 
 // traceThroughTableLineageToTarget traces lineage through a CTE or derived table to a
 // specific target column on a real object.
 func (a *Analyzer) traceThroughTableLineageToTarget(tableRef *scope.TableRef, columnName, targetSchema, targetTable, targetColumn string, transform []model.Transformation) {
+	// The clause is read off the target the trace was asked for, which is what tells the three
+	// callers apart: a predicate influence carries no target column, a DELETE records the target
+	// it removes rows from, and everything else writes a column of the target.
+	var clause string
+	switch targetColumn {
+	case "":
+		clause = "a predicate"
+	case deletionFieldName:
+		clause = "a DELETE target"
+	default:
+		clause = "an output target"
+	}
+	if !a.queryLocalAnswers(tableRef, columnName, clause) {
+		return
+	}
 	algorithm.TraceThroughTableLineageToTarget(scope.NewSchemaLineageEdge, a.addRelation, tableRef, columnName, targetSchema, targetTable, targetColumn, transform)
 }
 
 // flattenTempSourceLineage resolves a column from a temporary relation into base-table
-// lineage. It reports whether the source was handled.
-func (*Analyzer) flattenTempSourceLineage(sp *scope.Scope, relation *scope.TableRef, columnName, targetTable, targetColumn string, transform []model.Transformation, lineage *[]model.ColumnRelation) bool {
+// lineage. It reports whether the source was handled, which is also the case when the
+// relation cannot answer the column: the source was query-local, and what it could not
+// answer is reported rather than silently dropped.
+func (a *Analyzer) flattenTempSourceLineage(sp *scope.Scope, relation *scope.TableRef, columnName, targetTable, targetColumn string, transform []model.Transformation, lineage *[]model.ColumnRelation) bool {
+	if relation == nil || (!relation.IsSubquery && !relation.IsCTE) {
+		return false
+	}
+	if !a.queryLocalAnswers(relation, columnName, "a temporary relation") {
+		return true
+	}
 	return algorithm.FlattenTempSourceLineage(scope.NewSchemaLineageEdge, sp, relation, columnName, targetTable, targetColumn, transform, lineage)
+}
+
+// queryLocalAnswers reports whether a query-local relation can answer a reference to column, and
+// records the gap when it cannot.
+//
+// A relation answers a name only if it offers the name at all: a CTE, a derived table, a table
+// function and a pivot expose what their bodies produced, and a reference to a column they never
+// produced is a gap — the relation was found, so nothing else reports it, and tracing it records
+// no edge at all, which is what a statement with no lineage looks like. A column the relation does
+// offer, but whose own lineage names no source, is not a gap: it is a column built from constants,
+// and it has no lineage to record.
+func (a *Analyzer) queryLocalAnswers(relation *scope.TableRef, columnName, clause string) bool {
+	if relation == nil {
+		return false
+	}
+	// A star is not a name the relation has to offer: it is every column it has, and the trace
+	// forwards whatever the body's lineage recorded for it.
+	if columnName != model.WildcardColumn {
+		if names := relation.ColumnNames(); names != nil && !offersColumn(names, columnName) {
+			a.diagnostics.Unresolved(clause, scope.ColumnRef{Table: relation.Key().Name, Column: columnName})
+			return false
+		}
+	}
+	return len(model.AnsweringLineage(relation.Lineage, columnName)) > 0
+}
+
+// offersColumn reports whether a column list exposes a name, compared the way this dialect binds an
+// identifier: a T-SQL identifier is case-insensitive under the default collation.
+func offersColumn(names []string, column string) bool {
+	for _, name := range names {
+		if strings.EqualFold(name, column) {
+			return true
+		}
+	}
+	return false
 }
 
 // ---------------------------------------------------------------------------
