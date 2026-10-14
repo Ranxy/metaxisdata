@@ -55,9 +55,9 @@ func (a *Analyzer) popSource() {
 // CTAS, expression subqueries). The returned node's Loc values are relative to
 // raw, so the caller must have pushed a matching source.
 func parseRawQuery(raw string) (nodes.Node, error) {
-	file, errs := starrocksparser.Parse(raw)
-	if len(errs) > 0 {
-		return nil, errors.Wrap(&errs[0], "failed to parse raw query")
+	file, err := starrocksparser.Parse(raw)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to parse raw query")
 	}
 	if file == nil || len(file.Stmts) != 1 {
 		return nil, errors.New("expected exactly 1 statement in raw query")

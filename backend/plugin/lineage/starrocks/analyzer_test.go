@@ -73,8 +73,8 @@ func TestExprTextReconstruction(t *testing.T) {
 	t.Parallel()
 
 	a := NewAnalyzer(context.TODO(), "SELECT a.id + 1 AS x FROM t", nil)
-	file, errs := starrocksparser.Parse(a.sql)
-	require.Empty(t, errs)
+	file, err := starrocksparser.Parse(a.sql)
+	require.NoError(t, err)
 	stmt, ok := file.Stmts[0].(*nodes.SelectStmt)
 	require.True(t, ok)
 	require.Equal(t, "a.id+1", a.exprTextOf(stmt.Items[0].Expr))
@@ -97,8 +97,8 @@ func TestInferredColumnAlias(t *testing.T) {
 		{"SELECT [t.a, t.b] FROM t", "[t.a,t.b]"},
 	} {
 		a := NewAnalyzer(context.TODO(), tc.sql, nil)
-		file, errs := starrocksparser.Parse(tc.sql)
-		require.Empty(t, errs)
+		file, err := starrocksparser.Parse(tc.sql)
+		require.NoError(t, err)
 		stmt, ok := file.Stmts[0].(*nodes.SelectStmt)
 		require.True(t, ok)
 		expr := stmt.Items[0].Expr

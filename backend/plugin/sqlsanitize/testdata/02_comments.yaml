@@ -64,15 +64,24 @@ cases:
     text: SELECT a   , b FROM t
     canonical: SELECT a , b FROM t
 
-  # A block comment nests in the MySQL family and in PostgreSQL, so removing only up to the
-  # first `*/` would leave the outer comment's tail in the stored text.
-  - name: a nested block comment in the mysql family and postgres
-    engine: [mysql, postgres]
+  # PostgreSQL nests a block comment, so removing only up to the first `*/` would leave the
+  # outer comment's tail in the stored text.
+  - name: a nested block comment in postgres
+    engine: postgres
     sql: SELECT 1 /* a /* b */ */ AS c
     text: SELECT ?   AS c
     canonical: SELECT ? AS c
 
-  # StarRocks ends a block comment at the first `*/`, so the outer close is a token there.
+  # The MySQL family does not nest block comments — the comment ends at the first `*/` — so
+  # the outer close stays in the stored text, and its two characters are two tokens.
+  - name: a nested block comment in the mysql family
+    engine: mysql
+    sql: SELECT 1 /* a /* b */ */ AS c
+    text: SELECT ? */ AS c
+    canonical: SELECT ? * / AS c
+
+  # StarRocks ends a block comment at the first `*/` too, but reads the outer close as one
+  # token, so its canonical form keeps the pair together.
   - name: a nested block comment in starrocks
     engine: starrocks
     sql: SELECT 1 /* a /* b */ */ AS c

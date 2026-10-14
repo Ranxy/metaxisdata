@@ -175,8 +175,10 @@ func TestSanitizeRemovesComments(t *testing.T) {
 		// A block comment becomes one space so that a and b do not fuse.
 		{storepb.Engine_MYSQL, "SELECT a/* c */FROM t", "SELECT a FROM t"},
 		{storepb.Engine_POSTGRES, "SELECT a /* c */ FROM t WHERE b = 1", "SELECT a   FROM t WHERE b = ?"},
-		// A block comment nests: stopping at the first `*/` would leave the outer close behind.
-		{storepb.Engine_MYSQL, "SELECT 1 /* a /* b */ */ AS c", "SELECT ?   AS c"},
+		// PostgreSQL nests a block comment: stopping at the first `*/` would leave the outer
+		// close behind. The MySQL family does not nest one, so the same input keeps it.
+		{storepb.Engine_POSTGRES, "SELECT 1 /* a /* b */ */ AS c", "SELECT ?   AS c"},
+		{storepb.Engine_MYSQL, "SELECT 1 /* a /* b */ */ AS c", "SELECT ? */ AS c"},
 		// `#` is not a comment in PostgreSQL, so it stays in the text as an operator.
 		{storepb.Engine_POSTGRES, "SELECT a#b FROM t", "SELECT a#b FROM t"},
 		// A comment inside a gap is dropped; the comment's own text never reaches the store.
