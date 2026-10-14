@@ -510,11 +510,47 @@ func (a *Analyzer) orderByTexts(list *nodes.List) []string {
 }
 
 // groupByKeys renders the GROUP BY items of a query in source order, the way this analyzer
-// renders PARTITION BY and ORDER BY. `GROUP BY ALL` has no key list to render, and omni's
-// T-SQL grammar rejects the form outright, so a statement that uses it fails to parse rather
-// than being analyzed without keys.
+// renders PARTITION BY and ORDER BY. A key is a column, so a clause that names a group of
+// groups rather than one expression contributes the columns each of its groups is built from:
+// `GROUP BY CUBE(a, b)` groups by `a` and by `b`, and the clause's own text is not a key.
+// `GROUP BY ALL` has no key list to render, and omni's T-SQL grammar rejects the form outright,
+// so a statement that uses it fails to parse rather than being analyzed without keys.
 func (a *Analyzer) groupByKeys(list *nodes.List) []string {
-	return a.listTexts(list)
+	var (
+		out  []string
+		seen = map[string]struct{}{}
+	)
+	add := func(keys ...string) {
+		for _, key := range keys {
+			if key == "" {
+				continue
+			}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, key)
+		}
+	}
+	for _, item := range listNodes(list) {
+		switch grouped := nodeOrNil(item).(type) {
+		case *nodes.GroupingSetsExpr:
+			for _, set := range listNodes(grouped.Sets) {
+				if inner, ok := nodeOrNil(set).(*nodes.List); ok {
+					add(a.listTexts(inner)...)
+					continue
+				}
+				add(a.exprTextOf(set))
+			}
+		case *nodes.CubeExpr:
+			add(a.listTexts(grouped.Args)...)
+		case *nodes.RollupExpr:
+			add(a.listTexts(grouped.Args)...)
+		default:
+			add(a.exprTextOf(item))
+		}
+	}
+	return out
 }
 
 // binaryOperatorName maps a T-SQL binary operator onto the recorded operator type.
