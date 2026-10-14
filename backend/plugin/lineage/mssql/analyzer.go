@@ -648,6 +648,7 @@ func (a *Analyzer) processTableFunction(call *nodes.FuncCallExpr, alias string, 
 				continue
 			}
 			for _, res := range resolutions {
+				res = a.canonicalResolution(res)
 				lineage = append(lineage, scope.NewSchemaLineageEdge(
 					res.Ref.Schema, res.Ref.Table, res.Ref.Column,
 					"", alias, column,
@@ -693,6 +694,7 @@ func (a *Analyzer) processInlineValues(values *nodes.ValuesClause, alias string,
 					continue
 				}
 				for _, res := range resolutions {
+					res = a.canonicalResolution(res)
 					lineage = append(lineage, scope.NewSchemaLineageEdge(
 						res.Ref.Schema, res.Ref.Table, res.Ref.Column,
 						"", alias, names[i],
@@ -775,6 +777,7 @@ func (a *Analyzer) processPivot(pivot *nodes.PivotExpr, alias string) {
 				continue
 			}
 			for _, res := range resolutions {
+				res = a.canonicalResolution(res)
 				lineage = append(lineage, scope.NewSchemaLineageEdge(
 					res.Ref.Schema, res.Ref.Table, res.Ref.Column,
 					"", alias, value,
@@ -877,6 +880,7 @@ func (a *Analyzer) processUnpivot(pivot *nodes.UnpivotExpr, alias string) {
 			continue
 		}
 		for _, res := range resolutions {
+			res = a.canonicalResolution(res)
 			lineage = append(lineage, scope.NewSchemaLineageEdge(
 				res.Ref.Schema, res.Ref.Table, res.Ref.Column,
 				"", alias, pivot.ValueCol,
@@ -913,6 +917,7 @@ func (a *Analyzer) tempTableLineage(sp *scope.Scope, names []string, targetName 
 				continue
 			}
 			for _, res := range resolutions {
+				res = a.canonicalResolution(res)
 				if a.flattenTempSourceLineage(sp, res.Relation, res.Ref.Column, targetName, colName, source.Transform, &lineage) {
 					continue
 				}
@@ -1233,6 +1238,7 @@ func (a *Analyzer) processSetClause(assignments *nodes.List, targetSchema, targe
 				continue
 			}
 			for _, res := range resolutions {
+				res = a.canonicalResolution(res)
 				if res.Relation != nil && (res.Relation.IsCTE || res.Relation.IsSubquery) {
 					a.traceThroughTableLineageToTarget(res.Relation, res.Ref.Column, targetSchema, targetTable, targetColumn, transform)
 					continue
@@ -1282,6 +1288,7 @@ func (a *Analyzer) processDeleteStatement(stmt *nodes.DeleteStmt) {
 		}
 		transform := []model.Transformation{model.NewDeleteTransformation(conditionText)}
 		for _, res := range resolutions {
+			res = a.canonicalResolution(res)
 			if res.Relation != nil && (res.Relation.IsCTE || res.Relation.IsSubquery) {
 				a.traceThroughTableLineageToTarget(res.Relation, res.Ref.Column, schema, table, deletionFieldName, transform)
 				continue
@@ -1548,6 +1555,7 @@ func (a *Analyzer) generateEdges(sp *scope.Scope) {
 				continue
 			}
 			for _, res := range resolutions {
+				res = a.canonicalResolution(res)
 				if res.Relation != nil && (res.Relation.IsCTE || res.Relation.IsSubquery) {
 					a.traceThroughTableLineage(res.Relation, res.Ref.Column, outputCol.Alias, source.Transform)
 					continue
@@ -1585,6 +1593,7 @@ func (a *Analyzer) generateEdgesForTarget(sp *scope.Scope, targetSchema, targetT
 			}
 			isTemp := targetTable == resultTableName
 			for _, res := range resolutions {
+				res = a.canonicalResolution(res)
 				if res.Relation != nil && (res.Relation.IsCTE || res.Relation.IsSubquery) {
 					a.traceThroughTableLineageToTarget(res.Relation, res.Ref.Column, targetSchema, targetTable, targetColName, source.Transform)
 					continue

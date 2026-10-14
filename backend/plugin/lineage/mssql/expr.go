@@ -34,6 +34,63 @@ func nodeOrNil(node nodes.Node) nodes.Node {
 	return node
 }
 
+// columnSpelling returns the name a relation gives a column.
+//
+// SQL Server compares identifiers case-insensitively under its default collation, so
+// `SELECT id FROM Users` reads the column the registry knows as `ID`. Recording the
+// statement's spelling would name a column that object does not have, and the graph would
+// show the edge's two ends as belonging to different fields. The registered spelling wins
+// for a relation whose columns are known; an exact match is preferred, because a
+// case-sensitive collation can hold both `id` and `ID` as two columns, and an unknown
+// relation keeps the statement's own spelling.
+func columnSpelling(relation *scope.TableRef, column string) string {
+	if relation == nil || column == "" {
+		return column
+	}
+	names := relation.ColumnNames()
+	for _, name := range names {
+		if name == column {
+			return name
+		}
+	}
+	for _, name := range names {
+		if strings.EqualFold(name, column) {
+			return name
+		}
+	}
+	return column
+}
+
+// canonicalResolution returns a resolved column under the spelling its relation is
+// registered with, so that every edge this analyzer builds names a column the registry's
+// object actually has.
+func (*Analyzer) canonicalResolution(res scope.ResolvedColumn) scope.ResolvedColumn {
+	res.Ref.Column = columnSpelling(res.Relation, res.Ref.Column)
+	return res
+}
+
+// canonicalPredicateRef spells a predicate's column the way its relation is registered,
+// as canonicalResolution does for a value edge. The influence machinery resolves the
+// reference itself at emission time, so the spelling has to be settled before it is handed
+// over; a reference that resolves to nothing — a select-list alias in HAVING, for one — is
+// passed through untouched and left to that machinery.
+func (*Analyzer) canonicalPredicateRef(ref scope.ColumnRef, sp *scope.Scope) scope.ColumnRef {
+	if ref.Column == "" || ref.Resolved || sp == nil {
+		return ref
+	}
+	resolutions, err := sp.ResolveColumnRefs(ref)
+	if err != nil {
+		return ref
+	}
+	for _, res := range resolutions {
+		if canonical := columnSpelling(res.Relation, res.Ref.Column); canonical != ref.Column {
+			ref.Column = canonical
+			return ref
+		}
+	}
+	return ref
+}
+
 // identifierOf maps an omni column reference onto the scope's. T-SQL addresses
 // an object as [server.][database.][schema.]table.column; the metadata registry
 // has no server dimension, so a linked-server qualifier is dropped.

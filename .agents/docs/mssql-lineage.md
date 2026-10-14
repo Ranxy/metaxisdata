@@ -25,6 +25,7 @@ MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关�
 | `SelectStmt.All` 与 `SELECT ALL` 复用同一个字段 | **只在 `Op != SetOpNone` 时**把它当"保留重复行"读,否则 `SELECT ALL` 会被误判成 UNION ALL | `setOpTransformation` |
 | 限定符是 schema(`TableRef.Schema/Object`,列的末段叫 `Column`) | 所有边用 `scope.NewSchemaLineageEdge`,与 PostgreSQL 同类;`catalogTable` 也按 `{Schema, Name}` 查 | `expr.go`、`analyzer.go` |
 | 支持 `db.schema.table` 三部分名,而 `scope.ColumnRef` 只带 schema | 数据库限定符与 analysis context 的 database 比对:相同(或没有 context)则按 schema 限定名正常分析;不同则**报告缺口**而不是把它读成本库同名对象 | `databaseMatches` |
+| 标识符大小写:引擎默认排序规则下**不敏感**,而注册表按 meta GUID **精确**匹配 | 源列名(catalog 命中 / CTE / 内联表知道列清单时)记录**注册表里的拼写**,精确拼写优先(大小写敏感排序规则的库可能同时有 `id` 与 `ID`);语句自己的输出列名保持原样。表/模式名仍是语句原样——见 Open items #1 | `columnSpelling`、`canonicalResolution`、`canonicalPredicateRef` |
 | 视图定义是完整语句,不是裸查询体 | 不需要 StarRocks 式的 viewbody 提取;唯一例外见 §缺口 | `processCreateView` |
 | `[bracketed]` 标识符由解析器去括号 | 边的字段名是去括号后的名字;`Loc` 仍能取回带括号的原文 | `identifierOf` |
 | 若干节点的 `Loc.End` 为 -1:标量子查询、`AliasedTableRef`、所有名字列表(`*List`/`*String`)、`SetExpr.Column` | 表达式文本取不到源切片时按节点重建(见 `rebuiltText`);名字列表一律读 `.Str`,绝不读文本;`SetExpr.Column` 读字段 | `expr.go` |
@@ -85,7 +86,7 @@ MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关�
 
 ## Open items
 
-1. **标识符大小写** — 边的字段名原样保留 SQL 的写法(与 MySQL 相同),而 MSSQL 引擎按数据库排序规则大小写不敏感、注册表的 meta GUID 大小写敏感。因此 `SELECT id FROM Users` 会产出列名 `id`,与注册表里 `ID` 不是同一个名字。要修需要注册表级别的归一化(或按实例排序规则折叠),不在本方言范围内。
+1. **标识符大小写(已落地一半)** — 列名这一半已修:源列名按注册表里的拼写记录(含影响边),精确拼写优先,由 `identifier_case_test.go` 与 `02_test_join_lineage_table.yaml` 钉住。**仍未解决的一半是表名/模式名**:`FROM users` 与注册表里的 `Users` 不是同一个 meta GUID,`catalog.Provide.GetTable` 是精确查询,于是查不到元数据、边就记成 `users`,图上是悬空节点。它不能在方言层修——方言只能折叠自己写下的名字,折叠后反而更对不上注册表里已存的拼写。可行的做法是**按引擎分级的注册表回退查询**(精确未命中时用 `lower(name)`/`lower(guid)` 再查一次,配一个函数索引迁移),只对标识符比较不敏感的引擎(MSSQL)开启,MySQL 在 Linux 上表名大小写敏感、PG 的解析器本就折成小写,两者都不需要。这属于 store/migrator 的范围,单独立项。
 2. ~~**APPLICATION_SQL 的词法器**~~ — **已落地**。`sqlsanitize` 现在对 MSSQL 走 `mssql/parser` 的 lexer 分支(`tokenSpans` + `isLiteral` 的 `[`/`#`/`"` 规则 + `stripComments` 不再把 `#` 当注释),并用 `testdata/10_mssql.yaml` 与 MSSQL 语料回归钉住;细节见 [application-sql-ingestion.md](application-sql-ingestion.md)。
 3. ~~**MERGE 的 WHEN 条件**~~ — **已落地**。`WHEN MATCHED AND …` / `WHEN NOT MATCHED AND …` 的条件现在以 FILTER 影响记在目标行上,由两条语料钉住。
 4. ~~**PIVOT 的隐式分组列**~~ — **已落地**(按 catalog 能力分级):源关系列清单已知时列出未消费列并按 direct 带过,未知时只暴露 IN 值列。顺带修掉一个真实作用域缺陷:PIVOT/UNPIVOT 的源曾留在外层作用域,`SELECT *` 会把源表当第二个关系展开(语料 `12_test_pivot_lineage_table.yaml` 的 star expansion 两例钉住)。

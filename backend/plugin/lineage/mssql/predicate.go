@@ -37,7 +37,7 @@ func (a *Analyzer) collectPredicates(expr nodes.Node, sp *scope.Scope, transform
 		return
 	}
 	for _, ref := range a.extractColumnsFromNode(expr, sp) {
-		a.influences.Resolve(sp, ref, transform, resolveAliases)
+		a.influences.Resolve(sp, a.canonicalPredicateRef(ref, sp), transform, resolveAliases)
 	}
 }
 
