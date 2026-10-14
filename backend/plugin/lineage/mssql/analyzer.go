@@ -275,7 +275,7 @@ func (a *Analyzer) processSelectInto(stmt *nodes.SelectStmt) {
 		a.reportTargetWithoutIdentity(stmt.IntoTable)
 		return
 	}
-	a.generateEdgesForTarget(sp, schema, table, nil)
+	a.generateEdgesForTarget(sp, schema, table, nil, false)
 }
 
 // processQuerySpecification processes FROM, then the SELECT list, then emits edges.
@@ -619,6 +619,26 @@ func (a *Analyzer) catalogTable(tableRef *scope.TableRef) *catalog.TableMeta {
 		return nil
 	}
 	return meta
+}
+
+// registeredColumn returns a DML target's column under the spelling the registry gives it, for
+// the same reason a source column takes it: a statement may spell one object's field two ways
+// (`INSERT INTO Users (id) SELECT id FROM Users`), and the graph walks a field trail on
+// (object, column) pairs. A column the target does not have keeps the statement's spelling, and
+// so does every column of a target the registry does not know.
+func (a *Analyzer) registeredColumn(schema, table, column string) string {
+	if a.catalog == nil || column == "" {
+		return column
+	}
+	meta := a.catalogTable(&scope.TableRef{Schema: schema, Table: table})
+	if meta == nil {
+		return column
+	}
+	names := make([]string, 0, len(meta.Columns))
+	for _, col := range meta.Columns {
+		names = append(names, col.Name)
+	}
+	return spellingIn(names, column)
 }
 
 // targetAddress reads the schema and object a data-modification statement writes,
@@ -1220,7 +1240,7 @@ func (a *Analyzer) processCreateView(stmt *nodes.CreateViewStmt) {
 	a.processQueryNode(stmt.Query)
 	a.inTargetContext = false
 
-	a.generateEdgesForTarget(a.currentScope(), schema, table, columnList(stmt.Columns))
+	a.generateEdgesForTarget(a.currentScope(), schema, table, columnList(stmt.Columns), false)
 }
 
 // ---------------------------------------------------------------------------
@@ -1263,7 +1283,7 @@ func (a *Analyzer) processInsertStatement(stmt *nodes.InsertStmt) {
 		a.reportTargetWithoutIdentity(stmt.Relation)
 		return
 	}
-	a.generateEdgesForTarget(a.currentScope(), schema, table, targetColumns)
+	a.generateEdgesForTarget(a.currentScope(), schema, table, targetColumns, true)
 }
 
 // processValuesColumns adds one output column per position of a VALUES clause. Every
@@ -1335,6 +1355,7 @@ func (a *Analyzer) processSetClause(assignments *nodes.List, targetSchema, targe
 		if targetColumn == "" {
 			continue
 		}
+		targetColumn = a.registeredColumn(targetSchema, targetTable, targetColumn)
 
 		sourceColumns := a.extractColumnsFromNode(assignment.Value, sp)
 		if len(sourceColumns) == 0 {
@@ -1486,7 +1507,7 @@ func (a *Analyzer) processMergeWhenClause(item nodes.Node, targetSchema, targetT
 			}
 			sp.AddOutputColumn(a.outputColumnFor(expr, name, name != "", sp, nil))
 		}
-		a.generateEdgesForTarget(sp, targetSchema, targetTable, columns)
+		a.generateEdgesForTarget(sp, targetSchema, targetTable, columns, true)
 	case *nodes.MergeDeleteAction:
 		// The rows a MERGE deletes are the target's own rows, selected by the ON
 		// condition and this clause's own condition — both recorded as influences on
@@ -1701,7 +1722,7 @@ func (a *Analyzer) generateEdges(sp *scope.Scope) {
 // a statement writes. A column list declared on the statement wins over the query's
 // own output name, which is what makes `CREATE VIEW v (a, b) AS SELECT x, y` and
 // `INSERT INTO t (a, b) SELECT x, y` name the right targets.
-func (a *Analyzer) generateEdgesForTarget(sp *scope.Scope, targetSchema, targetTable string, targetColumns []string) {
+func (a *Analyzer) generateEdgesForTarget(sp *scope.Scope, targetSchema, targetTable string, targetColumns []string, registeredTarget bool) {
 	if sp == nil {
 		return
 	}
@@ -1709,6 +1730,11 @@ func (a *Analyzer) generateEdgesForTarget(sp *scope.Scope, targetSchema, targetT
 		targetColName := outputCol.Alias
 		if i < len(targetColumns) {
 			targetColName = targetColumns[i]
+		}
+		if registeredTarget {
+			// The target is a stored object, so its columns are the registry's; a statement that
+			// spells one differently would otherwise record one field under two names.
+			targetColName = a.registeredColumn(targetSchema, targetTable, targetColName)
 		}
 		for _, source := range outputCol.Sources {
 			resolutions, err := sp.ResolveColumnRefs(source.Ref)

@@ -25,7 +25,7 @@ MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关�
 | `SelectStmt.All` 与 `SELECT ALL` 复用同一个字段 | **只在 `Op != SetOpNone` 时**把它当"保留重复行"读,否则 `SELECT ALL` 会被误判成 UNION ALL | `setOpTransformation` |
 | 限定符是 schema(`TableRef.Schema/Object`,列的末段叫 `Column`) | 所有边用 `scope.NewSchemaLineageEdge`,与 PostgreSQL 同类;`catalogTable` 也按 `{Schema, Name}` 查 | `expr.go`、`analyzer.go` |
 | 支持 `db.schema.table` 三部分名,而 `scope.ColumnRef` 只带 schema | 数据库限定符与 analysis context 的 database 比对:相同(或没有 context)则按 schema 限定名正常分析;不同则**报告缺口**而不是把它读成本库同名对象 | `databaseMatches` |
-| 标识符大小写:引擎默认排序规则下**不敏感**,而注册表按 meta GUID **精确**匹配 | 源列名(catalog 命中 / CTE / 内联表知道列清单时)记录**注册表里的拼写**,精确拼写优先(大小写敏感排序规则的库可能同时有 `id` 与 `ID`);语句自己的输出列名保持原样。表/模式名仍是语句原样——见 Open items #1 | `columnSpelling`、`canonicalResolution`、`canonicalPredicateRef` |
+| 标识符大小写:引擎默认排序规则下**不敏感**,而注册表按 meta GUID **精确**匹配 | 源列名(catalog 命中 / CTE / 内联表知道列清单时)与 **DML 目标列名**(写入的是一等注册对象)都记录**注册表里的拼写**,精确拼写优先(大小写敏感排序规则的库可能同时有 `id` 与 `ID`);`CREATE VIEW` / `SELECT INTO` 的列名是语句自己定义的,保持原样;表/模式名仍是语句原样——见 Open items #1 | `columnSpelling`、`canonicalResolution`、`canonicalPredicateRef`、`registeredColumn` |
 | 视图定义是完整语句,不是裸查询体 | 不需要 StarRocks 式的 viewbody 提取;唯一例外见 §缺口 | `processCreateView` |
 | `[bracketed]` 标识符由解析器去括号 | 边的字段名是去括号后的名字;`Loc` 仍能取回带括号的原文 | `identifierOf` |
 | 若干节点的 `Loc.End` 为 -1:标量子查询、`AliasedTableRef`、所有名字列表(`*List`/`*String`)、`SetExpr.Column` | 表达式文本取不到源切片时按节点重建(见 `rebuiltText`);名字列表一律读 `.Str`,绝不读文本;`SetExpr.Column` 读字段 | `expr.go` |

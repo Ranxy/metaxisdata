@@ -85,3 +85,18 @@ cases:
       error_contains: not modelled
       expected_edges:
         []
+    # The target is a stored object too, so its columns take the registry's spelling as well:
+    # one edge must not name one field two ways.
+    - name: an insert target takes the registered spelling
+      sql: INSERT INTO Users (id) SELECT id FROM Users
+      catalog:
+        tables:
+          Users: [ID, Name]
+      expected_edges:
+        - from_table: Users
+          from_field: ID
+          to_table: Users
+          to_field: ID
+          relation_type: direct
+          has_transform: false
+          is_temp: false

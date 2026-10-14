@@ -69,3 +69,16 @@ cases:
           transformations:
             - operation: PROJECT
               expression: (SELECT MAX(x) FROM s)
+    - name: an update target takes the registered spelling
+      sql: UPDATE Users SET name = 'x'
+      catalog:
+        tables:
+          Users: [ID, Name]
+      expected_edges:
+        - from_table: Users
+          from_field: '*'
+          to_table: Users
+          to_field: Name
+          relation_type: direct
+          has_transform: false
+          is_temp: false

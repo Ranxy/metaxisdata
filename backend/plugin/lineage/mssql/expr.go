@@ -47,7 +47,13 @@ func columnSpelling(relation *scope.TableRef, column string) string {
 	if relation == nil || column == "" {
 		return column
 	}
-	names := relation.ColumnNames()
+	return spellingIn(relation.ColumnNames(), column)
+}
+
+// spellingIn returns the spelling a column list gives a name, preferring an exact match and
+// falling back to a case-insensitive one. An exact match wins because a case-sensitive
+// collation can hold both `id` and `ID` as two columns.
+func spellingIn(names []string, column string) string {
 	for _, name := range names {
 		if name == column {
 			return name
