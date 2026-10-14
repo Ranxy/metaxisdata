@@ -3,6 +3,7 @@ package sqlsanitize
 import (
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	omnimssql "github.com/bytebase/omni/mssql/parser"
 	omnimysql "github.com/bytebase/omni/mysql/parser"
@@ -128,7 +129,7 @@ func isPlaceholder(raw string) bool {
 //	`...`            quoted identifier (MySQL family, StarRocks)
 //	#...             a temporary table's name in T-SQL, a line comment in the MySQL family
 //	123 / 1.5 / .5   numeric literal, including the leading-dot spelling
-//	$12.50 £10 €7     T-SQL money literals: a currency symbol and a number
+//	$12.50 £10 €7     T-SQL money literals: a currency symbol and an optionally signed number
 //	$action           T-SQL pseudo-column, not a literal
 //	0x1f              T-SQL binary literal
 //	x'..' b'..'      prefixed literals: one lexer token that starts with a letter
@@ -176,22 +177,25 @@ func isLiteral(engine storepb.Engine, raw string) bool {
 	return strings.ContainsRune(raw, '\'')
 }
 
-// tSQLMoneyLiteral reports whether a token is a T-SQL money literal: one of the currency
-// symbols the T-SQL lexer recognises, followed by a number. `$action` shares the `$` and is a
-// pseudo-column rather than money, and a bare currency symbol is neither.
+// tSQLMoneyLiteral reports whether a token is a T-SQL money literal: a currency symbol whose
+// number is optionally signed, as the T-SQL lexer's own money amount is — `$-4.78`, `$+2`,
+// `$ 4`, `$.5`. `$` is the one ASCII symbol it accepts; the rest are not ASCII (`£`, `¢`,
+// `￥`, `＄`, `￡` …), and rather than enumerate upstream's table this reads the shape: a first
+// rune that is not a letter or a digit, followed by a number. That keeps `$action` (a
+// pseudo-column), `£abc` (an identifier) and an identifier merely written in another script
+// (`名前`) out of the rule, because none of them has a number after its first rune.
 func tSQLMoneyLiteral(raw string) bool {
-	rest := raw
-	found := false
-	for _, symbol := range []string{"$", "£", "€", "¥", "¤"} {
-		if strings.HasPrefix(raw, symbol) {
-			rest, found = raw[len(symbol):], true
-			break
-		}
-	}
-	if !found {
+	if raw == "" {
 		return false
 	}
-	rest = strings.TrimLeft(rest, " \t")
+	symbol, size := utf8.DecodeRuneInString(raw)
+	if symbol != '$' && symbol < utf8.RuneSelf {
+		// An ASCII token that is not `$`-led begins with a letter, a digit or punctuation, and
+		// none of those is a currency symbol.
+		return false
+	}
+	rest := strings.TrimLeft(raw[size:], " \t")
+	rest = strings.TrimLeft(rest, "+-")
 	if rest == "" {
 		return false
 	}

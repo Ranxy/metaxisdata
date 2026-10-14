@@ -172,6 +172,10 @@ func mssqlTargets(sql string) ([]model.ObjectIdentifier, error) {
 			return one(mssqlIdentifier(s.Target))
 		case *mssqlnodes.BulkInsertStmt:
 			return one(mssqlIdentifier(s.Table))
+		case *mssqlnodes.SelectStmt:
+			// SELECT ... INTO creates the table it names and fills it. A plain SELECT has no INTO
+			// target and is refused below.
+			return one(mssqlIdentifier(s.IntoTable))
 		default:
 			// A SELECT, a batch separator, a statement that writes nothing, or the empty node a
 			// dropped WITH clause leaves behind: this is not the write being looked for.

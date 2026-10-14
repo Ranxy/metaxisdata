@@ -172,7 +172,10 @@ The runner derives the kind, and it is the only place the read/write rule lives:
 Zero-relation writes are constant `INSERT`s in every form and a `DELETE` that references no column.
 Everything else is already answered: an `UPDATE` records `t.* -> t.a` even for a constant
 assignment, a multi-table `UPDATE`/`DELETE` references columns, and every DDL statement has a real
-target. T-SQL adds a shape of its own — `MERGE … WHEN NOT MATCHED THEN INSERT (a) VALUES (<constant>)`
+target. A statement the analyzer cannot parse never reaches this package at all: the ingest gate
+refuses it first (`application_sql_handler.go`, `PARSE_ERROR`), so `INSERT … EXEC @p` — which omni's
+grammar rejects — is not a misclassified write but a statement that was never stored. T-SQL adds a
+shape of its own — `MERGE … WHEN NOT MATCHED THEN INSERT (a) VALUES (<constant>)`
 writes the target with no relation at all — and it refuses a target that is not a registry object
 (a `@table` variable, a `#temp` table) rather than naming one the registry can never hold. A table-level edge must carry a non-nil `Transformation` — the column is `NOT NULL`, so a
 nil slice serializes to `null` and fails the whole batch.

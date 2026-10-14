@@ -121,13 +121,23 @@ cases:
     sql: SELECT a FROM t /* unterminated
     expect_error: true
 
-  # Money is a currency symbol followed by a number, and the symbol is not a digit — the
-  # digit-led rule reads it as an identifier and stores the literal.
-  - name: money literals in every currency symbol
+  # Money is a currency symbol and an optionally signed number. `$` is the one ASCII sign the
+  # T-SQL lexer accepts and the rest are not ASCII, so the rule reads the shape rather than
+  # enumerating upstream's table — and the symbol is never a letter or a digit, which is why the
+  # literal-led rules would store it as an identifier.
+  - name: money literals in every form
     engine: mssql
-    sql: SELECT a FROM t WHERE b = £10 AND c = €7 AND d = ¥2 AND e = ¤5
-    text: SELECT a FROM t WHERE b = ? AND c = ? AND d = ? AND e = ?
-    canonical: SELECT a FROM t WHERE b = ? AND c = ? AND d = ? AND e = ?
+    sql: 'SELECT a FROM t WHERE b = £10 AND c = €7 AND d = ¥2 AND e = ¤5 AND f = $12.50 AND g = $-4.78 AND h = $+2 AND i = $.5 AND j = ¢1.5 AND k = ￥7 AND l = ＄8 AND m = ￡9 AND n = ₭5'
+    text: 'SELECT a FROM t WHERE b = ? AND c = ? AND d = ? AND e = ? AND f = ? AND g = ? AND h = ? AND i = ? AND j = ? AND k = ? AND l = ? AND m = ? AND n = ?'
+    canonical: 'SELECT a FROM t WHERE b = ? AND c = ? AND d = ? AND e = ? AND f = ? AND g = ? AND h = ? AND i = ? AND j = ? AND k = ? AND l = ? AND m = ? AND n = ?'
+
+  # The shapes that only look like money: no number follows their first rune, so each is an
+  # identifier, a pseudo-column or a name in another script and stays exactly as written.
+  - name: an identifier that only looks like money
+    engine: mssql
+    sql: 'SELECT £abc, a$b, [£x], 名前, $action, $ FROM t'
+    text: 'SELECT £abc, a$b, [£x], 名前, $action, $ FROM t'
+    canonical: 'SELECT £ abc , a$b , [£x] , 名前 , $action , $ FROM t'
 
   # `$action` is the pseudo-column an OUTPUT clause reads, not money.
   - name: the output pseudo column

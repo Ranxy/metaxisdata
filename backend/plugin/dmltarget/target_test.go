@@ -58,6 +58,8 @@ func TestTargetsCoversEveryZeroRelationWrite(t *testing.T) {
 		{"mssql constant select", storepb.Engine_MSSQL, "INSERT INTO t (a) SELECT 1", "t", false},
 		{"mssql default values", storepb.Engine_MSSQL, "INSERT INTO t DEFAULT VALUES", "t", false},
 		{"mssql merge insert of a constant", storepb.Engine_MSSQL, "MERGE INTO tgt USING src ON src.id = 1 WHEN NOT MATCHED THEN INSERT (a) VALUES (1)", "tgt", false},
+		{"mssql select into a constant", storepb.Engine_MSSQL, "SELECT 1 AS x INTO t2", "t2", false},
+		{"mssql select into a qualified table", storepb.Engine_MSSQL, "SELECT 1 INTO db1.dbo.t2", "db1.dbo.t2", false},
 		{"mssql bare delete", storepb.Engine_MSSQL, "DELETE FROM t", "t", false},
 		{"mssql constant delete", storepb.Engine_MSSQL, "DELETE FROM t WHERE 1 = 1", "t", false},
 	}

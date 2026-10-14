@@ -392,6 +392,7 @@ empty for a statement that follows a node with no `Loc.End`.
 | `(SELECT a FROM t1) UNION ALL (SELECT b FROM t2)` | syntax error at or near `(` |
 | `CREATE VIEW v WITH CHECK OPTION AS SELECT a FROM t` | syntax error at or near `WITH` (the valid order, trailing `WITH CHECK OPTION`, parses) |
 | `SELECT a, COUNT(*) FROM t GROUP BY ALL` | syntax error at end of input — the form is valid (if deprecated) T-SQL, and `SelectStmt.GroupByAll` exists in the AST, so the field is unreachable from a parsed statement |
+| `SELECT * FROM t WITH (NOLOCK) x JOIN u ON …` | syntax error at or near `x` — **no** alias is accepted after a table hint, with or without `AS`, while `t NOLOCK JOIN u` parses (`NOLOCK` read as the alias). The hint itself is modelled; a hint *and* an alias together is a hard failure. Found while reviewing the alias workaround, not caused by it |
 | `SELECT a, b = 1 FROM t` | **accepted** — `ResTarget{Name: "b"}` |
 | `SELECT @v = a FROM t` | **accepted** — `ResTarget{Val: SelectAssign}` |
 

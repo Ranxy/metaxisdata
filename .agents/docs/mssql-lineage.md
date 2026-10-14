@@ -46,6 +46,7 @@ MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关�
 | 表变量(`@tv`)、`#temp` 临时表、`SEMANTIC` 模型表 | 无注册表身份 → `not modelled` 缺口;引用它的列报"未解析"。**DML 目标不可寻址时不产出任何边**:INSERT/UPDATE/DELETE/MERGE/SELECT INTO 走同一条规则——MERGE 的每个 WHEN 子句都写目标,过去会写出目标 schema 与名字都是空串的边,而 runner 照单入库 |
 | `INSERT … EXEC` | 源是存储过程的结果集 → 缺口 |
 | 行集函数(`OPENJSON … WITH (…)`、`OPENROWSET`)的自身列清单 | 按函数名建列,别名列清单不建模 |
+| 表提示 + 别名(`FROM t WITH (NOLOCK) x`) | 上游语法缺口:带表提示的表不接受别名(`t NOLOCK` 反而把 NOLOCK 读成别名),解析直接失败 → 硬失败;单有表提示正常 |
 | 递归 CTE 的不动点 | 与其他方言相同,单遍分析 |
 
 **两处按 catalog 决定的行为**:PIVOT 会保留源表中"聚合函数与 FOR 列都没消费"的列作为分组列,但语句从不写出它们 —— 源关系的列清单已知(catalog 命中 / CTE / 内联表)时按 `源列 → PIVOT 列`(direct,值原样带过)记录,未知时只暴露 IN 值列(不猜);MERGE 的 `WHEN … AND <条件>` 记为该目标行的 FILTER 影响,与 ON 条件同一机制。PIVOT/UNPIVOT、表值函数与内联 VALUES 的源在**独立子作用域**里分析——它是关系内部的行源,留在外层会让 `SELECT *` 把它当成第二个关系展开;手写的内部 lineage 也必须像 `tempTableLineage` 一样**展平查询本地来源**(CTE/派生表),否则 CTE 名会变成落库的边端点(语料 `12_test_pivot_lineage_table.yaml` / `16_test_extended_forms_lineage_table.yaml` 各四例钉住,含派生表叠 CTE)。
