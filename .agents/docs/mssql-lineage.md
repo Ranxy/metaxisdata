@@ -44,9 +44,10 @@ MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关�
 | UPDATE 的 `WHERE` / `FROM` join 谓词 | 不记影响边(与 PostgreSQL / MySQL 一致);DELETE 有 WHERE 时记 `__deletion__`,没有 WHERE 时把 FROM 的 join 谓词记为 DELETE 目标行的影响 |
 | 表变量(`@tv`)、`SEMANTIC` 模型表 | 无注册表身份 → `not modelled` 缺口;引用它的列报"未解析" |
 | `INSERT … EXEC` | 源是存储过程的结果集 → 缺口 |
-| MERGE 的 WHEN 条件、`PIVOT` 源表的其余分组列 | 不记录;PIVOT 只记聚合函数与 FOR 列的 group key |
 | 行集函数(`OPENJSON … WITH (…)`、`OPENROWSET`)的自身列清单 | 按函数名建列,别名列清单不建模 |
 | 递归 CTE 的不动点 | 与其他方言相同,单遍分析 |
+
+**两处按 catalog 决定的行为**:PIVOT 会保留源表中"聚合函数与 FOR 列都没消费"的列作为分组列,但语句从不写出它们 —— 源关系的列清单已知(catalog 命中 / CTE / 内联表)时按 `源列 → PIVOT 列`(direct,值原样带过)记录,未知时只暴露 IN 值列(不猜);MERGE 的 `WHEN … AND <条件>` 记为该目标行的 FILTER 影响,与 ON 条件同一机制。PIVOT/UNPIVOT 的源在**独立子作用域**里分析:它是关系内部的行源,留在外层会让 `SELECT *` 把它当成第二个关系展开。
 
 **上游语法缺口(硬失败,不建模)**:`JOIN … USING (…)`、`NATURAL JOIN`(静默误读为别名,已在本地复核)、`OPENROWSET(BULK …)`、表值函数的带类型列定义、`CREATE VIEW v AS (SELECT …)` 的括号体。明细见 [omni-upstream-defects.md](omni-upstream-defects.md) §10。
 
@@ -86,8 +87,8 @@ MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关�
 
 1. **标识符大小写** — 边的字段名原样保留 SQL 的写法(与 MySQL 相同),而 MSSQL 引擎按数据库排序规则大小写不敏感、注册表的 meta GUID 大小写敏感。因此 `SELECT id FROM Users` 会产出列名 `id`,与注册表里 `ID` 不是同一个名字。要修需要注册表级别的归一化(或按实例排序规则折叠),不在本方言范围内。
 2. ~~**APPLICATION_SQL 的词法器**~~ — **已落地**。`sqlsanitize` 现在对 MSSQL 走 `mssql/parser` 的 lexer 分支(`tokenSpans` + `isLiteral` 的 `[`/`#`/`"` 规则 + `stripComments` 不再把 `#` 当注释),并用 `testdata/10_mssql.yaml` 与 MSSQL 语料回归钉住;细节见 [application-sql-ingestion.md](application-sql-ingestion.md)。
-3. **MERGE 的 WHEN 条件** — `WHEN MATCHED AND …` / `WHEN NOT MATCHED AND …` 的条件不记为影响边;目前只有 ON 条件记 join 影响。
-4. **PIVOT 的隐式分组列** — PIVOT 会保留源表中未参与聚合/FOR 的列,只有 catalog 能说出它们是谁;现在这些列在 PIVOT 关系里不存在,`SELECT *` 走通配符回退。
+3. ~~**MERGE 的 WHEN 条件**~~ — **已落地**。`WHEN MATCHED AND …` / `WHEN NOT MATCHED AND …` 的条件现在以 FILTER 影响记在目标行上,由两条语料钉住。
+4. ~~**PIVOT 的隐式分组列**~~ — **已落地**(按 catalog 能力分级):源关系列清单已知时列出未消费列并按 direct 带过,未知时只暴露 IN 值列。顺带修掉一个真实作用域缺陷:PIVOT/UNPIVOT 的源曾留在外层作用域,`SELECT *` 会把源表当第二个关系展开(语料 `12_test_pivot_lineage_table.yaml` 的 star expansion 两例钉住)。
 5. **命名窗口跨语句不可见** — `WINDOW w AS …` 只在处理该查询期间有效(`namedWindows`),这是 SQL 的作用域,不是限制。
 6. ~~**上游 `WITH` + DML 缺陷的本地绕行**~~ — **已落地**。`withclause.go` 恢复 CTE 列表(StarRocks `viewbody.go` 的同类做法),四种 DML 与"CTE 体变换透传"都由语料钉住;`withclause_test.go` 钉住边界判定与只挂 DML 两半。上游缺陷记录见 [omni-upstream-defects.md](omni-upstream-defects.md) §10.1。
 

@@ -724,16 +724,21 @@ func (a *Analyzer) inferredValuesColumns(row []nodes.Node) []string {
 	return names
 }
 
-// processPivot registers a PIVOT relation. A pivot turns one column's values into
-// columns: SQL Server materialises one output column per value in the IN list, each
-// aggregating the aggregate function's argument over the rows the FOR column groups.
-// The source's own grouping columns are not named anywhere in the statement, so a
-// wildcard over the relation still reaches the source relation itself.
+// processPivot registers a PIVOT relation. A pivot turns one column's values into columns:
+// SQL Server materialises one output column per value in the IN list, each aggregating the
+// aggregate function's argument over the rows the FOR column groups.
+//
+// The relation also keeps the source's columns that neither the aggregate nor the FOR column
+// consumes, as grouping columns. The statement never names them — which ones they are is a
+// catalog question — so they are read from the source relation's column list when it is
+// known, and the relation exposes the pivot columns alone when it is not.
+//
+// The source is analyzed in a scope of its own, because it is internal to the pivot: left in
+// the enclosing scope it is read as a second row source by a `SELECT *` beside the pivot.
 func (a *Analyzer) processPivot(pivot *nodes.PivotExpr, alias string) {
 	if pivot == nil {
 		return
 	}
-	a.processTableExpr(pivot.Source)
 	if alias == "" {
 		alias = pivot.Alias
 	}
@@ -742,10 +747,13 @@ func (a *Analyzer) processPivot(pivot *nodes.PivotExpr, alias string) {
 	}
 	values := columnList(pivot.InValues)
 	if len(values) == 0 {
+		a.processTableExpr(pivot.Source)
 		return
 	}
 
-	sp := a.currentScope()
+	a.pushScope()
+	a.processTableExpr(pivot.Source)
+	sourceScope := a.currentScope()
 	var transform []model.Transformation
 	if call, ok := pivot.AggFunc.(*nodes.FuncCallExpr); ok {
 		transform = []model.Transformation{model.NewAggregateTransformation(
@@ -756,12 +764,12 @@ func (a *Analyzer) processPivot(pivot *nodes.PivotExpr, alias string) {
 	} else {
 		transform = []model.Transformation{model.NewProjectTransformation(a.exprTextOf(pivot))}
 	}
-	sources := a.extractColumnsFromNode(pivot.AggFunc, sp)
+	sources := a.extractColumnsFromNode(pivot.AggFunc, sourceScope)
 
 	lineage := make([]model.ColumnRelation, 0, len(values)*len(sources))
 	for _, value := range values {
 		for _, source := range sources {
-			resolutions, err := sp.ResolveColumnRefs(source)
+			resolutions, err := sourceScope.ResolveColumnRefs(source)
 			if err != nil {
 				a.diagnostics.Unresolved("a PIVOT aggregate", source)
 				continue
@@ -777,19 +785,73 @@ func (a *Analyzer) processPivot(pivot *nodes.PivotExpr, alias string) {
 		}
 	}
 
+	// A grouping column's value is carried through unchanged, so its edge has no
+	// transformation: calling it an aggregate would say the value was computed.
+	grouping, groupingLineage := a.pivotGroupingColumns(pivot, alias, sourceScope.Tables(), values, sourceScope)
+	lineage = append(lineage, groupingLineage...)
+
+	// The rows a pivot emits are shaped by the predicates that shaped its source's rows, so
+	// those influences belong to the statement rather than to the scope being discarded.
+	a.influences.Inherit(sourceScope, a.currentScope())
+	a.popScope()
+
 	tableRef := &scope.TableRef{Table: alias, Alias: alias, IsSubquery: true, Lineage: lineage}
-	scope.AttachTempColumnLookup(tableRef, values)
-	sp.AddTable(tableRef)
+	scope.AttachTempColumnLookup(tableRef, append(grouping, values...))
+	a.currentScope().AddTable(tableRef)
 }
 
-// processUnpivot registers an UNPIVOT relation: every column in its IN list becomes
-// a row whose value column holds that column's value, so each of them is a source of
-// the value column and the pivot column is a name the statement itself constructs.
+// pivotGroupingColumns lists the source columns a pivot carries through, and the lineage that
+// says so. A column is carried through when neither the aggregate nor the FOR column consumes
+// it, and only a source whose column list the catalog knows can be enumerated: an unknown
+// relation contributes nothing rather than a guess.
+func (a *Analyzer) pivotGroupingColumns(pivot *nodes.PivotExpr, alias string, sourceRelations []*scope.TableRef, values []string, sp *scope.Scope) ([]string, []model.ColumnRelation) {
+	consumed := make(map[string]struct{}, len(values))
+	consumed[strings.ToLower(pivot.ForCol)] = struct{}{}
+	for _, source := range a.extractColumnsFromNode(pivot.AggFunc, sp) {
+		consumed[strings.ToLower(source.Column)] = struct{}{}
+	}
+	for _, value := range values {
+		consumed[strings.ToLower(value)] = struct{}{}
+	}
+
+	var (
+		names   []string
+		lineage []model.ColumnRelation
+	)
+	for _, relation := range sourceRelations {
+		if relation.IsSubquery {
+			// A derived table's columns are its own query's, and its lineage already says
+			// where they came from; carrying them here would name a relation the statement
+			// never wrote.
+			continue
+		}
+		for _, name := range relation.ColumnNames() {
+			if _, ok := consumed[strings.ToLower(name)]; ok {
+				continue
+			}
+			consumed[strings.ToLower(name)] = struct{}{}
+			names = append(names, name)
+			lineage = append(lineage, scope.NewSchemaLineageEdge(
+				relation.Schema, relation.Table, name,
+				"", alias, name,
+				nil,
+				true,
+			))
+		}
+	}
+	return names, lineage
+}
+
+// processUnpivot registers an UNPIVOT relation: every column in its IN list becomes a row
+// whose value column holds that column's value, so each of them is a source of the value
+// column and the pivot column is a name the statement itself constructs.
+//
+// The source is analyzed in a scope of its own, for the same reason a PIVOT's is: it is
+// internal to the relation being registered.
 func (a *Analyzer) processUnpivot(pivot *nodes.UnpivotExpr, alias string) {
 	if pivot == nil {
 		return
 	}
-	a.processTableExpr(pivot.Source)
 	if alias == "" {
 		alias = pivot.Alias
 	}
@@ -802,12 +864,14 @@ func (a *Analyzer) processUnpivot(pivot *nodes.UnpivotExpr, alias string) {
 	}
 	unpivoted := columnList(pivot.InCols)
 
-	sp := a.currentScope()
+	a.pushScope()
+	a.processTableExpr(pivot.Source)
+	sourceScope := a.currentScope()
 	transform := []model.Transformation{model.NewProjectTransformation("UNPIVOT(" + strings.Join(unpivoted, ",") + ")")}
 	lineage := make([]model.ColumnRelation, 0, len(unpivoted))
 	for _, name := range unpivoted {
 		// The column is read from the source relation, whichever relation that is.
-		resolutions, err := sp.ResolveColumnRefs(scope.ColumnRef{Column: name})
+		resolutions, err := sourceScope.ResolveColumnRefs(scope.ColumnRef{Column: name})
 		if err != nil {
 			a.diagnostics.Unresolved("an UNPIVOT column", scope.ColumnRef{Column: name})
 			continue
@@ -821,10 +885,12 @@ func (a *Analyzer) processUnpivot(pivot *nodes.UnpivotExpr, alias string) {
 			))
 		}
 	}
+	a.influences.Inherit(sourceScope, a.currentScope())
+	a.popScope()
 
 	tableRef := &scope.TableRef{Table: alias, Alias: alias, IsSubquery: true, Lineage: lineage}
 	scope.AttachTempColumnLookup(tableRef, columns)
-	sp.AddTable(tableRef)
+	a.currentScope().AddTable(tableRef)
 }
 
 // tempTableLineage builds the base-table lineage a temporary relation — a CTE, a
@@ -1263,6 +1329,12 @@ func (a *Analyzer) processMergeWhenClause(item nodes.Node, targetSchema, targetT
 	clause, ok := item.(*nodes.MergeWhenClause)
 	if !ok || clause == nil {
 		return
+	}
+	// The clause's own AND condition decides which of the rows the ON condition matched this
+	// action writes, so the columns it names are a row-set influence on the target, exactly as
+	// the ON condition is. Both are emitted together, once, by processMergeStatement.
+	if clause.Condition != nil {
+		a.collectPredicates(clause.Condition, a.currentScope(), model.NewFilterTransformation(a.exprTextOf(clause.Condition)), false)
 	}
 	switch action := clause.Action.(type) {
 	case *nodes.MergeUpdateAction:
