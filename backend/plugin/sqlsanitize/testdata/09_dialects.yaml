@@ -1,5 +1,5 @@
 name: Dialects
-# Where the three lexers genuinely disagree, written out rather than left to a shared case.
+# Where the lexers genuinely disagree, written out rather than left to a shared case.
 # The sanitizer's rules do not branch on the dialect; these cases pin what the shared rules
 # produce from the tokens each lexer hands them.
 cases:

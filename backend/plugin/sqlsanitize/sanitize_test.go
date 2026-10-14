@@ -16,19 +16,24 @@ func TestIsLiteralClassifiesEveryDialectForm(t *testing.T) {
 		raw     string
 		want    bool
 	}{
-		// Strings quote the same way in all three dialects.
+		// Strings quote the same way in every dialect.
 		{storepb.Engine_MYSQL, `'a'`, true},
 		{storepb.Engine_POSTGRES, `'a'`, true},
 		{storepb.Engine_STARROCKS, `'a'`, true},
-		// A double quote is a string in the MySQL family and an identifier in PostgreSQL,
-		// which is the one place the dialects genuinely disagree.
+		// A double quote is a string in the MySQL family and an identifier in PostgreSQL and
+		// T-SQL, whose connections default to QUOTED_IDENTIFIER ON.
 		{storepb.Engine_MYSQL, `"a"`, true},
 		{storepb.Engine_STARROCKS, `"a"`, true},
 		{storepb.Engine_POSTGRES, `"a"`, false},
+		{storepb.Engine_MSSQL, `"a"`, false},
 		// Numbers.
 		{storepb.Engine_MYSQL, "1", true},
 		{storepb.Engine_MYSQL, "1.5", true},
 		{storepb.Engine_POSTGRES, "0x1f", true},
+		{storepb.Engine_MSSQL, "0x1f", true},
+		// T-SQL literals the T-SQL lexer hands back as one token.
+		{storepb.Engine_MSSQL, `N'a'`, true},
+		{storepb.Engine_MSSQL, "$12.50", true},
 		// Prefixed literals are one token that starts with a letter.
 		{storepb.Engine_MYSQL, "x'AB'", true},
 		{storepb.Engine_MYSQL, "b'01'", true},
@@ -43,6 +48,10 @@ func TestIsLiteralClassifiesEveryDialectForm(t *testing.T) {
 		{storepb.Engine_MYSQL, "`a`", false},
 		{storepb.Engine_MYSQL, "col", false},
 		{storepb.Engine_POSTGRES, "a", false},
+		// A bracketed name holding a quote is still a name, and `#` names a temporary table.
+		{storepb.Engine_MSSQL, "[a]", false},
+		{storepb.Engine_MSSQL, "[it's]", false},
+		{storepb.Engine_MSSQL, "#tmp", false},
 		// The placeholder itself is left alone.
 		{storepb.Engine_MYSQL, Placeholder, false},
 		// Keywords and variables are not literals.

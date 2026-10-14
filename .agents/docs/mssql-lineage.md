@@ -13,7 +13,7 @@
 | --- | --- | --- |
 | VIEW | `sys.sql_modules.definition` 的**完整 `CREATE VIEW … AS …`** | runner 的 `buildSQL` 用 `isCompleteStatement` 原样放行(不会二次包裹);`ALTER VIEW` 也被 omni 解析成 `CreateViewStmt`,而 SQL Server 本身在存储时把它归一成 `CREATE VIEW` |
 | MANUAL_SQL | 用户粘贴的脚本 | 支持 `GO` 批分隔符;见 §切分 |
-| APPLICATION_SQL | 参数化语句 | 走 `sqlsanitize.Analyzable`,该函数对 MSSQL 仍用 MySQL 词法器(Open items #2) |
+| APPLICATION_SQL | 参数化语句 | 走 `sqlsanitize.Analyzable`,该函数对 MSSQL 用 **T-SQL 词法器**(`mssql/parser`),字面量与引号标识符的边界由它决定 |
 
 MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关。
 
@@ -85,7 +85,7 @@ MSSQL 没有物化视图,`MetaType_MATERIALIZED_VIEW` 这条路径与它无关�
 ## Open items
 
 1. **标识符大小写** — 边的字段名原样保留 SQL 的写法(与 MySQL 相同),而 MSSQL 引擎按数据库排序规则大小写不敏感、注册表的 meta GUID 大小写敏感。因此 `SELECT id FROM Users` 会产出列名 `id`,与注册表里 `ID` 不是同一个名字。要修需要注册表级别的归一化(或按实例排序规则折叠),不在本方言范围内。
-2. **APPLICATION_SQL 的词法器** — `backend/plugin/sqlsanitize/token.go` 的 `tokenSpans` 对 MSSQL 落到 MySQL 分支,`[bracketed]` 标识符与 `N'…'` 会被 MySQL 规则读。MSSQL 的 `parser.Tokenize` 存在且是 one-shot 的,接入大约十行,但那是摄入子系统的语义决策(见 [application-sql-ingestion.md](application-sql-ingestion.md)),未在本轮做。
+2. ~~**APPLICATION_SQL 的词法器**~~ — **已落地**。`sqlsanitize` 现在对 MSSQL 走 `mssql/parser` 的 lexer 分支(`tokenSpans` + `isLiteral` 的 `[`/`#`/`"` 规则 + `stripComments` 不再把 `#` 当注释),并用 `testdata/10_mssql.yaml` 与 MSSQL 语料回归钉住;细节见 [application-sql-ingestion.md](application-sql-ingestion.md)。
 3. **MERGE 的 WHEN 条件** — `WHEN MATCHED AND …` / `WHEN NOT MATCHED AND …` 的条件不记为影响边;目前只有 ON 条件记 join 影响。
 4. **PIVOT 的隐式分组列** — PIVOT 会保留源表中未参与聚合/FOR 的列,只有 catalog 能说出它们是谁;现在这些列在 PIVOT 关系里不存在,`SELECT *` 走通配符回退。
 5. **命名窗口跨语句不可见** — `WINDOW w AS …` 只在处理该查询期间有效(`namedWindows`),这是 SQL 的作用域,不是限制。

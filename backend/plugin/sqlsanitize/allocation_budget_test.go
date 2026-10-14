@@ -14,9 +14,10 @@ import (
 // `BenchmarkSanitize` remains the place to look when a shape actually slows down.
 //
 // The dialect with the highest count sets the limit for each shape: on a token-dense statement the
-// three lexers differ by a factor of three — StarRocks allocates the fewest, because its tokenizer
-// hands back one slice of tokens — but the budget is not meant to pin which of them is cheapest
-// today, only to notice when a rule change or an upstream bump adds work to all of them.
+// lexers differ by a factor of three, and what a lexer hands back decides it — StarRocks' tokenizer
+// returns one slice of tokens where the others walk a lexer, so it allocates the fewest, and T-SQL's
+// is walked the same way for the same reason. The budget is not meant to pin which of them is
+// cheapest today, only to notice when a rule change or an upstream bump adds work to all of them.
 func TestSanitizeAllocationBudget(t *testing.T) {
 	// Deliberately not parallel: AllocsPerRun counts allocations process-wide, so a test running
 	// beside it would be measured as part of it.

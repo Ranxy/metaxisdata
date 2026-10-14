@@ -286,22 +286,27 @@ enough:
 Every folding is idempotent — `fold(fold(x)) == fold(x)` — or a statement reported twice would be
 two rows. `fold_test.go` asserts both halves: what must merge, and what must not.
 
-Three asymmetries between the dialects follow from the shared rules running over tokens the lexers
-disagree about. They are pinned in `testdata/09_dialects.yaml` and beside the cases they affect:
+Four asymmetries between the dialects follow from the shared rules running over tokens the lexers
+disagree about. They are pinned in `testdata/09_dialects.yaml`, `testdata/10_mssql.yaml` and beside
+the cases they affect:
 
 | Difference | Effect |
 | --- | --- |
 | PostgreSQL lexes `?` as an operator character, so `-?` and `+?` come back as single operator tokens | a signed constant is spaced differently in the two: `x = -1 + 2` is `x = - ? + ?` in the MySQL family, where `-` and `?` are two tokens, and `x = -? + ?` in PostgreSQL, where they are one. Fingerprints are scoped to an instance, so the two forms never meet in one table. |
 | StarRocks tokenizes a `/*+ … */` hint as code rather than as a comment | the hint is stored and fingerprinted with the statement — but its body is tokenized like any expression, so a literal inside it is still rewritten. MySQL and PostgreSQL drop it as a comment. |
 | MySQL tokenizes a `/*! … */` executable comment into unusable fragments | the statement is refused, like any statement the lexer cannot walk to its end. |
-| MSSQL has no lexer of its own here: `tokenSpans` falls through to the MySQL family's | T-SQL reports are accepted only now that the engine has a lineage analyzer, and they are tokenized by a lexer that does not know `N'…'`, `0x1f` or `[bracketed]` identifiers' quoting rules. Those shapes can be rewritten into text the analyzer then refuses, so the report is `REJECTED` with `PARSE_ERROR` rather than stored wrongly. Giving MSSQL its own branch (`mssql/parser.Tokenize` is a one-shot tokenizer) is an open item recorded in [mssql-lineage.md](mssql-lineage.md). |
+| T-SQL keeps `N'…'`, `[…]`, `"…"` and `#tmp` whole, where the MySQL family's lexer split them | the dialect has its own branch in `tokenSpans` (`mssql/parser`'s lexer). Without it `N'abc'` was one token in no dialect but two in the lexer used, so the stored text was `N?`; a `FROM #tmp` had everything after the `#` deleted as a line comment; and `"col"` — an identifier under T-SQL's default `QUOTED_IDENTIFIER ON` — was replaced by a placeholder. `x'AB'` and `b'101'` are the reverse: one literal token in PostgreSQL and the MySQL family, two in T-SQL, so T-SQL stores `x?` there. |
 
 ### The corpus
 
+`Version` stays 1 through the T-SQL branch: no rule changed for a dialect that already had rows, and
+T-SQL reports were refused until the engine had a lineage analyzer, so no MSSQL statement was ever
+fingerprinted under the old tokenization.
+
 `sanitize_test.go` and `fold_test.go` are the hand-written cases for one behavior each.
-`testdata/*.yaml` is the contract at statement scale: 220 statements in nine suites, each run under
+`testdata/*.yaml` is the contract at statement scale: 234 statements in ten suites, each run under
 every dialect unless it names the ones it is valid in (`engine: postgres`, `engine: [mysql,
-starrocks]`).
+starrocks]`, `engine: mssql`).
 
 A case pins `text` and `canonical` exactly and nothing else, and both are required. Pinning both is
 what states the deduplication contract with no second mechanism: two cases whose canonical forms are
@@ -317,7 +322,7 @@ statement under the same dialect.
 
 | Suite | Rule |
 | --- | --- |
-| `01_literals` | N1, every literal form the three lexers emit, and the numbered-parameter rewrite |
+| `01_literals` | N1, every literal form the four lexers emit, and the numbered-parameter rewrite |
 | `02_comments` | N2, including the forms that are *not* comments: a string, a quoted identifier, a StarRocks hint, a MySQL executable comment |
 | `03_identifiers` | N3, quoting and case, and where a double quote or a backtick changes meaning |
 | `04_in_lists` | N4, and every list that must keep its shape |
@@ -326,6 +331,7 @@ statement under the same dialect.
 | `07_statement_shapes` | realistic application statements, so a rule change has to answer for one |
 | `08_refusals` | what must not be stored — text that is not valid UTF-8 is refused too, but YAML cannot carry an invalid byte, so `sanitize_test.go` pins that one |
 | `09_dialects` | the asymmetries above, written out
+| `10_mssql` | the T-SQL branch of `tokenSpans`: `N'…'`, `[bracketed]` and `"quoted"` names, `#temp` tables, `0x1f`/`$12.50` literals, `@@ROWCOUNT`, nested block comments |
 
 ## Invariants
 

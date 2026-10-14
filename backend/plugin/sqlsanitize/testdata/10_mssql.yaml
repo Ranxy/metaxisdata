@@ -1,0 +1,97 @@
+name: T-SQL
+# Where T-SQL's own lexer is what keeps a statement intact. These cases are pinned to one
+# engine because the shapes are T-SQL: `N'…'`, `[bracketed]` and `"quoted"` identifiers,
+# `#temp` names, `0x1f` and `$12.50` literals, `@@ROWCOUNT`.
+#
+# Read this suite as a record of three defects that are gone: the MySQL family's lexer split
+# `N'abc'` into `N` and `'abc'` (so the stored text became `N?`), deleted everything after
+# `FROM #tmp` as a line comment, and split `$12.50` into two placeholders.
+cases:
+  - name: a national string literal
+    engine: mssql
+    sql: SELECT N'abc' AS a FROM t
+    text: SELECT ? AS a FROM t
+    canonical: SELECT ? AS a FROM t
+
+  - name: a national string literal holding an escaped quote
+    engine: mssql
+    sql: SELECT N'it''s' AS a FROM t
+    text: SELECT ? AS a FROM t
+    canonical: SELECT ? AS a FROM t
+
+  - name: a temporary table name is not a comment
+    engine: mssql
+    sql: "SELECT * FROM #tmp WHERE a = 'x'"
+    text: "SELECT * FROM #tmp WHERE a = ?"
+    canonical: "SELECT * FROM #tmp WHERE a = ?"
+
+  - name: a double quoted name is an identifier
+    engine: mssql
+    sql: SELECT "col" FROM t
+    text: SELECT "col" FROM t
+    canonical: SELECT "col" FROM t
+
+  - name: a bracketed name holding a space
+    engine: mssql
+    sql: SELECT [my col] FROM t WHERE [my col] = 'x'
+    text: SELECT [my col] FROM t WHERE [my col] = ?
+    canonical: SELECT [my col] FROM t WHERE [my col] = ?
+
+  - name: a bracketed name holding a quote
+    engine: mssql
+    sql: SELECT [it's] FROM t
+    text: SELECT [it's] FROM t
+    canonical: SELECT [it's] FROM t
+
+  - name: a binary literal
+    engine: mssql
+    sql: SELECT a FROM t WHERE b = 0x1f
+    text: SELECT a FROM t WHERE b = ?
+    canonical: SELECT a FROM t WHERE b = ?
+
+  - name: a money literal
+    engine: mssql
+    sql: SELECT a FROM t WHERE b = $12.50
+    text: SELECT a FROM t WHERE b = ?
+    canonical: SELECT a FROM t WHERE b = ?
+
+  # `@@ROWCOUNT` is one token, and `@p1` — what an application built on a driver sends — is a
+  # variable here, not a literal, so both are copied verbatim. A T-SQL application is expected
+  # to send the wire form `?` for its parameters, which stays a placeholder.
+  - name: system functions and variables
+    engine: mssql
+    sql: SELECT @p1, @@ROWCOUNT FROM t
+    text: SELECT @p1, @@ROWCOUNT FROM t
+    canonical: SELECT @p1 , @@ROWCOUNT FROM t
+
+  - name: a line comment
+    engine: mssql
+    sql: SELECT a FROM t -- comment
+    text: SELECT a FROM t
+    canonical: SELECT a FROM t
+
+  # T-SQL block comments nest; the gap they leave becomes one space, which is what keeps
+  # `a/*c*/b` from fusing into `ab`.
+  - name: a block comment between two tokens
+    engine: mssql
+    sql: SELECT /* c */ a FROM t
+    text: SELECT   a FROM t
+    canonical: SELECT a FROM t
+
+  - name: a nested block comment
+    engine: mssql
+    sql: SELECT a /* b /* c */ d */ FROM t
+    text: SELECT a   FROM t
+    canonical: SELECT a FROM t
+
+  - name: several literals in one statement
+    engine: mssql
+    sql: SELECT a FROM t WHERE b = 'x' AND c = N'y' AND d = 0x2f
+    text: SELECT a FROM t WHERE b = ? AND c = ? AND d = ?
+    canonical: SELECT a FROM t WHERE b = ? AND c = ? AND d = ?
+
+  - name: a temporary table in an insert
+    engine: mssql
+    sql: "INSERT INTO #stage (a) VALUES ('x')"
+    text: "INSERT INTO #stage (a) VALUES (?)"
+    canonical: "INSERT INTO #stage ( a ) VALUES ( ? )"

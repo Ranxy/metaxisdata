@@ -20,7 +20,7 @@ import (
 
 // The YAML corpus in testdata is this package's contract. Each case pins, for one
 // statement, the stored text and the canonical form exactly; a case that names no engine
-// runs under all three dialects, because nothing in N1-N5 is allowed to depend on which
+// runs under all four dialects, because nothing in N1-N5 is allowed to depend on which
 // lexer produced the tokens.
 //
 // Pinning the canonical form pins the fingerprint too, and that is how the corpus states
@@ -37,11 +37,17 @@ var yamlEngines = map[string]storepb.Engine{
 	"mysql":     storepb.Engine_MYSQL,
 	"postgres":  storepb.Engine_POSTGRES,
 	"starrocks": storepb.Engine_STARROCKS,
+	"mssql":     storepb.Engine_MSSQL,
 }
 
 // everyEngine is the order an unpinned case runs in, so a failure lists the dialects in
 // the same order every time.
-var everyEngine = []storepb.Engine{storepb.Engine_MYSQL, storepb.Engine_POSTGRES, storepb.Engine_STARROCKS}
+var everyEngine = []storepb.Engine{
+	storepb.Engine_MYSQL,
+	storepb.Engine_POSTGRES,
+	storepb.Engine_STARROCKS,
+	storepb.Engine_MSSQL,
+}
 
 func engineName(engine storepb.Engine) string {
 	switch engine {
@@ -600,12 +606,12 @@ func TestSuiteEngineLists(t *testing.T) {
     sql: SELECT 1
     text: SELECT ?
     canonical: SELECT ?
-  - name: two of three
+  - name: two of the four
     engine: [mysql, starrocks]
     sql: SELECT "x"
     text: SELECT ?
     canonical: SELECT ?
-  - name: one of three
+  - name: one of the four
     engine: postgres
     sql: SELECT "x" FROM t
     text: SELECT "x" FROM t
@@ -615,7 +621,7 @@ func TestSuiteEngineLists(t *testing.T) {
 	suite, err := loadSanitizeSuite(path)
 	require.NoError(t, err)
 	require.Len(t, suite.cases, 3)
-	require.Equal(t, []storepb.Engine{storepb.Engine_MYSQL, storepb.Engine_POSTGRES, storepb.Engine_STARROCKS}, suite.cases[0].engines)
+	require.Equal(t, everyEngine, suite.cases[0].engines)
 	require.Equal(t, []storepb.Engine{storepb.Engine_MYSQL, storepb.Engine_STARROCKS}, suite.cases[1].engines)
 	require.Equal(t, []storepb.Engine{storepb.Engine_POSTGRES}, suite.cases[2].engines)
 }
