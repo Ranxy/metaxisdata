@@ -1,0 +1,114 @@
+name: TestExtendedFormsLineageTable
+cases:
+    - name: table valued function reads its arguments
+      sql: SELECT f.val FROM t1 CROSS APPLY fn(t1.id) AS f(val)
+      expected_edges:
+        - from_table: t1
+          from_field: id
+          to_table: __result__
+          to_field: val
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+    - name: inline values table
+      sql: SELECT v.x FROM (VALUES (1), (2)) v(x)
+      expected_edges:
+        []
+    - name: inline values table with a subquery row
+      sql: SELECT v.x FROM (VALUES ((SELECT MAX(a) FROM t))) v(x)
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: x
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+    - name: table variable columns are unresolved
+      sql: 'SELECT tv.a FROM @tv tv'
+      expect_error: true
+      error_contains: unresolved reference in an output column
+      expected_edges:
+        []
+    - name: for json output keeps the result edges
+      sql: SELECT a FROM t FOR JSON PATH
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+    - name: option clause does not change lineage
+      sql: SELECT a FROM t OPTION (RECOMPILE)
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+    - name: top with ties
+      sql: SELECT TOP (10) WITH TIES a FROM t ORDER BY a
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+    - name: update with an output clause
+      sql: UPDATE t SET a = b OUTPUT inserted.a
+      expected_edges:
+        - from_table: t
+          from_field: b
+          to_table: t
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+    - name: delete with an output clause
+      sql: DELETE FROM t OUTPUT deleted.a WHERE b = 1
+      expected_edges:
+        - from_table: t
+          from_field: b
+          to_table: t
+          to_field: __deletion__
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: DELETE
+              condition: b = 1
+    - name: cte in front of an insert fails whole
+      sql: WITH c AS (SELECT a FROM t) INSERT INTO t2 (a) SELECT a FROM c
+      expect_error: true
+      error_contains: a WITH clause in front of a data-modification statement
+      expected_edges:
+        []
+    - name: values rows merge positionally
+      sql: INSERT INTO t2 (a, b) VALUES ((SELECT MAX(x) FROM s), 1), ((SELECT MAX(y) FROM s), 2)
+      expected_edges:
+        - from_table: s
+          from_field: x
+          to_table: t2
+          to_field: a
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: (SELECT MAX(x) FROM s)
+        - from_table: s
+          from_field: y
+          to_table: t2
+          to_field: a
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: (SELECT MAX(y) FROM s)

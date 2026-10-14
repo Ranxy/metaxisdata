@@ -1,0 +1,106 @@
+name: TestCTELineageTable
+cases:
+    - name: cte traced to its base table
+      sql: WITH c AS (SELECT a FROM t) SELECT a FROM c
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+    - name: cte with a declared column list
+      sql: WITH c(x) AS (SELECT a FROM t) SELECT x FROM c
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: x
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+    - name: chained ctes
+      sql: WITH c AS (SELECT a FROM t), d AS (SELECT a FROM c) SELECT a FROM d
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+    - name: cte body transformation is carried through
+      sql: WITH c AS (SELECT a + 1 AS b FROM t) SELECT b FROM c
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: b
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: OPERATOR
+              expression: a + 1
+              op_type: ADDITION
+    - name: cte predicate reaches the statement
+      sql: WITH c AS (SELECT a FROM t WHERE b = 1) SELECT a FROM c
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+        - from_table: t
+          from_field: b
+          to_table: __result__
+          to_field: ''
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FILTER
+              condition: b = 1
+    - name: unreferenced cte contributes nothing
+      sql: WITH c AS (SELECT a FROM t) SELECT b FROM u
+      expected_edges:
+        - from_table: u
+          from_field: b
+          to_table: __result__
+          to_field: b
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+    - name: recursive cte self reference is opaque
+      sql: WITH c AS (SELECT a FROM t UNION ALL SELECT a FROM c) SELECT a FROM c
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: union
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: UNION
+              all: true
+    - name: cte star expansion
+      sql: 'WITH c AS (SELECT a, b FROM t) SELECT * FROM c'
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+        - from_table: t
+          from_field: b
+          to_table: __result__
+          to_field: b
+          relation_type: direct
+          has_transform: false
+          is_temp: true

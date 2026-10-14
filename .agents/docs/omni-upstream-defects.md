@@ -1,15 +1,16 @@
-# Local record: `github.com/bytebase/omni` MySQL parser/AST defects
+# Local record: `github.com/bytebase/omni` parser/AST defects
 
 > **Purpose.** A local record of defects found in the pinned upstream dependency
-> while auditing `backend/plugin/lineage/mysql`. **Nothing here is to be sent,
+> while auditing the lineage dialects. **Nothing here is to be sent,
 > filed, posted or otherwise communicated upstream, and the module is not to be
 > modified, patched, forked or vendored.** The file exists so the knowledge is not
 > lost and so the analyzer's workarounds are justified in-repo. If upstream is
 > ever contacted, that is a human decision made outside this record.
 >
 > Module: `github.com/bytebase/omni v0.0.0-20260912023254-4574e69bb9f1`
-> (`go.mod`). Packages inspected: `mysql/parser` (`Parse`, `Tokenize`, `Split`)
-> and `mysql/ast`.
+> (`go.mod`). Packages inspected: `mysql/parser` (`Parse`, `Tokenize`, `Split`) and
+> `mysql/ast`; `mssql/parser` (`Parse`, `Tokenize`, `NewLexer`) and `mssql/ast`
+> (§10).
 
 ## How this was gathered
 
@@ -302,3 +303,111 @@ Two observations from the same batch, recorded for completeness:
   than dropped lineage. Literal rows (`FROM (VALUES (1,2)) v(a)`) execute and name
   their columns `column_0`, `column_1` — the same 0-based placeholders the MySQL
   engines use.
+
+## 10. MSSQL (T-SQL) parser and AST
+
+Gathered while writing `backend/plugin/lineage/mssql` against the same pin, with a
+throwaway probe package (`.probe-mssql/`, deleted afterwards: 87 numbered statements
+plus 105 extra shapes) and by reading `mssql/parser` and `mssql/ast` in the module
+cache. The dialect's own record of what it does about each item is
+[mssql-lineage.md](mssql-lineage.md).
+
+### 10.1 A `WITH` clause in front of a DML statement is dropped, and the following statement's text span with it
+
+`WITH c AS (SELECT a FROM t) INSERT INTO t2 (a) SELECT a FROM c` parses "successfully"
+into **two** items:
+
+| # | AST | `Text` |
+| --- | --- | --- |
+| 0 | a **typed nil** `*SelectStmt` | the whole input |
+| 1 | `*InsertStmt` | `""` |
+
+`parseSelectStmt` reads the CTE list and then returns `(nil, nil)` when the token
+after it is not `SELECT` (`mssql/parser/select.go:50`), so the `WithClause` node it
+built is unreachable, and the top-level loop in `parser.Parse` appends the nil node
+because a nil `*SelectStmt` inside a `nodes.Node` interface is not `== nil`. The
+statement loop then parses the DML, whose text starts where the previous statement
+ended — the end of the input — leaving it empty.
+
+`WITH … UPDATE` and `WITH … DELETE` behave the same way. `WITH … SELECT` is
+unaffected. Consequences the dialect had to handle:
+
+- `Statement.Empty()` (`AST == nil`) answers false for the nil node, so a filter
+  written on it keeps a statement that has no content; the dialect filters on a nil
+  check that sees through the interface instead.
+- Because the CTE definitions are gone, no edge from the statement can be trusted.
+  The dialect fails the statement whole rather than reporting a partial analysis.
+- The text spans are unusable for the DML item, so the splitter verifies every span
+  it is handed and falls back to a lexical scan when one is empty.
+
+### 10.2 Two keywords are consumed as a table alias
+
+| SQL | Observed | Consequence |
+| --- | --- | --- |
+| `FROM t1 NATURAL JOIN t2` | `JoinClause{Left: TableRef{Object: "t1", Alias: "NATURAL"}, Condition: nil}` | `t1` is addressed as `NATURAL`, so `t1.a` resolves to nothing; the join has no condition at all |
+| `MERGE INTO tgt USING src ON …` | `MergeStmt.Target` is a `TableRef` with `Alias: "USING"` | the target is addressed as `USING`, so `tgt.a` resolves to nothing |
+
+`MergeStmt.SourceAlias` is never populated either: an aliased source keeps its alias
+on `TableRef.Alias`. Both mis-parses are silent — no error, no marker anywhere in
+the AST. The dialect re-checks the recorded alias against the source text
+(`relationAlias` in `analyzer.go`) and drops it when the statement wrote a clause
+there; `AS [USING]` and other bracketed uses are kept as aliases.
+
+### 10.3 Many nodes carry `Loc.End == -1`, and the statement text depends on `Loc`
+
+Measured with `sql[Loc.Start:Loc.End]` on each node:
+
+| Node | `Loc` |
+| --- | --- |
+| set-operation wrapper `SelectStmt`, and its `Larg` | `End == -1` (the `Rarg` and an inner SELECT are exact) |
+| `AliasedTableRef`, `SubqueryExpr` | `End == -1` |
+| every name list — `*List` of `*String`: INSERT `Cols`, CTE `Columns`, view `Columns`, alias `Columns`, PIVOT `InValues` | `NoLoc` |
+| `SetExpr.Column` (the UPDATE SET target) | `End == -1` |
+
+The names are still readable (`.Str`, the typed fields), and expression nodes are
+exact — `sql[7:12]` of `a + 1 AS b` is `a + 1`. Two consequences: any code that
+renders a node's text must handle an invalid `Loc` (`mssql/ast.NodeToString` is a
+debug comparison format, **not** a SQL deparser, and cannot be used for it), and
+`Statement.Text`, which is derived from the previous statement's end offset, is
+empty for a statement that follows a node with no `Loc.End`.
+
+### 10.4 Grammar gaps and over-acceptance (all reproduced)
+
+| Input | Result |
+| --- | --- |
+| `SELECT a FROM t1 JOIN t2 USING (a)` | syntax error at or near `(` |
+| `SELECT * FROM OPENROWSET(BULK 'f.txt', SINGLE_CLOB) AS t` | syntax error at or near `BULK` |
+| `SELECT * FROM dbo.fn(x) result(a INT, b INT)` | syntax error at or near `INT` |
+| `CREATE VIEW v AS (SELECT a FROM t)` | syntax error at or near `(` |
+| `(SELECT a FROM t1) UNION ALL (SELECT b FROM t2)` | syntax error at or near `(` |
+| `CREATE VIEW v WITH CHECK OPTION AS SELECT a FROM t` | syntax error at or near `WITH` (the valid order, trailing `WITH CHECK OPTION`, parses) |
+| `SELECT a, b = 1 FROM t` | **accepted** — `ResTarget{Name: "b"}` |
+| `SELECT @v = a FROM t` | **accepted** — `ResTarget{Val: SelectAssign}` |
+
+The last two are recorded in the module's own `SCENARIOS-mssql-syntax-gaps.md` as
+gaps; they are not. `NATURAL JOIN` (§10.2) is the mirror image: accepted, with the
+wrong tree.
+
+### 10.5 Checked and *not* defects (the AST the dialect relies on)
+
+- Set operations are distinguishable: `UNION ALL` sets `SelectStmt.All = true` where
+  `UNION` leaves it false, both with `Op = SetOpUnion`. `All` doubles as `SELECT ALL`,
+  so it only means "keeps duplicate rows" when `Op != SetOpNone`.
+- Every query body is **typed**: a derived table is `AliasedTableRef >
+  SubqueryExpr > *SelectStmt`, an expression subquery is `SubqueryExpr`,
+  `InExpr.Subquery`, `ExistsExpr.Subquery` (a bare `*SelectStmt`) or
+  `SubqueryComparisonExpr.Subquery`, a CTE body is `CommonTableExpr.Query`, and the
+  walker in `mssql/ast/walk_generated.go` reaches all of them. No raw-SQL string field
+  exists anywhere in the probed trees — unlike StarRocks, no body has to be re-parsed.
+- `AliasedTableRef.Columns` and `CommonTableExpr.Columns` are populated
+  (`FROM (SELECT a FROM t) AS d(x)`, `WITH c(x) AS (…)`), and `(VALUES (1),(2)) v(x)`
+  parses — three shapes `SCENARIOS-mssql-syntax-gaps.md` records as gaps.
+- Bracketed identifiers lose their brackets in the node (`[dbo].[t]` →
+  `Schema "dbo"`, `Object "t"`), and `db.dbo.t.a` fills
+  `Database/Schema/Table/Column`; `Loc` still recovers the literal text.
+- `parser.Parse` returns `(*ast.List, error)`; there is **no** `ast.File` and **no**
+  `mssql.Split` or `mssql.Tokenize` (the one-shot tokenizer is `parser.Tokenize`,
+  and `parser.TokenName` names a token type). `mssql.Parse` splits and parses in one
+  call and is the only thing that knows where a `GO` batch ends.
+- Empty, whitespace-only and comment-only input all return `(nil, nil)` from
+  `mssql.Parse`, and a UTF-8 BOM is a lexer error (`syntax error at or near "\ufeff"`).

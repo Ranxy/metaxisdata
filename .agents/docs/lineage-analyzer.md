@@ -23,14 +23,14 @@
 
 ## 包结构与装配
 
-装配是**编译期列表 + 值传递**,没有任何 `init()` 自注册、没有包级注册表。方言导出 `Registration()`,新包 `engines` 在编译期列全五个方言,server 构造一个 `*lineage.Analyzer` 并显式注入每个消费者。
+装配是**编译期列表 + 值传递**,没有任何 `init()` 自注册、没有包级注册表。方言导出 `Registration()`,新包 `engines` 在编译期列全六个方言,server 构造一个 `*lineage.Analyzer` 并显式注入每个消费者。
 
 | 文件 | 角色 |
 | --- | --- |
 | `backend/plugin/lineage/lineage.go:90` | `NewAnalyzer(cat catalog.Provide, registrations ...EngineRegistration) *Analyzer`;重复 engine panic |
 | `backend/plugin/lineage/lineage.go:76-83` | `Analyzer{catalog, engines map[storepb.Engine]engineAnalyzer}` —— 值是调用方拥有的,不是包状态 |
 | `backend/plugin/lineage/lineage.go:16` | `ErrorEngineNotSupported` |
-| `backend/plugin/lineage/engines/engines.go:26-33` | `Registrations()` 列出 MySQL / TiDB / MariaDB / PostgreSQL / StarRocks |
+| `backend/plugin/lineage/engines/engines.go:27-35` | `Registrations()` 列出 MySQL / TiDB / MariaDB / PostgreSQL / StarRocks / MSSQL |
 | `backend/server/server.go:107` | `lineageEngines := lineage.NewAnalyzer(catalog.NewCatalogProvide(stores), engines.Registrations()...)` |
 | `backend/server/server.go:109,121,147` | 同一个值交给 `lineageanalyzer.NewAnalyzer`、OpenLineage processor、gRPC routers(LineageService / ExplainSQLService) |
 | `backend/plugin/lineage/catalog/provide.go:15,23,29,77` | `AnalysisContext{InstanceID, Database, Schema}` + `WithAnalysisContext`/`GetAnalysisContext`;`GetTable` 用 `Complete` 补全未限定名 |
@@ -150,7 +150,7 @@ TiDB 和 MariaDB **没有自己的遍历**。`mysql/analyzer.go` 哨兵之下的
 | --- | --- |
 | omni 解析不了某语句(含 MariaDB 三层括号 join) | 硬失败 → runner 清该对象血缘 + `error_message`,存 hash,等元数据变化再试 |
 | 某子句只是没建模(如 PG `MERGE`) | 部分分析 → 兄弟语句的边照存,缺口写 version 行 / RPC diagnostics |
-| 引擎没有分析器(OceanBase / Doris / MSSQL) | `ErrorEngineNotSupported` → 记 skip 与原因,不清边 |
+| 引擎没有分析器(OceanBase / Doris) | `ErrorEngineNotSupported` → 记 skip 与原因,不清边 |
 | catalog `GetTable` 失败 | `DiagnosticCatalogUnavailable` + 通配符回退,分析继续 |
 | 瞬时失败(DB 抖动等) | 30s/2m/5m 退避重试 ≤3 次,之后等小时全扫 |
 | 数据库定义被删/改 | sync 提交后三向清边(`meta_guid`/`source_guid`/`target_guid`);变更的 VIEW/MV 重新入队 |
@@ -181,10 +181,10 @@ TiDB 和 MariaDB **没有自己的遍历**。`mysql/analyzer.go` 哨兵之下的
 | store / schema | `backend/store/column_lineage.go`、`backend/migrator/migration/LATEST.sql:295,316` | `go test ./backend/store/`(schema 改动须补增量迁移) |
 | 清理 | `backend/runner/schemasync/syncer.go:757-762,1076-1090` | `go test ./backend/runner/schemasync/` |
 | MySQL 家族生成 | `backend/plugin/lineage/mysql/analyzer.go` + `mysql/gen/` | `go generate ./backend/plugin/lineage/mysql`;`go test ./backend/plugin/lineage/mysql/gen/` |
-| 黄金语料 | `backend/plugin/lineage/{mysql,tidb,mariadb,postgresql,starrocks}/testdata/analyze/` | `go test ./backend/plugin/lineage/...` |
+| 黄金语料 | `backend/plugin/lineage/{mysql,tidb,mariadb,postgresql,starrocks,mssql}/testdata/analyze/` | `go test ./backend/plugin/lineage/...` |
 | 共享机制守门 | `backend/plugin/lineage/shared_analysis_test.go` | `go test ./backend/plugin/lineage/ -run TestSharedAnalysisStaysShared` |
 | 端到端 | — | `make test-integration`(真实 PostgreSQL + MySQL) |
 
-语料计数取法(2026-09 复核):`for d in backend/plugin/lineage/*/testdata/analyze; do grep -hcE '^\s*- name:' $d/*.yaml; done` → mysql 225、tidb 自有 15、mariadb 自有 20、postgresql 250、starrocks 185;MySQL 族共享语料 225 例在 TiDB / MariaDB 各跳过 1 / 5 例。非测试代码 15,370 行、测试 3,994 行取法:`find backend/plugin/lineage -name '*.go' ! -name '*_test.go' | xargs wc -l`(及去掉 `!` 的测试侧)。
+语料计数取法(2026-10 复核):`for d in backend/plugin/lineage/*/testdata/analyze; do grep -hcE '^\s*- name:' $d/*.yaml; done` → mysql 225、tidb 自有 15、mariadb 自有 20、postgresql 250、starrocks 185、mssql 101;MySQL 族共享语料 225 例在 TiDB / MariaDB 各跳过 1 / 5 例。非测试代码 17,860 行、测试 4,340 行取法:`find backend/plugin/lineage -name '*.go' ! -name '*_test.go' | xargs wc -l`(及去掉 `!` 的测试侧)。
 
 不在本篇范围:各引擎"什么 clause 可见 / 什么必须保持产出"属语义决策,见 [lineage-semantics.md](lineage-semantics.md);图上字段级血缘的读取与展开见 [lineage-graph.md](lineage-graph.md);omni 缺陷明细与不修改政策见 [omni-upstream-defects.md](omni-upstream-defects.md)。

@@ -1,0 +1,124 @@
+name: TestMergeLineageTable
+cases:
+    - name: merge update and insert
+      sql: MERGE INTO tgt AS t USING src AS s ON t.id = s.id WHEN MATCHED THEN UPDATE SET t.a = s.a WHEN NOT MATCHED THEN INSERT (a) VALUES (s.a)
+      expected_edges:
+        - from_table: src
+          from_field: a
+          to_table: tgt
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+        - from_table: tgt
+          from_field: id
+          to_table: tgt
+          to_field: ''
+          relation_type: join
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: JOIN
+              condition: t.id = s.id
+        - from_table: src
+          from_field: id
+          to_table: tgt
+          to_field: ''
+          relation_type: join
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: JOIN
+              condition: t.id = s.id
+    - name: merge without a target alias
+      sql: MERGE INTO tgt USING src ON tgt.id = src.id WHEN MATCHED THEN UPDATE SET tgt.a = src.a
+      expected_edges:
+        - from_table: src
+          from_field: a
+          to_table: tgt
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+        - from_table: tgt
+          from_field: id
+          to_table: tgt
+          to_field: ''
+          relation_type: join
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: JOIN
+              condition: tgt.id = src.id
+        - from_table: src
+          from_field: id
+          to_table: tgt
+          to_field: ''
+          relation_type: join
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: JOIN
+              condition: tgt.id = src.id
+    - name: merge delete by source
+      sql: MERGE INTO tgt USING src ON tgt.id = src.id WHEN NOT MATCHED BY SOURCE THEN DELETE
+      expected_edges:
+        - from_table: tgt
+          from_field: '*'
+          to_table: tgt
+          to_field: __deletion__
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: DELETE
+        - from_table: tgt
+          from_field: id
+          to_table: tgt
+          to_field: ''
+          relation_type: join
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: JOIN
+              condition: tgt.id = src.id
+        - from_table: src
+          from_field: id
+          to_table: tgt
+          to_field: ''
+          relation_type: join
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: JOIN
+              condition: tgt.id = src.id
+    - name: merge from a derived table
+      sql: MERGE INTO tgt AS t USING (SELECT id, a FROM src) AS s ON t.id = s.id WHEN MATCHED THEN UPDATE SET t.a = s.a
+      expected_edges:
+        - from_table: src
+          from_field: a
+          to_table: tgt
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+        - from_table: tgt
+          from_field: id
+          to_table: tgt
+          to_field: ''
+          relation_type: join
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: JOIN
+              condition: t.id = s.id
+        - from_table: src
+          from_field: id
+          to_table: tgt
+          to_field: ''
+          relation_type: join
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: JOIN
+              condition: t.id = s.id

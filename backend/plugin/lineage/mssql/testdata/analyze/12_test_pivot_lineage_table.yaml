@@ -1,0 +1,54 @@
+name: TestPivotLineageTable
+cases:
+    - name: pivot reads the aggregate and the for column
+      sql: 'SELECT p.[1], p.[2] FROM t1 PIVOT (SUM(b) FOR c IN ([1], [2])) p'
+      expected_edges:
+        - from_table: t1
+          from_field: b
+          to_table: __result__
+          to_field: 1
+          relation_type: group
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: SUM
+              expression: SUM(b)
+              group_keys:
+                - c
+        - from_table: t1
+          from_field: b
+          to_table: __result__
+          to_field: 2
+          relation_type: group
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: SUM
+              expression: SUM(b)
+              group_keys:
+                - c
+    - name: unpivot reads every listed column
+      sql: SELECT u.val FROM t1 UNPIVOT (val FOR col IN (x, y)) u
+      expected_edges:
+        - from_table: t1
+          from_field: x
+          to_table: __result__
+          to_field: val
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: UNPIVOT(x,y)
+        - from_table: t1
+          from_field: y
+          to_table: __result__
+          to_field: val
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: UNPIVOT(x,y)

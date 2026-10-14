@@ -1,0 +1,133 @@
+name: TestCreateViewLineageTable
+cases:
+    - name: create view
+      sql: CREATE VIEW v AS SELECT a FROM t
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: v
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+    - name: create or alter view
+      sql: CREATE OR ALTER VIEW v AS SELECT a FROM t
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: v
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+    - name: alter view is stored as a create view
+      sql: ALTER VIEW v AS SELECT a FROM t
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: v
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+    - name: schema qualified view name
+      sql: CREATE VIEW dbo.v AS SELECT a FROM dbo.t
+      expected_edges:
+        - from_table: t
+          from_schema: dbo
+          from_field: a
+          to_schema: dbo
+          to_table: v
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+    - name: view with a declared column list
+      sql: CREATE VIEW v (x) AS SELECT a FROM t
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: v
+          to_field: x
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+    - name: view with schemabinding
+      sql: CREATE VIEW v WITH SCHEMABINDING AS SELECT a FROM dbo.t
+      expected_edges:
+        - from_table: t
+          from_schema: dbo
+          from_field: a
+          to_table: v
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+    - name: bracketed view and object names
+      sql: 'CREATE VIEW [dbo].[v] AS SELECT [t].[a] FROM [dbo].[t]'
+      expected_edges:
+        - from_table: t
+          from_schema: dbo
+          from_field: a
+          to_schema: dbo
+          to_table: v
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+    - name: view whose body is a cte
+      sql: CREATE VIEW v AS WITH c AS (SELECT a FROM t) SELECT a FROM c
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: v
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+    - name: view whose body is a set operation
+      sql: CREATE VIEW v AS SELECT a FROM t1 UNION ALL SELECT b FROM t2
+      expected_edges:
+        - from_table: t1
+          from_field: a
+          to_table: v
+          to_field: a
+          relation_type: union
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: UNION
+              all: true
+        - from_table: t2
+          from_field: b
+          to_table: v
+          to_field: a
+          relation_type: union
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: UNION
+              all: true
+    - name: view whose body aggregates
+      sql: CREATE VIEW v AS SELECT id, SUM(amount) AS total FROM t1 GROUP BY id
+      expected_edges:
+        - from_table: t1
+          from_field: id
+          to_table: v
+          to_field: id
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+        - from_table: t1
+          from_field: amount
+          to_table: v
+          to_field: total
+          relation_type: group
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: AGGREGATE
+              function_name: SUM
+              expression: SUM(amount)
+              group_keys:
+                - id

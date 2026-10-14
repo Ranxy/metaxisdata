@@ -294,6 +294,7 @@ disagree about. They are pinned in `testdata/09_dialects.yaml` and beside the ca
 | PostgreSQL lexes `?` as an operator character, so `-?` and `+?` come back as single operator tokens | a signed constant is spaced differently in the two: `x = -1 + 2` is `x = - ? + ?` in the MySQL family, where `-` and `?` are two tokens, and `x = -? + ?` in PostgreSQL, where they are one. Fingerprints are scoped to an instance, so the two forms never meet in one table. |
 | StarRocks tokenizes a `/*+ … */` hint as code rather than as a comment | the hint is stored and fingerprinted with the statement — but its body is tokenized like any expression, so a literal inside it is still rewritten. MySQL and PostgreSQL drop it as a comment. |
 | MySQL tokenizes a `/*! … */` executable comment into unusable fragments | the statement is refused, like any statement the lexer cannot walk to its end. |
+| MSSQL has no lexer of its own here: `tokenSpans` falls through to the MySQL family's | T-SQL reports are accepted only now that the engine has a lineage analyzer, and they are tokenized by a lexer that does not know `N'…'`, `0x1f` or `[bracketed]` identifiers' quoting rules. Those shapes can be rewritten into text the analyzer then refuses, so the report is `REJECTED` with `PARSE_ERROR` rather than stored wrongly. Giving MSSQL its own branch (`mssql/parser.Tokenize` is a one-shot tokenizer) is an open item recorded in [mssql-lineage.md](mssql-lineage.md). |
 
 ### The corpus
 

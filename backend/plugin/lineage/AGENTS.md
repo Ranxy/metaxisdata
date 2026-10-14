@@ -5,7 +5,7 @@ Table- and column-level lineage analyzers. The root [AGENTS.md](../../../AGENTS.
 ## How Analyzers Are Wired
 
 - Each dialect exports a `Registration`; the supported set is assembled explicitly in `engines/` and built into one `lineage.Analyzer` at startup. Nothing self-registers from `init`.
-- Registered dialects: MySQL, TiDB, MariaDB, PostgreSQL, StarRocks. Doris is **not** registered.
+- Registered dialects: MySQL, TiDB, MariaDB, PostgreSQL, StarRocks, MSSQL. Doris is **not** registered.
 - A partial analysis reports structured `model.Diagnostic` gaps beside the edges it did find. Do not turn a gap into a silent drop or a hard failure — downstream callers rely on diagnostics to distinguish "no lineage" from "could not analyze".
 
 ## Generated MySQL-Family Analyzers
@@ -24,4 +24,5 @@ go generate ./backend/plugin/lineage/mysql
 - [.agents/docs/lineage-analyzer.md](../../../.agents/docs/lineage-analyzer.md) — package layout, assembly, runner lifecycle, the MySQL-family generator, and the AST coverage audit method.
 - [.agents/docs/lineage-semantics.md](../../../.agents/docs/lineage-semantics.md) — what each dialect must keep producing: the transformation model, per-dialect semantics, engine-measured clause visibility.
 - [.agents/docs/lineage-graph.md](../../../.agents/docs/lineage-graph.md) — the field trail and field-scoped expansion on the graph page.
+- [.agents/docs/mssql-lineage.md](../../../.agents/docs/mssql-lineage.md) — the T-SQL dialect: its AST shape, what it models, its script splitter and its gaps.
 - [.agents/docs/omni-upstream-defects.md](../../../.agents/docs/omni-upstream-defects.md) — upstream parser/AST defects and the deliberate no-patch policy.

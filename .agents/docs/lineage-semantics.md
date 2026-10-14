@@ -151,9 +151,10 @@ Implementation: `resolveUnqualified` walks outward and stops at the first scope 
 | PostgreSQL | 40 | 250 |
 | MySQL (corpus shared with TiDB and MariaDB) | 24 | 225 |
 | StarRocks | 20 | 185 |
+| MSSQL | 14 | 101 |
 | TiDB (dialect suite, on top of the shared corpus) | 1 | 15 |
 | MariaDB (dialect suite, on top of the shared corpus) | 1 | 20 |
-| **total** | **86** | **695** |
+| **total** | **100** | **796** |
 
 ### StarRocks
 
@@ -174,6 +175,23 @@ Implementation: `resolveUnqualified` walks outward and stops at the first scope 
 **Scope contract.** `ColumnRef.Resolved` marks a reference already resolved against a scope a later lookup cannot see; `ResolveColumnRefs` returns it unchanged (`scope/scope.go:183`), pinned by `TestScope_ResolveColumn_ResolvedPassThrough` (`scope/scope_test.go:502`). StarRocks introduced it, and all dialects now set it where a query-local or arm-local reference must survive into an enclosing scope (`starrocks/analyzer.go:1009`, `mysql/analyzer.go:942`, `postgresql/analyzer.go:1090`).
 
 **Reported as gaps rather than failures:** `MERGE INTO` and an unmodelled query expression raise `not modelled:` diagnostics and keep the surrounding edges (`starrocks/analyzer.go:207`, `:248`; `starrocks/analyzer_test.go:112`). **Not modelled at all:** `SELECT * REPLACE`, `GROUP BY ALL`, cross-catalog references (the registry has no catalog dimension). **`DORIS` stays unregistered** by decision (`backend/plugin/lineage/engines/engines.go:10`).
+
+### MSSQL
+
+**Typed AST, no raw bodies.** Unlike StarRocks, omni's T-SQL AST keeps every query body typed — a derived table is `AliasedTableRef > SubqueryExpr > *SelectStmt`, an expression subquery is a `SubqueryExpr` (or an `ExistsExpr.Subquery`, a bare `*SelectStmt`), a CTE body is `CommonTableExpr.Query`, and the generated walker reaches all of them. So the dialect owns no re-parse machinery, and a set operation is not a node of its own but fields on the `SelectStmt` that combines the arms.
+
+**Decisions that differ from its siblings:**
+
+| Decision | Detail |
+| --- | --- |
+| `SelectStmt.All` is read only when `Op != SetOpNone` | The same field carries `SELECT ALL`, so a UNION ALL and a UNION are told apart by `All`, and a plain query's `All` says nothing about duplicates |
+| The qualifier is the schema | `scope.NewSchemaLineageEdge`, as PostgreSQL; a `db.schema.table` name's database is compared against the analysis context and a name in another database is a reported gap, never read as a same-named object of the current one |
+| The governing node decides the transformation | An enum-driven AST like MySQL's, so operators are named with the MySQL family's words (`ADDITION`), not PostgreSQL's source token — the PG-FU-4 divergence, not a third vocabulary |
+| `OUTPUT` is not modelled | A data-modification statement's client-facing result is not lineage, which is PostgreSQL's `RETURNING` decision (`mssql/analyzer.go` `processInsertStatement`) |
+| A DELETE without a `WHERE` | Its FROM clause's join predicates are recorded as influences on the target's rows; with a `WHERE` the row set is attributed to the condition columns as `source.x -> target.__deletion__`, as everywhere else |
+| `MERGE` is modelled | The one statement PostgreSQL, MySQL and StarRocks all report as a gap. Its ON condition is a join influence on the target and each WHEN clause writes what the statement it stands for would |
+
+**Workarounds it carries for upstream defects** (details in [omni-upstream-defects.md](omni-upstream-defects.md) §10): `relationAlias` re-checks a recorded alias against the source text so `NATURAL JOIN` and `MERGE … USING` do not turn a clause into a relation name; every entry point normalizes a typed-nil node, which omni's walker would otherwise dereference; and the script splitter verifies the statement text spans the parser hands it before trusting them, falling back to a lexical scan. A `WITH` clause in front of a DML statement is a hard failure — the parser drops the CTE list, so no edge from that statement can be trusted.
 
 ## Cross-dialect naming and edge rules
 
@@ -196,7 +214,7 @@ Rules that hold across all dialects; changing one is changing all of them.
 
 1. **PG-FU-4 — cross-dialect expression-classification unification.** PostgreSQL classifies the governing top-level node and emits the source operator token. MySQL handles only `CaseExpr`, `BinaryExpr`, `UnaryExpr`, `BetweenExpr` and `InExpr` before falling back to the *first function call in the tree* (`analyzeExpressionOperator`, `mysql/analyzer.go:1912-1941`, `firstFuncCall` at `:1925`), and names operators with words (`binaryOperatorName`, `:1967`). So wrapper nodes the MySQL AST carries (`IsExpr`, `LikeExpr`, `CastExpr`, `ExistsExpr`) are classified from whatever function they contain — `sum(x) IS NULL` reports the inner `SUM` where PostgreSQL reports `OPERATOR "IS NULL"` — and the shared shapes differ in vocabulary (`ADDITION` vs `+`). Recorded here because the plan that named it is retired.
 2. **MySQL ODKU constant-assignment asymmetry.** PostgreSQL `ON CONFLICT … DO UPDATE SET b = 'x'` produces `t.* -> t.b`; MySQL `ON DUPLICATE KEY UPDATE a = 1` produces **zero edges**, because `len(sourceColumns) == 0` continues without the `table.*` fallback that the plain `UPDATE t SET a = 1` path has (`mysql/analyzer.go:1244-1246` vs `:1471-1481`). Decide first whether a constant write deserves a `t.*` edge, then align.
-3. **Deliberately missing shapes** (not defects): StarRocks `* REPLACE`, `GROUP BY ALL`, `SECURITY NONE`, cross-catalog references; `DORIS` unregistered. Upstream parser gaps are recorded in [omni-upstream-defects.md](omni-upstream-defects.md).
+3. **Deliberately missing shapes** (not defects): StarRocks `* REPLACE`, `GROUP BY ALL`, `SECURITY NONE`, cross-catalog references; MSSQL `OUTPUT`, table variables, `INSERT … EXEC`; `DORIS` unregistered. Upstream parser gaps are recorded in [omni-upstream-defects.md](omni-upstream-defects.md).
 
 ## Where things live
 
@@ -208,9 +226,10 @@ Rules that hold across all dialects; changing one is changing all of them.
 | PostgreSQL analyzer | [backend/plugin/lineage/postgresql/](../../backend/plugin/lineage/postgresql/) — `analyzer.go`, `expr.go`, `predicate.go`; corpus in `testdata/analyze/` |
 | MySQL family | `mysql/analyzer.go` (shared body) with `tidb/`, `mariadb/` generated; corpora in each `testdata/analyze/` |
 | StarRocks analyzer | [backend/plugin/lineage/starrocks/](../../backend/plugin/lineage/starrocks/) — `analyzer.go`, `expr.go`, `rawsql.go`, `viewbody.go` |
+| MSSQL analyzer | [backend/plugin/lineage/mssql/](../../backend/plugin/lineage/mssql/) — `analyzer.go`, `expr.go`, `predicate.go`, `split.go`; corpus in `testdata/analyze/` |
 | Engine set / wiring | [engines.go](../../backend/plugin/lineage/engines/engines.go), built once in [backend/server/server.go:107](../../backend/server/server.go#L107) |
 | Invariant test | [testutil/lineage_test_helper.go:337](../../backend/plugin/lineage/testutil/lineage_test_helper.go#L337) |
-| Unit tests worth reading | `postgresql/expr_classify_test.go` (`TestIsExpressionDerived`, `TestClassifyExpression`, `TestSourceLessFallback`), `postgresql/onconflict_test.go`, `starrocks/viewbody_test.go`, `scope/scope_test.go` |
+| Unit tests worth reading | `postgresql/expr_classify_test.go` (`TestIsExpressionDerived`, `TestClassifyExpression`, `TestSourceLessFallback`), `postgresql/onconflict_test.go`, `starrocks/viewbody_test.go`, `mssql/analyzer_test.go` (`TestSplitStatements`, `TestKeywordAliasIsNotAnAlias`), `scope/scope_test.go` |
 | Gates | `go test ./backend/plugin/lineage/... -count=1`; `gofmt`; `golangci-lint run --allow-parallel-runners`; corpus test `TestAnalyzeYAML`, annotation test `TestCorpusIsFullyAnnotated` |
 | Assembly, runner, generator, AST audit | [lineage-analyzer.md](lineage-analyzer.md) |
 | Graph-side field lineage | [lineage-graph.md](lineage-graph.md) |

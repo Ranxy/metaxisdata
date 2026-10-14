@@ -1,0 +1,14 @@
+name: TestDiagnosticsLineageTable
+cases:
+    - name: unresolved output column is reported
+      sql: SELECT missing.a FROM t
+      expect_error: true
+      error_contains: unresolved reference in an output column
+      expected_edges:
+        []
+    - name: unresolved wildcard qualifier is reported
+      sql: 'SELECT x.* FROM t'
+      expect_error: true
+      error_contains: unresolved reference in a wildcard qualifier
+      expected_edges:
+        []

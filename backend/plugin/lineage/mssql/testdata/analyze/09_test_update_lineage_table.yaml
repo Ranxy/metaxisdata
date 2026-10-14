@@ -1,0 +1,71 @@
+name: TestUpdateLineageTable
+cases:
+    - name: update from its own row
+      sql: UPDATE t SET a = b
+      expected_edges:
+        - from_table: t
+          from_field: b
+          to_table: t
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+    - name: update with a constant rewrites the row
+      sql: UPDATE t SET a = 1
+      expected_edges:
+        - from_table: t
+          from_field: '*'
+          to_table: t
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+    - name: update with an expression
+      sql: UPDATE t SET a = b + 1
+      expected_edges:
+        - from_table: t
+          from_field: b
+          to_table: t
+          to_field: a
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: OPERATOR
+              expression: b + 1
+              op_type: ADDITION
+    - name: update from a joined table
+      sql: UPDATE t1 SET a = s.b FROM t1 JOIN s ON t1.id = s.id
+      expected_edges:
+        - from_table: s
+          from_field: b
+          to_table: t1
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+    - name: update a schema qualified target
+      sql: UPDATE dbo.t SET a = b
+      expected_edges:
+        - from_table: t
+          from_schema: dbo
+          from_field: b
+          to_schema: dbo
+          to_table: t
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+    - name: update with a subquery
+      sql: UPDATE t SET a = (SELECT MAX(x) FROM s)
+      expected_edges:
+        - from_table: s
+          from_field: x
+          to_table: t
+          to_field: a
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: (SELECT MAX(x) FROM s)

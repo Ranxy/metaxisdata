@@ -1,0 +1,76 @@
+name: TestDeleteLineageTable
+cases:
+    - name: delete with a where clause
+      sql: DELETE FROM t WHERE a = 1
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: t
+          to_field: __deletion__
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: DELETE
+              condition: a = 1
+    - name: delete condition over two columns
+      sql: DELETE FROM t WHERE a = 1 AND b = 2
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: t
+          to_field: __deletion__
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: DELETE
+              condition: a = 1 AND b = 2
+        - from_table: t
+          from_field: b
+          to_table: t
+          to_field: __deletion__
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: DELETE
+              condition: a = 1 AND b = 2
+    - name: delete with a joined row set
+      sql: DELETE t FROM t JOIN s ON t.id = s.id
+      expected_edges:
+        - from_table: t
+          from_field: id
+          to_table: t
+          to_field: ''
+          relation_type: join
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: JOIN
+              condition: t.id = s.id
+        - from_table: s
+          from_field: id
+          to_table: t
+          to_field: ''
+          relation_type: join
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: JOIN
+              condition: t.id = s.id
+    - name: delete schema qualified target
+      sql: DELETE FROM dbo.t WHERE a = 1
+      expected_edges:
+        - from_table: t
+          from_schema: dbo
+          from_field: a
+          to_schema: dbo
+          to_table: t
+          to_field: __deletion__
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: DELETE
+              condition: a = 1
