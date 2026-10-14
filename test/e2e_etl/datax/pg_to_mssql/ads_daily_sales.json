@@ -1,0 +1,84 @@
+{
+  "job": {
+    "setting": {
+      "speed": {
+        "channel": 1
+      },
+      "errorLimit": {
+        "record": 0,
+        "percentage": 0.02
+      }
+    },
+    "content": [
+      {
+        "reader": {
+          "name": "postgresqlreader",
+          "parameter": {
+            "username": "dev",
+            "password": "dev",
+            "column": [
+              "sales_date",
+              "channel",
+              "region",
+              "currency",
+              "order_count",
+              "customer_count",
+              "units",
+              "gross_amount",
+              "discount_amount",
+              "net_line_amount",
+              "avg_line_amount",
+              "order_share_pct",
+              "revenue_band",
+              "loaded_at"
+            ],
+            "connection": [
+              {
+                "jdbcUrl": [
+                  "jdbc:postgresql://localhost:5432/e2e"
+                ],
+                "table": [
+                  "e2e_ads.ads_daily_sales"
+                ]
+              }
+            ]
+          }
+        },
+        "writer": {
+          "name": "sqlserverwriter",
+          "parameter": {
+            "username": "sa",
+            "password": "",
+            "column": [
+              "sales_date",
+              "channel",
+              "region",
+              "currency",
+              "order_count",
+              "customer_count",
+              "units",
+              "gross_amount",
+              "discount_amount",
+              "net_line_amount",
+              "avg_line_amount",
+              "order_share_pct",
+              "revenue_band",
+              "loaded_at"
+            ],
+            "preSql": [
+              "delete from e2e_ods.ads_daily_sales"
+            ],
+            "connection": [
+              {
+                "jdbcUrl": "jdbc:sqlserver://127.0.0.1:1433;databaseName=e2e",
+                "table": [
+                  "e2e_ods.ads_daily_sales"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

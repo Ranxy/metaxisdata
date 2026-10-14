@@ -26,6 +26,16 @@ PG_USER, PG_PASSWORD = "dev", "dev"
 # StarRocks root has no password in the local all-in-one container.
 SR_USER, SR_PASSWORD = "root", ""
 
+# The SQL Server (MSSQL) side of the chain. The password is deliberately not in
+# this file: it is a real credential of the local container, and this file is
+# committed, so the job configs carry an empty password and install.sh fills it
+# in from MSSQL_SA_PASSWORD when it deploys them.
+MSSQL_HOST, MSSQL_PORT, MSSQL_DB = "127.0.0.1", "1433", "e2e"
+MSSQL_USER, MSSQL_PASSWORD = "sa", ""
+# The sqljdbc driver is addressed with the pre-4.2 spelling; the database is part
+# of the URL because a DataX SQL Server connection has no selectedDatabase field.
+MSSQL_JDBC_URL = f"jdbc:sqlserver://{MSSQL_HOST}:{MSSQL_PORT};databaseName={MSSQL_DB}"
+
 ODS_TABLES: dict[str, list[str]] = {
     "regions": ["country", "country_name", "region", "sub_region", "is_emerging"],
     "sales_reps": ["rep_id", "rep_name", "team", "manager_id", "hired_on"],
@@ -106,6 +116,35 @@ SR_TABLES: list[tuple[str, str, list[str]]] = [
             "customer_segment", "country", "region", "customer_count", "total_net",
             "avg_net", "avg_orders", "vip_count", "segment_share_pct",
             "top_customer_id", "top_customer_name", "loaded_at",
+        ],
+    ),
+]
+
+_SR_COLUMNS: dict[str, list[str]] = {target: columns for _, target, columns in SR_TABLES}
+
+# (source schema-qualified relation, MSSQL landing table, columns)
+#
+# The columns are the ones the StarRocks hop copies, on purpose: both hops read
+# the same PostgreSQL serving layer, so the PG side has one place where a column
+# list is written down.
+PG_TO_MSSQL: list[tuple[str, str, list[str]]] = [
+    ("e2e_dwd.dwd_customer_360", "e2e_ods.dwd_customer_360", _SR_COLUMNS["dwd_customer_360"]),
+    ("e2e_ads.ads_daily_sales", "e2e_ods.ads_daily_sales", _SR_COLUMNS["ads_daily_sales"]),
+]
+
+# (MSSQL view to read, StarRocks landing table, columns)
+#
+# The source is a view rather than a table: the edge into StarRocks then starts at
+# an object the MSSQL analyzer itself produced, so the two producers of this chain
+# meet at the same node.
+MSSQL_TO_SR: list[tuple[str, str, list[str]]] = [
+    (
+        "e2e_ads.v_kpi_daily",
+        "mssql_kpi_daily",
+        [
+            "region", "selling_days", "order_count", "net_line_amount", "customer_net",
+            "revenue_rank", "customer_count", "high_value_count", "balance_due",
+            "orders_per_customer", "revenue_band",
         ],
     ),
 ]
@@ -204,12 +243,100 @@ def pg_to_sr(source: str, target: str, columns: list[str]) -> dict:
     }
 
 
+def pg_to_mssql(source: str, target: str, columns: list[str]) -> dict:
+    return {
+        "job": {
+            "setting": SETTING,
+            "content": [
+                {
+                    "reader": {
+                        "name": "postgresqlreader",
+                        "parameter": {
+                            "username": PG_USER,
+                            "password": PG_PASSWORD,
+                            "column": columns,
+                            "connection": [
+                                {
+                                    "jdbcUrl": [f"jdbc:postgresql://{PG_HOST}:{PG_PORT}/{PG_DB}"],
+                                    "table": [source],
+                                }
+                            ],
+                        },
+                    },
+                    "writer": {
+                        "name": "sqlserverwriter",
+                        "parameter": {
+                            "username": MSSQL_USER,
+                            "password": MSSQL_PASSWORD,
+                            "column": columns,
+                            "preSql": [f"delete from {target}"],
+                            # No writeMode: the SQL Server writer accepts only an
+                            # insert and rejects the field rather than defaulting it.
+                            "connection": [
+                                {
+                                    "jdbcUrl": MSSQL_JDBC_URL,
+                                    "table": [target],
+                                }
+                            ],
+                        },
+                    },
+                }
+            ],
+        }
+    }
+
+
+def mssql_to_sr(source: str, target: str, columns: list[str]) -> dict:
+    return {
+        "job": {
+            "setting": SETTING,
+            "content": [
+                {
+                    "reader": {
+                        "name": "sqlserverreader",
+                        "parameter": {
+                            "username": MSSQL_USER,
+                            "password": MSSQL_PASSWORD,
+                            "column": columns,
+                            "connection": [
+                                {
+                                    "jdbcUrl": [MSSQL_JDBC_URL],
+                                    "table": [source],
+                                }
+                            ],
+                        },
+                    },
+                    "writer": {
+                        "name": "starrockswriter",
+                        "parameter": {
+                            "username": SR_USER,
+                            "password": SR_PASSWORD,
+                            "column": columns,
+                            "preSql": [f"truncate table {SR_DB}.{target}"],
+                            "loadUrl": [f"{SR_HOST}:{SR_HTTP_PORT}"],
+                            "connection": [
+                                {
+                                    "jdbcUrl": f"jdbc:mysql://{SR_HOST}:{SR_PORT}/{SR_DB}",
+                                    "selectedDatabase": SR_DB,
+                                    "table": [target],
+                                }
+                            ],
+                        },
+                    },
+                }
+            ],
+        }
+    }
+
+
 def main() -> int:
     root = pathlib.Path(__file__).resolve().parent.parent
     mysql_to_pg_dir = root / "datax" / "mysql_to_pg"
     pg_to_sr_dir = root / "datax" / "pg_to_sr"
-    mysql_to_pg_dir.mkdir(parents=True, exist_ok=True)
-    pg_to_sr_dir.mkdir(parents=True, exist_ok=True)
+    pg_to_mssql_dir = root / "datax" / "pg_to_mssql"
+    mssql_to_sr_dir = root / "datax" / "mssql_to_sr"
+    for directory in (mysql_to_pg_dir, pg_to_sr_dir, pg_to_mssql_dir, mssql_to_sr_dir):
+        directory.mkdir(parents=True, exist_ok=True)
 
     for table, columns in ODS_TABLES.items():
         path = mysql_to_pg_dir / f"{table}.json"
@@ -219,6 +346,18 @@ def main() -> int:
     for source, target, columns in SR_TABLES:
         path = pg_to_sr_dir / f"{target}.json"
         path.write_text(json.dumps(pg_to_sr(source, target, columns), indent=2) + "\n")
+        print(path.relative_to(root))
+
+    for source, target, columns in PG_TO_MSSQL:
+        # Named by the table alone: the DAGs derive a task id from the file name,
+        # and a task id cannot carry the schema's dot.
+        path = pg_to_mssql_dir / f"{target.rsplit('.', 1)[-1]}.json"
+        path.write_text(json.dumps(pg_to_mssql(source, target, columns), indent=2) + "\n")
+        print(path.relative_to(root))
+
+    for source, target, columns in MSSQL_TO_SR:
+        path = mssql_to_sr_dir / f"{target}.json"
+        path.write_text(json.dumps(mssql_to_sr(source, target, columns), indent=2) + "\n")
         print(path.relative_to(root))
 
     return 0
