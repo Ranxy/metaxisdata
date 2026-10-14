@@ -180,6 +180,14 @@ writes the target with no relation at all — and it refuses a target that is no
 (a `@table` variable, a `#temp` table) rather than naming one the registry can never hold. A table-level edge must carry a non-nil `Transformation` — the column is `NOT NULL`, so a
 nil slice serializes to `null` and fails the whole batch.
 
+A zero-relation write target is named by the statement, so it is also the one resolution this
+classifier does itself: it asks the lineage analyzer for the registry's identity
+(`Analyzer.CanonicalIdentifier`), which an engine that binds identifiers case-insensitively needs —
+`INSERT INTO orders` for the object the registry holds as `Orders` otherwise becomes an edge into a
+GUID the registry does not have, and the canvas draws a node beside the table instead of the table.
+The engine's rule is declared once, in its registration (`EngineRegistration.FoldIdentifierNames`),
+and an engine that does not declare it keeps the name the statement wrote.
+
 ### The canvas category
 
 Relations are coloured by which writer stored them: `sql`, `openlineage`, `applicationsql`, or

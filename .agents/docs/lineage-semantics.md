@@ -151,10 +151,10 @@ Implementation: `resolveUnqualified` walks outward and stops at the first scope 
 | PostgreSQL | 40 | 250 |
 | MySQL (corpus shared with TiDB and MariaDB) | 24 | 225 |
 | StarRocks | 20 | 185 |
-| MSSQL | 14 | 133 |
+| MSSQL | 14 | 136 |
 | TiDB (dialect suite, on top of the shared corpus) | 1 | 15 |
 | MariaDB (dialect suite, on top of the shared corpus) | 1 | 20 |
-| **total** | **100** | **828** |
+| **total** | **100** | **831** |
 
 ### StarRocks
 
@@ -192,7 +192,13 @@ Implementation: `resolveUnqualified` walks outward and stops at the first scope 
 | `MERGE` is modelled | The one statement PostgreSQL, MySQL and StarRocks all report as a gap. Its ON condition is a join influence on the target, each WHEN clause's own AND condition a filter influence on it, and each action writes what the statement it stands for would |
 | A `PIVOT`'s grouping columns | The source's columns that neither the aggregate nor the FOR column consumes are carried through, which the statement never names: they are read from the catalog when it knows the source's columns, and the relation exposes the pivot columns alone when it does not. A pivot's source is analyzed in a scope of its own, so a `SELECT *` beside it cannot read the source table as a second relation |
 
-**Known deviation (half of it kept by decision).** SQL Server compares identifiers case-insensitively, while the registry looks an object up by its meta GUID, which is case-sensitive. A source *column* therefore takes the spelling the registry knows (`SELECT id FROM Users` records `ID`), preferring an exact match so that a case-sensitive collation holding both `id` and `ID` still resolves to the one the statement named; the statement's own result columns keep what it wrote. A relation's *name* is not folded against the registry: `FROM users` against a registry entry named `Users` misses the lookup and the edge names what the statement wrote, with no metadata to canonicalize against. Fixing that needs a case-insensitive registry lookup gated by engine plus an index migration — a store change, recorded in [mssql-lineage.md](mssql-lineage.md). *Inside* a statement the dialect does fold, because that is what its engine binds: `scope.SetFoldNames` is the rule every dialect declares for itself, off by default and on for MSSQL, so `SELECT T.a FROM t`, `SELECT X.a FROM t AS x` and a CTE named in another case all resolve (`TestIdentifierCaseIsFolded`). Folding decides which relation a reference addresses and never how that relation is named on an edge. The same document's decision row lists which column spellings are canonicalized instead.
+**Known deviation (the approximation is deliberate).** SQL Server compares identifiers case-insensitively, while the registry looks an object up by its meta GUID, which is case-sensitive. Three layers carry that fact, and all three follow the engine rather than a default:
+
+*Inside* a statement the dialect folds, because that is what its engine binds: `scope.SetFoldNames` is declared per dialect — off by default, on for MSSQL — so `SELECT T.a FROM t`, `SELECT X.a FROM t AS x` and a CTE named in another case all resolve (`TestIdentifierCaseIsFolded`). Folding decides which relation a reference addresses.
+
+A source *column* then takes the spelling the registry knows (`SELECT id FROM Users` records `ID`), preferring an exact match so that a case-sensitive collation holding both `id` and `ID` still resolves to the one the statement named; the statement's own result columns keep what it wrote.
+
+A relation's *name and schema* take the registry's identity, because a name is not an object: `FROM users` against a registry entry named `Users` used to record `users` — a meta GUID the registry does not have, which the graph drew as a floating node beside the table it reads. `catalog.Provide.GetTable` now falls back to a case-folded lookup **only for an engine that declares folding**, and answers with the identity it registered; the two places where a stored relation's address is settled (a FROM item, a data-modification target) take it, and every edge reads the address from there (`canonicalRelation`). The lookup is `lower(guid COLLATE "default") = lower($1)` over `idx_meta_registry_resource_guid_folded`; folding follows the database's default collation, so a database whose default collation is C folds ASCII alone, and a name nobody can resolve is kept exactly as written. The reported-statement classifier resolves its write target the same way (`Analyzer.CanonicalIdentifier`); see [mssql-lineage.md](mssql-lineage.md).
 
 **Workarounds it carries for upstream defects** (details in [omni-upstream-defects.md](omni-upstream-defects.md) §10): `relationAlias` re-checks a recorded alias against the source text so `NATURAL JOIN` and `MERGE … USING` do not turn a clause into a relation name; every entry point normalizes a typed-nil node, which omni's walker would otherwise dereference; the script splitter verifies the statement text spans the parser hands it before trusting them, falling back to a lexical scan; and a `WITH` clause in front of a DML statement — which the parser drops whole — is recovered from the source text before the statement is analyzed (`mssql/withclause.go`), failing the statement only when that recovery itself fails.
 
@@ -210,7 +216,8 @@ Rules that hold across all dialects; changing one is changing all of them.
 | Predicate influences belong to the scope whose rows they decide and are inherited by its consumer; an unconsumed scope's predicates are dropped | `algorithm/influence.go:31`, `:75`, `:87` |
 | A predicate edge's target column is empty — it decides rows, not a column's value | `algorithm/influence.go:122-144` |
 | `HAVING` may name a select-list alias; the alias resolves to that output column's own sources | `algorithm/influence.go:154` |
-| An identifier's case is the dialect's rule to declare, never a shared default | `scope.SetFoldNames` (`scope/scope.go`), on for MSSQL only |
+| An identifier's case is the dialect's rule to declare, never a shared default | `scope.SetFoldNames` (`scope/scope.go`), on for MSSQL only; the same fact gates the registry's folded lookup (`EngineRegistration.FoldIdentifierNames` → `catalog.WithIdentifierFolding`) |
+| A relation's identity in an analysis is the identity the registry registered, not the name the statement wrote | `catalog.Provide.GetTable` (`catalog/provide.go`), `Analyzer.CanonicalIdentifier` (`lineage/lineage.go`) |
 | `*` answers only when no named column does | `model/relation.go:53` |
 | Every corpus edge states its relation type, temp flag and transformation operations | `testutil/lineage_test_helper.go:337` |
 

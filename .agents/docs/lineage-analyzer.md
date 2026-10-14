@@ -178,13 +178,13 @@ TiDB 和 MariaDB **没有自己的遍历**。`mysql/analyzer.go` 哨兵之下的
 | 缺口模型 | `backend/plugin/lineage/model/diagnostic.go` | `go test ./backend/plugin/lineage/model/ -run TestDiagnostic` |
 | API / proto / CLI | `backend/api/v1/lineage_service_analyze.go`、`proto/v1/v1/lineage_service.proto:281-310`、`cli/cmd/lineage.go` | `go test ./cli/cmd/ -run TestDiagnosticText`;`cd proto && buf lint` |
 | runner | `backend/runner/lineageanalyzer/analyzer.go` | `go test ./backend/runner/lineageanalyzer/` |
-| store / schema | `backend/store/column_lineage.go`、`backend/migrator/migration/LATEST.sql:295,316` | `go test ./backend/store/`(schema 改动须补增量迁移) |
+| store / schema | `backend/store/column_lineage.go`、`backend/store/meta_resource.go`(`GUIDFolded` + `idx_meta_registry_resource_guid_folded`)、`backend/migrator/migration/LATEST.sql:295,316` | `go test ./backend/store/`(schema 改动须补增量迁移) |
 | 清理 | `backend/runner/schemasync/syncer.go:757-762,1076-1090` | `go test ./backend/runner/schemasync/` |
 | MySQL 家族生成 | `backend/plugin/lineage/mysql/analyzer.go` + `mysql/gen/` | `go generate ./backend/plugin/lineage/mysql`;`go test ./backend/plugin/lineage/mysql/gen/` |
 | 黄金语料 | `backend/plugin/lineage/{mysql,tidb,mariadb,postgresql,starrocks,mssql}/testdata/analyze/` | `go test ./backend/plugin/lineage/...` |
 | 共享机制守门 | `backend/plugin/lineage/shared_analysis_test.go` | `go test ./backend/plugin/lineage/ -run TestSharedAnalysisStaysShared` |
-| 端到端 | — | `make test-integration`(真实 PostgreSQL + MySQL) |
+| 端到端 | `backend/test/integration/runner/`(含 MSSQL 标识符大小写一例,手工注册实例与注册表行,不需要真实 SQL Server) | `make test-integration`(真实 PostgreSQL + MySQL) |
 
-语料计数取法(2026-10 复核):`for d in backend/plugin/lineage/*/testdata/analyze; do grep -hcE '^\s*- name:' $d/*.yaml; done` → mysql 225、tidb 自有 15、mariadb 自有 20、postgresql 250、starrocks 185、mssql 133;MySQL 族共享语料 225 例在 TiDB / MariaDB 各跳过 1 / 5 例。非测试代码 18,366 行、测试 4,709 行取法:`find backend/plugin/lineage -name '*.go' ! -name '*_test.go' | xargs wc -l`(及去掉 `!` 的测试侧)。
+语料计数取法(2026-10 复核):`for d in backend/plugin/lineage/*/testdata/analyze; do ls $d/*.yaml | wc -l; grep -hE '^\s*- name:' $d/*.yaml | wc -l; done` → mysql 24/225、tidb 1/15、mariadb 1/20、postgresql 40/250、starrocks 20/185、mssql 14/136;MySQL 族共享语料 225 例在 TiDB / MariaDB 各跳过 1 / 5 例。非测试代码 18,586 行、测试 5,050 行取法:`find backend/plugin/lineage -name '*.go' ! -name '*_test.go' | xargs wc -l`(及去掉 `!` 的测试侧)。
 
 不在本篇范围:各引擎"什么 clause 可见 / 什么必须保持产出"属语义决策,见 [lineage-semantics.md](lineage-semantics.md);图上字段级血缘的读取与展开见 [lineage-graph.md](lineage-graph.md);omni 缺陷明细与不修改政策见 [omni-upstream-defects.md](omni-upstream-defects.md)。

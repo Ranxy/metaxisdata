@@ -15,9 +15,10 @@ type identifierFoldingKey struct{}
 // WithIdentifierFolding records that the analysis's engine binds an identifier by its
 // content rather than by its bytes, so a name the registry registered as `Users` is the
 // object a statement named `users`. A dialect sets it for the engines whose identifiers
-// are case-insensitive — T-SQL under its default collation is the one this build has —
-// and every layer below obeys the same fact: the scope resolver binds references with it,
-// and GetTable may fall back to a comparison the engine would make.
+// are case-insensitive — T-SQL under its default collation is the one this build has — and
+// it is the same fact that dialect applies to the scope resolver, which binds references by
+// the rule its engine uses (`scope.SetFoldNames`). Here it reaches the registry lookup, so
+// a name the statement spelled in another case still finds the object.
 //
 // It is never set by a caller of the lineage API: the engine is the fact, and the dialect
 // is the one place that knows it. An engine whose identifiers are case-sensitive —
