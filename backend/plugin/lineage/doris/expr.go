@@ -141,7 +141,13 @@ func (a *Analyzer) columnSource(name *nodes.ObjectName, sp *scope.Scope) (column
 	if len(name.Parts) < 2 {
 		return columnSource{ref: ref}, true
 	}
-	if resolutions, err := sp.ResolveColumnRefs(ref); err == nil && !a.qualifiedColumnIsAbsent(ref, resolutions) {
+	// The probe answers the way the engine does, because the scope verifies a
+	// qualified column against a described relation: a qualifier the statement did
+	// not introduce, and a described relation that does not own the column, both
+	// fail here. A failed probe is not necessarily a gap — the reference may be a
+	// path instead — but a reference neither reading explains is left unresolved for
+	// the caller to report.
+	if _, err := sp.ResolveColumnRefs(ref); err == nil {
 		return columnSource{ref: ref}, true
 	}
 	base, path, ok := a.variantPathBase(name.Parts, sp)
@@ -150,35 +156,6 @@ func (a *Analyzer) columnSource(name *nodes.ObjectName, sp *scope.Scope) (column
 	}
 	base.Ref.Resolved = true
 	return columnSource{ref: base.Ref, path: path}, true
-}
-
-// qualifiedColumnIsAbsent reports whether the catalog contradicts the qualified
-// reading of ref: the relation is known and the column it names is not one of its
-// columns. The scope resolves a qualified reference as soon as it finds the
-// relation and never checks the column, so `SELECT v.name FROM ev7 v` — an alias
-// `v` over a relation whose VARIANT column is also `v` — came out as ev7's column
-// `name`, an edge to a column that does not exist, where the engine reads the
-// subcolumn path. A catalog that cannot answer, or a query-local relation, says
-// nothing: a partial catalog never turns an edge into a gap on its own, and the
-// caller falls back to the reading it had when no path is available.
-func (a *Analyzer) qualifiedColumnIsAbsent(ref scope.ColumnRef, resolutions []scope.ResolvedColumn) bool {
-	if ref.Table == "" || len(resolutions) != 1 {
-		return false
-	}
-	relation := resolutions[0].Relation
-	if relation == nil || relation.IsCTE || relation.IsSubquery {
-		return false
-	}
-	meta := a.catalogTable(relation)
-	if meta == nil {
-		return false
-	}
-	for _, column := range meta.Columns {
-		if column.Name == ref.Column || strings.EqualFold(column.Name, ref.Column) {
-			return false
-		}
-	}
-	return true
 }
 
 // variantPathBase finds the column a dotted reference reads into, and the path

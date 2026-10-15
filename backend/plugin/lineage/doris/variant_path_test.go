@@ -35,6 +35,12 @@ func variantCatalog() catalog.Provide {
 	add("ev7",
 		catalog.ColumnMeta{Name: "id", Type: "bigint(20)"},
 		catalog.ColumnMeta{Name: "v", Type: "variant"})
+	// ev7's partner for the reading where neither explanation holds: the alias `v`
+	// addresses this relation, which has no `name`, and the base column `v` two
+	// relations expose cannot be chosen between.
+	add("ev8",
+		catalog.ColumnMeta{Name: "id", Type: "bigint(20)"},
+		catalog.ColumnMeta{Name: "v", Type: "variant"})
 	// A relation whose VARIANT column is the base of a path read through an alias.
 	add("ev6",
 		catalog.ColumnMeta{Name: "k", Type: "int"},

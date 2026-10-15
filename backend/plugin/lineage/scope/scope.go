@@ -293,7 +293,7 @@ func (s *Scope) ResolveColumnRefs(colRef ColumnRef) ([]ResolvedColumn, error) {
 			// SetVerifyQualifiedColumns for the dialects that ask this question and
 			// ownsColumn for the relations that keep the lenient reading.
 			if s.verifyQualifiedColumns && colRef.Column != "" && colRef.Column != model.WildcardColumn &&
-				!s.ownsColumn(ref, colRef.Column) {
+				!ownsColumn(ref, colRef.Column) {
 				return nil, errors.Errorf("column not found: %s.%s", colRef.Table, colRef.Column)
 			}
 			tableName := ref.Table
@@ -329,7 +329,7 @@ func (s *Scope) ResolveColumnRefs(colRef ColumnRef) ([]ResolvedColumn, error) {
 // goes: an undescribed relation has to keep the lenient reading, or a partial
 // catalog would turn an edge into a gap. The comparison is the one resolveInScope
 // uses for the same question, case-insensitive.
-func (s *Scope) ownsColumn(ref *TableRef, column string) bool {
+func ownsColumn(ref *TableRef, column string) bool {
 	names := ref.ColumnNames()
 	if len(names) == 0 {
 		return true

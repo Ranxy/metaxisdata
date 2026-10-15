@@ -42,6 +42,9 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 | `SELECT v['user']['name'], v.user.name FROM ev` | 都接受且**返回同一个值**——点号路径合法,已建模(见 §方言事实) |
 | `numbers("number"="2")` 的列名 | `number`(按参数名),不是函数名;`u.numbers` 报 `Unknown column`。已按参数 key 建模 |
 | FROM 表值函数的实参 | 只能是**字面量**:`explode_numbers("number" = tv.id)` 报 `mismatched input '.' expecting {')', ','}` → 合法 SQL 上 FROM TVF 不携带列级血缘(列值实参形态 omni 能解析、引擎拒绝) |
+| 限定列 `t.c` 在输出列 / CTAS / `INSERT … SELECT` / `DELETE … WHERE` / 谓词各处 | 都拒绝:`Unknown column 'nope' in 'ev2'`(报在 `PROJECT` / `FILTER` 子句上);`UPDATE u SET name = u.nope`(UNIQUE 表)同样拒绝 → **限定列按 registry 校验**已落地(见 §方言事实) |
+| `SELECT ev2.NAME AS n FROM ev2` | **接受**(列名不区分大小写)→ 校验按 `EqualFold` 比对,不是按字节 |
+| `FROM ev7, ev8 v; SELECT v.name` | 拒绝:`v.name is ambiguous: v#1, v#3`(槽位号随关系数变化)→ 缺口 |
 | StarRocks 的 VARIANT 访问 | 是**函数式**(`variant_query(v,'$.user.name')`/`get_variant`);SR 4.1 引擎拒绝点号(`Column 'v.user.name' cannot be resolved`)与括号下标(`cannot subscript type VARIANT`)→ Doris 的路径读法**不镜像**到 SR |
 | `CREATE MATERIALIZED VIEW mv REFRESH AUTO ON SCHEDULE EVERY 1 DAY STARTS '…' AS SELECT …` | 语法接受;`REFRESH ASYNC`(2.1 拼写)被 4.x 拒绝 |
 | `mv_infos("database"="…")` | 可查询 |
@@ -56,7 +59,8 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 | CTAS 列名来自 `CreateTableStmt.Columns`,Doris 没有 `CTASColumns` | Doris 的 CTAS 列清单每列都带类型,名字从类型化定义里取并**盖过查询自己的输出别名**:`CREATE TABLE t3 (k INT, n VARCHAR(50)) AS SELECT id, name FROM users` 记 `users.id → t3.k`、`users.name → t3.n`;未声明时用查询输出别名。两处按位置对不齐的情形**有意不报诊断**:声明 N 列而查询多出输出时,多出的按查询别名落边;重名列落成同目标的两条边——真实引擎本就拒绝这两种语句(`Should not define the entire column in CTAS`),不会静默读错一个合法语句 | `ctasColumnNames` |
 | `UpdateStmt` / `DeleteStmt` 没有 `With` | Doris 没有 `WITH … UPDATE` / `WITH … DELETE`;这种输入是**硬解析失败**,不是缺口,也不是"没有血缘" | 语法层(omni `doris/parser`) |
 | UPDATE 的 SET 目标**可以带限定符**(`UPDATE t1 SET t1.name = t1.other`),StarRocks 直接拒绝这个形状 | 写入目标仍取语句的表(`targetSchema`/`targetTable`),限定符只用来检查该列属于作用域里的关系;`UPDATE t1 AS x SET x.name = x.other` 同样接受,表达式保留别名的拼写。两条语料钉住 | `processUpdateList` |
-| VARIANT 子列路径:点号 `v.user.name` 与括号 `v['user']['name']` 同义,但 omni 把点号读成普通限定列名 | 分析器的顺序与引擎一致:① 限定读法优先,但**仅在 catalog 未否证该列时**——`SELECT v.name FROM ev7 v`(别名 v 指向 ev7,而 ev7 没有 `name` 列)原来会产出指向不存在列的边,现在按引擎改读 `ev7.v` 的路径;② 关系前缀必须**按语句写法寻址**该关系(前缀末段须等于关系的表名或别名,多段前缀还须匹配其 database),否则作用域的宽松限定匹配会把 `ev.v` 绑到同名别名 `v` 上;③ 基列类型由 catalog 作证是 `variant` 才成立(`FROM ev, ev2 v` 的 `v.name` 仍读 ev2.name,前缀列是别的类型时按引擎一样不退回路径),两处同名 VARIANT 列则不猜;④ 以上都不成立时保持原有读法,不会把已有的边变成缺口。输出列名取整条路径原文(引擎行为,不是最后一段) | `collectColumnSources`、`variantPathBase`、`variantBase` |
+| 限定列(`t.c` / `db.t.c`)由 registry 回答,而不是"限定符绑上关系就信列存在" | Doris 引擎对限定列与无限定列给同一个答案(`Unknown column 'nope' in 'ev2'`,实测见 §真实引擎核对),所以根作用域打开 `scope.SetVerifyQualifiedColumns`:某关系被 registry 描述(列清单非空)却不拥有该列时,引用解析失败,写它的子句各自报缺口——输出列 / 输出目标(CTAS、`INSERT … SELECT`)/ 赋值 / DELETE 条件 / 谓词 / 生成器实参。**仍按旧读法**的若干情形:关系未被 registry 描述、列清单为空(未重扫)、引用已 resolved;列名大小写不同视为同一列(`EqualFold`)。无限定名的单关系回退是既有刻意行为(见 [lineage-semantics.md](lineage-semantics.md)),不在本条内 | `NewAnalyzer`(根作用域一行开关)、`scope.SetVerifyQualifiedColumns` / `ownsColumn` |
+| VARIANT 子列路径:点号 `v.user.name` 与括号 `v['user']['name']` 同义,但 omni 把点号读成普通限定列名 | 分析器的顺序与引擎一致:① 限定读法优先,但**仅在 catalog 未否证该列时**(由上一行的限定列校验实现)——`SELECT v.name FROM ev7 v`(别名 v 指向 ev7,而 ev7 没有 `name` 列)原来会产出指向不存在列的边,现在按引擎改读 `ev7.v` 的路径;② 关系前缀必须**按语句写法寻址**该关系(前缀末段须等于关系的表名或别名,多段前缀还须匹配其 database),否则作用域的宽松限定匹配会把 `ev.v` 绑到同名别名 `v` 上;③ 基列类型由 catalog 作证是 `variant` 才成立(`FROM ev, ev2 v` 的 `v.name` 仍读 ev2.name,前缀列是别的类型时按引擎一样不退回路径),两处同名 VARIANT 列则不猜;④ 以上都不成立时,该引用保持未解析并由写它的子句报缺口(`FROM ev7, ev8 v; SELECT v.name`,引擎同样报 `v.name is ambiguous`)——不再回退成指向不存在列的边。输出列名取整条路径原文(引擎行为,不是最后一段) | `collectColumnSources`、`variantPathBase`、`variantBase` |
 | `TableRef.LateralViews` 是**新增血缘** | `LATERAL VIEW gen(args) alias AS c1[, c2]` 把生成器实参读到的每一列映射到 AS 声明的每一列,注册成一个查询本地关系;链式生成器左到右,后者能读前者声明的列。`u.elem` 因此能解析,而不是"未知名字";`generator_lineage_test.go` 钉住单列、多列、通配符与链式四种 | `processLateralViews`、`addGeneratedRelation` |
 
 ## 不新增血缘语义的语法
@@ -85,7 +89,7 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 | --- | --- |
 | `MERGE INTO` | `not modelled:` 缺口,兄弟语句的边保留(与 StarRocks、PostgreSQL 对 MERGE 的同一决策);`analyzer_test.go` 的 `TestUnmodelledStatementsAreGaps` 钉住 |
 | 未建模的查询表达式 | `not modelled: query expression` 缺口,语句其余部分照常分析 |
-| 引用解析不到(未解析列、通配符限定符) | `unresolved` 缺口 |
+| 引用解析不到(未解析列、registry 否证的限定列、通配符限定符) | `unresolved` 缺口 |
 | 查询本地关系(CTE / 派生表)上的 VARIANT 路径基列 | 引擎合法产值,但查询本地关系没有声明类型,类型证据不可用 → `unresolved` 缺口(非静默丢;中期可沿 temp lineage 追溯类型) |
 | catalog 查询失败 | `DiagnosticCatalogUnavailable` + 通配符回退,分析继续 |
 
@@ -98,7 +102,7 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 | omni 解析失败(含 `WITH … UPDATE/DELETE`、被抽出的视图体自身不合法) | 硬失败:无部分结果;runner 清该对象血缘 + `error_message` |
 | 多语句输入 | 硬失败:分析器只定义在单条语句上,切分由根包负责 |
 | 某形状没建模(MERGE、未建模查询表达式) | 部分分析:兄弟边照存,缺口写 version 行 / RPC diagnostics |
-| 引用解析不到 | 部分分析 + 对应 `model.Diagnostic` |
+| 引用解析不到(未解析列、registry 否证的限定列、通配符限定符) | 部分分析 + 对应 `model.Diagnostic` |
 | catalog 查询失败 | `DiagnosticCatalogUnavailable` + 通配符继续 |
 | 只有注释 / 空白 | 硬失败(没有语句可分析),而不是"没有血缘" |
 
@@ -112,6 +116,7 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 6. **MERGE 与未建模查询表达式是缺口,不是硬失败**:已解析的边必须留下 `model.Diagnostic`;只有解析失败才清血缘。
 7. **视图兜底只接管 `CREATE` / `ALTER` 开头、且目标名是紧邻 `VIEW` 的点分标识符段**:命中未建模头部子句(含标识符)即放弃兜底并保留 omni 的原始解析错误——绝不把头部子句里的词当对象名,否则会向注册表里不存在的对象写边(曾产出 `mv.ASYNC`)。
 8. **任何输出变更(边、变换、错误分类)必须过黄金语料**,语料用精确边匹配(`subset` 未使用)。
+9. **限定列按 registry 校验,但 registry 说不知道时一律放行**:只有"关系被描述(列清单非空)且不拥有该列"才让限定读法失败;未注册关系、空列清单、已 resolved 的引用都保持旧读法。这条与"绝不靠部分 catalog 把已有边变成缺口"是同一条规则的两面——被否证的读法必须**有替代读法**才替换,没有替代读法时按引擎报缺口,而不是产一条指向不存在列的边。
 
 ## Open items
 
@@ -124,7 +129,7 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 7. **`LATERAL VIEW` 作用于派生表是 omni 缺口** — `SELECT * FROM (SELECT arr FROM ev) d LATERAL VIEW explode(d.arr) u AS elem` 在真实 4.1.4 上**可执行并返回行**,omni 却在 `LATERAL` 处报语法错误 → 合法语句硬失败(清血缘 + `error_message`)。登记见 §12.2。反面:`LATERAL VIEW OUTER` 与 `AS (c1)` 括号列清单被引擎拒绝(`extraneous input 'OUTER'` / `'('`),omni 的拒绝与引擎一致,不是缺陷。
 8. **`SELECT … INTO OUTFILE` 是 omni 缺口** — 真实 4.1.4 **能解析**该语句(随后在 planning 阶段因 `enable_outfile_to_local` / BROKER 配置失败),omni 在 `INTO` 处报错 → 合法语法硬失败。见 §12.3。
 9. ~~**VARIANT 点号子列路径未建模**~~ — **已落地**。真实 4.1.4 上两种写法返回同一个值,现在由 catalog 的列类型作证后按路径建模,见 §方言事实;`variant_path_test.go`(13 + 6 + 1 例)与 `26_test_doris_forms_table.yaml` 的八例钉住,包括"无证据时仍是 unresolved"、"catalog 否证的限定列让位路径"与"前缀撞名别名"。StarRocks 侧**刻意不镜像**:SR 4.1 引擎不认点号(`Column 'v.user.name' cannot be resolved`),文档里的子列访问是函数式(`variant_query`/`get_variant` 取 JSONPath),而该函数形式已经通过通用表达式走查把整列记为来源(`starrocks/variant_access_test.go` 钉住);镜像会给 SR 引擎拒绝的语句产边。
-10. **限定读法被 catalog 否证、但没有任何可用路径时,仍保留旧边** — 例:`FROM ev7, ev8 v; SELECT v.name`(两表都有 VARIANT 列 `v`,别名 v 指向 ev8;4.1.4 实测,建表均为 `(id BIGINT, v VARIANT)`,探针库已删)。引擎报 `v.name is ambiguous: v#1, v#3`(即缺口;`#` 后的槽位号随关系数变化,以引擎原文为准),分析器**无错无诊断**地产出 `ev8.name`(catalog 说该列不存在;对照 `variant_path_test.go` 的 `FROM ev7 v`,那里限定列被否证后能落到路径读法)。**有意不改**:把这种边改成缺口依赖"注册表列清单完整"这一假设,而 catalog fixture/未重扫的实例都可能是部分视图;当前规则是"只在有更可靠读法时替换,绝不把已有边变成缺口"。彻底修法是让收集层按调用方语境报缺口(需要把 subject 传下去)。
+10. ~~**限定读法被 catalog 否证、但没有任何可用路径时,仍保留旧边**~~ — **已落地**:限定列改为按 registry 校验(见 §方言事实第 1 行与不变量 9),`FROM ev7, ev8 v; SELECT v.name` 现在报 `unresolved reference in an output column: v.name`(引擎:`v.name is ambiguous: v#1, v#3`),同一规则也覆盖没有 VARIANT 参与的同族形态(输出列 / 输出目标 / 赋值 / DELETE 条件 / 谓词等上下文,引擎均报 `Unknown column 'nope' in 'ev2'`)。`qualifiedColumnIsAbsent` 随之删除,判断下沉到 `scope.ResolveColumnRefs`;`qualified_column_test.go` 钉住五种上下文、边界四种放行情形与该残留用例。
 11. **两种混合写法是 omni 缺口** — `v['user'].name` 与 `v['user']['name'].x`:真实 4.1.4 都接受,omni 在 `.` 处报语法错误(而 `v.user['name']` 能解析且本分析器处理正确)。登记见 [omni-upstream-defects.md](omni-upstream-defects.md) §12.4。
 12. ~~**表值函数暴露的列名是启发式**~~ — **已落地**:单个命名实参的 key 就是暴露的列名(`numbers("number"="2")` → `number`,引擎实测 `u.number` 可用、`u.numbers` 报 Unknown column),其余形态保留函数名占位(`tableFunctionColumn`,由 `table_function_test.go` 钉住)。**范围说明**:Doris 的 FROM TVF 实参只能是字面量,所以这个列名对合法 SQL 没有可观测的血缘影响;真正读列值的是 LATERAL VIEW(它自己声明列名)。
 

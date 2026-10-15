@@ -117,11 +117,17 @@ func Analyze(ctx context.Context, sql string, cat catalog.Provide) ([]model.Colu
 // NewAnalyzer creates a Doris lineage analyzer for a single statement.
 func NewAnalyzer(ctx context.Context, sql string, catalogProvide catalog.Provide) *Analyzer {
 	diagnostics := algorithm.NewDiagnostics()
+	// Doris answers a qualified reference from the catalog the way it answers an
+	// unqualified one: `SELECT ev2.nope FROM ev2` is `Unknown column 'nope' in
+	// 'ev2'`, not a column read. Every scope this analyzer creates inherits the
+	// rule, and a relation the catalog cannot describe keeps the lenient reading.
+	root := scope.NewScope(nil)
+	root.SetVerifyQualifiedColumns(true)
 	return &Analyzer{
 		ctx:         ctx,
 		sql:         sql,
 		sources:     []source{newSource(sql)},
-		scopeStack:  []*scope.Scope{scope.NewScope(nil)}, // root scope
+		scopeStack:  []*scope.Scope{root},
 		edges:       algorithm.NewEdgeSet(),
 		errors:      make([]string, 0),
 		catalog:     catalog.NewCache(catalogProvide),
