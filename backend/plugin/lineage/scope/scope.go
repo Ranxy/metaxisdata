@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
 )
 
 // Scope represents a lexical scope in SQL, tracking available tables and columns.
@@ -30,6 +32,13 @@ type Scope struct {
 	// filesystem, a PostgreSQL quoted alias — and a dialect turns it on for itself
 	// (Scope.SetFoldNames). A child scope inherits it from its parent.
 	foldNames bool
+	// verifyQualifiedColumns makes a qualified reference to a described relation
+	// fail when that relation does not own the column, the rule resolveInScope
+	// already applies to an unqualified name. It is off by default, because most
+	// dialects resolve a qualifier against the relations the statement introduced
+	// and never against the catalog, and a dialect turns it on for itself
+	// (Scope.SetVerifyQualifiedColumns). A child scope inherits it from its parent.
+	verifyQualifiedColumns bool
 	// CTEs available in this scope
 	ctes map[string]*CTEDefinition
 	// Output columns for this scope (for SELECT statements)
@@ -39,15 +48,18 @@ type Scope struct {
 // NewScope creates a new scope with an optional parent.
 func NewScope(parent *Scope) *Scope {
 	fold := false
+	verify := false
 	if parent != nil {
 		fold = parent.foldNames
+		verify = parent.verifyQualifiedColumns
 	}
 	return &Scope{
-		parent:        parent,
-		foldNames:     fold,
-		relations:     make([]*TableRef, 0),
-		ctes:          make(map[string]*CTEDefinition),
-		outputColumns: make([]OutputColumn, 0),
+		parent:                 parent,
+		foldNames:              fold,
+		verifyQualifiedColumns: verify,
+		relations:              make([]*TableRef, 0),
+		ctes:                   make(map[string]*CTEDefinition),
+		outputColumns:          make([]OutputColumn, 0),
 	}
 }
 
@@ -64,6 +76,28 @@ func NewScope(parent *Scope) *Scope {
 // than silently bound to the wrong relation.
 func (s *Scope) SetFoldNames(fold bool) {
 	s.foldNames = fold
+}
+
+// SetVerifyQualifiedColumns declares that this scope's engine resolves a qualified
+// reference against the catalog as well as against the relation it names: a
+// reference whose qualifier addresses a relation whose columns are known and which
+// does not own the column resolves to nothing, the way `column not found` already
+// answers an unqualified name no relation in scope owns (resolveInScope). It is
+// set on a root scope, and every child scope created afterwards inherits it.
+//
+// The dialect that sets it is the one whose engine answers that question from the
+// catalog: Doris reports `Unknown column 'nope' in 'ev2'` for `SELECT ev2.nope FROM
+// ev2`. A dialect that leaves it off keeps the reading it always had — the qualifier
+// is bound to a relation and the column is taken on faith — which is what a dialect
+// has to do when the relations it registers are not described by the catalog.
+//
+// A relation the catalog cannot describe keeps the lenient reading even when this is
+// on: ColumnNames reports nil for one whose lookup is absent, and a relation whose
+// lookup answers with no names at all is unknown rather than empty. A column name is
+// compared the way resolveInScope compares it, case-insensitively, because that is
+// the rule a column name is bound by wherever this scope matches one.
+func (s *Scope) SetVerifyQualifiedColumns(verify bool) {
+	s.verifyQualifiedColumns = verify
 }
 
 // sameAddress reports whether two relation keys address one relation, under this scope's
@@ -254,6 +288,14 @@ func (s *Scope) ResolveColumnRefs(colRef ColumnRef) ([]ResolvedColumn, error) {
 	// table, not the alias the query happened to use.
 	if colRef.Table != "" {
 		if ref, ok := s.FindRelation(RelationKey{Qualifier: colRef.Schema, Name: colRef.Table}); ok {
+			// A described relation that does not own the column answers the same
+			// way an unqualified name no relation owns does. See
+			// SetVerifyQualifiedColumns for the dialects that ask this question and
+			// ownsColumn for the relations that keep the lenient reading.
+			if s.verifyQualifiedColumns && colRef.Column != "" && colRef.Column != model.WildcardColumn &&
+				!s.ownsColumn(ref, colRef.Column) {
+				return nil, errors.Errorf("column not found: %s.%s", colRef.Table, colRef.Column)
+			}
 			tableName := ref.Table
 			if ref.IsCTE || ref.IsSubquery {
 				tableName = ref.addressName()
@@ -278,6 +320,26 @@ func (s *Scope) ResolveColumnRefs(colRef ColumnRef) ([]ResolvedColumn, error) {
 	}
 
 	return s.resolveUnqualified(colRef)
+}
+
+// ownsColumn reports whether a described relation owns a column, for the dialects
+// that verify a qualified reference. A relation whose column list is unknown — no
+// lookup at all, or a lookup that answers with no names because the catalog has not
+// described it — cannot rule the column out, so it owns it as far as this question
+// goes: an undescribed relation has to keep the lenient reading, or a partial
+// catalog would turn an edge into a gap. The comparison is the one resolveInScope
+// uses for the same question, case-insensitive.
+func (s *Scope) ownsColumn(ref *TableRef, column string) bool {
+	names := ref.ColumnNames()
+	if len(names) == 0 {
+		return true
+	}
+	for _, name := range names {
+		if strings.EqualFold(name, column) {
+			return true
+		}
+	}
+	return false
 }
 
 // resolution is what one scope can say about an unqualified column.
