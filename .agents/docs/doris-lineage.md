@@ -28,7 +28,7 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 
 | 语句 | 引擎 |
 | --- | --- |
-| `SELECT * FROM (SELECT arr FROM ev) d LATERAL VIEW explode(d.arr) u AS elem` | **接受**(返回行)——omni 拒绝,见 open item 7 |
+| `SELECT * FROM (SELECT arr FROM ev) d LATERAL VIEW explode(d.arr) u AS elem` | **接受**(返回行,与 `WITH d AS (…) SELECT * FROM d LATERAL VIEW …` 同结果同列名)——omni 拒绝,已由恢复垫片取回血缘,见 §方言事实与 open item 7 |
 | `LATERAL VIEW OUTER …` / `LATERAL VIEW … AS (c1)` | 拒绝(`extraneous input 'OUTER'` / `'('`)——与 omni 一致 |
 | `LATERAL VIEW posexplode(ev.arr) u AS pos, elem` | 接受(多列 `AS` 可用) |
 | `SELECT … INTO OUTFILE 's3://…'`(含 `WITH` 前缀、`FORMAT AS CSV`) | **语法接受**(planning 阶段因 `enable_outfile_to_local` / BROKER 配置报错)——omni 拒绝,已由恢复垫片取回投影血缘,见 §不新增血缘语义的语法与 open item 8 |
@@ -57,6 +57,7 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 | 表值函数是 `TableRef.Func`(一个 `*FuncCallExpr`),不是独立 `TableFunctionRef` | `processTableExpr` 先看 `t.Func`:有则注册成查询本地关系(不写注册表、不发明对象),别名缺省用函数名。Doris 不给它列清单,所以它只暴露"函数名"这一列:`FROM t, explode(t.arr) u` 把 `t.arr` 记为 `u.explode` 的来源,`SELECT u.explode …` 能解析;纯字面量调用(`numbers("number" = "10")`)没有可命名的来源,不产边也不报缺口 | `processTableExpr`、`processTableFunction` |
 | `InsertStmt` 没有 `ByName` | 目标列清单永远是位置式:INSERT 的 `Columns` 按序映射到查询的输出列;没有"按名字匹配"可读 | `processInsertStatement` |
 | CTAS 列名来自 `CreateTableStmt.Columns`,Doris 没有 `CTASColumns` | Doris 的 CTAS 列清单每列都带类型,名字从类型化定义里取并**盖过查询自己的输出别名**:`CREATE TABLE t3 (k INT, n VARCHAR(50)) AS SELECT id, name FROM users` 记 `users.id → t3.k`、`users.name → t3.n`;未声明时用查询输出别名。两处按位置对不齐的情形**有意不报诊断**:声明 N 列而查询多出输出时,多出的按查询别名落边;重名列落成同目标的两条边——真实引擎本就拒绝这两种语句(`Should not define the entire column in CTAS`),不会静默读错一个合法语句 | `ctasColumnNames` |
+| `LATERAL VIEW` 作用于**派生表**时,把派生表提升成同名 CTE 后再解析 | omni 的 Doris 语法在 `LATERAL` 处报错(§12.2),而引擎接受该语句;提升不改变语义(派生表读一次 = CTE 读一次,4.1.4 上两式同结果同列名),因此血缘被完整取回:`SELECT * FROM (SELECT v FROM ev) d LATERAL VIEW explode(d.v) u AS tag` 记 `ev.v → __result__.v` 与 `ev.v → __result__.tag`;视图体走同一条垫片(定义整体解析失败 → 抽出 body → 重写)。提升让该名字获得 CTE 优先级,所以**语句里还有另一个关系叫这个名字时拒绝改写**;一次只处理一个、只在语句自身层级;裸别名与 `AS d` 都支持 | `lateral.go`、`rewriteQuery` |
 | CTE 的暴露列 = 声明清单**从左往右**改名,清单够不到的输出保留查询别名 | 引用 CTE 的列按 body 真正暴露的名字解析,并且**刻意不用** `scope.ExposedColumnNames`——那条"ary 不符就整条作废"是 MySQL 家族的规则,而 Doris 4.1.4 实测短清单可用:`WITH c (a) AS (SELECT k, name FROM t) SELECT a FROM c` 与 `SELECT name FROM c` 都能执行(前者是 `a`=k,后者是未改名的 `name`)。暴露列写回 `definition.Columns`(PostgreSQL 同一做法),所以常量输出列没有来源、不产边,但它**是**该关系的列;此前拿 lineage target 当清单,`WITH c AS (SELECT 1 AS x, k FROM ev2) SELECT x FROM c, ev2` 这条引擎可执行的语句被报成缺口。**边的目标名映射**与暴露列共用同一份名字 | `processCTE` |
 | `UpdateStmt` / `DeleteStmt` 没有 `With` | Doris 没有 `WITH … UPDATE` / `WITH … DELETE`;这种输入是**硬解析失败**,不是缺口,也不是"没有血缘" | 语法层(omni `doris/parser`) |
 | UPDATE 的 SET 目标**可以带限定符**(`UPDATE t1 SET t1.name = t1.other`),StarRocks 直接拒绝这个形状 | 写入目标仍取语句的表(`targetSchema`/`targetTable`),限定符只用来检查该列属于作用域里的关系;`UPDATE t1 AS x SET x.name = x.other` 同样接受,表达式保留别名的拼写。两条语料钉住 | `processUpdateList` |
@@ -128,7 +129,7 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 4. **真实引擎的语法裁决已完成,端到端仍未验证** — 语法层已用本地 Apache Doris FE **4.1.4** 容器逐条裁决(结论见 §真实引擎核对;方法:临时库 + 逐条 `mysql -P9030` 执行,库已删)。仍缺的是四条输入路径的端到端入库(需要 PostgreSQL + Doris 集成环境)与真实实例上 `mv_infos()` 的 `QuerySql` 形态确认——该函数本身已实测可查询。
 5. **函数 / 存储过程血缘未覆盖** — 与所有方言同:队列只扫 VIEW / MATERIALIZED_VIEW / MANUAL_SQL / APPLICATION_SQL。
 6. **`VARIANT<…>` schema template 是 omni 解析缺口** — `CREATE TABLE t (k BIGINT, v VARIANT<'id': INT>)`、其 CTAS 形式与 `ALTER TABLE … ADD COLUMN v VARIANT<…>` 都是合法 Doris DDL(4.1.4 实测接受),但 omni 在 `<` 处报语法错误(裸 `VARIANT` 与 `VARIANT NULL` 正常)。视图 / MV 体不含建表语句,所以这两条路径不受影响;MANUAL_SQL / APPLICATION_SQL 携带这种 DDL 会硬失败(清血缘 + `error_message`),CTAS 形式会整条丢边。明细见 [omni-upstream-defects.md](omni-upstream-defects.md) §12;按不修改政策不 patch 上游。
-7. **`LATERAL VIEW` 作用于派生表是 omni 缺口** — `SELECT * FROM (SELECT arr FROM ev) d LATERAL VIEW explode(d.arr) u AS elem` 在真实 4.1.4 上**可执行并返回行**,omni 却在 `LATERAL` 处报语法错误 → 合法语句硬失败(清血缘 + `error_message`)。登记见 §12.2。反面:`LATERAL VIEW OUTER` 与 `AS (c1)` 括号列清单被引擎拒绝(`extraneous input 'OUTER'` / `'('`),omni 的拒绝与引擎一致,不是缺陷。
+7. ~~**`LATERAL VIEW` 作用于派生表是 omni 缺口**~~ — **omni 缺口仍在,分析器已恢复**。`SELECT * FROM (SELECT arr FROM ev) d LATERAL VIEW explode(d.arr) u AS elem` 在真实 4.1.4 上**可执行**(与改写后的 `WITH d AS (…) SELECT * FROM d LATERAL VIEW …` 返回同样的行、同样的列名 `arr` / `elem`),omni 却在 `LATERAL` 处报语法错误(§12.2)。`lateral.go` 把这个派生表提升成同名 CTE 后重解析——派生表读一次与 CTE 读一次是同一个关系。提升会让该名字获得 CTE 的优先级(高于同名基表),所以只要语句里还有另一个关系叫这个名字就**拒绝改写**、保留硬失败;一次也只处理一个、且只在语句自身层级。裸别名与 `AS d` 两种写法都支持。`lateral_test.go` 与语料两例(普通 SELECT 与视图体)钉住,变异验证(禁用垫片 → 语料两例 + 单测全红)。反面:`LATERAL VIEW OUTER` 与 `AS (c1)` 括号列清单被引擎拒绝(`extraneous input 'OUTER'` / `'('`),omni 的拒绝与引擎一致,不是缺陷。
 8. ~~**`SELECT … INTO OUTFILE` 是 omni 缺口**~~ — **omni 缺口仍在,分析器已恢复**。真实 4.1.4 **能解析**该语句(随后在 planning 阶段因 `enable_outfile_to_local` / BROKER 配置失败),omni 在 `INTO` 处报错(§12.3)。`outfile.go` 的垫片在解析失败后剥掉这个 sink 再解析其前面的查询:该子句不携带列级血缘,投影的边就是整条语句的血缘——**与 StarRocks 分析器对同一语句给出的结果一致**(它的 AST 有 `IntoOutfileClause` 而遍历忽略它,且不报诊断)。只有形如"深度 0 的 `INTO` 紧跟 `OUTFILE` 关键字与字符串字面量"才剥;`INSERT INTO` / `COPY INTO`、缺字面量、括号内的 INTO 一律不剥,剥完仍解析不通过就保留原始硬失败。`outfile_test.go` 与语料两例钉住,变异验证(禁用垫片 → 语料两例 + 单测全红)。
 9. ~~**VARIANT 点号子列路径未建模**~~ — **已落地**。真实 4.1.4 上两种写法返回同一个值,现在由 catalog 的列类型作证后按路径建模,见 §方言事实;`variant_path_test.go`(13 + 6 + 1 例)与 `26_test_doris_forms_table.yaml` 的八例钉住,包括"无证据时仍是 unresolved"、"catalog 否证的限定列让位路径"与"前缀撞名别名"。StarRocks 侧**刻意不镜像**:SR 4.1 引擎不认点号(`Column 'v.user.name' cannot be resolved`),文档里的子列访问是函数式(`variant_query`/`get_variant` 取 JSONPath),而该函数形式已经通过通用表达式走查把整列记为来源(`starrocks/variant_access_test.go` 钉住);镜像会给 SR 引擎拒绝的语句产边。
 10. ~~**限定读法被 catalog 否证、但没有任何可用路径时,仍保留旧边**~~ — **已落地**:限定列改为按 registry 校验(见 §方言事实第 1 行与不变量 9),`FROM ev7, ev8 v; SELECT v.name` 现在报 `unresolved reference in an output column: v.name`(引擎:`v.name is ambiguous: v#1, v#3`),同一规则也覆盖没有 VARIANT 参与的同族形态(输出列 / 输出目标 / 赋值 / DELETE 条件 / 谓词 / CTE 体 / 生成器实参,引擎均报 `Unknown column 'nope' in 'ev2'`)。`qualifiedColumnIsAbsent` 随之删除,判断下沉到 `scope.ResolveColumnRefs`;`qualified_column_test.go` 钉住十种上下文、边界四种放行情形、查询本地关系不校验与该残留用例。
@@ -140,7 +141,7 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 
 | 关注点 | 代码 | 测试 / 门禁 |
 | --- | --- | --- |
-| 方言包 | `backend/plugin/lineage/doris/{analyzer,expr,predicate,rawsql,viewbody,outfile}.go` | `go test ./backend/plugin/lineage/doris/` |
+| 方言包 | `backend/plugin/lineage/doris/{analyzer,expr,predicate,rawsql,viewbody,outfile,lateral}.go` | `go test ./backend/plugin/lineage/doris/` |
 | 装配 | `backend/plugin/lineage/engines/engines.go`、`engines_test.go` | `go test ./backend/plugin/lineage/engines/` |
 | 共享机制守门 | `backend/plugin/lineage/shared_analysis_test.go`(`dialectPackages` 含 `doris`) | `go test ./backend/plugin/lineage/ -run TestSharedAnalysisStaysShared` |
 | 黄金语料 | `backend/plugin/lineage/doris/testdata/analyze/`(21 套 / 211 例 / 428 条边) | `TestAnalyzeYAML`、`TestCorpusIsFullyAnnotated` |

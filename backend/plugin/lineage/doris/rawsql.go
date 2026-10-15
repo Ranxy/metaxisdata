@@ -65,6 +65,41 @@ func parseRawQuery(raw string) (nodes.Node, error) {
 	return file.Stmts[0], nil
 }
 
+// parseQueryBody parses a query body and reports the text it parsed, which is not raw
+// when a rewrite applied: the analyzer reconstructs expression text from its own
+// source, so the caller makes the returned text that source before anything is read.
+func parseQueryBody(raw string) (nodes.Node, string, error) {
+	if text, ok := rewriteQuery(raw); ok {
+		if query, err := parseRawQuery(text); err == nil {
+			return query, text, nil
+		}
+	}
+	query, err := parseRawQuery(raw)
+	return query, raw, err
+}
+
+// rewriteQuery applies each rewrite for a shape omni's grammar rejects while the engine
+// runs it, and reports the text to parse instead. The rewrites preserve what the
+// statement means — a derived table read once becomes a CTE read once, and a result sink
+// carries no lineage — so applying one to a statement that failed for some other reason
+// only helps when the rewritten text parses at all.
+func rewriteQuery(sql string) (string, bool) {
+	changed := false
+	for _, rewrite := range []func(string) (string, bool){rewriteLateralOverDerivedTable, stripIntoOutfile} {
+		if next, ok := rewrite(sql); ok {
+			sql, changed = next, true
+		}
+	}
+	if !changed {
+		return "", false
+	}
+	file, err := dorisparser.Parse(sql)
+	if err != nil || file == nil || len(file.Stmts) != 1 {
+		return "", false
+	}
+	return sql, true
+}
+
 // exprText reconstructs an expression's source text with inter-token whitespace
 // removed, matching the MySQL analyzer's normalization. Slicing by token keeps
 // whitespace inside string literals intact. loc is interpreted against the

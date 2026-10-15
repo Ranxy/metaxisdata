@@ -50,8 +50,11 @@ func TestAFailedStatementKeepsItsOwnError(t *testing.T) {
 		want string
 	}{
 		{
-			sql:  "SELECT * FROM (SELECT arr FROM t) d LATERAL VIEW explode(d.arr) u AS elem",
-			want: "syntax error at or near LATERAL",
+			// The keyword VIEW also appears in an ordinary LATERAL VIEW, and this one
+			// fails for a reason of its own: the parser's message is kept, and the
+			// statement is not reported as a broken "view query".
+			sql:  "SELECT * FROM t LATERAL VIEW explode(t.arr) u AS elem WHERE",
+			want: "syntax error at end of input",
 		},
 		{
 			sql:  "CREATE MATERIALIZED VIEW mv REFRESH ASYNC START('2022-07-25 10:00:00') EVERY(INTERVAL 1 DAY) AS SELECT id FROM t1",

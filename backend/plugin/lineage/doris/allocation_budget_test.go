@@ -17,9 +17,10 @@ import (
 // added: the scope-aware collector keeps one source per column reference, and a
 // dotted reference is probed against the scope before it is read as a path. It also
 // carries the two INTO OUTFILE cases, which measure 31 allocations each on top of
-// the pass they are added to, so the limit is the measured 30063 rounded up to the
-// next case.
-const corpusAllocationBudget = 30200
+// the pass they are added to, and the two LATERAL VIEW cases, which measure about 930
+// each because the statement is tokenized twice and its body analyzed through a
+// rewritten source. The limit is the measured 31921 rounded up.
+const corpusAllocationBudget = 32200
 
 // TestAnalyzeAllocationBudget keeps the analyzer's allocation count from creeping
 // up. The budget is a count, not a wall-clock number, so it does not depend on

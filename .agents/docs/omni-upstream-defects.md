@@ -561,6 +561,16 @@ this is valid Doris SQL omni cannot read. The statement hard-fails, which is the
 documented boundary for text the parser rejects, but it is a coverage loss for a
 shape an application may write.
 
+**The Doris analyzer no longer loses that statement.** `backend/plugin/lineage/doris/lateral.go`
+hoists the derived table into a CTE of the same name — a derived table read once and a
+CTE read once are the same relation, and the rewritten statement parses — before
+re-parsing. On 4.1.4 the two forms return the same rows under the same column names
+(`arr`, `elem`), and both the bare and the `AS d` alias are handled. The hoist gives the
+name the rank of a CTE, which outranks a base table of the same name, so the rewrite
+refuses whenever the statement holds another relation by that name; it also handles one
+such derived table only, at the statement's own level. The upstream defect stands and is
+not patched.
+
 `LATERAL VIEW OUTER` and a parenthesized `AS (c1)` list are the opposite: the same
 engine rejects both (`extraneous input 'OUTER'`, `extraneous input '('`), so omni's
 rejection matches the engine and neither is a defect.

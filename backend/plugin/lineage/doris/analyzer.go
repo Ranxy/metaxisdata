@@ -156,20 +156,19 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 			a.processViewDDL(ddl)
 			return a.partialOrComplete()
 		}
-		// The same idea for the result sink omni's grammar rejects at INTO: the query
-		// in front of it carries the whole lineage. The analyzer reconstructs
-		// expression text from its own source, so the stripped text becomes that
-		// source before anything is read, and a prefix that still does not parse
-		// keeps this statement's original failure.
-		stripped, ok := stripIntoOutfile(a.sql)
+		// The shapes omni's grammar rejects while the engine runs them are analyzed from
+		// a rewritten statement. The analyzer reconstructs expression text from its own
+		// source, so the rewritten text becomes that source before anything is read, and
+		// a statement that still does not parse keeps its original failure.
+		text, ok := rewriteQuery(a.sql)
 		if !ok {
 			return nil, errors.Wrap(err, "failed to parse Doris SQL")
 		}
-		reparsed, parseErr := dorisparser.Parse(stripped)
+		reparsed, parseErr := dorisparser.Parse(text)
 		if parseErr != nil {
 			return nil, errors.Wrap(err, "failed to parse Doris SQL")
 		}
-		a.sql, a.sources, file = stripped, []source{newSource(stripped)}, reparsed
+		a.sql, a.sources, file = text, []source{newSource(text)}, reparsed
 	}
 	if file == nil || len(file.Stmts) != 1 {
 		return nil, errors.New("expected exactly 1 statement")
@@ -590,12 +589,13 @@ func (a *Analyzer) processDerivedTable(ref *nodes.TableRef) {
 }
 
 // analyzeRawQueryScope parses and analyzes a query body that omni exposes only
-// as text (a derived table, a CTAS body or an expression subquery) in a fresh
-// scope and source. It returns nil, after recording the failure, when the body
-// does not parse.
+// as text (a derived table, a view or CTAS body or an expression subquery) in a fresh
+// scope and source. It returns nil, after recording the failure, when the body does
+// not parse. A body one of the rewrites applies to is analyzed from the rewritten text,
+// which becomes the source its expression text is read from.
 func (a *Analyzer) analyzeRawQueryScope(raw string, what string) *scope.Scope {
-	a.pushSource(newSource(raw))
-	query, err := parseRawQuery(raw)
+	query, text, err := parseQueryBody(raw)
+	a.pushSource(newSource(text))
 	if err != nil {
 		a.popSource()
 		a.errors = append(a.errors, fmt.Sprintf("%s: %v", what, err))

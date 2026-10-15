@@ -311,3 +311,53 @@ cases:
           to_field: n
           relation_type: direct
           is_temp: true
+    # LATERAL VIEW on a derived table: omni stops at LATERAL, the engine runs the
+    # statement (checked on 4.1.4, which returns the same rows under the same column
+    # names as the rewritten form). The derived table is hoisted into a CTE of the
+    # same name before the statement is re-parsed, so the generator's column and the
+    # derived table's own output both reach the result.
+    - name: a LATERAL VIEW on a derived table keeps its lineage
+      sql: SELECT * FROM (SELECT v FROM ev) d LATERAL VIEW explode(d.v) u AS tag
+      catalog:
+        tables:
+            ev:
+                - id
+                - name: v
+                  type: variant
+      expected_edges:
+        - from_table: ev
+          from_field: v
+          to_table: __result__
+          to_field: v
+          relation_type: direct
+          is_temp: true
+        - from_table: ev
+          from_field: v
+          to_table: __result__
+          to_field: tag
+          relation_type: direct
+          is_temp: true
+    # The same body inside a view, which reaches the rewrite through the view-body
+    # fallback: the definition does not parse as a whole, so its query is extracted and
+    # analyzed on its own.
+    - name: a view body with a LATERAL VIEW on a derived table keeps its lineage
+      sql: CREATE VIEW vw AS SELECT * FROM (SELECT v FROM ev) d LATERAL VIEW explode(d.v) u AS tag
+      catalog:
+        tables:
+            ev:
+                - id
+                - name: v
+                  type: variant
+      expected_edges:
+        - from_table: ev
+          from_field: v
+          to_table: vw
+          to_field: v
+          relation_type: direct
+          is_temp: false
+        - from_table: ev
+          from_field: v
+          to_table: vw
+          to_field: tag
+          relation_type: direct
+          is_temp: false
