@@ -478,3 +478,36 @@ func TestApplicationSQLReportRejectsAMalformedBodyShape(t *testing.T) {
 		})
 	}
 }
+
+// TestApplicationSQLReportDorisGate pins the consequence recorded as E14 in
+// .agents/docs/backend-open-items.md. sqlsanitize rewrites every integer literal
+// to `?` regardless of where it sits, and the ingest gate is the analyzer, so a
+// Doris statement whose integer is a type length or a TABLESAMPLE size no longer
+// parses and is refused — while ordinary DML goes through. Registering Doris
+// narrowed that refusal: before, every Doris statement was rejected as an
+// unsupported engine.
+func TestApplicationSQLReportDorisGate(t *testing.T) {
+	t.Parallel()
+
+	fake := validApplicationSQLStore()
+	fake.instance.Metadata.Engine = storepb.Engine_DORIS
+	h, queue := applicationSQLTestHandler(fake)
+
+	ctx, rec := applicationSQLContext(t, applicationSQLBody(
+		`{"sql":"INSERT INTO t (a, b) VALUES (1, 2)"},{"sql":"SELECT * FROM t TABLESAMPLE(10 PERCENT)"}`))
+	ctx.Request().Header.Set("Authorization", "Bearer asql_key")
+	require.NoError(t, h.report(ctx))
+
+	require.Equal(t, http.StatusOK, ctx.Response().Status)
+	var response applicationSQLReportResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Equal(t, 1, response.Accepted)
+	require.Equal(t, 1, response.Rejected)
+	require.Len(t, response.Results, 2)
+	require.Equal(t, "ACCEPTED", response.Results[0].Status)
+	require.Equal(t, "REJECTED", response.Results[1].Status)
+	require.Equal(t, rejectParseError, response.Results[1].Reason)
+
+	require.Len(t, fake.reports, 1, "only the statement the analyzer could read is stored")
+	require.Len(t, queue.queued, 1)
+}

@@ -882,13 +882,6 @@ func (a *Analyzer) processDeleteStatement(stmt *nodes.DeleteStmt) {
 	if !ok {
 		return
 	}
-	// A USING clause may re-introduce the target under an alias; the alias is
-	// then the identity the WHERE resolves through.
-	if stmt.TargetAlias != "" {
-		if ref, ok := a.currentScope().FindTable(stmt.TargetAlias); ok {
-			schema, table = ref.Schema, ref.Table
-		}
-	}
 
 	sp := a.currentScope()
 	conditionColumns := collectColumns(stmt.Where)

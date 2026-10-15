@@ -82,6 +82,17 @@ func TestBuildSQL(t *testing.T) {
 			wantDef:     "SELECT id FROM users",
 			wantWrapped: "CREATE VIEW active_users AS SELECT id FROM users",
 		},
+		{
+			// Doris quotes identifiers with backticks, so a view name that is a
+			// keyword or carries odd characters survives the wrap. Its definition is
+			// a bare query body, like the MySQL family's.
+			name:        "doris view uses backticks",
+			engine:      storepb.Engine_DORIS,
+			metaType:    storepb.MetaType_VIEW,
+			resource:    &store.MetaRegistryResource{Metadata: &storepb.StoredMetadata{Type: &storepb.StoredMetadata_ViewMetadata{ViewMetadata: &storepb.ViewMetadata{Definition: "SELECT id FROM users"}}}},
+			wantDef:     "SELECT id FROM users",
+			wantWrapped: "CREATE VIEW `active_users` AS SELECT id FROM users",
+		},
 	}
 
 	for _, tt := range tests {
