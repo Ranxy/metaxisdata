@@ -31,7 +31,7 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 | `SELECT * FROM (SELECT arr FROM ev) d LATERAL VIEW explode(d.arr) u AS elem` | **接受**(返回行)——omni 拒绝,见 open item 7 |
 | `LATERAL VIEW OUTER …` / `LATERAL VIEW … AS (c1)` | 拒绝(`extraneous input 'OUTER'` / `'('`)——与 omni 一致 |
 | `LATERAL VIEW posexplode(ev.arr) u AS pos, elem` | 接受(多列 `AS` 可用) |
-| `SELECT … INTO OUTFILE 's3://…'` | **语法接受**(planning 阶段因 BROKER 配置报错)——omni 拒绝,见 open item 8 |
+| `SELECT … INTO OUTFILE 's3://…'`(含 `WITH` 前缀、`FORMAT AS CSV`) | **语法接受**(planning 阶段因 `enable_outfile_to_local` / BROKER 配置报错)——omni 拒绝,已由恢复垫片取回投影血缘,见 §不新增血缘语义的语法与 open item 8 |
 | `TABLESAMPLE(10 PERCENT)` / `(100 ROWS)` / `(100 ROWS) REPEATABLE 1` | 接受;`REPEATABLE(1)` 拒绝 |
 | `QUALIFY rn = 1`(select-list 别名)与 `QUALIFY ROW_NUMBER() OVER (…) = 1` | 都接受 |
 | `INSERT OVERWRITE ev …` | 拒绝;必须写 `INSERT OVERWRITE TABLE ev …` |
@@ -79,6 +79,7 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 | `COPY INTO <table> FROM <stage>` | 文件整体是来源:`__file__.* → target.*` |
 | `LOAD LABEL …(DATA INFILE … INTO TABLE …)` | 每个 data description 各有目标与可选列清单;omni 只把 SET 子句当原文,列级 SET/WHERE 不建模(与 StarRocks 同一条决策) |
 | 目录限定名 `catalog.db.table` | 目录段被丢弃,按 `db.table` 分析(注册表没有 catalog 维度) |
+| `SELECT … INTO OUTFILE '…' [FORMAT AS …]` | 结果 sink,**不记血缘**:投影的边就是整条语句的血缘(`SELECT k FROM t INTO OUTFILE 'x'` 记 `t.k → __result__.k`)。omni 的 Doris 语法拒绝该子句(§12.3),所以这里先剥掉它再解析其前面的查询;与 StarRocks 分析器对同一语句的结果一致,也**不报诊断**(sink 不携带列级血缘,文件端不是注册表对象)。`outfile.go` 负责剥离,`outfile_test.go` 与语料两例钉住 |
 
 ## 能力矩阵
 
@@ -128,18 +129,18 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 5. **函数 / 存储过程血缘未覆盖** — 与所有方言同:队列只扫 VIEW / MATERIALIZED_VIEW / MANUAL_SQL / APPLICATION_SQL。
 6. **`VARIANT<…>` schema template 是 omni 解析缺口** — `CREATE TABLE t (k BIGINT, v VARIANT<'id': INT>)`、其 CTAS 形式与 `ALTER TABLE … ADD COLUMN v VARIANT<…>` 都是合法 Doris DDL(4.1.4 实测接受),但 omni 在 `<` 处报语法错误(裸 `VARIANT` 与 `VARIANT NULL` 正常)。视图 / MV 体不含建表语句,所以这两条路径不受影响;MANUAL_SQL / APPLICATION_SQL 携带这种 DDL 会硬失败(清血缘 + `error_message`),CTAS 形式会整条丢边。明细见 [omni-upstream-defects.md](omni-upstream-defects.md) §12;按不修改政策不 patch 上游。
 7. **`LATERAL VIEW` 作用于派生表是 omni 缺口** — `SELECT * FROM (SELECT arr FROM ev) d LATERAL VIEW explode(d.arr) u AS elem` 在真实 4.1.4 上**可执行并返回行**,omni 却在 `LATERAL` 处报语法错误 → 合法语句硬失败(清血缘 + `error_message`)。登记见 §12.2。反面:`LATERAL VIEW OUTER` 与 `AS (c1)` 括号列清单被引擎拒绝(`extraneous input 'OUTER'` / `'('`),omni 的拒绝与引擎一致,不是缺陷。
-8. **`SELECT … INTO OUTFILE` 是 omni 缺口** — 真实 4.1.4 **能解析**该语句(随后在 planning 阶段因 `enable_outfile_to_local` / BROKER 配置失败),omni 在 `INTO` 处报错 → 合法语法硬失败。见 §12.3。
+8. ~~**`SELECT … INTO OUTFILE` 是 omni 缺口**~~ — **omni 缺口仍在,分析器已恢复**。真实 4.1.4 **能解析**该语句(随后在 planning 阶段因 `enable_outfile_to_local` / BROKER 配置失败),omni 在 `INTO` 处报错(§12.3)。`outfile.go` 的垫片在解析失败后剥掉这个 sink 再解析其前面的查询:该子句不携带列级血缘,投影的边就是整条语句的血缘——**与 StarRocks 分析器对同一语句给出的结果一致**(它的 AST 有 `IntoOutfileClause` 而遍历忽略它,且不报诊断)。只有形如"深度 0 的 `INTO` 紧跟 `OUTFILE` 关键字与字符串字面量"才剥;`INSERT INTO` / `COPY INTO`、缺字面量、括号内的 INTO 一律不剥,剥完仍解析不通过就保留原始硬失败。`outfile_test.go` 与语料两例钉住,变异验证(禁用垫片 → 语料两例 + 单测全红)。
 9. ~~**VARIANT 点号子列路径未建模**~~ — **已落地**。真实 4.1.4 上两种写法返回同一个值,现在由 catalog 的列类型作证后按路径建模,见 §方言事实;`variant_path_test.go`(13 + 6 + 1 例)与 `26_test_doris_forms_table.yaml` 的八例钉住,包括"无证据时仍是 unresolved"、"catalog 否证的限定列让位路径"与"前缀撞名别名"。StarRocks 侧**刻意不镜像**:SR 4.1 引擎不认点号(`Column 'v.user.name' cannot be resolved`),文档里的子列访问是函数式(`variant_query`/`get_variant` 取 JSONPath),而该函数形式已经通过通用表达式走查把整列记为来源(`starrocks/variant_access_test.go` 钉住);镜像会给 SR 引擎拒绝的语句产边。
 10. ~~**限定读法被 catalog 否证、但没有任何可用路径时,仍保留旧边**~~ — **已落地**:限定列改为按 registry 校验(见 §方言事实第 1 行与不变量 9),`FROM ev7, ev8 v; SELECT v.name` 现在报 `unresolved reference in an output column: v.name`(引擎:`v.name is ambiguous: v#1, v#3`),同一规则也覆盖没有 VARIANT 参与的同族形态(输出列 / 输出目标 / 赋值 / DELETE 条件 / 谓词 / CTE 体 / 生成器实参,引擎均报 `Unknown column 'nope' in 'ev2'`)。`qualifiedColumnIsAbsent` 随之删除,判断下沉到 `scope.ResolveColumnRefs`;`qualified_column_test.go` 钉住十种上下文、边界四种放行情形、查询本地关系不校验与该残留用例。
 11. **两种混合写法是 omni 缺口** — `v['user'].name` 与 `v['user']['name'].x`:真实 4.1.4 都接受,omni 在 `.` 处报语法错误(而 `v.user['name']` 能解析且本分析器处理正确)。登记见 [omni-upstream-defects.md](omni-upstream-defects.md) §12.4。
 12. ~~**表值函数暴露的列名是启发式**~~ — **已落地**:单个命名实参的 key 就是暴露的列名(`numbers("number"="2")` → `number`,引擎实测 `u.number` 可用、`u.numbers` 报 Unknown column),其余形态保留函数名占位(`tableFunctionColumn`,由 `table_function_test.go` 钉住)。**范围说明**:Doris 的 FROM TVF 实参只能是字面量,所以这个列名对合法 SQL 没有可观测的血缘影响;真正读列值的是 LATERAL VIEW(它自己声明列名)。该启发式只用于**分析器自己的**占位与无限定名解析,查询本地关系不参与限定列校验(见 §方言事实第 1 行),所以它猜错也不会制造假缺口。
-13. ~~**CTE 的暴露列取自 lineage target,而不是查询的输出别名**~~ — **已落地**:`processCTE` 现在把校验后的暴露列写回 `definition.Columns`(`scope.ExposedColumnNames(cte.Columns, bodyOutputs)`,与 PostgreSQL 同一写法),于是引用 CTE 的列按 body 真正暴露的名字解析,`WITH c AS (SELECT 1 AS x, k FROM ev2) SELECT x FROM c, ev2`(4.1.4 实测可执行)不再报 `unresolved reference`;真正不存在的列仍是缺口,声明清单仍按位置改名。`cte_exposure_test.go` 钉住四种形态,变异验证(去掉那一行 → 常量列用例变红)。**仍未做**:收窄仍把一切查询本地关系排除在校验外,所以 CTE 上引擎拒绝的列(`SELECT c.nope FROM c`)继续静默;清单已经可靠了,剩下的不可靠来源是表值函数占位与 `outputColumnAliases` 的完整性守卫,要让 CTE 参与校验得先给 `SetColumnLookup` 加"语句声明 / 分析器推导"的出处标记(标错会造成更坏的假缺口)。另:同一收窄也让 LATERAL VIEW 的 `AS` 列表不再参与校验——它的清单本属语句字面、引擎也认,所以引擎拒绝的引用(`SELECT u.nope FROM ev LATERAL VIEW explode(arr) u AS e`)现在静默;这是"不询问查询本地关系"的代价,登记在 [lineage-semantics.md](lineage-semantics.md) open item 4。
+13. ~~**CTE 的暴露列取自 lineage target,而不是查询的输出别名**~~ — **已落地**:`processCTE` 现在把校验后的暴露列写回 `definition.Columns`(`scope.ExposedColumnNames(cte.Columns, bodyOutputs)`,与 PostgreSQL 同一写法),于是引用 CTE 的列按 body 真正暴露的名字解析,`WITH c AS (SELECT 1 AS x, k FROM ev2) SELECT x FROM c, ev2`(4.1.4 实测可执行)不再报 `unresolved reference`;真正不存在的列仍是缺口,声明清单仍按位置改名。`cte_exposure_test.go` 钉住四种形态,变异验证(去掉那一行 → 常量列用例变红)。**仍未做**:收窄仍把一切查询本地关系排除在校验外,所以 CTE 上引擎拒绝的列(`SELECT c.nope FROM c`)继续静默;清单已经可靠了,剩下的不可靠来源是表值函数占位与 `outputColumnAliases` 的完整性守卫,要让 CTE 参与校验得先给 `SetColumnLookup` 加"语句声明 / 分析器推导"的出处标记(标错会造成更坏的假缺口)。**该出处标记方案已放弃**:它的唯一收益是为"引擎拒绝的语句"报缺口,而本产品的输入(库内视图 / MV、ETL 语句)几乎总是可执行,对合法 SQL 它既不多给一条边、也只增加假缺口风险(研判见 [lineage-semantics.md](lineage-semantics.md) open item 4)。其他方言同一缺陷登记在该篇 open item 8,**按决定延后**。另:同一收窄也让 LATERAL VIEW 的 `AS` 列表不再参与校验——它的清单本属语句字面、引擎也认,所以引擎拒绝的引用(`SELECT u.nope FROM ev LATERAL VIEW explode(arr) u AS e`)现在静默;这是"不询问查询本地关系"的代价,同样登记在 open item 4。
 
 ## Where things live
 
 | 关注点 | 代码 | 测试 / 门禁 |
 | --- | --- | --- |
-| 方言包 | `backend/plugin/lineage/doris/{analyzer,expr,predicate,rawsql,viewbody}.go` | `go test ./backend/plugin/lineage/doris/` |
+| 方言包 | `backend/plugin/lineage/doris/{analyzer,expr,predicate,rawsql,viewbody,outfile}.go` | `go test ./backend/plugin/lineage/doris/` |
 | 装配 | `backend/plugin/lineage/engines/engines.go`、`engines_test.go` | `go test ./backend/plugin/lineage/engines/` |
 | 共享机制守门 | `backend/plugin/lineage/shared_analysis_test.go`(`dialectPackages` 含 `doris`) | `go test ./backend/plugin/lineage/ -run TestSharedAnalysisStaysShared` |
 | 黄金语料 | `backend/plugin/lineage/doris/testdata/analyze/`(21 套 / 211 例 / 428 条边) | `TestAnalyzeYAML`、`TestCorpusIsFullyAnnotated` |

@@ -156,7 +156,20 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 			a.processViewDDL(ddl)
 			return a.partialOrComplete()
 		}
-		return nil, errors.Wrap(err, "failed to parse Doris SQL")
+		// The same idea for the result sink omni's grammar rejects at INTO: the query
+		// in front of it carries the whole lineage. The analyzer reconstructs
+		// expression text from its own source, so the stripped text becomes that
+		// source before anything is read, and a prefix that still does not parse
+		// keeps this statement's original failure.
+		stripped, ok := stripIntoOutfile(a.sql)
+		if !ok {
+			return nil, errors.Wrap(err, "failed to parse Doris SQL")
+		}
+		reparsed, parseErr := dorisparser.Parse(stripped)
+		if parseErr != nil {
+			return nil, errors.Wrap(err, "failed to parse Doris SQL")
+		}
+		a.sql, a.sources, file = stripped, []source{newSource(stripped)}, reparsed
 	}
 	if file == nil || len(file.Stmts) != 1 {
 		return nil, errors.New("expected exactly 1 statement")

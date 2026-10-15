@@ -288,3 +288,26 @@ cases:
           transformations:
             - operation: PROJECT
               expression: ev.v.user.name
+    # A result sink omni's Doris grammar rejects at INTO. The engine accepts the
+    # clause (it fails later, on the export policy) and the sink carries no column
+    # lineage, so the projection is the statement's lineage — the same edges the
+    # StarRocks analyzer reports for it. The clause is stripped before the statement
+    # is re-parsed; a statement that still does not parse keeps its hard failure.
+    - name: an INTO OUTFILE sink leaves the projection's lineage alone
+      sql: SELECT k AS n FROM t INTO OUTFILE 'file:///tmp/export.csv'
+      expected_edges:
+        - from_table: t
+          from_field: k
+          to_table: __result__
+          to_field: n
+          relation_type: direct
+          is_temp: true
+    - name: an INTO OUTFILE sink after a CTE leaves the projection's lineage alone
+      sql: WITH c AS (SELECT k FROM t) SELECT k AS n FROM c INTO OUTFILE 'file:///tmp/export.csv' FORMAT AS CSV
+      expected_edges:
+        - from_table: t
+          from_field: k
+          to_table: __result__
+          to_field: n
+          relation_type: direct
+          is_temp: true

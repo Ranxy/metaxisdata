@@ -578,6 +578,14 @@ results to local disk is not allowed. To enable this feature, you need to add
 `enable_outfile_to_local=true` in fe.conf` for a local path. So the syntax is
 Doris's, and omni cannot read it.
 
+**The Doris analyzer no longer loses the statement to this defect.** The clause is a
+result sink that carries no column lineage, so `backend/plugin/lineage/doris/outfile.go`
+strips it and re-parses the query in front of it, which is what the StarRocks analyzer
+already reports for the same statement (its AST has `IntoOutfileClause` and its
+traversal ignores it). The upstream defect stands and is not patched; only the recovery
+is ours. Verified against the live engine: `SELECT k FROM t INTO OUTFILE '…'` and the
+same behind a `WITH` clause both fail on the export policy, i.e. after the parser.
+
 ### 12.4 Mixed bracket and dot paths do not parse
 
 | Input | Result |
