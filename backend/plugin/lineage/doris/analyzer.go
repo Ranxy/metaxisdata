@@ -160,7 +160,7 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 		// a rewritten statement. The analyzer reconstructs expression text from its own
 		// source, so the rewritten text becomes that source before anything is read, and
 		// a statement that still does not parse keeps its original failure.
-		text, ok := rewriteQuery(a.sql)
+		text, original, edits, ok := rewriteQuery(a.sql)
 		if !ok {
 			return nil, errors.Wrap(err, "failed to parse Doris SQL")
 		}
@@ -168,7 +168,7 @@ func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
 		if parseErr != nil {
 			return nil, errors.Wrap(err, "failed to parse Doris SQL")
 		}
-		a.sql, a.sources, file = text, []source{newSource(text)}, reparsed
+		a.sql, a.sources, file = text, []source{newRewrittenSource(text, original, edits)}, reparsed
 	}
 	if file == nil || len(file.Stmts) != 1 {
 		return nil, errors.New("expected exactly 1 statement")
@@ -594,8 +594,8 @@ func (a *Analyzer) processDerivedTable(ref *nodes.TableRef) {
 // not parse. A body one of the rewrites applies to is analyzed from the rewritten text,
 // which becomes the source its expression text is read from.
 func (a *Analyzer) analyzeRawQueryScope(raw string, what string) *scope.Scope {
-	query, text, err := parseQueryBody(raw)
-	a.pushSource(newSource(text))
+	query, src, err := parseQueryBody(raw)
+	a.pushSource(src)
 	if err != nil {
 		a.popSource()
 		a.errors = append(a.errors, fmt.Sprintf("%s: %v", what, err))

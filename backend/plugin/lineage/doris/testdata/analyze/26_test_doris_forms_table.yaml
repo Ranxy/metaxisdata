@@ -412,3 +412,52 @@ cases:
           to_field: name
           relation_type: direct
           is_temp: false
+    # A VARIANT path that mixes spellings: omni stops at the dot after the subscript
+    # while the engine runs it (`SELECT v['user'].name FROM ev` answers alice on 4.1.4)
+    # and names the column after the text the statement wrote. The path is rewritten
+    # into the all-bracket form it is equal to, and the name is read from the text that
+    # was written, so the edge names the column the engine reports.
+    - name: a mixed-spelling VARIANT path keeps its lineage and its name
+      sql: SELECT v['user'].name FROM ev
+      catalog:
+        tables:
+            ev:
+                - id
+                - name: v
+                  type: variant
+      expected_edges:
+        - from_table: ev
+          from_field: v
+          to_table: __result__
+          to_field: "v['user'].name"
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: "v['user'].name"
+    - name: a mixed-spelling VARIANT path into an insert keeps the declared target
+      sql: INSERT INTO t2 (c) SELECT v['user'].name FROM ev
+      catalog:
+        tables:
+            ev:
+                - id
+                - name: v
+                  type: variant
+      expected_edges:
+        - from_table: ev
+          from_field: v
+          to_table: t2
+          to_field: c
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: "v['user'].name"
+    # The other side of the rule: a field of an array element is not a subcolumn, so the
+    # statement keeps its hard failure rather than being rewritten into a path that does
+    # not mean it.
+    - name: a field of an array element is not rewritten
+      sql: SELECT a[1].b FROM t
+      expect_error: true

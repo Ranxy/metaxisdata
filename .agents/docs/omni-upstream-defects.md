@@ -605,9 +605,21 @@ same behind a `WITH` clause both fail on the export policy, i.e. after the parse
 | `SELECT v.user['name'] FROM ev` | parses (and the analyzer reads it as a path) |
 
 The live Doris 4.1.4 engine accepts the first two — `v['a'].b` and
-`v['a']['b'].c` are ordinary path expressions there — so omni cannot read two forms
-an application may write, and the analyzer hard-fails them. Only the bracket-then-
+`v['a']['b'].c` are ordinary path expressions there, and `SELECT v['user'].name FROM ev`
+answers `alice`, the same value as `SELECT v['user']['name'] FROM ev` — so omni cannot read
+two forms an application may write, and the analyzer hard-fails them. Only the bracket-then-
 bracket and the dot-then-bracket spellings parse.
+
+**The Doris analyzer no longer loses those statements.**
+`backend/plugin/lineage/doris/mixedpath.go` rewrites a dot that follows a *string*
+subscript into the bracket form of the same key, which omni parses. `a[1].b` is left
+alone: it reads a field of an array element, and the bracket form does not mean that, so
+that shape keeps its hard failure. Because these two spellings are textually different,
+the rewritten statement also keeps the text it was written from
+(`source.original`/`edits` in `rawsql.go`), and an expression is named from it — the engine
+names a column after the text the query holds (`SELECT v['user'].name FROM ev` reports the
+column `v['user'].name`), so a rewritten spelling must not become a name of its own. The
+upstream defect stands and is not patched.
 
 ### 12.5 Checked and *not* defects
 
