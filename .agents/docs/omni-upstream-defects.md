@@ -643,3 +643,84 @@ upstream defect stands and is not patched.
   omni's Doris grammar requires types for one. The analyzer reads the names when a
   list is present (harmless — the engine would reject the statement) and otherwise
   takes the query's own output aliases, which is what a valid CTAS creates.
+
+### 12.6 A `WITH` clause before INSERT, UPDATE or DELETE does not parse
+
+| Input | Result |
+| --- | --- |
+| `WITH c AS (SELECT 1 AS a) INSERT INTO t (a) SELECT a FROM c` | syntax error at or near `INSERT` |
+| `WITH c AS (SELECT 1 AS a) UPDATE t SET a = 1` | syntax error at or near `UPDATE` |
+| `WITH c AS (SELECT 1 AS a) DELETE FROM t WHERE a = 1` | syntax error at or near `DELETE` |
+| `INSERT INTO t (a) WITH c AS (SELECT 1 AS a) SELECT a FROM c` | parses (this is what the engine expects for an INSERT) |
+
+The live Doris 4.1.4 engine **runs all three** of the rejected forms, and not merely as
+parsed text: `WITH c AS (SELECT 1 AS a) UPDATE t SET b = 9 WHERE a = 1` leaves `b = 9` in the
+row, the INSERT leaves its row behind, the DELETE removes one, and a clause the statement
+reads (`SET b = (SELECT m FROM c)`) takes effect too — each read back from the table after
+the statement. This was recorded in this repository as "the shape does not exist at the
+syntax level" (doris-lineage.md invariant 5) until the engine was asked; it does exist, and
+only omni lacks it.
+
+**The Doris analyzer recovers what it can.**
+`backend/plugin/lineage/doris/withdml.go` moves an INSERT's clause in front of the query the
+INSERT writes, which is where omni reads it: `INSERT INTO t (a) WITH c AS (…) SELECT a FROM
+c` parses, and `ast.InsertStmt` has no `With` field because the clause belongs to that query
+— so the CTE is analyzed, not dropped. A `PARTITION` clause before that query changes
+nothing about the placement: the engine runs `INSERT INTO t PARTITION (p) (a) WITH c AS (…)
+SELECT …` and omni parses it, so the clause moves after the partition list. UPDATE, DELETE
+and an INSERT whose source is `VALUES` have no such place — omni's grammar takes a `WITH`
+only in front of a `SELECT` — so their clause is dropped only when the statement reads none
+of the names it defines, since an unused CTE writes nothing; a clause the statement does read
+keeps the statement's hard failure, recorded as an open item in doris-lineage.md. The read
+check counts *every* token, whatever kind it has, because a CTE may be named with a word that
+lexes as a keyword: `WITH `type` AS (…) UPDATE t SET b = (SELECT a FROM type)` really reads
+the clause on the engine, and a bare reference to it lexes as that keyword. A `WITH LABEL`
+clause is the one shape left to the parser: the engine runs `INSERT INTO t (a) WITH LABEL l
+WITH c AS (…) SELECT …` but omni rejects it, so there is no placement to use.
+
+Two limits are worth knowing. An unused CTE body is still validated by the engine — `WITH c
+AS (SELECT k FROM no_such_table) UPDATE t …` is rejected before the clause is ever read — so a
+statement this rewrite drops the clause from is not necessarily a statement the engine runs;
+lineage-wise it does not matter, because a clause nothing reads carries no flow. And the
+rewrites in `rawsql.go` run once each in a fixed order, so a statement needing two of them in
+the wrong order (a `WITH`-prefixed INSERT that also has a `LATERAL VIEW` over a derived table)
+stays a hard failure, which is the state it was in before this rewrite existed. The upstream
+defect stands and is not patched.
+
+## 13. `TokenName` builds its table without a lock
+
+`doris/parser.TokenName` and `starrocks/parser.TokenName` return a token kind's name from a
+package-level `map[TokenKind]string` (`tokenNames` in `keywords.go`) that they build on the
+first call, in place, with no lock:
+
+```go
+var tokenNames map[TokenKind]string
+
+func TokenName(kind TokenKind) string {
+	if tokenNames == nil {
+		tokenNames = make(map[TokenKind]string, len(keywordMap)+20)
+		…
+```
+
+Two analyses that reach a rewrite or a view-body fallback at the same time therefore race:
+`go test -race` reports a read in one goroutine against a write in the other, and Go panics
+on a concurrent map read and write. It is reachable in production — the API and the runner
+analyze statements concurrently, and both dialects call `TokenName` while classifying tokens
+— but it needs the first call to happen in two goroutines at once.
+
+How it was reproduced, because the suite does not show it reliably: `go test -race -count=1
+./backend/plugin/lineage/doris/ -run 'TestRewriteWithBeforeDML'` reports a read against a
+write, since that selects only parallel tests that call the rewriter. A whole-package run
+builds the table while parsing, long before any parallel test starts, so the same suite passes
+with the workaround removed — which is why `tokenname_test.go` in both dialects asserts the
+init ran instead of relying on the race detector.
+
+The same lazy pattern exists in at least three more parsers of the pinned omni version —
+`mssql/parser/complete.go` (`reverseKeywordMap`), and the `complete.go` of the mysql, tidb,
+pg and mariadb parsers — but nothing in this repository reaches their `TokenName`, so only the
+two dialects above carry the workaround.
+
+**This repository works around it** rather than patching upstream: `doris/tokenname.go` and
+`starrocks/tokenname.go` call `TokenName` once at package initialization, so the table is
+built before any analysis runs and every later call is a read. Either file can go when the
+upstream table is built by `init` or guarded by a `sync.Once`.

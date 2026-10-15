@@ -42,6 +42,7 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 | `SELECT v['user']['name'], v.user.name FROM ev` | 都接受且**返回同一个值**——点号路径合法,已建模(见 §方言事实) |
 | `SELECT v['user'].name FROM ev` / `v['user'].name.deep` | 接受,**列名就是源文本** `v['user'].name`;`v['user'].name` 与 `v['user']['name']` 同值。混合写法 omni 拒绝,已由恢复垫片取回(见 §方言事实与 open item 11) |
 | `SELECT a[1].b FROM t` | 接受(数组元素上的字段),但**括号写法不是同一个意思**,因此不重写、保留硬失败 |
+| `WITH c AS (…)` 在 INSERT / UPDATE / DELETE 之前 | **三种都接受并生效**(4.1.4 逐条读回:UPDATE 改到了值、INSERT 插入了行、DELETE 删掉了行;`SET b = (SELECT m FROM c)` 这种引用也生效)。omni 在语句关键字处报错,已按 `withdml.go` 的规则恢复(见 §方言事实) |
 | `numbers("number"="2")` 的列名 | `number`(按参数名),不是函数名;`u.numbers` 报 `Unknown column`。已按参数 key 建模 |
 | FROM 表值函数的实参 | 只能是**字面量**:`explode_numbers("number" = tv.id)` 报 `mismatched input '.' expecting {')', ','}` → 合法 SQL 上 FROM TVF 不携带列级血缘(列值实参形态 omni 能解析、引擎拒绝) |
 | 限定列 `t.c` 在输出列 / CTAS / `INSERT … SELECT` / `DELETE … WHERE` / 谓词各处 | 都拒绝:`Unknown column 'nope' in 'ev2'`(报在 `PROJECT` / `FILTER` 子句上);`UPDATE u SET name = u.nope`(UNIQUE 表)同样拒绝 → **限定列按 registry 校验**已落地(见 §方言事实) |
@@ -63,7 +64,7 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 | 通配符落到**声明目标清单**时按位置填充:查询本地关系的 `*` 是**一个**输出列,展开成该关系每列一条边,所以关系自己的列按序占用清单从该位置起的条目 | `INSERT INTO dst (k, name) SELECT * FROM (SELECT k, name FROM src) d` 原先每条边都落在清单第一列(`src.name → dst.k`,且 `dst.name` 无上游);现在 `src.k → dst.k`、`src.name → dst.name`。基表不受影响(`*` 早已按 catalog 展开成 N 个输出列,位置映射本来就成立);**暴露列未知**的查询本地关系保留旧读法(通配符代表整条 lineage,第一条清单项命名它),因为无从判断哪列是哪列。`wildcard_target_test.go` 与语料两例(派生表 + 基表对照)钉住 | `generateEdgesForTarget`、`traceWildcardThroughTableLineageToTarget` |
 | `LATERAL VIEW` 作用于**派生表**时,把派生表提升成同名 CTE 后再解析 | omni 的 Doris 语法在 `LATERAL` 处报错(§12.2),而引擎接受该语句;提升不改变语义(派生表读一次 = CTE 读一次,4.1.4 上两式同结果同列名),因此血缘被完整取回:`SELECT * FROM (SELECT v FROM ev) d LATERAL VIEW explode(d.v) u AS tag` 记 `ev.v → __result__.v` 与 `ev.v → __result__.tag`;视图体走同一条垫片(定义整体解析失败 → 抽出 body → 重写)。提升让该名字获得 CTE 优先级,所以**语句里还有另一个关系叫这个名字时拒绝改写**;一次只处理一个、只在语句自身层级;裸别名与 `AS d` 都支持 | `lateral.go`、`rewriteQuery` |
 | CTE 的暴露列 = 声明清单**从左往右**改名,清单够不到的输出保留查询别名 | 引用 CTE 的列按 body 真正暴露的名字解析,并且**刻意不用** `scope.ExposedColumnNames`——那条"ary 不符就整条作废"是 MySQL 家族的规则,而 Doris 4.1.4 实测短清单可用:`WITH c (a) AS (SELECT k, name FROM t) SELECT a FROM c` 与 `SELECT name FROM c` 都能执行(前者是 `a`=k,后者是未改名的 `name`)。暴露列写回 `definition.Columns`(PostgreSQL 同一做法),所以常量输出列没有来源、不产边,但它**是**该关系的列;此前拿 lineage target 当清单,`WITH c AS (SELECT 1 AS x, k FROM ev2) SELECT x FROM c, ev2` 这条引擎可执行的语句被报成缺口。**边的目标名映射**与暴露列共用同一份名字 | `processCTE` |
-| `UpdateStmt` / `DeleteStmt` 没有 `With` | Doris 没有 `WITH … UPDATE` / `WITH … DELETE`;这种输入是**硬解析失败**,不是缺口,也不是"没有血缘" | 语法层(omni `doris/parser`) |
+| `WITH` 可以写在 **INSERT / UPDATE / DELETE 之前**(引擎如此,omni 不是) | 4.1.4 实测三种都能执行并生效(`WITH c AS (SELECT 1 AS a) UPDATE t SET b = 9 WHERE a = 1` 真的把 b 改成 9、INSERT 真的插入、DELETE 真的删除;被引用的 CTE 也生效),而 omni 在 `INSERT`/`UPDATE`/`DELETE` 处报语法错误 → 过去是**整条硬失败清血缘**。`withdml.go` 把 INSERT 的 WITH 挪到它写入的那个查询之前(引擎与 omni 都在那里读它:`INSERT INTO t (a) WITH c AS (…) SELECT a FROM c` 解析通过且 CTE 参与分析),UPDATE/DELETE 与 **VALUES 源**的 INSERT 没有可放的位置(omni 的 WITH 只认 SELECT),所以只在语句确实没读到它定义的任何名字时删除(未使用的 CTE 不写任何东西,而"读到"按**每个 token** 判断:CTE 可以用词法上是关键字的词命名,`WITH `type` AS (…) … FROM type` 引擎真的会读);**确实被读到的仍保留硬失败**,见 open item 14。`INSERT INTO t PARTITION (p) (a) WITH c AS (…) SELECT …` 是引擎与 omni 都接受的落点,允许;`WITH LABEL` 是唯一交给解析器的形状(引擎接受、omni 拒绝) | `withdml.go`、`rewriteQuery` |
 | UPDATE 的 SET 目标**可以带限定符**(`UPDATE t1 SET t1.name = t1.other`),StarRocks 直接拒绝这个形状 | 写入目标仍取语句的表(`targetSchema`/`targetTable`),限定符只用来检查该列属于作用域里的关系;`UPDATE t1 AS x SET x.name = x.other` 同样接受,表达式保留别名的拼写。两条语料钉住 | `processUpdateList` |
 | 限定列(`t.c` / `db.t.c`)由 registry 回答,而不是"限定符绑上关系就信列存在" | Doris 引擎对限定列与无限定列给同一个答案(`Unknown column 'nope' in 'ev2'`,实测见 §真实引擎核对),所以根作用域打开 `scope.SetVerifyQualifiedColumns`:某关系被 registry 描述(列清单非空)却不拥有该列时,引用解析失败,写它的子句各自报缺口——输出列 / 输出目标(CTAS、`INSERT … SELECT`)/ 赋值 / DELETE 条件 / 谓词 / CTE 体 / 生成器实参。**仍按旧读法**的情形:关系未被 registry 描述、列清单为空(未重扫)、引用已 resolved、列名大小写不同视为同一列(`EqualFold`);**查询本地关系(CTE / 派生表 / 表值函数 / LATERAL VIEW 生成器)一律不校验**:排除按键是"关系从哪来"而不是"清单有多准"——CTE 的清单取自 lineage target(漏掉常量输出列),表值函数是参数 key 占位(引擎实测 `SELECT m.name FROM mv_infos("database"="demo") m` 可用,而占位声称的那个 `database` 列反被引擎拒绝),LATERAL VIEW 的 `AS` 列表与派生表的输出别名却是语句自己的字面;会错的清单绝不能拿来报缺口,而名不副实的"权威"标记会造成更坏的假缺口,所以查询本地关系一律不问(代价见 [lineage-semantics.md](lineage-semantics.md) open item 4)。无限定名的单关系回退是既有刻意行为(见 [lineage-semantics.md](lineage-semantics.md)),不在本条内。**已知代价**:registry 列清单落后于引擎时,限定写法会丢边而无限定写法保留(`SELECT t3.name FROM t3` vs `SELECT name FROM t3`),这是"registry 是限定列的唯一权威"的代价,`qualified_column_test.go` 两侧都钉住 | `NewAnalyzer`(根作用域一行开关)、`scope.SetVerifyQualifiedColumns` / `ownsColumn` |
 | VARIANT 子列路径:点号 `v.user.name` 与括号 `v['user']['name']` 同义,但 omni 把点号读成普通限定列名 | 分析器的顺序与引擎一致:① 限定读法优先,但**仅在 catalog 未否证该列时**(由上一行的限定列校验实现)——`SELECT v.name FROM ev7 v`(别名 v 指向 ev7,而 ev7 没有 `name` 列)原来会产出指向不存在列的边,现在按引擎改读 `ev7.v` 的路径;② 关系前缀必须**按语句写法寻址**该关系(前缀末段须等于关系的表名或别名,多段前缀还须匹配其 database),否则作用域的宽松限定匹配会把 `ev.v` 绑到同名别名 `v` 上;③ 基列类型由 catalog 作证是 `variant` 才成立(`FROM ev, ev2 v` 的 `v.name` 仍读 ev2.name,前缀列是别的类型时按引擎一样不退回路径),两处同名 VARIANT 列则不猜;④ 以上都不成立时,该引用保持未解析并由写它的子句报缺口(`FROM ev7, ev8 v; SELECT v.name`,引擎同样报 `v.name is ambiguous`)——不再回退成指向不存在列的边。输出列名取整条路径原文(引擎行为,不是最后一段) | `collectColumnSources`、`variantPathBase`、`variantBase` |
@@ -107,7 +108,7 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 
 | 场景 | 行为 |
 | --- | --- |
-| omni 解析失败(含 `WITH … UPDATE/DELETE`、被抽出的视图体自身不合法) | 硬失败:无部分结果;runner 清该对象血缘 + `error_message` |
+| omni 解析失败(含**被读到的** `WITH … UPDATE/DELETE`、被抽出的视图体自身不合法) | 硬失败:无部分结果;runner 清该对象血缘 + `error_message` |
 | 多语句输入 | 硬失败:分析器只定义在单条语句上,切分由根包负责 |
 | 某形状没建模(MERGE、未建模查询表达式) | 部分分析:兄弟边照存,缺口写 version 行 / RPC diagnostics |
 | 引用解析不到(未解析列、registry 否证的限定列、通配符限定符) | 部分分析 + 对应 `model.Diagnostic` |
@@ -120,7 +121,7 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 2. **`TableRef.Func` 与 LATERAL VIEW 关系是查询本地关系,永不作为边的端点**:先经 `flattenTempSourceLineage` 展平;**生成器实参里没有可解析列(纯字面量调用)时不产边**——它没有这个分析能命名的来源。实参里的表达式子查询按 select-list 的同一套 `expressionSubquerySources` 取来源,不静默丢。
 3. **INSERT 的目标列清单永远位置式**:Doris 没有 `BY NAME`,`Columns[i]` 对查询第 i 个输出列。
 4. **CTAS 列名取类型化 `ColumnDef`**:Doris 没有名字清单;声明了就用声明,没声明就用查询输出别名。
-5. **`WITH` 在 UPDATE / DELETE 之前是解析失败,不是缺口**:语法层不存在这个形状。
+5. **`WITH` 在 INSERT / UPDATE / DELETE 之前是引擎合法、omni 不认的形状,能救的必须救**:先按 `withdml.go` 的规则改写(INSERT 挪到查询前;UPDATE/DELETE 只在语句没读到它时删除),改写不了的才硬失败——**绝不因为"语法层应该不存在"就假设它不存在**(4.1.4 三种都能执行,见 `doris-lineage.md` §真实引擎核对)。
 6. **MERGE 与未建模查询表达式是缺口,不是硬失败**:已解析的边必须留下 `model.Diagnostic`;只有解析失败才清血缘。
 7. **视图兜底只接管 `CREATE` / `ALTER` 开头、且目标名是紧邻 `VIEW` 的点分标识符段**:命中未建模头部子句(含标识符)即放弃兜底并保留 omni 的原始解析错误——绝不把头部子句里的词当对象名,否则会向注册表里不存在的对象写边(曾产出 `mv.ASYNC`)。
 8. **任何输出变更(边、变换、错误分类)必须过黄金语料**,语料用精确边匹配(`subset` 未使用)。
@@ -142,11 +143,13 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 12. ~~**表值函数暴露的列名是启发式**~~ — **已落地**:单个命名实参的 key 就是暴露的列名(`numbers("number"="2")` → `number`,引擎实测 `u.number` 可用、`u.numbers` 报 Unknown column),其余形态保留函数名占位(`tableFunctionColumn`,由 `table_function_test.go` 钉住)。**范围说明**:Doris 的 FROM TVF 实参只能是字面量,所以这个列名对合法 SQL 没有可观测的血缘影响;真正读列值的是 LATERAL VIEW(它自己声明列名)。该启发式只用于**分析器自己的**占位与无限定名解析,查询本地关系不参与限定列校验(见 §方言事实第 1 行),所以它猜错也不会制造假缺口。
 13. ~~**CTE 的暴露列取自 lineage target,而不是查询的输出别名**~~ — **已落地**:`processCTE` 现在把校验后的暴露列写回 `definition.Columns`(`scope.ExposedColumnNames(cte.Columns, bodyOutputs)`,与 PostgreSQL 同一写法),于是引用 CTE 的列按 body 真正暴露的名字解析,`WITH c AS (SELECT 1 AS x, k FROM ev2) SELECT x FROM c, ev2`(4.1.4 实测可执行)不再报 `unresolved reference`;真正不存在的列仍是缺口,声明清单仍按位置改名。`cte_exposure_test.go` 钉住四种形态,变异验证(去掉那一行 → 常量列用例变红)。**仍未做**:收窄仍把一切查询本地关系排除在校验外,所以 CTE 上引擎拒绝的列(`SELECT c.nope FROM c`)继续静默;清单已经可靠了,剩下的不可靠来源是表值函数占位与 `outputColumnAliases` 的完整性守卫,要让 CTE 参与校验得先给 `SetColumnLookup` 加"语句声明 / 分析器推导"的出处标记(标错会造成更坏的假缺口)。**该出处标记方案已放弃**:它的唯一收益是为"引擎拒绝的语句"报缺口,而本产品的输入(库内视图 / MV、ETL 语句)几乎总是可执行,对合法 SQL 它既不多给一条边、也只增加假缺口风险(研判见 [lineage-semantics.md](lineage-semantics.md) open item 4)。其他方言同一缺陷登记在该篇 open item 8,**按决定延后**。另:同一收窄也让 LATERAL VIEW 的 `AS` 列表不再参与校验——它的清单本属语句字面、引擎也认,所以引擎拒绝的引用(`SELECT u.nope FROM ev LATERAL VIEW explode(arr) u AS e`)现在静默;这是"不询问查询本地关系"的代价,同样登记在 open item 4。
 
+14. **被读到的 `WITH … UPDATE / DELETE` 仍是硬失败** — 引擎执行它(`WITH c AS (SELECT max(k) AS m FROM ev2) UPDATE t2 SET b = (SELECT m FROM c)` 4.1.4 上真的把 b 改成 max(k)),omni 在 `UPDATE` 处报错,而 WITH 在 UPDATE/DELETE 之前没有可放的位置(INSERT 没有这个问题:查询自己带着 WITH)。当前只在语句**没读到**该名字时删除子句(安全、可证),读到的保留硬失败。要覆盖剩下的情形得把被引用的 CTE **内联**成子查询——那需要判断"哪些 token 是把 CTE 当关系或限定符用",而不是把同名标识符误替换(列名、别名都可能撞名),属独立改动;语料用 `expect_error` 钉住当前边界。
+
 ## Where things live
 
 | 关注点 | 代码 | 测试 / 门禁 |
 | --- | --- | --- |
-| 方言包 | `backend/plugin/lineage/doris/{analyzer,expr,predicate,rawsql,viewbody,outfile,lateral,mixedpath}.go` | `go test ./backend/plugin/lineage/doris/` |
+| 方言包 | `backend/plugin/lineage/doris/{analyzer,expr,predicate,rawsql,viewbody,outfile,lateral,mixedpath,withdml,tokenname}.go` | `go test ./backend/plugin/lineage/doris/` |
 | 装配 | `backend/plugin/lineage/engines/engines.go`、`engines_test.go` | `go test ./backend/plugin/lineage/engines/` |
 | 共享机制守门 | `backend/plugin/lineage/shared_analysis_test.go`(`dialectPackages` 含 `doris`) | `go test ./backend/plugin/lineage/ -run TestSharedAnalysisStaysShared` |
 | 黄金语料 | `backend/plugin/lineage/doris/testdata/analyze/`(21 套 / 224 例 / 451 条预期边 —— 含 34 条以 `from_database` 开头的跨库边;其中 6 例是 `expect_error`) | `TestAnalyzeYAML`、`TestCorpusIsFullyAnnotated` |

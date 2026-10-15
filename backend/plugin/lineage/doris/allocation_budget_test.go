@@ -23,13 +23,14 @@ import (
 // mixed-spelling VARIANT paths about 230 each, because such a statement is tokenized
 // twice, rebuilt and re-parsed. The four grouping-set cases (ROLLUP, CUBE, GROUPING
 // SETS, a repeated key) add nothing measurable: they differ from a plain GROUP BY
-// only in how the key list is read.
+// only in how the key list is read. The WITH-clause cases add about 550 each, because such a
+// statement is tokenized twice and its body re-parsed after the clause moves.
 //
-// The limit is the 33914 measured under the CI flags with ~10% headroom: the
-// previous 3% headroom (34300 over 33327) was exhausted by one corpus case and the
-// failure it produced landed only on CI, which is the outcome this budget is least
-// useful as.
-const corpusAllocationBudget = 37600
+// The limit is the 36171 measured under the CI flags on the merged corpus (main's four
+// grouping-set cases and this branch's six WITH-clause cases) with ~10% headroom: the
+// previous 3% headroom was exhausted by one corpus case and the failure it produced landed
+// only on CI, which is the outcome this budget is least useful as.
+const corpusAllocationBudget = 39800
 
 // TestAnalyzeAllocationBudget keeps the analyzer's allocation count from creeping
 // up. The budget is a count, not a wall-clock number, so it does not depend on
