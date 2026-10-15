@@ -21,6 +21,8 @@ import (
 	"errors"
 	"strings"
 
+	dorisast "github.com/bytebase/omni/doris/ast"
+	dorisparser "github.com/bytebase/omni/doris/parser"
 	omnimssql "github.com/bytebase/omni/mssql"
 	mssqlnodes "github.com/bytebase/omni/mssql/ast"
 	mysqlnodes "github.com/bytebase/omni/mysql/ast"
@@ -50,6 +52,8 @@ func Targets(engine storepb.Engine, sql string) ([]model.ObjectIdentifier, error
 		return postgresTargets(sql)
 	case storepb.Engine_STARROCKS:
 		return starrocksTargets(sql)
+	case storepb.Engine_DORIS:
+		return dorisTargets(sql)
 	case storepb.Engine_MSSQL:
 		return mssqlTargets(sql)
 	default:
@@ -222,6 +226,43 @@ func starrocksTargets(sql string) ([]model.ObjectIdentifier, error) {
 // qualifier is a database, and a three-part name's catalog is dropped because the
 // registry has no catalog dimension.
 func starrocksIdentifier(name *srast.ObjectName) model.ObjectIdentifier {
+	if name == nil || len(name.Parts) == 0 {
+		return model.ObjectIdentifier{}
+	}
+	parts := name.Parts
+	if len(parts) == 1 {
+		return model.ObjectIdentifier{Name: parts[0]}
+	}
+	return model.ObjectIdentifier{Database: parts[len(parts)-2], Name: parts[len(parts)-1]}
+}
+
+// dorisTargets reads a Doris statement's write target. Doris's DML AST is the StarRocks
+// one's sibling: no `WITH` clause attaches to UPDATE/DELETE and INSERT has no BY NAME.
+func dorisTargets(sql string) ([]model.ObjectIdentifier, error) {
+	file, err := dorisparser.Parse(sql)
+	if err != nil {
+		return nil, err
+	}
+	if file == nil {
+		return nil, ErrNoTarget
+	}
+	for _, node := range file.Stmts {
+		switch s := node.(type) {
+		case *dorisast.InsertStmt:
+			return one(dorisIdentifier(s.Target))
+		case *dorisast.UpdateStmt:
+			return one(dorisIdentifier(s.Target))
+		case *dorisast.DeleteStmt:
+			return one(dorisIdentifier(s.Target))
+		}
+	}
+	return nil, ErrNoTarget
+}
+
+// dorisIdentifier takes the last two parts of a name, which is the rule the Doris analyzer
+// already applies (backend/plugin/lineage/doris/expr.go:42): the qualifier is a database,
+// and a three-part name's catalog is dropped because the registry has no catalog dimension.
+func dorisIdentifier(name *dorisast.ObjectName) model.ObjectIdentifier {
 	if name == nil || len(name.Parts) == 0 {
 		return model.ObjectIdentifier{}
 	}

@@ -4,7 +4,7 @@ name: Comments
 #
 # The cases that matter most are the ones where a comment is *not* a comment: inside a
 # string, inside a quoted identifier, and the two forms that are code rather than comment —
-# a StarRocks hint and a MySQL executable comment.
+# a StarRocks/Doris hint and a MySQL executable comment.
 cases:
   - name: a line comment before a newline
     sql: "SELECT a -- trailing\nFROM t"
@@ -32,13 +32,13 @@ cases:
     canonical: SELECT a FROM t WHERE b = ?
 
   - name: a hash comment in the mysql family
-    engine: [mysql, starrocks]
+    engine: [mysql, starrocks, doris]
     sql: "SELECT a # hash\nFROM t"
     text: "SELECT a \nFROM t"
     canonical: SELECT a FROM t
 
   - name: a hash comment at the end of the statement
-    engine: [mysql, starrocks]
+    engine: [mysql, starrocks, doris]
     sql: "SELECT a FROM t # hidden"
     text: SELECT a FROM t
     canonical: SELECT a FROM t
@@ -80,10 +80,10 @@ cases:
     text: SELECT ? */ AS c
     canonical: SELECT ? * / AS c
 
-  # StarRocks ends a block comment at the first `*/` too, but reads the outer close as one
-  # token, so its canonical form keeps the pair together.
-  - name: a nested block comment in starrocks
-    engine: starrocks
+  # StarRocks and Doris end a block comment at the first `*/` too, but read the outer close as
+  # one token, so its canonical form keeps the pair together.
+  - name: a nested block comment in starrocks and doris
+    engine: [starrocks, doris]
     sql: SELECT 1 /* a /* b */ */ AS c
     text: SELECT ? */ AS c
     canonical: SELECT ? */ AS c
@@ -94,17 +94,17 @@ cases:
     text: SELECT   a FROM t
     canonical: SELECT a FROM t
 
-  # A StarRocks hint is executable, not a comment: its lexer emits the body as tokens, so it
-  # is stored and fingerprinted with the statement. Only tokens can leak a literal, and the
+  # A StarRocks or Doris hint is executable, not a comment: its lexer emits the body as tokens,
+  # so it is stored and fingerprinted with the statement. Only tokens can leak a literal, and the
   # hint body is tokenized like any other expression, so nothing is hidden inside it.
-  - name: an optimizer hint is code in starrocks
-    engine: starrocks
+  - name: an optimizer hint is code in starrocks and doris
+    engine: [starrocks, doris]
     sql: SELECT /*+ INDEX(t) */ a FROM t
     text: SELECT /*+ INDEX(t) */ a FROM t
     canonical: SELECT /*+ INDEX ( t ) */ a FROM t
 
-  - name: a starrocks hint holding a number still rewrites the number
-    engine: starrocks
+  - name: a starrocks and doris hint holding a number still rewrites the number
+    engine: [starrocks, doris]
     sql: SELECT /*+ SET_VAR(query_timeout=10) */ a FROM t
     text: SELECT /*+ SET_VAR(query_timeout=?) */ a FROM t
     canonical: SELECT /*+ SET_VAR ( query_timeout = ? ) */ a FROM t
@@ -141,7 +141,7 @@ cases:
     canonical: SELECT "a/*b*/" FROM t
 
   - name: a backtick identifier holding a block comment marker
-    engine: [mysql, starrocks]
+    engine: [mysql, starrocks, doris]
     sql: SELECT `a/*b*/` FROM t
     text: SELECT `a/*b*/` FROM t
     canonical: SELECT `a/*b*/` FROM t

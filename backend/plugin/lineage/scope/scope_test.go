@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
 )
 
 func TestNewScope(t *testing.T) {
@@ -713,4 +715,122 @@ func TestScope_FoldedLookupsAreDeterministic(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, []string{"lower"}, cte.Columns)
 	}
+}
+
+// TestScope_VerifyQualifiedColumns pins the option a dialect sets when its engine
+// reads a qualified reference against the catalog as well as against the relation
+// it addresses. Off is the reading every other dialect keeps.
+func TestScope_VerifyQualifiedColumns(t *testing.T) {
+	described := func() *Scope {
+		s := NewScope(nil)
+		s.SetVerifyQualifiedColumns(true)
+		s.AddTable(tableWithColumns("ev2", []string{"id", "name"}))
+		return s
+	}
+
+	t.Run("a described relation that does not own the column resolves to nothing", func(t *testing.T) {
+		resolved, err := described().ResolveColumnRefs(ColumnRef{Table: "ev2", Column: "nope"})
+		require.ErrorContains(t, err, "column not found: ev2.nope")
+		require.Empty(t, resolved)
+	})
+
+	t.Run("the same reference resolves when the dialect does not verify", func(t *testing.T) {
+		// A partial catalog must not turn an edge into a gap on its own, so a scope
+		// that never asks the question keeps the reading it had.
+		s := NewScope(nil)
+		s.AddTable(tableWithColumns("ev2", []string{"id", "name"}))
+
+		resolved, err := s.ResolveColumnRefs(ColumnRef{Table: "ev2", Column: "nope"})
+		require.NoError(t, err)
+		require.Equal(t, "nope", resolved[0].Ref.Column)
+	})
+
+	t.Run("a column the relation owns resolves", func(t *testing.T) {
+		resolved, err := described().ResolveColumnRefs(ColumnRef{Table: "ev2", Column: "name"})
+		require.NoError(t, err)
+		require.Equal(t, "name", resolved[0].Ref.Column)
+	})
+
+	t.Run("a column name is compared case-insensitively", func(t *testing.T) {
+		resolved, err := described().ResolveColumnRefs(ColumnRef{Table: "ev2", Column: "NAME"})
+		require.NoError(t, err)
+		require.Equal(t, "NAME", resolved[0].Ref.Column)
+	})
+
+	t.Run("an undescribed relation keeps the lenient reading", func(t *testing.T) {
+		s := NewScope(nil)
+		s.SetVerifyQualifiedColumns(true)
+		s.AddTable(&TableRef{Table: "ev2", Alias: "ev2"})
+
+		resolved, err := s.ResolveColumnRefs(ColumnRef{Table: "ev2", Column: "nope"})
+		require.NoError(t, err)
+		require.Equal(t, "nope", resolved[0].Ref.Column)
+	})
+
+	t.Run("a relation whose lookup answers with no names is unknown, not empty", func(t *testing.T) {
+		for _, names := range [][]string{nil, {}} {
+			s := NewScope(nil)
+			s.SetVerifyQualifiedColumns(true)
+			s.AddTable(tableWithColumns("ev2", names))
+
+			resolved, err := s.ResolveColumnRefs(ColumnRef{Table: "ev2", Column: "nope"})
+			require.NoError(t, err, "names=%v", names)
+			require.Equal(t, "nope", resolved[0].Ref.Column)
+		}
+	})
+
+	t.Run("a wildcard names columns rather than a column", func(t *testing.T) {
+		resolved, err := described().ResolveColumnRefs(ColumnRef{Table: "ev2", Column: model.WildcardColumn})
+		require.NoError(t, err)
+		require.Equal(t, model.WildcardColumn, resolved[0].Ref.Column)
+	})
+
+	t.Run("a reference with no column is not verified", func(t *testing.T) {
+		resolved, err := described().ResolveColumnRefs(ColumnRef{Table: "ev2"})
+		require.NoError(t, err)
+		require.Empty(t, resolved[0].Ref.Column)
+	})
+
+	t.Run("an already-resolved reference is not verified", func(t *testing.T) {
+		// It was resolved against the scope it came from, which is the only scope
+		// that can answer the question.
+		resolved, err := described().ResolveColumnRefs(ColumnRef{Table: "ev2", Column: "nope", Resolved: true})
+		require.NoError(t, err)
+		require.Equal(t, "nope", resolved[0].Ref.Column)
+	})
+
+	t.Run("a query-local relation is not verified", func(t *testing.T) {
+		// Its column list is the analyzer's own account of what the query exposes,
+		// not what the engine accepts, so it is not evidence for a gap.
+		s := NewScope(nil)
+		s.SetVerifyQualifiedColumns(true)
+		derived := tableWithColumns("d", []string{"a"})
+		derived.IsSubquery = true
+		s.AddTable(derived)
+
+		resolved, err := s.ResolveColumnRefs(ColumnRef{Table: "d", Column: "b"})
+		require.NoError(t, err)
+		require.Equal(t, "b", resolved[0].Ref.Column)
+
+		cte := tableWithColumns("c", []string{"a"})
+		cte.IsCTE = true
+		withCTE := NewScope(nil)
+		withCTE.SetVerifyQualifiedColumns(true)
+		withCTE.AddTable(cte)
+
+		resolved, err = withCTE.ResolveColumnRefs(ColumnRef{Table: "c", Column: "b"})
+		require.NoError(t, err)
+		require.Equal(t, "b", resolved[0].Ref.Column)
+	})
+
+	t.Run("a child scope inherits the rule", func(t *testing.T) {
+		child := NewScope(described())
+		_, err := child.ResolveColumnRefs(ColumnRef{Table: "ev2", Column: "nope"})
+		require.ErrorContains(t, err, "column not found: ev2.nope")
+	})
+
+	t.Run("a qualifier that addresses no relation still names the qualifier", func(t *testing.T) {
+		_, err := described().ResolveColumnRefs(ColumnRef{Table: "ev3", Column: "nope"})
+		require.ErrorContains(t, err, "table not found: ev3")
+	})
 }

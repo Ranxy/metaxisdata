@@ -1,0 +1,399 @@
+name: TestUnionLineage_Table
+cases:
+    - name: simple UNION
+      sql: SELECT id, name FROM employees UNION SELECT id, name FROM contractors
+      expected_edges:
+        - from_table: employees
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+        - from_table: contractors
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+        - from_table: employees
+          from_field: name
+          to_table: __result__
+          to_field: name
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+        - from_table: contractors
+          from_field: name
+          to_table: __result__
+          to_field: name
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+    - name: UNION ALL with differing aliases
+      sql: SELECT user_id AS uid, amount FROM sales UNION ALL SELECT user_id, amount FROM refunds
+      expected_edges:
+        - from_table: sales
+          from_field: user_id
+          to_table: __result__
+          to_field: uid
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+        - from_table: refunds
+          from_field: user_id
+          to_table: __result__
+          to_field: uid
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+        - from_table: sales
+          from_field: amount
+          to_table: __result__
+          to_field: amount
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+        - from_table: refunds
+          from_field: amount
+          to_table: __result__
+          to_field: amount
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+    - name: three-way UNION
+      sql: SELECT id, name FROM employees UNION SELECT id, name FROM contractors UNION SELECT id, name FROM vendors
+      expected_edges:
+        - from_table: employees
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+        - from_table: contractors
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+        - from_table: vendors
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+        - from_table: employees
+          from_field: name
+          to_table: __result__
+          to_field: name
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+        - from_table: contractors
+          from_field: name
+          to_table: __result__
+          to_field: name
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+        - from_table: vendors
+          from_field: name
+          to_table: __result__
+          to_field: name
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+    - name: parenthesized arms
+      sql: (SELECT id FROM t1) UNION ALL (SELECT id FROM t2)
+      expected_edges:
+        - from_table: t1
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+        - from_table: t2
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+    - name: UNION with a CTE arm
+      sql: WITH recent AS (SELECT id, amount FROM orders) SELECT id, amount FROM recent UNION ALL SELECT id, amount FROM archive
+      expected_edges:
+        - from_table: orders
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+        - from_table: archive
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+        - from_table: orders
+          from_field: amount
+          to_table: __result__
+          to_field: amount
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+        - from_table: archive
+          from_field: amount
+          to_table: __result__
+          to_field: amount
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+    - name: INTERSECT keeps every arm
+      sql: SELECT id FROM a INTERSECT SELECT id FROM b
+      expected_edges:
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: intersect
+          is_temp: true
+          transformations:
+            - operation: INTERSECT
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: intersect
+          is_temp: true
+          transformations:
+            - operation: INTERSECT
+    - name: EXCEPT keeps every arm
+      sql: SELECT id FROM a EXCEPT SELECT id FROM b
+      expected_edges:
+        - from_table: a
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: except
+          is_temp: true
+          transformations:
+            - operation: EXCEPT
+        - from_table: b
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: except
+          is_temp: true
+          transformations:
+            - operation: EXCEPT    # A set operation merges its arms' output columns positionally, and each arm
+    # computes the merged column its own way. The transformation has to travel
+    # with the source it came from: one transformation for the whole merged
+    # column attributed the first arm's expression to every other arm's sources.
+    - name: each union arm keeps its own expression
+      sql: "SELECT a + 1 AS x FROM t1 UNION ALL SELECT b + 2 AS x FROM t2"
+      expected_edges:
+        - from_table: t1
+          from_field: a
+          to_table: __result__
+          to_field: x
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+            - operation: OPERATOR
+              op_type: ADDITION
+              expression: "a+1"
+        - from_table: t2
+          from_field: b
+          to_table: __result__
+          to_field: x
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+            - operation: OPERATOR
+              op_type: ADDITION
+              expression: "b+2"
+    - name: a direct arm does not erase a later arm's expression
+      sql: "SELECT a AS x FROM t1 UNION SELECT b + 2 AS x FROM t2"
+      expected_edges:
+        - from_table: t1
+          from_field: a
+          to_table: __result__
+          to_field: x
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+        - from_table: t2
+          from_field: b
+          to_table: __result__
+          to_field: x
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+            - operation: OPERATOR
+              op_type: ADDITION
+              expression: "b+2"
+    # UNION ALL keeps duplicate rows where UNION removes them, and PG's INTERSECT
+    # ALL / EXCEPT ALL have the same pair. The flag is part of the transformation,
+    # so the two spellings are different lineage metadata rather than the same one
+    # written twice.
+    - name: UNION ALL keeps duplicate rows
+      sql: SELECT a FROM t1 UNION ALL SELECT a FROM t2
+      expected_edges:
+        - from_table: t1
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+              all: true
+        - from_table: t2
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+              all: true
+    - name: UNION removes duplicate rows
+      sql: SELECT a FROM t1 UNION SELECT a FROM t2
+      expected_edges:
+        - from_table: t1
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+              all: false
+        - from_table: t2
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+              all: false
+    - name: each operation in a chain carries its own ALL flag
+      sql: SELECT a FROM t1 UNION ALL SELECT b FROM t2 INTERSECT ALL SELECT c FROM t3
+      expected_edges:
+        - from_table: t1
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+              all: true
+        - from_table: t2
+          from_field: b
+          to_table: __result__
+          to_field: a
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+              all: true
+            - operation: INTERSECT
+              all: true
+        - from_table: t3
+          from_field: c
+          to_table: __result__
+          to_field: a
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+              all: true
+            - operation: INTERSECT
+              all: true
+    - name: EXCEPT ALL keeps duplicate rows
+      sql: SELECT a FROM t1 EXCEPT ALL SELECT a FROM t2
+      expected_edges:
+        - from_table: t1
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: except
+          is_temp: true
+          transformations:
+            - operation: EXCEPT
+              all: true
+        - from_table: t2
+          from_field: a
+          to_table: __result__
+          to_field: a
+          relation_type: except
+          is_temp: true
+          transformations:
+            - operation: EXCEPT
+              all: true
+
+    # Doris wraps a parenthesized group in a GroupedQuery; when the group
+    # carries its own WITH, the arm's CTE still resolves against its body.
+    - name: a parenthesized arm keeps its own WITH
+      sql: (WITH c AS (SELECT id, amount FROM orders) SELECT id FROM c) UNION ALL SELECT id FROM t2
+      expected_edges:
+        - from_table: orders
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+        - from_table: t2
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: union
+          is_temp: true
+          transformations:
+            - operation: UNION
+    # A trailing clause applied to an already parenthesized group is another
+    # GroupedQuery; the projected column keeps its direct lineage.
+    - name: repeated trailing clause groups
+      sql: (SELECT id FROM t1 LIMIT 1) LIMIT 2
+      expected_edges:
+        - from_table: t1
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true

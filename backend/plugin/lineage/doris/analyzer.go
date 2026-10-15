@@ -1,0 +1,1557 @@
+// Package doris provides direct lineage analysis for Apache Doris queries.
+//
+// This implementation is built on github.com/bytebase/omni's Doris parser and
+// typed AST. It is a port of backend/plugin/lineage/starrocks rather than a
+// dialect copy: omni's Doris AST is a sibling of its StarRocks AST, and most of
+// the traversal is identical, but the two grammars differ where it matters to
+// this analyzer —
+//
+//   - a parenthesized query is GroupedQuery{Query}, not ParenSelect{Sel};
+//   - a table-valued function is TableRef.Func, not TableFunctionRef;
+//   - LATERAL VIEW exists and feeds the columns it declares from its generator
+//     arguments (processLateralViews);
+//   - INSERT ... BY NAME, a WITH clause before UPDATE/DELETE and the
+//     CTASColumns field do not exist.
+//
+// A statement kind the analyzer cannot model yet (MERGE) is reported as a gap
+// beside the edges the other statements produced, so a coverage gap never
+// discards real lineage.
+package doris
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/pkg/errors"
+
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/algorithm"
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/catalog"
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/scope"
+
+	nodes "github.com/bytebase/omni/doris/ast"
+	dorisparser "github.com/bytebase/omni/doris/parser"
+)
+
+// Special table/column markers shared with the other analyzers.
+const (
+	resultTableName   = model.ResultTableName
+	deletionFieldName = model.DeletionColumnName
+	wildcardColumn    = model.WildcardColumn
+	fileSourceMarker  = model.FileSourceName
+)
+
+// Registration binds Doris to the analyzer this package provides. The process
+// assembles the registered engines where it is built, so this package does not
+// register itself into package state.
+func Registration() lineage.EngineRegistration {
+	return lineage.EngineRegistration{
+		Engine:  storepb.Engine_DORIS,
+		Analyze: Analyze,
+		Split:   SplitStatements,
+	}
+}
+
+// SplitStatements splits a script into its individual statements, dropping the
+// ones that carry no SQL. The caller feeds them to Analyze one at a time: this
+// analyzer is defined for exactly one statement.
+func SplitStatements(sql string) []string {
+	segments := dorisparser.Split(sql)
+	statements := make([]string, 0, len(segments))
+	for _, segment := range segments {
+		if segment.Empty() {
+			continue
+		}
+		statements = append(statements, segment.Text)
+	}
+	return statements
+}
+
+// Analyzer performs direct lineage analysis on one Doris statement.
+type Analyzer struct {
+	ctx context.Context
+	sql string
+	// sources is the text/token stack for the statement being analyzed; see
+	// rawsql.go.
+	sources []source
+	// scopeStack tracks lexical scopes, innermost last.
+	scopeStack []*scope.Scope
+	// edges is the accumulated, deduplicated lineage.
+	edges *algorithm.EdgeSet
+	// errors collects analysis failures that condemn the whole statement, such as
+	// a query body omni exposes only as text failing to parse. A shape the
+	// analyzer does not model is not one of them: that is a diagnostics gap.
+	errors []string
+	// diagnostics collects what the analysis could not represent: a reference that
+	// resolved to nothing, a clause whose target it could not choose, and a
+	// statement shape it does not model. They turn the result into a partial one
+	// that says what is missing.
+	diagnostics *algorithm.Diagnostics
+	// Optional catalog for wildcard expansion and metadata lookup, memoized for
+	// the whole analysis so a relation named twice is read once. It is nil when no
+	// provider was configured, which is why every use is guarded.
+	catalog *catalog.Cache
+	// inTargetContext is set while the query body of a statement that maps its
+	// output columns onto an explicit object (CREATE VIEW / MATERIALIZED VIEW /
+	// TABLE ... AS, INSERT ... SELECT) is analyzed. Those columns must not also
+	// be emitted against __result__.
+	inTargetContext bool
+	// inSetOpArm is set while analyzing one arm of a set operation, so only the
+	// merged set-operation result emits edges.
+	inSetOpArm bool
+	// influences holds the row-set influences collected while a scope was
+	// current. They belong to the rows that scope produces and are inherited by
+	// whatever consumes them, so a scope whose rows reach no output cannot
+	// influence the statement's result.
+	influences *algorithm.Influences
+}
+
+// Analyze parses a single Doris statement and returns its column relations.
+func Analyze(ctx context.Context, sql string, cat catalog.Provide) ([]model.ColumnRelation, error) {
+	return NewAnalyzer(ctx, sql, cat).AnalyzeRelations()
+}
+
+// NewAnalyzer creates a Doris lineage analyzer for a single statement.
+func NewAnalyzer(ctx context.Context, sql string, catalogProvide catalog.Provide) *Analyzer {
+	diagnostics := algorithm.NewDiagnostics()
+	// Doris answers a qualified reference from the catalog the way it answers an
+	// unqualified one: `SELECT ev2.nope FROM ev2` is `Unknown column 'nope' in
+	// 'ev2'`, not a column read. Every scope this analyzer creates inherits the
+	// rule, and a relation the catalog cannot describe keeps the lenient reading.
+	root := scope.NewScope(nil)
+	root.SetVerifyQualifiedColumns(true)
+	return &Analyzer{
+		ctx:         ctx,
+		sql:         sql,
+		sources:     []source{newSource(sql)},
+		scopeStack:  []*scope.Scope{root},
+		edges:       algorithm.NewEdgeSet(),
+		errors:      make([]string, 0),
+		catalog:     catalog.NewCache(catalogProvide),
+		influences:  algorithm.NewInfluences(diagnostics),
+		diagnostics: diagnostics,
+	}
+}
+
+// AnalyzeRelations parses the SQL and returns its column relations.
+//
+// Parsing is strict: a statement omni cannot parse is an error, never a partial
+// result. Multi-statement input is rejected because the analyzer is defined for
+// exactly one statement; the caller splits a script and analyzes it statement by
+// statement.
+func (a *Analyzer) AnalyzeRelations() ([]model.ColumnRelation, error) {
+	if segments := dorisparser.Split(a.sql); len(segments) != 1 {
+		return nil, errors.Errorf("expected exactly 1 statement, got %d", len(segments))
+	}
+
+	file, err := dorisparser.Parse(a.sql)
+	if err != nil {
+		// omni's CREATE VIEW grammar accepts only a plain SELECT body (finding
+		// F2). A WITH / set-operation / parenthesized body is analyzed from the
+		// extracted query instead; anything else is still a hard failure.
+		if ddl, ok := extractViewDDL(a.sql); ok {
+			a.processViewDDL(ddl)
+			return a.partialOrComplete()
+		}
+		// The shapes omni's grammar rejects while the engine runs them are analyzed from
+		// a rewritten statement. The analyzer reconstructs expression text from its own
+		// source, so the rewritten text becomes that source before anything is read, and
+		// a statement that still does not parse keeps its original failure.
+		text, original, edits, ok := rewriteQuery(a.sql)
+		if !ok {
+			return nil, errors.Wrap(err, "failed to parse Doris SQL")
+		}
+		reparsed, parseErr := dorisparser.Parse(text)
+		if parseErr != nil {
+			return nil, errors.Wrap(err, "failed to parse Doris SQL")
+		}
+		a.sql, a.sources, file = text, []source{newRewrittenSource(text, original, edits)}, reparsed
+	}
+	if file == nil || len(file.Stmts) != 1 {
+		return nil, errors.New("expected exactly 1 statement")
+	}
+
+	a.dispatch(file.Stmts[0])
+
+	return a.partialOrComplete()
+}
+
+// partialOrComplete returns the edges with what could not be represented beside
+// them. A statement the analyzer cannot analyze at all fails whole — its analysis
+// would be wrong, so the edges are discarded — while a shape it does not model and
+// a reference it could not resolve keep them and are reported instead.
+func (a *Analyzer) partialOrComplete() ([]model.ColumnRelation, error) {
+	if len(a.errors) > 0 {
+		return nil, errors.Errorf("analysis errors: %s", strings.Join(a.diagnostics.AppendTo(a.errors), "; "))
+	}
+	if notes, omitted := a.diagnostics.Notes(); len(notes) > 0 {
+		return a.edges.Edges(), &lineage.UnsupportedStatementError{Diagnostics: notes, Omitted: omitted}
+	}
+	return a.edges.Edges(), nil
+}
+
+// dispatch routes a parsed statement to its analyzer.
+func (a *Analyzer) dispatch(stmt nodes.Node) {
+	switch s := stmt.(type) {
+	case *nodes.SelectStmt:
+		a.processSelectStatement(s)
+	case *nodes.SetOpStmt:
+		a.processSetOperation(s)
+	case *nodes.GroupedQuery:
+		a.processQueryNode(s.Query)
+	case *nodes.CreateViewStmt:
+		a.processDDLTarget(s.Name, viewColumnNames(s.Columns), s.Query)
+	case *nodes.AlterViewStmt:
+		a.processDDLTarget(s.Name, viewColumnNames(s.Columns), s.Query)
+	case *nodes.CreateMTMVStmt:
+		a.processDDLTarget(s.Name, viewColumnNames(s.Columns), s.Query)
+	case *nodes.CreateTableStmt:
+		a.processCreateTable(s)
+	case *nodes.InsertStmt:
+		a.processInsertStatement(s)
+	case *nodes.UpdateStmt:
+		a.processUpdateStatement(s)
+	case *nodes.DeleteStmt:
+		a.processDeleteStatement(s)
+	case *nodes.CopyIntoStmt:
+		a.processCopyInto(s)
+	case *nodes.LoadDataStmt:
+		a.processLoadStatement(s)
+	case *nodes.MergeStmt:
+		// MERGE carries column lineage this analyzer does not model yet. A gap is
+		// reported instead of failing the statement, so the edges of the
+		// statements around it survive — which is what the PostgreSQL analyzer
+		// does for the same statement.
+		a.diagnostics.NotModelled("MERGE", "")
+	default:
+		// Statement kinds that carry no lineage are ignored, as in the MySQL
+		// analyzer.
+	}
+}
+
+// ---------------------------------------------------------------------------
+// SELECT
+// ---------------------------------------------------------------------------
+
+// processSelectStatement processes a SELECT statement.
+func (a *Analyzer) processSelectStatement(stmt *nodes.SelectStmt) {
+	if stmt == nil {
+		return
+	}
+	if stmt.With != nil {
+		a.processCTEs(stmt.With)
+	}
+	a.processQuerySpecification(stmt)
+}
+
+// processQueryNode dispatches a query expression: a SELECT, a set operation or
+// a parenthesized query. Unlike the MySQL analyzer, omni models set operations
+// and parenthesized queries as their own nodes rather than as fields of
+// SelectStmt.
+func (a *Analyzer) processQueryNode(node nodes.Node) {
+	switch n := node.(type) {
+	case *nodes.SelectStmt:
+		a.processSelectStatement(n)
+	case *nodes.SetOpStmt:
+		a.processSetOperation(n)
+	case *nodes.GroupedQuery:
+		a.processQueryNode(n.Query)
+	default:
+		// A query expression this analyzer does not model is a gap rather than a
+		// failure: the rest of the statement may still have resolvable lineage.
+		a.diagnostics.NotModelled("query expression", "")
+	}
+}
+
+// processQuerySpecification processes FROM, then the SELECT list, then emits
+// edges.
+func (a *Analyzer) processQuerySpecification(stmt *nodes.SelectStmt) {
+	sp := a.currentScope()
+	a.processFromClause(stmt.From)
+	// A WHERE or HAVING predicate decides which rows the query emits without its
+	// value reaching any output column, so it is recorded as an influence on the
+	// statement's target rows rather than on a column.
+	if stmt.Where != nil {
+		a.collectPredicates(stmt.Where, sp, model.NewFilterTransformation(a.exprTextOf(stmt.Where)), false)
+	}
+	a.processSelectItemList(stmt.Items, sp, a.groupByKeys(stmt.GroupBy))
+	// HAVING is the one clause that may name a select-list alias, so it resolves
+	// one before falling back to the scope.
+	if stmt.Having != nil {
+		a.collectPredicates(stmt.Having, sp, model.NewFilterTransformation(a.exprTextOf(stmt.Having)), true)
+	}
+	// QUALIFY filters the rows a window function produces, after HAVING and before
+	// DISTINCT, so its window's partition and order columns decide which rows the
+	// query emits without their values reaching any output column. It is a
+	// predicate like WHERE, and it used to be dropped whole. A select-list alias is
+	// resolved the way HAVING resolves one: Doris accepts both the window-function
+	// form and the alias form here, and the alias's own sources are a truer answer
+	// than the single-relation fallback's invented column.
+	if stmt.Qualify != nil {
+		a.collectPredicates(stmt.Qualify, sp, model.NewFilterTransformation(a.exprTextOf(stmt.Qualify)), true)
+	}
+	a.generateEdges(sp)
+}
+
+// ---------------------------------------------------------------------------
+// FROM clause
+// ---------------------------------------------------------------------------
+
+// processFromClause processes the FROM clause.
+func (a *Analyzer) processFromClause(from []nodes.Node) {
+	for _, te := range from {
+		a.processTableExpr(te)
+		// The relations have to be in scope before a join condition's columns
+		// can be resolved.
+		a.collectJoinPredicates(te)
+	}
+}
+
+// processTableExpr processes a table reference or join.
+func (a *Analyzer) processTableExpr(te nodes.Node) {
+	switch t := te.(type) {
+	case *nodes.TableRef:
+		// Doris models a table-valued function as a TableRef whose Func is set;
+		// its name is a function, not a stored relation, so registering it as a
+		// base table would invent an object the registry can never hold.
+		if t.Func != nil {
+			a.processTableFunction(t.Func, t.Alias)
+		} else {
+			a.processSingleTableRef(t)
+		}
+		// The generators run against the relation's own columns, so they are
+		// registered after it.
+		a.processLateralViews(t)
+	case *nodes.JoinClause:
+		a.processTableExpr(t.Left)
+		a.processTableExpr(t.Right)
+	default:
+		// A relation shape the grammar does not produce in a FROM clause is
+		// ignored, as in the other analyzers.
+	}
+}
+
+// processTableFunction registers a table-valued function in FROM as a query-local
+// relation. The function names no stored relation, but it builds its rows from its
+// arguments, so the columns the call reads are the source of its columns:
+// `SELECT * FROM numbers("number" = "10")` reports nothing it can resolve, while a
+// call written with a column argument reports it.
+func (a *Analyzer) processTableFunction(call *nodes.FuncCallExpr, alias string) {
+	name := funcCallName(call)
+	if name == "" {
+		return
+	}
+	if alias == "" {
+		// An unaliased function is addressed by its own name.
+		alias = name
+	}
+	a.addGeneratedRelation(call, alias, []string{tableFunctionColumn(call, name)}, "a table function argument")
+}
+
+// tableFunctionColumn names the column a FROM table function exposes. Doris gives
+// such a function no column list, and its arguments are named — `numbers("number"
+// = "2")` — where the engine names the exposed column after the argument's key:
+// `SELECT u.number …` works on 4.1.4 and `u.numbers` is `Unknown column 'numbers'
+// in 'u'`, checked against the live engine.
+//
+// Everything else keeps the function's own name as a placeholder, because the
+// schema of a table function this analysis cannot read is exactly unknown: an
+// argument list that is positional or several-deep names nothing, and the engine
+// itself restricts these arguments to literals, so a FROM table function carries
+// no column lineage on a statement Doris accepts. Only the LATERAL VIEW form,
+// which declares its columns, reads a column argument.
+func tableFunctionColumn(call *nodes.FuncCallExpr, name string) string {
+	if len(call.Args) != 1 {
+		return name
+	}
+	argument, ok := call.Args[0].(*nodes.BinaryExpr)
+	if !ok || argument.Op != nodes.BinEq {
+		return name
+	}
+	key, ok := argument.Left.(*nodes.Literal)
+	if !ok || key.Kind != nodes.LitString || key.Value == "" {
+		return name
+	}
+	return key.Value
+}
+
+// processLateralViews registers every LATERAL VIEW generator of a table reference
+// as a query-local relation. The engine requires both a table alias and an AS
+// column list, and a chain of generators is applied left to right, so a later
+// generator can read the columns an earlier one declared.
+//
+// `FROM t LATERAL VIEW explode(t.arr) u AS elem` therefore reports `t.arr` as the
+// source of `u.elem`, and the relation it declares is what a reference like
+// `u.elem` resolves against.
+func (a *Analyzer) processLateralViews(ref *nodes.TableRef) {
+	for _, view := range ref.LateralViews {
+		if view == nil || view.TableAlias == "" || len(view.Columns) == 0 {
+			continue
+		}
+		a.addGeneratedRelation(view.Func, view.TableAlias, view.Columns, "a LATERAL VIEW generator argument")
+	}
+}
+
+// addGeneratedRelation registers a query-local relation whose columns are derived
+// from the arguments of a generator call: every declared column traces back to
+// every column the call reads, and the relation carries that lineage so a
+// reference to it is answered rather than reported as an unknown name.
+//
+// A generator with no resolvable argument — a literal-only call — contributes no
+// edge: it produces rows from nothing this analysis can name.
+func (a *Analyzer) addGeneratedRelation(call *nodes.FuncCallExpr, alias string, columns []string, subject string) {
+	if call == nil {
+		return
+	}
+	sp := a.currentScope()
+	var sources []scope.ColumnRef
+	for _, argument := range call.Args {
+		sources = append(sources, a.collectColumnRefs(argument, sp)...)
+		// The collector does not descend into a subquery, which omni keeps as
+		// raw text, so a generator over one would silently read nothing. The
+		// select list resolves an expression subquery the same way: the subquery's
+		// own sources are what the value it yields comes from.
+		sources = append(sources, a.expressionSubquerySources(argument, sp)...)
+	}
+	lineage := make([]model.ColumnRelation, 0, len(columns)*len(sources))
+	for _, column := range columns {
+		for _, ref := range sources {
+			resolutions, err := sp.ResolveColumnRefs(ref)
+			if err != nil {
+				a.diagnostics.Unresolved(subject, ref)
+				continue
+			}
+			for _, res := range resolutions {
+				if a.flattenTempSourceLineage(sp, res.Relation, res.Ref.Column, alias, column, nil, &lineage) {
+					continue
+				}
+				lineage = append(lineage, scope.NewLineageEdge(
+					res.Ref.Schema, res.Ref.Table, res.Ref.Column,
+					"", alias, column,
+					nil,
+					true, // the generator is not a stored object
+				))
+			}
+		}
+	}
+
+	tableRef := &scope.TableRef{
+		Table:      alias,
+		Alias:      alias,
+		IsSubquery: true,
+		Lineage:    lineage,
+	}
+	scope.AttachTempColumnLookup(tableRef, columns)
+	sp.AddTable(tableRef)
+}
+
+// processSingleTableRef adds a base table reference to the current scope.
+func (a *Analyzer) processSingleTableRef(ref *nodes.TableRef) {
+	if ref == nil {
+		return
+	}
+	if ref.Subquery != nil {
+		a.processDerivedTable(ref)
+		return
+	}
+	schema, table, ok := tableRefFromObjectName(ref.Name)
+	if !ok {
+		return
+	}
+	alias := ref.Alias
+	if alias == "" {
+		alias = table
+	}
+	if schema == "" {
+		if cte, ok := a.currentScope().FindCTE(table); ok {
+			tableRef := &scope.TableRef{
+				Table:   table,
+				Alias:   alias,
+				IsCTE:   true,
+				Lineage: cte.Lineage,
+			}
+			scope.AttachTempColumnLookup(tableRef, cte.Columns)
+			a.currentScope().AddTable(tableRef)
+			// Reading the CTE's rows carries the predicates that shaped them.
+			a.influences.InheritCTE(a.currentScope(), cte)
+			return
+		}
+	}
+	a.addBaseTable(ref.Name, ref.Alias)
+}
+
+// addBaseTable registers a base-table reference in the current scope, keyed by
+// alias (or by its own name when there is none). An unusable name is ignored.
+func (a *Analyzer) addBaseTable(name *nodes.ObjectName, alias string) {
+	schema, table, ok := tableRefFromObjectName(name)
+	if !ok {
+		return
+	}
+	if alias == "" {
+		alias = table
+	}
+	tableRef := &scope.TableRef{
+		Schema: schema,
+		Table:  table,
+		Alias:  alias,
+	}
+	a.attachColumnLookup(tableRef)
+	a.currentScope().AddTable(tableRef)
+}
+
+// attachColumnLookup lets the scope resolver disambiguate an unqualified column
+// with catalog metadata for this base table, wherever the reference is resolved:
+// the statement itself, a CTE body, a derived table or an expression subquery.
+func (a *Analyzer) attachColumnLookup(tableRef *scope.TableRef) {
+	if a.catalog == nil {
+		return
+	}
+	var (
+		names  []string
+		loaded bool
+	)
+	tableRef.SetColumnLookup(func() []string {
+		if loaded {
+			return names
+		}
+		loaded = true
+		meta := a.catalogTable(tableRef)
+		if meta == nil {
+			return nil
+		}
+		names = make([]string, 0, len(meta.Columns))
+		for _, col := range meta.Columns {
+			names = append(names, col.Name)
+		}
+		return names
+	})
+}
+
+// catalogTable looks up a base table's metadata, reading the catalog at most once
+// per analysis. A lookup that fails leaves the relation's columns unknown — the
+// analysis falls back to a wildcard edge — so the failure is reported as a gap:
+// swallowing it made a catalog outage produce a result indistinguishable from a
+// complete one.
+func (a *Analyzer) catalogTable(tableRef *scope.TableRef) *catalog.TableMeta {
+	if a.catalog == nil {
+		return nil
+	}
+	id := model.ObjectIdentifier{Database: tableRef.Schema, Name: tableRef.Table}
+	meta, err := a.catalog.GetTable(a.ctx, id)
+	if err != nil {
+		a.diagnostics.CatalogUnavailable(id.FullName(), err)
+		return nil
+	}
+	return meta
+}
+
+// outputColumnAliases lists the names a query's output exposes, which is the
+// column list a derived table offers to the statement that selects from it.
+func outputColumnAliases(cols []scope.OutputColumn) []string {
+	names := make([]string, 0, len(cols))
+	for _, col := range cols {
+		names = append(names, col.Alias)
+	}
+	return names
+}
+
+// processDerivedTable processes a derived table (a subquery in FROM). omni
+// keeps the subquery body as raw text, so it is re-parsed with a matching
+// source pushed; the alias is registered as a temporary table carrying the
+// subquery's lineage.
+func (a *Analyzer) processDerivedTable(ref *nodes.TableRef) {
+	sub := ref.Subquery
+	if sub == nil || strings.TrimSpace(sub.RawText) == "" {
+		return
+	}
+	alias := ref.Alias
+
+	subqueryScope := a.analyzeRawQueryScope(sub.RawText, fmt.Sprintf("derived table %q", alias))
+	if subqueryScope == nil {
+		return
+	}
+	// The derived table's rows are part of the enclosing query's rows, so the
+	// predicates that shaped them reach its output.
+	a.influences.Inherit(subqueryScope, a.currentScope())
+
+	lineage := a.tempTableLineage(subqueryScope, alias)
+	tableRef := &scope.TableRef{
+		Table:      alias,
+		Alias:      alias,
+		IsSubquery: true,
+		Lineage:    lineage,
+	}
+	scope.AttachTempColumnLookup(tableRef, outputColumnAliases(subqueryScope.GetOutputColumns()))
+	a.currentScope().AddTable(tableRef)
+}
+
+// analyzeRawQueryScope parses and analyzes a query body that omni exposes only
+// as text (a derived table, a view or CTAS body or an expression subquery) in a fresh
+// scope and source. It returns nil, after recording the failure, when the body does
+// not parse. A body one of the rewrites applies to is analyzed from the rewritten text,
+// which becomes the source its expression text is read from.
+func (a *Analyzer) analyzeRawQueryScope(raw string, what string) *scope.Scope {
+	query, src, err := parseQueryBody(raw)
+	a.pushSource(src)
+	if err != nil {
+		a.popSource()
+		a.errors = append(a.errors, fmt.Sprintf("%s: %v", what, err))
+		return nil
+	}
+	a.pushScope()
+	a.processQueryNode(query)
+	subScope := a.popScope()
+	a.popSource()
+	return subScope
+}
+
+// tempTableLineage builds the base-table lineage a temporary table (a CTE or
+// derived table) exposes under targetName.
+func (a *Analyzer) tempTableLineage(sp *scope.Scope, targetName string) []model.ColumnRelation {
+	lineage := make([]model.ColumnRelation, 0)
+	for _, col := range sp.GetOutputColumns() {
+		colName := col.Alias
+		if colName == "" {
+			colName = "column"
+		}
+		for _, source := range col.Sources {
+			resolutions, err := sp.ResolveColumnRefs(source.Ref)
+			if err != nil {
+				a.diagnostics.Unresolved("a temporary relation", source.Ref)
+				continue
+			}
+			for _, res := range resolutions {
+				if a.flattenTempSourceLineage(sp, res.Relation, res.Ref.Column, targetName, colName, source.Transform, &lineage) {
+					continue
+				}
+				lineage = append(lineage, scope.NewLineageEdge(
+					res.Ref.Schema, res.Ref.Table, res.Ref.Column,
+					"", targetName, colName,
+					source.Transform,
+					true, // the temporary table is not a real object
+				))
+			}
+		}
+	}
+	return lineage
+}
+
+// ---------------------------------------------------------------------------
+// DDL targets
+// ---------------------------------------------------------------------------
+
+// processDDLTarget analyzes the query body of a CREATE/ALTER VIEW or CREATE
+// MATERIALIZED VIEW and maps its output columns onto the created object.
+func (a *Analyzer) processDDLTarget(name *nodes.ObjectName, columns []string, query nodes.Node) {
+	if name == nil || query == nil {
+		return
+	}
+	schema, table, ok := tableRefFromObjectName(name)
+	if !ok {
+		return
+	}
+	a.inTargetContext = true
+	a.processQueryNode(query)
+	a.inTargetContext = false
+
+	a.generateEdgesForTarget(a.currentScope(), schema, table, columns)
+}
+
+// processViewDDL is processDDLTarget for a view statement whose body omni
+// could not parse in place; the body was extracted by extractViewDDL and is
+// analyzed as a top-level query in its own scope.
+func (a *Analyzer) processViewDDL(ddl *viewDDL) {
+	sp := a.analyzeRawQueryScope(ddl.body, "view query")
+	if sp == nil {
+		return
+	}
+	a.generateEdgesForTarget(sp, ddl.schema, ddl.name, ddl.columns)
+}
+
+// processCreateTable processes CREATE TABLE ... AS SELECT. omni keeps the query
+// as raw text, so it is re-parsed like a derived table's body.
+func (a *Analyzer) processCreateTable(stmt *nodes.CreateTableStmt) {
+	if stmt == nil || stmt.AsSelect == nil {
+		return
+	}
+	schema, table, ok := tableRefFromObjectName(stmt.Name)
+	if !ok {
+		return
+	}
+	raw := strings.TrimSpace(stmt.AsSelect.RawText)
+	if raw == "" {
+		return
+	}
+	sp := a.analyzeRawQueryScope(raw, "CREATE TABLE AS SELECT")
+	if sp == nil {
+		return
+	}
+	a.generateEdgesForTarget(sp, schema, table, ctasColumnNames(stmt))
+}
+
+// generateEdgesForTarget maps a scope's output columns onto the columns of the
+// object being created. A column list declared on the statement wins over the
+// query's own output alias.
+func (a *Analyzer) generateEdgesForTarget(sp *scope.Scope, targetSchema, targetTable string, targetColumns []string) {
+	if sp == nil {
+		return
+	}
+	for i, outputCol := range sp.GetOutputColumns() {
+		targetColName := outputCol.Alias
+		if i < len(targetColumns) {
+			targetColName = targetColumns[i]
+		}
+		for _, source := range outputCol.Sources {
+			resolutions, err := sp.ResolveColumnRefs(source.Ref)
+			if err != nil {
+				a.diagnostics.Unresolved("an output target", source.Ref)
+				continue
+			}
+			isTemp := targetTable == resultTableName
+			for _, res := range resolutions {
+				if res.Relation != nil && (res.Relation.IsCTE || res.Relation.IsSubquery) {
+					// A `*` over a query-local relation is one output column that expands
+					// into one edge per column of that relation, so the declared list
+					// cannot be read per output column here: the relation's own columns
+					// take the list's entries in order, starting at this position.
+					if res.Ref.Column == wildcardColumn && i < len(targetColumns) {
+						a.traceWildcardThroughTableLineageToTarget(
+							res.Relation, targetSchema, targetTable, targetColumns[i:], source.Transform)
+						continue
+					}
+					a.traceThroughTableLineageToTarget(res.Relation, res.Ref.Column, targetSchema, targetTable, targetColName, source.Transform)
+					continue
+				}
+				a.addRelation(scope.NewLineageEdge(
+					res.Ref.Schema, res.Ref.Table, res.Ref.Column,
+					targetSchema, targetTable, targetColName,
+					source.Transform,
+					isTemp,
+				))
+			}
+		}
+	}
+	a.emitPredicateInfluences(sp, targetSchema, targetTable)
+}
+
+// traceWildcardThroughTableLineageToTarget records a `*` over a query-local relation
+// against the target table: the j-th column the relation exposes becomes the j-th entry
+// the declared list has left. A relation whose columns are not described keeps the
+// reading it had — the wildcard stands for its whole lineage and the first entry names
+// all of it — because nothing here can say which column is which.
+func (a *Analyzer) traceWildcardThroughTableLineageToTarget(relation *scope.TableRef, targetSchema, targetTable string, targetColumns []string, transform []model.Transformation) {
+	names := relation.ColumnNames()
+	if names == nil {
+		a.traceThroughTableLineageToTarget(relation, wildcardColumn, targetSchema, targetTable, targetColumns[0], transform)
+		return
+	}
+	for j, name := range names {
+		if j >= len(targetColumns) {
+			return
+		}
+		a.traceThroughTableLineageToTarget(relation, name, targetSchema, targetTable, targetColumns[j], transform)
+	}
+}
+
+// viewColumnNames extracts the declared column names of a view or materialized
+// view statement.
+func viewColumnNames(cols []*nodes.ViewColumn) []string {
+	out := make([]string, 0, len(cols))
+	for _, c := range cols {
+		if c != nil && c.Name != "" {
+			out = append(out, c.Name)
+		}
+	}
+	return out
+}
+
+// ctasColumnNames extracts the declared column names of a CREATE TABLE ... AS
+// SELECT. Doris has no name-only column list for CTAS — every declared column
+// carries a type (`CREATE TABLE t (a INT) AS SELECT ...`) — so the names come off
+// the typed definitions. An undeclared list is nil, which leaves the query's own
+// output aliases to name the columns.
+func ctasColumnNames(stmt *nodes.CreateTableStmt) []string {
+	if stmt == nil || len(stmt.Columns) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(stmt.Columns))
+	for _, c := range stmt.Columns {
+		if c != nil && c.Name != "" {
+			out = append(out, c.Name)
+		}
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// INSERT / UPDATE / DELETE
+// ---------------------------------------------------------------------------
+
+// processInsertStatement processes INSERT [OVERWRITE] INTO ... SELECT. The VALUES
+// form carries only literals, so it has no lineage. Doris has no INSERT ... BY
+// NAME, so the target column list is always positional when the statement writes
+// it.
+func (a *Analyzer) processInsertStatement(stmt *nodes.InsertStmt) {
+	if stmt == nil || stmt.Target == nil {
+		return
+	}
+	schema, table, ok := tableRefFromObjectName(stmt.Target)
+	if !ok {
+		return
+	}
+
+	targetColumns := stmt.Columns
+
+	if stmt.Query != nil {
+		a.inTargetContext = true
+		a.processQueryNode(stmt.Query)
+		a.inTargetContext = false
+	} else if len(stmt.Values) > 0 {
+		// A VALUES row can hold a subquery, and what it selects is a source of the
+		// column it is written into. Each row derives the same columns, so they
+		// merge column by column; a row of literals contributes nothing.
+		a.processValuesRows(stmt.Values)
+	}
+
+	a.generateEdgesForTarget(a.currentScope(), schema, table, targetColumns)
+}
+
+// processValuesRows records what each VALUES row writes into each column of the row
+// it produces, which generateEdgesForTarget then maps onto the target's columns. A
+// row's subquery resolves in the statement's own scope, so a CTE or a derived table
+// it reads is traced through its lineage like any other source.
+func (a *Analyzer) processValuesRows(rows [][]nodes.Node) {
+	sp := a.currentScope()
+	if sp == nil {
+		return
+	}
+	var columns []scope.OutputColumn
+	for _, row := range rows {
+		for len(columns) < len(row) {
+			// An unnamed VALUES column is named positionally, column_0, column_1, …;
+			// the target's column list decides wherever the statement writes one.
+			columns = append(columns, scope.OutputColumn{Alias: fmt.Sprintf("column_%d", len(columns))})
+		}
+		for i, expr := range row {
+			built := a.outputColumnFor(expr, columns[i].Alias, true, sp, nil)
+			columns[i].Sources = append(columns[i].Sources, built.Sources...)
+			columns[i].IsDerived = columns[i].IsDerived || built.IsDerived
+		}
+	}
+	sp.SetOutputColumns(columns)
+}
+
+// processUpdateStatement processes UPDATE ... SET. The target table is also a
+// readable relation, because an assignment may read the row it writes.
+func (a *Analyzer) processUpdateStatement(stmt *nodes.UpdateStmt) {
+	if stmt == nil || stmt.Target == nil {
+		return
+	}
+	schema, table, ok := tableRefFromObjectName(stmt.Target)
+	if !ok {
+		return
+	}
+	a.addBaseTable(stmt.Target, stmt.TargetAlias)
+	for _, te := range stmt.From {
+		a.processTableExpr(te)
+	}
+	a.processUpdateList(stmt.Assignments, schema, table)
+}
+
+// processUpdateList processes the SET clause of an UPDATE. Every assignment
+// writes a column of the updated table, so the target table comes from the
+// statement rather than from the scope — resolving the name would pick whichever
+// relation the FROM clause introduced. Doris accepts a qualified SET target
+// (`UPDATE t SET t.a = …`, or `x.a` under an alias), but the qualifier is only a
+// reference to the updated table, so it is used to check the column belongs to a
+// relation in scope and never to name the target.
+func (a *Analyzer) processUpdateList(assignments []*nodes.Assignment, targetSchema, targetTable string) {
+	sp := a.currentScope()
+	isTemp := targetTable == resultTableName
+	for _, elem := range assignments {
+		if elem == nil || elem.Column == nil {
+			continue
+		}
+		targetCol, ok := columnRefFromObjectName(elem.Column)
+		if !ok {
+			continue
+		}
+		// The assigned column still has to belong to a relation in scope, and the
+		// target itself comes from the statement rather than the scope, below. An
+		// assignment whose qualifier names nothing the statement introduced —
+		// `UPDATE t SET x.a = 1` — writes no column this analysis can attribute, so
+		// it is reported rather than dropped: a silently empty result and "this
+		// assignment could not be attributed" must stay distinguishable.
+		if _, err := sp.ResolveColumn(targetCol); err != nil {
+			a.diagnostics.Unresolved("an assignment target", targetCol)
+			continue
+		}
+
+		var sourceColumns []scope.ColumnRef
+		var transformInfo []model.Transformation
+		if elem.Value != nil {
+			sourceColumns = a.collectColumnRefs(elem.Value, sp)
+			sourceColumns = append(sourceColumns, a.expressionSubquerySources(elem.Value, sp)...)
+			exprText := normalizeExpressionText(a.exprTextOf(elem.Value))
+			isDerived := len(sourceColumns) != 1 || exprText != targetCol.Column
+			if isDerived && exprText != "" {
+				transformInfo = a.analyzeExpressionOperator(elem.Value)
+			}
+		}
+		if len(sourceColumns) == 0 {
+			// A literal assignment still depends on the row it overwrites.
+			sourceColumns = []scope.ColumnRef{{
+				Schema: targetSchema, Table: targetTable, Column: wildcardColumn, Resolved: true,
+			}}
+			if elem.Value != nil {
+				transformInfo = a.analyzeExpressionOperator(elem.Value)
+			}
+		}
+
+		for _, sourceCol := range sourceColumns {
+			resolutions, err := sp.ResolveColumnRefs(sourceCol)
+			if err != nil {
+				a.diagnostics.Unresolved("an assignment", sourceCol)
+				continue
+			}
+			for _, res := range resolutions {
+				if res.Relation != nil && (res.Relation.IsCTE || res.Relation.IsSubquery) {
+					a.traceThroughTableLineageToTarget(res.Relation, res.Ref.Column, targetSchema, targetTable, targetCol.Column, transformInfo)
+					continue
+				}
+				a.addRelation(scope.NewLineageEdge(
+					res.Ref.Schema, res.Ref.Table, res.Ref.Column,
+					targetSchema, targetTable, targetCol.Column,
+					transformInfo,
+					isTemp,
+				))
+			}
+		}
+	}
+}
+
+// processDeleteStatement processes DELETE ... [USING ...] WHERE. The WHERE
+// columns are what determines which rows are removed, so they become
+// __deletion__ edges on the target table.
+func (a *Analyzer) processDeleteStatement(stmt *nodes.DeleteStmt) {
+	if stmt == nil || stmt.Target == nil {
+		return
+	}
+	for _, te := range stmt.Using {
+		a.processTableExpr(te)
+	}
+	a.addBaseTable(stmt.Target, stmt.TargetAlias)
+
+	if stmt.Where == nil {
+		return
+	}
+	schema, table, ok := tableRefFromObjectName(stmt.Target)
+	if !ok {
+		return
+	}
+
+	sp := a.currentScope()
+	conditionColumns := a.collectColumnRefs(stmt.Where, sp)
+	conditionColumns = append(conditionColumns, a.expressionSubquerySources(stmt.Where, sp)...)
+	transform := []model.Transformation{model.NewDeleteTransformation(normalizeExpressionText(a.exprTextOf(stmt.Where)))}
+
+	for _, condCol := range conditionColumns {
+		// An unresolvable condition column used to fall back to the reference
+		// itself, which emitted an edge from a relation the statement never names.
+		// PostgreSQL drops it (P2-2); so does this now.
+		resolutions, err := sp.ResolveColumnRefs(condCol)
+		if err != nil {
+			a.diagnostics.Unresolved("a DELETE condition", condCol)
+			continue
+		}
+		isTemp := table == resultTableName
+		for _, res := range resolutions {
+			if res.Relation != nil && (res.Relation.IsCTE || res.Relation.IsSubquery) {
+				a.traceThroughTableLineageToTarget(res.Relation, res.Ref.Column, schema, table, deletionFieldName, transform)
+				continue
+			}
+			a.addRelation(scope.NewLineageEdge(
+				res.Ref.Schema, res.Ref.Table, res.Ref.Column,
+				schema, table, deletionFieldName,
+				transform,
+				isTemp,
+			))
+		}
+	}
+}
+
+// processCopyInto processes COPY INTO <table> FROM <stage>. The staged files'
+// shape is not described by the statement, so the whole file is the source.
+func (a *Analyzer) processCopyInto(stmt *nodes.CopyIntoStmt) {
+	if stmt == nil || stmt.Target == nil {
+		return
+	}
+	schema, table, ok := tableRefFromObjectName(stmt.Target)
+	if !ok {
+		return
+	}
+	isTemp := table == resultTableName
+	a.addRelation(scope.NewLineageEdge(
+		"", fileSourceMarker, wildcardColumn,
+		schema, table, wildcardColumn,
+		nil,
+		isTemp,
+	))
+}
+
+// processLoadStatement processes LOAD LABEL ... (DATA INFILE ... INTO TABLE).
+// Each data description names its own target and optional column list; a
+// description without one loads the whole file into the table. The SET clause
+// is captured only as raw text by omni, so it contributes no column lineage.
+func (a *Analyzer) processLoadStatement(stmt *nodes.LoadDataStmt) {
+	if stmt == nil {
+		return
+	}
+	for _, desc := range stmt.DataDescs {
+		if desc == nil || desc.Target == nil {
+			continue
+		}
+		schema, table, ok := tableRefFromObjectName(desc.Target)
+		if !ok {
+			continue
+		}
+		isTemp := table == resultTableName
+		if len(desc.ColumnList) == 0 {
+			a.addRelation(scope.NewLineageEdge(
+				"", fileSourceMarker, wildcardColumn,
+				schema, table, wildcardColumn,
+				nil,
+				isTemp,
+			))
+			continue
+		}
+		for i, colName := range desc.ColumnList {
+			a.addRelation(scope.NewLineageEdge(
+				"", fileSourceMarker, fmt.Sprintf("col%d", i+1),
+				schema, table, colName,
+				nil,
+				isTemp,
+			))
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// SELECT list
+// ---------------------------------------------------------------------------
+
+// processSelectItemList processes the SELECT item list.
+func (a *Analyzer) processSelectItemList(items []*nodes.SelectItem, sp *scope.Scope, groupKeys []string) {
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		switch {
+		case item.Star && item.TableName == nil:
+			a.processStar(sp, item.ExceptColumns)
+		case item.Star:
+			a.processTableWildcard(item, sp)
+		default:
+			a.processSelectExpr(item.Expr, item.Alias, item.Aliased, sp, groupKeys)
+		}
+	}
+}
+
+// processStar expands SELECT * against every table in scope.
+func (a *Analyzer) processStar(sp *scope.Scope, except []string) {
+	for _, tableRef := range sp.Tables() {
+		if a.catalog != nil && !tableRef.IsSubquery && !tableRef.IsCTE {
+			if a.expandWildcardWithCatalog(tableRef, sp, except) {
+				continue
+			}
+		}
+		sp.AddOutputColumn(scope.OutputColumn{
+			Alias:   wildcardColumn,
+			Sources: scope.NewColumnSources([]scope.ColumnRef{queryLocalWildcardSourceRef(tableRef)}, nil),
+		})
+	}
+}
+
+// processTableWildcard expands table.* against the named table.
+func (a *Analyzer) processTableWildcard(item *nodes.SelectItem, sp *scope.Scope) {
+	if item.TableName == nil || len(item.TableName.Parts) == 0 {
+		return
+	}
+	schema, tableName, ok := tableRefFromObjectName(item.TableName)
+	if !ok {
+		return
+	}
+	tableRef, ok := sp.FindRelation(scope.RelationKey{Qualifier: schema, Name: tableName})
+	if !ok {
+		// A wildcard whose qualifier names no relation has no source to expand;
+		// the note is what keeps the empty result from reading as a complete one.
+		a.diagnostics.UnresolvedQualifier("a wildcard qualifier", tableName)
+		return
+	}
+	if a.catalog != nil && !tableRef.IsSubquery && !tableRef.IsCTE {
+		if a.expandWildcardWithCatalog(tableRef, sp, item.ExceptColumns) {
+			return
+		}
+	}
+	sp.AddOutputColumn(scope.OutputColumn{
+		Alias:   wildcardColumn,
+		Sources: scope.NewColumnSources([]scope.ColumnRef{queryLocalWildcardSourceRef(tableRef)}, nil),
+	})
+}
+
+// queryLocalWildcardSourceRef builds the source reference for a `*` expansion of
+// one FROM relation.
+//
+// A base table is already fully identified here, so the reference is marked
+// resolved: looking it up again by name would fail whenever the relation has an
+// alias, which silently produced no lineage at all for `SELECT * FROM t x`.
+// A CTE or derived table is where this dialect parts company with the MySQL
+// family's scope.WildcardSourceRef: its reference stays unresolved so the
+// temp-table trace can find it by its scope key.
+func queryLocalWildcardSourceRef(tableRef *scope.TableRef) scope.ColumnRef {
+	if tableRef.IsSubquery || tableRef.IsCTE {
+		key := tableRef.Alias
+		if key == "" {
+			key = tableRef.Table
+		}
+		return scope.ColumnRef{Table: key, Column: wildcardColumn}
+	}
+	return scope.ColumnRef{Schema: tableRef.Schema, Table: tableRef.Table, Column: wildcardColumn, Resolved: true}
+}
+
+// processSelectExpr turns one select expression into an output column. aliased
+// records whether the SQL carried an explicit alias, so an explicit empty alias
+// is not replaced by an inferred one.
+func (a *Analyzer) processSelectExpr(expr nodes.Node, alias string, aliased bool, sp *scope.Scope, groupKeys []string) {
+	if expr == nil {
+		return
+	}
+	sp.AddOutputColumn(a.outputColumnFor(expr, alias, aliased, sp, groupKeys))
+}
+
+// outputColumnFor builds the output column one expression produces. It is separate
+// from processSelectExpr because a VALUES row needs the column without adding it:
+// several rows derive the same column and have to merge into it.
+func (a *Analyzer) outputColumnFor(expr nodes.Node, alias string, aliased bool, sp *scope.Scope, groupKeys []string) scope.OutputColumn {
+	exprText := a.exprTextOf(expr)
+	sources := a.collectColumnSources(expr, sp)
+	sourceColumns := make([]scope.ColumnRef, 0, len(sources)+1)
+	hasPath := false
+	for _, source := range sources {
+		sourceColumns = append(sourceColumns, source.ref)
+		if source.path != "" {
+			hasPath = true
+		}
+	}
+	if !aliased && alias == "" {
+		if hasPath {
+			// Doris names the column after the path as the statement wrote it:
+			// `SELECT v.user.name` yields a column called `v.user.name`, not `name`.
+			alias = normalizeExpressionText(exprText)
+		} else {
+			alias = inferredColumnAlias(expr, exprText)
+		}
+	}
+	sourceColumns = append(sourceColumns, a.expressionSubquerySources(expr, sp)...)
+	// A subcolumn path is a projection into the column it reads, not the column
+	// itself: it carries a transformation the way the bracket form does.
+	isDerived := !isPlainColumnRef(expr) || hasPath
+
+	// A table-wide aggregate such as COUNT(*) depends on the rows of every
+	// relation in scope even though it names no column. Any other source-less
+	// expression (a literal, NOW(), a cast of a constant) depends on no column
+	// at all and must not invent a dependency.
+	if isDerived && len(sourceColumns) == 0 && containsAggregateCall(expr) {
+		for _, tableRef := range sp.Tables() {
+			sourceColumns = append(sourceColumns, queryLocalWildcardSourceRef(tableRef))
+		}
+	}
+
+	outputCol := scope.OutputColumn{
+		Alias:     alias,
+		Sources:   scope.NewColumnSources(sourceColumns, nil),
+		IsDerived: isDerived,
+	}
+	if isDerived {
+		transform := a.analyzeExpressionOperator(expr)
+		// The keys are attached to every transformation of a select item that
+		// contains a group aggregate, so the field never claims a column was
+		// aggregated when it was only projected.
+		if len(groupKeys) > 0 && containsGroupAggregate(expr) {
+			for i := range transform {
+				transform[i].GroupKeys = groupKeys
+			}
+		}
+		outputCol.SetTransform(transform)
+	}
+	return outputCol
+}
+
+// expressionSubquerySources analyzes the subqueries embedded in a select
+// expression. omni models a scalar / IN / EXISTS subquery as a leaf carrying
+// only raw text, so each is re-parsed in its own scope and flattened to
+// base-table references. Those references are marked resolved, because the
+// table they resolved to lives in the subquery's scope and the enclosing query
+// resolves its output columns in a different one.
+func (a *Analyzer) expressionSubquerySources(expr nodes.Node, sp *scope.Scope) []scope.ColumnRef {
+	var subqueries []*nodes.SubqueryExpr
+	nodes.Inspect(expr, func(n nodes.Node) bool {
+		sub, ok := n.(*nodes.SubqueryExpr)
+		if !ok {
+			return true
+		}
+		subqueries = append(subqueries, sub)
+		return false // a SubqueryExpr is a leaf; its body is raw text
+	})
+	if len(subqueries) == 0 {
+		return nil
+	}
+
+	refs := make([]scope.ColumnRef, 0)
+	for i, sub := range subqueries {
+		if strings.TrimSpace(sub.RawText) == "" {
+			continue
+		}
+		subScope := a.analyzeRawQueryScope(sub.RawText, "expression subquery")
+		if subScope == nil {
+			continue
+		}
+		// The subquery's rows decide which rows the enclosing expression sees,
+		// so its influences belong to the enclosing scope.
+		a.influences.Inherit(subScope, sp)
+		synthetic := fmt.Sprintf("__subquery_%d__", i)
+		lineage := a.tempTableLineage(subScope, synthetic)
+		for _, edge := range lineage {
+			refs = append(refs, scope.ColumnRef{
+				Schema:   edge.Source.Table.Database,
+				Table:    edge.Source.Table.Name,
+				Column:   edge.Source.Name,
+				Resolved: true,
+			})
+		}
+	}
+	return refs
+}
+
+// ---------------------------------------------------------------------------
+// Edge generation
+// ---------------------------------------------------------------------------
+
+// generateEdges creates ColumnRelation objects from the scope's output columns.
+// Only the root query emits edges to the final result; a DDL body does not (its
+// columns are mapped onto the created object instead) and neither does a set
+// operation arm (the merged operation emits them once).
+func (a *Analyzer) generateEdges(sp *scope.Scope) {
+	if a.inTargetContext || a.inSetOpArm || sp == nil || sp.Parent() != nil {
+		return
+	}
+	for _, outputCol := range sp.GetOutputColumns() {
+		for _, source := range outputCol.Sources {
+			resolutions, err := sp.ResolveColumnRefs(source.Ref)
+			if err != nil {
+				a.diagnostics.Unresolved("an output column", source.Ref)
+				continue
+			}
+			for _, res := range resolutions {
+				if res.Relation != nil && (res.Relation.IsCTE || res.Relation.IsSubquery) {
+					a.traceThroughTableLineage(res.Relation, res.Ref.Column, outputCol.Alias, source.Transform)
+					continue
+				}
+				a.addRelation(scope.NewLineageEdge(
+					res.Ref.Schema, res.Ref.Table, res.Ref.Column,
+					"", resultTableName, outputCol.Alias,
+					source.Transform,
+					true, // __result__ is always temporary
+				))
+			}
+		}
+	}
+	a.emitPredicateInfluences(sp, "", resultTableName)
+}
+
+// addRelation adds a column relation, dropping exact duplicates. A query-local
+// relation (a CTE or a derived table) is never an endpoint here: every path that
+// resolves one traces through its own lineage first, so the edge already names
+// the stored relation the column came from.
+func (a *Analyzer) addRelation(relation model.ColumnRelation) {
+	a.edges.Add(relation)
+}
+
+// expandWildcardWithCatalog expands a wildcard using catalog metadata, omitting
+// any column named in except. It reports false when no metadata is available so
+// the caller falls back to a bulk wildcard edge.
+func (a *Analyzer) expandWildcardWithCatalog(tableRef *scope.TableRef, sp *scope.Scope, except []string) bool {
+	tableMeta := a.catalogTable(tableRef)
+	if tableMeta == nil {
+		return false
+	}
+	excluded := make(map[string]struct{}, len(except))
+	for _, name := range except {
+		excluded[strings.ToLower(name)] = struct{}{}
+	}
+	for _, colMeta := range tableMeta.Columns {
+		if _, ok := excluded[strings.ToLower(colMeta.Name)]; ok {
+			continue
+		}
+		sp.AddOutputColumn(scope.OutputColumn{
+			Alias: colMeta.Name,
+			Sources: scope.NewColumnSources([]scope.ColumnRef{{
+				Schema: tableRef.Schema,
+				Table:  tableRef.Table,
+				Column: colMeta.Name,
+				// The catalog identified the real column, so the reference must
+				// not be rebound by name (which fails for an aliased relation).
+				Resolved: true,
+			}}, nil),
+		})
+	}
+	return true
+}
+
+// ---------------------------------------------------------------------------
+// Scope stack and temp-table tracking
+// ---------------------------------------------------------------------------
+
+// pushScope creates and pushes a new scope onto the stack.
+func (a *Analyzer) pushScope() {
+	a.scopeStack = append(a.scopeStack, scope.NewScope(a.currentScope()))
+}
+
+// popScope removes and returns the top scope from the stack.
+func (a *Analyzer) popScope() *scope.Scope {
+	if len(a.scopeStack) == 0 {
+		return nil
+	}
+	top := a.scopeStack[len(a.scopeStack)-1]
+	a.scopeStack = a.scopeStack[:len(a.scopeStack)-1]
+	return top
+}
+
+// currentScope returns the current (innermost) scope.
+func (a *Analyzer) currentScope() *scope.Scope {
+	if len(a.scopeStack) == 0 {
+		return nil
+	}
+	return a.scopeStack[len(a.scopeStack)-1]
+}
+
+// ---------------------------------------------------------------------------
+// CTE
+// ---------------------------------------------------------------------------
+
+// processCTEs processes a WITH clause.
+func (a *Analyzer) processCTEs(with *nodes.WithClause) {
+	if with == nil {
+		return
+	}
+	for _, cte := range with.CTEs {
+		a.processCTE(cte, with.Recursive)
+	}
+}
+
+// processCTE processes a single CTE: its body is analyzed in a nested scope,
+// and its output columns are flattened into a lineage the outer query can
+// trace through. recursive is the WITH clause's RECURSIVE flag, which is what
+// makes a reference to the CTE's own name inside its body a self-reference
+// rather than a same-named base table.
+func (a *Analyzer) processCTE(cte *nodes.CTE, recursive bool) {
+	if cte == nil {
+		return
+	}
+	cteName := cte.Name
+
+	lineage := make([]model.ColumnRelation, 0)
+	definition := &scope.CTEDefinition{Name: cteName, Columns: cte.Columns}
+	if cte.Query != nil {
+		a.pushScope()
+		if recursive {
+			// In a recursive CTE the name refers to the rows the CTE has produced
+			// so far, not to a stored relation. Registering it with no lineage —
+			// the fixpoint is not modelled — makes every reference to it inside
+			// its own body opaque, so neither a source nor a predicate resolves to
+			// a base table that merely shares the name.
+			a.currentScope().AddCTE(definition)
+		}
+		a.processQueryNode(cte.Query)
+		cteScope := a.popScope()
+
+		// The body's influences belong to the CTE's rows, so they are held
+		// against the definition and reach the statement only if it references
+		// the CTE. An unreferenced CTE filters rows nobody reads.
+		a.influences.BindCTE(definition, cteScope)
+
+		outputColumns := cteScope.GetOutputColumns()
+		// The names the CTE exposes to whatever reads it. A declared list renames
+		// its outputs from the left — `WITH c (a) AS (SELECT id, name ...)`, which the
+		// MySQL analyzer drops and emits no lineage for at all, so mapping it is
+		// strictly more correct — and the outputs a short list does not reach keep
+		// their query alias, because that is what the engine exposes: on 4.1.4 both
+		// `WITH c (a) AS (SELECT k, name FROM t) SELECT a FROM c` and `SELECT name
+		// FROM c` run. That is why this is not scope.ExposedColumnNames, whose arity
+		// rule is the MySQL family's. The definition keeps the exposure so a
+		// reference resolves against names the relation really exposes, including a
+		// column that carries no source (a constant has no lineage to record, and
+		// would otherwise not be a column of the relation at all).
+		exposed := make([]string, 0, len(outputColumns))
+		for i, outputCol := range outputColumns {
+			name := outputCol.Alias
+			if i < len(cte.Columns) {
+				name = cte.Columns[i]
+			}
+			exposed = append(exposed, name)
+		}
+		definition.Columns = exposed
+
+		for i, outputCol := range outputColumns {
+			targetName := exposed[i]
+			for _, source := range outputCol.Sources {
+				resolutions, err := cteScope.ResolveColumnRefs(source.Ref)
+				if err != nil {
+					a.diagnostics.Unresolved("a CTE body", source.Ref)
+					continue
+				}
+				for _, res := range resolutions {
+					if a.flattenTempSourceLineage(cteScope, res.Relation, res.Ref.Column, cteName, targetName, source.Transform, &lineage) {
+						continue
+					}
+					lineage = append(lineage, scope.NewLineageEdge(
+						res.Ref.Schema, res.Ref.Table, res.Ref.Column,
+						"", cteName, targetName,
+						source.Transform,
+						true, // a CTE is temporary
+					))
+				}
+			}
+		}
+	}
+
+	definition.Lineage = lineage
+	a.currentScope().AddCTE(definition)
+}
+
+// ---------------------------------------------------------------------------
+// Set operations
+// ---------------------------------------------------------------------------
+
+// setOpArm is one leaf SELECT of a set-operation tree together with the chain of
+// set-operation transformations that combine it into the statement's result,
+// outermost first, so a nested operation is not labelled with only the outermost
+// one.
+type setOpArm struct {
+	stmt  *nodes.SelectStmt
+	chain []model.Transformation
+}
+
+// flattenSetOpArms flattens a set-operation tree into its leaf SELECTs in order,
+// so every arm of every set operation contributes lineage.
+func flattenSetOpArms(node nodes.Node, chain []model.Transformation) []setOpArm {
+	switch n := node.(type) {
+	case *nodes.SelectStmt:
+		return []setOpArm{{stmt: n, chain: chain}}
+	case *nodes.GroupedQuery:
+		// Doris wraps a query when a second trailing clause group has to stay on
+		// its own node, and when a parenthesized group carries a WITH clause:
+		// GroupedQuery is a scope boundary rather than a clause holder, so the
+		// arms below it are flattened as usual.
+		return flattenSetOpArms(n.Query, chain)
+	case *nodes.SetOpStmt:
+		inner := chain
+		if transform, ok := setOpTransformation(n.Op, n.All); ok {
+			inner = algorithm.ArmChain(chain, transform)
+		}
+		return append(flattenSetOpArms(n.Left, inner), flattenSetOpArms(n.Right, inner)...)
+	default:
+		return nil
+	}
+}
+
+// processSetOperation handles UNION/INTERSECT/EXCEPT by processing every arm
+// and merging their output columns positionally. Each arm is analyzed in its
+// own scope so one arm's FROM relations cannot leak into the next, and only the
+// merged operation emits result edges, so the set-operation relation type is
+// recorded once. A set operation nested in a CTE or derived table contributes
+// the merged columns to its parent instead.
+func (a *Analyzer) processSetOperation(stmt *nodes.SetOpStmt) {
+	arms := flattenSetOpArms(stmt, nil)
+	if len(arms) == 0 {
+		return
+	}
+
+	baseScope := a.currentScope()
+	var (
+		allOutputColumns [][]scope.OutputColumn
+		armTransforms    [][]model.Transformation
+	)
+
+	for i, arm := range arms {
+		armTransforms = append(armTransforms, arm.chain)
+		if i == 0 {
+			a.processSetOpArm(arm.stmt)
+			allOutputColumns = append(allOutputColumns, algorithm.ResolveOutputColumns(baseScope, baseScope.GetOutputColumns()))
+			continue
+		}
+		// The arm starts a relation namespace of its own — the first arm's
+		// relations are not visible in it — while still reading the CTEs the
+		// statement declared.
+		tempScope := scope.NewScopeWithDefinitions(baseScope.Parent(), baseScope)
+		originalScope := a.currentScope()
+		a.scopeStack[len(a.scopeStack)-1] = tempScope
+		a.processSetOpArm(arm.stmt)
+		a.scopeStack[len(a.scopeStack)-1] = originalScope
+		// The arm's rows are part of the merged result, so its predicates reach
+		// the operation's output.
+		a.influences.Inherit(tempScope, baseScope)
+		allOutputColumns = append(allOutputColumns, algorithm.ResolveOutputColumns(tempScope, tempScope.GetOutputColumns()))
+	}
+
+	algorithm.MergeSetOpColumns(baseScope, allOutputColumns, armTransforms)
+	a.generateEdges(baseScope)
+}
+
+// processSetOpArm processes one leaf arm of a set operation, suppressing the
+// arm's own result edges so the merged operation emits them once.
+func (a *Analyzer) processSetOpArm(arm *nodes.SelectStmt) {
+	previous := a.inSetOpArm
+	a.inSetOpArm = true
+	a.processSelectStatement(arm)
+	a.inSetOpArm = previous
+}
+
+// setOpTransformation maps a Doris set operator to its transformation.
+func setOpTransformation(setOp nodes.SetOperator, all bool) (model.Transformation, bool) {
+	switch setOp {
+	case nodes.SetUnion:
+		return model.NewUnionTransformation(all), true
+	case nodes.SetIntersect:
+		return model.NewIntersectTransformation(all), true
+	case nodes.SetExcept:
+		return model.NewExceptTransformation(all), true
+	default:
+		return model.Transformation{}, false
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Temporary-table lineage flattening
+// ---------------------------------------------------------------------------
+
+// traceThroughTableLineage traces lineage through a CTE or derived table to the
+// result table.
+func (a *Analyzer) traceThroughTableLineage(tableRef *scope.TableRef, columnName string, outputAlias string, transform []model.Transformation) {
+	algorithm.TraceThroughTableLineage(scope.NewLineageEdge, a.addRelation, tableRef, columnName, outputAlias, transform)
+}
+
+// traceThroughTableLineageToTarget traces lineage through a CTE or derived
+// table to a specific target column on a real object.
+func (a *Analyzer) traceThroughTableLineageToTarget(tableRef *scope.TableRef, columnName string, targetSchema string, targetTable string, targetColumn string, transform []model.Transformation) {
+	algorithm.TraceThroughTableLineageToTarget(scope.NewLineageEdge, a.addRelation, tableRef, columnName, targetSchema, targetTable, targetColumn, transform)
+}
+
+// flattenTempSourceLineage resolves a column from a temporary table into base
+// table lineage. It reports whether the source was handled.
+func (*Analyzer) flattenTempSourceLineage(sp *scope.Scope, relation *scope.TableRef, columnName, targetTable string, targetColumn string, transform []model.Transformation, lineage *[]model.ColumnRelation) bool {
+	return algorithm.FlattenTempSourceLineage(scope.NewLineageEdge, sp, relation, columnName, targetTable, targetColumn, transform, lineage)
+}

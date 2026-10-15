@@ -51,7 +51,8 @@ const (
 	// neutralLiteral is what each placeholder becomes before analysis. A string
 	// literal is the only substitute that parses in every position: MySQL's
 	// LOAD DATA and JSON_TABLE PATH, PostgreSQL's COPY source and INTERVAL, and
-	// StarRocks' COPY INTO all demand a string and reject NULL, 0 and $n there.
+	// StarRocks' and Doris' COPY INTO all demand a string and reject NULL, 0 and $n
+	// there.
 	// '?' rather than '' keeps a derived column name readable — `price * '?'`
 	// rather than `price * ''`.
 	neutralLiteral = "'?'"
@@ -97,8 +98,8 @@ func Sanitize(engine storepb.Engine, sql string) (Statement, error) {
 	// the last token is copied verbatim, so accepting a statement such a lexer abandoned
 	// would store bytes no rule looked at — an unterminated string in PostgreSQL is not a
 	// token at all, and `SELECT 'a` would store the literal. A statement that cannot be
-	// tokenized to its end is a statement that cannot be sanitized. StarRocks reports its
-	// own lex errors, so it is already refused above.
+	// tokenized to its end is a statement that cannot be sanitized. StarRocks and Doris
+	// report their own lex errors, so they are already refused above.
 	if tail := sql[spans[len(spans)-1].end:]; strings.TrimSpace(stripComments(engine, tail)) != "" {
 		return Statement{}, ErrUnlexable
 	}

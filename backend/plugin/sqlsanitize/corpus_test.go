@@ -51,6 +51,12 @@ type corpusFile struct {
 func TestSanitizedStatementsKeepTheirLineage(t *testing.T) {
 	t.Parallel()
 
+	// Doris is deliberately absent until sqlsanitize stops rewriting structural integer
+	// literals: two shapes in its corpus, `CREATE TABLE t3 (k INT, n VARCHAR(50)) AS SELECT
+	// ...` and `SELECT * FROM t TABLESAMPLE(10 PERCENT)`, sanitize to `VARCHAR(?)` and
+	// `TABLESAMPLE(? PERCENT)`, which no Doris grammar accepts, so the statement becomes
+	// unanalyzable rather than merely different. The rewrite is dialect-neutral and predates
+	// Doris — every engine stores `VARCHAR(?)` — so it is not fixed by lowering the floor.
 	dialects := map[string]storepb.Engine{
 		"mysql":      storepb.Engine_MYSQL,
 		"postgresql": storepb.Engine_POSTGRES,

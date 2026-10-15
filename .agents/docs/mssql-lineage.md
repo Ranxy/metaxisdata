@@ -5,7 +5,7 @@
 
 ## What it is
 
-`backend/plugin/lineage/mssql` 把一条 T-SQL 语句解析成 `[]model.ColumnRelation`,基于 `github.com/bytebase/omni/mssql` 的解析器与类型化 AST。它注册 `storepb.Engine_MSSQL`,是第六个方言包;`engines.Registrations()` 在编译期列全六个,进程启动时组成一个 `lineage.Analyzer`。
+`backend/plugin/lineage/mssql` 把一条 T-SQL 语句解析成 `[]model.ColumnRelation`,基于 `github.com/bytebase/omni/mssql` 的解析器与类型化 AST。它注册 `storepb.Engine_MSSQL`,是第六个方言包;`engines.Registrations()` 在编译期列全七个(Doris 是其后加入的第七个),进程启动时组成一个 `lineage.Analyzer`。
 
 三条输入路径都已接通,无需 engine 分支:
 

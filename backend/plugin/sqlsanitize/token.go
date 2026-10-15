@@ -5,6 +5,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	omnidoris "github.com/bytebase/omni/doris/parser"
 	omnimssql "github.com/bytebase/omni/mssql/parser"
 	omnimysql "github.com/bytebase/omni/mysql/parser"
 	omnipg "github.com/bytebase/omni/pg/parser"
@@ -60,10 +61,22 @@ func tokenSpans(engine storepb.Engine, sql string) []span {
 			}
 			spans = append(spans, trimTrailingSpace(sql, span{t.Loc, t.End}))
 		}
+	// StarRocks and Doris expose the same one-shot tokenizer — their lexers are
+	// byte-identical, only the AST import differs — and they are the only dialects
+	// that report their own lex errors, so each branch refuses a statement its lexer
+	// could not finish.
 	case storepb.Engine_STARROCKS:
-		// StarRocks exposes a one-shot tokenizer and is the only dialect that reports
-		// its own lex errors.
 		tokens, errs := omnisr.Tokenize(sql)
+		if len(errs) > 0 {
+			return nil
+		}
+		for _, t := range tokens {
+			if t.Loc.End > t.Loc.Start {
+				spans = append(spans, trimTrailingSpace(sql, span{t.Loc.Start, t.Loc.End}))
+			}
+		}
+	case storepb.Engine_DORIS:
+		tokens, errs := omnidoris.Tokenize(sql)
 		if len(errs) > 0 {
 			return nil
 		}
@@ -83,8 +96,8 @@ func tokenSpans(engine storepb.Engine, sql string) []span {
 		// It is also the only lexer here that says what it could not finish: an unterminated
 		// string, quoted identifier, bracketed name or block comment sets Err and hands back a
 		// token that swallows the rest of the input, so an empty tail is no evidence that a
-		// rule looked at every byte. A statement it abandoned is refused, the way StarRocks
-		// refuses its own lex errors.
+		// rule looked at every byte. A statement it abandoned is refused, the way StarRocks and
+		// Doris refuse their own lex errors.
 		l := omnimssql.NewLexer(sql)
 		for i := 0; i <= len(sql); i++ {
 			t := l.NextToken()
@@ -240,9 +253,9 @@ func stripComments(engine storepb.Engine, gap string) string {
 // blockCommentEnd returns the length of the block comment starting at s, or -1 when it is
 // never closed. PostgreSQL and T-SQL nest block comments, so stopping at the first `*/` would
 // leave the rest of the comment in the stored text, and the same mistake makes the
-// closed-comment check in Sanitize reject a valid statement. The MySQL family and StarRocks
-// do not nest: their lexers ended the comment at the first `*/`, so a gap between tokens never
-// holds a nested one, and a `*/` left in a gap is not part of a comment at all.
+// closed-comment check in Sanitize reject a valid statement. The MySQL family, StarRocks and
+// Doris do not nest: their lexers ended the comment at the first `*/`, so a gap between
+// tokens never holds a nested one, and a `*/` left in a gap is not part of a comment at all.
 func blockCommentEnd(s string) int {
 	depth := 0
 	for i := 0; i+1 < len(s); {

@@ -30,6 +30,8 @@ var scriptEngines = []storepb.Engine{
 	storepb.Engine_MARIADB,
 	storepb.Engine_POSTGRES,
 	storepb.Engine_STARROCKS,
+	storepb.Engine_DORIS,
+	storepb.Engine_MSSQL,
 }
 
 // TestScriptStatementsStayIndependent pins the unified multi-statement policy.
@@ -199,6 +201,7 @@ func TestFoldingIsDeclaredByTheDialect(t *testing.T) {
 		storepb.Engine_MARIADB,
 		storepb.Engine_POSTGRES,
 		storepb.Engine_STARROCKS,
+		storepb.Engine_DORIS,
 		storepb.Engine_OCEANBASE,
 	} {
 		require.False(t, analyzer.FoldsIdentifiers(engine), "%s must not fold identifiers", engine)

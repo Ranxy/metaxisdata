@@ -511,3 +511,135 @@ the dialect normalizes every node through `nodeOrNil` before it dereferences one
   which is a different complaint). Unchanged on both pins.
 - §9.4 quotes the BOM lexer error as `syntax error at or near "\ufeff"`; the message is
   `syntax error at or near "\ufeffSELECT"`.
+
+## 12. Doris parser: `VARIANT<…>` schema templates are rejected
+
+Gathered while writing `backend/plugin/lineage/doris` against the same pin, with a
+throwaway probe deleted afterwards, and confirmed against the official data-type
+reference (the Schema Template form is documented there, so the input is valid
+Doris, not a dialect mistake). The dialect's own record is
+[doris-lineage.md](doris-lineage.md).
+
+### 12.1 A VARIANT schema template does not parse
+
+| Input | Result |
+| --- | --- |
+| `CREATE TABLE t (k BIGINT, v VARIANT)` | parses (a bare VARIANT column, `NULL` modifier included) |
+| `CREATE TABLE t (k BIGINT, v VARIANT<'id': INT>)` | syntax error at or near `<` |
+| `CREATE TABLE t (k BIGINT, v VARIANT<properties('variant_max_subcolumns_count' = '2048')>)` | syntax error at or near `<` |
+| `CREATE TABLE t2 (k BIGINT, v VARIANT<'id': INT>) AS SELECT k, v FROM events` | syntax error at or near `<` — the CTAS form loses the query's lineage too |
+| `ALTER TABLE t ADD COLUMN v2 VARIANT<'x': STRING>` | syntax error at or near `<` |
+
+`doris/parser/datatypes.go` maps `kwVARIANT` to the type name `VARIANT` and stops
+there: the `<` of the schema template is left to the statement grammar, which has
+no production for it. The type name itself is therefore readable — only the
+template is not.
+
+Consequences, in the analyzer's terms: a view or materialized-view body never
+contains a `CREATE TABLE`, so the registered VIEW / MATERIALIZED_VIEW paths are
+unaffected. A MANUAL_SQL or APPLICATION_SQL statement that carries such DDL is a
+**hard parse failure**: its stored lineage is cleared and `error_message` records
+the parse error, which is the documented boundary for text the parser cannot read
+("failed to parse Doris SQL: syntax error at or near `<`"). A CTAS with a schema
+template is the one case that loses real lineage — the target columns are known
+but the statement is discarded whole.
+
+No patch, fork or upstream report, per the policy at the top of this file; the
+input is recorded here so a future reader can tell "Doris feature not modelled"
+from "omni cannot read this statement".
+
+### 12.2 A LATERAL VIEW after a derived table does not parse
+
+| Input | Result |
+| --- | --- |
+| `SELECT * FROM ev LATERAL VIEW explode(ev.arr) u AS elem` | parses |
+| `SELECT * FROM (SELECT arr FROM ev) d LATERAL VIEW explode(d.arr) u AS elem` | syntax error at or near `LATERAL` |
+
+Verified against a live Apache Doris FE **4.1.4** (the engine this repository's
+development environment runs): it accepts the second statement and returns rows, so
+this is valid Doris SQL omni cannot read. The statement hard-fails, which is the
+documented boundary for text the parser rejects, but it is a coverage loss for a
+shape an application may write.
+
+**The Doris analyzer no longer loses that statement.** `backend/plugin/lineage/doris/lateral.go`
+hoists the derived table into a CTE of the same name — a derived table read once and a
+CTE read once are the same relation, and the rewritten statement parses — before
+re-parsing. On 4.1.4 the two forms return the same rows under the same column names
+(`arr`, `elem`), and both the bare and the `AS d` alias are handled. The hoist gives the
+name the rank of a CTE, which outranks a base table of the same name, so the rewrite
+refuses whenever the statement holds another relation by that name; it also handles one
+such derived table only, at the statement's own level. The upstream defect stands and is
+not patched.
+
+`LATERAL VIEW OUTER` and a parenthesized `AS (c1)` list are the opposite: the same
+engine rejects both (`extraneous input 'OUTER'`, `extraneous input '('`), so omni's
+rejection matches the engine and neither is a defect.
+
+### 12.3 `SELECT ... INTO OUTFILE` does not parse
+
+| Input | Result |
+| --- | --- |
+| `SELECT a, b FROM t INTO OUTFILE 's3://bucket/x.csv'` | syntax error at or near `INTO`, and `*ast.IntoOutfileClause` does not exist in `doris/ast` |
+
+The StarRocks parser accepts the same statement and models it. The live Doris
+4.1.4 engine **parses** it and fails later, in planning: `Please specify BROKER
+properties or check your local file path` for an `s3://` path, and `Exporting
+results to local disk is not allowed. To enable this feature, you need to add
+`enable_outfile_to_local=true` in fe.conf` for a local path. So the syntax is
+Doris's, and omni cannot read it.
+
+**The Doris analyzer no longer loses the statement to this defect.** The clause is a
+result sink that carries no column lineage, so `backend/plugin/lineage/doris/outfile.go`
+strips it and re-parses the query in front of it, which is what the StarRocks analyzer
+already reports for the same statement (its AST has `IntoOutfileClause` and its
+traversal ignores it). The upstream defect stands and is not patched; only the recovery
+is ours. Verified against the live engine: `SELECT k FROM t INTO OUTFILE '…'` and the
+same behind a `WITH` clause both fail on the export policy, i.e. after the parser.
+
+### 12.4 Mixed bracket and dot paths do not parse
+
+| Input | Result |
+| --- | --- |
+| `SELECT v['user'].name FROM ev` | syntax error at or near `.` |
+| `SELECT v['user']['name'].x FROM ev` | syntax error at or near `.` |
+| `SELECT v.user['name'] FROM ev` | parses (and the analyzer reads it as a path) |
+
+The live Doris 4.1.4 engine accepts the first two — `v['a'].b` and
+`v['a']['b'].c` are ordinary path expressions there, and `SELECT v['user'].name FROM ev`
+answers `alice`, the same value as `SELECT v['user']['name'] FROM ev` — so omni cannot read
+two forms an application may write, and the analyzer hard-fails them. Only the bracket-then-
+bracket and the dot-then-bracket spellings parse.
+
+**The Doris analyzer no longer loses those statements.**
+`backend/plugin/lineage/doris/mixedpath.go` rewrites a dot that follows a *string*
+subscript into the bracket form of the same key, which omni parses. `a[1].b` is left
+alone: it reads a field of an array element, and the bracket form does not mean that, so
+that shape keeps its hard failure. Because these two spellings are textually different,
+the rewritten statement also keeps the text it was written from
+(`source.original`/`edits` in `rawsql.go`), and an expression is named from it — the engine
+names a column after the text the query holds (`SELECT v['user'].name FROM ev` reports the
+column `v['user'].name`), so a rewritten spelling must not become a name of its own. The
+upstream defect stands and is not patched.
+
+### 12.5 Checked and *not* defects
+
+- The materialized-view refresh spellings omni rejects are ones the engine rejects
+  too. Doris 4.1.4 refuses `REFRESH ASYNC` (`extraneous input 'ASYNC'`, expecting
+  `AUTO`/`COMPLETE`/…), so the 2.1-era `REFRESH ASYNC START(...) EVERY(...)` form is
+  not valid 4.x SQL; the accepted header is `REFRESH AUTO ON SCHEDULE EVERY 1 DAY
+  STARTS '…'`, which omni parses. omni and this engine agree, so there is nothing to
+  record as an omni defect — only the analyzer's own guard, which refuses to build a
+  name out of such a header (see doris-lineage.md).
+- `SELECT * FROM t TABLESAMPLE(1000 ROWS) REPEATABLE 1` parses, while the
+  parenthesized `REPEATABLE(1)` is rejected. The engine agrees: the unparenthesized
+  spelling is the valid one, so `TableRef.Sample.Seed` is reachable exactly where
+  Doris allows it.
+- `CREATE VIEW v DEFINER = 'u' AS ...` is rejected at `DEFINER`; the engine rejects
+  it too (`mismatched input 'DEFINER' expecting {'(', 'AS', 'COMMENT', 'SELECT',
+  'VALUES', 'WITH'}`). The view-body fallback refuses this header rather than
+  reading `DEFINER` — an identifier token, not a keyword — as the view's name.
+- A declared column list in CTAS (`CREATE TABLE t (a INT, b INT) AS SELECT …`) is
+  rejected by the engine (`Should not define the entire column in CTAS`), while
+  omni's Doris grammar requires types for one. The analyzer reads the names when a
+  list is present (harmless — the engine would reject the statement) and otherwise
+  takes the query's own output aliases, which is what a valid CTAS creates.

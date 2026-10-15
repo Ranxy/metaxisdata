@@ -1,0 +1,174 @@
+name: TestExpressionClassification_Table
+cases:
+    # What the expression *is* decides its operation: a CASE or an operator at
+    # the outermost node first, then the first function call it contains, with a
+    # call carrying OVER checked before the aggregate name set. Classifying by the
+    # first call alone reported `SUM(price) + 1` as an aggregate and
+    # `SUM(price) OVER (…)` as an aggregate rather than a window.
+    - name: a windowed aggregate is a window function
+      sql: SELECT SUM(price) OVER (PARTITION BY category ORDER BY sale_date) AS running FROM products
+      expected_edges:
+        - from_table: products
+          from_field: price
+          to_table: __result__
+          to_field: running
+          relation_type: indirect
+          is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: SUM
+              expression: SUM(price)OVER(PARTITIONBYcategoryORDERBYsale_date)
+              partition_by:
+                - category
+              order_by:
+                - sale_date
+        - from_table: products
+          from_field: category
+          to_table: __result__
+          to_field: running
+          relation_type: indirect
+          is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: SUM
+              expression: SUM(price)OVER(PARTITIONBYcategoryORDERBYsale_date)
+              partition_by:
+                - category
+              order_by:
+                - sale_date
+        - from_table: products
+          from_field: sale_date
+          to_table: __result__
+          to_field: running
+          relation_type: indirect
+          is_temp: true
+          transformations:
+            - operation: WINDOW
+              function_name: SUM
+              expression: SUM(price)OVER(PARTITIONBYcategoryORDERBYsale_date)
+              partition_by:
+                - category
+              order_by:
+                - sale_date
+
+    - name: an operator over an aggregate is an operator
+      sql: SELECT SUM(price) + 1 AS bumped FROM products
+      expected_edges:
+        - from_table: products
+          from_field: price
+          to_table: __result__
+          to_field: bumped
+          relation_type: indirect
+          is_temp: true
+          transformations:
+            - operation: OPERATOR
+              expression: SUM(price)+1
+              op_type: ADDITION
+
+    - name: a comparison over an aggregate is an operator
+      sql: SELECT SUM(price) > 100 AS big FROM products
+      expected_edges:
+        - from_table: products
+          from_field: price
+          to_table: __result__
+          to_field: big
+          relation_type: indirect
+          is_temp: true
+          transformations:
+            - operation: OPERATOR
+              expression: SUM(price)>100
+              op_type: GREATER_THAN
+
+    # The operator is read from the AST, so a character inside a string or a
+    # quoted identifier cannot decide it, and every operator the AST knows is
+    # recognized rather than only the ones a text scan looked for.
+    - name: a greater-or-equal comparison is an operator
+      sql: SELECT amount >= 10 AS enough FROM sales
+      expected_edges:
+        - from_table: sales
+          from_field: amount
+          to_table: __result__
+          to_field: enough
+          relation_type: indirect
+          is_temp: true
+          transformations:
+            - operation: OPERATOR
+              expression: amount>=10
+              op_type: GREATER_OR_EQUAL
+
+    - name: a not-equal comparison is an operator
+      sql: SELECT amount <> 0 AS nonzero FROM sales
+      expected_edges:
+        - from_table: sales
+          from_field: amount
+          to_table: __result__
+          to_field: nonzero
+          relation_type: indirect
+          is_temp: true
+          transformations:
+            - operation: OPERATOR
+              expression: amount<>0
+              op_type: NOT_EQUALS
+
+    - name: a logical and is an operator
+      sql: SELECT amount > 0 AND quantity > 0 AS valid FROM sales
+      expected_edges:
+        - from_table: sales
+          from_field: amount
+          to_table: __result__
+          to_field: valid
+          relation_type: indirect
+          is_temp: true
+          transformations:
+            - operation: OPERATOR
+              expression: amount>0ANDquantity>0
+              op_type: LOGICAL_AND
+        - from_table: sales
+          from_field: quantity
+          to_table: __result__
+          to_field: valid
+          relation_type: indirect
+          is_temp: true
+          transformations:
+            - operation: OPERATOR
+              expression: amount>0ANDquantity>0
+              op_type: LOGICAL_AND
+
+    - name: a negated column is an operator
+      sql: SELECT -amount AS negated FROM sales
+      expected_edges:
+        - from_table: sales
+          from_field: amount
+          to_table: __result__
+          to_field: negated
+          relation_type: indirect
+          is_temp: true
+          transformations:
+            - operation: OPERATOR
+              expression: '-amount'
+              op_type: NEGATION
+
+    - name: a quoted identifier with a hyphen stays a direct projection
+      sql: SELECT `created-at` AS created_at FROM sales
+      expected_edges:
+        - from_table: sales
+          from_field: created-at
+          to_table: __result__
+          to_field: created_at
+          relation_type: direct
+          is_temp: true
+
+    - name: a plain aggregate is still an aggregate
+      sql: SELECT SUM(amount) AS total FROM sales
+      expected_edges:
+        - from_table: sales
+          from_field: amount
+          to_table: __result__
+          to_field: total
+          relation_type: group
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: SUM
+              expression: SUM(amount)
+              group_keys: []

@@ -135,14 +135,64 @@ type yamlLineageTestCase struct {
 
 // yamlCatalog describes the metadata an analyzer may consult. tables: registers
 // an unqualified relation by name; schemas: registers a schema-qualified one for
-// PostgreSQL; databases: registers a database-qualified one for the MySQL family
-// and StarRocks, which address a SQL qualifier as the database. An analyzer only
-// matches the form its engine uses, so a schemas: entry is invisible to a MySQL
-// analyzer and vice versa.
+// PostgreSQL; databases: registers a database-qualified one for the MySQL family,
+// StarRocks and Doris, which address a SQL qualifier as the database. An analyzer
+// only matches the form its engine uses, so a schemas: entry is invisible to a
+// MySQL analyzer and vice versa. Each column is a bare name or a name/type
+// mapping, for the dialects that decide on a column's type.
 type yamlCatalog struct {
-	Tables    map[string][]string            `yaml:"tables,omitempty"`
-	Schemas   map[string]map[string][]string `yaml:"schemas,omitempty"`
-	Databases map[string]map[string][]string `yaml:"databases,omitempty"`
+	Tables    map[string][]yamlCatalogColumn            `yaml:"tables,omitempty"`
+	Schemas   map[string]map[string][]yamlCatalogColumn `yaml:"schemas,omitempty"`
+	Databases map[string]map[string][]yamlCatalogColumn `yaml:"databases,omitempty"`
+}
+
+// yamlCatalogColumn is one column of a catalog fixture. It is either a bare name
+// or a mapping that also carries the type, because an analyzer may need the type
+// to choose between two readings of one reference — Doris reads `v.user.name` as
+// a subcolumn path only when `v` is a VARIANT column:
+//
+//	columns:
+//	    - id
+//	    - name: v
+//	      type: variant
+type yamlCatalogColumn struct {
+	Name string
+	Type string
+}
+
+// UnmarshalYAML accepts the bare-name form every existing fixture uses, and the
+// name/type mapping a dialect that decides on types needs.
+//
+// The mapping is read key by key rather than through Node.Decode, because that
+// call does not inherit the decoder's KnownFields setting: a misspelled key would
+// be dropped silently, and a fixture whose `type:` came out empty would pin the
+// opposite of what it says.
+func (c *yamlCatalogColumn) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind == yaml.ScalarNode {
+		c.Name = value.Value
+		return nil
+	}
+	if value.Kind != yaml.MappingNode {
+		return errors.New("a catalog column is a name or a {name, type} mapping")
+	}
+	for i := 0; i+1 < len(value.Content); i += 2 {
+		key, item := value.Content[i], value.Content[i+1]
+		if item.Kind != yaml.ScalarNode {
+			return fmt.Errorf("catalog column key %q takes a scalar value", key.Value)
+		}
+		switch key.Value {
+		case "name":
+			c.Name = item.Value
+		case "type":
+			c.Type = item.Value
+		default:
+			return fmt.Errorf("catalog column has no key %q; expected name or type", key.Value)
+		}
+	}
+	if c.Name == "" {
+		return errors.New("a catalog column mapping needs a name")
+	}
+	return nil
 }
 
 type yamlExpectedEdge struct {
@@ -549,10 +599,10 @@ func parseRelationType(name string) (model.RelationType, error) {
 	}
 }
 
-func addCatalogTable(cat *MemoryCatalogProvide, id model.ObjectIdentifier, columns []string) {
+func addCatalogTable(cat *MemoryCatalogProvide, id model.ObjectIdentifier, columns []yamlCatalogColumn) {
 	metaColumns := make([]catalog.ColumnMeta, len(columns))
-	for idx, columnName := range columns {
-		metaColumns[idx] = catalog.ColumnMeta{Name: columnName}
+	for idx, column := range columns {
+		metaColumns[idx] = catalog.ColumnMeta{Name: column.Name, Type: column.Type}
 	}
 
 	cat.AddTable(&catalog.TableMeta{

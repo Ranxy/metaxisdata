@@ -22,6 +22,7 @@ var supported = []storepb.Engine{
 	storepb.Engine_MARIADB,
 	storepb.Engine_POSTGRES,
 	storepb.Engine_STARROCKS,
+	storepb.Engine_DORIS,
 	storepb.Engine_MSSQL,
 }
 
@@ -30,7 +31,6 @@ var supported = []storepb.Engine{
 // with another engine's grammar.
 var unanalyzable = []storepb.Engine{
 	storepb.Engine_OCEANBASE,
-	storepb.Engine_DORIS,
 }
 
 // TestAssemblyCoversEveryAnalyzedEngine pins the list the process builds its

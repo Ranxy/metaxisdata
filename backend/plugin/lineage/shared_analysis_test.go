@@ -11,7 +11,7 @@ import (
 
 // dialectPackages are the analyzer packages that walk their own AST but must not
 // own the analysis mechanism itself.
-var dialectPackages = []string{"postgresql", "mysql", "tidb", "mariadb", "starrocks", "mssql"}
+var dialectPackages = []string{"postgresql", "mysql", "tidb", "mariadb", "starrocks", "doris", "mssql"}
 
 // forbiddenDeclarations are the pieces of analysis that used to exist once per
 // dialect and drifted apart: the edge set and its key, the predicate influence

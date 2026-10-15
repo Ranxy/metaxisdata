@@ -482,7 +482,7 @@ func buildSQL(name string, engine storepb.Engine, metaType storepb.MetaType, res
 
 	var identifier string
 	switch engine {
-	case storepb.Engine_MYSQL, storepb.Engine_TIDB:
+	case storepb.Engine_MYSQL, storepb.Engine_TIDB, storepb.Engine_DORIS:
 		identifier = "`" + strings.ReplaceAll(name, "`", "``") + "`"
 	case storepb.Engine_POSTGRES:
 		identifier = `"` + strings.ReplaceAll(name, `"`, `""`) + `"`

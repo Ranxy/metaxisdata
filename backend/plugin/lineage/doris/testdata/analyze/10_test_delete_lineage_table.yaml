@@ -1,0 +1,97 @@
+name: TestDeleteLineage_Table
+cases:
+    - name: DELETE by primary key
+      sql: DELETE FROM t1 WHERE id = 1
+      expected_edges:
+        - from_table: t1
+          from_field: id
+          to_table: t1
+          to_field: __deletion__
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: DELETE
+              condition: id=1
+    - name: DELETE by a range condition
+      sql: DELETE FROM t1 WHERE created_at < '2024-01-01'
+      expected_edges:
+        - from_table: t1
+          from_field: created_at
+          to_table: t1
+          to_field: __deletion__
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: DELETE
+              condition: created_at<'2024-01-01'
+    - name: DELETE with USING
+      sql: DELETE FROM t1 USING t1 JOIN t2 ON t1.id = t2.id WHERE t2.tag = 'x'
+      expected_edges:
+        - from_table: t2
+          from_field: tag
+          to_table: t1
+          to_field: __deletion__
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: DELETE
+              condition: t2.tag='x'
+    - name: DELETE with a subquery condition
+      sql: DELETE FROM t1 WHERE id IN (SELECT id FROM t2 WHERE tag = 'x')
+      expected_edges:
+        - from_table: t1
+          from_field: id
+          to_table: t1
+          to_field: __deletion__
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: DELETE
+              condition: idIN(SELECTidFROMt2WHEREtag='x')
+        - from_table: t2
+          from_field: id
+          to_table: t1
+          to_field: __deletion__
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: DELETE
+              condition: idIN(SELECTidFROMt2WHEREtag='x')
+
+    # A condition column that resolves to nothing used to fall back to the
+    # reference itself, which emitted an edge from a relation the statement never
+    # names. PostgreSQL already dropped it; this now does too, and says so.
+    - name: an unresolvable delete condition records nothing and is reported
+      sql: DELETE FROM t WHERE u.x = 1
+      expect_error: true
+      error_contains: "unresolved reference in a DELETE condition: u.x"
+      expected_edges: []
+    # An alias on the target does not change which table the delete writes, and a
+    # USING relation is only a source: the alias is how the WHERE resolves, never
+    # what the statement writes to.
+    - name: an aliased target with a USING clause still writes the statement's table
+      sql: DELETE FROM t1 AS x USING t2 WHERE x.id = t2.id
+      expected_edges:
+        - from_table: t1
+          from_field: id
+          to_table: t1
+          to_field: __deletion__
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: DELETE
+              condition: x.id=t2.id
+        - from_table: t2
+          from_field: id
+          to_table: t1
+          to_field: __deletion__
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: DELETE
+              condition: x.id=t2.id

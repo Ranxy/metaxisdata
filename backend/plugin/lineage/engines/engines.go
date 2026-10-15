@@ -7,12 +7,13 @@
 // under a running server, and a test can build an analyzer over exactly the
 // engines it needs.
 //
-// OceanBase and Doris are deliberately absent: the runner records a per-object
-// skip for them rather than analyzing their SQL with another engine's grammar.
+// OceanBase is deliberately absent: the runner records a per-object skip for it
+// rather than analyzing its SQL with another engine's grammar.
 package engines
 
 import (
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/doris"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/mariadb"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/mssql"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/mysql"
@@ -23,7 +24,10 @@ import (
 
 // Registrations returns one binding per supported engine. TiDB and MariaDB are
 // separate entries even though their traversal is generated from MySQL: each has
-// its own parser, and a statement one accepts the others may not.
+// its own parser, and a statement one accepts the others may not. Doris and
+// StarRocks are separate entries for the same reason — their ASTs are siblings,
+// but the two grammars disagree on parenthesized queries, table functions and
+// LATERAL VIEW.
 func Registrations() []lineage.EngineRegistration {
 	return []lineage.EngineRegistration{
 		mysql.Registration(),
@@ -31,6 +35,7 @@ func Registrations() []lineage.EngineRegistration {
 		mariadb.Registration(),
 		postgresql.Registration(),
 		starrocks.Registration(),
+		doris.Registration(),
 		mssql.Registration(),
 	}
 }

@@ -123,7 +123,7 @@ cases:
     canonical: INSERT INTO t VALUES ROW ( ? , ? ) , ROW ( ? , ? )
 
   - name: the mysql set form
-    engine: [mysql, starrocks]
+    engine: [mysql, starrocks, doris]
     sql: INSERT INTO t SET a = 1, b = 'x'
     text: INSERT INTO t SET a = ?, b = ?
     canonical: INSERT INTO t SET a = ? , b = ?

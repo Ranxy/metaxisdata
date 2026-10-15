@@ -30,6 +30,13 @@ func extractViewDDL(sql string) (*viewDDL, bool) {
 	if len(lexErrs) > 0 || len(tokens) == 0 {
 		return nil, false
 	}
+	// Only a statement that opens with CREATE or ALTER has the header this
+	// fallback understands. A statement that merely contains the word VIEW — in a
+	// SHOW form, say — must keep its own parse error rather than being reported as
+	// a broken view query.
+	if !opensViewDDL(tokens) {
+		return nil, false
+	}
 	asKind, ok := starrocksparser.KeywordToken("AS")
 	if !ok {
 		return nil, false
@@ -40,8 +47,8 @@ func extractViewDDL(sql string) (*viewDDL, bool) {
 	}
 
 	// Find VIEW and the top-level AS that introduces the body. A CTE's own AS
-	// always follows the body introducer, and `REFRESH ASYNC` is a single
-	// keyword token, so the first depth-0 AS after VIEW is the right one.
+	// always follows the body introducer, so the first depth-0 AS after VIEW is
+	// the right one.
 	viewIndex, asIndex := -1, -1
 	depth := 0
 	for i, t := range tokens {
@@ -68,22 +75,29 @@ func extractViewDDL(sql string) (*viewDDL, bool) {
 		return nil, false
 	}
 
-	// The name and the optional column list sit between VIEW and AS. Catalog
-	// qualifiers, IF NOT EXISTS, COMMENT and SECURITY NONE are keywords or
-	// punctuation, so the identifier scan skips them.
-	var parts, columns []string
-	for i := viewIndex + 1; i < asIndex; i++ {
-		t := tokens[i]
-		if t.Kind == int('(') {
-			columns = columnListTokens(tokens[i:asIndex])
-			break
-		}
-		if isIdentifierToken(t) {
-			parts = append(parts, t.Str)
-		}
-	}
+	// The target name is the dotted run of identifiers right after VIEW, past the
+	// `[IF NOT EXISTS]` prologue, optionally followed by a parenthesized column
+	// list.
+	parts, i := viewNameParts(tokens, viewIndex+1, asIndex)
 	if len(parts) == 0 {
 		return nil, false
+	}
+	var columns []string
+	if i < asIndex && tokens[i].Kind == int('(') {
+		// A column list delimits the name, so what follows it before AS
+		// (`SECURITY NONE`, `DISTRIBUTED BY HASH(id)`) cannot be part of it.
+		columns = columnListTokens(tokens[i:asIndex])
+	} else {
+		// With no column list, an identifier between the name and AS belongs to a
+		// clause this fallback does not model — a refresh mode that is two tokens
+		// rather than one keyword, or `DEFINER = 'u'`. Reading it as another name
+		// part is how the target became `mv.ASYNC`, so the fallback refuses and the
+		// caller keeps the original parse error.
+		for ; i < asIndex; i++ {
+			if isIdentifierToken(tokens[i]) {
+				return nil, false
+			}
+		}
 	}
 
 	body := strings.TrimSpace(sql[tokens[asIndex].Loc.End:])
@@ -96,6 +110,50 @@ func extractViewDDL(sql string) (*viewDDL, bool) {
 		ddl.schema = parts[len(parts)-2]
 	}
 	return ddl, true
+}
+
+// opensViewDDL reports whether the statement opens with CREATE or ALTER, the two
+// forms whose header a view definition can start with.
+func opensViewDDL(tokens []starrocksparser.Token) bool {
+	create, createOK := starrocksparser.KeywordToken("CREATE")
+	alter, alterOK := starrocksparser.KeywordToken("ALTER")
+	if !createOK || !alterOK {
+		return false
+	}
+	return tokens[0].Kind == create || tokens[0].Kind == alter
+}
+
+// viewNameParts collects the dotted name that identifies the object, starting at
+// index from and stopping before limit. `[IF NOT EXISTS]` is skipped: it is
+// keywords, and none of them can be a name. Only a dot may separate two segments,
+// so `db1.v` is one name while `v DEFINER` is a name followed by a clause this
+// fallback does not model. It returns the index the caller resumes from.
+func viewNameParts(tokens []starrocksparser.Token, from, limit int) ([]string, int) {
+	i := from
+	for i < limit && isViewPrologueKeyword(tokens[i]) {
+		i++
+	}
+	if i >= limit || !isIdentifierToken(tokens[i]) {
+		return nil, i
+	}
+	parts := []string{tokens[i].Str}
+	i++
+	for i+1 < limit && tokens[i].Kind == int('.') && isIdentifierToken(tokens[i+1]) {
+		parts = append(parts, tokens[i+1].Str)
+		i += 2
+	}
+	return parts, i
+}
+
+// isViewPrologueKeyword reports whether t is one of the keywords `IF NOT EXISTS`,
+// which may sit between VIEW and the name.
+func isViewPrologueKeyword(t starrocksparser.Token) bool {
+	for _, name := range []string{"IF", "NOT", "EXISTS"} {
+		if kind, ok := starrocksparser.KeywordToken(name); ok && t.Kind == kind {
+			return true
+		}
+	}
+	return false
 }
 
 // columnListTokens collects the top-level column names of a view column list.

@@ -242,7 +242,7 @@ func TestFoldingIsIdempotent(t *testing.T) {
 		"SELECT a FROM t WHERE a - 1 > 0 AND b IN (1, 2)",
 		"INSERT INTO t (a) VALUES (1) ON DUPLICATE KEY UPDATE a = 2",
 	}
-	for _, engine := range []storepb.Engine{storepb.Engine_MYSQL, storepb.Engine_POSTGRES, storepb.Engine_STARROCKS} {
+	for _, engine := range []storepb.Engine{storepb.Engine_MYSQL, storepb.Engine_POSTGRES, storepb.Engine_STARROCKS, storepb.Engine_DORIS} {
 		for _, sql := range sqls {
 			once, err := Sanitize(engine, sql)
 			if err != nil {

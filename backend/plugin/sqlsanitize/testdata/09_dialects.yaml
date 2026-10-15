@@ -6,7 +6,7 @@ cases:
   # A numbered parameter is a placeholder in every dialect's lexer, so the wire form
   # `?` and the PostgreSQL form `$1` land on one stored form everywhere.
   - name: a numbered parameter in the mysql family
-    engine: [mysql, starrocks]
+    engine: [mysql, starrocks, doris]
     sql: SELECT a FROM t WHERE b = $1
     text: SELECT a FROM t WHERE b = ?
     canonical: SELECT a FROM t WHERE b = ?
@@ -18,8 +18,8 @@ cases:
     canonical: SELECT a FROM t WHERE b = ?
 
   # MySQL hands an unterminated string back as one literal token, so it is rewritten like any
-  # other string rather than refused. StarRocks reports a lex error for the same input and
-  # refuses it; see 08_refusals.yaml.
+  # other string rather than refused. StarRocks and Doris report a lex error for the same input
+  # and refuse it; see 08_refusals.yaml.
   - name: an unterminated string in mysql
     engine: mysql
     sql: SELECT 'unterminated
@@ -41,7 +41,7 @@ cases:
     canonical: SELECT a FROM t WHERE x = ?
 
   - name: adjacent string constants in the mysql family
-    engine: [mysql, starrocks]
+    engine: [mysql, starrocks, doris]
     sql: "SELECT a FROM t WHERE x = 'a'\n'b'"
     text: "SELECT a FROM t WHERE x = ?\n?"
     canonical: SELECT a FROM t WHERE x = ? ?
@@ -55,13 +55,13 @@ cases:
     canonical: SELECT ? AS s
 
   - name: an escape string in the mysql family
-    engine: [mysql, starrocks]
+    engine: [mysql, starrocks, doris]
     sql: SELECT E'a\nb' AS s
     text: SELECT E? AS s
     canonical: SELECT E ? AS s
 
   # A backslash is an ordinary token in the MySQL family and in PostgreSQL, and a lex error
-  # in StarRocks.
+  # in StarRocks and Doris.
   - name: a bare backslash in the mysql family and postgres
     engine: [mysql, postgres]
     sql: SELECT \ FROM t

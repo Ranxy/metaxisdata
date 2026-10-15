@@ -1,0 +1,463 @@
+name: TestDorisForms_Table
+# Doris syntax this dialect's analyzer must model: shapes the StarRocks corpus does
+# not exercise, either because Doris spells them differently or because the
+# StarRocks grammar rejects them. Each case pins the lineage the shape produces,
+# not merely that it parses.
+cases:
+    # Doris declares ROLLUP on the GROUP BY clause; the grouping keys are the
+    # same, so the aggregate edge is unchanged.
+    - name: GROUP BY WITH ROLLUP keeps the aggregate's group keys
+      sql: SELECT dept, COUNT(*) AS c FROM emp GROUP BY dept WITH ROLLUP
+      expected_edges:
+        - from_table: emp
+          from_field: dept
+          to_table: __result__
+          to_field: dept
+          relation_type: direct
+          is_temp: true
+        - from_table: emp
+          from_field: '*'
+          to_table: __result__
+          to_field: c
+          relation_type: group
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: AGGREGATE
+              function_name: COUNT
+              expression: COUNT(*)
+              group_keys:
+                - dept
+    # An array slice is an expression over the column it slices, and the derived
+    # column name is the whole source text.
+    - name: an array slice reads the column it slices
+      sql: SELECT a[1:2] FROM t
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: a[1:2]
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: a[1:2]
+    # CONVERT(x USING charset) is Doris's charset conversion; the aliased form
+    # still records the function and its argument.
+    - name: CONVERT USING is a function over its argument
+      sql: SELECT CONVERT(a USING utf8) AS converted FROM t
+      expected_edges:
+        - from_table: t
+          from_field: a
+          to_table: __result__
+          to_field: converted
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: FUNCTION
+              function_name: CONVERT
+              expression: CONVERT(aUSINGutf8)
+              arguments: [a]
+    # A TABLESAMPLE suffix restricts the rows read without changing which
+    # relation the wildcard expands.
+    - name: TABLESAMPLE leaves the table's wildcard lineage alone
+      sql: SELECT * FROM t TABLESAMPLE(10 PERCENT)
+      expected_edges:
+        - from_table: t
+          from_field: '*'
+          to_table: __result__
+          to_field: '*'
+          relation_type: direct
+          is_temp: true
+    # Doris's asynchronous materialized view is refreshed on a schedule; its body
+    # is still the query that defines the target columns. This is the spelling
+    # Doris 4.x accepts (`REFRESH ASYNC` is the 2.1 form the 4.x grammar rejects).
+    - name: an asynchronous materialized view keeps its body's lineage
+      sql: CREATE MATERIALIZED VIEW mv REFRESH AUTO ON SCHEDULE EVERY 1 DAY STARTS '2030-01-01 00:00:00' AS SELECT id, amount FROM t1
+      expected_edges:
+        - from_table: t1
+          from_field: id
+          to_table: mv
+          to_field: id
+          relation_type: direct
+          is_temp: false
+        - from_table: t1
+          from_field: amount
+          to_table: mv
+          to_field: amount
+          relation_type: direct
+          is_temp: false
+    # A VARIANT column is read through a path. The path selects inside one column,
+    # so that column is the source of the output column — the subcolumn is not a
+    # registry object and must never become an edge endpoint of its own.
+    - name: a VARIANT subcolumn path reads the column it indexes
+      sql: SELECT v['user']['name'] AS n FROM events
+      expected_edges:
+        - from_table: events
+          from_field: v
+          to_table: __result__
+          to_field: n
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: v['user']['name']
+    # An array element inside a VARIANT value is the same shape; Doris array
+    # indexes start at 1, and the index is a literal either way.
+    - name: a VARIANT array element reads the column it indexes
+      sql: SELECT v['tags'][1] AS tag FROM events
+      expected_edges:
+        - from_table: events
+          from_field: v
+          to_table: __result__
+          to_field: tag
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: v['tags'][1]
+    # Doris reads a dotted reference as a VARIANT subcolumn path when no relation
+    # qualifies it. The evidence is the catalog's column type, and the engine was
+    # checked for each shape here: only VARIANT takes the dot form, and a relation
+    # prefix keeps priority.
+    - name: a VARIANT subcolumn path reads the column it indexes
+      sql: SELECT v.user.name AS n FROM ev
+      catalog:
+        tables:
+            ev:
+                - id
+                - name: v
+                  type: variant
+      expected_edges:
+        - from_table: ev
+          from_field: v
+          to_table: __result__
+          to_field: n
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: v.user.name
+    # Doris names the output column after the path as it was written, not after
+    # its last segment.
+    - name: a VARIANT path names its output column after the whole path
+      sql: SELECT v.user.name FROM ev
+      catalog:
+        tables:
+            ev:
+                - id
+                - name: v
+                  type: variant
+      expected_edges:
+        - from_table: ev
+          from_field: v
+          to_table: __result__
+          to_field: v.user.name
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: v.user.name
+    # A relation qualifies the base column of the path.
+    - name: a relation-qualified VARIANT path reads that relation's column
+      sql: SELECT ev.v.user.name AS n FROM ev
+      catalog:
+        tables:
+            ev:
+                - id
+                - name: v
+                  type: variant
+      expected_edges:
+        - from_table: ev
+          from_field: v
+          to_table: __result__
+          to_field: n
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: ev.v.user.name
+    # The relation reading keeps priority, which is what the engine does with
+    # `FROM ev, ev2 v`: this reads ev2's column `name`, not a path on ev's v.
+    - name: a relation prefix beats a VARIANT path of the same name
+      sql: SELECT v.name AS n FROM ev, ev2 v
+      catalog:
+        tables:
+            ev:
+                - id
+                - name: v
+                  type: variant
+            ev2:
+                - k
+                - name
+      expected_edges:
+        - from_table: ev2
+          from_field: name
+          to_table: __result__
+          to_field: n
+          relation_type: direct
+          is_temp: true
+    # Without the type the reading is a guess, so the reference stays the
+    # unresolved gap it was before the path work.
+    - name: a dotted reference without a VARIANT column stays unresolved
+      sql: SELECT v.user.name AS n FROM ev
+      catalog:
+        tables:
+            ev:
+                - id
+                - v
+      expect_error: true
+      error_contains: "unresolved reference in an output column: user.name"
+    # A path in a predicate is an influence on the rows, sourced from the column
+    # the path reads into.
+    - name: a VARIANT path in a predicate influences the rows
+      sql: SELECT id FROM ev WHERE v.user.name = 'alice'
+      catalog:
+        tables:
+            ev:
+                - id
+                - name: v
+                  type: variant
+      expected_edges:
+        - from_table: ev
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: ev
+          from_field: v
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          is_temp: true
+          transformations:
+            - operation: FILTER
+              expression: ""
+              condition: v.user.name='alice'
+    # The alias `v` resolves the qualified reading, but the catalog says that
+    # column is not there: the engine reads the VARIANT path, and so does this.
+    - name: a qualified column the catalog does not have gives way to the path
+      sql: SELECT v.name AS n FROM ev7 v
+      catalog:
+        tables:
+            ev7:
+                - id
+                - name: v
+                  type: variant
+      expected_edges:
+        - from_table: ev7
+          from_field: v
+          to_table: __result__
+          to_field: n
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: v.name
+    # A table-qualified path whose base column's name is also an alias: the scope
+    # binds `ev.v` to that alias, but the prefix does not address it, so the path
+    # reading still wins — as it does on the engine.
+    - name: an alias that shares the base column's name does not take the prefix
+      sql: SELECT ev.v.user.name AS n FROM ev, ev3 v
+      catalog:
+        tables:
+            ev:
+                - id
+                - name: v
+                  type: variant
+            ev3:
+                - k
+                - user
+      expected_edges:
+        - from_table: ev
+          from_field: v
+          to_table: __result__
+          to_field: n
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: ev.v.user.name
+    # A result sink omni's Doris grammar rejects at INTO. The engine accepts the
+    # clause (it fails later, on the export policy) and the sink carries no column
+    # lineage, so the projection is the statement's lineage — the same edges the
+    # StarRocks analyzer reports for it. The clause is stripped before the statement
+    # is re-parsed; a statement that still does not parse keeps its hard failure.
+    - name: an INTO OUTFILE sink leaves the projection's lineage alone
+      sql: SELECT k AS n FROM t INTO OUTFILE 'file:///tmp/export.csv'
+      expected_edges:
+        - from_table: t
+          from_field: k
+          to_table: __result__
+          to_field: n
+          relation_type: direct
+          is_temp: true
+    - name: an INTO OUTFILE sink after a CTE leaves the projection's lineage alone
+      sql: WITH c AS (SELECT k FROM t) SELECT k AS n FROM c INTO OUTFILE 'file:///tmp/export.csv' FORMAT AS CSV
+      expected_edges:
+        - from_table: t
+          from_field: k
+          to_table: __result__
+          to_field: n
+          relation_type: direct
+          is_temp: true
+    # LATERAL VIEW on a derived table: omni stops at LATERAL, the engine runs the
+    # statement (checked on 4.1.4, which returns the same rows under the same column
+    # names as the rewritten form). The derived table is hoisted into a CTE of the
+    # same name before the statement is re-parsed, so the generator's column and the
+    # derived table's own output both reach the result.
+    - name: a LATERAL VIEW on a derived table keeps its lineage
+      sql: SELECT * FROM (SELECT v FROM ev) d LATERAL VIEW explode(d.v) u AS tag
+      catalog:
+        tables:
+            ev:
+                - id
+                - name: v
+                  type: variant
+      expected_edges:
+        - from_table: ev
+          from_field: v
+          to_table: __result__
+          to_field: v
+          relation_type: direct
+          is_temp: true
+        - from_table: ev
+          from_field: v
+          to_table: __result__
+          to_field: tag
+          relation_type: direct
+          is_temp: true
+    # The same body inside a view, which reaches the rewrite through the view-body
+    # fallback: the definition does not parse as a whole, so its query is extracted and
+    # analyzed on its own.
+    - name: a view body with a LATERAL VIEW on a derived table keeps its lineage
+      sql: CREATE VIEW vw AS SELECT * FROM (SELECT v FROM ev) d LATERAL VIEW explode(d.v) u AS tag
+      catalog:
+        tables:
+            ev:
+                - id
+                - name: v
+                  type: variant
+      expected_edges:
+        - from_table: ev
+          from_field: v
+          to_table: vw
+          to_field: v
+          relation_type: direct
+          is_temp: false
+        - from_table: ev
+          from_field: v
+          to_table: vw
+          to_field: tag
+          relation_type: direct
+          is_temp: false
+    # A wildcard is one output column when its relation is query-local, and a declared
+    # target list maps output columns positionally — so the relation's own columns have
+    # to fill the list from where the wildcard sits, not all land on its first entry.
+    - name: a wildcard over a derived table fills a declared target list positionally
+      sql: INSERT INTO dst (k, name) SELECT * FROM (SELECT k, name FROM src) d
+      catalog:
+        tables:
+            src:
+                - k
+                - name
+            dst:
+                - k
+                - name
+      expected_edges:
+        - from_table: src
+          from_field: k
+          to_table: dst
+          to_field: k
+          relation_type: direct
+          is_temp: false
+        - from_table: src
+          from_field: name
+          to_table: dst
+          to_field: name
+          relation_type: direct
+          is_temp: false
+    # The base-table control: there `*` expands per catalog column, so the positional
+    # mapping already held, and it has to keep holding.
+    - name: a wildcard over a base table keeps filling a declared target list positionally
+      sql: INSERT INTO dst (k, name) SELECT * FROM src
+      catalog:
+        tables:
+            src:
+                - k
+                - name
+            dst:
+                - k
+                - name
+      expected_edges:
+        - from_table: src
+          from_field: k
+          to_table: dst
+          to_field: k
+          relation_type: direct
+          is_temp: false
+        - from_table: src
+          from_field: name
+          to_table: dst
+          to_field: name
+          relation_type: direct
+          is_temp: false
+    # A VARIANT path that mixes spellings: omni stops at the dot after the subscript
+    # while the engine runs it (`SELECT v['user'].name FROM ev` answers alice on 4.1.4)
+    # and names the column after the text the statement wrote. The path is rewritten
+    # into the all-bracket form it is equal to, and the name is read from the text that
+    # was written, so the edge names the column the engine reports.
+    - name: a mixed-spelling VARIANT path keeps its lineage and its name
+      sql: SELECT v['user'].name FROM ev
+      catalog:
+        tables:
+            ev:
+                - id
+                - name: v
+                  type: variant
+      expected_edges:
+        - from_table: ev
+          from_field: v
+          to_table: __result__
+          to_field: "v['user'].name"
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: "v['user'].name"
+    - name: a mixed-spelling VARIANT path into an insert keeps the declared target
+      sql: INSERT INTO t2 (c) SELECT v['user'].name FROM ev
+      catalog:
+        tables:
+            ev:
+                - id
+                - name: v
+                  type: variant
+      expected_edges:
+        - from_table: ev
+          from_field: v
+          to_table: t2
+          to_field: c
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: "v['user'].name"
+    # The other side of the rule: a field of an array element is not a subcolumn, so the
+    # statement keeps its hard failure rather than being rewritten into a path that does
+    # not mean it.
+    - name: a field of an array element is not rewritten
+      sql: SELECT a[1].b FROM t
+      expect_error: true

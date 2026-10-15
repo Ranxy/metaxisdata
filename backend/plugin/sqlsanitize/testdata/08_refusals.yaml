@@ -46,25 +46,25 @@ cases:
     sql: SELECT 'a\'b' FROM t
     expect_error: true
 
-  # StarRocks reports its own lex errors, so a trailing token it cannot finish is a refusal
-  # rather than a truncated token list.
-  - name: an unterminated string in starrocks
-    engine: starrocks
+  # StarRocks and Doris report their own lex errors, so a trailing token they cannot finish is a
+  # refusal rather than a truncated token list.
+  - name: an unterminated string in starrocks and doris
+    engine: [starrocks, doris]
     sql: SELECT 'unterminated
     expect_error: true
 
-  - name: an unterminated backtick in starrocks
-    engine: starrocks
+  - name: an unterminated backtick in starrocks and doris
+    engine: [starrocks, doris]
     sql: SELECT `unterminated
     expect_error: true
 
-  - name: a bare backslash in starrocks
-    engine: starrocks
+  - name: a bare backslash in starrocks and doris
+    engine: [starrocks, doris]
     sql: SELECT \ FROM t
     expect_error: true
 
-  - name: an unterminated block comment in starrocks
-    engine: starrocks
+  - name: an unterminated block comment in starrocks and doris
+    engine: [starrocks, doris]
     sql: SELECT 1 /* unterminated
     expect_error: true
 

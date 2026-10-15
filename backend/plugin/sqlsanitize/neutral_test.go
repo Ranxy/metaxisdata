@@ -81,6 +81,21 @@ func TestNeutralLiteralIsTheOnlySubstituteThatParsesEverywhere(t *testing.T) {
 			sql:        "INSERT INTO t (a, b) VALUES (?, ?)",
 			nullParses: true, zeroParses: true,
 		},
+		{
+			name: "doris copy into", engine: storepb.Engine_DORIS,
+			sql:        "COPY INTO t1 FROM ?",
+			nullParses: false, zeroParses: false,
+		},
+		{
+			name: "doris insert", engine: storepb.Engine_DORIS,
+			sql:        "INSERT INTO t (a, b) VALUES (?, ?)",
+			nullParses: true, zeroParses: true,
+		},
+		{
+			name: "doris limit", engine: storepb.Engine_DORIS,
+			sql:        "SELECT a FROM t LIMIT ?",
+			nullParses: true, zeroParses: true,
+		},
 	}
 
 	for _, c := range cases {
