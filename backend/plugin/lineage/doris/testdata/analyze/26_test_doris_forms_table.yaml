@@ -242,3 +242,49 @@ cases:
             - operation: FILTER
               expression: ""
               condition: v.user.name='alice'
+    # The alias `v` resolves the qualified reading, but the catalog says that
+    # column is not there: the engine reads the VARIANT path, and so does this.
+    - name: a qualified column the catalog does not have gives way to the path
+      sql: SELECT v.name AS n FROM ev7 v
+      catalog:
+        tables:
+            ev7:
+                - id
+                - name: v
+                  type: variant
+      expected_edges:
+        - from_table: ev7
+          from_field: v
+          to_table: __result__
+          to_field: n
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: v.name
+    # A table-qualified path whose base column's name is also an alias: the scope
+    # binds `ev.v` to that alias, but the prefix does not address it, so the path
+    # reading still wins — as it does on the engine.
+    - name: an alias that shares the base column's name does not take the prefix
+      sql: SELECT ev.v.user.name AS n FROM ev, ev3 v
+      catalog:
+        tables:
+            ev:
+                - id
+                - name: v
+                  type: variant
+            ev3:
+                - k
+                - user
+      expected_edges:
+        - from_table: ev
+          from_field: v
+          to_table: __result__
+          to_field: n
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: ev.v.user.name

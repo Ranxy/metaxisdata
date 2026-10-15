@@ -331,3 +331,60 @@ func TestValidateExactEdgesReportsMissingExpectation(t *testing.T) {
 	})
 	require.True(t, ft.failed)
 }
+
+// A column is a name or a {name, type} mapping, and the mapping is read key by
+// key: a misspelled key is rejected the way a misspelled case key is, because a
+// fixture whose `type:` silently came out empty would pin the opposite of what it
+// says.
+func TestLoadLineageTestSuiteRejectsAnUnknownColumnKey(t *testing.T) {
+	tempDir := t.TempDir()
+	suitePath := filepath.Join(tempDir, "column-typo.yaml")
+
+	require.NoError(t, os.WriteFile(suitePath, []byte(`name: column typo
+cases:
+  - name: misspelled column key
+    sql: SELECT v.user.name FROM ev
+    catalog:
+      tables:
+        ev:
+          - name: v
+            typ: variant
+    expected_edges: []
+`), 0o600))
+
+	_, err := LoadLineageTestSuiteFromYAML(suitePath)
+	require.Error(t, err, "a misspelled column key must be rejected instead of silently ignored")
+}
+
+// The mapping form keeps the column's type, which is what a dialect deciding
+// between two readings of one reference needs.
+func TestLoadLineageTestSuiteKeepsAColumnType(t *testing.T) {
+	tempDir := t.TempDir()
+	suitePath := filepath.Join(tempDir, "columns.yaml")
+
+	require.NoError(t, os.WriteFile(suitePath, []byte(`name: columns
+cases:
+  - name: a typed column next to a bare one
+    sql: SELECT id, v.user.name FROM ev
+    catalog:
+      tables:
+        ev:
+          - id
+          - name: v
+            type: variant
+    expected_edges: []
+`), 0o600))
+
+	suite, err := LoadLineageTestSuiteFromYAML(suitePath)
+	require.NoError(t, err)
+	require.Len(t, suite.Cases, 1)
+	require.NotNil(t, suite.Cases[0].Catalog)
+
+	meta, err := suite.Cases[0].Catalog.GetTable(context.Background(), model.ObjectIdentifier{Name: "ev"})
+	require.NoError(t, err)
+	require.Len(t, meta.Columns, 2)
+	require.Equal(t, "id", meta.Columns[0].Name)
+	require.Empty(t, meta.Columns[0].Type)
+	require.Equal(t, "v", meta.Columns[1].Name)
+	require.Equal(t, "variant", meta.Columns[1].Type)
+}

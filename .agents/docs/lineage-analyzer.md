@@ -184,6 +184,6 @@ TiDB 和 MariaDB **没有自己的遍历**。`mysql/analyzer.go` 哨兵之下的
 | 共享机制守门 | `backend/plugin/lineage/shared_analysis_test.go` | `go test ./backend/plugin/lineage/ -run TestSharedAnalysisStaysShared` |
 | 端到端 | `backend/test/integration/runner/`(含 MSSQL 标识符大小写一例,手工注册实例与注册表行,不需要真实 SQL Server) | `make test-integration`(真实 PostgreSQL + MySQL) |
 
-语料计数取法(2026-10 复核,现以语料 loader 为准:`go run` 一个用 `testutil.FindLineageTestSuites`+`LoadLineageTestSuiteFromYAML` 的小程序;`grep -hE '^\s*- name:'` 自 catalog fixture 支持 `- name: <列>` 类型映射后会把列名算成用例,doris 会多算 5) → mysql 24/226、tidb 1/15、mariadb 1/20、postgresql 40/250、starrocks 20/185、doris 21/209(426 条边)、mssql 14/143;MySQL 族共享语料 226 例在 TiDB / MariaDB 各跳过 1 例。非测试代码 18,692 行、测试 5,070 行取法:`find backend/plugin/lineage -name '*.go' ! -name '*_test.go' | xargs wc -l`(及去掉 `!` 的测试侧)。
+语料计数取法(2026-10 复核,现以语料 loader 为准:`go run` 一个用 `testutil.FindLineageTestSuites`+`LoadLineageTestSuiteFromYAML` 的小程序;`grep -hE '^\s*- name:'` 自 catalog fixture 支持 `- name: <列>` 类型映射后会把列名算成用例,doris 会多算 5) → mysql 24/226、tidb 1/15、mariadb 1/20、postgresql 40/250、starrocks 20/185、doris 21/211(428 条边)、mssql 14/143;MySQL 族共享语料 226 例在 TiDB / MariaDB 各跳过 1 例。非测试代码 18,692 行、测试 5,070 行取法:`find backend/plugin/lineage -name '*.go' ! -name '*_test.go' | xargs wc -l`(及去掉 `!` 的测试侧)。
 
 不在本篇范围:各引擎"什么 clause 可见 / 什么必须保持产出"属语义决策,见 [lineage-semantics.md](lineage-semantics.md);图上字段级血缘的读取与展开见 [lineage-graph.md](lineage-graph.md);omni 缺陷明细与不修改政策见 [omni-upstream-defects.md](omni-upstream-defects.md)。

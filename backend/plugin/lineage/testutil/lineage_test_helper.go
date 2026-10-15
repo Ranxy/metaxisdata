@@ -162,19 +162,36 @@ type yamlCatalogColumn struct {
 
 // UnmarshalYAML accepts the bare-name form every existing fixture uses, and the
 // name/type mapping a dialect that decides on types needs.
+//
+// The mapping is read key by key rather than through Node.Decode, because that
+// call does not inherit the decoder's KnownFields setting: a misspelled key would
+// be dropped silently, and a fixture whose `type:` came out empty would pin the
+// opposite of what it says.
 func (c *yamlCatalogColumn) UnmarshalYAML(value *yaml.Node) error {
 	if value.Kind == yaml.ScalarNode {
 		c.Name = value.Value
 		return nil
 	}
-	var column struct {
-		Name string `yaml:"name"`
-		Type string `yaml:"type"`
+	if value.Kind != yaml.MappingNode {
+		return errors.New("a catalog column is a name or a {name, type} mapping")
 	}
-	if err := value.Decode(&column); err != nil {
-		return err
+	for i := 0; i+1 < len(value.Content); i += 2 {
+		key, item := value.Content[i], value.Content[i+1]
+		if item.Kind != yaml.ScalarNode {
+			return fmt.Errorf("catalog column key %q takes a scalar value", key.Value)
+		}
+		switch key.Value {
+		case "name":
+			c.Name = item.Value
+		case "type":
+			c.Type = item.Value
+		default:
+			return fmt.Errorf("catalog column has no key %q; expected name or type", key.Value)
+		}
 	}
-	c.Name, c.Type = column.Name, column.Type
+	if c.Name == "" {
+		return errors.New("a catalog column mapping needs a name")
+	}
 	return nil
 }
 

@@ -141,7 +141,7 @@ func (a *Analyzer) columnSource(name *nodes.ObjectName, sp *scope.Scope) (column
 	if len(name.Parts) < 2 {
 		return columnSource{ref: ref}, true
 	}
-	if _, err := sp.ResolveColumnRefs(ref); err == nil {
+	if resolutions, err := sp.ResolveColumnRefs(ref); err == nil && !a.qualifiedColumnIsAbsent(ref, resolutions) {
 		return columnSource{ref: ref}, true
 	}
 	base, path, ok := a.variantPathBase(name.Parts, sp)
@@ -150,6 +150,35 @@ func (a *Analyzer) columnSource(name *nodes.ObjectName, sp *scope.Scope) (column
 	}
 	base.Ref.Resolved = true
 	return columnSource{ref: base.Ref, path: path}, true
+}
+
+// qualifiedColumnIsAbsent reports whether the catalog contradicts the qualified
+// reading of ref: the relation is known and the column it names is not one of its
+// columns. The scope resolves a qualified reference as soon as it finds the
+// relation and never checks the column, so `SELECT v.name FROM ev7 v` — an alias
+// `v` over a relation whose VARIANT column is also `v` — came out as ev7's column
+// `name`, an edge to a column that does not exist, where the engine reads the
+// subcolumn path. A catalog that cannot answer, or a query-local relation, says
+// nothing: a partial catalog never turns an edge into a gap on its own, and the
+// caller falls back to the reading it had when no path is available.
+func (a *Analyzer) qualifiedColumnIsAbsent(ref scope.ColumnRef, resolutions []scope.ResolvedColumn) bool {
+	if ref.Table == "" || len(resolutions) != 1 {
+		return false
+	}
+	relation := resolutions[0].Relation
+	if relation == nil || relation.IsCTE || relation.IsSubquery {
+		return false
+	}
+	meta := a.catalogTable(relation)
+	if meta == nil {
+		return false
+	}
+	for _, column := range meta.Columns {
+		if column.Name == ref.Column || strings.EqualFold(column.Name, ref.Column) {
+			return false
+		}
+	}
+	return true
 }
 
 // variantPathBase finds the column a dotted reference reads into, and the path
@@ -173,6 +202,12 @@ func (a *Analyzer) variantPathBase(parts []string, sp *scope.Scope) (scope.Resol
 		if err != nil || len(resolutions) != 1 {
 			continue
 		}
+		if !prefixAddresses(parts[:k], resolutions[0].Relation) {
+			// The scope accepts a qualifier it cannot verify, so this prefix may
+			// have bound a relation it does not address — an alias that happens to
+			// share the base column's name. That is not this prefix's column.
+			continue
+		}
 		switch a.variantBase(resolutions[0].Relation, column) {
 		case variantBaseYes:
 			return resolutions[0], strings.Join(parts[k+1:], "."), true
@@ -194,6 +229,26 @@ func (a *Analyzer) variantPathBase(parts []string, sp *scope.Scope) (scope.Resol
 		return scope.ResolvedColumn{}, "", false
 	}
 	return resolutions[0], strings.Join(parts[1:], "."), true
+}
+
+// prefixAddresses reports whether a prefix names the relation the way the
+// statement wrote it. The scope accepts a qualifier it cannot verify — a relation
+// registered without a database answers to any of them — so the prefix `ev.v` can
+// bind the alias `v` of another relation. The path search must not read that
+// binding as "this prefix owns the name", or a table-qualified path is abandoned
+// whenever an alias happens to share the base column's name.
+func prefixAddresses(prefix []string, relation *scope.TableRef) bool {
+	if relation == nil || len(prefix) == 0 {
+		return false
+	}
+	last := prefix[len(prefix)-1]
+	if !strings.EqualFold(last, relation.Table) && !strings.EqualFold(last, relation.Alias) {
+		return false
+	}
+	if len(prefix) < 2 {
+		return true
+	}
+	return strings.EqualFold(prefix[len(prefix)-2], relation.Schema)
 }
 
 // variantBaseVerdict is what the catalog can say about one name inside one
@@ -236,9 +291,11 @@ func (a *Analyzer) variantBase(relation *scope.TableRef, name string) variantBas
 }
 
 // isVariantType reports whether a stored column type names Doris's VARIANT type.
-// The engine reports it lowercase (`variant`), and only VARIANT takes the dot
-// form: the same engine rejects `j.a` for a JSON column, so JSON is not accepted
-// here either.
+// The engine reports it lowercase (`variant`), including for a column declared
+// with a schema template, so the template form is only accepted in case a sync
+// ever stores the declaration instead of the reported type. Only VARIANT takes the
+// dot form: the same engine rejects `j.a` for a JSON column, so JSON is not
+// accepted here either.
 func isVariantType(dataType string) bool {
 	normalized := strings.ToUpper(strings.TrimSpace(dataType))
 	return normalized == "VARIANT" || strings.HasPrefix(normalized, "VARIANT<")

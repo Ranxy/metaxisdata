@@ -578,7 +578,20 @@ results to local disk is not allowed. To enable this feature, you need to add
 `enable_outfile_to_local=true` in fe.conf` for a local path. So the syntax is
 Doris's, and omni cannot read it.
 
-### 12.4 Checked and *not* defects
+### 12.4 Mixed bracket and dot paths do not parse
+
+| Input | Result |
+| --- | --- |
+| `SELECT v['user'].name FROM ev` | syntax error at or near `.` |
+| `SELECT v['user']['name'].x FROM ev` | syntax error at or near `.` |
+| `SELECT v.user['name'] FROM ev` | parses (and the analyzer reads it as a path) |
+
+The live Doris 4.1.4 engine accepts the first two — `v['a'].b` and
+`v['a']['b'].c` are ordinary path expressions there — so omni cannot read two forms
+an application may write, and the analyzer hard-fails them. Only the bracket-then-
+bracket and the dot-then-bracket spellings parse.
+
+### 12.5 Checked and *not* defects
 
 - The materialized-view refresh spellings omni rejects are ones the engine rejects
   too. Doris 4.1.4 refuses `REFRESH ASYNC` (`extraneous input 'ASYNC'`, expecting
