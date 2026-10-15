@@ -627,3 +627,24 @@ cases:
     - name: a WITH clause an UPDATE reads keeps its hard failure
       sql: WITH c AS (SELECT max(k) AS m FROM ev2) UPDATE t2 SET name = 'a' WHERE k = (SELECT m FROM c)
       expect_error: true
+    - name: a WITH clause before a partitioned INSERT keeps its lineage
+      sql: WITH c AS (SELECT k FROM ev2) INSERT INTO t2 PARTITION (p1) (k) SELECT k FROM c
+      catalog:
+        tables:
+            ev2:
+                - k
+                - name
+      expected_edges:
+        - from_table: ev2
+          from_field: k
+          to_table: t2
+          to_field: k
+          relation_type: direct
+          is_temp: false
+    # A clause the statement reads through a name that lexes as a keyword: the engine runs it
+    # (`WITH `type` AS (…) UPDATE u2 SET b = (SELECT k FROM type)` really writes the row), so
+    # the clause cannot be dropped — the statement keeps its hard failure instead of answering
+    # with an edge from a table it never named.
+    - name: a WITH clause read by a keyword spelling keeps its hard failure
+      sql: WITH `type` AS (SELECT k FROM ev2) UPDATE u2 SET b = (SELECT k FROM type) WHERE k = 1
+      expect_error: true

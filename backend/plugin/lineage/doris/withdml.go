@@ -69,11 +69,16 @@ func rewriteWithBeforeDML(sql string) (string, bool) {
 	rest := sql[tokens[statement].Loc.Start:]
 
 	if tokens[statement].Kind == kinds["INSERT"] {
-		point, ok := insertQueryStart(rest, kinds)
+		point, source, ok := insertSource(rest, kinds)
 		if !ok {
 			return "", false
 		}
-		return rest[:point] + clause + " " + rest[point:], true
+		if source == kinds["SELECT"] {
+			return rest[:point] + clause + " " + rest[point:], true
+		}
+		// A VALUES source can never name the clause, so it is never moved — only dropped,
+		// and the same rule as an UPDATE or a DELETE decides whether that is safe: a row
+		// whose subquery reads the CTE keeps the statement's hard failure.
 	}
 
 	names, ok := cteNames(tokens[:statement], kinds)
@@ -83,14 +88,20 @@ func rewriteWithBeforeDML(sql string) (string, bool) {
 	return rest, true
 }
 
-// insertQueryStart is the offset in an INSERT statement where its query begins, which is
-// where a WITH clause has to stand. A PARTITION or LABEL clause sits between the target and
-// the query, and this rewrite does not know where the clause goes relative to those, so it
-// refuses them rather than guess; the same goes for the WITH of `WITH LABEL`.
-func insertQueryStart(rest string, kinds map[string]int) (int, bool) {
+// insertSource is where an INSERT's source begins and which kind it is. A WITH clause can
+// stand in front of a SELECT, which is where omni reads it, and a PARTITION clause before
+// that changes nothing about the placement (the engine takes `INSERT INTO t PARTITION (p)
+// (a) WITH c AS (…) SELECT …`, and omni parses it). It cannot stand in front of VALUES:
+// omni's grammar takes a WITH only before a SELECT, which is why the caller treats the two
+// kinds differently.
+//
+// A LABEL clause makes this report nothing. `INSERT INTO t WITH LABEL l WITH c AS (…) SELECT
+// …` runs on the engine but omni rejects it, so there is no placement to use and the
+// statement keeps its parse error.
+func insertSource(rest string, kinds map[string]int) (int, int, bool) {
 	tokens, lexErrs := dorisparser.Tokenize(rest)
 	if len(lexErrs) > 0 || len(tokens) == 0 {
-		return 0, false
+		return 0, 0, false
 	}
 	depth := 0
 	for _, t := range tokens {
@@ -105,14 +116,14 @@ func insertQueryStart(rest string, kinds map[string]int) (int, bool) {
 		if depth != 0 {
 			continue
 		}
-		if t.Kind == kinds["WITH"] || t.Kind == kinds["PARTITION"] || t.Kind == kinds["LABEL"] {
-			return 0, false
+		if t.Kind == kinds["WITH"] || t.Kind == kinds["LABEL"] {
+			return 0, 0, false
 		}
 		if t.Kind == kinds["SELECT"] || t.Kind == kinds["VALUES"] {
-			return t.Loc.Start, true
+			return t.Loc.Start, t.Kind, true
 		}
 	}
-	return 0, false
+	return 0, 0, false
 }
 
 // cteNames reads the names a WITH clause defines, which are the names a statement can read
@@ -155,14 +166,15 @@ func cteNames(tokens []dorisparser.Token, kinds map[string]int) ([]string, bool)
 	return names, true
 }
 
-// readsAnyName reports whether the statement reads any of these names. It answers yes for
-// any occurrence of one — a column that happens to share a CTE's name counts — because the
-// caller only drops a clause it can prove nothing reads.
+// readsAnyName reports whether the statement reads any of these names, and every token
+// counts whatever kind it has. A CTE may be named with a word that lexes as a keyword —
+// `WITH `type` AS (…) UPDATE t SET b = (SELECT k FROM type)` runs on the engine, and the
+// bare reference lexes as that keyword — so a check that only looked at identifier tokens
+// would drop a clause the statement reads, turning an honest hard failure into an edge from
+// a table the statement never names. A name that merely appears in a string literal counts
+// too, which costs only a recovery the statement did not need.
 func readsAnyName(tokens []dorisparser.Token, names []string) bool {
 	for _, t := range tokens {
-		if !isIdentifierToken(t) && dorisparser.TokenName(t.Kind) != "NAME" {
-			continue
-		}
 		for _, name := range names {
 			if t.Str == name {
 				return true
