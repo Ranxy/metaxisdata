@@ -672,3 +672,29 @@ recorded as an open item in doris-lineage.md. A `PARTITION` or `WITH LABEL` clau
 target and the query makes the rewrite refuse rather than guess where the clause belongs. The
 upstream defect stands and is not patched.
 
+## 13. `TokenName` builds its table without a lock
+
+`doris/parser.TokenName` and `starrocks/parser.TokenName` return a token kind's name from a
+package-level `map[TokenKind]string` (`tokenNames` in `keywords.go`) that they build on the
+first call, in place, with no lock:
+
+```go
+var tokenNames map[TokenKind]string
+
+func TokenName(kind TokenKind) string {
+	if tokenNames == nil {
+		tokenNames = make(map[TokenKind]string, len(keywordMap)+20)
+		…
+```
+
+Two analyses that reach a rewrite or a view-body fallback at the same time therefore race:
+`go test -race` reports a read in one goroutine against a write in the other, and Go panics
+on a concurrent map read and write. It is reachable in production — the API and the runner
+analyze statements concurrently, and both dialects call `TokenName` while classifying tokens
+— but it needs the first call to happen in two goroutines at once, which is why the suite only
+reported it once a test called the rewriter directly and in parallel.
+
+**This repository works around it** rather than patching upstream: `doris/tokenname.go` and
+`starrocks/tokenname.go` call `TokenName` once at package initialization, so the table is
+built before any analysis runs and every later call is a read. Either file can go when the
+upstream table is built by `init` or guarded by a `sync.Once`.
