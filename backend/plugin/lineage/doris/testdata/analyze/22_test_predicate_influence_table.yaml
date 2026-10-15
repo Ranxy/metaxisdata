@@ -479,3 +479,45 @@ cases:
           transformations:
             - operation: FILTER
               condition: rn=1
+    # A join condition that reads a column the generator declared is an influence
+    # whose source flattens through the relation the generator declared, next to
+    # the wildcard expansion of both relations.
+    - name: a join condition over a LATERAL VIEW column influences the result
+      sql: SELECT * FROM t LATERAL VIEW explode(t.arr) u AS elem JOIN s ON u.elem = s.id
+      expected_edges:
+        - from_table: t
+          from_field: '*'
+          to_table: __result__
+          to_field: '*'
+          relation_type: direct
+          is_temp: true
+        - from_table: t
+          from_field: arr
+          to_table: __result__
+          to_field: elem
+          relation_type: direct
+          is_temp: true
+        - from_table: s
+          from_field: '*'
+          to_table: __result__
+          to_field: '*'
+          relation_type: direct
+          is_temp: true
+        - from_table: t
+          from_field: arr
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: u.elem=s.id
+        - from_table: s
+          from_field: id
+          to_table: __result__
+          to_field: ""
+          relation_type: join
+          is_temp: true
+          transformations:
+            - operation: JOIN
+              condition: u.elem=s.id

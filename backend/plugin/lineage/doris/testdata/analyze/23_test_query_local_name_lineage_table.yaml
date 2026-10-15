@@ -195,3 +195,15 @@ cases:
           to_field: elem
           relation_type: direct
           is_temp: true
+    # A qualified wildcard over the generator's relation expands through the
+    # relation the generator declared, so it reports the column the generator read
+    # instead of treating the alias as an unknown name.
+    - name: a qualified wildcard over a LATERAL VIEW relation
+      sql: SELECT u.* FROM t LATERAL VIEW explode(t.arr) u AS elem
+      expected_edges:
+        - from_table: t
+          from_field: arr
+          to_table: __result__
+          to_field: elem
+          relation_type: direct
+          is_temp: true

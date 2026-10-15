@@ -76,6 +76,14 @@ func TestLateralViewGeneratorLineage(t *testing.T) {
 			sql:  "SELECT v.elem2 FROM t LATERAL VIEW explode(t.arr) u AS elem LATERAL VIEW explode(u.elem) v AS elem2",
 			want: []string{"t.arr -> __result__.elem2"},
 		},
+		{
+			// The generator's argument is an expression subquery, which omni keeps as
+			// raw text: the columns it reads are the sources of the columns the
+			// generator declares, not a dropped branch.
+			name: "an expression-subquery argument reads what the subquery reads",
+			sql:  "SELECT * FROM t LATERAL VIEW explode((SELECT arr FROM t)) u AS elem",
+			want: []string{"t.* -> __result__.*", "t.arr -> __result__.elem"},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -106,6 +114,13 @@ func TestTableValuedFunctionLineage(t *testing.T) {
 			name: "a call over a column sources it",
 			sql:  "SELECT * FROM t, explode(t.arr) u",
 			want: []string{"t.* -> __result__.*", "t.arr -> __result__.explode"},
+		},
+		{
+			// A literal-only call has no nameable source; a call over a query does,
+			// and that query's sources are collected the way a select item's are.
+			name: "a call over an expression subquery sources what it reads",
+			sql:  "SELECT * FROM explode((SELECT arr FROM t)) u",
+			want: []string{"t.arr -> __result__.explode"},
 		},
 		{
 			name: "the function's own name addresses the column it exposes",

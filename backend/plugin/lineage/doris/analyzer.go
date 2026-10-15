@@ -369,6 +369,11 @@ func (a *Analyzer) addGeneratedRelation(call *nodes.FuncCallExpr, alias string, 
 	var sources []scope.ColumnRef
 	for _, argument := range call.Args {
 		sources = append(sources, collectColumns(argument)...)
+		// collectColumns does not descend into a subquery, which omni keeps as
+		// raw text, so a generator over one would silently read nothing. The
+		// select list resolves an expression subquery the same way: the subquery's
+		// own sources are what the value it yields comes from.
+		sources = append(sources, a.expressionSubquerySources(argument, sp)...)
 	}
 	lineage := make([]model.ColumnRelation, 0, len(columns)*len(sources))
 	for _, column := range columns {

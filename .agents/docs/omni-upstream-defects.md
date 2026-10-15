@@ -547,3 +547,49 @@ but the statement is discarded whole.
 No patch, fork or upstream report, per the policy at the top of this file; the
 input is recorded here so a future reader can tell "Doris feature not modelled"
 from "omni cannot read this statement".
+
+### 12.2 A materialized view's old refresh-trigger spelling does not parse
+
+| Input | Result |
+| --- | --- |
+| `CREATE MATERIALIZED VIEW mv REFRESH ASYNC AS SELECT id FROM t1` | parses (the modern header) |
+| `CREATE MATERIALIZED VIEW mv REFRESH ASYNC EVERY(INTERVAL 1 DAY) AS SELECT id FROM t1` | syntax error at or near `INTERVAL` |
+| `CREATE MATERIALIZED VIEW mv REFRESH ASYNC START('2022-07-25 10:00:00') EVERY(INTERVAL 1 DAY) AS SELECT id FROM t1` | syntax error at or near `2022-07-25 10:00:00` |
+
+`doris/parser/mtmv.go` reads the refresh mode and nothing else: `START(...)` and
+`EVERY(...)` have no production, and the `(` after an unhandled `START` falls into
+the view-column parser, which fails on the string token. The same statement parses
+under omni's StarRocks parser (`CreateMTMVStmt.RefreshTrigger` exists there).
+
+The analyzer refuses its view-body fallback for a header like this rather than
+guessing a name from it (see doris-lineage.md) and fails the statement with this
+error, so a MANUAL_SQL entry carrying the spelling loses its lineage with the parse
+error recorded — not a silent wrong result. Whether any Doris version spells the
+refresh trigger this way is not verified here; the correct spelling is the one that
+parses.
+
+### 12.3 `SELECT ... INTO OUTFILE` does not parse
+
+| Input | Result |
+| --- | --- |
+| `SELECT a, b FROM t INTO OUTFILE 'file:///tmp/x.csv'` | syntax error at or near `INTO`, and `*ast.IntoOutfileClause` does not exist in `doris/ast` |
+
+The StarRocks parser accepts the same statement and models it. Doris documents an
+OUTFILE export form, so this is a Doris statement omni cannot read; the analyzer
+hard-fails it, which is the documented boundary for text the parser rejects.
+
+### 12.4 Checked and *not* defects
+
+- `SELECT * FROM (SELECT arr FROM t) d LATERAL VIEW explode(d.arr) u AS elem` is
+  rejected (`syntax error at or near LATERAL`) while `SELECT * FROM t LATERAL VIEW
+  explode(t.arr) u AS elem` parses. Whether a real Doris accepts a LATERAL VIEW
+  after a derived table is **not** verified here, so this is recorded as an open
+  boundary rather than a defect. `LATERAL VIEW OUTER` is likewise rejected; the AST
+  comments claim that absence was container-verified.
+- `SELECT * FROM t TABLESAMPLE(1000 ROWS) REPEATABLE 1` parses, while the
+  parenthesized `REPEATABLE(1)` is rejected. `TableRef.Sample.Seed` is therefore
+  reachable, but only through the unparenthesized spelling.
+- `CREATE VIEW v DEFINER = 'u' AS ...` is rejected at `DEFINER`; whether Doris
+  supports `DEFINER` is not verified here. The view-body fallback refuses this
+  header rather than reading `DEFINER` as the view's name (it is an identifier
+  token, not a keyword).

@@ -27,7 +27,7 @@ func TestRegistersStarRocksEngine(t *testing.T) {
 // Doris is not registered by this package: it has its own analyzer, because omni's
 // Doris grammar differs from this one, so it must never be read with the StarRocks
 // grammar.
-func TestDorisIsNotRegistered(t *testing.T) {
+func TestDorisIsServedByItsOwnPackage(t *testing.T) {
 	t.Parallel()
 
 	_, err := thisEngine.Analyze(context.TODO(), storepb.Engine_DORIS, "SELECT id FROM t")

@@ -11,7 +11,7 @@
 
 omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 独有的 `FIELD` / `PERCENTILE` / `PERCENTILE_UNION`);AST 结构体集合只差 4 个 StarRocks 独有(`ParenSelect`、`TableFunctionRef`、`IntoOutfileClause`、`InlineTable`)与 5 个 Doris 独有(`GroupedQuery`、`LateralView`、`TableSample`、`ArraySliceExpr`、`StructLiteral`)。把 173 条两边都能解析的 StarRocks 语料逐条对比规范 AST 形状:171 条一致,2 条例外正是 §方言事实的前两行。Doris 遍历因此是 StarRocks 遍历的移植,而不是第三个独立实现。
 
-三条输入路径都已接通,无需 engine 分支:
+四条输入路径都已接通,无需 engine 分支:
 
 | 来源 | 文本形态 | 说明 |
 | --- | --- | --- |
@@ -20,7 +20,7 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 | MANUAL_SQL | 用户粘贴的脚本 | 根包切分后逐条分析;`SplitStatements` 走 `dorisparser.Split` |
 | APPLICATION_SQL | 参数化语句 | 与其它方言同一条路径(见 [application-sql-ingestion.md](application-sql-ingestion.md));`sqlsanitize` 的 DORIS 分支复用 omni Doris 的一次性 `Tokenize`,lex 错误一律拒绝不写入库——Doris 词法器与 StarRocks 的逐字节相同(只差 ast import),所以两个分支做的是同一件事 |
 
-`CREATE VIEW` / `CREATE MATERIALIZED VIEW` 的体是 WITH、集合运算或括号查询时,omni 的 CREATE VIEW 语法只接受裸 SELECT,于是 `viewbody.go` 用 `extractViewDDL` 抽出顶层 `AS` 之后的体,再按顶层查询解析。
+`CREATE VIEW` / `CREATE MATERIALIZED VIEW` 的体是 WITH、集合运算或括号查询时,omni 的 CREATE VIEW 语法只接受裸 SELECT,于是 `viewbody.go` 用 `extractViewDDL` 抽出顶层 `AS` 之后的体,再按顶层查询解析。兜底只接管**以 CREATE / ALTER 开头**的语句,且目标名只取紧邻 `VIEW`、用 `.` 分隔的那一段标识符:两者缺一不可——`LATERAL VIEW` 会让普通 SELECT / DML 也含 `VIEW` 关键字(接管它会把真实语法错误换成假的 "view query" 报错),而 `REFRESH ASYNC START(...)`、`DEFINER = 'u'` 这类未建模的头部子句里含**标识符**(`ASYNC` 不是关键字),把名字扫描一路做下去就会把目标写成 `mv.ASYNC`。命中任一种情况即放弃兜底、保留 omni 的原始解析错误。
 
 ## 方言事实(与 StarRocks 的差异)
 
@@ -40,7 +40,7 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 
 | 形状 | 读取方式 |
 | --- | --- |
-| `TABLESAMPLE(1000 ROWS)` / `TABLESAMPLE(20 PERCENT)` / `REPEATABLE seed`(`TableRef.Sample`) | 只决定取哪些行,不产生列血缘 |
+| `TABLESAMPLE(1000 ROWS)` / `TABLESAMPLE(20 PERCENT)` / `REPEATABLE <n>`(`TableRef.Sample`) | 只决定取哪些行,不产生列血缘。omni 接受无括号的 `REPEATABLE <n>`,`REPEATABLE(<n>)` 报错;真实 Doris 是否支持该子句本仓库未离线确认 |
 | `GROUP BY … WITH ROLLUP`(`SelectStmt.GroupByWithRollup`) | 分组键与普通 GROUP BY 同一批;ROLLUP 只多出小计行,不引入新列 |
 | 数组切片 `a[1:2]`(`ArraySliceExpr`)、元素访问 `value[index]`(`ElementAtExpr`)、`STRUCT(…)` / Map 字面量(`StructLiteral`) | 通用表达式走查覆盖;切片的来源是 `a` |
 | `CONVERT(x USING charset)` | 通用表达式走查覆盖 |
@@ -79,12 +79,13 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 ## 不变量
 
 1. **`GroupedQuery` 只是括号/重复子句组的壳**:递归进 `Query`,绝不把它当成关系或边的端点。
-2. **`TableRef.Func` 与 LATERAL VIEW 关系是查询本地关系,永不作为边的端点**:先经 `flattenTempSourceLineage` 展平;**生成器实参里没有可解析列(纯字面量调用)时不产边**——它没有这个分析能命名的来源。
+2. **`TableRef.Func` 与 LATERAL VIEW 关系是查询本地关系,永不作为边的端点**:先经 `flattenTempSourceLineage` 展平;**生成器实参里没有可解析列(纯字面量调用)时不产边**——它没有这个分析能命名的来源。实参里的表达式子查询按 select-list 的同一套 `expressionSubquerySources` 取来源,不静默丢。
 3. **INSERT 的目标列清单永远位置式**:Doris 没有 `BY NAME`,`Columns[i]` 对查询第 i 个输出列。
 4. **CTAS 列名取类型化 `ColumnDef`**:Doris 没有名字清单;声明了就用声明,没声明就用查询输出别名。
 5. **`WITH` 在 UPDATE / DELETE 之前是解析失败,不是缺口**:语法层不存在这个形状。
 6. **MERGE 与未建模查询表达式是缺口,不是硬失败**:已解析的边必须留下 `model.Diagnostic`;只有解析失败才清血缘。
-7. **任何输出变更(边、变换、错误分类)必须过黄金语料**,语料用精确边匹配(`subset` 未使用)。
+7. **视图兜底只接管 `CREATE` / `ALTER` 开头、且目标名是紧邻 `VIEW` 的点分标识符段**:命中未建模头部子句(含标识符)即放弃兜底并保留 omni 的原始解析错误——绝不把头部子句里的词当对象名,否则会向注册表里不存在的对象写边(曾产出 `mv.ASYNC`)。
+8. **任何输出变更(边、变换、错误分类)必须过黄金语料**,语料用精确边匹配(`subset` 未使用)。
 
 ## Open items
 
@@ -94,6 +95,9 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 4. **没有端到端覆盖** — 集成 harness 只有 PostgreSQL + MySQL;Doris 语料是从 StarRocks 移植并在两边解析器上对比过的,不是在真实 Doris 实例上跑出来的。首次真实运行要确认 `mv_infos()` 的 `QuerySql` 形态与视图体。
 5. **函数 / 存储过程血缘未覆盖** — 与所有方言同:队列只扫 VIEW / MATERIALIZED_VIEW / MANUAL_SQL / APPLICATION_SQL。
 6. **`VARIANT<…>` schema template 是 omni 解析缺口** — `CREATE TABLE t (k BIGINT, v VARIANT<'id': INT>)`、其 CTAS 形式与 `ALTER TABLE … ADD COLUMN v VARIANT<…>` 都是合法 Doris DDL,但 omni 在 `<` 处报语法错误(裸 `VARIANT` 与 `VARIANT NULL` 正常)。视图 / MV 体不含建表语句,所以这两条路径不受影响;MANUAL_SQL / APPLICATION_SQL 携带这种 DDL 会硬失败(清血缘 + `error_message`),CTAS 形式会整条丢边。明细见 [omni-upstream-defects.md](omni-upstream-defects.md) §12;按不修改政策不 patch 上游。
+7. **另两种 omni Doris 读不了的写法** — 旧版 MV 刷新触发器 `REFRESH ASYNC START('…') EVERY(INTERVAL 1 DAY)`(在 `START` 处报错)与导出语句 `SELECT … INTO OUTFILE '…'`(在 `INTO` 处报错;omni 的 StarRocks parser 反而有 `IntoOutfileClause`)。两者都**硬失败**且错误保留原文,不会产错边;登记见 §12.2 / §12.3。
+8. **`LATERAL VIEW` 的两处形态未经真实引擎裁决** — omni 拒绝"派生表之后的 LATERAL VIEW"与 `LATERAL VIEW OUTER`(后者的 AST 注释自称 container-verified 说 Doris 无 OUTER)。本仓库离线只能确认 omni 的接受/拒绝,判不了真实 Doris;首次真机运行须一并确认。
+9. **生成器实参里的表达式子查询** — `explode((SELECT arr FROM t))` 现在把子查询读到的列作为来源(`t.arr → u.elem`),与 select-list 同一套 `expressionSubquerySources`;该形态是否被真实 Doris 接受未离线确认(不接受也只是多记一条边,不会漏)。
 
 ## Where things live
 
@@ -102,7 +106,7 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 | 方言包 | `backend/plugin/lineage/doris/{analyzer,expr,predicate,rawsql,viewbody}.go` | `go test ./backend/plugin/lineage/doris/` |
 | 装配 | `backend/plugin/lineage/engines/engines.go`、`engines_test.go` | `go test ./backend/plugin/lineage/engines/` |
 | 共享机制守门 | `backend/plugin/lineage/shared_analysis_test.go`(`dialectPackages` 含 `doris`) | `go test ./backend/plugin/lineage/ -run TestSharedAnalysisStaysShared` |
-| 黄金语料 | `backend/plugin/lineage/doris/testdata/analyze/`(21 套 / 198 例 / 410 条边) | `TestAnalyzeYAML`、`TestCorpusIsFullyAnnotated` |
+| 黄金语料 | `backend/plugin/lineage/doris/testdata/analyze/`(21 套 / 202 例 / 418 条边) | `TestAnalyzeYAML`、`TestCorpusIsFullyAnnotated` |
 | 单语句契约与硬失败 | `hardfail_test.go`(`TestHardFailOnUnparseableSQL`、`TestRejectsMultiStatement`) | 同上 |
 | 缺口边界 | `analyzer_test.go`(`TestUnmodelledStatementsAreGaps`) | 同上 |
 | catalog 读取 | `catalog_lookup_test.go`(`TestCatalogIsReadOncePerRelation`、`TestCatalogFailureIsReportedAsAGap`) | 同上 |

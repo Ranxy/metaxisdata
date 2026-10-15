@@ -82,6 +82,33 @@ func TestExtractViewDDL(t *testing.T) {
 		{name: "plain query", sql: "SELECT id FROM t"},
 		{name: "no AS", sql: "CREATE VIEW v SELECT id"},
 		{name: "no name", sql: "CREATE VIEW AS SELECT 1"},
+		{
+			// The keyword VIEW also appears inside an ordinary statement's LATERAL
+			// VIEW, and its real parse error must survive: taking it over reported
+			// a broken view query for a SELECT.
+			name: "a LATERAL VIEW statement is not view DDL",
+			sql:  "SELECT * FROM (SELECT arr FROM t) d LATERAL VIEW explode(d.arr) u AS elem",
+		},
+		{
+			// ASYNC is an identifier, not half of a two-word keyword, so a header
+			// clause the fallback does not model sat between the name and AS. Reading
+			// on named the target `ASYNC` in schema `mv`; refusing keeps the original
+			// parse error instead.
+			name: "a refresh trigger before AS is not modelled",
+			sql:  "CREATE MATERIALIZED VIEW mv REFRESH ASYNC START('2022-07-25 10:00:00') EVERY(INTERVAL 1 DAY) AS SELECT id FROM t1",
+		},
+		{
+			name: "DEFINER before AS is not modelled",
+			sql:  "CREATE VIEW v DEFINER = 'u' AS SELECT id FROM t1",
+		},
+		{
+			// `IF NOT EXISTS` is a keyword prologue and does not shift the name.
+			name:   "IF NOT EXISTS prologue",
+			sql:    "CREATE VIEW IF NOT EXISTS v AS SELECT id FROM t1 UNION ALL SELECT id FROM t2",
+			target: "v",
+			body:   "SELECT id FROM t1 UNION ALL SELECT id FROM t2",
+			ok:     true,
+		},
 	}
 
 	for _, tt := range tests {
