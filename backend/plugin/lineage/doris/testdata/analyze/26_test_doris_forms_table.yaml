@@ -577,3 +577,53 @@ cases:
     - name: a field of an array element is not rewritten
       sql: SELECT a[1].b FROM t
       expect_error: true
+    # A WITH clause before INSERT, UPDATE or DELETE: the engine runs all three (checked on
+    # 4.1.4, each read back from the table) while omni stops at the statement keyword. The
+    # clause moves in front of the query an INSERT writes, where omni does read it; before
+    # an UPDATE or a DELETE there is no such place, so it goes when the statement reads none
+    # of its names, which is what an unused clause writes.
+    - name: a WITH clause before an INSERT keeps its lineage
+      sql: WITH c AS (SELECT k FROM ev2) INSERT INTO t2 (k) SELECT k FROM c
+      catalog:
+        tables:
+            ev2:
+                - k
+                - name
+      expected_edges:
+        - from_table: ev2
+          from_field: k
+          to_table: t2
+          to_field: k
+          relation_type: direct
+          is_temp: false
+    - name: an unused WITH clause before an UPDATE leaves the assignment alone
+      sql: WITH c AS (SELECT 1 AS x) UPDATE t2 SET name = 'a'
+      expected_edges:
+        - from_table: t2
+          from_field: '*'
+          to_table: t2
+          to_field: name
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: '''a'''
+    - name: an unused WITH clause before a DELETE leaves the condition alone
+      sql: WITH c AS (SELECT 1 AS x) DELETE FROM t2 WHERE k = 1
+      expected_edges:
+        - from_table: t2
+          from_field: k
+          to_table: t2
+          to_field: __deletion__
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: DELETE
+              condition: k=1
+    # The other side of the rule: a clause the UPDATE really reads has nowhere to go, so
+    # the statement keeps its hard failure rather than being analyzed as something else.
+    - name: a WITH clause an UPDATE reads keeps its hard failure
+      sql: WITH c AS (SELECT max(k) AS m FROM ev2) UPDATE t2 SET name = 'a' WHERE k = (SELECT m FROM c)
+      expect_error: true

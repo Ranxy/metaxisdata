@@ -23,7 +23,8 @@ import (
 // mixed-spelling VARIANT paths about 230 each, because such a statement is tokenized
 // twice, rebuilt and re-parsed. The four grouping-set cases (ROLLUP, CUBE, GROUPING
 // SETS, a repeated key) add nothing measurable: they differ from a plain GROUP BY
-// only in how the key list is read.
+// only in how the key list is read. The WITH-clause cases add about 550 each, because such a
+// statement is tokenized twice and its body re-parsed after the clause moves.
 //
 // The limit is the 33914 measured under the CI flags with ~10% headroom: the
 // previous 3% headroom (34300 over 33327) was exhausted by one corpus case and the

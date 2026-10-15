@@ -643,3 +643,32 @@ upstream defect stands and is not patched.
   omni's Doris grammar requires types for one. The analyzer reads the names when a
   list is present (harmless — the engine would reject the statement) and otherwise
   takes the query's own output aliases, which is what a valid CTAS creates.
+
+### 12.6 A `WITH` clause before INSERT, UPDATE or DELETE does not parse
+
+| Input | Result |
+| --- | --- |
+| `WITH c AS (SELECT 1 AS a) INSERT INTO t (a) SELECT a FROM c` | syntax error at or near `INSERT` |
+| `WITH c AS (SELECT 1 AS a) UPDATE t SET a = 1` | syntax error at or near `UPDATE` |
+| `WITH c AS (SELECT 1 AS a) DELETE FROM t WHERE a = 1` | syntax error at or near `DELETE` |
+| `INSERT INTO t (a) WITH c AS (SELECT 1 AS a) SELECT a FROM c` | parses (this is what the engine expects for an INSERT) |
+
+The live Doris 4.1.4 engine **runs all three** of the rejected forms, and not merely as
+parsed text: `WITH c AS (SELECT 1 AS a) UPDATE t SET b = 9 WHERE a = 1` leaves `b = 9` in the
+row, the INSERT leaves its row behind, the DELETE removes one, and a clause the statement
+reads (`SET b = (SELECT m FROM c)`) takes effect too — each read back from the table after
+the statement. This was recorded in this repository as "the shape does not exist at the
+syntax level" (doris-lineage.md invariant 5) until the engine was asked; it does exist, and
+only omni lacks it.
+
+**The Doris analyzer recovers what it can.**
+`backend/plugin/lineage/doris/withdml.go` moves an INSERT's clause in front of the query the
+INSERT writes, which is where omni reads it: `INSERT INTO t (a) WITH c AS (…) SELECT a FROM
+c` parses, and `ast.InsertStmt` has no `With` field because the clause belongs to that query
+— so the CTE is analyzed, not dropped. UPDATE and DELETE have no such place, and their clause
+is dropped only when the statement reads none of the names it defines, since an unused CTE
+writes nothing; a clause the statement does read keeps the statement's hard failure, which is
+recorded as an open item in doris-lineage.md. A `PARTITION` or `WITH LABEL` clause between the
+target and the query makes the rewrite refuse rather than guess where the clause belongs. The
+upstream defect stands and is not patched.
+

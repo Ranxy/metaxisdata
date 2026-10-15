@@ -133,13 +133,17 @@ func parseQueryBody(raw string) (nodes.Node, source, error) {
 // rewritten text parses at all.
 func rewriteQuery(sql string) (string, string, []textEdit, bool) {
 	original, edits := sql, []textEdit(nil)
-	for _, rewrite := range []func(string) (string, bool){rewriteLateralOverDerivedTable, stripIntoOutfile} {
+	for _, rewrite := range []func(string) (string, bool){rewriteLateralOverDerivedTable, stripIntoOutfile, rewriteWithBeforeDML} {
 		if next, ok := rewrite(sql); ok {
 			sql = next
 		}
 	}
-	// Rewriting a spelling into another one is the case that has to keep the original
-	// text: it is the only rewrite that changes what an expression says.
+	// A rewrite that reorders or replaces text has to run before this one: the edits below
+	// are offsets into the text as it stands here, and the original they point at is this
+	// text, so the spelling rewrite has to be the last thing that moves anything.
+	//
+	// Rewriting a spelling into another one is the case that keeps the original text: it is
+	// the only rewrite that changes what an expression says.
 	if text, from, rewritten, ok := rewriteMixedVariantPaths(sql); ok {
 		original, edits, sql = from, rewritten, text
 	}
