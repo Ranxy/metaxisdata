@@ -199,3 +199,26 @@ func emptyColumnCatalog() catalog.Provide {
 	cat.AddTable(&catalog.TableMeta{ID: model.ObjectIdentifier{Name: "evE"}})
 	return cat
 }
+
+// TestASchemaQualifiedReferenceIsVerifiedAgainstThatDatabase pins the shape a
+// production registry answers: the relation an unqualified FROM clause registers
+// carries the statement's database, and the column the statement wrote is verified
+// against that relation's own column list rather than against the name alone.
+func TestASchemaQualifiedReferenceIsVerifiedAgainstThatDatabase(t *testing.T) {
+	t.Parallel()
+
+	cat := testutil.NewMemoryCatalogProvide()
+	cat.AddTable(&catalog.TableMeta{
+		ID:      model.ObjectIdentifier{Database: "db1", Name: "ev2"},
+		Columns: []catalog.ColumnMeta{{Name: "name", Type: "string"}},
+	})
+
+	requireEdgesWithCatalog(t, "SELECT db1.ev2.name AS n FROM db1.ev2", cat, []string{"db1.ev2.name -> __result__.n"})
+
+	relations, err := analyzeSQL("SELECT db1.ev2.nope AS n FROM db1.ev2", cat)
+
+	var unsupported *lineage.UnsupportedStatementError
+	require.ErrorAs(t, err, &unsupported)
+	require.Contains(t, unsupported.Error(), "unresolved reference in an output column: ev2.nope")
+	require.Empty(t, relations)
+}
