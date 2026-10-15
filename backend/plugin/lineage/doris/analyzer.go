@@ -1342,7 +1342,20 @@ func (a *Analyzer) processCTE(cte *nodes.CTE, recursive bool) {
 		// the CTE. An unreferenced CTE filters rows nobody reads.
 		a.influences.BindCTE(definition, cteScope)
 
-		for i, outputCol := range cteScope.GetOutputColumns() {
+		outputColumns := cteScope.GetOutputColumns()
+		// A reference to the CTE resolves against the names its body really
+		// exposes, so the definition keeps the validated exposure: a declared list
+		// renames the outputs positionally and counts only when its arity matches
+		// the body, and the body's own output aliases are what is left. Without
+		// this a CTE whose output column carries no source — a constant, which has
+		// no lineage to record — is not a column of the relation at all, so
+		// `WITH c AS (SELECT 1 AS x, k FROM t) SELECT x FROM c, t` was a gap for a
+		// statement the engine runs. The mapping below still reads the declared
+		// list as written, because Doris's rule for a list it cannot line up is to
+		// leave the extra outputs at their query alias (see §方言事实).
+		definition.Columns = scope.ExposedColumnNames(cte.Columns, outputColumns)
+
+		for i, outputCol := range outputColumns {
 			// A CTE may rename its output columns: WITH c (a, b) AS (SELECT id,
 			// name ...). The MySQL analyzer ignores that list and emits no
 			// lineage at all for this shape; mapping it is strictly more
