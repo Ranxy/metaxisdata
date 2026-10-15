@@ -82,6 +82,25 @@ func TestExtractViewDDL(t *testing.T) {
 		{name: "plain query", sql: "SELECT id FROM t"},
 		{name: "no AS", sql: "CREATE VIEW v SELECT id"},
 		{name: "no name", sql: "CREATE VIEW AS SELECT 1"},
+		{
+			// DEFINER is an identifier, not a keyword, so an unmodelled header
+			// clause sat between the name and AS. Reading on named the target
+			// `DEFINER` in schema `v`; refusing keeps the parser's own error.
+			name: "an unmodelled header clause is not a name",
+			sql:  "CREATE VIEW v DEFINER = 'u' AS SELECT 1",
+		},
+		{
+			name: "a refresh trigger is not a name",
+			sql:  "CREATE MATERIALIZED VIEW mv REFRESH ASYNC START('2020-01-01') AS SELECT id FROM t1",
+		},
+		{
+			// `IF NOT EXISTS` is a keyword prologue and does not shift the name.
+			name:   "IF NOT EXISTS prologue",
+			sql:    "CREATE VIEW IF NOT EXISTS v AS SELECT id FROM t1 UNION ALL SELECT id FROM t2",
+			target: "v",
+			body:   "SELECT id FROM t1 UNION ALL SELECT id FROM t2",
+			ok:     true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -103,12 +122,25 @@ func TestExtractViewDDL(t *testing.T) {
 	}
 }
 
-// CREATE TABLE ... LIKE copies a table's shape without reading it, so it
-// carries no column lineage.
+// CREATE TABLE ... LIKE copies a table's shape without reading it, so it carries
+// no column lineage.
 func TestCreateTableLikeHasNoLineage(t *testing.T) {
 	t.Parallel()
 
 	relations, err := analyzeSQL("CREATE TABLE t3 LIKE t1", nil)
 	require.NoError(t, err)
 	require.Empty(t, relations)
+}
+
+// TestAnUnmodelledHeaderIsNotAName pins the analyzer-level consequence of the
+// guard: a view header this fallback does not model fails with the parser's own
+// error, and no edge is recorded against an object made out of the header's words.
+func TestAnUnmodelledHeaderIsNotAName(t *testing.T) {
+	t.Parallel()
+
+	relations, err := analyzeSQL("CREATE VIEW v DEFINER = 'u' AS SELECT id FROM t1", nil)
+	require.Error(t, err)
+	require.Nil(t, relations)
+	require.ErrorContains(t, err, "syntax error at or near DEFINER")
+	require.NotContains(t, err.Error(), "view query")
 }

@@ -151,11 +151,11 @@ Implementation: `resolveUnqualified` walks outward and stops at the first scope 
 | PostgreSQL | 40 | 250 |
 | MySQL (corpus shared with TiDB and MariaDB) | 24 | 226 |
 | StarRocks | 20 | 185 |
-| Doris | 21 | 202 |
+| Doris | 21 | 203 |
 | MSSQL | 14 | 143 |
 | TiDB (dialect suite, on top of the shared corpus) | 1 | 15 |
 | MariaDB (dialect suite, on top of the shared corpus) | 1 | 20 |
-| **total** | **121** | **1041** |
+| **total** | **121** | **1042** |
 
 ### StarRocks
 
@@ -188,6 +188,8 @@ Implementation: `resolveUnqualified` walks outward and stops at the first scope 
 **Doris carries StarRocks' DML influence decision unchanged**, and the corpus pins it exactly rather than leaving it implicit: a `DELETE ... WHERE` records `__deletion__`, while an `UPDATE`'s `WHERE` records no influence at all, and the join conditions inside `UPDATE ... FROM` / `DELETE ... USING` are not recorded as influences either — only a `SELECT`'s FROM clause collects join predicates. A predicate that reads a `LATERAL VIEW` column is the exception only in its *source*: it flattens through the generator's relation to the stored column (`u.elem` is reported as `t.arr`), so `... LATERAL VIEW explode(t.arr) u AS elem JOIN s ON u.elem = s.id` carries a JOIN influence on `t.arr`.
 
 **Where its input text differs from StarRocks:** a Doris materialized view arrives as `mv_infos("database"=?)`'s `QuerySql` — a **bare query body**, not the whole `SHOW CREATE MATERIALIZED VIEW` statement StarRocks stores — so the runner's `isCompleteStatement` passthrough never fires for it and it is always wrapped as `CREATE MATERIALIZED VIEW <name> AS <body>`. When a view or MV body is a `WITH`, a set operation or a parenthesized query, omni's `CREATE VIEW` production accepts only a bare `SELECT`, so `viewbody.go` extracts the body after the top-level `AS` and parses it as a top-level query.
+
+**Engine-verified against Doris 4.1.4** (the container this repository's development environment runs, checked statement by statement): `QUALIFY` accepts both a select-list alias and the window form; `TABLESAMPLE ... REPEATABLE <n>` is the accepted spelling and `REPEATABLE(<n>)` is not; `INSERT OVERWRITE` requires the `TABLE` keyword; a CTAS column list is rejected outright; a `VARIANT` subcolumn path may be written `v['a']` **or** `v.a` and the two return the same value (the dotted form is the one this analyzer does not resolve yet — the open item in [doris-lineage.md](doris-lineage.md)); `numbers("number"="2")` names its one column `number`, after the parameter rather than the function. Two Doris statements omni cannot read are valid on that engine and hard-fail here — a `LATERAL VIEW` after a derived table, and `SELECT ... INTO OUTFILE` — recorded in [omni-upstream-defects.md](omni-upstream-defects.md) §12.2–§12.3.
 
 **Same gaps as its sibling:** `MERGE INTO` and an unmodelled query expression are `not modelled:` diagnostics beside the edges (never a failure), and `LOAD`'s `SET`/`WHERE` carries no column lineage.
 

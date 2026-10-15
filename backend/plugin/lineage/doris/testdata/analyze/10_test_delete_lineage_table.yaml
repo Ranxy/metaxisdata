@@ -71,3 +71,27 @@ cases:
       expect_error: true
       error_contains: "unresolved reference in a DELETE condition: u.x"
       expected_edges: []
+    # An alias on the target does not change which table the delete writes, and a
+    # USING relation is only a source: the alias is how the WHERE resolves, never
+    # what the statement writes to.
+    - name: an aliased target with a USING clause still writes the statement's table
+      sql: DELETE FROM t1 AS x USING t2 WHERE x.id = t2.id
+      expected_edges:
+        - from_table: t1
+          from_field: id
+          to_table: t1
+          to_field: __deletion__
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: DELETE
+              condition: x.id=t2.id
+        - from_table: t2
+          from_field: id
+          to_table: t1
+          to_field: __deletion__
+          relation_type: indirect
+          is_temp: false
+          transformations:
+            - operation: DELETE
+              condition: x.id=t2.id

@@ -809,12 +809,14 @@ func (a *Analyzer) processUpdateList(assignments []*nodes.Assignment, targetSche
 		if !ok {
 			continue
 		}
-		// The assigned column still has to belong to a relation in scope: an
-		// assignment whose qualifier names nothing the statement introduced writes no
-		// column this analysis can attribute, so it is skipped. With the updated
-		// table registered, that check is the scope's; the target itself is the
-		// statement's, below.
+		// The assigned column still has to belong to a relation in scope, and the
+		// target itself comes from the statement rather than the scope, below. An
+		// assignment whose qualifier names nothing the statement introduced —
+		// `UPDATE t SET x.a = 1` — writes no column this analysis can attribute, so
+		// it is reported rather than dropped: a silently empty result and "this
+		// assignment could not be attributed" must stay distinguishable.
 		if _, err := sp.ResolveColumn(targetCol); err != nil {
+			a.diagnostics.Unresolved("an assignment target", targetCol)
 			continue
 		}
 

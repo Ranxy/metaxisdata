@@ -115,15 +115,15 @@ cases:
           to_table: __result__
           to_field: b
           relation_type: direct
-          is_temp: true    # A CTE body whose trailing clause groups repeat is a GroupedQuery, so the
-    # nested query-expression path has to unwrap it: the CTE's rows come from the
-    # grouped query, and an unmodelled node here would drop the edge.
+          is_temp: true    # A CTE body that groups a clause against a trailing one is a GroupedQuery
+    # (the spelling runs on the engine too), so the nested query-expression path
+    # has to unwrap it: an unmodelled node here would drop the edge.
     - name: a CTE body that groups its trailing clauses
-      sql: WITH c AS (SELECT a FROM t1 LIMIT 1 ORDER BY a) SELECT a FROM c
+      sql: WITH c AS ((SELECT id FROM t1 LIMIT 1) ORDER BY id) SELECT id FROM c
       expected_edges:
         - from_table: t1
-          from_field: a
+          from_field: id
           to_table: __result__
-          to_field: a
+          to_field: id
           relation_type: direct
           is_temp: true

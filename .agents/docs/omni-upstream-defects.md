@@ -548,48 +548,55 @@ No patch, fork or upstream report, per the policy at the top of this file; the
 input is recorded here so a future reader can tell "Doris feature not modelled"
 from "omni cannot read this statement".
 
-### 12.2 A materialized view's old refresh-trigger spelling does not parse
+### 12.2 A LATERAL VIEW after a derived table does not parse
 
 | Input | Result |
 | --- | --- |
-| `CREATE MATERIALIZED VIEW mv REFRESH ASYNC AS SELECT id FROM t1` | parses (the modern header) |
-| `CREATE MATERIALIZED VIEW mv REFRESH ASYNC EVERY(INTERVAL 1 DAY) AS SELECT id FROM t1` | syntax error at or near `INTERVAL` |
-| `CREATE MATERIALIZED VIEW mv REFRESH ASYNC START('2022-07-25 10:00:00') EVERY(INTERVAL 1 DAY) AS SELECT id FROM t1` | syntax error at or near `2022-07-25 10:00:00` |
+| `SELECT * FROM ev LATERAL VIEW explode(ev.arr) u AS elem` | parses |
+| `SELECT * FROM (SELECT arr FROM ev) d LATERAL VIEW explode(d.arr) u AS elem` | syntax error at or near `LATERAL` |
 
-`doris/parser/mtmv.go` reads the refresh mode and nothing else: `START(...)` and
-`EVERY(...)` have no production, and the `(` after an unhandled `START` falls into
-the view-column parser, which fails on the string token. The same statement parses
-under omni's StarRocks parser (`CreateMTMVStmt.RefreshTrigger` exists there).
+Verified against a live Apache Doris FE **4.1.4** (the engine this repository's
+development environment runs): it accepts the second statement and returns rows, so
+this is valid Doris SQL omni cannot read. The statement hard-fails, which is the
+documented boundary for text the parser rejects, but it is a coverage loss for a
+shape an application may write.
 
-The analyzer refuses its view-body fallback for a header like this rather than
-guessing a name from it (see doris-lineage.md) and fails the statement with this
-error, so a MANUAL_SQL entry carrying the spelling loses its lineage with the parse
-error recorded — not a silent wrong result. Whether any Doris version spells the
-refresh trigger this way is not verified here; the correct spelling is the one that
-parses.
+`LATERAL VIEW OUTER` and a parenthesized `AS (c1)` list are the opposite: the same
+engine rejects both (`extraneous input 'OUTER'`, `extraneous input '('`), so omni's
+rejection matches the engine and neither is a defect.
 
 ### 12.3 `SELECT ... INTO OUTFILE` does not parse
 
 | Input | Result |
 | --- | --- |
-| `SELECT a, b FROM t INTO OUTFILE 'file:///tmp/x.csv'` | syntax error at or near `INTO`, and `*ast.IntoOutfileClause` does not exist in `doris/ast` |
+| `SELECT a, b FROM t INTO OUTFILE 's3://bucket/x.csv'` | syntax error at or near `INTO`, and `*ast.IntoOutfileClause` does not exist in `doris/ast` |
 
-The StarRocks parser accepts the same statement and models it. Doris documents an
-OUTFILE export form, so this is a Doris statement omni cannot read; the analyzer
-hard-fails it, which is the documented boundary for text the parser rejects.
+The StarRocks parser accepts the same statement and models it. The live Doris
+4.1.4 engine **parses** it and fails later, in planning: `Please specify BROKER
+properties or check your local file path` for an `s3://` path, and `Exporting
+results to local disk is not allowed. To enable this feature, you need to add
+`enable_outfile_to_local=true` in fe.conf` for a local path. So the syntax is
+Doris's, and omni cannot read it.
 
 ### 12.4 Checked and *not* defects
 
-- `SELECT * FROM (SELECT arr FROM t) d LATERAL VIEW explode(d.arr) u AS elem` is
-  rejected (`syntax error at or near LATERAL`) while `SELECT * FROM t LATERAL VIEW
-  explode(t.arr) u AS elem` parses. Whether a real Doris accepts a LATERAL VIEW
-  after a derived table is **not** verified here, so this is recorded as an open
-  boundary rather than a defect. `LATERAL VIEW OUTER` is likewise rejected; the AST
-  comments claim that absence was container-verified.
+- The materialized-view refresh spellings omni rejects are ones the engine rejects
+  too. Doris 4.1.4 refuses `REFRESH ASYNC` (`extraneous input 'ASYNC'`, expecting
+  `AUTO`/`COMPLETE`/…), so the 2.1-era `REFRESH ASYNC START(...) EVERY(...)` form is
+  not valid 4.x SQL; the accepted header is `REFRESH AUTO ON SCHEDULE EVERY 1 DAY
+  STARTS '…'`, which omni parses. omni and this engine agree, so there is nothing to
+  record as an omni defect — only the analyzer's own guard, which refuses to build a
+  name out of such a header (see doris-lineage.md).
 - `SELECT * FROM t TABLESAMPLE(1000 ROWS) REPEATABLE 1` parses, while the
-  parenthesized `REPEATABLE(1)` is rejected. `TableRef.Sample.Seed` is therefore
-  reachable, but only through the unparenthesized spelling.
-- `CREATE VIEW v DEFINER = 'u' AS ...` is rejected at `DEFINER`; whether Doris
-  supports `DEFINER` is not verified here. The view-body fallback refuses this
-  header rather than reading `DEFINER` as the view's name (it is an identifier
-  token, not a keyword).
+  parenthesized `REPEATABLE(1)` is rejected. The engine agrees: the unparenthesized
+  spelling is the valid one, so `TableRef.Sample.Seed` is reachable exactly where
+  Doris allows it.
+- `CREATE VIEW v DEFINER = 'u' AS ...` is rejected at `DEFINER`; the engine rejects
+  it too (`mismatched input 'DEFINER' expecting {'(', 'AS', 'COMMENT', 'SELECT',
+  'VALUES', 'WITH'}`). The view-body fallback refuses this header rather than
+  reading `DEFINER` — an identifier token, not a keyword — as the view's name.
+- A declared column list in CTAS (`CREATE TABLE t (a INT, b INT) AS SELECT …`) is
+  rejected by the engine (`Should not define the entire column in CTAS`), while
+  omni's Doris grammar requires types for one. The analyzer reads the names when a
+  list is present (harmless — the engine would reject the statement) and otherwise
+  takes the query's own output aliases, which is what a valid CTAS creates.

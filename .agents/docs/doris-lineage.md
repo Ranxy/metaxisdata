@@ -22,6 +22,28 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 
 `CREATE VIEW` / `CREATE MATERIALIZED VIEW` 的体是 WITH、集合运算或括号查询时,omni 的 CREATE VIEW 语法只接受裸 SELECT,于是 `viewbody.go` 用 `extractViewDDL` 抽出顶层 `AS` 之后的体,再按顶层查询解析。兜底只接管**以 CREATE / ALTER 开头**的语句,且目标名只取紧邻 `VIEW`、用 `.` 分隔的那一段标识符:两者缺一不可——`LATERAL VIEW` 会让普通 SELECT / DML 也含 `VIEW` 关键字(接管它会把真实语法错误换成假的 "view query" 报错),而 `REFRESH ASYNC START(...)`、`DEFINER = 'u'` 这类未建模的头部子句里含**标识符**(`ASYNC` 不是关键字),把名字扫描一路做下去就会把目标写成 `mv.ASYNC`。命中任一种情况即放弃兜底、保留 omni 的原始解析错误。
 
+## 真实引擎核对
+
+用本地 Apache Doris FE **4.1.4** 容器逐条执行(临时库,已删)得到的裁决,是本篇其余结论的事实基础:
+
+| 语句 | 引擎 |
+| --- | --- |
+| `SELECT * FROM (SELECT arr FROM ev) d LATERAL VIEW explode(d.arr) u AS elem` | **接受**(返回行)——omni 拒绝,见 open item 7 |
+| `LATERAL VIEW OUTER …` / `LATERAL VIEW … AS (c1)` | 拒绝(`extraneous input 'OUTER'` / `'('`)——与 omni 一致 |
+| `LATERAL VIEW posexplode(ev.arr) u AS pos, elem` | 接受(多列 `AS` 可用) |
+| `SELECT … INTO OUTFILE 's3://…'` | **语法接受**(planning 阶段因 BROKER 配置报错)——omni 拒绝,见 open item 8 |
+| `TABLESAMPLE(10 PERCENT)` / `(100 ROWS)` / `(100 ROWS) REPEATABLE 1` | 接受;`REPEATABLE(1)` 拒绝 |
+| `QUALIFY rn = 1`(select-list 别名)与 `QUALIFY ROW_NUMBER() OVER (…) = 1` | 都接受 |
+| `INSERT OVERWRITE ev …` | 拒绝;必须写 `INSERT OVERWRITE TABLE ev …` |
+| `CREATE TABLE t (a INT, b INT) AS SELECT …` | 拒绝(`Should not define the entire column in CTAS`)——CTAS 不许声明列清单 |
+| `CREATE TABLE t (k BIGINT, v VARIANT<'id': INT, properties(…)> …)` | 接受——omni 拒绝,见 open item 6 |
+| `CREATE TABLE t (k BIGINT, v ARRAY<VARIANT>) …` | 拒绝(`ARRAY unsupported sub-type: variant`) |
+| `SELECT [ev.id, ev.id] FROM ev` | 拒绝(数组字面量只收常量) |
+| `SELECT v['user']['name'], v.user.name FROM ev` | 都接受且**返回同一个值**——点号路径合法,见 open item 9 |
+| `numbers("number"="2")` 的列名 | `number`(按参数名),不是函数名,见 open item 10 |
+| `CREATE MATERIALIZED VIEW mv REFRESH AUTO ON SCHEDULE EVERY 1 DAY STARTS '…' AS SELECT …` | 语法接受;`REFRESH ASYNC`(2.1 拼写)被 4.x 拒绝 |
+| `mv_infos("database"="…")` | 可查询 |
+
 ## 方言事实(与 StarRocks 的差异)
 
 | 事实 | 后果 | 代码 |
@@ -29,7 +51,7 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 | 括号查询、以及"同一条查询上重复出现的 ORDER BY/LIMIT 组"由 `GroupedQuery{Query, OrderBy, Limit, Offset}` 承载,不是 `ParenSelect{Sel}` | `dispatch` 与 `processQueryNode` 都按 `*nodes.GroupedQuery` 递归进 `Query`;它同时是作用域边界(带 WITH 的组不把 CTE 名提升到组外) | `analyzer.go`(`dispatch`、`processQueryNode`) |
 | 表值函数是 `TableRef.Func`(一个 `*FuncCallExpr`),不是独立 `TableFunctionRef` | `processTableExpr` 先看 `t.Func`:有则注册成查询本地关系(不写注册表、不发明对象),别名缺省用函数名。Doris 不给它列清单,所以它只暴露"函数名"这一列:`FROM t, explode(t.arr) u` 把 `t.arr` 记为 `u.explode` 的来源,`SELECT u.explode …` 能解析;纯字面量调用(`numbers("number" = "10")`)没有可命名的来源,不产边也不报缺口 | `processTableExpr`、`processTableFunction` |
 | `InsertStmt` 没有 `ByName` | 目标列清单永远是位置式:INSERT 的 `Columns` 按序映射到查询的输出列;没有"按名字匹配"可读 | `processInsertStatement` |
-| CTAS 列名来自 `CreateTableStmt.Columns`,Doris 没有 `CTASColumns` | Doris 的 CTAS 列清单每列都带类型,名字从类型化定义里取并**盖过查询自己的输出别名**:`CREATE TABLE t3 (k INT, n VARCHAR(50)) AS SELECT id, name FROM users` 记 `users.id → t3.k`、`users.name → t3.n`;未声明时用查询输出别名 | `ctasColumnNames` |
+| CTAS 列名来自 `CreateTableStmt.Columns`,Doris 没有 `CTASColumns` | Doris 的 CTAS 列清单每列都带类型,名字从类型化定义里取并**盖过查询自己的输出别名**:`CREATE TABLE t3 (k INT, n VARCHAR(50)) AS SELECT id, name FROM users` 记 `users.id → t3.k`、`users.name → t3.n`;未声明时用查询输出别名。两处按位置对不齐的情形**有意不报诊断**:声明 N 列而查询多出输出时,多出的按查询别名落边;重名列落成同目标的两条边——真实引擎本就拒绝这两种语句(`Should not define the entire column in CTAS`),不会静默读错一个合法语句 | `ctasColumnNames` |
 | `UpdateStmt` / `DeleteStmt` 没有 `With` | Doris 没有 `WITH … UPDATE` / `WITH … DELETE`;这种输入是**硬解析失败**,不是缺口,也不是"没有血缘" | 语法层(omni `doris/parser`) |
 | UPDATE 的 SET 目标**可以带限定符**(`UPDATE t1 SET t1.name = t1.other`),StarRocks 直接拒绝这个形状 | 写入目标仍取语句的表(`targetSchema`/`targetTable`),限定符只用来检查该列属于作用域里的关系;`UPDATE t1 AS x SET x.name = x.other` 同样接受,表达式保留别名的拼写。两条语料钉住 | `processUpdateList` |
 | `TableRef.LateralViews` 是**新增血缘** | `LATERAL VIEW gen(args) alias AS c1[, c2]` 把生成器实参读到的每一列映射到 AS 声明的每一列,注册成一个查询本地关系;链式生成器左到右,后者能读前者声明的列。`u.elem` 因此能解析,而不是"未知名字";`generator_lineage_test.go` 钉住单列、多列、通配符与链式四种 | `processLateralViews`、`addGeneratedRelation` |
@@ -40,7 +62,7 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 
 | 形状 | 读取方式 |
 | --- | --- |
-| `TABLESAMPLE(1000 ROWS)` / `TABLESAMPLE(20 PERCENT)` / `REPEATABLE <n>`(`TableRef.Sample`) | 只决定取哪些行,不产生列血缘。omni 接受无括号的 `REPEATABLE <n>`,`REPEATABLE(<n>)` 报错;真实 Doris 是否支持该子句本仓库未离线确认 |
+| `TABLESAMPLE(1000 ROWS)` / `TABLESAMPLE(20 PERCENT)` / `REPEATABLE <n>`(`TableRef.Sample`) | 只决定取哪些行,不产生列血缘。omni 与真实 4.1.4 一致:接受无括号的 `REPEATABLE <n>`,拒绝 `REPEATABLE(<n>)` |
 | `GROUP BY … WITH ROLLUP`(`SelectStmt.GroupByWithRollup`) | 分组键与普通 GROUP BY 同一批;ROLLUP 只多出小计行,不引入新列 |
 | 数组切片 `a[1:2]`(`ArraySliceExpr`)、元素访问 `value[index]`(`ElementAtExpr`)、`STRUCT(…)` / Map 字面量(`StructLiteral`) | 通用表达式走查覆盖;切片的来源是 `a` |
 | `CONVERT(x USING charset)` | 通用表达式走查覆盖 |
@@ -92,12 +114,13 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 1. **MERGE 未建模** — 与 StarRocks 同:报 `not modelled` 缺口而不是产边。要建模得先决定 MERGE 的动作语义,不能自行猜。
 2. **`LOAD` 的 SET/WHERE 无列级血缘** — omni 只把 SET 当原文,分析器只读 target 与 column list(与 StarRocks 同;[lineage-analyzer.md](lineage-analyzer.md) 已登记)。
 3. **APPLICATION_SQL 里的结构性整数会被 ingest gate 拒绝** — `sqlsanitize` 的 N1 规则把每个整数字面量改写成 `?`,不看语法位置,于是 `CREATE TABLE t3 (k INT, n VARCHAR(50)) AS SELECT …` 变成 `VARCHAR(?)`、`SELECT * FROM t TABLESAMPLE(10 PERCENT)` 变成 `TABLESAMPLE(? PERCENT)`;Doris 解析器要求这两处是整数,所以 `backend/api/v1/application_sql_handler.go` 以解析失败拒绝上报——即使分析器读的是原始语句。重写输出在 MYSQL / POSTGRES / STARROCKS / DORIS / MSSQL 上逐字节相同(含 canonical text 与 fingerprint),这是方言中性的位置盲重写,不是 Doris 缺陷(PostgreSQL 只是恰好接受 `TABLESAMPLE BERNOULLI (?)`)。注意 gate 由分析器决定:注册 Doris 之前 `Analyze(DORIS, …)` 返回 `ErrorEngineNotSupported`(不是 `UnsupportedStatementError`),**所有** Doris 应用语句都被拒;现在只剩这些结构性整数形态。修法是位置感知的字面量分类,属跨方言设计变更。已登记在 [backend-open-items.md](backend-open-items.md)。
-4. **没有端到端覆盖** — 集成 harness 只有 PostgreSQL + MySQL;Doris 语料是从 StarRocks 移植并在两边解析器上对比过的,不是在真实 Doris 实例上跑出来的。首次真实运行要确认 `mv_infos()` 的 `QuerySql` 形态与视图体。
+4. **真实引擎的语法裁决已完成,端到端仍未验证** — 语法层已用本地 Apache Doris FE **4.1.4** 容器逐条裁决(结论见 §真实引擎核对;方法:临时库 + 逐条 `mysql -P9030` 执行,库已删)。仍缺的是四条输入路径的端到端入库(需要 PostgreSQL + Doris 集成环境)与真实实例上 `mv_infos()` 的 `QuerySql` 形态确认——该函数本身已实测可查询。
 5. **函数 / 存储过程血缘未覆盖** — 与所有方言同:队列只扫 VIEW / MATERIALIZED_VIEW / MANUAL_SQL / APPLICATION_SQL。
-6. **`VARIANT<…>` schema template 是 omni 解析缺口** — `CREATE TABLE t (k BIGINT, v VARIANT<'id': INT>)`、其 CTAS 形式与 `ALTER TABLE … ADD COLUMN v VARIANT<…>` 都是合法 Doris DDL,但 omni 在 `<` 处报语法错误(裸 `VARIANT` 与 `VARIANT NULL` 正常)。视图 / MV 体不含建表语句,所以这两条路径不受影响;MANUAL_SQL / APPLICATION_SQL 携带这种 DDL 会硬失败(清血缘 + `error_message`),CTAS 形式会整条丢边。明细见 [omni-upstream-defects.md](omni-upstream-defects.md) §12;按不修改政策不 patch 上游。
-7. **另两种 omni Doris 读不了的写法** — 旧版 MV 刷新触发器 `REFRESH ASYNC START('…') EVERY(INTERVAL 1 DAY)`(在 `START` 处报错)与导出语句 `SELECT … INTO OUTFILE '…'`(在 `INTO` 处报错;omni 的 StarRocks parser 反而有 `IntoOutfileClause`)。两者都**硬失败**且错误保留原文,不会产错边;登记见 §12.2 / §12.3。
-8. **`LATERAL VIEW` 的两处形态未经真实引擎裁决** — omni 拒绝"派生表之后的 LATERAL VIEW"与 `LATERAL VIEW OUTER`(后者的 AST 注释自称 container-verified 说 Doris 无 OUTER)。本仓库离线只能确认 omni 的接受/拒绝,判不了真实 Doris;首次真机运行须一并确认。
-9. **生成器实参里的表达式子查询** — `explode((SELECT arr FROM t))` 现在把子查询读到的列作为来源(`t.arr → u.elem`),与 select-list 同一套 `expressionSubquerySources`;该形态是否被真实 Doris 接受未离线确认(不接受也只是多记一条边,不会漏)。
+6. **`VARIANT<…>` schema template 是 omni 解析缺口** — `CREATE TABLE t (k BIGINT, v VARIANT<'id': INT>)`、其 CTAS 形式与 `ALTER TABLE … ADD COLUMN v VARIANT<…>` 都是合法 Doris DDL(4.1.4 实测接受),但 omni 在 `<` 处报语法错误(裸 `VARIANT` 与 `VARIANT NULL` 正常)。视图 / MV 体不含建表语句,所以这两条路径不受影响;MANUAL_SQL / APPLICATION_SQL 携带这种 DDL 会硬失败(清血缘 + `error_message`),CTAS 形式会整条丢边。明细见 [omni-upstream-defects.md](omni-upstream-defects.md) §12;按不修改政策不 patch 上游。
+7. **`LATERAL VIEW` 作用于派生表是 omni 缺口** — `SELECT * FROM (SELECT arr FROM ev) d LATERAL VIEW explode(d.arr) u AS elem` 在真实 4.1.4 上**可执行并返回行**,omni 却在 `LATERAL` 处报语法错误 → 合法语句硬失败(清血缘 + `error_message`)。登记见 §12.2。反面:`LATERAL VIEW OUTER` 与 `AS (c1)` 括号列清单被引擎拒绝(`extraneous input 'OUTER'` / `'('`),omni 的拒绝与引擎一致,不是缺陷。
+8. **`SELECT … INTO OUTFILE` 是 omni 缺口** — 真实 4.1.4 **能解析**该语句(随后在 planning 阶段因 `enable_outfile_to_local` / BROKER 配置失败),omni 在 `INTO` 处报错 → 合法语法硬失败。见 §12.3。
+9. **VARIANT 点号子列路径未建模(唯一会漏血缘的 VARIANT 形状)** — 真实 4.1.4 上 `SELECT v['user']['name'], v.user.name FROM ev` 两种写法返回**同一个值**,证明点号访问是合法的子列路径;而 omni 把 `v.user.name` 解析成普通限定列名(`{Schema: v, Table: user, Column: name}`),分析器报 `unresolved` 缺口、不产边。括号形式(`v['user']['name']` / `v['tags'][1]`)已正确建血。修法:对"限定符不指向任何关系、而首段能作为列解析"的引用回退为"该列 + 子列路径",与 select-list 走同一套解析;属语义决策,尚未实施。
+10. **表值函数暴露的列名是启发式** — 真实 4.1.4 的 `numbers("number"="2")` 暴露的列叫 `number`(按参数名),而分析器按**函数名**命名(StarRocks 遗留下的规则),所以 `SELECT u.number FROM numbers(…) u` 这种合法引用会报 `unresolved`,`u.numbers` 反而"能解析"(引擎会报 Unknown column)。影响面小,记为已知近似。
 
 ## Where things live
 
@@ -106,7 +129,7 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 | 方言包 | `backend/plugin/lineage/doris/{analyzer,expr,predicate,rawsql,viewbody}.go` | `go test ./backend/plugin/lineage/doris/` |
 | 装配 | `backend/plugin/lineage/engines/engines.go`、`engines_test.go` | `go test ./backend/plugin/lineage/engines/` |
 | 共享机制守门 | `backend/plugin/lineage/shared_analysis_test.go`(`dialectPackages` 含 `doris`) | `go test ./backend/plugin/lineage/ -run TestSharedAnalysisStaysShared` |
-| 黄金语料 | `backend/plugin/lineage/doris/testdata/analyze/`(21 套 / 202 例 / 418 条边) | `TestAnalyzeYAML`、`TestCorpusIsFullyAnnotated` |
+| 黄金语料 | `backend/plugin/lineage/doris/testdata/analyze/`(21 套 / 203 例 / 420 条边) | `TestAnalyzeYAML`、`TestCorpusIsFullyAnnotated` |
 | 单语句契约与硬失败 | `hardfail_test.go`(`TestHardFailOnUnparseableSQL`、`TestRejectsMultiStatement`) | 同上 |
 | 缺口边界 | `analyzer_test.go`(`TestUnmodelledStatementsAreGaps`) | 同上 |
 | catalog 读取 | `catalog_lookup_test.go`(`TestCatalogIsReadOncePerRelation`、`TestCatalogFailureIsReportedAsAGap`) | 同上 |

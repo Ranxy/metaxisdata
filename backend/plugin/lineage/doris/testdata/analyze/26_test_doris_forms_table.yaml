@@ -71,10 +71,11 @@ cases:
           to_field: '*'
           relation_type: direct
           is_temp: true
-    # Doris's asynchronous materialized view is refreshed on a schedule; its
-    # body is still the query that defines the target columns.
+    # Doris's asynchronous materialized view is refreshed on a schedule; its body
+    # is still the query that defines the target columns. This is the spelling
+    # Doris 4.x accepts (`REFRESH ASYNC` is the 2.1 form the 4.x grammar rejects).
     - name: an asynchronous materialized view keeps its body's lineage
-      sql: CREATE MATERIALIZED VIEW mv REFRESH ASYNC AS SELECT id, amount FROM t1
+      sql: CREATE MATERIALIZED VIEW mv REFRESH AUTO ON SCHEDULE EVERY 1 DAY STARTS '2030-01-01 00:00:00' AS SELECT id, amount FROM t1
       expected_edges:
         - from_table: t1
           from_field: id
