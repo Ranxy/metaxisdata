@@ -361,3 +361,54 @@ cases:
           to_field: tag
           relation_type: direct
           is_temp: false
+    # A wildcard is one output column when its relation is query-local, and a declared
+    # target list maps output columns positionally — so the relation's own columns have
+    # to fill the list from where the wildcard sits, not all land on its first entry.
+    - name: a wildcard over a derived table fills a declared target list positionally
+      sql: INSERT INTO dst (k, name) SELECT * FROM (SELECT k, name FROM src) d
+      catalog:
+        tables:
+            src:
+                - k
+                - name
+            dst:
+                - k
+                - name
+      expected_edges:
+        - from_table: src
+          from_field: k
+          to_table: dst
+          to_field: k
+          relation_type: direct
+          is_temp: false
+        - from_table: src
+          from_field: name
+          to_table: dst
+          to_field: name
+          relation_type: direct
+          is_temp: false
+    # The base-table control: there `*` expands per catalog column, so the positional
+    # mapping already held, and it has to keep holding.
+    - name: a wildcard over a base table keeps filling a declared target list positionally
+      sql: INSERT INTO dst (k, name) SELECT * FROM src
+      catalog:
+        tables:
+            src:
+                - k
+                - name
+            dst:
+                - k
+                - name
+      expected_edges:
+        - from_table: src
+          from_field: k
+          to_table: dst
+          to_field: k
+          relation_type: direct
+          is_temp: false
+        - from_table: src
+          from_field: name
+          to_table: dst
+          to_field: name
+          relation_type: direct
+          is_temp: false

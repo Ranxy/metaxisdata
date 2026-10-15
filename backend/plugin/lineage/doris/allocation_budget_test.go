@@ -19,8 +19,9 @@ import (
 // carries the two INTO OUTFILE cases, which measure 31 allocations each on top of
 // the pass they are added to, and the two LATERAL VIEW cases, which measure about 930
 // each because the statement is tokenized twice and its body analyzed through a
-// rewritten source. The limit is the measured 31921 rounded up.
-const corpusAllocationBudget = 32200
+// rewritten source; the two wildcard-target cases add about 130 each. The limit is the
+// measured 32185 rounded up to a little over one more case.
+const corpusAllocationBudget = 32500
 
 // TestAnalyzeAllocationBudget keeps the analyzer's allocation count from creeping
 // up. The budget is a count, not a wall-clock number, so it does not depend on
