@@ -320,11 +320,7 @@ func (a *Analyzer) processTableExpr(te nodes.Node) {
 // relation. The function names no stored relation, but it builds its rows from its
 // arguments, so the columns the call reads are the source of its columns:
 // `SELECT * FROM numbers("number" = "10")` reports nothing it can resolve, while a
-// call over a column (`explode(t.arr)`) reports `t.arr`, which used to be dropped
-// with the whole function.
-//
-// Doris gives a table-valued function no column list, so it exposes the column its
-// own name gives it, which is how `SELECT u.numbers FROM numbers(...) u` reads.
+// call written with a column argument reports it.
 func (a *Analyzer) processTableFunction(call *nodes.FuncCallExpr, alias string) {
 	name := funcCallName(call)
 	if name == "" {
@@ -334,7 +330,34 @@ func (a *Analyzer) processTableFunction(call *nodes.FuncCallExpr, alias string) 
 		// An unaliased function is addressed by its own name.
 		alias = name
 	}
-	a.addGeneratedRelation(call, alias, []string{name}, "a table function argument")
+	a.addGeneratedRelation(call, alias, []string{tableFunctionColumn(call, name)}, "a table function argument")
+}
+
+// tableFunctionColumn names the column a FROM table function exposes. Doris gives
+// such a function no column list, and its arguments are named — `numbers("number"
+// = "2")` — where the engine names the exposed column after the argument's key:
+// `SELECT u.number …` works on 4.1.4 and `u.numbers` is `Unknown column 'numbers'
+// in 'u'`, checked against the live engine.
+//
+// Everything else keeps the function's own name as a placeholder, because the
+// schema of a table function this analysis cannot read is exactly unknown: an
+// argument list that is positional or several-deep names nothing, and the engine
+// itself restricts these arguments to literals, so a FROM table function carries
+// no column lineage on a statement Doris accepts. Only the LATERAL VIEW form,
+// which declares its columns, reads a column argument.
+func tableFunctionColumn(call *nodes.FuncCallExpr, name string) string {
+	if len(call.Args) != 1 {
+		return name
+	}
+	argument, ok := call.Args[0].(*nodes.BinaryExpr)
+	if !ok || argument.Op != nodes.BinEq {
+		return name
+	}
+	key, ok := argument.Left.(*nodes.Literal)
+	if !ok || key.Kind != nodes.LitString || key.Value == "" {
+		return name
+	}
+	return key.Value
 }
 
 // processLateralViews registers every LATERAL VIEW generator of a table reference

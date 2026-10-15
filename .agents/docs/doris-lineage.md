@@ -40,7 +40,9 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 | `CREATE TABLE t (k BIGINT, v ARRAY<VARIANT>) …` | 拒绝(`ARRAY unsupported sub-type: variant`) |
 | `SELECT [ev.id, ev.id] FROM ev` | 拒绝(数组字面量只收常量) |
 | `SELECT v['user']['name'], v.user.name FROM ev` | 都接受且**返回同一个值**——点号路径合法,已建模(见 §方言事实) |
-| `numbers("number"="2")` 的列名 | `number`(按参数名),不是函数名,见 open item 10 |
+| `numbers("number"="2")` 的列名 | `number`(按参数名),不是函数名;`u.numbers` 报 `Unknown column`。已按参数 key 建模 |
+| FROM 表值函数的实参 | 只能是**字面量**:`explode_numbers("number" = tv.id)` 报 `mismatched input '.' expecting {')', ','}` → 合法 SQL 上 FROM TVF 不携带列级血缘(列值实参形态 omni 能解析、引擎拒绝) |
+| StarRocks 的 VARIANT 访问 | 是**函数式**(`variant_query(v,'$.user.name')`/`get_variant`);SR 4.1 引擎拒绝点号(`Column 'v.user.name' cannot be resolved`)与括号下标(`cannot subscript type VARIANT`)→ Doris 的路径读法**不镜像**到 SR |
 | `CREATE MATERIALIZED VIEW mv REFRESH AUTO ON SCHEDULE EVERY 1 DAY STARTS '…' AS SELECT …` | 语法接受;`REFRESH ASYNC`(2.1 拼写)被 4.x 拒绝 |
 | `mv_infos("database"="…")` | 可查询 |
 
@@ -121,10 +123,10 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 6. **`VARIANT<…>` schema template 是 omni 解析缺口** — `CREATE TABLE t (k BIGINT, v VARIANT<'id': INT>)`、其 CTAS 形式与 `ALTER TABLE … ADD COLUMN v VARIANT<…>` 都是合法 Doris DDL(4.1.4 实测接受),但 omni 在 `<` 处报语法错误(裸 `VARIANT` 与 `VARIANT NULL` 正常)。视图 / MV 体不含建表语句,所以这两条路径不受影响;MANUAL_SQL / APPLICATION_SQL 携带这种 DDL 会硬失败(清血缘 + `error_message`),CTAS 形式会整条丢边。明细见 [omni-upstream-defects.md](omni-upstream-defects.md) §12;按不修改政策不 patch 上游。
 7. **`LATERAL VIEW` 作用于派生表是 omni 缺口** — `SELECT * FROM (SELECT arr FROM ev) d LATERAL VIEW explode(d.arr) u AS elem` 在真实 4.1.4 上**可执行并返回行**,omni 却在 `LATERAL` 处报语法错误 → 合法语句硬失败(清血缘 + `error_message`)。登记见 §12.2。反面:`LATERAL VIEW OUTER` 与 `AS (c1)` 括号列清单被引擎拒绝(`extraneous input 'OUTER'` / `'('`),omni 的拒绝与引擎一致,不是缺陷。
 8. **`SELECT … INTO OUTFILE` 是 omni 缺口** — 真实 4.1.4 **能解析**该语句(随后在 planning 阶段因 `enable_outfile_to_local` / BROKER 配置失败),omni 在 `INTO` 处报错 → 合法语法硬失败。见 §12.3。
-9. ~~**VARIANT 点号子列路径未建模**~~ — **已落地**。真实 4.1.4 上两种写法返回同一个值,现在由 catalog 的列类型作证后按路径建模,见 §方言事实;`variant_path_test.go`(13 + 6 + 1 例)与 `26_test_doris_forms_table.yaml` 的八例钉住,包括"无证据时仍是 unresolved"、"catalog 否证的限定列让位路径"与"前缀撞名别名"。StarRocks 侧同形状仍未做(其包内仍是旧收集器)。
+9. ~~**VARIANT 点号子列路径未建模**~~ — **已落地**。真实 4.1.4 上两种写法返回同一个值,现在由 catalog 的列类型作证后按路径建模,见 §方言事实;`variant_path_test.go`(13 + 6 + 1 例)与 `26_test_doris_forms_table.yaml` 的八例钉住,包括"无证据时仍是 unresolved"、"catalog 否证的限定列让位路径"与"前缀撞名别名"。StarRocks 侧**刻意不镜像**:SR 4.1 引擎不认点号(`Column 'v.user.name' cannot be resolved`),文档里的子列访问是函数式(`variant_query`/`get_variant` 取 JSONPath),而该函数形式已经通过通用表达式走查把整列记为来源(`starrocks/variant_access_test.go` 钉住);镜像会给 SR 引擎拒绝的语句产边。
 10. **限定读法被 catalog 否证、但没有任何可用路径时,仍保留旧边** — 例:`FROM ev7, ev8 v; SELECT v.name`(两处都有 VARIANT 列 `v`,别名 v 指向 ev8)。引擎报 `v.name is ambiguous: v#1, v#5`(即缺口),分析器仍产出 `ev8.name`(catalog 说该列不存在)。**有意不改**:把这种边改成缺口依赖"注册表列清单完整"这一假设,而 catalog fixture/未重扫的实例都可能是部分视图;当前规则是"只在有更可靠读法时替换,绝不把已有边变成缺口"。彻底修法是让收集层按调用方语境报缺口(需要把 subject 传下去)。
 11. **两种混合写法是 omni 缺口** — `v['user'].name` 与 `v['user']['name'].x`:真实 4.1.4 都接受,omni 在 `.` 处报语法错误(而 `v.user['name']` 能解析且本分析器处理正确)。登记见 [omni-upstream-defects.md](omni-upstream-defects.md) §12.4。
-12. **表值函数暴露的列名是启发式** — 真实 4.1.4 的 `numbers("number"="2")` 暴露的列叫 `number`(按参数名),而分析器按**函数名**命名(StarRocks 遗留下的规则),所以 `SELECT u.number FROM numbers(…) u` 这种合法引用会报 `unresolved`,`u.numbers` 反而"能解析"(引擎会报 Unknown column)。影响面小,记为已知近似。
+12. ~~**表值函数暴露的列名是启发式**~~ — **已落地**:单个命名实参的 key 就是暴露的列名(`numbers("number"="2")` → `number`,引擎实测 `u.number` 可用、`u.numbers` 报 Unknown column),其余形态保留函数名占位(`tableFunctionColumn`,由 `table_function_test.go` 钉住)。**范围说明**:Doris 的 FROM TVF 实参只能是字面量,所以这个列名对合法 SQL 没有可观测的血缘影响;真正读列值的是 LATERAL VIEW(它自己声明列名)。
 
 ## Where things live
 
