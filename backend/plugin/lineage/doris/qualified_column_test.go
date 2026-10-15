@@ -137,7 +137,11 @@ func TestAnUnexplainableVARIANTBaseIsAGap(t *testing.T) {
 //
 // That the reference answers nothing is the pre-existing silence of a query-local
 // relation no source explains, not a gap: the shared tracers report nothing, and only
-// MSSQL asks first (see lineage-semantics.md open item 4).
+// MSSQL asks first (see lineage-semantics.md open item 4). The exclusion is keyed on
+// where a relation comes from rather than on how good its list is, so it also covers a
+// LATERAL VIEW generator whose `AS` list *is* the statement's own words: its column
+// outside that list stays silent too, because a list that can be wrong must never be
+// the ground for a gap and nothing here can tell the two apart.
 func TestAQueryLocalRelationIsNotVerified(t *testing.T) {
 	t.Parallel()
 
@@ -157,6 +161,9 @@ func TestAQueryLocalRelationIsNotVerified(t *testing.T) {
 	}, {
 		name: "a table function column its placeholder does not name",
 		sql:  `SELECT m.name AS n FROM mv_infos("database" = "demo") m`,
+	}, {
+		name: "a LATERAL VIEW column outside its AS list",
+		sql:  "SELECT u.nope AS n FROM ev2 LATERAL VIEW explode(ev2.k) u AS e",
 	}, {
 		name: "a CTE column it does output",
 		sql:  "WITH c AS (SELECT name FROM ev2) SELECT c.name AS n FROM c",
