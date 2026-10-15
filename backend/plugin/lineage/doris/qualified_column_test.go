@@ -58,6 +58,35 @@ func TestAQualifiedColumnTheCatalogDoesNotHaveIsAGap(t *testing.T) {
 			want:  "unresolved reference in a predicate: ev2.nope",
 			edges: []string{"ev2.id -> __result__.id"},
 		},
+		{
+			name:  "a HAVING predicate",
+			sql:   "SELECT k FROM ev2 GROUP BY k HAVING ev2.nope > 1",
+			want:  "unresolved reference in a predicate: ev2.nope",
+			edges: []string{"ev2.k -> __result__.k"},
+		},
+		{
+			name: "a JOIN predicate",
+			sql:  "SELECT ev.id FROM ev JOIN ev7 ON ev.id = ev7.nope",
+			want: "unresolved reference in a predicate: ev7.nope",
+			edges: []string{
+				"ev.id -> __result__.id",
+				"ev.id -> __result__.",
+			},
+		},
+		{
+			name: "a CTE body",
+			sql:  "WITH c AS (SELECT ev2.nope FROM ev2) SELECT * FROM c",
+			want: "unresolved reference in a CTE body: ev2.nope",
+		},
+		{
+			name: "a generator argument",
+			sql:  "SELECT * FROM ev2 LATERAL VIEW explode(ev2.nope) u AS e",
+			want: "unresolved reference in a LATERAL VIEW generator argument: ev2.nope",
+			edges: []string{
+				"ev2.k -> __result__.k",
+				"ev2.name -> __result__.name",
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -96,13 +125,20 @@ func TestAnUnexplainableVARIANTBaseIsAGap(t *testing.T) {
 	require.Empty(t, relations)
 }
 
-// TestAQualifiedReferenceToAQueryLocalRelationIsVerified pins that the rule covers
-// the relations the statement declares for itself: a CTE, a derived table and a
-// table function expose a column list whenever the analyzer can name one, and a
-// reference to a column outside it is a gap rather than an edge to a column the
-// relation does not offer. The table function's single exposed column is the one
-// named by its argument, so `u.number` resolves and `u.nope` does not.
-func TestAQualifiedReferenceToAQueryLocalRelationIsVerified(t *testing.T) {
+// TestAQueryLocalRelationIsNotVerified pins the boundary of the rule: a CTE, a derived
+// table and a table function carry a column list the analyzer builds for itself, which
+// is not evidence about what the engine accepts, so a reference outside it keeps the
+// lenient reading instead of becoming a gap. Both false gaps were engine-checked: the
+// constant column of a CTE really is readable (`WITH c AS (SELECT 1 AS x, k FROM
+// (SELECT 1 AS k) t) SELECT c.x FROM c` returns x on 4.1.4), and so is a column of
+// `mv_infos` the placeholder never names (`SELECT m.name FROM mv_infos("database" =
+// "demo") m` returns the materialized view's name) — the engine rejects only
+// `m.table_name`, which this model never claimed either.
+//
+// That the reference answers nothing is the pre-existing silence of a query-local
+// relation no source explains, not a gap: the shared tracers report nothing, and only
+// MSSQL asks first (see lineage-semantics.md open item 4).
+func TestAQueryLocalRelationIsNotVerified(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -110,38 +146,68 @@ func TestAQualifiedReferenceToAQueryLocalRelationIsVerified(t *testing.T) {
 		sql  string
 		want []string
 	}{{
-		name: "a CTE column outside its output",
-		sql:  "WITH c AS (SELECT name FROM ev2) SELECT c.nope AS n FROM c",
+		name: "a CTE column its lineage does not carry",
+		sql:  "WITH c AS (SELECT 1 AS x, k FROM ev2) SELECT c.x AS n FROM c",
+	}, {
+		name: "a CTE column the query never exposes",
+		sql:  "WITH c AS (SELECT k FROM ev2) SELECT c.nope AS n FROM c",
+	}, {
+		name: "a derived table column its lineage does not carry",
+		sql:  "SELECT d.nope AS n FROM (SELECT name FROM ev2) d",
+	}, {
+		name: "a table function column its placeholder does not name",
+		sql:  `SELECT m.name AS n FROM mv_infos("database" = "demo") m`,
 	}, {
 		name: "a CTE column it does output",
 		sql:  "WITH c AS (SELECT name FROM ev2) SELECT c.name AS n FROM c",
 		want: []string{"ev2.name -> __result__.n"},
 	}, {
-		name: "a derived table column outside its output",
-		sql:  "SELECT d.nope AS n FROM (SELECT name FROM ev2) d",
+		name: "a derived table column it does output",
+		sql:  "SELECT d.name AS n FROM (SELECT name FROM ev2) d",
+		want: []string{"ev2.name -> __result__.n"},
 	}, {
-		name: "a table function column it does not expose",
-		sql:  "SELECT u.nope AS n FROM numbers(\"number\" = \"2\") u",
+		name: "a table function column it does expose",
+		sql:  `SELECT u.number AS n FROM numbers("number" = "2") u`,
 	}}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
 			relations, err := analyzeSQL(tc.sql, variantCatalog())
+			require.NoError(t, err, "a column list the analyzer builds for itself is not evidence for a gap")
 			got := make([]string, 0, len(relations))
 			for _, relation := range relations {
 				got = append(got, edgeText(relation))
 			}
-			if tc.want == nil {
-				var unsupported *lineage.UnsupportedStatementError
-				require.ErrorAs(t, err, &unsupported)
-				require.Contains(t, unsupported.Error(), "unresolved reference in an output column")
-			} else {
-				require.NoError(t, err)
-			}
 			require.ElementsMatch(t, tc.want, got, "sql=%q", tc.sql)
 		})
 	}
+}
+
+// TestTheRegistryAnswersForAQualifiedColumn pins the trade-off the rule rests on. For a
+// qualified reference the registry is the authority, so a relation whose stored column
+// list lags the engine loses that reference — while the same name written unqualified
+// keeps the fallback a single relation has always had, which exists precisely so that
+// stale metadata does not drop a column that does (`TestScope_ResolveColumn_
+// SingleTableKeepsFallback`). The two spellings therefore answer differently, side by
+// side in one statement; the decision and its cost are recorded in
+// .agents/docs/lineage-semantics.md.
+func TestTheRegistryAnswersForAQualifiedColumn(t *testing.T) {
+	t.Parallel()
+
+	// ev2's stored list is (k, name); both spellings name a column it does not store.
+	requireEdgesWithCatalog(t, "SELECT nope AS n FROM ev2", variantCatalog(),
+		[]string{"ev2.nope -> __result__.n"})
+
+	relations, err := analyzeSQL("SELECT nope, ev2.nope FROM ev2", variantCatalog())
+	var unsupported *lineage.UnsupportedStatementError
+	require.ErrorAs(t, err, &unsupported)
+	require.Contains(t, unsupported.Error(), "unresolved reference in an output column: ev2.nope")
+	got := make([]string, 0, len(relations))
+	for _, relation := range relations {
+		got = append(got, edgeText(relation))
+	}
+	require.Equal(t, []string{"ev2.nope -> __result__.nope"}, got)
 }
 
 // TestAQualifiedReferenceWithoutCatalogEvidenceKeepsItsReading pins what the rule

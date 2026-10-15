@@ -7,7 +7,7 @@ Table- and column-level lineage analyzers. The root [AGENTS.md](../../../AGENTS.
 - Each dialect exports a `Registration`; the supported set is assembled explicitly in `engines/` and built into one `lineage.Analyzer` at startup. Nothing self-registers from `init`.
 - Registered dialects: MySQL, TiDB, MariaDB, PostgreSQL, StarRocks, Doris, MSSQL. OceanBase is deliberately absent.
 - A partial analysis reports structured `model.Diagnostic` gaps beside the edges it did find. Do not turn a gap into a silent drop or a hard failure — downstream callers rely on diagnostics to distinguish "no lineage" from "could not analyze".
-- A scope option belongs to the dialect whose engine justifies it, never to everyone: `scope.SetFoldNames` (identifier case) and `scope.SetVerifyQualifiedColumns` (a qualified column is answered from the catalog) are set on a dialect's root scope and inherited by its child scopes. Turning one on for a dialect that cannot support it drops real lineage — see [.agents/docs/lineage-semantics.md](../../../.agents/docs/lineage-semantics.md).
+- A scope option belongs to the dialect whose engine justifies it, never to everyone: `scope.SetFoldNames` (identifier case) and `scope.SetVerifyQualifiedColumns` (a qualified column is answered from the catalog) are set on a dialect's root scope and inherited by its child scopes. The second asks only relations the catalog describes — a query-local relation's column list is the analyzer's own account of what the query exposes, so it is never the ground for a gap. Turning an option on for a dialect that cannot support it drops real lineage — see [.agents/docs/lineage-semantics.md](../../../.agents/docs/lineage-semantics.md).
 
 ## Generated MySQL-Family Analyzers
 

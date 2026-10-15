@@ -80,7 +80,7 @@ func (s *Scope) SetFoldNames(fold bool) {
 
 // SetVerifyQualifiedColumns declares that this scope's engine resolves a qualified
 // reference against the catalog as well as against the relation it names: a
-// reference whose qualifier addresses a relation whose columns are known and which
+// reference whose qualifier addresses a relation the catalog describes and which
 // does not own the column resolves to nothing, the way `column not found` already
 // answers an unqualified name no relation in scope owns (resolveInScope). It is
 // set on a root scope, and every child scope created afterwards inherits it.
@@ -91,11 +91,17 @@ func (s *Scope) SetFoldNames(fold bool) {
 // is bound to a relation and the column is taken on faith — which is what a dialect
 // has to do when the relations it registers are not described by the catalog.
 //
-// A relation the catalog cannot describe keeps the lenient reading even when this is
-// on: ColumnNames reports nil for one whose lookup is absent, and a relation whose
-// lookup answers with no names at all is unknown rather than empty. A column name is
-// compared the way resolveInScope compares it, case-insensitively, because that is
-// the rule a column name is bound by wherever this scope matches one.
+// Only what the catalog describes is asked, and a relation it cannot describe keeps
+// the lenient reading even when this is on: ColumnNames reports nil for one whose
+// lookup is absent, and a relation whose lookup answers with no names at all is
+// unknown rather than empty. A *query-local* relation — a CTE, a derived table, a
+// table function — is not asked either, even when it carries a lookup, because that
+// list is the analyzer's own account of what the query exposes (the names its
+// lineage happens to carry, the placeholder a generator is named after) rather than
+// what the engine accepts. A reference already resolved against the scope it came
+// from is the other scope's to answer. A column name is compared the way
+// resolveInScope compares it, case-insensitively, because that is the rule a column
+// name is bound by wherever this scope matches one.
 func (s *Scope) SetVerifyQualifiedColumns(verify bool) {
 	s.verifyQualifiedColumns = verify
 }
@@ -289,10 +295,12 @@ func (s *Scope) ResolveColumnRefs(colRef ColumnRef) ([]ResolvedColumn, error) {
 	if colRef.Table != "" {
 		if ref, ok := s.FindRelation(RelationKey{Qualifier: colRef.Schema, Name: colRef.Table}); ok {
 			// A described relation that does not own the column answers the same
-			// way an unqualified name no relation owns does. See
-			// SetVerifyQualifiedColumns for the dialects that ask this question and
-			// ownsColumn for the relations that keep the lenient reading.
-			if s.verifyQualifiedColumns && colRef.Column != "" && colRef.Column != model.WildcardColumn &&
+			// way an unqualified name no relation owns does. Only a relation the
+			// catalog describes is asked: see SetVerifyQualifiedColumns for why a
+			// query-local relation is not, and ownsColumn for the relations that keep
+			// the lenient reading.
+			if s.verifyQualifiedColumns && !ref.IsCTE && !ref.IsSubquery &&
+				colRef.Column != "" && colRef.Column != model.WildcardColumn &&
 				!ownsColumn(ref, colRef.Column) {
 				return nil, errors.Errorf("column not found: %s.%s", colRef.Table, colRef.Column)
 			}
@@ -327,8 +335,10 @@ func (s *Scope) ResolveColumnRefs(colRef ColumnRef) ([]ResolvedColumn, error) {
 // lookup at all, or a lookup that answers with no names because the catalog has not
 // described it — cannot rule the column out, so it owns it as far as this question
 // goes: an undescribed relation has to keep the lenient reading, or a partial
-// catalog would turn an edge into a gap. The comparison is the one resolveInScope
-// uses for the same question, case-insensitive.
+// catalog would turn an edge into a gap. Only a relation the catalog describes is
+// asked at all (see SetVerifyQualifiedColumns), so a list computed by an analyzer is
+// never the ground for a gap. The comparison is the one resolveInScope uses for the
+// same question, case-insensitive.
 func ownsColumn(ref *TableRef, column string) bool {
 	names := ref.ColumnNames()
 	if len(names) == 0 {

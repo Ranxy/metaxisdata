@@ -799,15 +799,28 @@ func TestScope_VerifyQualifiedColumns(t *testing.T) {
 		require.Equal(t, "nope", resolved[0].Ref.Column)
 	})
 
-	t.Run("a query-local relation with a complete column list is verified", func(t *testing.T) {
+	t.Run("a query-local relation is not verified", func(t *testing.T) {
+		// Its column list is the analyzer's own account of what the query exposes,
+		// not what the engine accepts, so it is not evidence for a gap.
 		s := NewScope(nil)
 		s.SetVerifyQualifiedColumns(true)
 		derived := tableWithColumns("d", []string{"a"})
 		derived.IsSubquery = true
 		s.AddTable(derived)
 
-		_, err := s.ResolveColumnRefs(ColumnRef{Table: "d", Column: "b"})
-		require.ErrorContains(t, err, "column not found: d.b")
+		resolved, err := s.ResolveColumnRefs(ColumnRef{Table: "d", Column: "b"})
+		require.NoError(t, err)
+		require.Equal(t, "b", resolved[0].Ref.Column)
+
+		cte := tableWithColumns("c", []string{"a"})
+		cte.IsCTE = true
+		withCTE := NewScope(nil)
+		withCTE.SetVerifyQualifiedColumns(true)
+		withCTE.AddTable(cte)
+
+		resolved, err = withCTE.ResolveColumnRefs(ColumnRef{Table: "c", Column: "b"})
+		require.NoError(t, err)
+		require.Equal(t, "b", resolved[0].Ref.Column)
 	})
 
 	t.Run("a child scope inherits the rule", func(t *testing.T) {
