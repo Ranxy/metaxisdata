@@ -22,7 +22,9 @@ phantoms, 0 analyzer errors.
 Everything above is the first run, on the three-engine chain. The MSSQL hop was
 added later and has its own run and its own section: ["The MSSQL hop (fourth
 engine)"](#the-mssql-hop-fourth-engine), before "Remaining limitations". Its
-sections of `verify_chain.sql` are 14-22.
+sections of `verify_chain.sql` are 14-22. The Doris hop is the fifth engine and has
+its own run and section too: ["The Doris hop (fifth
+engine)"](#the-doris-hop-fifth-engine); its sections are 23-32.
 
 ## How to read the numbers
 
@@ -44,7 +46,9 @@ says so.
 F1, F2, F3, F4, F6, F7, F8 and F9 are fixed in this repository; F5 is upstream, and
 this repository now surfaces it instead of hiding it (see F5). Each fix carries
 hermetic unit coverage, and every one was re-verified on this chain after the
-last backend change (see "Post-fix verification" below).
+last backend change (see "Post-fix verification" below). F10 and F11 came out of the
+Doris hop: F10 is an ingestion naming rule the fixture works around and records, F11
+is fixed in the Doris analyzer.
 
 | # | State | Where |
 | --- | --- | --- |
@@ -57,6 +61,8 @@ last backend change (see "Post-fix verification" below).
 | F7 | fixed | `backend/plugin/openlineage/sql_facet_lineage.go` — SQL-facet events are analyzed, not believed |
 | F8 | fixed | `queryLocalWildcardSourceRef` in PostgreSQL **and** the MySQL family (StarRocks already had it) |
 | F9 | fixed | `datasetDatabase` precedence in `backend/plugin/openlineage/resolver.go`, and the SQL path reads the database back from the resolved GUID in `sql_facet_lineage.go` |
+| F10 | worked around in the fixture; open in the resolver | a three-part dataset name on a MySQL-wire engine resolves to `database;schema;table`, so a Doris object picks up a schema segment no sync registers (section 31) |
+| F11 | fixed | `groupByKeys` in `backend/plugin/lineage/doris/expr.go` — a grouping set names its columns, not the grouped expression |
 | A | fixed | `backend/api/v1/lineage_service.go` — an unresolved node renders instead of answering `CodeNotFound` |
 | B | fixed | `RevalidateUnresolvedLineage` + `FindColumnLineageWithUnknownEndpoint`, and `RevalidateContradictedColumnClaims` + `FindColumnLineageWithContradictedColumnClaim`; the maintenance pass runs both, and a schema sync signals `backend/runner/lineagevalidation` |
 
@@ -556,8 +562,13 @@ holds 1 183 raw / 540 distinct `e2e` edges and 115 run rows, of which 30 belong 
 the chain measured here). That is why the table records a basis for every number
 it does claim.
 
-Nothing is left unresolved: §4 and §6 are empty, no endpoint falls back to an
-external dataset, and §5 lists only columns the table has. The two F7 provenance
+This snapshot is the three-engine chain. The MSSQL and Doris hops were added later
+and are measured in their own sections; on the five-engine chain the same section 9
+query returns 800 distinct `e2e` edges, and section 1's hop list has eleven rows.
+
+Nothing in the chain is left unresolved: §4 and §6 are empty, no chain endpoint falls
+back to an external dataset (§12's two are outside it — `external:default:orders` and
+`…orders_daily`, from an unrelated producer), and §5 lists only columns the table has. The two F7 provenance
 claims hold (`dwd_order_fact.paid_amount` and `.refund_amount` come from
 `v_customer_payments`, and `v_customer_360`'s own from itself), relation typing is
 correct (`v_order_line.line_amount → mv_daily_sales.net_line_amount` is
@@ -635,6 +646,99 @@ about lineage and all three fail quietly:
    a connection's password has to template it into the task's environment
    (`{{ conn.mssql_e2e.password }}`, which the DAGs do) rather than look it up.
 
+## The Doris hop (fifth engine)
+
+The chain above visits four engines. Doris was added as the fifth, so that its
+analyzer meets the same fixture the other dialects do: `e2e_07` lands PostgreSQL
+`e2e_dwd`/`e2e_ads` in Doris `e2e_ods` over DataX, `e2e_08` creates the Doris layer
+(six views and one async materialized view), refreshes the matview, and copies the
+view `e2e_ads.v_doris_kpi_daily` into StarRocks — so an edge the Doris analyzer
+produced and an edge an ingested event produced meet at one node.
+
+The run: `install.sh --bootstrap`, then `run_chain.sh` driving all eight DAGs green.
+Airflow's own times for the run (14:06:37 → 14:10:15) are 19 / 5 / 16 / 3 / 20 / 16 /
+15 / 18 s per DAG — 112 s of task time in 218 s of wall clock, because every poll
+`run_chain.sh` makes is an `airflow` CLI call. Then one full sync of `ms-sql-1`,
+`doris-dev-1` and `starrocks-dev-1` and a few seconds for the analysis. Distinct
+counts throughout.
+
+| Check | Result |
+| --- | --- |
+| PG → Doris copy (§23, §24) | 37 edges, one per landed column (23 + 14); **0** shifted mappings |
+| Doris-internal analyzer edges (§23) | 64, over **7 analysed objects** (§26) — six views and the async matview, **0 errors** |
+| Doris → StarRocks (§25) | one row, source `doris-dev-1;e2e_ads;;v_doris_kpi_daily` — the GUID the analyzer owns — 8 column edges |
+| VARIANT sub-path and ARRAY LATERAL VIEW (§29) | `event_props.props` feeds `user_name`/`tier`/`amount` and `event_props.tags` feeds `tag`; the subcolumn never becomes an endpoint |
+| Short CTE column list (§30) | `WITH scored (cid, cname) AS (…)` renames the first two body columns, and the renamed one resolves: `v_customer_sales_join.customer_name → v_customer_sales_cte.top_customer` |
+| Grouping-set keys (§27, §28) | `GROUP BY ROLLUP(c.region, c.country, c.customer_segment)` records the three base columns, never the grouped expression |
+| Addressing (§31, §32) | **0** Doris endpoints carry a schema segment, **0** analyzer edges come from an unregistered relation |
+| Data flow | 300 + 1 921 rows PostgreSQL → Doris; the six-row VARIANT/ARRAY table explodes to 10; the rollup view returns 54 rows; the copied view returns 3 (3 187 056.01) and so does StarRocks |
+
+### F10 — a three-part dataset name on a MySQL-wire engine shifts the GUID
+
+The first run of this hop produced 8 edges whose source was
+`doris-dev-1;e2e_ods;e2e_ads;v_doris_kpi_daily` — an object no sync registers — while
+every row count agreed. The reader's JDBC URL named `e2e_ods` and its table was
+written as `e2e_ads.v_doris_kpi_daily`; the provider's MySQL plugin builds a dataset
+name as `<URL database>.<table>`, so the name carried three parts, and
+`splitDatasetName` reads three parts as database.schema.table. Doris has no schema,
+so the GUID gained a `e2e_ads` schema segment and the copy attached to a second,
+disconnected node. Nothing warns: the instance matched by host and port, so the
+resolver answered "internal".
+
+The fixture now names the database once, in the reader URL (`…/e2e_ads`, table
+`v_doris_kpi_daily`). The two sections that would catch the wrong shape are section
+25 (the source of the StarRocks edge has to be the GUID the analyzer owns) and
+section 31 (no Doris endpoint may carry a schema segment); section 24 is the copy's
+other correctness check, the same-name mapping, and it returns no rows for this
+defect either way. The resolver rule
+itself is unchanged and registered in
+[openlineage-lineage.md](../../.agents/docs/openlineage-lineage.md) as a failure mode:
+a three-part name from a MySQL-wire producer is read as if the engine had schemas.
+This is not the F1 shape (which was about *two*-part names) and not the provider's
+alone: any DataX job that reads a qualified `other_db.table` through a URL naming a
+different database produces it.
+
+### F11 — a grouping set was recorded as the grouped expression
+
+The run showed `v_customer_segment_rollup`'s aggregate edges carrying
+`group_keys: ["ROLLUP(…region,…country,…customer_segment)"]` — the grouped expression
+instead of the columns in it. `groupByKeys` rendered each GROUP BY item's source text,
+and Doris represents `ROLLUP(a, b)` / `CUBE(a, b)` as a function call and
+`GROUPING SETS (…)` as its own node, where PostgreSQL and MSSQL flatten both into the
+columns of every set. Fixed in `backend/plugin/lineage/doris/expr.go`; three corpus
+cases (`GROUP BY ROLLUP` / `CUBE` / `GROUPING SETS`, including a column in two sets
+and the empty set) pin it, and sections 27-28 assert it on the live hop. The *spelling*
+of a key still comes from the object's own definition, and Doris stores a view body
+with every column qualified, so the keys read
+`` `internal`.`e2e_ods`.`c`.`region` `` — the same kind of key PostgreSQL records as
+`l.order_date`.
+
+The analysis was re-run against the Doris objects after the fix (the metahash is the
+definition's, so the analyzer had to be re-queued): the same seven objects, the same
+64 internal edges, the new keys.
+
+### Three environment facts this hop cost time on
+
+1. **A DataX rdbms reader refuses an empty password.** Doris root has none here, and
+   `mysqlreader` fails outright with `[password] is a required parameter`, so the
+   fixture creates the read-only user `e2e_reader` for the copy out of Doris. The
+   writer side does not need it: `doriswriter` is a Stream Load over HTTP with basic
+   auth, which accepts the empty password.
+2. **Stream Load is an HTTP API, not a MySQL statement.** The writer needs the FE's
+   HTTP port (8031) in `loadUrl` and the MySQL port (9031) in `connection.jdbcUrl`;
+   the FE answers the load with a 307 to a BE, whose own HTTP port is reachable from
+   the host. One FE and one BE also means every table the *Doris* fixture creates is
+   `replication_num=1` / `BUCKETS 1`: the engine refuses the default replication of 3
+   with *"replication num should be less than the number of available backends"*. (The
+   StarRocks tables are a different deployment with three buckets.)
+3. **A fresh async materialized view is empty until it refreshes.** `e2e_08` issues
+   `REFRESH MATERIALIZED VIEW … COMPLETE` and waits for
+   `mv_infos().SyncWithBaseTables = 1` before the copy runs; without that the copy
+   reads a view over an empty matview, lands no rows, and the run looks broken where
+   it is only unsynchronised. The matview is also the one Doris object the schema sync
+   reads from a different catalog: `information_schema.tables` reports it as a
+   `BASE TABLE` and its body only exists in `mv_infos()`.
+
 ## Remaining limitations
 
 1. **View and materialized-view column claims are not validated.** Only a TABLE
@@ -700,7 +804,7 @@ about lineage and all three fail quietly:
 ```bash
 MSSQL_SA_PASSWORD=… ./install.sh --bootstrap
 ./run_chain.sh
-python3 tools/trigger_sync.py --email … --password … ms-sql-1
+python3 tools/trigger_sync.py --email … --password … ms-sql-1 doris-dev-1 starrocks-dev-1
 PGPASSWORD=dev psql -h localhost -U dev -d metaxisdata -f verify_chain.sql
 ```
 
@@ -713,6 +817,14 @@ and external endpoints, and the run totals.
 
 For the MSSQL hop, sections 4, 6, 15 and 21 must be empty and the first number of
 section 22 must be 0; section 14 has to show all three rows with a non-zero count,
-and section 19 has to name exactly the three boundary objects. The analysis runs
-behind the sync, so `verify_chain.sql` on its own is not the gate: the objects are
-what it reads.
+and section 19 has to name exactly the three boundary objects.
+
+For the Doris hop, sections 4, 6, 24, 28, 31 and 32 must be empty; section 23 has to
+show all three rows with a non-zero count, section 25 one source that is the view the
+analyzer owns with 8 column edges, section 26 seven objects with no error, section 27
+the three base columns as keys, section 29 the five VARIANT/LATERAL rows and section 30
+the renamed CTE column. The analysis runs behind the sync, so `verify_chain.sql` on its
+own is not the gate: the objects are what it reads. Two of these sections read the
+analyzer's output, so a change to the Doris analyzer needs the objects re-queued (delete
+their `column_lineage_version` rows and restart the server, or change their definitions)
+— a definition that did not change is not re-analysed.

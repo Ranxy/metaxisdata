@@ -2,6 +2,7 @@
 --   MySQL e2e_ods -> PG e2e(e2e_ods) -> PG e2e(e2e_dwd/e2e_ads)
 --     -> StarRocks e2e_ods/e2e_ads  and  -> MSSQL e2e(e2e_ods/e2e_dwd/e2e_ads)
 --     -> StarRocks e2e_ods/e2e_ads (from the MSSQL view)
+--     -> Doris e2e_ods/e2e_ads  and  -> StarRocks e2e_ods/e2e_ads (from the Doris view)
 --
 -- Run against the metaxisdata metadata database:
 --   PGPASSWORD=dev psql -h localhost -U dev -d metaxisdata -f verify_chain.sql
@@ -22,6 +23,9 @@ SELECT CASE
          WHEN source_guid LIKE 'test-pg-1%' AND target_guid LIKE 'ms-sql-1%' THEN '5 pg -> mssql (DataX/OL)'
          WHEN source_guid LIKE 'ms-sql-1%' AND target_guid LIKE 'ms-sql-1%' THEN '6 mssql internal (analyzer)'
          WHEN source_guid LIKE 'ms-sql-1%' AND target_guid LIKE 'starrocks%' THEN '7 mssql -> starrocks (DataX/OL)'
+         WHEN source_guid LIKE 'test-pg-1%' AND target_guid LIKE 'doris-dev-1%' THEN '8 pg -> doris (DataX/OL)'
+         WHEN source_guid LIKE 'doris-dev-1%' AND target_guid LIKE 'doris-dev-1%' THEN '9 doris internal (analyzer)'
+         WHEN source_guid LIKE 'doris-dev-1%' AND target_guid LIKE 'starrocks%' THEN '10 doris -> starrocks (DataX/OL)'
          ELSE 'other'
        END AS hop,
        count(*) AS edges
@@ -297,3 +301,136 @@ SELECT (SELECT count(*) FROM column_lineage
        (SELECT count(*) FROM column_lineage_version
         WHERE meta_guid IN ('ms-sql-1;e2e;e2e_ads;usp_refresh_kpi',
                             'ms-sql-1;e2e;e2e_dwd;fn_region_net')) AS analysis_rows_for_routines;
+
+-- Sections 23-32 are the Doris hop's. They rest on two facts the MSSQL sections do
+-- not: a Doris object is addressed by three parts (instance;database;;name) because
+-- Doris has no schema, and the engine stores a view definition with every column
+-- qualified by its catalog and database (`internal`.`e2e_ods`.`c`.`region`), which
+-- the analyzer has to read back as a relation in the same database.
+
+\echo ''
+\echo '=== 23. the Doris hop: distinct edges per pair'
+SELECT CASE
+         WHEN source_guid LIKE 'test-pg-1%' AND target_guid LIKE 'doris-dev-1%' THEN '8 pg -> doris (DataX/OL)'
+         WHEN source_guid LIKE 'doris-dev-1%' AND target_guid LIKE 'doris-dev-1%' THEN '9 doris internal (analyzer)'
+         WHEN source_guid LIKE 'doris-dev-1%' AND target_guid LIKE 'starrocks%' THEN '10 doris -> starrocks (DataX/OL)'
+         ELSE 'other'
+       END AS hop,
+       count(*) AS edges
+FROM (SELECT DISTINCT source_guid, source_column, target_guid, target_column
+      FROM column_lineage
+      WHERE source_guid LIKE 'doris-dev-1%' OR target_guid LIKE 'doris-dev-1%') e
+GROUP BY 1 ORDER BY 1;
+
+\echo ''
+\echo '=== 24. the PG -> Doris copy is a same-name, same-column mapping'
+-- Like section 15: the copy lists every column explicitly and maps them
+-- positionally, so only a source/target name comparison catches a shifted mapping.
+SELECT DISTINCT source_column, target_column
+FROM column_lineage
+WHERE target_guid IN ('doris-dev-1;e2e_ods;;dwd_customer_360',
+                      'doris-dev-1;e2e_ods;;ads_daily_sales')
+  AND source_column <> target_column;
+
+\echo ''
+\echo '=== 25. the edge into StarRocks starts at the Doris VIEW the analyzer owns'
+-- One row with three numbers: one distinct source, that source being the view's GUID,
+-- and eight column edges (distinct, so running the chain again does not inflate it).
+-- A producer that wrote the three-part name F10 describes would show up here as a
+-- second source or as source_is_the_analyzer_view = false, and section 31 forbids the
+-- shifted GUID outright.
+SELECT count(DISTINCT source_guid) AS sources,
+       bool_and(source_guid = 'doris-dev-1;e2e_ads;;v_doris_kpi_daily') AS source_is_the_analyzer_view,
+       count(DISTINCT source_column || '|' || target_column) AS column_edges
+FROM column_lineage
+WHERE target_guid = 'starrocks-dev-1;e2e_ods;;doris_kpi_daily';
+
+\echo ''
+\echo '=== 26. the Doris analyzer ran on every e2e analysable object, with no errors'
+-- 5 = VIEW (6 of them), 6 = MATERIALIZED VIEW (the async one). The two fixture
+-- databases are named explicitly, and so is the instance: another engine also has
+-- `e2e_ods`/`e2e_ads` databases, and `doris-dev-1;e2e%` would also match any other
+-- database someone left on the instance.
+SELECT meta_type, count(*) AS objects, count(error_message) AS with_error
+FROM column_lineage_version
+WHERE split_part(meta_guid, ';', 1) = 'doris-dev-1'
+  AND split_part(meta_guid, ';', 2) IN ('e2e_ods', 'e2e_ads')
+GROUP BY 1 ORDER BY 1;
+
+\echo ''
+\echo '=== 27. a grouping-set key names the columns, not the grouped expression'
+-- `GROUP BY ROLLUP(a, b)` and `GROUP BY a, b WITH ROLLUP` group by the same columns;
+-- the first used to record the grouped expression itself as one key (F11).
+SELECT DISTINCT cl.target_column, t.value ->> 'expression' AS expression,
+       t.value -> 'group_keys' AS group_keys
+FROM column_lineage cl
+CROSS JOIN LATERAL jsonb_array_elements(cl.transformation) AS t(value)
+WHERE cl.target_guid = 'doris-dev-1;e2e_ads;;v_customer_segment_rollup'
+  AND t.value ->> 'operation' = 'AGGREGATE'
+ORDER BY 1;
+
+\echo ''
+\echo '=== 28. no Doris e2e grouping key names the grouped expression'
+-- Must be empty: a key may be a column (however qualified) and never ROLLUP/CUBE/
+-- GROUPING SETS text. Section 27 shows the shape; this covers every object.
+SELECT DISTINCT cl.target_guid, k.group_key
+FROM column_lineage cl
+CROSS JOIN LATERAL jsonb_array_elements(cl.transformation) AS t(value)
+CROSS JOIN LATERAL jsonb_array_elements_text(t.value -> 'group_keys') AS k(group_key)
+WHERE cl.target_guid LIKE 'doris-dev-1;%'
+  AND split_part(cl.target_guid, ';', 2) IN ('e2e_ods', 'e2e_ads')
+  AND k.group_key ~* '(rollup|cube|grouping[_ ]?sets)'
+ORDER BY 1, 2;
+
+\echo ''
+\echo '=== 29. the VARIANT sub-path and the ARRAY LATERAL VIEW keep their own column'
+-- Doris stores the body as `props['user']['name']` and an `explode(tags)` LATERAL VIEW
+-- over a derived table. A sub-path selects inside one column, so that column is the
+-- whole source, and the LATERAL VIEW's declared column comes from the array it
+-- exploded: five rows, all from event_props.
+SELECT DISTINCT cl.source_guid, cl.source_column, cl.target_column
+FROM column_lineage cl
+WHERE cl.meta_guid = 'doris-dev-1;e2e_ads;;v_event_props_exploded'
+ORDER BY 1, 2, 3;
+
+\echo ''
+\echo '=== 30. a CTE with a short declared column list is exposed positionally'
+-- `WITH scored (cid, cname) AS (SELECT customer_id, customer_name, ...)` renames the
+-- first two body columns and leaves the rest as the body aliased them. The edge that
+-- proves the rename is the one below; a name the analyzer invented would appear as a
+-- source that is not a registered object (section 32), and a name it missed as no row.
+SELECT DISTINCT cl.source_guid, cl.source_column, cl.target_column
+FROM column_lineage cl
+WHERE cl.meta_guid = 'doris-dev-1;e2e_ads;;v_customer_sales_cte'
+  AND cl.target_column = 'top_customer'
+ORDER BY 1, 2, 3;
+
+\echo ''
+\echo '=== 31. no Doris object is addressed with a schema segment'
+-- Must be empty, and this is the gate for F10: Doris has no schema, so an edge naming
+-- `doris-dev-1;e2e_ods;e2e_ads;…` is a shifted three-part dataset name
+-- (`<URL database>.<qualified table>`) that no synced object has. Section 25 shows the
+-- source it must not appear on.
+SELECT DISTINCT guid FROM (
+  SELECT source_guid AS guid FROM column_lineage
+  WHERE source_guid LIKE 'doris-dev-1%' OR target_guid LIKE 'doris-dev-1%'
+  UNION
+  SELECT target_guid FROM column_lineage
+  WHERE source_guid LIKE 'doris-dev-1%' OR target_guid LIKE 'doris-dev-1%'
+) g
+WHERE split_part(guid, ';', 1) = 'doris-dev-1' AND split_part(guid, ';', 3) <> ''
+ORDER BY 1;
+
+\echo ''
+\echo '=== 32. every source of a Doris analyzer edge is a registered object'
+-- Must be empty. The analyzer only ever records a relation it resolved, so a source
+-- here that the registry does not know is a name it invented. External datasets are
+-- excluded because an analyzer edge never passes through the resolver, so one
+-- reaching here would be a different defect than this section judges.
+SELECT DISTINCT cl.source_guid
+FROM column_lineage cl
+WHERE cl.meta_guid LIKE 'doris-dev-1;%'
+  AND split_part(cl.meta_guid, ';', 2) IN ('e2e_ods', 'e2e_ads')
+  AND cl.source_guid NOT LIKE 'external:%'
+  AND NOT EXISTS (SELECT 1 FROM meta_registry_resource m WHERE m.guid = cl.source_guid)
+ORDER BY 1;

@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Run the six-hop e2e chain in order, waiting for each DAG to finish.
+# Run the eight-hop e2e chain in order, waiting for each DAG to finish.
 #
 # The hops are not wired together with cross-DAG dependencies: hop 3 reads the
-# PostgreSQL tables that hop 2 writes, and hop 6 reads the MSSQL views that hop 5
-# creates, so firing them concurrently can copy a half-loaded table. This script
-# makes the documented order executable.
+# PostgreSQL tables that hop 2 writes, hop 6 reads the MSSQL views that hop 5
+# creates, and hop 8 reads the Doris tables hop 7 loads (its own first task creates
+# the views over them), so firing them concurrently can copy a half-loaded table.
+# This script makes the documented order executable.
 #
 #   ./run_chain.sh              # trigger and wait, fail on the first failure
 #   TIMEOUT=600 ./run_chain.sh  # per-DAG wait budget in seconds (default 900)
@@ -14,7 +15,8 @@ AIRFLOW_DIR="${AIRFLOW_DIR:-/home/ran/pycode/airflow}"
 TIMEOUT="${TIMEOUT:-900}"
 STAMP="$(date +%Y%m%dT%H%M%S)"
 DAGS=(e2e_01_mysql_to_pg e2e_02_pg_transform e2e_03_pg_to_sr e2e_04_sr_transform
-      e2e_05_pg_to_mssql e2e_06_mssql_to_sr)
+      e2e_05_pg_to_mssql e2e_06_mssql_to_sr
+      e2e_07_pg_to_doris e2e_08_doris_transform)
 
 airflow() { (cd "$AIRFLOW_DIR" && uv run airflow "$@"); }
 

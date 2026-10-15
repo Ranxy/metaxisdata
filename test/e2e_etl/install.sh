@@ -3,7 +3,7 @@
 # bootstrap the database instances.
 #
 #   ./install.sh              # deploy DAGs + DataX jobs + fixtures
-#   ./install.sh --bootstrap  # also load the MySQL fixture and create the PG and MSSQL databases
+#   ./install.sh --bootstrap  # also load the MySQL fixture and create the PG, MSSQL and Doris databases
 #
 # Airflow Home is /home/ran/airflow; the fixture is deployed to
 # $AIRFLOW_HOME/e2e_etl and the DAG files to $AIRFLOW_HOME/dags.
@@ -26,6 +26,7 @@ MYSQL_CONTAINER="${MYSQL_CONTAINER:-mysql8-db-1}"
 MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-rootadmin}"
 PG_CONTAINER="${PG_CONTAINER:-pg16-db-1}"
 SR_CONTAINER="${SR_CONTAINER:-starrocks}"
+DORIS_CONTAINER="${DORIS_CONTAINER:-doris-fe}"
 
 airflow() { (cd "$AIRFLOW_DIR" && uv run airflow "$@"); }
 
@@ -70,6 +71,10 @@ bootstrap() {
   echo "== bootstrap StarRocks e2e_ods/e2e_ads (empty tables)"
   docker exec -i "$SR_CONTAINER" mysql -uroot -h127.0.0.1 -P9030 < "$SRC/starrocks/10_ods_ddl.sql"
   docker exec -i "$SR_CONTAINER" mysql -uroot -h127.0.0.1 -P9030 < "$SRC/starrocks/20_ads_ddl.sql"
+
+  echo "== bootstrap Doris e2e_ods/e2e_ads (landing tables + the analyzer layer)"
+  docker exec -i "$DORIS_CONTAINER" mysql -uroot -h127.0.0.1 -P9030 < "$SRC/doris/10_ods_ddl.sql"
+  docker exec -i "$DORIS_CONTAINER" mysql -uroot -h127.0.0.1 -P9030 < "$SRC/doris/20_ads_ddl.sql"
 
   echo "== bootstrap MSSQL database e2e (empty schemas)"
   if [ -z "$MSSQL_PASSWORD" ]; then
@@ -130,7 +135,7 @@ python3 "$SRC/tools/gen_datax_jobs.py" >/dev/null
 
 echo "== deploy fixtures to $DEST"
 mkdir -p "$DEST"
-for d in mysql pg starrocks mssql datax tools; do
+for d in mysql pg starrocks mssql doris datax tools; do
   mkdir -p "$DEST/$d"
   cp -r "$SRC/$d/." "$DEST/$d/"
 done
@@ -161,6 +166,8 @@ Run order (all DAGs are manual, schedule=None):
   4) e2e_04_sr_transform  StarRocks e2e_ads views + materialized view
   5) e2e_05_pg_to_mssql   PG e2e_dwd/e2e_ads -> MSSQL e2e_ods, then the MSSQL layer
   6) e2e_06_mssql_to_sr   MSSQL e2e_ads.v_kpi_daily -> StarRocks
+  7) e2e_07_pg_to_doris   PG e2e_dwd/e2e_ads -> Doris e2e_ods
+  8) e2e_08_doris_transform  the Doris e2e_ads layer, then Doris e2e_ads.v_doris_kpi_daily -> StarRocks
 
 Trigger with:
   cd $AIRFLOW_DIR && uv run airflow dags trigger e2e_01_mysql_to_pg
