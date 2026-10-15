@@ -1,6 +1,8 @@
 name: TestDorisForms_Table
-# Syntax Doris accepts that the StarRocks grammar does not. Each case pins the
-# lineage the new shape must keep producing, not merely that it parses.
+# Doris syntax this dialect's analyzer must model: shapes the StarRocks corpus does
+# not exercise, either because Doris spells them differently or because the
+# StarRocks grammar rejects them. Each case pins the lineage the shape produces,
+# not merely that it parses.
 cases:
     # Doris declares ROLLUP on the GROUP BY clause; the grouping keys are the
     # same, so the aggregate edge is unchanged.
@@ -86,3 +88,34 @@ cases:
           to_field: amount
           relation_type: direct
           is_temp: false
+    # A VARIANT column is read through a path. The path selects inside one column,
+    # so that column is the source of the output column — the subcolumn is not a
+    # registry object and must never become an edge endpoint of its own.
+    - name: a VARIANT subcolumn path reads the column it indexes
+      sql: SELECT v['user']['name'] AS n FROM events
+      expected_edges:
+        - from_table: events
+          from_field: v
+          to_table: __result__
+          to_field: n
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: v['user']['name']
+    # An array element inside a VARIANT value is the same shape; Doris array
+    # indexes start at 1, and the index is a literal either way.
+    - name: a VARIANT array element reads the column it indexes
+      sql: SELECT v['tags'][1] AS tag FROM events
+      expected_edges:
+        - from_table: events
+          from_field: v
+          to_table: __result__
+          to_field: tag
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: v['tags'][1]

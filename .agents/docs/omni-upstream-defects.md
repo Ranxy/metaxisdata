@@ -511,3 +511,39 @@ the dialect normalizes every node through `nodeOrNil` before it dereferences one
   which is a different complaint). Unchanged on both pins.
 - §9.4 quotes the BOM lexer error as `syntax error at or near "\ufeff"`; the message is
   `syntax error at or near "\ufeffSELECT"`.
+
+## 12. Doris parser: `VARIANT<…>` schema templates are rejected
+
+Gathered while writing `backend/plugin/lineage/doris` against the same pin, with a
+throwaway probe deleted afterwards, and confirmed against the official data-type
+reference (the Schema Template form is documented there, so the input is valid
+Doris, not a dialect mistake). The dialect's own record is
+[doris-lineage.md](doris-lineage.md).
+
+### 12.1 A VARIANT schema template does not parse
+
+| Input | Result |
+| --- | --- |
+| `CREATE TABLE t (k BIGINT, v VARIANT)` | parses (a bare VARIANT column, `NULL` modifier included) |
+| `CREATE TABLE t (k BIGINT, v VARIANT<'id': INT>)` | syntax error at or near `<` |
+| `CREATE TABLE t (k BIGINT, v VARIANT<properties('variant_max_subcolumns_count' = '2048')>)` | syntax error at or near `<` |
+| `CREATE TABLE t2 (k BIGINT, v VARIANT<'id': INT>) AS SELECT k, v FROM events` | syntax error at or near `<` — the CTAS form loses the query's lineage too |
+| `ALTER TABLE t ADD COLUMN v2 VARIANT<'x': STRING>` | syntax error at or near `<` |
+
+`doris/parser/datatypes.go` maps `kwVARIANT` to the type name `VARIANT` and stops
+there: the `<` of the schema template is left to the statement grammar, which has
+no production for it. The type name itself is therefore readable — only the
+template is not.
+
+Consequences, in the analyzer's terms: a view or materialized-view body never
+contains a `CREATE TABLE`, so the registered VIEW / MATERIALIZED_VIEW paths are
+unaffected. A MANUAL_SQL or APPLICATION_SQL statement that carries such DDL is a
+**hard parse failure**: its stored lineage is cleared and `error_message` records
+the parse error, which is the documented boundary for text the parser cannot read
+("failed to parse Doris SQL: syntax error at or near `<`"). A CTAS with a schema
+template is the one case that loses real lineage — the target columns are known
+but the statement is discarded whole.
+
+No patch, fork or upstream report, per the policy at the top of this file; the
+input is recorded here so a future reader can tell "Doris feature not modelled"
+from "omni cannot read this statement".

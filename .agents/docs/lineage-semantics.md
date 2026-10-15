@@ -151,11 +151,11 @@ Implementation: `resolveUnqualified` walks outward and stops at the first scope 
 | PostgreSQL | 40 | 250 |
 | MySQL (corpus shared with TiDB and MariaDB) | 24 | 226 |
 | StarRocks | 20 | 185 |
-| Doris | 21 | 196 |
+| Doris | 21 | 198 |
 | MSSQL | 14 | 143 |
 | TiDB (dialect suite, on top of the shared corpus) | 1 | 15 |
 | MariaDB (dialect suite, on top of the shared corpus) | 1 | 20 |
-| **total** | **121** | **1035** |
+| **total** | **121** | **1037** |
 
 ### StarRocks
 
@@ -183,7 +183,7 @@ Implementation: `resolveUnqualified` walks outward and stops at the first scope 
 
 **The one shape that adds lineage: `LATERAL VIEW`.** `TableRef.LateralViews` is Doris-only, and `LATERAL VIEW generator(args) alias AS c1[, c2]` maps every column the generator's arguments read onto every column the `AS` list declares, registered as a query-local relation. It is a query-local relation like any other: never an edge endpoint — `u.elem` resolves to `t.arr`, which the shared temp tracing flattens to the base table. A generator whose arguments hold no resolvable column (a literal-only call) contributes no edge, because it has no source this analysis can name, while one that does resolves instead of being reported as an unknown name. A chain of generators applies left to right, so a later generator can read the columns an earlier one declared.
 
-**Doris-only syntax that adds no semantics:** `TABLESAMPLE(...)` is a row set (`TableRef.Sample`); `GROUP BY … WITH ROLLUP` carries the same grouping keys as plain `GROUP BY` (`SelectStmt.GroupByWithRollup` only adds subtotal rows); array slice `a[1:2]`, element access `value[index]`, `STRUCT`/Map literals and `CONVERT(x USING y)` are covered by the generic expression walk. `COPY INTO` and `LOAD` follow StarRocks' file-source and column-list rules, and `LOAD`'s `SET` is still raw text with no column lineage.
+**Doris-only syntax that adds no semantics:** `TABLESAMPLE(...)` is a row set (`TableRef.Sample`); `GROUP BY … WITH ROLLUP` carries the same grouping keys as plain `GROUP BY` (`SelectStmt.GroupByWithRollup` only adds subtotal rows); array slice `a[1:2]`, element access `value[index]`, `STRUCT`/Map literals and `CONVERT(x USING y)` are covered by the generic expression walk. A `VARIANT` column adds nothing at the type level — the analyzer records column edges and never reads a column's type — and its documented subcolumn path (`v['user']['name']`, `v['tags'][1]`) selects inside one column, so that column stays the whole source of the output column and the subcolumn never becomes an endpoint. `COPY INTO` and `LOAD` follow StarRocks' file-source and column-list rules, and `LOAD`'s `SET` is still raw text with no column lineage. `VARIANT<…>` schema templates are an omni parse gap, recorded in [omni-upstream-defects.md](omni-upstream-defects.md) §12.
 
 **Where its input text differs from StarRocks:** a Doris materialized view arrives as `mv_infos("database"=?)`'s `QuerySql` — a **bare query body**, not the whole `SHOW CREATE MATERIALIZED VIEW` statement StarRocks stores — so the runner's `isCompleteStatement` passthrough never fires for it and it is always wrapped as `CREATE MATERIALIZED VIEW <name> AS <body>`. When a view or MV body is a `WITH`, a set operation or a parenthesized query, omni's `CREATE VIEW` production accepts only a bare `SELECT`, so `viewbody.go` extracts the body after the top-level `AS` and parses it as a top-level query.
 
