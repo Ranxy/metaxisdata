@@ -316,20 +316,73 @@ func containsAggregateCall(expr nodes.Node) bool {
 	return found
 }
 
-// groupByKeys renders the GROUP BY items of a query specification in source
-// order, the way this analyzer renders PARTITION BY and ORDER BY. A positional
-// key stays "1" and an alias stays the alias, because that is what the query
-// wrote. GROUP BY ... WITH ROLLUP has no representation here; the flag is not
-// part of a key list.
+// groupByKeys renders the columns a GROUP BY groups by, in source order, the way
+// this analyzer renders PARTITION BY and ORDER BY. A positional key stays "1" and
+// an alias stays the alias, because that is what the query wrote. GROUP BY ...
+// WITH ROLLUP has no representation here; the flag is not part of a key list.
+//
+// A grouping set — `ROLLUP(a, b)`, `CUBE(a, b)` or `GROUPING SETS ((a, b), (a))` —
+// is a set of groupings rather than one key list, and the model has no way to say
+// that, so the item names every column it groups by: the part a consumer of the
+// lineage can act on, and the same names the `GROUP BY a, b WITH ROLLUP` spelling
+// of the same query produces. Recording the node's own text named the grouped
+// expression ("ROLLUP(a,b)") instead of the columns in it, which is the shape the
+// PostgreSQL and MSSQL dialects also flatten. A set nested inside another
+// (`GROUPING SETS (ROLLUP(a, b), (c))`) is not flattened: omni's Doris grammar
+// rejects that spelling, so no engine-valid statement reaches here with one.
 func (a *Analyzer) groupByKeys(items []nodes.Node) []string {
 	if len(items) == 0 {
 		return nil
 	}
 	keys := make([]string, 0, len(items))
+	seen := make(map[string]struct{}, len(items))
+	// An item that renders to nothing — the empty set of
+	// `GROUPING SETS ((a), ())` — is a grouping with no column, so it contributes
+	// no key, and a column the query names twice is still one key.
+	add := func(names ...string) {
+		for _, name := range names {
+			if name == "" {
+				continue
+			}
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			keys = append(keys, name)
+		}
+	}
 	for _, item := range items {
-		keys = append(keys, a.exprTextOf(item))
+		switch grouped := item.(type) {
+		case *nodes.GroupingSetsExpr:
+			for _, set := range grouped.Sets {
+				add(a.nodeTexts(set)...)
+			}
+		case *nodes.FuncCallExpr:
+			name := strings.ToUpper(funcCallName(grouped))
+			if name != "ROLLUP" && name != "CUBE" {
+				add(a.exprTextOf(item))
+				continue
+			}
+			add(a.nodeTexts(grouped.Args)...)
+		default:
+			add(a.exprTextOf(item))
+		}
 	}
 	return keys
+}
+
+// nodeTexts renders a list of nodes in source order. A node with no usable source
+// span renders to nothing and is left out; the empty set of
+// `GROUPING SETS ((a), ())` reaches here as an empty list.
+func (a *Analyzer) nodeTexts(items []nodes.Node) []string {
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		out = append(out, a.exprTextOf(item))
+	}
+	return out
 }
 
 // containsGroupAggregate reports whether the expression contains an aggregate

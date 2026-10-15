@@ -21,9 +21,15 @@ import (
 // each because the statement is tokenized twice and its body analyzed through a
 // rewritten source; the two wildcard-target cases add about 130 each, and the
 // mixed-spelling VARIANT paths about 230 each, because such a statement is tokenized
-// twice, rebuilt and re-parsed. The limit is the measured 33334 rounded up to a little
-// over one more case.
-const corpusAllocationBudget = 34300
+// twice, rebuilt and re-parsed. The four grouping-set cases (ROLLUP, CUBE, GROUPING
+// SETS, a repeated key) add nothing measurable: they differ from a plain GROUP BY
+// only in how the key list is read.
+//
+// The limit is the 33914 measured under the CI flags with ~10% headroom: the
+// previous 3% headroom (34300 over 33327) was exhausted by one corpus case and the
+// failure it produced landed only on CI, which is the outcome this budget is least
+// useful as.
+const corpusAllocationBudget = 37600
 
 // TestAnalyzeAllocationBudget keeps the analyzer's allocation count from creeping
 // up. The budget is a count, not a wall-clock number, so it does not depend on

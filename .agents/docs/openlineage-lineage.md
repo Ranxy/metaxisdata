@@ -51,6 +51,7 @@ Whatever the path, the edges pass `validateIngestedLineage` (`lineage_validation
 | No SQL facet at all | The producer's facet is used as before. |
 | Non-`COMPLETE` event | No lineage derived (`processor.go:52`). |
 | A claim names a column the registry does not have | Blanked, table-level edge kept (`lineage_validation.go:48`). |
+| A MySQL-wire dataset name carries three parts | `splitDatasetName` reads it as database.schema.table, so a producer that prefixes a qualified table with its connection's database (`e2e_ods.e2e_ads.v_x`) lands on an `<instance>;<database>;<schema>;<table>` GUID no sync registers — the instance still resolves, so nothing warns. Measured on the Doris hop and recorded in `test/e2e_etl/FINDINGS.md` F10; the fixture names the database once, in the reader URL. |
 
 ## Where things live
 
@@ -60,5 +61,5 @@ Whatever the path, the edges pass `validateIngestedLineage` (`lineage_validation
 | `backend/plugin/openlineage/sql_facet_lineage.go` | `sqlFacetQuery` (`:27`), `anchorDataset` (`:49`), `analyzeEventSQL` (`:66`), `analysisContextFor` (`:115`), `databaseAndSchemaFromGUID` (`:142`), `mapAnalyzedRelations` (`:154`), `isSyntheticRelation` (`:187`), `warnAnalysisGaps` (`:193`). |
 | `backend/plugin/openlineage/resolver.go` | `splitDatasetName` (`:478`) — the one name-splitting rule. |
 | `backend/plugin/openlineage/lineage_validation.go` | The registry check that blanks unverifiable column claims and keeps the table-level edge. |
-| Tests | `sql_facet_lineage_test.go` (`:15`, `:42`, `:63`, `:101`); real-server `backend/test/integration/runner/openlineage_sql_facet_service_test.go:30`; three-engine fixture `test/e2e_etl` (`run_chain.sh`, `verify_chain.sql`, `FINDINGS.md`). |
+| Tests | `sql_facet_lineage_test.go` (`:15`, `:42`, `:63`, `:101`); real-server `backend/test/integration/runner/openlineage_sql_facet_service_test.go:30`; five-engine fixture `test/e2e_etl` (`run_chain.sh`, `verify_chain.sql`, `FINDINGS.md`). |
 | Gate | `go test ./backend/plugin/openlineage/...`; `go test -count=1 -tags=integration -run 'OpenLineageSqlFacet' ./backend/test/integration/runner`. |

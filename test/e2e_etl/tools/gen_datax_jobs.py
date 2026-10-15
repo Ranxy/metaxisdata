@@ -36,6 +36,32 @@ MSSQL_USER, MSSQL_PASSWORD = "sa", ""
 # of the URL because a DataX SQL Server connection has no selectedDatabase field.
 MSSQL_JDBC_URL = f"jdbc:sqlserver://{MSSQL_HOST}:{MSSQL_PORT};databaseName={MSSQL_DB}"
 
+# The Doris side of the chain. The FE's MySQL-protocol port is 9031 on the host
+# (the StarRocks container already owns 9030), and its HTTP port is 8031: Stream
+# Load is an HTTP API, not a MySQL statement, so the writer needs both. The local
+# deployment has one FE and one BE, and root has no password.
+DORIS_HOST, DORIS_PORT, DORIS_DB = "127.0.0.1", "9031", "e2e_ods"
+DORIS_HTTP_PORT = "8031"
+DORIS_USER, DORIS_PASSWORD = "root", ""
+# The rdbms readers DataX ships reject an empty password, so the copy out of Doris
+# reads as the fixture's read-only user (created by doris/20_ads_ddl.sql) instead.
+DORIS_READER_USER, DORIS_READER_PASSWORD = "e2e_reader", "e2e_reader"
+# The reader's URL names the database and the table stays unqualified, because the
+# provider's MySQL plugin prefixes the URL's database to whatever `table` says. A
+# qualified table whose database differs from the URL's therefore becomes a
+# three-part dataset name ("e2e_ods.e2e_ads.v_doris_kpi_daily"), and the resolver
+# reads three parts as database.schema.table: Doris has no schema, so that name
+# resolves to a GUID no synced object has. FINDINGS F10 records the run that found
+# it; verify_chain.sql sections 25 and 31 are the gates for the corrected name.
+DORIS_READER_JDBC_URL = (
+    f"jdbc:mysql://{DORIS_HOST}:{DORIS_PORT}/e2e_ads"
+    "?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
+)
+DORIS_JDBC_URL = (
+    f"jdbc:mysql://{DORIS_HOST}:{DORIS_PORT}/{DORIS_DB}"
+    "?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
+)
+
 ODS_TABLES: dict[str, list[str]] = {
     "regions": ["country", "country_name", "region", "sub_region", "is_emerging"],
     "sales_reps": ["rep_id", "rep_name", "team", "manager_id", "hired_on"],
@@ -145,6 +171,33 @@ MSSQL_TO_SR: list[tuple[str, str, list[str]]] = [
             "region", "selling_days", "order_count", "net_line_amount", "customer_net",
             "revenue_rank", "customer_count", "high_value_count", "balance_due",
             "orders_per_customer", "revenue_band",
+        ],
+    ),
+]
+
+# (source schema-qualified relation, Doris landing table, columns)
+#
+# The same two PostgreSQL serving-layer tables the StarRocks and MSSQL hops copy,
+# so all three read one column list from _SR_COLUMNS.
+PG_TO_DORIS: list[tuple[str, str, list[str]]] = [
+    ("e2e_dwd.dwd_customer_360", "dwd_customer_360", _SR_COLUMNS["dwd_customer_360"]),
+    ("e2e_ads.ads_daily_sales", "ads_daily_sales", _SR_COLUMNS["ads_daily_sales"]),
+]
+
+# (Doris view to read, StarRocks landing table, columns)
+#
+# The source is a Doris view the analyzer owns, and the reader is the provider's
+# mysqlreader: Doris speaks the MySQL protocol, and the resolver matches a dataset
+# by host and port rather than by URL scheme, so the Doris instance answers for a
+# mysql:// namespace on its own port. The view is named without its database because
+# the reader URL carries it - see DORIS_READER_JDBC_URL.
+DORIS_TO_SR: list[tuple[str, str, list[str]]] = [
+    (
+        "v_doris_kpi_daily",
+        "doris_kpi_daily",
+        [
+            "region", "order_days", "order_count", "net_line_amount",
+            "customer_count", "region_pool", "top_rank", "revenue_band",
         ],
     ),
 ]
@@ -329,13 +382,109 @@ def mssql_to_sr(source: str, target: str, columns: list[str]) -> dict:
     }
 
 
+def pg_to_doris(source: str, target: str, columns: list[str]) -> dict:
+    return {
+        "job": {
+            "setting": SETTING,
+            "content": [
+                {
+                    "reader": {
+                        "name": "postgresqlreader",
+                        "parameter": {
+                            "username": PG_USER,
+                            "password": PG_PASSWORD,
+                            "column": columns,
+                            "connection": [
+                                {
+                                    "jdbcUrl": [f"jdbc:postgresql://{PG_HOST}:{PG_PORT}/{PG_DB}"],
+                                    "table": [source],
+                                }
+                            ],
+                        },
+                    },
+                    "writer": {
+                        "name": "doriswriter",
+                        "parameter": {
+                            "username": DORIS_USER,
+                            "password": DORIS_PASSWORD,
+                            "column": columns,
+                            "preSql": [f"truncate table {DORIS_DB}.{target}"],
+                            # FE HTTP entry: Stream Load is an HTTP API and must not
+                            # use the MySQL-protocol port 9031. The FE answers with a
+                            # redirect to its BE, whose own HTTP port is reachable
+                            # from the host.
+                            "loadUrl": [f"{DORIS_HOST}:{DORIS_HTTP_PORT}"],
+                            "connection": [
+                                {
+                                    "jdbcUrl": DORIS_JDBC_URL,
+                                    "selectedDatabase": DORIS_DB,
+                                    "table": [target],
+                                }
+                            ],
+                        },
+                    },
+                }
+            ],
+        }
+    }
+
+
+def doris_to_sr(source: str, target: str, columns: list[str]) -> dict:
+    return {
+        "job": {
+            "setting": SETTING,
+            "content": [
+                {
+                    "reader": {
+                        # Doris speaks the MySQL protocol; the provider's mysqlreader
+                        # reads the view, and its dataset resolves to the Doris
+                        # instance because the resolver matches host and port.
+                        "name": "mysqlreader",
+                        "parameter": {
+                            "username": DORIS_READER_USER,
+                            "password": DORIS_READER_PASSWORD,
+                            "column": columns,
+                            "connection": [
+                                {
+                                    "jdbcUrl": [DORIS_READER_JDBC_URL],
+                                    "table": [source],
+                                }
+                            ],
+                        },
+                    },
+                    "writer": {
+                        "name": "starrockswriter",
+                        "parameter": {
+                            "username": SR_USER,
+                            "password": SR_PASSWORD,
+                            "column": columns,
+                            "preSql": [f"truncate table {SR_DB}.{target}"],
+                            "loadUrl": [f"{SR_HOST}:{SR_HTTP_PORT}"],
+                            "connection": [
+                                {
+                                    "jdbcUrl": f"jdbc:mysql://{SR_HOST}:{SR_PORT}/{SR_DB}",
+                                    "selectedDatabase": SR_DB,
+                                    "table": [target],
+                                }
+                            ],
+                        },
+                    },
+                }
+            ],
+        }
+    }
+
+
 def main() -> int:
     root = pathlib.Path(__file__).resolve().parent.parent
     mysql_to_pg_dir = root / "datax" / "mysql_to_pg"
     pg_to_sr_dir = root / "datax" / "pg_to_sr"
     pg_to_mssql_dir = root / "datax" / "pg_to_mssql"
     mssql_to_sr_dir = root / "datax" / "mssql_to_sr"
-    for directory in (mysql_to_pg_dir, pg_to_sr_dir, pg_to_mssql_dir, mssql_to_sr_dir):
+    pg_to_doris_dir = root / "datax" / "pg_to_doris"
+    doris_to_sr_dir = root / "datax" / "doris_to_sr"
+    for directory in (mysql_to_pg_dir, pg_to_sr_dir, pg_to_mssql_dir, mssql_to_sr_dir,
+                      pg_to_doris_dir, doris_to_sr_dir):
         directory.mkdir(parents=True, exist_ok=True)
 
     for table, columns in ODS_TABLES.items():
@@ -358,6 +507,16 @@ def main() -> int:
     for source, target, columns in MSSQL_TO_SR:
         path = mssql_to_sr_dir / f"{target}.json"
         path.write_text(json.dumps(mssql_to_sr(source, target, columns), indent=2) + "\n")
+        print(path.relative_to(root))
+
+    for source, target, columns in PG_TO_DORIS:
+        path = pg_to_doris_dir / f"{target}.json"
+        path.write_text(json.dumps(pg_to_doris(source, target, columns), indent=2) + "\n")
+        print(path.relative_to(root))
+
+    for source, target, columns in DORIS_TO_SR:
+        path = doris_to_sr_dir / f"{target}.json"
+        path.write_text(json.dumps(doris_to_sr(source, target, columns), indent=2) + "\n")
         print(path.relative_to(root))
 
     return 0
