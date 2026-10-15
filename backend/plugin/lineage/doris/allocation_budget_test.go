@@ -13,7 +13,10 @@ import (
 // allowed. The corpus is the widest sample of real shapes the analyzer has, so a
 // per-edge regression shows up here even when no single shape exceeds its own
 // budget.
-const corpusAllocationBudget = 29000
+// The budget carries over the deliberate increase the VARIANT subcolumn path
+// added: the scope-aware collector keeps one source per column reference, and a
+// dotted reference is probed against the scope before it is read as a path.
+const corpusAllocationBudget = 30000
 
 // TestAnalyzeAllocationBudget keeps the analyzer's allocation count from creeping
 // up. The budget is a count, not a wall-clock number, so it does not depend on

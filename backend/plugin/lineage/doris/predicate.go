@@ -83,7 +83,7 @@ func (a *Analyzer) collectPredicates(expr nodes.Node, sp *scope.Scope, transform
 	if expr == nil {
 		return
 	}
-	refs := collectColumns(expr)
+	refs := a.collectColumnRefs(expr, sp)
 	refs = append(refs, a.expressionSubquerySources(expr, sp)...)
 	for _, ref := range refs {
 		a.influences.Resolve(sp, ref, transform, resolveAliases)

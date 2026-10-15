@@ -39,7 +39,7 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 | `CREATE TABLE t (k BIGINT, v VARIANT<'id': INT, properties(…)> …)` | 接受——omni 拒绝,见 open item 6 |
 | `CREATE TABLE t (k BIGINT, v ARRAY<VARIANT>) …` | 拒绝(`ARRAY unsupported sub-type: variant`) |
 | `SELECT [ev.id, ev.id] FROM ev` | 拒绝(数组字面量只收常量) |
-| `SELECT v['user']['name'], v.user.name FROM ev` | 都接受且**返回同一个值**——点号路径合法,见 open item 9 |
+| `SELECT v['user']['name'], v.user.name FROM ev` | 都接受且**返回同一个值**——点号路径合法,已建模(见 §方言事实) |
 | `numbers("number"="2")` 的列名 | `number`(按参数名),不是函数名,见 open item 10 |
 | `CREATE MATERIALIZED VIEW mv REFRESH AUTO ON SCHEDULE EVERY 1 DAY STARTS '…' AS SELECT …` | 语法接受;`REFRESH ASYNC`(2.1 拼写)被 4.x 拒绝 |
 | `mv_infos("database"="…")` | 可查询 |
@@ -54,11 +54,12 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 | CTAS 列名来自 `CreateTableStmt.Columns`,Doris 没有 `CTASColumns` | Doris 的 CTAS 列清单每列都带类型,名字从类型化定义里取并**盖过查询自己的输出别名**:`CREATE TABLE t3 (k INT, n VARCHAR(50)) AS SELECT id, name FROM users` 记 `users.id → t3.k`、`users.name → t3.n`;未声明时用查询输出别名。两处按位置对不齐的情形**有意不报诊断**:声明 N 列而查询多出输出时,多出的按查询别名落边;重名列落成同目标的两条边——真实引擎本就拒绝这两种语句(`Should not define the entire column in CTAS`),不会静默读错一个合法语句 | `ctasColumnNames` |
 | `UpdateStmt` / `DeleteStmt` 没有 `With` | Doris 没有 `WITH … UPDATE` / `WITH … DELETE`;这种输入是**硬解析失败**,不是缺口,也不是"没有血缘" | 语法层(omni `doris/parser`) |
 | UPDATE 的 SET 目标**可以带限定符**(`UPDATE t1 SET t1.name = t1.other`),StarRocks 直接拒绝这个形状 | 写入目标仍取语句的表(`targetSchema`/`targetTable`),限定符只用来检查该列属于作用域里的关系;`UPDATE t1 AS x SET x.name = x.other` 同样接受,表达式保留别名的拼写。两条语料钉住 | `processUpdateList` |
+| VARIANT 子列路径:点号 `v.user.name` 与括号 `v['user']['name']` 同义,但 omni 把点号读成普通限定列名 | 分析器在**限定读法优先**之后才把点号当路径,且必须由 catalog 的列类型作证(`variant`):基列是 VARIANT 才成立,关系前缀只要"该列存在"就胜出(`FROM ev, ev2 v` 的 `v.name` 读 ev2.name),前缀列存在但非 VARIANT 时按引擎一样判失败而不退回路径,两处同名 VARIANT 列则不猜。输出列名取整条路径原文(引擎行为,不是最后一段) | `collectColumnSources`、`variantPathBase`、`variantBase` |
 | `TableRef.LateralViews` 是**新增血缘** | `LATERAL VIEW gen(args) alias AS c1[, c2]` 把生成器实参读到的每一列映射到 AS 声明的每一列,注册成一个查询本地关系;链式生成器左到右,后者能读前者声明的列。`u.elem` 因此能解析,而不是"未知名字";`generator_lineage_test.go` 钉住单列、多列、通配符与链式四种 | `processLateralViews`、`addGeneratedRelation` |
 
 ## 不新增血缘语义的语法
 
-本节列的是 Doris 独有(或两引擎共有)但不改变血缘语义的语法形态;`26_test_doris_forms_table.yaml` 的 7 例(ROLLUP 分组键、数组切片、`CONVERT USING`、`TABLESAMPLE`、异步 MV 体、VARIANT 子列路径两例)钉住其中的语法形状,其余由通用表达式走查覆盖。会新增血缘的 Doris 独有形状只有 LATERAL VIEW,见 §方言事实。
+本节列的是 Doris 独有(或两引擎共有)但不改变血缘语义的语法形态;`26_test_doris_forms_table.yaml` 的 13 例同时钉住这些形状、VARIANT 子列路径六例(含"关系前缀优先"与"无证据仍 unresolved")与关系前缀优先一例,其余由通用表达式走查覆盖。会新增血缘的 Doris 独有形状是 LATERAL VIEW 与 VARIANT 子列路径,见 §方言事实。
 
 | 形状 | 读取方式 |
 | --- | --- |
@@ -67,14 +68,14 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 | 数组切片 `a[1:2]`(`ArraySliceExpr`)、元素访问 `value[index]`(`ElementAtExpr`)、`STRUCT(…)` / Map 字面量(`StructLiteral`) | 通用表达式走查覆盖;切片的来源是 `a` |
 | `CONVERT(x USING charset)` | 通用表达式走查覆盖 |
 | `VARIANT` 列(含 `NULL` / `NOT NULL`) | **类型不参与血缘**:分析器只记列级边,从不读列类型;建表、`INSERT … SELECT`、CTAS 一视同仁 |
-| `VARIANT` 子列路径 `v['key']` / `v['a']['b']` / `v['arr'][1]`(`ElementAtExpr` 链) | 官方的子列访问语法。路径选择发生在**列内部**,所以整列是来源:`SELECT v['user']['name'] AS n FROM events` 记 `events.v → __result__.n`(PROJECT);子列不是注册表对象,绝不做边端点。点号形式 `v.a`(官方访问语法里没有)由 omni 读成普通限定列名,分析器报 `unresolved` 缺口,与 StarRocks 相同 |
+| `VARIANT` 子列路径 `v['key']` / `v['a']['b']` / `v['arr'][1]`(`ElementAtExpr` 链)与点号 `v.user.name`(见 §方言事实) | 路径选择发生在**列内部**,所以整列是来源:`SELECT v['user']['name'] AS n FROM events` 与 `SELECT v.user.name AS n FROM ev` 都记 `… .v → __result__.n`(indirect + PROJECT);子列不是注册表对象,绝不做边端点 |
 | `COPY INTO <table> FROM <stage>` | 文件整体是来源:`__file__.* → target.*` |
 | `LOAD LABEL …(DATA INFILE … INTO TABLE …)` | 每个 data description 各有目标与可选列清单;omni 只把 SET 子句当原文,列级 SET/WHERE 不建模(与 StarRocks 同一条决策) |
 | 目录限定名 `catalog.db.table` | 目录段被丢弃,按 `db.table` 分析(注册表没有 catalog 维度) |
 
 ## 能力矩阵
 
-**建模**:SELECT(投影、别名、`*` / `t.*`、DISTINCT、CASE / CAST / 运算符、窗口、GROUP BY + HAVING + QUALIFY + ROLLUP、谓词、VARIANT 子列路径)、FROM(表、别名、db 限定名、INNER / LEFT / RIGHT / FULL / CROSS / SEMI / ANTI JOIN、派生表、CTE(含列清单、链式、递归自身)、表值函数、LATERAL VIEW)、集合运算(UNION / INTERSECT / EXCEPT,含 ALL 与嵌套)、CREATE VIEW / ALTER VIEW / CREATE MATERIALIZED VIEW(`CreateMTMVStmt`,含列清单)、CREATE TABLE … AS SELECT、INSERT [OVERWRITE] INTO … SELECT / VALUES(位置式列清单)、UPDATE … SET(含 FROM)、DELETE … USING … WHERE(→ `__deletion__`)、COPY INTO、LOAD、查询本地关系的展平与谓词影响。
+**建模**:SELECT(投影、别名、`*` / `t.*`、DISTINCT、CASE / CAST / 运算符、窗口、GROUP BY + HAVING + QUALIFY + ROLLUP、谓词、VARIANT 子列路径(括号与点号两种写法))、FROM(表、别名、db 限定名、INNER / LEFT / RIGHT / FULL / CROSS / SEMI / ANTI JOIN、派生表、CTE(含列清单、链式、递归自身)、表值函数、LATERAL VIEW)、集合运算(UNION / INTERSECT / EXCEPT,含 ALL 与嵌套)、CREATE VIEW / ALTER VIEW / CREATE MATERIALIZED VIEW(`CreateMTMVStmt`,含列清单)、CREATE TABLE … AS SELECT、INSERT [OVERWRITE] INTO … SELECT / VALUES(位置式列清单)、UPDATE … SET(含 FROM)、DELETE … USING … WHERE(→ `__deletion__`)、COPY INTO、LOAD、查询本地关系的展平与谓词影响。
 
 **报告为缺口而不是失败**:
 
@@ -119,7 +120,7 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 6. **`VARIANT<…>` schema template 是 omni 解析缺口** — `CREATE TABLE t (k BIGINT, v VARIANT<'id': INT>)`、其 CTAS 形式与 `ALTER TABLE … ADD COLUMN v VARIANT<…>` 都是合法 Doris DDL(4.1.4 实测接受),但 omni 在 `<` 处报语法错误(裸 `VARIANT` 与 `VARIANT NULL` 正常)。视图 / MV 体不含建表语句,所以这两条路径不受影响;MANUAL_SQL / APPLICATION_SQL 携带这种 DDL 会硬失败(清血缘 + `error_message`),CTAS 形式会整条丢边。明细见 [omni-upstream-defects.md](omni-upstream-defects.md) §12;按不修改政策不 patch 上游。
 7. **`LATERAL VIEW` 作用于派生表是 omni 缺口** — `SELECT * FROM (SELECT arr FROM ev) d LATERAL VIEW explode(d.arr) u AS elem` 在真实 4.1.4 上**可执行并返回行**,omni 却在 `LATERAL` 处报语法错误 → 合法语句硬失败(清血缘 + `error_message`)。登记见 §12.2。反面:`LATERAL VIEW OUTER` 与 `AS (c1)` 括号列清单被引擎拒绝(`extraneous input 'OUTER'` / `'('`),omni 的拒绝与引擎一致,不是缺陷。
 8. **`SELECT … INTO OUTFILE` 是 omni 缺口** — 真实 4.1.4 **能解析**该语句(随后在 planning 阶段因 `enable_outfile_to_local` / BROKER 配置失败),omni 在 `INTO` 处报错 → 合法语法硬失败。见 §12.3。
-9. **VARIANT 点号子列路径未建模(唯一会漏血缘的 VARIANT 形状)** — 真实 4.1.4 上 `SELECT v['user']['name'], v.user.name FROM ev` 两种写法返回**同一个值**,证明点号访问是合法的子列路径;而 omni 把 `v.user.name` 解析成普通限定列名(`{Schema: v, Table: user, Column: name}`),分析器报 `unresolved` 缺口、不产边。括号形式(`v['user']['name']` / `v['tags'][1]`)已正确建血。修法:对"限定符不指向任何关系、而首段能作为列解析"的引用回退为"该列 + 子列路径",与 select-list 走同一套解析;属语义决策,尚未实施。
+9. ~~**VARIANT 点号子列路径未建模**~~ — **已落地**。真实 4.1.4 上两种写法返回同一个值,现在由 catalog 的列类型作证后按路径建模,见 §方言事实;`variant_path_test.go` 与 `26_test_doris_forms_table.yaml` 的六例钉住,包括"无证据时仍是 unresolved"。StarRocks 侧同形状仍未做(其包内仍是旧收集器)。
 10. **表值函数暴露的列名是启发式** — 真实 4.1.4 的 `numbers("number"="2")` 暴露的列叫 `number`(按参数名),而分析器按**函数名**命名(StarRocks 遗留下的规则),所以 `SELECT u.number FROM numbers(…) u` 这种合法引用会报 `unresolved`,`u.numbers` 反而"能解析"(引擎会报 Unknown column)。影响面小,记为已知近似。
 
 ## Where things live
@@ -129,13 +130,14 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 | 方言包 | `backend/plugin/lineage/doris/{analyzer,expr,predicate,rawsql,viewbody}.go` | `go test ./backend/plugin/lineage/doris/` |
 | 装配 | `backend/plugin/lineage/engines/engines.go`、`engines_test.go` | `go test ./backend/plugin/lineage/engines/` |
 | 共享机制守门 | `backend/plugin/lineage/shared_analysis_test.go`(`dialectPackages` 含 `doris`) | `go test ./backend/plugin/lineage/ -run TestSharedAnalysisStaysShared` |
-| 黄金语料 | `backend/plugin/lineage/doris/testdata/analyze/`(21 套 / 203 例 / 420 条边) | `TestAnalyzeYAML`、`TestCorpusIsFullyAnnotated` |
+| 黄金语料 | `backend/plugin/lineage/doris/testdata/analyze/`(21 套 / 209 例 / 426 条边) | `TestAnalyzeYAML`、`TestCorpusIsFullyAnnotated` |
 | 单语句契约与硬失败 | `hardfail_test.go`(`TestHardFailOnUnparseableSQL`、`TestRejectsMultiStatement`) | 同上 |
 | 缺口边界 | `analyzer_test.go`(`TestUnmodelledStatementsAreGaps`) | 同上 |
 | catalog 读取 | `catalog_lookup_test.go`(`TestCatalogIsReadOncePerRelation`、`TestCatalogFailureIsReportedAsAGap`) | 同上 |
 | LATERAL VIEW 与表值函数的映射 | `analyzer.go`(`processLateralViews`、`addGeneratedRelation`、`processTableFunction`) | `generator_lineage_test.go`(`TestLateralViewGeneratorLineage`、`TestTableValuedFunctionLineage`);`testdata/analyze/23_test_query_local_name_lineage_table.yaml` 三例 |
 | CTAS 目标列名 | `analyzer.go`(`ctasColumnNames`) | `generator_lineage_test.go`(`TestCTASTargetColumnsAreTheDeclaredNames`) |
-| Doris 独有语法 | 通用表达式走查 + `SelectStmt.GroupByWithRollup` | `testdata/analyze/26_test_doris_forms_table.yaml` 七例(含 VARIANT 子列路径两例) |
+| VARIANT 子列路径 | `expr.go`(`collectColumnSources`、`variantPathBase`、`variantBase`、`isVariantType`) | `variant_path_test.go`(6 + 5 + 1 例);`26_test_doris_forms_table.yaml` 六例(含 typed catalog fixture) |
+| Doris 独有语法 | 通用表达式走查 + `SelectStmt.GroupByWithRollup` | `testdata/analyze/26_test_doris_forms_table.yaml` 十三例 |
 | 视图体的抽取 | `viewbody.go`(`extractViewDDL`)、`viewbody_test.go` | `go test ./backend/plugin/lineage/doris/` |
 | MV 定义来源 | `backend/plugin/db/starrocks/sync.go`(`mv_infos("database"=?)`)、`backend/runner/lineageanalyzer/analyzer.go`(`buildSQL`) | [starrocks-doris-driver.md](starrocks-doris-driver.md) |
 | 上游 AST 差异记录 | 本篇 §方言事实 | — |

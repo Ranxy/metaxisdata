@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/catalog"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
 )
 
@@ -17,11 +18,20 @@ func edgeText(relation model.ColumnRelation) string {
 		" -> " + relation.Target.Table.FullName() + "." + relation.Target.Name
 }
 
-// requireEdges asserts the exact edge set, order-insensitive.
+// requireEdges asserts the exact edge set, order-insensitive, for an analyzer
+// with no catalog.
 func requireEdges(t *testing.T, sql string, want []string) {
 	t.Helper()
 
-	relations, err := analyzeSQL(sql, nil)
+	requireEdgesWithCatalog(t, sql, nil, want)
+}
+
+// requireEdgesWithCatalog is requireEdges for a statement whose reading depends on
+// catalog metadata.
+func requireEdgesWithCatalog(t *testing.T, sql string, cat catalog.Provide, want []string) {
+	t.Helper()
+
+	relations, err := analyzeSQL(sql, cat)
 	require.NoError(t, err)
 	got := make([]string, 0, len(relations))
 	for _, relation := range relations {

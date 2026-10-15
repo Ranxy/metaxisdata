@@ -81,23 +81,167 @@ func normalizeExpressionText(text string) string {
 // Expression analysis
 // ---------------------------------------------------------------------------
 
-// collectColumns recursively collects column references from an expression.
-func collectColumns(expr nodes.Node) []scope.ColumnRef {
-	columns := make([]scope.ColumnRef, 0)
+// columnSource is one column reference a statement wrote, together with the
+// VARIANT subcolumn path it reads into that column when the reference was a
+// dotted path (`v.user.name`).
+type columnSource struct {
+	ref  scope.ColumnRef
+	path string
+}
+
+// collectColumnSources resolves the columns an expression wrote against the scope
+// it was written in, because a dotted name has two readings and only a scope can
+// tell them apart: a qualified column, or a VARIANT column plus a subcolumn path.
+// A reference that resolves the way it always did is returned untouched.
+func (a *Analyzer) collectColumnSources(expr nodes.Node, sp *scope.Scope) []columnSource {
+	sources := make([]columnSource, 0)
 	if expr == nil {
-		return columns
+		return sources
 	}
 	nodes.Inspect(expr, func(n nodes.Node) bool {
 		cr, ok := n.(*nodes.ColumnRef)
 		if !ok {
 			return true
 		}
-		if ref, ok := columnRefFromObjectName(cr.Name); ok {
-			columns = append(columns, ref)
+		if source, ok := a.columnSource(cr.Name, sp); ok {
+			sources = append(sources, source)
 		}
 		return true
 	})
-	return columns
+	return sources
+}
+
+// collectColumnRefs is collectColumnSources for the callers that only need the
+// columns: a path adds detail to a transformation, never a second edge.
+func (a *Analyzer) collectColumnRefs(expr nodes.Node, sp *scope.Scope) []scope.ColumnRef {
+	sources := a.collectColumnSources(expr, sp)
+	refs := make([]scope.ColumnRef, 0, len(sources))
+	for _, source := range sources {
+		refs = append(refs, source.ref)
+	}
+	return refs
+}
+
+// columnSource resolves one reference the way the statement wrote it. The
+// qualified reading is tried first, exactly as this analyzer has always read it —
+// as a probe, so the returned reference is still the unresolved one the callers
+// resolve in their own scope, and a reference that resolved before still does.
+//
+// Only a reference with no qualified reading is read as a VARIANT subcolumn path,
+// and only with evidence: the catalog has to say the base column is a VARIANT
+// column. Without that evidence the reference keeps the unresolved gap it is
+// today, so a scalar column's invented "field" (`id.name`) never becomes an edge.
+func (a *Analyzer) columnSource(name *nodes.ObjectName, sp *scope.Scope) (columnSource, bool) {
+	ref, ok := columnRefFromObjectName(name)
+	if !ok {
+		return columnSource{}, false
+	}
+	// A path needs at least one dot, so a plain name is never probed: the probe
+	// would be a second resolution of every ordinary column reference.
+	if len(name.Parts) < 2 {
+		return columnSource{ref: ref}, true
+	}
+	if _, err := sp.ResolveColumnRefs(ref); err == nil {
+		return columnSource{ref: ref}, true
+	}
+	base, path, ok := a.variantPathBase(name.Parts, sp)
+	if !ok {
+		return columnSource{ref: ref}, true
+	}
+	base.Ref.Resolved = true
+	return columnSource{ref: base.Ref, path: path}, true
+}
+
+// variantPathBase finds the column a dotted reference reads into, and the path
+// inside it, when no relation qualifies the whole name.
+//
+// A relation prefix keeps precedence, which is what the engine does: in
+// `SELECT v.name FROM ev, ev2 v` the reference reads ev2's column `name`, not a
+// path on ev's VARIANT column `v`. The prefix has to name the base column as a
+// VARIANT column the catalog knows, and the path reading is tried only when no
+// prefix does. An unqualified base has to be unambiguous for the same reason: two
+// relations exposing a VARIANT column of one name is a statement the engine
+// rejects, not a reading to guess at.
+func (a *Analyzer) variantPathBase(parts []string, sp *scope.Scope) (scope.ResolvedColumn, string, bool) {
+	for k := len(parts) - 2; k >= 1; k-- {
+		column := parts[k]
+		schema, table, ok := tableRefFromObjectName(&nodes.ObjectName{Parts: parts[:k]})
+		if !ok {
+			continue
+		}
+		resolutions, err := sp.ResolveColumnRefs(scope.ColumnRef{Schema: schema, Table: table, Column: column})
+		if err != nil || len(resolutions) != 1 {
+			continue
+		}
+		switch a.variantBase(resolutions[0].Relation, column) {
+		case variantBaseYes:
+			return resolutions[0], strings.Join(parts[k+1:], "."), true
+		case variantBaseNo:
+			// The prefix owns the name: the engine reads `v.user` as that
+			// relation's column and rejects the path (`No such field 'name' in
+			// 'user'`), so no path reading may be built from this reference.
+			return scope.ResolvedColumn{}, "", false
+		default:
+			// variantBaseUnknown: the prefix may not qualify the name at all, and a
+			// shorter one — or the base column alone — still might.
+		}
+	}
+	resolutions, err := sp.ResolveColumnRefs(scope.ColumnRef{Column: parts[0]})
+	if err != nil || len(resolutions) != 1 {
+		return scope.ResolvedColumn{}, "", false
+	}
+	if a.variantBase(resolutions[0].Relation, parts[0]) != variantBaseYes {
+		return scope.ResolvedColumn{}, "", false
+	}
+	return resolutions[0], strings.Join(parts[1:], "."), true
+}
+
+// variantBaseVerdict is what the catalog can say about one name inside one
+// relation.
+type variantBaseVerdict int
+
+const (
+	// variantBaseUnknown means the catalog does not list the name, or cannot answer
+	// for this relation at all: a query-local relation carries no declared type, and
+	// a catalog that is absent or has no column list knows nothing either way.
+	variantBaseUnknown variantBaseVerdict = iota
+	// variantBaseYes means the catalog lists the name as a VARIANT column, the one
+	// type Doris reads a dotted path into.
+	variantBaseYes
+	// variantBaseNo means the catalog lists the name as a column of another type.
+	variantBaseNo
+)
+
+// variantBase reports what the catalog knows about name in relation. It is the
+// evidence the path reading is gated on: without it a dotted reference that no
+// relation qualifies keeps the unresolved gap it is today, so a scalar column's
+// invented "field" (`id.name`) never becomes an edge.
+func (a *Analyzer) variantBase(relation *scope.TableRef, name string) variantBaseVerdict {
+	if relation == nil || relation.IsCTE || relation.IsSubquery {
+		return variantBaseUnknown
+	}
+	meta := a.catalogTable(relation)
+	if meta == nil {
+		return variantBaseUnknown
+	}
+	for _, column := range meta.Columns {
+		if column.Name == name || strings.EqualFold(column.Name, name) {
+			if isVariantType(column.Type) {
+				return variantBaseYes
+			}
+			return variantBaseNo
+		}
+	}
+	return variantBaseUnknown
+}
+
+// isVariantType reports whether a stored column type names Doris's VARIANT type.
+// The engine reports it lowercase (`variant`), and only VARIANT takes the dot
+// form: the same engine rejects `j.a` for a JSON column, so JSON is not accepted
+// here either.
+func isVariantType(dataType string) bool {
+	normalized := strings.ToUpper(strings.TrimSpace(dataType))
+	return normalized == "VARIANT" || strings.HasPrefix(normalized, "VARIANT<")
 }
 
 // isPlainColumnRef reports whether an expression is a bare (possibly

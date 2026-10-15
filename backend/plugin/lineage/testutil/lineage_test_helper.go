@@ -135,14 +135,47 @@ type yamlLineageTestCase struct {
 
 // yamlCatalog describes the metadata an analyzer may consult. tables: registers
 // an unqualified relation by name; schemas: registers a schema-qualified one for
-// PostgreSQL; databases: registers a database-qualified one for the MySQL family
-// and StarRocks, which address a SQL qualifier as the database. An analyzer only
-// matches the form its engine uses, so a schemas: entry is invisible to a MySQL
-// analyzer and vice versa.
+// PostgreSQL; databases: registers a database-qualified one for the MySQL family,
+// StarRocks and Doris, which address a SQL qualifier as the database. An analyzer
+// only matches the form its engine uses, so a schemas: entry is invisible to a
+// MySQL analyzer and vice versa. Each column is a bare name or a name/type
+// mapping, for the dialects that decide on a column's type.
 type yamlCatalog struct {
-	Tables    map[string][]string            `yaml:"tables,omitempty"`
-	Schemas   map[string]map[string][]string `yaml:"schemas,omitempty"`
-	Databases map[string]map[string][]string `yaml:"databases,omitempty"`
+	Tables    map[string][]yamlCatalogColumn            `yaml:"tables,omitempty"`
+	Schemas   map[string]map[string][]yamlCatalogColumn `yaml:"schemas,omitempty"`
+	Databases map[string]map[string][]yamlCatalogColumn `yaml:"databases,omitempty"`
+}
+
+// yamlCatalogColumn is one column of a catalog fixture. It is either a bare name
+// or a mapping that also carries the type, because an analyzer may need the type
+// to choose between two readings of one reference — Doris reads `v.user.name` as
+// a subcolumn path only when `v` is a VARIANT column:
+//
+//	columns:
+//	    - id
+//	    - name: v
+//	      type: variant
+type yamlCatalogColumn struct {
+	Name string
+	Type string
+}
+
+// UnmarshalYAML accepts the bare-name form every existing fixture uses, and the
+// name/type mapping a dialect that decides on types needs.
+func (c *yamlCatalogColumn) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind == yaml.ScalarNode {
+		c.Name = value.Value
+		return nil
+	}
+	var column struct {
+		Name string `yaml:"name"`
+		Type string `yaml:"type"`
+	}
+	if err := value.Decode(&column); err != nil {
+		return err
+	}
+	c.Name, c.Type = column.Name, column.Type
+	return nil
 }
 
 type yamlExpectedEdge struct {
@@ -549,10 +582,10 @@ func parseRelationType(name string) (model.RelationType, error) {
 	}
 }
 
-func addCatalogTable(cat *MemoryCatalogProvide, id model.ObjectIdentifier, columns []string) {
+func addCatalogTable(cat *MemoryCatalogProvide, id model.ObjectIdentifier, columns []yamlCatalogColumn) {
 	metaColumns := make([]catalog.ColumnMeta, len(columns))
-	for idx, columnName := range columns {
-		metaColumns[idx] = catalog.ColumnMeta{Name: columnName}
+	for idx, column := range columns {
+		metaColumns[idx] = catalog.ColumnMeta{Name: column.Name, Type: column.Type}
 	}
 
 	cat.AddTable(&catalog.TableMeta{

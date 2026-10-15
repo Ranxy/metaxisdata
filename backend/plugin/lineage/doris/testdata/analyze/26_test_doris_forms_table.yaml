@@ -120,3 +120,125 @@ cases:
           transformations:
             - operation: PROJECT
               expression: v['tags'][1]
+    # Doris reads a dotted reference as a VARIANT subcolumn path when no relation
+    # qualifies it. The evidence is the catalog's column type, and the engine was
+    # checked for each shape here: only VARIANT takes the dot form, and a relation
+    # prefix keeps priority.
+    - name: a VARIANT subcolumn path reads the column it indexes
+      sql: SELECT v.user.name AS n FROM ev
+      catalog:
+        tables:
+            ev:
+                - id
+                - name: v
+                  type: variant
+      expected_edges:
+        - from_table: ev
+          from_field: v
+          to_table: __result__
+          to_field: n
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: v.user.name
+    # Doris names the output column after the path as it was written, not after
+    # its last segment.
+    - name: a VARIANT path names its output column after the whole path
+      sql: SELECT v.user.name FROM ev
+      catalog:
+        tables:
+            ev:
+                - id
+                - name: v
+                  type: variant
+      expected_edges:
+        - from_table: ev
+          from_field: v
+          to_table: __result__
+          to_field: v.user.name
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: v.user.name
+    # A relation qualifies the base column of the path.
+    - name: a relation-qualified VARIANT path reads that relation's column
+      sql: SELECT ev.v.user.name AS n FROM ev
+      catalog:
+        tables:
+            ev:
+                - id
+                - name: v
+                  type: variant
+      expected_edges:
+        - from_table: ev
+          from_field: v
+          to_table: __result__
+          to_field: n
+          relation_type: indirect
+          has_transform: true
+          is_temp: true
+          transformations:
+            - operation: PROJECT
+              expression: ev.v.user.name
+    # The relation reading keeps priority, which is what the engine does with
+    # `FROM ev, ev2 v`: this reads ev2's column `name`, not a path on ev's v.
+    - name: a relation prefix beats a VARIANT path of the same name
+      sql: SELECT v.name AS n FROM ev, ev2 v
+      catalog:
+        tables:
+            ev:
+                - id
+                - name: v
+                  type: variant
+            ev2:
+                - k
+                - name
+      expected_edges:
+        - from_table: ev2
+          from_field: name
+          to_table: __result__
+          to_field: n
+          relation_type: direct
+          is_temp: true
+    # Without the type the reading is a guess, so the reference stays the
+    # unresolved gap it was before the path work.
+    - name: a dotted reference without a VARIANT column stays unresolved
+      sql: SELECT v.user.name AS n FROM ev
+      catalog:
+        tables:
+            ev:
+                - id
+                - v
+      expect_error: true
+      error_contains: "unresolved reference in an output column: user.name"
+    # A path in a predicate is an influence on the rows, sourced from the column
+    # the path reads into.
+    - name: a VARIANT path in a predicate influences the rows
+      sql: SELECT id FROM ev WHERE v.user.name = 'alice'
+      catalog:
+        tables:
+            ev:
+                - id
+                - name: v
+                  type: variant
+      expected_edges:
+        - from_table: ev
+          from_field: id
+          to_table: __result__
+          to_field: id
+          relation_type: direct
+          is_temp: true
+        - from_table: ev
+          from_field: v
+          to_table: __result__
+          to_field: ""
+          relation_type: indirect
+          is_temp: true
+          transformations:
+            - operation: FILTER
+              expression: ""
+              condition: v.user.name='alice'

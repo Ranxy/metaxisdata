@@ -368,8 +368,8 @@ func (a *Analyzer) addGeneratedRelation(call *nodes.FuncCallExpr, alias string, 
 	sp := a.currentScope()
 	var sources []scope.ColumnRef
 	for _, argument := range call.Args {
-		sources = append(sources, collectColumns(argument)...)
-		// collectColumns does not descend into a subquery, which omni keeps as
+		sources = append(sources, a.collectColumnRefs(argument, sp)...)
+		// The collector does not descend into a subquery, which omni keeps as
 		// raw text, so a generator over one would silently read nothing. The
 		// select list resolves an expression subquery the same way: the subquery's
 		// own sources are what the value it yields comes from.
@@ -823,7 +823,7 @@ func (a *Analyzer) processUpdateList(assignments []*nodes.Assignment, targetSche
 		var sourceColumns []scope.ColumnRef
 		var transformInfo []model.Transformation
 		if elem.Value != nil {
-			sourceColumns = collectColumns(elem.Value)
+			sourceColumns = a.collectColumnRefs(elem.Value, sp)
 			sourceColumns = append(sourceColumns, a.expressionSubquerySources(elem.Value, sp)...)
 			exprText := normalizeExpressionText(a.exprTextOf(elem.Value))
 			isDerived := len(sourceColumns) != 1 || exprText != targetCol.Column
@@ -884,7 +884,7 @@ func (a *Analyzer) processDeleteStatement(stmt *nodes.DeleteStmt) {
 	}
 
 	sp := a.currentScope()
-	conditionColumns := collectColumns(stmt.Where)
+	conditionColumns := a.collectColumnRefs(stmt.Where, sp)
 	conditionColumns = append(conditionColumns, a.expressionSubquerySources(stmt.Where, sp)...)
 	transform := []model.Transformation{model.NewDeleteTransformation(normalizeExpressionText(a.exprTextOf(stmt.Where)))}
 
@@ -1067,12 +1067,28 @@ func (a *Analyzer) processSelectExpr(expr nodes.Node, alias string, aliased bool
 // several rows derive the same column and have to merge into it.
 func (a *Analyzer) outputColumnFor(expr nodes.Node, alias string, aliased bool, sp *scope.Scope, groupKeys []string) scope.OutputColumn {
 	exprText := a.exprTextOf(expr)
-	if !aliased && alias == "" {
-		alias = inferredColumnAlias(expr, exprText)
+	sources := a.collectColumnSources(expr, sp)
+	sourceColumns := make([]scope.ColumnRef, 0, len(sources)+1)
+	hasPath := false
+	for _, source := range sources {
+		sourceColumns = append(sourceColumns, source.ref)
+		if source.path != "" {
+			hasPath = true
+		}
 	}
-	sourceColumns := collectColumns(expr)
+	if !aliased && alias == "" {
+		if hasPath {
+			// Doris names the column after the path as the statement wrote it:
+			// `SELECT v.user.name` yields a column called `v.user.name`, not `name`.
+			alias = normalizeExpressionText(exprText)
+		} else {
+			alias = inferredColumnAlias(expr, exprText)
+		}
+	}
 	sourceColumns = append(sourceColumns, a.expressionSubquerySources(expr, sp)...)
-	isDerived := !isPlainColumnRef(expr)
+	// A subcolumn path is a projection into the column it reads, not the column
+	// itself: it carries a transformation the way the bracket form does.
+	isDerived := !isPlainColumnRef(expr) || hasPath
 
 	// A table-wide aggregate such as COUNT(*) depends on the rows of every
 	// relation in scope even though it names no column. Any other source-less
