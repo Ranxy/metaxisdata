@@ -1343,27 +1343,29 @@ func (a *Analyzer) processCTE(cte *nodes.CTE, recursive bool) {
 		a.influences.BindCTE(definition, cteScope)
 
 		outputColumns := cteScope.GetOutputColumns()
-		// A reference to the CTE resolves against the names its body really
-		// exposes, so the definition keeps the validated exposure: a declared list
-		// renames the outputs positionally and counts only when its arity matches
-		// the body, and the body's own output aliases are what is left. Without
-		// this a CTE whose output column carries no source — a constant, which has
-		// no lineage to record — is not a column of the relation at all, so
-		// `WITH c AS (SELECT 1 AS x, k FROM t) SELECT x FROM c, t` was a gap for a
-		// statement the engine runs. The mapping below still reads the declared
-		// list as written, because Doris's rule for a list it cannot line up is to
-		// leave the extra outputs at their query alias (see §方言事实).
-		definition.Columns = scope.ExposedColumnNames(cte.Columns, outputColumns)
+		// The names the CTE exposes to whatever reads it. A declared list renames
+		// its outputs from the left — `WITH c (a) AS (SELECT id, name ...)`, which the
+		// MySQL analyzer drops and emits no lineage for at all, so mapping it is
+		// strictly more correct — and the outputs a short list does not reach keep
+		// their query alias, because that is what the engine exposes: on 4.1.4 both
+		// `WITH c (a) AS (SELECT k, name FROM t) SELECT a FROM c` and `SELECT name
+		// FROM c` run. That is why this is not scope.ExposedColumnNames, whose arity
+		// rule is the MySQL family's. The definition keeps the exposure so a
+		// reference resolves against names the relation really exposes, including a
+		// column that carries no source (a constant has no lineage to record, and
+		// would otherwise not be a column of the relation at all).
+		exposed := make([]string, 0, len(outputColumns))
+		for i, outputCol := range outputColumns {
+			name := outputCol.Alias
+			if i < len(cte.Columns) {
+				name = cte.Columns[i]
+			}
+			exposed = append(exposed, name)
+		}
+		definition.Columns = exposed
 
 		for i, outputCol := range outputColumns {
-			// A CTE may rename its output columns: WITH c (a, b) AS (SELECT id,
-			// name ...). The MySQL analyzer ignores that list and emits no
-			// lineage at all for this shape; mapping it is strictly more
-			// correct.
-			targetName := outputCol.Alias
-			if i < len(cte.Columns) {
-				targetName = cte.Columns[i]
-			}
+			targetName := exposed[i]
 			for _, source := range outputCol.Sources {
 				resolutions, err := cteScope.ResolveColumnRefs(source.Ref)
 				if err != nil {
