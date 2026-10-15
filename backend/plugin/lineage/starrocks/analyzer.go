@@ -7,9 +7,10 @@
 // and derived tables, CTAS and expression subqueries keep their query as raw
 // text).
 //
-// Engine registration is deliberately scoped to STARROCKS. DORIS keeps
-// resolving to lineage.ErrorEngineNotSupported, which the runner records as a
-// deliberate per-object skip; see .agents/docs/lineage-semantics.md.
+// Engine registration is scoped to STARROCKS. DORIS has an analyzer of its own in
+// backend/plugin/lineage/doris: omni ships a Doris parser too, and the two
+// grammars differ where it matters (parenthesized queries, table functions,
+// LATERAL VIEW), so neither engine is read with the other's grammar.
 //
 // A statement kind the analyzer cannot model yet (MERGE) is reported as a gap
 // beside the edges the other statements produced, so a coverage gap never
@@ -46,8 +47,8 @@ const (
 // assembles the registered engines where it is built, so this package does not
 // register itself into package state.
 //
-// Doris is deliberately unsupported: the runner records a per-object skip for it
-// rather than analyzing Doris SQL with the StarRocks grammar.
+// Doris is not served here: it has its own analyzer package, because omni's Doris
+// grammar differs from this one.
 func Registration() lineage.EngineRegistration {
 	return lineage.EngineRegistration{
 		Engine:  storepb.Engine_STARROCKS,

@@ -24,13 +24,13 @@ func TestRegistersEngine(t *testing.T) {
 	require.NotEmpty(t, relations)
 }
 
-// An engine with no analyzer must report the shared sentinel, so the runner can
-// record a per-object skip instead of a failure. Doris and OceanBase have drivers
-// but no lineage analyzer, which is what makes them the engines to check.
+// An engine this package does not serve must report the shared sentinel, so the
+// runner can record a per-object skip instead of a failure. OceanBase is the one
+// engine with a driver and no analyzer at all.
 func TestUnsupportedEngineIsNotRegistered(t *testing.T) {
 	t.Parallel()
 
-	for _, engine := range []storepb.Engine{storepb.Engine_DORIS, storepb.Engine_OCEANBASE} {
+	for _, engine := range []storepb.Engine{storepb.Engine_OCEANBASE} {
 		_, err := thisEngine.Analyze(context.TODO(), engine, "SELECT id FROM t")
 		require.ErrorIs(t, err, lineage.ErrorEngineNotSupported, "engine %s", engine)
 	}

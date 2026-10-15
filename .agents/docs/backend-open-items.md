@@ -15,6 +15,7 @@
 | D20 | `backend/store/instance.go:199`（调用）、`:276-277`（`hasHostPortFilter`） | 实例列表是否 `CROSS JOIN` 数据源，靠对生成 SQL 的子串匹配（`strings.Contains(where, "ds ->> 'host'")`） | join 与 `backend/api/v1/filter.go` 的列文本强耦合，改列名即静默丢 join（值本身已参数化，用户不可控） | 让 filter 翻译器返回结构化标记（如 `NeedsDataSourcesJoin`） |
 | C8 | `backend/api/auth/header.go:91-96`；常量 `backend/api/auth/auth.go:36` | `GetTokenDuration(_ context.Context, _ *store.Store)` 忽略两个参数，恒返回 7 天常量，6 个调用点（`backend/api/auth/header.go:51` 等）白传 ctx/store；`token_duration` 设置已删除（`proto/store/store/setting.proto:79` 已 `reserved`），注释仍写 "maybe we can add a setting in the future" | 死参数 + 误导性未来注释 | 删参改常量，或真正接回一个可配置项 |
 | 文档残留 | `backend/AGENTS.md:22` | 目录表仍列 `backend/plugin/metric/` 「Metric collection and reporting」，该包已随指标栈删除（见 D8），仓库里不存在 | 新 agent 会去找不存在的包 | 删掉该行（AGENTS.md 重写会顺带消失） |
+| E14 | `backend/plugin/sqlsanitize/sanitize.go`（N1 字面量重写）、`backend/api/v1/application_sql_handler.go`（拒绝）、`backend/plugin/lineage/`（gate 由分析器决定） | 字面量重写不看语法位置：结构性整数也被改写成 `?`，于是 `CREATE TABLE t3 (k INT, n VARCHAR(50)) AS SELECT …` 变成 `VARCHAR(?)`、`TABLESAMPLE(10 PERCENT)` 变成 `TABLESAMPLE(? PERCENT)`；Doris 的分析器要求这两处是整数，应用上报被 ingest gate 以解析失败拒绝，即使分析器能读原始语句 | Doris 的表结构与采样语句无法作为 APPLICATION_SQL 入库；重写输出在 MYSQL / POSTGRES / STARROCKS / DORIS / MSSQL 上逐字节相同（含 canonical text 与 fingerprint），说明这是方言中性的位置盲重写，不是 Doris 缺陷（PostgreSQL 只是恰好接受 `TABLESAMPLE BERNOULLI (?)`）。注册 Doris 把 gate 从「所有 Doris 语句都因 `ErrorEngineNotSupported` 被拒」收窄到只剩这些形态 | 把字面量分类改成位置感知（或对结构性整数保留原值），作为一次跨方言设计变更；`sqlsanitize` 的 `corpus_test.go` 暂时因此没有 `doris` 条目 |
 
 ## 有意保留（勿再开启）
 

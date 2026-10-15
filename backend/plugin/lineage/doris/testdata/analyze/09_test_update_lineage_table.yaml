@@ -1,0 +1,87 @@
+name: TestUpdateLineage_Table
+cases:
+    - name: UPDATE with a literal
+      sql: UPDATE t1 SET name = 'x' WHERE id = 1
+      expected_edges:
+        - from_table: t1
+          from_field: '*'
+          to_table: t1
+          to_field: name
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: '''x'''
+    - name: UPDATE from another column of the same table
+      sql: UPDATE t1 SET name = t1.other WHERE id = 1
+      expected_edges:
+        - from_table: t1
+          from_field: other
+          to_table: t1
+          to_field: name
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: t1.other
+    - name: UPDATE with an arithmetic expression
+      sql: UPDATE t1 SET amount = amount + 1 WHERE id = 1
+      expected_edges:
+        - from_table: t1
+          from_field: amount
+          to_table: t1
+          to_field: amount
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: OPERATOR
+              expression: amount+1
+              op_type: ADDITION
+    - name: UPDATE from a joined table
+      sql: UPDATE t1 SET name = t2.tag FROM t2 WHERE t1.id = t2.id
+      expected_edges:
+        - from_table: t2
+          from_field: tag
+          to_table: t1
+          to_field: name
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: t2.tag
+
+    # Doris accepts a qualified SET target, which StarRocks rejects. The target
+    # table still comes from the statement; the qualifier only has to name a
+    # relation in scope, so the edge keeps landing on t1.name.
+    - name: UPDATE with a qualified SET target
+      sql: UPDATE t1 SET t1.name = t1.other WHERE id = 1
+      expected_edges:
+        - from_table: t1
+          from_field: other
+          to_table: t1
+          to_field: name
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: t1.other
+    # The alias has to resolve to the target table, while the recorded source
+    # keeps the alias spelling.
+    - name: UPDATE with an alias-qualified SET target
+      sql: UPDATE t1 AS x SET x.name = x.other WHERE id = 1
+      expected_edges:
+        - from_table: t1
+          from_field: other
+          to_table: t1
+          to_field: name
+          relation_type: indirect
+          has_transform: true
+          is_temp: false
+          transformations:
+            - operation: PROJECT
+              expression: x.other

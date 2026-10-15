@@ -3,13 +3,13 @@ name: Identifiers
 # spacing around them is the canonical form's business.
 cases:
   - name: a backtick identifier in the mysql family
-    engine: [mysql, starrocks]
+    engine: [mysql, starrocks, doris]
     sql: SELECT `odd name` FROM t
     text: SELECT `odd name` FROM t
     canonical: SELECT `odd name` FROM t
 
   - name: a backtick identifier holding the placeholder character
-    engine: [mysql, starrocks]
+    engine: [mysql, starrocks, doris]
     sql: SELECT `wei?rd` FROM t
     text: SELECT `wei?rd` FROM t
     canonical: SELECT `wei?rd` FROM t
@@ -35,7 +35,7 @@ cases:
   # A double quote is a string in the MySQL family and an identifier in PostgreSQL. The
   # stored text is identical in both cases; only the corpus case that pins it differs.
   - name: a double quoted string in the mysql family
-    engine: [mysql, starrocks]
+    engine: [mysql, starrocks, doris]
     sql: SELECT "not an identifier" AS s
     text: SELECT ? AS s
     canonical: SELECT ? AS s
@@ -49,7 +49,7 @@ cases:
     canonical: SELECT ` wei ? rd ` FROM t
 
   - name: keywords used as a quoted identifier
-    engine: [mysql, starrocks]
+    engine: [mysql, starrocks, doris]
     sql: SELECT `select`, `from` FROM t
     text: SELECT `select`, `from` FROM t
     canonical: SELECT `select` , `from` FROM t

@@ -83,21 +83,21 @@ cases:
   # has neither form: its binary literal is `0xAB`, and its lexer reads `x'AB'` as an identifier
   # followed by a string. Pinned to the dialects whose lexer agrees.
   - name: a hexadecimal string literal
-    engine: [mysql, starrocks, postgres]
+    engine: [mysql, starrocks, postgres, doris]
     sql: SELECT x'AB' AS n
     text: SELECT ? AS n
     canonical: SELECT ? AS n
 
   - name: a bit string literal
-    engine: [mysql, starrocks, postgres]
+    engine: [mysql, starrocks, postgres, doris]
     sql: SELECT b'101' AS n
     text: SELECT ? AS n
     canonical: SELECT ? AS n
 
-  # The tokenizer splits `1_000` after the first digit in the MySQL family and StarRocks,
-  # and keeps it as one token in PostgreSQL, so the two stored forms differ.
+  # The tokenizer splits `1_000` after the first digit in the MySQL family, StarRocks and
+  # Doris, and keeps it as one token in PostgreSQL, so the two stored forms differ.
   - name: a digit separator in the mysql family
-    engine: [mysql, starrocks]
+    engine: [mysql, starrocks, doris]
     sql: SELECT 1_000 AS n
     text: SELECT ?_000 AS n
     canonical: SELECT ? _000 AS n
@@ -111,7 +111,7 @@ cases:
   # A sign is its own token in every dialect, but PostgreSQL lexes `-?` and `+?` back as one
   # operator token, which is why the two canonical forms differ by a space.
   - name: a negative number in the mysql family
-    engine: [mysql, starrocks]
+    engine: [mysql, starrocks, doris]
     sql: SELECT -1 AS n
     text: SELECT -? AS n
     canonical: SELECT - ? AS n
@@ -123,7 +123,7 @@ cases:
     canonical: SELECT -? AS n
 
   - name: an explicitly positive number in the mysql family
-    engine: [mysql, starrocks]
+    engine: [mysql, starrocks, doris]
     sql: SELECT +1 AS n
     text: SELECT +? AS n
     canonical: SELECT + ? AS n
@@ -175,7 +175,7 @@ cases:
     canonical: SELECT a FROM t LIMIT ? OFFSET ?
 
   - name: the mysql comma limit form
-    engine: [mysql, starrocks]
+    engine: [mysql, starrocks, doris]
     sql: SELECT a FROM t LIMIT 10, 20
     text: SELECT a FROM t LIMIT ?, ?
     canonical: SELECT a FROM t LIMIT ? , ?
@@ -216,10 +216,10 @@ cases:
     text: SELECT a FROM t WHERE b = ?::int
     canonical: "SELECT a FROM t WHERE b = ? :: int"
 
-  # MySQL and StarRocks split `::` into two tokens where PostgreSQL has one, so the
+  # MySQL, StarRocks and Doris split `::` into two tokens where PostgreSQL has one, so the
   # canonical forms differ.
   - name: a cast in the mysql family
-    engine: [mysql, starrocks]
+    engine: [mysql, starrocks, doris]
     sql: SELECT 1::int AS n
     text: SELECT ?::int AS n
     canonical: "SELECT ? : : int AS n"

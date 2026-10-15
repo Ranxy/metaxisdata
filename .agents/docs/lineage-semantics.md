@@ -1,7 +1,7 @@
 # Lineage semantics — Reference
 
-> Status: **implemented**. Maintenance reference for what the SQL analyzers must keep producing: `backend/plugin/lineage/{model,scope,algorithm}`, `.../postgresql`, `.../mysql` (+ `tidb` / `mariadb`), `.../starrocks`.
-> Related: [lineage-analyzer.md](lineage-analyzer.md) (assembly, runner lifecycle, generation, AST audit), [lineage-graph.md](lineage-graph.md) (graph-side field lineage), [omni-upstream-defects.md](omni-upstream-defects.md) (upstream parser/AST defects — pointers only here).
+> Status: **implemented**. Maintenance reference for what the SQL analyzers must keep producing: `backend/plugin/lineage/{model,scope,algorithm}`, `.../postgresql`, `.../mysql` (+ `tidb` / `mariadb`), `.../starrocks`, `.../doris`.
+> Related: [lineage-analyzer.md](lineage-analyzer.md) (assembly, runner lifecycle, generation, AST audit), [lineage-graph.md](lineage-graph.md) (graph-side field lineage), [doris-lineage.md](doris-lineage.md) (the Doris dialect in full), [omni-upstream-defects.md](omni-upstream-defects.md) (upstream parser/AST defects — pointers only here).
 
 ## What it is
 
@@ -149,12 +149,13 @@ Implementation: `resolveUnqualified` walks outward and stops at the first scope 
 | Dialect | Suite files | Cases |
 | --- | --- | --- |
 | PostgreSQL | 40 | 250 |
-| MySQL (corpus shared with TiDB and MariaDB) | 24 | 225 |
+| MySQL (corpus shared with TiDB and MariaDB) | 24 | 226 |
 | StarRocks | 20 | 185 |
+| Doris | 21 | 196 |
 | MSSQL | 14 | 143 |
 | TiDB (dialect suite, on top of the shared corpus) | 1 | 15 |
 | MariaDB (dialect suite, on top of the shared corpus) | 1 | 20 |
-| **total** | **100** | **838** |
+| **total** | **121** | **1035** |
 
 ### StarRocks
 
@@ -174,7 +175,19 @@ Implementation: `resolveUnqualified` walks outward and stops at the first scope 
 
 **Scope contract.** `ColumnRef.Resolved` marks a reference already resolved against a scope a later lookup cannot see; `ResolveColumnRefs` returns it unchanged (`scope/scope.go:183`), pinned by `TestScope_ResolveColumn_ResolvedPassThrough` (`scope/scope_test.go:502`). StarRocks introduced it, and all dialects now set it where a query-local or arm-local reference must survive into an enclosing scope (`starrocks/analyzer.go:1009`, `mysql/analyzer.go:942`, `postgresql/analyzer.go:1090`).
 
-**Reported as gaps rather than failures:** `MERGE INTO` and an unmodelled query expression raise `not modelled:` diagnostics and keep the surrounding edges (`starrocks/analyzer.go:207`, `:248`; `starrocks/analyzer_test.go:112`). **Not modelled at all:** `SELECT * REPLACE`, `GROUP BY ALL`, cross-catalog references (the registry has no catalog dimension). **`DORIS` stays unregistered** by decision (`backend/plugin/lineage/engines/engines.go:10`).
+**Reported as gaps rather than failures:** `MERGE INTO` and an unmodelled query expression raise `not modelled:` diagnostics and keep the surrounding edges (`starrocks/analyzer.go:207`, `:248`; `starrocks/analyzer_test.go:112`). **Not modelled at all:** `SELECT * REPLACE`, `GROUP BY ALL`, cross-catalog references (the registry has no catalog dimension).
+
+### Doris
+
+**Ported from StarRocks, not re-derived.** omni's Doris AST is a sibling of its StarRocks AST — 3 keywords and 9 struct types differ — so the traversal is a port of the StarRocks one rather than a third independent implementation. Of the 173 StarRocks corpus statements both parsers accept, 171 produce identical canonical AST shapes; the only two divergences are structural and are the two facts the port had to follow: a parenthesized (or repeated-clause-group) query is `GroupedQuery{Query}` where StarRocks has `ParenSelect{Sel}`, and a table-valued function is `TableRef.Func` where StarRocks has a `TableFunctionRef` of its own. The remaining port deltas are the absence of `InsertStmt.ByName`, CTAS column names coming from `CreateTableStmt.Columns` (Doris has no `CTASColumns`), and `UpdateStmt`/`DeleteStmt` having no `With` — so `WITH … UPDATE/DELETE` is a hard parse failure rather than a gap. Full detail in [doris-lineage.md](doris-lineage.md).
+
+**The one shape that adds lineage: `LATERAL VIEW`.** `TableRef.LateralViews` is Doris-only, and `LATERAL VIEW generator(args) alias AS c1[, c2]` maps every column the generator's arguments read onto every column the `AS` list declares, registered as a query-local relation. It is a query-local relation like any other: never an edge endpoint — `u.elem` resolves to `t.arr`, which the shared temp tracing flattens to the base table. A generator whose arguments hold no resolvable column (a literal-only call) contributes no edge, because it has no source this analysis can name, while one that does resolves instead of being reported as an unknown name. A chain of generators applies left to right, so a later generator can read the columns an earlier one declared.
+
+**Doris-only syntax that adds no semantics:** `TABLESAMPLE(...)` is a row set (`TableRef.Sample`); `GROUP BY … WITH ROLLUP` carries the same grouping keys as plain `GROUP BY` (`SelectStmt.GroupByWithRollup` only adds subtotal rows); array slice `a[1:2]`, element access `value[index]`, `STRUCT`/Map literals and `CONVERT(x USING y)` are covered by the generic expression walk. `COPY INTO` and `LOAD` follow StarRocks' file-source and column-list rules, and `LOAD`'s `SET` is still raw text with no column lineage.
+
+**Where its input text differs from StarRocks:** a Doris materialized view arrives as `mv_infos("database"=?)`'s `QuerySql` — a **bare query body**, not the whole `SHOW CREATE MATERIALIZED VIEW` statement StarRocks stores — so the runner's `isCompleteStatement` passthrough never fires for it and it is always wrapped as `CREATE MATERIALIZED VIEW <name> AS <body>`. When a view or MV body is a `WITH`, a set operation or a parenthesized query, omni's `CREATE VIEW` production accepts only a bare `SELECT`, so `viewbody.go` extracts the body after the top-level `AS` and parses it as a top-level query.
+
+**Same gaps as its sibling:** `MERGE INTO` and an unmodelled query expression are `not modelled:` diagnostics beside the edges (never a failure), and `LOAD`'s `SET`/`WHERE` carries no column lineage.
 
 ### MSSQL
 
@@ -189,7 +202,7 @@ Implementation: `resolveUnqualified` walks outward and stops at the first scope 
 | The governing node decides the transformation | An enum-driven AST like MySQL's, so operators are named with the MySQL family's words (`ADDITION`), not PostgreSQL's source token — the PG-FU-4 divergence, not a third vocabulary |
 | `OUTPUT` is not modelled | A data-modification statement's client-facing result is not lineage, which is PostgreSQL's `RETURNING` decision (`mssql/analyzer.go` `processInsertStatement`) |
 | A DELETE without a `WHERE` | Its FROM clause's join predicates are recorded as influences on the target's rows; with a `WHERE` the row set is attributed to the condition columns as `source.x -> target.__deletion__`, as everywhere else |
-| `MERGE` is modelled | The one statement PostgreSQL, MySQL and StarRocks all report as a gap. Its ON condition is a join influence on the target, each WHEN clause's own AND condition a filter influence on it, and each action writes what the statement it stands for would |
+| `MERGE` is modelled | The one statement PostgreSQL, MySQL, StarRocks and Doris all report as a gap. Its ON condition is a join influence on the target, each WHEN clause's own AND condition a filter influence on it, and each action writes what the statement it stands for would |
 | A `PIVOT`'s grouping columns | The source's columns that neither the aggregate nor the FOR column consumes are carried through, which the statement never names: they are read from the catalog when it knows the source's columns, and the relation exposes the pivot columns alone when it does not. A pivot's source is analyzed in a scope of its own, so a `SELECT *` beside it cannot read the source table as a second relation |
 
 **Known deviation (the approximation is deliberate).** SQL Server compares identifiers case-insensitively, while the registry looks an object up by its meta GUID, which is case-sensitive. Three layers carry that fact, and all three follow the engine rather than a default:
@@ -211,7 +224,7 @@ Rules that hold across all dialects; changing one is changing all of them.
 | Rule | Code |
 | --- | --- |
 | The relation type is computed from the transformation list, never stored per producer | `scope/types.go:208`, `model/relation.go:91` |
-| A qualifier means a database (MySQL family, StarRocks) or a schema (PostgreSQL) — different identifier fields | `scope/types.go:175`, `:183` |
+| A qualifier means a database (MySQL family, StarRocks, Doris) or a schema (PostgreSQL) — different identifier fields | `scope/types.go:175`, `:183` |
 | A query-local relation is never an edge endpoint: its lineage is traced to base tables with transformations combined along the way | `algorithm/temp.go:14`, `:34`, `:92` |
 | A query-local name never shadows a real relation of the same name — temp-ness is derived from the resolved relation, not a name set | `algorithm/temp.go:92` |
 | Set-operation arms merge positionally; each arm keeps its own transformations, combining chain outermost first | `algorithm/setop.go:42` |
@@ -227,7 +240,7 @@ Rules that hold across all dialects; changing one is changing all of them.
 
 1. **PG-FU-4 — cross-dialect expression-classification unification.** PostgreSQL classifies the governing top-level node and emits the source operator token. MySQL handles only `CaseExpr`, `BinaryExpr`, `UnaryExpr`, `BetweenExpr` and `InExpr` before falling back to the *first function call in the tree* (`analyzeExpressionOperator`, `mysql/analyzer.go:1912-1941`, `firstFuncCall` at `:1925`), and names operators with words (`binaryOperatorName`, `:1967`). So wrapper nodes the MySQL AST carries (`IsExpr`, `LikeExpr`, `CastExpr`, `ExistsExpr`) are classified from whatever function they contain — `sum(x) IS NULL` reports the inner `SUM` where PostgreSQL reports `OPERATOR "IS NULL"` — and the shared shapes differ in vocabulary (`ADDITION` vs `+`). Recorded here because the plan that named it is retired.
 2. **MySQL ODKU constant-assignment asymmetry.** PostgreSQL `ON CONFLICT … DO UPDATE SET b = 'x'` produces `t.* -> t.b`; MySQL `ON DUPLICATE KEY UPDATE a = 1` produces **zero edges**, because `len(sourceColumns) == 0` continues without the `table.*` fallback that the plain `UPDATE t SET a = 1` path has (`mysql/analyzer.go:1244-1246` vs `:1471-1481`). Decide first whether a constant write deserves a `t.*` edge, then align.
-3. **Deliberately missing shapes** (not defects): StarRocks `* REPLACE`, `GROUP BY ALL`, `SECURITY NONE`, cross-catalog references; MSSQL `OUTPUT`, table variables, `INSERT … EXEC`; `DORIS` unregistered. Upstream parser gaps are recorded in [omni-upstream-defects.md](omni-upstream-defects.md).
+3. **Deliberately missing shapes** (not defects): StarRocks `* REPLACE`, `GROUP BY ALL`, `SECURITY NONE`, cross-catalog references; Doris `LOAD`'s `SET`/`WHERE`; MSSQL `OUTPUT`, table variables, `INSERT … EXEC`. Upstream parser gaps are recorded in [omni-upstream-defects.md](omni-upstream-defects.md).
 4. **An unanswered query-local reference is a gap only in MSSQL.** A reference that resolves to a CTE, a derived table, a table function or a pivot whose own lineage says nothing about the column is dropped silently by every dialect: the shared tracers (`algorithm/temp.go:14`, `:34`, `:92`) report nothing, and only the MSSQL wrappers ask first (`queryLocalAnswers`). The shape is reachable with valid SQL wherever a query-local relation's column list is narrower than the references to it — a table function whose result columns the query never declared, a `PIVOT` grouping column over a source the catalog cannot describe. Making it a shared rule means deciding it once and re-checking every dialect's corpus, which is a change of its own; recorded here so the divergence is not read as an MSSQL quirk.
 5. **MSSQL drops a linked server's name on purpose.** `srv.db.dbo.t` is analyzed as the local `db.dbo.t`, because this product registers one instance per logical database and does not model linked servers; a deployment where a *foreign* instance exposes a database of the same name would get a silently local edge instead of a gap. Recorded in [mssql-lineage.md](mssql-lineage.md) with the assumption it rests on.
 
@@ -241,6 +254,7 @@ Rules that hold across all dialects; changing one is changing all of them.
 | PostgreSQL analyzer | [backend/plugin/lineage/postgresql/](../../backend/plugin/lineage/postgresql/) — `analyzer.go`, `expr.go`, `predicate.go`; corpus in `testdata/analyze/` |
 | MySQL family | `mysql/analyzer.go` (shared body) with `tidb/`, `mariadb/` generated; corpora in each `testdata/analyze/` |
 | StarRocks analyzer | [backend/plugin/lineage/starrocks/](../../backend/plugin/lineage/starrocks/) — `analyzer.go`, `expr.go`, `rawsql.go`, `viewbody.go` |
+| Doris analyzer | [backend/plugin/lineage/doris/](../../backend/plugin/lineage/doris/) — `analyzer.go`, `expr.go`, `predicate.go`, `rawsql.go`, `viewbody.go`; corpus in `testdata/analyze/` |
 | MSSQL analyzer | [backend/plugin/lineage/mssql/](../../backend/plugin/lineage/mssql/) — `analyzer.go`, `expr.go`, `predicate.go`, `split.go`; corpus in `testdata/analyze/` |
 | Engine set / wiring | [engines.go](../../backend/plugin/lineage/engines/engines.go), built once in [backend/server/server.go:107](../../backend/server/server.go#L107) |
 | Invariant test | [testutil/lineage_test_helper.go:337](../../backend/plugin/lineage/testutil/lineage_test_helper.go#L337) |

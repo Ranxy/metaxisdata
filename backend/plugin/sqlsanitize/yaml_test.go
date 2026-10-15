@@ -37,6 +37,7 @@ var yamlEngines = map[string]storepb.Engine{
 	"mysql":     storepb.Engine_MYSQL,
 	"postgres":  storepb.Engine_POSTGRES,
 	"starrocks": storepb.Engine_STARROCKS,
+	"doris":     storepb.Engine_DORIS,
 	"mssql":     storepb.Engine_MSSQL,
 }
 
@@ -46,6 +47,7 @@ var everyEngine = []storepb.Engine{
 	storepb.Engine_MYSQL,
 	storepb.Engine_POSTGRES,
 	storepb.Engine_STARROCKS,
+	storepb.Engine_DORIS,
 	storepb.Engine_MSSQL,
 }
 
@@ -57,6 +59,8 @@ func engineName(engine storepb.Engine) string {
 		return "postgres"
 	case storepb.Engine_STARROCKS:
 		return "starrocks"
+	case storepb.Engine_DORIS:
+		return "doris"
 	default:
 		return engine.String()
 	}

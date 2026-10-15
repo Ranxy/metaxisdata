@@ -24,8 +24,9 @@ func TestRegistersStarRocksEngine(t *testing.T) {
 	require.NotEmpty(t, relations)
 }
 
-// DORIS is deliberately left unregistered: the runner records a per-object skip
-// for it rather than analyzing Doris SQL with the StarRocks grammar.
+// Doris is not registered by this package: it has its own analyzer, because omni's
+// Doris grammar differs from this one, so it must never be read with the StarRocks
+// grammar.
 func TestDorisIsNotRegistered(t *testing.T) {
 	t.Parallel()
 

@@ -20,10 +20,12 @@ func TestIsLiteralClassifiesEveryDialectForm(t *testing.T) {
 		{storepb.Engine_MYSQL, `'a'`, true},
 		{storepb.Engine_POSTGRES, `'a'`, true},
 		{storepb.Engine_STARROCKS, `'a'`, true},
+		{storepb.Engine_DORIS, `'a'`, true},
 		// A double quote is a string in the MySQL family and an identifier in PostgreSQL and
 		// T-SQL, whose connections default to QUOTED_IDENTIFIER ON.
 		{storepb.Engine_MYSQL, `"a"`, true},
 		{storepb.Engine_STARROCKS, `"a"`, true},
+		{storepb.Engine_DORIS, `"a"`, true},
 		{storepb.Engine_POSTGRES, `"a"`, false},
 		{storepb.Engine_MSSQL, `"a"`, false},
 		// Numbers.
@@ -110,6 +112,12 @@ func TestSanitizeReplacesLiteralsAndKeepsSpacing(t *testing.T) {
 		{
 			name:    "starrocks limit",
 			dialect: storepb.Engine_STARROCKS,
+			sql:     "SELECT a FROM t LIMIT 10",
+			want:    "SELECT a FROM t LIMIT ?",
+		},
+		{
+			name:    "doris limit",
+			dialect: storepb.Engine_DORIS,
 			sql:     "SELECT a FROM t LIMIT 10",
 			want:    "SELECT a FROM t LIMIT ?",
 		},
@@ -203,7 +211,7 @@ func TestSanitizeRejectsInvalidUTF8(t *testing.T) {
 		"SELECT '\xc3' AS s",
 		"SELECT a FROM t WHERE b = '\xff\xfe'",
 	}
-	for _, engine := range []storepb.Engine{storepb.Engine_MYSQL, storepb.Engine_POSTGRES, storepb.Engine_STARROCKS} {
+	for _, engine := range []storepb.Engine{storepb.Engine_MYSQL, storepb.Engine_POSTGRES, storepb.Engine_STARROCKS, storepb.Engine_DORIS} {
 		for _, sql := range statements {
 			_, err := Sanitize(engine, sql)
 			require.ErrorIsf(t, err, ErrUnlexable, "%s %q", engine, sql)
@@ -234,7 +242,7 @@ func TestSanitizeIsIdempotent(t *testing.T) {
 		`SELECT "Weird Col", 'x' FROM t`,
 		"UPDATE t SET a = 1 WHERE b = 'q'",
 	}
-	for _, engine := range []storepb.Engine{storepb.Engine_MYSQL, storepb.Engine_POSTGRES, storepb.Engine_STARROCKS} {
+	for _, engine := range []storepb.Engine{storepb.Engine_MYSQL, storepb.Engine_POSTGRES, storepb.Engine_STARROCKS, storepb.Engine_DORIS} {
 		for _, sql := range sqls {
 			once, err := Sanitize(engine, sql)
 			if err != nil {
@@ -250,7 +258,7 @@ func TestSanitizeIsIdempotent(t *testing.T) {
 func TestAnalyzableSubstitutesOnePlaceholderPerToken(t *testing.T) {
 	t.Parallel()
 
-	for _, engine := range []storepb.Engine{storepb.Engine_MYSQL, storepb.Engine_POSTGRES, storepb.Engine_STARROCKS} {
+	for _, engine := range []storepb.Engine{storepb.Engine_MYSQL, storepb.Engine_POSTGRES, storepb.Engine_STARROCKS, storepb.Engine_DORIS} {
 		got := Analyzable(engine, "INSERT INTO t (a, b) VALUES (?, ?)")
 		require.Equal(t, "INSERT INTO t (a, b) VALUES ('?', '?')", got, engine)
 	}
