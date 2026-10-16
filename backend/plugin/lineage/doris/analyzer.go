@@ -713,15 +713,6 @@ func (a *Analyzer) generateEdgesForTarget(sp *scope.Scope, targetSchema, targetT
 			isTemp := targetTable == resultTableName
 			for _, res := range resolutions {
 				if res.Relation != nil && (res.Relation.IsCTE || res.Relation.IsSubquery) {
-					// A `*` over a query-local relation is one output column that expands
-					// into one edge per column of that relation, so the declared list
-					// cannot be read per output column here: the relation's own columns
-					// take the list's entries in order, starting at this position.
-					if res.Ref.Column == wildcardColumn && i < len(targetColumns) {
-						a.traceWildcardThroughTableLineageToTarget(
-							res.Relation, targetSchema, targetTable, targetColumns[i:], source.Transform)
-						continue
-					}
 					a.traceThroughTableLineageToTarget(res.Relation, res.Ref.Column, targetSchema, targetTable, targetColName, source.Transform)
 					continue
 				}
@@ -735,25 +726,6 @@ func (a *Analyzer) generateEdgesForTarget(sp *scope.Scope, targetSchema, targetT
 		}
 	}
 	a.emitPredicateInfluences(sp, targetSchema, targetTable)
-}
-
-// traceWildcardThroughTableLineageToTarget records a `*` over a query-local relation
-// against the target table: the j-th column the relation exposes becomes the j-th entry
-// the declared list has left. A relation whose columns are not described keeps the
-// reading it had — the wildcard stands for its whole lineage and the first entry names
-// all of it — because nothing here can say which column is which.
-func (a *Analyzer) traceWildcardThroughTableLineageToTarget(relation *scope.TableRef, targetSchema, targetTable string, targetColumns []string, transform []model.Transformation) {
-	names := relation.ColumnNames()
-	if names == nil {
-		a.traceThroughTableLineageToTarget(relation, wildcardColumn, targetSchema, targetTable, targetColumns[0], transform)
-		return
-	}
-	for j, name := range names {
-		if j >= len(targetColumns) {
-			return
-		}
-		a.traceThroughTableLineageToTarget(relation, name, targetSchema, targetTable, targetColumns[j], transform)
-	}
 }
 
 // viewColumnNames extracts the declared column names of a view or materialized
@@ -1068,6 +1040,9 @@ func (a *Analyzer) processStar(sp *scope.Scope, except []string) {
 				continue
 			}
 		}
+		if algorithm.ExpandQueryLocalWildcard(sp, tableRef, except) {
+			continue
+		}
 		sp.AddOutputColumn(scope.OutputColumn{
 			Alias:   wildcardColumn,
 			Sources: scope.NewColumnSources([]scope.ColumnRef{queryLocalWildcardSourceRef(tableRef)}, nil),
@@ -1096,6 +1071,9 @@ func (a *Analyzer) processTableWildcard(item *nodes.SelectItem, sp *scope.Scope)
 			return
 		}
 	}
+	if algorithm.ExpandQueryLocalWildcard(sp, tableRef, item.ExceptColumns) {
+		return
+	}
 	sp.AddOutputColumn(scope.OutputColumn{
 		Alias:   wildcardColumn,
 		Sources: scope.NewColumnSources([]scope.ColumnRef{queryLocalWildcardSourceRef(tableRef)}, nil),
@@ -1113,13 +1091,9 @@ func (a *Analyzer) processTableWildcard(item *nodes.SelectItem, sp *scope.Scope)
 // temp-table trace can find it by its scope key.
 func queryLocalWildcardSourceRef(tableRef *scope.TableRef) scope.ColumnRef {
 	if tableRef.IsSubquery || tableRef.IsCTE {
-		key := tableRef.Alias
-		if key == "" {
-			key = tableRef.Table
-		}
-		return scope.ColumnRef{Table: key, Column: wildcardColumn}
+		return scope.QueryLocalColumnRef(tableRef, wildcardColumn)
 	}
-	return scope.ColumnRef{Schema: tableRef.Schema, Table: tableRef.Table, Column: wildcardColumn, Resolved: true}
+	return scope.WildcardSourceRef(tableRef)
 }
 
 // processSelectExpr turns one select expression into an output column. aliased

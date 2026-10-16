@@ -1647,6 +1647,9 @@ func (a *Analyzer) processStar(star *nodes.StarExpr, sp *scope.Scope) {
 		if a.expandWildcardWithCatalog(tableRef, sp) {
 			continue
 		}
+		if algorithm.ExpandQueryLocalWildcard(sp, tableRef, nil) {
+			continue
+		}
 		sp.AddOutputColumn(scope.OutputColumn{
 			Alias:   wildcardColumn,
 			Sources: scope.NewColumnSources([]scope.ColumnRef{queryLocalWildcardSourceRef(tableRef)}, nil),
@@ -1672,6 +1675,9 @@ func (a *Analyzer) processTableWildcard(star *nodes.StarExpr, sp *scope.Scope) {
 	if a.expandWildcardWithCatalog(tableRef, sp) {
 		return
 	}
+	if algorithm.ExpandQueryLocalWildcard(sp, tableRef, nil) {
+		return
+	}
 	sp.AddOutputColumn(scope.OutputColumn{
 		Alias:   wildcardColumn,
 		Sources: scope.NewColumnSources([]scope.ColumnRef{queryLocalWildcardSourceRef(tableRef)}, nil),
@@ -1687,11 +1693,7 @@ func (a *Analyzer) processTableWildcard(star *nodes.StarExpr, sp *scope.Scope) {
 // temporary-relation trace can find it by its scope key.
 func queryLocalWildcardSourceRef(tableRef *scope.TableRef) scope.ColumnRef {
 	if tableRef.IsSubquery || tableRef.IsCTE {
-		key := tableRef.Alias
-		if key == "" {
-			key = tableRef.Table
-		}
-		return scope.ColumnRef{Table: key, Column: wildcardColumn}
+		return scope.QueryLocalColumnRef(tableRef, wildcardColumn)
 	}
 	return scope.WildcardSourceRef(tableRef)
 }

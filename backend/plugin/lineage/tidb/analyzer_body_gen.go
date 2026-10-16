@@ -917,13 +917,9 @@ func (a *Analyzer) processSelectItemList(items []nodes.ExprNode, sp *scope.Scope
 // not a stored relation at all. StarRocks and PostgreSQL carry the same rule.
 func queryLocalWildcardSourceRef(tableRef *scope.TableRef) scope.ColumnRef {
 	if tableRef.IsSubquery || tableRef.IsCTE {
-		key := tableRef.Alias
-		if key == "" {
-			key = tableRef.Table
-		}
-		return scope.ColumnRef{Table: key, Column: wildcardColumn}
+		return scope.QueryLocalColumnRef(tableRef, wildcardColumn)
 	}
-	return scope.ColumnRef{Schema: tableRef.Schema, Table: tableRef.Table, Column: wildcardColumn, Resolved: true}
+	return scope.WildcardSourceRef(tableRef)
 }
 
 func (a *Analyzer) processStar(sp *scope.Scope) {
@@ -932,6 +928,9 @@ func (a *Analyzer) processStar(sp *scope.Scope) {
 			if a.expandWildcardWithCatalog(tableRef, sp) {
 				continue
 			}
+		}
+		if algorithm.ExpandQueryLocalWildcard(sp, tableRef, nil) {
+			continue
 		}
 		sp.AddOutputColumn(scope.OutputColumn{
 			Alias:   wildcardColumn,
@@ -954,6 +953,9 @@ func (a *Analyzer) processTableWildcard(cr *nodes.ColumnRef, sp *scope.Scope) {
 		if a.expandWildcardWithCatalog(tableRef, sp) {
 			return
 		}
+	}
+	if algorithm.ExpandQueryLocalWildcard(sp, tableRef, nil) {
+		return
 	}
 	sp.AddOutputColumn(scope.OutputColumn{
 		Alias:   wildcardColumn,

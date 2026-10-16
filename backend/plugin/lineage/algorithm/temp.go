@@ -1,12 +1,86 @@
 package algorithm
 
 import (
+	"strings"
+
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/scope"
 )
 
 // AddEdgeFunc records one edge in the graph being built.
 type AddEdgeFunc func(model.ColumnRelation)
+
+// ExpandQueryLocalWildcard records one output column per column a query-local
+// relation exposes, when the analyzer knows them, and reports whether it did.
+//
+// A `*` over a relation whose columns are known has to become one output column per
+// column — the shape the catalog path already produces for a described base table. A
+// writer that maps a query's outputs onto a declared target list reads one position per
+// output column, so a single wildcard output column could only ever fill the list's
+// first entry: `INSERT INTO dst (k, name) SELECT * FROM (SELECT k, name FROM src) d`
+// recorded `src.name -> dst.k` and no edge to `dst.name` in every dialect that kept
+// the wildcard whole.
+//
+// Two relations keep the single wildcard output column and the whole-lineage reading
+// that answers it, because neither can be read column by column:
+//
+//   - A relation whose columns are unknown: nothing can say which column is which.
+//   - A relation whose exposed names repeat, compared the way the trace compares a
+//     column name with a lineage edge's target. A query-local relation's lineage is
+//     addressed by target name, so two columns exposing one name answer with each
+//     other's sources; expanding them would hand the same lineage to both entries of a
+//     declared target list. The shape is real SQL — PostgreSQL 16, Doris 4.1.4 and
+//     StarRocks 4.1 all return two columns for `SELECT * FROM (SELECT 1 AS x, 2 AS x) d`
+//     — so it keeps the reading it had rather than a guess.
+//
+// except names the columns the statement excluded (`SELECT * EXCEPT (…)`), matched
+// case-insensitively the way the engines match the identifiers in that list. A list that
+// excludes every column leaves no output column at all; the engines reject such a
+// statement (Doris: "All slots in * EXCEPT clause are excepted", StarRocks: "EXCLUDE
+// clause removes all columns from query scope"), so that empty result is the reading of
+// a shape no executable input reaches.
+func ExpandQueryLocalWildcard(sp *scope.Scope, tableRef *scope.TableRef, except []string) bool {
+	if !tableRef.IsCTE && !tableRef.IsSubquery {
+		return false
+	}
+	names := tableRef.ColumnNames()
+	if names == nil || !uniqueColumnNames(names) {
+		return false
+	}
+	for _, name := range names {
+		if isExcludedColumn(except, name) {
+			continue
+		}
+		sp.AddOutputColumn(scope.OutputColumn{
+			Alias:   name,
+			Sources: scope.NewColumnSources([]scope.ColumnRef{scope.QueryLocalColumnRef(tableRef, name)}, nil),
+		})
+	}
+	return true
+}
+
+// isExcludedColumn reports whether a `* EXCEPT (…)` list names a column.
+func isExcludedColumn(except []string, name string) bool {
+	for _, excluded := range except {
+		if strings.EqualFold(excluded, name) {
+			return true
+		}
+	}
+	return false
+}
+
+// uniqueColumnNames reports whether no two exposed names compare equal, which is the
+// comparison the lineage trace makes between a column name and an edge's target.
+func uniqueColumnNames(names []string) bool {
+	for i, name := range names {
+		for _, other := range names[i+1:] {
+			if strings.EqualFold(name, other) {
+				return false
+			}
+		}
+	}
+	return true
+}
 
 // TraceThroughTableLineage records a query-local relation's own lineage against
 // the statement's result rows, combining each edge's transformations with the

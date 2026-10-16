@@ -70,3 +70,17 @@ func WildcardSourceRef(tableRef *TableRef) ColumnRef {
 		Resolved: true,
 	}
 }
+
+// QueryLocalColumnRef is the source one column of a query-local relation
+// contributes. The relation's name is an alias the statement invented, so the
+// reference stays unresolved for the scope resolver to bind by the relation's
+// scope key — which is what attaches the relation and lets the temporary-relation
+// tracing flatten it. Marking it resolved instead made COUNT(*) over a CTE emit an
+// edge naming the CTE, which is not a stored object at all.
+func QueryLocalColumnRef(tableRef *TableRef, column string) ColumnRef {
+	key := tableRef.Alias
+	if key == "" {
+		key = tableRef.Table
+	}
+	return ColumnRef{Table: key, Column: column}
+}

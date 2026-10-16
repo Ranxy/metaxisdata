@@ -29,14 +29,14 @@ func wildcardCatalog() catalog.Provide {
 
 // TestAWildcardOverAQueryLocalRelationFillsTheTargetListPositionally pins the declared
 // target list being filled from the wildcard's own position. `SELECT *` over a
-// query-local relation is a single output column that expands into one edge per column
-// of that relation, so the target list cannot be read per output column: the relation's
-// own columns take the list's entries in order, starting where the wildcard sits.
+// query-local relation whose columns the analyzer knows expands into one output column
+// per column — the shared rule, the one the catalog path already applied to a described
+// base table — so the declared list, read one entry per output column, names every
+// column of the relation from where the wildcard sits.
 //
-// The base-table control shows where the rule came from — there `*` expands per catalog
-// column — and the last two cases keep the readings that already held: with no declared
-// list each edge is named after its own column, and a renamed target takes the entry at
-// its position.
+// The base-table control shows the same rule on the catalog path, and the last two cases
+// keep the readings that already held: with no declared list each edge is named after its
+// own column, and a renamed target takes the entry at its position.
 func TestAWildcardOverAQueryLocalRelationFillsTheTargetListPositionally(t *testing.T) {
 	t.Parallel()
 

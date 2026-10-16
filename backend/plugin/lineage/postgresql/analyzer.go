@@ -1057,6 +1057,9 @@ func (a *Analyzer) processStar(sp *scope.Scope) {
 				continue
 			}
 		}
+		if algorithm.ExpandQueryLocalWildcard(sp, tableRef, nil) {
+			continue
+		}
 
 		sp.AddOutputColumn(scope.OutputColumn{
 			Alias:     wildcardColumn,
@@ -1081,13 +1084,9 @@ func (a *Analyzer) processStar(sp *scope.Scope) {
 // is not a stored relation at all.
 func queryLocalWildcardSourceRef(tableRef *scope.TableRef) scope.ColumnRef {
 	if tableRef.IsSubquery || tableRef.IsCTE {
-		key := tableRef.Alias
-		if key == "" {
-			key = tableRef.Table
-		}
-		return scope.ColumnRef{Table: key, Column: wildcardColumn}
+		return scope.QueryLocalColumnRef(tableRef, wildcardColumn)
 	}
-	return scope.ColumnRef{Schema: tableRef.Schema, Table: tableRef.Table, Column: wildcardColumn, Resolved: true}
+	return scope.WildcardSourceRef(tableRef)
 }
 
 // processTableStar expands `table.*` against a single relation in scope.
@@ -1105,6 +1104,9 @@ func (a *Analyzer) processTableStar(cr *pgast.ColumnRef, sp *scope.Scope) {
 		if a.expandWildcardWithCatalog(tableRef, sp) {
 			return
 		}
+	}
+	if algorithm.ExpandQueryLocalWildcard(sp, tableRef, nil) {
+		return
 	}
 	sp.AddOutputColumn(scope.OutputColumn{
 		Alias:     wildcardColumn,
