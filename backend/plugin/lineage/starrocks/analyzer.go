@@ -1253,15 +1253,17 @@ func (a *Analyzer) processCTE(cte *nodes.CTE, recursive bool) {
 		// the CTE. An unreferenced CTE filters rows nobody reads.
 		a.influences.BindCTE(definition, cteScope)
 
+		// The names the CTE exposes: the body's own outputs, with a declared list
+		// renaming a prefix of them (`WITH c (a, b) AS (SELECT id, name ...)`). The
+		// definition keeps them, so a reference resolves against names the relation
+		// really exposes - a column with no source is a column of it all the same - and
+		// a declared list the modelled body cannot contradict is kept; the lineage edges
+		// below are named by the modelled outputs.
+		outputColumns := cteScope.GetOutputColumns()
+		exposed := scope.OutputColumnNames(cte.Columns, outputColumns)
+		definition.Columns = scope.ExposedColumnNames(cte.Columns, outputColumns)
 		for i, outputCol := range cteScope.GetOutputColumns() {
-			// A CTE may rename its output columns: WITH c (a, b) AS (SELECT id,
-			// name ...). The MySQL analyzer ignores that list and emits no
-			// lineage at all for this shape; mapping it is strictly more
-			// correct.
-			targetName := outputCol.Alias
-			if i < len(cte.Columns) {
-				targetName = cte.Columns[i]
-			}
+			targetName := exposed[i]
 			for _, source := range outputCol.Sources {
 				resolutions, err := cteScope.ResolveColumnRefs(source.Ref)
 				if err != nil {

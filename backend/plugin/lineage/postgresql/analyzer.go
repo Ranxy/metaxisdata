@@ -475,21 +475,18 @@ func (a *Analyzer) processCTE(cte *pgast.CommonTableExpr, recursive bool) {
 		a.influences.BindCTE(definition, cteScope)
 
 		outputColumns := cteScope.GetOutputColumns()
-		// A declared column list renames the body's outputs positionally, and only
-		// when its arity matches the body: a mismatch is a statement PostgreSQL
-		// rejects. The definition keeps the validated form, so a reference to the
-		// CTE resolves columns against names the body really exposes.
+		// The names the CTE exposes: the body's own outputs, with a declared list
+		// renaming a prefix of them. PostgreSQL 16 exposes (a, name) for `WITH c (a) AS
+		// (SELECT k, name FROM src)`, so the list reaches the columns it names and the
+		// rest keep their own — a column with no source is a column of the CTE all the
+		// same. The definition keeps them, so a reference resolves against the names the
+		// relation really exposes; the CTE's own lineage edges are named by the modelled
+		// outputs.
+		names := scope.OutputColumnNames(columns, outputColumns)
 		definition.Columns = scope.ExposedColumnNames(columns, outputColumns)
-		useExplicitColumns := len(columns) > 0 && len(columns) == len(outputColumns)
 
-		// Build lineage for each output column. When the CTE declares an explicit
-		// column list with a matching arity, it overrides the inner SELECT output
-		// names positionally.
 		for i, outputCol := range outputColumns {
-			targetColumn := outputCol.Alias
-			if useExplicitColumns {
-				targetColumn = columns[i]
-			}
+			targetColumn := names[i]
 
 			for _, source := range outputCol.Sources {
 				resolutions, err := cteScope.ResolveColumnRefs(source.Ref)
@@ -915,7 +912,7 @@ func (a *Analyzer) processRangeSubselect(sub *pgast.RangeSubselect) {
 	lineage := make([]model.ColumnRelation, 0)
 
 	outputColumns := subqueryScope.GetOutputColumns()
-	names := scope.ExposedColumnNames(declaredColumns, outputColumns)
+	names := scope.OutputColumnNames(declaredColumns, outputColumns)
 	for i, col := range outputColumns {
 		colName := names[i]
 		if colName == "" {

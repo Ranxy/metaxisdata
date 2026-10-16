@@ -67,6 +67,7 @@ var requiredSharedDeclarations = map[string][]string{
 		"TempColumnNames",
 		"AttachTempColumnLookup",
 		"ExposedColumnNames",
+		"OutputColumnNames",
 		"WildcardSourceRef",
 		"QueryLocalColumnRef",
 	},

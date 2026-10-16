@@ -782,9 +782,9 @@ func (a *Analyzer) processDerivedTable(sub *nodes.SubqueryExpr, alias string, de
 	}
 	// A declared column list renames the body's output columns, which is what the
 	// statement that reads the table addresses; without one the body's own names are
-	// what it offers. ExposedColumnNames keeps the two in step when the declaration
-	// names fewer columns than the body produces.
-	names := scope.ExposedColumnNames(declared, subqueryScope.GetOutputColumns())
+	// what it offers. T-SQL rejects a declaration whose arity differs from the body, so
+	// OutputColumnNames' left-to-right rule is the whole of it here.
+	names := scope.OutputColumnNames(declared, subqueryScope.GetOutputColumns())
 	tableRef := &scope.TableRef{
 		Table:      alias,
 		Alias:      alias,
@@ -1174,7 +1174,17 @@ func (a *Analyzer) processCTE(cte *nodes.CommonTableExpr) {
 	// definition and reach the statement only if it references the CTE. An
 	// unreferenced CTE filters rows nobody reads.
 	a.influences.BindCTE(definition, cteScope)
-	definition.Lineage = a.tempTableLineage(cteScope, definition.Columns, cte.Name)
+	// The definition keeps the names the CTE exposes - the body's own outputs, with a
+	// declared list renaming a prefix of them, and a declared list the modelled body
+	// cannot contradict kept - so a reference resolves against what the relation really
+	// exposes rather than against the list the statement happened to spell. A column with
+	// no source is a column of the CTE even though it has no edge to record. The lineage
+	// below is named by the modelled outputs, which is what lets a wildcard edge answer
+	// every name the relation exposes.
+	declared := columnList(cte.Columns)
+	outputs := cteScope.GetOutputColumns()
+	definition.Columns = scope.ExposedColumnNames(declared, outputs)
+	definition.Lineage = a.tempTableLineage(cteScope, scope.OutputColumnNames(declared, outputs), cte.Name)
 	a.currentScope().AddCTE(definition)
 }
 
