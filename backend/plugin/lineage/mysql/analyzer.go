@@ -545,7 +545,15 @@ func (a *Analyzer) processCTE(cte *nodes.CommonTableExpr) {
 		a.influences.BindCTE(definition, cteScope)
 
 		outputColumns := cteScope.GetOutputColumns()
-		names := scope.ExposedColumnNames(cte.Columns, outputColumns)
+		names := scope.OutputColumnNames(cte.Columns, outputColumns)
+		// The definition keeps the names the CTE exposes, which is what a reference
+		// resolves against: the body's own outputs, with a declared list renaming a
+		// prefix of them. Leaving the raw declared list here made a body output with no
+		// source (a literal, an aggregate) drop out of the exposure, so a scope holding
+		// another relation denied the name and a wildcard over the CTE shifted the target
+		// list behind it. ExposedColumnNames keeps a declared list the modelled body
+		// cannot contradict; the edges below are named by the modelled outputs.
+		definition.Columns = scope.ExposedColumnNames(cte.Columns, outputColumns)
 		for i, outputCol := range outputColumns {
 			targetName := names[i]
 			for _, source := range outputCol.Sources {
@@ -891,7 +899,7 @@ func (a *Analyzer) processDerivedTable(sub *nodes.SubqueryExpr) {
 	a.influences.Inherit(subqueryScope, a.currentScope())
 
 	outputColumns := subqueryScope.GetOutputColumns()
-	names := scope.ExposedColumnNames(sub.Columns, outputColumns)
+	names := scope.OutputColumnNames(sub.Columns, outputColumns)
 	derivedLineage := make([]model.ColumnRelation, 0)
 	for i, col := range outputColumns {
 		colName := names[i]

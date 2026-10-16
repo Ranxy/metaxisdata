@@ -49,10 +49,10 @@ func TestACTEsExposedColumnsComeFromItsBody(t *testing.T) {
 		t.Parallel()
 
 		// Doris renames from the left and leaves the outputs a short list does not
-		// reach at their query alias, which is why the exposure is built positionally
-		// rather than through scope.ExposedColumnNames: on 4.1.4 both
-		// `WITH c (a) AS (SELECT k, name FROM t) SELECT a FROM c` and `SELECT name FROM
-		// c` run, so neither name may become a gap.
+		// reach at their query alias — the naming rule scope.OutputColumnNames applies
+		// for every dialect, because that is what each engine does with a declaration it
+		// accepts: on 4.1.4 both `WITH c (a) AS (SELECT k, name FROM t) SELECT a FROM c`
+		// and `SELECT name FROM c` run, so neither name may become a gap.
 		requireEdgesWithCatalog(t, "WITH c (a) AS (SELECT k, name FROM ev2) SELECT a AS n FROM c, ev2",
 			variantCatalog(), []string{"ev2.k -> __result__.n"})
 		requireEdgesWithCatalog(t, "WITH c (a) AS (SELECT k, name FROM ev2) SELECT name AS n FROM c, ev2",

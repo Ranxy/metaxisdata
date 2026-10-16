@@ -1358,26 +1358,16 @@ func (a *Analyzer) processCTE(cte *nodes.CTE, recursive bool) {
 		a.influences.BindCTE(definition, cteScope)
 
 		outputColumns := cteScope.GetOutputColumns()
-		// The names the CTE exposes to whatever reads it. A declared list renames
-		// its outputs from the left — `WITH c (a) AS (SELECT id, name ...)`, which the
-		// MySQL analyzer drops and emits no lineage for at all, so mapping it is
-		// strictly more correct — and the outputs a short list does not reach keep
-		// their query alias, because that is what the engine exposes: on 4.1.4 both
-		// `WITH c (a) AS (SELECT k, name FROM t) SELECT a FROM c` and `SELECT name
-		// FROM c` run. That is why this is not scope.ExposedColumnNames, whose arity
-		// rule is the MySQL family's. The definition keeps the exposure so a
+		// The names the CTE exposes to whatever reads it: the body's own outputs, with a
+		// declared list renaming them from the left. The definition keeps them so a
 		// reference resolves against names the relation really exposes, including a
-		// column that carries no source (a constant has no lineage to record, and
-		// would otherwise not be a column of the relation at all).
-		exposed := make([]string, 0, len(outputColumns))
-		for i, outputCol := range outputColumns {
-			name := outputCol.Alias
-			if i < len(cte.Columns) {
-				name = cte.Columns[i]
-			}
-			exposed = append(exposed, name)
-		}
-		definition.Columns = exposed
+		// column that carries no source — a constant is a column of the CTE even though
+		// it has no lineage to record, and leaving it out of the list denied the name in
+		// a scope that held another relation and shifted a declared target list behind a
+		// wildcard over the CTE. A declared list the modelled body cannot contradict is
+		// kept too; the edges below are named by the modelled outputs.
+		exposed := scope.OutputColumnNames(cte.Columns, outputColumns)
+		definition.Columns = scope.ExposedColumnNames(cte.Columns, outputColumns)
 
 		for i, outputCol := range outputColumns {
 			targetName := exposed[i]

@@ -40,21 +40,64 @@ func TempColumnNames(declared []string, lineage []model.ColumnRelation) []string
 	return names
 }
 
-// ExposedColumnNames lists the names a temporary relation exposes, in the order
-// the relation offers them. A declared list — a CTE's `WITH c (a, b)` or a
-// derived table's `AS d (a, b)` — renames the body's output positionally, so both
-// the relation's own lineage and the columns the scope resolves against have to
-// use the renamed names. The list is honoured only when its arity matches the
-// body, because a mismatch is a statement MySQL rejects.
+// ExposedColumnNames lists the names a temporary relation exposes to whatever reads it, in
+// the order it offers them. It is OutputColumnNames — a declared list renames the body's
+// outputs from the left, the outputs it does not reach keep their own names — with one
+// exception: a declared list longer than the modelled body is kept when that body carries a
+// wildcard output column, because the count is then a lower bound rather than the body's
+// arity. `WITH c (a, b) AS (SELECT * FROM undescribed) SELECT * FROM c` is engine-valid
+// whenever `undescribed` really has two columns — all five engines were asked, and each
+// exposes `(a, b)` for an equal-arity declaration — while discarding it left the relation
+// undescribed, so the two edges the names carry became one wildcard edge, an edge a declared
+// target list expected went missing, and a name the relation does not have resolved
+// silently. The statement's own list is the only account of those columns there is.
+//
+// The result may be longer than cols, so a caller indexes outputs with it only up to
+// len(cols) and uses it in full for the lookup a relation's references resolve against.
 func ExposedColumnNames(declared []string, cols []OutputColumn) []string {
-	if len(declared) > 0 && len(declared) == len(cols) {
+	if len(declared) > len(cols) && hasWildcardOutput(cols) {
 		return declared
 	}
+	return OutputColumnNames(declared, cols)
+}
+
+// OutputColumnNames lists the names the analyzer's modelled outputs carry, in the order it
+// modelled them. A declared list — a CTE's `WITH c (a, b)` or a derived table's `AS d (a,
+// b)` — renames them from the left, so the relation's own lineage edges are named the same
+// way. The outputs the list does not reach keep their own names, because that is what the
+// engines do: PostgreSQL 16 and Doris 4.1.4 accept a list shorter than the body and expose
+// `(a, name)` for `WITH c (a) AS (SELECT k, name FROM t) SELECT …`, while MySQL 8.3, TiDB,
+// MariaDB, StarRocks 4.1 and MSSQL 2019 accept a declared list only when its arity matches
+// the body, which makes this rule and an equality rule agree on every statement they
+// execute. A list longer than the body is a statement every one of them rejects, so the
+// declaration is discarded and the body names the columns.
+//
+// The rule is about the body's outputs, never about the names its lineage happens to
+// carry: an output column with no source — a literal, an aggregate — is a column of the
+// relation all the same, and leaving it out let a scope holding another relation deny the
+// name and shifted a declared target list behind a wildcard over the relation.
+func OutputColumnNames(declared []string, cols []OutputColumn) []string {
+	renames := len(declared) <= len(cols)
 	names := make([]string, 0, len(cols))
-	for _, col := range cols {
-		names = append(names, col.Alias)
+	for i, col := range cols {
+		name := col.Alias
+		if renames && i < len(declared) {
+			name = declared[i]
+		}
+		names = append(names, name)
 	}
 	return names
+}
+
+// hasWildcardOutput reports whether any modelled output column is the wildcard the
+// analyzer records for a relation it could not enumerate.
+func hasWildcardOutput(cols []OutputColumn) bool {
+	for _, col := range cols {
+		if col.Alias == model.WildcardColumn {
+			return true
+		}
+	}
+	return false
 }
 
 // WildcardSourceRef is the source a `*` contributes for one relation: a wildcard
