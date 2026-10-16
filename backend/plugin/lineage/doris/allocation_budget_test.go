@@ -26,11 +26,13 @@ import (
 // only in how the key list is read. The WITH-clause cases add about 550 each, because such a
 // statement is tokenized twice and its body re-parsed after the clause moves.
 //
-// The limit is the 36171 measured under the CI flags on the merged corpus (main's four
-// grouping-set cases and this branch's six WITH-clause cases) with ~10% headroom: the
-// previous 3% headroom was exhausted by one corpus case and the failure it produced landed
-// only on CI, which is the outcome this budget is least useful as.
-const corpusAllocationBudget = 39800
+// The limit is the 37315 measured under the CI flags on the corpus this branch
+// carries, with ~10% headroom: the previous 3% headroom was exhausted by one corpus
+// case and the failure it produced landed only on CI, which is the outcome this budget
+// is least useful as. This branch's three wildcard-target cases add about 360 each,
+// because a `*` over a relation whose columns are known now allocates one output column
+// and one source reference per column instead of one wildcard for the whole relation.
+const corpusAllocationBudget = 41000
 
 // TestAnalyzeAllocationBudget keeps the analyzer's allocation count from creeping
 // up. The budget is a count, not a wall-clock number, so it does not depend on

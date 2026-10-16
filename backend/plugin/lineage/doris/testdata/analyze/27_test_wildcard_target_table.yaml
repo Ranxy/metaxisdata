@@ -1,0 +1,124 @@
+name: TestWildcardTarget_Table
+# A `*` over a query-local relation whose columns the analyzer knows expands into one
+# output column per column, the shape the catalog path already produces for a described
+# base table, so a writer's declared target list — read one entry per output column —
+# names every column of the relation from the wildcard's own position. Keeping the
+# wildcard whole put all of them on the list's first entry: this statement recorded
+# `src.name -> dst2.k` and no edge to `dst2.full_name`.
+cases:
+    - name: a declared target list is filled from the wildcard's position
+      catalog:
+        tables:
+            src:
+                - k
+                - name
+            dst2:
+                - k
+                - full_name
+      sql: INSERT INTO dst2 (k, full_name) SELECT * FROM (SELECT k, name FROM src) d
+      expected_edges:
+        - from_table: src
+          from_field: k
+          to_table: dst2
+          to_field: k
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+        - from_table: src
+          from_field: name
+          to_table: dst2
+          to_field: full_name
+          relation_type: direct
+          is_temp: false
+    # The columns after the wildcard take the entries after it, so the wildcard's
+    # expansion cannot be read as "the last output column wins".
+    - name: an output column after the wildcard keeps its own position
+      catalog:
+        tables:
+            src:
+                - k
+                - name
+            dst3:
+                - k
+                - name
+                - x
+      sql: INSERT INTO dst3 (k, name, x) SELECT *, name AS x FROM (SELECT k, name FROM src) d
+      expected_edges:
+        - from_table: src
+          from_field: k
+          to_table: dst3
+          to_field: k
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+        - from_table: src
+          from_field: name
+          to_table: dst3
+          to_field: name
+          relation_type: direct
+          is_temp: false
+        - from_table: src
+          from_field: name
+          to_table: dst3
+          to_field: x
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+    # `* EXCEPT (…)` applies to a query-local relation too, and the exclusion shifts the
+    # entries after it: reading the relation's own list would name `name` for the second
+    # target, which the engine never writes. Doris and StarRocks both reject a statement
+    # whose exclusion list leaves no column at all ("All slots in * EXCEPT clause are
+    # excepted" / "EXCLUDE clause removes all columns from query scope") and a target list
+    # that does not match the surviving outputs ("insert into cols should be corresponding
+    # to the query output").
+    - name: an EXCEPT list over a derived table shifts the columns after it
+      catalog:
+        tables:
+            src:
+                - k
+                - name
+                - x
+            dst2:
+                - k
+                - full_name
+      sql: INSERT INTO dst2 (k, full_name) SELECT * EXCEPT (name) FROM (SELECT k, name, x FROM src) d
+      expected_edges:
+        - from_table: src
+          from_field: k
+          to_table: dst2
+          to_field: k
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+        - from_table: src
+          from_field: x
+          to_table: dst2
+          to_field: full_name
+          relation_type: direct
+          is_temp: false
+    # The same rule through a CTE standing before the INSERT, which is the spelling
+    # this dialect's grammar and traversal model.
+    - name: a CTE before the INSERT fills the declared list from its position
+      catalog:
+        tables:
+            src:
+                - k
+                - name
+            dst2:
+                - k
+                - full_name
+      sql: WITH c AS (SELECT k, name FROM src) INSERT INTO dst2 (k, full_name) SELECT * FROM c
+      expected_edges:
+        - from_table: src
+          from_field: k
+          to_table: dst2
+          to_field: k
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+        - from_table: src
+          from_field: name
+          to_table: dst2
+          to_field: full_name
+          relation_type: direct
+          is_temp: false

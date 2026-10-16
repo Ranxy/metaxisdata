@@ -13,7 +13,12 @@ import (
 // allowed. The corpus is the widest sample of real shapes the analyzer has, so a
 // per-edge regression shows up here even when no single shape exceeds its own
 // budget.
-const corpusAllocationBudget = 29000
+//
+// The limit is the 27264 measured under the CI flags on the corpus this branch carries,
+// with ~10% headroom. The three wildcard-target cases add about 200 each, because a `*`
+// over a relation whose columns are known now allocates one output column and one source
+// reference per column instead of one wildcard for the whole relation.
+const corpusAllocationBudget = 30000
 
 // TestAnalyzeAllocationBudget keeps the analyzer's allocation count from creeping
 // up. The budget is a count, not a wall-clock number, so it does not depend on

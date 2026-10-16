@@ -57,6 +57,7 @@ var requiredSharedDeclarations = map[string][]string{
 		"FlattenTempSourceLineage",
 		"TraceThroughTableLineage",
 		"TraceThroughTableLineageToTarget",
+		"ExpandQueryLocalWildcard",
 		"ResolveOutputColumns",
 	},
 	// What a relation exposes to name-based resolution: the columns of a
@@ -67,6 +68,7 @@ var requiredSharedDeclarations = map[string][]string{
 		"AttachTempColumnLookup",
 		"ExposedColumnNames",
 		"WildcardSourceRef",
+		"QueryLocalColumnRef",
 	},
 	"model": {
 		"NormalizeIdentifier",
