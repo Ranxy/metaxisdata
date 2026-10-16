@@ -1,0 +1,114 @@
+name: TestCteExposure_Table
+# What a query-local relation exposes to whatever reads it is the columns its body
+# produces, not the list the statement declared and not the names its lineage happens to
+# carry. An output column with no source - a literal, an aggregate - has no lineage to
+# record and is a column of the relation all the same, so it resolves for a statement the
+# engine runs and it takes the entry a declared target list has for it.
+cases:
+    - name: a CTE column with no source is exposed to the statement that reads it
+      catalog:
+        tables:
+            t:
+                - k
+      sql: WITH c AS (SELECT 1 AS x, k FROM t) SELECT c.k, x FROM c, t
+      expected_edges:
+        - from_table: t
+          from_field: k
+          to_table: __result__
+          to_field: k
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+    # The wildcard over the CTE expands by what the CTE exposes, so the declared view
+    # list is filled from the wildcard's position: `full_name` is the constant, which has
+    # no edge, and `k` is the column the edge belongs to.
+    - name: a wildcard over the CTE fills a declared target list from its position
+      catalog:
+        tables:
+            src:
+                - k
+                - name
+      sql: CREATE VIEW v (full_name, k) AS WITH c AS (SELECT 1 AS full_name, k FROM src) SELECT * FROM c
+      expected_edges:
+        - from_table: src
+          from_field: k
+          to_table: v
+          to_field: k
+          relation_type: direct
+          has_transform: false
+          is_temp: false
+    # A declared list shorter than the body renames the outputs it reaches and the rest
+    # keep their own names: both statements below run on the engine, so neither name may
+    # become a gap and neither may lose its edge.
+    - name: a declared list shorter than the body renames the outputs it reaches
+      catalog:
+        tables:
+            src:
+                - k
+                - name
+      sql: WITH c (a) AS (SELECT k, name FROM src) SELECT a, name FROM c
+      expected_edges:
+        - from_table: src
+          from_field: k
+          to_table: __result__
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+        - from_table: src
+          from_field: name
+          to_table: __result__
+          to_field: name
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+    # The same rule on a derived table's declared list, which PostgreSQL accepts the way
+    # it accepts a CTE's.
+    - name: a short declaration on a derived table renames the same way
+      catalog:
+        tables:
+            src:
+                - k
+                - name
+      sql: SELECT m FROM (SELECT k, name FROM src) d (m)
+      expected_edges:
+        - from_table: src
+          from_field: k
+          to_table: __result__
+          to_field: m
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+    # A declared list longer than a body the analyzer could only model as one wildcard
+    # output column is kept: `undescribed` is a relation no catalog describes, so the
+    # statement's own list is the only account of the relation's columns and each name it
+    # gives carries the edge the wildcard stands for. Discarding it left the relation
+    # undescribed, which turned those two edges into one and let a name the relation does
+    # not have resolve through the fallback.
+    - name: a declared list longer than a wildcard body is kept
+      sql: WITH c (a, b) AS (SELECT * FROM undescribed) SELECT * FROM c
+      expected_edges:
+        - from_table: undescribed
+          from_field: '*'
+          to_table: __result__
+          to_field: a
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+        - from_table: undescribed
+          from_field: '*'
+          to_table: __result__
+          to_field: b
+          relation_type: direct
+          has_transform: false
+          is_temp: true
+    # The same relation is described, not unknown, so a name neither the declaration nor
+    # the catalog gives is still the reported gap it was.
+    - name: a name the declaration does not give is still a gap
+      catalog:
+        tables:
+            t:
+                - k
+      sql: WITH c (a, b) AS (SELECT * FROM undescribed) SELECT z FROM c, t
+      expect_error: true
+      error_contains: "unresolved reference in an output column: z"
