@@ -22,11 +22,17 @@ const autoIncrementSymbol = "AUTO_INCREMENT"
 
 // systemDatabaseExclusion returns the quoted, comma-joined system databases to
 // exclude from instance discovery, per the driver's engine. StarRocks adds its
-// read-only `sys` metadatabase; Doris has no `sys`.
+// read-only `sys` metadatabase; Doris adds `__internal_schema`, where the
+// engine keeps its own tables (the audit log among them, since Doris 2.1). Each
+// name is engine-specific: excluding `sys` on Doris or `__internal_schema` on
+// StarRocks would hide a user database of that name.
 func (d *Driver) systemDatabaseExclusion() string {
 	dbs := []string{"'information_schema'", "'_statistics_'"}
 	if d.dbType == storepb.Engine_STARROCKS {
 		dbs = append(dbs, "'sys'")
+	}
+	if d.dbType == storepb.Engine_DORIS {
+		dbs = append(dbs, "'__internal_schema'")
 	}
 	return strings.Join(dbs, ", ")
 }

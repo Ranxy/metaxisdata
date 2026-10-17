@@ -10,9 +10,11 @@ import (
 )
 
 // SyncInstance's system-database exclusion is engine-aware: StarRocks's
-// read-only `sys` metadatabase must be excluded so it is not imported as a user
-// database, while Doris has no `sys` and excluding it there would hide a user
-// database named sys.
+// read-only `sys` metadatabase and Doris's engine-owned `__internal_schema`
+// (audit log and other internal tables) must be excluded so they are not
+// imported as user databases. Each name is engine-specific, so neither engine
+// drops the other's: Doris has no `sys`, StarRocks has no `__internal_schema`,
+// and excluding either there would hide a user database of that name.
 func TestSystemDatabaseExclusion(t *testing.T) {
 	t.Parallel()
 
@@ -20,10 +22,13 @@ func TestSystemDatabaseExclusion(t *testing.T) {
 	require.Contains(t, sr, "'sys'", "StarRocks sync must exclude the sys metadatabase")
 	require.Contains(t, sr, "'information_schema'")
 	require.Contains(t, sr, "'_statistics_'")
+	require.NotContains(t, sr, "'__internal_schema'", "StarRocks must not exclude Doris's internal schema")
 
 	doris := (&Driver{dbType: storepb.Engine_DORIS}).systemDatabaseExclusion()
 	require.NotContains(t, doris, "'sys'", "Doris must not exclude sys (StarRocks-only)")
 	require.Contains(t, doris, "'information_schema'")
+	require.Contains(t, doris, "'_statistics_'")
+	require.Contains(t, doris, "'__internal_schema'", "Doris sync must exclude the __internal_schema metadatabase")
 }
 
 // StarRocks reports materialized views in information_schema.tables with
