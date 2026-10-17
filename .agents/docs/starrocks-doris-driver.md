@@ -21,7 +21,7 @@ One package serving **both** `storepb.Engine_STARROCKS` and `storepb.Engine_DORI
 
 | Dimension | StarRocks | Doris |
 | --- | --- | --- |
-| System databases excluded | `information_schema`, `_statistics_`, **`sys`** | `information_schema`, `_statistics_` (no `sys` metadatabase) |
+| System databases excluded | `information_schema`, `_statistics_`, **`sys`** | `information_schema`, `_statistics_`, **`__internal_schema`** (no `sys` metadatabase) |
 | Materialized-view catalog | `information_schema.materialized_views`, `REFRESH_TYPE='ROLLUP'` rows excluded (synchronous rollups are base-table indexes, not MVs) | `mv_infos("database"=?)` table-valued function |
 | MV reported in `information_schema.tables` as | `TABLE_TYPE='VIEW'` | `TABLE_TYPE='BASE TABLE'` |
 
