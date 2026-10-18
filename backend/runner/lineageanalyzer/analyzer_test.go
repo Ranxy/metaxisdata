@@ -293,19 +293,23 @@ func TestTakeAnalyzeBatchCapsAndKeepsTheRest(t *testing.T) {
 
 	require.Equal(t, MaxGoroutines*100, maxAnalyzeBatch, "the batch is a small multiple of the worker count")
 	require.Positive(t, analyzeObjectTimeout)
+	require.Equal(t, 5*time.Minute, queueAllTimeout)
 
 	analyzer := &Analyzer{}
 	for i := range 5 {
 		analyzer.QueueAnalysis(fmt.Sprintf("guid-%d", i), storepb.MetaType_VIEW)
 	}
 
-	keys := analyzer.takeAnalyzeBatch(&analyzer.analyzeMap, time.Now(), 2)
-	require.Len(t, keys, 2)
+	batch := analyzer.takeAnalyzeBatch(&analyzer.analyzeMap, time.Now(), 2)
+	require.Len(t, batch, 2)
+	require.Equal(t, 5, queuedCount(analyzer), "selecting a batch must not delete keys; the drain consumes them")
+	for _, item := range batch {
+		require.True(t, consumeQueuedAnalysis(item))
+	}
 	require.Equal(t, 3, queuedCount(analyzer), "keys over the cap stay queued for the next tick")
 
-	keys = analyzer.takeAnalyzeBatch(&analyzer.analyzeMap, time.Now(), maxAnalyzeBatch)
-	require.Len(t, keys, 3)
-	require.Zero(t, queuedCount(analyzer))
+	batch = analyzer.takeAnalyzeBatch(&analyzer.analyzeMap, time.Now(), maxAnalyzeBatch)
+	require.Len(t, batch, 3)
 }
 
 // Event-driven work is drained before the hourly scan's backlog, so a cold-start backfill
@@ -327,9 +331,11 @@ func TestDrainPrefersEventsOverTheScanBacklog(t *testing.T) {
 	require.Equal(t, backlog+1, queuedCount(analyzer))
 
 	now := time.Now()
-	keys := analyzer.takeAnalyzeBatch(&analyzer.analyzeMap, now, maxAnalyzeBatch)
-	require.Equal(t, []analyzeKey{{MetaGUID: "event", MetaType: storepb.MetaType_VIEW}}, keys)
-	require.Equal(t, backlog, queuedCount(analyzer))
+	batch := analyzer.takeAnalyzeBatch(&analyzer.analyzeMap, now, maxAnalyzeBatch)
+	require.Len(t, batch, 1)
+	require.Equal(t, analyzeKey{MetaGUID: "event", MetaType: storepb.MetaType_VIEW}, batch[0].key)
+	require.Same(t, &analyzer.analyzeMap, batch[0].queue)
+	require.Equal(t, backlog+1, queuedCount(analyzer))
 }
 
 // A key still inside its retry backoff is not part of a batch, and it stays queued.
@@ -339,13 +345,16 @@ func TestTakeAnalyzeBatchSkipsBackingOffKeys(t *testing.T) {
 	analyzer := &Analyzer{}
 	key := analyzeKey{MetaGUID: "guid", MetaType: storepb.MetaType_VIEW}
 	analyzer.QueueAnalysis(key.MetaGUID, key.MetaType)
-	analyzer.scheduleRetry(key)
+	analyzer.retryAfterFailure(queuedItem(t, analyzer, key))
 
 	require.Empty(t, analyzer.takeAnalyzeBatch(&analyzer.analyzeMap, time.Now(), maxAnalyzeBatch))
 	require.Equal(t, 1, queuedCount(analyzer))
 
 	due := time.Now().Add(analysisRetryBackoff(1) + time.Second)
-	require.Equal(t, []analyzeKey{key}, analyzer.takeAnalyzeBatch(&analyzer.analyzeMap, due, maxAnalyzeBatch))
+	batch := analyzer.takeAnalyzeBatch(&analyzer.analyzeMap, due, maxAnalyzeBatch)
+	require.Len(t, batch, 1)
+	require.Equal(t, key, batch[0].key)
+	require.True(t, consumeQueuedAnalysis(batch[0]))
 	require.Zero(t, queuedCount(analyzer))
 }
 
@@ -394,30 +403,112 @@ func TestScheduleRetryBacksOffAndGivesUp(t *testing.T) {
 	analyzer := &Analyzer{}
 	key := analyzeKey{MetaGUID: "guid", MetaType: storepb.MetaType_VIEW}
 
-	analyzer.scheduleRetry(key)
+	analyzer.QueueAnalysis(key.MetaGUID, key.MetaType)
+	analyzer.retryAfterFailure(queuedItem(t, analyzer, key))
 	entry, ok := analyzer.retryMap.Load(key)
 	require.True(t, ok)
 	require.Equal(t, 1, entry.(analysisRetry).attempts)
 	_, queued := analyzer.analyzeMap.Load(key)
 	require.True(t, queued, "a retry must stay queued")
 
-	analyzer.scheduleRetry(key)
+	analyzer.retryAfterFailure(queuedItem(t, analyzer, key))
 	require.Equal(t, 2, mustRetry(t, analyzer, key).attempts)
 
 	// A fresh queue request supersedes the pending backoff.
-	analyzer.QueueAnalysis("guid", storepb.MetaType_VIEW)
+	analyzer.QueueAnalysis(key.MetaGUID, key.MetaType)
 	_, ok = analyzer.retryMap.Load(key)
 	require.False(t, ok)
 
 	// After the last allowed attempt the object is left to the full scan: the
 	// next failure is the one that exceeds the cap.
 	for range maxAnalysisRetries + 1 {
-		analyzer.scheduleRetry(key)
+		analyzer.retryAfterFailure(queuedItem(t, analyzer, key))
 	}
 	_, ok = analyzer.retryMap.Load(key)
 	require.False(t, ok)
 	_, queued = analyzer.analyzeMap.Load(key)
 	require.False(t, queued)
+}
+
+// queuedItem returns the entry currently stored for key, as the drain would capture it
+// before analyzing.
+func queuedItem(t *testing.T, analyzer *Analyzer, key analyzeKey) queuedAnalysis {
+	t.Helper()
+	item, ok := analyzer.queued(key)
+	require.True(t, ok)
+	return item
+}
+
+// A request that arrives while an analysis is running is newer work than the generation the
+// drain selected. CompareAndDelete leaves that entry queued, so the request survives instead
+// of being deleted along with the old one.
+func TestRequeueDuringAnalysisSurvivesTheDrain(t *testing.T) {
+	t.Parallel()
+
+	analyzer := &Analyzer{}
+	key := analyzeKey{MetaGUID: "guid", MetaType: storepb.MetaType_VIEW}
+	analyzer.QueueAnalysis(key.MetaGUID, key.MetaType)
+
+	batch := analyzer.takeAnalyzeBatch(&analyzer.analyzeMap, time.Now(), maxAnalyzeBatch)
+	require.Len(t, batch, 1)
+	analyzed := batch[0]
+
+	// The object is reported again before the drain finishes the first attempt.
+	analyzer.QueueAnalysis(key.MetaGUID, key.MetaType)
+	require.False(t, consumeQueuedAnalysis(analyzed), "the old generation must not delete the new queue entry")
+	require.Equal(t, 1, queuedCount(analyzer))
+
+	next := analyzer.takeAnalyzeBatch(&analyzer.analyzeMap, time.Now(), maxAnalyzeBatch)
+	require.Len(t, next, 1)
+	require.Greater(t, next[0].generation, analyzed.generation, "the fresh request carries a newer generation")
+	require.True(t, consumeQueuedAnalysis(next[0]))
+	require.Zero(t, queuedCount(analyzer))
+}
+
+// A failure installs its backoff only while the entry it analyzed is still the current
+// request. A newer request that arrived during the analysis must not be delayed by the old
+// attempt's backoff, whether it replaced an event entry or superseded the scan backlog.
+func TestStaleFailureDoesNotClobberNewerQueueEntry(t *testing.T) {
+	t.Parallel()
+
+	t.Run("event queue", func(t *testing.T) {
+		t.Parallel()
+
+		analyzer := &Analyzer{}
+		key := analyzeKey{MetaGUID: "event", MetaType: storepb.MetaType_VIEW}
+		analyzer.QueueAnalysis(key.MetaGUID, key.MetaType)
+		failed := queuedItem(t, analyzer, key)
+
+		// A fresh request replaces the entry while the analysis runs.
+		analyzer.QueueAnalysis(key.MetaGUID, key.MetaType)
+		analyzer.retryAfterFailure(failed)
+
+		_, ok := analyzer.retryMap.Load(key)
+		require.False(t, ok, "a stale failure must not install a backoff")
+		batch := analyzer.takeAnalyzeBatch(&analyzer.analyzeMap, time.Now(), maxAnalyzeBatch)
+		require.Len(t, batch, 1, "the fresh request stays queued and ready")
+		require.Greater(t, batch[0].generation, failed.generation)
+	})
+
+	t.Run("scan backlog superseded by an event", func(t *testing.T) {
+		t.Parallel()
+
+		analyzer := &Analyzer{}
+		key := analyzeKey{MetaGUID: "scan", MetaType: storepb.MetaType_VIEW}
+		analyzer.queueScan(key.MetaGUID, key.MetaType)
+		failed := queuedItem(t, analyzer, key)
+		require.Same(t, &analyzer.scanMap, failed.queue)
+
+		// The event path supersedes the scan entry while the analysis runs.
+		analyzer.QueueAnalysis(key.MetaGUID, key.MetaType)
+		analyzer.retryAfterFailure(failed)
+
+		_, ok := analyzer.retryMap.Load(key)
+		require.False(t, ok)
+		batch := analyzer.takeAnalyzeBatch(&analyzer.analyzeMap, time.Now(), maxAnalyzeBatch)
+		require.Len(t, batch, 1, "the event request stays queued and ready")
+		require.Greater(t, batch[0].generation, failed.generation)
+	})
 }
 
 func mustRetry(t *testing.T, analyzer *Analyzer, key analyzeKey) analysisRetry {

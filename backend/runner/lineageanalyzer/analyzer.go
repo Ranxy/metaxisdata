@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/catalog"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
 	"github.com/Ranxy/metaxisdata/backend/plugin/sqlsanitize"
+	"github.com/Ranxy/metaxisdata/backend/runner"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
@@ -43,12 +45,27 @@ const (
 	// database; the bound is generous enough that a large script is not cut off. An
 	// interrupted analysis is retried, never recorded as a parse failure.
 	analyzeObjectTimeout = 2 * time.Minute
+	// queueAllTimeout bounds one full-scan pass. The pass issues four digest listings (one
+	// per analyzable object type) plus four version listings; a database that stops answering
+	// must not hold the scanner forever, or the hourly ticker would never fire again. Only the
+	// scan is bounded this way: per-object analysis keeps analyzeObjectTimeout.
+	queueAllTimeout = 5 * time.Minute
 )
 
 // analyzeKey uniquely identifies an object to analyze.
 type analyzeKey struct {
 	MetaGUID string
 	MetaType storepb.MetaType
+}
+
+// queuedAnalysis is one queue entry: the object, the generation stored when it was queued,
+// and the queue it belongs to. The generation is what lets the drain remove exactly the
+// entry it analyzed: a request that re-queued the object in the meantime stored a newer
+// generation, so its entry survives.
+type queuedAnalysis struct {
+	key        analyzeKey
+	generation uint64
+	queue      *sync.Map
 }
 
 // Analyzer is the column-level lineage analysis runner.
@@ -61,11 +78,15 @@ type Analyzer struct {
 	lineage *lineage.Analyzer
 	// analyzeMap holds the event-driven queue: an object whose definition just changed, was
 	// just saved or was just reported. It is drained first, so a backfill cannot push that
-	// work behind the whole registry.
-	analyzeMap sync.Map // map[analyzeKey]struct{}
+	// work behind the whole registry. Values are the generation of the queued request.
+	analyzeMap sync.Map // map[analyzeKey]uint64
 	// scanMap holds the hourly full scan's backlog. It fills only the batch the event queue
-	// did not use.
-	scanMap sync.Map // map[analyzeKey]struct{}
+	// did not use. Values are the generation of the queued request.
+	scanMap sync.Map // map[analyzeKey]uint64
+	// generation is the source of the monotonically increasing value stored with every queue
+	// entry. Comparing it tells the drain whether the entry it analyzed is still the current
+	// request or has been superseded.
+	generation atomic.Uint64
 	// retryMap tracks how many times a failed analysis was retried and when it
 	// is due again, so a transient failure does not wait for the hourly scan.
 	retryMap sync.Map // map[analyzeKey]analysisRetry
@@ -105,11 +126,14 @@ func NewAnalyzer(stores *store.Store, lineageAnalyzer *lineage.Analyzer) *Analyz
 // QueueAnalysis enqueues an object for analysis because its definition changed or was just
 // reported. A request supersedes a pending backoff and a pending scan entry: the analysis
 // runs now and reads the current definition, so the scan no longer has a reason to queue it.
+// Storing a new generation also supersedes an analysis already running for the old request:
+// that attempt's result is guarded by its own hash, and its failure path leaves this entry
+// alone.
 func (a *Analyzer) QueueAnalysis(metaGUID string, metaType storepb.MetaType) {
 	key := analyzeKey{MetaGUID: metaGUID, MetaType: metaType}
 	a.retryMap.Delete(key)
 	a.scanMap.Delete(key)
-	a.analyzeMap.Store(key, struct{}{})
+	a.analyzeMap.Store(key, a.nextGeneration())
 }
 
 // queueScan enqueues an object because the hourly scan found its stored result out of date.
@@ -121,7 +145,57 @@ func (a *Analyzer) queueScan(metaGUID string, metaType storepb.MetaType) {
 		return
 	}
 	a.retryMap.Delete(key)
-	a.scanMap.Store(key, struct{}{})
+	a.scanMap.Store(key, a.nextGeneration())
+}
+
+// nextGeneration returns the next queue generation. It is strictly increasing for the life
+// of the process, so two queued requests for the same object can never look alike.
+func (a *Analyzer) nextGeneration() uint64 {
+	return a.generation.Add(1)
+}
+
+// queued returns the entry currently stored for key, if any. The two queues are disjoint by
+// construction: QueueAnalysis removes the scan entry and queueScan skips a key the event
+// queue already holds.
+func (a *Analyzer) queued(key analyzeKey) (queuedAnalysis, bool) {
+	if v, ok := a.analyzeMap.Load(key); ok {
+		generation, ok := v.(uint64)
+		if !ok {
+			return queuedAnalysis{}, false
+		}
+		return queuedAnalysis{key: key, generation: generation, queue: &a.analyzeMap}, true
+	}
+	if v, ok := a.scanMap.Load(key); ok {
+		generation, ok := v.(uint64)
+		if !ok {
+			return queuedAnalysis{}, false
+		}
+		return queuedAnalysis{key: key, generation: generation, queue: &a.scanMap}, true
+	}
+	return queuedAnalysis{}, false
+}
+
+// consumeQueuedAnalysis removes the analyzed entry from its queue only if it still carries
+// the generation the batch selected. A request that re-queued the object meanwhile stored a
+// newer generation, so CompareAndDelete leaves it queued for the next tick.
+func consumeQueuedAnalysis(item queuedAnalysis) bool {
+	return item.queue.CompareAndDelete(item.key, item.generation)
+}
+
+// retryAfterFailure schedules the bounded backoff for a failed attempt, unless a newer
+// request queued the object while the analysis ran. The queue entry carries the generation
+// of the request the attempt served; once it is a different generation, the fresh request
+// supersedes the old backoff and must not be delayed by it.
+func (a *Analyzer) retryAfterFailure(item queuedAnalysis) {
+	current, ok := a.queued(item.key)
+	if !ok || current.generation != item.generation {
+		return
+	}
+	if !consumeQueuedAnalysis(item) {
+		// A request replaced the entry between the check and the delete; leave it be.
+		return
+	}
+	a.scheduleRetry(item.key)
 }
 
 // scheduleRetry re-queues a failed analysis with a bounded backoff. After the
@@ -134,17 +208,22 @@ func (a *Analyzer) scheduleRetry(key analyzeKey) {
 		}
 	}
 	if attempts > maxAnalysisRetries {
-		// Drop the key entirely: leaving it queued would restart the backoff on
+		// Drop the retry state: leaving it queued would restart the backoff on
 		// the very next tick, which is the hourly retry loop this replaces.
 		a.retryMap.Delete(key)
-		a.analyzeMap.Delete(key)
 		slog.Error("Lineage analysis gave up after repeated failures",
 			slog.String("guid", key.MetaGUID),
 			slog.String("type", key.MetaType.String()))
 		return
 	}
-	a.retryMap.Store(key, analysisRetry{attempts: attempts, nextAt: time.Now().Add(analysisRetryBackoff(attempts))})
-	a.analyzeMap.Store(key, struct{}{})
+	retry := analysisRetry{attempts: attempts, nextAt: time.Now().Add(analysisRetryBackoff(attempts))}
+	a.retryMap.Store(key, retry)
+	// Add the key only if no fresh request queued it since this attempt consumed
+	// its own entry. Re-queueing unconditionally would overwrite that request with
+	// this attempt's older backoff.
+	if _, loaded := a.analyzeMap.LoadOrStore(key, a.nextGeneration()); loaded {
+		a.retryMap.CompareAndDelete(key, retry)
+	}
 }
 
 // Name identifies the runner in the server's lifecycle logs.
@@ -160,13 +239,15 @@ func (a *Analyzer) Run(ctx context.Context) {
 			slog.Duration("scanInterval", lineageAnalysisInterval),
 			slog.Int("maxBatch", maxAnalyzeBatch),
 			slog.Int("workers", MaxGoroutines))
-		a.queueAll(ctx)
-		ticker := time.NewTicker(lineageAnalysisInterval)
+		a.queueAllBounded(ctx)
+		// Jitter keeps the hourly scan from staying aligned with every other
+		// process that restarted at the same moment.
+		ticker := time.NewTicker(runner.Jitter(lineageAnalysisInterval))
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
-				a.queueAll(ctx)
+				a.queueAllBounded(ctx)
 			case <-ctx.Done():
 				return
 			}
@@ -188,6 +269,15 @@ func (a *Analyzer) Run(ctx context.Context) {
 	})
 
 	sp.Wait()
+}
+
+// queueAllBounded runs one full scan under queueAllTimeout. The scan reads four digest
+// listings and four version listings; without a deadline a database that stops answering
+// would hold this goroutine forever, so the hourly ticker would never fire again.
+func (a *Analyzer) queueAllBounded(ctx context.Context) {
+	scanCtx, cancel := context.WithTimeout(ctx, queueAllTimeout)
+	defer cancel()
+	a.queueAll(scanCtx)
 }
 
 // queueAll scans all lineage-analyzable objects and queues those whose metahash
@@ -236,33 +326,37 @@ func needsAnalysis(res *store.MetaRegistryResource, version *store.ColumnLineage
 	return version.AnalyzerVersion != lineage.AnalyzerVersion
 }
 
-// takeAnalyzeBatch selects at most limit ready keys and removes exactly those from queue.
-// Keys whose retry backoff has not elapsed, and every key over the cap, stay queued for a
-// later tick.
-func (a *Analyzer) takeAnalyzeBatch(queue *sync.Map, now time.Time, limit int) []analyzeKey {
+// takeAnalyzeBatch selects at most limit ready entries from a queue. Keys whose retry
+// backoff has not elapsed, and every key over the cap, stay queued for a later tick. The
+// entries are not removed here: the drain consumes each one with its captured generation so
+// a request that arrives in between survives.
+func (a *Analyzer) takeAnalyzeBatch(queue *sync.Map, now time.Time, limit int) []queuedAnalysis {
 	if limit <= 0 {
 		return nil
 	}
-	keys := make([]analyzeKey, 0, limit)
-	queue.Range(func(k, _ any) bool {
-		if len(keys) >= limit {
+	batch := make([]queuedAnalysis, 0, limit)
+	queue.Range(func(k, v any) bool {
+		if len(batch) >= limit {
 			return false
 		}
 		key, ok := k.(analyzeKey)
 		if !ok {
 			return true
 		}
+		generation, ok := v.(uint64)
+		if !ok {
+			return true
+		}
 		// A failed object stays queued until its backoff elapses.
-		if v, ok := a.retryMap.Load(key); ok {
-			if entry, ok := v.(analysisRetry); ok && now.Before(entry.nextAt) {
+		if retry, ok := a.retryMap.Load(key); ok {
+			if entry, ok := retry.(analysisRetry); ok && now.Before(entry.nextAt) {
 				return true
 			}
 		}
-		keys = append(keys, key)
-		queue.Delete(k)
+		batch = append(batch, queuedAnalysis{key: key, generation: generation, queue: queue})
 		return true
 	})
-	return keys
+	return batch
 }
 
 // typeLookupGUIDs returns the distinct relation GUIDs whose meta type the analysis still has
@@ -284,37 +378,37 @@ func typeLookupGUIDs(guidLookupSet map[string]struct{}, metaGUID string) []strin
 // budget, so a full-registry backfill delays a just-saved statement by at most one batch.
 func (a *Analyzer) drainAndAnalyze(ctx context.Context) {
 	now := time.Now()
-	keys := a.takeAnalyzeBatch(&a.analyzeMap, now, maxAnalyzeBatch)
-	if remaining := maxAnalyzeBatch - len(keys); remaining > 0 {
-		keys = append(keys, a.takeAnalyzeBatch(&a.scanMap, now, remaining)...)
+	batch := a.takeAnalyzeBatch(&a.analyzeMap, now, maxAnalyzeBatch)
+	if remaining := maxAnalyzeBatch - len(batch); remaining > 0 {
+		batch = append(batch, a.takeAnalyzeBatch(&a.scanMap, now, remaining)...)
 	}
-	if len(keys) == 0 {
+	if len(batch) == 0 {
 		return
 	}
 
 	wp := pool.New().WithMaxGoroutines(MaxGoroutines)
-	for _, key := range keys {
-		k := key
+	for _, item := range batch {
+		it := item
 		wp.Go(func() {
 			// A panic in one object must not take the process down or stop the
 			// other objects in this batch.
 			defer func() {
 				if r := recover(); r != nil {
 					slog.Error("Lineage analysis panicked",
-						slog.String("guid", k.MetaGUID),
-						slog.String("type", k.MetaType.String()),
+						slog.String("guid", it.key.MetaGUID),
+						slog.String("type", it.key.MetaType.String()),
 						slog.Any("panic", r))
-					a.scheduleRetry(k)
+					a.retryAfterFailure(it)
 				}
 			}()
 			objCtx, cancel := context.WithTimeout(ctx, analyzeObjectTimeout)
 			defer cancel()
-			if err := a.analyzeObject(objCtx, k.MetaGUID, k.MetaType); err != nil {
+			if err := a.analyzeObject(objCtx, it.key.MetaGUID, it.key.MetaType); err != nil {
 				if errors.Is(err, errAnalysisStale) {
 					// The text changed under the analysis. Queue the new text now
 					// instead of waiting for the hourly scan; the write was dropped,
 					// so nothing stale was persisted.
-					a.QueueAnalysis(k.MetaGUID, k.MetaType)
+					a.QueueAnalysis(it.key.MetaGUID, it.key.MetaType)
 					return
 				}
 				if analysisTimedOut(objCtx, err) {
@@ -322,20 +416,24 @@ func (a *Analyzer) drainAndAnalyze(ctx context.Context) {
 					// failure is not, because that would clear lineage this attempt never
 					// inspected.
 					slog.Warn("Lineage analysis timed out; it will be retried",
-						slog.String("guid", k.MetaGUID),
-						slog.String("type", k.MetaType.String()),
+						slog.String("guid", it.key.MetaGUID),
+						slog.String("type", it.key.MetaType.String()),
 						log.WithError(err))
-					a.scheduleRetry(k)
+					a.retryAfterFailure(it)
 					return
 				}
 				slog.Error("Lineage analysis failed",
-					slog.String("guid", k.MetaGUID),
-					slog.String("type", k.MetaType.String()),
+					slog.String("guid", it.key.MetaGUID),
+					slog.String("type", it.key.MetaType.String()),
 					log.WithError(err))
-				a.scheduleRetry(k)
+				a.retryAfterFailure(it)
 				return
 			}
-			a.retryMap.Delete(k)
+			// Remove the entry this attempt served. A request that re-queued the
+			// object while the analysis ran stored a newer generation, so its
+			// entry stays for the next tick.
+			consumeQueuedAnalysis(it)
+			a.retryMap.Delete(it.key)
 		})
 	}
 	wp.Wait()
