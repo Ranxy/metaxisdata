@@ -149,7 +149,7 @@ TiDB 和 MariaDB **没有自己的遍历**。`mysql/analyzer.go` 哨兵之下的
 10. **哨兵字面量单点**:`__result__` / `__deletion__` / `__file__` / `*` 只在 `backend/plugin/lineage/model/relation.go:25,30,36,41` 定义;非测试 Go 代码里不得再出现字面量。
 11. **catalog 查询失败不静默降级**:记 `DiagnosticCatalogUnavailable` 后用通配符继续,让降级结果可区分于完整结果。
 12. **任何输出变更(边、变换、错误分类)必须过 golden 语料**,语料用精确边匹配而非"差不多"。
-13. **事件优先、backfill 不阻断事件**:`QueueAnalysis` 进事件队列并由每 tick 先 drain;小时扫描只进 backlog 队列并填剩余预算。事件路径不得退回"整个 registry 一次 drain"(会饿死刚刚保存的语句),单 tick 必须有上限,单对象必须有 deadline,超时按瞬时失败处理。
+13. **事件优先、backfill 不阻断事件**:`QueueAnalysis` 进事件队列并由每 tick 先 drain;小时扫描只进 backlog 队列并填剩余预算。事件路径不得退回"整个 registry 一次 drain"(会饿死刚刚保存的语句),单 tick 必须有上限,单对象必须有 deadline,超时按瞬时失败处理。队列项带 generation:drain 用 `CompareAndDelete` 只移除自己看到的那一代,失败路径只在 generation 未变时回写退避,任何"先 Range 后 Delete"的实现都不得删除 drain 期间的新入队。
 14. **一条边只有一行**:`column_lineage` 的唯一索引 `idx_column_lineage_edge`(meta_guid, meta_type, source_guid, source_column, target_guid, target_column, relation_type)是并发写契约;插入必须带 `ON CONFLICT DO NOTHING`。两个写者同时在替换同一对象的边时,后到的插入既不能重复边也不能让整批失败;transformation 是边的事实而非身份,不进键。
 
 ## Failure modes

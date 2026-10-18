@@ -16,7 +16,8 @@
 | 元数据指纹用自有 canonical 编码，不走 protojson | `backend/store/meta_hash.go:52-63` | protojson 按镜像随机化 map 字段顺序，会导致全表重写。 |
 | 破坏性删除只记日志，没有收缩阈值或确认开关；`logSchemaSyncDeletion` 是唯一痕迹 | `backend/runner/schemasync/syncer.go:755`、`backend/runner/schemasync/syncer.go:1020` | 有意为之：MySQL 的 `information_schema` 只列连接用户可见的对象，权限变更可以清空快照。详见 `docs/security-posture.md`。 |
 | `deleted = true` 可由任何“目标说这个库没了”的观测写入，`deleted = false` 只能由实例枚举写入；单库同步的成功路径不写 `deleted` | `backend/runner/schemasync/syncer.go:611-618`、`backend/runner/schemasync/syncer.go:800-810`、`backend/runner/schemasync/syncer.go:830` | 一次“读到了某个库的内容”不是一次实例枚举；写成双向就会 flap。详见 `docs/security-posture.md`。 |
-| 每个 driver 打开点都经过实例连接限流：sync 走 `acquireInstanceConnection`，API 侧的连通性探测也调用 `stateCfg.AcquireInstanceConnection` | `backend/runner/schemasync/syncer.go:432`；`backend/api/v1/instance_service.go:632` | 绕过限流会让 `maximum_connections` 形同虚设，调用方可以对着一个只握手不响应的目标堆叠无界尝试（理由见 `backend/api/v1/instance_service.go:619-623`）。 |
+| 每个 driver 打开点都经过实例连接限流：sync 走 `acquireInstanceConnection`，API 侧的连通性探测也调用 `stateCfg.AcquireInstanceConnection` | `backend/runner/schemasync/syncer.go`；`backend/api/v1/instance_service.go` | 绕过限流会让 `maximum_connections` 形同虚设，调用方可以对着一个只握手不响应的目标堆叠无界尝试。 |
+| 实例元数据只写定向 patch：runner 与 API（UpdateInstance、数据源增删改）都用 `UpdateInstanceMessage.MetadataUpdates`，在 store 的行锁内合并；`last_sync_time` / `version` / `mysql_lower_case_table_names` 只由 runner 的 patch 写 | `backend/store/instance.go` 的 `patchInstanceMetadata`；`backend/api/v1/instance_service.go`；`backend/runner/schemasync/syncer.go` 的 `SyncInstance` | 任何调用方整份写回自己读到的 metadata 克隆，都会把并发写入的另一半静默回滚（最坏是刚加的数据源/凭据）。 |
 
 ## 已知问题
 
@@ -26,6 +27,10 @@
 | 2 | 低 | checker 每 10s 无条件 `ListInstances`，队列为空时纯浪费；可先 `Range` 判空再查。 | `backend/runner/schemasync/syncer.go:315` |
 | 3 | 低 | 7 段近乎相同的类型循环可表驱动化；其中物化视图那一段未复用 `schemaGUIDPrefix`，与邻居不一致。 | `backend/runner/schemasync/syncer.go:768-846`，不一致处在 `:791` |
 | 4 | 低 | 每列一次多余的 `proto.Clone`：`CalcMetaHash` 内部已经 Clone，之后无可变路径。 | `backend/runner/schemasync/syncer.go:1169` |
+
+## API 触发的同步语义
+
+`SyncInstance` 的 `enable_full_sync` 是 proto3 `optional`：**未设置 = 全量**（刷新实例元数据 + 入队并同步所有库，与后台扫描、`CreateInstance` 一致）；显式传 `false` 是「仅发现新库」的轻量模式（只入队本次枚举新出现的库，已有库交给后台扫描）。前端默认传 `true`；需要只发现新库的调用方必须显式传 `false`。
 
 ## 历史债务（顺手清理，非 bug）
 
