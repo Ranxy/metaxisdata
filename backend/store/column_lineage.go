@@ -97,6 +97,19 @@ func (s *Store) BatchReplaceColumnLineage(ctx context.Context, metaGUID string, 
 	return tx.Commit()
 }
 
+// columnLineageInsertStatement inserts one object's edge set. The unique index
+// (meta_guid, meta_type, source_guid, source_column, target_guid, target_column,
+// relation_type) is the concurrency contract: two writers that replace the same
+// object's edges at once (the analyzer and the ingestion revalidation path share a
+// process) delete and insert the same rows, and DO NOTHING keeps the later insert
+// from duplicating an edge or failing the whole write. transformation is not part
+// of the key: it is a fact about the edge, and the same edge has one derivation.
+const columnLineageInsertStatement = `
+	INSERT INTO column_lineage (meta_guid, meta_type, source_guid, source_column, source_type, target_guid, target_column, target_type, relation_type, transformation)
+	SELECT * FROM UNNEST($1::text[], $2::int[], $3::text[], $4::text[], $5::int[], $6::text[], $7::text[], $8::int[], $9::int[], $10::jsonb[])
+	ON CONFLICT DO NOTHING
+`
+
 func insertColumnLineage(ctx context.Context, tx *sql.Tx, metaGUID string, metaType storepb.MetaType, lineages []*ColumnLineage) error {
 	metaGUIDs := make([]string, len(lineages))
 	metaTypes := make([]storepb.MetaType, len(lineages))
@@ -126,10 +139,7 @@ func insertColumnLineage(ctx context.Context, tx *sql.Tx, metaGUID string, metaT
 		transformations[i] = string(b)
 	}
 
-	_, err := tx.ExecContext(ctx, `
-		INSERT INTO column_lineage (meta_guid, meta_type, source_guid, source_column, source_type, target_guid, target_column, target_type, relation_type, transformation)
-		SELECT * FROM UNNEST($1::text[], $2::int[], $3::text[], $4::text[], $5::int[], $6::text[], $7::text[], $8::int[], $9::int[], $10::jsonb[])
-	`,
+	_, err := tx.ExecContext(ctx, columnLineageInsertStatement,
 		pq.Array(metaGUIDs),
 		pq.Array(metaTypes),
 		pq.Array(sourceGUIDs),
@@ -528,9 +538,11 @@ func (s *Store) ReplaceColumnLineageIfCurrent(ctx context.Context, metaGUID stri
 	return tx.Commit()
 }
 
-// MarkAnalyzedIfCurrent records a deliberate skip (an empty definition, or an
-// engine without an analyzer) at the hash that was analyzed. It touches no edges:
-// the skip says "there is nothing to analyze here", not "the lineage is wrong".
+// MarkAnalyzedIfCurrent records a deliberate skip (an engine without an analyzer)
+// at the hash that was analyzed. It touches no edges: the skip says "this build
+// cannot analyze the object", not "the lineage is wrong". An object whose
+// definition became empty takes MarkAnalysisFailedIfCurrent instead, because the
+// edges of the SQL it no longer has are wrong.
 func (s *Store) MarkAnalyzedIfCurrent(ctx context.Context, metaGUID string, metaType storepb.MetaType, expectedMetaHash []byte, analyzerVersion string, errorMessage *string) error {
 	tx, err := s.GetDB().BeginTx(ctx, nil)
 	if err != nil {

@@ -88,3 +88,16 @@ func TestColumnLineageDeleteByMetaGUIDsShape(t *testing.T) {
 		require.NotContains(t, statement, "meta_registry_resource_history")
 	}
 }
+
+// Two writers replacing the same object's edges at once delete and insert the same set;
+// the later insert must not duplicate an edge or fail the write. The uniqueness rule has
+// to exist in the schema (LATEST.sql and migration 0022) and be tolerated here.
+func TestColumnLineageInsertIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	require.Contains(t, columnLineageInsertStatement, "INSERT INTO column_lineage")
+	require.Contains(t, columnLineageInsertStatement, "UNNEST($1::text[], $2::int[]")
+	require.Contains(t, columnLineageInsertStatement, "ON CONFLICT DO NOTHING")
+	require.NotContains(t, columnLineageInsertStatement, "ON CONFLICT DO UPDATE")
+	require.NotContains(t, columnLineageInsertStatement, "meta_registry_resource_history")
+}
