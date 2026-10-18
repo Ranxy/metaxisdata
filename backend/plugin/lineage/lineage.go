@@ -16,6 +16,14 @@ var (
 	ErrorEngineNotSupported = errors.New("engine not supported")
 )
 
+// AnalyzerVersion identifies the analysis rules this build implements. Bump it
+// whenever a change can alter analyzer output — an omni/dialect upgrade, a rule
+// change, or registering a new engine. The lineage runner compares it with the
+// version stored per object and re-analyzes every mismatch, so a deployment that
+// carries such a change refreshes lineage by itself; no manual backfill or
+// "clear column_lineage_version" step is needed.
+const AnalyzerVersion = "1"
+
 // UnsupportedStatementError reports a *partial* analysis: SQL that parsed but
 // contains something the analyzer could not represent — a statement shape it does
 // not model, or a reference that resolved to nothing. The relations returned

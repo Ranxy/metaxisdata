@@ -6,12 +6,16 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"log/slog"
+	"slices"
+	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"github.com/pkg/errors"
 	"github.com/sourcegraph/conc/pool"
 
+	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/plugin/db"
@@ -24,13 +28,114 @@ const (
 	// pool of the target instance.
 	definitionFetchConcurrency = 8
 	// fullDefinitionObjectLimit is the number of schema-bearing objects above
-	// which a database degrades to fetching definitions only for new/changed
-	// objects. A full fetch is the default because a StarRocks property change
-	// does not move our metadata hash, so a change-only fetch would leave the
-	// stored DDL stale forever; the limit is a safety valve for pathologically
-	// large databases.
+	// which a full DDL refresh degrades to a rotating batch: one sync re-reads
+	// that many objects and the cursor advances, so every object is refreshed
+	// eventually instead of never. A full fetch is the default because a
+	// StarRocks property change does not move our metadata hash, so a
+	// change-only fetch would leave the stored DDL stale forever; the limit is a
+	// safety valve for pathologically large databases.
 	fullDefinitionObjectLimit = 2000
+	// objectDefinitionFullRefreshInterval is how often a database re-reads the
+	// DDL of objects the metadata diff did not change. Between refreshes a sync
+	// reads definitions only for objects it already re-fetched metadata for, so
+	// the per-sync DDL cost is proportional to the change, not to the database.
+	// A property or comment change that leaves the metadata hash alone is picked
+	// up within this interval instead of every sync.
+	objectDefinitionFullRefreshInterval = 1 * time.Hour
 )
+
+// definitionFetchPlan is the set of objects whose DDL one sync reads, computed
+// before the sync's transaction. nextCursor is where the rotation over a
+// database above fullDefinitionObjectLimit stands after this plan; full records
+// whether this plan was the periodic full refresh.
+type definitionFetchPlan struct {
+	items      []*store.CreateMetaRegistryResourceMessage
+	full       bool
+	rotating   bool
+	nextCursor int
+}
+
+// planDefinitionFetch decides which definitions a sync reads. full asks for the
+// periodic refresh of objects the metadata diff did not change; a large database
+// refreshes one rotating window per such refresh rather than every object, and
+// changed objects are always included so a real DDL change never waits for the
+// rotation to reach it.
+func (b *batchMetaCreate) planDefinitionFetch(full bool, cursor int) definitionFetchPlan {
+	schemaBearing := b.schemaBearingResources()
+	changed := b.changedDefinitionResources()
+
+	plan := definitionFetchPlan{full: full}
+	if !full {
+		plan.items = changed
+		return plan
+	}
+	if len(schemaBearing) <= fullDefinitionObjectLimit {
+		plan.items = schemaBearing
+		return plan
+	}
+
+	// Sort before windowing: the rotation cursor has to point at the same place
+	// across syncs, and the snapshot's map iteration order is not stable.
+	slices.SortFunc(schemaBearing, func(a, bx *store.CreateMetaRegistryResourceMessage) int {
+		return strings.Compare(a.GUID, bx.GUID)
+	})
+	plan.rotating = true
+	start := cursor % len(schemaBearing)
+	if start < 0 {
+		start += len(schemaBearing)
+	}
+	window := make([]*store.CreateMetaRegistryResourceMessage, 0, fullDefinitionObjectLimit)
+	for i := 0; i < fullDefinitionObjectLimit && i < len(schemaBearing); i++ {
+		window = append(window, schemaBearing[(start+i)%len(schemaBearing)])
+	}
+	plan.nextCursor = (start + len(window)) % len(schemaBearing)
+	plan.items = mergeDefinitionResources(window, changed)
+	slog.Info("Database exceeds the full definition fetch limit; refreshing a rotating batch",
+		slog.Int("objects", len(schemaBearing)),
+		slog.Int("limit", fullDefinitionObjectLimit),
+		slog.Int("batch", len(window)))
+	return plan
+}
+
+// schemaBearingResources returns every snapshot resource that can have its own DDL.
+func (b *batchMetaCreate) schemaBearingResources() []*store.CreateMetaRegistryResourceMessage {
+	schemaBearing := make([]*store.CreateMetaRegistryResourceMessage, 0, len(b.guidList))
+	for _, item := range b.guidList {
+		if supportsObjectDefinition(item.ObjectType) {
+			schemaBearing = append(schemaBearing, item)
+		}
+	}
+	return schemaBearing
+}
+
+// changedDefinitionResources returns the objects whose metadata changed in this sync.
+func (b *batchMetaCreate) changedDefinitionResources() []*store.CreateMetaRegistryResourceMessage {
+	changed := make([]*store.CreateMetaRegistryResourceMessage, 0, len(b.updates))
+	for _, item := range b.updates {
+		if supportsObjectDefinition(item.ObjectType) {
+			changed = append(changed, item)
+		}
+	}
+	return changed
+}
+
+// mergeDefinitionResources appends the items of extra that first is missing, so a
+// changed object outside the rotation window is still read this sync.
+func mergeDefinitionResources(first, extra []*store.CreateMetaRegistryResourceMessage) []*store.CreateMetaRegistryResourceMessage {
+	seen := make(map[store.MetaGUIDKey]struct{}, len(first)+len(extra))
+	merged := make([]*store.CreateMetaRegistryResourceMessage, 0, len(first)+len(extra))
+	for _, group := range [][]*store.CreateMetaRegistryResourceMessage{first, extra} {
+		for _, item := range group {
+			key := item.GUIDKey()
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			merged = append(merged, item)
+		}
+	}
+	return merged
+}
 
 // objectDefinitionBatch is the DDL write set computed before the metadata
 // transaction is opened: the definitions are fetched over the network, and that
@@ -42,13 +147,11 @@ type objectDefinitionBatch struct {
 	failed    int
 }
 
-// prepareObjectDefinitions captures the engine's own DDL for the objects in the
-// current snapshot and computes the rows to write. It runs before the caller's
-// transaction because the fetch issues up to one network round trip per object.
-// It returns a nil batch for engines that do not implement
-// db.ObjectDefinitionReader.
-func prepareObjectDefinitions(ctx context.Context, s *store.Store, reader db.ObjectDefinitionReader, bmc *batchMetaCreate) (*objectDefinitionBatch, error) {
-	candidates := bmc.definitionCandidates()
+// prepareObjectDefinitions captures the engine's own DDL for the candidates and
+// computes the rows to write. It runs before the caller's transaction because
+// the fetch issues up to one network round trip per object. It returns a nil
+// batch when there is nothing to fetch.
+func prepareObjectDefinitions(ctx context.Context, s *store.Store, reader db.ObjectDefinitionReader, candidates []*store.CreateMetaRegistryResourceMessage) (*objectDefinitionBatch, error) {
 	if len(candidates) == 0 {
 		return nil, nil
 	}
@@ -94,33 +197,6 @@ func (b *objectDefinitionBatch) write(ctx context.Context, s *store.Store, tx *s
 	return nil
 }
 
-// definitionCandidates returns the objects eligible for a DDL fetch: every
-// schema-bearing resource in the snapshot, or only the changed ones when the
-// snapshot exceeds fullDefinitionObjectLimit.
-func (b *batchMetaCreate) definitionCandidates() []*store.CreateMetaRegistryResourceMessage {
-	schemaBearing := make([]*store.CreateMetaRegistryResourceMessage, 0, len(b.guidList))
-	for _, item := range b.guidList {
-		if supportsObjectDefinition(item.ObjectType) {
-			schemaBearing = append(schemaBearing, item)
-		}
-	}
-	if len(schemaBearing) <= fullDefinitionObjectLimit {
-		return schemaBearing
-	}
-
-	changed := make([]*store.CreateMetaRegistryResourceMessage, 0, len(b.updates))
-	for _, item := range b.updates {
-		if supportsObjectDefinition(item.ObjectType) {
-			changed = append(changed, item)
-		}
-	}
-	slog.Warn("Database exceeds the full definition fetch limit; only changed objects will have their DDL refreshed",
-		slog.Int("objects", len(schemaBearing)),
-		slog.Int("limit", fullDefinitionObjectLimit),
-		slog.Int("changed", len(changed)))
-	return changed
-}
-
 // supportsObjectDefinition reports whether an object type can have its own DDL.
 // COLUMN is excluded because a column has no definition of its own, and
 // DATABASE/SCHEMA/SEQUENCE for the same reason. FUNCTION and PROCEDURE are
@@ -137,6 +213,17 @@ func supportsObjectDefinition(metaType storepb.MetaType) bool {
 	default:
 		return false
 	}
+}
+
+// metaObjectSchema returns the schema segment of an object's GUID. A GUID is
+// instance;database;schema;name, so the third segment is the container the
+// definition reader qualifies the name with; the MySQL family stores "" there.
+func metaObjectSchema(guid string) string {
+	parts := common.SplitMetaGUID(guid)
+	if len(parts) < 3 {
+		return ""
+	}
+	return parts[2]
 }
 
 // metaObjectName returns the plain object name carried by a registry row. It is
@@ -207,7 +294,7 @@ func fetchObjectDefinitions(ctx context.Context, reader db.ObjectDefinitionReade
 				return
 			}
 
-			definition, ok, err := reader.GetObjectDefinition(ctx, item.ObjectType, name)
+			definition, ok, err := reader.GetObjectDefinition(ctx, item.ObjectType, metaObjectSchema(item.GUID), name)
 			if err != nil {
 				slog.Debug("Failed to fetch object definition", slog.String("guid", item.GUID), log.WithError(err))
 				mu.Lock()

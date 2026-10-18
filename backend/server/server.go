@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"sync"
 	"time"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/catalog"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/engines"
 	"github.com/Ranxy/metaxisdata/backend/plugin/openlineage"
+	"github.com/Ranxy/metaxisdata/backend/runner"
 	"github.com/Ranxy/metaxisdata/backend/runner/lineageanalyzer"
 	"github.com/Ranxy/metaxisdata/backend/runner/lineagevalidation"
 	"github.com/Ranxy/metaxisdata/backend/runner/maintenance"
@@ -38,6 +40,12 @@ const gracefulShutdownPeriod = 10 * time.Second
 // runners after cancelling them. A runner blocked in external database I/O must
 // not hold the process open past the graceful period.
 const runnerShutdownTimeout = 10 * time.Second
+
+// debugLogDrainTimeout bounds how long Shutdown waits for queued LLM debug-log
+// writes. The log is best-effort, and the shutdown context has no deadline: a
+// database that is already unavailable must not hold process exit for the queue's
+// worst-case drain.
+const debugLogDrainTimeout = 5 * time.Second
 
 // minJWTSecretLength is the minimum length of the JWT signing key. The key must
 // be long enough that it cannot be brute-forced offline.
@@ -56,8 +64,6 @@ type Server struct {
 	lineageValidate *lineagevalidation.Runner
 	maintenance     *maintenance.Runner
 	llmRegistry     *llmcomp.Registry
-	// PG server stoppers.
-	stopper []func()
 
 	// stateCfg is the shared in-momory state within the server.
 	stateCfg *state.State
@@ -148,11 +154,13 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 		return nil, errors.Wrapf(err, "failed to configure gRPC routers")
 	}
 
-	s.runnerWG.Add(4)
-	go s.lineageAnalyzer.Run(s.runnerCtx, &s.runnerWG)
-	go s.schemaSync.Run(s.runnerCtx, &s.runnerWG)
-	go s.lineageValidate.Run(s.runnerCtx, &s.runnerWG)
-	go s.maintenance.Run(s.runnerCtx, &s.runnerWG)
+	// Keeping the set in one list (instead of a hand-written Add(4) and four
+	// goroutines) keeps the wait group count and the actual runners in sync, and
+	// gives each one the shared panic boundary in runner.Go.
+	runners := []runner.Runner{s.lineageAnalyzer, s.schemaSync, s.lineageValidate, s.maintenance}
+	for _, r := range runners {
+		runner.Go(s.runnerCtx, &s.runnerWG, r)
+	}
 
 	configureEchoRouters(s.echoServer, profile)
 
@@ -200,7 +208,10 @@ func (s *Server) Run(_ context.Context, port int) error {
 	s.echoServer.Listener = listener
 
 	go func() {
-		if err := s.echoServer.StartH2CServer(address, &http2.Server{}); err != nil {
+		// A graceful shutdown stops the server, which makes it return
+		// http.ErrServerClosed; that is the expected end of the goroutine, not a
+		// listen failure. Anything else is a real error worth reporting.
+		if err := s.echoServer.StartH2CServer(address, &http2.Server{}); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("http server listen error", log.WithError(err))
 		}
 	}()
@@ -226,7 +237,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		s.notifier.Close()
 	}
 	// Shutdown echo. A failure is logged rather than fatal: os.Exit here would
-	// skip closing the store and running the stoppers.
+	// skip closing the store.
 	if s.echoServer != nil {
 		if err := s.echoServer.Shutdown(ctx); err != nil {
 			slog.Error("failed to shut down the web server", log.WithError(err))
@@ -247,15 +258,22 @@ func (s *Server) Shutdown(ctx context.Context) error {
 			slog.Duration("timeout", runnerShutdownTimeout))
 	}
 
+	// Drain the LLM debug-log writers before the pool closes: they write to the
+	// store, so a queued entry would otherwise be written to a closed connection
+	// pool. The drain gets its own short budget because the shutdown context has no
+	// deadline, and a stuck database must not keep the process alive.
+	debugDrainCtx, cancelDebugDrain := context.WithTimeout(ctx, debugLogDrainTimeout)
+	debugDrainErr := llmcomp.ShutdownDebugLogWorkers(debugDrainCtx)
+	cancelDebugDrain()
+	if debugDrainErr != nil {
+		slog.Warn("LLM debug log writers did not drain before the store closed", log.WithError(debugDrainErr))
+	}
+
 	// Close db connection
 	if s.store != nil {
 		if err := s.store.Close(); err != nil {
 			return err
 		}
-	}
-
-	for _, stopper := range s.stopper {
-		stopper()
 	}
 
 	return nil

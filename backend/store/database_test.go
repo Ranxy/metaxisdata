@@ -3,6 +3,7 @@ package store
 import (
 	"testing"
 
+	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -10,6 +11,20 @@ import (
 
 func ptr[T any](value T) *T {
 	return &value
+}
+
+// The batch soft delete is one statement scoped to one instance: it must never
+// widen to another instance's databases, and the name list must bind to the
+// second placeholder so the argument order in the method stays correct.
+func TestBatchSoftDeleteDatabasesQueryScopesToOneInstance(t *testing.T) {
+	t.Parallel()
+
+	query := batchSoftDeleteDatabasesQuery
+	require.Contains(t, query, "UPDATE db")
+	require.Contains(t, query, "SET deleted = TRUE")
+	require.Contains(t, query, "WHERE instance = $1 AND name = ANY($2)")
+	require.NotContains(t, query, "instance.deleted")
+	requirePlaceholdersMatchArgs(t, query, []any{"instance_1", pq.Array([]string{"db1", "db2"})})
 }
 
 func TestBuildListDatabaseQueryScopesToLiveRowsByDefault(t *testing.T) {

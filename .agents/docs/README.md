@@ -12,6 +12,7 @@ Everything here describes **shipped behavior**, not a plan: implementation steps
 | [sso.md](sso.md) | SSO: the identity provider admin surface, the OAuth2 login flow, subject binding and account adoption, the encrypted client secret | Touching auth, the `idp` tables, the login page or the provider settings page |
 | [environments.md](environments.md) | The environment catalog, `EnvironmentService` and the selection UI | Touching instances, sync or environment scoping |
 | [schemasync.md](schemasync.md) | Schema sync: what it writes, its deliberate log-only deletion, its known issues | Touching `backend/runner/schemasync/` |
+| [runner.md](runner.md) | The four background runners: common lifecycle, in-process state, derived-data cadences, and the single-replica assumption | Touching `backend/runner/`, server startup/shutdown, or scheduling |
 | [notifications.md](notifications.md) | Inbox messages: recipient and dedup rules, the server-push subscription stream | Touching sync results, ingestion failures or the notification UI |
 | [mcp-server.md](mcp-server.md) | The MCP resource server, its tools, the OAuth 2.1 authorization server, and the security invariants | Touching `backend/mcp/` or `backend/api/oauth/` |
 | [credential-encryption.md](credential-encryption.md) | The `v1:` AES-256-GCM credential store, its key hierarchy and its residuals | Touching stored credentials or `backend/common/crypto` |

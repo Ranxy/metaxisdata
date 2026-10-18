@@ -150,7 +150,9 @@ check could notice.
 authenticate ─▶ read + decode ─▶ resolve instance and engine ─▶ (repeated reportId?)
 per statement item:
   split ─▶ sanitize ─▶ gate ─▶ upsert statement ─▶ upsert observation ─▶ roll up ─▶ mirror
-after the transaction: queue the statement for analysis
+after the transaction: queue only the statements the upsert created for analysis
+  (a replay of an existing statement has nothing new to analyze: the upsert never
+  rewrites its sql_text)
 ```
 
 The statement upsert's conflict target is the identity tuple, and a conflict leaves `guid`,
@@ -160,7 +162,7 @@ recomputed from the observations rather than trusted from the caller.
 
 ### Classification and the table-level edge
 
-The runner derives the kind, and it is the only place the read/write rule lives:
+The runner derives the kind, and it is the only place the read/write rule lives. It writes the kind only after the edges commit: the kind is a filter cache over the edges, so a kind that claims a classification the graph does not have is worse than a missing kind (stale until the next analysis):
 
 | Shape | Kind | Edges |
 | --- | --- | --- |

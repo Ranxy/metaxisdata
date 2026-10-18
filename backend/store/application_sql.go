@@ -62,6 +62,15 @@ type ApplicationSQLMessage struct {
 	Observations []*ApplicationSQLObservationMessage
 }
 
+// ApplicationSQLReportResult is one statement a report recorded, together with whether this
+// report created its row. A row that already existed is not new work for the lineage runner:
+// the upsert never rewrites sql_text on conflict, so an existing row's text is the text its
+// lineage was already derived from.
+type ApplicationSQLReportResult struct {
+	Statement *ApplicationSQLMessage
+	Inserted  bool
+}
+
 // ReportApplicationSQLMessage is one statement an application reported. The text fields
 // are what sqlsanitize.Sanitize produced: the store persists them and does not decide them.
 type ReportApplicationSQLMessage struct {
@@ -108,6 +117,10 @@ const applicationSQLColumns = `application_sql.id, application_sql.guid, applica
 	application_sql.sql_text, application_sql.kind, application_sql.execution_count,
 	application_sql.first_seen_at, application_sql.last_seen_at, application_sql.created_at, application_sql.updated_at`
 
+// applicationSQLInsertedColumn reports whether the upsert created the row rather than matching
+// an existing one. xmax is zero only for a row version the current INSERT produced.
+const applicationSQLInsertedColumn = `(xmax = 0) AS inserted`
+
 // The four writes below are named because their shape is the invariant: a statement's
 // conflict target is its identity, an observation adds to a count rather than replacing it,
 // the rollup derives a statement's totals from the observations instead of trusting the
@@ -117,6 +130,8 @@ const applicationSQLColumns = `application_sql.id, application_sql.guid, applica
 // applicationSQLUpsertStatement records a statement. On conflict it leaves the generated id
 // and the stored text alone: the id is what the object's GUID already points at, and the text
 // belongs to whichever reporter came first, since whitespace is not part of the fingerprint.
+// The RETURNING reports whether this call created the row, which is what tells the caller
+// whether the statement's lineage needs analyzing.
 const applicationSQLUpsertStatement = `
 	INSERT INTO application_sql (
 		guid, application_sql_id, instance_resource_id, database_name, schema_name, engine,
@@ -128,7 +143,7 @@ const applicationSQLUpsertStatement = `
 		first_seen_at = LEAST(application_sql.first_seen_at, EXCLUDED.first_seen_at),
 		last_seen_at = GREATEST(application_sql.last_seen_at, EXCLUDED.last_seen_at),
 		updated_at = NOW()
-	RETURNING ` + applicationSQLColumns
+	RETURNING ` + applicationSQLColumns + `, ` + applicationSQLInsertedColumn
 
 // applicationSQLUpsertObservation folds one application's report into its own history with
 // the statement.
@@ -170,14 +185,19 @@ const applicationSQLDeleteOrphans = `
 	RETURNING guid
 `
 
-func scanApplicationSQL(row interface{ Scan(...any) error }) (*ApplicationSQLMessage, error) {
+// scanApplicationSQL scans applicationSQLColumns into a statement. extra destinations follow
+// those columns, for a query whose RETURNING carries more than the shared column list (the
+// upsert appends the inserted flag).
+func scanApplicationSQL(row interface{ Scan(...any) error }, extra ...any) (*ApplicationSQLMessage, error) {
 	msg := &ApplicationSQLMessage{}
 	var engine, kind int16
-	if err := row.Scan(
+	dest := []any{
 		&msg.ID, &msg.GUID, &msg.ApplicationSQLID, &msg.InstanceResourceID, &msg.DatabaseName,
 		&msg.SchemaName, &engine, &msg.Fingerprint, &msg.FingerprintVersion, &msg.SQLText, &kind,
 		&msg.ExecutionCount, &msg.FirstSeenAt, &msg.LastSeenAt, &msg.CreatedAt, &msg.UpdatedAt,
-	); err != nil {
+	}
+	dest = append(dest, extra...)
+	if err := row.Scan(dest...); err != nil {
 		return nil, err
 	}
 	msg.Engine = storepb.Engine(engine)
@@ -222,7 +242,10 @@ func statementLabel(text string) string {
 // GetMetadata, history and Explain SQL all read it — while the graph node set is derived from
 // lineage edges, which only a write gets. See .agents/docs/application-sql-ingestion.md,
 // "Data model".
-func (s *Store) ReportApplicationSQLs(ctx context.Context, reports []*ReportApplicationSQLMessage) ([]*ApplicationSQLMessage, error) {
+//
+// The result says which statements this report created, so the caller queues analysis for the
+// new text alone instead of re-analyzing every statement the application replays.
+func (s *Store) ReportApplicationSQLs(ctx context.Context, reports []*ReportApplicationSQLMessage) ([]*ApplicationSQLReportResult, error) {
 	if len(reports) == 0 {
 		return nil, nil
 	}
@@ -232,22 +255,22 @@ func (s *Store) ReportApplicationSQLs(ctx context.Context, reports []*ReportAppl
 	}
 	defer tx.Rollback()
 
-	statements := make([]*ApplicationSQLMessage, 0, len(reports))
+	results := make([]*ApplicationSQLReportResult, 0, len(reports))
 	for _, report := range reports {
-		statement, err := s.reportApplicationSQLAt(ctx, tx, report)
+		result, err := s.reportApplicationSQLAt(ctx, tx, report)
 		if err != nil {
 			return nil, err
 		}
-		statements = append(statements, statement)
+		results = append(results, result)
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, errors.Wrap(err, "failed to commit transaction")
 	}
-	return statements, nil
+	return results, nil
 }
 
 // reportApplicationSQLAt is one statement's share of the entry's transaction.
-func (s *Store) reportApplicationSQLAt(ctx context.Context, tx *sql.Tx, report *ReportApplicationSQLMessage) (*ApplicationSQLMessage, error) {
+func (s *Store) reportApplicationSQLAt(ctx context.Context, tx *sql.Tx, report *ReportApplicationSQLMessage) (*ApplicationSQLReportResult, error) {
 	if report == nil {
 		return nil, common.Errorf(common.Invalid, "a report is required")
 	}
@@ -279,9 +302,10 @@ func (s *Store) reportApplicationSQLAt(ctx context.Context, tx *sql.Tx, report *
 	}
 	guid := buildApplicationSQLGUID(report.InstanceResourceID, report.DatabaseName, report.SchemaName, applicationSQLID)
 
+	var inserted bool
 	statement, err := scanApplicationSQL(tx.QueryRowContext(ctx, applicationSQLUpsertStatement,
 		guid, applicationSQLID, report.InstanceResourceID, report.DatabaseName, report.SchemaName, int16(report.Engine),
-		report.Fingerprint, report.FingerprintVersion, report.SQLText, firstSeenAt, lastSeenAt))
+		report.Fingerprint, report.FingerprintVersion, report.SQLText, firstSeenAt, lastSeenAt), &inserted)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to record the reported statement")
 	}
@@ -302,7 +326,7 @@ func (s *Store) reportApplicationSQLAt(ctx context.Context, tx *sql.Tx, report *
 		return nil, err
 	}
 
-	return statement, nil
+	return &ApplicationSQLReportResult{Statement: statement, Inserted: inserted}, nil
 }
 
 // GetApplicationSQL returns one reported statement or nil.

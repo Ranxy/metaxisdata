@@ -131,10 +131,16 @@ type Driver interface {
 // carries properties the metadata does not model (StarRocks distribution,
 // properties, partitioning), so the syncer prefers this when available.
 type ObjectDefinitionReader interface {
-	// GetObjectDefinition returns the DDL of the named object. ok is false when
-	// this engine has no definition for that object type; the caller then falls
-	// back to reconstruction.
-	GetObjectDefinition(ctx context.Context, objectType storepb.MetaType, name string) (definition string, ok bool, err error)
+	// GetObjectDefinition returns the DDL of the object named by a database
+	// schema and an object name. ok is false when this engine has no definition
+	// for that object type; the caller then falls back to reconstruction.
+	//
+	// schema is the container the object lives in: the schema name on an engine
+	// with several schemas per database, and "" on the MySQL family, whose single
+	// container is the database the driver is already connected to. It is part of
+	// the signature from the start because widening it later would break every
+	// implementation and every caller for a reason unrelated to the change.
+	GetObjectDefinition(ctx context.Context, objectType storepb.MetaType, schema, name string) (definition string, ok bool, err error)
 }
 
 // Register makes a database driver available by the provided type.

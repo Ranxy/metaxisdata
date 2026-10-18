@@ -1863,7 +1863,9 @@ For example: name == &#34;sample instance&#34; name.matches(&#34;sample&#34;) re
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  | The name of instance. Format: instances/{instance} |
-| enable_full_sync | [bool](#bool) |  | When full sync is enabled, all databases in the instance will be synchronized. Otherwise, only the instance metadata (such as the database list) and any newly discovered instances will be synced. |
+| enable_full_sync | [bool](#bool) | optional | Whether the sync also refreshes every existing database of the instance.
+
+Unset means true: a user-triggered sync refreshes the metadata and every database, which is what the background scan and instance creation already do. Set it to false only for a discovery-only sync that refreshes the instance metadata and queues the databases that were just discovered, leaving the existing ones to the background scan. |
 
 
 

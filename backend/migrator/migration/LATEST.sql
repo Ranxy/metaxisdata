@@ -319,6 +319,18 @@ CREATE TABLE column_lineage (
 CREATE INDEX idx_column_lineage_meta ON column_lineage(meta_guid, meta_type);
 CREATE INDEX idx_column_lineage_source ON column_lineage(source_guid, source_column);
 CREATE INDEX idx_column_lineage_target ON column_lineage(target_guid, target_column);
+-- One row per distinct edge: two writers replacing the same object's edges at once
+-- (the analyzer and OpenLineage revalidation) would otherwise duplicate them. The
+-- insertion uses ON CONFLICT DO NOTHING; transformation is not part of the identity.
+CREATE UNIQUE INDEX idx_column_lineage_edge ON column_lineage(
+    meta_guid,
+    meta_type,
+    source_guid,
+    source_column,
+    target_guid,
+    target_column,
+    relation_type
+);
 
 
 -- column_lineage_version tracks the analysis state per object for change detection.
@@ -328,6 +340,7 @@ CREATE TABLE column_lineage_version (
     meta_hash BYTEA,
     analyzed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     error_message TEXT,
+    analyzer_version TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (meta_guid, meta_type)
 );
 

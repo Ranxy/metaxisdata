@@ -1,6 +1,6 @@
 # Schema Sync（schemasync）— Reference
 
-> Status：**implemented**，代码评审结论。本文件只记录**今天仍然成立**的已知问题与不变量；评审当时列出的 1–6 号问题均已修复，修复过程不在此保留。
+> Status：**implemented**，代码评审结论。本文件只记录**今天仍然成立**的已知问题与不变量；评审当时列出的 1–6 号问题均已修复，修复过程不在此保留。2026-10-18 的 runner 评审第 4 步又收敛了三处：统计刷新独立于 history/fingerprint（旧 R-09）、血缘清理批量化（旧 R-10，即下文已删的已知问题 3）、DDL 刷新按小时节奏 + 大库轮换（旧 R-20，即下文已删的已知问题 6）。
 > 范围：`backend/runner/schemasync`。
 > Related：`docs/security-posture.md`（破坏性 sync 仅记日志；数据库 `deleted` 标记单向权威）。
 
@@ -8,24 +8,29 @@
 
 | 不变量 | 位置 | 破坏后果 |
 | --- | --- | --- |
-| 元数据事务内只做纯写：digest 读取、`bmc.prepare()` 的 diff、DDL 抓取与 DDL diff 全部在 `BeginTx` 之前 | `backend/runner/schemasync/syncer.go:719-741` | 否则 `meta_registry_resource` 的行锁会横跨对目标实例的全部网络往返（最多 2000 个对象），大库上一次同步可让事务开启数分钟，放大 vacuum 膨胀与锁等待。 |
-| 缓存失效严格在 `Commit` 之后 | `backend/runner/schemasync/syncer.go:771-778` | 回滚的同步会留下未提交的缓存条目。 |
-| DDL 行严格是 meta 行的子集，且写在同一次事务里 | `backend/runner/schemasync/syncer.go:737-753` | 回滚后会留下一条没有对应元数据行的 DDL。 |
+| 元数据事务内只做纯写：digest 读取、`bmc.prepare()` 的 diff、DDL 抓取与 DDL diff 全部在 `BeginTx` 之前 | `backend/runner/schemasync/syncer.go:839-879` | 否则 `meta_registry_resource` 的行锁会横跨对目标实例的全部网络往返，大库上一次同步可让事务开启数分钟，放大 vacuum 膨胀与锁等待。 |
+| 缓存失效严格在 `Commit` 之后（含 stats-only 更新过的行） | `backend/runner/schemasync/syncer.go:881,928-937` | 回滚的同步会留下未提交的缓存条目。 |
+| DDL 行严格是 meta 行的子集，且写在同一次事务里 | `backend/runner/schemasync/syncer.go:881-891` | 回滚后会留下一条没有对应元数据行的 DDL。 |
+| 统计刷新只写 `metadata` 列且是 best-effort：不写 `meta_registry_resource_history`、不改 `meta_hash`、不进入 `bmc.updates`（因此不重排血缘、不触发 revalidation）；读失败只 Warn 并记录本次刷新，写失败只 Warn（在元数据事务**之外**执行） | `backend/runner/schemasync/syncer.go`（`ListMetaRegistryStatistics` 调用与提交后的 `BatchUpdateMetaRegistryStatistics`）；`backend/store/meta_resource_statistics.go` | 统计被 `normalizeMetadataForHash` 排除在 fingerprint 之外；若把它当作普通更新，每次行数变化都会产生历史版本并重算血缘；若放在元数据事务里，一次统计写失败会回滚真正的 schema 变更，持久坏值还会让该库的同步永久失败。 |
+| 统计与 DDL 的全量刷新各有独立节奏（每库每小时；DDL 大库轮换窗口），clock/cursor 只在 commit 后推进 | `backend/runner/schemasync/syncer.go:1216-1272`；`backend/runner/schemasync/object_definition.go:44-140` | 若跟随每 15 分钟的 schema 同步，会把「行数估计」变成每次全表 JSONB 重写，并对目标库产生与变更无关的 SHOW CREATE 压力；回滚时推进 clock 会跳过从未刷新的对象。 |
 | 元数据指纹用自有 canonical 编码，不走 protojson | `backend/store/meta_hash.go:52-63` | protojson 按镜像随机化 map 字段顺序，会导致全表重写。 |
 | 破坏性删除只记日志，没有收缩阈值或确认开关；`logSchemaSyncDeletion` 是唯一痕迹 | `backend/runner/schemasync/syncer.go:755`、`backend/runner/schemasync/syncer.go:1020` | 有意为之：MySQL 的 `information_schema` 只列连接用户可见的对象，权限变更可以清空快照。详见 `docs/security-posture.md`。 |
 | `deleted = true` 可由任何“目标说这个库没了”的观测写入，`deleted = false` 只能由实例枚举写入；单库同步的成功路径不写 `deleted` | `backend/runner/schemasync/syncer.go:611-618`、`backend/runner/schemasync/syncer.go:800-810`、`backend/runner/schemasync/syncer.go:830` | 一次“读到了某个库的内容”不是一次实例枚举；写成双向就会 flap。详见 `docs/security-posture.md`。 |
-| 每个 driver 打开点都经过实例连接限流：sync 走 `acquireInstanceConnection`，API 侧的连通性探测也调用 `stateCfg.AcquireInstanceConnection` | `backend/runner/schemasync/syncer.go:432`；`backend/api/v1/instance_service.go:632` | 绕过限流会让 `maximum_connections` 形同虚设，调用方可以对着一个只握手不响应的目标堆叠无界尝试（理由见 `backend/api/v1/instance_service.go:619-623`）。 |
+| 每个 driver 打开点都经过实例连接限流：sync 走 `acquireInstanceConnection`，API 侧的连通性探测也调用 `stateCfg.AcquireInstanceConnection` | `backend/runner/schemasync/syncer.go`；`backend/api/v1/instance_service.go` | 绕过限流会让 `maximum_connections` 形同虚设，调用方可以对着一个只握手不响应的目标堆叠无界尝试。 |
+| 实例元数据只写定向 patch：runner 与 API（UpdateInstance、数据源增删改）都用 `UpdateInstanceMessage.MetadataUpdates`，在 store 的行锁内合并；`last_sync_time` / `version` / `mysql_lower_case_table_names` 只由 runner 的 patch 写 | `backend/store/instance.go` 的 `patchInstanceMetadata`；`backend/api/v1/instance_service.go`；`backend/runner/schemasync/syncer.go` 的 `SyncInstance` | 任何调用方整份写回自己读到的 metadata 克隆，都会把并发写入的另一半静默回滚（最坏是刚加的数据源/凭据）。 |
 
 ## 已知问题
 
 | # | 严重度 | 问题 | 位置 / 证据 |
 | --- | --- | --- | --- |
-| 1 | 中 | **API 触发的同步最长可挂 15 分钟。** `SyncInstance`/`SyncDatabase` 都在请求 goroutine 里同步执行，内部 deadline 是 `syncTimeout = 15 * time.Minute`；目标库 hang 时 HTTP 请求就挂满 15 分钟。入口为 `backend/api/v1/instance_service.go:349`（`SyncInstance`）与 `backend/api/v1/database_service.go:45`（`SyncDatabase` → `SyncDatabaseForUser`，后者在 `backend/runner/schemasync/operation.go:297` 直接调用 `SyncDatabaseSchema`）。建议 API 路径用更短超时，或改异步 + 轮询。 | `backend/runner/schemasync/syncer.go:32`（常量）、`:454`（`GetInstanceMeta`）、`:607`（`SyncDatabaseSchema`） |
-| 2 | 低 | checker 每 10s 无条件 `ListInstances`，队列为空时纯浪费；可先 `Range` 判空再查。 | `backend/runner/schemasync/syncer.go:243` |
-| 3 | 低 | 血缘清理是逐对象 2 条 DELETE（2N 次往返），可合并成基于 `= ANY($1)` 的两条批量语句。 | 循环 `backend/runner/schemasync/syncer.go:760-764`；语句 `backend/runner/schemasync/syncer.go:1076-1092` |
-| 4 | 低 | 7 段近乎相同的类型循环可表驱动化；其中物化视图那一段未复用 `schemaGUIDPrefix`，与邻居不一致。 | `backend/runner/schemasync/syncer.go:639-708`，不一致处在 `:663` |
-| 5 | 低 | 每列一次多余的 `proto.Clone`：`CalcMetaHash` 内部已经 Clone，之后无可变路径。 | `backend/runner/schemasync/syncer.go:993` |
-| 6 | 低 | 降级模式可能让 DDL 永久过期：schema-bearing 对象超过 2000 时只刷新变更对象，而 StarRocks 的属性变更不动元数据哈希，这些对象不会被补刷。注释已承认，可考虑轮换批次补刷。 | `backend/runner/schemasync/object_definition.go:107-121`（阈值 `:31`，注释 `:26-30`） |
+| 1 | 中 | **API 触发的单实例同步最长可挂 15 分钟。** `SyncInstance`/`SyncDatabase` 都在请求 goroutine 里同步执行，内部 deadline 是 `syncTimeout = 15 * time.Minute`；目标库 hang 时 HTTP 请求就挂满 15 分钟（`BatchSyncInstances` 已有 5 分钟总预算，单实例 RPC 未改语义）。入口为 `backend/api/v1/instance_service.go`（`SyncInstance`）与 `backend/api/v1/database_service.go`（`SyncDatabase` → `SyncDatabaseForUser`，后者在 `backend/runner/schemasync/operation.go` 直接调用 `SyncDatabaseSchema`）。建议 API 路径用更短超时，或改异步 + 轮询。 | `backend/runner/schemasync/syncer.go:32`（常量）、`:521`（`GetInstanceMeta`）、`:676`（`SyncDatabaseSchema`） |
+| 2 | 低 | checker 每 10s 无条件 `ListInstances`，队列为空时纯浪费；可先 `Range` 判空再查。 | `backend/runner/schemasync/syncer.go:315` |
+| 3 | 低 | 7 段近乎相同的类型循环可表驱动化；其中物化视图那一段未复用 `schemaGUIDPrefix`，与邻居不一致。 | `backend/runner/schemasync/syncer.go:768-846`，不一致处在 `:791` |
+| 4 | 低 | 每列一次多余的 `proto.Clone`：`CalcMetaHash` 内部已经 Clone，之后无可变路径。 | `backend/runner/schemasync/syncer.go:1169` |
+
+## API 触发的同步语义
+
+`SyncInstance` 的 `enable_full_sync` 是 proto3 `optional`：**未设置 = 全量**（刷新实例元数据 + 入队并同步所有库，与后台扫描、`CreateInstance` 一致）；显式传 `false` 是「仅发现新库」的轻量模式（只入队本次枚举新出现的库，已有库交给后台扫描）。前端默认传 `true`；需要只发现新库的调用方必须显式传 `false`。
 
 ## 历史债务（顺手清理，非 bug）
 
@@ -41,6 +46,7 @@
 
 ## 测试与门禁
 
-- 单测（hermetic）：`backend/runner/schemasync/syncer_test.go`（digest diff、限流、gate 串行、退避阶梯、`shouldSyncNow` 边界）、`backend/runner/schemasync/object_definition_test.go`、`backend/runner/schemasync/operation_test.go`。
+- 单测（hermetic）：`backend/runner/schemasync/syncer_test.go`（digest diff、stats-only 刷新、统计/DDL 刷新节奏、限流、gate 串行、退避阶梯、`shouldSyncNow` 边界）、`backend/runner/schemasync/object_definition_test.go`（changed/full/轮换窗口）、`backend/runner/schemasync/operation_test.go`、`backend/store/meta_resource_statistics_test.go`（统计读取/更新语句形态）。
+- 集成补充（2026-10-18）：`TestMySQLMetaRegistryStatisticsRefreshKeepsHistoryRealServerIntegration`（统计刷新不改 fingerprint/history）、`TestMySQLDeleteColumnLineageByMetaGUIDsRealServerIntegration`（批量血缘清理）。
 - 集成：`make test-integration-smoke`、`make test-integration`、`make test-integration-mysql`（见 `backend/test/integration/README.md`）。
 - 门禁：`gofmt`、`golangci-lint run --allow-parallel-runners`、`go test ./backend/runner/schemasync/...`；改动触及 schema sync 时补集成套件。

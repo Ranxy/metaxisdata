@@ -304,19 +304,32 @@ func TestAnalyzeSQLRealServerIntegration(t *testing.T) {
 func TestAnalyzeSQLFromListedGUIDRealServerIntegration(t *testing.T) {
 	t.Parallel()
 
-	env, ctx, _, sourceDatabase, databaseName := setupMySQLServiceDatabase(t)
+	env, ctx, instanceID, sourceDatabase, databaseName := setupMySQLServiceDatabase(t)
 	env.SyncDatabase(ctx, t, databaseName)
 	client := newAPIClients(env, env.AdminToken())
 
-	listed, err := client.database.ListDatabases(ctx, connect.NewRequest(&v1pb.ListDatabasesRequest{
-		Parent: "workspaces/-",
-	}))
-	require.NoError(t, err)
-
-	var scopeGUID string
-	for _, database := range listed.Msg.GetDatabases() {
-		if database.GetName() == databaseName {
-			scopeGUID = database.GetGuid()
+	// Scope the listing to this test's instance: the shared MySQL server holds every
+	// parallel scenario's database, and this instance enumerates all of them, so the
+	// result is paginated and the scenario's database may be on a later page.
+	var (
+		scopeGUID string
+		pageToken string
+	)
+	for {
+		listed, err := client.database.ListDatabases(ctx, connect.NewRequest(&v1pb.ListDatabasesRequest{
+			Parent:    "instances/" + instanceID,
+			PageSize:  100,
+			PageToken: pageToken,
+		}))
+		require.NoError(t, err)
+		for _, database := range listed.Msg.GetDatabases() {
+			if database.GetName() == databaseName {
+				scopeGUID = database.GetGuid()
+				break
+			}
+		}
+		pageToken = listed.Msg.GetNextPageToken()
+		if scopeGUID != "" || pageToken == "" {
 			break
 		}
 	}

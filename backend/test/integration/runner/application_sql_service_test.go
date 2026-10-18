@@ -105,11 +105,18 @@ CREATE TABLE public.appsql_orders (id INT, total NUMERIC(12,2), status TEXT);
 	require.Equal(t, insertStatement.SQLText, meta.Metadata.GetApplicationSqlMetadata().GetSqlText(),
 		"the runner analyzes the mirrored text, so the mirror has to carry it")
 
-	// The runner analyzes both statements. This is the hop nothing else covers.
+	// The runner analyzes both statements. This is the hop nothing else covers. Wait
+	// for both: the runner drains its queue in bounded batches, so a parallel suite
+	// can put one of them in a later batch.
 	require.Eventually(t, func() bool {
-		version, err := env.Store.GetColumnLineageVersion(ctx, insertGUID, storepb.MetaType_APPLICATION_SQL)
-		return err == nil && version != nil && version.AnalyzedAt.After(time.Time{})
-	}, 60*time.Second, 500*time.Millisecond, "the runner must analyze a reported statement")
+		for _, guid := range []string{insertGUID, selectGUID} {
+			version, err := env.Store.GetColumnLineageVersion(ctx, guid, storepb.MetaType_APPLICATION_SQL)
+			if err != nil || version == nil || !version.AnalyzedAt.After(time.Time{}) {
+				return false
+			}
+		}
+		return true
+	}, 60*time.Second, 500*time.Millisecond, "the runner must analyze every reported statement")
 
 	// A failed analysis still writes a version row, so the wait above proves only that the
 	// runner looked. This is what says it succeeded.

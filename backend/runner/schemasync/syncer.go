@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -20,7 +19,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 	"github.com/Ranxy/metaxisdata/backend/plugin/db"
-	"github.com/Ranxy/metaxisdata/backend/runner/lineageanalyzer"
+	"github.com/Ranxy/metaxisdata/backend/runner"
 	"github.com/Ranxy/metaxisdata/backend/store"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -36,21 +35,34 @@ const (
 	// maxDatabaseSyncRetries bounds one database's backoff retries before it is
 	// left to the next instance-level scan.
 	maxDatabaseSyncRetries = 3
+	// statisticsRefreshInterval decouples the table statistics refresh from the
+	// schema diff. Statistics are excluded from the change fingerprint, so
+	// refreshing them never writes history or re-queues lineage, but rewriting
+	// every table's metadata on every 15-minute sync would still be needless
+	// write amplification for a value the API shows as an estimate.
+	statisticsRefreshInterval = 1 * time.Hour
 )
 
 // NewSyncer creates a schema syncer. notifier reports the outcome of a sync
 // operation to the user who asked for it, and a background failure to the
 // workspace administrators; a nil notifier leaves the runner silent, which is
 // what its own tests want.
-func NewSyncer(stores *store.Store, dbFactory *dbfactory.DBFactory, stateCfg *state.State, lineageAnalyzer *lineageanalyzer.Analyzer, lineageRevalidator LineageRevalidator, notifier Notifier) *Syncer {
+func NewSyncer(stores *store.Store, dbFactory *dbfactory.DBFactory, stateCfg *state.State, lineageQueue LineageQueue, lineageRevalidator LineageRevalidator, notifier Notifier) *Syncer {
 	return &Syncer{
 		store:              stores,
 		dbFactory:          dbFactory,
 		stateCfg:           stateCfg,
-		lineageAnalyzer:    lineageAnalyzer,
+		lineageQueue:       lineageQueue,
 		lineageRevalidator: lineageRevalidator,
 		notifier:           notifier,
 	}
+}
+
+// LineageQueue is the lineage analysis queue a schema sync feeds. The package
+// depends on this narrow interface instead of the concrete analyzer in a sibling
+// runner package; *lineageanalyzer.Analyzer satisfies it as is.
+type LineageQueue interface {
+	QueueAnalysis(metaGUID string, metaType storepb.MetaType)
 }
 
 // LineageRevalidator is signalled when a schema sync has added or changed
@@ -66,7 +78,7 @@ type Syncer struct {
 	store              *store.Store
 	dbFactory          *dbfactory.DBFactory
 	stateCfg           *state.State
-	lineageAnalyzer    *lineageanalyzer.Analyzer
+	lineageQueue       LineageQueue
 	lineageRevalidator LineageRevalidator
 	databaseSyncMap    sync.Map // map[string]*store.DatabaseMessage
 	// databaseSyncRetryMap holds the backoff of a database whose sync failed:
@@ -77,6 +89,20 @@ type Syncer struct {
 	// above is drained on dequeue, so it is not an in-flight guard by itself,
 	// and the API path calls SyncDatabaseSchema directly.
 	databaseSyncGate databaseSyncGate
+	// instanceSyncGate serializes the enumeration of one instance. The API and
+	// the periodic scan both call SyncInstance, and that step writes the
+	// instance row and the database rows.
+	instanceSyncGate instanceSyncGate
+	// definitionMu guards definitionState: the per-database full-DDL refresh clock
+	// and rotation cursor. It is process-local for the same reason the sync gates
+	// are, and a restart makes every database due for a refresh, which is the
+	// first pass a fresh process wants anyway.
+	definitionMu    sync.Mutex
+	definitionState map[string]*objectDefinitionState
+	// statisticsMu guards statisticsState: when each database last had its table
+	// statistics refreshed.
+	statisticsMu    sync.Mutex
+	statisticsState map[string]time.Time
 	// notifier writes the messages a sync operation produces. See operation.go.
 	notifier Notifier
 	// operations are the user-visible sync operations still waiting for their
@@ -141,10 +167,61 @@ func (g *databaseSyncGate) finish(key string, call *databaseSyncCall, err error)
 	close(call.done)
 }
 
+// instanceSyncGate makes one instance enumeration run at a time inside the
+// process. Two concurrent enumerations would each read the database list, create
+// the same missing rows and write the same soft deletes, so the deleted flags and
+// LastSyncTime would depend on commit order rather than on the target's schema.
+type instanceSyncGate struct {
+	mu       sync.Mutex
+	inFlight map[string]*instanceSyncCall
+}
+
+// instanceSyncCall is one instance's running enumeration: done is closed when the
+// owner published its result.
+type instanceSyncCall struct {
+	done            chan struct{}
+	updatedInstance *store.InstanceMessage
+	databases       []*storepb.DatabaseSchemaMetadata
+	newDatabases    []*store.DatabaseMessage
+	err             error
+}
+
+func (g *instanceSyncGate) acquire(key string) (call *instanceSyncCall, owner bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.inFlight == nil {
+		g.inFlight = map[string]*instanceSyncCall{}
+	}
+	if existing, ok := g.inFlight[key]; ok {
+		return existing, false
+	}
+	call = &instanceSyncCall{done: make(chan struct{})}
+	g.inFlight[key] = call
+	return call, true
+}
+
+func (g *instanceSyncGate) finish(key string, call *instanceSyncCall, updated *store.InstanceMessage, databases []*storepb.DatabaseSchemaMetadata, newDatabases []*store.DatabaseMessage, err error) {
+	g.mu.Lock()
+	call.updatedInstance = updated
+	call.databases = databases
+	call.newDatabases = newDatabases
+	call.err = err
+	delete(g.inFlight, key)
+	g.mu.Unlock()
+	close(call.done)
+}
+
 // databaseRetry is the backoff state of a failed database schema sync.
 type databaseRetry struct {
 	attempts int
 	nextAt   time.Time
+}
+
+// objectDefinitionState is one database's DDL refresh state: when it last completed
+// a full refresh, and where the rotation over a database above the fetch limit stands.
+type objectDefinitionState struct {
+	lastFullRefresh time.Time
+	cursor          int
 }
 
 // databaseSyncRetryBackoff returns the delay before the next attempt. The last
@@ -164,13 +241,21 @@ func databaseSyncRetryBackoff(attempts int) time.Duration {
 // enqueueDatabase queues a database for the checker. A fresh request (an API full
 // sync or the periodic scan) supersedes any pending backoff. A deleted row is never
 // queued: it is kept as history, and only the instance enumeration revives it.
-func (s *Syncer) enqueueDatabase(database *store.DatabaseMessage, _ *SyncOperation) {
+func (s *Syncer) enqueueDatabase(database *store.DatabaseMessage) {
 	if database == nil || database.Deleted {
 		return
 	}
 	key := database.String()
 	s.databaseSyncRetryMap.Delete(key)
 	s.databaseSyncMap.Store(key, database)
+}
+
+// forgetQueuedDatabase drops a database from the checker's queue and its backoff.
+// A soft-deleted row is history: syncing it would write LastSyncTime to a database
+// the target no longer has, and only the instance enumeration revives it.
+func (s *Syncer) forgetQueuedDatabase(key string) {
+	s.databaseSyncRetryMap.Delete(key)
+	s.databaseSyncMap.Delete(key)
 }
 
 // scheduleRetry re-queues a failed database with a bounded backoff; the checker
@@ -212,21 +297,25 @@ func (s *Syncer) retryDue(key any, now time.Time) bool {
 	return !now.Before(entry.nextAt)
 }
 
-// Run will run the schema syncer once.
-func (s *Syncer) Run(ctx context.Context, wg *sync.WaitGroup) {
-	defer wg.Done()
+// Name identifies the runner in the server's lifecycle logs.
+func (*Syncer) Name() string { return "schemasync" }
 
+// Run starts the schema syncer. It blocks until ctx is cancelled.
+func (s *Syncer) Run(ctx context.Context) {
 	sp := pool.New()
 	sp.Go(func() {
-		s.trySyncAll(ctx)
-		slog.Debug(fmt.Sprintf("Schema syncer started and will run every %v", instanceSyncInterval))
-		ticker := time.NewTicker(instanceSyncInterval)
+		s.trySyncAllOnce(ctx)
+		// Jitter the fixed interval so a restart does not keep every process's
+		// scan aligned with the other runners' passes.
+		interval := runner.Jitter(instanceSyncInterval)
+		slog.Debug("Schema syncer's first scan finished; running every interval", slog.Duration("interval", interval))
+		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
 		for {
 			select {
 			case <-ticker.C:
-				s.trySyncAll(ctx)
+				s.trySyncAllOnce(ctx)
 			case <-ctx.Done(): // if cancel() execute
 				return
 			}
@@ -258,7 +347,6 @@ func (s *Syncer) Run(ctx context.Context, wg *sync.WaitGroup) {
 					if !ok {
 						return true
 					}
-
 					if _, ok := instanceMap[database.InstanceID]; !ok {
 						slog.Debug("Instance not found",
 							slog.String("instance", database.InstanceID))
@@ -307,6 +395,14 @@ func (s *Syncer) Run(ctx context.Context, wg *sync.WaitGroup) {
 								s.databaseSyncMap.Store(database.String(), database)
 								return
 							}
+							if errors.Is(err, ErrDatabaseHidden) {
+								// The target no longer has the row and the sync hid it.
+								// There is nothing to retry and nothing an
+								// administrator could fix; the operation waiting for
+								// this database hears the outcome.
+								s.completeDatabase(ctx, database, err)
+								return
+							}
 							slog.Warn("Failed to sync database schema",
 								slog.String("instance", database.InstanceID),
 								slog.String("databaseName", database.DatabaseName),
@@ -334,6 +430,17 @@ func (s *Syncer) Run(ctx context.Context, wg *sync.WaitGroup) {
 	sp.Wait()
 }
 
+// trySyncAllOnce runs one instance scan under a bound of two intervals. A scan
+// that wedges on a target or on the store must not outlive two intervals — every
+// tick would otherwise stack another scan on top of it — while a large estate
+// still has the whole 30 minutes to enumerate its instances and queue their
+// databases.
+func (s *Syncer) trySyncAllOnce(ctx context.Context) {
+	ctx, cancel := context.WithTimeout(ctx, 2*instanceSyncInterval)
+	defer cancel()
+	s.trySyncAll(ctx)
+}
+
 func (s *Syncer) trySyncAll(ctx context.Context) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -351,21 +458,36 @@ func (s *Syncer) trySyncAll(ctx context.Context) {
 		slog.Error("Failed to retrieve instances", log.WithError(err))
 		return
 	}
-	now := time.Now()
+	instanceNow := time.Now()
+	// The instances whose sync failed in this round, including the ones skipped
+	// because their connection limit was saturated. Their databases are filtered
+	// out below: the instance failure is already reported, and syncing each of
+	// its databases would retry the same broken connection and raise a failure
+	// notice of its own for a cause the administrators already know.
+	var failedMu sync.Mutex
+	failedInstances := make(map[string]struct{})
 	for _, instance := range instances {
-		if !shouldSyncNow(getOrDefaultSyncInterval(instance), getOrDefaultLastSyncTime(instance.Metadata.LastSyncTime), now) {
+		if !shouldSyncNow(getOrDefaultSyncInterval(instance), getOrDefaultLastSyncTime(instance.Metadata.LastSyncTime), instanceNow) {
 			continue
 		}
 
 		wp.Go(func() {
 			slog.Debug("Sync instance schema", slog.String("instance", instance.ResourceID))
 			if _, _, _, err := s.SyncInstance(ctx, instance); err != nil {
-				slog.Warn("Failed to sync instance",
-					slog.String("instance", instance.ResourceID),
-					log.WithError(err))
-				// Nobody asked for this sync, so the failure would otherwise leave
-				// no trace anyone reads until the next scheduled attempt.
-				s.notifyBackgroundInstanceFailure(ctx, instance, err)
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					// The scan budget (or the server shutting down) cancelled this
+					// sync. It is not a broken instance: LastSyncTime did not advance,
+					// so the next scan picks it up, and neither the administrators nor
+					// the remaining databases of the round should treat it as a
+					// failure.
+					slog.Debug("Instance sync stopped by the scan budget; it stays due for the next scan",
+						slog.String("instance", instance.ResourceID), log.WithError(err))
+					return
+				}
+				s.reportInstanceSyncFailure(ctx, instance, err)
+				failedMu.Lock()
+				failedInstances[instance.ResourceID] = struct{}{}
+				failedMu.Unlock()
 			}
 		})
 	}
@@ -376,24 +498,62 @@ func (s *Syncer) trySyncAll(ctx context.Context) {
 		instancesMap[instance.ResourceID] = instance
 	}
 
+	// The instance round above can take up to a sync timeout, so the database due check is
+	// made against a fresh clock: a database that became due during this round would
+	// otherwise wait a whole extra interval because it was compared to the round's start.
+	databaseNow := time.Now()
+
 	databases, err := s.store.ListDatabases(ctx, &store.FindDatabaseMessage{})
 	if err != nil {
 		slog.Error("Failed to retrieve databases", log.WithError(err))
 		return
 	}
+	for _, database := range databasesToEnqueue(databases, instancesMap, failedInstances, databaseNow) {
+		s.enqueueDatabase(database)
+	}
+}
+
+// databasesToEnqueue returns the databases the round should queue: those of a
+// known instance whose own sync did not fail and that are due. An instance whose
+// sync failed — or was skipped because its connection limit was saturated — is
+// left out so that one broken instance does not produce one failure notice per
+// database.
+func databasesToEnqueue(databases []*store.DatabaseMessage, instances map[string]*store.InstanceMessage, failedInstances map[string]struct{}, now time.Time) []*store.DatabaseMessage {
+	enqueue := make([]*store.DatabaseMessage, 0, len(databases))
 	for _, database := range databases {
-		database := database
-		instance, ok := instancesMap[database.InstanceID]
+		instance, ok := instances[database.InstanceID]
 		if !ok {
 			continue
 		}
-		// The database inherits the sync interval from the instance.
-		if !shouldSyncNow(getOrDefaultSyncInterval(instance), getOrDefaultLastSyncTime(database.Metadata.LastSyncTime), now) {
+		if _, failed := failedInstances[database.InstanceID]; failed {
 			continue
 		}
-
-		s.enqueueDatabase(database, nil)
+		// The database inherits the sync interval from the instance.
+		if !shouldSyncNow(getOrDefaultSyncInterval(instance), getOrDefaultLastSyncTime(database.Metadata.GetLastSyncTime()), now) {
+			continue
+		}
+		enqueue = append(enqueue, database)
 	}
+	return enqueue
+}
+
+// reportInstanceSyncFailure records an instance sync failure the periodic scan
+// met. Connection-limit saturation is recoverable contention — another caller is
+// using the instance's slots — rather than a broken instance: the next scan
+// retries it because LastSyncTime did not advance, and an administrator cannot
+// fix another request's concurrency, so it is not escalated.
+func (s *Syncer) reportInstanceSyncFailure(ctx context.Context, instance *store.InstanceMessage, err error) {
+	if errors.Is(err, errInstanceConnectionsExhausted) {
+		slog.Debug("Instance sync skipped: the connection limit is saturated",
+			slog.String("instance", instance.ResourceID))
+		return
+	}
+	slog.Warn("Failed to sync instance",
+		slog.String("instance", instance.ResourceID),
+		log.WithError(err))
+	// Nobody asked for this sync, so the failure would otherwise leave no trace
+	// anyone reads until the next scheduled attempt.
+	s.notifyBackgroundInstanceFailure(ctx, instance, err)
 }
 
 // SyncAllDatabases queues every database of an instance for the operation that
@@ -407,23 +567,31 @@ func (s *Syncer) SyncAllDatabases(ctx context.Context, operation *SyncOperation,
 	}
 	databases, err := s.store.ListDatabases(ctx, find)
 	if err != nil {
-		slog.Debug("Failed to find databases to sync",
-			slog.String("error", err.Error()))
-		databases = nil
+		// A full sync that could not read the database list must not report
+		// success: seal the operation with the error so the user gets an ERROR
+		// message instead of an INFO message naming zero databases.
+		slog.Error("Failed to list databases to sync", log.WithError(err))
+		s.FailOperation(ctx, operation, errors.Wrap(err, "failed to list the databases to sync"))
+		return
 	}
 	s.EnqueueDatabases(ctx, operation, databases)
 }
 
 func (s *Syncer) QueueLineageAnalysis(metaGUID string, metaType storepb.MetaType) {
-	if s == nil || s.lineageAnalyzer == nil || metaGUID == "" {
+	if s == nil || s.lineageQueue == nil || metaGUID == "" {
 		return
 	}
-	s.lineageAnalyzer.QueueAnalysis(metaGUID, metaType)
+	s.lineageQueue.QueueAnalysis(metaGUID, metaType)
 }
 
 // errInstanceConnectionsExhausted signals that the per-instance connection
 // limiter is saturated; the caller should retry the sync later.
 var errInstanceConnectionsExhausted = state.ErrInstanceConnectionLimit
+
+// ErrDatabaseHidden reports that a database the caller asked to sync has been
+// soft-deleted because the target no longer has it. The checker must not retry or
+// escalate it — the row is history now — and the API maps it to NotFound.
+var ErrDatabaseHidden = errors.New("the target no longer has this database; it has been hidden")
 
 // acquireInstanceConnection reserves one of the instance's outstanding
 // connection slots and returns the release func. Every path that opens a driver
@@ -468,40 +636,50 @@ func (s *Syncer) GetInstanceMeta(ctx context.Context, instance *store.InstanceMe
 }
 
 // SyncInstance syncs the schema for all databases in an instance.
-func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessage) (*store.InstanceMessage, []*storepb.DatabaseSchemaMetadata, []*store.DatabaseMessage, error) {
+//
+// The API and the periodic scan can ask for the same instance at once, so the
+// enumeration is serialized per instance exactly as a database sync is: a caller
+// that arrives while one is running waits for it and reuses its result. Two
+// concurrent enumerations would otherwise create the same database rows and write
+// the same deleted flags against each other's reads.
+func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessage) (updatedInstance *store.InstanceMessage, databases []*storepb.DatabaseSchemaMetadata, newDatabases []*store.DatabaseMessage, err error) {
+	if instance == nil {
+		return nil, nil, nil, errors.New("instance is required")
+	}
+
+	key := instance.ResourceID
+	call, owner := s.instanceSyncGate.acquire(key)
+	if !owner {
+		select {
+		case <-call.done:
+			return call.updatedInstance, call.databases, call.newDatabases, call.err
+		case <-ctx.Done():
+			return nil, nil, nil, ctx.Err()
+		}
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			// Waiters must be released, and a panic is not a result to reuse.
+			s.instanceSyncGate.finish(key, call, nil, nil, nil, errors.Errorf("instance schema sync panicked: %v", r))
+			panic(r)
+		}
+		s.instanceSyncGate.finish(key, call, updatedInstance, databases, newDatabases, err)
+	}()
+
 	instanceMeta, err := s.GetInstanceMeta(ctx, instance)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	metadata, ok := proto.Clone(instance.Metadata).(*storepb.Instance)
-	if !ok {
-		return nil, nil, nil, errors.Errorf("failed to convert instance metadata type")
-	}
-	metadata.LastSyncTime = instanceMeta.Metadata.LastSyncTime
-	metadata.MysqlLowerCaseTableNames = instanceMeta.Metadata.MysqlLowerCaseTableNames
 
-	updateInstance := &store.UpdateInstanceMessage{
-		ResourceID: instance.ResourceID,
-		Metadata:   metadata,
-	}
-	if instanceMeta.Version != instance.Metadata.GetVersion() {
-		metadata.Version = instanceMeta.Version
-	}
-	updatedInstance, err := s.store.UpdateInstance(ctx, updateInstance)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	databases, err := s.store.ListDatabases(ctx, &store.FindDatabaseMessage{InstanceID: &instance.ResourceID})
+	storedDatabases, err := s.store.ListDatabases(ctx, &store.FindDatabaseMessage{InstanceID: &instance.ResourceID})
 	if err != nil {
 		return nil, nil, nil, errors.Wrapf(err, "failed to sync database for instance: %s. Failed to find database list", instance.ResourceID)
 	}
-	var newDatabases []*store.DatabaseMessage
 
 	// Index the stored databases once: the loop below used a linear scan per
 	// snapshot entry, which is quadratic for an instance with many databases.
-	storedByName := make(map[string]*store.DatabaseMessage, len(databases))
-	for _, database := range databases {
+	storedByName := make(map[string]*store.DatabaseMessage, len(storedDatabases))
+	for _, database := range storedDatabases {
 		storedByName[database.DatabaseName] = database
 	}
 
@@ -529,27 +707,56 @@ func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessa
 	for _, databaseMetadata := range instanceMeta.Databases {
 		snapshotNames[databaseMetadata.Name] = struct{}{}
 	}
-	var missingDatabases []string
-	for _, database := range databases {
+	var missingDatabases []*store.DatabaseMessage
+	for _, database := range storedDatabases {
 		if _, ok := snapshotNames[database.DatabaseName]; !ok {
-			missingDatabases = append(missingDatabases, database.DatabaseName)
+			missingDatabases = append(missingDatabases, database)
 		}
 	}
 	if len(missingDatabases) > 0 {
+		names := make([]string, 0, len(missingDatabases))
+		for _, database := range missingDatabases {
+			names = append(names, database.DatabaseName)
+		}
 		slog.Warn("Soft-deleting databases missing from the synced instance snapshot",
 			slog.String("instance", instance.ResourceID),
-			slog.Int("count", len(missingDatabases)),
-			slog.Any("databases", missingDatabases))
-	}
-	for _, databaseName := range missingDatabases {
-		d := true
-		if _, err := s.store.UpdateDatabase(ctx, &store.UpdateDatabaseMessage{
-			InstanceID:   instance.ResourceID,
-			DatabaseName: databaseName,
-			Deleted:      &d,
-		}); err != nil {
-			return nil, nil, nil, errors.Errorf("failed to update database %q for instance %q", databaseName, instance.ResourceID)
+			slog.Int("count", len(names)),
+			slog.Any("databases", names))
+		// One statement for the whole set: hiding the databases one transaction at
+		// a time left the instance partially hidden when one of them failed.
+		if err := s.store.BatchSoftDeleteDatabases(ctx, instance.ResourceID, names); err != nil {
+			return nil, nil, nil, errors.Wrapf(err, "failed to hide %d databases for instance %q", len(names), instance.ResourceID)
 		}
+		// A hidden database must not stay queued: the checker would keep syncing
+		// it and write LastSyncTime to a row that is meant to be history. An
+		// operation already waiting for it hears the hidden outcome instead of
+		// waiting for a result that will never come.
+		for _, database := range missingDatabases {
+			s.forgetQueuedDatabase(database.String())
+			s.completeDatabase(ctx, database, errors.Wrapf(ErrDatabaseHidden, "database %q", database.DatabaseName))
+		}
+	}
+
+	// The sync only owns the fields it observed: last_sync_time, the engine
+	// version and the case-sensitivity flag. Writing a whole metadata clone built
+	// before the (potentially long) driver round trip would silently revert any
+	// concurrent API change to the title, data sources or activation; the patch
+	// reads the row under lock and merges. It is written only after the database
+	// enumeration succeeded: writing it earlier marked an instance as synced even
+	// when its databases could not be created or hidden, skipping it for a whole
+	// interval.
+	updatedInstance, err = s.store.UpdateInstance(ctx, &store.UpdateInstanceMessage{
+		ResourceID: instance.ResourceID,
+		MetadataUpdates: []func(*storepb.Instance){
+			func(metadata *storepb.Instance) {
+				metadata.LastSyncTime = instanceMeta.Metadata.LastSyncTime
+				metadata.MysqlLowerCaseTableNames = instanceMeta.Metadata.MysqlLowerCaseTableNames
+				metadata.Version = instanceMeta.Version
+			},
+		},
+	})
+	if err != nil {
+		return nil, nil, nil, err
 	}
 
 	return updatedInstance, instanceMeta.Databases, newDatabases, nil
@@ -563,6 +770,11 @@ func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessa
 func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.DatabaseMessage) (err error) {
 	if database == nil {
 		return nil
+	}
+	if database.Deleted {
+		// The row is history: only the instance enumeration revives it, and a
+		// single-database read is not that answer.
+		return errors.Wrapf(ErrDatabaseHidden, "database %q", database.DatabaseName)
 	}
 
 	key := database.String()
@@ -616,7 +828,7 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 			if hideErr := s.markDatabaseDeleted(ctx, database, err); hideErr != nil {
 				return errors.Wrapf(hideErr, "failed to hide database %q the target no longer has", database.DatabaseName)
 			}
-			return nil
+			return errors.Wrapf(ErrDatabaseHidden, "database %q", database.DatabaseName)
 		}
 		return errors.Wrapf(err, "failed to sync database schema for database %q", database.DatabaseName)
 	}
@@ -631,9 +843,36 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		return errors.Wrapf(err, "failed to list existing meta registry for database %q", database.DatabaseName)
 	}
 
+	// The statistics are read apart from the digest because the digest deliberately omits the
+	// metadata, and a stats-only refresh must write the metadata column without becoming a
+	// metadata update: that would write history and re-queue lineage analysis for a row count.
+	// The refresh has its own, slower cadence for the same reason a row count does not need to
+	// be rewritten on every sync.
+	statisticsKey := database.String()
+	refreshStatistics := s.statisticsRefreshDue(statisticsKey)
+	statisticsReadFailed := false
+	var storedStatistics map[store.MetaGUIDKey]store.MetaRegistryStatistics
+	if refreshStatistics {
+		stats, statsErr := s.store.ListMetaRegistryStatistics(ctx, databaseGUID)
+		if statsErr != nil {
+			// Statistics are a derived estimate for the UI, so an unreadable or
+			// malformed stats value must not stop this database's schema from
+			// converging. The attempt is recorded so a persistent failure logs once
+			// per refresh window instead of on every sync.
+			slog.Warn("Failed to read table statistics; leaving them unchanged",
+				slog.String("instance", database.InstanceID),
+				slog.String("database", database.DatabaseName),
+				log.WithError(statsErr))
+			statisticsReadFailed = true
+		} else {
+			storedStatistics = stats
+		}
+	}
+
 	bmc := &batchMetaCreate{
-		exist:    storedMetadatas,
-		guidList: make([]*store.CreateMetaRegistryResourceMessage, 0),
+		exist:            storedMetadatas,
+		storedStatistics: storedStatistics,
+		guidList:         make([]*store.CreateMetaRegistryResourceMessage, 0),
 	}
 
 	for _, schema := range databaseMetadata.Schemas {
@@ -726,9 +965,20 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 
 	// deadlineCtx is used for the driver round trips so a hung target cannot
 	// outlive the sync deadline. Engines without the capability are skipped.
+	//
+	// The DDL refresh is decoupled from the metadata diff: a full refresh of the
+	// unchanged objects is periodic (objectDefinitionFullRefreshInterval) and a
+	// database above the fetch limit rotates through its objects instead of
+	// re-reading them all, so the per-sync SHOW CREATE cost is proportional to
+	// what changed rather than to the database's size.
 	var definitions *objectDefinitionBatch
+	var definitionPlan *definitionFetchPlan
+	definitionDBKey := database.String()
 	if reader, ok := driver.(db.ObjectDefinitionReader); ok {
-		definitions, err = prepareObjectDefinitions(deadlineCtx, s.store, reader, bmc)
+		full, cursor := s.definitionRefreshDue(definitionDBKey)
+		plan := bmc.planDefinitionFetch(full, cursor)
+		definitionPlan = &plan
+		definitions, err = prepareObjectDefinitions(deadlineCtx, s.store, reader, plan.items)
 		if err != nil {
 			return errors.Wrapf(err, "failed to sync object definitions for database %q", database.DatabaseName)
 		}
@@ -752,15 +1002,18 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		return errors.Wrapf(err, "failed to sync object definitions for database %q", database.DatabaseName)
 	}
 
-	logSchemaSyncDeletion(common.FormatDatabase(database.InstanceID, database.DatabaseName), bmc.deletes)
-
 	// Clean lineage rows for every deleted object, not only views: a dropped
 	// table or column leaves edges whose endpoint GUID no longer exists, and a
-	// dropped view also stops being the producer of its edges.
+	// dropped view also stops being the producer of its edges. One statement
+	// covers the whole delete set: a destructive sync removes a database's
+	// objects at once, and the per-object probes were mostly no-ops that only
+	// kept the write transaction open.
+	deletedKeys := make([]store.MetaGUIDKey, 0, len(bmc.deletes))
 	for _, item := range bmc.deletes {
-		if err := deleteColumnLineageByMetaTx(ctx, tx, item.GUID, item.ObjectType); err != nil {
-			return errors.Wrapf(err, "failed to delete column lineage for guid %q", item.GUID)
-		}
+		deletedKeys = append(deletedKeys, item.GUIDKey())
+	}
+	if err := s.store.DeleteColumnLineageByMetaGUIDs(ctx, tx, deletedKeys); err != nil {
+		return errors.Wrapf(err, "failed to delete column lineage for database %q", database.DatabaseName)
 	}
 
 	err = tx.Commit()
@@ -768,22 +1021,54 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		return errors.Wrapf(err, "failed to commit transaction for database %q", database.DatabaseName)
 	}
 
+	// The deletion log is the only trace of a destructive sync, so it describes
+	// what was committed: logging before the commit reported deletions that a
+	// rollback erased.
+	logSchemaSyncDeletion(common.FormatDatabase(database.InstanceID, database.DatabaseName), bmc.deletes)
+
+	// The statistics refresh is deliberately outside the metadata transaction: it is
+	// a derived estimate for the UI, so a failed estimate write must not roll back
+	// schema changes that are the source of truth. Its clock advances either way, so
+	// a persistent failure does not retry on every sync.
+	if len(bmc.statsUpdates) > 0 {
+		if _, err := s.store.BatchUpdateMetaRegistryStatistics(ctx, bmc.statsUpdates); err != nil {
+			slog.Warn("Failed to refresh table statistics",
+				slog.String("instance", database.InstanceID),
+				slog.String("database", database.DatabaseName),
+				log.WithError(err))
+		}
+	}
+
+	// Record the completed DDL plan only after the commit: a rolled-back sync must
+	// not advance the refresh clock or the rotation, or it would skip objects it
+	// never refreshed.
+	if definitionPlan != nil {
+		s.recordDefinitionRefresh(definitionDBKey, *definitionPlan)
+	}
+	if refreshStatistics || statisticsReadFailed {
+		s.recordStatisticsRefresh(statisticsKey)
+	}
+
 	// The metadata cache is invalidated only after a successful commit, so a
-	// rolled-back sync cannot leave stale or uncommitted entries behind.
-	invalidated := make([]*store.MetaRegistryResource, 0, len(bmc.updates)+len(bmc.deletes))
+	// rolled-back sync cannot leave stale or uncommitted entries behind. The
+	// stats-only rows are cached too (TABLE is), so they are invalidated as well.
+	invalidated := make([]*store.MetaRegistryResource, 0, len(bmc.updates)+len(bmc.deletes)+len(bmc.statsUpdates))
 	for _, item := range bmc.updates {
 		invalidated = append(invalidated, &item.MetaRegistryResource)
 	}
 	invalidated = append(invalidated, bmc.deletes...)
+	for _, item := range bmc.statsUpdates {
+		invalidated = append(invalidated, &item.MetaRegistryResource)
+	}
 	s.store.InvalidateMetaRegistryCache(invalidated)
 
 	// Queue changed VIEWs and MATERIALIZED_VIEWs before touching the db row: if
 	// the LastSyncTime update below fails, the next sync sees unchanged hashes
 	// and would never queue them again.
-	if s.lineageAnalyzer != nil {
+	if s.lineageQueue != nil {
 		for _, item := range bmc.updates {
 			if item.ObjectType == storepb.MetaType_VIEW || item.ObjectType == storepb.MetaType_MATERIALIZED_VIEW {
-				s.lineageAnalyzer.QueueAnalysis(item.GUID, item.ObjectType)
+				s.lineageQueue.QueueAnalysis(item.GUID, item.ObjectType)
 			}
 		}
 	}
@@ -808,7 +1093,7 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 	// answer. Writing it here would let a sync of a database that a partial
 	// instance snapshot just hid resurrect it, and the next snapshot would hide
 	// it again.
-	if _, err := s.store.UpdateDatabase(ctx, &store.UpdateDatabaseMessage{
+	_, err = s.store.UpdateDatabase(ctx, &store.UpdateDatabaseMessage{
 		InstanceID:   database.InstanceID,
 		DatabaseName: database.DatabaseName,
 		MetadataUpdates: []func(*storepb.DatabaseMetadata){
@@ -816,7 +1101,8 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 				md.LastSyncTime = timestamppb.Now()
 			},
 		},
-	}); err != nil {
+	})
+	if err != nil {
 		return errors.Wrapf(err, "failed to update database %q for instance %q", database.DatabaseName, database.InstanceID)
 	}
 
@@ -829,11 +1115,12 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 // revives the row if the name reappears in a snapshot.
 func (s *Syncer) markDatabaseDeleted(ctx context.Context, database *store.DatabaseMessage, cause error) error {
 	deleted := true
-	if _, err := s.store.UpdateDatabase(ctx, &store.UpdateDatabaseMessage{
+	_, err := s.store.UpdateDatabase(ctx, &store.UpdateDatabaseMessage{
 		InstanceID:   database.InstanceID,
 		DatabaseName: database.DatabaseName,
 		Deleted:      &deleted,
-	}); err != nil {
+	})
+	if err != nil {
 		return err
 	}
 	slog.Warn("Hiding a database the target no longer has",
@@ -846,8 +1133,15 @@ func (s *Syncer) markDatabaseDeleted(ctx context.Context, database *store.Databa
 type batchMetaCreate struct {
 	exist    []*store.MetaRegistryResource
 	guidList []*store.CreateMetaRegistryResourceMessage
-	updates  []*store.CreateMetaRegistryResourceMessage // populated by prepare()
-	deletes  []*store.MetaRegistryResource              // populated by prepare()
+	// storedStatistics is what the statistics of the stored rows are, so the diff can tell a
+	// stats-only change from an unchanged row without loading their metadata.
+	storedStatistics map[store.MetaGUIDKey]store.MetaRegistryStatistics
+	updates          []*store.CreateMetaRegistryResourceMessage // populated by prepare()
+	deletes          []*store.MetaRegistryResource              // populated by prepare()
+	// statsUpdates are rows whose non-statistics content is unchanged but whose statistics
+	// moved. They are written to the metadata column alone, so they never enter history or
+	// the lineage queue. Populated by prepare().
+	statsUpdates []*store.CreateMetaRegistryResourceMessage
 }
 
 func (b *batchMetaCreate) StoreMetaResource(_ context.Context, prefixName string, objectType storepb.MetaType, data *storepb.StoredMetadata) error {
@@ -914,7 +1208,26 @@ func (b *batchMetaCreate) diff() (updates []*store.CreateMetaRegistryResourceMes
 		existMap[item.GUIDKey()] = item
 	}
 
+	// A snapshot can name the same (GUID, object type) twice — two columns with
+	// the same name, say. Writing both would make the batch upsert fail with
+	// "cannot affect row a second time" and take the whole database's sync with
+	// it, so the duplicate is dropped and logged. The first entry is kept, which
+	// is deterministic because the snapshot order is.
+	seen := make(map[store.MetaGUIDKey]struct{}, len(b.guidList))
+	guidList := make([]*store.CreateMetaRegistryResourceMessage, 0, len(b.guidList))
 	for _, item := range b.guidList {
+		key := item.GUIDKey()
+		if _, duplicate := seen[key]; duplicate {
+			slog.Warn("Skipping a duplicate metadata resource in a schema sync batch",
+				slog.String("guid", item.GUID),
+				slog.String("objectType", item.ObjectType.String()))
+			continue
+		}
+		seen[key] = struct{}{}
+		guidList = append(guidList, item)
+	}
+
+	for _, item := range guidList {
 		metadataBytes, hash, err := store.CalcStoreMetaHash(item.Metadata)
 		if err != nil {
 			return nil, nil, errors.Wrapf(err, "failed to calculate metadata hash for guid %q", item.GUID)
@@ -932,6 +1245,11 @@ func (b *batchMetaCreate) diff() (updates []*store.CreateMetaRegistryResourceMes
 
 		if existing.MetaHash == nil || item.MetaHash == nil || !bytes.Equal(existing.MetaHash, item.MetaHash) {
 			updates = append(updates, item)
+		} else if stored, ok := b.storedStatistics[item.GUIDKey()]; ok && stored != store.MetadataStatistics(item.Metadata) {
+			// The schema did not change but the statistics moved: refresh only what the API
+			// shows. Treating this as an update would write a history row and re-queue
+			// lineage analysis for a row count.
+			b.statsUpdates = append(b.statsUpdates, item)
 		}
 		delete(existMap, item.GUIDKey())
 	}
@@ -1012,11 +1330,12 @@ func buildColumnMetadataResources(prefix string, cols []*storepb.ColumnMetadata)
 // maxLoggedDeletedGUIDs bounds how many deleted GUIDs a single log record names.
 const maxLoggedDeletedGUIDs = 20
 
-// logSchemaSyncDeletion records the metadata resources a sync is about to
-// delete. The driver snapshot is treated as the source of truth, so an empty or
-// partial snapshot silently removes rows — MySQL's information_schema only
-// lists objects the connecting user may see, with no error. This log is the
-// only trace of that happening.
+// logSchemaSyncDeletion records the metadata resources a committed sync deleted.
+// The driver snapshot is treated as the source of truth, so an empty or partial
+// snapshot silently removes rows — MySQL's information_schema only lists objects
+// the connecting user may see, with no error. This log is the only trace of that
+// happening, so it is written after the commit: a rolled-back sync deleted
+// nothing.
 func logSchemaSyncDeletion(database string, deletes []*store.MetaRegistryResource) {
 	if len(deletes) == 0 {
 		return
@@ -1035,6 +1354,62 @@ func logSchemaSyncDeletion(database string, deletes []*store.MetaRegistryResourc
 		slog.Int("omittedGUIDs", len(deletes)-len(guids)),
 		slog.Any("countByObjectType", counts),
 		slog.Any("sampleGUIDs", guids))
+}
+
+// definitionRefreshDue reports whether a database's periodic full DDL refresh is
+// due, and where its rotation cursor stands. A database this process has not
+// refreshed yet is due, so the first sync after a restart re-reads every DDL.
+func (s *Syncer) definitionRefreshDue(key string) (bool, int) {
+	s.definitionMu.Lock()
+	defer s.definitionMu.Unlock()
+	state := s.definitionState[key]
+	if state == nil {
+		return true, 0
+	}
+	return !time.Now().Before(state.lastFullRefresh.Add(objectDefinitionFullRefreshInterval)), state.cursor
+}
+
+// recordDefinitionRefresh records a committed DDL plan. A change-only plan leaves
+// the rotation and the clock alone: only a full refresh advances them.
+func (s *Syncer) recordDefinitionRefresh(key string, plan definitionFetchPlan) {
+	if !plan.full {
+		return
+	}
+	s.definitionMu.Lock()
+	defer s.definitionMu.Unlock()
+	if s.definitionState == nil {
+		s.definitionState = map[string]*objectDefinitionState{}
+	}
+	state := s.definitionState[key]
+	if state == nil {
+		state = &objectDefinitionState{}
+		s.definitionState[key] = state
+	}
+	state.lastFullRefresh = time.Now()
+	state.cursor = plan.nextCursor
+}
+
+// statisticsRefreshDue reports whether a database's table statistics are due for
+// a refresh. A database this process has not refreshed yet is due, so the first
+// sync after a restart brings the estimates it displays up to date.
+func (s *Syncer) statisticsRefreshDue(key string) bool {
+	s.statisticsMu.Lock()
+	defer s.statisticsMu.Unlock()
+	last, ok := s.statisticsState[key]
+	if !ok {
+		return true
+	}
+	return !time.Now().Before(last.Add(statisticsRefreshInterval))
+}
+
+// recordStatisticsRefresh records a committed statistics refresh.
+func (s *Syncer) recordStatisticsRefresh(key string) {
+	s.statisticsMu.Lock()
+	defer s.statisticsMu.Unlock()
+	if s.statisticsState == nil {
+		s.statisticsState = map[string]time.Time{}
+	}
+	s.statisticsState[key] = time.Now()
 }
 
 // shouldSyncNow reports whether a resource whose last successful sync was
@@ -1067,27 +1442,4 @@ func getOrDefaultLastSyncTime(t *timestamppb.Timestamp) time.Time {
 		return t.AsTime()
 	}
 	return time.Unix(0, 0)
-}
-
-// deleteColumnLineageByMetaTx removes every lineage row that mentions a deleted
-// object: the edges it produced (meta_guid) and the edges that point at it as a
-// source or target. Rows left behind would reference a GUID that no longer
-// exists.
-func deleteColumnLineageByMetaTx(ctx context.Context, tx *sql.Tx, metaGUID string, metaType storepb.MetaType) error {
-	if _, err := tx.ExecContext(ctx,
-		`DELETE FROM column_lineage
-		 WHERE (meta_guid = $1 AND meta_type = $2)
-		    OR (source_guid = $1 AND source_type = $2)
-		    OR (target_guid = $1 AND target_type = $2)`,
-		metaGUID, metaType,
-	); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx,
-		`DELETE FROM column_lineage_version WHERE meta_guid = $1 AND meta_type = $2`,
-		metaGUID, metaType,
-	); err != nil {
-		return err
-	}
-	return nil
 }

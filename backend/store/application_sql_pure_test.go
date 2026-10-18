@@ -93,6 +93,25 @@ func TestUpsertKeepsTheStatementIdentityOnConflict(t *testing.T) {
 	require.Contains(t, onConflict, "GREATEST(application_sql.last_seen_at", "the last sighting is kept")
 }
 
+// TestUpsertReportsWhetherItCreatedTheRow pins the signal the handler uses to queue lineage
+// analysis for new statements alone. The upsert never rewrites sql_text on conflict, so a row
+// it created is the only one whose text this report introduced; xmax is zero only for a row
+// version the current INSERT produced.
+func TestUpsertReportsWhetherItCreatedTheRow(t *testing.T) {
+	t.Parallel()
+
+	_, returning, found := strings.Cut(applicationSQLUpsertStatement, "RETURNING")
+	require.True(t, found)
+	require.Contains(t, returning, applicationSQLInsertedColumn,
+		"the upsert must report whether it created the row")
+	require.Contains(t, returning, "(xmax = 0) AS inserted",
+		"xmax is the column that distinguishes an insert from an update")
+
+	// Only the statement upsert creates a row, so the other queries do not carry the flag.
+	require.NotContains(t, applicationSQLRollUpStatement, "xmax")
+	require.NotContains(t, applicationSQLDeleteOrphans, "xmax")
+}
+
 // TestObservationUpsertAddsToTheCount pins the frequency semantics: a report adds to what an
 // application has already reported, it does not replace it.
 func TestObservationUpsertAddsToTheCount(t *testing.T) {

@@ -3,6 +3,7 @@ package schemasync
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -120,6 +121,13 @@ func TestBatchMetaCreateDiff(t *testing.T) {
 	require.NoError(t, err)
 
 	batch := &batchMetaCreate{
+		storedStatistics: map[store.MetaGUIDKey]store.MetaRegistryStatistics{
+			// The stored row still carries the old statistics; the hash ignores them,
+			// which is exactly why the diff has to compare them separately.
+			{GUID: buildGUID("inst", "db", "public", "stats_only"), ObjectType: storepb.MetaType_TABLE}: {
+				RowCount: 999, DataSize: 888, IndexSize: 777, DataFree: 666,
+			},
+		},
 		exist: []*store.MetaRegistryResource{
 			{GUID: buildGUID("inst", "db", "public", "orders"), ObjectType: storepb.MetaType_TABLE, MetaHash: unchangedHash},
 			{GUID: buildGUID("inst", "db", "public", "users"), ObjectType: storepb.MetaType_TABLE, MetaHash: changedBeforeHash},
@@ -154,6 +162,10 @@ func TestBatchMetaCreateDiff(t *testing.T) {
 	require.True(t, newFound, "new table should be an update")
 	require.False(t, unchangedFound, "identical table should not be an update")
 	require.False(t, statsOnlyFound, "table with only stats change should not be an update")
+	// The stats-only change is written to the metadata column alone: no history
+	// row and no lineage re-analysis, but the row the API reads is refreshed.
+	require.Len(t, batch.statsUpdates, 1)
+	require.Equal(t, buildGUID("inst", "db", "public", "stats_only"), batch.statsUpdates[0].GUID)
 	require.Len(t, deletes, 1)
 	require.Equal(t, buildGUID("inst", "db", "public", "legacy"), deletes[0].GUID)
 }
@@ -306,11 +318,11 @@ func TestEnqueueDatabaseSkipsDeletedDatabases(t *testing.T) {
 
 	s := &Syncer{}
 
-	s.enqueueDatabase(nil, nil)
-	s.enqueueDatabase(&store.DatabaseMessage{Deleted: true}, nil)
+	s.enqueueDatabase(nil)
+	s.enqueueDatabase(&store.DatabaseMessage{Deleted: true})
 	require.Equal(t, 0, countDatabaseSyncMapItems(&s.databaseSyncMap))
 
-	s.enqueueDatabase(&store.DatabaseMessage{InstanceID: "i1", DatabaseName: "d1"}, nil)
+	s.enqueueDatabase(&store.DatabaseMessage{InstanceID: "i1", DatabaseName: "d1"})
 	require.Equal(t, 1, countDatabaseSyncMapItems(&s.databaseSyncMap))
 }
 
@@ -460,7 +472,7 @@ func TestScheduleRetryBacksOffAndGivesUp(t *testing.T) {
 	require.Equal(t, 2, mustDatabaseRetry(t, syncer, key).attempts)
 
 	// A fresh enqueue supersedes the pending backoff.
-	syncer.enqueueDatabase(database, nil)
+	syncer.enqueueDatabase(database)
 	_, ok := syncer.databaseSyncRetryMap.Load(key)
 	require.False(t, ok)
 
@@ -489,7 +501,7 @@ func TestRetryDueHonorsBackoff(t *testing.T) {
 	require.False(t, syncer.retryDue(key, time.Now()), "a failed database must not be retried before its backoff")
 	require.True(t, syncer.retryDue(key, time.Now().Add(databaseSyncRetryBackoff(1)+time.Second)))
 
-	syncer.enqueueDatabase(database, nil)
+	syncer.enqueueDatabase(database)
 	require.True(t, syncer.retryDue(key, time.Now()), "a fresh enqueue clears the backoff")
 }
 
@@ -500,4 +512,248 @@ func mustDatabaseRetry(t *testing.T, syncer *Syncer, key string) databaseRetry {
 	entry, ok := v.(databaseRetry)
 	require.True(t, ok)
 	return entry
+}
+
+// The API and the periodic scan can enumerate the same instance at once; only one
+// may write the instance row and the database rows, and the other reuses the
+// result instead of racing it.
+func TestInstanceSyncGateSerializesOneInstance(t *testing.T) {
+	t.Parallel()
+
+	gate := &instanceSyncGate{}
+	owner, ok := gate.acquire("inst-1")
+	require.True(t, ok, "the first caller owns the instance's sync")
+
+	joiner, ok := gate.acquire("inst-1")
+	require.False(t, ok, "the second caller must not own the same instance's sync")
+	require.Same(t, owner, joiner)
+
+	other, ok := gate.acquire("inst-2")
+	require.True(t, ok, "another instance is unaffected")
+
+	instance := &store.InstanceMessage{ResourceID: "inst-1"}
+	gate.finish("inst-1", owner, instance, nil, nil, errors.New("sync failed"))
+	select {
+	case <-joiner.done:
+	default:
+		t.Fatal("finish must release the waiters")
+	}
+	require.Same(t, instance, joiner.updatedInstance)
+	require.EqualError(t, joiner.err, "sync failed")
+
+	fresh, ok := gate.acquire("inst-1")
+	require.True(t, ok, "a finished sync must not be reused")
+	require.NotSame(t, owner, fresh)
+
+	gate.finish("inst-1", fresh, nil, nil, nil, nil)
+	gate.finish("inst-2", other, nil, nil, nil, nil)
+}
+
+// The statistics refresh runs on its own slower clock so a row count does not
+// rewrite every table's metadata on each sync. A database this process has not
+// refreshed yet is due, which is what makes a restart refresh the estimates.
+func TestStatisticsRefreshCadence(t *testing.T) {
+	t.Parallel()
+
+	s := &Syncer{}
+	require.True(t, s.statisticsRefreshDue("inst;db"))
+	require.True(t, s.statisticsRefreshDue("inst;other"))
+
+	s.recordStatisticsRefresh("inst;db")
+	require.False(t, s.statisticsRefreshDue("inst;db"))
+	require.True(t, s.statisticsRefreshDue("inst;other"))
+}
+
+// The DDL refresh clock and rotation cursor live in the process: a restart makes
+// every database due for a full refresh, a committed full refresh advances the
+// cursor, and a change-only plan leaves both alone.
+func TestDefinitionRefreshCadence(t *testing.T) {
+	t.Parallel()
+
+	s := &Syncer{}
+	full, cursor := s.definitionRefreshDue("inst;db")
+	require.True(t, full)
+	require.Zero(t, cursor)
+
+	s.recordDefinitionRefresh("inst;db", definitionFetchPlan{full: true, nextCursor: 7})
+	full, cursor = s.definitionRefreshDue("inst;db")
+	require.False(t, full)
+	require.Equal(t, 7, cursor)
+
+	s.recordDefinitionRefresh("inst;db", definitionFetchPlan{full: false, nextCursor: 99})
+	_, cursor = s.definitionRefreshDue("inst;db")
+	require.Equal(t, 7, cursor)
+}
+
+// A row that is already hidden is history: syncing it would write LastSyncTime to
+// a database the target no longer has, and only the instance enumeration may
+// revive it.
+func TestSyncDatabaseSchemaReturnsHiddenForADeletedRow(t *testing.T) {
+	t.Parallel()
+
+	syncer := &Syncer{}
+	err := syncer.SyncDatabaseSchema(context.Background(), &store.DatabaseMessage{
+		InstanceID:   "inst-1",
+		DatabaseName: "gone",
+		Deleted:      true,
+	})
+	require.ErrorIs(t, err, ErrDatabaseHidden)
+}
+
+// A database hidden by an instance enumeration is dequeued and an operation
+// waiting for its outcome hears it instead of waiting for a result that will never
+// come — without escalating to the administrators. This is the sequence
+// SyncInstance runs on its soft-delete path.
+func TestHiddenDatabaseIsDequeuedAndReported(t *testing.T) {
+	t.Parallel()
+
+	notifier := &fakeNotifier{}
+	syncer := &Syncer{notifier: notifier}
+	instance := &store.InstanceMessage{ResourceID: "inst-1", Metadata: &storepb.Instance{Title: "prod"}}
+	database := &store.DatabaseMessage{InstanceID: "inst-1", DatabaseName: "app"}
+
+	operation := syncer.StartOperation(storepb.SyncTrigger_SYNC_TRIGGER_MANUAL, 7, instance)
+	syncer.RecordInstanceResult(context.Background(), operation, nil)
+	syncer.EnqueueDatabases(context.Background(), operation, []*store.DatabaseMessage{database})
+	require.Equal(t, 1, countDatabaseSyncMapItems(&syncer.databaseSyncMap))
+
+	syncer.forgetQueuedDatabase(database.String())
+	syncer.completeDatabase(context.Background(), database, fmt.Errorf("%w: database %q", ErrDatabaseHidden, database.DatabaseName))
+
+	require.Equal(t, 0, countDatabaseSyncMapItems(&syncer.databaseSyncMap), "a hidden database must not stay queued")
+	require.Empty(t, notifier.admin, "a hidden database is not an administrator's problem")
+	require.Len(t, notifier.sent, 1)
+	detail := notifier.sent[0].GetSchemaSync()
+	require.Equal(t, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR, notifier.sent[0].GetSeverity())
+	require.Equal(t, int32(1), detail.GetFailedCount())
+	require.Len(t, detail.GetDatabases(), 1)
+	require.Equal(t, storepb.SyncDatabaseState_SYNC_DATABASE_STATE_FAILED, detail.GetDatabases()[0].GetState())
+	require.Contains(t, detail.GetDatabases()[0].GetError(), "hidden")
+}
+
+// Forgetting a queued database clears both the queue entry and its pending
+// backoff, so a hidden row cannot be retried or re-queued by the checker.
+func TestForgetQueuedDatabaseClearsTheQueueAndBackoff(t *testing.T) {
+	t.Parallel()
+
+	syncer := &Syncer{}
+	database := &store.DatabaseMessage{InstanceID: "inst-1", DatabaseName: "app"}
+	key := database.String()
+
+	syncer.enqueueDatabase(database)
+	syncer.scheduleRetry(database)
+	require.Equal(t, 1, countDatabaseSyncMapItems(&syncer.databaseSyncMap))
+	_, retryPending := syncer.databaseSyncRetryMap.Load(key)
+	require.True(t, retryPending)
+
+	syncer.forgetQueuedDatabase(key)
+
+	require.Equal(t, 0, countDatabaseSyncMapItems(&syncer.databaseSyncMap))
+	_, retryPending = syncer.databaseSyncRetryMap.Load(key)
+	require.False(t, retryPending)
+}
+
+// Instance-level connection-limit saturation is recoverable contention: the next
+// scan retries it, so it must not be reported as a broken instance to the
+// administrators. Any other failure still is.
+func TestConnectionLimitSaturationDoesNotNotifyTheAdministrators(t *testing.T) {
+	t.Parallel()
+
+	notifier := &fakeNotifier{}
+	syncer := &Syncer{notifier: notifier}
+	instance := &store.InstanceMessage{ResourceID: "inst-1", Metadata: &storepb.Instance{Title: "prod"}}
+
+	syncer.reportInstanceSyncFailure(context.Background(), instance, state.ErrInstanceConnectionLimit)
+	require.Empty(t, notifier.admin)
+	require.Empty(t, notifier.sent)
+
+	syncer.reportInstanceSyncFailure(context.Background(), instance, errors.New("connection refused"))
+	require.Len(t, notifier.admin, 1)
+	require.Equal(t, "connection refused", notifier.admin[0].GetSchemaSync().GetInstanceError())
+}
+
+// A database whose instance failed to sync is not queued: the instance failure
+// has already been reported, and each of its databases would retry the same
+// broken connection and raise a failure notice of its own. A due database of a
+// healthy instance is still queued.
+func TestDatabasesToEnqueueSkipsFailedInstances(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	due := func(instanceID, databaseName string) *store.DatabaseMessage {
+		return &store.DatabaseMessage{
+			InstanceID:   instanceID,
+			DatabaseName: databaseName,
+			Metadata:     &storepb.DatabaseMetadata{LastSyncTime: timestamppb.New(now.Add(-time.Hour))},
+		}
+	}
+	instances := map[string]*store.InstanceMessage{
+		"healthy": {ResourceID: "healthy", Metadata: &storepb.Instance{
+			Activation:   true,
+			SyncInterval: durationpb.New(15 * time.Minute),
+		}},
+		"broken": {ResourceID: "broken", Metadata: &storepb.Instance{
+			Activation:   true,
+			SyncInterval: durationpb.New(15 * time.Minute),
+		}},
+	}
+	databases := []*store.DatabaseMessage{
+		due("healthy", "app"),
+		due("broken", "app"),
+		due("unknown", "app"),
+		due("healthy", "recent"),
+	}
+	databases[3].Metadata.LastSyncTime = timestamppb.New(now.Add(-time.Minute))
+
+	got := databasesToEnqueue(databases, instances, map[string]struct{}{"broken": {}}, now)
+	require.Len(t, got, 1, "only the due database of the healthy instance is queued")
+	require.Equal(t, "healthy", got[0].InstanceID)
+	require.Equal(t, "app", got[0].DatabaseName)
+}
+
+func TestQueueLineageAnalysisFeedsTheQueue(t *testing.T) {
+	t.Parallel()
+
+	queue := &fakeLineageQueue{}
+	syncer := &Syncer{lineageQueue: queue}
+	syncer.QueueLineageAnalysis("guid-1", storepb.MetaType_VIEW)
+	require.Equal(t, []string{"guid-1"}, queue.guids)
+
+	// An empty GUID and a syncer without a queue are no-ops, not panics.
+	syncer.QueueLineageAnalysis("", storepb.MetaType_VIEW)
+	(&Syncer{}).QueueLineageAnalysis("guid-2", storepb.MetaType_VIEW)
+	require.Equal(t, []string{"guid-1"}, queue.guids)
+}
+
+type fakeLineageQueue struct {
+	guids []string
+}
+
+func (q *fakeLineageQueue) QueueAnalysis(metaGUID string, _ storepb.MetaType) {
+	q.guids = append(q.guids, metaGUID)
+}
+
+// A snapshot can name the same (GUID, object type) twice; the batch upsert would
+// fail the whole database's sync with "cannot affect row a second time", so the
+// diff keeps the first entry and logs the collision.
+func TestBatchMetaCreateDiffDeduplicatesCollidingGUIDs(t *testing.T) {
+	t.Parallel()
+
+	first := buildTableMeta("users", "id")
+	second := buildTableMeta("users", "id", "name")
+	guid := buildGUID("inst", "db", "public", "users")
+	batch := &batchMetaCreate{
+		guidList: []*store.CreateMetaRegistryResourceMessage{
+			{MetaRegistryResource: store.MetaRegistryResource{GUID: guid, ObjectType: storepb.MetaType_TABLE, Metadata: first}},
+			{MetaRegistryResource: store.MetaRegistryResource{GUID: guid, ObjectType: storepb.MetaType_TABLE, Metadata: second}},
+		},
+	}
+
+	updates, deletes, err := batch.diff()
+	require.NoError(t, err)
+	require.Len(t, updates, 1)
+	require.Empty(t, deletes)
+	require.Equal(t, guid, updates[0].GUID)
+	require.Len(t, updates[0].Metadata.GetTableMetadata().Columns, 1,
+		"the first entry is kept deterministically")
 }

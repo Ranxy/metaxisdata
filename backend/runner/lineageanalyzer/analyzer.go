@@ -6,9 +6,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
+	"unicode"
 
 	"github.com/pkg/errors"
 	"github.com/sourcegraph/conc/pool"
@@ -21,6 +24,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/catalog"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
 	"github.com/Ranxy/metaxisdata/backend/plugin/sqlsanitize"
+	"github.com/Ranxy/metaxisdata/backend/runner"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
@@ -29,12 +33,39 @@ const (
 	analyzeCheckerInterval  = 10 * time.Second
 	// MaxGoroutines is the max number of concurrent analysis jobs.
 	MaxGoroutines = 10
+	// maxAnalyzeBatch bounds how many queued objects one drain starts analyzing. A cold start
+	// queues the whole registry, and draining all of it would keep the consumer busy for hours
+	// while a freshly saved or reported statement waits behind the backlog. Keys over the cap
+	// stay queued for the next tick: the batch is a rate limit, not a drop. A hundred objects
+	// per worker slot bounds one batch to a hundred waves of per-object work, so event-driven
+	// work waits minutes rather than an entire backfill.
+	maxAnalyzeBatch = MaxGoroutines * 100
+	// analyzeObjectTimeout bounds one object's analysis. The analyzers do no failing I/O of
+	// their own beyond the type lookup batch, so a stuck object is a bug rather than a slow
+	// database; the bound is generous enough that a large script is not cut off. An
+	// interrupted analysis is retried, never recorded as a parse failure.
+	analyzeObjectTimeout = 2 * time.Minute
+	// queueAllTimeout bounds one full-scan pass. The pass issues four digest listings (one
+	// per analyzable object type) plus four version listings; a database that stops answering
+	// must not hold the scanner forever, or the hourly ticker would never fire again. Only the
+	// scan is bounded this way: per-object analysis keeps analyzeObjectTimeout.
+	queueAllTimeout = 5 * time.Minute
 )
 
 // analyzeKey uniquely identifies an object to analyze.
 type analyzeKey struct {
 	MetaGUID string
 	MetaType storepb.MetaType
+}
+
+// queuedAnalysis is one queue entry: the object, the generation stored when it was queued,
+// and the queue it belongs to. The generation is what lets the drain remove exactly the
+// entry it analyzed: a request that re-queued the object in the meantime stored a newer
+// generation, so its entry survives.
+type queuedAnalysis struct {
+	key        analyzeKey
+	generation uint64
+	queue      *sync.Map
 }
 
 // Analyzer is the column-level lineage analysis runner.
@@ -44,8 +75,22 @@ type Analyzer struct {
 	// The runner does not build or own them: which engines exist is a startup
 	// decision, and a runner that looked them up from package state could
 	// disagree with the AnalyzeSQL handler about what is registered.
-	lineage    *lineage.Analyzer
-	analyzeMap sync.Map // map[analyzeKey]struct{}
+	lineage *lineage.Analyzer
+	// analyzeMap holds the event-driven queue: an object whose definition just changed, was
+	// just saved or was just reported. It is drained first, so a backfill cannot push that
+	// work behind the whole registry. Values are the generation of the queued request.
+	analyzeMap sync.Map // map[analyzeKey]uint64
+	// scanMap holds the hourly full scan's backlog. It fills only the batch the event queue
+	// did not use. Values are the generation of the queued request.
+	scanMap sync.Map // map[analyzeKey]uint64
+	// queueMu serializes enqueueing so the two queues stay disjoint: QueueAnalysis removes
+	// the scan entry and queueScan skips a key the event queue already holds, and without a
+	// shared lock an interleaving could store the same key in both and analyze it twice.
+	queueMu sync.Mutex
+	// generation is the source of the monotonically increasing value stored with every queue
+	// entry. Comparing it tells the drain whether the entry it analyzed is still the current
+	// request or has been superseded.
+	generation atomic.Uint64
 	// retryMap tracks how many times a failed analysis was retried and when it
 	// is due again, so a transient failure does not wait for the hourly scan.
 	retryMap sync.Map // map[analyzeKey]analysisRetry
@@ -82,12 +127,83 @@ func NewAnalyzer(stores *store.Store, lineageAnalyzer *lineage.Analyzer) *Analyz
 	}
 }
 
-// QueueAnalysis enqueues an object for lineage analysis.
+// QueueAnalysis enqueues an object for analysis because its definition changed or was just
+// reported. A request supersedes a pending backoff and a pending scan entry: the analysis
+// runs now and reads the current definition, so the scan no longer has a reason to queue it.
+// Storing a new generation also supersedes an analysis already running for the old request:
+// that attempt's result is guarded by its own hash, and its failure path leaves this entry
+// alone.
 func (a *Analyzer) QueueAnalysis(metaGUID string, metaType storepb.MetaType) {
 	key := analyzeKey{MetaGUID: metaGUID, MetaType: metaType}
-	// A fresh queue request supersedes any pending backoff.
+	a.queueMu.Lock()
+	defer a.queueMu.Unlock()
 	a.retryMap.Delete(key)
-	a.analyzeMap.Store(key, struct{}{})
+	a.scanMap.Delete(key)
+	a.analyzeMap.Store(key, a.nextGeneration())
+}
+
+// queueScan enqueues an object because the hourly scan found its stored result out of date.
+// It is the backlog queue: an event that already queued the object wins, because the event
+// analysis reads the same current definition and has to run anyway.
+func (a *Analyzer) queueScan(metaGUID string, metaType storepb.MetaType) {
+	key := analyzeKey{MetaGUID: metaGUID, MetaType: metaType}
+	a.queueMu.Lock()
+	defer a.queueMu.Unlock()
+	if _, ok := a.analyzeMap.Load(key); ok {
+		return
+	}
+	a.retryMap.Delete(key)
+	a.scanMap.Store(key, a.nextGeneration())
+}
+
+// nextGeneration returns the next queue generation. It is strictly increasing for the life
+// of the process, so two queued requests for the same object can never look alike.
+func (a *Analyzer) nextGeneration() uint64 {
+	return a.generation.Add(1)
+}
+
+// queued returns the entry currently stored for key, if any. The two queues are disjoint by
+// construction: QueueAnalysis removes the scan entry and queueScan skips a key the event
+// queue already holds.
+func (a *Analyzer) queued(key analyzeKey) (queuedAnalysis, bool) {
+	if v, ok := a.analyzeMap.Load(key); ok {
+		generation, ok := v.(uint64)
+		if !ok {
+			return queuedAnalysis{}, false
+		}
+		return queuedAnalysis{key: key, generation: generation, queue: &a.analyzeMap}, true
+	}
+	if v, ok := a.scanMap.Load(key); ok {
+		generation, ok := v.(uint64)
+		if !ok {
+			return queuedAnalysis{}, false
+		}
+		return queuedAnalysis{key: key, generation: generation, queue: &a.scanMap}, true
+	}
+	return queuedAnalysis{}, false
+}
+
+// consumeQueuedAnalysis removes the analyzed entry from its queue only if it still carries
+// the generation the batch selected. A request that re-queued the object meanwhile stored a
+// newer generation, so CompareAndDelete leaves it queued for the next tick.
+func consumeQueuedAnalysis(item queuedAnalysis) bool {
+	return item.queue.CompareAndDelete(item.key, item.generation)
+}
+
+// retryAfterFailure schedules the bounded backoff for a failed attempt, unless a newer
+// request queued the object while the analysis ran. The queue entry carries the generation
+// of the request the attempt served; once it is a different generation, the fresh request
+// supersedes the old backoff and must not be delayed by it.
+func (a *Analyzer) retryAfterFailure(item queuedAnalysis) {
+	current, ok := a.queued(item.key)
+	if !ok || current.generation != item.generation {
+		return
+	}
+	if !consumeQueuedAnalysis(item) {
+		// A request replaced the entry between the check and the delete; leave it be.
+		return
+	}
+	a.scheduleRetry(item.key)
 }
 
 // scheduleRetry re-queues a failed analysis with a bounded backoff. After the
@@ -100,35 +216,46 @@ func (a *Analyzer) scheduleRetry(key analyzeKey) {
 		}
 	}
 	if attempts > maxAnalysisRetries {
-		// Drop the key entirely: leaving it queued would restart the backoff on
+		// Drop the retry state: leaving it queued would restart the backoff on
 		// the very next tick, which is the hourly retry loop this replaces.
 		a.retryMap.Delete(key)
-		a.analyzeMap.Delete(key)
 		slog.Error("Lineage analysis gave up after repeated failures",
 			slog.String("guid", key.MetaGUID),
 			slog.String("type", key.MetaType.String()))
 		return
 	}
-	a.retryMap.Store(key, analysisRetry{attempts: attempts, nextAt: time.Now().Add(analysisRetryBackoff(attempts))})
-	a.analyzeMap.Store(key, struct{}{})
+	retry := analysisRetry{attempts: attempts, nextAt: time.Now().Add(analysisRetryBackoff(attempts))}
+	a.retryMap.Store(key, retry)
+	// Add the key only if no fresh request queued it since this attempt consumed
+	// its own entry. Re-queueing unconditionally would overwrite that request with
+	// this attempt's older backoff.
+	if _, loaded := a.analyzeMap.LoadOrStore(key, a.nextGeneration()); loaded {
+		a.retryMap.CompareAndDelete(key, retry)
+	}
 }
 
-// Run starts the analyzer. It blocks until ctx is cancelled, then signals wg.Done().
-func (a *Analyzer) Run(ctx context.Context, wg *sync.WaitGroup) {
-	defer wg.Done()
+// Name identifies the runner in the server's lifecycle logs.
+func (*Analyzer) Name() string { return "lineageanalyzer" }
 
+// Run starts the analyzer. It blocks until ctx is cancelled.
+func (a *Analyzer) Run(ctx context.Context) {
 	sp := pool.New()
 
 	// Goroutine 1: periodic full scan.
 	sp.Go(func() {
-		slog.Debug(fmt.Sprintf("Lineage analyzer started and will run every %v", lineageAnalysisInterval))
-		a.queueAll(ctx)
-		ticker := time.NewTicker(lineageAnalysisInterval)
+		slog.Debug("Lineage analyzer started",
+			slog.Duration("scanInterval", lineageAnalysisInterval),
+			slog.Int("maxBatch", maxAnalyzeBatch),
+			slog.Int("workers", MaxGoroutines))
+		a.queueAllBounded(ctx)
+		// Jitter keeps the hourly scan from staying aligned with every other
+		// process that restarted at the same moment.
+		ticker := time.NewTicker(runner.Jitter(lineageAnalysisInterval))
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
-				a.queueAll(ctx)
+				a.queueAllBounded(ctx)
 			case <-ctx.Done():
 				return
 			}
@@ -152,9 +279,19 @@ func (a *Analyzer) Run(ctx context.Context, wg *sync.WaitGroup) {
 	sp.Wait()
 }
 
+// queueAllBounded runs one full scan under queueAllTimeout. The scan reads four digest
+// listings and four version listings; without a deadline a database that stops answering
+// would hold this goroutine forever, so the hourly ticker would never fire again.
+func (a *Analyzer) queueAllBounded(ctx context.Context) {
+	scanCtx, cancel := context.WithTimeout(ctx, queueAllTimeout)
+	defer cancel()
+	a.queueAll(scanCtx)
+}
+
 // queueAll scans all lineage-analyzable objects and queues those whose metahash
-// has changed since the last analysis. Each object type costs two queries
-// (objects and their analysis state) instead of one query per object.
+// or analyzer version differs from the stored analysis state. Each object type
+// costs two queries (objects and their analysis state) instead of one query per
+// object.
 func (a *Analyzer) queueAll(ctx context.Context) {
 	viewType := storepb.MetaType_VIEW
 	mvType := storepb.MetaType_MATERIALIZED_VIEW
@@ -176,65 +313,145 @@ func (a *Analyzer) queueAll(ctx context.Context) {
 			continue
 		}
 		for _, res := range list {
-			// Queue if never analyzed or hash changed.
-			ver := versions[res.GUID]
-			if ver == nil || !bytes.Equal(ver.MetaHash, res.MetaHash) {
-				a.QueueAnalysis(res.GUID, res.ObjectType)
+			if needsAnalysis(res, versions[res.GUID]) {
+				a.queueScan(res.GUID, res.ObjectType)
 			}
 		}
 	}
 }
 
-// drainAndAnalyze drains the analyzeMap and runs analysis for each object.
-func (a *Analyzer) drainAndAnalyze(ctx context.Context) {
-	now := time.Now()
-	var keys []analyzeKey
-	a.analyzeMap.Range(func(k, _ any) bool {
+// needsAnalysis reports whether an object must be (re)analyzed: it has no stored
+// result, its metadata hash changed, or the stored result came from different
+// analyzer rules. The last condition is what makes an analyzer upgrade or a
+// rollback refresh the lineage by itself.
+func needsAnalysis(res *store.MetaRegistryResource, version *store.ColumnLineageVersion) bool {
+	if version == nil {
+		return true
+	}
+	if !bytes.Equal(version.MetaHash, res.MetaHash) {
+		return true
+	}
+	return version.AnalyzerVersion != lineage.AnalyzerVersion
+}
+
+// takeAnalyzeBatch selects at most limit ready entries from a queue. Keys whose retry
+// backoff has not elapsed, and every key over the cap, stay queued for a later tick. The
+// entries are not removed here: the drain consumes each one with its captured generation so
+// a request that arrives in between survives.
+func (a *Analyzer) takeAnalyzeBatch(queue *sync.Map, now time.Time, limit int) []queuedAnalysis {
+	if limit <= 0 {
+		return nil
+	}
+	batch := make([]queuedAnalysis, 0, limit)
+	queue.Range(func(k, v any) bool {
+		if len(batch) >= limit {
+			return false
+		}
 		key, ok := k.(analyzeKey)
 		if !ok {
 			return true
 		}
+		generation, ok := v.(uint64)
+		if !ok {
+			return true
+		}
 		// A failed object stays queued until its backoff elapses.
-		if v, ok := a.retryMap.Load(key); ok {
-			if entry, ok := v.(analysisRetry); ok && now.Before(entry.nextAt) {
+		if retry, ok := a.retryMap.Load(key); ok {
+			if entry, ok := retry.(analysisRetry); ok && now.Before(entry.nextAt) {
 				return true
 			}
 		}
-		keys = append(keys, key)
-		a.analyzeMap.Delete(k)
+		batch = append(batch, queuedAnalysis{key: key, generation: generation, queue: queue})
 		return true
 	})
-	if len(keys) == 0 {
+	return batch
+}
+
+// typeLookupGUIDs returns the distinct relation GUIDs whose meta type the analysis still has
+// to resolve. The analyzed object's own type is already known, so it is left out. The result
+// is sorted so the batch query binds a stable list.
+func typeLookupGUIDs(guidLookupSet map[string]struct{}, metaGUID string) []string {
+	guids := make([]string, 0, len(guidLookupSet))
+	for guid := range guidLookupSet {
+		if guid != metaGUID {
+			guids = append(guids, guid)
+		}
+	}
+	slices.Sort(guids)
+	return guids
+}
+
+// drainAndAnalyze analyzes one bounded batch of queued objects and leaves the rest queued.
+// Event-driven work is selected first and the scan backlog fills only what is left of the
+// budget, so a full-registry backfill delays a just-saved statement by at most one batch.
+func (a *Analyzer) drainAndAnalyze(ctx context.Context) {
+	now := time.Now()
+	batch := a.takeAnalyzeBatch(&a.analyzeMap, now, maxAnalyzeBatch)
+	if remaining := maxAnalyzeBatch - len(batch); remaining > 0 {
+		batch = append(batch, a.takeAnalyzeBatch(&a.scanMap, now, remaining)...)
+	}
+	if len(batch) == 0 {
 		return
 	}
 
 	wp := pool.New().WithMaxGoroutines(MaxGoroutines)
-	for _, key := range keys {
-		k := key
+	for _, item := range batch {
+		it := item
 		wp.Go(func() {
 			// A panic in one object must not take the process down or stop the
 			// other objects in this batch.
 			defer func() {
 				if r := recover(); r != nil {
 					slog.Error("Lineage analysis panicked",
-						slog.String("guid", k.MetaGUID),
-						slog.String("type", k.MetaType.String()),
+						slog.String("guid", it.key.MetaGUID),
+						slog.String("type", it.key.MetaType.String()),
 						slog.Any("panic", r))
-					a.scheduleRetry(k)
+					a.retryAfterFailure(it)
 				}
 			}()
-			if err := a.analyzeObject(ctx, k.MetaGUID, k.MetaType); err != nil {
+			objCtx, cancel := context.WithTimeout(ctx, analyzeObjectTimeout)
+			defer cancel()
+			if err := a.analyzeObject(objCtx, it.key.MetaGUID, it.key.MetaType); err != nil {
+				if errors.Is(err, errAnalysisStale) {
+					// The text changed under the analysis. Queue the new text now
+					// instead of waiting for the hourly scan; the write was dropped,
+					// so nothing stale was persisted.
+					a.QueueAnalysis(it.key.MetaGUID, it.key.MetaType)
+					return
+				}
+				if analysisTimedOut(objCtx, err) {
+					// Nothing was learned about the SQL: retrying is right and recording a
+					// failure is not, because that would clear lineage this attempt never
+					// inspected.
+					slog.Warn("Lineage analysis timed out; it will be retried",
+						slog.String("guid", it.key.MetaGUID),
+						slog.String("type", it.key.MetaType.String()),
+						log.WithError(err))
+					a.retryAfterFailure(it)
+					return
+				}
 				slog.Error("Lineage analysis failed",
-					slog.String("guid", k.MetaGUID),
-					slog.String("type", k.MetaType.String()),
+					slog.String("guid", it.key.MetaGUID),
+					slog.String("type", it.key.MetaType.String()),
 					log.WithError(err))
-				a.scheduleRetry(k)
+				a.retryAfterFailure(it)
 				return
 			}
-			a.retryMap.Delete(k)
+			// Remove the entry this attempt served. A request that re-queued the
+			// object while the analysis ran stored a newer generation, so its
+			// entry stays for the next tick.
+			consumeQueuedAnalysis(it)
+			a.retryMap.Delete(it.key)
 		})
 	}
 	wp.Wait()
+}
+
+// analysisTimedOut reports whether an analysis was cut short by its deadline or by the runner
+// stopping, rather than by the statement itself. Either way the SQL was not read, so the
+// object is retried and its stored lineage is left alone; only a real parse failure clears it.
+func analysisTimedOut(ctx context.Context, err error) bool {
+	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) || ctx.Err() != nil
 }
 
 // analyzeObject runs lineage analysis for a single lineage-analyzable object.
@@ -258,8 +475,9 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 	}
 	engine := instance.Metadata.GetEngine()
 
-	// Load the stored metadata.
-	res, err := a.store.GetMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{GUID: &metaGUID})
+	// Load the stored metadata. The object type is known, so it is passed with the GUID and
+	// the lookup can be answered from the GUID+type cache.
+	res, err := a.store.GetMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{GUID: &metaGUID, ObjectType: &metaType})
 	if err != nil {
 		return storeError(ctx, a.store, metaGUID, metaType, err, "failed to get meta registry")
 	}
@@ -274,8 +492,23 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 		return storeError(ctx, a.store, metaGUID, metaType, err, "failed to build SQL")
 	}
 	if definition == "" {
-		slog.Debug("Lineage analyzer skipping object with empty definition", slog.String("guid", metaGUID))
-		return markAnalyzed(ctx, a.store, metaGUID, metaType, res.MetaHash, "")
+		if emptyDefinitionClearsLineage(metaType) {
+			// A statement's text was cleared: the object no longer has the SQL the
+			// stored edges describe. Clear them and record why, in the same
+			// transaction that marks the new hash analyzed.
+			slog.Debug("Lineage analyzer clearing the edges of an object with no definition",
+				slog.String("guid", metaGUID), slog.String("type", metaType.String()))
+			return markAnalysisFailed(ctx, a.store, metaGUID, metaType, res.MetaHash, nil)
+		}
+		// A view cannot exist without a defining query, so an empty stored
+		// definition means this snapshot could not read the body (a privilege-limited
+		// information_schema read, a driver partial snapshot) rather than that the SQL
+		// was removed. Keep the last correct edges and record why; the next sync that
+		// reads the definition changes the hash and re-analyzes.
+		slog.Warn("Lineage analyzer kept the edges of an object whose definition was unavailable",
+			slog.String("guid", metaGUID), slog.String("type", metaType.String()))
+		return markAnalyzed(ctx, a.store, metaGUID, metaType, res.MetaHash,
+			"lineage analysis skipped: the definition was unavailable in this sync")
 	}
 
 	// Run lineage analysis with context so unqualified names resolve correctly.
@@ -298,6 +531,13 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 			slog.String("guid", metaGUID), slog.String("engine", engine.String()))
 		return markAnalyzed(ctx, a.store, metaGUID, metaType, res.MetaHash,
 			fmt.Sprintf("engine %s has no lineage analyzer; analysis skipped", engine))
+	case ctx.Err() != nil:
+		// The deadline hit while the statement was being read. What it says is unknown,
+		// so it must not be recorded as a deterministic parse failure; the drain treats
+		// the interrupted analysis as transient and retries it.
+		slog.Warn("Lineage analysis interrupted",
+			slog.String("guid", metaGUID), slog.String("engine", engine.String()), log.WithError(err))
+		return ctx.Err()
 	default:
 		// A parse error is deterministic — the text does not change between
 		// retries — so the object is recorded as analyzed at the current hash
@@ -327,7 +567,6 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 		// rest comes from the analysis context. AnalyzeSQL resolves its scopes
 		// through the same helper.
 		sourceID := ac.Complete(rel.Source.Table)
-		targetID := ac.Complete(rel.Target.Table)
 
 		if rel.Transformation == nil {
 			rel.Transformation = make([]model.Transformation, 0)
@@ -335,6 +574,7 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 		srcGUID := sourceID.GUID()
 
 		if metaType == storepb.MetaType_MANUAL_SQL || metaType == storepb.MetaType_APPLICATION_SQL {
+			targetID := ac.Complete(rel.Target.Table)
 			guidLookupSet[srcGUID] = struct{}{}
 			lineages = append(lineages, &store.ColumnLineage{
 				MetaGUID:       metaGUID,
@@ -370,14 +610,17 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 			continue
 		}
 
-		targetGUID := targetID.GUID()
+		// A VIEW's or materialized view's relation target is the view itself. Pin it
+		// to the analyzed object's GUID instead of re-deriving it from the wrapped
+		// name: the wrapper quotes the name for the parser, and a spelling that
+		// canonicalizes elsewhere would write an edge into a GUID no registry row has.
 		guidLookupSet[srcGUID] = struct{}{}
 		lineages = append(lineages, &store.ColumnLineage{
 			MetaGUID:       metaGUID,
 			MetaType:       metaType,
 			SourceGUID:     srcGUID,
 			SourceColumn:   rel.Source.Name,
-			TargetGUID:     targetGUID,
+			TargetGUID:     metaGUID,
 			TargetColumn:   rel.Target.Name,
 			TargetType:     metaType,
 			RelationType:   rel.RelationType,
@@ -387,8 +630,12 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 
 	// A reported statement is classified here and nowhere else: ingestion stores the
 	// statement without deciding, and this is the one place the read/write rule lives.
+	// The kind is held back until the edges commit (see below), because it is derived
+	// state about them.
+	var applicationKind store.ApplicationSQLKind
 	if metaType == storepb.MetaType_APPLICATION_SQL {
 		kind, targetEdges := a.classifyApplicationSQL(ctx, ac, engine, definition, relations, metaGUID)
+		applicationKind = kind
 		lineages = append(lineages, targetEdges...)
 		// The edge names its target by GUID alone, so the lookup below is what
 		// gives the target its type. Without it the relation reaches the API with
@@ -397,26 +644,19 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 		for _, edge := range targetEdges {
 			guidLookupSet[edge.TargetGUID] = struct{}{}
 		}
-		if err := a.store.SetApplicationSQLKind(ctx, metaGUID, kind); err != nil {
-			// The kind is a filter cache for the list page; the edges are the point, and a
-			// failure to write the cache must not discard them.
-			slog.Warn("Lineage analyzer failed to record the statement kind",
-				slog.String("guid", metaGUID), log.WithError(err))
-		}
 	}
 
-	for guid := range guidLookupSet {
-		if guid == metaGUID {
-			continue
-		}
-		g := guid
-		srcMeta, err := a.store.GetMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{GUID: &g})
+	// The relation GUIDs are resolved with one batch query rather than one lookup each: a
+	// large join can name hundreds of sources, and each per-GUID lookup would be a serial
+	// round trip. A GUID the registry does not know is simply absent from the result.
+	if guids := typeLookupGUIDs(guidLookupSet, metaGUID); len(guids) > 0 {
+		metas, err := a.store.ListMetaRegistryResourceDigest(ctx, &store.FindMetaRegistryResourceMessage{GUIDs: &guids})
 		if err != nil {
-			slog.Warn("Lineage analyzer failed to look up source meta type", slog.String("guid", g), log.WithError(err))
-			continue
-		}
-		if srcMeta != nil {
-			guidTypeMap[g] = srcMeta.ObjectType
+			slog.Warn("Lineage analyzer failed to look up source meta types", log.WithError(err))
+		} else {
+			for _, meta := range metas {
+				guidTypeMap[meta.GUID] = meta.ObjectType
+			}
 		}
 	}
 	for _, l := range lineages {
@@ -432,12 +672,29 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 		slog.Debug("Lineage analyzer found no lineage relations (after filtering temp targets)", slog.String("guid", metaGUID))
 	}
 
-	// Persist results.
-	if err := a.store.BatchReplaceColumnLineage(ctx, metaGUID, metaType, lineages); err != nil {
-		return storeError(ctx, a.store, metaGUID, metaType, err, "failed to replace column lineage")
+	// Persist the result only if the object still holds the text this analysis
+	// read. The edges, the version row and any gap message commit together, so a
+	// rolled-back write cannot leave the object marked as analyzed, and a result
+	// computed for a deleted object is dropped instead of re-creating its edges.
+	var partialMessagePtr *string
+	if partialMessage != "" {
+		partialMessagePtr = &partialMessage
 	}
-
-	return markAnalyzed(ctx, a.store, metaGUID, metaType, res.MetaHash, partialMessage)
+	if err := a.store.ReplaceColumnLineageIfCurrent(ctx, metaGUID, metaType, res.MetaHash, lineage.AnalyzerVersion, lineages, partialMessagePtr); err != nil {
+		return analysisWriteError(ctx, a.store, metaGUID, metaType, err, "failed to replace column lineage")
+	}
+	// The classification is a derived cache for the list page's filter, so it is
+	// written only after the edges commit: a kind that claims a classification the
+	// graph does not have misleads the filter, while a missing kind is merely stale
+	// until the next analysis. A failure to write the cache must not discard edges
+	// that were just committed, so it is logged rather than returned.
+	if metaType == storepb.MetaType_APPLICATION_SQL {
+		if err := a.store.SetApplicationSQLKind(ctx, metaGUID, applicationKind); err != nil {
+			slog.Warn("Lineage analyzer failed to record the statement kind",
+				slog.String("guid", metaGUID), log.WithError(err))
+		}
+	}
+	return nil
 }
 
 // buildSQL extracts the object definition and wraps it as needed for lineage parsing.
@@ -482,11 +739,19 @@ func buildSQL(name string, engine storepb.Engine, metaType storepb.MetaType, res
 
 	var identifier string
 	switch engine {
-	case storepb.Engine_MYSQL, storepb.Engine_TIDB, storepb.Engine_DORIS:
+	// The MySQL family, including StarRocks and Doris, quotes identifiers with
+	// backticks. MariaDB shares the MySQL driver and its views keep a bare query
+	// body, so it needs the same quoting as MySQL.
+	case storepb.Engine_MYSQL, storepb.Engine_TIDB, storepb.Engine_MARIADB, storepb.Engine_DORIS, storepb.Engine_STARROCKS:
 		identifier = "`" + strings.ReplaceAll(name, "`", "``") + "`"
 	case storepb.Engine_POSTGRES:
 		identifier = `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+	case storepb.Engine_MSSQL:
+		identifier = "[" + strings.ReplaceAll(name, "]", "]]") + "]"
 	default:
+		// Engines this build has no analyzer for keep the object name as written:
+		// they are skipped before the wrapper's identifier could matter, and the
+		// fallback keeps that skip visible instead of turning it into a build error.
 		identifier = name
 	}
 
@@ -494,13 +759,54 @@ func buildSQL(name string, engine storepb.Engine, metaType storepb.MetaType, res
 }
 
 // isCompleteStatement reports whether a stored definition is already a whole
-// CREATE statement rather than a bare query body. A view definition is a query
-// and can never start with CREATE, so the check is safe for every engine.
+// CREATE statement rather than a bare query body. Leading whitespace and
+// comments are skipped first: a complete DDL commonly opens with a `--` or
+// `/* */` note, and wrapping such a statement in "CREATE VIEW ... AS" makes it
+// unparseable. A bare query body can never begin with CREATE, so the check is
+// safe for every engine.
 func isCompleteStatement(definition string) bool {
-	return strings.HasPrefix(strings.ToUpper(strings.TrimSpace(definition)), "CREATE ")
+	rest := strings.TrimSpace(definition)
+	for {
+		switch {
+		case strings.HasPrefix(rest, "--"):
+			lineEnd := strings.IndexByte(rest, '\n')
+			if lineEnd < 0 {
+				return false
+			}
+			rest = strings.TrimSpace(rest[lineEnd+1:])
+		case strings.HasPrefix(rest, "/*"):
+			commentEnd := strings.Index(rest[2:], "*/")
+			if commentEnd < 0 {
+				return false
+			}
+			rest = strings.TrimSpace(rest[2+commentEnd+2:])
+		default:
+			return hasCreateKeyword(rest)
+		}
+	}
 }
 
-// storeError records the error in column_lineage_version and returns a wrapped error.
+// hasCreateKeyword reports whether s starts with the CREATE keyword followed by
+// a separator. It accepts any whitespace between CREATE and what follows, so
+// "CREATE\nVIEW" counts as a complete statement.
+func hasCreateKeyword(s string) bool {
+	const keyword = "CREATE"
+	if len(s) < len(keyword) || !strings.EqualFold(s[:len(keyword)], keyword) {
+		return false
+	}
+	rest := s[len(keyword):]
+	return len(rest) > 0 && unicode.IsSpace(rune(rest[0]))
+}
+
+// errAnalysisStale tells drainAndAnalyze that the result was computed from text
+// that has already been replaced, so the object is queued again instead of
+// being retried as a failure.
+var errAnalysisStale = errors.New("analysis result is stale")
+
+// storeError surfaces an error before any result exists. It records the message
+// on the object's existing analysis-state row without touching its hash: a
+// transient failure must not make a successful result look unanalyzed, and the
+// next attempt still compares against the last stored result.
 func storeError(ctx context.Context, s *store.Store, metaGUID string, metaType storepb.MetaType, cause error, msg string) error {
 	var full string
 	if cause != nil {
@@ -508,45 +814,89 @@ func storeError(ctx context.Context, s *store.Store, metaGUID string, metaType s
 	} else {
 		full = msg
 	}
-	_ = s.UpsertColumnLineageVersion(ctx, &store.ColumnLineageVersion{
-		MetaGUID:     metaGUID,
-		MetaType:     metaType,
-		ErrorMessage: &full,
-	})
+	_ = s.RecordAnalysisError(ctx, metaGUID, metaType, full)
 	if cause != nil {
 		return errors.Wrap(cause, msg)
 	}
 	return errors.New(msg)
 }
 
-// markAnalyzed records a successful analysis (or a deliberate skip) with the
-// current metahash. A non-empty errorMessage documents why analysis was skipped
-// while still recording the hash, so the object is not retried until its
-// metadata changes.
-func markAnalyzed(ctx context.Context, s *store.Store, metaGUID string, metaType storepb.MetaType, metaHash []byte, errorMessage string) error {
-	v := &store.ColumnLineageVersion{
-		MetaGUID: metaGUID,
-		MetaType: metaType,
-		MetaHash: metaHash,
+// analysisWriteError classifies a failed result write: a vanished object drops the
+// result, a changed one asks for a re-analysis of the new text, and anything else
+// is a transient store error that the retry map handles.
+func analysisWriteError(ctx context.Context, s *store.Store, metaGUID string, metaType storepb.MetaType, cause error, msg string) error {
+	switch {
+	case errors.Is(cause, store.ErrAnalysisGone):
+		slog.Debug("Lineage analysis dropped: the object disappeared during analysis",
+			slog.String("guid", metaGUID), slog.String("type", metaType.String()))
+		return nil
+	case errors.Is(cause, store.ErrAnalysisStale):
+		return errAnalysisStale
+	default:
+		return storeError(ctx, s, metaGUID, metaType, cause, msg)
 	}
-	if errorMessage != "" {
-		v.ErrorMessage = &errorMessage
-	}
-	return s.UpsertColumnLineageVersion(ctx, v)
 }
 
-// markAnalysisFailed records SQL the analyzer could not parse. The current hash is
-// stored with the error message so the hourly scan stops re-queueing an unchanged
-// definition (a metadata change clears the stored hash comparison and retries),
-// and any lineage a previous definition left behind is dropped because it
-// describes SQL the object no longer has. A gap the analysis reported instead of a
-// failure takes the partial path above and keeps its edges.
-func markAnalysisFailed(ctx context.Context, s *store.Store, metaGUID string, metaType storepb.MetaType, metaHash []byte, cause error) error {
-	if err := s.BatchReplaceColumnLineage(ctx, metaGUID, metaType, nil); err != nil {
-		return storeError(ctx, s, metaGUID, metaType, err, "failed to clear column lineage")
+// markAnalyzed records a successful analysis or a deliberate skip (an engine
+// without an analyzer) with the current metahash and the analyzer version. A
+// non-empty errorMessage documents why analysis was skipped while still
+// recording the hash, so the object is not retried until its metadata changes
+// or the analyzer rules do. It leaves the stored edges alone: a skip that is not
+// about this object's SQL has nothing to say about them.
+func markAnalyzed(ctx context.Context, s *store.Store, metaGUID string, metaType storepb.MetaType, metaHash []byte, errorMessage string) error {
+	var message *string
+	if errorMessage != "" {
+		message = &errorMessage
 	}
-	return markAnalyzed(ctx, s, metaGUID, metaType, metaHash,
-		fmt.Sprintf("lineage analysis failed: %v", cause))
+	if err := s.MarkAnalyzedIfCurrent(ctx, metaGUID, metaType, metaHash, lineage.AnalyzerVersion, message); err != nil {
+		return analysisWriteError(ctx, s, metaGUID, metaType, err, "failed to record analysis state")
+	}
+	return nil
+}
+
+// emptyDefinitionClearsLineage reports whether an empty stored definition means the
+// object's SQL is gone rather than unavailable. A manual or reported statement's text
+// can be cleared, and the edges of the SQL it no longer has are wrong. A view or
+// materialized view cannot exist without a defining query, so an empty definition there
+// is a read failure (for example a MySQL account without SHOW VIEW), and keeping the
+// last correct edges is right until the definition is readable again.
+func emptyDefinitionClearsLineage(metaType storepb.MetaType) bool {
+	switch metaType {
+	case storepb.MetaType_MANUAL_SQL, storepb.MetaType_APPLICATION_SQL:
+		return true
+	default:
+		return false
+	}
+}
+
+// analysisFailureMessage builds the version row's error_message for a
+// deterministic analysis failure. A nil cause means there is no SQL to analyze
+// at all: the object's definition is empty, which is recorded as a skip rather
+// than a parse failure but still clears the previous definition's edges. The
+// message is never empty: it is the only explanation the graph offers for a
+// graph that was just cleared.
+func analysisFailureMessage(cause error) string {
+	if cause == nil {
+		return "lineage analysis skipped: the object has no SQL definition"
+	}
+	return fmt.Sprintf("lineage analysis failed: %v", cause)
+}
+
+// markAnalysisFailed records a deterministic analysis failure — SQL the analyzer
+// could not parse, or an object left with no SQL definition. The current hash is
+// stored with the error message so the hourly scan stops re-queueing an unchanged
+// definition (a metadata or analyzer change re-queues it), and any lineage a
+// previous definition left behind is dropped because it describes SQL the object
+// no longer has. Clearing the edges and recording the failure commit together. A
+// gap the analysis reported instead of a failure takes the partial path above and
+// keeps its edges.
+func markAnalysisFailed(ctx context.Context, s *store.Store, metaGUID string, metaType storepb.MetaType, metaHash []byte, cause error) error {
+	err := s.MarkAnalysisFailedIfCurrent(ctx, metaGUID, metaType, metaHash, lineage.AnalyzerVersion,
+		analysisFailureMessage(cause))
+	if err != nil {
+		return analysisWriteError(ctx, s, metaGUID, metaType, err, "failed to record analysis failure")
+	}
+	return nil
 }
 
 // classifyApplicationSQL decides whether a reported statement is a read or a write, and

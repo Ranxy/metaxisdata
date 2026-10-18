@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
 // The dataset pages ask column_lineage whether a dataset has column lineage, so
@@ -43,4 +45,85 @@ func TestColumnLineageDatasetPageQueries(t *testing.T) {
 	require.Contains(t, columnBranches[1], "source_column <> ''")
 	require.Contains(t, columnLineageColumnQuery, "LIMIT $2")
 	require.NotContains(t, columnLineageColumnQuery, "openlineage_run_dataset")
+}
+
+// A destructive schema sync deletes thousands of objects inside its write transaction,
+// most of them columns that are never lineage endpoints. The cleanup filters by type and
+// probes each lineage index once per direction instead of once per deleted object; losing a
+// direction would leave edges that name a GUID the registry no longer has.
+func TestColumnLineageDeleteByMetaGUIDsShape(t *testing.T) {
+	t.Parallel()
+
+	// Only the endpoints that can appear on an edge and the objects that can own one are
+	// passed to the database; every other deleted object is dropped before the query.
+	endpoints, producers := splitLineageDeletions([]MetaGUIDKey{
+		{GUID: "t1", ObjectType: storepb.MetaType_TABLE},
+		{GUID: "v1", ObjectType: storepb.MetaType_VIEW},
+		{GUID: "mv1", ObjectType: storepb.MetaType_MATERIALIZED_VIEW},
+		{GUID: "e1", ObjectType: storepb.MetaType_EXTERNAL_TABLE},
+		{GUID: "c1", ObjectType: storepb.MetaType_COLUMN},
+		{GUID: "s1", ObjectType: storepb.MetaType_SCHEMA},
+		{GUID: "d1", ObjectType: storepb.MetaType_DATABASE},
+		{GUID: "q1", ObjectType: storepb.MetaType_SEQUENCE},
+		{GUID: "f1", ObjectType: storepb.MetaType_FUNCTION},
+	})
+	endpointGUIDs := make([]string, 0, len(endpoints))
+	for _, key := range endpoints {
+		endpointGUIDs = append(endpointGUIDs, key.GUID)
+	}
+	producerGUIDs := make([]string, 0, len(producers))
+	for _, key := range producers {
+		producerGUIDs = append(producerGUIDs, key.GUID)
+	}
+	require.Equal(t, []string{"t1", "v1", "mv1", "e1"}, endpointGUIDs)
+	require.Equal(t, []string{"v1", "mv1"}, producerGUIDs)
+
+	// The (guid, type) pair is the registry identity; a delete must never cross types,
+	// because a synthetic manual/application SQL name can collide with a real object's name.
+	require.Contains(t, columnLineageDeleteByEndpointStatement, "DELETE FROM column_lineage")
+	require.Contains(t, columnLineageDeleteByEndpointStatement, "UNNEST($1::text[], $2::int[])")
+	require.Contains(t, columnLineageDeleteByEndpointStatement, "(source_guid, source_type) IN")
+	require.Contains(t, columnLineageDeleteByEndpointStatement, "(target_guid, target_type) IN")
+	require.NotContains(t, columnLineageDeleteByEndpointStatement, "meta_guid")
+
+	require.Contains(t, columnLineageDeleteByProducerStatement, "(meta_guid, meta_type) IN")
+	require.Contains(t, columnLineageDeleteByProducerStatement, "UNNEST($1::text[], $2::int[])")
+	require.Contains(t, columnLineageVersionDeleteByProducerStatement, "DELETE FROM column_lineage_version")
+	require.Contains(t, columnLineageVersionDeleteByProducerStatement, "(meta_guid, meta_type) IN")
+
+	// The cleanup is metadata-adjacent, not history: it must never touch the ledger.
+	for _, statement := range []string{
+		columnLineageDeleteByEndpointStatement,
+		columnLineageDeleteByProducerStatement,
+		columnLineageVersionDeleteByProducerStatement,
+	} {
+		require.NotContains(t, statement, "meta_registry_resource_history")
+	}
+}
+
+// Two writers replacing the same object's edges at once delete and insert the same set;
+// the later insert must not duplicate an edge or fail the write. The uniqueness rule has
+// to exist in the schema (LATEST.sql and migration 0022) and be tolerated here.
+func TestColumnLineageInsertIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	require.Contains(t, columnLineageInsertStatement, "INSERT INTO column_lineage")
+	require.Contains(t, columnLineageInsertStatement, "UNNEST($1::text[], $2::int[]")
+	require.Contains(t, columnLineageInsertStatement, "ON CONFLICT DO NOTHING")
+	require.NotContains(t, columnLineageInsertStatement, "ON CONFLICT DO UPDATE")
+	require.NotContains(t, columnLineageInsertStatement, "meta_registry_resource_history")
+}
+
+// The unknown-endpoint sweep feeds the ingested-lineage revalidator, which only
+// revalidates OPENLINEAGE edges. Without the meta_type predicate a page of another
+// producer's edges would occupy the batch forever and starve the ingested backlog.
+func TestUnknownEndpointQueryOnlyReadsIngestedEdges(t *testing.T) {
+	t.Parallel()
+
+	require.Contains(t, columnLineageUnknownEndpointQuery, "cl.meta_type = $1")
+	require.Contains(t, columnLineageUnknownEndpointQuery, "cl.source_guid NOT LIKE $2")
+	require.Contains(t, columnLineageUnknownEndpointQuery, "cl.target_guid NOT LIKE $2")
+	require.Contains(t, columnLineageUnknownEndpointQuery, "LIMIT $3")
+	require.Contains(t, columnLineageUnknownEndpointQuery, "NOT EXISTS (SELECT 1 FROM meta_registry_resource")
+	require.NotContains(t, columnLineageUnknownEndpointQuery, "meta_registry_resource_history")
 }

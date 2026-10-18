@@ -31,6 +31,12 @@ type UpdateInstanceMessage struct {
 	Deleted       *bool
 	EnvironmentID *string
 	Metadata      *storepb.Instance
+	// MetadataUpdates applies field-level changes to the stored metadata in the
+	// same transaction that locks the row. A caller that only owns a few fields
+	// (the schema syncer writes last_sync_time and the engine version) must use
+	// this instead of Metadata: a whole-metadata write built from an earlier read
+	// silently overwrites every concurrent change to the other fields.
+	MetadataUpdates []func(*storepb.Instance)
 }
 
 // FindInstanceMessage is the message for finding instances.
@@ -146,6 +152,16 @@ func (s *Store) CreateInstance(ctx context.Context, instanceCreate *InstanceMess
 
 // UpdateInstance updates an instance.
 func (s *Store) UpdateInstance(ctx context.Context, patch *UpdateInstanceMessage) (*InstanceMessage, error) {
+	if patch.Metadata != nil && len(patch.MetadataUpdates) > 0 {
+		return nil, errors.New("metadata and metadataUpdates are mutually exclusive")
+	}
+
+	tx, err := s.GetDB().BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
 	set, args, where := []string{}, []any{}, []string{}
 	if v := patch.EnvironmentID; v != nil {
 		set, args = append(set, fmt.Sprintf("environment = $%d", len(args)+1)), append(args, *v)
@@ -164,13 +180,14 @@ func (s *Store) UpdateInstance(ctx context.Context, patch *UpdateInstanceMessage
 		}
 		set, args = append(set, fmt.Sprintf("metadata = $%d", len(args)+1)), append(args, metadata)
 	}
-	where, args = append(where, fmt.Sprintf("resource_id = $%d", len(args)+1)), append(args, patch.ResourceID)
-
-	tx, err := s.GetDB().BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
+	if len(patch.MetadataUpdates) > 0 {
+		metadata, err := s.patchInstanceMetadata(ctx, tx, patch.ResourceID, patch.MetadataUpdates)
+		if err != nil {
+			return nil, err
+		}
+		set, args = append(set, fmt.Sprintf("metadata = $%d", len(args)+1)), append(args, metadata)
 	}
-	defer tx.Rollback()
+	where, args = append(where, fmt.Sprintf("resource_id = $%d", len(args)+1)), append(args, patch.ResourceID)
 
 	if len(set) > 0 {
 		query := fmt.Sprintf(`
@@ -188,6 +205,55 @@ func (s *Store) UpdateInstance(ctx context.Context, patch *UpdateInstanceMessage
 
 	s.instanceCache.Remove(getInstanceCacheKey(patch.ResourceID))
 	return s.GetInstance(ctx, &FindInstanceMessage{ResourceID: &patch.ResourceID})
+}
+
+// patchInstanceMetadata reads the instance's metadata under a row lock, applies
+// the field updates and returns the metadata bytes to write. Locking and reading
+// in the same transaction as the write is what makes the patch a merge: a caller
+// that built its update from an older read cannot overwrite a concurrent change
+// to another field.
+func (s *Store) patchInstanceMetadata(ctx context.Context, tx *sql.Tx, resourceID string, updates []func(*storepb.Instance)) ([]byte, error) {
+	var raw []byte
+	err := tx.QueryRowContext(ctx, `
+		SELECT metadata FROM instance WHERE resource_id = $1 FOR UPDATE
+	`, resourceID).Scan(&raw)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, common.Errorf(common.NotFound, "instance %q not found", resourceID)
+		}
+		return nil, errors.Wrapf(err, "failed to read the metadata of instance %q", resourceID)
+	}
+
+	cipher, err := s.credentialCipher()
+	if err != nil {
+		return nil, err
+	}
+	return applyInstanceMetadataUpdates(raw, cipher, updates)
+}
+
+// applyInstanceMetadataUpdates decrypts stored metadata, applies the updates and
+// re-encrypts the result. It is the pure part of the patch path, kept separate so
+// the merge semantics can be tested without a database.
+func applyInstanceMetadataUpdates(raw []byte, cipher *crypto.Cipher, updates []func(*storepb.Instance)) ([]byte, error) {
+	metadata := &storepb.Instance{}
+	if err := common.ProtojsonUnmarshaler.Unmarshal(raw, metadata); err != nil {
+		return nil, errors.Wrap(err, "failed to unmarshal the stored instance metadata")
+	}
+	if err := decryptInstance(metadata, cipher); err != nil {
+		return nil, errors.Wrap(err, "failed to decrypt the stored instance credentials")
+	}
+	for _, update := range updates {
+		update(metadata)
+	}
+	redacted, err := encryptInstanceMetadata(metadata, cipher)
+	if err != nil {
+		return nil, err
+	}
+	metadataBytes, err := protojson.Marshal(redacted)
+	if err != nil {
+		return nil, err
+	}
+	return metadataBytes, nil
 }
 
 func (s *Store) listInstanceImpl(ctx context.Context, txn *sql.Tx, find *FindInstanceMessage) ([]*InstanceMessage, error) {
@@ -325,7 +391,12 @@ func (s *Store) encryptInstance(instance *storepb.Instance) (*storepb.Instance, 
 	if err != nil {
 		return nil, err
 	}
+	return encryptInstanceMetadata(instance, cipher)
+}
 
+// encryptInstanceMetadata is encryptInstance with the cipher resolved by the
+// caller, so a transaction that already resolved it can reuse it.
+func encryptInstanceMetadata(instance *storepb.Instance, cipher *crypto.Cipher) (*storepb.Instance, error) {
 	redacted, ok := proto.Clone(instance).(*storepb.Instance)
 	if !ok {
 		return nil, errors.Errorf("failed to clone instance")

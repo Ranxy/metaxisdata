@@ -2,7 +2,9 @@ package openlineage
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
+	"strconv"
 
 	"github.com/pkg/errors"
 
@@ -20,6 +22,25 @@ type metaKey struct {
 	metaType storepb.MetaType
 }
 
+// acquireRevalidation serializes revalidation passes without an uncancellable
+// wait: a pass that arrives while another is running either takes the semaphore
+// once it is released or returns ctx.Err() when its context ends first. A plain
+// mutex would let shutdown block on a queued pass and would keep a pass timeout
+// from bounding the wait.
+func (p *Processor) acquireRevalidation(ctx context.Context) error {
+	select {
+	case p.revalidateSem <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// releaseRevalidation frees the semaphore taken by acquireRevalidation.
+func (p *Processor) releaseRevalidation() {
+	<-p.revalidateSem
+}
+
 // RevalidateUnresolvedLineage re-checks the edges whose endpoints the registry did
 // not know when they were stored.
 //
@@ -33,26 +54,37 @@ type metaKey struct {
 // filled in. Edges whose relation is still unknown stay, and are counted so the
 // backlog is visible instead of silent.
 //
-// It returns the number of edges re-checked and the number of meta objects that
-// still reference an unknown relation.
-func (p *Processor) RevalidateUnresolvedLineage(ctx context.Context, limit int) (revalidated, stillUnknown int, err error) {
+// It returns the number of edges re-checked, the number of meta objects that
+// still reference an unknown relation, and whether the pass filled its batch limit
+// with edges it can revalidate. A true hasMore means another batch may be waiting,
+// so a caller draining a backlog calls again until it is false or its own pass
+// deadline ends. A full batch of another producer's edges reports false: this pass
+// leaves those alone, so calling again would read the same rows and make no
+// progress.
+//
+// limit bounds how many pending edges one pass reads; 0 means revalidationBatch,
+// the implementation's default. One pass never reads more than one batch: the
+// drain is the caller's loop, bounded by its pass deadline.
+func (p *Processor) RevalidateUnresolvedLineage(ctx context.Context, limit int) (revalidated, stillUnknown int, hasMore bool, err error) {
 	// One pass at a time: the maintenance pass and the post-sync runner share this
 	// processor, and both replace an object's edges as a set.
-	p.revalidateMu.Lock()
-	defer p.revalidateMu.Unlock()
+	if err := p.acquireRevalidation(ctx); err != nil {
+		return 0, 0, false, err
+	}
+	defer p.releaseRevalidation()
 
 	if limit <= 0 {
 		limit = revalidationBatch
 	}
 	pending, err := p.store.FindColumnLineageWithUnknownEndpoint(ctx, ExternalDatasetGUIDPrefix, limit)
 	if err != nil {
-		return 0, 0, errors.Wrap(err, "failed to list lineage with an unknown endpoint")
+		return 0, 0, false, errors.Wrap(err, "failed to list lineage with an unknown endpoint")
 	}
 
 	affected := affectedRuns(pending)
-	revalidated, degraded, stillUnknown, err := p.revalidateRuns(ctx, affected)
+	revalidated, degraded, stillUnknown, changed, err := p.revalidateRuns(ctx, affected)
 	if err != nil {
-		return revalidated, stillUnknown, err
+		return revalidated, stillUnknown, false, err
 	}
 	if len(pending) > 0 {
 		slog.Info("Revalidated ingested lineage whose endpoints the registry did not know",
@@ -63,7 +95,10 @@ func (p *Processor) RevalidateUnresolvedLineage(ctx context.Context, limit int) 
 			"objectsStillUnknown", stillUnknown,
 		)
 	}
-	return revalidated, stillUnknown, nil
+	// A full batch that revalidated nothing would be read again unchanged if the
+	// caller drained another batch: still-unknown edges stay in place, so "full
+	// batch" alone is not evidence of a backlog. changed is the evidence.
+	return revalidated, stillUnknown, len(pending) >= limit && len(affected) > 0 && changed > 0, nil
 }
 
 // RevalidateContradictedColumnClaims re-checks the ingested edges whose column
@@ -75,22 +110,32 @@ func (p *Processor) RevalidateUnresolvedLineage(ctx context.Context, limit int) 
 // known also removed the edge from the unknown-endpoint sweep's reach, so this
 // is the only pass that can still fix them. A claim is blanked, the edge stays
 // as a table-level dependency, and what is still unknown around it is counted.
-func (p *Processor) RevalidateContradictedColumnClaims(ctx context.Context, limit int) (revalidated, stillUnknown int, err error) {
-	p.revalidateMu.Lock()
-	defer p.revalidateMu.Unlock()
+//
+// It returns the same three values as RevalidateUnresolvedLineage: what the pass
+// revalidated, what is still unknown, and whether it filled its batch limit so a
+// caller draining a backlog should call again.
+//
+// limit bounds how many contradicted edges one pass reads; 0 means
+// revalidationBatch, the implementation's default. One pass never reads more than
+// one batch: the drain is the caller's loop, bounded by its pass deadline.
+func (p *Processor) RevalidateContradictedColumnClaims(ctx context.Context, limit int) (revalidated, stillUnknown int, hasMore bool, err error) {
+	if err := p.acquireRevalidation(ctx); err != nil {
+		return 0, 0, false, err
+	}
+	defer p.releaseRevalidation()
 
 	if limit <= 0 {
 		limit = revalidationBatch
 	}
 	contradicted, err := p.store.FindColumnLineageWithContradictedColumnClaim(ctx, ExternalDatasetGUIDPrefix, limit)
 	if err != nil {
-		return 0, 0, errors.Wrap(err, "failed to list lineage with a contradicted column claim")
+		return 0, 0, false, errors.Wrap(err, "failed to list lineage with a contradicted column claim")
 	}
 
 	affected := affectedRuns(contradicted)
-	revalidated, degraded, stillUnknown, err := p.revalidateRuns(ctx, affected)
+	revalidated, degraded, stillUnknown, changed, err := p.revalidateRuns(ctx, affected)
 	if err != nil {
-		return revalidated, stillUnknown, err
+		return revalidated, stillUnknown, false, err
 	}
 	if len(contradicted) > 0 {
 		slog.Info("Revalidated ingested lineage whose column claims the registry contradicts",
@@ -101,7 +146,7 @@ func (p *Processor) RevalidateContradictedColumnClaims(ctx context.Context, limi
 			"objectsStillUnknown", stillUnknown,
 		)
 	}
-	return revalidated, stillUnknown, nil
+	return revalidated, stillUnknown, len(contradicted) >= limit && changed > 0, nil
 }
 
 // affectedRuns returns the ingested runs whose edges a pass has to re-check.
@@ -120,10 +165,13 @@ func affectedRuns(edges []*store.ColumnLineage) map[metaKey]struct{} {
 
 // revalidateRuns replaces the edge set of every affected run: a run's edges are
 // stored as a set, so every edge of the run is validated together - replacing
-// only the edges a pass was selected by would drop the rest. It returns the
-// number of edges kept, the number blanked, and the number of runs still
-// referencing a relation the registry does not have.
-func (p *Processor) revalidateRuns(ctx context.Context, affected map[metaKey]struct{}) (revalidated, degraded, stillUnknown int, err error) {
+// only the edges a pass was selected by would drop the rest. A run whose
+// validated set equals what is stored is not rewritten: the still-unknown edges
+// of a partial snapshot validate to themselves, and rewriting them on every pass
+// is pure write amplification. It returns the number of edges kept, the number
+// blanked, the number of runs still referencing a relation the registry does not
+// have, and how many runs actually changed.
+func (p *Processor) revalidateRuns(ctx context.Context, affected map[metaKey]struct{}) (revalidated, degraded, stillUnknown, changed int, err error) {
 	for key := range affected {
 		metaGUID, metaType := key.guid, key.metaType
 		edges, err := p.store.ListColumnLineage(ctx, &store.FindColumnLineageMessage{
@@ -131,14 +179,17 @@ func (p *Processor) revalidateRuns(ctx context.Context, affected map[metaKey]str
 			MetaType: &metaType,
 		})
 		if err != nil {
-			return revalidated, degraded, stillUnknown, errors.Wrapf(err, "failed to list lineage of %s", metaGUID)
+			return revalidated, degraded, stillUnknown, changed, errors.Wrapf(err, "failed to list lineage of %s", metaGUID)
 		}
 		kept, report, err := p.validateIngestedLineage(ctx, edges)
 		if err != nil {
-			return revalidated, degraded, stillUnknown, errors.Wrapf(err, "failed to validate lineage of %s", metaGUID)
+			return revalidated, degraded, stillUnknown, changed, errors.Wrapf(err, "failed to validate lineage of %s", metaGUID)
 		}
-		if err := p.store.BatchReplaceColumnLineage(ctx, metaGUID, metaType, kept); err != nil {
-			return revalidated, degraded, stillUnknown, errors.Wrapf(err, "failed to store revalidated lineage of %s", metaGUID)
+		if !sameLineageEdges(edges, kept) {
+			if err := p.store.BatchReplaceColumnLineage(ctx, metaGUID, metaType, kept); err != nil {
+				return revalidated, degraded, stillUnknown, changed, errors.Wrapf(err, "failed to store revalidated lineage of %s", metaGUID)
+			}
+			changed++
 		}
 		revalidated += len(kept)
 		degraded += report.degradedEdges
@@ -146,5 +197,40 @@ func (p *Processor) revalidateRuns(ctx context.Context, affected map[metaKey]str
 			stillUnknown++
 		}
 	}
-	return revalidated, degraded, stillUnknown, nil
+	return revalidated, degraded, stillUnknown, changed, nil
+}
+
+// sameLineageEdges reports whether two edge sets carry the same edges. The
+// comparison ignores the row id and updated_at, which the replace rewrites, and
+// includes the transformation because two edges that differ there are different
+// facts.
+func sameLineageEdges(before, after []*store.ColumnLineage) bool {
+	if len(before) != len(after) {
+		return false
+	}
+	key := func(edge *store.ColumnLineage) string {
+		transformation, err := json.Marshal(edge.Transformation)
+		if err != nil {
+			transformation = nil
+		}
+		return edge.SourceGUID + "\x00" + edge.SourceColumn + "\x00" + edge.TargetGUID + "\x00" +
+			edge.TargetColumn + "\x00" + strconv.Itoa(int(edge.RelationType)) + "\x00" + string(transformation)
+	}
+	counts := make(map[string]int, len(before))
+	for _, edge := range before {
+		counts[key(edge)]++
+	}
+	for _, edge := range after {
+		entry := key(edge)
+		counts[entry]--
+		if counts[entry] < 0 {
+			return false
+		}
+	}
+	for _, count := range counts {
+		if count != 0 {
+			return false
+		}
+	}
+	return true
 }

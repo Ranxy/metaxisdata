@@ -28,6 +28,13 @@ import (
 // proto documents.
 const maxBatchInstances = 1000
 
+// batchSyncBudget bounds the wall-clock time one BatchSyncInstances call may spend
+// syncing. Each SyncInstance keeps its own 15-minute deadline, but a batch of up
+// to maxBatchInstances would otherwise hold the request open for hours when the
+// targets hang. When the budget is exhausted the remaining instances are reported
+// as failed instead of starting another sync.
+const batchSyncBudget = 5 * time.Minute
+
 // dataSourcePingTimeout bounds one test connection. The RPC carries no deadline
 // of its own, and the connection holds one of the instance's connection slots
 // while it runs, so a target that accepts the connection and then stalls must
@@ -162,6 +169,11 @@ func (s *InstanceService) CreateInstance(ctx context.Context, req *connect.Reque
 	// The initial discovery and the databases it queues are one operation: the
 	// creator is the one waiting for the instance to be usable.
 	operation := s.schemaSyncer.StartOperation(storepb.SyncTrigger_SYNC_TRIGGER_MANUAL, currentUserID(ctx), instance)
+	// The operation reports the instance step and then waits for its databases;
+	// if this handler returns before either happened, the defer turns the operation
+	// into an error message instead of leaving it to expire as a quiet success. It
+	// is a no-op on every normal path.
+	defer s.schemaSyncer.AbandonOperation(ctx, operation, schemasync.ErrOperationAbandoned)
 	updatedInstance, _, _, syncErr := s.schemaSyncer.SyncInstance(ctx, instance)
 	s.schemaSyncer.RecordInstanceResult(ctx, operation, syncErr)
 	if syncErr != nil {
@@ -238,18 +250,18 @@ func (s *InstanceService) UpdateInstance(ctx context.Context, req *connect.Reque
 		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("instance %q has been deleted", req.Msg.Instance.Name))
 	}
 
-	metadata, ok := proto.Clone(instance.Metadata).(*storepb.Instance)
-	if !ok {
-		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to convert instance metadata type"))
-	}
-	patch := &store.UpdateInstanceMessage{
-		ResourceID: instance.ResourceID,
-		Metadata:   metadata,
-	}
+	// Each masked metadata field is applied to the metadata read under the store's
+	// row lock instead of a clone made here. A whole-metadata write built before
+	// the lock would revert every field the mask does not name — most notably the
+	// schema syncer's last_sync_time, version and mysql_lower_case_table_names,
+	// which it writes while the administrator is editing.
+	patch := &store.UpdateInstanceMessage{ResourceID: instance.ResourceID}
 	for _, path := range req.Msg.UpdateMask.Paths {
 		switch path {
 		case "title":
-			patch.Metadata.Title = req.Msg.Instance.Title
+			patch.MetadataUpdates = append(patch.MetadataUpdates, func(metadata *storepb.Instance) {
+				metadata.Title = req.Msg.Instance.Title
+			})
 		case "environment":
 			environmentID, err := common.GetEnvironmentID(req.Msg.Instance.Environment)
 			if err != nil {
@@ -264,16 +276,24 @@ func (s *InstanceService) UpdateInstance(ctx context.Context, req *connect.Reque
 			}
 			patch.EnvironmentID = &environmentID
 		case "external_link":
-			patch.Metadata.ExternalLink = req.Msg.Instance.ExternalLink
+			patch.MetadataUpdates = append(patch.MetadataUpdates, func(metadata *storepb.Instance) {
+				metadata.ExternalLink = req.Msg.Instance.ExternalLink
+			})
 		case "data_sources":
 			return nil, connect.NewError(connect.CodeInvalidArgument,
 				errors.New("data_sources cannot be updated through UpdateInstance; use CreateDataSource, UpdateDataSource and DeleteDataSource"))
 		case "activation":
-			patch.Metadata.Activation = req.Msg.Instance.Activation
+			patch.MetadataUpdates = append(patch.MetadataUpdates, func(metadata *storepb.Instance) {
+				metadata.Activation = req.Msg.Instance.Activation
+			})
 		case "sync_interval":
-			patch.Metadata.SyncInterval = req.Msg.Instance.SyncInterval
+			patch.MetadataUpdates = append(patch.MetadataUpdates, func(metadata *storepb.Instance) {
+				metadata.SyncInterval = req.Msg.Instance.SyncInterval
+			})
 		case "maximum_connections":
-			patch.Metadata.MaximumConnections = req.Msg.Instance.MaximumConnections
+			patch.MetadataUpdates = append(patch.MetadataUpdates, func(metadata *storepb.Instance) {
+				metadata.MaximumConnections = req.Msg.Instance.MaximumConnections
+			})
 		default:
 			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf(`unsupported update_mask "%s"`, path))
 		}
@@ -297,16 +317,16 @@ func (s *InstanceService) DeleteInstance(ctx context.Context, req *connect.Reque
 		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("instance %q has been deleted", req.Msg.Name))
 	}
 
-	metadata, ok := proto.Clone(instance.Metadata).(*storepb.Instance)
-	if !ok {
-		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to convert instance metadata type"))
-	}
-	metadata.Activation = false
-	if _, err := s.store.UpdateInstance(ctx, &store.UpdateInstanceMessage{
+	_, err = s.store.UpdateInstance(ctx, &store.UpdateInstanceMessage{
 		ResourceID: instance.ResourceID,
 		Deleted:    &deletePatch,
-		Metadata:   metadata,
-	}); err != nil {
+		// Deactivating the instance is one metadata field; writing a whole clone
+		// would revert a concurrent data-source or sync-time change.
+		MetadataUpdates: []func(*storepb.Instance){
+			func(metadata *storepb.Instance) { metadata.Activation = false },
+		},
+	})
+	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
@@ -346,13 +366,16 @@ func (s *InstanceService) SyncInstance(ctx context.Context, req *connect.Request
 	}
 
 	operation := s.schemaSyncer.StartOperation(storepb.SyncTrigger_SYNC_TRIGGER_MANUAL, currentUserID(ctx), instance)
+	// See CreateInstance: the abandon is the fallback for a handler that returns
+	// before the operation reported everything, and a no-op otherwise.
+	defer s.schemaSyncer.AbandonOperation(ctx, operation, schemasync.ErrOperationAbandoned)
 	updatedInstance, allDatabases, newDatabases, err := s.schemaSyncer.SyncInstance(ctx, instance)
 	s.schemaSyncer.RecordInstanceResult(ctx, operation, err)
 	if err != nil {
 		s.schemaSyncer.FinishOperation(ctx, operation)
 		return nil, err
 	}
-	if req.Msg.EnableFullSync {
+	if fullSyncRequested(req.Msg) {
 		// Sync all databases in the instance asynchronously. The operation waits
 		// for every one of them and reports the batch as one message.
 		s.schemaSyncer.SyncAllDatabases(ctx, operation, updatedInstance)
@@ -365,6 +388,16 @@ func (s *InstanceService) SyncInstance(ctx context.Context, req *connect.Request
 		response.Databases = append(response.Databases, database.Name)
 	}
 	return connect.NewResponse(response), nil
+}
+
+// fullSyncRequested reports whether a sync request asked for a full refresh.
+// enable_full_sync is proto3 optional: unset means full, because the background
+// scan and instance creation refresh everything, and an explicit false is the
+// discovery-only mode (queue only the databases this enumeration discovered). Both
+// SyncInstance and BatchSyncInstances must answer this identically, so the presence
+// check lives here instead of being repeated.
+func fullSyncRequested(request *v1pb.SyncInstanceRequest) bool {
+	return request == nil || request.EnableFullSync == nil || request.GetEnableFullSync()
 }
 
 // BatchSyncInstances syncs multiple instances.
@@ -381,46 +414,62 @@ func (s *InstanceService) BatchSyncInstances(ctx context.Context, req *connect.R
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("a batch can contain at most %d instances", maxBatchInstances))
 	}
 
+	batchCtx, cancel := context.WithTimeout(ctx, batchSyncBudget)
+	defer cancel()
+
 	response := &v1pb.BatchSyncInstancesResponse{}
 	for _, r := range req.Msg.GetRequests() {
-		result := &v1pb.BatchSyncInstanceResult{Name: r.GetName()}
-
-		instance, err := getInstanceMessage(ctx, s.store, r.GetName())
-		if err != nil {
-			result.Error = err.Error()
-			response.Results = append(response.Results, result)
-			continue
-		}
-		if instance.Deleted {
-			result.Error = fmt.Sprintf("instance %q has been deleted", r.GetName())
-			response.Results = append(response.Results, result)
-			continue
-		}
-
-		// Each instance in the batch is its own operation, so the message the user
-		// gets names the instance that finished instead of a batch of them.
-		operation := s.schemaSyncer.StartOperation(storepb.SyncTrigger_SYNC_TRIGGER_MANUAL, currentUserID(ctx), instance)
-		updatedInstance, _, newDatabases, err := s.schemaSyncer.SyncInstance(ctx, instance)
-		s.schemaSyncer.RecordInstanceResult(ctx, operation, err)
-		if err != nil {
-			s.schemaSyncer.FinishOperation(ctx, operation)
-			result.Error = err.Error()
-			response.Results = append(response.Results, result)
-			continue
-		}
-		for _, database := range newDatabases {
-			result.Databases = append(result.Databases, database.DatabaseName)
-		}
-		if r.GetEnableFullSync() {
-			// Sync all databases in the instance asynchronously.
-			s.schemaSyncer.SyncAllDatabases(ctx, operation, updatedInstance)
-		} else {
-			s.schemaSyncer.EnqueueDatabases(ctx, operation, newDatabases)
-		}
-		response.Results = append(response.Results, result)
+		response.Results = append(response.Results, s.batchSyncInstance(batchCtx, r))
 	}
 
 	return connect.NewResponse(response), nil
+}
+
+// batchSyncInstance syncs one instance of a batch and reports its outcome. It is a
+// function of its own so the operation's abandon fallback is a defer of this call:
+// a defer registered in the batch's loop would run only when the whole RPC
+// returned, leaving every operation un-abandoned until then.
+func (s *InstanceService) batchSyncInstance(ctx context.Context, r *v1pb.SyncInstanceRequest) *v1pb.BatchSyncInstanceResult {
+	result := &v1pb.BatchSyncInstanceResult{Name: r.GetName()}
+
+	if ctx.Err() != nil {
+		result.Error = fmt.Sprintf("the batch sync budget (%s) was exhausted before this instance was synced", batchSyncBudget)
+		return result
+	}
+
+	instance, err := getInstanceMessage(ctx, s.store, r.GetName())
+	if err != nil {
+		result.Error = err.Error()
+		return result
+	}
+	if instance.Deleted {
+		result.Error = fmt.Sprintf("instance %q has been deleted", r.GetName())
+		return result
+	}
+
+	// Each instance in the batch is its own operation, so the message the user
+	// gets names the instance that finished instead of a batch of them.
+	operation := s.schemaSyncer.StartOperation(storepb.SyncTrigger_SYNC_TRIGGER_MANUAL, currentUserID(ctx), instance)
+	// See CreateInstance: the abandon is the fallback for a handler that returns
+	// before the operation reported everything, and a no-op otherwise.
+	defer s.schemaSyncer.AbandonOperation(ctx, operation, schemasync.ErrOperationAbandoned)
+	updatedInstance, _, newDatabases, err := s.schemaSyncer.SyncInstance(ctx, instance)
+	s.schemaSyncer.RecordInstanceResult(ctx, operation, err)
+	if err != nil {
+		s.schemaSyncer.FinishOperation(ctx, operation)
+		result.Error = err.Error()
+		return result
+	}
+	for _, database := range newDatabases {
+		result.Databases = append(result.Databases, database.DatabaseName)
+	}
+	if r.GetEnableFullSync() {
+		// Sync all databases in the instance asynchronously.
+		s.schemaSyncer.SyncAllDatabases(ctx, operation, updatedInstance)
+	} else {
+		s.schemaSyncer.EnqueueDatabases(ctx, operation, newDatabases)
+	}
+	return result
 }
 
 // BatchUpdateInstances update multiple instances. Per-instance failures are
@@ -484,10 +533,8 @@ func (s *InstanceService) CreateDataSource(ctx context.Context, req *connect.Req
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
-	for _, ds := range instance.Metadata.GetDataSources() {
-		if ds.GetId() == dataSource.GetId() {
-			return nil, connect.NewError(connect.CodeAlreadyExists, errors.Errorf("data source %q already exists", dataSource.GetId()))
-		}
+	if findDataSource(instance.Metadata, dataSource.GetId()) != nil {
+		return nil, connect.NewError(connect.CodeAlreadyExists, errors.Errorf("data source %q already exists", dataSource.GetId()))
 	}
 
 	if req.Msg.ValidateOnly {
@@ -497,14 +544,28 @@ func (s *InstanceService) CreateDataSource(ctx context.Context, req *connect.Req
 		return connect.NewResponse(convertDataSource(instance.ResourceID, dataSource)), nil
 	}
 
-	metadata, ok := proto.Clone(instance.Metadata).(*storepb.Instance)
-	if !ok {
-		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to convert instance metadata type"))
-	}
-	metadata.DataSources = append(metadata.DataSources, dataSource)
-	instance, err = s.store.UpdateInstance(ctx, &store.UpdateInstanceMessage{ResourceID: instance.ResourceID, Metadata: metadata})
+	// The append happens under the instance's row lock, so the duplicate check
+	// and the write are one step and a concurrent create of the same ID loses
+	// instead of storing both. A whole-metadata clone written here would also
+	// revert the schema syncer's last_sync_time.
+	alreadyExists := false
+	_, err = s.store.UpdateInstance(ctx, &store.UpdateInstanceMessage{
+		ResourceID: instance.ResourceID,
+		MetadataUpdates: []func(*storepb.Instance){
+			func(metadata *storepb.Instance) {
+				if findDataSource(metadata, dataSource.GetId()) != nil {
+					alreadyExists = true
+					return
+				}
+				metadata.DataSources = append(metadata.DataSources, dataSource)
+			},
+		},
+	})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	if alreadyExists {
+		return nil, connect.NewError(connect.CodeAlreadyExists, errors.Errorf("data source %q already exists", dataSource.GetId()))
 	}
 
 	return connect.NewResponse(convertDataSource(instance.ResourceID, dataSource)), nil
@@ -533,17 +594,15 @@ func (s *InstanceService) UpdateDataSource(ctx context.Context, req *connect.Req
 		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("instance %q has been deleted", common.FormatInstance(instanceID)))
 	}
 
+	// The clone is used to validate the update mask and to test the connection;
+	// the write below patches the data source found in the metadata read under
+	// the store's row lock, so a concurrent change to another data source or to
+	// the sync time is not reverted.
 	metadata, ok := proto.Clone(instance.Metadata).(*storepb.Instance)
 	if !ok {
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to convert instance metadata type"))
 	}
-	var dataSource *storepb.DataSource
-	for _, ds := range metadata.GetDataSources() {
-		if ds.GetId() == dataSourceID {
-			dataSource = ds
-			break
-		}
-	}
+	dataSource := findDataSource(metadata, dataSourceID)
 	if dataSource == nil {
 		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("data source %q not found", req.Msg.DataSource.GetName()))
 	}
@@ -559,11 +618,33 @@ func (s *InstanceService) UpdateDataSource(ctx context.Context, req *connect.Req
 		return connect.NewResponse(convertDataSource(instance.ResourceID, dataSource)), nil
 	}
 
-	instance, err = s.store.UpdateInstance(ctx, &store.UpdateInstanceMessage{ResourceID: instance.ResourceID, Metadata: metadata})
+	dataSourceMissing := false
+	var patchErr error
+	updated, err := s.store.UpdateInstance(ctx, &store.UpdateInstanceMessage{
+		ResourceID: instance.ResourceID,
+		MetadataUpdates: []func(*storepb.Instance){
+			func(metadata *storepb.Instance) {
+				stored := findDataSource(metadata, dataSourceID)
+				if stored == nil {
+					dataSourceMissing = true
+					return
+				}
+				// The mask was validated against the clone above, so this cannot
+				// fail here.
+				patchErr = patchDataSource(stored, req.Msg.DataSource, req.Msg.UpdateMask.GetPaths())
+			},
+		},
+	})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(convertDataSource(instance.ResourceID, dataSource)), nil
+	if patchErr != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, patchErr)
+	}
+	if dataSourceMissing {
+		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("data source %q not found", req.Msg.DataSource.GetName()))
+	}
+	return connect.NewResponse(convertDataSource(updated.ResourceID, findDataSource(updated.Metadata, dataSourceID))), nil
 }
 
 // DeleteDataSource removes a read-only data source from an instance.
@@ -580,19 +661,7 @@ func (s *InstanceService) DeleteDataSource(ctx context.Context, req *connect.Req
 		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("instance %q has been deleted", common.FormatInstance(instanceID)))
 	}
 
-	metadata, ok := proto.Clone(instance.Metadata).(*storepb.Instance)
-	if !ok {
-		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to convert instance metadata type"))
-	}
-	var updatedDataSources []*storepb.DataSource
-	var dataSource *storepb.DataSource
-	for _, ds := range instance.Metadata.GetDataSources() {
-		if ds.GetId() == dataSourceID {
-			dataSource = ds
-		} else {
-			updatedDataSources = append(updatedDataSources, ds)
-		}
-	}
+	dataSource := findDataSource(instance.Metadata, dataSourceID)
 	if dataSource == nil {
 		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("data source %q not found", req.Msg.GetName()))
 	}
@@ -601,9 +670,37 @@ func (s *InstanceService) DeleteDataSource(ctx context.Context, req *connect.Req
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("only support deleting read-only data source"))
 	}
 
-	metadata.DataSources = updatedDataSources
-	if _, err := s.store.UpdateInstance(ctx, &store.UpdateInstanceMessage{ResourceID: instance.ResourceID, Metadata: metadata}); err != nil {
+	// Removing one entry is a targeted patch evaluated against the metadata read
+	// under the row lock. A whole clone written here would revert a concurrent
+	// change to another data source or to the schema syncer's last_sync_time.
+	dataSourceMissing := false
+	_, err = s.store.UpdateInstance(ctx, &store.UpdateInstanceMessage{
+		ResourceID: instance.ResourceID,
+		MetadataUpdates: []func(*storepb.Instance){
+			func(metadata *storepb.Instance) {
+				dataSources := metadata.GetDataSources()
+				kept := make([]*storepb.DataSource, 0, len(dataSources))
+				found := false
+				for _, ds := range dataSources {
+					if ds.GetId() == dataSourceID {
+						found = true
+						continue
+					}
+					kept = append(kept, ds)
+				}
+				if !found {
+					dataSourceMissing = true
+					return
+				}
+				metadata.DataSources = kept
+			},
+		},
+	})
+	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	if dataSourceMissing {
+		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("data source %q not found", req.Msg.GetName()))
 	}
 
 	return connect.NewResponse(&emptypb.Empty{}), nil
@@ -667,6 +764,18 @@ func dataSourceConnectionError(dataSource *storepb.DataSource, err error) error 
 		name = strings.ToLower(dataSource.GetType().String())
 	}
 	return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("failed to connect to data source %q: %v", name, err))
+}
+
+// findDataSource returns the data source with id, or nil when the instance does
+// not have it. It is also called from the store's metadata patch closures, where
+// it sees the row read under the lock rather than this handler's older clone.
+func findDataSource(metadata *storepb.Instance, id string) *storepb.DataSource {
+	for _, dataSource := range metadata.GetDataSources() {
+		if dataSource.GetId() == id {
+			return dataSource
+		}
+	}
+	return nil
 }
 
 func getInstanceMessage(ctx context.Context, stores *store.Store, name string) (*store.InstanceMessage, error) {

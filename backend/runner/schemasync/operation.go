@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pkg/errors"
+
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/component/notification"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -15,10 +17,17 @@ import (
 
 // operationTimeout bounds how long an operation waits for its databases. A full
 // sync of a large instance runs at MaximumOutstanding concurrency and retries a
-// failed database twice, so this is deliberately far above one sync's 15-minute
-// deadline: it is the backstop that turns "somebody dropped this database from
-// the queue" into a message instead of a leak.
+// failed database up to three times, so this is deliberately far above one sync's
+// 15-minute deadline: it is the backstop that turns "somebody dropped this
+// database from the queue" into a message instead of a leak.
 const operationTimeout = 2 * time.Hour
+
+// ErrOperationAbandoned is the cause recorded when a caller stops speaking for an
+// operation that has not reported everything: a handler that returns between
+// registering the operation and reporting its last result, or an operation whose
+// databases never report before the deadline. The message is user-visible, so it
+// explains itself.
+var ErrOperationAbandoned = errors.New("the sync operation ended before reporting its result")
 
 // Notifier delivers the messages a sync operation produces. *notification.Service
 // is the production implementation; the interface keeps the runner testable
@@ -89,6 +98,12 @@ func (s *Syncer) RecordInstanceResult(ctx context.Context, operation *SyncOperat
 	}
 
 	operation.mu.Lock()
+	if operation.done || operation.instanceRecorded {
+		// The operation already reported (it was finished or abandoned), or the
+		// instance step already reported; a late result must not reopen either.
+		operation.mu.Unlock()
+		return
+	}
 	if err != nil {
 		operation.instanceErr = err.Error()
 	}
@@ -101,28 +116,37 @@ func (s *Syncer) RecordInstanceResult(ctx context.Context, operation *SyncOperat
 // database may be added afterwards, so an operation whose databases all report
 // finishes here. An empty list is how a caller says "the instance step was all
 // there was".
+//
+// A sealed operation is never mutated: it either finished already or is waiting
+// for databases it was told about. A database that cannot be synced is not
+// registered either, or the operation would wait for a result that can never come.
 func (s *Syncer) EnqueueDatabases(ctx context.Context, operation *SyncOperation, databases []*store.DatabaseMessage) {
 	if operation == nil {
 		return
 	}
 
+	operation.mu.Lock()
+	if operation.sealed {
+		operation.mu.Unlock()
+		return
+	}
 	for _, database := range databases {
-		// A database that cannot be synced is not registered either, or the
-		// operation would wait for a result that can never come.
 		if database == nil || database.Deleted {
 			continue
 		}
 		// The database is registered before it is queued, so the checker can never
 		// report a result the operation has not heard of.
-		operation.mu.Lock()
 		operation.pending[database.String()] = database
-		operation.mu.Unlock()
-		s.enqueueDatabase(database, operation)
 	}
-
-	operation.mu.Lock()
 	operation.sealed = true
 	operation.mu.Unlock()
+
+	for _, database := range databases {
+		if database == nil || database.Deleted {
+			continue
+		}
+		s.enqueueDatabase(database)
+	}
 	s.maybeFinishOperation(ctx, operation)
 }
 
@@ -130,6 +154,56 @@ func (s *Syncer) EnqueueDatabases(ctx context.Context, operation *SyncOperation,
 // the instance step was the whole of it.
 func (s *Syncer) FinishOperation(ctx context.Context, operation *SyncOperation) {
 	s.EnqueueDatabases(ctx, operation, nil)
+}
+
+// FailOperation seals an operation that cannot wait for databases and records why.
+// A full sync uses it when the database list itself cannot be read: without this
+// the operation would be sealed with an empty pending set and report success with
+// zero databases, which is indistinguishable from "there was nothing to sync".
+func (s *Syncer) FailOperation(ctx context.Context, operation *SyncOperation, cause error) {
+	if operation == nil {
+		return
+	}
+	operation.mu.Lock()
+	operation.instanceErr = cause.Error()
+	operation.instanceRecorded = true
+	operation.sealed = true
+	operation.pending = map[string]*store.DatabaseMessage{}
+	operation.mu.Unlock()
+	s.maybeFinishOperation(ctx, operation)
+}
+
+// AbandonOperation reports that the caller stopped before it finished speaking for
+// the operation, and seals the operation with that cause so it reaches the user
+// now instead of expiring two hours later as a zero-count INFO success.
+//
+// It is a no-op on the normal path: once the instance step has reported and the
+// operation is sealed, its databases are simply still being synced and completing
+// them is not an abandonment. Calling it twice (or after the operation finished)
+// does nothing.
+func (s *Syncer) AbandonOperation(ctx context.Context, operation *SyncOperation, cause error) {
+	if operation == nil {
+		return
+	}
+
+	operation.mu.Lock()
+	if operation.done || (operation.sealed && operation.instanceRecorded) {
+		operation.mu.Unlock()
+		return
+	}
+	if cause == nil {
+		cause = ErrOperationAbandoned
+	}
+	// A recorded instance error is the more specific explanation and is kept.
+	if operation.instanceErr == "" {
+		operation.instanceErr = cause.Error()
+	}
+	operation.instanceRecorded = true
+	operation.sealed = true
+	// No database result will be waited for: the operation is reporting now.
+	operation.pending = map[string]*store.DatabaseMessage{}
+	operation.mu.Unlock()
+	s.maybeFinishOperation(ctx, operation)
 }
 
 // completeDatabase reports one database's outcome to every operation waiting for
@@ -203,8 +277,15 @@ func (s *Syncer) expireOperations(ctx context.Context, now time.Time) {
 		}
 		operation.pending = map[string]*store.DatabaseMessage{}
 		// The operation never got to finish its own bookkeeping; the deadline is
-		// what makes it reportable anyway.
-		operation.instanceRecorded = true
+		// what makes it reportable anyway. An operation that never recorded its
+		// instance step never reported anything at all, so reporting it as a
+		// zero-count INFO success would be a lie: it is abandoned.
+		if !operation.instanceRecorded {
+			if operation.instanceErr == "" {
+				operation.instanceErr = ErrOperationAbandoned.Error()
+			}
+			operation.instanceRecorded = true
+		}
 		operation.sealed = true
 		expired = append(expired, operation)
 		operation.mu.Unlock()
