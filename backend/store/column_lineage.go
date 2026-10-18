@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -45,12 +46,26 @@ type FindColumnLineageMessage struct {
 
 // ColumnLineageVersion tracks the analysis state per object.
 type ColumnLineageVersion struct {
-	MetaGUID     string
-	MetaType     storepb.MetaType
-	MetaHash     []byte
-	AnalyzedAt   time.Time
-	ErrorMessage *string
+	MetaGUID string
+	MetaType storepb.MetaType
+	MetaHash []byte
+	// AnalyzerVersion is the lineage.AnalyzerVersion that produced the stored
+	// result. A version mismatch re-queues the object, so deploying an analyzer
+	// change refreshes lineage without a manual backfill.
+	AnalyzerVersion string
+	AnalyzedAt      time.Time
+	ErrorMessage    *string
 }
+
+// ErrAnalysisGone reports that the object an analysis read no longer exists when
+// the result is written. The analysis describes SQL the object no longer has, so
+// the result is dropped instead of leaving orphan lineage behind.
+var ErrAnalysisGone = errors.New("object disappeared during analysis")
+
+// ErrAnalysisStale reports that the object's metadata changed between the
+// analysis read and the write. The result was computed from text that is no
+// longer current, so the caller drops it and analyzes the new text instead.
+var ErrAnalysisStale = errors.New("object metadata changed during analysis")
 
 // ColumnLineageCount is how many distinct objects one object is connected to,
 // at table level: the objects its column-level relations mention.
@@ -68,10 +83,7 @@ func (s *Store) BatchReplaceColumnLineage(ctx context.Context, metaGUID string, 
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.ExecContext(ctx,
-		`DELETE FROM column_lineage WHERE meta_guid = $1 AND meta_type = $2`,
-		metaGUID, metaType,
-	); err != nil {
+	if err := deleteColumnLineageAt(ctx, tx, metaGUID, metaType); err != nil {
 		return err
 	}
 
@@ -478,16 +490,157 @@ func (s *Store) ListColumnLineageColumnsByGUID(ctx context.Context, guid string)
 	return columns, nil
 }
 
-// UpsertColumnLineageVersion inserts or updates the analysis version record for an object.
-func (s *Store) UpsertColumnLineageVersion(ctx context.Context, v *ColumnLineageVersion) error {
-	_, err := s.GetDB().ExecContext(ctx, `
-		INSERT INTO column_lineage_version (meta_guid, meta_type, meta_hash, analyzed_at, error_message)
-		VALUES ($1, $2, $3, NOW(), $4)
+// ReplaceColumnLineageIfCurrent replaces an object's edges only when its stored
+// metadata still matches the hash the analysis read. The edge replacement, the
+// version row and the gap message commit in one transaction, and the registry row
+// stays shared-locked until then: a concurrent schema-sync delete or update waits,
+// and a result computed from text that is already gone is dropped instead of
+// re-creating lineage for a deleted object.
+func (s *Store) ReplaceColumnLineageIfCurrent(ctx context.Context, metaGUID string, metaType storepb.MetaType, expectedMetaHash []byte, analyzerVersion string, lineages []*ColumnLineage, errorMessage *string) error {
+	tx, err := s.GetDB().BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if err := lockAnalysisState(ctx, tx, metaGUID, metaType, expectedMetaHash); err != nil {
+		return err
+	}
+	if err := deleteColumnLineageAt(ctx, tx, metaGUID, metaType); err != nil {
+		return err
+	}
+	if len(lineages) > 0 {
+		if err := insertColumnLineage(ctx, tx, metaGUID, metaType, lineages); err != nil {
+			return err
+		}
+	}
+	err = upsertColumnLineageVersionAt(ctx, tx, &ColumnLineageVersion{
+		MetaGUID:        metaGUID,
+		MetaType:        metaType,
+		MetaHash:        expectedMetaHash,
+		AnalyzerVersion: analyzerVersion,
+		ErrorMessage:    errorMessage,
+	})
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// MarkAnalyzedIfCurrent records a deliberate skip (an empty definition, or an
+// engine without an analyzer) at the hash that was analyzed. It touches no edges:
+// the skip says "there is nothing to analyze here", not "the lineage is wrong".
+func (s *Store) MarkAnalyzedIfCurrent(ctx context.Context, metaGUID string, metaType storepb.MetaType, expectedMetaHash []byte, analyzerVersion string, errorMessage *string) error {
+	tx, err := s.GetDB().BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if err := lockAnalysisState(ctx, tx, metaGUID, metaType, expectedMetaHash); err != nil {
+		return err
+	}
+	err = upsertColumnLineageVersionAt(ctx, tx, &ColumnLineageVersion{
+		MetaGUID:        metaGUID,
+		MetaType:        metaType,
+		MetaHash:        expectedMetaHash,
+		AnalyzerVersion: analyzerVersion,
+		ErrorMessage:    errorMessage,
+	})
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// MarkAnalysisFailedIfCurrent clears an object's edges and records the parse
+// failure in one transaction. Clearing the edges is what keeps lineage from a
+// previous definition on screen; the version row carries the current hash so the
+// hourly scan stops retrying a definition that cannot be parsed.
+func (s *Store) MarkAnalysisFailedIfCurrent(ctx context.Context, metaGUID string, metaType storepb.MetaType, expectedMetaHash []byte, analyzerVersion, errorMessage string) error {
+	tx, err := s.GetDB().BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if err := lockAnalysisState(ctx, tx, metaGUID, metaType, expectedMetaHash); err != nil {
+		return err
+	}
+	if err := deleteColumnLineageAt(ctx, tx, metaGUID, metaType); err != nil {
+		return err
+	}
+	err = upsertColumnLineageVersionAt(ctx, tx, &ColumnLineageVersion{
+		MetaGUID:        metaGUID,
+		MetaType:        metaType,
+		MetaHash:        expectedMetaHash,
+		AnalyzerVersion: analyzerVersion,
+		ErrorMessage:    &errorMessage,
+	})
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// deleteColumnLineageAt removes an object's edges inside the caller's transaction.
+func deleteColumnLineageAt(ctx context.Context, tx *sql.Tx, metaGUID string, metaType storepb.MetaType) error {
+	_, err := tx.ExecContext(ctx,
+		`DELETE FROM column_lineage WHERE meta_guid = $1 AND meta_type = $2`,
+		metaGUID, metaType,
+	)
+	return err
+}
+
+// lockAnalysisState reads the object's current meta hash under a shared row lock
+// and fails with ErrAnalysisGone/ErrAnalysisStale when the result no longer
+// describes the stored object. The lock is held until the transaction ends, so a
+// concurrent schema-sync update or delete serializes against this write.
+func lockAnalysisState(ctx context.Context, tx *sql.Tx, metaGUID string, metaType storepb.MetaType, expectedMetaHash []byte) error {
+	var current []byte
+	err := tx.QueryRowContext(ctx, `
+		SELECT meta_hash FROM meta_registry_resource
+		WHERE guid = $1 AND object_type = $2
+		FOR SHARE
+	`, metaGUID, metaType).Scan(&current)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrAnalysisGone
+		}
+		return errors.Wrapf(err, "failed to lock the analysis state of %q", metaGUID)
+	}
+	if !bytes.Equal(current, expectedMetaHash) {
+		return ErrAnalysisStale
+	}
+	return nil
+}
+
+// upsertColumnLineageVersionAt writes an analysis-state row inside the caller's
+// transaction, so it commits exactly when the edges it describes commit.
+func upsertColumnLineageVersionAt(ctx context.Context, tx *sql.Tx, v *ColumnLineageVersion) error {
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO column_lineage_version (meta_guid, meta_type, meta_hash, analyzer_version, analyzed_at, error_message)
+		VALUES ($1, $2, $3, $4, NOW(), $5)
 		ON CONFLICT (meta_guid, meta_type) DO UPDATE SET
 			meta_hash = EXCLUDED.meta_hash,
+			analyzer_version = EXCLUDED.analyzer_version,
 			analyzed_at = EXCLUDED.analyzed_at,
 			error_message = EXCLUDED.error_message
-	`, v.MetaGUID, v.MetaType, v.MetaHash, v.ErrorMessage)
+	`, v.MetaGUID, v.MetaType, v.MetaHash, v.AnalyzerVersion, v.ErrorMessage)
+	return err
+}
+
+// RecordAnalysisError updates the error message of an existing analysis-state row
+// without touching its hash: a transient failure must not erase the evidence that
+// the object was analyzed, and the next full scan still sees the last successful
+// result as current. A row that does not exist is left alone; the caller retries,
+// and the failure is visible in the log either way.
+func (s *Store) RecordAnalysisError(ctx context.Context, metaGUID string, metaType storepb.MetaType, message string) error {
+	_, err := s.GetDB().ExecContext(ctx, `
+		UPDATE column_lineage_version
+		SET analyzed_at = NOW(), error_message = $3
+		WHERE meta_guid = $1 AND meta_type = $2
+	`, metaGUID, metaType, message)
 	return err
 }
 
@@ -497,7 +650,7 @@ func (s *Store) UpsertColumnLineageVersion(ctx context.Context, v *ColumnLineage
 // object, so a single query is enough.
 func (s *Store) ListColumnLineageVersions(ctx context.Context, metaType storepb.MetaType) (map[string]*ColumnLineageVersion, error) {
 	rows, err := s.GetDB().QueryContext(ctx, `
-		SELECT meta_guid, meta_type, meta_hash, analyzed_at, error_message
+		SELECT meta_guid, meta_type, meta_hash, analyzer_version, analyzed_at, error_message
 		FROM column_lineage_version
 		WHERE meta_type = $1
 	`, metaType)
@@ -509,7 +662,7 @@ func (s *Store) ListColumnLineageVersions(ctx context.Context, metaType storepb.
 	result := make(map[string]*ColumnLineageVersion)
 	for rows.Next() {
 		var v ColumnLineageVersion
-		if err := rows.Scan(&v.MetaGUID, &v.MetaType, &v.MetaHash, &v.AnalyzedAt, &v.ErrorMessage); err != nil {
+		if err := rows.Scan(&v.MetaGUID, &v.MetaType, &v.MetaHash, &v.AnalyzerVersion, &v.AnalyzedAt, &v.ErrorMessage); err != nil {
 			return nil, err
 		}
 		result[v.MetaGUID] = &v
@@ -523,13 +676,13 @@ func (s *Store) ListColumnLineageVersions(ctx context.Context, metaType storepb.
 // GetColumnLineageVersion returns the analysis version record for an object, or nil if not found.
 func (s *Store) GetColumnLineageVersion(ctx context.Context, metaGUID string, metaType storepb.MetaType) (*ColumnLineageVersion, error) {
 	row := s.GetDB().QueryRowContext(ctx, `
-		SELECT meta_guid, meta_type, meta_hash, analyzed_at, error_message
+		SELECT meta_guid, meta_type, meta_hash, analyzer_version, analyzed_at, error_message
 		FROM column_lineage_version
 		WHERE meta_guid = $1 AND meta_type = $2
 	`, metaGUID, metaType)
 
 	var v ColumnLineageVersion
-	err := row.Scan(&v.MetaGUID, &v.MetaType, &v.MetaHash, &v.AnalyzedAt, &v.ErrorMessage)
+	err := row.Scan(&v.MetaGUID, &v.MetaType, &v.MetaHash, &v.AnalyzerVersion, &v.AnalyzedAt, &v.ErrorMessage)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil

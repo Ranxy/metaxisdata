@@ -154,8 +154,9 @@ func (a *Analyzer) Run(ctx context.Context, wg *sync.WaitGroup) {
 }
 
 // queueAll scans all lineage-analyzable objects and queues those whose metahash
-// has changed since the last analysis. Each object type costs two queries
-// (objects and their analysis state) instead of one query per object.
+// or analyzer version differs from the stored analysis state. Each object type
+// costs two queries (objects and their analysis state) instead of one query per
+// object.
 func (a *Analyzer) queueAll(ctx context.Context) {
 	viewType := storepb.MetaType_VIEW
 	mvType := storepb.MetaType_MATERIALIZED_VIEW
@@ -177,13 +178,25 @@ func (a *Analyzer) queueAll(ctx context.Context) {
 			continue
 		}
 		for _, res := range list {
-			// Queue if never analyzed or hash changed.
-			ver := versions[res.GUID]
-			if ver == nil || !bytes.Equal(ver.MetaHash, res.MetaHash) {
+			if needsAnalysis(res, versions[res.GUID]) {
 				a.QueueAnalysis(res.GUID, res.ObjectType)
 			}
 		}
 	}
+}
+
+// needsAnalysis reports whether an object must be (re)analyzed: it has no stored
+// result, its metadata hash changed, or the stored result came from different
+// analyzer rules. The last condition is what makes an analyzer upgrade or a
+// rollback refresh the lineage by itself.
+func needsAnalysis(res *store.MetaRegistryResource, version *store.ColumnLineageVersion) bool {
+	if version == nil {
+		return true
+	}
+	if !bytes.Equal(version.MetaHash, res.MetaHash) {
+		return true
+	}
+	return version.AnalyzerVersion != lineage.AnalyzerVersion
 }
 
 // drainAndAnalyze drains the analyzeMap and runs analysis for each object.
@@ -225,6 +238,13 @@ func (a *Analyzer) drainAndAnalyze(ctx context.Context) {
 				}
 			}()
 			if err := a.analyzeObject(ctx, k.MetaGUID, k.MetaType); err != nil {
+				if errors.Is(err, errAnalysisStale) {
+					// The text changed under the analysis. Queue the new text now
+					// instead of waiting for the hourly scan; the write was dropped,
+					// so nothing stale was persisted.
+					a.QueueAnalysis(k.MetaGUID, k.MetaType)
+					return
+				}
 				slog.Error("Lineage analysis failed",
 					slog.String("guid", k.MetaGUID),
 					slog.String("type", k.MetaType.String()),
@@ -433,12 +453,18 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 		slog.Debug("Lineage analyzer found no lineage relations (after filtering temp targets)", slog.String("guid", metaGUID))
 	}
 
-	// Persist results.
-	if err := a.store.BatchReplaceColumnLineage(ctx, metaGUID, metaType, lineages); err != nil {
-		return storeError(ctx, a.store, metaGUID, metaType, err, "failed to replace column lineage")
+	// Persist the result only if the object still holds the text this analysis
+	// read. The edges, the version row and any gap message commit together, so a
+	// rolled-back write cannot leave the object marked as analyzed, and a result
+	// computed for a deleted object is dropped instead of re-creating its edges.
+	var partialMessagePtr *string
+	if partialMessage != "" {
+		partialMessagePtr = &partialMessage
 	}
-
-	return markAnalyzed(ctx, a.store, metaGUID, metaType, res.MetaHash, partialMessage)
+	if err := a.store.ReplaceColumnLineageIfCurrent(ctx, metaGUID, metaType, res.MetaHash, lineage.AnalyzerVersion, lineages, partialMessagePtr); err != nil {
+		return analysisWriteError(ctx, a.store, metaGUID, metaType, err, "failed to replace column lineage")
+	}
+	return nil
 }
 
 // buildSQL extracts the object definition and wraps it as needed for lineage parsing.
@@ -542,7 +568,15 @@ func hasCreateKeyword(s string) bool {
 	return len(rest) > 0 && unicode.IsSpace(rune(rest[0]))
 }
 
-// storeError records the error in column_lineage_version and returns a wrapped error.
+// errAnalysisStale tells drainAndAnalyze that the result was computed from text
+// that has already been replaced, so the object is queued again instead of
+// being retried as a failure.
+var errAnalysisStale = errors.New("analysis result is stale")
+
+// storeError surfaces an error before any result exists. It records the message
+// on the object's existing analysis-state row without touching its hash: a
+// transient failure must not make a successful result look unanalyzed, and the
+// next attempt still compares against the last stored result.
 func storeError(ctx context.Context, s *store.Store, metaGUID string, metaType storepb.MetaType, cause error, msg string) error {
 	var full string
 	if cause != nil {
@@ -550,45 +584,58 @@ func storeError(ctx context.Context, s *store.Store, metaGUID string, metaType s
 	} else {
 		full = msg
 	}
-	_ = s.UpsertColumnLineageVersion(ctx, &store.ColumnLineageVersion{
-		MetaGUID:     metaGUID,
-		MetaType:     metaType,
-		ErrorMessage: &full,
-	})
+	_ = s.RecordAnalysisError(ctx, metaGUID, metaType, full)
 	if cause != nil {
 		return errors.Wrap(cause, msg)
 	}
 	return errors.New(msg)
 }
 
+// analysisWriteError classifies a failed result write: a vanished object drops the
+// result, a changed one asks for a re-analysis of the new text, and anything else
+// is a transient store error that the retry map handles.
+func analysisWriteError(ctx context.Context, s *store.Store, metaGUID string, metaType storepb.MetaType, cause error, msg string) error {
+	switch {
+	case errors.Is(cause, store.ErrAnalysisGone):
+		slog.Debug("Lineage analysis dropped: the object disappeared during analysis",
+			slog.String("guid", metaGUID), slog.String("type", metaType.String()))
+		return nil
+	case errors.Is(cause, store.ErrAnalysisStale):
+		return errAnalysisStale
+	default:
+		return storeError(ctx, s, metaGUID, metaType, cause, msg)
+	}
+}
+
 // markAnalyzed records a successful analysis (or a deliberate skip) with the
-// current metahash. A non-empty errorMessage documents why analysis was skipped
-// while still recording the hash, so the object is not retried until its
-// metadata changes.
+// current metahash and the analyzer version. A non-empty errorMessage documents
+// why analysis was skipped while still recording the hash, so the object is not
+// retried until its metadata changes or the analyzer rules do.
 func markAnalyzed(ctx context.Context, s *store.Store, metaGUID string, metaType storepb.MetaType, metaHash []byte, errorMessage string) error {
-	v := &store.ColumnLineageVersion{
-		MetaGUID: metaGUID,
-		MetaType: metaType,
-		MetaHash: metaHash,
-	}
+	var message *string
 	if errorMessage != "" {
-		v.ErrorMessage = &errorMessage
+		message = &errorMessage
 	}
-	return s.UpsertColumnLineageVersion(ctx, v)
+	if err := s.MarkAnalyzedIfCurrent(ctx, metaGUID, metaType, metaHash, lineage.AnalyzerVersion, message); err != nil {
+		return analysisWriteError(ctx, s, metaGUID, metaType, err, "failed to record analysis state")
+	}
+	return nil
 }
 
 // markAnalysisFailed records SQL the analyzer could not parse. The current hash is
 // stored with the error message so the hourly scan stops re-queueing an unchanged
-// definition (a metadata change clears the stored hash comparison and retries),
-// and any lineage a previous definition left behind is dropped because it
-// describes SQL the object no longer has. A gap the analysis reported instead of a
-// failure takes the partial path above and keeps its edges.
+// definition (a metadata or analyzer change re-queues it), and any lineage a
+// previous definition left behind is dropped because it describes SQL the object
+// no longer has. Clearing the edges and recording the failure commit together. A
+// gap the analysis reported instead of a failure takes the partial path above and
+// keeps its edges.
 func markAnalysisFailed(ctx context.Context, s *store.Store, metaGUID string, metaType storepb.MetaType, metaHash []byte, cause error) error {
-	if err := s.BatchReplaceColumnLineage(ctx, metaGUID, metaType, nil); err != nil {
-		return storeError(ctx, s, metaGUID, metaType, err, "failed to clear column lineage")
-	}
-	return markAnalyzed(ctx, s, metaGUID, metaType, metaHash,
+	err := s.MarkAnalysisFailedIfCurrent(ctx, metaGUID, metaType, metaHash, lineage.AnalyzerVersion,
 		fmt.Sprintf("lineage analysis failed: %v", cause))
+	if err != nil {
+		return analysisWriteError(ctx, s, metaGUID, metaType, err, "failed to record analysis failure")
+	}
+	return nil
 }
 
 // classifyApplicationSQL decides whether a reported statement is a read or a write, and

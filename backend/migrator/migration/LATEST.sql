@@ -328,6 +328,7 @@ CREATE TABLE column_lineage_version (
     meta_hash BYTEA,
     analyzed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     error_message TEXT,
+    analyzer_version TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (meta_guid, meta_type)
 );
 

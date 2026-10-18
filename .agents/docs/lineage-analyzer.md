@@ -45,15 +45,17 @@ OceanBase 刻意不注册(`engines.go` 的包注释),`Analyze` 对它是 `ErrorE
 | 周期全扫 | `backend/runner/lineageanalyzer/analyzer.go:26,124` | `lineageAnalysisInterval = 1h`,启动时先扫一次 |
 | 队列消费 | `analyzer.go:27,138` | `analyzeCheckerInterval = 10s`,并发池 `MaxGoroutines = 10` |
 | 事件驱动 | `analyzer.go:84`;`backend/runner/schemasync/syncer.go:417-422,783-787` | schema sync 提交**之后**把变更的 VIEW / MV 入队;MANUAL_SQL 由 `backend/api/v1/database_manual_sql.go:72,269` 入队,APPLICATION_SQL 由上报端点入队([application-sql-ingestion.md](application-sql-ingestion.md)) |
-| 变更检测 | `analyzer.go:156-180` | 比较 `meta_registry_resource.metahash` 与 `column_lineage_version.meta_hash`;相同则跳过 |
-| 分析写入 | `analyzer.go:238-417` | 包成 `CREATE VIEW name AS <definition>` → `Analyze` → 过滤 `IsTemp` → `BatchReplaceColumnLineage` → `UpsertColumnLineageVersion` |
-| 失败(解析) | `analyzer.go:513-519` | `markAnalysisFailed`:清空该对象血缘 + 写 `error_message`,并**存当前 meta_hash**(否则小时扫描会反复重排) |
-| 失败(瞬时) | `analyzer.go:63-73,93-112` | 有界退避重试 30s / 2m / 5m,最多 3 次,之后等下一轮全扫 |
+| 变更检测 | `analyzer.go` 的 `needsAnalysis` | 比较 `meta_registry_resource.metahash`、`column_lineage_version.meta_hash` **与 `analyzer_version`**:hash 相同且 analyzer 版本相同才跳过 |
+| 分析写入 | `analyzer.go` 的 `analyzeObject` | 包成 `CREATE VIEW name AS <definition>` → `Analyze` → 过滤 `IsTemp` → `ReplaceColumnLineageIfCurrent`(边 + version + 缺口消息同事务) |
+| 写入前置条件 | `store/column_lineage.go` 的 `lockAnalysisState` | 以分析时读到的 `meta_hash` 为前置条件 `SELECT ... FOR SHARE`;**对象已删 → 丢弃结果**(`ErrAnalysisGone`);hash 变 → 丢弃并立即重排(`ErrAnalysisStale`) |
+| 失败(解析) | `analyzer.go` 的 `markAnalysisFailed` | `MarkAnalysisFailedIfCurrent`:清空该对象血缘 + 写 `error_message` + **存当前 meta_hash**,同一事务提交 |
+| 失败(瞬时) | `analyzer.go:63-73,93-112` | 有界退避重试 30s / 2m / 5m,最多 3 次,之后等下一轮全扫;`RecordAnalysisError` 只更新 error_message,不清旧 hash |
+| Analyzer 版本 | `backend/plugin/lineage/lineage.go` 的 `AnalyzerVersion` | 分析规则变化(omni/方言升级、规则改动、注册新引擎)时递增;部署后小时扫描按版本不等自动全量重算 |
 | 引擎不支持 | `analyzer.go:296-301` | 记 `markAnalyzed` + "engine %s has no lineage analyzer; analysis skipped",不清边 |
 | 删除清理 | `syncer.go:1076-1090`,调用点 `:757-762` | 删除对象时按 `meta_guid`、`source_guid`、`target_guid` 三向清 `column_lineage`,并清 `column_lineage_version` |
 | MANUAL_SQL 特例 | `analyzer.go:334-370` | 除真实 target 边外,额外写一条以自身为源、目标同名的边,让"这段 SQL 输出什么"在图上可见 |
 
-store 侧:`backend/store/column_lineage.go` 的 `BatchReplaceColumnLineage:64`、`ListColumnLineage:252`、`UpsertColumnLineageVersion:383`、`ListColumnLineageVersions:399`、`GetColumnLineageVersion:425`;表定义 `backend/migrator/migration/LATEST.sql:295,316`。
+store 侧:`backend/store/column_lineage.go` 的 `BatchReplaceColumnLineage`(仅 OpenLineage 路径)、`ReplaceColumnLineageIfCurrent`、`MarkAnalyzedIfCurrent`、`MarkAnalysisFailedIfCurrent`、`RecordAnalysisError`、`ListColumnLineage`、`ListColumnLineageVersions`、`GetColumnLineageVersion`;表定义 `backend/migrator/migration/LATEST.sql` 的 `column_lineage` / `column_lineage_version`(含 `analyzer_version`)。
 
 ## 诊断与缺口
 
@@ -139,10 +141,12 @@ TiDB 和 MariaDB **没有自己的遍历**。`mysql/analyzer.go` 哨兵之下的
 4. **解析失败 = 清血缘;未建模 = 留血缘 + 缺口**。不要把缺口变成静默丢弃,也不要把缺口变成硬失败。
 5. **缺口是数据不是句子**:一律经 `model.Diagnostic`,API 映射成 proto enum,CLI 渲染同一措辞;`error_message` 里存的是同一渲染文本。
 6. **清血缘只由解析失败或对象删除触发**;引擎未注册是显式 skip(记 `markAnalyzed`),不构成失败。
-7. **metahash 未变不重排**:成功、跳过、失败三条路径都写当前 hash,否则小时扫描会无限重试。
-8. **哨兵字面量单点**:`__result__` / `__deletion__` / `__file__` / `*` 只在 `backend/plugin/lineage/model/relation.go:25,30,36,41` 定义;非测试 Go 代码里不得再出现字面量。
-9. **catalog 查询失败不静默降级**:记 `DiagnosticCatalogUnavailable` 后用通配符继续,让降级结果可区分于完整结果。
-10. **任何输出变更(边、变换、错误分类)必须过 golden 语料**,语料用精确边匹配而非"差不多"。
+7. **metahash 未变不重排**:成功、跳过、失败三条路径都写当前 hash,否则小时扫描会无限重试。瞬时错误只更新 `error_message`,不清已有 hash。
+8. **写入以分析时读到的 hash 为前置条件**:`ReplaceColumnLineageIfCurrent` / `MarkAnalyzedIfCurrent` / `MarkAnalysisFailedIfCurrent` 在同一事务里 `SELECT ... FOR SHARE` 校验 registry 行与 `meta_hash`;对象已删 → 丢弃结果,hash 已变 → 重排。不得无条件覆盖边或 version。
+9. **重算判据 = metahash + analyzer_version**:任何可能改变分析输出的改动都必须递增 `lineage.AnalyzerVersion`,部署后由小时扫描自动全量重算;不得依赖手工清 `column_lineage_version`。
+10. **哨兵字面量单点**:`__result__` / `__deletion__` / `__file__` / `*` 只在 `backend/plugin/lineage/model/relation.go:25,30,36,41` 定义;非测试 Go 代码里不得再出现字面量。
+11. **catalog 查询失败不静默降级**:记 `DiagnosticCatalogUnavailable` 后用通配符继续,让降级结果可区分于完整结果。
+12. **任何输出变更(边、变换、错误分类)必须过 golden 语料**,语料用精确边匹配而非"差不多"。
 
 ## Failure modes
 
@@ -152,14 +156,16 @@ TiDB 和 MariaDB **没有自己的遍历**。`mysql/analyzer.go` 哨兵之下的
 | 某子句只是没建模(如 PG `MERGE`) | 部分分析 → 兄弟语句的边照存,缺口写 version 行 / RPC diagnostics |
 | 引擎没有分析器(OceanBase) | `ErrorEngineNotSupported` → 记 skip 与原因,不清边 |
 | catalog `GetTable` 失败 | `DiagnosticCatalogUnavailable` + 通配符回退,分析继续 |
-| 瞬时失败(DB 抖动等) | 30s/2m/5m 退避重试 ≤3 次,之后等小时全扫 |
+| 瞬时失败(DB 抖动等) | 30s/2m/5m 退避重试 ≤3 次,之后等小时全扫;错误消息写在已有 version 行上,不清旧 hash |
+| 分析器/规则升级 | `AnalyzerVersion` 与 `column_lineage_version.analyzer_version` 不等 → 小时扫描自动全量重算 |
+| 分析期间对象被删/改 | 写入的 `FOR SHARE` 前置条件失败:已删丢弃,已改立即重排 |
 | 数据库定义被删/改 | sync 提交后三向清边(`meta_guid`/`source_guid`/`target_guid`);变更的 VIEW/MV 重新入队 |
 | 手工生成物被手改 | `go test ./backend/plugin/lineage/mysql/gen/` 变红并打印重新生成命令 |
 | MariaDB 独有语法(row alias) | 生产硬失败;语料里登记在 `knownParserGaps`(`mariadb/analyze_test.go:15`) |
 
 ## Open items
 
-1. **T5 omni 依赖策略与升级流程** — 仍开放。证据:`go.mod:10` pin,无 `replace`、无 `vendor/`;政策见 [omni-upstream-defects.md](omni-upstream-defects.md)。缺的是"带验收门槛(全语料 + 输出 diff)的升级流程"。
+1. **T5 omni 依赖策略与升级流程** — 仍开放。证据:`go.mod:10` pin,无 `replace`、无 `vendor/`;政策见 [omni-upstream-defects.md](omni-upstream-defects.md)。缺的是"带验收门槛(全语料 + 输出 diff)的升级流程"。runner 侧的重算已由 `AnalyzerVersion` 闭环(版本变化自动全量重算),仍未闭环的是升级前的验收门。
 2. **PG-FU-2 上游回馈** — 仍开放。把"保留 DML/集合运算/窗口的 walker"作为生产级 `analysis` 包回馈 `github.com/bytebase/omni`,以缩小仓库内 walker;原先只登记在 PostgreSQL omni 迁移计划里(该计划文档随本次合并归档),现以本条为唯一跟踪点。
 3. **`error_message` 是纯文本** — 仍开放。列本身 `TEXT`(`LATEST.sql:321`),store 侧 `*string`(`backend/store/column_lineage.go:52`),写入的是 `Diagnostic.String()` 渲染后的文本(`:391`);结构化只到 RPC 边界,前端若想按类别过滤历史缺口需要一次 schema 变更。
 4. **跨包共享分析器基状态未做** — 仍开放。`pushScope` / `popScope` / `currentScope` / `attachColumnLookup` 在每个方言各一份(`mysql/analyzer.go:2205-2245`、`starrocks/analyzer.go:1190-1210`、`postgresql/analyzer.go:1759-1780`),只因绑定接收者状态(`a.catalog`、`a.scopeStack`)而未下沉;另有各包私有的 `locFieldCache sync.Map`(`mysql/analyzer.go:262`)。抽出共享基状态类型才能继续收敛。

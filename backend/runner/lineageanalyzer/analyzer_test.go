@@ -226,6 +226,52 @@ func TestBuildSQLWrapsParseForEveryRegisteredEngine(t *testing.T) {
 	}
 }
 
+// An object is re-analyzed when it was never analyzed, when its metadata changed,
+// or when the stored result came from different analyzer rules. The last case is
+// what makes a deployment that changes the analyzers refresh lineage by itself.
+func TestNeedsAnalysis(t *testing.T) {
+	t.Parallel()
+
+	hash := []byte("meta-hash")
+	tests := []struct {
+		name     string
+		resource *store.MetaRegistryResource
+		version  *store.ColumnLineageVersion
+		want     bool
+	}{
+		{
+			name:     "never analyzed",
+			resource: &store.MetaRegistryResource{MetaHash: hash},
+			want:     true,
+		},
+		{
+			name:     "same hash and analyzer version",
+			resource: &store.MetaRegistryResource{MetaHash: hash},
+			version:  &store.ColumnLineageVersion{MetaHash: hash, AnalyzerVersion: lineage.AnalyzerVersion},
+			want:     false,
+		},
+		{
+			name:     "metadata changed",
+			resource: &store.MetaRegistryResource{MetaHash: []byte("new-hash")},
+			version:  &store.ColumnLineageVersion{MetaHash: hash, AnalyzerVersion: lineage.AnalyzerVersion},
+			want:     true,
+		},
+		{
+			name:     "analyzer version changed",
+			resource: &store.MetaRegistryResource{MetaHash: hash},
+			version:  &store.ColumnLineageVersion{MetaHash: hash, AnalyzerVersion: "0"},
+			want:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, needsAnalysis(tt.resource, tt.version))
+		})
+	}
+}
+
 // A failed analysis is retried with a bounded backoff instead of waiting for
 // the hourly full scan, and a fresh queue request resets that backoff.
 func TestAnalyzerRetryBackoff(t *testing.T) {
