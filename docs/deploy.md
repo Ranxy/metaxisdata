@@ -215,6 +215,17 @@ is replacing the binary and restarting: pending migrations apply on startup,
 so keep the PostgreSQL backup discipline of the container flow (the notes
 below).
 
+**This release is a one-step cutover, not a rolling upgrade.** It changes the
+MCP refresh credential to rotate in place and carries the connection id in
+access tokens, so stop every old replica before starting the new binary. An old
+replica still serving `/oauth/token` deletes and reinserts the grant row, which
+silently turns a revoked connection back into an unrevoked one; rolling back to
+the previous binary has the same effect. If you must roll back, restore the
+pre-upgrade database backup and rotate the deployment's signing secret (the
+`AUTH_SECRET` setting): every outstanding token stops verifying, and revocations
+made after the backup are gone with it, so revoke the affected connected apps
+again.
+
 The `PG_URL` and encryption-key variables below are read by the server itself
 and work identically for the binary. The other `METAXISDATA_*` variables are
 the image entrypoint's mappings — on a bare host, pass the matching flags

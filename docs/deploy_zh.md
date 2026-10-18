@@ -160,6 +160,8 @@ PG_URL='postgres://<user>:<password>@<db-host>:5432/<database>?sslmode=disable' 
 
 `metaxisdata --version` 会打印版本、提交与构建时间。升级就是替换二进制并重启：待执行的迁移会在启动时自动应用，因此备份纪律仍按下文的运维说明执行（面向容器的部分）。
 
+**本 release 必须一次性切换，不能滚动升级。** 它把 MCP 刷新凭据改成原地轮换，并把连接 id 写进 access token；请先停掉所有旧副本，再启动新二进制。旧副本若继续服务 `/oauth/token`，会删除并重新插入授权行，把已吊销的连接静默恢复成未吊销；回滚到旧二进制也是同样的效果。如果必须回滚，请恢复升级前的数据库备份，并轮换部署的签名密钥（`AUTH_SECRET` setting）：所有未过期的令牌都会停止验签，而备份之后做出的吊销也随备份一起丢失，需要重新吊销受影响的已连接应用。
+
 `PG_URL` 与加密密钥两个变量由服务端自身读取，对二进制同样有效。其余 `METAXISDATA_*` 变量属于镜像入口脚本的映射——在裸宿主机上请改用与之对应的 flag：`--port`、`--debug`、`--enable-json-logging`、`--cors-allow-origins`、`--trusted-proxies`。
 
 ```bash
