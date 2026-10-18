@@ -120,6 +120,13 @@ func TestBatchMetaCreateDiff(t *testing.T) {
 	require.NoError(t, err)
 
 	batch := &batchMetaCreate{
+		storedStatistics: map[store.MetaGUIDKey]store.MetaRegistryStatistics{
+			// The stored row still carries the old statistics; the hash ignores them,
+			// which is exactly why the diff has to compare them separately.
+			{GUID: buildGUID("inst", "db", "public", "stats_only"), ObjectType: storepb.MetaType_TABLE}: {
+				RowCount: 999, DataSize: 888, IndexSize: 777, DataFree: 666,
+			},
+		},
 		exist: []*store.MetaRegistryResource{
 			{GUID: buildGUID("inst", "db", "public", "orders"), ObjectType: storepb.MetaType_TABLE, MetaHash: unchangedHash},
 			{GUID: buildGUID("inst", "db", "public", "users"), ObjectType: storepb.MetaType_TABLE, MetaHash: changedBeforeHash},
@@ -154,6 +161,10 @@ func TestBatchMetaCreateDiff(t *testing.T) {
 	require.True(t, newFound, "new table should be an update")
 	require.False(t, unchangedFound, "identical table should not be an update")
 	require.False(t, statsOnlyFound, "table with only stats change should not be an update")
+	// The stats-only change is written to the metadata column alone: no history
+	// row and no lineage re-analysis, but the row the API reads is refreshed.
+	require.Len(t, batch.statsUpdates, 1)
+	require.Equal(t, buildGUID("inst", "db", "public", "stats_only"), batch.statsUpdates[0].GUID)
 	require.Len(t, deletes, 1)
 	require.Equal(t, buildGUID("inst", "db", "public", "legacy"), deletes[0].GUID)
 }
@@ -535,4 +546,40 @@ func TestInstanceSyncGateSerializesOneInstance(t *testing.T) {
 
 	gate.finish("inst-1", fresh, nil, nil, nil, nil)
 	gate.finish("inst-2", other, nil, nil, nil, nil)
+}
+
+// The statistics refresh runs on its own slower clock so a row count does not
+// rewrite every table's metadata on each sync. A database this process has not
+// refreshed yet is due, which is what makes a restart refresh the estimates.
+func TestStatisticsRefreshCadence(t *testing.T) {
+	t.Parallel()
+
+	s := &Syncer{}
+	require.True(t, s.statisticsRefreshDue("inst;db"))
+	require.True(t, s.statisticsRefreshDue("inst;other"))
+
+	s.recordStatisticsRefresh("inst;db")
+	require.False(t, s.statisticsRefreshDue("inst;db"))
+	require.True(t, s.statisticsRefreshDue("inst;other"))
+}
+
+// The DDL refresh clock and rotation cursor live in the process: a restart makes
+// every database due for a full refresh, a committed full refresh advances the
+// cursor, and a change-only plan leaves both alone.
+func TestDefinitionRefreshCadence(t *testing.T) {
+	t.Parallel()
+
+	s := &Syncer{}
+	full, cursor := s.definitionRefreshDue("inst;db")
+	require.True(t, full)
+	require.Zero(t, cursor)
+
+	s.recordDefinitionRefresh("inst;db", definitionFetchPlan{full: true, nextCursor: 7})
+	full, cursor = s.definitionRefreshDue("inst;db")
+	require.False(t, full)
+	require.Equal(t, 7, cursor)
+
+	s.recordDefinitionRefresh("inst;db", definitionFetchPlan{full: false, nextCursor: 99})
+	_, cursor = s.definitionRefreshDue("inst;db")
+	require.Equal(t, 7, cursor)
 }

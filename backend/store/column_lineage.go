@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -590,6 +591,79 @@ func deleteColumnLineageAt(ctx context.Context, tx *sql.Tx, metaGUID string, met
 		metaGUID, metaType,
 	)
 	return err
+}
+
+// columnLineageDeleteByEndpointStatement deletes every edge that names one of the given
+// objects as a source or target. GUIDs are matched rather than (guid, type) pairs so each
+// predicate is a bitmap index scan on the leading column of a three-index OR; a GUID from a
+// schema snapshot names one object in the managed namespace, so the type adds nothing.
+const columnLineageDeleteByEndpointStatement = `
+	DELETE FROM column_lineage
+	WHERE source_guid = ANY($1::text[])
+		OR target_guid = ANY($1::text[])
+`
+
+// columnLineageDeleteByProducerStatement deletes the edges an analyzed object produced.
+const columnLineageDeleteByProducerStatement = `
+	DELETE FROM column_lineage WHERE meta_guid = ANY($1::text[])
+`
+
+const columnLineageVersionDeleteByProducerStatement = `
+	DELETE FROM column_lineage_version WHERE meta_guid = ANY($1::text[])
+`
+
+// lineageEndpointTypes are the object types that can appear as an edge's source or target.
+// Every other schema-sync-managed type is never a lineage endpoint, so its deletion must not
+// probe the lineage indexes at all.
+var lineageEndpointTypes = []storepb.MetaType{
+	storepb.MetaType_TABLE,
+	storepb.MetaType_VIEW,
+	storepb.MetaType_MATERIALIZED_VIEW,
+	storepb.MetaType_EXTERNAL_TABLE,
+}
+
+// lineageProducerTypes are the object types the analyzers produce edges for, keyed by
+// meta_guid. A table is never analyzed, a view and a materialized view are.
+var lineageProducerTypes = []storepb.MetaType{
+	storepb.MetaType_VIEW,
+	storepb.MetaType_MATERIALIZED_VIEW,
+}
+
+// splitLineageDeletions returns the GUIDs that can be an edge endpoint and the GUIDs that can
+// own an edge, dropping every deleted object that can be neither.
+func splitLineageDeletions(keys []MetaGUIDKey) (endpoints, producers []string) {
+	for _, key := range keys {
+		if slices.Contains(lineageEndpointTypes, key.ObjectType) {
+			endpoints = append(endpoints, key.GUID)
+		}
+		if slices.Contains(lineageProducerTypes, key.ObjectType) {
+			producers = append(producers, key.GUID)
+		}
+	}
+	return endpoints, producers
+}
+
+// DeleteColumnLineageByMetaGUIDs removes the lineage that mentions any of the given objects
+// and the analysis state of the analyzed ones, in a fixed number of statements. A destructive
+// schema sync deletes a database's objects at once — most of them columns, which are never
+// lineage endpoints — so the cleanup filters by type and probes the indexes once per
+// direction instead of once per deleted object, and does so inside the write transaction.
+func (*Store) DeleteColumnLineageByMetaGUIDs(ctx context.Context, tx *sql.Tx, keys []MetaGUIDKey) error {
+	endpoints, producers := splitLineageDeletions(keys)
+	if len(endpoints) > 0 {
+		if _, err := tx.ExecContext(ctx, columnLineageDeleteByEndpointStatement, pq.Array(endpoints)); err != nil {
+			return errors.Wrap(err, "failed to delete the column lineage of deleted objects")
+		}
+	}
+	if len(producers) > 0 {
+		if _, err := tx.ExecContext(ctx, columnLineageDeleteByProducerStatement, pq.Array(producers)); err != nil {
+			return errors.Wrap(err, "failed to delete the column lineage the deleted objects produced")
+		}
+		if _, err := tx.ExecContext(ctx, columnLineageVersionDeleteByProducerStatement, pq.Array(producers)); err != nil {
+			return errors.Wrap(err, "failed to delete the analysis state of deleted objects")
+		}
+	}
+	return nil
 }
 
 // lockAnalysisState reads the object's current meta hash under a shared row lock

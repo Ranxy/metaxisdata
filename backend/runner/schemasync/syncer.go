@@ -36,6 +36,12 @@ const (
 	// maxDatabaseSyncRetries bounds one database's backoff retries before it is
 	// left to the next instance-level scan.
 	maxDatabaseSyncRetries = 3
+	// statisticsRefreshInterval decouples the table statistics refresh from the
+	// schema diff. Statistics are excluded from the change fingerprint, so
+	// refreshing them never writes history or re-queues lineage, but rewriting
+	// every table's metadata on every 15-minute sync would still be needless
+	// write amplification for a value the API shows as an estimate.
+	statisticsRefreshInterval = 1 * time.Hour
 )
 
 // NewSyncer creates a schema syncer. notifier reports the outcome of a sync
@@ -81,6 +87,16 @@ type Syncer struct {
 	// the periodic scan both call SyncInstance, and that step writes the
 	// instance row and the database rows.
 	instanceSyncGate instanceSyncGate
+	// definitionMu guards definitionState: the per-database full-DDL refresh clock
+	// and rotation cursor. It is process-local for the same reason the sync gates
+	// are, and a restart makes every database due for a refresh, which is the
+	// first pass a fresh process wants anyway.
+	definitionMu    sync.Mutex
+	definitionState map[string]*objectDefinitionState
+	// statisticsMu guards statisticsState: when each database last had its table
+	// statistics refreshed.
+	statisticsMu    sync.Mutex
+	statisticsState map[string]time.Time
 	// notifier writes the messages a sync operation produces. See operation.go.
 	notifier Notifier
 	// operations are the user-visible sync operations still waiting for their
@@ -193,6 +209,13 @@ func (g *instanceSyncGate) finish(key string, call *instanceSyncCall, updated *s
 type databaseRetry struct {
 	attempts int
 	nextAt   time.Time
+}
+
+// objectDefinitionState is one database's DDL refresh state: when it last completed
+// a full refresh, and where the rotation over a database above the fetch limit stands.
+type objectDefinitionState struct {
+	lastFullRefresh time.Time
+	cursor          int
 }
 
 // databaseSyncRetryBackoff returns the delay before the next attempt. The last
@@ -400,9 +423,9 @@ func (s *Syncer) trySyncAll(ctx context.Context) {
 		slog.Error("Failed to retrieve instances", log.WithError(err))
 		return
 	}
-	now := time.Now()
+	instanceNow := time.Now()
 	for _, instance := range instances {
-		if !shouldSyncNow(getOrDefaultSyncInterval(instance), getOrDefaultLastSyncTime(instance.Metadata.LastSyncTime), now) {
+		if !shouldSyncNow(getOrDefaultSyncInterval(instance), getOrDefaultLastSyncTime(instance.Metadata.LastSyncTime), instanceNow) {
 			continue
 		}
 
@@ -425,6 +448,11 @@ func (s *Syncer) trySyncAll(ctx context.Context) {
 		instancesMap[instance.ResourceID] = instance
 	}
 
+	// The instance round above can take up to a sync timeout, so the database due check is
+	// made against a fresh clock: a database that became due during this round would
+	// otherwise wait a whole extra interval because it was compared to the round's start.
+	databaseNow := time.Now()
+
 	databases, err := s.store.ListDatabases(ctx, &store.FindDatabaseMessage{})
 	if err != nil {
 		slog.Error("Failed to retrieve databases", log.WithError(err))
@@ -437,7 +465,7 @@ func (s *Syncer) trySyncAll(ctx context.Context) {
 			continue
 		}
 		// The database inherits the sync interval from the instance.
-		if !shouldSyncNow(getOrDefaultSyncInterval(instance), getOrDefaultLastSyncTime(database.Metadata.LastSyncTime), now) {
+		if !shouldSyncNow(getOrDefaultSyncInterval(instance), getOrDefaultLastSyncTime(database.Metadata.LastSyncTime), databaseNow) {
 			continue
 		}
 
@@ -716,9 +744,25 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		return errors.Wrapf(err, "failed to list existing meta registry for database %q", database.DatabaseName)
 	}
 
+	// The statistics are read apart from the digest because the digest deliberately omits the
+	// metadata, and a stats-only refresh must write the metadata column without becoming a
+	// metadata update: that would write history and re-queue lineage analysis for a row count.
+	// The refresh has its own, slower cadence for the same reason a row count does not need to
+	// be rewritten on every sync.
+	statisticsKey := database.String()
+	refreshStatistics := s.statisticsRefreshDue(statisticsKey)
+	var storedStatistics map[store.MetaGUIDKey]store.MetaRegistryStatistics
+	if refreshStatistics {
+		storedStatistics, err = s.store.ListMetaRegistryStatistics(ctx, databaseGUID)
+		if err != nil {
+			return errors.Wrapf(err, "failed to list existing meta registry statistics for database %q", database.DatabaseName)
+		}
+	}
+
 	bmc := &batchMetaCreate{
-		exist:    storedMetadatas,
-		guidList: make([]*store.CreateMetaRegistryResourceMessage, 0),
+		exist:            storedMetadatas,
+		storedStatistics: storedStatistics,
+		guidList:         make([]*store.CreateMetaRegistryResourceMessage, 0),
 	}
 
 	for _, schema := range databaseMetadata.Schemas {
@@ -811,9 +855,20 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 
 	// deadlineCtx is used for the driver round trips so a hung target cannot
 	// outlive the sync deadline. Engines without the capability are skipped.
+	//
+	// The DDL refresh is decoupled from the metadata diff: a full refresh of the
+	// unchanged objects is periodic (objectDefinitionFullRefreshInterval) and a
+	// database above the fetch limit rotates through its objects instead of
+	// re-reading them all, so the per-sync SHOW CREATE cost is proportional to
+	// what changed rather than to the database's size.
 	var definitions *objectDefinitionBatch
+	var definitionPlan *definitionFetchPlan
+	definitionDBKey := database.String()
 	if reader, ok := driver.(db.ObjectDefinitionReader); ok {
-		definitions, err = prepareObjectDefinitions(deadlineCtx, s.store, reader, bmc)
+		full, cursor := s.definitionRefreshDue(definitionDBKey)
+		plan := bmc.planDefinitionFetch(full, cursor)
+		definitionPlan = &plan
+		definitions, err = prepareObjectDefinitions(deadlineCtx, s.store, reader, plan.items)
 		if err != nil {
 			return errors.Wrapf(err, "failed to sync object definitions for database %q", database.DatabaseName)
 		}
@@ -841,11 +896,16 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 
 	// Clean lineage rows for every deleted object, not only views: a dropped
 	// table or column leaves edges whose endpoint GUID no longer exists, and a
-	// dropped view also stops being the producer of its edges.
+	// dropped view also stops being the producer of its edges. One statement
+	// covers the whole delete set: a destructive sync removes a database's
+	// objects at once, and the per-object probes were mostly no-ops that only
+	// kept the write transaction open.
+	deletedKeys := make([]store.MetaGUIDKey, 0, len(bmc.deletes))
 	for _, item := range bmc.deletes {
-		if err := deleteColumnLineageByMetaTx(ctx, tx, item.GUID, item.ObjectType); err != nil {
-			return errors.Wrapf(err, "failed to delete column lineage for guid %q", item.GUID)
-		}
+		deletedKeys = append(deletedKeys, item.GUIDKey())
+	}
+	if err := s.store.DeleteColumnLineageByMetaGUIDs(ctx, tx, deletedKeys); err != nil {
+		return errors.Wrapf(err, "failed to delete column lineage for database %q", database.DatabaseName)
 	}
 
 	err = tx.Commit()
@@ -853,13 +913,27 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		return errors.Wrapf(err, "failed to commit transaction for database %q", database.DatabaseName)
 	}
 
+	// Record the completed DDL plan only after the commit: a rolled-back sync must
+	// not advance the refresh clock or the rotation, or it would skip objects it
+	// never refreshed.
+	if definitionPlan != nil {
+		s.recordDefinitionRefresh(definitionDBKey, *definitionPlan)
+	}
+	if refreshStatistics {
+		s.recordStatisticsRefresh(statisticsKey)
+	}
+
 	// The metadata cache is invalidated only after a successful commit, so a
-	// rolled-back sync cannot leave stale or uncommitted entries behind.
-	invalidated := make([]*store.MetaRegistryResource, 0, len(bmc.updates)+len(bmc.deletes))
+	// rolled-back sync cannot leave stale or uncommitted entries behind. The
+	// stats-only rows are cached too (TABLE is), so they are invalidated as well.
+	invalidated := make([]*store.MetaRegistryResource, 0, len(bmc.updates)+len(bmc.deletes)+len(bmc.statsUpdates))
 	for _, item := range bmc.updates {
 		invalidated = append(invalidated, &item.MetaRegistryResource)
 	}
 	invalidated = append(invalidated, bmc.deletes...)
+	for _, item := range bmc.statsUpdates {
+		invalidated = append(invalidated, &item.MetaRegistryResource)
+	}
 	s.store.InvalidateMetaRegistryCache(invalidated)
 
 	// Queue changed VIEWs and MATERIALIZED_VIEWs before touching the db row: if
@@ -931,8 +1005,15 @@ func (s *Syncer) markDatabaseDeleted(ctx context.Context, database *store.Databa
 type batchMetaCreate struct {
 	exist    []*store.MetaRegistryResource
 	guidList []*store.CreateMetaRegistryResourceMessage
-	updates  []*store.CreateMetaRegistryResourceMessage // populated by prepare()
-	deletes  []*store.MetaRegistryResource              // populated by prepare()
+	// storedStatistics is what the statistics of the stored rows are, so the diff can tell a
+	// stats-only change from an unchanged row without loading their metadata.
+	storedStatistics map[store.MetaGUIDKey]store.MetaRegistryStatistics
+	updates          []*store.CreateMetaRegistryResourceMessage // populated by prepare()
+	deletes          []*store.MetaRegistryResource              // populated by prepare()
+	// statsUpdates are rows whose non-statistics content is unchanged but whose statistics
+	// moved. They are written to the metadata column alone, so they never enter history or
+	// the lineage queue. Populated by prepare().
+	statsUpdates []*store.CreateMetaRegistryResourceMessage
 }
 
 func (b *batchMetaCreate) StoreMetaResource(_ context.Context, prefixName string, objectType storepb.MetaType, data *storepb.StoredMetadata) error {
@@ -987,6 +1068,11 @@ func (b *batchMetaCreate) write(ctx context.Context, s *store.Store, tx *sql.Tx)
 			return errors.Wrap(err, "BatchCreateMetaRegistryResource")
 		}
 	}
+	if len(b.statsUpdates) > 0 {
+		if _, err := s.BatchUpdateMetaRegistryStatisticsAt(ctx, tx, b.statsUpdates); err != nil {
+			return errors.Wrap(err, "BatchUpdateMetaRegistryStatistics")
+		}
+	}
 	return nil
 }
 
@@ -1017,6 +1103,11 @@ func (b *batchMetaCreate) diff() (updates []*store.CreateMetaRegistryResourceMes
 
 		if existing.MetaHash == nil || item.MetaHash == nil || !bytes.Equal(existing.MetaHash, item.MetaHash) {
 			updates = append(updates, item)
+		} else if stored, ok := b.storedStatistics[item.GUIDKey()]; ok && stored != store.MetadataStatistics(item.Metadata) {
+			// The schema did not change but the statistics moved: refresh only what the API
+			// shows. Treating this as an update would write a history row and re-queue
+			// lineage analysis for a row count.
+			b.statsUpdates = append(b.statsUpdates, item)
 		}
 		delete(existMap, item.GUIDKey())
 	}
@@ -1122,6 +1213,62 @@ func logSchemaSyncDeletion(database string, deletes []*store.MetaRegistryResourc
 		slog.Any("sampleGUIDs", guids))
 }
 
+// definitionRefreshDue reports whether a database's periodic full DDL refresh is
+// due, and where its rotation cursor stands. A database this process has not
+// refreshed yet is due, so the first sync after a restart re-reads every DDL.
+func (s *Syncer) definitionRefreshDue(key string) (bool, int) {
+	s.definitionMu.Lock()
+	defer s.definitionMu.Unlock()
+	state := s.definitionState[key]
+	if state == nil {
+		return true, 0
+	}
+	return !time.Now().Before(state.lastFullRefresh.Add(objectDefinitionFullRefreshInterval)), state.cursor
+}
+
+// recordDefinitionRefresh records a committed DDL plan. A change-only plan leaves
+// the rotation and the clock alone: only a full refresh advances them.
+func (s *Syncer) recordDefinitionRefresh(key string, plan definitionFetchPlan) {
+	if !plan.full {
+		return
+	}
+	s.definitionMu.Lock()
+	defer s.definitionMu.Unlock()
+	if s.definitionState == nil {
+		s.definitionState = map[string]*objectDefinitionState{}
+	}
+	state := s.definitionState[key]
+	if state == nil {
+		state = &objectDefinitionState{}
+		s.definitionState[key] = state
+	}
+	state.lastFullRefresh = time.Now()
+	state.cursor = plan.nextCursor
+}
+
+// statisticsRefreshDue reports whether a database's table statistics are due for
+// a refresh. A database this process has not refreshed yet is due, so the first
+// sync after a restart brings the estimates it displays up to date.
+func (s *Syncer) statisticsRefreshDue(key string) bool {
+	s.statisticsMu.Lock()
+	defer s.statisticsMu.Unlock()
+	last, ok := s.statisticsState[key]
+	if !ok {
+		return true
+	}
+	return !time.Now().Before(last.Add(statisticsRefreshInterval))
+}
+
+// recordStatisticsRefresh records a committed statistics refresh.
+func (s *Syncer) recordStatisticsRefresh(key string) {
+	s.statisticsMu.Lock()
+	defer s.statisticsMu.Unlock()
+	if s.statisticsState == nil {
+		s.statisticsState = map[string]time.Time{}
+	}
+	s.statisticsState[key] = time.Now()
+}
+
 // shouldSyncNow reports whether a resource whose last successful sync was
 // lastSyncTime, under an instance whose sync interval is interval, is due at
 // now. An interval of defaultSyncInterval means "never sync": it must be
@@ -1152,27 +1299,4 @@ func getOrDefaultLastSyncTime(t *timestamppb.Timestamp) time.Time {
 		return t.AsTime()
 	}
 	return time.Unix(0, 0)
-}
-
-// deleteColumnLineageByMetaTx removes every lineage row that mentions a deleted
-// object: the edges it produced (meta_guid) and the edges that point at it as a
-// source or target. Rows left behind would reference a GUID that no longer
-// exists.
-func deleteColumnLineageByMetaTx(ctx context.Context, tx *sql.Tx, metaGUID string, metaType storepb.MetaType) error {
-	if _, err := tx.ExecContext(ctx,
-		`DELETE FROM column_lineage
-		 WHERE (meta_guid = $1 AND meta_type = $2)
-		    OR (source_guid = $1 AND source_type = $2)
-		    OR (target_guid = $1 AND target_type = $2)`,
-		metaGUID, metaType,
-	); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx,
-		`DELETE FROM column_lineage_version WHERE meta_guid = $1 AND meta_type = $2`,
-		metaGUID, metaType,
-	); err != nil {
-		return err
-	}
-	return nil
 }

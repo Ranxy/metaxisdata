@@ -130,7 +130,7 @@ func TestSupportsObjectDefinition(t *testing.T) {
 
 // A full fetch covers every schema-bearing object, and objects with no
 // definition of their own are never candidates.
-func TestDefinitionCandidatesFiltersNonDefinitionTypes(t *testing.T) {
+func TestPlanDefinitionFetchFiltersNonDefinitionTypes(t *testing.T) {
 	t.Parallel()
 
 	bmc := &batchMetaCreate{
@@ -144,10 +144,12 @@ func TestDefinitionCandidatesFiltersNonDefinitionTypes(t *testing.T) {
 		},
 	}
 
-	candidates := bmc.definitionCandidates()
-	require.Len(t, candidates, 3)
+	plan := bmc.planDefinitionFetch(true, 0)
+	require.True(t, plan.full)
+	require.False(t, plan.rotating)
+	require.Len(t, plan.items, 3)
 	types := make(map[storepb.MetaType]int)
-	for _, item := range candidates {
+	for _, item := range plan.items {
 		types[item.ObjectType]++
 	}
 	require.Equal(t, map[storepb.MetaType]int{
@@ -157,27 +159,62 @@ func TestDefinitionCandidatesFiltersNonDefinitionTypes(t *testing.T) {
 	}, types)
 }
 
-// Above the limit the fetch degrades to the objects that changed in this sync,
-// so a pathologically large database does not issue one query per object.
-func TestDefinitionCandidatesDegradesAboveLimit(t *testing.T) {
+// Between full refreshes only the objects whose metadata changed are re-read, so
+// the per-sync SHOW CREATE cost follows the change rather than the database size.
+func TestPlanDefinitionFetchChangeOnlyBetweenRefreshes(t *testing.T) {
+	t.Parallel()
+
+	unchanged := tableResource("unchanged")
+	changed := tableResource("changed")
+	bmc := &batchMetaCreate{
+		guidList: []*store.CreateMetaRegistryResourceMessage{unchanged, changed, viewResource("v1")},
+		updates: []*store.CreateMetaRegistryResourceMessage{
+			changed,
+			// A changed object without its own definition is not a candidate.
+			columnResource("c1"),
+		},
+	}
+
+	plan := bmc.planDefinitionFetch(false, 0)
+	require.False(t, plan.full)
+	require.False(t, plan.rotating)
+	require.Len(t, plan.items, 1)
+	require.Equal(t, "changed", plan.items[0].Metadata.GetTableMetadata().GetName())
+}
+
+// A database above the limit refreshes one rotating window per full refresh
+// instead of every object, and a changed object outside the window is still read
+// so a real DDL change never waits for the rotation to reach it.
+func TestPlanDefinitionFetchRotatesAboveLimit(t *testing.T) {
 	t.Parallel()
 
 	guidList := make([]*store.CreateMetaRegistryResourceMessage, 0, fullDefinitionObjectLimit+1)
 	for i := 0; i < fullDefinitionObjectLimit; i++ {
-		guidList = append(guidList, tableResource(fmt.Sprintf("t%d", i)))
+		guidList = append(guidList, tableResource(fmt.Sprintf("t%04d", i)))
 	}
 	bmc := &batchMetaCreate{guidList: guidList}
-	// At the limit the fetch is still full.
-	require.Len(t, bmc.definitionCandidates(), fullDefinitionObjectLimit)
+	// At the limit the refresh is still full.
+	atLimit := bmc.planDefinitionFetch(true, 0)
+	require.False(t, atLimit.rotating)
+	require.Len(t, atLimit.items, fullDefinitionObjectLimit)
 
-	// One more object pushes the database over the limit, and the fetch degrades
-	// to the objects that changed in this sync.
-	changed := tableResource("changed")
+	// One more object pushes the database over the limit.
+	changed := tableResource("zzz_changed")
 	bmc.guidList = append(bmc.guidList, changed)
 	bmc.updates = []*store.CreateMetaRegistryResourceMessage{changed}
-	candidates := bmc.definitionCandidates()
-	require.Len(t, candidates, 1)
-	require.Equal(t, "changed", candidates[0].Metadata.GetTableMetadata().GetName())
+	first := bmc.planDefinitionFetch(true, 0)
+	require.True(t, first.rotating)
+	// The window is the fetch limit, plus the changed object it does not cover.
+	require.Len(t, first.items, fullDefinitionObjectLimit+1)
+	require.Equal(t, fullDefinitionObjectLimit, first.nextCursor)
+
+	// The next full refresh continues where the first stopped; the sorted GUIDs
+	// put zzz_changed in the first window, so the second window starts after it.
+	second := bmc.planDefinitionFetch(true, first.nextCursor)
+	require.True(t, second.rotating)
+	require.Len(t, second.items, fullDefinitionObjectLimit)
+	require.Contains(t, second.items, changed)
+	require.NotEqual(t, first.nextCursor, second.nextCursor)
 }
 
 // Objects whose fetch failed or whose definition is not valid UTF-8 are excluded
