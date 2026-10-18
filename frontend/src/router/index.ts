@@ -132,6 +132,22 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
+        path: "connected-apps",
+        name: "ConnectedAppsManagement",
+        component: () =>
+          import("@/pages/settings/ConnectedAppsSettingsPage.vue"),
+        // Which MCP clients were authorized on whose behalf is access
+        // governance, so it is an administrative errand beside users and
+        // identity providers. The table is seven columns wide, so it opts out
+        // of the section's reading column like audit-logs and applications.
+        meta: {
+          requiresAuth: true,
+          layout: "default",
+          permission: "metaxisdata.connectedApps.list",
+          settingsContentWidth: "full",
+        },
+      },
+      {
         path: "llm-providers",
         name: "LLMProviderManagement",
         component: () =>
@@ -309,6 +325,15 @@ const routes: RouteRecordRaw[] = [
     path: "/device",
     name: "DeviceLogin",
     component: () => import("@/pages/DeviceLoginPage.vue"),
+    meta: { requiresAuth: true, layout: "default" },
+  },
+  {
+    // Reached from the avatar menu, not from a nav entry: managing the apps a
+    // person connected is an account control, not a product destination. No
+    // permission — every signed-in user owns the connections it lists.
+    path: "/connected-apps",
+    name: "ConnectedApps",
+    component: () => import("@/pages/ConnectedAppsPage.vue"),
     meta: { requiresAuth: true, layout: "default" },
   },
   {

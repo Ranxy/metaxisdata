@@ -545,6 +545,31 @@
       }
     },
     {
+      "id": "revoke",
+      "category": "Access",
+      "definition": "Ending a credential's or an authorization's validity. The Chinese rendering is 撤销, matching the API key pages; never 吊销.",
+      "translations": {
+        "en-US": "revoke",
+        "zh-CN": "撤销"
+      },
+      "scope": [
+        "applicationManagement.",
+        "connectedApps.",
+        "openlineageSettings."
+      ],
+      "when": {
+        "en-US": "/\\brevok/i"
+      },
+      "avoid": {
+        "zh-CN": [
+          "吊销",
+          "回收",
+          "作废",
+          "取消授权"
+        ]
+      }
+    },
+    {
       "id": "sso",
       "category": "Identity",
       "definition": "Single sign-on through a configured identity provider.",
@@ -661,6 +686,30 @@
       "translations": {
         "en-US": "OAuth 2.1",
         "zh-CN": "OAuth 2.1"
+      }
+    },
+    {
+      "id": "connected-app",
+      "category": "Integration",
+      "definition": "An MCP client a user authorized to act on their behalf; one record per user and client authorization. Not a browser session.",
+      "translations": {
+        "en-US": "connected app",
+        "zh-CN": "已连接应用"
+      },
+      "scope": [
+        "connectedApps.",
+        "menu."
+      ],
+      "when": {
+        "en-US": "/\\bconnected apps?\\b/i"
+      },
+      "avoid": {
+        "zh-CN": [
+          "已连接的应用",
+          "关联应用",
+          "连接的应用",
+          "第三方应用"
+        ]
       }
     },
     {

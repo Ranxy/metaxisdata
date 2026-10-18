@@ -3,6 +3,7 @@ import { createConnectTransport } from "@connectrpc/connect-web";
 import { ApplicationService } from "@/types/proto-es/v1/application_service_pb";
 import { AuditLogService } from "@/types/proto-es/v1/audit_log_service_pb";
 import { AuthService } from "@/types/proto-es/v1/auth_service_pb";
+import { ConnectedAppService } from "@/types/proto-es/v1/connected_app_service_pb";
 import { DatabaseService } from "@/types/proto-es/v1/database_service_pb";
 import { EnvironmentService } from "@/types/proto-es/v1/environment_service_pb";
 import { ExplainSQLService } from "@/types/proto-es/v1/explain_sql_service_pb";
@@ -31,6 +32,7 @@ const transport = createConnectTransport({
 export const applicationClient = createClient(ApplicationService, transport);
 export const authClient = createClient(AuthService, transport);
 export const auditLogClient = createClient(AuditLogService, transport);
+export const connectedAppClient = createClient(ConnectedAppService, transport);
 export const userClient = createClient(UserService, transport);
 export const instanceClient = createClient(InstanceService, transport);
 export const environmentClient = createClient(EnvironmentService, transport);

@@ -28,6 +28,7 @@ const ALL_PERMISSIONS = [
   "metaxisdata.iam.getPolicy",
   "metaxisdata.users.list",
   "metaxisdata.identityProviders.list",
+  "metaxisdata.connectedApps.list",
   "metaxisdata.roles.list",
   "metaxisdata.groups.list",
   "metaxisdata.llm.profiles.list",
@@ -81,5 +82,29 @@ describe("SettingsNav", () => {
 
     expect(hrefs[hrefs.indexOf("/settings/iam") + 1]).toBe("/settings/users");
     expect(hrefs[hrefs.length - 1]).toBe("/settings/audit-logs");
+  });
+
+  // Connected apps is access governance, so it sits with the identity pages and
+  // is hidden from a caller who may not see the workspace's connections.
+  it("offers connected apps only to a reader of the workspace connections", async () => {
+    useAuthStore().user = create(UserSchema, {
+      permissions: ["metaxisdata.connectedApps.list"],
+    });
+    const { wrapper } = await mountNav();
+
+    expect(wrapper.text()).toContain("Connected apps");
+    expect(wrapper.text()).not.toContain("Roles");
+  });
+
+  it("places connected apps after identity providers and before roles", async () => {
+    useAuthStore().user = create(UserSchema, { permissions: ALL_PERMISSIONS });
+    const { wrapper } = await mountNav();
+
+    const hrefs = wrapper.findAll("a").map((link) => link.attributes("href"));
+    const connectedApps = hrefs.indexOf("/settings/connected-apps");
+
+    expect(connectedApps).toBeGreaterThan(-1);
+    expect(hrefs[connectedApps - 1]).toBe("/settings/identity-providers");
+    expect(hrefs[connectedApps + 1]).toBe("/settings/roles");
   });
 });

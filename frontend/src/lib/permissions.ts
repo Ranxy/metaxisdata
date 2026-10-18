@@ -70,6 +70,13 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     ],
   },
   {
+    resource: "connectedApps",
+    permissions: [
+      "metaxisdata.connectedApps.list",
+      "metaxisdata.connectedApps.revoke",
+    ],
+  },
+  {
     resource: "manualSqls",
     permissions: [
       "metaxisdata.manualSqls.get",

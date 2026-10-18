@@ -87,6 +87,24 @@ describe("auth guard", () => {
     await expect(guard("/settings/roles")).resolves.toBeUndefined();
   });
 
+  // The administration surface is permission-gated; the self-service one is
+  // deliberately not, because every signed-in user manages their own connections.
+  it("guards the connected-apps administration page by permission", async () => {
+    setAuth({ permissions: [] });
+    await expect(guard("/settings/connected-apps")).resolves.toEqual({
+      name: "Home",
+    });
+
+    setAuth({ permissions: ["metaxisdata.connectedApps.list"] });
+    await expect(guard("/settings/connected-apps")).resolves.toBeUndefined();
+  });
+
+  it("lets any signed-in caller reach their own connected apps", async () => {
+    setAuth({ permissions: [] });
+
+    await expect(guard("/connected-apps")).resolves.toBeUndefined();
+  });
+
   it("keeps a pending password reset on the login form", async () => {
     setAuth({ reset: true, permissions: ["metaxisdata.roles.list"] });
 

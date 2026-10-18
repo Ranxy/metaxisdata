@@ -33,6 +33,7 @@ import {
   ClipboardList,
   Globe,
   KeyRound,
+  Link2,
   Network,
   Shield,
   ShieldCheck,
@@ -90,6 +91,16 @@ const ALL_ITEMS = computed(() => [
     path: "/settings/identity-providers",
     icon: ShieldCheck,
     permission: "metaxisdata.identityProviders.list",
+  },
+  // The connected-app entry takes the page's own title key, for the same reason
+  // the applications entry below does: the entry and the heading it opens have
+  // to read the same, and two keys drift apart.
+  {
+    key: "connectedApps",
+    label: t("connectedApps.title"),
+    path: "/settings/connected-apps",
+    icon: Link2,
+    permission: "metaxisdata.connectedApps.list",
   },
   {
     key: "roles",
