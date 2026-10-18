@@ -89,7 +89,9 @@
 
 > 不建议「大重写」。当前事务纪律、singleflight、operation 聚合与测试选点都值得保留；按上面的顺序做**局部替换 + 契约加固**收益最高。
 >
-> **实施状态（2026-10-18）**：第 1 步的 **R-01** 与 **R-02** 已实现——`683ff9d`（实例元数据定向 patch）、`3183110`（方言引用 + 注释感知的完整 DDL 判定）；第 2 步的 **R-03/R-04/R-17** 已实现——`d186476`（分析写入 CAS + 失败状态原子化 + `column_lineage_version.analyzer_version` 迁移 0021 + 自动全量重算）。均补了对应单测/回归。R-01 的 API 侧迁移（`UpdateInstance` / 数据源 CRUD 也改用 `MetadataUpdates`）尚未做，剩余风险降为「API 之间、或 API 覆盖 runner 写回的 `last_sync_time`」的良性竞争。R-03/R-04 的真实 DB 事务路径目前只有单元测试覆盖其纯逻辑，并发/回滚行为仍需集成用例（T3/T4 仍是缺口）。其余条目未动。
+> **实施状态（2026-10-18）**：第 1 步的 **R-01/R-02** 已实现——`683ff9d`、`3183110`；第 2 步的 **R-03/R-04/R-17** 已实现——`d186476`（CAS + 原子失败状态 + `analyzer_version` 迁移 0021）；第 3 步的 **R-05/R-06/R-08/R-31 + R-11 生命周期部分** 已实现——`ef69c8b`（实例级 gate、LastSyncTime 后移、全量同步错误上报、批量预算、`runner.Runner`/`runner.Go` 统一骨架 + panic 边界）。均补了对应单测/回归，并通过 migrator 与真实 server 集成套件。
+>
+> **仍未做**：R-01 的 API 侧迁移；R-03/R-04 的并发/回滚专项集成用例（T3/T4）；R-11 余下的 ticker jitter 与 per-iteration timeout；R-07（坏实例仍入队其库）、R-09/R-10/R-12～R-29 等后续条目。
 
 ---
 
@@ -350,6 +352,7 @@ _ = s.UpsertColumnLineageVersion(ctx, &store.ColumnLineageVersion{
 - **事实**：`databaseSyncGate` 只包住 `SyncDatabaseSchema`（:563-586）；`SyncInstance` 被 API（`instance_service.go:165,349,403`）与后台 pool（`syncer.go:362`）并发调用，没有互斥。两个并发 `SyncInstance` 会各自打开 admin 连接、各自 `UpdateInstance`、各自枚举/创建/软删除数据库。
 - **影响**：叠加 R-01（最后写者胜）、R-06（LastSyncTime）与 `CreateDatabaseDefault` 的 `ON CONFLICT ... DO UPDATE SET deleted = EXCLUDED.deleted`（`store/database.go:141-150`），一个调用可能「复活」另一个调用刚软删除的库，下一个快照再隐藏，形成 deleted 抖动；单次 `SyncInstance` 最长 15 分钟，窗口不小。单副本下同样存在（多副本不在考虑范围）。
 - **建议**：增加与 `databaseSyncGate` 同构的 `instanceSyncGate`（owner/waiters、panic 释放、waiter 尊重自己的 ctx）包住 `SyncInstance`；或抽成通用 keyed singleflight 复用。测试：两个并发 `SyncInstance` 只执行一次、waiter 复用 owner 的错误。
+- **已实施（2026-10-18，commit `ef69c8b`）**：`instanceSyncGate`/`instanceSyncCall` 实现 owner/waiter、panic 释放、waiter 尊重自己的 ctx；`SyncInstance` 返回值经由 call 复用。测试：`TestInstanceSyncGateSerializesOneInstance`。
 
 ### R-06 实例 `LastSyncTime` 早于数据库枚举/软删除提交
 
@@ -357,6 +360,7 @@ _ = s.UpsertColumnLineageVersion(ctx, &store.ColumnLineageVersion{
 - **事实**：`metadata.LastSyncTime` 在 `GetInstanceMeta` 成功时赋值，并在 :490 先落库；随后 `ListDatabases`、逐个 `CreateDatabaseDefault`、逐个 `UpdateDatabase(deleted=true)` 才执行，任一失败直接 return error，但实例已被标记为「已同步」。数据库级的同一约束被刻意做对（`syncer.go:800-821`：commit 之后才写），实例级没有对齐。
 - **影响**：一次瞬时 store 错误或单库插入失败后，扫描在下一个 interval 之前不会重试该实例，新发现的库不会被创建/入队；`SyncInterval` 配成 24h 时窗口同步放大。后台路径只有一条 Warn。
 - **建议**：把实例元数据写回移到枚举与软删除全部成功之后；或拆成「version/lowerCase 先写、LastSyncTime 最后写」。补测试（需要可注入 store，见 R-19）。
+- **已实施（2026-10-18，commit `ef69c8b`）**：`SyncInstance` 现在先完成数据库枚举/创建/软删除，全部成功后才写 `UpdateInstance` 的定向 patch；枚举失败不会推进 `LastSyncTime`。软删除的错误也改为 `errors.Wrapf` 保留根因。
 
 ### R-07 实例同步失败后仍入队该实例全部 due 数据库
 
@@ -382,6 +386,7 @@ s.EnqueueDatabases(ctx, operation, databases)   // nil 列表 = seal，pending �
 `instanceErr` 为空、`pending` 为空 → `maybeFinishOperation` 立即投递 INFO 消息，`Succeeded/Failed/Unfinished = 0`。唯一痕迹是默认级别不可见的 Debug 日志。
 - **影响**：用户点「全量同步」后收到「成功」，实际 0 个库入队；对可信度是实质伤害，且后台没有 Error/Warn 可排查。
 - **建议**：把错误写进 operation（新增 `finishErr` 或复用 `instanceErr`），让消息变 ERROR 并带原因；日志至少 Warn。测试：`ListDatabases` 失败 ⇒ 通知 severity=ERROR 且 `InstanceError != ""`。
+- **已实施（2026-10-18，commit `ef69c8b`）**：`Syncer.FailOperation(ctx, operation, cause)` 记录 `instanceErr` 并 seal；`SyncAllDatabases` 读库失败时以 Error 日志 + `FailOperation` 结束，消息变 ERROR。测试：`TestOperationReportsAFailedDatabaseList`。
 
 ### R-09 表统计与 sequence `last_value` 永不刷新
 
@@ -416,6 +421,7 @@ for _, item := range bmc.deletes {
 - **事实**：四个 `Run(ctx, *sync.WaitGroup)` 各自实现；长期循环体（analyzer 的 queueAll/消费循环、syncer 的 checker、maintenance 的 runOnce、validation 的 runOnce）没有顶层 recover；而 `sourcegraph/conc` 的 `pool.Wait()` 会把子 goroutine 的 panic 重新抛出（`conc@v0.3.0/waitgroup.go` 的 `Repanic`），`Run` 由 `go` 裸启动，HTTP 的 `connect.WithRecover` 覆盖不到后台 goroutine → **后台 panic 会打崩整个进程**。目前只有 trySyncAll、单库同步、单对象分析有 recover。
 - **影响**：一个 nil 解引用/库 panic 从「一个 tick 失败」升级为「整站重启」；新增/删除 runner 时漏改 `Add(4)` 会让 `Wait` 提前返回甚至负计数 panic；首跑/超时/日志策略不一致增加维护成本。**校准**：这是防御性缺口——本次评审没有在 checker/validation/maintenance 循环里找到可稳定触发的 panic 路径（现有代码有 nil 检查与锁保护），所以优先级 P2，而不是现存故障。
 - **建议**：定义 `type Runner interface { Run(ctx context.Context) error }`，server 持有 `[]Runner`，用 `errgroup.WithContext` 统一启动/等待/取消；每个 goroutine 顶层 `defer recover → Error + debug.Stack()`；把 ticker 封装成带 jitter、per-run timeout、首跑策略的 helper；日志统一注入 logger/统一 `component` 字段。短期至少给四个 `Run` 各加一层 recover，并把 `Add(4)` 改成按 slice 长度。
+- **已实施（2026-10-18，commit `ef69c8b`，生命周期部分）**：新增 `backend/runner/runner.go` 的 `Runner`（`Name`/`Run(ctx)`）与 `Go`（wg.Go + `recover` + `debug.Stack` 记录）；server 改为 `[]runner.Runner` 循环启动，不再硬编码 `Add(4)`；四个 runner 实现 `Name()`。测试：`TestGoRunsTheRunnerAndReleasesTheWaitGroup`、`TestGoRecoversAPanickingRunner`。**未做**：ticker jitter、per-iteration timeout、统一首跑/日志字段（留待后续）。
 
 ### R-12 进程内状态假设未登记（单副本已确认，文档债）
 
@@ -496,6 +502,7 @@ for _, item := range bmc.deletes {
 - **事实**：`maxBatchInstances = 1000`；`BatchSyncInstances` 的 for 循环对每个实例同步调用 `SyncInstance`（:403，内部 `GetInstanceMeta` deadline 15 分钟），再 `SyncAllDatabases`；Connect handler 链路上没有任何 per-RPC 超时（`mcpEndpointTimeout` 只包 `/mcp`）。
 - **影响**：1000 个目标 hang 的实例可在服务端串行挂约 250 小时，请求 goroutine 与每实例连接槽长期被占；`.agents/docs/schemasync.md` 已知问题 1 只写了「单实例 API 同步最长 15 分钟」，未覆盖批量放大。这是可用性/资源问题，不是数据错误。
 - **建议（按 2026-10-18 决策：保持同步，不转异步）**：给 Connect 链路加 per-RPC deadline（至少给 batch RPC 加）；限制 `BatchSyncInstances` 的单次总预算（实例数 × 超时）并返回已完成的部分结果；在 proto/文档中写明最坏耗时与「目标 hang 会拖住整批」的事实。把批量同步整体转异步是更彻底的方向，但已确认暂不做。
+- **已实施（2026-10-18，commit `ef69c8b`）**：`BatchSyncInstances` 增加 `batchSyncBudget = 5 * time.Minute` 的总预算，预算用尽后剩余实例标记为失败并跳过；`getInstanceMessage`/`SyncInstance`/`SyncAllDatabases` 都使用该 budget ctx。单个 `SyncInstance` RPC 仍维持 15 分钟内部 deadline（已知问题 1，未改语义）。
 - **核实**：常量、循环、timeout 位置均由审稿人逐行确认（三份分报告未覆盖，作为漏项补入）。
 
 ### R-32 `lineagevalidation` 没有启动首轮 pass
@@ -613,10 +620,10 @@ type Runner interface {
 | T3 | `BatchReplaceColumnLineageIfCurrent` 的 stale 路径（行已删/hash 变） | 钉住 R-03：不产生孤儿边、不写 version |
 | T4 | `markAnalysisFailed` 注入第二次写失败 | 钉住 R-04：不留「hash 相等 + 边已清空」 |
 | T5 | 删除 1 张含 N 列的表：断言清理语句数/结果 | 钉住 R-10 的规模回归 |
-| T6 | `SyncAllDatabases` 的 `ListDatabases` 失败 | 断言 operation 变 ERROR（R-08） |
+| T6 | `SyncAllDatabases` 的 `ListDatabases` 失败 | 断言 operation 变 ERROR（R-08）；已由 `TestOperationReportsAFailedDatabaseList` 覆盖 |
 | T7 | 实例同步失败 ⇒ 该实例的库不入队 | 钉住 R-07 |
 | T8 | `queueAll` 的 hash + analyzer_version 判据；事件路径 `needsAnalysis` | 钉住 R-14/R-17 |
-| T9 | `Run` 的 ctx 取消/panic 隔离/`Add` 计数（用 fake Runner） | 钉住 R-11 |
+| T9 | `Run` 的 ctx 取消/panic 隔离/`Add` 计数（用 fake Runner） | 钉住 R-11；`runner.Go` 的 panic/计数已覆盖，四包 `Run` 的 ctx 取消仍有 `lineagevalidation` 用例 |
 | T10 | 持 `revalidateMu` 时 `runOnce` 在 ctx 取消后返回 | 钉住 R-13 |
 | T11 | `maintenance.runOnce` 表驱动（错误隔离、setting 失败、cutoff 边界、nil revalidator） | 钉住 R-18 |
 | T12 | `-race -count=10` 的 runner 测试门禁 | 让 R-19 这类 flake 在 CI 暴露 |
@@ -681,10 +688,10 @@ type Runner interface {
 | R-02 方言分支与失败链 | Confirmed | MariaDB 注册、视图裸 body、`default` 无引用、`markAnalysisFailed` 写 hash 均已核对；审稿人用 overlay 测试实测 `CREATE VIEW order AS …` 在 MariaDB/StarRocks 解析失败 |
 | R-03 竞态窗口 | Confirmed（机制）；已实施 | 触发需要「删除恰逢分析」，概率低；CAS 已实现，未在集成环境构造并发用例 |
 | R-04 hash 覆盖 | Confirmed；已实施 | 原实现会把 hash 覆盖成 NULL；新 `RecordAnalysisError` 只更新 error_message，`MarkAnalysisFailedIfCurrent` 原子清边 |
-| R-05/R-06/R-07/R-08 | Confirmed | 调用点、写序、失败路径逐行核对；R-06/R-07 的影响是延迟/噪音，不是数据损坏 |
+| R-05/R-06/R-07/R-08 | Confirmed；R-05/R-06/R-08 已实施 | 调用点、写序、失败路径逐行核对；R-06/R-07 的影响是延迟/噪音，不是数据损坏 |
 | R-09 统计字段 | Confirmed（UI 层） | 未在真实库验证展示值；后端无消费者，仅前端两处渲染 |
 | R-10 no-op 规模 | Confirmed（结论） | 分报告「VIEW/MV 的 meta_guid 支路也是 no-op」不准确，已修正；与 `schemasync.md` 已知问题 3 合并 |
-| R-11 panic 隔离 | Confirmed（代码） | `conc` 的 `Wait` 会 re-panic；但未找到可稳定触发的 panic 路径 → 防御性缺口 |
+| R-11 panic 隔离 | Confirmed；生命周期部分已实施 | `conc` 的 `Wait` 会 re-panic；新增 `runner.Go` 顶层 recover；jitter/per-iteration timeout 未做 |
 | R-12 多副本 | 已决策：单副本（2026-10-18） | 不做 lease；只补 `security-posture.md` 的进程内状态清单，属文档债 |
 | R-13 锁不可取消 | Confirmed | `sync.Mutex.Lock` 不响应 ctx；确定影响是 shutdown 噪音/延迟，不是无限期停摆 |
 | R-14 重分析 | Confirmed（频率依赖上报节奏） | 已存在语句也入队；「每 10 秒」不是代码保证，而是轮询上报场景的推导 |
@@ -695,7 +702,7 @@ type Runner interface {
 | R-25 GUID 冲突 | 待验证 | 需要构造含字面量 `%3B` 或 `;` 的对象名；机制成立 |
 | R-28 限流饱和通知 | Confirmed（机制） | 饱和是否常见取决于部署规模，未实测 |
 | R-29 重复边 | 条件性 | 单副本下仍有一个真实窗口：ingestion 的第二个 Processor vs revalidation；多副本路径按决策 1 删除 |
-| R-31/R-32/R-33 | Confirmed（审稿人补） | 批量 API 无 per-RPC 超时、validation 无启动首轮、stale `now` |
+| R-31/R-32/R-33 | Confirmed；R-31 已实施 | 批量 API 现有 5 分钟总预算；单实例 RPC 仍 15m（已知问题 1）；R-32/R-33 未动 |
 
 ### 11.3 已确认的决策（2026-10-18，产品/负责人确认）
 
