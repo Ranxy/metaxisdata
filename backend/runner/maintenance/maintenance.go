@@ -6,7 +6,6 @@ package maintenance
 import (
 	"context"
 	"log/slog"
-	"sync"
 	"time"
 
 	"github.com/Ranxy/metaxisdata/backend/common/log"
@@ -48,10 +47,11 @@ func NewRunner(stores *store.Store, revalidator LineageRevalidator) *Runner {
 	return &Runner{store: stores, revalidator: revalidator}
 }
 
-// Run blocks until ctx is cancelled, then signals wg.Done().
-func (r *Runner) Run(ctx context.Context, wg *sync.WaitGroup) {
-	defer wg.Done()
+// Name identifies the runner in the server's lifecycle logs.
+func (*Runner) Name() string { return "maintenance" }
 
+// Run blocks until ctx is cancelled.
+func (r *Runner) Run(ctx context.Context) {
 	r.runOnce(ctx)
 
 	ticker := time.NewTicker(interval)

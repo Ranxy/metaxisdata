@@ -77,6 +77,10 @@ type Syncer struct {
 	// above is drained on dequeue, so it is not an in-flight guard by itself,
 	// and the API path calls SyncDatabaseSchema directly.
 	databaseSyncGate databaseSyncGate
+	// instanceSyncGate serializes the enumeration of one instance. The API and
+	// the periodic scan both call SyncInstance, and that step writes the
+	// instance row and the database rows.
+	instanceSyncGate instanceSyncGate
 	// notifier writes the messages a sync operation produces. See operation.go.
 	notifier Notifier
 	// operations are the user-visible sync operations still waiting for their
@@ -135,6 +139,50 @@ func (g *databaseSyncGate) owns(key string) bool {
 // fresh sync instead of reusing a finished one.
 func (g *databaseSyncGate) finish(key string, call *databaseSyncCall, err error) {
 	g.mu.Lock()
+	call.err = err
+	delete(g.inFlight, key)
+	g.mu.Unlock()
+	close(call.done)
+}
+
+// instanceSyncGate makes one instance enumeration run at a time inside the
+// process. Two concurrent enumerations would each read the database list, create
+// the same missing rows and write the same soft deletes, so the deleted flags and
+// LastSyncTime would depend on commit order rather than on the target's schema.
+type instanceSyncGate struct {
+	mu       sync.Mutex
+	inFlight map[string]*instanceSyncCall
+}
+
+// instanceSyncCall is one instance's running enumeration: done is closed when the
+// owner published its result.
+type instanceSyncCall struct {
+	done            chan struct{}
+	updatedInstance *store.InstanceMessage
+	databases       []*storepb.DatabaseSchemaMetadata
+	newDatabases    []*store.DatabaseMessage
+	err             error
+}
+
+func (g *instanceSyncGate) acquire(key string) (call *instanceSyncCall, owner bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.inFlight == nil {
+		g.inFlight = map[string]*instanceSyncCall{}
+	}
+	if existing, ok := g.inFlight[key]; ok {
+		return existing, false
+	}
+	call = &instanceSyncCall{done: make(chan struct{})}
+	g.inFlight[key] = call
+	return call, true
+}
+
+func (g *instanceSyncGate) finish(key string, call *instanceSyncCall, updated *store.InstanceMessage, databases []*storepb.DatabaseSchemaMetadata, newDatabases []*store.DatabaseMessage, err error) {
+	g.mu.Lock()
+	call.updatedInstance = updated
+	call.databases = databases
+	call.newDatabases = newDatabases
 	call.err = err
 	delete(g.inFlight, key)
 	g.mu.Unlock()
@@ -212,10 +260,11 @@ func (s *Syncer) retryDue(key any, now time.Time) bool {
 	return !now.Before(entry.nextAt)
 }
 
-// Run will run the schema syncer once.
-func (s *Syncer) Run(ctx context.Context, wg *sync.WaitGroup) {
-	defer wg.Done()
+// Name identifies the runner in the server's lifecycle logs.
+func (*Syncer) Name() string { return "schemasync" }
 
+// Run starts the schema syncer. It blocks until ctx is cancelled.
+func (s *Syncer) Run(ctx context.Context) {
 	sp := pool.New()
 	sp.Go(func() {
 		s.trySyncAll(ctx)
@@ -407,9 +456,12 @@ func (s *Syncer) SyncAllDatabases(ctx context.Context, operation *SyncOperation,
 	}
 	databases, err := s.store.ListDatabases(ctx, find)
 	if err != nil {
-		slog.Debug("Failed to find databases to sync",
-			slog.String("error", err.Error()))
-		databases = nil
+		// A full sync that could not read the database list must not report
+		// success: seal the operation with the error so the user gets an ERROR
+		// message instead of an INFO message naming zero databases.
+		slog.Error("Failed to list databases to sync", log.WithError(err))
+		s.FailOperation(ctx, operation, errors.Wrap(err, "failed to list the databases to sync"))
+		return
 	}
 	s.EnqueueDatabases(ctx, operation, databases)
 }
@@ -468,40 +520,50 @@ func (s *Syncer) GetInstanceMeta(ctx context.Context, instance *store.InstanceMe
 }
 
 // SyncInstance syncs the schema for all databases in an instance.
-func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessage) (*store.InstanceMessage, []*storepb.DatabaseSchemaMetadata, []*store.DatabaseMessage, error) {
+//
+// The API and the periodic scan can ask for the same instance at once, so the
+// enumeration is serialized per instance exactly as a database sync is: a caller
+// that arrives while one is running waits for it and reuses its result. Two
+// concurrent enumerations would otherwise create the same database rows and write
+// the same deleted flags against each other's reads.
+func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessage) (updatedInstance *store.InstanceMessage, databases []*storepb.DatabaseSchemaMetadata, newDatabases []*store.DatabaseMessage, err error) {
+	if instance == nil {
+		return nil, nil, nil, errors.New("instance is required")
+	}
+
+	key := instance.ResourceID
+	call, owner := s.instanceSyncGate.acquire(key)
+	if !owner {
+		select {
+		case <-call.done:
+			return call.updatedInstance, call.databases, call.newDatabases, call.err
+		case <-ctx.Done():
+			return nil, nil, nil, ctx.Err()
+		}
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			// Waiters must be released, and a panic is not a result to reuse.
+			s.instanceSyncGate.finish(key, call, nil, nil, nil, errors.Errorf("instance schema sync panicked: %v", r))
+			panic(r)
+		}
+		s.instanceSyncGate.finish(key, call, updatedInstance, databases, newDatabases, err)
+	}()
+
 	instanceMeta, err := s.GetInstanceMeta(ctx, instance)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	// The sync only owns the fields it observed: last_sync_time, the engine
-	// version and the case-sensitivity flag. Writing a whole metadata clone built
-	// before the (potentially long) driver round trip would silently revert any
-	// concurrent API change to the title, data sources or activation. The patch
-	// reads the row under lock and merges, so those edits survive.
-	updatedInstance, err := s.store.UpdateInstance(ctx, &store.UpdateInstanceMessage{
-		ResourceID: instance.ResourceID,
-		MetadataUpdates: []func(*storepb.Instance){
-			func(metadata *storepb.Instance) {
-				metadata.LastSyncTime = instanceMeta.Metadata.LastSyncTime
-				metadata.MysqlLowerCaseTableNames = instanceMeta.Metadata.MysqlLowerCaseTableNames
-				metadata.Version = instanceMeta.Version
-			},
-		},
-	})
-	if err != nil {
-		return nil, nil, nil, err
-	}
 
-	databases, err := s.store.ListDatabases(ctx, &store.FindDatabaseMessage{InstanceID: &instance.ResourceID})
+	storedDatabases, err := s.store.ListDatabases(ctx, &store.FindDatabaseMessage{InstanceID: &instance.ResourceID})
 	if err != nil {
 		return nil, nil, nil, errors.Wrapf(err, "failed to sync database for instance: %s. Failed to find database list", instance.ResourceID)
 	}
-	var newDatabases []*store.DatabaseMessage
 
 	// Index the stored databases once: the loop below used a linear scan per
 	// snapshot entry, which is quadratic for an instance with many databases.
-	storedByName := make(map[string]*store.DatabaseMessage, len(databases))
-	for _, database := range databases {
+	storedByName := make(map[string]*store.DatabaseMessage, len(storedDatabases))
+	for _, database := range storedDatabases {
 		storedByName[database.DatabaseName] = database
 	}
 
@@ -530,7 +592,7 @@ func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessa
 		snapshotNames[databaseMetadata.Name] = struct{}{}
 	}
 	var missingDatabases []string
-	for _, database := range databases {
+	for _, database := range storedDatabases {
 		if _, ok := snapshotNames[database.DatabaseName]; !ok {
 			missingDatabases = append(missingDatabases, database.DatabaseName)
 		}
@@ -542,14 +604,37 @@ func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessa
 			slog.Any("databases", missingDatabases))
 	}
 	for _, databaseName := range missingDatabases {
-		d := true
-		if _, err := s.store.UpdateDatabase(ctx, &store.UpdateDatabaseMessage{
+		deleted := true
+		_, err := s.store.UpdateDatabase(ctx, &store.UpdateDatabaseMessage{
 			InstanceID:   instance.ResourceID,
 			DatabaseName: databaseName,
-			Deleted:      &d,
-		}); err != nil {
-			return nil, nil, nil, errors.Errorf("failed to update database %q for instance %q", databaseName, instance.ResourceID)
+			Deleted:      &deleted,
+		})
+		if err != nil {
+			return nil, nil, nil, errors.Wrapf(err, "failed to hide database %q for instance %q", databaseName, instance.ResourceID)
 		}
+	}
+
+	// The sync only owns the fields it observed: last_sync_time, the engine
+	// version and the case-sensitivity flag. Writing a whole metadata clone built
+	// before the (potentially long) driver round trip would silently revert any
+	// concurrent API change to the title, data sources or activation; the patch
+	// reads the row under lock and merges. It is written only after the database
+	// enumeration succeeded: writing it earlier marked an instance as synced even
+	// when its databases could not be created or hidden, skipping it for a whole
+	// interval.
+	updatedInstance, err = s.store.UpdateInstance(ctx, &store.UpdateInstanceMessage{
+		ResourceID: instance.ResourceID,
+		MetadataUpdates: []func(*storepb.Instance){
+			func(metadata *storepb.Instance) {
+				metadata.LastSyncTime = instanceMeta.Metadata.LastSyncTime
+				metadata.MysqlLowerCaseTableNames = instanceMeta.Metadata.MysqlLowerCaseTableNames
+				metadata.Version = instanceMeta.Version
+			},
+		},
+	})
+	if err != nil {
+		return nil, nil, nil, err
 	}
 
 	return updatedInstance, instanceMeta.Databases, newDatabases, nil

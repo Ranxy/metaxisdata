@@ -152,6 +152,26 @@ func TestOperationReportsAFailedInstanceStep(t *testing.T) {
 	require.Equal(t, "prod", notifier.sent[0].GetSchemaSync().GetInstanceTitle())
 }
 
+// A full sync whose database list cannot be read must report an error, not a
+// quiet success with zero databases: the user asked for a sync and nothing was
+// queued.
+func TestOperationReportsAFailedDatabaseList(t *testing.T) {
+	t.Parallel()
+
+	notifier := &fakeNotifier{}
+	syncer := &Syncer{notifier: notifier}
+	instance := &store.InstanceMessage{ResourceID: "inst-1", Metadata: &storepb.Instance{Title: "prod"}}
+
+	operation := syncer.StartOperation(storepb.SyncTrigger_SYNC_TRIGGER_MANUAL, 7, instance)
+	syncer.RecordInstanceResult(context.Background(), operation, nil)
+	syncer.FailOperation(context.Background(), operation, errors.New("store unavailable"))
+
+	require.Len(t, notifier.sent, 1)
+	message := notifier.sent[0]
+	require.Equal(t, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR, message.GetSeverity())
+	require.Equal(t, "store unavailable", message.GetSchemaSync().GetInstanceError())
+}
+
 // A database the checker will never report on — its instance disappeared while its
 // sync was queued — still reaches the inbox, as an unfinished entry at the deadline.
 func TestOperationReportsUnfinishedDatabasesAtTheDeadline(t *testing.T) {

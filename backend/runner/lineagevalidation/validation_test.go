@@ -65,17 +65,27 @@ func (p *probeRevalidator) setBlocked(blocked bool) {
 	p.block = blocked
 }
 
-// start runs the runner with a settle delay short enough for a test.
-func start(t *testing.T, revalidator Revalidator) (*Runner, context.CancelFunc, *sync.WaitGroup) {
+// start runs the runner with a settle delay short enough for a test. The returned
+// stop cancels the runner and waits for Run to return.
+func start(t *testing.T, revalidator Revalidator) (*Runner, func()) {
 	t.Helper()
 
 	runner := NewRunner(revalidator)
 	runner.settle = 20 * time.Millisecond
 	ctx, cancel := context.WithCancel(context.Background())
-	wg := &sync.WaitGroup{}
-	wg.Add(1)
-	go runner.Run(ctx, wg)
-	return runner, cancel, wg
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runner.Run(ctx)
+	}()
+	return runner, func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Error("Run did not return when the context was cancelled")
+		}
+	}
 }
 
 func waitForPass(t *testing.T, probe *probeRevalidator) {
@@ -93,11 +103,8 @@ func TestTriggerCoalescesOneSyncRound(t *testing.T) {
 	t.Parallel()
 
 	probe := newProbeRevalidator()
-	runner, cancel, wg := start(t, probe)
-	defer func() {
-		cancel()
-		wg.Wait()
-	}()
+	runner, stop := start(t, probe)
+	defer stop()
 
 	for range 5 {
 		runner.Trigger()
@@ -116,11 +123,8 @@ func TestTriggerDuringAPassRunsOneMore(t *testing.T) {
 
 	probe := newProbeRevalidator()
 	probe.setBlocked(true)
-	runner, cancel, wg := start(t, probe)
-	defer func() {
-		cancel()
-		wg.Wait()
-	}()
+	runner, stop := start(t, probe)
+	defer stop()
 
 	runner.Trigger()
 	waitForPass(t, probe)
@@ -141,13 +145,11 @@ func TestTriggerWithoutARevalidatorIsIgnored(t *testing.T) {
 	runner := NewRunner(nil)
 	require.NotPanics(t, runner.Trigger)
 
-	wg := &sync.WaitGroup{}
-	wg.Add(1)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		runner.Run(ctx, wg)
-		close(done)
+		defer close(done)
+		runner.Run(ctx)
 	}()
 
 	cancel()
@@ -156,7 +158,6 @@ func TestTriggerWithoutARevalidatorIsIgnored(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("Run did not return when the context was cancelled")
 	}
-	wg.Wait()
 }
 
 // A failed pass must not wedge the runner: the next sync retries the same edges.
@@ -165,11 +166,8 @@ func TestFailedPassKeepsTheRunnerRunning(t *testing.T) {
 
 	probe := newProbeRevalidator()
 	probe.err = errors.New("store is unavailable")
-	runner, cancel, wg := start(t, probe)
-	defer func() {
-		cancel()
-		wg.Wait()
-	}()
+	runner, stop := start(t, probe)
+	defer stop()
 
 	runner.Trigger()
 	waitForPass(t, probe)
@@ -187,18 +185,6 @@ func TestRunReturnsOnContextCancel(t *testing.T) {
 	t.Parallel()
 
 	probe := newProbeRevalidator()
-	_, cancel, wg := start(t, probe)
-
-	done := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(done)
-	}()
-
-	cancel()
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("Run did not return when the context was cancelled")
-	}
+	_, stop := start(t, probe)
+	stop()
 }

@@ -23,6 +23,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/catalog"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/engines"
 	"github.com/Ranxy/metaxisdata/backend/plugin/openlineage"
+	"github.com/Ranxy/metaxisdata/backend/runner"
 	"github.com/Ranxy/metaxisdata/backend/runner/lineageanalyzer"
 	"github.com/Ranxy/metaxisdata/backend/runner/lineagevalidation"
 	"github.com/Ranxy/metaxisdata/backend/runner/maintenance"
@@ -148,11 +149,13 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 		return nil, errors.Wrapf(err, "failed to configure gRPC routers")
 	}
 
-	s.runnerWG.Add(4)
-	go s.lineageAnalyzer.Run(s.runnerCtx, &s.runnerWG)
-	go s.schemaSync.Run(s.runnerCtx, &s.runnerWG)
-	go s.lineageValidate.Run(s.runnerCtx, &s.runnerWG)
-	go s.maintenance.Run(s.runnerCtx, &s.runnerWG)
+	// Keeping the set in one list (instead of a hand-written Add(4) and four
+	// goroutines) keeps the wait group count and the actual runners in sync, and
+	// gives each one the shared panic boundary in runner.Go.
+	runners := []runner.Runner{s.lineageAnalyzer, s.schemaSync, s.lineageValidate, s.maintenance}
+	for _, r := range runners {
+		runner.Go(s.runnerCtx, &s.runnerWG, r)
+	}
 
 	configureEchoRouters(s.echoServer, profile)
 

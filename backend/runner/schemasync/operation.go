@@ -132,6 +132,23 @@ func (s *Syncer) FinishOperation(ctx context.Context, operation *SyncOperation) 
 	s.EnqueueDatabases(ctx, operation, nil)
 }
 
+// FailOperation seals an operation that cannot wait for databases and records why.
+// A full sync uses it when the database list itself cannot be read: without this
+// the operation would be sealed with an empty pending set and report success with
+// zero databases, which is indistinguishable from "there was nothing to sync".
+func (s *Syncer) FailOperation(ctx context.Context, operation *SyncOperation, cause error) {
+	if operation == nil {
+		return
+	}
+	operation.mu.Lock()
+	operation.instanceErr = cause.Error()
+	operation.instanceRecorded = true
+	operation.sealed = true
+	operation.pending = map[string]*store.DatabaseMessage{}
+	operation.mu.Unlock()
+	s.maybeFinishOperation(ctx, operation)
+}
+
 // completeDatabase reports one database's outcome to every operation waiting for
 // it. A database can belong to more than one operation — the API and the periodic
 // scan can both queue it, and the checker serializes them into a single sync — so

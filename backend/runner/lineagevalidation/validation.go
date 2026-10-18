@@ -13,7 +13,6 @@ package lineagevalidation
 import (
 	"context"
 	"log/slog"
-	"sync"
 	"time"
 
 	"github.com/Ranxy/metaxisdata/backend/common/log"
@@ -68,10 +67,11 @@ func (r *Runner) Trigger() {
 	}
 }
 
-// Run blocks until ctx is cancelled, then signals wg.Done().
-func (r *Runner) Run(ctx context.Context, wg *sync.WaitGroup) {
-	defer wg.Done()
+// Name identifies the runner in the server's lifecycle logs.
+func (*Runner) Name() string { return "lineagevalidation" }
 
+// Run blocks until ctx is cancelled.
+func (r *Runner) Run(ctx context.Context) {
 	if r.revalidator == nil {
 		// Nothing to run: a server that wired no revalidator must not spin.
 		<-ctx.Done()

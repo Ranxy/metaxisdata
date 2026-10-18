@@ -28,6 +28,13 @@ import (
 // proto documents.
 const maxBatchInstances = 1000
 
+// batchSyncBudget bounds the wall-clock time one BatchSyncInstances call may spend
+// syncing. Each SyncInstance keeps its own 15-minute deadline, but a batch of up
+// to maxBatchInstances would otherwise hold the request open for hours when the
+// targets hang. When the budget is exhausted the remaining instances are reported
+// as failed instead of starting another sync.
+const batchSyncBudget = 5 * time.Minute
+
 // dataSourcePingTimeout bounds one test connection. The RPC carries no deadline
 // of its own, and the connection holds one of the instance's connection slots
 // while it runs, so a target that accepts the connection and then stalls must
@@ -381,11 +388,20 @@ func (s *InstanceService) BatchSyncInstances(ctx context.Context, req *connect.R
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("a batch can contain at most %d instances", maxBatchInstances))
 	}
 
+	batchCtx, cancel := context.WithTimeout(ctx, batchSyncBudget)
+	defer cancel()
+
 	response := &v1pb.BatchSyncInstancesResponse{}
 	for _, r := range req.Msg.GetRequests() {
 		result := &v1pb.BatchSyncInstanceResult{Name: r.GetName()}
 
-		instance, err := getInstanceMessage(ctx, s.store, r.GetName())
+		if batchCtx.Err() != nil {
+			result.Error = fmt.Sprintf("the batch sync budget (%s) was exhausted before this instance was synced", batchSyncBudget)
+			response.Results = append(response.Results, result)
+			continue
+		}
+
+		instance, err := getInstanceMessage(batchCtx, s.store, r.GetName())
 		if err != nil {
 			result.Error = err.Error()
 			response.Results = append(response.Results, result)
@@ -400,7 +416,7 @@ func (s *InstanceService) BatchSyncInstances(ctx context.Context, req *connect.R
 		// Each instance in the batch is its own operation, so the message the user
 		// gets names the instance that finished instead of a batch of them.
 		operation := s.schemaSyncer.StartOperation(storepb.SyncTrigger_SYNC_TRIGGER_MANUAL, currentUserID(ctx), instance)
-		updatedInstance, _, newDatabases, err := s.schemaSyncer.SyncInstance(ctx, instance)
+		updatedInstance, _, newDatabases, err := s.schemaSyncer.SyncInstance(batchCtx, instance)
 		s.schemaSyncer.RecordInstanceResult(ctx, operation, err)
 		if err != nil {
 			s.schemaSyncer.FinishOperation(ctx, operation)
@@ -413,9 +429,9 @@ func (s *InstanceService) BatchSyncInstances(ctx context.Context, req *connect.R
 		}
 		if r.GetEnableFullSync() {
 			// Sync all databases in the instance asynchronously.
-			s.schemaSyncer.SyncAllDatabases(ctx, operation, updatedInstance)
+			s.schemaSyncer.SyncAllDatabases(batchCtx, operation, updatedInstance)
 		} else {
-			s.schemaSyncer.EnqueueDatabases(ctx, operation, newDatabases)
+			s.schemaSyncer.EnqueueDatabases(batchCtx, operation, newDatabases)
 		}
 		response.Results = append(response.Results, result)
 	}

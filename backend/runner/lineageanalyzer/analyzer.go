@@ -114,10 +114,11 @@ func (a *Analyzer) scheduleRetry(key analyzeKey) {
 	a.analyzeMap.Store(key, struct{}{})
 }
 
-// Run starts the analyzer. It blocks until ctx is cancelled, then signals wg.Done().
-func (a *Analyzer) Run(ctx context.Context, wg *sync.WaitGroup) {
-	defer wg.Done()
+// Name identifies the runner in the server's lifecycle logs.
+func (*Analyzer) Name() string { return "lineageanalyzer" }
 
+// Run starts the analyzer. It blocks until ctx is cancelled.
+func (a *Analyzer) Run(ctx context.Context) {
 	sp := pool.New()
 
 	// Goroutine 1: periodic full scan.

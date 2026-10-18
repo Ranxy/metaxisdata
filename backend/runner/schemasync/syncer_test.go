@@ -501,3 +501,38 @@ func mustDatabaseRetry(t *testing.T, syncer *Syncer, key string) databaseRetry {
 	require.True(t, ok)
 	return entry
 }
+
+// The API and the periodic scan can enumerate the same instance at once; only one
+// may write the instance row and the database rows, and the other reuses the
+// result instead of racing it.
+func TestInstanceSyncGateSerializesOneInstance(t *testing.T) {
+	t.Parallel()
+
+	gate := &instanceSyncGate{}
+	owner, ok := gate.acquire("inst-1")
+	require.True(t, ok, "the first caller owns the instance's sync")
+
+	joiner, ok := gate.acquire("inst-1")
+	require.False(t, ok, "the second caller must not own the same instance's sync")
+	require.Same(t, owner, joiner)
+
+	other, ok := gate.acquire("inst-2")
+	require.True(t, ok, "another instance is unaffected")
+
+	instance := &store.InstanceMessage{ResourceID: "inst-1"}
+	gate.finish("inst-1", owner, instance, nil, nil, errors.New("sync failed"))
+	select {
+	case <-joiner.done:
+	default:
+		t.Fatal("finish must release the waiters")
+	}
+	require.Same(t, instance, joiner.updatedInstance)
+	require.EqualError(t, joiner.err, "sync failed")
+
+	fresh, ok := gate.acquire("inst-1")
+	require.True(t, ok, "a finished sync must not be reused")
+	require.NotSame(t, owner, fresh)
+
+	gate.finish("inst-1", fresh, nil, nil, nil, nil)
+	gate.finish("inst-2", other, nil, nil, nil, nil)
+}
