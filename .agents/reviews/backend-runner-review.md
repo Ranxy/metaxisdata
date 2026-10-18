@@ -1,6 +1,6 @@
 # backend/runner 整体评审：架构、实现与技术债
 
-> **状态**：一次性评审快照（不是维护参考，不描述已发布行为）。基线 commit `387e1d1`，评审日期 2026-10-18，在 worktree 分支 `review-backend-runner` 中完成；**未修改任何产品代码**。
+> **状态**：一次性评审快照（不是维护参考，不描述已发布行为）。基线 commit `387e1d1`，评审日期 2026-10-18，在 worktree 分支 `review-backend-runner` 中完成。**评审快照对应的产品代码零改动**；评审完成后第 1 步（R-01/R-02）已作为独立 commit 实施，见 §0.4「实施状态」。
 >
 > **范围**：`backend/runner/` 四个子包（`schemasync`、`lineageanalyzer`、`lineagevalidation`、`maintenance`），以及它们与 `backend/server`、`backend/store`、`backend/api/v1`、`backend/plugin/{lineage,openlineage,db}` 的接缝。
 >
@@ -88,6 +88,8 @@
 | **第 5 步（顺手）** | R-21～R-29、R-30 与测试补齐 | 随迭代 |
 
 > 不建议「大重写」。当前事务纪律、singleflight、operation 聚合与测试选点都值得保留；按上面的顺序做**局部替换 + 契约加固**收益最高。
+>
+> **实施状态（2026-10-18）**：第 1 步的 **R-01** 与 **R-02** 已在本分支实现——`683ff9d`（实例元数据定向 patch）、`3183110`（方言引用 + 注释感知的完整 DDL 判定），并补了对应单测/回归。R-01 的 API 侧迁移（`UpdateInstance` / 数据源 CRUD 也改用 `MetadataUpdates`）尚未做，剩余风险降为「API 之间、或 API 覆盖 runner 写回的 `last_sync_time`」的良性竞争。其余条目未动。
 
 ---
 
@@ -263,6 +265,7 @@ if v := patch.Metadata; v != nil {
   3. API 的 `UpdateInstance`/数据源 CRUD 也迁移到 `MetadataUpdates`，顺带消除 API 之间同类的 lost update；
   4. 新增 hermetic 测试：`SyncInstance` 写回后断言并发修改的 title/activation/data_sources 仍在（可在 store 层用 fake tx 或集成用例）。
 - **决策（2026-10-18）**：`SyncInstance` 保持同步执行，不做异步化；因此上述定向 patch 是唯一必要的改动，不需要引入 operation 等待模型。
+- **已实施（2026-10-18，commit `683ff9d`）**：`UpdateInstanceMessage.MetadataUpdates` + `patchInstanceMetadata`（`FOR UPDATE` → 解密 → 应用 → 重新加密 → 同事务写），`SyncInstance` 只 patch `last_sync_time`/`version`/`mysql_lower_case_table_names`；新增 `TestApplyInstanceMetadataUpdatesKeepsFieldsItDoesNotName`。API 侧写入路径尚未迁移（见 §0.4 实施状态）。
 - **核实**：机制与调用点已逐行确认；触发窗口真实存在（网络调用长度决定）。
 
 ### R-02 血缘因标识符引用 / 完整 DDL 判定错误而永久丢失
@@ -301,6 +304,7 @@ func isCompleteStatement(definition string) bool {
   3. `isCompleteStatement` 改为 token 级判定：先跳过前导空白与注释，再看首个 token 是否为 `CREATE`；或让各引擎在 sync 侧显式标记定义形态（body vs complete statement），不要用启发式；
   4. 回归测试：对 `engines.Registrations()` 的每个引擎，断言 `buildSQL` 输出能被该引擎分析器解析；名字覆盖保留字、空格、连字符、反引号/方括号、数字开头；DDL 覆盖前导 `--`/`/* */`/`CREATE\nVIEW`/`CREATE OR ALTER`。
 - **核实**：MARIADB 注册、MariaDB 视图定义来源、`buildSQL` 分支、`markAnalysisFailed` 的 hash 写入均已逐行确认；测试断言也确认钉住了未引用行为。
+- **已实施（2026-10-18，commit `3183110`）**：MySQL 家族（含 MARIADB/STARROCKS）反引号、MSSQL 方括号；`isCompleteStatement` 跳过前导 `--` / `/* */` 并接受 `CREATE\nVIEW`；新增全引擎「wrap 输出可被自身分析器解析」回归与注释 DDL 用例。
 
 ### R-03 分析写入没有 CAS：sync 删除与在途分析竞态 → 孤儿血缘
 
