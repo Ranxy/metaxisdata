@@ -10,9 +10,10 @@
       @update:filters="handleFiltersUpdate"
     />
 
-    <!-- Databases Table -->
+    <!-- No inner padding: the table is the card's content, so its header band
+         reaches the card edges like every other list page. -->
     <Card>
-      <CardContent>
+      <CardContent class="p-0">
         <PageState
           :loading="isLoading"
           :error="error"
@@ -164,14 +165,17 @@
               </TableBody>
             </Table>
 
-            <TablePager
-              v-model:page-size="pageSize"
-              :has-previous="hasPrevious"
-              :has-next="hasNext"
-              :disabled="isLoading"
-              @previous="goToPreviousPage"
-              @next="goToNextPage"
-            />
+            <!-- The pager footer keeps the card's content inset. -->
+            <div class="px-6 pb-6">
+              <TablePager
+                v-model:page-size="pageSize"
+                :has-previous="hasPrevious"
+                :has-next="hasNext"
+                :disabled="isLoading"
+                @previous="goToPreviousPage"
+                @next="goToNextPage"
+              />
+            </div>
           </div>
         </PageState>
       </CardContent>
