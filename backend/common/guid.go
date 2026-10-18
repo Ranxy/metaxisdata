@@ -5,26 +5,30 @@ import (
 	"strings"
 )
 
-// guidPartEscape replaces the GUID separator inside a single segment. It is a
-// no-op for names that do not contain the separator, so GUIDs of such names are
-// unchanged by the escaping.
-const guidPartEscape = "%3B"
+const (
+	// guidPartEscape replaces the GUID separator inside a single segment.
+	guidPartEscape = "%3B"
+	// guidPartPercentEscape replaces the escape character itself. Escaping it
+	// first is what makes the encoding injective: a name with a literal "%3B"
+	// becomes "%253B" and cannot collide with a name that contains ";".
+	guidPartPercentEscape = "%25"
+)
 
-// EscapeGUIDPart escapes the GUID separator inside one segment, so a name that
-// contains ";" cannot shift the fields a parser reads out of a GUID.
+// EscapeGUIDPart escapes the two characters with a meaning inside a GUID (the
+// separator and the escape character) so an escaped name cannot shift the fields
+// a parser reads out of a GUID. Percent signs are escaped first, then the
+// separator; names without either character keep the exact same GUID.
 func EscapeGUIDPart(part string) string {
-	if !strings.Contains(part, MetaGUIDSplit) {
-		return part
-	}
+	part = strings.ReplaceAll(part, "%", guidPartPercentEscape)
 	return strings.ReplaceAll(part, MetaGUIDSplit, guidPartEscape)
 }
 
-// UnescapeGUIDPart restores the separator escaped by EscapeGUIDPart.
+// UnescapeGUIDPart reverses EscapeGUIDPart. The escapes are decoded in the
+// reverse order they were written (separator first, then the percent sign), so a
+// literal "%3B" in a name comes back as "%3B" rather than as ";".
 func UnescapeGUIDPart(part string) string {
-	if !strings.Contains(part, guidPartEscape) {
-		return part
-	}
-	return strings.ReplaceAll(part, guidPartEscape, MetaGUIDSplit)
+	part = strings.ReplaceAll(part, guidPartEscape, MetaGUIDSplit)
+	return strings.ReplaceAll(part, guidPartPercentEscape, "%")
 }
 
 // BuildMetaGUID joins segments into a meta GUID. Every builder must use it (and

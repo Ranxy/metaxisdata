@@ -43,10 +43,20 @@ func (s *DatabaseService) SyncDatabase(ctx context.Context, req *connect.Request
 	// The caller is waiting for this sync, so the error still answers the request;
 	// the message is what the user keeps when they close the tab.
 	if err := s.schemaSyncer.SyncDatabaseForUser(ctx, database, currentUserID(ctx)); err != nil {
-		return nil, connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to sync database"))
+		return nil, syncDatabaseError(req.Msg.Name, err)
 	}
 
 	return connect.NewResponse(&v1pb.SyncDatabaseResponse{}), nil
+}
+
+// syncDatabaseError maps the syncer's outcome to the RPC status. A database the
+// target no longer has is NotFound: the sync already hid the row, so the caller's
+// reference is stale rather than the request being broken.
+func syncDatabaseError(name string, err error) error {
+	if errors.Is(err, schemasync.ErrDatabaseHidden) {
+		return connect.NewError(connect.CodeNotFound, errors.Errorf("database %q no longer exists on the target and has been hidden", name))
+	}
+	return connect.NewError(connect.CodeInternal, errors.Wrapf(err, "failed to sync database"))
 }
 
 func (s *DatabaseService) ListDatabases(ctx context.Context, req *connect.Request[v1pb.ListDatabasesRequest]) (*connect.Response[v1pb.ListDatabasesResponse], error) {

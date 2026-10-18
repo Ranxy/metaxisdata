@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -235,13 +234,30 @@ func databaseSyncRetryBackoff(attempts int) time.Duration {
 // enqueueDatabase queues a database for the checker. A fresh request (an API full
 // sync or the periodic scan) supersedes any pending backoff. A deleted row is never
 // queued: it is kept as history, and only the instance enumeration revives it.
-func (s *Syncer) enqueueDatabase(database *store.DatabaseMessage, _ *SyncOperation) {
+func (s *Syncer) enqueueDatabase(database *store.DatabaseMessage) {
 	if database == nil || database.Deleted {
 		return
 	}
 	key := database.String()
 	s.databaseSyncRetryMap.Delete(key)
 	s.databaseSyncMap.Store(key, database)
+}
+
+// forgetQueuedDatabase drops a database from the checker's queue and its backoff.
+// A soft-deleted row is history: syncing it would write LastSyncTime to a database
+// the target no longer has, and only the instance enumeration revives it.
+func (s *Syncer) forgetQueuedDatabase(key string) {
+	s.databaseSyncRetryMap.Delete(key)
+	s.databaseSyncMap.Delete(key)
+}
+
+// dropHiddenDatabase dequeues a database that was soft-deleted after it was
+// queued. It is not synced and not retried; an operation waiting for it hears the
+// hidden outcome instead of waiting for a result that will never come.
+func (s *Syncer) dropHiddenDatabase(ctx context.Context, key any, database *store.DatabaseMessage) {
+	s.databaseSyncRetryMap.Delete(key)
+	s.databaseSyncMap.Delete(key)
+	s.completeDatabase(ctx, database, errors.Wrapf(ErrDatabaseHidden, "database %q", database.DatabaseName))
 }
 
 // scheduleRetry re-queues a failed database with a bounded backoff; the checker
@@ -291,7 +307,7 @@ func (s *Syncer) Run(ctx context.Context) {
 	sp := pool.New()
 	sp.Go(func() {
 		s.trySyncAll(ctx)
-		slog.Debug(fmt.Sprintf("Schema syncer started and will run every %v", instanceSyncInterval))
+		slog.Debug("Schema syncer's first scan finished; running every interval", slog.Duration("interval", instanceSyncInterval))
 		ticker := time.NewTicker(instanceSyncInterval)
 		defer ticker.Stop()
 
@@ -328,6 +344,13 @@ func (s *Syncer) Run(ctx context.Context) {
 				s.databaseSyncMap.Range(func(key, value any) bool {
 					database, ok := value.(*store.DatabaseMessage)
 					if !ok {
+						return true
+					}
+					if database.Deleted {
+						// The row was soft-deleted after it was queued. Syncing it
+						// would write LastSyncTime to a database the target no longer
+						// has; drop it and tell whoever is waiting for its result.
+						s.dropHiddenDatabase(ctx, key, database)
 						return true
 					}
 
@@ -377,6 +400,14 @@ func (s *Syncer) Run(ctx context.Context) {
 								// contention, not a failed sync, so it does not
 								// advance the backoff.
 								s.databaseSyncMap.Store(database.String(), database)
+								return
+							}
+							if errors.Is(err, ErrDatabaseHidden) {
+								// The target no longer has the row and the sync hid it.
+								// There is nothing to retry and nothing an
+								// administrator could fix; the operation waiting for
+								// this database hears the outcome.
+								s.completeDatabase(ctx, database, err)
 								return
 							}
 							slog.Warn("Failed to sync database schema",
@@ -432,12 +463,7 @@ func (s *Syncer) trySyncAll(ctx context.Context) {
 		wp.Go(func() {
 			slog.Debug("Sync instance schema", slog.String("instance", instance.ResourceID))
 			if _, _, _, err := s.SyncInstance(ctx, instance); err != nil {
-				slog.Warn("Failed to sync instance",
-					slog.String("instance", instance.ResourceID),
-					log.WithError(err))
-				// Nobody asked for this sync, so the failure would otherwise leave
-				// no trace anyone reads until the next scheduled attempt.
-				s.notifyBackgroundInstanceFailure(ctx, instance, err)
+				s.reportInstanceSyncFailure(ctx, instance, err)
 			}
 		})
 	}
@@ -459,7 +485,6 @@ func (s *Syncer) trySyncAll(ctx context.Context) {
 		return
 	}
 	for _, database := range databases {
-		database := database
 		instance, ok := instancesMap[database.InstanceID]
 		if !ok {
 			continue
@@ -469,8 +494,27 @@ func (s *Syncer) trySyncAll(ctx context.Context) {
 			continue
 		}
 
-		s.enqueueDatabase(database, nil)
+		s.enqueueDatabase(database)
 	}
+}
+
+// reportInstanceSyncFailure records an instance sync failure the periodic scan
+// met. Connection-limit saturation is recoverable contention — another caller is
+// using the instance's slots — rather than a broken instance: the next scan
+// retries it because LastSyncTime did not advance, and an administrator cannot
+// fix another request's concurrency, so it is not escalated.
+func (s *Syncer) reportInstanceSyncFailure(ctx context.Context, instance *store.InstanceMessage, err error) {
+	if errors.Is(err, errInstanceConnectionsExhausted) {
+		slog.Debug("Instance sync skipped: the connection limit is saturated",
+			slog.String("instance", instance.ResourceID))
+		return
+	}
+	slog.Warn("Failed to sync instance",
+		slog.String("instance", instance.ResourceID),
+		log.WithError(err))
+	// Nobody asked for this sync, so the failure would otherwise leave no trace
+	// anyone reads until the next scheduled attempt.
+	s.notifyBackgroundInstanceFailure(ctx, instance, err)
 }
 
 // SyncAllDatabases queues every database of an instance for the operation that
@@ -504,6 +548,11 @@ func (s *Syncer) QueueLineageAnalysis(metaGUID string, metaType storepb.MetaType
 // errInstanceConnectionsExhausted signals that the per-instance connection
 // limiter is saturated; the caller should retry the sync later.
 var errInstanceConnectionsExhausted = state.ErrInstanceConnectionLimit
+
+// ErrDatabaseHidden reports that a database the caller asked to sync has been
+// soft-deleted because the target no longer has it. The checker must not retry or
+// escalate it — the row is history now — and the API maps it to NotFound.
+var ErrDatabaseHidden = errors.New("the target no longer has this database; it has been hidden")
 
 // acquireInstanceConnection reserves one of the instance's outstanding
 // connection slots and returns the release func. Every path that opens a driver
@@ -619,27 +668,33 @@ func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessa
 	for _, databaseMetadata := range instanceMeta.Databases {
 		snapshotNames[databaseMetadata.Name] = struct{}{}
 	}
-	var missingDatabases []string
+	var missingDatabases []*store.DatabaseMessage
 	for _, database := range storedDatabases {
 		if _, ok := snapshotNames[database.DatabaseName]; !ok {
-			missingDatabases = append(missingDatabases, database.DatabaseName)
+			missingDatabases = append(missingDatabases, database)
 		}
 	}
 	if len(missingDatabases) > 0 {
+		names := make([]string, 0, len(missingDatabases))
+		for _, database := range missingDatabases {
+			names = append(names, database.DatabaseName)
+		}
 		slog.Warn("Soft-deleting databases missing from the synced instance snapshot",
 			slog.String("instance", instance.ResourceID),
-			slog.Int("count", len(missingDatabases)),
-			slog.Any("databases", missingDatabases))
-	}
-	for _, databaseName := range missingDatabases {
-		deleted := true
-		_, err := s.store.UpdateDatabase(ctx, &store.UpdateDatabaseMessage{
-			InstanceID:   instance.ResourceID,
-			DatabaseName: databaseName,
-			Deleted:      &deleted,
-		})
-		if err != nil {
-			return nil, nil, nil, errors.Wrapf(err, "failed to hide database %q for instance %q", databaseName, instance.ResourceID)
+			slog.Int("count", len(names)),
+			slog.Any("databases", names))
+		// One statement for the whole set: hiding the databases one transaction at
+		// a time left the instance partially hidden when one of them failed.
+		if err := s.store.BatchSoftDeleteDatabases(ctx, instance.ResourceID, names); err != nil {
+			return nil, nil, nil, errors.Wrapf(err, "failed to hide %d databases for instance %q", len(names), instance.ResourceID)
+		}
+		// A hidden database must not stay queued: the checker would keep syncing
+		// it and write LastSyncTime to a row that is meant to be history. An
+		// operation already waiting for it hears the hidden outcome instead of
+		// waiting for a result that will never come.
+		for _, database := range missingDatabases {
+			s.forgetQueuedDatabase(database.String())
+			s.completeDatabase(ctx, database, errors.Wrapf(ErrDatabaseHidden, "database %q", database.DatabaseName))
 		}
 	}
 
@@ -676,6 +731,11 @@ func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessa
 func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.DatabaseMessage) (err error) {
 	if database == nil {
 		return nil
+	}
+	if database.Deleted {
+		// The row is history: only the instance enumeration revives it, and a
+		// single-database read is not that answer.
+		return errors.Wrapf(ErrDatabaseHidden, "database %q", database.DatabaseName)
 	}
 
 	key := database.String()
@@ -729,7 +789,7 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 			if hideErr := s.markDatabaseDeleted(ctx, database, err); hideErr != nil {
 				return errors.Wrapf(hideErr, "failed to hide database %q the target no longer has", database.DatabaseName)
 			}
-			return nil
+			return errors.Wrapf(ErrDatabaseHidden, "database %q", database.DatabaseName)
 		}
 		return errors.Wrapf(err, "failed to sync database schema for database %q", database.DatabaseName)
 	}
@@ -892,8 +952,6 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		return errors.Wrapf(err, "failed to sync object definitions for database %q", database.DatabaseName)
 	}
 
-	logSchemaSyncDeletion(common.FormatDatabase(database.InstanceID, database.DatabaseName), bmc.deletes)
-
 	// Clean lineage rows for every deleted object, not only views: a dropped
 	// table or column leaves edges whose endpoint GUID no longer exists, and a
 	// dropped view also stops being the producer of its edges. One statement
@@ -912,6 +970,11 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 	if err != nil {
 		return errors.Wrapf(err, "failed to commit transaction for database %q", database.DatabaseName)
 	}
+
+	// The deletion log is the only trace of a destructive sync, so it describes
+	// what was committed: logging before the commit reported deletions that a
+	// rollback erased.
+	logSchemaSyncDeletion(common.FormatDatabase(database.InstanceID, database.DatabaseName), bmc.deletes)
 
 	// Record the completed DDL plan only after the commit: a rolled-back sync must
 	// not advance the refresh clock or the rotation, or it would skip objects it
@@ -967,7 +1030,7 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 	// answer. Writing it here would let a sync of a database that a partial
 	// instance snapshot just hid resurrect it, and the next snapshot would hide
 	// it again.
-	if _, err := s.store.UpdateDatabase(ctx, &store.UpdateDatabaseMessage{
+	_, err = s.store.UpdateDatabase(ctx, &store.UpdateDatabaseMessage{
 		InstanceID:   database.InstanceID,
 		DatabaseName: database.DatabaseName,
 		MetadataUpdates: []func(*storepb.DatabaseMetadata){
@@ -975,7 +1038,8 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 				md.LastSyncTime = timestamppb.Now()
 			},
 		},
-	}); err != nil {
+	})
+	if err != nil {
 		return errors.Wrapf(err, "failed to update database %q for instance %q", database.DatabaseName, database.InstanceID)
 	}
 
@@ -988,11 +1052,12 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 // revives the row if the name reappears in a snapshot.
 func (s *Syncer) markDatabaseDeleted(ctx context.Context, database *store.DatabaseMessage, cause error) error {
 	deleted := true
-	if _, err := s.store.UpdateDatabase(ctx, &store.UpdateDatabaseMessage{
+	_, err := s.store.UpdateDatabase(ctx, &store.UpdateDatabaseMessage{
 		InstanceID:   database.InstanceID,
 		DatabaseName: database.DatabaseName,
 		Deleted:      &deleted,
-	}); err != nil {
+	})
+	if err != nil {
 		return err
 	}
 	slog.Warn("Hiding a database the target no longer has",
@@ -1085,7 +1150,26 @@ func (b *batchMetaCreate) diff() (updates []*store.CreateMetaRegistryResourceMes
 		existMap[item.GUIDKey()] = item
 	}
 
+	// A snapshot can name the same (GUID, object type) twice — two columns with
+	// the same name, say. Writing both would make the batch upsert fail with
+	// "cannot affect row a second time" and take the whole database's sync with
+	// it, so the duplicate is dropped and logged. The first entry is kept, which
+	// is deterministic because the snapshot order is.
+	seen := make(map[store.MetaGUIDKey]struct{}, len(b.guidList))
+	guidList := make([]*store.CreateMetaRegistryResourceMessage, 0, len(b.guidList))
 	for _, item := range b.guidList {
+		key := item.GUIDKey()
+		if _, duplicate := seen[key]; duplicate {
+			slog.Warn("Skipping a duplicate metadata resource in a schema sync batch",
+				slog.String("guid", item.GUID),
+				slog.String("objectType", item.ObjectType.String()))
+			continue
+		}
+		seen[key] = struct{}{}
+		guidList = append(guidList, item)
+	}
+
+	for _, item := range guidList {
 		metadataBytes, hash, err := store.CalcStoreMetaHash(item.Metadata)
 		if err != nil {
 			return nil, nil, errors.Wrapf(err, "failed to calculate metadata hash for guid %q", item.GUID)
@@ -1188,11 +1272,12 @@ func buildColumnMetadataResources(prefix string, cols []*storepb.ColumnMetadata)
 // maxLoggedDeletedGUIDs bounds how many deleted GUIDs a single log record names.
 const maxLoggedDeletedGUIDs = 20
 
-// logSchemaSyncDeletion records the metadata resources a sync is about to
-// delete. The driver snapshot is treated as the source of truth, so an empty or
-// partial snapshot silently removes rows — MySQL's information_schema only
-// lists objects the connecting user may see, with no error. This log is the
-// only trace of that happening.
+// logSchemaSyncDeletion records the metadata resources a committed sync deleted.
+// The driver snapshot is treated as the source of truth, so an empty or partial
+// snapshot silently removes rows — MySQL's information_schema only lists objects
+// the connecting user may see, with no error. This log is the only trace of that
+// happening, so it is written after the commit: a rolled-back sync deleted
+// nothing.
 func logSchemaSyncDeletion(database string, deletes []*store.MetaRegistryResource) {
 	if len(deletes) == 0 {
 		return

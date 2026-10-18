@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/lib/pq"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/encoding/protojson"
 
@@ -284,6 +285,32 @@ func (s *Store) UpdateDatabase(ctx context.Context, patch *UpdateDatabaseMessage
 	// Invalidate and update database cache.
 	s.databaseCache.Remove(getDatabaseCacheKey(patch.InstanceID, patch.DatabaseName))
 	return s.GetDatabase(ctx, &FindDatabaseMessage{InstanceID: &patch.InstanceID, DatabaseName: &patch.DatabaseName, ShowDeleted: true})
+}
+
+// batchSoftDeleteDatabasesQuery hides every named database of one instance in a
+// single statement. Its scoping predicates are the invariant: the instance bound
+// to $1 and the name list bound to $2 together decide which rows are hidden, so
+// the shape is asserted by database_test.go.
+const batchSoftDeleteDatabasesQuery = `
+	UPDATE db
+	SET deleted = TRUE
+	WHERE instance = $1 AND name = ANY($2)`
+
+// BatchSoftDeleteDatabases marks every named database of one instance as deleted
+// in a single statement. Hiding a set of vanished databases one transaction at a
+// time left the instance partially hidden when one of them failed; one statement
+// either hides the whole set or leaves the rows as they were.
+func (s *Store) BatchSoftDeleteDatabases(ctx context.Context, instanceID string, databaseNames []string) error {
+	if len(databaseNames) == 0 {
+		return nil
+	}
+	if _, err := s.GetDB().ExecContext(ctx, batchSoftDeleteDatabasesQuery, instanceID, pq.Array(databaseNames)); err != nil {
+		return errors.Wrapf(err, "failed to hide %d databases of instance %q", len(databaseNames), instanceID)
+	}
+	for _, databaseName := range databaseNames {
+		s.databaseCache.Remove(getDatabaseCacheKey(instanceID, databaseName))
+	}
+	return nil
 }
 
 // buildListDatabaseQuery builds the scoped database list query. The scoping

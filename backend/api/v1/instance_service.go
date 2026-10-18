@@ -169,6 +169,11 @@ func (s *InstanceService) CreateInstance(ctx context.Context, req *connect.Reque
 	// The initial discovery and the databases it queues are one operation: the
 	// creator is the one waiting for the instance to be usable.
 	operation := s.schemaSyncer.StartOperation(storepb.SyncTrigger_SYNC_TRIGGER_MANUAL, currentUserID(ctx), instance)
+	// The operation reports the instance step and then waits for its databases;
+	// if this handler returns before either happened, the defer turns the operation
+	// into an error message instead of leaving it to expire as a quiet success. It
+	// is a no-op on every normal path.
+	defer s.schemaSyncer.AbandonOperation(ctx, operation, schemasync.ErrOperationAbandoned)
 	updatedInstance, _, _, syncErr := s.schemaSyncer.SyncInstance(ctx, instance)
 	s.schemaSyncer.RecordInstanceResult(ctx, operation, syncErr)
 	if syncErr != nil {
@@ -353,6 +358,9 @@ func (s *InstanceService) SyncInstance(ctx context.Context, req *connect.Request
 	}
 
 	operation := s.schemaSyncer.StartOperation(storepb.SyncTrigger_SYNC_TRIGGER_MANUAL, currentUserID(ctx), instance)
+	// See CreateInstance: the abandon is the fallback for a handler that returns
+	// before the operation reported everything, and a no-op otherwise.
+	defer s.schemaSyncer.AbandonOperation(ctx, operation, schemasync.ErrOperationAbandoned)
 	updatedInstance, allDatabases, newDatabases, err := s.schemaSyncer.SyncInstance(ctx, instance)
 	s.schemaSyncer.RecordInstanceResult(ctx, operation, err)
 	if err != nil {
@@ -393,50 +401,57 @@ func (s *InstanceService) BatchSyncInstances(ctx context.Context, req *connect.R
 
 	response := &v1pb.BatchSyncInstancesResponse{}
 	for _, r := range req.Msg.GetRequests() {
-		result := &v1pb.BatchSyncInstanceResult{Name: r.GetName()}
-
-		if batchCtx.Err() != nil {
-			result.Error = fmt.Sprintf("the batch sync budget (%s) was exhausted before this instance was synced", batchSyncBudget)
-			response.Results = append(response.Results, result)
-			continue
-		}
-
-		instance, err := getInstanceMessage(batchCtx, s.store, r.GetName())
-		if err != nil {
-			result.Error = err.Error()
-			response.Results = append(response.Results, result)
-			continue
-		}
-		if instance.Deleted {
-			result.Error = fmt.Sprintf("instance %q has been deleted", r.GetName())
-			response.Results = append(response.Results, result)
-			continue
-		}
-
-		// Each instance in the batch is its own operation, so the message the user
-		// gets names the instance that finished instead of a batch of them.
-		operation := s.schemaSyncer.StartOperation(storepb.SyncTrigger_SYNC_TRIGGER_MANUAL, currentUserID(ctx), instance)
-		updatedInstance, _, newDatabases, err := s.schemaSyncer.SyncInstance(batchCtx, instance)
-		s.schemaSyncer.RecordInstanceResult(ctx, operation, err)
-		if err != nil {
-			s.schemaSyncer.FinishOperation(ctx, operation)
-			result.Error = err.Error()
-			response.Results = append(response.Results, result)
-			continue
-		}
-		for _, database := range newDatabases {
-			result.Databases = append(result.Databases, database.DatabaseName)
-		}
-		if r.GetEnableFullSync() {
-			// Sync all databases in the instance asynchronously.
-			s.schemaSyncer.SyncAllDatabases(batchCtx, operation, updatedInstance)
-		} else {
-			s.schemaSyncer.EnqueueDatabases(batchCtx, operation, newDatabases)
-		}
-		response.Results = append(response.Results, result)
+		response.Results = append(response.Results, s.batchSyncInstance(batchCtx, r))
 	}
 
 	return connect.NewResponse(response), nil
+}
+
+// batchSyncInstance syncs one instance of a batch and reports its outcome. It is a
+// function of its own so the operation's abandon fallback is a defer of this call:
+// a defer registered in the batch's loop would run only when the whole RPC
+// returned, leaving every operation un-abandoned until then.
+func (s *InstanceService) batchSyncInstance(ctx context.Context, r *v1pb.SyncInstanceRequest) *v1pb.BatchSyncInstanceResult {
+	result := &v1pb.BatchSyncInstanceResult{Name: r.GetName()}
+
+	if ctx.Err() != nil {
+		result.Error = fmt.Sprintf("the batch sync budget (%s) was exhausted before this instance was synced", batchSyncBudget)
+		return result
+	}
+
+	instance, err := getInstanceMessage(ctx, s.store, r.GetName())
+	if err != nil {
+		result.Error = err.Error()
+		return result
+	}
+	if instance.Deleted {
+		result.Error = fmt.Sprintf("instance %q has been deleted", r.GetName())
+		return result
+	}
+
+	// Each instance in the batch is its own operation, so the message the user
+	// gets names the instance that finished instead of a batch of them.
+	operation := s.schemaSyncer.StartOperation(storepb.SyncTrigger_SYNC_TRIGGER_MANUAL, currentUserID(ctx), instance)
+	// See CreateInstance: the abandon is the fallback for a handler that returns
+	// before the operation reported everything, and a no-op otherwise.
+	defer s.schemaSyncer.AbandonOperation(ctx, operation, schemasync.ErrOperationAbandoned)
+	updatedInstance, _, newDatabases, err := s.schemaSyncer.SyncInstance(ctx, instance)
+	s.schemaSyncer.RecordInstanceResult(ctx, operation, err)
+	if err != nil {
+		s.schemaSyncer.FinishOperation(ctx, operation)
+		result.Error = err.Error()
+		return result
+	}
+	for _, database := range newDatabases {
+		result.Databases = append(result.Databases, database.DatabaseName)
+	}
+	if r.GetEnableFullSync() {
+		// Sync all databases in the instance asynchronously.
+		s.schemaSyncer.SyncAllDatabases(ctx, operation, updatedInstance)
+	} else {
+		s.schemaSyncer.EnqueueDatabases(ctx, operation, newDatabases)
+	}
+	return result
 }
 
 // BatchUpdateInstances update multiple instances. Per-instance failures are
