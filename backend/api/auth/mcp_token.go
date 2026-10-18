@@ -13,7 +13,9 @@ import "time"
 //
 // clientID names the registration the grant was issued to. It is carried in the
 // token so Logout can retire that client's refresh tokens along with the access
-// token it was handed.
-func GenerateMCPAccessToken(userName string, userID int, clientID, audience, scope, secret string, tokenDuration time.Duration) (string, error) {
-	return generateToken(userName, userID, audience, scope, time.Now().Add(tokenDuration), []byte(secret), "", clientID)
+// token it was handed. grantID names the connected app (one authorization) the
+// token belongs to; the MCP endpoint checks it per request, so revoking the
+// connection invalidates tokens that were minted before the revocation.
+func GenerateMCPAccessToken(userName string, userID int, clientID string, grantID int64, audience, scope, secret string, tokenDuration time.Duration) (string, error) {
+	return generateToken(userName, userID, audience, scope, time.Now().Add(tokenDuration), []byte(secret), "", clientID, grantID)
 }

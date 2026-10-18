@@ -493,6 +493,41 @@
         
           
           <li>
+            <a href="#v1%2fconnected_app_service.proto">v1/connected_app_service.proto</a>
+            <ul>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ConnectedApp"><span class="badge">M</span>ConnectedApp</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListConnectedAppsRequest"><span class="badge">M</span>ListConnectedAppsRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListConnectedAppsResponse"><span class="badge">M</span>ListConnectedAppsResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.RevokeConnectedAppRequest"><span class="badge">M</span>RevokeConnectedAppRequest</a>
+                </li>
+              
+              
+                <li>
+                  <a href="#metaxisdata.v1.ConnectedApp.State"><span class="badge">E</span>ConnectedApp.State</a>
+                </li>
+              
+              
+              
+                <li>
+                  <a href="#metaxisdata.v1.ConnectedAppService"><span class="badge">S</span>ConnectedAppService</a>
+                </li>
+              
+            </ul>
+          </li>
+        
+          
+          <li>
             <a href="#v1%2finstance_service.proto">v1/instance_service.proto</a>
             <ul>
               
@@ -4677,6 +4712,367 @@ Permissions required: None</p></td>
                 <td>ExchangeDeviceLogin</td>
                 <td>POST</td>
                 <td>/v1/auth/deviceLogins:exchange</td>
+                <td>*</td>
+              </tr>
+              
+            
+            </tbody>
+          </table>
+          
+        
+    
+      
+      <div class="file-heading">
+        <h2 id="v1/connected_app_service.proto">v1/connected_app_service.proto</h2><a href="#title">Top</a>
+      </div>
+      <p></p>
+
+      
+        <h3 id="metaxisdata.v1.ConnectedApp">ConnectedApp</h3>
+        <p>ConnectedApp is one user's authorization of one MCP client. It is derived from</p><p>the grant record the OAuth token endpoint rotates in place, not from the</p><p>client registration: the same client may be authorized several times, and each</p><p>authorization is its own row.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The resource name of the connected app, in the form `connectedApps/{id}`. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>client_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The registered client identifier (RFC 7591). Opaque. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>client_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The client&#39;s self-reported name at registration. It is not verified, so it is
+display text only. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>user</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The user whose identity the client acts as, in the form `users/{id}`. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>user_email</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The user&#39;s email. It is filled only for the caller&#39;s own rows or when the
+caller may read users; a connected-apps reader is not thereby a user reader. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>resource</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The MCP resource identifier the authorization was granted for. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>scopes</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>The OAuth scopes the user consented to. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>create_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p>When the authorization completed (the first token pair was issued). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>last_tool_call_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p>The most recent tool call made with this connection. Empty when the client
+has been authorized but has not called a tool yet. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>expire_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p>When the refresh credential expires. A connection past this instant cannot
+mint another access token. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>state</td>
+                  <td><a href="#metaxisdata.v1.ConnectedApp.State">ConnectedApp.State</a></td>
+                  <td></td>
+                  <td><p>The connection&#39;s current state. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>revoke_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p>When the connection was revoked. Set only for REVOKED. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListConnectedAppsRequest">ListConnectedAppsRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The maximum number of connected apps to return. The service may return fewer
+than this value. If unspecified, at most 50 are returned. The maximum value
+is 1000; values above 1000 are coerced to 1000. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A page token, received from a previous `ListConnectedApps` call. Provide this
+to retrieve the subsequent page. The filter and user parameters must not
+change between pages. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>user</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The user whose connected apps to list, in the form `users/{id}`. Omitted, a
+caller holding metaxisdata.connectedApps.list sees every connection in the
+workspace, and any other caller sees only their own. Naming another user is
+refused unless the caller holds that permission. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>filter</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A CEL filter over the list. Supported variables:
+
+  user        == &#34;users/{id}&#34;
+  state       == &#34;ACTIVE&#34; | &#34;REVOKED&#34; | &#34;EXPIRED&#34; | &#34;REAUTH_REQUIRED&#34; | &#34;INACTIVE&#34;
+  client      == &#34;name&#34; (exact), client.matches(&#34;substring&#34;)
+  client_id   == &#34;id&#34; (exact), client_id.matches(&#34;substring&#34;)
+  user_email  == &#34;email&#34; (exact), user_email.matches(&#34;substring&#34;)
+  create_time &gt;= / &lt;= RFC 3339
+
+The filter only narrows the rows the caller is already allowed to see. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListConnectedAppsResponse">ListConnectedAppsResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>connected_apps</td>
+                  <td><a href="#metaxisdata.v1.ConnectedApp">ConnectedApp</a></td>
+                  <td>repeated</td>
+                  <td><p>The connected apps on this page. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A token, which can be sent as `page_token` to retrieve the next page. If this
+field is omitted, there are no subsequent pages. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.RevokeConnectedAppRequest">RevokeConnectedAppRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The resource name of the connected app to revoke, in the form
+`connectedApps/{id}`. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+
+      
+        <h3 id="metaxisdata.v1.ConnectedApp.State">ConnectedApp.State</h3>
+        <p>State is a derived value: it is computed from the stored grant, the MCP</p><p>surface's current configuration, and the user's account, so it is not stored.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>STATE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>ACTIVE</td>
+                <td>1</td>
+                <td><p>Usable: not revoked or expired, and a refresh would be accepted.</p></td>
+              </tr>
+            
+              <tr>
+                <td>REVOKED</td>
+                <td>2</td>
+                <td><p>Explicitly revoked. Outstanding access tokens are refused within the
+revocation cache&#39;s window.</p></td>
+              </tr>
+            
+              <tr>
+                <td>EXPIRED</td>
+                <td>3</td>
+                <td><p>The refresh credential expired; no new access token can be minted.</p></td>
+              </tr>
+            
+              <tr>
+                <td>REAUTH_REQUIRED</td>
+                <td>4</td>
+                <td><p>Re-authorization is required before the connection can work: the MCP
+resource identifier changed, or the grant predates the user&#39;s last password
+change.</p></td>
+              </tr>
+            
+              <tr>
+                <td>INACTIVE</td>
+                <td>5</td>
+                <td><p>The user&#39;s account is deactivated. The connection resumes if the account is
+restored; it is not revoked automatically.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+
+      
+
+      
+        <h3 id="metaxisdata.v1.ConnectedAppService">ConnectedAppService</h3>
+        <p>ConnectedAppService manages the MCP OAuth connections a user established by</p><p>authorizing a client against the deployment's MCP endpoint. One connected app</p><p>is one authorization (one user, one client), not one transport session: the</p><p>MCP endpoint itself is stateless.</p><p>No method here carries a (metaxisdata.v1.permission) annotation, because the</p><p>same call serves two audiences: a workspace administrator listing every</p><p>connection and an ordinary user managing their own. Each handler therefore</p><p>scopes its query and authorizes the widen itself, the way NotificationService</p><p>and UserService's self-service paths do. The permission catalog still defines</p><p>connectedApps.list and connectedApps.revoke, which are what the handler checks</p><p>before returning another user's rows or revoking another user's connection.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Method Name</td><td>Request Type</td><td>Response Type</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>ListConnectedApps</td>
+                <td><a href="#metaxisdata.v1.ListConnectedAppsRequest">ListConnectedAppsRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListConnectedAppsResponse">ListConnectedAppsResponse</a></td>
+                <td><p>List the caller&#39;s connected apps. A caller holding
+metaxisdata.connectedApps.list sees the whole workspace; without it the
+result is forced to the caller&#39;s own rows. `user` narrows the result further
+when the caller may see other users&#39; connections.</p></td>
+              </tr>
+            
+              <tr>
+                <td>RevokeConnectedApp</td>
+                <td><a href="#metaxisdata.v1.RevokeConnectedAppRequest">RevokeConnectedAppRequest</a></td>
+                <td><a href="#metaxisdata.v1.ConnectedApp">ConnectedApp</a></td>
+                <td><p>Revoke one connected app: its outstanding access tokens stop being accepted
+(immediately on this replica, within 30 seconds elsewhere, the same rule as
+Logout) and its refresh token can no longer mint a new pair. A user may
+revoke their own; revoking another user&#39;s needs
+metaxisdata.connectedApps.revoke. The response is the revoked record so the
+permanent audit ledger names what was revoked even after the row is pruned.
+Permissions required: None</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+
+        
+          
+          
+          <h4>Methods with HTTP bindings</h4>
+          <table>
+            <thead>
+              <tr>
+                <td>Method Name</td>
+                <td>Method</td>
+                <td>Pattern</td>
+                <td>Body</td>
+              </tr>
+            </thead>
+            <tbody>
+            
+              
+              
+              <tr>
+                <td>ListConnectedApps</td>
+                <td>GET</td>
+                <td>/v1/connectedApps</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>RevokeConnectedApp</td>
+                <td>POST</td>
+                <td>/v1/{name=connectedApps/*}:revoke</td>
                 <td>*</td>
               </tr>
               

@@ -75,6 +75,8 @@ const (
 	IdentityProvidersCreate            Permission = "metaxisdata.identityProviders.create"
 	IdentityProvidersUpdate            Permission = "metaxisdata.identityProviders.update"
 	IdentityProvidersDelete            Permission = "metaxisdata.identityProviders.delete"
+	ConnectedAppsList                  Permission = "metaxisdata.connectedApps.list"
+	ConnectedAppsRevoke                Permission = "metaxisdata.connectedApps.revoke"
 	AuditLogsSearch                    Permission = "metaxisdata.auditLogs.search"
 )
 
@@ -152,6 +154,8 @@ var allPermissions = []Permission{
 	IdentityProvidersCreate,
 	IdentityProvidersUpdate,
 	IdentityProvidersDelete,
+	ConnectedAppsList,
+	ConnectedAppsRevoke,
 	AuditLogsSearch,
 }
 

@@ -51,7 +51,7 @@ func TestMCPSourceLimiterBoundsProbesBeforeTheBearerCheck(t *testing.T) {
 		Endpoints:         enabledEndpoints(),
 		SourceCallLimiter: limiter,
 	})
-	handler := server.Handler(authpkg.NewTokenAuthenticator(verifierUsers{}, verifierSecret, nil))
+	handler := server.Handler(authpkg.NewTokenAuthenticator(verifierUsers{}, nil, verifierSecret, nil))
 
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, mcpProbe("203.0.113.9:5555"))
@@ -82,7 +82,7 @@ func TestMCPSourceLimiterUsesTheResolvedClientAddress(t *testing.T) {
 		SourceCallLimiter: limiter,
 		TrustedProxies:    []string{"10.0.0.1"},
 	})
-	handler := server.Handler(authpkg.NewTokenAuthenticator(verifierUsers{}, verifierSecret, nil))
+	handler := server.Handler(authpkg.NewTokenAuthenticator(verifierUsers{}, nil, verifierSecret, nil))
 
 	trusted := mcpProbe("10.0.0.1:5555")
 	trusted.Header.Set("X-Forwarded-For", "198.51.100.7")
@@ -108,7 +108,7 @@ func TestMCPSourceLimiterIsSkippedWhenTheSurfaceIsOff(t *testing.T) {
 		},
 		SourceCallLimiter: limiter,
 	})
-	handler := server.Handler(authpkg.NewTokenAuthenticator(verifierUsers{}, verifierSecret, nil))
+	handler := server.Handler(authpkg.NewTokenAuthenticator(verifierUsers{}, nil, verifierSecret, nil))
 
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, mcpProbe("203.0.113.9:5555"))

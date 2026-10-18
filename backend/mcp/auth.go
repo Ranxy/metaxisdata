@@ -24,6 +24,11 @@ const userExtraKey = "metaxisdata.user"
 // HTTP request: by the time a tool runs, only RequestExtra survives.
 const peerExtraKey = "metaxisdata.peer"
 
+// grantExtraKey carries the connected app the access token belongs to. The
+// dispatch path uses it to record the tool call on that connection's
+// last_tool_call_at.
+const grantExtraKey = "metaxisdata.grant"
+
 // EndpointsFunc is the OAuth package's resolver type, aliased here because the
 // verifier is wired from the same place the protocol endpoints are.
 type EndpointsFunc = oauth.EndpointsFunc
@@ -47,6 +52,14 @@ func NewTokenVerifier(endpoints EndpointsFunc, tokens *auth.TokenAuthenticator) 
 		if err != nil {
 			return nil, sdkauth.ErrInvalidToken
 		}
+		// A token without a connected-app id predates this deployment's upgrade
+		// and cannot be checked against a connection. It is refused rather than
+		// accepted: the revocation guarantee would otherwise have a hole as long as
+		// the access token's lifetime, and the client recovers automatically by
+		// refreshing once.
+		if identity.GrantID == 0 {
+			return nil, sdkauth.ErrInvalidToken
+		}
 		// The scopes come from the token, never from a constant: the transport
 		// middleware is what turns a missing scope into 403 insufficient_scope,
 		// and it can only do that if it is told the truth.
@@ -55,8 +68,9 @@ func NewTokenVerifier(endpoints EndpointsFunc, tokens *auth.TokenAuthenticator) 
 			Scopes:     identity.Scopes,
 			Expiration: identity.ExpiresAt,
 			Extra: map[string]any{
-				userExtraKey: user,
-				peerExtraKey: requestPeerAddress(request),
+				userExtraKey:  user,
+				peerExtraKey:  requestPeerAddress(request),
+				grantExtraKey: identity.GrantID,
 			},
 		}, nil
 	}
@@ -112,4 +126,21 @@ func UserFromRequest(req *mcpsdk.CallToolRequest) (*store.UserMessage, bool) {
 		return nil, false
 	}
 	return UserFromTokenInfo(extra.TokenInfo)
+}
+
+// GrantIDFromRequest returns the connected app the call's token belongs to, or 0
+// when the request carries no verified token.
+func GrantIDFromRequest(req *mcpsdk.CallToolRequest) int64 {
+	if req == nil {
+		return 0
+	}
+	extra := req.GetExtra()
+	if extra == nil || extra.TokenInfo == nil {
+		return 0
+	}
+	grantID, ok := extra.TokenInfo.Extra[grantExtraKey].(int64)
+	if !ok {
+		return 0
+	}
+	return grantID
 }

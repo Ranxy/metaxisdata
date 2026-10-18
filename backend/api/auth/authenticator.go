@@ -96,6 +96,7 @@ func identityFromClaims(claims *claimsMessage) (*AccessTokenIdentity, error) {
 		TokenID:     claims.ID,
 		Scopes:      strings.Fields(claims.Scope),
 		ClientID:    claims.ClientID,
+		GrantID:     claims.GrantID,
 		Restriction: TokenRestriction(claims.Restriction),
 	}
 	if claims.ExpiresAt != nil {
@@ -119,6 +120,11 @@ var (
 	ErrTokenRevoked = errs.New("access token expired")
 	// ErrTokenInvalid means the token did not verify for the expected audience.
 	ErrTokenInvalid = errs.New("failed to parse claim")
+	// ErrGrantRevoked means the connected app the token belongs to was revoked,
+	// expired or no longer exists. It is a separate sentinel from ErrTokenRevoked
+	// because the two are different events: one ends a token, the other ends the
+	// whole connection.
+	ErrGrantRevoked = errs.New("connected app revoked")
 )
 
 // UserStore is the part of the user store a TokenAuthenticator needs. *store.Store
@@ -128,6 +134,15 @@ type UserStore interface {
 	GetUserByID(ctx context.Context, id int) (*store.UserMessage, error)
 	// IsTokenRevoked consults the persistent revocation records a Logout writes.
 	IsTokenRevoked(ctx context.Context, tokenID string) (bool, error)
+}
+
+// GrantStore is the part of the store a TokenAuthenticator needs to decide
+// whether an MCP token's connected app is still live. *store.Store implements it;
+// a nil grants skips the check (only tests that do not exercise it do that).
+type GrantStore interface {
+	// IsOAuthGrantLive reports whether the connection is neither revoked nor
+	// expired, and still belongs to the token's user and client.
+	IsOAuthGrantLive(ctx context.Context, grantID int64, userID int, clientID string) (bool, error)
 }
 
 // TokenAuthenticator turns a bearer token into the user it was issued to.
@@ -140,15 +155,16 @@ type UserStore interface {
 // been deactivated, had their password changed, or logged out.
 type TokenAuthenticator struct {
 	users    UserStore
+	grants   GrantStore
 	secret   string
 	stateCfg *state.State
 }
 
-// NewTokenAuthenticator returns an authenticator backed by the given user store.
-// stateCfg may be nil, in which case every revocation check reads the store; a
-// nil users skips the check entirely (only tests do that).
-func NewTokenAuthenticator(users UserStore, secret string, stateCfg *state.State) *TokenAuthenticator {
-	return &TokenAuthenticator{users: users, secret: secret, stateCfg: stateCfg}
+// NewTokenAuthenticator returns an authenticator backed by the given user and
+// grant stores. stateCfg may be nil, in which case every revocation check reads
+// the store; nil grants skips the connected-app check (only tests do that).
+func NewTokenAuthenticator(users UserStore, grants GrantStore, secret string, stateCfg *state.State) *TokenAuthenticator {
+	return &TokenAuthenticator{users: users, grants: grants, secret: secret, stateCfg: stateCfg}
 }
 
 // Resolve validates accessTokenStr for the given audience and returns the
@@ -171,6 +187,20 @@ func (a *TokenAuthenticator) Resolve(ctx context.Context, accessTokenStr, audien
 	}
 	if revoked {
 		return nil, nil, ErrTokenRevoked
+	}
+	// An MCP token belongs to one connected app. The connection may have been
+	// revoked after the token was minted, so it is checked on every request; the
+	// decision is cached in front of the table exactly like the token revocation
+	// above, which is what makes "revoked" mean the same thing for a token and for
+	// a connection.
+	if identity.GrantID != 0 {
+		grantRevoked, err := a.grantRevoked(ctx, identity)
+		if err != nil {
+			return nil, nil, err
+		}
+		if grantRevoked {
+			return nil, nil, ErrGrantRevoked
+		}
 	}
 
 	user, err := a.users.GetUserByID(ctx, identity.UserID)
@@ -218,6 +248,32 @@ func (a *TokenAuthenticator) tokenRevoked(ctx context.Context, tokenID string) (
 	}
 	if a.stateCfg != nil {
 		a.stateCfg.TokenRevocationCache.Remember(tokenID, revoked, now)
+	}
+	return revoked, nil
+}
+
+// grantRevoked reports whether the token's connected app is no longer live. The
+// persistent row is the authority and a missing row counts as revoked: a refresh
+// credential always outlives the access token minted from it, so a pruned row
+// cannot hide a token that should still work. A read failure fails closed.
+func (a *TokenAuthenticator) grantRevoked(ctx context.Context, identity *AccessTokenIdentity) (bool, error) {
+	if a.grants == nil {
+		return false, nil
+	}
+	key := strconv.FormatInt(identity.GrantID, 10)
+	now := time.Now()
+	if a.stateCfg != nil {
+		if revoked, fresh := a.stateCfg.GrantRevocationCache.Lookup(key, now); fresh {
+			return revoked, nil
+		}
+	}
+	live, err := a.grants.IsOAuthGrantLive(ctx, identity.GrantID, identity.UserID, identity.ClientID)
+	if err != nil {
+		return false, errs.Wrapf(err, "failed to check the connected app of token %q", identity.TokenID)
+	}
+	revoked := !live
+	if a.stateCfg != nil {
+		a.stateCfg.GrantRevocationCache.Remember(key, revoked, now)
 	}
 	return revoked, nil
 }

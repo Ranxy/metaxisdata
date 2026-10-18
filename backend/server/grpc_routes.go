@@ -111,6 +111,7 @@ func configureGrpcRouters(
 	iamService := apiv1.NewIamService(stores)
 	oauthService := apiv1.NewOAuthService(stores, profile, stateCfg)
 	identityProviderService := apiv1.NewIdentityProviderService(stores)
+	connectedAppService := apiv1.NewConnectedAppService(stores, iamManager, stateCfg)
 
 	onPanic := func(_ context.Context, s connect.Spec, _ http.Header, p any) error {
 		stack := stacktrace.TakeStacktrace(20 /* n */, 5 /* skip */)
@@ -191,6 +192,8 @@ func configureGrpcRouters(
 	connectHandlers[oauthPath] = oauthHandler
 	identityProviderPath, identityProviderHandler := v1connect.NewIdentityProviderServiceHandler(identityProviderService, handlerOpts)
 	connectHandlers[identityProviderPath] = identityProviderHandler
+	connectedAppPath, connectedAppHandler := v1connect.NewConnectedAppServiceHandler(connectedAppService, handlerOpts)
+	connectHandlers[connectedAppPath] = connectedAppHandler
 	// grpc reflection handlers.
 	reflector := grpcreflect.NewStaticReflector(
 		v1connect.AuthServiceName,
@@ -211,6 +214,7 @@ func configureGrpcRouters(
 		v1connect.OAuthServiceName,
 		v1connect.ApplicationServiceName,
 		v1connect.IdentityProviderServiceName,
+		v1connect.ConnectedAppServiceName,
 	)
 	reflectPath, reflectHandler := grpcreflect.NewHandlerV1(reflector, connect.WithReadMaxBytes(maxConnectRequestBytes))
 	connectHandlers[reflectPath] = reflectHandler
@@ -285,6 +289,9 @@ func configureGrpcRouters(
 	if err := v1pb.RegisterIdentityProviderServiceHandler(ctx, mux, grpcConn); err != nil {
 		return err
 	}
+	if err := v1pb.RegisterConnectedAppServiceHandler(ctx, mux, grpcConn); err != nil {
+		return err
+	}
 
 	// Register OpenLineage event ingestion HTTP handler (plain REST, not ConnectRPC).
 	olHandler := apiv1.NewOpenLineageHandler(stores, profile.TrustedProxies, lineageAnalyzer, notifier)
@@ -316,7 +323,7 @@ func configureGrpcRouters(
 	// uses, built from the same store, secret and state: it exists because the
 	// interceptor owns its own instance, and the rules themselves live in one
 	// place.
-	tokenAuthenticator := auth.NewTokenAuthenticator(stores, secret, stateCfg)
+	tokenAuthenticator := auth.NewTokenAuthenticator(stores, stores, secret, stateCfg)
 	oauthServer := oauth.NewServer(oauth.ServerConfig{
 		Stores:         stores,
 		State:          stateCfg,

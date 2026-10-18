@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -320,13 +321,23 @@ func (s *AuthService) Logout(ctx context.Context, req *connect.Request[v1pb.Logo
 	s.stateCfg.TokenRevocationCache.Revoke(identity.TokenID, time.Now())
 
 	// An MCP access token names the registration it was issued to, so revoking
-	// it retires that client's refresh tokens as well. Without that, the client
-	// would rotate a moment later and the logout would amount to nothing.
+	// it retires that client's connections as well. Without that, the client
+	// would rotate a moment later and the logout would amount to nothing. The
+	// rows are kept (revoked, not deleted) so the connected-apps page can show
+	// what the logout ended.
 	if identity.ClientID != "" {
-		if err := s.store.DeleteOAuthRefreshTokensByUserAndClient(ctx, identity.UserID, identity.ClientID); err != nil {
+		now := time.Now()
+		revokedBy := identity.UserID
+		grantIDs, err := s.store.RevokeOAuthGrantsByUserAndClient(ctx, identity.UserID, identity.ClientID, now, &revokedBy)
+		if err != nil {
 			// The access token is already revoked, which is the primary action,
 			// so a failure here is logged rather than reported as a failed logout.
-			slog.Error("failed to revoke the OAuth refresh tokens of a logged-out client", log.WithError(err))
+			slog.Error("failed to revoke the OAuth grants of a logged-out client", log.WithError(err))
+		}
+		// The cache is marked after the write commits, so this replica refuses the
+		// grants immediately instead of after the next table read.
+		for _, grantID := range grantIDs {
+			s.stateCfg.GrantRevocationCache.Revoke(strconv.FormatInt(grantID, 10), now)
 		}
 	}
 	// The web session's refresh cookie is a credential of its own: logging out

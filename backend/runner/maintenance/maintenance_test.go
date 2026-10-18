@@ -83,8 +83,8 @@ func (f *fakeStore) DeleteExpiredRevokedTokens(ctx context.Context, before time.
 	return f.delete(ctx, "revoked_tokens", before)
 }
 
-func (f *fakeStore) DeleteExpiredOAuthRefreshTokens(ctx context.Context, before time.Time) (int64, error) {
-	return f.delete(ctx, "oauth_refresh_tokens", before)
+func (f *fakeStore) DeleteExpiredOAuthGrants(ctx context.Context, before time.Time) (int64, error) {
+	return f.delete(ctx, "oauth_grants", before)
 }
 
 func (f *fakeStore) DeleteExpiredWebRefreshTokens(ctx context.Context, before time.Time) (int64, error) {
@@ -217,7 +217,7 @@ func TestFailedItemDoesNotStopLaterItems(t *testing.T) {
 	require.NotContains(t, summary.counts, "explain_sql_cache")
 	require.Equal(t, int64(3), summary.counts["llm_debug_log"])
 	require.Equal(t, int64(5), summary.counts["revoked_tokens"])
-	for _, name := range []string{"llm_debug_log", "revoked_tokens", "oauth_refresh_tokens", "web_refresh_tokens", "empty_openlineage_datasets"} {
+	for _, name := range []string{"llm_debug_log", "revoked_tokens", "oauth_grants", "web_refresh_tokens", "empty_openlineage_datasets"} {
 		require.Equal(t, 1, stores.callCount(name), name)
 	}
 	require.Equal(t, 2, revalidator.callCount(), "both revalidations must still run")
@@ -236,7 +236,7 @@ func TestSettingErrorSkipsOnlyRetention(t *testing.T) {
 
 	summary := newTestRunner(stores, revalidator).runOnce(context.Background())
 
-	for _, name := range []string{"explain_sql_cache", "llm_debug_log", "revoked_tokens", "oauth_refresh_tokens", "web_refresh_tokens", "empty_openlineage_datasets"} {
+	for _, name := range []string{"explain_sql_cache", "llm_debug_log", "revoked_tokens", "oauth_grants", "web_refresh_tokens", "empty_openlineage_datasets"} {
 		require.Equal(t, 1, stores.callCount(name), name)
 	}
 	require.Equal(t, 2, revalidator.callCount())
@@ -287,7 +287,7 @@ func TestCutoffsAreBasedOnThePassStart(t *testing.T) {
 		"explain_sql_cache":          passTime.Add(-store.ExplainSQLCacheTTL),
 		"llm_debug_log":              passTime.Add(-llmDebugLogRetention),
 		"revoked_tokens":             passTime,
-		"oauth_refresh_tokens":       passTime,
+		"oauth_grants":               passTime.Add(-connectedAppRetention),
 		"web_refresh_tokens":         passTime,
 		"empty_openlineage_datasets": passTime.Add(-openLineageDatasetSweepGrace),
 		"openlineage_runs":           passTime.AddDate(0, 0, -7),
@@ -418,7 +418,7 @@ func TestPassTimeoutBoundsTheWholePass(t *testing.T) {
 
 	for _, name := range []string{
 		"explain_sql_cache", "llm_debug_log", "revoked_tokens",
-		"oauth_refresh_tokens", "web_refresh_tokens",
+		"oauth_grants", "web_refresh_tokens",
 	} {
 		require.Contains(t, summary.failed, name, "the item after the stuck one still ran")
 	}

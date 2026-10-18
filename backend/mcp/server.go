@@ -79,6 +79,12 @@ const (
 	// before calling a token expired.
 	tokenClockSkew = 30 * time.Second
 
+	// lastToolCallThrottle bounds how often one connection's last_tool_call_at is
+	// rewritten. The predicate in TouchOAuthGrant makes a call inside the window a
+	// cheap no-op instead of a row rewrite, so a busy agent does not turn its call
+	// rate into the same write rate on a hot row.
+	lastToolCallThrottle = 5 * time.Minute
+
 	// instructions is what a client shows its model before the first call. It is
 	// short on purpose: the tool descriptions carry the detail, and some clients
 	// re-send this with every request.
@@ -305,9 +311,30 @@ func (s *Server) toolHandler(definition toolDefinition) mcpsdk.ToolHandler {
 func (s *Server) dispatch(ctx context.Context, request *mcpsdk.CallToolRequest, definition toolDefinition) (*mcpsdk.CallToolResult, error) {
 	started := s.config.Now()
 	user, _ := UserFromRequest(request)
+	// The connection's activity is recorded before the call runs: a refused call
+	// is still a use of the connection, and the ledger records it too. Best effort;
+	// a tool the caller is entitled to must not fail because a timestamp could not
+	// be written.
+	s.touchConnectedApp(ctx, request)
 	result, err := s.invoke(ctx, request, definition, user)
 	s.audit(ctx, request, definition, user, err, started)
 	return result, err
+}
+
+// touchConnectedApp records the tool call on the connected app the token belongs
+// to, throttled by a conditional update in the store.
+func (s *Server) touchConnectedApp(ctx context.Context, request *mcpsdk.CallToolRequest) {
+	if s.config.Stores == nil {
+		return
+	}
+	grantID := GrantIDFromRequest(request)
+	if grantID == 0 {
+		return
+	}
+	now := s.config.Now()
+	if _, err := s.config.Stores.TouchOAuthGrant(ctx, grantID, now, now.Add(-lastToolCallThrottle)); err != nil {
+		slog.Warn("failed to record an MCP tool call on its connected app", clog.WithError(err))
+	}
 }
 
 // callLimiterKey names the principal a tool call is counted against. It matches

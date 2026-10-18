@@ -31,6 +31,12 @@ type State struct {
 	// TokenRevocationCache caches lookups in the persistent revoked_token table,
 	// which is the authority; see RevocationCache.
 	TokenRevocationCache *RevocationCache
+	// GrantRevocationCache caches whether an MCP access token's connected app is
+	// still live, in front of the grant row, which is the authority. It is a
+	// separate instance from TokenRevocationCache: token entries are written on
+	// every authenticated request, so sharing one bounded cache would let token
+	// traffic evict connection entries.
+	GrantRevocationCache *RevocationCache
 	// InstanceOutstandingConnections counts the open connections per instance.
 	InstanceOutstandingConnections *resourceLimiter
 	// LoginLimiter throttles failed password logins per account and per source.
@@ -82,6 +88,10 @@ func New() (*State, error) {
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create token revocation cache")
 	}
+	grantRevocationCache, err := newRevocationCache()
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to create grant revocation cache")
+	}
 	ssoStateCache, err := lru.New[string, time.Time](ssoStateCapacity)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create sso state cache")
@@ -89,6 +99,7 @@ func New() (*State, error) {
 	return &State{
 		InstanceOutstandingConnections: &resourceLimiter{connections: map[string]int{}},
 		TokenRevocationCache:           revocationCache,
+		GrantRevocationCache:           grantRevocationCache,
 		LoginLimiter:                   newLoginLimiter(),
 		LoginRequestLimiter:            newLoginRequestLimiter(),
 		CreateUserRequestLimiter:       newCreateUserRequestLimiter(),

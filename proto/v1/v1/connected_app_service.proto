@@ -1,0 +1,172 @@
+syntax = "proto3";
+
+package metaxisdata.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/api/resource.proto";
+import "google/protobuf/timestamp.proto";
+import "v1/annotation.proto";
+
+option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
+
+// ConnectedAppService manages the MCP OAuth connections a user established by
+// authorizing a client against the deployment's MCP endpoint. One connected app
+// is one authorization (one user, one client), not one transport session: the
+// MCP endpoint itself is stateless.
+//
+// No method here carries a (metaxisdata.v1.permission) annotation, because the
+// same call serves two audiences: a workspace administrator listing every
+// connection and an ordinary user managing their own. Each handler therefore
+// scopes its query and authorizes the widen itself, the way NotificationService
+// and UserService's self-service paths do. The permission catalog still defines
+// connectedApps.list and connectedApps.revoke, which are what the handler checks
+// before returning another user's rows or revoking another user's connection.
+service ConnectedAppService {
+  // List the caller's connected apps. A caller holding
+  // metaxisdata.connectedApps.list sees the whole workspace; without it the
+  // result is forced to the caller's own rows. `user` narrows the result further
+  // when the caller may see other users' connections.
+  rpc ListConnectedApps(ListConnectedAppsRequest) returns (ListConnectedAppsResponse) {
+    option (google.api.http) = {get: "/v1/connectedApps"};
+  }
+
+  // Revoke one connected app: its outstanding access tokens stop being accepted
+  // (immediately on this replica, within 30 seconds elsewhere, the same rule as
+  // Logout) and its refresh token can no longer mint a new pair. A user may
+  // revoke their own; revoking another user's needs
+  // metaxisdata.connectedApps.revoke. The response is the revoked record so the
+  // permanent audit ledger names what was revoked even after the row is pruned.
+  // Permissions required: None
+  rpc RevokeConnectedApp(RevokeConnectedAppRequest) returns (ConnectedApp) {
+    option (google.api.http) = {
+      post: "/v1/{name=connectedApps/*}:revoke"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+  }
+}
+
+// ConnectedApp is one user's authorization of one MCP client. It is derived from
+// the grant record the OAuth token endpoint rotates in place, not from the
+// client registration: the same client may be authorized several times, and each
+// authorization is its own row.
+message ConnectedApp {
+  option (google.api.resource) = {
+    type: "metaxisdata/ConnectedApp"
+    pattern: "connectedApps/{connected_app}"
+  };
+
+  // The resource name of the connected app, in the form `connectedApps/{id}`.
+  string name = 1;
+
+  // The registered client identifier (RFC 7591). Opaque.
+  string client_id = 2;
+
+  // The client's self-reported name at registration. It is not verified, so it is
+  // display text only.
+  string client_name = 3;
+
+  // The user whose identity the client acts as, in the form `users/{id}`.
+  string user = 4 [(google.api.resource_reference) = {type: "metaxisdata/User"}];
+
+  // The user's email. It is filled only for the caller's own rows or when the
+  // caller may read users; a connected-apps reader is not thereby a user reader.
+  string user_email = 5;
+
+  // The MCP resource identifier the authorization was granted for.
+  string resource = 6;
+
+  // The OAuth scopes the user consented to.
+  repeated string scopes = 7;
+
+  // When the authorization completed (the first token pair was issued).
+  google.protobuf.Timestamp create_time = 8;
+
+  // The most recent tool call made with this connection. Empty when the client
+  // has been authorized but has not called a tool yet.
+  google.protobuf.Timestamp last_tool_call_time = 9;
+
+  // When the refresh credential expires. A connection past this instant cannot
+  // mint another access token.
+  google.protobuf.Timestamp expire_time = 10;
+
+  // The connection's current state.
+  State state = 11;
+
+  // When the connection was revoked. Set only for REVOKED.
+  google.protobuf.Timestamp revoke_time = 12;
+
+  // State is a derived value: it is computed from the stored grant, the MCP
+  // surface's current configuration, and the user's account, so it is not stored.
+  enum State {
+    STATE_UNSPECIFIED = 0;
+
+    // Usable: not revoked or expired, and a refresh would be accepted.
+    ACTIVE = 1;
+
+    // Explicitly revoked. Outstanding access tokens are refused within the
+    // revocation cache's window.
+    REVOKED = 2;
+
+    // The refresh credential expired; no new access token can be minted.
+    EXPIRED = 3;
+
+    // Re-authorization is required before the connection can work: the MCP
+    // resource identifier changed, or the grant predates the user's last password
+    // change.
+    REAUTH_REQUIRED = 4;
+
+    // The user's account is deactivated. The connection resumes if the account is
+    // restored; it is not revoked automatically.
+    INACTIVE = 5;
+  }
+}
+
+message ListConnectedAppsRequest {
+  // The maximum number of connected apps to return. The service may return fewer
+  // than this value. If unspecified, at most 50 are returned. The maximum value
+  // is 1000; values above 1000 are coerced to 1000.
+  int32 page_size = 1;
+
+  // A page token, received from a previous `ListConnectedApps` call. Provide this
+  // to retrieve the subsequent page. The filter and user parameters must not
+  // change between pages.
+  string page_token = 2;
+
+  // The user whose connected apps to list, in the form `users/{id}`. Omitted, a
+  // caller holding metaxisdata.connectedApps.list sees every connection in the
+  // workspace, and any other caller sees only their own. Naming another user is
+  // refused unless the caller holds that permission.
+  string user = 3 [(google.api.resource_reference) = {type: "metaxisdata/User"}];
+
+  // A CEL filter over the list. Supported variables:
+  //
+  //   user        == "users/{id}"
+  //   state       == "ACTIVE" | "REVOKED" | "EXPIRED" | "REAUTH_REQUIRED" | "INACTIVE"
+  //   client      == "name" (exact), client.matches("substring")
+  //   client_id   == "id" (exact), client_id.matches("substring")
+  //   user_email  == "email" (exact), user_email.matches("substring")
+  //   create_time >= / <= RFC 3339
+  //
+  // The filter only narrows the rows the caller is already allowed to see.
+  string filter = 4;
+}
+
+message ListConnectedAppsResponse {
+  // The connected apps on this page.
+  repeated ConnectedApp connected_apps = 1;
+
+  // A token, which can be sent as `page_token` to retrieve the next page. If this
+  // field is omitted, there are no subsequent pages.
+  string next_page_token = 2;
+}
+
+message RevokeConnectedAppRequest {
+  // The resource name of the connected app to revoke, in the form
+  // `connectedApps/{id}`.
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/ConnectedApp"}
+  ];
+}

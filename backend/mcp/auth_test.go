@@ -48,10 +48,10 @@ func enabledEndpoints() mcp.EndpointsFunc {
 func TestTokenVerifierResolvesAnMCPToken(t *testing.T) {
 	t.Parallel()
 
-	token, err := authpkg.GenerateMCPAccessToken("user@example.com", 7, verifierClient, verifierResource, verifierScope, verifierSecret, time.Hour)
+	token, err := authpkg.GenerateMCPAccessToken("user@example.com", 7, verifierClient, 42, verifierResource, verifierScope, verifierSecret, time.Hour)
 	require.NoError(t, err)
 
-	verify := mcp.NewTokenVerifier(enabledEndpoints(), authpkg.NewTokenAuthenticator(verifierUsers{}, verifierSecret, nil))
+	verify := mcp.NewTokenVerifier(enabledEndpoints(), authpkg.NewTokenAuthenticator(verifierUsers{}, nil, verifierSecret, nil))
 	info, err := verify(context.Background(), token, &http.Request{})
 	require.NoError(t, err)
 	require.Equal(t, "7", info.UserID)
@@ -68,13 +68,13 @@ func TestTokenVerifierResolvesAnMCPToken(t *testing.T) {
 func TestTokenVerifierRefusesEverythingElse(t *testing.T) {
 	t.Parallel()
 
-	authenticator := authpkg.NewTokenAuthenticator(verifierUsers{}, verifierSecret, nil)
+	authenticator := authpkg.NewTokenAuthenticator(verifierUsers{}, nil, verifierSecret, nil)
 
 	userToken, err := authpkg.GenerateAccessToken("user@example.com", 7, common.ReleaseModeDev, verifierSecret, time.Hour)
 	require.NoError(t, err)
-	otherResourceToken, err := authpkg.GenerateMCPAccessToken("user@example.com", 7, verifierClient, "https://other.example.com/mcp", verifierScope, verifierSecret, time.Hour)
+	otherResourceToken, err := authpkg.GenerateMCPAccessToken("user@example.com", 7, verifierClient, 42, "https://other.example.com/mcp", verifierScope, verifierSecret, time.Hour)
 	require.NoError(t, err)
-	noScopeToken, err := authpkg.GenerateMCPAccessToken("user@example.com", 7, verifierClient, verifierResource, "", verifierSecret, time.Hour)
+	noScopeToken, err := authpkg.GenerateMCPAccessToken("user@example.com", 7, verifierClient, 42, verifierResource, "", verifierSecret, time.Hour)
 	require.NoError(t, err)
 
 	cases := []struct {
@@ -99,7 +99,7 @@ func TestTokenVerifierRefusesEverythingElse(t *testing.T) {
 	t.Run("a disabled surface refuses even a valid token", func(t *testing.T) {
 		t.Parallel()
 
-		token, err := authpkg.GenerateMCPAccessToken("user@example.com", 7, verifierClient, verifierResource, verifierScope, verifierSecret, time.Hour)
+		token, err := authpkg.GenerateMCPAccessToken("user@example.com", 7, verifierClient, 42, verifierResource, verifierScope, verifierSecret, time.Hour)
 		require.NoError(t, err)
 
 		disabled := func(context.Context) (oauth.Endpoints, bool, error) {
@@ -126,4 +126,42 @@ func TestTokenVerifierRefusesEverythingElse(t *testing.T) {
 		_, ok = mcp.UserFromTokenInfo(nil)
 		require.False(t, ok)
 	})
+}
+
+// verifierGrants is the GrantStore the verifier tests resolve against: the only
+// live grant is id 42 for user 7 and the test client.
+type verifierGrants struct {
+	live bool
+}
+
+func (g verifierGrants) IsOAuthGrantLive(_ context.Context, grantID int64, userID int, clientID string) (bool, error) {
+	if grantID != 42 || userID != 7 || clientID != verifierClient {
+		return false, nil
+	}
+	return g.live, nil
+}
+
+func TestTokenVerifierRequiresALiveConnectedApp(t *testing.T) {
+	t.Parallel()
+
+	// A token minted before the connected-app claim existed cannot be checked
+	// against a connection, so the endpoint refuses it rather than accepting a
+	// token that a revocation could not reach.
+	legacyToken, err := authpkg.GenerateMCPAccessToken("user@example.com", 7, verifierClient, 0, verifierResource, verifierScope, verifierSecret, time.Hour)
+	require.NoError(t, err)
+	verify := mcp.NewTokenVerifier(enabledEndpoints(), authpkg.NewTokenAuthenticator(verifierUsers{}, verifierGrants{live: true}, verifierSecret, nil))
+	_, err = verify(context.Background(), legacyToken, &http.Request{})
+	require.ErrorIs(t, err, sdkauth.ErrInvalidToken)
+
+	grantToken, err := authpkg.GenerateMCPAccessToken("user@example.com", 7, verifierClient, 42, verifierResource, verifierScope, verifierSecret, time.Hour)
+	require.NoError(t, err)
+
+	info, err := verify(context.Background(), grantToken, &http.Request{})
+	require.NoError(t, err)
+	request := &mcpsdk.CallToolRequest{Extra: &mcpsdk.RequestExtra{TokenInfo: info}}
+	require.Equal(t, int64(42), mcp.GrantIDFromRequest(request), "the tool path needs the connected app to record activity on it")
+
+	revoked := mcp.NewTokenVerifier(enabledEndpoints(), authpkg.NewTokenAuthenticator(verifierUsers{}, verifierGrants{live: false}, verifierSecret, nil))
+	_, err = revoked(context.Background(), grantToken, &http.Request{})
+	require.ErrorIs(t, err, sdkauth.ErrInvalidToken)
 }
