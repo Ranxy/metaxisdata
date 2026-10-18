@@ -3,6 +3,7 @@ package lineagevalidation
 import (
 	"context"
 	"errors"
+	"math"
 	"sync"
 	"testing"
 	"time"
@@ -11,30 +12,42 @@ import (
 )
 
 // probeRevalidator counts passes, can hold one open so a test can trigger a pass
-// while another is running, and reports when a pass starts and finishes.
+// while another is running, reports when a pass starts and finishes, can report a
+// full batch so a test can model a backlog, and can run a hook after each batch so
+// a test can end the pass between batches.
 type probeRevalidator struct {
 	mu       sync.Mutex
 	calls    int
 	block    bool
 	err      error
+	hasMore  int
 	started  chan struct{}
 	finished chan struct{}
 	release  chan struct{}
+
+	revalidated  int
+	stillUnknown int
+	onBatch      func()
 }
 
 func newProbeRevalidator() *probeRevalidator {
 	return &probeRevalidator{
-		started:  make(chan struct{}, 8),
-		finished: make(chan struct{}, 8),
-		release:  make(chan struct{}),
+		revalidated: 1,
+		started:     make(chan struct{}, 8),
+		finished:    make(chan struct{}, 8),
+		release:     make(chan struct{}),
 	}
 }
 
-func (p *probeRevalidator) RevalidateContradictedColumnClaims(ctx context.Context, _ int) (int, int, error) {
+func (p *probeRevalidator) RevalidateContradictedColumnClaims(ctx context.Context, _ int) (int, int, bool, error) {
 	p.mu.Lock()
 	p.calls++
+	call := p.calls
 	block := p.block
 	err := p.err
+	hasMore := call <= p.hasMore
+	revalidated, stillUnknown := p.revalidated, p.stillUnknown
+	onBatch := p.onBatch
 	p.mu.Unlock()
 
 	select {
@@ -52,13 +65,16 @@ func (p *probeRevalidator) RevalidateContradictedColumnClaims(ctx context.Contex
 		select {
 		case <-p.release:
 		case <-ctx.Done():
-			return 0, 0, ctx.Err()
+			return 0, 0, false, ctx.Err()
 		}
 	}
-	if err != nil {
-		return 0, 0, err
+	if onBatch != nil {
+		onBatch()
 	}
-	return 1, 0, nil
+	if err != nil {
+		return 0, 0, false, err
+	}
+	return revalidated, stillUnknown, hasMore, nil
 }
 
 func (p *probeRevalidator) count() int {
@@ -289,4 +305,78 @@ func TestRunReturnsOnContextCancel(t *testing.T) {
 	probe := newProbeRevalidator()
 	_, stop := start(t, probe)
 	stop()
+}
+
+// One pass drains a backlog larger than the implementation's batch, and the counts
+// it reports are the sum over the batches rather than the last one alone.
+func TestBacklogIsDrainedInOnePass(t *testing.T) {
+	t.Parallel()
+
+	probe := newProbeRevalidator()
+	probe.revalidated = 2
+	probe.stillUnknown = 3
+	probe.hasMore = 1
+
+	revalidated, stillUnknown := NewRunner(probe).runOnce(context.Background())
+
+	require.Equal(t, 2, probe.count(), "a full batch earns a second call")
+	require.Equal(t, 4, revalidated)
+	require.Equal(t, 6, stillUnknown)
+}
+
+// The drain stops when the pass context ends; the batches it already ran stay
+// counted and the next trigger continues where this pass stopped.
+func TestBacklogDrainStopsWhenTheContextEnds(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	probe := newProbeRevalidator()
+	probe.hasMore = 10
+	probe.onBatch = cancel
+
+	revalidated, stillUnknown := NewRunner(probe).runOnce(ctx)
+
+	require.Equal(t, 1, probe.count(), "the drain must stop asking once its context ends")
+	require.Equal(t, 1, revalidated, "the batch that ran is still counted")
+	require.Equal(t, 0, stillUnknown)
+}
+
+// The pass deadline bounds the drain even when every batch reports more pending
+// edges, so one pass can never run unbounded.
+func TestBacklogDrainStopsAtThePassDeadline(t *testing.T) {
+	t.Parallel()
+
+	probe := newProbeRevalidator()
+	probe.hasMore = math.MaxInt
+	// One batch per 5ms keeps the loop from spinning while the deadline passes, and
+	// keeps the deadline well inside the batch budget so this proves the deadline.
+	probe.onBatch = func() { time.Sleep(5 * time.Millisecond) }
+	runner := NewRunner(probe)
+	runner.passTimeout = 20 * time.Millisecond
+
+	started := time.Now()
+	revalidated, _ := runner.runOnce(context.Background())
+
+	require.Less(t, time.Since(started), 5*time.Second, "the pass must end at its deadline")
+	require.Positive(t, probe.count(), "the drain ran at least one batch")
+	require.Less(t, probe.count(), maxRevalidationBatches, "the deadline, not the batch budget, ended this pass")
+	require.Equal(t, probe.count(), revalidated)
+}
+
+// The batch budget bounds a pass even when the backlog never shrinks: a still
+// unknown relation stays eligible, so an unbudgeted drain would rewrite the same
+// edges until the deadline.
+func TestBacklogDrainIsBoundedPerPass(t *testing.T) {
+	t.Parallel()
+
+	probe := newProbeRevalidator()
+	probe.hasMore = math.MaxInt
+	probe.revalidated = 2
+	runner := NewRunner(probe)
+	runner.passTimeout = time.Minute
+
+	revalidated, _ := runner.runOnce(context.Background())
+
+	require.Equal(t, maxRevalidationBatches, probe.count())
+	require.Equal(t, 2*maxRevalidationBatches, revalidated)
 }

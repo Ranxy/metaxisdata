@@ -101,3 +101,17 @@ func TestColumnLineageInsertIsIdempotent(t *testing.T) {
 	require.NotContains(t, columnLineageInsertStatement, "ON CONFLICT DO UPDATE")
 	require.NotContains(t, columnLineageInsertStatement, "meta_registry_resource_history")
 }
+
+// The unknown-endpoint sweep feeds the ingested-lineage revalidator, which only
+// revalidates OPENLINEAGE edges. Without the meta_type predicate a page of another
+// producer's edges would occupy the batch forever and starve the ingested backlog.
+func TestUnknownEndpointQueryOnlyReadsIngestedEdges(t *testing.T) {
+	t.Parallel()
+
+	require.Contains(t, columnLineageUnknownEndpointQuery, "cl.meta_type = $1")
+	require.Contains(t, columnLineageUnknownEndpointQuery, "cl.source_guid NOT LIKE $2")
+	require.Contains(t, columnLineageUnknownEndpointQuery, "cl.target_guid NOT LIKE $2")
+	require.Contains(t, columnLineageUnknownEndpointQuery, "LIMIT $3")
+	require.Contains(t, columnLineageUnknownEndpointQuery, "NOT EXISTS (SELECT 1 FROM meta_registry_resource")
+	require.NotContains(t, columnLineageUnknownEndpointQuery, "meta_registry_resource_history")
+}

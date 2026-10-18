@@ -21,14 +21,14 @@ func TestRevalidationWaitIsCancellable(t *testing.T) {
 		{
 			name: "unresolved lineage",
 			call: func(processor *Processor, ctx context.Context) error {
-				_, _, err := processor.RevalidateUnresolvedLineage(ctx, 0)
+				_, _, _, err := processor.RevalidateUnresolvedLineage(ctx, 0)
 				return err
 			},
 		},
 		{
 			name: "contradicted column claims",
 			call: func(processor *Processor, ctx context.Context) error {
-				_, _, err := processor.RevalidateContradictedColumnClaims(ctx, 0)
+				_, _, _, err := processor.RevalidateContradictedColumnClaims(ctx, 0)
 				return err
 			},
 		},

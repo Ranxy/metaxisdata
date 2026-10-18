@@ -26,6 +26,13 @@ const (
 	// passTimeout bounds one pass so a stuck pass cannot wedge the runner. The
 	// maintenance pass keeps its own cadence as the safety net.
 	passTimeout = 5 * time.Minute
+	// maxRevalidationBatches bounds how many default batches one pass drains. A
+	// revalidation leaves an edge whose relation is still unknown in place, so that
+	// edge stays eligible for the same query: a backlog at or above one batch would
+	// otherwise be re-read and rewritten until the deadline. The budget ends the
+	// pass after a bounded amount of work; the next trigger resumes from the oldest
+	// rows.
+	maxRevalidationBatches = 10
 )
 
 // Revalidator re-checks ingested lineage whose column claims a relation that
@@ -33,11 +40,11 @@ const (
 // its interval.
 type Revalidator interface {
 	// RevalidateContradictedColumnClaims revalidates one bounded batch of
-	// contradicted edges. limit 0 means the implementation's default batch
-	// (revalidationBatch for the OpenLineage revalidator), not "everything": a
-	// backlog larger than that batch is left for the next pass, so a caller must
-	// not assume one call drains it.
-	RevalidateContradictedColumnClaims(ctx context.Context, limit int) (revalidated, stillUnknown int, err error)
+	// contradicted edges and reports whether the batch was full, so the caller
+	// can keep draining a larger backlog. limit 0 means the implementation's
+	// default batch (revalidationBatch for the OpenLineage revalidator), not
+	// "everything".
+	RevalidateContradictedColumnClaims(ctx context.Context, limit int) (revalidated, stillUnknown int, hasMore bool, err error)
 }
 
 // Runner revalidates ingested lineage after a schema sync commits.
@@ -45,6 +52,9 @@ type Runner struct {
 	revalidator Revalidator
 	// settle is settleDelay in production; a test shortens it.
 	settle time.Duration
+	// passTimeout is the package constant in production; a test shortens it to
+	// observe the pass deadline without waiting.
+	passTimeout time.Duration
 	// settleTimer waits out the settle window; production uses time.After, and a
 	// test replaces it to hold the window open instead of racing a clock.
 	settleTimer func(time.Duration) <-chan time.Time
@@ -61,6 +71,7 @@ func NewRunner(revalidator Revalidator) *Runner {
 	return &Runner{
 		revalidator: revalidator,
 		settle:      settleDelay,
+		passTimeout: passTimeout,
 		settleTimer: time.After,
 		trigger:     make(chan struct{}, 1),
 	}
@@ -125,25 +136,46 @@ func (r *Runner) discardPendingTrigger() {
 	}
 }
 
-// runOnce revalidates the claims the registry now contradicts, at most one
-// default batch of them. A failure is logged and dropped: the next sync or the
-// maintenance pass retries the same edges, and a half-finished pass would leave a
-// run's edges replaced in part.
-func (r *Runner) runOnce(ctx context.Context) {
-	passCtx, cancel := context.WithTimeout(ctx, passTimeout)
+// runOnce revalidates the claims the registry now contradicts, draining batches
+// until the backlog is worked off, the pass deadline ends, or the batch budget is
+// spent. It returns what the whole pass revalidated, summed over its batches, for
+// tests. A failure is logged and dropped: the next sync or the maintenance pass
+// retries the same edges, and a half-finished pass would leave a run's edges
+// replaced in part.
+func (r *Runner) runOnce(ctx context.Context) (revalidated, stillUnknown int) {
+	passCtx, cancel := context.WithTimeout(ctx, r.passTimeout)
 	defer cancel()
 
-	// limit 0 asks for the implementation's default batch: one trigger therefore
-	// revalidates a bounded slice even when the backlog is larger. Draining the
-	// backlog is the maintenance pass' job, not a reason for this loop to spin.
-	revalidated, stillUnknown, err := r.revalidator.RevalidateContradictedColumnClaims(passCtx, 0)
-	if err != nil {
-		slog.Error("Failed to revalidate lineage after a schema sync", log.WithError(err))
-		return
+	// limit 0 asks for the implementation's default batch, and hasMore says
+	// whether another batch is waiting. Draining the backlog here means one trigger
+	// catches up a backlog larger than a batch, while the pass deadline and the
+	// batch budget keep this loop bounded.
+	backlogRemaining := false
+	for batches := 0; passCtx.Err() == nil && batches < maxRevalidationBatches; batches++ {
+		batchRevalidated, batchStillUnknown, hasMore, err := r.revalidator.RevalidateContradictedColumnClaims(passCtx, 0)
+		if err != nil {
+			slog.Error("Failed to revalidate lineage after a schema sync", log.WithError(err))
+			return revalidated, stillUnknown
+		}
+		revalidated += batchRevalidated
+		stillUnknown += batchStillUnknown
+		backlogRemaining = hasMore
+		if !hasMore {
+			break
+		}
 	}
 	if revalidated > 0 || stillUnknown > 0 {
 		slog.Info("Revalidated lineage after a schema sync",
 			slog.Int("edges", revalidated),
 			slog.Int("objectsStillUnknown", stillUnknown))
 	}
+	if backlogRemaining {
+		// The batch budget, the deadline, or shutdown ended the pass with batches
+		// still pending; the next trigger continues where this one stopped.
+		slog.Warn("Revalidation pass ended with a backlog remaining",
+			slog.Int("edges", revalidated),
+			slog.Int("objectsStillUnknown", stillUnknown),
+			slog.Bool("deadlineReached", passCtx.Err() != nil))
+	}
+	return revalidated, stillUnknown
 }

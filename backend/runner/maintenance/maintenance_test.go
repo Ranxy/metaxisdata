@@ -3,6 +3,7 @@ package maintenance
 import (
 	"context"
 	"errors"
+	"math"
 	"sync"
 	"testing"
 	"time"
@@ -122,39 +123,69 @@ func (f *fakeStore) cutoff(name string) time.Time {
 	return f.cutoffs[name]
 }
 
+// fakeRevalidator returns the configured counts, can report a full batch a
+// configured number of times per method so a test can model a backlog, and can run
+// a hook after each batch so a test can end the pass between batches.
 type fakeRevalidator struct {
-	mu           sync.Mutex
-	calls        int
+	mu sync.Mutex
+
+	unresolvedCalls   int
+	contradictedCalls int
+	// unresolvedHasMore and contradictedHasMore are how many of each method's
+	// first calls report a full batch; the call after that reports no more.
+	unresolvedHasMore   int
+	contradictedHasMore int
+
 	err          error
 	revalidated  int
 	stillUnknown int
+	onBatch      func()
 }
 
-func (f *fakeRevalidator) run(ctx context.Context) (int, int, error) {
+func (f *fakeRevalidator) batch(ctx context.Context, calls *int, hasMoreCalls int) (int, int, bool, error) {
 	if err := ctx.Err(); err != nil {
-		return 0, 0, err
+		return 0, 0, false, err
 	}
+
 	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.calls++
-	if f.err != nil {
-		return 0, 0, f.err
+	*calls++
+	hasMore := *calls <= hasMoreCalls
+	revalidated, stillUnknown, err, onBatch := f.revalidated, f.stillUnknown, f.err, f.onBatch
+	f.mu.Unlock()
+
+	if onBatch != nil {
+		onBatch()
 	}
-	return f.revalidated, f.stillUnknown, nil
+	if err != nil {
+		return 0, 0, false, err
+	}
+	return revalidated, stillUnknown, hasMore, nil
 }
 
-func (f *fakeRevalidator) RevalidateUnresolvedLineage(ctx context.Context, _ int) (int, int, error) {
-	return f.run(ctx)
+func (f *fakeRevalidator) RevalidateUnresolvedLineage(ctx context.Context, _ int) (int, int, bool, error) {
+	return f.batch(ctx, &f.unresolvedCalls, f.unresolvedHasMore)
 }
 
-func (f *fakeRevalidator) RevalidateContradictedColumnClaims(ctx context.Context, _ int) (int, int, error) {
-	return f.run(ctx)
+func (f *fakeRevalidator) RevalidateContradictedColumnClaims(ctx context.Context, _ int) (int, int, bool, error) {
+	return f.batch(ctx, &f.contradictedCalls, f.contradictedHasMore)
 }
 
 func (f *fakeRevalidator) callCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.calls
+	return f.unresolvedCalls + f.contradictedCalls
+}
+
+func (f *fakeRevalidator) unresolvedCallCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.unresolvedCalls
+}
+
+func (f *fakeRevalidator) contradictedCallCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.contradictedCalls
 }
 
 // newTestRunner wires the pass to the fakes with the production fields replaced by
@@ -282,6 +313,92 @@ func TestNilRevalidatorIsSafe(t *testing.T) {
 	require.Equal(t, int64(4), summary.counts["llm_debug_log"])
 	require.NotContains(t, summary.counts, "unresolved_lineage")
 	require.NotContains(t, summary.counts, "contradicted_column_claims")
+}
+
+// A backlog larger than one implementation batch is drained in one pass, and the
+// summary records the sum over the batches instead of only the last one.
+func TestBacklogIsDrainedInOnePass(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	revalidator := &fakeRevalidator{
+		revalidated:         2,
+		stillUnknown:        3,
+		unresolvedHasMore:   1,
+		contradictedHasMore: 1,
+	}
+
+	summary := newTestRunner(stores, revalidator).runOnce(context.Background())
+
+	require.Equal(t, 2, revalidator.unresolvedCallCount(), "a full batch earns a second call")
+	require.Equal(t, 2, revalidator.contradictedCallCount())
+	require.Equal(t, int64(4), summary.counts["unresolved_lineage"])
+	require.Equal(t, int64(4), summary.counts["contradicted_column_claims"])
+}
+
+// A drain must stop when the pass context ends instead of calling forever, and the
+// batches that already ran stay counted.
+func TestBacklogDrainStopsWhenThePassEnds(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	ctx, cancel := context.WithCancel(context.Background())
+	revalidator := &fakeRevalidator{revalidated: 1, unresolvedHasMore: 10}
+	revalidator.onBatch = cancel
+
+	summary := newTestRunner(stores, revalidator).runOnce(ctx)
+
+	require.Equal(t, 1, revalidator.unresolvedCallCount(), "the drain must stop asking once its context ends")
+	require.Equal(t, int64(1), summary.counts["unresolved_lineage"], "the batch that ran is still counted")
+}
+
+// A drain is bounded per pass even when the backlog never shrinks: a still unknown
+// relation stays eligible, so an unbudgeted drain would rewrite the same edges for
+// the whole pass.
+func TestBacklogDrainIsBoundedPerPass(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	revalidator := &fakeRevalidator{
+		revalidated:         1,
+		unresolvedHasMore:   math.MaxInt,
+		contradictedHasMore: math.MaxInt,
+	}
+
+	summary := newTestRunner(stores, revalidator).runOnce(context.Background())
+
+	require.Equal(t, maxRevalidationBatches, revalidator.unresolvedCallCount())
+	require.Equal(t, maxRevalidationBatches, revalidator.contradictedCallCount())
+	require.Equal(t, int64(maxRevalidationBatches), summary.counts["unresolved_lineage"])
+	require.Equal(t, int64(maxRevalidationBatches), summary.counts["contradicted_column_claims"])
+}
+
+// Run re-arms its jittered timer after each pass, so the periodic pass keeps
+// running while the context is live.
+func TestRunTicksAfterTheInterval(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	runner := newTestRunner(stores, nil)
+	runner.interval = time.Millisecond
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runner.Run(ctx)
+	}()
+
+	require.Eventually(t, func() bool {
+		return stores.callCount("explain_sql_cache") >= 2
+	}, 5*time.Second, time.Millisecond)
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not return when the context was cancelled")
+	}
 }
 
 // The pass deadline reaches every item: once it fires on a stuck delete the items

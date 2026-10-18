@@ -52,18 +52,22 @@ func (p *Processor) releaseRevalidation() {
 // filled in. Edges whose relation is still unknown stay, and are counted so the
 // backlog is visible instead of silent.
 //
-// It returns the number of edges re-checked and the number of meta objects that
-// still reference an unknown relation.
+// It returns the number of edges re-checked, the number of meta objects that
+// still reference an unknown relation, and whether the pass filled its batch limit
+// with edges it can revalidate. A true hasMore means another batch may be waiting,
+// so a caller draining a backlog calls again until it is false or its own pass
+// deadline ends. A full batch of another producer's edges reports false: this pass
+// leaves those alone, so calling again would read the same rows and make no
+// progress.
 //
 // limit bounds how many pending edges one pass reads; 0 means revalidationBatch,
-// the implementation's default. One pass is bounded and does not drain a larger
-// backlog, so a caller must not treat it as a backlog drain - passes are
-// scheduled by cadence, and the remaining edges wait for the next one.
-func (p *Processor) RevalidateUnresolvedLineage(ctx context.Context, limit int) (revalidated, stillUnknown int, err error) {
+// the implementation's default. One pass never reads more than one batch: the
+// drain is the caller's loop, bounded by its pass deadline.
+func (p *Processor) RevalidateUnresolvedLineage(ctx context.Context, limit int) (revalidated, stillUnknown int, hasMore bool, err error) {
 	// One pass at a time: the maintenance pass and the post-sync runner share this
 	// processor, and both replace an object's edges as a set.
 	if err := p.acquireRevalidation(ctx); err != nil {
-		return 0, 0, err
+		return 0, 0, false, err
 	}
 	defer p.releaseRevalidation()
 
@@ -72,13 +76,13 @@ func (p *Processor) RevalidateUnresolvedLineage(ctx context.Context, limit int) 
 	}
 	pending, err := p.store.FindColumnLineageWithUnknownEndpoint(ctx, ExternalDatasetGUIDPrefix, limit)
 	if err != nil {
-		return 0, 0, errors.Wrap(err, "failed to list lineage with an unknown endpoint")
+		return 0, 0, false, errors.Wrap(err, "failed to list lineage with an unknown endpoint")
 	}
 
 	affected := affectedRuns(pending)
 	revalidated, degraded, stillUnknown, err := p.revalidateRuns(ctx, affected)
 	if err != nil {
-		return revalidated, stillUnknown, err
+		return revalidated, stillUnknown, false, err
 	}
 	if len(pending) > 0 {
 		slog.Info("Revalidated ingested lineage whose endpoints the registry did not know",
@@ -89,7 +93,7 @@ func (p *Processor) RevalidateUnresolvedLineage(ctx context.Context, limit int) 
 			"objectsStillUnknown", stillUnknown,
 		)
 	}
-	return revalidated, stillUnknown, nil
+	return revalidated, stillUnknown, len(pending) >= limit && len(affected) > 0, nil
 }
 
 // RevalidateContradictedColumnClaims re-checks the ingested edges whose column
@@ -102,13 +106,16 @@ func (p *Processor) RevalidateUnresolvedLineage(ctx context.Context, limit int) 
 // is the only pass that can still fix them. A claim is blanked, the edge stays
 // as a table-level dependency, and what is still unknown around it is counted.
 //
+// It returns the same three values as RevalidateUnresolvedLineage: what the pass
+// revalidated, what is still unknown, and whether it filled its batch limit so a
+// caller draining a backlog should call again.
+//
 // limit bounds how many contradicted edges one pass reads; 0 means
-// revalidationBatch, the implementation's default. One pass is bounded and does
-// not drain a larger backlog, so the caller re-triggers on cadence and must not
-// assume a single call catches up.
-func (p *Processor) RevalidateContradictedColumnClaims(ctx context.Context, limit int) (revalidated, stillUnknown int, err error) {
+// revalidationBatch, the implementation's default. One pass never reads more than
+// one batch: the drain is the caller's loop, bounded by its pass deadline.
+func (p *Processor) RevalidateContradictedColumnClaims(ctx context.Context, limit int) (revalidated, stillUnknown int, hasMore bool, err error) {
 	if err := p.acquireRevalidation(ctx); err != nil {
-		return 0, 0, err
+		return 0, 0, false, err
 	}
 	defer p.releaseRevalidation()
 
@@ -117,13 +124,13 @@ func (p *Processor) RevalidateContradictedColumnClaims(ctx context.Context, limi
 	}
 	contradicted, err := p.store.FindColumnLineageWithContradictedColumnClaim(ctx, ExternalDatasetGUIDPrefix, limit)
 	if err != nil {
-		return 0, 0, errors.Wrap(err, "failed to list lineage with a contradicted column claim")
+		return 0, 0, false, errors.Wrap(err, "failed to list lineage with a contradicted column claim")
 	}
 
 	affected := affectedRuns(contradicted)
 	revalidated, degraded, stillUnknown, err := p.revalidateRuns(ctx, affected)
 	if err != nil {
-		return revalidated, stillUnknown, err
+		return revalidated, stillUnknown, false, err
 	}
 	if len(contradicted) > 0 {
 		slog.Info("Revalidated ingested lineage whose column claims the registry contradicts",
@@ -134,7 +141,7 @@ func (p *Processor) RevalidateContradictedColumnClaims(ctx context.Context, limi
 			"objectsStillUnknown", stillUnknown,
 		)
 	}
-	return revalidated, stillUnknown, nil
+	return revalidated, stillUnknown, len(contradicted) >= limit, nil
 }
 
 // affectedRuns returns the ingested runs whose edges a pass has to re-check.

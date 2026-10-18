@@ -188,18 +188,29 @@ func scanColumnLineage(rows *sql.Rows) (*ColumnLineage, error) {
 // relation the metadata registry has no row for, oldest first. excludePrefix skips
 // the GUIDs that are meant to have no row - an external dataset never gets one -
 // and limit bounds what one revalidation pass reads.
+// columnLineageUnknownEndpointQuery finds the ingested edges whose endpoint the
+// registry does not have. The meta_type predicate is load-bearing: the analyzer's
+// own edges can legitimately point at a relation the registry does not know yet,
+// but ingestion is the only path that stores such an edge unchecked, and a page of
+// another producer's edges would permanently occupy the batch without being
+// revalidatable (the revalidator skips them), starving the ingested backlog.
+const columnLineageUnknownEndpointQuery = `
+	SELECT id, meta_guid, meta_type, source_guid, source_column, source_type, target_guid, target_column, target_type, relation_type, transformation, updated_at
+	FROM column_lineage cl
+	WHERE cl.meta_type = $1
+	  AND cl.source_guid NOT LIKE $2
+	  AND cl.target_guid NOT LIKE $2
+	  AND (
+	    NOT EXISTS (SELECT 1 FROM meta_registry_resource m WHERE m.guid = cl.source_guid)
+	    OR NOT EXISTS (SELECT 1 FROM meta_registry_resource m WHERE m.guid = cl.target_guid)
+	  )
+	ORDER BY cl.updated_at, cl.id
+	LIMIT $3
+`
+
 func (s *Store) FindColumnLineageWithUnknownEndpoint(ctx context.Context, excludePrefix string, limit int) ([]*ColumnLineage, error) {
-	rows, err := s.GetDB().QueryContext(ctx, `
-		SELECT id, meta_guid, meta_type, source_guid, source_column, source_type, target_guid, target_column, target_type, relation_type, transformation, updated_at
-		FROM column_lineage cl
-		WHERE cl.source_guid NOT LIKE $1
-		  AND cl.target_guid NOT LIKE $1
-		  AND (
-		    NOT EXISTS (SELECT 1 FROM meta_registry_resource m WHERE m.guid = cl.source_guid)
-		    OR NOT EXISTS (SELECT 1 FROM meta_registry_resource m WHERE m.guid = cl.target_guid)
-		  )
-		ORDER BY cl.updated_at, cl.id
-		LIMIT $2`, excludePrefix+"%", max(limit, 0))
+	rows, err := s.GetDB().QueryContext(ctx, columnLineageUnknownEndpointQuery,
+		storepb.MetaType_OPENLINEAGE, excludePrefix+"%", max(limit, 0))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to query column lineage with an unknown endpoint")
 	}

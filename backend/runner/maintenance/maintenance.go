@@ -10,6 +10,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	"github.com/Ranxy/metaxisdata/backend/runner"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
@@ -21,6 +22,13 @@ const (
 	// that follow it. It is well above the usual pass so a large retention prune
 	// still fits.
 	passTimeout = time.Hour
+	// maxRevalidationBatches bounds how many default revalidation batches one pass
+	// drains. A revalidation leaves an edge whose relation is still unknown in
+	// place, so that edge stays eligible for the same query: a backlog at or above
+	// one batch would otherwise be re-read and rewritten until the deadline. The
+	// budget ends the drain after a bounded amount of work; the next pass resumes
+	// from the oldest rows.
+	maxRevalidationBatches = 10
 
 	// llmDebugLogRetention bounds the debug log. It stores full request and
 	// response bodies, so it is not kept indefinitely; only enabled debug mode
@@ -37,9 +45,13 @@ const (
 // LineageRevalidator re-checks ingested lineage whose endpoints the metadata
 // registry did not know when it was stored, and whose column claims a relation
 // that appeared later contradicts.
+//
+// Both methods revalidate one bounded batch: limit 0 asks for the
+// implementation's default batch, and hasMore reports whether the batch was full,
+// so a caller can keep calling to drain a larger backlog.
 type LineageRevalidator interface {
-	RevalidateUnresolvedLineage(ctx context.Context, limit int) (revalidated, stillUnknown int, err error)
-	RevalidateContradictedColumnClaims(ctx context.Context, limit int) (revalidated, stillUnknown int, err error)
+	RevalidateUnresolvedLineage(ctx context.Context, limit int) (revalidated, stillUnknown int, hasMore bool, err error)
+	RevalidateContradictedColumnClaims(ctx context.Context, limit int) (revalidated, stillUnknown int, hasMore bool, err error)
 }
 
 // maintenanceStore is the slice of *store.Store the pass needs. Narrowing it here
@@ -87,12 +99,16 @@ func (*Runner) Name() string { return "maintenance" }
 func (r *Runner) Run(ctx context.Context) {
 	r.runOnce(ctx)
 
-	ticker := time.NewTicker(r.interval)
-	defer ticker.Stop()
+	// The wait is jittered and re-armed after each pass, so a restart does not keep
+	// the maintenance prune aligned with the other periodic runners. A pass that
+	// runs long delays the next tick instead of stacking one behind it.
+	timer := time.NewTimer(runner.Jitter(r.interval))
+	defer timer.Stop()
 	for {
 		select {
-		case <-ticker.C:
+		case <-timer.C:
 			r.runOnce(ctx)
+			timer.Reset(runner.Jitter(r.interval))
 		case <-ctx.Done():
 			return
 		}
@@ -236,7 +252,9 @@ func pruneItem(ctx context.Context, summary *passSummary, item maintenanceItem) 
 
 // revalidateIngestedLineage re-checks the ingested edges the registry can now
 // judge. It runs before the retention item, so a setting read failure cannot skip
-// it.
+// it. Each revalidation drains as many bounded batches as the pass deadline and
+// the batch budget allow, so a backlog larger than the implementation's batch is
+// worked off in one pass instead of one batch per six hours.
 func (r *Runner) revalidateIngestedLineage(ctx context.Context, summary *passSummary) {
 	if r.revalidator == nil {
 		return
@@ -245,7 +263,9 @@ func (r *Runner) revalidateIngestedLineage(ctx context.Context, summary *passSum
 	// Ingested lineage that named a relation the registry did not have is
 	// re-checked here: once the relation has been synced its columns can be
 	// validated, and what is still unknown is counted rather than kept silent.
-	revalidated, stillUnknown, err := r.revalidator.RevalidateUnresolvedLineage(ctx, 0)
+	revalidated, stillUnknown, truncated, err := drainRevalidation(ctx, func(ctx context.Context) (int, int, bool, error) {
+		return r.revalidator.RevalidateUnresolvedLineage(ctx, 0)
+	})
 	if err != nil {
 		summary.failed = append(summary.failed, "unresolved_lineage")
 		slog.Error("Failed to revalidate lineage with an unknown endpoint", log.WithError(err))
@@ -254,23 +274,49 @@ func (r *Runner) revalidateIngestedLineage(ctx context.Context, summary *passSum
 		if revalidated > 0 || stillUnknown > 0 {
 			slog.Info("Revalidated lineage with an unknown endpoint",
 				slog.Int("edges", revalidated),
-				slog.Int("objectsStillUnknown", stillUnknown))
+				slog.Int("objectsStillUnknown", stillUnknown),
+				slog.Bool("backlogRemaining", truncated))
 		}
 	}
 
 	// A relation that has appeared since the pass above takes its edges out of
 	// that sweep - they no longer have an unknown endpoint - so the claims they
 	// could not be checked against are swept on their own.
-	revalidated, _, err = r.revalidator.RevalidateContradictedColumnClaims(ctx, 0)
+	revalidated, _, truncated, err = drainRevalidation(ctx, func(ctx context.Context) (int, int, bool, error) {
+		return r.revalidator.RevalidateContradictedColumnClaims(ctx, 0)
+	})
 	if err != nil {
 		summary.failed = append(summary.failed, "contradicted_column_claims")
 		slog.Error("Failed to revalidate lineage with a contradicted column claim", log.WithError(err))
 	} else {
 		summary.counts["contradicted_column_claims"] = int64(revalidated)
 		if revalidated > 0 {
-			slog.Info("Revalidated lineage with a contradicted column claim", slog.Int("edges", revalidated))
+			slog.Info("Revalidated lineage with a contradicted column claim",
+				slog.Int("edges", revalidated),
+				slog.Bool("backlogRemaining", truncated))
 		}
 	}
+}
+
+// drainRevalidation calls revalidate until it reports no more pending edges, the
+// pass context ends, or the batch budget is spent, summing what the batches did.
+// The pass deadline and the budget bound the drain: a truncated drain is not a
+// failure, because the next pass picks up the remaining edges, so it returns what
+// was done and whether more remains.
+func drainRevalidation(ctx context.Context, revalidate func(context.Context) (int, int, bool, error)) (revalidated, stillUnknown int, truncated bool, err error) {
+	for batches := 0; ctx.Err() == nil && batches < maxRevalidationBatches; batches++ {
+		batchRevalidated, batchStillUnknown, hasMore, err := revalidate(ctx)
+		if err != nil {
+			return revalidated, stillUnknown, false, err
+		}
+		revalidated += batchRevalidated
+		stillUnknown += batchStillUnknown
+		if !hasMore {
+			return revalidated, stillUnknown, false, nil
+		}
+		truncated = true
+	}
+	return revalidated, stillUnknown, truncated, nil
 }
 
 // pruneOpenLineageRuns applies the workspace retention window to OpenLineage runs.
