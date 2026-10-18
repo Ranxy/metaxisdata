@@ -304,12 +304,14 @@ func TestAnalyzeSQLRealServerIntegration(t *testing.T) {
 func TestAnalyzeSQLFromListedGUIDRealServerIntegration(t *testing.T) {
 	t.Parallel()
 
-	env, ctx, _, sourceDatabase, databaseName := setupMySQLServiceDatabase(t)
+	env, ctx, instanceID, sourceDatabase, databaseName := setupMySQLServiceDatabase(t)
 	env.SyncDatabase(ctx, t, databaseName)
 	client := newAPIClients(env, env.AdminToken())
 
+	// Scope the listing to this test's instance: the shared server accumulates the
+	// databases of every parallel scenario, and an unscoped listing is paginated.
 	listed, err := client.database.ListDatabases(ctx, connect.NewRequest(&v1pb.ListDatabasesRequest{
-		Parent: "workspaces/-",
+		Parent: "instances/" + instanceID,
 	}))
 	require.NoError(t, err)
 
