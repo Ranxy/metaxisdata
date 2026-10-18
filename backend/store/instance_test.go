@@ -1,13 +1,17 @@
 package store
 
 import (
+	"context"
 	"encoding/base64"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
@@ -205,4 +209,68 @@ func TestLLMProfileStoresOnlyTheCiphertext(t *testing.T) {
 				"the stored field %s looks like a credential: it must be the ciphertext one", name)
 		}
 	}
+}
+
+// A metadata patch is a merge, not a replace: fields the patch does not name keep
+// their stored value, including the encrypted credentials. This is what lets the
+// schema syncer update last_sync_time without reverting a concurrent edit to the
+// title, the data sources or the activation flag.
+func TestApplyInstanceMetadataUpdatesKeepsFieldsItDoesNotName(t *testing.T) {
+	t.Parallel()
+
+	cipher := newTestCipher(t)
+	lastSyncAt := timestamppb.Now()
+	stored := &storepb.Instance{
+		Title:      "prod orders",
+		Activation: true,
+		DataSources: []*storepb.DataSource{{
+			Id:       "admin",
+			Type:     storepb.DataSourceType_ADMIN,
+			Host:     "db.internal",
+			Port:     "3306",
+			Username: "root",
+			Password: "hunter2",
+		}},
+	}
+	encrypted, err := encryptInstanceMetadata(stored, cipher)
+	require.NoError(t, err)
+	raw, err := protojson.Marshal(encrypted)
+	require.NoError(t, err)
+
+	patched, err := applyInstanceMetadataUpdates(raw, cipher, []func(*storepb.Instance){
+		func(metadata *storepb.Instance) {
+			metadata.LastSyncTime = lastSyncAt
+			metadata.Version = "8.0.36"
+			metadata.MysqlLowerCaseTableNames = 1
+		},
+	})
+	require.NoError(t, err)
+
+	got := &storepb.Instance{}
+	require.NoError(t, common.ProtojsonUnmarshaler.Unmarshal(patched, got))
+	require.NoError(t, decryptInstance(got, cipher))
+	require.Equal(t, "prod orders", got.GetTitle())
+	require.True(t, got.GetActivation())
+	require.Equal(t, "8.0.36", got.GetVersion())
+	require.Equal(t, int32(1), got.GetMysqlLowerCaseTableNames())
+	require.Equal(t, lastSyncAt.AsTime(), got.GetLastSyncTime().AsTime())
+	// The credential the sync did not touch survives the patch, still decrypted
+	// to the same plaintext.
+	require.Equal(t, "hunter2", got.GetDataSources()[0].GetPassword())
+	require.NotEmpty(t, got.GetDataSources()[0].GetPasswordCiphertext())
+	require.Equal(t, "db.internal", got.GetDataSources()[0].GetHost())
+}
+
+// A patch and a whole-metadata write are two different contracts; accepting both
+// in one message would make "the last one wins" depend on argument order.
+func TestUpdateInstanceRejectsMetadataAndMetadataUpdatesTogether(t *testing.T) {
+	t.Parallel()
+
+	_, err := (&Store{}).UpdateInstance(context.Background(), &UpdateInstanceMessage{
+		ResourceID:      "inst-1",
+		Metadata:        &storepb.Instance{},
+		MetadataUpdates: []func(*storepb.Instance){func(*storepb.Instance) {}},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "mutually exclusive")
 }

@@ -473,21 +473,21 @@ func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessa
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	metadata, ok := proto.Clone(instance.Metadata).(*storepb.Instance)
-	if !ok {
-		return nil, nil, nil, errors.Errorf("failed to convert instance metadata type")
-	}
-	metadata.LastSyncTime = instanceMeta.Metadata.LastSyncTime
-	metadata.MysqlLowerCaseTableNames = instanceMeta.Metadata.MysqlLowerCaseTableNames
-
-	updateInstance := &store.UpdateInstanceMessage{
+	// The sync only owns the fields it observed: last_sync_time, the engine
+	// version and the case-sensitivity flag. Writing a whole metadata clone built
+	// before the (potentially long) driver round trip would silently revert any
+	// concurrent API change to the title, data sources or activation. The patch
+	// reads the row under lock and merges, so those edits survive.
+	updatedInstance, err := s.store.UpdateInstance(ctx, &store.UpdateInstanceMessage{
 		ResourceID: instance.ResourceID,
-		Metadata:   metadata,
-	}
-	if instanceMeta.Version != instance.Metadata.GetVersion() {
-		metadata.Version = instanceMeta.Version
-	}
-	updatedInstance, err := s.store.UpdateInstance(ctx, updateInstance)
+		MetadataUpdates: []func(*storepb.Instance){
+			func(metadata *storepb.Instance) {
+				metadata.LastSyncTime = instanceMeta.Metadata.LastSyncTime
+				metadata.MysqlLowerCaseTableNames = instanceMeta.Metadata.MysqlLowerCaseTableNames
+				metadata.Version = instanceMeta.Version
+			},
+		},
+	})
 	if err != nil {
 		return nil, nil, nil, err
 	}
