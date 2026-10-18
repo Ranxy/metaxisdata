@@ -671,6 +671,67 @@ func TestConnectionLimitSaturationDoesNotNotifyTheAdministrators(t *testing.T) {
 	require.Equal(t, "connection refused", notifier.admin[0].GetSchemaSync().GetInstanceError())
 }
 
+// A database whose instance failed to sync is not queued: the instance failure
+// has already been reported, and each of its databases would retry the same
+// broken connection and raise a failure notice of its own. A due database of a
+// healthy instance is still queued.
+func TestDatabasesToEnqueueSkipsFailedInstances(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	due := func(instanceID, databaseName string) *store.DatabaseMessage {
+		return &store.DatabaseMessage{
+			InstanceID:   instanceID,
+			DatabaseName: databaseName,
+			Metadata:     &storepb.DatabaseMetadata{LastSyncTime: timestamppb.New(now.Add(-time.Hour))},
+		}
+	}
+	instances := map[string]*store.InstanceMessage{
+		"healthy": {ResourceID: "healthy", Metadata: &storepb.Instance{
+			Activation:   true,
+			SyncInterval: durationpb.New(15 * time.Minute),
+		}},
+		"broken": {ResourceID: "broken", Metadata: &storepb.Instance{
+			Activation:   true,
+			SyncInterval: durationpb.New(15 * time.Minute),
+		}},
+	}
+	databases := []*store.DatabaseMessage{
+		due("healthy", "app"),
+		due("broken", "app"),
+		due("unknown", "app"),
+		due("healthy", "recent"),
+	}
+	databases[3].Metadata.LastSyncTime = timestamppb.New(now.Add(-time.Minute))
+
+	got := databasesToEnqueue(databases, instances, map[string]struct{}{"broken": {}}, now)
+	require.Len(t, got, 1, "only the due database of the healthy instance is queued")
+	require.Equal(t, "healthy", got[0].InstanceID)
+	require.Equal(t, "app", got[0].DatabaseName)
+}
+
+func TestQueueLineageAnalysisFeedsTheQueue(t *testing.T) {
+	t.Parallel()
+
+	queue := &fakeLineageQueue{}
+	syncer := &Syncer{lineageQueue: queue}
+	syncer.QueueLineageAnalysis("guid-1", storepb.MetaType_VIEW)
+	require.Equal(t, []string{"guid-1"}, queue.guids)
+
+	// An empty GUID and a syncer without a queue are no-ops, not panics.
+	syncer.QueueLineageAnalysis("", storepb.MetaType_VIEW)
+	(&Syncer{}).QueueLineageAnalysis("guid-2", storepb.MetaType_VIEW)
+	require.Equal(t, []string{"guid-1"}, queue.guids)
+}
+
+type fakeLineageQueue struct {
+	guids []string
+}
+
+func (q *fakeLineageQueue) QueueAnalysis(metaGUID string, _ storepb.MetaType) {
+	q.guids = append(q.guids, metaGUID)
+}
+
 // A snapshot can name the same (GUID, object type) twice; the batch upsert would
 // fail the whole database's sync with "cannot affect row a second time", so the
 // diff keeps the first entry and logs the collision.

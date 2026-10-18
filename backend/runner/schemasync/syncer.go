@@ -19,7 +19,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 	"github.com/Ranxy/metaxisdata/backend/plugin/db"
-	"github.com/Ranxy/metaxisdata/backend/runner/lineageanalyzer"
+	"github.com/Ranxy/metaxisdata/backend/runner"
 	"github.com/Ranxy/metaxisdata/backend/store"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -47,15 +47,22 @@ const (
 // operation to the user who asked for it, and a background failure to the
 // workspace administrators; a nil notifier leaves the runner silent, which is
 // what its own tests want.
-func NewSyncer(stores *store.Store, dbFactory *dbfactory.DBFactory, stateCfg *state.State, lineageAnalyzer *lineageanalyzer.Analyzer, lineageRevalidator LineageRevalidator, notifier Notifier) *Syncer {
+func NewSyncer(stores *store.Store, dbFactory *dbfactory.DBFactory, stateCfg *state.State, lineageQueue LineageQueue, lineageRevalidator LineageRevalidator, notifier Notifier) *Syncer {
 	return &Syncer{
 		store:              stores,
 		dbFactory:          dbFactory,
 		stateCfg:           stateCfg,
-		lineageAnalyzer:    lineageAnalyzer,
+		lineageQueue:       lineageQueue,
 		lineageRevalidator: lineageRevalidator,
 		notifier:           notifier,
 	}
+}
+
+// LineageQueue is the lineage analysis queue a schema sync feeds. The package
+// depends on this narrow interface instead of the concrete analyzer in a sibling
+// runner package; *lineageanalyzer.Analyzer satisfies it as is.
+type LineageQueue interface {
+	QueueAnalysis(metaGUID string, metaType storepb.MetaType)
 }
 
 // LineageRevalidator is signalled when a schema sync has added or changed
@@ -71,7 +78,7 @@ type Syncer struct {
 	store              *store.Store
 	dbFactory          *dbfactory.DBFactory
 	stateCfg           *state.State
-	lineageAnalyzer    *lineageanalyzer.Analyzer
+	lineageQueue       LineageQueue
 	lineageRevalidator LineageRevalidator
 	databaseSyncMap    sync.Map // map[string]*store.DatabaseMessage
 	// databaseSyncRetryMap holds the backoff of a database whose sync failed:
@@ -306,15 +313,18 @@ func (*Syncer) Name() string { return "schemasync" }
 func (s *Syncer) Run(ctx context.Context) {
 	sp := pool.New()
 	sp.Go(func() {
-		s.trySyncAll(ctx)
-		slog.Debug("Schema syncer's first scan finished; running every interval", slog.Duration("interval", instanceSyncInterval))
-		ticker := time.NewTicker(instanceSyncInterval)
+		s.trySyncAllOnce(ctx)
+		// Jitter the fixed interval so a restart does not keep every process's
+		// scan aligned with the other runners' passes.
+		interval := runner.Jitter(instanceSyncInterval)
+		slog.Debug("Schema syncer's first scan finished; running every interval", slog.Duration("interval", interval))
+		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
 		for {
 			select {
 			case <-ticker.C:
-				s.trySyncAll(ctx)
+				s.trySyncAllOnce(ctx)
 			case <-ctx.Done(): // if cancel() execute
 				return
 			}
@@ -437,6 +447,17 @@ func (s *Syncer) Run(ctx context.Context) {
 	sp.Wait()
 }
 
+// trySyncAllOnce runs one instance scan under a bound of two intervals. A scan
+// that wedges on a target or on the store must not outlive two intervals — every
+// tick would otherwise stack another scan on top of it — while a large estate
+// still has the whole 30 minutes to enumerate its instances and queue their
+// databases.
+func (s *Syncer) trySyncAllOnce(ctx context.Context) {
+	ctx, cancel := context.WithTimeout(ctx, 2*instanceSyncInterval)
+	defer cancel()
+	s.trySyncAll(ctx)
+}
+
 func (s *Syncer) trySyncAll(ctx context.Context) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -455,6 +476,13 @@ func (s *Syncer) trySyncAll(ctx context.Context) {
 		return
 	}
 	instanceNow := time.Now()
+	// The instances whose sync failed in this round, including the ones skipped
+	// because their connection limit was saturated. Their databases are filtered
+	// out below: the instance failure is already reported, and syncing each of
+	// its databases would retry the same broken connection and raise a failure
+	// notice of its own for a cause the administrators already know.
+	var failedMu sync.Mutex
+	failedInstances := make(map[string]struct{})
 	for _, instance := range instances {
 		if !shouldSyncNow(getOrDefaultSyncInterval(instance), getOrDefaultLastSyncTime(instance.Metadata.LastSyncTime), instanceNow) {
 			continue
@@ -464,6 +492,9 @@ func (s *Syncer) trySyncAll(ctx context.Context) {
 			slog.Debug("Sync instance schema", slog.String("instance", instance.ResourceID))
 			if _, _, _, err := s.SyncInstance(ctx, instance); err != nil {
 				s.reportInstanceSyncFailure(ctx, instance, err)
+				failedMu.Lock()
+				failedInstances[instance.ResourceID] = struct{}{}
+				failedMu.Unlock()
 			}
 		})
 	}
@@ -484,18 +515,33 @@ func (s *Syncer) trySyncAll(ctx context.Context) {
 		slog.Error("Failed to retrieve databases", log.WithError(err))
 		return
 	}
+	for _, database := range databasesToEnqueue(databases, instancesMap, failedInstances, databaseNow) {
+		s.enqueueDatabase(database)
+	}
+}
+
+// databasesToEnqueue returns the databases the round should queue: those of a
+// known instance whose own sync did not fail and that are due. An instance whose
+// sync failed — or was skipped because its connection limit was saturated — is
+// left out so that one broken instance does not produce one failure notice per
+// database.
+func databasesToEnqueue(databases []*store.DatabaseMessage, instances map[string]*store.InstanceMessage, failedInstances map[string]struct{}, now time.Time) []*store.DatabaseMessage {
+	enqueue := make([]*store.DatabaseMessage, 0, len(databases))
 	for _, database := range databases {
-		instance, ok := instancesMap[database.InstanceID]
+		instance, ok := instances[database.InstanceID]
 		if !ok {
 			continue
 		}
-		// The database inherits the sync interval from the instance.
-		if !shouldSyncNow(getOrDefaultSyncInterval(instance), getOrDefaultLastSyncTime(database.Metadata.LastSyncTime), databaseNow) {
+		if _, failed := failedInstances[database.InstanceID]; failed {
 			continue
 		}
-
-		s.enqueueDatabase(database)
+		// The database inherits the sync interval from the instance.
+		if !shouldSyncNow(getOrDefaultSyncInterval(instance), getOrDefaultLastSyncTime(database.Metadata.GetLastSyncTime()), now) {
+			continue
+		}
+		enqueue = append(enqueue, database)
 	}
+	return enqueue
 }
 
 // reportInstanceSyncFailure records an instance sync failure the periodic scan
@@ -539,10 +585,10 @@ func (s *Syncer) SyncAllDatabases(ctx context.Context, operation *SyncOperation,
 }
 
 func (s *Syncer) QueueLineageAnalysis(metaGUID string, metaType storepb.MetaType) {
-	if s == nil || s.lineageAnalyzer == nil || metaGUID == "" {
+	if s == nil || s.lineageQueue == nil || metaGUID == "" {
 		return
 	}
-	s.lineageAnalyzer.QueueAnalysis(metaGUID, metaType)
+	s.lineageQueue.QueueAnalysis(metaGUID, metaType)
 }
 
 // errInstanceConnectionsExhausted signals that the per-instance connection
@@ -1002,10 +1048,10 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 	// Queue changed VIEWs and MATERIALIZED_VIEWs before touching the db row: if
 	// the LastSyncTime update below fails, the next sync sees unchanged hashes
 	// and would never queue them again.
-	if s.lineageAnalyzer != nil {
+	if s.lineageQueue != nil {
 		for _, item := range bmc.updates {
 			if item.ObjectType == storepb.MetaType_VIEW || item.ObjectType == storepb.MetaType_MATERIALIZED_VIEW {
-				s.lineageAnalyzer.QueueAnalysis(item.GUID, item.ObjectType)
+				s.lineageQueue.QueueAnalysis(item.GUID, item.ObjectType)
 			}
 		}
 	}
