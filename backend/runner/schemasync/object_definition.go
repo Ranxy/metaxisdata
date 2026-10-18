@@ -15,6 +15,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sourcegraph/conc/pool"
 
+	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/plugin/db"
@@ -214,6 +215,17 @@ func supportsObjectDefinition(metaType storepb.MetaType) bool {
 	}
 }
 
+// metaObjectSchema returns the schema segment of an object's GUID. A GUID is
+// instance;database;schema;name, so the third segment is the container the
+// definition reader qualifies the name with; the MySQL family stores "" there.
+func metaObjectSchema(guid string) string {
+	parts := common.SplitMetaGUID(guid)
+	if len(parts) < 3 {
+		return ""
+	}
+	return parts[2]
+}
+
 // metaObjectName returns the plain object name carried by a registry row. It is
 // the single place that maps an object type to its name field, shared by GUID
 // construction and definition fetching.
@@ -282,7 +294,7 @@ func fetchObjectDefinitions(ctx context.Context, reader db.ObjectDefinitionReade
 				return
 			}
 
-			definition, ok, err := reader.GetObjectDefinition(ctx, item.ObjectType, name)
+			definition, ok, err := reader.GetObjectDefinition(ctx, item.ObjectType, metaObjectSchema(item.GUID), name)
 			if err != nil {
 				slog.Debug("Failed to fetch object definition", slog.String("guid", item.GUID), log.WithError(err))
 				mu.Lock()

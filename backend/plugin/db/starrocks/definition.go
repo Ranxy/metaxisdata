@@ -23,7 +23,11 @@ var _ db.ObjectDefinitionReader = (*Driver)(nil)
 // metadata cannot express StarRocks/Doris distribution, properties or
 // partitioning, so the definition has to come from the server rather than being
 // reconstructed.
-func (d *Driver) GetObjectDefinition(ctx context.Context, objectType storepb.MetaType, name string) (string, bool, error) {
+//
+// schema is unused deliberately: StarRocks and Doris have exactly one schema per
+// database and the driver is connected to it, so d.databaseName already names the
+// container. The parameter exists for engines with several schemas per database.
+func (d *Driver) GetObjectDefinition(ctx context.Context, objectType storepb.MetaType, _ string, name string) (string, bool, error) {
 	query, ok := showCreateQuery(d.databaseName, objectType, name)
 	if !ok {
 		return "", false, nil

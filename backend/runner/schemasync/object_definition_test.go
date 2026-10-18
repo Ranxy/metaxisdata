@@ -353,7 +353,7 @@ type fakeDefinitionReader struct {
 	failures    map[string]error
 }
 
-func (f *fakeDefinitionReader) GetObjectDefinition(_ context.Context, _ storepb.MetaType, name string) (string, bool, error) {
+func (f *fakeDefinitionReader) GetObjectDefinition(_ context.Context, _ storepb.MetaType, _ string, name string) (string, bool, error) {
 	if err, ok := f.failures[name]; ok {
 		return "", false, err
 	}

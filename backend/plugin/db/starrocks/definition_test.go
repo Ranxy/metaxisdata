@@ -91,7 +91,7 @@ func TestGetObjectDefinitionSkipsUnsupportedTypes(t *testing.T) {
 		storepb.MetaType_EXTERNAL_TABLE,
 		storepb.MetaType_MANUAL_SQL,
 	} {
-		definition, ok, err := d.GetObjectDefinition(context.Background(), objectType, "t1")
+		definition, ok, err := d.GetObjectDefinition(context.Background(), objectType, "", "t1")
 		require.NoError(t, err, objectType.String())
 		require.False(t, ok, objectType.String())
 		require.Empty(t, definition, objectType.String())
