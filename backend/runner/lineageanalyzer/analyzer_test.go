@@ -2,6 +2,9 @@ package lineageanalyzer
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -270,6 +273,109 @@ func TestNeedsAnalysis(t *testing.T) {
 			require.Equal(t, tt.want, needsAnalysis(tt.resource, tt.version))
 		})
 	}
+}
+
+// The relation GUIDs are resolved in one batch query, and the analyzed object's own GUID is
+// left out: its type is known, and a query that repeats it would only duplicate a row.
+func TestTypeLookupGUIDsExcludesTheAnalyzedObject(t *testing.T) {
+	t.Parallel()
+
+	lookups := map[string]struct{}{"a": {}, "b": {}, "self": {}}
+	require.Equal(t, []string{"a", "b"}, typeLookupGUIDs(lookups, "self"))
+	require.Empty(t, typeLookupGUIDs(map[string]struct{}{"self": {}}, "self"))
+	require.Empty(t, typeLookupGUIDs(nil, "self"))
+}
+
+// One tick takes at most one bounded batch. A cold start queues the whole registry, and
+// leaving the rest queued is what lets event-driven work interleave with the backfill.
+func TestTakeAnalyzeBatchCapsAndKeepsTheRest(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, MaxGoroutines*100, maxAnalyzeBatch, "the batch is a small multiple of the worker count")
+	require.Positive(t, analyzeObjectTimeout)
+
+	analyzer := &Analyzer{}
+	for i := range 5 {
+		analyzer.QueueAnalysis(fmt.Sprintf("guid-%d", i), storepb.MetaType_VIEW)
+	}
+
+	keys := analyzer.takeAnalyzeBatch(&analyzer.analyzeMap, time.Now(), 2)
+	require.Len(t, keys, 2)
+	require.Equal(t, 3, queuedCount(analyzer), "keys over the cap stay queued for the next tick")
+
+	keys = analyzer.takeAnalyzeBatch(&analyzer.analyzeMap, time.Now(), maxAnalyzeBatch)
+	require.Len(t, keys, 3)
+	require.Zero(t, queuedCount(analyzer))
+}
+
+// Event-driven work is drained before the hourly scan's backlog, so a cold-start backfill
+// cannot push a just-saved statement behind the rest of the registry. An event also
+// supersedes a scan entry for the same object.
+func TestDrainPrefersEventsOverTheScanBacklog(t *testing.T) {
+	t.Parallel()
+
+	analyzer := &Analyzer{}
+	const backlog = 5
+	for i := range backlog {
+		analyzer.queueScan(fmt.Sprintf("scan-%d", i), storepb.MetaType_VIEW)
+	}
+	analyzer.QueueAnalysis("event", storepb.MetaType_VIEW)
+	require.Equal(t, backlog+1, queuedCount(analyzer))
+
+	// The scan pass re-queueing an object an event already queued must not duplicate it.
+	analyzer.queueScan("event", storepb.MetaType_VIEW)
+	require.Equal(t, backlog+1, queuedCount(analyzer))
+
+	now := time.Now()
+	keys := analyzer.takeAnalyzeBatch(&analyzer.analyzeMap, now, maxAnalyzeBatch)
+	require.Equal(t, []analyzeKey{{MetaGUID: "event", MetaType: storepb.MetaType_VIEW}}, keys)
+	require.Equal(t, backlog, queuedCount(analyzer))
+}
+
+// A key still inside its retry backoff is not part of a batch, and it stays queued.
+func TestTakeAnalyzeBatchSkipsBackingOffKeys(t *testing.T) {
+	t.Parallel()
+
+	analyzer := &Analyzer{}
+	key := analyzeKey{MetaGUID: "guid", MetaType: storepb.MetaType_VIEW}
+	analyzer.QueueAnalysis(key.MetaGUID, key.MetaType)
+	analyzer.scheduleRetry(key)
+
+	require.Empty(t, analyzer.takeAnalyzeBatch(&analyzer.analyzeMap, time.Now(), maxAnalyzeBatch))
+	require.Equal(t, 1, queuedCount(analyzer))
+
+	due := time.Now().Add(analysisRetryBackoff(1) + time.Second)
+	require.Equal(t, []analyzeKey{key}, analyzer.takeAnalyzeBatch(&analyzer.analyzeMap, due, maxAnalyzeBatch))
+	require.Zero(t, queuedCount(analyzer))
+}
+
+// An analysis cut short by its deadline, or by the runner shutting down, says nothing about
+// the statement: it is retried and its stored lineage is left alone. A parse error is not
+// transient and takes the deterministic failure path.
+func TestAnalysisTimedOut(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, analysisTimedOut(context.Background(), context.DeadlineExceeded))
+	require.True(t, analysisTimedOut(context.Background(), fmt.Errorf("lookup: %w", context.DeadlineExceeded)))
+	require.True(t, analysisTimedOut(context.Background(), context.Canceled))
+	require.False(t, analysisTimedOut(context.Background(), errors.New("a statement the parser could not read")))
+
+	expired, cancel := context.WithTimeout(context.Background(), 0)
+	defer cancel()
+	// Even an error that does not wrap a context error is transient when the context expired
+	// underneath it: a driver may report the cancellation in its own words.
+	require.True(t, analysisTimedOut(expired, errors.New("the database is gone")))
+}
+
+func queuedCount(analyzer *Analyzer) int {
+	count := 0
+	for _, queue := range []*sync.Map{&analyzer.analyzeMap, &analyzer.scanMap} {
+		queue.Range(func(_, _ any) bool {
+			count++
+			return true
+		})
+	}
+	return count
 }
 
 // A failed analysis is retried with a bounded backoff instead of waiting for

@@ -37,7 +37,7 @@ const (
 type applicationSQLStore interface {
 	AuthenticateApplicationSQLAPIKey(ctx context.Context, plainKey string) (*store.ApplicationSQLIdentity, error)
 	GetInstance(ctx context.Context, find *store.FindInstanceMessage) (*store.InstanceMessage, error)
-	ReportApplicationSQLs(ctx context.Context, reports []*store.ReportApplicationSQLMessage) ([]*store.ApplicationSQLMessage, error)
+	ReportApplicationSQLs(ctx context.Context, reports []*store.ReportApplicationSQLMessage) ([]*store.ApplicationSQLReportResult, error)
 	RecordApplicationSQLReport(ctx context.Context, keyID int64, reportID string, accepted, rejected int) error
 }
 
@@ -326,15 +326,20 @@ func (h *ApplicationSQLHandler) acceptStatement(
 			clog.WithError(err))
 		return rejected(rejectStoreFailed, err.Error())
 	}
-	// The runner analyzes each statement and writes what its analysis implies. Ingestion does
-	// not classify: the read/write rule has one implementation, there.
-	for _, statement := range recorded {
-		h.queue.QueueLineageAnalysis(statement.GUID, storepb.MetaType_APPLICATION_SQL)
+	// The runner analyzes each created statement and writes what its analysis implies.
+	// Ingestion does not classify: the read/write rule has one implementation, there.
+	// A statement the store already had is skipped: the upsert does not rewrite its text,
+	// so its lineage was derived from exactly this text already.
+	for _, result := range recorded {
+		if !result.Inserted {
+			continue
+		}
+		h.queue.QueueLineageAnalysis(result.Statement.GUID, storepb.MetaType_APPLICATION_SQL)
 	}
 	return applicationSQLItemResult{
 		Index:      index,
 		Status:     "ACCEPTED",
-		GUID:       recorded[0].GUID,
+		GUID:       recorded[0].Statement.GUID,
 		Statements: len(statements),
 	}
 }

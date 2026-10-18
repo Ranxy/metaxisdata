@@ -39,6 +39,9 @@ type fakeApplicationSQLStore struct {
 	entries   int
 	reportErr error
 	recorded  []string
+	// existingStatements makes the store report every statement as one it already had, which
+	// is what a repeat report of unchanged SQL looks like.
+	existingStatements bool
 }
 
 func (f *fakeApplicationSQLStore) AuthenticateApplicationSQLAPIKey(context.Context, string) (*store.ApplicationSQLIdentity, error) {
@@ -52,22 +55,25 @@ func (f *fakeApplicationSQLStore) GetInstance(context.Context, *store.FindInstan
 	return f.instance, f.instanceErr
 }
 
-func (f *fakeApplicationSQLStore) ReportApplicationSQLs(_ context.Context, reports []*store.ReportApplicationSQLMessage) ([]*store.ApplicationSQLMessage, error) {
+func (f *fakeApplicationSQLStore) ReportApplicationSQLs(_ context.Context, reports []*store.ReportApplicationSQLMessage) ([]*store.ApplicationSQLReportResult, error) {
 	f.entries++
 	if f.reportErr != nil {
 		// The real store writes the whole entry in one transaction, so a failure stores none
 		// of it. The fake keeps that shape: nothing is counted before the error.
 		return nil, f.reportErr
 	}
-	statements := make([]*store.ApplicationSQLMessage, 0, len(reports))
+	results := make([]*store.ApplicationSQLReportResult, 0, len(reports))
 	for _, report := range reports {
 		f.reports = append(f.reports, report)
-		statements = append(statements, &store.ApplicationSQLMessage{
-			GUID:    fmt.Sprintf("guid-%d", len(f.reports)),
-			SQLText: report.SQLText,
+		results = append(results, &store.ApplicationSQLReportResult{
+			Statement: &store.ApplicationSQLMessage{
+				GUID:    fmt.Sprintf("guid-%d", len(f.reports)),
+				SQLText: report.SQLText,
+			},
+			Inserted: !f.existingStatements,
 		})
 	}
-	return statements, nil
+	return results, nil
 }
 
 func (f *fakeApplicationSQLStore) RecordApplicationSQLReport(_ context.Context, _ int64, reportID string, accepted, rejected int) error {
@@ -258,6 +264,28 @@ func TestApplicationSQLReportRejectsPerStatement(t *testing.T) {
 	require.NotEmpty(t, fake.reports[0].Fingerprint)
 	require.Equal(t, int64(1), fake.reports[0].Count, "an omitted count means one execution")
 	require.Equal(t, int64(5), fake.reports[1].Count)
+}
+
+// TestApplicationSQLReportQueuesOnlyNewStatements pins that a replay of unchanged statements
+// does not re-analyze them: the store says which rows the report created, and the runner is
+// asked about those alone. The upsert never rewrites sql_text on conflict, so an existing
+// row's lineage was already derived from exactly the text a replay carries.
+func TestApplicationSQLReportQueuesOnlyNewStatements(t *testing.T) {
+	t.Parallel()
+
+	fake := validApplicationSQLStore()
+	fake.existingStatements = true
+	h, queue := applicationSQLTestHandler(fake)
+
+	ctx, rec := applicationSQLContext(t, applicationSQLBody(`{"sql":"SELECT a FROM t; INSERT INTO u (id) SELECT id FROM t"}`))
+	ctx.Request().Header.Set("Authorization", "Bearer asql_key")
+	require.NoError(t, h.report(ctx))
+
+	var response applicationSQLReportResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Equal(t, 1, response.Accepted)
+	require.Len(t, fake.reports, 2, "an existing statement is still recorded and counted")
+	require.Empty(t, queue.queued, "a statement the store already had has nothing new to analyze")
 }
 
 func TestApplicationSQLReportSwallowsARepeatedReport(t *testing.T) {

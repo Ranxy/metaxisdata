@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -30,6 +31,18 @@ const (
 	analyzeCheckerInterval  = 10 * time.Second
 	// MaxGoroutines is the max number of concurrent analysis jobs.
 	MaxGoroutines = 10
+	// maxAnalyzeBatch bounds how many queued objects one drain starts analyzing. A cold start
+	// queues the whole registry, and draining all of it would keep the consumer busy for hours
+	// while a freshly saved or reported statement waits behind the backlog. Keys over the cap
+	// stay queued for the next tick: the batch is a rate limit, not a drop. A hundred objects
+	// per worker slot bounds one batch to a hundred waves of per-object work, so event-driven
+	// work waits minutes rather than an entire backfill.
+	maxAnalyzeBatch = MaxGoroutines * 100
+	// analyzeObjectTimeout bounds one object's analysis. The analyzers do no failing I/O of
+	// their own beyond the type lookup batch, so a stuck object is a bug rather than a slow
+	// database; the bound is generous enough that a large script is not cut off. An
+	// interrupted analysis is retried, never recorded as a parse failure.
+	analyzeObjectTimeout = 2 * time.Minute
 )
 
 // analyzeKey uniquely identifies an object to analyze.
@@ -45,8 +58,14 @@ type Analyzer struct {
 	// The runner does not build or own them: which engines exist is a startup
 	// decision, and a runner that looked them up from package state could
 	// disagree with the AnalyzeSQL handler about what is registered.
-	lineage    *lineage.Analyzer
+	lineage *lineage.Analyzer
+	// analyzeMap holds the event-driven queue: an object whose definition just changed, was
+	// just saved or was just reported. It is drained first, so a backfill cannot push that
+	// work behind the whole registry.
 	analyzeMap sync.Map // map[analyzeKey]struct{}
+	// scanMap holds the hourly full scan's backlog. It fills only the batch the event queue
+	// did not use.
+	scanMap sync.Map // map[analyzeKey]struct{}
 	// retryMap tracks how many times a failed analysis was retried and when it
 	// is due again, so a transient failure does not wait for the hourly scan.
 	retryMap sync.Map // map[analyzeKey]analysisRetry
@@ -83,12 +102,26 @@ func NewAnalyzer(stores *store.Store, lineageAnalyzer *lineage.Analyzer) *Analyz
 	}
 }
 
-// QueueAnalysis enqueues an object for lineage analysis.
+// QueueAnalysis enqueues an object for analysis because its definition changed or was just
+// reported. A request supersedes a pending backoff and a pending scan entry: the analysis
+// runs now and reads the current definition, so the scan no longer has a reason to queue it.
 func (a *Analyzer) QueueAnalysis(metaGUID string, metaType storepb.MetaType) {
 	key := analyzeKey{MetaGUID: metaGUID, MetaType: metaType}
-	// A fresh queue request supersedes any pending backoff.
 	a.retryMap.Delete(key)
+	a.scanMap.Delete(key)
 	a.analyzeMap.Store(key, struct{}{})
+}
+
+// queueScan enqueues an object because the hourly scan found its stored result out of date.
+// It is the backlog queue: an event that already queued the object wins, because the event
+// analysis reads the same current definition and has to run anyway.
+func (a *Analyzer) queueScan(metaGUID string, metaType storepb.MetaType) {
+	key := analyzeKey{MetaGUID: metaGUID, MetaType: metaType}
+	if _, ok := a.analyzeMap.Load(key); ok {
+		return
+	}
+	a.retryMap.Delete(key)
+	a.scanMap.Store(key, struct{}{})
 }
 
 // scheduleRetry re-queues a failed analysis with a bounded backoff. After the
@@ -180,7 +213,7 @@ func (a *Analyzer) queueAll(ctx context.Context) {
 		}
 		for _, res := range list {
 			if needsAnalysis(res, versions[res.GUID]) {
-				a.QueueAnalysis(res.GUID, res.ObjectType)
+				a.queueScan(res.GUID, res.ObjectType)
 			}
 		}
 	}
@@ -200,11 +233,18 @@ func needsAnalysis(res *store.MetaRegistryResource, version *store.ColumnLineage
 	return version.AnalyzerVersion != lineage.AnalyzerVersion
 }
 
-// drainAndAnalyze drains the analyzeMap and runs analysis for each object.
-func (a *Analyzer) drainAndAnalyze(ctx context.Context) {
-	now := time.Now()
-	var keys []analyzeKey
-	a.analyzeMap.Range(func(k, _ any) bool {
+// takeAnalyzeBatch selects at most limit ready keys and removes exactly those from queue.
+// Keys whose retry backoff has not elapsed, and every key over the cap, stay queued for a
+// later tick.
+func (a *Analyzer) takeAnalyzeBatch(queue *sync.Map, now time.Time, limit int) []analyzeKey {
+	if limit <= 0 {
+		return nil
+	}
+	keys := make([]analyzeKey, 0, limit)
+	queue.Range(func(k, _ any) bool {
+		if len(keys) >= limit {
+			return false
+		}
 		key, ok := k.(analyzeKey)
 		if !ok {
 			return true
@@ -216,9 +256,35 @@ func (a *Analyzer) drainAndAnalyze(ctx context.Context) {
 			}
 		}
 		keys = append(keys, key)
-		a.analyzeMap.Delete(k)
+		queue.Delete(k)
 		return true
 	})
+	return keys
+}
+
+// typeLookupGUIDs returns the distinct relation GUIDs whose meta type the analysis still has
+// to resolve. The analyzed object's own type is already known, so it is left out. The result
+// is sorted so the batch query binds a stable list.
+func typeLookupGUIDs(guidLookupSet map[string]struct{}, metaGUID string) []string {
+	guids := make([]string, 0, len(guidLookupSet))
+	for guid := range guidLookupSet {
+		if guid != metaGUID {
+			guids = append(guids, guid)
+		}
+	}
+	slices.Sort(guids)
+	return guids
+}
+
+// drainAndAnalyze analyzes one bounded batch of queued objects and leaves the rest queued.
+// Event-driven work is selected first and the scan backlog fills only what is left of the
+// budget, so a full-registry backfill delays a just-saved statement by at most one batch.
+func (a *Analyzer) drainAndAnalyze(ctx context.Context) {
+	now := time.Now()
+	keys := a.takeAnalyzeBatch(&a.analyzeMap, now, maxAnalyzeBatch)
+	if remaining := maxAnalyzeBatch - len(keys); remaining > 0 {
+		keys = append(keys, a.takeAnalyzeBatch(&a.scanMap, now, remaining)...)
+	}
 	if len(keys) == 0 {
 		return
 	}
@@ -238,12 +304,25 @@ func (a *Analyzer) drainAndAnalyze(ctx context.Context) {
 					a.scheduleRetry(k)
 				}
 			}()
-			if err := a.analyzeObject(ctx, k.MetaGUID, k.MetaType); err != nil {
+			objCtx, cancel := context.WithTimeout(ctx, analyzeObjectTimeout)
+			defer cancel()
+			if err := a.analyzeObject(objCtx, k.MetaGUID, k.MetaType); err != nil {
 				if errors.Is(err, errAnalysisStale) {
 					// The text changed under the analysis. Queue the new text now
 					// instead of waiting for the hourly scan; the write was dropped,
 					// so nothing stale was persisted.
 					a.QueueAnalysis(k.MetaGUID, k.MetaType)
+					return
+				}
+				if analysisTimedOut(objCtx, err) {
+					// Nothing was learned about the SQL: retrying is right and recording a
+					// failure is not, because that would clear lineage this attempt never
+					// inspected.
+					slog.Warn("Lineage analysis timed out; it will be retried",
+						slog.String("guid", k.MetaGUID),
+						slog.String("type", k.MetaType.String()),
+						log.WithError(err))
+					a.scheduleRetry(k)
 					return
 				}
 				slog.Error("Lineage analysis failed",
@@ -257,6 +336,13 @@ func (a *Analyzer) drainAndAnalyze(ctx context.Context) {
 		})
 	}
 	wp.Wait()
+}
+
+// analysisTimedOut reports whether an analysis was cut short by its deadline or by the runner
+// stopping, rather than by the statement itself. Either way the SQL was not read, so the
+// object is retried and its stored lineage is left alone; only a real parse failure clears it.
+func analysisTimedOut(ctx context.Context, err error) bool {
+	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) || ctx.Err() != nil
 }
 
 // analyzeObject runs lineage analysis for a single lineage-analyzable object.
@@ -280,8 +366,9 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 	}
 	engine := instance.Metadata.GetEngine()
 
-	// Load the stored metadata.
-	res, err := a.store.GetMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{GUID: &metaGUID})
+	// Load the stored metadata. The object type is known, so it is passed with the GUID and
+	// the lookup can be answered from the GUID+type cache.
+	res, err := a.store.GetMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{GUID: &metaGUID, ObjectType: &metaType})
 	if err != nil {
 		return storeError(ctx, a.store, metaGUID, metaType, err, "failed to get meta registry")
 	}
@@ -320,6 +407,13 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 			slog.String("guid", metaGUID), slog.String("engine", engine.String()))
 		return markAnalyzed(ctx, a.store, metaGUID, metaType, res.MetaHash,
 			fmt.Sprintf("engine %s has no lineage analyzer; analysis skipped", engine))
+	case ctx.Err() != nil:
+		// The deadline hit while the statement was being read. What it says is unknown,
+		// so it must not be recorded as a deterministic parse failure; the drain treats
+		// the interrupted analysis as transient and retries it.
+		slog.Warn("Lineage analysis interrupted",
+			slog.String("guid", metaGUID), slog.String("engine", engine.String()), log.WithError(err))
+		return ctx.Err()
 	default:
 		// A parse error is deterministic — the text does not change between
 		// retries — so the object is recorded as analyzed at the current hash
@@ -427,18 +521,17 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 		}
 	}
 
-	for guid := range guidLookupSet {
-		if guid == metaGUID {
-			continue
-		}
-		g := guid
-		srcMeta, err := a.store.GetMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{GUID: &g})
+	// The relation GUIDs are resolved with one batch query rather than one lookup each: a
+	// large join can name hundreds of sources, and each per-GUID lookup would be a serial
+	// round trip. A GUID the registry does not know is simply absent from the result.
+	if guids := typeLookupGUIDs(guidLookupSet, metaGUID); len(guids) > 0 {
+		metas, err := a.store.ListMetaRegistryResourceDigest(ctx, &store.FindMetaRegistryResourceMessage{GUIDs: &guids})
 		if err != nil {
-			slog.Warn("Lineage analyzer failed to look up source meta type", slog.String("guid", g), log.WithError(err))
-			continue
-		}
-		if srcMeta != nil {
-			guidTypeMap[g] = srcMeta.ObjectType
+			slog.Warn("Lineage analyzer failed to look up source meta types", log.WithError(err))
+		} else {
+			for _, meta := range metas {
+				guidTypeMap[meta.GUID] = meta.ObjectType
+			}
 		}
 	}
 	for _, l := range lineages {
