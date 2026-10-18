@@ -1,6 +1,6 @@
 # IAM and Permissions — Reference
 
-> Status: **implemented** (`6fddae6`; `environments.list` added by `51f6d5a`). Maintenance reference for `backend/common/permission/`, `backend/component/iam/`, `backend/api/v1/{acl_interceptor,iam_service,role_service,group_service}.go`, `backend/store/{predefined_roles,role,policy,group}.go`.
+> Status: **implemented** (`6fddae6`; `environments.list` added by `51f6d5a`; `connectedApps.*` added with Connected Apps). Maintenance reference for `backend/common/permission/`, `backend/component/iam/`, `backend/api/v1/{acl_interceptor,iam_service,role_service,group_service,connected_app_service}.go`, `backend/store/{predefined_roles,role,policy,group}.go`.
 > Related: `docs/security-posture.md` (workspace-scoped authorization; the `allUsers` invariant), `.agents/docs/backend-review/02-auth-authorization.md` (C4/H4 history).
 
 ## What it is
@@ -16,11 +16,12 @@ One permission catalog, roles as named permission bundles (predefined in Go, cus
 - **Predefined roles resolve in memory, custom roles via `GetRoleSnapshot` (LRU-cached)** — the hot path costs one map lookup plus one cached policy read.
 - **The catalog is generated** from `backend/common/permission/permission.json` (`go generate ./backend/common/permission`); `backend/common/permission/permission_gen.go` is committed and never hand-edited.
 - **`EvalBindingCondition` is validated at write time** in `validateIamPolicy` (`backend/api/v1/iam_service.go:114`) as well as failing closed at read time. This reference is the only record of that write-time check.
-- **Unannotated RPCs are an explicit allowlist** (auth and device/OAuth self-service, `GetCurrentUser`, `CreateUser`, `UpdateUser`, the notification inbox); everything else must be gated.
+- **Unannotated RPCs are an explicit allowlist** (auth and device/OAuth self-service, `GetCurrentUser`, `CreateUser`, `UpdateUser`, the notification inbox, connected apps); everything else must be gated.
+- **A mixed-audience RPC is unannotated and handler-scoped** — `ConnectedAppService.List/Revoke` serve an administrator (the whole workspace) and an ordinary user (their own rows) from one call, so both methods join the allowlist and each handler narrows first, widening only when `connectedApps.list` / `connectedApps.revoke` resolves. The matrix test `backend/api/v1/connected_app_test.go` is the guard: the allowlist test only checks membership, so it cannot see a handler that forgot to narrow.
 
 ## Permission catalog
 
-`metaxisdata.<resource>.<verb>`, single-sourced from `backend/common/permission/permission.json` (66 entries) and regenerated into `backend/common/permission/permission_gen.go`:
+`metaxisdata.<resource>.<verb>`, single-sourced from `backend/common/permission/permission.json` (73 entries) and regenerated into `backend/common/permission/permission_gen.go`:
 
 | Resource | Permissions |
 | --- | --- |
@@ -31,13 +32,14 @@ One permission catalog, roles as named permission bundles (predefined in Go, cus
 | `manualSqls` | `get` `list` `create` `update` `delete` |
 | `applications` | `get` `list` `create` `update` `delete`; `apiKeys.{list,create,delete}` |
 | `applicationSqls` | `get` `list` `delete` |
+| `connectedApps` | `list` `revoke` |
 | `lineage` · `explainSql` | `get` · `explain` |
 | `openlineage` | `read`; `namespaceMappings.{list,create,update,delete}`; `apiKeys.{list,create,delete}` |
 | `llm` | `profiles.{list,create,update,delete}` `profiles.fetchModels` |
 | `users` · `groups` · `roles` | `{get,list,create,update,delete}` (`users` also `undelete`) |
 | `iam` · `settings` · `auditLogs` | `{getPolicy,setPolicy}` · `{get,update}` · `search` |
 
-Predefined roles (`backend/store/predefined_roles.go:60`), read-only over `RoleService`, never a row in `role`: **`workspaceAdmin`** holds the whole catalog; **`workspaceMember`** is the authenticated-principal baseline of 17 entries — `instances.get/list`, `environments.list`, `databases.list/read`, `manualSqls.{get,list,create,update,delete}`, `lineage.get`, `openlineage.read`, `applications.{get,list}`, `applicationSqls.{get,list}`, `explainSql.explain`. Issuing a reporting key is a credential that writes data, so no `applications.apiKeys.*` permission is in the baseline. Deliberately absent: user/group/role/IAM administration, instance and data-source writes, `settings.get`/`settings.update`, audit logs, OpenLineage writes, LLM profiles.
+Predefined roles (`backend/store/predefined_roles.go:60`), read-only over `RoleService`, never a row in `role`: **`workspaceAdmin`** holds the whole catalog; **`workspaceMember`** is the authenticated-principal baseline of 17 entries — `instances.get/list`, `environments.list`, `databases.list/read`, `manualSqls.{get,list,create,update,delete}`, `lineage.get`, `openlineage.read`, `applications.{get,list}`, `applicationSqls.{get,list}`, `explainSql.explain`. Issuing a reporting key is a credential that writes data, so no `applications.apiKeys.*` permission is in the baseline. `connectedApps.list` / `.revoke` are deliberately absent too: a member still manages their own connections because the handler forces self-scoping, while seeing the whole workspace or revoking someone else's needs the permission (in practice `workspaceAdmin`, or a custom role granted it). Deliberately absent: user/group/role/IAM administration, instance and data-source writes, `settings.get`/`settings.update`, audit logs, OpenLineage writes, LLM profiles.
 
 ## Invariants
 
@@ -45,6 +47,7 @@ Predefined roles (`backend/store/predefined_roles.go:60`), read-only over `RoleS
 | --- | --- |
 | Edit `backend/common/permission/permission.json`, then `go generate ./backend/common/permission` | `TestCatalogMatchesSource` and the frontend drift test (`frontend/src/lib/permissions.test.ts`) fail; a hand-edited `backend/common/permission/permission_gen.go` is overwritten. |
 | A new RPC carries a catalog annotation, or joins `unannotatedMethods` | `TestEveryMethodIsPermissionGated` fails. |
+| A mixed-audience RPC on the allowlist narrows in the handler **before** it widens | the allowlist test only checks membership; `backend/api/v1/connected_app_test.go` pins the matrix — member sees only their own rows, naming another user is `PermissionDenied`, only their own connection is revocable without a permission, another user's needs `connectedApps.revoke` (otherwise `NotFound`), and a checker error fails closed. |
 | `GetCurrentUser` stays unannotated | the SPA cannot bootstrap its own permission set. |
 | `allUsers` is bound only to `roles/workspaceMember`, and a full replace may not drop that binding | every authenticated principal, future registrations included, would gain a role nobody granted per user; checked at the API and again in the store — see `docs/security-posture.md`. |
 | Resolution fails closed: unknown role, role-read error, unevaluable condition ⇒ no permissions | a policy typo would silently widen access instead of narrowing it. |
@@ -69,6 +72,6 @@ None tracked here. Per-resource IAM is a deliberate non-goal (`docs/security-pos
 
 - Catalog: `backend/common/permission/permission.json`, generator `backend/common/permission/gen/main.go`, generated `backend/common/permission/permission_gen.go`; engine `backend/component/iam/manager.go` (`CheckPermission`, `EffectivePermissions`) with expansion in `backend/utils/member.go`.
 - Store: `backend/store/predefined_roles.go`, `backend/store/role.go`, `backend/store/policy.go` (etag and `allUsers` guards), `backend/store/group.go`; schema `backend/migrator/migration/0.1/0006##iam_role.sql`, `backend/migrator/migration/LATEST.sql:123`; `User.permissions` in `backend/api/v1/user_service.go:102`.
-- API and frontend: `backend/api/v1/{acl_interceptor,iam_service,role_service,group_service}.go`; `frontend/src/pages/settings/{RoleManagementPage,IamPage,GroupManagementPage}.vue`, `frontend/src/lib/permissions.ts`, `frontend/src/api/{role,group,iam}.ts`.
-- Tests: `backend/common/permission/permission_test.go`, `backend/component/iam/manager_test.go`, `backend/api/v1/acl_interceptor_test.go`, `backend/store/{predefined_roles,role,policy,policy_all_users}_test.go`, `frontend/src/lib/permissions.test.ts`, end-to-end `backend/test/integration/runner/iam_service_test.go`.
+- API and frontend: `backend/api/v1/{acl_interceptor,iam_service,role_service,group_service,connected_app_service}.go`; `frontend/src/pages/settings/{RoleManagementPage,IamPage,GroupManagementPage,ConnectedAppsSettingsPage}.vue`, `frontend/src/pages/ConnectedAppsPage.vue`, `frontend/src/lib/permissions.ts`, `frontend/src/api/{role,group,iam,connected-app}.ts`.
+- Tests: `backend/common/permission/permission_test.go`, `backend/component/iam/manager_test.go`, `backend/api/v1/acl_interceptor_test.go`, `backend/api/v1/connected_app_test.go` (the handler-scoping matrix), `backend/store/{predefined_roles,role,policy,policy_all_users}_test.go`, `frontend/src/lib/permissions.test.ts`, end-to-end `backend/test/integration/runner/iam_service_test.go`.
 - Gates: `go test ./backend/...` plus `golangci-lint run --allow-parallel-runners`; `make test-integration` for the end-to-end file; inside `frontend/` the order is `pnpm biome:check`, `pnpm lint`, `pnpm i18n` (`pnpm i18n:sort` after locale edits), `pnpm type-check`, `pnpm test run`.

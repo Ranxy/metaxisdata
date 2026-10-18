@@ -61,13 +61,21 @@ grants, and the client authorizes again.
 
 Refreshing is a rotation, not a renewal of the same credential: presenting the
 refresh token with `grant_type=refresh_token`, `client_id`, `resource` and (when
-the client tracks one) the consented `scope` consumes it and returns a new access
-token plus a new refresh token. The token is single-use — the row is deleted as it
-is claimed — so two clients racing with the same token leave exactly one working,
-and a copy stolen from a client's storage is worthless once the real client
-refreshes. A grant lives 30 days and is re-checked against the user's account at
-every rotation, so a deactivated user or one who changed their password since
-consent has to authorize again.
+the client tracks one) the consented `scope` replaces it and returns a new access
+token plus a new refresh token. The token is single-use — the grant row is
+updated in place, not recreated — so two clients racing with the same token leave
+exactly one working, and a copy stolen from a client's storage is worthless once
+the real client refreshes. A grant lives 30 days and is re-checked against the
+user's account at every rotation, so a deactivated user or one who changed their
+password since consent has to authorize again. The grant row is also the record
+you manage under **Connected apps**, which is why it keeps its id across
+rotations.
+
+Upgrading from a build that did not put a connection id in MCP access tokens
+refuses those older tokens once. A client with a valid refresh token recovers on
+its next refresh — the refresh credential lives in the database and survives the
+upgrade — and only a client whose refresh token has also expired needs the
+browser flow again.
 
 ## The tools
 
@@ -110,12 +118,15 @@ when you need them.
   tool, the caller, the arguments (credential fields redacted, long values
   truncated) and the outcome. A call refused for lack of permission leaves a row
   too. The ledger is permanent, so expect the row count to follow model usage.
-- **A token can be revoked.** Presenting it to the user API's `Logout` (what
-  `mxd logout` sends) revokes it immediately, for `/mcp` as well as the API: the
-  server checks that it signed the token, not which audience it carries. It also
-  deletes the refresh tokens of the client that access token names, so revoking
-  one token ends the connection instead of leaving it one refresh away from a new
-  pair.
+- **A connection can be revoked, and a token can be logged out.** `Logout` (what
+  `mxd logout` sends) revokes the presented token immediately, for `/mcp` as well as
+  the API, because the server checks that it signed the token rather than which
+  audience it carries. Because an MCP token names its client, the logout also
+  revokes every connection that client holds for that user: their access tokens
+  stop being accepted (immediately on the replica that handled the request,
+  within 30 seconds on another) and their refresh tokens can mint nothing. An
+  administrator or the user can do the same from Connected apps without holding
+  the agent's token; see below.
 - **The anonymous endpoints are rate-limited per address** — registration, the
   token exchange, and the two browser steps — and a disabled deployment answers
   `404` without writing a ledger row, so probes cost nothing to keep.
@@ -127,5 +138,38 @@ when you need them.
   makes it safe behind a load balancer, and it is wrapped in the standard
   library's cross-origin protection.
 - Turning `mcp_enabled` off closes the surface immediately; it does not revoke
-  tokens or grants, which expire on their own. The `Logout` route above is the
-  way to retire a live connection.
+  tokens or grants, which expire on their own. The Logout route above, or
+  Connected apps below, is the way to retire a live connection.
+
+## Connected apps
+
+An authorized MCP client is recorded as one **connected app**: one user, one
+client, one authorization. The record exists even when no `/mcp` request is in
+flight, because `/mcp` is stateless — what lasts is the OAuth grant, not a
+transport session.
+
+- **Where to see it.** An administrator, or a custom role holding
+  `metaxisdata.connectedApps.list`, sees every connection in the workspace under
+  Settings → Connected apps, with filters for user, state and client. Any
+  signed-in user sees their own connections from the avatar menu → Connected
+  apps. The pages keep working while `mcp_enabled` is off: they are also the way
+  to clean up connections after the surface has been switched off.
+- **What it shows.** The client (the name it reported at registration, or its
+  id), the user, when the authorization completed, the most recent tool call
+  (not the most recent token refresh — a connection authorized but never used
+  shows "no calls yet"; the column is written at most once every five minutes),
+  the refresh credential's expiry, and a derived state: `ACTIVE`,
+  `REAUTH_REQUIRED` (the external URL changed, or the grant predates the user's
+  last password change), `INACTIVE` (the account is deactivated and the
+  connection resumes if it is restored), `EXPIRED`, or `REVOKED`.
+- **What revoke does.** The connection's outstanding access tokens are refused —
+  immediately on the replica that performed the revoke, within 30 seconds on the
+  others — and its refresh token can mint nothing more. Authorizing the same
+  client again creates a new connection and a new entry, not a resurrection of
+  the old one. Revoking your own connection needs no permission; revoking
+  another user's needs `metaxisdata.connectedApps.revoke`, which a workspace
+  administrator holds and a custom role can be granted.
+- **How long records stay.** A revoked or expired connection stays listed for
+  seven days after its refresh credential expires, so its final state can be
+  seen; then maintenance reclaims the row. The audit ledger is permanent, and
+  every revoke writes a row there naming what was revoked.

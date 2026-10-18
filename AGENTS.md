@@ -24,9 +24,9 @@ Product surface (routes in `frontend/src/router/index.ts`, sidebar in `frontend/
 - **Lineage** — table lineage graph and column-level lineage, analyzed from view/materialized-view SQL and from OpenLineage.
 - **OpenLineage** — Overview / Jobs / Datasets / Events, namespace mapping, API keys, Airflow links.
 - **Explain SQL** — LLM-assisted SQL explanation scoped to selected metadata, with caching.
-- **Settings** — users, audit logs, LLM providers, OpenLineage ingestion, and the `mcp_enabled` switch.
+- **Settings** — users, audit logs, LLM providers, OpenLineage ingestion, connected apps, and the `mcp_enabled` switch.
 - **Device** — the `/device` page approves a command line client's device login.
-- **MCP** — when `mcp_enabled` is on, `/mcp` serves the registry as read-only tools over the Model Context Protocol, and the same server is the OAuth 2.1 authorization server those clients register and authorize against (`/oauth/consent` is the page that records a user's decision).
+- **MCP** — when `mcp_enabled` is on, `/mcp` serves the registry as read-only tools over the Model Context Protocol, and the same server is the OAuth 2.1 authorization server those clients register and authorize against (`/oauth/consent` is the page that records a user's decision). **Connected apps** (Settings for an administrator, the avatar menu for a user's own) lists those authorizations and revokes them.
 
 Feature design documents live in `.agents/docs/`, as maintenance references to the shipped feature. Read the matching one before reworking a subsystem, and write a new one there for a new subsystem-scale feature — there is no separate `plan/` or `spec/` tree.
 
@@ -90,5 +90,5 @@ These look like defects but were chosen knowingly. Read [docs/security-posture.m
 - **`audit_log` and `meta_registry_resource_history` are kept forever.**
 - **The MCP surface is off by default and its tokens are bound to `/mcp`** — enabling it needs `external_url`, and changing that address invalidates outstanding MCP tokens.
 - **Every MCP tool call is audited, reads included** — a remote entry point a model drives, recorded in the permanent ledger.
-- **OAuth pending state is process-local, and access and refresh tokens are separate credentials** — the same replica must see an approval and its completion; refresh tokens, by contrast, live in the database and rotate single-use, so expiry no longer forces the browser flow again (see [docs/mcp.md](docs/mcp.md) and [docs/security-posture.md](docs/security-posture.md)).
+- **OAuth pending state is process-local, and access and refresh tokens are separate credentials** — the same replica must see an approval and its completion; refresh tokens, by contrast, live in the database and rotate single-use. The MCP grant row is the durable **connected app**: a refresh updates it in place, so its id is stable, and access tokens carry that id and are refused once the connection is revoked (immediately on the replica that revoked it, within 30 seconds elsewhere). Access tokens minted before that claim existed are refused once and recover with a refresh. Connected apps lists and revokes these authorizations without the agent's token; see [docs/mcp.md](docs/mcp.md) and [docs/security-posture.md](docs/security-posture.md).
 - **Reverse-proxy contract** — cookie writes trust `Origin`/`Sec-Fetch-Site`; audit trusts `X-Forwarded-For` only from `--trusted-proxies`.

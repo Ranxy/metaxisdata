@@ -67,4 +67,18 @@ describe("ConfirmDeleteDialog", () => {
 
     expect(buttonByText("Delete").disabled).toBe(true);
   });
+
+  // Delete is the common case, but revoking a connection is not a deletion and
+  // must not hand the user a button that says something else happened.
+  it("labels the destructive button with the operation's own verb", async () => {
+    mountDialog({ confirmLabel: "Revoke" });
+    await flushPromises();
+
+    expect(buttonByText("Revoke")).toBeDefined();
+    expect(
+      Array.from(document.body.querySelectorAll("button")).some(
+        (button) => button.textContent?.trim() === "Delete"
+      )
+    ).toBe(false);
+  });
 });

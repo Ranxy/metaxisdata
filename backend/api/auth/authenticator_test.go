@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -60,14 +61,14 @@ func TestResolveKeepsAudiencesApart(t *testing.T) {
 	token, err := GenerateAccessToken("user@example.com", 7, common.ReleaseModeDev, audienceTestSecret, time.Hour)
 	require.NoError(t, err)
 
-	_, _, err = NewTokenAuthenticator(nil, audienceTestSecret, nil).Resolve(context.Background(), token, mcpTestResource)
+	_, _, err = NewTokenAuthenticator(nil, nil, audienceTestSecret, nil).Resolve(context.Background(), token, mcpTestResource)
 	require.ErrorIs(t, err, ErrTokenInvalid, "a user-API token must not resolve for another audience")
 }
 
 func TestMCPTokensAreNotInterchangeableWithUserTokens(t *testing.T) {
 	t.Parallel()
 
-	mcpToken, err := GenerateMCPAccessToken("user@example.com", 7, mcpTestClient, mcpTestResource, mcpTestScope, audienceTestSecret, time.Hour)
+	mcpToken, err := GenerateMCPAccessToken("user@example.com", 7, mcpTestClient, 42, mcpTestResource, mcpTestScope, audienceTestSecret, time.Hour)
 	require.NoError(t, err)
 	_, err = VerifyAccessToken(mcpToken, audienceTestSecret, common.ReleaseModeDev)
 	require.Error(t, err, "an MCP token must not verify for the user API")
@@ -95,16 +96,16 @@ func TestMCPTokensAreNotInterchangeableWithUserTokens(t *testing.T) {
 func TestResolveAppliesTheUserRulesForTheMCPAudience(t *testing.T) {
 	t.Parallel()
 
-	token, err := GenerateMCPAccessToken("user@example.com", 7, mcpTestClient, mcpTestResource, mcpTestScope, audienceTestSecret, time.Hour)
+	token, err := GenerateMCPAccessToken("user@example.com", 7, mcpTestClient, 42, mcpTestResource, mcpTestScope, audienceTestSecret, time.Hour)
 	require.NoError(t, err)
 
-	active := NewTokenAuthenticator(fakeUsers{user: &store.UserMessage{ID: 7, Email: "user@example.com"}}, audienceTestSecret, nil)
+	active := NewTokenAuthenticator(fakeUsers{user: &store.UserMessage{ID: 7, Email: "user@example.com"}}, nil, audienceTestSecret, nil)
 	user, identity, err := active.Resolve(context.Background(), token, mcpTestResource)
 	require.NoError(t, err)
 	require.Equal(t, 7, user.ID)
 	require.Equal(t, 7, identity.UserID)
 
-	deactivated := NewTokenAuthenticator(fakeUsers{user: &store.UserMessage{ID: 7, MemberDeleted: true}}, audienceTestSecret, nil)
+	deactivated := NewTokenAuthenticator(fakeUsers{user: &store.UserMessage{ID: 7, MemberDeleted: true}}, nil, audienceTestSecret, nil)
 	_, _, err = deactivated.Resolve(context.Background(), token, mcpTestResource)
 	require.Error(t, err)
 	require.NotErrorIs(t, err, ErrTokenInvalid, "the token itself is fine; the principal behind it is not")
@@ -117,7 +118,7 @@ func TestResolveAppliesTheUserRulesForTheMCPAudience(t *testing.T) {
 func TestMCPTokensKeepARevocationPath(t *testing.T) {
 	t.Parallel()
 
-	mcpToken, err := GenerateMCPAccessToken("user@example.com", 7, mcpTestClient, mcpTestResource, mcpTestScope, audienceTestSecret, time.Hour)
+	mcpToken, err := GenerateMCPAccessToken("user@example.com", 7, mcpTestClient, 42, mcpTestResource, mcpTestScope, audienceTestSecret, time.Hour)
 	require.NoError(t, err)
 	identity, err := VerifyAccessTokenProvenance(mcpToken, audienceTestSecret)
 	require.NoError(t, err)
@@ -138,14 +139,14 @@ func TestResolveReportsAnExpiredTokenAsRevoked(t *testing.T) {
 	token, err := GenerateAccessToken("user@example.com", 7, common.ReleaseModeDev, audienceTestSecret, -time.Hour)
 	require.NoError(t, err)
 
-	_, _, err = NewTokenAuthenticator(nil, audienceTestSecret, nil).Resolve(context.Background(), token, AccessTokenAudience(common.ReleaseModeDev))
+	_, _, err = NewTokenAuthenticator(nil, nil, audienceTestSecret, nil).Resolve(context.Background(), token, AccessTokenAudience(common.ReleaseModeDev))
 	require.ErrorIs(t, err, ErrTokenRevoked)
 }
 
 func TestResolveRejectsAMissingToken(t *testing.T) {
 	t.Parallel()
 
-	_, _, err := NewTokenAuthenticator(nil, audienceTestSecret, nil).Resolve(context.Background(), "", AccessTokenAudience(common.ReleaseModeDev))
+	_, _, err := NewTokenAuthenticator(nil, nil, audienceTestSecret, nil).Resolve(context.Background(), "", AccessTokenAudience(common.ReleaseModeDev))
 	require.ErrorIs(t, err, ErrTokenMissing)
 }
 
@@ -165,7 +166,7 @@ func TestResolveRefusesAPersistentlyRevokedToken(t *testing.T) {
 		user:    &store.UserMessage{ID: 7, Email: "user@example.com"},
 		revoked: map[string]bool{identity.TokenID: true},
 	}
-	_, _, err = NewTokenAuthenticator(users, audienceTestSecret, nil).Resolve(context.Background(), token, AccessTokenAudience(common.ReleaseModeDev))
+	_, _, err = NewTokenAuthenticator(users, nil, audienceTestSecret, nil).Resolve(context.Background(), token, AccessTokenAudience(common.ReleaseModeDev))
 	require.ErrorIs(t, err, ErrTokenRevoked)
 }
 
@@ -183,7 +184,7 @@ func TestResolveCachesRevocationDecisions(t *testing.T) {
 	require.NoError(t, err)
 
 	users := &countingUsers{fakeUsers: fakeUsers{user: &store.UserMessage{ID: 7, Email: "user@example.com"}}}
-	authenticator := NewTokenAuthenticator(users, audienceTestSecret, stateCfg)
+	authenticator := NewTokenAuthenticator(users, nil, audienceTestSecret, stateCfg)
 	audience := AccessTokenAudience(common.ReleaseModeDev)
 
 	_, _, err = authenticator.Resolve(context.Background(), token, audience)
@@ -198,4 +199,90 @@ func TestResolveCachesRevocationDecisions(t *testing.T) {
 	_, _, err = authenticator.Resolve(context.Background(), token, audience)
 	require.ErrorIs(t, err, ErrTokenRevoked)
 	require.Equal(t, 1, users.lookups)
+}
+
+// fakeGrants is a GrantStore whose only live grant is id 42 for user 7 and the
+// test client, so the connected-app rules can be exercised without a database.
+type fakeGrants struct {
+	live    bool
+	err     error
+	lookups int
+}
+
+func (f *fakeGrants) IsOAuthGrantLive(_ context.Context, grantID int64, userID int, clientID string) (bool, error) {
+	f.lookups++
+	if f.err != nil {
+		return false, f.err
+	}
+	if grantID != 42 || userID != 7 || clientID != mcpTestClient {
+		return false, nil
+	}
+	return f.live, nil
+}
+
+func TestMCPTokenResolvesOnlyWhileItsConnectedAppIsLive(t *testing.T) {
+	t.Parallel()
+
+	users := fakeUsers{user: &store.UserMessage{ID: 7, Email: "user@example.com"}}
+	grants := &fakeGrants{live: true}
+	authenticator := NewTokenAuthenticator(users, grants, audienceTestSecret, nil)
+	token, err := GenerateMCPAccessToken("user@example.com", 7, mcpTestClient, 42, mcpTestResource, mcpTestScope, audienceTestSecret, time.Hour)
+	require.NoError(t, err)
+
+	user, identity, err := authenticator.Resolve(context.Background(), token, mcpTestResource)
+	require.NoError(t, err)
+	require.Equal(t, 7, user.ID)
+	require.Equal(t, int64(42), identity.GrantID)
+
+	grants.live = false
+	_, _, err = authenticator.Resolve(context.Background(), token, mcpTestResource)
+	require.ErrorIs(t, err, ErrGrantRevoked)
+
+	grants.err = errors.New("revocation table unavailable")
+	_, _, err = authenticator.Resolve(context.Background(), token, mcpTestResource)
+	require.Error(t, err)
+	require.NotErrorIs(t, err, ErrGrantRevoked, "a read failure is not a revocation decision")
+}
+
+func TestMCPTokenWithoutAGrantSkipsTheConnectedAppCheck(t *testing.T) {
+	t.Parallel()
+
+	users := fakeUsers{user: &store.UserMessage{ID: 7, Email: "user@example.com"}}
+	grants := &fakeGrants{live: true}
+	authenticator := NewTokenAuthenticator(users, grants, audienceTestSecret, nil)
+	token, err := GenerateMCPAccessToken("user@example.com", 7, mcpTestClient, 0, mcpTestResource, mcpTestScope, audienceTestSecret, time.Hour)
+	require.NoError(t, err)
+
+	_, identity, err := authenticator.Resolve(context.Background(), token, mcpTestResource)
+	require.NoError(t, err)
+	require.Zero(t, identity.GrantID)
+	require.Zero(t, grants.lookups, "a token without a grant id cannot be checked against a connection")
+}
+
+func TestGrantRevocationCacheDecidesWithinItsWindow(t *testing.T) {
+	t.Parallel()
+
+	stateCfg, err := state.New()
+	require.NoError(t, err)
+	users := fakeUsers{user: &store.UserMessage{ID: 7, Email: "user@example.com"}}
+	grants := &fakeGrants{live: true}
+	authenticator := NewTokenAuthenticator(users, grants, audienceTestSecret, stateCfg)
+	token, err := GenerateMCPAccessToken("user@example.com", 7, mcpTestClient, 42, mcpTestResource, mcpTestScope, audienceTestSecret, time.Hour)
+	require.NoError(t, err)
+
+	_, _, err = authenticator.Resolve(context.Background(), token, mcpTestResource)
+	require.NoError(t, err)
+	require.Equal(t, 1, grants.lookups)
+
+	// A live decision is remembered: the next request inside the window does not
+	// read the table again.
+	_, _, err = authenticator.Resolve(context.Background(), token, mcpTestResource)
+	require.NoError(t, err)
+	require.Equal(t, 1, grants.lookups)
+
+	// A revocation performed here is refused immediately, without a table read.
+	stateCfg.GrantRevocationCache.Revoke("42", time.Now())
+	_, _, err = authenticator.Resolve(context.Background(), token, mcpTestResource)
+	require.ErrorIs(t, err, ErrGrantRevoked)
+	require.Equal(t, 1, grants.lookups, "the cache serves the revocation decision")
 }

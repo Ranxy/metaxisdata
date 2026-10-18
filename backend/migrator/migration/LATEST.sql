@@ -645,17 +645,24 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_oauth_client_client_id ON oauth_client(cli
 
 
 -- The two refresh-token tables. Both store only the SHA-256 hex digest of the
--- opaque token, never the plaintext, and both are single-use: a refresh
--- atomically deletes the row it consumes (DELETE ... RETURNING) and inserts a
--- replacement, so concurrent refreshes race and a replayed token resolves to no
--- row. user_id references principal(id) because an account is identified by its
--- principal id, not by its mutable address; deactivation is a soft delete, so
--- the refresh handlers re-read the principal and refuse a deactivated one or a
--- grant older than the last password change.
+-- opaque token, never the plaintext, and both are single-use, so concurrent
+-- refreshes race and a replayed token resolves to no row. The MCP grant rotates
+-- in place (UPDATE ... RETURNING id) because its row id is the connection's
+-- stable handle; the web session consumes its row with DELETE ... RETURNING and
+-- inserts a replacement. user_id references principal(id) because an account is
+-- identified by its principal id, not by its mutable address; deactivation is a
+-- soft delete, so the refresh handlers re-read the principal and refuse a
+-- deactivated one or a grant older than the last password change.
 --
--- oauth_refresh_token carries the MCP grant across a refresh: resource pins it
--- to the `<external_url>/mcp` the user consented to, and scope is carried
--- forward verbatim so a refresh re-issues the grant as consented.
+-- oauth_refresh_token is also the durable record of one connected app: one
+-- user's authorization of one MCP client. resource pins it to the
+-- `<external_url>/mcp` the user consented to, and scope is carried forward
+-- verbatim so a refresh re-issues the grant as consented. last_tool_call_at is
+-- per authorization (the MCP tool path updates it, throttled); revoked_at is a
+-- soft revocation the management page reads and no path may clear (authorizing
+-- again creates a new row); revoked_by is who revoked it, or NULL when the
+-- system ended it (a refresh refused for a gone/deactivated principal or a
+-- password change).
 CREATE TABLE IF NOT EXISTS oauth_refresh_token (
     id BIGSERIAL PRIMARY KEY,
     token_hash TEXT NOT NULL,
@@ -664,7 +671,10 @@ CREATE TABLE IF NOT EXISTS oauth_refresh_token (
     resource TEXT NOT NULL,
     scope TEXT NOT NULL DEFAULT '',
     expires_at TIMESTAMPTZ NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_tool_call_at TIMESTAMPTZ,
+    revoked_at TIMESTAMPTZ,
+    revoked_by INTEGER REFERENCES principal(id) ON DELETE SET NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_oauth_refresh_token_hash ON oauth_refresh_token(token_hash);
@@ -674,6 +684,9 @@ CREATE INDEX IF NOT EXISTS idx_oauth_refresh_token_user_client ON oauth_refresh_
 
 -- The maintenance runner's TTL prune.
 CREATE INDEX IF NOT EXISTS idx_oauth_refresh_token_expires_at ON oauth_refresh_token(expires_at);
+
+-- The connected-apps list is newest first, scoped by user for self-service.
+CREATE INDEX IF NOT EXISTS idx_oauth_refresh_token_user_created ON oauth_refresh_token(user_id, created_at DESC);
 
 -- web_refresh_token is the SPA session's rotation state. It carries only the
 -- principal and the absolute expiry: the workspace is single tenant, and a

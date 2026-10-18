@@ -37,7 +37,7 @@
           :disabled="loading"
           @click="emit('confirm')"
         >
-          {{ t("common.delete") }}
+          {{ confirmLabel || t("common.delete") }}
         </Button>
       </DialogFooter>
     </DialogContent>
@@ -59,9 +59,11 @@ import {
 
 /**
  * The one destructive confirmation: a warning icon, the operation's own wording,
- * the object it targets, and Cancel/Delete. It replaces six copies that had
- * drifted apart (three of them had no icon at all), and its own loading state
- * keeps the button disabled while the caller's request is in flight.
+ * the object it targets, and Cancel/the operation's own verb. It replaces six
+ * copies that had drifted apart (three of them had no icon at all), and its own
+ * loading state keeps the button disabled while the caller's request is in
+ * flight. The label defaults to Delete because that is the common case; revoke
+ * and other destructive verbs pass their own.
  */
 interface Props {
   modelValue: boolean;
@@ -70,11 +72,14 @@ interface Props {
   /** The object being deleted, shown bold under the message. */
   itemName?: string;
   loading?: boolean;
+  /** Text of the destructive button. Defaults to "Delete". */
+  confirmLabel?: string;
 }
 
 withDefaults(defineProps<Props>(), {
   itemName: "",
   loading: false,
+  confirmLabel: "",
 });
 
 const emit = defineEmits<{

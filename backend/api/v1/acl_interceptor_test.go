@@ -144,6 +144,14 @@ var unannotatedMethods = map[string]bool{
 	// subscription is registered for the authenticated caller's own id, and no
 	// permission in the catalog says "only mine".
 	"metaxisdata.v1.NotificationService.SubscribeNotifications": true,
+	// Connected apps have two audiences on the same call: an administrator sees
+	// the whole workspace and an ordinary user sees their own. The handler narrows
+	// first and only widens when connectedApps.list / connectedApps.revoke resolves,
+	// so no single annotation can express the rule. The scoping matrix is pinned by
+	// connected_app_test.go, which is what keeps the widen from silently
+	// becoming the default.
+	"metaxisdata.v1.ConnectedAppService.ListConnectedApps":  true,
+	"metaxisdata.v1.ConnectedAppService.RevokeConnectedApp": true,
 }
 
 // TestEveryMethodIsPermissionGated is the read-path guard the authorization

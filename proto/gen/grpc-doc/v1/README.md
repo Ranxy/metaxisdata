@@ -86,6 +86,16 @@
   
     - [AuthService](#metaxisdata-v1-AuthService)
   
+- [v1/connected_app_service.proto](#v1_connected_app_service-proto)
+    - [ConnectedApp](#metaxisdata-v1-ConnectedApp)
+    - [ListConnectedAppsRequest](#metaxisdata-v1-ListConnectedAppsRequest)
+    - [ListConnectedAppsResponse](#metaxisdata-v1-ListConnectedAppsResponse)
+    - [RevokeConnectedAppRequest](#metaxisdata-v1-RevokeConnectedAppRequest)
+  
+    - [ConnectedApp.State](#metaxisdata-v1-ConnectedApp-State)
+  
+    - [ConnectedAppService](#metaxisdata-v1-ConnectedAppService)
+  
 - [v1/instance_service.proto](#v1_instance_service-proto)
     - [BatchSyncInstanceResult](#metaxisdata-v1-BatchSyncInstanceResult)
     - [BatchSyncInstancesRequest](#metaxisdata-v1-BatchSyncInstancesRequest)
@@ -1527,6 +1537,143 @@ HttpOnly cookies, so no token ever reaches page JavaScript.
 | GetDeviceLogin | [GetDeviceLoginRequest](#metaxisdata-v1-GetDeviceLoginRequest) | [DeviceLogin](#metaxisdata-v1-DeviceLogin) | GetDeviceLogin returns one pending device login so the confirmation page can show what is being approved. Permissions required: None |
 | ApproveDeviceLogin | [ApproveDeviceLoginRequest](#metaxisdata-v1-ApproveDeviceLoginRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | ApproveDeviceLogin approves or denies a pending device login. The approver becomes the identity the access token is issued for. Permissions required: None |
 | ExchangeDeviceLogin | [ExchangeDeviceLoginRequest](#metaxisdata-v1-ExchangeDeviceLoginRequest) | [ExchangeDeviceLoginResponse](#metaxisdata-v1-ExchangeDeviceLoginResponse) | ExchangeDeviceLogin polls a device login. An approved request is consumed and answered with the token; every other state is reported as-is. Permissions required: None |
+
+ 
+
+
+
+<a name="v1_connected_app_service-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## v1/connected_app_service.proto
+
+
+
+<a name="metaxisdata-v1-ConnectedApp"></a>
+
+### ConnectedApp
+ConnectedApp is one user&#39;s authorization of one MCP client. It is derived from
+the grant record the OAuth token endpoint rotates in place, not from the
+client registration: the same client may be authorized several times, and each
+authorization is its own row.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | The resource name of the connected app, in the form `connectedApps/{id}`. |
+| client_id | [string](#string) |  | The registered client identifier (RFC 7591). Opaque. |
+| client_name | [string](#string) |  | The client&#39;s self-reported name at registration. It is not verified, so it is display text only. |
+| user | [string](#string) |  | The user whose identity the client acts as, in the form `users/{id}`. |
+| user_email | [string](#string) |  | The user&#39;s email. It is filled only for the caller&#39;s own rows or when the caller may read users; a connected-apps reader is not thereby a user reader. |
+| resource | [string](#string) |  | The MCP resource identifier the authorization was granted for. |
+| scopes | [string](#string) | repeated | The OAuth scopes the user consented to. |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When the authorization completed (the first token pair was issued). |
+| last_tool_call_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | The most recent tool call made with this connection. Empty when the client has been authorized but has not called a tool yet. |
+| expire_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When the refresh credential expires. A connection past this instant cannot mint another access token. |
+| state | [ConnectedApp.State](#metaxisdata-v1-ConnectedApp-State) |  | The connection&#39;s current state. |
+| revoke_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When the connection was revoked. Set only for REVOKED. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListConnectedAppsRequest"></a>
+
+### ListConnectedAppsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| page_size | [int32](#int32) |  | The maximum number of connected apps to return. The service may return fewer than this value. If unspecified, at most 50 are returned. The maximum value is 1000; values above 1000 are coerced to 1000. |
+| page_token | [string](#string) |  | A page token, received from a previous `ListConnectedApps` call. Provide this to retrieve the subsequent page. The filter and user parameters must not change between pages. |
+| user | [string](#string) |  | The user whose connected apps to list, in the form `users/{id}`. Omitted, a caller holding metaxisdata.connectedApps.list sees every connection in the workspace, and any other caller sees only their own. Naming another user is refused unless the caller holds that permission. |
+| filter | [string](#string) |  | A CEL filter over the list. Supported variables:
+
+ user == &#34;users/{id}&#34; state == &#34;ACTIVE&#34; | &#34;REVOKED&#34; | &#34;EXPIRED&#34; | &#34;REAUTH_REQUIRED&#34; | &#34;INACTIVE&#34; client == &#34;name&#34; (exact), client.matches(&#34;substring&#34;) client_id == &#34;id&#34; (exact), client_id.matches(&#34;substring&#34;) user_email == &#34;email&#34; (exact), user_email.matches(&#34;substring&#34;) create_time &gt;= / &lt;= RFC 3339
+
+The filter only narrows the rows the caller is already allowed to see. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListConnectedAppsResponse"></a>
+
+### ListConnectedAppsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| connected_apps | [ConnectedApp](#metaxisdata-v1-ConnectedApp) | repeated | The connected apps on this page. |
+| next_page_token | [string](#string) |  | A token, which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-RevokeConnectedAppRequest"></a>
+
+### RevokeConnectedAppRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | The resource name of the connected app to revoke, in the form `connectedApps/{id}`. |
+
+
+
+
+
+ 
+
+
+<a name="metaxisdata-v1-ConnectedApp-State"></a>
+
+### ConnectedApp.State
+State is a derived value: it is computed from the stored grant, the MCP
+surface&#39;s current configuration, and the user&#39;s account, so it is not stored.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| STATE_UNSPECIFIED | 0 |  |
+| ACTIVE | 1 | Usable: not revoked or expired, and a refresh would be accepted. |
+| REVOKED | 2 | Explicitly revoked. Outstanding access tokens are refused within the revocation cache&#39;s window. |
+| EXPIRED | 3 | The refresh credential expired; no new access token can be minted. |
+| REAUTH_REQUIRED | 4 | Re-authorization is required before the connection can work: the MCP resource identifier changed, or the grant predates the user&#39;s last password change. |
+| INACTIVE | 5 | The user&#39;s account is deactivated. The connection resumes if the account is restored; it is not revoked automatically. |
+
+
+ 
+
+ 
+
+
+<a name="metaxisdata-v1-ConnectedAppService"></a>
+
+### ConnectedAppService
+ConnectedAppService manages the MCP OAuth connections a user established by
+authorizing a client against the deployment&#39;s MCP endpoint. One connected app
+is one authorization (one user, one client), not one transport session: the
+MCP endpoint itself is stateless.
+
+No method here carries a (metaxisdata.v1.permission) annotation, because the
+same call serves two audiences: a workspace administrator listing every
+connection and an ordinary user managing their own. Each handler therefore
+scopes its query and authorizes the widen itself, the way NotificationService
+and UserService&#39;s self-service paths do. The permission catalog still defines
+connectedApps.list and connectedApps.revoke, which are what the handler checks
+before returning another user&#39;s rows or revoking another user&#39;s connection.
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+| ListConnectedApps | [ListConnectedAppsRequest](#metaxisdata-v1-ListConnectedAppsRequest) | [ListConnectedAppsResponse](#metaxisdata-v1-ListConnectedAppsResponse) | List the caller&#39;s connected apps. A caller holding metaxisdata.connectedApps.list sees the whole workspace; without it the result is forced to the caller&#39;s own rows. `user` narrows the result further when the caller may see other users&#39; connections. |
+| RevokeConnectedApp | [RevokeConnectedAppRequest](#metaxisdata-v1-RevokeConnectedAppRequest) | [ConnectedApp](#metaxisdata-v1-ConnectedApp) | Revoke one connected app: its outstanding access tokens stop being accepted (immediately on this replica, within 30 seconds elsewhere, the same rule as Logout) and its refresh token can no longer mint a new pair. A user may revoke their own; revoking another user&#39;s needs metaxisdata.connectedApps.revoke. The response is the revoked record so the permanent audit ledger names what was revoked even after the row is pruned. Permissions required: None |
 
  
 

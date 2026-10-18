@@ -10,7 +10,14 @@ import UserMenu from "./UserMenu.vue";
 async function openUserMenu() {
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: "/:pathMatch(.*)*", component: { template: "<div />" } }],
+    routes: [
+      {
+        path: "/connected-apps",
+        name: "ConnectedApps",
+        component: { template: "<div />" },
+      },
+      { path: "/:pathMatch(.*)*", component: { template: "<div />" } },
+    ],
   });
   await router.push("/");
   await router.isReady();
@@ -20,7 +27,7 @@ async function openUserMenu() {
   });
   await wrapper.find("button").trigger("click");
   await new Promise((resolve) => setTimeout(resolve, 0));
-  return wrapper;
+  return { wrapper, router };
 }
 
 describe("UserMenu", () => {
@@ -50,7 +57,7 @@ describe("UserMenu", () => {
       )
     );
 
-    const wrapper = await openUserMenu();
+    const { wrapper } = await openUserMenu();
     const menu = document.body.textContent ?? "";
 
     expect(menu).toContain("Version: v1.2.3");
@@ -65,9 +72,30 @@ describe("UserMenu", () => {
       vi.fn(() => Promise.reject(new Error("offline")))
     );
 
-    const wrapper = await openUserMenu();
+    const { wrapper } = await openUserMenu();
 
     expect(document.body.textContent ?? "").not.toContain("Version:");
+    wrapper.unmount();
+  });
+
+  // Connected apps is an account control: every signed-in user manages their own,
+  // so the entry carries no permission gate.
+  it("opens the connected apps page from the avatar menu", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.reject(new Error("offline")))
+    );
+
+    const { wrapper, router } = await openUserMenu();
+    expect(document.body.textContent ?? "").toContain("Connected apps");
+
+    const item = Array.from(
+      document.body.querySelectorAll('[role="menuitem"]')
+    ).find((candidate) => candidate.textContent?.includes("Connected apps"));
+    (item as HTMLElement | undefined)?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(router.currentRoute.value.name).toBe("ConnectedApps");
     wrapper.unmount();
   });
 });

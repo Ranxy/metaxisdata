@@ -10,7 +10,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -44,11 +46,12 @@ const (
 // mcpClients bundles the ConnectRPC clients these scenarios need, each bound to
 // the credential given.
 type mcpClients struct {
-	setting  v1connect.SettingServiceClient
-	oauth    v1connect.OAuthServiceClient
-	database v1connect.DatabaseServiceClient
-	user     v1connect.UserServiceClient
-	audit    v1connect.AuditLogServiceClient
+	setting      v1connect.SettingServiceClient
+	oauth        v1connect.OAuthServiceClient
+	database     v1connect.DatabaseServiceClient
+	user         v1connect.UserServiceClient
+	audit        v1connect.AuditLogServiceClient
+	connectedApp v1connect.ConnectedAppServiceClient
 }
 
 func newMCPClients(env *integrationenv.ServiceEnv, token string) *mcpClients {
@@ -57,11 +60,12 @@ func newMCPClients(env *integrationenv.ServiceEnv, token string) *mcpClients {
 		httpClient.Transport = bearerRoundTripper{base: http.DefaultTransport, token: token}
 	}
 	return &mcpClients{
-		setting:  v1connect.NewSettingServiceClient(httpClient, env.BaseURL),
-		oauth:    v1connect.NewOAuthServiceClient(httpClient, env.BaseURL),
-		database: v1connect.NewDatabaseServiceClient(httpClient, env.BaseURL),
-		user:     v1connect.NewUserServiceClient(httpClient, env.BaseURL),
-		audit:    v1connect.NewAuditLogServiceClient(httpClient, env.BaseURL),
+		setting:      v1connect.NewSettingServiceClient(httpClient, env.BaseURL),
+		oauth:        v1connect.NewOAuthServiceClient(httpClient, env.BaseURL),
+		database:     v1connect.NewDatabaseServiceClient(httpClient, env.BaseURL),
+		user:         v1connect.NewUserServiceClient(httpClient, env.BaseURL),
+		audit:        v1connect.NewAuditLogServiceClient(httpClient, env.BaseURL),
+		connectedApp: v1connect.NewConnectedAppServiceClient(httpClient, env.BaseURL),
 	}
 }
 
@@ -154,7 +158,7 @@ func TestMCPAuthorizationAndToolsRealServerIntegration(t *testing.T) {
 	code := complete(t, protocol, env.BaseURL, requestID, adminToken)
 
 	t.Run("the code is single use", func(t *testing.T) {
-		first := exchange(t, protocol, env.BaseURL, resource, clientID, mcpClientRedirect, code, verifier)
+		first := exchange(t, protocol, env.BaseURL, resource, clientID, code, verifier)
 		require.NotEmpty(t, first["access_token"])
 		require.Equal(t, "Bearer", first["token_type"])
 		require.Equal(t, mcpScope, first["scope"])
@@ -212,7 +216,7 @@ func TestMCPAuthorizationAndToolsRealServerIntegration(t *testing.T) {
 		grantID := authorize(t, protocol, env.BaseURL, resource, clientID, adminToken, challenge)
 		approveRequest(ctx, t, admin, grantID)
 		grantCode := complete(t, protocol, env.BaseURL, grantID, adminToken)
-		first := exchange(t, protocol, env.BaseURL, resource, clientID, mcpClientRedirect, grantCode, verifier)
+		first := exchange(t, protocol, env.BaseURL, resource, clientID, grantCode, verifier)
 		original, ok := first["refresh_token"].(string)
 		require.True(t, ok, "the exchange returns a refresh token beside the access token")
 
@@ -241,6 +245,97 @@ func TestMCPAuthorizationAndToolsRealServerIntegration(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, wrongScopeStatus)
 		retryStatus, retryBody := refreshGrant(t, protocol, env.BaseURL, resource, clientID, rotatedToken, mcpScope)
 		require.Equal(t, http.StatusOK, retryStatus, retryBody)
+	})
+
+	t.Run("a connected app can be listed and revoked", func(t *testing.T) {
+		requestID := authorize(t, protocol, env.BaseURL, resource, clientID, adminToken, challenge)
+		approveRequest(ctx, t, admin, requestID)
+		grantCode := complete(t, protocol, env.BaseURL, requestID, adminToken)
+		granted := exchange(t, protocol, env.BaseURL, resource, clientID, grantCode, verifier)
+		accessToken, ok := granted["access_token"].(string)
+		require.True(t, ok)
+		refreshToken, ok := granted["refresh_token"].(string)
+		require.True(t, ok)
+
+		list, err := admin.connectedApp.ListConnectedApps(ctx, connect.NewRequest(&v1pb.ListConnectedAppsRequest{
+			PageSize: 100,
+			Filter:   `client_id == ` + strconv.Quote(clientID) + ` && state == "ACTIVE"`,
+		}))
+		require.NoError(t, err)
+		require.NotEmpty(t, list.Msg.GetConnectedApps(), "the connection just authorized must be listed")
+		// Newest first, so the connection this subtest just created is the head.
+		target := list.Msg.GetConnectedApps()[0]
+		require.Equal(t, resource, target.GetResource())
+		require.Equal(t, v1pb.ConnectedApp_ACTIVE, target.GetState())
+		require.NotEmpty(t, target.GetUserEmail(), "an administrator may read the connecting user's email")
+
+		status, _, body := rawRequest(t, protocol, http.MethodPost, env.BaseURL+mcpResourcePath, accessToken, mcpAccept, "application/json",
+			`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`)
+		require.Equal(t, http.StatusOK, status, body)
+
+		revoked, err := admin.connectedApp.RevokeConnectedApp(ctx, connect.NewRequest(&v1pb.RevokeConnectedAppRequest{Name: target.GetName()}))
+		require.NoError(t, err)
+		require.Equal(t, v1pb.ConnectedApp_REVOKED, revoked.Msg.GetState())
+		require.NotNil(t, revoked.Msg.GetRevokeTime())
+
+		// The access token minted before the revocation stops working on the replica
+		// that performed it immediately.
+		status, header, body := rawRequest(t, protocol, http.MethodPost, env.BaseURL+mcpResourcePath, accessToken, mcpAccept, "application/json",
+			`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`)
+		require.Equal(t, http.StatusUnauthorized, status, body)
+		require.Contains(t, header.Get("WWW-Authenticate"), "invalid_token")
+
+		// The refresh credential is terminal too: re-authorizing creates a new row.
+		refreshStatus, _ := refreshGrant(t, protocol, env.BaseURL, resource, clientID, refreshToken, mcpScope)
+		require.Equal(t, http.StatusBadRequest, refreshStatus)
+
+		// A repeated revocation is an idempotent success and the row stays listed.
+		again, err := admin.connectedApp.RevokeConnectedApp(ctx, connect.NewRequest(&v1pb.RevokeConnectedAppRequest{Name: target.GetName()}))
+		require.NoError(t, err)
+		require.Equal(t, v1pb.ConnectedApp_REVOKED, again.Msg.GetState())
+
+		list, err = admin.connectedApp.ListConnectedApps(ctx, connect.NewRequest(&v1pb.ListConnectedAppsRequest{
+			PageSize: 100,
+			Filter:   `client_id == ` + strconv.Quote(clientID),
+		}))
+		require.NoError(t, err)
+		found := false
+		for _, app := range list.Msg.GetConnectedApps() {
+			if app.GetName() == target.GetName() {
+				found = true
+				require.Equal(t, v1pb.ConnectedApp_REVOKED, app.GetState())
+				require.NotNil(t, app.GetRevokeTime())
+			}
+		}
+		require.True(t, found, "a revoked connection stays visible for the retention window")
+	})
+
+	t.Run("concurrent refreshes have exactly one winner", func(t *testing.T) {
+		requestID := authorize(t, protocol, env.BaseURL, resource, clientID, adminToken, challenge)
+		approveRequest(ctx, t, admin, requestID)
+		grantCode := complete(t, protocol, env.BaseURL, requestID, adminToken)
+		granted := exchange(t, protocol, env.BaseURL, resource, clientID, grantCode, verifier)
+		refreshToken, ok := granted["refresh_token"].(string)
+		require.True(t, ok)
+
+		const racers = 6
+		statuses := make(chan int, racers)
+		var wg sync.WaitGroup
+		for range racers {
+			wg.Go(func() {
+				statuses <- rawRefreshStatus(protocol, env.BaseURL, resource, clientID, refreshToken, mcpScope)
+			})
+		}
+		wg.Wait()
+		close(statuses)
+
+		successes := 0
+		for status := range statuses {
+			if status == http.StatusOK {
+				successes++
+			}
+		}
+		require.Equal(t, 1, successes, "the atomic rotation lets exactly one concurrent refresh issue a pair")
 	})
 
 	t.Run("a denied request tells the client", func(t *testing.T) {
@@ -391,10 +486,10 @@ func complete(t *testing.T, client *http.Client, baseURL, requestID, token strin
 	return location.Query().Get("code")
 }
 
-func exchange(t *testing.T, client *http.Client, baseURL, resource, clientID, redirectURI, code, verifier string) map[string]any {
+func exchange(t *testing.T, client *http.Client, baseURL, resource, clientID, code, verifier string) map[string]any {
 	t.Helper()
 
-	status, _, body := exchangeRequest(t, client, baseURL, resource, clientID, redirectURI, code, verifier)
+	status, _, body := exchangeRequest(t, client, baseURL, resource, clientID, mcpClientRedirect, code, verifier)
 	require.Equal(t, http.StatusOK, status, body)
 
 	var token map[string]any
@@ -440,6 +535,30 @@ func refreshGrant(t *testing.T, client *http.Client, baseURL, resource, clientID
 	return status, body
 }
 
+// rawRefreshStatus posts a refresh grant from a goroutine, where require is not
+// safe to call; it reports the HTTP status, or 0 for a transport failure.
+func rawRefreshStatus(client *http.Client, baseURL, resource, clientID, refreshToken, scope string) int {
+	form := url.Values{
+		"grant_type":    {"refresh_token"},
+		"refresh_token": {refreshToken},
+		"client_id":     {clientID},
+		"resource":      {resource},
+		"scope":         {scope},
+	}
+	request, err := http.NewRequest(http.MethodPost, baseURL+"/oauth/token", strings.NewReader(form.Encode()))
+	if err != nil {
+		return 0
+	}
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	response, err := client.Do(request)
+	if err != nil {
+		return 0
+	}
+	defer func() { _ = response.Body.Close() }()
+	_, _ = io.Copy(io.Discard, response.Body)
+	return response.StatusCode
+}
+
 // authorizeAndExchange runs one complete grant and returns the access token.
 func authorizeAndExchange(ctx context.Context, t *testing.T, admin *mcpClients, client *http.Client, baseURL, resource, clientID, token, verifier, challenge string) string {
 	t.Helper()
@@ -447,7 +566,7 @@ func authorizeAndExchange(ctx context.Context, t *testing.T, admin *mcpClients, 
 	requestID := authorize(t, client, baseURL, resource, clientID, token, challenge)
 	approveRequest(ctx, t, admin, requestID)
 	code := complete(t, client, baseURL, requestID, token)
-	granted, ok := exchange(t, client, baseURL, resource, clientID, mcpClientRedirect, code, verifier)["access_token"].(string)
+	granted, ok := exchange(t, client, baseURL, resource, clientID, code, verifier)["access_token"].(string)
 	require.True(t, ok, "the token response carries an access token")
 	return granted
 }

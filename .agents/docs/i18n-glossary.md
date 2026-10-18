@@ -131,6 +131,7 @@ pnpm --dir frontend i18n:glossary --write-doc     # 重写生成表格
 | role | 角色 | Access | A named set of permissions granted to users and groups. | all keys | — |
 | permission | 权限 | Access | One allowed action inside the workspace. | all keys | — |
 | audit log | 审计日志 | Access | The append-only ledger of auditable actions. | all keys | — |
+| revoke | 撤销 | Access | Ending a credential's or an authorization's validity. The Chinese rendering is 撤销, matching the API key pages; never 吊销. | applicationManagement., connectedApps., openlineageSettings. | when en-US ~ `/\brevok/i`; zh-CN: `吊销`, `回收`, `作废`, `取消授权` |
 | SSO | SSO | Identity | Single sign-on through a configured identity provider. | all keys | — |
 | identity provider | 身份提供商 | Identity | An OAuth2/OIDC provider configured for browser login. | all keys | — |
 | provider | 提供商 | Identity | A vendor that supplies something (an identity, an LLM); 提供商, never 提供方. | identityProviderSettings., generalSettings., llmProvider., explainSQL., home., login., ssoCallback. | zh-CN: `提供方`, `/(?<!\{)[Pp]rovider(?!\})/` |
@@ -140,6 +141,7 @@ pnpm --dir frontend i18n:glossary --write-doc     # 重写生成表格
 | session | 会话 | Identity | A signed-in browser session, and the token it carries. | all keys | — |
 | MCP | MCP | Integration | The Model Context Protocol endpoint the server exposes when enabled. | all keys | — |
 | OAuth 2.1 | OAuth 2.1 | Integration | The OAuth 2.1 authorization server that backs MCP clients. | all keys | — |
+| connected app | 已连接应用 | Integration | An MCP client a user authorized to act on their behalf; one record per user and client authorization. Not a browser session. | connectedApps., menu. | when en-US ~ `/\bconnected apps?\b/i`; zh-CN: `已连接的应用`, `关联应用`, `连接的应用`, `第三方应用` |
 | external URL | 外部地址 | Integration | The address this deployment is reached at, which MCP tokens are bound to. | generalSettings., openlineageSettings. | zh-CN: `external URL`, `external url` |
 | environment | 环境 | Platform | A catalogue label instances can be assigned to. | all keys | — |
 | sync | 同步 | Platform | Pulling a source's schema into the registry. | all keys | — |

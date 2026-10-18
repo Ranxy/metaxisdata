@@ -70,6 +70,8 @@
     {"name": "IdentityProvidersCreate", "id": "metaxisdata.identityProviders.create"},
     {"name": "IdentityProvidersUpdate", "id": "metaxisdata.identityProviders.update"},
     {"name": "IdentityProvidersDelete", "id": "metaxisdata.identityProviders.delete"},
+    {"name": "ConnectedAppsList", "id": "metaxisdata.connectedApps.list"},
+    {"name": "ConnectedAppsRevoke", "id": "metaxisdata.connectedApps.revoke"},
     {"name": "AuditLogsSearch", "id": "metaxisdata.auditLogs.search"}
   ]
 }

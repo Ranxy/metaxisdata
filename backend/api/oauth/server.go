@@ -33,6 +33,10 @@ type ServerConfig struct {
 	Mode   common.ReleaseMode
 	// Secret signs the access tokens issued by the token endpoint.
 	Secret string
+	// TokenStores overrides the store the token endpoint uses. Production leaves
+	// it nil (Stores is used); a hermetic test puts a fake here so the rotation
+	// path runs without PostgreSQL.
+	TokenStores TokenStore
 	// TrustedProxies decides whether a forwarded address may be believed.
 	TrustedProxies []string
 	// Endpoints resolves the deployment's issuer and resource per request.

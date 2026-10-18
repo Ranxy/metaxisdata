@@ -1,12 +1,12 @@
 # 服务端内置 MCP（Model Context Protocol）+ OAuth 2.1 授权 — Reference
 
-> Status: **implemented**。Maintenance reference for `backend/mcp/`、`backend/api/oauth/`、`backend/api/v1/oauth_service.go` 与 `/mcp` 的挂载点。
+> Status: **implemented**。Maintenance reference for `backend/mcp/`、`backend/api/oauth/`、`backend/api/v1/oauth_service.go`、`backend/api/v1/connected_app_service.go` 与 `/mcp` 的挂载点。
 > Related: 使用者接入指南 [docs/mcp.md](docs/mcp.md)（不要重复它）;刻意决策 [docs/security-posture.md](docs/security-posture.md);目录内规则 `backend/mcp/AGENTS.md`。
 > SDK: `github.com/modelcontextprotocol/go-sdk v1.8.0`（`go.mod`）。
 
 ## What it is
 
-同一进程既是 MCP 资源服务器（RS）又是 OAuth 2.1 授权服务器（AS）。RS 是 `/mcp` 上的 **Streamable HTTP、无状态**端点，暴露 9 个只读工具；**数据面零新增 RPC** —— 工具在进程内直接调用现有 ConnectRPC handler 方法。AS 提供 PRM（RFC 9728）、AS metadata（RFC 8414）、Authorization Code + PKCE(S256)、RFC 8707 `resource`、DCR（RFC 7591）。整个面由工作区开关 `mcp_enabled`（默认 `false`）控制。
+同一进程既是 MCP 资源服务器（RS）又是 OAuth 2.1 授权服务器（AS）。RS 是 `/mcp` 上的 **Streamable HTTP、无状态**端点，暴露 9 个只读工具；**数据面零新增 RPC** —— 工具在进程内直接调用现有 ConnectRPC handler 方法。AS 提供 PRM（RFC 9728）、AS metadata（RFC 8414）、Authorization Code + PKCE(S256)、RFC 8707 `resource`、DCR（RFC 7591）。整个面由工作区开关 `mcp_enabled`（默认 `false`）控制。同一进程还提供 `ConnectedAppService`：把「用户 × 客户端的一次授权」作为**已连接应用**列出来并撤销，它不改变 MCP 端点本身的能力面，也不受 `mcp_enabled` 影响（关闭后它仍是清理存量授权的入口）。
 
 调用链：无令牌 `/mcp` → 401 + `WWW-Authenticate: Bearer resource_metadata=…` → PRM → AS metadata → (DCR) → 带 PKCE+`resource` 打开浏览器 → 已登录用户在 `/oauth/consent` 确认 → `/oauth/authorize/complete` 生成授权码并 302 回客户端 → `code_verifier`+`resource` 换令牌 → 带令牌请求 `/mcp`，每请求独立验令牌 → 工具（寻址 → IAM → 调 handler → 渲染 → 审计）。
 
@@ -28,8 +28,9 @@
 | 输出契约 | 与 CLI 共享语义（字段名、enum 名、错误码词表），**不共享渲染选项** | 省略空字段 + 紧凑 JSON + 投影 |
 | 审计 | 每次工具调用一条审计行（**含被拒的调用**），OAuth 事件同样 | `audit_log` 永久保留，量会上升 |
 | 能力面 | 只读 9 个工具 | 写操作需要确认语义，走 MRTR，另立方案 |
+| 连接管理 | `ConnectedAppService.List/Revoke`（无 permission 注解，handler 先收窄再按权限放宽；revoke `audit=true`） | 一条授权 = 一条已连接应用；`connectedApps.list`/`.revoke` 只决定能否看全工作区、撤销他人，自助撤销自己的不需要权限 |
 
-**refresh token（推翻决策 #4 的原因与形状）**：`backend/api/oauth/token.go:18` 起 token 端点支持 `refresh_token` grant；access token 仍用 `auth.GetTokenDuration`（7 天），refresh token 是**不透明、单次使用、每次轮换**的凭据，只存 SHA-256 摘要，落库 `oauth_refresh_token`（`backend/migrator/migration/0.1/0014##refresh_tokens.sql`，`backend/store/oauth_refresh_token.go`）。grant 钉在同意时的 resource 与 scope 上，每次轮换复查 principal（存在、未停用、未早于上次改密）。`Logout` 按令牌的 `cid` claim 删除该 client 的 grant；maintenance runner 清理过期行。
+**refresh token（推翻决策 #4 的原因与形状）**：token 端点支持 `refresh_token` grant；access token 仍用 `auth.GetTokenDuration`（7 天），refresh token 是**不透明、单次使用、每次轮换**的凭据，只存 SHA-256 摘要，落库 `oauth_refresh_token`（历史表名；Go 语义是 `OAuthGrant`，`backend/store/oauth_grant.go`）。轮换是**原地 `UPDATE ... RETURNING id`**（`token.go` 的 `rotateGrant`）：行 id 稳定，既是已连接应用的对外身份，也是 access token 的 `gid` claim；并发刷新只有一个赢家，撤销与轮换在同一行上串行化。grant 钉在同意时的 resource 与 scope 上，每次轮换复查 principal（存在、未停用、未早于上次改密）；principal 复核失败时显式把行置为已撤销，不再靠删除行隐式结束授权。`Logout` 按 `cid` claim **撤销**该用户该 client 的全部连接（行保留，供管理页与审计），不再是删除刷新凭据；maintenance 在过期 7 天后清理行。存量行即授权，升级后立刻出现在管理页，无需回填。
 
 ## 已知偏差（原计划 → 实际，勿再当作遗漏）
 
@@ -125,18 +126,19 @@
 | --- | --- | --- |
 | `aud` | MCP 资源的规范化 URI（`<external_url>/mcp`） | `/mcp` 用同一套 audience 校验；`VerifyAccessToken` 只认用户 audience，所以 MCP 令牌天然无法用于 ConnectRPC（反之亦然） |
 | `scope` | 签发时传入（现为 `metaxisdata.mcp.read`） | `RequireBearerTokenOptions.Scopes` 校验**令牌自带** scope；不足 → 403 |
-| `cid` | client_id | `Logout` 据此删除该 client 的 refresh token |
+| `cid` | client_id | `Logout` 据此撤销该用户该 client 的全部已连接应用 |
+| `gid` | 连接（`oauth_refresh_token` 行）id | `/mcp` 每请求校验连接是否仍存活（30s 缓存的 `GrantRevocationCache`）；verifier 把它放进 `TokenInfo.Extra` 的 `metaxisdata.grant`，工具路径据此更新 `last_tool_call_at`。**没有 `gid` 的 MCP access token 一律 401**（升级前的旧令牌，客户端 refresh 一次换新） |
 | `iss` | 常量 `"metaxisdata"` | 与 AS metadata / RFC 9207 授权响应的 `iss`（=external_url）不是一回事 |
 | `sub` | 现有身份（`strconv.Itoa(userID)`） | `TokenInfo.UserID` |
 | `exp` | `GetTokenDuration`（7 天） | 中间件校验 + 30s `ClockSkew` |
 | `rst` | 不用 | 留给改密/重置类受限令牌 |
 
-**MCP 令牌校验复用现有身份解析链**：签名/算法/issuer/audience/过期 → 吊销 → 用户存在 → 未停用 → 改密截断，实现在 `backend/api/auth/authenticator.go` 的 `TokenAuthenticator.Resolve`（RPC 与 MCP 共用）。少了这条链就会出现「网页上已停用/已改密的用户，MCP 令牌仍可用」。
+**MCP 令牌校验复用现有身份解析链**：签名/算法/issuer/audience/过期 → jti 吊销 → **连接（grant）存活** → 用户存在 → 未停用 → 改密截断，实现在 `backend/api/auth/authenticator.go` 的 `TokenAuthenticator.Resolve`（RPC 与 MCP 共用）。连接检查只对带 `gid` 的令牌执行（`identity.GrantID != 0`），先查 `state.GrantRevocationCache`（30s TTL，独立实例），未命中再查 `IsOAuthGrantLive`（绑定该令牌的 id + user + client，且 `revoked_at IS NULL AND expires_at > NOW()`；行不存在视为不存活，读失败按失败关闭处理）。少了这条链就会出现「网页上已停用/已改密的用户，MCP 令牌仍可用」或「已撤销的连接其 access token 还能用到过期」。
 
 ## Pending 授权请求与授权码 / 客户端注册表
 
 - **进程内**（`backend/component/state/oauth_authorization_request.go`）：一条记录同时承载待批准请求与已签发授权码，状态机 `PENDING → APPROVED → COMPLETED` / `DENIED`；`request_id` 不透明、`code` 在 complete 时生成、一次性、TTL 60 秒、**只经 302 回给客户端**；`complete` 校验会话用户 == 批准者；换令牌时逐项复核（client/redirect_uri/PKCE/resource）并**立刻删除**，重复使用视为攻击拒绝。进程内 = 多副本必须粘性路由。
-- **落库**：`oauth_client`（`backend/migrator/migration/0.1/0011##oauth_client.sql`、`backend/store/oauth_client.go`）保存注册；`oauth_refresh_token`（`0014##refresh_tokens.sql`）保存 grant 轮换状态。
+- **落库**：`oauth_client`（`backend/migrator/migration/0.1/0011##oauth_client.sql`、`backend/store/oauth_client.go`）保存注册；`oauth_refresh_token`（历史表名；`0014##refresh_tokens.sql` 建表，`0023##connected_apps.sql` 增加 `last_tool_call_at` / `revoked_at` / `revoked_by` 与 `(user_id, created_at DESC)` 索引）保存**一条授权 = 一条已连接应用**，Go 侧 `backend/store/oauth_grant.go`。管理面是 `backend/api/v1/connected_app_service.go`（proto `proto/v1/v1/connected_app_service.proto`），直接读这张表并 `LEFT JOIN oauth_client` 取展示名。
 
 ## 挂载与横切关注点
 
@@ -160,14 +162,15 @@
 9. **确认必须显式**：consent 页展示客户端名、重定向目标、resource、scope、时间、来源 IP；批准者资格同 device login；页面**永不**展示 token 与授权码。
 10. **审计**：OAuth 事件与**每次工具调用**（含被拒）都进审计；脱敏名单含 `code_verifier`、`client_secret`、`authorizationcode`、`deviceCode`。授权码只经 302 传递，审计行天然不含凭据。
 11. **不跨域暴露 `/mcp`**：生产不放开 MCP CORS；仅元数据文档可 `Access-Control-Allow-Origin: *`。v1.8.0 起必须**显式**用 `http.NewCrossOriginProtection()` 包裹（`nil` 等于不校验）；DNS rebinding 保护保持默认开启。
-12. **令牌撤销**：MCP 令牌可按签发来源（签名/kid/issuer/expiry，不带 audience）吊销；`Logout` 同时删除该 client 的 refresh token 行。
+12. **令牌与连接撤销**：MCP 令牌可按签发来源（签名/kid/issuer/expiry，不带 audience）吊销；access token 还携带 `gid`，共享校验链按 30s 缓存的连接存活检查拒绝已撤销的连接（执行撤销的副本立即拒绝，其他副本 ≤30s）。`Logout` **撤销**该用户该 client 的全部连接，而不是删除刷新凭据；`/mcp` 拒绝没有 `gid` 的旧 MCP access token（升级后客户端 refresh 一次即可恢复）。撤销与轮换在同一行上串行化，先提交的撤销优先。
 13. **开关关闭时不发布**：`mcp_enabled=false` 时 `/mcp`、PRM、AS metadata、`/oauth/*` 一律 404，不泄漏任何端点存在性。
 
 ## Failure modes
 
 | 场景 | 行为 |
 | --- | --- |
-| 无令牌 / 令牌无效、过期、被吊销 | 401 + `WWW-Authenticate: Bearer resource_metadata=…, scope=…, error="invalid_token"` |
+| 无令牌 / 令牌无效、过期、被吊销、连接已撤销、连接行已被清理 | 401 + `WWW-Authenticate: Bearer resource_metadata=…, scope=…, error="invalid_token"` |
+| 升级前签发、无 `gid` 的 MCP access token | 401 + `error="invalid_token"`；客户端 refresh 一次换成带 `gid` 的新令牌（refresh 也过期才需重新授权） |
 | 令牌缺 `metaxisdata.mcp.read` | 403 + 同形挑战头，`error="insufficient_scope"` |
 | `mcp_enabled=false` | `/mcp`、两份元数据、`/oauth/*` 全部 404；**不写审计行** |
 | 开启但 `external_url` 缺失或有 query/fragment/userinfo、非 loopback http | 503（PRM/AS metadata 与 MCP 端点），明确失败且不发布元数据 |
@@ -180,7 +183,7 @@
 | 超过按 principal 的调用预算 | 工具级 `resource_exhausted`；仍写审计行 |
 | 超过按来源地址的预算 | 429 + `Retry-After: 60`，发生在 bearer 校验之前 |
 | 跨站 POST `/mcp` | 标准库跨域保护拒绝 |
-| refresh token 复用 / 过期 / 跨 client / resource 变更 | `invalid_grant`；过期或复用时行被原子删除 |
+| refresh token 复用 / 过期 / 跨 client / resource 变更 / 连接已撤销 | `invalid_grant`；过期不再删行（留给 maintenance，页面仍能显示 EXPIRED），已撤销连接的 refresh 一律拒绝 |
 
 ## Open items
 
@@ -193,7 +196,6 @@
 | 多副本未测 | `backend/component/state/oauth_authorization_request.go:105-109` 明确进程内，需要粘性路由；集成套件只跑单实例 |
 | `Cacheable`/`ttlMs` 未启用 | 全仓库无实现；`cacheScope` 默认 `public`，与按调用者的 IAM 冲突 |
 | 省略 `jwks_uri` | `backend/api/oauth/metadata.go:121-124`：对称密钥 HS256，消费者就是本进程；偏差已记入 security posture |
-| 无「已连接应用」管理页 | `ListOAuthClients`/`DeleteOAuthClient` 零调用方；`TouchOAuthClient` 只被 token 端点调用（`backend/api/oauth/token.go:250`）。`last_used_at` 已在写，页面未做 |
 | 老客户端（<`2025-06-18`）文本副本未做 | `backend/mcp/server.go:355-358` 只写 `StructuredContent`、不设 `Content`；版本可读（见 SDK 契约），真需要时是一行分支 |
 | 写工具未做 | 只读 9 工具是确认过的能力面；写操作需 MRTR 语义 |
 | device login 与 MCP 打通未做 | 未暴露 `device_code` grant；headless agent 仍需浏览器 |
@@ -203,8 +205,9 @@
 - RS 与工具：`backend/mcp/server.go`（Config/Handler/dispatch/审计）、`backend/mcp/tool.go`（工具表 + 9 个 Run）、`backend/mcp/ref.go`（object_ref/scope 解析）、`backend/mcp/errors.go`（错误信封）、`backend/mcp/auth.go`（`NewTokenVerifier`）、`backend/mcp/guide.go` + `backend/mcp/guide.md`（prompt）。
 - AS：`backend/api/oauth/resource.go`（规范化 issuer/resource）、`backend/api/oauth/metadata.go`（PRM/AS metadata + 开关解析）、`backend/api/oauth/authorize.go`（PKCE/重定向/scope 安全核心）、`backend/api/oauth/token.go`（两种 grant）、`backend/api/oauth/register.go`（DCR）、`backend/api/oauth/server.go`（会话/错误渲染）、`backend/api/oauth/audit.go`。
 - consent RPC：`backend/api/v1/oauth_service.go`；proto `proto/v1/v1/oauth_service.proto`。
-- 令牌：`backend/api/auth/mcp_token.go`、`backend/api/auth/refresh_token.go`、`backend/api/auth/authenticator.go`。
-- 进程内状态：`backend/component/state/oauth_authorization_request.go`；注册表与 grant：`backend/store/oauth_client.go`、`backend/store/oauth_refresh_token.go`；迁移 `backend/migrator/migration/0.1/0011##oauth_client.sql`、`0014##refresh_tokens.sql` 与 `LATEST.sql`。
+- 已连接应用：`backend/api/v1/connected_app_service.go`（list/revoke、handler 侧 scope 与 `users.get` 可见性）、`backend/api/v1/filter.go` 的 `parseConnectedAppFilter`（CEL → 参数化 SQL，`state` 用 `CASE` 派生）、`proto/v1/v1/connected_app_service.proto`；前端 `frontend/src/pages/settings/ConnectedAppsSettingsPage.vue`、`frontend/src/pages/ConnectedAppsPage.vue`、`frontend/src/components/connected-app/`、`frontend/src/api/connected-app.ts`。
+- 令牌：`backend/api/auth/mcp_token.go`、`backend/api/auth/refresh_token.go`、`backend/api/auth/authenticator.go`（`GrantStore` + `grantRevoked`）。
+- 进程内状态：`backend/component/state/oauth_authorization_request.go`、`backend/component/state/state.go` 的 `GrantRevocationCache`（30s TTL，独立于 jti 缓存）；注册表与授权行：`backend/store/oauth_client.go`、`backend/store/oauth_grant.go`；迁移 `backend/migrator/migration/0.1/0011##oauth_client.sql`、`0014##refresh_tokens.sql`（历史）、`0023##connected_apps.sql`（当前最新）与 `LATEST.sql`。
 - 前置设置：`proto/store/store/setting.proto` 的 `mcp_enabled`/`external_url`、`backend/api/v1/setting_service.go`、`frontend/src/pages/settings/GeneralSettingsPage.vue`；consent 页 `frontend/src/pages/OAuthConsentPage.vue`（路由 `frontend/src/router/index.ts:278`）、`frontend/src/api/oauth.ts`。
-- 门禁：`go test ./backend/mcp/... ./backend/api/oauth/...`（hermetic：`tool_test.go`、`tool_guard_test.go`、`sdk_contract_test.go`、`oauth/*_test.go`）；`make test-integration-smoke` 跑 `backend/test/integration/runner/mcp_service_test.go`（真实 server + Docker，两个入口测试 `TestMCPAuthorizationAndToolsRealServerIntegration`、`TestMCPRegistrationValidatesRealServerIntegration`）；`TestEveryMethodIsPermissionGated` 覆盖 `unannotatedMethods`。
+- 门禁：`go test ./backend/mcp/... ./backend/api/oauth/... ./backend/api/auth/... ./backend/store/...`（hermetic：`tool_test.go`、`tool_guard_test.go`、`sdk_contract_test.go`、`oauth/*_test.go`、`backend/store/oauth_grant_test.go`（原地轮换/撤销/存活查询形状）、`backend/api/auth/authenticator_test.go`（`gid`、连接存活、缓存窗口）、`backend/api/v1/connected_app_test.go`（鉴权矩阵与状态派生））；`make test-integration-smoke` 跑 `backend/test/integration/runner/mcp_service_test.go`（真实 server + Docker，除既有流程外覆盖「授权 → 列表可见 → 撤销 → `/mcp` 立即 401 → refresh `invalid_grant` → 重复撤销幂等」与「N 个并发 refresh 恰好一个赢家」）；`TestEveryMethodIsPermissionGated` 覆盖 `unannotatedMethods`。
 - 使用者文档：`docs/mcp.md`。刻意决策：`docs/security-posture.md`。

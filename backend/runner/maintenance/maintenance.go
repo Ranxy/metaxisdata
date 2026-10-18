@@ -40,6 +40,12 @@ const (
 	// for the life of one transaction, so a row touched inside the grace period may
 	// still have a writer that this pass cannot see.
 	openLineageDatasetSweepGrace = time.Hour
+
+	// connectedAppRetention keeps an expired or revoked connected app visible on
+	// the management page for a while after it can no longer issue anything, so
+	// an operator can see what ended recently. Past the window the row is
+	// reclaimed; the audit ledger remains the permanent record.
+	connectedAppRetention = 7 * 24 * time.Hour
 )
 
 // LineageRevalidator re-checks ingested lineage whose endpoints the metadata
@@ -61,7 +67,7 @@ type maintenanceStore interface {
 	DeleteExpiredExplainSQLCache(ctx context.Context, olderThan time.Time) (int64, error)
 	DeleteExpiredLLMDebugLog(ctx context.Context, olderThan time.Time) (int64, error)
 	DeleteExpiredRevokedTokens(ctx context.Context, before time.Time) (int64, error)
-	DeleteExpiredOAuthRefreshTokens(ctx context.Context, before time.Time) (int64, error)
+	DeleteExpiredOAuthGrants(ctx context.Context, before time.Time) (int64, error)
 	DeleteExpiredWebRefreshTokens(ctx context.Context, before time.Time) (int64, error)
 	DeleteEmptyOpenLineageDatasets(ctx context.Context, olderThan time.Time) (int64, error)
 	DeleteOpenLineageRunsBefore(ctx context.Context, cutoff time.Time) (int64, error)
@@ -178,16 +184,17 @@ func (r *Runner) runOnce(ctx context.Context) *passSummary {
 			},
 		},
 		{
-			// An expired refresh token can issue nothing, and the rotate-on-use
-			// path already drops the one it consumes, so what is left is a session
-			// or an MCP connection nobody came back to. Two independent tables,
-			// reported separately because a large count means different things for
-			// each.
-			name:    "oauth_refresh_tokens",
-			failure: "Failed to prune OAuth refresh tokens",
-			success: "Pruned expired OAuth refresh tokens",
+			// A connected app past its expiry can issue nothing, and the rotation
+			// path no longer drops the row it consumes (the row is the connection's
+			// identity), so what is left is a connection nobody came back to. It
+			// stays listed for a retention window and is then reclaimed; the web
+			// session's row is reclaimed by expiry alone, as before. Reported
+			// separately because a large count means different things for each.
+			name:    "oauth_grants",
+			failure: "Failed to prune expired OAuth grants",
+			success: "Pruned expired OAuth grants",
 			delete: func(ctx context.Context) (int64, error) {
-				return r.store.DeleteExpiredOAuthRefreshTokens(ctx, now)
+				return r.store.DeleteExpiredOAuthGrants(ctx, now.Add(-connectedAppRetention))
 			},
 		},
 		{

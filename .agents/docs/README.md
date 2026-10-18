@@ -18,6 +18,7 @@ Everything here describes **shipped behavior**, not a plan: implementation steps
 | [credential-encryption.md](credential-encryption.md) | The `v1:` AES-256-GCM credential store, its key hierarchy and its residuals | Touching stored credentials or `backend/common/crypto` |
 | [rate-limiting.md](rate-limiting.md) | Every request budget: where it is enforced, what it counts, what it does not bound | Adding an endpoint or changing a budget |
 | [refresh-tokens.md](refresh-tokens.md) | Rotating refresh tokens for MCP OAuth clients and web sessions | Touching `/oauth/token`, `AuthService.Refresh` or `revoked_token` |
+| [connected-apps.md](connected-apps.md) | The Connected apps surface over MCP OAuth grants: list/filter/derived state, revoke, Logout semantics, grant-liveness enforcement | Touching `ConnectedAppService`, the grant row, `/oauth/token` rotation, or the connected-app pages |
 | [object-ddl-storage.md](object-ddl-storage.md) | Per-object DDL storage, the sync hook that fills it, and the `GetSchemaString` read path | Touching DDL capture or `meta_registry_resource_schema` |
 | [starrocks-doris-driver.md](starrocks-doris-driver.md) | The StarRocks/Doris driver over the MySQL wire protocol and its engine plumbing | Touching `backend/plugin/db/starrocks/` |
 | [cli-mxd.md](cli-mxd.md) | The `mxd` client: addressing, exit codes, scopes, device login | Touching `cli/` |

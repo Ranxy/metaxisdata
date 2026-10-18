@@ -385,3 +385,113 @@ func parseAuditLogFilter(filter string) (*store.ListResourceFilter, error) {
 
 	return translateFilter(filter, fields)
 }
+
+// parseConnectedAppFilter translates the connected-apps list filter. now and
+// resource feed the derived state expression with the same values the listing
+// uses; an empty resource means the MCP surface is disabled or its external URL
+// cannot be resolved, so the re-authorization clause is dropped (the other
+// state causes still apply).
+func parseConnectedAppFilter(filter string, now time.Time, resource string) (*store.ListResourceFilter, error) {
+	fields := map[string]filterField{
+		"user": filterField{compare: func(args *filterArgs, variable string, op OperatorType, value any) (string, error) {
+			if op != ComparatorTypeEqual {
+				return "", invalidFilter("%q only supports equality", variable)
+			}
+			name, err := filterString(variable, value)
+			if err != nil {
+				return "", err
+			}
+			id, err := common.GetUserID(name)
+			if err != nil {
+				return "", invalidFilter("invalid %s filter %q", variable, name)
+			}
+			// The argument is an int, not the resource name: binding the parsed id
+			// keeps the integer column comparison type-correct.
+			return fmt.Sprintf("g.user_id = %s", args.add(id)), nil
+		}},
+		"client":     likeField("c.client_name", true),
+		"client_id":  likeField("g.client_id", false),
+		"user_email": likeField("p.email", true),
+		"state":      connectedAppStateField(now, resource),
+		"create_time": filterField{compare: func(args *filterArgs, variable string, op OperatorType, value any) (string, error) {
+			v, err := filterString(variable, value)
+			if err != nil {
+				return "", err
+			}
+			if op != ComparatorTypeGreaterEqual && op != ComparatorTypeLessEqual {
+				return "", invalidFilter("%q only supports >= and <= operators", variable)
+			}
+			parsed, err := time.Parse(time.RFC3339, v)
+			if err != nil {
+				return "", invalidFilter("invalid %s filter %q: %v", variable, v, err)
+			}
+			return fmt.Sprintf("g.created_at %s %s", op, args.add(parsed)), nil
+		}},
+	}
+
+	return translateFilter(filter, fields)
+}
+
+// connectedAppStateField maps the derived state onto a CASE expression. The
+// values are the enum names the API returns, so a filter written as
+// `state == "REVOKED"` reads the same as the response.
+func connectedAppStateField(now time.Time, resource string) filterField {
+	return filterField{
+		compare: func(args *filterArgs, variable string, op OperatorType, value any) (string, error) {
+			if op != ComparatorTypeEqual {
+				return "", invalidFilter("%q only supports equality", variable)
+			}
+			name, err := connectedAppStateValue(variable, value)
+			if err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("%s = %s", connectedAppStateCase(args, now, resource), args.add(name)), nil
+		},
+		in: func(args *filterArgs, variable string, values []string, negate bool) (string, error) {
+			placeholders := make([]string, 0, len(values))
+			for _, value := range values {
+				name, err := connectedAppStateValue(variable, value)
+				if err != nil {
+					return "", err
+				}
+				placeholders = append(placeholders, args.add(name))
+			}
+			relation := "IN"
+			if negate {
+				relation = "NOT IN"
+			}
+			return fmt.Sprintf("%s %s (%s)", connectedAppStateCase(args, now, resource), relation, strings.Join(placeholders, ", ")), nil
+		},
+	}
+}
+
+// connectedAppStateValue validates one state name against the API enum. The
+// unspecified value is refused: it is not a state a row can be in.
+func connectedAppStateValue(variable string, value any) (string, error) {
+	name, err := filterString(variable, value)
+	if err != nil {
+		return "", err
+	}
+	number, ok := v1pb.ConnectedApp_State_value[name]
+	if !ok || v1pb.ConnectedApp_State(number) == v1pb.ConnectedApp_STATE_UNSPECIFIED {
+		return "", invalidFilter("invalid %s filter %q", variable, name)
+	}
+	return name, nil
+}
+
+// connectedAppStateCase renders the same precedence the list conversion uses:
+// revoked, expired, inactive, then re-authorization required.
+func connectedAppStateCase(args *filterArgs, now time.Time, resource string) string {
+	nowPlaceholder := args.add(now.UTC())
+	reauthorize := "g.created_at < NULLIF(p.profile->>'lastChangePasswordTime', '')::timestamptz"
+	if resource != "" {
+		reauthorize += fmt.Sprintf(" OR g.resource <> %s", args.add(resource))
+	}
+	return fmt.Sprintf(`CASE
+		WHEN g.revoked_at IS NOT NULL THEN 'REVOKED'
+		WHEN g.expires_at <= %s THEN 'EXPIRED'
+		WHEN p.deleted THEN 'INACTIVE'
+		WHEN %s THEN 'REAUTH_REQUIRED'
+		ELSE 'ACTIVE'
+	END`, nowPlaceholder, reauthorize)
+}

@@ -239,6 +239,9 @@ const SETTINGS_PERMISSIONS = [
   // Reading the applications that report SQL is part of the member baseline, so the
   // section entry has to appear for a member too: it is the only way to the page.
   "metaxisdata.applications.list",
+  // A custom role may hold only connected-app administration; without this the
+  // Settings section entry would be hidden and its page unreachable.
+  "metaxisdata.connectedApps.list",
   "metaxisdata.settings.get",
   "metaxisdata.iam.getPolicy",
   "metaxisdata.roles.list",

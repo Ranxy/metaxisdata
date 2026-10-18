@@ -33,6 +33,7 @@ const (
 	OpenLineageTaskPrefix      = "openlineage/tasks/"
 	APIKeyPrefix               = "openlineage/apiKeys/"
 	ApplicationNamePrefix      = "applications/"
+	ConnectedAppNamePrefix     = "connectedApps/"
 	NotificationPrefix         = "notifications/"
 )
 
@@ -182,6 +183,12 @@ func GetInstanceDatabaseID(name string) (string, string, error) {
 // GetUserID returns the user ID from a resource name.
 func GetUserID(name string) (int, error) {
 	return GetUIDFromName(name, UserNamePrefix)
+}
+
+// GetConnectedAppID returns the numeric id from a connected app resource name,
+// in the form `connectedApps/{id}`.
+func GetConnectedAppID(name string) (int64, error) {
+	return GetOpenLineageIntID(name, ConnectedAppNamePrefix)
 }
 
 // GetUserEmail returns the user email from a resource name.
