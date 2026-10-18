@@ -252,6 +252,13 @@ func (s *Server) Shutdown(ctx context.Context) error {
 			slog.Duration("timeout", runnerShutdownTimeout))
 	}
 
+	// Drain the LLM debug-log writers before the pool closes: they write to the
+	// store, so a queued entry would otherwise be written to a closed connection
+	// pool. The wait is bounded by the same shutdown context as everything else.
+	if err := llmcomp.ShutdownDebugLogWorkers(ctx); err != nil {
+		slog.Warn("LLM debug log writers did not drain before the store closed", log.WithError(err))
+	}
+
 	// Close db connection
 	if s.store != nil {
 		if err := s.store.Close(); err != nil {
