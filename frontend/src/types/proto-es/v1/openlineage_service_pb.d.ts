@@ -376,6 +376,11 @@ export declare type OpenLineageDatasetResource = Message<"metaxisdata.v1.OpenLin
   internal: boolean;
 
   /**
+   * Whether the dataset has stored column-level lineage: the object its
+   * namespace and name resolve to is an endpoint of at least one lineage edge
+   * that names a column on at least one side. Derived from the lineage store,
+   * not from a producer-declared facet.
+   *
    * @generated from field: bool supports_column_lineage = 8;
    */
   supportsColumnLineage: boolean;
@@ -686,6 +691,8 @@ export declare type ListOpenLineageDatasetsRequest = Message<"metaxisdata.v1.Lis
   datasetScope: OpenLineageDatasetScope;
 
   /**
+   * When true, return only datasets for which supports_column_lineage is true.
+   *
    * @generated from field: bool column_lineage_only = 8;
    */
   columnLineageOnly: boolean;

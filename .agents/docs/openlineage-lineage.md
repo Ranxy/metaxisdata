@@ -23,6 +23,33 @@ So ingestion **stops trusting the facet**. When an event carries SQL of its own,
 
 Whatever the path, the edges pass `validateIngestedLineage` (`lineage_validation.go`) first: a column claim a known table does not have is blanked and the edge survives as the table-level one the run really implies (`:48`, `:127`).
 
+## The dataset pages' column-lineage flag
+
+The dataset list's `supports_column_lineage` and the detail drawer's badge answer
+"does this deployment hold column-level lineage for this dataset", not "did the
+producer state one". The flag is derived from `column_lineage`: the dataset's
+resolved GUID is an endpoint of an edge that names a column on at least one side
+(`store.ListColumnLineageEndpoints`, `store.ListColumnLineageColumnsByGUID`).
+The probe has no `meta_type` filter, so every writer of the edge table counts —
+the OpenLineage paths above as well as the view/materialized-view and manual-SQL
+analyzers — which is what the column-lineage page shows.
+
+The flag is deliberately a **strict subset** of what that page can draw: a
+table-level edge (both columns empty) is a real dependency but names no column,
+so it does not count, even though `LineageService.GetLineage` would still list
+it. A row the list offers therefore always has page content; the reverse is not
+promised.
+
+The run-dataset references still keep `has_column_lineage` from the ingested
+facet, and `openlineage_dataset.column_lineage_ref_count` still counts those
+references. They are no longer the flag's source, but they are its fallback: when
+the resolver cannot identify a dataset (a degraded instance or credential store
+fails `ListInstances`), the row has no real GUID to probe, and it falls back to
+the facet signal instead of silently reporting "no lineage" and emptying the
+filtered page. The per-field `column_lineage_ready` marker is derived from the
+same edges: the target columns of the dataset's incoming edges and the source
+columns of its outgoing ones.
+
 ## Decisions
 
 | Decision | Choice | Why |

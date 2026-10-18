@@ -16294,7 +16294,7 @@ Format: openlineage/tasks/{task} </p></td>
                   <td>column_lineage_only</td>
                   <td><a href="#bool">bool</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>When true, return only datasets for which supports_column_lineage is true. </p></td>
                 </tr>
               
             </tbody>
@@ -16930,7 +16930,10 @@ Format: openlineage/namespaceMappings/{namespace_mapping} </p></td>
                   <td>supports_column_lineage</td>
                   <td><a href="#bool">bool</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>Whether the dataset has stored column-level lineage: the object its
+namespace and name resolve to is an endpoint of at least one lineage edge
+that names a column on at least one side. Derived from the lineage store,
+not from a producer-declared facet. </p></td>
                 </tr>
               
                 <tr>

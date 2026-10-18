@@ -3017,6 +3017,7 @@ paths:
                     format: enum
                 - name: columnLineageOnly
                   in: query
+                  description: When true, return only datasets for which supports_column_lineage is true.
                   schema:
                     type: boolean
             responses:
@@ -7187,6 +7188,11 @@ components:
                     type: boolean
                 supportsColumnLineage:
                     type: boolean
+                    description: |-
+                        Whether the dataset has stored column-level lineage: the object its
+                         namespace and name resolve to is an endpoint of at least one lineage edge
+                         that names a column on at least one side. Derived from the lineage store,
+                         not from a producer-declared facet.
                 lastSeen:
                     type: string
                     format: date-time

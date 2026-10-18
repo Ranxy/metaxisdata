@@ -16,17 +16,27 @@ import (
 )
 
 // openLineageDatasetAggregate is one dataset as the dataset pages show it: the
-// stored aggregate plus the resolution only the app can do. The store groups
-// the references in SQL, which is what keeps a page load from reading (and
-// JSON-parsing) the payload of every recent run.
+// stored aggregate plus the resolution and the column-lineage probe only the app
+// can do. The store groups the references in SQL, which is what keeps a page
+// load from reading (and JSON-parsing) the payload of every recent run.
 type openLineageDatasetAggregate struct {
-	GUID                  string
-	Namespace             string
-	Name                  string
-	DatasetType           string
-	ResolvedTarget        string
-	ResolvedMetaType      v1pb.MetaType
-	Internal              bool
+	GUID             string
+	Namespace        string
+	Name             string
+	DatasetType      string
+	ResolvedTarget   string
+	ResolvedMetaType v1pb.MetaType
+	Internal         bool
+	// ResolutionFailed reports that the resolver errored, so GUID is the external
+	// fallback rather than the dataset's real identity. The stored-edge probe has
+	// nothing to answer for such a row; it keeps FacetColumnLineage instead so a
+	// degraded resolver does not silently answer "no column lineage" for every
+	// dataset.
+	ResolutionFailed bool
+	// FacetColumnLineage is the old facet signal: an output reference declared a
+	// columnLineage facet. It is the fallback flag for a row whose resolution
+	// failed, and is not used for a resolved one.
+	FacetColumnLineage    bool
 	SupportsColumnLineage bool
 	LastSeen              *timestamppb.Timestamp
 	SourceJobCount        int32
@@ -40,7 +50,18 @@ func (s *OpenLineageService) ListOpenLineageDatasets(ctx context.Context, req *c
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to list openlineage datasets"))
 	}
-	datasets := filterOpenLineageDatasets(s.resolveOpenLineageDatasetAggregates(ctx, aggregates), req.Msg)
+	datasets := s.resolveOpenLineageDatasetAggregates(ctx, aggregates)
+	// The filter has to judge every dataset of the window, but the badge only
+	// describes the rows the response contains. Probing the page instead of the
+	// window keeps an unfiltered list from reading the edges of every recent
+	// dataset.
+	columnLineageOnly := req.Msg.GetColumnLineageOnly()
+	if columnLineageOnly {
+		if err := s.attachColumnLineageSupport(ctx, datasets); err != nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to read the datasets' column lineage"))
+		}
+	}
+	datasets = filterOpenLineageDatasets(datasets, req.Msg)
 
 	size := int(req.Msg.GetPageSize())
 	if size <= 0 {
@@ -67,6 +88,11 @@ func (s *OpenLineageService) ListOpenLineageDatasets(ctx context.Context, req *c
 	page, nextPageToken, err := paginate(probe, offset)
 	if err != nil {
 		return nil, err
+	}
+	if !columnLineageOnly {
+		if err := s.attachColumnLineageSupport(ctx, page); err != nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to read the datasets' column lineage"))
+		}
 	}
 
 	resp := &v1pb.ListOpenLineageDatasetsResponse{NextPageToken: nextPageToken}
@@ -104,19 +130,37 @@ func (s *OpenLineageService) GetOpenLineageDataset(ctx context.Context, req *con
 		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("openlineage dataset %q not found", req.Msg.GetGuid()))
 	}
 
+	// The dataset's column-lineage flag and its per-field readiness come from the
+	// edges stored for its resolved GUID. The flag uses the same endpoint probe
+	// the list uses, so the badge cannot disagree with the row that opened it; the
+	// per-field markers use the columns those edges name on the dataset's own
+	// side. The two differ for an edge that names only a source column (a
+	// dataset-level filter/join reference) and whose target this dataset is: it
+	// supports the dataset but marks none of its fields ready. On the source
+	// dataset that column is its own, so it is marked ready.
+	columns, err := s.store.ListColumnLineageColumnsByGUID(ctx, req.Msg.GetGuid())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to read the dataset's column lineage"))
+	}
+	supported, err := s.store.ListColumnLineageEndpoints(ctx, []string{req.Msg.GetGuid()})
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to read the dataset's column lineage"))
+	}
+	_, supportsColumnLineage := supported[req.Msg.GetGuid()]
+
 	resource := convertOpenLineageDatasetResource(identity)
 	resource.SourceJobCount = detail.SourceJobCount
 	resource.TargetJobCount = detail.TargetJobCount
 	resource.Integrations = detail.Integrations
 	resource.Sources = detail.Sources
-	resource.SupportsColumnLineage = detail.SupportsColumnLineage
+	resource.SupportsColumnLineage = supportsColumnLineage
 	if detail.LastSeen != nil {
 		resource.LastSeen = timestamppb.New(*detail.LastSeen)
 	}
 
 	return connect.NewResponse(&v1pb.OpenLineageDatasetDetailResource{
 		Dataset:      resource,
-		SchemaFields: convertOpenLineageDatasetSchemaFields(detail),
+		SchemaFields: convertOpenLineageDatasetSchemaFields(detail, columns),
 		RelatedJobs:  convertOpenLineageDatasetJobs(detail.Jobs),
 		RecentRuns:   convertOpenLineageDatasetRuns(detail.Runs),
 	}), nil
@@ -159,10 +203,6 @@ func openLineageDatasetFind(req *v1pb.ListOpenLineageDatasetsRequest) *store.Fin
 	if source := req.GetSource(); source != "" {
 		find.Source = &source
 	}
-	if req.GetColumnLineageOnly() {
-		columnLineageOnly := true
-		find.ColumnLineageOnly = &columnLineageOnly
-	}
 	return find
 }
 
@@ -179,20 +219,24 @@ func (s *OpenLineageService) resolveOpenLineageDatasetAggregates(ctx context.Con
 // resolveOpenLineageDatasetAggregates attaches each stored aggregate to its
 // resolution. An unresolvable dataset falls back to its external identity, which
 // is what the read paths did when they resolved per run: a resolver error must
-// not empty the page.
+// not empty the page. That fallback identity cannot be probed for stored edges,
+// so the row is marked and keeps the facet signal its reference carried as its
+// flag (see attachColumnLineageSupport).
 func resolveOpenLineageDatasetAggregates(ctx context.Context, aggregates []*store.OpenLineageDatasetAggregateMessage, resolve datasetPreviewResolver) []*openLineageDatasetAggregate {
 	result := make([]*openLineageDatasetAggregate, 0, len(aggregates))
 	for _, aggregate := range aggregates {
 		resolved, err := resolve(ctx, aggregate.Namespace, aggregate.Name)
-		if err != nil || resolved == nil {
+		resolutionFailed := err != nil || resolved == nil
+		if resolutionFailed {
 			resolved = externalDatasetFallback(aggregate.Namespace, aggregate.Name)
 		}
 
 		dataset := openLineageDatasetIdentity(aggregate.Namespace, aggregate.Name, resolved)
+		dataset.ResolutionFailed = resolutionFailed
+		dataset.FacetColumnLineage = aggregate.FacetColumnLineage
 		if aggregate.LastSeen != nil {
 			dataset.LastSeen = timestamppb.New(*aggregate.LastSeen)
 		}
-		dataset.SupportsColumnLineage = aggregate.SupportsColumnLineage
 		dataset.SourceJobCount = aggregate.SourceJobCount
 		dataset.TargetJobCount = aggregate.TargetJobCount
 		dataset.Integrations = aggregate.Integrations
@@ -200,6 +244,50 @@ func resolveOpenLineageDatasetAggregates(ctx context.Context, aggregates []*stor
 		result = append(result, dataset)
 	}
 	return result
+}
+
+// attachColumnLineageSupport asks the store which of the resolved datasets are
+// an endpoint of a stored column-level edge, then marks them. The probe is one
+// batched query for the whole slice, so every row of a page — and every row the
+// column-lineage filter has to judge — costs no extra round trip. A dataset
+// whose resolution failed has no real GUID to probe, so it is left to the
+// fallback in attachOpenLineageDatasetColumnLineage.
+func (s *OpenLineageService) attachColumnLineageSupport(ctx context.Context, datasets []*openLineageDatasetAggregate) error {
+	guids := make([]string, 0, len(datasets))
+	seen := make(map[string]struct{}, len(datasets))
+	for _, dataset := range datasets {
+		if dataset.ResolutionFailed {
+			continue
+		}
+		if _, ok := seen[dataset.GUID]; ok {
+			continue
+		}
+		seen[dataset.GUID] = struct{}{}
+		guids = append(guids, dataset.GUID)
+	}
+
+	found, err := s.store.ListColumnLineageEndpoints(ctx, guids)
+	if err != nil {
+		return err
+	}
+	attachOpenLineageDatasetColumnLineage(datasets, found)
+	return nil
+}
+
+// attachOpenLineageDatasetColumnLineage sets each dataset's flag from the probe
+// result. A dataset whose GUID the store did not report has no column-level edge
+// of its own, which is what the flag has to say. A dataset whose resolution
+// failed keeps the facet signal its reference carried — the answer the old
+// implementation gave — instead of a silent "no lineage" that would empty the
+// filtered page and flip every badge when the resolver degrades.
+func attachOpenLineageDatasetColumnLineage(datasets []*openLineageDatasetAggregate, found map[string]struct{}) {
+	for _, dataset := range datasets {
+		if dataset.ResolutionFailed {
+			dataset.SupportsColumnLineage = dataset.FacetColumnLineage
+			continue
+		}
+		_, dataset.SupportsColumnLineage = found[dataset.GUID]
+	}
 }
 
 // openLineageDatasetIdentity is the part of a dataset's description that comes
@@ -246,9 +334,10 @@ func convertOpenLineageDatasetResource(dataset *openLineageDatasetAggregate) *v1
 }
 
 // convertOpenLineageDatasetSchemaFields renders the stored schema facet. A field
-// the dataset's columnLineage facet described is marked ready, which is the
-// column-level lineage the detail drawer advertises.
-func convertOpenLineageDatasetSchemaFields(detail *store.OpenLineageDatasetDetailMessage) []*v1pb.OpenLineageDatasetField {
+// the dataset's stored column-level edges name on the dataset's own side is
+// marked ready, because those are the edges the column-lineage page draws for
+// it.
+func convertOpenLineageDatasetSchemaFields(detail *store.OpenLineageDatasetDetailMessage, columnLineageColumns []string) []*v1pb.OpenLineageDatasetField {
 	if len(detail.SchemaFields) == 0 {
 		return nil
 	}
@@ -259,8 +348,8 @@ func convertOpenLineageDatasetSchemaFields(detail *store.OpenLineageDatasetDetai
 		return nil
 	}
 
-	ready := make(map[string]struct{}, len(detail.ColumnLineageFields))
-	for _, name := range detail.ColumnLineageFields {
+	ready := make(map[string]struct{}, len(columnLineageColumns))
+	for _, name := range columnLineageColumns {
 		ready[name] = struct{}{}
 	}
 

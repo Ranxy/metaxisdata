@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
+	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
@@ -96,7 +98,7 @@ CREATE VIEW public.facet_v_right AS SELECT id, amount FROM public.facet_right;
 			}},
 		},
 		"producer": "integration-test",
-		"inputs":   []map[string]any{dataset("facet_v_left"), dataset("facet_v_right")},
+		"inputs":   []map[string]any{dataset("facet_v_left"), dataset("facet_v_right"), dataset("facet_unused")},
 		"outputs":  []map[string]any{output},
 	}
 	body, err := json.Marshal(event)
@@ -135,4 +137,40 @@ CREATE VIEW public.facet_v_right AS SELECT id, amount FROM public.facet_right;
 	}
 	require.Equal(t, []string{rightGUID}, sources,
 		"amount is selected from facet_v_right, whatever the producer's facet claimed")
+
+	// The list's support flag reads the stored edge table, not the producer's
+	// facet: the inputs carry no facets at all, yet the analysed SQL stored edges
+	// out of them, so they must report support. The unused input was named by the
+	// event but never read by the statement, so it has no edge, reports no
+	// support, and the filter must actually drop it — if the filter were ignored,
+	// the filtered list below would still contain it.
+	client := v1connect.NewOpenLineageServiceClient(httpClient, env.BaseURL)
+	leftName := fmt.Sprintf("%s.public.facet_v_left", sourceDatabase)
+	rightName := fmt.Sprintf("%s.public.facet_v_right", sourceDatabase)
+	dstName := fmt.Sprintf("%s.public.facet_dst", sourceDatabase)
+	unusedName := fmt.Sprintf("%s.public.facet_unused", sourceDatabase)
+
+	all, err := client.ListOpenLineageDatasets(ctx, withToken(env.AdminToken(), &v1pb.ListOpenLineageDatasetsRequest{Namespace: namespace}))
+	require.NoError(t, err)
+	allFlags := make(map[string]bool, len(all.Msg.GetDatasets()))
+	for _, dataset := range all.Msg.GetDatasets() {
+		allFlags[dataset.GetName()] = dataset.GetSupportsColumnLineage()
+	}
+	require.Len(t, allFlags, 4)
+	require.True(t, allFlags[leftName], "the analysed statement reads the left view")
+	require.True(t, allFlags[rightName], "the analysed statement reads the right view")
+	require.True(t, allFlags[dstName], "the statement writes the output")
+	require.False(t, allFlags[unusedName], "a dataset the statement never read has no column edge")
+
+	filtered, err := client.ListOpenLineageDatasets(ctx, withToken(env.AdminToken(), &v1pb.ListOpenLineageDatasetsRequest{
+		Namespace:         namespace,
+		ColumnLineageOnly: true,
+	}))
+	require.NoError(t, err)
+	filteredFlags := make(map[string]bool, len(filtered.Msg.GetDatasets()))
+	for _, dataset := range filtered.Msg.GetDatasets() {
+		filteredFlags[dataset.GetName()] = dataset.GetSupportsColumnLineage()
+	}
+	require.Equal(t, map[string]bool{leftName: true, rightName: true, dstName: true}, filteredFlags,
+		"the filter keeps every dataset with a stored column edge and drops the edgeless input")
 }

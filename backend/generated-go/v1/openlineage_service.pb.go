@@ -636,14 +636,18 @@ func (x *OpenLineageTask) GetLatestEventType() string {
 }
 
 type OpenLineageDatasetResource struct {
-	state                 protoimpl.MessageState `protogen:"open.v1"`
-	Guid                  string                 `protobuf:"bytes,1,opt,name=guid,proto3" json:"guid,omitempty"`
-	Namespace             string                 `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"`
-	Name                  string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
-	DatasetType           string                 `protobuf:"bytes,4,opt,name=dataset_type,json=datasetType,proto3" json:"dataset_type,omitempty"`
-	ResolvedTarget        string                 `protobuf:"bytes,5,opt,name=resolved_target,json=resolvedTarget,proto3" json:"resolved_target,omitempty"`
-	ResolvedMetaType      MetaType               `protobuf:"varint,6,opt,name=resolved_meta_type,json=resolvedMetaType,proto3,enum=metaxisdata.v1.MetaType" json:"resolved_meta_type,omitempty"`
-	Internal              bool                   `protobuf:"varint,7,opt,name=internal,proto3" json:"internal,omitempty"`
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Guid             string                 `protobuf:"bytes,1,opt,name=guid,proto3" json:"guid,omitempty"`
+	Namespace        string                 `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	Name             string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	DatasetType      string                 `protobuf:"bytes,4,opt,name=dataset_type,json=datasetType,proto3" json:"dataset_type,omitempty"`
+	ResolvedTarget   string                 `protobuf:"bytes,5,opt,name=resolved_target,json=resolvedTarget,proto3" json:"resolved_target,omitempty"`
+	ResolvedMetaType MetaType               `protobuf:"varint,6,opt,name=resolved_meta_type,json=resolvedMetaType,proto3,enum=metaxisdata.v1.MetaType" json:"resolved_meta_type,omitempty"`
+	Internal         bool                   `protobuf:"varint,7,opt,name=internal,proto3" json:"internal,omitempty"`
+	// Whether the dataset has stored column-level lineage: the object its
+	// namespace and name resolve to is an endpoint of at least one lineage edge
+	// that names a column on at least one side. Derived from the lineage store,
+	// not from a producer-declared facet.
 	SupportsColumnLineage bool                   `protobuf:"varint,8,opt,name=supports_column_lineage,json=supportsColumnLineage,proto3" json:"supports_column_lineage,omitempty"`
 	LastSeen              *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=last_seen,json=lastSeen,proto3" json:"last_seen,omitempty"`
 	SourceJobCount        int32                  `protobuf:"varint,10,opt,name=source_job_count,json=sourceJobCount,proto3" json:"source_job_count,omitempty"`
@@ -1239,15 +1243,16 @@ func (x *ListOpenLineageTasksRequest) GetLineageOnly() bool {
 }
 
 type ListOpenLineageDatasetsRequest struct {
-	state             protoimpl.MessageState  `protogen:"open.v1"`
-	PageSize          int32                   `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	PageToken         string                  `protobuf:"bytes,2,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
-	Search            string                  `protobuf:"bytes,3,opt,name=search,proto3" json:"search,omitempty"`
-	Namespace         string                  `protobuf:"bytes,4,opt,name=namespace,proto3" json:"namespace,omitempty"`
-	Integration       string                  `protobuf:"bytes,5,opt,name=integration,proto3" json:"integration,omitempty"`
-	Source            string                  `protobuf:"bytes,6,opt,name=source,proto3" json:"source,omitempty"`
-	DatasetScope      OpenLineageDatasetScope `protobuf:"varint,7,opt,name=dataset_scope,json=datasetScope,proto3,enum=metaxisdata.v1.OpenLineageDatasetScope" json:"dataset_scope,omitempty"`
-	ColumnLineageOnly bool                    `protobuf:"varint,8,opt,name=column_lineage_only,json=columnLineageOnly,proto3" json:"column_lineage_only,omitempty"`
+	state        protoimpl.MessageState  `protogen:"open.v1"`
+	PageSize     int32                   `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageToken    string                  `protobuf:"bytes,2,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	Search       string                  `protobuf:"bytes,3,opt,name=search,proto3" json:"search,omitempty"`
+	Namespace    string                  `protobuf:"bytes,4,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	Integration  string                  `protobuf:"bytes,5,opt,name=integration,proto3" json:"integration,omitempty"`
+	Source       string                  `protobuf:"bytes,6,opt,name=source,proto3" json:"source,omitempty"`
+	DatasetScope OpenLineageDatasetScope `protobuf:"varint,7,opt,name=dataset_scope,json=datasetScope,proto3,enum=metaxisdata.v1.OpenLineageDatasetScope" json:"dataset_scope,omitempty"`
+	// When true, return only datasets for which supports_column_lineage is true.
+	ColumnLineageOnly bool `protobuf:"varint,8,opt,name=column_lineage_only,json=columnLineageOnly,proto3" json:"column_lineage_only,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }

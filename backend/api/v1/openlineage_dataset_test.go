@@ -24,14 +24,14 @@ func TestResolveOpenLineageDatasetAggregates(t *testing.T) {
 	seen := time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC)
 	aggregates := []*store.OpenLineageDatasetAggregateMessage{
 		{
-			Namespace:             "postgres://warehouse:5432/analytics",
-			Name:                  "public.orders",
-			LastSeen:              &seen,
-			SourceJobCount:        2,
-			TargetJobCount:        1,
-			Integrations:          []string{"airflow"},
-			Sources:               []string{"openlineage"},
-			SupportsColumnLineage: true,
+			Namespace:          "postgres://warehouse:5432/analytics",
+			Name:               "public.orders",
+			LastSeen:           &seen,
+			SourceJobCount:     2,
+			TargetJobCount:     1,
+			Integrations:       []string{"airflow"},
+			Sources:            []string{"openlineage"},
+			FacetColumnLineage: true,
 		},
 		{Namespace: "s3://analytics-bucket", Name: "exports/orders_snapshot", LastSeen: &seen, TargetJobCount: 3},
 		{Namespace: "broken://namespace", Name: "public.orders"},
@@ -60,7 +60,9 @@ func TestResolveOpenLineageDatasetAggregates(t *testing.T) {
 	require.Equal(t, int32(1), internal.TargetJobCount)
 	require.Equal(t, []string{"airflow"}, internal.Integrations)
 	require.Equal(t, []string{"openlineage"}, internal.Sources)
-	require.True(t, internal.SupportsColumnLineage)
+	require.False(t, internal.SupportsColumnLineage, "the flag comes from the column-lineage probe, not the resolution")
+	require.False(t, internal.ResolutionFailed)
+	require.True(t, internal.FacetColumnLineage, "the facet signal is carried for the resolver-failure fallback")
 	require.NotNil(t, internal.LastSeen)
 	require.True(t, internal.LastSeen.AsTime().Equal(seen))
 
@@ -73,42 +75,68 @@ func TestResolveOpenLineageDatasetAggregates(t *testing.T) {
 	require.True(t, external.LastSeen.AsTime().Equal(seen))
 
 	fallback := datasets[2]
+	require.True(t, fallback.ResolutionFailed, "a resolver error marks the row instead of being treated as an external dataset")
+	require.False(t, fallback.FacetColumnLineage)
 	require.False(t, fallback.Internal)
 	require.Equal(t, openlineageplugin.FormatExternalGUID("broken://namespace", "public.orders"), fallback.GUID)
 	require.Equal(t, v1pb.MetaType_EXTERNAL_DATASET, fallback.ResolvedMetaType)
 	require.Nil(t, fallback.LastSeen, "a dataset without an event time keeps a null last-seen")
 }
 
-// The request's SQL-answerable filters reach the store; the free-text search and
-// the scope are applied in Go because they need the dataset's resolution.
+// The list's flag comes from one probe over the resolved GUIDs, so a dataset
+// whose spelling resolves to a GUID with stored column-level edges is marked
+// even when its producer never attached a columnLineage facet.
+func TestAttachOpenLineageDatasetColumnLineage(t *testing.T) {
+	t.Parallel()
+
+	datasets := []*openLineageDatasetAggregate{
+		{GUID: "inst;db;;written", Name: "written"},
+		{GUID: "external:ns:read", Name: "read"},
+		{GUID: "inst;db;;edgeless", Name: "edgeless"},
+		{GUID: "external:broken:with-facet", Name: "with-facet", ResolutionFailed: true, FacetColumnLineage: true},
+		{GUID: "external:broken:no-facet", Name: "no-facet", ResolutionFailed: true},
+	}
+	attachOpenLineageDatasetColumnLineage(datasets, map[string]struct{}{
+		"inst;db;;written": {},
+		"external:ns:read": {},
+	})
+
+	require.True(t, datasets[0].SupportsColumnLineage)
+	require.True(t, datasets[1].SupportsColumnLineage)
+	require.False(t, datasets[2].SupportsColumnLineage)
+	require.True(t, datasets[3].SupportsColumnLineage,
+		"an unresolved dataset keeps the facet signal instead of answering no lineage")
+	require.False(t, datasets[4].SupportsColumnLineage)
+}
+
+// The request's SQL-answerable filters reach the store; the free-text search,
+// the scope and the column-lineage probe are applied in Go because they need the
+// dataset's resolution.
 func TestOpenLineageDatasetFind(t *testing.T) {
 	t.Parallel()
 
 	find := openLineageDatasetFind(&v1pb.ListOpenLineageDatasetsRequest{
-		Namespace:         "ns",
-		Integration:       "airflow",
-		Source:            "openlineage",
-		ColumnLineageOnly: true,
+		Namespace:   "ns",
+		Integration: "airflow",
+		Source:      "openlineage",
 	})
 	require.Equal(t, "ns", *find.Namespace)
 	require.Equal(t, "airflow", *find.Integration)
 	require.Equal(t, "openlineage", *find.Source)
-	require.True(t, *find.ColumnLineageOnly)
 
 	empty := openLineageDatasetFind(&v1pb.ListOpenLineageDatasetsRequest{})
 	require.Nil(t, empty.Namespace)
 	require.Nil(t, empty.Integration)
 	require.Nil(t, empty.Source)
-	require.Nil(t, empty.ColumnLineageOnly)
 }
 
 func TestConvertOpenLineageDatasetSchemaFields(t *testing.T) {
 	t.Parallel()
 
-	fields := convertOpenLineageDatasetSchemaFields(&store.OpenLineageDatasetDetailMessage{
-		SchemaFields:        []byte(`[{"name":"order_id","type":"INT"},{"name":"total","type":"NUMERIC","description":"sum"}]`),
-		ColumnLineageFields: []string{"order_id"},
-	})
+	detail := &store.OpenLineageDatasetDetailMessage{
+		SchemaFields: []byte(`[{"name":"order_id","type":"INT"},{"name":"total","type":"NUMERIC","description":"sum"}]`),
+	}
+	fields := convertOpenLineageDatasetSchemaFields(detail, []string{"order_id"})
 	require.Len(t, fields, 2)
 	assert.Equal(t, "order_id", fields[0].Name)
 	assert.Equal(t, "INT", fields[0].Type)
@@ -117,10 +145,15 @@ func TestConvertOpenLineageDatasetSchemaFields(t *testing.T) {
 	assert.Equal(t, "sum", fields[1].Description)
 	assert.False(t, fields[1].ColumnLineageReady)
 
-	require.Nil(t, convertOpenLineageDatasetSchemaFields(&store.OpenLineageDatasetDetailMessage{}))
+	require.Nil(t, convertOpenLineageDatasetSchemaFields(&store.OpenLineageDatasetDetailMessage{}, nil))
 	require.Nil(t, convertOpenLineageDatasetSchemaFields(&store.OpenLineageDatasetDetailMessage{
 		SchemaFields: []byte(`{`),
-	}))
+	}, nil))
+
+	// A dataset whose edges name no schema field marks none of them ready.
+	fields = convertOpenLineageDatasetSchemaFields(detail, nil)
+	require.Len(t, fields, 2)
+	assert.False(t, fields[0].ColumnLineageReady)
 }
 
 func TestConvertOpenLineageDatasetJobsAndRuns(t *testing.T) {

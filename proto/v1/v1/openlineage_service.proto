@@ -209,6 +209,10 @@ message OpenLineageDatasetResource {
   string resolved_target = 5;
   MetaType resolved_meta_type = 6;
   bool internal = 7;
+  // Whether the dataset has stored column-level lineage: the object its
+  // namespace and name resolve to is an endpoint of at least one lineage edge
+  // that names a column on at least one side. Derived from the lineage store,
+  // not from a producer-declared facet.
   bool supports_column_lineage = 8;
   google.protobuf.Timestamp last_seen = 9;
   int32 source_job_count = 10;
@@ -278,6 +282,7 @@ message ListOpenLineageDatasetsRequest {
   string integration = 5;
   string source = 6;
   OpenLineageDatasetScope dataset_scope = 7;
+  // When true, return only datasets for which supports_column_lineage is true.
   bool column_lineage_only = 8;
 }
 
