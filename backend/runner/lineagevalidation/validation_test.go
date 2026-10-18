@@ -10,21 +10,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// probeRevalidator counts passes and can hold one open, so a test can trigger a
-// pass while another is running.
+// probeRevalidator counts passes, can hold one open so a test can trigger a pass
+// while another is running, and reports when a pass starts and finishes.
 type probeRevalidator struct {
-	mu      sync.Mutex
-	calls   int
-	block   bool
-	err     error
-	started chan struct{}
-	release chan struct{}
+	mu       sync.Mutex
+	calls    int
+	block    bool
+	err      error
+	started  chan struct{}
+	finished chan struct{}
+	release  chan struct{}
 }
 
 func newProbeRevalidator() *probeRevalidator {
 	return &probeRevalidator{
-		started: make(chan struct{}, 8),
-		release: make(chan struct{}),
+		started:  make(chan struct{}, 8),
+		finished: make(chan struct{}, 8),
+		release:  make(chan struct{}),
 	}
 }
 
@@ -39,6 +41,12 @@ func (p *probeRevalidator) RevalidateContradictedColumnClaims(ctx context.Contex
 	case p.started <- struct{}{}:
 	default:
 	}
+	defer func() {
+		select {
+		case p.finished <- struct{}{}:
+		default:
+		}
+	}()
 
 	if block {
 		select {
@@ -72,13 +80,21 @@ func start(t *testing.T, revalidator Revalidator) (*Runner, func()) {
 
 	runner := NewRunner(revalidator)
 	runner.settle = 20 * time.Millisecond
+	return runner, startRunner(t, runner)
+}
+
+// startRunner runs an already configured runner; the caller may have replaced its
+// settle timer to control the settle window.
+func startRunner(t *testing.T, runner *Runner) func() {
+	t.Helper()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		runner.Run(ctx)
 	}()
-	return runner, func() {
+	return func() {
 		cancel()
 		select {
 		case <-done:
@@ -94,6 +110,15 @@ func waitForPass(t *testing.T, probe *probeRevalidator) {
 	case <-probe.started:
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for a revalidation pass")
+	}
+}
+
+func waitForPassToFinish(t *testing.T, probe *probeRevalidator) {
+	t.Helper()
+	select {
+	case <-probe.finished:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for a revalidation pass to finish")
 	}
 }
 
@@ -155,6 +180,62 @@ func TestTriggerDuringAPassRunsOneMore(t *testing.T) {
 	close(probe.release)
 
 	waitForPass(t, probe)
+	require.Equal(t, 2, probe.count())
+}
+
+// A sync that commits during the settle window names the same pending edges as the
+// pass about to run, and that pass reads metadata after the commit, so the signal
+// must be folded in rather than cost a second settle and pass. The settle window is
+// held open by the injected timer, so the second trigger is deterministically
+// delivered inside it.
+func TestTriggerDuringSettleIsFolded(t *testing.T) {
+	t.Parallel()
+
+	probe := newProbeRevalidator()
+	settleEntered := make(chan struct{}, 1)
+	settleGate := make(chan time.Time, 1)
+	runner := NewRunner(probe)
+	runner.settle = 10 * time.Millisecond
+	runner.settleTimer = func(time.Duration) <-chan time.Time {
+		settleEntered <- struct{}{}
+		return settleGate
+	}
+	stop := startRunner(t, runner)
+	defer stop()
+
+	enterSettle := func() {
+		t.Helper()
+		select {
+		case <-settleEntered:
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for the settle window to open")
+		}
+	}
+	endSettle := func() { settleGate <- time.Now() }
+
+	// The startup pass runs after the first settle window; release it.
+	enterSettle()
+	endSettle()
+	waitForPass(t, probe)
+	waitForPassToFinish(t, probe)
+
+	// A sync commits after the pass: it is consumed and the runner settles again.
+	runner.Trigger()
+	enterSettle()
+	// A second sync commits during that settle and must be folded into the pass
+	// about to run.
+	runner.Trigger()
+	endSettle()
+
+	waitForPass(t, probe)
+	waitForPassToFinish(t, probe)
+	// The folded signal must not open another settle window: were it still queued,
+	// the runner would consume it and wait out a second settle here.
+	select {
+	case <-settleEntered:
+		t.Fatal("a trigger that arrived during settle must be folded into the pass that ran, not schedule another settle")
+	case <-time.After(20 * runner.settle):
+	}
 	require.Equal(t, 2, probe.count())
 }
 

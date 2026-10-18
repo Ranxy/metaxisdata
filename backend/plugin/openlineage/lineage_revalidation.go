@@ -54,6 +54,11 @@ func (p *Processor) releaseRevalidation() {
 //
 // It returns the number of edges re-checked and the number of meta objects that
 // still reference an unknown relation.
+//
+// limit bounds how many pending edges one pass reads; 0 means revalidationBatch,
+// the implementation's default. One pass is bounded and does not drain a larger
+// backlog, so a caller must not treat it as a backlog drain - passes are
+// scheduled by cadence, and the remaining edges wait for the next one.
 func (p *Processor) RevalidateUnresolvedLineage(ctx context.Context, limit int) (revalidated, stillUnknown int, err error) {
 	// One pass at a time: the maintenance pass and the post-sync runner share this
 	// processor, and both replace an object's edges as a set.
@@ -96,6 +101,11 @@ func (p *Processor) RevalidateUnresolvedLineage(ctx context.Context, limit int) 
 // known also removed the edge from the unknown-endpoint sweep's reach, so this
 // is the only pass that can still fix them. A claim is blanked, the edge stays
 // as a table-level dependency, and what is still unknown around it is counted.
+//
+// limit bounds how many contradicted edges one pass reads; 0 means
+// revalidationBatch, the implementation's default. One pass is bounded and does
+// not drain a larger backlog, so the caller re-triggers on cadence and must not
+// assume a single call catches up.
 func (p *Processor) RevalidateContradictedColumnClaims(ctx context.Context, limit int) (revalidated, stillUnknown int, err error) {
 	if err := p.acquireRevalidation(ctx); err != nil {
 		return 0, 0, err

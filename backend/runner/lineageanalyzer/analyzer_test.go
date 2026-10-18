@@ -428,3 +428,13 @@ func mustRetry(t *testing.T, analyzer *Analyzer, key analyzeKey) analysisRetry {
 	require.True(t, ok)
 	return entry
 }
+
+// An emptied definition takes the failure path, not the skip path: the previous
+// definition's edges are cleared, so the version row must carry a non-empty
+// message explaining why the graph is empty. A parse failure names its cause.
+func TestAnalysisFailureMessage(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "lineage analysis skipped: the object has no SQL definition", analysisFailureMessage(nil))
+	require.Equal(t, "lineage analysis failed: unexpected token", analysisFailureMessage(errors.New("unexpected token")))
+}

@@ -156,7 +156,10 @@ func (a *Analyzer) Run(ctx context.Context) {
 
 	// Goroutine 1: periodic full scan.
 	sp.Go(func() {
-		slog.Debug(fmt.Sprintf("Lineage analyzer started and will run every %v", lineageAnalysisInterval))
+		slog.Debug("Lineage analyzer started",
+			slog.Duration("scanInterval", lineageAnalysisInterval),
+			slog.Int("maxBatch", maxAnalyzeBatch),
+			slog.Int("workers", MaxGoroutines))
 		a.queueAll(ctx)
 		ticker := time.NewTicker(lineageAnalysisInterval)
 		defer ticker.Stop()
@@ -383,8 +386,14 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 		return storeError(ctx, a.store, metaGUID, metaType, err, "failed to build SQL")
 	}
 	if definition == "" {
-		slog.Debug("Lineage analyzer skipping object with empty definition", slog.String("guid", metaGUID))
-		return markAnalyzed(ctx, a.store, metaGUID, metaType, res.MetaHash, "")
+		// "No definition" is not "nothing to say": an object whose SQL was emptied
+		// must not keep the edges of the SQL it no longer has. Clear them and record
+		// why, in the same transaction that marks the new hash analyzed, so a cleared
+		// graph is never visible without its explanation and the hourly scan does not
+		// re-queue the unchanged empty definition.
+		slog.Debug("Lineage analyzer clearing the edges of an object with no definition",
+			slog.String("guid", metaGUID), slog.String("type", metaType.String()))
+		return markAnalysisFailed(ctx, a.store, metaGUID, metaType, res.MetaHash, nil)
 	}
 
 	// Run lineage analysis with context so unqualified names resolve correctly.
@@ -443,7 +452,6 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 		// rest comes from the analysis context. AnalyzeSQL resolves its scopes
 		// through the same helper.
 		sourceID := ac.Complete(rel.Source.Table)
-		targetID := ac.Complete(rel.Target.Table)
 
 		if rel.Transformation == nil {
 			rel.Transformation = make([]model.Transformation, 0)
@@ -451,6 +459,7 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 		srcGUID := sourceID.GUID()
 
 		if metaType == storepb.MetaType_MANUAL_SQL || metaType == storepb.MetaType_APPLICATION_SQL {
+			targetID := ac.Complete(rel.Target.Table)
 			guidLookupSet[srcGUID] = struct{}{}
 			lineages = append(lineages, &store.ColumnLineage{
 				MetaGUID:       metaGUID,
@@ -486,14 +495,17 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 			continue
 		}
 
-		targetGUID := targetID.GUID()
+		// A VIEW's or materialized view's relation target is the view itself. Pin it
+		// to the analyzed object's GUID instead of re-deriving it from the wrapped
+		// name: the wrapper quotes the name for the parser, and a spelling that
+		// canonicalizes elsewhere would write an edge into a GUID no registry row has.
 		guidLookupSet[srcGUID] = struct{}{}
 		lineages = append(lineages, &store.ColumnLineage{
 			MetaGUID:       metaGUID,
 			MetaType:       metaType,
 			SourceGUID:     srcGUID,
 			SourceColumn:   rel.Source.Name,
-			TargetGUID:     targetGUID,
+			TargetGUID:     metaGUID,
 			TargetColumn:   rel.Target.Name,
 			TargetType:     metaType,
 			RelationType:   rel.RelationType,
@@ -503,8 +515,12 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 
 	// A reported statement is classified here and nowhere else: ingestion stores the
 	// statement without deciding, and this is the one place the read/write rule lives.
+	// The kind is held back until the edges commit (see below), because it is derived
+	// state about them.
+	var applicationKind store.ApplicationSQLKind
 	if metaType == storepb.MetaType_APPLICATION_SQL {
 		kind, targetEdges := a.classifyApplicationSQL(ctx, ac, engine, definition, relations, metaGUID)
+		applicationKind = kind
 		lineages = append(lineages, targetEdges...)
 		// The edge names its target by GUID alone, so the lookup below is what
 		// gives the target its type. Without it the relation reaches the API with
@@ -512,12 +528,6 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 		// metadata browser's lineage table, for one — loses the link.
 		for _, edge := range targetEdges {
 			guidLookupSet[edge.TargetGUID] = struct{}{}
-		}
-		if err := a.store.SetApplicationSQLKind(ctx, metaGUID, kind); err != nil {
-			// The kind is a filter cache for the list page; the edges are the point, and a
-			// failure to write the cache must not discard them.
-			slog.Warn("Lineage analyzer failed to record the statement kind",
-				slog.String("guid", metaGUID), log.WithError(err))
 		}
 	}
 
@@ -557,6 +567,17 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 	}
 	if err := a.store.ReplaceColumnLineageIfCurrent(ctx, metaGUID, metaType, res.MetaHash, lineage.AnalyzerVersion, lineages, partialMessagePtr); err != nil {
 		return analysisWriteError(ctx, a.store, metaGUID, metaType, err, "failed to replace column lineage")
+	}
+	// The classification is a derived cache for the list page's filter, so it is
+	// written only after the edges commit: a kind that claims a classification the
+	// graph does not have misleads the filter, while a missing kind is merely stale
+	// until the next analysis. A failure to write the cache must not discard edges
+	// that were just committed, so it is logged rather than returned.
+	if metaType == storepb.MetaType_APPLICATION_SQL {
+		if err := a.store.SetApplicationSQLKind(ctx, metaGUID, applicationKind); err != nil {
+			slog.Warn("Lineage analyzer failed to record the statement kind",
+				slog.String("guid", metaGUID), log.WithError(err))
+		}
 	}
 	return nil
 }
@@ -701,10 +722,12 @@ func analysisWriteError(ctx context.Context, s *store.Store, metaGUID string, me
 	}
 }
 
-// markAnalyzed records a successful analysis (or a deliberate skip) with the
-// current metahash and the analyzer version. A non-empty errorMessage documents
-// why analysis was skipped while still recording the hash, so the object is not
-// retried until its metadata changes or the analyzer rules do.
+// markAnalyzed records a successful analysis or a deliberate skip (an engine
+// without an analyzer) with the current metahash and the analyzer version. A
+// non-empty errorMessage documents why analysis was skipped while still
+// recording the hash, so the object is not retried until its metadata changes
+// or the analyzer rules do. It leaves the stored edges alone: a skip that is not
+// about this object's SQL has nothing to say about them.
 func markAnalyzed(ctx context.Context, s *store.Store, metaGUID string, metaType storepb.MetaType, metaHash []byte, errorMessage string) error {
 	var message *string
 	if errorMessage != "" {
@@ -716,7 +739,21 @@ func markAnalyzed(ctx context.Context, s *store.Store, metaGUID string, metaType
 	return nil
 }
 
-// markAnalysisFailed records SQL the analyzer could not parse. The current hash is
+// analysisFailureMessage builds the version row's error_message for a
+// deterministic analysis failure. A nil cause means there is no SQL to analyze
+// at all: the object's definition is empty, which is recorded as a skip rather
+// than a parse failure but still clears the previous definition's edges. The
+// message is never empty: it is the only explanation the graph offers for a
+// graph that was just cleared.
+func analysisFailureMessage(cause error) string {
+	if cause == nil {
+		return "lineage analysis skipped: the object has no SQL definition"
+	}
+	return fmt.Sprintf("lineage analysis failed: %v", cause)
+}
+
+// markAnalysisFailed records a deterministic analysis failure — SQL the analyzer
+// could not parse, or an object left with no SQL definition. The current hash is
 // stored with the error message so the hourly scan stops re-queueing an unchanged
 // definition (a metadata or analyzer change re-queues it), and any lineage a
 // previous definition left behind is dropped because it describes SQL the object
@@ -725,7 +762,7 @@ func markAnalyzed(ctx context.Context, s *store.Store, metaGUID string, metaType
 // keeps its edges.
 func markAnalysisFailed(ctx context.Context, s *store.Store, metaGUID string, metaType storepb.MetaType, metaHash []byte, cause error) error {
 	err := s.MarkAnalysisFailedIfCurrent(ctx, metaGUID, metaType, metaHash, lineage.AnalyzerVersion,
-		fmt.Sprintf("lineage analysis failed: %v", cause))
+		analysisFailureMessage(cause))
 	if err != nil {
 		return analysisWriteError(ctx, s, metaGUID, metaType, err, "failed to record analysis failure")
 	}

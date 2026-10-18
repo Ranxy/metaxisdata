@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"sync"
 	"time"
 
@@ -57,8 +58,6 @@ type Server struct {
 	lineageValidate *lineagevalidation.Runner
 	maintenance     *maintenance.Runner
 	llmRegistry     *llmcomp.Registry
-	// PG server stoppers.
-	stopper []func()
 
 	// stateCfg is the shared in-momory state within the server.
 	stateCfg *state.State
@@ -203,7 +202,10 @@ func (s *Server) Run(_ context.Context, port int) error {
 	s.echoServer.Listener = listener
 
 	go func() {
-		if err := s.echoServer.StartH2CServer(address, &http2.Server{}); err != nil {
+		// A graceful shutdown stops the server, which makes it return
+		// http.ErrServerClosed; that is the expected end of the goroutine, not a
+		// listen failure. Anything else is a real error worth reporting.
+		if err := s.echoServer.StartH2CServer(address, &http2.Server{}); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("http server listen error", log.WithError(err))
 		}
 	}()
@@ -229,7 +231,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		s.notifier.Close()
 	}
 	// Shutdown echo. A failure is logged rather than fatal: os.Exit here would
-	// skip closing the store and running the stoppers.
+	// skip closing the store.
 	if s.echoServer != nil {
 		if err := s.echoServer.Shutdown(ctx); err != nil {
 			slog.Error("failed to shut down the web server", log.WithError(err))
@@ -255,10 +257,6 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		if err := s.store.Close(); err != nil {
 			return err
 		}
-	}
-
-	for _, stopper := range s.stopper {
-		stopper()
 	}
 
 	return nil

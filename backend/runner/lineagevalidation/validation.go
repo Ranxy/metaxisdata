@@ -32,6 +32,11 @@ const (
 // appeared after ingestion contradicts, exactly as the maintenance pass does on
 // its interval.
 type Revalidator interface {
+	// RevalidateContradictedColumnClaims revalidates one bounded batch of
+	// contradicted edges. limit 0 means the implementation's default batch
+	// (revalidationBatch for the OpenLineage revalidator), not "everything": a
+	// backlog larger than that batch is left for the next pass, so a caller must
+	// not assume one call drains it.
 	RevalidateContradictedColumnClaims(ctx context.Context, limit int) (revalidated, stillUnknown int, err error)
 }
 
@@ -40,9 +45,14 @@ type Runner struct {
 	revalidator Revalidator
 	// settle is settleDelay in production; a test shortens it.
 	settle time.Duration
-	// trigger holds at most one pending request: a signal that arrives while a
-	// pass is pending or running is folded into the pending one, because a single
-	// pass covers every pending edge anyway.
+	// settleTimer waits out the settle window; production uses time.After, and a
+	// test replaces it to hold the window open instead of racing a clock.
+	settleTimer func(time.Duration) <-chan time.Time
+	// trigger holds at most one pending request. A signal that arrives during
+	// settle is folded into the pass about to run, because that pass covers the
+	// same pending edges; a signal that arrives while a pass is running stays
+	// queued and earns one more pass, because it may describe metadata the running
+	// pass did not see.
 	trigger chan struct{}
 }
 
@@ -51,6 +61,7 @@ func NewRunner(revalidator Revalidator) *Runner {
 	return &Runner{
 		revalidator: revalidator,
 		settle:      settleDelay,
+		settleTimer: time.After,
 		trigger:     make(chan struct{}, 1),
 	}
 }
@@ -88,10 +99,15 @@ func (r *Runner) Run(ctx context.Context) {
 		select {
 		case <-r.trigger:
 			select {
-			case <-time.After(r.settle):
+			case <-r.settleTimer(r.settle):
 			case <-ctx.Done():
 				return
 			}
+			// A signal that arrived during settle names the same pending edges as the
+			// pass about to run, so it is folded into it rather than costing a second
+			// settle and pass. A signal that arrives once the pass is running is not
+			// folded: it stays queued and earns its own pass.
+			r.discardPendingTrigger()
 			r.runOnce(ctx)
 		case <-ctx.Done():
 			return
@@ -99,13 +115,27 @@ func (r *Runner) Run(ctx context.Context) {
 	}
 }
 
-// runOnce revalidates every claim the registry now contradicts. A failure is
-// logged and dropped: the next sync or the maintenance pass retries the same
-// edges, and a half-finished pass would leave a run's edges replaced in part.
+// discardPendingTrigger folds a signal that arrived during settle into the pass
+// about to run. Trigger keeps at most one token, so one non-blocking receive is
+// the whole drain.
+func (r *Runner) discardPendingTrigger() {
+	select {
+	case <-r.trigger:
+	default:
+	}
+}
+
+// runOnce revalidates the claims the registry now contradicts, at most one
+// default batch of them. A failure is logged and dropped: the next sync or the
+// maintenance pass retries the same edges, and a half-finished pass would leave a
+// run's edges replaced in part.
 func (r *Runner) runOnce(ctx context.Context) {
 	passCtx, cancel := context.WithTimeout(ctx, passTimeout)
 	defer cancel()
 
+	// limit 0 asks for the implementation's default batch: one trigger therefore
+	// revalidates a bounded slice even when the backlog is larger. Draining the
+	// backlog is the maintenance pass' job, not a reason for this loop to spin.
 	revalidated, stillUnknown, err := r.revalidator.RevalidateContradictedColumnClaims(passCtx, 0)
 	if err != nil {
 		slog.Error("Failed to revalidate lineage after a schema sync", log.WithError(err))
