@@ -89,7 +89,7 @@
 
 > 不建议「大重写」。当前事务纪律、singleflight、operation 聚合与测试选点都值得保留；按上面的顺序做**局部替换 + 契约加固**收益最高。
 >
-> **实施状态（2026-10-18）**：第 1 步的 **R-01** 与 **R-02** 已在本分支实现——`683ff9d`（实例元数据定向 patch）、`3183110`（方言引用 + 注释感知的完整 DDL 判定），并补了对应单测/回归。R-01 的 API 侧迁移（`UpdateInstance` / 数据源 CRUD 也改用 `MetadataUpdates`）尚未做，剩余风险降为「API 之间、或 API 覆盖 runner 写回的 `last_sync_time`」的良性竞争。其余条目未动。
+> **实施状态（2026-10-18）**：第 1 步的 **R-01** 与 **R-02** 已实现——`683ff9d`（实例元数据定向 patch）、`3183110`（方言引用 + 注释感知的完整 DDL 判定）；第 2 步的 **R-03/R-04/R-17** 已实现——`d186476`（分析写入 CAS + 失败状态原子化 + `column_lineage_version.analyzer_version` 迁移 0021 + 自动全量重算）。均补了对应单测/回归。R-01 的 API 侧迁移（`UpdateInstance` / 数据源 CRUD 也改用 `MetadataUpdates`）尚未做，剩余风险降为「API 之间、或 API 覆盖 runner 写回的 `last_sync_time`」的良性竞争。R-03/R-04 的真实 DB 事务路径目前只有单元测试覆盖其纯逻辑，并发/回滚行为仍需集成用例（T3/T4 仍是缺口）。其余条目未动。
 
 ---
 
@@ -313,6 +313,7 @@ func isCompleteStatement(definition string) bool {
 - **影响**：对象 O 入队后、分析完成前，sync 判定 O 被删并提交（同事务删 registry 行、边、version）。随后分析把旧定义的边与 version 行写回：**已删除对象留下永久孤儿血缘 + 一条 version 行**。清理路径已经执行过，`queueAll` 只遍历现存 registry 对象，没有任何路径会再清它；若同 GUID 以别的类型重建，旧边还会挂错对象。窗口是秒级（解析 + N+1 查询），触发需要「删除恰逢分析」；单副本同样可能（多副本已确认不在考虑范围）。
 - **建议**：把「替换边 + 写 version」做成带前置条件的 store 操作：`BatchReplaceColumnLineageIfCurrent(ctx, metaGUID, metaType, expectedMetaHash, lineages)`，同一事务里 `SELECT meta_hash FROM meta_registry_resource WHERE guid=$1 AND object_type=$2 FOR SHARE`，行不存在或 hash 不等返回 `errStale`（调用方不写 version、不重试）；成功路径与失败路径都走这个受保护接口。可选加固：给 `column_lineage(meta_guid, meta_type)` 加复合外键 `REFERENCES meta_registry_resource(guid, object_type) ON DELETE CASCADE`（source/target 端点不能加，因为可能指向尚未同步的对象）。
 - **核实**：机制确认；触发概率低，定级为中（P1）——窗口是秒级，触发需要「删除恰逢分析」；单副本部署下仍是真实窗口。
+- **已实施（2026-10-18，commit `d186476`）**：新增 `ReplaceColumnLineageIfCurrent`（同事务 `SELECT meta_hash ... FOR SHARE` 校验 → 替换边 → 写 version/缺口），对象已删返回 `ErrAnalysisGone`（丢弃结果），hash 已变返回 `ErrAnalysisStale`（runner 立即重排）；边与 version 同事务提交。
 
 ---
 
@@ -340,7 +341,8 @@ _ = s.UpsertColumnLineageVersion(ctx, &store.ColumnLineageVersion{
   1. 清边成功、写 version 失败/进程退出 → 「边已清空，version 仍持旧 hash」。多数情况旧 hash ≠ 当前 hash，下一轮自愈；但若同一 hash 下发生确定性硬失败（例如升级回归，见 R-17），该对象就再也不会被重算。
   2. `storeError` 把所有 store/解析前置错误（GUID 非法、实例缺失、registry 多行命中）都写成 hash=NULL，于是小时扫描必然重排：对**持久性**错误形成「每小时 4 次尝试 + 4 条错误日志」的永久循环，使 `scheduleRetry` 的「放弃」语义形同虚设（与 `.agents/docs/lineage-analyzer.md` 不变量 7「三条路径都写当前 hash」也不一致）。
   3. registry 已删/不存在的对象也会被 `storeError` 写一条 `NULL` hash + error_message 的 version 行；而 cleanup 只在删除事务里执行一次、`queueAll` 也不遍历已不存在对象，于是该行永久留存（`column_lineage_version` 的空间/噪音，不触发重试）。
-- **建议**：store 增加原子 `MarkAnalysisFailed(ctx, guid, type, metaHash, message)`（同事务 DELETE 边 + UPSERT version）；`storeError` 改为「只更新 error_message、不动 hash」（`DO UPDATE SET error_message = EXCLUDED.error_message, analyzed_at = NOW()`），把重试控制留给 retryMap；或显式提供 `InvalidateAnalysisState` 而不是靠 NULL 的副作用。补测试：注入 `UpsertColumnLineageVersion` 错误，断言不会留下「hash 相等 + 边已清空」。
+- **建议**：store 增加原子 `MarkAnalysisFailedIfCurrent(ctx, guid, type, metaHash, message)`（同事务 DELETE 边 + UPSERT version）；`storeError` 改为「只更新 error_message、不动 hash」，把重试控制留给 retryMap。
+- **已实施（2026-10-18，commit `d186476`）**：`MarkAnalysisFailedIfCurrent` 原子完成「清边 + 写 hash/error_message」；`RecordAnalysisError` 只 `UPDATE` 已有行的 `error_message`/`analyzed_at`，不动 hash，也不再为已删除对象创建孤儿 version 行（无行则留给重试/日志）。
 
 ### R-05 `SyncInstance` 没有实例级串行化（只有单库 gate）
 
@@ -677,8 +679,8 @@ type Runner interface {
 | --- | --- | --- |
 | R-01 机制与调用点 | Confirmed | `UpdateInstance` 整份写 JSONB；runner 克隆跨网络调用；API 数据源 CRUD 同模式；三份分报告均漏，Lead 补 |
 | R-02 方言分支与失败链 | Confirmed | MariaDB 注册、视图裸 body、`default` 无引用、`markAnalysisFailed` 写 hash 均已核对；审稿人用 overlay 测试实测 `CREATE VIEW order AS …` 在 MariaDB/StarRocks 解析失败 |
-| R-03 竞态窗口 | Confirmed（机制） | 触发需要「删除恰逢分析」，概率低；未在集成环境构造 |
-| R-04 hash 覆盖 | Confirmed | `UpsertColumnLineageVersion` 的 `DO UPDATE SET meta_hash = EXCLUDED.meta_hash`；另会为已删除对象留下孤儿 version 行 |
+| R-03 竞态窗口 | Confirmed（机制）；已实施 | 触发需要「删除恰逢分析」，概率低；CAS 已实现，未在集成环境构造并发用例 |
+| R-04 hash 覆盖 | Confirmed；已实施 | 原实现会把 hash 覆盖成 NULL；新 `RecordAnalysisError` 只更新 error_message，`MarkAnalysisFailedIfCurrent` 原子清边 |
 | R-05/R-06/R-07/R-08 | Confirmed | 调用点、写序、失败路径逐行核对；R-06/R-07 的影响是延迟/噪音，不是数据损坏 |
 | R-09 统计字段 | Confirmed（UI 层） | 未在真实库验证展示值；后端无消费者，仅前端两处渲染 |
 | R-10 no-op 规模 | Confirmed（结论） | 分报告「VIEW/MV 的 meta_guid 支路也是 no-op」不准确，已修正；与 `schemasync.md` 已知问题 3 合并 |
