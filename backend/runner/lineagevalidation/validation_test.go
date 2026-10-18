@@ -97,23 +97,44 @@ func waitForPass(t *testing.T, probe *probeRevalidator) {
 	}
 }
 
+// A restart must not leave the edges ingested while the process was down waiting
+// for a sync that changes something: Run revalidates once on its own.
+func TestRunStartsWithAPass(t *testing.T) {
+	t.Parallel()
+
+	probe := newProbeRevalidator()
+	_, stop := start(t, probe)
+	defer stop()
+
+	waitForPass(t, probe)
+	require.Equal(t, 1, probe.count())
+}
+
 // A sync round queues every database of every instance, so a burst of triggers
-// must cost one pass: the pending edge set is the same for all of them.
+// must cost one pass: the pending edge set is the same for all of them. The burst
+// arrives while the startup pass is held open, so every signal is delivered
+// before the runner can consume any of them.
 func TestTriggerCoalescesOneSyncRound(t *testing.T) {
 	t.Parallel()
 
 	probe := newProbeRevalidator()
+	probe.setBlocked(true)
 	runner, stop := start(t, probe)
 	defer stop()
+
+	// The startup pass is the one held open.
+	waitForPass(t, probe)
 
 	for range 5 {
 		runner.Trigger()
 	}
-	waitForPass(t, probe)
+	probe.setBlocked(false)
+	close(probe.release)
 
-	// Well past the settle delay: a coalesced burst must not produce a second pass.
+	waitForPass(t, probe)
+	// Well past the settle delay: the coalesced burst must not produce a third pass.
 	time.Sleep(10 * runner.settle)
-	require.Equal(t, 1, probe.count())
+	require.Equal(t, 2, probe.count())
 }
 
 // A sync that commits while a pass is running changes what that pass was reading,
@@ -126,7 +147,7 @@ func TestTriggerDuringAPassRunsOneMore(t *testing.T) {
 	runner, stop := start(t, probe)
 	defer stop()
 
-	runner.Trigger()
+	// The startup pass is the one held open.
 	waitForPass(t, probe)
 
 	runner.Trigger()
@@ -169,7 +190,7 @@ func TestFailedPassKeepsTheRunnerRunning(t *testing.T) {
 	runner, stop := start(t, probe)
 	defer stop()
 
-	runner.Trigger()
+	// The startup pass fails first.
 	waitForPass(t, probe)
 
 	probe.mu.Lock()

@@ -78,6 +78,12 @@ func (r *Runner) Run(ctx context.Context) {
 		return
 	}
 
+	// A restart leaves the edges ingested while the process was down unchecked
+	// until a sync commits, which may be hours away. One pass at startup closes
+	// that window, and it goes through the trigger channel so a sync that arrives
+	// at the same moment is folded into the same settle and pass.
+	r.Trigger()
+
 	for {
 		select {
 		case <-r.trigger:

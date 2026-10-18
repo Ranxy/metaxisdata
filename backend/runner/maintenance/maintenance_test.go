@@ -1,0 +1,338 @@
+package maintenance
+
+import (
+	"context"
+	"errors"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	"github.com/Ranxy/metaxisdata/backend/store"
+)
+
+// passTime is the fixed clock the tests give the runner, so every cutoff can be
+// asserted exactly.
+var passTime = time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)
+
+// fakeStore records the cutoffs the pass asks for and returns the configured
+// counts and errors. A delete whose name is in block waits for the pass deadline,
+// which is how a timeout is tested without a real slow query.
+type fakeStore struct {
+	mu sync.Mutex
+
+	calls   map[string]int
+	cutoffs map[string]time.Time
+	deleted map[string]int64
+	errs    map[string]error
+	block   string
+
+	setting    *storepb.WorkspaceProfileSetting
+	settingErr error
+
+	// touched is closed by the first delete call, so a test can observe Run
+	// without sleeping.
+	touched chan struct{}
+	once    sync.Once
+}
+
+func newFakeStore() *fakeStore {
+	return &fakeStore{
+		calls:   make(map[string]int),
+		cutoffs: make(map[string]time.Time),
+		deleted: make(map[string]int64),
+		errs:    make(map[string]error),
+		touched: make(chan struct{}),
+	}
+}
+
+// delete is the shared body of the fake delete methods.
+func (f *fakeStore) delete(ctx context.Context, name string, cutoff time.Time) (int64, error) {
+	f.mu.Lock()
+	f.calls[name]++
+	f.cutoffs[name] = cutoff
+	block := f.block == name
+	f.mu.Unlock()
+	f.once.Do(func() { close(f.touched) })
+
+	if block {
+		<-ctx.Done()
+		return 0, ctx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.deleted[name], f.errs[name]
+}
+
+func (f *fakeStore) DeleteExpiredExplainSQLCache(ctx context.Context, olderThan time.Time) (int64, error) {
+	return f.delete(ctx, "explain_sql_cache", olderThan)
+}
+
+func (f *fakeStore) DeleteExpiredLLMDebugLog(ctx context.Context, olderThan time.Time) (int64, error) {
+	return f.delete(ctx, "llm_debug_log", olderThan)
+}
+
+func (f *fakeStore) DeleteExpiredRevokedTokens(ctx context.Context, before time.Time) (int64, error) {
+	return f.delete(ctx, "revoked_tokens", before)
+}
+
+func (f *fakeStore) DeleteExpiredOAuthRefreshTokens(ctx context.Context, before time.Time) (int64, error) {
+	return f.delete(ctx, "oauth_refresh_tokens", before)
+}
+
+func (f *fakeStore) DeleteExpiredWebRefreshTokens(ctx context.Context, before time.Time) (int64, error) {
+	return f.delete(ctx, "web_refresh_tokens", before)
+}
+
+func (f *fakeStore) DeleteEmptyOpenLineageDatasets(ctx context.Context, olderThan time.Time) (int64, error) {
+	return f.delete(ctx, "empty_openlineage_datasets", olderThan)
+}
+
+func (f *fakeStore) DeleteOpenLineageRunsBefore(ctx context.Context, cutoff time.Time) (int64, error) {
+	return f.delete(ctx, "openlineage_runs", cutoff)
+}
+
+func (f *fakeStore) GetWorkspaceGeneralSetting(ctx context.Context) (*storepb.WorkspaceProfileSetting, error) {
+	f.mu.Lock()
+	f.calls["workspace_setting"]++
+	setting, err := f.setting, f.settingErr
+	f.mu.Unlock()
+
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
+	}
+	return setting, err
+}
+
+func (f *fakeStore) callCount(name string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls[name]
+}
+
+func (f *fakeStore) cutoff(name string) time.Time {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.cutoffs[name]
+}
+
+type fakeRevalidator struct {
+	mu           sync.Mutex
+	calls        int
+	err          error
+	revalidated  int
+	stillUnknown int
+}
+
+func (f *fakeRevalidator) run(ctx context.Context) (int, int, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, 0, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls++
+	if f.err != nil {
+		return 0, 0, f.err
+	}
+	return f.revalidated, f.stillUnknown, nil
+}
+
+func (f *fakeRevalidator) RevalidateUnresolvedLineage(ctx context.Context, _ int) (int, int, error) {
+	return f.run(ctx)
+}
+
+func (f *fakeRevalidator) RevalidateContradictedColumnClaims(ctx context.Context, _ int) (int, int, error) {
+	return f.run(ctx)
+}
+
+func (f *fakeRevalidator) callCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls
+}
+
+// newTestRunner wires the pass to the fakes with the production fields replaced by
+// deterministic ones.
+func newTestRunner(stores maintenanceStore, revalidator LineageRevalidator) *Runner {
+	return &Runner{
+		store:       stores,
+		revalidator: revalidator,
+		now:         func() time.Time { return passTime },
+		interval:    time.Millisecond,
+		passTimeout: time.Minute,
+	}
+}
+
+// An item that fails must not abort the pass: the tables after it are pruned and
+// the summary names the failure.
+func TestFailedItemDoesNotStopLaterItems(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	stores.errs["explain_sql_cache"] = errors.New("table is locked")
+	stores.deleted["llm_debug_log"] = 3
+	stores.deleted["revoked_tokens"] = 5
+	revalidator := &fakeRevalidator{revalidated: 2}
+
+	summary := newTestRunner(stores, revalidator).runOnce(context.Background())
+
+	require.Equal(t, []string{"explain_sql_cache"}, summary.failed)
+	require.NotContains(t, summary.counts, "explain_sql_cache")
+	require.Equal(t, int64(3), summary.counts["llm_debug_log"])
+	require.Equal(t, int64(5), summary.counts["revoked_tokens"])
+	for _, name := range []string{"llm_debug_log", "revoked_tokens", "oauth_refresh_tokens", "web_refresh_tokens", "empty_openlineage_datasets"} {
+		require.Equal(t, 1, stores.callCount(name), name)
+	}
+	require.Equal(t, 2, revalidator.callCount(), "both revalidations must still run")
+}
+
+// A failed setting read skips the retention item only: the sweep of what other
+// deletions left behind and both revalidations still run.
+func TestSettingErrorSkipsOnlyRetention(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	stores.settingErr = errors.New("connection refused")
+	stores.deleted["llm_debug_log"] = 1
+	stores.deleted["empty_openlineage_datasets"] = 2
+	revalidator := &fakeRevalidator{revalidated: 1}
+
+	summary := newTestRunner(stores, revalidator).runOnce(context.Background())
+
+	for _, name := range []string{"explain_sql_cache", "llm_debug_log", "revoked_tokens", "oauth_refresh_tokens", "web_refresh_tokens", "empty_openlineage_datasets"} {
+		require.Equal(t, 1, stores.callCount(name), name)
+	}
+	require.Equal(t, 2, revalidator.callCount())
+	require.Equal(t, 0, stores.callCount("openlineage_runs"))
+	require.Equal(t, "workspace setting unavailable", summary.retentionSkipped)
+	require.Empty(t, summary.failed, "a setting read failure is a skipped item, not a failed pass")
+}
+
+// Without a retention window the runs are kept: the pass says why it skipped them
+// and still sweeps the empty datasets.
+func TestUnsetRetentionWindowDoesNotDeleteRuns(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		days int32
+	}{
+		{name: "zero days", days: 0},
+		{name: "negative days", days: -3},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			stores := newFakeStore()
+			stores.setting = &storepb.WorkspaceProfileSetting{OpenlineageRetentionDays: tt.days}
+
+			summary := newTestRunner(stores, nil).runOnce(context.Background())
+
+			require.Equal(t, 0, stores.callCount("openlineage_runs"))
+			require.Equal(t, "no retention window set", summary.retentionSkipped)
+			require.Equal(t, 1, stores.callCount("empty_openlineage_datasets"))
+		})
+	}
+}
+
+// Every cutoff is the pass start minus its window, computed once so one pass
+// cannot use two different "now" values.
+func TestCutoffsAreBasedOnThePassStart(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	stores.setting = &storepb.WorkspaceProfileSetting{OpenlineageRetentionDays: 7}
+
+	newTestRunner(stores, nil).runOnce(context.Background())
+
+	want := map[string]time.Time{
+		"explain_sql_cache":          passTime.Add(-store.ExplainSQLCacheTTL),
+		"llm_debug_log":              passTime.Add(-llmDebugLogRetention),
+		"revoked_tokens":             passTime,
+		"oauth_refresh_tokens":       passTime,
+		"web_refresh_tokens":         passTime,
+		"empty_openlineage_datasets": passTime.Add(-openLineageDatasetSweepGrace),
+		"openlineage_runs":           passTime.AddDate(0, 0, -7),
+	}
+	for name, cutoff := range want {
+		require.Equalf(t, cutoff, stores.cutoff(name), "cutoff for %s", name)
+	}
+}
+
+// A runner wired without a revalidator must still prune; only the revalidation
+// items are absent.
+func TestNilRevalidatorIsSafe(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	stores.deleted["llm_debug_log"] = 4
+
+	var summary *passSummary
+	require.NotPanics(t, func() {
+		summary = newTestRunner(stores, nil).runOnce(context.Background())
+	})
+
+	require.Equal(t, int64(4), summary.counts["llm_debug_log"])
+	require.NotContains(t, summary.counts, "unresolved_lineage")
+	require.NotContains(t, summary.counts, "contradicted_column_claims")
+}
+
+// The pass deadline reaches every item: once it fires on a stuck delete the items
+// after it fail fast instead of running unbounded.
+func TestPassTimeoutBoundsTheWholePass(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	stores.block = "explain_sql_cache"
+
+	runner := newTestRunner(stores, &fakeRevalidator{revalidated: 1})
+	runner.passTimeout = 5 * time.Millisecond
+
+	started := time.Now()
+	summary := runner.runOnce(context.Background())
+	require.Less(t, time.Since(started), 5*time.Second, "the pass must end at its deadline")
+
+	for _, name := range []string{
+		"explain_sql_cache", "llm_debug_log", "revoked_tokens",
+		"oauth_refresh_tokens", "web_refresh_tokens",
+	} {
+		require.Contains(t, summary.failed, name, "the item after the stuck one still ran")
+	}
+	require.Equal(t, "workspace setting unavailable", summary.retentionSkipped)
+}
+
+// Run exits on context cancellation even with a fast injected interval.
+func TestRunStopsOnContextCancel(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	runner := newTestRunner(stores, nil)
+	runner.interval = time.Millisecond
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runner.Run(ctx)
+	}()
+
+	select {
+	case <-stores.touched:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the startup pass did not run")
+	}
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not return when the context was cancelled")
+	}
+}

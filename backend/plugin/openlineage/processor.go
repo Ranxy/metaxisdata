@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"strings"
-	"sync"
 
 	"github.com/pkg/errors"
 
@@ -28,20 +27,24 @@ type Processor struct {
 	// is analyzed with it instead of trusting the producer's run-level
 	// columnLineage facet.
 	lineage *lineage.Analyzer
-	// revalidateMu serializes revalidation passes. The maintenance pass and the
+	// revalidateSem serializes revalidation passes. The maintenance pass and the
 	// post-sync runner share one processor and can fire at once, and both replace
 	// an object's edges as a set, so overlapping passes would contend on the same
-	// rows to write the same result.
-	revalidateMu sync.Mutex
+	// rows to write the same result. It is a channel rather than a sync.Mutex
+	// because a pass waiting here must observe its context: shutdown cannot wait
+	// for a pass that is only queued, and a pass timeout has to bound the wait, not
+	// just the queries it runs after acquiring.
+	revalidateSem chan struct{}
 }
 
 // NewProcessor creates a new event processor. reporter is told about datasets that
 // match no registered instance; it may be nil.
 func NewProcessor(s *store.Store, lineageAnalyzer *lineage.Analyzer, reporter UnmatchedNamespaceReporter) *Processor {
 	return &Processor{
-		store:    s,
-		resolver: NewResolver(s, reporter),
-		lineage:  lineageAnalyzer,
+		store:         s,
+		resolver:      NewResolver(s, reporter),
+		lineage:       lineageAnalyzer,
+		revalidateSem: make(chan struct{}, 1),
 	}
 }
 

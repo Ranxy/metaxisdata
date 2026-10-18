@@ -20,6 +20,25 @@ type metaKey struct {
 	metaType storepb.MetaType
 }
 
+// acquireRevalidation serializes revalidation passes without an uncancellable
+// wait: a pass that arrives while another is running either takes the semaphore
+// once it is released or returns ctx.Err() when its context ends first. A plain
+// mutex would let shutdown block on a queued pass and would keep a pass timeout
+// from bounding the wait.
+func (p *Processor) acquireRevalidation(ctx context.Context) error {
+	select {
+	case p.revalidateSem <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// releaseRevalidation frees the semaphore taken by acquireRevalidation.
+func (p *Processor) releaseRevalidation() {
+	<-p.revalidateSem
+}
+
 // RevalidateUnresolvedLineage re-checks the edges whose endpoints the registry did
 // not know when they were stored.
 //
@@ -38,8 +57,10 @@ type metaKey struct {
 func (p *Processor) RevalidateUnresolvedLineage(ctx context.Context, limit int) (revalidated, stillUnknown int, err error) {
 	// One pass at a time: the maintenance pass and the post-sync runner share this
 	// processor, and both replace an object's edges as a set.
-	p.revalidateMu.Lock()
-	defer p.revalidateMu.Unlock()
+	if err := p.acquireRevalidation(ctx); err != nil {
+		return 0, 0, err
+	}
+	defer p.releaseRevalidation()
 
 	if limit <= 0 {
 		limit = revalidationBatch
@@ -76,8 +97,10 @@ func (p *Processor) RevalidateUnresolvedLineage(ctx context.Context, limit int) 
 // is the only pass that can still fix them. A claim is blanked, the edge stays
 // as a table-level dependency, and what is still unknown around it is counted.
 func (p *Processor) RevalidateContradictedColumnClaims(ctx context.Context, limit int) (revalidated, stillUnknown int, err error) {
-	p.revalidateMu.Lock()
-	defer p.revalidateMu.Unlock()
+	if err := p.acquireRevalidation(ctx); err != nil {
+		return 0, 0, err
+	}
+	defer p.releaseRevalidation()
 
 	if limit <= 0 {
 		limit = revalidationBatch
