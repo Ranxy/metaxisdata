@@ -35,7 +35,7 @@ Two independent single-use rotating flows: the MCP OAuth 2.1 server at `/oauth/*
 
 ## Where things live
 
-- DDL: `backend/migrator/migration/0.1/0014##refresh_tokens.sql` (historical table), `0021##connected_apps.sql` (adds `last_tool_call_at` / `revoked_at` / `revoked_by` and the `(user_id, created_at DESC)` index), mirrored in `backend/migrator/migration/LATEST.sql`.
+- DDL: `backend/migrator/migration/0.1/0014##refresh_tokens.sql` (historical table), `0023##connected_apps.sql` (adds `last_tool_call_at` / `revoked_at` / `revoked_by` and the `(user_id, created_at DESC)` index), mirrored in `backend/migrator/migration/LATEST.sql`.
 - Query shapes and the digest-only rule: `backend/store/oauth_grant.go` (rotation, revoke, live check, throttled touch, list), `backend/store/web_refresh_token.go`; guarded by `backend/store/oauth_grant_test.go` (renamed from `refresh_token_test.go`).
 - MCP flow: `backend/api/oauth/token.go` (`TokenHandler`, `exchangeAuthorizationCode`, `exchangeRefreshToken`, `createGrant`, `rotateGrant`, `revokeFailedGrant`, `writeGrantResponse`) and `backend/api/oauth/metadata.go`; connected-app management in `backend/api/v1/connected_app_service.go`.
 - Enforcement: `backend/api/auth/authenticator.go` (`GrantStore`, `grantRevoked`, `ErrGrantRevoked`), `backend/component/state/state.go` (`GrantRevocationCache`), `backend/mcp/auth.go` (refuse a token without `gid`, stash it in `TokenInfo.Extra`).

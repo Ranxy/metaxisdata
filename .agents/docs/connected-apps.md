@@ -137,7 +137,7 @@ grant 行:created_at(授权时间)/expires_at(滑动 30 天)/
 
 ## Where things live
 
-- Schema: `backend/migrator/migration/0.1/0014##refresh_tokens.sql`(建表)、`0021##connected_apps.sql`(三列 + `(user_id, created_at DESC)` 索引)、`LATEST.sql`(最终状态);表名仍是 `oauth_refresh_token`。
+- Schema: `backend/migrator/migration/0.1/0014##refresh_tokens.sql`(建表)、`0023##connected_apps.sql`(三列 + `(user_id, created_at DESC)` 索引)、`LATEST.sql`(最终状态);表名仍是 `oauth_refresh_token`。
 - Store:`backend/store/oauth_grant.go`(`Create/Get/Rotate/Revoke/RevokeByUserAndClient/IsLive/Touch/GetConnectedApp/ListConnectedApps/DeleteExpired`);形状守卫 `backend/store/oauth_grant_test.go`。
 - 服务:`backend/api/v1/connected_app_service.go`;筛选 `backend/api/v1/filter.go` 的 `parseConnectedAppFilter`;proto `proto/v1/v1/connected_app_service.proto`(生成物随 `buf generate` 提交)。
 - 令牌与校验:`backend/api/auth/auth.go`(`gid`/`GrantID`)、`backend/api/auth/mcp_token.go`、`backend/api/auth/authenticator.go`(`GrantStore`、`grantRevoked`、`ErrGrantRevoked`)、`backend/component/state/state.go`(`GrantRevocationCache`)、`backend/mcp/auth.go`(拒绝无 `gid`、`TokenInfo.Extra` 携带 grant)、`backend/api/oauth/token.go`(创建/轮换/失败撤销;`ServerConfig.TokenStores` 是 hermetic 测试接缝),`backend/api/oauth/token_test.go`(过期/已撤销/换资源/scope 漂移都不烧凭据、抢占失败、principal 拒绝置撤销并清缓存、authorization_code 先建行再签令牌)。

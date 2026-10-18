@@ -79,12 +79,12 @@ describe("ConnectedAppTable", () => {
   // Red is reserved for failures, so each state is a tone, not an error.
   it("maps every state to its label and badge variant", () => {
     const cases: Array<[ConnectedApp_State, string, string]> = [
-      [ConnectedApp_State.ACTIVE, "Active", "bg-green-100"],
-      [ConnectedApp_State.EXPIRED, "Expired", "bg-yellow-100"],
+      [ConnectedApp_State.ACTIVE, "Active", "bg-success-subtle"],
+      [ConnectedApp_State.EXPIRED, "Expired", "bg-warning-subtle"],
       [
         ConnectedApp_State.REAUTH_REQUIRED,
         "Reauthorization required",
-        "bg-yellow-100",
+        "bg-warning-subtle",
       ],
       [ConnectedApp_State.REVOKED, "Revoked", "bg-secondary"],
       [ConnectedApp_State.INACTIVE, "Inactive", "text-foreground"],
