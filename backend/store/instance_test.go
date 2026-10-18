@@ -274,3 +274,48 @@ func TestUpdateInstanceRejectsMetadataAndMetadataUpdatesTogether(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "mutually exclusive")
 }
+
+// The API writes one edited field, the schema syncer writes the sync bookkeeping;
+// the two patches merge instead of the later one restoring the metadata it read
+// before the other wrote. Updating the title must leave last_sync_time, version
+// and the case-sensitivity flag exactly as the syncer stored them.
+func TestApplyInstanceMetadataUpdatesKeepsTheSyncFields(t *testing.T) {
+	t.Parallel()
+
+	cipher := newTestCipher(t)
+	lastSyncAt := timestamppb.Now()
+	stored := &storepb.Instance{
+		Title:                    "prod orders",
+		Activation:               false,
+		LastSyncTime:             lastSyncAt,
+		Version:                  "8.0.36",
+		MysqlLowerCaseTableNames: 1,
+		DataSources: []*storepb.DataSource{{
+			Id:       "admin",
+			Type:     storepb.DataSourceType_ADMIN,
+			Host:     "db.internal",
+			Password: "hunter2",
+		}},
+	}
+	encrypted, err := encryptInstanceMetadata(stored, cipher)
+	require.NoError(t, err)
+	raw, err := protojson.Marshal(encrypted)
+	require.NoError(t, err)
+
+	// What UpdateInstance passes for an update_mask of ["title", "activation"].
+	patched, err := applyInstanceMetadataUpdates(raw, cipher, []func(*storepb.Instance){
+		func(metadata *storepb.Instance) { metadata.Title = "renamed" },
+		func(metadata *storepb.Instance) { metadata.Activation = true },
+	})
+	require.NoError(t, err)
+
+	got := &storepb.Instance{}
+	require.NoError(t, common.ProtojsonUnmarshaler.Unmarshal(patched, got))
+	require.NoError(t, decryptInstance(got, cipher))
+	require.Equal(t, "renamed", got.GetTitle())
+	require.True(t, got.GetActivation())
+	require.Equal(t, lastSyncAt.AsTime(), got.GetLastSyncTime().AsTime(), "the sync time must survive an API patch")
+	require.Equal(t, "8.0.36", got.GetVersion())
+	require.Equal(t, int32(1), got.GetMysqlLowerCaseTableNames())
+	require.Equal(t, "hunter2", got.GetDataSources()[0].GetPassword())
+}

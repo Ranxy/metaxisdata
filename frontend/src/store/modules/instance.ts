@@ -103,7 +103,7 @@ export const useInstanceStore = defineStore("instance", {
       await this.fetch(true);
     },
 
-    async sync(name: string, enableFullSync = false) {
+    async sync(name: string, enableFullSync = true) {
       await syncInstance(name, enableFullSync);
       await this.fetch(true);
     },

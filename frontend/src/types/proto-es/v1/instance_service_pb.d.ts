@@ -246,12 +246,16 @@ export declare type SyncInstanceRequest = Message<"metaxisdata.v1.SyncInstanceRe
   name: string;
 
   /**
-   * When full sync is enabled, all databases in the instance will be synchronized. Otherwise, only
-   * the instance metadata (such as the database list) and any newly discovered instances will be synced.
+   * Whether the sync also refreshes every existing database of the instance.
    *
-   * @generated from field: bool enable_full_sync = 2;
+   * Unset means true: a user-triggered sync refreshes the metadata and every database,
+   * which is what the background scan and instance creation already do. Set it to false
+   * only for a discovery-only sync that refreshes the instance metadata and queues the
+   * databases that were just discovered, leaving the existing ones to the background scan.
+   *
+   * @generated from field: optional bool enable_full_sync = 2;
    */
-  enableFullSync: boolean;
+  enableFullSync?: boolean;
 };
 
 /**

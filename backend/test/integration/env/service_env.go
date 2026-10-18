@@ -532,7 +532,7 @@ func (e *ServiceEnv) SyncInstance(ctx context.Context, t *testing.T, instanceNam
 
 	resp, err := e.instanceClient.SyncInstance(ctx, authorizedRequest(e.token, &v1pb.SyncInstanceRequest{
 		Name:           instanceName,
-		EnableFullSync: enableFullSync,
+		EnableFullSync: &enableFullSync,
 	}))
 	require.NoError(t, err)
 	return resp.Msg

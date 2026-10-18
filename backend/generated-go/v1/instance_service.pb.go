@@ -504,9 +504,13 @@ type SyncInstanceRequest struct {
 	// The name of instance.
 	// Format: instances/{instance}
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	// When full sync is enabled, all databases in the instance will be synchronized. Otherwise, only
-	// the instance metadata (such as the database list) and any newly discovered instances will be synced.
-	EnableFullSync bool `protobuf:"varint,2,opt,name=enable_full_sync,json=enableFullSync,proto3" json:"enable_full_sync,omitempty"`
+	// Whether the sync also refreshes every existing database of the instance.
+	//
+	// Unset means true: a user-triggered sync refreshes the metadata and every database,
+	// which is what the background scan and instance creation already do. Set it to false
+	// only for a discovery-only sync that refreshes the instance metadata and queues the
+	// databases that were just discovered, leaving the existing ones to the background scan.
+	EnableFullSync *bool `protobuf:"varint,2,opt,name=enable_full_sync,json=enableFullSync,proto3,oneof" json:"enable_full_sync,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -549,8 +553,8 @@ func (x *SyncInstanceRequest) GetName() string {
 }
 
 func (x *SyncInstanceRequest) GetEnableFullSync() bool {
-	if x != nil {
-		return x.EnableFullSync
+	if x != nil && x.EnableFullSync != nil {
+		return *x.EnableFullSync
 	}
 	return false
 }
@@ -1580,11 +1584,12 @@ const file_v1_instance_service_proto_rawDesc = "" +
 	"\x14metaxisdata/InstanceR\x04nameJ\x04\b\x02\x10\x03R\x05force\"K\n" +
 	"\x17UndeleteInstanceRequest\x120\n" +
 	"\x04name\x18\x01 \x01(\tB\x1c\xe0A\x02\xfaA\x16\n" +
-	"\x14metaxisdata/InstanceR\x04name\"q\n" +
+	"\x14metaxisdata/InstanceR\x04name\"\x8b\x01\n" +
 	"\x13SyncInstanceRequest\x120\n" +
 	"\x04name\x18\x01 \x01(\tB\x1c\xe0A\x02\xfaA\x16\n" +
-	"\x14metaxisdata/InstanceR\x04name\x12(\n" +
-	"\x10enable_full_sync\x18\x02 \x01(\bR\x0eenableFullSync\"4\n" +
+	"\x14metaxisdata/InstanceR\x04name\x12-\n" +
+	"\x10enable_full_sync\x18\x02 \x01(\bH\x00R\x0eenableFullSync\x88\x01\x01B\x13\n" +
+	"\x11_enable_full_sync\"4\n" +
 	"\x14SyncInstanceResponse\x12\x1c\n" +
 	"\tdatabases\x18\x01 \x03(\tR\tdatabases\"a\n" +
 	"\x19BatchSyncInstancesRequest\x12D\n" +
@@ -1796,6 +1801,7 @@ func file_v1_instance_service_proto_init() {
 	}
 	file_v1_annotation_proto_init()
 	file_v1_common_proto_init()
+	file_v1_instance_service_proto_msgTypes[7].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

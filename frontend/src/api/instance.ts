@@ -143,7 +143,9 @@ export async function undeleteInstance(name: string) {
   return await instanceClient.undeleteInstance(request);
 }
 
-export async function syncInstance(name: string, enableFullSync = false) {
+// A user-triggered sync refreshes every existing database by default; pass false
+// only for a discovery-only sync that queues what the instance metadata just found.
+export async function syncInstance(name: string, enableFullSync = true) {
   const request = create(SyncInstanceRequestSchema, {
     name,
     enableFullSync,
