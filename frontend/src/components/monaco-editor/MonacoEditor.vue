@@ -4,7 +4,7 @@
 			v-if="!ready"
 			class="absolute inset-0 flex items-center justify-center"
 		>
-			<span class="text-gray-500">{{ t("common.loading") }}</span>
+			<span class="text-muted-foreground">{{ t("common.loading") }}</span>
 		</div>
 	</div>
 </template>

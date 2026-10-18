@@ -65,7 +65,10 @@
             <li
               v-for="notification in notifications"
               :key="notification.name"
-              class="flex gap-3 py-4"
+              :class="[
+                'flex gap-3 rounded-md px-2 py-4',
+                notification.readTime ? '' : 'bg-muted/50',
+              ]"
             >
               <component
                 :is="severityIcon(notification.severity)"
@@ -75,13 +78,17 @@
 
               <div class="min-w-0 flex-1 space-y-1">
                 <div class="flex flex-wrap items-center gap-2">
-                  <p class="text-sm font-medium">
+                  <p
+                    :class="[
+                      'text-sm',
+                      notification.readTime ? 'font-medium' : 'font-semibold',
+                    ]"
+                  >
                     {{ t(textOf(notification).titleKey, textOf(notification).titleParams) }}
                   </p>
                   <Badge
                     v-if="!notification.readTime"
-                    variant="secondary"
-                    class="text-[10px]"
+                    variant="info"
                   >
                     {{ t("notifications.statusUnread") }}
                   </Badge>
@@ -169,26 +176,34 @@
 
                 <div class="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-xs text-muted-foreground">
                   <span>{{ formatRelativeTime(notification.createTime, locale) }}</span>
+                  <!-- Inline text links were 24x16 hit targets, below WCAG
+                       2.5.8 and hard to hit on a phone; each action is now a
+                       compact ghost button with a >=32px target. `删除` keeps
+                       the danger token, which is readable in both themes. -->
                   <Button
                     v-if="!notification.readTime"
-                    variant="link"
+                    variant="ghost"
                     size="sm"
-                    class="h-auto p-0 text-xs"
+                    class="min-h-8 px-2 text-xs"
                     @click="markRead(notification)"
                   >
                     {{ t("notifications.markRead") }}
                   </Button>
-                  <RouterLink
-                    v-if="textOf(notification).href"
-                    :to="textOf(notification).href!"
-                    class="underline-offset-4 hover:text-foreground hover:underline"
-                  >
-                    {{ t("notifications.open") }}
-                  </RouterLink>
                   <Button
-                    variant="link"
+                    v-if="textOf(notification).href"
+                    variant="ghost"
                     size="sm"
-                    class="h-auto p-0 text-xs text-destructive"
+                    class="min-h-8 px-2 text-xs"
+                    as-child
+                  >
+                    <RouterLink :to="textOf(notification).href!">
+                      {{ t("notifications.open") }}
+                    </RouterLink>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    class="min-h-8 px-2 text-xs text-destructive hover:text-destructive"
                     @click="askDelete(notification)"
                   >
                     {{ t("notifications.delete") }}
@@ -397,7 +412,7 @@ function severityTone(severity: NotificationSeverity) {
     case NotificationSeverity.ERROR:
       return "text-destructive";
     case NotificationSeverity.WARNING:
-      return "text-yellow-600";
+      return "text-warning";
     case NotificationSeverity.INFO:
       return "text-muted-foreground";
     case NotificationSeverity.UNSPECIFIED:

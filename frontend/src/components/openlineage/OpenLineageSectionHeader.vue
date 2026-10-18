@@ -1,12 +1,14 @@
 <template>
   <PageHeader
+    eyebrow="OpenLineage"
     :title="title"
     :description="description"
   >
-    <template #breadcrumb>
-      <div class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-        {{ t("openlineage.title") }}
-      </div>
+    <template
+      v-if="$slots['title-extra']"
+      #title-extra
+    >
+      <slot name="title-extra" />
     </template>
     <template
       v-if="$slots.actions"
@@ -18,16 +20,13 @@
 </template>
 
 <script setup lang="ts">
-import { useI18n } from "vue-i18n";
 import PageHeader from "@/components/layout/PageHeader.vue";
 
-// The Ingestion Settings shortcut that used to sit here on every OpenLineage
-// page is gone: Settings already owns that destination in the sidebar, and the
-// Overview surfaces it from its own empty state instead.
+// The product-area overline every OpenLineage page shares. It used to be a raw
+// breadcrumb slot with its own letter-spacing; `eyebrow` is the page header's
+// one overline style, so the section no longer hand-rolls it.
 defineProps<{
   title: string;
   description: string;
 }>();
-
-const { t } = useI18n();
 </script>

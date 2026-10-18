@@ -39,7 +39,7 @@
             </CardDescription>
           </div>
           <div class="hidden shrink-0 whitespace-nowrap pt-1 text-xs text-muted-foreground lg:block">
-            {{ t("auditLogs.parentScope") }}: <span class="font-mono">workspaces/-</span>
+            {{ t("auditLogs.parentScope") }}: {{ t("auditLogs.scopeWorkspace") }}
           </div>
         </div>
       </CardHeader>
@@ -106,7 +106,12 @@
                       <span class="h-1.5 w-1.5 rounded-full bg-muted-foreground/50" aria-hidden="true" />
                       <span class="sr-only">{{ getSeverityLabel(log.severity) }}</span>
                     </span>
-                    <span class="truncate font-mono text-xs" :title="log.method">{{ log.method }}</span>
+                    <!-- The ledger stores the RPC path; an administrator reads
+                         an event name. The raw procedure stays in the tooltip
+                         and in the detail dialog. -->
+                    <span class="truncate text-sm" :title="log.method">
+                      {{ auditEventName(log.method) }}
+                    </span>
                   </div>
                   <div
                     v-if="log.user"
@@ -202,8 +207,12 @@
                 {{ t("auditLogs.latency", { value: String(selectedLog.latencyMs) }) }}
               </dd>
             </div>
-            <div class="space-y-1 sm:col-span-2 lg:col-span-4">
-              <dt class="text-xs font-medium text-muted-foreground">{{ t("auditLogs.method") }}</dt>
+            <div class="space-y-1 sm:col-span-2">
+              <dt class="text-xs font-medium text-muted-foreground">{{ t("auditLogs.event") }}</dt>
+              <dd class="text-sm">{{ auditEventName(selectedLog.method) }}</dd>
+            </div>
+            <div class="space-y-1 sm:col-span-2">
+              <dt class="text-xs font-medium text-muted-foreground">{{ t("auditLogs.rawMethod") }}</dt>
               <dd class="font-mono text-xs break-all">{{ selectedLog.method }}</dd>
             </div>
             <div class="space-y-1 sm:col-span-2">
@@ -326,7 +335,83 @@ type StatusVariant = "success" | "secondary" | "destructive";
 
 const WORKSPACE_PARENT = "workspaces/-";
 
-const { t, locale } = useI18n();
+/**
+ * The audited procedures this build knows, by `Service/Method`, mapped to the
+ * `auditLogs.eventNames.*` key that names the event in the reader's language.
+ * Audit rows store the raw ConnectRPC path, so anything missing here falls back
+ * to the shortened procedure (`AuthService.Login`) rather than disappearing.
+ */
+const AUDIT_EVENT_KEYS: Record<string, string> = {
+  "ApplicationService/CreateApplication": "createApplication",
+  "ApplicationService/CreateApplicationAPIKey": "createApplicationApiKey",
+  "ApplicationService/DeleteApplication": "deleteApplication",
+  "ApplicationService/DeleteApplicationSQL": "deleteApplicationSql",
+  "ApplicationService/RevokeApplicationAPIKey": "revokeApplicationApiKey",
+  "ApplicationService/UpdateApplication": "updateApplication",
+  "AuditLogService/ListAuditLogs": "listAuditLogs",
+  "AuthService/ApproveDeviceLogin": "approveDeviceLogin",
+  "AuthService/CreateDeviceLogin": "createDeviceLogin",
+  "AuthService/Login": "login",
+  "AuthService/Logout": "logout",
+  "DatabaseService/CreateManualSQL": "createManualSql",
+  "DatabaseService/DeleteManualSQL": "deleteManualSql",
+  "DatabaseService/SyncDatabase": "syncSchema",
+  "DatabaseService/UpdateManualSQL": "updateManualSql",
+  "EnvironmentService/CreateEnvironment": "createEnvironment",
+  "EnvironmentService/DeleteEnvironment": "deleteEnvironment",
+  "EnvironmentService/UpdateEnvironment": "updateEnvironment",
+  "GroupService/CreateGroup": "createGroup",
+  "GroupService/DeleteGroup": "deleteGroup",
+  "GroupService/UpdateGroup": "updateGroup",
+  "IamService/SetWorkspaceIamPolicy": "setIamPolicy",
+  "IdentityProviderService/CreateIdentityProvider": "createIdentityProvider",
+  "IdentityProviderService/DeleteIdentityProvider": "deleteIdentityProvider",
+  "IdentityProviderService/DeleteIdentityProviderBinding":
+    "deleteIdentityProviderBinding",
+  "IdentityProviderService/UpdateIdentityProvider": "updateIdentityProvider",
+  "InstanceService/BatchSyncInstances": "syncSchema",
+  "InstanceService/BatchUpdateInstances": "batchUpdateInstances",
+  "InstanceService/CreateDataSource": "createDataSource",
+  "InstanceService/CreateInstance": "createInstance",
+  "InstanceService/DeleteDataSource": "deleteDataSource",
+  "InstanceService/DeleteInstance": "deleteInstance",
+  "InstanceService/SyncInstance": "syncSchema",
+  "InstanceService/UndeleteInstance": "undeleteInstance",
+  "InstanceService/UpdateDataSource": "updateDataSource",
+  "InstanceService/UpdateInstance": "updateInstance",
+  "OAuthService/ApproveOAuthAuthorizationRequest": "approveOAuthAuthorization",
+  "OpenLineageService/CreateAPIKey": "createOpenLineageApiKey",
+  "OpenLineageService/CreateNamespaceMapping": "createNamespaceMapping",
+  "OpenLineageService/DeleteNamespaceMapping": "deleteNamespaceMapping",
+  "OpenLineageService/RevokeAPIKey": "revokeOpenLineageApiKey",
+  "OpenLineageService/UpdateNamespaceMapping": "updateNamespaceMapping",
+  "RoleService/CreateRole": "createRole",
+  "RoleService/DeleteRole": "deleteRole",
+  "RoleService/UpdateRole": "updateRole",
+  "SettingService/UpdateDebugConfig": "updateDebugConfig",
+  "SettingService/UpdateWorkspaceProfileSetting": "updateSettings",
+  "UserService/CreateUser": "createUser",
+  "UserService/DeleteUser": "deleteUser",
+  "UserService/UndeleteUser": "undeleteUser",
+  "UserService/UpdateUser": "updateUser",
+};
+
+/**
+ * Ledger rows whose method is an HTTP route or an MCP tool call rather than a
+ * ConnectRPC procedure: the OAuth endpoints, OpenLineage ingestion, and the MCP
+ * surface call the audit logger directly, so they never reach the RPC table.
+ */
+const AUDIT_RAW_PATHS: Record<string, string> = {
+  "/api/v1/lineage": "ingestOpenLineageEvent",
+  "/oauth/authorize": "authorizeOAuthRequest",
+  "/oauth/authorize/complete": "completeOAuthAuthorization",
+  "/oauth/register": "registerOAuthClient",
+  "/oauth/token": "issueOAuthToken",
+};
+
+const MCP_TOOL_CALL_PREFIX = "mcp/tools/call:";
+
+const { t, locale, te } = useI18n();
 const { handleError } = useErrorHandler();
 
 const isExporting = ref(false);
@@ -412,6 +497,32 @@ function handleFiltersUpdate(filters: ActiveFilter[]) {
   severityFilter.value = valueOf("level") as SeverityValue | "";
 }
 
+/**
+ * The search box prints event names, so it has to search them too. The ledger
+ * filter only matches the stored method, so a localized name is translated back
+ * to every procedure it can name; a raw method fragment still matches as
+ * before, which keeps `AuthService` / `Login` queries working.
+ */
+function methodSearchClause(term: string): string {
+  const needle = term.toLowerCase();
+  const localizedProcedures = [
+    ...Object.entries(AUDIT_EVENT_KEYS),
+    ...Object.entries(AUDIT_RAW_PATHS),
+  ]
+    .filter(([, key]) => {
+      const i18nKey = `auditLogs.eventNames.${key}`;
+      return te(i18nKey) && t(i18nKey).toLowerCase().includes(needle);
+    })
+    .map(([procedure]) => procedure);
+  const clauses = localizedProcedures.map(
+    (procedure) => `method.matches(${JSON.stringify(procedure)})`
+  );
+  // A raw fragment still matches: `Login` finds AuthService/Login even though
+  // its localized name reads "Sign in".
+  clauses.push(`method.matches(${JSON.stringify(term)})`);
+  return clauses.length === 1 ? clauses[0] : `(${clauses.join(" || ")})`;
+}
+
 const filterExpression = computed(() => {
   const clauses: string[] = [];
   const resource = resourceFilter.value.trim();
@@ -421,11 +532,9 @@ const filterExpression = computed(() => {
   if (actorFilter.value) {
     clauses.push(`user == ${JSON.stringify(actorFilter.value)}`);
   }
-  // The search box is the method filter, and `matches` makes it a case-insensitive
-  // substring, so a reader can type `Login` instead of the full RPC name.
-  const method = searchText.value.trim();
-  if (method) {
-    clauses.push(`method.matches(${JSON.stringify(method)})`);
+  const search = searchText.value.trim();
+  if (search) {
+    clauses.push(methodSearchClause(search));
   }
   if (severityFilter.value) {
     clauses.push(`severity == ${JSON.stringify(severityFilter.value)}`);
@@ -449,6 +558,44 @@ const payloadSections = computed(() => [
 
 function formatTimestamp(ts: Timestamp | undefined): string {
   return formatDateTime(ts, locale.value, { seconds: true });
+}
+
+/** `/metaxisdata.v1.AuthService/Login` → `{ service: "AuthService", method:
+ *  "Login" }`. The package prefix is noise for a reader and the last segment is
+ *  the operation. */
+function splitProcedure(procedure: string): {
+  service: string;
+  method: string;
+} {
+  const segments = procedure.replace(/^\//, "").split("/");
+  const method = segments.pop() ?? "";
+  const servicePath = segments.pop() ?? "";
+  const service = servicePath.split(".").pop() ?? servicePath;
+  return { service, method };
+}
+
+/** What the Event column prints: a localized event name when this build knows
+ *  the procedure, otherwise `Service.Method` — never the raw `/metaxisdata.v1.`
+ *  path, which stays in the tooltip and the detail dialog. */
+function auditEventName(procedure: string): string {
+  if (!procedure) {
+    return t("auditLogs.unknownOperation");
+  }
+  if (procedure.startsWith(MCP_TOOL_CALL_PREFIX)) {
+    return t("auditLogs.eventNames.callMcpTool", {
+      tool: procedure.slice(MCP_TOOL_CALL_PREFIX.length),
+    });
+  }
+  const { service, method } = splitProcedure(procedure);
+  const key =
+    AUDIT_RAW_PATHS[procedure] ?? AUDIT_EVENT_KEYS[`${service}/${method}`];
+  if (key) {
+    const i18nKey = `auditLogs.eventNames.${key}`;
+    if (te(i18nKey)) {
+      return t(i18nKey);
+    }
+  }
+  return service ? `${service}.${method}` : method || procedure;
 }
 
 /** The list splits the timestamp so the column fits a narrow window: the date

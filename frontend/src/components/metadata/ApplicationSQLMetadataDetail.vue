@@ -7,9 +7,9 @@
          would push the actions onto their own line instead of being truncated. -->
     <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
       <div class="min-w-0 flex-1 space-y-1">
-        <div class="truncate text-lg font-semibold">
+        <h1 class="truncate text-2xl font-semibold tracking-tight">
           {{ displayTitle }}
-        </div>
+        </h1>
         <div class="text-sm text-muted-foreground wrap-break-word">
           {{ summaryLine }}
         </div>

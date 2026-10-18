@@ -1,13 +1,16 @@
 <template>
-  <div class="flex h-full min-h-0 flex-col gap-3">
+  <!-- Below `lg` the workbench stacks: the page itself grows inside the
+       shell's single scroller, so the output pane gets width and height instead
+       of the 0px column a fixed two-column grid produced on a phone. -->
+  <div class="flex flex-col gap-3 lg:h-full lg:min-h-0">
     <PageHeader
       :title="t('explainSQL.title')"
       class="shrink-0"
     />
 
-    <div class="grid grid-cols-[24rem_minmax(0,1fr)] min-h-0 flex-1 border border-border rounded-lg overflow-hidden">
+    <div class="grid grid-cols-1 overflow-hidden rounded-lg border border-border lg:min-h-0 lg:flex-1 lg:grid-cols-[24rem_minmax(0,1fr)]">
       <!-- Left panel -->
-      <div class="border-r border-border p-4 overflow-y-auto flex flex-col gap-3 bg-muted/30">
+      <div class="flex flex-col gap-3 border-b border-border bg-muted/30 p-4 lg:overflow-y-auto lg:border-b-0 lg:border-r">
         <!-- Source tabs -->
         <div class="flex gap-1 border-b border-border pb-2">
           <button
@@ -53,7 +56,7 @@
                 <div class="text-xs text-muted-foreground font-mono break-all">{{ selectedMeta.path }}</div>
                 <router-link
                   :to="metadataBrowserUrl"
-                  class="inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 font-medium hover:underline mt-1"
+                  class="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
                 >
                   <ExternalLink class="h-3 w-3" />
                   {{ t("explainSQL.viewInBrowser") }}
@@ -163,7 +166,7 @@
               </div>
             </div>
           </div>
-          <div class="flex-1 min-h-0 border rounded-md overflow-hidden">
+          <div class="h-72 overflow-hidden rounded-md border lg:h-auto lg:min-h-0 lg:flex-1">
             <MonacoEditor
               v-model:content="customSQL"
               language="sql"
@@ -201,14 +204,14 @@
       </div>
 
       <!-- Right panel -->
-      <div class="p-5 overflow-y-auto flex flex-col gap-4">
-        <div
+      <div class="flex min-h-[18rem] flex-col gap-4 p-5 lg:min-h-0 lg:overflow-y-auto">
+        <EmptyState
           v-if="!isExplaining && !resultText && !explainError"
-          class="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-2"
-        >
-          <Sparkles class="h-12 w-12 opacity-30" />
-          <p class="text-sm">{{ t("explainSQL.idleHint") }}</p>
-        </div>
+          :icon="Sparkles"
+          :title="t('explainSQL.emptyResultTitle')"
+          :description="t('explainSQL.emptyResultDescription')"
+          class="flex-1"
+        />
 
         <template v-else>
           <div
@@ -235,17 +238,17 @@
                   class="text-xs flex items-start gap-1.5"
                 >
                   <template v-if="step.type === 'tool_start'">
-                    <span class="text-blue-500 font-mono">{{ step.toolName }}</span>
+                    <span class="font-mono text-primary">{{ step.toolName }}</span>
                     <span v-if="step.toolInput" class="text-muted-foreground">
                       ({{ formatToolArgsShort(step.toolInput) }})
                     </span>
                   </template>
                   <template v-else-if="step.type === 'tool_end'">
                     <template v-if="step.toolError">
-                      <span class="text-red-500">&#10007; {{ step.toolName }}: {{ step.toolError }}</span>
+                      <span class="text-danger">&#10007; {{ step.toolName }}: {{ step.toolError }}</span>
                     </template>
                     <template v-else>
-                      <span class="text-green-500">&#10003; {{ step.toolName }}</span>
+                      <span class="text-success">&#10003; {{ step.toolName }}</span>
                       <span v-if="step.toolOutput" class="text-muted-foreground truncate max-w-md">
                         &mdash; {{ formatToolOutputShort(step.toolOutput) }}
                       </span>
@@ -304,6 +307,7 @@ import { getSchemaString, listMetadata, searchMetadata } from "@/api/database";
 import { explainSQL } from "@/api/explain";
 import { listProfiles } from "@/api/llm";
 import { getWorkspaceProfileSetting } from "@/api/setting";
+import EmptyState from "@/components/common/EmptyState.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import DefinitionMonacoViewer from "@/components/metadata/DefinitionMonacoViewer.vue";
 import MonacoEditor from "@/components/monaco-editor/MonacoEditor.vue";

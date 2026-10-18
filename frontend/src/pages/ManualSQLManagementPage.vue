@@ -18,8 +18,10 @@
       @update:filters="handleFiltersUpdate"
     />
 
+<!-- No inner padding: the table is the card's content, so its header band
+         reaches the card edges like every other list page. -->
     <Card>
-      <CardContent>
+      <CardContent class="p-0">
         <PageState
           :loading="isLoading"
           :error="error"
@@ -28,17 +30,36 @@
             v-if="manualSqls.length === 0"
             :icon="FileCode2"
             :title="t('manualSqlManagement.empty')"
-          />
+          >
+            <Button
+              :disabled="availableDatabases.length === 0 || isSaving"
+              @click="openCreateModal"
+            >
+              <Plus class="mr-2 h-4 w-4" />
+              {{ t("manualSqlManagement.create") }}
+            </Button>
+          </EmptyState>
 
           <div v-else>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>{{ t("manualSqlManagement.titleColumn") }}</TableHead>
-                  <TableHead>{{ t("manualSqlManagement.schema") }}</TableHead>
-                  <TableHead>{{ t("manualSqlManagement.tags") }}</TableHead>
-                  <TableHead>{{ t("manualSqlManagement.updatedAt") }}</TableHead>
-                  <TableHead class="w-44 text-right">{{ t("manualSqlManagement.actions") }}</TableHead>
+                  <TableHead class="hidden md:table-cell">
+                    {{ t("manualSqlManagement.schema") }}
+                  </TableHead>
+                  <TableHead
+                    v-if="hasTags"
+                    class="hidden md:table-cell"
+                  >
+                    {{ t("manualSqlManagement.tags") }}
+                  </TableHead>
+                  <TableHead class="hidden whitespace-nowrap md:table-cell">
+                    {{ t("manualSqlManagement.updatedAt") }}
+                  </TableHead>
+                  <TableHead class="w-12 text-right md:w-44">
+                    <span class="sr-only md:not-sr-only">{{ t("manualSqlManagement.actions") }}</span>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -47,24 +68,41 @@
                   :key="item.name"
                 >
                   <TableCell>
-                    <div class="font-medium">{{ item.title || extractManualSqlId(item.name) }}</div>
+                    <button
+                      type="button"
+                      class="block max-w-[10rem] truncate text-left font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:max-w-xl"
+                      @click="openMetadata(item.guid)"
+                    >
+                      {{ item.title || extractManualSqlId(item.name) }}
+                    </button>
                     <div
                       v-if="showsIdentifier(item)"
-                      class="mt-1 text-xs text-muted-foreground"
+                      class="mt-1 max-w-[10rem] truncate text-xs text-muted-foreground md:max-w-xl"
                     >
                       {{ extractManualSqlId(item.name) }}
                     </div>
                     <div
                       v-if="item.comment"
-                      class="mt-2 line-clamp-2 max-w-xl text-xs text-muted-foreground"
+                      class="mt-1 hidden max-w-xl line-clamp-1 text-xs text-muted-foreground md:block"
+                      :title="item.comment"
                     >
                       {{ item.comment }}
                     </div>
+                    <!-- Below md the updated-at column collapses in here. -->
+                    <div
+                      class="mt-1 text-xs text-muted-foreground md:hidden"
+                      :title="formatTimestampTitle(item.updatedAt)"
+                    >
+                      {{ formatTimestamp(item.updatedAt) }}
+                    </div>
                   </TableCell>
-                  <TableCell>
+                  <TableCell class="hidden md:table-cell">
                     {{ item.schemaName || t("metadataBrowser.defaultSchema") }}
                   </TableCell>
-                  <TableCell>
+                  <TableCell
+                    v-if="hasTags"
+                    class="hidden md:table-cell"
+                  >
                     <div class="flex flex-wrap gap-2">
                       <Badge
                         v-for="tag in item.tags"
@@ -81,11 +119,16 @@
                       </span>
                     </div>
                   </TableCell>
-                  <TableCell>
+                  <TableCell
+                    class="hidden whitespace-nowrap text-muted-foreground md:table-cell"
+                    :title="formatTimestampTitle(item.updatedAt)"
+                  >
                     {{ formatTimestamp(item.updatedAt) }}
                   </TableCell>
                   <TableCell class="text-right">
-                    <div class="flex items-center justify-end gap-2">
+                    <!-- Wide screens list every action; a phone only has room for
+                         an overflow menu, and that menu keeps all four reachable. -->
+                    <div class="hidden items-center justify-end gap-2 md:flex">
                       <Button
                         variant="outline"
                         size="sm"
@@ -104,6 +147,7 @@
                         variant="ghost"
                         size="icon"
                         :aria-label="t('common.edit')"
+                        :title="t('common.edit')"
                         @click="openEditModal(item)"
                       >
                         <Pencil class="h-4 w-4" />
@@ -113,24 +157,64 @@
                         size="icon"
                         class="text-destructive"
                         :aria-label="t('common.delete')"
+                        :title="t('common.delete')"
                         @click="openDeleteModal(item)"
                       >
                         <Trash2 class="h-4 w-4" />
                       </Button>
+                    </div>
+                    <div class="flex justify-end md:hidden">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger as-child>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            :aria-label="t('common.moreActions')"
+                            :title="t('common.moreActions')"
+                          >
+                            <MoreHorizontal class="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem @select="openMetadata(item.guid)">
+                            <Table2 class="mr-2 h-4 w-4" />
+                            {{ t("manualSqlManagement.metadata") }}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem @select="openLineage(item.guid)">
+                            <Network class="mr-2 h-4 w-4" />
+                            {{ t("manualSqlManagement.lineage") }}
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem @select="openEditModal(item)">
+                            <Pencil class="mr-2 h-4 w-4" />
+                            {{ t("common.edit") }}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            class="text-destructive"
+                            @select="openDeleteModal(item)"
+                          >
+                            <Trash2 class="mr-2 h-4 w-4" />
+                            {{ t("common.delete") }}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </TableCell>
                 </TableRow>
               </TableBody>
             </Table>
 
-            <TablePager
-              v-model:page-size="pageSize"
-              :has-previous="hasPrevious"
-              :has-next="hasNext"
-              :disabled="isLoading"
-              @previous="goToPreviousPage"
-              @next="goToNextPage"
-            />
+            <!-- The pager footer keeps the card's content inset. -->
+            <div class="px-6 pb-6">
+              <TablePager
+                v-model:page-size="pageSize"
+                :has-previous="hasPrevious"
+                :has-next="hasNext"
+                :disabled="isLoading"
+                @previous="goToPreviousPage"
+                @next="goToNextPage"
+              />
+            </div>
           </div>
         </PageState>
       </CardContent>
@@ -219,7 +303,7 @@
                 <span v-else-if="manualSqlIdConflict" class="text-destructive">
                   {{ manualSqlIdConflict }}
                 </span>
-                <span v-else class="text-emerald-600">
+                <span v-else class="text-success">
                   {{ t("manualSqlManagement.idAvailable") }}
                 </span>
               </div>
@@ -327,7 +411,16 @@
 <script setup lang="ts">
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError } from "@connectrpc/connect";
-import { FileCode2, Pencil, Plus, Trash2, X } from "lucide-vue-next";
+import {
+  FileCode2,
+  MoreHorizontal,
+  Network,
+  Pencil,
+  Plus,
+  Table2,
+  Trash2,
+  X,
+} from "lucide-vue-next";
 import {
   computed,
   onBeforeUnmount,
@@ -368,6 +461,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -394,7 +494,7 @@ import {
   type ManualSQL,
   MetaType,
 } from "@/types/proto-es/v1/database_service_pb";
-import { formatDateTime } from "@/utils/datetime";
+import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 import { guidToRouteParams } from "@/utils/guid";
 
 const { t, locale } = useI18n();
@@ -580,6 +680,10 @@ function formatAttributes(attributes: Record<string, string>): string {
 }
 
 function formatTimestamp(ts: Timestamp | undefined): string {
+  return formatRelativeTime(ts, locale.value);
+}
+
+function formatTimestampTitle(ts: Timestamp | undefined): string {
   return formatDateTime(ts, locale.value);
 }
 
@@ -831,6 +935,12 @@ const {
 
 // A bigger page restarts the walk: a cursor belongs to the query that produced it.
 watch(pageSize, () => void resetManualSQLPage());
+
+// Tags are free-form and often unused, so the column collapses while no loaded
+// row carries one instead of showing a dash in every cell.
+const hasTags = computed(() =>
+  manualSqls.value.some((item) => item.tags.length > 0)
+);
 
 async function handleSave() {
   if (!validateForm() || isCheckingManualSqlId.value) {

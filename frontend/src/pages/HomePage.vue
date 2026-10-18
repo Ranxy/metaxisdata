@@ -72,7 +72,7 @@
           >
             <CheckCircle2
               v-if="step.done"
-              class="mt-0.5 h-5 w-5 flex-shrink-0 text-green-600"
+              class="mt-0.5 h-5 w-5 flex-shrink-0 text-success"
             />
             <Circle
               v-else
@@ -103,11 +103,11 @@
       <!-- Actionable problems in the estate. -->
       <Card
         v-if="attentionItems.length > 0"
-        class="border-yellow-200"
+        class="border-warning/40 bg-warning-subtle/30"
       >
         <CardHeader>
-          <CardTitle class="flex items-center gap-2 text-base">
-            <AlertTriangle class="h-5 w-5 text-yellow-600" />
+          <CardTitle class="flex items-center gap-2">
+            <AlertTriangle class="h-5 w-5 text-warning" />
             {{ t("home.attentionTitle") }}
           </CardTitle>
           <CardDescription>{{ t("home.attentionDescription") }}</CardDescription>
@@ -136,7 +136,7 @@
       <!-- Estate numbers. Each card jumps to the list it summarizes. -->
       <div
         v-if="stats.length > 0"
-        class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
+        class="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4"
       >
         <StatCard
           v-for="stat in stats"
@@ -175,21 +175,40 @@
               v-if="instances.length === 0"
               :icon="Database"
               :title="t('instanceManagement.noInstances')"
-            />
+            >
+              <Button
+                variant="outline"
+                size="sm"
+                asChild
+              >
+                <RouterLink :to="{ name: 'InstanceManagement' }">
+                  {{ t("instanceManagement.addInstance") }}
+                </RouterLink>
+              </Button>
+            </EmptyState>
             <template v-else>
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>{{ t("home.columnInstance") }}</TableHead>
-                    <TableHead>{{ t("instanceManagement.engine") }}</TableHead>
-                    <TableHead>
+                    <TableHead class="hidden md:table-cell">
+                      {{ t("instanceManagement.engine") }}
+                    </TableHead>
+                    <TableHead
+                      v-if="hasEnvironment"
+                      class="hidden md:table-cell"
+                    >
                       {{ t("instanceManagement.environment") }}
                     </TableHead>
-                    <TableHead class="text-right">
+                    <TableHead class="hidden whitespace-nowrap text-right md:table-cell">
                       {{ t("home.columnDatabases") }}
                     </TableHead>
-                    <TableHead>{{ t("instanceManagement.lastSync") }}</TableHead>
-                    <TableHead>{{ t("instanceManagement.status") }}</TableHead>
+                    <TableHead class="whitespace-nowrap">
+                      {{ t("instanceManagement.lastSync") }}
+                    </TableHead>
+                    <TableHead class="hidden md:table-cell">
+                      {{ t("instanceManagement.status") }}
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -200,17 +219,31 @@
                     @click="openInstance(instance)"
                   >
                     <TableCell>
-                      <div class="font-medium">
-                        {{ instance.title || instanceId(instance.name) }}
-                      </div>
-                      <div
-                        v-if="instance.title"
-                        class="text-xs text-muted-foreground"
+                      <RouterLink
+                        :to="{ name: 'InstanceDetail', params: { instanceId: instanceId(instance.name) } }"
+                        class="block max-w-[10rem] truncate font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:max-w-none"
+                        @click.stop
                       >
+                        {{ instance.title || instanceId(instance.name) }}
+                      </RouterLink>
+                      <div class="max-w-[10rem] truncate text-xs text-muted-foreground md:max-w-none">
                         {{ instanceId(instance.name) }}
                       </div>
+                      <!-- Below md the extra columns collapse into the primary cell. -->
+                      <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 md:hidden">
+                        <Badge :variant="instance.activation ? 'success' : 'secondary'">
+                          {{
+                            instance.activation
+                              ? t("instanceManagement.active")
+                              : t("instanceManagement.inactive")
+                          }}
+                        </Badge>
+                        <span class="text-xs text-muted-foreground">
+                          {{ t("instanceDetail.totalDatabases", { count: databasesPerInstance[instanceId(instance.name)] ?? 0 }) }}
+                        </span>
+                      </div>
                     </TableCell>
-                    <TableCell>
+                    <TableCell class="hidden md:table-cell">
                       <Badge
                         variant="secondary"
                         :class="engineBadgeClass(instance.engine)"
@@ -218,16 +251,22 @@
                         {{ engineLabel(instance.engine) }}
                       </Badge>
                     </TableCell>
-                    <TableCell>
+                    <TableCell
+                      v-if="hasEnvironment"
+                      class="hidden md:table-cell"
+                    >
                       <EnvironmentLabel :environment="instance.environment" />
                     </TableCell>
-                    <TableCell class="text-right">
+                    <TableCell class="hidden text-right md:table-cell">
                       {{ databasesPerInstance[instanceId(instance.name)] ?? 0 }}
                     </TableCell>
-                    <TableCell class="whitespace-nowrap text-muted-foreground">
-                      {{ formatDateTime(instance.lastSyncTime, locale) }}
+                    <TableCell
+                      class="whitespace-nowrap text-muted-foreground"
+                      :title="formatDateTime(instance.lastSyncTime, locale)"
+                    >
+                      {{ formatRelativeTime(instance.lastSyncTime, locale) }}
                     </TableCell>
-                    <TableCell>
+                    <TableCell class="hidden md:table-cell">
                       <Badge :variant="instance.activation ? 'success' : 'secondary'">
                         {{
                           instance.activation
@@ -325,14 +364,22 @@
           <Table v-else>
             <TableHeader>
               <TableRow>
-                <TableHead>{{ t("openlineageSettings.eventTime") }}</TableHead>
+                <TableHead class="hidden whitespace-nowrap md:table-cell">
+                  {{ t("openlineageSettings.eventTime") }}
+                </TableHead>
                 <TableHead>{{ t("openlineage.eventType") }}</TableHead>
                 <TableHead>{{ t("openlineageSettings.jobName") }}</TableHead>
-                <TableHead>{{ t("openlineageSettings.namespace") }}</TableHead>
-                <TableHead>{{ t("openlineageSettings.integration") }}</TableHead>
-                <TableHead>{{ t("openlineage.hasLineage") }}</TableHead>
+                <TableHead class="hidden md:table-cell">
+                  {{ t("openlineageSettings.namespace") }}
+                </TableHead>
+                <TableHead class="hidden md:table-cell">
+                  {{ t("openlineageSettings.integration") }}
+                </TableHead>
+                <TableHead class="hidden md:table-cell">
+                  {{ t("openlineage.hasLineage") }}
+                </TableHead>
                 <TableHead class="text-right">
-                  {{ t("instanceManagement.actions") }}
+                  <span class="sr-only md:not-sr-only">{{ t("instanceManagement.actions") }}</span>
                 </TableHead>
               </TableRow>
             </TableHeader>
@@ -342,22 +389,37 @@
                 :key="run.guid"
               >
                 <TableCell
-                  class="whitespace-nowrap text-muted-foreground"
+                  class="hidden whitespace-nowrap text-muted-foreground md:table-cell"
                   :title="formatDateTime(run.eventTime, locale)"
                 >
                   {{ formatRelativeTime(run.eventTime, locale) }}
                 </TableCell>
                 <TableCell>
                   <Badge :variant="eventVariant(run.eventType)">
-                    {{ run.eventType || "-" }}
+                    {{ t(openLineageStatusKey(run.eventType)) }}
                   </Badge>
                 </TableCell>
-                <TableCell>{{ run.jobName || "-" }}</TableCell>
-                <TableCell class="font-mono text-xs">
+                <TableCell>
+                  <div
+                    class="max-w-[6rem] truncate font-medium md:max-w-none"
+                    :title="run.jobName"
+                  >
+                    {{ run.jobName || "-" }}
+                  </div>
+                  <div
+                    class="text-xs text-muted-foreground md:hidden"
+                    :title="formatDateTime(run.eventTime, locale)"
+                  >
+                    {{ formatRelativeTime(run.eventTime, locale) }}
+                  </div>
+                </TableCell>
+                <TableCell class="hidden font-mono text-xs md:table-cell">
                   {{ run.jobNamespace || "-" }}
                 </TableCell>
-                <TableCell>{{ run.integration || "-" }}</TableCell>
-                <TableCell>
+                <TableCell class="hidden md:table-cell">
+                  {{ run.integration || "-" }}
+                </TableCell>
+                <TableCell class="hidden md:table-cell">
                   <Badge :variant="run.hasLineage ? 'success' : 'secondary'">
                     {{
                       run.hasLineage ? t("openlineage.yes") : t("openlineage.no")
@@ -368,9 +430,12 @@
                   <Button
                     variant="ghost"
                     size="sm"
+                    :aria-label="t('openlineageSettings.viewRun')"
+                    :title="t('openlineageSettings.viewRun')"
                     @click="openRun(run.guid)"
                   >
-                    {{ t("openlineageSettings.viewRun") }}
+                    <span class="hidden sm:inline">{{ t("openlineageSettings.viewRun") }}</span>
+                    <ArrowRight class="h-4 w-4 sm:hidden" />
                   </Button>
                 </TableCell>
               </TableRow>
@@ -442,6 +507,7 @@ import {
   formatTime,
 } from "@/utils/datetime";
 import { engineBadgeClass, engineLabel } from "@/utils/engine";
+import { openLineageStatusKey } from "@/utils/openlineageStatus";
 
 const { t, locale } = useI18n();
 const router = useRouter();
@@ -483,6 +549,12 @@ const initialLoading = computed(
 );
 
 const visibleInstances = computed(() => instances.value.slice(0, TABLE_LIMIT));
+
+// The Environment catalog is empty until an administrator creates entries, so
+// the column collapses while no instance on the page carries one.
+const hasEnvironment = computed(() =>
+  instances.value.some((instance) => !!instance.environment)
+);
 
 const failedSectionLabels = computed(() =>
   failedSections.value.map((section) => {

@@ -13,7 +13,12 @@
     >
       <Menu class="h-5 w-5" />
     </Button>
-    <span class="truncate text-sm font-bold tracking-tight">
+    <span
+      class="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-primary text-sm font-bold text-primary-foreground shadow-e1"
+    >
+      M
+    </span>
+    <span class="truncate text-[15px] font-semibold tracking-tight">
       {{ brandName }}
     </span>
   </header>

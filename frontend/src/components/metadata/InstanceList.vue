@@ -5,14 +5,23 @@
         v-if="instances.length === 0"
         :icon="Database"
         :title="t('metadataBrowser.noInstances')"
-      />
+      >
+        <Button
+          variant="outline"
+          size="sm"
+          @click="$emit('refresh')"
+        >
+          <RefreshCw class="mr-1 h-3.5 w-3.5" />
+          {{ t("common.refresh") }}
+        </Button>
+      </EmptyState>
 
       <Table v-else>
         <TableHeader>
           <TableRow>
             <TableHead>{{ t("metadataBrowser.instance") }}</TableHead>
-            <TableHead>{{ t("metadataBrowser.engine") }}</TableHead>
-            <TableHead>{{ t("metadataBrowser.host") }}</TableHead>
+            <TableHead class="hidden sm:table-cell">{{ t("metadataBrowser.engine") }}</TableHead>
+            <TableHead class="hidden md:table-cell">{{ t("metadataBrowser.host") }}</TableHead>
             <TableHead>{{ t("metadataBrowser.status") }}</TableHead>
           </TableRow>
         </TableHeader>
@@ -20,8 +29,12 @@
           <TableRow
             v-for="instance in instances"
             :key="instance.name"
-            class="cursor-pointer hover:bg-muted/50"
+            class="cursor-pointer hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:outline-none"
+            role="button"
+            tabindex="0"
             @click="$emit('select', instance)"
+            @keydown.enter.self.prevent="$emit('select', instance)"
+            @keydown.space.self.prevent="$emit('select', instance)"
           >
             <TableCell>
               <div class="flex items-center gap-3">
@@ -44,7 +57,7 @@
                 </div>
               </div>
             </TableCell>
-            <TableCell>
+            <TableCell class="hidden sm:table-cell">
               <Badge
                 variant="secondary"
                 :class="engineBadgeClass(instance.engine)"
@@ -52,7 +65,7 @@
                 {{ engineLabel(instance.engine) }}
               </Badge>
             </TableCell>
-            <TableCell class="text-muted-foreground">
+            <TableCell class="hidden text-muted-foreground md:table-cell">
               {{ getHostInfo(instance) }}
             </TableCell>
             <TableCell>
@@ -72,11 +85,12 @@
 </template>
 
 <script setup lang="ts">
-import { Database } from "lucide-vue-next";
+import { Database, RefreshCw } from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -104,6 +118,7 @@ defineProps<{
 
 defineEmits<{
   select: [instance: Instance];
+  refresh: [];
 }>();
 
 const { t } = useI18n();

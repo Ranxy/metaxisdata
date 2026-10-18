@@ -2,9 +2,9 @@
   <div class="p-4 space-y-4">
     <div class="space-y-1">
       <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <div class="text-lg font-semibold wrap-break-word">
+        <h1 class="text-2xl font-semibold tracking-tight wrap-break-word">
           {{ table.name }}
-        </div>
+        </h1>
         <Badge
           v-if="table.externalServerName"
           variant="outline"
@@ -82,6 +82,6 @@ const tabs = computed(() => [
 ]);
 
 const summaryLine = computed(() => {
-  return `${props.table.columns.length} ${t("metadataBrowser.columns")}`;
+  return `${props.table.columns.length} ${t("metadataBrowser.columnsCount")}`;
 });
 </script>

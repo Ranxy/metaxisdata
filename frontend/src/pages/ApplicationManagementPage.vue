@@ -55,7 +55,9 @@
                   {{ application.description || "-" }}
                 </TableCell>
                 <TableCell>
-                  <Badge :variant="application.disabled ? 'secondary' : 'default'">
+                  <!-- Enabled is a state, not the page's primary action: a
+                       solid black pill read as a second primary button. -->
+                  <Badge :variant="application.disabled ? 'secondary' : 'success'">
                     {{
                       application.disabled
                         ? t("applicationManagement.stopped")
@@ -92,6 +94,8 @@
                       v-if="canDelete"
                       variant="outline"
                       size="sm"
+                      :aria-label="t('common.delete')"
+                      :title="t('common.delete')"
                       @click="confirmDelete(application)"
                     >
                       <Trash2 class="h-4 w-4" />

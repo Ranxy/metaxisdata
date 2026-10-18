@@ -42,27 +42,87 @@
             >
               <FormField
                 v-model="resetForm.currentPassword"
-                type="password"
+                :type="showResetPassword ? 'text' : 'password'"
                 :label="t('resetPassword.currentPassword')"
                 :placeholder="t('resetPassword.currentPasswordPlaceholder')"
                 required
-              />
+                class="pr-10"
+              >
+                <template #suffix>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    class="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    :aria-label="
+                      showResetPassword ? t('login.hidePassword') : t('login.showPassword')
+                    "
+                    :title="
+                      showResetPassword ? t('login.hidePassword') : t('login.showPassword')
+                    "
+                    @click="showResetPassword = !showResetPassword"
+                  >
+                    <EyeOff v-if="showResetPassword" class="h-4 w-4" />
+                    <Eye v-else class="h-4 w-4" />
+                  </Button>
+                </template>
+              </FormField>
 
               <FormField
                 v-model="resetForm.newPassword"
-                type="password"
+                :type="showResetPassword ? 'text' : 'password'"
                 :label="t('resetPassword.newPassword')"
                 :placeholder="t('resetPassword.newPasswordPlaceholder')"
                 required
-              />
+                class="pr-10"
+              >
+                <template #suffix>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    class="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    :aria-label="
+                      showResetPassword ? t('login.hidePassword') : t('login.showPassword')
+                    "
+                    :title="
+                      showResetPassword ? t('login.hidePassword') : t('login.showPassword')
+                    "
+                    @click="showResetPassword = !showResetPassword"
+                  >
+                    <EyeOff v-if="showResetPassword" class="h-4 w-4" />
+                    <Eye v-else class="h-4 w-4" />
+                  </Button>
+                </template>
+              </FormField>
 
               <FormField
                 v-model="resetForm.confirmPassword"
-                type="password"
+                :type="showResetPassword ? 'text' : 'password'"
                 :label="t('resetPassword.confirmPassword')"
                 :placeholder="t('resetPassword.confirmPasswordPlaceholder')"
                 required
-              />
+                class="pr-10"
+              >
+                <template #suffix>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    class="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    :aria-label="
+                      showResetPassword ? t('login.hidePassword') : t('login.showPassword')
+                    "
+                    :title="
+                      showResetPassword ? t('login.hidePassword') : t('login.showPassword')
+                    "
+                    @click="showResetPassword = !showResetPassword"
+                  >
+                    <EyeOff v-if="showResetPassword" class="h-4 w-4" />
+                    <Eye v-else class="h-4 w-4" />
+                  </Button>
+                </template>
+              </FormField>
 
               <Button
                 type="submit"
@@ -122,11 +182,31 @@
               <!-- Password Input -->
               <FormField
                 v-model="loginForm.password"
-                type="password"
+                :type="showLoginPassword ? 'text' : 'password'"
                 :label="t('login.password')"
                 :placeholder="t('login.passwordPlaceholder')"
                 required
-              />
+                class="pr-10"
+              >
+                <template #suffix>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    class="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    :aria-label="
+                      showLoginPassword ? t('login.hidePassword') : t('login.showPassword')
+                    "
+                    :title="
+                      showLoginPassword ? t('login.hidePassword') : t('login.showPassword')
+                    "
+                    @click="showLoginPassword = !showLoginPassword"
+                  >
+                    <EyeOff v-if="showLoginPassword" class="h-4 w-4" />
+                    <Eye v-else class="h-4 w-4" />
+                  </Button>
+                </template>
+              </FormField>
 
               <!-- Login Button -->
               <Button
@@ -243,20 +323,60 @@
               <!-- Password Input -->
               <FormField
                 v-model="registerForm.password"
-                type="password"
+                :type="showRegisterPassword ? 'text' : 'password'"
                 :label="t('login.password')"
                 :placeholder="t('login.passwordPlaceholder')"
                 required
-              />
+                class="pr-10"
+              >
+                <template #suffix>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    class="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    :aria-label="
+                      showRegisterPassword ? t('login.hidePassword') : t('login.showPassword')
+                    "
+                    :title="
+                      showRegisterPassword ? t('login.hidePassword') : t('login.showPassword')
+                    "
+                    @click="showRegisterPassword = !showRegisterPassword"
+                  >
+                    <EyeOff v-if="showRegisterPassword" class="h-4 w-4" />
+                    <Eye v-else class="h-4 w-4" />
+                  </Button>
+                </template>
+              </FormField>
 
               <!-- Confirm Password Input -->
               <FormField
                 v-model="registerForm.confirmPassword"
-                type="password"
+                :type="showRegisterPassword ? 'text' : 'password'"
                 :label="t('register.confirmPassword')"
                 :placeholder="t('register.confirmPasswordPlaceholder')"
                 required
-              />
+                class="pr-10"
+              >
+                <template #suffix>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    class="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    :aria-label="
+                      showRegisterPassword ? t('login.hidePassword') : t('login.showPassword')
+                    "
+                    :title="
+                      showRegisterPassword ? t('login.hidePassword') : t('login.showPassword')
+                    "
+                    @click="showRegisterPassword = !showRegisterPassword"
+                  >
+                    <EyeOff v-if="showRegisterPassword" class="h-4 w-4" />
+                    <Eye v-else class="h-4 w-4" />
+                  </Button>
+                </template>
+              </FormField>
 
               <!-- Register Button -->
               <Button
@@ -310,6 +430,8 @@ import {
   AlertCircle,
   CheckCircle2,
   Database,
+  Eye,
+  EyeOff,
   Loader2,
   Lock,
 } from "lucide-vue-next";
@@ -398,6 +520,9 @@ const loginForm = ref({
   email: "",
   password: "",
 });
+const showLoginPassword = ref(false);
+const showRegisterPassword = ref(false);
+const showResetPassword = ref(false);
 
 // Register form
 const registerForm = ref({

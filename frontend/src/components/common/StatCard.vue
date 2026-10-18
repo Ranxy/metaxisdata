@@ -7,29 +7,33 @@
     <Card
       :class="[
         'h-full',
-        to ? 'transition-shadow group-hover:shadow-md' : '',
+        to ? 'transition-shadow group-hover:shadow-e2' : '',
       ]"
     >
-      <CardContent class="p-5">
-        <div class="flex items-center justify-between gap-2">
-          <span class="text-sm font-medium text-muted-foreground">
+      <CardContent class="flex items-start justify-between gap-3 p-5">
+        <div class="min-w-0">
+          <p class="text-xs font-medium text-muted-foreground">
             {{ label }}
-          </span>
+          </p>
+          <p class="mt-1.5 text-[1.75rem] font-semibold leading-9 tracking-tight tabular-nums">
+            {{ value }}
+          </p>
+          <p
+            v-if="hint"
+            class="mt-1 truncate text-xs text-muted-foreground"
+          >
+            {{ hint }}
+          </p>
+        </div>
+        <span
+          v-if="icon"
+          class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary-subtle text-primary-subtle-foreground"
+        >
           <component
             :is="icon"
-            v-if="icon"
-            class="h-4 w-4 shrink-0 text-muted-foreground"
+            class="h-[1.125rem] w-[1.125rem]"
           />
-        </div>
-        <p class="mt-2 text-3xl font-bold">
-          {{ value }}
-        </p>
-        <p
-          v-if="hint"
-          class="mt-1 text-xs text-muted-foreground"
-        >
-          {{ hint }}
-        </p>
+        </span>
       </CardContent>
     </Card>
   </component>

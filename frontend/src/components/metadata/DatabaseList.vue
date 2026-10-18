@@ -4,23 +4,36 @@
       v-if="databaseRows.length === 0"
       :icon="Database"
       :title="t('metadataBrowser.noDatabases')"
-    />
+    >
+        <Button
+          variant="outline"
+          size="sm"
+          @click="$emit('refresh')"
+        >
+          <RefreshCw class="mr-1 h-3.5 w-3.5" />
+          {{ t("common.refresh") }}
+        </Button>
+      </EmptyState>
 
     <Table v-else>
       <TableHeader>
         <TableRow>
           <TableHead>{{ t("metadataBrowser.databaseName") }}</TableHead>
-          <TableHead>{{ t("metadataBrowser.characterSet") }}</TableHead>
-          <TableHead>{{ t("metadataBrowser.collation") }}</TableHead>
-          <TableHead>{{ t("metadataBrowser.owner") }}</TableHead>
+          <TableHead v-if="hasCharacterSet" class="hidden md:table-cell">{{ t("metadataBrowser.characterSet") }}</TableHead>
+          <TableHead v-if="hasCollation" class="hidden md:table-cell">{{ t("metadataBrowser.collation") }}</TableHead>
+          <TableHead v-if="hasOwner" class="hidden md:table-cell">{{ t("metadataBrowser.owner") }}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         <TableRow
           v-for="row in databaseRows"
           :key="row.value.name"
-          class="cursor-pointer hover:bg-muted/50"
+          class="cursor-pointer hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:outline-none"
+          role="button"
+          tabindex="0"
           @click="$emit('select', row.stored)"
+          @keydown.enter.self.prevent="$emit('select', row.stored)"
+          @keydown.space.self.prevent="$emit('select', row.stored)"
         >
           <TableCell>
             <div class="flex items-center gap-2">
@@ -28,13 +41,13 @@
               <span class="font-medium">{{ row.value.name }}</span>
             </div>
           </TableCell>
-          <TableCell class="text-muted-foreground">
+          <TableCell v-if="hasCharacterSet" class="hidden text-muted-foreground md:table-cell">
             {{ row.value.characterSet || "-" }}
           </TableCell>
-          <TableCell class="text-muted-foreground">
+          <TableCell v-if="hasCollation" class="hidden text-muted-foreground md:table-cell">
             {{ row.value.collation || "-" }}
           </TableCell>
-          <TableCell class="text-muted-foreground">
+          <TableCell v-if="hasOwner" class="hidden text-muted-foreground md:table-cell">
             {{ row.value.owner || "-" }}
           </TableCell>
         </TableRow>
@@ -44,10 +57,11 @@
 </template>
 
 <script setup lang="ts">
-import { Database } from "lucide-vue-next";
+import { Database, RefreshCw } from "lucide-vue-next";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import EmptyState from "@/components/common/EmptyState.vue";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -67,6 +81,7 @@ const props = defineProps<{
 
 defineEmits<{
   select: [item: StoredMetadata];
+  refresh: [];
 }>();
 
 const { t } = useI18n();
@@ -81,4 +96,14 @@ const databaseRows = computed(() => {
   }
   return rows;
 });
+
+const hasCharacterSet = computed(() =>
+  databaseRows.value.some((row) => row.value.characterSet !== "")
+);
+const hasCollation = computed(() =>
+  databaseRows.value.some((row) => row.value.collation !== "")
+);
+const hasOwner = computed(() =>
+  databaseRows.value.some((row) => row.value.owner !== "")
+);
 </script>

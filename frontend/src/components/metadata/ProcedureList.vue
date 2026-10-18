@@ -10,17 +10,21 @@
       <TableHeader>
         <TableRow>
           <TableHead>{{ t("metadataBrowser.procedureName") }}</TableHead>
-          <TableHead>{{ t("metadataBrowser.signature") }}</TableHead>
-          <TableHead>{{ t("metadataBrowser.definition") }}</TableHead>
-          <TableHead>{{ t("metadataBrowser.comment") }}</TableHead>
+          <TableHead class="hidden md:table-cell">{{ t("metadataBrowser.signature") }}</TableHead>
+          <TableHead class="hidden lg:table-cell">{{ t("metadataBrowser.definition") }}</TableHead>
+          <TableHead v-if="hasComment" class="hidden md:table-cell">{{ t("metadataBrowser.comment") }}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         <TableRow
           v-for="row in rows"
           :key="row.value.name"
-          class="cursor-pointer hover:bg-muted/50"
+          class="cursor-pointer hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:outline-none"
+          role="button"
+          tabindex="0"
           @click="$emit('select', row.stored)"
+          @keydown.enter.self.prevent="$emit('select', row.stored)"
+          @keydown.space.self.prevent="$emit('select', row.stored)"
         >
           <TableCell>
             <div class="flex items-center gap-2">
@@ -28,15 +32,15 @@
               <span class="font-medium">{{ row.value.name }}</span>
             </div>
           </TableCell>
-          <TableCell class="text-muted-foreground max-w-md truncate">
+          <TableCell class="hidden max-w-md truncate text-muted-foreground md:table-cell">
             {{ row.value.signature || "-" }}
           </TableCell>
-          <TableCell class="max-w-md">
+          <TableCell class="hidden max-w-md lg:table-cell">
             <code class="text-xs bg-muted px-2 py-1 rounded truncate block">
               {{ truncateDefinition(row.value.definition) }}
             </code>
           </TableCell>
-          <TableCell class="text-muted-foreground max-w-xs">
+          <TableCell v-if="hasComment" class="hidden max-w-xs text-muted-foreground md:table-cell">
             <ExpandableText
               :text="row.value.comment"
               :item-name="row.value.name"
@@ -85,6 +89,11 @@ const rows = computed(() => {
 
   return list;
 });
+
+// A comment that is empty on every row renders one column of dashes.
+const hasComment = computed(() =>
+  rows.value.some((row) => row.value.comment !== "")
+);
 
 function truncateDefinition(def: string): string {
   if (!def) return "-";

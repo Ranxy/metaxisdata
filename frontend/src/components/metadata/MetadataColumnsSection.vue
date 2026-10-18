@@ -8,7 +8,7 @@
           class="h-9 w-64"
           :placeholder="t('metadataBrowser.searchColumnsPlaceholder')"
         />
-        <Badge variant="outline">
+        <Badge v-if="columnSearch.trim()" variant="outline">
           {{ filteredColumns.length }} / {{ columns.length }}
           {{ t("metadataBrowser.columnsCount") }}
         </Badge>
@@ -21,8 +21,8 @@
           <TableHead>{{ t("metadataBrowser.columnName") }}</TableHead>
           <TableHead>{{ t("metadataBrowser.columnType") }}</TableHead>
           <TableHead>{{ t("metadataBrowser.nullable") }}</TableHead>
-          <TableHead>{{ t("metadataBrowser.defaultValue") }}</TableHead>
-          <TableHead>{{ t("metadataBrowser.comment") }}</TableHead>
+          <TableHead v-if="hasDefault">{{ t("metadataBrowser.defaultValue") }}</TableHead>
+          <TableHead v-if="hasComment">{{ t("metadataBrowser.comment") }}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -36,18 +36,13 @@
           <TableCell class="text-muted-foreground">
             {{ col.type || "-" }}
           </TableCell>
-          <TableCell>
-            <Badge
-              :variant="col.nullable ? 'secondary' : 'success'"
-              class="whitespace-nowrap"
-            >
-              {{ col.nullable ? t("metadataBrowser.yes") : t("metadataBrowser.no") }}
-            </Badge>
-          </TableCell>
           <TableCell class="text-muted-foreground">
+            {{ col.nullable ? t("metadataBrowser.yes") : t("metadataBrowser.no") }}
+          </TableCell>
+          <TableCell v-if="hasDefault" class="text-muted-foreground">
             {{ col.default || "-" }}
           </TableCell>
-          <TableCell class="text-muted-foreground max-w-md">
+          <TableCell v-if="hasComment" class="text-muted-foreground max-w-md">
             <ExpandableText
               :text="col.userComment || col.comment"
               :item-name="col.name"
@@ -102,6 +97,14 @@ const props = defineProps<{
 
 const { t } = useI18n();
 const columnSearch = ref("");
+
+// An all-empty column costs a column of dashes and reads as missing data.
+const hasDefault = computed(() =>
+  props.columns.some((column) => column.default !== "")
+);
+const hasComment = computed(() =>
+  props.columns.some((column) => (column.userComment || column.comment) !== "")
+);
 
 const filteredColumns = computed((): ColumnMetadata[] => {
   const q = columnSearch.value.trim().toLowerCase();

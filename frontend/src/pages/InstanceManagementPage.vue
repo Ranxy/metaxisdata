@@ -37,20 +37,42 @@
           v-if="activeInstances.length === 0"
           :icon="Database"
           :title="t('instanceManagement.noInstances')"
-        />
+        >
+          <Button
+            v-if="canCreate"
+            variant="outline"
+            size="sm"
+            @click="openCreateModal"
+          >
+            {{ t("instanceManagement.addInstance") }}
+          </Button>
+        </EmptyState>
 
         <!-- Instances List -->
         <Table v-else>
           <TableHeader>
             <TableRow>
               <TableHead>{{ t("instanceManagement.instance") }}</TableHead>
-              <TableHead>{{ t("instanceManagement.engine") }}</TableHead>
-              <TableHead>{{ t("instanceManagement.host") }}</TableHead>
-              <TableHead>{{ t("instanceManagement.environment") }}</TableHead>
-              <TableHead>{{ t("instanceManagement.status") }}</TableHead>
-              <TableHead>{{ t("instanceManagement.lastSync") }}</TableHead>
-              <TableHead class="text-right">
-                {{ t("instanceManagement.actions") }}
+              <TableHead class="hidden md:table-cell">
+                {{ t("instanceManagement.engine") }}
+              </TableHead>
+              <TableHead class="hidden md:table-cell">
+                {{ t("instanceManagement.host") }}
+              </TableHead>
+              <TableHead
+                v-if="hasEnvironment"
+                class="hidden md:table-cell"
+              >
+                {{ t("instanceManagement.environment") }}
+              </TableHead>
+              <TableHead class="hidden md:table-cell">
+                {{ t("instanceManagement.status") }}
+              </TableHead>
+              <TableHead class="hidden whitespace-nowrap md:table-cell">
+                {{ t("instanceManagement.lastSync") }}
+              </TableHead>
+              <TableHead class="w-12 text-right md:w-20">
+                <span class="sr-only md:not-sr-only">{{ t("instanceManagement.actions") }}</span>
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -58,33 +80,49 @@
             <TableRow
               v-for="instance in activeInstances"
               :key="instance.name"
-              class="cursor-pointer hover:bg-muted/50"
+              class="cursor-pointer"
               @click="navigateToInstanceDetail(instance)"
             >
               <TableCell>
                 <div class="flex items-center">
                   <div
-                    class="w-10 h-10 rounded-full flex items-center justify-center"
+                    class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full md:h-10 md:w-10"
                     :class="engineBgClass(instance.engine)"
                   >
                     <span
-                      class="font-semibold text-sm"
+                      class="text-sm font-semibold"
                       :class="engineTextClass(instance.engine)"
                     >
                       {{ engineIcon(instance.engine) }}
                     </span>
                   </div>
-                  <div class="ml-4">
-                    <div class="font-medium">
+                  <div class="ml-3 min-w-0">
+                    <RouterLink
+                      :to="{ name: 'InstanceDetail', params: { instanceId: getInstanceId(instance.name) } }"
+                      class="block max-w-[9rem] truncate font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:max-w-none"
+                      @click.stop
+                    >
                       {{ instance.title || "-" }}
-                    </div>
-                    <div class="text-sm text-muted-foreground">
+                    </RouterLink>
+                    <div class="max-w-[9rem] truncate text-xs text-muted-foreground md:max-w-none">
                       {{ getInstanceId(instance.name) }}
+                    </div>
+                    <!-- Below md the status and last-sync columns collapse in here. -->
+                    <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 md:hidden">
+                      <Badge :variant="instance.activation ? 'success' : 'secondary'">
+                        {{ instance.activation ? t("instanceManagement.active") : t("instanceManagement.inactive") }}
+                      </Badge>
+                      <span
+                        class="text-xs text-muted-foreground"
+                        :title="formatLastSyncTitle(instance.lastSyncTime)"
+                      >
+                        {{ formatLastSync(instance.lastSyncTime) }}
+                      </span>
                     </div>
                   </div>
                 </div>
               </TableCell>
-              <TableCell>
+              <TableCell class="hidden md:table-cell">
                 <Badge
                   variant="secondary"
                   :class="engineBadgeClass(instance.engine)"
@@ -92,18 +130,24 @@
                   {{ engineLabel(instance.engine) }}
                 </Badge>
               </TableCell>
-              <TableCell class="text-muted-foreground">
+              <TableCell class="hidden max-w-[16rem] truncate text-muted-foreground md:table-cell">
                 {{ getHostInfo(instance) }}
               </TableCell>
-              <TableCell>
+              <TableCell
+                v-if="hasEnvironment"
+                class="hidden md:table-cell"
+              >
                 <EnvironmentLabel :environment="instance.environment" />
               </TableCell>
-              <TableCell>
+              <TableCell class="hidden md:table-cell">
                 <Badge :variant="instance.activation ? 'success' : 'secondary'">
                   {{ instance.activation ? t("instanceManagement.active") : t("instanceManagement.inactive") }}
                 </Badge>
               </TableCell>
-              <TableCell class="text-muted-foreground">
+              <TableCell
+                class="hidden whitespace-nowrap text-muted-foreground md:table-cell"
+                :title="formatLastSyncTitle(instance.lastSyncTime)"
+              >
                 {{ formatLastSync(instance.lastSyncTime) }}
               </TableCell>
               <TableCell class="text-right">
@@ -111,6 +155,7 @@
                   v-if="canDelete"
                   variant="ghost"
                   size="icon"
+                  :aria-label="t('common.delete')"
                   :title="t('common.delete')"
                   @click.stop="confirmDelete(instance)"
                 >
@@ -133,7 +178,7 @@
           <div class="flex items-center justify-between px-6 py-4 cursor-pointer hover:bg-muted/50 transition-colors">
             <div class="flex items-center gap-3">
               <Trash2 class="h-5 w-5 text-muted-foreground" />
-              <h2 class="text-lg font-semibold">
+              <h2 class="text-base font-semibold">
                 {{ t("instanceManagement.recycleBin") }}
               </h2>
             </div>
@@ -160,8 +205,12 @@
               <TableHeader>
                 <TableRow>
                   <TableHead>{{ t("instanceManagement.instance") }}</TableHead>
-                  <TableHead>{{ t("instanceManagement.engine") }}</TableHead>
-                  <TableHead>{{ t("instanceManagement.host") }}</TableHead>
+                  <TableHead class="hidden md:table-cell">
+                    {{ t("instanceManagement.engine") }}
+                  </TableHead>
+                  <TableHead class="hidden md:table-cell">
+                    {{ t("instanceManagement.host") }}
+                  </TableHead>
                   <TableHead class="text-right">
                     {{ t("instanceManagement.actions") }}
                   </TableHead>
@@ -190,12 +239,12 @@
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell>
+                  <TableCell class="hidden md:table-cell">
                     <Badge variant="secondary">
                       {{ engineLabel(instance.engine) }}
                     </Badge>
                   </TableCell>
-                  <TableCell class="text-muted-foreground">
+                  <TableCell class="hidden max-w-[16rem] truncate text-muted-foreground md:table-cell">
                     {{ getHostInfo(instance) }}
                   </TableCell>
                   <TableCell class="text-right">
@@ -549,7 +598,7 @@ import {
 } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { useRouter } from "vue-router";
+import { RouterLink, useRouter } from "vue-router";
 import type { CreateInstanceInput } from "@/api/instance";
 import { createInstance } from "@/api/instance";
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
@@ -598,7 +647,7 @@ import { useInstanceStore } from "@/store/modules/instance";
 import { Engine } from "@/types/proto-es/v1/common_pb";
 import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
 import { DataSourceType } from "@/types/proto-es/v1/instance_service_pb";
-import { formatDateTime } from "@/utils/datetime";
+import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 import {
   engineBadgeClass,
   engineBgClass,
@@ -738,6 +787,12 @@ const activeInstances = computed(() => {
   );
 });
 
+// The Environment catalog is empty until an administrator creates entries, so
+// the column would otherwise render a muted dash in every row.
+const hasEnvironment = computed(() =>
+  activeInstances.value.some((instance) => !!instance.environment)
+);
+
 // Methods
 function getInstanceId(name: string): string {
   // Format: instances/{id} -> return id
@@ -761,7 +816,11 @@ function getHostInfo(instance: Instance): string {
 }
 
 function formatLastSync(timestamp: Timestamp | undefined): string {
-  return formatDateTime(timestamp, locale.value, { seconds: true });
+  return formatRelativeTime(timestamp, locale.value);
+}
+
+function formatLastSyncTitle(timestamp: Timestamp | undefined): string {
+  return formatDateTime(timestamp, locale.value);
 }
 async function loadInstances() {
   error.value = null;

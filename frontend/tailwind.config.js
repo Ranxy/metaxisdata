@@ -24,7 +24,10 @@ module.exports = {
   			foreground: 'hsl(var(--foreground))',
   			primary: {
   				DEFAULT: 'hsl(var(--primary))',
-  				foreground: 'hsl(var(--primary-foreground))'
+  				foreground: 'hsl(var(--primary-foreground))',
+  				hover: 'hsl(var(--primary-hover))',
+  				subtle: 'hsl(var(--primary-subtle))',
+  				'subtle-foreground': 'hsl(var(--primary-subtle-foreground))'
   			},
   			secondary: {
   				DEFAULT: 'hsl(var(--secondary))',
@@ -33,6 +36,25 @@ module.exports = {
   			destructive: {
   				DEFAULT: 'hsl(var(--destructive))',
   				foreground: 'hsl(var(--destructive-foreground))'
+  			},
+  			success: {
+  				DEFAULT: 'hsl(var(--success))',
+  				foreground: 'hsl(var(--success-foreground))',
+  				subtle: 'hsl(var(--success-subtle))'
+  			},
+  			warning: {
+  				DEFAULT: 'hsl(var(--warning))',
+  				foreground: 'hsl(var(--warning-foreground))',
+  				subtle: 'hsl(var(--warning-subtle))'
+  			},
+  			info: {
+  				DEFAULT: 'hsl(var(--info))',
+  				foreground: 'hsl(var(--info-foreground))',
+  				subtle: 'hsl(var(--info-subtle))'
+  			},
+  			danger: {
+  				DEFAULT: 'hsl(var(--danger))',
+  				subtle: 'hsl(var(--danger-subtle))'
   			},
   			muted: {
   				DEFAULT: 'hsl(var(--muted))',
@@ -62,6 +84,17 @@ module.exports = {
   			lg: 'var(--radius)',
   			md: 'calc(var(--radius) - 2px)',
   			sm: 'calc(var(--radius) - 4px)'
+  		},
+  		boxShadow: {
+  			e1: 'var(--shadow-e1)',
+  			e2: 'var(--shadow-e2)',
+  			e3: 'var(--shadow-e3)'
+  		},
+  		fontSize: {
+  			'page-title': ['1.5rem', { lineHeight: '2rem', letterSpacing: '-0.02em', fontWeight: '600' }],
+  			section: ['1rem', { lineHeight: '1.5rem', fontWeight: '600' }],
+  			caption: ['0.75rem', { lineHeight: '1rem' }],
+  			micro: ['0.6875rem', { lineHeight: '1rem' }]
   		},
   		keyframes: {
   			'accordion-down': {

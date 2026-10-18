@@ -1,36 +1,51 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center py-12 px-4">
-    <div class="text-center">
-      <!-- 404 Illustration -->
-      <div class="mb-8">
-        <div class="text-9xl font-bold text-muted-foreground/20">
-          404
-        </div>
-      </div>
+  <div class="space-y-4">
+    <PageHeader
+      :title="t('notFound.title')"
+      :description="t('notFound.description')"
+    />
 
-      <!-- Message -->
-      <h1 class="text-2xl font-bold mb-2">
-        {{ t("notFound.title") }}
-      </h1>
-
-      <!-- Back to Home Button -->
-      <Button
-        as-child
-        size="lg"
-      >
-        <router-link to="/">
-          <Home class="w-5 h-5 mr-2" />
-          {{ t("notFound.backHome") }}
-        </router-link>
-      </Button>
-    </div>
+    <Card>
+      <CardContent class="pt-6">
+        <EmptyState
+          :icon="FileQuestion"
+          :title="t('notFound.tryThese')"
+        >
+          <Button as-child>
+            <RouterLink :to="{ name: 'Home' }">
+              <Home class="mr-2 h-4 w-4" />
+              {{ t("notFound.backHome") }}
+            </RouterLink>
+          </Button>
+          <Button variant="outline" @click="goBack">
+            <ArrowLeft class="mr-2 h-4 w-4" />
+            {{ t("notFound.goBack") }}
+          </Button>
+        </EmptyState>
+      </CardContent>
+    </Card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { Home } from "lucide-vue-next";
+import { ArrowLeft, FileQuestion, Home } from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
+import { RouterLink, useRouter } from "vue-router";
+import EmptyState from "@/components/common/EmptyState.vue";
+import PageHeader from "@/components/layout/PageHeader.vue";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 
 const { t } = useI18n();
+const router = useRouter();
+
+// Back goes where the mistyped link came from; a direct visit has no history to
+// return to, so it falls back to the dashboard.
+function goBack() {
+  if (window.history.length > 1) {
+    router.back();
+    return;
+  }
+  router.push({ name: "Home" });
+}
 </script>

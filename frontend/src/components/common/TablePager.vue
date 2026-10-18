@@ -13,7 +13,7 @@
       >
         <SelectTrigger
           :id="sizeId"
-          class="h-9 w-[4.75rem]"
+          class="h-8 w-[4.75rem]"
           :aria-label="t('common.rowsPerPage')"
         >
           <SelectValue />
@@ -33,6 +33,7 @@
     <div class="flex items-center gap-2">
       <Button
         variant="outline"
+        size="sm"
         :disabled="!hasPrevious || disabled"
         @click="emit('previous')"
       >
@@ -40,6 +41,7 @@
       </Button>
       <Button
         variant="outline"
+        size="sm"
         :disabled="!hasNext || disabled"
         @click="emit('next')"
       >

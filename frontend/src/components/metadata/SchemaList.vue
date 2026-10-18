@@ -4,7 +4,16 @@
       v-if="schemaRows.length === 0"
       :icon="Folder"
       :title="t('metadataBrowser.noSchemas')"
-    />
+    >
+        <Button
+          variant="outline"
+          size="sm"
+          @click="$emit('refresh')"
+        >
+          <RefreshCw class="mr-1 h-3.5 w-3.5" />
+          {{ t("common.refresh") }}
+        </Button>
+      </EmptyState>
 
     <Table v-else>
       <TableHeader>
@@ -16,8 +25,12 @@
         <TableRow
           v-for="row in schemaRows"
           :key="row.key"
-          class="cursor-pointer hover:bg-muted/50"
+          class="cursor-pointer hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:outline-none"
+          role="button"
+          tabindex="0"
           @click="$emit('select', row.stored)"
+          @keydown.enter.self.prevent="$emit('select', row.stored)"
+          @keydown.space.self.prevent="$emit('select', row.stored)"
         >
           <TableCell>
             <div class="flex items-center gap-2">
@@ -32,10 +45,11 @@
 </template>
 
 <script setup lang="ts">
-import { Folder } from "lucide-vue-next";
+import { Folder, RefreshCw } from "lucide-vue-next";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import EmptyState from "@/components/common/EmptyState.vue";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -55,6 +69,7 @@ const props = defineProps<{
 
 defineEmits<{
   select: [item: StoredMetadata];
+  refresh: [];
 }>();
 
 const { t } = useI18n();

@@ -1,6 +1,10 @@
 <template>
+  <!-- On a phone the nine entries are one horizontally scrolling chip row:
+       wrapping them stacked three rows above the page title (the h1 started at
+       y=236 instead of y=88). From `md` the rail is the pinned vertical list it
+       always was; the layout passes the sticky offsets. -->
   <nav
-    class="flex flex-wrap gap-1 md:flex-col md:flex-nowrap md:gap-0.5"
+    class="flex gap-1 overflow-x-auto pb-1 [-ms-overflow-style:none] [mask-image:linear-gradient(to_right,black_calc(100%-1.5rem),transparent)] [scrollbar-width:none] md:flex-col md:gap-0.5 md:overflow-visible md:pb-0 md:[mask-image:none] [&::-webkit-scrollbar]:hidden"
     :aria-label="t('menu.settings')"
   >
     <router-link
@@ -8,7 +12,7 @@
       :key="item.key"
       :to="item.path"
       :class="[
-        'flex items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-sm transition-colors',
+        'flex shrink-0 items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-sm transition-colors md:shrink',
         isActive(item.path)
           ? 'bg-accent font-medium text-accent-foreground'
           : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',

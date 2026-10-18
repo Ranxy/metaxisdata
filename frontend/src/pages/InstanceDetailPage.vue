@@ -105,14 +105,14 @@
     <!-- Databases Section -->
     <Card>
       <CardHeader>
-        <div class="flex items-center justify-between">
+        <div class="flex flex-wrap items-center justify-between gap-2">
           <CardTitle>{{ t("instanceDetail.databases") }}</CardTitle>
-          <div class="flex items-center gap-2">
-            <div class="text-sm text-muted-foreground">
+          <div class="flex flex-wrap items-center gap-2">
+            <div class="whitespace-nowrap text-sm text-muted-foreground">
               {{ t("instanceDetail.totalDatabases", { count: databases.length }) }}
             </div>
             <Button
-              class="w-32 justify-center"
+              class="justify-center md:w-32"
               variant="outline"
               size="sm"
               :disabled="isSyncingAllDatabases"
@@ -120,9 +120,13 @@
             >
               <Loader2
                 v-if="isSyncingAllDatabases"
-                class="h-4 w-4 mr-2 animate-spin"
+                class="h-4 w-4 animate-spin md:mr-2"
               />
-              <span>
+              <RefreshCw
+                v-else
+                class="h-4 w-4 md:hidden"
+              />
+              <span class="hidden md:inline">
                 {{ isSyncingAllDatabases ? t("instanceDetail.syncing") : t("instanceDetail.syncAllDatabases") }}
               </span>
             </Button>
@@ -147,24 +151,47 @@
       </div>
 
       <!-- Empty State -->
-      <div
+      <EmptyState
         v-else-if="databases.length === 0"
-        class="p-8 text-center text-muted-foreground"
+        :icon="Database"
+        :title="t('instanceDetail.noDatabases')"
       >
-        <Database class="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-        <p>{{ t("instanceDetail.noDatabases") }}</p>
-      </div>
+        <Button
+          variant="outline"
+          size="sm"
+          :disabled="isSyncingAllDatabases"
+          @click="handleSyncAllDatabases"
+        >
+          {{ t("instanceDetail.syncAllDatabases") }}
+        </Button>
+      </EmptyState>
 
       <!-- Databases List -->
       <Table v-else>
         <TableHeader>
           <TableRow>
             <TableHead>{{ t("instanceDetail.databaseName") }}</TableHead>
-            <TableHead>{{ t("instanceDetail.environment") }}</TableHead>
-            <TableHead>{{ t("instanceDetail.schemaVersion") }}</TableHead>
-            <TableHead>{{ t("instanceDetail.lastSync") }}</TableHead>
-            <TableHead>{{ t("instanceDetail.status") }}</TableHead>
-            <TableHead class="w-36 text-right">{{ t("instanceDetail.actions") }}</TableHead>
+            <TableHead
+              v-if="hasEnvironment"
+              class="hidden md:table-cell"
+            >
+              {{ t("instanceDetail.environment") }}
+            </TableHead>
+            <TableHead
+              v-if="hasSchemaVersion"
+              class="hidden md:table-cell"
+            >
+              {{ t("instanceDetail.schemaVersion") }}
+            </TableHead>
+            <TableHead class="hidden whitespace-nowrap md:table-cell">
+              {{ t("instanceDetail.lastSync") }}
+            </TableHead>
+            <TableHead class="hidden md:table-cell">
+              {{ t("instanceDetail.status") }}
+            </TableHead>
+            <TableHead class="w-12 text-right md:w-36">
+              <span class="sr-only md:not-sr-only">{{ t("instanceDetail.actions") }}</span>
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -174,46 +201,72 @@
           >
             <TableCell>
               <div class="flex items-center">
-                <Database class="h-4 w-4 mr-2 text-muted-foreground" />
-                <div>
-                  <div class="font-medium">
-                    {{ getDatabaseName(database.name) }}
-                  </div>
-                  <div class="text-xs text-muted-foreground">
-                    {{ database.name }}
-                  </div>
-                </div>
+                <Database class="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                <RouterLink
+                  :to="metadataLink(database.name)"
+                  class="block max-w-[10rem] truncate font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:max-w-none"
+                  :title="database.name"
+                >
+                  {{ getDatabaseName(database.name) }}
+                </RouterLink>
+              </div>
+              <!-- Below md the status and last-sync columns collapse in here. -->
+              <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 pl-6 md:hidden">
+                <Badge :variant="stateBadgeVariant(database.state)">
+                  {{ stateLabel(database.state, t) }}
+                </Badge>
+                <span
+                  class="whitespace-nowrap text-xs text-muted-foreground"
+                  :title="formatLastSyncTitle(database.successfulSyncTime)"
+                >
+                  {{ formatLastSync(database.successfulSyncTime) }}
+                </span>
               </div>
             </TableCell>
-            <TableCell>
+            <TableCell
+              v-if="hasEnvironment"
+              class="hidden md:table-cell"
+            >
               <EnvironmentLabel
                 :environment="database.effectiveEnvironment"
               />
             </TableCell>
-            <TableCell class="text-muted-foreground">
+            <TableCell
+              v-if="hasSchemaVersion"
+              class="hidden text-muted-foreground md:table-cell"
+            >
               {{ database.schemaVersion || "-" }}
             </TableCell>
-            <TableCell class="text-muted-foreground">
+            <TableCell
+              class="hidden whitespace-nowrap text-muted-foreground md:table-cell"
+              :title="formatLastSyncTitle(database.successfulSyncTime)"
+            >
               {{ formatLastSync(database.successfulSyncTime) }}
             </TableCell>
-            <TableCell>
+            <TableCell class="hidden md:table-cell">
               <Badge :variant="stateBadgeVariant(database.state)">
                 {{ stateLabel(database.state, t) }}
               </Badge>
             </TableCell>
-            <TableCell class="w-36 text-right">
+            <TableCell class="text-right">
               <Button
-                class="w-28 justify-center"
+                class="justify-center md:w-28"
                 variant="outline"
                 size="sm"
                 :disabled="isSyncingAllDatabases || isDatabaseSyncing(database.name)"
+                :aria-label="t('instanceDetail.syncDatabase')"
+                :title="t('instanceDetail.syncDatabase')"
                 @click="handleSyncSingleDatabase(database.name)"
               >
                 <Loader2
                   v-if="isDatabaseSyncing(database.name)"
-                  class="h-4 w-4 mr-2 animate-spin"
+                  class="h-4 w-4 animate-spin md:mr-2"
                 />
-                <span>
+                <RefreshCw
+                  v-else
+                  class="h-4 w-4 md:hidden"
+                />
+                <span class="hidden md:inline">
                   {{ isDatabaseSyncing(database.name) ? t("instanceDetail.syncing") : t("instanceDetail.syncDatabase") }}
                 </span>
               </Button>
@@ -543,11 +596,12 @@ import {
   Loader2,
   Pencil,
   Plus,
+  RefreshCw,
   Trash2,
 } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { useRoute, useRouter } from "vue-router";
+import { RouterLink, useRoute, useRouter } from "vue-router";
 import { listDatabases, syncDatabase } from "@/api/database";
 import {
   createDataSource,
@@ -558,6 +612,7 @@ import {
   updateInstance,
 } from "@/api/instance";
 import AppLoading from "@/components/common/AppLoading.vue";
+import EmptyState from "@/components/common/EmptyState.vue";
 import EnvironmentLabel from "@/components/common/EnvironmentLabel.vue";
 import EnvironmentSelect from "@/components/environment/EnvironmentSelect.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
@@ -595,8 +650,9 @@ import {
   DataSourceType,
   InstanceSchema,
 } from "@/types/proto-es/v1/instance_service_pb";
-import { formatDateTime } from "@/utils/datetime";
+import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 import { engineBadgeClass, engineLabel } from "@/utils/engine";
+import { guidSegmentsToRouteParams } from "@/utils/guid";
 import { stateBadgeVariant, stateLabel } from "@/utils/state";
 
 const { t, locale } = useI18n();
@@ -1054,7 +1110,37 @@ function getHostInfo(instance: Instance): string {
 }
 
 function formatLastSync(timestamp: Timestamp | undefined): string {
-  return formatDateTime(timestamp, locale.value, { seconds: true });
+  return formatRelativeTime(timestamp, locale.value);
+}
+
+function formatLastSyncTitle(timestamp: Timestamp | undefined): string {
+  return formatDateTime(timestamp, locale.value);
+}
+
+// Both columns describe optional metadata that the current sync may not have
+// filled in; when every row is empty the column is noise, not data.
+const hasEnvironment = computed(() =>
+  databases.value.some((database) => !!database.effectiveEnvironment)
+);
+const hasSchemaVersion = computed(() =>
+  databases.value.some((database) => !!database.schemaVersion)
+);
+
+// A database is a metadata object too, so its name opens the browser at that
+// node — the row itself stays static.
+function metadataLink(fullName: string): {
+  name: string;
+  params: { guid: string[] };
+} {
+  return {
+    name: "MetadataDetail",
+    params: {
+      guid: guidSegmentsToRouteParams([
+        instanceId.value,
+        getDatabaseName(fullName),
+      ]),
+    },
+  };
 }
 
 async function fetchInstance() {

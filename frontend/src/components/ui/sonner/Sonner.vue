@@ -31,14 +31,13 @@ const toastClasses = {
   // surface the colour is what distinguishes success from failure, so set it
   // per type on the icon slot.
   //
-  // These are palette steps rather than `text-destructive`/`text-primary`: the
-  // semantic tokens are surface colours, and `--destructive` is a deep maroon in
-  // dark mode that all but disappears on the toast. The 500 steps read on both
-  // surfaces, and match the palette already used by the Badge variants.
-  success: "[&_[data-icon]]:text-green-500!",
-  error: "[&_[data-icon]]:text-red-500!",
-  warning: "[&_[data-icon]]:text-amber-500!",
-  info: "[&_[data-icon]]:text-sky-500!",
+  // Each token is tuned per theme to read on the card surface: `danger` is the
+  // lighter red, while `--destructive` is deep enough in dark mode to disappear
+  // as an icon colour.
+  success: "[&_[data-icon]]:text-success!",
+  error: "[&_[data-icon]]:text-danger!",
+  warning: "[&_[data-icon]]:text-warning!",
+  info: "[&_[data-icon]]:text-info!",
 };
 </script>
 

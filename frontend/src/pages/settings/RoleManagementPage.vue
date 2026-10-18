@@ -26,12 +26,15 @@
           :title="t('iam.roles.noRoles')"
         />
         <Table v-else>
-          <TableHeader>
+          <!-- `whitespace-nowrap` on every header and badge: Chinese labels
+               were wrapping one character per line (类型 became two 14x19 boxes,
+               权限 two lines) and a two-line badge inflated the row to 93px. -->
+          <TableHeader class="[&_th]:whitespace-nowrap">
             <TableRow>
               <TableHead>{{ t("iam.roles.titleLabel") }}</TableHead>
               <TableHead>{{ t("iam.roles.nameLabel") }}</TableHead>
-              <TableHead>{{ t("iam.roles.typeLabel") }}</TableHead>
-              <TableHead>{{ t("iam.roles.permissionsLabel") }}</TableHead>
+              <TableHead class="w-28">{{ t("iam.roles.typeLabel") }}</TableHead>
+              <TableHead class="w-24">{{ t("iam.roles.permissionsLabel") }}</TableHead>
               <TableHead class="w-24 text-right">
                 {{ t("common.actions") }}
               </TableHead>
@@ -51,9 +54,22 @@
                   {{ role.description }}
                 </div>
               </TableCell>
-              <TableCell class="font-mono text-sm">{{ role.name }}</TableCell>
+              <!-- The resource name keeps its last segment; the raw
+                   `roles/...` name stays in the tooltip. -->
+              <TableCell
+                class="font-mono text-xs text-muted-foreground"
+                :title="role.name"
+              >
+                {{ roleShortName(role.name) }}
+              </TableCell>
               <TableCell>
-                <Badge :variant="role.predefined ? 'secondary' : 'default'">
+                <!-- Neither type is a state the page is asking the reader to
+                     act on, so neither takes the solid primary fill (which also
+                     inverts to a white chip in dark mode). -->
+                <Badge
+                  :variant="role.predefined ? 'secondary' : 'outline'"
+                  class="whitespace-nowrap"
+                >
                   {{
                     role.predefined
                       ? t("iam.roles.predefined")
@@ -69,8 +85,11 @@
                   size="icon"
                   :disabled="role.predefined"
                   :title="
-                    role.predefined ? t('iam.roles.predefinedReadonly') : ''
+                    role.predefined
+                      ? t('iam.roles.predefinedReadonly')
+                      : t('iam.roles.edit')
                   "
+                  :aria-label="t('iam.roles.edit')"
                   @click="openEdit(role)"
                 >
                   <Pencil class="h-4 w-4" />
@@ -81,8 +100,11 @@
                   size="icon"
                   :disabled="role.predefined"
                   :title="
-                    role.predefined ? t('iam.roles.predefinedReadonly') : ''
+                    role.predefined
+                      ? t('iam.roles.predefinedReadonly')
+                      : t('common.delete')
                   "
+                  :aria-label="t('common.delete')"
                   @click="openDelete(role)"
                 >
                   <Trash2 class="h-4 w-4 text-destructive" />
@@ -246,6 +268,13 @@ import { useAuthStore } from "@/store/modules/auth";
 import type { Role } from "@/types/proto-es/v1/role_service_pb";
 
 const { t } = useI18n();
+
+/** The last segment of a resource name: `roles/data-analyst` reads
+ *  `data-analyst` in the table, and the full name stays in the tooltip. */
+function roleShortName(name: string): string {
+  const segments = name.split("/");
+  return segments[segments.length - 1] || name;
+}
 const authStore = useAuthStore();
 const { formatError, handleError, showSuccess } = useErrorHandler();
 

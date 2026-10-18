@@ -76,8 +76,11 @@
 							<Badge :variant="operationVariant(entry.operation)">
 								{{ operationLabel(entry.operation) }}
 							</Badge>
-							<span class="text-xs text-muted-foreground">
-								{{ formatTimestamp(entry.eventTime) }}
+							<span
+								class="text-xs text-muted-foreground"
+								:title="formatTimestamp(entry.eventTime)"
+							>
+								{{ formatRelativeTimestamp(entry.eventTime) }}
 							</span>
 						</div>
 						<div
@@ -143,8 +146,11 @@
 								<Badge :variant="operationVariant(selectedEntry.operation)">
 									{{ operationLabel(selectedEntry.operation) }}
 								</Badge>
-								<span class="text-sm text-muted-foreground">
-									{{ formatTimestamp(selectedEntry.eventTime) }}
+								<span
+									class="text-sm text-muted-foreground"
+									:title="formatTimestamp(selectedEntry.eventTime)"
+								>
+									{{ formatRelativeTimestamp(selectedEntry.eventTime) }}
 								</span>
 							</div>
 							<div class="text-base font-semibold">
@@ -322,7 +328,7 @@ import {
   type MetadataHistoryTimelineEntry,
   type MetaType,
 } from "@/types/proto-es/v1/database_service_pb";
-import { formatDateTime } from "@/utils/datetime";
+import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 
 const props = withDefaults(
   defineProps<{
@@ -575,12 +581,17 @@ function formatSectionChange(
   return parts.join(" ");
 }
 
+/** The full local time, kept as the tooltip behind every relative label. */
 function formatTimestamp(timestamp?: Timestamp): string {
   return formatDateTime(timestamp, locale.value, {
     month: "short",
-    seconds: true,
     fallback: "",
   });
+}
+
+/** Timeline entries read "3 days ago"; the exact time is in the title. */
+function formatRelativeTimestamp(timestamp?: Timestamp): string {
+  return formatRelativeTime(timestamp, locale.value, "");
 }
 
 function formatFieldValue(value: string): string {

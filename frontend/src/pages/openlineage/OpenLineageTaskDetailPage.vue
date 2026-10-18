@@ -2,7 +2,7 @@
   <div class="space-y-4">
     <OpenLineageSectionHeader
       :title="task?.jobName || t('openlineage.jobs')"
-      :description="t('openlineage.jobsDescription')"
+      :description="t('openlineage.jobDetailDescription')"
     >
       <template #actions>
         <Button v-if="dagUrl" variant="secondary" asChild>
@@ -229,7 +229,9 @@
               <TableRow v-for="run in displayRuns" :key="run.guid">
                 <TableCell>{{ formatTimestamp(run.eventTime) }}</TableCell>
                 <TableCell>
-                  <Badge variant="outline">{{ run.eventType || "-" }}</Badge>
+                  <Badge :variant="openLineageStatusVariant(run.eventType)">
+                    {{ t(openLineageStatusKey(run.eventType)) }}
+                  </Badge>
                 </TableCell>
                 <TableCell class="font-mono text-sm">{{ run.runId }}</TableCell>
                 <TableCell>
@@ -291,6 +293,10 @@ import type {
 } from "@/types/proto-es/v1/openlineage_service_pb";
 import { formatDateTime } from "@/utils/datetime";
 import { guidToRouteParams } from "@/utils/guid";
+import {
+  openLineageStatusKey,
+  openLineageStatusVariant,
+} from "@/utils/openlineageStatus";
 import { safeExternalUrl } from "@/utils/safeUrl";
 
 const route = useRoute();

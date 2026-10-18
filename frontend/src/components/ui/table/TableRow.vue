@@ -11,7 +11,7 @@ const props = defineProps<{
   <tr
     :class="
       cn(
-        'border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted',
+        'border-b border-border/60 transition-colors hover:bg-muted/50 focus-within:bg-muted/40 data-[state=selected]:bg-muted',
         props.class
       )
     "

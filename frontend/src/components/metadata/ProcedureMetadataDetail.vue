@@ -2,9 +2,9 @@
   <div class="p-4 space-y-4">
     <div class="space-y-1">
       <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <div class="text-lg font-semibold wrap-break-word">
+        <h1 class="text-2xl font-semibold tracking-tight wrap-break-word">
           {{ proc.name }}
-        </div>
+        </h1>
         <div
           v-if="proc.comment"
           class="text-sm text-muted-foreground wrap-break-word max-w-xl"

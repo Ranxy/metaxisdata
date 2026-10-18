@@ -10,16 +10,20 @@
       <TableHeader>
         <TableRow>
           <TableHead>{{ t("metadataBrowser.manualSqlTitle") }}</TableHead>
-          <TableHead>{{ t("metadataBrowser.schemaName") }}</TableHead>
-          <TableHead>{{ t("metadataBrowser.comment") }}</TableHead>
+          <TableHead class="hidden md:table-cell">{{ t("metadataBrowser.schemaName") }}</TableHead>
+          <TableHead v-if="hasComment" class="hidden md:table-cell">{{ t("metadataBrowser.comment") }}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         <TableRow
           v-for="row in manualSQLRows"
           :key="row.value.manualSqlId"
-          class="cursor-pointer hover:bg-muted/50"
+          class="cursor-pointer hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:outline-none"
+          role="button"
+          tabindex="0"
           @click="$emit('select', row.stored)"
+          @keydown.enter.self.prevent="$emit('select', row.stored)"
+          @keydown.space.self.prevent="$emit('select', row.stored)"
         >
           <TableCell>
             <div class="flex items-center gap-2">
@@ -33,10 +37,10 @@
               {{ row.value.name }}
             </div>
           </TableCell>
-          <TableCell class="text-muted-foreground">
+          <TableCell class="hidden text-muted-foreground md:table-cell">
             {{ row.value.schemaName || t("metadataBrowser.defaultSchema") }}
           </TableCell>
-          <TableCell class="text-muted-foreground">
+          <TableCell v-if="hasComment" class="hidden text-muted-foreground md:table-cell">
             {{ row.value.comment || "-" }}
           </TableCell>
         </TableRow>
@@ -82,6 +86,11 @@ const manualSQLRows = computed(() => {
   }
   return rows;
 });
+
+// A comment that is empty on every row renders one column of dashes.
+const hasComment = computed(() =>
+  manualSQLRows.value.some((row) => row.value.comment !== "")
+);
 
 /**
  * The identifier under the title is only worth a line when the title above it

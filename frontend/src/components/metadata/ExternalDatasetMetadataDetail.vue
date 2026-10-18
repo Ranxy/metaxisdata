@@ -2,15 +2,17 @@
   <div class="p-4 space-y-4">
     <div class="space-y-1">
       <div class="flex flex-wrap items-center gap-3">
-        <div class="text-lg font-semibold wrap-break-word">
+        <h1 class="text-2xl font-semibold tracking-tight wrap-break-word">
           {{ displayName }}
-        </div>
+        </h1>
         <Badge variant="secondary">
           {{ datasetType || t("metadataBrowser.unknown") }}
         </Badge>
       </div>
-      <div class="text-sm text-muted-foreground break-all">
-        {{ guid }}
+      <!-- The GUID is the external dataset's internal name; the qualified label
+           reads as namespace · name. -->
+      <div class="break-all text-sm text-muted-foreground">
+        {{ assetLabel }}
       </div>
     </div>
 
@@ -38,6 +40,7 @@
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { Badge } from "@/components/ui/badge";
+import { lineageAssetView } from "@/utils/lineageAsset";
 
 const props = defineProps<{
   guid: string;
@@ -47,6 +50,10 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
+
+const assetLabel = computed(
+  () => lineageAssetView(props.guid, new Map()).fullLabel
+);
 
 const displayName = computed(() => {
   if (props.name) {

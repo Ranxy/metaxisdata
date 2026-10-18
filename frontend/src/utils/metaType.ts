@@ -73,3 +73,24 @@ export function metaTypeLabel(metaType: MetaType, t: Translate): string {
       return t("metadataBrowser.other");
   }
 }
+
+/**
+ * The singular display name for the one node a detail page shows, for the badge
+ * beside its title. Only the levels the metadata browser can title this way are
+ * named; anything else falls back to the category label.
+ */
+export function metaTypeSingularLabel(
+  metaType: MetaType,
+  t: Translate
+): string {
+  switch (metaType) {
+    case MetaType.INSTANCE:
+      return t("metadataBrowser.typeInstance");
+    case MetaType.DATABASE:
+      return t("metadataBrowser.typeDatabase");
+    case MetaType.SCHEMA:
+      return t("metadataBrowser.typeSchema");
+    default:
+      return metaTypeLabel(metaType, t);
+  }
+}

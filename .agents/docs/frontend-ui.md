@@ -31,7 +31,7 @@
 | 桌面无顶栏 | `AppHeader` 只在 `lg:hidden` 渲染（48px，drawer 触发 + 品牌）（[AppHeader.vue:6](frontend/src/components/layout/AppHeader.vue#L6)） |
 | 设置 section | [`SettingsLayout.vue`](frontend/src/pages/settings/SettingsLayout.vue)：导航 `md:sticky md:top-0 md:w-52 md:self-start`（`self-start` 必需，否则被 stretch 的 flex item 无可粘滞空间），内容列 `max-w-[860px]`，`settingsContentWidth: "full"` 的页 opt out；[`SettingsNav.vue`](frontend/src/components/layout/SettingsNav.vue) 9 项 |
 | 侧栏 | [`AppSidebar.vue:248-341`](frontend/src/components/layout/AppSidebar.vue#L248-L341) 5 个顶层项，底部 `NotificationBell` + `UserMenu`（[:174-175](frontend/src/components/layout/AppSidebar.vue#L174-L175)）；折叠 rail 下每组前用分隔线代替标题 |
-| 页头 | [`PageHeader.vue`](frontend/src/components/layout/PageHeader.vue)：`breadcrumb` slot + `h1.text-xl` + 描述 + `actions` slot；被 19 个 `.vue` 引用 |
+| 页头 | [`PageHeader.vue`](frontend/src/components/layout/PageHeader.vue)：`breadcrumb` slot + 可选 `eyebrow`（11px 大写 accent）+ `h1.text-2xl` + 描述 + `actions` slot（窄屏自动换行到标题下）；被 20+ 个 `.vue` 引用 |
 | 路由 | 设置二级导航挂在 `/settings` children（[router/index.ts:52-142](frontend/src/router/index.ts#L52-L142)），`/settings` redirect 到 GeneralSettings；OpenLineage 父路由统一 `contentWidth: "full"`（[:166-217](frontend/src/router/index.ts#L166-L217)） |
 
 ## OpenLineage 页面
@@ -44,6 +44,29 @@
 | 证据 / 关系 | `/openlineage/events` → `OpenLineageEventsPage.vue`；`/events/:guid` → `OpenLineageRunDetailPage.vue`（保留原始 JSON、facets、Airflow 链接、相关 job/dataset）；`/column-lineage/:guid+` → `OpenLineageColumnLineagePage.vue`（URL 携带 `column`；`:guid+` 重复段让含 `/` 的对象名存活） | 证据层 + 字段关系 |
 
 共享头 `components/openlineage/OpenLineageSectionHeader.vue` 并入 `PageHeader`。**跨页上下文已实现**：`from` query 在 Job Detail / Run Detail / Column Lineage 之间往返（`goBack()` 优先回 `from`），列表筛选写进 URL 并可读回（`queryFilters()` ← `route.query[key]`，`router.replace({ query: nextQuery })`），`lineageOnly` / `columnLineageOnly` / `search` 同样持久化。
+
+## 设计令牌与视觉体系
+
+一次全站视觉打磨之后，颜色、圆角、阴影、字号都只从 `main.css` 的 CSS 变量和 `tailwind.config.js` 的映射里取。页面里再出现 `text-blue-600`、`bg-amber-50` 这类原生调色板类名就是回退：浅色下勉强能看、深色下必然错。
+
+| 组 | 令牌 | 用途 |
+| --- | --- | --- |
+| 交互强调色 | `--primary` / `-hover` / `-subtle` / `-subtle-foreground`（cobalt） | 只给可交互元素：主按钮、链接、active 导航、选中态、focus ring。大面积装饰不用它 |
+| 语义色 | `--success` / `--warning` / `--info` / `--danger`，各带 `-subtle`（背景）与 `-foreground`（文字） | 状态徽标、告警、同步结果、危险操作。徽标用 `variant="success|warning|info|danger|secondary|outline"`，不要自拼色 |
+| 表面 | `--background` / `--card` / `--muted` / `--border` / `--input` | 深色下 card 比 background 高一档（6.5% vs 4%），否则卡片边界消失 |
+| 半径 / 阴影 | `--radius: 0.625rem`；`shadow-e1`（卡片）/ `e2`（hover、弹层）/ `e3`（dialog、popover） | 用 elevation 表达层级，不用重边框 |
+| 字号 | 正文 14px；页面标题 24px；卡片标题 16px；辅助 12px；微文本 11px | `CardTitle` 是 16px 的 `<h2>`，页面内不要再局部覆盖字号 |
+
+组件约定：
+
+- **表格**：表头 12px 大写感弱化底色，单元格 `px-4 py-2.5`、`tabular-nums`；行高约 44–64px，主单元格是真正的 link/button（键盘可达 + focus ring），不要 `cursor-pointer` 假行。
+- **输入框**：可见 `border-input`；focus 是 `border-ring + ring-2 ring-ring/25`；校验失败用 `aria-invalid` 触发 danger 边框。
+- **空态/加载/错误**：`EmptyState`（标题 + 描述 + 默认 slot 放操作）与 `PageState`（`loading` 用 `#skeleton`，错误用 `title` + `#error` 操作）覆盖三种状态；空态必须给下一步动作。
+- **时间**：`utils/datetime.ts` 的 `formatRelativeTime` 作显示、`formatDateTime` 进 `title` 工具提示；列表里不允许出现裸 ISO 串。
+- **窄屏**：列表页在 `md` 以下隐藏低价值列（并把状态/时间并进主单元格），操作列保持可点；不要靠横向拖表格。
+- **危险色**：删除类操作用 danger 令牌，深色下才可读；状态徽标不要只靠颜色，文字要能独立表意。
+
+门禁不覆盖观感，但覆盖可量化项：`biome:check` 会拒绝乱序类名、`lint` 的 `@intlify` 规则会拒绝未用/缺失键、`audit:ui` 会拒绝首屏 chrome 过厚与嵌套滚动。像素级的暗色对比、hover 状态仍需 `read_image` 人工看截图。
 
 ## 血缘展示的视觉编码
 

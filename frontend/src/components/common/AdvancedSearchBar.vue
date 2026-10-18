@@ -443,7 +443,7 @@ watch(searchQuery, () => {
   <div class="space-y-3">
     <!-- Main Search Bar -->
     <div
-      class="flex items-center flex-wrap gap-2 min-h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors hover:border-ring focus-within:outline-hidden"
+      class="flex min-h-9 w-full min-w-0 flex-wrap items-center gap-2 rounded-md border border-input bg-background px-2.5 py-1.5 text-sm transition-colors hover:border-ring focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/20"
     >
       <!-- Active Filter Pills -->
       <Badge
@@ -469,7 +469,8 @@ watch(searchQuery, () => {
         v-model="searchQuery"
         type="text"
         :placeholder="searchPlaceholder ?? t('databaseManagement.searchPlaceholder')"
-        class="flex-1 min-w-[120px] bg-transparent outline-hidden placeholder:text-muted-foreground"
+        :aria-label="searchPlaceholder ?? t('databaseManagement.searchPlaceholder')"
+        class="min-w-0 flex-1 bg-transparent outline-hidden placeholder:text-muted-foreground"
       >
 
       <!-- Add Filter Button -->
@@ -479,7 +480,7 @@ watch(searchQuery, () => {
             v-if="availableCategories.length > 0"
             variant="ghost"
             size="sm"
-            class="h-6 px-2 text-xs shrink-0"
+            class="h-7 shrink-0 px-2 text-xs"
           >
             <Plus class="h-3 w-3 mr-1" />
             {{ t("common.filter.add") }}

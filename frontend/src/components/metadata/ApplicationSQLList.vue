@@ -11,15 +11,19 @@
       <TableHeader>
         <TableRow>
           <TableHead>{{ t("applicationSql.statement") }}</TableHead>
-          <TableHead>{{ t("metadataBrowser.schemaName") }}</TableHead>
+          <TableHead class="hidden md:table-cell">{{ t("metadataBrowser.schemaName") }}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         <TableRow
           v-for="row in rows"
           :key="row.value.applicationSqlId"
-          class="cursor-pointer hover:bg-muted/50"
+          class="cursor-pointer hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:outline-none"
+          role="button"
+          tabindex="0"
           @click="$emit('select', row.stored)"
+          @keydown.enter.self.prevent="$emit('select', row.stored)"
+          @keydown.space.self.prevent="$emit('select', row.stored)"
         >
           <TableCell>
             <div class="flex items-center gap-2">
@@ -28,7 +32,7 @@
               <span class="truncate font-mono text-xs">{{ row.value.name }}</span>
             </div>
           </TableCell>
-          <TableCell class="text-muted-foreground">
+          <TableCell class="hidden text-muted-foreground md:table-cell">
             {{ row.value.schemaName || t("metadataBrowser.defaultSchema") }}
           </TableCell>
         </TableRow>

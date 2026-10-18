@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
-import { metaTypeLabel, parseMetaType } from "./metaType";
+import {
+  metaTypeLabel,
+  metaTypeSingularLabel,
+  parseMetaType,
+} from "./metaType";
 
 /** Stands in for vue-i18n, which the util only needs as a lookup. */
 const t = (key: string) => key;
@@ -57,6 +61,26 @@ describe("metaTypeLabel", () => {
   it("falls back to a label instead of an enum name", () => {
     expect(metaTypeLabel(MetaType.UNSPECIFIED, t)).toBe(
       "metadataBrowser.other"
+    );
+  });
+});
+
+describe("metaTypeSingularLabel", () => {
+  it("names the one node a detail page can title", () => {
+    expect(metaTypeSingularLabel(MetaType.INSTANCE, t)).toBe(
+      "metadataBrowser.typeInstance"
+    );
+    expect(metaTypeSingularLabel(MetaType.DATABASE, t)).toBe(
+      "metadataBrowser.typeDatabase"
+    );
+    expect(metaTypeSingularLabel(MetaType.SCHEMA, t)).toBe(
+      "metadataBrowser.typeSchema"
+    );
+  });
+
+  it("falls back to the category label for anything else", () => {
+    expect(metaTypeSingularLabel(MetaType.TABLE, t)).toBe(
+      "metadataBrowser.tables"
     );
   });
 });

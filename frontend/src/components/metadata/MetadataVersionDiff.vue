@@ -21,8 +21,9 @@
               v-for="entry in entries"
               :key="entryKey(entry)"
               :value="entryKey(entry)"
+              :title="formatTimestamp(entry.eventTime)"
             >
-              {{ formatTimestamp(entry.eventTime) }} · {{ entry.summary || fallbackEntrySummary(entry) }}
+              {{ formatRelativeTimestamp(entry.eventTime) }} · {{ entry.summary || fallbackEntrySummary(entry) }}
             </SelectItem>
           </SelectContent>
         </Select>
@@ -38,8 +39,9 @@
               v-for="entry in entries"
               :key="entryKey(entry)"
               :value="entryKey(entry)"
+              :title="formatTimestamp(entry.eventTime)"
             >
-              {{ formatTimestamp(entry.eventTime) }} · {{ entry.summary || fallbackEntrySummary(entry) }}
+              {{ formatRelativeTimestamp(entry.eventTime) }} · {{ entry.summary || fallbackEntrySummary(entry) }}
             </SelectItem>
           </SelectContent>
         </Select>
@@ -93,7 +95,7 @@ import {
 } from "@/components/ui/select";
 import { useErrorMessage } from "@/composables/useErrorHandler";
 import type { MetadataHistoryTimelineEntry } from "@/types/proto-es/v1/database_service_pb";
-import { formatDateTime } from "@/utils/datetime";
+import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 
 const props = defineProps<{
   guid: string;
@@ -134,6 +136,11 @@ function formatTimestamp(timestamp?: Timestamp): string {
     month: "short",
     fallback: "",
   });
+}
+
+/** The entry dropdown reads "3 days ago"; the picker title has the exact time. */
+function formatRelativeTimestamp(timestamp?: Timestamp): string {
+  return formatRelativeTime(timestamp, locale.value, "");
 }
 
 async function runDiff() {
