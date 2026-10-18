@@ -308,17 +308,28 @@ func TestAnalyzeSQLFromListedGUIDRealServerIntegration(t *testing.T) {
 	env.SyncDatabase(ctx, t, databaseName)
 	client := newAPIClients(env, env.AdminToken())
 
-	// Scope the listing to this test's instance: the shared server accumulates the
-	// databases of every parallel scenario, and an unscoped listing is paginated.
-	listed, err := client.database.ListDatabases(ctx, connect.NewRequest(&v1pb.ListDatabasesRequest{
-		Parent: "instances/" + instanceID,
-	}))
-	require.NoError(t, err)
-
-	var scopeGUID string
-	for _, database := range listed.Msg.GetDatabases() {
-		if database.GetName() == databaseName {
-			scopeGUID = database.GetGuid()
+	// Scope the listing to this test's instance: the shared MySQL server holds every
+	// parallel scenario's database, and this instance enumerates all of them, so the
+	// result is paginated and the scenario's database may be on a later page.
+	var (
+		scopeGUID string
+		pageToken string
+	)
+	for {
+		listed, err := client.database.ListDatabases(ctx, connect.NewRequest(&v1pb.ListDatabasesRequest{
+			Parent:    "instances/" + instanceID,
+			PageSize:  100,
+			PageToken: pageToken,
+		}))
+		require.NoError(t, err)
+		for _, database := range listed.Msg.GetDatabases() {
+			if database.GetName() == databaseName {
+				scopeGUID = database.GetGuid()
+				break
+			}
+		}
+		pageToken = listed.Msg.GetNextPageToken()
+		if scopeGUID != "" || pageToken == "" {
 			break
 		}
 	}

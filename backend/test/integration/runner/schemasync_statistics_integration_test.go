@@ -37,15 +37,12 @@ func TestMySQLMetaRegistryStatisticsRefreshKeepsHistoryRealServerIntegration(t *
 	require.NoError(t, err)
 	require.Equal(t, before.MetaHash, metaHash, "statistics must not move the change fingerprint")
 
-	tx, err := env.Store.GetDB().BeginTx(ctx, nil)
-	require.NoError(t, err)
-	affected, err := env.Store.BatchUpdateMetaRegistryStatisticsAt(ctx, tx, []*store.CreateMetaRegistryResourceMessage{{
+	affected, err := env.Store.BatchUpdateMetaRegistryStatistics(ctx, []*store.CreateMetaRegistryResourceMessage{{
 		MetaRegistryResource: store.MetaRegistryResource{GUID: tableGUID, ObjectType: storepb.MetaType_TABLE, MetaHash: metaHash},
 		MetadataBytes:        metadataBytes,
 	}})
 	require.NoError(t, err)
 	require.Equal(t, int64(1), affected)
-	require.NoError(t, tx.Commit())
 
 	after := waitForMetaRegistry(ctx, t, env, tableGUID, storepb.MetaType_TABLE)
 	require.Equal(t, before.Metadata.GetTableMetadata().GetRowCount()+12345, after.Metadata.GetTableMetadata().GetRowCount())

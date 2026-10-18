@@ -159,7 +159,7 @@ TiDB 和 MariaDB **没有自己的遍历**。`mysql/analyzer.go` 哨兵之下的
 | omni 解析不了某语句 | 硬失败 → runner 清该对象血缘 + `error_message`,存 hash,等元数据变化再试 |
 | 某子句只是没建模(如 PG `MERGE`) | 部分分析 → 兄弟语句的边照存,缺口写 version 行 / RPC diagnostics |
 | 引擎没有分析器(OceanBase) | `ErrorEngineNotSupported` → 记 skip 与原因,不清边 |
-| 对象定义变成空 | 与解析失败同路:清边 + 写非空 `error_message`("no SQL definition")+ 存当前 hash;旧的边描述的是已经不存在的 SQL |
+| 对象定义变成空 | 按类型区分:MANUAL_SQL/APPLICATION_SQL 视为文本被清空 → 清边 + 写非空 `error_message`("no SQL definition")+ 存当前 hash;VIEW/MV 不可能"没有定义",空值只可能是本次快照读不到(如缺少 `SHOW VIEW`)→ **保留上次正确的边** + 记录原因 + 存当前 hash,定义可读后按 hash 变化重算 |
 | catalog `GetTable` 失败 | `DiagnosticCatalogUnavailable` + 通配符回退,分析继续 |
 | 瞬时失败(DB 抖动等) | 30s/2m/5m 退避重试 ≤3 次,之后等小时全扫;错误消息写在已有 version 行上,不清旧 hash |
 | 单对象分析超时(2m) | 与瞬时失败同路:退避重试,不写 failure 状态、不清边 |
@@ -173,7 +173,7 @@ TiDB 和 MariaDB **没有自己的遍历**。`mysql/analyzer.go` 哨兵之下的
 
 1. **T5 omni 依赖策略与升级流程** — 仍开放。证据:`go.mod:10` pin,无 `replace`、无 `vendor/`;政策见 [omni-upstream-defects.md](omni-upstream-defects.md)。缺的是"带验收门槛(全语料 + 输出 diff)的升级流程"。runner 侧的重算已由 `AnalyzerVersion` 闭环(版本变化自动全量重算),仍未闭环的是升级前的验收门。
 2. **PG-FU-2 上游回馈** — 仍开放。把"保留 DML/集合运算/窗口的 walker"作为生产级 `analysis` 包回馈 `github.com/bytebase/omni`,以缩小仓库内 walker;原先只登记在 PostgreSQL omni 迁移计划里(该计划文档随本次合并归档),现以本条为唯一跟踪点。
-3. **`error_message` 是纯文本** — 仍开放。列本身 `TEXT`(`LATEST.sql:321`),store 侧 `*string`(`backend/store/column_lineage.go:52`),写入的是 `Diagnostic.String()` 渲染后的文本(`:391`);结构化只到 RPC 边界,前端若想按类别过滤历史缺口需要一次 schema 变更。
+3. **`error_message` 是纯文本** — 仍开放。列本身 `TEXT`(`LATEST.sql:321`),store 侧 `*string`(`backend/store/column_lineage.go:52`),写入的是 `Diagnostic.String()` 渲染后的文本(`:391`);结构化只到 RPC 边界(只由 `AnalyzeSQL` 返回);`column_lineage_version.error_message` 目前是 **store-only**,没有任何 RPC 暴露它,前端若想按类别过滤或给"图被清空"一个原因,需要一次 schema/API 变更。
 4. **跨包共享分析器基状态未做** — 仍开放。`pushScope` / `popScope` / `currentScope` / `attachColumnLookup` 在每个方言各一份(`mysql/analyzer.go:2205-2245`、`starrocks/analyzer.go:1190-1210`、`postgresql/analyzer.go:1759-1780`),只因绑定接收者状态(`a.catalog`、`a.scopeStack`)而未下沉;另有各包私有的 `locFieldCache sync.Map`(`mysql/analyzer.go:262`)。抽出共享基状态类型才能继续收敛。
 5. **StarRocks / Doris `LOAD` 的 SET/WHERE 无列级血缘** — 仍开放。`starrocks/analyzer.go:892-896` 明确:omni 只把 SET 子句当原文保存,分析器只读 target 与 column list,不二次解析 SET/WHERE;Doris 的 `processLoadStatement` 走同一条规则。
 6. **函数 / 存储过程血缘未覆盖** — 仍开放。`analyzer.go` 的 `queueAll` 只扫 VIEW、MATERIALIZED_VIEW、MANUAL_SQL、APPLICATION_SQL;FUNCTION / PROCEDURE 不在任何队列里。

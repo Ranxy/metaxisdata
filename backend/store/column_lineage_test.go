@@ -67,17 +67,29 @@ func TestColumnLineageDeleteByMetaGUIDsShape(t *testing.T) {
 		{GUID: "q1", ObjectType: storepb.MetaType_SEQUENCE},
 		{GUID: "f1", ObjectType: storepb.MetaType_FUNCTION},
 	})
-	require.Equal(t, []string{"t1", "v1", "mv1", "e1"}, endpoints)
-	require.Equal(t, []string{"v1", "mv1"}, producers)
+	endpointGUIDs := make([]string, 0, len(endpoints))
+	for _, key := range endpoints {
+		endpointGUIDs = append(endpointGUIDs, key.GUID)
+	}
+	producerGUIDs := make([]string, 0, len(producers))
+	for _, key := range producers {
+		producerGUIDs = append(producerGUIDs, key.GUID)
+	}
+	require.Equal(t, []string{"t1", "v1", "mv1", "e1"}, endpointGUIDs)
+	require.Equal(t, []string{"v1", "mv1"}, producerGUIDs)
 
+	// The (guid, type) pair is the registry identity; a delete must never cross types,
+	// because a synthetic manual/application SQL name can collide with a real object's name.
 	require.Contains(t, columnLineageDeleteByEndpointStatement, "DELETE FROM column_lineage")
-	require.Contains(t, columnLineageDeleteByEndpointStatement, "source_guid = ANY($1::text[])")
-	require.Contains(t, columnLineageDeleteByEndpointStatement, "target_guid = ANY($1::text[])")
+	require.Contains(t, columnLineageDeleteByEndpointStatement, "UNNEST($1::text[], $2::int[])")
+	require.Contains(t, columnLineageDeleteByEndpointStatement, "(source_guid, source_type) IN")
+	require.Contains(t, columnLineageDeleteByEndpointStatement, "(target_guid, target_type) IN")
 	require.NotContains(t, columnLineageDeleteByEndpointStatement, "meta_guid")
 
-	require.Contains(t, columnLineageDeleteByProducerStatement, "meta_guid = ANY($1::text[])")
+	require.Contains(t, columnLineageDeleteByProducerStatement, "(meta_guid, meta_type) IN")
+	require.Contains(t, columnLineageDeleteByProducerStatement, "UNNEST($1::text[], $2::int[])")
 	require.Contains(t, columnLineageVersionDeleteByProducerStatement, "DELETE FROM column_lineage_version")
-	require.Contains(t, columnLineageVersionDeleteByProducerStatement, "meta_guid = ANY($1::text[])")
+	require.Contains(t, columnLineageVersionDeleteByProducerStatement, "(meta_guid, meta_type) IN")
 
 	// The cleanup is metadata-adjacent, not history: it must never touch the ledger.
 	for _, statement := range []string{

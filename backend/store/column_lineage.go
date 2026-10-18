@@ -617,22 +617,36 @@ func deleteColumnLineageAt(ctx context.Context, tx *sql.Tx, metaGUID string, met
 }
 
 // columnLineageDeleteByEndpointStatement deletes every edge that names one of the given
-// objects as a source or target. GUIDs are matched rather than (guid, type) pairs so each
-// predicate is a bitmap index scan on the leading column of a three-index OR; a GUID from a
-// schema snapshot names one object in the managed namespace, so the type adds nothing.
+// objects as a source or target, matching the (guid, type) pair the registry uses as
+// identity. The type predicate is kept on purpose: a synthetic manual/application SQL name
+// can collide with a real object's name, and a delete must not cross types.
 const columnLineageDeleteByEndpointStatement = `
+	WITH deleted AS (
+		SELECT guid, object_type::int2 AS object_type
+		FROM UNNEST($1::text[], $2::int[]) AS d(guid, object_type)
+	)
 	DELETE FROM column_lineage
-	WHERE source_guid = ANY($1::text[])
-		OR target_guid = ANY($1::text[])
+	WHERE (source_guid, source_type) IN (SELECT guid, object_type FROM deleted)
+		OR (target_guid, target_type) IN (SELECT guid, object_type FROM deleted)
 `
 
 // columnLineageDeleteByProducerStatement deletes the edges an analyzed object produced.
 const columnLineageDeleteByProducerStatement = `
-	DELETE FROM column_lineage WHERE meta_guid = ANY($1::text[])
+	WITH deleted AS (
+		SELECT guid, object_type::int2 AS object_type
+		FROM UNNEST($1::text[], $2::int[]) AS d(guid, object_type)
+	)
+	DELETE FROM column_lineage
+	WHERE (meta_guid, meta_type) IN (SELECT guid, object_type FROM deleted)
 `
 
 const columnLineageVersionDeleteByProducerStatement = `
-	DELETE FROM column_lineage_version WHERE meta_guid = ANY($1::text[])
+	WITH deleted AS (
+		SELECT guid, object_type::int2 AS object_type
+		FROM UNNEST($1::text[], $2::int[]) AS d(guid, object_type)
+	)
+	DELETE FROM column_lineage_version
+	WHERE (meta_guid, meta_type) IN (SELECT guid, object_type FROM deleted)
 `
 
 // lineageEndpointTypes are the object types that can appear as an edge's source or target.
@@ -652,37 +666,49 @@ var lineageProducerTypes = []storepb.MetaType{
 	storepb.MetaType_MATERIALIZED_VIEW,
 }
 
-// splitLineageDeletions returns the GUIDs that can be an edge endpoint and the GUIDs that can
+// splitLineageDeletions returns the keys that can be an edge endpoint and the keys that can
 // own an edge, dropping every deleted object that can be neither.
-func splitLineageDeletions(keys []MetaGUIDKey) (endpoints, producers []string) {
+func splitLineageDeletions(keys []MetaGUIDKey) (endpoints, producers []MetaGUIDKey) {
 	for _, key := range keys {
 		if slices.Contains(lineageEndpointTypes, key.ObjectType) {
-			endpoints = append(endpoints, key.GUID)
+			endpoints = append(endpoints, key)
 		}
 		if slices.Contains(lineageProducerTypes, key.ObjectType) {
-			producers = append(producers, key.GUID)
+			producers = append(producers, key)
 		}
 	}
 	return endpoints, producers
 }
 
+// deleteColumnLineageKeys executes one (guid, type) bulk delete.
+func deleteColumnLineageKeys(ctx context.Context, tx *sql.Tx, statement string, keys []MetaGUIDKey) error {
+	guids := make([]string, len(keys))
+	objectTypes := make([]int32, len(keys))
+	for i, key := range keys {
+		guids[i] = key.GUID
+		objectTypes[i] = int32(key.ObjectType)
+	}
+	_, err := tx.ExecContext(ctx, statement, pq.Array(guids), pq.Array(objectTypes))
+	return err
+}
+
 // DeleteColumnLineageByMetaGUIDs removes the lineage that mentions any of the given objects
 // and the analysis state of the analyzed ones, in a fixed number of statements. A destructive
 // schema sync deletes a database's objects at once — most of them columns, which are never
-// lineage endpoints — so the cleanup filters by type and probes the indexes once per
-// direction instead of once per deleted object, and does so inside the write transaction.
+// lineage endpoints — so the cleanup filters by type and matches the (guid, type) identity
+// the registry uses, instead of one probe per deleted object inside the write transaction.
 func (*Store) DeleteColumnLineageByMetaGUIDs(ctx context.Context, tx *sql.Tx, keys []MetaGUIDKey) error {
 	endpoints, producers := splitLineageDeletions(keys)
 	if len(endpoints) > 0 {
-		if _, err := tx.ExecContext(ctx, columnLineageDeleteByEndpointStatement, pq.Array(endpoints)); err != nil {
+		if err := deleteColumnLineageKeys(ctx, tx, columnLineageDeleteByEndpointStatement, endpoints); err != nil {
 			return errors.Wrap(err, "failed to delete the column lineage of deleted objects")
 		}
 	}
 	if len(producers) > 0 {
-		if _, err := tx.ExecContext(ctx, columnLineageDeleteByProducerStatement, pq.Array(producers)); err != nil {
+		if err := deleteColumnLineageKeys(ctx, tx, columnLineageDeleteByProducerStatement, producers); err != nil {
 			return errors.Wrap(err, "failed to delete the column lineage the deleted objects produced")
 		}
-		if _, err := tx.ExecContext(ctx, columnLineageVersionDeleteByProducerStatement, pq.Array(producers)); err != nil {
+		if err := deleteColumnLineageKeys(ctx, tx, columnLineageVersionDeleteByProducerStatement, producers); err != nil {
 			return errors.Wrap(err, "failed to delete the analysis state of deleted objects")
 		}
 	}

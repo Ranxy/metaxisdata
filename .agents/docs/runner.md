@@ -46,8 +46,8 @@ Consequences worth knowing before changing this area:
 | Data | Written by | Cadence / trigger | History? | Fingerprint / re-analysis? |
 | --- | --- | --- | --- | --- |
 | schema metadata | `schemasync` diff | every database sync (10s checker + 15m scan) | one row per change | is the fingerprint |
-| object DDL | `schemasync` | changed objects every sync, full refresh hourly per database, rotating batch above 2000 objects | no (derived) | no |
-| table statistics / sequence last value | `schemasync` | hourly per database | **no** | no |
+| object DDL | `schemasync` | changed objects every sync, full refresh at most hourly per database (gated by the database's sync interval), rotating batch above 2000 objects | no (derived) | no |
+| table statistics / sequence last value | `schemasync` | at most hourly per database, gated by that database's sync interval; best effort (a failure is logged, never fails the sync) | **no** | no |
 | column lineage | `lineageanalyzer` | event queue first, then hourly scan backlog; bounded batch per tick | no (replaced per object) | `meta_hash` + `AnalyzerVersion` |
 | ingested lineage revalidation | `lineagevalidation` / `maintenance` | after a sync commit / 6h; one pass loops while the revalidator reports `hasMore`, bounded by the pass timeout | no (replaces edges) | n/a |
 

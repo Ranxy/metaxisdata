@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 
@@ -116,12 +115,15 @@ const metaRegistryStatisticsUpdateStatement = `
 		AND current.meta_hash = updated.meta_hash
 `
 
-// BatchUpdateMetaRegistryStatisticsAt refreshes the statistics of rows whose non-statistics
-// content is unchanged. It writes no history row and leaves meta_hash alone, so a stats
-// refresh is invisible to change detection while the API starts returning the new values. A
-// row that changed concurrently is skipped: the skip is not an error, because the next sync
-// writes the row's current metadata anyway.
-func (*Store) BatchUpdateMetaRegistryStatisticsAt(ctx context.Context, tx *sql.Tx, updates []*CreateMetaRegistryResourceMessage) (int64, error) {
+// BatchUpdateMetaRegistryStatistics refreshes the statistics of rows whose non-statistics
+// content is unchanged, in its own transaction. It writes no history row and leaves
+// meta_hash alone, so a stats refresh is invisible to change detection while the API starts
+// returning the new values. A row that changed concurrently is skipped: the skip is not an
+// error, because the next sync writes the row's current metadata anyway.
+//
+// It deliberately has no caller-owned transaction: statistics are a derived estimate, and a
+// failure here must never roll back the schema metadata that the same sync committed.
+func (s *Store) BatchUpdateMetaRegistryStatistics(ctx context.Context, updates []*CreateMetaRegistryResourceMessage) (int64, error) {
 	if len(updates) == 0 {
 		return 0, nil
 	}
@@ -137,6 +139,12 @@ func (*Store) BatchUpdateMetaRegistryStatisticsAt(ctx context.Context, tx *sql.T
 		metaHashes = append(metaHashes, update.MetaHash)
 	}
 
+	tx, err := s.GetDB().BeginTx(ctx, nil)
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to begin the statistics transaction")
+	}
+	defer tx.Rollback()
+
 	result, err := tx.ExecContext(ctx, metaRegistryStatisticsUpdateStatement,
 		pq.Array(guids), pq.Array(objectTypes), pq.Array(metadata), pq.Array(metaHashes))
 	if err != nil {
@@ -145,6 +153,9 @@ func (*Store) BatchUpdateMetaRegistryStatisticsAt(ctx context.Context, tx *sql.T
 	affected, err := result.RowsAffected()
 	if err != nil {
 		return 0, errors.Wrap(err, "failed to report the updated meta registry statistics")
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, errors.Wrap(err, "failed to commit the statistics refresh")
 	}
 	return affected, nil
 }

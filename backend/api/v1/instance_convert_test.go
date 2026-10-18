@@ -45,3 +45,15 @@ func TestInstanceEnvironmentRoundTrip(t *testing.T) {
 	require.Equal(t, "prod", message.EnvironmentID)
 	require.Equal(t, "environments/prod", convertInstanceMessage(message).GetEnvironment())
 }
+
+// enable_full_sync is proto3 optional: an unset field means a full refresh in both
+// the single and the batch sync paths, while an explicit false is discovery-only.
+func TestFullSyncRequested(t *testing.T) {
+	t.Parallel()
+
+	set := func(value bool) *bool { return &value }
+	require.True(t, fullSyncRequested(nil))
+	require.True(t, fullSyncRequested(&v1pb.SyncInstanceRequest{}))
+	require.True(t, fullSyncRequested(&v1pb.SyncInstanceRequest{EnableFullSync: set(true)}))
+	require.False(t, fullSyncRequested(&v1pb.SyncInstanceRequest{EnableFullSync: set(false)}))
+}

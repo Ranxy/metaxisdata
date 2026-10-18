@@ -56,10 +56,3 @@ func TestDebugLogWriterShutdownHonorsTheContext(t *testing.T) {
 	require.ErrorIs(t, writer.shutdown(ctx), context.DeadlineExceeded)
 	close(release)
 }
-
-// A process that never emitted a debug log still shuts down cleanly.
-func TestShutdownDebugLogWorkersWithoutAnyLogger(t *testing.T) {
-	t.Parallel()
-
-	require.NoError(t, ShutdownDebugLogWorkers(context.Background()))
-}

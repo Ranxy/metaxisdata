@@ -41,6 +41,12 @@ const gracefulShutdownPeriod = 10 * time.Second
 // not hold the process open past the graceful period.
 const runnerShutdownTimeout = 10 * time.Second
 
+// debugLogDrainTimeout bounds how long Shutdown waits for queued LLM debug-log
+// writes. The log is best-effort, and the shutdown context has no deadline: a
+// database that is already unavailable must not hold process exit for the queue's
+// worst-case drain.
+const debugLogDrainTimeout = 5 * time.Second
+
 // minJWTSecretLength is the minimum length of the JWT signing key. The key must
 // be long enough that it cannot be brute-forced offline.
 const minJWTSecretLength = 32
@@ -254,9 +260,13 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 	// Drain the LLM debug-log writers before the pool closes: they write to the
 	// store, so a queued entry would otherwise be written to a closed connection
-	// pool. The wait is bounded by the same shutdown context as everything else.
-	if err := llmcomp.ShutdownDebugLogWorkers(ctx); err != nil {
-		slog.Warn("LLM debug log writers did not drain before the store closed", log.WithError(err))
+	// pool. The drain gets its own short budget because the shutdown context has no
+	// deadline, and a stuck database must not keep the process alive.
+	debugDrainCtx, cancelDebugDrain := context.WithTimeout(ctx, debugLogDrainTimeout)
+	debugDrainErr := llmcomp.ShutdownDebugLogWorkers(debugDrainCtx)
+	cancelDebugDrain()
+	if debugDrainErr != nil {
+		slog.Warn("LLM debug log writers did not drain before the store closed", log.WithError(debugDrainErr))
 	}
 
 	// Close db connection

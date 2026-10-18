@@ -83,6 +83,10 @@ type Analyzer struct {
 	// scanMap holds the hourly full scan's backlog. It fills only the batch the event queue
 	// did not use. Values are the generation of the queued request.
 	scanMap sync.Map // map[analyzeKey]uint64
+	// queueMu serializes enqueueing so the two queues stay disjoint: QueueAnalysis removes
+	// the scan entry and queueScan skips a key the event queue already holds, and without a
+	// shared lock an interleaving could store the same key in both and analyze it twice.
+	queueMu sync.Mutex
 	// generation is the source of the monotonically increasing value stored with every queue
 	// entry. Comparing it tells the drain whether the entry it analyzed is still the current
 	// request or has been superseded.
@@ -131,6 +135,8 @@ func NewAnalyzer(stores *store.Store, lineageAnalyzer *lineage.Analyzer) *Analyz
 // alone.
 func (a *Analyzer) QueueAnalysis(metaGUID string, metaType storepb.MetaType) {
 	key := analyzeKey{MetaGUID: metaGUID, MetaType: metaType}
+	a.queueMu.Lock()
+	defer a.queueMu.Unlock()
 	a.retryMap.Delete(key)
 	a.scanMap.Delete(key)
 	a.analyzeMap.Store(key, a.nextGeneration())
@@ -141,6 +147,8 @@ func (a *Analyzer) QueueAnalysis(metaGUID string, metaType storepb.MetaType) {
 // analysis reads the same current definition and has to run anyway.
 func (a *Analyzer) queueScan(metaGUID string, metaType storepb.MetaType) {
 	key := analyzeKey{MetaGUID: metaGUID, MetaType: metaType}
+	a.queueMu.Lock()
+	defer a.queueMu.Unlock()
 	if _, ok := a.analyzeMap.Load(key); ok {
 		return
 	}
@@ -484,14 +492,23 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 		return storeError(ctx, a.store, metaGUID, metaType, err, "failed to build SQL")
 	}
 	if definition == "" {
-		// "No definition" is not "nothing to say": an object whose SQL was emptied
-		// must not keep the edges of the SQL it no longer has. Clear them and record
-		// why, in the same transaction that marks the new hash analyzed, so a cleared
-		// graph is never visible without its explanation and the hourly scan does not
-		// re-queue the unchanged empty definition.
-		slog.Debug("Lineage analyzer clearing the edges of an object with no definition",
+		if emptyDefinitionClearsLineage(metaType) {
+			// A statement's text was cleared: the object no longer has the SQL the
+			// stored edges describe. Clear them and record why, in the same
+			// transaction that marks the new hash analyzed.
+			slog.Debug("Lineage analyzer clearing the edges of an object with no definition",
+				slog.String("guid", metaGUID), slog.String("type", metaType.String()))
+			return markAnalysisFailed(ctx, a.store, metaGUID, metaType, res.MetaHash, nil)
+		}
+		// A view cannot exist without a defining query, so an empty stored
+		// definition means this snapshot could not read the body (a privilege-limited
+		// information_schema read, a driver partial snapshot) rather than that the SQL
+		// was removed. Keep the last correct edges and record why; the next sync that
+		// reads the definition changes the hash and re-analyzes.
+		slog.Warn("Lineage analyzer kept the edges of an object whose definition was unavailable",
 			slog.String("guid", metaGUID), slog.String("type", metaType.String()))
-		return markAnalysisFailed(ctx, a.store, metaGUID, metaType, res.MetaHash, nil)
+		return markAnalyzed(ctx, a.store, metaGUID, metaType, res.MetaHash,
+			"lineage analysis skipped: the definition was unavailable in this sync")
 	}
 
 	// Run lineage analysis with context so unqualified names resolve correctly.
@@ -835,6 +852,21 @@ func markAnalyzed(ctx context.Context, s *store.Store, metaGUID string, metaType
 		return analysisWriteError(ctx, s, metaGUID, metaType, err, "failed to record analysis state")
 	}
 	return nil
+}
+
+// emptyDefinitionClearsLineage reports whether an empty stored definition means the
+// object's SQL is gone rather than unavailable. A manual or reported statement's text
+// can be cleared, and the edges of the SQL it no longer has are wrong. A view or
+// materialized view cannot exist without a defining query, so an empty definition there
+// is a read failure (for example a MySQL account without SHOW VIEW), and keeping the
+// last correct edges is right until the definition is readable again.
+func emptyDefinitionClearsLineage(metaType storepb.MetaType) bool {
+	switch metaType {
+	case storepb.MetaType_MANUAL_SQL, storepb.MetaType_APPLICATION_SQL:
+		return true
+	default:
+		return false
+	}
 }
 
 // analysisFailureMessage builds the version row's error_message for a

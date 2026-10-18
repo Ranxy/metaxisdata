@@ -3,6 +3,7 @@ package schemasync
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -599,10 +600,11 @@ func TestSyncDatabaseSchemaReturnsHiddenForADeletedRow(t *testing.T) {
 	require.ErrorIs(t, err, ErrDatabaseHidden)
 }
 
-// A database soft-deleted after it was queued is dropped from the checker, and an
-// operation waiting for its outcome hears it instead of waiting for a result that
-// will never come — without escalating to the administrators.
-func TestDropHiddenDatabaseReportsTheHiddenOutcome(t *testing.T) {
+// A database hidden by an instance enumeration is dequeued and an operation
+// waiting for its outcome hears it instead of waiting for a result that will never
+// come — without escalating to the administrators. This is the sequence
+// SyncInstance runs on its soft-delete path.
+func TestHiddenDatabaseIsDequeuedAndReported(t *testing.T) {
 	t.Parallel()
 
 	notifier := &fakeNotifier{}
@@ -615,9 +617,8 @@ func TestDropHiddenDatabaseReportsTheHiddenOutcome(t *testing.T) {
 	syncer.EnqueueDatabases(context.Background(), operation, []*store.DatabaseMessage{database})
 	require.Equal(t, 1, countDatabaseSyncMapItems(&syncer.databaseSyncMap))
 
-	// The row is hidden while it is still queued.
-	database.Deleted = true
-	syncer.dropHiddenDatabase(context.Background(), database.String(), database)
+	syncer.forgetQueuedDatabase(database.String())
+	syncer.completeDatabase(context.Background(), database, fmt.Errorf("%w: database %q", ErrDatabaseHidden, database.DatabaseName))
 
 	require.Equal(t, 0, countDatabaseSyncMapItems(&syncer.databaseSyncMap), "a hidden database must not stay queued")
 	require.Empty(t, notifier.admin, "a hidden database is not an administrator's problem")

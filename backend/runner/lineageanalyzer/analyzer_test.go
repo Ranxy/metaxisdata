@@ -529,3 +529,16 @@ func TestAnalysisFailureMessage(t *testing.T) {
 	require.Equal(t, "lineage analysis skipped: the object has no SQL definition", analysisFailureMessage(nil))
 	require.Equal(t, "lineage analysis failed: unexpected token", analysisFailureMessage(errors.New("unexpected token")))
 }
+
+// An empty stored definition means different things per object type: a statement
+// whose text was cleared has lost the SQL its edges describe, while a view's empty
+// body is a read failure (a view cannot exist without a query) and must keep the
+// last correct edges.
+func TestEmptyDefinitionClearsLineage(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, emptyDefinitionClearsLineage(storepb.MetaType_MANUAL_SQL))
+	require.True(t, emptyDefinitionClearsLineage(storepb.MetaType_APPLICATION_SQL))
+	require.False(t, emptyDefinitionClearsLineage(storepb.MetaType_VIEW))
+	require.False(t, emptyDefinitionClearsLineage(storepb.MetaType_MATERIALIZED_VIEW))
+}

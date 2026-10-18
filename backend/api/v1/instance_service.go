@@ -375,9 +375,7 @@ func (s *InstanceService) SyncInstance(ctx context.Context, req *connect.Request
 		s.schemaSyncer.FinishOperation(ctx, operation)
 		return nil, err
 	}
-	// Unset means full: a user-triggered sync refreshes the existing databases too,
-	// matching the background scan. false is the explicit discovery-only mode.
-	if req.Msg.EnableFullSync == nil || req.Msg.GetEnableFullSync() {
+	if fullSyncRequested(req.Msg) {
 		// Sync all databases in the instance asynchronously. The operation waits
 		// for every one of them and reports the batch as one message.
 		s.schemaSyncer.SyncAllDatabases(ctx, operation, updatedInstance)
@@ -390,6 +388,16 @@ func (s *InstanceService) SyncInstance(ctx context.Context, req *connect.Request
 		response.Databases = append(response.Databases, database.Name)
 	}
 	return connect.NewResponse(response), nil
+}
+
+// fullSyncRequested reports whether a sync request asked for a full refresh.
+// enable_full_sync is proto3 optional: unset means full, because the background
+// scan and instance creation refresh everything, and an explicit false is the
+// discovery-only mode (queue only the databases this enumeration discovered). Both
+// SyncInstance and BatchSyncInstances must answer this identically, so the presence
+// check lives here instead of being repeated.
+func fullSyncRequested(request *v1pb.SyncInstanceRequest) bool {
+	return request == nil || request.EnableFullSync == nil || request.GetEnableFullSync()
 }
 
 // BatchSyncInstances syncs multiple instances.

@@ -258,15 +258,6 @@ func (s *Syncer) forgetQueuedDatabase(key string) {
 	s.databaseSyncMap.Delete(key)
 }
 
-// dropHiddenDatabase dequeues a database that was soft-deleted after it was
-// queued. It is not synced and not retried; an operation waiting for it hears the
-// hidden outcome instead of waiting for a result that will never come.
-func (s *Syncer) dropHiddenDatabase(ctx context.Context, key any, database *store.DatabaseMessage) {
-	s.databaseSyncRetryMap.Delete(key)
-	s.databaseSyncMap.Delete(key)
-	s.completeDatabase(ctx, database, errors.Wrapf(ErrDatabaseHidden, "database %q", database.DatabaseName))
-}
-
 // scheduleRetry re-queues a failed database with a bounded backoff; the checker
 // skips it until nextAt. After the last attempt the database is left to the next
 // instance-level scan instead of backing off forever. It reports whether the
@@ -356,14 +347,6 @@ func (s *Syncer) Run(ctx context.Context) {
 					if !ok {
 						return true
 					}
-					if database.Deleted {
-						// The row was soft-deleted after it was queued. Syncing it
-						// would write LastSyncTime to a database the target no longer
-						// has; drop it and tell whoever is waiting for its result.
-						s.dropHiddenDatabase(ctx, key, database)
-						return true
-					}
-
 					if _, ok := instanceMap[database.InstanceID]; !ok {
 						slog.Debug("Instance not found",
 							slog.String("instance", database.InstanceID))
@@ -491,6 +474,16 @@ func (s *Syncer) trySyncAll(ctx context.Context) {
 		wp.Go(func() {
 			slog.Debug("Sync instance schema", slog.String("instance", instance.ResourceID))
 			if _, _, _, err := s.SyncInstance(ctx, instance); err != nil {
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					// The scan budget (or the server shutting down) cancelled this
+					// sync. It is not a broken instance: LastSyncTime did not advance,
+					// so the next scan picks it up, and neither the administrators nor
+					// the remaining databases of the round should treat it as a
+					// failure.
+					slog.Debug("Instance sync stopped by the scan budget; it stays due for the next scan",
+						slog.String("instance", instance.ResourceID), log.WithError(err))
+					return
+				}
 				s.reportInstanceSyncFailure(ctx, instance, err)
 				failedMu.Lock()
 				failedInstances[instance.ResourceID] = struct{}{}
@@ -857,11 +850,22 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 	// be rewritten on every sync.
 	statisticsKey := database.String()
 	refreshStatistics := s.statisticsRefreshDue(statisticsKey)
+	statisticsReadFailed := false
 	var storedStatistics map[store.MetaGUIDKey]store.MetaRegistryStatistics
 	if refreshStatistics {
-		storedStatistics, err = s.store.ListMetaRegistryStatistics(ctx, databaseGUID)
-		if err != nil {
-			return errors.Wrapf(err, "failed to list existing meta registry statistics for database %q", database.DatabaseName)
+		stats, statsErr := s.store.ListMetaRegistryStatistics(ctx, databaseGUID)
+		if statsErr != nil {
+			// Statistics are a derived estimate for the UI, so an unreadable or
+			// malformed stats value must not stop this database's schema from
+			// converging. The attempt is recorded so a persistent failure logs once
+			// per refresh window instead of on every sync.
+			slog.Warn("Failed to read table statistics; leaving them unchanged",
+				slog.String("instance", database.InstanceID),
+				slog.String("database", database.DatabaseName),
+				log.WithError(statsErr))
+			statisticsReadFailed = true
+		} else {
+			storedStatistics = stats
 		}
 	}
 
@@ -1022,13 +1026,26 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 	// rollback erased.
 	logSchemaSyncDeletion(common.FormatDatabase(database.InstanceID, database.DatabaseName), bmc.deletes)
 
+	// The statistics refresh is deliberately outside the metadata transaction: it is
+	// a derived estimate for the UI, so a failed estimate write must not roll back
+	// schema changes that are the source of truth. Its clock advances either way, so
+	// a persistent failure does not retry on every sync.
+	if len(bmc.statsUpdates) > 0 {
+		if _, err := s.store.BatchUpdateMetaRegistryStatistics(ctx, bmc.statsUpdates); err != nil {
+			slog.Warn("Failed to refresh table statistics",
+				slog.String("instance", database.InstanceID),
+				slog.String("database", database.DatabaseName),
+				log.WithError(err))
+		}
+	}
+
 	// Record the completed DDL plan only after the commit: a rolled-back sync must
 	// not advance the refresh clock or the rotation, or it would skip objects it
 	// never refreshed.
 	if definitionPlan != nil {
 		s.recordDefinitionRefresh(definitionDBKey, *definitionPlan)
 	}
-	if refreshStatistics {
+	if refreshStatistics || statisticsReadFailed {
 		s.recordStatisticsRefresh(statisticsKey)
 	}
 
@@ -1177,11 +1194,6 @@ func (b *batchMetaCreate) write(ctx context.Context, s *store.Store, tx *sql.Tx)
 	if len(b.updates) > 0 {
 		if _, err := s.BatchCreateMetaRegistryResourceAt(ctx, tx, b.updates, observedAt); err != nil {
 			return errors.Wrap(err, "BatchCreateMetaRegistryResource")
-		}
-	}
-	if len(b.statsUpdates) > 0 {
-		if _, err := s.BatchUpdateMetaRegistryStatisticsAt(ctx, tx, b.statsUpdates); err != nil {
-			return errors.Wrap(err, "BatchUpdateMetaRegistryStatistics")
 		}
 	}
 	return nil

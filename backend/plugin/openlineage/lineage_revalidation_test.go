@@ -6,6 +6,9 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
+	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
 // A pass queued behind the held semaphore must observe its context: shutdown
@@ -65,4 +68,46 @@ func TestNewProcessorInitializesTheRevalidationSemaphore(t *testing.T) {
 	processor := NewProcessor(nil, nil, nil)
 	require.NotNil(t, processor.revalidateSem)
 	require.Equal(t, 1, cap(processor.revalidateSem))
+}
+
+// A run whose validated edge set equals the stored one must not be rewritten:
+// still-unknown edges validate to themselves, and rewriting them on every pass is
+// pure write amplification. The comparison has to include the transformation and
+// ignore only the row identity the replace rewrites.
+func TestSameLineageEdges(t *testing.T) {
+	t.Parallel()
+
+	edge := func(source, target, transformation string) *store.ColumnLineage {
+		lineage := &store.ColumnLineage{
+			SourceGUID:     source,
+			SourceColumn:   "c",
+			TargetGUID:     target,
+			TargetColumn:   "t",
+			RelationType:   model.RelationType(1),
+			Transformation: []model.Transformation{{Expression: transformation}},
+		}
+		return lineage
+	}
+
+	require.True(t, sameLineageEdges(nil, nil))
+	require.True(t, sameLineageEdges(
+		[]*store.ColumnLineage{edge("s", "t", "a")},
+		[]*store.ColumnLineage{edge("s", "t", "a")},
+	))
+	require.True(t, sameLineageEdges(
+		[]*store.ColumnLineage{edge("s", "t", "a"), edge("s2", "t2", "b")},
+		[]*store.ColumnLineage{edge("s2", "t2", "b"), edge("s", "t", "a")},
+	), "edge order is not part of the set")
+	require.False(t, sameLineageEdges(
+		[]*store.ColumnLineage{edge("s", "t", "a")},
+		[]*store.ColumnLineage{edge("s", "t", "b")},
+	), "a different transformation is a different edge")
+	require.False(t, sameLineageEdges(
+		[]*store.ColumnLineage{edge("s", "t", "a")},
+		[]*store.ColumnLineage{edge("s", "t2", "a")},
+	))
+	require.False(t, sameLineageEdges(
+		[]*store.ColumnLineage{edge("s", "t", "a")},
+		[]*store.ColumnLineage{edge("s", "t", "a"), edge("s2", "t2", "b")},
+	))
 }
