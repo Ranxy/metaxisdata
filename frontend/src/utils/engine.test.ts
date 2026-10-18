@@ -28,18 +28,16 @@ describe("engine presentation", () => {
   });
 
   it("colors the badge pill and the avatar consistently", () => {
-    expect(engineBadgeClass(Engine.MYSQL)).toContain("bg-orange-100");
-    expect(engineBgClass(Engine.MYSQL)).toBe("bg-orange-100");
-    expect(engineTextClass(Engine.MYSQL)).toBe("text-orange-600");
+    expect(engineBadgeClass(Engine.MYSQL)).toContain("bg-warning-subtle");
+    expect(engineBgClass(Engine.MYSQL)).toBe("bg-warning-subtle");
+    expect(engineTextClass(Engine.MYSQL)).toBe("text-warning");
   });
 
   it("falls back for an unspecified or missing engine", () => {
     expect(engineLabel(Engine.ENGINE_UNSPECIFIED)).toBe("Unknown");
     expect(engineIcon(Engine.ENGINE_UNSPECIFIED)).toBe("DB");
-    expect(engineBadgeClass(Engine.ENGINE_UNSPECIFIED)).toContain(
-      "bg-gray-100"
-    );
+    expect(engineBadgeClass(Engine.ENGINE_UNSPECIFIED)).toContain("bg-muted");
     expect(engineLabel(undefined)).toBe("Unknown");
-    expect(engineBgClass(undefined)).toBe("bg-gray-100");
+    expect(engineBgClass(undefined)).toBe("bg-muted");
   });
 });

@@ -129,10 +129,10 @@
             >
               <CollapsibleTrigger
                 :class="[
-                  'flex w-full items-center justify-between gap-2 rounded-md px-4 py-2 text-xs font-semibold uppercase tracking-wider transition-colors',
+                  'flex w-full items-center justify-between gap-2 rounded-md px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] transition-colors',
                   hasActiveChild(item)
                     ? 'text-foreground'
-                    : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
+                    : 'text-muted-foreground hover:text-foreground',
                 ]"
               >
                 <span class="truncate">{{ item.label }}</span>
@@ -391,13 +391,21 @@ interface NavLinkOptions {
 // `<button>` never fills its parent on its own) stays inside the sidebar.
 function navLinkClass(path: string, options: NavLinkOptions = {}): string[] {
   const idle = options.muted
-    ? "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-    : "text-foreground hover:bg-accent hover:text-accent-foreground";
+    ? "text-muted-foreground hover:bg-accent hover:text-foreground"
+    : "text-foreground/85 hover:bg-accent hover:text-foreground";
+  if (rail.value) {
+    return [
+      "mx-auto flex h-10 w-10 items-center justify-center rounded-md transition-colors",
+      isActive(path)
+        ? "bg-primary-subtle text-primary-subtle-foreground"
+        : idle,
+    ];
+  }
   return [
-    rail.value
-      ? "mx-auto flex h-10 w-10 items-center justify-center rounded-md transition-colors"
-      : "flex items-center rounded-md px-4 py-2 transition-colors",
-    isActive(path) ? "bg-accent text-accent-foreground" : idle,
+    "relative flex items-center rounded-md px-3 py-1.5 text-sm transition-colors",
+    isActive(path)
+      ? "bg-primary-subtle font-medium text-primary-subtle-foreground before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-primary"
+      : idle,
   ];
 }
 

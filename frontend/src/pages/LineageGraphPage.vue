@@ -21,11 +21,24 @@
             <SelectItem value="3">{{ t("lineageGraph.depth3") }}</SelectItem>
           </SelectContent>
         </Select>
-        <Button v-if="hasExpandedBeyondRoot" variant="outline" size="sm" @click="handleReset">
+        <!-- Below `lg` the canvas' own controls cover reset/fit; keeping both
+             rows overflowed the viewport and clipped the back button. -->
+        <Button
+          v-if="hasExpandedBeyondRoot"
+          class="hidden lg:inline-flex"
+          variant="outline"
+          size="sm"
+          @click="handleReset"
+        >
           <RotateCcw class="size-4 mr-1" />
           {{ t("lineageGraph.reset") }}
         </Button>
-        <Button variant="outline" size="sm" @click="handleFitView">
+        <Button
+          class="hidden lg:inline-flex"
+          variant="outline"
+          size="sm"
+          @click="handleFitView"
+        >
           <Maximize2 class="size-4 mr-1" />
           {{ t("lineageGraph.fitView") }}
         </Button>
@@ -56,11 +69,35 @@
           fit-view-on-init
         >
           <Background />
-          <Controls />
+          <!-- Each built-in control keeps its handler but gains a screen-reader
+               name; the icons repeat what the toolbar already says. -->
+          <Controls :aria-label="t('lineageGraph.canvasControls')">
+            <template #icon-zoom-in>
+              <Plus class="size-3" />
+              <span class="sr-only">{{ t("lineageGraph.zoomIn") }}</span>
+            </template>
+            <template #icon-zoom-out>
+              <Minus class="size-3" />
+              <span class="sr-only">{{ t("lineageGraph.zoomOut") }}</span>
+            </template>
+            <template #icon-fit-view>
+              <Maximize2 class="size-3" />
+              <span class="sr-only">{{ t("lineageGraph.fitView") }}</span>
+            </template>
+            <template #icon-unlock>
+              <Unlock class="size-3" />
+              <span class="sr-only">{{ t("lineageGraph.canvasControls") }}</span>
+            </template>
+            <template #icon-lock>
+              <Lock class="size-3" />
+              <span class="sr-only">{{ t("lineageGraph.canvasControls") }}</span>
+            </template>
+          </Controls>
           <MiniMap
             :node-color="miniMapNodeColor"
             :node-stroke-color="miniMapNodeColor"
             :node-border-radius="3"
+            :aria-label="t('lineageGraph.canvasControls')"
           />
 
           <template #node-lineage="nodeProps">
@@ -355,9 +392,13 @@ import "@vue-flow/minimap/dist/style.css";
 import {
   ArrowLeft,
   Code,
+  Lock,
   Maximize2,
+  Minus,
   MousePointerClick,
+  Plus,
   RotateCcw,
+  Unlock,
 } from "lucide-vue-next";
 import { getApplicationSQL } from "@/api/application";
 import { getLineage, getLineageCounts, type LineageCount } from "@/api/lineage";
@@ -1925,3 +1966,43 @@ watch(expandDepth, () => {
   }
 });
 </script>
+
+<style scoped>
+/* Vue Flow's panels ship light-mode defaults (white MiniMap, white control
+   buttons). The canvas is token-driven, so both follow the theme here instead
+   of in global CSS. */
+:deep(.vue-flow__minimap) {
+  background-color: hsl(var(--card) / 0.9);
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  padding: 4px;
+  box-shadow: var(--shadow-e1);
+}
+
+/* At 390px the default 200px map covers half the canvas and the nodes it
+   summarises; shrink it once there is no room to float over the graph. */
+@media (max-width: 640px) {
+  :deep(.vue-flow__minimap) {
+    width: 7rem;
+    height: 5rem;
+  }
+}
+
+:deep(.vue-flow__minimap-mask) {
+  fill: hsl(var(--background) / 0.65);
+}
+
+:deep(.vue-flow__controls-button) {
+  background-color: hsl(var(--card));
+  border-bottom-color: hsl(var(--border));
+  color: hsl(var(--foreground));
+}
+
+:deep(.vue-flow__controls-button:hover) {
+  background-color: hsl(var(--accent));
+}
+
+:deep(.vue-flow__controls-button svg) {
+  fill: currentColor;
+}
+</style>

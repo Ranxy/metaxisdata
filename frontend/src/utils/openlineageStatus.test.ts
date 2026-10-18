@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { openLineageStatusVariant } from "./openlineageStatus";
+import {
+  openLineageStatusKey,
+  openLineageStatusVariant,
+} from "./openlineageStatus";
 
 describe("openLineageStatusVariant", () => {
   it("renders a finished run as success", () => {
@@ -25,5 +28,25 @@ describe("openLineageStatusVariant", () => {
     expect(openLineageStatusVariant("ABORT")).toBe("secondary");
     expect(openLineageStatusVariant("")).toBe("secondary");
     expect(openLineageStatusVariant(undefined)).toBe("secondary");
+  });
+});
+
+describe("openLineageStatusKey", () => {
+  it("names every state the spec defines", () => {
+    expect(openLineageStatusKey("COMPLETE")).toBe("openlineage.statusComplete");
+    expect(openLineageStatusKey("START")).toBe("openlineage.statusStart");
+    expect(openLineageStatusKey("RUNNING")).toBe("openlineage.statusRunning");
+    expect(openLineageStatusKey("FAIL")).toBe("openlineage.statusFail");
+    expect(openLineageStatusKey("FAILED")).toBe("openlineage.statusFail");
+    expect(openLineageStatusKey("ABORT")).toBe("openlineage.statusAbort");
+    expect(openLineageStatusKey("OTHER")).toBe("openlineage.statusOther");
+  });
+
+  it("is case-insensitive and falls back to a generic label", () => {
+    expect(openLineageStatusKey("complete")).toBe("openlineage.statusComplete");
+    expect(openLineageStatusKey("SOMETHING_NEW")).toBe(
+      "openlineage.statusUnknown"
+    );
+    expect(openLineageStatusKey(undefined)).toBe("openlineage.statusUnknown");
   });
 });

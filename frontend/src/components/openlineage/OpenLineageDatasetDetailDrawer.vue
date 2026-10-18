@@ -51,7 +51,7 @@
               <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 <div class="rounded-md border p-3">
                   <div class="text-xs text-muted-foreground">{{ t("openlineage.datasetType") }}</div>
-                  <div class="mt-1 text-sm font-medium">{{ detail.dataset?.datasetType || "-" }}</div>
+                  <div class="mt-1 text-sm font-medium">{{ openLineageDatasetTypeLabel(detail.dataset?.datasetType, t) }}</div>
                 </div>
                 <div class="rounded-md border p-3">
                   <div class="text-xs text-muted-foreground">{{ t("openlineage.resolvedTarget") }}</div>
@@ -182,7 +182,11 @@
                       <div class="text-xs text-muted-foreground">{{ run.jobNamespace }}</div>
                     </TableCell>
                     <TableCell class="font-mono text-xs">{{ run.runId || "-" }}</TableCell>
-                    <TableCell>{{ run.eventType || "-" }}</TableCell>
+                    <TableCell>
+                      <Badge :variant="openLineageStatusVariant(run.eventType)">
+                        {{ t(openLineageStatusKey(run.eventType)) }}
+                      </Badge>
+                    </TableCell>
                     <TableCell>
                       <div class="flex flex-wrap gap-2">
                         <Badge v-if="run.readsDataset" variant="warning">{{ t("openlineage.readsDataset") }}</Badge>
@@ -212,6 +216,7 @@ import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { getOpenLineageDataset } from "@/api/openlineage";
 import AppLoading from "@/components/common/AppLoading.vue";
+import { openLineageDatasetTypeLabel } from "@/components/openlineage/datasetType";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -236,6 +241,10 @@ import type {
 } from "@/types/proto-es/v1/openlineage_service_pb";
 import { formatDateTime } from "@/utils/datetime";
 import { guidToRouteParams } from "@/utils/guid";
+import {
+  openLineageStatusKey,
+  openLineageStatusVariant,
+} from "@/utils/openlineageStatus";
 
 const props = defineProps<{
   modelValue: boolean;

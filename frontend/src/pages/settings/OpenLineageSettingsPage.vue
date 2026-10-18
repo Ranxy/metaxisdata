@@ -30,7 +30,7 @@
           >
             <Check
               v-if="copiedSnippet === 'endpoint'"
-              class="h-4 w-4 mr-1.5 text-green-600"
+              class="h-4 w-4 mr-1.5 text-success"
             />
             <Copy
               v-else
@@ -59,7 +59,7 @@
           >
             <Check
               v-if="copiedSnippet === 'curl'"
-              class="h-4 w-4 text-green-600"
+              class="h-4 w-4 text-success"
             />
             <Copy
               v-else
@@ -502,8 +502,8 @@
         </DialogHeader>
 
         <div class="space-y-4">
-          <div class="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-4">
-            <p class="text-sm text-amber-800 dark:text-amber-200">
+          <div class="rounded-md border border-warning/30 bg-warning-subtle p-4">
+            <p class="text-sm text-warning">
               {{ t("openlineageSettings.apiKeyCreated") }}
             </p>
           </div>

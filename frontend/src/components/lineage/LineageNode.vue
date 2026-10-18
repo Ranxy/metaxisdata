@@ -34,7 +34,7 @@
           <component
             :is="nodeIcon"
             class="size-3.5 shrink-0"
-            :class="isExternal ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'"
+            :class="isExternal ? 'text-warning' : 'text-muted-foreground'"
           />
         </div>
 
@@ -58,7 +58,7 @@
               >
                 ·
               </span>
-              <span class="font-medium text-amber-600 dark:text-amber-400">
+              <span class="font-medium text-warning">
                 {{ column }}
               </span>
             </template>
@@ -89,21 +89,21 @@
         >
           <button
             v-if="!data.upstreamExpanded"
-            class="cursor-pointer text-[11px] text-primary hover:underline"
+            class="inline-flex min-h-6 cursor-pointer items-center rounded px-1.5 py-0.5 text-[11px] text-primary transition-colors hover:bg-accent hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
             @click.stop="$emit('expand', data.guid, 'upstream')"
           >
             {{ t("lineageGraph.expandUpstream") }}
           </button>
           <button
             v-if="!data.downstreamExpanded"
-            class="cursor-pointer text-[11px] text-primary hover:underline"
+            class="inline-flex min-h-6 cursor-pointer items-center rounded px-1.5 py-0.5 text-[11px] text-primary transition-colors hover:bg-accent hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
             @click.stop="$emit('expand', data.guid, 'downstream')"
           >
             {{ t("lineageGraph.expandDownstream") }}
           </button>
           <button
             v-if="data.columns.length > 0"
-            class="cursor-pointer text-[11px] text-primary hover:underline"
+            class="inline-flex min-h-6 cursor-pointer items-center rounded px-1.5 py-0.5 text-[11px] text-primary transition-colors hover:bg-accent hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
             @click.stop="handleToggleFields"
           >
             {{ data.fieldsVisible ? t("lineageGraph.hideFields") : t("lineageGraph.showFields") }}
@@ -355,7 +355,7 @@ const cardClass = computed(() => {
     return "opacity-40";
   }
   if (props.data.onTrail) {
-    return "ring-2 ring-amber-500/70";
+    return "ring-2 ring-warning/70";
   }
   return props.data.isRoot ? "ring-2 ring-ring" : "hover:border-foreground/30";
 });

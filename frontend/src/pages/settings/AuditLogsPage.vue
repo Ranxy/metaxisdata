@@ -39,7 +39,7 @@
             </CardDescription>
           </div>
           <div class="hidden shrink-0 whitespace-nowrap pt-1 text-xs text-muted-foreground lg:block">
-            {{ t("auditLogs.parentScope") }}: <span class="font-mono">workspaces/-</span>
+            {{ t("auditLogs.parentScope") }}: {{ t("auditLogs.scopeWorkspace") }}
           </div>
         </div>
       </CardHeader>
@@ -106,7 +106,12 @@
                       <span class="h-1.5 w-1.5 rounded-full bg-muted-foreground/50" aria-hidden="true" />
                       <span class="sr-only">{{ getSeverityLabel(log.severity) }}</span>
                     </span>
-                    <span class="truncate font-mono text-xs" :title="log.method">{{ log.method }}</span>
+                    <!-- The ledger stores the RPC path; an administrator reads
+                         an event name. The raw procedure stays in the tooltip
+                         and in the detail dialog. -->
+                    <span class="truncate text-sm" :title="log.method">
+                      {{ auditEventName(log.method) }}
+                    </span>
                   </div>
                   <div
                     v-if="log.user"
@@ -202,8 +207,12 @@
                 {{ t("auditLogs.latency", { value: String(selectedLog.latencyMs) }) }}
               </dd>
             </div>
-            <div class="space-y-1 sm:col-span-2 lg:col-span-4">
-              <dt class="text-xs font-medium text-muted-foreground">{{ t("auditLogs.method") }}</dt>
+            <div class="space-y-1 sm:col-span-2">
+              <dt class="text-xs font-medium text-muted-foreground">{{ t("auditLogs.event") }}</dt>
+              <dd class="text-sm">{{ auditEventName(selectedLog.method) }}</dd>
+            </div>
+            <div class="space-y-1 sm:col-span-2">
+              <dt class="text-xs font-medium text-muted-foreground">{{ t("auditLogs.rawMethod") }}</dt>
               <dd class="font-mono text-xs break-all">{{ selectedLog.method }}</dd>
             </div>
             <div class="space-y-1 sm:col-span-2">
@@ -326,7 +335,49 @@ type StatusVariant = "success" | "secondary" | "destructive";
 
 const WORKSPACE_PARENT = "workspaces/-";
 
-const { t, locale } = useI18n();
+/**
+ * The audited procedures this build knows, by `Service/Method`, mapped to the
+ * `auditLogs.eventNames.*` key that names the event in the reader's language.
+ * Audit rows store the raw ConnectRPC path, so anything missing here falls back
+ * to the shortened procedure (`AuthService.Login`) rather than disappearing.
+ */
+const AUDIT_EVENT_KEYS: Record<string, string> = {
+  "AuthService/Login": "login",
+  "AuthService/Logout": "logout",
+  "AuthService/Signup": "signup",
+  "DatabaseService/SyncDatabase": "syncSchema",
+  "EnvironmentService/CreateEnvironment": "createEnvironment",
+  "EnvironmentService/DeleteEnvironment": "deleteEnvironment",
+  "EnvironmentService/UpdateEnvironment": "updateEnvironment",
+  "GroupService/CreateGroup": "createGroup",
+  "GroupService/DeleteGroup": "deleteGroup",
+  "GroupService/UpdateGroup": "updateGroup",
+  "IamService/SetWorkspaceIamPolicy": "setIamPolicy",
+  "IdentityProviderService/CreateIdentityProvider": "createIdentityProvider",
+  "IdentityProviderService/DeleteIdentityProvider": "deleteIdentityProvider",
+  "IdentityProviderService/UpdateIdentityProvider": "updateIdentityProvider",
+  "InstanceService/BatchSyncInstances": "syncSchema",
+  "InstanceService/CreateInstance": "createInstance",
+  "InstanceService/DeleteInstance": "deleteInstance",
+  "InstanceService/SyncInstance": "syncSchema",
+  "InstanceService/UpdateInstance": "updateInstance",
+  "OpenLineageService/CreateAPIKey": "createOpenLineageApiKey",
+  "OpenLineageService/RevokeAPIKey": "deleteOpenLineageApiKey",
+  "ApplicationService/CreateApplication": "createApplication",
+  "ApplicationService/DeleteApplication": "deleteApplication",
+  "ApplicationService/DeleteApplicationSQL": "deleteApplication",
+  "ApplicationService/UpdateApplication": "updateApplication",
+  "RoleService/CreateRole": "createRole",
+  "RoleService/DeleteRole": "deleteRole",
+  "RoleService/UpdateRole": "updateRole",
+  "SettingService/UpdateDebugConfig": "updateDebugConfig",
+  "SettingService/UpdateWorkspaceProfileSetting": "updateSettings",
+  "UserService/CreateUser": "createUser",
+  "UserService/DeleteUser": "deleteUser",
+  "UserService/UpdateUser": "updateUser",
+};
+
+const { t, locale, te } = useI18n();
 const { handleError } = useErrorHandler();
 
 const isExporting = ref(false);
@@ -449,6 +500,38 @@ const payloadSections = computed(() => [
 
 function formatTimestamp(ts: Timestamp | undefined): string {
   return formatDateTime(ts, locale.value, { seconds: true });
+}
+
+/** `/metaxisdata.v1.AuthService/Login` → `{ service: "AuthService", method:
+ *  "Login" }`. The package prefix is noise for a reader and the last segment is
+ *  the operation. */
+function splitProcedure(procedure: string): {
+  service: string;
+  method: string;
+} {
+  const segments = procedure.replace(/^\//, "").split("/");
+  const method = segments.pop() ?? "";
+  const servicePath = segments.pop() ?? "";
+  const service = servicePath.split(".").pop() ?? servicePath;
+  return { service, method };
+}
+
+/** What the Event column prints: a localized event name when this build knows
+ *  the procedure, otherwise `Service.Method` — never the raw `/metaxisdata.v1.`
+ *  path, which stays in the tooltip and the detail dialog. */
+function auditEventName(procedure: string): string {
+  if (!procedure) {
+    return t("auditLogs.unknownOperation");
+  }
+  const { service, method } = splitProcedure(procedure);
+  const key = AUDIT_EVENT_KEYS[`${service}/${method}`];
+  if (key) {
+    const i18nKey = `auditLogs.eventNames.${key}`;
+    if (te(i18nKey)) {
+      return t(i18nKey);
+    }
+  }
+  return service ? `${service}.${method}` : method || procedure;
 }
 
 /** The list splits the timestamp so the column fits a narrow window: the date

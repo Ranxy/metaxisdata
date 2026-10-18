@@ -25,6 +25,15 @@ function externalTable(name: string, server: string): StoredMetadata {
   });
 }
 
+function column(name: string, type: string): StoredMetadata {
+  return create(StoredMetadataSchema, {
+    type: {
+      case: "columnMetadata",
+      value: create(ColumnMetadataSchema, { name, type, nullable: true }),
+    },
+  });
+}
+
 function applicationSQL(id: string, text: string): StoredMetadata {
   return create(StoredMetadataSchema, {
     type: {
@@ -65,5 +74,29 @@ describe("MetadataList", () => {
     });
 
     expect(wrapper.text()).toContain("SELECT id FROM orders WHERE status = ?");
+  });
+
+  it("renders a leaf object's columns instead of another type's empty state", () => {
+    const wrapper = mount(MetadataList, {
+      props: {
+        metaType: MetaType.COLUMN,
+        items: [column("id", "bigint"), column("status", "varchar")],
+      },
+      global: { plugins: [i18n] },
+    });
+
+    expect(wrapper.text()).toContain("id");
+    expect(wrapper.text()).toContain("bigint");
+    expect(wrapper.text()).not.toContain("No databases");
+  });
+
+  it("renders a group-neutral empty state for a type it has no list for", () => {
+    const wrapper = mount(MetadataList, {
+      props: { metaType: MetaType.INDEX, items: [] },
+      global: { plugins: [i18n] },
+    });
+
+    expect(wrapper.text()).toContain("No data");
+    expect(wrapper.text()).not.toContain("No databases");
   });
 });

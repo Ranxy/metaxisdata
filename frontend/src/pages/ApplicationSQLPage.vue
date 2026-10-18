@@ -8,7 +8,7 @@
            another. A radix Select renders a hidden 1px native <select> inside its wrapper,
            which is what used to push its label 4px above the others. -->
       <div class="flex flex-wrap items-end gap-3 border-b p-4">
-        <div class="flex flex-col gap-1.5 [&>select]:hidden">
+        <div class="flex min-w-40 flex-1 flex-col gap-1.5 [&>select]:hidden sm:flex-none">
           <Label
             for="application-sql-instance"
             class="text-sm font-medium leading-none"
@@ -18,7 +18,7 @@
           <Select v-model="instanceID">
             <SelectTrigger
               id="application-sql-instance"
-              class="w-44"
+              class="w-full sm:w-44"
             >
               <SelectValue :placeholder="t('applicationSql.allInstances')" />
             </SelectTrigger>
@@ -41,10 +41,10 @@
           v-model="applicationID"
           :label="t('applicationSql.application')"
           :placeholder="t('applicationSql.anyApplication')"
-          class="w-56"
+          class="min-w-40 flex-1 sm:w-56 sm:flex-none"
         />
 
-        <div class="flex flex-col gap-1.5 [&>select]:hidden">
+        <div class="flex min-w-32 flex-1 flex-col gap-1.5 [&>select]:hidden sm:flex-none">
           <Label
             for="application-sql-kind"
             class="text-sm font-medium leading-none"
@@ -54,7 +54,7 @@
           <Select v-model="kind">
             <SelectTrigger
               id="application-sql-kind"
-              class="w-32"
+              class="w-full sm:w-32"
             >
               <SelectValue />
             </SelectTrigger>
@@ -74,7 +74,7 @@
           </Select>
         </div>
 
-        <div class="flex flex-col gap-1.5">
+        <div class="flex min-w-40 flex-1 flex-col gap-1.5 sm:flex-none">
           <Label
             for="application-sql-query"
             class="text-sm font-medium leading-none"
@@ -84,7 +84,7 @@
           <Input
             id="application-sql-query"
             v-model="query"
-            class="w-64"
+            class="w-full sm:w-64"
             :placeholder="t('applicationSql.searchPlaceholder')"
           />
         </div>
@@ -106,20 +106,45 @@
           :icon="FileCode2"
           :title="t('applicationSql.noStatements')"
           :description="t('applicationSql.noStatementsHint')"
-        />
+        >
+          <Button
+            v-if="hasActiveFilters"
+            variant="outline"
+            size="sm"
+            @click="clearFilters"
+          >
+            {{ t("common.filter.clear") }}
+          </Button>
+          <Button
+            v-else
+            variant="outline"
+            size="sm"
+            @click="resetPage"
+          >
+            {{ t("common.refresh") }}
+          </Button>
+        </EmptyState>
 
         <div v-else>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>{{ t("applicationSql.statement") }}</TableHead>
-                <TableHead class="w-24">{{ t("applicationSql.kind") }}</TableHead>
-                <TableHead>{{ t("applicationSql.scope") }}</TableHead>
-                <TableHead class="w-28 text-right">
+                <TableHead class="hidden w-20 md:table-cell">
+                  {{ t("applicationSql.kind") }}
+                </TableHead>
+                <TableHead class="hidden md:table-cell">
+                  {{ t("applicationSql.scope") }}
+                </TableHead>
+                <TableHead class="hidden w-28 text-right md:table-cell">
                   {{ t("applicationSql.executions") }}
                 </TableHead>
-                <TableHead class="w-44">{{ t("applicationSql.lastSeen") }}</TableHead>
-                <TableHead class="w-24 text-right" />
+                <TableHead class="hidden w-28 md:table-cell">
+                  {{ t("applicationSql.lastSeen") }}
+                </TableHead>
+                <TableHead class="w-12 text-right">
+                  <span class="sr-only">{{ t("instanceManagement.actions") }}</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -130,32 +155,67 @@
                 <TableCell>
                   <button
                     type="button"
-                    class="max-w-xl truncate text-left font-mono text-xs hover:underline"
+                    class="block max-w-[14rem] truncate text-left font-mono text-xs hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:max-w-[40rem]"
                     :title="statement.sqlText"
                     @click="openDetail(statement.guid)"
                   >
                     {{ statementLabel(statement.sqlText) }}
                   </button>
+                  <!-- Below md the kind and last-seen columns collapse in here. -->
+                  <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 md:hidden">
+                    <Badge
+                      :variant="statement.kind === ApplicationSQLKind.APPLICATION_SQL_KIND_WRITE ? 'warning' : 'info'"
+                    >
+                      {{ kindLabel(statement.kind) }}
+                    </Badge>
+                    <span
+                      class="text-xs text-muted-foreground"
+                      :title="formatDateTime(statement.lastSeenAt, locale)"
+                    >
+                      {{ formatRelativeTime(statement.lastSeenAt, locale) }}
+                    </span>
+                  </div>
                 </TableCell>
-                <TableCell>
-                  <Badge :variant="statement.kind === ApplicationSQLKind.APPLICATION_SQL_KIND_WRITE ? 'default' : 'secondary'">
+                <TableCell class="hidden md:table-cell">
+                  <Badge
+                    :variant="statement.kind === ApplicationSQLKind.APPLICATION_SQL_KIND_WRITE ? 'warning' : 'info'"
+                  >
                     {{ kindLabel(statement.kind) }}
                   </Badge>
                 </TableCell>
-                <TableCell class="text-xs text-muted-foreground">
-                  {{ scopeLabel(statement) }}
+                <TableCell class="hidden max-w-sm md:table-cell">
+                  <div class="flex min-w-0 flex-col gap-0.5">
+                    <span
+                      class="truncate text-xs font-medium"
+                      :title="scopeLabel(statement)"
+                    >
+                      {{ databaseScope(statement) }}
+                    </span>
+                    <span
+                      class="truncate font-mono text-[11px] text-muted-foreground"
+                      :title="statement.instanceResourceId"
+                    >
+                      {{ statement.instanceResourceId }}
+                    </span>
+                  </div>
                 </TableCell>
-                <TableCell class="text-right text-sm tabular-nums">
+                <TableCell class="hidden text-right text-sm tabular-nums md:table-cell">
                   {{ statement.executionCount }}
                 </TableCell>
-                <TableCell class="text-sm">
-                  {{ formatDateTime(statement.lastSeenAt, locale) }}
+                <TableCell
+                  class="hidden whitespace-nowrap text-sm text-muted-foreground md:table-cell"
+                  :title="formatDateTime(statement.lastSeenAt, locale)"
+                >
+                  {{ formatRelativeTime(statement.lastSeenAt, locale) }}
                 </TableCell>
                 <TableCell class="text-right">
                   <Button
                     v-if="canDelete"
-                    variant="outline"
-                    size="sm"
+                    variant="ghost"
+                    size="icon"
+                    class="text-muted-foreground hover:text-destructive"
+                    :aria-label="t('common.delete')"
+                    :title="t('common.delete')"
                     @click="confirmDelete(statement.guid)"
                   >
                     <Trash2 class="h-4 w-4" />
@@ -297,7 +357,7 @@ import {
   ApplicationSQLKind,
 } from "@/types/proto-es/v1/application_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
-import { formatDateTime } from "@/utils/datetime";
+import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 import { guidToRouteParams } from "@/utils/guid";
 
 const { t, locale } = useI18n();
@@ -308,6 +368,23 @@ const instanceStore = useInstanceStore();
 const canDelete = computed(() =>
   authStore.hasPermission("metaxisdata.applicationSqls.delete")
 );
+
+// The empty state offers one action: drop the filters that produced no rows.
+const hasActiveFilters = computed(
+  () =>
+    appliedInstanceID.value !== "-" ||
+    appliedApplicationID.value !== "" ||
+    appliedKind.value !== "-" ||
+    appliedQuery.value !== ""
+);
+
+function clearFilters() {
+  instanceID.value = "-";
+  applicationID.value = "";
+  kind.value = "-";
+  query.value = "";
+  applyFilters();
+}
 
 const route = useRoute();
 const router = useRouter();
@@ -403,6 +480,16 @@ function scopeLabel(statement: ApplicationSQL): string {
   const parts = [statement.instanceResourceId, statement.databaseName];
   if (statement.schemaName) parts.push(statement.schemaName);
   return parts.filter(Boolean).join(" · ");
+}
+
+// The row keeps the human scope on one line and the raw instance resource ID on
+// a second, quieter one; together they used to wrap onto four 12px lines.
+function databaseScope(statement: ApplicationSQL): string {
+  return (
+    [statement.databaseName, statement.schemaName]
+      .filter(Boolean)
+      .join(" · ") || "-"
+  );
 }
 
 async function openDetail(guid: string) {

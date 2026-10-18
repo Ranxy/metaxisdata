@@ -10,19 +10,23 @@
       <TableHeader>
         <TableRow>
           <TableHead>{{ t("metadataBrowser.sequenceName") }}</TableHead>
-          <TableHead>{{ t("metadataBrowser.dataType") }}</TableHead>
-          <TableHead>{{ t("metadataBrowser.start") }}</TableHead>
-          <TableHead>{{ t("metadataBrowser.increment") }}</TableHead>
-          <TableHead>{{ t("metadataBrowser.cycle") }}</TableHead>
-          <TableHead>{{ t("metadataBrowser.comment") }}</TableHead>
+          <TableHead class="hidden md:table-cell">{{ t("metadataBrowser.dataType") }}</TableHead>
+          <TableHead class="hidden md:table-cell">{{ t("metadataBrowser.start") }}</TableHead>
+          <TableHead class="hidden md:table-cell">{{ t("metadataBrowser.increment") }}</TableHead>
+          <TableHead class="hidden md:table-cell">{{ t("metadataBrowser.cycle") }}</TableHead>
+          <TableHead v-if="hasComment" class="hidden lg:table-cell">{{ t("metadataBrowser.comment") }}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         <TableRow
           v-for="row in rows"
           :key="row.value.name"
-          class="cursor-pointer hover:bg-muted/50"
+          class="cursor-pointer hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:outline-none"
+          role="button"
+          tabindex="0"
           @click="$emit('select', row.stored)"
+          @keydown.enter.prevent="$emit('select', row.stored)"
+          @keydown.space.prevent="$emit('select', row.stored)"
         >
           <TableCell>
             <div class="flex items-center gap-2">
@@ -30,10 +34,10 @@
               <span class="font-medium">{{ row.value.name }}</span>
             </div>
           </TableCell>
-          <TableCell class="text-muted-foreground">{{ row.value.dataType || "-" }}</TableCell>
-          <TableCell class="text-muted-foreground">{{ row.value.start || "-" }}</TableCell>
-          <TableCell class="text-muted-foreground">{{ row.value.increment || "-" }}</TableCell>
-          <TableCell>
+          <TableCell class="hidden text-muted-foreground md:table-cell">{{ row.value.dataType || "-" }}</TableCell>
+          <TableCell class="hidden text-muted-foreground md:table-cell">{{ row.value.start || "-" }}</TableCell>
+          <TableCell class="hidden text-muted-foreground md:table-cell">{{ row.value.increment || "-" }}</TableCell>
+          <TableCell class="hidden md:table-cell">
             <Badge
               :variant="row.value.cycle ? 'success' : 'secondary'"
               class="whitespace-nowrap"
@@ -41,7 +45,7 @@
               {{ row.value.cycle ? t("metadataBrowser.yes") : t("metadataBrowser.no") }}
             </Badge>
           </TableCell>
-          <TableCell class="text-muted-foreground max-w-xs">
+          <TableCell v-if="hasComment" class="hidden max-w-xs text-muted-foreground lg:table-cell">
             <ExpandableText
               :text="row.value.comment"
               :item-name="row.value.name"
@@ -89,4 +93,9 @@ const rows = computed(() => {
   }
   return list;
 });
+
+// A comment that is empty on every row renders one column of dashes.
+const hasComment = computed(() =>
+  rows.value.some((row) => row.value.comment !== "")
+);
 </script>

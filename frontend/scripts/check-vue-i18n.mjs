@@ -48,6 +48,12 @@ export const DYNAMIC_PREFIXES = [
   // field that carries them in src/components/metadata/TableLineageSection.vue,
   // name a lineage origin's label; the checker cannot follow either.
   "lineageGraph.origin",
+  // openlineage.status* — openLineageStatusKey() maps a run state to its label
+  // key; the checker cannot follow the returned key.
+  "openlineage.status",
+  // auditLogs.eventNames.* — the audit log page humanizes an RPC method name
+  // through a computed key, which the checker cannot follow.
+  "auditLogs.eventNames.",
   // CODE_MESSAGE_KEYS in src/utils/error.ts maps every Connect status code to an
   // "error.*" sentence. The table is exhaustive by type (Record<Code, …>) and its
   // values are checked against the locale schema at compile time, so a stray key

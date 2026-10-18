@@ -11,37 +11,43 @@
         :value="datasets.length"
       />
       <StatCard
-        :label="t('openlineage.internalDatasets')"
+        :label="t('openlineage.internalDatasetsCount')"
         :value="internalDatasetCount"
       />
       <StatCard
-        :label="t('openlineage.columnLineageDatasets')"
+        :label="t('openlineage.withColumnLineage')"
         :value="columnLineageDatasetCount"
       />
     </div>
 
-    <div class="flex flex-wrap items-center gap-3">
+    <!-- The filter row is one column on a phone: a wrapping row gave the search
+         bar whatever was left of the line (74px on jobs) and the checkbox then
+         overlapped it. The search field keeps the full width, and the toggle and
+         reset share a second row; from `sm` the row is horizontal again. -->
+    <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
       <AdvancedSearchBar
         ref="searchBar"
-        class="min-w-0 flex-1"
+        class="w-full min-w-0 sm:flex-1"
         :filter-categories="filterCategories"
         :initial-filters="initialFilters"
         :search-placeholder="t('openlineage.searchDatasetsPlaceholder')"
         @update:filters="handleFiltersUpdate"
       />
-      <div class="flex items-center gap-2">
-        <Checkbox
-          id="datasets-column-lineage-only"
-          :checked="columnLineageOnly"
-          @update:checked="columnLineageOnly = $event === true"
-        />
-        <Label for="datasets-column-lineage-only" class="cursor-pointer text-sm whitespace-nowrap">
-          {{ t("openlineage.onlyColumnLineage") }}
-        </Label>
+      <div class="flex items-center justify-between gap-3 sm:justify-start">
+        <div class="flex items-center gap-2">
+          <Checkbox
+            id="datasets-column-lineage-only"
+            :checked="columnLineageOnly"
+            @update:checked="columnLineageOnly = $event === true"
+          />
+          <Label for="datasets-column-lineage-only" class="cursor-pointer text-sm whitespace-nowrap">
+            {{ t("openlineage.onlyColumnLineage") }}
+          </Label>
+        </div>
+        <Button variant="outline" size="sm" class="shrink-0" @click="resetFilters">
+          {{ t("openlineage.clearFilters") }}
+        </Button>
       </div>
-      <Button variant="outline" size="sm" @click="resetFilters">
-        {{ t("openlineage.clearFilters") }}
-      </Button>
     </div>
 
     <Card>
@@ -101,7 +107,7 @@
                     {{ dataset.namespace }}
                   </div>
                 </TableCell>
-                <TableCell>{{ dataset.datasetType || "-" }}</TableCell>
+                <TableCell>{{ openLineageDatasetTypeLabel(dataset.datasetType, t) }}</TableCell>
                 <TableCell class="whitespace-nowrap">{{ formatTimestamp(dataset.lastSeen) }}</TableCell>
                 <TableCell
                   class="whitespace-nowrap"
@@ -202,6 +208,7 @@ import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import StatCard from "@/components/common/StatCard.vue";
 import TablePager from "@/components/common/TablePager.vue";
+import { openLineageDatasetTypeLabel } from "@/components/openlineage/datasetType";
 import OpenLineageDatasetDetailDrawer from "@/components/openlineage/OpenLineageDatasetDetailDrawer.vue";
 import OpenLineageSectionHeader from "@/components/openlineage/OpenLineageSectionHeader.vue";
 import { Badge } from "@/components/ui/badge";
@@ -418,7 +425,6 @@ function resetFilters() {
 watch([columnLineageOnly, pageSize], () => {
   void reset();
 });
-
 function formatTimestamp(ts: Timestamp | undefined): string {
   return formatDateTime(ts, locale.value);
 }

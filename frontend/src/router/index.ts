@@ -328,10 +328,13 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, layout: "default" },
   },
   {
+    // A mistyped deep link should not eject a signed-in user from the app, so
+    // the layout is chosen per navigation in the guard below: the default shell
+    // when there is a session, the bare auth layout when there is not.
     path: "/:pathMatch(.*)*",
     name: "NotFound",
     component: () => import("@/pages/NotFoundPage.vue"),
-    meta: { requiresAuth: false, layout: "auth" },
+    meta: { requiresAuth: false, layout: "default" },
   },
 ];
 
@@ -349,6 +352,15 @@ const router = createRouter({
 // microtasks and starves the timer queue a test timeout would need.
 export const authGuard: NavigationGuard = async (to) => {
   const authStore = useAuthStore();
+
+  // The 404 route cannot declare one layout up front: a signed-in user needs the
+  // shell and its navigation, an anonymous visitor needs the bare auth card.
+  // Resolving the profile here (a no-op once loaded) picks the same shell every
+  // other authenticated page gets.
+  if (to.name === "NotFound") {
+    await authStore.ensurePermissionsLoaded();
+    to.meta.layout = authStore.isAuthenticated ? "default" : "auth";
+  }
 
   // An authenticated page may only render once the permission-bearing profile
   // is loaded: the sidebar and the dashboard hide everything they cannot match

@@ -113,7 +113,7 @@
                   </TableCell>
                   <TableCell>
                     <Badge :variant="openLineageStatusVariant(run.eventType)">
-                      {{ run.eventType || "-" }}
+                      {{ t(openLineageStatusKey(run.eventType)) }}
                     </Badge>
                   </TableCell>
                   <!-- The ellipsis lives on a block inside the cell:
@@ -237,7 +237,7 @@
                   </TableCell>
                   <TableCell>
                     <Badge :variant="openLineageStatusVariant(task.latestEventType)">
-                      {{ task.latestEventType || "-" }}
+                      {{ t(openLineageStatusKey(task.latestEventType)) }}
                     </Badge>
                   </TableCell>
                   <TableCell class="whitespace-nowrap">
@@ -309,8 +309,16 @@ import type {
   OpenLineageRun,
   OpenLineageTask,
 } from "@/types/proto-es/v1/openlineage_service_pb";
-import { formatDate, formatDateTime, formatTime } from "@/utils/datetime";
-import { openLineageStatusVariant } from "@/utils/openlineageStatus";
+import {
+  formatDate,
+  formatDateTime,
+  formatRelativeTime,
+  formatTime,
+} from "@/utils/datetime";
+import {
+  openLineageStatusKey,
+  openLineageStatusVariant,
+} from "@/utils/openlineageStatus";
 
 // Enough to describe the workspace's recent state without paging; every table
 // links into the full directory for anything deeper.
@@ -349,14 +357,15 @@ const lineageRunCount = computed(
 // Runs arrive newest first, so the head is the most recent activity.
 const lastRun = computed(() => runs.value[0] ?? null);
 
-// The card's value is set at 3xl, where a full date-time breaks across two
-// lines, so the date is the value and the time joins the source underneath.
+// "Recency" is the signal here, so the value is relative and the exact
+// timestamp moves into the hint; a bare date read as a different kind of number
+// next to the three counts above.
 const lastEventLabel = computed(() => {
   const run = lastRun.value;
   if (!run?.eventTime) {
     return t("openlineage.neverSeen");
   }
-  return formatDate(run.eventTime, locale.value);
+  return formatRelativeTime(run.eventTime, locale.value);
 });
 
 const lastEventHint = computed(() => {
@@ -365,6 +374,7 @@ const lastEventHint = computed(() => {
     return "";
   }
   return [
+    formatDate(run.eventTime, locale.value),
     formatTime(run.eventTime, locale.value),
     run.integration || run.source || run.jobName,
   ]

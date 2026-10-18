@@ -5,7 +5,7 @@
     <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
       <div class="min-w-0 space-y-1">
         <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <h1 class="truncate text-xl font-semibold tracking-tight">
+          <h1 class="truncate text-2xl font-semibold tracking-tight">
             {{ table.name }}
           </h1>
           <Badge

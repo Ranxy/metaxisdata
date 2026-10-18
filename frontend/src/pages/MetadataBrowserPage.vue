@@ -11,11 +11,24 @@
       />
 
       <!-- A leaf detail view is titled by the entity it shows, so the list-page
-           title and its global search bar are list-only chrome. -->
+           title and its global search bar are list-only chrome. Below the root
+           the heading names the node being browsed and the description carries
+           the path its breadcrumb sits on; the root keeps the browser's name. -->
       <PageHeader
         v-if="showListChrome"
-        :title="t('metadataBrowser.title')"
-      />
+        :eyebrow="isRootPath ? undefined : t('menu.data')"
+        :title="pageTitle"
+        :description="pageDescription"
+      >
+        <template
+          v-if="levelMetaType !== null"
+          #title-extra
+        >
+          <Badge variant="secondary">
+            {{ metaTypeLabel(levelMetaType, t) }}
+          </Badge>
+        </template>
+      </PageHeader>
 
       <!-- Search Bar -->
       <div
@@ -46,12 +59,20 @@
         >
           {{ searchError }}
         </div>
-        <div
+        <EmptyState
           v-else-if="searchResults.length === 0"
-          class="p-4 text-center text-sm text-muted-foreground"
+          compact
+          :icon="SearchX"
+          :title="t('metadataBrowser.noSearchResults')"
         >
-          {{ t("metadataBrowser.noSearchResults") }}
-        </div>
+          <Button
+            variant="outline"
+            size="sm"
+            @click="clearSearch"
+          >
+            {{ t("metadataBrowser.clearSearch") }}
+          </Button>
+        </EmptyState>
         <div
           v-else
           class="py-1"
@@ -74,7 +95,7 @@
                 {{ getSearchResultName(result) }}
               </div>
               <div class="text-xs text-muted-foreground truncate">
-                {{ result.guid }}
+                {{ formatGuidLabel(result.guid) }}
               </div>
             </div>
           </button>
@@ -93,9 +114,48 @@
 
       <div
         v-else-if="error"
-        class="p-8 text-center text-destructive"
+        class="p-4"
       >
-        {{ error }}
+        <!-- The backend message is an internal resource path, so it is the
+             disclosure's content: the reader gets a localized explanation and
+             a way out, the developer keeps the exact string. -->
+        <EmptyState
+          :icon="AlertTriangle"
+          :title="errorTitle"
+          :description="errorDescription"
+        >
+          <Button
+            v-if="!isRootPath"
+            variant="outline"
+            size="sm"
+            @click="goToParent"
+          >
+            <ArrowLeft class="mr-1 h-3.5 w-3.5" />
+            {{ t("metadataBrowser.backToParent") }}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            @click="reload"
+          >
+            <RefreshCw class="mr-1 h-3.5 w-3.5" />
+            {{ t("common.refresh") }}
+          </Button>
+        </EmptyState>
+
+        <details
+          class="mx-auto mt-1 flex max-w-xl flex-col items-center [&[open]>summary>svg]:rotate-180"
+        >
+          <summary
+            class="inline-flex cursor-pointer list-none items-center gap-1 rounded-md border border-border/70 bg-background px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <ChevronDown class="size-3 transition-transform" />
+            {{ t("metadataBrowser.errorDetails") }}
+          </summary>
+          <pre
+            class="mt-2 w-full whitespace-pre-wrap break-words rounded-md bg-muted px-3 py-2 text-left text-xs text-muted-foreground"
+          >{{ error }}</pre>
+        </details>
       </div>
 
       <div v-else-if="isRootPath">
@@ -107,6 +167,7 @@
           :instances="instances"
           :is-loading="isLoadingInstances"
           @select="handleSelectInstance"
+          @refresh="reload"
         />
       </div>
 
@@ -213,6 +274,7 @@
               :meta-type="activeGroup.metaType"
               :items="activeGroup.list"
               @select="handleSelectMetadata"
+              @refresh="reload"
             />
             <EmptyState
               v-else
@@ -239,7 +301,13 @@
 
 <script setup lang="ts">
 import { onClickOutside } from "@vueuse/core";
-import { SearchX } from "lucide-vue-next";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  ChevronDown,
+  RefreshCw,
+  SearchX,
+} from "lucide-vue-next";
 
 import {
   computed,
@@ -300,6 +368,7 @@ import AdvancedSearchBar, {
   type FilterOption,
 } from "@/components/common/AdvancedSearchBar.vue";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { useErrorMessage } from "@/composables/useErrorHandler";
 import { useInstanceStore } from "@/store/modules/instance";
@@ -321,6 +390,7 @@ import {
 } from "@/types/proto-es/v1/database_service_pb";
 import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
 import { guidSegmentsToRouteParams, routeParamToGuid } from "@/utils/guid";
+import { lineageAssetView } from "@/utils/lineageAsset";
 import { metaTypeLabel, parseMetaType } from "@/utils/metaType";
 
 const { t } = useI18n();
@@ -642,6 +712,91 @@ const showListChrome = computed(
 const currentGuid = computed(() => routeParamToGuid(route.params.guid));
 
 const isRootPath = computed(() => !currentGuid.value);
+
+/** The GUID segments without the trailing empties that mean "no level". */
+const nodeSegments = computed(() => {
+  const segments = [...guidSegments.value];
+  while (segments.length > 0 && segments[segments.length - 1] === "") {
+    segments.pop();
+  }
+  return segments;
+});
+
+/** Every known instance id -> title, for humanizing GUIDs. */
+const instanceTitles = computed(() => {
+  const titles = new Map<string, string>();
+  for (const instance of instanceStore.instances) {
+    const id = instance.name.replace("instances/", "");
+    titles.set(id, instance.title || id);
+  }
+  return titles;
+});
+
+/**
+ * The page heading. The root names the browser; every level below it names the
+ * object being browsed, which is what the breadcrumb's last crumb already says.
+ */
+const pageTitle = computed(() => {
+  if (isRootPath.value) {
+    return t("metadataBrowser.title");
+  }
+  const segments = nodeSegments.value;
+  const name = segments[segments.length - 1] ?? "";
+  if (!name) {
+    return t("metadataBrowser.title");
+  }
+  return segments.length === 1 ? instanceStore.titleOf(name) : name;
+});
+
+/**
+ * The ancestor path under the heading. The current node is the heading, so the
+ * description starts one level up and stops at the instance.
+ */
+const pageDescription = computed(() => {
+  const segments = nodeSegments.value;
+  if (segments.length <= 1) {
+    return "";
+  }
+  return segments
+    .slice(0, -1)
+    .map((segment, index) =>
+      index === 0 ? instanceStore.titleOf(segment) : segment
+    )
+    .filter(Boolean)
+    .join(" \u203A ");
+});
+
+/**
+ * The level the page lists below the root. A MySQL-family instance has no schema
+ * segment in the URL, so the third segment is already an object there and the
+ * badge is left off rather than mislabelling a table as a schema.
+ */
+const levelMetaType = computed<MetaType | null>(() => {
+  if (isRootPath.value) return null;
+  const depth = nodeSegments.value.length;
+  if (depth === 1) return MetaType.INSTANCE;
+  if (depth === 2) return MetaType.DATABASE;
+  if (depth === 3 && !isMySQLInstance.value) return MetaType.SCHEMA;
+  return null;
+});
+
+const errorTitle = computed(() =>
+  isRootPath.value
+    ? t("metadataBrowser.fetchError")
+    : t("metadataBrowser.notFoundTitle")
+);
+
+const errorDescription = computed(() =>
+  isRootPath.value ? "" : t("metadataBrowser.notFoundDescription")
+);
+
+/** `postgres-warehouse · warehouse.ods.orders`, never a raw `;`-joined GUID. */
+function formatGuidLabel(guid: string): string {
+  const view = lineageAssetView(guid, instanceTitles.value);
+  return view.qualifier
+    ? `${view.scopeLabel} \u00B7 ${view.qualifier}.${view.name}`
+    : `${view.scopeLabel} \u00B7 ${view.name}`;
+}
 
 const guidSegments = computed(() => {
   if (!currentGuid.value) return [];
@@ -1036,6 +1191,39 @@ async function handleSelectTab(metaType: MetaType) {
   await fetchMetaTypeFirstPage(metaType);
 }
 
+/** Loads whatever the current route names: instance list, group lists or a leaf. */
+async function loadRouteState() {
+  // Instance titles humanize the heading and every GUID the page prints; the
+  // store caches them, so a deep link pays for this at most once.
+  void instanceStore.ensureLoaded().catch(() => {});
+  currentInstanceEngine.value = null;
+
+  if (isRootPath.value) {
+    await fetchInstances();
+  } else if (isExternalDatasetDetailView.value) {
+    error.value = null;
+    isLoading.value = false;
+    metadataGroups.value = [];
+  } else {
+    await fetchMetadataGroups();
+  }
+}
+
+/** Retry after a failed load without leaving the page. */
+async function reload() {
+  await loadRouteState();
+}
+
+/** Back to the parent node; the root when the level above is the root. */
+function goToParent() {
+  const segments = nodeSegments.value;
+  if (segments.length <= 1) {
+    router.push({ name: "MetadataBrowser" });
+    return;
+  }
+  handleNavigate(segments.length - 2);
+}
+
 watch(
   () => [
     route.params.guid,
@@ -1045,17 +1233,7 @@ watch(
     route.query.externalDatasetType,
   ],
   async () => {
-    currentInstanceEngine.value = null;
-
-    if (isRootPath.value) {
-      await fetchInstances();
-    } else if (isExternalDatasetDetailView.value) {
-      error.value = null;
-      isLoading.value = false;
-      metadataGroups.value = [];
-    } else {
-      await fetchMetadataGroups();
-    }
+    await loadRouteState();
   },
   { immediate: true }
 );
@@ -1138,6 +1316,15 @@ function handleSelectSearchResult(result: SearchMetadataResult) {
     params: { guid: guidSegmentsToRouteParams(segments) },
     query,
   });
+}
+
+/** Drops the query and the dropdown, the way Escape or a clear button should. */
+function clearSearch() {
+  if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+  searchQuery.value = "";
+  searchResults.value = [];
+  searchError.value = null;
+  showSearchResults.value = false;
 }
 
 function triggerSearchWithCurrentQuery() {

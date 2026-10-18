@@ -1,9 +1,34 @@
 <template>
   <div class="space-y-4">
+    <!-- One save for the whole form lives in the page header, like every other
+         settings page (IAM). It used to be a sticky bottom bar that floated over
+         the help text and the MCP toggle while scrolling, was offset from the
+         form column, and contradicted the header-based save everywhere else. -->
     <PageHeader
       :title="t('generalSettings.title')"
       :description="t('generalSettings.description')"
-    />
+    >
+      <template #actions>
+        <span
+          v-if="!canUpdate"
+          class="text-sm text-muted-foreground"
+        >
+          {{ t("generalSettings.readOnlyHint") }}
+        </span>
+        <span
+          v-else-if="isDirty"
+          class="text-sm text-muted-foreground"
+        >
+          {{ t("generalSettings.unsavedHint") }}
+        </span>
+        <Button
+          :disabled="isSaving || !canUpdate || !!retentionError"
+          @click="handleSave"
+        >
+          {{ t("common.save") }}
+        </Button>
+      </template>
+    </PageHeader>
 
     <PageState
       :loading="isLoading"
@@ -243,31 +268,6 @@
             </p>
           </CardContent>
         </Card>
-
-        <!-- One save for the whole form. Debug mode is deliberately excluded:
-             it applies immediately through its own RPC. -->
-        <div
-          class="sticky bottom-0 z-10 flex flex-wrap items-center gap-3 border-t bg-background/95 py-3 backdrop-blur"
-        >
-          <Button
-            :disabled="isSaving || !canUpdate || !!retentionError"
-            @click="handleSave"
-          >
-            {{ t("common.save") }}
-          </Button>
-          <span
-            v-if="!canUpdate"
-            class="text-sm text-muted-foreground"
-          >
-            {{ t("generalSettings.readOnlyHint") }}
-          </span>
-          <span
-            v-else-if="isDirty"
-            class="text-sm text-muted-foreground"
-          >
-            {{ t("generalSettings.unsavedHint") }}
-          </span>
-        </div>
       </div>
     </PageState>
   </div>

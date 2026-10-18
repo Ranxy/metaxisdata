@@ -10,17 +10,21 @@
       <TableHeader>
         <TableRow>
           <TableHead>{{ t("metadataBrowser.externalTableName") }}</TableHead>
-          <TableHead>{{ t("metadataBrowser.externalServer") }}</TableHead>
-          <TableHead>{{ t("metadataBrowser.externalDatabase") }}</TableHead>
-          <TableHead>{{ t("metadataBrowser.columns") }}</TableHead>
+          <TableHead class="hidden md:table-cell">{{ t("metadataBrowser.externalServer") }}</TableHead>
+          <TableHead class="hidden md:table-cell">{{ t("metadataBrowser.externalDatabase") }}</TableHead>
+          <TableHead class="hidden sm:table-cell">{{ t("metadataBrowser.columns") }}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         <TableRow
           v-for="row in rows"
           :key="row.value.name"
-          class="cursor-pointer hover:bg-muted/50"
+          class="cursor-pointer hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:outline-none"
+          role="button"
+          tabindex="0"
           @click="$emit('select', row.stored)"
+          @keydown.enter.prevent="$emit('select', row.stored)"
+          @keydown.space.prevent="$emit('select', row.stored)"
         >
           <TableCell>
             <div class="flex items-center gap-2">
@@ -28,13 +32,13 @@
               <span class="font-medium">{{ row.value.name }}</span>
             </div>
           </TableCell>
-          <TableCell class="text-muted-foreground">
+          <TableCell class="hidden text-muted-foreground md:table-cell">
             {{ row.value.externalServerName || "-" }}
           </TableCell>
-          <TableCell class="text-muted-foreground">
+          <TableCell class="hidden text-muted-foreground md:table-cell">
             {{ row.value.externalDatabaseName || "-" }}
           </TableCell>
-          <TableCell>
+          <TableCell class="hidden sm:table-cell">
             <Badge variant="outline">
               {{ row.value.columns.length }} {{ t("metadataBrowser.columnsCount") }}
             </Badge>

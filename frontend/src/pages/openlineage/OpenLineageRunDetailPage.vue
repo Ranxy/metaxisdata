@@ -1,9 +1,22 @@
 <template>
   <div class="space-y-4">
-    <OpenLineageSectionHeader
+    <!-- The run's state belongs next to the title: the page exists to answer
+         "did this run succeed?", and it used to answer it nowhere outside the
+         raw payload. PageHeader is used directly so the badge can sit in the
+         `title-extra` slot. -->
+    <PageHeader
+      eyebrow="OpenLineage"
       :title="run?.jobName || t('openlineage.events')"
-      :description="t('openlineage.eventsDescription')"
+      :description="t('openlineage.runDetailDescription')"
     >
+      <template #title-extra>
+        <Badge
+          v-if="run"
+          :variant="openLineageStatusVariant(run.eventType)"
+        >
+          {{ t(openLineageStatusKey(run.eventType)) }}
+        </Badge>
+      </template>
       <template #actions>
         <Button v-if="runLogUrl" variant="secondary" asChild>
           <a :href="runLogUrl" target="_blank" rel="noreferrer noopener">
@@ -14,7 +27,7 @@
           {{ t("openlineage.backToEvents") }}
         </Button>
       </template>
-    </OpenLineageSectionHeader>
+    </PageHeader>
 
     <p class="-mt-2 break-all font-mono text-sm text-muted-foreground">
       {{ run?.guid || currentGuid }}
@@ -117,7 +130,7 @@
 
       <Card>
         <CardHeader>
-          <CardTitle>{{ t("openlineageSettings.runSummary") }}</CardTitle>
+          <CardTitle>{{ t("openlineage.runSummary") }}</CardTitle>
           <CardDescription>{{ t("openlineageSettings.runSummaryDescription") }}</CardDescription>
         </CardHeader>
         <CardContent>
@@ -125,6 +138,12 @@
             <div>
               <div class="text-sm text-muted-foreground">{{ t("openlineageSettings.runId") }}</div>
               <div class="font-mono text-sm break-all">{{ run.runId }}</div>
+            </div>
+            <div>
+              <div class="text-sm text-muted-foreground">{{ t("openlineage.eventType") }}</div>
+              <Badge :variant="openLineageStatusVariant(run.eventType)">
+                {{ t(openLineageStatusKey(run.eventType)) }}
+              </Badge>
             </div>
             <div>
               <div class="text-sm text-muted-foreground">{{ t("openlineageSettings.eventTime") }}</div>
@@ -178,12 +197,42 @@
         </CardContent>
       </Card>
 
+      <!-- The payload is the evidence, not the page: it starts collapsed so a
+           >1000px JSON wall does not dominate the run, and it is copyable. No
+           inner scroller — the page's `main` stays the only scroll container. -->
       <Card>
-        <CardHeader>
-          <CardTitle>{{ t("openlineageSettings.rawPayload") }}</CardTitle>
+        <CardHeader class="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+          <div class="min-w-0 space-y-1">
+            <CardTitle>{{ t("openlineage.eventPayload") }}</CardTitle>
+          </div>
+          <div class="flex flex-wrap items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              :disabled="!formattedPayload"
+              @click="copyPayload"
+            >
+              <Check
+                v-if="copied"
+                class="mr-2 h-4 w-4"
+              />
+              <Copy
+                v-else
+                class="mr-2 h-4 w-4"
+              />
+              {{ copied ? t("common.copied") : t("openlineage.copyPayload") }}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              @click="payloadOpen = !payloadOpen"
+            >
+              {{ payloadOpen ? t("openlineage.hidePayload") : t("openlineage.showPayload") }}
+            </Button>
+          </div>
         </CardHeader>
-        <CardContent>
-          <pre class="overflow-x-auto rounded-md bg-muted p-4 text-xs leading-6">{{ formattedPayload }}</pre>
+        <CardContent v-if="payloadOpen">
+          <pre class="rounded-md bg-muted p-4 text-xs leading-6 whitespace-pre-wrap break-words">{{ formattedPayload }}</pre>
         </CardContent>
       </Card>
     </div>
@@ -192,13 +241,15 @@
 
 <script setup lang="ts">
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
-import { computed, onMounted, ref } from "vue";
+import { Check, Copy } from "lucide-vue-next";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { getOpenLineageRun } from "@/api/openlineage";
 import AppLoading from "@/components/common/AppLoading.vue";
-import OpenLineageSectionHeader from "@/components/openlineage/OpenLineageSectionHeader.vue";
+import PageHeader from "@/components/layout/PageHeader.vue";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -216,6 +267,10 @@ import {
 import type { OpenLineageRun } from "@/types/proto-es/v1/openlineage_service_pb";
 import { formatDateTime } from "@/utils/datetime";
 import { guidToRouteParams } from "@/utils/guid";
+import {
+  openLineageStatusKey,
+  openLineageStatusVariant,
+} from "@/utils/openlineageStatus";
 import { safeExternalUrl } from "@/utils/safeUrl";
 
 const route = useRoute();
@@ -225,6 +280,31 @@ const { handleError } = useErrorHandler();
 
 const isLoading = ref(false);
 const run = ref<OpenLineageRun | null>(null);
+const payloadOpen = ref(false);
+const copied = ref(false);
+
+let copiedTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function copyPayload() {
+  if (!formattedPayload.value) {
+    return;
+  }
+  await navigator.clipboard.writeText(formattedPayload.value);
+  copied.value = true;
+  if (copiedTimer) {
+    clearTimeout(copiedTimer);
+  }
+  copiedTimer = setTimeout(() => {
+    copied.value = false;
+    copiedTimer = null;
+  }, 2000);
+}
+
+onBeforeUnmount(() => {
+  if (copiedTimer) {
+    clearTimeout(copiedTimer);
+  }
+});
 
 const currentGuid = computed(() => {
   const guidParam = route.params.guid;

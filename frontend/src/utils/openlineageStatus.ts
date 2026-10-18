@@ -32,3 +32,39 @@ export function openLineageStatusVariant(
       return "secondary";
   }
 }
+
+/**
+ * The i18n key for an OpenLineage run state. The badge variant says how a state
+ * should look; this says what it is called, so a zh-CN UI never prints the raw
+ * enum member the producer sent.
+ */
+export type OpenLineageStatusKey =
+  | "openlineage.statusComplete"
+  | "openlineage.statusStart"
+  | "openlineage.statusRunning"
+  | "openlineage.statusFail"
+  | "openlineage.statusAbort"
+  | "openlineage.statusOther"
+  | "openlineage.statusUnknown";
+
+export function openLineageStatusKey(
+  eventType: string | undefined
+): OpenLineageStatusKey {
+  switch ((eventType ?? "").toUpperCase()) {
+    case "COMPLETE":
+      return "openlineage.statusComplete";
+    case "START":
+      return "openlineage.statusStart";
+    case "RUNNING":
+      return "openlineage.statusRunning";
+    case "FAIL":
+    case "FAILED":
+      return "openlineage.statusFail";
+    case "ABORT":
+      return "openlineage.statusAbort";
+    case "OTHER":
+      return "openlineage.statusOther";
+    default:
+      return "openlineage.statusUnknown";
+  }
+}

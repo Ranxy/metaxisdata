@@ -4,26 +4,39 @@
       v-if="tableRows.length === 0"
       :icon="Table2"
       :title="t('metadataBrowser.noTables')"
-    />
+    >
+        <Button
+          variant="outline"
+          size="sm"
+          @click="$emit('refresh')"
+        >
+          <RefreshCw class="mr-1 h-3.5 w-3.5" />
+          {{ t("common.refresh") }}
+        </Button>
+      </EmptyState>
 
     <Table v-else>
       <TableHeader>
         <TableRow>
           <TableHead>{{ t("metadataBrowser.tableName") }}</TableHead>
-          <TableHead>{{ t("metadataBrowser.engine") }}</TableHead>
+          <TableHead v-if="hasEngine" class="hidden md:table-cell">{{ t("metadataBrowser.engine") }}</TableHead>
           <TableHead>{{ t("metadataBrowser.rowCount") }}</TableHead>
           <TableHead>{{ t("metadataBrowser.dataSize") }}</TableHead>
-          <TableHead>{{ t("metadataBrowser.columns") }}</TableHead>
-          <TableHead>{{ t("metadataBrowser.indexes") }}</TableHead>
-          <TableHead>{{ t("metadataBrowser.comment") }}</TableHead>
+          <TableHead class="hidden sm:table-cell">{{ t("metadataBrowser.columns") }}</TableHead>
+          <TableHead class="hidden sm:table-cell">{{ t("metadataBrowser.indexes") }}</TableHead>
+          <TableHead v-if="hasComment" class="hidden md:table-cell">{{ t("metadataBrowser.comment") }}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         <TableRow
           v-for="row in tableRows"
           :key="row.value.name"
-          class="cursor-pointer hover:bg-muted/50"
+          class="cursor-pointer hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:outline-none"
+          role="button"
+          tabindex="0"
           @click="$emit('select', row.stored)"
+          @keydown.enter.prevent="$emit('select', row.stored)"
+          @keydown.space.prevent="$emit('select', row.stored)"
         >
           <TableCell>
             <div class="flex items-center gap-2">
@@ -31,7 +44,7 @@
               <span class="font-medium">{{ row.value.name }}</span>
             </div>
           </TableCell>
-          <TableCell class="text-muted-foreground">
+          <TableCell v-if="hasEngine" class="hidden text-muted-foreground md:table-cell">
             {{ row.value.engine || "-" }}
           </TableCell>
           <TableCell class="text-muted-foreground">
@@ -40,17 +53,17 @@
           <TableCell class="text-muted-foreground">
             {{ formatBytes(row.value.dataSize) }}
           </TableCell>
-          <TableCell>
+          <TableCell class="hidden sm:table-cell">
             <Badge variant="outline">
               {{ row.value.columns.length }} {{ t("metadataBrowser.columnsCount") }}
             </Badge>
           </TableCell>
-          <TableCell>
+          <TableCell class="hidden sm:table-cell">
             <Badge variant="outline">
               {{ row.value.indexes.length }} {{ t("metadataBrowser.indexesCount") }}
             </Badge>
           </TableCell>
-          <TableCell class="text-muted-foreground max-w-xs">
+          <TableCell v-if="hasComment" class="hidden max-w-xs text-muted-foreground md:table-cell">
             <ExpandableText
               :text="row.value.comment"
               :item-name="row.value.name"
@@ -64,11 +77,12 @@
 </template>
 
 <script setup lang="ts">
-import { Table2 } from "lucide-vue-next";
+import { RefreshCw, Table2 } from "lucide-vue-next";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import EmptyState from "@/components/common/EmptyState.vue";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -90,6 +104,7 @@ const props = defineProps<{
 
 defineEmits<{
   select: [item: StoredMetadata];
+  refresh: [];
 }>();
 
 const { t } = useI18n();
@@ -103,4 +118,12 @@ const tableRows = computed(() => {
   }
   return rows;
 });
+
+// An all-empty column costs a column of dashes and reads as missing data.
+const hasEngine = computed(() =>
+  tableRows.value.some((row) => row.value.engine !== "")
+);
+const hasComment = computed(() =>
+  tableRows.value.some((row) => row.value.comment !== "")
+);
 </script>

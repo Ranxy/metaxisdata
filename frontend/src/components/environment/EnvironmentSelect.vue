@@ -17,8 +17,8 @@
           :id="selectId"
           type="button"
           :disabled="disabled"
-          class="flex h-10 w-full items-center justify-between rounded-md bg-background px-3 py-2 text-sm shadow-[inset_0_0_0_1px_rgb(0_0_0/0.1)] transition-shadow focus-visible:outline-none focus-visible:shadow-[inset_0_0_0_1.5px_rgb(0_0_0/0.2)] disabled:cursor-not-allowed disabled:opacity-50"
-          :class="error ? 'shadow-[inset_0_0_0_1px_var(--destructive)]' : ''"
+          class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm transition-[border-color,box-shadow] focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-50"
+          :class="error ? 'border-destructive' : ''"
         >
           <span
             v-if="selectedTitle"

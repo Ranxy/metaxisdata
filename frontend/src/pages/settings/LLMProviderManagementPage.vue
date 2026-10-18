@@ -27,9 +27,14 @@
     <div class="grid grid-cols-[16rem_minmax(0,1fr)] min-h-0 flex-1 border border-border rounded-lg overflow-hidden">
       <!-- Left panel: profile list -->
       <div class="border-r border-border p-2 overflow-y-auto bg-muted/30">
-        <div v-if="filteredProfiles.length === 0" class="p-4 text-center text-muted-foreground text-sm">
-          <Database class="h-8 w-8 mx-auto mb-2 opacity-30" />
-          <p>{{ searchQuery ? t("llmProvider.noMatch") : t("llmProvider.empty") }}</p>
+        <!-- Only the search case is explained here: with no profiles at all,
+             the detail pane already says what to do, and two empty messages for
+             the same condition read as two different problems. -->
+        <div
+          v-if="filteredProfiles.length === 0 && searchQuery"
+          class="p-4 text-center text-sm text-muted-foreground"
+        >
+          <p>{{ t("llmProvider.noMatch") }}</p>
         </div>
 
         <div v-else class="space-y-0.5">
@@ -65,10 +70,19 @@
         <!-- Empty / banner -->
         <div
           v-if="!editingProfile && !isCreating"
-          class="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-2"
+          class="flex flex-1 flex-col items-center justify-center gap-3 text-center text-muted-foreground"
         >
           <Sparkles class="h-12 w-12 opacity-30" />
-          <p class="text-sm">{{ t("llmProvider.selectHint") }}</p>
+          <p class="max-w-sm text-sm">
+            {{ profiles.length === 0 ? t("llmProvider.empty") : t("llmProvider.selectHint") }}
+          </p>
+          <Button
+            v-if="profiles.length === 0"
+            @click="startCreate"
+          >
+            <Plus class="mr-2 h-4 w-4" />
+            {{ t("llmProvider.addProfile") }}
+          </Button>
         </div>
 
         <!-- Form -->
@@ -233,7 +247,7 @@
 
 <script setup lang="ts">
 import { create } from "@bufbuild/protobuf";
-import { Database, Plus, RefreshCw, Search, Sparkles } from "lucide-vue-next";
+import { Plus, RefreshCw, Search, Sparkles } from "lucide-vue-next";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
