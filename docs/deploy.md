@@ -226,6 +226,18 @@ PG_URL='postgres://<user>:<password>@<db-host>:5432/<database>?sslmode=disable' 
   ./metaxisdata --trusted-proxies 10.0.0.0/8 --cors-allow-origins https://metaxisdata.example.com
 ```
 
+### Run one server process
+
+Run a single server process per metadata database. The background runners (schema
+sync, lineage analysis, ingested-lineage revalidation, maintenance) keep their
+queues, per-database sync gates, user-visible sync operations and revalidation
+state in memory, so a second replica would duplicate every sync and analysis
+against the same instances and split each user's sync-result messages between
+processes. Scaling the metadata database does not make the server replicable;
+scale PostgreSQL, not the process. A restart loses queued work but converges on
+the next scan. See [security-posture.md](security-posture.md) and
+[.agents/docs/runner.md](../.agents/docs/runner.md).
+
 ### First steps
 
 1. Open `http://<host>:8083` and create the first account. It becomes the

@@ -162,7 +162,7 @@ recomputed from the observations rather than trusted from the caller.
 
 ### Classification and the table-level edge
 
-The runner derives the kind, and it is the only place the read/write rule lives:
+The runner derives the kind, and it is the only place the read/write rule lives. It writes the kind only after the edges commit: the kind is a filter cache over the edges, so a kind that claims a classification the graph does not have is worse than a missing kind (stale until the next analysis):
 
 | Shape | Kind | Edges |
 | --- | --- | --- |

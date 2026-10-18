@@ -50,7 +50,7 @@ OceanBase 刻意不注册(`engines.go` 的包注释),`Analyze` 对它是 `ErrorE
 | 变更检测 | `analyzer.go` 的 `needsAnalysis` | 比较 `meta_registry_resource.metahash`、`column_lineage_version.meta_hash` **与 `analyzer_version`**:hash 相同且 analyzer 版本相同才跳过 |
 | 分析写入 | `analyzer.go` 的 `analyzeObject` | 包成 `CREATE VIEW name AS <definition>` → `Analyze` → 过滤 `IsTemp` → `ReplaceColumnLineageIfCurrent`(边 + version + 缺口消息同事务) |
 | 写入前置条件 | `store/column_lineage.go` 的 `lockAnalysisState` | 以分析时读到的 `meta_hash` 为前置条件 `SELECT ... FOR SHARE`;**对象已删 → 丢弃结果**(`ErrAnalysisGone`);hash 变 → 丢弃并立即重排(`ErrAnalysisStale`) |
-| 失败(解析) | `analyzer.go` 的 `markAnalysisFailed` | `MarkAnalysisFailedIfCurrent`:清空该对象血缘 + 写 `error_message` + **存当前 meta_hash**,同一事务提交 |
+| 失败(解析/无定义) | `analyzer.go` 的 `markAnalysisFailed` | `MarkAnalysisFailedIfCurrent`:清空该对象血缘 + 写 `error_message` + **存当前 meta_hash**,同一事务提交;`cause=nil` 表示定义已变空 |
 | 失败(瞬时) | `analyzer.go:62-72,92-112` | 有界退避重试 30s / 2m / 5m,最多 3 次,之后等下一轮全扫;`RecordAnalysisError` 只更新 error_message,不清旧 hash。分析超时同上 |
 | Analyzer 版本 | `backend/plugin/lineage/lineage.go` 的 `AnalyzerVersion` | 分析规则变化(omni/方言升级、规则改动、注册新引擎)时递增;部署后小时扫描按版本不等自动全量重算 |
 | 引擎不支持 | `analyzer.go:296-301` | 记 `markAnalyzed` + "engine %s has no lineage analyzer; analysis skipped",不清边 |
@@ -142,7 +142,7 @@ TiDB 和 MariaDB **没有自己的遍历**。`mysql/analyzer.go` 哨兵之下的
 3. **`mysql/analyzer.go` 哨兵之下是唯一可编辑的家族正文**;绝不手改 `analyzer_body_gen.go`。改完必须重新生成,`TestGeneratedBodiesAreFresh` 会以红色失败信息给出命令。
 4. **解析失败 = 清血缘;未建模 = 留血缘 + 缺口**。不要把缺口变成静默丢弃,也不要把缺口变成硬失败。
 5. **缺口是数据不是句子**:一律经 `model.Diagnostic`,API 映射成 proto enum,CLI 渲染同一措辞;`error_message` 里存的是同一渲染文本。
-6. **清血缘只由解析失败或对象删除触发**;引擎未注册是显式 skip(记 `markAnalyzed`),不构成失败。
+6. **清血缘只由解析失败、对象定义变空或对象删除触发**;引擎未注册是显式 skip(记 `markAnalyzed`),不构成失败。
 7. **metahash 未变不重排**:成功、跳过、失败三条路径都写当前 hash,否则小时扫描会无限重试。瞬时错误只更新 `error_message`,不清已有 hash。
 8. **写入以分析时读到的 hash 为前置条件**:`ReplaceColumnLineageIfCurrent` / `MarkAnalyzedIfCurrent` / `MarkAnalysisFailedIfCurrent` 在同一事务里 `SELECT ... FOR SHARE` 校验 registry 行与 `meta_hash`;对象已删 → 丢弃结果,hash 已变 → 重排。不得无条件覆盖边或 version。
 9. **重算判据 = metahash + analyzer_version**:任何可能改变分析输出的改动都必须递增 `lineage.AnalyzerVersion`,部署后由小时扫描自动全量重算;不得依赖手工清 `column_lineage_version`。
@@ -150,6 +150,7 @@ TiDB 和 MariaDB **没有自己的遍历**。`mysql/analyzer.go` 哨兵之下的
 11. **catalog 查询失败不静默降级**:记 `DiagnosticCatalogUnavailable` 后用通配符继续,让降级结果可区分于完整结果。
 12. **任何输出变更(边、变换、错误分类)必须过 golden 语料**,语料用精确边匹配而非"差不多"。
 13. **事件优先、backfill 不阻断事件**:`QueueAnalysis` 进事件队列并由每 tick 先 drain;小时扫描只进 backlog 队列并填剩余预算。事件路径不得退回"整个 registry 一次 drain"(会饿死刚刚保存的语句),单 tick 必须有上限,单对象必须有 deadline,超时按瞬时失败处理。
+14. **一条边只有一行**:`column_lineage` 的唯一索引 `idx_column_lineage_edge`(meta_guid, meta_type, source_guid, source_column, target_guid, target_column, relation_type)是并发写契约;插入必须带 `ON CONFLICT DO NOTHING`。两个写者同时在替换同一对象的边时,后到的插入既不能重复边也不能让整批失败;transformation 是边的事实而非身份,不进键。
 
 ## Failure modes
 
@@ -158,6 +159,7 @@ TiDB 和 MariaDB **没有自己的遍历**。`mysql/analyzer.go` 哨兵之下的
 | omni 解析不了某语句 | 硬失败 → runner 清该对象血缘 + `error_message`,存 hash,等元数据变化再试 |
 | 某子句只是没建模(如 PG `MERGE`) | 部分分析 → 兄弟语句的边照存,缺口写 version 行 / RPC diagnostics |
 | 引擎没有分析器(OceanBase) | `ErrorEngineNotSupported` → 记 skip 与原因,不清边 |
+| 对象定义变成空 | 与解析失败同路:清边 + 写非空 `error_message`("no SQL definition")+ 存当前 hash;旧的边描述的是已经不存在的 SQL |
 | catalog `GetTable` 失败 | `DiagnosticCatalogUnavailable` + 通配符回退,分析继续 |
 | 瞬时失败(DB 抖动等) | 30s/2m/5m 退避重试 ≤3 次,之后等小时全扫;错误消息写在已有 version 行上,不清旧 hash |
 | 单对象分析超时(2m) | 与瞬时失败同路:退避重试,不写 failure 状态、不清边 |

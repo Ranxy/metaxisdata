@@ -89,9 +89,9 @@
 
 > 不建议「大重写」。当前事务纪律、singleflight、operation 聚合与测试选点都值得保留；按上面的顺序做**局部替换 + 契约加固**收益最高。
 >
-> **实施状态（2026-10-18）**：第 1 步的 **R-01/R-02** 已实现——`683ff9d`、`3183110`；第 2 步的 **R-03/R-04/R-17** 已实现——`d186476`（CAS + 原子失败状态 + `analyzer_version` 迁移 0021）；第 3 步的 **R-05/R-06/R-08/R-31 + R-11 生命周期部分** 已实现——`ef69c8b`（实例级 gate、LastSyncTime 后移、全量同步错误上报、批量预算、`runner.Runner`/`runner.Go` 统一骨架 + panic 边界）；**第 4 步的 R-09/R-10/R-13/R-14/R-15/R-16/R-18/R-20/R-32/R-33 已实现**——`358a7e6`（统计刷新独立于 history/fingerprint、批量血缘清理、DDL 刷新节奏、fresh now）、`ab3a56b`（应用上报只分析新语句、批量类型解析、批次上限 + 事件优先 + per-object 超时）、`b2eeebb`（可取消 revalidation 锁、maintenance 注入/超时/摘要日志、validation 启动首轮）。第 4 步新增 2 条真实 PG 集成用例（统计刷新不改 fingerprint/history、批量血缘清理），全量 hermetic、`-race`、lint 与 MySQL/真实 server 集成套件通过。
+> **实施状态（2026-10-18）**：第 1 步的 **R-01/R-02** 已实现——`683ff9d`、`3183110`；第 2 步的 **R-03/R-04/R-17** 已实现——`d186476`（CAS + 原子失败状态 + `analyzer_version` 迁移 0021）；第 3 步的 **R-05/R-06/R-08/R-31 + R-11 生命周期部分** 已实现——`ef69c8b`（实例级 gate、LastSyncTime 后移、全量同步错误上报、批量预算、`runner.Runner`/`runner.Go` 统一骨架 + panic 边界）；**第 4 步的 R-09/R-10/R-13/R-14/R-15/R-16/R-18/R-20/R-32/R-33 已实现**——`358a7e6`（统计刷新独立于 history/fingerprint、批量血缘清理、DDL 刷新节奏、fresh now）、`ab3a56b`（应用上报只分析新语句、批量类型解析、批次上限 + 事件优先 + per-object 超时）、`b2eeebb`（可取消 revalidation 锁、maintenance 注入/超时/摘要日志、validation 启动首轮）。第 4 步新增 2 条真实 PG 集成用例（统计刷新不改 fingerprint/history、批量血缘清理），全量 hermetic、`-race`、lint 与 MySQL/真实 server 集成套件通过。 **第 5 步的 R-12（文档）、R-19、R-21～R-29 与 R-30 子集已实现**——`a67fee4`（operation 放弃路径、hidden database 语义、批量软删除、GUID 单射转义 + 批次去重、删除日志后移、连接限流不告警）、`f7b980e`（空定义清边、settle 窗口信号折叠、kind 后写、VIEW/MV target 固定、server 死代码清理）、`8fca188`（`column_lineage` 唯一边索引迁移 0022 + `ON CONFLICT DO NOTHING` + 真实 PG 用例）；`docs/security-posture.md`、`docs/deploy.md`、新增 `.agents/docs/runner.md` 登记单副本部署约束。全量 hermetic、`-race`、lint、migrator 与真实 server 集成套件通过。
 >
-> **仍未做**：R-01 的 API 侧迁移；R-03/R-04 的并发/回滚专项集成用例（T3/T4）；R-11 余下的 ticker jitter 与 per-iteration timeout；第 4 步未收入本次范围的 **R-29**（`column_lineage` 唯一约束）；R-07（坏实例仍入队其库）、R-12（单副本文档登记）、R-19（settle 窗口 trigger 合并）以及 R-21～R-28、R-30 与测试补齐。
+> **仍未做**：R-01 的 API 侧迁移（runner 已用定向 patch，API 侧仍整份写）；R-03/R-04 的并发/回滚专项集成用例（T3/T4）；R-07（坏实例仍入队其库）；R-11 余下的 ticker jitter 与 per-iteration timeout；R-30 的 #1（包边界倒置）、#2（`ObjectDefinitionReader` 加 schema 参数）、#7（LLM debug worker 生命周期）、#8（分析队列 generation 重构的剩余延迟竞态）、#9（`Revalidate*` 的 `hasMore`/自触发）、#10（`EnableFullSync` 默认值，产品决策）。
 
 ---
 
@@ -439,6 +439,7 @@ for _, item := range bmc.deletes {
   - 同进程内的写入冲突仍在（ingestion 第二个 Processor vs revalidation，R-29），与副本数无关。
   - 多副本下的 duplicate-key/重复边等后果按 2026-10-18 决策不再作为产品风险考虑（仅作为「若未来改多副本」的已知前提记录在此）。
 - **建议（已决策：不做 lease/advisory lock）**：把 runner 的进程内状态补进 `docs/security-posture.md`（与 device/SSO/OAuth 并列），`docs/deploy.md` 写明部署约束；ticker 加 0–10% jitter、「本轮结束后再计时」；R-29 用唯一约束解决。本条降为 **P3 文档债**。
+- **已实施（2026-10-18，第 5 步，文档）**：`docs/security-posture.md` 增加「background runners keep their state in the process」条目（列出 sync 队列/退避/gate、operation、分析队列、revalidation settle/信号量、统计与 DDL 刷新时钟，以及「第二副本会重复同步/拆分用户消息」的后果），`docs/deploy.md` 增加「Run one server process」部署约束，新增维护参考 `.agents/docs/runner.md`（四个 runner 的生命周期、进程内状态、派生数据节奏、单副本假设、已知缺口），并在 `.agents/docs/README.md` 的索引中登记。不做 lease/advisory lock（决策未变）。
 
 ### R-13 `lineagevalidation` 的 `passTimeout` 约束不了 `revalidateMu`
 
@@ -505,6 +506,7 @@ for _, item := range bmc.deletes {
 - **事实**：`TestTriggerCoalescesOneSyncRound` 连续 `Trigger()` 5 次后断言只跑一次 pass；实现里 channel 容量 1，消费者取走第一个 token 后进入 settle，期间到达的 trigger 会重新占位，settle 结束后再跑一次 pass。评审中 `go test -race -count=10 ./backend/runner/...` 观测到 1 次 `expected 1, actual 2`；独立审稿人在单测试 `-count=300`、加压 `-count=200`、整包 `-count=100` 共 610+ 次 `-race` 重复中 **0 次复现**。因此准确结论是：**设计缺陷成立（settle 窗口的信号不会被折叠，注释承诺未实现），测试依赖调度时机、属 fragile-by-design**；「稳定 flaky」的断言证据不足。
 - **影响**：settle 窗口内提交的 sync 会产生一次冗余 revalidation pass；测试在特定调度下可能红（review 中观测到一次），给 CI 带来不可预测性。
 - **建议**：settle 结束后、`runOnce` 之前非阻塞 drain 一次 trigger，或用 `sync/atomic` 的 dirty 标志（Trigger 置 dirty，pass 开始清，结束时若 dirty 再跑）；修复后该测试即确定性。另见 §8 的测试缺口清单。
+- **已实施（2026-10-18，第 5 步，commit `f7b980e`）**：`Run` 在 settle 计时结束后、`runOnce` 之前 drain 一次 trigger，把 settle 窗口内到达的信号折进即将执行的 pass（窗口内信号命名的是同一批未决边）；pass 运行期间到达的信号仍保留一个 token、再跑一轮。`settleTimer` 改为可注入字段，使 `TestTriggerDuringSettleIsFolded` 确定性（去掉 drain 会失败）；`TestTriggerCoalescesOneSyncRound` 改为以启动 pass 为被 hold 的一轮，断言稳定。
 
 ### R-20 每轮数据库同步都全量抓取 DDL；降级模式可能永久陈旧
 
@@ -563,6 +565,18 @@ for _, item := range bmc.deletes {
 | R-28 | P3 | 实例级连接限流饱和（`state.ErrInstanceConnectionLimit`）没有像 database 级那样特殊处理，被当作实例同步失败并发管理员通知；饱和是可恢复的竞争，不是凭据/网络故障 | `syncer.go:302-309`（DB 级对照）、`355-369` | 实例级也 `errors.Is` 识别，跳过本轮、不通知、不推进任何退避 |
 | R-29 | P2 | 同进程竞态下 `BatchReplaceColumnLineage`（DELETE+INSERT、无唯一约束、无外键）会产生重复边；`GetLineage` 不去重（`api/v1/lineage_service.go:92-118`），RPC 会原样返回重复行 | `LATEST.sql:304-321`；`store/column_lineage.go:64-84` | 已确认单副本、无历史兼容：直接给 `column_lineage` 加唯一约束（`meta_guid, meta_type, source_guid, source_column, target_guid, target_column, relation_type`，transformation 是 JSONB 不能进键）+ 插入 `ON CONFLICT DO NOTHING`，迁移时清一次重复行即可；不需要 advisory lock |
 
+**R-21～R-29 已实施（2026-10-18，第 5 步；`a67fee4` 覆盖 R-21～R-28，`8fca188` 覆盖 R-29，`f7b980e` 覆盖 R-19/R-26/R-30 子集）**：
+
+- **R-21**：新增 `Syncer.AbandonOperation(ctx, op, cause)`（对已完成或「已 record + sealed、只是在等库」的操作为 no-op），三个 handler 起手 `defer` 兜底；`EnqueueDatabases` 拒绝已 sealed 的 operation，`RecordInstanceResult` 拒绝重复/迟到的记录；`expireOperations` 对从未 record 的 operation 写 `ErrOperationAbandoned` 并以 ERROR 投递，不再发零计数 INFO。`BatchSyncInstances` 的单实例逻辑抽成 `batchSyncInstance`，让 defer 按实例生效。测试 6 条。
+- **R-22**：软删除路径 `forgetQueuedDatabase` 清 `databaseSyncMap`/`databaseSyncRetryMap` 并向等待的 operation 报 hidden；checker 对队列中 `Deleted=true` 的行 `dropHiddenDatabase`（不同步、不重试）；`SyncDatabaseSchema` 入口对 deleted 行直接返回 `ErrDatabaseHidden`。测试 3 条。残余窗口：checker 已 dequeue、软删除随后提交的毫秒级竞态仍可能给该行写一次 LastSyncTime（不复活、不展示），登记为可接受。
+- **R-23**：新增导出哨兵 `ErrDatabaseHidden`；`markDatabaseDeleted` 成功后 `SyncDatabaseSchema` 返回它，checker 对其不 `scheduleRetry`、不发管理员通知，但以 FAILED+原因报告给等待的 operation；`DatabaseService.SyncDatabase` 映射为 `NotFound`（其余错误仍 Internal）。测试 2 条。
+- **R-24**：`store.BatchSoftDeleteDatabases` 用一条 `UPDATE db SET deleted=TRUE WHERE instance=$1 AND name=ANY($2)` 完成整组软删除（`pq.Array`、`errors.Wrapf`、失效缓存），`SyncInstance` 不再逐库开事务；查询形态 guard 测试。
+- **R-25**：`EscapeGUIDPart` 先 `%`→`%25` 再 `;`→`%3B`，`UnescapeGUIDPart` 逆序解码，编码单射（名字含 `%`/`%3B`/`;` 的往返与互异用例）；`batchMetaCreate.diff()` 在写前按 `(guid, object_type)` 去重、保留首个并 WARN，避免同批次重复 key 让整库 upsert 失败。测试 3 条。注意：这改变了名字含字面量 `%` 的对象的 GUID，按「无历史兼容」决策下一次同步会重写该对象，未做数据迁移。
+- **R-26**：定义变空不再走 `markAnalyzed(hash, "")`，而是 `markAnalysisFailed(..., nil)` → `MarkAnalysisFailedIfCurrent`：原子地清空该对象血缘并写入非空 `error_message`（"lineage analysis skipped: the object has no SQL definition"），同时保存当前 hash/analyzer version（不会每小时重试）。`analysisFailureMessage(cause=nil)` 单独产出该文案并有单测；`markAnalyzed` 的语义收窄为「引擎无分析器」的显式 skip。`.agents/docs/lineage-analyzer.md` 已登记该 failure mode 并更新不变量 6。
+- **R-27**：`logSchemaSyncDeletion` 移到 `tx.Commit()` 成功之后，回滚不再记录未发生的删除。
+- **R-28**：`reportInstanceSyncFailure` 对 `state.ErrInstanceConnectionLimit` 只记 Debug、不发管理员通知；LastSyncTime 不推进，后续扫描自然重试。
+- **R-29**：迁移 `0022##column_lineage_unique_edge.sql` 先按边身份去重（窗口函数保留最早行）再建唯一索引 `idx_column_lineage_edge`（身份不含 transformation），`LATEST.sql` 同步；插入改为 `ON CONFLICT DO NOTHING`（`columnLineageInsertStatement` 有形态 guard）。真实 PG 集成用例验证索引存在且重复边被拒。`GetLineage` 无需去重：唯一约束使重复行不可能存在。
+
 ### Info：架构与技术债（不单列严重度）
 
 1. **包边界与依赖方向**（AR-08/SS-15）：`schemasync` 直接依赖兄弟包 `lineageanalyzer` 的具体类型，同时为 API 提供 `QueueLineageAnalysis` 门面（`database_manual_sql.go:72,269`）；`maintenance` 依赖具体 `*store.Store`。建议 `schemasync` 内定义 `type LineageQueue interface { QueueAnalysis(string, storepb.MetaType) }`，API 直接依赖分析队列接口；`maintenance` 为 7 个 delete + setting 读取定义本地窄接口（与 R-18 一并解决）。
@@ -575,6 +589,8 @@ for _, item := range bmc.deletes {
 8. **分析队列的状态机有两处可构造竞态**（LN-04/AR-12）：`QueueAnalysis` 与 `scheduleRetry`/放弃分支并发时，新请求可能被旧的失败退避覆盖，或在「删 retry → 删 analyzeMap」之间被删除（最长延迟 1 小时）；`drainAndAnalyze` 的 `Range → 先 append 后 Delete` 也会抹掉刚好在两步之间到达的新入队。后果是**延迟**而非数据错误。建议按 key 串行化「drain 删除 + 分析 + 回写」，或用 generation/dirty 标志；这是低成本、值得顺手修的一处。
 9. **重新校验的批次/接口语义**（LN-11/AR-07）：`Revalidate*` 每次最多处理 `revalidationBatch=500` 条边，runner 传 `limit=0` 表示「用默认批次」（语义只写在实现里），且一次 pass 不检查是否还有积压、不自我重触发；maintenance 侧丢弃 `stillUnknown`。积压大时排空速度受限（维护 6h 一次）。建议接口注释写明 `0=默认批次`，返回值增加 `hasMore`，maintenance/validation 在有剩余时循环或自触发（用 passTimeout 设上限）。
 10. **`EnableFullSync` 的语义不一致**（SS-14）：`SyncInstance` 在 `EnableFullSync=false`（前端默认）时只入队 `newDatabases`，已有库完全不刷新；后台扫描与 `CreateInstance` 都是全量。建议把默认值改为 true，或在 proto 注释/文档中写明 false 表示「仅发现新库」。
+
+**第 5 步（2026-10-18）对 R-30 的处理**：#3（VIEW/MV 的 target GUID 钉为 `metaGUID`）、#4（`SetApplicationSQLKind` 移到边提交成功之后）、#5 中的 `slog.Debug(fmt.Sprintf)` / `enqueueDatabase` 死参数 / "retries twice" 注释 / 冗余循环拷贝 / `server.stopper` 死代码 / `StartH2CServer` 的 `ErrServerClosed` 误报已清理；#6 新增 `.agents/docs/runner.md` 并把 D9 扩全。#1（包边界倒置）、#2（`ObjectDefinitionReader` 加 schema 参数，breaking change）、#7（LLM debug worker 生命周期，非 runner 包内）、#8（分析队列 generation 重构：本次已用「事件队列 + backlog 队列」消除了饿死路径，剩余延迟类竞态未改）、#9（`Revalidate*` 的 `hasMore`/自触发：本次只补了 `limit=0` 注释与「一次 pass 有界」的接口契约）、#10（`EnableFullSync` 默认值属产品决策）仍开放。
 
 ---
 
@@ -645,12 +661,12 @@ type Runner interface {
 | T4 | `markAnalysisFailed` 注入第二次写失败 | 钉住 R-04：不留「hash 相等 + 边已清空」 |
 | T5 | 删除 1 张含 N 列的表：断言清理语句数/结果 | 钉住 R-10 的规模回归。**已实施**：语句数不再随对象数变化（`DeleteColumnLineageByMetaGUIDs` 固定条数 + 类型过滤单测），集成用例验证真实 PG 上的清理结果 |
 | T6 | `SyncAllDatabases` 的 `ListDatabases` 失败 | 断言 operation 变 ERROR（R-08）；已由 `TestOperationReportsAFailedDatabaseList` 覆盖 |
-| T7 | 实例同步失败 ⇒ 该实例的库不入队 | 钉住 R-07 |
+| T7 | 实例同步失败 ⇒ 该实例的库不入队 | 钉住 R-07；**仍未做** |
 | T8 | `queueAll` 的 hash + analyzer_version 判据；事件路径 `needsAnalysis` | 钉住 R-14/R-17。**部分实施**：R-14 由 upsert `inserted` 标记 + handler 用例钉住；R-17 的判据已有 `TestNeedsAnalysis` |
 | T9 | `Run` 的 ctx 取消/panic 隔离/`Add` 计数（用 fake Runner） | 钉住 R-11；`runner.Go` 的 panic/计数已覆盖，四包 `Run` 的 ctx 取消仍有 `lineagevalidation` 用例 |
 | T10 | 持 `revalidateMu` 时 `runOnce` 在 ctx 取消后返回 | 钉住 R-13。**已实施**：`TestRevalidationWaitIsCancellable` |
 | T11 | `maintenance.runOnce` 表驱动（错误隔离、setting 失败、cutoff 边界、nil revalidator） | 钉住 R-18。**已实施**：`backend/runner/maintenance/maintenance_test.go` |
-| T12 | `-race -count=10` 的 runner 测试门禁 | 让 R-19 这类 flake 在 CI 暴露 |
+| T12 | `-race -count=10` 的 runner 测试门禁 | 让 R-19 这类 flake 在 CI 暴露。**R-19 缺陷已修**（settle 折叠 + 可注入计时器，确定性用例）；CI 门禁本身未改 |
 | T13 | 统计刷新：真实 PG 上断言值更新、fingerprint/history 不变 | **已实施**：`TestMySQLMetaRegistryStatisticsRefreshKeepsHistoryRealServerIntegration` |
 | T14 | analyzer 的批次上限、事件优先、单对象超时分类 | **已实施**：`TestTakeAnalyzeBatch*`、`TestDrainPrefersEventsOverTheScanBacklog`、`TestAnalysisTimedOut` |
 
