@@ -52,8 +52,8 @@ const maxOpenLineageDatasetRecentRefs = 100
 // keeps every value, so a filter by one that is not shown still matches.
 const maxOpenLineageDatasetDistinctValues = 16
 
-// maxOpenLineageDatasetColumnFields bounds the distinct column-lineage field
-// names a detail request returns.
+// maxOpenLineageDatasetColumnFields bounds the distinct column names one
+// column-lineage read of a dataset detail returns.
 const maxOpenLineageDatasetColumnFields = 10000
 
 // openLineageDatasetWindowCTE renders the window every dataset read works from:
@@ -100,7 +100,7 @@ func openLineageDatasetMemberExistsClause(alias, kind string, argIndex int) stri
 // detail's facet, job and run queries read.
 func openLineageDatasetRecentRefsCTE(clause string) string {
 	return `WITH recent AS (
-		SELECT d.id, d.run_pk, d.task_guid, d.direction, d.event_time, d.schema_fields, d.column_lineage_fields
+		SELECT d.id, d.run_pk, d.task_guid, d.direction, d.event_time, d.schema_fields
 		FROM openlineage_run_dataset d
 		WHERE ` + clause + `
 		ORDER BY d.event_time DESC NULLS LAST, d.id DESC
@@ -125,26 +125,31 @@ type OpenLineageRunDatasetMessage struct {
 }
 
 // FindOpenLineageDatasetMessage filters the dataset window. The filters it
-// carries are the ones the aggregate itself can answer: the free-text search and
-// the internal/external scope need resolution and stay with the caller.
+// carries are the ones the aggregate itself can answer: the free-text search,
+// the internal/external scope and the column-lineage probe all need the
+// dataset's resolution and stay with the caller.
 type FindOpenLineageDatasetMessage struct {
-	Namespace         *string
-	Integration       *string
-	Source            *string
-	ColumnLineageOnly *bool
+	Namespace   *string
+	Integration *string
+	Source      *string
 }
 
 // OpenLineageDatasetAggregateMessage is one dataset of the window, with the
 // aggregate the list shows.
 type OpenLineageDatasetAggregateMessage struct {
-	Namespace             string
-	Name                  string
-	LastSeen              *time.Time
-	SourceJobCount        int32
-	TargetJobCount        int32
-	Integrations          []string
-	Sources               []string
-	SupportsColumnLineage bool
+	Namespace      string
+	Name           string
+	LastSeen       *time.Time
+	SourceJobCount int32
+	TargetJobCount int32
+	Integrations   []string
+	Sources        []string
+	// FacetColumnLineage is the old signal: at least one output reference
+	// declared a columnLineage facet. The dataset pages derive column lineage
+	// from stored edges; this is only the fallback for a dataset the resolver
+	// cannot identify, so a degraded resolver does not answer "no lineage" for
+	// every row.
+	FacetColumnLineage bool
 }
 
 // OpenLineageDatasetPair is one (namespace, name) spelling of a dataset.
@@ -186,16 +191,14 @@ type OpenLineageDatasetRunMessage struct {
 // jobs and runs are read from a bounded, newest-first window of references. The
 // dataset's own identity and resolution stay with the caller.
 type OpenLineageDatasetDetailMessage struct {
-	LastSeen              *time.Time
-	SourceJobCount        int32
-	TargetJobCount        int32
-	Integrations          []string
-	Sources               []string
-	SupportsColumnLineage bool
-	Jobs                  []*OpenLineageDatasetJobMessage
-	Runs                  []*OpenLineageDatasetRunMessage
-	SchemaFields          []byte
-	ColumnLineageFields   []string
+	LastSeen       *time.Time
+	SourceJobCount int32
+	TargetJobCount int32
+	Integrations   []string
+	Sources        []string
+	Jobs           []*OpenLineageDatasetJobMessage
+	Runs           []*OpenLineageDatasetRunMessage
+	SchemaFields   []byte
 }
 
 // replaceOpenLineageRunDatasets rewrites one run's dataset references. The run
@@ -331,9 +334,6 @@ func buildOpenLineageDatasetAggregateQuery(find *FindOpenLineageDatasetMessage) 
 		args = append(args, *v)
 		where = append(where, openLineageDatasetMemberExistsClause("w", openLineageDatasetMemberSource, len(args)))
 	}
-	if find.ColumnLineageOnly != nil && *find.ColumnLineageOnly {
-		where = append(where, "w.column_lineage_ref_count > 0")
-	}
 
 	query := openLineageDatasetWindowCTE() + `
 		SELECT
@@ -394,7 +394,7 @@ func scanOpenLineageDatasetAggregateRows(rows *sql.Rows) ([]*OpenLineageDatasetA
 			&msg.TargetJobCount,
 			&integrations,
 			&sources,
-			&msg.SupportsColumnLineage,
+			&msg.FacetColumnLineage,
 		); err != nil {
 			return nil, errors.Wrap(err, "failed to scan an openlineage dataset aggregate")
 		}
@@ -438,9 +438,6 @@ func (s *Store) GetOpenLineageDatasetDetail(ctx context.Context, pairs []OpenLin
 	if detail.SchemaFields, err = s.getOpenLineageDatasetBestSchema(ctx, clause, args); err != nil {
 		return nil, err
 	}
-	if detail.ColumnLineageFields, err = s.listOpenLineageDatasetColumnLineageFields(ctx, clause, args); err != nil {
-		return nil, err
-	}
 	if detail.Jobs, err = s.listOpenLineageDatasetJobs(ctx, clause, args); err != nil {
 		return nil, err
 	}
@@ -461,7 +458,6 @@ func (s *Store) getOpenLineageDatasetSummary(ctx context.Context, pairs []OpenLi
 			ds.last_seen,
 			ds.source_job_count,
 			ds.target_job_count,
-			ds.column_lineage_ref_count > 0,
 			`+openLineageDatasetMemberArrayColumn("ds", openLineageDatasetMemberIntegration)+`,
 			`+openLineageDatasetMemberArrayColumn("ds", openLineageDatasetMemberSource)+`
 		FROM openlineage_dataset ds
@@ -480,13 +476,11 @@ func (s *Store) getOpenLineageDatasetSummary(ctx context.Context, pairs []OpenLi
 	for rows.Next() {
 		var lastSeen sql.NullTime
 		var sourceJobCount, targetJobCount int32
-		var supportsColumnLineage bool
 		var rowIntegrations, rowSources pq.StringArray
 		if err := rows.Scan(
 			&lastSeen,
 			&sourceJobCount,
 			&targetJobCount,
-			&supportsColumnLineage,
 			&rowIntegrations,
 			&rowSources,
 		); err != nil {
@@ -499,7 +493,6 @@ func (s *Store) getOpenLineageDatasetSummary(ctx context.Context, pairs []OpenLi
 		}
 		detail.SourceJobCount += sourceJobCount
 		detail.TargetJobCount += targetJobCount
-		detail.SupportsColumnLineage = detail.SupportsColumnLineage || supportsColumnLineage
 		for _, value := range rowIntegrations {
 			integrations[value] = struct{}{}
 		}
@@ -584,35 +577,6 @@ func (s *Store) getOpenLineageDatasetBestSchema(ctx context.Context, clause stri
 		return nil, errors.Wrap(err, "failed to read the openlineage dataset schema")
 	}
 	return schemaFields, nil
-}
-
-func (s *Store) listOpenLineageDatasetColumnLineageFields(ctx context.Context, clause string, args []any) ([]string, error) {
-	queryArgs := append(append([]any{}, args...), maxOpenLineageDatasetColumnFields)
-	rows, err := s.GetDB().QueryContext(ctx, openLineageDatasetRecentRefsCTE(clause)+`
-		SELECT DISTINCT jsonb_array_elements_text(recent.column_lineage_fields) AS field
-		FROM recent
-		WHERE recent.direction = '`+OpenLineageDatasetDirectionOutput+`' AND recent.column_lineage_fields IS NOT NULL
-		ORDER BY field
-		LIMIT $`+strconv.Itoa(len(queryArgs)),
-		queryArgs...,
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read the openlineage dataset column lineage fields")
-	}
-	defer rows.Close()
-
-	var fields []string
-	for rows.Next() {
-		var field string
-		if err := rows.Scan(&field); err != nil {
-			return nil, errors.Wrap(err, "failed to scan an openlineage dataset column lineage field")
-		}
-		fields = append(fields, field)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, errors.Wrap(err, "failed to read openlineage dataset column lineage fields")
-	}
-	return fields, nil
 }
 
 // listOpenLineageDatasetJobs returns the jobs that touched the dataset, most

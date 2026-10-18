@@ -5832,7 +5832,7 @@ the SPA consent page needs.
 | integration | [string](#string) |  |  |
 | source | [string](#string) |  |  |
 | dataset_scope | [OpenLineageDatasetScope](#metaxisdata-v1-OpenLineageDatasetScope) |  |  |
-| column_lineage_only | [bool](#bool) |  |  |
+| column_lineage_only | [bool](#bool) |  | When true, return only datasets for which supports_column_lineage is true. |
 
 
 
@@ -6058,7 +6058,7 @@ the SPA consent page needs.
 | resolved_target | [string](#string) |  |  |
 | resolved_meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
 | internal | [bool](#bool) |  |  |
-| supports_column_lineage | [bool](#bool) |  |  |
+| supports_column_lineage | [bool](#bool) |  | Whether the dataset has stored column-level lineage: the object its namespace and name resolve to is an endpoint of at least one lineage edge that names a column on at least one side. Derived from the lineage store, not from a producer-declared facet. |
 | last_seen | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | source_job_count | [int32](#int32) |  |  |
 | target_job_count | [int32](#int32) |  |  |

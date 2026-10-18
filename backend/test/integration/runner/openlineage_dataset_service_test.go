@@ -108,8 +108,8 @@ func TestOpenLineageDatasetPagesReadMaterializedReferencesRealServerIntegration(
 	client := v1connect.NewOpenLineageServiceClient(httpClient, env.BaseURL)
 
 	// The two datasets are aggregated from the stored references: the input was
-	// read by both jobs, the output written by both, and only the output carries
-	// the column-lineage facet.
+	// read by both jobs and the output written by both. The facet on the output
+	// stored a column-level edge from the input, so both are endpoints of one.
 	list, err := client.ListOpenLineageDatasets(ctx, withToken(env.AdminToken(), &v1pb.ListOpenLineageDatasetsRequest{Namespace: namespace}))
 	require.NoError(t, err)
 	require.Len(t, list.Msg.GetDatasets(), 2)
@@ -124,7 +124,7 @@ func TestOpenLineageDatasetPagesReadMaterializedReferencesRealServerIntegration(
 	require.Equal(t, int32(2), input.GetSourceJobCount())
 	require.Equal(t, int32(0), input.GetTargetJobCount())
 	require.False(t, input.GetInternal())
-	require.False(t, input.GetSupportsColumnLineage())
+	require.True(t, input.GetSupportsColumnLineage(), "the stored edge names the input as its source")
 	require.Equal(t, openlineage.FormatExternalGUID(namespace, orders), input.GetGuid())
 
 	output := byName[daily]

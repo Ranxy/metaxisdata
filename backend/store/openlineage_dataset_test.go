@@ -26,23 +26,25 @@ func TestBuildOpenLineageDatasetAggregateQuery(t *testing.T) {
 	require.Empty(t, args)
 
 	namespace, integration, source := "ns", "airflow", "openlineage"
-	columnLineageOnly := true
 	query, args = buildOpenLineageDatasetAggregateQuery(&FindOpenLineageDatasetMessage{
-		Namespace:         &namespace,
-		Integration:       &integration,
-		Source:            &source,
-		ColumnLineageOnly: &columnLineageOnly,
+		Namespace:   &namespace,
+		Integration: &integration,
+		Source:      &source,
 	})
 	require.Equal(t, []any{"ns", "airflow", "openlineage"}, args)
 
-	// The filters run after the window, and they read the maintained aggregate
-	// or probe the member table's primary key; none of them widens the window.
+	// The filters run after the window, and they probe the member table's
+	// primary key; none of them widens the window. The column-lineage filter is
+	// not here at all: it needs the resolved GUID and runs in Go. The facet signal
+	// stays projected because it is the fallback flag for a dataset the resolver
+	// cannot identify.
 	_, afterWindow, found := strings.Cut(query, "FROM dataset_window w")
 	require.True(t, found)
 	require.Contains(t, afterWindow, "w.namespace = $1")
 	require.Contains(t, afterWindow, "filter_member.value = $2")
 	require.Contains(t, afterWindow, "filter_member.value = $3")
-	require.Contains(t, afterWindow, "w.column_lineage_ref_count > 0")
+	require.Contains(t, query, "w.column_lineage_ref_count > 0")
+	require.NotContains(t, afterWindow, "column_lineage")
 	require.Contains(t, afterWindow, "kind = '"+openLineageDatasetMemberIntegration+"'")
 	require.Contains(t, afterWindow, "kind = '"+openLineageDatasetMemberSource+"'")
 

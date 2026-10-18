@@ -379,6 +379,105 @@ func (s *Store) countColumnLineageBy(ctx context.Context, query string, guids []
 	return counts, nil
 }
 
+// columnLineageEndpointGUIDQuery selects the objects that are an endpoint of at
+// least one column-level edge, i.e. an edge that names a column on at least one
+// side. A table-level edge names no column at all and is deliberately not an
+// answer: the pages this feeds advertise column lineage, and a table-level
+// dependency gives a column page nothing to show.
+const columnLineageEndpointGUIDQuery = `
+	SELECT target_guid FROM column_lineage
+	WHERE target_guid = ANY($1) AND (source_column <> '' OR target_column <> '')
+	UNION
+	SELECT source_guid FROM column_lineage
+	WHERE source_guid = ANY($1) AND (source_column <> '' OR target_column <> '')`
+
+// maxColumnLineageProbeGuids bounds the GUIDs one endpoint probe binds. A list
+// request may ask about the whole dataset window, and binding thousands of GUIDs
+// in one statement makes the planner scan the table instead of probing the
+// endpoint indexes; a batch keeps every query selective.
+const maxColumnLineageProbeGuids = 1000
+
+// ListColumnLineageEndpoints reports which of the given objects are an endpoint
+// of at least one column-level edge, i.e. an edge that names a column on at
+// least one side. A table-level edge names no column at all and is deliberately
+// not an answer: the pages this feeds advertise column lineage, and a table-level
+// dependency gives a column page nothing to show. Each branch probes the endpoint
+// index (`idx_column_lineage_target` / `idx_column_lineage_source`), and a batch
+// of up to maxColumnLineageProbeGuids costs one index scan per direction. An
+// object with no edge is absent from the result rather than reported as false.
+func (s *Store) ListColumnLineageEndpoints(ctx context.Context, guids []string) (map[string]struct{}, error) {
+	found := make(map[string]struct{}, len(guids))
+	for start := 0; start < len(guids); start += maxColumnLineageProbeGuids {
+		end := min(start+maxColumnLineageProbeGuids, len(guids))
+		if err := s.probeColumnLineageEndpoints(ctx, guids[start:end], found); err != nil {
+			return nil, err
+		}
+	}
+	return found, nil
+}
+
+// probeColumnLineageEndpoints runs one endpoint probe and adds its answer to
+// found.
+func (s *Store) probeColumnLineageEndpoints(ctx context.Context, guids []string, found map[string]struct{}) error {
+	rows, err := s.GetDB().QueryContext(ctx, columnLineageEndpointGUIDQuery, pq.Array(guids))
+	if err != nil {
+		return errors.Wrap(err, "failed to query column lineage endpoints")
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var guid string
+		if err := rows.Scan(&guid); err != nil {
+			return errors.Wrap(err, "failed to scan a column lineage endpoint")
+		}
+		found[guid] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return errors.Wrap(err, "failed to read column lineage endpoints")
+	}
+	return nil
+}
+
+// columnLineageColumnQuery selects the columns an object's column-level edges
+// name on the object's own side: the target columns of its incoming edges and
+// the source columns of its outgoing ones. The object is the target of what
+// writes it and the source of what it writes, so both sides describe its fields.
+const columnLineageColumnQuery = `
+	SELECT column_name FROM (
+		SELECT target_column AS column_name FROM column_lineage
+		WHERE target_guid = $1 AND target_column <> ''
+		UNION
+		SELECT source_column FROM column_lineage
+		WHERE source_guid = $1 AND source_column <> ''
+	) named
+	ORDER BY column_name
+	LIMIT $2`
+
+// ListColumnLineageColumnsByGUID returns the fields an object's column-level
+// edges name on its own side, sorted and bounded. It is what marks a schema
+// field as column-lineage ready: the same edges the column-lineage page draws
+// are the ones that make a field participate.
+func (s *Store) ListColumnLineageColumnsByGUID(ctx context.Context, guid string) ([]string, error) {
+	rows, err := s.GetDB().QueryContext(ctx, columnLineageColumnQuery, guid, maxOpenLineageDatasetColumnFields)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to query the column lineage columns")
+	}
+	defer rows.Close()
+
+	var columns []string
+	for rows.Next() {
+		var column string
+		if err := rows.Scan(&column); err != nil {
+			return nil, errors.Wrap(err, "failed to scan a column lineage column")
+		}
+		columns = append(columns, column)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to read the column lineage columns")
+	}
+	return columns, nil
+}
+
 // UpsertColumnLineageVersion inserts or updates the analysis version record for an object.
 func (s *Store) UpsertColumnLineageVersion(ctx context.Context, v *ColumnLineageVersion) error {
 	_, err := s.GetDB().ExecContext(ctx, `
