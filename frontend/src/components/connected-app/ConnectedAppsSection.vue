@@ -35,6 +35,8 @@
             <ConnectedAppTable
               :apps="apps"
               :show-user="scope === 'admin'"
+              :can-revoke-others="canRevokeOthers"
+              :caller-user="signedInUser"
               @revoke="confirmRevoke"
             />
 
@@ -99,6 +101,12 @@ const authStore = useAuthStore();
 const { handleError, showSuccess } = useErrorHandler();
 
 const pageSize = ref(50);
+// The session record names the signed-in user; the self page must not ask the
+// server for "every user" while it is still hydrating.
+const signedInUser = computed(() => authStore.user?.name ?? "");
+const canRevokeOthers = computed(() =>
+  authStore.hasPermission("metaxisdata.connectedApps.revoke")
+);
 const error = ref("");
 const revokeOpen = ref(false);
 const revoking = ref<ConnectedApp>();
@@ -234,7 +242,7 @@ const {
       // The self-service page pins itself to the caller even when an
       // administrator opens it, so "my connected apps" never means the
       // workspace's.
-      user: props.scope === "self" ? (authStore.user?.name ?? "") : "",
+      user: props.scope === "self" ? signedInUser.value : "",
       filter: props.scope === "admin" ? filterExpression.value : "",
       signal,
     });
@@ -301,7 +309,19 @@ async function handleRevoke() {
 }
 
 onMounted(() => {
+  // An empty `user` means "the whole workspace" to the server, so an
+  // administrator who opens the self-service page before the session record is
+  // hydrated must see nothing rather than everyone.
+  if (props.scope === "self" && !signedInUser.value) {
+    return;
+  }
   void reset();
+});
+
+watch(signedInUser, (name) => {
+  if (props.scope === "self" && name && apps.value.length === 0) {
+    void reset();
+  }
 });
 
 defineExpose({ refresh, isLoading });

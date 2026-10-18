@@ -148,7 +148,7 @@ var unannotatedMethods = map[string]bool{
 	// the whole workspace and an ordinary user sees their own. The handler narrows
 	// first and only widens when connectedApps.list / connectedApps.revoke resolves,
 	// so no single annotation can express the rule. The scoping matrix is pinned by
-	// connected_app_service_test.go, which is what keeps the widen from silently
+	// connected_app_test.go, which is what keeps the widen from silently
 	// becoming the default.
 	"metaxisdata.v1.ConnectedAppService.ListConnectedApps":  true,
 	"metaxisdata.v1.ConnectedAppService.RevokeConnectedApp": true,

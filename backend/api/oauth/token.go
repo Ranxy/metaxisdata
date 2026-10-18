@@ -13,6 +13,27 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
+// TokenStore is the store surface the token endpoint needs. It exists so the
+// refresh and rotation path can be exercised without a database: *store.Store
+// implements it, production leaves ServerConfig.TokenStores nil, and a test can
+// put a fake behind it.
+type TokenStore interface {
+	GetOAuthGrant(ctx context.Context, clientID, tokenHash string) (*store.OAuthGrant, error)
+	CreateOAuthGrant(ctx context.Context, create *store.OAuthGrant) (int64, error)
+	RotateOAuthGrant(ctx context.Context, clientID, oldHash, newHash string, expiresAt, now time.Time) (int64, bool, error)
+	RevokeOAuthGrant(ctx context.Context, id int64, revokedAt time.Time, revokedBy *int) (bool, error)
+	GetUserByID(ctx context.Context, id int) (*store.UserMessage, error)
+	TouchOAuthClient(ctx context.Context, clientID string) error
+}
+
+// tokenStore returns the store the token endpoint uses, preferring a test's fake.
+func (c *ServerConfig) tokenStore() TokenStore {
+	if c.TokenStores != nil {
+		return c.TokenStores
+	}
+	return c.Stores
+}
+
 // The two grants the token endpoint implements.
 const (
 	grantTypeAuthorizationCode = "authorization_code"
@@ -127,7 +148,7 @@ func (s *Server) exchangeAuthorizationCode(w http.ResponseWriter, r *http.Reques
 		writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "the PKCE verifier does not match the challenge")
 		return
 	}
-	user, err := s.config.Stores.GetUserByID(r.Context(), grant.ApprovedByUserID)
+	user, err := s.config.tokenStore().GetUserByID(r.Context(), grant.ApprovedByUserID)
 	if err != nil || user == nil {
 		writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "the approving user no longer exists")
 		return
@@ -168,7 +189,7 @@ func (s *Server) exchangeRefreshToken(w http.ResponseWriter, r *http.Request, re
 	// Every lookup is scoped to the client the grant was issued to, so a hash
 	// leaked from one registration cannot be redeemed by another.
 	tokenHash := auth.HashToken(request.RefreshToken)
-	stored, err := s.config.Stores.GetOAuthGrant(r.Context(), request.ClientID, tokenHash)
+	stored, err := s.config.tokenStore().GetOAuthGrant(r.Context(), request.ClientID, tokenHash)
 	if err != nil {
 		slog.Error("failed to look up an OAuth grant", clog.WithError(err))
 		writeOAuthError(w, http.StatusInternalServerError, "server_error", "failed to look up the refresh token")
@@ -218,7 +239,7 @@ func (s *Server) exchangeRefreshToken(w http.ResponseWriter, r *http.Request, re
 		writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "the refresh token is unknown, already used or was issued to another client")
 		return
 	}
-	user, err := s.config.Stores.GetUserByID(r.Context(), stored.UserID)
+	user, err := s.config.tokenStore().GetUserByID(r.Context(), stored.UserID)
 	if err != nil || user == nil {
 		s.revokeFailedGrant(r.Context(), grantID)
 		writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "the approving user no longer exists")
@@ -249,7 +270,7 @@ func (s *Server) createGrant(ctx context.Context, grant oauthGrant, resource str
 	if err != nil {
 		return 0, "", err
 	}
-	id, err := s.config.Stores.CreateOAuthGrant(ctx, &store.OAuthGrant{
+	id, err := s.config.tokenStore().CreateOAuthGrant(ctx, &store.OAuthGrant{
 		TokenHash: auth.HashToken(token),
 		ClientID:  grant.clientID,
 		UserID:    grant.user.ID,
@@ -273,7 +294,7 @@ func (s *Server) rotateGrant(ctx context.Context, clientID, oldHash string, now 
 		return 0, "", false, err
 	}
 	expiresAt := now.Add(auth.GetRefreshTokenDuration(ctx, s.config.Stores))
-	id, rotated, err := s.config.Stores.RotateOAuthGrant(ctx, clientID, oldHash, auth.HashToken(token), expiresAt, now)
+	id, rotated, err := s.config.tokenStore().RotateOAuthGrant(ctx, clientID, oldHash, auth.HashToken(token), expiresAt, now)
 	if err != nil || !rotated {
 		return 0, "", rotated, err
 	}
@@ -286,7 +307,7 @@ func (s *Server) rotateGrant(ctx context.Context, clientID, oldHash string, now 
 // connection that can never refresh. Best effort: the credential is already
 // burned, so a failure here only leaves a stale row for the maintenance prune.
 func (s *Server) revokeFailedGrant(ctx context.Context, grantID int64) {
-	if _, err := s.config.Stores.RevokeOAuthGrant(ctx, grantID, s.now(), nil); err != nil {
+	if _, err := s.config.tokenStore().RevokeOAuthGrant(ctx, grantID, s.now(), nil); err != nil {
 		slog.Warn("failed to revoke an unusable OAuth grant", clog.WithError(err))
 		return
 	}
@@ -317,7 +338,7 @@ func (s *Server) writeGrantResponse(w http.ResponseWriter, r *http.Request, endp
 	// A client that has exchanged a code is in use; last_used_at is per
 	// registration, while the grant's own activity is last_tool_call_at. Best
 	// effort: the token is valid whether or not the timestamp landed.
-	if err := s.config.Stores.TouchOAuthClient(r.Context(), grant.clientID); err != nil {
+	if err := s.config.tokenStore().TouchOAuthClient(r.Context(), grant.clientID); err != nil {
 		slog.Warn("failed to record an OAuth client's last use", clog.WithError(err))
 	}
 	writeJSON(w, http.StatusOK, tokenResponse{

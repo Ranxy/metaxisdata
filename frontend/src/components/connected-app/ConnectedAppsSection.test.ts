@@ -223,6 +223,44 @@ describe("ConnectedAppsSection", () => {
     ]);
   });
 
+  it("hides revoke on another user's connection without the revoke permission", async () => {
+    mocks.listConnectedApps.mockResolvedValue(page([app({ user: "users/2" })]));
+
+    const limited = await mountSection("admin");
+    expect(
+      limited.findAll("button").some((button) => button.text() === "Revoke")
+    ).toBe(false);
+
+    useAuthStore().user = create(UserSchema, {
+      name: "users/1",
+      permissions: [
+        "metaxisdata.connectedApps.list",
+        "metaxisdata.connectedApps.revoke",
+      ],
+    });
+    const allowed = await mountSection("admin");
+    expect(
+      allowed.findAll("button").some((button) => button.text() === "Revoke")
+    ).toBe(true);
+  });
+
+  it("does not fall through to the workspace list before the session user is known", async () => {
+    useAuthStore().user = null;
+
+    await mountSection("self");
+    expect(mocks.listConnectedApps).not.toHaveBeenCalled();
+
+    useAuthStore().user = create(UserSchema, {
+      name: "users/1",
+      permissions: ["metaxisdata.connectedApps.list"],
+    });
+    await flushPromises();
+
+    expect(mocks.listConnectedApps).toHaveBeenCalledWith(
+      expect.objectContaining({ user: "users/1" })
+    );
+  });
+
   it("restarts at the first page when a filter changes", async () => {
     mocks.listConnectedApps
       .mockResolvedValueOnce(page([app()], "10"))

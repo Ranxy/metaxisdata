@@ -28,9 +28,16 @@ function app(
   });
 }
 
-function mountTable(apps: ConnectedApp[], props: { showUser?: boolean } = {}) {
+function mountTable(
+  apps: ConnectedApp[],
+  props: {
+    showUser?: boolean;
+    canRevokeOthers?: boolean;
+    callerUser?: string;
+  } = {}
+) {
   return mount(ConnectedAppTable, {
-    props: { apps, ...props },
+    props: { apps, callerUser: "users/11", ...props },
     global: { plugins: [i18n] },
   });
 }
@@ -125,6 +132,23 @@ describe("ConnectedAppTable", () => {
     await button?.trigger("click");
 
     expect(wrapper.emitted("revoke")?.[0]).toEqual([row]);
+  });
+
+  // The server refuses another user's row with a uniform NotFound, so a button
+  // that could only fail would mislead; ownership plus the revoke permission is
+  // what makes it appear.
+  it("hides revoke for another user's row unless the caller may revoke others", () => {
+    const other = app({ user: "users/12" });
+
+    const limited = mountTable([other]);
+    expect(
+      limited.findAll("button").some((button) => button.text() === "Revoke")
+    ).toBe(false);
+
+    const allowed = mountTable([other], { canRevokeOthers: true });
+    expect(
+      allowed.findAll("button").some((button) => button.text() === "Revoke")
+    ).toBe(true);
   });
 
   it("says a connection has not called a tool yet", () => {

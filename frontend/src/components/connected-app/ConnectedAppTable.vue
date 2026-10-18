@@ -69,7 +69,7 @@
         </TableCell>
         <TableCell class="text-right">
           <Button
-            v-if="isRevokable(app.state)"
+            v-if="canRevoke(app)"
             variant="outline"
             size="sm"
             @click="emit('revoke', app)"
@@ -80,12 +80,16 @@
                aligned; a `span` carries the tooltip because a disabled button
                does not receive the pointer events a native tooltip needs. -->
           <span
-            v-else
+            v-else-if="!isRevokable(app.state)"
             class="inline-flex h-9 w-9 items-center justify-center text-muted-foreground/30"
             :title="statusLabel(app.state)"
           >
             <Ban class="h-4 w-4" />
           </span>
+          <!-- A live row the caller may not revoke keeps the slot empty: the
+               server is the authority and would answer NotFound, so offering a
+               button that always fails would only mislead. -->
+          <span v-else class="inline-block h-9 w-9" />
         </TableCell>
       </TableRow>
     </TableBody>
@@ -113,13 +117,19 @@ import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 
 type BadgeVariant = "success" | "warning" | "secondary" | "outline";
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     apps: ConnectedApp[];
     /** Administrators see whose connection each row is; self-service does not. */
     showUser?: boolean;
+    /** Whether the caller holds connectedApps.revoke and may cut another user's
+     *  connection. A user's own rows are always revokable; the server stays the
+     *  authority and answers NotFound for a row the caller may not touch. */
+    canRevokeOthers?: boolean;
+    /** The signed-in user's resource name, `users/{id}`, for ownership. */
+    callerUser?: string;
   }>(),
-  { showUser: false }
+  { showUser: false, canRevokeOthers: false, callerUser: "" }
 );
 
 const emit = defineEmits<{
@@ -169,6 +179,14 @@ function isRevokable(state: ConnectedApp_State): boolean {
   return (
     state === ConnectedApp_State.ACTIVE ||
     state === ConnectedApp_State.REAUTH_REQUIRED
+  );
+}
+
+/** Offering revoke for a row the caller cannot revoke would fail server-side. */
+function canRevoke(app: ConnectedApp): boolean {
+  return (
+    isRevokable(app.state) &&
+    (props.canRevokeOthers || app.user === props.callerUser)
   );
 }
 </script>

@@ -34,7 +34,7 @@ grant 行:created_at(授权时间)/expires_at(滑动 30 天)/
 
 ### 授权与轮换
 
-- **首发**:`exchangeAuthorizationCode` 先 `CreateOAuthGrant`(`INSERT ... RETURNING id`,`token.go:246`),再用该 id 签 access token(`writeGrantResponse`);行在插入时 `last_tool_call_at`/`revoked_at` 均为 NULL,`created_at` = 首次签发时间(≈授权完成,不是 consent 批准时刻;两者最多差授权码 TTL)。
+- **首发**:`exchangeAuthorizationCode` 先 `CreateOAuthGrant`(`INSERT ... RETURNING id`,`token.go:273`),再用该 id 签 access token(`writeGrantResponse`);行在插入时 `last_tool_call_at`/`revoked_at` 均为 NULL,`created_at` = 首次签发时间(≈授权完成,不是 consent 批准时刻;两者最多差授权码 TTL)。
 - **刷新**:全部可从行判断的检查先跑(客户端绑定、行存在、过期、`revoked_at`、resource、scope),然后单条原子语句放行(`store/oauth_grant.go:43-48`):
 
   ```sql
@@ -45,7 +45,7 @@ grant 行:created_at(授权时间)/expires_at(滑动 30 天)/
   RETURNING id
   ```
 
-  0 行 = 并发输了/已撤销/已过期/换错客户端 → `invalid_grant`。id 不变,所以 `gid` 与资源名跨轮换稳定。过期**不再删行**(留给 maintenance,页面可显示 EXPIRED);轮换后 principal 复核失败(用户不存在、已停用、早于上次改密)由 `revokeFailedGrant`(`token.go:287`)显式置撤销,不再靠删除行隐式结束。
+  0 行 = 并发输了/已撤销/已过期/换错客户端 → `invalid_grant`。id 不变,所以 `gid` 与资源名跨轮换稳定。过期**不再删行**(留给 maintenance,页面可显示 EXPIRED);轮换后 principal 复核失败(用户不存在、已停用、早于上次改密)由 `revokeFailedGrant`(`token.go:309`)显式置撤销,不再靠删除行隐式结束。
 - **并发正确性**:本仓库使用 Postgres 默认 READ COMMITTED,后到的 UPDATE 等锁后重新评估 WHERE,先到者已改 `token_hash` 或写入 `revoked_at`,故恰好一个赢家;撤销与轮换在同一行上串行化。集成用例覆盖并发刷新与「撤销后 `/mcp` 401」;没有单独的「撤销 vs 轮换」竞态用例。
 
 ### 授权存活检查(gid + 30s 缓存)
@@ -140,7 +140,7 @@ grant 行:created_at(授权时间)/expires_at(滑动 30 天)/
 - Schema: `backend/migrator/migration/0.1/0014##refresh_tokens.sql`(建表)、`0021##connected_apps.sql`(三列 + `(user_id, created_at DESC)` 索引)、`LATEST.sql`(最终状态);表名仍是 `oauth_refresh_token`。
 - Store:`backend/store/oauth_grant.go`(`Create/Get/Rotate/Revoke/RevokeByUserAndClient/IsLive/Touch/GetConnectedApp/ListConnectedApps/DeleteExpired`);形状守卫 `backend/store/oauth_grant_test.go`。
 - 服务:`backend/api/v1/connected_app_service.go`;筛选 `backend/api/v1/filter.go` 的 `parseConnectedAppFilter`;proto `proto/v1/v1/connected_app_service.proto`(生成物随 `buf generate` 提交)。
-- 令牌与校验:`backend/api/auth/auth.go`(`gid`/`GrantID`)、`backend/api/auth/mcp_token.go`、`backend/api/auth/authenticator.go`(`GrantStore`、`grantRevoked`、`ErrGrantRevoked`)、`backend/component/state/state.go`(`GrantRevocationCache`)、`backend/mcp/auth.go`(拒绝无 `gid`、`TokenInfo.Extra` 携带 grant)、`backend/api/oauth/token.go`(创建/轮换/失败撤销)。
+- 令牌与校验:`backend/api/auth/auth.go`(`gid`/`GrantID`)、`backend/api/auth/mcp_token.go`、`backend/api/auth/authenticator.go`(`GrantStore`、`grantRevoked`、`ErrGrantRevoked`)、`backend/component/state/state.go`(`GrantRevocationCache`)、`backend/mcp/auth.go`(拒绝无 `gid`、`TokenInfo.Extra` 携带 grant)、`backend/api/oauth/token.go`(创建/轮换/失败撤销;`ServerConfig.TokenStores` 是 hermetic 测试接缝),`backend/api/oauth/token_test.go`(过期/已撤销/换资源/scope 漂移都不烧凭据、抢占失败、principal 拒绝置撤销并清缓存、authorization_code 先建行再签令牌)。
 - Logout 与清理:`backend/api/v1/auth_service.go`(MCP 分支撤销全部授权并清缓存)、`backend/runner/maintenance/maintenance.go`(`connectedAppRetention = 7d`,`DeleteExpiredOAuthGrants`)。
 - 工具活动:`backend/mcp/server.go` 的 `dispatch`/`touchConnectedApp`/`lastToolCallThrottle`。
 - 权限:目录 `backend/common/permission/permission.json`(73 条,`connectedApps.*` 不在 workspaceMember 的 17 条基线里,`workspaceAdmin` 自动拥有);白名单 `backend/api/v1/acl_interceptor_test.go`;矩阵测试 `backend/api/v1/connected_app_test.go`。
