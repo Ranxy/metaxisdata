@@ -42,20 +42,22 @@ OceanBase 刻意不注册(`engines.go` 的包注释),`Analyze` 对它是 `ErrorE
 
 | 机制 | 代码 | 行为 |
 | --- | --- | --- |
-| 周期全扫 | `backend/runner/lineageanalyzer/analyzer.go:26,124` | `lineageAnalysisInterval = 1h`,启动时先扫一次 |
-| 队列消费 | `analyzer.go:27,138` | `analyzeCheckerInterval = 10s`,并发池 `MaxGoroutines = 10` |
-| 事件驱动 | `analyzer.go:84`;`backend/runner/schemasync/syncer.go:417-422,783-787` | schema sync 提交**之后**把变更的 VIEW / MV 入队;MANUAL_SQL 由 `backend/api/v1/database_manual_sql.go:72,269` 入队,APPLICATION_SQL 由上报端点入队([application-sql-ingestion.md](application-sql-ingestion.md)) |
+| 周期全扫 | `backend/runner/lineageanalyzer/analyzer.go:28,194` | `lineageAnalysisInterval = 1h`,启动时先扫一次;结果进入**扫描 backlog 队列**(`queueScan`) |
+| 队列消费 | `analyzer.go:29,239,282` | `analyzeCheckerInterval = 10s`,并发池 `MaxGoroutines = 10`;每 tick 先 drain **事件队列**,扫描 backlog 只填剩余预算,单 tick 上限 `maxAnalyzeBatch = MaxGoroutines*100`(1000),未取出的 key 留在队列 |
+| 单对象超时 | `analyzer.go:45,307` | 每个对象 `context.WithTimeout(analyzeObjectTimeout = 2m)`;超时/取消归类为瞬时失败(退避重试),**不写失败状态、不清边** |
+| 事件驱动 | `analyzer.go:105`;`backend/runner/schemasync/syncer.go`;`backend/api/v1/database_manual_sql.go:72,269` | schema sync 提交**之后**把变更的 VIEW / MV 入队;MANUAL_SQL 由保存端点入队;APPLICATION_SQL 只在 upsert **创建了该语句**时入队([application-sql-ingestion.md](application-sql-ingestion.md)) —— 重复上报不重算 |
+| 类型解析 | `analyzer.go:268,528` | 一个对象的关联 GUID 用一次 `ListMetaRegistryResourceDigest{GUIDs}` 批量补类型;对象自身查询带 `ObjectType` 以命中 GUID+type 缓存 |
 | 变更检测 | `analyzer.go` 的 `needsAnalysis` | 比较 `meta_registry_resource.metahash`、`column_lineage_version.meta_hash` **与 `analyzer_version`**:hash 相同且 analyzer 版本相同才跳过 |
 | 分析写入 | `analyzer.go` 的 `analyzeObject` | 包成 `CREATE VIEW name AS <definition>` → `Analyze` → 过滤 `IsTemp` → `ReplaceColumnLineageIfCurrent`(边 + version + 缺口消息同事务) |
 | 写入前置条件 | `store/column_lineage.go` 的 `lockAnalysisState` | 以分析时读到的 `meta_hash` 为前置条件 `SELECT ... FOR SHARE`;**对象已删 → 丢弃结果**(`ErrAnalysisGone`);hash 变 → 丢弃并立即重排(`ErrAnalysisStale`) |
 | 失败(解析) | `analyzer.go` 的 `markAnalysisFailed` | `MarkAnalysisFailedIfCurrent`:清空该对象血缘 + 写 `error_message` + **存当前 meta_hash**,同一事务提交 |
-| 失败(瞬时) | `analyzer.go:63-73,93-112` | 有界退避重试 30s / 2m / 5m,最多 3 次,之后等下一轮全扫;`RecordAnalysisError` 只更新 error_message,不清旧 hash |
+| 失败(瞬时) | `analyzer.go:62-72,92-112` | 有界退避重试 30s / 2m / 5m,最多 3 次,之后等下一轮全扫;`RecordAnalysisError` 只更新 error_message,不清旧 hash。分析超时同上 |
 | Analyzer 版本 | `backend/plugin/lineage/lineage.go` 的 `AnalyzerVersion` | 分析规则变化(omni/方言升级、规则改动、注册新引擎)时递增;部署后小时扫描按版本不等自动全量重算 |
 | 引擎不支持 | `analyzer.go:296-301` | 记 `markAnalyzed` + "engine %s has no lineage analyzer; analysis skipped",不清边 |
-| 删除清理 | `syncer.go:1076-1090`,调用点 `:757-762` | 删除对象时按 `meta_guid`、`source_guid`、`target_guid` 三向清 `column_lineage`,并清 `column_lineage_version` |
+| 删除清理 | `backend/store/column_lineage.go` 的 `DeleteColumnLineageByMetaGUIDs` | 删除对象时按类型过滤(端点 TABLE/VIEW/MV/EXTERNAL_TABLE;producer VIEW/MV)后批量清 `source/target`、`meta_guid` 三向边与 `column_lineage_version`;语句数固定,与删除对象数无关 |
 | MANUAL_SQL 特例 | `analyzer.go:334-370` | 除真实 target 边外,额外写一条以自身为源、目标同名的边,让"这段 SQL 输出什么"在图上可见 |
 
-store 侧:`backend/store/column_lineage.go` 的 `BatchReplaceColumnLineage`(仅 OpenLineage 路径)、`ReplaceColumnLineageIfCurrent`、`MarkAnalyzedIfCurrent`、`MarkAnalysisFailedIfCurrent`、`RecordAnalysisError`、`ListColumnLineage`、`ListColumnLineageVersions`、`GetColumnLineageVersion`;表定义 `backend/migrator/migration/LATEST.sql` 的 `column_lineage` / `column_lineage_version`(含 `analyzer_version`)。
+store 侧:`backend/store/column_lineage.go` 的 `BatchReplaceColumnLineage`(仅 OpenLineage 路径)、`ReplaceColumnLineageIfCurrent`、`MarkAnalyzedIfCurrent`、`MarkAnalysisFailedIfCurrent`、`RecordAnalysisError`、`DeleteColumnLineageByMetaGUIDs`、`ListColumnLineage`、`ListColumnLineageVersions`、`GetColumnLineageVersion`;表定义 `backend/migrator/migration/LATEST.sql` 的 `column_lineage` / `column_lineage_version`(含 `analyzer_version`)。
 
 ## 诊断与缺口
 
@@ -147,6 +149,7 @@ TiDB 和 MariaDB **没有自己的遍历**。`mysql/analyzer.go` 哨兵之下的
 10. **哨兵字面量单点**:`__result__` / `__deletion__` / `__file__` / `*` 只在 `backend/plugin/lineage/model/relation.go:25,30,36,41` 定义;非测试 Go 代码里不得再出现字面量。
 11. **catalog 查询失败不静默降级**:记 `DiagnosticCatalogUnavailable` 后用通配符继续,让降级结果可区分于完整结果。
 12. **任何输出变更(边、变换、错误分类)必须过 golden 语料**,语料用精确边匹配而非"差不多"。
+13. **事件优先、backfill 不阻断事件**:`QueueAnalysis` 进事件队列并由每 tick 先 drain;小时扫描只进 backlog 队列并填剩余预算。事件路径不得退回"整个 registry 一次 drain"(会饿死刚刚保存的语句),单 tick 必须有上限,单对象必须有 deadline,超时按瞬时失败处理。
 
 ## Failure modes
 
@@ -157,9 +160,10 @@ TiDB 和 MariaDB **没有自己的遍历**。`mysql/analyzer.go` 哨兵之下的
 | 引擎没有分析器(OceanBase) | `ErrorEngineNotSupported` → 记 skip 与原因,不清边 |
 | catalog `GetTable` 失败 | `DiagnosticCatalogUnavailable` + 通配符回退,分析继续 |
 | 瞬时失败(DB 抖动等) | 30s/2m/5m 退避重试 ≤3 次,之后等小时全扫;错误消息写在已有 version 行上,不清旧 hash |
+| 单对象分析超时(2m) | 与瞬时失败同路:退避重试,不写 failure 状态、不清边 |
 | 分析器/规则升级 | `AnalyzerVersion` 与 `column_lineage_version.analyzer_version` 不等 → 小时扫描自动全量重算 |
 | 分析期间对象被删/改 | 写入的 `FOR SHARE` 前置条件失败:已删丢弃,已改立即重排 |
-| 数据库定义被删/改 | sync 提交后三向清边(`meta_guid`/`source_guid`/`target_guid`);变更的 VIEW/MV 重新入队 |
+| 数据库定义被删/改 | sync 提交后按类型过滤、批量三向清边;变更的 VIEW/MV 重新入队 |
 | 手工生成物被手改 | `go test ./backend/plugin/lineage/mysql/gen/` 变红并打印重新生成命令 |
 | MariaDB 独有语法(row alias) | 生产硬失败;语料里登记在 `knownParserGaps`(`mariadb/analyze_test.go:15`) |
 

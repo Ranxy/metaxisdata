@@ -89,9 +89,9 @@
 
 > 不建议「大重写」。当前事务纪律、singleflight、operation 聚合与测试选点都值得保留；按上面的顺序做**局部替换 + 契约加固**收益最高。
 >
-> **实施状态（2026-10-18）**：第 1 步的 **R-01/R-02** 已实现——`683ff9d`、`3183110`；第 2 步的 **R-03/R-04/R-17** 已实现——`d186476`（CAS + 原子失败状态 + `analyzer_version` 迁移 0021）；第 3 步的 **R-05/R-06/R-08/R-31 + R-11 生命周期部分** 已实现——`ef69c8b`（实例级 gate、LastSyncTime 后移、全量同步错误上报、批量预算、`runner.Runner`/`runner.Go` 统一骨架 + panic 边界）。均补了对应单测/回归，并通过 migrator 与真实 server 集成套件。
+> **实施状态（2026-10-18）**：第 1 步的 **R-01/R-02** 已实现——`683ff9d`、`3183110`；第 2 步的 **R-03/R-04/R-17** 已实现——`d186476`（CAS + 原子失败状态 + `analyzer_version` 迁移 0021）；第 3 步的 **R-05/R-06/R-08/R-31 + R-11 生命周期部分** 已实现——`ef69c8b`（实例级 gate、LastSyncTime 后移、全量同步错误上报、批量预算、`runner.Runner`/`runner.Go` 统一骨架 + panic 边界）；**第 4 步的 R-09/R-10/R-13/R-14/R-15/R-16/R-18/R-20/R-32/R-33 已实现**——`358a7e6`（统计刷新独立于 history/fingerprint、批量血缘清理、DDL 刷新节奏、fresh now）、`ab3a56b`（应用上报只分析新语句、批量类型解析、批次上限 + 事件优先 + per-object 超时）、`b2eeebb`（可取消 revalidation 锁、maintenance 注入/超时/摘要日志、validation 启动首轮）。第 4 步新增 2 条真实 PG 集成用例（统计刷新不改 fingerprint/history、批量血缘清理），全量 hermetic、`-race`、lint 与 MySQL/真实 server 集成套件通过。
 >
-> **仍未做**：R-01 的 API 侧迁移；R-03/R-04 的并发/回滚专项集成用例（T3/T4）；R-11 余下的 ticker jitter 与 per-iteration timeout；R-07（坏实例仍入队其库）、R-09/R-10/R-12～R-29 等后续条目。
+> **仍未做**：R-01 的 API 侧迁移；R-03/R-04 的并发/回滚专项集成用例（T3/T4）；R-11 余下的 ticker jitter 与 per-iteration timeout；第 4 步未收入本次范围的 **R-29**（`column_lineage` 唯一约束）；R-07（坏实例仍入队其库）、R-12（单副本文档登记）、R-19（settle 窗口 trigger 合并）以及 R-21～R-28、R-30 与测试补齐。
 
 ---
 
@@ -399,6 +399,11 @@ s.EnqueueDatabases(ctx, operation, databases)   // nil 列表 = seal，pending �
   2. 刷新节奏独立于 schema sync（例如每小时/每天跑一次批量 stats 采集，或由 sync 在写事务之后异步提交，失败只记日志）；
   3. UI 继续读当前值，语义变成「最近一次 stats 刷新」而非「首见快照」；需要的话在 API 加一个 `stats_updated_at` 字段；
   4. 改掉 `syncer_test.go:151-156` 的断言，补「stats-only 刷新会更新当前 metadata、但 history 行数不变」的测试。
+- **已实施（2026-10-18，commit `358a7e6`）**：把统计从「元数据变更」链路剥离，但仍保存在 metadata JSONB 内（API/UI 不用改）：
+  - `store.ListMetaRegistryStatistics` 按 GUID 前缀用 JSONB 路径（`#>> '{tableMetadata,rowCount}'` 等）读取当前统计，不解析整行；只读 TABLE/SEQUENCE 两种类型；
+  - `diff()` 对「hash 相同、统计变化」的行生成 `statsUpdates`；`store.BatchUpdateMetaRegistryStatisticsAt` 只 `SET metadata`，以 `meta_hash` 作并发守卫，**不写 history、不改 hash、不进入 `bmc.updates`**（因此不重排血缘、不触发 revalidation）；
+  - 刷新节奏独立：每库 `statisticsRefreshInterval = 1h`（进程内时钟），避免每次 15 分钟同步重写所有表的 JSONB；重启后首轮必刷。
+  测试：`syncer_test.go` 的 stats-only 断言与 cadence 单测；集成用例 `TestMySQLMetaRegistryStatisticsRefreshKeepsHistoryRealServerIntegration`（真实 PG + server）验证值已更新、而 fingerprint 与 history 行数不变。**未做**：不加 `stats_updated_at` 字段（UI 语义为「最近一次刷新」即可）。
 
 ### R-10 破坏性删除时每个被删对象 2 条 DELETE，绝大多数是 no-op，且全在写事务内
 
@@ -414,6 +419,7 @@ for _, item := range bmc.deletes {
 语句对 `(meta_guid, meta_type)`、`(source_guid, source_type)`、`(target_guid, target_type)` 三个方向各删一次，并删 `column_lineage_version`。但 `bmc.deletes` 覆盖 schema sync 管理的全部类型，其中 COLUMN（数量最大）、SCHEMA、DATABASE、SEQUENCE、FUNCTION、PROCEDURE 的 GUID **从不作为血缘端点出现**（全仓 `ColumnLineage{` 写入方只有 analyzer 的 VIEW/MV/MANUAL_SQL/APPLICATION_SQL 与 OpenLineage 的 TABLE/VIEW/MV/EXTERNAL_TABLE/EXTERNAL_DATASET）；TABLE/EXTERNAL_TABLE 的 `meta_guid` 支路也不命中（表和外表不做分析）。VIEW/MV 的 `meta_guid` 支路**会**命中（它们自身是分析对象），分报告「基本是 no-op」的说法已修正。因此权限收缩导致快照清空时，一个 1000 表 × 20 列的库会在**已经持有 `meta_registry_resource` 行锁的写事务里**执行约 4 万条无意义 DELETE（每条对 3 个索引做探针），把「事务只做短暂写」的不变量（`.agents/docs/schemasync.md` 不变量 1）打破；按 100–300µs/往返估算约 4–12 秒，WAL 放大量级有限（no-op DELETE 不产生行版本）。
 - **校准**：该问题与 `.agents/docs/schemasync.md`「已知问题 3」（低，逐对象 2 条 DELETE 可批量化）是同一项；本条的**新增证据**只是「列数放大 + 全部落在写事务内」，不改变文档定级（低～低中）。建议与 D10 一起收敛，不必单独立项。
 - **建议**：先在内存里按「可能成为血缘端点的类型」过滤（TABLE/VIEW/MATERIALIZED_VIEW/EXTERNAL_TABLE），再用 `= ANY($1)` 的两条批量语句完成 `column_lineage` / `column_lineage_version` 清理；注意保留 VIEW/MV 的 `meta_guid` 支路（它对「target GUID 与 metaGUID 不一致」的方言是唯一清理途径）；同时与 store 侧已有的「子树删除」SQL 收敛（`backend-open-items.md` D10），避免两套语义漂移。加 guard 测试：删除 1 张含 N 列的表应只发固定条数语句。
+- **已实施（2026-10-18，commit `358a7e6`）**：`store.DeleteColumnLineageByMetaGUIDs` 先在内存里按类型过滤——端点类（TABLE/VIEW/MV/EXTERNAL_TABLE）与生产者类（VIEW/MV）——再用 `= ANY($1)` 的固定几条语句删除 `source/target` 边、`meta_guid` 边与 `column_lineage_version`；COLUMN/SCHEMA/DATABASE/SEQUENCE/FUNCTION/PROCEDURE 等永不成为端点的对象不再探测血缘索引。清理仍在写事务内，但语句数与删除对象数无关。测试：`column_lineage_test.go` 的过滤与语句形态 guard；集成用例 `TestMySQLDeleteColumnLineageByMetaGUIDsRealServerIntegration`（真实 PG）验证三类行都清掉、COLUMN 键被过滤。与 D10（store 侧子树删除的两套 SQL）仍待收敛，本条只覆盖 schema sync 的删除路径。
 
 ### R-11 长循环无 panic 隔离；无统一 Runner 抽象；`Add(4)` 硬编码
 
@@ -441,6 +447,7 @@ for _, item := range bmc.deletes {
 - **影响**：确定成立的危害是 shutdown 语义——锁不可取消，`passTimeout` 只约束已拿锁后的查询；关闭时 goroutine 可能卡在 `Lock()`，`server.go:240-248` 等满 10s 后继续 `store.Close()`，随后该 goroutine 醒来对已关闭连接池发查询（错误噪音）。sync 后的 revalidation 也可能被一次长维护 pass 推迟（不是无限期，取决于积压）。注释承诺的「a stuck pass cannot wedge the runner」不成立。
 - **校准**：机制确认，实际影响是 shutdown 噪音/延迟与 revalidation 推迟，不是数据问题；优先级 P2。
 - **建议**：把锁换成可取消信号量（`select { case <-ctx.Done(): ...; case sem <- struct{}{}: }`），或让 `Revalidator` 接口显式接收/检查 ctx；`runOnce` 侧可先做非阻塞「锁空闲」探测。测试：持锁时 `runOnce` 在 ctx 取消后能返回。
+- **已实施（2026-10-18，commit `b2eeebb`）**：`revalidateMu sync.Mutex` 换成 `revalidateSem chan struct{}`（容量 1，`NewProcessor` 初始化）；两个 `Revalidate*` 用 `select { case sem <- struct{}{}: ...; case <-ctx.Done(): return 0,0,ctx.Err() }` 获取、`defer` 释放。`passTimeout` 与 shutdown 现在能约束「等锁」而不只是拿锁后的查询。测试：`TestRevalidationWaitIsCancellable`（两个方法）、`TestNewProcessorInitializesTheRevalidationSemaphore`。
 
 ### R-14 应用上报路径无变更检测：每条语句每次上报都全量重分析
 
@@ -448,6 +455,7 @@ for _, item := range bmc.deletes {
 - **事实**：`ReportApplicationSQLs` 返回的 statements 包含已存在的行（upsert + rollup，不是只有新插入），handler 对**每一条**都 `QueueLineageAnalysis`；runner 的 `QueueAnalysis` 不做 hash 比较（只有 `queueAll` 做），每次都会重新解析、N+1 查 registry、整批 delete+insert 边、再写一次 `application_sql.kind`。`analyzeMap` 只做同一 10s tick 内去重。
 - **影响**：频率取决于生产者的上报节奏（代码不保证固定频率）：`ReportApplicationSQLs` 对已存在的语句也会返回并触发入队，因此按分钟轮询上报的应用，每条活跃语句每分钟都会被完整重分析一次；万级语句时 `column_lineage` 每分钟 delete+insert 数万行，与「行数随 distinct statement 增长」的设计目标相悖。文档只承认「ingest 一次解析 + runner 再解析」的解析成本，未覆盖整批边替换/N+1/kind 写入。
 - **建议**：让 `ReportApplicationSQLs` 返回 `inserted/updated` 标记（`ON CONFLICT ... RETURNING (xmax = 0)`），handler 只对真正新增或 `sql_text` 变化的语句排队；或 runner 在 drain 时先按 `column_lineage_version` 的 hash 与 registry hash 比较，相同则跳过（抽成 `needsAnalysis`，`queueAll` 复用）。若保留「每次上报必重算」，至少把 `BatchReplaceColumnLineage` 改成边集合不变的比较式更新。
+- **已实施（2026-10-18，commit `ab3a56b`）**：`applicationSQLUpsertStatement` 的 `RETURNING` 追加 `(xmax = 0) AS inserted`；`ReportApplicationSQLs` 返回 `[]*ApplicationSQLReportResult{Statement, Inserted}`，handler 只对 `Inserted` 的行 `QueueLineageAnalysis`。由于 upsert 在冲突时**从不改写 `sql_text`**，「inserted」精确等价于「这份文本是新的」；engine 等非文本变化仍由小时全量扫描兜底。测试：store 的 `RETURNING` 形态 guard、handler `TestApplicationSQLReportQueuesOnlyNewStatements`（重复上报零入队）。**未做**：`BatchReplaceColumnLineage` 的集合不变比较（该路径已不再被高频触发）。
 
 ### R-15 分析器逐 GUID N+1 查元数据类型（绕过 LRU，与 `AnalyzeSQL` 不一致）
 
@@ -455,6 +463,7 @@ for _, item := range bmc.deletes {
 - **事实**：`for guid := range guidLookupSet { a.store.GetMetaRegistry(ctx, Find{GUID: &g}) }` 串行查询，每个 source GUID 一次 DB 往返；GUID-only 查询不命中 store 的 LRU（`store/meta_resource.go:113-118` 要求 GUID+ObjectType）。同仓库 `AnalyzeSQL` 用 `ListMetaRegistryResourceDigest(GUIDs: &guids)` 一次批量完成。循环内也不检查 `ctx.Err()`。
 - **影响**：单对象查询数从 2 变成 2+S（S=不同 source 数）；MANUAL_SQL 脚本/APPLICATION_SQL 大 join 可到数百，10 并发下放大为 10×(2+S) 个并发读；shutdown 时会对每个 GUID 依次打 WARN（日志风暴）。
 - **建议**：复用 `ListMetaRegistryResourceDigest` 的 `GUIDs` 批量形式，一次查询填 `guidTypeMap`；`analyzeObject` 入口的 `GetMetaRegistry` 带上已知 `ObjectType: &metaType`（可命中缓存并消除多行风险）；把「relation → 已补全类型」抽成 runner 与 `AnalyzeSQL` 共用的 helper。
+- **已实施（2026-10-18，commit `ab3a56b`）**：`guidLookupSet` 经 `typeLookupGUIDs` 去自身、排序后一次 `ListMetaRegistryResourceDigest{GUIDs: &guids}` 补齐类型；`analyzeObject` 自身的 `GetMetaRegistry` 带上 `ObjectType: &metaType`，可命中 GUID+type LRU。测试：`TestTypeLookupGUIDsExcludesTheAnalyzedObject`。**未做**：与 `AnalyzeSQL` 的 resolver 合并成共享 helper（两份实现当前行为一致，合并留待后续重构）。
 
 ### R-16 单批无上限、无 per-object 超时；backfill 阻断事件队列
 
@@ -462,6 +471,10 @@ for _, item := range bmc.deletes {
 - **事实**：消费者每个 tick 把 `analyzeMap` **全部**内容抽成一个批次，`wp.Wait()` 阻塞消费者直到整批完成；`analyzeObject` 只受 runner 全局 ctx 约束，没有单对象超时。冷启动/升级后首次全量入队时，批次可以等于整个 registry。
 - **影响**：长时间 backfill 期间，用户刚保存的手工 SQL、新上报的 app SQL 排在整批之后（可能几十分钟）；单个卡死的解析/DB 查询会拖住整批；runner 实际停摆到重启，`runnerShutdownTimeout` 只保证进程能退出。
 - **建议**：每 tick 只取上限 N（如 `MaxGoroutines*4` 或 1000）个 key，剩余留到下一 tick（天然限流 + 事件可插队）；每次 `analyzeObject` 包 `context.WithTimeout`（2–3 分钟），超时按瞬时失败处理（注意与 R-02/R-04 的错误分类配合：不能当确定性解析失败清边）；首次全扫可单独降速/分批。
+- **已实施（2026-10-18，commit `ab3a56b`）**：
+  - 队列拆成事件队列与扫描 backlog：`QueueAnalysis`（API/schema sync/上报/stale 重排）进事件队列，小时扫描的 `queueScan` 进 backlog；每 tick **先 drain 事件队列**，backlog 只填剩余预算。单纯「随机取 N 个」在超大 backlog 下会饿死事件（期望延迟随 backlog 增长），这一层是本条修复的关键。
+  - 每 tick 最多 `maxAnalyzeBatch = MaxGoroutines * 100`（1000）个 key，超出与退避中的 key 留在队列；每个对象 `context.WithTimeout(analyzeObjectTimeout = 2m)`，超时/取消归类为瞬时失败 `scheduleRetry`，**不写失败状态、不清边**；`errAnalysisStale` 语义不变。
+  测试：batch cap、backoff skip、事件优先与去重、timeout 分类。**未做**：队列深度/backfill 进度指标（D8 已接受无遥测）。
 
 ### R-17 变更检测只有 metahash，没有 analyzer/规则版本
 
@@ -481,6 +494,10 @@ for _, item := range bmc.deletes {
 - **影响**：6 小时一次、跨大表（`DeleteOpenLineageRunsBefore` 可一次删百万级 run 并逐 task reconcile）的破坏性清理：慢 pass 会吞掉后续 tick 且不可见；「retention 有没有跑、为什么没删、跑了多久」只能从零散日志推断；一次瞬时读失败让 retention 延迟 6 小时且只有一行 Error。
 - **校准**：零测试本身是 `.agents/docs/backend-open-items.md` E12 已登记的债务（不重复计为新发现）；「无 metrics/计数器」是 D8 已接受前提。本条真正新增的是「`runOnce` 无超时 + 无摘要日志 + setting 失败即 return」这三点，属可观测性/健壮性改进，优先级 P2。
 - **建议**：给每项/整轮加 `context.WithTimeout`，超时 Warn 并标注项目；每轮结束打一条摘要（duration、各项 deleted、失败项、是否因 setting 跳过 retention）；`if err != nil { Error } else { ... }`，不中断后续项；把 store 收窄为本地窄接口 + 注入 `now`/`interval`，补表驱动测试（某项报错不影响后续、setting 失败不跳过、`days<=0` 不删、retention/grace cutoff 精确、nil revalidator 不 panic）。
+- **已实施（2026-10-18，commit `b2eeebb`）**：
+  - store 依赖收窄为本地 `maintenanceStore`（7 个 delete + setting 读取），`NewRunner` 签名不变；注入 `now`/`interval`/`passTimeout`（生产：UTC now、6h、1h）。
+  - 整轮 `context.WithTimeout(1h)`；每个 item 失败只记录并继续；`GetWorkspaceGeneralSetting` 失败只跳过 OpenLineage retention（sweep 仍执行，顺序已调整到 retention 之前）；`days<=0` 记录跳过原因；每轮结束一条 summary（duration、counts、failed、retentionSkipped）。
+  - 新增 `backend/runner/maintenance/maintenance_test.go`（fake store/revalidator）：单项失败继续、setting 失败只跳过 retention、`days<=0` 不删 run、cutoff 精确、nil revalidator、pass 超时/ctx 取消。E12（零测试）在 maintenance 上就此收口。**未做**：per-item 独立 timeout（统一受 pass deadline 约束）。
 
 ### R-19 测试缺口 + `lineagevalidation` 的 trigger 合并缺陷（测试脆弱）
 
@@ -495,6 +512,11 @@ for _, item := range bmc.deletes {
 - **事实**：只对实现了 `ObjectDefinitionReader` 的驱动（目前仅 StarRocks）生效；`prepareObjectDefinitions` 在**每个**数据库的**每次**同步（15 分钟）都对全部 schema-bearing 对象（上限 2000）抓一次 `SHOW CREATE`，即使用户只改了统计；超过 2000 时降级为「只刷新变更对象」，而 StarRocks 属性变更不动元数据 hash，这些对象可能永久陈旧（文档已知问题 6 已登记后者，但全量抓取本身的成本未登记）。
 - **影响**：大实例（100 库 × 2000 对象）每 15 分钟产生 20 万次 `SHOW CREATE`；对目标库压力大，同步时间随对象数线性增长，且发生在写事务之前（不会持锁，但占用连接/限流槽）。
 - **建议**：把 DDL 刷新与 schema 同步解耦成不同节奏（例如 DDL 全量刷新每小时/每天一次，日常只刷新变更对象），或让引擎提供更廉价的 DDL 版本/checksum；降级模式用轮换批次补刷，避免永久陈旧。
+- **已实施（2026-10-18，commit `358a7e6`）**：DDL 抓取与 schema diff 解耦：
+  - 每库进程内记录上次 full refresh 时间（`objectDefinitionFullRefreshInterval = 1h`）；两次 full refresh 之间只抓 `bmc.updates` 里的 changed 对象——日常同步的 SHOW CREATE 数与变更量成正比，而非对象总数。
+  - 超过 `fullDefinitionObjectLimit`(2000) 的库：full refresh 时按 GUID 排序取一个 2000 对象的**轮换窗口**并推进 cursor，changed 对象永远包含在内；游标走完一遍后所有对象都被补刷，不再永久陈旧（收敛文档已知问题 6）。clock/cursor 只在事务 commit 后推进，回滚不会跳过对象。
+  - 重启后首轮每库都是 full refresh（进程内状态为空），与既有「启动即首跑」一致。
+  测试：`TestPlanDefinitionFetch*` 四种情形、`TestDefinitionRefreshCadence`。
 
 ### R-31 批量同步 API 在请求 goroutine 内串行执行，且没有 per-RPC deadline
 
@@ -512,6 +534,7 @@ for _, item := range bmc.deletes {
 - **影响**：进程重启/升级后，ingestion 留下的 unknown-endpoint 边要等下一次「有变更的 sync」或 6 小时维护 pass 才被复查；与 R-11（每次 pass 只处理 500 条）叠加时恢复更慢。
 - **建议**：`Run` 启动时先 `Trigger()` 一次（或直接 `runOnce`）；或在文档中说明「重启后最长 6 小时恢复」。
 - **核实**：审稿人补入，代码事实确认。
+- **已实施（2026-10-18，commit `b2eeebb`）**：`Run` 在进入循环前 `r.Trigger()` 一次（仅 revalidator 非 nil），走同一 settle/trigger 通道，和同时到达的 sync 信号合并。测试：`TestRunStartsWithAPass`；既有 burst/coalesce 用例改为把启动 pass 作为被 hold 的那一轮，更确定。
 
 ### R-33 `trySyncAll` 在 `wp.Wait()` 之后仍用循环前捕获的 `now`
 
@@ -520,6 +543,7 @@ for _, item := range bmc.deletes {
 - **影响**：本轮开始后才到期的库会被判为「未到期」，要等下一轮 15 分钟扫描；极端情况持续偏移一个实例同步时长。
 - **建议**：`wp.Wait()` 后重新取 `now`（或按数据库逐个取），成本可忽略。
 - **核实**：审稿人补入，代码事实确认；优先级 P3。
+- **已实施（2026-10-18，commit `358a7e6`）**：实例轮结束后重新取 `databaseNow := time.Now()`，数据库到期判断使用新时钟；`instanceNow` 只用于实例轮。
 
 ---
 
@@ -619,14 +643,16 @@ type Runner interface {
 | T2 | `buildSQL` 全引擎 + 特殊名 + 前导注释 DDL 表驱动 | 钉住 R-02；并要求 wrap 输出可被对应分析器解析 |
 | T3 | `BatchReplaceColumnLineageIfCurrent` 的 stale 路径（行已删/hash 变） | 钉住 R-03：不产生孤儿边、不写 version |
 | T4 | `markAnalysisFailed` 注入第二次写失败 | 钉住 R-04：不留「hash 相等 + 边已清空」 |
-| T5 | 删除 1 张含 N 列的表：断言清理语句数/结果 | 钉住 R-10 的规模回归 |
+| T5 | 删除 1 张含 N 列的表：断言清理语句数/结果 | 钉住 R-10 的规模回归。**已实施**：语句数不再随对象数变化（`DeleteColumnLineageByMetaGUIDs` 固定条数 + 类型过滤单测），集成用例验证真实 PG 上的清理结果 |
 | T6 | `SyncAllDatabases` 的 `ListDatabases` 失败 | 断言 operation 变 ERROR（R-08）；已由 `TestOperationReportsAFailedDatabaseList` 覆盖 |
 | T7 | 实例同步失败 ⇒ 该实例的库不入队 | 钉住 R-07 |
-| T8 | `queueAll` 的 hash + analyzer_version 判据；事件路径 `needsAnalysis` | 钉住 R-14/R-17 |
+| T8 | `queueAll` 的 hash + analyzer_version 判据；事件路径 `needsAnalysis` | 钉住 R-14/R-17。**部分实施**：R-14 由 upsert `inserted` 标记 + handler 用例钉住；R-17 的判据已有 `TestNeedsAnalysis` |
 | T9 | `Run` 的 ctx 取消/panic 隔离/`Add` 计数（用 fake Runner） | 钉住 R-11；`runner.Go` 的 panic/计数已覆盖，四包 `Run` 的 ctx 取消仍有 `lineagevalidation` 用例 |
-| T10 | 持 `revalidateMu` 时 `runOnce` 在 ctx 取消后返回 | 钉住 R-13 |
-| T11 | `maintenance.runOnce` 表驱动（错误隔离、setting 失败、cutoff 边界、nil revalidator） | 钉住 R-18 |
+| T10 | 持 `revalidateMu` 时 `runOnce` 在 ctx 取消后返回 | 钉住 R-13。**已实施**：`TestRevalidationWaitIsCancellable` |
+| T11 | `maintenance.runOnce` 表驱动（错误隔离、setting 失败、cutoff 边界、nil revalidator） | 钉住 R-18。**已实施**：`backend/runner/maintenance/maintenance_test.go` |
 | T12 | `-race -count=10` 的 runner 测试门禁 | 让 R-19 这类 flake 在 CI 暴露 |
+| T13 | 统计刷新：真实 PG 上断言值更新、fingerprint/history 不变 | **已实施**：`TestMySQLMetaRegistryStatisticsRefreshKeepsHistoryRealServerIntegration` |
+| T14 | analyzer 的批次上限、事件优先、单对象超时分类 | **已实施**：`TestTakeAnalyzeBatch*`、`TestDrainPrefersEventsOverTheScanBacklog`、`TestAnalysisTimedOut` |
 
 ### 8.3 门禁建议
 

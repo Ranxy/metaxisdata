@@ -150,7 +150,9 @@ check could notice.
 authenticate ─▶ read + decode ─▶ resolve instance and engine ─▶ (repeated reportId?)
 per statement item:
   split ─▶ sanitize ─▶ gate ─▶ upsert statement ─▶ upsert observation ─▶ roll up ─▶ mirror
-after the transaction: queue the statement for analysis
+after the transaction: queue only the statements the upsert created for analysis
+  (a replay of an existing statement has nothing new to analyze: the upsert never
+  rewrites its sql_text)
 ```
 
 The statement upsert's conflict target is the identity tuple, and a conflict leaves `guid`,
