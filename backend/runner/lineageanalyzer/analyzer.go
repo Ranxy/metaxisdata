@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/pkg/errors"
 	"github.com/sourcegraph/conc/pool"
@@ -482,11 +483,19 @@ func buildSQL(name string, engine storepb.Engine, metaType storepb.MetaType, res
 
 	var identifier string
 	switch engine {
-	case storepb.Engine_MYSQL, storepb.Engine_TIDB, storepb.Engine_DORIS:
+	// The MySQL family, including StarRocks and Doris, quotes identifiers with
+	// backticks. MariaDB shares the MySQL driver and its views keep a bare query
+	// body, so it needs the same quoting as MySQL.
+	case storepb.Engine_MYSQL, storepb.Engine_TIDB, storepb.Engine_MARIADB, storepb.Engine_DORIS, storepb.Engine_STARROCKS:
 		identifier = "`" + strings.ReplaceAll(name, "`", "``") + "`"
 	case storepb.Engine_POSTGRES:
 		identifier = `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+	case storepb.Engine_MSSQL:
+		identifier = "[" + strings.ReplaceAll(name, "]", "]]") + "]"
 	default:
+		// Engines this build has no analyzer for keep the object name as written:
+		// they are skipped before the wrapper's identifier could matter, and the
+		// fallback keeps that skip visible instead of turning it into a build error.
 		identifier = name
 	}
 
@@ -494,10 +503,43 @@ func buildSQL(name string, engine storepb.Engine, metaType storepb.MetaType, res
 }
 
 // isCompleteStatement reports whether a stored definition is already a whole
-// CREATE statement rather than a bare query body. A view definition is a query
-// and can never start with CREATE, so the check is safe for every engine.
+// CREATE statement rather than a bare query body. Leading whitespace and
+// comments are skipped first: a complete DDL commonly opens with a `--` or
+// `/* */` note, and wrapping such a statement in "CREATE VIEW ... AS" makes it
+// unparseable. A bare query body can never begin with CREATE, so the check is
+// safe for every engine.
 func isCompleteStatement(definition string) bool {
-	return strings.HasPrefix(strings.ToUpper(strings.TrimSpace(definition)), "CREATE ")
+	rest := strings.TrimSpace(definition)
+	for {
+		switch {
+		case strings.HasPrefix(rest, "--"):
+			lineEnd := strings.IndexByte(rest, '\n')
+			if lineEnd < 0 {
+				return false
+			}
+			rest = strings.TrimSpace(rest[lineEnd+1:])
+		case strings.HasPrefix(rest, "/*"):
+			commentEnd := strings.Index(rest[2:], "*/")
+			if commentEnd < 0 {
+				return false
+			}
+			rest = strings.TrimSpace(rest[2+commentEnd+2:])
+		default:
+			return hasCreateKeyword(rest)
+		}
+	}
+}
+
+// hasCreateKeyword reports whether s starts with the CREATE keyword followed by
+// a separator. It accepts any whitespace between CREATE and what follows, so
+// "CREATE\nVIEW" counts as a complete statement.
+func hasCreateKeyword(s string) bool {
+	const keyword = "CREATE"
+	if len(s) < len(keyword) || !strings.EqualFold(s[:len(keyword)], keyword) {
+		return false
+	}
+	rest := s[len(keyword):]
+	return len(rest) > 0 && unicode.IsSpace(rune(rest[0]))
 }
 
 // storeError records the error in column_lineage_version and returns a wrapped error.
