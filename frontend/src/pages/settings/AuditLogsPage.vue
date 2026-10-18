@@ -342,10 +342,21 @@ const WORKSPACE_PARENT = "workspaces/-";
  * to the shortened procedure (`AuthService.Login`) rather than disappearing.
  */
 const AUDIT_EVENT_KEYS: Record<string, string> = {
+  "ApplicationService/CreateApplication": "createApplication",
+  "ApplicationService/CreateApplicationAPIKey": "createApplicationApiKey",
+  "ApplicationService/DeleteApplication": "deleteApplication",
+  "ApplicationService/DeleteApplicationSQL": "deleteApplicationSql",
+  "ApplicationService/RevokeApplicationAPIKey": "revokeApplicationApiKey",
+  "ApplicationService/UpdateApplication": "updateApplication",
+  "AuditLogService/ListAuditLogs": "listAuditLogs",
+  "AuthService/ApproveDeviceLogin": "approveDeviceLogin",
+  "AuthService/CreateDeviceLogin": "createDeviceLogin",
   "AuthService/Login": "login",
   "AuthService/Logout": "logout",
-  "AuthService/Signup": "signup",
+  "DatabaseService/CreateManualSQL": "createManualSql",
+  "DatabaseService/DeleteManualSQL": "deleteManualSql",
   "DatabaseService/SyncDatabase": "syncSchema",
+  "DatabaseService/UpdateManualSQL": "updateManualSql",
   "EnvironmentService/CreateEnvironment": "createEnvironment",
   "EnvironmentService/DeleteEnvironment": "deleteEnvironment",
   "EnvironmentService/UpdateEnvironment": "updateEnvironment",
@@ -355,18 +366,25 @@ const AUDIT_EVENT_KEYS: Record<string, string> = {
   "IamService/SetWorkspaceIamPolicy": "setIamPolicy",
   "IdentityProviderService/CreateIdentityProvider": "createIdentityProvider",
   "IdentityProviderService/DeleteIdentityProvider": "deleteIdentityProvider",
+  "IdentityProviderService/DeleteIdentityProviderBinding":
+    "deleteIdentityProviderBinding",
   "IdentityProviderService/UpdateIdentityProvider": "updateIdentityProvider",
   "InstanceService/BatchSyncInstances": "syncSchema",
+  "InstanceService/BatchUpdateInstances": "batchUpdateInstances",
+  "InstanceService/CreateDataSource": "createDataSource",
   "InstanceService/CreateInstance": "createInstance",
+  "InstanceService/DeleteDataSource": "deleteDataSource",
   "InstanceService/DeleteInstance": "deleteInstance",
   "InstanceService/SyncInstance": "syncSchema",
+  "InstanceService/UndeleteInstance": "undeleteInstance",
+  "InstanceService/UpdateDataSource": "updateDataSource",
   "InstanceService/UpdateInstance": "updateInstance",
+  "OAuthService/ApproveOAuthAuthorizationRequest": "approveOAuthAuthorization",
   "OpenLineageService/CreateAPIKey": "createOpenLineageApiKey",
-  "OpenLineageService/RevokeAPIKey": "deleteOpenLineageApiKey",
-  "ApplicationService/CreateApplication": "createApplication",
-  "ApplicationService/DeleteApplication": "deleteApplication",
-  "ApplicationService/DeleteApplicationSQL": "deleteApplication",
-  "ApplicationService/UpdateApplication": "updateApplication",
+  "OpenLineageService/CreateNamespaceMapping": "createNamespaceMapping",
+  "OpenLineageService/DeleteNamespaceMapping": "deleteNamespaceMapping",
+  "OpenLineageService/RevokeAPIKey": "revokeOpenLineageApiKey",
+  "OpenLineageService/UpdateNamespaceMapping": "updateNamespaceMapping",
   "RoleService/CreateRole": "createRole",
   "RoleService/DeleteRole": "deleteRole",
   "RoleService/UpdateRole": "updateRole",
@@ -374,8 +392,24 @@ const AUDIT_EVENT_KEYS: Record<string, string> = {
   "SettingService/UpdateWorkspaceProfileSetting": "updateSettings",
   "UserService/CreateUser": "createUser",
   "UserService/DeleteUser": "deleteUser",
+  "UserService/UndeleteUser": "undeleteUser",
   "UserService/UpdateUser": "updateUser",
 };
+
+/**
+ * Ledger rows whose method is an HTTP route or an MCP tool call rather than a
+ * ConnectRPC procedure: the OAuth endpoints, OpenLineage ingestion, and the MCP
+ * surface call the audit logger directly, so they never reach the RPC table.
+ */
+const AUDIT_RAW_PATHS: Record<string, string> = {
+  "/api/v1/lineage": "ingestOpenLineageEvent",
+  "/oauth/authorize": "authorizeOAuthRequest",
+  "/oauth/authorize/complete": "completeOAuthAuthorization",
+  "/oauth/register": "registerOAuthClient",
+  "/oauth/token": "issueOAuthToken",
+};
+
+const MCP_TOOL_CALL_PREFIX = "mcp/tools/call:";
 
 const { t, locale, te } = useI18n();
 const { handleError } = useErrorHandler();
@@ -463,6 +497,32 @@ function handleFiltersUpdate(filters: ActiveFilter[]) {
   severityFilter.value = valueOf("level") as SeverityValue | "";
 }
 
+/**
+ * The search box prints event names, so it has to search them too. The ledger
+ * filter only matches the stored method, so a localized name is translated back
+ * to every procedure it can name; a raw method fragment still matches as
+ * before, which keeps `AuthService` / `Login` queries working.
+ */
+function methodSearchClause(term: string): string {
+  const needle = term.toLowerCase();
+  const localizedProcedures = [
+    ...Object.entries(AUDIT_EVENT_KEYS),
+    ...Object.entries(AUDIT_RAW_PATHS),
+  ]
+    .filter(([, key]) => {
+      const i18nKey = `auditLogs.eventNames.${key}`;
+      return te(i18nKey) && t(i18nKey).toLowerCase().includes(needle);
+    })
+    .map(([procedure]) => procedure);
+  const clauses = localizedProcedures.map(
+    (procedure) => `method.matches(${JSON.stringify(procedure)})`
+  );
+  // A raw fragment still matches: `Login` finds AuthService/Login even though
+  // its localized name reads "Sign in".
+  clauses.push(`method.matches(${JSON.stringify(term)})`);
+  return clauses.length === 1 ? clauses[0] : `(${clauses.join(" || ")})`;
+}
+
 const filterExpression = computed(() => {
   const clauses: string[] = [];
   const resource = resourceFilter.value.trim();
@@ -472,11 +532,9 @@ const filterExpression = computed(() => {
   if (actorFilter.value) {
     clauses.push(`user == ${JSON.stringify(actorFilter.value)}`);
   }
-  // The search box is the method filter, and `matches` makes it a case-insensitive
-  // substring, so a reader can type `Login` instead of the full RPC name.
-  const method = searchText.value.trim();
-  if (method) {
-    clauses.push(`method.matches(${JSON.stringify(method)})`);
+  const search = searchText.value.trim();
+  if (search) {
+    clauses.push(methodSearchClause(search));
   }
   if (severityFilter.value) {
     clauses.push(`severity == ${JSON.stringify(severityFilter.value)}`);
@@ -523,8 +581,14 @@ function auditEventName(procedure: string): string {
   if (!procedure) {
     return t("auditLogs.unknownOperation");
   }
+  if (procedure.startsWith(MCP_TOOL_CALL_PREFIX)) {
+    return t("auditLogs.eventNames.callMcpTool", {
+      tool: procedure.slice(MCP_TOOL_CALL_PREFIX.length),
+    });
+  }
   const { service, method } = splitProcedure(procedure);
-  const key = AUDIT_EVENT_KEYS[`${service}/${method}`];
+  const key =
+    AUDIT_RAW_PATHS[procedure] ?? AUDIT_EVENT_KEYS[`${service}/${method}`];
   if (key) {
     const i18nKey = `auditLogs.eventNames.${key}`;
     if (te(i18nKey)) {

@@ -294,7 +294,15 @@ const filterCategories = computed<FilterCategory[]>(() => [
     label: t("openlineage.eventType"),
     icon: "🏷️",
     options: async () =>
-      asFilterOptions((await loadFacets())?.eventTypes ?? []),
+      // The facet values are the raw producer enums; the menu and the pills
+      // print the same localized label the status column uses.
+      ((await loadFacets())?.eventTypes ?? []).map((option) => {
+        const key = openLineageStatusKey(option.value);
+        return {
+          value: option.value,
+          label: key === "openlineage.statusUnknown" ? option.value : t(key),
+        };
+      }),
   },
 ]);
 

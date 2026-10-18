@@ -175,6 +175,24 @@
                       {{ formatRelativeTime(statement.lastSeenAt, locale) }}
                     </span>
                   </div>
+                  <!-- The scope columns are desktop-only, so the same instance
+                       and database join the statement cell: without them a
+                       narrow screen cannot tell where a statement came from. -->
+                  <div class="mt-1 flex min-w-0 items-center gap-1 text-xs text-muted-foreground md:hidden">
+                    <span
+                      class="truncate"
+                      :title="scopeLabel(statement)"
+                    >
+                      {{ databaseScope(statement) }}
+                    </span>
+                    <span aria-hidden="true">·</span>
+                    <span
+                      class="truncate font-mono text-[11px]"
+                      :title="statement.instanceResourceId"
+                    >
+                      {{ statement.instanceResourceId }}
+                    </span>
+                  </div>
                 </TableCell>
                 <TableCell class="hidden md:table-cell">
                   <Badge

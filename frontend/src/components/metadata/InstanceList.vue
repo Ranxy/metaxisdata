@@ -33,8 +33,8 @@
             role="button"
             tabindex="0"
             @click="$emit('select', instance)"
-            @keydown.enter.prevent="$emit('select', instance)"
-            @keydown.space.prevent="$emit('select', instance)"
+            @keydown.enter.self.prevent="$emit('select', instance)"
+            @keydown.space.self.prevent="$emit('select', instance)"
           >
             <TableCell>
               <div class="flex items-center gap-3">

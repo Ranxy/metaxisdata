@@ -396,7 +396,7 @@
                 </TableCell>
                 <TableCell>
                   <Badge :variant="eventVariant(run.eventType)">
-                    {{ run.eventType || "-" }}
+                    {{ t(openLineageStatusKey(run.eventType)) }}
                   </Badge>
                 </TableCell>
                 <TableCell>
@@ -507,6 +507,7 @@ import {
   formatTime,
 } from "@/utils/datetime";
 import { engineBadgeClass, engineLabel } from "@/utils/engine";
+import { openLineageStatusKey } from "@/utils/openlineageStatus";
 
 const { t, locale } = useI18n();
 const router = useRouter();

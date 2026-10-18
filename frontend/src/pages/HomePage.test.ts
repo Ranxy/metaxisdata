@@ -234,7 +234,9 @@ describe("HomePage", () => {
     expect(text).toContain("Production");
     expect(text).toContain("MySQL");
     expect(text).toContain("load_orders");
-    expect(text).toContain("COMPLETE");
+    // The badge prints the localized status, never the raw producer enum.
+    expect(text).toContain("Completed");
+    expect(text).not.toContain("COMPLETE");
   });
 
   it("keeps the rest of the page when one section fails", async () => {

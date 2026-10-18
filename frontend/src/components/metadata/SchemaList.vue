@@ -29,8 +29,8 @@
           role="button"
           tabindex="0"
           @click="$emit('select', row.stored)"
-          @keydown.enter.prevent="$emit('select', row.stored)"
-          @keydown.space.prevent="$emit('select', row.stored)"
+          @keydown.enter.self.prevent="$emit('select', row.stored)"
+          @keydown.space.self.prevent="$emit('select', row.stored)"
         >
           <TableCell>
             <div class="flex items-center gap-2">

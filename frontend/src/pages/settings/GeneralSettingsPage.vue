@@ -16,13 +16,13 @@
           {{ t("generalSettings.readOnlyHint") }}
         </span>
         <span
-          v-else-if="isDirty"
+          v-else-if="isDirty && !isLoading && !error"
           class="text-sm text-muted-foreground"
         >
           {{ t("generalSettings.unsavedHint") }}
         </span>
         <Button
-          :disabled="isSaving || !canUpdate || !!retentionError"
+          :disabled="isLoading || !!error || isSaving || !canUpdate || !!retentionError"
           @click="handleSave"
         >
           {{ t("common.save") }}
@@ -470,7 +470,10 @@ async function handleDebugToggle(checked: boolean | "indeterminate") {
 }
 
 async function handleSave() {
-  if (retentionError.value) {
+  // The form only holds the server's values once `load` succeeded; saving
+  // defaults over a failed or unfinished load would overwrite the workspace
+  // settings with empty ones.
+  if (isLoading.value || error.value || retentionError.value) {
     return;
   }
   isSaving.value = true;

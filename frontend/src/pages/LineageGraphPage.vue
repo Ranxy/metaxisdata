@@ -92,6 +92,19 @@
               <Lock class="size-3" />
               <span class="sr-only">{{ t("lineageGraph.canvasControls") }}</span>
             </template>
+            <!-- Below `lg` the header drops reset/fit so the row cannot overflow;
+                 the canvas keeps reset, which restores the expansion state that
+                 fit-view alone cannot. -->
+            <template #default>
+              <ControlButton
+                v-if="hasExpandedBeyondRoot"
+                :title="t('lineageGraph.reset')"
+                :aria-label="t('lineageGraph.reset')"
+                @click="handleReset"
+              >
+                <RotateCcw class="size-3" />
+              </ControlButton>
+            </template>
           </Controls>
           <MiniMap
             :node-color="miniMapNodeColor"
@@ -365,7 +378,7 @@
 <script setup lang="ts">
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { Background } from "@vue-flow/background";
-import { Controls } from "@vue-flow/controls";
+import { ControlButton, Controls } from "@vue-flow/controls";
 import {
   type Edge,
   type GraphNode,

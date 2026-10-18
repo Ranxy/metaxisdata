@@ -74,6 +74,19 @@ describe("AuditLogsPage", () => {
     expect(lastFilter()).toContain('method.matches("Login")');
   });
 
+  // The Event column prints a localized name, so the search box has to accept
+  // that name too instead of only the stored RPC path.
+  it("searches an event by its localized name", async () => {
+    const wrapper = await mountPage();
+    mocks.listAuditLogs.mockClear();
+
+    await wrapper.find('input[type="text"]').setValue("Sign in");
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await flushPromises();
+
+    expect(lastFilter()).toContain('method.matches("AuthService/Login")');
+  });
+
   it("drops the filter when the bar is cleared", async () => {
     const wrapper = await mountPage();
     await wrapper.find('input[type="text"]').setValue("Login");

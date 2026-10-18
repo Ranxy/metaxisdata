@@ -25,7 +25,7 @@
           #title-extra
         >
           <Badge variant="secondary">
-            {{ metaTypeLabel(levelMetaType, t) }}
+            {{ metaTypeSingularLabel(levelMetaType, t) }}
           </Badge>
         </template>
       </PageHeader>
@@ -37,6 +37,7 @@
         class="relative"
       >
       <AdvancedSearchBar
+        ref="advancedSearchRef"
         :filter-categories="filterCategories"
         :search-placeholder="t('metadataBrowser.searchPlaceholder')"
         @update:filters="handleFiltersUpdate"
@@ -300,6 +301,7 @@
 </template>
 
 <script setup lang="ts">
+import { Code } from "@connectrpc/connect";
 import { onClickOutside } from "@vueuse/core";
 import {
   AlertTriangle,
@@ -389,9 +391,14 @@ import {
   type ViewMetadata,
 } from "@/types/proto-es/v1/database_service_pb";
 import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
+import { errorCode } from "@/utils/error";
 import { guidSegmentsToRouteParams, routeParamToGuid } from "@/utils/guid";
 import { lineageAssetView } from "@/utils/lineageAsset";
-import { metaTypeLabel, parseMetaType } from "@/utils/metaType";
+import {
+  metaTypeLabel,
+  metaTypeSingularLabel,
+  parseMetaType,
+} from "@/utils/metaType";
 
 const { t } = useI18n();
 const { formatError } = useErrorMessage();
@@ -403,10 +410,16 @@ const isLoading = ref(false);
 const isLoadingInstances = computed(() => instanceStore.loading);
 const isLoadingMore = ref(false);
 const error = ref<string | null>(null);
+// A NotFound is the one error that means "this object is gone"; anything else
+// (network, permission, server) is a load failure the reader should retry.
+const notFound = ref(false);
 
 // Search state
 const searchQuery = ref("");
 const searchBarRef = ref<HTMLElement | null>(null);
+const advancedSearchRef = ref<InstanceType<typeof AdvancedSearchBar> | null>(
+  null
+);
 const isSearching = ref(false);
 const searchError = ref<string | null>(null);
 const searchResults = ref<SearchMetadataResult[]>([]);
@@ -767,9 +780,10 @@ const pageDescription = computed(() => {
 });
 
 /**
- * The level the page lists below the root. A MySQL-family instance has no schema
- * segment in the URL, so the third segment is already an object there and the
- * badge is left off rather than mislabelling a table as a schema.
+ * The type of the node this page shows below the root, used for the singular
+ * badge next to its title. A MySQL-family instance has no schema segment in the
+ * URL, so the third segment is already an object there and the badge is left off
+ * rather than mislabelling a table as a schema.
  */
 const levelMetaType = computed<MetaType | null>(() => {
   if (isRootPath.value) return null;
@@ -780,15 +794,21 @@ const levelMetaType = computed<MetaType | null>(() => {
   return null;
 });
 
-const errorTitle = computed(() =>
-  isRootPath.value
-    ? t("metadataBrowser.fetchError")
-    : t("metadataBrowser.notFoundTitle")
-);
+const errorTitle = computed(() => {
+  if (isRootPath.value) {
+    return t("metadataBrowser.fetchError");
+  }
+  return notFound.value
+    ? t("metadataBrowser.notFoundTitle")
+    : t("metadataBrowser.fetchError");
+});
 
-const errorDescription = computed(() =>
-  isRootPath.value ? "" : t("metadataBrowser.notFoundDescription")
-);
+const errorDescription = computed(() => {
+  if (isRootPath.value || !notFound.value) {
+    return "";
+  }
+  return t("metadataBrowser.notFoundDescription");
+});
 
 /** `postgres-warehouse · warehouse.ods.orders`, never a raw `;`-joined GUID. */
 function formatGuidLabel(guid: string): string {
@@ -888,12 +908,21 @@ function getQueryString(key: string): string {
   return Array.isArray(value) ? value[0] || "" : value;
 }
 
+/** Localizes a load failure and remembers whether the object itself was gone:
+ *  only a NotFound becomes the "object not found" copy, while network and
+ *  permission failures stay a generic, retryable load error. */
+function recordError(e: unknown) {
+  notFound.value = errorCode(e) === Code.NotFound;
+  error.value = formatError(e, "metadataBrowser.fetchError");
+}
+
 async function fetchInstances() {
   error.value = null;
+  notFound.value = false;
   try {
     await instanceStore.fetch(true);
   } catch (e) {
-    error.value = formatError(e, "metadataBrowser.fetchError");
+    recordError(e);
   }
 }
 
@@ -913,6 +942,7 @@ async function fetchCurrentInstanceEngineIfNeeded() {
 function resetViewState() {
   leaf.value = null;
   error.value = null;
+  notFound.value = false;
   metadataGroups.value = [];
   nextPageTokenByMetaType.clear();
   activeMetaType.value = null;
@@ -932,7 +962,7 @@ async function fetchLeafDetail(metaType: LeafType) {
     await fetchCurrentInstanceEngineIfNeeded();
     leaf.value = await LEAF_LOADERS[metaType](currentGuid.value);
   } catch (e) {
-    error.value = formatError(e, "metadataBrowser.fetchError");
+    recordError(e);
   } finally {
     isLoading.value = false;
   }
@@ -972,7 +1002,7 @@ async function fetchMetadataGroups() {
       selectedMetaType.value = activeMetaType.value;
     }
   } catch (e) {
-    error.value = formatError(e, "metadataBrowser.fetchError");
+    recordError(e);
   } finally {
     isLoading.value = false;
   }
@@ -1004,7 +1034,7 @@ async function fetchMetaTypeFirstPage(metaType: MetaType) {
     nextPageTokenByMetaType.set(metaType, returned?.nextPageToken ?? "");
     selectedMetaType.value = metaType;
   } catch (e) {
-    error.value = formatError(e, "metadataBrowser.fetchError");
+    recordError(e);
   } finally {
     isLoading.value = false;
   }
@@ -1318,9 +1348,12 @@ function handleSelectSearchResult(result: SearchMetadataResult) {
   });
 }
 
-/** Drops the query and the dropdown, the way Escape or a clear button should. */
+/** Drops the query and the dropdown, the way Escape or a clear button should.
+ *  The bar owns the visible search box and its pills, so it is cleared too —
+ *  otherwise the field would still show the text the button just dismissed. */
 function clearSearch() {
   if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+  advancedSearchRef.value?.clear();
   searchQuery.value = "";
   searchResults.value = [];
   searchError.value = null;
