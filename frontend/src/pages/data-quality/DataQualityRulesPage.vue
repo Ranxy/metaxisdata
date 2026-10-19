@@ -16,11 +16,9 @@
           />
           {{ t("common.refresh") }}
         </Button>
-        <!-- The editor is the next slice: the button states the destination now
-             so the empty state and the header agree on what is coming. -->
         <Button
-          :disabled="true"
-          :title="t('dataQuality.editorComingSoon')"
+          v-if="canCreate"
+          @click="createRule"
         >
           <Plus class="mr-2 h-4 w-4" />
           {{ t("dataQuality.newRule") }}
@@ -168,9 +166,8 @@
             {{ t("common.filter.clear") }}
           </Button>
           <Button
-            v-else
-            :disabled="true"
-            :title="t('dataQuality.editorComingSoon')"
+            v-else-if="canCreate"
+            @click="createRule"
           >
             <Plus class="mr-2 h-4 w-4" />
             {{ t("dataQuality.newRule") }}
@@ -211,7 +208,17 @@
               >
                 <TableCell>
                   <div class="flex max-w-[14rem] min-w-0 items-center gap-2 md:max-w-md">
+                    <button
+                      v-if="canUpdate && rule.state !== QualityRuleState.ARCHIVED"
+                      type="button"
+                      class="truncate text-left font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      :title="rule.title"
+                      @click="editRule(rule)"
+                    >
+                      {{ rule.title || qualityRuleID(rule.name) }}
+                    </button>
                     <span
+                      v-else
                       class="truncate font-medium"
                       :title="rule.title"
                     >
@@ -310,6 +317,17 @@
                 <TableCell class="text-right">
                   <div class="flex items-center justify-end gap-1">
                     <Button
+                      v-if="canUpdate && rule.state !== QualityRuleState.ARCHIVED"
+                      variant="ghost"
+                      size="icon"
+                      class="h-8 w-8"
+                      :title="t('dataQuality.editRule')"
+                      :aria-label="t('dataQuality.editRule')"
+                      @click="editRule(rule)"
+                    >
+                      <Pencil class="h-4 w-4" />
+                    </Button>
+                    <Button
                       v-if="canRun"
                       variant="ghost"
                       size="icon"
@@ -394,6 +412,7 @@
 import { create } from "@bufbuild/protobuf";
 import {
   Pause,
+  Pencil,
   Play,
   Plus,
   RefreshCcw,
@@ -465,6 +484,9 @@ const router = useRouter();
 const { handleError } = useErrorHandler();
 const authStore = useAuthStore();
 
+const canCreate = computed(() =>
+  authStore.hasPermission("metaxisdata.dataQuality.rules.create")
+);
 const canRun = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.rules.run")
 );
@@ -615,6 +637,17 @@ function clearFilters() {
   severity.value = "-";
   state.value = "-";
   applyFilters();
+}
+
+function createRule() {
+  void router.push({ name: "DataQualityRuleNew" });
+}
+
+function editRule(rule: QualityRule) {
+  void router.push({
+    name: "DataQualityRuleEdit",
+    params: { ruleId: rule.name.split("/") },
+  });
 }
 
 function targetTitle(rule: QualityRule): string {

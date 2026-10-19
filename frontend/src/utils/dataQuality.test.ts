@@ -5,7 +5,10 @@ import enUS from "@/locales/en-US.json";
 import zhCN from "@/locales/zh-CN.json";
 import {
   QualityComparison,
+  QualityComparisonOperator,
   QualityDimension,
+  QualityEmptyBehavior,
+  QualityFilterOperator,
   QualityObservedKind,
   QualityRuleState,
   QualityRuleType,
@@ -15,6 +18,7 @@ import {
   QualitySeverity,
   QualityStatus,
   QualityTargetPathSchema,
+  QualityThresholdMetric,
   QualityThresholdsSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import {
@@ -27,8 +31,11 @@ import {
   formatTargetPath,
   formatWarnThreshold,
   isRunInProgress,
+  qualityComparisonOperatorKey,
   qualityDimensionKey,
+  qualityEmptyBehaviorKey,
   qualityErrorCodeKey,
+  qualityFilterOperatorKey,
   qualityRuleStateKey,
   qualityRuleStateVariant,
   qualityRuleTypeKey,
@@ -39,6 +46,7 @@ import {
   qualitySeverityVariant,
   qualityStatusKey,
   qualityStatusVariant,
+  qualityThresholdMetricKey,
   runDurationSeconds,
   targetScopeLabel,
 } from "./dataQuality";
@@ -625,6 +633,103 @@ describe("number and value formatting", () => {
   });
 });
 
+describe("editor vocabulary", () => {
+  it("names every threshold metric, empty behaviour and comparison operator", () => {
+    expect(qualityThresholdMetricKey(QualityThresholdMetric.COUNT)).toBe(
+      "dataQuality.thresholdMetric.count"
+    );
+    expect(qualityThresholdMetricKey(QualityThresholdMetric.PERCENT)).toBe(
+      "dataQuality.thresholdMetric.percent"
+    );
+    expect(qualityThresholdMetricKey(QualityThresholdMetric.UNSPECIFIED)).toBe(
+      "dataQuality.thresholdMetric.unspecified"
+    );
+    expect(qualityThresholdMetricKey(99 as QualityThresholdMetric)).toBe(
+      "dataQuality.thresholdMetric.unspecified"
+    );
+
+    expect(qualityEmptyBehaviorKey(QualityEmptyBehavior.PASS)).toBe(
+      "dataQuality.emptyBehavior.pass"
+    );
+    expect(qualityEmptyBehaviorKey(QualityEmptyBehavior.FAIL)).toBe(
+      "dataQuality.emptyBehavior.fail"
+    );
+    expect(qualityEmptyBehaviorKey(QualityEmptyBehavior.NOT_EVALUATED)).toBe(
+      "dataQuality.emptyBehavior.notEvaluated"
+    );
+    expect(qualityEmptyBehaviorKey(QualityEmptyBehavior.UNSPECIFIED)).toBe(
+      "dataQuality.emptyBehavior.unspecified"
+    );
+    expect(qualityEmptyBehaviorKey(99 as QualityEmptyBehavior)).toBe(
+      "dataQuality.emptyBehavior.unspecified"
+    );
+
+    expect(qualityComparisonOperatorKey(QualityComparisonOperator.EQ)).toBe(
+      "dataQuality.comparisonOperator.eq"
+    );
+    expect(qualityComparisonOperatorKey(QualityComparisonOperator.NE)).toBe(
+      "dataQuality.comparisonOperator.ne"
+    );
+    expect(qualityComparisonOperatorKey(QualityComparisonOperator.LT)).toBe(
+      "dataQuality.comparisonOperator.lt"
+    );
+    expect(qualityComparisonOperatorKey(QualityComparisonOperator.LTE)).toBe(
+      "dataQuality.comparisonOperator.lte"
+    );
+    expect(qualityComparisonOperatorKey(QualityComparisonOperator.GT)).toBe(
+      "dataQuality.comparisonOperator.gt"
+    );
+    expect(qualityComparisonOperatorKey(QualityComparisonOperator.GTE)).toBe(
+      "dataQuality.comparisonOperator.gte"
+    );
+    expect(
+      qualityComparisonOperatorKey(QualityComparisonOperator.UNSPECIFIED)
+    ).toBe("dataQuality.comparisonOperator.unspecified");
+    expect(qualityComparisonOperatorKey(99 as QualityComparisonOperator)).toBe(
+      "dataQuality.comparisonOperator.unspecified"
+    );
+  });
+
+  it("names every filter operator", () => {
+    expect(qualityFilterOperatorKey(QualityFilterOperator.EQ)).toBe(
+      "dataQuality.filterOperator.eq"
+    );
+    expect(qualityFilterOperatorKey(QualityFilterOperator.NE)).toBe(
+      "dataQuality.filterOperator.ne"
+    );
+    expect(qualityFilterOperatorKey(QualityFilterOperator.LT)).toBe(
+      "dataQuality.filterOperator.lt"
+    );
+    expect(qualityFilterOperatorKey(QualityFilterOperator.LTE)).toBe(
+      "dataQuality.filterOperator.lte"
+    );
+    expect(qualityFilterOperatorKey(QualityFilterOperator.GT)).toBe(
+      "dataQuality.filterOperator.gt"
+    );
+    expect(qualityFilterOperatorKey(QualityFilterOperator.GTE)).toBe(
+      "dataQuality.filterOperator.gte"
+    );
+    expect(qualityFilterOperatorKey(QualityFilterOperator.IN)).toBe(
+      "dataQuality.filterOperator.in"
+    );
+    expect(qualityFilterOperatorKey(QualityFilterOperator.NOT_IN)).toBe(
+      "dataQuality.filterOperator.notIn"
+    );
+    expect(qualityFilterOperatorKey(QualityFilterOperator.IS_NULL)).toBe(
+      "dataQuality.filterOperator.isNull"
+    );
+    expect(qualityFilterOperatorKey(QualityFilterOperator.IS_NOT_NULL)).toBe(
+      "dataQuality.filterOperator.isNotNull"
+    );
+    expect(qualityFilterOperatorKey(QualityFilterOperator.UNSPECIFIED)).toBe(
+      "dataQuality.filterOperator.unspecified"
+    );
+    expect(qualityFilterOperatorKey(99 as QualityFilterOperator)).toBe(
+      "dataQuality.filterOperator.unspecified"
+    );
+  });
+});
+
 // The static i18n checks cannot follow a key a helper returns, so this is what
 // keeps the vocabulary and the catalogs from drifting apart: every key the
 // display helpers can produce must exist in both locales. Adding an enum member
@@ -674,6 +779,18 @@ describe("data quality vocabulary catalogs", () => {
     }
     for (const trigger of enumValues(QualityRunTrigger)) {
       keys.push(qualityRunTriggerKey(trigger));
+    }
+    for (const metric of enumValues(QualityThresholdMetric)) {
+      keys.push(qualityThresholdMetricKey(metric));
+    }
+    for (const behavior of enumValues(QualityEmptyBehavior)) {
+      keys.push(qualityEmptyBehaviorKey(behavior));
+    }
+    for (const operator of enumValues(QualityComparisonOperator)) {
+      keys.push(qualityComparisonOperatorKey(operator));
+    }
+    for (const operator of enumValues(QualityFilterOperator)) {
+      keys.push(qualityFilterOperatorKey(operator));
     }
     for (const code of [
       "CONNECTION",

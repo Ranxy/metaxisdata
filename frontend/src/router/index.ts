@@ -222,6 +222,30 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
+        path: "rules/new",
+        name: "DataQualityRuleNew",
+        component: () =>
+          import("@/pages/data-quality/DataQualityRuleEditorPage.vue"),
+        meta: {
+          requiresAuth: true,
+          layout: "default",
+          permission: "metaxisdata.dataQuality.rules.create",
+        },
+      },
+      {
+        // Same resource-name-per-segment convention as the run detail: a Get
+        // needs the real workspace, which the id alone does not carry.
+        path: "rules/:ruleId+/edit",
+        name: "DataQualityRuleEdit",
+        component: () =>
+          import("@/pages/data-quality/DataQualityRuleEditorPage.vue"),
+        meta: {
+          requiresAuth: true,
+          layout: "default",
+          permission: "metaxisdata.dataQuality.rules.update",
+        },
+      },
+      {
         path: "runs",
         name: "DataQualityRuns",
         component: () => import("@/pages/data-quality/DataQualityRunsPage.vue"),

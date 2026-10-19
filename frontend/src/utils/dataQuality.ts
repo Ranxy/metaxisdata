@@ -2,7 +2,10 @@ import type { Duration } from "@bufbuild/protobuf/wkt";
 import {
   QualityObservedKind as ObservedKind,
   QualityComparison,
+  QualityComparisonOperator,
   QualityDimension,
+  QualityEmptyBehavior,
+  QualityFilterOperator,
   type QualityObservedKind,
   QualityRuleState,
   QualityRuleType,
@@ -11,7 +14,7 @@ import {
   QualityRunTrigger,
   QualitySeverity,
   QualityStatus,
-  type QualityTargetPath,
+  QualityThresholdMetric,
   type QualityThresholds,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { formatDateTime } from "./datetime";
@@ -29,6 +32,15 @@ import { formatDateTime } from "./datetime";
  * key a helper returns, and listing each family keeps a typo from hiding behind
  * a broad exemption.
  */
+
+/** The display fields of a target path; a message satisfies it structurally. */
+export interface QualityTargetPathLike {
+  instance?: string;
+  database?: string;
+  schema?: string;
+  object?: string;
+  column?: string;
+}
 
 /** A badge variant, spelled out so `utils/` does not import from `components/`. */
 export type QualityBadgeVariant =
@@ -265,6 +277,94 @@ export function qualityRunTriggerKey(trigger: QualityRunTrigger): string {
   }
 }
 
+// ---- editor vocabulary ----
+
+/** The label key for how a count rule's threshold is measured. */
+export function qualityThresholdMetricKey(
+  metric: QualityThresholdMetric
+): string {
+  switch (metric) {
+    case QualityThresholdMetric.COUNT:
+      return "dataQuality.thresholdMetric.count";
+    case QualityThresholdMetric.PERCENT:
+      return "dataQuality.thresholdMetric.percent";
+    default:
+      return "dataQuality.thresholdMetric.unspecified";
+  }
+}
+
+/** The label key for what a rule does when its query returns nothing to judge. */
+export function qualityEmptyBehaviorKey(
+  behavior: QualityEmptyBehavior
+): string {
+  switch (behavior) {
+    case QualityEmptyBehavior.PASS:
+      return "dataQuality.emptyBehavior.pass";
+    case QualityEmptyBehavior.FAIL:
+      return "dataQuality.emptyBehavior.fail";
+    case QualityEmptyBehavior.NOT_EVALUATED:
+      return "dataQuality.emptyBehavior.notEvaluated";
+    default:
+      return "dataQuality.emptyBehavior.unspecified";
+  }
+}
+
+/** The label key for the SQL comparison a cross-column rule applies. */
+export function qualityComparisonOperatorKey(
+  operator: QualityComparisonOperator
+): string {
+  switch (operator) {
+    case QualityComparisonOperator.EQ:
+      return "dataQuality.comparisonOperator.eq";
+    case QualityComparisonOperator.NE:
+      return "dataQuality.comparisonOperator.ne";
+    case QualityComparisonOperator.LT:
+      return "dataQuality.comparisonOperator.lt";
+    case QualityComparisonOperator.LTE:
+      return "dataQuality.comparisonOperator.lte";
+    case QualityComparisonOperator.GT:
+      return "dataQuality.comparisonOperator.gt";
+    case QualityComparisonOperator.GTE:
+      return "dataQuality.comparisonOperator.gte";
+    default:
+      return "dataQuality.comparisonOperator.unspecified";
+  }
+}
+
+/**
+ * The label key for one clause operator of a rule's pre-filter. The checker
+ * cannot follow a returned key, hence the `dataQuality.filterOperator` family in
+ * DYNAMIC_PREFIXES (as with the rest of this vocabulary).
+ */
+export function qualityFilterOperatorKey(
+  operator: QualityFilterOperator
+): string {
+  switch (operator) {
+    case QualityFilterOperator.EQ:
+      return "dataQuality.filterOperator.eq";
+    case QualityFilterOperator.NE:
+      return "dataQuality.filterOperator.ne";
+    case QualityFilterOperator.LT:
+      return "dataQuality.filterOperator.lt";
+    case QualityFilterOperator.LTE:
+      return "dataQuality.filterOperator.lte";
+    case QualityFilterOperator.GT:
+      return "dataQuality.filterOperator.gt";
+    case QualityFilterOperator.GTE:
+      return "dataQuality.filterOperator.gte";
+    case QualityFilterOperator.IN:
+      return "dataQuality.filterOperator.in";
+    case QualityFilterOperator.NOT_IN:
+      return "dataQuality.filterOperator.notIn";
+    case QualityFilterOperator.IS_NULL:
+      return "dataQuality.filterOperator.isNull";
+    case QualityFilterOperator.IS_NOT_NULL:
+      return "dataQuality.filterOperator.isNotNull";
+    default:
+      return "dataQuality.filterOperator.unspecified";
+  }
+}
+
 /**
  * True while a run can still change, i.e. while its detail page should poll.
  * COMPLETED and ABANDONED are final: nothing will update them.
@@ -393,7 +493,9 @@ export function qualityErrorCodeKey(code: string): string {
  * Where a rule's target lived, as one display name: `schema.object.column`,
  * e.g. `public.orders.id`. Returns "-" when the snapshot is absent.
  */
-export function formatTargetPath(path: QualityTargetPath | undefined): string {
+export function formatTargetPath(
+  path: QualityTargetPathLike | undefined
+): string {
   if (!path) {
     return "-";
   }
@@ -406,7 +508,9 @@ export function formatTargetPath(path: QualityTargetPath | undefined): string {
 }
 
 /** The coarser half of the target: `instance · database`. */
-export function targetScopeLabel(path: QualityTargetPath | undefined): string {
+export function targetScopeLabel(
+  path: QualityTargetPathLike | undefined
+): string {
   return [path?.instance, path?.database].filter(Boolean).join(" · ") || "-";
 }
 

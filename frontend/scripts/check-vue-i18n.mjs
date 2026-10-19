@@ -66,6 +66,14 @@ export const DYNAMIC_PREFIXES = [
   "dataQuality.runTrigger",
   "dataQuality.errorCode",
   "dataQuality.threshold",
+  // The editor's vocabulary helpers and its validation messages: the key is
+  // chosen by a helper in src/utils/dataQuality.ts or returned by
+  // validateRuleForm, so the checker cannot follow it either.
+  "dataQuality.thresholdMetric",
+  "dataQuality.emptyBehavior",
+  "dataQuality.comparisonOperator",
+  "dataQuality.filterOperator",
+  "dataQuality.editor.validation",
   // CODE_MESSAGE_KEYS in src/utils/error.ts maps every Connect status code to an
   // "error.*" sentence. The table is exhaustive by type (Record<Code, …>) and its
   // values are checked against the locale schema at compile time, so a stray key
