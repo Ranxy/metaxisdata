@@ -208,35 +208,64 @@
   
     - [DatabaseService](#metaxisdata-v1-DatabaseService)
   
+- [v1/explain_sql_service.proto](#v1_explain_sql_service-proto)
+    - [ExplainSQLMetadata](#metaxisdata-v1-ExplainSQLMetadata)
+    - [ExplainSQLProgress](#metaxisdata-v1-ExplainSQLProgress)
+    - [ExplainSQLRequest](#metaxisdata-v1-ExplainSQLRequest)
+    - [ExplainSQLResponse](#metaxisdata-v1-ExplainSQLResponse)
+  
+    - [ExplainSQLService](#metaxisdata-v1-ExplainSQLService)
+  
 - [v1/data_quality_service.proto](#v1_data_quality_service-proto)
     - [AcceptedValuesConfig](#metaxisdata-v1-AcceptedValuesConfig)
     - [CelExpressionConfig](#metaxisdata-v1-CelExpressionConfig)
+    - [ColumnProfile](#metaxisdata-v1-ColumnProfile)
+    - [ColumnProfileStats](#metaxisdata-v1-ColumnProfileStats)
+    - [ColumnSemanticLabel](#metaxisdata-v1-ColumnSemanticLabel)
     - [ColumnValue](#metaxisdata-v1-ColumnValue)
     - [CreateQualityRuleRequest](#metaxisdata-v1-CreateQualityRuleRequest)
     - [CrossColumnConfig](#metaxisdata-v1-CrossColumnConfig)
     - [CustomSQLConfig](#metaxisdata-v1-CustomSQLConfig)
     - [DeleteQualityRuleRequest](#metaxisdata-v1-DeleteQualityRuleRequest)
+    - [ExplainQualityResultRequest](#metaxisdata-v1-ExplainQualityResultRequest)
+    - [ExplainQualityResultResponse](#metaxisdata-v1-ExplainQualityResultResponse)
     - [FailureSample](#metaxisdata-v1-FailureSample)
     - [FreshnessConfig](#metaxisdata-v1-FreshnessConfig)
+    - [GetQualityIssueRequest](#metaxisdata-v1-GetQualityIssueRequest)
     - [GetQualityRuleRequest](#metaxisdata-v1-GetQualityRuleRequest)
     - [GetQualityRunRequest](#metaxisdata-v1-GetQualityRunRequest)
+    - [ListColumnLabelsRequest](#metaxisdata-v1-ListColumnLabelsRequest)
+    - [ListColumnLabelsResponse](#metaxisdata-v1-ListColumnLabelsResponse)
+    - [ListColumnProfilesRequest](#metaxisdata-v1-ListColumnProfilesRequest)
+    - [ListColumnProfilesResponse](#metaxisdata-v1-ListColumnProfilesResponse)
+    - [ListQualityIssuesRequest](#metaxisdata-v1-ListQualityIssuesRequest)
+    - [ListQualityIssuesResponse](#metaxisdata-v1-ListQualityIssuesResponse)
     - [ListQualityRuleResultsRequest](#metaxisdata-v1-ListQualityRuleResultsRequest)
     - [ListQualityRuleResultsResponse](#metaxisdata-v1-ListQualityRuleResultsResponse)
     - [ListQualityRulesRequest](#metaxisdata-v1-ListQualityRulesRequest)
     - [ListQualityRulesResponse](#metaxisdata-v1-ListQualityRulesResponse)
     - [ListQualityRunsRequest](#metaxisdata-v1-ListQualityRunsRequest)
     - [ListQualityRunsResponse](#metaxisdata-v1-ListQualityRunsResponse)
+    - [ListQualitySuggestionsRequest](#metaxisdata-v1-ListQualitySuggestionsRequest)
+    - [ListQualitySuggestionsResponse](#metaxisdata-v1-ListQualitySuggestionsResponse)
     - [NullPercentConfig](#metaxisdata-v1-NullPercentConfig)
     - [PreviewQualityRuleRequest](#metaxisdata-v1-PreviewQualityRuleRequest)
     - [PreviewQualityRuleResponse](#metaxisdata-v1-PreviewQualityRuleResponse)
+    - [ProfileColumnsRequest](#metaxisdata-v1-ProfileColumnsRequest)
+    - [ProfileColumnsResponse](#metaxisdata-v1-ProfileColumnsResponse)
+    - [ProfileValue](#metaxisdata-v1-ProfileValue)
     - [QualityFilter](#metaxisdata-v1-QualityFilter)
     - [QualityFilterClause](#metaxisdata-v1-QualityFilterClause)
+    - [QualityIssue](#metaxisdata-v1-QualityIssue)
     - [QualityResultSummary](#metaxisdata-v1-QualityResultSummary)
     - [QualityRule](#metaxisdata-v1-QualityRule)
     - [QualityRuleConfig](#metaxisdata-v1-QualityRuleConfig)
+    - [QualityRuleDraftConfig](#metaxisdata-v1-QualityRuleDraftConfig)
     - [QualityRuleResult](#metaxisdata-v1-QualityRuleResult)
     - [QualityRun](#metaxisdata-v1-QualityRun)
     - [QualityRunCounts](#metaxisdata-v1-QualityRunCounts)
+    - [QualitySuggestion](#metaxisdata-v1-QualitySuggestion)
+    - [QualitySuggestionPayload](#metaxisdata-v1-QualitySuggestionPayload)
     - [QualityTarget](#metaxisdata-v1-QualityTarget)
     - [QualityTargetPath](#metaxisdata-v1-QualityTargetPath)
     - [QualityThresholds](#metaxisdata-v1-QualityThresholds)
@@ -247,23 +276,42 @@
     - [RowCountConfig](#metaxisdata-v1-RowCountConfig)
     - [RunQualityRulesRequest](#metaxisdata-v1-RunQualityRulesRequest)
     - [RunQualityRulesResponse](#metaxisdata-v1-RunQualityRulesResponse)
+    - [SemanticLabelEvidence](#metaxisdata-v1-SemanticLabelEvidence)
+    - [SemanticLabelSuggestion](#metaxisdata-v1-SemanticLabelSuggestion)
     - [StringLengthConfig](#metaxisdata-v1-StringLengthConfig)
+    - [SuggestColumnLabelsRequest](#metaxisdata-v1-SuggestColumnLabelsRequest)
+    - [SuggestColumnLabelsResponse](#metaxisdata-v1-SuggestColumnLabelsResponse)
+    - [SuggestQualityRuleRequest](#metaxisdata-v1-SuggestQualityRuleRequest)
+    - [SuggestQualityRuleResponse](#metaxisdata-v1-SuggestQualityRuleResponse)
     - [UniqueCombinationConfig](#metaxisdata-v1-UniqueCombinationConfig)
     - [UniqueConfig](#metaxisdata-v1-UniqueConfig)
+    - [UpdateColumnLabelRequest](#metaxisdata-v1-UpdateColumnLabelRequest)
+    - [UpdateColumnLabelResponse](#metaxisdata-v1-UpdateColumnLabelResponse)
+    - [UpdateQualityIssueRequest](#metaxisdata-v1-UpdateQualityIssueRequest)
     - [UpdateQualityRuleRequest](#metaxisdata-v1-UpdateQualityRuleRequest)
+    - [UpdateQualitySuggestionRequest](#metaxisdata-v1-UpdateQualitySuggestionRequest)
   
+    - [ColumnLabelAction](#metaxisdata-v1-ColumnLabelAction)
     - [QualityComparison](#metaxisdata-v1-QualityComparison)
     - [QualityComparisonOperator](#metaxisdata-v1-QualityComparisonOperator)
     - [QualityDimension](#metaxisdata-v1-QualityDimension)
     - [QualityEmptyBehavior](#metaxisdata-v1-QualityEmptyBehavior)
     - [QualityFilterOperator](#metaxisdata-v1-QualityFilterOperator)
+    - [QualityIssueStatus](#metaxisdata-v1-QualityIssueStatus)
+    - [QualityLabelSource](#metaxisdata-v1-QualityLabelSource)
+    - [QualityLabelStatus](#metaxisdata-v1-QualityLabelStatus)
     - [QualityObservedKind](#metaxisdata-v1-QualityObservedKind)
+    - [QualityResolutionReason](#metaxisdata-v1-QualityResolutionReason)
     - [QualityRuleState](#metaxisdata-v1-QualityRuleState)
     - [QualityRuleType](#metaxisdata-v1-QualityRuleType)
     - [QualityRunStatus](#metaxisdata-v1-QualityRunStatus)
     - [QualityRunTrigger](#metaxisdata-v1-QualityRunTrigger)
+    - [QualitySemanticType](#metaxisdata-v1-QualitySemanticType)
     - [QualitySeverity](#metaxisdata-v1-QualitySeverity)
     - [QualityStatus](#metaxisdata-v1-QualityStatus)
+    - [QualitySuggestionKind](#metaxisdata-v1-QualitySuggestionKind)
+    - [QualitySuggestionSource](#metaxisdata-v1-QualitySuggestionSource)
+    - [QualitySuggestionStatus](#metaxisdata-v1-QualitySuggestionStatus)
     - [QualityThresholdMetric](#metaxisdata-v1-QualityThresholdMetric)
   
     - [DataQualityService](#metaxisdata-v1-DataQualityService)
@@ -278,14 +326,6 @@
     - [UpdateEnvironmentRequest](#metaxisdata-v1-UpdateEnvironmentRequest)
   
     - [EnvironmentService](#metaxisdata-v1-EnvironmentService)
-  
-- [v1/explain_sql_service.proto](#v1_explain_sql_service-proto)
-    - [ExplainSQLMetadata](#metaxisdata-v1-ExplainSQLMetadata)
-    - [ExplainSQLProgress](#metaxisdata-v1-ExplainSQLProgress)
-    - [ExplainSQLRequest](#metaxisdata-v1-ExplainSQLRequest)
-    - [ExplainSQLResponse](#metaxisdata-v1-ExplainSQLResponse)
-  
-    - [ExplainSQLService](#metaxisdata-v1-ExplainSQLService)
   
 - [v1/group_service.proto](#v1_group_service-proto)
     - [CreateGroupRequest](#metaxisdata-v1-CreateGroupRequest)
@@ -3793,6 +3833,108 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 
 
 
+<a name="v1_explain_sql_service-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## v1/explain_sql_service.proto
+
+
+
+<a name="metaxisdata-v1-ExplainSQLMetadata"></a>
+
+### ExplainSQLMetadata
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| summary | [string](#string) |  |  |
+| provider | [string](#string) |  |  |
+| model | [string](#string) |  |  |
+| cache_key | [string](#string) |  |  |
+| from_cache | [bool](#bool) |  |  |
+| cache_created_at | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ExplainSQLProgress"></a>
+
+### ExplainSQLProgress
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| type | [string](#string) |  |  |
+| turn | [int32](#int32) |  |  |
+| tool_name | [string](#string) |  |  |
+| tool_input | [string](#string) |  |  |
+| tool_output | [string](#string) |  |  |
+| tool_error | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ExplainSQLRequest"></a>
+
+### ExplainSQLRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| meta_guid | [string](#string) |  |  |
+| sql_text | [string](#string) |  |  |
+| force_regenerate | [bool](#bool) |  |  |
+| provider_name | [string](#string) |  |  |
+| scope_prefix | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ExplainSQLResponse"></a>
+
+### ExplainSQLResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| content | [string](#string) |  |  |
+| metadata | [ExplainSQLMetadata](#metaxisdata-v1-ExplainSQLMetadata) |  |  |
+| progress | [ExplainSQLProgress](#metaxisdata-v1-ExplainSQLProgress) |  |  |
+
+
+
+
+
+ 
+
+ 
+
+ 
+
+
+<a name="metaxisdata-v1-ExplainSQLService"></a>
+
+### ExplainSQLService
+
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+| ExplainSQL | [ExplainSQLRequest](#metaxisdata-v1-ExplainSQLRequest) | [ExplainSQLResponse](#metaxisdata-v1-ExplainSQLResponse) stream |  |
+
+ 
+
+
+
 <a name="v1_data_quality_service-proto"></a>
 <p align="right"><a href="#top">Top</a></p>
 
@@ -3833,6 +3975,81 @@ v1.1; the message exists so that the config shape does not change then.
 | sample_rows | [int32](#int32) |  |  |
 | fail_threshold | [double](#double) | optional |  |
 | warn_threshold | [double](#double) | optional |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ColumnProfile"></a>
+
+### ColumnProfile
+ColumnProfile is the cached deterministic statistics of one column plus how
+they were measured.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| table_guid | [string](#string) |  | The globally unique metadata GUID of the profiled table. |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+| column | [string](#string) |  |  |
+| profile | [ColumnProfileStats](#metaxisdata-v1-ColumnProfileStats) |  |  |
+| sample_method | [string](#string) |  | How the values were sampled, e.g. &#34;full&#34; or &#34;sample&#34;. |
+| sample_rows | [int64](#int64) |  |  |
+| truncated | [bool](#bool) |  |  |
+| engine_version | [string](#string) |  | The engine version that measured it, so a changed measurement is traceable. |
+| profiled_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ColumnProfileStats"></a>
+
+### ColumnProfileStats
+ColumnProfileStats is the deterministic statistics of one column, measured
+without a model. It is the evidence a semantic label cites.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| total_rows | [int64](#int64) |  |  |
+| null_count | [int64](#int64) |  |  |
+| distinct_count | [int64](#int64) |  |  |
+| distinct_estimated | [bool](#bool) |  | True when the database refused an exact distinct count and the value came from a sample. |
+| min_value | [string](#string) |  | Display forms of the observed extremes, truncated; empty when the column has no comparable values. |
+| max_value | [string](#string) |  |  |
+| min_length | [int64](#int64) | optional | Unset for non-string columns. |
+| max_length | [int64](#int64) | optional |  |
+| top_values | [ProfileValue](#metaxisdata-v1-ProfileValue) | repeated | The most frequent values, at most ten, each truncated. |
+| patterns | [string](#string) | repeated | Shape summaries such as &#34;numeric&#34;, &#34;alpha&#34;, &#34;date-like&#34;, &#34;mixed&#34;. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ColumnSemanticLabel"></a>
+
+### ColumnSemanticLabel
+ColumnSemanticLabel is the semantic type a column is asserted to hold, who
+asserted it and the evidence behind it.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| table_guid | [string](#string) |  | The globally unique metadata GUID of the table. |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+| column | [string](#string) |  |  |
+| label | [QualitySemanticType](#metaxisdata-v1-QualitySemanticType) |  |  |
+| source | [QualityLabelSource](#metaxisdata-v1-QualityLabelSource) |  |  |
+| status | [QualityLabelStatus](#metaxisdata-v1-QualityLabelStatus) |  |  |
+| confidence | [double](#double) |  |  |
+| evidence | [SemanticLabelEvidence](#metaxisdata-v1-SemanticLabelEvidence) |  |  |
+| accepted_by | [string](#string) |  | Who accepted it. Format: users/{user}. Empty for a suggestion. |
+| accepted_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 
 
 
@@ -3926,6 +4143,40 @@ statement is single SELECT/WITH, at most 8 KiB, and is never rewritten.
 
 
 
+<a name="metaxisdata-v1-ExplainQualityResultRequest"></a>
+
+### ExplainQualityResultRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityRuleResults/{quality_rule_result} |
+| language | [string](#string) |  | The language the explanation is written in, e.g. &#34;en&#34; or &#34;zh-CN&#34;. |
+| force_regenerate | [bool](#bool) |  | Regenerate even when a cached explanation exists. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ExplainQualityResultResponse"></a>
+
+### ExplainQualityResultResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| content | [string](#string) |  |  |
+| progress | [ExplainSQLProgress](#metaxisdata-v1-ExplainSQLProgress) |  |  |
+| metadata | [ExplainSQLMetadata](#metaxisdata-v1-ExplainSQLMetadata) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-FailureSample"></a>
 
 ### FailureSample
@@ -3959,6 +4210,21 @@ timestamp follows on_empty.
 
 
 
+<a name="metaxisdata-v1-GetQualityIssueRequest"></a>
+
+### GetQualityIssueRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityIssues/{quality_issue} |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetQualityRuleRequest"></a>
 
 ### GetQualityRuleRequest
@@ -3983,6 +4249,118 @@ timestamp follows on_empty.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  | Format: workspaces/{workspace}/qualityRuns/{quality_run} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListColumnLabelsRequest"></a>
+
+### ListColumnLabelsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| page_size | [int32](#int32) |  | The maximum number of labels to return. If unspecified, at most 50 are returned. The maximum value is 1000; values above 1000 are coerced to 1000. |
+| page_token | [string](#string) |  | A page token, received from a previous ListColumnLabels call. Provide this to retrieve the subsequent page. |
+| table_guid | [string](#string) |  | The globally unique metadata GUID of the table. |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+| columns | [string](#string) | repeated | The columns to read; empty means every labeled column. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListColumnLabelsResponse"></a>
+
+### ListColumnLabelsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| column_labels | [ColumnSemanticLabel](#metaxisdata-v1-ColumnSemanticLabel) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListColumnProfilesRequest"></a>
+
+### ListColumnProfilesRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| page_size | [int32](#int32) |  | The maximum number of profiles to return. If unspecified, at most 50 are returned. The maximum value is 1000; values above 1000 are coerced to 1000. |
+| page_token | [string](#string) |  | A page token, received from a previous ListColumnProfiles call. Provide this to retrieve the subsequent page. |
+| table_guid | [string](#string) |  | The globally unique metadata GUID of the table. |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+| columns | [string](#string) | repeated | The columns to read; empty means every profiled column. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListColumnProfilesResponse"></a>
+
+### ListColumnProfilesResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| column_profiles | [ColumnProfile](#metaxisdata-v1-ColumnProfile) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityIssuesRequest"></a>
+
+### ListQualityIssuesRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| page_size | [int32](#int32) |  | The maximum number of issues to return. If unspecified, at most 50 are returned. The maximum value is 1000; values above 1000 are coerced to 1000. |
+| page_token | [string](#string) |  | A page token, received from a previous ListQualityIssues call. Provide this to retrieve the subsequent page. |
+| status | [QualityIssueStatus](#metaxisdata-v1-QualityIssueStatus) |  |  |
+| severity | [QualitySeverity](#metaxisdata-v1-QualitySeverity) |  |  |
+| rule | [string](#string) |  | Format: workspaces/{workspace}/qualityRules/{quality_rule} |
+| target_guid | [string](#string) |  | The exact target GUID. |
+| owner | [string](#string) |  | Only issues of rules owned by this principal. Format: users/{user} |
+| start_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Only issues first seen at or after this time. |
+| end_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Only issues first seen at or before this time. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityIssuesResponse"></a>
+
+### ListQualityIssuesResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| quality_issues | [QualityIssue](#metaxisdata-v1-QualityIssue) | repeated |  |
+| next_page_token | [string](#string) |  |  |
 
 
 
@@ -4112,6 +4490,43 @@ timestamp follows on_empty.
 
 
 
+<a name="metaxisdata-v1-ListQualitySuggestionsRequest"></a>
+
+### ListQualitySuggestionsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| page_size | [int32](#int32) |  | The maximum number of suggestions to return. If unspecified, at most 50 are returned. The maximum value is 1000; values above 1000 are coerced to 1000. |
+| page_token | [string](#string) |  | A page token, received from a previous ListQualitySuggestions call. Provide this to retrieve the subsequent page. |
+| status | [QualitySuggestionStatus](#metaxisdata-v1-QualitySuggestionStatus) |  |  |
+| kind | [QualitySuggestionKind](#metaxisdata-v1-QualitySuggestionKind) |  |  |
+| source | [QualitySuggestionSource](#metaxisdata-v1-QualitySuggestionSource) |  |  |
+| target_guid | [string](#string) |  | The exact target GUID. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualitySuggestionsResponse"></a>
+
+### ListQualitySuggestionsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| quality_suggestions | [QualitySuggestion](#metaxisdata-v1-QualitySuggestion) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-NullPercentConfig"></a>
 
 ### NullPercentConfig
@@ -4166,6 +4581,55 @@ optional and must not exceed the fail threshold.
 
 
 
+<a name="metaxisdata-v1-ProfileColumnsRequest"></a>
+
+### ProfileColumnsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| table_guid | [string](#string) |  | The globally unique metadata GUID of the table. |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+| columns | [string](#string) | repeated | The columns to profile; empty means every column of the table. At most 50. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ProfileColumnsResponse"></a>
+
+### ProfileColumnsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| column_profiles | [ColumnProfile](#metaxisdata-v1-ColumnProfile) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ProfileValue"></a>
+
+### ProfileValue
+ProfileValue is one frequent value of a low-cardinality column.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| value | [string](#string) |  |  |
+| count | [int64](#int64) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-QualityFilter"></a>
 
 ### QualityFilter
@@ -4194,6 +4658,38 @@ QualityFilterClause is one comparison in a QualityFilter.
 | column | [string](#string) |  |  |
 | op | [QualityFilterOperator](#metaxisdata-v1-QualityFilterOperator) |  |  |
 | values | [string](#string) | repeated | Unused by IS_NULL / IS_NOT_NULL, at most 100 values for IN / NOT_IN. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityIssue"></a>
+
+### QualityIssue
+QualityIssue is the durable problem behind a rule&#39;s failures. A rule has at
+most one unresolved issue; a later failing run touches it instead of opening
+another, and a resolved issue is never reopened.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityIssues/{quality_issue} |
+| rule | [string](#string) |  | Format: workspaces/{workspace}/qualityRules/{quality_rule} |
+| target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  | The target as it was when the issue was opened. |
+| status | [QualityIssueStatus](#metaxisdata-v1-QualityIssueStatus) |  |  |
+| severity | [QualitySeverity](#metaxisdata-v1-QualitySeverity) |  |  |
+| first_seen_run | [string](#string) |  | The run that opened the issue. Unset when it was opened without a run. |
+| last_seen_run | [string](#string) |  | The newest run that observed the problem again. |
+| first_seen_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| last_seen_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| resolved_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When the issue was resolved. Unset while it is open or acknowledged. |
+| resolution_reason | [QualityResolutionReason](#metaxisdata-v1-QualityResolutionReason) |  |  |
+| resolution_note | [string](#string) |  | The note recorded with the resolution. |
+| acknowledged_by | [string](#string) |  | Who acknowledged it. Format: users/{user}. Empty when never acknowledged. |
+| acknowledged_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| muted_until | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Issue-level mute: notifications are suppressed until it passes, while the rule keeps running and results keep being recorded. |
+| occurrence_count | [int32](#int32) |  | How many runs observed the problem while the issue was unresolved. |
 
 
 
@@ -4288,6 +4784,26 @@ behavior and the count/percent metric are shared by every type.
 
 
 
+<a name="metaxisdata-v1-QualityRuleDraftConfig"></a>
+
+### QualityRuleDraftConfig
+QualityRuleDraftConfig is one model-proposed rule, already validated into the
+typed config. It is never executed without a human saving it as a rule.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| config | [QualityRuleConfig](#metaxisdata-v1-QualityRuleConfig) |  |  |
+| severity | [QualitySeverity](#metaxisdata-v1-QualitySeverity) |  |  |
+| title | [string](#string) |  |  |
+| rationale | [string](#string) |  |  |
+| confidence | [double](#double) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-QualityRuleResult"></a>
 
 ### QualityRuleResult
@@ -4363,6 +4879,52 @@ QualityRunCounts is the six-state tally of one run.
 | error | [int32](#int32) |  |  |
 | skipped | [int32](#int32) |  |  |
 | not_evaluated | [int32](#int32) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualitySuggestion"></a>
+
+### QualitySuggestion
+QualitySuggestion is one model-proposed rule draft or semantic label waiting
+for a reviewer. Nothing here is a rule: accepting a suggestion goes through the
+normal rule or label path.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion} |
+| kind | [QualitySuggestionKind](#metaxisdata-v1-QualitySuggestionKind) |  |  |
+| source | [QualitySuggestionSource](#metaxisdata-v1-QualitySuggestionSource) |  |  |
+| target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  | The target the suggestion is about. |
+| payload | [QualitySuggestionPayload](#metaxisdata-v1-QualitySuggestionPayload) |  |  |
+| status | [QualitySuggestionStatus](#metaxisdata-v1-QualitySuggestionStatus) |  |  |
+| provider | [string](#string) |  | The model that produced it. |
+| model | [string](#string) |  |  |
+| prompt_version | [string](#string) |  |  |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| decided_by | [string](#string) |  | Who decided it. Format: users/{user}. Empty while pending. |
+| decide_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| decision_note | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualitySuggestionPayload"></a>
+
+### QualitySuggestionPayload
+QualitySuggestionPayload is the review-queue payload: a rule draft the reviewer
+can load into the editor, or a semantic label awaiting confirmation.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| rule | [QualityRuleDraftConfig](#metaxisdata-v1-QualityRuleDraftConfig) |  |  |
+| label | [SemanticLabelSuggestion](#metaxisdata-v1-SemanticLabelSuggestion) |  |  |
 
 
 
@@ -4564,6 +5126,44 @@ warn bound makes the rule report WARN before it reports FAIL.
 
 
 
+<a name="metaxisdata-v1-SemanticLabelEvidence"></a>
+
+### SemanticLabelEvidence
+SemanticLabelEvidence is why a label was assigned. It cites the inputs the
+labeler saw so a reviewer can check the reasoning without re-running it.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| columns | [string](#string) | repeated | Columns whose values or context the label derives from. |
+| metrics | [string](#string) | repeated | Profile facts such as &#34;null_rate=0.02&#34; or &#34;distinct=12&#34;. |
+| lineage | [string](#string) | repeated | Lineage relations that motivated the label, e.g. &#34;join key of orders&#34;. |
+| rationale | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-SemanticLabelSuggestion"></a>
+
+### SemanticLabelSuggestion
+SemanticLabelSuggestion is a model-proposed semantic label for one column.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| column | [string](#string) |  |  |
+| label | [QualitySemanticType](#metaxisdata-v1-QualitySemanticType) |  |  |
+| confidence | [double](#double) |  |  |
+| evidence | [SemanticLabelEvidence](#metaxisdata-v1-SemanticLabelEvidence) |  |  |
+| suggested_rule_types | [QualityRuleType](#metaxisdata-v1-QualityRuleType) | repeated | The rule types the deterministic mapping would suggest for this label, in display order. The model may rank types but may not invent one. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-StringLengthConfig"></a>
 
 ### StringLengthConfig
@@ -4577,6 +5177,75 @@ StringLengthConfig counts rows whose string length is outside the bounds.
 | max_len | [int64](#int64) | optional |  |
 | fail_threshold | [double](#double) | optional |  |
 | warn_threshold | [double](#double) | optional |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-SuggestColumnLabelsRequest"></a>
+
+### SuggestColumnLabelsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| table_guid | [string](#string) |  | The globally unique metadata GUID of the table. |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+| columns | [string](#string) | repeated | The columns to label; empty means every column of the table. At most 50. |
+| language | [string](#string) |  | The language the evidence and rationale are written in, e.g. &#34;en&#34; or &#34;zh-CN&#34;. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-SuggestColumnLabelsResponse"></a>
+
+### SuggestColumnLabelsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| quality_suggestions | [QualitySuggestion](#metaxisdata-v1-QualitySuggestion) | repeated | The queued label proposals, pending review. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-SuggestQualityRuleRequest"></a>
+
+### SuggestQualityRuleRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| table_guid | [string](#string) |  | The globally unique metadata GUID of the table. |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+| columns | [string](#string) | repeated | The columns the intent is about; empty means the rule may use any column. |
+| intent | [string](#string) |  | The natural-language intent, e.g. &#34;email must not be empty&#34;. |
+| language | [string](#string) |  | The language the intent and the draft are written in, e.g. &#34;en&#34; or &#34;zh-CN&#34;. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-SuggestQualityRuleResponse"></a>
+
+### SuggestQualityRuleResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| quality_suggestions | [QualitySuggestion](#metaxisdata-v1-QualitySuggestion) | repeated | The queued drafts, pending review. |
 
 
 
@@ -4622,6 +5291,58 @@ measured per threshold_metric; the default fail threshold is zero.
 
 
 
+<a name="metaxisdata-v1-UpdateColumnLabelRequest"></a>
+
+### UpdateColumnLabelRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| table_guid | [string](#string) |  | The globally unique metadata GUID of the table. |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+| column | [string](#string) |  |  |
+| label | [QualitySemanticType](#metaxisdata-v1-QualitySemanticType) |  | The label to accept. Required by ACCEPT and ignored by CLEAR. |
+| action | [ColumnLabelAction](#metaxisdata-v1-ColumnLabelAction) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-UpdateColumnLabelResponse"></a>
+
+### UpdateColumnLabelResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| column_label | [ColumnSemanticLabel](#metaxisdata-v1-ColumnSemanticLabel) |  | The stored label, unset after CLEAR. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-UpdateQualityIssueRequest"></a>
+
+### UpdateQualityIssueRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| issue | [QualityIssue](#metaxisdata-v1-QualityIssue) |  | The issue to update. Its name identifies it. |
+| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | The fields to change: status (RESOLVED only), resolution_reason, resolution_note, acknowledged or muted_until. |
+| acknowledged | [bool](#bool) |  | Whether to acknowledge the issue. Acknowledgement is an action rather than a stored field of QualityIssue, so the update mask path &#34;acknowledged&#34; reads this value; false is rejected because clearing an acknowledgement is not a supported transition. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-UpdateQualityRuleRequest"></a>
 
 ### UpdateQualityRuleRequest
@@ -4637,7 +5358,37 @@ measured per threshold_metric; the default fail threshold is zero.
 
 
 
+
+<a name="metaxisdata-v1-UpdateQualitySuggestionRequest"></a>
+
+### UpdateQualitySuggestionRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion} |
+| decision | [QualitySuggestionStatus](#metaxisdata-v1-QualitySuggestionStatus) |  | The decision: ACCEPTED or REJECTED. A suggestion starts PENDING and a decision is final. |
+| decision_note | [string](#string) |  | Why it was decided, shown in the review history. |
+
+
+
+
+
  
+
+
+<a name="metaxisdata-v1-ColumnLabelAction"></a>
+
+### ColumnLabelAction
+ColumnLabelAction is what UpdateColumnLabel does with one column&#39;s label.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| COLUMN_LABEL_ACTION_UNSPECIFIED | 0 |  |
+| COLUMN_LABEL_ACTION_ACCEPT | 1 | Store the given semantic label as a manually accepted one. |
+| COLUMN_LABEL_ACTION_CLEAR | 2 | Remove the column&#39;s label. |
+
 
 
 <a name="metaxisdata-v1-QualityComparison"></a>
@@ -4728,6 +5479,49 @@ QualityFilterOperator is one comparison in a rule&#39;s AND filter.
 
 
 
+<a name="metaxisdata-v1-QualityIssueStatus"></a>
+
+### QualityIssueStatus
+QualityIssueStatus is the lifecycle of a persistent problem behind a rule&#39;s
+failures. RESOLVED is terminal: the next failing run opens a new issue rather
+than reopening one.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_ISSUE_STATUS_UNSPECIFIED | 0 |  |
+| QUALITY_ISSUE_STATUS_OPEN | 1 |  |
+| QUALITY_ISSUE_STATUS_ACKNOWLEDGED | 2 |  |
+| QUALITY_ISSUE_STATUS_RESOLVED | 3 |  |
+
+
+
+<a name="metaxisdata-v1-QualityLabelSource"></a>
+
+### QualityLabelSource
+QualityLabelSource is who asserted a column&#39;s semantic label.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_LABEL_SOURCE_UNSPECIFIED | 0 |  |
+| QUALITY_LABEL_SOURCE_MANUAL | 1 |  |
+| QUALITY_LABEL_SOURCE_LLM | 2 |  |
+
+
+
+<a name="metaxisdata-v1-QualityLabelStatus"></a>
+
+### QualityLabelStatus
+QualityLabelStatus is whether a semantic label is in effect.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_LABEL_STATUS_UNSPECIFIED | 0 |  |
+| QUALITY_LABEL_STATUS_SUGGESTED | 1 |  |
+| QUALITY_LABEL_STATUS_ACCEPTED | 2 |  |
+| QUALITY_LABEL_STATUS_REJECTED | 3 |  |
+
+
+
 <a name="metaxisdata-v1-QualityObservedKind"></a>
 
 ### QualityObservedKind
@@ -4741,6 +5535,22 @@ QualityObservedKind is the unit of the observed value a result records.
 | QUALITY_OBSERVED_KIND_SECONDS | 3 |  |
 | QUALITY_OBSERVED_KIND_TIMESTAMP | 4 |  |
 | QUALITY_OBSERVED_KIND_NUMBER | 5 |  |
+
+
+
+<a name="metaxisdata-v1-QualityResolutionReason"></a>
+
+### QualityResolutionReason
+QualityResolutionReason is why an issue was closed.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_RESOLUTION_REASON_UNSPECIFIED | 0 |  |
+| QUALITY_RESOLUTION_REASON_FIXED | 1 |  |
+| QUALITY_RESOLUTION_REASON_EXPECTED | 2 |  |
+| QUALITY_RESOLUTION_REASON_NO_ACTION_NEEDED | 3 |  |
+| QUALITY_RESOLUTION_REASON_DUPLICATE | 4 |  |
+| QUALITY_RESOLUTION_REASON_AUTO_RECOVERED | 5 |  |
 
 
 
@@ -4814,6 +5624,36 @@ QualityRunTrigger is what started a run.
 
 
 
+<a name="metaxisdata-v1-QualitySemanticType"></a>
+
+### QualitySemanticType
+QualitySemanticType is the closed vocabulary a column may be labeled with. It
+is the input to the deterministic semantic-type-to-rule mapping, so a model may
+only choose from these values.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_SEMANTIC_TYPE_UNSPECIFIED | 0 |  |
+| QUALITY_SEMANTIC_TYPE_EMAIL | 1 |  |
+| QUALITY_SEMANTIC_TYPE_PHONE | 2 |  |
+| QUALITY_SEMANTIC_TYPE_URL | 3 |  |
+| QUALITY_SEMANTIC_TYPE_UUID | 4 |  |
+| QUALITY_SEMANTIC_TYPE_IP | 5 |  |
+| QUALITY_SEMANTIC_TYPE_COUNTRY_CODE | 6 |  |
+| QUALITY_SEMANTIC_TYPE_CURRENCY | 7 |  |
+| QUALITY_SEMANTIC_TYPE_AMOUNT | 8 |  |
+| QUALITY_SEMANTIC_TYPE_QUANTITY | 9 |  |
+| QUALITY_SEMANTIC_TYPE_PERCENTAGE | 10 |  |
+| QUALITY_SEMANTIC_TYPE_ID | 11 |  |
+| QUALITY_SEMANTIC_TYPE_BUSINESS_KEY | 12 |  |
+| QUALITY_SEMANTIC_TYPE_TIMESTAMP | 13 |  |
+| QUALITY_SEMANTIC_TYPE_DATE | 14 |  |
+| QUALITY_SEMANTIC_TYPE_ENUM | 15 |  |
+| QUALITY_SEMANTIC_TYPE_FREE_TEXT | 16 |  |
+| QUALITY_SEMANTIC_TYPE_UNKNOWN | 17 |  |
+
+
+
 <a name="metaxisdata-v1-QualitySeverity"></a>
 
 ### QualitySeverity
@@ -4843,6 +5683,46 @@ means the check could not be evaluated at all, FAIL means the data failed it.
 | QUALITY_STATUS_ERROR | 4 |  |
 | QUALITY_STATUS_SKIPPED | 5 |  |
 | QUALITY_STATUS_NOT_EVALUATED | 6 |  |
+
+
+
+<a name="metaxisdata-v1-QualitySuggestionKind"></a>
+
+### QualitySuggestionKind
+QualitySuggestionKind is what a suggestion proposes.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_SUGGESTION_KIND_UNSPECIFIED | 0 |  |
+| QUALITY_SUGGESTION_KIND_RULE_DRAFT | 1 |  |
+| QUALITY_SUGGESTION_KIND_LABEL | 2 |  |
+
+
+
+<a name="metaxisdata-v1-QualitySuggestionSource"></a>
+
+### QualitySuggestionSource
+QualitySuggestionSource is what produced a suggestion.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_SUGGESTION_SOURCE_UNSPECIFIED | 0 |  |
+| QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE | 1 |  |
+| QUALITY_SUGGESTION_SOURCE_PROFILE | 2 |  |
+
+
+
+<a name="metaxisdata-v1-QualitySuggestionStatus"></a>
+
+### QualitySuggestionStatus
+QualitySuggestionStatus is where a suggestion is in the review queue.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_SUGGESTION_STATUS_UNSPECIFIED | 0 |  |
+| QUALITY_SUGGESTION_STATUS_PENDING | 1 |  |
+| QUALITY_SUGGESTION_STATUS_ACCEPTED | 2 |  |
+| QUALITY_SUGGESTION_STATUS_REJECTED | 3 |  |
 
 
 
@@ -4887,6 +5767,20 @@ created asynchronously and polled until it finishes.
 | ListQualityRuns | [ListQualityRunsRequest](#metaxisdata-v1-ListQualityRunsRequest) | [ListQualityRunsResponse](#metaxisdata-v1-ListQualityRunsResponse) | List runs, newest first. |
 | GetQualityRun | [GetQualityRunRequest](#metaxisdata-v1-GetQualityRunRequest) | [QualityRun](#metaxisdata-v1-QualityRun) | Read one run with its six-state tallies. |
 | ListQualityRuleResults | [ListQualityRuleResultsRequest](#metaxisdata-v1-ListQualityRuleResultsRequest) | [ListQualityRuleResultsResponse](#metaxisdata-v1-ListQualityRuleResultsResponse) | List the per-rule results of runs, typically filtered by run. |
+| ListQualityIssues | [ListQualityIssuesRequest](#metaxisdata-v1-ListQualityIssuesRequest) | [ListQualityIssuesResponse](#metaxisdata-v1-ListQualityIssuesResponse) | List quality issues, newest first. |
+| GetQualityIssue | [GetQualityIssueRequest](#metaxisdata-v1-GetQualityIssueRequest) | [QualityIssue](#metaxisdata-v1-QualityIssue) | Read one quality issue. |
+| UpdateQualityIssue | [UpdateQualityIssueRequest](#metaxisdata-v1-UpdateQualityIssueRequest) | [QualityIssue](#metaxisdata-v1-QualityIssue) | Acknowledge, resolve or mute one quality issue. |
+| ListQualitySuggestions | [ListQualitySuggestionsRequest](#metaxisdata-v1-ListQualitySuggestionsRequest) | [ListQualitySuggestionsResponse](#metaxisdata-v1-ListQualitySuggestionsResponse) | List the review queue of model-proposed rule drafts and semantic labels, newest first. |
+| UpdateQualitySuggestion | [UpdateQualitySuggestionRequest](#metaxisdata-v1-UpdateQualitySuggestionRequest) | [QualitySuggestion](#metaxisdata-v1-QualitySuggestion) | Accept or reject one queued suggestion. A decision is final: the store refuses a second one. |
+| ListColumnProfiles | [ListColumnProfilesRequest](#metaxisdata-v1-ListColumnProfilesRequest) | [ListColumnProfilesResponse](#metaxisdata-v1-ListColumnProfilesResponse) | List the cached deterministic profiles of columns. Profiles are read-only measurements; there is no get or update. |
+| ListColumnLabels | [ListColumnLabelsRequest](#metaxisdata-v1-ListColumnLabelsRequest) | [ListColumnLabelsResponse](#metaxisdata-v1-ListColumnLabelsResponse) | List the semantic labels asserted on columns. |
+| UpdateColumnLabel | [UpdateColumnLabelRequest](#metaxisdata-v1-UpdateColumnLabelRequest) | [UpdateColumnLabelResponse](#metaxisdata-v1-UpdateColumnLabelResponse) | Accept a proposed semantic label or clear the label of one column. |
+| ProfileColumns | [ProfileColumnsRequest](#metaxisdata-v1-ProfileColumnsRequest) | [ProfileColumnsResponse](#metaxisdata-v1-ProfileColumnsResponse) | Measure the deterministic statistics of up to 50 columns of one table. |
+| SuggestQualityRule | [SuggestQualityRuleRequest](#metaxisdata-v1-SuggestQualityRuleRequest) | [SuggestQualityRuleResponse](#metaxisdata-v1-SuggestQualityRuleResponse) | Turn a natural-language intent into queued rule drafts. |
+| SuggestColumnLabels | [SuggestColumnLabelsRequest](#metaxisdata-v1-SuggestColumnLabelsRequest) | [SuggestColumnLabelsResponse](#metaxisdata-v1-SuggestColumnLabelsResponse) | Propose semantic labels for up to 50 columns of one table. |
+| ExplainQualityResult | [ExplainQualityResultRequest](#metaxisdata-v1-ExplainQualityResultRequest) | [ExplainQualityResultResponse](#metaxisdata-v1-ExplainQualityResultResponse) stream | Explain one failed result as a stream of hypotheses.
+
+No (google.api.http) annotation: this is a server-streaming method, and the REST gateway cannot carry one. The browser reaches the Connect endpoint directly, the way it does for ExplainSQL. |
 
  
 
@@ -5037,108 +5931,6 @@ Readable by every workspace member: the instance forms and the metadata filters 
 | CreateEnvironment | [CreateEnvironmentRequest](#metaxisdata-v1-CreateEnvironmentRequest) | [Environment](#metaxisdata-v1-Environment) | Create an environment. |
 | UpdateEnvironment | [UpdateEnvironmentRequest](#metaxisdata-v1-UpdateEnvironmentRequest) | [Environment](#metaxisdata-v1-Environment) | Update an environment. Only title, color and tags are mutable; the resource name (the id) is not. |
 | DeleteEnvironment | [DeleteEnvironmentRequest](#metaxisdata-v1-DeleteEnvironmentRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Delete an environment. An environment still assigned to a live instance cannot be deleted. |
-
- 
-
-
-
-<a name="v1_explain_sql_service-proto"></a>
-<p align="right"><a href="#top">Top</a></p>
-
-## v1/explain_sql_service.proto
-
-
-
-<a name="metaxisdata-v1-ExplainSQLMetadata"></a>
-
-### ExplainSQLMetadata
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| summary | [string](#string) |  |  |
-| provider | [string](#string) |  |  |
-| model | [string](#string) |  |  |
-| cache_key | [string](#string) |  |  |
-| from_cache | [bool](#bool) |  |  |
-| cache_created_at | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-ExplainSQLProgress"></a>
-
-### ExplainSQLProgress
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| type | [string](#string) |  |  |
-| turn | [int32](#int32) |  |  |
-| tool_name | [string](#string) |  |  |
-| tool_input | [string](#string) |  |  |
-| tool_output | [string](#string) |  |  |
-| tool_error | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-ExplainSQLRequest"></a>
-
-### ExplainSQLRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| meta_guid | [string](#string) |  |  |
-| sql_text | [string](#string) |  |  |
-| force_regenerate | [bool](#bool) |  |  |
-| provider_name | [string](#string) |  |  |
-| scope_prefix | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-ExplainSQLResponse"></a>
-
-### ExplainSQLResponse
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| content | [string](#string) |  |  |
-| metadata | [ExplainSQLMetadata](#metaxisdata-v1-ExplainSQLMetadata) |  |  |
-| progress | [ExplainSQLProgress](#metaxisdata-v1-ExplainSQLProgress) |  |  |
-
-
-
-
-
- 
-
- 
-
- 
-
-
-<a name="metaxisdata-v1-ExplainSQLService"></a>
-
-### ExplainSQLService
-
-
-| Method Name | Request Type | Response Type | Description |
-| ----------- | ------------ | ------------- | ------------|
-| ExplainSQL | [ExplainSQLRequest](#metaxisdata-v1-ExplainSQLRequest) | [ExplainSQLResponse](#metaxisdata-v1-ExplainSQLResponse) stream |  |
 
  
 

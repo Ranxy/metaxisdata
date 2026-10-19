@@ -132,6 +132,11 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 	budget.add(len(cfg.SystemPrompt))
 	budget.add(len(cfg.UserPrompt))
 
+	// usage accumulates over the turns the provider reported; a provider that
+	// reports nothing leaves it nil rather than claiming zero tokens.
+	var usage Usage
+	usageReported := false
+
 	messages := []AgentMessage{
 		{Role: "system", Content: cfg.SystemPrompt},
 		{Role: "user", Content: cfg.UserPrompt},
@@ -160,10 +165,17 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 
 		// 1. Call LLM — one turn.
 		llmMsgs := ConvertToLlm(messages)
-		assistantMsg, err := streamOneTurn(ctx, cfg, llmMsgs, ch)
+		assistantMsg, turnUsage, err := streamOneTurn(ctx, cfg, llmMsgs, ch)
 		if err != nil {
 			sendEvent(ctx, ch, AgentEvent{Type: AgentEventError, Error: err})
 			return
+		}
+		if turnUsage != nil {
+			usageReported = true
+			usage.add(turnUsage)
+			if !sendEvent(ctx, ch, AgentEvent{Type: AgentEventUsage, Turn: turn, Usage: turnUsage}) {
+				return
+			}
 		}
 		// An empty completion (an error page from a proxy, an empty content
 		// field) must not be returned or cached as an explanation.
@@ -178,7 +190,11 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 
 		// 2. No tool calls → agent is done.
 		if len(assistantMsg.ToolCalls) == 0 {
-			sendEvent(ctx, ch, AgentEvent{Type: AgentEventAgentEnd})
+			end := AgentEvent{Type: AgentEventAgentEnd}
+			if usageReported {
+				end.Usage = &usage
+			}
+			sendEvent(ctx, ch, end)
 			return
 		}
 
@@ -205,11 +221,12 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 				return
 			}
 
-			if err := appendMessage(AgentMessage{
+			toolResult := AgentMessage{
 				Role: "toolResult", ToolCallID: tc.ID,
 				ToolName: tc.Function.Name,
 				Content:  content,
-			}); err != nil {
+			}
+			if err := appendMessage(toolResult); err != nil {
 				sendEvent(ctx, ch, AgentEvent{Type: AgentEventError, Error: err})
 				return
 			}
@@ -225,26 +242,31 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 	})
 }
 
-// streamOneTurn calls the LLM once and returns the full assistant message.
-func streamOneTurn(ctx context.Context, cfg AgentConfig, llmMsgs []Message, ch chan<- AgentEvent) (AgentMessage, error) {
+// streamOneTurn calls the LLM once and returns the full assistant message and the
+// token usage the provider reported for this turn (nil when it reported none).
+func streamOneTurn(ctx context.Context, cfg AgentConfig, llmMsgs []Message, ch chan<- AgentEvent) (AgentMessage, *Usage, error) {
 	var (
 		fullContent strings.Builder
 		toolCalls   []ToolCall
+		turnUsage   *Usage
 	)
 
 	streamCh := streamRaw(ctx, cfg, llmMsgs)
 	for chunk := range streamCh {
 		if chunk.Error != nil {
-			return AgentMessage{}, chunk.Error
+			return AgentMessage{}, nil, chunk.Error
 		}
 		if chunk.Content != "" {
 			_, _ = fullContent.WriteString(chunk.Content)
 			if !sendEvent(ctx, ch, AgentEvent{Type: AgentEventContent, Content: chunk.Content}) {
-				return AgentMessage{}, ctx.Err()
+				return AgentMessage{}, nil, ctx.Err()
 			}
 		}
 		if len(chunk.ToolCalls) > 0 {
 			toolCalls = chunk.ToolCalls
+		}
+		if chunk.Usage != nil {
+			turnUsage = chunk.Usage
 		}
 		if chunk.Done {
 			break
@@ -255,7 +277,7 @@ func streamOneTurn(ctx context.Context, cfg AgentConfig, llmMsgs []Message, ch c
 		Role:      "assistant",
 		Content:   fullContent.String(),
 		ToolCalls: toolCalls,
-	}, nil
+	}, turnUsage, nil
 }
 
 // ---- Raw LLM Streaming (one request, no tool recursion) ----
@@ -263,8 +285,10 @@ func streamOneTurn(ctx context.Context, cfg AgentConfig, llmMsgs []Message, ch c
 type rawStreamChunk struct {
 	Content   string
 	ToolCalls []ToolCall
-	Done      bool
-	Error     error
+	// Usage is the token usage the provider reported for this turn, if any.
+	Usage *Usage
+	Done  bool
+	Error error
 }
 
 func streamRaw(ctx context.Context, cfg AgentConfig, messages []Message) <-chan rawStreamChunk {
@@ -279,12 +303,20 @@ func streamRaw(ctx context.Context, cfg AgentConfig, messages []Message) <-chan 
 		endpoint := strings.TrimRight(cfg.Provider.BaseURL, "/") + "/v1/chat/completions"
 
 		body := chatRequest{
-			Model:    cfg.Provider.ModelName,
-			Messages: messages,
-			Stream:   true,
+			Model:          cfg.Provider.ModelName,
+			Messages:       messages,
+			Stream:         true,
+			Temperature:    cfg.Temperature,
+			MaxTokens:      cfg.MaxTokens,
+			ResponseFormat: cfg.ResponseFormat,
 		}
 		if len(cfg.Tools) > 0 {
 			body.Tools = cfg.Tools
+		}
+		// Usage is only reported in the stream when it is requested; the field is
+		// opt-in because not every OpenAI-compatible gateway accepts it.
+		if cfg.IncludeUsage {
+			body.StreamOptions = &streamOptions{IncludeUsage: true}
 		}
 
 		reqBytes, err := json.Marshal(body)
@@ -347,14 +379,42 @@ func streamRaw(ctx context.Context, cfg AgentConfig, messages []Message) <-chan 
 	return ch
 }
 
-// parseStream decodes an OpenAI-compatible SSE stream as it is read. It returns
-// an error for a malformed chunk, a truncated response (finish_reason=length),
-// a stream that ends without a finish_reason, and a read failure.
+// parseStream decodes an OpenAI-compatible response as it is read. It handles the
+// SSE stream a compliant provider sends and the single completion object a gateway
+// that ignored stream=true sends instead.
+//
+// The scan keeps going after finish_reason: the usage object arrives in a chunk of
+// its own after the final choice, so a parser that stops at finish_reason never
+// sees it. The stream still ends at [DONE] or at EOF after a finish_reason; an EOF
+// without either is a dropped stream. It returns an error for a malformed chunk, a
+// truncated response (finish_reason=length), a stream that ends without a
+// finish_reason, and a read failure.
 func parseStream(ctx context.Context, body io.Reader, ch chan<- rawStreamChunk) error {
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, 64*1024), llmMaxSSELineBytes)
 
 	toolCallBufs := make(map[int]*toolCallAccum)
+	// A gateway may answer with one non-streaming completion object instead of SSE
+	// lines. Such a body is buffered here and decoded after it ends; only JSON
+	// lines are kept, so an SSE comment or an error page is not mistaken for one.
+	var nonStreaming strings.Builder
+	bufferingNonStreaming := false
+	sawSSE := false
+	var finishReason *string
+
+	// finish emits the accumulated tool calls (for a tool_calls finish) and the
+	// explicit end of stream, exactly once.
+	finish := func() error {
+		if finishReason != nil && *finishReason == "tool_calls" {
+			if !sendRaw(ctx, ch, rawStreamChunk{ToolCalls: buildAccumulatedToolCalls(toolCallBufs)}) {
+				return ctx.Err()
+			}
+		}
+		if !sendRaw(ctx, ch, rawStreamChunk{Done: true}) {
+			return ctx.Err()
+		}
+		return nil
+	}
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -364,12 +424,22 @@ func parseStream(ctx context.Context, body io.Reader, ch chan<- rawStreamChunk) 
 		// "[DONE]" is an explicit end of stream: the provider finished, even if
 		// it never set a finish_reason. An EOF without it is a dropped stream.
 		if line == "data: [DONE]" {
-			sendRaw(ctx, ch, rawStreamChunk{Done: true})
-			return nil
+			return finish()
 		}
 		if !strings.HasPrefix(line, "data: ") {
+			if !sawSSE && nonStreaming.Len() < llmMaxResponseBytes {
+				// The first line that looks like JSON starts the body; the rest of
+				// a pretty-printed object is buffered after it, continuation lines
+				// included.
+				if bufferingNonStreaming || strings.HasPrefix(line, "{") || strings.HasPrefix(line, "[") {
+					bufferingNonStreaming = true
+					_, _ = nonStreaming.WriteString(line)
+					_ = nonStreaming.WriteByte('\n')
+				}
+			}
 			continue
 		}
+		sawSSE = true
 
 		var chunk chatStreamChunk
 		if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &chunk); err != nil {
@@ -402,19 +472,23 @@ func parseStream(ctx context.Context, body io.Reader, ch chan<- rawStreamChunk) 
 				continue
 			}
 			switch *choice.FinishReason {
-			case "tool_calls":
-				if !sendRaw(ctx, ch, rawStreamChunk{ToolCalls: buildAccumulatedToolCalls(toolCallBufs)}) {
-					return ctx.Err()
-				}
-				sendRaw(ctx, ch, rawStreamChunk{Done: true})
-				return nil
-			case "stop":
-				sendRaw(ctx, ch, rawStreamChunk{Done: true})
-				return nil
 			case "length":
 				return errors.New("LLM response was truncated by the provider (finish_reason=length)")
+			case "stop", "tool_calls":
+				if finishReason == nil {
+					reason := *choice.FinishReason
+					finishReason = &reason
+				}
 			default:
 				return errors.Errorf("unexpected finish_reason %q from the LLM provider", *choice.FinishReason)
+			}
+		}
+
+		// The usage object arrives in a chunk with no choices, after the choice
+		// that carries the finish_reason.
+		if usage := chunk.Usage.usage(); usage != nil {
+			if !sendRaw(ctx, ch, rawStreamChunk{Usage: usage}) {
+				return ctx.Err()
 			}
 		}
 	}
@@ -425,7 +499,65 @@ func parseStream(ctx context.Context, body io.Reader, ch chan<- rawStreamChunk) 
 		}
 		return errors.Wrap(err, "failed to read the LLM response stream")
 	}
+	if finishReason != nil {
+		// A provider that closes the connection without [DONE] has still finished.
+		return finish()
+	}
+	if !sawSSE && nonStreaming.Len() > 0 {
+		return parseNonStreamingCompletion(ctx, nonStreaming.String(), ch)
+	}
 	return errors.New("LLM response stream ended without a finish_reason or [DONE]")
+}
+
+// parseNonStreamingCompletion decodes one complete chat completion into the same
+// chunk stream the SSE path emits. A provider that ignores stream=true used to
+// have its whole answer reported as a dropped stream.
+func parseNonStreamingCompletion(ctx context.Context, body string, ch chan<- rawStreamChunk) error {
+	var response chatCompletionResponse
+	if err := json.Unmarshal([]byte(body), &response); err != nil {
+		return errors.Wrap(err, "the LLM provider returned neither an SSE stream nor a completion object")
+	}
+	if len(response.Choices) == 0 {
+		return errors.New("the LLM provider returned no choices")
+	}
+	choice := response.Choices[0]
+	if choice.FinishReason != nil {
+		switch *choice.FinishReason {
+		case "length":
+			return errors.New("LLM response was truncated by the provider (finish_reason=length)")
+		case "stop", "tool_calls":
+		default:
+			return errors.Errorf("unexpected finish_reason %q from the LLM provider", *choice.FinishReason)
+		}
+	}
+	if choice.Message.Content != "" {
+		if !sendRaw(ctx, ch, rawStreamChunk{Content: choice.Message.Content}) {
+			return ctx.Err()
+		}
+	}
+	if len(choice.Message.ToolCalls) > 0 {
+		// A non-streaming response carries complete tool calls, so there is
+		// nothing to accumulate across chunks.
+		calls := make([]ToolCall, 0, len(choice.Message.ToolCalls))
+		for _, tc := range choice.Message.ToolCalls {
+			call := ToolCall{ID: tc.ID, Type: tc.Type}
+			call.Function.Name = tc.Function.Name
+			call.Function.Arguments = tc.Function.Arguments
+			calls = append(calls, call)
+		}
+		if !sendRaw(ctx, ch, rawStreamChunk{ToolCalls: calls}) {
+			return ctx.Err()
+		}
+	}
+	if usage := response.Usage.usage(); usage != nil {
+		if !sendRaw(ctx, ch, rawStreamChunk{Usage: usage}) {
+			return ctx.Err()
+		}
+	}
+	if !sendRaw(ctx, ch, rawStreamChunk{Done: true}) {
+		return ctx.Err()
+	}
+	return nil
 }
 
 // buildAccumulatedToolCalls returns the accumulated tool calls ordered by their

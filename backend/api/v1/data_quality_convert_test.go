@@ -8,6 +8,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -517,4 +518,341 @@ func TestDurationFromMilliseconds(t *testing.T) {
 	require.Equal(t, 1500*time.Millisecond, durationFromMilliseconds(1500).AsDuration())
 	require.Equal(t, time.Duration(0), durationFromMilliseconds(0).AsDuration())
 	require.Equal(t, durationpb.New(2*time.Second).AsDuration(), durationFromMilliseconds(2000).AsDuration())
+}
+
+func TestConvertQualityIssue(t *testing.T) {
+	t.Parallel()
+
+	firstSeenAt := time.Date(2026, time.October, 1, 8, 0, 0, 0, time.UTC)
+	lastSeenAt := firstSeenAt.Add(48 * time.Hour)
+	resolvedAt := lastSeenAt.Add(time.Hour)
+	acknowledgedAt := firstSeenAt.Add(2 * time.Hour)
+	mutedUntil := lastSeenAt.Add(24 * time.Hour)
+	issue := &store.QualityIssueMessage{
+		ID:               5,
+		ResourceID:       "issue123",
+		RuleID:           7,
+		TargetGUID:       "instance_1;shop;public;orders",
+		TargetType:       storepb.MetaType_TABLE,
+		Status:           storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_RESOLVED,
+		Severity:         storepb.QualitySeverity_QUALITY_SEVERITY_ERROR,
+		FirstSeenRunID:   qualityTestPtr(int64(11)),
+		LastSeenRunID:    qualityTestPtr(int64(12)),
+		FirstSeenAt:      firstSeenAt,
+		LastSeenAt:       lastSeenAt,
+		ResolvedAt:       &resolvedAt,
+		ResolutionReason: storepb.QualityResolutionReason_QUALITY_RESOLUTION_REASON_FIXED,
+		ResolutionNote:   "backfilled by hand",
+		AcknowledgedBy:   qualityTestPtr(int32(9)),
+		AcknowledgedAt:   &acknowledgedAt,
+		MutedUntil:       &mutedUntil,
+		OccurrenceCount:  3,
+	}
+	runNames := map[int64]string{
+		11: "workspaces/ws1/qualityRuns/run11",
+		12: "workspaces/ws1/qualityRuns/run12",
+	}
+
+	converted := convertQualityIssue("ws1", issue, "workspaces/ws1/qualityRules/rule123", runNames)
+	require.NotNil(t, converted)
+	require.Equal(t, "workspaces/ws1/qualityIssues/issue123", converted.GetName())
+	require.Equal(t, "workspaces/ws1/qualityRules/rule123", converted.GetRule())
+	require.Equal(t, "instance_1;shop;public;orders", converted.GetTarget().GetMetaGuid())
+	require.Equal(t, v1pb.MetaType_TABLE, converted.GetTarget().GetMetaType())
+	require.Equal(t, v1pb.QualityIssueStatus_QUALITY_ISSUE_STATUS_RESOLVED, converted.GetStatus())
+	require.Equal(t, v1pb.QualitySeverity_QUALITY_SEVERITY_ERROR, converted.GetSeverity())
+	require.Equal(t, "workspaces/ws1/qualityRuns/run11", converted.GetFirstSeenRun())
+	require.Equal(t, "workspaces/ws1/qualityRuns/run12", converted.GetLastSeenRun())
+	require.Equal(t, firstSeenAt, converted.GetFirstSeenTime().AsTime())
+	require.Equal(t, lastSeenAt, converted.GetLastSeenTime().AsTime())
+	require.Equal(t, resolvedAt, converted.GetResolvedTime().AsTime())
+	require.Equal(t, v1pb.QualityResolutionReason_QUALITY_RESOLUTION_REASON_FIXED, converted.GetResolutionReason())
+	require.Equal(t, "backfilled by hand", converted.GetResolutionNote())
+	require.Equal(t, "users/9", converted.GetAcknowledgedBy())
+	require.Equal(t, acknowledgedAt, converted.GetAcknowledgedTime().AsTime())
+	require.Equal(t, mutedUntil, converted.GetMutedUntil().AsTime())
+	require.Equal(t, int32(3), converted.GetOccurrenceCount())
+
+	// Nullable foreign keys and timestamps stay unset, not zero-valued.
+	open := convertQualityIssue("ws1", &store.QualityIssueMessage{
+		ResourceID:  "issue456",
+		RuleID:      7,
+		Status:      storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_OPEN,
+		FirstSeenAt: firstSeenAt,
+		LastSeenAt:  firstSeenAt,
+	}, "", nil)
+	require.Empty(t, open.GetFirstSeenRun())
+	require.Empty(t, open.GetLastSeenRun())
+	require.Nil(t, open.GetResolvedTime())
+	require.Nil(t, open.GetAcknowledgedTime())
+	require.Nil(t, open.GetMutedUntil())
+	require.Empty(t, open.GetAcknowledgedBy())
+	require.Nil(t, convertQualityIssue("ws1", nil, "", nil))
+}
+
+func TestQualityIssueResourceName(t *testing.T) {
+	t.Parallel()
+
+	workspace, issueID, err := parseQualityIssueName("workspaces/ws1/qualityIssues/issue123")
+	require.NoError(t, err)
+	require.Equal(t, "ws1", workspace)
+	require.Equal(t, "issue123", issueID)
+
+	for _, name := range []string{
+		"",
+		"qualityIssues/issue123",
+		"workspaces/ws1/qualityIssues",
+		"workspaces/ws1/qualityIssues/issue123/extra",
+		"workspaces/ws1/qualityIssues/",
+		"workspaces/ws1/qualityRules/rule123",
+	} {
+		_, _, err := parseQualityIssueName(name)
+		require.Error(t, err, "name %q", name)
+	}
+	require.Equal(t, "workspaces/ws1/qualityIssues/issue123", formatQualityIssueName("ws1", "issue123"))
+}
+
+// TestResolveCreateScheduleInterval pins that a new rule without an interval takes
+// the workspace default instead of being rejected, while an explicit interval wins.
+func TestResolveCreateScheduleInterval(t *testing.T) {
+	t.Parallel()
+
+	settings := dataquality.Settings{DefaultScheduleInterval: 2 * time.Hour}
+	require.Equal(t, 30*time.Minute, resolveCreateScheduleInterval(30*time.Minute, settings))
+	require.Equal(t, 2*time.Hour, resolveCreateScheduleInterval(0, settings))
+}
+
+func TestQualitySuggestionPayloadRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	ruleDraft := &storepb.QualitySuggestionPayload{Payload: &storepb.QualitySuggestionPayload_Rule{
+		Rule: &storepb.QualityRuleDraftConfig{
+			Config: &storepb.QualityRuleConfig{
+				Config: &storepb.QualityRuleConfig_NullPercent{NullPercent: &storepb.NullPercentConfig{
+					Column:     "email",
+					MaxNullPct: qualityTestPtr(0.5),
+				}},
+				ThresholdMetric: storepb.QualityThresholdMetric_QUALITY_THRESHOLD_METRIC_PERCENT,
+				OnEmpty:         storepb.QualityEmptyBehavior_QUALITY_EMPTY_BEHAVIOR_NOT_EVALUATED,
+				Filter: &storepb.QualityFilter{Clauses: []*storepb.QualityFilterClause{
+					{Column: "dt", Op: storepb.QualityFilterOperator_QUALITY_FILTER_OPERATOR_GTE, Values: []string{"2026-01-01"}},
+				}},
+			},
+			Severity:   storepb.QualitySeverity_QUALITY_SEVERITY_ERROR,
+			Title:      "email must not be empty",
+			Rationale:  "the column is the contact address",
+			Confidence: 0.82,
+		},
+	}}
+	label := &storepb.QualitySuggestionPayload{Payload: &storepb.QualitySuggestionPayload_Label{
+		Label: &storepb.SemanticLabelSuggestion{
+			Column:     "email",
+			Label:      storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_EMAIL,
+			Confidence: 0.91,
+			Evidence: &storepb.SemanticLabelEvidence{
+				Columns:   []string{"customer_id"},
+				Metrics:   []string{"null_rate=0.01"},
+				Lineage:   []string{"join key of orders"},
+				Rationale: "values look like addresses",
+			},
+			SuggestedRuleTypes: []storepb.QualityRuleType{
+				storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
+				storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+			},
+		},
+	}}
+
+	for name, payload := range map[string]*storepb.QualitySuggestionPayload{
+		"rule_draft": ruleDraft,
+		"label":      label,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			public := convertQualitySuggestionPayloadToV1(payload)
+			require.NotNil(t, public)
+			require.NotNil(t, public.GetPayload())
+			roundTripped := convertQualitySuggestionPayloadFromV1(public)
+			require.True(t, proto.Equal(payload, roundTripped),
+				"round trip changed the payload: %v", roundTripped)
+		})
+	}
+
+	require.Nil(t, convertQualitySuggestionPayloadToV1(nil))
+	require.Nil(t, convertQualitySuggestionPayloadFromV1(nil))
+}
+
+func TestColumnProfileStatsRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	stats := &storepb.ColumnProfile{
+		TotalRows:         12000,
+		NullCount:         12,
+		DistinctCount:     950,
+		DistinctEstimated: true,
+		MinValue:          "a",
+		MaxValue:          "zzz",
+		MinLength:         qualityTestPtr(int64(1)),
+		MaxLength:         qualityTestPtr(int64(64)),
+		TopValues: []*storepb.ProfileValue{
+			{Value: "open", Count: 8000},
+			{Value: "closed", Count: 4000},
+		},
+		Patterns: []string{"alpha", "mixed"},
+	}
+	public := convertColumnProfileStatsToV1(stats)
+	require.NotNil(t, public)
+	require.True(t, public.GetDistinctEstimated())
+	require.Equal(t, int64(64), public.GetMaxLength())
+	require.Len(t, public.GetTopValues(), 2)
+	require.Equal(t, int64(8000), public.GetTopValues()[0].GetCount())
+	require.True(t, proto.Equal(stats, convertColumnProfileStatsFromV1(public)))
+
+	// A nullable bound that is unset must stay unset through the round trip.
+	sparse := &storepb.ColumnProfile{TotalRows: 1}
+	sparsePublic := convertColumnProfileStatsToV1(sparse)
+	require.Nil(t, sparsePublic.MinLength)
+	require.Nil(t, sparsePublic.MaxLength)
+	require.True(t, proto.Equal(sparse, convertColumnProfileStatsFromV1(sparsePublic)))
+
+	require.Nil(t, convertColumnProfileStatsToV1(nil))
+	require.Nil(t, convertColumnProfileStatsFromV1(nil))
+}
+
+func TestConvertColumnProfile(t *testing.T) {
+	t.Parallel()
+
+	profiledAt := time.Date(2026, time.October, 10, 8, 0, 0, 0, time.UTC)
+	profile := &store.ColumnProfileMessage{
+		TableGUID:     "instance_1;shop;public;orders",
+		TableType:     storepb.MetaType_TABLE,
+		ColumnName:    "email",
+		Profile:       &storepb.ColumnProfile{TotalRows: 100, NullCount: 2},
+		SampleMethod:  "sample",
+		SampleRows:    1000,
+		Truncated:     true,
+		EngineVersion: "profiler.v1",
+		ProfiledAt:    profiledAt,
+	}
+	converted := convertColumnProfileToV1(profile)
+	require.NotNil(t, converted)
+	require.Equal(t, "instance_1;shop;public;orders", converted.GetTableGuid())
+	require.Equal(t, v1pb.MetaType_TABLE, converted.GetMetaType())
+	require.Equal(t, "email", converted.GetColumn())
+	require.Equal(t, int64(100), converted.GetProfile().GetTotalRows())
+	require.Equal(t, "sample", converted.GetSampleMethod())
+	require.Equal(t, int64(1000), converted.GetSampleRows())
+	require.True(t, converted.GetTruncated())
+	require.Equal(t, "profiler.v1", converted.GetEngineVersion())
+	require.Equal(t, profiledAt, converted.GetProfiledAt().AsTime())
+	require.Nil(t, convertColumnProfileToV1(nil))
+}
+
+func TestConvertColumnSemanticLabel(t *testing.T) {
+	t.Parallel()
+
+	acceptedAt := time.Date(2026, time.October, 10, 8, 0, 0, 0, time.UTC)
+	updatedAt := acceptedAt.Add(time.Hour)
+	label := &store.ColumnSemanticLabelMessage{
+		TableGUID:  "instance_1;shop;public;orders",
+		TableType:  storepb.MetaType_TABLE,
+		ColumnName: "email",
+		Label:      storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_EMAIL,
+		Source:     storepb.QualityLabelSource_QUALITY_LABEL_SOURCE_LLM,
+		Status:     storepb.QualityLabelStatus_QUALITY_LABEL_STATUS_ACCEPTED,
+		Confidence: 0.9,
+		Evidence: &storepb.SemanticLabelEvidence{
+			Metrics:   []string{"null_rate=0.01"},
+			Rationale: "address shape",
+		},
+		AcceptedBy: qualityTestPtr(int32(9)),
+		AcceptedAt: &acceptedAt,
+		UpdatedAt:  updatedAt,
+	}
+	converted := convertColumnSemanticLabelToV1(label)
+	require.NotNil(t, converted)
+	require.Equal(t, v1pb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_EMAIL, converted.GetLabel())
+	require.Equal(t, v1pb.QualityLabelSource_QUALITY_LABEL_SOURCE_LLM, converted.GetSource())
+	require.Equal(t, v1pb.QualityLabelStatus_QUALITY_LABEL_STATUS_ACCEPTED, converted.GetStatus())
+	require.Equal(t, 0.9, converted.GetConfidence())
+	require.Equal(t, "address shape", converted.GetEvidence().GetRationale())
+	require.Equal(t, "users/9", converted.GetAcceptedBy())
+	require.Equal(t, acceptedAt, converted.GetAcceptedTime().AsTime())
+	require.Equal(t, updatedAt, converted.GetUpdateTime().AsTime())
+
+	// A label without acceptance metadata keeps the nullable fields unset.
+	pending := convertColumnSemanticLabelToV1(&store.ColumnSemanticLabelMessage{
+		TableGUID: "guid", TableType: storepb.MetaType_TABLE, ColumnName: "c",
+		Label:  storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_ID,
+		Source: storepb.QualityLabelSource_QUALITY_LABEL_SOURCE_MANUAL,
+		Status: storepb.QualityLabelStatus_QUALITY_LABEL_STATUS_SUGGESTED,
+	})
+	require.Empty(t, pending.GetAcceptedBy())
+	require.Nil(t, pending.GetAcceptedTime())
+	require.Nil(t, convertColumnSemanticLabelToV1(nil))
+}
+
+func TestConvertQualitySuggestion(t *testing.T) {
+	t.Parallel()
+
+	createdAt := time.Date(2026, time.October, 10, 8, 0, 0, 0, time.UTC)
+	decidedAt := createdAt.Add(time.Hour)
+	suggestion := &store.QualitySuggestionMessage{
+		ID:         3,
+		ResourceID: "suggestion123",
+		Kind:       storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_LABEL,
+		Source:     storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_PROFILE,
+		TargetGUID: "instance_1;shop;public;orders",
+		TargetType: storepb.MetaType_TABLE,
+		Payload: &storepb.QualitySuggestionPayload{Payload: &storepb.QualitySuggestionPayload_Label{
+			Label: &storepb.SemanticLabelSuggestion{Column: "email"},
+		}},
+		Status:        storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED,
+		Provider:      "openai",
+		Model:         "gpt-4.1",
+		PromptVersion: "dq.column_label.v1",
+		CreatedAt:     createdAt,
+		DecidedBy:     qualityTestPtr(int32(9)),
+		DecidedAt:     &decidedAt,
+		DecisionNote:  "matches the schema comment",
+	}
+	converted := convertQualitySuggestion("ws1", suggestion)
+	require.NotNil(t, converted)
+	require.Equal(t, "workspaces/ws1/qualitySuggestions/suggestion123", converted.GetName())
+	require.Equal(t, v1pb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_LABEL, converted.GetKind())
+	require.Equal(t, v1pb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_PROFILE, converted.GetSource())
+	require.Equal(t, "instance_1;shop;public;orders", converted.GetTarget().GetMetaGuid())
+	require.Equal(t, "email", converted.GetPayload().GetLabel().GetColumn())
+	require.Equal(t, v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED, converted.GetStatus())
+	require.Equal(t, "openai", converted.GetProvider())
+	require.Equal(t, "gpt-4.1", converted.GetModel())
+	require.Equal(t, "dq.column_label.v1", converted.GetPromptVersion())
+	require.Equal(t, createdAt, converted.GetCreateTime().AsTime())
+	require.Equal(t, "users/9", converted.GetDecidedBy())
+	require.Equal(t, decidedAt, converted.GetDecideTime().AsTime())
+	require.Equal(t, "matches the schema comment", converted.GetDecisionNote())
+	require.Nil(t, convertQualitySuggestion("ws1", nil))
+}
+
+func TestQualitySuggestionResourceName(t *testing.T) {
+	t.Parallel()
+
+	workspace, suggestionID, err := parseQualitySuggestionName("workspaces/ws1/qualitySuggestions/suggestion123")
+	require.NoError(t, err)
+	require.Equal(t, "ws1", workspace)
+	require.Equal(t, "suggestion123", suggestionID)
+
+	for _, name := range []string{
+		"",
+		"qualitySuggestions/suggestion123",
+		"workspaces/ws1/qualitySuggestions",
+		"workspaces/ws1/qualitySuggestions/",
+		"workspaces/ws1/qualitySuggestions/suggestion123/extra",
+		"workspaces/ws1/qualityRules/rule123",
+	} {
+		_, _, err := parseQualitySuggestionName(name)
+		require.Error(t, err, "name %q", name)
+	}
+	require.Equal(t,
+		"workspaces/ws1/qualitySuggestions/suggestion123",
+		formatQualitySuggestionName("ws1", "suggestion123"))
 }

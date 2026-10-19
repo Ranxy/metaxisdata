@@ -70,6 +70,11 @@ type QualityIssueMessage struct {
 type FindQualityIssueMessage struct {
 	ResourceID *string
 	RuleID     *int64
+	// RuleIDs keeps only issues of the listed rules. It is how the API resolves an
+	// owner filter: ownership lives on the rule, not on the issue, so the handler
+	// reads the owner's rules first and passes their ids here. An empty slice adds
+	// no predicate; it is ANDed with RuleID, so passing both requires both.
+	RuleIDs    []int64
 	Statuses   []storepb.QualityIssueStatus
 	OpenOnly   bool
 	Severities []storepb.QualitySeverity
@@ -180,6 +185,10 @@ func buildQualityIssueWhere(find *FindQualityIssueMessage) ([]string, []any) {
 	if v := find.RuleID; v != nil {
 		where = append(where, fmt.Sprintf("rule_id = $%d", len(args)+1))
 		args = append(args, *v)
+	}
+	if len(find.RuleIDs) > 0 {
+		where = append(where, fmt.Sprintf("rule_id = ANY($%d::bigint[])", len(args)+1))
+		args = append(args, pq.Array(find.RuleIDs))
 	}
 	if len(find.Statuses) > 0 {
 		statuses := make([]int32, 0, len(find.Statuses))
@@ -532,12 +541,15 @@ func (s *Store) ResolveQualityIssue(ctx context.Context, issueID int64, reason s
 	return s.qualityIssueEnsureResolved(ctx, issueID)
 }
 
-// qualityIssueAcknowledgeStatement marks an issue acknowledged. The status guard keeps
-// a resolved issue's resolution intact: acknowledging a resolved issue is a no-op.
+// qualityIssueAcknowledgeStatement marks an issue acknowledged. The status guard
+// lists what an acknowledgement may act on rather than what it may not: an issue is
+// either OPEN or ACKNOWLEDGED, and a RESOLVED one keeps its resolution. The earlier
+// `status <> ACKNOWLEDGED` form let a resolved issue be resurrected, because
+// RESOLVED differs from ACKNOWLEDGED.
 const qualityIssueAcknowledgeStatement = `
 	UPDATE quality_issue
 	SET status = $1, acknowledged_by = $2, acknowledged_at = $3, updated_at = $3
-	WHERE id = $4 AND status <> $1
+	WHERE id = $4 AND status IN ($5, $1)
 	RETURNING id
 `
 
@@ -557,6 +569,7 @@ func (s *Store) AcknowledgeQualityIssue(ctx context.Context, issueID int64, prin
 
 	result, err := s.GetDB().ExecContext(ctx, qualityIssueAcknowledgeStatement,
 		int16(storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_ACKNOWLEDGED), principalID, at, issueID,
+		int16(storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_OPEN),
 	)
 	if err != nil {
 		return errors.Wrapf(err, "failed to acknowledge quality issue %d", issueID)

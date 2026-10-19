@@ -293,3 +293,291 @@ func TestErrorCodeAndMessageMapsRunnerLevelFailures(t *testing.T) {
 	require.Equal(t, dataquality.ErrCodeExecution, code)
 	require.Equal(t, "the target refused the statement", message)
 }
+
+func qualityPtr[T any](value T) *T {
+	return &value
+}
+
+// qualityExecutionStub is one evaluated FAIL execution with every input the
+// problem ledger and the notification builders read.
+func qualityExecutionStub(status storepb.QualityStatus) *ruleExecution {
+	observed := 7.0
+	previous := storepb.QualityStatus_QUALITY_STATUS_FAIL
+	return &ruleExecution{
+		result: &store.QualityRuleResultMessage{
+			RunID:         11,
+			RuleID:        7,
+			RuleRevision:  2,
+			TargetGUID:    "inst;db;public;orders",
+			TargetType:    storepb.MetaType_TABLE,
+			Status:        status,
+			ObservedValue: &observed,
+			ObservedKind:  storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT,
+			FailedRows:    7,
+			TotalRows:     20,
+		},
+		head: &store.QualityRuleMessage{
+			ID:         7,
+			ResourceID: "rule1",
+			Title:      "orders status must not be null",
+			Severity:   storepb.QualitySeverity_QUALITY_SEVERITY_ERROR,
+			OwnerID:    qualityPtr(int32(9)),
+		},
+		snapshot: &dataquality.RuleSnapshot{
+			ID:       7,
+			Revision: 2,
+			Severity: storepb.QualitySeverity_QUALITY_SEVERITY_ERROR,
+			Target: dataquality.Target{
+				GUID:     "inst;db;public;orders",
+				MetaType: storepb.MetaType_TABLE,
+				Path: &storepb.QualityTargetPath{
+					Instance: "inst1",
+					Database: "db1",
+					Object:   "orders",
+					Column:   "status",
+				},
+			},
+		},
+		previous: &previous,
+	}
+}
+
+// A problem transition goes to the owner that must act on it, falling back to
+// the administrators; an execution failure and a storm summary go to the
+// administrators only (design §8.2).
+func TestQualityNotificationRecipient(t *testing.T) {
+	t.Parallel()
+
+	opened := storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED
+	recovered := storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED
+	executionFailed := storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED
+	storm := storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY
+
+	for _, kind := range []storepb.DataQualityNotificationKind{opened, recovered} {
+		recipientID, toAdmins := qualityNotificationRecipient(kind, qualityPtr(int32(9)))
+		require.False(t, toAdmins)
+		require.Equal(t, int32(9), recipientID)
+
+		recipientID, toAdmins = qualityNotificationRecipient(kind, nil)
+		require.True(t, toAdmins)
+		require.Zero(t, recipientID)
+
+		recipientID, toAdmins = qualityNotificationRecipient(kind, qualityPtr(int32(0)))
+		require.True(t, toAdmins)
+		require.Zero(t, recipientID)
+	}
+
+	for _, kind := range []storepb.DataQualityNotificationKind{executionFailed, storm} {
+		// The rule's owner still gets an administrator-only alert: the owner sees
+		// the failed execution on the run page, not in their inbox.
+		recipientID, toAdmins := qualityNotificationRecipient(kind, qualityPtr(int32(9)))
+		require.True(t, toAdmins)
+		require.Zero(t, recipientID)
+
+		recipientID, toAdmins = qualityNotificationRecipient(kind, nil)
+		require.True(t, toAdmins)
+		require.Zero(t, recipientID)
+	}
+
+	recipientID, toAdmins := qualityNotificationRecipient(
+		storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_UNSPECIFIED, qualityPtr(int32(9)))
+	require.True(t, toAdmins)
+	require.Zero(t, recipientID)
+}
+
+func TestQualityRuleMutedOnlyWhileTheWindowIsOpen(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.October, 19, 10, 0, 0, 0, time.UTC)
+	require.False(t, qualityRuleMuted(nil, now))
+	require.False(t, qualityRuleMuted(&store.QualityRuleMessage{}, now))
+	require.True(t, qualityRuleMuted(&store.QualityRuleMessage{MuteUntil: qualityPtr(now.Add(time.Hour))}, now))
+	require.False(t, qualityRuleMuted(&store.QualityRuleMessage{MuteUntil: qualityPtr(now.Add(-time.Hour))}, now))
+	// A mute that expires exactly now is over.
+	require.False(t, qualityRuleMuted(&store.QualityRuleMessage{MuteUntil: &now}, now))
+}
+
+func TestQualityIssueMutedOnlyWhileTheWindowIsOpen(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.October, 19, 10, 0, 0, 0, time.UTC)
+	require.False(t, qualityIssueMuted(nil, now))
+	require.True(t, qualityIssueMuted(&store.QualityIssueMessage{MutedUntil: qualityPtr(now.Add(time.Hour))}, now))
+	require.False(t, qualityIssueMuted(&store.QualityIssueMessage{MutedUntil: qualityPtr(now.Add(-time.Hour))}, now))
+}
+
+func TestQualityNotificationSeverityMapping(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_WARNING,
+		qualityNotificationSeverity(storepb.QualitySeverity_QUALITY_SEVERITY_WARNING))
+	require.Equal(t, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR,
+		qualityNotificationSeverity(storepb.QualitySeverity_QUALITY_SEVERITY_ERROR))
+	// The notification envelope has no CRITICAL level; critical failures are errors.
+	require.Equal(t, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR,
+		qualityNotificationSeverity(storepb.QualitySeverity_QUALITY_SEVERITY_CRITICAL))
+	require.Equal(t, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_WARNING,
+		qualityNotificationSeverity(storepb.QualitySeverity_QUALITY_SEVERITY_UNSPECIFIED))
+}
+
+func TestQualityObservedUnit(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "rows", qualityObservedUnit(storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT))
+	require.Equal(t, "%", qualityObservedUnit(storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_RATIO))
+	require.Equal(t, "s", qualityObservedUnit(storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_SECONDS))
+	require.Equal(t, "timestamp", qualityObservedUnit(storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_TIMESTAMP))
+	require.Empty(t, qualityObservedUnit(storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_NUMBER))
+	require.Empty(t, qualityObservedUnit(storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_UNSPECIFIED))
+}
+
+func TestQualityTargetDisplayPath(t *testing.T) {
+	t.Parallel()
+
+	require.Empty(t, qualityTargetDisplayPath(nil))
+	require.Equal(t, "inst1/db1/public/orders.status", qualityTargetDisplayPath(&storepb.QualityTargetPath{
+		Instance: "inst1",
+		Database: "db1",
+		Schema:   "public",
+		Object:   "orders",
+		Column:   "status",
+	}))
+	// The MySQL family has no schema segment; it must not leave an empty part.
+	require.Equal(t, "inst1/db1/orders", qualityTargetDisplayPath(&storepb.QualityTargetPath{
+		Instance: "inst1",
+		Database: "db1",
+		Object:   "orders",
+	}))
+}
+
+// Only FAIL results make a storm: a run that could not execute its rules is a
+// different alert, and it must not merge into the data-quality summary.
+func TestIsQualityRunStorm(t *testing.T) {
+	t.Parallel()
+
+	results := func(statuses ...storepb.QualityStatus) []*store.QualityRuleResultMessage {
+		out := make([]*store.QualityRuleResultMessage, 0, len(statuses))
+		for _, status := range statuses {
+			out = append(out, qualityResultStub(status))
+		}
+		return out
+	}
+
+	atThreshold := make([]storepb.QualityStatus, 0, QualityStormThreshold)
+	for range QualityStormThreshold {
+		atThreshold = append(atThreshold, storepb.QualityStatus_QUALITY_STATUS_FAIL)
+	}
+	require.False(t, isQualityRunStorm(results(atThreshold...)))
+
+	overThreshold := make([]storepb.QualityStatus, 0, len(atThreshold)+1)
+	overThreshold = append(overThreshold, atThreshold...)
+	overThreshold = append(overThreshold, storepb.QualityStatus_QUALITY_STATUS_FAIL)
+	require.True(t, isQualityRunStorm(results(overThreshold...)))
+
+	errors := make([]storepb.QualityStatus, 0, QualityStormThreshold+1)
+	for range QualityStormThreshold + 1 {
+		errors = append(errors, storepb.QualityStatus_QUALITY_STATUS_ERROR)
+	}
+	require.False(t, isQualityRunStorm(results(errors...)))
+
+	mixed := make([]storepb.QualityStatus, 0, len(errors))
+	mixed = append(mixed, errors[1:]...)
+	mixed = append(mixed, storepb.QualityStatus_QUALITY_STATUS_FAIL)
+	require.False(t, isQualityRunStorm(results(mixed...)))
+}
+
+func TestBuildDataQualityDetailForAnOpenedIssue(t *testing.T) {
+	t.Parallel()
+
+	execution := qualityExecutionStub(storepb.QualityStatus_QUALITY_STATUS_FAIL)
+	detail := buildDataQualityDetail(dataQualityDetailInput{
+		workspaceID:     "ws1",
+		kind:            storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED,
+		execution:       execution,
+		issueResourceID: "issue1",
+		runResourceName: "workspaces/ws1/qualityRuns/run1",
+	})
+
+	require.Equal(t, storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED, detail.GetKind())
+	require.Equal(t, "workspaces/ws1/qualityRules/rule1", detail.GetRule())
+	require.Equal(t, "orders status must not be null", detail.GetRuleTitle())
+	require.Equal(t, "inst;db;public;orders", detail.GetTargetGuid())
+	require.Equal(t, "inst1/db1/orders.status", detail.GetTargetPath())
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_FAIL, detail.GetFromStatus())
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_FAIL, detail.GetToStatus())
+	require.Equal(t, storepb.QualitySeverity_QUALITY_SEVERITY_ERROR, detail.GetSeverity())
+	require.InDelta(t, 7, detail.GetObservedValue(), 1e-9)
+	require.Equal(t, "rows", detail.GetObservedUnit())
+	require.Equal(t, int64(7), detail.GetFailedRows())
+	require.Equal(t, int64(20), detail.GetTotalRows())
+	require.Equal(t, "workspaces/ws1/qualityIssues/issue1", detail.GetIssue())
+	require.Equal(t, "workspaces/ws1/qualityRuns/run1", detail.GetRun())
+	require.Empty(t, detail.GetErrorCode())
+}
+
+func TestBuildDataQualityDetailForARecovery(t *testing.T) {
+	t.Parallel()
+
+	execution := qualityExecutionStub(storepb.QualityStatus_QUALITY_STATUS_PASS)
+	detail := buildDataQualityDetail(dataQualityDetailInput{
+		workspaceID:     "ws1",
+		kind:            storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED,
+		execution:       execution,
+		issueResourceID: "issue1",
+		runResourceName: "workspaces/ws1/qualityRuns/run2",
+	})
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_FAIL, detail.GetFromStatus())
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_PASS, detail.GetToStatus())
+}
+
+func TestBuildDataQualityDetailForAnExecutionFailure(t *testing.T) {
+	t.Parallel()
+
+	execution := qualityExecutionStub(storepb.QualityStatus_QUALITY_STATUS_ERROR)
+	execution.result.ObservedValue = nil
+	execution.result.ErrorCode = dataquality.ErrCodeTimeout
+	execution.previous = nil
+	detail := buildDataQualityDetail(dataQualityDetailInput{
+		workspaceID:     "ws1",
+		kind:            storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED,
+		execution:       execution,
+		runResourceName: "workspaces/ws1/qualityRuns/run1",
+	})
+
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, detail.GetFromStatus())
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_ERROR, detail.GetToStatus())
+	require.Equal(t, dataquality.ErrCodeTimeout, detail.GetErrorCode())
+	require.Zero(t, detail.GetObservedValue())
+	require.Empty(t, detail.GetIssue())
+}
+
+func TestQualityNotificationTargetIsScopedToTheEvent(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "workspaces/ws/qualityIssues/issue1", qualityNotificationTarget(&storepb.DataQualityDetail{
+		Kind:  storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED,
+		Rule:  "workspaces/ws/qualityRules/rule1",
+		Issue: "workspaces/ws/qualityIssues/issue1",
+	}))
+	require.Equal(t, "workspaces/ws/qualityRules/rule1", qualityNotificationTarget(&storepb.DataQualityDetail{
+		Kind: storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED,
+		Rule: "workspaces/ws/qualityRules/rule1",
+	}))
+	require.Equal(t, "workspaces/ws/qualityRuns/run1", qualityNotificationTarget(&storepb.DataQualityDetail{
+		Kind: storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY,
+		Run:  "workspaces/ws/qualityRuns/run1",
+	}))
+	require.Empty(t, qualityNotificationTarget(&storepb.DataQualityDetail{
+		Kind: storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_UNSPECIFIED,
+	}))
+}
+
+func TestBuildStormDetail(t *testing.T) {
+	t.Parallel()
+
+	detail := buildStormDetail("workspaces/ws/qualityRuns/run1", 12, 40)
+	require.Equal(t, storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY, detail.GetKind())
+	require.Equal(t, "workspaces/ws/qualityRuns/run1", detail.GetRun())
+	require.Equal(t, int32(12), detail.GetFailedRuleCount())
+	require.Equal(t, int32(40), detail.GetTotalRuleCount())
+}

@@ -292,9 +292,10 @@ func (s *NotificationService) SubscribeNotifications(ctx context.Context, req *c
 				return err
 			}
 		case <-heartbeat.C:
-			if err := stream.Send(&v1pb.SubscribeNotificationsResponse{
+			keepAlive := &v1pb.SubscribeNotificationsResponse{
 				Event: &v1pb.SubscribeNotificationsResponse_KeepAlive{KeepAlive: &v1pb.KeepAlive{}},
-			}); err != nil {
+			}
+			if err := stream.Send(keepAlive); err != nil {
 				return err
 			}
 		}
@@ -373,6 +374,10 @@ func convertToV1Notification(notification *storepb.Notification, workspaceID str
 		converted.Detail = &v1pb.Notification_Openlineage{
 			Openlineage: convertOpenLineageDetail(notification.GetOpenlineage()),
 		}
+	case notification.GetDataQuality() != nil:
+		converted.Detail = &v1pb.Notification_DataQuality{
+			DataQuality: convertDataQualityDetail(notification.GetDataQuality()),
+		}
 	default:
 		// A detail written by a newer server is not in this build's catalog; the
 		// envelope still renders, and the client falls back to a generic line.
@@ -386,6 +391,8 @@ func convertNotificationType(notificationType storepb.NotificationType) v1pb.Not
 		return v1pb.NotificationType_NOTIFICATION_TYPE_SCHEMA_SYNC
 	case storepb.NotificationType_NOTIFICATION_TYPE_OPENLINEAGE:
 		return v1pb.NotificationType_NOTIFICATION_TYPE_OPENLINEAGE
+	case storepb.NotificationType_NOTIFICATION_TYPE_DATA_QUALITY:
+		return v1pb.NotificationType_NOTIFICATION_TYPE_DATA_QUALITY
 	case storepb.NotificationType_NOTIFICATION_TYPE_UNSPECIFIED:
 		return v1pb.NotificationType_NOTIFICATION_TYPE_UNSPECIFIED
 	default:
@@ -456,6 +463,35 @@ func convertSyncDatabaseState(state storepb.SyncDatabaseState) v1pb.SyncDatabase
 		return v1pb.SyncDatabaseState_SYNC_DATABASE_STATE_UNSPECIFIED
 	default:
 		return v1pb.SyncDatabaseState_SYNC_DATABASE_STATE_UNSPECIFIED
+	}
+}
+
+// convertDataQualityDetail maps the structured payload of a data-quality
+// notification. The store and v1 enums are value-compatible by design (§3.1), so
+// each enum is the numeric value; every field is copied so the client can render
+// the message without another lookup.
+func convertDataQualityDetail(detail *storepb.DataQualityDetail) *v1pb.DataQualityDetail {
+	if detail == nil {
+		return nil
+	}
+	return &v1pb.DataQualityDetail{
+		Kind:            v1pb.DataQualityNotificationKind(detail.GetKind()),
+		Rule:            detail.GetRule(),
+		RuleTitle:       detail.GetRuleTitle(),
+		TargetGuid:      detail.GetTargetGuid(),
+		TargetPath:      detail.GetTargetPath(),
+		FromStatus:      v1pb.QualityStatus(detail.GetFromStatus()),
+		ToStatus:        v1pb.QualityStatus(detail.GetToStatus()),
+		Severity:        v1pb.QualitySeverity(detail.GetSeverity()),
+		ObservedValue:   detail.GetObservedValue(),
+		ObservedUnit:    detail.GetObservedUnit(),
+		Issue:           detail.GetIssue(),
+		Run:             detail.GetRun(),
+		FailedRows:      detail.GetFailedRows(),
+		TotalRows:       detail.GetTotalRows(),
+		ErrorCode:       detail.GetErrorCode(),
+		FailedRuleCount: detail.GetFailedRuleCount(),
+		TotalRuleCount:  detail.GetTotalRuleCount(),
 	}
 }
 

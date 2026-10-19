@@ -393,3 +393,353 @@ func TestQualityProbeError(t *testing.T) {
 	invalid := qualityProbeError(errors.New("the server rejected the statement"))
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(invalid))
 }
+
+func TestApplyQualityIssueListFilters(t *testing.T) {
+	t.Parallel()
+
+	startAt := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
+	endAt := startAt.Add(7 * 24 * time.Hour)
+	find := &store.FindQualityIssueMessage{}
+	err := applyQualityIssueListFilters(find, &v1pb.ListQualityIssuesRequest{
+		Parent:     "workspaces/ws1",
+		Status:     v1pb.QualityIssueStatus_QUALITY_ISSUE_STATUS_OPEN,
+		Severity:   v1pb.QualitySeverity_QUALITY_SEVERITY_CRITICAL,
+		TargetGuid: "instance_1;shop;public;orders",
+		StartTime:  timestamppb.New(startAt),
+		EndTime:    timestamppb.New(endAt),
+	})
+	require.NoError(t, err)
+	require.Equal(t, []storepb.QualityIssueStatus{storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_OPEN}, find.Statuses)
+	require.Equal(t, []storepb.QualitySeverity{storepb.QualitySeverity_QUALITY_SEVERITY_CRITICAL}, find.Severities)
+	require.Equal(t, "instance_1;shop;public;orders", *find.TargetGUID)
+	require.Equal(t, startAt, *find.StartAt)
+	require.Equal(t, endAt, *find.EndAt)
+
+	empty := &store.FindQualityIssueMessage{}
+	require.NoError(t, applyQualityIssueListFilters(empty, &v1pb.ListQualityIssuesRequest{Parent: "workspaces/ws1"}))
+	require.Empty(t, empty.Statuses)
+	require.Empty(t, empty.Severities)
+	require.Nil(t, empty.TargetGUID)
+	require.Nil(t, empty.StartAt)
+
+	err = applyQualityIssueListFilters(&store.FindQualityIssueMessage{}, &v1pb.ListQualityIssuesRequest{
+		Status: v1pb.QualityIssueStatus(99),
+	})
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
+	err = applyQualityIssueListFilters(&store.FindQualityIssueMessage{}, &v1pb.ListQualityIssuesRequest{
+		Severity: v1pb.QualitySeverity(99),
+	})
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}
+
+func TestParseQualityIssueUpdate(t *testing.T) {
+	t.Parallel()
+
+	t.Run("resolve via status", func(t *testing.T) {
+		t.Parallel()
+		update, err := parseQualityIssueUpdate(&v1pb.QualityIssue{
+			Status: v1pb.QualityIssueStatus_QUALITY_ISSUE_STATUS_RESOLVED,
+		}, false, []string{"status"})
+		require.NoError(t, err)
+		require.True(t, update.resolve)
+		require.False(t, update.acknowledge)
+	})
+
+	t.Run("resolve via reason and note", func(t *testing.T) {
+		t.Parallel()
+		update, err := parseQualityIssueUpdate(&v1pb.QualityIssue{
+			ResolutionReason: v1pb.QualityResolutionReason_QUALITY_RESOLUTION_REASON_EXPECTED,
+			ResolutionNote:   "load test window",
+		}, false, []string{"resolution_reason", "resolution_note"})
+		require.NoError(t, err)
+		require.True(t, update.resolve)
+		require.Equal(t, storepb.QualityResolutionReason_QUALITY_RESOLUTION_REASON_EXPECTED, update.reason)
+		require.Equal(t, "load test window", update.note)
+	})
+
+	t.Run("acknowledge", func(t *testing.T) {
+		t.Parallel()
+		update, err := parseQualityIssueUpdate(&v1pb.QualityIssue{}, true, []string{"acknowledged"})
+		require.NoError(t, err)
+		require.True(t, update.acknowledge)
+	})
+
+	t.Run("mute and clear mute", func(t *testing.T) {
+		t.Parallel()
+		mutedUntil := time.Date(2026, time.October, 10, 0, 0, 0, 0, time.UTC)
+		update, err := parseQualityIssueUpdate(&v1pb.QualityIssue{
+			MutedUntil: timestamppb.New(mutedUntil),
+		}, false, []string{"muted_until"})
+		require.NoError(t, err)
+		require.NotNil(t, update.mutedUntil)
+		require.Equal(t, mutedUntil, *update.mutedUntil)
+
+		update, err = parseQualityIssueUpdate(&v1pb.QualityIssue{}, false, []string{"muted_until"})
+		require.NoError(t, err)
+		require.NotNil(t, update.mutedUntil)
+		require.True(t, update.mutedUntil.IsZero(), "an unset mute clears the column")
+	})
+
+	t.Run("empty mask is a no-op", func(t *testing.T) {
+		t.Parallel()
+		update, err := parseQualityIssueUpdate(&v1pb.QualityIssue{}, false, nil)
+		require.NoError(t, err)
+		require.False(t, update.resolve)
+		require.False(t, update.acknowledge)
+		require.Nil(t, update.mutedUntil)
+	})
+}
+
+func TestParseQualityIssueUpdateRejectsIllegalMasks(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name         string
+		issue        *v1pb.QualityIssue
+		acknowledged bool
+		paths        []string
+	}{
+		{
+			name:  "status must be RESOLVED",
+			issue: &v1pb.QualityIssue{Status: v1pb.QualityIssueStatus_QUALITY_ISSUE_STATUS_OPEN},
+			paths: []string{"status"},
+		},
+		{
+			name:  "unknown status",
+			issue: &v1pb.QualityIssue{Status: v1pb.QualityIssueStatus(99)},
+			paths: []string{"status"},
+		},
+		{
+			name:         "acknowledged=false cannot clear an acknowledgement",
+			issue:        &v1pb.QualityIssue{},
+			acknowledged: false,
+			paths:        []string{"acknowledged"},
+		},
+		{
+			name:  "note requires resolve",
+			issue: &v1pb.QualityIssue{ResolutionNote: "note"},
+			paths: []string{"resolution_note"},
+		},
+		{
+			name:         "resolve and acknowledge cannot be combined",
+			issue:        &v1pb.QualityIssue{Status: v1pb.QualityIssueStatus_QUALITY_ISSUE_STATUS_RESOLVED},
+			acknowledged: true,
+			paths:        []string{"status", "acknowledged"},
+		},
+		{
+			name:  "unknown reason",
+			issue: &v1pb.QualityIssue{ResolutionReason: v1pb.QualityResolutionReason(99)},
+			paths: []string{"resolution_reason"},
+		},
+		{
+			name:  "unknown path",
+			issue: &v1pb.QualityIssue{},
+			paths: []string{"occurrence_count"},
+		},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := parseQualityIssueUpdate(testCase.issue, testCase.acknowledged, testCase.paths)
+			require.Error(t, err)
+			require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+		})
+	}
+
+	_, err := parseQualityIssueUpdate(nil, false, []string{"status"})
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}
+
+func TestQualityIssueForeignKeys(t *testing.T) {
+	t.Parallel()
+
+	runs := []*store.QualityIssueMessage{
+		{RuleID: 7, FirstSeenRunID: qualityTestPtr(int64(11)), LastSeenRunID: qualityTestPtr(int64(12))},
+		{RuleID: 7, FirstSeenRunID: qualityTestPtr(int64(12)), LastSeenRunID: nil},
+		{RuleID: 9, FirstSeenRunID: nil, LastSeenRunID: qualityTestPtr(int64(11))},
+	}
+	require.Equal(t, []int64{7, 9}, qualityIssueRuleIDs(runs))
+	require.Equal(t, []int64{11, 12}, qualityIssueRunIDs(runs))
+	require.Empty(t, qualityIssueRuleIDs(nil))
+	require.Empty(t, qualityIssueRunIDs(nil))
+}
+
+func TestCheckQualityIssueAcknowledgeable(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, checkQualityIssueAcknowledgeable(storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_OPEN))
+	require.NoError(t, checkQualityIssueAcknowledgeable(storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_ACKNOWLEDGED))
+	err := checkQualityIssueAcknowledgeable(storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_RESOLVED)
+	require.Error(t, err)
+	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
+}
+
+func TestQualitySuggestionDecision(t *testing.T) {
+	t.Parallel()
+
+	accepted, err := qualitySuggestionDecision(v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED)
+	require.NoError(t, err)
+	require.Equal(t, storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED, accepted)
+
+	rejected, err := qualitySuggestionDecision(v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_REJECTED)
+	require.NoError(t, err)
+	require.Equal(t, storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_REJECTED, rejected)
+
+	for _, decision := range []v1pb.QualitySuggestionStatus{
+		v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_UNSPECIFIED,
+		v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
+		v1pb.QualitySuggestionStatus(99),
+	} {
+		_, err := qualitySuggestionDecision(decision)
+		require.Error(t, err, "decision %v", decision)
+		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	}
+}
+
+func TestApplyQualitySuggestionListFilters(t *testing.T) {
+	t.Parallel()
+
+	find := &store.FindQualitySuggestionMessage{}
+	err := applyQualitySuggestionListFilters(find, &v1pb.ListQualitySuggestionsRequest{
+		Status:     v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
+		Kind:       v1pb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT,
+		Source:     v1pb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE,
+		TargetGuid: "instance_1;shop;public;orders",
+	})
+	require.NoError(t, err)
+	require.Equal(t, []storepb.QualitySuggestionStatus{storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING}, find.Statuses)
+	require.Equal(t, []storepb.QualitySuggestionKind{storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT}, find.Kinds)
+	require.Equal(t, []storepb.QualitySuggestionSource{storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE}, find.Sources)
+	require.Equal(t, "instance_1;shop;public;orders", *find.TargetGUID)
+
+	empty := &store.FindQualitySuggestionMessage{}
+	require.NoError(t, applyQualitySuggestionListFilters(empty, &v1pb.ListQualitySuggestionsRequest{}))
+	require.Empty(t, empty.Statuses)
+	require.Empty(t, empty.Kinds)
+	require.Empty(t, empty.Sources)
+	require.Nil(t, empty.TargetGUID)
+
+	for name, request := range map[string]*v1pb.ListQualitySuggestionsRequest{
+		"status": {Status: v1pb.QualitySuggestionStatus(99)},
+		"kind":   {Kind: v1pb.QualitySuggestionKind(99)},
+		"source": {Source: v1pb.QualitySuggestionSource(99)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			err := applyQualitySuggestionListFilters(&store.FindQualitySuggestionMessage{}, request)
+			require.Error(t, err)
+			require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+		})
+	}
+}
+
+func TestApplyColumnProfileAndLabelListFilters(t *testing.T) {
+	t.Parallel()
+
+	profileFind := &store.FindColumnProfileMessage{}
+	applyColumnProfileListFilters(profileFind, &v1pb.ListColumnProfilesRequest{
+		TableGuid: "instance_1;shop;public;orders",
+		MetaType:  v1pb.MetaType_TABLE,
+		Columns:   []string{" email ", "", " id "},
+	})
+	require.Equal(t, "instance_1;shop;public;orders", *profileFind.TableGUID)
+	require.Equal(t, storepb.MetaType_TABLE, *profileFind.TableType)
+	require.Equal(t, []string{"email", "id"}, profileFind.ColumnNames)
+
+	labelFind := &store.FindColumnSemanticLabelMessage{}
+	applyColumnLabelListFilters(labelFind, &v1pb.ListColumnLabelsRequest{})
+	require.Nil(t, labelFind.TableGUID)
+	require.Nil(t, labelFind.TableType)
+	require.Empty(t, labelFind.ColumnNames)
+}
+
+func TestParseUpdateColumnLabel(t *testing.T) {
+	t.Parallel()
+
+	accepted, err := parseUpdateColumnLabel(&v1pb.UpdateColumnLabelRequest{
+		Parent:    "workspaces/ws1",
+		TableGuid: " instance_1;shop;public;orders ",
+		MetaType:  v1pb.MetaType_TABLE,
+		Column:    " email ",
+		Label:     v1pb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_EMAIL,
+		Action:    v1pb.ColumnLabelAction_COLUMN_LABEL_ACTION_ACCEPT,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "instance_1;shop;public;orders", accepted.tableGUID)
+	require.Equal(t, storepb.MetaType_TABLE, accepted.metaType)
+	require.Equal(t, "email", accepted.column)
+	require.Equal(t, storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_EMAIL, accepted.label)
+	require.Equal(t, v1pb.ColumnLabelAction_COLUMN_LABEL_ACTION_ACCEPT, accepted.action)
+
+	// CLEAR does not need a label.
+	cleared, err := parseUpdateColumnLabel(&v1pb.UpdateColumnLabelRequest{
+		TableGuid: "guid",
+		MetaType:  v1pb.MetaType_TABLE,
+		Column:    "email",
+		Action:    v1pb.ColumnLabelAction_COLUMN_LABEL_ACTION_CLEAR,
+	})
+	require.NoError(t, err)
+	require.Equal(t, v1pb.ColumnLabelAction_COLUMN_LABEL_ACTION_CLEAR, cleared.action)
+
+	invalid := []struct {
+		name    string
+		request *v1pb.UpdateColumnLabelRequest
+	}{
+		{name: "missing table guid", request: &v1pb.UpdateColumnLabelRequest{MetaType: v1pb.MetaType_TABLE, Column: "c", Action: v1pb.ColumnLabelAction_COLUMN_LABEL_ACTION_CLEAR}},
+		{name: "missing meta type", request: &v1pb.UpdateColumnLabelRequest{TableGuid: "guid", Column: "c", Action: v1pb.ColumnLabelAction_COLUMN_LABEL_ACTION_CLEAR}},
+		{name: "missing column", request: &v1pb.UpdateColumnLabelRequest{TableGuid: "guid", MetaType: v1pb.MetaType_TABLE, Action: v1pb.ColumnLabelAction_COLUMN_LABEL_ACTION_CLEAR}},
+		{name: "unknown action", request: &v1pb.UpdateColumnLabelRequest{TableGuid: "guid", MetaType: v1pb.MetaType_TABLE, Column: "c", Action: v1pb.ColumnLabelAction(99)}},
+		{name: "accept without label", request: &v1pb.UpdateColumnLabelRequest{TableGuid: "guid", MetaType: v1pb.MetaType_TABLE, Column: "c", Action: v1pb.ColumnLabelAction_COLUMN_LABEL_ACTION_ACCEPT}},
+	}
+	for _, testCase := range invalid {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := parseUpdateColumnLabel(testCase.request)
+			require.Error(t, err)
+			require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+		})
+	}
+}
+
+func TestUpdateQualitySuggestionRejectsInvalidName(t *testing.T) {
+	t.Parallel()
+
+	// The name is parsed before any store read, so a malformed name is refused
+	// without touching the database.
+	service := &DataQualityService{}
+	_, err := service.UpdateQualitySuggestion(t.Context(), connect.NewRequest(&v1pb.UpdateQualitySuggestionRequest{
+		Name:     "qualitySuggestions/suggestion123",
+		Decision: v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED,
+	}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}
+
+func TestUnimplementedQualityHandlers(t *testing.T) {
+	t.Parallel()
+
+	service := &DataQualityService{}
+
+	_, err := service.SuggestQualityRule(t.Context(), nil)
+	require.Equal(t, connect.CodeUnimplemented, connect.CodeOf(err))
+
+	_, err = service.SuggestColumnLabels(t.Context(), nil)
+	require.Equal(t, connect.CodeUnimplemented, connect.CodeOf(err))
+
+	err = service.ExplainQualityResult(t.Context(), nil, nil)
+	require.Equal(t, connect.CodeUnimplemented, connect.CodeOf(err))
+}
+
+// TestTrimmedQualityColumns pins the column list normalization the profile request
+// applies: blank entries disappear, duplicates collapse, and the input order is
+// preserved so the response order matches the request.
+func TestTrimmedQualityColumns(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, []string{"a", "b", "c"}, trimmedQualityColumns([]string{" a ", "", "b", "a", " c "}))
+	require.Empty(t, trimmedQualityColumns(nil))
+}

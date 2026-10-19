@@ -32,6 +32,13 @@ const (
 	qualityPreviewProbeTimeout = 10 * time.Second
 	// qualityListMaximum is the page size ceiling every list here shares.
 	qualityListMaximum = 1000
+	// qualityProfileSampleRows bounds the sample a profile request reads; the
+	// aggregate query scans the table, the sample only feeds Top-K and patterns.
+	qualityProfileSampleRows = 1000
+	// qualityProfileQueryTimeout bounds one profile query.
+	qualityProfileQueryTimeout = 120 * time.Second
+	// qualityProfileMaxBytes bounds the rows a profile query keeps in memory.
+	qualityProfileMaxBytes = 4 << 20
 )
 
 // QualityRunScheduler queues a freshly created manual run for immediate
@@ -315,7 +322,11 @@ func (s *DataQualityService) CreateQualityRule(ctx context.Context, req *connect
 	if strings.TrimSpace(rule.GetTitle()) == "" {
 		return nil, connectErrorInvalid("title is required")
 	}
-	interval := rule.GetScheduleInterval().AsDuration()
+	settings, settingsErr := dataquality.LoadSettings(ctx, s.store)
+	if settingsErr != nil {
+		return nil, errLoadQualitySettings(settingsErr)
+	}
+	interval := resolveCreateScheduleInterval(rule.GetScheduleInterval().AsDuration(), settings)
 	if err := validateQualityScheduleInterval(interval); err != nil {
 		return nil, err
 	}
@@ -1049,4 +1060,799 @@ func protoTimeOrNil(timestamp *timestamppb.Timestamp) *time.Time {
 	}
 	value := timestamp.AsTime()
 	return &value
+}
+
+// issueResourceID parses an issue name and proves its workspace.
+func (s *DataQualityService) issueResourceID(ctx context.Context, name string) (string, string, error) {
+	workspace, resourceID, err := parseQualityIssueName(name)
+	if err != nil {
+		return "", "", connectErrorInvalid("%v", err)
+	}
+	if err := s.validateResourceWorkspace(ctx, workspace); err != nil {
+		return "", "", err
+	}
+	return workspace, resourceID, nil
+}
+
+// fetchQualityIssue reads one issue by its public resource id.
+func (s *DataQualityService) fetchQualityIssue(ctx context.Context, resourceID string) (*store.QualityIssueMessage, error) {
+	issue, err := s.store.GetQualityIssue(ctx, &store.FindQualityIssueMessage{ResourceID: &resourceID})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the quality issue")
+	}
+	if issue == nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("quality issue %q not found", resourceID))
+	}
+	return issue, nil
+}
+
+// ListQualityIssues lists the durable problems behind rule failures, newest first.
+func (s *DataQualityService) ListQualityIssues(ctx context.Context, req *connect.Request[v1pb.ListQualityIssuesRequest]) (*connect.Response[v1pb.ListQualityIssuesResponse], error) {
+	workspaceID, err := s.workspaceID(ctx, req.Msg.GetParent())
+	if err != nil {
+		return nil, err
+	}
+	offset, err := parseLimitAndOffset(&pageSize{
+		token:   req.Msg.GetPageToken(),
+		limit:   int(req.Msg.GetPageSize()),
+		maximum: qualityListMaximum,
+	})
+	if err != nil {
+		return nil, err
+	}
+	limitPlusOne := offset.limit + 1
+
+	find := &store.FindQualityIssueMessage{Limit: &limitPlusOne, Offset: &offset.offset}
+	if err := applyQualityIssueListFilters(find, req.Msg); err != nil {
+		return nil, err
+	}
+	if ruleName := strings.TrimSpace(req.Msg.GetRule()); ruleName != "" {
+		_, ruleResourceID, err := s.ruleResourceID(ctx, ruleName)
+		if err != nil {
+			return nil, err
+		}
+		rule, err := s.fetchQualityRule(ctx, ruleResourceID)
+		if err != nil {
+			return nil, err
+		}
+		find.RuleID = &rule.ID
+	}
+	if owner := strings.TrimSpace(req.Msg.GetOwner()); owner != "" {
+		ruleIDs, err := s.qualityRuleIDsOfOwner(ctx, owner)
+		if err != nil {
+			return nil, err
+		}
+		if len(ruleIDs) == 0 {
+			// The owner has no rules, so the owner filter cannot match an issue.
+			// Setting an empty RuleIDs would drop the predicate and widen the list.
+			return connect.NewResponse(&v1pb.ListQualityIssuesResponse{}), nil
+		}
+		find.RuleIDs = ruleIDs
+	}
+
+	issues, err := s.store.ListQualityIssues(ctx, find)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list the quality issues")
+	}
+	issues, nextPageToken, err := paginate(issues, offset)
+	if err != nil {
+		return nil, err
+	}
+	ruleNames, err := s.qualityRuleNames(ctx, workspaceID, qualityIssueRuleIDs(issues))
+	if err != nil {
+		return nil, err
+	}
+	runNames, err := s.qualityRunNames(ctx, workspaceID, qualityIssueRunIDs(issues))
+	if err != nil {
+		return nil, err
+	}
+
+	response := &v1pb.ListQualityIssuesResponse{NextPageToken: nextPageToken}
+	for _, issue := range issues {
+		response.QualityIssues = append(response.QualityIssues,
+			convertQualityIssue(workspaceID, issue, ruleNames[issue.RuleID], runNames))
+	}
+	return connect.NewResponse(response), nil
+}
+
+// applyQualityIssueListFilters maps the filters that need no store read. The rule
+// and owner filters are resolved by the caller because they name other resources.
+func applyQualityIssueListFilters(find *store.FindQualityIssueMessage, request *v1pb.ListQualityIssuesRequest) error {
+	status := storepb.QualityIssueStatus(request.GetStatus())
+	switch status {
+	case storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_UNSPECIFIED:
+	case storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_OPEN,
+		storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_ACKNOWLEDGED,
+		storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_RESOLVED:
+		find.Statuses = []storepb.QualityIssueStatus{status}
+	default:
+		return connectErrorInvalid("unknown quality issue status %d", status)
+	}
+
+	severity := storepb.QualitySeverity(request.GetSeverity())
+	switch severity {
+	case storepb.QualitySeverity_QUALITY_SEVERITY_UNSPECIFIED:
+	case storepb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		storepb.QualitySeverity_QUALITY_SEVERITY_ERROR,
+		storepb.QualitySeverity_QUALITY_SEVERITY_CRITICAL:
+		find.Severities = []storepb.QualitySeverity{severity}
+	default:
+		return connectErrorInvalid("unknown quality severity %d", severity)
+	}
+
+	if guid := strings.TrimSpace(request.GetTargetGuid()); guid != "" {
+		find.TargetGUID = &guid
+	}
+	if request.GetStartTime() != nil {
+		startAt := request.GetStartTime().AsTime()
+		find.StartAt = &startAt
+	}
+	if request.GetEndTime() != nil {
+		endAt := request.GetEndTime().AsTime()
+		find.EndAt = &endAt
+	}
+	return nil
+}
+
+// qualityRuleIDsOfOwner resolves the rules owned by a principal; ownership is not
+// stored on the issue, so the owner filter is an issue filter by rule ids.
+func (s *DataQualityService) qualityRuleIDsOfOwner(ctx context.Context, owner string) ([]int64, error) {
+	id, err := common.GetUserID(owner)
+	if err != nil {
+		return nil, connectErrorInvalid("invalid owner %q", owner)
+	}
+	principalID := int32(id)
+	rules, err := s.store.ListQualityRules(ctx, &store.FindQualityRuleMessage{OwnerID: &principalID})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the owner's quality rules")
+	}
+	ruleIDs := make([]int64, 0, len(rules))
+	for _, rule := range rules {
+		ruleIDs = append(ruleIDs, rule.ID)
+	}
+	return ruleIDs, nil
+}
+
+// qualityIssueRuleIDs collects the distinct rule ids of the given issues.
+func qualityIssueRuleIDs(issues []*store.QualityIssueMessage) []int64 {
+	ruleIDs := make([]int64, 0, len(issues))
+	for _, issue := range issues {
+		ruleIDs = append(ruleIDs, issue.RuleID)
+	}
+	return dedupeInt64(ruleIDs)
+}
+
+// qualityIssueRunIDs collects the distinct first/last run ids of the given issues.
+func qualityIssueRunIDs(issues []*store.QualityIssueMessage) []int64 {
+	runIDs := make([]int64, 0, len(issues)*2)
+	for _, issue := range issues {
+		if issue.FirstSeenRunID != nil {
+			runIDs = append(runIDs, *issue.FirstSeenRunID)
+		}
+		if issue.LastSeenRunID != nil {
+			runIDs = append(runIDs, *issue.LastSeenRunID)
+		}
+	}
+	return dedupeInt64(runIDs)
+}
+
+// GetQualityIssue reads one issue.
+func (s *DataQualityService) GetQualityIssue(ctx context.Context, req *connect.Request[v1pb.GetQualityIssueRequest]) (*connect.Response[v1pb.QualityIssue], error) {
+	workspaceID, resourceID, err := s.issueResourceID(ctx, req.Msg.GetName())
+	if err != nil {
+		return nil, err
+	}
+	issue, err := s.fetchQualityIssue(ctx, resourceID)
+	if err != nil {
+		return nil, err
+	}
+	converted, err := s.convertIssueWithNames(ctx, workspaceID, issue)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(converted), nil
+}
+
+// convertIssueWithNames resolves one issue's foreign keys and converts it.
+func (s *DataQualityService) convertIssueWithNames(ctx context.Context, workspaceID string, issue *store.QualityIssueMessage) (*v1pb.QualityIssue, error) {
+	ruleNames, err := s.qualityRuleNames(ctx, workspaceID, qualityIssueRuleIDs([]*store.QualityIssueMessage{issue}))
+	if err != nil {
+		return nil, err
+	}
+	runNames, err := s.qualityRunNames(ctx, workspaceID, qualityIssueRunIDs([]*store.QualityIssueMessage{issue}))
+	if err != nil {
+		return nil, err
+	}
+	return convertQualityIssue(workspaceID, issue, ruleNames[issue.RuleID], runNames), nil
+}
+
+// qualityIssueUpdate is one parsed UpdateQualityIssue mask: what the request asks
+// the issue to become. A nil mutedUntil leaves the mute column untouched; a zero
+// time clears it.
+type qualityIssueUpdate struct {
+	resolve     bool
+	reason      storepb.QualityResolutionReason
+	note        string
+	acknowledge bool
+	mutedUntil  *time.Time
+}
+
+// parseQualityIssueUpdate turns the update mask into the actions to apply. It is
+// pure so the mask vocabulary and the illegal combinations are testable without a
+// store.
+func parseQualityIssueUpdate(issue *v1pb.QualityIssue, acknowledged bool, paths []string) (*qualityIssueUpdate, error) {
+	if issue == nil {
+		return nil, connectErrorInvalid("the issue is required")
+	}
+	update := &qualityIssueUpdate{}
+	noteGiven := false
+	for _, path := range paths {
+		switch path {
+		case "status":
+			if storepb.QualityIssueStatus(issue.GetStatus()) != storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_RESOLVED {
+				return nil, connectErrorInvalid("status can only be set to RESOLVED; use acknowledged to acknowledge an issue")
+			}
+			update.resolve = true
+		case "resolution_reason":
+			reason := storepb.QualityResolutionReason(issue.GetResolutionReason())
+			switch reason {
+			case storepb.QualityResolutionReason_QUALITY_RESOLUTION_REASON_UNSPECIFIED,
+				storepb.QualityResolutionReason_QUALITY_RESOLUTION_REASON_FIXED,
+				storepb.QualityResolutionReason_QUALITY_RESOLUTION_REASON_EXPECTED,
+				storepb.QualityResolutionReason_QUALITY_RESOLUTION_REASON_NO_ACTION_NEEDED,
+				storepb.QualityResolutionReason_QUALITY_RESOLUTION_REASON_DUPLICATE,
+				storepb.QualityResolutionReason_QUALITY_RESOLUTION_REASON_AUTO_RECOVERED:
+			default:
+				return nil, connectErrorInvalid("unknown quality resolution reason %d", reason)
+			}
+			update.reason = reason
+			update.resolve = true
+		case "resolution_note":
+			update.note = issue.GetResolutionNote()
+			noteGiven = true
+		case "acknowledged":
+			if !acknowledged {
+				return nil, connectErrorInvalid("acknowledged=false is not supported; an acknowledgement cannot be cleared")
+			}
+			update.acknowledge = true
+		case "muted_until":
+			mutedUntil := time.Time{}
+			if issue.GetMutedUntil() != nil {
+				mutedUntil = issue.GetMutedUntil().AsTime()
+			}
+			update.mutedUntil = &mutedUntil
+		default:
+			return nil, connectErrorInvalid("unsupported update path %q", path)
+		}
+	}
+	if noteGiven && !update.resolve {
+		return nil, connectErrorInvalid("resolution_note requires resolving the issue")
+	}
+	if update.resolve && update.acknowledge {
+		return nil, connectErrorInvalid("resolving and acknowledging cannot be combined")
+	}
+	return update, nil
+}
+
+// UpdateQualityIssue acknowledges, resolves or mutes one issue.
+func (s *DataQualityService) UpdateQualityIssue(ctx context.Context, req *connect.Request[v1pb.UpdateQualityIssueRequest]) (*connect.Response[v1pb.QualityIssue], error) {
+	workspaceID, resourceID, err := s.issueResourceID(ctx, req.Msg.GetIssue().GetName())
+	if err != nil {
+		return nil, err
+	}
+	issue, err := s.fetchQualityIssue(ctx, resourceID)
+	if err != nil {
+		return nil, err
+	}
+	update, err := parseQualityIssueUpdate(req.Msg.GetIssue(), req.Msg.GetAcknowledged(), req.Msg.GetUpdateMask().GetPaths())
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	if update.mutedUntil != nil {
+		if _, err := s.store.UpdateQualityIssue(ctx, resourceID, &store.UpdateQualityIssueMessage{MutedUntil: update.mutedUntil}); err != nil {
+			return nil, qualityIssueWriteError(err, "failed to update the quality issue")
+		}
+	}
+	if update.resolve {
+		if err := s.store.ResolveQualityIssue(ctx, issue.ID, update.reason, update.note, now); err != nil {
+			return nil, qualityIssueWriteError(err, "failed to resolve the quality issue")
+		}
+	}
+	if update.acknowledge {
+		if err := checkQualityIssueAcknowledgeable(issue.Status); err != nil {
+			return nil, err
+		}
+		if err := s.store.AcknowledgeQualityIssue(ctx, issue.ID, int32(currentUserID(ctx)), now); err != nil {
+			return nil, qualityIssueWriteError(err, "failed to acknowledge the quality issue")
+		}
+	}
+	updated, err := s.fetchQualityIssue(ctx, resourceID)
+	if err != nil {
+		return nil, err
+	}
+	converted, err := s.convertIssueWithNames(ctx, workspaceID, updated)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(converted), nil
+}
+
+// checkQualityIssueAcknowledgeable enforces the state machine's terminal state at
+// the API boundary: RESOLVED is terminal, and acknowledging a resolved issue must
+// not bring it back to ACKNOWLEDGED.
+func checkQualityIssueAcknowledgeable(current storepb.QualityIssueStatus) error {
+	if current == storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_RESOLVED {
+		return connect.NewError(connect.CodeFailedPrecondition,
+			errors.New("a resolved quality issue cannot be acknowledged"))
+	}
+	return nil
+}
+
+// qualityIssueWriteError maps a failed issue transition. A terminal-state conflict
+// is Aborted for the client rather than the AlreadyExists the shared code mapping
+// would produce.
+func qualityIssueWriteError(err error, message string) error {
+	if common.ErrorCode(err) == common.Conflict {
+		return connect.NewError(connect.CodeAborted, err)
+	}
+	return errors.Wrap(err, message)
+}
+
+// qualitySuggestionResourceID parses a suggestion name and proves its workspace.
+func (s *DataQualityService) qualitySuggestionResourceID(ctx context.Context, name string) (string, string, error) {
+	workspace, resourceID, err := parseQualitySuggestionName(name)
+	if err != nil {
+		return "", "", connectErrorInvalid("%v", err)
+	}
+	if err := s.validateResourceWorkspace(ctx, workspace); err != nil {
+		return "", "", err
+	}
+	return workspace, resourceID, nil
+}
+
+// ListQualitySuggestions lists the review queue, newest first.
+func (s *DataQualityService) ListQualitySuggestions(ctx context.Context, req *connect.Request[v1pb.ListQualitySuggestionsRequest]) (*connect.Response[v1pb.ListQualitySuggestionsResponse], error) {
+	workspaceID, err := s.workspaceID(ctx, req.Msg.GetParent())
+	if err != nil {
+		return nil, err
+	}
+	offset, err := parseLimitAndOffset(&pageSize{
+		token:   req.Msg.GetPageToken(),
+		limit:   int(req.Msg.GetPageSize()),
+		maximum: qualityListMaximum,
+	})
+	if err != nil {
+		return nil, err
+	}
+	limitPlusOne := offset.limit + 1
+
+	find := &store.FindQualitySuggestionMessage{Limit: &limitPlusOne, Offset: &offset.offset}
+	if err := applyQualitySuggestionListFilters(find, req.Msg); err != nil {
+		return nil, err
+	}
+	suggestions, err := s.store.ListQualitySuggestions(ctx, find)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list the quality suggestions")
+	}
+	suggestions, nextPageToken, err := paginate(suggestions, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	response := &v1pb.ListQualitySuggestionsResponse{NextPageToken: nextPageToken}
+	for _, suggestion := range suggestions {
+		response.QualitySuggestions = append(response.QualitySuggestions, convertQualitySuggestion(workspaceID, suggestion))
+	}
+	return connect.NewResponse(response), nil
+}
+
+// applyQualitySuggestionListFilters maps the review-queue filters onto the store
+// filter.
+func applyQualitySuggestionListFilters(find *store.FindQualitySuggestionMessage, request *v1pb.ListQualitySuggestionsRequest) error {
+	switch status := storepb.QualitySuggestionStatus(request.GetStatus()); status {
+	case storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_UNSPECIFIED:
+	case storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
+		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED,
+		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_REJECTED:
+		find.Statuses = []storepb.QualitySuggestionStatus{status}
+	default:
+		return connectErrorInvalid("unknown quality suggestion status %d", status)
+	}
+
+	switch kind := storepb.QualitySuggestionKind(request.GetKind()); kind {
+	case storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_UNSPECIFIED:
+	case storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT,
+		storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_LABEL:
+		find.Kinds = []storepb.QualitySuggestionKind{kind}
+	default:
+		return connectErrorInvalid("unknown quality suggestion kind %d", kind)
+	}
+
+	switch source := storepb.QualitySuggestionSource(request.GetSource()); source {
+	case storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_UNSPECIFIED:
+	case storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE,
+		storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_PROFILE:
+		find.Sources = []storepb.QualitySuggestionSource{source}
+	default:
+		return connectErrorInvalid("unknown quality suggestion source %d", source)
+	}
+
+	if guid := strings.TrimSpace(request.GetTargetGuid()); guid != "" {
+		find.TargetGUID = &guid
+	}
+	return nil
+}
+
+// UpdateQualitySuggestion accepts or rejects one queued suggestion.
+func (s *DataQualityService) UpdateQualitySuggestion(ctx context.Context, req *connect.Request[v1pb.UpdateQualitySuggestionRequest]) (*connect.Response[v1pb.QualitySuggestion], error) {
+	workspaceID, resourceID, err := s.qualitySuggestionResourceID(ctx, req.Msg.GetName())
+	if err != nil {
+		return nil, err
+	}
+	decision, err := qualitySuggestionDecision(req.Msg.GetDecision())
+	if err != nil {
+		return nil, err
+	}
+	updated, err := s.store.DecideQualitySuggestion(ctx, resourceID, decision, int32(currentUserID(ctx)),
+		req.Msg.GetDecisionNote(), time.Now())
+	if err != nil {
+		// A suggestion another reviewer already decided is Aborted for the
+		// client, not the AlreadyExists the shared code mapping would produce.
+		if common.ErrorCode(err) == common.Conflict {
+			return nil, connect.NewError(connect.CodeAborted, err)
+		}
+		return nil, errors.Wrap(err, "failed to decide the quality suggestion")
+	}
+	return connect.NewResponse(convertQualitySuggestion(workspaceID, updated)), nil
+}
+
+// qualitySuggestionDecision validates the decision enum: a suggestion is only
+// ever accepted or rejected, never left pending or set to an unknown number.
+func qualitySuggestionDecision(decision v1pb.QualitySuggestionStatus) (storepb.QualitySuggestionStatus, error) {
+	switch decision {
+	case v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED:
+		return storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED, nil
+	case v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_REJECTED:
+		return storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_REJECTED, nil
+	case v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_UNSPECIFIED,
+		v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING:
+		return 0, connectErrorInvalid("decision must be ACCEPTED or REJECTED")
+	default:
+		return 0, connectErrorInvalid("unknown quality suggestion decision %d", decision)
+	}
+}
+
+// ListColumnProfiles lists the cached deterministic profiles of columns.
+func (s *DataQualityService) ListColumnProfiles(ctx context.Context, req *connect.Request[v1pb.ListColumnProfilesRequest]) (*connect.Response[v1pb.ListColumnProfilesResponse], error) {
+	if _, err := s.workspaceID(ctx, req.Msg.GetParent()); err != nil {
+		return nil, err
+	}
+	offset, err := parseLimitAndOffset(&pageSize{
+		token:   req.Msg.GetPageToken(),
+		limit:   int(req.Msg.GetPageSize()),
+		maximum: qualityListMaximum,
+	})
+	if err != nil {
+		return nil, err
+	}
+	limitPlusOne := offset.limit + 1
+
+	find := &store.FindColumnProfileMessage{Limit: &limitPlusOne, Offset: &offset.offset}
+	applyColumnProfileListFilters(find, req.Msg)
+	profiles, err := s.store.ListColumnProfiles(ctx, find)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list the column profiles")
+	}
+	profiles, nextPageToken, err := paginate(profiles, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	response := &v1pb.ListColumnProfilesResponse{NextPageToken: nextPageToken}
+	for _, profile := range profiles {
+		response.ColumnProfiles = append(response.ColumnProfiles, convertColumnProfileToV1(profile))
+	}
+	return connect.NewResponse(response), nil
+}
+
+// applyColumnProfileListFilters maps the request filters onto the store filter.
+func applyColumnProfileListFilters(find *store.FindColumnProfileMessage, request *v1pb.ListColumnProfilesRequest) {
+	if guid := strings.TrimSpace(request.GetTableGuid()); guid != "" {
+		find.TableGUID = &guid
+	}
+	if metaType := storepb.MetaType(request.GetMetaType()); metaType != storepb.MetaType_UNSPECIFIED {
+		find.TableType = &metaType
+	}
+	find.ColumnNames = trimmedColumnNames(request.GetColumns())
+}
+
+// ListColumnLabels lists the semantic labels asserted on columns.
+func (s *DataQualityService) ListColumnLabels(ctx context.Context, req *connect.Request[v1pb.ListColumnLabelsRequest]) (*connect.Response[v1pb.ListColumnLabelsResponse], error) {
+	if _, err := s.workspaceID(ctx, req.Msg.GetParent()); err != nil {
+		return nil, err
+	}
+	offset, err := parseLimitAndOffset(&pageSize{
+		token:   req.Msg.GetPageToken(),
+		limit:   int(req.Msg.GetPageSize()),
+		maximum: qualityListMaximum,
+	})
+	if err != nil {
+		return nil, err
+	}
+	limitPlusOne := offset.limit + 1
+
+	find := &store.FindColumnSemanticLabelMessage{Limit: &limitPlusOne, Offset: &offset.offset}
+	applyColumnLabelListFilters(find, req.Msg)
+	labels, err := s.store.ListColumnSemanticLabels(ctx, find)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list the column labels")
+	}
+	labels, nextPageToken, err := paginate(labels, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	response := &v1pb.ListColumnLabelsResponse{NextPageToken: nextPageToken}
+	for _, label := range labels {
+		response.ColumnLabels = append(response.ColumnLabels, convertColumnSemanticLabelToV1(label))
+	}
+	return connect.NewResponse(response), nil
+}
+
+// applyColumnLabelListFilters maps the request filters onto the store filter.
+func applyColumnLabelListFilters(find *store.FindColumnSemanticLabelMessage, request *v1pb.ListColumnLabelsRequest) {
+	if guid := strings.TrimSpace(request.GetTableGuid()); guid != "" {
+		find.TableGUID = &guid
+	}
+	if metaType := storepb.MetaType(request.GetMetaType()); metaType != storepb.MetaType_UNSPECIFIED {
+		find.TableType = &metaType
+	}
+	find.ColumnNames = trimmedColumnNames(request.GetColumns())
+}
+
+// trimmedColumnNames drops blank entries from a column filter list.
+func trimmedColumnNames(columns []string) []string {
+	names := make([]string, 0, len(columns))
+	for _, column := range columns {
+		if column = strings.TrimSpace(column); column != "" {
+			names = append(names, column)
+		}
+	}
+	return names
+}
+
+// columnLabelUpdate is one validated UpdateColumnLabel request.
+type columnLabelUpdate struct {
+	tableGUID string
+	metaType  storepb.MetaType
+	column    string
+	label     storepb.QualitySemanticType
+	action    v1pb.ColumnLabelAction
+}
+
+// parseUpdateColumnLabel validates the identity and the action of an
+// UpdateColumnLabel request.
+func parseUpdateColumnLabel(request *v1pb.UpdateColumnLabelRequest) (*columnLabelUpdate, error) {
+	update := &columnLabelUpdate{
+		tableGUID: strings.TrimSpace(request.GetTableGuid()),
+		metaType:  storepb.MetaType(request.GetMetaType()),
+		column:    strings.TrimSpace(request.GetColumn()),
+		label:     storepb.QualitySemanticType(request.GetLabel()),
+		action:    request.GetAction(),
+	}
+	if update.tableGUID == "" {
+		return nil, connectErrorInvalid("table_guid is required")
+	}
+	if update.metaType == storepb.MetaType_UNSPECIFIED {
+		return nil, connectErrorInvalid("meta_type is required")
+	}
+	if update.column == "" {
+		return nil, connectErrorInvalid("column is required")
+	}
+	switch update.action {
+	case v1pb.ColumnLabelAction_COLUMN_LABEL_ACTION_ACCEPT:
+		if update.label == storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_UNSPECIFIED {
+			return nil, connectErrorInvalid("label is required to accept a semantic label")
+		}
+	case v1pb.ColumnLabelAction_COLUMN_LABEL_ACTION_CLEAR:
+		// The label is ignored when clearing.
+	case v1pb.ColumnLabelAction_COLUMN_LABEL_ACTION_UNSPECIFIED:
+		return nil, connectErrorInvalid("action must be ACCEPT or CLEAR")
+	default:
+		return nil, connectErrorInvalid("unknown column label action %d", update.action)
+	}
+	return update, nil
+}
+
+// UpdateColumnLabel accepts a proposed semantic label or clears one column's
+// label.
+func (s *DataQualityService) UpdateColumnLabel(ctx context.Context, req *connect.Request[v1pb.UpdateColumnLabelRequest]) (*connect.Response[v1pb.UpdateColumnLabelResponse], error) {
+	if _, err := s.workspaceID(ctx, req.Msg.GetParent()); err != nil {
+		return nil, err
+	}
+	update, err := parseUpdateColumnLabel(req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	switch update.action {
+	case v1pb.ColumnLabelAction_COLUMN_LABEL_ACTION_ACCEPT:
+		now := time.Now()
+		stored, err := s.store.UpsertColumnSemanticLabel(ctx, &store.ColumnSemanticLabelMessage{
+			TableGUID:  update.tableGUID,
+			TableType:  update.metaType,
+			ColumnName: update.column,
+			Label:      update.label,
+			Source:     storepb.QualityLabelSource_QUALITY_LABEL_SOURCE_MANUAL,
+			Status:     storepb.QualityLabelStatus_QUALITY_LABEL_STATUS_ACCEPTED,
+			Confidence: 1,
+			AcceptedBy: principalIDPointer(currentUserID(ctx)),
+			AcceptedAt: &now,
+		})
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to store the column label")
+		}
+		return connect.NewResponse(&v1pb.UpdateColumnLabelResponse{
+			ColumnLabel: convertColumnSemanticLabelToV1(stored),
+		}), nil
+	case v1pb.ColumnLabelAction_COLUMN_LABEL_ACTION_CLEAR:
+		if _, err := s.store.DeleteColumnSemanticLabel(ctx, update.tableGUID, update.metaType, update.column); err != nil {
+			return nil, errors.Wrap(err, "failed to clear the column label")
+		}
+		return connect.NewResponse(&v1pb.UpdateColumnLabelResponse{}), nil
+	case v1pb.ColumnLabelAction_COLUMN_LABEL_ACTION_UNSPECIFIED:
+		return nil, connectErrorInvalid("action must be ACCEPT or CLEAR")
+	default:
+		return nil, connectErrorInvalid("unknown column label action %d", update.action)
+	}
+}
+
+// ProfileColumns measures the deterministic statistics of the requested columns
+// (or every column), stores them as the cached profile and returns them. It runs
+// one aggregate query and one bounded sample query against the table's read-only
+// data source; no model is involved.
+func (s *DataQualityService) ProfileColumns(ctx context.Context, req *connect.Request[v1pb.ProfileColumnsRequest]) (*connect.Response[v1pb.ProfileColumnsResponse], error) {
+	if _, err := s.workspaceID(ctx, req.Msg.GetParent()); err != nil {
+		return nil, err
+	}
+	guid := strings.TrimSpace(req.Msg.GetTableGuid())
+	if guid == "" {
+		return nil, connectErrorInvalid("table_guid is required")
+	}
+	metaType := storepb.MetaType(req.Msg.GetMetaType())
+	if metaType == storepb.MetaType_UNSPECIFIED {
+		return nil, connectErrorInvalid("meta_type is required")
+	}
+	settings, err := dataquality.LoadSettings(ctx, s.store)
+	if err != nil {
+		return nil, errLoadQualitySettings(err)
+	}
+	resolution, err := dataquality.ResolveTarget(ctx, s.store, guid, metaType)
+	if err != nil {
+		return nil, err
+	}
+	columns := trimmedQualityColumns(req.Msg.GetColumns())
+	if len(columns) == 0 {
+		columns = resolution.Target.ColumnNames()
+	}
+	if len(columns) > settings.MaxColumnsPerAnalysis {
+		return nil, connectErrorInvalid("at most %d columns may be profiled at once", settings.MaxColumnsPerAnalysis)
+	}
+
+	queryer, release, err := s.qualityReadOnlyQueryer(ctx, resolution, "profiling columns")
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
+	table, err := dataquality.NewProfiler().Profile(ctx, queryer, resolution.Target, columns, dataquality.ProfileOptions{
+		MaxColumns:   settings.MaxColumnsPerAnalysis,
+		SampleRows:   qualityProfileSampleRows,
+		QueryTimeout: qualityProfileQueryTimeout,
+		MaxBytes:     qualityProfileMaxBytes,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now().UTC()
+	response := &v1pb.ProfileColumnsResponse{ColumnProfiles: make([]*v1pb.ColumnProfile, 0, len(columns))}
+	for _, column := range columns {
+		stats, ok := table.Columns[column]
+		if !ok {
+			continue
+		}
+		stored, err := s.store.UpsertColumnProfile(ctx, &store.ColumnProfileMessage{
+			TableGUID:     resolution.Target.GUID,
+			TableType:     resolution.Target.MetaType,
+			ColumnName:    column,
+			Profile:       stats,
+			SampleMethod:  table.SampleMethod,
+			SampleRows:    table.SampleRows,
+			Truncated:     table.Truncated,
+			EngineVersion: dataquality.EngineVersion,
+			ProfiledAt:    now,
+		})
+		if err != nil {
+			return nil, err
+		}
+		response.ColumnProfiles = append(response.ColumnProfiles, convertColumnProfileToV1(stored))
+	}
+	return connect.NewResponse(response), nil
+}
+
+// qualityReadOnlyQueryer opens the target's read-only data source and returns it
+// with a release function. The caller must call release when done; a missing
+// READ_ONLY source is a configuration error, never a reason to fall back.
+func (s *DataQualityService) qualityReadOnlyQueryer(ctx context.Context, resolution *dataquality.Resolution, action string) (db.ReadOnlyQueryer, func(), error) {
+	if s.dbFactory == nil {
+		return nil, nil, connect.NewError(connect.CodeFailedPrecondition,
+			errors.Errorf("a database factory is required to %s", action))
+	}
+	driver, err := s.dbFactory.GetReadOnlyDatabaseDriver(ctx, resolution.Instance, resolution.Database)
+	if err != nil {
+		if errors.Is(err, dbfactory.ErrNoReadOnlyDataSource) {
+			return nil, nil, connect.NewError(connect.CodeFailedPrecondition, errors.Wrapf(err,
+				"add a READ_ONLY data source to the instance before %s", action))
+		}
+		return nil, nil, connect.NewError(connect.CodeFailedPrecondition,
+			errors.Wrapf(err, "failed to open the target's read-only data source"))
+	}
+	queryer, ok := driver.(db.ReadOnlyQueryer)
+	if !ok {
+		_ = driver.Close(ctx)
+		return nil, nil, connect.NewError(connect.CodeFailedPrecondition,
+			errors.Errorf("engine %s does not support read-only queries", resolution.Target.Engine))
+	}
+	release := func() {
+		if closeErr := driver.Close(ctx); closeErr != nil {
+			slog.Warn("failed to close the read-only data source", clog.WithError(closeErr))
+		}
+	}
+	return queryer, release, nil
+}
+
+// trimmedQualityColumns trims and de-duplicates a column list, preserving order.
+func trimmedQualityColumns(columns []string) []string {
+	seen := make(map[string]struct{}, len(columns))
+	trimmed := make([]string, 0, len(columns))
+	for _, column := range columns {
+		name := strings.TrimSpace(column)
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		trimmed = append(trimmed, name)
+	}
+	return trimmed
+}
+
+// SuggestQualityRule turns a natural-language intent into rule drafts.
+//
+// TODO(M3a): build the prompt, validate the model's drafts through the rule
+// pipeline and queue them as suggestions.
+func (*DataQualityService) SuggestQualityRule(_ context.Context, _ *connect.Request[v1pb.SuggestQualityRuleRequest]) (*connect.Response[v1pb.SuggestQualityRuleResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented,
+		errors.New("rule suggestions from a natural-language intent are not available yet"))
+}
+
+// SuggestColumnLabels proposes semantic labels for columns.
+//
+// TODO(M3a): read the profiles and lineage, call the model and queue the label
+// suggestions.
+func (*DataQualityService) SuggestColumnLabels(_ context.Context, _ *connect.Request[v1pb.SuggestColumnLabelsRequest]) (*connect.Response[v1pb.SuggestColumnLabelsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented,
+		errors.New("semantic label suggestions are not available yet"))
+}
+
+// ExplainQualityResult streams an explanation of one failed result.
+//
+// TODO(M3a): read the result's context, stream the model's hypotheses and write
+// the cache entry.
+func (*DataQualityService) ExplainQualityResult(_ context.Context, _ *connect.Request[v1pb.ExplainQualityResultRequest], _ *connect.ServerStream[v1pb.ExplainQualityResultResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented,
+		errors.New("explaining a quality result is not available yet"))
 }

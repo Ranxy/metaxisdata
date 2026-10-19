@@ -484,3 +484,22 @@ func (s *Store) ListQualityRunsByIDs(ctx context.Context, ids []int64) ([]*Quali
 	}
 	return result, nil
 }
+
+// CountQualityRunsSince counts the runs started at or after since. It is the
+// workspace's daily execution tally: the runner compares it with the configured
+// ceiling before scanning for due rules, so an accidentally dense schedule
+// cannot hammer the target databases all day.
+func (s *Store) CountQualityRunsSince(ctx context.Context, since time.Time) (int, error) {
+	if since.IsZero() {
+		return 0, common.Errorf(common.Invalid, "a start time is required")
+	}
+	var count int
+	scanErr := s.GetDB().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM quality_run WHERE started_at >= $1`,
+		since,
+	).Scan(&count)
+	if scanErr != nil {
+		return 0, errors.Wrap(scanErr, "failed to count quality runs")
+	}
+	return count, nil
+}

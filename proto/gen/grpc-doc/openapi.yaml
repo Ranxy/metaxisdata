@@ -3930,6 +3930,226 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/columnLabels:
+        get:
+            tags:
+                - DataQualityService
+            description: List the semantic labels asserted on columns.
+            operationId: DataQualityService_ListColumnLabels
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: |-
+                    The maximum number of labels to return. If unspecified, at most 50 are
+                     returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  description: |-
+                    A page token, received from a previous ListColumnLabels call. Provide this to
+                     retrieve the subsequent page.
+                  schema:
+                    type: string
+                - name: tableGuid
+                  in: query
+                  description: The globally unique metadata GUID of the table.
+                  schema:
+                    type: string
+                - name: metaType
+                  in: query
+                  schema:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - APPLICATION_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - OPENLINEAGE
+                    type: string
+                    format: enum
+                - name: columns
+                  in: query
+                  description: The columns to read; empty means every labeled column.
+                  schema:
+                    type: array
+                    items:
+                        type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListColumnLabelsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/columnLabels:update:
+        post:
+            tags:
+                - DataQualityService
+            description: Accept a proposed semantic label or clear the label of one column.
+            operationId: DataQualityService_UpdateColumnLabel
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UpdateColumnLabelRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UpdateColumnLabelResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/columnProfiles:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                List the cached deterministic profiles of columns. Profiles are read-only
+                 measurements; there is no get or update.
+            operationId: DataQualityService_ListColumnProfiles
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: |-
+                    The maximum number of profiles to return. If unspecified, at most 50 are
+                     returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  description: |-
+                    A page token, received from a previous ListColumnProfiles call. Provide this
+                     to retrieve the subsequent page.
+                  schema:
+                    type: string
+                - name: tableGuid
+                  in: query
+                  description: The globally unique metadata GUID of the table.
+                  schema:
+                    type: string
+                - name: metaType
+                  in: query
+                  schema:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - APPLICATION_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - OPENLINEAGE
+                    type: string
+                    format: enum
+                - name: columns
+                  in: query
+                  description: The columns to read; empty means every profiled column.
+                  schema:
+                    type: array
+                    items:
+                        type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListColumnProfilesResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/columnProfiles:profile:
+        post:
+            tags:
+                - DataQualityService
+            description: Measure the deterministic statistics of up to 50 columns of one table.
+            operationId: DataQualityService_ProfileColumns
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ProfileColumnsRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProfileColumnsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/notifications:
         get:
             tags:
@@ -4120,6 +4340,180 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/GetUnreadNotificationCountResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityIssues:
+        get:
+            tags:
+                - DataQualityService
+            description: List quality issues, newest first.
+            operationId: DataQualityService_ListQualityIssues
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: |-
+                    The maximum number of issues to return. If unspecified, at most 50 are
+                     returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  description: |-
+                    A page token, received from a previous ListQualityIssues call. Provide this
+                     to retrieve the subsequent page.
+                  schema:
+                    type: string
+                - name: status
+                  in: query
+                  schema:
+                    enum:
+                        - QUALITY_ISSUE_STATUS_UNSPECIFIED
+                        - QUALITY_ISSUE_STATUS_OPEN
+                        - QUALITY_ISSUE_STATUS_ACKNOWLEDGED
+                        - QUALITY_ISSUE_STATUS_RESOLVED
+                    type: string
+                    format: enum
+                - name: severity
+                  in: query
+                  schema:
+                    enum:
+                        - QUALITY_SEVERITY_UNSPECIFIED
+                        - QUALITY_SEVERITY_WARNING
+                        - QUALITY_SEVERITY_ERROR
+                        - QUALITY_SEVERITY_CRITICAL
+                    type: string
+                    format: enum
+                - name: rule
+                  in: query
+                  description: 'Format: workspaces/{workspace}/qualityRules/{quality_rule}'
+                  schema:
+                    type: string
+                - name: targetGuid
+                  in: query
+                  description: The exact target GUID.
+                  schema:
+                    type: string
+                - name: owner
+                  in: query
+                  description: 'Only issues of rules owned by this principal. Format: users/{user}'
+                  schema:
+                    type: string
+                - name: startTime
+                  in: query
+                  description: Only issues first seen at or after this time.
+                  schema:
+                    type: string
+                    format: date-time
+                - name: endTime
+                  in: query
+                  description: Only issues first seen at or before this time.
+                  schema:
+                    type: string
+                    format: date-time
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListQualityIssuesResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityIssues/{qualityIssue}:
+        get:
+            tags:
+                - DataQualityService
+            description: Read one quality issue.
+            operationId: DataQualityService_GetQualityIssue
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityIssue
+                  in: path
+                  description: The qualityIssue id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityIssue'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        patch:
+            tags:
+                - DataQualityService
+            description: Acknowledge, resolve or mute one quality issue.
+            operationId: DataQualityService_UpdateQualityIssue
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityIssue
+                  in: path
+                  description: The qualityIssue id.
+                  required: true
+                  schema:
+                    type: string
+                - name: updateMask
+                  in: query
+                  description: |-
+                    The fields to change: status (RESOLVED only), resolution_reason,
+                     resolution_note, acknowledged or muted_until.
+                  schema:
+                    type: string
+                    format: field-mask
+                - name: acknowledged
+                  in: query
+                  description: |-
+                    Whether to acknowledge the issue. Acknowledgement is an action rather than a
+                     stored field of QualityIssue, so the update mask path "acknowledged" reads
+                     this value; false is rejected because clearing an acknowledgement is not a
+                     supported transition.
+                  schema:
+                    type: boolean
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/QualityIssue'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityIssue'
                 default:
                     description: Default error response
                     content:
@@ -4677,6 +5071,186 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/QualityRun'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualitySuggestions:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                List the review queue of model-proposed rule drafts and semantic labels,
+                 newest first.
+            operationId: DataQualityService_ListQualitySuggestions
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: |-
+                    The maximum number of suggestions to return. If unspecified, at most 50 are
+                     returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  description: |-
+                    A page token, received from a previous ListQualitySuggestions call. Provide
+                     this to retrieve the subsequent page.
+                  schema:
+                    type: string
+                - name: status
+                  in: query
+                  schema:
+                    enum:
+                        - QUALITY_SUGGESTION_STATUS_UNSPECIFIED
+                        - QUALITY_SUGGESTION_STATUS_PENDING
+                        - QUALITY_SUGGESTION_STATUS_ACCEPTED
+                        - QUALITY_SUGGESTION_STATUS_REJECTED
+                    type: string
+                    format: enum
+                - name: kind
+                  in: query
+                  schema:
+                    enum:
+                        - QUALITY_SUGGESTION_KIND_UNSPECIFIED
+                        - QUALITY_SUGGESTION_KIND_RULE_DRAFT
+                        - QUALITY_SUGGESTION_KIND_LABEL
+                    type: string
+                    format: enum
+                - name: source
+                  in: query
+                  schema:
+                    enum:
+                        - QUALITY_SUGGESTION_SOURCE_UNSPECIFIED
+                        - QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE
+                        - QUALITY_SUGGESTION_SOURCE_PROFILE
+                    type: string
+                    format: enum
+                - name: targetGuid
+                  in: query
+                  description: The exact target GUID.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListQualitySuggestionsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualitySuggestions/{qualitySuggestion}:decide:
+        post:
+            tags:
+                - DataQualityService
+            description: |-
+                Accept or reject one queued suggestion. A decision is final: the store
+                 refuses a second one.
+            operationId: DataQualityService_UpdateQualitySuggestion
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualitySuggestion
+                  in: path
+                  description: The qualitySuggestion id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UpdateQualitySuggestionRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualitySuggestion'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualitySuggestions:suggestLabels:
+        post:
+            tags:
+                - DataQualityService
+            description: Propose semantic labels for up to 50 columns of one table.
+            operationId: DataQualityService_SuggestColumnLabels
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/SuggestColumnLabelsRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SuggestColumnLabelsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualitySuggestions:suggestRule:
+        post:
+            tags:
+                - DataQualityService
+            description: Turn a natural-language intent into queued rule drafts.
+            operationId: DataQualityService_SuggestQualityRule
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/SuggestQualityRuleRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SuggestQualityRuleResponse'
                 default:
                     description: Default error response
                     content:
@@ -5475,6 +6049,129 @@ components:
                          This field is populated when syncing from the database. When empty (e.g., when parsing
                          from SQL files), the system cannot automatically drop the constraint.
             description: ColumnMetadata is the metadata for columns.
+        ColumnProfile:
+            type: object
+            properties:
+                totalRows:
+                    type: string
+                nullCount:
+                    type: string
+                distinctCount:
+                    type: string
+                distinctEstimated:
+                    type: boolean
+                    description: |-
+                        True when the database refused an exact distinct count and the value came
+                         from a sample.
+                minValue:
+                    type: string
+                    description: |-
+                        Display forms of the observed extremes, truncated; empty when the column has
+                         no comparable values.
+                maxValue:
+                    type: string
+                minLength:
+                    type: string
+                    description: Unset for non-string columns.
+                maxLength:
+                    type: string
+                topValues:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ProfileValue'
+                    description: The most frequent values, at most ten, each truncated.
+                patterns:
+                    type: array
+                    items:
+                        type: string
+                    description: Shape summaries such as "numeric", "alpha", "date-like", "mixed".
+            description: |-
+                ColumnProfile is the deterministic statistics of one column. It is computed
+                 without a model and is the evidence a semantic label cites.
+        ColumnSemanticLabel:
+            type: object
+            properties:
+                tableGuid:
+                    type: string
+                    description: The globally unique metadata GUID of the table.
+                metaType:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - APPLICATION_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - OPENLINEAGE
+                    type: string
+                    format: enum
+                column:
+                    type: string
+                label:
+                    enum:
+                        - QUALITY_SEMANTIC_TYPE_UNSPECIFIED
+                        - QUALITY_SEMANTIC_TYPE_EMAIL
+                        - QUALITY_SEMANTIC_TYPE_PHONE
+                        - QUALITY_SEMANTIC_TYPE_URL
+                        - QUALITY_SEMANTIC_TYPE_UUID
+                        - QUALITY_SEMANTIC_TYPE_IP
+                        - QUALITY_SEMANTIC_TYPE_COUNTRY_CODE
+                        - QUALITY_SEMANTIC_TYPE_CURRENCY
+                        - QUALITY_SEMANTIC_TYPE_AMOUNT
+                        - QUALITY_SEMANTIC_TYPE_QUANTITY
+                        - QUALITY_SEMANTIC_TYPE_PERCENTAGE
+                        - QUALITY_SEMANTIC_TYPE_ID
+                        - QUALITY_SEMANTIC_TYPE_BUSINESS_KEY
+                        - QUALITY_SEMANTIC_TYPE_TIMESTAMP
+                        - QUALITY_SEMANTIC_TYPE_DATE
+                        - QUALITY_SEMANTIC_TYPE_ENUM
+                        - QUALITY_SEMANTIC_TYPE_FREE_TEXT
+                        - QUALITY_SEMANTIC_TYPE_UNKNOWN
+                    type: string
+                    format: enum
+                source:
+                    enum:
+                        - QUALITY_LABEL_SOURCE_UNSPECIFIED
+                        - QUALITY_LABEL_SOURCE_MANUAL
+                        - QUALITY_LABEL_SOURCE_LLM
+                    type: string
+                    format: enum
+                status:
+                    enum:
+                        - QUALITY_LABEL_STATUS_UNSPECIFIED
+                        - QUALITY_LABEL_STATUS_SUGGESTED
+                        - QUALITY_LABEL_STATUS_ACCEPTED
+                        - QUALITY_LABEL_STATUS_REJECTED
+                    type: string
+                    format: enum
+                confidence:
+                    type: number
+                    format: double
+                evidence:
+                    $ref: '#/components/schemas/SemanticLabelEvidence'
+                acceptedBy:
+                    type: string
+                    description: 'Who accepted it. Format: users/{user}. Empty for a suggestion.'
+                acceptedTime:
+                    type: string
+                    format: date-time
+                updateTime:
+                    type: string
+                    format: date-time
+            description: |-
+                ColumnSemanticLabel is the semantic type a column is asserted to hold, who
+                 asserted it and the evidence behind it.
         ColumnValue:
             type: object
             properties:
@@ -7207,6 +7904,24 @@ components:
                         $ref: '#/components/schemas/AuditLog'
                 nextPageToken:
                     type: string
+        ListColumnLabelsResponse:
+            type: object
+            properties:
+                columnLabels:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ColumnSemanticLabel'
+                nextPageToken:
+                    type: string
+        ListColumnProfilesResponse:
+            type: object
+            properties:
+                columnProfiles:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ColumnProfile'
+                nextPageToken:
+                    type: string
         ListConnectedAppsResponse:
             type: object
             properties:
@@ -7395,6 +8110,15 @@ components:
                         $ref: '#/components/schemas/OpenLineageTask'
                 nextPageToken:
                     type: string
+        ListQualityIssuesResponse:
+            type: object
+            properties:
+                qualityIssues:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityIssue'
+                nextPageToken:
+                    type: string
         ListQualityRuleResultsResponse:
             type: object
             properties:
@@ -7420,6 +8144,15 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/QualityRun'
+                nextPageToken:
+                    type: string
+        ListQualitySuggestionsResponse:
+            type: object
+            properties:
+                qualitySuggestions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualitySuggestion'
                 nextPageToken:
                     type: string
         ListRolesResponse:
@@ -8492,6 +9225,59 @@ components:
                 skipDump:
                     type: boolean
             description: ProcedureMetadata is the metadata for procedures.
+        ProfileColumnsRequest:
+            required:
+                - parent
+            type: object
+            properties:
+                parent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
+                tableGuid:
+                    type: string
+                    description: The globally unique metadata GUID of the table.
+                metaType:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - APPLICATION_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - OPENLINEAGE
+                    type: string
+                    format: enum
+                columns:
+                    type: array
+                    items:
+                        type: string
+                    description: The columns to profile; empty means every column of the table. At most 50.
+        ProfileColumnsResponse:
+            type: object
+            properties:
+                columnProfiles:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ColumnProfile'
+        ProfileValue:
+            type: object
+            properties:
+                value:
+                    type: string
+                count:
+                    type: string
+            description: ProfileValue is one frequent value of a low-cardinality column.
         QualityFilter:
             type: object
             properties:
@@ -8529,6 +9315,84 @@ components:
                         type: string
                     description: Unused by IS_NULL / IS_NOT_NULL, at most 100 values for IN / NOT_IN.
             description: QualityFilterClause is one comparison in a QualityFilter.
+        QualityIssue:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityIssues/{quality_issue}'
+                rule:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityRules/{quality_rule}'
+                target:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityTarget'
+                    description: The target as it was when the issue was opened.
+                status:
+                    enum:
+                        - QUALITY_ISSUE_STATUS_UNSPECIFIED
+                        - QUALITY_ISSUE_STATUS_OPEN
+                        - QUALITY_ISSUE_STATUS_ACKNOWLEDGED
+                        - QUALITY_ISSUE_STATUS_RESOLVED
+                    type: string
+                    format: enum
+                severity:
+                    enum:
+                        - QUALITY_SEVERITY_UNSPECIFIED
+                        - QUALITY_SEVERITY_WARNING
+                        - QUALITY_SEVERITY_ERROR
+                        - QUALITY_SEVERITY_CRITICAL
+                    type: string
+                    format: enum
+                firstSeenRun:
+                    type: string
+                    description: The run that opened the issue. Unset when it was opened without a run.
+                lastSeenRun:
+                    type: string
+                    description: The newest run that observed the problem again.
+                firstSeenTime:
+                    type: string
+                    format: date-time
+                lastSeenTime:
+                    type: string
+                    format: date-time
+                resolvedTime:
+                    type: string
+                    description: When the issue was resolved. Unset while it is open or acknowledged.
+                    format: date-time
+                resolutionReason:
+                    enum:
+                        - QUALITY_RESOLUTION_REASON_UNSPECIFIED
+                        - QUALITY_RESOLUTION_REASON_FIXED
+                        - QUALITY_RESOLUTION_REASON_EXPECTED
+                        - QUALITY_RESOLUTION_REASON_NO_ACTION_NEEDED
+                        - QUALITY_RESOLUTION_REASON_DUPLICATE
+                        - QUALITY_RESOLUTION_REASON_AUTO_RECOVERED
+                    type: string
+                    format: enum
+                resolutionNote:
+                    type: string
+                    description: The note recorded with the resolution.
+                acknowledgedBy:
+                    type: string
+                    description: 'Who acknowledged it. Format: users/{user}. Empty when never acknowledged.'
+                acknowledgedTime:
+                    type: string
+                    format: date-time
+                mutedUntil:
+                    type: string
+                    description: |-
+                        Issue-level mute: notifications are suppressed until it passes, while the
+                         rule keeps running and results keep being recorded.
+                    format: date-time
+                occurrenceCount:
+                    type: integer
+                    description: How many runs observed the problem while the issue was unresolved.
+                    format: int32
+            description: |-
+                QualityIssue is the durable problem behind a rule's failures. A rule has at
+                 most one unresolved issue; a later failing run touches it instead of opening
+                 another, and a resolved issue is never reopened.
         QualityResultSummary:
             type: object
             properties:
@@ -8739,6 +9603,29 @@ components:
                 QualityRuleConfig is the typed parameters of one rule. Exactly one arm of the
                  oneof is set, and it must correspond to the rule's type; the filter, the empty
                  behavior and the count/percent metric are shared by every type.
+        QualityRuleDraftConfig:
+            type: object
+            properties:
+                config:
+                    $ref: '#/components/schemas/QualityRuleConfig'
+                severity:
+                    enum:
+                        - QUALITY_SEVERITY_UNSPECIFIED
+                        - QUALITY_SEVERITY_WARNING
+                        - QUALITY_SEVERITY_ERROR
+                        - QUALITY_SEVERITY_CRITICAL
+                    type: string
+                    format: enum
+                title:
+                    type: string
+                rationale:
+                    type: string
+                confidence:
+                    type: number
+                    format: double
+            description: |-
+                QualityRuleDraftConfig is one model-proposed rule, already validated into the
+                 typed config. It is never executed without a human saving it as a rule.
         QualityRuleResult:
             type: object
             properties:
@@ -8917,6 +9804,72 @@ components:
                     type: integer
                     format: int32
             description: QualityRunCounts is the six-state tally of one run.
+        QualitySuggestion:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion}'
+                kind:
+                    enum:
+                        - QUALITY_SUGGESTION_KIND_UNSPECIFIED
+                        - QUALITY_SUGGESTION_KIND_RULE_DRAFT
+                        - QUALITY_SUGGESTION_KIND_LABEL
+                    type: string
+                    format: enum
+                source:
+                    enum:
+                        - QUALITY_SUGGESTION_SOURCE_UNSPECIFIED
+                        - QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE
+                        - QUALITY_SUGGESTION_SOURCE_PROFILE
+                    type: string
+                    format: enum
+                target:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityTarget'
+                    description: The target the suggestion is about.
+                payload:
+                    $ref: '#/components/schemas/QualitySuggestionPayload'
+                status:
+                    enum:
+                        - QUALITY_SUGGESTION_STATUS_UNSPECIFIED
+                        - QUALITY_SUGGESTION_STATUS_PENDING
+                        - QUALITY_SUGGESTION_STATUS_ACCEPTED
+                        - QUALITY_SUGGESTION_STATUS_REJECTED
+                    type: string
+                    format: enum
+                provider:
+                    type: string
+                    description: The model that produced it.
+                model:
+                    type: string
+                promptVersion:
+                    type: string
+                createTime:
+                    type: string
+                    format: date-time
+                decidedBy:
+                    type: string
+                    description: 'Who decided it. Format: users/{user}. Empty while pending.'
+                decideTime:
+                    type: string
+                    format: date-time
+                decisionNote:
+                    type: string
+            description: |-
+                QualitySuggestion is one model-proposed rule draft or semantic label waiting
+                 for a reviewer. Nothing here is a rule: accepting a suggestion goes through the
+                 normal rule or label path.
+        QualitySuggestionPayload:
+            type: object
+            properties:
+                rule:
+                    $ref: '#/components/schemas/QualityRuleDraftConfig'
+                label:
+                    $ref: '#/components/schemas/SemanticLabelSuggestion'
+            description: |-
+                QualitySuggestionPayload is the review-queue payload: a rule draft the reviewer
+                 can load into the editor, or a semantic label awaiting confirmation.
         QualityTarget:
             type: object
             properties:
@@ -9375,6 +10328,86 @@ components:
                     allOf:
                         - $ref: '#/components/schemas/StoredMetadata'
                     description: The metadata content.
+        SemanticLabelEvidence:
+            type: object
+            properties:
+                columns:
+                    type: array
+                    items:
+                        type: string
+                    description: Columns whose values or context the label derives from.
+                metrics:
+                    type: array
+                    items:
+                        type: string
+                    description: Profile facts such as "null_rate=0.02" or "distinct=12".
+                lineage:
+                    type: array
+                    items:
+                        type: string
+                    description: Lineage relations that motivated the label, e.g. "join key of orders".
+                rationale:
+                    type: string
+            description: |-
+                SemanticLabelEvidence is why a label was assigned. It cites the inputs the
+                 labeler saw so a reviewer can check the reasoning without re-running it.
+        SemanticLabelSuggestion:
+            type: object
+            properties:
+                column:
+                    type: string
+                label:
+                    enum:
+                        - QUALITY_SEMANTIC_TYPE_UNSPECIFIED
+                        - QUALITY_SEMANTIC_TYPE_EMAIL
+                        - QUALITY_SEMANTIC_TYPE_PHONE
+                        - QUALITY_SEMANTIC_TYPE_URL
+                        - QUALITY_SEMANTIC_TYPE_UUID
+                        - QUALITY_SEMANTIC_TYPE_IP
+                        - QUALITY_SEMANTIC_TYPE_COUNTRY_CODE
+                        - QUALITY_SEMANTIC_TYPE_CURRENCY
+                        - QUALITY_SEMANTIC_TYPE_AMOUNT
+                        - QUALITY_SEMANTIC_TYPE_QUANTITY
+                        - QUALITY_SEMANTIC_TYPE_PERCENTAGE
+                        - QUALITY_SEMANTIC_TYPE_ID
+                        - QUALITY_SEMANTIC_TYPE_BUSINESS_KEY
+                        - QUALITY_SEMANTIC_TYPE_TIMESTAMP
+                        - QUALITY_SEMANTIC_TYPE_DATE
+                        - QUALITY_SEMANTIC_TYPE_ENUM
+                        - QUALITY_SEMANTIC_TYPE_FREE_TEXT
+                        - QUALITY_SEMANTIC_TYPE_UNKNOWN
+                    type: string
+                    format: enum
+                confidence:
+                    type: number
+                    format: double
+                evidence:
+                    $ref: '#/components/schemas/SemanticLabelEvidence'
+                suggestedRuleTypes:
+                    type: array
+                    items:
+                        enum:
+                            - QUALITY_RULE_TYPE_UNSPECIFIED
+                            - QUALITY_RULE_TYPE_ROW_COUNT
+                            - QUALITY_RULE_TYPE_ROW_COUNT_CHANGE
+                            - QUALITY_RULE_TYPE_NULL_PERCENT
+                            - QUALITY_RULE_TYPE_UNIQUE
+                            - QUALITY_RULE_TYPE_UNIQUE_COMBINATION
+                            - QUALITY_RULE_TYPE_ACCEPTED_VALUES
+                            - QUALITY_RULE_TYPE_RANGE
+                            - QUALITY_RULE_TYPE_REGEX
+                            - QUALITY_RULE_TYPE_STRING_LENGTH
+                            - QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY
+                            - QUALITY_RULE_TYPE_CROSS_COLUMN
+                            - QUALITY_RULE_TYPE_FRESHNESS
+                            - QUALITY_RULE_TYPE_CUSTOM_SQL
+                            - QUALITY_RULE_TYPE_CEL_EXPRESSION
+                        type: string
+                        format: enum
+                    description: |-
+                        The rule types the deterministic mapping would suggest for this label, in
+                         display order. The model may rank types but may not invent one.
+            description: SemanticLabelSuggestion is a model-proposed semantic label for one column.
         SequenceMetadata:
             type: object
             properties:
@@ -9562,6 +10595,109 @@ components:
                     type: number
                     format: double
             description: StringLengthConfig counts rows whose string length is outside the bounds.
+        SuggestColumnLabelsRequest:
+            required:
+                - parent
+            type: object
+            properties:
+                parent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
+                tableGuid:
+                    type: string
+                    description: The globally unique metadata GUID of the table.
+                metaType:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - APPLICATION_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - OPENLINEAGE
+                    type: string
+                    format: enum
+                columns:
+                    type: array
+                    items:
+                        type: string
+                    description: The columns to label; empty means every column of the table. At most 50.
+                language:
+                    type: string
+                    description: |-
+                        The language the evidence and rationale are written in, e.g. "en" or
+                         "zh-CN".
+        SuggestColumnLabelsResponse:
+            type: object
+            properties:
+                qualitySuggestions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualitySuggestion'
+                    description: The queued label proposals, pending review.
+        SuggestQualityRuleRequest:
+            required:
+                - parent
+            type: object
+            properties:
+                parent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
+                tableGuid:
+                    type: string
+                    description: The globally unique metadata GUID of the table.
+                metaType:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - APPLICATION_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - OPENLINEAGE
+                    type: string
+                    format: enum
+                columns:
+                    type: array
+                    items:
+                        type: string
+                    description: The columns the intent is about; empty means the rule may use any column.
+                intent:
+                    type: string
+                    description: The natural-language intent, e.g. "email must not be empty".
+                language:
+                    type: string
+                    description: The language the intent and the draft are written in, e.g. "en" or "zh-CN".
+        SuggestQualityRuleResponse:
+            type: object
+            properties:
+                qualitySuggestions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualitySuggestion'
+                    description: The queued drafts, pending review.
         SyncDatabaseRequest:
             required:
                 - name
@@ -9962,6 +11098,78 @@ components:
             description: |-
                 UniqueConfig counts duplicated non-NULL values in one column. The threshold is
                  measured per threshold_metric; the default fail threshold is zero.
+        UpdateColumnLabelRequest:
+            required:
+                - parent
+            type: object
+            properties:
+                parent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
+                tableGuid:
+                    type: string
+                    description: The globally unique metadata GUID of the table.
+                metaType:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - APPLICATION_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - OPENLINEAGE
+                    type: string
+                    format: enum
+                column:
+                    type: string
+                label:
+                    enum:
+                        - QUALITY_SEMANTIC_TYPE_UNSPECIFIED
+                        - QUALITY_SEMANTIC_TYPE_EMAIL
+                        - QUALITY_SEMANTIC_TYPE_PHONE
+                        - QUALITY_SEMANTIC_TYPE_URL
+                        - QUALITY_SEMANTIC_TYPE_UUID
+                        - QUALITY_SEMANTIC_TYPE_IP
+                        - QUALITY_SEMANTIC_TYPE_COUNTRY_CODE
+                        - QUALITY_SEMANTIC_TYPE_CURRENCY
+                        - QUALITY_SEMANTIC_TYPE_AMOUNT
+                        - QUALITY_SEMANTIC_TYPE_QUANTITY
+                        - QUALITY_SEMANTIC_TYPE_PERCENTAGE
+                        - QUALITY_SEMANTIC_TYPE_ID
+                        - QUALITY_SEMANTIC_TYPE_BUSINESS_KEY
+                        - QUALITY_SEMANTIC_TYPE_TIMESTAMP
+                        - QUALITY_SEMANTIC_TYPE_DATE
+                        - QUALITY_SEMANTIC_TYPE_ENUM
+                        - QUALITY_SEMANTIC_TYPE_FREE_TEXT
+                        - QUALITY_SEMANTIC_TYPE_UNKNOWN
+                    type: string
+                    description: The label to accept. Required by ACCEPT and ignored by CLEAR.
+                    format: enum
+                action:
+                    enum:
+                        - COLUMN_LABEL_ACTION_UNSPECIFIED
+                        - COLUMN_LABEL_ACTION_ACCEPT
+                        - COLUMN_LABEL_ACTION_CLEAR
+                    type: string
+                    format: enum
+        UpdateColumnLabelResponse:
+            type: object
+            properties:
+                columnLabel:
+                    allOf:
+                        - $ref: '#/components/schemas/ColumnSemanticLabel'
+                    description: The stored label, unset after CLEAR.
         UpdateDebugConfigRequest:
             required:
                 - enabled
@@ -9993,6 +11201,28 @@ components:
                     type: string
                     description: The list of fields to update.
                     format: field-mask
+        UpdateQualitySuggestionRequest:
+            required:
+                - name
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion}'
+                decision:
+                    enum:
+                        - QUALITY_SUGGESTION_STATUS_UNSPECIFIED
+                        - QUALITY_SUGGESTION_STATUS_PENDING
+                        - QUALITY_SUGGESTION_STATUS_ACCEPTED
+                        - QUALITY_SUGGESTION_STATUS_REJECTED
+                    type: string
+                    description: |-
+                        The decision: ACCEPTED or REJECTED. A suggestion starts PENDING and a
+                         decision is final.
+                    format: enum
+                decisionNote:
+                    type: string
+                    description: Why it was decided, shown in the review history.
         User:
             type: object
             properties:

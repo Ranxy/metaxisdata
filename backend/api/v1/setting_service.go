@@ -9,9 +9,11 @@ import (
 	"connectrpc.com/connect"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/config"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -53,49 +55,14 @@ func (s *SettingService) UpdateWorkspaceProfileSetting(ctx context.Context, requ
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to get workspace profile setting"))
 	}
-	for _, path := range request.Msg.UpdateMask.Paths {
-		switch path {
-		case "external_url":
-			setting.ExternalUrl = strings.TrimRight(request.Msg.Setting.ExternalUrl, "/")
-		case "disallow_signup":
-			setting.DisallowSignup = request.Msg.Setting.DisallowSignup
-		case "disallow_password_signin":
-			setting.DisallowPasswordSignin = request.Msg.Setting.DisallowPasswordSignin
-		case "openlineage_retention_days":
-			if request.Msg.Setting.OpenlineageRetentionDays < 0 {
-				return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("openlineage_retention_days must not be negative"))
-			}
-			setting.OpenlineageRetentionDays = request.Msg.Setting.OpenlineageRetentionDays
-		case "domains":
-			domains, err := normalizeIdentityDomains(request.Msg.Setting.Domains)
-			if err != nil {
-				return nil, err
-			}
-			setting.Domains = domains
-		case "enforce_identity_domain":
-			setting.EnforceIdentityDomain = request.Msg.Setting.EnforceIdentityDomain
-		case "allowed_llm_provider_profiles":
-			profiles, err := normalizeAllowedLLMProfiles(request.Msg.Setting.AllowedLlmProviderProfiles)
-			if err != nil {
-				return nil, err
-			}
-			setting.AllowedLlmProviderProfiles = profiles
-		case "mcp_enabled":
-			setting.McpEnabled = request.Msg.Setting.McpEnabled
-		case "sso_email_identity_idps":
-			idps, err := normalizeSSOEmailIdentityIdps(request.Msg.Setting.SsoEmailIdentityIdps)
-			if err != nil {
-				return nil, err
-			}
-			setting.SsoEmailIdentityIdps = idps
-		default:
-			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("unsupported update_mask %q", path))
-		}
+	if err := applyWorkspaceProfileUpdate(setting, request.Msg.Setting, request.Msg.UpdateMask.Paths); err != nil {
+		return nil, err
 	}
 
 	// The MCP endpoint derives its issuer and resource identifiers from
-	// external_url, so it cannot be enabled without one. Checking after the loop
-	// makes the answer independent of the mask's field order.
+	// external_url, so it cannot be enabled without one. Checking after the
+	// masked fields are merged makes the answer independent of the mask's field
+	// order.
 	if setting.McpEnabled && setting.ExternalUrl == "" {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("external_url must be configured before mcp_enabled can be turned on"))
 	}
@@ -104,13 +71,202 @@ func (s *SettingService) UpdateWorkspaceProfileSetting(ctx context.Context, requ
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to marshal workspace profile setting"))
 	}
-	if _, err := s.store.UpsertSetting(ctx, &store.SetSettingMessage{
+	_, err = s.store.UpsertSetting(ctx, &store.SetSettingMessage{
 		Name:  storepb.SettingName_WORKSPACE_PROFILE,
 		Value: string(payload),
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to update workspace profile setting"))
 	}
 	return connect.NewResponse(convertToWorkspaceProfileSetting(setting)), nil
+}
+
+// applyWorkspaceProfileUpdate merges the fields named by paths from update into
+// setting. Validation failures are returned as Connect errors so the RPC can pass
+// them through unchanged.
+//
+// Checks that span several fields run after the loop, which makes the result
+// independent of the mask's field order: the data quality provider is validated
+// against the allowed list as it stands once every masked field was applied. (The
+// MCP check stays in the RPC, next to the other cross-setting invariant about
+// external_url.)
+func applyWorkspaceProfileUpdate(setting *storepb.WorkspaceProfileSetting, update *v1pb.WorkspaceProfileSetting, paths []string) error {
+	var (
+		dataQuality        *storepb.DataQualitySetting
+		dataQualityUpdated bool
+	)
+	for _, path := range paths {
+		switch path {
+		case "external_url":
+			setting.ExternalUrl = strings.TrimRight(update.GetExternalUrl(), "/")
+		case "disallow_signup":
+			setting.DisallowSignup = update.GetDisallowSignup()
+		case "disallow_password_signin":
+			setting.DisallowPasswordSignin = update.GetDisallowPasswordSignin()
+		case "openlineage_retention_days":
+			if update.GetOpenlineageRetentionDays() < 0 {
+				return connect.NewError(connect.CodeInvalidArgument, errors.New("openlineage_retention_days must not be negative"))
+			}
+			setting.OpenlineageRetentionDays = update.GetOpenlineageRetentionDays()
+		case "domains":
+			domains, err := normalizeIdentityDomains(update.GetDomains())
+			if err != nil {
+				return err
+			}
+			setting.Domains = domains
+		case "enforce_identity_domain":
+			setting.EnforceIdentityDomain = update.GetEnforceIdentityDomain()
+		case "allowed_llm_provider_profiles":
+			profiles, err := normalizeAllowedLLMProfiles(update.GetAllowedLlmProviderProfiles())
+			if err != nil {
+				return err
+			}
+			setting.AllowedLlmProviderProfiles = profiles
+		case "mcp_enabled":
+			setting.McpEnabled = update.GetMcpEnabled()
+		case "sso_email_identity_idps":
+			idps, err := normalizeSSOEmailIdentityIdps(update.GetSsoEmailIdentityIdps())
+			if err != nil {
+				return err
+			}
+			setting.SsoEmailIdentityIdps = idps
+		case "data_quality":
+			normalized, err := normalizeDataQualitySetting(update.GetDataQuality())
+			if err != nil {
+				return err
+			}
+			dataQuality = normalized
+			dataQualityUpdated = true
+		default:
+			return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("unsupported update_mask %q", path))
+		}
+	}
+
+	if dataQualityUpdated {
+		// A cleared data_quality message (nil) resets the workspace to the
+		// defaults; a named provider still has to be allowed.
+		if err := validateDataQualityProviderProfile(dataQuality.GetLlmProviderProfile(), setting.AllowedLlmProviderProfiles); err != nil {
+			return err
+		}
+		setting.DataQuality = dataQuality
+	}
+	return nil
+}
+
+// normalizeDataQualitySetting validates the data quality settings of an update
+// and converts them to the stored form. A nil message means the masked field was
+// cleared, which resets the workspace to the defaults.
+func normalizeDataQualitySetting(dataQuality *v1pb.DataQualitySetting) (*storepb.DataQualitySetting, error) {
+	if dataQuality == nil {
+		return nil, nil
+	}
+
+	if limit := dataQuality.GetFailureSampleLimit(); limit < 0 || limit > dataquality.MaxFailureSampleLimit {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("failure_sample_limit must be between 0 and %d", dataquality.MaxFailureSampleLimit))
+	}
+	interval := dataQuality.GetDefaultScheduleInterval()
+	if interval != nil {
+		if err := interval.CheckValid(); err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("default_schedule_interval is not a valid duration: %v", err))
+		}
+	}
+	intervalDuration := interval.AsDuration()
+	if intervalDuration != 0 && (intervalDuration < dataquality.MinScheduleInterval || intervalDuration > dataquality.MaxScheduleInterval) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("default_schedule_interval must be between %s and %s, or zero for the default",
+			dataquality.MinScheduleInterval, dataquality.MaxScheduleInterval))
+	}
+	if value := dataQuality.GetDailyExecutionLimit(); value < 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("daily_execution_limit must not be negative"))
+	}
+	if value := dataQuality.GetDailyColumnAnalysisLimit(); value < 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("daily_column_analysis_limit must not be negative"))
+	}
+	if value := dataQuality.GetMaxColumnsPerAnalysis(); value < 0 || value > dataquality.MaxColumnsPerAnalysisLimit {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("max_columns_per_analysis must be between 0 and %d", dataquality.MaxColumnsPerAnalysisLimit))
+	}
+	provider := strings.TrimSpace(dataQuality.GetLlmProviderProfile())
+	if provider != "" && !validLLMProviderProfileName(provider) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid LLM provider profile %q", dataQuality.GetLlmProviderProfile()))
+	}
+
+	result := &storepb.DataQualitySetting{
+		EnableLlmAnalysis:        dataQuality.GetEnableLlmAnalysis(),
+		LlmProviderProfile:       provider,
+		StoreFailureSamples:      dataQuality.GetStoreFailureSamples(),
+		FailureSampleLimit:       dataQuality.GetFailureSampleLimit(),
+		DailyExecutionLimit:      dataQuality.GetDailyExecutionLimit(),
+		DailyColumnAnalysisLimit: dataQuality.GetDailyColumnAnalysisLimit(),
+		MaxColumnsPerAnalysis:    dataQuality.GetMaxColumnsPerAnalysis(),
+		SendSampleValuesToLlm:    dataQuality.GetSendSampleValuesToLlm(),
+	}
+	if interval != nil {
+		result.DefaultScheduleInterval = durationpb.New(intervalDuration)
+	}
+	return result, nil
+}
+
+// validateDataQualityProviderProfile checks the provider a data quality update
+// names. Empty means "the first allowed profile"; otherwise it must be a profile
+// resource name and, when the workspace restricts its allowed list, a member of
+// it.
+func validateDataQualityProviderProfile(profile string, allowed []string) error {
+	if profile == "" {
+		return nil
+	}
+	if !validLLMProviderProfileName(profile) {
+		return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid LLM provider profile %q", profile))
+	}
+	if len(allowed) > 0 && !slices.Contains(allowed, profile) {
+		return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("LLM provider profile %q is not in allowed_llm_provider_profiles", profile))
+	}
+	return nil
+}
+
+// validLLMProviderProfileName reports whether profile is a profile resource name.
+func validLLMProviderProfileName(profile string) bool {
+	const prefix = "llm-provider-profiles/"
+	return strings.HasPrefix(profile, prefix) && len(profile) > len(prefix)
+}
+
+// convertDataQualitySetting copies the stored data quality settings into the API
+// form. Nil stays nil: the workspace has not saved them, and every reader
+// resolves the defaults.
+func convertDataQualitySetting(dataQuality *storepb.DataQualitySetting) *v1pb.DataQualitySetting {
+	if dataQuality == nil {
+		return nil
+	}
+	return &v1pb.DataQualitySetting{
+		EnableLlmAnalysis:        dataQuality.GetEnableLlmAnalysis(),
+		LlmProviderProfile:       dataQuality.GetLlmProviderProfile(),
+		StoreFailureSamples:      dataQuality.GetStoreFailureSamples(),
+		FailureSampleLimit:       dataQuality.GetFailureSampleLimit(),
+		DefaultScheduleInterval:  dataQuality.GetDefaultScheduleInterval(),
+		DailyExecutionLimit:      dataQuality.GetDailyExecutionLimit(),
+		DailyColumnAnalysisLimit: dataQuality.GetDailyColumnAnalysisLimit(),
+		MaxColumnsPerAnalysis:    dataQuality.GetMaxColumnsPerAnalysis(),
+		SendSampleValuesToLlm:    dataQuality.GetSendSampleValuesToLlm(),
+	}
+}
+
+// resolveDataQualitySetting returns the effective data quality settings as an
+// explicit message: unset zeros are filled with the server defaults and the
+// booleans are resolved from the message's presence. The stored message keeps the
+// "zero means default" contract; the API returns the resolved form so the
+// settings page and the LLM switch read one source instead of re-deriving the
+// defaults.
+func resolveDataQualitySetting(setting *storepb.WorkspaceProfileSetting) *storepb.DataQualitySetting {
+	resolved := dataquality.SettingsFromProfile(setting)
+	return &storepb.DataQualitySetting{
+		EnableLlmAnalysis:        resolved.EnableLLMAnalysis,
+		LlmProviderProfile:       resolved.LLMProviderProfile,
+		StoreFailureSamples:      resolved.StoreFailureSamples,
+		FailureSampleLimit:       int32(resolved.FailureSampleLimit),
+		DefaultScheduleInterval:  durationpb.New(resolved.DefaultScheduleInterval),
+		DailyExecutionLimit:      int32(resolved.DailyExecutionLimit),
+		DailyColumnAnalysisLimit: int32(resolved.DailyColumnAnalysisLimit),
+		MaxColumnsPerAnalysis:    int32(resolved.MaxColumnsPerAnalysis),
+		SendSampleValuesToLlm:    resolved.SendSampleValuesToLLM,
+	}
 }
 
 func convertToWorkspaceProfileSetting(setting *storepb.WorkspaceProfileSetting) *v1pb.WorkspaceProfileSetting {
@@ -124,6 +280,7 @@ func convertToWorkspaceProfileSetting(setting *storepb.WorkspaceProfileSetting) 
 		AllowedLlmProviderProfiles: setting.GetAllowedLlmProviderProfiles(),
 		McpEnabled:                 setting.GetMcpEnabled(),
 		SsoEmailIdentityIdps:       formatIdentityProviderNames(setting.GetSsoEmailIdentityIdps()),
+		DataQuality:                convertDataQualitySetting(resolveDataQualitySetting(setting)),
 	}
 }
 
@@ -183,7 +340,6 @@ func normalizeIdentityDomains(domains []string) ([]string, error) {
 // normalizeAllowedLLMProfiles trims and de-duplicates the profile resource
 // names, and rejects anything that is not one.
 func normalizeAllowedLLMProfiles(profiles []string) ([]string, error) {
-	const prefix = "llm-provider-profiles/"
 	result := make([]string, 0, len(profiles))
 	seen := make(map[string]struct{}, len(profiles))
 	for _, profile := range profiles {
@@ -191,7 +347,7 @@ func normalizeAllowedLLMProfiles(profiles []string) ([]string, error) {
 		if trimmed == "" {
 			continue
 		}
-		if !strings.HasPrefix(trimmed, prefix) || len(trimmed) == len(prefix) {
+		if !validLLMProviderProfileName(trimmed) {
 			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid LLM provider profile %q", profile))
 		}
 		if _, ok := seen[trimmed]; ok {
