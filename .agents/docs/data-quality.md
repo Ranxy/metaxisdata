@@ -14,7 +14,7 @@
 - **结果**：六态 `PASS / WARN / FAIL / ERROR / SKIPPED / NOT_EVALUATED`；“监控自身失败”（查询报错、超时、权限失效）与“数据不达标”必须分开；空数据默认 `NOT_EVALUATED`，可配。
 - **治理**：规则有稳定 id + 不可变 revision；失败汇聚成**问题（issue）**，按状态迁移告警（打开 / 恢复 / 执行失败），复用站内信；v1 只做站内信，不做邮件 / Slack / PagerDuty。
 - **LLM**：v1 做三件事——**自然语言 → 规则草稿**、**失败结果解释**、**字段画像 → 语义标注 → 规则建议**（先做确定性统计画像，再由 LLM 在封闭语义类型集合内标注，规则候选由“标签 → 规则候选”确定性映射生成；人工确认后才成为规则）。默认关闭，需管理员显式开启；样本行**默认不发给模型**。
-- **扩展**：v1.1 首项加入 **CEL 表达式检查**（方言无关、采样级、受控谓词）；不做进程内 Python。
+- **扩展**：v1.1 先补 schema 漂移 + 分组检查，再补 aggregate，最后加入 **CEL 表达式检查**（方言无关、采样级、受控谓词）；不做进程内 Python。
 - **不做**：ML/季节感知异常检测、分布漂移、LLM-as-judge 检查、自由 SQL 生成、自动修复、质量分、Python 插件、流式/行级检查、MCP/CLI 暴露。
 
 ## 1. 背景、目标与非目标
@@ -86,7 +86,7 @@ Metaxisdata 今天能回答“**数据长什么样**”（schema 同步、元数
 | --- | --- | --- | --- | --- |
 | 子系统 | data quality | 数据质量 | `dataQuality` | 顶层导航与权限前缀 |
 | 单条断言 | quality rule | 质量规则 | `QualityRule` | 有稳定 id + 不可变 revision |
-| 规则集合 | rule set | 规则集 | — | 仅在“一次执行包含哪些规则”语境使用，不单独建实体 |
+| 规则集合 | rule set | 规则集 | — | v1 不单独建实体；后续以 RuleSet（contract-like 整体验证）引入，见 §4.10.5 |
 | 一次执行 | execution | 执行（执行记录） | `QualityRun` | **不叫 run**：`run` 已被 OpenLineage 固定为“运行记录”，见 §5.5 |
 | 单条规则的执行结果 | rule result | 规则结果 | `QualityRuleResult` | 属于某次执行 |
 | 持续存在的问题 | issue | 质量问题 | `QualityIssue` | 由失败结果汇聚，有生命周期 |
@@ -416,7 +416,7 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 - 执行客户 Python 等于开放代码执行面：供应链、资源耗尽、数据外带、宿主能力越权都要单独治理。
 - 因此：**不做进程内 Python**；“兼容”降级为“定义可导入”（GX/Soda/dbt 规则文件 → 原生规则 AST），执行仍走 Go/SQL。
 
-**CEL 表达式检查（R14，v1.1 首项）的规格**：
+**CEL 表达式检查（R14，v1.1 第三批）的规格**：
 
 - 定位：给“内置 13 类规则覆盖不到、但又不值得写一条完整 SQL”的场景一个**受控谓词**。它不生成 SQL、不执行任意代码，表达式只读当前行的列值。
 - 参数：`expression`（≤4 KiB）、`filter`（可选，缩小样本范围）、`sample_rows`（默认 10,000，上限 100,000）、warn/fail 阈值（违规行数或比例，二选一）。
@@ -461,7 +461,7 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 | 组合方式 | 外部做法 | 我们的做法 |
 | --- | --- | --- |
 | 同一检查 × 多列 | 列级 check 批量套用 | 每列一条规则（`target.columns` + config 列），或一条组合键规则 |
-| 数据集级 + 列级 | 一个 contract 同时有 dataset checks 和 column checks | 一个 execution（run）里放多条规则；**不引入 contract 实体** |
+| 数据集级 + 列级 | 一个 contract 同时有 dataset checks 和 column checks | 一个 execution（run）里放多条规则；v1 不引入 contract 实体，后续以 RuleSet 引入（§4.10.5） |
 | 同列多条检查 | missing + invalid + length | 多条规则，各自独立判定/告警/历史 |
 | 过滤 / 分区 | dataset filter、check filter、最新分区 | 规则级结构化 `filter`（AND 子句）；复杂条件用 `custom_sql` |
 | 多切片 | contract scopes | later；v1 用多条规则 + 不同 filter 表达 |
@@ -482,24 +482,38 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 - **Meta**：dimension、severity、owner、tags、schedule、description。
 - **Result**：observed、threshold 快照、failed rows/sample、executed SQL、错误分类、engine version。
 
-结论：**v1 的 13 类规则覆盖了对标模板中的绝大多数检查形态**；缺口集中在 schema / 聚合 / 分组 / 对账 / 分布异常 / 自定义缺失值，按 §4.10.4 排期。`custom_sql` 与 CEL 是逃生口，但不把产品做成通用 DSL。
+结论：**v1 的 13 类规则覆盖了模板中最常用的判定式检查**；缺口集中在 schema / 聚合 / 分组 / 对账 / 分布异常 / 自定义缺失值，按 §4.10.4 排期。`custom_sql` 与 CEL 是逃生口：**v1 接受用 `custom_sql` 兜底**（只读单语句、超时/行数上限、审计），但某个形态反复出现时应升格为规则类型，而不是长期靠 SQL 堆叠。
 
 **4.10.4 缺口排期**
 
-| 能力 | 计划 |
-| --- | --- |
-| schema 漂移（列集合/类型/顺序） | v1.1（复用元数据历史 + schema sync diff） |
-| 分组内阈值（`GROUP BY` + 每组条件） | v1.1 |
-| 聚合指标（sum/avg/min/max/stddev/percentile） | v1.1 |
-| 自定义缺失值（`missing_values` / regex） | v1.1 |
-| 跨表对账 / 记录级 diff | v1.1 |
-| 分布漂移 / 统计异常 | later |
-| 变量插值、contract scopes、cron、contract verify/CI | later |
-| 模板 / 行业示例 | **不进产品**；后续放示例站或文档 |
+按确认的口径，v1.1 **先做 schema 漂移 + 分组检查，再做 aggregate**：
+
+| 优先级 | 能力 | 计划 |
+| --- | --- | --- |
+| v1.1 第一批 | schema 漂移（列集合/类型/顺序） | 复用元数据历史 + schema sync diff |
+| v1.1 第一批 | 分组内阈值（`GROUP BY` + 每组条件） | 新规则类型 + 方言 SQL |
+| v1.1 第二批 | 聚合指标（sum/avg/min/max/stddev/percentile） | 新规则类型 + 方言函数矩阵 |
+| v1.1 第二批 | 自定义缺失值（`missing_values` / regex） | R03 参数扩展 |
+| v1.1 第二批 | 跨表对账 / 记录级 diff | 同实例跨库/跨表查询 |
+| later | 分布漂移 / 统计异常 | 历史时序 + 统计基线 |
+| later（v1.1 之后） | **RuleSet / contract-like 整体验证** | 见 §4.10.5；依赖变量/scopes/规则集模型 |
+| later | 变量插值、contract scopes、cron、CI | 产品模型扩展 |
+| 不进产品 | 模板 / 行业示例 | 后续放示例站或文档 |
 
 **参考**：[Soda 模板库](https://soda.io/templates)、[Soda contract 语言](https://docs.soda.io/reference/contract-language-reference)、[SodaCL metrics/checks](https://docs.soda.io/soda-documentation/soda-v3/sodacl-reference/metrics-and-checks)、[GX Expectation Gallery](https://greatexpectations.io/expectations/)、[dbt data tests](https://docs.getdbt.com/docs/build/data-tests)、[dbt-expectations](https://github.com/calogica/dbt-expectations)。
 
-**验收**：每类检查能落到明确的规则类型或 `custom_sql`/CEL；组合方式不要求新实体；缺口有排期，不用“模板”掩盖能力缺失。
+**4.10.5 后续：RuleSet（contract-like 整体验证）**
+
+已确认：**后续引入一个“规则集整体验证”实体**，用来表达一个 dataset + 一组 column checks 的整体通过/失败，而不是永远只有“多条独立规则”。
+
+- **实体形态**：`QualityRuleSet`（名称、描述、目标表、共享 filter、schedule、owner、tags、状态、revision）。规则可以独立存在，也可以 `rule_set_id` 归属一个集合（一条规则最多归属一个集合；可空，不做回填）。
+- **执行语义**：验证一个 set = 创建一次 set 级 run，内部逐条执行规则；沿用现有六态与 `quality_rule_result`；set 级状态按最坏结果 rollup，并给集合级通过/失败。
+- **问题/告警**：问题仍按规则记录；通知可按 set 聚合（一次集合验证的失败摘要），减少“同一数据集多条规则同时失败”的噪音。
+- **触发**：手动“验证此集合”、定时 set 级调度；CI/contract verify 放更后。
+- **前置依赖**：schema 漂移、分组检查、变量/scopes 至少部分具备后再做；否则集合只是“多选规则”的别名，价值不足。
+- **不做**：v1/v1.1 不引入该实体；不做独立 DSL、不做第三方 contract 兼容。迁移上是纯增量（`rule_set_id` 可空 + set 表），无历史回填。
+
+**验收**：每类检查能落到明确的规则类型或 `custom_sql`/CEL；组合方式在 v1 不要求新实体、后续由 RuleSet 表达；缺口有排期，不用“模板”掩盖能力缺失。
 
 
 ## 5. 信息架构与交互
@@ -772,12 +786,23 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 - 确定性画像引擎 + `column_profile`；语义标注存储与人工确认；L3 标注 + 规则候选映射 + 建议队列；画像/建议 UI（资产页入口、建议队列、列标注）；隐私开关与成本上限；golden set 评测。
 - 验收：画像数值与独立 SQL 对账一致（fixture）；采样/截断可见；`unknown` 不硬套规则；阈值不取当前观察值；标注冲突人工优先；建议不自动落库；关闭出域开关后不发送原始样本。
 
-**v1.1（首发后第一批）**
+**v1.1 第一批：schema 漂移 + 分组检查**
 
-- R14 CEL 表达式检查：表达式校验、采样执行、`sampled` 标记、编辑器与干跑；与 `custom_sql` 的边界写清楚。
+- schema 漂移：复用元数据历史 + schema sync diff，规则化告警。
+- 分组检查：`GROUP BY` + 每组阈值（方言 SQL + 结果模型）。
+- 验收：schema 规则在 MySQL/PG/MSSQL 上可编译并告警；分组规则在 fixture 上判定正确；与既有 13 类规则共用六态/问题/通知。
+
+**v1.1 第二批：aggregate + 自定义缺失值 + 跨表对账**
+
+- aggregate（sum/avg/min/max/stddev/percentile）、`missing_values`/`missing_format`、跨表记录级对账。
+- 验收：聚合函数矩阵与方言差异有 golden；缺失值列表/正则可配；对账在同实例跨库可执行。
+
+**v1.1 第三批：CEL 表达式检查（R14）**
+
+- 表达式校验、采样执行、`sampled` 标记、编辑器与干跑；与 `custom_sql` 的边界写清楚。
 - 验收：同一 CEL 表达式在 MySQL/PG/MSSQL 行为一致；null/类型边界单测；采样行数/截断可见；表达式无法触发 I/O；超时/行数上限生效。
 
-| M4（更后）**：schema 漂移、分组检查、聚合指标、跨库对账、统计基线、webhook、邮件、定义导入、资产级静音、问题批量处置、MCP/CLI、质量分、分布漂移、LLM-as-judge。
+**M4（更后）**：RuleSet / contract-like 整体验证、分布漂移、统计基线、webhook、邮件、定义导入、资产级静音、问题批量处置、MCP/CLI、质量分、LLM-as-judge。
 
 **全局验收门禁**：`gofmt` + `golangci-lint` + 相关 `go test`；`buf format/lint/generate`；前端 `biome:check`、`lint`、`i18n`、`type-check`、`test run`、`audit:ui`；迁移链一致性测试；权限目录/ACL 守卫测试；通知 key 测试。
 
@@ -807,6 +832,8 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 | D20 | 自定义检查的扩展 | v1/v1.1 不做 Python；扩展走 `custom_sql` → CEL；兼容走定义导入 | 进程内嵌 Python：破坏单二进制与安全边界 |
 | D21 | CEL 检查的语义 | **采样级**（默认 1 万行，标记 `sampled`）；精确需求用 `custom_sql` | 把 CEL 编译成 SQL：精确但方言/类型/语义复杂，易错且难评测 |
 | D22 | 规则表达方式 | 类型化规则 + 公共语义（scope/metric/threshold/filter/sampling），不做通用 DSL；模板/示例放示例站 | 做通用 DSL/模板市场：实现与治理成本高，v1 不需要 |
+| D23 | 规则集整体验证 | 后续引入 RuleSet（contract-like）：集合级 run/状态/告警；规则可归属集合；v1/v1.1 不做 | 现在做：前置能力（schema/分组/变量）不齐，容易退化成多选规则 |
+| D24 | custom_sql 兜底 | v1 接受 `custom_sql` 兜底缺口；有只读/单语句/超时/上限/审计护栏；反复出现的形态升格为规则类型 | 一律拒绝 custom_sql：表达力不够，用户会绕开产品 |
 
 ## 14. 风险清单
 
@@ -828,9 +855,10 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 | 14 | 样本值含 PII 出域/落库 | 合规 | 默认聚合+脱敏；样本开关默认关闭；debug 提示；按列屏蔽 |
 | 15 | 语义标注错误导致规则建错 | 噪音/漏检 | 封闭枚举 + 证据 + 人工确认 + golden set 抽检；标注可改 |
 | 16 | 建议泛滥 | 用户不看、治理失效 | 优先级 + 置信度门槛 + 每表建议数上限 + 拒绝原因回收 |
-| 17 | 规则表达能力不足，用户被迫写 custom_sql | 体验差、易错 | 按 §4.10 的缺口排期补类型；custom_sql 只作逃生口；每类能力有 acceptance |
-| 17 | 追求 Python 兼容拖垮架构 | 部署、安全与维护成本 | 明确非目标；先 `custom_sql`/CEL；兼容只做定义导入 |
-| 18 | CEL 采样结果被当成全表结论 | 误判质量 | 强制 `sampled`/样本量展示；文档说明采样级语义；精确需求用 `custom_sql` |
+| 17 | 规则表达能力不足，用户被迫写 custom_sql | 体验差、易错 | 按 §4.10 的缺口排期补类型；custom_sql 只作逃生口；监控 custom_sql 规则占比 |
+| 18 | 追求 Python 兼容拖垮架构 | 部署、安全与维护成本 | 明确非目标；先 `custom_sql`/CEL；兼容只做定义导入 |
+| 19 | CEL 采样结果被当成全表结论 | 误判质量 | 强制 `sampled`/样本量展示；文档说明采样级语义；精确需求用 `custom_sql` |
+| 20 | RuleSet 过早引入导致模型膨胀 | 复杂度/维护成本 | 先补 schema/分组/变量，再引入；规则可独立存在，`rule_set_id` 可空 |
 
 ## 15. 依赖与影响面（实现时逐项核对）
 
@@ -862,5 +890,5 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 11. 原始样本出域是否作为企业级开关（整个工作区）还是列级开关？建议工作区开关 + 列级屏蔽。
 12. 是否有真实客户要求“直接复用 GX/Soda/dbt 的 Python 检查或 YAML 定义”？若有，优先级是定义导入，还是允许外挂一个独立的 Python runner（不嵌入单二进制）？
 14. §4.10 的缺口排期是否符合预期？v1.1 优先 schema 漂移、group by、aggregate，还是先做更常用的 missing_values/CEL？
-15. 是否需要把 Soda 的 contract 概念（dataset+column checks 作为一个整体验证/发布）纳入后续，还是保持“多条规则 + run”模型？
+15. RuleSet 的引入时点：按当前口径放在 v1.1 之后；其具体形态（规则归属集合 vs 集合引用规则）在实现前单独评审。
 13. CEL 默认采样 1 万行是否够用？是否允许按规则上调到 10 万行（成本/精度权衡）？

@@ -48,6 +48,8 @@ backend/runner/qualityrunner ─┘
 | D-17 | **不新增运行时依赖**：不引入 Python/WASM/图表库；CEL 用 `cel-go`，SQL 校验用 `omni` | 保持单二进制与跨平台发布 |
 | D-18 | 调度器是进程内 tick + 内存 inflight + 表内 `next_run_at`；单副本假设 | 与现有四个 runner 一致；重启收敛、不补跑 |
 | D-19 | count 型规则增加公共 `threshold_metric`（COUNT/PERCENT） | 对齐 Soda/GX 的 count/percent 阈值语义；同一规则类型可表达两种阈值 |
+| D-20 | **RuleSet（contract-like 整体验证）后续引入**：规则可归属集合，集合级 run/状态/告警；v1/v1.1 不做，前置能力见 §6.11 | 现在做会先缺 schema/分组/变量，退化成“多选规则” |
+| D-21 | `custom_sql` 作为缺口兜底可接受：只读、单语句、超时/上限、审计；反复出现的形态升格为规则类型 | 不引入通用 DSL；custom_sql 不是长期方案 |
 
 **包/文件地图**
 
@@ -1156,7 +1158,7 @@ func EvalRows(program *cel.Program, rows []map[string]any) (violations int64, ev
 | 组合 | 外部 | 我们 |
 | --- | --- | --- |
 | 同类检查 × 多列 | 列级 check 批量套用 | 每列一条规则；或一条 `unique_combination`/多列规则 |
-| dataset + column | 一个 contract 两层 check | 一个 execution（run）里多条规则；**不引入 contract 实体** |
+| dataset + column | 一个 contract 两层 check | 一个 execution（run）里多条规则；v1 不引入 contract 实体，后续 RuleSet（§6.11） |
 | 同列多条检查 | missing + invalid + length | 多条规则各自判定/告警/历史；`quality_issue` 按规则 |
 | 过滤/分区 | dataset/check filter、最新分区 | 规则级结构化 `Filter`（AND 子句）；复杂条件 `custom_sql` |
 | 多切片 | scopes | later；v1 用多条规则 + 不同 filter |
@@ -1178,24 +1180,52 @@ func EvalRows(program *cel.Program, rows []map[string]any) (violations int64, ev
 | Result | observed、thresholds 快照、failed_rows/total_rows、sample、executed_sql、error_code、engine_version |
 | 逃生口 | `custom_sql`（人写单条 SELECT）；CEL（v1.1 行谓词） |
 
-结论：13 类规则就是该表达模型的 13 个特化；`custom_sql`/CEL 是逃生口，**不把产品做成通用 DSL**，也不引入 contract/模板实体。
+结论：13 类规则就是该表达模型的 13 个特化；`custom_sql`/CEL 是逃生口（v1 接受 `custom_sql` 兜底，反复出现的形态再升格为类型），**不把产品做成通用 DSL**；contract-like 的 RuleSet 按 §6.11 后续引入。
 
 **6.10.4 缺口与实现安排**
 
-| 能力 | 计划 | 依赖 |
+按确认口径，v1.1 顺序为“schema 漂移 + 分组检查 → aggregate → 其余”：
+
+| 优先级 | 能力 | 依赖 |
 | --- | --- | --- |
-| schema 漂移（列集合/类型/顺序） | v1.1 | 元数据历史 + schema sync diff |
-| group by / 每组阈值 | v1.1 | 新规则类型 + 方言 SQL |
-| aggregate（sum/avg/min/max/stddev/percentile） | v1.1 | 新规则类型 + 方言函数矩阵 |
-| 自定义缺失值 | v1.1 | R03 参数扩展 |
-| 跨表对账 | v1.1 | 同实例跨库/跨表查询 |
-| 分布/统计异常 | later | 历史时序 + 统计基线 |
-| variables/scopes/cron/contract | later | 产品模型扩展 |
-| 模板/行业示例 | **不进产品** | 示例站/文档 |
+| v1.1 第一批 | schema 漂移（列集合/类型/顺序） | 元数据历史 + schema sync diff |
+| v1.1 第一批 | group by / 每组阈值 | 新规则类型 + 方言 SQL |
+| v1.1 第二批 | aggregate（sum/avg/min/max/stddev/percentile） | 新规则类型 + 方言函数矩阵 |
+| v1.1 第二批 | 自定义缺失值 | R03 参数扩展 |
+| v1.1 第二批 | 跨表对账 | 同实例跨库/跨表查询 |
+| later | 分布/统计异常 | 历史时序 + 统计基线 |
+| later（v1.1 后） | RuleSet / contract-like 整体验证 | §6.11；变量/scopes/规则集模型 |
+| later | variables/scopes/cron/CI | 产品模型扩展 |
+| 不进产品 | 模板/行业示例 | 示例站/文档 |
 
 **参考**：[Soda 模板库](https://soda.io/templates)、[Soda contract 语言](https://docs.soda.io/reference/contract-language-reference)、[SodaCL metrics/checks](https://docs.soda.io/soda-documentation/soda-v3/sodacl-reference/metrics-and-checks)、[GX Expectation Gallery](https://greatexpectations.io/expectations/)、[dbt data tests](https://docs.getdbt.com/docs/build/data-tests)、[dbt-expectations](https://github.com/calogica/dbt-expectations)。
 
 **测试**：`capability_test.go` 用每条能力清单的示例参数（来自公开文档的形态，不复制其 YAML）断言“规则类型可编译 + 判定语义正确”；缺口的形态以 `t.Skip` + 注释指向本节排期，避免静默缺失。
+
+### 6.11 后续设计：RuleSet（contract-like 整体验证）
+
+**为什么需要**：多个 dataset/column check 属于同一个数据集、同一个 schedule、同一个 owner 时，“逐条规则看”无法回答“这次数据契约整体有没有通过”；告警也会按规则刷屏。RuleSet 提供集合级验证与聚合视图。
+
+**实体**（后续迁移，纯增量）：
+
+- `quality_rule_set`：`id`、`resource_id`、`title`、`description`、`target_guid`/`target_type`、`filter` JSONB（集合级共享 filter）、`schedule_interval_seconds`、`severity`、`owner_id`、`tags`、`state`、`revision`、时间戳。
+- `quality_rule.rule_set_id BIGINT NULL REFERENCES quality_rule_set(id)`：一条规则最多归属一个集合；**可空**，独立规则不填；不回填历史。
+- `quality_run.rule_set_id BIGINT NULL`：集合级验证 = 一次 run；per-rule result 结构不变。
+
+**执行与结果**：
+
+- `RunQualityRuleSet` = 创建 set 级 run，逐条执行集合内启用规则；run 状态按现有六态 rollup，并额外给集合级“通过/失败”。
+- 结果仍写 `quality_rule_result`；问题仍按规则建；通知可按 set 聚合（一次集合验证的失败摘要），减少重复噪音。
+- 调度：set 级 interval 优先于规则级 interval（集合内规则不重复排期）；独立规则保持现状。
+
+**API/UI（后续）**：
+
+- `DataQualityService` 增加 `List/Get/Create/Update/DeleteQualityRuleSet`、`RunQualityRuleSet`；权限 `dataQuality.ruleSets.*`（目录同步）；审计同规则。
+- 前端规则列表增加“按规则集分组”视图与集合详情（集合级状态、成员规则、最近验证）。
+
+**前置条件**：schema 漂移、group by、变量/scopes 至少部分具备；否则 RuleSet 只是“多选规则”的别名。**v1/v1.1 不实现**，先记录模型避免以后返工。
+
+**不做的**：不做独立 DSL、不做 SodaCL/GX 运行时兼容、不做 contract verify/CI（更后）。
 
 
 ## 7. 执行与调度设计
@@ -1647,7 +1677,10 @@ COMMIT
 | M3a LLM 基础 | `llm` 包 temperature/JSON/usage/严格解析 + provider helper 抽取 + 回归 | — | M |
 | M3a L1/L2 | 建议/解释 RPC、prompt、校验、缓存、审计、前端面板、建议队列 | M2.4/M3a | L |
 | M3b 画像/标注 | profiler/画像表/标注表、L3 prompt、规则候选映射、资产页面板、golden set | M3a/1.3 | L |
-| v1.1 CEL | R14 编译/求值/采样/RPC 校验/编辑器/测试（proto 枚举 additive） | M1.3 | M |
+| v1.1 第一批 | schema 漂移 + 分组检查（规则类型/编译/API/前端） | M1.3/M1.4 | L |
+| v1.1 第二批 | aggregate + 自定义缺失值 + 跨表对账 | v1.1 第一批 | L |
+| v1.1 第三批 | R14 CEL 编译/求值/采样/RPC 校验/编辑器/测试（proto 枚举 additive） | M1.3 | M |
+| later | RuleSet / contract-like 整体验证（§6.11） | v1.1 第二批 + 变量/scopes | L |
 
 合并顺序建议按表从下到上；每个 PR 自带测试与门禁。M1 结束即可内部试用（无问题/告警/LLM）；M2 形成闭环；M3 是增强，默认关闭。
 
@@ -1667,7 +1700,8 @@ COMMIT
 | 10 | 结果表增长 | 存储压力 | 90d 清理 + 索引；规模假设写入文档；后续分区 |
 | 11 | 流式会话续期重放缺陷 | 分析偶发失败 | 接受“重试一次”；或后续改一元 + 轮询 |
 | 12 | 单副本调度丢 run | 短时漏检 | `next_run_at` 收敛；run 可见；不承诺 exactly-once |
-| 13 | 表达能力不足，用户被迫写 custom_sql | 体验差、易错 | 按 §6.10 缺口排期补类型；custom_sql/CEL 只作逃生口；能力矩阵有测试 |
+| 13 | 表达能力不足，用户被迫写 custom_sql | 体验差、易错 | 按 §6.10 缺口排期补类型；custom_sql/CEL 只作逃生口；监控 custom_sql 规则占比 |
+| 15 | RuleSet 过早引入 | 模型膨胀/返工 | 先补 schema/group/变量；规则可独立存在；`rule_set_id` 可空；单独评审后再做 |
 
 **设计阶段待确认**：filter 只支持 AND 是否够用（复杂条件用 custom_sql）；手动执行异步 + 轮询是否可接受；风暴阈值 10 是否合适；`store_failure_samples` 默认开是否接受；画像 Top-K 值是否允许落库（当前设计允许，截断 64 字符）。
 
