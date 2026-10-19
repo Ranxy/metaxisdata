@@ -33,6 +33,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
 	"github.com/Ranxy/metaxisdata/backend/mcp"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
+	"github.com/Ranxy/metaxisdata/backend/runner/qualityrunner"
 	"github.com/Ranxy/metaxisdata/backend/runner/schemasync"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -42,6 +43,12 @@ import (
 // call is serialized into a ledger that is never pruned, so each handler needs a
 // bound of its own — the general limit was far too generous to be one.
 const maxConnectRequestBytes = 4 << 20
+
+// maxDataQualityRequestBytes caps what a DataQualityService request may carry.
+// A rule config is bounded (at most 200 accepted values, at most 8 KiB of custom
+// SQL) and the service returns results rather than accepting them, so a quarter
+// of the general limit is still generous.
+const maxDataQualityRequestBytes = 1 << 20
 
 // maxAuthServiceRequestBytes caps what an AuthService request may carry. The
 // service holds credentials and the short device login fields, and two of its
@@ -69,6 +76,7 @@ func configureGrpcRouters(
 	secret string,
 	dbFactory *dbfactory.DBFactory,
 	schemaSync *schemasync.Syncer,
+	qualityRunner *qualityrunner.Runner,
 	llmRegistry *llmcomp.Registry,
 	lineageAnalyzer *lineage.Analyzer,
 	notifier *notification.Service,
@@ -102,6 +110,9 @@ func configureGrpcRouters(
 	lineageService := apiv1.NewLineageService(stores, lineageAnalyzer)
 	openLineageService := apiv1.NewOpenLineageService(stores)
 	applicationService := apiv1.NewApplicationService(stores)
+	// Manual runs are queued to the quality runner; when it is absent the service
+	// still records the run as PENDING rather than dropping the request.
+	dataQualityService := apiv1.NewDataQualityService(stores, dbFactory, qualityRunner)
 	llmService := apiv1.NewLLMService(stores, llmRegistry)
 	explainSQLService := apiv1.NewExplainSQLService(stores, llmRegistry, lineageAnalyzer)
 	settingService := apiv1.NewSettingService(stores, profile)
@@ -174,6 +185,8 @@ func configureGrpcRouters(
 	connectHandlers[openLineagePath] = openLineageHandler
 	applicationPath, applicationHandler := v1connect.NewApplicationServiceHandler(applicationService, handlerOpts)
 	connectHandlers[applicationPath] = applicationHandler
+	dataQualityPath, dataQualityHandler := v1connect.NewDataQualityServiceHandler(dataQualityService, handlerOpts, connect.WithReadMaxBytes(maxDataQualityRequestBytes))
+	connectHandlers[dataQualityPath] = dataQualityHandler
 	llmPath, llmHandler := v1connect.NewLLMServiceHandler(llmService, handlerOpts)
 	connectHandlers[llmPath] = llmHandler
 	explainSQLPath, explainSQLHandler := v1connect.NewExplainSQLServiceHandler(explainSQLService, handlerOpts)
@@ -215,6 +228,7 @@ func configureGrpcRouters(
 		v1connect.ApplicationServiceName,
 		v1connect.IdentityProviderServiceName,
 		v1connect.ConnectedAppServiceName,
+		v1connect.DataQualityServiceName,
 	)
 	reflectPath, reflectHandler := grpcreflect.NewHandlerV1(reflector, connect.WithReadMaxBytes(maxConnectRequestBytes))
 	connectHandlers[reflectPath] = reflectHandler
@@ -290,6 +304,9 @@ func configureGrpcRouters(
 		return err
 	}
 	if err := v1pb.RegisterConnectedAppServiceHandler(ctx, mux, grpcConn); err != nil {
+		return err
+	}
+	if err := v1pb.RegisterDataQualityServiceHandler(ctx, mux, grpcConn); err != nil {
 		return err
 	}
 

@@ -210,3 +210,30 @@ func TestQualityRunMutatorsValidateInput(t *testing.T) {
 	_, err = s.AbandonStaleQualityRuns(ctx, time.Time{})
 	require.Equal(t, common.Invalid, common.ErrorCode(err))
 }
+
+// qualityRunByIDsStatementShape pins the reverse lookup the API uses to turn a
+// result row's numeric run_id back into the run's resource id.
+func TestQualityRunByIDsStatementShape(t *testing.T) {
+	t.Parallel()
+
+	require.Contains(t, qualityRunByIDsStatement, "FROM quality_run")
+	require.Contains(t, qualityRunByIDsStatement, "id = ANY($1::bigint[])")
+	require.Contains(t, qualityRunByIDsStatement, "ORDER BY id")
+}
+
+func TestListQualityRunsByIDsEmptyInputIsEmptySlice(t *testing.T) {
+	t.Parallel()
+
+	// A zero Store has no pool: reaching the database here would panic, so this
+	// also pins that an empty input is a no-op.
+	s := &Store{}
+	runs, err := s.ListQualityRunsByIDs(context.Background(), nil)
+	require.NoError(t, err)
+	require.NotNil(t, runs)
+	require.Empty(t, runs)
+
+	runs, err = s.ListQualityRunsByIDs(context.Background(), []int64{})
+	require.NoError(t, err)
+	require.NotNil(t, runs)
+	require.Empty(t, runs)
+}

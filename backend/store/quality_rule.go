@@ -1028,3 +1028,46 @@ func (s *Store) ListQualityRulesByResourceIDs(ctx context.Context, resourceIDs [
 	}
 	return result, nil
 }
+
+// qualityRuleByIDsStatement reads several rules by their numeric primary key. The
+// API addresses a rule by its public resource id, but a stored result references
+// its rule by the numeric foreign key only, so rendering result rows and the
+// rule list's latest-result summary needs this reverse batch lookup.
+const qualityRuleByIDsStatement = `
+	SELECT ` + qualityRuleColumns + `
+	FROM quality_rule
+	WHERE id = ANY($1::bigint[])
+	ORDER BY id
+`
+
+// ListQualityRulesByIDs returns the rules whose ids are listed, ordered by id. An
+// empty input is a no-op and never touches the database; the returned slice is
+// non-nil so a caller can range over it unconditionally.
+//
+// Unlike the resource-id lookup, this one does not exclude soft-deleted rules: a
+// result or issue keeps pointing at the definition that produced it, and a
+// historical row must still render its rule's name.
+func (s *Store) ListQualityRulesByIDs(ctx context.Context, ids []int64) ([]*QualityRuleMessage, error) {
+	if len(ids) == 0 {
+		return []*QualityRuleMessage{}, nil
+	}
+
+	rows, err := s.GetDB().QueryContext(ctx, qualityRuleByIDsStatement, pq.Array(ids))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to query quality rules by ids")
+	}
+	defer rows.Close()
+
+	result := make([]*QualityRuleMessage, 0, len(ids))
+	for rows.Next() {
+		msg, err := scanQualityRule(rows)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to scan quality rule")
+		}
+		result = append(result, msg)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to iterate quality rules by ids")
+	}
+	return result, nil
+}

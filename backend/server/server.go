@@ -28,6 +28,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/runner/lineageanalyzer"
 	"github.com/Ranxy/metaxisdata/backend/runner/lineagevalidation"
 	"github.com/Ranxy/metaxisdata/backend/runner/maintenance"
+	"github.com/Ranxy/metaxisdata/backend/runner/qualityrunner"
 	"github.com/Ranxy/metaxisdata/backend/runner/schemasync"
 	"github.com/Ranxy/metaxisdata/backend/store"
 
@@ -63,6 +64,7 @@ type Server struct {
 	schemaSync      *schemasync.Syncer
 	lineageValidate *lineagevalidation.Runner
 	maintenance     *maintenance.Runner
+	qualityRunner   *qualityrunner.Runner
 	llmRegistry     *llmcomp.Registry
 
 	// stateCfg is the shared in-momory state within the server.
@@ -133,6 +135,9 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	// sync failure to the workspace administrators.
 	s.notifier = notification.New(stores)
 	s.schemaSync = schemasync.NewSyncer(stores, dbFactory, stateCfg, s.lineageAnalyzer, s.lineageValidate, s.notifier)
+	// The quality runner executes the rules the API creates: scheduled rules on its
+	// own tick, manual runs from the queue the service hands it.
+	s.qualityRunner = qualityrunner.NewRunner(stores, dbFactory, stateCfg)
 
 	s.llmRegistry = llmcomp.NewRegistry(stores, profile)
 	if err := s.initializeSetting(ctx); err != nil {
@@ -150,14 +155,14 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	// Configure echo server.
 	s.echoServer = echo.New()
 
-	if err := configureGrpcRouters(ctx, s.echoServer, s.store, s.profile, s.stateCfg, s.profile.Secret, dbFactory, s.schemaSync, s.llmRegistry, lineageEngines, s.notifier); err != nil {
+	if err := configureGrpcRouters(ctx, s.echoServer, s.store, s.profile, s.stateCfg, s.profile.Secret, dbFactory, s.schemaSync, s.qualityRunner, s.llmRegistry, lineageEngines, s.notifier); err != nil {
 		return nil, errors.Wrapf(err, "failed to configure gRPC routers")
 	}
 
 	// Keeping the set in one list (instead of a hand-written Add(4) and four
 	// goroutines) keeps the wait group count and the actual runners in sync, and
 	// gives each one the shared panic boundary in runner.Go.
-	runners := []runner.Runner{s.lineageAnalyzer, s.schemaSync, s.lineageValidate, s.maintenance}
+	runners := []runner.Runner{s.lineageAnalyzer, s.schemaSync, s.qualityRunner, s.lineageValidate, s.maintenance}
 	for _, r := range runners {
 		runner.Go(s.runnerCtx, &s.runnerWG, r)
 	}
