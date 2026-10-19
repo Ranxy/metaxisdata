@@ -1,0 +1,861 @@
+package dataquality
+
+import (
+	"context"
+	"math"
+	"regexp"
+	"strconv"
+	"strings"
+
+	"google.golang.org/protobuf/proto"
+
+	"github.com/Ranxy/metaxisdata/backend/common"
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	"github.com/Ranxy/metaxisdata/backend/store"
+)
+
+// ValidatedRule is a rule that survived the whole validation pipeline: its target
+// resolves against the registry, its config is legal for that target, and its
+// statement compiled. A caller may therefore run it without re-checking anything.
+type ValidatedRule struct {
+	Resolution *Resolution
+	Target     ResolvedTarget
+	Filter     Filter
+	Compiled   CompiledQuery
+}
+
+// ValidateRule is the save/update/dry-run pipeline of design §6.2. Every step is a
+// refusal rather than a degradation: a rule that cannot be resolved, supported,
+// parsed, validated or compiled never reaches the queue.
+//
+// filterProto may override the filter stored in the config (the API passes the
+// filter separately when it is edited). The config is cloned for validation and
+// compilation when it does, so the caller's message is not mutated.
+func ValidateRule(ctx context.Context, s *store.Store, ruleType storepb.QualityRuleType, guid string, metaType storepb.MetaType, config *storepb.QualityRuleConfig, filterProto *storepb.QualityFilter) (*ValidatedRule, error) {
+	if config == nil {
+		return nil, invalidConfig("a rule config is required")
+	}
+	resolution, err := ResolveTarget(ctx, s, guid, metaType)
+	if err != nil {
+		return nil, err
+	}
+	if err := RequireTarget(resolution, ruleType); err != nil {
+		return nil, err
+	}
+
+	effective := config
+	if filterProto != nil {
+		cloned, ok := proto.Clone(config).(*storepb.QualityRuleConfig)
+		if !ok {
+			return nil, common.Errorf(common.Internal, "failed to clone the rule config")
+		}
+		cloned.Filter = filterProto
+		effective = cloned
+	}
+
+	filter, err := ParseFilter(effective.GetFilter())
+	if err != nil {
+		return nil, err
+	}
+	if err := ValidateConfig(resolution.Target, ruleType, effective); err != nil {
+		return nil, err
+	}
+	// A referential rule's parent is another registry object, so its existence and
+	// column type can only be checked here, with the store. Failing now keeps a
+	// rule that would always ERROR out of the queue.
+	if ruleType == storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY {
+		if err := validateReferentialParent(ctx, s, resolution.Target, effective); err != nil {
+			return nil, err
+		}
+	}
+
+	dialect, err := DialectFor(resolution.Target.Engine)
+	if err != nil {
+		return nil, invalidConfig("%v", err)
+	}
+	compiled, err := Compile(CompileInput{
+		Dialect: dialect,
+		Target:  resolution.Target,
+		Type:    ruleType,
+		Config:  effective,
+		Filter:  filter,
+	})
+	if err != nil {
+		if common.ErrorCode(err) == common.Invalid {
+			return nil, err
+		}
+		// The compiler's remaining failures (an unrenderable table, a dialect that
+		// cannot express the rule) are the caller's rule being unusable on this
+		// target, which is an invalid rule rather than a server fault.
+		return nil, invalidConfig("failed to compile the rule: %v", err)
+	}
+
+	return &ValidatedRule{
+		Resolution: resolution,
+		Target:     resolution.Target,
+		Filter:     filter,
+		Compiled:   compiled,
+	}, nil
+}
+
+// ValidateConfig checks one rule's config against the resolved target and the
+// rule type. It is the pure part of the pipeline: no database read happens here,
+// so it is the entry point tests use with a literal target.
+//
+// The checks mirror the compilers so a config the compilers refuse is refused
+// here with a message about the parameter instead of about SQL; the compiler then
+// re-checks what only it can see.
+func ValidateConfig(target ResolvedTarget, ruleType storepb.QualityRuleType, config *storepb.QualityRuleConfig) error {
+	if config == nil {
+		return invalidConfig("a rule config is required")
+	}
+	arm, err := configArm(config)
+	if err != nil {
+		return err
+	}
+	if arm != ruleType {
+		return invalidConfig("the config is for %s, not for the rule's %s", arm, ruleType)
+	}
+	if err := validateOnEmpty(config.GetOnEmpty()); err != nil {
+		return err
+	}
+	if err := validateThresholdMetric(config.GetThresholdMetric()); err != nil {
+		return err
+	}
+	if err := validatePercentSupport(ruleType, config.GetThresholdMetric()); err != nil {
+		return err
+	}
+	if err := validateFilter(target, config.GetFilter()); err != nil {
+		return err
+	}
+
+	switch ruleType {
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT:
+		return validateRowCountConfig(config.GetRowCount())
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE:
+		return validateRowCountChangeConfig(config.GetRowCountChange())
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT:
+		return validateNullPercentConfig(target, config.GetNullPercent())
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE:
+		return validateUniqueConfig(target, config)
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION:
+		return validateUniqueCombinationConfig(target, config)
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES:
+		return validateAcceptedValuesConfig(target, config)
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE:
+		return validateRangeConfig(target, config)
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX:
+		return validateRegexConfig(target, config.GetRegex())
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH:
+		return validateStringLengthConfig(target, config)
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY:
+		return validateReferentialIntegrityConfig(target, config)
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN:
+		return validateCrossColumnConfig(target, config)
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS:
+		return validateFreshnessConfig(target, config.GetFreshness())
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL:
+		return validateCustomSQLConfig(target, config)
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION:
+		// The message exists so the config shape does not change in v1.1, but this
+		// build has no evaluator and must not accept a rule it cannot run.
+		return invalidConfig("expression rules arrive in v1.1")
+	default:
+		return invalidConfig("unknown rule type %s", ruleType)
+	}
+}
+
+// validateOnEmpty accepts the three real behaviors and UNSPECIFIED (which the
+// evaluator treats as NOT_EVALUATED). An unknown number would make the empty-data
+// verdict unpredictable.
+func validateOnEmpty(onEmpty storepb.QualityEmptyBehavior) error {
+	switch onEmpty {
+	case storepb.QualityEmptyBehavior_QUALITY_EMPTY_BEHAVIOR_UNSPECIFIED,
+		storepb.QualityEmptyBehavior_QUALITY_EMPTY_BEHAVIOR_NOT_EVALUATED,
+		storepb.QualityEmptyBehavior_QUALITY_EMPTY_BEHAVIOR_PASS,
+		storepb.QualityEmptyBehavior_QUALITY_EMPTY_BEHAVIOR_FAIL:
+		return nil
+	default:
+		return invalidConfig("unknown on_empty behavior %d", onEmpty)
+	}
+}
+
+// validateThresholdMetric accepts the two real units; UNSPECIFIED means COUNT in
+// thresholdMetric. An unknown number would silently become COUNT and change what a
+// threshold means.
+func validateThresholdMetric(metric storepb.QualityThresholdMetric) error {
+	switch metric {
+	case storepb.QualityThresholdMetric_QUALITY_THRESHOLD_METRIC_UNSPECIFIED,
+		storepb.QualityThresholdMetric_QUALITY_THRESHOLD_METRIC_COUNT,
+		storepb.QualityThresholdMetric_QUALITY_THRESHOLD_METRIC_PERCENT:
+		return nil
+	default:
+		return invalidConfig("unknown threshold metric %d", metric)
+	}
+}
+
+// validatePercentSupport rejects PERCENT where the rule has no denominator. A
+// count-type rule measures failed_rows / total_rows; row_count, row_count_change,
+// null_percent (which names its own percentage form), freshness and custom SQL do
+// not return a total to divide by — custom SQL's statement returns failed rows
+// only — so a percentage threshold there would silently have no meaning.
+func validatePercentSupport(ruleType storepb.QualityRuleType, metric storepb.QualityThresholdMetric) error {
+	if metric != storepb.QualityThresholdMetric_QUALITY_THRESHOLD_METRIC_PERCENT {
+		return nil
+	}
+	if ruleTypeAllowsPercent(ruleType) {
+		return nil
+	}
+	return invalidConfig("threshold_metric PERCENT is not supported by %s: it has no total-rows denominator", ruleType)
+}
+
+// ruleTypeAllowsPercent lists the count-type rules whose compiled statement returns
+// total_rows alongside failed_rows, so a percentage threshold has a real
+// denominator. Everything else (custom_sql, freshness, row_count,
+// row_count_change, null_percent and the unimplemented CEL form) has no total to
+// divide by and rejects PERCENT.
+func ruleTypeAllowsPercent(ruleType storepb.QualityRuleType) bool {
+	switch ruleType {
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN:
+		return true
+	default:
+		return false
+	}
+}
+
+// validateFilter parses the filter and compiles it against the target, which is
+// where column existence and value conversion are checked. The dialect is needed
+// only when there is a clause to render, so a rule without a filter does not
+// depend on the engine.
+func validateFilter(target ResolvedTarget, filter *storepb.QualityFilter) error {
+	parsed, err := ParseFilter(filter)
+	if err != nil {
+		return err
+	}
+	if len(parsed.Clauses) == 0 {
+		return nil
+	}
+	dialect, err := DialectFor(target.Engine)
+	if err != nil {
+		return invalidConfig("%v", err)
+	}
+	if _, _, err := CompileFilter(dialect, target, parsed); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateRowCountConfig checks the row-count bounds: at least one bound, exact is
+// exclusive with min/max (the evaluator gives exact precedence, so combining them
+// would silently ignore a configured bound), and the warn bounds sit inside the
+// fail bounds, where a warning can actually fire before the failure.
+func validateRowCountConfig(config *storepb.RowCountConfig) error {
+	if config == nil {
+		return invalidConfig("the row-count config is missing")
+	}
+	if config.MinRows == nil && config.MaxRows == nil && config.ExactRows == nil {
+		return invalidConfig("a row-count rule needs at least one of min_rows, max_rows or exact_rows")
+	}
+	if config.ExactRows != nil {
+		if *config.ExactRows < 0 {
+			return invalidConfig("exact_rows must not be negative")
+		}
+		if config.MinRows != nil || config.MaxRows != nil {
+			return invalidConfig("exact_rows cannot be combined with min_rows or max_rows")
+		}
+	}
+	if config.MinRows != nil && *config.MinRows < 0 {
+		return invalidConfig("min_rows must not be negative")
+	}
+	if config.MaxRows != nil && *config.MaxRows < 0 {
+		return invalidConfig("max_rows must not be negative")
+	}
+	if config.MinRows != nil && config.MaxRows != nil && *config.MinRows > *config.MaxRows {
+		return invalidConfig("min_rows %d exceeds max_rows %d", *config.MinRows, *config.MaxRows)
+	}
+	if config.WarnMinRows != nil {
+		if *config.WarnMinRows < 0 {
+			return invalidConfig("warn_min_rows must not be negative")
+		}
+		if config.MinRows != nil && *config.WarnMinRows < *config.MinRows {
+			return invalidConfig("warn_min_rows %d is below min_rows %d", *config.WarnMinRows, *config.MinRows)
+		}
+	}
+	if config.WarnMaxRows != nil {
+		if *config.WarnMaxRows < 0 {
+			return invalidConfig("warn_max_rows must not be negative")
+		}
+		if config.MaxRows != nil && *config.WarnMaxRows > *config.MaxRows {
+			return invalidConfig("warn_max_rows %d is above max_rows %d", *config.WarnMaxRows, *config.MaxRows)
+		}
+	}
+	if config.WarnMinRows != nil && config.WarnMaxRows != nil && *config.WarnMinRows > *config.WarnMaxRows {
+		return invalidConfig("warn_min_rows %d exceeds warn_max_rows %d", *config.WarnMinRows, *config.WarnMaxRows)
+	}
+	return nil
+}
+
+// validateRowCountChangeConfig checks the change bounds: at least one bound, every
+// bound within 0–1000 percent, and each warn bound no wider than its fail bound.
+func validateRowCountChangeConfig(config *storepb.RowCountChangeConfig) error {
+	if config == nil {
+		return invalidConfig("the row-count-change config is missing")
+	}
+	if config.MaxIncreasePct == nil && config.MaxDecreasePct == nil &&
+		config.WarnIncreasePct == nil && config.WarnDecreasePct == nil {
+		return invalidConfig("a row-count-change rule needs at least one change bound")
+	}
+	for _, bound := range []struct {
+		name  string
+		value *float64
+	}{
+		{name: "max_increase_pct", value: config.MaxIncreasePct},
+		{name: "max_decrease_pct", value: config.MaxDecreasePct},
+		{name: "warn_increase_pct", value: config.WarnIncreasePct},
+		{name: "warn_decrease_pct", value: config.WarnDecreasePct},
+	} {
+		if bound.value == nil {
+			continue
+		}
+		if math.IsNaN(*bound.value) || math.IsInf(*bound.value, 0) {
+			return invalidConfig("%s must be a finite number", bound.name)
+		}
+		if *bound.value < 0 || *bound.value > 1000 {
+			return invalidConfig("%s %v is outside the accepted 0–1000 percent range", bound.name, *bound.value)
+		}
+	}
+	if config.MaxIncreasePct != nil && config.WarnIncreasePct != nil && *config.WarnIncreasePct > *config.MaxIncreasePct {
+		return invalidConfig("warn_increase_pct %v exceeds max_increase_pct %v", *config.WarnIncreasePct, *config.MaxIncreasePct)
+	}
+	if config.MaxDecreasePct != nil && config.WarnDecreasePct != nil && *config.WarnDecreasePct > *config.MaxDecreasePct {
+		return invalidConfig("warn_decrease_pct %v exceeds max_decrease_pct %v", *config.WarnDecreasePct, *config.MaxDecreasePct)
+	}
+	return nil
+}
+
+// validateNullPercentConfig checks the null-percent rule: the column exists, exactly
+// one of the count and percentage families is configured (they measure different
+// things and the evaluator picks one), the family carries its fail level, and the
+// warn level is inside the fail level.
+func validateNullPercentConfig(target ResolvedTarget, config *storepb.NullPercentConfig) error {
+	if config == nil {
+		return invalidConfig("the null-percent config is missing")
+	}
+	if _, err := requireColumn(target, config.GetColumn()); err != nil {
+		return err
+	}
+	countForm := config.MaxNullCount != nil || config.WarnNullCount != nil
+	percentForm := config.MaxNullPct != nil || config.WarnNullPct != nil
+	switch {
+	case countForm && percentForm:
+		return invalidConfig("null_percent uses max_null_count or max_null_pct, not both")
+	case !countForm && !percentForm:
+		return invalidConfig("null_percent needs max_null_count or max_null_pct")
+	}
+	if countForm {
+		if config.MaxNullCount == nil {
+			return invalidConfig("warn_null_count needs max_null_count")
+		}
+		if *config.MaxNullCount < 0 {
+			return invalidConfig("max_null_count must not be negative")
+		}
+		if config.WarnNullCount != nil {
+			if *config.WarnNullCount < 0 {
+				return invalidConfig("warn_null_count must not be negative")
+			}
+			if *config.WarnNullCount > *config.MaxNullCount {
+				return invalidConfig("warn_null_count %d exceeds max_null_count %d", *config.WarnNullCount, *config.MaxNullCount)
+			}
+		}
+		return nil
+	}
+	if *config.MaxNullPct < 0 || *config.MaxNullPct > 100 || math.IsNaN(*config.MaxNullPct) || math.IsInf(*config.MaxNullPct, 0) {
+		return invalidConfig("max_null_pct %v is outside the accepted 0–100 range", *config.MaxNullPct)
+	}
+	if config.WarnNullPct != nil {
+		if *config.WarnNullPct < 0 || *config.WarnNullPct > 100 || math.IsNaN(*config.WarnNullPct) || math.IsInf(*config.WarnNullPct, 0) {
+			return invalidConfig("warn_null_pct %v is outside the accepted 0–100 range", *config.WarnNullPct)
+		}
+		if *config.WarnNullPct > *config.MaxNullPct {
+			return invalidConfig("warn_null_pct %v exceeds max_null_pct %v", *config.WarnNullPct, *config.MaxNullPct)
+		}
+	}
+	return nil
+}
+
+// validateUniqueConfig checks a single-column uniqueness rule.
+func validateUniqueConfig(target ResolvedTarget, config *storepb.QualityRuleConfig) error {
+	unique := config.GetUnique()
+	if unique == nil {
+		return invalidConfig("the unique config is missing")
+	}
+	if _, err := requireColumn(target, unique.GetColumn()); err != nil {
+		return err
+	}
+	return validateCountThresholds(config, unique.FailThreshold, unique.WarnThreshold)
+}
+
+// validateUniqueCombinationConfig checks a composite-key uniqueness rule. The
+// column list and all_columns are alternatives: accepting both (and ignoring one
+// of them) would make the saved rule mean something other than what the user saw.
+func validateUniqueCombinationConfig(target ResolvedTarget, config *storepb.QualityRuleConfig) error {
+	combination := config.GetUniqueCombination()
+	if combination == nil {
+		return invalidConfig("the unique-combination config is missing")
+	}
+	names := combination.GetColumns()
+	if combination.GetAllColumns() {
+		if len(names) > 0 {
+			return invalidConfig("all_columns cannot be combined with an explicit columns list")
+		}
+		names = target.ColumnNames()
+	}
+	if len(names) == 0 {
+		return invalidConfig("a unique-combination rule needs at least one column")
+	}
+	if len(names) > compileMaxUniqueColumns {
+		return invalidConfig("a unique-combination rule allows at most %d columns, got %d", compileMaxUniqueColumns, len(names))
+	}
+	seen := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		column, err := requireColumn(target, name)
+		if err != nil {
+			return err
+		}
+		if _, duplicate := seen[column.Name]; duplicate {
+			return invalidConfig("column %q is listed more than once", column.Name)
+		}
+		seen[column.Name] = struct{}{}
+	}
+	return validateCountThresholds(config, combination.FailThreshold, combination.WarnThreshold)
+}
+
+// validateAcceptedValuesConfig checks the accepted-values rule: the column exists,
+// the set is non-empty and bounded, and every value can be converted to the
+// column's type before it becomes a parameter.
+func validateAcceptedValuesConfig(target ResolvedTarget, config *storepb.QualityRuleConfig) error {
+	accepted := config.GetAcceptedValues()
+	if accepted == nil {
+		return invalidConfig("the accepted-values config is missing")
+	}
+	column, err := requireColumn(target, accepted.GetColumn())
+	if err != nil {
+		return err
+	}
+	values := accepted.GetValues()
+	if len(values) == 0 {
+		return invalidConfig("an accepted-values rule needs at least one value")
+	}
+	if len(values) > compileMaxAcceptedValues {
+		return invalidConfig("an accepted-values rule allows at most %d values, got %d", compileMaxAcceptedValues, len(values))
+	}
+	for _, value := range values {
+		if _, err := convertFilterValue(column, value); err != nil {
+			return err
+		}
+	}
+	return validateCountThresholds(config, accepted.FailThreshold, accepted.WarnThreshold)
+}
+
+// validateRangeConfig checks the range rule: a numeric or temporal column, at
+// least one bound, bounds the column's type can represent, and an ordered numeric
+// pair. A temporal pair stays a string and its order is the engine's cast, so only
+// non-emptiness is checked here.
+func validateRangeConfig(target ResolvedTarget, config *storepb.QualityRuleConfig) error {
+	rangeConfig := config.GetRange()
+	if rangeConfig == nil {
+		return invalidConfig("the range config is missing")
+	}
+	column, err := validateComparableColumn(target, rangeConfig.GetColumn())
+	if err != nil {
+		return err
+	}
+	if rangeConfig.Min == nil && rangeConfig.Max == nil {
+		return invalidConfig("a range rule needs min or max")
+	}
+	var lower, upper *float64
+	if rangeConfig.Min != nil {
+		if err := validateRangeBound(column, "min", *rangeConfig.Min); err != nil {
+			return err
+		}
+		if column.Kind == ColumnKindNumeric {
+			parsed, _ := strconv.ParseFloat(strings.TrimSpace(*rangeConfig.Min), 64)
+			lower = &parsed
+		}
+	}
+	if rangeConfig.Max != nil {
+		if err := validateRangeBound(column, "max", *rangeConfig.Max); err != nil {
+			return err
+		}
+		if column.Kind == ColumnKindNumeric {
+			parsed, _ := strconv.ParseFloat(strings.TrimSpace(*rangeConfig.Max), 64)
+			upper = &parsed
+		}
+	}
+	if lower != nil && upper != nil && *lower > *upper {
+		return invalidConfig("min %q exceeds max %q", *rangeConfig.Min, *rangeConfig.Max)
+	}
+	return validateCountThresholds(config, rangeConfig.FailThreshold, rangeConfig.WarnThreshold)
+}
+
+// validateRangeBound checks one range bound. A numeric bound must parse; a temporal
+// bound stays as written (the engine casts it) but must not be empty.
+func validateRangeBound(column ColumnInfo, name, value string) error {
+	if strings.TrimSpace(value) == "" {
+		return invalidConfig("range %s must not be empty", name)
+	}
+	if column.Kind == ColumnKindNumeric {
+		if _, err := convertFilterValue(column, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateRegexConfig checks the regex rule: a string column and a pattern Go's
+// regexp accepts. The pattern is trimmed the same way the compiler trims it, so a
+// whitespace-only pattern is rejected rather than bound as a match-nothing regex.
+func validateRegexConfig(target ResolvedTarget, config *storepb.RegexConfig) error {
+	if config == nil {
+		return invalidConfig("the regex config is missing")
+	}
+	if err := validateStringColumn(target, config.GetColumn()); err != nil {
+		return err
+	}
+	pattern := strings.TrimSpace(config.GetPattern())
+	if pattern == "" {
+		return invalidConfig("a regex rule needs a pattern")
+	}
+	if _, err := regexp.Compile(pattern); err != nil {
+		return invalidConfig("the regex pattern does not compile: %v", err)
+	}
+	return nil
+}
+
+// validateStringLengthConfig checks the string-length rule: a string column, at
+// least one bound, and 0 ≤ min_len ≤ max_len.
+func validateStringLengthConfig(target ResolvedTarget, config *storepb.QualityRuleConfig) error {
+	length := config.GetStringLength()
+	if length == nil {
+		return invalidConfig("the string-length config is missing")
+	}
+	if err := validateStringColumn(target, length.GetColumn()); err != nil {
+		return err
+	}
+	if length.MinLen == nil && length.MaxLen == nil {
+		return invalidConfig("a string-length rule needs min_len or max_len")
+	}
+	if length.MinLen != nil && *length.MinLen < 0 {
+		return invalidConfig("min_len must not be negative")
+	}
+	if length.MaxLen != nil && *length.MaxLen < 0 {
+		return invalidConfig("max_len must not be negative")
+	}
+	if length.MinLen != nil && length.MaxLen != nil && *length.MinLen > *length.MaxLen {
+		return invalidConfig("min_len %d exceeds max_len %d", *length.MinLen, *length.MaxLen)
+	}
+	return validateCountThresholds(config, length.FailThreshold, length.WarnThreshold)
+}
+
+// validateReferentialIntegrityConfig checks the referential rule's shape: the
+// child column exists, the parent table reference fits the engine's naming
+// convention, and the parent column is named. The parent's existence and column
+// types need the registry, so they are checked in ValidateRule, which has the
+// store; ValidateConfig must stay free of database reads.
+func validateReferentialIntegrityConfig(target ResolvedTarget, config *storepb.QualityRuleConfig) error {
+	referential := config.GetReferentialIntegrity()
+	if referential == nil {
+		return invalidConfig("the referential-integrity config is missing")
+	}
+	if _, err := requireColumn(target, referential.GetChildColumn()); err != nil {
+		return err
+	}
+	if _, _, err := parentTableName(target, referential.GetParentTable()); err != nil {
+		return err
+	}
+	if strings.TrimSpace(referential.GetParentColumn()) == "" {
+		return invalidConfig("a referential-integrity rule needs a parent column")
+	}
+	return validateCountThresholds(config, referential.FailThreshold, referential.WarnThreshold)
+}
+
+// parentTableName turns the config's parent_table into the schema and table
+// segments of the parent's registry GUID. A parent always lives in the child's own
+// container: on the MySQL family that container is the database, so the schema
+// segment is empty and "database.table" is accepted only when it names the child's
+// database; on PostgreSQL/MSSQL the container is the schema, a bare "table" takes
+// the child's schema, and an explicit schema must be the child's.
+func parentTableName(target ResolvedTarget, spec string) (schema, table string, err error) {
+	spec = strings.TrimSpace(spec)
+	if spec == "" {
+		return "", "", invalidConfig("a referential-integrity rule needs a parent table")
+	}
+	parts := strings.Split(spec, ".")
+	for _, part := range parts {
+		if strings.TrimSpace(part) == "" {
+			return "", "", invalidConfig("parent table %q is not a valid table name", spec)
+		}
+	}
+	if isMySQLWireEngine(target.Engine) {
+		switch len(parts) {
+		case 1:
+			return "", parts[0], nil
+		case 2:
+			if parts[0] != target.Database {
+				return "", "", invalidConfig("parent table %q must be in the rule's database %q", spec, target.Database)
+			}
+			return "", parts[1], nil
+		default:
+			return "", "", invalidConfig("parent table %q must be \"table\" or \"database.table\"", spec)
+		}
+	}
+	switch len(parts) {
+	case 1:
+		return target.Schema, parts[0], nil
+	case 2:
+		if target.Schema != "" && parts[0] != target.Schema {
+			return "", "", invalidConfig("parent table %q must be in the rule's schema %q", spec, target.Schema)
+		}
+		return parts[0], parts[1], nil
+	default:
+		return "", "", invalidConfig("parent table %q must be \"table\" or \"schema.table\"", spec)
+	}
+}
+
+// parentTargetGUID builds the registry GUID of a referential rule's parent from the
+// child's resolved target and the parsed parent name. The GUID is the same
+// ';'-joined path the schema syncer registers, so the lookup is the registry's own
+// identity rather than a name match.
+func parentTargetGUID(target ResolvedTarget, parentSchema, parentTable string) string {
+	return common.BuildMetaGUID(target.InstanceResourceID, target.Database, parentSchema, parentTable)
+}
+
+// validateReferentialParent resolves the parent table against the registry and
+// checks that the parent column exists and has the same kind as the child's. It is
+// the part of referential-integrity validation the config-only layer cannot do:
+// CompileInput carries only the child's resolved target, so without this the first
+// sign of a wrong parent would be a runtime ERROR after the rule was saved.
+func validateReferentialParent(ctx context.Context, s *store.Store, target ResolvedTarget, config *storepb.QualityRuleConfig) error {
+	referential := config.GetReferentialIntegrity()
+	if referential == nil {
+		return invalidConfig("the referential-integrity config is missing")
+	}
+	child, ok := target.Column(strings.TrimSpace(referential.GetChildColumn()))
+	if !ok {
+		return invalidConfig("column %q does not exist on %s", referential.GetChildColumn(), target.GUID)
+	}
+	parentSchema, parentTable, err := parentTableName(target, referential.GetParentTable())
+	if err != nil {
+		return err
+	}
+	parentGUID := parentTargetGUID(target, parentSchema, parentTable)
+	parentResolution, err := ResolveTarget(ctx, s, parentGUID, storepb.MetaType_TABLE)
+	if err != nil {
+		if common.ErrorCode(err) == common.NotFound {
+			// The parent is a registry object of the same instance; a missing row
+			// means the rule names a table that does not exist (or was dropped), not
+			// that the server failed.
+			return invalidConfig("parent table %q does not exist or was dropped", referential.GetParentTable())
+		}
+		return err
+	}
+	parentColumnName := strings.TrimSpace(referential.GetParentColumn())
+	parentColumn, ok := parentResolution.Target.Column(parentColumnName)
+	if !ok {
+		return invalidConfig("parent column %q does not exist on %q", parentColumnName, referential.GetParentTable())
+	}
+	if child.Kind == ColumnKindUnknown || parentColumn.Kind == ColumnKindUnknown {
+		return invalidConfig("cannot compare columns %q and %q: this build cannot classify their types", child.Name, parentColumn.Name)
+	}
+	if child.Kind != parentColumn.Kind {
+		return invalidConfig("columns %q (%s) and %q (%s) are not comparable", child.Name, child.Kind, parentColumn.Name, parentColumn.Kind)
+	}
+	return nil
+}
+
+// isMySQLWireEngine reports whether the engine shares the MySQL naming convention
+// (one container, no schema segment).
+func isMySQLWireEngine(engine storepb.Engine) bool {
+	switch engine {
+	case storepb.Engine_MYSQL, storepb.Engine_TIDB, storepb.Engine_MARIADB,
+		storepb.Engine_OCEANBASE, storepb.Engine_STARROCKS, storepb.Engine_DORIS:
+		return true
+	default:
+		return false
+	}
+}
+
+// validateCrossColumnConfig checks the cross-column rule: two comparable columns of
+// the same kind (comparing a date to a number has no engine-independent meaning),
+// a real operator, and a tolerance only where arithmetic can absorb it.
+func validateCrossColumnConfig(target ResolvedTarget, config *storepb.QualityRuleConfig) error {
+	cross := config.GetCrossColumn()
+	if cross == nil {
+		return invalidConfig("the cross-column config is missing")
+	}
+	left, err := validateComparableColumn(target, cross.GetLeftColumn())
+	if err != nil {
+		return err
+	}
+	right, err := validateComparableColumn(target, cross.GetRightColumn())
+	if err != nil {
+		return err
+	}
+	if left.Kind != right.Kind {
+		return invalidConfig("columns %q (%s) and %q (%s) are not comparable", left.Name, left.Kind, right.Name, right.Kind)
+	}
+	if err := validateComparisonOperator(cross.GetOp()); err != nil {
+		return err
+	}
+	if cross.Tolerance != nil {
+		if math.IsNaN(*cross.Tolerance) || math.IsInf(*cross.Tolerance, 0) {
+			return invalidConfig("the cross-column tolerance must be a finite number")
+		}
+		if *cross.Tolerance < 0 {
+			return invalidConfig("the cross-column tolerance must not be negative")
+		}
+		if left.Kind != ColumnKindNumeric {
+			return invalidConfig("a cross-column tolerance needs numeric columns")
+		}
+	}
+	return validateCountThresholds(config, cross.FailThreshold, cross.WarnThreshold)
+}
+
+// validateComparisonOperator accepts the six real comparisons and rejects
+// UNSPECIFIED and unknown numbers.
+func validateComparisonOperator(op storepb.QualityComparisonOperator) error {
+	switch op {
+	case storepb.QualityComparisonOperator_QUALITY_COMPARISON_OPERATOR_EQ,
+		storepb.QualityComparisonOperator_QUALITY_COMPARISON_OPERATOR_NE,
+		storepb.QualityComparisonOperator_QUALITY_COMPARISON_OPERATOR_LT,
+		storepb.QualityComparisonOperator_QUALITY_COMPARISON_OPERATOR_LTE,
+		storepb.QualityComparisonOperator_QUALITY_COMPARISON_OPERATOR_GT,
+		storepb.QualityComparisonOperator_QUALITY_COMPARISON_OPERATOR_GTE:
+		return nil
+	case storepb.QualityComparisonOperator_QUALITY_COMPARISON_OPERATOR_UNSPECIFIED:
+		return invalidConfig("a cross-column rule needs a comparison operator")
+	default:
+		return invalidConfig("unknown comparison operator %d", op)
+	}
+}
+
+// validateFreshnessConfig checks the freshness rule: a temporal column, a positive
+// fail lag, and a non-negative warn lag that is strictly smaller (a warn lag equal
+// to the fail lag could never be reported: the fail check runs first).
+func validateFreshnessConfig(target ResolvedTarget, config *storepb.FreshnessConfig) error {
+	if config == nil {
+		return invalidConfig("the freshness config is missing")
+	}
+	if err := validateTemporalColumn(target, config.GetTimestampColumn()); err != nil {
+		return err
+	}
+	if config.GetMaxLagSeconds() <= 0 {
+		return invalidConfig("max_lag_seconds must be greater than zero")
+	}
+	if config.WarnLagSeconds != nil {
+		if *config.WarnLagSeconds < 0 {
+			return invalidConfig("warn_lag_seconds must not be negative")
+		}
+		if *config.WarnLagSeconds >= config.GetMaxLagSeconds() {
+			return invalidConfig("warn_lag_seconds %d must be smaller than max_lag_seconds %d", *config.WarnLagSeconds, config.GetMaxLagSeconds())
+		}
+	}
+	return nil
+}
+
+// validateCustomSQLConfig checks the custom-SQL rule: the statement is a single
+// read-only SELECT/WITH this build's parser accepts for the target engine, within
+// the size limit, and the thresholds are legal.
+func validateCustomSQLConfig(target ResolvedTarget, config *storepb.QualityRuleConfig) error {
+	custom := config.GetCustomSql()
+	if custom == nil {
+		return invalidConfig("the custom-SQL config is missing")
+	}
+	if err := ValidateCustomSQL(target.Engine, custom.GetSql()); err != nil {
+		return err
+	}
+	return validateCountThresholds(config, custom.FailThreshold, custom.WarnThreshold)
+}
+
+// validateCountThresholds checks the fail/warn pair shared by the count-type rules.
+// COUNT thresholds are failed rows, so they are non-negative; PERCENT thresholds
+// are a percentage of the filtered rows, so they also stay within 0–100. An unset
+// fail threshold means 0, which is what the evaluator uses; a warn level above the
+// fail level could never be reported because the fail check runs first.
+func validateCountThresholds(config *storepb.QualityRuleConfig, fail, warn *float64) error {
+	percent := thresholdMetric(config) == storepb.QualityThresholdMetric_QUALITY_THRESHOLD_METRIC_PERCENT
+	failValue := 0.0
+	if fail != nil {
+		failValue = *fail
+	}
+	if err := validateThresholdValue("failure threshold", failValue, percent); err != nil {
+		return err
+	}
+	if warn != nil {
+		if err := validateThresholdValue("warning threshold", *warn, percent); err != nil {
+			return err
+		}
+		if *warn > failValue {
+			return invalidConfig("warning threshold %v exceeds failure threshold %v", *warn, failValue)
+		}
+	}
+	return nil
+}
+
+// validateThresholdValue checks one threshold in its unit.
+func validateThresholdValue(name string, value float64, percent bool) error {
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return invalidConfig("%s must be a finite number", name)
+	}
+	if value < 0 {
+		return invalidConfig("%s must not be negative", name)
+	}
+	if percent && value > 100 {
+		return invalidConfig("%s %v is above 100 percent", name, value)
+	}
+	return nil
+}
+
+// validateStringColumn resolves a column and requires it to be text.
+func validateStringColumn(target ResolvedTarget, name string) error {
+	column, err := requireColumn(target, name)
+	if err != nil {
+		return err
+	}
+	if column.Kind != ColumnKindString {
+		return invalidConfig("column %q is %s; this rule needs a string column", column.Name, column.Kind)
+	}
+	return nil
+}
+
+// validateTemporalColumn resolves a column and requires it to be a date/time.
+func validateTemporalColumn(target ResolvedTarget, name string) error {
+	column, err := requireColumn(target, name)
+	if err != nil {
+		return err
+	}
+	if column.Kind != ColumnKindTemporal {
+		return invalidConfig("column %q is %s; this rule needs a temporal column", column.Name, column.Kind)
+	}
+	return nil
+}
+
+// validateComparableColumn resolves a column whose values support ordering. Text is
+// excluded: a range over text is a collation question, not a data quality check.
+func validateComparableColumn(target ResolvedTarget, name string) (ColumnInfo, error) {
+	column, err := requireColumn(target, name)
+	if err != nil {
+		return ColumnInfo{}, err
+	}
+	if column.Kind != ColumnKindNumeric && column.Kind != ColumnKindTemporal {
+		return ColumnInfo{}, invalidConfig("column %q is %s; this rule needs a numeric or temporal column", column.Name, column.Kind)
+	}
+	return column, nil
+}
