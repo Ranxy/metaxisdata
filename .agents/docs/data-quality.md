@@ -13,7 +13,7 @@
 - **规则**：v1 收敛 13 类（行数、相对行数、空值率、单列唯一、组合唯一、枚举、区间、正则、长度、引用完整性、跨列比较、新鲜度、自定义 SQL），每类有固定参数 schema 与按方言编译的只读 SQL；查询必须走实例的 `READ_ONLY` 数据源，缺失即拒绝执行。
 - **结果**：六态 `PASS / WARN / FAIL / ERROR / SKIPPED / NOT_EVALUATED`；“监控自身失败”（查询报错、超时、权限失效）与“数据不达标”必须分开；空数据默认 `NOT_EVALUATED`，可配。
 - **治理**：规则有稳定 id + 不可变 revision；失败汇聚成**问题（issue）**，按状态迁移告警（打开 / 恢复 / 执行失败），复用站内信；v1 只做站内信，不做邮件 / Slack / PagerDuty。
-- **LLM**：v1 做三件事——**自然语言 → 规则草稿**、**失败结果解释**、**字段画像 → 语义标注 → 规则建议**（先做确定性统计画像，再由 LLM 在封闭语义类型集合内标注，规则候选由“标签 → 模板”确定性映射生成；人工确认后才成为规则）。默认关闭，需管理员显式开启；样本行**默认不发给模型**。
+- **LLM**：v1 做三件事——**自然语言 → 规则草稿**、**失败结果解释**、**字段画像 → 语义标注 → 规则建议**（先做确定性统计画像，再由 LLM 在封闭语义类型集合内标注，规则候选由“标签 → 规则候选”确定性映射生成；人工确认后才成为规则）。默认关闭，需管理员显式开启；样本行**默认不发给模型**。
 - **扩展**：v1.1 首项加入 **CEL 表达式检查**（方言无关、采样级、受控谓词）；不做进程内 Python。
 - **不做**：ML/季节感知异常检测、分布漂移、LLM-as-judge 检查、自由 SQL 生成、自动修复、质量分、Python 插件、流式/行级检查、MCP/CLI 暴露。
 
@@ -46,7 +46,6 @@ Metaxisdata 今天能回答“**数据长什么样**”（schema 同步、元数
 4. 新同事不熟悉某列的业务含义 → 用自然语言描述期望 → LLM 给出规则草稿 → 人工修改并干跑通过后保存。
 5. 一条规则失败但不知道原因 → 让 LLM 结合历史、schema 变更和血缘解释 → 输出标注“AI 假设”和证据链接，不改变问题状态。
 6. 一张新接管的表有 60 个字段、没有标注 → 用户选中该表做“字段分析” → 系统先跑确定性画像（空值率、基数、取值范围、取值样式），LLM 基于“结构 + 注释 + 血缘 + 画像摘要”给出每个字段的语义标注和规则建议 → 用户逐条确认/修改，接受的标注与规则才落库。
-7. 新接入一张订单表，不想从零配规则 → 打开“从模板创建” → 按“完整性/唯一性/有效性/一致性/时效性”选模板（订单号唯一、金额非负、状态枚举、created_at 新鲜度）→ 只填目标列/表 → 干跑通过后保存。
 
 ### 1.3 目标与成功度量
 
@@ -57,7 +56,6 @@ Metaxisdata 今天能回答“**数据长什么样**”（schema 同步、元数
 | 减少噪音 | 告警去重后的人均告警数；被静音/忽略的比例；恢复通知占比 |
 | LLM 真能省事 | 规则草稿的采纳率、干跑通过率、人工改写率；失败解释的“有帮助”反馈占比 |
 | 让字段可理解 | 语义标注覆盖率（已确认标注的列 / 有规则目标的列）；标注抽检准确率 |
-| 降低建规则门槛 | 从模板创建的规则占新建规则比例；模板应用后的干跑通过率 |
 | 不伤害生产库 | 检查导致的慢查询/告警事件数为 0；超时率与连接失败率可观测 |
 
 不设“质量分”作为主指标（理由见 §13）。
@@ -77,7 +75,7 @@ Metaxisdata 今天能回答“**数据长什么样**”（schema 同步、元数
 | 流式 / 行级 / 实时检查 | 平台定位是批式元数据治理，不是流处理 |
 | MCP / CLI 暴露质量规则与结果 | MCP 面保持只读 9 个工具不变；CLI 不新增命令 |
 | 全库默认开启监控 | 成本与噪音双爆；必须显式创建规则 |
-| 自定义模板 / 模板市场 / 导入 SodaCL、GX、dbt 定义 | v1 只做内置模板；自定义与外部导入涉及版本、权限、审核与兼容，放 v1.1 研究（定义导入，不执行原运行时） |
+| 内置模板 / 模板市场 / 示例库 | 模板是示例内容，不是规则引擎能力；不进产品，后续放示例站或文档。外部定义导入（SodaCL/GX/dbt）只做 v1.1 研究，且是定义导入，不执行原运行时 |
 | 多副本调度、跨副本通知 | 与现有后台执行器一致，单副本假设 |
 
 ## 2. 术语与概念模型
@@ -184,7 +182,7 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 - **重命名**：GUID 由实例/库/schema/表名构成，改名等于“旧对象删除 + 新对象出现”，系统不自动迁移规则。旧规则进入 `PAUSED(orphaned)`，UI 明确提示“目标对象已不存在”，提供“改指向”操作（创建新 revision，历史保留）。
 - **删除/隐藏**：实例/数据库有 `deleted` 软删标记，但注册表行没有软删——同步 diff 会**硬删**消失对象的当前行（只保留 history）。实例被软删后其注册表行没有清理路径，仍可能被按 GUID 读到。因此解析目标时必须同时校验：`(guid, object_type)` 当前行存在、实例未删除、数据库未隐藏；任一失败 → 规则暂停（`PAUSED(orphaned)`），不继续打目标库，执行历史与问题保留。
 - **列被删除**：引用该列的规则暂停并提示；恢复列后不自动恢复，需人工确认。
-- **多环境**：规则天然绑定具体实例（GUID 第一段），因此 prod/staging 各自建规则；v1 不做“跨实例复制规则”，v1.1 提供复制/模板。注册表行没有 environment 列，有效环境 = `COALESCE(db.environment, instance.environment)`；按环境筛选规则/结果时 join 解析，或在写入时快照 `effective_environment`（快照必须标注语义）。
+- **多环境**：规则天然绑定具体实例（GUID 第一段），因此 prod/staging 各自建规则；v1 不做“跨实例复制规则”，v1.1 提供复制。注册表行没有 environment 列，有效环境 = `COALESCE(db.environment, instance.environment)`；按环境筛选规则/结果时 join 解析，或在写入时快照 `effective_environment`（快照必须标注语义）。
 - **跨库引用**：引用完整性 v1 限定同一 instance + database + schema；跨库对账（v1.1）需显式声明，不默认允许。
 
 ### 3.3 与既有子系统的关系（事实基线）
@@ -213,7 +211,7 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 | --- | --- | --- | --- | --- | --- |
 | R01 | `row_count` | completeness | `min` / `max` / `exact` 三选一或组合；`filter` | `COUNT(*)` 与阈值比较 | 全方言 |
 | R02 | `row_count_change` | completeness | `max_increase_pct` / `max_decrease_pct`；基线固定为“本规则最近一次成功执行” | 相对基线变化百分比 | 首次执行/基线超过 7 天 → `NOT_EVALUATED`；不做季节基线 |
-| R03 | `null_percent` | completeness | 列、`max_null_pct`（warn/fail） | `SUM(c IS NULL)/COUNT(*)` | 全方言；`COUNT(*)=0` 走 `on_empty` |
+| R03 | `null_percent` | completeness | 列、`max_null_count` 或 `max_null_pct`（warn/fail，二选一） | 空值行数或空值率 | 全方言；`COUNT(*)=0` 走 `on_empty` |
 | R04 | `unique` | uniqueness | 列、是否计入 NULL | 重复的非 NULL 值计数（或重复行数） | 全方言 |
 | R05 | `unique_combination` | uniqueness | 列集合（含“全部列”用于整行重复） | `GROUP BY … HAVING COUNT(*) > 1` | 列数上限 10；全方言 |
 | R06 | `accepted_values` | validity | 列、允许值集合（≤200 个）或引用同库小表 | 不在集合中的行数/占比 | 值集合按列类型编码；v1 不做“引用表”模式 |
@@ -333,8 +331,8 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 
 1. **确定性画像（先算，不问模型）**：对目标表的列计算——空值行数/比例、distinct 数、数值/日期 min/max、字符串长度 min/max、低基数列的 Top-K 取值（含频次）、字符样式摘要（数字/字母/日期/混合、常见格式候选）、采样行数与采样方式。一次表级扫描尽量合并成单条聚合查询；有上限、有超时、有截断标记。画像结果是普通数据，先落库、可复用、可对比。
 2. **语义标注（LLM，封闭枚举）**：输入 = 表结构/类型/可空/注释/DDL、血缘（上下游、join 键、主外键）、画像摘要、已有标注与规则。输出 = 每个列的 `semantic_type`（枚举：`email` / `phone` / `url` / `uuid` / `ip` / `country_code` / `currency` / `amount` / `quantity` / `percentage` / `id` / `business_key` / `timestamp` / `date` / `enum` / `free_text` / `unknown`）+ `confidence` + `evidence`（引用具体列、画像指标、血缘关系）+ 可选 `ranked_rule_types`（只排序，不发明新类型）。
-3. **规则模板映射（确定性）+ 参数**：`semantic_type → 规则模板` 是代码里的固定映射（如 `email → regex + not null`、`country_code → accepted_values`、`amount → range + non-negative`、`id → unique + not null`、`timestamp → freshness + range`、`enum → accepted_values`）。LLM 只负责“这列是什么语义”，**不负责决定用哪类规则**；这样规则选择可解释、可评测、可复现。参数可由画像给“参考值”，但必须标注“基于当前数据推导”——**禁止把阈值直接设成当前观察值**（否则规则永远通过，等于没建）。
-4. **不支持的语义**：若没有匹配的预定义标签/规则模板，输出 `unknown` 或 `needs_custom_sql: true` + 自然语言描述；**不生成可执行 SQL、不新增运行时规则类型**。规则类型是编译期代码，LLM 发现的新模式进入产品需求，不进入运行时。
+3. **规则候选映射（确定性）+ 参数**：`semantic_type → 规则候选` 是代码里的固定映射（如 `email → regex + not null`、`country_code → accepted_values`、`amount → range + non-negative`、`id → unique + not null`、`timestamp → freshness + range`、`enum → accepted_values`）。LLM 只负责“这列是什么语义”，**不负责决定用哪类规则**；这样规则选择可解释、可评测、可复现。参数可由画像给“参考值”，但必须标注“基于当前数据推导”——**禁止把阈值直接设成当前观察值**（否则规则永远通过，等于没建）。
+4. **不支持的语义**：若没有匹配的预定义标签/规则候选，输出 `unknown` 或 `needs_custom_sql: true` + 自然语言描述；**不生成可执行 SQL、不新增运行时规则类型**。规则类型是编译期代码，LLM 发现的新模式进入产品需求，不进入运行时。
 5. **标注与建议的落库**：`column_semantic_label`（唯一键 = 表 GUID + 列名；label、source = MANUAL/LLM、status = SUGGESTED/ACCEPTED/REJECTED、confidence、evidence、accepted_by/at）。人工标注优先；LLM 可重新建议，但**不得覆盖已接受的标注**，除非用户显式重新生成。所有 L1/L3 产出进入“规则建议”队列（pending），接受后进入规则编辑器（可改参数），保存才生成规则；拒绝要记录原因用于评估。**不自动建规则、不自动启用、不自动执行**。
 6. **范围与触发**：按表/按需触发（资产页“分析字段”、建议队列批量选择），**不做全库定时爬取**；一次 ≤50 列、单次有 token 与时间上限；优先建议有血缘/被查询/主外键/低基数枚举的列，跳过明显的 `id` 主键、系统时间戳等。
 7. **采样与隐私**：默认发给模型的是“聚合画像 + 脱敏后的低基数取值摘要”；**原始样本行默认不出域**，需 workspace 显式开启并提示 PII 风险；高基数列只发样式摘要；ID/金额等敏感列可按列屏蔽。采样方式（`LIMIT`/分区裁剪）与行数必须写入画像，UI 标注“基于 N 行样本”，不得暗示是全表结论。
@@ -428,54 +426,81 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 - 安全：表达式在保存/干跑时编译校验（未知列、类型不匹配、超长、未知函数直接拒绝）；求值受超时与行数上限约束；正则走 CEL 的 RE2（无灾难性回溯）；表达式与列清单进 revision/结果证据，便于复现。
 - 验收：同一表达式在 MySQL/PG/MSSQL 上行为一致（方言无关）；null/类型边界有单测；采样截断可见；表达式无法触发 I/O；超时/行数上限生效。
 
-### 4.10 内置规则模板库
+### 4.10 规则表达能力的对标与补充
 
-**定位**：模板是“预填好的规则配置 + 必填参数提示”，不是新的规则类型，也不执行任何东西。应用模板只把规则编辑器预填成草稿；用户必须选择目标/列、确认参数、干跑通过后保存。模板由 Go 代码内置（无新表），随二进制版本发布；v1 **不做**自定义模板、模板市场、SodaCL/GX/dbt 导入（定义导入在 v1.1 研究）。
+目标不是照搬某个产品的模板，而是确认：**Soda/GX/dbt/商业平台在模板里用到的检查形态、组合方式与表达能力，我们的规则系统要能表达**。模板/行业示例后续可以放到示例站或文档，**不作为 v1 产品功能**。
 
-**模板模型**：`id`（稳定）、`version`、`dimension`、`rule_type`、`title_key`/`description_key`（i18n，服务端不存正文）、`default_config`（`QualityRuleConfig` 骨架）、`required_params`（如 column / columns / timestamp_column / parent_table / parent_column）、`applicable_column_types`、`engine_support`、`tags`、`source`（SODA / GX / DBT / INTERNAL，仅标注灵感来源，不复制其文案与 YAML）。
+**4.10.1 对标清单**
 
-**v1 内置目录**（全部能映射到 §4.1 的规则类型）：
-
-| id | 名称 | 类型 | 默认/必填 |
+| 能力 | 外部典型表达（Soda / GX / dbt） | 我们的表达 | v1 状态 |
 | --- | --- | --- | --- |
-| `table-not-empty` | 表非空 | `row_count` | min_rows=1 |
-| `row-count-range` | 行数区间 | `row_count` | 必填 min/max |
-| `row-count-change` | 行数环比 | `row_count_change` | 必填增减百分比 |
-| `required-column-not-null` | 必填字段非空 | `null_percent` | 必填 column；max=0 |
-| `no-empty-string` | 非空字符串 | `regex` | column；pattern=`\S` |
-| `primary-key-unique` | 主键唯一 | `unique` | column |
-| `business-key-unique` | 业务键唯一 | `unique` | column |
-| `composite-key-unique` | 组合键唯一 | `unique_combination` | columns |
-| `no-duplicate-rows` | 整行不重复 | `unique_combination` | 全部列 |
-| `unique-when-present` | 非空时唯一 | `unique` | column + filter IS_NOT_NULL |
-| `email-format` | 邮箱格式 | `regex` | column |
-| `country-code-iso2` | 两位国家代码 | `regex` | column；`^[A-Z]{2}$` |
-| `currency-code` | 货币代码 | `accepted_values` | column；默认常用 ISO 4217 集合 |
-| `status-enum` | 状态枚举 | `accepted_values` | column；values 必填 |
-| `amount-non-negative` | 金额非负 | `range` | column；min=0 |
-| `percentage-range` | 百分比 0–100 | `range` | column；0–100 |
-| `string-length-guard` | 字符串长度护栏 | `string_length` | column；min/max |
-| `foreign-key-exists` | 外键引用完整性 | `referential_integrity` | child/parent 列 |
-| `date-order` | 起止日期顺序 | `cross_column` | 两列 + `<=` |
-| `freshness-24h` | 新鲜度 24 小时 | `freshness` | timestamp_column；24h |
-| `freshness-30d` | 新鲜度 30 天 | `freshness` | timestamp_column；30d |
+| 行数 / 空表 | `row_count`、table row count | R01 `row_count` | 已有 |
+| 行数变化 | change-over-time row count | R02 `row_count_change` | 已有 |
+| 空值 | `missing` / `missing_count` / `missing_percent`、`not_null` | R03 `null_percent`（count/percent 阈值） | 已有 |
+| 单列唯一 | `duplicate`、`unique` | R04 `unique` | 已有 |
+| 组合/整行唯一 | composite duplicate、compound unique、unique rows | R05 `unique_combination` | 已有 |
+| 枚举 | `valid_values`、`in_set`、`accepted_values` | R06 `accepted_values` | 已有 |
+| 数值/日期区间 | `valid_min` / `valid_max`、`between` | R07 `range` | 已有 |
+| 格式 | `valid_format`、`match_regex` | R08 `regex` | 已有（MSSQL 除外） |
+| 长度 | `valid_min_length` / `valid_max_length`、lengths | R09 `string_length` | 已有 |
+| 引用完整性 | `valid_reference_data`、`relationships` | R10 `referential_integrity` | 已有 |
+| 跨列比较 | column pair / `cross` | R11 `cross_column` | 已有 |
+| 新鲜度 | `freshness` | R12 `freshness` | 已有 |
+| 自定义失败行 | `failed_rows`（expression/query）、singular test | R13 `custom_sql`；R14 CEL（v1.1） | 已有 / v1.1 |
+| 聚合指标 | `avg/max/min/sum/stddev/percentile` | v1.1（当前用 `custom_sql` 覆盖） | 缺口（v1.1） |
+| schema / schema evolution | `schema`、column set/order/type | v1.1 schema 漂移 | 缺口（v1.1） |
+| 分组内阈值 | `group by` | v1.1 | 缺口（v1.1） |
+| 跨表对账 | `reconciliation`、`cross` | v1.1 | 缺口（v1.1） |
+| 分布漂移 / 统计异常 | `distribution`、anomaly detection | later | 缺口（later） |
+| 自定义缺失值 | `missing_values` / `missing_format` | v1.1 | 缺口（v1.1） |
+| 未来日期 / 条件跨列 | failed rows / 表达式 | CEL（v1.1）或 `custom_sql` | 缺口（v1.1） |
+| 变量 / 作用域 / 契约 | `variables`、`scopes`、contract verify | 规则级 filter + 固定参数；later | 缺口（later） |
 
-**来源映射**：Soda 的 contract check（missing / duplicate / invalid 的 `valid_values`、`valid_min/max`、`valid_format`、`valid_min/max_length`、freshness、row_count、composite duplicate、failed_rows、schema）、GX expectation（not_null / unique / in_set / between / match_regex / lengths / row_count / compound unique / column pair）、dbt 内置 test（unique / not_null / accepted_values / relationships）与 dbt-expectations、以及商业可观测平台（Monte Carlo / Anomalo / Bigeye）公开的 freshness / volume / schema / custom SQL monitor 分类是模板类型的来源；**只借鉴检查类型、参数形态与阈值语义**，文案、配置、示例全部自写，避免复制第三方 YAML/描述。
+**4.10.2 它们如何组合（对应到我们的模型）**
 
-**明确不做（v1）**：
+| 组合方式 | 外部做法 | 我们的做法 |
+| --- | --- | --- |
+| 同一检查 × 多列 | 列级 check 批量套用 | 每列一条规则（`target.columns` + config 列），或一条组合键规则 |
+| 数据集级 + 列级 | 一个 contract 同时有 dataset checks 和 column checks | 一个 execution（run）里放多条规则；**不引入 contract 实体** |
+| 同列多条检查 | missing + invalid + length | 多条规则，各自独立判定/告警/历史 |
+| 过滤 / 分区 | dataset filter、check filter、最新分区 | 规则级结构化 `filter`（AND 子句）；复杂条件用 `custom_sql` |
+| 多切片 | contract scopes | later；v1 用多条规则 + 不同 filter 表达 |
+| 两级阈值 | warn/fail、`additional` threshold | 每条规则 warn/fail + `threshold_metric(count/percent)` |
+| 检查身份 / 属性 | qualifier、attributes、tags | 稳定 rule id + revision + dimension/severity/owner/tags |
+| 失败样本 | failed rows samples | 结果里的失败样本（上限 + 截断 + 可关闭） |
+| 调度 | cron / contract schedule | 规则级 interval + 手动执行（cron later） |
 
-- 自定义 SQL 模板骨架（`failed_rows` 类，SQL 需按目标改写）→ v1.1；
-- schema / schema evolution → v1.1（schema 漂移规则）；
-- group by / 分组阈值、distribution / 分布漂移、anomaly / 统计异常 → later；
-- cross-table reconciliation、group evolution → v1.1；
-- aggregate（sum/avg/stddev/percentile）→ v1.1（先用 `custom_sql`）；
-- `missing_values`/`missing_format` 自定义缺失值、future-date 禁止、条件跨列（qty=0 ⇒ amount=0）→ v1.1（CEL / 规则类型扩展）；
-- 变量插值、contract scopes、cron 调度、contract verify/CI → later；
-- `valid_reference_data` 由 `referential_integrity` 覆盖（存在性语义），不单列模板。
+**4.10.3 我们需要的规则表达模型**
 
-**交互**：规则页/资产页“从模板创建”→ 模板库抽屉（维度分类 + 搜索 + 适用列类型/引擎过滤）→ 预览默认配置与必填参数 → 应用后进入规则编辑器（预填、记录 `template_id`、可改）→ 干跑 → 保存。模板应用不直接创建/启用规则，不触发执行。
+所有规则共享同一套语义，13 类只是它的特化：
 
-**验收**：每个 v1 模板用示例参数编译通过（支持的引擎与列类型）；模板 id/version 稳定、i18n key 双语存在；应用后 `template_id` 落库；没有模板依赖未支持的规则类型；文档列出未覆盖模板形态（gap）。
+- **Scope**：表、列、列集合、父表引用（引用完整性）。
+- **Observation**：COUNT / RATIO / SECONDS / TIMESTAMP / NUMBER（后续扩展 AGGREGATE、SCHEMA_DIFF）。
+- **Predicate**：比较符 + 阈值 + 单位（count/percent）+ warn/fail 两级 + 区间/集合/正则/长度。
+- **Filter**：结构化 AND 子句（列、比较符、值），可限定时间窗口；复杂条件走 `custom_sql`。
+- **Sampling**：全表或采样（CEL v1.1），采样必须写入结果并在 UI 标注。
+- **Meta**：dimension、severity、owner、tags、schedule、description。
+- **Result**：observed、threshold 快照、failed rows/sample、executed SQL、错误分类、engine version。
+
+结论：**v1 的 13 类规则覆盖了对标模板中的绝大多数检查形态**；缺口集中在 schema / 聚合 / 分组 / 对账 / 分布异常 / 自定义缺失值，按 §4.10.4 排期。`custom_sql` 与 CEL 是逃生口，但不把产品做成通用 DSL。
+
+**4.10.4 缺口排期**
+
+| 能力 | 计划 |
+| --- | --- |
+| schema 漂移（列集合/类型/顺序） | v1.1（复用元数据历史 + schema sync diff） |
+| 分组内阈值（`GROUP BY` + 每组条件） | v1.1 |
+| 聚合指标（sum/avg/min/max/stddev/percentile） | v1.1 |
+| 自定义缺失值（`missing_values` / regex） | v1.1 |
+| 跨表对账 / 记录级 diff | v1.1 |
+| 分布漂移 / 统计异常 | later |
+| 变量插值、contract scopes、cron、contract verify/CI | later |
+| 模板 / 行业示例 | **不进产品**；后续放示例站或文档 |
+
+**参考**：[Soda 模板库](https://soda.io/templates)、[Soda contract 语言](https://docs.soda.io/reference/contract-language-reference)、[SodaCL metrics/checks](https://docs.soda.io/soda-documentation/soda-v3/sodacl-reference/metrics-and-checks)、[GX Expectation Gallery](https://greatexpectations.io/expectations/)、[dbt data tests](https://docs.getdbt.com/docs/build/data-tests)、[dbt-expectations](https://github.com/calogica/dbt-expectations)。
+
+**验收**：每类检查能落到明确的规则类型或 `custom_sql`/CEL；组合方式不要求新实体；缺口有排期，不用“模板”掩盖能力缺失。
+
 
 ## 5. 信息架构与交互
 
@@ -497,7 +522,7 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 | 页面 | 形态 | 关键交互 |
 | --- | --- | --- |
 | 概览 | 列表页宽度 full；StatCard + 趋势图 + “需要关注”列表 | 时间窗 7/30 天；空态引导建规则；错误分块隔离 |
-| 规则列表 | 宽表 + `AdvancedSearchBar`（URL 持久化）+ `TablePager` | 新建 / 从模板创建（抽屉/页）、筛选、行抽屉 |
+| 规则列表 | 宽表 + `AdvancedSearchBar`（URL 持久化）+ `TablePager` | 新建（抽屉/页）、筛选、行抽屉 |
 | 规则详情 | 抽屉（保留列表上下文） | 定义、revision 历史、最近结果、编辑/停用/执行/复制/删除 |
 | 规则编辑器 | 大抽屉或工作台页 | 类型选择、目标前缀、参数表单、阈值、调度、owner、编译 SQL 预览、干跑 |
 | 执行列表 | 宽表 + 时间范围 | 行进入执行详情 |
@@ -506,7 +531,6 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 | 建议队列 | 宽表 + 筛选 + 批量选择 | 逐条证据/编译 SQL 预览；接受→规则编辑器；拒绝→原因 |
 | 问题详情 | 抽屉/页 | 时间线、关联执行、确认/解决（原因 + 备注）、AI 解释 |
 | 设置 | Settings 阅读列 | LLM 开关、provider、样本策略、默认调度、成本上限 |
-| 模板库 | 规则页/资产页入口的抽屉 | 维度分类 + 搜索 + 适用列类型/引擎过滤；预览默认配置与必填参数；应用→规则编辑器预填（记录 template_id）；不直接保存 |
 
 **交互红线**：详情抽屉必须保留列表筛选与 `from` 返回路径；筛选写进 URL；执行详情不得藏在抽屉里（它是证据；参照 OpenLineage Run 详情整页）。状态徽标必须“文字 + 颜色”，不能只靠颜色；严重级别同理。
 
@@ -524,7 +548,7 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 ### 5.5 i18n 与文案
 
 - 新增 `dataQuality.*` 与 `dataQualitySettings.*` 命名空间，中英双语；通知文案走 `notifications.dataQuality*`。
-- `frontend/glossary.json` 新增 **Data Quality** 分类与词条（候选，评审后生效）：data quality 数据质量、quality rule 质量规则、rule result 规则结果、execution 执行、issue 质量问题、dimension 维度、severity 严重级别、threshold 阈值、observed value 实际值、failure sample 失败样本、freshness 时效性、null percentage 空值率、uniqueness 唯一性、referential integrity 引用完整性、dry run 干跑、column profile 字段画像、semantic label 语义标注、rule suggestion 规则建议、rule template 规则模板、template gallery 模板库、expression check 表达式检查、sampled 采样、AI suggestion AI 建议、AI explanation AI 解释。
+- `frontend/glossary.json` 新增 **Data Quality** 分类与词条（候选，评审后生效）：data quality 数据质量、quality rule 质量规则、rule result 规则结果、execution 执行、issue 质量问题、dimension 维度、severity 严重级别、threshold 阈值、observed value 实际值、failure sample 失败样本、freshness 时效性、null percentage 空值率、uniqueness 唯一性、referential integrity 引用完整性、dry run 干跑、column profile 字段画像、semantic label 语义标注、rule suggestion 规则建议、expression check 表达式检查、sampled 采样、AI suggestion AI 建议、AI explanation AI 解释。
 - 必须扩展既有词条 `scope` 到 `dataQuality.`：`column`（字段）、`schema`（Schema）、`filter`（筛选）。
 - **`execution` 不叫 run**：`run` 已固定为 OpenLineage 的“运行记录”，DQ 用 `execution` / 执行；词条必须显式记录此区分。
 - 动态 key（状态徽标、通知文案）必须登记到 `scripts/check-vue-i18n.mjs` 的 `DYNAMIC_PREFIXES` 与 ESLint `no-unused-keys` ignore；通知 key 必须通过 `notificationText.test.ts` 的目录存在性测试。
@@ -624,7 +648,6 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 | `UpdateColumnLabel` | 确认/修改/清除语义标注 | `labels.update` | 是 |
 | `ListColumnProfiles` | 按表/列读取已有画像（不重新执行） | `rules.list` | 否 |
 | `ListColumnLabels` | 按表/列读取语义标注 | `rules.list` | 否 |
-| `ListQualityRuleTemplates` | 内置模板列表（全局静态、无分页；返回 i18n key 与 config 骨架） | `rules.list` | 否 |
 
 要求：
 
@@ -641,7 +664,7 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 
 | 表 | 关键列 | 约束/索引 |
 | --- | --- | --- |
-| `quality_rule` | `id`、`resource_id`（不可回收）、`title`、`description`、`dimension`、`rule_type`、`target_guid`、`target_type`、`target_path` JSONB（名字路径快照）、`target_meta_hash`、`target_columns`、`config` JSONB（proto）、`severity`、`state`、`owner_id`、`tags`、`template_id`、`schedule_interval_seconds`、`next_run_at`、`revision`、`created_by`/`updated_by`、`created_at`/`updated_at`、`deleted` | unique(`resource_id`)；partial index (`enabled`, `next_run_at`) WHERE enabled AND NOT deleted；index(`target_guid`, `target_type`)；index(`owner_principal_id`)；GIN(`tags`)（模板/来源筛选） |
+| `quality_rule` | `id`、`resource_id`（不可回收）、`title`、`description`、`dimension`、`rule_type`、`target_guid`、`target_type`、`target_path` JSONB（名字路径快照）、`target_meta_hash`、`target_columns`、`config` JSONB（proto）、`severity`、`state`、`owner_id`、`tags`、`schedule_interval_seconds`、`next_run_at`、`revision`、`created_by`/`updated_by`、`created_at`/`updated_at`、`deleted` | unique(`resource_id`)；partial index (`enabled`, `next_run_at`) WHERE enabled AND NOT deleted；index(`target_guid`, `target_type`)；index(`owner_id`)；GIN(`tags`)（标签筛选） |
 | `quality_rule_revision` | `rule_id`、`revision`、`config` JSONB、`created_by`、`created_at` | unique(`rule_id`,`revision`)；只插入 |
 | `quality_run` | `id`、`resource_id`、`trigger`（MANUAL/SCHEDULED）、`status`、`counts`（六态计数的列或 JSONB）、`started_at`、`finished_at`、`initiator_principal_id`、`target_scope` | index(`started_at DESC`)；index(`status`) |
 | `quality_rule_result` | `id`、`run_id` FK、`rule_id` FK、`rule_revision`、`rule_engine_version`、`target_guid`、`target_type`、`status`、`observed_value`、`observed_kind`、`thresholds` JSONB、`failed_rows`、`total_rows`、`truncated`、`sample` JSONB、`executed_sql`、`error_code`、`error_message`、`duration_ms`、`started_at`、`finished_at` | index(`run_id`)；index(`rule_id`, `started_at DESC`)；index(`target_guid`, `target_type`, `started_at DESC`)；index(`started_at`)（清理） |
@@ -731,7 +754,7 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 
 **M1 规则引擎（可独立使用）**
 
-- 数据模型 + 迁移 + store；13 类规则 + 方言编译；执行器 + 手动/定时；结果六态 + 失败样本 + 执行历史；规则/执行/问题（只读）UI；权限/审计；干跑；内置模板目录 + 模板库抽屉。
+- 数据模型 + 迁移 + store；13 类规则 + 方言编译；执行器 + 手动/定时；结果六态 + 失败样本 + 执行历史；规则/执行/问题（只读）UI；权限/审计；干跑。
 - 验收：MySQL/PostgreSQL/MSSQL fixture 上每类规则 golden SQL 通过；只读集成测试（只读账号写入被拒）；六态语义测试；空数据可配；单规则故障隔离；执行上限生效。
 
 **M2 治理闭环**
@@ -746,7 +769,7 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 
 **M3b 字段画像与语义标注（建议作为 M3 的第二批，可与 M3a 分两次发布）**
 
-- 确定性画像引擎 + `column_profile`；语义标注存储与人工确认；L3 标注 + 模板映射 + 建议队列；画像/建议 UI（资产页入口、建议队列、列标注）；隐私开关与成本上限；golden set 评测。
+- 确定性画像引擎 + `column_profile`；语义标注存储与人工确认；L3 标注 + 规则候选映射 + 建议队列；画像/建议 UI（资产页入口、建议队列、列标注）；隐私开关与成本上限；golden set 评测。
 - 验收：画像数值与独立 SQL 对账一致（fixture）；采样/截断可见；`unknown` 不硬套规则；阈值不取当前观察值；标注冲突人工优先；建议不自动落库；关闭出域开关后不发送原始样本。
 
 **v1.1（首发后第一批）**
@@ -754,7 +777,7 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 - R14 CEL 表达式检查：表达式校验、采样执行、`sampled` 标记、编辑器与干跑；与 `custom_sql` 的边界写清楚。
 - 验收：同一 CEL 表达式在 MySQL/PG/MSSQL 行为一致；null/类型边界单测；采样行数/截断可见；表达式无法触发 I/O；超时/行数上限生效。
 
-**M4（更后）**：schema 漂移、分组检查、聚合指标、跨库对账、统计基线、webhook、邮件、自定义模板/定义导入、资产级静音、问题批量处置、MCP/CLI、质量分、分布漂移、LLM-as-judge。
+| M4（更后）**：schema 漂移、分组检查、聚合指标、跨库对账、统计基线、webhook、邮件、定义导入、资产级静音、问题批量处置、MCP/CLI、质量分、分布漂移、LLM-as-judge。
 
 **全局验收门禁**：`gofmt` + `golangci-lint` + 相关 `go test`；`buf format/lint/generate`；前端 `biome:check`、`lint`、`i18n`、`type-check`、`test run`、`audit:ui`；迁移链一致性测试；权限目录/ACL 守卫测试；通知 key 测试。
 
@@ -776,15 +799,14 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 | D12 | 通知渠道 | v1 仅站内信 | 加 webhook：需出站投递/SSRF 策略，建议 v1.1 |
 | D13 | 检查失败是否阻塞下游 | 否，纯观测 | 阻塞：产品定位不同，不做 |
 | D14 | schema 变更与规则 | 资产/列消失 → 暂停并提示；阈值变更产生 revision | 自动禁用/自动迁移：不可靠（改名不可检测） |
-| D15 | 字段分析的分工 | 三段式：确定性画像 → LLM 语义标注 → 确定性规则模板映射 + 人审 | 让 LLM 直接选规则/给阈值：实现简单但不可解释、阈值易“永远通过” |
+| D15 | 字段分析的分工 | 三段式：确定性画像 → LLM 语义标注 → 确定性规则候选映射 + 人审 | 让 LLM 直接选规则/给阈值：实现简单但不可解释、阈值易“永远通过” |
 | D16 | 样本出域 | 默认只发聚合画像/脱敏摘要；原始样本单独开关、默认关闭 | 默认发样本：标注更准但自托管客户难接受 PII 风险 |
 | D17 | 字段分析触发 | 按表/按需 + 建议队列批量；最多 50 列/次 | 全库定时爬取：覆盖全但成本/噪音/PII 风险高 |
 | D18 | 语义标注的存储 | 独立表（GUID+列名），人工确认后生效；人工优先 | 写进 schema 同步元数据：会被下次同步覆盖 |
 | D19 | LLM 建议的落地方式 | 只进“建议队列”，人工接受后成为规则草稿 | 自动建规则/自动启用：治理风险不可接受 |
 | D20 | 自定义检查的扩展 | v1/v1.1 不做 Python；扩展走 `custom_sql` → CEL；兼容走定义导入 | 进程内嵌 Python：破坏单二进制与安全边界 |
 | D21 | CEL 检查的语义 | **采样级**（默认 1 万行，标记 `sampled`）；精确需求用 `custom_sql` | 把 CEL 编译成 SQL：精确但方言/类型/语义复杂，易错且难评测 |
-| D22 | 模板形态 | 内置静态模板（Go 代码 + i18n），无新表；应用只预填编辑器 | 自定义模板/市场：需要版本、权限、审核与存储，v1.1 再议 |
-| D23 | 模板来源 | 借鉴 Soda/GX/dbt 的检查类型与参数形态，文案/配置/示例全部自写 | 直接复制其 YAML/描述：法律与维护风险 |
+| D22 | 规则表达方式 | 类型化规则 + 公共语义（scope/metric/threshold/filter/sampling），不做通用 DSL；模板/示例放示例站 | 做通用 DSL/模板市场：实现与治理成本高，v1 不需要 |
 
 ## 14. 风险清单
 
@@ -800,14 +822,13 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 | 8 | 方言差异导致“看起来通过” | 错误结论 | 方言矩阵显式标 unsupported；golden SQL；不静默降级 |
 | 9 | 单副本调度丢失执行 | 短时漏检 | `next_run_at` 收敛；执行记录可见；不承诺 exactly-once |
 | 10 | 权限过宽/过窄 | 越权或不可用 | 只读基线 + 管理员写；每个 RPC 注解 + ACL 守卫测试 |
-| 11 | 规则数量爆炸 | 存储与查询压力 | 每表/每 workspace 上限；默认不自动建；v1.1 模板与批量 |
+| 11 | 规则数量爆炸 | 存储与查询压力 | 每表/每 workspace 上限；默认不自动建；v1.1 规则批量创建/复制 |
 | 12 | 与 schema 同步/血缘脱节 | 解释失真 | 结果记录 revision、执行时间；AI 解释引用历史快照 |
 | 13 | 字段画像/标注成本失控 | token 与查询成本 | 按需触发、列数/次数上限、画像缓存、优先级排序 |
 | 14 | 样本值含 PII 出域/落库 | 合规 | 默认聚合+脱敏；样本开关默认关闭；debug 提示；按列屏蔽 |
 | 15 | 语义标注错误导致规则建错 | 噪音/漏检 | 封闭枚举 + 证据 + 人工确认 + golden set 抽检；标注可改 |
 | 16 | 建议泛滥 | 用户不看、治理失效 | 优先级 + 置信度门槛 + 每表建议数上限 + 拒绝原因回收 |
-| 17 | 模板与源产品漂移/版权 | 文案/参数失真、法律风险 | 只借鉴检查类型与参数形态；自写文案；模板版本随代码评审；不批量搬运第三方 YAML |
-| 18 | 模板数量膨胀/质量参差 | 选择困难、错误模板 | 每维度少量精选；每个模板有编译与 i18n 测试；从模板创建后仍需干跑 |
+| 17 | 规则表达能力不足，用户被迫写 custom_sql | 体验差、易错 | 按 §4.10 的缺口排期补类型；custom_sql 只作逃生口；每类能力有 acceptance |
 | 17 | 追求 Python 兼容拖垮架构 | 部署、安全与维护成本 | 明确非目标；先 `custom_sql`/CEL；兼容只做定义导入 |
 | 18 | CEL 采样结果被当成全表结论 | 误判质量 | 强制 `sampled`/样本量展示；文档说明采样级语义；精确需求用 `custom_sql` |
 
@@ -823,7 +844,7 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 | 前端 | `api/data-quality.ts`、Pinia（如需要）、`pages/data-quality/*`（含建议队列、字段分析面板）、`pages/settings/DataQualitySettingsPage.vue`、路由、侧栏、SettingsNav、通知文案、状态徽标 helper、内联 SVG 趋势图；`audit-ui-layout.mjs` 注册路由 |
 | i18n | 两个 locale、glossary 新分类与词条、scope 扩展、动态 key 注册 |
 | 文档 | 实现后把本文件改写为维护参考并加入 README；更新 [frontend-ui.md](frontend-ui.md)（第 6 导航）、[notifications.md](notifications.md)（新类型）、[iam-and-permissions.md](iam-and-permissions.md)（权限目录）、[runner.md](runner.md)（第 5 执行器）、根 [AGENTS.md](../../AGENTS.md) 的产品面与路由列表；`docs/` 增操作文档 |
-| 测试 | 规则编译 golden（各方言）、执行器调度/超时/隔离、store 作用域与唯一约束、通知迁移/去重、权限矩阵、LLM 校验链、模板目录编译/i18n、前端 helper 单测、集成（MySQL/PG/MSSQL fixture + 只读账号）、布局审计 |
+| 测试 | 规则编译 golden（各方言）、执行器调度/超时/隔离、store 作用域与唯一约束、通知迁移/去重、权限矩阵、LLM 校验链、规则表达能力矩阵、前端 helper 单测、集成（MySQL/PG/MSSQL fixture + 只读账号）、布局审计 |
 | 扩展性（v1.1） | `cel-go`（已有依赖）实现 R14 表达式检查；明确**不引入 Python 运行时**；GX/Soda 定义导入仅作后续研究 |
 
 ## 16. 开放问题（需要产品/安全评审逐条拍板）
@@ -837,9 +858,9 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 7. 规则 revision 的产生范围（仅语义字段 vs 包含调度/owner）需要在实现前定稿。
 8. 90 天保留是否可配置；若可配置，是否需要审计配置变更。
 9. 字段分析的范围：只分析“未标注”列，还是包含已标注列的复核？建议前者 + 手动复核。
-10. 语义标签集合是否允许用户自定义（会破坏“封闭枚举 → 固定模板”的可解释性）？建议 v1 固定，扩展走产品版本。
+10. 语义标签集合是否允许用户自定义（会破坏“封闭枚举 → 固定规则候选”的可解释性）？建议 v1 固定，扩展走产品版本。
 11. 原始样本出域是否作为企业级开关（整个工作区）还是列级开关？建议工作区开关 + 列级屏蔽。
 12. 是否有真实客户要求“直接复用 GX/Soda/dbt 的 Python 检查或 YAML 定义”？若有，优先级是定义导入，还是允许外挂一个独立的 Python runner（不嵌入单二进制）？
-14. 内置模板的数量与形态：v1 约 20 个精选模板是否足够？是否需要按行业/表类型做“模板包”（订单、客户、财务持仓等）？
-15. 模板是否允许带“变量/占位符”（如 `min_rows`、列名）在应用后由用户填写？当前设计用 required_params 表达，v1 不做通用变量插值。
+14. §4.10 的缺口排期是否符合预期？v1.1 优先 schema 漂移、group by、aggregate，还是先做更常用的 missing_values/CEL？
+15. 是否需要把 Soda 的 contract 概念（dataset+column checks 作为一个整体验证/发布）纳入后续，还是保持“多条规则 + run”模型？
 13. CEL 默认采样 1 万行是否够用？是否允许按规则上调到 10 万行（成本/精度权衡）？
