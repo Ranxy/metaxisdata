@@ -14,6 +14,7 @@
 - **结果**：六态 `PASS / WARN / FAIL / ERROR / SKIPPED / NOT_EVALUATED`；“监控自身失败”（查询报错、超时、权限失效）与“数据不达标”必须分开；空数据默认 `NOT_EVALUATED`，可配。
 - **治理**：规则有稳定 id + 不可变 revision；失败汇聚成**问题（issue）**，按状态迁移告警（打开 / 恢复 / 执行失败），复用站内信；v1 只做站内信，不做邮件 / Slack / PagerDuty。
 - **LLM**：v1 做三件事——**自然语言 → 规则草稿**、**失败结果解释**、**字段画像 → 语义标注 → 规则建议**（先做确定性统计画像，再由 LLM 在封闭语义类型集合内标注，规则候选由“标签 → 模板”确定性映射生成；人工确认后才成为规则）。默认关闭，需管理员显式开启；样本行**默认不发给模型**。
+- **扩展**：v1.1 首项加入 **CEL 表达式检查**（方言无关、采样级、受控谓词）；不做进程内 Python。
 - **不做**：ML/季节感知异常检测、分布漂移、LLM-as-judge 检查、自由 SQL 生成、自动修复、质量分、Python 插件、流式/行级检查、MCP/CLI 暴露。
 
 ## 1. 背景、目标与非目标
@@ -63,7 +64,7 @@ Metaxisdata 今天能回答“**数据长什么样**”（schema 同步、元数
 
 | 不做 | 理由 |
 | --- | --- |
-| 内嵌 Great Expectations / Soda / dbt 的 Python 运行时（含 WASM 兼容） | 全是 Python/dbt 生态；本产品是单 Go 二进制，规则模型必须原生实现。GX 的自定义 Expectation 是 Python 类，Soda 的自定义 check 主要是 SQL，但两者的运行时依赖（pandas、SQLAlchemy、psycopg 等）无法在 WASI 沙箱里跑；Pyodide 需要 JS 宿主。详见 §4.9 |
+| 内嵌 Great Expectations / Soda / dbt 的 Python 运行时 | 全是 Python/dbt 生态；本产品是单 Go 二进制，规则模型必须原生实现。GX 的自定义 Expectation 是 Python 类，Soda 的自定义 check 主要是 SQL，但两者的运行时依赖（pandas、SQLAlchemy、psycopg 等）无法随单二进制分发。详见 §4.9 |
 | 用户自定义 Python / 任意代码执行 | 安全与可移植性不可接受 |
 | 自动修复数据、写回源库、自动改阈值 | 高风险；本产品是治理平台，不是 ETL |
 | ML / 无监督异常检测、季节基线、分布漂移 | 需要 4–8 周历史；误报高、解释难；v1 用固定阈值 + 相对上次成功执行覆盖主场景 |
@@ -171,6 +172,7 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 - 标识符引用：MySQL 反引号、PG/MSSQL 双引号/方括号；规则存逻辑名，编译期按方言 quote。
 - 日期/时区：新鲜度用“当前时间 − 列最大值”，判定基准为 UTC；连接时区差异必须记录在结果证据里（SQL 文本 + 连接信息），不假设一致。
 - `information_schema` / `sys.*` 差异不影响 v1 规则（规则只查用户表）。
+- R14 CEL 表达式检查与方言无关：CEL 在 Go 内求值，只有“取样本行”的 `SELECT … LIMIT` 走方言层；同一表达式在 MySQL/PG/MSSQL 上语义一致。
 
 ### 3.2 资产进入范围与生命周期
 
@@ -200,7 +202,7 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 
 ## 4. 功能需求
 
-### 4.1 规则类型目录（v1）
+### 4.1 规则类型目录（v1 13 类 + R14 v1.1）
 
 所有规则共用：目标表 `(target_guid, target_meta_type)` + 名字路径快照、可选列（`(table_guid, column_name)`）、可选 `filter`（只允许布尔表达式，编译期参数化，禁止子查询/写操作）、两级阈值、`on_empty`、`severity`、`description`、`owner`、`tags`、`schedule_interval`。创建/更新时记录当时的 `target_meta_hash`；当前 schema 与它不一致时 UI 提示“结构已变更，请复核规则”，但不自动暂停。实际值与阈值同量纲存储。
 
@@ -219,10 +221,11 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 | R11 | `cross_column` | consistency | 两个列 + 比较符（`>=`/`>`/`=`/`<=`/`<`/`!=`）+ 容差 | 不满足比较的行数 | 数值/日期；同表 |
 | R12 | `freshness` | timeliness | 时间列、`max_lag_seconds`（warn/fail） | `now − MAX(ts)` | 全方言；`MAX(ts)` 为 NULL → `NOT_EVALUATED` |
 | R13 | `custom_sql` | any | 单条只读 SQL（≤8 KiB，必须 `SELECT`/`WITH`）；`max_failed_rows` | SQL 返回“失败行”；行数 > 阈值即失败 | 只读、单语句、超时、结果上限；SQL 由人编写 |
+| R14 | `cel_expression`（v1.1） | validity / consistency | 单条 CEL 表达式（引用列名 + 受限函数）、可选 `filter`、采样行数（默认 10k，上限 100k）、违规行数/比例阈值 | 对样本行逐行求值，统计不满足表达式的行 | 方言无关（Go 内求值，不生成 SQL）；无 I/O、无外部调用；结果标记 `sampled` |
 
-**明确不做**：分组检查（`GROUP BY` + 每组阈值）v1.1；跨表记录级对账 v1.1；schema 漂移 v1.1（schema 同步已提供 diff，DQ 只补“规则化告警”）；分布漂移/统计异常 later；`aggregate`（sum/avg/stddev/percentile）v1.1（可先用 `custom_sql` 覆盖）。自定义检查的扩展路线（CEL / WASM / Python 兼容）见 §4.9。
+**明确不做**：分组检查（`GROUP BY` + 每组阈值）v1.1；跨表记录级对账 v1.1；schema 漂移 v1.1（schema 同步已提供 diff，DQ 只补“规则化告警”）；分布漂移/统计异常 later；`aggregate`（sum/avg/stddev/percentile）v1.1（可先用 `custom_sql` 覆盖）。自定义检查的扩展路线（CEL 表达式 → 定义导入）见 §4.9。
 
-**每类规则的验收**：给定固定 fixture schema，编译出的 SQL 在每种支持方言上可执行且结果正确；参数非法在创建/更新/干跑阶段返回 `InvalidArgument`，不得进入执行队列。
+**每类规则的验收**：给定固定 fixture schema，R01–R13 编译出的 SQL 在每种支持方言上可执行且结果正确；R14 需验证同一表达式在各方言行为一致、采样与截断可见。参数非法在创建/更新/干跑阶段返回 `InvalidArgument`，不得进入执行队列。
 
 ### 4.2 规则定义与管理
 
@@ -270,6 +273,7 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 | executed SQL | 编译后的只读 SQL（截断 8 KiB），供证据与复核 |
 | duration / error code / error message | 执行失败时给出可行动错误（权限、超时、连接、SQL 语法、unsupported） |
 | truncated | 结果集/样本超上限时为 true；UI 必须显示“结果已截断” |
+| sampled / sample_rows / sample_method | CEL 等采样型检查必须记录样本量与采样方式；UI 显示“基于 N 行样本”，不得暗示全表结论 |
 | rule_engine_version | 规则编译/判定逻辑版本，保证历史结果可复现 |
 | run id / trigger / initiator | 属于哪次执行、谁触发 |
 | AI explanation 引用 | 可选，指向缓存的分析结果（正文不写入结果行） |
@@ -381,7 +385,7 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 
 设置写入复用 `SettingService` 的 workspace setting（`settings.get/update` 权限）；若独立页面需要独立权限，再新增 `dataQuality.settings.*`（见 §13 待确认）。
 
-### 4.9 扩展性：自定义检查与 Python / WASM 的边界
+### 4.9 扩展性：自定义检查与 CEL / Python 的边界
 
 **外部产品怎么做**（事实）：
 
@@ -401,18 +405,25 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 | --- | --- | --- |
 | v1 | 13 类声明式规则 + `custom_sql`（失败行语义） | 无新运行时；SQL 由人写、只读、单语句、超时/结果上限 |
 | v1.1 | CEL 表达式检查（列/行谓词，如 `amount >= 0 && amount <= 100000`） | **仓库已有 `cel-go` 依赖**（`backend/api/v1/filter.go` 在用），无新运行时；只做内存表达式，不做任意代码 |
-| later（可选） | WASM 自定义检查插件：Rust/Go/TinyGo 编译为 wasm，`wazero`（纯 Go、无 CGO）在进程内沙箱执行 | 需定义 ABI/版本、能力白名单（只读查询 host import、禁网络/文件）、内存/超时限制、来源可信；**不承诺 Python 兼容** |
 | later（若确有需求） | GX/Soda/dbt 定义导入：YAML/规则文件 → 原生规则 AST（**定义级兼容，不执行其运行时**） | 解析与语义映射工作量大；建议先做常见子集 |
-| 不推荐 | 进程内嵌 Python（WASM 或 CGO） | 见下 |
+| 不推荐 | 进程内嵌 Python（CGO 或任何嵌入式解释器） | 见下 |
 
-**为什么 WASM 不能“兼容 GX/Soda 的 Python 脚本”**：
+**为什么不做进程内 Python**：
 
-- **Pyodide 依赖 JS 宿主**：它是 CPython 经 Emscripten 编译、在浏览器/Node 里运行的发行版；嵌进 Go 服务端还要带 JS 引擎/Node，单二进制部署模型被破坏。
-- **CPython WASI 仍然受限**：共享扩展模块未实现、无进程/线程、缺 `ssl`/`ctypes` 等 stdlib、堆/栈有限；而 GX/Soda 的核心依赖（pandas、numpy、pyarrow、SQLAlchemy、psycopg）都是 C 扩展/网络/文件系统重度依赖，无法在 WASI 沙箱内直接运行。
-- **安全与治理成本**：执行客户 Python 等于开放代码执行面——供应链、资源耗尽、数据外带、宿主能力越权都要单独治理，不是“加一个 wasm 运行时”能解决的。
-- 因此：**近期不做 Python/WASM 兼容**；把“兼容”降级为“定义可导入”，把“扩展”放在受控的 CEL / WASM 插件上。
+- 单 Go 二进制 + 跨平台静态发布是既有部署契约；嵌入 CPython（CGO）会破坏交叉编译与发布形态，也放大了运行时/依赖的 CVE 面。
+- GX/Soda 的核心依赖（pandas、numpy、pyarrow、SQLAlchemy、psycopg）是 C 扩展/网络/文件系统重度依赖，不是“带一个解释器”就能复用的。
+- 执行客户 Python 等于开放代码执行面：供应链、资源耗尽、数据外带、宿主能力越权都要单独治理。
+- 因此：**不做进程内 Python**；“兼容”降级为“定义可导入”（GX/Soda/dbt 规则文件 → 原生规则 AST），执行仍走 Go/SQL。
 
-**若未来做 WASM 插件，必须写进需求的边界**：沙箱能力白名单（只读查询、日志、元数据；禁网络/文件/环境变量）、内存/CPU/超时上限、ABI 版本与签名、错误映射、审计与来源记录、全局关闭开关；不得借此执行任意 Python 或绕过只读数据源。
+**CEL 表达式检查（R14，v1.1 首项）的规格**：
+
+- 定位：给“内置 13 类规则覆盖不到、但又不值得写一条完整 SQL”的场景一个**受控谓词**。它不生成 SQL、不执行任意代码，表达式只读当前行的列值。
+- 参数：`expression`（≤4 KiB）、`filter`（可选，缩小样本范围）、`sample_rows`（默认 10,000，上限 100,000）、warn/fail 阈值（违规行数或比例，二选一）。
+- CEL 环境：列名作为变量（类型来自元数据：数值/字符串/布尔/时间戳）；提供受限函数——`is_null(v)`、`coalesce(a, b)`、`matches(s, "re2")`、`startsWith` / `endsWith`、`size(s)`、`to_lower` / `to_upper`、`date` / `timestamp` 转换；**无网络、文件、环境变量、反射或外部调用**。
+- 执行：引擎按元数据生成 `SELECT <表达式引用的列> FROM <表> [WHERE filter] LIMIT sample_rows`（只读数据源），把行读入 Go，用 `cel-go` 编译并逐行求值，统计违规行；`sample_rows` 覆盖全表时结果精确，否则标记 `sampled`。状态由违规数/比例与阈值比较；0 行按 `on_empty`。
+- 语义边界：**采样级检查**，不是全表精确审计；UI 必须显示样本量与 `sampled` 标记；需要精确时用 `custom_sql` 或专用规则类型。不支持聚合、join、子查询——那些不属于“行谓词”。
+- 安全：表达式在保存/干跑时编译校验（未知列、类型不匹配、超长、未知函数直接拒绝）；求值受超时与行数上限约束；正则走 CEL 的 RE2（无灾难性回溯）；表达式与列清单进 revision/结果证据，便于复现。
+- 验收：同一表达式在 MySQL/PG/MSSQL 上行为一致（方言无关）；null/类型边界有单测；采样截断可见；表达式无法触发 I/O；超时/行数上限生效。
 
 ## 5. 信息架构与交互
 
@@ -460,7 +471,7 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 ### 5.5 i18n 与文案
 
 - 新增 `dataQuality.*` 与 `dataQualitySettings.*` 命名空间，中英双语；通知文案走 `notifications.dataQuality*`。
-- `frontend/glossary.json` 新增 **Data Quality** 分类与词条（候选，评审后生效）：data quality 数据质量、quality rule 质量规则、rule result 规则结果、execution 执行、issue 质量问题、dimension 维度、severity 严重级别、threshold 阈值、observed value 实际值、failure sample 失败样本、freshness 时效性、null percentage 空值率、uniqueness 唯一性、referential integrity 引用完整性、dry run 干跑、column profile 字段画像、semantic label 语义标注、rule suggestion 规则建议、AI suggestion AI 建议、AI explanation AI 解释。
+- `frontend/glossary.json` 新增 **Data Quality** 分类与词条（候选，评审后生效）：data quality 数据质量、quality rule 质量规则、rule result 规则结果、execution 执行、issue 质量问题、dimension 维度、severity 严重级别、threshold 阈值、observed value 实际值、failure sample 失败样本、freshness 时效性、null percentage 空值率、uniqueness 唯一性、referential integrity 引用完整性、dry run 干跑、column profile 字段画像、semantic label 语义标注、rule suggestion 规则建议、expression check 表达式检查、sampled 采样、AI suggestion AI 建议、AI explanation AI 解释。
 - 必须扩展既有词条 `scope` 到 `dataQuality.`：`column`（字段）、`schema`（Schema）、`filter`（筛选）。
 - **`execution` 不叫 run**：`run` 已固定为 OpenLineage 的“运行记录”，DQ 用 `execution` / 执行；词条必须显式记录此区分。
 - 动态 key（状态徽标、通知文案）必须登记到 `scripts/check-vue-i18n.mjs` 的 `DYNAMIC_PREFIXES` 与 ESLint `no-unused-keys` ignore；通知 key 必须通过 `notificationText.test.ts` 的目录存在性测试。
@@ -591,6 +602,7 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 - 不建指向 `meta_registry_resource` 的外键：注册表当前行会被硬删，FK 会连带删结果历史；按 `(target_guid, target_type)` 精确关联，读路径自行过滤已消失对象。
 - 任何按对象查询都必须 `(guid, object_type)` 成对匹配，禁止 `guid = ANY(...) AND object_type = ANY(...)` 的交叉匹配。
 - 执行结果只插入；问题状态是可变列（与通知读态同样的理由：热路径计数/筛选需要索引）。
+- R14 CEL 配置放进 `quality_rule_revision.config` 的 oneof（`CelExpressionConfig`），不新增表；画像/标注/建议使用上表的三张表。
 - 失败样本存 JSONB 数组（列名→截断值），每结果 ≤ 样本上限；样本可关闭，关闭时不写该列。
 - 保留与清理：`quality_run` / `quality_rule_result` 90 天；`quality_issue` 关闭后 90 天；LLM 缓存 7 天；由 maintenance runner 执行（`DELETE ... WHERE started_at < now()-interval`，分批，避免长事务）。
 - 规则 revision 不可变；`quality_rule` 的 `revision` 只增；结果记录 revision 而不是复制定义（复制定义仅用于 AI 解释证据时可接受）。
@@ -611,6 +623,7 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 - 可观测：每条执行打一行结构化日志（run id、规则数、六态计数、耗时、失败原因分布）；无 metrics 是既有缺口，DQ 不新增指标系统，但日志字段必须足够排障。
 - 成本护栏：每日执行上限、每实例并发、单查询超时、结果上限、LLM 预算；任何一项触发都记 `ERROR`（执行失败）并可告警，不得静默丢弃。
 - **字段画像**默认在请求路径内同步执行（≤50 列、≤120 秒、只读数据源、连接预算同上）；若后续要做定时/批量画像，再接入 runner，不把长任务塞进 API。画像失败不产生建议，返回可行动错误；单列表失败不影响其他列（部分结果 + 失败列清单）。
+- **R14 CEL** 在 runner 内执行：先取样本行（只读、LIMIT、超时），再在 Go 内逐行求值；样本抓取失败记 `ERROR`，求值超时记 `ERROR(timeout)`；不得把 CEL 表达式编译成 SQL。
 
 ## 10. 非功能需求
 
@@ -618,6 +631,7 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 | --- | --- |
 | 规模 | 1 万表 / 1 万规则 / 每小时执行的初始目标；单次执行（≤50 规则）在 15 分钟内完成或超时 |
 | 字段画像成本 | 单表 ≤50 列、≤120 秒、只读数据源、采样行数上限；画像结果缓存 7 天；不做全库定时画像 |
+| CEL 检查成本 | 单次 ≤100k 行、表达式 ≤4 KiB、超时 60s；采样级结果必须标注，不作为全表 SLA |
 | 对源库影响 | 只读（强制 `READ_ONLY` 数据源）；每实例 ≤2 并发；超时 60s（可配到 300s）；结果行数/字节上限；不得全表无界扫描（自定义 SQL 责任在人 + 超时兜底） |
 | 可用性 | 规则引擎离线可用；LLM 关闭/故障不影响执行；单条规则故障隔离；通知 best-effort |
 | 数据安全 | §6.4/§6.5；样本与 LLM 出域默认最小化 |
@@ -652,6 +666,8 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 | 原始样本出域开关关闭 | L3 只使用聚合画像/脱敏摘要；UI 明确说明，不因缺样本拒绝分析 |
 | 语义标注冲突（人工 vs LLM） | 人工已接受标注优先；LLM 重新建议不覆盖，需显式重新生成 |
 | 建议被拒绝 | 落 `REJECTED` + 原因，用于评测；不自动重试同一条建议 |
+| CEL 表达式编译失败（未知列/类型不匹配/超长） | 保存与干跑阶段拒绝；运行期记 `ERROR(unsupported)` 并暂停规则提示修复 |
+| CEL 样本抓取超时/超限 | `ERROR(timeout/limit)`；不降级成全表扫描；`sampled` 与样本量照实记录 |
 | 目标库时钟与进程时钟偏差 | 新鲜度用目标库 `now()`（SQL 内），调度用进程时钟；文档声明 |
 | 多副本 | 不支持；两个副本会重复执行（单副本假设，见 [security-posture.md](../../docs/security-posture.md)） |
 
@@ -677,7 +693,12 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 - 确定性画像引擎 + `column_profile`；语义标注存储与人工确认；L3 标注 + 模板映射 + 建议队列；画像/建议 UI（资产页入口、建议队列、列标注）；隐私开关与成本上限；golden set 评测。
 - 验收：画像数值与独立 SQL 对账一致（fixture）；采样/截断可见；`unknown` 不硬套规则；阈值不取当前观察值；标注冲突人工优先；建议不自动落库；关闭出域开关后不发送原始样本。
 
-**M4（更后）**：schema 漂移、分组检查、聚合指标、跨库对账、统计基线、webhook、邮件、规则模板/复制、资产级静音、问题批量处置、MCP/CLI、质量分、分布漂移、LLM-as-judge；以及扩展性研究——CEL 表达式检查、WASM 插件 ABI、GX/Soda 定义导入（均不属于 v1）。
+**v1.1（首发后第一批）**
+
+- R14 CEL 表达式检查：表达式校验、采样执行、`sampled` 标记、编辑器与干跑；与 `custom_sql` 的边界写清楚。
+- 验收：同一 CEL 表达式在 MySQL/PG/MSSQL 行为一致；null/类型边界单测；采样行数/截断可见；表达式无法触发 I/O；超时/行数上限生效。
+
+**M4（更后）**：schema 漂移、分组检查、聚合指标、跨库对账、统计基线、webhook、邮件、规则模板/复制、资产级静音、问题批量处置、MCP/CLI、质量分、分布漂移、LLM-as-judge；以及 GX/Soda 定义导入（研究，不属于 v1）。
 
 **全局验收门禁**：`gofmt` + `golangci-lint` + 相关 `go test`；`buf format/lint/generate`；前端 `biome:check`、`lint`、`i18n`、`type-check`、`test run`、`audit:ui`；迁移链一致性测试；权限目录/ACL 守卫测试；通知 key 测试。
 
@@ -704,7 +725,8 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 | D17 | 字段分析触发 | 按表/按需 + 建议队列批量；最多 50 列/次 | 全库定时爬取：覆盖全但成本/噪音/PII 风险高 |
 | D18 | 语义标注的存储 | 独立表（GUID+列名），人工确认后生效；人工优先 | 写进 schema 同步元数据：会被下次同步覆盖 |
 | D19 | LLM 建议的落地方式 | 只进“建议队列”，人工接受后成为规则草稿 | 自动建规则/自动启用：治理风险不可接受 |
-| D20 | 自定义检查的扩展 | v1/v1.1 不做 Python；扩展走 `custom_sql` → CEL → 受控 WASM 插件；兼容走定义导入 | 进程内嵌 Python：破坏单二进制与安全边界，且 GX/Soda 依赖无法在 WASI 跑通 |
+| D20 | 自定义检查的扩展 | v1/v1.1 不做 Python；扩展走 `custom_sql` → CEL；兼容走定义导入 | 进程内嵌 Python：破坏单二进制与安全边界 |
+| D21 | CEL 检查的语义 | **采样级**（默认 1 万行，标记 `sampled`）；精确需求用 `custom_sql` | 把 CEL 编译成 SQL：精确但方言/类型/语义复杂，易错且难评测 |
 
 ## 14. 风险清单
 
@@ -726,7 +748,8 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 | 14 | 样本值含 PII 出域/落库 | 合规 | 默认聚合+脱敏；样本开关默认关闭；debug 提示；按列屏蔽 |
 | 15 | 语义标注错误导致规则建错 | 噪音/漏检 | 封闭枚举 + 证据 + 人工确认 + golden set 抽检；标注可改 |
 | 16 | 建议泛滥 | 用户不看、治理失效 | 优先级 + 置信度门槛 + 每表建议数上限 + 拒绝原因回收 |
-| 17 | 追求 Python/WASM 兼容拖垮架构 | 部署、安全与维护成本 | 明确非目标；先 `custom_sql`/CEL；WASM 只做受控插件；兼容只做定义导入 |
+| 17 | 追求 Python 兼容拖垮架构 | 部署、安全与维护成本 | 明确非目标；先 `custom_sql`/CEL；兼容只做定义导入 |
+| 18 | CEL 采样结果被当成全表结论 | 误判质量 | 强制 `sampled`/样本量展示；文档说明采样级语义；精确需求用 `custom_sql` |
 
 ## 15. 依赖与影响面（实现时逐项核对）
 
@@ -741,7 +764,7 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 | i18n | 两个 locale、glossary 新分类与词条、scope 扩展、动态 key 注册 |
 | 文档 | 实现后把本文件改写为维护参考并加入 README；更新 [frontend-ui.md](frontend-ui.md)（第 6 导航）、[notifications.md](notifications.md)（新类型）、[iam-and-permissions.md](iam-and-permissions.md)（权限目录）、[runner.md](runner.md)（第 5 执行器）、根 [AGENTS.md](../../AGENTS.md) 的产品面与路由列表；`docs/` 增操作文档 |
 | 测试 | 规则编译 golden（各方言）、执行器调度/超时/隔离、store 作用域与唯一约束、通知迁移/去重、权限矩阵、LLM 校验链、前端 helper 单测、集成（MySQL/PG/MSSQL fixture + 只读账号）、布局审计 |
-| 扩展性（later） | `cel-go`（已有依赖）做表达式检查；`wazero` 做受控 WASM 插件；明确**不引入 Python 运行时** |
+| 扩展性（v1.1） | `cel-go`（已有依赖）实现 R14 表达式检查；明确**不引入 Python 运行时**；GX/Soda 定义导入仅作后续研究 |
 
 ## 16. 开放问题（需要产品/安全评审逐条拍板）
 
@@ -757,3 +780,4 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 10. 语义标签集合是否允许用户自定义（会破坏“封闭枚举 → 固定模板”的可解释性）？建议 v1 固定，扩展走产品版本。
 11. 原始样本出域是否作为企业级开关（整个工作区）还是列级开关？建议工作区开关 + 列级屏蔽。
 12. 是否有真实客户要求“直接复用 GX/Soda/dbt 的 Python 检查或 YAML 定义”？若有，优先级是定义导入，还是允许外挂一个独立的 Python runner（不嵌入单二进制）？
+13. CEL 默认采样 1 万行是否够用？是否允许按规则上调到 10 万行（成本/精度权衡）？
