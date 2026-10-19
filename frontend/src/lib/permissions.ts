@@ -118,6 +118,26 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     permissions: ["metaxisdata.explainSql.explain"],
   },
   {
+    resource: "dataQuality",
+    permissions: [
+      "metaxisdata.dataQuality.rules.get",
+      "metaxisdata.dataQuality.rules.list",
+      "metaxisdata.dataQuality.rules.create",
+      "metaxisdata.dataQuality.rules.update",
+      "metaxisdata.dataQuality.rules.delete",
+      "metaxisdata.dataQuality.rules.run",
+      "metaxisdata.dataQuality.runs.get",
+      "metaxisdata.dataQuality.runs.list",
+      "metaxisdata.dataQuality.issues.get",
+      "metaxisdata.dataQuality.issues.list",
+      "metaxisdata.dataQuality.issues.update",
+      "metaxisdata.dataQuality.explain",
+      "metaxisdata.dataQuality.suggest",
+      "metaxisdata.dataQuality.profile.run",
+      "metaxisdata.dataQuality.labels.update",
+    ],
+  },
+  {
     resource: "users",
     permissions: [
       "metaxisdata.users.get",

@@ -55,6 +55,16 @@ var memberBaselinePermissions = permissionSet(
 	permission.ApplicationSQLsGet,
 	permission.ApplicationSQLsList,
 	permission.ExplainSQLExplain,
+	// Quality evidence is discoverable for members like lineage and OpenLineage
+	// are; writing rules, running checks and reviewing suggestions stay with an
+	// administrator or a custom role.
+	permission.DataQualityRulesGet,
+	permission.DataQualityRulesList,
+	permission.DataQualityRunsGet,
+	permission.DataQualityRunsList,
+	permission.DataQualityIssuesGet,
+	permission.DataQualityIssuesList,
+	permission.DataQualityExplain,
 )
 
 // PredefinedRoles are the read-only, Go-defined roles shown on the Roles page

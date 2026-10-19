@@ -50,6 +50,21 @@ const (
 	LLMProfilesDelete                  Permission = "metaxisdata.llm.profiles.delete"
 	LLMProfilesFetchModels             Permission = "metaxisdata.llm.profiles.fetchModels"
 	ExplainSQLExplain                  Permission = "metaxisdata.explainSql.explain"
+	DataQualityRulesGet                Permission = "metaxisdata.dataQuality.rules.get"
+	DataQualityRulesList               Permission = "metaxisdata.dataQuality.rules.list"
+	DataQualityRulesCreate             Permission = "metaxisdata.dataQuality.rules.create"
+	DataQualityRulesUpdate             Permission = "metaxisdata.dataQuality.rules.update"
+	DataQualityRulesDelete             Permission = "metaxisdata.dataQuality.rules.delete"
+	DataQualityRulesRun                Permission = "metaxisdata.dataQuality.rules.run"
+	DataQualityRunsGet                 Permission = "metaxisdata.dataQuality.runs.get"
+	DataQualityRunsList                Permission = "metaxisdata.dataQuality.runs.list"
+	DataQualityIssuesGet               Permission = "metaxisdata.dataQuality.issues.get"
+	DataQualityIssuesList              Permission = "metaxisdata.dataQuality.issues.list"
+	DataQualityIssuesUpdate            Permission = "metaxisdata.dataQuality.issues.update"
+	DataQualityExplain                 Permission = "metaxisdata.dataQuality.explain"
+	DataQualitySuggest                 Permission = "metaxisdata.dataQuality.suggest"
+	DataQualityProfileRun              Permission = "metaxisdata.dataQuality.profile.run"
+	DataQualityLabelsUpdate            Permission = "metaxisdata.dataQuality.labels.update"
 	UsersGet                           Permission = "metaxisdata.users.get"
 	UsersList                          Permission = "metaxisdata.users.list"
 	UsersCreate                        Permission = "metaxisdata.users.create"
@@ -129,6 +144,21 @@ var allPermissions = []Permission{
 	LLMProfilesDelete,
 	LLMProfilesFetchModels,
 	ExplainSQLExplain,
+	DataQualityRulesGet,
+	DataQualityRulesList,
+	DataQualityRulesCreate,
+	DataQualityRulesUpdate,
+	DataQualityRulesDelete,
+	DataQualityRulesRun,
+	DataQualityRunsGet,
+	DataQualityRunsList,
+	DataQualityIssuesGet,
+	DataQualityIssuesList,
+	DataQualityIssuesUpdate,
+	DataQualityExplain,
+	DataQualitySuggest,
+	DataQualityProfileRun,
+	DataQualityLabelsUpdate,
 	UsersGet,
 	UsersList,
 	UsersCreate,
