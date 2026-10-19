@@ -47,6 +47,8 @@ backend/runner/qualityrunner ─┘
 | D-16 | v1 保留期固定（结果 90d、问题关闭后 90d、画像/LLM 缓存 7d），由 maintenance 清理 | 先跑通再开放配置；避免表无界增长 |
 | D-17 | **不新增运行时依赖**：不引入 Python/WASM/图表库；CEL 用 `cel-go`，SQL 校验用 `omni` | 保持单二进制与跨平台发布 |
 | D-18 | 调度器是进程内 tick + 内存 inflight + 表内 `next_run_at`；单副本假设 | 与现有四个 runner 一致；重启收敛、不补跑 |
+| D-19 | 内置规则模板是 **Go 代码里的静态目录**（`templates.go`），不建表；应用模板只预填编辑器并记录 `template_id` | 模板是产品内容不是用户数据；随二进制版本发布，避免模板表与版本管理 |
+| D-20 | count 型规则增加公共 `threshold_metric`（COUNT/PERCENT） | 对齐 Soda/GX 的 count/percent 阈值语义；模板可以复用同一规则类型 |
 
 **包/文件地图**
 
@@ -56,7 +58,7 @@ backend/runner/qualityrunner ─┘
 | `proto/store/store/data_quality.proto` | 规则 config、run counts、threshold、profile、suggestion、LLM 结果等 JSONB 形状 |
 | `proto/v1/v1/notification_service.proto` / `proto/store/store/notification.proto` | 新类型 + `DataQualityDetail` |
 | `proto/v1/v1/setting_service.proto` / `proto/store/store/setting.proto` | `DataQualitySetting` |
-| `backend/component/dataquality/` | `model.go`、`validate.go`、`compiler.go`、`dialect_{mysql,pg,mssql,starrocks}.go`、`evaluate.go`、`profile.go`、`cel.go`、`semantic.go`、`suggestion.go` |
+| `backend/component/dataquality/` | `model.go`、`validate.go`、`compiler.go`、`dialect_{mysql,pg,mssql,starrocks}.go`、`evaluate.go`、`profile.go`、`cel.go`、`semantic.go`、`suggestion.go`、`templates.go`（内置模板目录） |
 | `backend/plugin/db/query.go` + 各驱动 `query.go` | `ReadOnlyQueryer` 接口、通用结果扫描、方言实现 |
 | `backend/component/dbfactory/readonly.go` | `GetReadOnlyDatabaseDriver`（按数据源类型选 READ_ONLY） |
 | `backend/runner/qualityrunner/` | `runner.go`（tick/due）、`execute.go`（单批/单规则）、`issue.go`（迁移判定） |
@@ -138,7 +140,7 @@ backend/runner/qualityrunner ─┘
 
 **规则 CRUD**：`CreateQualityRule` → 解析 parent/workspace → 校验目标（`component/dataquality.ValidateTarget`）→ 校验 config（`ValidateConfig`）→ 编译（`Compile`）→ 若 `dry_run`，用只读数据源 `LIMIT 0` 探测 → store 事务写 rule + revision 1 → 返回。
 
-**手动执行**：`RunQualityRules` → 权限/配额 → 解析选择集（rule names / table / instance，≤200 条）→ 建 `quality_run`（MANUAL, PENDING）→ 放入 runner 的 manual 队列 → 立即返回 run；runner 优先执行 manual 队列。前端轮询 `GetQualityRun`（见 §7.5）。这样长任务不占请求，也不受客户端断开影响。
+**手动执行**：`RunQualityRules` → 权限/配额 → 解析选择集（rule names / table / instance，≤200 条）→ 按实例建 `quality_run`（MANUAL, PENDING）→ 放入 runner 的 manual 队列 → 立即返回 run 列表；runner 优先执行 manual 队列。前端轮询每个 `GetQualityRun`（见 §7.5）。这样长任务不占请求，也不受客户端断开影响。
 
 **定时执行**：runner tick（10s）→ `FindDueQualityRules`（按实例、`next_run_at <= now()`、limit 50）→ 同实例组一个 run → 逐条执行 → 写结果 → issue 判定/通知 → 推进 `next_run_at`。
 
@@ -247,6 +249,12 @@ enum QualityObservedKind {
   QUALITY_OBSERVED_KIND_NUMBER = 5;
 }
 
+enum QualityThresholdMetric {
+  QUALITY_THRESHOLD_METRIC_UNSPECIFIED = 0;
+  QUALITY_THRESHOLD_METRIC_COUNT = 1;
+  QUALITY_THRESHOLD_METRIC_PERCENT = 2;
+}
+
 enum QualitySemanticType {
   QUALITY_SEMANTIC_TYPE_UNSPECIFIED = 0;
   QUALITY_SEMANTIC_TYPE_EMAIL = 1;
@@ -293,6 +301,8 @@ type Rule struct {
     Severity    storepb.QualitySeverity
     State       storepb.QualityRuleState
     OwnerID     int32
+    Tags        []string
+    TemplateID  string
     Interval    time.Duration
     NextRunAt   time.Time
     Revision    int32
@@ -427,6 +437,8 @@ CREATE TABLE quality_rule (
     severity INT2 NOT NULL,
     state INT2 NOT NULL DEFAULT 1,
     owner_id INT4 REFERENCES principal(id) ON DELETE SET NULL,
+    tags TEXT[] NOT NULL DEFAULT '{}',
+    template_id TEXT NOT NULL DEFAULT '',
     schedule_interval_seconds INT4 NOT NULL,
     next_run_at TIMESTAMPTZ,
     mute_until TIMESTAMPTZ,
@@ -442,6 +454,7 @@ CREATE INDEX idx_quality_rule_due ON quality_rule(next_run_at)
     WHERE state = 1 AND deleted = FALSE;
 CREATE INDEX idx_quality_rule_target ON quality_rule(target_guid, target_type);
 CREATE INDEX idx_quality_rule_owner ON quality_rule(owner_id);
+CREATE INDEX idx_quality_rule_tags ON quality_rule USING GIN(tags);
 
 -- quality_rule_revision is append-only: every semantic edit snapshots target,
 -- type, dimension, severity and config, so a result can always be explained by
@@ -668,6 +681,7 @@ message QualityRuleConfig {
     CustomSQLConfig custom_sql = 13;
     CelExpressionConfig cel_expression = 14; // v1.1
   }
+  QualityThresholdMetric threshold_metric = 28; // COUNT/PERCENT，count 型规则
   QualityFilter filter = 29;           // 所有规则共用的 AND 子句（§6.3）
   QualityEmptyBehavior on_empty = 30;  // NOT_EVALUATED / PASS / FAIL
 }
@@ -755,13 +769,14 @@ message QualityRuleConfig {
 | `UpdateColumnLabel` | `POST /v1/{parent=workspaces/*}/columnLabels:update`，body `*` | `dataQuality.labels.update` | 是 |
 | `ListColumnProfiles` | `GET /v1/{parent=workspaces/*}/columnProfiles`，按目标/表过滤（**仅 list**，无 Get/资源名） | `dataQuality.rules.list` | 否 |
 | `ListColumnLabels` | `GET /v1/{parent=workspaces/*}/columnLabels`，按目标/表过滤（**仅 list**） | `dataQuality.rules.list` | 否 |
+| `ListQualityRuleTemplates` | `GET /v1/qualityRuleTemplates`（**全局静态**，无分页） | `dataQuality.rules.list` | 否 |
 | `SuggestQualityRule` | `POST /v1/{parent=workspaces/*}/qualitySuggestions:suggestRule`，body `*` | `dataQuality.suggest` | 是 |
 | `SuggestColumnLabels` | `POST /v1/{parent=workspaces/*}/qualitySuggestions:suggestLabels`，body `*` | `dataQuality.suggest` | 是 |
 | `ListQualitySuggestions` | `GET /v1/{parent=workspaces/*}/qualitySuggestions` | `dataQuality.suggest` | 否 |
 | `UpdateQualitySuggestion` | `POST /v1/{name=workspaces/*/qualitySuggestions/*}:decide`，body `*` | `dataQuality.suggest` | 是 |
 | `ExplainQualityResult` | 无 HTTP 注解（server streaming，浏览器走 Connect 端点） | `dataQuality.explain` | 是 |
 
-`PreviewQualityRule` 只做编译 + `LIMIT 0` 探测，不写库、不产生 run；`RunQualityRules` 异步：建 run（PENDING）→ 入 runner 的 manual 队列 → 立即返回 run，前端轮询 `GetQualityRun`。这样长任务不占住请求，也不受客户端断开影响。
+`PreviewQualityRule` 只做编译 + `LIMIT 0` 探测，不写库、不产生 run；`RunQualityRules` 异步：按实例建 run（PENDING）→ 入 runner 的 manual 队列 → 立即返回 run 列表，前端轮询 `GetQualityRun`。这样长任务不占住请求，也不受客户端断开影响。
 
 ### 5.4 消息形状（摘要）
 
@@ -785,6 +800,42 @@ message QualityRule {
   QualityResultSummary last_result = 16; // 列表用，非持久化
   string orphaned_reason = 17;
   google.protobuf.Timestamp mute_until = 18; // 规则级静音；只影响问题通知
+  repeated string tags = 19;
+  string template_id = 20;            // 来源模板（仅 provenance；空 = 手工创建）
+}
+
+message QualityRuleTemplate {
+  string id = 1;                      // 稳定、snake/kebab
+  int32 version = 2;                  // 模板语义变化时递增
+  QualityDimension dimension = 3;
+  QualityRuleType rule_type = 4;
+  string title_key = 5;               // dataQuality.templates.<id>.title
+  string description_key = 6;
+  repeated string tags = 7;
+  repeated TemplateParam params = 8;  // 必填/可选参数槽位
+  QualityRuleConfig default_config = 9;
+  repeated string applicable_column_types = 10; // string/numeric/date/timestamp/any
+  repeated Engine engines = 11;
+  string source = 12;                 // SODA/GX/DBT/INTERNAL，仅来源标注
+}
+
+enum TemplateParamType {
+  TEMPLATE_PARAM_TYPE_UNSPECIFIED = 0;
+  TEMPLATE_PARAM_TYPE_COLUMN = 1;
+  TEMPLATE_PARAM_TYPE_COLUMNS = 2;
+  TEMPLATE_PARAM_TYPE_ALL_COLUMNS = 3;
+  TEMPLATE_PARAM_TYPE_TIMESTAMP_COLUMN = 4;
+  TEMPLATE_PARAM_TYPE_TABLE = 5;
+  TEMPLATE_PARAM_TYPE_NUMBER = 6;
+  TEMPLATE_PARAM_TYPE_STRING = 7;
+  TEMPLATE_PARAM_TYPE_VALUES = 8;
+}
+
+message TemplateParam {
+  string name = 1;                    // column / columns / timestamp_column / parent_table ...
+  TemplateParamType type = 2;
+  bool required = 3;
+  string description_key = 4;
 }
 
 message QualityTarget {
@@ -942,6 +993,8 @@ message DataQualitySetting {
 
 `QualityThresholds` 快照统一为 `{warn_value?, fail_value?, comparison: GT|LT|OUTSIDE_RANGE, on_empty}`；COUNT/RATIO 用 `GT`，`row_count` 用区间。判定函数按规则类型实现，不把阈值比较散落在 handler。
 
+count 型规则（`unique`、`unique_combination`、`accepted_values`、`range`、`regex`、`string_length`、`referential_integrity`、`cross_column`、`custom_sql`）共用公共字段 `threshold_metric = COUNT|PERCENT`：COUNT 比较失败行数，PERCENT 比较 `failed_rows / total_rows`；结果 `observed_kind` 随之（COUNT 或 RATIO）。`null_percent`/`freshness` 固定比例/秒，不适用。该字段让模板能对齐 Soda 的 `metric: percent` 语义。
+
 ### 6.2 校验流水线（保存/更新/干跑共用）
 
 ```
@@ -1074,6 +1127,7 @@ func Evaluate(rule RuleSnapshot, obs Observation, now time.Time) (storepb.Qualit
 - `row_count_change`：基线 = 本规则最近一次 `PASS/WARN` 结果（`ListRecentResultsForRule` 取 1 条，要求 ≤7 天且间隔 ≤2×interval）；无基线 → `NOT_EVALUATED`。变化比例 = `(observed-baseline)/baseline`；baseline=0 → `NOT_EVALUATED`（避免除零）。
 - `freshness`：`lag = now - max_ts`；用数据库 `CURRENT_TIMESTAMP` 还是进程时间？**设计选择**：SQL 返回 `MAX(ts)`，lag 在 SQL 内计算（`SELECT ... , EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MAX(ts))) AS lag_seconds`）以避免进程/DB 时钟漂移；MySQL 用 `TIMESTAMPDIFF(SECOND, MAX(ts), NOW())`，MSSQL 用 `DATEDIFF(SECOND, MAX(ts), SYSUTCDATETIME())`。NULL → `on_empty`。
 - 所有比较严格按快照阈值；修改阈值产生新 revision，历史结果不变。
+- `threshold_metric = PERCENT` 时先算 `failed_rows/total_rows`（total=0 走 `on_empty`），再与阈值比较；结果快照同时保留分子/分母，UI 才能显示“3 / 1200 (0.25%)”。
 
 ### 6.7 自定义 SQL 校验
 
@@ -1106,6 +1160,79 @@ func EvalRows(program *cel.Program, rows []map[string]any) (violations int64, ev
 ### 6.9 规则引擎版本
 
 `component/dataquality.EngineVersion = "dq.v1"`（编译/判定语义变化时递增），写入每条结果；部署后下一次执行使用新版本，历史结果仍可解释。类似 `lineage.AnalyzerVersion`，但**不强制重算全量**——规则按自己的排期自然刷新。
+
+### 6.10 内置规则模板库
+
+模板是**产品内容**，不是规则引擎能力：一条模板 = 一个预填的 `QualityRuleConfig` + 必须由用户补齐的参数槽位（列/时间列/父表等）+ 适用列类型/引擎 + i18n key。应用模板不写库、不执行、不启用，只打开预填的编辑器；保存仍走 `CreateQualityRule` 的完整校验与干跑。
+
+```go
+type Template struct {
+    ID          string
+    Version     int32
+    Dimension   storepb.QualityDimension
+    RuleType    storepb.QualityRuleType
+    TitleKey    string
+    DescriptionKey string
+    Tags        []string
+    Params      []TemplateParam
+    Default     *storepb.QualityRuleConfig
+    ColumnTypes []string // string/numeric/date/timestamp/any
+    Engines     []storepb.Engine
+    Source      string // SODA/GX/DBT/INTERNAL
+}
+```
+
+**v1 目录**（全部映射到现有 13 类规则；括号内为必填参数）：
+
+| id | 模板 | 规则类型 | 默认配置 / 参数 |
+| --- | --- | --- | --- |
+| `table-not-empty` | 表非空 | `row_count` | `min_rows=1` |
+| `row-count-range` | 行数区间 | `row_count` | 必填 `min_rows`/`max_rows` |
+| `row-count-change` | 行数环比 | `row_count_change` | 必填 `max_increase_pct`/`max_decrease_pct` |
+| `required-column-not-null` | 必填字段非空 | `null_percent` | `(column)`；`max_null_pct=0` |
+| `no-empty-string` | 非空字符串 | `regex` | `(column)`；`pattern=\S`；`threshold_metric=COUNT` |
+| `primary-key-unique` | 主键唯一 | `unique` | `(column)` |
+| `business-key-unique` | 业务键唯一 | `unique` | `(column)` |
+| `composite-key-unique` | 组合键唯一 | `unique_combination` | `(columns)` |
+| `no-duplicate-rows` | 整行不重复 | `unique_combination` | columns=全部列（应用时由目标元数据填充，`TemplateParamType=ALL_COLUMNS`） |
+| `unique-when-present` | 非空时唯一 | `unique` | `(column)` + `filter IS_NOT_NULL` |
+| `email-format` | 邮箱格式 | `regex` | `(column)`；常用 email regex；`threshold_metric=PERCENT` |
+| `country-code-iso2` | 两位国家代码 | `regex` | `(column)`；`^[A-Z]{2}$` |
+| `currency-code` | 货币代码 | `accepted_values` | `(column)`；默认常用 ISO 4217 集合 |
+| `status-enum` | 状态枚举 | `accepted_values` | `(column)`；`(values)` |
+| `amount-non-negative` | 金额非负 | `range` | `(column)`；`min=0` |
+| `percentage-range` | 百分比 0–100 | `range` | `(column)`；`min=0,max=100` |
+| `string-length-guard` | 字符串长度护栏 | `string_length` | `(column)`；必填 `min_len`/`max_len` |
+| `foreign-key-exists` | 外键引用完整性 | `referential_integrity` | `(child_column,parent_table,parent_column)` |
+| `date-order` | 起止日期顺序 | `cross_column` | `(left_column,right_column)`；`op=<=` |
+| `freshness-24h` | 新鲜度 24 小时 | `freshness` | `(timestamp_column)`；`max_lag_seconds=86400` |
+| `freshness-30d` | 新鲜度 30 天 | `freshness` | `(timestamp_column)`；`max_lag_seconds=2592000` |
+
+**来源映射**（只借鉴检查类型、参数形态与阈值语义；文案/配置/示例全部自写，不复制第三方 YAML）：
+
+| 来源 | 借鉴的构造 | 映射到 |
+| --- | --- | --- |
+| [Soda 模板库](https://soda.io/templates) / [Soda contract 语言](https://docs.soda.io/reference/contract-language-reference) | `missing`、`duplicate`、`invalid`（`valid_values`/`valid_min`/`valid_max`/`valid_format`/`valid_min_length`/`valid_max_length`）、`row_count`、`freshness`、`failed_rows`、composite `duplicate`、`schema` | R03/R04/R05/R06/R07/R08/R09/R01/R12/R13；schema 放 v1.1 |
+| [SodaCL metrics/checks](https://docs.soda.io/soda-documentation/soda-v3/sodacl-reference/metrics-and-checks) | `missing_count/percent`、`duplicate_count/percent`、`invalid_count/percent`、`avg/max/min/sum/stddev/percentile` | count/percent 阈值（`threshold_metric`）；聚合 v1.1 |
+| [GX Expectation Gallery](https://greatexpectations.io/expectations/) | `not_null`、`unique`、`in_set`、`between`、`match_regex`、lengths、row count、compound unique、column pair | R01/R03–R11 |
+| [dbt data tests](https://docs.getdbt.com/docs/build/data-tests) / [dbt-expectations](https://github.com/calogica/dbt-expectations) | `unique`、`not_null`、`accepted_values`、`relationships`、`between`、`in_set`、`match_regex`、`row_count`、freshness、compound unique | R01/R03–R12 |
+| 商业可观测平台（Monte Carlo / Anomalo / Bigeye；参考其公开的 monitor 分类） | freshness / volume / schema 监控、custom SQL monitor、incident/告警工作流；ML 异常检测 | R01/R12/R13；schema/ML 异常放 v1.1/later |
+| Elementary（dbt 生态） | dbt-native 测试、异常测试、报告 | 测试类型并入 dbt 行；异常检测 later |
+
+**未覆盖的模板形态**（明确排期，不在 v1 模板库出现）：
+
+| 形态 | 现状 | 计划 |
+| --- | --- | --- |
+| schema / schema evolution | 规则类型未做 | v1.1 schema 漂移 |
+| group by / 分组阈值、distribution / 分布漂移、anomaly | 未做 | later |
+| cross-table reconciliation、group evolution | 未做 | v1.1 |
+| aggregate（sum/avg/stddev/percentile） | 未做（可用 custom_sql） | v1.1 |
+| `missing_values` / `missing_format`（自定义缺失值） | 未做 | v1.1 |
+| future-date 禁止、条件跨列（qty=0 ⇒ mv=0） | 静态 range/cross_column 表达不了 | CEL v1.1 或 custom_sql |
+| 自定义 SQL 模板骨架（failed_rows 类） | SQL 必须按目标改写，不能保证“应用即编译” | v1.1（进阶模板，编辑后校验） |
+| 变量插值、contract scopes、cron 调度、contract verify/CI | 未做 | later（v1 filter/interval 覆盖基础场景） |
+
+**模板校验与版本**：`templates_test.go` 用示例参数把每个模板编译一遍（支持的引擎 × 列类型），并断言 i18n key 在两侧 catalog 存在；模板 `version` 变化不修改已存在规则，只影响新应用；规则保存 `template_id` 仅作 provenance，不参与运行期行为。
 
 ## 7. 执行与调度设计
 
@@ -1435,9 +1562,10 @@ COMMIT
 | 页面 | 组成 | 关键行为 |
 | --- | --- | --- |
 | 概览 | `PageHeader` + 4 个 `StatCard`（覆盖率/启用规则/24h 失败/未关闭问题）+ `QualityTrendChart`（7/30 天切换）+ “需要关注”列表 | 分块加载，单块失败不白屏；空态引导“创建第一条规则”；图表无数据占位 |
-| 规则列表 | `PageHeader`（新建按钮） + `AdvancedSearchBar`（实例/库/schema/表/维度/严重级别/状态/owner） + `Table` + `TablePager` | 筛选写 URL；行主单元格是链接（规则名）→ 抽屉；最近结果用 `QualityStatusBadge`；`target_schema_changed` 显示提示徽标 |
+| 规则列表 | `PageHeader`（新建 / 从模板创建） + `AdvancedSearchBar`（实例/库/schema/表/维度/严重级别/状态/owner/tag） + `Table` + `TablePager` | 筛选写 URL；行主单元格是链接（规则名）→ 抽屉；最近结果用 `QualityStatusBadge`；`target_schema_changed` 显示提示徽标 |
+| 模板库 | 抽屉（规则页/资产页入口） | 维度分类 + 搜索 + 适用列类型/引擎过滤；预览默认配置与必填参数；应用→规则编辑器预填并记录 `template_id`；不直接保存/执行 |
 | 规则抽屉 | 定义卡（目标/类型/参数/阈值/调度/owner）+ revision 历史 + 最近 10 条结果 + 操作（编辑/停用/立即执行/复制/删除） | 保留列表筛选与 `from` 返回；删除用 `ConfirmDeleteDialog`；**复制是客户端便利**：读取规则 → 打开编辑器预填（可改目标/名称）→ 走 `CreateQualityRule`，不新增 Copy RPC |
-| 规则编辑器 | 全页表单：类型选择、目标选择器（从元数据浏览器同款 tree/搜索）、参数表单（按类型渲染）、filter 编辑器、阈值、severity、owner、间隔、编译 SQL 预览、干跑按钮、LLM 草稿导入 | 保存前强制干跑；失败显示编译错误 + SQL；LLM 草稿以“待审核”态进入；不允许提交未校验的 CEL/custom_sql |
+| 规则编辑器 | 全页表单：类型选择、目标选择器（从元数据浏览器同款 tree/搜索）、参数表单（按类型渲染）、filter 编辑器、阈值、severity/owner/tags、间隔、编译 SQL 预览、干跑按钮、LLM 草稿/模板导入 | 保存前强制干跑；失败显示编译错误 + SQL；模板/LLM 草稿以“预填、待确认”态进入；不允许提交未校验的 CEL/custom_sql；显示“来自模板 <id>”来源 |
 | 执行列表 | 筛选（状态/触发方式/时间/实例）+ `Table` + `TablePager` | 行进入整页执行详情 |
 | 执行详情 | 执行摘要（六态计数/耗时/触发人）+ 结果表（规则/状态/实际值/阈值/耗时）+ 失败样本展开 + 执行 SQL 查看 + 每个失败结果“AI 解释” | 结果表宽，`contentWidth:"full"`；`ERROR` 与 `FAIL` 文案/徽标不同；AI 解释用右侧面板 + 流式渲染 |
 | 问题列表 | 筛选（状态/严重级别/规则/资产/owner/时间）+ `Table` + `TablePager` | 行打开抽屉；批量确认/解决 v1.1 |
@@ -1459,7 +1587,7 @@ COMMIT
 
 ### 11.4 i18n 与文案
 
-- 命名空间：`dataQuality.*`（所有产品文案）、`dataQualitySettings.*`（设置页）、`notifications.dataQuality*`（站内信）、`menu.dataQuality*`（导航）。
+- 命名空间：`dataQuality.*`（所有产品文案）、`dataQuality.templates.<id>.title/description`（模板，按 id 稳定）、`dataQualitySettings.*`（设置页）、`notifications.dataQuality*`（站内信）、`menu.dataQuality*`（导航）。
 - 词条（`frontend/glossary.json` 新增 **Data Quality** 分类）：data quality 数据质量、quality rule 质量规则、rule result 规则结果、execution 执行、issue 质量问题、dimension 维度、severity 严重级别、threshold 阈值、observed value 实际值、failure sample 失败样本、freshness 时效性、null percentage 空值率、uniqueness 唯一性、referential integrity 引用完整性、dry run 干跑、column profile 字段画像、semantic label 语义标注、rule suggestion 规则建议、expression check 表达式检查、sampled 采样、AI suggestion AI 建议、AI explanation AI 解释。既有 `column`（字段）、`schema`（Schema）、`filter`（筛选）的 `scope` 扩展到 `dataQuality.`。
 - `execution` 不叫 `run`（`run` 固定为 OpenLineage 运行记录）；英文文案统一 `execution`。
 - 动态 key（状态徽标、通知文案）登记到 `scripts/check-vue-i18n.mjs` 的 `DYNAMIC_PREFIXES` 与 ESLint `no-unused-keys` ignore；`notificationText.test.ts` 的目录存在性测试必须通过。
@@ -1512,6 +1640,7 @@ COMMIT
 | CEL | 各函数、NULL、类型错误、未知列、非 bool、采样/截断、RE2 | 同上 |
 | 画像 | 聚合 SQL 生成、样本摘要、Top-K、truncated、单列表失败 | 同上 |
 | 语义模板 | semantic_type → 规则模板覆盖完整；unknown 不生成规则 | 同上 |
+| 规则模板库 | 每个模板用示例参数编译通过（支持的引擎/列类型）；i18n key 双语存在；`template_id` 记录/不参与运行 | `go test ./backend/component/dataquality/...` + `pnpm --dir frontend test run` |
 | store | 查询构建（作用域/过滤/分页）、revision 事务、open issue 唯一、批量插入、清理 | `go test ./backend/store/...` |
 | 驱动 | `ReadOnlyQueryer` 各实现：行/字节上限、截断、超时、只读事务、错误分类 | `go test ./backend/plugin/db/...`（集成） |
 | runner | due 选取/推进、批分组、inflight、配额、panic 隔离、重启收敛 | `go test ./backend/runner/qualityrunner/...` |
@@ -1548,6 +1677,7 @@ COMMIT
 | M1.4 规则 API | `DataQualityService` 规则 CRUD/Preview/Run/Results + convert + 测试 | M1.2/1.3 | M |
 | M1.5 runner | `qualityrunner` 调度/执行/写结果/推进 `next_run_at` + 测试 | M1.2/1.3 | M |
 | M1.6 前端规则 | 路由/导航/规则列表/编辑器/执行列表与详情/状态 helper/i18n 骨架 | M1.4 | L |
+| M1.7 模板库 | `templates.go` 目录 + `ListQualityRuleTemplates` + 模板库抽屉 + 应用预填 + 模板测试/i18n | M1.3/M1.6 | M |
 | M2.1 问题 | issue 迁移 + store + API + 前端问题页 | M1.5 | M |
 | M2.2 通知 | 新 NotificationType/detail + 构造函数 + 前端文案/深链 + 测试 | M2.1 | M |
 | M2.3 治理面 | 概览/趋势图/首页卡/资产页嵌入/布局审计/i18n 术语补全 | M1.6/M2.1 | M |
@@ -1575,6 +1705,8 @@ COMMIT
 | 10 | 结果表增长 | 存储压力 | 90d 清理 + 索引；规模假设写入文档；后续分区 |
 | 11 | 流式会话续期重放缺陷 | 分析偶发失败 | 接受“重试一次”；或后续改一元 + 轮询 |
 | 12 | 单副本调度丢 run | 短时漏检 | `next_run_at` 收敛；run 可见；不承诺 exactly-once |
+| 13 | 模板与源产品漂移/版权 | 文案/参数失真、法律风险 | 只借鉴检查类型与参数形态；自写文案/配置；每个模板编译与 i18n 测试；不批量搬 YAML |
+| 14 | 模板选择困难/错误模板 | 建错规则 | 每维度精选少量；模板应用后仍需选列 + 干跑；`template_id` 便于统计采纳 |
 
 **设计阶段待确认**：filter 只支持 AND 是否够用（复杂条件用 custom_sql）；手动执行异步 + 轮询是否可接受；风暴阈值 10 是否合适；`store_failure_samples` 默认开是否接受；画像 Top-K 值是否允许落库（当前设计允许，截断 64 字符）。
 
@@ -1598,6 +1730,7 @@ COMMIT
 | `freshness` | `timestamp_column`、`max_lag_seconds`、`warn_lag_seconds` |
 | `custom_sql` | `sql`、`max_failed_rows`、`warn_failed_rows` |
 | `cel_expression`（v1.1） | `expression`、`columns`、`sample_rows`、`max_violation_count`、`max_violation_pct`、`warn_violation_count` |
+| 公共字段 | `filter`（AND 子句）、`on_empty`、`threshold_metric`（COUNT/PERCENT，count 型规则） |
 
 ### B. CEL 函数
 
@@ -1643,5 +1776,9 @@ COMMIT
 - [ ] 新文案双语 + 词条 + 动态 key 注册；布局审计路由已登记。
 - [ ] `gofmt` / `golangci-lint` / 相关 `go test` / 前端五连门禁通过。
 - [ ] 需求文档与设计文档的决策表保持一致；变更同步。
+
+### F. 模板来源与许可注意
+
+模板目录只借鉴检查类型、参数形态与阈值语义（来源见 §6.10）；**不复制** Soda/GX/dbt 的 YAML、文案或示例数据。第三方名称仅用于来源标注，不构成兼容性承诺。模板文案全部走自有 i18n key，模板版本随代码评审。
 
 
