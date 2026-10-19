@@ -2,6 +2,7 @@ package dataquality
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -34,9 +35,6 @@ func NewExecutor() *Executor {
 // context — with one exception: a cancelled context is returned, because the
 // caller asked to stop.
 func (*Executor) Execute(ctx context.Context, queryer db.ReadOnlyQueryer, resolution *Resolution, rule RuleSnapshot, opts ExecOptions) (*Execution, error) {
-	if queryer == nil {
-		return nil, common.Errorf(common.Internal, "a read-only queryer is required to execute a rule")
-	}
 	if resolution == nil {
 		return nil, common.Errorf(common.Internal, "a resolved target is required to execute a rule")
 	}
@@ -45,6 +43,15 @@ func (*Executor) Execute(ctx context.Context, queryer db.ReadOnlyQueryer, resolu
 	}
 	if err := validateExecutionMetric(rule.Type, rule.Config); err != nil {
 		return nil, err
+	}
+	// A metadata rule reads the registry, not the target database: it needs no
+	// queryer and no SQL. This branch runs before the queryer requirement so a
+	// caller without a read-only data source can still execute it.
+	if IsMetadataRule(rule.Type) {
+		return executeMetadataRule(resolution, rule, opts)
+	}
+	if queryer == nil {
+		return nil, common.Errorf(common.Internal, "a read-only queryer is required to execute a rule")
 	}
 
 	dialect, err := DialectFor(resolution.Target.Engine)
@@ -148,6 +155,11 @@ func validateExecutionMetric(ruleType storepb.QualityRuleType, config *storepb.Q
 	if thresholdMetric(config) != storepb.QualityThresholdMetric_QUALITY_THRESHOLD_METRIC_PERCENT {
 		return nil
 	}
+	if ruleType == storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT {
+		// The drift snapshot is a fixed list of expected columns, not a row set; a
+		// percentage of it is not a meaningful threshold.
+		return invalidConfig("schema_drift measures a count of drift items; threshold_metric PERCENT is not supported")
+	}
 	switch ruleType {
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
@@ -157,7 +169,8 @@ func validateExecutionMetric(ruleType storepb.QualityRuleType, config *storepb.Q
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN:
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK:
 		// These observations carry total_rows, so the evaluator can compute the
 		// percentage. null_percent ignores the shared metric (its own config
 		// decides count vs percentage) but still has a total, so it is accepted
@@ -223,6 +236,26 @@ func observationFromAggregate(ruleType storepb.QualityRuleType, compiled Compile
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN:
 		return countObservation(result, indexes)
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK:
+		// The grouped statement names its columns total_groups / failed_groups; the
+		// denominator is the group count, so a percentage threshold divides by it.
+		total, err := aggregateInt(result, indexes, "total_groups")
+		if err != nil {
+			return Observation{}, err
+		}
+		failed, err := aggregateInt(result, indexes, "failed_groups")
+		if err != nil {
+			return Observation{}, err
+		}
+		if failed < 0 {
+			return Observation{}, badData("failed_groups is negative (%d)", failed)
+		}
+		return Observation{
+			Observed:     float64(failed),
+			ObservedKind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT,
+			FailedRows:   failed,
+			TotalRows:    total,
+		}, nil
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS:
 		return freshnessObservation(result, indexes)
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL:
@@ -237,7 +270,8 @@ func observationFromAggregate(ruleType storepb.QualityRuleType, compiled Compile
 			ObservedKind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT,
 			FailedRows:   failed,
 		}, nil
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION,
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED:
 		return Observation{}, badData("rule type %s has no aggregate observation", ruleType)
 	default:
@@ -447,4 +481,168 @@ func parseAggregateTimestamp(value, column string) (*time.Time, error) {
 		}
 	}
 	return nil, badData("column %q is not a timestamp (%q)", column, value)
+}
+
+// schemaDriftItem is one difference between the live column list and a drift
+// rule's snapshot, plus the reason a reviewer sees in the sample.
+type schemaDriftItem struct {
+	Column string
+	Reason string
+}
+
+// executeMetadataRule observes a rule that reads the metadata registry instead of
+// the target database. schema_drift compares the live column list with the saved
+// snapshot; it runs no query, needs no read-only data source and records no SQL.
+func executeMetadataRule(resolution *Resolution, rule RuleSnapshot, opts ExecOptions) (*Execution, error) {
+	config := rule.Config.GetSchemaDrift()
+	if config == nil {
+		return nil, invalidConfig("the schema-drift config is missing")
+	}
+	items := compareSchemaDrift(resolution.Target.Columns, config)
+	observation := Observation{
+		Observed:     float64(len(items)),
+		ObservedKind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT,
+		FailedRows:   int64(len(items)),
+		TotalRows:    int64(len(config.GetExpectedColumns())),
+	}
+	execution := &Execution{Observation: observation, ExecutedSQL: ""}
+	if !opts.StoreSamples {
+		return execution, nil
+	}
+	limit := normalizeSampleLimit(opts.SampleLimit)
+	execution.Samples = schemaDriftSamples(items, limit)
+	if execution.Samples != nil {
+		execution.Observation.SampleRows = int64(len(execution.Samples.GetSamples()))
+	}
+	if len(items) > limit {
+		// The observation is complete; only the sample was capped, and the result
+		// says so rather than implying the list was exhaustive.
+		execution.Truncated = true
+		execution.Observation.Truncated = true
+	}
+	return execution, nil
+}
+
+// compareSchemaDrift compares the registry's current columns with the saved
+// snapshot. The items come in a stable order: missing and changed-type columns in
+// snapshot order, then out-of-order shared columns in snapshot order, then extra
+// live columns in live order. Duplicate snapshot entries are ignored here because
+// validation refuses them at save time.
+func compareSchemaDrift(current []ColumnInfo, config *storepb.SchemaDriftConfig) []schemaDriftItem {
+	live := make(map[string]ColumnInfo, len(current))
+	for _, column := range current {
+		live[column.Name] = column
+	}
+	expected := config.GetExpectedColumns()
+	expectedNames := make(map[string]struct{}, len(expected))
+	var items []schemaDriftItem
+	for _, want := range expected {
+		if want == nil {
+			continue
+		}
+		name := strings.TrimSpace(want.GetName())
+		if _, ok := expectedNames[name]; ok {
+			continue
+		}
+		expectedNames[name] = struct{}{}
+		actual, ok := live[name]
+		if !ok {
+			items = append(items, schemaDriftItem{Column: name, Reason: "missing"})
+			continue
+		}
+		if schemaDriftChecksTypes(config) && !strings.EqualFold(strings.TrimSpace(want.GetType()), strings.TrimSpace(actual.Type)) {
+			items = append(items, schemaDriftItem{
+				Column: name,
+				Reason: fmt.Sprintf("type: %s -> %s", strings.TrimSpace(want.GetType()), strings.TrimSpace(actual.Type)),
+			})
+		}
+	}
+	if config.GetCheckOrder() {
+		items = append(items, schemaDriftOrderItems(expected, current)...)
+	}
+	if !config.GetAllowExtraColumns() {
+		for _, column := range current {
+			if _, ok := expectedNames[column.Name]; ok {
+				continue
+			}
+			items = append(items, schemaDriftItem{Column: column.Name, Reason: "extra"})
+		}
+	}
+	return items
+}
+
+// schemaDriftOrderItems reports the shared columns whose relative order changed.
+// Only columns present in both lists participate: a missing or extra column is
+// already its own drift item, and counting it again as an order change would
+// double-report one problem.
+func schemaDriftOrderItems(expected []*storepb.SchemaDriftColumn, current []ColumnInfo) []schemaDriftItem {
+	liveNames := make(map[string]struct{}, len(current))
+	for _, column := range current {
+		liveNames[column.Name] = struct{}{}
+	}
+	shared := make(map[string]struct{}, len(expected))
+	expectedOrder := make([]string, 0, len(expected))
+	for _, want := range expected {
+		if want == nil {
+			continue
+		}
+		name := strings.TrimSpace(want.GetName())
+		if _, ok := liveNames[name]; !ok {
+			continue
+		}
+		if _, ok := shared[name]; ok {
+			continue
+		}
+		shared[name] = struct{}{}
+		expectedOrder = append(expectedOrder, name)
+	}
+	currentOrder := make([]string, 0, len(expectedOrder))
+	for _, column := range current {
+		if _, ok := shared[column.Name]; ok {
+			currentOrder = append(currentOrder, column.Name)
+		}
+	}
+	var items []schemaDriftItem
+	for index, name := range expectedOrder {
+		if index < len(currentOrder) && currentOrder[index] == name {
+			continue
+		}
+		items = append(items, schemaDriftItem{Column: name, Reason: "order"})
+	}
+	return items
+}
+
+// schemaDriftSamples renders drift items in the failure-sample shape: one sample
+// row per item, naming the affected column and the reason.
+func schemaDriftSamples(items []schemaDriftItem, limit int) *storepb.QualityFailureSamples {
+	if len(items) == 0 || limit <= 0 {
+		return nil
+	}
+	if limit > maxSampleLimit {
+		limit = maxSampleLimit
+	}
+	samples := &storepb.QualityFailureSamples{}
+	for _, item := range items {
+		if len(samples.Samples) == limit {
+			break
+		}
+		samples.Samples = append(samples.Samples, &storepb.FailureSample{Columns: []*storepb.ColumnValue{{
+			Column: common.TruncateUTF8Bytes(item.Column, maxSampleValueBytes),
+			Value:  common.TruncateUTF8Bytes(item.Reason, maxSampleValueBytes),
+		}}})
+	}
+	if len(samples.Samples) == 0 {
+		return nil
+	}
+	return samples
+}
+
+// schemaDriftChecksTypes reports whether a type change counts as drift. Unset
+// means yes: a schema-drift rule protects the column contract, and a type change
+// is the change most worth catching, so the author turns it off explicitly.
+func schemaDriftChecksTypes(config *storepb.SchemaDriftConfig) bool {
+	if config.CheckTypes == nil {
+		return true
+	}
+	return *config.CheckTypes
 }

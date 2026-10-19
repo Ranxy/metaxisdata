@@ -18,6 +18,8 @@ const (
 	// compileMaxCustomSQLLength bounds a custom SQL definition (8 KiB), matching
 	// the design's storage limit.
 	compileMaxCustomSQLLength = 8 * 1024
+	// maxGroupCheckColumns bounds a group-check rule's grouping list.
+	maxGroupCheckColumns = 5
 )
 
 // compileTable renders the target relation for the dialect. The foundation
@@ -93,6 +95,58 @@ func (a *compileArgs) values() []any {
 	}
 	values = append(values, a.filterArgs...)
 	return append(values, a.configArgs...)
+}
+
+// groupCheckColumns resolves and de-duplicates a group-check rule's grouping
+// columns, preserving the configured order. The same function is used by
+// validation, the aggregate compiler and the sample compiler so all three reject
+// the same config with the same message.
+func groupCheckColumns(target ResolvedTarget, names []string) ([]string, error) {
+	if len(names) == 0 {
+		return nil, invalidConfig("a group-check rule needs at least one column")
+	}
+	if len(names) > maxGroupCheckColumns {
+		return nil, invalidConfig("a group-check rule allows at most %d group columns, got %d", maxGroupCheckColumns, len(names))
+	}
+	columns := make([]string, 0, len(names))
+	seen := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		column, err := requireColumn(target, strings.TrimSpace(name))
+		if err != nil {
+			return nil, err
+		}
+		if _, ok := seen[column.Name]; ok {
+			return nil, invalidConfig("group column %q is named more than once", column.Name)
+		}
+		seen[column.Name] = struct{}{}
+		columns = append(columns, column.Name)
+	}
+	return columns, nil
+}
+
+// groupCheckBounds validates the per-group row bounds shared by validation, the
+// aggregate compiler and the sample compiler: at least one bound, neither
+// negative, and the lower bound not above the upper one.
+func groupCheckBounds(config *storepb.GroupCheckConfig) (minValue, maxValue int64, hasMin, hasMax bool, err error) {
+	if config.MinRowsPerGroup == nil && config.MaxRowsPerGroup == nil {
+		return 0, 0, false, false, invalidConfig("a group-check rule needs min_rows_per_group or max_rows_per_group")
+	}
+	if config.MinRowsPerGroup != nil {
+		if *config.MinRowsPerGroup < 0 {
+			return 0, 0, false, false, invalidConfig("min_rows_per_group must not be negative")
+		}
+		minValue, hasMin = *config.MinRowsPerGroup, true
+	}
+	if config.MaxRowsPerGroup != nil {
+		if *config.MaxRowsPerGroup < 0 {
+			return 0, 0, false, false, invalidConfig("max_rows_per_group must not be negative")
+		}
+		maxValue, hasMax = *config.MaxRowsPerGroup, true
+	}
+	if hasMin && hasMax && minValue > maxValue {
+		return 0, 0, false, false, invalidConfig("min_rows_per_group %d exceeds max_rows_per_group %d", minValue, maxValue)
+	}
+	return minValue, maxValue, hasMin, hasMax, nil
 }
 
 // compileCountSelect renders the two-column shape shared by the column-level

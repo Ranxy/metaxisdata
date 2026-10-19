@@ -33,6 +33,11 @@ enum QualityRuleType {
   // v1.1. The value exists here only so that the two enum definitions stay
   // value-compatible; v1 never writes it.
   QUALITY_RULE_TYPE_CEL_EXPRESSION = 14;
+  // v1.1: compares the live column list with a snapshot taken when the rule was
+  // saved. It reads metadata only and never queries the target database.
+  QUALITY_RULE_TYPE_SCHEMA_DRIFT = 15;
+  // v1.1: groups rows and bounds each group's row count.
+  QUALITY_RULE_TYPE_GROUP_CHECK = 16;
 }
 
 // QualityDimension is the data quality dimension a rule measures. It is display
@@ -443,12 +448,15 @@ message QualityRuleConfig {
     CustomSQLConfig custom_sql = 13;
     // v1.1.
     CelExpressionConfig cel_expression = 14;
+    // v1.1 first batch: metadata drift and grouped row-count bounds.
+    SchemaDriftConfig schema_drift = 15;
+    GroupCheckConfig group_check = 16;
   }
   // How a count-type rule's thresholds are measured: failed rows, or failed rows
   // divided by total rows. Ignored by types whose config already names the unit.
   // Numbers 15-27 are reserved for future rule configs; the v1 message uses the
   // same numbers so the two definitions stay structurally identical.
-  reserved 15 to 27;
+  reserved 17 to 27;
   QualityThresholdMetric threshold_metric = 28;
   QualityFilter filter = 29;
   QualityEmptyBehavior on_empty = 30;
@@ -600,6 +608,44 @@ message CelExpressionConfig {
   // The columns the expression reads. They must all exist on the target.
   repeated string columns = 2;
   int32 sample_rows = 3;
+  optional double fail_threshold = 4;
+  optional double warn_threshold = 5;
+}
+
+// SchemaDriftColumn is one column of the snapshot a schema-drift rule expects.
+message SchemaDriftColumn {
+  string name = 1;
+  string type = 2;
+  bool nullable = 3;
+}
+
+// SchemaDriftConfig compares the live column list with the snapshot taken when
+// the rule was saved. The rule reads metadata only, so it costs the target
+// database nothing.
+message SchemaDriftConfig {
+  // The snapshot. The API fills it from the current columns when a rule is
+  // created without one, and the editor lets a user adjust it.
+  repeated SchemaDriftColumn expected_columns = 1;
+  // Whether a changed column type is drift. Unset means true: a type change is
+  // drift unless the rule author turns the check off.
+  optional bool check_types = 2;
+  // Whether a changed column order is drift. Default false.
+  bool check_order = 3;
+  // Whether a column the snapshot does not name is drift. Default false.
+  bool allow_extra_columns = 4;
+  // Drift items tolerated. The metric is always COUNT here.
+  optional double fail_threshold = 5;
+  optional double warn_threshold = 6;
+}
+
+// GroupCheckConfig bounds the row count of each group a set of columns forms.
+message GroupCheckConfig {
+  // The grouping columns, 1-5 of them.
+  repeated string columns = 1;
+  // At least one bound is required.
+  optional int64 min_rows_per_group = 2;
+  optional int64 max_rows_per_group = 3;
+  // Groups outside the bounds tolerated, measured per threshold_metric.
   optional double fail_threshold = 4;
   optional double warn_threshold = 5;
 }

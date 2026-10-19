@@ -581,3 +581,27 @@ func TestBuildStormDetail(t *testing.T) {
 	require.Equal(t, int32(12), detail.GetFailedRuleCount())
 	require.Equal(t, int32(40), detail.GetTotalRuleCount())
 }
+
+// A metadata rule observes the registry, so it must run without a target
+// connection; every query rule still needs the read-only data source.
+func TestRequiresReadOnlySource(t *testing.T) {
+	t.Parallel()
+
+	require.False(t, requiresReadOnlySource(storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT),
+		"schema drift reads metadata, not the target database")
+	require.True(t, requiresReadOnlySource(storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK),
+		"group check runs a GROUP BY query")
+	for _, ruleType := range []storepb.QualityRuleType{
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
+	} {
+		require.True(t, requiresReadOnlySource(ruleType), "rule type %s", ruleType)
+	}
+
+	// The decision must agree with the component's own definition, so the runner
+	// and the executor cannot disagree about which rules need a queryer.
+	require.Equal(t, dataquality.IsMetadataRule(storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT),
+		!requiresReadOnlySource(storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT))
+}

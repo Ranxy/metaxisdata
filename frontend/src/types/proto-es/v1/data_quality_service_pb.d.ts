@@ -325,6 +325,20 @@ export declare type QualityRuleConfig = Message<"metaxisdata.v1.QualityRuleConfi
      */
     value: CelExpressionConfig;
     case: "celExpression";
+  } | {
+    /**
+     * v1.1 first batch: metadata drift and grouped row-count bounds.
+     *
+     * @generated from field: metaxisdata.v1.SchemaDriftConfig schema_drift = 15;
+     */
+    value: SchemaDriftConfig;
+    case: "schemaDrift";
+  } | {
+    /**
+     * @generated from field: metaxisdata.v1.GroupCheckConfig group_check = 16;
+     */
+    value: GroupCheckConfig;
+    case: "groupCheck";
   } | { case: undefined; value?: undefined };
 
   /**
@@ -898,6 +912,135 @@ export declare type CelExpressionConfig = Message<"metaxisdata.v1.CelExpressionC
  * Use `create(CelExpressionConfigSchema)` to create a new message.
  */
 export declare const CelExpressionConfigSchema: GenMessage<CelExpressionConfig>;
+
+/**
+ * SchemaDriftColumn is one column of the snapshot a schema-drift rule expects.
+ *
+ * @generated from message metaxisdata.v1.SchemaDriftColumn
+ */
+export declare type SchemaDriftColumn = Message<"metaxisdata.v1.SchemaDriftColumn"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: string type = 2;
+   */
+  type: string;
+
+  /**
+   * @generated from field: bool nullable = 3;
+   */
+  nullable: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.SchemaDriftColumn.
+ * Use `create(SchemaDriftColumnSchema)` to create a new message.
+ */
+export declare const SchemaDriftColumnSchema: GenMessage<SchemaDriftColumn>;
+
+/**
+ * SchemaDriftConfig compares the live column list with the snapshot taken when
+ * the rule was saved. The rule reads metadata only, so it costs the target
+ * database nothing.
+ *
+ * @generated from message metaxisdata.v1.SchemaDriftConfig
+ */
+export declare type SchemaDriftConfig = Message<"metaxisdata.v1.SchemaDriftConfig"> & {
+  /**
+   * The snapshot. The API fills it from the current columns when a rule is
+   * created without one, and the editor lets a user adjust it.
+   *
+   * @generated from field: repeated metaxisdata.v1.SchemaDriftColumn expected_columns = 1;
+   */
+  expectedColumns: SchemaDriftColumn[];
+
+  /**
+   * Whether a changed column type is drift. Unset means true: a type change is
+   * drift unless the rule author turns the check off.
+   *
+   * @generated from field: optional bool check_types = 2;
+   */
+  checkTypes?: boolean;
+
+  /**
+   * Whether a changed column order is drift. Default false.
+   *
+   * @generated from field: bool check_order = 3;
+   */
+  checkOrder: boolean;
+
+  /**
+   * Whether a column the snapshot does not name is drift. Default false.
+   *
+   * @generated from field: bool allow_extra_columns = 4;
+   */
+  allowExtraColumns: boolean;
+
+  /**
+   * Drift items tolerated. The metric is always COUNT here.
+   *
+   * @generated from field: optional double fail_threshold = 5;
+   */
+  failThreshold?: number;
+
+  /**
+   * @generated from field: optional double warn_threshold = 6;
+   */
+  warnThreshold?: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.SchemaDriftConfig.
+ * Use `create(SchemaDriftConfigSchema)` to create a new message.
+ */
+export declare const SchemaDriftConfigSchema: GenMessage<SchemaDriftConfig>;
+
+/**
+ * GroupCheckConfig bounds the row count of each group a set of columns forms.
+ *
+ * @generated from message metaxisdata.v1.GroupCheckConfig
+ */
+export declare type GroupCheckConfig = Message<"metaxisdata.v1.GroupCheckConfig"> & {
+  /**
+   * The grouping columns, 1-5 of them.
+   *
+   * @generated from field: repeated string columns = 1;
+   */
+  columns: string[];
+
+  /**
+   * At least one bound is required.
+   *
+   * @generated from field: optional int64 min_rows_per_group = 2;
+   */
+  minRowsPerGroup?: bigint;
+
+  /**
+   * @generated from field: optional int64 max_rows_per_group = 3;
+   */
+  maxRowsPerGroup?: bigint;
+
+  /**
+   * Groups outside the bounds tolerated, measured per threshold_metric.
+   *
+   * @generated from field: optional double fail_threshold = 4;
+   */
+  failThreshold?: number;
+
+  /**
+   * @generated from field: optional double warn_threshold = 5;
+   */
+  warnThreshold?: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GroupCheckConfig.
+ * Use `create(GroupCheckConfigSchema)` to create a new message.
+ */
+export declare const GroupCheckConfigSchema: GenMessage<GroupCheckConfig>;
 
 /**
  * QualityFilter is the AND filter a rule applies before observing. Values are
@@ -3314,6 +3457,21 @@ export enum QualityRuleType {
    * @generated from enum value: QUALITY_RULE_TYPE_CEL_EXPRESSION = 14;
    */
   CEL_EXPRESSION = 14,
+
+  /**
+   * v1.1: compares the live column list with a snapshot taken when the rule was
+   * saved. It reads metadata only and never queries the target database.
+   *
+   * @generated from enum value: QUALITY_RULE_TYPE_SCHEMA_DRIFT = 15;
+   */
+  SCHEMA_DRIFT = 15,
+
+  /**
+   * v1.1: groups rows and bounds each group's row count.
+   *
+   * @generated from enum value: QUALITY_RULE_TYPE_GROUP_CHECK = 16;
+   */
+  GROUP_CHECK = 16,
 }
 
 /**

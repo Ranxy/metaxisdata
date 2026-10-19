@@ -526,23 +526,31 @@ func (r *Runner) executeOne(ctx context.Context, runID int64, task ruleTask) *ru
 		return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, dataquality.ErrCodeUnsupported, err.Error())
 	}
 
-	release, err := r.acquireInstanceConnection(resolution.Instance)
-	if err != nil {
-		return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, dataquality.ErrCodeQuota, err.Error())
-	}
-	defer release()
+	// A metadata rule observes the registry and compiles to no SQL, so it needs
+	// neither the instance's connection budget nor a READ_ONLY data source: it
+	// must not fail because the target has no read-only account. The executor
+	// receives a nil queryer for it.
+	var queryer db.ReadOnlyQueryer
+	if requiresReadOnlySource(snapshot.Type) {
+		release, err := r.acquireInstanceConnection(resolution.Instance)
+		if err != nil {
+			return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, dataquality.ErrCodeQuota, err.Error())
+		}
+		defer release()
 
-	driver, err := r.dbFactory.GetReadOnlyDatabaseDriver(ctx, resolution.Instance, resolution.Database)
-	if err != nil {
-		code, message := errorCodeAndMessage(err)
-		return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, code, message)
-	}
-	defer driver.Close(ctx)
+		driver, err := r.dbFactory.GetReadOnlyDatabaseDriver(ctx, resolution.Instance, resolution.Database)
+		if err != nil {
+			code, message := errorCodeAndMessage(err)
+			return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, code, message)
+		}
+		defer driver.Close(ctx)
 
-	queryer, ok := driver.(db.ReadOnlyQueryer)
-	if !ok {
-		return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, dataquality.ErrCodeUnsupported,
-			"this database engine does not support read-only query execution")
+		readOnly, ok := driver.(db.ReadOnlyQueryer)
+		if !ok {
+			return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, dataquality.ErrCodeUnsupported,
+				"this database engine does not support read-only query execution")
+		}
+		queryer = readOnly
 	}
 
 	execution, err := r.exec.Execute(ctx, queryer, resolution, *snapshot, r.execOptions())
@@ -1512,4 +1520,12 @@ func (e *ruleExecution) targetType() storepb.MetaType {
 		return e.result.TargetType
 	}
 	return storepb.MetaType_UNSPECIFIED
+}
+
+// requiresReadOnlySource reports whether executing this rule type needs a
+// connection to the target database. Metadata rules (schema_drift) observe the
+// registry instead, so they must run without a READ_ONLY data source; every
+// query rule still requires one.
+func requiresReadOnlySource(ruleType storepb.QualityRuleType) bool {
+	return !dataquality.IsMetadataRule(ruleType)
 }

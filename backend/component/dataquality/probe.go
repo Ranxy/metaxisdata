@@ -12,6 +12,12 @@ import (
 // The wrapper is per engine because "return nothing" is spelled differently:
 // LIMIT 0 on the MySQL family and PostgreSQL, TOP 0 on SQL Server.
 func ProbeStatement(engine storepb.Engine, query CompiledQuery) string {
+	// A metadata rule compiles to no statement (schema_drift reads the registry),
+	// so there is nothing to probe: the dry run for it validates the target and the
+	// config only. The empty string tells the caller to skip the probe.
+	if query.Kind == QueryMetadata || query.SQL == "" {
+		return ""
+	}
 	// The subquery alias is required by MySQL; the other engines accept it too.
 	const alias = " AS dq"
 	switch engine {

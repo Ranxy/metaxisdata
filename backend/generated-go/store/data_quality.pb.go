@@ -43,6 +43,11 @@ const (
 	// v1.1. The value exists here only so that the two enum definitions stay
 	// value-compatible; v1 never writes it.
 	QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION QualityRuleType = 14
+	// v1.1: compares the live column list with a snapshot taken when the rule was
+	// saved. It reads metadata only and never queries the target database.
+	QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT QualityRuleType = 15
+	// v1.1: groups rows and bounds each group's row count.
+	QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK QualityRuleType = 16
 )
 
 // Enum value maps for QualityRuleType.
@@ -63,6 +68,8 @@ var (
 		12: "QUALITY_RULE_TYPE_FRESHNESS",
 		13: "QUALITY_RULE_TYPE_CUSTOM_SQL",
 		14: "QUALITY_RULE_TYPE_CEL_EXPRESSION",
+		15: "QUALITY_RULE_TYPE_SCHEMA_DRIFT",
+		16: "QUALITY_RULE_TYPE_GROUP_CHECK",
 	}
 	QualityRuleType_value = map[string]int32{
 		"QUALITY_RULE_TYPE_UNSPECIFIED":           0,
@@ -80,6 +87,8 @@ var (
 		"QUALITY_RULE_TYPE_FRESHNESS":             12,
 		"QUALITY_RULE_TYPE_CUSTOM_SQL":            13,
 		"QUALITY_RULE_TYPE_CEL_EXPRESSION":        14,
+		"QUALITY_RULE_TYPE_SCHEMA_DRIFT":          15,
+		"QUALITY_RULE_TYPE_GROUP_CHECK":           16,
 	}
 )
 
@@ -2614,6 +2623,8 @@ type QualityRuleConfig struct {
 	//	*QualityRuleConfig_Freshness
 	//	*QualityRuleConfig_CustomSql
 	//	*QualityRuleConfig_CelExpression
+	//	*QualityRuleConfig_SchemaDrift
+	//	*QualityRuleConfig_GroupCheck
 	Config          isQualityRuleConfig_Config `protobuf_oneof:"config"`
 	ThresholdMetric QualityThresholdMetric     `protobuf:"varint,28,opt,name=threshold_metric,json=thresholdMetric,proto3,enum=metaxisdata.store.QualityThresholdMetric" json:"threshold_metric,omitempty"`
 	Filter          *QualityFilter             `protobuf:"bytes,29,opt,name=filter,proto3" json:"filter,omitempty"`
@@ -2785,6 +2796,24 @@ func (x *QualityRuleConfig) GetCelExpression() *CelExpressionConfig {
 	return nil
 }
 
+func (x *QualityRuleConfig) GetSchemaDrift() *SchemaDriftConfig {
+	if x != nil {
+		if x, ok := x.Config.(*QualityRuleConfig_SchemaDrift); ok {
+			return x.SchemaDrift
+		}
+	}
+	return nil
+}
+
+func (x *QualityRuleConfig) GetGroupCheck() *GroupCheckConfig {
+	if x != nil {
+		if x, ok := x.Config.(*QualityRuleConfig_GroupCheck); ok {
+			return x.GroupCheck
+		}
+	}
+	return nil
+}
+
 func (x *QualityRuleConfig) GetThresholdMetric() QualityThresholdMetric {
 	if x != nil {
 		return x.ThresholdMetric
@@ -2867,6 +2896,15 @@ type QualityRuleConfig_CelExpression struct {
 	CelExpression *CelExpressionConfig `protobuf:"bytes,14,opt,name=cel_expression,json=celExpression,proto3,oneof"`
 }
 
+type QualityRuleConfig_SchemaDrift struct {
+	// v1.1 first batch: metadata drift and grouped row-count bounds.
+	SchemaDrift *SchemaDriftConfig `protobuf:"bytes,15,opt,name=schema_drift,json=schemaDrift,proto3,oneof"`
+}
+
+type QualityRuleConfig_GroupCheck struct {
+	GroupCheck *GroupCheckConfig `protobuf:"bytes,16,opt,name=group_check,json=groupCheck,proto3,oneof"`
+}
+
 func (*QualityRuleConfig_RowCount) isQualityRuleConfig_Config() {}
 
 func (*QualityRuleConfig_RowCountChange) isQualityRuleConfig_Config() {}
@@ -2894,6 +2932,10 @@ func (*QualityRuleConfig_Freshness) isQualityRuleConfig_Config() {}
 func (*QualityRuleConfig_CustomSql) isQualityRuleConfig_Config() {}
 
 func (*QualityRuleConfig_CelExpression) isQualityRuleConfig_Config() {}
+
+func (*QualityRuleConfig_SchemaDrift) isQualityRuleConfig_Config() {}
+
+func (*QualityRuleConfig_GroupCheck) isQualityRuleConfig_Config() {}
 
 // RowCountConfig bounds the number of rows. At least one bound is required; a
 // warn bound makes the rule report WARN before it reports FAIL.
@@ -3969,6 +4011,241 @@ func (x *CelExpressionConfig) GetWarnThreshold() float64 {
 	return 0
 }
 
+// SchemaDriftColumn is one column of the snapshot a schema-drift rule expects.
+type SchemaDriftColumn struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Type          string                 `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"`
+	Nullable      bool                   `protobuf:"varint,3,opt,name=nullable,proto3" json:"nullable,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SchemaDriftColumn) Reset() {
+	*x = SchemaDriftColumn{}
+	mi := &file_store_data_quality_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SchemaDriftColumn) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SchemaDriftColumn) ProtoMessage() {}
+
+func (x *SchemaDriftColumn) ProtoReflect() protoreflect.Message {
+	mi := &file_store_data_quality_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SchemaDriftColumn.ProtoReflect.Descriptor instead.
+func (*SchemaDriftColumn) Descriptor() ([]byte, []int) {
+	return file_store_data_quality_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *SchemaDriftColumn) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *SchemaDriftColumn) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *SchemaDriftColumn) GetNullable() bool {
+	if x != nil {
+		return x.Nullable
+	}
+	return false
+}
+
+// SchemaDriftConfig compares the live column list with the snapshot taken when
+// the rule was saved. The rule reads metadata only, so it costs the target
+// database nothing.
+type SchemaDriftConfig struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The snapshot. The API fills it from the current columns when a rule is
+	// created without one, and the editor lets a user adjust it.
+	ExpectedColumns []*SchemaDriftColumn `protobuf:"bytes,1,rep,name=expected_columns,json=expectedColumns,proto3" json:"expected_columns,omitempty"`
+	// Whether a changed column type is drift. Unset means true: a type change is
+	// drift unless the rule author turns the check off.
+	CheckTypes *bool `protobuf:"varint,2,opt,name=check_types,json=checkTypes,proto3,oneof" json:"check_types,omitempty"`
+	// Whether a changed column order is drift. Default false.
+	CheckOrder bool `protobuf:"varint,3,opt,name=check_order,json=checkOrder,proto3" json:"check_order,omitempty"`
+	// Whether a column the snapshot does not name is drift. Default false.
+	AllowExtraColumns bool `protobuf:"varint,4,opt,name=allow_extra_columns,json=allowExtraColumns,proto3" json:"allow_extra_columns,omitempty"`
+	// Drift items tolerated. The metric is always COUNT here.
+	FailThreshold *float64 `protobuf:"fixed64,5,opt,name=fail_threshold,json=failThreshold,proto3,oneof" json:"fail_threshold,omitempty"`
+	WarnThreshold *float64 `protobuf:"fixed64,6,opt,name=warn_threshold,json=warnThreshold,proto3,oneof" json:"warn_threshold,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SchemaDriftConfig) Reset() {
+	*x = SchemaDriftConfig{}
+	mi := &file_store_data_quality_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SchemaDriftConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SchemaDriftConfig) ProtoMessage() {}
+
+func (x *SchemaDriftConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_store_data_quality_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SchemaDriftConfig.ProtoReflect.Descriptor instead.
+func (*SchemaDriftConfig) Descriptor() ([]byte, []int) {
+	return file_store_data_quality_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *SchemaDriftConfig) GetExpectedColumns() []*SchemaDriftColumn {
+	if x != nil {
+		return x.ExpectedColumns
+	}
+	return nil
+}
+
+func (x *SchemaDriftConfig) GetCheckTypes() bool {
+	if x != nil && x.CheckTypes != nil {
+		return *x.CheckTypes
+	}
+	return false
+}
+
+func (x *SchemaDriftConfig) GetCheckOrder() bool {
+	if x != nil {
+		return x.CheckOrder
+	}
+	return false
+}
+
+func (x *SchemaDriftConfig) GetAllowExtraColumns() bool {
+	if x != nil {
+		return x.AllowExtraColumns
+	}
+	return false
+}
+
+func (x *SchemaDriftConfig) GetFailThreshold() float64 {
+	if x != nil && x.FailThreshold != nil {
+		return *x.FailThreshold
+	}
+	return 0
+}
+
+func (x *SchemaDriftConfig) GetWarnThreshold() float64 {
+	if x != nil && x.WarnThreshold != nil {
+		return *x.WarnThreshold
+	}
+	return 0
+}
+
+// GroupCheckConfig bounds the row count of each group a set of columns forms.
+type GroupCheckConfig struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The grouping columns, 1-5 of them.
+	Columns []string `protobuf:"bytes,1,rep,name=columns,proto3" json:"columns,omitempty"`
+	// At least one bound is required.
+	MinRowsPerGroup *int64 `protobuf:"varint,2,opt,name=min_rows_per_group,json=minRowsPerGroup,proto3,oneof" json:"min_rows_per_group,omitempty"`
+	MaxRowsPerGroup *int64 `protobuf:"varint,3,opt,name=max_rows_per_group,json=maxRowsPerGroup,proto3,oneof" json:"max_rows_per_group,omitempty"`
+	// Groups outside the bounds tolerated, measured per threshold_metric.
+	FailThreshold *float64 `protobuf:"fixed64,4,opt,name=fail_threshold,json=failThreshold,proto3,oneof" json:"fail_threshold,omitempty"`
+	WarnThreshold *float64 `protobuf:"fixed64,5,opt,name=warn_threshold,json=warnThreshold,proto3,oneof" json:"warn_threshold,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GroupCheckConfig) Reset() {
+	*x = GroupCheckConfig{}
+	mi := &file_store_data_quality_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GroupCheckConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GroupCheckConfig) ProtoMessage() {}
+
+func (x *GroupCheckConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_store_data_quality_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GroupCheckConfig.ProtoReflect.Descriptor instead.
+func (*GroupCheckConfig) Descriptor() ([]byte, []int) {
+	return file_store_data_quality_proto_rawDescGZIP(), []int{35}
+}
+
+func (x *GroupCheckConfig) GetColumns() []string {
+	if x != nil {
+		return x.Columns
+	}
+	return nil
+}
+
+func (x *GroupCheckConfig) GetMinRowsPerGroup() int64 {
+	if x != nil && x.MinRowsPerGroup != nil {
+		return *x.MinRowsPerGroup
+	}
+	return 0
+}
+
+func (x *GroupCheckConfig) GetMaxRowsPerGroup() int64 {
+	if x != nil && x.MaxRowsPerGroup != nil {
+		return *x.MaxRowsPerGroup
+	}
+	return 0
+}
+
+func (x *GroupCheckConfig) GetFailThreshold() float64 {
+	if x != nil && x.FailThreshold != nil {
+		return *x.FailThreshold
+	}
+	return 0
+}
+
+func (x *GroupCheckConfig) GetWarnThreshold() float64 {
+	if x != nil && x.WarnThreshold != nil {
+		return *x.WarnThreshold
+	}
+	return 0
+}
+
 var File_store_data_quality_proto protoreflect.FileDescriptor
 
 const file_store_data_quality_proto_rawDesc = "" +
@@ -4087,8 +4364,7 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\x15ExplanationHypothesis\x12\x14\n" +
 	"\x05cause\x18\x01 \x01(\tR\x05cause\x12\x1a\n" +
 	"\bevidence\x18\x02 \x03(\tR\bevidence\x12\x1b\n" +
-	"\tnext_step\x18\x03 \x01(\tR\bnextStep\"\x8e\n" +
-	"\n" +
+	"\tnext_step\x18\x03 \x01(\tR\bnextStep\"\xa1\v\n" +
 	"\x11QualityRuleConfig\x12@\n" +
 	"\trow_count\x18\x01 \x01(\v2!.metaxisdata.store.RowCountConfigH\x00R\browCount\x12S\n" +
 	"\x10row_count_change\x18\x02 \x01(\v2'.metaxisdata.store.RowCountChangeConfigH\x00R\x0erowCountChange\x12I\n" +
@@ -4105,11 +4381,14 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\tfreshness\x18\f \x01(\v2\".metaxisdata.store.FreshnessConfigH\x00R\tfreshness\x12C\n" +
 	"\n" +
 	"custom_sql\x18\r \x01(\v2\".metaxisdata.store.CustomSQLConfigH\x00R\tcustomSql\x12O\n" +
-	"\x0ecel_expression\x18\x0e \x01(\v2&.metaxisdata.store.CelExpressionConfigH\x00R\rcelExpression\x12T\n" +
+	"\x0ecel_expression\x18\x0e \x01(\v2&.metaxisdata.store.CelExpressionConfigH\x00R\rcelExpression\x12I\n" +
+	"\fschema_drift\x18\x0f \x01(\v2$.metaxisdata.store.SchemaDriftConfigH\x00R\vschemaDrift\x12F\n" +
+	"\vgroup_check\x18\x10 \x01(\v2#.metaxisdata.store.GroupCheckConfigH\x00R\n" +
+	"groupCheck\x12T\n" +
 	"\x10threshold_metric\x18\x1c \x01(\x0e2).metaxisdata.store.QualityThresholdMetricR\x0fthresholdMetric\x128\n" +
 	"\x06filter\x18\x1d \x01(\v2 .metaxisdata.store.QualityFilterR\x06filter\x12B\n" +
 	"\bon_empty\x18\x1e \x01(\x0e2'.metaxisdata.store.QualityEmptyBehaviorR\aonEmptyB\b\n" +
-	"\x06configJ\x04\b\x0f\x10\x1c\"\x93\x02\n" +
+	"\x06configJ\x04\b\x11\x10\x1c\"\x93\x02\n" +
 	"\x0eRowCountConfig\x12\x1e\n" +
 	"\bmin_rows\x18\x01 \x01(\x03H\x00R\aminRows\x88\x01\x01\x12\x1e\n" +
 	"\bmax_rows\x18\x02 \x01(\x03H\x01R\amaxRows\x88\x01\x01\x12\"\n" +
@@ -4242,7 +4521,33 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\x0efail_threshold\x18\x04 \x01(\x01H\x00R\rfailThreshold\x88\x01\x01\x12*\n" +
 	"\x0ewarn_threshold\x18\x05 \x01(\x01H\x01R\rwarnThreshold\x88\x01\x01B\x11\n" +
 	"\x0f_fail_thresholdB\x11\n" +
-	"\x0f_warn_threshold*\xa9\x04\n" +
+	"\x0f_warn_threshold\"W\n" +
+	"\x11SchemaDriftColumn\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
+	"\x04type\x18\x02 \x01(\tR\x04type\x12\x1a\n" +
+	"\bnullable\x18\x03 \x01(\bR\bnullable\"\xe9\x02\n" +
+	"\x11SchemaDriftConfig\x12O\n" +
+	"\x10expected_columns\x18\x01 \x03(\v2$.metaxisdata.store.SchemaDriftColumnR\x0fexpectedColumns\x12$\n" +
+	"\vcheck_types\x18\x02 \x01(\bH\x00R\n" +
+	"checkTypes\x88\x01\x01\x12\x1f\n" +
+	"\vcheck_order\x18\x03 \x01(\bR\n" +
+	"checkOrder\x12.\n" +
+	"\x13allow_extra_columns\x18\x04 \x01(\bR\x11allowExtraColumns\x12*\n" +
+	"\x0efail_threshold\x18\x05 \x01(\x01H\x01R\rfailThreshold\x88\x01\x01\x12*\n" +
+	"\x0ewarn_threshold\x18\x06 \x01(\x01H\x02R\rwarnThreshold\x88\x01\x01B\x0e\n" +
+	"\f_check_typesB\x11\n" +
+	"\x0f_fail_thresholdB\x11\n" +
+	"\x0f_warn_threshold\"\xbc\x02\n" +
+	"\x10GroupCheckConfig\x12\x18\n" +
+	"\acolumns\x18\x01 \x03(\tR\acolumns\x120\n" +
+	"\x12min_rows_per_group\x18\x02 \x01(\x03H\x00R\x0fminRowsPerGroup\x88\x01\x01\x120\n" +
+	"\x12max_rows_per_group\x18\x03 \x01(\x03H\x01R\x0fmaxRowsPerGroup\x88\x01\x01\x12*\n" +
+	"\x0efail_threshold\x18\x04 \x01(\x01H\x02R\rfailThreshold\x88\x01\x01\x12*\n" +
+	"\x0ewarn_threshold\x18\x05 \x01(\x01H\x03R\rwarnThreshold\x88\x01\x01B\x15\n" +
+	"\x13_min_rows_per_groupB\x15\n" +
+	"\x13_max_rows_per_groupB\x11\n" +
+	"\x0f_fail_thresholdB\x11\n" +
+	"\x0f_warn_threshold*\xf0\x04\n" +
 	"\x0fQualityRuleType\x12!\n" +
 	"\x1dQUALITY_RULE_TYPE_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bQUALITY_RULE_TYPE_ROW_COUNT\x10\x01\x12&\n" +
@@ -4259,7 +4564,9 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\x1eQUALITY_RULE_TYPE_CROSS_COLUMN\x10\v\x12\x1f\n" +
 	"\x1bQUALITY_RULE_TYPE_FRESHNESS\x10\f\x12 \n" +
 	"\x1cQUALITY_RULE_TYPE_CUSTOM_SQL\x10\r\x12$\n" +
-	" QUALITY_RULE_TYPE_CEL_EXPRESSION\x10\x0e*\x80\x02\n" +
+	" QUALITY_RULE_TYPE_CEL_EXPRESSION\x10\x0e\x12\"\n" +
+	"\x1eQUALITY_RULE_TYPE_SCHEMA_DRIFT\x10\x0f\x12!\n" +
+	"\x1dQUALITY_RULE_TYPE_GROUP_CHECK\x10\x10*\x80\x02\n" +
 	"\x10QualityDimension\x12!\n" +
 	"\x1dQUALITY_DIMENSION_UNSPECIFIED\x10\x00\x12\"\n" +
 	"\x1eQUALITY_DIMENSION_COMPLETENESS\x10\x01\x12\x1e\n" +
@@ -4407,7 +4714,7 @@ func file_store_data_quality_proto_rawDescGZIP() []byte {
 }
 
 var file_store_data_quality_proto_enumTypes = make([]protoimpl.EnumInfo, 21)
-var file_store_data_quality_proto_msgTypes = make([]protoimpl.MessageInfo, 33)
+var file_store_data_quality_proto_msgTypes = make([]protoimpl.MessageInfo, 36)
 var file_store_data_quality_proto_goTypes = []any{
 	(QualityRuleType)(0),               // 0: metaxisdata.store.QualityRuleType
 	(QualityDimension)(0),              // 1: metaxisdata.store.QualityDimension
@@ -4463,6 +4770,9 @@ var file_store_data_quality_proto_goTypes = []any{
 	(*FreshnessConfig)(nil),            // 51: metaxisdata.store.FreshnessConfig
 	(*CustomSQLConfig)(nil),            // 52: metaxisdata.store.CustomSQLConfig
 	(*CelExpressionConfig)(nil),        // 53: metaxisdata.store.CelExpressionConfig
+	(*SchemaDriftColumn)(nil),          // 54: metaxisdata.store.SchemaDriftColumn
+	(*SchemaDriftConfig)(nil),          // 55: metaxisdata.store.SchemaDriftConfig
+	(*GroupCheckConfig)(nil),           // 56: metaxisdata.store.GroupCheckConfig
 }
 var file_store_data_quality_proto_depIdxs = []int32{
 	23, // 0: metaxisdata.store.QualityFilter.clauses:type_name -> metaxisdata.store.QualityFilterClause
@@ -4497,15 +4807,18 @@ var file_store_data_quality_proto_depIdxs = []int32{
 	51, // 29: metaxisdata.store.QualityRuleConfig.freshness:type_name -> metaxisdata.store.FreshnessConfig
 	52, // 30: metaxisdata.store.QualityRuleConfig.custom_sql:type_name -> metaxisdata.store.CustomSQLConfig
 	53, // 31: metaxisdata.store.QualityRuleConfig.cel_expression:type_name -> metaxisdata.store.CelExpressionConfig
-	10, // 32: metaxisdata.store.QualityRuleConfig.threshold_metric:type_name -> metaxisdata.store.QualityThresholdMetric
-	22, // 33: metaxisdata.store.QualityRuleConfig.filter:type_name -> metaxisdata.store.QualityFilter
-	11, // 34: metaxisdata.store.QualityRuleConfig.on_empty:type_name -> metaxisdata.store.QualityEmptyBehavior
-	14, // 35: metaxisdata.store.CrossColumnConfig.op:type_name -> metaxisdata.store.QualityComparisonOperator
-	36, // [36:36] is the sub-list for method output_type
-	36, // [36:36] is the sub-list for method input_type
-	36, // [36:36] is the sub-list for extension type_name
-	36, // [36:36] is the sub-list for extension extendee
-	0,  // [0:36] is the sub-list for field type_name
+	55, // 32: metaxisdata.store.QualityRuleConfig.schema_drift:type_name -> metaxisdata.store.SchemaDriftConfig
+	56, // 33: metaxisdata.store.QualityRuleConfig.group_check:type_name -> metaxisdata.store.GroupCheckConfig
+	10, // 34: metaxisdata.store.QualityRuleConfig.threshold_metric:type_name -> metaxisdata.store.QualityThresholdMetric
+	22, // 35: metaxisdata.store.QualityRuleConfig.filter:type_name -> metaxisdata.store.QualityFilter
+	11, // 36: metaxisdata.store.QualityRuleConfig.on_empty:type_name -> metaxisdata.store.QualityEmptyBehavior
+	14, // 37: metaxisdata.store.CrossColumnConfig.op:type_name -> metaxisdata.store.QualityComparisonOperator
+	54, // 38: metaxisdata.store.SchemaDriftConfig.expected_columns:type_name -> metaxisdata.store.SchemaDriftColumn
+	39, // [39:39] is the sub-list for method output_type
+	39, // [39:39] is the sub-list for method input_type
+	39, // [39:39] is the sub-list for extension type_name
+	39, // [39:39] is the sub-list for extension extendee
+	0,  // [0:39] is the sub-list for field type_name
 }
 
 func init() { file_store_data_quality_proto_init() }
@@ -4538,6 +4851,8 @@ func file_store_data_quality_proto_init() {
 		(*QualityRuleConfig_Freshness)(nil),
 		(*QualityRuleConfig_CustomSql)(nil),
 		(*QualityRuleConfig_CelExpression)(nil),
+		(*QualityRuleConfig_SchemaDrift)(nil),
+		(*QualityRuleConfig_GroupCheck)(nil),
 	}
 	file_store_data_quality_proto_msgTypes[19].OneofWrappers = []any{}
 	file_store_data_quality_proto_msgTypes[20].OneofWrappers = []any{}
@@ -4553,13 +4868,15 @@ func file_store_data_quality_proto_init() {
 	file_store_data_quality_proto_msgTypes[30].OneofWrappers = []any{}
 	file_store_data_quality_proto_msgTypes[31].OneofWrappers = []any{}
 	file_store_data_quality_proto_msgTypes[32].OneofWrappers = []any{}
+	file_store_data_quality_proto_msgTypes[34].OneofWrappers = []any{}
+	file_store_data_quality_proto_msgTypes[35].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_store_data_quality_proto_rawDesc), len(file_store_data_quality_proto_rawDesc)),
 			NumEnums:      21,
-			NumMessages:   33,
+			NumMessages:   36,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

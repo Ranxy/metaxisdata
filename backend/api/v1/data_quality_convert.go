@@ -618,6 +618,14 @@ func qualityRuleReferencedColumns(config *storepb.QualityRuleConfig) []string {
 		columns = appendColumn(columns, arm.CrossColumn.GetRightColumn())
 	case *storepb.QualityRuleConfig_Freshness:
 		columns = appendColumn(columns, arm.Freshness.GetTimestampColumn())
+	case *storepb.QualityRuleConfig_SchemaDrift:
+		for _, column := range arm.SchemaDrift.GetExpectedColumns() {
+			columns = appendColumn(columns, column.GetName())
+		}
+	case *storepb.QualityRuleConfig_GroupCheck:
+		for _, column := range arm.GroupCheck.GetColumns() {
+			columns = appendColumn(columns, column)
+		}
 	case *storepb.QualityRuleConfig_CustomSql:
 	case *storepb.QualityRuleConfig_CelExpression:
 		for _, column := range arm.CelExpression.GetColumns() {
@@ -779,6 +787,23 @@ func convertQualityRuleConfigToV1(config *storepb.QualityRuleConfig) *v1pb.Quali
 			FailThreshold: copyPtr(arm.CelExpression.FailThreshold),
 			WarnThreshold: copyPtr(arm.CelExpression.WarnThreshold),
 		}}
+	case *storepb.QualityRuleConfig_SchemaDrift:
+		converted.Config = &v1pb.QualityRuleConfig_SchemaDrift{SchemaDrift: &v1pb.SchemaDriftConfig{
+			ExpectedColumns:   convertSchemaDriftColumnsToV1(arm.SchemaDrift.GetExpectedColumns()),
+			CheckTypes:        copyPtr(arm.SchemaDrift.CheckTypes),
+			CheckOrder:        arm.SchemaDrift.GetCheckOrder(),
+			AllowExtraColumns: arm.SchemaDrift.GetAllowExtraColumns(),
+			FailThreshold:     copyPtr(arm.SchemaDrift.FailThreshold),
+			WarnThreshold:     copyPtr(arm.SchemaDrift.WarnThreshold),
+		}}
+	case *storepb.QualityRuleConfig_GroupCheck:
+		converted.Config = &v1pb.QualityRuleConfig_GroupCheck{GroupCheck: &v1pb.GroupCheckConfig{
+			Columns:         append([]string(nil), arm.GroupCheck.GetColumns()...),
+			MinRowsPerGroup: copyPtr(arm.GroupCheck.MinRowsPerGroup),
+			MaxRowsPerGroup: copyPtr(arm.GroupCheck.MaxRowsPerGroup),
+			FailThreshold:   copyPtr(arm.GroupCheck.FailThreshold),
+			WarnThreshold:   copyPtr(arm.GroupCheck.WarnThreshold),
+		}}
 	case nil:
 	default:
 	}
@@ -904,6 +929,23 @@ func convertQualityRuleConfigFromV1(config *v1pb.QualityRuleConfig) *storepb.Qua
 			SampleRows:    arm.CelExpression.GetSampleRows(),
 			FailThreshold: copyPtr(arm.CelExpression.FailThreshold),
 			WarnThreshold: copyPtr(arm.CelExpression.WarnThreshold),
+		}}
+	case *v1pb.QualityRuleConfig_SchemaDrift:
+		converted.Config = &storepb.QualityRuleConfig_SchemaDrift{SchemaDrift: &storepb.SchemaDriftConfig{
+			ExpectedColumns:   convertSchemaDriftColumnsFromV1(arm.SchemaDrift.GetExpectedColumns()),
+			CheckTypes:        copyPtr(arm.SchemaDrift.CheckTypes),
+			CheckOrder:        arm.SchemaDrift.GetCheckOrder(),
+			AllowExtraColumns: arm.SchemaDrift.GetAllowExtraColumns(),
+			FailThreshold:     copyPtr(arm.SchemaDrift.FailThreshold),
+			WarnThreshold:     copyPtr(arm.SchemaDrift.WarnThreshold),
+		}}
+	case *v1pb.QualityRuleConfig_GroupCheck:
+		converted.Config = &storepb.QualityRuleConfig_GroupCheck{GroupCheck: &storepb.GroupCheckConfig{
+			Columns:         append([]string(nil), arm.GroupCheck.GetColumns()...),
+			MinRowsPerGroup: copyPtr(arm.GroupCheck.MinRowsPerGroup),
+			MaxRowsPerGroup: copyPtr(arm.GroupCheck.MaxRowsPerGroup),
+			FailThreshold:   copyPtr(arm.GroupCheck.FailThreshold),
+			WarnThreshold:   copyPtr(arm.GroupCheck.WarnThreshold),
 		}}
 	case nil:
 	default:
@@ -1170,4 +1212,65 @@ func convertColumnSemanticLabelToV1(label *store.ColumnSemanticLabelMessage) *v1
 		AcceptedTime: timestampOrNil(label.AcceptedAt),
 		UpdateTime:   timestamppb.New(label.UpdatedAt),
 	}
+}
+
+// convertSchemaDriftColumnsToV1 converts the expected-column snapshot.
+func convertSchemaDriftColumnsToV1(columns []*storepb.SchemaDriftColumn) []*v1pb.SchemaDriftColumn {
+	if columns == nil {
+		return nil
+	}
+	converted := make([]*v1pb.SchemaDriftColumn, 0, len(columns))
+	for _, column := range columns {
+		if column == nil {
+			continue
+		}
+		converted = append(converted, &v1pb.SchemaDriftColumn{
+			Name:     column.GetName(),
+			Type:     column.GetType(),
+			Nullable: column.GetNullable(),
+		})
+	}
+	return converted
+}
+
+// convertSchemaDriftColumnsFromV1 converts the expected-column snapshot back into
+// the stored shape.
+func convertSchemaDriftColumnsFromV1(columns []*v1pb.SchemaDriftColumn) []*storepb.SchemaDriftColumn {
+	if columns == nil {
+		return nil
+	}
+	converted := make([]*storepb.SchemaDriftColumn, 0, len(columns))
+	for _, column := range columns {
+		if column == nil {
+			continue
+		}
+		converted = append(converted, &storepb.SchemaDriftColumn{
+			Name:     column.GetName(),
+			Type:     column.GetType(),
+			Nullable: column.GetNullable(),
+		})
+	}
+	return converted
+}
+
+// fillSchemaDriftSnapshot fills a schema_drift rule's expected-column snapshot
+// from the target's current columns when the request did not carry one. It
+// reports whether it wrote anything, so a caller that has to persist the snapshot
+// knows whether the config changed. The snapshot keeps the registry's column
+// order, which is what check_order compares against.
+func fillSchemaDriftSnapshot(config *storepb.QualityRuleConfig, columns []dataquality.ColumnInfo) bool {
+	drift := config.GetSchemaDrift()
+	if drift == nil || len(drift.GetExpectedColumns()) > 0 || len(columns) == 0 {
+		return false
+	}
+	expected := make([]*storepb.SchemaDriftColumn, 0, len(columns))
+	for _, column := range columns {
+		expected = append(expected, &storepb.SchemaDriftColumn{
+			Name:     column.Name,
+			Type:     column.Type,
+			Nullable: column.Nullable,
+		})
+	}
+	drift.ExpectedColumns = expected
+	return true
 }

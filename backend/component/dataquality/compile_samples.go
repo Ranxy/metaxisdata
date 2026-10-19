@@ -50,6 +50,12 @@ func CompileFailureRows(input CompileInput, limit int) (CompiledQuery, error) {
 		return sampleCrossColumn(input, limit)
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL:
 		return sampleCustomSQL(input, limit)
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK:
+		return sampleGroupCheck(input, limit)
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT:
+		// A drift sample is the comparison result itself, built by the executor: it
+		// is a list of columns and reasons, not rows of the target database.
+		return CompiledQuery{}, nil
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS:
@@ -437,4 +443,57 @@ func sampleCustomSQL(input CompileInput, limit int) (CompiledQuery, error) {
 	// the sample keeps whatever the user's SELECT returns.
 	return sampleQuery(input,
 		"SELECT * FROM ("+userSQL+") dq", nil, nil, limit), nil
+}
+
+// sampleGroupCheck selects the groups whose row count is outside the bounds,
+// largest first. The grouped statement is a derived table so the outer WHERE can
+// test the group size without repeating the aggregate in HAVING, which the
+// numbered dialects name differently (PostgreSQL rejects a select alias there).
+//
+// The filter sits inside the derived table, before the bounds in the SQL text, so
+// sampleArgs binds its arguments first — exactly the order the text presents.
+func sampleGroupCheck(input CompileInput, limit int) (CompiledQuery, error) {
+	config := input.Config.GetGroupCheck()
+	if config == nil {
+		return CompiledQuery{}, invalidConfig("the group-check config is missing")
+	}
+	columns, err := groupCheckColumns(input.Target, config.GetColumns())
+	if err != nil {
+		return CompiledQuery{}, err
+	}
+	minValue, maxValue, hasMin, hasMax, err := groupCheckBounds(config)
+	if err != nil {
+		return CompiledQuery{}, err
+	}
+	table, err := compileTable(input.Dialect, input.Target)
+	if err != nil {
+		return CompiledQuery{}, err
+	}
+	where, filterArgs, err := whereClause(input)
+	if err != nil {
+		return CompiledQuery{}, err
+	}
+
+	args := newSampleArgs(input.Dialect, filterArgs)
+	conditions := make([]string, 0, 2)
+	if hasMin {
+		conditions = append(conditions, "group_rows < "+args.add(minValue))
+	}
+	if hasMax {
+		conditions = append(conditions, "group_rows > "+args.add(maxValue))
+	}
+	groupList := qualifyColumns(input.Dialect, columns)
+	query := "SELECT " + groupList + ", group_rows FROM (SELECT " + groupList +
+		", COUNT(*) AS group_rows FROM " + table + where + " GROUP BY " + groupList +
+		") dq WHERE " + strings.Join(conditions, " OR ") +
+		" ORDER BY group_rows DESC, " + groupList + " " + input.Dialect.LimitClause(limit)
+	resultColumns := make([]string, 0, len(columns)+1)
+	resultColumns = append(resultColumns, columns...)
+	resultColumns = append(resultColumns, "group_rows")
+	return CompiledQuery{
+		SQL:     query,
+		Args:    args.values,
+		Kind:    QuerySample,
+		Columns: resultColumns,
+	}, nil
 }

@@ -156,6 +156,10 @@ func ValidateConfig(target ResolvedTarget, ruleType storepb.QualityRuleType, con
 		return validateFreshnessConfig(target, config.GetFreshness())
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL:
 		return validateCustomSQLConfig(target, config)
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT:
+		return validateSchemaDriftConfig(config)
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK:
+		return validateGroupCheckConfig(target, config)
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION:
 		// The message exists so the config shape does not change in v1.1, but this
 		// build has no evaluator and must not accept a rule it cannot run.
@@ -206,6 +210,11 @@ func validatePercentSupport(ruleType storepb.QualityRuleType, metric storepb.Qua
 	if ruleTypeAllowsPercent(ruleType) {
 		return nil
 	}
+	if ruleType == storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT {
+		// The drift snapshot is a set of expected columns, not a sample of rows; a
+		// percentage of a tiny fixed list is not a meaningful threshold.
+		return invalidConfig("schema_drift measures a count of drift items; threshold_metric PERCENT is not supported")
+	}
 	return invalidConfig("threshold_metric PERCENT is not supported by %s: it has no total-rows denominator", ruleType)
 }
 
@@ -223,7 +232,8 @@ func ruleTypeAllowsPercent(ruleType storepb.QualityRuleType) bool {
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN:
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK:
 		return true
 	default:
 		return false
@@ -858,4 +868,55 @@ func validateComparableColumn(target ResolvedTarget, name string) (ColumnInfo, e
 		return ColumnInfo{}, invalidConfig("column %q is %s; this rule needs a numeric or temporal column", column.Name, column.Kind)
 	}
 	return column, nil
+}
+
+// validateSchemaDriftConfig checks the snapshot a drift rule compares against: at
+// least one expected column, every entry with a non-empty unique name and a type,
+// and sane thresholds. PERCENT is refused earlier (the observation is a fixed
+// count of drift items); check_types, check_order and allow_extra_columns are
+// booleans with a fixed meaning, so they need no validation.
+func validateSchemaDriftConfig(config *storepb.QualityRuleConfig) error {
+	drift := config.GetSchemaDrift()
+	if drift == nil {
+		return invalidConfig("the schema-drift config is missing")
+	}
+	expected := drift.GetExpectedColumns()
+	if len(expected) == 0 {
+		return invalidConfig("a schema-drift rule needs at least one expected column")
+	}
+	seen := make(map[string]struct{}, len(expected))
+	for _, column := range expected {
+		if column == nil {
+			return invalidConfig("a schema-drift snapshot column is required")
+		}
+		name := strings.TrimSpace(column.GetName())
+		if name == "" {
+			return invalidConfig("every expected column needs a name")
+		}
+		if _, ok := seen[name]; ok {
+			return invalidConfig("expected column %q is named more than once", name)
+		}
+		seen[name] = struct{}{}
+		if strings.TrimSpace(column.GetType()) == "" {
+			return invalidConfig("expected column %q needs a type", name)
+		}
+	}
+	return validateCountThresholds(config, drift.FailThreshold, drift.WarnThreshold)
+}
+
+// validateGroupCheckConfig checks a grouped row-count rule: 1–5 existing group
+// columns with no repeats, at least one row bound with min ≤ max, and sane
+// thresholds in the configured unit.
+func validateGroupCheckConfig(target ResolvedTarget, config *storepb.QualityRuleConfig) error {
+	group := config.GetGroupCheck()
+	if group == nil {
+		return invalidConfig("the group-check config is missing")
+	}
+	if _, err := groupCheckColumns(target, group.GetColumns()); err != nil {
+		return err
+	}
+	if _, _, _, _, err := groupCheckBounds(group); err != nil {
+		return err
+	}
+	return validateCountThresholds(config, group.FailThreshold, group.WarnThreshold)
 }
