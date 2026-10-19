@@ -83,6 +83,27 @@ taking a build for a spin easy — published port, hardcoded development
 password — and is not meant for production. Details and caveats are in
 [docs/local-trial.md](docs/local-trial.md).
 
+## The demo platform
+
+A separate repository,
+[`metaxisdata_demo`](https://github.com/Ranxy/metaxisdata_demo), brings up a
+whole platform — MySQL, PostgreSQL and StarRocks instances, an Airflow pipeline
+that moves data between them, and Metaxisdata itself — with data and lineage
+already loaded:
+
+```bash
+git clone https://github.com/Ranxy/metaxisdata_demo
+cd metaxisdata_demo
+make up
+```
+
+It needs Docker with Compose v2, about 10 GB of free memory, 8 GB of disk, and
+ports 8083 (Metaxisdata) and 8080 (the Airflow UI) free. A first run takes 5–10
+minutes (it builds the Airflow image and pulls about 5 GB of images) and prints
+`== smoke: the demo is populated` when it is ready; Metaxisdata is then at
+<http://localhost:8083>. Sign-in credentials and a guided tour are in the
+demo's own [README](https://github.com/Ranxy/metaxisdata_demo/blob/main/README.md).
+
 ## Screenshots
 
 **Metadata browser** — the table list of a synced database, with row counts,

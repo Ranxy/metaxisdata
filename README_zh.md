@@ -51,6 +51,18 @@ make docker-down    # 停止两者；compose 的数据卷会保留
 
 打开 <http://localhost:8083> 并创建第一个账号。这个栈为「快速试一个构建产物」而生——端口对外发布、开发密码硬编码——并不是为生产环境准备的。细节与注意事项见 [docs/local-trial_zh.md](docs/local-trial_zh.md)。
 
+## 演示平台
+
+另一个仓库 [`metaxisdata_demo`](https://github.com/Ranxy/metaxisdata_demo) 可以拉起一整套平台——MySQL、PostgreSQL 与 StarRocks 实例、在它们之间搬运数据的 Airflow 管道，以及 Metaxisdata 本身——数据与血缘都已经灌好：
+
+```bash
+git clone https://github.com/Ranxy/metaxisdata_demo
+cd metaxisdata_demo
+make up
+```
+
+需要 Docker（含 Compose v2）、约 10GB 空闲内存、8GB 磁盘，以及 8083（Metaxisdata）与 8080（Airflow 界面）端口空闲。首次运行需要 5–10 分钟（需构建 Airflow 镜像、拉取约 5GB 镜像），就绪时会打印 `== smoke: the demo is populated`；之后 Metaxisdata 就运行在 <http://localhost:8083>。登录凭据与导览见演示仓库自带的 [中文 README](https://github.com/Ranxy/metaxisdata_demo/blob/main/README.zh.md)。
+
 ## 截图
 
 **元数据浏览** —— 一个已同步数据库的表清单，附带行数、大小、列数与索引。
