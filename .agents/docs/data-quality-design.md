@@ -54,6 +54,11 @@ backend/runner/qualityrunner ─┘
 | D-23 | run 的状态拆成两个：`status`（生命周期 PENDING/RUNNING/COMPLETED/ABANDONED）+ `outcome`（结果 rollup，NULL 表示未完成） | 手动执行异步后前端必须能区分“排队中/执行中/已完成”；原设计把两者挤在一个 QualityStatus 里，PENDING 无处表达。两列都落库，列表可按 outcome 过滤 |
 | D-24 | `target_schema_changed` 用 registry 的 **schema_hash** 口径（`ListMetaRegistrySchemaHashes`），创建/更新时写入的 `target_meta_hash` 也取同一口径 | 设计原写 `meta_hash`；两者混用会让规则的“结构已变”永远为真。路径快照仍用于展示 |
 | D-25 | 手动执行的规则集不进库：API 建 run 后把 `ruleIDs` 经进程内队列交给 runner（`EnqueueQualityRun(runID, ruleIDs)`）；定时 run 由扫描批次自带规则 | `quality_run` 表没有规则列表列；单副本 + 进程内队列是既有假设，不为此加表/列 |
+| D-26 | 设置读取语义：`data_quality` message 存在与否区分“未配置”和“显式 false”；`failure_sample_limit` 0 读作 20、`default_schedule_interval` 0 读作 1h、`daily_execution_limit` 0 读作 10000；`GetWorkspaceProfileSetting` 返回**生效值**而不落库默认值 | proto3 bool 无 presence，只有 message 存在性才能表达“关闭失败样本”；设置页读一个来源、写回显式值 |
+| D-27 | 通知：issue opened/recovered 按 **issue 资源名** 1 小时去重、收件人 owner→否则 admins；execution-failed 只发 admins 且不受静音；一次 run 失败规则数 >10 时抑制逐条 opened/execution-failed，改发一条 STORM_SUMMARY（按 run 去重） | 每问题 1 小时是需求口径；执行失败是运维信号，不能被 owner 静音或淹没 |
+| D-28 | 结果资源名的最后一段是 `quality_rule_result` 的**行 id**（该表无 resource_id 列）；`ExplainQualityResult` 按 name 里的 id 查询，store 补 `GetQualityRuleResult` | 不改表结构即可解释一条历史结果；列表用同一 id 拼资源名，前后端一致 |
+| D-29 | L2 解释先收集完整 JSON、解析后再一次性发 content（progress 一帧 + 终帧 metadata）；usage 写入缓存行与日志，不新增 proto 字段 | 结构化输出优先于逐 token 流；ExplainSQLMetadata 没有 usage 字段，不为一个统计改协议 |
+| D-30 | L1/L3 只产出 PENDING 建议：接受 LABEL 建议时落 `column_semantic_label`；接受 RULE_DRAFT 只改建议状态，规则由编辑器保存时才创建 | 保持“不自动建规则/不自动启用/不自动执行”的边界 |
 
 **包/文件地图**
 

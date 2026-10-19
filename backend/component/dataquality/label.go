@@ -355,9 +355,9 @@ func labelAcceptedValues(profile *storepb.ColumnProfile) []string {
 }
 
 // labelSystemPrompt renders the fixed system prompt. The database-derived data is
-// not part of it: this text describes the task, the closed enums and the output
-// contract only.
-func labelSystemPrompt(systemVersion string) string {
+// not part of it: this text describes the task, the closed enums, the output
+// contract and the language the prose must be written in.
+func labelSystemPrompt(systemVersion, languageName string) string {
 	semanticNames := make([]string, 0, len(labelSemanticTypes))
 	for _, semantic := range labelSemanticTypes {
 		semanticNames = append(semanticNames, labelSemanticTypeShortName(semantic))
@@ -376,6 +376,7 @@ rule_types must be a subset of the types mapped to the chosen semantic_type. You
 %s
 
 Rules:
+- Write every evidence entry and rationale in %s; keep column names, types and identifiers unchanged.
 - confidence is a number between 0 and 1.
 - evidence is at least one short factual reason: profile facts, the column name, its type, its comments, or lineage.
 - Use UNKNOWN when the evidence does not support a label.
@@ -386,6 +387,7 @@ Rules:
 Prompt version: %s`,
 		strings.Join(semanticNames, ", "),
 		strings.Join(labelRuleMappingLines(), "\n"),
+		languageName,
 		systemVersion)
 }
 
@@ -411,14 +413,17 @@ func labelRuleMappingLines() []string {
 // untrusted-data block that the system prompt says to treat as data only.
 //
 // systemVersion stamps the prompt version; empty means LabelPromptVersion.
-func BuildLabelPrompt(systemVersion string, target ResolvedTarget, profiles map[string]*storepb.ColumnProfile, lineage []string, existingLabels map[string]storepb.QualitySemanticType, columns []string) (string, string) {
+// language selects the language the evidence and rationale must be written in;
+// NormalizePromptLanguage accepts "", "zh", "zh-CN", "en", "en-US" and maps
+// anything else to English.
+func BuildLabelPrompt(systemVersion, language string, target ResolvedTarget, profiles map[string]*storepb.ColumnProfile, lineage []string, existingLabels map[string]storepb.QualitySemanticType, columns []string) (string, string) {
 	version := strings.TrimSpace(systemVersion)
 	if version == "" {
 		version = LabelPromptVersion
 	}
 	selected := labelSelectedColumns(profiles, columns)
 
-	systemPrompt := labelSystemPrompt(version)
+	systemPrompt := labelSystemPrompt(version, promptLanguageName(language))
 	userPrompt := labelUserPrompt(target, profiles, lineage, existingLabels, selected)
 	return systemPrompt, userPrompt
 }
