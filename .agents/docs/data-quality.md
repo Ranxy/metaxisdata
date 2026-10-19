@@ -63,7 +63,7 @@ Metaxisdata 今天能回答“**数据长什么样**”（schema 同步、元数
 
 | 不做 | 理由 |
 | --- | --- |
-| 内嵌 Great Expectations / Soda / dbt 运行时 | 全是 Python/dbt 生态；本产品是单 Go 二进制，规则模型必须原生实现 |
+| 内嵌 Great Expectations / Soda / dbt 的 Python 运行时（含 WASM 兼容） | 全是 Python/dbt 生态；本产品是单 Go 二进制，规则模型必须原生实现。GX 的自定义 Expectation 是 Python 类，Soda 的自定义 check 主要是 SQL，但两者的运行时依赖（pandas、SQLAlchemy、psycopg 等）无法在 WASI 沙箱里跑；Pyodide 需要 JS 宿主。详见 §4.9 |
 | 用户自定义 Python / 任意代码执行 | 安全与可移植性不可接受 |
 | 自动修复数据、写回源库、自动改阈值 | 高风险；本产品是治理平台，不是 ETL |
 | ML / 无监督异常检测、季节基线、分布漂移 | 需要 4–8 周历史；误报高、解释难；v1 用固定阈值 + 相对上次成功执行覆盖主场景 |
@@ -220,7 +220,7 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 | R12 | `freshness` | timeliness | 时间列、`max_lag_seconds`（warn/fail） | `now − MAX(ts)` | 全方言；`MAX(ts)` 为 NULL → `NOT_EVALUATED` |
 | R13 | `custom_sql` | any | 单条只读 SQL（≤8 KiB，必须 `SELECT`/`WITH`）；`max_failed_rows` | SQL 返回“失败行”；行数 > 阈值即失败 | 只读、单语句、超时、结果上限；SQL 由人编写 |
 
-**明确不做**：分组检查（`GROUP BY` + 每组阈值）v1.1；跨表记录级对账 v1.1；schema 漂移 v1.1（schema 同步已提供 diff，DQ 只补“规则化告警”）；分布漂移/统计异常 later；`aggregate`（sum/avg/stddev/percentile）v1.1（可先用 `custom_sql` 覆盖）。
+**明确不做**：分组检查（`GROUP BY` + 每组阈值）v1.1；跨表记录级对账 v1.1；schema 漂移 v1.1（schema 同步已提供 diff，DQ 只补“规则化告警”）；分布漂移/统计异常 later；`aggregate`（sum/avg/stddev/percentile）v1.1（可先用 `custom_sql` 覆盖）。自定义检查的扩展路线（CEL / WASM / Python 兼容）见 §4.9。
 
 **每类规则的验收**：给定固定 fixture schema，编译出的 SQL 在每种支持方言上可执行且结果正确；参数非法在创建/更新/干跑阶段返回 `InvalidArgument`，不得进入执行队列。
 
@@ -380,6 +380,39 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 | `profile_retention_days` | 7 | 字段画像缓存保留天数 |
 
 设置写入复用 `SettingService` 的 workspace setting（`settings.get/update` 权限）；若独立页面需要独立权限，再新增 `dataQuality.settings.*`（见 §13 待确认）。
+
+### 4.9 扩展性：自定义检查与 Python / WASM 的边界
+
+**外部产品怎么做**（事实）：
+
+| 产品 | 扩展方式 | 是否在平台内执行用户 Python |
+| --- | --- | --- |
+| Great Expectations | 自定义 Expectation = Python 类，在 Python 进程内校验 | 是（这正是它的扩展模型） |
+| Soda Core | Python 库 + SodaCL；用户自定义 check / custom metric 主要写 SQL | 典型用法否；库层面可用 Python 扩展 |
+| dbt | generic / singular test 是 SQL/Jinja；Python 模型用于转换，不用于测试 | 否（测试本身是 SQL） |
+| Deequ | 自定义 Analyzer 是 Scala/Java，跑在 Spark/JVM | 否 |
+| Monte Carlo / Anomalo / Bigeye | 自定义 SQL monitor / 规则，平台托管执行 | 否（多租户平台不开放任意代码） |
+
+结论：**“用 Python 脚本做质量判断”是 Python 原生库（GX / pandera / dbt）的属性，不是 DQ 平台的通用能力**。SaaS 厂商为了多租户安全，通常只开放 SQL/配置。Metaxisdata 是单 Go 二进制、自托管部署，应走“声明式规则 + SQL”的路线。
+
+**演进路线（按引入成本排序）**：
+
+| 阶段 | 能力 | 代价与边界 |
+| --- | --- | --- |
+| v1 | 13 类声明式规则 + `custom_sql`（失败行语义） | 无新运行时；SQL 由人写、只读、单语句、超时/结果上限 |
+| v1.1 | CEL 表达式检查（列/行谓词，如 `amount >= 0 && amount <= 100000`） | **仓库已有 `cel-go` 依赖**（`backend/api/v1/filter.go` 在用），无新运行时；只做内存表达式，不做任意代码 |
+| later（可选） | WASM 自定义检查插件：Rust/Go/TinyGo 编译为 wasm，`wazero`（纯 Go、无 CGO）在进程内沙箱执行 | 需定义 ABI/版本、能力白名单（只读查询 host import、禁网络/文件）、内存/超时限制、来源可信；**不承诺 Python 兼容** |
+| later（若确有需求） | GX/Soda/dbt 定义导入：YAML/规则文件 → 原生规则 AST（**定义级兼容，不执行其运行时**） | 解析与语义映射工作量大；建议先做常见子集 |
+| 不推荐 | 进程内嵌 Python（WASM 或 CGO） | 见下 |
+
+**为什么 WASM 不能“兼容 GX/Soda 的 Python 脚本”**：
+
+- **Pyodide 依赖 JS 宿主**：它是 CPython 经 Emscripten 编译、在浏览器/Node 里运行的发行版；嵌进 Go 服务端还要带 JS 引擎/Node，单二进制部署模型被破坏。
+- **CPython WASI 仍然受限**：共享扩展模块未实现、无进程/线程、缺 `ssl`/`ctypes` 等 stdlib、堆/栈有限；而 GX/Soda 的核心依赖（pandas、numpy、pyarrow、SQLAlchemy、psycopg）都是 C 扩展/网络/文件系统重度依赖，无法在 WASI 沙箱内直接运行。
+- **安全与治理成本**：执行客户 Python 等于开放代码执行面——供应链、资源耗尽、数据外带、宿主能力越权都要单独治理，不是“加一个 wasm 运行时”能解决的。
+- 因此：**近期不做 Python/WASM 兼容**；把“兼容”降级为“定义可导入”，把“扩展”放在受控的 CEL / WASM 插件上。
+
+**若未来做 WASM 插件，必须写进需求的边界**：沙箱能力白名单（只读查询、日志、元数据；禁网络/文件/环境变量）、内存/CPU/超时上限、ABI 版本与签名、错误映射、审计与来源记录、全局关闭开关；不得借此执行任意 Python 或绕过只读数据源。
 
 ## 5. 信息架构与交互
 
@@ -644,7 +677,7 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 - 确定性画像引擎 + `column_profile`；语义标注存储与人工确认；L3 标注 + 模板映射 + 建议队列；画像/建议 UI（资产页入口、建议队列、列标注）；隐私开关与成本上限；golden set 评测。
 - 验收：画像数值与独立 SQL 对账一致（fixture）；采样/截断可见；`unknown` 不硬套规则；阈值不取当前观察值；标注冲突人工优先；建议不自动落库；关闭出域开关后不发送原始样本。
 
-**M4（更后）**：schema 漂移、分组检查、聚合指标、跨库对账、统计基线、webhook、邮件、规则模板/复制、资产级静音、问题批量处置、MCP/CLI、质量分、分布漂移、LLM-as-judge。
+**M4（更后）**：schema 漂移、分组检查、聚合指标、跨库对账、统计基线、webhook、邮件、规则模板/复制、资产级静音、问题批量处置、MCP/CLI、质量分、分布漂移、LLM-as-judge；以及扩展性研究——CEL 表达式检查、WASM 插件 ABI、GX/Soda 定义导入（均不属于 v1）。
 
 **全局验收门禁**：`gofmt` + `golangci-lint` + 相关 `go test`；`buf format/lint/generate`；前端 `biome:check`、`lint`、`i18n`、`type-check`、`test run`、`audit:ui`；迁移链一致性测试；权限目录/ACL 守卫测试；通知 key 测试。
 
@@ -671,6 +704,7 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 | D17 | 字段分析触发 | 按表/按需 + 建议队列批量；最多 50 列/次 | 全库定时爬取：覆盖全但成本/噪音/PII 风险高 |
 | D18 | 语义标注的存储 | 独立表（GUID+列名），人工确认后生效；人工优先 | 写进 schema 同步元数据：会被下次同步覆盖 |
 | D19 | LLM 建议的落地方式 | 只进“建议队列”，人工接受后成为规则草稿 | 自动建规则/自动启用：治理风险不可接受 |
+| D20 | 自定义检查的扩展 | v1/v1.1 不做 Python；扩展走 `custom_sql` → CEL → 受控 WASM 插件；兼容走定义导入 | 进程内嵌 Python：破坏单二进制与安全边界，且 GX/Soda 依赖无法在 WASI 跑通 |
 
 ## 14. 风险清单
 
@@ -692,6 +726,7 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 | 14 | 样本值含 PII 出域/落库 | 合规 | 默认聚合+脱敏；样本开关默认关闭；debug 提示；按列屏蔽 |
 | 15 | 语义标注错误导致规则建错 | 噪音/漏检 | 封闭枚举 + 证据 + 人工确认 + golden set 抽检；标注可改 |
 | 16 | 建议泛滥 | 用户不看、治理失效 | 优先级 + 置信度门槛 + 每表建议数上限 + 拒绝原因回收 |
+| 17 | 追求 Python/WASM 兼容拖垮架构 | 部署、安全与维护成本 | 明确非目标；先 `custom_sql`/CEL；WASM 只做受控插件；兼容只做定义导入 |
 
 ## 15. 依赖与影响面（实现时逐项核对）
 
@@ -706,6 +741,7 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 | i18n | 两个 locale、glossary 新分类与词条、scope 扩展、动态 key 注册 |
 | 文档 | 实现后把本文件改写为维护参考并加入 README；更新 [frontend-ui.md](frontend-ui.md)（第 6 导航）、[notifications.md](notifications.md)（新类型）、[iam-and-permissions.md](iam-and-permissions.md)（权限目录）、[runner.md](runner.md)（第 5 执行器）、根 [AGENTS.md](../../AGENTS.md) 的产品面与路由列表；`docs/` 增操作文档 |
 | 测试 | 规则编译 golden（各方言）、执行器调度/超时/隔离、store 作用域与唯一约束、通知迁移/去重、权限矩阵、LLM 校验链、前端 helper 单测、集成（MySQL/PG/MSSQL fixture + 只读账号）、布局审计 |
+| 扩展性（later） | `cel-go`（已有依赖）做表达式检查；`wazero` 做受控 WASM 插件；明确**不引入 Python 运行时** |
 
 ## 16. 开放问题（需要产品/安全评审逐条拍板）
 
@@ -720,3 +756,4 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 9. 字段分析的范围：只分析“未标注”列，还是包含已标注列的复核？建议前者 + 手动复核。
 10. 语义标签集合是否允许用户自定义（会破坏“封闭枚举 → 固定模板”的可解释性）？建议 v1 固定，扩展走产品版本。
 11. 原始样本出域是否作为企业级开关（整个工作区）还是列级开关？建议工作区开关 + 列级屏蔽。
+12. 是否有真实客户要求“直接复用 GX/Soda/dbt 的 Python 检查或 YAML 定义”？若有，优先级是定义导入，还是允许外挂一个独立的 Python runner（不嵌入单二进制）？
