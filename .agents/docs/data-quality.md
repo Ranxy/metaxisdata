@@ -1,6 +1,6 @@
 # 数据质量（Data Quality）— 需求与方案
 
-> 状态：**需求稿，未实现**。本文件描述待建子系统，不是已交付行为；落地后应改写成维护参考，并在 [README.md](README.md) 的索引表里加一行——现在不加。
+> 状态：**需求稿，未实现**。本文件描述待建子系统，不是已交付行为；实现设计见 [data-quality-design.md](data-quality-design.md)。落地后两份合并/改写为维护参考，并在 [README.md](README.md) 的索引表里加一行——现在不加。
 > 关联：[runner.md](runner.md)（后台执行器契约、单副本假设）、[notifications.md](notifications.md)（站内信、结构化 detail、去重与收件人）、[iam-and-permissions.md](iam-and-permissions.md)（权限目录、预定义角色、RPC 注解）、[rate-limiting.md](rate-limiting.md)（请求预算）、[object-ddl-storage.md](object-ddl-storage.md)（DDL 读取路径）、[lineage-analyzer.md](lineage-analyzer.md) / [lineage-semantics.md](lineage-semantics.md)（血缘，用于影响面与根因）、[frontend-ui.md](frontend-ui.md)（骨架、设置 section、页面宽度与布局门禁）、[i18n-glossary.md](i18n-glossary.md)（术语与文案门禁）；LLM 侧见 `backend/component/llm/`、`backend/api/v1/explain_sql_service.go`；刻意决策见 [security-posture.md](../../docs/security-posture.md)。
 
 ## 0. 结论
@@ -555,7 +555,7 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 | `UpdateQualityRule` | 更新（产生 revision） | `rules.update` | 是 |
 | `DeleteQualityRule` | 软删除 | `rules.delete` | 是 |
 | `PreviewQualityRule` | 干跑：编译 SQL + `LIMIT 0` 探测 | `rules.run` | 否 |
-| `RunQualityRules` | 手动触发（按规则列表/表/实例）→ 返回 execution | `rules.run` | 是 |
+| `RunQualityRules` | 手动触发（按规则列表/表/实例），按实例分组 → 返回多个 execution | `rules.run` | 是 |
 | `ListQualityRuns` | 分页、按时间/状态/触发方式/目标筛选 | `runs.list` | 否 |
 | `GetQualityRun` | 执行详情 + 结果列表（可内联或分页） | `runs.get` | 否 |
 | `ListQualityRuleResults` | 按规则/状态/时间查结果 | `runs.list` | 否 |
@@ -569,6 +569,8 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 | `ListQualitySuggestions` | 待审建议列表（规则草稿/字段分析） | `suggest` | 否 |
 | `UpdateQualitySuggestion` | 接受/拒绝建议 | `suggest` | 是 |
 | `UpdateColumnLabel` | 确认/修改/清除语义标注 | `labels.update` | 是 |
+| `ListColumnProfiles` | 按表/列读取已有画像（不重新执行） | `rules.list` | 否 |
+| `ListColumnLabels` | 按表/列读取语义标注 | `rules.list` | 否 |
 
 要求：
 
