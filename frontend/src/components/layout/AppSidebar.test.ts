@@ -30,6 +30,8 @@ const PERMISSIONS = [
   "metaxisdata.llm.profiles.list",
   "metaxisdata.applications.list",
   "metaxisdata.applicationSqls.list",
+  "metaxisdata.dataQuality.rules.list",
+  "metaxisdata.dataQuality.runs.list",
 ];
 
 // The member baseline, as backend/store/predefined_roles.go defines it: read-only, and it
@@ -43,6 +45,15 @@ const MEMBER_PERMISSIONS = [
   "metaxisdata.openlineage.read",
   "metaxisdata.applications.get",
   "metaxisdata.applications.list",
+  // Quality evidence is part of the baseline, like OpenLineage reads: the
+  // section must be reachable by a member even though writing rules is not.
+  "metaxisdata.dataQuality.rules.get",
+  "metaxisdata.dataQuality.rules.list",
+  "metaxisdata.dataQuality.runs.get",
+  "metaxisdata.dataQuality.runs.list",
+  "metaxisdata.dataQuality.issues.get",
+  "metaxisdata.dataQuality.issues.list",
+  "metaxisdata.dataQuality.explain",
 ];
 
 // A caller with no permission at all: every section that gates an entry is hidden.
@@ -98,10 +109,12 @@ describe("AppSidebar", () => {
 
     expect(wrapper.text()).toContain("Data");
     expect(wrapper.text()).toContain("OpenLineage");
+    expect(wrapper.text()).toContain("Data Quality");
     expect(wrapper.text()).toContain("Settings");
     // Section children stay hidden until the section or a route opens them.
     expect(wrapper.text()).not.toContain("Metadata Browser");
     expect(wrapper.text()).not.toContain("Audit Logs");
+    expect(wrapper.text()).not.toContain("Quality Rules");
   });
 
   it("collapses a section, hides its entries and remembers the choice", async () => {
@@ -180,6 +193,37 @@ describe("AppSidebar", () => {
     const { wrapper } = await mountSidebar();
 
     expect(wrapper.text()).not.toContain("Settings");
+  });
+
+  it("shows the quality section to a member, whose baseline carries its reads", async () => {
+    useAuthStore().user = create(UserSchema, {
+      permissions: MEMBER_PERMISSIONS,
+    });
+    const { wrapper } = await mountSidebar();
+
+    expect(wrapper.text()).toContain("Data Quality");
+  });
+
+  it("hides the quality section from a caller without its permissions", async () => {
+    useAuthStore().user = create(UserSchema, {
+      permissions: NO_PERMISSIONS,
+    });
+    const { wrapper } = await mountSidebar();
+
+    expect(wrapper.text()).not.toContain("Data Quality");
+  });
+
+  // A custom role may hold only runs: the group must still appear, because the
+  // runs page is the only way to read quality evidence.
+  it("keeps the quality group when only one of its entries is allowed", async () => {
+    useAuthStore().user = create(UserSchema, {
+      permissions: ["metaxisdata.dataQuality.runs.list"],
+    });
+    const { wrapper } = await mountSidebar();
+    await sectionTrigger(wrapper, "Data Quality").trigger("click");
+
+    expect(wrapper.text()).toContain("Quality Runs");
+    expect(wrapper.text()).not.toContain("Quality Rules");
   });
 
   it("dismisses the mobile drawer after navigating", async () => {

@@ -20,10 +20,11 @@ interface AppState {
 
 const STORAGE_KEY = "metaxisdata-app-state";
 
-// Collapsible sections start closed so a fresh workspace shows five sidebar
-// rows instead of thirteen. AppSidebar reopens the section that owns the active
-// route, so landing on a page never hides where the user is.
-const DEFAULT_COLLAPSED_SECTIONS = ["datasource", "openlineage"];
+// Collapsible sections start closed so a fresh workspace shows the top-level
+// destinations instead of every section's children. AppSidebar reopens the
+// section that owns the active route, so landing on a page never hides where
+// the user is.
+const DEFAULT_COLLAPSED_SECTIONS = ["datasource", "openlineage", "dataQuality"];
 
 function loadState(): Partial<AppState> {
   try {

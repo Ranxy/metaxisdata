@@ -180,18 +180,21 @@
 <script setup lang="ts">
 import { useMediaQuery } from "@vueuse/core";
 import {
+  Activity,
   ChevronRight,
   Database,
   FileCode2,
   Files,
   Home,
   LayoutDashboard,
+  ListChecks,
   Network,
   PanelLeftClose,
   PanelLeftOpen,
   ScrollText,
   Server,
   Settings,
+  ShieldCheck,
   Sparkles,
   Table2,
   X,
@@ -343,6 +346,32 @@ function buildMenuItems(): MenuItem[] {
           path: "/openlineage/events",
           icon: Files,
           permission: "metaxisdata.openlineage.read",
+        },
+      ],
+    },
+    {
+      // Quality watches the data rather than the registry's record of it, so it
+      // sits beside the metadata destinations rather than under Data. The group
+      // appears when any of its entries does; a member's baseline holds the two
+      // reads, so it is not an administrator-only section.
+      key: "dataQuality",
+      label: t("menu.dataQuality"),
+      path: "#",
+      icon: ShieldCheck,
+      children: [
+        {
+          key: "dataQualityRules",
+          label: t("menu.dataQualityRules"),
+          path: "/data-quality/rules",
+          icon: ListChecks,
+          permission: "metaxisdata.dataQuality.rules.list",
+        },
+        {
+          key: "dataQualityRuns",
+          label: t("menu.dataQualityRuns"),
+          path: "/data-quality/runs",
+          icon: Activity,
+          permission: "metaxisdata.dataQuality.runs.list",
         },
       ],
     },
