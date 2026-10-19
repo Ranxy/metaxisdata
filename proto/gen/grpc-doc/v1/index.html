@@ -1005,6 +1005,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.AggregateConfig"><span class="badge">M</span>AggregateConfig</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.CelExpressionConfig"><span class="badge">M</span>CelExpressionConfig</a>
                 </li>
               
@@ -1030,6 +1034,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.CrossColumnConfig"><span class="badge">M</span>CrossColumnConfig</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.CrossTableConfig"><span class="badge">M</span>CrossTableConfig</a>
                 </li>
               
                 <li>
@@ -1307,6 +1315,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.ColumnLabelAction"><span class="badge">E</span>ColumnLabelAction</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityAggregateFunction"><span class="badge">E</span>QualityAggregateFunction</a>
                 </li>
               
                 <li>
@@ -11887,6 +11899,80 @@ methods.</p></td>
 
         
       
+        <h3 id="metaxisdata.v1.AggregateConfig">AggregateConfig</h3>
+        <p>AggregateConfig bounds the value one aggregate over one column produces.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>column</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>function</td>
+                  <td><a href="#metaxisdata.v1.QualityAggregateFunction">QualityAggregateFunction</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>percentile</td>
+                  <td><a href="#double">double</a></td>
+                  <td>optional</td>
+                  <td><p>The percentile, 0-100, for QUALITY_AGGREGATE_FUNCTION_PERCENTILE. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>min</td>
+                  <td><a href="#double">double</a></td>
+                  <td>optional</td>
+                  <td><p>At least one fail bound is required; warn bounds are optional and must sit
+inside the fail range. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>max</td>
+                  <td><a href="#double">double</a></td>
+                  <td>optional</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>warn_min</td>
+                  <td><a href="#double">double</a></td>
+                  <td>optional</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>warn_max</td>
+                  <td><a href="#double">double</a></td>
+                  <td>optional</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>inclusive</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether the bounds are inclusive. Default false, i.e. open on both ends. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.CelExpressionConfig">CelExpressionConfig</h3>
         <p>CelExpressionConfig evaluates an expression over a sample of rows in Go. It is</p><p>v1.1; the message exists so that the config shape does not change then.</p>
 
@@ -12315,6 +12401,66 @@ Only meaningful for numeric columns. </p></td>
                   <td><a href="#double">double</a></td>
                   <td>optional</td>
                   <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.CrossTableConfig">CrossTableConfig</h3>
+        <p>CrossTableConfig reconciles one aggregate of the rule's table with one</p><p>aggregate of another table in the same instance and database.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>right_table</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The other table as &#34;schema.table&#34; (PostgreSQL/MSSQL) or &#34;database.table&#34; /
+&#34;table&#34; (MySQL family); it must live in the rule target&#39;s database. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>left_function</td>
+                  <td><a href="#metaxisdata.v1.QualityAggregateFunction">QualityAggregateFunction</a></td>
+                  <td></td>
+                  <td><p>The left (target) aggregate; COUNT ignores left_column. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>left_column</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>right_function</td>
+                  <td><a href="#metaxisdata.v1.QualityAggregateFunction">QualityAggregateFunction</a></td>
+                  <td></td>
+                  <td><p>The right (reference) aggregate; COUNT ignores right_column. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>right_column</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tolerance</td>
+                  <td><a href="#double">double</a></td>
+                  <td>optional</td>
+                  <td><p>The absolute difference tolerated, before the fail/warn thresholds apply. </p></td>
                 </tr>
               
             </tbody>
@@ -13482,6 +13628,14 @@ this to retrieve the subsequent page. </p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>null_values</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>Values that also count as missing, besides SQL NULL. Encoded as strings and
+converted with the column&#39;s type; at most 20. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -14192,6 +14346,20 @@ and results are still recorded. </p></td>
                 <tr>
                   <td>group_check</td>
                   <td><a href="#metaxisdata.v1.GroupCheckConfig">GroupCheckConfig</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>aggregate</td>
+                  <td><a href="#metaxisdata.v1.AggregateConfig">AggregateConfig</a></td>
+                  <td></td>
+                  <td><p>v1.1 second batch: aggregates and cross-table reconciliation. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>cross_table</td>
+                  <td><a href="#metaxisdata.v1.CrossTableConfig">CrossTableConfig</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
@@ -15964,6 +16132,65 @@ decision is final. </p></td>
           </tbody>
         </table>
       
+        <h3 id="metaxisdata.v1.QualityAggregateFunction">QualityAggregateFunction</h3>
+        <p>QualityAggregateFunction is the aggregate an aggregate or reconciliation rule</p><p>computes. COUNT is only meaningful for a cross-table reconciliation, and</p><p>PERCENTILE only for an aggregate rule.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_AGGREGATE_FUNCTION_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGGREGATE_FUNCTION_COUNT</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGGREGATE_FUNCTION_SUM</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGGREGATE_FUNCTION_AVG</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGGREGATE_FUNCTION_MIN</td>
+                <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGGREGATE_FUNCTION_MAX</td>
+                <td>5</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGGREGATE_FUNCTION_STDDEV</td>
+                <td>6</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGGREGATE_FUNCTION_PERCENTILE</td>
+                <td>7</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
         <h3 id="metaxisdata.v1.QualityComparison">QualityComparison</h3>
         <p>QualityComparison is how the observed value is compared with a threshold.</p>
         <table class="enum-table">
@@ -16564,6 +16791,19 @@ saved. It reads metadata only and never queries the target database.</p></td>
                 <td>QUALITY_RULE_TYPE_GROUP_CHECK</td>
                 <td>16</td>
                 <td><p>v1.1: groups rows and bounds each group&#39;s row count.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_RULE_TYPE_AGGREGATE</td>
+                <td>17</td>
+                <td><p>v1.1: aggregates one column and bounds the value.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_RULE_TYPE_CROSS_TABLE</td>
+                <td>18</td>
+                <td><p>v1.1: reconciles one aggregate of this table with one of another table in
+the same instance and database.</p></td>
               </tr>
             
           </tbody>

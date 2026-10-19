@@ -218,6 +218,7 @@
   
 - [v1/data_quality_service.proto](#v1_data_quality_service-proto)
     - [AcceptedValuesConfig](#metaxisdata-v1-AcceptedValuesConfig)
+    - [AggregateConfig](#metaxisdata-v1-AggregateConfig)
     - [CelExpressionConfig](#metaxisdata-v1-CelExpressionConfig)
     - [ColumnProfile](#metaxisdata-v1-ColumnProfile)
     - [ColumnProfileStats](#metaxisdata-v1-ColumnProfileStats)
@@ -225,6 +226,7 @@
     - [ColumnValue](#metaxisdata-v1-ColumnValue)
     - [CreateQualityRuleRequest](#metaxisdata-v1-CreateQualityRuleRequest)
     - [CrossColumnConfig](#metaxisdata-v1-CrossColumnConfig)
+    - [CrossTableConfig](#metaxisdata-v1-CrossTableConfig)
     - [CustomSQLConfig](#metaxisdata-v1-CustomSQLConfig)
     - [DeleteQualityRuleRequest](#metaxisdata-v1-DeleteQualityRuleRequest)
     - [ExplainQualityResultRequest](#metaxisdata-v1-ExplainQualityResultRequest)
@@ -295,6 +297,7 @@
     - [UpdateQualitySuggestionRequest](#metaxisdata-v1-UpdateQualitySuggestionRequest)
   
     - [ColumnLabelAction](#metaxisdata-v1-ColumnLabelAction)
+    - [QualityAggregateFunction](#metaxisdata-v1-QualityAggregateFunction)
     - [QualityComparison](#metaxisdata-v1-QualityComparison)
     - [QualityComparisonOperator](#metaxisdata-v1-QualityComparisonOperator)
     - [QualityDimension](#metaxisdata-v1-QualityDimension)
@@ -3964,6 +3967,28 @@ AcceptedValuesConfig counts rows whose column value is outside a fixed set.
 
 
 
+<a name="metaxisdata-v1-AggregateConfig"></a>
+
+### AggregateConfig
+AggregateConfig bounds the value one aggregate over one column produces.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| column | [string](#string) |  |  |
+| function | [QualityAggregateFunction](#metaxisdata-v1-QualityAggregateFunction) |  |  |
+| percentile | [double](#double) | optional | The percentile, 0-100, for QUALITY_AGGREGATE_FUNCTION_PERCENTILE. |
+| min | [double](#double) | optional | At least one fail bound is required; warn bounds are optional and must sit inside the fail range. |
+| max | [double](#double) | optional |  |
+| warn_min | [double](#double) | optional |  |
+| warn_max | [double](#double) | optional |  |
+| inclusive | [bool](#bool) |  | Whether the bounds are inclusive. Default false, i.e. open on both ends. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-CelExpressionConfig"></a>
 
 ### CelExpressionConfig
@@ -4107,6 +4132,27 @@ the comparison.
 | tolerance | [double](#double) | optional | Tolerance subtracted/added to the comparison to absorb floating point noise. Only meaningful for numeric columns. |
 | fail_threshold | [double](#double) | optional |  |
 | warn_threshold | [double](#double) | optional |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-CrossTableConfig"></a>
+
+### CrossTableConfig
+CrossTableConfig reconciles one aggregate of the rule&#39;s table with one
+aggregate of another table in the same instance and database.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| right_table | [string](#string) |  | The other table as &#34;schema.table&#34; (PostgreSQL/MSSQL) or &#34;database.table&#34; / &#34;table&#34; (MySQL family); it must live in the rule target&#39;s database. |
+| left_function | [QualityAggregateFunction](#metaxisdata-v1-QualityAggregateFunction) |  | The left (target) aggregate; COUNT ignores left_column. |
+| left_column | [string](#string) |  |  |
+| right_function | [QualityAggregateFunction](#metaxisdata-v1-QualityAggregateFunction) |  | The right (reference) aggregate; COUNT ignores right_column. |
+| right_column | [string](#string) |  |  |
+| tolerance | [double](#double) | optional | The absolute difference tolerated, before the fail/warn thresholds apply. |
 
 
 
@@ -4564,6 +4610,7 @@ optional and must not exceed the fail threshold.
 | warn_null_count | [int64](#int64) | optional |  |
 | max_null_pct | [double](#double) | optional |  |
 | warn_null_pct | [double](#double) | optional |  |
+| null_values | [string](#string) | repeated | Values that also count as missing, besides SQL NULL. Encoded as strings and converted with the column&#39;s type; at most 20. |
 
 
 
@@ -4799,6 +4846,8 @@ behavior and the count/percent metric are shared by every type.
 | cel_expression | [CelExpressionConfig](#metaxisdata-v1-CelExpressionConfig) |  | v1.1. |
 | schema_drift | [SchemaDriftConfig](#metaxisdata-v1-SchemaDriftConfig) |  | v1.1 first batch: metadata drift and grouped row-count bounds. |
 | group_check | [GroupCheckConfig](#metaxisdata-v1-GroupCheckConfig) |  |  |
+| aggregate | [AggregateConfig](#metaxisdata-v1-AggregateConfig) |  | v1.1 second batch: aggregates and cross-table reconciliation. |
+| cross_table | [CrossTableConfig](#metaxisdata-v1-CrossTableConfig) |  |  |
 | threshold_metric | [QualityThresholdMetric](#metaxisdata-v1-QualityThresholdMetric) |  |  |
 | filter | [QualityFilter](#metaxisdata-v1-QualityFilter) |  |  |
 | on_empty | [QualityEmptyBehavior](#metaxisdata-v1-QualityEmptyBehavior) |  |  |
@@ -5454,6 +5503,26 @@ ColumnLabelAction is what UpdateColumnLabel does with one column&#39;s label.
 
 
 
+<a name="metaxisdata-v1-QualityAggregateFunction"></a>
+
+### QualityAggregateFunction
+QualityAggregateFunction is the aggregate an aggregate or reconciliation rule
+computes. COUNT is only meaningful for a cross-table reconciliation, and
+PERCENTILE only for an aggregate rule.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGGREGATE_FUNCTION_UNSPECIFIED | 0 |  |
+| QUALITY_AGGREGATE_FUNCTION_COUNT | 1 |  |
+| QUALITY_AGGREGATE_FUNCTION_SUM | 2 |  |
+| QUALITY_AGGREGATE_FUNCTION_AVG | 3 |  |
+| QUALITY_AGGREGATE_FUNCTION_MIN | 4 |  |
+| QUALITY_AGGREGATE_FUNCTION_MAX | 5 |  |
+| QUALITY_AGGREGATE_FUNCTION_STDDEV | 6 |  |
+| QUALITY_AGGREGATE_FUNCTION_PERCENTILE | 7 |  |
+
+
+
 <a name="metaxisdata-v1-QualityComparison"></a>
 
 ### QualityComparison
@@ -5657,6 +5726,8 @@ rule: changing the type is a different rule and a new revision.
 | QUALITY_RULE_TYPE_CEL_EXPRESSION | 14 | v1.1. The value is reserved so that the v1 and store enum definitions stay value-compatible; this API never accepts it yet. |
 | QUALITY_RULE_TYPE_SCHEMA_DRIFT | 15 | v1.1: compares the live column list with a snapshot taken when the rule was saved. It reads metadata only and never queries the target database. |
 | QUALITY_RULE_TYPE_GROUP_CHECK | 16 | v1.1: groups rows and bounds each group&#39;s row count. |
+| QUALITY_RULE_TYPE_AGGREGATE | 17 | v1.1: aggregates one column and bounds the value. |
+| QUALITY_RULE_TYPE_CROSS_TABLE | 18 | v1.1: reconciles one aggregate of this table with one of another table in the same instance and database. |
 
 
 

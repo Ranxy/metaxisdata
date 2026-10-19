@@ -339,6 +339,20 @@ export declare type QualityRuleConfig = Message<"metaxisdata.v1.QualityRuleConfi
      */
     value: GroupCheckConfig;
     case: "groupCheck";
+  } | {
+    /**
+     * v1.1 second batch: aggregates and cross-table reconciliation.
+     *
+     * @generated from field: metaxisdata.v1.AggregateConfig aggregate = 17;
+     */
+    value: AggregateConfig;
+    case: "aggregate";
+  } | {
+    /**
+     * @generated from field: metaxisdata.v1.CrossTableConfig cross_table = 18;
+     */
+    value: CrossTableConfig;
+    case: "crossTable";
   } | { case: undefined; value?: undefined };
 
   /**
@@ -470,6 +484,14 @@ export declare type NullPercentConfig = Message<"metaxisdata.v1.NullPercentConfi
    * @generated from field: optional double warn_null_pct = 5;
    */
   warnNullPct?: number;
+
+  /**
+   * Values that also count as missing, besides SQL NULL. Encoded as strings and
+   * converted with the column's type; at most 20.
+   *
+   * @generated from field: repeated string null_values = 6;
+   */
+  nullValues: string[];
 };
 
 /**
@@ -1041,6 +1063,119 @@ export declare type GroupCheckConfig = Message<"metaxisdata.v1.GroupCheckConfig"
  * Use `create(GroupCheckConfigSchema)` to create a new message.
  */
 export declare const GroupCheckConfigSchema: GenMessage<GroupCheckConfig>;
+
+/**
+ * AggregateConfig bounds the value one aggregate over one column produces.
+ *
+ * @generated from message metaxisdata.v1.AggregateConfig
+ */
+export declare type AggregateConfig = Message<"metaxisdata.v1.AggregateConfig"> & {
+  /**
+   * @generated from field: string column = 1;
+   */
+  column: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAggregateFunction function = 2;
+   */
+  function: QualityAggregateFunction;
+
+  /**
+   * The percentile, 0-100, for QUALITY_AGGREGATE_FUNCTION_PERCENTILE.
+   *
+   * @generated from field: optional double percentile = 3;
+   */
+  percentile?: number;
+
+  /**
+   * At least one fail bound is required; warn bounds are optional and must sit
+   * inside the fail range.
+   *
+   * @generated from field: optional double min = 4;
+   */
+  min?: number;
+
+  /**
+   * @generated from field: optional double max = 5;
+   */
+  max?: number;
+
+  /**
+   * @generated from field: optional double warn_min = 6;
+   */
+  warnMin?: number;
+
+  /**
+   * @generated from field: optional double warn_max = 7;
+   */
+  warnMax?: number;
+
+  /**
+   * Whether the bounds are inclusive. Default false, i.e. open on both ends.
+   *
+   * @generated from field: bool inclusive = 8;
+   */
+  inclusive: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.AggregateConfig.
+ * Use `create(AggregateConfigSchema)` to create a new message.
+ */
+export declare const AggregateConfigSchema: GenMessage<AggregateConfig>;
+
+/**
+ * CrossTableConfig reconciles one aggregate of the rule's table with one
+ * aggregate of another table in the same instance and database.
+ *
+ * @generated from message metaxisdata.v1.CrossTableConfig
+ */
+export declare type CrossTableConfig = Message<"metaxisdata.v1.CrossTableConfig"> & {
+  /**
+   * The other table as "schema.table" (PostgreSQL/MSSQL) or "database.table" /
+   * "table" (MySQL family); it must live in the rule target's database.
+   *
+   * @generated from field: string right_table = 1;
+   */
+  rightTable: string;
+
+  /**
+   * The left (target) aggregate; COUNT ignores left_column.
+   *
+   * @generated from field: metaxisdata.v1.QualityAggregateFunction left_function = 2;
+   */
+  leftFunction: QualityAggregateFunction;
+
+  /**
+   * @generated from field: string left_column = 3;
+   */
+  leftColumn: string;
+
+  /**
+   * The right (reference) aggregate; COUNT ignores right_column.
+   *
+   * @generated from field: metaxisdata.v1.QualityAggregateFunction right_function = 4;
+   */
+  rightFunction: QualityAggregateFunction;
+
+  /**
+   * @generated from field: string right_column = 5;
+   */
+  rightColumn: string;
+
+  /**
+   * The absolute difference tolerated, before the fail/warn thresholds apply.
+   *
+   * @generated from field: optional double tolerance = 6;
+   */
+  tolerance?: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.CrossTableConfig.
+ * Use `create(CrossTableConfigSchema)` to create a new message.
+ */
+export declare const CrossTableConfigSchema: GenMessage<CrossTableConfig>;
 
 /**
  * QualityFilter is the AND filter a rule applies before observing. Values are
@@ -3472,6 +3607,21 @@ export enum QualityRuleType {
    * @generated from enum value: QUALITY_RULE_TYPE_GROUP_CHECK = 16;
    */
   GROUP_CHECK = 16,
+
+  /**
+   * v1.1: aggregates one column and bounds the value.
+   *
+   * @generated from enum value: QUALITY_RULE_TYPE_AGGREGATE = 17;
+   */
+  AGGREGATE = 17,
+
+  /**
+   * v1.1: reconciles one aggregate of this table with one of another table in
+   * the same instance and database.
+   *
+   * @generated from enum value: QUALITY_RULE_TYPE_CROSS_TABLE = 18;
+   */
+  CROSS_TABLE = 18,
 }
 
 /**
@@ -4335,6 +4485,60 @@ export enum QualityComparisonOperator {
  * Describes the enum metaxisdata.v1.QualityComparisonOperator.
  */
 export declare const QualityComparisonOperatorSchema: GenEnum<QualityComparisonOperator>;
+
+/**
+ * QualityAggregateFunction is the aggregate an aggregate or reconciliation rule
+ * computes. COUNT is only meaningful for a cross-table reconciliation, and
+ * PERCENTILE only for an aggregate rule.
+ *
+ * @generated from enum metaxisdata.v1.QualityAggregateFunction
+ */
+export enum QualityAggregateFunction {
+  /**
+   * @generated from enum value: QUALITY_AGGREGATE_FUNCTION_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_AGGREGATE_FUNCTION_COUNT = 1;
+   */
+  COUNT = 1,
+
+  /**
+   * @generated from enum value: QUALITY_AGGREGATE_FUNCTION_SUM = 2;
+   */
+  SUM = 2,
+
+  /**
+   * @generated from enum value: QUALITY_AGGREGATE_FUNCTION_AVG = 3;
+   */
+  AVG = 3,
+
+  /**
+   * @generated from enum value: QUALITY_AGGREGATE_FUNCTION_MIN = 4;
+   */
+  MIN = 4,
+
+  /**
+   * @generated from enum value: QUALITY_AGGREGATE_FUNCTION_MAX = 5;
+   */
+  MAX = 5,
+
+  /**
+   * @generated from enum value: QUALITY_AGGREGATE_FUNCTION_STDDEV = 6;
+   */
+  STDDEV = 6,
+
+  /**
+   * @generated from enum value: QUALITY_AGGREGATE_FUNCTION_PERCENTILE = 7;
+   */
+  PERCENTILE = 7,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityAggregateFunction.
+ */
+export declare const QualityAggregateFunctionSchema: GenEnum<QualityAggregateFunction>;
 
 /**
  * DataQualityService manages the checks that watch the data itself: rules,
