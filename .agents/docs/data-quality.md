@@ -221,7 +221,7 @@ OPEN ──ack──> ACKNOWLEDGED ──resolve(原因)──> RESOLVED <──
 | R10 | `referential_integrity` | consistency | 子列 → 父表.父列；是否允许 NULL | 子表中找不到父记录的行数 | 同 instance+database+schema；父子表列类型必须兼容 |
 | R11 | `cross_column` | consistency | 两个列 + 比较符（`>=`/`>`/`=`/`<=`/`<`/`!=`）+ 容差 | 不满足比较的行数 | 数值/日期；同表 |
 | R12 | `freshness` | timeliness | 时间列、`max_lag_seconds`（warn/fail） | `now − MAX(ts)` | 全方言；`MAX(ts)` 为 NULL → `NOT_EVALUATED` |
-| R13 | `custom_sql` | any | 单条只读 SQL（≤8 KiB，必须 `SELECT`/`WITH`）；`max_failed_rows` | SQL 返回“失败行”；行数 > 阈值即失败 | 只读、单语句、超时、结果上限；SQL 由人编写 |
+| R13 | `custom_sql` | any | 单条只读 SQL（≤8 KiB，必须 `SELECT`/`WITH`）；`fail_threshold` / `warn_threshold`（失败行数或占比，默认 fail=0） | SQL 返回“失败行”；行数 > 阈值即失败 | 只读、单语句、超时、结果上限；SQL 由人编写 |
 | R14 | `cel_expression`（v1.1） | validity / consistency | 单条 CEL 表达式（引用列名 + 受限函数）、可选 `filter`、采样行数（默认 10k，上限 100k）、违规行数/比例阈值 | 对样本行逐行求值，统计不满足表达式的行 | 方言无关（Go 内求值，不生成 SQL）；无 I/O、无外部调用；结果标记 `sampled` |
 
 **明确不做**：分组检查（`GROUP BY` + 每组阈值）v1.1；跨表记录级对账 v1.1；schema 漂移 v1.1（schema 同步已提供 diff，DQ 只补“规则化告警”）；分布漂移/统计异常 later；`aggregate`（sum/avg/stddev/percentile）v1.1（可先用 `custom_sql` 覆盖）。自定义检查的扩展路线（CEL 表达式 → 定义导入）见 §4.9。

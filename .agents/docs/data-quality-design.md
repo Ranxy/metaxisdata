@@ -50,6 +50,8 @@ backend/runner/qualityrunner ─┘
 | D-19 | count 型规则增加公共 `threshold_metric`（COUNT/PERCENT） | 对齐 Soda/GX 的 count/percent 阈值语义；同一规则类型可表达两种阈值 |
 | D-20 | **RuleSet（contract-like 整体验证）后续引入**：规则可归属集合，集合级 run/状态/告警；v1/v1.1 不做，前置能力见 §6.11 | 现在做会先缺 schema/分组/变量，退化成“多选规则” |
 | D-21 | `custom_sql` 作为缺口兜底可接受：只读、单语句、超时/上限、审计；反复出现的形态升格为规则类型 | 不引入通用 DSL；custom_sql 不是长期方案 |
+| D-22 | count 型规则的 warn/fail 阈值统一为 `fail_threshold` / `warn_threshold`（`optional double`），单位由公共 `threshold_metric` 决定；删除 `mostly_pct`、`max_failed_rows`、`warn_invalid_count`、`max_violation_count` 等分散字段 | 实现 M1.1 时确认的需求-设计口径缺口：原附录只列 warn、fail 固定 0，无法表达“允许少量脏数据”；统一字段让判定器、前端表单与 LLM 草稿校验共用一套阈值语义 |
+| D-23 | run 的状态拆成两个：`status`（生命周期 PENDING/RUNNING/COMPLETED/ABANDONED）+ `outcome`（结果 rollup，NULL 表示未完成） | 手动执行异步后前端必须能区分“排队中/执行中/已完成”；原设计把两者挤在一个 QualityStatus 里，PENDING 无处表达。两列都落库，列表可按 outcome 过滤 |
 
 **包/文件地图**
 
@@ -216,6 +218,15 @@ enum QualityRunTrigger {
   QUALITY_RUN_TRIGGER_UNSPECIFIED = 0;
   QUALITY_RUN_TRIGGER_MANUAL = 1;
   QUALITY_RUN_TRIGGER_SCHEDULED = 2;
+}
+
+// 生命周期，与结果 rollup 分开：排队中的 run 还没有 outcome。
+enum QualityRunStatus {
+  QUALITY_RUN_STATUS_UNSPECIFIED = 0;
+  QUALITY_RUN_STATUS_PENDING = 1;
+  QUALITY_RUN_STATUS_RUNNING = 2;
+  QUALITY_RUN_STATUS_COMPLETED = 3;
+  QUALITY_RUN_STATUS_ABANDONED = 4;  // 重启丢弃，不补跑
 }
 
 enum QualityIssueStatus {
@@ -482,7 +493,10 @@ CREATE TABLE quality_run (
     resource_id TEXT COLLATE "C" NOT NULL,
     instance_resource_id TEXT COLLATE "C" NOT NULL DEFAULT '',
     trigger INT2 NOT NULL,
+    -- 生命周期：1 PENDING、2 RUNNING、3 COMPLETED、4 ABANDONED（重启丢弃）。
     status INT2 NOT NULL,
+    -- 结果 rollup（QualityStatus）：未完成时为 NULL，完成时取最坏结果状态。
+    outcome INT2,
     counts JSONB NOT NULL DEFAULT '{}',
     initiator_id INT4,
     started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -492,6 +506,7 @@ CREATE UNIQUE INDEX idx_quality_run_resource_id ON quality_run(resource_id);
 CREATE INDEX idx_quality_run_started_at ON quality_run(started_at DESC);
 CREATE INDEX idx_quality_run_instance_started ON quality_run(instance_resource_id, started_at DESC);
 CREATE INDEX idx_quality_run_status ON quality_run(status);
+CREATE INDEX idx_quality_run_outcome ON quality_run(outcome) WHERE outcome IS NOT NULL;
 
 -- quality_rule_result is one rule's outcome in one run. Rows are insert-only;
 -- retention deletes them with their run.
@@ -811,12 +826,13 @@ message QualityTarget {
 message QualityRun {
   string name = 1;
   QualityRunTrigger trigger = 2;
-  QualityStatus status = 3;
+  QualityRunStatus status = 3;        // 生命周期：PENDING/RUNNING/COMPLETED/ABANDONED
   QualityRunCounts counts = 4;
   google.protobuf.Timestamp start_time = 5;
   google.protobuf.Timestamp finish_time = 6;
   string initiator = 7;
   string instance = 8;                // 本批所属实例
+  QualityStatus outcome = 9 [(google.api.field_behavior) = OUTPUT_ONLY]; // 结果 rollup，完成前为空
 }
 
 message QualityRuleResult {
@@ -942,21 +958,21 @@ message DataQualitySetting {
 | `row_count` | `min_rows?`、`max_rows?`、`exact_rows?`（三选一/组合）、`filter` | 至少一项；min≤max | `COUNT(*)` | COUNT | 越界 → FAIL；有 warn 边界时 WARN |
 | `row_count_change` | `max_increase_pct`、`max_decrease_pct`、`filter` | ≥0，≤1000 | `COUNT(*)` + 历史基线 | RATIO（变化比例） | 超过边界 → FAIL；无基线/超 7 天 → NOT_EVALUATED |
 | `null_percent` | `column`、`max_null_count` 或 `max_null_pct`（fail）、对应 warn、`filter` | count≥0 / pct 0–100；warn≤fail | total + null rows | COUNT 或 RATIO（按阈值形态） | > fail → FAIL，> warn → WARN |
-| `unique` | `column`、`count_nulls?` | 列存在 | 重复非空值行数 | COUNT（重复行） | > 阈值 → FAIL；阈值默认 0 |
-| `unique_combination` | `columns[]`、`count_nulls?` | 1–10 列 | `GROUP BY ... HAVING COUNT(*)>1` | COUNT | 同上 |
-| `accepted_values` | `column`、`values[]`、`allow_null?`、`mostly_pct?` | ≤200 值；按列类型可转换 | 不在集合中的行数 | COUNT | > 阈值 → FAIL |
-| `range` | `column`、`min?`、`max?`、`inclusive?`、`filter` | min≤max；数值/日期列 | 越界行数 | COUNT | > 阈值 → FAIL |
-| `regex` | `column`、`pattern`、`filter` | Go regexp 编译通过；方言支持 | 不匹配行数 | COUNT | > 阈值 → FAIL |
-| `string_length` | `column`、`min_len?`、`max_len?`、`filter` | 0≤min≤max | 长度越界行数 | COUNT | > 阈值 → FAIL |
-| `referential_integrity` | `child_column`、`parent_table`、`parent_column`、`allow_null?` | 同实例+库+schema；类型兼容 | LEFT JOIN 孤儿行数 | COUNT | > 阈值 → FAIL |
-| `cross_column` | `left_column`、`right_column`、`op`、`tolerance?` | 类型可比 | 不满足比较的行数 | COUNT | > 阈值 → FAIL |
+| `unique` | `column`、`count_nulls?`、`fail_threshold?`、`warn_threshold?` | 列存在；阈值单位由 `threshold_metric` 决定 | 重复非空值行数 | COUNT | > fail → FAIL，> warn → WARN；默认 fail=0 |
+| `unique_combination` | `columns[]` 或 `all_columns`、`count_nulls?`、`fail_threshold?`、`warn_threshold?` | 1–10 列；`all_columns` 表示整行重复 | `GROUP BY ... HAVING COUNT(*)>1` | COUNT | 同上 |
+| `accepted_values` | `column`、`values[]`、`allow_null?`、`fail_threshold?`、`warn_threshold?` | ≤200 值；按列类型可转换 | 不在集合中的行数 | COUNT | 同上 |
+| `range` | `column`、`min?`、`max?`、`inclusive?`、`filter`、`fail_threshold?`、`warn_threshold?` | min≤max；数值/日期列 | 越界行数 | COUNT | 同上 |
+| `regex` | `column`、`pattern`、`filter`、`fail_threshold?`、`warn_threshold?` | Go regexp 编译通过；方言支持 | 不匹配行数 | COUNT | 同上 |
+| `string_length` | `column`、`min_len?`、`max_len?`、`filter`、`fail_threshold?`、`warn_threshold?` | 0≤min≤max | 长度越界行数 | COUNT | 同上 |
+| `referential_integrity` | `child_column`、`parent_table`、`parent_column`、`allow_null?`、`fail_threshold?`、`warn_threshold?` | 同实例+库+schema；类型兼容 | LEFT JOIN 孤儿行数 | COUNT | 同上 |
+| `cross_column` | `left_column`、`right_column`、`op`、`tolerance?`、`fail_threshold?`、`warn_threshold?` | 类型可比 | 不满足比较的行数 | COUNT | 同上 |
 | `freshness` | `timestamp_column`、`max_lag_seconds`（fail）、`warn_lag_seconds?`、`filter` | 时间列 | `MAX(ts)` | SECONDS | lag > fail → FAIL，> warn → WARN；NULL → on_empty |
-| `custom_sql` | `sql`、`max_failed_rows`、`warn_failed_rows?` | 单条 SELECT/WITH，≤8 KiB，解析通过 | 失败行数 | COUNT | > 阈值 → FAIL |
-| `cel_expression`（v1.1） | `expression`、`columns[]`、`sample_rows`、`max_violation_count`/`max_violation_pct`、`filter` | cel-go 编译通过；列存在 | 样本违规行数/比例 | COUNT/RATIO | > 阈值 → FAIL；`sampled=true` |
+| `custom_sql` | `sql`、`fail_threshold?`、`warn_threshold?` | 单条 SELECT/WITH，≤8 KiB，解析通过 | 失败行数 | COUNT | 同上 |
+| `cel_expression`（v1.1） | `expression`、`columns[]`、`sample_rows`、`filter`、`fail_threshold?`、`warn_threshold?` | cel-go 编译通过；列存在 | 样本违规行数/比例 | COUNT/RATIO | 同上；`sampled=true` |
 
-`QualityThresholds` 快照统一为 `{warn_value?, fail_value?, comparison: GT|LT|OUTSIDE_RANGE, on_empty}`；COUNT/RATIO 用 `GT`，`row_count` 用区间。判定函数按规则类型实现，不把阈值比较散落在 handler。
+`QualityThresholds` 快照统一为 `{warn_value?, fail_value?, warn_value_upper?, fail_value_upper?, comparison: GT|LT|OUTSIDE_RANGE|INSIDE_RANGE, on_empty}`；单值比较用 `*_value`，`row_count` 的区间用 `*_value_upper` 补上界。判定函数按规则类型实现，不把阈值比较散落在 handler。
 
-count 型规则（`unique`、`unique_combination`、`accepted_values`、`range`、`regex`、`string_length`、`referential_integrity`、`cross_column`、`custom_sql`）共用公共字段 `threshold_metric = COUNT|PERCENT`：COUNT 比较失败行数，PERCENT 比较 `failed_rows / total_rows`；结果 `observed_kind` 随之（COUNT 或 RATIO）。`freshness` 固定秒，不适用；`null_percent` 见上。该字段让规则表达对齐 Soda 的 `metric: percent` 语义。`null_percent` 也支持二选一（`max_null_count` 或 `max_null_pct`），因此 Soda 的 `missing_count` 与 `missing_percent` 都能表达。
+count 型规则（`unique`、`unique_combination`、`accepted_values`、`range`、`regex`、`string_length`、`referential_integrity`、`cross_column`、`custom_sql`，以及 v1.1 的 `cel_expression`）共用公共字段 `threshold_metric = COUNT|PERCENT`，并用统一的 `fail_threshold` / `warn_threshold`（`optional double`）表达两级阈值：COUNT 时单位是失败行数，PERCENT 时单位是失败行数占比百分数（`failed_rows / total_rows * 100`）；默认 fail=0、不设 warn。结果 `observed_kind` 随 metric 为 COUNT 或 RATIO。`freshness` 固定秒、`null_percent` 用 `max_null_count`/`max_null_pct` 二选一，均不适用该字段。这样同一规则类型可对齐 Soda 的 `metric: count` 与 `metric: percent` 两种写法，Soda 的 `missing_count` 与 `missing_percent` 由 `null_percent` 表达。
 
 ### 6.2 校验流水线（保存/更新/干跑共用）
 
@@ -1117,7 +1133,7 @@ func EvalRows(program *cel.Program, rows []map[string]any) (violations int64, ev
 - 编译校验：表达式 ≤4 KiB；变量必须来自目标列；结果类型必须 `bool`；禁止未知函数；`matches` 的模式串必须是常量（避免运行时动态）。
 - 执行：生成 `SELECT <引用列> FROM <t> <filter> LIMIT sample_rows`；`database/sql` 扫描到 `[]map[string]any`；逐行 `program.Eval`；`false` 计违规；`error` 计 `BAD_DATA` 并中止（不静默）。
 - `sample_rows` 覆盖全表时 `sampled=false`；否则 `sampled=true`，`sample_rows` 记实际读取行数；UI 显示“基于 N 行样本”。
-- 阈值：`max_violation_count`（失败行数）或 `max_violation_pct`（比例）二选一；`warn_*` 可选。
+- 阈值：`fail_threshold` / `warn_threshold`（违规行数或比例，由 `threshold_metric` 决定）；默认 fail=0、warn 可选。
 - 不支持聚合/join/子查询；需要时用 `custom_sql`。
 
 ### 6.9 规则引擎版本
@@ -1714,17 +1730,17 @@ COMMIT
 | `row_count` | `min_rows`、`max_rows`、`exact_rows`、`warn_min_rows`、`warn_max_rows` |
 | `row_count_change` | `max_increase_pct`、`max_decrease_pct`、`warn_increase_pct`、`warn_decrease_pct` |
 | `null_percent` | `column`、`max_null_count`/`warn_null_count` 或 `max_null_pct`/`warn_null_pct`（二选一） |
-| `unique` | `column`、`count_nulls` |
-| `unique_combination` | `columns`、`count_nulls` |
-| `accepted_values` | `column`、`values`、`allow_null`、`mostly_pct`、`warn_invalid_count` |
-| `range` | `column`、`min`、`max`（字符串编码，按列类型解析）、`inclusive`、`warn_invalid_count` |
-| `regex` | `column`、`pattern`、`warn_invalid_count` |
-| `string_length` | `column`、`min_len`、`max_len`、`warn_invalid_count` |
-| `referential_integrity` | `child_column`、`parent_table`（`schema.table`）、`parent_column`、`allow_null`、`warn_orphan_count` |
-| `cross_column` | `left_column`、`right_column`、`op`、`tolerance`、`warn_invalid_count` |
+| `unique` | `column`、`count_nulls`、`fail_threshold`、`warn_threshold` |
+| `unique_combination` | `columns`、`all_columns`、`count_nulls`、`fail_threshold`、`warn_threshold` |
+| `accepted_values` | `column`、`values`、`allow_null`、`fail_threshold`、`warn_threshold` |
+| `range` | `column`、`min`、`max`（字符串编码，按列类型解析）、`inclusive`、`fail_threshold`、`warn_threshold` |
+| `regex` | `column`、`pattern`、`fail_threshold`、`warn_threshold` |
+| `string_length` | `column`、`min_len`、`max_len`、`fail_threshold`、`warn_threshold` |
+| `referential_integrity` | `child_column`、`parent_table`（`schema.table`）、`parent_column`、`allow_null`、`fail_threshold`、`warn_threshold` |
+| `cross_column` | `left_column`、`right_column`、`op`、`tolerance`、`fail_threshold`、`warn_threshold` |
 | `freshness` | `timestamp_column`、`max_lag_seconds`、`warn_lag_seconds` |
-| `custom_sql` | `sql`、`max_failed_rows`、`warn_failed_rows` |
-| `cel_expression`（v1.1） | `expression`、`columns`、`sample_rows`、`max_violation_count`、`max_violation_pct`、`warn_violation_count` |
+| `custom_sql` | `sql`、`fail_threshold`、`warn_threshold` |
+| `cel_expression`（v1.1） | `expression`、`columns`、`sample_rows`、`fail_threshold`、`warn_threshold` |
 | 公共字段 | `filter`（AND 子句）、`on_empty`、`threshold_metric`（COUNT/PERCENT，count 型规则） |
 
 ### B. CEL 函数
