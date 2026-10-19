@@ -17,6 +17,7 @@ import (
 	clog "github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
+	llmcomp "github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/plugin/db"
@@ -39,6 +40,9 @@ const (
 	qualityProfileQueryTimeout = 120 * time.Second
 	// qualityProfileMaxBytes bounds the rows a profile query keeps in memory.
 	qualityProfileMaxBytes = 4 << 20
+	// qualityLLMMaxOutputTokens bounds what one analysis may generate. The
+	// prompts ask for a small JSON document; this keeps a runaway model cheap.
+	qualityLLMMaxOutputTokens = 4096
 )
 
 // QualityRunScheduler queues a freshly created manual run for immediate
@@ -60,14 +64,18 @@ type DataQualityService struct {
 	store        *store.Store
 	dbFactory    *dbfactory.DBFactory
 	runScheduler QualityRunScheduler
+	// llmRegistry lists the enabled provider profiles the LLM analyses can use.
+	// It is nil in tests that never reach an LLM path.
+	llmRegistry *llmcomp.Registry
 }
 
 // NewDataQualityService creates the service. runScheduler may be nil.
-func NewDataQualityService(s *store.Store, dbFactory *dbfactory.DBFactory, runScheduler QualityRunScheduler) *DataQualityService {
+func NewDataQualityService(s *store.Store, dbFactory *dbfactory.DBFactory, runScheduler QualityRunScheduler, llmRegistry *llmcomp.Registry) *DataQualityService {
 	return &DataQualityService{
 		store:        s,
 		dbFactory:    dbFactory,
 		runScheduler: runScheduler,
+		llmRegistry:  llmRegistry,
 	}
 }
 
@@ -1504,6 +1512,25 @@ func (s *DataQualityService) UpdateQualitySuggestion(ctx context.Context, req *c
 		}
 		return nil, errors.Wrap(err, "failed to decide the quality suggestion")
 	}
+	// Accepting a label proposal also asserts it: column_semantic_label is the row
+	// the rest of the product reads. The decision is already durable at this point,
+	// so a failed label write cannot be rolled back; it is surfaced as Internal with
+	// a retry path (UpdateColumnLabel) instead of silently dropping the label.
+	if decision == storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED &&
+		updated.Kind == storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_LABEL {
+		now := time.Now().UTC()
+		label, err := labelSuggestionToLabelMessage(updated, principalIDPointer(currentUserID(ctx)), now)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal,
+				errors.Wrap(err, "the suggestion was accepted but its label payload is not usable"))
+		}
+		if _, err := s.store.UpsertColumnSemanticLabel(ctx, label); err != nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err,
+				"the suggestion was accepted but its label could not be stored; retry the column label with UpdateColumnLabel"))
+		}
+	}
+	// Accepting a rule draft only records the decision: the reviewer opens the
+	// editor with the draft and saves the rule through the normal rule path.
 	return connect.NewResponse(convertQualitySuggestion(workspaceID, updated)), nil
 }
 
@@ -1830,29 +1857,6 @@ func trimmedQualityColumns(columns []string) []string {
 	return trimmed
 }
 
-// SuggestQualityRule turns a natural-language intent into rule drafts.
-//
-// TODO(M3a): build the prompt, validate the model's drafts through the rule
-// pipeline and queue them as suggestions.
-func (*DataQualityService) SuggestQualityRule(_ context.Context, _ *connect.Request[v1pb.SuggestQualityRuleRequest]) (*connect.Response[v1pb.SuggestQualityRuleResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented,
-		errors.New("rule suggestions from a natural-language intent are not available yet"))
-}
-
-// SuggestColumnLabels proposes semantic labels for columns.
-//
-// TODO(M3a): read the profiles and lineage, call the model and queue the label
-// suggestions.
-func (*DataQualityService) SuggestColumnLabels(_ context.Context, _ *connect.Request[v1pb.SuggestColumnLabelsRequest]) (*connect.Response[v1pb.SuggestColumnLabelsResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented,
-		errors.New("semantic label suggestions are not available yet"))
-}
-
-// ExplainQualityResult streams an explanation of one failed result.
-//
-// TODO(M3a): read the result's context, stream the model's hypotheses and write
-// the cache entry.
-func (*DataQualityService) ExplainQualityResult(_ context.Context, _ *connect.Request[v1pb.ExplainQualityResultRequest], _ *connect.ServerStream[v1pb.ExplainQualityResultResponse]) error {
-	return connect.NewError(connect.CodeUnimplemented,
-		errors.New("explaining a quality result is not available yet"))
-}
+// SuggestColumnLabels lives in data_quality_label_analysis.go: it profiles the
+// columns, lets the model name their semantic types and queues the deterministic
+// label and rule-draft suggestions.

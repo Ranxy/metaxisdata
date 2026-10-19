@@ -270,3 +270,29 @@ func TestQualityRuleResultInsertStatementShape(t *testing.T) {
 		require.Contains(t, qualityRuleResultInsertStatement, cast)
 	}
 }
+
+// The result getter is addressed by the row id the public resource name carries.
+// A non-positive id is refused before any query, and the statement reads the same
+// projection every list in this file does.
+func TestGetQualityRuleResultRejectsNonPositiveID(t *testing.T) {
+	t.Parallel()
+
+	// A nil store would panic if the validation did not run first, which is the
+	// assertion: a malformed name never reaches the database.
+	store := &Store{}
+	for _, id := range []int64{0, -1} {
+		_, err := store.GetQualityRuleResult(t.Context(), id)
+		require.Error(t, err)
+		require.Equal(t, common.Invalid, common.ErrorCode(err))
+	}
+}
+
+func TestQualityRuleResultByIDStatementShape(t *testing.T) {
+	t.Parallel()
+
+	require.Contains(t, qualityRuleResultByIDStatement, "FROM quality_rule_result")
+	require.Contains(t, qualityRuleResultByIDStatement, "WHERE id = $1")
+	require.Contains(t, qualityRuleResultByIDStatement, qualityRuleResultColumns)
+	require.NotContains(t, qualityRuleResultByIDStatement, "%s",
+		"a formatted query would hide an argument splice from this guard")
+}

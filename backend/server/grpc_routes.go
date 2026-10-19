@@ -112,7 +112,7 @@ func configureGrpcRouters(
 	applicationService := apiv1.NewApplicationService(stores)
 	// Manual runs are queued to the quality runner; when it is absent the service
 	// still records the run as PENDING rather than dropping the request.
-	dataQualityService := apiv1.NewDataQualityService(stores, dbFactory, qualityRunner)
+	dataQualityService := apiv1.NewDataQualityService(stores, dbFactory, qualityRunner, llmRegistry)
 	llmService := apiv1.NewLLMService(stores, llmRegistry)
 	explainSQLService := apiv1.NewExplainSQLService(stores, llmRegistry, lineageAnalyzer)
 	settingService := apiv1.NewSettingService(stores, profile)

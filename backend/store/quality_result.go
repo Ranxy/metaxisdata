@@ -371,6 +371,32 @@ func (s *Store) ListQualityRuleResults(ctx context.Context, find *FindQualityRul
 	return scanQualityRuleResults(rows)
 }
 
+// qualityRuleResultByIDStatement reads one result by its row id. A result's
+// public resource name carries this id rather than a resource_id, because the
+// table is insert-only and has no public identity column of its own.
+const qualityRuleResultByIDStatement = `
+	SELECT ` + qualityRuleResultColumns + `
+	FROM quality_rule_result
+	WHERE id = $1
+`
+
+// GetQualityRuleResult returns one result by row id, or (nil, nil) when no such
+// result exists. The id is validated before any query so a malformed name fails
+// without touching the database.
+func (s *Store) GetQualityRuleResult(ctx context.Context, id int64) (*QualityRuleResultMessage, error) {
+	if id <= 0 {
+		return nil, common.Errorf(common.Invalid, "quality rule result id is required")
+	}
+	result, err := scanQualityRuleResult(s.GetDB().QueryRowContext(ctx, qualityRuleResultByIDStatement, id))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, errors.Wrap(err, "failed to get the quality rule result")
+	}
+	return result, nil
+}
+
 // ListRecentQualityRuleResults returns the rule's newest limit results. The
 // row_count_change rule type reads its baseline through this method.
 func (s *Store) ListRecentQualityRuleResults(ctx context.Context, ruleID int64, limit int) ([]*QualityRuleResultMessage, error) {
