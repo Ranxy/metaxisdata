@@ -765,6 +765,10 @@
             <ul>
               
                 <li>
+                  <a href="#metaxisdata.store.DataQualityDetail"><span class="badge">M</span>DataQualityDetail</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.Notification"><span class="badge">M</span>Notification</a>
                 </li>
               
@@ -780,6 +784,10 @@
                   <a href="#metaxisdata.store.SyncDatabaseResult"><span class="badge">M</span>SyncDatabaseResult</a>
                 </li>
               
+              
+                <li>
+                  <a href="#metaxisdata.store.DataQualityNotificationKind"><span class="badge">E</span>DataQualityNotificationKind</a>
+                </li>
               
                 <li>
                   <a href="#metaxisdata.store.NotificationSeverity"><span class="badge">E</span>NotificationSeverity</a>
@@ -856,6 +864,10 @@
           <li>
             <a href="#store%2fsetting.proto">store/setting.proto</a>
             <ul>
+              
+                <li>
+                  <a href="#metaxisdata.store.DataQualitySetting"><span class="badge">M</span>DataQualitySetting</a>
+                </li>
               
                 <li>
                   <a href="#metaxisdata.store.EnvironmentSetting"><span class="badge">M</span>EnvironmentSetting</a>
@@ -7927,6 +7939,142 @@ exposes the ciphertext through the API. </p></td>
       <p></p>
 
       
+        <h3 id="metaxisdata.store.DataQualityDetail">DataQualityDetail</h3>
+        <p>DataQualityDetail reports one data quality event. The message carries facts</p><p>only; the client renders the localized sentence from the kind and these fields.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>kind</td>
+                  <td><a href="#metaxisdata.store.DataQualityNotificationKind">DataQualityNotificationKind</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>rule</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityRules/{quality_rule} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>rule_title</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The registry GUID of the rule&#39;s target. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_path</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The display path: instance/database/schema/table[.column]. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>from_status</td>
+                  <td><a href="#metaxisdata.store.QualityStatus">QualityStatus</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>to_status</td>
+                  <td><a href="#metaxisdata.store.QualityStatus">QualityStatus</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>severity</td>
+                  <td><a href="#metaxisdata.store.QualitySeverity">QualitySeverity</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>observed_value</td>
+                  <td><a href="#double">double</a></td>
+                  <td></td>
+                  <td><p>The observed value and its unit (&#34;rows&#34;, &#34;%&#34;, &#34;s&#34;, &#34;timestamp&#34;). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>observed_unit</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>issue</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityIssues/{quality_issue} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>run</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityRuns/{quality_run} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>failed_rows</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>total_rows</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>error_code</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The machine-readable failure class for EXECUTION_FAILED. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>failed_rule_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The tallies a STORM_SUMMARY merged. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>total_rule_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.store.Notification">Notification</h3>
         <p>Notification is one in-app message for one recipient: the outcome of a sync</p><p>operation the recipient asked for, or an ingestion failure the workspace</p><p>administrators need to see. It is personal data, so every read is scoped by</p><p>recipient_id rather than by the workspace.</p><p>id, create_time, recipient_id, read_time and dedupe_key are columns of the</p><p>notification table and are not written into the payload; the store stamps</p><p>them on insert and fills them from the row on read, so the payload and the</p><p>columns cannot disagree. The payload holds only the message proper.</p>
 
@@ -8006,6 +8154,13 @@ to the event&#39;s suppression window. </p></td>
                 <tr>
                   <td>openlineage</td>
                   <td><a href="#metaxisdata.store.OpenLineageDetail">OpenLineageDetail</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>data_quality</td>
+                  <td><a href="#metaxisdata.store.DataQualityDetail">DataQualityDetail</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
@@ -8214,6 +8369,47 @@ list is capped; the counts below carry the whole picture. </p></td>
       
 
       
+        <h3 id="metaxisdata.store.DataQualityNotificationKind">DataQualityNotificationKind</h3>
+        <p>DataQualityNotificationKind is the event a data quality notification reports.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>DATA_QUALITY_NOTIFICATION_KIND_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED</td>
+                <td>1</td>
+                <td><p>A rule started failing: an issue was opened.</p></td>
+              </tr>
+            
+              <tr>
+                <td>DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED</td>
+                <td>2</td>
+                <td><p>A previously failing rule passes again: its issue resolved itself.</p></td>
+              </tr>
+            
+              <tr>
+                <td>DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED</td>
+                <td>3</td>
+                <td><p>A rule could not be executed at all. This is not a data failure.</p></td>
+              </tr>
+            
+              <tr>
+                <td>DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY</td>
+                <td>4</td>
+                <td><p>One run failed so many rules that the individual messages were merged.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
         <h3 id="metaxisdata.store.NotificationSeverity">NotificationSeverity</h3>
         <p>NotificationSeverity ranks a notification for the recipient.</p>
         <table class="enum-table">
@@ -8274,6 +8470,13 @@ list is capped; the counts below carry the whole picture. </p></td>
                 <td>2</td>
                 <td><p>An OpenLineage ingestion failure, or a dataset that could not be matched
 to a registered instance.</p></td>
+              </tr>
+            
+              <tr>
+                <td>NOTIFICATION_TYPE_DATA_QUALITY</td>
+                <td>3</td>
+                <td><p>A data quality rule opened, recovered, failed to execute, or failed in a
+storm that was merged into one summary.</p></td>
               </tr>
             
           </tbody>
@@ -8604,6 +8807,86 @@ A binding binds one or more members or groups to a single role. </p></td>
       <p></p>
 
       
+        <h3 id="metaxisdata.store.DataQualitySetting">DataQualitySetting</h3>
+        <p>DataQualitySetting is the stored form of the data quality settings; it mirrors</p><p>metaxisdata.v1.DataQualitySetting.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>enable_llm_analysis</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>llm_provider_profile</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>store_failure_samples</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>failure_sample_limit</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>default_schedule_interval</td>
+                  <td><a href="#google.protobuf.Duration">google.protobuf.Duration</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>daily_execution_limit</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>daily_column_analysis_limit</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>max_columns_per_analysis</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>send_sample_values_to_llm</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.store.EnvironmentSetting">EnvironmentSetting</h3>
         <p></p>
 
@@ -8863,6 +9146,14 @@ unverified claim lets whoever can set it sign in as the account it names —
 and that its configuration, which only an administrator can write, is
 trusted. For a listed provider, field_mapping.subject becomes optional and
 falls back to the identifier claim. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>data_quality</td>
+                  <td><a href="#metaxisdata.store.DataQualitySetting">DataQualitySetting</a></td>
+                  <td></td>
+                  <td><p>Data quality settings. Every zero value means the server&#39;s default, so the
+reader resolves defaults rather than trusting the stored value. </p></td>
                 </tr>
               
             </tbody>

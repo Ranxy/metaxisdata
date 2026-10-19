@@ -8,6 +8,7 @@ import "google/api/field_behavior.proto";
 import "google/api/resource.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
+import "v1/data_quality_service.proto";
 
 option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
 
@@ -87,6 +88,9 @@ enum NotificationType {
   // An OpenLineage ingestion failure, or a dataset that could not be matched
   // to a registered instance.
   NOTIFICATION_TYPE_OPENLINEAGE = 2;
+  // A data quality rule opened, recovered, failed to execute, or failed in a
+  // storm that was merged into one summary.
+  NOTIFICATION_TYPE_DATA_QUALITY = 3;
 }
 
 // NotificationSeverity ranks a notification for its recipient.
@@ -154,6 +158,7 @@ message Notification {
   oneof detail {
     SchemaSyncDetail schema_sync = 6;
     OpenLineageDetail openlineage = 7;
+    DataQualityDetail data_quality = 8;
   }
 }
 
@@ -300,3 +305,46 @@ message NotificationEvent {
 
 // KeepAlive is the notification stream's heartbeat. It carries no data.
 message KeepAlive {}
+
+// DataQualityNotificationKind is the event a data quality notification reports.
+enum DataQualityNotificationKind {
+  DATA_QUALITY_NOTIFICATION_KIND_UNSPECIFIED = 0;
+  // A rule started failing: an issue was opened.
+  DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED = 1;
+  // A previously failing rule passes again: its issue resolved itself.
+  DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED = 2;
+  // A rule could not be executed at all. This is not a data failure.
+  DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED = 3;
+  // One run failed so many rules that the individual messages were merged.
+  DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY = 4;
+}
+
+// DataQualityDetail reports one data quality event. The message carries facts
+// only; the client renders the localized sentence from the kind and these fields.
+message DataQualityDetail {
+  DataQualityNotificationKind kind = 1;
+  // Format: workspaces/{workspace}/qualityRules/{quality_rule}
+  string rule = 2;
+  string rule_title = 3;
+  // The registry GUID of the rule's target.
+  string target_guid = 4;
+  // The display path: instance/database/schema/table[.column].
+  string target_path = 5;
+  QualityStatus from_status = 6;
+  QualityStatus to_status = 7;
+  QualitySeverity severity = 8;
+  // The observed value and its unit ("rows", "%", "s", "timestamp").
+  double observed_value = 9;
+  string observed_unit = 10;
+  // Format: workspaces/{workspace}/qualityIssues/{quality_issue}
+  string issue = 11;
+  // Format: workspaces/{workspace}/qualityRuns/{quality_run}
+  string run = 12;
+  int64 failed_rows = 13;
+  int64 total_rows = 14;
+  // The machine-readable failure class for EXECUTION_FAILED.
+  string error_code = 15;
+  // The tallies a STORM_SUMMARY merged.
+  int32 failed_rule_count = 16;
+  int32 total_rule_count = 17;
+}

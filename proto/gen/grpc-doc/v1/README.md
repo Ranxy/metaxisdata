@@ -380,6 +380,7 @@
   
 - [v1/notification_service.proto](#v1_notification_service-proto)
     - [BatchMarkNotificationsReadRequest](#metaxisdata-v1-BatchMarkNotificationsReadRequest)
+    - [DataQualityDetail](#metaxisdata-v1-DataQualityDetail)
     - [DeleteNotificationRequest](#metaxisdata-v1-DeleteNotificationRequest)
     - [GetUnreadNotificationCountRequest](#metaxisdata-v1-GetUnreadNotificationCountRequest)
     - [GetUnreadNotificationCountResponse](#metaxisdata-v1-GetUnreadNotificationCountResponse)
@@ -396,6 +397,7 @@
     - [SubscribeNotificationsResponse](#metaxisdata-v1-SubscribeNotificationsResponse)
     - [SyncDatabaseResult](#metaxisdata-v1-SyncDatabaseResult)
   
+    - [DataQualityNotificationKind](#metaxisdata-v1-DataQualityNotificationKind)
     - [NotificationSeverity](#metaxisdata-v1-NotificationSeverity)
     - [NotificationType](#metaxisdata-v1-NotificationType)
     - [OpenLineageFailureKind](#metaxisdata-v1-OpenLineageFailureKind)
@@ -460,6 +462,7 @@
     - [RoleService](#metaxisdata-v1-RoleService)
   
 - [v1/setting_service.proto](#v1_setting_service-proto)
+    - [DataQualitySetting](#metaxisdata-v1-DataQualitySetting)
     - [GetDebugConfigRequest](#metaxisdata-v1-GetDebugConfigRequest)
     - [GetDebugConfigResponse](#metaxisdata-v1-GetDebugConfigResponse)
     - [GetWorkspaceProfileSettingRequest](#metaxisdata-v1-GetWorkspaceProfileSettingRequest)
@@ -6491,6 +6494,38 @@ usually the SQL naming something the analyzer cannot see.
 
 
 
+<a name="metaxisdata-v1-DataQualityDetail"></a>
+
+### DataQualityDetail
+DataQualityDetail reports one data quality event. The message carries facts
+only; the client renders the localized sentence from the kind and these fields.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| kind | [DataQualityNotificationKind](#metaxisdata-v1-DataQualityNotificationKind) |  |  |
+| rule | [string](#string) |  | Format: workspaces/{workspace}/qualityRules/{quality_rule} |
+| rule_title | [string](#string) |  |  |
+| target_guid | [string](#string) |  | The registry GUID of the rule&#39;s target. |
+| target_path | [string](#string) |  | The display path: instance/database/schema/table[.column]. |
+| from_status | [QualityStatus](#metaxisdata-v1-QualityStatus) |  |  |
+| to_status | [QualityStatus](#metaxisdata-v1-QualityStatus) |  |  |
+| severity | [QualitySeverity](#metaxisdata-v1-QualitySeverity) |  |  |
+| observed_value | [double](#double) |  | The observed value and its unit (&#34;rows&#34;, &#34;%&#34;, &#34;s&#34;, &#34;timestamp&#34;). |
+| observed_unit | [string](#string) |  |  |
+| issue | [string](#string) |  | Format: workspaces/{workspace}/qualityIssues/{quality_issue} |
+| run | [string](#string) |  | Format: workspaces/{workspace}/qualityRuns/{quality_run} |
+| failed_rows | [int64](#int64) |  |  |
+| total_rows | [int64](#int64) |  |  |
+| error_code | [string](#string) |  | The machine-readable failure class for EXECUTION_FAILED. |
+| failed_rule_count | [int32](#int32) |  | The tallies a STORM_SUMMARY merged. |
+| total_rule_count | [int32](#int32) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-DeleteNotificationRequest"></a>
 
 ### DeleteNotificationRequest
@@ -6626,6 +6661,7 @@ Notification is one in-app message for one recipient.
 | read_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When the recipient read it. Unset means unread. |
 | schema_sync | [SchemaSyncDetail](#metaxisdata-v1-SchemaSyncDetail) |  |  |
 | openlineage | [OpenLineageDetail](#metaxisdata-v1-OpenLineageDetail) |  |  |
+| data_quality | [DataQualityDetail](#metaxisdata-v1-DataQualityDetail) |  |  |
 
 
 
@@ -6746,6 +6782,21 @@ SyncDatabaseResult is one database&#39;s outcome in a schema sync operation.
  
 
 
+<a name="metaxisdata-v1-DataQualityNotificationKind"></a>
+
+### DataQualityNotificationKind
+DataQualityNotificationKind is the event a data quality notification reports.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| DATA_QUALITY_NOTIFICATION_KIND_UNSPECIFIED | 0 |  |
+| DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED | 1 | A rule started failing: an issue was opened. |
+| DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED | 2 | A previously failing rule passes again: its issue resolved itself. |
+| DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED | 3 | A rule could not be executed at all. This is not a data failure. |
+| DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY | 4 | One run failed so many rules that the individual messages were merged. |
+
+
+
 <a name="metaxisdata-v1-NotificationSeverity"></a>
 
 ### NotificationSeverity
@@ -6771,6 +6822,7 @@ message the notification carries.
 | NOTIFICATION_TYPE_UNSPECIFIED | 0 |  |
 | NOTIFICATION_TYPE_SCHEMA_SYNC | 1 | The outcome of one schema sync operation. |
 | NOTIFICATION_TYPE_OPENLINEAGE | 2 | An OpenLineage ingestion failure, or a dataset that could not be matched to a registered instance. |
+| NOTIFICATION_TYPE_DATA_QUALITY | 3 | A data quality rule opened, recovered, failed to execute, or failed in a storm that was merged into one summary. |
 
 
 
@@ -7730,6 +7782,29 @@ metaxisdata.roles.* permissions.
 
 
 
+<a name="metaxisdata-v1-DataQualitySetting"></a>
+
+### DataQualitySetting
+DataQualitySetting configures the data quality subsystem for the workspace.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| enable_llm_analysis | [bool](#bool) |  | Whether the LLM-assisted entries (rule draft, failure explanation, column labels) are enabled. Off by default: the rule engine is fully offline. |
+| llm_provider_profile | [string](#string) |  | The LLM provider profile the quality analyses use, as a profile resource name. Empty means the first allowed profile. |
+| store_failure_samples | [bool](#bool) |  | Whether failed checks keep the sampled rows as evidence. Off means a result records its counts but no values. |
+| failure_sample_limit | [int32](#int32) |  | How many failed rows a result keeps. Zero means the server default (20); capped at 100. |
+| default_schedule_interval | [google.protobuf.Duration](#google-protobuf-Duration) |  | The schedule interval new rules start with. Zero means the server default (one hour). |
+| daily_execution_limit | [int32](#int32) |  | The workspace&#39;s daily execution ceiling; 0 means the server default (10000). |
+| daily_column_analysis_limit | [int32](#int32) |  | The workspace&#39;s daily column-analysis ceiling; 0 means the server default. |
+| max_columns_per_analysis | [int32](#int32) |  | The maximum number of columns one analysis may cover; 0 means the server default (50). |
+| send_sample_values_to_llm | [bool](#bool) |  | Whether raw sample values may be sent to the LLM. Off by default: only aggregate profiles leave the deployment. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetDebugConfigRequest"></a>
 
 ### GetDebugConfigRequest
@@ -7830,6 +7905,7 @@ metaxisdata.roles.* permissions.
 | sso_email_identity_idps | [string](#string) | repeated | The identity providers, as idps/{idp} resource names, whose email claim may stand in for a stable subject. For a listed provider, field_mapping.subject becomes optional and a login whose address claim matches an existing account makes that account reachable through the provider — adopting it (its password is replaced with a random one) when it had no provider binding at all.
 
 Empty (the default) turns the feature off for every provider. The address claim is mutable, so listing a provider asserts that it verifies addresses and that its configuration, which only an administrator can write, is trusted: whoever can set an address there can sign in as the account it names. |
+| data_quality | [DataQualitySetting](#metaxisdata-v1-DataQualitySetting) |  | Data quality settings. They are read by the quality subsystem and written on the data quality settings page; every zero value means the server&#39;s default, which is why the reader resolves defaults instead of trusting the wire value. |
 
 
 

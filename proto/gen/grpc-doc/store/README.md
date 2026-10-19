@@ -151,11 +151,13 @@
     - [MetaType](#metaxisdata-store-MetaType)
   
 - [store/notification.proto](#store_notification-proto)
+    - [DataQualityDetail](#metaxisdata-store-DataQualityDetail)
     - [Notification](#metaxisdata-store-Notification)
     - [OpenLineageDetail](#metaxisdata-store-OpenLineageDetail)
     - [SchemaSyncDetail](#metaxisdata-store-SchemaSyncDetail)
     - [SyncDatabaseResult](#metaxisdata-store-SyncDatabaseResult)
   
+    - [DataQualityNotificationKind](#metaxisdata-store-DataQualityNotificationKind)
     - [NotificationSeverity](#metaxisdata-store-NotificationSeverity)
     - [NotificationType](#metaxisdata-store-NotificationType)
     - [OpenLineageFailureKind](#metaxisdata-store-OpenLineageFailureKind)
@@ -174,6 +176,7 @@
     - [RolePermissions](#metaxisdata-store-RolePermissions)
   
 - [store/setting.proto](#store_setting-proto)
+    - [DataQualitySetting](#metaxisdata-store-DataQualitySetting)
     - [EnvironmentSetting](#metaxisdata-store-EnvironmentSetting)
     - [EnvironmentSetting.Environment](#metaxisdata-store-EnvironmentSetting-Environment)
     - [EnvironmentSetting.Environment.TagsEntry](#metaxisdata-store-EnvironmentSetting-Environment-TagsEntry)
@@ -2712,6 +2715,38 @@ Instance is the proto for instances.
 
 
 
+<a name="metaxisdata-store-DataQualityDetail"></a>
+
+### DataQualityDetail
+DataQualityDetail reports one data quality event. The message carries facts
+only; the client renders the localized sentence from the kind and these fields.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| kind | [DataQualityNotificationKind](#metaxisdata-store-DataQualityNotificationKind) |  |  |
+| rule | [string](#string) |  | Format: workspaces/{workspace}/qualityRules/{quality_rule} |
+| rule_title | [string](#string) |  |  |
+| target_guid | [string](#string) |  | The registry GUID of the rule&#39;s target. |
+| target_path | [string](#string) |  | The display path: instance/database/schema/table[.column]. |
+| from_status | [QualityStatus](#metaxisdata-store-QualityStatus) |  |  |
+| to_status | [QualityStatus](#metaxisdata-store-QualityStatus) |  |  |
+| severity | [QualitySeverity](#metaxisdata-store-QualitySeverity) |  |  |
+| observed_value | [double](#double) |  | The observed value and its unit (&#34;rows&#34;, &#34;%&#34;, &#34;s&#34;, &#34;timestamp&#34;). |
+| observed_unit | [string](#string) |  |  |
+| issue | [string](#string) |  | Format: workspaces/{workspace}/qualityIssues/{quality_issue} |
+| run | [string](#string) |  | Format: workspaces/{workspace}/qualityRuns/{quality_run} |
+| failed_rows | [int64](#int64) |  |  |
+| total_rows | [int64](#int64) |  |  |
+| error_code | [string](#string) |  | The machine-readable failure class for EXECUTION_FAILED. |
+| failed_rule_count | [int32](#int32) |  | The tallies a STORM_SUMMARY merged. |
+| total_rule_count | [int32](#int32) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-store-Notification"></a>
 
 ### Notification
@@ -2738,6 +2773,7 @@ columns cannot disagree. The payload holds only the message proper.
 | dedupe_key | [string](#string) |  | Notification deduplication key, empty when the message is not deduplicated. Format: &lt;event&gt;:&lt;target&gt;:&lt;bucket&gt;, where the bucket is a timestamp aligned to the event&#39;s suppression window. |
 | schema_sync | [SchemaSyncDetail](#metaxisdata-store-SchemaSyncDetail) |  |  |
 | openlineage | [OpenLineageDetail](#metaxisdata-store-OpenLineageDetail) |  |  |
+| data_quality | [DataQualityDetail](#metaxisdata-store-DataQualityDetail) |  |  |
 
 
 
@@ -2810,6 +2846,21 @@ SyncDatabaseResult is one database&#39;s outcome in a schema sync operation.
  
 
 
+<a name="metaxisdata-store-DataQualityNotificationKind"></a>
+
+### DataQualityNotificationKind
+DataQualityNotificationKind is the event a data quality notification reports.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| DATA_QUALITY_NOTIFICATION_KIND_UNSPECIFIED | 0 |  |
+| DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED | 1 | A rule started failing: an issue was opened. |
+| DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED | 2 | A previously failing rule passes again: its issue resolved itself. |
+| DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED | 3 | A rule could not be executed at all. This is not a data failure. |
+| DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY | 4 | One run failed so many rules that the individual messages were merged. |
+
+
+
 <a name="metaxisdata-store-NotificationSeverity"></a>
 
 ### NotificationSeverity
@@ -2835,6 +2886,7 @@ message the notification carries.
 | NOTIFICATION_TYPE_UNSPECIFIED | 0 |  |
 | NOTIFICATION_TYPE_SCHEMA_SYNC | 1 | The outcome of one schema sync operation. |
 | NOTIFICATION_TYPE_OPENLINEAGE | 2 | An OpenLineage ingestion failure, or a dataset that could not be matched to a registered instance. |
+| NOTIFICATION_TYPE_DATA_QUALITY | 3 | A data quality rule opened, recovered, failed to execute, or failed in a storm that was merged into one summary. |
 
 
 
@@ -3019,6 +3071,30 @@ roles have a row here.
 
 
 
+<a name="metaxisdata-store-DataQualitySetting"></a>
+
+### DataQualitySetting
+DataQualitySetting is the stored form of the data quality settings; it mirrors
+metaxisdata.v1.DataQualitySetting.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| enable_llm_analysis | [bool](#bool) |  |  |
+| llm_provider_profile | [string](#string) |  |  |
+| store_failure_samples | [bool](#bool) |  |  |
+| failure_sample_limit | [int32](#int32) |  |  |
+| default_schedule_interval | [google.protobuf.Duration](#google-protobuf-Duration) |  |  |
+| daily_execution_limit | [int32](#int32) |  |  |
+| daily_column_analysis_limit | [int32](#int32) |  |  |
+| max_columns_per_analysis | [int32](#int32) |  |  |
+| send_sample_values_to_llm | [bool](#bool) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-store-EnvironmentSetting"></a>
 
 ### EnvironmentSetting
@@ -3110,6 +3186,7 @@ roles have a row here.
 For those providers — and only those, because one workspace can configure several, trusted to different degrees — an SSO login may be identified by the address claim instead of a stable subject, and may make an existing account with that address reachable through the provider. An account that had no provider binding is adopted by doing so: its password is replaced with a random one.
 
 Empty (the default) turns the feature off everywhere. The address claim is mutable, so listing a provider asserts that it verifies addresses — an unverified claim lets whoever can set it sign in as the account it names — and that its configuration, which only an administrator can write, is trusted. For a listed provider, field_mapping.subject becomes optional and falls back to the identifier claim. |
+| data_quality | [DataQualitySetting](#metaxisdata-store-DataQualitySetting) |  | Data quality settings. Every zero value means the server&#39;s default, so the reader resolves defaults rather than trusting the stored value. |
 
 
 

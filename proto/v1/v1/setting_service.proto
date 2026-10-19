@@ -5,6 +5,7 @@ package metaxisdata.v1;
 import "google/api/annotations.proto";
 import "google/api/client.proto";
 import "google/api/field_behavior.proto";
+import "google/protobuf/duration.proto";
 import "google/protobuf/field_mask.proto";
 import "v1/annotation.proto";
 
@@ -102,6 +103,48 @@ message WorkspaceProfileSetting {
 
   reserved 9;
   reserved "allow_sso_email_identity";
+
+  // Data quality settings. They are read by the quality subsystem and written on
+  // the data quality settings page; every zero value means the server's default,
+  // which is why the reader resolves defaults instead of trusting the wire value.
+  DataQualitySetting data_quality = 11;
+}
+
+// DataQualitySetting configures the data quality subsystem for the workspace.
+message DataQualitySetting {
+  // Whether the LLM-assisted entries (rule draft, failure explanation, column
+  // labels) are enabled. Off by default: the rule engine is fully offline.
+  bool enable_llm_analysis = 1;
+
+  // The LLM provider profile the quality analyses use, as a profile resource
+  // name. Empty means the first allowed profile.
+  string llm_provider_profile = 2;
+
+  // Whether failed checks keep the sampled rows as evidence. Off means a result
+  // records its counts but no values.
+  bool store_failure_samples = 3;
+
+  // How many failed rows a result keeps. Zero means the server default (20);
+  // capped at 100.
+  int32 failure_sample_limit = 4;
+
+  // The schedule interval new rules start with. Zero means the server default
+  // (one hour).
+  google.protobuf.Duration default_schedule_interval = 5;
+
+  // The workspace's daily execution ceiling; 0 means the server default (10000).
+  int32 daily_execution_limit = 6;
+
+  // The workspace's daily column-analysis ceiling; 0 means the server default.
+  int32 daily_column_analysis_limit = 7;
+
+  // The maximum number of columns one analysis may cover; 0 means the server
+  // default (50).
+  int32 max_columns_per_analysis = 8;
+
+  // Whether raw sample values may be sent to the LLM. Off by default: only
+  // aggregate profiles leave the deployment.
+  bool send_sample_values_to_llm = 9;
 }
 
 message GetWorkspaceProfileSettingRequest {}

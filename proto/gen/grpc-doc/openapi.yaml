@@ -5691,6 +5691,117 @@ components:
             description: |-
                 CustomSQLConfig counts the rows a read-only statement returns as failures. The
                  statement is single SELECT/WITH, at most 8 KiB, and is never rewritten.
+        DataQualityDetail:
+            type: object
+            properties:
+                kind:
+                    enum:
+                        - DATA_QUALITY_NOTIFICATION_KIND_UNSPECIFIED
+                        - DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED
+                        - DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED
+                        - DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED
+                        - DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY
+                    type: string
+                    format: enum
+                rule:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityRules/{quality_rule}'
+                ruleTitle:
+                    type: string
+                targetGuid:
+                    type: string
+                    description: The registry GUID of the rule's target.
+                targetPath:
+                    type: string
+                    description: 'The display path: instance/database/schema/table[.column].'
+                fromStatus:
+                    enum:
+                        - QUALITY_STATUS_UNSPECIFIED
+                        - QUALITY_STATUS_PASS
+                        - QUALITY_STATUS_WARN
+                        - QUALITY_STATUS_FAIL
+                        - QUALITY_STATUS_ERROR
+                        - QUALITY_STATUS_SKIPPED
+                        - QUALITY_STATUS_NOT_EVALUATED
+                    type: string
+                    format: enum
+                toStatus:
+                    enum:
+                        - QUALITY_STATUS_UNSPECIFIED
+                        - QUALITY_STATUS_PASS
+                        - QUALITY_STATUS_WARN
+                        - QUALITY_STATUS_FAIL
+                        - QUALITY_STATUS_ERROR
+                        - QUALITY_STATUS_SKIPPED
+                        - QUALITY_STATUS_NOT_EVALUATED
+                    type: string
+                    format: enum
+                severity:
+                    enum:
+                        - QUALITY_SEVERITY_UNSPECIFIED
+                        - QUALITY_SEVERITY_WARNING
+                        - QUALITY_SEVERITY_ERROR
+                        - QUALITY_SEVERITY_CRITICAL
+                    type: string
+                    format: enum
+                observedValue:
+                    type: number
+                    description: The observed value and its unit ("rows", "%", "s", "timestamp").
+                    format: double
+                observedUnit:
+                    type: string
+                issue:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityIssues/{quality_issue}'
+                run:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityRuns/{quality_run}'
+                failedRows:
+                    type: string
+                totalRows:
+                    type: string
+                errorCode:
+                    type: string
+                    description: The machine-readable failure class for EXECUTION_FAILED.
+                failedRuleCount:
+                    type: integer
+                    description: The tallies a STORM_SUMMARY merged.
+                    format: int32
+                totalRuleCount:
+                    type: integer
+                    format: int32
+            description: |-
+                DataQualityDetail reports one data quality event. The message carries facts
+                 only; the client renders the localized sentence from the kind and these fields.
+        DataQualitySetting:
+            type: object
+            properties:
+                enableLlmAnalysis:
+                    type: boolean
+                llmProviderProfile:
+                    type: string
+                storeFailureSamples:
+                    type: boolean
+                failureSampleLimit:
+                    type: integer
+                    format: int32
+                defaultScheduleInterval:
+                    pattern: ^-?(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,9})?s$
+                    type: string
+                dailyExecutionLimit:
+                    type: integer
+                    format: int32
+                dailyColumnAnalysisLimit:
+                    type: integer
+                    format: int32
+                maxColumnsPerAnalysis:
+                    type: integer
+                    format: int32
+                sendSampleValuesToLlm:
+                    type: boolean
+            description: |-
+                DataQualitySetting is the stored form of the data quality settings; it mirrors
+                 metaxisdata.v1.DataQualitySetting.
         DataSource:
             type: object
             properties:
@@ -7829,6 +7940,7 @@ components:
                         - NOTIFICATION_TYPE_UNSPECIFIED
                         - NOTIFICATION_TYPE_SCHEMA_SYNC
                         - NOTIFICATION_TYPE_OPENLINEAGE
+                        - NOTIFICATION_TYPE_DATA_QUALITY
                     type: string
                     format: enum
                 severity:
@@ -7855,6 +7967,8 @@ components:
                     $ref: '#/components/schemas/SchemaSyncDetail'
                 openlineage:
                     $ref: '#/components/schemas/OpenLineageDetail'
+                dataQuality:
+                    $ref: '#/components/schemas/DataQualityDetail'
             description: |-
                 Notification is one in-app message for one recipient: the outcome of a sync
                  operation the recipient asked for, or an ingestion failure the workspace
@@ -10053,6 +10167,12 @@ components:
                          and that its configuration, which only an administrator can write, is
                          trusted. For a listed provider, field_mapping.subject becomes optional and
                          falls back to the identifier claim.
+                dataQuality:
+                    allOf:
+                        - $ref: '#/components/schemas/DataQualitySetting'
+                    description: |-
+                        Data quality settings. Every zero value means the server's default, so the
+                         reader resolves defaults rather than trusting the stored value.
 tags:
     - name: ApplicationService
       description: |-

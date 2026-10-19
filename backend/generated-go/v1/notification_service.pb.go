@@ -35,6 +35,9 @@ const (
 	// An OpenLineage ingestion failure, or a dataset that could not be matched
 	// to a registered instance.
 	NotificationType_NOTIFICATION_TYPE_OPENLINEAGE NotificationType = 2
+	// A data quality rule opened, recovered, failed to execute, or failed in a
+	// storm that was merged into one summary.
+	NotificationType_NOTIFICATION_TYPE_DATA_QUALITY NotificationType = 3
 )
 
 // Enum value maps for NotificationType.
@@ -43,11 +46,13 @@ var (
 		0: "NOTIFICATION_TYPE_UNSPECIFIED",
 		1: "NOTIFICATION_TYPE_SCHEMA_SYNC",
 		2: "NOTIFICATION_TYPE_OPENLINEAGE",
+		3: "NOTIFICATION_TYPE_DATA_QUALITY",
 	}
 	NotificationType_value = map[string]int32{
-		"NOTIFICATION_TYPE_UNSPECIFIED": 0,
-		"NOTIFICATION_TYPE_SCHEMA_SYNC": 1,
-		"NOTIFICATION_TYPE_OPENLINEAGE": 2,
+		"NOTIFICATION_TYPE_UNSPECIFIED":  0,
+		"NOTIFICATION_TYPE_SCHEMA_SYNC":  1,
+		"NOTIFICATION_TYPE_OPENLINEAGE":  2,
+		"NOTIFICATION_TYPE_DATA_QUALITY": 3,
 	}
 )
 
@@ -310,6 +315,66 @@ func (OpenLineageFailureKind) EnumDescriptor() ([]byte, []int) {
 	return file_v1_notification_service_proto_rawDescGZIP(), []int{4}
 }
 
+// DataQualityNotificationKind is the event a data quality notification reports.
+type DataQualityNotificationKind int32
+
+const (
+	DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_UNSPECIFIED DataQualityNotificationKind = 0
+	// A rule started failing: an issue was opened.
+	DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED DataQualityNotificationKind = 1
+	// A previously failing rule passes again: its issue resolved itself.
+	DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED DataQualityNotificationKind = 2
+	// A rule could not be executed at all. This is not a data failure.
+	DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED DataQualityNotificationKind = 3
+	// One run failed so many rules that the individual messages were merged.
+	DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY DataQualityNotificationKind = 4
+)
+
+// Enum value maps for DataQualityNotificationKind.
+var (
+	DataQualityNotificationKind_name = map[int32]string{
+		0: "DATA_QUALITY_NOTIFICATION_KIND_UNSPECIFIED",
+		1: "DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED",
+		2: "DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED",
+		3: "DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED",
+		4: "DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY",
+	}
+	DataQualityNotificationKind_value = map[string]int32{
+		"DATA_QUALITY_NOTIFICATION_KIND_UNSPECIFIED":      0,
+		"DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED":     1,
+		"DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED":  2,
+		"DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED": 3,
+		"DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY":    4,
+	}
+)
+
+func (x DataQualityNotificationKind) Enum() *DataQualityNotificationKind {
+	p := new(DataQualityNotificationKind)
+	*p = x
+	return p
+}
+
+func (x DataQualityNotificationKind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (DataQualityNotificationKind) Descriptor() protoreflect.EnumDescriptor {
+	return file_v1_notification_service_proto_enumTypes[5].Descriptor()
+}
+
+func (DataQualityNotificationKind) Type() protoreflect.EnumType {
+	return &file_v1_notification_service_proto_enumTypes[5]
+}
+
+func (x DataQualityNotificationKind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use DataQualityNotificationKind.Descriptor instead.
+func (DataQualityNotificationKind) EnumDescriptor() ([]byte, []int) {
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{5}
+}
+
 // Notification is one in-app message for one recipient.
 type Notification struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -329,6 +394,7 @@ type Notification struct {
 	//
 	//	*Notification_SchemaSync
 	//	*Notification_Openlineage
+	//	*Notification_DataQuality
 	Detail        isNotification_Detail `protobuf_oneof:"detail"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -424,6 +490,15 @@ func (x *Notification) GetOpenlineage() *OpenLineageDetail {
 	return nil
 }
 
+func (x *Notification) GetDataQuality() *DataQualityDetail {
+	if x != nil {
+		if x, ok := x.Detail.(*Notification_DataQuality); ok {
+			return x.DataQuality
+		}
+	}
+	return nil
+}
+
 type isNotification_Detail interface {
 	isNotification_Detail()
 }
@@ -436,9 +511,15 @@ type Notification_Openlineage struct {
 	Openlineage *OpenLineageDetail `protobuf:"bytes,7,opt,name=openlineage,proto3,oneof"`
 }
 
+type Notification_DataQuality struct {
+	DataQuality *DataQualityDetail `protobuf:"bytes,8,opt,name=data_quality,json=dataQuality,proto3,oneof"`
+}
+
 func (*Notification_SchemaSync) isNotification_Detail() {}
 
 func (*Notification_Openlineage) isNotification_Detail() {}
+
+func (*Notification_DataQuality) isNotification_Detail() {}
 
 // SchemaSyncDetail reports one sync operation: the instance metadata step plus
 // every database that operation queued.
@@ -1378,11 +1459,193 @@ func (*KeepAlive) Descriptor() ([]byte, []int) {
 	return file_v1_notification_service_proto_rawDescGZIP(), []int{15}
 }
 
+// DataQualityDetail reports one data quality event. The message carries facts
+// only; the client renders the localized sentence from the kind and these fields.
+type DataQualityDetail struct {
+	state protoimpl.MessageState      `protogen:"open.v1"`
+	Kind  DataQualityNotificationKind `protobuf:"varint,1,opt,name=kind,proto3,enum=metaxisdata.v1.DataQualityNotificationKind" json:"kind,omitempty"`
+	// Format: workspaces/{workspace}/qualityRules/{quality_rule}
+	Rule      string `protobuf:"bytes,2,opt,name=rule,proto3" json:"rule,omitempty"`
+	RuleTitle string `protobuf:"bytes,3,opt,name=rule_title,json=ruleTitle,proto3" json:"rule_title,omitempty"`
+	// The registry GUID of the rule's target.
+	TargetGuid string `protobuf:"bytes,4,opt,name=target_guid,json=targetGuid,proto3" json:"target_guid,omitempty"`
+	// The display path: instance/database/schema/table[.column].
+	TargetPath string          `protobuf:"bytes,5,opt,name=target_path,json=targetPath,proto3" json:"target_path,omitempty"`
+	FromStatus QualityStatus   `protobuf:"varint,6,opt,name=from_status,json=fromStatus,proto3,enum=metaxisdata.v1.QualityStatus" json:"from_status,omitempty"`
+	ToStatus   QualityStatus   `protobuf:"varint,7,opt,name=to_status,json=toStatus,proto3,enum=metaxisdata.v1.QualityStatus" json:"to_status,omitempty"`
+	Severity   QualitySeverity `protobuf:"varint,8,opt,name=severity,proto3,enum=metaxisdata.v1.QualitySeverity" json:"severity,omitempty"`
+	// The observed value and its unit ("rows", "%", "s", "timestamp").
+	ObservedValue float64 `protobuf:"fixed64,9,opt,name=observed_value,json=observedValue,proto3" json:"observed_value,omitempty"`
+	ObservedUnit  string  `protobuf:"bytes,10,opt,name=observed_unit,json=observedUnit,proto3" json:"observed_unit,omitempty"`
+	// Format: workspaces/{workspace}/qualityIssues/{quality_issue}
+	Issue string `protobuf:"bytes,11,opt,name=issue,proto3" json:"issue,omitempty"`
+	// Format: workspaces/{workspace}/qualityRuns/{quality_run}
+	Run        string `protobuf:"bytes,12,opt,name=run,proto3" json:"run,omitempty"`
+	FailedRows int64  `protobuf:"varint,13,opt,name=failed_rows,json=failedRows,proto3" json:"failed_rows,omitempty"`
+	TotalRows  int64  `protobuf:"varint,14,opt,name=total_rows,json=totalRows,proto3" json:"total_rows,omitempty"`
+	// The machine-readable failure class for EXECUTION_FAILED.
+	ErrorCode string `protobuf:"bytes,15,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
+	// The tallies a STORM_SUMMARY merged.
+	FailedRuleCount int32 `protobuf:"varint,16,opt,name=failed_rule_count,json=failedRuleCount,proto3" json:"failed_rule_count,omitempty"`
+	TotalRuleCount  int32 `protobuf:"varint,17,opt,name=total_rule_count,json=totalRuleCount,proto3" json:"total_rule_count,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *DataQualityDetail) Reset() {
+	*x = DataQualityDetail{}
+	mi := &file_v1_notification_service_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DataQualityDetail) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DataQualityDetail) ProtoMessage() {}
+
+func (x *DataQualityDetail) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_notification_service_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DataQualityDetail.ProtoReflect.Descriptor instead.
+func (*DataQualityDetail) Descriptor() ([]byte, []int) {
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *DataQualityDetail) GetKind() DataQualityNotificationKind {
+	if x != nil {
+		return x.Kind
+	}
+	return DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_UNSPECIFIED
+}
+
+func (x *DataQualityDetail) GetRule() string {
+	if x != nil {
+		return x.Rule
+	}
+	return ""
+}
+
+func (x *DataQualityDetail) GetRuleTitle() string {
+	if x != nil {
+		return x.RuleTitle
+	}
+	return ""
+}
+
+func (x *DataQualityDetail) GetTargetGuid() string {
+	if x != nil {
+		return x.TargetGuid
+	}
+	return ""
+}
+
+func (x *DataQualityDetail) GetTargetPath() string {
+	if x != nil {
+		return x.TargetPath
+	}
+	return ""
+}
+
+func (x *DataQualityDetail) GetFromStatus() QualityStatus {
+	if x != nil {
+		return x.FromStatus
+	}
+	return QualityStatus_QUALITY_STATUS_UNSPECIFIED
+}
+
+func (x *DataQualityDetail) GetToStatus() QualityStatus {
+	if x != nil {
+		return x.ToStatus
+	}
+	return QualityStatus_QUALITY_STATUS_UNSPECIFIED
+}
+
+func (x *DataQualityDetail) GetSeverity() QualitySeverity {
+	if x != nil {
+		return x.Severity
+	}
+	return QualitySeverity_QUALITY_SEVERITY_UNSPECIFIED
+}
+
+func (x *DataQualityDetail) GetObservedValue() float64 {
+	if x != nil {
+		return x.ObservedValue
+	}
+	return 0
+}
+
+func (x *DataQualityDetail) GetObservedUnit() string {
+	if x != nil {
+		return x.ObservedUnit
+	}
+	return ""
+}
+
+func (x *DataQualityDetail) GetIssue() string {
+	if x != nil {
+		return x.Issue
+	}
+	return ""
+}
+
+func (x *DataQualityDetail) GetRun() string {
+	if x != nil {
+		return x.Run
+	}
+	return ""
+}
+
+func (x *DataQualityDetail) GetFailedRows() int64 {
+	if x != nil {
+		return x.FailedRows
+	}
+	return 0
+}
+
+func (x *DataQualityDetail) GetTotalRows() int64 {
+	if x != nil {
+		return x.TotalRows
+	}
+	return 0
+}
+
+func (x *DataQualityDetail) GetErrorCode() string {
+	if x != nil {
+		return x.ErrorCode
+	}
+	return ""
+}
+
+func (x *DataQualityDetail) GetFailedRuleCount() int32 {
+	if x != nil {
+		return x.FailedRuleCount
+	}
+	return 0
+}
+
+func (x *DataQualityDetail) GetTotalRuleCount() int32 {
+	if x != nil {
+		return x.TotalRuleCount
+	}
+	return 0
+}
+
 var File_v1_notification_service_proto protoreflect.FileDescriptor
 
 const file_v1_notification_service_proto_rawDesc = "" +
 	"\n" +
-	"\x1dv1/notification_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xbf\x03\n" +
+	"\x1dv1/notification_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1dv1/data_quality_service.proto\"\x87\x04\n" +
 	"\fNotification\x12\x17\n" +
 	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x03R\x04name\x12@\n" +
 	"\vcreate_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\n" +
@@ -1392,7 +1655,8 @@ const file_v1_notification_service_proto_rawDesc = "" +
 	"\tread_time\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\breadTime\x12C\n" +
 	"\vschema_sync\x18\x06 \x01(\v2 .metaxisdata.v1.SchemaSyncDetailH\x00R\n" +
 	"schemaSync\x12E\n" +
-	"\vopenlineage\x18\a \x01(\v2!.metaxisdata.v1.OpenLineageDetailH\x00R\vopenlineageB\b\n" +
+	"\vopenlineage\x18\a \x01(\v2!.metaxisdata.v1.OpenLineageDetailH\x00R\vopenlineage\x12F\n" +
+	"\fdata_quality\x18\b \x01(\v2!.metaxisdata.v1.DataQualityDetailH\x00R\vdataQualityB\b\n" +
 	"\x06detail\"\xec\x02\n" +
 	"\x10SchemaSyncDetail\x12\x1a\n" +
 	"\binstance\x18\x01 \x01(\tR\binstance\x12%\n" +
@@ -1455,11 +1719,38 @@ const file_v1_notification_service_proto_rawDesc = "" +
 	"\funseen_count\x18\x03 \x01(\x05B\x03\xe0A\x03H\x01R\vunseenCount\x88\x01\x01B\x0f\n" +
 	"\r_unread_countB\x0f\n" +
 	"\r_unseen_count\"\v\n" +
-	"\tKeepAlive*{\n" +
+	"\tKeepAlive\"\xab\x05\n" +
+	"\x11DataQualityDetail\x12?\n" +
+	"\x04kind\x18\x01 \x01(\x0e2+.metaxisdata.v1.DataQualityNotificationKindR\x04kind\x12\x12\n" +
+	"\x04rule\x18\x02 \x01(\tR\x04rule\x12\x1d\n" +
+	"\n" +
+	"rule_title\x18\x03 \x01(\tR\truleTitle\x12\x1f\n" +
+	"\vtarget_guid\x18\x04 \x01(\tR\n" +
+	"targetGuid\x12\x1f\n" +
+	"\vtarget_path\x18\x05 \x01(\tR\n" +
+	"targetPath\x12>\n" +
+	"\vfrom_status\x18\x06 \x01(\x0e2\x1d.metaxisdata.v1.QualityStatusR\n" +
+	"fromStatus\x12:\n" +
+	"\tto_status\x18\a \x01(\x0e2\x1d.metaxisdata.v1.QualityStatusR\btoStatus\x12;\n" +
+	"\bseverity\x18\b \x01(\x0e2\x1f.metaxisdata.v1.QualitySeverityR\bseverity\x12%\n" +
+	"\x0eobserved_value\x18\t \x01(\x01R\robservedValue\x12#\n" +
+	"\robserved_unit\x18\n" +
+	" \x01(\tR\fobservedUnit\x12\x14\n" +
+	"\x05issue\x18\v \x01(\tR\x05issue\x12\x10\n" +
+	"\x03run\x18\f \x01(\tR\x03run\x12\x1f\n" +
+	"\vfailed_rows\x18\r \x01(\x03R\n" +
+	"failedRows\x12\x1d\n" +
+	"\n" +
+	"total_rows\x18\x0e \x01(\x03R\ttotalRows\x12\x1d\n" +
+	"\n" +
+	"error_code\x18\x0f \x01(\tR\terrorCode\x12*\n" +
+	"\x11failed_rule_count\x18\x10 \x01(\x05R\x0ffailedRuleCount\x12(\n" +
+	"\x10total_rule_count\x18\x11 \x01(\x05R\x0etotalRuleCount*\x9f\x01\n" +
 	"\x10NotificationType\x12!\n" +
 	"\x1dNOTIFICATION_TYPE_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dNOTIFICATION_TYPE_SCHEMA_SYNC\x10\x01\x12!\n" +
-	"\x1dNOTIFICATION_TYPE_OPENLINEAGE\x10\x02*\xa1\x01\n" +
+	"\x1dNOTIFICATION_TYPE_OPENLINEAGE\x10\x02\x12\"\n" +
+	"\x1eNOTIFICATION_TYPE_DATA_QUALITY\x10\x03*\xa1\x01\n" +
 	"\x14NotificationSeverity\x12%\n" +
 	"!NOTIFICATION_SEVERITY_UNSPECIFIED\x10\x00\x12\x1e\n" +
 	"\x1aNOTIFICATION_SEVERITY_INFO\x10\x01\x12!\n" +
@@ -1481,7 +1772,13 @@ const file_v1_notification_service_proto_rawDesc = "" +
 	"'OPENLINEAGE_FAILURE_KIND_SCOPE_MISMATCH\x10\x03\x12+\n" +
 	"'OPENLINEAGE_FAILURE_KIND_PERSIST_FAILED\x10\x04\x12+\n" +
 	"'OPENLINEAGE_FAILURE_KIND_PROCESS_FAILED\x10\x05\x12/\n" +
-	"+OPENLINEAGE_FAILURE_KIND_NAMESPACE_UNMAPPED\x10\x062\xfb\b\n" +
+	"+OPENLINEAGE_FAILURE_KIND_NAMESPACE_UNMAPPED\x10\x06*\x99\x02\n" +
+	"\x1bDataQualityNotificationKind\x12.\n" +
+	"*DATA_QUALITY_NOTIFICATION_KIND_UNSPECIFIED\x10\x00\x12/\n" +
+	"+DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED\x10\x01\x122\n" +
+	".DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED\x10\x02\x123\n" +
+	"/DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED\x10\x03\x120\n" +
+	",DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY\x10\x042\xfb\b\n" +
 	"\x13NotificationService\x12\xa2\x01\n" +
 	"\x11ListNotifications\x12(.metaxisdata.v1.ListNotificationsRequest\x1a).metaxisdata.v1.ListNotificationsResponse\"8\xdaA\x06parent\x82\xd3\xe4\x93\x02)\x12'/v1/{parent=workspaces/*}/notifications\x12\xc0\x01\n" +
 	"\x1aGetUnreadNotificationCount\x121.metaxisdata.v1.GetUnreadNotificationCountRequest\x1a2.metaxisdata.v1.GetUnreadNotificationCountResponse\";\x82\xd3\xe4\x93\x025\x123/v1/{parent=workspaces/*}/notifications:unreadCount\x12\x9a\x01\n" +
@@ -1503,67 +1800,76 @@ func file_v1_notification_service_proto_rawDescGZIP() []byte {
 	return file_v1_notification_service_proto_rawDescData
 }
 
-var file_v1_notification_service_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_v1_notification_service_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_v1_notification_service_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
+var file_v1_notification_service_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_v1_notification_service_proto_goTypes = []any{
 	(NotificationType)(0),                      // 0: metaxisdata.v1.NotificationType
 	(NotificationSeverity)(0),                  // 1: metaxisdata.v1.NotificationSeverity
 	(SyncTrigger)(0),                           // 2: metaxisdata.v1.SyncTrigger
 	(SyncDatabaseState)(0),                     // 3: metaxisdata.v1.SyncDatabaseState
 	(OpenLineageFailureKind)(0),                // 4: metaxisdata.v1.OpenLineageFailureKind
-	(*Notification)(nil),                       // 5: metaxisdata.v1.Notification
-	(*SchemaSyncDetail)(nil),                   // 6: metaxisdata.v1.SchemaSyncDetail
-	(*SyncDatabaseResult)(nil),                 // 7: metaxisdata.v1.SyncDatabaseResult
-	(*OpenLineageDetail)(nil),                  // 8: metaxisdata.v1.OpenLineageDetail
-	(*ListNotificationsRequest)(nil),           // 9: metaxisdata.v1.ListNotificationsRequest
-	(*ListNotificationsResponse)(nil),          // 10: metaxisdata.v1.ListNotificationsResponse
-	(*GetUnreadNotificationCountRequest)(nil),  // 11: metaxisdata.v1.GetUnreadNotificationCountRequest
-	(*GetUnreadNotificationCountResponse)(nil), // 12: metaxisdata.v1.GetUnreadNotificationCountResponse
-	(*MarkNotificationsSeenRequest)(nil),       // 13: metaxisdata.v1.MarkNotificationsSeenRequest
-	(*BatchMarkNotificationsReadRequest)(nil),  // 14: metaxisdata.v1.BatchMarkNotificationsReadRequest
-	(*MarkAllNotificationsReadRequest)(nil),    // 15: metaxisdata.v1.MarkAllNotificationsReadRequest
-	(*DeleteNotificationRequest)(nil),          // 16: metaxisdata.v1.DeleteNotificationRequest
-	(*SubscribeNotificationsRequest)(nil),      // 17: metaxisdata.v1.SubscribeNotificationsRequest
-	(*SubscribeNotificationsResponse)(nil),     // 18: metaxisdata.v1.SubscribeNotificationsResponse
-	(*NotificationEvent)(nil),                  // 19: metaxisdata.v1.NotificationEvent
-	(*KeepAlive)(nil),                          // 20: metaxisdata.v1.KeepAlive
-	(*timestamppb.Timestamp)(nil),              // 21: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),                      // 22: google.protobuf.Empty
+	(DataQualityNotificationKind)(0),           // 5: metaxisdata.v1.DataQualityNotificationKind
+	(*Notification)(nil),                       // 6: metaxisdata.v1.Notification
+	(*SchemaSyncDetail)(nil),                   // 7: metaxisdata.v1.SchemaSyncDetail
+	(*SyncDatabaseResult)(nil),                 // 8: metaxisdata.v1.SyncDatabaseResult
+	(*OpenLineageDetail)(nil),                  // 9: metaxisdata.v1.OpenLineageDetail
+	(*ListNotificationsRequest)(nil),           // 10: metaxisdata.v1.ListNotificationsRequest
+	(*ListNotificationsResponse)(nil),          // 11: metaxisdata.v1.ListNotificationsResponse
+	(*GetUnreadNotificationCountRequest)(nil),  // 12: metaxisdata.v1.GetUnreadNotificationCountRequest
+	(*GetUnreadNotificationCountResponse)(nil), // 13: metaxisdata.v1.GetUnreadNotificationCountResponse
+	(*MarkNotificationsSeenRequest)(nil),       // 14: metaxisdata.v1.MarkNotificationsSeenRequest
+	(*BatchMarkNotificationsReadRequest)(nil),  // 15: metaxisdata.v1.BatchMarkNotificationsReadRequest
+	(*MarkAllNotificationsReadRequest)(nil),    // 16: metaxisdata.v1.MarkAllNotificationsReadRequest
+	(*DeleteNotificationRequest)(nil),          // 17: metaxisdata.v1.DeleteNotificationRequest
+	(*SubscribeNotificationsRequest)(nil),      // 18: metaxisdata.v1.SubscribeNotificationsRequest
+	(*SubscribeNotificationsResponse)(nil),     // 19: metaxisdata.v1.SubscribeNotificationsResponse
+	(*NotificationEvent)(nil),                  // 20: metaxisdata.v1.NotificationEvent
+	(*KeepAlive)(nil),                          // 21: metaxisdata.v1.KeepAlive
+	(*DataQualityDetail)(nil),                  // 22: metaxisdata.v1.DataQualityDetail
+	(*timestamppb.Timestamp)(nil),              // 23: google.protobuf.Timestamp
+	(QualityStatus)(0),                         // 24: metaxisdata.v1.QualityStatus
+	(QualitySeverity)(0),                       // 25: metaxisdata.v1.QualitySeverity
+	(*emptypb.Empty)(nil),                      // 26: google.protobuf.Empty
 }
 var file_v1_notification_service_proto_depIdxs = []int32{
-	21, // 0: metaxisdata.v1.Notification.create_time:type_name -> google.protobuf.Timestamp
+	23, // 0: metaxisdata.v1.Notification.create_time:type_name -> google.protobuf.Timestamp
 	0,  // 1: metaxisdata.v1.Notification.type:type_name -> metaxisdata.v1.NotificationType
 	1,  // 2: metaxisdata.v1.Notification.severity:type_name -> metaxisdata.v1.NotificationSeverity
-	21, // 3: metaxisdata.v1.Notification.read_time:type_name -> google.protobuf.Timestamp
-	6,  // 4: metaxisdata.v1.Notification.schema_sync:type_name -> metaxisdata.v1.SchemaSyncDetail
-	8,  // 5: metaxisdata.v1.Notification.openlineage:type_name -> metaxisdata.v1.OpenLineageDetail
-	2,  // 6: metaxisdata.v1.SchemaSyncDetail.trigger:type_name -> metaxisdata.v1.SyncTrigger
-	7,  // 7: metaxisdata.v1.SchemaSyncDetail.databases:type_name -> metaxisdata.v1.SyncDatabaseResult
-	3,  // 8: metaxisdata.v1.SyncDatabaseResult.state:type_name -> metaxisdata.v1.SyncDatabaseState
-	4,  // 9: metaxisdata.v1.OpenLineageDetail.kind:type_name -> metaxisdata.v1.OpenLineageFailureKind
-	5,  // 10: metaxisdata.v1.ListNotificationsResponse.notifications:type_name -> metaxisdata.v1.Notification
-	19, // 11: metaxisdata.v1.SubscribeNotificationsResponse.notification:type_name -> metaxisdata.v1.NotificationEvent
-	20, // 12: metaxisdata.v1.SubscribeNotificationsResponse.keep_alive:type_name -> metaxisdata.v1.KeepAlive
-	5,  // 13: metaxisdata.v1.NotificationEvent.notification:type_name -> metaxisdata.v1.Notification
-	9,  // 14: metaxisdata.v1.NotificationService.ListNotifications:input_type -> metaxisdata.v1.ListNotificationsRequest
-	11, // 15: metaxisdata.v1.NotificationService.GetUnreadNotificationCount:input_type -> metaxisdata.v1.GetUnreadNotificationCountRequest
-	13, // 16: metaxisdata.v1.NotificationService.MarkNotificationsSeen:input_type -> metaxisdata.v1.MarkNotificationsSeenRequest
-	14, // 17: metaxisdata.v1.NotificationService.BatchMarkNotificationsRead:input_type -> metaxisdata.v1.BatchMarkNotificationsReadRequest
-	15, // 18: metaxisdata.v1.NotificationService.MarkAllNotificationsRead:input_type -> metaxisdata.v1.MarkAllNotificationsReadRequest
-	16, // 19: metaxisdata.v1.NotificationService.DeleteNotification:input_type -> metaxisdata.v1.DeleteNotificationRequest
-	17, // 20: metaxisdata.v1.NotificationService.SubscribeNotifications:input_type -> metaxisdata.v1.SubscribeNotificationsRequest
-	10, // 21: metaxisdata.v1.NotificationService.ListNotifications:output_type -> metaxisdata.v1.ListNotificationsResponse
-	12, // 22: metaxisdata.v1.NotificationService.GetUnreadNotificationCount:output_type -> metaxisdata.v1.GetUnreadNotificationCountResponse
-	22, // 23: metaxisdata.v1.NotificationService.MarkNotificationsSeen:output_type -> google.protobuf.Empty
-	22, // 24: metaxisdata.v1.NotificationService.BatchMarkNotificationsRead:output_type -> google.protobuf.Empty
-	22, // 25: metaxisdata.v1.NotificationService.MarkAllNotificationsRead:output_type -> google.protobuf.Empty
-	22, // 26: metaxisdata.v1.NotificationService.DeleteNotification:output_type -> google.protobuf.Empty
-	18, // 27: metaxisdata.v1.NotificationService.SubscribeNotifications:output_type -> metaxisdata.v1.SubscribeNotificationsResponse
-	21, // [21:28] is the sub-list for method output_type
-	14, // [14:21] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	23, // 3: metaxisdata.v1.Notification.read_time:type_name -> google.protobuf.Timestamp
+	7,  // 4: metaxisdata.v1.Notification.schema_sync:type_name -> metaxisdata.v1.SchemaSyncDetail
+	9,  // 5: metaxisdata.v1.Notification.openlineage:type_name -> metaxisdata.v1.OpenLineageDetail
+	22, // 6: metaxisdata.v1.Notification.data_quality:type_name -> metaxisdata.v1.DataQualityDetail
+	2,  // 7: metaxisdata.v1.SchemaSyncDetail.trigger:type_name -> metaxisdata.v1.SyncTrigger
+	8,  // 8: metaxisdata.v1.SchemaSyncDetail.databases:type_name -> metaxisdata.v1.SyncDatabaseResult
+	3,  // 9: metaxisdata.v1.SyncDatabaseResult.state:type_name -> metaxisdata.v1.SyncDatabaseState
+	4,  // 10: metaxisdata.v1.OpenLineageDetail.kind:type_name -> metaxisdata.v1.OpenLineageFailureKind
+	6,  // 11: metaxisdata.v1.ListNotificationsResponse.notifications:type_name -> metaxisdata.v1.Notification
+	20, // 12: metaxisdata.v1.SubscribeNotificationsResponse.notification:type_name -> metaxisdata.v1.NotificationEvent
+	21, // 13: metaxisdata.v1.SubscribeNotificationsResponse.keep_alive:type_name -> metaxisdata.v1.KeepAlive
+	6,  // 14: metaxisdata.v1.NotificationEvent.notification:type_name -> metaxisdata.v1.Notification
+	5,  // 15: metaxisdata.v1.DataQualityDetail.kind:type_name -> metaxisdata.v1.DataQualityNotificationKind
+	24, // 16: metaxisdata.v1.DataQualityDetail.from_status:type_name -> metaxisdata.v1.QualityStatus
+	24, // 17: metaxisdata.v1.DataQualityDetail.to_status:type_name -> metaxisdata.v1.QualityStatus
+	25, // 18: metaxisdata.v1.DataQualityDetail.severity:type_name -> metaxisdata.v1.QualitySeverity
+	10, // 19: metaxisdata.v1.NotificationService.ListNotifications:input_type -> metaxisdata.v1.ListNotificationsRequest
+	12, // 20: metaxisdata.v1.NotificationService.GetUnreadNotificationCount:input_type -> metaxisdata.v1.GetUnreadNotificationCountRequest
+	14, // 21: metaxisdata.v1.NotificationService.MarkNotificationsSeen:input_type -> metaxisdata.v1.MarkNotificationsSeenRequest
+	15, // 22: metaxisdata.v1.NotificationService.BatchMarkNotificationsRead:input_type -> metaxisdata.v1.BatchMarkNotificationsReadRequest
+	16, // 23: metaxisdata.v1.NotificationService.MarkAllNotificationsRead:input_type -> metaxisdata.v1.MarkAllNotificationsReadRequest
+	17, // 24: metaxisdata.v1.NotificationService.DeleteNotification:input_type -> metaxisdata.v1.DeleteNotificationRequest
+	18, // 25: metaxisdata.v1.NotificationService.SubscribeNotifications:input_type -> metaxisdata.v1.SubscribeNotificationsRequest
+	11, // 26: metaxisdata.v1.NotificationService.ListNotifications:output_type -> metaxisdata.v1.ListNotificationsResponse
+	13, // 27: metaxisdata.v1.NotificationService.GetUnreadNotificationCount:output_type -> metaxisdata.v1.GetUnreadNotificationCountResponse
+	26, // 28: metaxisdata.v1.NotificationService.MarkNotificationsSeen:output_type -> google.protobuf.Empty
+	26, // 29: metaxisdata.v1.NotificationService.BatchMarkNotificationsRead:output_type -> google.protobuf.Empty
+	26, // 30: metaxisdata.v1.NotificationService.MarkAllNotificationsRead:output_type -> google.protobuf.Empty
+	26, // 31: metaxisdata.v1.NotificationService.DeleteNotification:output_type -> google.protobuf.Empty
+	19, // 32: metaxisdata.v1.NotificationService.SubscribeNotifications:output_type -> metaxisdata.v1.SubscribeNotificationsResponse
+	26, // [26:33] is the sub-list for method output_type
+	19, // [19:26] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
 func init() { file_v1_notification_service_proto_init() }
@@ -1571,9 +1877,11 @@ func file_v1_notification_service_proto_init() {
 	if File_v1_notification_service_proto != nil {
 		return
 	}
+	file_v1_data_quality_service_proto_init()
 	file_v1_notification_service_proto_msgTypes[0].OneofWrappers = []any{
 		(*Notification_SchemaSync)(nil),
 		(*Notification_Openlineage)(nil),
+		(*Notification_DataQuality)(nil),
 	}
 	file_v1_notification_service_proto_msgTypes[13].OneofWrappers = []any{
 		(*SubscribeNotificationsResponse_Notification)(nil),
@@ -1585,8 +1893,8 @@ func file_v1_notification_service_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_notification_service_proto_rawDesc), len(file_v1_notification_service_proto_rawDesc)),
-			NumEnums:      5,
-			NumMessages:   16,
+			NumEnums:      6,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

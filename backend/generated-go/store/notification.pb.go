@@ -33,6 +33,9 @@ const (
 	// An OpenLineage ingestion failure, or a dataset that could not be matched
 	// to a registered instance.
 	NotificationType_NOTIFICATION_TYPE_OPENLINEAGE NotificationType = 2
+	// A data quality rule opened, recovered, failed to execute, or failed in a
+	// storm that was merged into one summary.
+	NotificationType_NOTIFICATION_TYPE_DATA_QUALITY NotificationType = 3
 )
 
 // Enum value maps for NotificationType.
@@ -41,11 +44,13 @@ var (
 		0: "NOTIFICATION_TYPE_UNSPECIFIED",
 		1: "NOTIFICATION_TYPE_SCHEMA_SYNC",
 		2: "NOTIFICATION_TYPE_OPENLINEAGE",
+		3: "NOTIFICATION_TYPE_DATA_QUALITY",
 	}
 	NotificationType_value = map[string]int32{
-		"NOTIFICATION_TYPE_UNSPECIFIED": 0,
-		"NOTIFICATION_TYPE_SCHEMA_SYNC": 1,
-		"NOTIFICATION_TYPE_OPENLINEAGE": 2,
+		"NOTIFICATION_TYPE_UNSPECIFIED":  0,
+		"NOTIFICATION_TYPE_SCHEMA_SYNC":  1,
+		"NOTIFICATION_TYPE_OPENLINEAGE":  2,
+		"NOTIFICATION_TYPE_DATA_QUALITY": 3,
 	}
 )
 
@@ -308,6 +313,66 @@ func (OpenLineageFailureKind) EnumDescriptor() ([]byte, []int) {
 	return file_store_notification_proto_rawDescGZIP(), []int{4}
 }
 
+// DataQualityNotificationKind is the event a data quality notification reports.
+type DataQualityNotificationKind int32
+
+const (
+	DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_UNSPECIFIED DataQualityNotificationKind = 0
+	// A rule started failing: an issue was opened.
+	DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED DataQualityNotificationKind = 1
+	// A previously failing rule passes again: its issue resolved itself.
+	DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED DataQualityNotificationKind = 2
+	// A rule could not be executed at all. This is not a data failure.
+	DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED DataQualityNotificationKind = 3
+	// One run failed so many rules that the individual messages were merged.
+	DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY DataQualityNotificationKind = 4
+)
+
+// Enum value maps for DataQualityNotificationKind.
+var (
+	DataQualityNotificationKind_name = map[int32]string{
+		0: "DATA_QUALITY_NOTIFICATION_KIND_UNSPECIFIED",
+		1: "DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED",
+		2: "DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED",
+		3: "DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED",
+		4: "DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY",
+	}
+	DataQualityNotificationKind_value = map[string]int32{
+		"DATA_QUALITY_NOTIFICATION_KIND_UNSPECIFIED":      0,
+		"DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED":     1,
+		"DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED":  2,
+		"DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED": 3,
+		"DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY":    4,
+	}
+)
+
+func (x DataQualityNotificationKind) Enum() *DataQualityNotificationKind {
+	p := new(DataQualityNotificationKind)
+	*p = x
+	return p
+}
+
+func (x DataQualityNotificationKind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (DataQualityNotificationKind) Descriptor() protoreflect.EnumDescriptor {
+	return file_store_notification_proto_enumTypes[5].Descriptor()
+}
+
+func (DataQualityNotificationKind) Type() protoreflect.EnumType {
+	return &file_store_notification_proto_enumTypes[5]
+}
+
+func (x DataQualityNotificationKind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use DataQualityNotificationKind.Descriptor instead.
+func (DataQualityNotificationKind) EnumDescriptor() ([]byte, []int) {
+	return file_store_notification_proto_rawDescGZIP(), []int{5}
+}
+
 // Notification is one in-app message for one recipient: the outcome of a sync
 // operation the recipient asked for, or an ingestion failure the workspace
 // administrators need to see. It is personal data, so every read is scoped by
@@ -342,6 +407,7 @@ type Notification struct {
 	//
 	//	*Notification_SchemaSync
 	//	*Notification_Openlineage
+	//	*Notification_DataQuality
 	Detail        isNotification_Detail `protobuf_oneof:"detail"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -458,6 +524,15 @@ func (x *Notification) GetOpenlineage() *OpenLineageDetail {
 	return nil
 }
 
+func (x *Notification) GetDataQuality() *DataQualityDetail {
+	if x != nil {
+		if x, ok := x.Detail.(*Notification_DataQuality); ok {
+			return x.DataQuality
+		}
+	}
+	return nil
+}
+
 type isNotification_Detail interface {
 	isNotification_Detail()
 }
@@ -470,9 +545,15 @@ type Notification_Openlineage struct {
 	Openlineage *OpenLineageDetail `protobuf:"bytes,10,opt,name=openlineage,proto3,oneof"`
 }
 
+type Notification_DataQuality struct {
+	DataQuality *DataQualityDetail `protobuf:"bytes,11,opt,name=data_quality,json=dataQuality,proto3,oneof"`
+}
+
 func (*Notification_SchemaSync) isNotification_Detail() {}
 
 func (*Notification_Openlineage) isNotification_Detail() {}
+
+func (*Notification_DataQuality) isNotification_Detail() {}
 
 // SchemaSyncDetail reports one sync operation: the instance metadata step plus
 // every database that was queued by it.
@@ -762,11 +843,193 @@ func (x *OpenLineageDetail) GetError() string {
 	return ""
 }
 
+// DataQualityDetail reports one data quality event. The message carries facts
+// only; the client renders the localized sentence from the kind and these fields.
+type DataQualityDetail struct {
+	state protoimpl.MessageState      `protogen:"open.v1"`
+	Kind  DataQualityNotificationKind `protobuf:"varint,1,opt,name=kind,proto3,enum=metaxisdata.store.DataQualityNotificationKind" json:"kind,omitempty"`
+	// Format: workspaces/{workspace}/qualityRules/{quality_rule}
+	Rule      string `protobuf:"bytes,2,opt,name=rule,proto3" json:"rule,omitempty"`
+	RuleTitle string `protobuf:"bytes,3,opt,name=rule_title,json=ruleTitle,proto3" json:"rule_title,omitempty"`
+	// The registry GUID of the rule's target.
+	TargetGuid string `protobuf:"bytes,4,opt,name=target_guid,json=targetGuid,proto3" json:"target_guid,omitempty"`
+	// The display path: instance/database/schema/table[.column].
+	TargetPath string          `protobuf:"bytes,5,opt,name=target_path,json=targetPath,proto3" json:"target_path,omitempty"`
+	FromStatus QualityStatus   `protobuf:"varint,6,opt,name=from_status,json=fromStatus,proto3,enum=metaxisdata.store.QualityStatus" json:"from_status,omitempty"`
+	ToStatus   QualityStatus   `protobuf:"varint,7,opt,name=to_status,json=toStatus,proto3,enum=metaxisdata.store.QualityStatus" json:"to_status,omitempty"`
+	Severity   QualitySeverity `protobuf:"varint,8,opt,name=severity,proto3,enum=metaxisdata.store.QualitySeverity" json:"severity,omitempty"`
+	// The observed value and its unit ("rows", "%", "s", "timestamp").
+	ObservedValue float64 `protobuf:"fixed64,9,opt,name=observed_value,json=observedValue,proto3" json:"observed_value,omitempty"`
+	ObservedUnit  string  `protobuf:"bytes,10,opt,name=observed_unit,json=observedUnit,proto3" json:"observed_unit,omitempty"`
+	// Format: workspaces/{workspace}/qualityIssues/{quality_issue}
+	Issue string `protobuf:"bytes,11,opt,name=issue,proto3" json:"issue,omitempty"`
+	// Format: workspaces/{workspace}/qualityRuns/{quality_run}
+	Run        string `protobuf:"bytes,12,opt,name=run,proto3" json:"run,omitempty"`
+	FailedRows int64  `protobuf:"varint,13,opt,name=failed_rows,json=failedRows,proto3" json:"failed_rows,omitempty"`
+	TotalRows  int64  `protobuf:"varint,14,opt,name=total_rows,json=totalRows,proto3" json:"total_rows,omitempty"`
+	// The machine-readable failure class for EXECUTION_FAILED.
+	ErrorCode string `protobuf:"bytes,15,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
+	// The tallies a STORM_SUMMARY merged.
+	FailedRuleCount int32 `protobuf:"varint,16,opt,name=failed_rule_count,json=failedRuleCount,proto3" json:"failed_rule_count,omitempty"`
+	TotalRuleCount  int32 `protobuf:"varint,17,opt,name=total_rule_count,json=totalRuleCount,proto3" json:"total_rule_count,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *DataQualityDetail) Reset() {
+	*x = DataQualityDetail{}
+	mi := &file_store_notification_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DataQualityDetail) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DataQualityDetail) ProtoMessage() {}
+
+func (x *DataQualityDetail) ProtoReflect() protoreflect.Message {
+	mi := &file_store_notification_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DataQualityDetail.ProtoReflect.Descriptor instead.
+func (*DataQualityDetail) Descriptor() ([]byte, []int) {
+	return file_store_notification_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *DataQualityDetail) GetKind() DataQualityNotificationKind {
+	if x != nil {
+		return x.Kind
+	}
+	return DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_UNSPECIFIED
+}
+
+func (x *DataQualityDetail) GetRule() string {
+	if x != nil {
+		return x.Rule
+	}
+	return ""
+}
+
+func (x *DataQualityDetail) GetRuleTitle() string {
+	if x != nil {
+		return x.RuleTitle
+	}
+	return ""
+}
+
+func (x *DataQualityDetail) GetTargetGuid() string {
+	if x != nil {
+		return x.TargetGuid
+	}
+	return ""
+}
+
+func (x *DataQualityDetail) GetTargetPath() string {
+	if x != nil {
+		return x.TargetPath
+	}
+	return ""
+}
+
+func (x *DataQualityDetail) GetFromStatus() QualityStatus {
+	if x != nil {
+		return x.FromStatus
+	}
+	return QualityStatus_QUALITY_STATUS_UNSPECIFIED
+}
+
+func (x *DataQualityDetail) GetToStatus() QualityStatus {
+	if x != nil {
+		return x.ToStatus
+	}
+	return QualityStatus_QUALITY_STATUS_UNSPECIFIED
+}
+
+func (x *DataQualityDetail) GetSeverity() QualitySeverity {
+	if x != nil {
+		return x.Severity
+	}
+	return QualitySeverity_QUALITY_SEVERITY_UNSPECIFIED
+}
+
+func (x *DataQualityDetail) GetObservedValue() float64 {
+	if x != nil {
+		return x.ObservedValue
+	}
+	return 0
+}
+
+func (x *DataQualityDetail) GetObservedUnit() string {
+	if x != nil {
+		return x.ObservedUnit
+	}
+	return ""
+}
+
+func (x *DataQualityDetail) GetIssue() string {
+	if x != nil {
+		return x.Issue
+	}
+	return ""
+}
+
+func (x *DataQualityDetail) GetRun() string {
+	if x != nil {
+		return x.Run
+	}
+	return ""
+}
+
+func (x *DataQualityDetail) GetFailedRows() int64 {
+	if x != nil {
+		return x.FailedRows
+	}
+	return 0
+}
+
+func (x *DataQualityDetail) GetTotalRows() int64 {
+	if x != nil {
+		return x.TotalRows
+	}
+	return 0
+}
+
+func (x *DataQualityDetail) GetErrorCode() string {
+	if x != nil {
+		return x.ErrorCode
+	}
+	return ""
+}
+
+func (x *DataQualityDetail) GetFailedRuleCount() int32 {
+	if x != nil {
+		return x.FailedRuleCount
+	}
+	return 0
+}
+
+func (x *DataQualityDetail) GetTotalRuleCount() int32 {
+	if x != nil {
+		return x.TotalRuleCount
+	}
+	return 0
+}
+
 var File_store_notification_proto protoreflect.FileDescriptor
 
 const file_store_notification_proto_rawDesc = "" +
 	"\n" +
-	"\x18store/notification.proto\x12\x11metaxisdata.store\x1a\x1fgoogle/protobuf/timestamp.proto\"\x88\x04\n" +
+	"\x18store/notification.proto\x12\x11metaxisdata.store\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x18store/data_quality.proto\"\xd3\x04\n" +
 	"\fNotification\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12;\n" +
 	"\vcreate_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
@@ -781,7 +1044,8 @@ const file_store_notification_proto_rawDesc = "" +
 	"\vschema_sync\x18\t \x01(\v2#.metaxisdata.store.SchemaSyncDetailH\x00R\n" +
 	"schemaSync\x12H\n" +
 	"\vopenlineage\x18\n" +
-	" \x01(\v2$.metaxisdata.store.OpenLineageDetailH\x00R\vopenlineageB\b\n" +
+	" \x01(\v2$.metaxisdata.store.OpenLineageDetailH\x00R\vopenlineage\x12I\n" +
+	"\fdata_quality\x18\v \x01(\v2$.metaxisdata.store.DataQualityDetailH\x00R\vdataQualityB\b\n" +
 	"\x06detail\"\xf2\x02\n" +
 	"\x10SchemaSyncDetail\x12\x1a\n" +
 	"\binstance\x18\x01 \x01(\tR\binstance\x12%\n" +
@@ -805,11 +1069,38 @@ const file_store_notification_proto_rawDesc = "" +
 	"\aapi_key\x18\x06 \x01(\tR\x06apiKey\x12%\n" +
 	"\x0ereceived_count\x18\a \x01(\x05R\rreceivedCount\x12!\n" +
 	"\ffailed_count\x18\b \x01(\x05R\vfailedCount\x12\x14\n" +
-	"\x05error\x18\t \x01(\tR\x05error*{\n" +
+	"\x05error\x18\t \x01(\tR\x05error\"\xb7\x05\n" +
+	"\x11DataQualityDetail\x12B\n" +
+	"\x04kind\x18\x01 \x01(\x0e2..metaxisdata.store.DataQualityNotificationKindR\x04kind\x12\x12\n" +
+	"\x04rule\x18\x02 \x01(\tR\x04rule\x12\x1d\n" +
+	"\n" +
+	"rule_title\x18\x03 \x01(\tR\truleTitle\x12\x1f\n" +
+	"\vtarget_guid\x18\x04 \x01(\tR\n" +
+	"targetGuid\x12\x1f\n" +
+	"\vtarget_path\x18\x05 \x01(\tR\n" +
+	"targetPath\x12A\n" +
+	"\vfrom_status\x18\x06 \x01(\x0e2 .metaxisdata.store.QualityStatusR\n" +
+	"fromStatus\x12=\n" +
+	"\tto_status\x18\a \x01(\x0e2 .metaxisdata.store.QualityStatusR\btoStatus\x12>\n" +
+	"\bseverity\x18\b \x01(\x0e2\".metaxisdata.store.QualitySeverityR\bseverity\x12%\n" +
+	"\x0eobserved_value\x18\t \x01(\x01R\robservedValue\x12#\n" +
+	"\robserved_unit\x18\n" +
+	" \x01(\tR\fobservedUnit\x12\x14\n" +
+	"\x05issue\x18\v \x01(\tR\x05issue\x12\x10\n" +
+	"\x03run\x18\f \x01(\tR\x03run\x12\x1f\n" +
+	"\vfailed_rows\x18\r \x01(\x03R\n" +
+	"failedRows\x12\x1d\n" +
+	"\n" +
+	"total_rows\x18\x0e \x01(\x03R\ttotalRows\x12\x1d\n" +
+	"\n" +
+	"error_code\x18\x0f \x01(\tR\terrorCode\x12*\n" +
+	"\x11failed_rule_count\x18\x10 \x01(\x05R\x0ffailedRuleCount\x12(\n" +
+	"\x10total_rule_count\x18\x11 \x01(\x05R\x0etotalRuleCount*\x9f\x01\n" +
 	"\x10NotificationType\x12!\n" +
 	"\x1dNOTIFICATION_TYPE_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dNOTIFICATION_TYPE_SCHEMA_SYNC\x10\x01\x12!\n" +
-	"\x1dNOTIFICATION_TYPE_OPENLINEAGE\x10\x02*\xa1\x01\n" +
+	"\x1dNOTIFICATION_TYPE_OPENLINEAGE\x10\x02\x12\"\n" +
+	"\x1eNOTIFICATION_TYPE_DATA_QUALITY\x10\x03*\xa1\x01\n" +
 	"\x14NotificationSeverity\x12%\n" +
 	"!NOTIFICATION_SEVERITY_UNSPECIFIED\x10\x00\x12\x1e\n" +
 	"\x1aNOTIFICATION_SEVERITY_INFO\x10\x01\x12!\n" +
@@ -831,7 +1122,13 @@ const file_store_notification_proto_rawDesc = "" +
 	"'OPENLINEAGE_FAILURE_KIND_SCOPE_MISMATCH\x10\x03\x12+\n" +
 	"'OPENLINEAGE_FAILURE_KIND_PERSIST_FAILED\x10\x04\x12+\n" +
 	"'OPENLINEAGE_FAILURE_KIND_PROCESS_FAILED\x10\x05\x12/\n" +
-	"+OPENLINEAGE_FAILURE_KIND_NAMESPACE_UNMAPPED\x10\x06B\x14Z\x12generated-go/storeb\x06proto3"
+	"+OPENLINEAGE_FAILURE_KIND_NAMESPACE_UNMAPPED\x10\x06*\x99\x02\n" +
+	"\x1bDataQualityNotificationKind\x12.\n" +
+	"*DATA_QUALITY_NOTIFICATION_KIND_UNSPECIFIED\x10\x00\x12/\n" +
+	"+DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED\x10\x01\x122\n" +
+	".DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED\x10\x02\x123\n" +
+	"/DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED\x10\x03\x120\n" +
+	",DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY\x10\x04B\x14Z\x12generated-go/storeb\x06proto3"
 
 var (
 	file_store_notification_proto_rawDescOnce sync.Once
@@ -845,36 +1142,45 @@ func file_store_notification_proto_rawDescGZIP() []byte {
 	return file_store_notification_proto_rawDescData
 }
 
-var file_store_notification_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_store_notification_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_store_notification_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
+var file_store_notification_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_store_notification_proto_goTypes = []any{
-	(NotificationType)(0),         // 0: metaxisdata.store.NotificationType
-	(NotificationSeverity)(0),     // 1: metaxisdata.store.NotificationSeverity
-	(SyncTrigger)(0),              // 2: metaxisdata.store.SyncTrigger
-	(SyncDatabaseState)(0),        // 3: metaxisdata.store.SyncDatabaseState
-	(OpenLineageFailureKind)(0),   // 4: metaxisdata.store.OpenLineageFailureKind
-	(*Notification)(nil),          // 5: metaxisdata.store.Notification
-	(*SchemaSyncDetail)(nil),      // 6: metaxisdata.store.SchemaSyncDetail
-	(*SyncDatabaseResult)(nil),    // 7: metaxisdata.store.SyncDatabaseResult
-	(*OpenLineageDetail)(nil),     // 8: metaxisdata.store.OpenLineageDetail
-	(*timestamppb.Timestamp)(nil), // 9: google.protobuf.Timestamp
+	(NotificationType)(0),            // 0: metaxisdata.store.NotificationType
+	(NotificationSeverity)(0),        // 1: metaxisdata.store.NotificationSeverity
+	(SyncTrigger)(0),                 // 2: metaxisdata.store.SyncTrigger
+	(SyncDatabaseState)(0),           // 3: metaxisdata.store.SyncDatabaseState
+	(OpenLineageFailureKind)(0),      // 4: metaxisdata.store.OpenLineageFailureKind
+	(DataQualityNotificationKind)(0), // 5: metaxisdata.store.DataQualityNotificationKind
+	(*Notification)(nil),             // 6: metaxisdata.store.Notification
+	(*SchemaSyncDetail)(nil),         // 7: metaxisdata.store.SchemaSyncDetail
+	(*SyncDatabaseResult)(nil),       // 8: metaxisdata.store.SyncDatabaseResult
+	(*OpenLineageDetail)(nil),        // 9: metaxisdata.store.OpenLineageDetail
+	(*DataQualityDetail)(nil),        // 10: metaxisdata.store.DataQualityDetail
+	(*timestamppb.Timestamp)(nil),    // 11: google.protobuf.Timestamp
+	(QualityStatus)(0),               // 12: metaxisdata.store.QualityStatus
+	(QualitySeverity)(0),             // 13: metaxisdata.store.QualitySeverity
 }
 var file_store_notification_proto_depIdxs = []int32{
-	9,  // 0: metaxisdata.store.Notification.create_time:type_name -> google.protobuf.Timestamp
+	11, // 0: metaxisdata.store.Notification.create_time:type_name -> google.protobuf.Timestamp
 	0,  // 1: metaxisdata.store.Notification.type:type_name -> metaxisdata.store.NotificationType
 	1,  // 2: metaxisdata.store.Notification.severity:type_name -> metaxisdata.store.NotificationSeverity
-	9,  // 3: metaxisdata.store.Notification.read_time:type_name -> google.protobuf.Timestamp
-	6,  // 4: metaxisdata.store.Notification.schema_sync:type_name -> metaxisdata.store.SchemaSyncDetail
-	8,  // 5: metaxisdata.store.Notification.openlineage:type_name -> metaxisdata.store.OpenLineageDetail
-	2,  // 6: metaxisdata.store.SchemaSyncDetail.trigger:type_name -> metaxisdata.store.SyncTrigger
-	7,  // 7: metaxisdata.store.SchemaSyncDetail.databases:type_name -> metaxisdata.store.SyncDatabaseResult
-	3,  // 8: metaxisdata.store.SyncDatabaseResult.state:type_name -> metaxisdata.store.SyncDatabaseState
-	4,  // 9: metaxisdata.store.OpenLineageDetail.kind:type_name -> metaxisdata.store.OpenLineageFailureKind
-	10, // [10:10] is the sub-list for method output_type
-	10, // [10:10] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	11, // 3: metaxisdata.store.Notification.read_time:type_name -> google.protobuf.Timestamp
+	7,  // 4: metaxisdata.store.Notification.schema_sync:type_name -> metaxisdata.store.SchemaSyncDetail
+	9,  // 5: metaxisdata.store.Notification.openlineage:type_name -> metaxisdata.store.OpenLineageDetail
+	10, // 6: metaxisdata.store.Notification.data_quality:type_name -> metaxisdata.store.DataQualityDetail
+	2,  // 7: metaxisdata.store.SchemaSyncDetail.trigger:type_name -> metaxisdata.store.SyncTrigger
+	8,  // 8: metaxisdata.store.SchemaSyncDetail.databases:type_name -> metaxisdata.store.SyncDatabaseResult
+	3,  // 9: metaxisdata.store.SyncDatabaseResult.state:type_name -> metaxisdata.store.SyncDatabaseState
+	4,  // 10: metaxisdata.store.OpenLineageDetail.kind:type_name -> metaxisdata.store.OpenLineageFailureKind
+	5,  // 11: metaxisdata.store.DataQualityDetail.kind:type_name -> metaxisdata.store.DataQualityNotificationKind
+	12, // 12: metaxisdata.store.DataQualityDetail.from_status:type_name -> metaxisdata.store.QualityStatus
+	12, // 13: metaxisdata.store.DataQualityDetail.to_status:type_name -> metaxisdata.store.QualityStatus
+	13, // 14: metaxisdata.store.DataQualityDetail.severity:type_name -> metaxisdata.store.QualitySeverity
+	15, // [15:15] is the sub-list for method output_type
+	15, // [15:15] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_store_notification_proto_init() }
@@ -882,17 +1188,19 @@ func file_store_notification_proto_init() {
 	if File_store_notification_proto != nil {
 		return
 	}
+	file_store_data_quality_proto_init()
 	file_store_notification_proto_msgTypes[0].OneofWrappers = []any{
 		(*Notification_SchemaSync)(nil),
 		(*Notification_Openlineage)(nil),
+		(*Notification_DataQuality)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_store_notification_proto_rawDesc), len(file_store_notification_proto_rawDesc)),
-			NumEnums:      5,
-			NumMessages:   4,
+			NumEnums:      6,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
