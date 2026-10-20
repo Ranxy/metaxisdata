@@ -59,6 +59,8 @@ backend/runner/qualityrunner ─┘
 | D-28 | 结果资源名的最后一段是 `quality_rule_result` 的**行 id**（该表无 resource_id 列）；`ExplainQualityResult` 按 name 里的 id 查询，store 补 `GetQualityRuleResult` | 不改表结构即可解释一条历史结果；列表用同一 id 拼资源名，前后端一致 |
 | D-29 | L2 解释先收集完整 JSON、解析后再一次性发 content（progress 一帧 + 终帧 metadata）；usage 写入缓存行与日志，不新增 proto 字段 | 结构化输出优先于逐 token 流；ExplainSQLMetadata 没有 usage 字段，不为一个统计改协议 |
 | D-30 | L1/L3 只产出 PENDING 建议：接受 LABEL 建议时落 `column_semantic_label`；接受 RULE_DRAFT 只改建议状态，规则由编辑器保存时才创建 | 保持“不自动建规则/不自动启用/不自动执行”的边界 |
+| D-31 | v1.1 第一批新增两类规则：`schema_drift`（R15，元数据比对，不查目标库）与 `group_check`（R16，GROUP BY 每组行数阈值）。schema_drift 在保存时把当前列快照写入 config；group_check 第一版只做“每组行数 min/max + 失败组数阈值”，后续再扩每组 null/aggregate | 两类能力是用户确认的 v1.1 第一优先级；先给出可解释、可评测的最小语义，避免一次做成通用 DSL |
+| D-32 | schema_drift 不需要 READ_ONLY 数据源（纯元数据），runner 对它跳过驱动获取；结果 `sampled=false`、样本是漂移项列表；`group_check` 走普通只读查询 | 元数据规则对目标库零负载，不能因为没配只读源而阻塞 |
 
 **包/文件地图**
 
@@ -1228,6 +1230,28 @@ func EvalRows(program *cel.Program, rows []map[string]any) (violations int64, ev
 **参考**：[Soda 模板库](https://soda.io/templates)、[Soda contract 语言](https://docs.soda.io/reference/contract-language-reference)、[SodaCL metrics/checks](https://docs.soda.io/soda-documentation/soda-v3/sodacl-reference/metrics-and-checks)、[GX Expectation Gallery](https://greatexpectations.io/expectations/)、[dbt data tests](https://docs.getdbt.com/docs/build/data-tests)、[dbt-expectations](https://github.com/calogica/dbt-expectations)。
 
 **测试**：`capability_test.go` 用每条能力清单的示例参数（来自公开文档的形态，不复制其 YAML）断言“规则类型可编译 + 判定语义正确”；缺口的形态以 `t.Skip` + 注释指向本节排期，避免静默缺失。
+
+### 6.12 v1.1 第一批规则：schema 漂移与分组检查
+
+**R15 `schema_drift`（维度 accuracy/consistency；元数据规则）**
+
+- config：`expected_columns []{name, type, nullable}`（保存时由 API 用当前 target 列快照填充，用户可在编辑器里调整）、`check_types bool`（默认 true）、`check_order bool`（默认 false）、`allow_extra_columns bool`（默认 false）、`fail_threshold?/warn_threshold?`（漂移项计数，默认 fail=0；只支持 COUNT）。
+- 观测：把当前 target 的列与 `expected_columns` 比对，产生漂移项：缺失列、类型不符（check_types）、顺序不同（check_order）、多余列（allow_extra_columns=false 时）。`total_rows = len(expected_columns)`，`failed_rows = 漂移项数`，`observed_kind = COUNT`。
+- 样本：漂移项列表（列名 + 原因），不是数据行。
+- 不查目标库：runner 跳过 READ_ONLY 数据源；target 消失 → SKIPPED(ORPHANED)。
+- SQL 预览：无 SQL，返回空 compiled_sql 与说明；干跑只做目标解析 + config 校验。
+
+**R16 `group_check`（维度可选；分组规则）**
+
+- config：`columns []`（1–5 个分组列）、`min_rows_per_group?`、`max_rows_per_group?`（至少一个）、`fail_threshold?/warn_threshold?` + `threshold_metric`（COUNT 失败组数 / PERCENT 失败组占比，默认 fail=0）、`filter` 公共字段。
+- SQL（以 MySQL 语法示意，其它方言只换引用/占位符）：
+  `SELECT COUNT(*) AS total_groups, SUM(CASE WHEN <cnt> < ? OR <cnt> > ? THEN 1 ELSE 0 END) AS failed_groups FROM (SELECT <g1>, <g2>, COUNT(*) AS cnt FROM <t> <where> GROUP BY <g1>, <g2>) dq`
+- 观测：`total_rows = total_groups`、`failed_rows = failed_groups`、`observed_kind` 随 metric（COUNT/RATIO）；`failed_rows > fail → FAIL`、`> warn → WARN`。
+- 样本：违反阈值的组（分组列值 + 组行数），LIMIT 20。
+- 全方言（GROUP BY 通用）；`columns` 必须存在于 target；`filter` 作用于扫描行（分组前的 WHERE）。
+- 空数据：`total_groups = 0` → `on_empty`。
+
+**验收**：两类规则各：4 方言 golden（group_check）+ 元数据比对表驱动（schema_drift）、阈值边界、空数据、样本形状、保存期校验（列存在/分组列数/阈值组合/快照非空）、API convert roundtrip、前端编辑器表单（M1.6c）。
 
 ### 6.11 后续设计：RuleSet（contract-like 整体验证）
 

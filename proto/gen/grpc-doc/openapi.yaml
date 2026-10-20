@@ -4687,6 +4687,8 @@ paths:
                         - QUALITY_RULE_TYPE_FRESHNESS
                         - QUALITY_RULE_TYPE_CUSTOM_SQL
                         - QUALITY_RULE_TYPE_CEL_EXPRESSION
+                        - QUALITY_RULE_TYPE_SCHEMA_DRIFT
+                        - QUALITY_RULE_TYPE_GROUP_CHECK
                     type: string
                     format: enum
                 - name: severity
@@ -7405,6 +7407,27 @@ components:
             description: |-
                 Group is a set of users that can be bound to roles in the IAM policy as a
                  single principal (`groups/{email}`).
+        GroupCheckConfig:
+            type: object
+            properties:
+                columns:
+                    type: array
+                    items:
+                        type: string
+                    description: The grouping columns, 1-5 of them.
+                minRowsPerGroup:
+                    type: string
+                    description: At least one bound is required.
+                maxRowsPerGroup:
+                    type: string
+                failThreshold:
+                    type: number
+                    description: Groups outside the bounds tolerated, measured per threshold_metric.
+                    format: double
+                warnThreshold:
+                    type: number
+                    format: double
+            description: GroupCheckConfig bounds the row count of each group a set of columns forms.
         GroupMember:
             type: object
             properties:
@@ -9472,6 +9495,8 @@ components:
                         - QUALITY_RULE_TYPE_FRESHNESS
                         - QUALITY_RULE_TYPE_CUSTOM_SQL
                         - QUALITY_RULE_TYPE_CEL_EXPRESSION
+                        - QUALITY_RULE_TYPE_SCHEMA_DRIFT
+                        - QUALITY_RULE_TYPE_GROUP_CHECK
                     type: string
                     format: enum
                 target:
@@ -9582,6 +9607,12 @@ components:
                     allOf:
                         - $ref: '#/components/schemas/CelExpressionConfig'
                     description: v1.1.
+                schemaDrift:
+                    allOf:
+                        - $ref: '#/components/schemas/SchemaDriftConfig'
+                    description: 'v1.1 first batch: metadata drift and grouped row-count bounds.'
+                groupCheck:
+                    $ref: '#/components/schemas/GroupCheckConfig'
                 thresholdMetric:
                     enum:
                         - QUALITY_THRESHOLD_METRIC_UNSPECIFIED
@@ -10171,6 +10202,48 @@ components:
                     description: |-
                         One run per instance in the selection. All of them are queued and pending
                          when the response is returned; poll GetQualityRun for their outcome.
+        SchemaDriftColumn:
+            type: object
+            properties:
+                name:
+                    type: string
+                type:
+                    type: string
+                nullable:
+                    type: boolean
+            description: SchemaDriftColumn is one column of the snapshot a schema-drift rule expects.
+        SchemaDriftConfig:
+            type: object
+            properties:
+                expectedColumns:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SchemaDriftColumn'
+                    description: |-
+                        The snapshot. The API fills it from the current columns when a rule is
+                         created without one, and the editor lets a user adjust it.
+                checkTypes:
+                    type: boolean
+                    description: |-
+                        Whether a changed column type is drift. Unset means true: a type change is
+                         drift unless the rule author turns the check off.
+                checkOrder:
+                    type: boolean
+                    description: Whether a changed column order is drift. Default false.
+                allowExtraColumns:
+                    type: boolean
+                    description: Whether a column the snapshot does not name is drift. Default false.
+                failThreshold:
+                    type: number
+                    description: Drift items tolerated. The metric is always COUNT here.
+                    format: double
+                warnThreshold:
+                    type: number
+                    format: double
+            description: |-
+                SchemaDriftConfig compares the live column list with the snapshot taken when
+                 the rule was saved. The rule reads metadata only, so it costs the target
+                 database nothing.
         SchemaMetadata:
             type: object
             properties:
@@ -10402,6 +10475,8 @@ components:
                             - QUALITY_RULE_TYPE_FRESHNESS
                             - QUALITY_RULE_TYPE_CUSTOM_SQL
                             - QUALITY_RULE_TYPE_CEL_EXPRESSION
+                            - QUALITY_RULE_TYPE_SCHEMA_DRIFT
+                            - QUALITY_RULE_TYPE_GROUP_CHECK
                         type: string
                         format: enum
                     description: |-

@@ -743,3 +743,14 @@ func TestTrimmedQualityColumns(t *testing.T) {
 	require.Equal(t, []string{"a", "b", "c"}, trimmedQualityColumns([]string{" a ", "", "b", "a", " c "}))
 	require.Empty(t, trimmedQualityColumns(nil))
 }
+
+func TestDryRunNeedsProbe(t *testing.T) {
+	t.Parallel()
+
+	require.False(t, dryRunNeedsProbe(storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT),
+		"a metadata rule has no SQL to probe and must not open the target database")
+	require.True(t, dryRunNeedsProbe(storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK),
+		"a group check compiles to SQL and must be probed")
+	require.True(t, dryRunNeedsProbe(storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL))
+	require.True(t, dryRunNeedsProbe(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT))
+}

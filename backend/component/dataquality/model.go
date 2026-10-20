@@ -76,6 +76,10 @@ const (
 	QueryFailedRows
 	// QuerySample returns a bounded sample of rows for in-process evaluation.
 	QuerySample
+	// QueryMetadata produces no SQL: the observation is computed from the
+	// metadata registry itself (schema_drift), so the executor must not touch the
+	// target database and the SQL preview has nothing to show.
+	QueryMetadata
 )
 
 // CompiledQuery is one read-only statement plus the arguments bound to it.

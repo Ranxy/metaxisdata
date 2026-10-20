@@ -584,3 +584,77 @@ func compileCustomSQL(input CompileInput) (CompiledQuery, error) {
 		Columns: []string{"failed_rows"},
 	}, nil
 }
+
+// compileSchemaDrift observes the metadata registry, not the target database: the
+// executor compares the live column list with the saved snapshot, so there is no
+// SQL to run. QueryMetadata tells the executor and the SQL preview that the empty
+// statement is deliberate rather than a compiler failure.
+func compileSchemaDrift(input CompileInput) (CompiledQuery, error) {
+	if input.Config.GetSchemaDrift() == nil {
+		return CompiledQuery{}, invalidConfig("the schema-drift config is missing")
+	}
+	return CompiledQuery{Kind: QueryMetadata}, nil
+}
+
+// compileGroupCheck counts the groups whose row count is outside the configured
+// bounds. The grouped input is a derived table so the outer aggregate can test
+// the group size; the group columns and the filter are read from the target, so
+// no caller text reaches the SQL unquoted.
+//
+// The bounds appear in the SELECT list, before the filter's WHERE clause in the
+// SQL text. compileArgs reconciles that: numbered dialects bind the filter first
+// and number the bounds after it, while a positional dialect gets its arguments
+// in text order (bounds first).
+func compileGroupCheck(input CompileInput) (CompiledQuery, error) {
+	config := input.Config.GetGroupCheck()
+	if config == nil {
+		return CompiledQuery{}, invalidConfig("the group-check config is missing")
+	}
+	columns, err := groupCheckColumns(input.Target, config.GetColumns())
+	if err != nil {
+		return CompiledQuery{}, err
+	}
+	minValue, maxValue, hasMin, hasMax, err := groupCheckBounds(config)
+	if err != nil {
+		return CompiledQuery{}, err
+	}
+	if err := compileValidateCountThresholds(input.Config, config.FailThreshold, config.WarnThreshold); err != nil {
+		return CompiledQuery{}, err
+	}
+	table, err := compileTable(input.Dialect, input.Target)
+	if err != nil {
+		return CompiledQuery{}, err
+	}
+	where, filterArgs, err := whereClause(input)
+	if err != nil {
+		return CompiledQuery{}, err
+	}
+
+	args := newCompileArgs(input.Dialect, filterArgs)
+	conditions := make([]string, 0, 2)
+	if hasMin {
+		conditions = append(conditions, "cnt < "+args.add(minValue))
+	}
+	if hasMax {
+		conditions = append(conditions, "cnt > "+args.add(maxValue))
+	}
+	groupList := qualifyColumns(input.Dialect, columns)
+	query := "SELECT COUNT(*) AS total_groups, SUM(CASE WHEN " + strings.Join(conditions, " OR ") +
+		" THEN 1 ELSE 0 END) AS failed_groups FROM (SELECT " + groupList +
+		", COUNT(*) AS cnt FROM " + table + where + " GROUP BY " + groupList + ") dq"
+	return CompiledQuery{
+		SQL:     query,
+		Args:    args.values(),
+		Kind:    QueryAggregate,
+		Columns: []string{"total_groups", "failed_groups"},
+	}, nil
+}
+
+// qualifyColumns quotes a column list for one statement.
+func qualifyColumns(dialect Dialect, columns []string) string {
+	quoted := make([]string, 0, len(columns))
+	for _, column := range columns {
+		quoted = append(quoted, qualify(dialect, column))
+	}
+	return strings.Join(quoted, ", ")
+}

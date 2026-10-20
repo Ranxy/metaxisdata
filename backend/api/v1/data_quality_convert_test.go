@@ -123,6 +123,24 @@ func qualityConfigCases() []struct {
 			FailThreshold: qualityTestPtr(9.5),
 			WarnThreshold: qualityTestPtr(8.5),
 		}}}},
+		{name: "schema_drift", config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_SchemaDrift{SchemaDrift: &storepb.SchemaDriftConfig{
+			ExpectedColumns: []*storepb.SchemaDriftColumn{
+				{Name: "id", Type: "bigint", Nullable: false},
+				{Name: "email", Type: "varchar(255)", Nullable: true},
+			},
+			CheckTypes:        qualityTestPtr(true),
+			CheckOrder:        true,
+			AllowExtraColumns: true,
+			FailThreshold:     qualityTestPtr(0.0),
+			WarnThreshold:     qualityTestPtr(1.5),
+		}}}},
+		{name: "group_check", config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_GroupCheck{GroupCheck: &storepb.GroupCheckConfig{
+			Columns:         []string{"region", "tier"},
+			MinRowsPerGroup: qualityTestPtr(int64(10)),
+			MaxRowsPerGroup: qualityTestPtr(int64(1000)),
+			FailThreshold:   qualityTestPtr(2.5),
+			WarnThreshold:   qualityTestPtr(1.5),
+		}}}},
 	}
 }
 
@@ -855,4 +873,67 @@ func TestQualitySuggestionResourceName(t *testing.T) {
 	require.Equal(t,
 		"workspaces/ws1/qualitySuggestions/suggestion123",
 		formatQualitySuggestionName("ws1", "suggestion123"))
+}
+
+func TestFillSchemaDriftSnapshot(t *testing.T) {
+	t.Parallel()
+
+	columns := []dataquality.ColumnInfo{
+		{Name: "id", Type: "bigint", Kind: dataquality.ColumnKindNumeric, Nullable: false},
+		{Name: "email", Type: "varchar(255)", Kind: dataquality.ColumnKindString, Nullable: true},
+		{Name: "amount", Type: "decimal(10,2)", Kind: dataquality.ColumnKindNumeric, Nullable: true},
+	}
+
+	t.Run("fills an empty snapshot in registry order", func(t *testing.T) {
+		t.Parallel()
+		config := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_SchemaDrift{SchemaDrift: &storepb.SchemaDriftConfig{}}}
+		require.True(t, fillSchemaDriftSnapshot(config, columns))
+
+		expected := config.GetSchemaDrift().GetExpectedColumns()
+		require.Len(t, expected, 3)
+		require.Equal(t, "id", expected[0].GetName())
+		require.Equal(t, "bigint", expected[0].GetType())
+		require.False(t, expected[0].GetNullable())
+		require.Equal(t, "email", expected[1].GetName())
+		require.True(t, expected[1].GetNullable())
+		require.Equal(t, "amount", expected[2].GetName())
+	})
+
+	t.Run("keeps a user-provided snapshot untouched", func(t *testing.T) {
+		t.Parallel()
+		config := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_SchemaDrift{SchemaDrift: &storepb.SchemaDriftConfig{
+			ExpectedColumns: []*storepb.SchemaDriftColumn{{Name: "legacy_id", Type: "int"}},
+		}}}
+		require.False(t, fillSchemaDriftSnapshot(config, columns))
+		require.Len(t, config.GetSchemaDrift().GetExpectedColumns(), 1)
+		require.Equal(t, "legacy_id", config.GetSchemaDrift().GetExpectedColumns()[0].GetName())
+	})
+
+	t.Run("no-op without a drift config or columns", func(t *testing.T) {
+		t.Parallel()
+		require.False(t, fillSchemaDriftSnapshot(nil, columns))
+
+		otherArm := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_RowCount{RowCount: &storepb.RowCountConfig{MinRows: qualityTestPtr(int64(1))}}}
+		require.False(t, fillSchemaDriftSnapshot(otherArm, columns))
+
+		emptyTarget := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_SchemaDrift{SchemaDrift: &storepb.SchemaDriftConfig{}}}
+		require.False(t, fillSchemaDriftSnapshot(emptyTarget, nil))
+		require.Empty(t, emptyTarget.GetSchemaDrift().GetExpectedColumns())
+	})
+}
+
+func TestSchemaDriftOptionalCheckTypesRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	// An unset check_types means "true" semantically, so the conversion must keep
+	// it unset rather than materializing a false the evaluator would read as
+	// "ignore type changes".
+	config := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_SchemaDrift{SchemaDrift: &storepb.SchemaDriftConfig{
+		ExpectedColumns: []*storepb.SchemaDriftColumn{{Name: "id", Type: "bigint"}},
+	}}}
+	require.Nil(t, config.GetSchemaDrift().CheckTypes)
+
+	roundTripped := convertQualityRuleConfigFromV1(convertQualityRuleConfigToV1(config))
+	require.Nil(t, roundTripped.GetSchemaDrift().CheckTypes)
+	require.True(t, proto.Equal(config, roundTripped))
 }

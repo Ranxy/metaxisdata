@@ -49,6 +49,14 @@ func Evaluate(rule RuleSnapshot, obs Observation, _ time.Time) ResultState {
 		// The custom statement counts failing rows itself; there is no total to
 		// divide by and "no failing rows" is a pass, not missing data.
 		return evaluateCount(rule.Config, rule.Config.GetCustomSql().FailThreshold, rule.Config.GetCustomSql().WarnThreshold, obs, onEmpty, false)
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT:
+		// The observation is the drift-item count out of the snapshot; the metric is
+		// COUNT (validation refuses PERCENT) and there is always a snapshot.
+		return evaluateCount(rule.Config, rule.Config.GetSchemaDrift().FailThreshold, rule.Config.GetSchemaDrift().WarnThreshold, obs, onEmpty, true)
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK:
+		// total_rows is the group count: an empty table has no groups and follows
+		// on_empty, while a table with groups judges the failed-group count or rate.
+		return evaluateCount(rule.Config, rule.Config.GetGroupCheck().FailThreshold, rule.Config.GetGroupCheck().WarnThreshold, obs, onEmpty, true)
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS:
 		return evaluateFreshness(rule.Config, obs, onEmpty)
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION:

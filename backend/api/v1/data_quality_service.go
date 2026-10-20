@@ -343,8 +343,8 @@ func (s *DataQualityService) CreateQualityRule(ctx context.Context, req *connect
 	if target == nil {
 		return nil, connectErrorInvalid("target is required")
 	}
-	validated, err := dataquality.ValidateRule(ctx, s.store, storepb.QualityRuleType(rule.GetRuleType()),
-		strings.TrimSpace(target.GetMetaGuid()), storepb.MetaType(target.GetMetaType()), config, nil)
+	validated, _, err := s.validateRuleInput(ctx, storepb.QualityRuleType(rule.GetRuleType()),
+		strings.TrimSpace(target.GetMetaGuid()), storepb.MetaType(target.GetMetaType()), config)
 	if err != nil {
 		return nil, err
 	}
@@ -438,6 +438,27 @@ func (s *DataQualityService) UpdateQualityRule(ctx context.Context, req *connect
 	return connect.NewResponse(converted), nil
 }
 
+// validateRuleInput is the save/preview pipeline plus the one API-side step it
+// needs: a schema_drift rule created without an expected-column snapshot gets the
+// target's current columns. Resolution therefore happens before validation, and
+// the filled snapshot is included in what the store receives. It reports whether
+// it filled the snapshot, so an update can persist a config it did not receive.
+func (s *DataQualityService) validateRuleInput(ctx context.Context, ruleType storepb.QualityRuleType, guid string, metaType storepb.MetaType, config *storepb.QualityRuleConfig) (*dataquality.ValidatedRule, bool, error) {
+	filled := false
+	if ruleType == storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT && config != nil {
+		resolution, err := dataquality.ResolveTarget(ctx, s.store, guid, metaType)
+		if err != nil {
+			return nil, false, err
+		}
+		filled = fillSchemaDriftSnapshot(config, resolution.Target.Columns)
+	}
+	validated, err := dataquality.ValidateRule(ctx, s.store, ruleType, guid, metaType, config, nil)
+	if err != nil {
+		return nil, filled, err
+	}
+	return validated, filled, nil
+}
+
 // revalidateQualityRuleDefinition runs the save pipeline on the merged
 // definition when the mask changes it, and refreshes the target snapshot the
 // store keeps beside it.
@@ -446,9 +467,14 @@ func (s *DataQualityService) revalidateQualityRuleDefinition(ctx context.Context
 		return nil
 	}
 	ruleType, guid, metaType, config := mergedQualityRuleDefinition(current, update.Patch)
-	validated, err := dataquality.ValidateRule(ctx, s.store, ruleType, guid, metaType, config, nil)
+	validated, filledSnapshot, err := s.validateRuleInput(ctx, ruleType, guid, metaType, config)
 	if err != nil {
 		return err
+	}
+	if filledSnapshot {
+		// The snapshot was filled here rather than sent by the caller, so it has
+		// to be part of the patch or the store would keep the empty config.
+		update.Patch.Config = config
 	}
 	schemaHash, err := s.targetSchemaHash(ctx, validated.Target)
 	if err != nil {
@@ -507,13 +533,19 @@ func (s *DataQualityService) PreviewQualityRule(ctx context.Context, req *connec
 		return nil, connectErrorInvalid("target is required")
 	}
 	config := convertQualityRuleConfigFromV1(rule.GetConfig())
-	validated, err := dataquality.ValidateRule(ctx, s.store, storepb.QualityRuleType(rule.GetRuleType()),
-		strings.TrimSpace(target.GetMetaGuid()), storepb.MetaType(target.GetMetaType()), config, nil)
+	ruleType := storepb.QualityRuleType(rule.GetRuleType())
+	validated, _, err := s.validateRuleInput(ctx, ruleType,
+		strings.TrimSpace(target.GetMetaGuid()), storepb.MetaType(target.GetMetaType()), config)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.probeQualityRule(ctx, validated); err != nil {
-		return nil, err
+	// A metadata rule compiles to no SQL and observes the registry, so a dry run
+	// must not open the target's data source at all: it only resolves the target
+	// and validates the config.
+	if dryRunNeedsProbe(ruleType) {
+		if err := s.probeQualityRule(ctx, validated); err != nil {
+			return nil, err
+		}
 	}
 	return connect.NewResponse(previewQualityRuleResponse(config, validated)), nil
 }
@@ -530,6 +562,12 @@ func previewQualityRuleResponse(config *storepb.QualityRuleConfig, validated *da
 		ReferencedColumns: qualityRuleReferencedColumns(config),
 		Parameters:        parameters,
 	}
+}
+
+// dryRunNeedsProbe reports whether PreviewQualityRule must probe the target's
+// data source. Metadata rules compile to no SQL, so they skip the probe.
+func dryRunNeedsProbe(ruleType storepb.QualityRuleType) bool {
+	return !dataquality.IsMetadataRule(ruleType)
 }
 
 // qualityRuleProbeSQL wraps the compiled statement in the engine's LIMIT 0 probe.

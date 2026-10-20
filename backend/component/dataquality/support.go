@@ -34,7 +34,9 @@ func Supported(engine storepb.Engine, ruleType storepb.QualityRuleType) (bool, s
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL:
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK:
 		return true, ""
 	default:
 		return false, "unknown rule type"
@@ -53,7 +55,11 @@ func RuleTypeForTarget(metaType storepb.MetaType, ruleType storepb.QualityRuleTy
 		case storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
 			storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE,
 			storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS,
-			storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL:
+			storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
+			// A schema-drift rule reads the registry's own column list, so it works
+			// for any relation type that has columns; a group check runs SQL and
+			// stays table-only.
+			storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT:
 			return true
 		default:
 			return false
@@ -61,4 +67,11 @@ func RuleTypeForTarget(metaType storepb.MetaType, ruleType storepb.QualityRuleTy
 	default:
 		return false
 	}
+}
+
+// IsMetadataRule reports whether a rule type observes the metadata registry
+// rather than querying the target database. Such a rule needs no read-only data
+// source and compiles to no SQL.
+func IsMetadataRule(ruleType storepb.QualityRuleType) bool {
+	return ruleType == storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT
 }

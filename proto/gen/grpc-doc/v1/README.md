@@ -234,6 +234,7 @@
     - [GetQualityIssueRequest](#metaxisdata-v1-GetQualityIssueRequest)
     - [GetQualityRuleRequest](#metaxisdata-v1-GetQualityRuleRequest)
     - [GetQualityRunRequest](#metaxisdata-v1-GetQualityRunRequest)
+    - [GroupCheckConfig](#metaxisdata-v1-GroupCheckConfig)
     - [ListColumnLabelsRequest](#metaxisdata-v1-ListColumnLabelsRequest)
     - [ListColumnLabelsResponse](#metaxisdata-v1-ListColumnLabelsResponse)
     - [ListColumnProfilesRequest](#metaxisdata-v1-ListColumnProfilesRequest)
@@ -276,6 +277,8 @@
     - [RowCountConfig](#metaxisdata-v1-RowCountConfig)
     - [RunQualityRulesRequest](#metaxisdata-v1-RunQualityRulesRequest)
     - [RunQualityRulesResponse](#metaxisdata-v1-RunQualityRulesResponse)
+    - [SchemaDriftColumn](#metaxisdata-v1-SchemaDriftColumn)
+    - [SchemaDriftConfig](#metaxisdata-v1-SchemaDriftConfig)
     - [SemanticLabelEvidence](#metaxisdata-v1-SemanticLabelEvidence)
     - [SemanticLabelSuggestion](#metaxisdata-v1-SemanticLabelSuggestion)
     - [StringLengthConfig](#metaxisdata-v1-StringLengthConfig)
@@ -4255,6 +4258,25 @@ timestamp follows on_empty.
 
 
 
+<a name="metaxisdata-v1-GroupCheckConfig"></a>
+
+### GroupCheckConfig
+GroupCheckConfig bounds the row count of each group a set of columns forms.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| columns | [string](#string) | repeated | The grouping columns, 1-5 of them. |
+| min_rows_per_group | [int64](#int64) | optional | At least one bound is required. |
+| max_rows_per_group | [int64](#int64) | optional |  |
+| fail_threshold | [double](#double) | optional | Groups outside the bounds tolerated, measured per threshold_metric. |
+| warn_threshold | [double](#double) | optional |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-ListColumnLabelsRequest"></a>
 
 ### ListColumnLabelsRequest
@@ -4775,6 +4797,8 @@ behavior and the count/percent metric are shared by every type.
 | freshness | [FreshnessConfig](#metaxisdata-v1-FreshnessConfig) |  |  |
 | custom_sql | [CustomSQLConfig](#metaxisdata-v1-CustomSQLConfig) |  |  |
 | cel_expression | [CelExpressionConfig](#metaxisdata-v1-CelExpressionConfig) |  | v1.1. |
+| schema_drift | [SchemaDriftConfig](#metaxisdata-v1-SchemaDriftConfig) |  | v1.1 first batch: metadata drift and grouped row-count bounds. |
+| group_check | [GroupCheckConfig](#metaxisdata-v1-GroupCheckConfig) |  |  |
 | threshold_metric | [QualityThresholdMetric](#metaxisdata-v1-QualityThresholdMetric) |  |  |
 | filter | [QualityFilter](#metaxisdata-v1-QualityFilter) |  |  |
 | on_empty | [QualityEmptyBehavior](#metaxisdata-v1-QualityEmptyBehavior) |  |  |
@@ -5120,6 +5144,45 @@ warn bound makes the rule report WARN before it reports FAIL.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | runs | [QualityRun](#metaxisdata-v1-QualityRun) | repeated | One run per instance in the selection. All of them are queued and pending when the response is returned; poll GetQualityRun for their outcome. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-SchemaDriftColumn"></a>
+
+### SchemaDriftColumn
+SchemaDriftColumn is one column of the snapshot a schema-drift rule expects.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  |  |
+| type | [string](#string) |  |  |
+| nullable | [bool](#bool) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-SchemaDriftConfig"></a>
+
+### SchemaDriftConfig
+SchemaDriftConfig compares the live column list with the snapshot taken when
+the rule was saved. The rule reads metadata only, so it costs the target
+database nothing.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| expected_columns | [SchemaDriftColumn](#metaxisdata-v1-SchemaDriftColumn) | repeated | The snapshot. The API fills it from the current columns when a rule is created without one, and the editor lets a user adjust it. |
+| check_types | [bool](#bool) | optional | Whether a changed column type is drift. Unset means true: a type change is drift unless the rule author turns the check off. |
+| check_order | [bool](#bool) |  | Whether a changed column order is drift. Default false. |
+| allow_extra_columns | [bool](#bool) |  | Whether a column the snapshot does not name is drift. Default false. |
+| fail_threshold | [double](#double) | optional | Drift items tolerated. The metric is always COUNT here. |
+| warn_threshold | [double](#double) | optional |  |
 
 
 
@@ -5592,6 +5655,8 @@ rule: changing the type is a different rule and a new revision.
 | QUALITY_RULE_TYPE_FRESHNESS | 12 |  |
 | QUALITY_RULE_TYPE_CUSTOM_SQL | 13 |  |
 | QUALITY_RULE_TYPE_CEL_EXPRESSION | 14 | v1.1. The value is reserved so that the v1 and store enum definitions stay value-compatible; this API never accepts it yet. |
+| QUALITY_RULE_TYPE_SCHEMA_DRIFT | 15 | v1.1: compares the live column list with a snapshot taken when the rule was saved. It reads metadata only and never queries the target database. |
+| QUALITY_RULE_TYPE_GROUP_CHECK | 16 | v1.1: groups rows and bounds each group&#39;s row count. |
 
 
 

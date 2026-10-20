@@ -1069,6 +1069,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.GroupCheckConfig"><span class="badge">M</span>GroupCheckConfig</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.ListColumnLabelsRequest"><span class="badge">M</span>ListColumnLabelsRequest</a>
                 </li>
               
@@ -1234,6 +1238,14 @@
               
                 <li>
                   <a href="#metaxisdata.v1.RunQualityRulesResponse"><span class="badge">M</span>RunQualityRulesResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.SchemaDriftColumn"><span class="badge">M</span>SchemaDriftColumn</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.SchemaDriftConfig"><span class="badge">M</span>SchemaDriftConfig</a>
                 </li>
               
                 <li>
@@ -12584,6 +12596,58 @@ Only meaningful for numeric columns. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.GroupCheckConfig">GroupCheckConfig</h3>
+        <p>GroupCheckConfig bounds the row count of each group a set of columns forms.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>columns</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>The grouping columns, 1-5 of them. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>min_rows_per_group</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td>optional</td>
+                  <td><p>At least one bound is required. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>max_rows_per_group</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td>optional</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>fail_threshold</td>
+                  <td><a href="#double">double</a></td>
+                  <td>optional</td>
+                  <td><p>Groups outside the bounds tolerated, measured per threshold_metric. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>warn_threshold</td>
+                  <td><a href="#double">double</a></td>
+                  <td>optional</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.ListColumnLabelsRequest">ListColumnLabelsRequest</h3>
         <p></p>
 
@@ -14119,6 +14183,20 @@ and results are still recorded. </p></td>
                 </tr>
               
                 <tr>
+                  <td>schema_drift</td>
+                  <td><a href="#metaxisdata.v1.SchemaDriftConfig">SchemaDriftConfig</a></td>
+                  <td></td>
+                  <td><p>v1.1 first batch: metadata drift and grouped row-count bounds. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>group_check</td>
+                  <td><a href="#metaxisdata.v1.GroupCheckConfig">GroupCheckConfig</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
                   <td>threshold_metric</td>
                   <td><a href="#metaxisdata.v1.QualityThresholdMetric">QualityThresholdMetric</a></td>
                   <td></td>
@@ -15142,6 +15220,105 @@ Format: instances/{instance} </p></td>
                   <td>repeated</td>
                   <td><p>One run per instance in the selection. All of them are queued and pending
 when the response is returned; poll GetQualityRun for their outcome. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.SchemaDriftColumn">SchemaDriftColumn</h3>
+        <p>SchemaDriftColumn is one column of the snapshot a schema-drift rule expects.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>type</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>nullable</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.SchemaDriftConfig">SchemaDriftConfig</h3>
+        <p>SchemaDriftConfig compares the live column list with the snapshot taken when</p><p>the rule was saved. The rule reads metadata only, so it costs the target</p><p>database nothing.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>expected_columns</td>
+                  <td><a href="#metaxisdata.v1.SchemaDriftColumn">SchemaDriftColumn</a></td>
+                  <td>repeated</td>
+                  <td><p>The snapshot. The API fills it from the current columns when a rule is
+created without one, and the editor lets a user adjust it. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>check_types</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td>optional</td>
+                  <td><p>Whether a changed column type is drift. Unset means true: a type change is
+drift unless the rule author turns the check off. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>check_order</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether a changed column order is drift. Default false. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>allow_extra_columns</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether a column the snapshot does not name is drift. Default false. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>fail_threshold</td>
+                  <td><a href="#double">double</a></td>
+                  <td>optional</td>
+                  <td><p>Drift items tolerated. The metric is always COUNT here. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>warn_threshold</td>
+                  <td><a href="#double">double</a></td>
+                  <td>optional</td>
+                  <td><p> </p></td>
                 </tr>
               
             </tbody>
@@ -16374,6 +16551,19 @@ accepted range expressed as a pass band.</p></td>
                 <td>14</td>
                 <td><p>v1.1. The value is reserved so that the v1 and store enum definitions stay
 value-compatible; this API never accepts it yet.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_RULE_TYPE_SCHEMA_DRIFT</td>
+                <td>15</td>
+                <td><p>v1.1: compares the live column list with a snapshot taken when the rule was
+saved. It reads metadata only and never queries the target database.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_RULE_TYPE_GROUP_CHECK</td>
+                <td>16</td>
+                <td><p>v1.1: groups rows and bounds each group&#39;s row count.</p></td>
               </tr>
             
           </tbody>
