@@ -74,6 +74,7 @@ const ROUTES = [
   { path: "/openlineage/datasets", name: "openlineage datasets", tableTopMaxY: 400 },
   { path: "/openlineage/events", name: "openlineage events", tableTopMaxY: 400 },
   { path: "/settings/general", name: "settings general" },
+  { path: "/settings/data-quality", name: "settings data quality" },
   { path: "/settings/audit-logs", name: "settings audit logs", tableTopMaxY: 290 },
   // Same failure as audit-logs above: seven columns of long values inside the
   // section's reading column put the revoke action behind a scrollbar.
@@ -82,6 +83,7 @@ const ROUTES = [
   // absent: they need a real run/rule id, which only the deployment that
   // produced it has. The editor's create route is static and has no data table,
   // so it is audited for the page frame (one heading, no nested scroller).
+  { path: "/data-quality", name: "data quality overview" },
   { path: "/data-quality/rules", name: "data quality rules", tableTopMaxY: 260 },
   { path: "/data-quality/runs", name: "data quality runs", tableTopMaxY: 200 },
   { path: "/data-quality/issues", name: "data quality issues", tableTopMaxY: 240 },

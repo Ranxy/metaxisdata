@@ -74,6 +74,9 @@ export const DYNAMIC_PREFIXES = [
   "dataQuality.comparisonOperator",
   "dataQuality.filterOperator",
   "dataQuality.editor.validation",
+  // The settings form's validation messages are returned by
+  // validateSettingsForm, so the checker cannot follow them either.
+  "dataQualitySettings.validation.",
   "dataQuality.issueStatus",
   "dataQuality.resolutionReason",
   "dataQuality.aggregateFunction",

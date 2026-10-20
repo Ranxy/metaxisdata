@@ -85,6 +85,16 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
+        path: "data-quality",
+        name: "DataQualitySettings",
+        component: () => import("@/pages/settings/DataQualitySettingsPage.vue"),
+        meta: {
+          requiresAuth: true,
+          layout: "default",
+          permission: "metaxisdata.settings.get",
+        },
+      },
+      {
         path: "users",
         name: "UserManagement",
         component: () => import("@/pages/settings/UserManagementPage.vue"),
@@ -207,9 +217,20 @@ const routes: RouteRecordRaw[] = [
     // parent carries the shell flags once, like the OpenLineage section: rules are
     // the directory, a run is the evidence, and the editor joins them next release.
     path: "/data-quality",
-    redirect: { name: "DataQualityRules" },
     meta: { requiresAuth: true, layout: "default", contentWidth: "full" },
     children: [
+      {
+        // The section's landing page: the workspace summary, not a directory.
+        path: "",
+        name: "DataQualityOverview",
+        component: () =>
+          import("@/pages/data-quality/DataQualityOverviewPage.vue"),
+        meta: {
+          requiresAuth: true,
+          layout: "default",
+          permission: "metaxisdata.dataQuality.rules.list",
+        },
+      },
       {
         path: "rules",
         name: "DataQualityRules",

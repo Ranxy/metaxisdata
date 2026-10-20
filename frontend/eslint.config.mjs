@@ -302,6 +302,17 @@ export default [
             "dataQuality.fetchRunsError",
             "dataQuality.ruleEnabled",
             "dataQuality.rulePaused",
+            // The settings form's validation messages and the overview/settings
+            // formatError fallbacks.
+            "dataQualitySettings.validation.dailyColumnAnalysisLimitInvalid",
+            "dataQualitySettings.validation.dailyExecutionLimitInvalid",
+            "dataQualitySettings.validation.failureSampleLimitInvalid",
+            "dataQualitySettings.validation.maxColumnsPerAnalysisInvalid",
+            "dataQualitySettings.validation.scheduleInvalid",
+            "dataQualitySettings.validationTitle",
+            "dataQuality.overview.fetchError",
+            "dataQualitySettings.fetchError",
+            "dataQualitySettings.saveFailed",
             "dataQuality.runError",
             "dataQuality.updateError",
             // The issue pages' vocabulary and formatError fallbacks, and the

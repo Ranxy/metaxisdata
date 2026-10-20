@@ -5,6 +5,7 @@ import {
   CreateQualityRuleRequestSchema,
   DeleteQualityRuleRequestSchema,
   GetQualityIssueRequestSchema,
+  GetQualityOverviewRequestSchema,
   GetQualityRuleRequestSchema,
   GetQualityRunRequestSchema,
   ListQualityIssuesRequestSchema,
@@ -16,6 +17,7 @@ import {
   type QualityIssue,
   QualityIssueSchema,
   QualityIssueStatus,
+  type QualityOverview,
   QualityResolutionReason,
   type QualityRule,
   type QualityRuleResult,
@@ -375,4 +377,17 @@ export async function muteQualityIssue(
     updateMask: create(FieldMaskSchema, { paths: ["muted_until"] }),
   });
   return await dataQualityClient.updateQualityIssue(request);
+}
+
+/** The workspace-level quality summary the overview page renders. */
+export async function getQualityOverview(
+  options: { trendDays?: number; signal?: AbortSignal } = {}
+): Promise<QualityOverview> {
+  const request = create(GetQualityOverviewRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    trendDays: options.trendDays ?? 0,
+  });
+  return await dataQualityClient.getQualityOverview(request, {
+    signal: options.signal,
+  });
 }

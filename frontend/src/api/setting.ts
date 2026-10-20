@@ -1,5 +1,8 @@
 import { create } from "@bufbuild/protobuf";
+import { FieldMaskSchema } from "@bufbuild/protobuf/wkt";
 import {
+  type DataQualitySetting,
+  DataQualitySettingSchema,
   GetDebugConfigRequestSchema,
   GetWorkspaceProfileSettingRequestSchema,
   UpdateDebugConfigRequestSchema,
@@ -52,4 +55,31 @@ export async function getDebugConfig() {
 export async function updateDebugConfig(enabled: boolean) {
   const request = create(UpdateDebugConfigRequestSchema, { enabled });
   return await settingClient.updateDebugConfig(request);
+}
+
+/**
+ * Write the data quality section of the workspace profile. Only that field is
+ * named in the update mask, so a page saving it cannot touch the rest of the
+ * profile.
+ */
+/**
+ * The update request for the data quality section. Exported so its mask can be
+ * asserted without a transport: only `data_quality` may be written, so a page
+ * saving this section cannot clear the rest of the profile.
+ */
+export function buildUpdateDataQualitySettingRequest(
+  setting: DataQualitySetting
+) {
+  return create(UpdateWorkspaceProfileSettingRequestSchema, {
+    setting: create(WorkspaceProfileSettingSchema, {
+      dataQuality: create(DataQualitySettingSchema, setting),
+    }),
+    updateMask: create(FieldMaskSchema, { paths: ["data_quality"] }),
+  });
+}
+
+export async function updateDataQualitySetting(setting: DataQualitySetting) {
+  return await settingClient.updateWorkspaceProfileSetting(
+    buildUpdateDataQualitySettingRequest(setting)
+  );
 }
