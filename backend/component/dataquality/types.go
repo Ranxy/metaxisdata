@@ -94,6 +94,17 @@ func ClassifyColumnType(columnType string) ColumnKind {
 	return ColumnKindString
 }
 
+// classifyColumnTypeForEngine classifies a type with engine-specific knowledge.
+// The engine-neutral classifier reads "bit" as a boolean because MySQL and SQL
+// Server use it that way; PostgreSQL's BIT/BIT VARYING are bit strings, and a
+// boolean parameter cannot be coerced to them.
+func classifyColumnTypeForEngine(engine storepb.Engine, columnType string) ColumnKind {
+	if engine == storepb.Engine_POSTGRES && columnTypeBaseName(columnType) == "bit" {
+		return ColumnKindString
+	}
+	return ClassifyColumnType(columnType)
+}
+
 // columnTypeBaseName reduces an engine type string to its base name: precision
 // and modifier suffixes are dropped ("decimal(10,2) unsigned" → "decimal",
 // "character varying" → "character"). A schema-qualified user-defined type keeps

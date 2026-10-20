@@ -68,7 +68,7 @@ func compileNullPercent(input CompileInput) (CompiledQuery, error) {
 	if config == nil {
 		return CompiledQuery{}, invalidConfig("the null-percent config is missing")
 	}
-	column, err := requireColumn(input.Target, config.GetColumn())
+	column, err := requireNullTestColumn(input.Target, config.GetColumn())
 	if err != nil {
 		return CompiledQuery{}, err
 	}

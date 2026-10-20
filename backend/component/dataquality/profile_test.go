@@ -731,7 +731,7 @@ func profileFactTarget(engine storepb.Engine, columnType string) ResolvedTarget 
 	target.Columns = []ColumnInfo{{
 		Name: "payload",
 		Type: columnType,
-		Kind: ClassifyColumnType(columnType),
+		Kind: classifyColumnTypeForEngine(engine, columnType),
 	}}
 	return target
 }
@@ -759,15 +759,21 @@ func TestProfileFactsFor(t *testing.T) {
 		{storepb.Engine_POSTGRES, "bytea", profileFactDistinct},
 		{storepb.Engine_POSTGRES, "interval", profileFactDistinct | profileFactExtrema},
 		{storepb.Engine_POSTGRES, "_int4", profileFactDistinct | profileFactExtrema},
-		{storepb.Engine_POSTGRES, "public.mood", profileFactDistinct},
+		{storepb.Engine_POSTGRES, "integer[]", profileFactDistinct | profileFactExtrema},
+		{storepb.Engine_POSTGRES, "macaddr", profileFactDistinct},
+		{storepb.Engine_POSTGRES, "bit(8)", profileFactDistinct},
+		{storepb.Engine_POSTGRES, "public.mood", 0},
 		{storepb.Engine_POSTGRES, "bigint", profileFactDistinct | profileFactExtrema},
 		{storepb.Engine_POSTGRES, "boolean", profileFactDistinct},
 		{storepb.Engine_MYSQL, "varchar(255)", profileFactDistinct | profileFactExtrema | profileFactLength},
 		{storepb.Engine_MYSQL, "blob", profileFactDistinct | profileFactExtrema | profileFactLength},
 		{storepb.Engine_MYSQL, "json", profileFactDistinct | profileFactExtrema | profileFactLength},
-		{storepb.Engine_MYSQL, "geometry", profileFactDistinct | profileFactLength},
+		{storepb.Engine_MYSQL, "geometry", profileFactDistinct},
 		{storepb.Engine_STARROCKS, "json", profileFactLength},
 		{storepb.Engine_STARROCKS, "array", profileFactDistinct},
+		{storepb.Engine_STARROCKS, "array<json>", 0},
+		{storepb.Engine_STARROCKS, "bitmap", profileFactDistinct},
+		{storepb.Engine_STARROCKS, "percentile", 0},
 		{storepb.Engine_STARROCKS, "largeint", profileFactDistinct | profileFactExtrema},
 		{storepb.Engine_MSSQL, "nvarchar(255)", profileFactDistinct | profileFactExtrema | profileFactLength},
 		{storepb.Engine_MSSQL, "text", 0},
@@ -777,6 +783,7 @@ func TestProfileFactsFor(t *testing.T) {
 		{storepb.Engine_MSSQL, "datetime", profileFactDistinct | profileFactExtrema},
 		{storepb.Engine_MSSQL, "datetimeoffset", profileFactDistinct | profileFactExtrema},
 		{storepb.Engine_MSSQL, "bit", profileFactDistinct},
+		{storepb.Engine_MSSQL, "hierarchyid", profileFactDistinct},
 	}
 	for _, test := range tests {
 		t.Run(test.engine.String()+"/"+test.columnType, func(t *testing.T) {
@@ -790,10 +797,11 @@ func TestProfileFactsFor(t *testing.T) {
 	}
 }
 
-// TestProfileNonCountableColumnSQLGolden pins the CASE-based non-NULL count: SQL
-// Server rejects COUNT on text, ntext and image, so a column with no aggregate fact
-// is counted with a CASE expression, and its value shapes come from the sample.
-func TestProfileNonCountableColumnSQLGolden(t *testing.T) {
+// TestProfileZeroFactColumnSQLGolden pins the non-NULL count for a type with no
+// aggregate facts: SQL Server rejects COUNT on text/ntext/image, so those use a CASE
+// expression, while a type whose COUNT is valid (PostgreSQL json, StarRocks bitmap)
+// uses COUNT(col) — the bitmap type rejects the CASE predicate entirely.
+func TestProfileZeroFactColumnSQLGolden(t *testing.T) {
 	t.Parallel()
 
 	for _, test := range []struct {
@@ -812,8 +820,14 @@ func TestProfileNonCountableColumnSQLGolden(t *testing.T) {
 		{
 			engine:       storepb.Engine_POSTGRES,
 			columnType:   "json",
-			aggregateSQL: `SELECT COUNT(*) AS total_rows, COUNT(CASE WHEN "payload" IS NOT NULL THEN 1 END) AS c0_non_null FROM "public"."orders"`,
+			aggregateSQL: `SELECT COUNT(*) AS total_rows, COUNT("payload") AS c0_non_null FROM "public"."orders"`,
 			sampleSQL:    `SELECT "payload" FROM "public"."orders" LIMIT 1000`,
+		},
+		{
+			engine:       storepb.Engine_STARROCKS,
+			columnType:   "percentile",
+			aggregateSQL: "SELECT COUNT(*) AS total_rows, COUNT(`payload`) AS c0_non_null FROM `shop`.`orders`",
+			sampleSQL:    "SELECT `payload` FROM `shop`.`orders` LIMIT 1000",
 		},
 	} {
 		t.Run(test.engine.String(), func(t *testing.T) {
@@ -831,6 +845,33 @@ func TestProfileNonCountableColumnSQLGolden(t *testing.T) {
 			require.Equal(t, test.sampleSQL, queryer.sampleSQL)
 		})
 	}
+}
+
+// TestProfileStarRocksBitmapSQLGolden pins that a type which rejects predicates but
+// supports COUNT and COUNT(DISTINCT) is profiled without a CASE expression.
+func TestProfileStarRocksBitmapSQLGolden(t *testing.T) {
+	t.Parallel()
+
+	target := profileFactTarget(storepb.Engine_STARROCKS, "bitmap")
+	selected := profileTestColumns(t, target, "payload")
+	require.Equal(t, []string{"total_rows", "c0_non_null", "c0_distinct"}, profileAggregateAliases(selected))
+	queryer := &profileFakeQueryer{
+		aggregate: profileTestAggregate(selected, 0, map[string][]any{"payload": {int64(0), int64(0)}}),
+		sample:    profileTestSample(selected, nil),
+	}
+	_, err := NewProfiler().Profile(context.Background(), queryer, target, []string{"payload"}, ProfileOptions{})
+	require.NoError(t, err)
+	require.Equal(t, "SELECT COUNT(*) AS total_rows, COUNT(`payload`) AS c0_non_null, "+
+		"COUNT(DISTINCT `payload`) AS c0_distinct FROM `shop`.`orders`", queryer.aggregateSQL)
+}
+
+// TestProfileHexRendersBinaryValues pins that binary extrema/top values stay valid
+// UTF-8 for the stored protojson (SQL Server varbinary, MySQL blob).
+func TestProfileHexRendersBinaryValues(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "0xfffe", profileValueString([]byte{0xff, 0xfe}))
+	require.Equal(t, "plain", profileValueString("plain"))
 }
 
 // TestProfileJSONBColumnSQLGolden pins that a jsonb column keeps an exact distinct

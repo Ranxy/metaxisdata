@@ -19,10 +19,10 @@ import (
 // varbinary but not on its legacy text type. Conflating them produced rules the
 // engine could never run.
 //
-// A type absent from an engine's table keeps the historical refusal (the zero
-// value): this build only allows an operation it has a reason to believe in. An
-// unknown spelling is therefore conservative — a rejected rule at save time,
-// never a query that fails on every execution.
+// A type absent from an engine's table is treated as unsupported (the zero value):
+// the tables are allow-lists, because a wrong guess fails the whole statement. This
+// is stricter than the pre-capability behaviour, which allowed every "string" type;
+// the spellings the syncer actually produces are enumerated instead of guessed.
 type columnCapabilities struct {
 	// comparison: =, <>, IN and joins on the column.
 	comparison bool
@@ -41,6 +41,12 @@ type columnCapabilities struct {
 	// meaningful. This is deliberately not the same as "text operators exist":
 	// binary values have a length but are not words.
 	text bool
+	// noColumnCount: COUNT(col) itself is invalid (SQL Server text/ntext/image);
+	// the profile must count non-NULL values with a CASE expression instead.
+	noColumnCount bool
+	// noNullTest: even "col IS NULL" is invalid (StarRocks bitmap/hll/percentile
+	// reject every predicate on the type), so null checks and filters cannot run.
+	noNullTest bool
 }
 
 // textCapabilities is a column rendered as text: every text rule applies.
@@ -114,6 +120,13 @@ func supportsLength(column ColumnInfo, engine storepb.Engine) bool {
 	return capabilitiesFor(engine, column).length
 }
 
+// supportsNullTest reports whether "col IS NULL" / "col IS NOT NULL" is valid for
+// the column's type. StarRocks bitmap, hll and percentile values reject every
+// predicate, including the NULL test.
+func supportsNullTest(column ColumnInfo, engine storepb.Engine) bool {
+	return !capabilitiesFor(engine, column).noNullTest
+}
+
 // postgresStringCapabilities decides one PostgreSQL base type name. A user-defined
 // type is stored schema-qualified: citext is the one text type with every text
 // operator, PostGIS geometry has none, and the remaining user-defined types (enums,
@@ -129,6 +142,23 @@ func postgresStringCapabilities(name string) columnCapabilities {
 		case "geometry", "geography":
 			return columnCapabilities{}
 		default:
+			// A user-defined type may be an enum (comparable and groupable) or a
+			// domain/composite over json (neither). Rules keep their historical
+			// allowance; the profile does not claim an exact count or MIN/MAX.
+			return columnCapabilities{comparison: true, grouping: true}
+		}
+	}
+	// A materialized view's columns are stored as "integer[]"/"text[]" (format_type
+	// under an empty search_path), while a table's array is stored as its element's
+	// udt name ("_int4"); accept both spellings.
+	if strings.HasSuffix(name, "[]") {
+		element := strings.TrimSpace(strings.TrimSuffix(name, "[]"))
+		elementCaps := capabilitiesFor(storepb.Engine_POSTGRES, ColumnInfo{Type: element, Kind: ClassifyColumnType(element)})
+		return postgresArrayFromElement(elementCaps)
+	}
+	// Range types compare and group; they have no MIN/MAX or text operators.
+	for _, suffix := range []string{"multirange", "range"} {
+		if strings.HasSuffix(name, suffix) {
 			return columnCapabilities{comparison: true, grouping: true, countDistinct: true}
 		}
 	}
@@ -155,8 +185,9 @@ var postgresTypeCapabilities = map[string]columnCapabilities{
 	"interval": {comparison: true, grouping: true, countDistinct: true, extrema: true},
 	"inet":     {comparison: true, grouping: true, countDistinct: true, extrema: true},
 	"cidr":     {comparison: true, grouping: true, countDistinct: true, extrema: true},
-	"macaddr":  {comparison: true, grouping: true, countDistinct: true, extrema: true},
-	"macaddr8": {comparison: true, grouping: true, countDistinct: true, extrema: true},
+	"macaddr":  {comparison: true, grouping: true, countDistinct: true},
+	"macaddr8": {comparison: true, grouping: true, countDistinct: true},
+	"bit":      {comparison: true, grouping: true, countDistinct: true},
 	// No equality operator at all.
 	"json": {}, "xml": {}, "point": {}, "polygon": {},
 	"geometry": {}, "geography": {}, "refcursor": {}, "txid_snapshot": {},
@@ -182,6 +213,11 @@ func postgresArrayCapabilities(element string) columnCapabilities {
 	if !ok {
 		return columnCapabilities{}
 	}
+	return postgresArrayFromElement(elementCaps)
+}
+
+// postgresArrayFromElement derives an array's capabilities from its element's.
+func postgresArrayFromElement(elementCaps columnCapabilities) columnCapabilities {
 	capabilities := columnCapabilities{comparison: elementCaps.comparison}
 	if elementCaps.comparison && elementCaps.grouping {
 		capabilities.grouping = true
@@ -234,17 +270,19 @@ var mssqlTypeCapabilities = map[string]columnCapabilities{
 	"varchar":          {comparison: true, grouping: true, countDistinct: true, length: true, extrema: true, text: true},
 	"nchar":            {comparison: true, grouping: true, countDistinct: true, length: true, extrema: true, text: true},
 	"nvarchar":         {comparison: true, grouping: true, countDistinct: true, length: true, extrema: true, text: true},
-	"text":             {text: true},
-	"ntext":            {text: true},
-	"image":            {},
+	"text":             {text: true, noColumnCount: true},
+	"ntext":            {text: true, noColumnCount: true},
+	"image":            {noColumnCount: true},
 	"xml":              {},
 	"binary":           {comparison: true, grouping: true, countDistinct: true, length: true, extrema: true},
 	"varbinary":        {comparison: true, grouping: true, countDistinct: true, length: true, extrema: true},
 	"uniqueidentifier": {comparison: true, grouping: true, countDistinct: true, length: true, extrema: true},
 	// sql_variant compares by precedence and orders, but has no LEN.
 	"sql_variant": {comparison: true, grouping: true, countDistinct: true, extrema: true},
-	// Spatial and CLR types have no comparison, grouping or aggregation.
-	"geometry": {}, "geography": {}, "hierarchyid": {},
+	// Spatial types have no comparison, grouping or aggregation. hierarchyid
+	// compares and groups, but has no MIN/MAX or LEN.
+	"geometry": {}, "geography": {},
+	"hierarchyid": {comparison: true, grouping: true, countDistinct: true},
 }
 
 // mysqlStringCapabilities decides one MySQL-wire base type name. MySQL-family
@@ -269,14 +307,15 @@ var mysqlTypeCapabilities = map[string]columnCapabilities{
 	"json": {grouping: true, countDistinct: true, regex: true, length: true, extrema: true},
 	// Spatial types convert to text, but MIN is invalid and value comparison is not
 	// a data quality check the rule author means.
-	"geometry":           {grouping: true, countDistinct: true, regex: true, length: true},
-	"point":              {grouping: true, countDistinct: true, regex: true, length: true},
-	"linestring":         {grouping: true, countDistinct: true, regex: true, length: true},
-	"polygon":            {grouping: true, countDistinct: true, regex: true, length: true},
-	"multipoint":         {grouping: true, countDistinct: true, regex: true, length: true},
-	"multilinestring":    {grouping: true, countDistinct: true, regex: true, length: true},
-	"multipolygon":       {grouping: true, countDistinct: true, regex: true, length: true},
-	"geometrycollection": {grouping: true, countDistinct: true, regex: true, length: true},
+	"geometry":           {grouping: true, countDistinct: true},
+	"point":              {grouping: true, countDistinct: true},
+	"linestring":         {grouping: true, countDistinct: true},
+	"polygon":            {grouping: true, countDistinct: true},
+	"multipoint":         {grouping: true, countDistinct: true},
+	"multilinestring":    {grouping: true, countDistinct: true},
+	"multipolygon":       {grouping: true, countDistinct: true},
+	"geometrycollection": {grouping: true, countDistinct: true},
+	"geomcollection":     {grouping: true, countDistinct: true},
 	// Binary and blob values compare, group, order and measure by byte length.
 	"binary":     {comparison: true, grouping: true, countDistinct: true, regex: true, length: true, extrema: true},
 	"varbinary":  {comparison: true, grouping: true, countDistinct: true, regex: true, length: true, extrema: true},
@@ -292,11 +331,22 @@ var mysqlTypeCapabilities = map[string]columnCapabilities{
 func starrocksStringCapabilities(name string) columnCapabilities {
 	switch {
 	case strings.HasPrefix(name, "array"):
+		// An array groups and counts distinctly unless its element type is one of
+		// the nested types the engine refuses to group.
+		for _, nested := range []string{"json", "bitmap", "hll", "percentile"} {
+			if strings.Contains(name, nested) {
+				return columnCapabilities{}
+			}
+		}
 		return columnCapabilities{grouping: true, countDistinct: true}
-	case strings.HasPrefix(name, "map"), strings.HasPrefix(name, "struct"),
-		name == "json", strings.HasPrefix(name, "bitmap"), strings.HasPrefix(name, "hll"),
-		name == "percentile", name == "variant":
-		return starrocksNestedCapabilities(name)
+	case name == "json":
+		return columnCapabilities{comparison: true, length: true}
+	case strings.HasPrefix(name, "bitmap"), strings.HasPrefix(name, "hll"):
+		return columnCapabilities{countDistinct: true, noNullTest: true}
+	case name == "percentile":
+		return columnCapabilities{noNullTest: true}
+	case strings.HasPrefix(name, "map"), strings.HasPrefix(name, "struct"), name == "variant":
+		return columnCapabilities{}
 	}
 	if capabilities, ok := starrocksTypeCapabilities[name]; ok {
 		return capabilities
@@ -304,18 +354,12 @@ func starrocksStringCapabilities(name string) columnCapabilities {
 	return columnCapabilities{}
 }
 
-// starrocksNestedCapabilities handles the semi-structured types, whose only
-// special case is JSON: StarRocks compares JSON values and measures their length.
-func starrocksNestedCapabilities(name string) columnCapabilities {
-	if name == "json" {
-		return columnCapabilities{comparison: true, length: true}
-	}
-	return columnCapabilities{}
-}
-
 var starrocksTypeCapabilities = map[string]columnCapabilities{
 	"char": textCapabilities, "varchar": textCapabilities, "string": textCapabilities,
 	"text": textCapabilities,
+	// varbinary has a byte length and COUNT(DISTINCT), but MIN/MAX and REGEXP are
+	// invalid on it.
+	"varbinary": {grouping: true, countDistinct: true, length: true},
 }
 
 // dorisStringCapabilities decides one Doris type. Doris JSON supports GROUP BY,
@@ -324,9 +368,11 @@ var starrocksTypeCapabilities = map[string]columnCapabilities{
 func dorisStringCapabilities(name string) columnCapabilities {
 	switch {
 	case strings.HasPrefix(name, "array"), strings.HasPrefix(name, "map"),
-		strings.HasPrefix(name, "struct"), name == "bitmap", name == "hll",
-		name == "variant", name == "ipv4", name == "ipv6":
+		strings.HasPrefix(name, "struct"), name == "variant", name == "ipv4", name == "ipv6":
 		return columnCapabilities{}
+	case name == "bitmap", name == "hll", name == "percentile":
+		// These have no predicate, comparison or grouping, but COUNT(col) works.
+		return columnCapabilities{noNullTest: true}
 	}
 	if capabilities, ok := dorisTypeCapabilities[name]; ok {
 		return capabilities
@@ -398,6 +444,22 @@ func requireGroupingColumn(target ResolvedTarget, name string) (ColumnInfo, erro
 	}
 	if !supportsGrouping(column, target.Engine) {
 		return ColumnInfo{}, invalidConfig("column %q is %s; the engine cannot group values of this type", column.Name, column.Type)
+	}
+	return column, nil
+}
+
+// requireNullTestColumn resolves a column and requires the engine to be able to
+// test it for NULL, which plain null_percent and IS [NOT] NULL filters need.
+func requireNullTestColumn(target ResolvedTarget, name string) (ColumnInfo, error) {
+	column, err := requireColumn(target, name)
+	if err != nil {
+		return ColumnInfo{}, err
+	}
+	if column.Kind == ColumnKindUnknown {
+		return ColumnInfo{}, invalidConfig("column %q has a type this build cannot classify", column.Name)
+	}
+	if !supportsNullTest(column, target.Engine) {
+		return ColumnInfo{}, invalidConfig("column %q is %s; the engine cannot test values of this type for NULL", column.Name, column.Type)
 	}
 	return column, nil
 }

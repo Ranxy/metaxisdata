@@ -167,6 +167,10 @@ func profileSelectedColumns(target ResolvedTarget, columns []string, maxColumns 
 		if column.Kind == ColumnKindUnknown {
 			return nil, invalidConfig("column %q has a type this build cannot profile", column.Name)
 		}
+		capabilities := capabilitiesFor(target.Engine, column)
+		if capabilities.noColumnCount && capabilities.noNullTest {
+			return nil, invalidConfig("column %q has a type this build cannot profile", column.Name)
+		}
 		selected = append(selected, newProfileColumn(target.Engine, column))
 	}
 	if len(selected) > maxColumns {

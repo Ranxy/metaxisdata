@@ -171,10 +171,15 @@ func CompileFilter(dialect Dialect, target ResolvedTarget, filter Filter) (strin
 		}
 		quoted := dialect.QuoteIdentifier(column.Name)
 		switch clause.Op {
-		case FilterISNull:
-			conditions = append(conditions, quoted+" IS NULL")
-		case FilterISNotNull:
-			conditions = append(conditions, quoted+" IS NOT NULL")
+		case FilterISNull, FilterISNotNull:
+			if !supportsNullTest(column, target.Engine) {
+				return "", nil, invalidConfig("filter column %q is %s; the engine cannot test values of this type for NULL", column.Name, column.Type)
+			}
+			if clause.Op == FilterISNull {
+				conditions = append(conditions, quoted+" IS NULL")
+			} else {
+				conditions = append(conditions, quoted+" IS NOT NULL")
+			}
 		default:
 			// A value comparison needs equality for the column's type. IS NULL and
 			// IS NOT NULL above work for every type, so they are checked first.

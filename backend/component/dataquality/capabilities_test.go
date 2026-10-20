@@ -50,13 +50,27 @@ func TestCapabilityMatrix(t *testing.T) {
 			want: columnCapabilities{comparison: true, grouping: true, countDistinct: true, extrema: true}},
 		{name: "pg inet", engine: storepb.Engine_POSTGRES, columnType: "inet",
 			want: columnCapabilities{comparison: true, grouping: true, countDistinct: true, extrema: true}},
+		{name: "pg macaddr has no MIN", engine: storepb.Engine_POSTGRES, columnType: "macaddr",
+			want: columnCapabilities{comparison: true, grouping: true, countDistinct: true}},
+		{name: "pg macaddr8 has no MIN", engine: storepb.Engine_POSTGRES, columnType: "macaddr8",
+			want: columnCapabilities{comparison: true, grouping: true, countDistinct: true}},
+		{name: "pg bit is a bit string", engine: storepb.Engine_POSTGRES, columnType: "bit(8)",
+			want: columnCapabilities{comparison: true, grouping: true, countDistinct: true}},
+		{name: "pg int4range", engine: storepb.Engine_POSTGRES, columnType: "int4range",
+			want: columnCapabilities{comparison: true, grouping: true, countDistinct: true}},
+		{name: "pg matview text array", engine: storepb.Engine_POSTGRES, columnType: "text[]",
+			want: columnCapabilities{comparison: true, grouping: true, countDistinct: true, extrema: true}},
+		{name: "pg matview integer array", engine: storepb.Engine_POSTGRES, columnType: "integer[]",
+			want: columnCapabilities{comparison: true, grouping: true, countDistinct: true, extrema: true}},
 		{name: "pg box compares but does not group", engine: storepb.Engine_POSTGRES, columnType: "box",
 			want: columnCapabilities{comparison: true}},
 		{name: "pg point has no equality", engine: storepb.Engine_POSTGRES, columnType: "point", want: columnCapabilities{}},
 		{name: "pg polygon has no equality", engine: storepb.Engine_POSTGRES, columnType: "polygon", want: columnCapabilities{}},
 		{name: "pg PostGIS geometry", engine: storepb.Engine_POSTGRES, columnType: "public.geometry", want: columnCapabilities{}},
 		{name: "pg enum", engine: storepb.Engine_POSTGRES, columnType: "public.mood",
-			want: columnCapabilities{comparison: true, grouping: true, countDistinct: true}},
+			want: columnCapabilities{comparison: true, grouping: true}},
+		{name: "pg user-defined over json is not assumed equatable for profiles", engine: storepb.Engine_POSTGRES,
+			columnType: "dqprobe.myjson", want: columnCapabilities{comparison: true, grouping: true}},
 		{name: "pg text array", engine: storepb.Engine_POSTGRES, columnType: "_text",
 			want: columnCapabilities{comparison: true, grouping: true, countDistinct: true, extrema: true}},
 		{name: "pg json array has no equality", engine: storepb.Engine_POSTGRES, columnType: "_json", want: columnCapabilities{}},
@@ -66,7 +80,7 @@ func TestCapabilityMatrix(t *testing.T) {
 			comparison: true, grouping: true, countDistinct: true, length: true, extrema: true, text: true,
 		}},
 		{name: "mssql legacy text shapes but cannot aggregate", engine: storepb.Engine_MSSQL, columnType: "text",
-			want: columnCapabilities{text: true}},
+			want: columnCapabilities{text: true, noColumnCount: true}},
 		{name: "mssql xml", engine: storepb.Engine_MSSQL, columnType: "xml", want: columnCapabilities{}},
 		{name: "mssql varbinary", engine: storepb.Engine_MSSQL, columnType: "varbinary(max)", want: columnCapabilities{
 			comparison: true, grouping: true, countDistinct: true, length: true, extrema: true,
@@ -75,12 +89,16 @@ func TestCapabilityMatrix(t *testing.T) {
 			comparison: true, grouping: true, countDistinct: true, length: true, extrema: true,
 		}},
 		{name: "mssql geometry", engine: storepb.Engine_MSSQL, columnType: "geometry", want: columnCapabilities{}},
+		{name: "mssql hierarchyid compares and groups", engine: storepb.Engine_MSSQL, columnType: "hierarchyid",
+			want: columnCapabilities{comparison: true, grouping: true, countDistinct: true}},
 		// MySQL family.
 		{name: "mysql varchar", engine: storepb.Engine_MYSQL, columnType: "varchar(64)", want: text},
 		{name: "mysql json cannot compare", engine: storepb.Engine_MYSQL, columnType: "json",
 			want: columnCapabilities{grouping: true, countDistinct: true, regex: true, length: true, extrema: true}},
 		{name: "mysql geometry", engine: storepb.Engine_MYSQL, columnType: "geometry",
-			want: columnCapabilities{grouping: true, countDistinct: true, regex: true, length: true}},
+			want: columnCapabilities{grouping: true, countDistinct: true}},
+		{name: "mysql geomcollection", engine: storepb.Engine_MYSQL, columnType: "geomcollection",
+			want: columnCapabilities{grouping: true, countDistinct: true}},
 		{name: "mysql blob", engine: storepb.Engine_MYSQL, columnType: "blob", want: columnCapabilities{
 			comparison: true, grouping: true, countDistinct: true, regex: true, length: true, extrema: true,
 		}},
@@ -90,7 +108,13 @@ func TestCapabilityMatrix(t *testing.T) {
 			want: columnCapabilities{comparison: true, length: true}},
 		{name: "starrocks array groups", engine: storepb.Engine_STARROCKS, columnType: "array<int(11)>",
 			want: columnCapabilities{grouping: true, countDistinct: true}},
+		{name: "starrocks array of json cannot group", engine: storepb.Engine_STARROCKS, columnType: "array<json>",
+			want: columnCapabilities{}},
 		{name: "starrocks map", engine: storepb.Engine_STARROCKS, columnType: "map<varchar,int>", want: columnCapabilities{}},
+		{name: "starrocks bitmap has no null test", engine: storepb.Engine_STARROCKS, columnType: "bitmap",
+			want: columnCapabilities{countDistinct: true, noNullTest: true}},
+		{name: "starrocks varbinary measures but does not order", engine: storepb.Engine_STARROCKS, columnType: "varbinary",
+			want: columnCapabilities{grouping: true, countDistinct: true, length: true}},
 		// Doris.
 		{name: "doris varchar", engine: storepb.Engine_DORIS, columnType: "varchar(64)", want: text},
 		{name: "doris json groups but cannot compare", engine: storepb.Engine_DORIS, columnType: "json",
@@ -100,7 +124,12 @@ func TestCapabilityMatrix(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, test.want, capabilitiesFor(test.engine, capabilityColumn("col", test.columnType)))
+			column := ColumnInfo{
+				Name: "col",
+				Type: test.columnType,
+				Kind: classifyColumnTypeForEngine(test.engine, test.columnType),
+			}
+			require.Equal(t, test.want, capabilitiesFor(test.engine, column))
 		})
 	}
 }
@@ -331,6 +360,23 @@ func TestValidationUsesEngineTypeSpellings(t *testing.T) {
 		validationStringLengthConfig(&storepb.StringLengthConfig{Column: "legacy", MaxLen: validationPtr(int64(10))})))
 	require.NoError(t, ValidateConfig(mssql, storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
 		validationNullPercentConfig(&storepb.NullPercentConfig{Column: "legacy", MaxNullCount: validationPtr(int64(0))})))
+
+	// StarRocks bitmap rejects even IS NULL, so a plain null check cannot run.
+	bitmap := capabilityTarget(storepb.Engine_STARROCKS, capabilityColumn("bm", "bitmap"))
+	require.Error(t, ValidateConfig(bitmap, storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+		validationNullPercentConfig(&storepb.NullPercentConfig{Column: "bm", MaxNullCount: validationPtr(int64(0))})))
+	require.Error(t, ValidateConfig(bitmap, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		rowCountWithJSONFilterOn("bm", storepb.QualityFilterOperator_QUALITY_FILTER_OPERATOR_IS_NULL)))
+
+	// PostgreSQL BIT is a bit string, not a boolean: filters bind a string that the
+	// engine parses as bits, while text rules are not applicable.
+	bit := capabilityTarget(storepb.Engine_POSTGRES, ColumnInfo{
+		Name: "b", Type: "bit(8)", Kind: classifyColumnTypeForEngine(storepb.Engine_POSTGRES, "bit(8)"),
+	})
+	require.NoError(t, ValidateConfig(bit, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		rowCountWithJSONFilterOn("b", storepb.QualityFilterOperator_QUALITY_FILTER_OPERATOR_EQ)))
+	require.Error(t, ValidateConfig(bit, storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH,
+		validationStringLengthConfig(&storepb.StringLengthConfig{Column: "b", MaxLen: validationPtr(int64(8))})))
 }
 
 // TestClassificationCoversEngineSpellings pins the type spellings the classifier
@@ -379,4 +425,19 @@ func TestFailureRowsAreNotStricterThanTheAggregate(t *testing.T) {
 			require.NotEmpty(t, sample.SQL)
 		})
 	}
+
+	// The custom-null-values arm compares the column, so both the aggregate and the
+	// sample must refuse it for a type without comparison support.
+	custom := CompileInput{
+		Dialect: dialect,
+		Target:  target,
+		Type:    storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+		Config: validationNullPercentConfig(&storepb.NullPercentConfig{
+			Column: "payload_json", MaxNullCount: validationPtr(int64(0)), NullValues: []string{`{}`},
+		}),
+	}
+	_, err = Compile(custom)
+	require.Error(t, err)
+	_, err = CompileFailureRows(custom, 20)
+	require.Error(t, err)
 }

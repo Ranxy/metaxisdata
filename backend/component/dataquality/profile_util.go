@@ -2,6 +2,7 @@ package dataquality
 
 import (
 	"cmp"
+	"encoding/hex"
 	"fmt"
 	"math"
 	"slices"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -66,6 +68,9 @@ type profileColumn struct {
 	Facts             profileFacts
 	EstimatedDistinct bool
 	Patterns          bool
+	// CaseCount selects COUNT(CASE WHEN col IS NOT NULL THEN 1 END) over COUNT(col):
+	// SQL Server rejects the latter for text, ntext and image.
+	CaseCount bool
 }
 
 // newProfileColumn derives one column's profile facts from the shared type
@@ -76,6 +81,7 @@ func newProfileColumn(engine storepb.Engine, column ColumnInfo) profileColumn {
 		Name:              column.Name,
 		EstimatedDistinct: !capabilities.countDistinct,
 		Patterns:          capabilities.text,
+		CaseCount:         capabilities.noColumnCount,
 	}
 	if capabilities.countDistinct {
 		profile.Facts |= profileFactDistinct
@@ -132,8 +138,12 @@ func buildProfileAggregateSQL(dialect Dialect, table string, columns []profileCo
 		prefix := profileAliasPrefix(index)
 		quoted := qualify(dialect, column.Name)
 		if column.Facts == 0 {
-			expressions = append(expressions,
-				"COUNT(CASE WHEN "+quoted+" IS NOT NULL THEN 1 END) AS "+prefix+"non_null")
+			if column.CaseCount {
+				expressions = append(expressions,
+					"COUNT(CASE WHEN "+quoted+" IS NOT NULL THEN 1 END) AS "+prefix+"non_null")
+			} else {
+				expressions = append(expressions, "COUNT("+quoted+") AS "+prefix+"non_null")
+			}
 			continue
 		}
 		expressions = append(expressions, "COUNT("+quoted+") AS "+prefix+"non_null")
@@ -193,7 +203,13 @@ func profileResultIndexes(columns, expected []string) (map[string]int, error) {
 // storage bound. A NULL renders as the empty string: "no value" and "empty text"
 // both display as nothing, and the null count already carries the distinction.
 func profileValueString(value any) string {
-	return common.TruncateUTF8Bytes(profileValueText(value), profileMaxValueBytes)
+	text := profileValueText(value)
+	if !utf8.ValidString(text) {
+		// Binary values (SQL Server varbinary, MySQL blob) are not text. The stored
+		// profile is protojson, which refuses invalid UTF-8, so render them as hex.
+		text = "0x" + hex.EncodeToString([]byte(text))
+	}
+	return common.TruncateUTF8Bytes(text, profileMaxValueBytes)
 }
 
 // profileValueText renders one observed value without truncation. It is the full

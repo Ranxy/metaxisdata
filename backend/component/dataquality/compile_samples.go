@@ -139,7 +139,7 @@ func sampleNullPercent(input CompileInput, limit int) (CompiledQuery, error) {
 	// the column, and only they need comparison support. The aggregate compiler
 	// applies the same gate, so this sample can never be stricter than the query it
 	// is evidence for.
-	column, err := requireColumn(input.Target, config.GetColumn())
+	column, err := requireNullTestColumn(input.Target, config.GetColumn())
 	if err == nil && len(config.GetNullValues()) > 0 {
 		_, err = requireComparisonColumn(input.Target, config.GetColumn())
 	}

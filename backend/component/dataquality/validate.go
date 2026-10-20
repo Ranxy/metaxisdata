@@ -374,7 +374,7 @@ func validateNullPercentConfig(target ResolvedTarget, config *storepb.NullPercen
 	if config == nil {
 		return invalidConfig("the null-percent config is missing")
 	}
-	column, err := requireColumn(target, config.GetColumn())
+	column, err := requireNullTestColumn(target, config.GetColumn())
 	if err != nil {
 		return err
 	}
@@ -648,7 +648,7 @@ func relatedTableName(target ResolvedTarget, spec, role, ruleName string) (schem
 		case 1:
 			return "", parts[0], nil
 		case 2:
-			if parts[0] != target.Database {
+			if !strings.EqualFold(parts[0], target.Database) {
 				return "", "", invalidConfig("%s %q must be in the rule's database %q", role, spec, target.Database)
 			}
 			return "", parts[1], nil
@@ -660,10 +660,12 @@ func relatedTableName(target ResolvedTarget, spec, role, ruleName string) (schem
 	case 1:
 		return target.Schema, parts[0], nil
 	case 2:
-		if target.Schema != "" && parts[0] != target.Schema {
+		if target.Schema != "" && !strings.EqualFold(parts[0], target.Schema) {
 			return "", "", invalidConfig("%s %q must be in the rule's schema %q", role, spec, target.Schema)
 		}
-		return parts[0], parts[1], nil
+		// Return the target's canonical schema, not the author's casing: the
+		// registry GUID is built from this and must match the syncer's identity.
+		return target.Schema, parts[1], nil
 	default:
 		return "", "", invalidConfig("%s %q must be \"table\" or \"schema.table\"", role, spec)
 	}
@@ -1222,6 +1224,12 @@ func validateCrossTableConfig(target ResolvedTarget, config *storepb.QualityRule
 		}
 		if err := validateAggregateColumnKind(column, leftFunction); err != nil {
 			return err
+		}
+		// The evaluator subtracts the two observations as numbers, so a temporal
+		// MIN/MAX would be a timestamp, not a difference. Both non-COUNT sides must
+		// be numeric; the right side is checked once it is resolved (ValidateRule).
+		if column.Kind != ColumnKindNumeric {
+			return invalidConfig("a cross-table %s needs a numeric column; %q is %s", aggregateFunctionName(leftFunction), column.Name, column.Type)
 		}
 	}
 

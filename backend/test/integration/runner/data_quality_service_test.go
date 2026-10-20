@@ -663,12 +663,13 @@ func TestDataQualityColumnProfileJsonRealServerIntegration(t *testing.T) {
 CREATE TABLE public.audit_log (
   id BIGSERIAL PRIMARY KEY,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  payload JSONB NOT NULL
+  payload JSONB NOT NULL,
+  client_mac MACADDR NOT NULL
 );
-INSERT INTO public.audit_log (created_at, payload) VALUES
-  ('2026-01-01 00:00:00+00', '{"kind":"login"}'),
-  ('2026-01-02 00:00:00+00', '{"kind":"audit"}'),
-  ('2026-01-03 00:00:00+00', '{"kind":"login"}');
+INSERT INTO public.audit_log (created_at, payload, client_mac) VALUES
+  ('2026-01-01 00:00:00+00', '{"kind":"login"}', '08:00:2b:01:02:03'),
+  ('2026-01-02 00:00:00+00', '{"kind":"audit"}', '08:00:2b:01:02:04'),
+  ('2026-01-03 00:00:00+00', '{"kind":"login"}', '08:00:2b:01:02:03');
 `))
 
 	_, err := env.CreateDataSource(ctx, common.FormatInstance(instanceID), &v1pb.DataSource{
@@ -689,11 +690,11 @@ INSERT INTO public.audit_log (created_at, payload) VALUES
 		Parent:    "workspaces/-",
 		TableGuid: tableGUID,
 		MetaType:  v1pb.MetaType_TABLE,
-		Columns:   []string{"id", "created_at", "payload"},
+		Columns:   []string{"id", "created_at", "payload", "client_mac"},
 	}))
 	require.NoError(t, err)
-	require.Len(t, resp.Msg.GetColumnProfiles(), 3)
-	profiles := make(map[string]*v1pb.ColumnProfile, 3)
+	require.Len(t, resp.Msg.GetColumnProfiles(), 4)
+	profiles := make(map[string]*v1pb.ColumnProfile, 4)
 	for _, profile := range resp.Msg.GetColumnProfiles() {
 		profiles[profile.GetColumn()] = profile
 	}
@@ -708,6 +709,14 @@ INSERT INTO public.audit_log (created_at, payload) VALUES
 	require.Nil(t, payload.MinLength)
 	require.Nil(t, payload.MaxLength)
 	require.NotEmpty(t, payload.GetTopValues())
+
+	// macaddr has equality but no MIN/MAX; profiling it must not fail the request.
+	mac := profiles["client_mac"].GetProfile()
+	require.Equal(t, int64(3), mac.GetTotalRows())
+	require.Equal(t, int64(2), mac.GetDistinctCount())
+	require.Empty(t, mac.GetMinValue())
+	require.Empty(t, mac.GetMaxValue())
+	require.Nil(t, mac.MinLength)
 
 	// The ordinary columns still carry the facts their types support.
 	require.Equal(t, "1", profiles["id"].GetProfile().GetMinValue())
@@ -730,14 +739,15 @@ func TestDataQualityRuleRejectsUnrunnableColumnTypesRealServerIntegration(t *tes
 	require.NoError(t, env.ExecPostgres(ctx, sourceDatabase, `
 CREATE TABLE public.opaque_probe (
   id BIGSERIAL PRIMARY KEY,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   payload JSONB NOT NULL,
   payload_json JSON NOT NULL,
   doc XML NOT NULL,
   uid UUID NOT NULL,
   tags TEXT[] NOT NULL
 );
-INSERT INTO public.opaque_probe (payload, payload_json, doc, uid, tags)
-VALUES ('{"k":1}', '{"k":1}', '<a/>', '11111111-1111-1111-1111-111111111111', '{a,b}');
+INSERT INTO public.opaque_probe (created_at, payload, payload_json, doc, uid, tags)
+VALUES (now(), '{"k":1}', '{"k":1}', '<a/>', '11111111-1111-1111-1111-111111111111', '{a,b}');
 CREATE TABLE public.code_ref (code TEXT PRIMARY KEY);
 INSERT INTO public.code_ref (code) VALUES ('a');
 CREATE VIEW public.code_numbers AS SELECT 1::bigint AS n;
@@ -851,6 +861,18 @@ CREATE VIEW public.code_numbers AS SELECT 1::bigint AS n;
 			name: "filter on json",
 			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, rowCountWithFilter("payload_json")),
 			want: "the engine cannot compare values of this type",
+		},
+		{
+			name: "cross_table MIN on a temporal left column",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_CrossTable{CrossTable: &v1pb.CrossTableConfig{
+					RightTable:    "code_ref",
+					LeftFunction:  v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MIN,
+					LeftColumn:    "created_at",
+					RightFunction: v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
+				}},
+			}),
+			want: "needs a numeric column",
 		},
 		{
 			name: "referential between jsonb and text",
