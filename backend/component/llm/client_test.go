@@ -70,8 +70,7 @@ func TestStreamRawSendsRequestOptions(t *testing.T) {
 	server := optionProvider(t, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\ndata: [DONE]\n", capture)
 
 	cfg := requestOptionsConfig(t, server.URL)
-	for range streamRaw(context.Background(), cfg, []Message{{Role: "user", Content: "hi"}}) {
-	}
+	drainStream(streamRaw(context.Background(), cfg, []Message{{Role: "user", Content: "hi"}}))
 
 	body, path := capture.snapshot(t)
 	require.Equal(t, "/v1/chat/completions", path)
@@ -98,8 +97,7 @@ func TestStreamRawOmitsUnsetRequestOptions(t *testing.T) {
 	server := optionProvider(t, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\ndata: [DONE]\n", capture)
 
 	cfg := AgentConfig{Provider: ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key"}}
-	for range streamRaw(context.Background(), cfg, []Message{{Role: "user", Content: "hi"}}) {
-	}
+	drainStream(streamRaw(context.Background(), cfg, []Message{{Role: "user", Content: "hi"}}))
 
 	body, _ := capture.snapshot(t)
 	var request map[string]any
@@ -362,4 +360,12 @@ func TestUsageAddDerivesAMissingTotal(t *testing.T) {
 	var nilUsage *Usage
 	require.NotPanics(t, func() { nilUsage.add(&Usage{PromptTokens: 1}) })
 	require.Nil(t, nilUsage)
+}
+
+// drainStream consumes a stream so its request completes; the assertions in the
+// callers are about the recorded request, not the events.
+func drainStream[T any](stream <-chan T) {
+	for event := range stream {
+		_ = event
+	}
 }
