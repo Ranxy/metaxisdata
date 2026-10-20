@@ -83,7 +83,7 @@
             :to="item.path"
             :title="railLabel(item.label)"
             :aria-label="railLabel(item.label)"
-            :class="navLinkClass(item.path)"
+            :class="navLinkClass(item.path, { exact: item.exact })"
           >
             <component
               :is="item.icon"
@@ -113,7 +113,7 @@
                 :to="child.path"
                 :title="railLabel(child.label)"
                 :aria-label="railLabel(child.label)"
-                :class="navLinkClass(child.path, { muted: true })"
+                :class="navLinkClass(child.path, { muted: true, exact: child.exact })"
               >
                 <component
                   :is="child.icon"
@@ -149,7 +149,7 @@
                   v-for="child in item.children"
                   :key="child.key"
                   :to="child.path"
-                  :class="navLinkClass(child.path, { muted: true })"
+                  :class="navLinkClass(child.path, { muted: true, exact: child.exact })"
                 >
                   <component
                     :is="child.icon"
@@ -235,6 +235,9 @@ interface MenuItem {
   permission?: string;
   /** Visible when the caller holds at least one of these. */
   anyPermission?: string[];
+  /** Active only on an exact match: a section landing page whose path prefixes
+   * its siblings would otherwise stay highlighted on every child route. */
+  exact?: boolean;
   children?: MenuItem[];
 }
 
@@ -367,6 +370,7 @@ function buildMenuItems(): MenuItem[] {
           path: "/data-quality",
           icon: LayoutDashboard,
           permission: "metaxisdata.dataQuality.rules.list",
+          exact: true,
         },
         {
           key: "dataQualityRules",
@@ -427,8 +431,11 @@ const menuItems = computed<MenuItem[]>(() => {
     .filter((item) => !item.children || item.children.length > 0);
 });
 
-function isActive(path: string): boolean {
-  if (path === "/") {
+// Section landing pages can sit at a prefix of their siblings ("/data-quality"
+// prefixes "/data-quality/runs"), so an `exact` entry owns only its own route.
+// Every other entry also stays active on its detail routes.
+function isActive(path: string, exact = false): boolean {
+  if (exact || path === "/") {
     return route.path === path;
   }
 
@@ -438,6 +445,8 @@ function isActive(path: string): boolean {
 interface NavLinkOptions {
   /** Section children sit below a header, so their idle label reads muted. */
   muted?: boolean;
+  /** See MenuItem.exact. */
+  exact?: boolean;
 }
 
 // The icon rail hides labels, so a link becomes a centred square that fills the
@@ -451,14 +460,14 @@ function navLinkClass(path: string, options: NavLinkOptions = {}): string[] {
   if (rail.value) {
     return [
       "mx-auto flex h-10 w-10 items-center justify-center rounded-md transition-colors",
-      isActive(path)
+      isActive(path, options.exact)
         ? "bg-primary-subtle text-primary-subtle-foreground"
         : idle,
     ];
   }
   return [
     "relative flex items-center rounded-md px-3 py-1.5 text-sm transition-colors",
-    isActive(path)
+    isActive(path, options.exact)
       ? "bg-primary-subtle font-medium text-primary-subtle-foreground before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-primary"
       : idle,
   ];
@@ -480,7 +489,9 @@ function isSectionExpanded(key: string): boolean {
 }
 
 function hasActiveChild(item: MenuItem): boolean {
-  return (item.children ?? []).some((child) => isActive(child.path));
+  return (item.children ?? []).some((child) =>
+    isActive(child.path, child.exact)
+  );
 }
 
 // A persisted collapsed section must not hide the page the user is on, so
