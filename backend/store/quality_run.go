@@ -485,6 +485,80 @@ func (s *Store) ListQualityRunsByIDs(ctx context.Context, ids []int64) ([]*Quali
 	return result, nil
 }
 
+// QualityRunTargetMessage is one target a run's rules observed. The path is the
+// display snapshot of the rule revision the result was judged with, not the rule
+// head's current path: an edit after the run must not rewrite its evidence.
+type QualityRunTargetMessage struct {
+	RunID    int64
+	MetaGUID string
+	MetaType storepb.MetaType
+	Path     *storepb.QualityTargetPath
+}
+
+// qualityRunTargetsStatement reads the distinct targets of several runs in one
+// query. It joins the result to the revision it names, because only the revision
+// carries the target path snapshot. DISTINCT ON keeps two rules that watched the
+// same table from listing it twice; the earliest result breaks a tie when rules
+// saved at different times recorded different paths for one GUID.
+const qualityRunTargetsStatement = `
+	SELECT DISTINCT ON (r.run_id, r.target_guid, r.target_type)
+		r.run_id, r.target_guid, r.target_type, rev.target_path
+	FROM quality_rule_result r
+	JOIN quality_rule_revision rev ON rev.rule_id = r.rule_id AND rev.revision = r.rule_revision
+	WHERE r.run_id = ANY($1::bigint[])
+	ORDER BY r.run_id, r.target_guid, r.target_type, r.id
+`
+
+// qualityRunTargetScanner is the row shape scanned from a *sql.Rows. It exists
+// so the mapping is testable without a database.
+type qualityRunTargetScanner interface {
+	Scan(dest ...any) error
+}
+
+// scanQualityRunTarget maps one joined result/revision row to the message.
+func scanQualityRunTarget(scanner qualityRunTargetScanner) (*QualityRunTargetMessage, error) {
+	var (
+		msg      QualityRunTargetMessage
+		pathJSON []byte
+	)
+	if err := scanner.Scan(&msg.RunID, &msg.MetaGUID, &msg.MetaType, &pathJSON); err != nil {
+		return nil, errors.Wrap(err, "failed to scan quality run target")
+	}
+	msg.Path = &storepb.QualityTargetPath{}
+	if err := unmarshalQualityRuleProto(pathJSON, msg.Path); err != nil {
+		return nil, errors.Wrap(err, "failed to unmarshal quality run target path")
+	}
+	return &msg, nil
+}
+
+// ListQualityRunTargets groups the distinct targets of each run's results by run
+// id. An empty input is a no-op and never touches the database; the returned map
+// is non-nil so a caller can index it unconditionally.
+func (s *Store) ListQualityRunTargets(ctx context.Context, runIDs []int64) (map[int64][]*QualityRunTargetMessage, error) {
+	if len(runIDs) == 0 {
+		return map[int64][]*QualityRunTargetMessage{}, nil
+	}
+
+	rows, err := s.GetDB().QueryContext(ctx, qualityRunTargetsStatement, pq.Array(runIDs))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list quality run targets")
+	}
+	defer rows.Close()
+
+	targets := make(map[int64][]*QualityRunTargetMessage, len(runIDs))
+	for rows.Next() {
+		target, err := scanQualityRunTarget(rows)
+		if err != nil {
+			return nil, err
+		}
+		targets[target.RunID] = append(targets[target.RunID], target)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to iterate quality run targets")
+	}
+	return targets, nil
+}
+
 // CountQualityRunsSince counts the runs started at or after since. It is the
 // workspace's daily execution tally: the runner compares it with the configured
 // ceiling before scanning for due rules, so an accidentally dense schedule

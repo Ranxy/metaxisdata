@@ -341,6 +341,46 @@ func TestConvertQualityRun(t *testing.T) {
 	require.Nil(t, convertQualityRun("ws1", nil))
 }
 
+func TestConvertQualityRunTargets(t *testing.T) {
+	t.Parallel()
+
+	targets := []*store.QualityRunTargetMessage{
+		{
+			RunID:    11,
+			MetaGUID: "instance_1;shop;public;orders",
+			MetaType: storepb.MetaType_TABLE,
+			Path: &storepb.QualityTargetPath{
+				Instance: "prod",
+				Database: "shop",
+				Schema:   "public",
+				Object:   "orders",
+			},
+		},
+		nil,
+		{
+			RunID:    11,
+			MetaGUID: "instance_1;shop;public;orders;email",
+			MetaType: storepb.MetaType_COLUMN,
+			Path: &storepb.QualityTargetPath{
+				Instance: "prod",
+				Database: "shop",
+				Schema:   "public",
+				Object:   "orders",
+				Column:   "email",
+			},
+		},
+	}
+
+	converted := convertQualityRunTargets(targets)
+	require.Len(t, converted, 2)
+	require.Equal(t, "instance_1;shop;public;orders", converted[0].GetMetaGuid())
+	require.Equal(t, v1pb.MetaType_TABLE, converted[0].GetMetaType())
+	require.Equal(t, "orders", converted[0].GetPath().GetObject())
+	require.Equal(t, "email", converted[1].GetPath().GetColumn())
+
+	require.Nil(t, convertQualityRunTargets(nil))
+}
+
 func TestConvertQualityRuleResult(t *testing.T) {
 	t.Parallel()
 

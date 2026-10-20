@@ -53,6 +53,9 @@
                   {{ t("dataQuality.instance") }}
                 </TableHead>
                 <TableHead class="hidden md:table-cell">
+                  {{ t("dataQuality.ruleTarget") }}
+                </TableHead>
+                <TableHead class="hidden md:table-cell">
                   {{ t("dataQuality.startedAt") }}
                 </TableHead>
                 <TableHead class="hidden whitespace-nowrap md:table-cell">
@@ -87,9 +90,18 @@
                   <div class="mt-1 font-mono text-xs text-muted-foreground">
                     {{ qualityRunID(run.name) }}
                   </div>
-                  <!-- Below md the trigger and duration columns collapse in here. -->
+                  <!-- Below md the trigger, target and duration columns collapse in here. -->
                   <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground md:hidden">
                     <span>{{ t(qualityRunTriggerKey(run.trigger)) }}</span>
+                    <template v-if="runTargets(run).length > 0">
+                      <span aria-hidden="true">·</span>
+                      <span
+                        class="min-w-0 truncate"
+                        :title="targetsTitle(run)"
+                      >
+                        {{ runTargets(run)[0] }}
+                      </span>
+                    </template>
                     <span aria-hidden="true">·</span>
                     <span>{{ runDurationLabel(run) }}</span>
                     <span aria-hidden="true">·</span>
@@ -103,6 +115,33 @@
                 </TableCell>
                 <TableCell class="hidden font-mono text-xs sm:table-cell">
                   {{ instanceLabel(run) }}
+                </TableCell>
+                <TableCell class="hidden md:table-cell">
+                  <div
+                    v-if="runTargets(run).length > 0"
+                    class="flex flex-wrap items-center gap-1"
+                  >
+                    <span
+                      class="max-w-[14rem] truncate text-xs"
+                      :title="targetsTitle(run)"
+                    >
+                      {{ runTargets(run)[0] }}
+                    </span>
+                    <Badge
+                      v-if="runTargets(run).length > 1"
+                      variant="outline"
+                      class="tabular-nums"
+                      :title="targetsTitle(run)"
+                    >
+                      +{{ runTargets(run).length - 1 }}
+                    </Badge>
+                  </div>
+                  <span
+                    v-else
+                    class="text-sm text-muted-foreground"
+                  >
+                    -
+                  </span>
                 </TableCell>
                 <TableCell
                   class="hidden whitespace-nowrap text-muted-foreground md:table-cell"
@@ -200,12 +239,14 @@ import {
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import {
   formatSeconds,
+  formatTargetPath,
   qualityRunStatusKey,
   qualityRunStatusVariant,
   qualityRunTriggerKey,
   qualityStatusKey,
   qualityStatusVariant,
   runDurationSeconds,
+  targetScopeLabel,
 } from "@/utils/dataQuality";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 
@@ -244,6 +285,35 @@ watch(pageSize, () => void resetPage());
 /** The id part of `instances/{instance}`, or "-". */
 function instanceLabel(run: QualityRun): string {
   return run.instance ? (run.instance.split("/").pop() ?? "-") : "-";
+}
+
+/**
+ * The targets of the rules this run executed, as display paths. A run belongs to
+ * one instance, which the instance column already names, so the cell shows the
+ * target below it; a target without a recorded path falls back to its GUID.
+ */
+function runTargets(run: QualityRun): string[] {
+  return (run.targets ?? []).flatMap((target) => {
+    const path = formatTargetPath(target.path);
+    if (path !== "-") {
+      return [path];
+    }
+    return target.metaGuid ? [target.metaGuid] : [];
+  });
+}
+
+/** Every target's full path, one per line, for a cell's tooltip. */
+function targetsTitle(run: QualityRun): string {
+  return (run.targets ?? [])
+    .map((target) => {
+      const path = formatTargetPath(target.path);
+      if (path === "-") {
+        return target.metaGuid || "-";
+      }
+      const scope = targetScopeLabel(target.path);
+      return scope === "-" ? path : `${scope} · ${path}`;
+    })
+    .join("\n");
 }
 
 function runDurationLabel(run: QualityRun): string {

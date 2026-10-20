@@ -248,3 +248,85 @@ func TestCountQualityRunsSinceRejectsTheZeroTime(t *testing.T) {
 	require.Equal(t, 0, count)
 	require.Equal(t, common.Invalid, common.ErrorCode(err))
 }
+
+type qualityRunTargetScannerStub struct {
+	runID    int64
+	metaGUID string
+	metaType storepb.MetaType
+	pathJSON []byte
+}
+
+func (s qualityRunTargetScannerStub) Scan(dest ...any) error {
+	*(dest[0].(*int64)) = s.runID
+	*(dest[1].(*string)) = s.metaGUID
+	*(dest[2].(*storepb.MetaType)) = s.metaType
+	*(dest[3].(*[]byte)) = s.pathJSON
+	return nil
+}
+
+func TestScanQualityRunTargetReadsTheRevisionPathSnapshot(t *testing.T) {
+	t.Parallel()
+
+	target, err := scanQualityRunTarget(qualityRunTargetScannerStub{
+		runID:    11,
+		metaGUID: "instance_1;shop;public;orders",
+		metaType: storepb.MetaType_TABLE,
+		pathJSON: []byte(`{"instance":"prod","database":"shop","schema":"public","object":"orders","column":"id"}`),
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, int64(11), target.RunID)
+	require.Equal(t, "instance_1;shop;public;orders", target.MetaGUID)
+	require.Equal(t, storepb.MetaType_TABLE, target.MetaType)
+	require.Equal(t, "prod", target.Path.GetInstance())
+	require.Equal(t, "shop", target.Path.GetDatabase())
+	require.Equal(t, "public", target.Path.GetSchema())
+	require.Equal(t, "orders", target.Path.GetObject())
+	require.Equal(t, "id", target.Path.GetColumn())
+}
+
+// TestScanQualityRunTargetToleratesTheEmptyDefault pins the JSONB default: a row
+// whose path was never written must still produce a usable, non-nil path.
+func TestScanQualityRunTargetToleratesTheEmptyDefault(t *testing.T) {
+	t.Parallel()
+
+	target, err := scanQualityRunTarget(qualityRunTargetScannerStub{pathJSON: []byte(`{}`)})
+	require.NoError(t, err)
+	require.NotNil(t, target.Path)
+	require.Empty(t, target.Path.GetObject())
+}
+
+func TestScanQualityRunTargetSurfacesBrokenPathJSON(t *testing.T) {
+	t.Parallel()
+
+	_, err := scanQualityRunTarget(qualityRunTargetScannerStub{pathJSON: []byte(`{"object":7}`)})
+	require.Error(t, err)
+}
+
+// qualityRunTargetsStatementShape pins how a run's targets are found: the result
+// names a revision, and only the revision row carries what the rule watched.
+func TestQualityRunTargetsStatementShape(t *testing.T) {
+	t.Parallel()
+
+	require.Contains(t, qualityRunTargetsStatement, "FROM quality_rule_result r")
+	require.Contains(t, qualityRunTargetsStatement, "JOIN quality_rule_revision rev ON rev.rule_id = r.rule_id AND rev.revision = r.rule_revision")
+	require.Contains(t, qualityRunTargetsStatement, "DISTINCT ON (r.run_id, r.target_guid, r.target_type)")
+	require.Contains(t, qualityRunTargetsStatement, "r.run_id = ANY($1::bigint[])")
+}
+
+func TestListQualityRunTargetsEmptyInputIsEmptyMap(t *testing.T) {
+	t.Parallel()
+
+	// A zero Store has no pool: reaching the database here would panic, so this
+	// also pins that an empty input is a no-op.
+	s := &Store{}
+	targets, err := s.ListQualityRunTargets(context.Background(), nil)
+	require.NoError(t, err)
+	require.NotNil(t, targets)
+	require.Empty(t, targets)
+
+	targets, err = s.ListQualityRunTargets(context.Background(), []int64{})
+	require.NoError(t, err)
+	require.NotNil(t, targets)
+	require.Empty(t, targets)
+}

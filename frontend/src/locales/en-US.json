@@ -768,6 +768,7 @@
       "paused": "Paused",
       "unspecified": "Unspecified"
     },
+    "ruleTarget": "Rule target",
     "ruleType": {
       "acceptedValues": "Accepted values",
       "celExpression": "CEL expression",

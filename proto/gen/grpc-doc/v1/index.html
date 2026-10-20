@@ -14855,6 +14855,16 @@ scheduled run. </p></td>
 Unset until the run completes; ERROR and FAIL stay distinct. </p></td>
                 </tr>
               
+                <tr>
+                  <td>targets</td>
+                  <td><a href="#metaxisdata.v1.QualityTarget">QualityTarget</a></td>
+                  <td>repeated</td>
+                  <td><p>Where the run&#39;s rules looked: the distinct targets of its results, taken
+from the rule revision each result was judged with. A list view would
+otherwise have to join every result back to its rule to answer &#34;what did
+this run check?&#34;. Empty for a queued run that has no results yet. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
