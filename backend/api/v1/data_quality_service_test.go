@@ -719,19 +719,19 @@ func TestUpdateQualitySuggestionRejectsInvalidName(t *testing.T) {
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }
 
-func TestUnimplementedQualityHandlers(t *testing.T) {
+func TestQualityLLMHandlersRequireARequest(t *testing.T) {
 	t.Parallel()
 
 	service := &DataQualityService{}
 
 	_, err := service.SuggestQualityRule(t.Context(), nil)
-	require.Equal(t, connect.CodeUnimplemented, connect.CodeOf(err))
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 
 	_, err = service.SuggestColumnLabels(t.Context(), nil)
-	require.Equal(t, connect.CodeUnimplemented, connect.CodeOf(err))
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 
 	err = service.ExplainQualityResult(t.Context(), nil, nil)
-	require.Equal(t, connect.CodeUnimplemented, connect.CodeOf(err))
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }
 
 // TestTrimmedQualityColumns pins the column list normalization the profile request
