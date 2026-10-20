@@ -4689,6 +4689,8 @@ paths:
                         - QUALITY_RULE_TYPE_CEL_EXPRESSION
                         - QUALITY_RULE_TYPE_SCHEMA_DRIFT
                         - QUALITY_RULE_TYPE_GROUP_CHECK
+                        - QUALITY_RULE_TYPE_AGGREGATE
+                        - QUALITY_RULE_TYPE_CROSS_TABLE
                     type: string
                     format: enum
                 - name: severity
@@ -5311,6 +5313,46 @@ components:
                     type: number
                     format: double
             description: AcceptedValuesConfig counts rows whose column value is outside a fixed set.
+        AggregateConfig:
+            type: object
+            properties:
+                column:
+                    type: string
+                function:
+                    enum:
+                        - QUALITY_AGGREGATE_FUNCTION_UNSPECIFIED
+                        - QUALITY_AGGREGATE_FUNCTION_COUNT
+                        - QUALITY_AGGREGATE_FUNCTION_SUM
+                        - QUALITY_AGGREGATE_FUNCTION_AVG
+                        - QUALITY_AGGREGATE_FUNCTION_MIN
+                        - QUALITY_AGGREGATE_FUNCTION_MAX
+                        - QUALITY_AGGREGATE_FUNCTION_STDDEV
+                        - QUALITY_AGGREGATE_FUNCTION_PERCENTILE
+                    type: string
+                    format: enum
+                percentile:
+                    type: number
+                    description: The percentile, 0-100, for QUALITY_AGGREGATE_FUNCTION_PERCENTILE.
+                    format: double
+                min:
+                    type: number
+                    description: |-
+                        At least one fail bound is required; warn bounds are optional and must sit
+                         inside the fail range.
+                    format: double
+                max:
+                    type: number
+                    format: double
+                warnMin:
+                    type: number
+                    format: double
+                warnMax:
+                    type: number
+                    format: double
+                inclusive:
+                    type: boolean
+                    description: Whether the bounds are inclusive. Default false, i.e. open on both ends.
+            description: AggregateConfig bounds the value one aggregate over one column produces.
         AnalysisScope:
             required:
                 - guid
@@ -6376,6 +6418,62 @@ components:
             description: |-
                 CrossColumnConfig counts rows where two columns of the same row do not satisfy
                  the comparison.
+        CrossTableConfig:
+            type: object
+            properties:
+                rightTable:
+                    type: string
+                    description: |-
+                        The other table as "schema.table" (PostgreSQL/MSSQL) or "database.table" /
+                         "table" (MySQL family); it must live in the rule target's database.
+                leftFunction:
+                    enum:
+                        - QUALITY_AGGREGATE_FUNCTION_UNSPECIFIED
+                        - QUALITY_AGGREGATE_FUNCTION_COUNT
+                        - QUALITY_AGGREGATE_FUNCTION_SUM
+                        - QUALITY_AGGREGATE_FUNCTION_AVG
+                        - QUALITY_AGGREGATE_FUNCTION_MIN
+                        - QUALITY_AGGREGATE_FUNCTION_MAX
+                        - QUALITY_AGGREGATE_FUNCTION_STDDEV
+                        - QUALITY_AGGREGATE_FUNCTION_PERCENTILE
+                    type: string
+                    description: The left (target) aggregate; COUNT ignores left_column.
+                    format: enum
+                leftColumn:
+                    type: string
+                rightFunction:
+                    enum:
+                        - QUALITY_AGGREGATE_FUNCTION_UNSPECIFIED
+                        - QUALITY_AGGREGATE_FUNCTION_COUNT
+                        - QUALITY_AGGREGATE_FUNCTION_SUM
+                        - QUALITY_AGGREGATE_FUNCTION_AVG
+                        - QUALITY_AGGREGATE_FUNCTION_MIN
+                        - QUALITY_AGGREGATE_FUNCTION_MAX
+                        - QUALITY_AGGREGATE_FUNCTION_STDDEV
+                        - QUALITY_AGGREGATE_FUNCTION_PERCENTILE
+                    type: string
+                    description: The right (reference) aggregate; COUNT ignores right_column.
+                    format: enum
+                rightColumn:
+                    type: string
+                tolerance:
+                    type: number
+                    description: |-
+                        The absolute difference tolerated before the thresholds apply: the observed
+                         value is max(0, |left - right| - tolerance).
+                    format: double
+                failThreshold:
+                    type: number
+                    description: |-
+                        Difference beyond the tolerance that fails, and the warning level inside it.
+                         The fail threshold defaults to zero.
+                    format: double
+                warnThreshold:
+                    type: number
+                    format: double
+            description: |-
+                CrossTableConfig reconciles one aggregate of the rule's table with one
+                 aggregate of another table in the same instance and database.
         CustomSQLConfig:
             type: object
             properties:
@@ -8750,6 +8848,13 @@ components:
                 warnNullPct:
                     type: number
                     format: double
+                nullValues:
+                    type: array
+                    items:
+                        type: string
+                    description: |-
+                        Values that also count as missing, besides SQL NULL. Encoded as strings and
+                         converted with the column's type; at most 20.
             description: |-
                 NullPercentConfig bounds a column's nulls. Exactly one of the count pair and
                  the percentage pair carries the fail threshold; each pair's warn field is
@@ -9497,6 +9602,8 @@ components:
                         - QUALITY_RULE_TYPE_CEL_EXPRESSION
                         - QUALITY_RULE_TYPE_SCHEMA_DRIFT
                         - QUALITY_RULE_TYPE_GROUP_CHECK
+                        - QUALITY_RULE_TYPE_AGGREGATE
+                        - QUALITY_RULE_TYPE_CROSS_TABLE
                     type: string
                     format: enum
                 target:
@@ -9613,6 +9720,12 @@ components:
                     description: 'v1.1 first batch: metadata drift and grouped row-count bounds.'
                 groupCheck:
                     $ref: '#/components/schemas/GroupCheckConfig'
+                aggregate:
+                    allOf:
+                        - $ref: '#/components/schemas/AggregateConfig'
+                    description: 'v1.1 second batch: aggregates and cross-table reconciliation.'
+                crossTable:
+                    $ref: '#/components/schemas/CrossTableConfig'
                 thresholdMetric:
                     enum:
                         - QUALITY_THRESHOLD_METRIC_UNSPECIFIED
@@ -10477,6 +10590,8 @@ components:
                             - QUALITY_RULE_TYPE_CEL_EXPRESSION
                             - QUALITY_RULE_TYPE_SCHEMA_DRIFT
                             - QUALITY_RULE_TYPE_GROUP_CHECK
+                            - QUALITY_RULE_TYPE_AGGREGATE
+                            - QUALITY_RULE_TYPE_CROSS_TABLE
                         type: string
                         format: enum
                     description: |-

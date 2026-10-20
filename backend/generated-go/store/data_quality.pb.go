@@ -48,6 +48,11 @@ const (
 	QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT QualityRuleType = 15
 	// v1.1: groups rows and bounds each group's row count.
 	QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK QualityRuleType = 16
+	// v1.1: aggregates one column and bounds the value.
+	QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE QualityRuleType = 17
+	// v1.1: reconciles one aggregate of this table with one of another table in
+	// the same instance and database.
+	QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE QualityRuleType = 18
 )
 
 // Enum value maps for QualityRuleType.
@@ -70,6 +75,8 @@ var (
 		14: "QUALITY_RULE_TYPE_CEL_EXPRESSION",
 		15: "QUALITY_RULE_TYPE_SCHEMA_DRIFT",
 		16: "QUALITY_RULE_TYPE_GROUP_CHECK",
+		17: "QUALITY_RULE_TYPE_AGGREGATE",
+		18: "QUALITY_RULE_TYPE_CROSS_TABLE",
 	}
 	QualityRuleType_value = map[string]int32{
 		"QUALITY_RULE_TYPE_UNSPECIFIED":           0,
@@ -89,6 +96,8 @@ var (
 		"QUALITY_RULE_TYPE_CEL_EXPRESSION":        14,
 		"QUALITY_RULE_TYPE_SCHEMA_DRIFT":          15,
 		"QUALITY_RULE_TYPE_GROUP_CHECK":           16,
+		"QUALITY_RULE_TYPE_AGGREGATE":             17,
+		"QUALITY_RULE_TYPE_CROSS_TABLE":           18,
 	}
 )
 
@@ -1292,6 +1301,73 @@ func (x QualityLabelStatus) Number() protoreflect.EnumNumber {
 // Deprecated: Use QualityLabelStatus.Descriptor instead.
 func (QualityLabelStatus) EnumDescriptor() ([]byte, []int) {
 	return file_store_data_quality_proto_rawDescGZIP(), []int{20}
+}
+
+// QualityAggregateFunction is the aggregate an aggregate or reconciliation rule
+// computes. COUNT is only meaningful for a cross-table reconciliation, and
+// PERCENTILE only for an aggregate rule.
+type QualityAggregateFunction int32
+
+const (
+	QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_UNSPECIFIED QualityAggregateFunction = 0
+	QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT       QualityAggregateFunction = 1
+	QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_SUM         QualityAggregateFunction = 2
+	QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_AVG         QualityAggregateFunction = 3
+	QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MIN         QualityAggregateFunction = 4
+	QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MAX         QualityAggregateFunction = 5
+	QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_STDDEV      QualityAggregateFunction = 6
+	QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_PERCENTILE  QualityAggregateFunction = 7
+)
+
+// Enum value maps for QualityAggregateFunction.
+var (
+	QualityAggregateFunction_name = map[int32]string{
+		0: "QUALITY_AGGREGATE_FUNCTION_UNSPECIFIED",
+		1: "QUALITY_AGGREGATE_FUNCTION_COUNT",
+		2: "QUALITY_AGGREGATE_FUNCTION_SUM",
+		3: "QUALITY_AGGREGATE_FUNCTION_AVG",
+		4: "QUALITY_AGGREGATE_FUNCTION_MIN",
+		5: "QUALITY_AGGREGATE_FUNCTION_MAX",
+		6: "QUALITY_AGGREGATE_FUNCTION_STDDEV",
+		7: "QUALITY_AGGREGATE_FUNCTION_PERCENTILE",
+	}
+	QualityAggregateFunction_value = map[string]int32{
+		"QUALITY_AGGREGATE_FUNCTION_UNSPECIFIED": 0,
+		"QUALITY_AGGREGATE_FUNCTION_COUNT":       1,
+		"QUALITY_AGGREGATE_FUNCTION_SUM":         2,
+		"QUALITY_AGGREGATE_FUNCTION_AVG":         3,
+		"QUALITY_AGGREGATE_FUNCTION_MIN":         4,
+		"QUALITY_AGGREGATE_FUNCTION_MAX":         5,
+		"QUALITY_AGGREGATE_FUNCTION_STDDEV":      6,
+		"QUALITY_AGGREGATE_FUNCTION_PERCENTILE":  7,
+	}
+)
+
+func (x QualityAggregateFunction) Enum() *QualityAggregateFunction {
+	p := new(QualityAggregateFunction)
+	*p = x
+	return p
+}
+
+func (x QualityAggregateFunction) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (QualityAggregateFunction) Descriptor() protoreflect.EnumDescriptor {
+	return file_store_data_quality_proto_enumTypes[21].Descriptor()
+}
+
+func (QualityAggregateFunction) Type() protoreflect.EnumType {
+	return &file_store_data_quality_proto_enumTypes[21]
+}
+
+func (x QualityAggregateFunction) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use QualityAggregateFunction.Descriptor instead.
+func (QualityAggregateFunction) EnumDescriptor() ([]byte, []int) {
+	return file_store_data_quality_proto_rawDescGZIP(), []int{21}
 }
 
 // QualityTargetPath is the display snapshot of where a rule's target lived when
@@ -2625,6 +2701,8 @@ type QualityRuleConfig struct {
 	//	*QualityRuleConfig_CelExpression
 	//	*QualityRuleConfig_SchemaDrift
 	//	*QualityRuleConfig_GroupCheck
+	//	*QualityRuleConfig_Aggregate
+	//	*QualityRuleConfig_CrossTable
 	Config          isQualityRuleConfig_Config `protobuf_oneof:"config"`
 	ThresholdMetric QualityThresholdMetric     `protobuf:"varint,28,opt,name=threshold_metric,json=thresholdMetric,proto3,enum=metaxisdata.store.QualityThresholdMetric" json:"threshold_metric,omitempty"`
 	Filter          *QualityFilter             `protobuf:"bytes,29,opt,name=filter,proto3" json:"filter,omitempty"`
@@ -2814,6 +2892,24 @@ func (x *QualityRuleConfig) GetGroupCheck() *GroupCheckConfig {
 	return nil
 }
 
+func (x *QualityRuleConfig) GetAggregate() *AggregateConfig {
+	if x != nil {
+		if x, ok := x.Config.(*QualityRuleConfig_Aggregate); ok {
+			return x.Aggregate
+		}
+	}
+	return nil
+}
+
+func (x *QualityRuleConfig) GetCrossTable() *CrossTableConfig {
+	if x != nil {
+		if x, ok := x.Config.(*QualityRuleConfig_CrossTable); ok {
+			return x.CrossTable
+		}
+	}
+	return nil
+}
+
 func (x *QualityRuleConfig) GetThresholdMetric() QualityThresholdMetric {
 	if x != nil {
 		return x.ThresholdMetric
@@ -2905,6 +3001,15 @@ type QualityRuleConfig_GroupCheck struct {
 	GroupCheck *GroupCheckConfig `protobuf:"bytes,16,opt,name=group_check,json=groupCheck,proto3,oneof"`
 }
 
+type QualityRuleConfig_Aggregate struct {
+	// v1.1 second batch: aggregates and cross-table reconciliation.
+	Aggregate *AggregateConfig `protobuf:"bytes,17,opt,name=aggregate,proto3,oneof"`
+}
+
+type QualityRuleConfig_CrossTable struct {
+	CrossTable *CrossTableConfig `protobuf:"bytes,18,opt,name=cross_table,json=crossTable,proto3,oneof"`
+}
+
 func (*QualityRuleConfig_RowCount) isQualityRuleConfig_Config() {}
 
 func (*QualityRuleConfig_RowCountChange) isQualityRuleConfig_Config() {}
@@ -2936,6 +3041,10 @@ func (*QualityRuleConfig_CelExpression) isQualityRuleConfig_Config() {}
 func (*QualityRuleConfig_SchemaDrift) isQualityRuleConfig_Config() {}
 
 func (*QualityRuleConfig_GroupCheck) isQualityRuleConfig_Config() {}
+
+func (*QualityRuleConfig_Aggregate) isQualityRuleConfig_Config() {}
+
+func (*QualityRuleConfig_CrossTable) isQualityRuleConfig_Config() {}
 
 // RowCountConfig bounds the number of rows. At least one bound is required; a
 // warn bound makes the rule report WARN before it reports FAIL.
@@ -3096,6 +3205,9 @@ type NullPercentConfig struct {
 	WarnNullCount *int64                 `protobuf:"varint,3,opt,name=warn_null_count,json=warnNullCount,proto3,oneof" json:"warn_null_count,omitempty"`
 	MaxNullPct    *float64               `protobuf:"fixed64,4,opt,name=max_null_pct,json=maxNullPct,proto3,oneof" json:"max_null_pct,omitempty"`
 	WarnNullPct   *float64               `protobuf:"fixed64,5,opt,name=warn_null_pct,json=warnNullPct,proto3,oneof" json:"warn_null_pct,omitempty"`
+	// Values that also count as missing, besides SQL NULL. Encoded as strings and
+	// converted with the column's type; at most 20.
+	NullValues    []string `protobuf:"bytes,6,rep,name=null_values,json=nullValues,proto3" json:"null_values,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3163,6 +3275,13 @@ func (x *NullPercentConfig) GetWarnNullPct() float64 {
 		return *x.WarnNullPct
 	}
 	return 0
+}
+
+func (x *NullPercentConfig) GetNullValues() []string {
+	if x != nil {
+		return x.NullValues
+	}
+	return nil
 }
 
 // UniqueConfig counts duplicated non-NULL values in one column. The threshold is
@@ -4246,6 +4365,221 @@ func (x *GroupCheckConfig) GetWarnThreshold() float64 {
 	return 0
 }
 
+// AggregateConfig bounds the value one aggregate over one column produces.
+type AggregateConfig struct {
+	state    protoimpl.MessageState   `protogen:"open.v1"`
+	Column   string                   `protobuf:"bytes,1,opt,name=column,proto3" json:"column,omitempty"`
+	Function QualityAggregateFunction `protobuf:"varint,2,opt,name=function,proto3,enum=metaxisdata.store.QualityAggregateFunction" json:"function,omitempty"`
+	// The percentile, 0-100, for QUALITY_AGGREGATE_FUNCTION_PERCENTILE.
+	Percentile *float64 `protobuf:"fixed64,3,opt,name=percentile,proto3,oneof" json:"percentile,omitempty"`
+	// At least one fail bound is required; warn bounds are optional and must sit
+	// inside the fail range.
+	Min     *float64 `protobuf:"fixed64,4,opt,name=min,proto3,oneof" json:"min,omitempty"`
+	Max     *float64 `protobuf:"fixed64,5,opt,name=max,proto3,oneof" json:"max,omitempty"`
+	WarnMin *float64 `protobuf:"fixed64,6,opt,name=warn_min,json=warnMin,proto3,oneof" json:"warn_min,omitempty"`
+	WarnMax *float64 `protobuf:"fixed64,7,opt,name=warn_max,json=warnMax,proto3,oneof" json:"warn_max,omitempty"`
+	// Whether the bounds are inclusive. Default false, i.e. open on both ends.
+	Inclusive     bool `protobuf:"varint,8,opt,name=inclusive,proto3" json:"inclusive,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AggregateConfig) Reset() {
+	*x = AggregateConfig{}
+	mi := &file_store_data_quality_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AggregateConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AggregateConfig) ProtoMessage() {}
+
+func (x *AggregateConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_store_data_quality_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AggregateConfig.ProtoReflect.Descriptor instead.
+func (*AggregateConfig) Descriptor() ([]byte, []int) {
+	return file_store_data_quality_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *AggregateConfig) GetColumn() string {
+	if x != nil {
+		return x.Column
+	}
+	return ""
+}
+
+func (x *AggregateConfig) GetFunction() QualityAggregateFunction {
+	if x != nil {
+		return x.Function
+	}
+	return QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_UNSPECIFIED
+}
+
+func (x *AggregateConfig) GetPercentile() float64 {
+	if x != nil && x.Percentile != nil {
+		return *x.Percentile
+	}
+	return 0
+}
+
+func (x *AggregateConfig) GetMin() float64 {
+	if x != nil && x.Min != nil {
+		return *x.Min
+	}
+	return 0
+}
+
+func (x *AggregateConfig) GetMax() float64 {
+	if x != nil && x.Max != nil {
+		return *x.Max
+	}
+	return 0
+}
+
+func (x *AggregateConfig) GetWarnMin() float64 {
+	if x != nil && x.WarnMin != nil {
+		return *x.WarnMin
+	}
+	return 0
+}
+
+func (x *AggregateConfig) GetWarnMax() float64 {
+	if x != nil && x.WarnMax != nil {
+		return *x.WarnMax
+	}
+	return 0
+}
+
+func (x *AggregateConfig) GetInclusive() bool {
+	if x != nil {
+		return x.Inclusive
+	}
+	return false
+}
+
+// CrossTableConfig reconciles one aggregate of the rule's table with one
+// aggregate of another table in the same instance and database.
+type CrossTableConfig struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The other table as "schema.table" (PostgreSQL/MSSQL) or "database.table" /
+	// "table" (MySQL family); it must live in the rule target's database.
+	RightTable string `protobuf:"bytes,1,opt,name=right_table,json=rightTable,proto3" json:"right_table,omitempty"`
+	// The left (target) aggregate; COUNT ignores left_column.
+	LeftFunction QualityAggregateFunction `protobuf:"varint,2,opt,name=left_function,json=leftFunction,proto3,enum=metaxisdata.store.QualityAggregateFunction" json:"left_function,omitempty"`
+	LeftColumn   string                   `protobuf:"bytes,3,opt,name=left_column,json=leftColumn,proto3" json:"left_column,omitempty"`
+	// The right (reference) aggregate; COUNT ignores right_column.
+	RightFunction QualityAggregateFunction `protobuf:"varint,4,opt,name=right_function,json=rightFunction,proto3,enum=metaxisdata.store.QualityAggregateFunction" json:"right_function,omitempty"`
+	RightColumn   string                   `protobuf:"bytes,5,opt,name=right_column,json=rightColumn,proto3" json:"right_column,omitempty"`
+	// The absolute difference tolerated before the thresholds apply: the observed
+	// value is max(0, |left - right| - tolerance).
+	Tolerance *float64 `protobuf:"fixed64,6,opt,name=tolerance,proto3,oneof" json:"tolerance,omitempty"`
+	// Difference beyond the tolerance that fails, and the warning level inside it.
+	// The fail threshold defaults to zero.
+	FailThreshold *float64 `protobuf:"fixed64,7,opt,name=fail_threshold,json=failThreshold,proto3,oneof" json:"fail_threshold,omitempty"`
+	WarnThreshold *float64 `protobuf:"fixed64,8,opt,name=warn_threshold,json=warnThreshold,proto3,oneof" json:"warn_threshold,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CrossTableConfig) Reset() {
+	*x = CrossTableConfig{}
+	mi := &file_store_data_quality_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CrossTableConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CrossTableConfig) ProtoMessage() {}
+
+func (x *CrossTableConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_store_data_quality_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CrossTableConfig.ProtoReflect.Descriptor instead.
+func (*CrossTableConfig) Descriptor() ([]byte, []int) {
+	return file_store_data_quality_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *CrossTableConfig) GetRightTable() string {
+	if x != nil {
+		return x.RightTable
+	}
+	return ""
+}
+
+func (x *CrossTableConfig) GetLeftFunction() QualityAggregateFunction {
+	if x != nil {
+		return x.LeftFunction
+	}
+	return QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_UNSPECIFIED
+}
+
+func (x *CrossTableConfig) GetLeftColumn() string {
+	if x != nil {
+		return x.LeftColumn
+	}
+	return ""
+}
+
+func (x *CrossTableConfig) GetRightFunction() QualityAggregateFunction {
+	if x != nil {
+		return x.RightFunction
+	}
+	return QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_UNSPECIFIED
+}
+
+func (x *CrossTableConfig) GetRightColumn() string {
+	if x != nil {
+		return x.RightColumn
+	}
+	return ""
+}
+
+func (x *CrossTableConfig) GetTolerance() float64 {
+	if x != nil && x.Tolerance != nil {
+		return *x.Tolerance
+	}
+	return 0
+}
+
+func (x *CrossTableConfig) GetFailThreshold() float64 {
+	if x != nil && x.FailThreshold != nil {
+		return *x.FailThreshold
+	}
+	return 0
+}
+
+func (x *CrossTableConfig) GetWarnThreshold() float64 {
+	if x != nil && x.WarnThreshold != nil {
+		return *x.WarnThreshold
+	}
+	return 0
+}
+
 var File_store_data_quality_proto protoreflect.FileDescriptor
 
 const file_store_data_quality_proto_rawDesc = "" +
@@ -4364,7 +4698,7 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\x15ExplanationHypothesis\x12\x14\n" +
 	"\x05cause\x18\x01 \x01(\tR\x05cause\x12\x1a\n" +
 	"\bevidence\x18\x02 \x03(\tR\bevidence\x12\x1b\n" +
-	"\tnext_step\x18\x03 \x01(\tR\bnextStep\"\xa1\v\n" +
+	"\tnext_step\x18\x03 \x01(\tR\bnextStep\"\xad\f\n" +
 	"\x11QualityRuleConfig\x12@\n" +
 	"\trow_count\x18\x01 \x01(\v2!.metaxisdata.store.RowCountConfigH\x00R\browCount\x12S\n" +
 	"\x10row_count_change\x18\x02 \x01(\v2'.metaxisdata.store.RowCountChangeConfigH\x00R\x0erowCountChange\x12I\n" +
@@ -4384,11 +4718,14 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\x0ecel_expression\x18\x0e \x01(\v2&.metaxisdata.store.CelExpressionConfigH\x00R\rcelExpression\x12I\n" +
 	"\fschema_drift\x18\x0f \x01(\v2$.metaxisdata.store.SchemaDriftConfigH\x00R\vschemaDrift\x12F\n" +
 	"\vgroup_check\x18\x10 \x01(\v2#.metaxisdata.store.GroupCheckConfigH\x00R\n" +
-	"groupCheck\x12T\n" +
+	"groupCheck\x12B\n" +
+	"\taggregate\x18\x11 \x01(\v2\".metaxisdata.store.AggregateConfigH\x00R\taggregate\x12F\n" +
+	"\vcross_table\x18\x12 \x01(\v2#.metaxisdata.store.CrossTableConfigH\x00R\n" +
+	"crossTable\x12T\n" +
 	"\x10threshold_metric\x18\x1c \x01(\x0e2).metaxisdata.store.QualityThresholdMetricR\x0fthresholdMetric\x128\n" +
 	"\x06filter\x18\x1d \x01(\v2 .metaxisdata.store.QualityFilterR\x06filter\x12B\n" +
 	"\bon_empty\x18\x1e \x01(\x0e2'.metaxisdata.store.QualityEmptyBehaviorR\aonEmptyB\b\n" +
-	"\x06configJ\x04\b\x11\x10\x1c\"\x93\x02\n" +
+	"\x06configJ\x04\b\x13\x10\x1c\"\x93\x02\n" +
 	"\x0eRowCountConfig\x12\x1e\n" +
 	"\bmin_rows\x18\x01 \x01(\x03H\x00R\aminRows\x88\x01\x01\x12\x1e\n" +
 	"\bmax_rows\x18\x02 \x01(\x03H\x01R\amaxRows\x88\x01\x01\x12\"\n" +
@@ -4409,14 +4746,16 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\x11_max_increase_pctB\x13\n" +
 	"\x11_max_decrease_pctB\x14\n" +
 	"\x12_warn_increase_pctB\x14\n" +
-	"\x12_warn_decrease_pct\"\x9d\x02\n" +
+	"\x12_warn_decrease_pct\"\xbe\x02\n" +
 	"\x11NullPercentConfig\x12\x16\n" +
 	"\x06column\x18\x01 \x01(\tR\x06column\x12)\n" +
 	"\x0emax_null_count\x18\x02 \x01(\x03H\x00R\fmaxNullCount\x88\x01\x01\x12+\n" +
 	"\x0fwarn_null_count\x18\x03 \x01(\x03H\x01R\rwarnNullCount\x88\x01\x01\x12%\n" +
 	"\fmax_null_pct\x18\x04 \x01(\x01H\x02R\n" +
 	"maxNullPct\x88\x01\x01\x12'\n" +
-	"\rwarn_null_pct\x18\x05 \x01(\x01H\x03R\vwarnNullPct\x88\x01\x01B\x11\n" +
+	"\rwarn_null_pct\x18\x05 \x01(\x01H\x03R\vwarnNullPct\x88\x01\x01\x12\x1f\n" +
+	"\vnull_values\x18\x06 \x03(\tR\n" +
+	"nullValuesB\x11\n" +
 	"\x0f_max_null_countB\x12\n" +
 	"\x10_warn_null_countB\x0f\n" +
 	"\r_max_null_pctB\x10\n" +
@@ -4547,7 +4886,38 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\x13_min_rows_per_groupB\x15\n" +
 	"\x13_max_rows_per_groupB\x11\n" +
 	"\x0f_fail_thresholdB\x11\n" +
-	"\x0f_warn_threshold*\xf0\x04\n" +
+	"\x0f_warn_threshold\"\xdc\x02\n" +
+	"\x0fAggregateConfig\x12\x16\n" +
+	"\x06column\x18\x01 \x01(\tR\x06column\x12G\n" +
+	"\bfunction\x18\x02 \x01(\x0e2+.metaxisdata.store.QualityAggregateFunctionR\bfunction\x12#\n" +
+	"\n" +
+	"percentile\x18\x03 \x01(\x01H\x00R\n" +
+	"percentile\x88\x01\x01\x12\x15\n" +
+	"\x03min\x18\x04 \x01(\x01H\x01R\x03min\x88\x01\x01\x12\x15\n" +
+	"\x03max\x18\x05 \x01(\x01H\x02R\x03max\x88\x01\x01\x12\x1e\n" +
+	"\bwarn_min\x18\x06 \x01(\x01H\x03R\awarnMin\x88\x01\x01\x12\x1e\n" +
+	"\bwarn_max\x18\a \x01(\x01H\x04R\awarnMax\x88\x01\x01\x12\x1c\n" +
+	"\tinclusive\x18\b \x01(\bR\tinclusiveB\r\n" +
+	"\v_percentileB\x06\n" +
+	"\x04_minB\x06\n" +
+	"\x04_maxB\v\n" +
+	"\t_warn_minB\v\n" +
+	"\t_warn_max\"\xcc\x03\n" +
+	"\x10CrossTableConfig\x12\x1f\n" +
+	"\vright_table\x18\x01 \x01(\tR\n" +
+	"rightTable\x12P\n" +
+	"\rleft_function\x18\x02 \x01(\x0e2+.metaxisdata.store.QualityAggregateFunctionR\fleftFunction\x12\x1f\n" +
+	"\vleft_column\x18\x03 \x01(\tR\n" +
+	"leftColumn\x12R\n" +
+	"\x0eright_function\x18\x04 \x01(\x0e2+.metaxisdata.store.QualityAggregateFunctionR\rrightFunction\x12!\n" +
+	"\fright_column\x18\x05 \x01(\tR\vrightColumn\x12!\n" +
+	"\ttolerance\x18\x06 \x01(\x01H\x00R\ttolerance\x88\x01\x01\x12*\n" +
+	"\x0efail_threshold\x18\a \x01(\x01H\x01R\rfailThreshold\x88\x01\x01\x12*\n" +
+	"\x0ewarn_threshold\x18\b \x01(\x01H\x02R\rwarnThreshold\x88\x01\x01B\f\n" +
+	"\n" +
+	"_toleranceB\x11\n" +
+	"\x0f_fail_thresholdB\x11\n" +
+	"\x0f_warn_threshold*\xb4\x05\n" +
 	"\x0fQualityRuleType\x12!\n" +
 	"\x1dQUALITY_RULE_TYPE_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bQUALITY_RULE_TYPE_ROW_COUNT\x10\x01\x12&\n" +
@@ -4566,7 +4936,9 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\x1cQUALITY_RULE_TYPE_CUSTOM_SQL\x10\r\x12$\n" +
 	" QUALITY_RULE_TYPE_CEL_EXPRESSION\x10\x0e\x12\"\n" +
 	"\x1eQUALITY_RULE_TYPE_SCHEMA_DRIFT\x10\x0f\x12!\n" +
-	"\x1dQUALITY_RULE_TYPE_GROUP_CHECK\x10\x10*\x80\x02\n" +
+	"\x1dQUALITY_RULE_TYPE_GROUP_CHECK\x10\x10\x12\x1f\n" +
+	"\x1bQUALITY_RULE_TYPE_AGGREGATE\x10\x11\x12!\n" +
+	"\x1dQUALITY_RULE_TYPE_CROSS_TABLE\x10\x12*\x80\x02\n" +
 	"\x10QualityDimension\x12!\n" +
 	"\x1dQUALITY_DIMENSION_UNSPECIFIED\x10\x00\x12\"\n" +
 	"\x1eQUALITY_DIMENSION_COMPLETENESS\x10\x01\x12\x1e\n" +
@@ -4699,7 +5071,16 @@ const file_store_data_quality_proto_rawDesc = "" +
 	" QUALITY_LABEL_STATUS_UNSPECIFIED\x10\x00\x12\"\n" +
 	"\x1eQUALITY_LABEL_STATUS_SUGGESTED\x10\x01\x12!\n" +
 	"\x1dQUALITY_LABEL_STATUS_ACCEPTED\x10\x02\x12!\n" +
-	"\x1dQUALITY_LABEL_STATUS_REJECTED\x10\x03B\x14Z\x12generated-go/storeb\x06proto3"
+	"\x1dQUALITY_LABEL_STATUS_REJECTED\x10\x03*\xce\x02\n" +
+	"\x18QualityAggregateFunction\x12*\n" +
+	"&QUALITY_AGGREGATE_FUNCTION_UNSPECIFIED\x10\x00\x12$\n" +
+	" QUALITY_AGGREGATE_FUNCTION_COUNT\x10\x01\x12\"\n" +
+	"\x1eQUALITY_AGGREGATE_FUNCTION_SUM\x10\x02\x12\"\n" +
+	"\x1eQUALITY_AGGREGATE_FUNCTION_AVG\x10\x03\x12\"\n" +
+	"\x1eQUALITY_AGGREGATE_FUNCTION_MIN\x10\x04\x12\"\n" +
+	"\x1eQUALITY_AGGREGATE_FUNCTION_MAX\x10\x05\x12%\n" +
+	"!QUALITY_AGGREGATE_FUNCTION_STDDEV\x10\x06\x12)\n" +
+	"%QUALITY_AGGREGATE_FUNCTION_PERCENTILE\x10\aB\x14Z\x12generated-go/storeb\x06proto3"
 
 var (
 	file_store_data_quality_proto_rawDescOnce sync.Once
@@ -4713,8 +5094,8 @@ func file_store_data_quality_proto_rawDescGZIP() []byte {
 	return file_store_data_quality_proto_rawDescData
 }
 
-var file_store_data_quality_proto_enumTypes = make([]protoimpl.EnumInfo, 21)
-var file_store_data_quality_proto_msgTypes = make([]protoimpl.MessageInfo, 36)
+var file_store_data_quality_proto_enumTypes = make([]protoimpl.EnumInfo, 22)
+var file_store_data_quality_proto_msgTypes = make([]protoimpl.MessageInfo, 38)
 var file_store_data_quality_proto_goTypes = []any{
 	(QualityRuleType)(0),               // 0: metaxisdata.store.QualityRuleType
 	(QualityDimension)(0),              // 1: metaxisdata.store.QualityDimension
@@ -4737,88 +5118,96 @@ var file_store_data_quality_proto_goTypes = []any{
 	(QualitySuggestionSource)(0),       // 18: metaxisdata.store.QualitySuggestionSource
 	(QualityLabelSource)(0),            // 19: metaxisdata.store.QualityLabelSource
 	(QualityLabelStatus)(0),            // 20: metaxisdata.store.QualityLabelStatus
-	(*QualityTargetPath)(nil),          // 21: metaxisdata.store.QualityTargetPath
-	(*QualityFilter)(nil),              // 22: metaxisdata.store.QualityFilter
-	(*QualityFilterClause)(nil),        // 23: metaxisdata.store.QualityFilterClause
-	(*QualityThresholds)(nil),          // 24: metaxisdata.store.QualityThresholds
-	(*QualityRunCounts)(nil),           // 25: metaxisdata.store.QualityRunCounts
-	(*QualityFailureSamples)(nil),      // 26: metaxisdata.store.QualityFailureSamples
-	(*FailureSample)(nil),              // 27: metaxisdata.store.FailureSample
-	(*ColumnValue)(nil),                // 28: metaxisdata.store.ColumnValue
-	(*ColumnProfile)(nil),              // 29: metaxisdata.store.ColumnProfile
-	(*ProfileValue)(nil),               // 30: metaxisdata.store.ProfileValue
-	(*SemanticLabelEvidence)(nil),      // 31: metaxisdata.store.SemanticLabelEvidence
-	(*QualitySuggestionPayload)(nil),   // 32: metaxisdata.store.QualitySuggestionPayload
-	(*QualityRuleDraftConfig)(nil),     // 33: metaxisdata.store.QualityRuleDraftConfig
-	(*SemanticLabelSuggestion)(nil),    // 34: metaxisdata.store.SemanticLabelSuggestion
-	(*DataQualityLLMResult)(nil),       // 35: metaxisdata.store.DataQualityLLMResult
-	(*RuleDraftResult)(nil),            // 36: metaxisdata.store.RuleDraftResult
-	(*ExplanationResult)(nil),          // 37: metaxisdata.store.ExplanationResult
-	(*ExplanationHypothesis)(nil),      // 38: metaxisdata.store.ExplanationHypothesis
-	(*QualityRuleConfig)(nil),          // 39: metaxisdata.store.QualityRuleConfig
-	(*RowCountConfig)(nil),             // 40: metaxisdata.store.RowCountConfig
-	(*RowCountChangeConfig)(nil),       // 41: metaxisdata.store.RowCountChangeConfig
-	(*NullPercentConfig)(nil),          // 42: metaxisdata.store.NullPercentConfig
-	(*UniqueConfig)(nil),               // 43: metaxisdata.store.UniqueConfig
-	(*UniqueCombinationConfig)(nil),    // 44: metaxisdata.store.UniqueCombinationConfig
-	(*AcceptedValuesConfig)(nil),       // 45: metaxisdata.store.AcceptedValuesConfig
-	(*RangeConfig)(nil),                // 46: metaxisdata.store.RangeConfig
-	(*RegexConfig)(nil),                // 47: metaxisdata.store.RegexConfig
-	(*StringLengthConfig)(nil),         // 48: metaxisdata.store.StringLengthConfig
-	(*ReferentialIntegrityConfig)(nil), // 49: metaxisdata.store.ReferentialIntegrityConfig
-	(*CrossColumnConfig)(nil),          // 50: metaxisdata.store.CrossColumnConfig
-	(*FreshnessConfig)(nil),            // 51: metaxisdata.store.FreshnessConfig
-	(*CustomSQLConfig)(nil),            // 52: metaxisdata.store.CustomSQLConfig
-	(*CelExpressionConfig)(nil),        // 53: metaxisdata.store.CelExpressionConfig
-	(*SchemaDriftColumn)(nil),          // 54: metaxisdata.store.SchemaDriftColumn
-	(*SchemaDriftConfig)(nil),          // 55: metaxisdata.store.SchemaDriftConfig
-	(*GroupCheckConfig)(nil),           // 56: metaxisdata.store.GroupCheckConfig
+	(QualityAggregateFunction)(0),      // 21: metaxisdata.store.QualityAggregateFunction
+	(*QualityTargetPath)(nil),          // 22: metaxisdata.store.QualityTargetPath
+	(*QualityFilter)(nil),              // 23: metaxisdata.store.QualityFilter
+	(*QualityFilterClause)(nil),        // 24: metaxisdata.store.QualityFilterClause
+	(*QualityThresholds)(nil),          // 25: metaxisdata.store.QualityThresholds
+	(*QualityRunCounts)(nil),           // 26: metaxisdata.store.QualityRunCounts
+	(*QualityFailureSamples)(nil),      // 27: metaxisdata.store.QualityFailureSamples
+	(*FailureSample)(nil),              // 28: metaxisdata.store.FailureSample
+	(*ColumnValue)(nil),                // 29: metaxisdata.store.ColumnValue
+	(*ColumnProfile)(nil),              // 30: metaxisdata.store.ColumnProfile
+	(*ProfileValue)(nil),               // 31: metaxisdata.store.ProfileValue
+	(*SemanticLabelEvidence)(nil),      // 32: metaxisdata.store.SemanticLabelEvidence
+	(*QualitySuggestionPayload)(nil),   // 33: metaxisdata.store.QualitySuggestionPayload
+	(*QualityRuleDraftConfig)(nil),     // 34: metaxisdata.store.QualityRuleDraftConfig
+	(*SemanticLabelSuggestion)(nil),    // 35: metaxisdata.store.SemanticLabelSuggestion
+	(*DataQualityLLMResult)(nil),       // 36: metaxisdata.store.DataQualityLLMResult
+	(*RuleDraftResult)(nil),            // 37: metaxisdata.store.RuleDraftResult
+	(*ExplanationResult)(nil),          // 38: metaxisdata.store.ExplanationResult
+	(*ExplanationHypothesis)(nil),      // 39: metaxisdata.store.ExplanationHypothesis
+	(*QualityRuleConfig)(nil),          // 40: metaxisdata.store.QualityRuleConfig
+	(*RowCountConfig)(nil),             // 41: metaxisdata.store.RowCountConfig
+	(*RowCountChangeConfig)(nil),       // 42: metaxisdata.store.RowCountChangeConfig
+	(*NullPercentConfig)(nil),          // 43: metaxisdata.store.NullPercentConfig
+	(*UniqueConfig)(nil),               // 44: metaxisdata.store.UniqueConfig
+	(*UniqueCombinationConfig)(nil),    // 45: metaxisdata.store.UniqueCombinationConfig
+	(*AcceptedValuesConfig)(nil),       // 46: metaxisdata.store.AcceptedValuesConfig
+	(*RangeConfig)(nil),                // 47: metaxisdata.store.RangeConfig
+	(*RegexConfig)(nil),                // 48: metaxisdata.store.RegexConfig
+	(*StringLengthConfig)(nil),         // 49: metaxisdata.store.StringLengthConfig
+	(*ReferentialIntegrityConfig)(nil), // 50: metaxisdata.store.ReferentialIntegrityConfig
+	(*CrossColumnConfig)(nil),          // 51: metaxisdata.store.CrossColumnConfig
+	(*FreshnessConfig)(nil),            // 52: metaxisdata.store.FreshnessConfig
+	(*CustomSQLConfig)(nil),            // 53: metaxisdata.store.CustomSQLConfig
+	(*CelExpressionConfig)(nil),        // 54: metaxisdata.store.CelExpressionConfig
+	(*SchemaDriftColumn)(nil),          // 55: metaxisdata.store.SchemaDriftColumn
+	(*SchemaDriftConfig)(nil),          // 56: metaxisdata.store.SchemaDriftConfig
+	(*GroupCheckConfig)(nil),           // 57: metaxisdata.store.GroupCheckConfig
+	(*AggregateConfig)(nil),            // 58: metaxisdata.store.AggregateConfig
+	(*CrossTableConfig)(nil),           // 59: metaxisdata.store.CrossTableConfig
 }
 var file_store_data_quality_proto_depIdxs = []int32{
-	23, // 0: metaxisdata.store.QualityFilter.clauses:type_name -> metaxisdata.store.QualityFilterClause
+	24, // 0: metaxisdata.store.QualityFilter.clauses:type_name -> metaxisdata.store.QualityFilterClause
 	13, // 1: metaxisdata.store.QualityFilterClause.op:type_name -> metaxisdata.store.QualityFilterOperator
 	12, // 2: metaxisdata.store.QualityThresholds.comparison:type_name -> metaxisdata.store.QualityComparison
 	11, // 3: metaxisdata.store.QualityThresholds.on_empty:type_name -> metaxisdata.store.QualityEmptyBehavior
-	27, // 4: metaxisdata.store.QualityFailureSamples.samples:type_name -> metaxisdata.store.FailureSample
-	28, // 5: metaxisdata.store.FailureSample.columns:type_name -> metaxisdata.store.ColumnValue
-	30, // 6: metaxisdata.store.ColumnProfile.top_values:type_name -> metaxisdata.store.ProfileValue
-	33, // 7: metaxisdata.store.QualitySuggestionPayload.rule:type_name -> metaxisdata.store.QualityRuleDraftConfig
-	34, // 8: metaxisdata.store.QualitySuggestionPayload.label:type_name -> metaxisdata.store.SemanticLabelSuggestion
-	39, // 9: metaxisdata.store.QualityRuleDraftConfig.config:type_name -> metaxisdata.store.QualityRuleConfig
+	28, // 4: metaxisdata.store.QualityFailureSamples.samples:type_name -> metaxisdata.store.FailureSample
+	29, // 5: metaxisdata.store.FailureSample.columns:type_name -> metaxisdata.store.ColumnValue
+	31, // 6: metaxisdata.store.ColumnProfile.top_values:type_name -> metaxisdata.store.ProfileValue
+	34, // 7: metaxisdata.store.QualitySuggestionPayload.rule:type_name -> metaxisdata.store.QualityRuleDraftConfig
+	35, // 8: metaxisdata.store.QualitySuggestionPayload.label:type_name -> metaxisdata.store.SemanticLabelSuggestion
+	40, // 9: metaxisdata.store.QualityRuleDraftConfig.config:type_name -> metaxisdata.store.QualityRuleConfig
 	2,  // 10: metaxisdata.store.QualityRuleDraftConfig.severity:type_name -> metaxisdata.store.QualitySeverity
 	15, // 11: metaxisdata.store.SemanticLabelSuggestion.label:type_name -> metaxisdata.store.QualitySemanticType
-	31, // 12: metaxisdata.store.SemanticLabelSuggestion.evidence:type_name -> metaxisdata.store.SemanticLabelEvidence
+	32, // 12: metaxisdata.store.SemanticLabelSuggestion.evidence:type_name -> metaxisdata.store.SemanticLabelEvidence
 	0,  // 13: metaxisdata.store.SemanticLabelSuggestion.suggested_rule_types:type_name -> metaxisdata.store.QualityRuleType
-	36, // 14: metaxisdata.store.DataQualityLLMResult.rule_draft:type_name -> metaxisdata.store.RuleDraftResult
-	37, // 15: metaxisdata.store.DataQualityLLMResult.explanation:type_name -> metaxisdata.store.ExplanationResult
-	33, // 16: metaxisdata.store.RuleDraftResult.suggestions:type_name -> metaxisdata.store.QualityRuleDraftConfig
-	38, // 17: metaxisdata.store.ExplanationResult.hypotheses:type_name -> metaxisdata.store.ExplanationHypothesis
-	40, // 18: metaxisdata.store.QualityRuleConfig.row_count:type_name -> metaxisdata.store.RowCountConfig
-	41, // 19: metaxisdata.store.QualityRuleConfig.row_count_change:type_name -> metaxisdata.store.RowCountChangeConfig
-	42, // 20: metaxisdata.store.QualityRuleConfig.null_percent:type_name -> metaxisdata.store.NullPercentConfig
-	43, // 21: metaxisdata.store.QualityRuleConfig.unique:type_name -> metaxisdata.store.UniqueConfig
-	44, // 22: metaxisdata.store.QualityRuleConfig.unique_combination:type_name -> metaxisdata.store.UniqueCombinationConfig
-	45, // 23: metaxisdata.store.QualityRuleConfig.accepted_values:type_name -> metaxisdata.store.AcceptedValuesConfig
-	46, // 24: metaxisdata.store.QualityRuleConfig.range:type_name -> metaxisdata.store.RangeConfig
-	47, // 25: metaxisdata.store.QualityRuleConfig.regex:type_name -> metaxisdata.store.RegexConfig
-	48, // 26: metaxisdata.store.QualityRuleConfig.string_length:type_name -> metaxisdata.store.StringLengthConfig
-	49, // 27: metaxisdata.store.QualityRuleConfig.referential_integrity:type_name -> metaxisdata.store.ReferentialIntegrityConfig
-	50, // 28: metaxisdata.store.QualityRuleConfig.cross_column:type_name -> metaxisdata.store.CrossColumnConfig
-	51, // 29: metaxisdata.store.QualityRuleConfig.freshness:type_name -> metaxisdata.store.FreshnessConfig
-	52, // 30: metaxisdata.store.QualityRuleConfig.custom_sql:type_name -> metaxisdata.store.CustomSQLConfig
-	53, // 31: metaxisdata.store.QualityRuleConfig.cel_expression:type_name -> metaxisdata.store.CelExpressionConfig
-	55, // 32: metaxisdata.store.QualityRuleConfig.schema_drift:type_name -> metaxisdata.store.SchemaDriftConfig
-	56, // 33: metaxisdata.store.QualityRuleConfig.group_check:type_name -> metaxisdata.store.GroupCheckConfig
-	10, // 34: metaxisdata.store.QualityRuleConfig.threshold_metric:type_name -> metaxisdata.store.QualityThresholdMetric
-	22, // 35: metaxisdata.store.QualityRuleConfig.filter:type_name -> metaxisdata.store.QualityFilter
-	11, // 36: metaxisdata.store.QualityRuleConfig.on_empty:type_name -> metaxisdata.store.QualityEmptyBehavior
-	14, // 37: metaxisdata.store.CrossColumnConfig.op:type_name -> metaxisdata.store.QualityComparisonOperator
-	54, // 38: metaxisdata.store.SchemaDriftConfig.expected_columns:type_name -> metaxisdata.store.SchemaDriftColumn
-	39, // [39:39] is the sub-list for method output_type
-	39, // [39:39] is the sub-list for method input_type
-	39, // [39:39] is the sub-list for extension type_name
-	39, // [39:39] is the sub-list for extension extendee
-	0,  // [0:39] is the sub-list for field type_name
+	37, // 14: metaxisdata.store.DataQualityLLMResult.rule_draft:type_name -> metaxisdata.store.RuleDraftResult
+	38, // 15: metaxisdata.store.DataQualityLLMResult.explanation:type_name -> metaxisdata.store.ExplanationResult
+	34, // 16: metaxisdata.store.RuleDraftResult.suggestions:type_name -> metaxisdata.store.QualityRuleDraftConfig
+	39, // 17: metaxisdata.store.ExplanationResult.hypotheses:type_name -> metaxisdata.store.ExplanationHypothesis
+	41, // 18: metaxisdata.store.QualityRuleConfig.row_count:type_name -> metaxisdata.store.RowCountConfig
+	42, // 19: metaxisdata.store.QualityRuleConfig.row_count_change:type_name -> metaxisdata.store.RowCountChangeConfig
+	43, // 20: metaxisdata.store.QualityRuleConfig.null_percent:type_name -> metaxisdata.store.NullPercentConfig
+	44, // 21: metaxisdata.store.QualityRuleConfig.unique:type_name -> metaxisdata.store.UniqueConfig
+	45, // 22: metaxisdata.store.QualityRuleConfig.unique_combination:type_name -> metaxisdata.store.UniqueCombinationConfig
+	46, // 23: metaxisdata.store.QualityRuleConfig.accepted_values:type_name -> metaxisdata.store.AcceptedValuesConfig
+	47, // 24: metaxisdata.store.QualityRuleConfig.range:type_name -> metaxisdata.store.RangeConfig
+	48, // 25: metaxisdata.store.QualityRuleConfig.regex:type_name -> metaxisdata.store.RegexConfig
+	49, // 26: metaxisdata.store.QualityRuleConfig.string_length:type_name -> metaxisdata.store.StringLengthConfig
+	50, // 27: metaxisdata.store.QualityRuleConfig.referential_integrity:type_name -> metaxisdata.store.ReferentialIntegrityConfig
+	51, // 28: metaxisdata.store.QualityRuleConfig.cross_column:type_name -> metaxisdata.store.CrossColumnConfig
+	52, // 29: metaxisdata.store.QualityRuleConfig.freshness:type_name -> metaxisdata.store.FreshnessConfig
+	53, // 30: metaxisdata.store.QualityRuleConfig.custom_sql:type_name -> metaxisdata.store.CustomSQLConfig
+	54, // 31: metaxisdata.store.QualityRuleConfig.cel_expression:type_name -> metaxisdata.store.CelExpressionConfig
+	56, // 32: metaxisdata.store.QualityRuleConfig.schema_drift:type_name -> metaxisdata.store.SchemaDriftConfig
+	57, // 33: metaxisdata.store.QualityRuleConfig.group_check:type_name -> metaxisdata.store.GroupCheckConfig
+	58, // 34: metaxisdata.store.QualityRuleConfig.aggregate:type_name -> metaxisdata.store.AggregateConfig
+	59, // 35: metaxisdata.store.QualityRuleConfig.cross_table:type_name -> metaxisdata.store.CrossTableConfig
+	10, // 36: metaxisdata.store.QualityRuleConfig.threshold_metric:type_name -> metaxisdata.store.QualityThresholdMetric
+	23, // 37: metaxisdata.store.QualityRuleConfig.filter:type_name -> metaxisdata.store.QualityFilter
+	11, // 38: metaxisdata.store.QualityRuleConfig.on_empty:type_name -> metaxisdata.store.QualityEmptyBehavior
+	14, // 39: metaxisdata.store.CrossColumnConfig.op:type_name -> metaxisdata.store.QualityComparisonOperator
+	55, // 40: metaxisdata.store.SchemaDriftConfig.expected_columns:type_name -> metaxisdata.store.SchemaDriftColumn
+	21, // 41: metaxisdata.store.AggregateConfig.function:type_name -> metaxisdata.store.QualityAggregateFunction
+	21, // 42: metaxisdata.store.CrossTableConfig.left_function:type_name -> metaxisdata.store.QualityAggregateFunction
+	21, // 43: metaxisdata.store.CrossTableConfig.right_function:type_name -> metaxisdata.store.QualityAggregateFunction
+	44, // [44:44] is the sub-list for method output_type
+	44, // [44:44] is the sub-list for method input_type
+	44, // [44:44] is the sub-list for extension type_name
+	44, // [44:44] is the sub-list for extension extendee
+	0,  // [0:44] is the sub-list for field type_name
 }
 
 func init() { file_store_data_quality_proto_init() }
@@ -4853,6 +5242,8 @@ func file_store_data_quality_proto_init() {
 		(*QualityRuleConfig_CelExpression)(nil),
 		(*QualityRuleConfig_SchemaDrift)(nil),
 		(*QualityRuleConfig_GroupCheck)(nil),
+		(*QualityRuleConfig_Aggregate)(nil),
+		(*QualityRuleConfig_CrossTable)(nil),
 	}
 	file_store_data_quality_proto_msgTypes[19].OneofWrappers = []any{}
 	file_store_data_quality_proto_msgTypes[20].OneofWrappers = []any{}
@@ -4870,13 +5261,15 @@ func file_store_data_quality_proto_init() {
 	file_store_data_quality_proto_msgTypes[32].OneofWrappers = []any{}
 	file_store_data_quality_proto_msgTypes[34].OneofWrappers = []any{}
 	file_store_data_quality_proto_msgTypes[35].OneofWrappers = []any{}
+	file_store_data_quality_proto_msgTypes[36].OneofWrappers = []any{}
+	file_store_data_quality_proto_msgTypes[37].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_store_data_quality_proto_rawDesc), len(file_store_data_quality_proto_rawDesc)),
-			NumEnums:      21,
-			NumMessages:   36,
+			NumEnums:      22,
+			NumMessages:   38,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

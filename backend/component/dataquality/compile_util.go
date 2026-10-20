@@ -20,6 +20,8 @@ const (
 	compileMaxCustomSQLLength = 8 * 1024
 	// maxGroupCheckColumns bounds a group-check rule's grouping list.
 	maxGroupCheckColumns = 5
+	// maxNullValues bounds the custom missing values a null_percent rule may name.
+	maxNullValues = 20
 )
 
 // compileTable renders the target relation for the dialect. The foundation
@@ -330,53 +332,128 @@ func compileFreshnessLagExpr(dialect Dialect, maxTimestamp string) (string, erro
 	}
 }
 
-// compileParentTable renders the parent side of a referential-integrity rule.
-// The config names the parent as "table" or "container.table": one segment is
-// qualified with the child's schema (PostgreSQL/MSSQL) or database (MySQL), while
-// two segments must name the child's own schema/database — a rule never reaches
-// across containers.
-func compileParentTable(dialect Dialect, target ResolvedTarget, spec string) (string, error) {
+// compileRelatedTable renders a second table that must live in the target's own
+// database (MySQL family) or schema (PostgreSQL/MSSQL). role names the table in
+// error messages ("parent table", "right table"); ruleName names the rule kind.
+func compileRelatedTable(dialect Dialect, target ResolvedTarget, spec, role, ruleName string) (string, error) {
 	spec = strings.TrimSpace(spec)
 	if spec == "" {
-		return "", invalidConfig("a referential-integrity rule needs a parent table")
+		return "", invalidConfig("a %s rule needs a %s", ruleName, role)
 	}
 	parts := strings.Split(spec, ".")
 	for _, part := range parts {
 		if strings.TrimSpace(part) == "" {
-			return "", invalidConfig("parent table %q is not a valid table name", spec)
+			return "", invalidConfig("%s %q is not a valid table name", role, spec)
 		}
 	}
 
-	parent := ResolvedTarget{Target: target.Target}
+	related := ResolvedTarget{Target: target.Target}
 	switch dialect.(type) {
 	case mysqlDialect:
 		switch len(parts) {
 		case 1:
-			parent.Database, parent.Table = target.Database, parts[0]
+			related.Database, related.Table = target.Database, parts[0]
 		case 2:
 			if parts[0] != target.Database {
-				return "", invalidConfig("parent table %q must be in the rule's database %q", spec, target.Database)
+				return "", invalidConfig("%s %q must be in the rule's database %q", role, spec, target.Database)
 			}
-			parent.Database, parent.Table = parts[0], parts[1]
+			related.Database, related.Table = parts[0], parts[1]
 		default:
-			return "", invalidConfig("parent table %q must be \"table\" or \"database.table\"", spec)
+			return "", invalidConfig("%s %q must be \"table\" or \"database.table\"", role, spec)
 		}
 	case postgresDialect, mssqlDialect:
 		switch len(parts) {
 		case 1:
-			parent.Schema, parent.Table = target.Schema, parts[0]
+			related.Schema, related.Table = target.Schema, parts[0]
 		case 2:
 			if parts[0] != target.Schema {
-				return "", invalidConfig("parent table %q must be in the rule's schema %q", spec, target.Schema)
+				return "", invalidConfig("%s %q must be in the rule's schema %q", role, spec, target.Schema)
 			}
-			parent.Schema, parent.Table = parts[0], parts[1]
+			related.Schema, related.Table = parts[0], parts[1]
 		default:
-			return "", invalidConfig("parent table %q must be \"table\" or \"schema.table\"", spec)
+			return "", invalidConfig("%s %q must be \"table\" or \"schema.table\"", role, spec)
 		}
 	default:
-		return "", invalidConfig("%s does not support referential-integrity rules", dialect.Name())
+		return "", invalidConfig("%s does not support %s rules", dialect.Name(), ruleName)
 	}
-	return compileTable(dialect, parent)
+	return compileTable(dialect, related)
+}
+
+// compileParentTable renders the parent side of a referential-integrity rule.
+func compileParentTable(dialect Dialect, target ResolvedTarget, spec string) (string, error) {
+	return compileRelatedTable(dialect, target, spec, "parent table", "referential-integrity")
+}
+
+// compileRightTable renders the reference side of a cross-table reconciliation
+// rule. It must live in the target's own database/schema: v1.1 reconciles tables
+// that share a connection, not tables across instances.
+func compileRightTable(dialect Dialect, target ResolvedTarget, spec string) (string, error) {
+	return compileRelatedTable(dialect, target, spec, "right table", "cross-table")
+}
+
+// aggregateExpression renders one aggregate over a quoted column. The percentile
+// placeholder binds the 0–1 fraction a PERCENTILE needs; it is empty for every
+// other function. The engine spellings differ only for standard deviation
+// (PostgreSQL/MySQL STDDEV, SQL Server STDEV) and for the percentile-cont form
+// (T-SQL requires OVER ()).
+func aggregateExpression(dialect Dialect, function storepb.QualityAggregateFunction, quotedColumn, percentilePlaceholder string) (string, error) {
+	switch function {
+	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT:
+		return "COUNT(*)", nil
+	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_SUM:
+		return "SUM(" + quotedColumn + ")", nil
+	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_AVG:
+		return "AVG(" + quotedColumn + ")", nil
+	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MIN:
+		return "MIN(" + quotedColumn + ")", nil
+	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MAX:
+		return "MAX(" + quotedColumn + ")", nil
+	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_STDDEV:
+		switch dialect.(type) {
+		case mssqlDialect:
+			return "STDEV(" + quotedColumn + ")", nil
+		case mysqlDialect, postgresDialect:
+			return "STDDEV(" + quotedColumn + ")", nil
+		default:
+			return "", invalidConfig("%s has no standard-deviation aggregate", dialect.Name())
+		}
+	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_PERCENTILE:
+		if percentilePlaceholder == "" {
+			return "", invalidConfig("an aggregate PERCENTILE needs a percentile")
+		}
+		switch dialect.(type) {
+		case postgresDialect:
+			return "PERCENTILE_CONT(" + percentilePlaceholder + ") WITHIN GROUP (ORDER BY " + quotedColumn + ")", nil
+		case mssqlDialect:
+			return "PERCENTILE_CONT(" + percentilePlaceholder + ") WITHIN GROUP (ORDER BY " + quotedColumn + ") OVER ()", nil
+		default:
+			return "", invalidConfig("%s has no percentile aggregate", dialect.Name())
+		}
+	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_UNSPECIFIED:
+		return "", invalidConfig("an aggregate function is required")
+	default:
+		return "", invalidConfig("unknown aggregate function %d", function)
+	}
+}
+
+// nullPercentValues converts a null_percent rule's custom missing values with the
+// column's type, in configured order. The empty list is the plain SQL-NULL rule.
+func nullPercentValues(column ColumnInfo, values []string) ([]any, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	if len(values) > maxNullValues {
+		return nil, invalidConfig("null_values allows at most %d values, got %d", maxNullValues, len(values))
+	}
+	converted := make([]any, 0, len(values))
+	for _, value := range values {
+		argument, err := compileValueArg(column, value)
+		if err != nil {
+			return nil, err
+		}
+		converted = append(converted, argument)
+	}
+	return converted, nil
 }
 
 // compileValidateCountThresholds checks the shared fail/warn pair of a count-type

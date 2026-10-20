@@ -47,6 +47,10 @@ func configArm(config *storepb.QualityRuleConfig) (storepb.QualityRuleType, erro
 		return storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT, nil
 	case *storepb.QualityRuleConfig_GroupCheck:
 		return storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK, nil
+	case *storepb.QualityRuleConfig_Aggregate:
+		return storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE, nil
+	case *storepb.QualityRuleConfig_CrossTable:
+		return storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, nil
 	case nil:
 		return 0, invalidConfig("the rule config is empty")
 	default:

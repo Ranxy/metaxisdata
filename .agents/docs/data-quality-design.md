@@ -61,6 +61,7 @@ backend/runner/qualityrunner ─┘
 | D-30 | L1/L3 只产出 PENDING 建议：接受 LABEL 建议时落 `column_semantic_label`；接受 RULE_DRAFT 只改建议状态，规则由编辑器保存时才创建 | 保持“不自动建规则/不自动启用/不自动执行”的边界 |
 | D-31 | v1.1 第一批新增两类规则：`schema_drift`（R15，元数据比对，不查目标库）与 `group_check`（R16，GROUP BY 每组行数阈值）。schema_drift 在保存时把当前列快照写入 config；group_check 第一版只做“每组行数 min/max + 失败组数阈值”，后续再扩每组 null/aggregate | 两类能力是用户确认的 v1.1 第一优先级；先给出可解释、可评测的最小语义，避免一次做成通用 DSL |
 | D-32 | schema_drift 不需要 READ_ONLY 数据源（纯元数据），runner 对它跳过驱动获取；结果 `sampled=false`、样本是漂移项列表；`group_check` 走普通只读查询 | 元数据规则对目标库零负载，不能因为没配只读源而阻塞 |
+| D-33 | v1.1 第二批：`aggregate`（R17，单列聚合与区间阈值）、`cross_table`（R18，同实例两表聚合对账）、`null_percent` 增加 `null_values` 自定义缺失值。`PERCENTILE` 只支持 PostgreSQL/MSSQL，其它引擎保存期拒绝；`cross_table` 只支持同实例同库、左表 filter、COUNT/SUM/AVG/MIN/MAX 两侧各选一个 | 覆盖 Soda/GX 的 aggregate、missing_values、跨表对账能力；不引入跨库/跨实例（连接与权限模型不支持），复杂对账仍可用 custom_sql |
 
 **包/文件地图**
 
@@ -1252,6 +1253,34 @@ func EvalRows(program *cel.Program, rows []map[string]any) (violations int64, ev
 - 空数据：`total_groups = 0` → `on_empty`。
 
 **验收**：两类规则各：4 方言 golden（group_check）+ 元数据比对表驱动（schema_drift）、阈值边界、空数据、样本形状、保存期校验（列存在/分组列数/阈值组合/快照非空）、API convert roundtrip、前端编辑器表单（M1.6c）。
+
+### 6.13 v1.1 第二批规则：聚合、自定义缺失值、跨表对账
+
+**R17 `aggregate`（维度 accuracy；聚合规则）**
+
+- config：`column`、`function`（SUM/AVG/MIN/MAX/STDDEV/PERCENTILE）、`percentile`（0–100，仅 PERCENTILE）、`min?`、`max?`（至少一个，fail 边界）、`warn_min?`、`warn_max?`、`inclusive`（默认 false，含义同 `range`）、`filter`。
+- SQL：`SELECT COUNT(*) AS total_rows, <agg(column)> AS observed FROM <t> <where>`。
+  - SUM/AVG/MIN/MAX/STDDEV 全方言。
+  - PERCENTILE：PostgreSQL `PERCENTILE_CONT(p) WITHIN GROUP (ORDER BY col)`；MSSQL `PERCENTILE_CONT(p) WITHIN GROUP (ORDER BY col) OVER ()`；**MySQL 家族/StarRocks/Doris 不支持，保存期拒绝**（UNSUPPORTED）。
+- 观测：`observed` 为 NUMBER；`total_rows=COUNT(*)`；判定用区间（`OUTSIDE_RANGE`，`inclusive` 控制开闭）；聚合值为 NULL（空表/全 NULL 列）→ `on_empty`。
+- 列类型：SUM/AVG/STDDEV/PERCENTILE 仅 numeric；MIN/MAX 允许 numeric 或 temporal。
+- 样本：无失败行概念（`CompiledQuery` 空），结果只有实际值与阈值。
+
+**R18 `cross_table`（维度 consistency；对账规则）**
+
+- config：`right_table`（`schema.table`，PostgreSQL/MSSQL；MySQL 家族为 `database.table` 或 `table`，必须与左表同库）、`left_function`/`right_function`（COUNT/SUM/AVG/MIN/MAX，默认 COUNT）、`left_column`/`right_column`（function 非 COUNT 时必填）、`tolerance`（绝对容差，默认 0）、`filter`（只作用于左表）、fail/warn 阈值（差值的 GT 阈值，默认 fail=0）。
+- SQL：`SELECT (SELECT <leftAgg> FROM <left> <where>) AS left_value, (SELECT <rightAgg> FROM <right>) AS right_value`；差值 = `abs(left - right)`（NULL 任一侧 → `on_empty`）。
+- 校验：右表必须存在（`ResolveTarget`），两侧 function/column 组合合法、类型可比较（SUM/AVG 要求 numeric；COUNT 要求 column 为空）；右表不应用 filter（v1.1 明确限制）。
+- 样本：无（对账结果只有两侧值/差值）。
+- 支持：全方言（相关子查询/标量子查询通用）。
+
+**R03 扩展：自定义缺失值**
+
+- `NullPercentConfig.null_values []string`（≤20 个，按列类型编码）：除 SQL NULL 外，这些值也计为“缺失”。
+- SQL：`SUM(CASE WHEN <c> IS NULL OR <c> IN (?,...) THEN 1 ELSE 0 END)`；`null_values` 为空时保持原形状。
+- 只作用于 `null_percent`；其它规则不解释自定义缺失值（注释与文档说明）。
+
+**验收**：aggregate 3+N 方言 golden（含 PERCENTILE 的 PG/MSSQL 与其它引擎拒绝）、区间/开闭/warn 边界、NULL→on_empty、类型校验；cross_table SQL 形状、同库校验、右表缺失、差值/容差、NULL→on_empty；null_values 编译与计数、>20/类型转换失败拒绝；API convert roundtrip；编辑器表单（M1.6c）。
 
 ### 6.11 后续设计：RuleSet（contract-like 整体验证）
 

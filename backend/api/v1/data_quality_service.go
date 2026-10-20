@@ -67,6 +67,9 @@ type DataQualityService struct {
 	// llmRegistry lists the enabled provider profiles the LLM analyses can use.
 	// It is nil in tests that never reach an LLM path.
 	llmRegistry *llmcomp.Registry
+	// llmQuota is the process-wide daily quota and concurrency limit of the LLM
+	// analyses. It is created with the service and shared by every request.
+	llmQuota *qualityLLMQuota
 }
 
 // NewDataQualityService creates the service. runScheduler may be nil.
@@ -76,6 +79,7 @@ func NewDataQualityService(s *store.Store, dbFactory *dbfactory.DBFactory, runSc
 		dbFactory:    dbFactory,
 		runScheduler: runScheduler,
 		llmRegistry:  llmRegistry,
+		llmQuota:     newQualityLLMQuota(),
 	}
 }
 
@@ -454,6 +458,9 @@ func (s *DataQualityService) validateRuleInput(ctx context.Context, ruleType sto
 	}
 	validated, err := dataquality.ValidateRule(ctx, s.store, ruleType, guid, metaType, config, nil)
 	if err != nil {
+		return nil, filled, err
+	}
+	if err := s.validateCrossTableRightSide(ctx, validated, config); err != nil {
 		return nil, filled, err
 	}
 	return validated, filled, nil

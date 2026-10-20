@@ -56,14 +56,20 @@ func CompileFailureRows(input CompileInput, limit int) (CompiledQuery, error) {
 		// A drift sample is the comparison result itself, built by the executor: it
 		// is a list of columns and reasons, not rows of the target database.
 		return CompiledQuery{}, nil
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION:
+		// An aggregate or reconciliation result is a value, not a failing row, and a
+		// CEL rule's failing rows are computed in process from the sample it already
+		// evaluated: none of them needs a separate failed-row statement.
+		return CompiledQuery{}, nil
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS:
 		// No failing row exists: the observation is a property of the whole table
 		// or of its newest row, so there is nothing to show.
 		return CompiledQuery{}, nil
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION:
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED:
 		return CompiledQuery{}, invalidConfig("rule type %s has no failed-row sample", input.Type)
 	default:
 		return CompiledQuery{}, invalidConfig("rule type %s has no failed-row sample", input.Type)
@@ -141,11 +147,24 @@ func sampleNullPercent(input CompileInput, limit int) (CompiledQuery, error) {
 	if err != nil {
 		return CompiledQuery{}, err
 	}
-	condition := qualify(input.Dialect, column.Name) + " IS NULL"
+	values, err := nullPercentValues(column, config.GetNullValues())
+	if err != nil {
+		return CompiledQuery{}, err
+	}
+	args := newSampleArgs(input.Dialect, filterArgs)
+	qualified := qualify(input.Dialect, column.Name)
+	condition := qualified + " IS NULL"
+	if len(values) > 0 {
+		placeholders := make([]string, 0, len(values))
+		for _, value := range values {
+			placeholders = append(placeholders, args.add(value))
+		}
+		condition = qualified + " IS NULL OR " + qualified + " IN (" + strings.Join(placeholders, ", ") + ")"
+	}
 	return sampleQuery(input,
 		"SELECT "+sampleSelect(input.Dialect, []string{column.Name})+" FROM "+table+
 			compileAppendWhere(where, "("+condition+")"),
-		filterArgs, []string{column.Name}, limit), nil
+		args.values, []string{column.Name}, limit), nil
 }
 
 // sampleAcceptedValues selects the rows whose value is outside the accepted set.

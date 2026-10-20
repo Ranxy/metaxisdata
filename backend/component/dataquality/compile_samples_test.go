@@ -351,13 +351,16 @@ func TestCompileFailureRowsNormalizesTheLimit(t *testing.T) {
 	}
 }
 
-// A rule type that cannot produce a failed-row statement is refused, so a caller
+// A rule type that cannot produce a failed-row statement either returns a zero
+// query (the executor builds the sample another way) or is refused so a caller
 // cannot silently store an empty sample.
-func TestCompileFailureRowsRejectsUnsupportedTypes(t *testing.T) {
+func TestCompileFailureRowsUnsupportedTypes(t *testing.T) {
 	t.Parallel()
 
+	// A CEL rule's failing rows are the sampled rows its predicate rejected, so the
+	// executor builds that sample itself and there is no second statement.
 	cel := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CelExpression{
-		CelExpression: &storepb.CelExpressionConfig{Expression: "amount > 0", Columns: []string{"amount"}},
+		CelExpression: &storepb.CelExpressionConfig{Expression: "amount > 0.0", Columns: []string{"amount"}},
 	}}
 	base := CompileInput{
 		Dialect: mustDialect(t, storepb.Engine_MYSQL),
@@ -365,9 +368,9 @@ func TestCompileFailureRowsRejectsUnsupportedTypes(t *testing.T) {
 		Config:  cel,
 		Type:    storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION,
 	}
-	_, err := CompileFailureRows(base, 20)
-	require.Error(t, err)
-	require.Equal(t, common.Invalid, common.ErrorCode(err))
+	query, err := CompileFailureRows(base, 20)
+	require.NoError(t, err)
+	require.Empty(t, query.SQL)
 
 	unspecified := base
 	unspecified.Type = storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED

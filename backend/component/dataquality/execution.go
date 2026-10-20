@@ -57,9 +57,9 @@ type Execution struct {
 	Samples *storepb.QualityFailureSamples
 	// ExecutedSQL is the aggregate statement, truncated for storage.
 	ExecutedSQL string
-	// Sampled reports that the observation was made over a sample of the rows.
-	// v1 aggregates over the filtered table or not at all, and CEL (the only
-	// sampling rule) arrives in v1.1, so this is false.
+	// Sampled reports that the observation was made over a sample of the rows
+	// rather than the whole filtered table. Only a CEL rule can be sampled today:
+	// it reads a bounded number of rows and evaluates the predicate in process.
 	Sampled bool
 	// Truncated reports that the aggregate or the sample was cut off by a limit.
 	Truncated bool

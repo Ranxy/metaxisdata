@@ -626,6 +626,10 @@ func qualityRuleReferencedColumns(config *storepb.QualityRuleConfig) []string {
 		for _, column := range arm.GroupCheck.GetColumns() {
 			columns = appendColumn(columns, column)
 		}
+	case *storepb.QualityRuleConfig_Aggregate:
+		columns = appendColumn(columns, arm.Aggregate.GetColumn())
+	case *storepb.QualityRuleConfig_CrossTable:
+		columns = appendColumn(columns, arm.CrossTable.GetLeftColumn())
 	case *storepb.QualityRuleConfig_CustomSql:
 	case *storepb.QualityRuleConfig_CelExpression:
 		for _, column := range arm.CelExpression.GetColumns() {
@@ -701,6 +705,7 @@ func convertQualityRuleConfigToV1(config *storepb.QualityRuleConfig) *v1pb.Quali
 			WarnNullCount: copyPtr(arm.NullPercent.WarnNullCount),
 			MaxNullPct:    copyPtr(arm.NullPercent.MaxNullPct),
 			WarnNullPct:   copyPtr(arm.NullPercent.WarnNullPct),
+			NullValues:    append([]string(nil), arm.NullPercent.GetNullValues()...),
 		}}
 	case *storepb.QualityRuleConfig_Unique:
 		converted.Config = &v1pb.QualityRuleConfig_Unique{Unique: &v1pb.UniqueConfig{
@@ -804,6 +809,28 @@ func convertQualityRuleConfigToV1(config *storepb.QualityRuleConfig) *v1pb.Quali
 			FailThreshold:   copyPtr(arm.GroupCheck.FailThreshold),
 			WarnThreshold:   copyPtr(arm.GroupCheck.WarnThreshold),
 		}}
+	case *storepb.QualityRuleConfig_Aggregate:
+		converted.Config = &v1pb.QualityRuleConfig_Aggregate{Aggregate: &v1pb.AggregateConfig{
+			Column:     arm.Aggregate.GetColumn(),
+			Function:   v1pb.QualityAggregateFunction(arm.Aggregate.GetFunction()),
+			Percentile: copyPtr(arm.Aggregate.Percentile),
+			Min:        copyPtr(arm.Aggregate.Min),
+			Max:        copyPtr(arm.Aggregate.Max),
+			WarnMin:    copyPtr(arm.Aggregate.WarnMin),
+			WarnMax:    copyPtr(arm.Aggregate.WarnMax),
+			Inclusive:  arm.Aggregate.GetInclusive(),
+		}}
+	case *storepb.QualityRuleConfig_CrossTable:
+		converted.Config = &v1pb.QualityRuleConfig_CrossTable{CrossTable: &v1pb.CrossTableConfig{
+			RightTable:    arm.CrossTable.GetRightTable(),
+			LeftFunction:  v1pb.QualityAggregateFunction(arm.CrossTable.GetLeftFunction()),
+			LeftColumn:    arm.CrossTable.GetLeftColumn(),
+			RightFunction: v1pb.QualityAggregateFunction(arm.CrossTable.GetRightFunction()),
+			RightColumn:   arm.CrossTable.GetRightColumn(),
+			Tolerance:     copyPtr(arm.CrossTable.Tolerance),
+			FailThreshold: copyPtr(arm.CrossTable.FailThreshold),
+			WarnThreshold: copyPtr(arm.CrossTable.WarnThreshold),
+		}}
 	case nil:
 	default:
 	}
@@ -844,6 +871,7 @@ func convertQualityRuleConfigFromV1(config *v1pb.QualityRuleConfig) *storepb.Qua
 			WarnNullCount: copyPtr(arm.NullPercent.WarnNullCount),
 			MaxNullPct:    copyPtr(arm.NullPercent.MaxNullPct),
 			WarnNullPct:   copyPtr(arm.NullPercent.WarnNullPct),
+			NullValues:    append([]string(nil), arm.NullPercent.GetNullValues()...),
 		}}
 	case *v1pb.QualityRuleConfig_Unique:
 		converted.Config = &storepb.QualityRuleConfig_Unique{Unique: &storepb.UniqueConfig{
@@ -946,6 +974,28 @@ func convertQualityRuleConfigFromV1(config *v1pb.QualityRuleConfig) *storepb.Qua
 			MaxRowsPerGroup: copyPtr(arm.GroupCheck.MaxRowsPerGroup),
 			FailThreshold:   copyPtr(arm.GroupCheck.FailThreshold),
 			WarnThreshold:   copyPtr(arm.GroupCheck.WarnThreshold),
+		}}
+	case *v1pb.QualityRuleConfig_Aggregate:
+		converted.Config = &storepb.QualityRuleConfig_Aggregate{Aggregate: &storepb.AggregateConfig{
+			Column:     arm.Aggregate.GetColumn(),
+			Function:   storepb.QualityAggregateFunction(arm.Aggregate.GetFunction()),
+			Percentile: copyPtr(arm.Aggregate.Percentile),
+			Min:        copyPtr(arm.Aggregate.Min),
+			Max:        copyPtr(arm.Aggregate.Max),
+			WarnMin:    copyPtr(arm.Aggregate.WarnMin),
+			WarnMax:    copyPtr(arm.Aggregate.WarnMax),
+			Inclusive:  arm.Aggregate.GetInclusive(),
+		}}
+	case *v1pb.QualityRuleConfig_CrossTable:
+		converted.Config = &storepb.QualityRuleConfig_CrossTable{CrossTable: &storepb.CrossTableConfig{
+			RightTable:    arm.CrossTable.GetRightTable(),
+			LeftFunction:  storepb.QualityAggregateFunction(arm.CrossTable.GetLeftFunction()),
+			LeftColumn:    arm.CrossTable.GetLeftColumn(),
+			RightFunction: storepb.QualityAggregateFunction(arm.CrossTable.GetRightFunction()),
+			RightColumn:   arm.CrossTable.GetRightColumn(),
+			Tolerance:     copyPtr(arm.CrossTable.Tolerance),
+			FailThreshold: copyPtr(arm.CrossTable.FailThreshold),
+			WarnThreshold: copyPtr(arm.CrossTable.WarnThreshold),
 		}}
 	case nil:
 	default:
