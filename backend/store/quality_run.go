@@ -503,3 +503,17 @@ func (s *Store) CountQualityRunsSince(ctx context.Context, since time.Time) (int
 	}
 	return count, nil
 }
+
+// DeleteExpiredQualityRuns removes the runs that started before cutoff. Each
+// run's results go with it through the ON DELETE CASCADE, so one statement
+// reclaims a run and the history it holds.
+func (s *Store) DeleteExpiredQualityRuns(ctx context.Context, cutoff time.Time) (int64, error) {
+	if cutoff.IsZero() {
+		return 0, common.Errorf(common.Invalid, "a cutoff is required")
+	}
+	result, err := s.GetDB().ExecContext(ctx, `DELETE FROM quality_run WHERE started_at < $1`, cutoff)
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to delete expired quality runs")
+	}
+	return result.RowsAffected()
+}

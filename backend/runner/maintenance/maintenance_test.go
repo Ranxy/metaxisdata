@@ -91,6 +91,26 @@ func (f *fakeStore) DeleteExpiredWebRefreshTokens(ctx context.Context, before ti
 	return f.delete(ctx, "web_refresh_tokens", before)
 }
 
+func (f *fakeStore) DeleteExpiredQualityRuns(ctx context.Context, cutoff time.Time) (int64, error) {
+	return f.delete(ctx, "quality_runs", cutoff)
+}
+
+func (f *fakeStore) DeleteExpiredQualityIssues(ctx context.Context, cutoff time.Time) (int64, error) {
+	return f.delete(ctx, "quality_issues", cutoff)
+}
+
+func (f *fakeStore) DeleteExpiredQualitySuggestions(ctx context.Context, cutoff time.Time) (int64, error) {
+	return f.delete(ctx, "quality_suggestions", cutoff)
+}
+
+func (f *fakeStore) DeleteExpiredColumnProfiles(ctx context.Context, cutoff time.Time) (int64, error) {
+	return f.delete(ctx, "column_profiles", cutoff)
+}
+
+func (f *fakeStore) DeleteExpiredDataQualityLLMCache(ctx context.Context, cutoff time.Time) (int64, error) {
+	return f.delete(ctx, "data_quality_llm_cache", cutoff)
+}
+
 func (f *fakeStore) DeleteEmptyOpenLineageDatasets(ctx context.Context, olderThan time.Time) (int64, error) {
 	return f.delete(ctx, "empty_openlineage_datasets", olderThan)
 }
@@ -452,4 +472,33 @@ func TestRunStopsOnContextCancel(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("Run did not return when the context was cancelled")
 	}
+}
+
+// TestRunOncePrunesDataQualityRetention pins the data quality cutoffs: results go
+// with their run, only resolved issues and decided suggestions are pruned, and
+// profiles and the LLM cache expire on their shorter window.
+func TestRunOncePrunesDataQualityRetention(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	stores.deleted["quality_runs"] = 2
+	stores.deleted["quality_issues"] = 3
+	stores.deleted["column_profiles"] = 4
+	stores.deleted["data_quality_llm_cache"] = 5
+	stores.deleted["quality_suggestions"] = 6
+
+	summary := newTestRunner(stores, &fakeRevalidator{}).runOnce(context.Background())
+
+	require.Empty(t, summary.failed)
+	require.Equal(t, int64(2), summary.counts["quality_runs"])
+	require.Equal(t, int64(3), summary.counts["quality_issues"])
+	require.Equal(t, int64(4), summary.counts["column_profiles"])
+	require.Equal(t, int64(5), summary.counts["data_quality_llm_cache"])
+	require.Equal(t, int64(6), summary.counts["quality_suggestions"])
+
+	require.Equal(t, passTime.Add(-qualityRunRetention), stores.cutoff("quality_runs"))
+	require.Equal(t, passTime.Add(-qualityIssueRetention), stores.cutoff("quality_issues"))
+	require.Equal(t, passTime.Add(-qualityProfileRetention), stores.cutoff("column_profiles"))
+	require.Equal(t, passTime.Add(-qualityLLMCacheRetention), stores.cutoff("data_quality_llm_cache"))
+	require.Equal(t, passTime.Add(-qualitySuggestionRetention), stores.cutoff("quality_suggestions"))
 }

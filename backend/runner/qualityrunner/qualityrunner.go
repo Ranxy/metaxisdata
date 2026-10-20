@@ -71,6 +71,9 @@ const (
 	// maxErrorMessageLength bounds the error text stored on a result. Error details
 	// are for an operator, not a log file.
 	maxErrorMessageLength = 1024
+	// maxBaselineAge bounds how old a row_count_change baseline may be. An older
+	// observation describes a different data shape.
+	maxBaselineAge = 7 * 24 * time.Hour
 	// QualityStormThreshold is how many failing rules in one run turn per-rule
 	// notifications into a single summary. A run that fails more rules than this
 	// would otherwise write one inbox message per rule for a single incident.
@@ -570,7 +573,7 @@ func (r *Runner) executeOne(ctx context.Context, runID int64, task ruleTask) *ru
 	if snapshot.Type == storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE {
 		// The executor measures the current row count; the baseline is this rule's
 		// last evaluated observation, which only the store can supply.
-		observation.Baseline = r.ruleBaseline(ctx, snapshot.ID)
+		observation.Baseline = r.ruleBaseline(ctx, snapshot.ID, ruleIntervalForBaseline(head))
 	}
 	state := dataquality.Evaluate(*snapshot, observation, time.Now().UTC())
 	return &ruleExecution{
@@ -685,7 +688,7 @@ func (r *Runner) acquireInstanceConnection(instance *store.InstanceMessage) (fun
 // row_count_change compares the current count against. An unreadable baseline is
 // not fatal: the rule then reports NOT_EVALUATED, which is the correct "no
 // baseline" verdict rather than a made-up comparison.
-func (r *Runner) ruleBaseline(ctx context.Context, ruleID int64) *float64 {
+func (r *Runner) ruleBaseline(ctx context.Context, ruleID int64, interval time.Duration) *float64 {
 	results, err := r.stores.ListRecentQualityRuleResults(ctx, ruleID, 1)
 	if err != nil {
 		slog.Warn("failed to read a quality rule baseline",
@@ -693,7 +696,17 @@ func (r *Runner) ruleBaseline(ctx context.Context, ruleID int64) *float64 {
 			log.WithError(err))
 		return nil
 	}
-	return baselineFromResults(results)
+	return baselineFromResults(results, time.Now().UTC(), interval)
+}
+
+// ruleIntervalForBaseline returns the interval a row_count_change baseline must
+// still fit inside. A rule whose interval is missing falls back to the runner's
+// minimum, so a malformed row cannot make every historical result acceptable.
+func ruleIntervalForBaseline(head *store.QualityRuleMessage) time.Duration {
+	if head != nil && head.ScheduleInterval > 0 {
+		return head.ScheduleInterval
+	}
+	return minRuleScheduleInterval
 }
 
 // acquireInflight marks one rule as being executed and reports whether this
@@ -915,7 +928,7 @@ func countsAndOutcome(results []*store.QualityRuleResultMessage) (*storepb.Quali
 // baselineFromResults picks the most recent evaluated observation to use as the
 // row_count_change baseline. ERROR, SKIPPED and NOT_EVALUATED results carry no
 // usable measurement even if one slipped into the observed value.
-func baselineFromResults(results []*store.QualityRuleResultMessage) *float64 {
+func baselineFromResults(results []*store.QualityRuleResultMessage, now time.Time, interval time.Duration) *float64 {
 	for _, result := range results {
 		if result == nil || result.ObservedValue == nil {
 			continue
@@ -924,6 +937,9 @@ func baselineFromResults(results []*store.QualityRuleResultMessage) *float64 {
 		case storepb.QualityStatus_QUALITY_STATUS_PASS,
 			storepb.QualityStatus_QUALITY_STATUS_WARN,
 			storepb.QualityStatus_QUALITY_STATUS_FAIL:
+			if !baselineIsRecent(result.StartedAt, now, interval) {
+				return nil
+			}
 			return result.ObservedValue
 		case storepb.QualityStatus_QUALITY_STATUS_ERROR,
 			storepb.QualityStatus_QUALITY_STATUS_SKIPPED,
@@ -935,6 +951,27 @@ func baselineFromResults(results []*store.QualityRuleResultMessage) *float64 {
 		}
 	}
 	return nil
+}
+
+// baselineIsRecent reports whether an observation is still a fair denominator for
+// a row-count comparison: no older than a week, and no more than two intervals
+// behind. An older one describes a different data shape and would make the
+// change percentage meaningless.
+func baselineIsRecent(startedAt, now time.Time, interval time.Duration) bool {
+	if startedAt.IsZero() {
+		return false
+	}
+	age := now.Sub(startedAt)
+	if age < 0 {
+		return true
+	}
+	if age > maxBaselineAge {
+		return false
+	}
+	if interval > 0 && age > 2*interval {
+		return false
+	}
+	return true
 }
 
 // errorCodeAndMessage classifies an error that happened before or during the

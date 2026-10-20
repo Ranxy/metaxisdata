@@ -754,3 +754,31 @@ func TestDryRunNeedsProbe(t *testing.T) {
 	require.True(t, dryRunNeedsProbe(storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL))
 	require.True(t, dryRunNeedsProbe(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT))
 }
+
+// TestRequireReadOnlySourceForNewRule pins the create-time configuration check: a
+// query rule needs a READ_ONLY source, while a metadata rule needs none.
+func TestRequireReadOnlySourceForNewRule(t *testing.T) {
+	t.Parallel()
+
+	withReadOnly := &dataquality.Resolution{Instance: &store.InstanceMessage{
+		ResourceID: "instances/ins1",
+		Metadata: &storepb.Instance{DataSources: []*storepb.DataSource{
+			{Type: storepb.DataSourceType_ADMIN},
+			{Type: storepb.DataSourceType_READ_ONLY},
+		}},
+	}}
+	require.NoError(t, requireReadOnlySourceForNewRule(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, withReadOnly))
+
+	adminOnly := &dataquality.Resolution{Instance: &store.InstanceMessage{
+		ResourceID: "instances/ins1",
+		Metadata: &storepb.Instance{DataSources: []*storepb.DataSource{
+			{Type: storepb.DataSourceType_ADMIN},
+		}},
+	}}
+	err := requireReadOnlySourceForNewRule(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, adminOnly)
+	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
+	require.Contains(t, err.Error(), "READ_ONLY")
+
+	// A metadata rule reads no target database, so it needs no data source at all.
+	require.NoError(t, requireReadOnlySourceForNewRule(storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT, adminOnly))
+}

@@ -270,14 +270,28 @@ func TestBaselineFromResultsSkipsUnjudgedResults(t *testing.T) {
 		{Status: storepb.QualityStatus_QUALITY_STATUS_ERROR, ObservedValue: &observed},
 		{Status: storepb.QualityStatus_QUALITY_STATUS_PASS, ObservedValue: &observed},
 	}
-	baseline := baselineFromResults(results)
+	now := time.Now().UTC()
+	results[1].StartedAt = now.Add(-time.Minute)
+	baseline := baselineFromResults(results, now, time.Hour)
 	require.NotNil(t, baseline)
 	require.InDelta(t, 42, *baseline, 1e-9)
 
-	require.Nil(t, baselineFromResults(nil))
+	require.Nil(t, baselineFromResults(nil, now, time.Hour))
 	require.Nil(t, baselineFromResults([]*store.QualityRuleResultMessage{
 		{Status: storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, ObservedValue: &observed},
-	}))
+	}, now, time.Hour))
+
+	// A week-old observation, or one more than two intervals behind, is no
+	// longer a fair denominator.
+	stale := []*store.QualityRuleResultMessage{
+		{Status: storepb.QualityStatus_QUALITY_STATUS_PASS, ObservedValue: &observed, StartedAt: now.Add(-8 * 24 * time.Hour)},
+	}
+	require.Nil(t, baselineFromResults(stale, now, 24*time.Hour))
+	drifted := []*store.QualityRuleResultMessage{
+		{Status: storepb.QualityStatus_QUALITY_STATUS_PASS, ObservedValue: &observed, StartedAt: now.Add(-3 * time.Hour)},
+	}
+	require.Nil(t, baselineFromResults(drifted, now, time.Hour))
+	require.NotNil(t, baselineFromResults(drifted, now, 4*time.Hour))
 }
 
 func TestErrorCodeAndMessageMapsRunnerLevelFailures(t *testing.T) {

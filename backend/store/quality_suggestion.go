@@ -401,3 +401,20 @@ func (s *Store) DecideQualitySuggestion(ctx context.Context, resourceID string, 
 	}
 	return nil, common.Errorf(common.Conflict, "quality suggestion %q is already decided", resourceID)
 }
+
+// DeleteExpiredQualitySuggestions removes the decided suggestions older than
+// cutoff. A pending suggestion is never pruned: it is still waiting for a
+// reviewer.
+func (s *Store) DeleteExpiredQualitySuggestions(ctx context.Context, cutoff time.Time) (int64, error) {
+	if cutoff.IsZero() {
+		return 0, common.Errorf(common.Invalid, "a cutoff is required")
+	}
+	result, err := s.GetDB().ExecContext(ctx, `
+		DELETE FROM quality_suggestion
+		WHERE status <> $1 AND decided_at IS NOT NULL AND decided_at < $2
+	`, int16(storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING), cutoff)
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to delete expired quality suggestions")
+	}
+	return result.RowsAffected()
+}
