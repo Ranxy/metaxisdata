@@ -463,18 +463,23 @@ func TestDataQualityMetadataAndReadOnlyRulesRealServerIntegration(t *testing.T) 
 	require.NotEmpty(t, driftedResults[0].GetSamples(), "the drift items are kept as evidence")
 	require.Empty(t, driftedResults[0].GetExecutedSql())
 
-	// The same instance cannot execute a query rule: without a READ_ONLY source the
-	// rule must record an ERROR naming the misconfiguration, not a quality verdict.
-	queryRule := fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
-		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
-		fixture.usersGUID, qualityRowCountConfig(1))
-	errorRun := fixture.runToCompletion(t, queryRule.GetName())
-	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_ERROR, errorRun.GetOutcome())
-	errorResults := fixture.resultsForRun(t, errorRun.GetName())
-	require.Len(t, errorResults, 1)
-	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_ERROR, errorResults[0].GetStatus())
-	require.Equal(t, "NO_READ_ONLY_SOURCE", errorResults[0].GetErrorCode())
-	require.NotEmpty(t, errorResults[0].GetErrorMessage())
+	// A query rule on the same instance cannot even be created: the missing
+	// READ_ONLY source is a configuration mistake, so the save is refused with an
+	// actionable message instead of a rule that can only ever record ERROR.
+	_, err := fixture.dataQuality.CreateQualityRule(fixture.ctx, withToken(fixture.env.AdminToken(), &v1pb.CreateQualityRuleRequest{
+		Parent: "workspaces/-",
+		Rule: &v1pb.QualityRule{
+			Title:     "query rule without a read-only source",
+			Dimension: v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+			RuleType:  v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+			Target:    &v1pb.QualityTarget{MetaGuid: fixture.usersGUID, MetaType: v1pb.MetaType_TABLE},
+			Config:    qualityRowCountConfig(1),
+			Severity:  v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		},
+	}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
+	require.Contains(t, err.Error(), "READ_ONLY")
 }
 
 // TestDataQualityColumnProfileAndLabelRealServerIntegration covers the

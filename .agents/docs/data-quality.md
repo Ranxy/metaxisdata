@@ -305,7 +305,7 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 
 | 场景 | 行为 |
 | --- | --- |
-| 实例没有 READ_ONLY 数据源 | 预览/执行拒绝（`FailedPrecondition`，文案含配置入口）；运行期结果 `ERROR(NO_READ_ONLY_SOURCE)`；不回退 ADMIN |
+| 实例没有 READ_ONLY 数据源 | 查询型规则**创建即拒绝**（`FailedPrecondition`，文案含配置入口）；创建后数据源被移除则运行期 `ERROR(NO_READ_ONLY_SOURCE)`；预览/执行同样拒绝；不回退 ADMIN |
 | 目标库连接失败/凭据失效 | 结果 `ERROR(CONNECTION/AUTH/PERMISSION)`，执行失败通知（admins）；下一次排期自然重试 |
 | 查询超时 | `ERROR(TIMEOUT)`；不自动重试 |
 | 结果集超上限 | 截断并 `truncated=true`，状态照常判定；UI 显示“已截断” |
