@@ -48,6 +48,15 @@ target, the columns and the parameters; a rule that cannot compile is refused.
 - **Preview** runs the compiled statement with `LIMIT 0` against the read-only
   source: it proves syntax and permission without scanning the table.
 
+## Browsing rules
+
+Data Quality → Rules lists every rule with its target and latest result. The
+**Target scope** filter narrows the list to a subtree of the metadata tree: pick
+an instance, then drill into a database, schema or table/view, and apply at any
+level — choosing a table (or view) applies that table itself. The text search
+matches a rule's title and description; dimension, severity and state narrow
+further. Filters take effect when you press **Apply**.
+
 ## Runs, results and statuses
 
 A run is one instance's batch of rules, triggered manually or by the scheduler.

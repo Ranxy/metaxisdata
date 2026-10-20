@@ -934,6 +934,14 @@
     },
     "targetChanged": "Target schema changed",
     "targetChangedHint": "The target's schema changed since this rule was saved; review the rule before the next run.",
+    "targetScope": {
+      "apply": "Filter to this scope",
+      "clear": "Clear target scope",
+      "description": "Pick an instance, then drill into a database, schema or table/view. Applying a level narrows the list to that subtree.",
+      "label": "Target scope",
+      "placeholder": "Any target",
+      "title": "Filter by target scope"
+    },
     "threshold": "Threshold",
     "thresholdGreaterThan": "> {value}",
     "thresholdInside": "inside [{lower}, {upper}]",

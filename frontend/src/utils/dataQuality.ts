@@ -45,6 +45,21 @@ export interface QualityTargetPathLike {
   column?: string;
 }
 
+/**
+ * A target subtree picked in the rules list's scope filter: the deepest field
+ * that is set narrows the list, and `label` is how the path read when it was
+ * picked. The raw names are carried rather than a GUID because the API builds
+ * and escapes the GUID prefix from them; an empty segment is a real level skip
+ * (MySQL has no schema).
+ */
+export interface QualityTargetScope {
+  instance: string;
+  database: string;
+  schema: string;
+  table: string;
+  label: string;
+}
+
 /** A badge variant, spelled out so `utils/` does not import from `components/`. */
 export type QualityBadgeVariant =
   | "success"

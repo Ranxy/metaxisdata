@@ -28,7 +28,9 @@
 
     <Card>
       <!-- One filter row: a label over each control, all sharing a baseline, like
-           the application-SQL list. Typing does not re-query; Apply does. -->
+           the application-SQL list. Typing or picking does not re-query; Apply
+           does. The target scope narrows by a metadata subtree (instance →
+           database → schema → table/view) and is applied with the rest. -->
       <div class="flex flex-wrap items-end gap-3 border-b p-4">
         <div class="flex min-w-48 flex-1 flex-col gap-1.5 sm:max-w-sm sm:flex-none">
           <Label
@@ -43,6 +45,19 @@
             class="w-full"
             :placeholder="t('dataQuality.searchPlaceholder')"
             @keyup.enter="applyFilters"
+          />
+        </div>
+
+        <div class="flex min-w-44 flex-1 flex-col gap-1.5 sm:max-w-64 sm:flex-none">
+          <Label
+            for="data-quality-target-scope"
+            class="text-sm font-medium leading-none"
+          >
+            {{ t("dataQuality.targetScope.label") }}
+          </Label>
+          <TargetScopeFilter
+            id="data-quality-target-scope"
+            v-model="scope"
           />
         </div>
 
@@ -428,6 +443,7 @@ import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import TablePager from "@/components/common/TablePager.vue";
+import TargetScopeFilter from "@/components/data-quality/TargetScopeFilter.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -462,6 +478,7 @@ import {
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import {
   formatTargetPath,
+  type QualityTargetScope,
   qualityRuleStateKey,
   qualityRuleStateVariant,
   qualityRuleTypeKey,
@@ -497,10 +514,12 @@ const search = ref("");
 const dimension = ref("-");
 const severity = ref("-");
 const state = ref("-");
+const scope = ref<QualityTargetScope>();
 const appliedSearch = ref("");
 const appliedDimension = ref("-");
 const appliedSeverity = ref("-");
 const appliedState = ref("-");
+const appliedScope = ref<QualityTargetScope>();
 
 const pageSize = ref(50);
 const error = ref("");
@@ -513,7 +532,8 @@ const hasActiveFilters = computed(
     appliedSearch.value !== "" ||
     appliedDimension.value !== "-" ||
     appliedSeverity.value !== "-" ||
-    appliedState.value !== "-"
+    appliedState.value !== "-" ||
+    appliedScope.value !== undefined
 );
 
 const dimensionOptions: Array<{
@@ -574,6 +594,10 @@ const {
       pageSize: pageSize.value,
       pageToken,
       search: appliedSearch.value,
+      instance: appliedScope.value?.instance,
+      database: appliedScope.value?.database,
+      schema: appliedScope.value?.schema,
+      table: appliedScope.value?.table,
       dimension: enumFromFilter(appliedDimension.value, [
         QualityDimension.UNSPECIFIED,
         QualityDimension.COMPLETENESS,
@@ -622,6 +646,7 @@ function applyFilters() {
   appliedDimension.value = dimension.value;
   appliedSeverity.value = severity.value;
   appliedState.value = state.value;
+  appliedScope.value = scope.value ? { ...scope.value } : undefined;
   void resetPage();
 }
 
@@ -630,6 +655,7 @@ function clearFilters() {
   dimension.value = "-";
   severity.value = "-";
   state.value = "-";
+  scope.value = undefined;
   applyFilters();
 }
 

@@ -934,6 +934,14 @@
     },
     "targetChanged": "目标 Schema 已变更",
     "targetChangedHint": "自规则保存以来目标结构已变更，请在下次执行前检查规则。",
+    "targetScope": {
+      "apply": "筛选到此范围",
+      "clear": "清除目标范围",
+      "description": "先选择实例，再逐层进入数据库、Schema 或表/视图；在任一层应用即可把列表缩小到该范围。",
+      "label": "目标范围",
+      "placeholder": "全部目标",
+      "title": "按目标范围筛选"
+    },
     "threshold": "阈值",
     "thresholdGreaterThan": "> {value}",
     "thresholdInside": "位于 [{lower}, {upper}]",
