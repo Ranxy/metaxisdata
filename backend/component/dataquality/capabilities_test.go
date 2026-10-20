@@ -45,7 +45,7 @@ func TestCapabilityMatrix(t *testing.T) {
 		{name: "pg uuid", engine: storepb.Engine_POSTGRES, columnType: "uuid",
 			want: columnCapabilities{comparison: true, grouping: true, countDistinct: true}},
 		{name: "pg bytea", engine: storepb.Engine_POSTGRES, columnType: "bytea",
-			want: columnCapabilities{comparison: true, grouping: true, countDistinct: true}},
+			want: columnCapabilities{comparison: true, grouping: true, countDistinct: true, binary: true}},
 		{name: "pg interval", engine: storepb.Engine_POSTGRES, columnType: "interval",
 			want: columnCapabilities{comparison: true, grouping: true, countDistinct: true, extrema: true}},
 		{name: "pg inet", engine: storepb.Engine_POSTGRES, columnType: "inet",
@@ -62,15 +62,21 @@ func TestCapabilityMatrix(t *testing.T) {
 			want: columnCapabilities{comparison: true, grouping: true, countDistinct: true, extrema: true}},
 		{name: "pg matview integer array", engine: storepb.Engine_POSTGRES, columnType: "integer[]",
 			want: columnCapabilities{comparison: true, grouping: true, countDistinct: true, extrema: true}},
+		{name: "pg matview varchar array", engine: storepb.Engine_POSTGRES, columnType: "character varying[]",
+			want: columnCapabilities{comparison: true, grouping: true, countDistinct: true, extrema: true}},
+		{name: "pg matview char array", engine: storepb.Engine_POSTGRES, columnType: "character(4)[]",
+			want: columnCapabilities{comparison: true, grouping: true, countDistinct: true, extrema: true}},
+		{name: "pg table citext array", engine: storepb.Engine_POSTGRES, columnType: "_citext",
+			want: columnCapabilities{comparison: true, grouping: true, countDistinct: true, extrema: true}},
 		{name: "pg box compares but does not group", engine: storepb.Engine_POSTGRES, columnType: "box",
 			want: columnCapabilities{comparison: true}},
 		{name: "pg point has no equality", engine: storepb.Engine_POSTGRES, columnType: "point", want: columnCapabilities{}},
 		{name: "pg polygon has no equality", engine: storepb.Engine_POSTGRES, columnType: "polygon", want: columnCapabilities{}},
 		{name: "pg PostGIS geometry", engine: storepb.Engine_POSTGRES, columnType: "public.geometry", want: columnCapabilities{}},
-		{name: "pg enum", engine: storepb.Engine_POSTGRES, columnType: "public.mood",
-			want: columnCapabilities{comparison: true, grouping: true}},
-		{name: "pg user-defined over json is not assumed equatable for profiles", engine: storepb.Engine_POSTGRES,
-			columnType: "dqprobe.myjson", want: columnCapabilities{comparison: true, grouping: true}},
+		{name: "pg user-defined types are conservative", engine: storepb.Engine_POSTGRES, columnType: "public.mood",
+			want: columnCapabilities{}},
+		{name: "pg domain over json is conservative", engine: storepb.Engine_POSTGRES,
+			columnType: "dqprobe.myjson", want: columnCapabilities{}},
 		{name: "pg text array", engine: storepb.Engine_POSTGRES, columnType: "_text",
 			want: columnCapabilities{comparison: true, grouping: true, countDistinct: true, extrema: true}},
 		{name: "pg json array has no equality", engine: storepb.Engine_POSTGRES, columnType: "_json", want: columnCapabilities{}},
@@ -83,24 +89,24 @@ func TestCapabilityMatrix(t *testing.T) {
 			want: columnCapabilities{text: true, noColumnCount: true}},
 		{name: "mssql xml", engine: storepb.Engine_MSSQL, columnType: "xml", want: columnCapabilities{}},
 		{name: "mssql varbinary", engine: storepb.Engine_MSSQL, columnType: "varbinary(max)", want: columnCapabilities{
-			comparison: true, grouping: true, countDistinct: true, length: true, extrema: true,
+			comparison: true, grouping: true, countDistinct: true, length: true, extrema: true, binary: true,
 		}},
 		{name: "mssql uniqueidentifier", engine: storepb.Engine_MSSQL, columnType: "uniqueidentifier", want: columnCapabilities{
 			comparison: true, grouping: true, countDistinct: true, length: true, extrema: true,
 		}},
 		{name: "mssql geometry", engine: storepb.Engine_MSSQL, columnType: "geometry", want: columnCapabilities{}},
-		{name: "mssql hierarchyid compares and groups", engine: storepb.Engine_MSSQL, columnType: "hierarchyid",
-			want: columnCapabilities{comparison: true, grouping: true, countDistinct: true}},
+		{name: "mssql hierarchyid compares, groups and orders", engine: storepb.Engine_MSSQL, columnType: "hierarchyid",
+			want: columnCapabilities{comparison: true, grouping: true, countDistinct: true, extrema: true}},
 		// MySQL family.
 		{name: "mysql varchar", engine: storepb.Engine_MYSQL, columnType: "varchar(64)", want: text},
 		{name: "mysql json cannot compare", engine: storepb.Engine_MYSQL, columnType: "json",
 			want: columnCapabilities{grouping: true, countDistinct: true, regex: true, length: true, extrema: true}},
 		{name: "mysql geometry", engine: storepb.Engine_MYSQL, columnType: "geometry",
-			want: columnCapabilities{grouping: true, countDistinct: true}},
+			want: columnCapabilities{grouping: true, countDistinct: true, binary: true}},
 		{name: "mysql geomcollection", engine: storepb.Engine_MYSQL, columnType: "geomcollection",
-			want: columnCapabilities{grouping: true, countDistinct: true}},
+			want: columnCapabilities{grouping: true, countDistinct: true, binary: true}},
 		{name: "mysql blob", engine: storepb.Engine_MYSQL, columnType: "blob", want: columnCapabilities{
-			comparison: true, grouping: true, countDistinct: true, regex: true, length: true, extrema: true,
+			comparison: true, grouping: true, countDistinct: true, regex: true, length: true, extrema: true, binary: true,
 		}},
 		// StarRocks.
 		{name: "starrocks varchar", engine: storepb.Engine_STARROCKS, columnType: "varchar(64)", want: text},
@@ -110,11 +116,15 @@ func TestCapabilityMatrix(t *testing.T) {
 			want: columnCapabilities{grouping: true, countDistinct: true}},
 		{name: "starrocks array of json cannot group", engine: storepb.Engine_STARROCKS, columnType: "array<json>",
 			want: columnCapabilities{}},
+		{name: "starrocks nested struct json array cannot group", engine: storepb.Engine_STARROCKS,
+			columnType: "array<struct<a json>>", want: columnCapabilities{}},
+		{name: "starrocks nested map json array cannot group", engine: storepb.Engine_STARROCKS,
+			columnType: "array<map<varchar(64),json>>", want: columnCapabilities{}},
 		{name: "starrocks map", engine: storepb.Engine_STARROCKS, columnType: "map<varchar,int>", want: columnCapabilities{}},
 		{name: "starrocks bitmap has no null test", engine: storepb.Engine_STARROCKS, columnType: "bitmap",
-			want: columnCapabilities{countDistinct: true, noNullTest: true}},
+			want: columnCapabilities{countDistinct: true, noNullTest: true, binary: true}},
 		{name: "starrocks varbinary measures but does not order", engine: storepb.Engine_STARROCKS, columnType: "varbinary",
-			want: columnCapabilities{grouping: true, countDistinct: true, length: true}},
+			want: columnCapabilities{grouping: true, countDistinct: true, length: true, binary: true}},
 		// Doris.
 		{name: "doris varchar", engine: storepb.Engine_DORIS, columnType: "varchar(64)", want: text},
 		{name: "doris json groups but cannot compare", engine: storepb.Engine_DORIS, columnType: "json",
@@ -361,12 +371,28 @@ func TestValidationUsesEngineTypeSpellings(t *testing.T) {
 	require.NoError(t, ValidateConfig(mssql, storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
 		validationNullPercentConfig(&storepb.NullPercentConfig{Column: "legacy", MaxNullCount: validationPtr(int64(0))})))
 
+	// Doris bitmap accepts IS NULL (4.1.4); the capability must not be copied from
+	// StarRocks.
+	dorisBitmap := capabilityTarget(storepb.Engine_DORIS, capabilityColumn("bm", "bitmap"))
+	require.NoError(t, ValidateConfig(dorisBitmap, storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+		validationNullPercentConfig(&storepb.NullPercentConfig{Column: "bm", MaxNullCount: validationPtr(int64(0))})))
+	require.NoError(t, ValidateConfig(dorisBitmap, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		rowCountWithJSONFilterOn("bm", storepb.QualityFilterOperator_QUALITY_FILTER_OPERATOR_IS_NULL)))
+
 	// StarRocks bitmap rejects even IS NULL, so a plain null check cannot run.
 	bitmap := capabilityTarget(storepb.Engine_STARROCKS, capabilityColumn("bm", "bitmap"))
 	require.Error(t, ValidateConfig(bitmap, storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
 		validationNullPercentConfig(&storepb.NullPercentConfig{Column: "bm", MaxNullCount: validationPtr(int64(0))})))
 	require.Error(t, ValidateConfig(bitmap, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
 		rowCountWithJSONFilterOn("bm", storepb.QualityFilterOperator_QUALITY_FILTER_OPERATOR_IS_NULL)))
+
+	// A PostgreSQL composite type cannot bind a parameter at all, so it must be
+	// refused for comparison rules and uniqueness.
+	composite := capabilityTarget(storepb.Engine_POSTGRES, capabilityColumn("comp", "dqprobe.mycomp"))
+	require.Error(t, ValidateConfig(composite, storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
+		validationUniqueConfig(&storepb.UniqueConfig{Column: "comp"})))
+	require.Error(t, ValidateConfig(composite, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		rowCountWithJSONFilterOn("comp", storepb.QualityFilterOperator_QUALITY_FILTER_OPERATOR_EQ)))
 
 	// PostgreSQL BIT is a bit string, not a boolean: filters bind a string that the
 	// engine parses as bits, while text rules are not applicable.

@@ -167,10 +167,6 @@ func profileSelectedColumns(target ResolvedTarget, columns []string, maxColumns 
 		if column.Kind == ColumnKindUnknown {
 			return nil, invalidConfig("column %q has a type this build cannot profile", column.Name)
 		}
-		capabilities := capabilitiesFor(target.Engine, column)
-		if capabilities.noColumnCount && capabilities.noNullTest {
-			return nil, invalidConfig("column %q has a type this build cannot profile", column.Name)
-		}
 		selected = append(selected, newProfileColumn(target.Engine, column))
 	}
 	if len(selected) > maxColumns {
@@ -262,8 +258,8 @@ func profileFromAggregateColumn(column profileColumn, prefix string, total int64
 		if err != nil {
 			return nil, err
 		}
-		profile.MinValue = profileValueString(minValue)
-		profile.MaxValue = profileValueString(maxValue)
+		profile.MinValue = profileValueString(minValue, column.Binary)
+		profile.MaxValue = profileValueString(maxValue, column.Binary)
 	}
 	if column.Facts&profileFactLength != 0 {
 		minLengthValue, err := read(prefix + "min_len")
@@ -330,7 +326,7 @@ func applyProfileSample(profiles map[string]*storepb.ColumnProfile, selected []p
 		// Top-K is only meaningful for a low-cardinality column; the cardinality
 		// gate uses the exact aggregate count, the frequencies use the sample.
 		if profile.DistinctCount > 0 && profile.DistinctCount <= profileTopValuesDistinctLimit {
-			profile.TopValues = profileTopValues(values[index])
+			profile.TopValues = profileTopValues(values[index], column.Binary)
 		}
 	}
 	return nil

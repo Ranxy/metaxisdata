@@ -330,10 +330,16 @@ func TestValidateAggregateConfig(t *testing.T) {
 			wantMessage: "needs a numeric column",
 		},
 		{
+			name:        "min on a temporal column",
+			engine:      storepb.Engine_POSTGRES,
+			config:      aggregateConfig("created_at", storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MIN, proto.Float64(0), nil),
+			wantMessage: "needs a numeric column",
+		},
+		{
 			name:        "min on a string column",
 			engine:      storepb.Engine_POSTGRES,
 			config:      aggregateConfig("status", storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MIN, proto.Float64(0), nil),
-			wantMessage: "needs a numeric or temporal column",
+			wantMessage: "needs a numeric column",
 		},
 		{
 			name:        "no bounds",

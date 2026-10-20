@@ -719,3 +719,22 @@ func TestExecutePassesCompiledArguments(t *testing.T) {
 	require.Len(t, queryer.args, 1)
 	require.Equal(t, []any{"paid", int64(10), int64(100)}, queryer.args[0])
 }
+
+// TestParseAggregateNumber pins the driver string spellings: a plain number and a
+// PostgreSQL money rendering (currency symbol, thousands separators, parentheses for
+// negatives) both become the numeric observation.
+func TestParseAggregateNumber(t *testing.T) {
+	t.Parallel()
+
+	value, err := parseAggregateNumber("1.25")
+	require.NoError(t, err)
+	require.Equal(t, 1.25, value)
+	value, err = parseAggregateNumber("$1,234.50")
+	require.NoError(t, err)
+	require.Equal(t, 1234.5, value)
+	value, err = parseAggregateNumber("($1.25)")
+	require.NoError(t, err)
+	require.Equal(t, -1.25, value)
+	_, err = parseAggregateNumber("not money")
+	require.Error(t, err)
+}

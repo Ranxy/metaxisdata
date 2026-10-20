@@ -783,7 +783,7 @@ func TestProfileFactsFor(t *testing.T) {
 		{storepb.Engine_MSSQL, "datetime", profileFactDistinct | profileFactExtrema},
 		{storepb.Engine_MSSQL, "datetimeoffset", profileFactDistinct | profileFactExtrema},
 		{storepb.Engine_MSSQL, "bit", profileFactDistinct},
-		{storepb.Engine_MSSQL, "hierarchyid", profileFactDistinct},
+		{storepb.Engine_MSSQL, "hierarchyid", profileFactDistinct | profileFactExtrema},
 	}
 	for _, test := range tests {
 		t.Run(test.engine.String()+"/"+test.columnType, func(t *testing.T) {
@@ -870,8 +870,43 @@ func TestProfileStarRocksBitmapSQLGolden(t *testing.T) {
 func TestProfileHexRendersBinaryValues(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, "0xfffe", profileValueString([]byte{0xff, 0xfe}))
-	require.Equal(t, "plain", profileValueString("plain"))
+	require.Equal(t, "0xfffe", profileValueString([]byte{0xff, 0xfe}, true))
+	require.Equal(t, "plain", profileValueString("plain", false))
+	// A binary value that happens to spell "0xfffe" must not collide with the hex
+	// rendering of the bytes ff fe.
+	require.NotEqual(t,
+		profileValueString([]byte("0xfffe"), true),
+		profileValueString([]byte{0xff, 0xfe}, true))
+}
+
+// TestProfileCharacterArraySQLGolden pins blocker B-1 from the third review: a
+// materialized view stores "character varying[]", which must be profiled as an array
+// (no CHAR_LENGTH), not as a text scalar.
+func TestProfileCharacterArraySQLGolden(t *testing.T) {
+	t.Parallel()
+
+	target := profileFactTarget(storepb.Engine_POSTGRES, "character varying[]")
+	selected := profileTestColumns(t, target, "payload")
+	require.Equal(t, []string{"total_rows", "c0_non_null", "c0_distinct", "c0_min", "c0_max"}, profileAggregateAliases(selected))
+	queryer := &profileFakeQueryer{
+		aggregate: profileTestAggregate(selected, 0, map[string][]any{"payload": {int64(0), int64(0), nil, nil}}),
+		sample:    profileTestSample(selected, nil),
+	}
+	_, err := NewProfiler().Profile(context.Background(), queryer, target, []string{"payload"}, ProfileOptions{})
+	require.NoError(t, err)
+	require.Equal(t, `SELECT COUNT(*) AS total_rows, COUNT("payload") AS c0_non_null, `+
+		`COUNT(DISTINCT "payload") AS c0_distinct, MIN("payload") AS c0_min, MAX("payload") AS c0_max `+
+		`FROM "public"."orders"`, queryer.aggregateSQL)
+}
+
+// TestProfileStarRocksNestedJSONArraySQLGolden pins blocker B-2: a nested-json array
+// must not be claimed groupable, so no COUNT(DISTINCT) is emitted.
+func TestProfileStarRocksNestedJSONArraySQLGolden(t *testing.T) {
+	t.Parallel()
+
+	target := profileFactTarget(storepb.Engine_STARROCKS, "array<struct<a json>>")
+	selected := profileTestColumns(t, target, "payload")
+	require.Equal(t, []string{"total_rows", "c0_non_null"}, profileAggregateAliases(selected))
 }
 
 // TestProfileJSONBColumnSQLGolden pins that a jsonb column keeps an exact distinct

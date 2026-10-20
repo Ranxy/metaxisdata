@@ -1122,8 +1122,10 @@ func validateAggregateColumnKind(column ColumnInfo, function storepb.QualityAggr
 		return nil
 	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MIN,
 		storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MAX:
-		if column.Kind != ColumnKindNumeric && column.Kind != ColumnKindTemporal {
-			return invalidConfig("%s needs a numeric or temporal column; %q is %s", aggregateFunctionName(function), column.Name, column.Type)
+		// The observation is read as a number (executor.aggregateFloat); a temporal
+		// MIN/MAX returns a timestamp and fails every run with BAD_DATA.
+		if column.Kind != ColumnKindNumeric {
+			return invalidConfig("%s needs a numeric column; %q is %s", aggregateFunctionName(function), column.Name, column.Type)
 		}
 		return nil
 	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_UNSPECIFIED:

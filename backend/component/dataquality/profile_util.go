@@ -71,6 +71,9 @@ type profileColumn struct {
 	// CaseCount selects COUNT(CASE WHEN col IS NOT NULL THEN 1 END) over COUNT(col):
 	// SQL Server rejects the latter for text, ntext and image.
 	CaseCount bool
+	// Binary marks bytes (varbinary, blob, spatial), whose display values are hex
+	// so two different byte strings cannot collide with an ASCII "0x…" spelling.
+	Binary bool
 }
 
 // newProfileColumn derives one column's profile facts from the shared type
@@ -82,6 +85,7 @@ func newProfileColumn(engine storepb.Engine, column ColumnInfo) profileColumn {
 		EstimatedDistinct: !capabilities.countDistinct,
 		Patterns:          capabilities.text,
 		CaseCount:         capabilities.noColumnCount,
+		Binary:            capabilities.binary,
 	}
 	if capabilities.countDistinct {
 		profile.Facts |= profileFactDistinct
@@ -128,9 +132,9 @@ func profileAliasPrefix(index int) string {
 // whole table (a profile is not filtered) with one scan: the row count, then per
 // column the non-NULL count and the facts its type supports.
 //
-// A column with no aggregate fact gets its non-NULL count from a CASE expression
-// rather than COUNT(col): SQL Server rejects COUNT on text, ntext and image, and the
-// CASE form is valid wherever IS NOT NULL is.
+// A column with no aggregate fact still needs a non-NULL count: COUNT(col) is the
+// default, and only a type that cannot be counted (SQL Server text, ntext, image)
+// uses a CASE expression.
 func buildProfileAggregateSQL(dialect Dialect, table string, columns []profileColumn) string {
 	expressions := make([]string, 0, 1+len(columns)*6)
 	expressions = append(expressions, "COUNT(*) AS total_rows")
@@ -202,11 +206,13 @@ func profileResultIndexes(columns, expected []string) (map[string]int, error) {
 // profileValueString renders one observed value for display, truncated to the
 // storage bound. A NULL renders as the empty string: "no value" and "empty text"
 // both display as nothing, and the null count already carries the distinction.
-func profileValueString(value any) string {
+// profileValueString renders one observed value for display. Binary values are
+// hex-encoded unconditionally: the stored profile is protojson (which rejects
+// invalid UTF-8), and a validity check alone would let the bytes "0xfffe" and the
+// two bytes ff fe render identically.
+func profileValueString(value any, binary bool) string {
 	text := profileValueText(value)
-	if !utf8.ValidString(text) {
-		// Binary values (SQL Server varbinary, MySQL blob) are not text. The stored
-		// profile is protojson, which refuses invalid UTF-8, so render them as hex.
+	if binary || !utf8.ValidString(text) {
 		text = "0x" + hex.EncodeToString([]byte(text))
 	}
 	return common.TruncateUTF8Bytes(text, profileMaxValueBytes)
@@ -313,7 +319,7 @@ func profilePatterns(values []any) []string {
 		if value == nil {
 			continue
 		}
-		text := strings.TrimSpace(profileValueString(value))
+		text := strings.TrimSpace(profileValueString(value, false))
 		if text == "" {
 			continue
 		}
@@ -384,13 +390,13 @@ func profileLooksLikeAlpha(text string) bool {
 // value is truncated before counting, so two long values that differ only past the
 // display bound merge into one entry instead of producing two indistinguishable
 // rows. The counts are sample frequencies, not table frequencies.
-func profileTopValues(values []any) []*storepb.ProfileValue {
+func profileTopValues(values []any, binary bool) []*storepb.ProfileValue {
 	counts := make(map[string]int64, len(values))
 	for _, value := range values {
 		if value == nil {
 			continue
 		}
-		text := profileValueString(value)
+		text := profileValueString(value, binary)
 		if text == "" {
 			continue
 		}

@@ -182,7 +182,8 @@ func CompileFilter(dialect Dialect, target ResolvedTarget, filter Filter) (strin
 			}
 		default:
 			// A value comparison needs equality for the column's type. IS NULL and
-			// IS NOT NULL above work for every type, so they are checked first.
+			// IS NOT NULL above need only the NULL-test capability (StarRocks
+			// bitmap/hll/percentile reject even that).
 			if column.Kind == ColumnKindUnknown {
 				return "", nil, invalidConfig("filter column %q has a type this build cannot filter on", column.Name)
 			}

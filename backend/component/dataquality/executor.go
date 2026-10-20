@@ -576,7 +576,7 @@ func aggregateFloat(result *db.QueryResult, indexes map[string]int, column strin
 	case int64:
 		return float64(typed), true, nil
 	case string:
-		parsed, err := strconv.ParseFloat(strings.TrimSpace(typed), 64)
+		parsed, err := parseAggregateNumber(typed)
 		if err != nil {
 			return 0, false, badData("column %q is not a number (%q)", column, typed)
 		}
@@ -584,6 +584,33 @@ func aggregateFloat(result *db.QueryResult, indexes map[string]int, column strin
 	default:
 		return 0, false, badData("column %q has an unexpected %T value", column, value)
 	}
+}
+
+// parseAggregateNumber parses a driver's string rendering of a number. PostgreSQL
+// money arrives decorated with the locale's currency symbol and separators, so
+// those are stripped before the parse; a plain numeric string is unaffected.
+func parseAggregateNumber(value string) (float64, error) {
+	trimmed := strings.TrimSpace(value)
+	negative := strings.HasPrefix(trimmed, "(") && strings.HasSuffix(trimmed, ")")
+	cleaned := strings.Map(func(r rune) rune {
+		switch {
+		case r >= '0' && r <= '9', r == '.', r == 'e', r == 'E', r == '+', r == '-':
+			return r
+		default:
+			return -1
+		}
+	}, strings.Trim(trimmed, "()"))
+	if cleaned == "" {
+		return 0, strconv.ErrSyntax
+	}
+	parsed, err := strconv.ParseFloat(cleaned, 64)
+	if err != nil {
+		return 0, err
+	}
+	if negative {
+		parsed = -parsed
+	}
+	return parsed, nil
 }
 
 // aggregateTimestamp reads one optional timestamp column. The scanner decodes a

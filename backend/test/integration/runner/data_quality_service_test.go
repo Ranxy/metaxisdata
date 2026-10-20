@@ -670,6 +670,8 @@ INSERT INTO public.audit_log (created_at, payload, client_mac) VALUES
   ('2026-01-01 00:00:00+00', '{"kind":"login"}', '08:00:2b:01:02:03'),
   ('2026-01-02 00:00:00+00', '{"kind":"audit"}', '08:00:2b:01:02:04'),
   ('2026-01-03 00:00:00+00', '{"kind":"login"}', '08:00:2b:01:02:03');
+CREATE MATERIALIZED VIEW public.audit_log_tags AS
+  SELECT payload, ARRAY['x']::varchar[] AS tags FROM public.audit_log;
 `))
 
 	_, err := env.CreateDataSource(ctx, common.FormatInstance(instanceID), &v1pb.DataSource{
@@ -717,6 +719,22 @@ INSERT INTO public.audit_log (created_at, payload, client_mac) VALUES
 	require.Empty(t, mac.GetMinValue())
 	require.Empty(t, mac.GetMaxValue())
 	require.Nil(t, mac.MinLength)
+
+	// A materialized view stores its varchar array as "character varying[]"; it must
+	// be profiled as an array (no CHAR_LENGTH) rather than a text scalar.
+	viewGUID := waitForMetaGUIDByName(ctx, t, env,
+		fmt.Sprintf("%s;%s", instanceID, sourceDatabase), storepb.MetaType_MATERIALIZED_VIEW, "audit_log_tags")
+	viewProfiles, err := client.ProfileColumns(ctx, withToken(env.AdminToken(), &v1pb.ProfileColumnsRequest{
+		Parent:    "workspaces/-",
+		TableGuid: viewGUID,
+		MetaType:  v1pb.MetaType_MATERIALIZED_VIEW,
+		Columns:   []string{"payload", "tags"},
+	}))
+	require.NoError(t, err)
+	require.Len(t, viewProfiles.Msg.GetColumnProfiles(), 2)
+	for _, profile := range viewProfiles.Msg.GetColumnProfiles() {
+		require.Nil(t, profile.GetProfile().MinLength, "an array column has no character length")
+	}
 
 	// The ordinary columns still carry the facts their types support.
 	require.Equal(t, "1", profiles["id"].GetProfile().GetMinValue())
@@ -863,6 +881,27 @@ CREATE VIEW public.code_numbers AS SELECT 1::bigint AS n;
 			want: "the engine cannot compare values of this type",
 		},
 		{
+			name: "aggregate MIN on a temporal column",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_Aggregate{Aggregate: &v1pb.AggregateConfig{
+					Column: "created_at", Function: v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MIN,
+				}},
+			}),
+			want: "needs a numeric column",
+		},
+		{
+			name: "cross_table MAX on a temporal right column",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_CrossTable{CrossTable: &v1pb.CrossTableConfig{
+					RightTable:    "opaque_probe",
+					LeftFunction:  v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
+					RightFunction: v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MAX,
+					RightColumn:   "created_at",
+				}},
+			}),
+			want: "needs a numeric column",
+		},
+		{
 			name: "cross_table MIN on a temporal left column",
 			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, &v1pb.QualityRuleConfig{
 				Config: &v1pb.QualityRuleConfig_CrossTable{CrossTable: &v1pb.CrossTableConfig{
@@ -904,7 +943,7 @@ CREATE VIEW public.code_numbers AS SELECT 1::bigint AS n;
 					RightColumn:   "payload_json",
 				}},
 			}),
-			want: "needs a numeric or temporal column",
+			want: "needs a numeric column",
 		},
 	}
 	for _, test := range rejected {

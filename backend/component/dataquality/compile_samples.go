@@ -135,10 +135,10 @@ func sampleQuery(input CompileInput, sql string, args []any, columns []string, l
 // sampleNullPercent selects the rows whose column is NULL.
 func sampleNullPercent(input CompileInput, limit int) (CompiledQuery, error) {
 	config := input.Config.GetNullPercent()
-	// A plain null check works on every type; only the custom missing values compare
-	// the column, and only they need comparison support. The aggregate compiler
-	// applies the same gate, so this sample can never be stricter than the query it
-	// is evidence for.
+	// The plain null check needs the NULL-test capability (StarRocks bitmap/hll
+	// reject every predicate); only the custom missing values compare the column and
+	// need comparison support. The aggregate compiler applies the same gates, so this
+	// sample can never be stricter than the query it is evidence for.
 	column, err := requireNullTestColumn(input.Target, config.GetColumn())
 	if err == nil && len(config.GetNullValues()) > 0 {
 		_, err = requireComparisonColumn(input.Target, config.GetColumn())
