@@ -237,3 +237,14 @@ func TestListQualityRunsByIDsEmptyInputIsEmptySlice(t *testing.T) {
 	require.NotNil(t, runs)
 	require.Empty(t, runs)
 }
+
+// TestCountQualityRunsSinceRejectsTheZeroTime pins the one input the tally cannot
+// mean: without a lower bound it would count every run the deployment ever made.
+func TestCountQualityRunsSinceRejectsTheZeroTime(t *testing.T) {
+	t.Parallel()
+
+	s := &Store{}
+	count, err := s.CountQualityRunsSince(context.Background(), time.Time{})
+	require.Equal(t, 0, count)
+	require.Equal(t, common.Invalid, common.ErrorCode(err))
+}

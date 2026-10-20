@@ -99,6 +99,85 @@ func TestConvertToV1NotificationMapsAnOpenLineageDetail(t *testing.T) {
 	require.Equal(t, int32(2), converted.GetOpenlineage().GetFailedCount())
 }
 
+func TestConvertToV1NotificationMapsADataQualityDetail(t *testing.T) {
+	t.Parallel()
+
+	converted := convertToV1Notification(&storepb.Notification{
+		Id:       10,
+		Parent:   "workspaces/ws",
+		Type:     storepb.NotificationType_NOTIFICATION_TYPE_DATA_QUALITY,
+		Severity: storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR,
+		Detail: &storepb.Notification_DataQuality{DataQuality: &storepb.DataQualityDetail{
+			Kind:            storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED,
+			Rule:            "workspaces/ws/qualityRules/rule1",
+			RuleTitle:       "orders status must not be null",
+			TargetGuid:      "inst;db;public;orders",
+			TargetPath:      "inst1/db1/public/orders.status",
+			FromStatus:      storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED,
+			ToStatus:        storepb.QualityStatus_QUALITY_STATUS_FAIL,
+			Severity:        storepb.QualitySeverity_QUALITY_SEVERITY_ERROR,
+			ObservedValue:   42,
+			ObservedUnit:    "rows",
+			Issue:           "workspaces/ws/qualityIssues/issue1",
+			Run:             "workspaces/ws/qualityRuns/run1",
+			FailedRows:      42,
+			TotalRows:       100,
+			ErrorCode:       "TIMEOUT",
+			FailedRuleCount: 12,
+			TotalRuleCount:  40,
+		}},
+	}, "ws")
+
+	require.Equal(t, "workspaces/ws/notifications/10", converted.GetName())
+	require.Equal(t, v1pb.NotificationType_NOTIFICATION_TYPE_DATA_QUALITY, converted.GetType())
+	require.Equal(t, v1pb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR, converted.GetSeverity())
+	detail := converted.GetDataQuality()
+	require.NotNil(t, detail)
+	require.Equal(t, v1pb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED, detail.GetKind())
+	require.Equal(t, "workspaces/ws/qualityRules/rule1", detail.GetRule())
+	require.Equal(t, "orders status must not be null", detail.GetRuleTitle())
+	require.Equal(t, "inst;db;public;orders", detail.GetTargetGuid())
+	require.Equal(t, "inst1/db1/public/orders.status", detail.GetTargetPath())
+	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, detail.GetFromStatus())
+	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_FAIL, detail.GetToStatus())
+	require.Equal(t, v1pb.QualitySeverity_QUALITY_SEVERITY_ERROR, detail.GetSeverity())
+	require.InDelta(t, 42, detail.GetObservedValue(), 1e-9)
+	require.Equal(t, "rows", detail.GetObservedUnit())
+	require.Equal(t, "workspaces/ws/qualityIssues/issue1", detail.GetIssue())
+	require.Equal(t, "workspaces/ws/qualityRuns/run1", detail.GetRun())
+	require.Equal(t, int64(42), detail.GetFailedRows())
+	require.Equal(t, int64(100), detail.GetTotalRows())
+	require.Equal(t, "TIMEOUT", detail.GetErrorCode())
+	require.Equal(t, int32(12), detail.GetFailedRuleCount())
+	require.Equal(t, int32(40), detail.GetTotalRuleCount())
+}
+
+// A storm summary has no issue and no observation; the two tallies are what the
+// client renders.
+func TestConvertToV1NotificationMapsAStormSummary(t *testing.T) {
+	t.Parallel()
+
+	converted := convertToV1Notification(&storepb.Notification{
+		Id:       11,
+		Parent:   "workspaces/ws",
+		Type:     storepb.NotificationType_NOTIFICATION_TYPE_DATA_QUALITY,
+		Severity: storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR,
+		Detail: &storepb.Notification_DataQuality{DataQuality: &storepb.DataQualityDetail{
+			Kind:            storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY,
+			Run:             "workspaces/ws/qualityRuns/run1",
+			FailedRuleCount: 12,
+			TotalRuleCount:  40,
+		}},
+	}, "ws")
+
+	detail := converted.GetDataQuality()
+	require.NotNil(t, detail)
+	require.Equal(t, v1pb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY, detail.GetKind())
+	require.Equal(t, "workspaces/ws/qualityRuns/run1", detail.GetRun())
+	require.Equal(t, int32(12), detail.GetFailedRuleCount())
+	require.Equal(t, int32(40), detail.GetTotalRuleCount())
+}
+
 // A notification written by a newer server may carry a detail this build does
 // not know; the envelope still has to render.
 func TestConvertToV1NotificationWithoutAKnownDetail(t *testing.T) {
@@ -117,6 +196,7 @@ func TestConvertToV1NotificationHandlesNil(t *testing.T) {
 	require.Nil(t, convertToV1Notification(nil, "ws"))
 	require.Nil(t, convertSchemaSyncDetail(nil))
 	require.Nil(t, convertOpenLineageDetail(nil))
+	require.Nil(t, convertDataQualityDetail(nil))
 }
 
 // A mark-read batch is refused on its own shape before anything is read: the request

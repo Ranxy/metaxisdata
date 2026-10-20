@@ -12,6 +12,7 @@ import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
 import "v1/annotation.proto";
 import "v1/database_service.proto";
+import "v1/explain_sql_service.proto";
 
 option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
 
@@ -114,6 +115,115 @@ service DataQualityService {
     option (google.api.method_signature) = "parent";
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.runs.list";
   }
+
+  // List quality issues, newest first.
+  rpc ListQualityIssues(ListQualityIssuesRequest) returns (ListQualityIssuesResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityIssues"};
+    option (google.api.method_signature) = "parent";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.issues.list";
+  }
+
+  // Read one quality issue.
+  rpc GetQualityIssue(GetQualityIssueRequest) returns (QualityIssue) {
+    option (google.api.http) = {get: "/v1/{name=workspaces/*/qualityIssues/*}"};
+    option (google.api.method_signature) = "name";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.issues.get";
+  }
+
+  // Acknowledge, resolve or mute one quality issue.
+  rpc UpdateQualityIssue(UpdateQualityIssueRequest) returns (QualityIssue) {
+    option (google.api.http) = {
+      patch: "/v1/{issue.name=workspaces/*/qualityIssues/*}"
+      body: "issue"
+    };
+    option (google.api.method_signature) = "issue,update_mask";
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.issues.update";
+  }
+
+  // List the review queue of model-proposed rule drafts and semantic labels,
+  // newest first.
+  rpc ListQualitySuggestions(ListQualitySuggestionsRequest) returns (ListQualitySuggestionsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualitySuggestions"};
+    option (google.api.method_signature) = "parent";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.suggest";
+  }
+
+  // Accept or reject one queued suggestion. A decision is final: the store
+  // refuses a second one.
+  rpc UpdateQualitySuggestion(UpdateQualitySuggestionRequest) returns (QualitySuggestion) {
+    option (google.api.http) = {
+      post: "/v1/{name=workspaces/*/qualitySuggestions/*}:decide"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.suggest";
+  }
+
+  // List the cached deterministic profiles of columns. Profiles are read-only
+  // measurements; there is no get or update.
+  rpc ListColumnProfiles(ListColumnProfilesRequest) returns (ListColumnProfilesResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/columnProfiles"};
+    option (google.api.method_signature) = "parent";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+  }
+
+  // List the semantic labels asserted on columns.
+  rpc ListColumnLabels(ListColumnLabelsRequest) returns (ListColumnLabelsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/columnLabels"};
+    option (google.api.method_signature) = "parent";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+  }
+
+  // Accept a proposed semantic label or clear the label of one column.
+  rpc UpdateColumnLabel(UpdateColumnLabelRequest) returns (UpdateColumnLabelResponse) {
+    option (google.api.http) = {
+      post: "/v1/{parent=workspaces/*}/columnLabels:update"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.labels.update";
+  }
+
+  // Measure the deterministic statistics of up to 50 columns of one table.
+  rpc ProfileColumns(ProfileColumnsRequest) returns (ProfileColumnsResponse) {
+    option (google.api.http) = {
+      post: "/v1/{parent=workspaces/*}/columnProfiles:profile"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.profile.run";
+  }
+
+  // Turn a natural-language intent into queued rule drafts.
+  rpc SuggestQualityRule(SuggestQualityRuleRequest) returns (SuggestQualityRuleResponse) {
+    option (google.api.http) = {
+      post: "/v1/{parent=workspaces/*}/qualitySuggestions:suggestRule"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.suggest";
+  }
+
+  // Propose semantic labels for up to 50 columns of one table.
+  rpc SuggestColumnLabels(SuggestColumnLabelsRequest) returns (SuggestColumnLabelsResponse) {
+    option (google.api.http) = {
+      post: "/v1/{parent=workspaces/*}/qualitySuggestions:suggestLabels"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.suggest";
+  }
+
+  // Explain one failed result as a stream of hypotheses.
+  //
+  // No (google.api.http) annotation: this is a server-streaming method, and the
+  // REST gateway cannot carry one. The browser reaches the Connect endpoint
+  // directly, the way it does for ExplainSQL.
+  rpc ExplainQualityResult(ExplainQualityResultRequest) returns (stream ExplainQualityResultResponse) {
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.explain";
+  }
 }
 
 // QualityRuleType is the observation a rule makes. The value is immutable for a
@@ -198,6 +308,96 @@ enum QualityRuleState {
   QUALITY_RULE_STATE_ENABLED = 1;
   QUALITY_RULE_STATE_PAUSED = 2;
   QUALITY_RULE_STATE_ARCHIVED = 3;
+}
+
+// QualityIssueStatus is the lifecycle of a persistent problem behind a rule's
+// failures. RESOLVED is terminal: the next failing run opens a new issue rather
+// than reopening one.
+enum QualityIssueStatus {
+  QUALITY_ISSUE_STATUS_UNSPECIFIED = 0;
+  QUALITY_ISSUE_STATUS_OPEN = 1;
+  QUALITY_ISSUE_STATUS_ACKNOWLEDGED = 2;
+  QUALITY_ISSUE_STATUS_RESOLVED = 3;
+}
+
+// QualityResolutionReason is why an issue was closed.
+enum QualityResolutionReason {
+  QUALITY_RESOLUTION_REASON_UNSPECIFIED = 0;
+  QUALITY_RESOLUTION_REASON_FIXED = 1;
+  QUALITY_RESOLUTION_REASON_EXPECTED = 2;
+  QUALITY_RESOLUTION_REASON_NO_ACTION_NEEDED = 3;
+  QUALITY_RESOLUTION_REASON_DUPLICATE = 4;
+  QUALITY_RESOLUTION_REASON_AUTO_RECOVERED = 5;
+}
+
+// QualitySemanticType is the closed vocabulary a column may be labeled with. It
+// is the input to the deterministic semantic-type-to-rule mapping, so a model may
+// only choose from these values.
+enum QualitySemanticType {
+  QUALITY_SEMANTIC_TYPE_UNSPECIFIED = 0;
+  QUALITY_SEMANTIC_TYPE_EMAIL = 1;
+  QUALITY_SEMANTIC_TYPE_PHONE = 2;
+  QUALITY_SEMANTIC_TYPE_URL = 3;
+  QUALITY_SEMANTIC_TYPE_UUID = 4;
+  QUALITY_SEMANTIC_TYPE_IP = 5;
+  QUALITY_SEMANTIC_TYPE_COUNTRY_CODE = 6;
+  QUALITY_SEMANTIC_TYPE_CURRENCY = 7;
+  QUALITY_SEMANTIC_TYPE_AMOUNT = 8;
+  QUALITY_SEMANTIC_TYPE_QUANTITY = 9;
+  QUALITY_SEMANTIC_TYPE_PERCENTAGE = 10;
+  QUALITY_SEMANTIC_TYPE_ID = 11;
+  QUALITY_SEMANTIC_TYPE_BUSINESS_KEY = 12;
+  QUALITY_SEMANTIC_TYPE_TIMESTAMP = 13;
+  QUALITY_SEMANTIC_TYPE_DATE = 14;
+  QUALITY_SEMANTIC_TYPE_ENUM = 15;
+  QUALITY_SEMANTIC_TYPE_FREE_TEXT = 16;
+  QUALITY_SEMANTIC_TYPE_UNKNOWN = 17;
+}
+
+// QualitySuggestionKind is what a suggestion proposes.
+enum QualitySuggestionKind {
+  QUALITY_SUGGESTION_KIND_UNSPECIFIED = 0;
+  QUALITY_SUGGESTION_KIND_RULE_DRAFT = 1;
+  QUALITY_SUGGESTION_KIND_LABEL = 2;
+}
+
+// QualitySuggestionStatus is where a suggestion is in the review queue.
+enum QualitySuggestionStatus {
+  QUALITY_SUGGESTION_STATUS_UNSPECIFIED = 0;
+  QUALITY_SUGGESTION_STATUS_PENDING = 1;
+  QUALITY_SUGGESTION_STATUS_ACCEPTED = 2;
+  QUALITY_SUGGESTION_STATUS_REJECTED = 3;
+}
+
+// QualitySuggestionSource is what produced a suggestion.
+enum QualitySuggestionSource {
+  QUALITY_SUGGESTION_SOURCE_UNSPECIFIED = 0;
+  QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE = 1;
+  QUALITY_SUGGESTION_SOURCE_PROFILE = 2;
+}
+
+// QualityLabelSource is who asserted a column's semantic label.
+enum QualityLabelSource {
+  QUALITY_LABEL_SOURCE_UNSPECIFIED = 0;
+  QUALITY_LABEL_SOURCE_MANUAL = 1;
+  QUALITY_LABEL_SOURCE_LLM = 2;
+}
+
+// QualityLabelStatus is whether a semantic label is in effect.
+enum QualityLabelStatus {
+  QUALITY_LABEL_STATUS_UNSPECIFIED = 0;
+  QUALITY_LABEL_STATUS_SUGGESTED = 1;
+  QUALITY_LABEL_STATUS_ACCEPTED = 2;
+  QUALITY_LABEL_STATUS_REJECTED = 3;
+}
+
+// ColumnLabelAction is what UpdateColumnLabel does with one column's label.
+enum ColumnLabelAction {
+  COLUMN_LABEL_ACTION_UNSPECIFIED = 0;
+  // Store the given semantic label as a manually accepted one.
+  COLUMN_LABEL_ACTION_ACCEPT = 1;
+  // Remove the column's label.
+  COLUMN_LABEL_ACTION_CLEAR = 2;
 }
 
 // QualityObservedKind is the unit of the observed value a result records.
@@ -695,6 +895,209 @@ message QualityResultSummary {
   google.protobuf.Timestamp finish_time = 7;
 }
 
+// QualityIssue is the durable problem behind a rule's failures. A rule has at
+// most one unresolved issue; a later failing run touches it instead of opening
+// another, and a resolved issue is never reopened.
+message QualityIssue {
+  option (google.api.resource) = {
+    type: "metaxisdata/QualityIssue"
+    pattern: "workspaces/{workspace}/qualityIssues/{quality_issue}"
+  };
+
+  // Format: workspaces/{workspace}/qualityIssues/{quality_issue}
+  string name = 1;
+
+  // Format: workspaces/{workspace}/qualityRules/{quality_rule}
+  string rule = 2 [(google.api.resource_reference) = {type: "metaxisdata/QualityRule"}];
+
+  // The target as it was when the issue was opened.
+  QualityTarget target = 3;
+
+  QualityIssueStatus status = 4;
+
+  QualitySeverity severity = 5;
+
+  // The run that opened the issue. Unset when it was opened without a run.
+  string first_seen_run = 6 [(google.api.resource_reference) = {type: "metaxisdata/QualityRun"}];
+
+  // The newest run that observed the problem again.
+  string last_seen_run = 7 [(google.api.resource_reference) = {type: "metaxisdata/QualityRun"}];
+
+  google.protobuf.Timestamp first_seen_time = 8;
+  google.protobuf.Timestamp last_seen_time = 9;
+
+  // When the issue was resolved. Unset while it is open or acknowledged.
+  google.protobuf.Timestamp resolved_time = 10;
+
+  QualityResolutionReason resolution_reason = 11;
+
+  // The note recorded with the resolution.
+  string resolution_note = 12;
+
+  // Who acknowledged it. Format: users/{user}. Empty when never acknowledged.
+  string acknowledged_by = 13 [(google.api.resource_reference) = {type: "metaxisdata/User"}];
+
+  google.protobuf.Timestamp acknowledged_time = 14;
+
+  // Issue-level mute: notifications are suppressed until it passes, while the
+  // rule keeps running and results keep being recorded.
+  google.protobuf.Timestamp muted_until = 15;
+
+  // How many runs observed the problem while the issue was unresolved.
+  int32 occurrence_count = 16;
+}
+
+// ProfileValue is one frequent value of a low-cardinality column.
+message ProfileValue {
+  string value = 1;
+  int64 count = 2;
+}
+
+// ColumnProfileStats is the deterministic statistics of one column, measured
+// without a model. It is the evidence a semantic label cites.
+message ColumnProfileStats {
+  int64 total_rows = 1;
+  int64 null_count = 2;
+  int64 distinct_count = 3;
+  // True when the database refused an exact distinct count and the value came
+  // from a sample.
+  bool distinct_estimated = 4;
+  // Display forms of the observed extremes, truncated; empty when the column has
+  // no comparable values.
+  string min_value = 5;
+  string max_value = 6;
+  // Unset for non-string columns.
+  optional int64 min_length = 7;
+  optional int64 max_length = 8;
+  // The most frequent values, at most ten, each truncated.
+  repeated ProfileValue top_values = 9;
+  // Shape summaries such as "numeric", "alpha", "date-like", "mixed".
+  repeated string patterns = 10;
+}
+
+// SemanticLabelEvidence is why a label was assigned. It cites the inputs the
+// labeler saw so a reviewer can check the reasoning without re-running it.
+message SemanticLabelEvidence {
+  // Columns whose values or context the label derives from.
+  repeated string columns = 1;
+  // Profile facts such as "null_rate=0.02" or "distinct=12".
+  repeated string metrics = 2;
+  // Lineage relations that motivated the label, e.g. "join key of orders".
+  repeated string lineage = 3;
+  string rationale = 4;
+}
+
+// QualityRuleDraftConfig is one model-proposed rule, already validated into the
+// typed config. It is never executed without a human saving it as a rule.
+message QualityRuleDraftConfig {
+  QualityRuleConfig config = 1;
+  QualitySeverity severity = 2;
+  string title = 3;
+  string rationale = 4;
+  double confidence = 5;
+}
+
+// SemanticLabelSuggestion is a model-proposed semantic label for one column.
+message SemanticLabelSuggestion {
+  string column = 1;
+  QualitySemanticType label = 2;
+  double confidence = 3;
+  SemanticLabelEvidence evidence = 4;
+  // The rule types the deterministic mapping would suggest for this label, in
+  // display order. The model may rank types but may not invent one.
+  repeated QualityRuleType suggested_rule_types = 5;
+}
+
+// QualitySuggestionPayload is the review-queue payload: a rule draft the reviewer
+// can load into the editor, or a semantic label awaiting confirmation.
+message QualitySuggestionPayload {
+  oneof payload {
+    QualityRuleDraftConfig rule = 1;
+    SemanticLabelSuggestion label = 2;
+  }
+}
+
+// QualitySuggestion is one model-proposed rule draft or semantic label waiting
+// for a reviewer. Nothing here is a rule: accepting a suggestion goes through the
+// normal rule or label path.
+message QualitySuggestion {
+  option (google.api.resource) = {
+    type: "metaxisdata/QualitySuggestion"
+    pattern: "workspaces/{workspace}/qualitySuggestions/{quality_suggestion}"
+  };
+
+  // Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion}
+  string name = 1;
+
+  QualitySuggestionKind kind = 2;
+  QualitySuggestionSource source = 3;
+
+  // The target the suggestion is about.
+  QualityTarget target = 4;
+
+  QualitySuggestionPayload payload = 5;
+
+  QualitySuggestionStatus status = 6;
+
+  // The model that produced it.
+  string provider = 7;
+  string model = 8;
+  string prompt_version = 9;
+
+  google.protobuf.Timestamp create_time = 10;
+
+  // Who decided it. Format: users/{user}. Empty while pending.
+  string decided_by = 11 [(google.api.resource_reference) = {type: "metaxisdata/User"}];
+
+  google.protobuf.Timestamp decide_time = 12;
+
+  string decision_note = 13;
+}
+
+// ColumnProfile is the cached deterministic statistics of one column plus how
+// they were measured.
+message ColumnProfile {
+  // The globally unique metadata GUID of the profiled table.
+  string table_guid = 1;
+
+  MetaType meta_type = 2;
+
+  string column = 3;
+
+  ColumnProfileStats profile = 4;
+
+  // How the values were sampled, e.g. "full" or "sample".
+  string sample_method = 5;
+  int64 sample_rows = 6;
+  bool truncated = 7;
+  // The engine version that measured it, so a changed measurement is traceable.
+  string engine_version = 8;
+  google.protobuf.Timestamp profiled_at = 9;
+}
+
+// ColumnSemanticLabel is the semantic type a column is asserted to hold, who
+// asserted it and the evidence behind it.
+message ColumnSemanticLabel {
+  // The globally unique metadata GUID of the table.
+  string table_guid = 1;
+
+  MetaType meta_type = 2;
+
+  string column = 3;
+
+  QualitySemanticType label = 4;
+  QualityLabelSource source = 5;
+  QualityLabelStatus status = 6;
+  double confidence = 7;
+  SemanticLabelEvidence evidence = 8;
+
+  // Who accepted it. Format: users/{user}. Empty for a suggestion.
+  string accepted_by = 9 [(google.api.resource_reference) = {type: "metaxisdata/User"}];
+
+  google.protobuf.Timestamp accepted_time = 10;
+  google.protobuf.Timestamp update_time = 11;
+}
+
 // FailureSample is one failed row, already truncated.
 message FailureSample {
   repeated ColumnValue columns = 1;
@@ -902,4 +1305,252 @@ message ListQualityRuleResultsRequest {
 message ListQualityRuleResultsResponse {
   repeated QualityRuleResult quality_rule_results = 1;
   string next_page_token = 2;
+}
+
+message ListQualityIssuesRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The maximum number of issues to return. If unspecified, at most 50 are
+  // returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+  int32 page_size = 2;
+
+  // A page token, received from a previous ListQualityIssues call. Provide this
+  // to retrieve the subsequent page.
+  string page_token = 3;
+
+  QualityIssueStatus status = 4;
+  QualitySeverity severity = 5;
+
+  // Format: workspaces/{workspace}/qualityRules/{quality_rule}
+  string rule = 6 [(google.api.resource_reference) = {type: "metaxisdata/QualityRule"}];
+
+  // The exact target GUID.
+  string target_guid = 7;
+
+  // Only issues of rules owned by this principal. Format: users/{user}
+  string owner = 8 [(google.api.resource_reference) = {type: "metaxisdata/User"}];
+
+  // Only issues first seen at or after this time.
+  google.protobuf.Timestamp start_time = 9;
+
+  // Only issues first seen at or before this time.
+  google.protobuf.Timestamp end_time = 10;
+}
+
+message ListQualityIssuesResponse {
+  repeated QualityIssue quality_issues = 1;
+  string next_page_token = 2;
+}
+
+message GetQualityIssueRequest {
+  // Format: workspaces/{workspace}/qualityIssues/{quality_issue}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualityIssue"}
+  ];
+}
+
+message UpdateQualityIssueRequest {
+  // The issue to update. Its name identifies it.
+  QualityIssue issue = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The fields to change: status (RESOLVED only), resolution_reason,
+  // resolution_note, acknowledged or muted_until.
+  google.protobuf.FieldMask update_mask = 2;
+
+  // Whether to acknowledge the issue. Acknowledgement is an action rather than a
+  // stored field of QualityIssue, so the update mask path "acknowledged" reads
+  // this value; false is rejected because clearing an acknowledgement is not a
+  // supported transition.
+  bool acknowledged = 3 [(google.api.field_behavior) = INPUT_ONLY];
+}
+
+message ListQualitySuggestionsRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The maximum number of suggestions to return. If unspecified, at most 50 are
+  // returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+  int32 page_size = 2;
+
+  // A page token, received from a previous ListQualitySuggestions call. Provide
+  // this to retrieve the subsequent page.
+  string page_token = 3;
+
+  QualitySuggestionStatus status = 4;
+  QualitySuggestionKind kind = 5;
+  QualitySuggestionSource source = 6;
+
+  // The exact target GUID.
+  string target_guid = 7;
+}
+
+message ListQualitySuggestionsResponse {
+  repeated QualitySuggestion quality_suggestions = 1;
+  string next_page_token = 2;
+}
+
+message UpdateQualitySuggestionRequest {
+  // Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualitySuggestion"}
+  ];
+
+  // The decision: ACCEPTED or REJECTED. A suggestion starts PENDING and a
+  // decision is final.
+  QualitySuggestionStatus decision = 2;
+
+  // Why it was decided, shown in the review history.
+  string decision_note = 3;
+}
+
+message ListColumnProfilesRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The maximum number of profiles to return. If unspecified, at most 50 are
+  // returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+  int32 page_size = 2;
+
+  // A page token, received from a previous ListColumnProfiles call. Provide this
+  // to retrieve the subsequent page.
+  string page_token = 3;
+
+  // The globally unique metadata GUID of the table.
+  string table_guid = 4;
+  MetaType meta_type = 5;
+  // The columns to read; empty means every profiled column.
+  repeated string columns = 6;
+}
+
+message ListColumnProfilesResponse {
+  repeated ColumnProfile column_profiles = 1;
+  string next_page_token = 2;
+}
+
+message ListColumnLabelsRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The maximum number of labels to return. If unspecified, at most 50 are
+  // returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+  int32 page_size = 2;
+
+  // A page token, received from a previous ListColumnLabels call. Provide this to
+  // retrieve the subsequent page.
+  string page_token = 3;
+
+  // The globally unique metadata GUID of the table.
+  string table_guid = 4;
+  MetaType meta_type = 5;
+  // The columns to read; empty means every labeled column.
+  repeated string columns = 6;
+}
+
+message ListColumnLabelsResponse {
+  repeated ColumnSemanticLabel column_labels = 1;
+  string next_page_token = 2;
+}
+
+message UpdateColumnLabelRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The globally unique metadata GUID of the table.
+  string table_guid = 2;
+  MetaType meta_type = 3;
+  string column = 4;
+
+  // The label to accept. Required by ACCEPT and ignored by CLEAR.
+  QualitySemanticType label = 5;
+
+  ColumnLabelAction action = 6;
+}
+
+message UpdateColumnLabelResponse {
+  // The stored label, unset after CLEAR.
+  ColumnSemanticLabel column_label = 1;
+}
+
+message ProfileColumnsRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The globally unique metadata GUID of the table.
+  string table_guid = 2;
+  MetaType meta_type = 3;
+  // The columns to profile; empty means every column of the table. At most 50.
+  repeated string columns = 4;
+}
+
+message ProfileColumnsResponse {
+  repeated ColumnProfile column_profiles = 1;
+}
+
+message SuggestQualityRuleRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The globally unique metadata GUID of the table.
+  string table_guid = 2;
+  MetaType meta_type = 3;
+  // The columns the intent is about; empty means the rule may use any column.
+  repeated string columns = 4;
+
+  // The natural-language intent, e.g. "email must not be empty".
+  string intent = 5;
+
+  // The language the intent and the draft are written in, e.g. "en" or "zh-CN".
+  string language = 6;
+}
+
+message SuggestQualityRuleResponse {
+  // The queued drafts, pending review.
+  repeated QualitySuggestion quality_suggestions = 1;
+}
+
+message SuggestColumnLabelsRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The globally unique metadata GUID of the table.
+  string table_guid = 2;
+  MetaType meta_type = 3;
+  // The columns to label; empty means every column of the table. At most 50.
+  repeated string columns = 4;
+
+  // The language the evidence and rationale are written in, e.g. "en" or
+  // "zh-CN".
+  string language = 5;
+}
+
+message SuggestColumnLabelsResponse {
+  // The queued label proposals, pending review.
+  repeated QualitySuggestion quality_suggestions = 1;
+}
+
+message ExplainQualityResultRequest {
+  // Format: workspaces/{workspace}/qualityRuleResults/{quality_rule_result}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualityRuleResult"}
+  ];
+
+  // The language the explanation is written in, e.g. "en" or "zh-CN".
+  string language = 2;
+
+  // Regenerate even when a cached explanation exists.
+  bool force_regenerate = 3;
+}
+
+message ExplainQualityResultResponse {
+  // The stream reuses ExplainSQL's event messages: content is a markdown
+  // fragment, progress reports one agent step, and metadata is the final frame.
+  oneof payload {
+    string content = 1;
+    ExplainSQLProgress progress = 2;
+    ExplainSQLMetadata metadata = 3;
+  }
 }

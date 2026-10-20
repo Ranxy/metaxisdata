@@ -187,7 +187,7 @@ func boundSyncDetail(detail *storepb.SchemaSyncDetail) *storepb.SchemaSyncDetail
 	}
 	bounded.Databases = nil
 	for _, database := range databases {
-		database.Error = truncateBytes(database.GetError(), MaxErrorBytes)
+		database.Error = truncateBytes(database.GetError())
 		bounded.Databases = append(bounded.Databases, database)
 	}
 	return bounded
@@ -202,16 +202,16 @@ func boundOpenLineageDetail(detail *storepb.OpenLineageDetail) *storepb.OpenLine
 	if !ok {
 		return detail
 	}
-	bounded.Error = truncateBytes(bounded.GetError(), MaxErrorBytes)
+	bounded.Error = truncateBytes(bounded.GetError())
 	return bounded
 }
 
-// truncateBytes cuts value to at most limit bytes without splitting a rune.
-func truncateBytes(value string, limit int) string {
-	if len(value) <= limit {
+// truncateBytes cuts value to at most MaxErrorBytes without splitting a rune.
+func truncateBytes(value string) string {
+	if len(value) <= MaxErrorBytes {
 		return value
 	}
-	cut := value[:limit]
+	cut := value[:MaxErrorBytes]
 	for len(cut) > 0 && !utf8.ValidString(cut) {
 		cut = cut[:len(cut)-1]
 	}

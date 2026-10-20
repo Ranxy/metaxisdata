@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
+	"github.com/Ranxy/metaxisdata/backend/component/notification"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 	"github.com/Ranxy/metaxisdata/backend/plugin/db"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -69,21 +71,66 @@ const (
 	// maxErrorMessageLength bounds the error text stored on a result. Error details
 	// are for an operator, not a log file.
 	maxErrorMessageLength = 1024
+	// QualityStormThreshold is how many failing rules in one run turn per-rule
+	// notifications into a single summary. A run that fails more rules than this
+	// would otherwise write one inbox message per rule for a single incident.
+	QualityStormThreshold = 10
+	// qualityIssueResourceIDLength is the length of a generated issue resource id,
+	// matching the other data-quality resource ids.
+	qualityIssueResourceIDLength = 12
 )
 
-// ruleExecOptions is the execution budget for one rule. StoreSamples asks the
-// executor for the failing rows that make a FAIL result explainable.
-//
-// TODO(M2.4): the workspace data-quality settings will supply the query timeout,
-// the sample limit, the sample switch and the daily execution quota (which is
-// reported as ERROR(QUOTA) before a run starts). M1.5 uses the design defaults so
-// the runner does not depend on the settings surface that does not exist yet.
-var ruleExecOptions = dataquality.ExecOptions{
-	QueryTimeout: ruleQueryTimeout,
-	MaxRows:      1,
-	MaxBytes:     ruleResultMaxBytes,
-	SampleLimit:  ruleSampleLimit,
-	StoreSamples: true,
+// execOptions is the execution budget for one rule. StoreSamples asks the
+// executor for the failing rows that make a FAIL result explainable; the
+// workspace settings decide whether they are kept and how many.
+func (r *Runner) execOptions() dataquality.ExecOptions {
+	settings := r.settings
+	sampleLimit := settings.FailureSampleLimit
+	if sampleLimit <= 0 {
+		sampleLimit = ruleSampleLimit
+	}
+	return dataquality.ExecOptions{
+		QueryTimeout: ruleQueryTimeout,
+		MaxRows:      1,
+		MaxBytes:     ruleResultMaxBytes,
+		SampleLimit:  sampleLimit,
+		StoreSamples: settings.StoreFailureSamples,
+	}
+}
+
+// refreshSettings reloads the workspace data-quality settings. A read failure
+// keeps the previous value: settings are a policy, and a transient store error
+// must not silently switch the sample policy or the daily ceiling.
+func (r *Runner) refreshSettings(ctx context.Context) {
+	settings, err := dataquality.LoadSettings(ctx, r.stores)
+	if err != nil {
+		slog.Warn("failed to load the data quality settings", log.WithError(err))
+		return
+	}
+	r.settings = settings
+}
+
+// overDailyExecutionQuota reports whether the workspace already started as many
+// runs today as its settings allow. The tally is a safety valve against a dense
+// schedule, not a correctness boundary: when it trips, the due rules stay due and
+// the next day resumes them.
+func (r *Runner) overDailyExecutionQuota(ctx context.Context, now time.Time) bool {
+	limit := r.settings.DailyExecutionLimit
+	if limit <= 0 {
+		return false
+	}
+	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	count, err := r.stores.CountQualityRunsSince(ctx, dayStart)
+	if err != nil {
+		slog.Warn("failed to count today's quality runs", log.WithError(err))
+		return false
+	}
+	if count < limit {
+		return false
+	}
+	slog.Warn("daily quality execution quota reached; skipping the due scan",
+		slog.Int("runs_today", count), slog.Int("limit", limit))
+	return true
 }
 
 // manualRun is one queued manual execution. ruleIDs is the exact selection the
@@ -108,12 +155,32 @@ type dueRunPlan struct {
 	rules              []*store.QualityRuleMessage
 }
 
+// ruleExecution is one rule's result plus the inputs the problem ledger and the
+// notifications need after the run commits: the mutable head (owner, severity,
+// mute, resource id), the immutable definition that was executed, and the rule's
+// status before this run.
+type ruleExecution struct {
+	result   *store.QualityRuleResultMessage
+	head     *store.QualityRuleMessage
+	snapshot *dataquality.RuleSnapshot
+	previous *storepb.QualityStatus
+}
+
 // Runner is the data-quality background runner.
 type Runner struct {
 	stores    *store.Store
 	dbFactory *dbfactory.DBFactory
 	stateCfg  *state.State
 	exec      *dataquality.Executor
+	// notifier delivers the problem and execution notifications a run implies.
+	// It is best effort: a delivery failure is logged and never fails the run.
+	// A nil notifier keeps the runner silent, which is what its tests want.
+	notifier *notification.Service
+
+	// settings is the workspace's data-quality policy, reloaded on every scan and
+	// manual run. It starts at the documented defaults so a fresh process with an
+	// unreadable setting still behaves sanely.
+	settings dataquality.Settings
 
 	// manual carries the runs the API created. It is buffered so enqueueing never
 	// blocks a request; a full queue is reported back as false.
@@ -125,15 +192,18 @@ type Runner struct {
 }
 
 // NewRunner creates the data-quality runner. The executor is stateless, so one
-// instance is shared by every run.
-func NewRunner(stores *store.Store, dbFactory *dbfactory.DBFactory, stateCfg *state.State) *Runner {
+// instance is shared by every run. notifier reports opened and recovered problems
+// and execution failures; it may be nil.
+func NewRunner(stores *store.Store, dbFactory *dbfactory.DBFactory, stateCfg *state.State, notifier *notification.Service) *Runner {
 	return &Runner{
 		stores:    stores,
 		dbFactory: dbFactory,
 		stateCfg:  stateCfg,
 		exec:      dataquality.NewExecutor(),
+		notifier:  notifier,
 		manual:    make(chan manualRun, manualQueueCapacity),
 		inflight:  make(map[int64]struct{}),
+		settings:  dataquality.DefaultSettings(),
 	}
 }
 
@@ -157,6 +227,7 @@ func (r *Runner) EnqueueQualityRun(runID int64, ruleIDs []int64) bool {
 // take precedence over the periodic due scan.
 func (r *Runner) Run(ctx context.Context) {
 	r.abandonStaleRuns(ctx)
+	r.refreshSettings(ctx)
 
 	ticker := time.NewTicker(tickInterval)
 	defer ticker.Stop()
@@ -208,6 +279,10 @@ func (r *Runner) abandonStaleRuns(ctx context.Context) {
 // once.
 func (r *Runner) scanDue(ctx context.Context) {
 	now := time.Now().UTC()
+	r.refreshSettings(ctx)
+	if r.overDailyExecutionQuota(ctx, now) {
+		return
+	}
 	rules, err := r.stores.FindDueQualityRules(ctx, now, dueScanLimit)
 	if err != nil {
 		slog.Error("failed to list due quality rules", log.WithError(err))
@@ -273,7 +348,7 @@ func (r *Runner) startScheduledRun(ctx context.Context, plan dueRunPlan) {
 			log.WithError(err))
 		return
 	}
-	r.executeRun(ctx, run.ID, tasks)
+	r.executeRun(ctx, run.ID, run.ResourceID, tasks)
 }
 
 // executeManualRun executes a run the API created for an explicit rule
@@ -281,12 +356,17 @@ func (r *Runner) startScheduledRun(ctx context.Context, plan dueRunPlan) {
 // persisted rule list, and it must not fall back to "all enabled rules of the
 // instance", which could execute a rule the user did not ask for.
 func (r *Runner) executeManualRun(ctx context.Context, manual manualRun) {
-	r.executeRun(ctx, manual.runID, manualRuleTasks(manual.ruleIDs))
+	// A manual request is the moment to pick up a settings change: the user could
+	// have turned failure samples off just before asking for the run.
+	r.refreshSettings(ctx)
+	r.executeRun(ctx, manual.runID, r.manualRunResourceID(ctx, manual.runID), manualRuleTasks(manual.ruleIDs))
 }
 
-// executeRun executes one run's rules sequentially and writes the whole run in
-// one result batch.
-func (r *Runner) executeRun(ctx context.Context, runID int64, tasks []ruleTask) {
+// executeRun executes one run's rules sequentially, writes the whole run in one
+// result batch, and then applies the problem ledger and the notifications the
+// results imply. The result write is the commit point: nothing touches an issue
+// or an inbox when it failed, because there is no result to explain.
+func (r *Runner) executeRun(ctx context.Context, runID int64, runResourceID string, tasks []ruleTask) {
 	runCtx, cancel := context.WithTimeout(ctx, runExecutionTimeout)
 	defer cancel()
 
@@ -300,9 +380,16 @@ func (r *Runner) executeRun(ctx context.Context, runID int64, tasks []ruleTask) 
 		return
 	}
 
+	executions := make([]*ruleExecution, 0, len(tasks))
 	results := make([]*store.QualityRuleResultMessage, 0, len(tasks))
 	for _, task := range tasks {
-		results = append(results, r.executeOneSafe(runCtx, runID, task))
+		// The previous status is read before this run's results exist, so the
+		// problem planner sees the transition the new result really is.
+		previous := r.previousQualityStatus(runCtx, task.ruleID)
+		execution := r.executeOneSafe(runCtx, runID, task)
+		execution.previous = previous
+		executions = append(executions, execution)
+		results = append(results, execution.result)
 	}
 
 	if err := r.persistResults(runCtx, results); err != nil {
@@ -313,27 +400,43 @@ func (r *Runner) executeRun(ctx context.Context, runID int64, tasks []ruleTask) 
 		// The rules were already rescheduled, so this pass is not retried. Close
 		// the run instead of leaving it RUNNING for the restart sweep: ABANDONED
 		// says the run produced no trustworthy result.
-		// TODO(M2.1): the issue ledger is not updated by this runner yet; issue
-		// transitions are applied where results are committed, which is here.
 		_ = r.stores.FinishQualityRun(ctx, runID, storepb.QualityRunStatus_QUALITY_RUN_STATUS_ABANDONED, storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, nil, time.Now().UTC())
 		return
 	}
 
-	// TODO(M2.1/M2.2): after the run commits, migrate quality issues from the
-	// result statuses and emit notifications. Both are deliberately out of M1.5.
+	now := time.Now().UTC()
+	workspaceID := ""
+	if r.notifier != nil {
+		workspaceID = r.workspaceID(ctx)
+	}
+	runResourceName := qualityRunResourceName(workspaceID, runResourceID)
+	if runResourceName == "" {
+		// A manual run's resource id could not be resolved (see
+		// manualRunResourceID). The database id still gives the detail and the
+		// dedupe key a unique target, even though it is not a usable resource name.
+		runResourceName = fmt.Sprintf("qualityRuns/%d", runID)
+	}
+	storm := isQualityRunStorm(results)
+	r.settleQualityResults(ctx, runID, runResourceName, workspaceID, executions, storm, now)
+
 	counts, outcome := countsAndOutcome(results)
-	if err := r.stores.FinishQualityRun(ctx, runID, storepb.QualityRunStatus_QUALITY_RUN_STATUS_COMPLETED, outcome, counts, time.Now().UTC()); err != nil {
+	if err := r.stores.FinishQualityRun(ctx, runID, storepb.QualityRunStatus_QUALITY_RUN_STATUS_COMPLETED, outcome, counts, now); err != nil {
 		slog.Error("failed to finish a quality run",
 			slog.Int64("run", runID),
 			slog.Int("results", len(results)),
 			log.WithError(err))
+	}
+	if storm {
+		// The design sends the storm summary once the run is finished, so the run
+		// it points at is already terminal when the recipient opens it.
+		r.reportQualityStorm(ctx, runResourceName, counts.GetFail(), counts.GetTotal(), now)
 	}
 }
 
 // executeOneSafe isolates one rule's execution: a panic in the rule engine or a
 // driver turns into an ERROR result for that rule instead of killing the run (or
 // the runner, which would lose every remaining rule in the batch).
-func (r *Runner) executeOneSafe(ctx context.Context, runID int64, task ruleTask) (result *store.QualityRuleResultMessage) {
+func (r *Runner) executeOneSafe(ctx context.Context, runID int64, task ruleTask) (execution *ruleExecution) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			slog.Error("quality rule execution panicked",
@@ -341,8 +444,11 @@ func (r *Runner) executeOneSafe(ctx context.Context, runID int64, task ruleTask)
 				slog.Int64("rule", task.ruleID),
 				slog.Any("panic", recovered),
 				log.Stack("panic-stack"))
-			result = failureRuleResult(runID, task.ruleID, nil, time.Now().UTC(), storepb.QualityStatus_QUALITY_STATUS_ERROR,
-				dataquality.ErrCodeExecution, fmt.Sprintf("quality rule execution panicked: %v", recovered))
+			execution = &ruleExecution{
+				result: failureRuleResult(runID, task.ruleID, nil, time.Now().UTC(), storepb.QualityStatus_QUALITY_STATUS_ERROR,
+					dataquality.ErrCodeExecution, fmt.Sprintf("quality rule execution panicked: %v", recovered)),
+				head: task.head,
+			}
 		}
 	}()
 	return r.executeOne(ctx, runID, task)
@@ -360,11 +466,14 @@ func (r *Runner) persistResults(ctx context.Context, results []*store.QualityRul
 // executeOne resolves, validates and executes one rule, returning the result row
 // it produced. It never returns nil: every failure path is an ERROR or SKIPPED
 // result, because a run has to account for every rule it picked up.
-func (r *Runner) executeOne(ctx context.Context, runID int64, task ruleTask) *store.QualityRuleResultMessage {
+func (r *Runner) executeOne(ctx context.Context, runID int64, task ruleTask) *ruleExecution {
 	startedAt := time.Now().UTC()
 	if !r.acquireInflight(task.ruleID) {
-		return failureRuleResult(runID, task.ruleID, nil, startedAt, storepb.QualityStatus_QUALITY_STATUS_SKIPPED,
-			"", "another run is already executing this rule")
+		return &ruleExecution{
+			result: failureRuleResult(runID, task.ruleID, nil, startedAt, storepb.QualityStatus_QUALITY_STATUS_SKIPPED,
+				"", "another run is already executing this rule"),
+			head: task.head,
+		}
 	}
 	defer r.releaseInflight(task.ruleID)
 
@@ -374,13 +483,28 @@ func (r *Runner) executeOne(ctx context.Context, runID int64, task ruleTask) *st
 	// manual run has no head row and does not move the schedule.
 	r.advanceScheduledRule(ctx, task.head)
 
-	snapshot, _, err := r.loadRuleSnapshot(ctx, task)
+	snapshot, head, err := r.loadRuleSnapshot(ctx, task)
 	if err != nil {
+		status := storepb.QualityStatus_QUALITY_STATUS_ERROR
+		code := dataquality.ErrCodeExecution
 		if errors.Is(err, errRuleRetired) {
-			return failureRuleResult(runID, task.ruleID, nil, startedAt, storepb.QualityStatus_QUALITY_STATUS_SKIPPED, "", err.Error())
+			status = storepb.QualityStatus_QUALITY_STATUS_SKIPPED
+			code = ""
 		}
-		return failureRuleResult(runID, task.ruleID, nil, startedAt, storepb.QualityStatus_QUALITY_STATUS_ERROR,
-			dataquality.ErrCodeExecution, err.Error())
+		return &ruleExecution{
+			result: failureRuleResult(runID, task.ruleID, nil, startedAt, status, code, err.Error()),
+			head:   head,
+		}
+	}
+
+	// fail records one rule this execution could not judge. The snapshot is
+	// carried so a result row still names the definition and target it was about.
+	fail := func(status storepb.QualityStatus, code, message string) *ruleExecution {
+		return &ruleExecution{
+			result:   failureRuleResult(runID, task.ruleID, snapshot, startedAt, status, code, message),
+			head:     head,
+			snapshot: snapshot,
+		}
 	}
 
 	resolution, err := dataquality.ResolveTarget(ctx, r.stores, snapshot.Target.GUID, snapshot.Target.MetaType)
@@ -388,56 +512,50 @@ func (r *Runner) executeOne(ctx context.Context, runID int64, task ruleTask) *st
 		if errors.Is(err, dataquality.ErrOrphaned) {
 			// The target is gone: this is not a failed check, it is a rule that no
 			// longer has anything to watch. SKIPPED(ORPHANED) and no notification.
-			return failureRuleResult(runID, task.ruleID, snapshot, startedAt, storepb.QualityStatus_QUALITY_STATUS_SKIPPED,
-				dataquality.ErrCodeOrphaned, err.Error())
+			return fail(storepb.QualityStatus_QUALITY_STATUS_SKIPPED, dataquality.ErrCodeOrphaned, err.Error())
 		}
-		return failureRuleResult(runID, task.ruleID, snapshot, startedAt, storepb.QualityStatus_QUALITY_STATUS_ERROR,
-			dataquality.ErrCodeExecution, err.Error())
+		return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, dataquality.ErrCodeExecution, err.Error())
 	}
 	if err := dataquality.RequireTarget(resolution, snapshot.Type); err != nil {
-		return failureRuleResult(runID, task.ruleID, snapshot, startedAt, storepb.QualityStatus_QUALITY_STATUS_ERROR,
-			dataquality.ErrCodeUnsupported, err.Error())
+		return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, dataquality.ErrCodeUnsupported, err.Error())
 	}
 	if err := dataquality.ValidateConfig(resolution.Target, snapshot.Type, snapshot.Config); err != nil {
 		// The definition no longer describes the current metadata (for example a
 		// named column was dropped). A saved rule is not re-validated on schema
 		// change, so execution is where this surfaces.
-		return failureRuleResult(runID, task.ruleID, snapshot, startedAt, storepb.QualityStatus_QUALITY_STATUS_ERROR,
-			dataquality.ErrCodeUnsupported, err.Error())
+		return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, dataquality.ErrCodeUnsupported, err.Error())
 	}
 
 	release, err := r.acquireInstanceConnection(resolution.Instance)
 	if err != nil {
-		return failureRuleResult(runID, task.ruleID, snapshot, startedAt, storepb.QualityStatus_QUALITY_STATUS_ERROR,
-			dataquality.ErrCodeQuota, err.Error())
+		return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, dataquality.ErrCodeQuota, err.Error())
 	}
 	defer release()
 
 	driver, err := r.dbFactory.GetReadOnlyDatabaseDriver(ctx, resolution.Instance, resolution.Database)
 	if err != nil {
 		code, message := errorCodeAndMessage(err)
-		return failureRuleResult(runID, task.ruleID, snapshot, startedAt, storepb.QualityStatus_QUALITY_STATUS_ERROR, code, message)
+		return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, code, message)
 	}
 	defer driver.Close(ctx)
 
 	queryer, ok := driver.(db.ReadOnlyQueryer)
 	if !ok {
-		return failureRuleResult(runID, task.ruleID, snapshot, startedAt, storepb.QualityStatus_QUALITY_STATUS_ERROR,
-			dataquality.ErrCodeUnsupported, "this database engine does not support read-only query execution")
+		return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, dataquality.ErrCodeUnsupported,
+			"this database engine does not support read-only query execution")
 	}
 
-	execution, err := r.exec.Execute(ctx, queryer, resolution, *snapshot, ruleExecOptions)
+	execution, err := r.exec.Execute(ctx, queryer, resolution, *snapshot, r.execOptions())
 	if err != nil {
 		// A stored rule this build cannot compile (an engine whose dialect was
 		// removed, or a definition the current metadata no longer satisfies) is an
 		// execution failure, not a quality verdict: ERROR(UNSUPPORTED), the code
 		// the save/preview path already uses for the same class of defect.
 		if common.ErrorCode(err) == common.Invalid {
-			return failureRuleResult(runID, task.ruleID, snapshot, startedAt, storepb.QualityStatus_QUALITY_STATUS_ERROR,
-				dataquality.ErrCodeUnsupported, err.Error())
+			return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, dataquality.ErrCodeUnsupported, err.Error())
 		}
 		code, message := errorCodeAndMessage(err)
-		return failureRuleResult(runID, task.ruleID, snapshot, startedAt, storepb.QualityStatus_QUALITY_STATUS_ERROR, code, message)
+		return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, code, message)
 	}
 
 	observation := execution.Observation
@@ -447,15 +565,19 @@ func (r *Runner) executeOne(ctx context.Context, runID int64, task ruleTask) *st
 		observation.Baseline = r.ruleBaseline(ctx, snapshot.ID)
 	}
 	state := dataquality.Evaluate(*snapshot, observation, time.Now().UTC())
-	return buildRuleResult(runID, &ruleExecutionOutcome{
-		ruleID:      task.ruleID,
-		snapshot:    snapshot,
-		startedAt:   startedAt,
-		finishedAt:  time.Now().UTC(),
-		observation: observation,
-		execution:   execution,
-		state:       state,
-	})
+	return &ruleExecution{
+		result: buildRuleResult(runID, &ruleExecutionOutcome{
+			ruleID:      task.ruleID,
+			snapshot:    snapshot,
+			startedAt:   startedAt,
+			finishedAt:  time.Now().UTC(),
+			observation: observation,
+			execution:   execution,
+			state:       state,
+		}),
+		head:     head,
+		snapshot: snapshot,
+	}
 }
 
 // advanceScheduledRule moves one scheduled rule's next_run_at forward. The due
@@ -515,6 +637,16 @@ func (r *Runner) loadRuleSnapshot(ctx context.Context, task ruleTask) (*dataqual
 	}
 
 	revision := revisions[0]
+	if head == nil {
+		// A manual run's queue entry carries only the rule id, and the store has no
+		// lookup by internal id. The revision's target identifies the rule closely
+		// enough to read its head, which the problem ledger and the notifications
+		// need for the owner, severity, mute and resource name.
+		head = r.resolveRuleHead(ctx, revision.RuleID, revision.TargetGUID)
+		if head != nil && (head.Deleted || head.State == storepb.QualityRuleState_QUALITY_RULE_STATE_ARCHIVED) {
+			return nil, head, errRuleRetired
+		}
+	}
 	return &dataquality.RuleSnapshot{
 		ID:        revision.RuleID,
 		Revision:  revision.Revision,
@@ -812,4 +944,572 @@ func errorCodeAndMessage(err error) (code string, message string) {
 		message = err.Error()
 	}
 	return code, message
+}
+
+// settleQualityResults applies one run's committed results to the problem ledger
+// and emits the notifications their transitions imply. Both are best effort: the
+// results are already stored, so a lost issue write or a lost notification is
+// logged and never turns a completed run into a failure.
+func (r *Runner) settleQualityResults(ctx context.Context, runID int64, runResourceName, workspaceID string, executions []*ruleExecution, storm bool, now time.Time) {
+	for _, execution := range executions {
+		if execution == nil || execution.result == nil {
+			continue
+		}
+		r.settleRuleExecution(ctx, runID, runResourceName, workspaceID, execution, storm, now)
+	}
+}
+
+// settleRuleExecution decides what one result means for the rule's open issue and
+// its owner's inbox. The issue read is the only state the planner needs: the
+// open issue row and the rule's previous status decide the transition together.
+func (r *Runner) settleRuleExecution(ctx context.Context, runID int64, runResourceName, workspaceID string, execution *ruleExecution, storm bool, now time.Time) {
+	result := execution.result
+	issue, err := r.stores.GetOpenQualityIssueForRule(ctx, result.RuleID)
+	if err != nil {
+		slog.Warn("failed to read the open quality issue of a rule",
+			slog.Int64("rule", result.RuleID),
+			log.WithError(err))
+	} else {
+		action := dataquality.PlanIssueTransition(execution.previous, result.Status, issue != nil)
+		switch action {
+		case dataquality.IssueActionOpen:
+			r.openQualityIssue(ctx, runID, runResourceName, workspaceID, execution, storm, now)
+		case dataquality.IssueActionTouch:
+			if issue != nil {
+				if err := r.stores.TouchQualityIssue(ctx, issue.ID, runID, execution.severity(), now); err != nil {
+					slog.Warn("failed to touch a quality issue",
+						slog.Int64("issue", issue.ID),
+						log.WithError(err))
+				}
+			}
+		case dataquality.IssueActionResolve:
+			if issue != nil {
+				r.resolveQualityIssue(ctx, runResourceName, workspaceID, execution, issue, now)
+			}
+		case dataquality.IssueActionNone:
+			// A passing run without an issue, or a status that says nothing about
+			// the problem: the ledger is already correct.
+		default:
+			// An action this build does not know is a defect, not a reason to stop
+			// the run; the result is stored and the next run will retry the ledger.
+			slog.Warn("unknown quality issue action",
+				slog.Int64("rule", result.RuleID),
+				slog.Int("action", int(action)))
+		}
+	}
+
+	// An execution failure is its own alert: it must reach someone even when the
+	// rule is muted, because the mute is about the problem the rule watches, not
+	// about the rule being broken. A storm merges these into one summary.
+	if result.Status == storepb.QualityStatus_QUALITY_STATUS_ERROR && !storm {
+		r.notifyExecutionFailed(ctx, workspaceID, runResourceName, execution, now)
+	}
+}
+
+// openQualityIssue records a new open problem and, unless the run is a storm or
+// the rule is muted, announces it.
+func (r *Runner) openQualityIssue(ctx context.Context, runID int64, runResourceName, workspaceID string, execution *ruleExecution, storm bool, now time.Time) {
+	resourceID, err := common.RandomString(qualityIssueResourceIDLength)
+	if err != nil {
+		slog.Warn("failed to generate a quality issue resource id", log.WithError(err))
+		return
+	}
+	created, err := r.stores.OpenQualityIssue(ctx, &store.QualityIssueMessage{
+		ResourceID:      resourceID,
+		RuleID:          execution.result.RuleID,
+		TargetGUID:      execution.targetGUID(),
+		TargetType:      execution.targetType(),
+		Status:          storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_OPEN,
+		Severity:        execution.severity(),
+		FirstSeenRunID:  &runID,
+		LastSeenRunID:   &runID,
+		FirstSeenAt:     now,
+		LastSeenAt:      now,
+		OccurrenceCount: 1,
+	})
+	if err != nil {
+		slog.Warn("failed to open a quality issue",
+			slog.Int64("rule", execution.result.RuleID),
+			log.WithError(err))
+		return
+	}
+	if created == nil {
+		// The partial unique index refused the insert: another writer opened the
+		// rule's issue between our read and this write. It is not a new problem, so
+		// it is not announced again.
+		return
+	}
+	if storm || qualityRuleMuted(execution.head, now) {
+		return
+	}
+	r.notifyIssueOpened(ctx, workspaceID, runResourceName, execution, created, now)
+}
+
+// resolveQualityIssue closes a recovered problem and tells its recipient, unless
+// the rule or the issue is muted. A recovery is never suppressed by a storm: a
+// storm is a burst of failures, and hiding the recoveries would leave the inbox
+// with only the alarming half of the story.
+func (r *Runner) resolveQualityIssue(ctx context.Context, runResourceName, workspaceID string, execution *ruleExecution, issue *store.QualityIssueMessage, now time.Time) {
+	if err := r.stores.ResolveQualityIssue(ctx, issue.ID, storepb.QualityResolutionReason_QUALITY_RESOLUTION_REASON_AUTO_RECOVERED, "", now); err != nil {
+		slog.Warn("failed to resolve a quality issue",
+			slog.Int64("issue", issue.ID),
+			log.WithError(err))
+		return
+	}
+	if qualityRuleMuted(execution.head, now) || qualityIssueMuted(issue, now) {
+		return
+	}
+	detail := buildDataQualityDetail(dataQualityDetailInput{
+		workspaceID:     workspaceID,
+		kind:            storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED,
+		execution:       execution,
+		issueResourceID: issue.ResourceID,
+		runResourceName: runResourceName,
+	})
+	r.sendDataQualityNotification(ctx, execution.ownerID(), detail, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_INFO, now)
+}
+
+// notifyIssueOpened announces a new open problem to its rule's owner, or to the
+// workspace administrators when the rule has no owner.
+func (r *Runner) notifyIssueOpened(ctx context.Context, workspaceID, runResourceName string, execution *ruleExecution, issue *store.QualityIssueMessage, now time.Time) {
+	detail := buildDataQualityDetail(dataQualityDetailInput{
+		workspaceID:     workspaceID,
+		kind:            storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED,
+		execution:       execution,
+		issueResourceID: issue.ResourceID,
+		runResourceName: runResourceName,
+	})
+	r.sendDataQualityNotification(ctx, execution.ownerID(), detail, qualityNotificationSeverity(execution.severity()), now)
+}
+
+// notifyExecutionFailed announces a rule that could not be executed at all. The
+// design makes this alert unmutable and addresses it to the workspace
+// administrators only: a broken rule is an operational failure, not a problem the
+// rule's owner or mute is meant to absorb.
+func (r *Runner) notifyExecutionFailed(ctx context.Context, workspaceID, runResourceName string, execution *ruleExecution, now time.Time) {
+	detail := buildDataQualityDetail(dataQualityDetailInput{
+		workspaceID:     workspaceID,
+		kind:            storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED,
+		execution:       execution,
+		runResourceName: runResourceName,
+	})
+	r.sendDataQualityNotification(ctx, execution.ownerID(), detail, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR, now)
+}
+
+// sendDataQualityNotification addresses one message and hands it to the service.
+// Delivery is best effort: the notification service logs its own failures, so a
+// failed write only adds a log line here.
+func (r *Runner) sendDataQualityNotification(ctx context.Context, ownerID *int32, detail *storepb.DataQualityDetail, severity storepb.NotificationSeverity, now time.Time) {
+	if r.notifier == nil || detail == nil {
+		return
+	}
+	message := notification.DataQualityMessage(severity, detail)
+	message.DedupeKey = notification.DataQualityDedupeKey(detail.GetKind(), qualityNotificationTarget(detail), now)
+	recipientID, toAdmins := qualityNotificationRecipient(detail.GetKind(), ownerID)
+	if toAdmins {
+		if err := r.notifier.SendToWorkspaceAdmins(ctx, message); err != nil {
+			notification.LogFailure(err, slog.String("quality_event", detail.GetKind().String()))
+		}
+		return
+	}
+	message.RecipientId = recipientID
+	if err := r.notifier.Send(ctx, message); err != nil {
+		notification.LogFailure(err, slog.String("quality_event", detail.GetKind().String()))
+	}
+}
+
+// reportQualityStorm replaces a burst of per-rule notifications with one summary
+// addressed to the workspace administrators. It is sent after the run finished,
+// so the run it points at is terminal when the recipient opens it.
+func (r *Runner) reportQualityStorm(ctx context.Context, runResourceName string, failed, total int32, now time.Time) {
+	if r.notifier == nil {
+		return
+	}
+	detail := buildStormDetail(runResourceName, failed, total)
+	r.sendDataQualityNotification(ctx, nil, detail, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR, now)
+}
+
+// dataQualityDetailInput is everything a notification detail is built from. It is
+// a struct so the mapping is one function instead of one per event kind.
+type dataQualityDetailInput struct {
+	workspaceID     string
+	kind            storepb.DataQualityNotificationKind
+	execution       *ruleExecution
+	issueResourceID string
+	runResourceName string
+}
+
+// buildDataQualityDetail maps one execution to the structured payload the client
+// renders. It deliberately carries no sample rows or prose: the detail is a
+// pointer into the product, and the notification table is kept forever.
+func buildDataQualityDetail(in dataQualityDetailInput) *storepb.DataQualityDetail {
+	execution := in.execution
+	result := execution.result
+	detail := &storepb.DataQualityDetail{
+		Kind:       in.kind,
+		Rule:       qualityRuleResourceName(in.workspaceID, execution.ruleResourceID()),
+		RuleTitle:  execution.ruleTitle(),
+		TargetGuid: execution.targetGUID(),
+		Run:        in.runResourceName,
+		Severity:   execution.severity(),
+		FromStatus: statusOrUnspecified(execution.previous),
+		ToStatus:   result.Status,
+		FailedRows: result.FailedRows,
+		TotalRows:  result.TotalRows,
+	}
+	if execution.snapshot != nil {
+		detail.TargetPath = qualityTargetDisplayPath(execution.snapshot.Target.Path)
+	}
+	if result.ObservedValue != nil {
+		detail.ObservedValue = *result.ObservedValue
+		detail.ObservedUnit = qualityObservedUnit(result.ObservedKind)
+	}
+	if in.issueResourceID != "" {
+		detail.Issue = qualityIssueResourceName(in.workspaceID, in.issueResourceID)
+	}
+	if in.kind == storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED {
+		detail.ErrorCode = result.ErrorCode
+	}
+	return detail
+}
+
+// buildStormDetail is the summary one storm notification carries: how many rules
+// failed out of how many the run executed, and the run that merged them.
+func buildStormDetail(runResourceName string, failed, total int32) *storepb.DataQualityDetail {
+	return &storepb.DataQualityDetail{
+		Kind:            storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY,
+		Run:             runResourceName,
+		Severity:        storepb.QualitySeverity_QUALITY_SEVERITY_ERROR,
+		FailedRuleCount: failed,
+		TotalRuleCount:  total,
+	}
+}
+
+// isQualityRunStorm reports whether one run failed enough rules to be summarized
+// instead of announced rule by rule. Only FAIL results count: a run that could
+// not execute its rules is a different alert, not a data-quality storm.
+func isQualityRunStorm(results []*store.QualityRuleResultMessage) bool {
+	failed := 0
+	for _, result := range results {
+		if result != nil && result.Status == storepb.QualityStatus_QUALITY_STATUS_FAIL {
+			failed++
+		}
+	}
+	return failed > QualityStormThreshold
+}
+
+// qualityNotificationTarget returns the resource the dedupe key is scoped to: the
+// issue for a problem transition, the rule for an execution failure, the run for
+// a storm.
+func qualityNotificationTarget(detail *storepb.DataQualityDetail) string {
+	switch detail.GetKind() {
+	case storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED,
+		storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED:
+		if detail.GetIssue() != "" {
+			return detail.GetIssue()
+		}
+		return detail.GetRule()
+	case storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED:
+		return detail.GetRule()
+	case storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY:
+		return detail.GetRun()
+	case storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_UNSPECIFIED:
+		return ""
+	default:
+		return ""
+	}
+}
+
+// qualityNotificationRecipient picks the inbox a data-quality message goes to.
+// A problem transition goes to the rule's owner when it has one and to the
+// workspace administrators otherwise, so whoever owns the rule is the one asked
+// to look. An execution failure and a storm summary go to the administrators
+// only (design §8.2): the owner already sees the failed execution on the run
+// page, and paging them again for every broken rule would bury the problem
+// alerts that actually need their attention.
+func qualityNotificationRecipient(kind storepb.DataQualityNotificationKind, ownerID *int32) (recipientID int32, toAdmins bool) {
+	switch kind {
+	case storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED,
+		storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY:
+		return 0, true
+	case storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED,
+		storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED:
+		if ownerID == nil || *ownerID <= 0 {
+			return 0, true
+		}
+		return *ownerID, false
+	case storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_UNSPECIFIED:
+		return 0, true
+	default:
+		return 0, true
+	}
+}
+
+// qualityNotificationSeverity maps the rule's severity onto the notification
+// envelope's three levels.
+func qualityNotificationSeverity(severity storepb.QualitySeverity) storepb.NotificationSeverity {
+	switch severity {
+	case storepb.QualitySeverity_QUALITY_SEVERITY_WARNING:
+		return storepb.NotificationSeverity_NOTIFICATION_SEVERITY_WARNING
+	case storepb.QualitySeverity_QUALITY_SEVERITY_ERROR,
+		storepb.QualitySeverity_QUALITY_SEVERITY_CRITICAL:
+		return storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR
+	case storepb.QualitySeverity_QUALITY_SEVERITY_UNSPECIFIED:
+		return storepb.NotificationSeverity_NOTIFICATION_SEVERITY_WARNING
+	default:
+		return storepb.NotificationSeverity_NOTIFICATION_SEVERITY_WARNING
+	}
+}
+
+// qualityRuleMuted reports whether the rule's mute window suppresses notifications
+// about the problem it watches. It never suppresses execution-failure alerts.
+func qualityRuleMuted(head *store.QualityRuleMessage, now time.Time) bool {
+	if head == nil || head.MuteUntil == nil {
+		return false
+	}
+	return now.Before(*head.MuteUntil)
+}
+
+// qualityIssueMuted reports whether one issue's own mute window suppresses its
+// problem notifications.
+func qualityIssueMuted(issue *store.QualityIssueMessage, now time.Time) bool {
+	if issue == nil || issue.MutedUntil == nil {
+		return false
+	}
+	return now.Before(*issue.MutedUntil)
+}
+
+// qualityObservedUnit is the display unit of an observation, matching the units
+// the frontend labels: row counts, percentages, seconds and timestamps.
+func qualityObservedUnit(kind storepb.QualityObservedKind) string {
+	switch kind {
+	case storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT:
+		return "rows"
+	case storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_RATIO:
+		return "%"
+	case storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_SECONDS:
+		return "s"
+	case storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_TIMESTAMP:
+		return "timestamp"
+	case storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_NUMBER:
+		return ""
+	case storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_UNSPECIFIED:
+		return ""
+	default:
+		return ""
+	}
+}
+
+// qualityTargetDisplayPath renders the target path snapshot as
+// instance/database/schema/table[.column], skipping the containers an engine does
+// not have. It is display text, not an identity.
+func qualityTargetDisplayPath(path *storepb.QualityTargetPath) string {
+	if path == nil {
+		return ""
+	}
+	segments := make([]string, 0, 4)
+	for _, segment := range []string{path.GetInstance(), path.GetDatabase(), path.GetSchema(), path.GetObject()} {
+		if segment != "" {
+			segments = append(segments, segment)
+		}
+	}
+	display := strings.Join(segments, "/")
+	if path.GetColumn() != "" {
+		display += "." + path.GetColumn()
+	}
+	return display
+}
+
+// statusOrUnspecified turns the nullable "previous status" into the detail's
+// non-nullable enum. UNSPECIFIED means "there was no earlier result", which the
+// client renders as "first result" rather than as a transition from PASS.
+func statusOrUnspecified(status *storepb.QualityStatus) storepb.QualityStatus {
+	if status == nil {
+		return storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED
+	}
+	return *status
+}
+
+// qualityRuleResourceName formats a rule resource name. An empty workspace is the
+// degraded form used when the workspace could not be read; it still keeps the
+// detail parseable.
+func qualityRuleResourceName(workspaceID, resourceID string) string {
+	if resourceID == "" {
+		return ""
+	}
+	if workspaceID == "" {
+		return "qualityRules/" + resourceID
+	}
+	return "workspaces/" + workspaceID + "/qualityRules/" + resourceID
+}
+
+// qualityIssueResourceName formats an issue resource name.
+func qualityIssueResourceName(workspaceID, resourceID string) string {
+	if resourceID == "" {
+		return ""
+	}
+	if workspaceID == "" {
+		return "qualityIssues/" + resourceID
+	}
+	return "workspaces/" + workspaceID + "/qualityIssues/" + resourceID
+}
+
+// qualityRunResourceName formats a run resource name. An empty resource id means
+// the run row could not be resolved, and the caller substitutes the database id.
+func qualityRunResourceName(workspaceID, resourceID string) string {
+	if resourceID == "" {
+		return ""
+	}
+	if workspaceID == "" {
+		return "qualityRuns/" + resourceID
+	}
+	return "workspaces/" + workspaceID + "/qualityRuns/" + resourceID
+}
+
+// previousQualityStatus returns the rule's last result status before this run,
+// which is what tells a recovery apart from a rule that never failed. A missing
+// or unreadable history is treated as "no previous result": opening an issue is
+// still correct and the partial unique index prevents a duplicate.
+func (r *Runner) previousQualityStatus(ctx context.Context, ruleID int64) *storepb.QualityStatus {
+	results, err := r.stores.ListRecentQualityRuleResults(ctx, ruleID, 1)
+	if err != nil {
+		slog.Warn("failed to read a quality rule's previous result",
+			slog.Int64("rule", ruleID),
+			log.WithError(err))
+		return nil
+	}
+	for _, result := range results {
+		if result == nil {
+			continue
+		}
+		status := result.Status
+		return &status
+	}
+	return nil
+}
+
+// workspaceID is the workspace every notification resource name is scoped to. A
+// read failure leaves the name in its degraded form rather than dropping the
+// message: a delivery is still useful without the workspace prefix.
+func (r *Runner) workspaceID(ctx context.Context) string {
+	workspaceID, err := r.stores.GetWorkspaceID(ctx)
+	if err != nil {
+		slog.Warn("failed to read the workspace id for a quality notification", log.WithError(err))
+		return ""
+	}
+	return workspaceID
+}
+
+// resolveRuleHead reads the mutable rule row of a manual run's rule. The queue
+// carries only the rule id and the store has no lookup by internal id, so the
+// rule is found through its revision's target and matched by id; a target holds a
+// handful of rules, so the read stays bounded.
+func (r *Runner) resolveRuleHead(ctx context.Context, ruleID int64, targetGUID string) *store.QualityRuleMessage {
+	if targetGUID == "" {
+		return nil
+	}
+	rules, err := r.stores.ListQualityRules(ctx, &store.FindQualityRuleMessage{TargetGUID: &targetGUID})
+	if err != nil {
+		slog.Warn("failed to resolve a manual quality rule's head",
+			slog.Int64("rule", ruleID),
+			log.WithError(err))
+		return nil
+	}
+	for _, rule := range rules {
+		if rule.ID == ruleID {
+			return rule
+		}
+	}
+	return nil
+}
+
+// manualRunResourceID resolves a manual run's resource id for the notification
+// detail. The queue entry carries only the database id, and the store has no
+// lookup by id, so the run is found among the manual runs that are still
+// waiting or executing. A miss is not fatal: the caller falls back to the
+// database id in the detail.
+func (r *Runner) manualRunResourceID(ctx context.Context, runID int64) string {
+	statuses := []storepb.QualityRunStatus{
+		storepb.QualityRunStatus_QUALITY_RUN_STATUS_PENDING,
+		storepb.QualityRunStatus_QUALITY_RUN_STATUS_RUNNING,
+	}
+	trigger := storepb.QualityRunTrigger_QUALITY_RUN_TRIGGER_MANUAL
+	limit := 200
+	runs, err := r.stores.ListQualityRuns(ctx, &store.FindQualityRunMessage{
+		Statuses: statuses,
+		Trigger:  &trigger,
+		Limit:    &limit,
+	})
+	if err != nil {
+		slog.Warn("failed to resolve a manual quality run's resource id",
+			slog.Int64("run", runID),
+			log.WithError(err))
+		return ""
+	}
+	for _, run := range runs {
+		if run.ID == runID {
+			return run.ResourceID
+		}
+	}
+	return ""
+}
+
+// ruleResourceID returns the rule's public resource id, or "" when the mutable
+// head could not be read.
+func (e *ruleExecution) ruleResourceID() string {
+	if e.head == nil {
+		return ""
+	}
+	return e.head.ResourceID
+}
+
+// ruleTitle returns the rule's display title, or "" when the head is missing.
+func (e *ruleExecution) ruleTitle() string {
+	if e.head == nil {
+		return ""
+	}
+	return e.head.Title
+}
+
+// ownerID returns the rule's owner principal id, or nil.
+func (e *ruleExecution) ownerID() *int32 {
+	if e.head == nil {
+		return nil
+	}
+	return e.head.OwnerID
+}
+
+// severity returns the rule's current severity. The immutable revision carries
+// the severity the result was judged with, but the notification and the issue row
+// report the rule's current one; the head wins when it is available.
+func (e *ruleExecution) severity() storepb.QualitySeverity {
+	if e.head != nil {
+		return e.head.Severity
+	}
+	if e.snapshot != nil {
+		return e.snapshot.Severity
+	}
+	return storepb.QualitySeverity_QUALITY_SEVERITY_UNSPECIFIED
+}
+
+// targetGUID returns the registry GUID the result is about.
+func (e *ruleExecution) targetGUID() string {
+	if e.snapshot != nil && e.snapshot.Target.GUID != "" {
+		return e.snapshot.Target.GUID
+	}
+	if e.result != nil {
+		return e.result.TargetGUID
+	}
+	return ""
+}
+
+// targetType returns the registry object type the result is about.
+func (e *ruleExecution) targetType() storepb.MetaType {
+	if e.snapshot != nil {
+		return e.snapshot.Target.MetaType
+	}
+	if e.result != nil {
+		return e.result.TargetType
+	}
+	return storepb.MetaType_UNSPECIFIED
 }

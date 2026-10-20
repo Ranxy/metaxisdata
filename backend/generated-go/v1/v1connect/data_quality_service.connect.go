@@ -64,6 +64,42 @@ const (
 	// DataQualityServiceListQualityRuleResultsProcedure is the fully-qualified name of the
 	// DataQualityService's ListQualityRuleResults RPC.
 	DataQualityServiceListQualityRuleResultsProcedure = "/metaxisdata.v1.DataQualityService/ListQualityRuleResults"
+	// DataQualityServiceListQualityIssuesProcedure is the fully-qualified name of the
+	// DataQualityService's ListQualityIssues RPC.
+	DataQualityServiceListQualityIssuesProcedure = "/metaxisdata.v1.DataQualityService/ListQualityIssues"
+	// DataQualityServiceGetQualityIssueProcedure is the fully-qualified name of the
+	// DataQualityService's GetQualityIssue RPC.
+	DataQualityServiceGetQualityIssueProcedure = "/metaxisdata.v1.DataQualityService/GetQualityIssue"
+	// DataQualityServiceUpdateQualityIssueProcedure is the fully-qualified name of the
+	// DataQualityService's UpdateQualityIssue RPC.
+	DataQualityServiceUpdateQualityIssueProcedure = "/metaxisdata.v1.DataQualityService/UpdateQualityIssue"
+	// DataQualityServiceListQualitySuggestionsProcedure is the fully-qualified name of the
+	// DataQualityService's ListQualitySuggestions RPC.
+	DataQualityServiceListQualitySuggestionsProcedure = "/metaxisdata.v1.DataQualityService/ListQualitySuggestions"
+	// DataQualityServiceUpdateQualitySuggestionProcedure is the fully-qualified name of the
+	// DataQualityService's UpdateQualitySuggestion RPC.
+	DataQualityServiceUpdateQualitySuggestionProcedure = "/metaxisdata.v1.DataQualityService/UpdateQualitySuggestion"
+	// DataQualityServiceListColumnProfilesProcedure is the fully-qualified name of the
+	// DataQualityService's ListColumnProfiles RPC.
+	DataQualityServiceListColumnProfilesProcedure = "/metaxisdata.v1.DataQualityService/ListColumnProfiles"
+	// DataQualityServiceListColumnLabelsProcedure is the fully-qualified name of the
+	// DataQualityService's ListColumnLabels RPC.
+	DataQualityServiceListColumnLabelsProcedure = "/metaxisdata.v1.DataQualityService/ListColumnLabels"
+	// DataQualityServiceUpdateColumnLabelProcedure is the fully-qualified name of the
+	// DataQualityService's UpdateColumnLabel RPC.
+	DataQualityServiceUpdateColumnLabelProcedure = "/metaxisdata.v1.DataQualityService/UpdateColumnLabel"
+	// DataQualityServiceProfileColumnsProcedure is the fully-qualified name of the DataQualityService's
+	// ProfileColumns RPC.
+	DataQualityServiceProfileColumnsProcedure = "/metaxisdata.v1.DataQualityService/ProfileColumns"
+	// DataQualityServiceSuggestQualityRuleProcedure is the fully-qualified name of the
+	// DataQualityService's SuggestQualityRule RPC.
+	DataQualityServiceSuggestQualityRuleProcedure = "/metaxisdata.v1.DataQualityService/SuggestQualityRule"
+	// DataQualityServiceSuggestColumnLabelsProcedure is the fully-qualified name of the
+	// DataQualityService's SuggestColumnLabels RPC.
+	DataQualityServiceSuggestColumnLabelsProcedure = "/metaxisdata.v1.DataQualityService/SuggestColumnLabels"
+	// DataQualityServiceExplainQualityResultProcedure is the fully-qualified name of the
+	// DataQualityService's ExplainQualityResult RPC.
+	DataQualityServiceExplainQualityResultProcedure = "/metaxisdata.v1.DataQualityService/ExplainQualityResult"
 )
 
 // DataQualityServiceClient is a client for the metaxisdata.v1.DataQualityService service.
@@ -96,6 +132,37 @@ type DataQualityServiceClient interface {
 	GetQualityRun(context.Context, *connect.Request[v1.GetQualityRunRequest]) (*connect.Response[v1.QualityRun], error)
 	// List the per-rule results of runs, typically filtered by run.
 	ListQualityRuleResults(context.Context, *connect.Request[v1.ListQualityRuleResultsRequest]) (*connect.Response[v1.ListQualityRuleResultsResponse], error)
+	// List quality issues, newest first.
+	ListQualityIssues(context.Context, *connect.Request[v1.ListQualityIssuesRequest]) (*connect.Response[v1.ListQualityIssuesResponse], error)
+	// Read one quality issue.
+	GetQualityIssue(context.Context, *connect.Request[v1.GetQualityIssueRequest]) (*connect.Response[v1.QualityIssue], error)
+	// Acknowledge, resolve or mute one quality issue.
+	UpdateQualityIssue(context.Context, *connect.Request[v1.UpdateQualityIssueRequest]) (*connect.Response[v1.QualityIssue], error)
+	// List the review queue of model-proposed rule drafts and semantic labels,
+	// newest first.
+	ListQualitySuggestions(context.Context, *connect.Request[v1.ListQualitySuggestionsRequest]) (*connect.Response[v1.ListQualitySuggestionsResponse], error)
+	// Accept or reject one queued suggestion. A decision is final: the store
+	// refuses a second one.
+	UpdateQualitySuggestion(context.Context, *connect.Request[v1.UpdateQualitySuggestionRequest]) (*connect.Response[v1.QualitySuggestion], error)
+	// List the cached deterministic profiles of columns. Profiles are read-only
+	// measurements; there is no get or update.
+	ListColumnProfiles(context.Context, *connect.Request[v1.ListColumnProfilesRequest]) (*connect.Response[v1.ListColumnProfilesResponse], error)
+	// List the semantic labels asserted on columns.
+	ListColumnLabels(context.Context, *connect.Request[v1.ListColumnLabelsRequest]) (*connect.Response[v1.ListColumnLabelsResponse], error)
+	// Accept a proposed semantic label or clear the label of one column.
+	UpdateColumnLabel(context.Context, *connect.Request[v1.UpdateColumnLabelRequest]) (*connect.Response[v1.UpdateColumnLabelResponse], error)
+	// Measure the deterministic statistics of up to 50 columns of one table.
+	ProfileColumns(context.Context, *connect.Request[v1.ProfileColumnsRequest]) (*connect.Response[v1.ProfileColumnsResponse], error)
+	// Turn a natural-language intent into queued rule drafts.
+	SuggestQualityRule(context.Context, *connect.Request[v1.SuggestQualityRuleRequest]) (*connect.Response[v1.SuggestQualityRuleResponse], error)
+	// Propose semantic labels for up to 50 columns of one table.
+	SuggestColumnLabels(context.Context, *connect.Request[v1.SuggestColumnLabelsRequest]) (*connect.Response[v1.SuggestColumnLabelsResponse], error)
+	// Explain one failed result as a stream of hypotheses.
+	//
+	// No (google.api.http) annotation: this is a server-streaming method, and the
+	// REST gateway cannot carry one. The browser reaches the Connect endpoint
+	// directly, the way it does for ExplainSQL.
+	ExplainQualityResult(context.Context, *connect.Request[v1.ExplainQualityResultRequest]) (*connect.ServerStreamForClient[v1.ExplainQualityResultResponse], error)
 }
 
 // NewDataQualityServiceClient constructs a client for the metaxisdata.v1.DataQualityService
@@ -169,21 +236,105 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityRuleResults")),
 			connect.WithClientOptions(opts...),
 		),
+		listQualityIssues: connect.NewClient[v1.ListQualityIssuesRequest, v1.ListQualityIssuesResponse](
+			httpClient,
+			baseURL+DataQualityServiceListQualityIssuesProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityIssues")),
+			connect.WithClientOptions(opts...),
+		),
+		getQualityIssue: connect.NewClient[v1.GetQualityIssueRequest, v1.QualityIssue](
+			httpClient,
+			baseURL+DataQualityServiceGetQualityIssueProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityIssue")),
+			connect.WithClientOptions(opts...),
+		),
+		updateQualityIssue: connect.NewClient[v1.UpdateQualityIssueRequest, v1.QualityIssue](
+			httpClient,
+			baseURL+DataQualityServiceUpdateQualityIssueProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("UpdateQualityIssue")),
+			connect.WithClientOptions(opts...),
+		),
+		listQualitySuggestions: connect.NewClient[v1.ListQualitySuggestionsRequest, v1.ListQualitySuggestionsResponse](
+			httpClient,
+			baseURL+DataQualityServiceListQualitySuggestionsProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ListQualitySuggestions")),
+			connect.WithClientOptions(opts...),
+		),
+		updateQualitySuggestion: connect.NewClient[v1.UpdateQualitySuggestionRequest, v1.QualitySuggestion](
+			httpClient,
+			baseURL+DataQualityServiceUpdateQualitySuggestionProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("UpdateQualitySuggestion")),
+			connect.WithClientOptions(opts...),
+		),
+		listColumnProfiles: connect.NewClient[v1.ListColumnProfilesRequest, v1.ListColumnProfilesResponse](
+			httpClient,
+			baseURL+DataQualityServiceListColumnProfilesProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ListColumnProfiles")),
+			connect.WithClientOptions(opts...),
+		),
+		listColumnLabels: connect.NewClient[v1.ListColumnLabelsRequest, v1.ListColumnLabelsResponse](
+			httpClient,
+			baseURL+DataQualityServiceListColumnLabelsProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ListColumnLabels")),
+			connect.WithClientOptions(opts...),
+		),
+		updateColumnLabel: connect.NewClient[v1.UpdateColumnLabelRequest, v1.UpdateColumnLabelResponse](
+			httpClient,
+			baseURL+DataQualityServiceUpdateColumnLabelProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("UpdateColumnLabel")),
+			connect.WithClientOptions(opts...),
+		),
+		profileColumns: connect.NewClient[v1.ProfileColumnsRequest, v1.ProfileColumnsResponse](
+			httpClient,
+			baseURL+DataQualityServiceProfileColumnsProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ProfileColumns")),
+			connect.WithClientOptions(opts...),
+		),
+		suggestQualityRule: connect.NewClient[v1.SuggestQualityRuleRequest, v1.SuggestQualityRuleResponse](
+			httpClient,
+			baseURL+DataQualityServiceSuggestQualityRuleProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("SuggestQualityRule")),
+			connect.WithClientOptions(opts...),
+		),
+		suggestColumnLabels: connect.NewClient[v1.SuggestColumnLabelsRequest, v1.SuggestColumnLabelsResponse](
+			httpClient,
+			baseURL+DataQualityServiceSuggestColumnLabelsProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("SuggestColumnLabels")),
+			connect.WithClientOptions(opts...),
+		),
+		explainQualityResult: connect.NewClient[v1.ExplainQualityResultRequest, v1.ExplainQualityResultResponse](
+			httpClient,
+			baseURL+DataQualityServiceExplainQualityResultProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ExplainQualityResult")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // dataQualityServiceClient implements DataQualityServiceClient.
 type dataQualityServiceClient struct {
-	listQualityRules       *connect.Client[v1.ListQualityRulesRequest, v1.ListQualityRulesResponse]
-	getQualityRule         *connect.Client[v1.GetQualityRuleRequest, v1.QualityRule]
-	createQualityRule      *connect.Client[v1.CreateQualityRuleRequest, v1.QualityRule]
-	updateQualityRule      *connect.Client[v1.UpdateQualityRuleRequest, v1.QualityRule]
-	deleteQualityRule      *connect.Client[v1.DeleteQualityRuleRequest, emptypb.Empty]
-	previewQualityRule     *connect.Client[v1.PreviewQualityRuleRequest, v1.PreviewQualityRuleResponse]
-	runQualityRules        *connect.Client[v1.RunQualityRulesRequest, v1.RunQualityRulesResponse]
-	listQualityRuns        *connect.Client[v1.ListQualityRunsRequest, v1.ListQualityRunsResponse]
-	getQualityRun          *connect.Client[v1.GetQualityRunRequest, v1.QualityRun]
-	listQualityRuleResults *connect.Client[v1.ListQualityRuleResultsRequest, v1.ListQualityRuleResultsResponse]
+	listQualityRules        *connect.Client[v1.ListQualityRulesRequest, v1.ListQualityRulesResponse]
+	getQualityRule          *connect.Client[v1.GetQualityRuleRequest, v1.QualityRule]
+	createQualityRule       *connect.Client[v1.CreateQualityRuleRequest, v1.QualityRule]
+	updateQualityRule       *connect.Client[v1.UpdateQualityRuleRequest, v1.QualityRule]
+	deleteQualityRule       *connect.Client[v1.DeleteQualityRuleRequest, emptypb.Empty]
+	previewQualityRule      *connect.Client[v1.PreviewQualityRuleRequest, v1.PreviewQualityRuleResponse]
+	runQualityRules         *connect.Client[v1.RunQualityRulesRequest, v1.RunQualityRulesResponse]
+	listQualityRuns         *connect.Client[v1.ListQualityRunsRequest, v1.ListQualityRunsResponse]
+	getQualityRun           *connect.Client[v1.GetQualityRunRequest, v1.QualityRun]
+	listQualityRuleResults  *connect.Client[v1.ListQualityRuleResultsRequest, v1.ListQualityRuleResultsResponse]
+	listQualityIssues       *connect.Client[v1.ListQualityIssuesRequest, v1.ListQualityIssuesResponse]
+	getQualityIssue         *connect.Client[v1.GetQualityIssueRequest, v1.QualityIssue]
+	updateQualityIssue      *connect.Client[v1.UpdateQualityIssueRequest, v1.QualityIssue]
+	listQualitySuggestions  *connect.Client[v1.ListQualitySuggestionsRequest, v1.ListQualitySuggestionsResponse]
+	updateQualitySuggestion *connect.Client[v1.UpdateQualitySuggestionRequest, v1.QualitySuggestion]
+	listColumnProfiles      *connect.Client[v1.ListColumnProfilesRequest, v1.ListColumnProfilesResponse]
+	listColumnLabels        *connect.Client[v1.ListColumnLabelsRequest, v1.ListColumnLabelsResponse]
+	updateColumnLabel       *connect.Client[v1.UpdateColumnLabelRequest, v1.UpdateColumnLabelResponse]
+	profileColumns          *connect.Client[v1.ProfileColumnsRequest, v1.ProfileColumnsResponse]
+	suggestQualityRule      *connect.Client[v1.SuggestQualityRuleRequest, v1.SuggestQualityRuleResponse]
+	suggestColumnLabels     *connect.Client[v1.SuggestColumnLabelsRequest, v1.SuggestColumnLabelsResponse]
+	explainQualityResult    *connect.Client[v1.ExplainQualityResultRequest, v1.ExplainQualityResultResponse]
 }
 
 // ListQualityRules calls metaxisdata.v1.DataQualityService.ListQualityRules.
@@ -236,6 +387,66 @@ func (c *dataQualityServiceClient) ListQualityRuleResults(ctx context.Context, r
 	return c.listQualityRuleResults.CallUnary(ctx, req)
 }
 
+// ListQualityIssues calls metaxisdata.v1.DataQualityService.ListQualityIssues.
+func (c *dataQualityServiceClient) ListQualityIssues(ctx context.Context, req *connect.Request[v1.ListQualityIssuesRequest]) (*connect.Response[v1.ListQualityIssuesResponse], error) {
+	return c.listQualityIssues.CallUnary(ctx, req)
+}
+
+// GetQualityIssue calls metaxisdata.v1.DataQualityService.GetQualityIssue.
+func (c *dataQualityServiceClient) GetQualityIssue(ctx context.Context, req *connect.Request[v1.GetQualityIssueRequest]) (*connect.Response[v1.QualityIssue], error) {
+	return c.getQualityIssue.CallUnary(ctx, req)
+}
+
+// UpdateQualityIssue calls metaxisdata.v1.DataQualityService.UpdateQualityIssue.
+func (c *dataQualityServiceClient) UpdateQualityIssue(ctx context.Context, req *connect.Request[v1.UpdateQualityIssueRequest]) (*connect.Response[v1.QualityIssue], error) {
+	return c.updateQualityIssue.CallUnary(ctx, req)
+}
+
+// ListQualitySuggestions calls metaxisdata.v1.DataQualityService.ListQualitySuggestions.
+func (c *dataQualityServiceClient) ListQualitySuggestions(ctx context.Context, req *connect.Request[v1.ListQualitySuggestionsRequest]) (*connect.Response[v1.ListQualitySuggestionsResponse], error) {
+	return c.listQualitySuggestions.CallUnary(ctx, req)
+}
+
+// UpdateQualitySuggestion calls metaxisdata.v1.DataQualityService.UpdateQualitySuggestion.
+func (c *dataQualityServiceClient) UpdateQualitySuggestion(ctx context.Context, req *connect.Request[v1.UpdateQualitySuggestionRequest]) (*connect.Response[v1.QualitySuggestion], error) {
+	return c.updateQualitySuggestion.CallUnary(ctx, req)
+}
+
+// ListColumnProfiles calls metaxisdata.v1.DataQualityService.ListColumnProfiles.
+func (c *dataQualityServiceClient) ListColumnProfiles(ctx context.Context, req *connect.Request[v1.ListColumnProfilesRequest]) (*connect.Response[v1.ListColumnProfilesResponse], error) {
+	return c.listColumnProfiles.CallUnary(ctx, req)
+}
+
+// ListColumnLabels calls metaxisdata.v1.DataQualityService.ListColumnLabels.
+func (c *dataQualityServiceClient) ListColumnLabels(ctx context.Context, req *connect.Request[v1.ListColumnLabelsRequest]) (*connect.Response[v1.ListColumnLabelsResponse], error) {
+	return c.listColumnLabels.CallUnary(ctx, req)
+}
+
+// UpdateColumnLabel calls metaxisdata.v1.DataQualityService.UpdateColumnLabel.
+func (c *dataQualityServiceClient) UpdateColumnLabel(ctx context.Context, req *connect.Request[v1.UpdateColumnLabelRequest]) (*connect.Response[v1.UpdateColumnLabelResponse], error) {
+	return c.updateColumnLabel.CallUnary(ctx, req)
+}
+
+// ProfileColumns calls metaxisdata.v1.DataQualityService.ProfileColumns.
+func (c *dataQualityServiceClient) ProfileColumns(ctx context.Context, req *connect.Request[v1.ProfileColumnsRequest]) (*connect.Response[v1.ProfileColumnsResponse], error) {
+	return c.profileColumns.CallUnary(ctx, req)
+}
+
+// SuggestQualityRule calls metaxisdata.v1.DataQualityService.SuggestQualityRule.
+func (c *dataQualityServiceClient) SuggestQualityRule(ctx context.Context, req *connect.Request[v1.SuggestQualityRuleRequest]) (*connect.Response[v1.SuggestQualityRuleResponse], error) {
+	return c.suggestQualityRule.CallUnary(ctx, req)
+}
+
+// SuggestColumnLabels calls metaxisdata.v1.DataQualityService.SuggestColumnLabels.
+func (c *dataQualityServiceClient) SuggestColumnLabels(ctx context.Context, req *connect.Request[v1.SuggestColumnLabelsRequest]) (*connect.Response[v1.SuggestColumnLabelsResponse], error) {
+	return c.suggestColumnLabels.CallUnary(ctx, req)
+}
+
+// ExplainQualityResult calls metaxisdata.v1.DataQualityService.ExplainQualityResult.
+func (c *dataQualityServiceClient) ExplainQualityResult(ctx context.Context, req *connect.Request[v1.ExplainQualityResultRequest]) (*connect.ServerStreamForClient[v1.ExplainQualityResultResponse], error) {
+	return c.explainQualityResult.CallServerStream(ctx, req)
+}
+
 // DataQualityServiceHandler is an implementation of the metaxisdata.v1.DataQualityService service.
 type DataQualityServiceHandler interface {
 	// List rules, newest first.
@@ -266,6 +477,37 @@ type DataQualityServiceHandler interface {
 	GetQualityRun(context.Context, *connect.Request[v1.GetQualityRunRequest]) (*connect.Response[v1.QualityRun], error)
 	// List the per-rule results of runs, typically filtered by run.
 	ListQualityRuleResults(context.Context, *connect.Request[v1.ListQualityRuleResultsRequest]) (*connect.Response[v1.ListQualityRuleResultsResponse], error)
+	// List quality issues, newest first.
+	ListQualityIssues(context.Context, *connect.Request[v1.ListQualityIssuesRequest]) (*connect.Response[v1.ListQualityIssuesResponse], error)
+	// Read one quality issue.
+	GetQualityIssue(context.Context, *connect.Request[v1.GetQualityIssueRequest]) (*connect.Response[v1.QualityIssue], error)
+	// Acknowledge, resolve or mute one quality issue.
+	UpdateQualityIssue(context.Context, *connect.Request[v1.UpdateQualityIssueRequest]) (*connect.Response[v1.QualityIssue], error)
+	// List the review queue of model-proposed rule drafts and semantic labels,
+	// newest first.
+	ListQualitySuggestions(context.Context, *connect.Request[v1.ListQualitySuggestionsRequest]) (*connect.Response[v1.ListQualitySuggestionsResponse], error)
+	// Accept or reject one queued suggestion. A decision is final: the store
+	// refuses a second one.
+	UpdateQualitySuggestion(context.Context, *connect.Request[v1.UpdateQualitySuggestionRequest]) (*connect.Response[v1.QualitySuggestion], error)
+	// List the cached deterministic profiles of columns. Profiles are read-only
+	// measurements; there is no get or update.
+	ListColumnProfiles(context.Context, *connect.Request[v1.ListColumnProfilesRequest]) (*connect.Response[v1.ListColumnProfilesResponse], error)
+	// List the semantic labels asserted on columns.
+	ListColumnLabels(context.Context, *connect.Request[v1.ListColumnLabelsRequest]) (*connect.Response[v1.ListColumnLabelsResponse], error)
+	// Accept a proposed semantic label or clear the label of one column.
+	UpdateColumnLabel(context.Context, *connect.Request[v1.UpdateColumnLabelRequest]) (*connect.Response[v1.UpdateColumnLabelResponse], error)
+	// Measure the deterministic statistics of up to 50 columns of one table.
+	ProfileColumns(context.Context, *connect.Request[v1.ProfileColumnsRequest]) (*connect.Response[v1.ProfileColumnsResponse], error)
+	// Turn a natural-language intent into queued rule drafts.
+	SuggestQualityRule(context.Context, *connect.Request[v1.SuggestQualityRuleRequest]) (*connect.Response[v1.SuggestQualityRuleResponse], error)
+	// Propose semantic labels for up to 50 columns of one table.
+	SuggestColumnLabels(context.Context, *connect.Request[v1.SuggestColumnLabelsRequest]) (*connect.Response[v1.SuggestColumnLabelsResponse], error)
+	// Explain one failed result as a stream of hypotheses.
+	//
+	// No (google.api.http) annotation: this is a server-streaming method, and the
+	// REST gateway cannot carry one. The browser reaches the Connect endpoint
+	// directly, the way it does for ExplainSQL.
+	ExplainQualityResult(context.Context, *connect.Request[v1.ExplainQualityResultRequest], *connect.ServerStream[v1.ExplainQualityResultResponse]) error
 }
 
 // NewDataQualityServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -335,6 +577,78 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityRuleResults")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataQualityServiceListQualityIssuesHandler := connect.NewUnaryHandler(
+		DataQualityServiceListQualityIssuesProcedure,
+		svc.ListQualityIssues,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityIssues")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceGetQualityIssueHandler := connect.NewUnaryHandler(
+		DataQualityServiceGetQualityIssueProcedure,
+		svc.GetQualityIssue,
+		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityIssue")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceUpdateQualityIssueHandler := connect.NewUnaryHandler(
+		DataQualityServiceUpdateQualityIssueProcedure,
+		svc.UpdateQualityIssue,
+		connect.WithSchema(dataQualityServiceMethods.ByName("UpdateQualityIssue")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceListQualitySuggestionsHandler := connect.NewUnaryHandler(
+		DataQualityServiceListQualitySuggestionsProcedure,
+		svc.ListQualitySuggestions,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ListQualitySuggestions")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceUpdateQualitySuggestionHandler := connect.NewUnaryHandler(
+		DataQualityServiceUpdateQualitySuggestionProcedure,
+		svc.UpdateQualitySuggestion,
+		connect.WithSchema(dataQualityServiceMethods.ByName("UpdateQualitySuggestion")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceListColumnProfilesHandler := connect.NewUnaryHandler(
+		DataQualityServiceListColumnProfilesProcedure,
+		svc.ListColumnProfiles,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ListColumnProfiles")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceListColumnLabelsHandler := connect.NewUnaryHandler(
+		DataQualityServiceListColumnLabelsProcedure,
+		svc.ListColumnLabels,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ListColumnLabels")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceUpdateColumnLabelHandler := connect.NewUnaryHandler(
+		DataQualityServiceUpdateColumnLabelProcedure,
+		svc.UpdateColumnLabel,
+		connect.WithSchema(dataQualityServiceMethods.ByName("UpdateColumnLabel")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceProfileColumnsHandler := connect.NewUnaryHandler(
+		DataQualityServiceProfileColumnsProcedure,
+		svc.ProfileColumns,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ProfileColumns")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceSuggestQualityRuleHandler := connect.NewUnaryHandler(
+		DataQualityServiceSuggestQualityRuleProcedure,
+		svc.SuggestQualityRule,
+		connect.WithSchema(dataQualityServiceMethods.ByName("SuggestQualityRule")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceSuggestColumnLabelsHandler := connect.NewUnaryHandler(
+		DataQualityServiceSuggestColumnLabelsProcedure,
+		svc.SuggestColumnLabels,
+		connect.WithSchema(dataQualityServiceMethods.ByName("SuggestColumnLabels")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceExplainQualityResultHandler := connect.NewServerStreamHandler(
+		DataQualityServiceExplainQualityResultProcedure,
+		svc.ExplainQualityResult,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ExplainQualityResult")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/metaxisdata.v1.DataQualityService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DataQualityServiceListQualityRulesProcedure:
@@ -357,6 +671,30 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceGetQualityRunHandler.ServeHTTP(w, r)
 		case DataQualityServiceListQualityRuleResultsProcedure:
 			dataQualityServiceListQualityRuleResultsHandler.ServeHTTP(w, r)
+		case DataQualityServiceListQualityIssuesProcedure:
+			dataQualityServiceListQualityIssuesHandler.ServeHTTP(w, r)
+		case DataQualityServiceGetQualityIssueProcedure:
+			dataQualityServiceGetQualityIssueHandler.ServeHTTP(w, r)
+		case DataQualityServiceUpdateQualityIssueProcedure:
+			dataQualityServiceUpdateQualityIssueHandler.ServeHTTP(w, r)
+		case DataQualityServiceListQualitySuggestionsProcedure:
+			dataQualityServiceListQualitySuggestionsHandler.ServeHTTP(w, r)
+		case DataQualityServiceUpdateQualitySuggestionProcedure:
+			dataQualityServiceUpdateQualitySuggestionHandler.ServeHTTP(w, r)
+		case DataQualityServiceListColumnProfilesProcedure:
+			dataQualityServiceListColumnProfilesHandler.ServeHTTP(w, r)
+		case DataQualityServiceListColumnLabelsProcedure:
+			dataQualityServiceListColumnLabelsHandler.ServeHTTP(w, r)
+		case DataQualityServiceUpdateColumnLabelProcedure:
+			dataQualityServiceUpdateColumnLabelHandler.ServeHTTP(w, r)
+		case DataQualityServiceProfileColumnsProcedure:
+			dataQualityServiceProfileColumnsHandler.ServeHTTP(w, r)
+		case DataQualityServiceSuggestQualityRuleProcedure:
+			dataQualityServiceSuggestQualityRuleHandler.ServeHTTP(w, r)
+		case DataQualityServiceSuggestColumnLabelsProcedure:
+			dataQualityServiceSuggestColumnLabelsHandler.ServeHTTP(w, r)
+		case DataQualityServiceExplainQualityResultProcedure:
+			dataQualityServiceExplainQualityResultHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -404,4 +742,52 @@ func (UnimplementedDataQualityServiceHandler) GetQualityRun(context.Context, *co
 
 func (UnimplementedDataQualityServiceHandler) ListQualityRuleResults(context.Context, *connect.Request[v1.ListQualityRuleResultsRequest]) (*connect.Response[v1.ListQualityRuleResultsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ListQualityRuleResults is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ListQualityIssues(context.Context, *connect.Request[v1.ListQualityIssuesRequest]) (*connect.Response[v1.ListQualityIssuesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ListQualityIssues is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) GetQualityIssue(context.Context, *connect.Request[v1.GetQualityIssueRequest]) (*connect.Response[v1.QualityIssue], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityIssue is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) UpdateQualityIssue(context.Context, *connect.Request[v1.UpdateQualityIssueRequest]) (*connect.Response[v1.QualityIssue], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.UpdateQualityIssue is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ListQualitySuggestions(context.Context, *connect.Request[v1.ListQualitySuggestionsRequest]) (*connect.Response[v1.ListQualitySuggestionsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ListQualitySuggestions is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) UpdateQualitySuggestion(context.Context, *connect.Request[v1.UpdateQualitySuggestionRequest]) (*connect.Response[v1.QualitySuggestion], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.UpdateQualitySuggestion is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ListColumnProfiles(context.Context, *connect.Request[v1.ListColumnProfilesRequest]) (*connect.Response[v1.ListColumnProfilesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ListColumnProfiles is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ListColumnLabels(context.Context, *connect.Request[v1.ListColumnLabelsRequest]) (*connect.Response[v1.ListColumnLabelsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ListColumnLabels is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) UpdateColumnLabel(context.Context, *connect.Request[v1.UpdateColumnLabelRequest]) (*connect.Response[v1.UpdateColumnLabelResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.UpdateColumnLabel is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ProfileColumns(context.Context, *connect.Request[v1.ProfileColumnsRequest]) (*connect.Response[v1.ProfileColumnsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ProfileColumns is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) SuggestQualityRule(context.Context, *connect.Request[v1.SuggestQualityRuleRequest]) (*connect.Response[v1.SuggestQualityRuleResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.SuggestQualityRule is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) SuggestColumnLabels(context.Context, *connect.Request[v1.SuggestColumnLabelsRequest]) (*connect.Response[v1.SuggestColumnLabelsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.SuggestColumnLabels is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ExplainQualityResult(context.Context, *connect.Request[v1.ExplainQualityResultRequest], *connect.ServerStream[v1.ExplainQualityResultResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ExplainQualityResult is not implemented"))
 }

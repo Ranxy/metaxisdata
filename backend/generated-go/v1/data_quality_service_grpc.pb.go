@@ -20,16 +20,28 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	DataQualityService_ListQualityRules_FullMethodName       = "/metaxisdata.v1.DataQualityService/ListQualityRules"
-	DataQualityService_GetQualityRule_FullMethodName         = "/metaxisdata.v1.DataQualityService/GetQualityRule"
-	DataQualityService_CreateQualityRule_FullMethodName      = "/metaxisdata.v1.DataQualityService/CreateQualityRule"
-	DataQualityService_UpdateQualityRule_FullMethodName      = "/metaxisdata.v1.DataQualityService/UpdateQualityRule"
-	DataQualityService_DeleteQualityRule_FullMethodName      = "/metaxisdata.v1.DataQualityService/DeleteQualityRule"
-	DataQualityService_PreviewQualityRule_FullMethodName     = "/metaxisdata.v1.DataQualityService/PreviewQualityRule"
-	DataQualityService_RunQualityRules_FullMethodName        = "/metaxisdata.v1.DataQualityService/RunQualityRules"
-	DataQualityService_ListQualityRuns_FullMethodName        = "/metaxisdata.v1.DataQualityService/ListQualityRuns"
-	DataQualityService_GetQualityRun_FullMethodName          = "/metaxisdata.v1.DataQualityService/GetQualityRun"
-	DataQualityService_ListQualityRuleResults_FullMethodName = "/metaxisdata.v1.DataQualityService/ListQualityRuleResults"
+	DataQualityService_ListQualityRules_FullMethodName        = "/metaxisdata.v1.DataQualityService/ListQualityRules"
+	DataQualityService_GetQualityRule_FullMethodName          = "/metaxisdata.v1.DataQualityService/GetQualityRule"
+	DataQualityService_CreateQualityRule_FullMethodName       = "/metaxisdata.v1.DataQualityService/CreateQualityRule"
+	DataQualityService_UpdateQualityRule_FullMethodName       = "/metaxisdata.v1.DataQualityService/UpdateQualityRule"
+	DataQualityService_DeleteQualityRule_FullMethodName       = "/metaxisdata.v1.DataQualityService/DeleteQualityRule"
+	DataQualityService_PreviewQualityRule_FullMethodName      = "/metaxisdata.v1.DataQualityService/PreviewQualityRule"
+	DataQualityService_RunQualityRules_FullMethodName         = "/metaxisdata.v1.DataQualityService/RunQualityRules"
+	DataQualityService_ListQualityRuns_FullMethodName         = "/metaxisdata.v1.DataQualityService/ListQualityRuns"
+	DataQualityService_GetQualityRun_FullMethodName           = "/metaxisdata.v1.DataQualityService/GetQualityRun"
+	DataQualityService_ListQualityRuleResults_FullMethodName  = "/metaxisdata.v1.DataQualityService/ListQualityRuleResults"
+	DataQualityService_ListQualityIssues_FullMethodName       = "/metaxisdata.v1.DataQualityService/ListQualityIssues"
+	DataQualityService_GetQualityIssue_FullMethodName         = "/metaxisdata.v1.DataQualityService/GetQualityIssue"
+	DataQualityService_UpdateQualityIssue_FullMethodName      = "/metaxisdata.v1.DataQualityService/UpdateQualityIssue"
+	DataQualityService_ListQualitySuggestions_FullMethodName  = "/metaxisdata.v1.DataQualityService/ListQualitySuggestions"
+	DataQualityService_UpdateQualitySuggestion_FullMethodName = "/metaxisdata.v1.DataQualityService/UpdateQualitySuggestion"
+	DataQualityService_ListColumnProfiles_FullMethodName      = "/metaxisdata.v1.DataQualityService/ListColumnProfiles"
+	DataQualityService_ListColumnLabels_FullMethodName        = "/metaxisdata.v1.DataQualityService/ListColumnLabels"
+	DataQualityService_UpdateColumnLabel_FullMethodName       = "/metaxisdata.v1.DataQualityService/UpdateColumnLabel"
+	DataQualityService_ProfileColumns_FullMethodName          = "/metaxisdata.v1.DataQualityService/ProfileColumns"
+	DataQualityService_SuggestQualityRule_FullMethodName      = "/metaxisdata.v1.DataQualityService/SuggestQualityRule"
+	DataQualityService_SuggestColumnLabels_FullMethodName     = "/metaxisdata.v1.DataQualityService/SuggestColumnLabels"
+	DataQualityService_ExplainQualityResult_FullMethodName    = "/metaxisdata.v1.DataQualityService/ExplainQualityResult"
 )
 
 // DataQualityServiceClient is the client API for DataQualityService service.
@@ -72,6 +84,37 @@ type DataQualityServiceClient interface {
 	GetQualityRun(ctx context.Context, in *GetQualityRunRequest, opts ...grpc.CallOption) (*QualityRun, error)
 	// List the per-rule results of runs, typically filtered by run.
 	ListQualityRuleResults(ctx context.Context, in *ListQualityRuleResultsRequest, opts ...grpc.CallOption) (*ListQualityRuleResultsResponse, error)
+	// List quality issues, newest first.
+	ListQualityIssues(ctx context.Context, in *ListQualityIssuesRequest, opts ...grpc.CallOption) (*ListQualityIssuesResponse, error)
+	// Read one quality issue.
+	GetQualityIssue(ctx context.Context, in *GetQualityIssueRequest, opts ...grpc.CallOption) (*QualityIssue, error)
+	// Acknowledge, resolve or mute one quality issue.
+	UpdateQualityIssue(ctx context.Context, in *UpdateQualityIssueRequest, opts ...grpc.CallOption) (*QualityIssue, error)
+	// List the review queue of model-proposed rule drafts and semantic labels,
+	// newest first.
+	ListQualitySuggestions(ctx context.Context, in *ListQualitySuggestionsRequest, opts ...grpc.CallOption) (*ListQualitySuggestionsResponse, error)
+	// Accept or reject one queued suggestion. A decision is final: the store
+	// refuses a second one.
+	UpdateQualitySuggestion(ctx context.Context, in *UpdateQualitySuggestionRequest, opts ...grpc.CallOption) (*QualitySuggestion, error)
+	// List the cached deterministic profiles of columns. Profiles are read-only
+	// measurements; there is no get or update.
+	ListColumnProfiles(ctx context.Context, in *ListColumnProfilesRequest, opts ...grpc.CallOption) (*ListColumnProfilesResponse, error)
+	// List the semantic labels asserted on columns.
+	ListColumnLabels(ctx context.Context, in *ListColumnLabelsRequest, opts ...grpc.CallOption) (*ListColumnLabelsResponse, error)
+	// Accept a proposed semantic label or clear the label of one column.
+	UpdateColumnLabel(ctx context.Context, in *UpdateColumnLabelRequest, opts ...grpc.CallOption) (*UpdateColumnLabelResponse, error)
+	// Measure the deterministic statistics of up to 50 columns of one table.
+	ProfileColumns(ctx context.Context, in *ProfileColumnsRequest, opts ...grpc.CallOption) (*ProfileColumnsResponse, error)
+	// Turn a natural-language intent into queued rule drafts.
+	SuggestQualityRule(ctx context.Context, in *SuggestQualityRuleRequest, opts ...grpc.CallOption) (*SuggestQualityRuleResponse, error)
+	// Propose semantic labels for up to 50 columns of one table.
+	SuggestColumnLabels(ctx context.Context, in *SuggestColumnLabelsRequest, opts ...grpc.CallOption) (*SuggestColumnLabelsResponse, error)
+	// Explain one failed result as a stream of hypotheses.
+	//
+	// No (google.api.http) annotation: this is a server-streaming method, and the
+	// REST gateway cannot carry one. The browser reaches the Connect endpoint
+	// directly, the way it does for ExplainSQL.
+	ExplainQualityResult(ctx context.Context, in *ExplainQualityResultRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ExplainQualityResultResponse], error)
 }
 
 type dataQualityServiceClient struct {
@@ -182,6 +225,135 @@ func (c *dataQualityServiceClient) ListQualityRuleResults(ctx context.Context, i
 	return out, nil
 }
 
+func (c *dataQualityServiceClient) ListQualityIssues(ctx context.Context, in *ListQualityIssuesRequest, opts ...grpc.CallOption) (*ListQualityIssuesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListQualityIssuesResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_ListQualityIssues_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) GetQualityIssue(ctx context.Context, in *GetQualityIssueRequest, opts ...grpc.CallOption) (*QualityIssue, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityIssue)
+	err := c.cc.Invoke(ctx, DataQualityService_GetQualityIssue_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) UpdateQualityIssue(ctx context.Context, in *UpdateQualityIssueRequest, opts ...grpc.CallOption) (*QualityIssue, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityIssue)
+	err := c.cc.Invoke(ctx, DataQualityService_UpdateQualityIssue_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) ListQualitySuggestions(ctx context.Context, in *ListQualitySuggestionsRequest, opts ...grpc.CallOption) (*ListQualitySuggestionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListQualitySuggestionsResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_ListQualitySuggestions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) UpdateQualitySuggestion(ctx context.Context, in *UpdateQualitySuggestionRequest, opts ...grpc.CallOption) (*QualitySuggestion, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualitySuggestion)
+	err := c.cc.Invoke(ctx, DataQualityService_UpdateQualitySuggestion_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) ListColumnProfiles(ctx context.Context, in *ListColumnProfilesRequest, opts ...grpc.CallOption) (*ListColumnProfilesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListColumnProfilesResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_ListColumnProfiles_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) ListColumnLabels(ctx context.Context, in *ListColumnLabelsRequest, opts ...grpc.CallOption) (*ListColumnLabelsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListColumnLabelsResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_ListColumnLabels_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) UpdateColumnLabel(ctx context.Context, in *UpdateColumnLabelRequest, opts ...grpc.CallOption) (*UpdateColumnLabelResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpdateColumnLabelResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_UpdateColumnLabel_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) ProfileColumns(ctx context.Context, in *ProfileColumnsRequest, opts ...grpc.CallOption) (*ProfileColumnsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProfileColumnsResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_ProfileColumns_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) SuggestQualityRule(ctx context.Context, in *SuggestQualityRuleRequest, opts ...grpc.CallOption) (*SuggestQualityRuleResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SuggestQualityRuleResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_SuggestQualityRule_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) SuggestColumnLabels(ctx context.Context, in *SuggestColumnLabelsRequest, opts ...grpc.CallOption) (*SuggestColumnLabelsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SuggestColumnLabelsResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_SuggestColumnLabels_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) ExplainQualityResult(ctx context.Context, in *ExplainQualityResultRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ExplainQualityResultResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &DataQualityService_ServiceDesc.Streams[0], DataQualityService_ExplainQualityResult_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ExplainQualityResultRequest, ExplainQualityResultResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type DataQualityService_ExplainQualityResultClient = grpc.ServerStreamingClient[ExplainQualityResultResponse]
+
 // DataQualityServiceServer is the server API for DataQualityService service.
 // All implementations must embed UnimplementedDataQualityServiceServer
 // for forward compatibility.
@@ -222,6 +394,37 @@ type DataQualityServiceServer interface {
 	GetQualityRun(context.Context, *GetQualityRunRequest) (*QualityRun, error)
 	// List the per-rule results of runs, typically filtered by run.
 	ListQualityRuleResults(context.Context, *ListQualityRuleResultsRequest) (*ListQualityRuleResultsResponse, error)
+	// List quality issues, newest first.
+	ListQualityIssues(context.Context, *ListQualityIssuesRequest) (*ListQualityIssuesResponse, error)
+	// Read one quality issue.
+	GetQualityIssue(context.Context, *GetQualityIssueRequest) (*QualityIssue, error)
+	// Acknowledge, resolve or mute one quality issue.
+	UpdateQualityIssue(context.Context, *UpdateQualityIssueRequest) (*QualityIssue, error)
+	// List the review queue of model-proposed rule drafts and semantic labels,
+	// newest first.
+	ListQualitySuggestions(context.Context, *ListQualitySuggestionsRequest) (*ListQualitySuggestionsResponse, error)
+	// Accept or reject one queued suggestion. A decision is final: the store
+	// refuses a second one.
+	UpdateQualitySuggestion(context.Context, *UpdateQualitySuggestionRequest) (*QualitySuggestion, error)
+	// List the cached deterministic profiles of columns. Profiles are read-only
+	// measurements; there is no get or update.
+	ListColumnProfiles(context.Context, *ListColumnProfilesRequest) (*ListColumnProfilesResponse, error)
+	// List the semantic labels asserted on columns.
+	ListColumnLabels(context.Context, *ListColumnLabelsRequest) (*ListColumnLabelsResponse, error)
+	// Accept a proposed semantic label or clear the label of one column.
+	UpdateColumnLabel(context.Context, *UpdateColumnLabelRequest) (*UpdateColumnLabelResponse, error)
+	// Measure the deterministic statistics of up to 50 columns of one table.
+	ProfileColumns(context.Context, *ProfileColumnsRequest) (*ProfileColumnsResponse, error)
+	// Turn a natural-language intent into queued rule drafts.
+	SuggestQualityRule(context.Context, *SuggestQualityRuleRequest) (*SuggestQualityRuleResponse, error)
+	// Propose semantic labels for up to 50 columns of one table.
+	SuggestColumnLabels(context.Context, *SuggestColumnLabelsRequest) (*SuggestColumnLabelsResponse, error)
+	// Explain one failed result as a stream of hypotheses.
+	//
+	// No (google.api.http) annotation: this is a server-streaming method, and the
+	// REST gateway cannot carry one. The browser reaches the Connect endpoint
+	// directly, the way it does for ExplainSQL.
+	ExplainQualityResult(*ExplainQualityResultRequest, grpc.ServerStreamingServer[ExplainQualityResultResponse]) error
 	mustEmbedUnimplementedDataQualityServiceServer()
 }
 
@@ -261,6 +464,42 @@ func (UnimplementedDataQualityServiceServer) GetQualityRun(context.Context, *Get
 }
 func (UnimplementedDataQualityServiceServer) ListQualityRuleResults(context.Context, *ListQualityRuleResultsRequest) (*ListQualityRuleResultsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListQualityRuleResults not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ListQualityIssues(context.Context, *ListQualityIssuesRequest) (*ListQualityIssuesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListQualityIssues not implemented")
+}
+func (UnimplementedDataQualityServiceServer) GetQualityIssue(context.Context, *GetQualityIssueRequest) (*QualityIssue, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQualityIssue not implemented")
+}
+func (UnimplementedDataQualityServiceServer) UpdateQualityIssue(context.Context, *UpdateQualityIssueRequest) (*QualityIssue, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateQualityIssue not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ListQualitySuggestions(context.Context, *ListQualitySuggestionsRequest) (*ListQualitySuggestionsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListQualitySuggestions not implemented")
+}
+func (UnimplementedDataQualityServiceServer) UpdateQualitySuggestion(context.Context, *UpdateQualitySuggestionRequest) (*QualitySuggestion, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateQualitySuggestion not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ListColumnProfiles(context.Context, *ListColumnProfilesRequest) (*ListColumnProfilesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListColumnProfiles not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ListColumnLabels(context.Context, *ListColumnLabelsRequest) (*ListColumnLabelsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListColumnLabels not implemented")
+}
+func (UnimplementedDataQualityServiceServer) UpdateColumnLabel(context.Context, *UpdateColumnLabelRequest) (*UpdateColumnLabelResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateColumnLabel not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ProfileColumns(context.Context, *ProfileColumnsRequest) (*ProfileColumnsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ProfileColumns not implemented")
+}
+func (UnimplementedDataQualityServiceServer) SuggestQualityRule(context.Context, *SuggestQualityRuleRequest) (*SuggestQualityRuleResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SuggestQualityRule not implemented")
+}
+func (UnimplementedDataQualityServiceServer) SuggestColumnLabels(context.Context, *SuggestColumnLabelsRequest) (*SuggestColumnLabelsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SuggestColumnLabels not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ExplainQualityResult(*ExplainQualityResultRequest, grpc.ServerStreamingServer[ExplainQualityResultResponse]) error {
+	return status.Error(codes.Unimplemented, "method ExplainQualityResult not implemented")
 }
 func (UnimplementedDataQualityServiceServer) mustEmbedUnimplementedDataQualityServiceServer() {}
 func (UnimplementedDataQualityServiceServer) testEmbeddedByValue()                            {}
@@ -463,6 +702,215 @@ func _DataQualityService_ListQualityRuleResults_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataQualityService_ListQualityIssues_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListQualityIssuesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).ListQualityIssues(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_ListQualityIssues_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).ListQualityIssues(ctx, req.(*ListQualityIssuesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_GetQualityIssue_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQualityIssueRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).GetQualityIssue(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_GetQualityIssue_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).GetQualityIssue(ctx, req.(*GetQualityIssueRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_UpdateQualityIssue_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateQualityIssueRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).UpdateQualityIssue(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_UpdateQualityIssue_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).UpdateQualityIssue(ctx, req.(*UpdateQualityIssueRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_ListQualitySuggestions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListQualitySuggestionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).ListQualitySuggestions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_ListQualitySuggestions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).ListQualitySuggestions(ctx, req.(*ListQualitySuggestionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_UpdateQualitySuggestion_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateQualitySuggestionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).UpdateQualitySuggestion(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_UpdateQualitySuggestion_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).UpdateQualitySuggestion(ctx, req.(*UpdateQualitySuggestionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_ListColumnProfiles_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListColumnProfilesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).ListColumnProfiles(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_ListColumnProfiles_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).ListColumnProfiles(ctx, req.(*ListColumnProfilesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_ListColumnLabels_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListColumnLabelsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).ListColumnLabels(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_ListColumnLabels_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).ListColumnLabels(ctx, req.(*ListColumnLabelsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_UpdateColumnLabel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateColumnLabelRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).UpdateColumnLabel(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_UpdateColumnLabel_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).UpdateColumnLabel(ctx, req.(*UpdateColumnLabelRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_ProfileColumns_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProfileColumnsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).ProfileColumns(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_ProfileColumns_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).ProfileColumns(ctx, req.(*ProfileColumnsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_SuggestQualityRule_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SuggestQualityRuleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).SuggestQualityRule(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_SuggestQualityRule_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).SuggestQualityRule(ctx, req.(*SuggestQualityRuleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_SuggestColumnLabels_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SuggestColumnLabelsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).SuggestColumnLabels(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_SuggestColumnLabels_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).SuggestColumnLabels(ctx, req.(*SuggestColumnLabelsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_ExplainQualityResult_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ExplainQualityResultRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(DataQualityServiceServer).ExplainQualityResult(m, &grpc.GenericServerStream[ExplainQualityResultRequest, ExplainQualityResultResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type DataQualityService_ExplainQualityResultServer = grpc.ServerStreamingServer[ExplainQualityResultResponse]
+
 // DataQualityService_ServiceDesc is the grpc.ServiceDesc for DataQualityService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -510,7 +958,57 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "ListQualityRuleResults",
 			Handler:    _DataQualityService_ListQualityRuleResults_Handler,
 		},
+		{
+			MethodName: "ListQualityIssues",
+			Handler:    _DataQualityService_ListQualityIssues_Handler,
+		},
+		{
+			MethodName: "GetQualityIssue",
+			Handler:    _DataQualityService_GetQualityIssue_Handler,
+		},
+		{
+			MethodName: "UpdateQualityIssue",
+			Handler:    _DataQualityService_UpdateQualityIssue_Handler,
+		},
+		{
+			MethodName: "ListQualitySuggestions",
+			Handler:    _DataQualityService_ListQualitySuggestions_Handler,
+		},
+		{
+			MethodName: "UpdateQualitySuggestion",
+			Handler:    _DataQualityService_UpdateQualitySuggestion_Handler,
+		},
+		{
+			MethodName: "ListColumnProfiles",
+			Handler:    _DataQualityService_ListColumnProfiles_Handler,
+		},
+		{
+			MethodName: "ListColumnLabels",
+			Handler:    _DataQualityService_ListColumnLabels_Handler,
+		},
+		{
+			MethodName: "UpdateColumnLabel",
+			Handler:    _DataQualityService_UpdateColumnLabel_Handler,
+		},
+		{
+			MethodName: "ProfileColumns",
+			Handler:    _DataQualityService_ProfileColumns_Handler,
+		},
+		{
+			MethodName: "SuggestQualityRule",
+			Handler:    _DataQualityService_SuggestQualityRule_Handler,
+		},
+		{
+			MethodName: "SuggestColumnLabels",
+			Handler:    _DataQualityService_SuggestColumnLabels_Handler,
+		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "ExplainQualityResult",
+			Handler:       _DataQualityService_ExplainQualityResult_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "v1/data_quality_service.proto",
 }

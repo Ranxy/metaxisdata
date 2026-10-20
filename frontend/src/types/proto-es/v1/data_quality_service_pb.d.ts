@@ -6,6 +6,7 @@ import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobu
 import type { Message } from "@bufbuild/protobuf";
 import type { Duration, EmptySchema, FieldMask, Timestamp } from "@bufbuild/protobuf/wkt";
 import type { MetaType } from "./database_service_pb";
+import type { ExplainSQLMetadata, ExplainSQLProgress } from "./explain_sql_service_pb";
 
 /**
  * Describes the file v1/data_quality_service.proto.
@@ -1324,6 +1325,598 @@ export declare type QualityResultSummary = Message<"metaxisdata.v1.QualityResult
 export declare const QualityResultSummarySchema: GenMessage<QualityResultSummary>;
 
 /**
+ * QualityIssue is the durable problem behind a rule's failures. A rule has at
+ * most one unresolved issue; a later failing run touches it instead of opening
+ * another, and a resolved issue is never reopened.
+ *
+ * @generated from message metaxisdata.v1.QualityIssue
+ */
+export declare type QualityIssue = Message<"metaxisdata.v1.QualityIssue"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityIssues/{quality_issue}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * Format: workspaces/{workspace}/qualityRules/{quality_rule}
+   *
+   * @generated from field: string rule = 2;
+   */
+  rule: string;
+
+  /**
+   * The target as it was when the issue was opened.
+   *
+   * @generated from field: metaxisdata.v1.QualityTarget target = 3;
+   */
+  target?: QualityTarget;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityIssueStatus status = 4;
+   */
+  status: QualityIssueStatus;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualitySeverity severity = 5;
+   */
+  severity: QualitySeverity;
+
+  /**
+   * The run that opened the issue. Unset when it was opened without a run.
+   *
+   * @generated from field: string first_seen_run = 6;
+   */
+  firstSeenRun: string;
+
+  /**
+   * The newest run that observed the problem again.
+   *
+   * @generated from field: string last_seen_run = 7;
+   */
+  lastSeenRun: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp first_seen_time = 8;
+   */
+  firstSeenTime?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp last_seen_time = 9;
+   */
+  lastSeenTime?: Timestamp;
+
+  /**
+   * When the issue was resolved. Unset while it is open or acknowledged.
+   *
+   * @generated from field: google.protobuf.Timestamp resolved_time = 10;
+   */
+  resolvedTime?: Timestamp;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityResolutionReason resolution_reason = 11;
+   */
+  resolutionReason: QualityResolutionReason;
+
+  /**
+   * The note recorded with the resolution.
+   *
+   * @generated from field: string resolution_note = 12;
+   */
+  resolutionNote: string;
+
+  /**
+   * Who acknowledged it. Format: users/{user}. Empty when never acknowledged.
+   *
+   * @generated from field: string acknowledged_by = 13;
+   */
+  acknowledgedBy: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp acknowledged_time = 14;
+   */
+  acknowledgedTime?: Timestamp;
+
+  /**
+   * Issue-level mute: notifications are suppressed until it passes, while the
+   * rule keeps running and results keep being recorded.
+   *
+   * @generated from field: google.protobuf.Timestamp muted_until = 15;
+   */
+  mutedUntil?: Timestamp;
+
+  /**
+   * How many runs observed the problem while the issue was unresolved.
+   *
+   * @generated from field: int32 occurrence_count = 16;
+   */
+  occurrenceCount: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityIssue.
+ * Use `create(QualityIssueSchema)` to create a new message.
+ */
+export declare const QualityIssueSchema: GenMessage<QualityIssue>;
+
+/**
+ * ProfileValue is one frequent value of a low-cardinality column.
+ *
+ * @generated from message metaxisdata.v1.ProfileValue
+ */
+export declare type ProfileValue = Message<"metaxisdata.v1.ProfileValue"> & {
+  /**
+   * @generated from field: string value = 1;
+   */
+  value: string;
+
+  /**
+   * @generated from field: int64 count = 2;
+   */
+  count: bigint;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ProfileValue.
+ * Use `create(ProfileValueSchema)` to create a new message.
+ */
+export declare const ProfileValueSchema: GenMessage<ProfileValue>;
+
+/**
+ * ColumnProfileStats is the deterministic statistics of one column, measured
+ * without a model. It is the evidence a semantic label cites.
+ *
+ * @generated from message metaxisdata.v1.ColumnProfileStats
+ */
+export declare type ColumnProfileStats = Message<"metaxisdata.v1.ColumnProfileStats"> & {
+  /**
+   * @generated from field: int64 total_rows = 1;
+   */
+  totalRows: bigint;
+
+  /**
+   * @generated from field: int64 null_count = 2;
+   */
+  nullCount: bigint;
+
+  /**
+   * @generated from field: int64 distinct_count = 3;
+   */
+  distinctCount: bigint;
+
+  /**
+   * True when the database refused an exact distinct count and the value came
+   * from a sample.
+   *
+   * @generated from field: bool distinct_estimated = 4;
+   */
+  distinctEstimated: boolean;
+
+  /**
+   * Display forms of the observed extremes, truncated; empty when the column has
+   * no comparable values.
+   *
+   * @generated from field: string min_value = 5;
+   */
+  minValue: string;
+
+  /**
+   * @generated from field: string max_value = 6;
+   */
+  maxValue: string;
+
+  /**
+   * Unset for non-string columns.
+   *
+   * @generated from field: optional int64 min_length = 7;
+   */
+  minLength?: bigint;
+
+  /**
+   * @generated from field: optional int64 max_length = 8;
+   */
+  maxLength?: bigint;
+
+  /**
+   * The most frequent values, at most ten, each truncated.
+   *
+   * @generated from field: repeated metaxisdata.v1.ProfileValue top_values = 9;
+   */
+  topValues: ProfileValue[];
+
+  /**
+   * Shape summaries such as "numeric", "alpha", "date-like", "mixed".
+   *
+   * @generated from field: repeated string patterns = 10;
+   */
+  patterns: string[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.ColumnProfileStats.
+ * Use `create(ColumnProfileStatsSchema)` to create a new message.
+ */
+export declare const ColumnProfileStatsSchema: GenMessage<ColumnProfileStats>;
+
+/**
+ * SemanticLabelEvidence is why a label was assigned. It cites the inputs the
+ * labeler saw so a reviewer can check the reasoning without re-running it.
+ *
+ * @generated from message metaxisdata.v1.SemanticLabelEvidence
+ */
+export declare type SemanticLabelEvidence = Message<"metaxisdata.v1.SemanticLabelEvidence"> & {
+  /**
+   * Columns whose values or context the label derives from.
+   *
+   * @generated from field: repeated string columns = 1;
+   */
+  columns: string[];
+
+  /**
+   * Profile facts such as "null_rate=0.02" or "distinct=12".
+   *
+   * @generated from field: repeated string metrics = 2;
+   */
+  metrics: string[];
+
+  /**
+   * Lineage relations that motivated the label, e.g. "join key of orders".
+   *
+   * @generated from field: repeated string lineage = 3;
+   */
+  lineage: string[];
+
+  /**
+   * @generated from field: string rationale = 4;
+   */
+  rationale: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.SemanticLabelEvidence.
+ * Use `create(SemanticLabelEvidenceSchema)` to create a new message.
+ */
+export declare const SemanticLabelEvidenceSchema: GenMessage<SemanticLabelEvidence>;
+
+/**
+ * QualityRuleDraftConfig is one model-proposed rule, already validated into the
+ * typed config. It is never executed without a human saving it as a rule.
+ *
+ * @generated from message metaxisdata.v1.QualityRuleDraftConfig
+ */
+export declare type QualityRuleDraftConfig = Message<"metaxisdata.v1.QualityRuleDraftConfig"> & {
+  /**
+   * @generated from field: metaxisdata.v1.QualityRuleConfig config = 1;
+   */
+  config?: QualityRuleConfig;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualitySeverity severity = 2;
+   */
+  severity: QualitySeverity;
+
+  /**
+   * @generated from field: string title = 3;
+   */
+  title: string;
+
+  /**
+   * @generated from field: string rationale = 4;
+   */
+  rationale: string;
+
+  /**
+   * @generated from field: double confidence = 5;
+   */
+  confidence: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityRuleDraftConfig.
+ * Use `create(QualityRuleDraftConfigSchema)` to create a new message.
+ */
+export declare const QualityRuleDraftConfigSchema: GenMessage<QualityRuleDraftConfig>;
+
+/**
+ * SemanticLabelSuggestion is a model-proposed semantic label for one column.
+ *
+ * @generated from message metaxisdata.v1.SemanticLabelSuggestion
+ */
+export declare type SemanticLabelSuggestion = Message<"metaxisdata.v1.SemanticLabelSuggestion"> & {
+  /**
+   * @generated from field: string column = 1;
+   */
+  column: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualitySemanticType label = 2;
+   */
+  label: QualitySemanticType;
+
+  /**
+   * @generated from field: double confidence = 3;
+   */
+  confidence: number;
+
+  /**
+   * @generated from field: metaxisdata.v1.SemanticLabelEvidence evidence = 4;
+   */
+  evidence?: SemanticLabelEvidence;
+
+  /**
+   * The rule types the deterministic mapping would suggest for this label, in
+   * display order. The model may rank types but may not invent one.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityRuleType suggested_rule_types = 5;
+   */
+  suggestedRuleTypes: QualityRuleType[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.SemanticLabelSuggestion.
+ * Use `create(SemanticLabelSuggestionSchema)` to create a new message.
+ */
+export declare const SemanticLabelSuggestionSchema: GenMessage<SemanticLabelSuggestion>;
+
+/**
+ * QualitySuggestionPayload is the review-queue payload: a rule draft the reviewer
+ * can load into the editor, or a semantic label awaiting confirmation.
+ *
+ * @generated from message metaxisdata.v1.QualitySuggestionPayload
+ */
+export declare type QualitySuggestionPayload = Message<"metaxisdata.v1.QualitySuggestionPayload"> & {
+  /**
+   * @generated from oneof metaxisdata.v1.QualitySuggestionPayload.payload
+   */
+  payload: {
+    /**
+     * @generated from field: metaxisdata.v1.QualityRuleDraftConfig rule = 1;
+     */
+    value: QualityRuleDraftConfig;
+    case: "rule";
+  } | {
+    /**
+     * @generated from field: metaxisdata.v1.SemanticLabelSuggestion label = 2;
+     */
+    value: SemanticLabelSuggestion;
+    case: "label";
+  } | { case: undefined; value?: undefined };
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualitySuggestionPayload.
+ * Use `create(QualitySuggestionPayloadSchema)` to create a new message.
+ */
+export declare const QualitySuggestionPayloadSchema: GenMessage<QualitySuggestionPayload>;
+
+/**
+ * QualitySuggestion is one model-proposed rule draft or semantic label waiting
+ * for a reviewer. Nothing here is a rule: accepting a suggestion goes through the
+ * normal rule or label path.
+ *
+ * @generated from message metaxisdata.v1.QualitySuggestion
+ */
+export declare type QualitySuggestion = Message<"metaxisdata.v1.QualitySuggestion"> & {
+  /**
+   * Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualitySuggestionKind kind = 2;
+   */
+  kind: QualitySuggestionKind;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualitySuggestionSource source = 3;
+   */
+  source: QualitySuggestionSource;
+
+  /**
+   * The target the suggestion is about.
+   *
+   * @generated from field: metaxisdata.v1.QualityTarget target = 4;
+   */
+  target?: QualityTarget;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualitySuggestionPayload payload = 5;
+   */
+  payload?: QualitySuggestionPayload;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualitySuggestionStatus status = 6;
+   */
+  status: QualitySuggestionStatus;
+
+  /**
+   * The model that produced it.
+   *
+   * @generated from field: string provider = 7;
+   */
+  provider: string;
+
+  /**
+   * @generated from field: string model = 8;
+   */
+  model: string;
+
+  /**
+   * @generated from field: string prompt_version = 9;
+   */
+  promptVersion: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp create_time = 10;
+   */
+  createTime?: Timestamp;
+
+  /**
+   * Who decided it. Format: users/{user}. Empty while pending.
+   *
+   * @generated from field: string decided_by = 11;
+   */
+  decidedBy: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp decide_time = 12;
+   */
+  decideTime?: Timestamp;
+
+  /**
+   * @generated from field: string decision_note = 13;
+   */
+  decisionNote: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualitySuggestion.
+ * Use `create(QualitySuggestionSchema)` to create a new message.
+ */
+export declare const QualitySuggestionSchema: GenMessage<QualitySuggestion>;
+
+/**
+ * ColumnProfile is the cached deterministic statistics of one column plus how
+ * they were measured.
+ *
+ * @generated from message metaxisdata.v1.ColumnProfile
+ */
+export declare type ColumnProfile = Message<"metaxisdata.v1.ColumnProfile"> & {
+  /**
+   * The globally unique metadata GUID of the profiled table.
+   *
+   * @generated from field: string table_guid = 1;
+   */
+  tableGuid: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 2;
+   */
+  metaType: MetaType;
+
+  /**
+   * @generated from field: string column = 3;
+   */
+  column: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.ColumnProfileStats profile = 4;
+   */
+  profile?: ColumnProfileStats;
+
+  /**
+   * How the values were sampled, e.g. "full" or "sample".
+   *
+   * @generated from field: string sample_method = 5;
+   */
+  sampleMethod: string;
+
+  /**
+   * @generated from field: int64 sample_rows = 6;
+   */
+  sampleRows: bigint;
+
+  /**
+   * @generated from field: bool truncated = 7;
+   */
+  truncated: boolean;
+
+  /**
+   * The engine version that measured it, so a changed measurement is traceable.
+   *
+   * @generated from field: string engine_version = 8;
+   */
+  engineVersion: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp profiled_at = 9;
+   */
+  profiledAt?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ColumnProfile.
+ * Use `create(ColumnProfileSchema)` to create a new message.
+ */
+export declare const ColumnProfileSchema: GenMessage<ColumnProfile>;
+
+/**
+ * ColumnSemanticLabel is the semantic type a column is asserted to hold, who
+ * asserted it and the evidence behind it.
+ *
+ * @generated from message metaxisdata.v1.ColumnSemanticLabel
+ */
+export declare type ColumnSemanticLabel = Message<"metaxisdata.v1.ColumnSemanticLabel"> & {
+  /**
+   * The globally unique metadata GUID of the table.
+   *
+   * @generated from field: string table_guid = 1;
+   */
+  tableGuid: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 2;
+   */
+  metaType: MetaType;
+
+  /**
+   * @generated from field: string column = 3;
+   */
+  column: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualitySemanticType label = 4;
+   */
+  label: QualitySemanticType;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityLabelSource source = 5;
+   */
+  source: QualityLabelSource;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityLabelStatus status = 6;
+   */
+  status: QualityLabelStatus;
+
+  /**
+   * @generated from field: double confidence = 7;
+   */
+  confidence: number;
+
+  /**
+   * @generated from field: metaxisdata.v1.SemanticLabelEvidence evidence = 8;
+   */
+  evidence?: SemanticLabelEvidence;
+
+  /**
+   * Who accepted it. Format: users/{user}. Empty for a suggestion.
+   *
+   * @generated from field: string accepted_by = 9;
+   */
+  acceptedBy: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp accepted_time = 10;
+   */
+  acceptedTime?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp update_time = 11;
+   */
+  updateTime?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ColumnSemanticLabel.
+ * Use `create(ColumnSemanticLabelSchema)` to create a new message.
+ */
+export declare const ColumnSemanticLabelSchema: GenMessage<ColumnSemanticLabel>;
+
+/**
  * FailureSample is one failed row, already truncated.
  *
  * @generated from message metaxisdata.v1.FailureSample
@@ -1907,6 +2500,737 @@ export declare type ListQualityRuleResultsResponse = Message<"metaxisdata.v1.Lis
 export declare const ListQualityRuleResultsResponseSchema: GenMessage<ListQualityRuleResultsResponse>;
 
 /**
+ * @generated from message metaxisdata.v1.ListQualityIssuesRequest
+ */
+export declare type ListQualityIssuesRequest = Message<"metaxisdata.v1.ListQualityIssuesRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * The maximum number of issues to return. If unspecified, at most 50 are
+   * returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+   *
+   * @generated from field: int32 page_size = 2;
+   */
+  pageSize: number;
+
+  /**
+   * A page token, received from a previous ListQualityIssues call. Provide this
+   * to retrieve the subsequent page.
+   *
+   * @generated from field: string page_token = 3;
+   */
+  pageToken: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityIssueStatus status = 4;
+   */
+  status: QualityIssueStatus;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualitySeverity severity = 5;
+   */
+  severity: QualitySeverity;
+
+  /**
+   * Format: workspaces/{workspace}/qualityRules/{quality_rule}
+   *
+   * @generated from field: string rule = 6;
+   */
+  rule: string;
+
+  /**
+   * The exact target GUID.
+   *
+   * @generated from field: string target_guid = 7;
+   */
+  targetGuid: string;
+
+  /**
+   * Only issues of rules owned by this principal. Format: users/{user}
+   *
+   * @generated from field: string owner = 8;
+   */
+  owner: string;
+
+  /**
+   * Only issues first seen at or after this time.
+   *
+   * @generated from field: google.protobuf.Timestamp start_time = 9;
+   */
+  startTime?: Timestamp;
+
+  /**
+   * Only issues first seen at or before this time.
+   *
+   * @generated from field: google.protobuf.Timestamp end_time = 10;
+   */
+  endTime?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityIssuesRequest.
+ * Use `create(ListQualityIssuesRequestSchema)` to create a new message.
+ */
+export declare const ListQualityIssuesRequestSchema: GenMessage<ListQualityIssuesRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityIssuesResponse
+ */
+export declare type ListQualityIssuesResponse = Message<"metaxisdata.v1.ListQualityIssuesResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityIssue quality_issues = 1;
+   */
+  qualityIssues: QualityIssue[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityIssuesResponse.
+ * Use `create(ListQualityIssuesResponseSchema)` to create a new message.
+ */
+export declare const ListQualityIssuesResponseSchema: GenMessage<ListQualityIssuesResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualityIssueRequest
+ */
+export declare type GetQualityIssueRequest = Message<"metaxisdata.v1.GetQualityIssueRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityIssues/{quality_issue}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityIssueRequest.
+ * Use `create(GetQualityIssueRequestSchema)` to create a new message.
+ */
+export declare const GetQualityIssueRequestSchema: GenMessage<GetQualityIssueRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.UpdateQualityIssueRequest
+ */
+export declare type UpdateQualityIssueRequest = Message<"metaxisdata.v1.UpdateQualityIssueRequest"> & {
+  /**
+   * The issue to update. Its name identifies it.
+   *
+   * @generated from field: metaxisdata.v1.QualityIssue issue = 1;
+   */
+  issue?: QualityIssue;
+
+  /**
+   * The fields to change: status (RESOLVED only), resolution_reason,
+   * resolution_note, acknowledged or muted_until.
+   *
+   * @generated from field: google.protobuf.FieldMask update_mask = 2;
+   */
+  updateMask?: FieldMask;
+
+  /**
+   * Whether to acknowledge the issue. Acknowledgement is an action rather than a
+   * stored field of QualityIssue, so the update mask path "acknowledged" reads
+   * this value; false is rejected because clearing an acknowledgement is not a
+   * supported transition.
+   *
+   * @generated from field: bool acknowledged = 3;
+   */
+  acknowledged: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.UpdateQualityIssueRequest.
+ * Use `create(UpdateQualityIssueRequestSchema)` to create a new message.
+ */
+export declare const UpdateQualityIssueRequestSchema: GenMessage<UpdateQualityIssueRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualitySuggestionsRequest
+ */
+export declare type ListQualitySuggestionsRequest = Message<"metaxisdata.v1.ListQualitySuggestionsRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * The maximum number of suggestions to return. If unspecified, at most 50 are
+   * returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+   *
+   * @generated from field: int32 page_size = 2;
+   */
+  pageSize: number;
+
+  /**
+   * A page token, received from a previous ListQualitySuggestions call. Provide
+   * this to retrieve the subsequent page.
+   *
+   * @generated from field: string page_token = 3;
+   */
+  pageToken: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualitySuggestionStatus status = 4;
+   */
+  status: QualitySuggestionStatus;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualitySuggestionKind kind = 5;
+   */
+  kind: QualitySuggestionKind;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualitySuggestionSource source = 6;
+   */
+  source: QualitySuggestionSource;
+
+  /**
+   * The exact target GUID.
+   *
+   * @generated from field: string target_guid = 7;
+   */
+  targetGuid: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualitySuggestionsRequest.
+ * Use `create(ListQualitySuggestionsRequestSchema)` to create a new message.
+ */
+export declare const ListQualitySuggestionsRequestSchema: GenMessage<ListQualitySuggestionsRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualitySuggestionsResponse
+ */
+export declare type ListQualitySuggestionsResponse = Message<"metaxisdata.v1.ListQualitySuggestionsResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualitySuggestion quality_suggestions = 1;
+   */
+  qualitySuggestions: QualitySuggestion[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualitySuggestionsResponse.
+ * Use `create(ListQualitySuggestionsResponseSchema)` to create a new message.
+ */
+export declare const ListQualitySuggestionsResponseSchema: GenMessage<ListQualitySuggestionsResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.UpdateQualitySuggestionRequest
+ */
+export declare type UpdateQualitySuggestionRequest = Message<"metaxisdata.v1.UpdateQualitySuggestionRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * The decision: ACCEPTED or REJECTED. A suggestion starts PENDING and a
+   * decision is final.
+   *
+   * @generated from field: metaxisdata.v1.QualitySuggestionStatus decision = 2;
+   */
+  decision: QualitySuggestionStatus;
+
+  /**
+   * Why it was decided, shown in the review history.
+   *
+   * @generated from field: string decision_note = 3;
+   */
+  decisionNote: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.UpdateQualitySuggestionRequest.
+ * Use `create(UpdateQualitySuggestionRequestSchema)` to create a new message.
+ */
+export declare const UpdateQualitySuggestionRequestSchema: GenMessage<UpdateQualitySuggestionRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListColumnProfilesRequest
+ */
+export declare type ListColumnProfilesRequest = Message<"metaxisdata.v1.ListColumnProfilesRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * The maximum number of profiles to return. If unspecified, at most 50 are
+   * returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+   *
+   * @generated from field: int32 page_size = 2;
+   */
+  pageSize: number;
+
+  /**
+   * A page token, received from a previous ListColumnProfiles call. Provide this
+   * to retrieve the subsequent page.
+   *
+   * @generated from field: string page_token = 3;
+   */
+  pageToken: string;
+
+  /**
+   * The globally unique metadata GUID of the table.
+   *
+   * @generated from field: string table_guid = 4;
+   */
+  tableGuid: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 5;
+   */
+  metaType: MetaType;
+
+  /**
+   * The columns to read; empty means every profiled column.
+   *
+   * @generated from field: repeated string columns = 6;
+   */
+  columns: string[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListColumnProfilesRequest.
+ * Use `create(ListColumnProfilesRequestSchema)` to create a new message.
+ */
+export declare const ListColumnProfilesRequestSchema: GenMessage<ListColumnProfilesRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListColumnProfilesResponse
+ */
+export declare type ListColumnProfilesResponse = Message<"metaxisdata.v1.ListColumnProfilesResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.ColumnProfile column_profiles = 1;
+   */
+  columnProfiles: ColumnProfile[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListColumnProfilesResponse.
+ * Use `create(ListColumnProfilesResponseSchema)` to create a new message.
+ */
+export declare const ListColumnProfilesResponseSchema: GenMessage<ListColumnProfilesResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.ListColumnLabelsRequest
+ */
+export declare type ListColumnLabelsRequest = Message<"metaxisdata.v1.ListColumnLabelsRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * The maximum number of labels to return. If unspecified, at most 50 are
+   * returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+   *
+   * @generated from field: int32 page_size = 2;
+   */
+  pageSize: number;
+
+  /**
+   * A page token, received from a previous ListColumnLabels call. Provide this to
+   * retrieve the subsequent page.
+   *
+   * @generated from field: string page_token = 3;
+   */
+  pageToken: string;
+
+  /**
+   * The globally unique metadata GUID of the table.
+   *
+   * @generated from field: string table_guid = 4;
+   */
+  tableGuid: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 5;
+   */
+  metaType: MetaType;
+
+  /**
+   * The columns to read; empty means every labeled column.
+   *
+   * @generated from field: repeated string columns = 6;
+   */
+  columns: string[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListColumnLabelsRequest.
+ * Use `create(ListColumnLabelsRequestSchema)` to create a new message.
+ */
+export declare const ListColumnLabelsRequestSchema: GenMessage<ListColumnLabelsRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListColumnLabelsResponse
+ */
+export declare type ListColumnLabelsResponse = Message<"metaxisdata.v1.ListColumnLabelsResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.ColumnSemanticLabel column_labels = 1;
+   */
+  columnLabels: ColumnSemanticLabel[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListColumnLabelsResponse.
+ * Use `create(ListColumnLabelsResponseSchema)` to create a new message.
+ */
+export declare const ListColumnLabelsResponseSchema: GenMessage<ListColumnLabelsResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.UpdateColumnLabelRequest
+ */
+export declare type UpdateColumnLabelRequest = Message<"metaxisdata.v1.UpdateColumnLabelRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * The globally unique metadata GUID of the table.
+   *
+   * @generated from field: string table_guid = 2;
+   */
+  tableGuid: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 3;
+   */
+  metaType: MetaType;
+
+  /**
+   * @generated from field: string column = 4;
+   */
+  column: string;
+
+  /**
+   * The label to accept. Required by ACCEPT and ignored by CLEAR.
+   *
+   * @generated from field: metaxisdata.v1.QualitySemanticType label = 5;
+   */
+  label: QualitySemanticType;
+
+  /**
+   * @generated from field: metaxisdata.v1.ColumnLabelAction action = 6;
+   */
+  action: ColumnLabelAction;
+};
+
+/**
+ * Describes the message metaxisdata.v1.UpdateColumnLabelRequest.
+ * Use `create(UpdateColumnLabelRequestSchema)` to create a new message.
+ */
+export declare const UpdateColumnLabelRequestSchema: GenMessage<UpdateColumnLabelRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.UpdateColumnLabelResponse
+ */
+export declare type UpdateColumnLabelResponse = Message<"metaxisdata.v1.UpdateColumnLabelResponse"> & {
+  /**
+   * The stored label, unset after CLEAR.
+   *
+   * @generated from field: metaxisdata.v1.ColumnSemanticLabel column_label = 1;
+   */
+  columnLabel?: ColumnSemanticLabel;
+};
+
+/**
+ * Describes the message metaxisdata.v1.UpdateColumnLabelResponse.
+ * Use `create(UpdateColumnLabelResponseSchema)` to create a new message.
+ */
+export declare const UpdateColumnLabelResponseSchema: GenMessage<UpdateColumnLabelResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.ProfileColumnsRequest
+ */
+export declare type ProfileColumnsRequest = Message<"metaxisdata.v1.ProfileColumnsRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * The globally unique metadata GUID of the table.
+   *
+   * @generated from field: string table_guid = 2;
+   */
+  tableGuid: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 3;
+   */
+  metaType: MetaType;
+
+  /**
+   * The columns to profile; empty means every column of the table. At most 50.
+   *
+   * @generated from field: repeated string columns = 4;
+   */
+  columns: string[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.ProfileColumnsRequest.
+ * Use `create(ProfileColumnsRequestSchema)` to create a new message.
+ */
+export declare const ProfileColumnsRequestSchema: GenMessage<ProfileColumnsRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ProfileColumnsResponse
+ */
+export declare type ProfileColumnsResponse = Message<"metaxisdata.v1.ProfileColumnsResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.ColumnProfile column_profiles = 1;
+   */
+  columnProfiles: ColumnProfile[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.ProfileColumnsResponse.
+ * Use `create(ProfileColumnsResponseSchema)` to create a new message.
+ */
+export declare const ProfileColumnsResponseSchema: GenMessage<ProfileColumnsResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.SuggestQualityRuleRequest
+ */
+export declare type SuggestQualityRuleRequest = Message<"metaxisdata.v1.SuggestQualityRuleRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * The globally unique metadata GUID of the table.
+   *
+   * @generated from field: string table_guid = 2;
+   */
+  tableGuid: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 3;
+   */
+  metaType: MetaType;
+
+  /**
+   * The columns the intent is about; empty means the rule may use any column.
+   *
+   * @generated from field: repeated string columns = 4;
+   */
+  columns: string[];
+
+  /**
+   * The natural-language intent, e.g. "email must not be empty".
+   *
+   * @generated from field: string intent = 5;
+   */
+  intent: string;
+
+  /**
+   * The language the intent and the draft are written in, e.g. "en" or "zh-CN".
+   *
+   * @generated from field: string language = 6;
+   */
+  language: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.SuggestQualityRuleRequest.
+ * Use `create(SuggestQualityRuleRequestSchema)` to create a new message.
+ */
+export declare const SuggestQualityRuleRequestSchema: GenMessage<SuggestQualityRuleRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.SuggestQualityRuleResponse
+ */
+export declare type SuggestQualityRuleResponse = Message<"metaxisdata.v1.SuggestQualityRuleResponse"> & {
+  /**
+   * The queued drafts, pending review.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualitySuggestion quality_suggestions = 1;
+   */
+  qualitySuggestions: QualitySuggestion[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.SuggestQualityRuleResponse.
+ * Use `create(SuggestQualityRuleResponseSchema)` to create a new message.
+ */
+export declare const SuggestQualityRuleResponseSchema: GenMessage<SuggestQualityRuleResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.SuggestColumnLabelsRequest
+ */
+export declare type SuggestColumnLabelsRequest = Message<"metaxisdata.v1.SuggestColumnLabelsRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * The globally unique metadata GUID of the table.
+   *
+   * @generated from field: string table_guid = 2;
+   */
+  tableGuid: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 3;
+   */
+  metaType: MetaType;
+
+  /**
+   * The columns to label; empty means every column of the table. At most 50.
+   *
+   * @generated from field: repeated string columns = 4;
+   */
+  columns: string[];
+
+  /**
+   * The language the evidence and rationale are written in, e.g. "en" or
+   * "zh-CN".
+   *
+   * @generated from field: string language = 5;
+   */
+  language: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.SuggestColumnLabelsRequest.
+ * Use `create(SuggestColumnLabelsRequestSchema)` to create a new message.
+ */
+export declare const SuggestColumnLabelsRequestSchema: GenMessage<SuggestColumnLabelsRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.SuggestColumnLabelsResponse
+ */
+export declare type SuggestColumnLabelsResponse = Message<"metaxisdata.v1.SuggestColumnLabelsResponse"> & {
+  /**
+   * The queued label proposals, pending review.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualitySuggestion quality_suggestions = 1;
+   */
+  qualitySuggestions: QualitySuggestion[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.SuggestColumnLabelsResponse.
+ * Use `create(SuggestColumnLabelsResponseSchema)` to create a new message.
+ */
+export declare const SuggestColumnLabelsResponseSchema: GenMessage<SuggestColumnLabelsResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.ExplainQualityResultRequest
+ */
+export declare type ExplainQualityResultRequest = Message<"metaxisdata.v1.ExplainQualityResultRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityRuleResults/{quality_rule_result}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * The language the explanation is written in, e.g. "en" or "zh-CN".
+   *
+   * @generated from field: string language = 2;
+   */
+  language: string;
+
+  /**
+   * Regenerate even when a cached explanation exists.
+   *
+   * @generated from field: bool force_regenerate = 3;
+   */
+  forceRegenerate: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ExplainQualityResultRequest.
+ * Use `create(ExplainQualityResultRequestSchema)` to create a new message.
+ */
+export declare const ExplainQualityResultRequestSchema: GenMessage<ExplainQualityResultRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ExplainQualityResultResponse
+ */
+export declare type ExplainQualityResultResponse = Message<"metaxisdata.v1.ExplainQualityResultResponse"> & {
+  /**
+   * The stream reuses ExplainSQL's event messages: content is a markdown
+   * fragment, progress reports one agent step, and metadata is the final frame.
+   *
+   * @generated from oneof metaxisdata.v1.ExplainQualityResultResponse.payload
+   */
+  payload: {
+    /**
+     * @generated from field: string content = 1;
+     */
+    value: string;
+    case: "content";
+  } | {
+    /**
+     * @generated from field: metaxisdata.v1.ExplainSQLProgress progress = 2;
+     */
+    value: ExplainSQLProgress;
+    case: "progress";
+  } | {
+    /**
+     * @generated from field: metaxisdata.v1.ExplainSQLMetadata metadata = 3;
+     */
+    value: ExplainSQLMetadata;
+    case: "metadata";
+  } | { case: undefined; value?: undefined };
+};
+
+/**
+ * Describes the message metaxisdata.v1.ExplainQualityResultResponse.
+ * Use `create(ExplainQualityResultResponseSchema)` to create a new message.
+ */
+export declare const ExplainQualityResultResponseSchema: GenMessage<ExplainQualityResultResponse>;
+
+/**
  * QualityRuleType is the observation a rule makes. The value is immutable for a
  * rule: changing the type is a different rule and a new revision.
  *
@@ -2230,6 +3554,362 @@ export enum QualityRuleState {
  * Describes the enum metaxisdata.v1.QualityRuleState.
  */
 export declare const QualityRuleStateSchema: GenEnum<QualityRuleState>;
+
+/**
+ * QualityIssueStatus is the lifecycle of a persistent problem behind a rule's
+ * failures. RESOLVED is terminal: the next failing run opens a new issue rather
+ * than reopening one.
+ *
+ * @generated from enum metaxisdata.v1.QualityIssueStatus
+ */
+export enum QualityIssueStatus {
+  /**
+   * @generated from enum value: QUALITY_ISSUE_STATUS_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_ISSUE_STATUS_OPEN = 1;
+   */
+  OPEN = 1,
+
+  /**
+   * @generated from enum value: QUALITY_ISSUE_STATUS_ACKNOWLEDGED = 2;
+   */
+  ACKNOWLEDGED = 2,
+
+  /**
+   * @generated from enum value: QUALITY_ISSUE_STATUS_RESOLVED = 3;
+   */
+  RESOLVED = 3,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityIssueStatus.
+ */
+export declare const QualityIssueStatusSchema: GenEnum<QualityIssueStatus>;
+
+/**
+ * QualityResolutionReason is why an issue was closed.
+ *
+ * @generated from enum metaxisdata.v1.QualityResolutionReason
+ */
+export enum QualityResolutionReason {
+  /**
+   * @generated from enum value: QUALITY_RESOLUTION_REASON_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_RESOLUTION_REASON_FIXED = 1;
+   */
+  FIXED = 1,
+
+  /**
+   * @generated from enum value: QUALITY_RESOLUTION_REASON_EXPECTED = 2;
+   */
+  EXPECTED = 2,
+
+  /**
+   * @generated from enum value: QUALITY_RESOLUTION_REASON_NO_ACTION_NEEDED = 3;
+   */
+  NO_ACTION_NEEDED = 3,
+
+  /**
+   * @generated from enum value: QUALITY_RESOLUTION_REASON_DUPLICATE = 4;
+   */
+  DUPLICATE = 4,
+
+  /**
+   * @generated from enum value: QUALITY_RESOLUTION_REASON_AUTO_RECOVERED = 5;
+   */
+  AUTO_RECOVERED = 5,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityResolutionReason.
+ */
+export declare const QualityResolutionReasonSchema: GenEnum<QualityResolutionReason>;
+
+/**
+ * QualitySemanticType is the closed vocabulary a column may be labeled with. It
+ * is the input to the deterministic semantic-type-to-rule mapping, so a model may
+ * only choose from these values.
+ *
+ * @generated from enum metaxisdata.v1.QualitySemanticType
+ */
+export enum QualitySemanticType {
+  /**
+   * @generated from enum value: QUALITY_SEMANTIC_TYPE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_SEMANTIC_TYPE_EMAIL = 1;
+   */
+  EMAIL = 1,
+
+  /**
+   * @generated from enum value: QUALITY_SEMANTIC_TYPE_PHONE = 2;
+   */
+  PHONE = 2,
+
+  /**
+   * @generated from enum value: QUALITY_SEMANTIC_TYPE_URL = 3;
+   */
+  URL = 3,
+
+  /**
+   * @generated from enum value: QUALITY_SEMANTIC_TYPE_UUID = 4;
+   */
+  UUID = 4,
+
+  /**
+   * @generated from enum value: QUALITY_SEMANTIC_TYPE_IP = 5;
+   */
+  IP = 5,
+
+  /**
+   * @generated from enum value: QUALITY_SEMANTIC_TYPE_COUNTRY_CODE = 6;
+   */
+  COUNTRY_CODE = 6,
+
+  /**
+   * @generated from enum value: QUALITY_SEMANTIC_TYPE_CURRENCY = 7;
+   */
+  CURRENCY = 7,
+
+  /**
+   * @generated from enum value: QUALITY_SEMANTIC_TYPE_AMOUNT = 8;
+   */
+  AMOUNT = 8,
+
+  /**
+   * @generated from enum value: QUALITY_SEMANTIC_TYPE_QUANTITY = 9;
+   */
+  QUANTITY = 9,
+
+  /**
+   * @generated from enum value: QUALITY_SEMANTIC_TYPE_PERCENTAGE = 10;
+   */
+  PERCENTAGE = 10,
+
+  /**
+   * @generated from enum value: QUALITY_SEMANTIC_TYPE_ID = 11;
+   */
+  ID = 11,
+
+  /**
+   * @generated from enum value: QUALITY_SEMANTIC_TYPE_BUSINESS_KEY = 12;
+   */
+  BUSINESS_KEY = 12,
+
+  /**
+   * @generated from enum value: QUALITY_SEMANTIC_TYPE_TIMESTAMP = 13;
+   */
+  TIMESTAMP = 13,
+
+  /**
+   * @generated from enum value: QUALITY_SEMANTIC_TYPE_DATE = 14;
+   */
+  DATE = 14,
+
+  /**
+   * @generated from enum value: QUALITY_SEMANTIC_TYPE_ENUM = 15;
+   */
+  ENUM = 15,
+
+  /**
+   * @generated from enum value: QUALITY_SEMANTIC_TYPE_FREE_TEXT = 16;
+   */
+  FREE_TEXT = 16,
+
+  /**
+   * @generated from enum value: QUALITY_SEMANTIC_TYPE_UNKNOWN = 17;
+   */
+  UNKNOWN = 17,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualitySemanticType.
+ */
+export declare const QualitySemanticTypeSchema: GenEnum<QualitySemanticType>;
+
+/**
+ * QualitySuggestionKind is what a suggestion proposes.
+ *
+ * @generated from enum metaxisdata.v1.QualitySuggestionKind
+ */
+export enum QualitySuggestionKind {
+  /**
+   * @generated from enum value: QUALITY_SUGGESTION_KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_SUGGESTION_KIND_RULE_DRAFT = 1;
+   */
+  RULE_DRAFT = 1,
+
+  /**
+   * @generated from enum value: QUALITY_SUGGESTION_KIND_LABEL = 2;
+   */
+  LABEL = 2,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualitySuggestionKind.
+ */
+export declare const QualitySuggestionKindSchema: GenEnum<QualitySuggestionKind>;
+
+/**
+ * QualitySuggestionStatus is where a suggestion is in the review queue.
+ *
+ * @generated from enum metaxisdata.v1.QualitySuggestionStatus
+ */
+export enum QualitySuggestionStatus {
+  /**
+   * @generated from enum value: QUALITY_SUGGESTION_STATUS_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_SUGGESTION_STATUS_PENDING = 1;
+   */
+  PENDING = 1,
+
+  /**
+   * @generated from enum value: QUALITY_SUGGESTION_STATUS_ACCEPTED = 2;
+   */
+  ACCEPTED = 2,
+
+  /**
+   * @generated from enum value: QUALITY_SUGGESTION_STATUS_REJECTED = 3;
+   */
+  REJECTED = 3,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualitySuggestionStatus.
+ */
+export declare const QualitySuggestionStatusSchema: GenEnum<QualitySuggestionStatus>;
+
+/**
+ * QualitySuggestionSource is what produced a suggestion.
+ *
+ * @generated from enum metaxisdata.v1.QualitySuggestionSource
+ */
+export enum QualitySuggestionSource {
+  /**
+   * @generated from enum value: QUALITY_SUGGESTION_SOURCE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE = 1;
+   */
+  NATURAL_LANGUAGE = 1,
+
+  /**
+   * @generated from enum value: QUALITY_SUGGESTION_SOURCE_PROFILE = 2;
+   */
+  PROFILE = 2,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualitySuggestionSource.
+ */
+export declare const QualitySuggestionSourceSchema: GenEnum<QualitySuggestionSource>;
+
+/**
+ * QualityLabelSource is who asserted a column's semantic label.
+ *
+ * @generated from enum metaxisdata.v1.QualityLabelSource
+ */
+export enum QualityLabelSource {
+  /**
+   * @generated from enum value: QUALITY_LABEL_SOURCE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_LABEL_SOURCE_MANUAL = 1;
+   */
+  MANUAL = 1,
+
+  /**
+   * @generated from enum value: QUALITY_LABEL_SOURCE_LLM = 2;
+   */
+  LLM = 2,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityLabelSource.
+ */
+export declare const QualityLabelSourceSchema: GenEnum<QualityLabelSource>;
+
+/**
+ * QualityLabelStatus is whether a semantic label is in effect.
+ *
+ * @generated from enum metaxisdata.v1.QualityLabelStatus
+ */
+export enum QualityLabelStatus {
+  /**
+   * @generated from enum value: QUALITY_LABEL_STATUS_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_LABEL_STATUS_SUGGESTED = 1;
+   */
+  SUGGESTED = 1,
+
+  /**
+   * @generated from enum value: QUALITY_LABEL_STATUS_ACCEPTED = 2;
+   */
+  ACCEPTED = 2,
+
+  /**
+   * @generated from enum value: QUALITY_LABEL_STATUS_REJECTED = 3;
+   */
+  REJECTED = 3,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityLabelStatus.
+ */
+export declare const QualityLabelStatusSchema: GenEnum<QualityLabelStatus>;
+
+/**
+ * ColumnLabelAction is what UpdateColumnLabel does with one column's label.
+ *
+ * @generated from enum metaxisdata.v1.ColumnLabelAction
+ */
+export enum ColumnLabelAction {
+  /**
+   * @generated from enum value: COLUMN_LABEL_ACTION_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * Store the given semantic label as a manually accepted one.
+   *
+   * @generated from enum value: COLUMN_LABEL_ACTION_ACCEPT = 1;
+   */
+  ACCEPT = 1,
+
+  /**
+   * Remove the column's label.
+   *
+   * @generated from enum value: COLUMN_LABEL_ACTION_CLEAR = 2;
+   */
+  CLEAR = 2,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.ColumnLabelAction.
+ */
+export declare const ColumnLabelActionSchema: GenEnum<ColumnLabelAction>;
 
 /**
  * QualityObservedKind is the unit of the observed value a result records.
@@ -2617,6 +4297,133 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof ListQualityRuleResultsRequestSchema;
     output: typeof ListQualityRuleResultsResponseSchema;
+  },
+  /**
+   * List quality issues, newest first.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityIssues
+   */
+  listQualityIssues: {
+    methodKind: "unary";
+    input: typeof ListQualityIssuesRequestSchema;
+    output: typeof ListQualityIssuesResponseSchema;
+  },
+  /**
+   * Read one quality issue.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityIssue
+   */
+  getQualityIssue: {
+    methodKind: "unary";
+    input: typeof GetQualityIssueRequestSchema;
+    output: typeof QualityIssueSchema;
+  },
+  /**
+   * Acknowledge, resolve or mute one quality issue.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.UpdateQualityIssue
+   */
+  updateQualityIssue: {
+    methodKind: "unary";
+    input: typeof UpdateQualityIssueRequestSchema;
+    output: typeof QualityIssueSchema;
+  },
+  /**
+   * List the review queue of model-proposed rule drafts and semantic labels,
+   * newest first.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualitySuggestions
+   */
+  listQualitySuggestions: {
+    methodKind: "unary";
+    input: typeof ListQualitySuggestionsRequestSchema;
+    output: typeof ListQualitySuggestionsResponseSchema;
+  },
+  /**
+   * Accept or reject one queued suggestion. A decision is final: the store
+   * refuses a second one.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.UpdateQualitySuggestion
+   */
+  updateQualitySuggestion: {
+    methodKind: "unary";
+    input: typeof UpdateQualitySuggestionRequestSchema;
+    output: typeof QualitySuggestionSchema;
+  },
+  /**
+   * List the cached deterministic profiles of columns. Profiles are read-only
+   * measurements; there is no get or update.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ListColumnProfiles
+   */
+  listColumnProfiles: {
+    methodKind: "unary";
+    input: typeof ListColumnProfilesRequestSchema;
+    output: typeof ListColumnProfilesResponseSchema;
+  },
+  /**
+   * List the semantic labels asserted on columns.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ListColumnLabels
+   */
+  listColumnLabels: {
+    methodKind: "unary";
+    input: typeof ListColumnLabelsRequestSchema;
+    output: typeof ListColumnLabelsResponseSchema;
+  },
+  /**
+   * Accept a proposed semantic label or clear the label of one column.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.UpdateColumnLabel
+   */
+  updateColumnLabel: {
+    methodKind: "unary";
+    input: typeof UpdateColumnLabelRequestSchema;
+    output: typeof UpdateColumnLabelResponseSchema;
+  },
+  /**
+   * Measure the deterministic statistics of up to 50 columns of one table.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ProfileColumns
+   */
+  profileColumns: {
+    methodKind: "unary";
+    input: typeof ProfileColumnsRequestSchema;
+    output: typeof ProfileColumnsResponseSchema;
+  },
+  /**
+   * Turn a natural-language intent into queued rule drafts.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.SuggestQualityRule
+   */
+  suggestQualityRule: {
+    methodKind: "unary";
+    input: typeof SuggestQualityRuleRequestSchema;
+    output: typeof SuggestQualityRuleResponseSchema;
+  },
+  /**
+   * Propose semantic labels for up to 50 columns of one table.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.SuggestColumnLabels
+   */
+  suggestColumnLabels: {
+    methodKind: "unary";
+    input: typeof SuggestColumnLabelsRequestSchema;
+    output: typeof SuggestColumnLabelsResponseSchema;
+  },
+  /**
+   * Explain one failed result as a stream of hypotheses.
+   *
+   * No (google.api.http) annotation: this is a server-streaming method, and the
+   * REST gateway cannot carry one. The browser reaches the Connect endpoint
+   * directly, the way it does for ExplainSQL.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ExplainQualityResult
+   */
+  explainQualityResult: {
+    methodKind: "server_streaming";
+    input: typeof ExplainQualityResultRequestSchema;
+    output: typeof ExplainQualityResultResponseSchema;
   },
 }>;
 

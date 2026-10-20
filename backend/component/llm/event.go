@@ -20,6 +20,11 @@ type AgentEvent struct {
 	// Error is a fatal error that stopped the loop.
 	Error error
 
+	// Usage is the token usage a turn reported, on AgentEventUsage; on
+	// AgentEventAgentEnd it is the sum over every turn. Nil means the provider
+	// reported nothing.
+	Usage *Usage
+
 	// Turn is the current turn number (1-based).
 	Turn int
 }
@@ -32,8 +37,12 @@ const (
 	AgentEventContent   AgentEventType = "content"
 	AgentEventToolStart AgentEventType = "tool_start"
 	AgentEventToolEnd   AgentEventType = "tool_end"
-	AgentEventAgentEnd  AgentEventType = "agent_end"
-	AgentEventError     AgentEventType = "error"
+	// AgentEventUsage reports the token usage one turn's provider response
+	// carried. It is not a verdict and not a bill; a provider that omits usage
+	// emits no such event.
+	AgentEventUsage    AgentEventType = "usage"
+	AgentEventAgentEnd AgentEventType = "agent_end"
+	AgentEventError    AgentEventType = "error"
 )
 
 // AgentConfig configures a single run of the agent loop.
@@ -59,6 +68,25 @@ type AgentConfig struct {
 	// MaxConversationBytes limits the conversation kept in memory (default
 	// DefaultMaxConversationBytes).
 	MaxConversationBytes int
+
+	// Temperature is the sampling temperature. Nil leaves the provider's default
+	// in place; 0 is a request for deterministic sampling and is sent.
+	Temperature *float64
+
+	// MaxTokens bounds the generated answer. 0 leaves the provider's default in
+	// place.
+	MaxTokens int
+
+	// ResponseFormat asks the provider for a structured response. Nil leaves the
+	// provider's default in place; JSONObjectResponseFormat() asks for a JSON
+	// object.
+	ResponseFormat *ResponseFormat
+
+	// IncludeUsage asks the provider to report token usage in the stream. It is
+	// opt-in because it adds a request field some OpenAI-compatible gateways do
+	// not accept, and a provider that refuses the whole request is worse than
+	// missing usage numbers.
+	IncludeUsage bool
 
 	// DebugLogger, when set, logs every LLM request/response.
 	DebugLogger DebugLogger

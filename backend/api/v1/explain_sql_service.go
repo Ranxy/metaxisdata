@@ -198,9 +198,10 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 			})
 		case llm.AgentEventContent:
 			_, _ = fullResponse.WriteString(evt.Content)
-			if err := stream.Send(&v1pb.ExplainSQLResponse{
+			chunk := &v1pb.ExplainSQLResponse{
 				Payload: &v1pb.ExplainSQLResponse_Content{Content: evt.Content},
-			}); err != nil {
+			}
+			if err := stream.Send(chunk); err != nil {
 				return err
 			}
 		default:
@@ -579,87 +580,34 @@ func (s *ExplainSQLService) allowedLLMProfiles(ctx context.Context) ([]string, e
 	return setting.GetAllowedLlmProviderProfiles(), nil
 }
 
-// llmProfileID normalizes a profile reference to the bare id. The store names a
-// profile "llm-provider-profiles/{id}" and the registry carries that name
-// through unchanged, while a request or a setting may hold either form, so
-// every comparison normalizes both sides with this.
-func llmProfileID(profile string) string {
-	trimmed := strings.TrimSpace(profile)
-	if id, ok := strings.CutPrefix(trimmed, "llm-provider-profiles/"); ok {
-		return id
-	}
-	return trimmed
-}
+// The provider-selection rules live in component/llm so Explain SQL and the data
+// quality analysis cannot drift apart. These helpers keep the RPC's names and
+// signatures — the handler and this package's tests call them — and delegate the
+// rule itself to the shared implementation.
 
-// findLLMConfig returns the enabled config the request's profile reference
-// names, or nil. The reference is a v1 resource name while the config may hold
-// either form, so both sides are normalized before comparing — comparing them
-// raw left every selection unresolved.
+// findLLMConfig returns the enabled config the profile reference names, or nil.
 func findLLMConfig(configs []llm.ResolvedConfig, profile string) *llm.ResolvedConfig {
-	wantedID := llmProfileID(profile)
-	for i := range configs {
-		if llmProfileID(configs[i].ProfileName) == wantedID {
-			return &configs[i]
-		}
-	}
-	return nil
+	return llm.FindConfig(configs, profile)
 }
 
-// filterAllowedLLMConfigs keeps the configs whose profile is in the allowlist.
-// An empty allowlist means no restriction.
+// filterAllowedLLMConfigs keeps the configs whose profile is in the allowlist. An
+// empty allowlist means no restriction.
 func filterAllowedLLMConfigs(configs []llm.ResolvedConfig, allowed []string) []llm.ResolvedConfig {
-	if len(allowed) == 0 {
-		return configs
-	}
-	allowedIDs := make(map[string]struct{}, len(allowed))
-	for _, profile := range allowed {
-		allowedIDs[llmProfileID(profile)] = struct{}{}
-	}
-	filtered := make([]llm.ResolvedConfig, 0, len(configs))
-	for _, config := range configs {
-		if _, ok := allowedIDs[llmProfileID(config.ProfileName)]; ok {
-			filtered = append(filtered, config)
-		}
-	}
-	return filtered
+	return llm.AllowedConfigs(configs, allowed)
 }
 
 // resolveLLMConfig picks the provider and model the explanation runs on. An
-// explicitly requested profile must be allowed by the workspace setting;
-// otherwise the first allowed one is the default. The errors are the RPC's, so
-// the handler returns them unchanged.
+// explicitly requested profile must be allowed by the workspace setting; otherwise
+// the first allowed one is the default. The errors are the RPC's, so the handler
+// returns them unchanged.
 func resolveLLMConfig(configs []llm.ResolvedConfig, allowed []string, providerName string) (*llm.ResolvedConfig, error) {
-	if providerName != "" {
-		if !isLLMProfileAllowed(providerName, allowed) {
-			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("LLM profile %q is not allowed by the workspace settings", providerName))
-		}
-		config := findLLMConfig(configs, providerName)
-		if config == nil {
-			return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("LLM profile %q not found", providerName))
-		}
-		return config, nil
-	}
-
-	allowedConfigs := filterAllowedLLMConfigs(configs, allowed)
-	if len(allowedConfigs) == 0 {
-		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("no enabled LLM provider profiles are allowed"))
-	}
-	return &allowedConfigs[0], nil
+	return llm.ResolveConfig(configs, allowed, providerName)
 }
 
-// isLLMProfileAllowed reports whether a requested profile is inside the
-// allowlist; an empty allowlist allows everything.
+// isLLMProfileAllowed reports whether a requested profile is inside the allowlist;
+// an empty allowlist allows everything.
 func isLLMProfileAllowed(profile string, allowed []string) bool {
-	if len(allowed) == 0 {
-		return true
-	}
-	id := llmProfileID(profile)
-	for _, candidate := range allowed {
-		if llmProfileID(candidate) == id {
-			return true
-		}
-	}
-	return false
+	return llm.ProfileAllowed(profile, allowed)
 }
 
 // resolveSource returns the SQL to explain, the object it belongs to, the

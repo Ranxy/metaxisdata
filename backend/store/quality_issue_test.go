@@ -388,7 +388,8 @@ func TestQualityIssueStatementShapesCarryTheirInvariants(t *testing.T) {
 	require.Contains(t, qualityIssueAcknowledgeStatement, "SET status = $1")
 	require.Contains(t, qualityIssueAcknowledgeStatement, "acknowledged_by = $2")
 	require.Contains(t, qualityIssueAcknowledgeStatement, "acknowledged_at = $3")
-	require.Contains(t, qualityIssueAcknowledgeStatement, "WHERE id = $4 AND status <> $1")
+	require.Contains(t, qualityIssueAcknowledgeStatement, "WHERE id = $4 AND status IN ($5, $1)")
+	require.NotContains(t, qualityIssueAcknowledgeStatement, "status <> $1", "a resolved issue must not be resurrected by an acknowledgement")
 
 	// The management update decides against the locked row, so the read has to lock
 	// it: a read without FOR UPDATE would let a concurrent resolve be overwritten.
@@ -463,4 +464,29 @@ func TestQualityIssueValidationRunsBeforeDatabaseAccess(t *testing.T) {
 	require.Equal(t, common.Invalid, common.ErrorCode(err))
 	_, err = s.GetOpenQualityIssueForRule(ctx, 0)
 	require.Equal(t, common.Invalid, common.ErrorCode(err))
+}
+
+// RuleIDs is the owner-filter path: ownership lives on the rule, so the API passes
+// the owner's rule ids to the issue query. An empty slice must add no predicate, and
+// the set predicate is ANDed with the single-rule one rather than replacing it.
+func TestBuildQualityIssueWhereRuleIDs(t *testing.T) {
+	t.Parallel()
+
+	where, args := buildQualityIssueWhere(&FindQualityIssueMessage{RuleIDs: nil})
+	require.Equal(t, []string{"TRUE"}, where)
+	require.Empty(t, args)
+
+	where, args = buildQualityIssueWhere(&FindQualityIssueMessage{RuleIDs: []int64{}})
+	require.Equal(t, []string{"TRUE"}, where)
+	require.Empty(t, args)
+
+	where, args = buildQualityIssueWhere(&FindQualityIssueMessage{
+		RuleID:  ptr(int64(42)),
+		RuleIDs: []int64{7, 9},
+	})
+	require.Equal(t, []string{"TRUE", "rule_id = $1", "rule_id = ANY($2::bigint[])"}, where)
+	require.Equal(t, int64(42), args[0])
+	ruleIDs, ok := args[1].(*pq.Int64Array)
+	require.True(t, ok)
+	require.Equal(t, pq.Int64Array{7, 9}, *ruleIDs)
 }

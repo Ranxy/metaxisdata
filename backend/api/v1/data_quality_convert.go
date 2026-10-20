@@ -6,11 +6,13 @@ import (
 	"strings"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -23,6 +25,7 @@ const (
 	qualityRulePrefix       = "qualityRules/"
 	qualityRunPrefix        = "qualityRuns/"
 	qualityRuleResultPrefix = "qualityRuleResults/"
+	qualityIssuePrefix      = "qualityIssues/"
 
 	// A rule that is scheduled must say how often. The bounds are the design's
 	// accepted range; zero is rejected because pausing is how scheduling stops.
@@ -58,6 +61,15 @@ func parseQualityRuleResultName(name string) (string, string, error) {
 	return tokens[0], tokens[1], nil
 }
 
+// parseQualityIssueName splits workspaces/{workspace}/qualityIssues/{quality_issue}.
+func parseQualityIssueName(name string) (string, string, error) {
+	tokens, err := common.GetNameParentTokens(name, common.WorkspacePrefix, qualityIssuePrefix)
+	if err != nil {
+		return "", "", errors.Wrap(err, "invalid quality issue name")
+	}
+	return tokens[0], tokens[1], nil
+}
+
 // formatQualityRuleName renders a rule resource name.
 func formatQualityRuleName(workspace, qualityRule string) string {
 	return common.FormatWorkspace(workspace) + "/" + qualityRulePrefix + qualityRule
@@ -66,6 +78,11 @@ func formatQualityRuleName(workspace, qualityRule string) string {
 // formatQualityRunName renders a run resource name.
 func formatQualityRunName(workspace, qualityRun string) string {
 	return common.FormatWorkspace(workspace) + "/" + qualityRunPrefix + qualityRun
+}
+
+// formatQualityIssueName renders an issue resource name.
+func formatQualityIssueName(workspace, qualityIssue string) string {
+	return common.FormatWorkspace(workspace) + "/" + qualityIssuePrefix + qualityIssue
 }
 
 // formatQualityRuleResultName renders a result resource name. Results have no
@@ -131,6 +148,24 @@ func copyPtr[T any](value *T) *T {
 // protobuf duration the API exposes.
 func durationFromMilliseconds(milliseconds int32) *durationpb.Duration {
 	return durationpb.New(time.Duration(milliseconds) * time.Millisecond)
+}
+
+// resolveCreateScheduleInterval applies the workspace default to a new rule whose
+// request left schedule_interval unset. A rule always runs on a schedule; pausing
+// is how it stops, so there is no "no interval" state to store.
+func resolveCreateScheduleInterval(requested time.Duration, settings dataquality.Settings) time.Duration {
+	if requested > 0 {
+		return requested
+	}
+	return settings.DefaultScheduleInterval
+}
+
+// errLoadQualitySettings maps a settings read failure onto the RPC's error space.
+func errLoadQualitySettings(err error) error {
+	if common.ErrorCode(err) != common.Internal {
+		return err
+	}
+	return connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to load the data quality settings"))
 }
 
 // validateQualityScheduleInterval enforces the accepted scheduling range.
@@ -345,6 +380,40 @@ func convertQualityResultSummary(result *store.QualityRuleResultMessage, runName
 		Run:           runName,
 		FinishTime:    timestamppb.New(result.FinishedAt),
 	}
+}
+
+// convertQualityIssue converts one issue row. The rule and run names are
+// resolved by the caller because an issue stores numeric foreign keys only.
+func convertQualityIssue(workspaceID string, issue *store.QualityIssueMessage, ruleName string, runNames map[int64]string) *v1pb.QualityIssue {
+	if issue == nil {
+		return nil
+	}
+	return &v1pb.QualityIssue{
+		Name:             formatQualityIssueName(workspaceID, issue.ResourceID),
+		Rule:             ruleName,
+		Target:           &v1pb.QualityTarget{MetaGuid: issue.TargetGUID, MetaType: v1pb.MetaType(issue.TargetType)},
+		Status:           v1pb.QualityIssueStatus(issue.Status),
+		Severity:         v1pb.QualitySeverity(issue.Severity),
+		FirstSeenRun:     qualityRunNameOf(runNames, issue.FirstSeenRunID),
+		LastSeenRun:      qualityRunNameOf(runNames, issue.LastSeenRunID),
+		FirstSeenTime:    timestamppb.New(issue.FirstSeenAt),
+		LastSeenTime:     timestamppb.New(issue.LastSeenAt),
+		ResolvedTime:     timestampOrNil(issue.ResolvedAt),
+		ResolutionReason: v1pb.QualityResolutionReason(issue.ResolutionReason),
+		ResolutionNote:   issue.ResolutionNote,
+		AcknowledgedBy:   formatQualityOwner(issue.AcknowledgedBy),
+		AcknowledgedTime: timestampOrNil(issue.AcknowledgedAt),
+		MutedUntil:       timestampOrNil(issue.MutedUntil),
+		OccurrenceCount:  issue.OccurrenceCount,
+	}
+}
+
+// qualityRunNameOf resolves a nullable numeric run id through the batch map.
+func qualityRunNameOf(runNames map[int64]string, runID *int64) string {
+	if runID == nil {
+		return ""
+	}
+	return runNames[*runID]
 }
 
 // observedValue keeps a legitimate zero distinct from an absent observation.
@@ -840,4 +909,265 @@ func convertQualityRuleConfigFromV1(config *v1pb.QualityRuleConfig) *storepb.Qua
 	default:
 	}
 	return converted
+}
+
+// qualitySuggestionPrefix is the resource-name prefix of the review queue.
+const qualitySuggestionPrefix = "qualitySuggestions/"
+
+// parseQualitySuggestionName splits
+// workspaces/{workspace}/qualitySuggestions/{quality_suggestion}.
+func parseQualitySuggestionName(name string) (string, string, error) {
+	tokens, err := common.GetNameParentTokens(name, common.WorkspacePrefix, qualitySuggestionPrefix)
+	if err != nil {
+		return "", "", errors.Wrap(err, "invalid quality suggestion name")
+	}
+	return tokens[0], tokens[1], nil
+}
+
+// formatQualitySuggestionName renders a suggestion resource name.
+func formatQualitySuggestionName(workspace, qualitySuggestion string) string {
+	return common.FormatWorkspace(workspace) + "/" + qualitySuggestionPrefix + qualitySuggestion
+}
+
+// convertQualitySuggestion converts one review-queue row into its public shape.
+func convertQualitySuggestion(workspaceID string, suggestion *store.QualitySuggestionMessage) *v1pb.QualitySuggestion {
+	if suggestion == nil {
+		return nil
+	}
+	return &v1pb.QualitySuggestion{
+		Name:          formatQualitySuggestionName(workspaceID, suggestion.ResourceID),
+		Kind:          v1pb.QualitySuggestionKind(suggestion.Kind),
+		Source:        v1pb.QualitySuggestionSource(suggestion.Source),
+		Target:        &v1pb.QualityTarget{MetaGuid: suggestion.TargetGUID, MetaType: v1pb.MetaType(suggestion.TargetType)},
+		Payload:       convertQualitySuggestionPayloadToV1(suggestion.Payload),
+		Status:        v1pb.QualitySuggestionStatus(suggestion.Status),
+		Provider:      suggestion.Provider,
+		Model:         suggestion.Model,
+		PromptVersion: suggestion.PromptVersion,
+		CreateTime:    timestamppb.New(suggestion.CreatedAt),
+		DecidedBy:     formatQualityOwner(suggestion.DecidedBy),
+		DecideTime:    timestampOrNil(suggestion.DecidedAt),
+		DecisionNote:  suggestion.DecisionNote,
+	}
+}
+
+// convertQualitySuggestionPayloadToV1 converts the review-queue payload.
+func convertQualitySuggestionPayloadToV1(payload *storepb.QualitySuggestionPayload) *v1pb.QualitySuggestionPayload {
+	if payload == nil {
+		return nil
+	}
+	converted := &v1pb.QualitySuggestionPayload{}
+	switch arm := payload.GetPayload().(type) {
+	case *storepb.QualitySuggestionPayload_Rule:
+		converted.Payload = &v1pb.QualitySuggestionPayload_Rule{Rule: convertQualityRuleDraftConfigToV1(arm.Rule)}
+	case *storepb.QualitySuggestionPayload_Label:
+		converted.Payload = &v1pb.QualitySuggestionPayload_Label{Label: convertSemanticLabelSuggestionToV1(arm.Label)}
+	case nil:
+	default:
+	}
+	return converted
+}
+
+// convertQualitySuggestionPayloadFromV1 converts the review-queue payload back
+// into the stored shape.
+func convertQualitySuggestionPayloadFromV1(payload *v1pb.QualitySuggestionPayload) *storepb.QualitySuggestionPayload {
+	if payload == nil {
+		return nil
+	}
+	converted := &storepb.QualitySuggestionPayload{}
+	switch arm := payload.GetPayload().(type) {
+	case *v1pb.QualitySuggestionPayload_Rule:
+		converted.Payload = &storepb.QualitySuggestionPayload_Rule{Rule: convertQualityRuleDraftConfigFromV1(arm.Rule)}
+	case *v1pb.QualitySuggestionPayload_Label:
+		converted.Payload = &storepb.QualitySuggestionPayload_Label{Label: convertSemanticLabelSuggestionFromV1(arm.Label)}
+	case nil:
+	default:
+	}
+	return converted
+}
+
+// convertQualityRuleDraftConfigToV1 converts one model-proposed rule draft.
+func convertQualityRuleDraftConfigToV1(draft *storepb.QualityRuleDraftConfig) *v1pb.QualityRuleDraftConfig {
+	if draft == nil {
+		return nil
+	}
+	return &v1pb.QualityRuleDraftConfig{
+		Config:     convertQualityRuleConfigToV1(draft.GetConfig()),
+		Severity:   v1pb.QualitySeverity(draft.GetSeverity()),
+		Title:      draft.GetTitle(),
+		Rationale:  draft.GetRationale(),
+		Confidence: draft.GetConfidence(),
+	}
+}
+
+// convertQualityRuleDraftConfigFromV1 converts one model-proposed rule draft back
+// into the stored shape.
+func convertQualityRuleDraftConfigFromV1(draft *v1pb.QualityRuleDraftConfig) *storepb.QualityRuleDraftConfig {
+	if draft == nil {
+		return nil
+	}
+	return &storepb.QualityRuleDraftConfig{
+		Config:     convertQualityRuleConfigFromV1(draft.GetConfig()),
+		Severity:   storepb.QualitySeverity(draft.GetSeverity()),
+		Title:      draft.GetTitle(),
+		Rationale:  draft.GetRationale(),
+		Confidence: draft.GetConfidence(),
+	}
+}
+
+// convertSemanticLabelSuggestionToV1 converts one model-proposed label.
+func convertSemanticLabelSuggestionToV1(suggestion *storepb.SemanticLabelSuggestion) *v1pb.SemanticLabelSuggestion {
+	if suggestion == nil {
+		return nil
+	}
+	converted := &v1pb.SemanticLabelSuggestion{
+		Column:     suggestion.GetColumn(),
+		Label:      v1pb.QualitySemanticType(suggestion.GetLabel()),
+		Confidence: suggestion.GetConfidence(),
+		Evidence:   convertSemanticLabelEvidenceToV1(suggestion.GetEvidence()),
+	}
+	for _, ruleType := range suggestion.GetSuggestedRuleTypes() {
+		converted.SuggestedRuleTypes = append(converted.SuggestedRuleTypes, v1pb.QualityRuleType(ruleType))
+	}
+	return converted
+}
+
+// convertSemanticLabelSuggestionFromV1 converts one model-proposed label back
+// into the stored shape.
+func convertSemanticLabelSuggestionFromV1(suggestion *v1pb.SemanticLabelSuggestion) *storepb.SemanticLabelSuggestion {
+	if suggestion == nil {
+		return nil
+	}
+	converted := &storepb.SemanticLabelSuggestion{
+		Column:     suggestion.GetColumn(),
+		Label:      storepb.QualitySemanticType(suggestion.GetLabel()),
+		Confidence: suggestion.GetConfidence(),
+		Evidence:   convertSemanticLabelEvidenceFromV1(suggestion.GetEvidence()),
+	}
+	for _, ruleType := range suggestion.GetSuggestedRuleTypes() {
+		converted.SuggestedRuleTypes = append(converted.SuggestedRuleTypes, storepb.QualityRuleType(ruleType))
+	}
+	return converted
+}
+
+// convertSemanticLabelEvidenceToV1 converts the evidence behind a label.
+func convertSemanticLabelEvidenceToV1(evidence *storepb.SemanticLabelEvidence) *v1pb.SemanticLabelEvidence {
+	if evidence == nil {
+		return nil
+	}
+	return &v1pb.SemanticLabelEvidence{
+		Columns:   append([]string(nil), evidence.GetColumns()...),
+		Metrics:   append([]string(nil), evidence.GetMetrics()...),
+		Lineage:   append([]string(nil), evidence.GetLineage()...),
+		Rationale: evidence.GetRationale(),
+	}
+}
+
+// convertSemanticLabelEvidenceFromV1 converts the evidence back into the stored
+// shape.
+func convertSemanticLabelEvidenceFromV1(evidence *v1pb.SemanticLabelEvidence) *storepb.SemanticLabelEvidence {
+	if evidence == nil {
+		return nil
+	}
+	return &storepb.SemanticLabelEvidence{
+		Columns:   append([]string(nil), evidence.GetColumns()...),
+		Metrics:   append([]string(nil), evidence.GetMetrics()...),
+		Lineage:   append([]string(nil), evidence.GetLineage()...),
+		Rationale: evidence.GetRationale(),
+	}
+}
+
+// convertColumnProfileToV1 converts one cached column profile.
+func convertColumnProfileToV1(profile *store.ColumnProfileMessage) *v1pb.ColumnProfile {
+	if profile == nil {
+		return nil
+	}
+	return &v1pb.ColumnProfile{
+		TableGuid:     profile.TableGUID,
+		MetaType:      v1pb.MetaType(profile.TableType),
+		Column:        profile.ColumnName,
+		Profile:       convertColumnProfileStatsToV1(profile.Profile),
+		SampleMethod:  profile.SampleMethod,
+		SampleRows:    profile.SampleRows,
+		Truncated:     profile.Truncated,
+		EngineVersion: profile.EngineVersion,
+		ProfiledAt:    timestamppb.New(profile.ProfiledAt),
+	}
+}
+
+// convertColumnProfileStatsToV1 converts the measured statistics.
+func convertColumnProfileStatsToV1(stats *storepb.ColumnProfile) *v1pb.ColumnProfileStats {
+	if stats == nil {
+		return nil
+	}
+	converted := &v1pb.ColumnProfileStats{
+		TotalRows:         stats.GetTotalRows(),
+		NullCount:         stats.GetNullCount(),
+		DistinctCount:     stats.GetDistinctCount(),
+		DistinctEstimated: stats.GetDistinctEstimated(),
+		MinValue:          stats.GetMinValue(),
+		MaxValue:          stats.GetMaxValue(),
+		MinLength:         copyPtr(stats.MinLength),
+		MaxLength:         copyPtr(stats.MaxLength),
+		Patterns:          append([]string(nil), stats.GetPatterns()...),
+	}
+	for _, value := range stats.GetTopValues() {
+		if value == nil {
+			continue
+		}
+		converted.TopValues = append(converted.TopValues, &v1pb.ProfileValue{
+			Value: value.GetValue(),
+			Count: value.GetCount(),
+		})
+	}
+	return converted
+}
+
+// convertColumnProfileStatsFromV1 converts the measured statistics back into the
+// stored shape.
+func convertColumnProfileStatsFromV1(stats *v1pb.ColumnProfileStats) *storepb.ColumnProfile {
+	if stats == nil {
+		return nil
+	}
+	converted := &storepb.ColumnProfile{
+		TotalRows:         stats.GetTotalRows(),
+		NullCount:         stats.GetNullCount(),
+		DistinctCount:     stats.GetDistinctCount(),
+		DistinctEstimated: stats.GetDistinctEstimated(),
+		MinValue:          stats.GetMinValue(),
+		MaxValue:          stats.GetMaxValue(),
+		MinLength:         copyPtr(stats.MinLength),
+		MaxLength:         copyPtr(stats.MaxLength),
+		Patterns:          append([]string(nil), stats.GetPatterns()...),
+	}
+	for _, value := range stats.GetTopValues() {
+		if value == nil {
+			continue
+		}
+		converted.TopValues = append(converted.TopValues, &storepb.ProfileValue{
+			Value: value.GetValue(),
+			Count: value.GetCount(),
+		})
+	}
+	return converted
+}
+
+// convertColumnSemanticLabelToV1 converts one asserted semantic label.
+func convertColumnSemanticLabelToV1(label *store.ColumnSemanticLabelMessage) *v1pb.ColumnSemanticLabel {
+	if label == nil {
+		return nil
+	}
+	return &v1pb.ColumnSemanticLabel{
+		TableGuid:    label.TableGUID,
+		MetaType:     v1pb.MetaType(label.TableType),
+		Column:       label.ColumnName,
+		Label:        v1pb.QualitySemanticType(label.Label),
+		Source:       v1pb.QualityLabelSource(label.Source),
+		Status:       v1pb.QualityLabelStatus(label.Status),
+		Confidence:   label.Confidence,
+		Evidence:     convertSemanticLabelEvidenceToV1(label.Evidence),
+		AcceptedBy:   formatQualityOwner(label.AcceptedBy),
+		AcceptedTime: timestampOrNil(label.AcceptedAt),
+		UpdateTime:   timestamppb.New(label.UpdatedAt),
+	}
 }
