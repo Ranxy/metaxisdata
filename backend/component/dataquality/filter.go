@@ -176,6 +176,14 @@ func CompileFilter(dialect Dialect, target ResolvedTarget, filter Filter) (strin
 		case FilterISNotNull:
 			conditions = append(conditions, quoted+" IS NOT NULL")
 		default:
+			// A value comparison needs equality for the column's type. IS NULL and
+			// IS NOT NULL above work for every type, so they are checked first.
+			if column.Kind == ColumnKindUnknown {
+				return "", nil, invalidConfig("filter column %q has a type this build cannot filter on", column.Name)
+			}
+			if !supportsEquality(column, target.Engine) {
+				return "", nil, invalidConfig("filter column %q is %s; the engine cannot compare or group values of this type", column.Name, column.Type)
+			}
 			values, err := convertFilterValues(column, clause.Values)
 			if err != nil {
 				return "", nil, err

@@ -135,7 +135,7 @@ func sampleQuery(input CompileInput, sql string, args []any, columns []string, l
 // sampleNullPercent selects the rows whose column is NULL.
 func sampleNullPercent(input CompileInput, limit int) (CompiledQuery, error) {
 	config := input.Config.GetNullPercent()
-	column, err := requireColumn(input.Target, config.GetColumn())
+	column, err := requireEqualityColumn(input.Target, config.GetColumn())
 	if err != nil {
 		return CompiledQuery{}, err
 	}
@@ -172,7 +172,7 @@ func sampleNullPercent(input CompileInput, limit int) (CompiledQuery, error) {
 // cannot absorb the filter's AND.
 func sampleAcceptedValues(input CompileInput, limit int) (CompiledQuery, error) {
 	config := input.Config.GetAcceptedValues()
-	column, err := requireColumn(input.Target, config.GetColumn())
+	column, err := requireEqualityColumn(input.Target, config.GetColumn())
 	if err != nil {
 		return CompiledQuery{}, err
 	}
@@ -315,7 +315,7 @@ func sampleStringLength(input CompileInput, limit int) (CompiledQuery, error) {
 // the same column names.
 func sampleReferentialIntegrity(input CompileInput, limit int) (CompiledQuery, error) {
 	config := input.Config.GetReferentialIntegrity()
-	childColumn, err := requireColumn(input.Target, config.GetChildColumn())
+	childColumn, err := requireEqualityColumn(input.Target, config.GetChildColumn())
 	if err != nil {
 		return CompiledQuery{}, err
 	}

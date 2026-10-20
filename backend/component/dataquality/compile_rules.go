@@ -85,7 +85,13 @@ func compileNullPercent(input CompileInput) (CompiledQuery, error) {
 	}
 
 	// The custom missing values appear in the SELECT list, before the filter's
-	// WHERE clause, so compileArgs reconciles the argument order per dialect.
+	// WHERE clause, so compileArgs reconciles the argument order per dialect. They
+	// compare the column with bound values, which a type without equality cannot.
+	if len(config.GetNullValues()) > 0 {
+		if _, err := requireEqualityColumn(input.Target, column.Name); err != nil {
+			return CompiledQuery{}, err
+		}
+	}
 	values, err := nullPercentValues(column, config.GetNullValues())
 	if err != nil {
 		return CompiledQuery{}, err
@@ -112,7 +118,7 @@ func compileUnique(input CompileInput) (CompiledQuery, error) {
 	if config == nil {
 		return CompiledQuery{}, invalidConfig("the unique config is missing")
 	}
-	column, err := requireColumn(input.Target, config.GetColumn())
+	column, err := requireEqualityColumn(input.Target, config.GetColumn())
 	if err != nil {
 		return CompiledQuery{}, err
 	}
@@ -145,7 +151,7 @@ func compileUniqueCombination(input CompileInput) (CompiledQuery, error) {
 	}
 	columns := make([]string, 0, len(names))
 	for _, name := range names {
-		column, err := requireColumn(input.Target, name)
+		column, err := requireEqualityColumn(input.Target, name)
 		if err != nil {
 			return CompiledQuery{}, err
 		}
@@ -211,7 +217,7 @@ func compileAcceptedValues(input CompileInput) (CompiledQuery, error) {
 	if config == nil {
 		return CompiledQuery{}, invalidConfig("the accepted-values config is missing")
 	}
-	column, err := requireColumn(input.Target, config.GetColumn())
+	column, err := requireEqualityColumn(input.Target, config.GetColumn())
 	if err != nil {
 		return CompiledQuery{}, err
 	}
@@ -416,7 +422,7 @@ func compileReferentialIntegrity(input CompileInput) (CompiledQuery, error) {
 	if config == nil {
 		return CompiledQuery{}, invalidConfig("the referential-integrity config is missing")
 	}
-	childColumn, err := requireColumn(input.Target, config.GetChildColumn())
+	childColumn, err := requireEqualityColumn(input.Target, config.GetChildColumn())
 	if err != nil {
 		return CompiledQuery{}, err
 	}

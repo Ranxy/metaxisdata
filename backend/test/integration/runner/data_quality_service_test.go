@@ -714,3 +714,248 @@ INSERT INTO public.audit_log (created_at, payload) VALUES
 	require.Equal(t, "3", profiles["id"].GetProfile().GetMaxValue())
 	require.NotEmpty(t, profiles["created_at"].GetProfile().GetMinValue())
 }
+
+// qualityPtr is a local pointer helper for the optional proto fields.
+func qualityPtr[T any](value T) *T { return &value }
+
+// TestDataQualityRuleRejectsUnrunnableColumnTypesRealServerIntegration covers the
+// types ColumnKind calls "string" but the engine cannot run text or equality
+// operators on: the rule is refused at save time instead of being stored and
+// recording ERROR on every execution. The cases the engines do support (jsonb
+// equality, CEL) must still save.
+func TestDataQualityRuleRejectsUnrunnableColumnTypesRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env, ctx, instanceID, sourceDatabase, databaseName := setupPostgresServiceDatabase(t)
+	require.NoError(t, env.ExecPostgres(ctx, sourceDatabase, `
+CREATE TABLE public.opaque_probe (
+  id BIGSERIAL PRIMARY KEY,
+  payload JSONB NOT NULL,
+  payload_json JSON NOT NULL,
+  doc XML NOT NULL,
+  uid UUID NOT NULL,
+  tags TEXT[] NOT NULL
+);
+INSERT INTO public.opaque_probe (payload, payload_json, doc, uid, tags)
+VALUES ('{"k":1}', '{"k":1}', '<a/>', '11111111-1111-1111-1111-111111111111', '{a,b}');
+CREATE TABLE public.code_ref (code TEXT PRIMARY KEY);
+INSERT INTO public.code_ref (code) VALUES ('a');
+`))
+	_, err := env.CreateDataSource(ctx, common.FormatInstance(instanceID), &v1pb.DataSource{
+		Type:     v1pb.DataSourceType_READ_ONLY,
+		Username: "postgres",
+		Password: "postgres",
+		Host:     env.PostgresHost,
+		Port:     env.PostgresPort,
+	}, "readonly", false)
+	require.NoError(t, err)
+	env.SyncDatabase(ctx, t, databaseName)
+
+	guidPrefix := fmt.Sprintf("%s;%s", instanceID, sourceDatabase)
+	probeGUID := waitForMetaGUIDByName(ctx, t, env, guidPrefix, storepb.MetaType_TABLE, "opaque_probe")
+	refGUID := waitForMetaGUIDByName(ctx, t, env, guidPrefix, storepb.MetaType_TABLE, "code_ref")
+	client := v1connect.NewDataQualityServiceClient(&http.Client{Timeout: 30 * time.Second}, env.BaseURL)
+	token := env.AdminToken()
+
+	newRule := func(guid string, ruleType v1pb.QualityRuleType, config *v1pb.QualityRuleConfig) *v1pb.QualityRule {
+		return &v1pb.QualityRule{
+			Title:       "opaque type probe " + ruleType.String(),
+			Dimension:   v1pb.QualityDimension_QUALITY_DIMENSION_VALIDITY,
+			RuleType:    ruleType,
+			Target:      &v1pb.QualityTarget{MetaGuid: guid, MetaType: v1pb.MetaType_TABLE},
+			Config:      config,
+			Severity:    v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+			Description: "created by the opaque-type integration scenario",
+		}
+	}
+	filterEq := func(column string) *v1pb.QualityFilter {
+		return &v1pb.QualityFilter{Clauses: []*v1pb.QualityFilterClause{{
+			Column: column,
+			Op:     v1pb.QualityFilterOperator_QUALITY_FILTER_OPERATOR_EQ,
+			Values: []string{`{"k":1}`},
+		}}}
+	}
+	rowCountWithFilter := func(column string) *v1pb.QualityRuleConfig {
+		return &v1pb.QualityRuleConfig{
+			Config: &v1pb.QualityRuleConfig_RowCount{RowCount: &v1pb.RowCountConfig{MinRows: qualityPtr(int64(1))}},
+			Filter: filterEq(column),
+		}
+	}
+
+	rejected := []struct {
+		name string
+		rule *v1pb.QualityRule
+		want string
+	}{
+		{
+			name: "regex on jsonb",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_REGEX, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_Regex{Regex: &v1pb.RegexConfig{Column: "payload", Pattern: "^x"}},
+			}),
+			want: "needs a text column",
+		},
+		{
+			name: "string_length on uuid",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_StringLength{StringLength: &v1pb.StringLengthConfig{
+					Column: "uid", MinLen: qualityPtr(int64(10)),
+				}},
+			}),
+			want: "needs a text column",
+		},
+		{
+			name: "unique on json",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_Unique{Unique: &v1pb.UniqueConfig{Column: "payload_json"}},
+			}),
+			want: "the engine cannot compare or group values of this type",
+		},
+		{
+			name: "unique_combination all columns",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_UniqueCombination{UniqueCombination: &v1pb.UniqueCombinationConfig{
+					AllColumns: true,
+				}},
+			}),
+			want: "the engine cannot compare or group values of this type",
+		},
+		{
+			name: "group_check on xml",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_GroupCheck{GroupCheck: &v1pb.GroupCheckConfig{
+					Columns: []string{"doc"}, MinRowsPerGroup: qualityPtr(int64(1)),
+				}},
+			}),
+			want: "the engine cannot compare or group values of this type",
+		},
+		{
+			name: "accepted_values on json",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_AcceptedValues{AcceptedValues: &v1pb.AcceptedValuesConfig{
+					Column: "payload_json", Values: []string{`{"k":1}`},
+				}},
+			}),
+			want: "the engine cannot compare or group values of this type",
+		},
+		{
+			name: "null_percent custom values on json",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_NullPercent{NullPercent: &v1pb.NullPercentConfig{
+					Column: "payload_json", MaxNullCount: qualityPtr(int64(0)), NullValues: []string{`{}`},
+				}},
+			}),
+			want: "the engine cannot compare or group values of this type",
+		},
+		{
+			name: "filter on json",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, rowCountWithFilter("payload_json")),
+			want: "the engine cannot compare or group values of this type",
+		},
+		{
+			name: "referential between jsonb and text",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_ReferentialIntegrity{ReferentialIntegrity: &v1pb.ReferentialIntegrityConfig{
+					ChildColumn: "payload", ParentTable: "code_ref", ParentColumn: "code",
+				}},
+			}),
+			want: "are not comparable",
+		},
+		{
+			name: "cross_table MIN on json",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_CrossTable{CrossTable: &v1pb.CrossTableConfig{
+					RightTable:    "opaque_probe",
+					LeftFunction:  v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
+					RightFunction: v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MIN,
+					RightColumn:   "payload_json",
+				}},
+			}),
+			want: "needs a numeric or temporal column",
+		},
+	}
+	for _, test := range rejected {
+		_, err := client.CreateQualityRule(ctx, withToken(token, &v1pb.CreateQualityRuleRequest{
+			Parent: "workspaces/-", Rule: test.rule,
+		}))
+		require.Errorf(t, err, "%s must be refused at save time", test.name)
+		require.Equalf(t, connect.CodeInvalidArgument, connect.CodeOf(err), "%s: %v", test.name, err)
+		require.Containsf(t, err.Error(), test.want, "%s: %v", test.name, err)
+	}
+
+	// The dry run rejects the same definitions the save does, so the editor shows
+	// the validation message rather than a raw SQL error.
+	_, err = client.PreviewQualityRule(ctx, withToken(token, &v1pb.PreviewQualityRuleRequest{
+		Parent: "workspaces/-",
+		Rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_REGEX, &v1pb.QualityRuleConfig{
+			Config: &v1pb.QualityRuleConfig_Regex{Regex: &v1pb.RegexConfig{Column: "payload", Pattern: "^x"}},
+		}),
+	}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	require.Contains(t, err.Error(), "needs a text column")
+
+	accepted := []struct {
+		name string
+		rule *v1pb.QualityRule
+	}{
+		{
+			name: "unique on jsonb",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_Unique{Unique: &v1pb.UniqueConfig{Column: "payload"}},
+			}),
+		},
+		{
+			name: "accepted_values on jsonb",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_AcceptedValues{AcceptedValues: &v1pb.AcceptedValuesConfig{
+					Column: "payload", Values: []string{`{"k":1}`},
+				}},
+			}),
+		},
+		{
+			name: "filter on jsonb",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+				rowCountWithFilter("payload")),
+		},
+		{
+			name: "unique_combination on a bigint and a uuid",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_UniqueCombination{UniqueCombination: &v1pb.UniqueCombinationConfig{
+					Columns: []string{"id", "uid"},
+				}},
+			}),
+		},
+		{
+			name: "cel on jsonb",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_CelExpression{CelExpression: &v1pb.CelExpressionConfig{
+					Expression: "size(payload) > 0", Columns: []string{"payload"},
+				}},
+			}),
+		},
+		{
+			name: "referential between two text columns",
+			rule: newRule(refGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_ReferentialIntegrity{ReferentialIntegrity: &v1pb.ReferentialIntegrityConfig{
+					ChildColumn: "code", ParentTable: "code_ref", ParentColumn: "code",
+				}},
+			}),
+		},
+		{
+			name: "cross_table COUNT reconciliation",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_CrossTable{CrossTable: &v1pb.CrossTableConfig{
+					RightTable:    "code_ref",
+					LeftFunction:  v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
+					RightFunction: v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
+				}},
+			}),
+		},
+	}
+	for _, test := range accepted {
+		_, err := client.CreateQualityRule(ctx, withToken(token, &v1pb.CreateQualityRuleRequest{
+			Parent: "workspaces/-", Rule: test.rule,
+		}))
+		require.NoErrorf(t, err, "%s must remain saveable", test.name)
+	}
+}

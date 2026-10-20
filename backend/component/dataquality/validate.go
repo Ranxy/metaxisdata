@@ -68,6 +68,13 @@ func ValidateRule(ctx context.Context, s *store.Store, ruleType storepb.QualityR
 			return nil, err
 		}
 	}
+	// A cross-table reconciliation's right column is not part of the resolved
+	// target, so its type can only be checked against the registry here.
+	if ruleType == storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE {
+		if err := validateCrossTableRight(ctx, s, resolution.Target, effective); err != nil {
+			return nil, err
+		}
+	}
 
 	dialect, err := DialectFor(resolution.Target.Engine)
 	if err != nil {
@@ -371,9 +378,15 @@ func validateNullPercentConfig(target ResolvedTarget, config *storepb.NullPercen
 	if err != nil {
 		return err
 	}
-	// Custom missing values are a null_percent extension: they are converted with
-	// the column's type here, so a value the column cannot hold is a save-time
-	// error rather than a query that silently matches nothing.
+	// Custom missing values are a null_percent extension: they compare the column
+	// against bound values, so the type must support equality, and a value the
+	// column cannot hold is a save-time error rather than a query that silently
+	// matches nothing.
+	if len(config.GetNullValues()) > 0 {
+		if _, err := requireEqualityColumn(target, column.Name); err != nil {
+			return err
+		}
+	}
 	if _, err := nullPercentValues(column, config.GetNullValues()); err != nil {
 		return err
 	}
@@ -422,7 +435,7 @@ func validateUniqueConfig(target ResolvedTarget, config *storepb.QualityRuleConf
 	if unique == nil {
 		return invalidConfig("the unique config is missing")
 	}
-	if _, err := requireColumn(target, unique.GetColumn()); err != nil {
+	if _, err := requireEqualityColumn(target, unique.GetColumn()); err != nil {
 		return err
 	}
 	return validateCountThresholds(config, unique.FailThreshold, unique.WarnThreshold)
@@ -451,7 +464,7 @@ func validateUniqueCombinationConfig(target ResolvedTarget, config *storepb.Qual
 	}
 	seen := make(map[string]struct{}, len(names))
 	for _, name := range names {
-		column, err := requireColumn(target, name)
+		column, err := requireEqualityColumn(target, name)
 		if err != nil {
 			return err
 		}
@@ -471,7 +484,7 @@ func validateAcceptedValuesConfig(target ResolvedTarget, config *storepb.Quality
 	if accepted == nil {
 		return invalidConfig("the accepted-values config is missing")
 	}
-	column, err := requireColumn(target, accepted.GetColumn())
+	column, err := requireEqualityColumn(target, accepted.GetColumn())
 	if err != nil {
 		return err
 	}
@@ -612,21 +625,22 @@ func validateReferentialIntegrityConfig(target ResolvedTarget, config *storepb.Q
 	return validateCountThresholds(config, referential.FailThreshold, referential.WarnThreshold)
 }
 
-// parentTableName turns the config's parent_table into the schema and table
-// segments of the parent's registry GUID. A parent always lives in the child's own
-// container: on the MySQL family that container is the database, so the schema
-// segment is empty and "database.table" is accepted only when it names the child's
-// database; on PostgreSQL/MSSQL the container is the schema, a bare "table" takes
-// the child's schema, and an explicit schema must be the child's.
-func parentTableName(target ResolvedTarget, spec string) (schema, table string, err error) {
+// relatedTableName turns a related table reference — "table" or
+// "schema.table"/"database.table" — into the schema and table segments of its
+// registry GUID. A related table always lives in the target's own container: on
+// the MySQL family that container is the database, so the schema segment is empty
+// and "database.table" is accepted only when it names the target's database; on
+// PostgreSQL/MSSQL the container is the schema, a bare "table" takes the target's
+// schema, and an explicit schema must be the target's.
+func relatedTableName(target ResolvedTarget, spec, role, ruleName string) (schema, table string, err error) {
 	spec = strings.TrimSpace(spec)
 	if spec == "" {
-		return "", "", invalidConfig("a referential-integrity rule needs a parent table")
+		return "", "", invalidConfig("a %s rule needs a %s", ruleName, role)
 	}
 	parts := strings.Split(spec, ".")
 	for _, part := range parts {
 		if strings.TrimSpace(part) == "" {
-			return "", "", invalidConfig("parent table %q is not a valid table name", spec)
+			return "", "", invalidConfig("%s %q is not a valid table name", role, spec)
 		}
 	}
 	if isMySQLWireEngine(target.Engine) {
@@ -635,11 +649,11 @@ func parentTableName(target ResolvedTarget, spec string) (schema, table string, 
 			return "", parts[0], nil
 		case 2:
 			if parts[0] != target.Database {
-				return "", "", invalidConfig("parent table %q must be in the rule's database %q", spec, target.Database)
+				return "", "", invalidConfig("%s %q must be in the rule's database %q", role, spec, target.Database)
 			}
 			return "", parts[1], nil
 		default:
-			return "", "", invalidConfig("parent table %q must be \"table\" or \"database.table\"", spec)
+			return "", "", invalidConfig("%s %q must be \"table\" or \"database.table\"", role, spec)
 		}
 	}
 	switch len(parts) {
@@ -647,63 +661,136 @@ func parentTableName(target ResolvedTarget, spec string) (schema, table string, 
 		return target.Schema, parts[0], nil
 	case 2:
 		if target.Schema != "" && parts[0] != target.Schema {
-			return "", "", invalidConfig("parent table %q must be in the rule's schema %q", spec, target.Schema)
+			return "", "", invalidConfig("%s %q must be in the rule's schema %q", role, spec, target.Schema)
 		}
 		return parts[0], parts[1], nil
 	default:
-		return "", "", invalidConfig("parent table %q must be \"table\" or \"schema.table\"", spec)
+		return "", "", invalidConfig("%s %q must be \"table\" or \"schema.table\"", role, spec)
 	}
 }
 
-// parentTargetGUID builds the registry GUID of a referential rule's parent from the
-// child's resolved target and the parsed parent name. The GUID is the same
+// parentTableName turns the config's parent_table into its registry segments.
+func parentTableName(target ResolvedTarget, spec string) (schema, table string, err error) {
+	return relatedTableName(target, spec, "parent table", "referential-integrity")
+}
+
+// relatedTargetGUID builds the registry GUID of a related relation from the
+// target's resolved container and the parsed relation name. The GUID is the same
 // ';'-joined path the schema syncer registers, so the lookup is the registry's own
 // identity rather than a name match.
-func parentTargetGUID(target ResolvedTarget, parentSchema, parentTable string) string {
-	return common.BuildMetaGUID(target.InstanceResourceID, target.Database, parentSchema, parentTable)
+func relatedTargetGUID(target ResolvedTarget, schema, table string) string {
+	return common.BuildMetaGUID(target.InstanceResourceID, target.Database, schema, table)
+}
+
+// resolveRelatedRelation resolves a related relation against the registry. A
+// related table may be a table, a view or an external table; the first type the
+// registry knows wins, so a rule keeps working when the relation it names is one
+// of those rather than a base table.
+func resolveRelatedRelation(ctx context.Context, s *store.Store, guid string) (*ResolvedTarget, error) {
+	metaTypes := []storepb.MetaType{
+		storepb.MetaType_TABLE,
+		storepb.MetaType_EXTERNAL_TABLE,
+		storepb.MetaType_VIEW,
+		storepb.MetaType_MATERIALIZED_VIEW,
+	}
+	var lastErr error
+	for _, metaType := range metaTypes {
+		resolution, err := ResolveTarget(ctx, s, guid, metaType)
+		if err == nil {
+			return &resolution.Target, nil
+		}
+		if common.ErrorCode(err) != common.NotFound {
+			return nil, err
+		}
+		lastErr = err
+	}
+	return nil, lastErr
 }
 
 // validateReferentialParent resolves the parent table against the registry and
-// checks that the parent column exists and has the same kind as the child's. It is
-// the part of referential-integrity validation the config-only layer cannot do:
-// CompileInput carries only the child's resolved target, so without this the first
-// sign of a wrong parent would be a runtime ERROR after the rule was saved.
+// checks that the join is expressible: the parent column exists, both sides have
+// equality, and their types compare. It is the part of referential-integrity
+// validation the config-only layer cannot do: CompileInput carries only the
+// child's resolved target, so without this the first sign of a wrong parent would
+// be a runtime ERROR after the rule was saved.
+//
+// Kind equality alone is not enough. The "string" kind holds text, jsonb, uuid,
+// bytea and user-defined types alike, and a join between a jsonb child and a text
+// parent has no operator even though both are "string".
 func validateReferentialParent(ctx context.Context, s *store.Store, target ResolvedTarget, config *storepb.QualityRuleConfig) error {
 	referential := config.GetReferentialIntegrity()
 	if referential == nil {
 		return invalidConfig("the referential-integrity config is missing")
 	}
-	child, ok := target.Column(strings.TrimSpace(referential.GetChildColumn()))
-	if !ok {
-		return invalidConfig("column %q does not exist on %s", referential.GetChildColumn(), target.GUID)
+	childName := strings.TrimSpace(referential.GetChildColumn())
+	child, err := requireEqualityColumn(target, childName)
+	if err != nil {
+		return err
 	}
 	parentSchema, parentTable, err := parentTableName(target, referential.GetParentTable())
 	if err != nil {
 		return err
 	}
-	parentGUID := parentTargetGUID(target, parentSchema, parentTable)
-	parentResolution, err := ResolveTarget(ctx, s, parentGUID, storepb.MetaType_TABLE)
+	parentGUID := relatedTargetGUID(target, parentSchema, parentTable)
+	parent, err := resolveRelatedRelation(ctx, s, parentGUID)
 	if err != nil {
 		if common.ErrorCode(err) == common.NotFound {
 			// The parent is a registry object of the same instance; a missing row
-			// means the rule names a table that does not exist (or was dropped), not
-			// that the server failed.
+			// means the rule names a relation that does not exist (or was dropped),
+			// not that the server failed.
 			return invalidConfig("parent table %q does not exist or was dropped", referential.GetParentTable())
 		}
 		return err
 	}
 	parentColumnName := strings.TrimSpace(referential.GetParentColumn())
-	parentColumn, ok := parentResolution.Target.Column(parentColumnName)
+	parentColumn, ok := parent.Column(parentColumnName)
 	if !ok {
 		return invalidConfig("parent column %q does not exist on %q", parentColumnName, referential.GetParentTable())
 	}
-	if child.Kind == ColumnKindUnknown || parentColumn.Kind == ColumnKindUnknown {
-		return invalidConfig("cannot compare columns %q and %q: this build cannot classify their types", child.Name, parentColumn.Name)
+	if parentColumn.Kind == ColumnKindUnknown {
+		return invalidConfig("cannot compare columns %q and %q: this build cannot classify the parent column's type", child.Name, parentColumn.Name)
 	}
-	if child.Kind != parentColumn.Kind {
-		return invalidConfig("columns %q (%s) and %q (%s) are not comparable", child.Name, child.Kind, parentColumn.Name, parentColumn.Kind)
+	if !supportsEquality(parentColumn, target.Engine) {
+		return invalidConfig("parent column %q is %s; the engine cannot compare or group values of this type", parentColumn.Name, parentColumn.Type)
+	}
+	if !comparableColumnTypes(child, parentColumn, target.Engine) {
+		return invalidConfig("columns %q (%s) and %q (%s) are not comparable; a referential rule needs both sides to be text or the same type", child.Name, child.Type, parentColumn.Name, parentColumn.Type)
 	}
 	return nil
+}
+
+// validateCrossTableRight resolves a reconciliation's right relation against the
+// registry and checks the right aggregate's column the way the left side is
+// checked. The compiler quotes the right column without resolving it, so without
+// this step a MIN on a jsonb right column would be saved and fail on every run.
+func validateCrossTableRight(ctx context.Context, s *store.Store, target ResolvedTarget, config *storepb.QualityRuleConfig) error {
+	cross := config.GetCrossTable()
+	if cross == nil {
+		// The pure config validator reports a missing config.
+		return nil
+	}
+	rightFunction := cross.GetRightFunction()
+	if rightFunction == storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT {
+		return nil
+	}
+	rightSchema, rightTable, err := relatedTableName(target, cross.GetRightTable(), "right table", "cross-table")
+	if err != nil {
+		return err
+	}
+	rightGUID := relatedTargetGUID(target, rightSchema, rightTable)
+	right, err := resolveRelatedRelation(ctx, s, rightGUID)
+	if err != nil {
+		if common.ErrorCode(err) == common.NotFound {
+			return invalidConfig("right table %q does not exist or was dropped", cross.GetRightTable())
+		}
+		return err
+	}
+	rightColumnName := strings.TrimSpace(cross.GetRightColumn())
+	rightColumn, ok := right.Column(rightColumnName)
+	if !ok {
+		return invalidConfig("right column %q does not exist on %q", rightColumnName, cross.GetRightTable())
+	}
+	return validateAggregateColumnKind(rightColumn, rightFunction)
 }
 
 // isMySQLWireEngine reports whether the engine shares the MySQL naming convention
@@ -873,16 +960,12 @@ func validateThresholdValue(name string, value float64, percent bool) error {
 	return nil
 }
 
-// validateStringColumn resolves a column and requires it to be text.
+// validateStringColumn resolves a column and requires text operations on its
+// type: a regex operator and a character-length function, not merely a "string"
+// classification.
 func validateStringColumn(target ResolvedTarget, name string) error {
-	column, err := requireColumn(target, name)
-	if err != nil {
-		return err
-	}
-	if column.Kind != ColumnKindString {
-		return invalidConfig("column %q is %s; this rule needs a string column", column.Name, column.Kind)
-	}
-	return nil
+	_, err := requireTextColumn(target, name)
+	return err
 }
 
 // validateTemporalColumn resolves a column and requires it to be a date/time.
@@ -892,7 +975,7 @@ func validateTemporalColumn(target ResolvedTarget, name string) error {
 		return err
 	}
 	if column.Kind != ColumnKindTemporal {
-		return invalidConfig("column %q is %s; this rule needs a temporal column", column.Name, column.Kind)
+		return invalidConfig("column %q is %s; this rule needs a temporal column", column.Name, column.Type)
 	}
 	return nil
 }
@@ -905,7 +988,7 @@ func validateComparableColumn(target ResolvedTarget, name string) (ColumnInfo, e
 		return ColumnInfo{}, err
 	}
 	if column.Kind != ColumnKindNumeric && column.Kind != ColumnKindTemporal {
-		return ColumnInfo{}, invalidConfig("column %q is %s; this rule needs a numeric or temporal column", column.Name, column.Kind)
+		return ColumnInfo{}, invalidConfig("column %q is %s; this rule needs a numeric or temporal column", column.Name, column.Type)
 	}
 	return column, nil
 }
@@ -1006,13 +1089,13 @@ func validateAggregateColumnKind(column ColumnInfo, function storepb.QualityAggr
 		storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_STDDEV,
 		storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_PERCENTILE:
 		if column.Kind != ColumnKindNumeric {
-			return invalidConfig("%s needs a numeric column; %q is %s", aggregateFunctionName(function), column.Name, column.Kind)
+			return invalidConfig("%s needs a numeric column; %q is %s", aggregateFunctionName(function), column.Name, column.Type)
 		}
 		return nil
 	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MIN,
 		storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MAX:
 		if column.Kind != ColumnKindNumeric && column.Kind != ColumnKindTemporal {
-			return invalidConfig("%s needs a numeric or temporal column; %q is %s", aggregateFunctionName(function), column.Name, column.Kind)
+			return invalidConfig("%s needs a numeric or temporal column; %q is %s", aggregateFunctionName(function), column.Name, column.Type)
 		}
 		return nil
 	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_UNSPECIFIED:

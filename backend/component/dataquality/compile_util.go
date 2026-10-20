@@ -113,7 +113,7 @@ func groupCheckColumns(target ResolvedTarget, names []string) ([]string, error) 
 	columns := make([]string, 0, len(names))
 	seen := make(map[string]struct{}, len(names))
 	for _, name := range names {
-		column, err := requireColumn(target, strings.TrimSpace(name))
+		column, err := requireEqualityColumn(target, strings.TrimSpace(name))
 		if err != nil {
 			return nil, err
 		}
@@ -206,16 +206,10 @@ func numericValue(value any) (float64, bool) {
 	}
 }
 
-// compileStringColumn resolves a column and requires it to be text.
+// compileStringColumn resolves a column and requires text operations on its type,
+// mirroring validateStringColumn.
 func compileStringColumn(input CompileInput, name string) (ColumnInfo, error) {
-	column, err := requireColumn(input.Target, name)
-	if err != nil {
-		return ColumnInfo{}, err
-	}
-	if column.Kind != ColumnKindString {
-		return ColumnInfo{}, invalidConfig("column %q is %s; this rule needs a string column", column.Name, column.Kind)
-	}
-	return column, nil
+	return requireTextColumn(input.Target, name)
 }
 
 // compileTemporalColumn resolves a column and requires it to be a date/time.
@@ -225,7 +219,7 @@ func compileTemporalColumn(input CompileInput, name string) (ColumnInfo, error) 
 		return ColumnInfo{}, err
 	}
 	if column.Kind != ColumnKindTemporal {
-		return ColumnInfo{}, invalidConfig("column %q is %s; this rule needs a temporal column", column.Name, column.Kind)
+		return ColumnInfo{}, invalidConfig("column %q is %s; this rule needs a temporal column", column.Name, column.Type)
 	}
 	return column, nil
 }
@@ -239,7 +233,7 @@ func compileComparableColumn(input CompileInput, name string) (ColumnInfo, error
 		return ColumnInfo{}, err
 	}
 	if column.Kind != ColumnKindNumeric && column.Kind != ColumnKindTemporal {
-		return ColumnInfo{}, invalidConfig("column %q is %s; this rule needs a numeric or temporal column", column.Name, column.Kind)
+		return ColumnInfo{}, invalidConfig("column %q is %s; this rule needs a numeric or temporal column", column.Name, column.Type)
 	}
 	return column, nil
 }
@@ -336,45 +330,15 @@ func compileFreshnessLagExpr(dialect Dialect, maxTimestamp string) (string, erro
 // database (MySQL family) or schema (PostgreSQL/MSSQL). role names the table in
 // error messages ("parent table", "right table"); ruleName names the rule kind.
 func compileRelatedTable(dialect Dialect, target ResolvedTarget, spec, role, ruleName string) (string, error) {
-	spec = strings.TrimSpace(spec)
-	if spec == "" {
-		return "", invalidConfig("a %s rule needs a %s", ruleName, role)
+	schema, table, err := relatedTableName(target, spec, role, ruleName)
+	if err != nil {
+		return "", err
 	}
-	parts := strings.Split(spec, ".")
-	for _, part := range parts {
-		if strings.TrimSpace(part) == "" {
-			return "", invalidConfig("%s %q is not a valid table name", role, spec)
-		}
-	}
-
-	related := ResolvedTarget{Target: target.Target}
-	switch dialect.(type) {
-	case mysqlDialect:
-		switch len(parts) {
-		case 1:
-			related.Database, related.Table = target.Database, parts[0]
-		case 2:
-			if parts[0] != target.Database {
-				return "", invalidConfig("%s %q must be in the rule's database %q", role, spec, target.Database)
-			}
-			related.Database, related.Table = parts[0], parts[1]
-		default:
-			return "", invalidConfig("%s %q must be \"table\" or \"database.table\"", role, spec)
-		}
-	case postgresDialect, mssqlDialect:
-		switch len(parts) {
-		case 1:
-			related.Schema, related.Table = target.Schema, parts[0]
-		case 2:
-			if parts[0] != target.Schema {
-				return "", invalidConfig("%s %q must be in the rule's schema %q", role, spec, target.Schema)
-			}
-			related.Schema, related.Table = parts[0], parts[1]
-		default:
-			return "", invalidConfig("%s %q must be \"table\" or \"schema.table\"", role, spec)
-		}
-	default:
-		return "", invalidConfig("%s does not support %s rules", dialect.Name(), ruleName)
+	related := ResolvedTarget{
+		Target:   target.Target,
+		Database: target.Database,
+		Schema:   schema,
+		Table:    table,
 	}
 	return compileTable(dialect, related)
 }

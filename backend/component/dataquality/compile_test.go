@@ -804,7 +804,7 @@ func TestCompileValidationRejectsBadConfigs(t *testing.T) {
 			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Regex{
 				Regex: &storepb.RegexConfig{Column: "id", Pattern: "^a$"},
 			}},
-			wantMessage: "needs a string column",
+			wantMessage: "needs a text column",
 		},
 		{
 			name:     "regex without pattern",
@@ -820,7 +820,7 @@ func TestCompileValidationRejectsBadConfigs(t *testing.T) {
 			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_StringLength{
 				StringLength: &storepb.StringLengthConfig{Column: "id", MinLen: proto.Int64(1)},
 			}},
-			wantMessage: "needs a string column",
+			wantMessage: "needs a text column",
 		},
 		{
 			name:     "string length min above max",

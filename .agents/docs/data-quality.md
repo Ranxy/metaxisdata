@@ -55,7 +55,8 @@ SPA ──ConnectRPC──► DataQualityService (api/v1) ──► component/da
 | D-31 | v1.1 第一批：`schema_drift`（R15，元数据比对）与 `group_check`（R16，每组行数阈值） | 最小可解释语义，不做通用 DSL |
 | D-32 | `schema_drift` 不取只读源、无 SQL（`QueryMetadata`）；`sampled=false`、样本是漂移项列表；`group_check` 走普通只读查询 | 元数据规则不能因没配只读源而阻塞 |
 | D-33 | v1.1 第二批：`aggregate`（R17）、`cross_table`（R18）、`null_percent.null_values`；PERCENTILE 仅 PG/MSSQL，其它引擎保存期拒绝；cross_table 限同实例同库 | 不引入跨库/跨实例；复杂对账仍用 `custom_sql` |
-| D-34 | 画像按 **类型形状** 选聚合事实（与规则编译的 `ColumnKind` 分离）：规则只关心绑定字面量怎么读，画像还要保证 SQL 合法。只有明确列入文本类型的才取 distinct/min/max/长度；json/jsonb、xml、空间、二进制、数组、用户自定义等类型只取非空计数，distinct 由样本给出并标 `distinct_estimated`，不取极值/长度/样式 | 未知类型默认保守（少几个事实，而不是整表语句报错）；`MIN(jsonb)`/`CHAR_LENGTH(jsonb)` 这类错误不再出现 |
+| D-34 | 画像按 **类型形状** 选聚合事实（与规则编译的 `ColumnKind` 分离）：规则只关心绑定字面量怎么读，画像还要保证 SQL 合法。只有明确列入文本类型的才取 distinct/min/max/长度；json/jsonb、xml、空间、二进制、数组、用户自定义等类型只取非空计数，distinct 由样本给出并标 `distinct_estimated`，不取极值/长度/样式 | 未知类型默认保守（少几个事实，而不是整表语句报错）；`MIN(jsonb)`/`CHAR_LENGTH(jsonb)` 这类错误不再出现；MySQL 家族的 JSON 也走 counted（其聚合虽可用，但 StarRocks/Doris 等方言不保证） |
+| D-35 | 规则保存期按 **类型能力** 校验，而不是只比 `ColumnKind`：`regex`/`string_length` 要求文本能力（正则运算符 + 字符长度）；`unique`/`unique_combination`/`group_check`/`accepted_values`/`null_percent.null_values`/filter 值比较要求等值能力；`referential_integrity` 两侧都要求等值且类型兼容（都文本或同 base type）；`cross_table` 在保存期解析右侧表 registry 后校验右列聚合类型。能力表是**按引擎族的 deny-list**，未知类型保持旧行为 | PG 的 json/jsonb/xml/uuid/bytea/interval/数组/PostGIS、MSSQL 的 xml/text/ntext/uniqueidentifier/空间类型不再"建得出来但每次 ERROR"；MySQL 家族对 JSON/空间保持宽松（引擎会把值转文本）；citext 等自定义文本类型不回退 |
 
 ## 2. 工作负载形状
 
@@ -111,7 +112,7 @@ run：`status ∈ {PENDING, RUNNING, COMPLETED, ABANDONED}`；`outcome` 是结�
 
 ### 3.1 规则定义与 revision
 
-- 创建/更新走同一校验链：`ResolveTarget`（registry 当前行 + 实例未删 + 数据库未隐藏 + 列存在）→ `ValidateConfig`（按类型的参数校验 + 列类型/引用父表校验）→ `ParseFilter` → `Compile`（SQL/占位符/args/列名）→ 保存时写 `target_meta_hash`（schema_hash 口径）。
+- 创建/更新走同一校验链：`ResolveTarget`（registry 当前行 + 实例未删 + 数据库未隐藏 + 列存在）→ `ValidateConfig`（按类型的参数校验 + 列类型/能力校验 + 引用父表校验）→ `ValidateRule` 的 registry 步骤（referential 父表、cross_table 右表）→ `ParseFilter` → `Compile`（SQL/占位符/args/列名）→ 保存时写 `target_meta_hash`（schema_hash 口径）。
 - 语义变更（类型、目标、config、severity/dimension 等）产生新 revision；head 与 revision 在一个事务里写，`SELECT … FOR UPDATE` 串行化并发编辑（`ExpectedRevision` 不匹配 → `Conflict` → 客户端 `Aborted`）。
 - 结果只插入；问题状态是可变列；删除规则 = `ARCHIVED`，历史/问题保留。
 - 干跑 `PreviewQualityRule`：校验 + 编译 + （非元数据规则）只读源 `LIMIT 0 / TOP 0` 探测（10s 超时），不写库、不产生 run。元数据规则（`schema_drift`）跳过探测。
@@ -123,6 +124,7 @@ run：`status ∈ {PENDING, RUNNING, COMPLETED, ABANDONED}`；`outcome` 是结�
 
 - 编译器表 `map[storepb.QualityRuleType]compilerFunc` → `CompiledQuery{SQL, Args, Kind, Columns}`；`Kind` 为 `Aggregate`（一行聚合）、`FailedRows`、`Sample`（样本行）、`Metadata`（无 SQL，元数据比对）。
 - 方言矩阵：MySQL 家族/TiDB/MariaDB/OceanBase/StarRocks/Doris（反引号、`?`、`LIMIT`、`REGEXP`、`CHAR_LENGTH`）、PostgreSQL（`"`、`$n`、`~`/`!~`）、MSSQL（`[ ]`、`@pN`、无正则、`LEN`、`OFFSET … FETCH`、`TOP 0` 探测）。表名按方言 `db.table` / `schema.table` 限定；所有标识符 quote，所有值参数化。
+- 类型能力（`capabilities.go`）：`ColumnKind` 只决定字面量怎么绑定，还不足以决定能生成哪些 SQL。`regex`/`string_length` 要求 `supportsText`；`unique`/`unique_combination`/`group_check`/`accepted_values`/`null_values`/filter 值比较要求 `supportsEquality`（`IS NULL`/`IS NOT NULL` 不限类型）；`referential_integrity` 两侧都要求等值与类型兼容，`cross_table` 保存期解析右表后校验右列。PG 拒绝 json/xml/空间（无等值）和 jsonb/uuid/bytea/interval/数组/用户自定义（无文本操作）；MSSQL 拒绝 xml/text/ntext/uniqueidentifier/空间类型；MySQL 家族宽松。能力表是 deny-list，未列出的未知类型维持旧行为。
 - 聚合行扫描按 `CompiledQuery.Columns` 取列：缺列/类型不符/行数≠1 → `BAD_DATA`；空集 `SUM` 为 NULL 时按 0 处理（count 型）或按 `on_empty`（aggregate/cross_table 用 `ObservedNull`）。
 - 判定（`Evaluate`）：阈值严格比较（等于不越界）；`null_percent` 用 `max_null_count` 或 `max_null_pct` 二选一；`row_count` 用 min/max/exact + warn；`freshness` 的 lag 在 SQL 内用数据库时钟算（PG `EXTRACT(EPOCH …)`、MySQL `TIMESTAMPDIFF`、MSSQL `DATEDIFF(SECOND, …, SYSUTCDATETIME())`）；空数据由 `on_empty ∈ {NOT_EVALUATED(默认), PASS, FAIL}` 决定并写入 `QualityThresholds` 快照。
 - `row_count_change`：基线 = 本规则最近一条 PASS/WARN/FAIL 结果的 `observed_value`（无 7 天/间隔窗口，见 §7）；`baseline` 为空或 0 → `on_empty`；变化比例与 `max_increase_pct`/`max_decrease_pct` 比较。
@@ -354,15 +356,15 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 
 | 面 | 位置 |
 | --- | --- |
-| 领域/编译/判定 | `backend/component/dataquality/`：`model.go`、`types.go`、`target.go`、`validate.go`、`compile.go`、`compile_rules.go`、`compile_util.go`、`compile_samples.go`、`dialect.go`、`support.go`、`evaluate.go`、`execution.go`、`executor.go`、`errors.go`、`filter.go`、`issue.go`、`settings.go`、`profile*.go`、`cel.go`、`label.go`、`prompt.go` |
+| 领域/编译/判定 | `backend/component/dataquality/`：`model.go`、`types.go`、`capabilities.go`、`target.go`、`validate.go`、`compile.go`、`compile_rules.go`、`compile_util.go`、`compile_samples.go`、`dialect.go`、`support.go`、`evaluate.go`、`execution.go`、`executor.go`、`errors.go`、`filter.go`、`issue.go`、`settings.go`、`profile*.go`、`cel.go`、`label.go`、`prompt.go` |
 | 只读查询能力 | `backend/plugin/db/query.go`（`ReadOnlyQueryer`/`QueryOptions`/`QueryResult`、扫描上限）；`plugin/db/{mysql,pg,mssql,starrocks}/query.go`；`backend/component/dbfactory/readonly.go`（`ErrNoReadOnlyDataSource`） |
 | runner | `backend/runner/qualityrunner/qualityrunner.go`（调度/执行/问题迁移/通知）；`backend/server/server.go` 注册第 5 个 runner；保留期清理在 `backend/runner/maintenance/maintenance.go` |
 | API | `backend/api/v1/data_quality_service.go`（CRUD/run/result/issue/profile/preview/overview）、`data_quality_convert.go`、`data_quality_llm_analysis.go`（L1/L2）、`data_quality_label_analysis.go`（L3）、`data_quality_llm_client.go`、`data_quality_llm_quota.go`、`data_quality_overview.go`、`data_quality_cross_table.go` |
 | store | `backend/store/quality_{rule,run,result,issue,profile,label,suggestion,llm_cache,overview}.go`（9 张表） |
 | proto/迁移 | `proto/store/store/data_quality.proto`、`proto/v1/v1/data_quality_service.proto`、notification/setting 扩展；`backend/migrator/migration/0.1/0024##data_quality.sql` + `LATEST.sql` |
 | 前端 | `frontend/src/pages/data-quality/`、`pages/settings/DataQualitySettingsPage.vue`、`components/data-quality/`、`api/data-quality.ts`、`utils/dataQuality*.ts`、`lib/notificationText.ts`；路由 `router/index.ts`，侧栏 `AppSidebar.vue`，`SettingsNav.vue` |
-| 单元测试 | `component/dataquality/*_test.go`（18 个测试文件：编译 golden ×4 方言、判定、filter、custom_sql、CEL、画像、标注/prompt、schema_drift、group_check、aggregate、cross_table、null_values、issue、execution、errors）；`store/quality_*_test.go`；`runner/qualityrunner/qualityrunner_test.go`；`api/v1/data_quality_*_test.go`；`component/notification/data_quality_test.go`、`api/v1/notification_service_test.go`；前端 `*.test.ts` 与 `lib/notificationText.test.ts` |
-| 集成测试 | `backend/test/integration/runner/data_quality_service_test.go`（规则生命周期、问题/通知、元数据+只读规则、画像/标注、LLM 默认关闭） |
+| 单元测试 | `component/dataquality/*_test.go`（19 个测试文件：编译 golden ×4 方言、判定、filter、custom_sql、CEL、画像、标注/prompt、schema_drift、group_check、aggregate、cross_table、null_values、issue、execution、errors、类型能力/capability）；`store/quality_*_test.go`；`runner/qualityrunner/qualityrunner_test.go`；`api/v1/data_quality_*_test.go`；`component/notification/data_quality_test.go`、`api/v1/notification_service_test.go`；前端 `*.test.ts` 与 `lib/notificationText.test.ts` |
+| 集成测试 | `backend/test/integration/runner/data_quality_service_test.go`（规则生命周期、问题/通知、元数据+只读规则、画像/标注、jsonb 画像、不可运行列类型在保存期被拒、LLM 默认关闭） |
 | 权限 | `backend/common/permission/permission.json` + `permission_gen.go`；`store/predefined_roles.go`（member 基线）；前端镜像 `frontend/src/lib/permissions.ts` |
 | 启用点 | 迁移 `0024`（随二进制自动执行）；每个实例需配 `READ_ONLY` 数据源；LLM 需设置页开启 `enable_llm_analysis` 且存在允许的 provider profile；无其他开关 |
 | 门禁 | Go：`gofmt`、`golangci-lint`、`go test ./component/dataquality/ ./store/ ./runner/qualityrunner/ ./api/v1/`；proto：`buf format/lint/generate`；迁移链测试；前端：`biome:check`、`lint`、`i18n`、`type-check`、`test run`、`audit:ui` |

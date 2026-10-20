@@ -47,6 +47,10 @@ var numericTypes = []string{
 	"decimal", "numeric", "float", "double", "real", "serial",
 	"smallserial", "bigserial", "number", "money", "smallmoney",
 	"dec", "fixed",
+	// Integer spellings of the supported engines: MySQL's YEAR and StarRocks/Doris'
+	// LARGEINT both compare and aggregate as numbers, so a range or aggregate rule
+	// over them is meaningful.
+	"year", "largeint",
 }
 
 // temporalTypes are the date/time type names. A rule that parses a timestamp from

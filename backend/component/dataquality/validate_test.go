@@ -766,7 +766,7 @@ func TestParentTableName(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "", schema)
 	require.Equal(t, "users", table)
-	require.Equal(t, "inst1;app;;users", parentTargetGUID(mysql, schema, table))
+	require.Equal(t, "inst1;app;;users", relatedTargetGUID(mysql, schema, table))
 
 	schema, table, err = parentTableName(mysql, "  app.users  ")
 	require.NoError(t, err)
@@ -793,7 +793,7 @@ func TestParentTableName(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "public", schema)
 	require.Equal(t, "users", table)
-	require.Equal(t, "inst1;app;public;users", parentTargetGUID(postgres, schema, table))
+	require.Equal(t, "inst1;app;public;users", relatedTargetGUID(postgres, schema, table))
 
 	schema, table, err = parentTableName(postgres, "public.users")
 	require.NoError(t, err)
