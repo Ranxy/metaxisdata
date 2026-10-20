@@ -6,135 +6,342 @@ import (
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
-// ColumnKind decides how a rule's literal is read and which comparison a rule
-// may use, but it collapses every type this build does not recognize into
-// "string". That is right for binding a parameter (the engine casts it) and wrong
-// for choosing SQL operators: PostgreSQL has no regular-expression operator or
-// character length for jsonb, uuid or bytea, and no equality at all for json and
-// xml. These capability predicates are what validation and compilation consult,
-// so a rule the engine cannot run is refused at save time instead of failing on
-// every execution.
+// columnCapabilities is the SQL surface of one column type: which operations the
+// engine defines for its values. ColumnKind only decides how a bound literal is
+// read; it collapses every type this build does not recognize into "string",
+// which is right for parameter binding and wrong for choosing operators. These
+// predicates are what validation, compilation and profiling consult.
 //
-// The type lists below are deny-lists on purpose. An unrecognized type keeps its
-// historical allowance — rules bind values as parameters rather than
-// concatenating them — so a user-defined text type such as citext does not lose
-// the text rules it supports. A missing entry is the status quo, not a regression.
+// Each field is a separate question because engines disagree in every direction:
+// PostgreSQL jsonb supports equality but no regex or character length; StarRocks
+// JSON supports comparison but rejects GROUP BY; Doris JSON accepts GROUP BY but
+// rejects COUNT(DISTINCT) and comparison predicates; SQL Server accepts LEN on
+// varbinary but not on its legacy text type. Conflating them produced rules the
+// engine could never run.
+//
+// A type absent from an engine's table keeps the historical refusal (the zero
+// value): this build only allows an operation it has a reason to believe in. An
+// unknown spelling is therefore conservative — a rejected rule at save time,
+// never a query that fails on every execution.
+type columnCapabilities struct {
+	// comparison: =, <>, IN and joins on the column.
+	comparison bool
+	// grouping: GROUP BY, which uniqueness and group checks use.
+	grouping bool
+	// countDistinct: COUNT(DISTINCT col), which profiling uses for exact
+	// distinct counts. An engine may support grouping without it (Doris JSON).
+	countDistinct bool
+	// regex: the regular-expression match operator.
+	regex bool
+	// length: a character-length function.
+	length bool
+	// extrema: the MIN/MAX aggregates.
+	extrema bool
+	// text: values render as human text, so the profile's value shapes are
+	// meaningful. This is deliberately not the same as "text operators exist":
+	// binary values have a length but are not words.
+	text bool
+}
 
-// supportsText reports whether the engine defines text operations on the
-// column's values: the regex match operator and the character-length function.
-// The MySQL wire family converts JSON and spatial values to text for both, so it
-// is permissive; PostgreSQL and SQL Server are strict.
-func supportsText(column ColumnInfo, engine storepb.Engine) bool {
-	if column.Kind != ColumnKindString {
-		return false
+// textCapabilities is a column rendered as text: every text rule applies.
+var textCapabilities = columnCapabilities{
+	comparison: true, grouping: true, countDistinct: true,
+	regex: true, length: true, extrema: true, text: true,
+}
+
+// scalarCapabilities is a number or a date/time: comparable, groupable and
+// ordered, with no text operators.
+var scalarCapabilities = columnCapabilities{
+	comparison: true, grouping: true, countDistinct: true, extrema: true,
+}
+
+// capabilitiesFor reports the SQL surface of one column's type.
+func capabilitiesFor(engine storepb.Engine, column ColumnInfo) columnCapabilities {
+	switch column.Kind {
+	case ColumnKindNumeric, ColumnKindTemporal:
+		return scalarCapabilities
+	case ColumnKindBoolean:
+		return columnCapabilities{comparison: true, grouping: true, countDistinct: true}
+	case ColumnKindString:
+		return stringCapabilities(engine, columnTypeBaseName(column.Type))
+	case ColumnKindUnknown:
+		return columnCapabilities{}
 	}
-	name := columnTypeBaseName(column.Type)
+	return columnCapabilities{}
+}
+
+// stringCapabilities dispatches one engine type spelling to its engine family.
+func stringCapabilities(engine storepb.Engine, name string) columnCapabilities {
 	switch engine {
 	case storepb.Engine_POSTGRES:
-		return postgresTextType(name)
+		return postgresStringCapabilities(name)
 	case storepb.Engine_MSSQL:
-		_, unsupported := mssqlTextUnsupportedTypes[name]
-		return !unsupported
+		return mssqlStringCapabilities(name)
+	case storepb.Engine_MYSQL, storepb.Engine_TIDB, storepb.Engine_MARIADB,
+		storepb.Engine_OCEANBASE:
+		return mysqlStringCapabilities(name)
+	case storepb.Engine_STARROCKS:
+		return starrocksStringCapabilities(name)
+	case storepb.Engine_DORIS:
+		return dorisStringCapabilities(name)
 	default:
-		return true
+		// An engine without a dialect is refused before a rule compiles.
+		return columnCapabilities{}
 	}
 }
 
-// postgresTextType decides one PostgreSQL base type name. An array is stored as
-// its element's udt name ("_int4"), never as a text type. A user-defined type is
-// stored schema-qualified: citext is the one text type with regex operators and a
-// length, while enums, hstore, composites and PostGIS types are not text.
-func postgresTextType(name string) bool {
+// supportsComparison reports whether the column can be compared by value, which
+// filters, accepted values, custom null values and referential joins need.
+func supportsComparison(column ColumnInfo, engine storepb.Engine) bool {
+	return capabilitiesFor(engine, column).comparison
+}
+
+// supportsGrouping reports whether the column can be a GROUP BY key, which
+// uniqueness and group-check rules need.
+func supportsGrouping(column ColumnInfo, engine storepb.Engine) bool {
+	return capabilitiesFor(engine, column).grouping
+}
+
+// supportsRegex reports whether the engine has a regular-expression operator for
+// the column's values.
+func supportsRegex(column ColumnInfo, engine storepb.Engine) bool {
+	return capabilitiesFor(engine, column).regex
+}
+
+// supportsLength reports whether the engine has a character-length function for
+// the column's values.
+func supportsLength(column ColumnInfo, engine storepb.Engine) bool {
+	return capabilitiesFor(engine, column).length
+}
+
+// postgresStringCapabilities decides one PostgreSQL base type name. A user-defined
+// type is stored schema-qualified: citext is the one text type with every text
+// operator, PostGIS geometry has none, and the remaining user-defined types (enums,
+// hstore, composites) are comparable and groupable but not text.
+func postgresStringCapabilities(name string) columnCapabilities {
 	if strings.HasPrefix(name, "_") {
-		return false
+		return postgresArrayCapabilities(name[1:])
 	}
 	if index := strings.LastIndexByte(name, '.'); index >= 0 {
-		return name[index+1:] == "citext"
-	}
-	_, unsupported := postgresTextUnsupportedTypes[name]
-	return !unsupported
-}
-
-// supportsEquality reports whether the engine can compare the column's values
-// for equality, which is what uniqueness, grouping, filters and accepted-value
-// checks need. PostgreSQL has no = operator for json, xml or its geometric
-// types, so those statements fail at parse time.
-func supportsEquality(column ColumnInfo, engine storepb.Engine) bool {
-	switch column.Kind {
-	case ColumnKindNumeric, ColumnKindTemporal, ColumnKindBoolean:
-		return true
-	case ColumnKindString:
-		name := columnTypeBaseName(column.Type)
-		switch engine {
-		case storepb.Engine_POSTGRES:
-			return postgresEquatableType(name)
-		case storepb.Engine_MSSQL:
-			_, unsupported := mssqlEqualityUnsupportedTypes[name]
-			return !unsupported
+		switch name[index+1:] {
+		case "citext":
+			return textCapabilities
+		case "geometry", "geography":
+			return columnCapabilities{}
 		default:
-			return true
+			return columnCapabilities{comparison: true, grouping: true, countDistinct: true}
 		}
-	case ColumnKindUnknown:
-		return false
-	default:
-		return false
 	}
-}
-
-// postgresEquatableType decides one PostgreSQL base type name for equality. An
-// array compares element-wise; a user-defined type compares unless it is one of
-// the PostGIS geometry types, which define no = operator.
-func postgresEquatableType(name string) bool {
-	if strings.HasPrefix(name, "_") {
-		return true
+	if capabilities, ok := postgresTypeCapabilities[name]; ok {
+		return capabilities
 	}
-	if index := strings.LastIndexByte(name, '.'); index >= 0 {
-		element := name[index+1:]
-		return element != "geometry" && element != "geography"
+	return columnCapabilities{}
+}
+
+// postgresTypeCapabilities is the PostgreSQL type table. The entries are the
+// information_schema data_type spellings the syncer stores, plus the internal names
+// arrays use as their element's udt name.
+var postgresTypeCapabilities = map[string]columnCapabilities{
+	// Text.
+	"character": textCapabilities,
+	"varchar":   textCapabilities,
+	"text":      textCapabilities,
+	"name":      textCapabilities,
+	// Equality but no ordering aggregates or text operators.
+	"jsonb": {comparison: true, grouping: true, countDistinct: true},
+	"uuid":  {comparison: true, grouping: true, countDistinct: true},
+	"bytea": {comparison: true, grouping: true, countDistinct: true},
+	// Equality, ordering and MIN/MAX, but no text operators.
+	"interval": {comparison: true, grouping: true, countDistinct: true, extrema: true},
+	"inet":     {comparison: true, grouping: true, countDistinct: true, extrema: true},
+	"cidr":     {comparison: true, grouping: true, countDistinct: true, extrema: true},
+	"macaddr":  {comparison: true, grouping: true, countDistinct: true, extrema: true},
+	"macaddr8": {comparison: true, grouping: true, countDistinct: true, extrema: true},
+	// No equality operator at all.
+	"json": {}, "xml": {}, "point": {}, "polygon": {},
+	"geometry": {}, "geography": {}, "refcursor": {}, "txid_snapshot": {},
+	// Comparable but not groupable, and with no MIN/MAX: PostgreSQL defines no
+	// ordering aggregate for the built-in geometric types.
+	"box":      {comparison: true},
+	"line":     {comparison: true},
+	"lseg":     {comparison: true},
+	"path":     {comparison: true},
+	"circle":   {comparison: true},
+	"tsvector": {comparison: true, grouping: true, countDistinct: true},
+	"tsquery":  {comparison: true, grouping: true, countDistinct: true},
+	"oid":      {comparison: true, grouping: true, countDistinct: true},
+	"pg_lsn":   {comparison: true, grouping: true, countDistinct: true},
+}
+
+// postgresArrayCapabilities derives an array's capabilities from its element. An
+// array compares only when its element does; GROUP BY and COUNT(DISTINCT) need the
+// element to be groupable too. Arrays have no text operators, and MIN/MAX on an
+// array is only safe when the element has an ordering aggregate.
+func postgresArrayCapabilities(element string) columnCapabilities {
+	elementCaps, ok := postgresArrayElementCapabilities[element]
+	if !ok {
+		return columnCapabilities{}
 	}
-	_, unsupported := postgresEqualityUnsupportedTypes[name]
-	return !unsupported
+	capabilities := columnCapabilities{comparison: elementCaps.comparison}
+	if elementCaps.comparison && elementCaps.grouping {
+		capabilities.grouping = true
+		capabilities.countDistinct = true
+	}
+	capabilities.extrema = elementCaps.extrema
+	return capabilities
 }
 
-// postgresTextUnsupportedTypes are the PostgreSQL types without a regex operator
-// or character-length function.
-var postgresTextUnsupportedTypes = map[string]struct{}{
-	"json": {}, "jsonb": {}, "xml": {}, "uuid": {}, "bytea": {}, "interval": {},
-	"inet": {}, "cidr": {}, "macaddr": {}, "macaddr8": {},
-	"tsvector": {}, "tsquery": {}, "oid": {}, "pg_lsn": {},
-	"refcursor": {}, "txid_snapshot": {},
-	"point": {}, "line": {}, "lseg": {}, "box": {}, "path": {}, "polygon": {},
-	"circle": {}, "geometry": {}, "geography": {},
+// postgresArrayElementCapabilities is the capability table for an array's element,
+// keyed by the udt_name PostgreSQL stores for the array type ("_int4" arrives here
+// as "int4").
+var postgresArrayElementCapabilities = map[string]columnCapabilities{
+	"int2":        scalarCapabilities,
+	"int4":        scalarCapabilities,
+	"int8":        scalarCapabilities,
+	"float4":      scalarCapabilities,
+	"float8":      scalarCapabilities,
+	"numeric":     scalarCapabilities,
+	"money":       scalarCapabilities,
+	"text":        textCapabilities,
+	"varchar":     textCapabilities,
+	"bpchar":      textCapabilities,
+	"bool":        {comparison: true, grouping: true, countDistinct: true},
+	"uuid":        {comparison: true, grouping: true, countDistinct: true},
+	"bytea":       {comparison: true, grouping: true, countDistinct: true},
+	"jsonb":       {comparison: true, grouping: true, countDistinct: true},
+	"timestamp":   {comparison: true, grouping: true, countDistinct: true, extrema: true},
+	"timestamptz": {comparison: true, grouping: true, countDistinct: true, extrema: true},
+	"date":        {comparison: true, grouping: true, countDistinct: true, extrema: true},
+	"time":        {comparison: true, grouping: true, countDistinct: true, extrema: true},
+	"timetz":      {comparison: true, grouping: true, countDistinct: true, extrema: true},
+	"interval":    {comparison: true, grouping: true, countDistinct: true, extrema: true},
+	"json":        {}, "xml": {}, "point": {}, "polygon": {},
 }
 
-// postgresEqualityUnsupportedTypes are the PostgreSQL types without an equality
-// operator. The geometric types have no comparison operators at all for the
-// built-in point family, and PostGIS geometry defines ST_Equals rather than =.
-var postgresEqualityUnsupportedTypes = map[string]struct{}{
-	"json": {}, "xml": {}, "refcursor": {}, "txid_snapshot": {},
-	"point": {}, "line": {}, "lseg": {}, "box": {}, "path": {}, "polygon": {},
-	"circle": {}, "geometry": {}, "geography": {},
+// mssqlStringCapabilities decides one SQL Server base type name. The legacy text,
+// ntext and image types cannot be compared, grouped or measured, and COUNT(col) is
+// invalid for them; text and ntext still shape the profile's sample values.
+func mssqlStringCapabilities(name string) columnCapabilities {
+	if capabilities, ok := mssqlTypeCapabilities[name]; ok {
+		return capabilities
+	}
+	return columnCapabilities{}
 }
 
-// mssqlTextUnsupportedTypes are the SQL Server types without a character length
-// (LEN) or regex surface. SQL Server has no regex operator at all, so this list
-// only decides the string-length rule.
-var mssqlTextUnsupportedTypes = map[string]struct{}{
-	"xml": {}, "image": {}, "binary": {}, "varbinary": {},
-	"uniqueidentifier": {}, "geometry": {}, "geography": {}, "hierarchyid": {},
-	"sql_variant": {},
+var mssqlTypeCapabilities = map[string]columnCapabilities{
+	// SQL Server has no regex operator, so text types carry every other text fact.
+	"char":             {comparison: true, grouping: true, countDistinct: true, length: true, extrema: true, text: true},
+	"varchar":          {comparison: true, grouping: true, countDistinct: true, length: true, extrema: true, text: true},
+	"nchar":            {comparison: true, grouping: true, countDistinct: true, length: true, extrema: true, text: true},
+	"nvarchar":         {comparison: true, grouping: true, countDistinct: true, length: true, extrema: true, text: true},
+	"text":             {text: true},
+	"ntext":            {text: true},
+	"image":            {},
+	"xml":              {},
+	"binary":           {comparison: true, grouping: true, countDistinct: true, length: true, extrema: true},
+	"varbinary":        {comparison: true, grouping: true, countDistinct: true, length: true, extrema: true},
+	"uniqueidentifier": {comparison: true, grouping: true, countDistinct: true, length: true, extrema: true},
+	// sql_variant compares by precedence and orders, but has no LEN.
+	"sql_variant": {comparison: true, grouping: true, countDistinct: true, extrema: true},
+	// Spatial and CLR types have no comparison, grouping or aggregation.
+	"geometry": {}, "geography": {}, "hierarchyid": {},
 }
 
-// mssqlEqualityUnsupportedTypes are the SQL Server types that cannot be compared
-// or grouped. text, ntext and image cannot be compared or sorted at all, xml is
-// not comparable, and the spatial types define STEquals rather than =.
-var mssqlEqualityUnsupportedTypes = map[string]struct{}{
-	"text": {}, "ntext": {}, "image": {}, "xml": {},
-	"geometry": {}, "geography": {},
+// mysqlStringCapabilities decides one MySQL-wire base type name. MySQL-family
+// engines coerce JSON, spatial and binary values to text for REGEXP and
+// CHAR_LENGTH, and all of them can be grouped. JSON comparison is deliberately
+// denied: a bound string never compares equal to a JSON document, so an
+// accepted-values or filter rule would mark every JSON row as a violation.
+func mysqlStringCapabilities(name string) columnCapabilities {
+	if capabilities, ok := mysqlTypeCapabilities[name]; ok {
+		return capabilities
+	}
+	return columnCapabilities{}
 }
 
-// requireTextColumn resolves a column and requires text operations on its type.
-func requireTextColumn(target ResolvedTarget, name string) (ColumnInfo, error) {
+var mysqlTypeCapabilities = map[string]columnCapabilities{
+	"char": textCapabilities, "varchar": textCapabilities,
+	"tinytext": textCapabilities, "text": textCapabilities,
+	"mediumtext": textCapabilities, "longtext": textCapabilities,
+	"enum": textCapabilities, "set": textCapabilities,
+	// JSON: groupable, ordered, measurable and matchable, but a bound string never
+	// compares equal to a JSON document.
+	"json": {grouping: true, countDistinct: true, regex: true, length: true, extrema: true},
+	// Spatial types convert to text, but MIN is invalid and value comparison is not
+	// a data quality check the rule author means.
+	"geometry":           {grouping: true, countDistinct: true, regex: true, length: true},
+	"point":              {grouping: true, countDistinct: true, regex: true, length: true},
+	"linestring":         {grouping: true, countDistinct: true, regex: true, length: true},
+	"polygon":            {grouping: true, countDistinct: true, regex: true, length: true},
+	"multipoint":         {grouping: true, countDistinct: true, regex: true, length: true},
+	"multilinestring":    {grouping: true, countDistinct: true, regex: true, length: true},
+	"multipolygon":       {grouping: true, countDistinct: true, regex: true, length: true},
+	"geometrycollection": {grouping: true, countDistinct: true, regex: true, length: true},
+	// Binary and blob values compare, group, order and measure by byte length.
+	"binary":     {comparison: true, grouping: true, countDistinct: true, regex: true, length: true, extrema: true},
+	"varbinary":  {comparison: true, grouping: true, countDistinct: true, regex: true, length: true, extrema: true},
+	"tinyblob":   {comparison: true, grouping: true, countDistinct: true, regex: true, length: true, extrema: true},
+	"blob":       {comparison: true, grouping: true, countDistinct: true, regex: true, length: true, extrema: true},
+	"mediumblob": {comparison: true, grouping: true, countDistinct: true, regex: true, length: true, extrema: true},
+	"longblob":   {comparison: true, grouping: true, countDistinct: true, regex: true, length: true, extrema: true},
+}
+
+// starrocksStringCapabilities decides one StarRocks type. StarRocks compares JSON
+// values, groups arrays, has no regex on JSON or arrays, and has no MIN/MAX for
+// either.
+func starrocksStringCapabilities(name string) columnCapabilities {
+	switch {
+	case strings.HasPrefix(name, "array"):
+		return columnCapabilities{grouping: true, countDistinct: true}
+	case strings.HasPrefix(name, "map"), strings.HasPrefix(name, "struct"),
+		name == "json", strings.HasPrefix(name, "bitmap"), strings.HasPrefix(name, "hll"),
+		name == "percentile", name == "variant":
+		return starrocksNestedCapabilities(name)
+	}
+	if capabilities, ok := starrocksTypeCapabilities[name]; ok {
+		return capabilities
+	}
+	return columnCapabilities{}
+}
+
+// starrocksNestedCapabilities handles the semi-structured types, whose only
+// special case is JSON: StarRocks compares JSON values and measures their length.
+func starrocksNestedCapabilities(name string) columnCapabilities {
+	if name == "json" {
+		return columnCapabilities{comparison: true, length: true}
+	}
+	return columnCapabilities{}
+}
+
+var starrocksTypeCapabilities = map[string]columnCapabilities{
+	"char": textCapabilities, "varchar": textCapabilities, "string": textCapabilities,
+	"text": textCapabilities,
+}
+
+// dorisStringCapabilities decides one Doris type. Doris JSON supports GROUP BY,
+// REGEXP and CHAR_LENGTH but rejects comparison predicates, COUNT(DISTINCT) and
+// MIN/MAX.
+func dorisStringCapabilities(name string) columnCapabilities {
+	switch {
+	case strings.HasPrefix(name, "array"), strings.HasPrefix(name, "map"),
+		strings.HasPrefix(name, "struct"), name == "bitmap", name == "hll",
+		name == "variant", name == "ipv4", name == "ipv6":
+		return columnCapabilities{}
+	}
+	if capabilities, ok := dorisTypeCapabilities[name]; ok {
+		return capabilities
+	}
+	return columnCapabilities{}
+}
+
+var dorisTypeCapabilities = map[string]columnCapabilities{
+	"char": textCapabilities, "varchar": textCapabilities, "string": textCapabilities,
+	"text": textCapabilities,
+	"json": {grouping: true, regex: true, length: true},
+}
+
+// requireRegexColumn resolves a column and requires regular-expression support.
+func requireRegexColumn(target ResolvedTarget, name string) (ColumnInfo, error) {
 	column, err := requireColumn(target, name)
 	if err != nil {
 		return ColumnInfo{}, err
@@ -142,16 +349,14 @@ func requireTextColumn(target ResolvedTarget, name string) (ColumnInfo, error) {
 	if column.Kind == ColumnKindUnknown {
 		return ColumnInfo{}, invalidConfig("column %q has a type this build cannot classify", column.Name)
 	}
-	if !supportsText(column, target.Engine) {
-		return ColumnInfo{}, invalidConfig("column %q is %s; this rule needs a text column", column.Name, column.Type)
+	if !supportsRegex(column, target.Engine) {
+		return ColumnInfo{}, invalidConfig("column %q is %s; this rule needs a text type the engine can match with a regular-expression operator", column.Name, column.Type)
 	}
 	return column, nil
 }
 
-// requireEqualityColumn resolves a column and requires the engine to compare its
-// values for equality. Uniqueness, grouping, filters and accepted-value checks all
-// express a comparison, so a type without equality would fail their statement.
-func requireEqualityColumn(target ResolvedTarget, name string) (ColumnInfo, error) {
+// requireLengthColumn resolves a column and requires a character-length function.
+func requireLengthColumn(target ResolvedTarget, name string) (ColumnInfo, error) {
 	column, err := requireColumn(target, name)
 	if err != nil {
 		return ColumnInfo{}, err
@@ -159,17 +364,48 @@ func requireEqualityColumn(target ResolvedTarget, name string) (ColumnInfo, erro
 	if column.Kind == ColumnKindUnknown {
 		return ColumnInfo{}, invalidConfig("column %q has a type this build cannot classify", column.Name)
 	}
-	if !supportsEquality(column, target.Engine) {
-		return ColumnInfo{}, invalidConfig("column %q is %s; the engine cannot compare or group values of this type", column.Name, column.Type)
+	if !supportsLength(column, target.Engine) {
+		return ColumnInfo{}, invalidConfig("column %q is %s; this rule needs a text type with a character length", column.Name, column.Type)
+	}
+	return column, nil
+}
+
+// requireComparisonColumn resolves a column and requires the engine to compare its
+// values by equality.
+func requireComparisonColumn(target ResolvedTarget, name string) (ColumnInfo, error) {
+	column, err := requireColumn(target, name)
+	if err != nil {
+		return ColumnInfo{}, err
+	}
+	if column.Kind == ColumnKindUnknown {
+		return ColumnInfo{}, invalidConfig("column %q has a type this build cannot classify", column.Name)
+	}
+	if !supportsComparison(column, target.Engine) {
+		return ColumnInfo{}, invalidConfig("column %q is %s; the engine cannot compare values of this type", column.Name, column.Type)
+	}
+	return column, nil
+}
+
+// requireGroupingColumn resolves a column and requires the engine to group its
+// values, which uniqueness and group-check rules express with GROUP BY.
+func requireGroupingColumn(target ResolvedTarget, name string) (ColumnInfo, error) {
+	column, err := requireColumn(target, name)
+	if err != nil {
+		return ColumnInfo{}, err
+	}
+	if column.Kind == ColumnKindUnknown {
+		return ColumnInfo{}, invalidConfig("column %q has a type this build cannot classify", column.Name)
+	}
+	if !supportsGrouping(column, target.Engine) {
+		return ColumnInfo{}, invalidConfig("column %q is %s; the engine cannot group values of this type", column.Name, column.Type)
 	}
 	return column, nil
 }
 
 // comparableColumnTypes reports whether two columns of the same kind can be
-// compared directly. Text pairs compare when both sides support text operations
-// (any text spelling); any other pair must name the same base type. Kind equality
-// alone is too coarse for the "string" kind, which holds jsonb, uuid, bytea and
-// user-defined types alike.
+// compared directly. Text pairs compare when both render as text; any other pair
+// must name the same base type. Kind equality alone is too coarse for the "string"
+// kind, which holds text, jsonb, uuid, bytea and user-defined types alike.
 func comparableColumnTypes(left, right ColumnInfo, engine storepb.Engine) bool {
 	if left.Kind != right.Kind {
 		return false
@@ -177,7 +413,9 @@ func comparableColumnTypes(left, right ColumnInfo, engine storepb.Engine) bool {
 	if left.Kind != ColumnKindString {
 		return true
 	}
-	if supportsText(left, engine) && supportsText(right, engine) {
+	leftCaps := capabilitiesFor(engine, left)
+	rightCaps := capabilitiesFor(engine, right)
+	if leftCaps.text && rightCaps.text {
 		return true
 	}
 	return columnTypeBaseName(left.Type) == columnTypeBaseName(right.Type)

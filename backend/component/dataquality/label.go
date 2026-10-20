@@ -742,7 +742,12 @@ func labelEvidenceMetrics(profile *storepb.ColumnProfile) []string {
 	if total := profile.GetTotalRows(); total > 0 {
 		metrics = append(metrics, fmt.Sprintf("null_rate=%.4f", float64(profile.GetNullCount())/float64(total)))
 	}
-	metrics = append(metrics, fmt.Sprintf("distinct=%d", profile.GetDistinctCount()))
+	distinct := fmt.Sprintf("distinct=%d", profile.GetDistinctCount())
+	if profile.GetDistinctEstimated() {
+		// Same marker as labelProfileSummary: the figure came from the sample.
+		distinct = fmt.Sprintf("distinct=~%d", profile.GetDistinctCount())
+	}
+	metrics = append(metrics, distinct)
 	if topValues := labelTopValuesText(profile); topValues != "" {
 		metrics = append(metrics, "topk="+topValues)
 	}

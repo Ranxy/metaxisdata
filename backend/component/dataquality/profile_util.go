@@ -39,78 +39,54 @@ const (
 	profileSampleMethod = "limit"
 )
 
-// profileShape is the set of aggregate facts a column's type supports. The rule
+// profileFacts is the set of aggregate facts a column's type supports. The rule
 // compiler's ColumnKind is about how a bound literal is read, not about what an
 // aggregate may compute: PostgreSQL and SQL Server have neither MIN/MAX nor a
-// length function for json, xml, spatial or binary types, so a profile that
-// treated them as text would fail the whole table's statement.
-type profileShape int
+// length function for jsonb, xml, spatial or binary types, and SQL Server cannot
+// even COUNT a legacy text column. The profiler only emits a fact the type table in
+// capabilities.go claims — emitting one more fails the whole statement, not just
+// that fact.
+type profileFacts uint8
 
 const (
-	// profileShapeCounted supports only the non-NULL count. The distinct count
-	// comes from the sample (see applyProfileSample) so no equality-dependent
-	// aggregate is emitted; extremes and lengths do not exist for the type.
-	profileShapeCounted profileShape = iota
-	// profileShapeBoolean supports a non-NULL count and an exact distinct count.
-	// PostgreSQL defines no MIN/MAX for bool and SQL Server rejects MIN/MAX on bit.
-	profileShapeBoolean
-	// profileShapeScalar supports counts and extremes: numbers and dates.
-	profileShapeScalar
-	// profileShapeText supports counts, extremes and the character-length bounds.
-	profileShapeText
+	// profileFactDistinct is an exact COUNT(DISTINCT col).
+	profileFactDistinct profileFacts = 1 << iota
+	// profileFactExtrema is MIN/MAX on the column.
+	profileFactExtrema
+	// profileFactLength is MIN/MAX of the character length of the column.
+	profileFactLength
 )
 
-// profileTextTypes are the base type names the profiler can order and measure as
-// text, by engine family. A type that is not listed is profiled as counted: an
-// unlisted type is more likely a document, spatial, binary or user-defined type
-// whose engine rejects MIN/MAX or the length function than a text spelling this
-// list forgot, and a wrong guess fails the whole profile rather than one fact.
-var profileTextTypes = map[storepb.Engine]map[string]struct{}{
-	storepb.Engine_POSTGRES: {
-		"character": {}, "varchar": {}, "text": {},
-	},
-	storepb.Engine_MYSQL:     profileMySQLTextTypes,
-	storepb.Engine_TIDB:      profileMySQLTextTypes,
-	storepb.Engine_MARIADB:   profileMySQLTextTypes,
-	storepb.Engine_OCEANBASE: profileMySQLTextTypes,
-	storepb.Engine_STARROCKS: profileMySQLTextTypes,
-	storepb.Engine_DORIS:     profileMySQLTextTypes,
-	storepb.Engine_MSSQL: {
-		"char": {}, "varchar": {}, "nchar": {}, "nvarchar": {},
-	},
-}
-
-// profileMySQLTextTypes covers the MySQL wire family and StarRocks/Doris.
-var profileMySQLTextTypes = map[string]struct{}{
-	"char": {}, "varchar": {}, "tinytext": {}, "text": {}, "mediumtext": {},
-	"longtext": {}, "enum": {}, "set": {}, "binary": {}, "varbinary": {},
-	"tinyblob": {}, "blob": {}, "mediumblob": {}, "longblob": {}, "string": {},
-}
-
-// profileShapeFor decides which aggregate facts a column may produce from its
-// engine type.
-func profileShapeFor(engine storepb.Engine, column ColumnInfo) profileShape {
-	switch column.Kind {
-	case ColumnKindNumeric, ColumnKindTemporal:
-		return profileShapeScalar
-	case ColumnKindBoolean:
-		return profileShapeBoolean
-	case ColumnKindString:
-		if _, ok := profileTextTypes[engine][columnTypeBaseName(column.Type)]; ok {
-			return profileShapeText
-		}
-		return profileShapeCounted
-	case ColumnKindUnknown:
-		return profileShapeCounted
-	}
-	return profileShapeCounted
-}
-
-// profileColumn is one column a profile reads: its registry name and the
-// aggregate facts its type supports.
+// profileColumn is one column a profile reads: its registry name and the facts its
+// type supports. EstimatedDistinct marks a type without COUNT(DISTINCT) support,
+// whose distinct count comes from the sample instead; Patterns marks a column whose
+// sample values render as human text.
 type profileColumn struct {
-	Name  string
-	Shape profileShape
+	Name              string
+	Facts             profileFacts
+	EstimatedDistinct bool
+	Patterns          bool
+}
+
+// newProfileColumn derives one column's profile facts from the shared type
+// capability table, so the profile and the rule validators cannot drift apart.
+func newProfileColumn(engine storepb.Engine, column ColumnInfo) profileColumn {
+	capabilities := capabilitiesFor(engine, column)
+	profile := profileColumn{
+		Name:              column.Name,
+		EstimatedDistinct: !capabilities.countDistinct,
+		Patterns:          capabilities.text,
+	}
+	if capabilities.countDistinct {
+		profile.Facts |= profileFactDistinct
+	}
+	if capabilities.extrema {
+		profile.Facts |= profileFactExtrema
+	}
+	if capabilities.length {
+		profile.Facts |= profileFactLength
+	}
+	return profile
 }
 
 // profileAggregateAliases is the ordered result shape of the aggregate query:
@@ -124,20 +100,14 @@ func profileAggregateAliases(columns []profileColumn) []string {
 	for index, column := range columns {
 		prefix := profileAliasPrefix(index)
 		aliases = append(aliases, prefix+"non_null")
-		switch column.Shape {
-		case profileShapeCounted:
-			continue
-		case profileShapeBoolean:
+		if column.Facts&profileFactDistinct != 0 {
 			aliases = append(aliases, prefix+"distinct")
-		case profileShapeScalar:
-			aliases = append(aliases, prefix+"distinct", prefix+"min", prefix+"max")
-		case profileShapeText:
-			aliases = append(aliases, prefix+"distinct", prefix+"min", prefix+"max",
-				prefix+"min_len", prefix+"max_len")
-		default:
-			// A new shape must add its aliases here; contributing none keeps the
-			// statement legal while the omission is visible.
-			continue
+		}
+		if column.Facts&profileFactExtrema != 0 {
+			aliases = append(aliases, prefix+"min", prefix+"max")
+		}
+		if column.Facts&profileFactLength != 0 {
+			aliases = append(aliases, prefix+"min_len", prefix+"max_len")
 		}
 	}
 	return aliases
@@ -150,37 +120,36 @@ func profileAliasPrefix(index int) string {
 
 // buildProfileAggregateSQL renders the single aggregate statement. It reads the
 // whole table (a profile is not filtered) with one scan: the row count, then per
-// column the non-NULL count and the facts its shape supports — exact distinct
-// count, extremes and, for text, the length bounds.
+// column the non-NULL count and the facts its type supports.
+//
+// A column with no aggregate fact gets its non-NULL count from a CASE expression
+// rather than COUNT(col): SQL Server rejects COUNT on text, ntext and image, and the
+// CASE form is valid wherever IS NOT NULL is.
 func buildProfileAggregateSQL(dialect Dialect, table string, columns []profileColumn) string {
 	expressions := make([]string, 0, 1+len(columns)*6)
 	expressions = append(expressions, "COUNT(*) AS total_rows")
 	for index, column := range columns {
 		prefix := profileAliasPrefix(index)
 		quoted := qualify(dialect, column.Name)
-		expressions = append(expressions, "COUNT("+quoted+") AS "+prefix+"non_null")
-		switch column.Shape {
-		case profileShapeCounted:
-			continue
-		case profileShapeBoolean:
-			expressions = append(expressions, "COUNT(DISTINCT "+quoted+") AS "+prefix+"distinct")
-		case profileShapeScalar:
+		if column.Facts == 0 {
 			expressions = append(expressions,
-				"COUNT(DISTINCT "+quoted+") AS "+prefix+"distinct",
+				"COUNT(CASE WHEN "+quoted+" IS NOT NULL THEN 1 END) AS "+prefix+"non_null")
+			continue
+		}
+		expressions = append(expressions, "COUNT("+quoted+") AS "+prefix+"non_null")
+		if column.Facts&profileFactDistinct != 0 {
+			expressions = append(expressions, "COUNT(DISTINCT "+quoted+") AS "+prefix+"distinct")
+		}
+		if column.Facts&profileFactExtrema != 0 {
+			expressions = append(expressions,
 				"MIN("+quoted+") AS "+prefix+"min",
 				"MAX("+quoted+") AS "+prefix+"max")
-		case profileShapeText:
+		}
+		if column.Facts&profileFactLength != 0 {
 			length := dialect.LengthExpr(quoted)
 			expressions = append(expressions,
-				"COUNT(DISTINCT "+quoted+") AS "+prefix+"distinct",
-				"MIN("+quoted+") AS "+prefix+"min",
-				"MAX("+quoted+") AS "+prefix+"max",
 				"MIN("+length+") AS "+prefix+"min_len",
 				"MAX("+length+") AS "+prefix+"max_len")
-		default:
-			// A new shape must add its expressions here; a counted one is the
-			// conservative fallback.
-			continue
 		}
 	}
 	return "SELECT " + strings.Join(expressions, ", ") + " FROM " + table

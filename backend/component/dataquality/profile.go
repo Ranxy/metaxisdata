@@ -167,7 +167,7 @@ func profileSelectedColumns(target ResolvedTarget, columns []string, maxColumns 
 		if column.Kind == ColumnKindUnknown {
 			return nil, invalidConfig("column %q has a type this build cannot profile", column.Name)
 		}
-		selected = append(selected, profileColumn{Name: column.Name, Shape: profileShapeFor(target.Engine, column)})
+		selected = append(selected, newProfileColumn(target.Engine, column))
 	}
 	if len(selected) > maxColumns {
 		return nil, invalidConfig("a table profile allows at most %d columns, got %d", maxColumns, len(selected))
@@ -242,24 +242,14 @@ func profileFromAggregateColumn(column profileColumn, prefix string, total int64
 		return nil, badData("column %q reports %d non-NULL values in %d rows", column.Name, nonNull, total)
 	}
 	profile := &storepb.ColumnProfile{TotalRows: total, NullCount: total - nonNull}
-	switch column.Shape {
-	case profileShapeCounted:
-		// The type has no SQL equality for an exact count and no ordering or length
-		// function at all; applyProfileSample fills the distinct count from the
-		// sample.
-		return profile, nil
-	case profileShapeBoolean:
+	if column.Facts&profileFactDistinct != 0 {
 		distinct, err := profileReadInt64(read, prefix+"distinct")
 		if err != nil {
 			return nil, err
 		}
 		profile.DistinctCount = distinct
-		return profile, nil
-	case profileShapeScalar, profileShapeText:
-		distinct, err := profileReadInt64(read, prefix+"distinct")
-		if err != nil {
-			return nil, err
-		}
+	}
+	if column.Facts&profileFactExtrema != 0 {
 		minValue, err := read(prefix + "min")
 		if err != nil {
 			return nil, err
@@ -268,12 +258,10 @@ func profileFromAggregateColumn(column profileColumn, prefix string, total int64
 		if err != nil {
 			return nil, err
 		}
-		profile.DistinctCount = distinct
 		profile.MinValue = profileValueString(minValue)
 		profile.MaxValue = profileValueString(maxValue)
-		if column.Shape == profileShapeScalar {
-			return profile, nil
-		}
+	}
+	if column.Facts&profileFactLength != 0 {
 		minLengthValue, err := read(prefix + "min_len")
 		if err != nil {
 			return nil, err
@@ -290,15 +278,15 @@ func profileFromAggregateColumn(column profileColumn, prefix string, total int64
 		if err != nil {
 			return nil, err
 		}
-	default:
-		// Every shape is handled above; an unknown one keeps the exact counts.
 	}
 	return profile, nil
 }
 
 // applyProfileSample computes the sample-derived summaries: value shapes for
-// string columns and frequent values for low-cardinality columns. A sample with
-// no rows leaves both unset rather than claiming an empty distribution.
+// columns whose values render as text, the estimated distinct count for types
+// without COUNT(DISTINCT), and frequent values for low-cardinality columns. A
+// sample with no rows leaves them unset rather than claiming an empty
+// distribution.
 func applyProfileSample(profiles map[string]*storepb.ColumnProfile, selected []profileColumn, result *db.QueryResult) error {
 	if result == nil {
 		return badData("the profile sample returned no result")
@@ -326,19 +314,14 @@ func applyProfileSample(profiles map[string]*storepb.ColumnProfile, selected []p
 		if profile == nil {
 			continue
 		}
-		switch column.Shape {
-		case profileShapeCounted:
-			// The type has no SQL equality for an exact distinct count, so the sample
-			// is the only reading available; it is exact when the sample saw every
-			// row.
+		if column.Patterns {
+			profile.Patterns = profilePatterns(values[index])
+		}
+		if column.EstimatedDistinct {
+			// The type has no COUNT(DISTINCT) support, so the sample is the only
+			// reading available; it is exact when the sample saw every row.
 			profile.DistinctCount = profileSampleDistinctCount(values[index])
 			profile.DistinctEstimated = result.Truncated || int64(len(result.Rows)) < profile.TotalRows
-		case profileShapeText:
-			profile.Patterns = profilePatterns(values[index])
-		case profileShapeBoolean, profileShapeScalar:
-			// The exact aggregate already carries the distinct count.
-		default:
-			// Every shape is handled above; an unknown one keeps the exact counts.
 		}
 		// Top-K is only meaningful for a low-cardinality column; the cardinality
 		// gate uses the exact aggregate count, the frequencies use the sample.

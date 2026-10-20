@@ -472,9 +472,6 @@ func (s *DataQualityService) validateRuleInput(ctx context.Context, ruleType sto
 	if err != nil {
 		return nil, filled, err
 	}
-	if err := s.validateCrossTableRightSide(ctx, validated, config); err != nil {
-		return nil, filled, err
-	}
 	return validated, filled, nil
 }
 

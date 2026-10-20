@@ -740,6 +740,7 @@ INSERT INTO public.opaque_probe (payload, payload_json, doc, uid, tags)
 VALUES ('{"k":1}', '{"k":1}', '<a/>', '11111111-1111-1111-1111-111111111111', '{a,b}');
 CREATE TABLE public.code_ref (code TEXT PRIMARY KEY);
 INSERT INTO public.code_ref (code) VALUES ('a');
+CREATE VIEW public.code_numbers AS SELECT 1::bigint AS n;
 `))
 	_, err := env.CreateDataSource(ctx, common.FormatInstance(instanceID), &v1pb.DataSource{
 		Type:     v1pb.DataSourceType_READ_ONLY,
@@ -792,7 +793,7 @@ INSERT INTO public.code_ref (code) VALUES ('a');
 			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_REGEX, &v1pb.QualityRuleConfig{
 				Config: &v1pb.QualityRuleConfig_Regex{Regex: &v1pb.RegexConfig{Column: "payload", Pattern: "^x"}},
 			}),
-			want: "needs a text column",
+			want: "needs a text type",
 		},
 		{
 			name: "string_length on uuid",
@@ -801,14 +802,14 @@ INSERT INTO public.code_ref (code) VALUES ('a');
 					Column: "uid", MinLen: qualityPtr(int64(10)),
 				}},
 			}),
-			want: "needs a text column",
+			want: "needs a text type",
 		},
 		{
 			name: "unique on json",
 			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, &v1pb.QualityRuleConfig{
 				Config: &v1pb.QualityRuleConfig_Unique{Unique: &v1pb.UniqueConfig{Column: "payload_json"}},
 			}),
-			want: "the engine cannot compare or group values of this type",
+			want: "the engine cannot group values of this type",
 		},
 		{
 			name: "unique_combination all columns",
@@ -817,7 +818,7 @@ INSERT INTO public.code_ref (code) VALUES ('a');
 					AllColumns: true,
 				}},
 			}),
-			want: "the engine cannot compare or group values of this type",
+			want: "the engine cannot group values of this type",
 		},
 		{
 			name: "group_check on xml",
@@ -826,7 +827,7 @@ INSERT INTO public.code_ref (code) VALUES ('a');
 					Columns: []string{"doc"}, MinRowsPerGroup: qualityPtr(int64(1)),
 				}},
 			}),
-			want: "the engine cannot compare or group values of this type",
+			want: "the engine cannot group values of this type",
 		},
 		{
 			name: "accepted_values on json",
@@ -835,7 +836,7 @@ INSERT INTO public.code_ref (code) VALUES ('a');
 					Column: "payload_json", Values: []string{`{"k":1}`},
 				}},
 			}),
-			want: "the engine cannot compare or group values of this type",
+			want: "the engine cannot compare values of this type",
 		},
 		{
 			name: "null_percent custom values on json",
@@ -844,12 +845,12 @@ INSERT INTO public.code_ref (code) VALUES ('a');
 					Column: "payload_json", MaxNullCount: qualityPtr(int64(0)), NullValues: []string{`{}`},
 				}},
 			}),
-			want: "the engine cannot compare or group values of this type",
+			want: "the engine cannot compare values of this type",
 		},
 		{
 			name: "filter on json",
 			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, rowCountWithFilter("payload_json")),
-			want: "the engine cannot compare or group values of this type",
+			want: "the engine cannot compare values of this type",
 		},
 		{
 			name: "referential between jsonb and text",
@@ -859,6 +860,17 @@ INSERT INTO public.code_ref (code) VALUES ('a');
 				}},
 			}),
 			want: "are not comparable",
+		},
+		{
+			name: "cross_table missing right table",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_CrossTable{CrossTable: &v1pb.CrossTableConfig{
+					RightTable:    "dropped_relation",
+					LeftFunction:  v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
+					RightFunction: v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
+				}},
+			}),
+			want: "does not exist or was dropped",
 		},
 		{
 			name: "cross_table MIN on json",
@@ -892,7 +904,7 @@ INSERT INTO public.code_ref (code) VALUES ('a');
 	}))
 	require.Error(t, err)
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
-	require.Contains(t, err.Error(), "needs a text column")
+	require.Contains(t, err.Error(), "needs a text type")
 
 	accepted := []struct {
 		name string
@@ -942,6 +954,17 @@ INSERT INTO public.code_ref (code) VALUES ('a');
 			}),
 		},
 		{
+			name: "cross_table SUM over a view",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_CrossTable{CrossTable: &v1pb.CrossTableConfig{
+					RightTable:    "code_numbers",
+					LeftFunction:  v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
+					RightFunction: v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_SUM,
+					RightColumn:   "n",
+				}},
+			}),
+		},
+		{
 			name: "cross_table COUNT reconciliation",
 			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, &v1pb.QualityRuleConfig{
 				Config: &v1pb.QualityRuleConfig_CrossTable{CrossTable: &v1pb.CrossTableConfig{
@@ -958,4 +981,55 @@ INSERT INTO public.code_ref (code) VALUES ('a');
 		}))
 		require.NoErrorf(t, err, "%s must remain saveable", test.name)
 	}
+}
+
+// TestDataQualityNullPercentOnJSONRunsRealServerIntegration proves the failed-row
+// sample is never stricter than the aggregate it is evidence for: a plain
+// null_percent rule on a json column (no comparison capability, but IS NULL works)
+// must finish with a verdict, not record ERROR because the sample query could not be
+// compiled.
+func TestDataQualityNullPercentOnJSONRunsRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env, ctx, instanceID, sourceDatabase, databaseName := setupPostgresServiceDatabase(t)
+	require.NoError(t, env.ExecPostgres(ctx, sourceDatabase, `
+CREATE TABLE public.opaque_null (
+  id BIGSERIAL PRIMARY KEY,
+  payload_json JSON
+);
+INSERT INTO public.opaque_null (payload_json) VALUES ('{"a":1}'), (NULL);
+`))
+	_, err := env.CreateDataSource(ctx, common.FormatInstance(instanceID), &v1pb.DataSource{
+		Type:     v1pb.DataSourceType_READ_ONLY,
+		Username: "postgres",
+		Password: "postgres",
+		Host:     env.PostgresHost,
+		Port:     env.PostgresPort,
+	}, "readonly", false)
+	require.NoError(t, err)
+	env.SyncDatabase(ctx, t, databaseName)
+	guid := waitForMetaGUIDByName(ctx, t, env,
+		fmt.Sprintf("%s;%s", instanceID, sourceDatabase), storepb.MetaType_TABLE, "opaque_null")
+
+	fixture := &qualityFixture{
+		env:         env,
+		ctx:         ctx,
+		dataQuality: v1connect.NewDataQualityServiceClient(&http.Client{Timeout: 30 * time.Second}, env.BaseURL),
+	}
+	rule := fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		guid, &v1pb.QualityRuleConfig{Config: &v1pb.QualityRuleConfig_NullPercent{
+			NullPercent: &v1pb.NullPercentConfig{Column: "payload_json", MaxNullCount: qualityPtr(int64(0))},
+		}})
+	run := fixture.runToCompletion(t, rule.GetName())
+	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_FAIL, run.GetOutcome(),
+		"one NULL exceeds max_null_count 0")
+
+	results := fixture.resultsForRun(t, run.GetName())
+	require.Len(t, results, 1)
+	require.NotEqual(t, v1pb.QualityStatus_QUALITY_STATUS_ERROR, results[0].GetStatus(),
+		"a plain null check must never be an execution error: %s", results[0].GetErrorMessage())
+	require.Empty(t, results[0].GetErrorMessage())
+	require.Equal(t, int64(1), results[0].GetFailedRows())
+	require.Equal(t, int64(2), results[0].GetTotalRows())
 }

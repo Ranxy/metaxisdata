@@ -383,7 +383,7 @@ func validateNullPercentConfig(target ResolvedTarget, config *storepb.NullPercen
 	// column cannot hold is a save-time error rather than a query that silently
 	// matches nothing.
 	if len(config.GetNullValues()) > 0 {
-		if _, err := requireEqualityColumn(target, column.Name); err != nil {
+		if _, err := requireComparisonColumn(target, column.Name); err != nil {
 			return err
 		}
 	}
@@ -435,7 +435,7 @@ func validateUniqueConfig(target ResolvedTarget, config *storepb.QualityRuleConf
 	if unique == nil {
 		return invalidConfig("the unique config is missing")
 	}
-	if _, err := requireEqualityColumn(target, unique.GetColumn()); err != nil {
+	if _, err := requireGroupingColumn(target, unique.GetColumn()); err != nil {
 		return err
 	}
 	return validateCountThresholds(config, unique.FailThreshold, unique.WarnThreshold)
@@ -464,7 +464,7 @@ func validateUniqueCombinationConfig(target ResolvedTarget, config *storepb.Qual
 	}
 	seen := make(map[string]struct{}, len(names))
 	for _, name := range names {
-		column, err := requireEqualityColumn(target, name)
+		column, err := requireGroupingColumn(target, name)
 		if err != nil {
 			return err
 		}
@@ -484,7 +484,7 @@ func validateAcceptedValuesConfig(target ResolvedTarget, config *storepb.Quality
 	if accepted == nil {
 		return invalidConfig("the accepted-values config is missing")
 	}
-	column, err := requireEqualityColumn(target, accepted.GetColumn())
+	column, err := requireComparisonColumn(target, accepted.GetColumn())
 	if err != nil {
 		return err
 	}
@@ -565,7 +565,7 @@ func validateRegexConfig(target ResolvedTarget, config *storepb.RegexConfig) err
 	if config == nil {
 		return invalidConfig("the regex config is missing")
 	}
-	if err := validateStringColumn(target, config.GetColumn()); err != nil {
+	if err := validateRegexColumn(target, config.GetColumn()); err != nil {
 		return err
 	}
 	pattern := strings.TrimSpace(config.GetPattern())
@@ -585,7 +585,7 @@ func validateStringLengthConfig(target ResolvedTarget, config *storepb.QualityRu
 	if length == nil {
 		return invalidConfig("the string-length config is missing")
 	}
-	if err := validateStringColumn(target, length.GetColumn()); err != nil {
+	if err := validateLengthColumn(target, length.GetColumn()); err != nil {
 		return err
 	}
 	if length.MinLen == nil && length.MaxLen == nil {
@@ -723,7 +723,7 @@ func validateReferentialParent(ctx context.Context, s *store.Store, target Resol
 		return invalidConfig("the referential-integrity config is missing")
 	}
 	childName := strings.TrimSpace(referential.GetChildColumn())
-	child, err := requireEqualityColumn(target, childName)
+	child, err := requireComparisonColumn(target, childName)
 	if err != nil {
 		return err
 	}
@@ -750,8 +750,8 @@ func validateReferentialParent(ctx context.Context, s *store.Store, target Resol
 	if parentColumn.Kind == ColumnKindUnknown {
 		return invalidConfig("cannot compare columns %q and %q: this build cannot classify the parent column's type", child.Name, parentColumn.Name)
 	}
-	if !supportsEquality(parentColumn, target.Engine) {
-		return invalidConfig("parent column %q is %s; the engine cannot compare or group values of this type", parentColumn.Name, parentColumn.Type)
+	if !supportsComparison(parentColumn, target.Engine) {
+		return invalidConfig("parent column %q is %s; the engine cannot compare values of this type", parentColumn.Name, parentColumn.Type)
 	}
 	if !comparableColumnTypes(child, parentColumn, target.Engine) {
 		return invalidConfig("columns %q (%s) and %q (%s) are not comparable; a referential rule needs both sides to be text or the same type", child.Name, child.Type, parentColumn.Name, parentColumn.Type)
@@ -769,10 +769,6 @@ func validateCrossTableRight(ctx context.Context, s *store.Store, target Resolve
 		// The pure config validator reports a missing config.
 		return nil
 	}
-	rightFunction := cross.GetRightFunction()
-	if rightFunction == storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT {
-		return nil
-	}
 	rightSchema, rightTable, err := relatedTableName(target, cross.GetRightTable(), "right table", "cross-table")
 	if err != nil {
 		return err
@@ -785,12 +781,38 @@ func validateCrossTableRight(ctx context.Context, s *store.Store, target Resolve
 		}
 		return err
 	}
+	rightFunction := cross.GetRightFunction()
+	if rightFunction == storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT {
+		return nil
+	}
 	rightColumnName := strings.TrimSpace(cross.GetRightColumn())
 	rightColumn, ok := right.Column(rightColumnName)
 	if !ok {
 		return invalidConfig("right column %q does not exist on %q", rightColumnName, cross.GetRightTable())
 	}
-	return validateAggregateColumnKind(rightColumn, rightFunction)
+	if err := validateAggregateColumnKind(rightColumn, rightFunction); err != nil {
+		return err
+	}
+	// The evaluator subtracts the two observations as numbers, so every non-COUNT
+	// side must be numeric: MIN/MAX on a date would be a timestamp, not a difference.
+	if rightFunction != storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT {
+		if rightColumn.Kind != ColumnKindNumeric {
+			return invalidConfig("a cross-table %s needs a numeric column; %q is %s", aggregateFunctionName(rightFunction), rightColumn.Name, rightColumn.Type)
+		}
+	}
+	leftFunction := cross.GetLeftFunction()
+	if leftFunction == storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT {
+		return nil
+	}
+	leftColumn, ok := target.Column(strings.TrimSpace(cross.GetLeftColumn()))
+	if !ok {
+		// The config-only validator reports the missing column.
+		return nil
+	}
+	if leftColumn.Kind != ColumnKindNumeric {
+		return invalidConfig("a cross-table %s needs a numeric column; %q is %s", aggregateFunctionName(leftFunction), leftColumn.Name, leftColumn.Type)
+	}
+	return nil
 }
 
 // isMySQLWireEngine reports whether the engine shares the MySQL naming convention
@@ -960,11 +982,15 @@ func validateThresholdValue(name string, value float64, percent bool) error {
 	return nil
 }
 
-// validateStringColumn resolves a column and requires text operations on its
-// type: a regex operator and a character-length function, not merely a "string"
-// classification.
-func validateStringColumn(target ResolvedTarget, name string) error {
-	_, err := requireTextColumn(target, name)
+// validateRegexColumn resolves a column and requires regular-expression support.
+func validateRegexColumn(target ResolvedTarget, name string) error {
+	_, err := requireRegexColumn(target, name)
+	return err
+}
+
+// validateLengthColumn resolves a column and requires a character-length function.
+func validateLengthColumn(target ResolvedTarget, name string) error {
+	_, err := requireLengthColumn(target, name)
 	return err
 }
 

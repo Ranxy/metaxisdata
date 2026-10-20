@@ -113,7 +113,7 @@ func groupCheckColumns(target ResolvedTarget, names []string) ([]string, error) 
 	columns := make([]string, 0, len(names))
 	seen := make(map[string]struct{}, len(names))
 	for _, name := range names {
-		column, err := requireEqualityColumn(target, strings.TrimSpace(name))
+		column, err := requireGroupingColumn(target, strings.TrimSpace(name))
 		if err != nil {
 			return nil, err
 		}
@@ -206,10 +206,16 @@ func numericValue(value any) (float64, bool) {
 	}
 }
 
-// compileStringColumn resolves a column and requires text operations on its type,
-// mirroring validateStringColumn.
-func compileStringColumn(input CompileInput, name string) (ColumnInfo, error) {
-	return requireTextColumn(input.Target, name)
+// compileRegexColumn resolves a column and requires regular-expression support on
+// its type, mirroring validateRegexColumn.
+func compileRegexColumn(input CompileInput, name string) (ColumnInfo, error) {
+	return requireRegexColumn(input.Target, name)
+}
+
+// compileLengthColumn resolves a column and requires a character-length function
+// on its type, mirroring validateLengthColumn.
+func compileLengthColumn(input CompileInput, name string) (ColumnInfo, error) {
+	return requireLengthColumn(input.Target, name)
 }
 
 // compileTemporalColumn resolves a column and requires it to be a date/time.
