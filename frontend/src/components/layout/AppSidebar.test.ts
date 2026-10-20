@@ -83,6 +83,17 @@ function sectionTrigger(wrapper: ReturnType<typeof mount>, label: string) {
   return trigger;
 }
 
+// The active entry is the one carrying `font-medium`; section headers are
+// buttons and the brand link sits outside the nav, so this is the whole set.
+function activeHrefs(
+  wrapper: ReturnType<typeof mount>
+): (string | undefined)[] {
+  return wrapper
+    .findAll("nav a")
+    .filter((anchor) => anchor.classes().includes("font-medium"))
+    .map((anchor) => anchor.attributes("href"));
+}
+
 describe("AppSidebar", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -263,5 +274,33 @@ describe("AppSidebar", () => {
     await wrapper.vm.$nextTick();
 
     expect(appStore.mobileNavOpen).toBe(false);
+  });
+
+  // The landing page's path prefixes every other quality entry, so it is active
+  // only on its own route; the child entries keep prefix matching so their
+  // detail routes stay highlighted.
+  it("highlights only the quality landing page on its own route", async () => {
+    const { wrapper } = await mountSidebar("/data-quality");
+
+    expect(activeHrefs(wrapper)).toEqual(["/data-quality"]);
+  });
+
+  it.each([
+    "/data-quality/rules",
+    "/data-quality/runs",
+    "/data-quality/issues",
+    "/data-quality/suggestions",
+  ])("highlights only the matching quality entry at %s", async (path) => {
+    const { wrapper } = await mountSidebar(path);
+
+    expect(activeHrefs(wrapper)).toEqual([path]);
+  });
+
+  it("keeps the runs entry active on a run detail route", async () => {
+    const { wrapper } = await mountSidebar(
+      "/data-quality/runs/workspaces/ws/qualityRuns/abc"
+    );
+
+    expect(activeHrefs(wrapper)).toEqual(["/data-quality/runs"]);
   });
 });
