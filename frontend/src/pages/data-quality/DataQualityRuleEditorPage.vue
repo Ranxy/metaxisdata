@@ -332,6 +332,7 @@
               v-model="form.config"
               v-model:threshold-metric="form.thresholdMetric"
               :rule-type="form.ruleType"
+              :column-details="targetColumnDetails"
             />
             <div class="max-w-sm space-y-1.5 border-t pt-4">
               <Label for="dq-rule-on-empty">
@@ -529,6 +530,7 @@ import {
   ruleToForm,
   type ScheduleUnit,
   suggestedDimension,
+  type TargetColumnDetail,
   type TargetSelection,
   targetFromQuery,
   targetSelectionFromRule,
@@ -578,6 +580,7 @@ const form = ref<RuleFormState>(emptyRuleForm());
 const target = ref<TargetSelection>();
 const targetOpen = ref(false);
 const targetColumns = ref<string[]>([]);
+const targetColumnDetails = ref<TargetColumnDetail[]>([]);
 
 const loadingRule = ref(false);
 const loadError = ref("");
@@ -687,13 +690,23 @@ async function refreshTargetColumns(guid: string) {
     const columns = response.typesStoredMetadata.find(
       (group) => group.metaType === MetaType.COLUMN
     );
-    targetColumns.value =
+    targetColumnDetails.value =
       columns?.list.map((item) => {
-        const value = item.type.value as { name?: string } | undefined;
-        return value?.name ?? item.guid;
+        const value = item.type.value as
+          | { name?: string; type?: string; nullable?: boolean }
+          | undefined;
+        return {
+          name: value?.name ?? item.guid,
+          type: value?.type ?? "",
+          nullable: value?.nullable ?? true,
+        };
       }) ?? [];
+    targetColumns.value = targetColumnDetails.value.map(
+      (column) => column.name
+    );
   } catch {
     targetColumns.value = [];
+    targetColumnDetails.value = [];
   }
 }
 

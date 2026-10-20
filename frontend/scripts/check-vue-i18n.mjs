@@ -74,6 +74,9 @@ export const DYNAMIC_PREFIXES = [
   "dataQuality.comparisonOperator",
   "dataQuality.filterOperator",
   "dataQuality.editor.validation",
+  "dataQuality.issueStatus",
+  "dataQuality.resolutionReason",
+  "dataQuality.aggregateFunction",
   // CODE_MESSAGE_KEYS in src/utils/error.ts maps every Connect status code to an
   // "error.*" sentence. The table is exhaustive by type (Record<Code, …>) and its
   // values are checked against the locale schema at compile time, so a stray key

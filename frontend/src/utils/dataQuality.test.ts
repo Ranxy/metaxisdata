@@ -4,12 +4,15 @@ import { describe, expect, it } from "vitest";
 import enUS from "@/locales/en-US.json";
 import zhCN from "@/locales/zh-CN.json";
 import {
+  QualityAggregateFunction,
   QualityComparison,
   QualityComparisonOperator,
   QualityDimension,
   QualityEmptyBehavior,
   QualityFilterOperator,
+  QualityIssueStatus,
   QualityObservedKind,
+  QualityResolutionReason,
   QualityRuleState,
   QualityRuleType,
   QualityRunSchema,
@@ -31,11 +34,15 @@ import {
   formatTargetPath,
   formatWarnThreshold,
   isRunInProgress,
+  qualityAggregateFunctionKey,
   qualityComparisonOperatorKey,
   qualityDimensionKey,
   qualityEmptyBehaviorKey,
   qualityErrorCodeKey,
   qualityFilterOperatorKey,
+  qualityIssueStatusKey,
+  qualityIssueStatusVariant,
+  qualityResolutionReasonKey,
   qualityRuleStateKey,
   qualityRuleStateVariant,
   qualityRuleTypeKey,
@@ -633,6 +640,98 @@ describe("number and value formatting", () => {
   });
 });
 
+describe("aggregate function vocabulary", () => {
+  it("names every aggregate", () => {
+    expect(qualityAggregateFunctionKey(QualityAggregateFunction.COUNT)).toBe(
+      "dataQuality.aggregateFunction.count"
+    );
+    expect(qualityAggregateFunctionKey(QualityAggregateFunction.SUM)).toBe(
+      "dataQuality.aggregateFunction.sum"
+    );
+    expect(qualityAggregateFunctionKey(QualityAggregateFunction.AVG)).toBe(
+      "dataQuality.aggregateFunction.avg"
+    );
+    expect(qualityAggregateFunctionKey(QualityAggregateFunction.MIN)).toBe(
+      "dataQuality.aggregateFunction.min"
+    );
+    expect(qualityAggregateFunctionKey(QualityAggregateFunction.MAX)).toBe(
+      "dataQuality.aggregateFunction.max"
+    );
+    expect(qualityAggregateFunctionKey(QualityAggregateFunction.STDDEV)).toBe(
+      "dataQuality.aggregateFunction.stddev"
+    );
+    expect(
+      qualityAggregateFunctionKey(QualityAggregateFunction.PERCENTILE)
+    ).toBe("dataQuality.aggregateFunction.percentile");
+    expect(
+      qualityAggregateFunctionKey(QualityAggregateFunction.UNSPECIFIED)
+    ).toBe("dataQuality.aggregateFunction.unspecified");
+    expect(qualityAggregateFunctionKey(99 as QualityAggregateFunction)).toBe(
+      "dataQuality.aggregateFunction.unspecified"
+    );
+  });
+});
+
+describe("issue vocabulary", () => {
+  it("names and tones every issue state", () => {
+    expect(qualityIssueStatusKey(QualityIssueStatus.OPEN)).toBe(
+      "dataQuality.issueStatus.open"
+    );
+    expect(qualityIssueStatusKey(QualityIssueStatus.ACKNOWLEDGED)).toBe(
+      "dataQuality.issueStatus.acknowledged"
+    );
+    expect(qualityIssueStatusKey(QualityIssueStatus.RESOLVED)).toBe(
+      "dataQuality.issueStatus.resolved"
+    );
+    expect(qualityIssueStatusKey(QualityIssueStatus.UNSPECIFIED)).toBe(
+      "dataQuality.issueStatus.unspecified"
+    );
+    expect(qualityIssueStatusKey(99 as QualityIssueStatus)).toBe(
+      "dataQuality.issueStatus.unspecified"
+    );
+
+    expect(qualityIssueStatusVariant(QualityIssueStatus.OPEN)).toBe(
+      "destructive"
+    );
+    expect(qualityIssueStatusVariant(QualityIssueStatus.ACKNOWLEDGED)).toBe(
+      "warning"
+    );
+    expect(qualityIssueStatusVariant(QualityIssueStatus.RESOLVED)).toBe(
+      "success"
+    );
+    expect(qualityIssueStatusVariant(QualityIssueStatus.UNSPECIFIED)).toBe(
+      "secondary"
+    );
+    expect(qualityIssueStatusVariant(99 as QualityIssueStatus)).toBe(
+      "secondary"
+    );
+  });
+
+  it("names every resolution reason", () => {
+    expect(qualityResolutionReasonKey(QualityResolutionReason.FIXED)).toBe(
+      "dataQuality.resolutionReason.fixed"
+    );
+    expect(qualityResolutionReasonKey(QualityResolutionReason.EXPECTED)).toBe(
+      "dataQuality.resolutionReason.expected"
+    );
+    expect(
+      qualityResolutionReasonKey(QualityResolutionReason.NO_ACTION_NEEDED)
+    ).toBe("dataQuality.resolutionReason.noActionNeeded");
+    expect(qualityResolutionReasonKey(QualityResolutionReason.DUPLICATE)).toBe(
+      "dataQuality.resolutionReason.duplicate"
+    );
+    expect(
+      qualityResolutionReasonKey(QualityResolutionReason.AUTO_RECOVERED)
+    ).toBe("dataQuality.resolutionReason.autoRecovered");
+    expect(
+      qualityResolutionReasonKey(QualityResolutionReason.UNSPECIFIED)
+    ).toBe("dataQuality.resolutionReason.unspecified");
+    expect(qualityResolutionReasonKey(99 as QualityResolutionReason)).toBe(
+      "dataQuality.resolutionReason.unspecified"
+    );
+  });
+});
+
 describe("editor vocabulary", () => {
   it("names every threshold metric, empty behaviour and comparison operator", () => {
     expect(qualityThresholdMetricKey(QualityThresholdMetric.COUNT)).toBe(
@@ -779,6 +878,15 @@ describe("data quality vocabulary catalogs", () => {
     }
     for (const trigger of enumValues(QualityRunTrigger)) {
       keys.push(qualityRunTriggerKey(trigger));
+    }
+    for (const fn of enumValues(QualityAggregateFunction)) {
+      keys.push(qualityAggregateFunctionKey(fn));
+    }
+    for (const status of enumValues(QualityIssueStatus)) {
+      keys.push(qualityIssueStatusKey(status));
+    }
+    for (const reason of enumValues(QualityResolutionReason)) {
+      keys.push(qualityResolutionReasonKey(reason));
     }
     for (const metric of enumValues(QualityThresholdMetric)) {
       keys.push(qualityThresholdMetricKey(metric));

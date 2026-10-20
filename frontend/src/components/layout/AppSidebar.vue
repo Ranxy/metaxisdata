@@ -182,6 +182,7 @@ import { useMediaQuery } from "@vueuse/core";
 import {
   Activity,
   ChevronRight,
+  CircleAlert,
   Database,
   FileCode2,
   Files,
@@ -372,6 +373,13 @@ function buildMenuItems(): MenuItem[] {
           path: "/data-quality/runs",
           icon: Activity,
           permission: "metaxisdata.dataQuality.runs.list",
+        },
+        {
+          key: "dataQualityIssues",
+          label: t("menu.dataQualityIssues"),
+          path: "/data-quality/issues",
+          icon: CircleAlert,
+          permission: "metaxisdata.dataQuality.issues.list",
         },
       ],
     },

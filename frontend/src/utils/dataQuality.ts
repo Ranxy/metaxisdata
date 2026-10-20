@@ -1,12 +1,15 @@
 import type { Duration } from "@bufbuild/protobuf/wkt";
 import {
   QualityObservedKind as ObservedKind,
+  QualityAggregateFunction,
   QualityComparison,
   QualityComparisonOperator,
   QualityDimension,
   QualityEmptyBehavior,
   QualityFilterOperator,
+  QualityIssueStatus,
   type QualityObservedKind,
+  QualityResolutionReason,
   QualityRuleState,
   QualityRuleType,
   type QualityRun,
@@ -274,6 +277,82 @@ export function qualityRunTriggerKey(trigger: QualityRunTrigger): string {
       return "dataQuality.runTrigger.scheduled";
     default:
       return "dataQuality.runTrigger.unspecified";
+  }
+}
+
+/** The label key for one SQL aggregate a rule may take. */
+export function qualityAggregateFunctionKey(
+  fn: QualityAggregateFunction
+): string {
+  switch (fn) {
+    case QualityAggregateFunction.COUNT:
+      return "dataQuality.aggregateFunction.count";
+    case QualityAggregateFunction.SUM:
+      return "dataQuality.aggregateFunction.sum";
+    case QualityAggregateFunction.AVG:
+      return "dataQuality.aggregateFunction.avg";
+    case QualityAggregateFunction.MIN:
+      return "dataQuality.aggregateFunction.min";
+    case QualityAggregateFunction.MAX:
+      return "dataQuality.aggregateFunction.max";
+    case QualityAggregateFunction.STDDEV:
+      return "dataQuality.aggregateFunction.stddev";
+    case QualityAggregateFunction.PERCENTILE:
+      return "dataQuality.aggregateFunction.percentile";
+    default:
+      return "dataQuality.aggregateFunction.unspecified";
+  }
+}
+
+// ---- issues ----
+
+/** The label key for an issue's lifecycle state. */
+export function qualityIssueStatusKey(status: QualityIssueStatus): string {
+  switch (status) {
+    case QualityIssueStatus.OPEN:
+      return "dataQuality.issueStatus.open";
+    case QualityIssueStatus.ACKNOWLEDGED:
+      return "dataQuality.issueStatus.acknowledged";
+    case QualityIssueStatus.RESOLVED:
+      return "dataQuality.issueStatus.resolved";
+    default:
+      return "dataQuality.issueStatus.unspecified";
+  }
+}
+
+/** The badge variant for an issue's lifecycle state. */
+export function qualityIssueStatusVariant(
+  status: QualityIssueStatus
+): QualityBadgeVariant {
+  switch (status) {
+    case QualityIssueStatus.OPEN:
+      return "destructive";
+    case QualityIssueStatus.ACKNOWLEDGED:
+      return "warning";
+    case QualityIssueStatus.RESOLVED:
+      return "success";
+    default:
+      return "secondary";
+  }
+}
+
+/** The label key for why an issue was closed. */
+export function qualityResolutionReasonKey(
+  reason: QualityResolutionReason
+): string {
+  switch (reason) {
+    case QualityResolutionReason.FIXED:
+      return "dataQuality.resolutionReason.fixed";
+    case QualityResolutionReason.EXPECTED:
+      return "dataQuality.resolutionReason.expected";
+    case QualityResolutionReason.NO_ACTION_NEEDED:
+      return "dataQuality.resolutionReason.noActionNeeded";
+    case QualityResolutionReason.DUPLICATE:
+      return "dataQuality.resolutionReason.duplicate";
+    case QualityResolutionReason.AUTO_RECOVERED:
+      return "dataQuality.resolutionReason.autoRecovered";
+    default:
+      return "dataQuality.resolutionReason.unspecified";
   }
 }
 
