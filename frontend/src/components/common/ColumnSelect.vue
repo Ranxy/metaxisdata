@@ -5,6 +5,10 @@
       :for="fieldId"
     >
       {{ label }}
+      <span
+        v-if="required"
+        class="text-destructive"
+      >*</span>
     </Label>
 
     <div class="relative">
@@ -14,7 +18,12 @@
             :id="fieldId"
             type="button"
             :disabled="disabled"
-            class="flex min-h-10 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            :aria-required="required ? true : undefined"
+            :aria-invalid="error ? true : undefined"
+            :class="[
+              'flex min-h-10 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
+              error ? 'border-destructive focus-visible:ring-destructive' : '',
+            ]"
           >
             <span
               v-if="selected.length > 0"
@@ -103,7 +112,13 @@
     </div>
 
     <p
-      v-if="hint"
+      v-if="error"
+      class="text-sm text-destructive"
+    >
+      {{ error }}
+    </p>
+    <p
+      v-else-if="hint"
       class="text-sm text-muted-foreground"
     >
       {{ hint }}
@@ -149,6 +164,8 @@ const props = withDefaults(
     hint?: string;
     placeholder?: string;
     disabled?: boolean;
+    required?: boolean;
+    error?: string;
     id?: string;
   }>(),
   {
@@ -158,6 +175,8 @@ const props = withDefaults(
     hint: "",
     placeholder: "",
     disabled: false,
+    required: false,
+    error: "",
     id: "",
   }
 );

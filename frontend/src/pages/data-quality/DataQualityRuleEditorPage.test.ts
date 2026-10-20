@@ -130,6 +130,7 @@ async function mountEditor(path: string) {
   useAuthStore().user = create(UserSchema, { permissions: PERMISSIONS });
 
   const wrapper = mount(DataQualityRuleEditorPage, {
+    attachTo: document.body,
     global: { plugins: [router, i18n, pinia] },
   });
   await flushPromises();
@@ -291,6 +292,87 @@ describe("DataQualityRuleEditorPage", () => {
     ).toBe("");
   });
 
+  it("blocks Dry run on a missing required field without calling the server", async () => {
+    const { wrapper } = await mountEditor(
+      `/data-quality/rules/new?table_guid=${encodeURIComponent(PREFILL)}&meta_type=4`
+    );
+    await fieldInput(wrapper, label("dataQuality.editor.title"))?.setValue(
+      "Row count"
+    );
+
+    await actionButton(wrapper, label("dataQuality.editor.dryRun")).trigger(
+      "click"
+    );
+    await flushPromises();
+    await nextTick();
+
+    expect(mocks.previewQualityRule).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain(
+      label("dataQuality.editor.missingRequiredTitle")
+    );
+    // The one-of message is shown both at the top and under the field.
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.schema.atLeastOne", {
+        fields: [
+          label("dataQuality.editor.minRows"),
+          label("dataQuality.editor.maxRows"),
+          label("dataQuality.editor.exactRows"),
+        ].join(" / "),
+      })
+    );
+    expect(wrapper.find("#dq-field-minRows").exists()).toBe(true);
+    expect(document.activeElement?.id).toBe("dq-field-minRows");
+  });
+
+  it("runs the dry run once the required fields are filled", async () => {
+    const { wrapper } = await mountEditor(
+      `/data-quality/rules/new?table_guid=${encodeURIComponent(PREFILL)}&meta_type=4`
+    );
+    await fieldInput(wrapper, label("dataQuality.editor.title"))?.setValue(
+      "Row count"
+    );
+    await fieldInput(wrapper, label("dataQuality.editor.minRows"))?.setValue(
+      "1"
+    );
+    await flushPromises();
+    await actionButton(wrapper, label("dataQuality.editor.dryRun")).trigger(
+      "click"
+    );
+    await flushPromises();
+
+    expect(mocks.previewQualityRule).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the compiled SQL and parameters of a failed dry run", async () => {
+    mocks.previewQualityRule.mockRejectedValue(
+      new ConnectError(
+        "the rule's compiled query failed the dry run: expected 2 arguments, got 0 (compiled SQL: SELECT COUNT(*) FROM orders WHERE created_at > $1; parameters: [2026-01-01])",
+        Code.InvalidArgument
+      )
+    );
+    const { wrapper } = await mountEditor(
+      `/data-quality/rules/new?table_guid=${encodeURIComponent(PREFILL)}&meta_type=4`
+    );
+    await fieldInput(wrapper, label("dataQuality.editor.title"))?.setValue(
+      "Row count"
+    );
+    await fieldInput(wrapper, label("dataQuality.editor.minRows"))?.setValue(
+      "1"
+    );
+    await actionButton(wrapper, label("dataQuality.editor.dryRun")).trigger(
+      "click"
+    );
+    await flushPromises();
+
+    expect(wrapper.text()).toContain(
+      "the rule's compiled query failed the dry run: expected 2 arguments, got 0"
+    );
+    expect(wrapper.text()).toContain("SELECT COUNT(*) FROM orders");
+    expect(wrapper.text()).toContain("[2026-01-01]");
+    expect(wrapper.text()).toContain(label("dataQuality.editor.compiledQuery"));
+    expect(mocks.createQualityRule).not.toHaveBeenCalled();
+  });
+
   it("shows the server's compile error inline and does not save", async () => {
     mocks.previewQualityRule.mockRejectedValue(
       new ConnectError("the filter column does not exist", Code.InvalidArgument)
@@ -312,6 +394,23 @@ describe("DataQualityRuleEditorPage", () => {
 
     expect(wrapper.text()).toContain("the filter column does not exist");
     expect(mocks.createQualityRule).not.toHaveBeenCalled();
+  });
+
+  it("marks a schema-required config field and its one-of hint", async () => {
+    const { wrapper } = await mountEditor(
+      `/data-quality/rules/new?table_guid=${encodeURIComponent(PREFILL)}&meta_type=4`
+    );
+    const selects = wrapper.findAllComponents(Select);
+    await selects[0]?.vm.$emit(
+      "update:modelValue",
+      String(QualityRuleType.UNIQUE)
+    );
+    await nextTick();
+
+    expect(wrapper.find("#dq-field-column").attributes("aria-required")).toBe(
+      "true"
+    );
+    expect(wrapper.find('label[for="dq-field-column"]').text()).toContain("*");
   });
 
   it("creates the rule with the selected target and config", async () => {

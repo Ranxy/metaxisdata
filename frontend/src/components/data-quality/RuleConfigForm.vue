@@ -1,5 +1,13 @@
 <template>
   <div class="space-y-5">
+    <p
+      v-for="(hint, index) in oneOfHints"
+      :key="index"
+      class="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground"
+    >
+      {{ t("dataQuality.schema.atLeastOneHint", { fields: hint }) }}
+    </p>
+
     <!-- Shared by every threshold-carrying config: the unit the fail/warn values
          are read in. -->
     <div
@@ -24,12 +32,18 @@
       </div>
       <FormField
         v-model="config.failThreshold"
+        :id="fieldId('failThreshold')"
+        :required="requiredFor('failThreshold')"
+        :error="errorFor('failThreshold')"
         type="number"
         :label="t('dataQuality.editor.failThreshold')"
         :hint="t('dataQuality.editor.thresholdHint')"
       />
       <FormField
         v-model="config.warnThreshold"
+        :id="fieldId('warnThreshold')"
+        :required="requiredFor('warnThreshold')"
+        :error="errorFor('warnThreshold')"
         type="number"
         :label="t('dataQuality.editor.warnThreshold')"
       />
@@ -39,16 +53,25 @@
       <div class="grid gap-4 sm:grid-cols-2">
         <FormField
           v-model="config.minRows"
+          :id="fieldId('minRows')"
+          :required="requiredFor('minRows')"
+          :error="errorFor('minRows')"
           type="number"
           :label="t('dataQuality.editor.minRows')"
         />
         <FormField
           v-model="config.maxRows"
+          :id="fieldId('maxRows')"
+          :required="requiredFor('maxRows')"
+          :error="errorFor('maxRows')"
           type="number"
           :label="t('dataQuality.editor.maxRows')"
         />
         <FormField
           v-model="config.exactRows"
+          :id="fieldId('exactRows')"
+          :required="requiredFor('exactRows')"
+          :error="errorFor('exactRows')"
           type="number"
           :label="t('dataQuality.editor.exactRows')"
         />
@@ -56,11 +79,17 @@
       <div class="grid gap-4 sm:grid-cols-2">
         <FormField
           v-model="config.warnMinRows"
+          :id="fieldId('warnMinRows')"
+          :required="requiredFor('warnMinRows')"
+          :error="errorFor('warnMinRows')"
           type="number"
           :label="t('dataQuality.editor.warnMinRows')"
         />
         <FormField
           v-model="config.warnMaxRows"
+          :id="fieldId('warnMaxRows')"
+          :required="requiredFor('warnMaxRows')"
+          :error="errorFor('warnMaxRows')"
           type="number"
           :label="t('dataQuality.editor.warnMaxRows')"
         />
@@ -73,23 +102,35 @@
     >
       <FormField
         v-model="config.maxIncreasePct"
+        :id="fieldId('maxIncreasePct')"
+        :required="requiredFor('maxIncreasePct')"
+        :error="errorFor('maxIncreasePct')"
         type="number"
         :label="t('dataQuality.editor.maxIncreasePct')"
         :hint="t('dataQuality.editor.percentHint')"
       />
       <FormField
         v-model="config.maxDecreasePct"
+        :id="fieldId('maxDecreasePct')"
+        :required="requiredFor('maxDecreasePct')"
+        :error="errorFor('maxDecreasePct')"
         type="number"
         :label="t('dataQuality.editor.maxDecreasePct')"
         :hint="t('dataQuality.editor.percentHint')"
       />
       <FormField
         v-model="config.warnIncreasePct"
+        :id="fieldId('warnIncreasePct')"
+        :required="requiredFor('warnIncreasePct')"
+        :error="errorFor('warnIncreasePct')"
         type="number"
         :label="t('dataQuality.editor.warnIncreasePct')"
       />
       <FormField
         v-model="config.warnDecreasePct"
+        :id="fieldId('warnDecreasePct')"
+        :required="requiredFor('warnDecreasePct')"
+        :error="errorFor('warnDecreasePct')"
         type="number"
         :label="t('dataQuality.editor.warnDecreasePct')"
       />
@@ -100,6 +141,9 @@
                   <ColumnSelect
             :model-value="config.nullColumn ?? ''"
             :columns="columnDetails"
+            :id="fieldId('nullColumn')"
+            :required="requiredFor('nullColumn')"
+            :error="errorFor('nullColumn')"
             :label="t('dataQuality.editor.column')"
             :hint="t('dataQuality.editor.columnHint')"
             @update:model-value="(value) => setColumn('nullColumn', value)"
@@ -127,11 +171,17 @@
       >
         <FormField
           v-model="config.maxNullCount"
+          :id="fieldId('maxNullCount')"
+          :required="requiredFor('maxNullCount')"
+          :error="errorFor('maxNullCount')"
           type="number"
           :label="t('dataQuality.editor.maxNullCount')"
         />
         <FormField
           v-model="config.warnNullCount"
+          :id="fieldId('warnNullCount')"
+          :required="requiredFor('warnNullCount')"
+          :error="errorFor('warnNullCount')"
           type="number"
           :label="t('dataQuality.editor.warnNullCount')"
         />
@@ -142,18 +192,27 @@
       >
         <FormField
           v-model="config.maxNullPct"
+          :id="fieldId('maxNullPct')"
+          :required="requiredFor('maxNullPct')"
+          :error="errorFor('maxNullPct')"
           type="number"
           :label="t('dataQuality.editor.maxNullPct')"
           :hint="t('dataQuality.editor.percentHint')"
         />
         <FormField
           v-model="config.warnNullPct"
+          :id="fieldId('warnNullPct')"
+          :required="requiredFor('warnNullPct')"
+          :error="errorFor('warnNullPct')"
           type="number"
           :label="t('dataQuality.editor.warnNullPct')"
         />
       </div>
       <FormField
         v-model="config.nullValues"
+        :id="fieldId('nullValues')"
+        :required="requiredFor('nullValues')"
+        :error="errorFor('nullValues')"
         :label="t('dataQuality.editor.nullValues')"
         :hint="t('dataQuality.editor.nullValuesHint')"
       />
@@ -164,6 +223,9 @@
                   <ColumnSelect
             :model-value="config.column ?? ''"
             :columns="columnDetails"
+            :id="fieldId('column')"
+            :required="requiredFor('column')"
+            :error="errorFor('column')"
             :label="t('dataQuality.editor.column')"
             :hint="t('dataQuality.editor.columnHint')"
             @update:model-value="(value) => setColumn('column', value)"
@@ -180,6 +242,9 @@
         multiple
         :model-value="csvColumns(config.columns)"
         :columns="columnDetails"
+        :id="fieldId('columns')"
+        :required="requiredFor('columns')"
+        :error="errorFor('columns')"
         :disabled="config.allColumns === true"
         :label="t('dataQuality.editor.columns')"
         :hint="t('dataQuality.editor.columnsHint')"
@@ -202,6 +267,9 @@
                   <ColumnSelect
             :model-value="config.column ?? ''"
             :columns="columnDetails"
+            :id="fieldId('column')"
+            :required="requiredFor('column')"
+            :error="errorFor('column')"
             :label="t('dataQuality.editor.column')"
             :hint="t('dataQuality.editor.columnHint')"
             @update:model-value="(value) => setColumn('column', value)"
@@ -213,6 +281,9 @@
       </div>
       <FormField
         v-model="config.values"
+        :id="fieldId('values')"
+        :required="requiredFor('values')"
+        :error="errorFor('values')"
         :label="t('dataQuality.editor.values')"
         :hint="t('dataQuality.editor.valuesHint')"
       />
@@ -223,16 +294,25 @@
                   <ColumnSelect
             :model-value="config.column ?? ''"
             :columns="columnDetails"
+            :id="fieldId('column')"
+            :required="requiredFor('column')"
+            :error="errorFor('column')"
             :label="t('dataQuality.editor.column')"
             :hint="t('dataQuality.editor.columnHint')"
             @update:model-value="(value) => setColumn('column', value)"
           />
         <FormField
           v-model="config.minValue"
+          :id="fieldId('minValue')"
+          :required="requiredFor('minValue')"
+          :error="errorFor('minValue')"
           :label="t('dataQuality.editor.minValue')"
         />
         <FormField
           v-model="config.maxValue"
+          :id="fieldId('maxValue')"
+          :required="requiredFor('maxValue')"
+          :error="errorFor('maxValue')"
           :label="t('dataQuality.editor.maxValue')"
         />
       </div>
@@ -249,12 +329,18 @@
       <ColumnSelect
         :model-value="config.column ?? ''"
         :columns="columnDetails"
+        :id="fieldId('column')"
+        :required="requiredFor('column')"
+        :error="errorFor('column')"
         :label="t('dataQuality.editor.column')"
         :hint="t('dataQuality.editor.columnHint')"
         @update:model-value="(value) => setColumn('column', value)"
       />
       <FormField
         v-model="config.pattern"
+        :id="fieldId('pattern')"
+        :required="requiredFor('pattern')"
+        :error="errorFor('pattern')"
         :label="t('dataQuality.editor.pattern')"
         :hint="t('dataQuality.editor.patternHint')"
       />
@@ -267,17 +353,26 @@
       <ColumnSelect
         :model-value="config.column ?? ''"
         :columns="columnDetails"
+        :id="fieldId('column')"
+        :required="requiredFor('column')"
+        :error="errorFor('column')"
         :label="t('dataQuality.editor.column')"
         :hint="t('dataQuality.editor.columnHint')"
         @update:model-value="(value) => setColumn('column', value)"
       />
       <FormField
         v-model="config.minLen"
+        :id="fieldId('minLen')"
+        :required="requiredFor('minLen')"
+        :error="errorFor('minLen')"
         type="number"
         :label="t('dataQuality.editor.minLen')"
       />
       <FormField
         v-model="config.maxLen"
+        :id="fieldId('maxLen')"
+        :required="requiredFor('maxLen')"
+        :error="errorFor('maxLen')"
         type="number"
         :label="t('dataQuality.editor.maxLen')"
       />
@@ -290,18 +385,27 @@
                   <ColumnSelect
             :model-value="config.childColumn ?? ''"
             :columns="columnDetails"
+            :id="fieldId('childColumn')"
+            :required="requiredFor('childColumn')"
+            :error="errorFor('childColumn')"
             :label="t('dataQuality.editor.childColumn')"
             :hint="t('dataQuality.editor.columnHint')"
             @update:model-value="(value) => setColumn('childColumn', value)"
           />
         <FormField
           v-model="config.parentTable"
+          :id="fieldId('parentTable')"
+          :required="requiredFor('parentTable')"
+          :error="errorFor('parentTable')"
           :label="t('dataQuality.editor.parentTable')"
           :hint="t('dataQuality.editor.parentTableHint')"
         />
                   <ColumnSelect
             :model-value="config.parentColumn ?? ''"
             :columns="columnDetails"
+            :id="fieldId('parentColumn')"
+            :required="requiredFor('parentColumn')"
+            :error="errorFor('parentColumn')"
             :label="t('dataQuality.editor.parentColumn')"
             @update:model-value="(value) => setColumn('parentColumn', value)"
           />
@@ -317,6 +421,9 @@
                   <ColumnSelect
             :model-value="config.leftColumn ?? ''"
             :columns="columnDetails"
+            :id="fieldId('leftColumn')"
+            :required="requiredFor('leftColumn')"
+            :error="errorFor('leftColumn')"
             :label="t('dataQuality.editor.leftColumn')"
             :hint="t('dataQuality.editor.columnHint')"
             @update:model-value="(value) => setColumn('leftColumn', value)"
@@ -341,11 +448,17 @@
                   <ColumnSelect
             :model-value="config.rightColumn ?? ''"
             :columns="columnDetails"
+            :id="fieldId('rightColumn')"
+            :required="requiredFor('rightColumn')"
+            :error="errorFor('rightColumn')"
             :label="t('dataQuality.editor.rightColumn')"
             @update:model-value="(value) => setColumn('rightColumn', value)"
           />
         <FormField
           v-model="config.tolerance"
+          :id="fieldId('tolerance')"
+          :required="requiredFor('tolerance')"
+          :error="errorFor('tolerance')"
           type="number"
           :label="t('dataQuality.editor.tolerance')"
           :hint="t('dataQuality.editor.toleranceHint')"
@@ -360,18 +473,27 @@
       <ColumnSelect
         :model-value="config.timestampColumn ?? ''"
         :columns="columnDetails"
+        :id="fieldId('timestampColumn')"
+        :required="requiredFor('timestampColumn')"
+        :error="errorFor('timestampColumn')"
         :label="t('dataQuality.editor.timestampColumn')"
         :hint="t('dataQuality.editor.columnHint')"
         @update:model-value="(value) => setColumn('timestampColumn', value)"
       />
       <FormField
         v-model="config.maxLagSeconds"
+        :id="fieldId('maxLagSeconds')"
+        :required="requiredFor('maxLagSeconds')"
+        :error="errorFor('maxLagSeconds')"
         type="number"
         :label="t('dataQuality.editor.maxLagSeconds')"
         :hint="t('dataQuality.editor.secondsHint')"
       />
       <FormField
         v-model="config.warnLagSeconds"
+        :id="fieldId('warnLagSeconds')"
+        :required="requiredFor('warnLagSeconds')"
+        :error="errorFor('warnLagSeconds')"
         type="number"
         :label="t('dataQuality.editor.warnLagSeconds')"
       />
@@ -379,25 +501,56 @@
 
     <template v-else-if="ruleType === QualityRuleType.CUSTOM_SQL">
       <div class="space-y-2">
-        <Label for="dq-config-sql">{{ t("dataQuality.editor.sql") }}</Label>
+        <Label for="dq-config-sql">
+          {{ t("dataQuality.editor.sql") }}
+          <span class="text-destructive">*</span>
+        </Label>
         <textarea
           id="dq-config-sql"
           v-model="config.sql"
           class="min-h-64 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm"
+          :aria-required="true"
+          :aria-invalid="errorFor('sql') ? true : undefined"
+          :class="errorFor('sql') ? 'border-destructive' : ''"
           :placeholder="t('dataQuality.editor.sqlPlaceholder')"
         />
-        <p class="text-sm text-muted-foreground">
+        <p
+          v-if="errorFor('sql')"
+          class="text-sm text-destructive"
+        >
+          {{ errorFor("sql") }}
+        </p>
+        <p
+          v-else
+          class="text-sm text-muted-foreground"
+        >
           {{ t("dataQuality.editor.sqlHint") }}
         </p>
       </div>
     </template>
 
     <template v-else-if="ruleType === QualityRuleType.SCHEMA_DRIFT">
-      <div class="space-y-3">
+      <div
+        id="dq-config-expected-columns"
+        class="space-y-3"
+        tabindex="-1"
+      >
         <div class="flex flex-wrap items-start justify-between gap-2">
           <div class="space-y-1">
-            <Label>{{ t("dataQuality.editor.expectedColumns") }}</Label>
-            <p class="text-sm text-muted-foreground">
+            <Label>
+              {{ t("dataQuality.editor.expectedColumns") }}
+              <span class="text-destructive">*</span>
+            </Label>
+            <p
+              v-if="errorFor('expectedColumns')"
+              class="text-sm text-destructive"
+            >
+              {{ errorFor("expectedColumns") }}
+            </p>
+            <p
+              v-else
+              class="text-sm text-muted-foreground"
+            >
               {{ t("dataQuality.editor.expectedColumnsHint") }}
             </p>
           </div>
@@ -468,11 +621,17 @@
         <div class="grid gap-4 sm:grid-cols-2">
           <FormField
             v-model="config.failThreshold"
+            :id="fieldId('failThreshold')"
+            :required="requiredFor('failThreshold')"
+            :error="errorFor('failThreshold')"
             type="number"
             :label="t('dataQuality.editor.failThreshold')"
           />
           <FormField
             v-model="config.warnThreshold"
+            :id="fieldId('warnThreshold')"
+            :required="requiredFor('warnThreshold')"
+            :error="errorFor('warnThreshold')"
             type="number"
             :label="t('dataQuality.editor.warnThreshold')"
           />
@@ -488,17 +647,26 @@
         multiple
         :model-value="csvColumns(config.groupColumns)"
         :columns="columnDetails"
+        :id="fieldId('groupColumns')"
+        :required="requiredFor('groupColumns')"
+        :error="errorFor('groupColumns')"
         :label="t('dataQuality.editor.groupColumns')"
         :hint="t('dataQuality.editor.groupColumnsHint')"
         @update:model-value="(value) => setCsvColumns('groupColumns', value)"
       />
       <FormField
         v-model="config.minRowsPerGroup"
+        :id="fieldId('minRowsPerGroup')"
+        :required="requiredFor('minRowsPerGroup')"
+        :error="errorFor('minRowsPerGroup')"
         type="number"
         :label="t('dataQuality.editor.minRowsPerGroup')"
       />
       <FormField
         v-model="config.maxRowsPerGroup"
+        :id="fieldId('maxRowsPerGroup')"
+        :required="requiredFor('maxRowsPerGroup')"
+        :error="errorFor('maxRowsPerGroup')"
         type="number"
         :label="t('dataQuality.editor.maxRowsPerGroup')"
       />
@@ -509,6 +677,9 @@
                   <ColumnSelect
             :model-value="config.aggregateColumn ?? ''"
             :columns="columnDetails"
+            :id="fieldId('aggregateColumn')"
+            :required="requiredFor('aggregateColumn')"
+            :error="errorFor('aggregateColumn')"
             :label="t('dataQuality.editor.column')"
             :hint="t('dataQuality.editor.columnHint')"
             @update:model-value="(value) => setColumn('aggregateColumn', value)"
@@ -539,21 +710,33 @@
         />
         <FormField
           v-model="config.aggMin"
+          :id="fieldId('aggMin')"
+          :required="requiredFor('aggMin')"
+          :error="errorFor('aggMin')"
           type="number"
           :label="t('dataQuality.editor.minValue')"
         />
         <FormField
           v-model="config.aggMax"
+          :id="fieldId('aggMax')"
+          :required="requiredFor('aggMax')"
+          :error="errorFor('aggMax')"
           type="number"
           :label="t('dataQuality.editor.maxValue')"
         />
         <FormField
           v-model="config.aggWarnMin"
+          :id="fieldId('aggWarnMin')"
+          :required="requiredFor('aggWarnMin')"
+          :error="errorFor('aggWarnMin')"
           type="number"
           :label="t('dataQuality.editor.warnMin')"
         />
         <FormField
           v-model="config.aggWarnMax"
+          :id="fieldId('aggWarnMax')"
+          :required="requiredFor('aggWarnMax')"
+          :error="errorFor('aggWarnMax')"
           type="number"
           :label="t('dataQuality.editor.warnMax')"
         />
@@ -570,6 +753,9 @@
     >
       <FormField
         v-model="config.rightTable"
+        :id="fieldId('rightTable')"
+        :required="requiredFor('rightTable')"
+        :error="errorFor('rightTable')"
         class="sm:col-span-2"
         :label="t('dataQuality.editor.rightTable')"
         :hint="t('dataQuality.editor.rightTableHint')"
@@ -597,6 +783,9 @@
       <ColumnSelect
         :model-value="config.leftAggColumn ?? ''"
         :columns="columnDetails"
+        :id="fieldId('leftAggColumn')"
+        :required="requiredFor('leftAggColumn')"
+        :error="errorFor('leftAggColumn')"
         :disabled="leftAggregateIsCount"
         :label="t('dataQuality.editor.leftColumn')"
         :hint="leftAggregateIsCount ? t('dataQuality.editor.countNeedsNoColumn') : t('dataQuality.editor.columnHint')"
@@ -625,6 +814,9 @@
       <ColumnSelect
         :model-value="config.rightAggColumn ?? ''"
         :columns="columnDetails"
+        :id="fieldId('rightAggColumn')"
+        :required="requiredFor('rightAggColumn')"
+        :error="errorFor('rightAggColumn')"
         :disabled="rightAggregateIsCount"
         :label="t('dataQuality.editor.rightColumn')"
         :hint="rightAggregateIsCount ? t('dataQuality.editor.countNeedsNoColumn') : t('dataQuality.editor.rightColumnHint')"
@@ -632,6 +824,9 @@
       />
       <FormField
         v-model="config.tolerance"
+        :id="fieldId('tolerance')"
+        :required="requiredFor('tolerance')"
+        :error="errorFor('tolerance')"
         type="number"
         class="sm:col-span-2"
         :label="t('dataQuality.editor.tolerance')"
@@ -642,14 +837,27 @@
       <div class="space-y-2">
         <Label for="dq-config-cel">
           {{ t("dataQuality.editor.celExpression") }}
+          <span class="text-destructive">*</span>
         </Label>
         <textarea
           id="dq-config-cel"
           v-model="config.celExpression"
           class="min-h-48 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm"
+          :aria-required="true"
+          :aria-invalid="errorFor('celExpression') ? true : undefined"
+          :class="errorFor('celExpression') ? 'border-destructive' : ''"
           :placeholder="t('dataQuality.editor.celExpressionPlaceholder')"
         />
-        <p class="text-sm text-muted-foreground">
+        <p
+          v-if="errorFor('celExpression')"
+          class="text-sm text-destructive"
+        >
+          {{ errorFor("celExpression") }}
+        </p>
+        <p
+          v-else
+          class="text-sm text-muted-foreground"
+        >
           {{ t("dataQuality.editor.celExpressionHint") }}
         </p>
       </div>
@@ -658,12 +866,18 @@
           multiple
           :model-value="csvColumns(config.celColumns)"
           :columns="columnDetails"
+          :id="fieldId('celColumns')"
+          :required="requiredFor('celColumns')"
+          :error="errorFor('celColumns')"
           :label="t('dataQuality.editor.celColumns')"
           :hint="t('dataQuality.editor.celColumnsHint')"
           @update:model-value="(value) => setCsvColumns('celColumns', value)"
         />
         <FormField
           v-model="config.celSampleRows"
+          :id="fieldId('celSampleRows')"
+          :required="requiredFor('celSampleRows')"
+          :error="errorFor('celSampleRows')"
           type="number"
           :label="t('dataQuality.editor.celSampleRows')"
           :hint="t('dataQuality.editor.celSampleRowsHint')"
@@ -710,6 +924,7 @@ import {
   type SchemaDriftColumnForm,
   type TargetColumnDetail,
 } from "@/utils/dataQualityForm";
+import { isFieldRequired, oneOfGroups } from "@/utils/dataQualitySchema";
 import CheckboxField from "./CheckboxField.vue";
 
 /**
@@ -723,8 +938,10 @@ const props = withDefaults(
     ruleType: QualityRuleType;
     /** Used by the schema-drift snapshot's "fill from target" action. */
     columnDetails?: TargetColumnDetail[];
+    /** Inline errors keyed by config field, from the editor's pre-flight check. */
+    fieldErrors?: Record<string, string>;
   }>(),
-  { columnDetails: () => [] }
+  { columnDetails: () => [], fieldErrors: () => ({}) }
 );
 
 const config = defineModel<RuleConfigForm>({ required: true });
@@ -733,6 +950,25 @@ const thresholdMetric = defineModel<QualityThresholdMetric>("thresholdMetric", {
 });
 
 const { t } = useI18n();
+
+function fieldId(field: string): string {
+  return `dq-field-${field}`;
+}
+
+function requiredFor(field: string): boolean {
+  return isFieldRequired(props.ruleType, field);
+}
+
+function errorFor(field: string): string {
+  return props.fieldErrors[field] ?? "";
+}
+
+/** One line per "at least one of" group, so the group's rule is visible. */
+const oneOfHints = computed(() =>
+  [...oneOfGroups(props.ruleType).values()].map((fields) =>
+    fields.map((field) => t(field.labelKey)).join(" / ")
+  )
+);
 
 /** A CSV column field as the picker's array form. */
 function csvColumns(value: string | undefined): string[] {

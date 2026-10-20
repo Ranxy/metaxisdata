@@ -47,22 +47,62 @@
       class="mx-auto w-full max-w-[960px] space-y-3"
     >
       <Alert
+        v-if="missingFields.length > 0"
+        variant="destructive"
+      >
+        <AlertTriangle class="h-4 w-4" />
+        <AlertTitle>{{ t("dataQuality.editor.missingRequiredTitle") }}</AlertTitle>
+        <AlertDescription>
+          <ul class="list-disc space-y-1 pl-5">
+            <li
+              v-for="(label, index) in missingFieldLabels"
+              :key="index"
+            >
+              {{ label }}
+            </li>
+          </ul>
+        </AlertDescription>
+      </Alert>
+      <Alert
+        v-if="dryRunError.message"
+        variant="destructive"
+      >
+        <AlertTriangle class="h-4 w-4" />
+        <AlertTitle>{{ t("dataQuality.editor.dryRunFailed") }}</AlertTitle>
+        <AlertDescription class="space-y-2">
+          <p class="break-words">{{ dryRunError.message }}</p>
+          <RuleErrorDetails
+            :parsed="dryRunError"
+            :raw="dryRunErrorRaw"
+            :parameter-hint="isParameterError(dryRunError.message)"
+            :missing-labels="unboundFilterColumns"
+          />
+        </AlertDescription>
+      </Alert>
+      <Alert
         v-if="saveError"
         variant="destructive"
       >
         <AlertTriangle class="h-4 w-4" />
         <AlertTitle>{{ t("dataQuality.editor.saveFailed") }}</AlertTitle>
-        <AlertDescription class="flex items-start justify-between gap-3">
-          <span class="break-words">{{ saveError }}</span>
-          <button
-            type="button"
-            class="shrink-0 rounded-sm p-0.5 text-destructive hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            :aria-label="t('common.close')"
-            :title="t('common.close')"
-            @click="saveError = ''"
-          >
-            <X class="h-4 w-4" />
-          </button>
+        <AlertDescription class="space-y-2">
+          <div class="flex items-start justify-between gap-3">
+            <span class="break-words">{{ saveError }}</span>
+            <button
+              type="button"
+              class="shrink-0 rounded-sm p-0.5 text-destructive hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              :aria-label="t('common.close')"
+              :title="t('common.close')"
+              @click="saveError = ''"
+            >
+              <X class="h-4 w-4" />
+            </button>
+          </div>
+          <RuleErrorDetails
+            :parsed="saveErrorDetails"
+            :parameter-hint="isParameterError(saveError)"
+            :missing-labels="unboundFilterColumns"
+          />
         </AlertDescription>
       </Alert>
       <Alert
@@ -414,6 +454,7 @@
               v-model:threshold-metric="form.thresholdMetric"
               :rule-type="form.ruleType"
               :column-details="targetColumnDetails"
+              :field-errors="fieldErrors"
             />
             <div class="max-w-sm space-y-1.5 border-t pt-4">
               <Label for="dq-rule-on-empty">
@@ -539,7 +580,7 @@ import {
   Sparkles,
   X,
 } from "lucide-vue-next";
-import { computed, nextTick, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import {
@@ -557,6 +598,7 @@ import PageState from "@/components/common/PageState.vue";
 import UserSelect from "@/components/common/UserSelect.vue";
 import QualityDraftDialog from "@/components/data-quality/QualityDraftDialog.vue";
 import RuleConfigForm from "@/components/data-quality/RuleConfigForm.vue";
+import RuleErrorDetails from "@/components/data-quality/RuleErrorDetails.vue";
 import RuleFilterEditor from "@/components/data-quality/RuleFilterEditor.vue";
 import TargetPicker from "@/components/data-quality/TargetPicker.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
@@ -620,6 +662,14 @@ import {
   validateRuleForm,
 } from "@/utils/dataQualityForm";
 import { llmFeatureAvailability } from "@/utils/dataQualityLlm";
+import {
+  isParameterError,
+  type MissingField,
+  missingFieldElementId,
+  missingRequiredFields,
+  type ParsedRuleError,
+  parseRuleError,
+} from "@/utils/dataQualitySchema";
 import { suggestionToEditorPrefill } from "@/utils/dataQualitySuggestion";
 import { metaTypeSingularLabel } from "@/utils/metaType";
 
@@ -653,6 +703,37 @@ const canSave = computed(() =>
 // still work there, so the dry run is only attempted when it can succeed.
 const canPreview = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.rules.run")
+);
+
+/** The inline messages RuleConfigForm renders under the offending fields. */
+function missingMessage(field: MissingField): string {
+  if (field.oneOfKeys) {
+    return t("dataQuality.schema.atLeastOne", {
+      fields: field.oneOfKeys.map((key) => t(key)).join(" / "),
+    });
+  }
+  return t(field.labelKey ?? "");
+}
+
+const fieldErrors = computed(() => {
+  const errors: Record<string, string> = {};
+  for (const field of missingFields.value) {
+    errors[field.field] = missingMessage(field);
+  }
+  return errors;
+});
+
+const missingFieldLabels = computed(() =>
+  missingFields.value.map((field) => missingMessage(field))
+);
+
+/** Filter clauses that name a column but bind no value: a likely arg mismatch. */
+const unboundFilterColumns = computed(() =>
+  form.value.filter
+    .filter(
+      (clause) => clause.column.trim() !== "" && clause.values.trim() === ""
+    )
+    .map((clause) => clause.column)
 );
 
 const pageTitle = computed(() =>
@@ -708,6 +789,11 @@ const preview = ref<
 >();
 const previewError = ref("");
 const saveError = ref("");
+/** The save/preview error split into its readable parts. */
+const saveErrorDetails = ref<ParsedRuleError>({ message: "" });
+const dryRunError = ref<ParsedRuleError>({ message: "" });
+const dryRunErrorRaw = ref("");
+const missingFields = ref<MissingField[]>([]);
 const issues = ref<ReturnType<typeof validateRuleForm>>([]);
 
 /** The rule as loaded, for the update mask; undefined when creating. */
@@ -760,6 +846,16 @@ const ruleName = computed(() => {
   return Array.isArray(param) ? param.join("/") : String(param ?? "");
 });
 
+watch(
+  () => [form.value, target.value] as const,
+  () => {
+    if (missingFields.value.length > 0) {
+      missingFields.value = missingRequiredFields(form.value, target.value);
+    }
+  },
+  { deep: true }
+);
+
 function changeRuleType(value: unknown) {
   const ruleType = Number(value) as QualityRuleType;
   if (ruleType === form.value.ruleType) {
@@ -804,7 +900,38 @@ function onTargetSelected(selection: TargetSelection) {
 
 async function focusFeedback() {
   await nextTick();
-  feedbackRef.value?.scrollIntoView({ behavior: "smooth", block: "center" });
+  feedbackRef.value?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+}
+
+/** Scroll to and focus the first field the rule still needs. */
+async function focusFirstMissing() {
+  await nextTick();
+  const first = missingFields.value[0];
+  if (!first) {
+    return;
+  }
+  const element = document.getElementById(missingFieldElementId(first.field));
+  element?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+  (element as HTMLElement | null)?.focus?.();
+}
+
+/**
+ * The pre-flight check both Dry run and Save run first: a missing required
+ * field is reported in place, and no request is sent for a rule that cannot
+ * compile. This is what keeps "expected 2 arguments, got 0" from being the
+ * first thing the user hears about an incomplete rule.
+ */
+function ensureComplete(): boolean {
+  missingFields.value = missingRequiredFields(form.value, target.value);
+  if (missingFields.value.length === 0) {
+    return true;
+  }
+  dryRunError.value = { message: "" };
+  dryRunErrorRaw.value = "";
+  saveError.value = "";
+  issues.value = [];
+  void focusFirstMissing();
+  return false;
 }
 
 /**
@@ -960,6 +1087,8 @@ function runValidation(): boolean {
 async function runPreview(): Promise<boolean> {
   previewing.value = true;
   previewError.value = "";
+  dryRunError.value = { message: "" };
+  dryRunErrorRaw.value = "";
   try {
     const result = await previewQualityRule(currentRule());
     preview.value = {
@@ -970,7 +1099,10 @@ async function runPreview(): Promise<boolean> {
     return true;
   } catch (e: unknown) {
     preview.value = undefined;
-    previewError.value = formatError(e, "dataQuality.editor.previewFailed");
+    const raw = formatError(e, "dataQuality.editor.previewFailed");
+    dryRunErrorRaw.value = raw;
+    dryRunError.value = parseRuleError(raw);
+    void focusFeedback();
     return false;
   } finally {
     previewing.value = false;
@@ -978,6 +1110,9 @@ async function runPreview(): Promise<boolean> {
 }
 
 async function dryRun() {
+  if (!ensureComplete()) {
+    return;
+  }
   if (!runValidation()) {
     return;
   }
@@ -988,6 +1123,9 @@ async function dryRun() {
 
 async function save() {
   if (!canSave.value || saving.value) {
+    return;
+  }
+  if (!ensureComplete()) {
     return;
   }
   if (!runValidation()) {
@@ -1033,7 +1171,9 @@ async function save() {
   } catch (e: unknown) {
     // The server's Invalid message names the field or the compiled-SQL problem;
     // show it at the top where the reader lands, not under the whole form.
-    saveError.value = formatError(e, "dataQuality.editor.saveFailed");
+    const raw = formatError(e, "dataQuality.editor.saveFailed");
+    saveError.value = parseRuleError(raw).message;
+    saveErrorDetails.value = parseRuleError(raw);
     void focusFeedback();
   } finally {
     saving.value = false;
