@@ -3,6 +3,7 @@ package v1
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"log/slog"
 	"slices"
 	"strings"
@@ -660,12 +661,12 @@ func (s *DataQualityService) probeQualityRule(ctx context.Context, validated *da
 		return connect.NewError(connect.CodeFailedPrecondition,
 			errors.Errorf("engine %s does not support read-only queries", validated.Target.Engine))
 	}
-	_, probeErr := queryer.QueryReadOnly(ctx, qualityRuleProbeSQL(validated), db.QueryOptions{
+	_, probeErr := queryer.QueryReadOnly(ctx, qualityRuleProbeSQL(validated), validated.Compiled.Args, db.QueryOptions{
 		MaxRows: 1,
 		Timeout: qualityPreviewProbeTimeout,
 	})
 	if probeErr != nil {
-		return qualityProbeError(probeErr)
+		return qualityProbeError(probeErr, validated)
 	}
 	return nil
 }
@@ -673,19 +674,51 @@ func (s *DataQualityService) probeQualityRule(ctx context.Context, validated *da
 // qualityProbeError maps a failed dry run. A connection, credential or
 // permission failure is a misconfigured data source rather than an invalid rule,
 // so it becomes FailedPrecondition; anything the query itself caused stays
-// InvalidArgument. Either message is the sanitized class text, never the driver's
-// own words.
-func qualityProbeError(err error) error {
+// InvalidArgument.
+//
+// The message carries the compiled statement and its bound values: a dry-run
+// failure is usually a parameter problem, and the sanitized class alone ("the
+// query failed") leaves the author with nothing to fix. The statement is the
+// user's own rule, so echoing it leaks nothing they did not write; the values are
+// truncated.
+func qualityProbeError(err error, validated *dataquality.ValidatedRule) error {
 	code, message := dataquality.ClassifyError(err)
+	detail := qualityProbeErrorDetail(validated)
 	switch code {
 	case dataquality.ErrCodeAuth, dataquality.ErrCodePermission, dataquality.ErrCodeConnection,
 		dataquality.ErrCodeTimeout, dataquality.ErrCodeLimitExceeded, dataquality.ErrCodeNoReadOnly:
 		return connect.NewError(connect.CodeFailedPrecondition,
-			errors.Errorf("the dry run could not reach the target data source: %s", message))
+			errors.Errorf("the dry run could not reach the target data source: %s%s", message, detail))
 	default:
 		return connect.NewError(connect.CodeInvalidArgument,
-			errors.Errorf("the rule's compiled query failed the dry run: %s", message))
+			errors.Errorf("the rule's compiled query failed the dry run: %s%s", message, detail))
 	}
+}
+
+// qualityProbeErrorDetail renders the compiled statement and its parameters for a
+// dry-run error, bounded so a long custom statement cannot make the message
+// unusable.
+func qualityProbeErrorDetail(validated *dataquality.ValidatedRule) string {
+	if validated == nil {
+		return ""
+	}
+	statement := truncateForError(strings.TrimSpace(validated.Compiled.SQL), 2048)
+	parameters := make([]string, 0, len(validated.Compiled.Args))
+	for _, argument := range validated.Compiled.Args {
+		parameters = append(parameters, truncateForError(formatQueryParameter(argument), 128))
+	}
+	if statement == "" {
+		return ""
+	}
+	return fmt.Sprintf(" (compiled SQL: %s; parameters: [%s])", statement, strings.Join(parameters, ", "))
+}
+
+// truncateForError bounds a fragment carried by an error message.
+func truncateForError(value string, limit int) string {
+	if len(value) <= limit {
+		return value
+	}
+	return value[:limit] + "…"
 }
 
 // RunQualityRules creates one manual run per selected instance and queues it.

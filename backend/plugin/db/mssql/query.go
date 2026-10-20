@@ -13,6 +13,6 @@ var _ db.ReadOnlyQueryer = (*Driver)(nil)
 // RunReadOnlyQuery falls back to a plain transaction: the read-only guarantee
 // is the SELECT-only statement the compiler produced plus a read-only account,
 // as the design records.
-func (d *Driver) QueryReadOnly(ctx context.Context, query string, opts db.QueryOptions) (*db.QueryResult, error) {
-	return db.RunReadOnlyQuery(ctx, d.db, query, opts, db.ReadOnlyQueryHooks{})
+func (d *Driver) QueryReadOnly(ctx context.Context, query string, args []any, opts db.QueryOptions) (*db.QueryResult, error) {
+	return db.RunReadOnlyQuery(ctx, d.db, query, args, opts, db.ReadOnlyQueryHooks{})
 }

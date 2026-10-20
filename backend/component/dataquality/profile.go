@@ -104,7 +104,7 @@ func (*Profiler) Profile(ctx context.Context, queryer db.ReadOnlyQueryer, target
 
 	// The aggregate is exact over the whole table; it is the source of truth for
 	// totals, null counts, distinct counts and extremes.
-	aggregate, err := queryer.QueryReadOnly(ctx, buildProfileAggregateSQL(dialect, table, selected), db.QueryOptions{
+	aggregate, err := queryer.QueryReadOnly(ctx, buildProfileAggregateSQL(dialect, table, selected), nil, db.QueryOptions{
 		MaxRows:  1,
 		MaxBytes: opts.MaxBytes,
 		Timeout:  opts.QueryTimeout,
@@ -120,7 +120,7 @@ func (*Profiler) Profile(ctx context.Context, queryer db.ReadOnlyQueryer, target
 	// The sample is bounded and only feeds the value-frequency and value-shape
 	// summaries. A failed sample fails the profile: a profile that silently
 	// omitted its patterns would look complete while being wrong.
-	sample, err := queryer.QueryReadOnly(ctx, buildProfileSampleSQL(dialect, table, selected, opts.SampleRows), db.QueryOptions{
+	sample, err := queryer.QueryReadOnly(ctx, buildProfileSampleSQL(dialect, table, selected, opts.SampleRows), nil, db.QueryOptions{
 		MaxRows:  opts.SampleRows,
 		MaxBytes: opts.MaxBytes,
 		Timeout:  opts.QueryTimeout,

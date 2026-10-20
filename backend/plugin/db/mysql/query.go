@@ -15,8 +15,8 @@ var _ db.ReadOnlyQueryer = (*Driver)(nil)
 // sends START TRANSACTION READ ONLY, but the MySQL-wire engines do not all
 // implement it; RunReadOnlyQuery falls back to a plain transaction there, and a
 // read-only account remains the guard.
-func (d *Driver) QueryReadOnly(ctx context.Context, query string, opts db.QueryOptions) (*db.QueryResult, error) {
-	return db.RunReadOnlyQuery(ctx, d.db, query, opts, ReadOnlyQueryHooks(opts.Timeout))
+func (d *Driver) QueryReadOnly(ctx context.Context, query string, args []any, opts db.QueryOptions) (*db.QueryResult, error) {
+	return db.RunReadOnlyQuery(ctx, d.db, query, args, opts, ReadOnlyQueryHooks(opts.Timeout))
 }
 
 // ReadOnlyQueryHooks returns the hooks that bound a SELECT server-side on the
