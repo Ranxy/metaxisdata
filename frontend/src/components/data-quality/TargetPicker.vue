@@ -5,9 +5,11 @@
   >
     <DialogContent class="max-w-2xl">
       <DialogHeader>
-        <DialogTitle>{{ t("dataQuality.target.title") }}</DialogTitle>
+        <DialogTitle>
+          {{ isScopeMode ? t("dataQuality.targetScope.title") : t("dataQuality.target.title") }}
+        </DialogTitle>
         <DialogDescription>
-          {{ t("dataQuality.target.description") }}
+          {{ isScopeMode ? t("dataQuality.targetScope.description") : t("dataQuality.target.description") }}
         </DialogDescription>
       </DialogHeader>
 
@@ -81,12 +83,22 @@
         </div>
       </div>
 
-      <DialogFooter>
+      <DialogFooter class="gap-2">
         <Button
           variant="outline"
           @click="emit('update:open', false)"
         >
           {{ t("common.cancel") }}
+        </Button>
+        <!-- In scope mode the picked path itself is the answer: the reader can
+             stop at an instance, database, schema or drill all the way into a
+             table. A table row applies directly, like it selects a target. -->
+        <Button
+          v-if="isScopeMode"
+          :disabled="!currentScope.instance"
+          @click="applyCurrentScope"
+        >
+          {{ t("dataQuality.targetScope.apply") }}
         </Button>
       </DialogFooter>
     </DialogContent>
@@ -115,6 +127,7 @@ import { useInstanceStore } from "@/store/modules/instance";
 import type { Engine } from "@/types/proto-es/v1/common_pb";
 import type { StoredMetadata } from "@/types/proto-es/v1/database_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
+import type { QualityTargetScope } from "@/utils/dataQuality";
 import {
   TARGET_META_TYPES,
   type TargetSelection,
@@ -128,18 +141,31 @@ import { metaTypeSingularLabel } from "@/utils/metaType";
  * rule; the column it checks is chosen in the rule form, because that is part of
  * the typed config rather than of the target identity.
  *
+ * `mode="scope"` reuses the same browser as the rules list's target-scope
+ * filter: instead of only a table, the picked path itself is the answer, so the
+ * footer applies whatever level the reader has reached (instance, database,
+ * schema) and a table row applies that table.
+ *
  * The list is a dialog so it keeps the form's scroll position, and so the
  * layout audit's nested-scroller rule (which measures the page) never sees it.
  */
 
-const props = defineProps<{
-  open: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    open: boolean;
+    /** `scope` applies the picked path prefix instead of requiring a table. */
+    mode?: "target" | "scope";
+  }>(),
+  { mode: "target" }
+);
 
 const emit = defineEmits<{
   "update:open": [value: boolean];
   select: [selection: TargetSelection];
+  selectScope: [scope: QualityTargetScope];
 }>();
+
+const isScopeMode = computed(() => props.mode === "scope");
 
 type Step = "instance" | "database" | "schema" | "table";
 
@@ -203,6 +229,26 @@ const breadcrumb = computed(() => {
   }
   return crumbs;
 });
+
+/**
+ * The deepest path already chosen while browsing. The level on screen is the one
+ * below it, so a reader who applies here narrows to this subtree.
+ */
+const currentScope = computed<Omit<QualityTargetScope, "label">>(() => ({
+  instance: instanceId.value,
+  // A database chip exists from the schema step on; the schema from the table
+  // step on, and it may legitimately be empty for the MySQL family.
+  database:
+    step.value === "schema" || step.value === "table" ? database.value : "",
+  schema: step.value === "table" ? schema.value : "",
+  table: "",
+}));
+
+const currentScopeLabel = computed(() =>
+  [instanceTitle.value, currentScope.value.database, currentScope.value.schema]
+    .filter(Boolean)
+    .join(" > ")
+);
 
 const visibleItems = computed(() => {
   const term = filter.value.trim().toLowerCase();
@@ -397,6 +443,19 @@ function choose(item: BrowserItem) {
       void chooseSchema(item.name, item.guid);
       return;
     default:
+      if (isScopeMode.value) {
+        emit("selectScope", {
+          instance: instanceId.value,
+          database: database.value,
+          schema: schema.value,
+          table: item.name,
+          label: [instanceTitle.value, database.value, schema.value, item.name]
+            .filter(Boolean)
+            .join(" > "),
+        });
+        emit("update:open", false);
+        return;
+      }
       emit("select", {
         guid: item.guid,
         metaType: item.metaType,
@@ -410,5 +469,17 @@ function choose(item: BrowserItem) {
       });
       emit("update:open", false);
   }
+}
+
+/** Apply the path prefix the reader has reached, without choosing another level. */
+function applyCurrentScope() {
+  if (!currentScope.value.instance) {
+    return;
+  }
+  emit("selectScope", {
+    ...currentScope.value,
+    label: currentScopeLabel.value,
+  });
+  emit("update:open", false);
 }
 </script>

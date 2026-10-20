@@ -77,7 +77,10 @@ function metadataPage(parent: string) {
   return { typesStoredMetadata: page, nextPageToken: "" };
 }
 
-async function mountPicker(engine: Engine) {
+async function mountPicker(
+  engine: Engine,
+  mode: "target" | "scope" = "target"
+) {
   mocks.listAllInstances.mockResolvedValue([instance(engine)]);
   mocks.listMetadata.mockImplementation(async ({ parentGuid }) =>
     metadataPage(parentGuid)
@@ -86,11 +89,19 @@ async function mountPicker(engine: Engine) {
   setActivePinia(pinia);
   const wrapper = mount(TargetPicker, {
     attachTo: document.body,
-    props: { open: true },
+    props: { open: true, mode },
     global: { plugins: [i18n, pinia] },
   });
   await flushPromises();
   return wrapper;
+}
+
+/** The footer action that applies the scope the reader has reached. */
+function applyScopeButton() {
+  const label = i18n.global.t("dataQuality.targetScope.apply");
+  return [
+    ...document.body.querySelectorAll<HTMLElement>('[role="dialog"] button'),
+  ].find((candidate) => candidate.textContent?.trim() === label);
 }
 
 function clickRow(name: string) {
@@ -164,6 +175,84 @@ describe("TargetPicker", () => {
       | undefined;
     expect(selection?.guid).toBe("inst1;db1;public;orders");
     expect(selection?.path.schema).toBe("public");
+    wrapper.unmount();
+  });
+
+  it("applies the reached level as a target scope instead of a table", async () => {
+    const wrapper = await mountPicker(Engine.POSTGRES, "scope");
+    clickRow("Orders");
+    await flushPromises();
+
+    applyScopeButton()?.click();
+    await flushPromises();
+
+    expect(wrapper.emitted("selectScope")?.[0]?.[0]).toEqual({
+      instance: "inst1",
+      database: "",
+      schema: "",
+      table: "",
+      label: "Orders",
+    });
+    wrapper.unmount();
+  });
+
+  it("applies a schema-level scope and a table row as a table scope", async () => {
+    const wrapper = await mountPicker(Engine.POSTGRES, "scope");
+    clickRow("Orders");
+    await flushPromises();
+    clickRow("shop");
+    await flushPromises();
+    clickRow("public");
+    await flushPromises();
+
+    applyScopeButton()?.click();
+    await flushPromises();
+    expect(wrapper.emitted("selectScope")?.[0]?.[0]).toEqual({
+      instance: "inst1",
+      database: "shop",
+      schema: "public",
+      table: "",
+      label: "Orders > shop > public",
+    });
+
+    clickRow("orders");
+    await flushPromises();
+    expect(wrapper.emitted("selectScope")?.[1]?.[0]).toEqual({
+      instance: "inst1",
+      database: "shop",
+      schema: "public",
+      table: "orders",
+      label: "Orders > shop > public > orders",
+    });
+    wrapper.unmount();
+  });
+
+  it("keeps the MySQL family's empty schema out of the applied scope", async () => {
+    const wrapper = await mountPicker(Engine.MYSQL, "scope");
+    clickRow("Orders");
+    await flushPromises();
+    clickRow("shop");
+    await flushPromises();
+
+    applyScopeButton()?.click();
+    await flushPromises();
+    expect(wrapper.emitted("selectScope")?.[0]?.[0]).toEqual({
+      instance: "inst1",
+      database: "shop",
+      schema: "",
+      table: "",
+      label: "Orders > shop",
+    });
+
+    clickRow("orders");
+    await flushPromises();
+    expect(wrapper.emitted("selectScope")?.[1]?.[0]).toEqual({
+      instance: "inst1",
+      database: "shop",
+      schema: "",
+      table: "orders",
+      label: "Orders > shop > orders",
+    });
     wrapper.unmount();
   });
 
