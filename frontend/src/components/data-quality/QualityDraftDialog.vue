@@ -315,25 +315,11 @@ async function generate() {
   }
 }
 
-async function accept(suggestion: QualitySuggestion) {
-  if (busyName.value !== "") {
-    return;
-  }
-  busyName.value = suggestion.name;
-  error.value = "";
-  try {
-    await updateQualitySuggestion({
-      name: suggestion.name,
-      decision: QualitySuggestionStatus.ACCEPTED,
-      note: "",
-    });
-    emit("accepted", suggestion);
-    emit("update:open", false);
-  } catch (e: unknown) {
-    fail(e);
-  } finally {
-    busyName.value = "";
-  }
+/** Opening a draft only prefills the editor. The editor records the acceptance
+ * after the rule is created, so a cancelled draft stays pending for review. */
+function accept(suggestion: QualitySuggestion) {
+  emit("accepted", suggestion);
+  emit("update:open", false);
 }
 
 async function reject(suggestion: QualitySuggestion) {

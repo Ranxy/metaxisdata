@@ -183,7 +183,10 @@
               v-if="suggestion.status === QualitySuggestionStatus.PENDING && canDecide"
               class="space-y-2 border-t pt-4"
             >
-              <div class="space-y-1.5">
+              <div
+                v-if="!draft"
+                class="space-y-1.5"
+              >
                 <Label for="dq-suggestion-note">
                   {{ t("dataQuality.suggestions.note") }}
                 </Label>
@@ -209,14 +212,18 @@
                   {{ t("dataQuality.suggestions.reject") }}
                 </Button>
                 <Button
+                  v-if="draft"
+                  :disabled="deciding || !canCreateRule"
+                  @click="emit('openEditor')"
+                >
+                  {{ t("dataQuality.suggestions.openInEditor") }}
+                </Button>
+                <Button
+                  v-else
                   :disabled="deciding"
                   @click="emit('accept', note)"
                 >
-                  {{
-                    draft && canCreateRule
-                      ? t("dataQuality.suggestions.acceptAndEdit")
-                      : t("dataQuality.suggestions.accept")
-                  }}
+                  {{ t("dataQuality.suggestions.accept") }}
                 </Button>
               </div>
             </section>
@@ -318,6 +325,7 @@ const emit = defineEmits<{
   "update:open": [value: boolean];
   accept: [note: string];
   reject: [note: string];
+  openEditor: [];
 }>();
 
 const { t, locale } = useI18n();

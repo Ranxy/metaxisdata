@@ -112,12 +112,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { useErrorMessage } from "@/composables/useErrorHandler";
 import { useInstanceStore } from "@/store/modules/instance";
+import type { Engine } from "@/types/proto-es/v1/common_pb";
 import type { StoredMetadata } from "@/types/proto-es/v1/database_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
   TARGET_META_TYPES,
   type TargetSelection,
 } from "@/utils/dataQualityForm";
+import { isSchemaLessEngine } from "@/utils/engine";
 import { metaTypeSingularLabel } from "@/utils/metaType";
 
 /**
@@ -162,6 +164,7 @@ const loading = ref(false);
 const error = ref("");
 const items = ref<BrowserItem[]>([]);
 const instanceTitle = ref("");
+const instanceEngine = ref<Engine>();
 
 const instances = computed(() => instanceStore.active);
 
@@ -177,7 +180,9 @@ const breadcrumb = computed(() => {
     crumbs.push({
       key: "database",
       label: database.value,
-      current: step.value === "schema",
+      current:
+        step.value === "schema" ||
+        (step.value === "table" && schema.value === ""),
     });
   }
   if (schema.value) {
@@ -185,6 +190,15 @@ const breadcrumb = computed(() => {
       key: "schema",
       label: schema.value,
       current: step.value === "table",
+    });
+  }
+  // The MySQL family has no schema level, so the last breadcrumb is the table
+  // level itself rather than a blank chip.
+  if (step.value === "table") {
+    crumbs.push({
+      key: "table",
+      label: t("dataQuality.target.tables"),
+      current: true,
     });
   }
   return crumbs;
@@ -219,6 +233,8 @@ const emptyLabel = computed(() => {
 });
 
 // `props` is read in the watcher; keep the binding named so the linter sees it.
+// `immediate` matters when the picker is mounted already open (tests, dialogs
+// restored from state); the normal flow opens it from closed.
 watch(
   () => props.open,
   (isOpen) => {
@@ -226,13 +242,15 @@ watch(
       reset();
       void loadInstances();
     }
-  }
+  },
+  { immediate: true }
 );
 
 function reset() {
   step.value = "instance";
   instanceId.value = "";
   instanceTitle.value = "";
+  instanceEngine.value = undefined;
   database.value = "";
   databaseGuid.value = "";
   schema.value = "";
@@ -279,6 +297,7 @@ function storedMetadataName(item: StoredMetadata): string {
 async function chooseInstance(id: string, title: string) {
   instanceId.value = id;
   instanceTitle.value = title;
+  instanceEngine.value = instanceStore.byName(`instances/${id}`)?.engine;
   database.value = "";
   databaseGuid.value = "";
   schema.value = "";
@@ -292,11 +311,17 @@ async function chooseDatabase(name: string, guid: string) {
   databaseGuid.value = guid;
   schema.value = "";
   schemaGuid.value = "";
+  // The MySQL family has no schema level: the tables live directly under the
+  // database, and their parent GUID keeps a trailing semicolon for the empty
+  // schema segment. Asking for a schema would only show a blank level.
+  if (isSchemaLessEngine(instanceEngine.value)) {
+    await showTables();
+    return;
+  }
   step.value = "schema";
   await browse(async () => await loadGroups(guid, [MetaType.SCHEMA]));
-  // MySQL-family instances have no real schema level. When the schema list is
-  // empty the tables live directly under the database, whose parent GUID keeps a
-  // trailing semicolon for the empty schema segment.
+  // PostgreSQL/MSSQL deployments may still have no schema rows; the tables then
+  // live directly under the database, so keep that path working.
   if (items.value.length === 0 && !error.value) {
     await showTables();
   }
@@ -325,7 +350,10 @@ async function browse(load: () => Promise<BrowserItem[]>) {
   error.value = "";
   filter.value = "";
   try {
-    items.value = await load();
+    const loaded = await load();
+    // A row whose name is empty would render as a blank level; drop it so the
+    // empty-schema compatibility path above can take over.
+    items.value = loaded.filter((item) => item.name.trim() !== "");
   } catch (e: unknown) {
     items.value = [];
     error.value = formatError(e, "dataQuality.target.fetchError");

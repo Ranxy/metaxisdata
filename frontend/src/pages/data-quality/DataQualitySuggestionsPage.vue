@@ -212,6 +212,17 @@
                   @click.stop
                 >
                   <Button
+                    v-if="canOpenInEditor(suggestion)"
+                    variant="ghost"
+                    size="icon"
+                    class="h-8 w-8"
+                    :title="t('dataQuality.suggestions.openInEditor')"
+                    :aria-label="t('dataQuality.suggestions.openInEditor')"
+                    @click="openEditor(suggestion)"
+                  >
+                    <ExternalLink class="h-4 w-4 text-muted-foreground" />
+                  </Button>
+                  <Button
                     variant="ghost"
                     size="icon"
                     class="h-8 w-8"
@@ -249,12 +260,13 @@
       :error="decideError"
       @accept="accept"
       @reject="reject"
+      @open-editor="selected && openEditor(selected)"
     />
   </div>
 </template>
 
 <script setup lang="ts">
-import { Eye, Lightbulb, RefreshCcw } from "lucide-vue-next";
+import { ExternalLink, Eye, Lightbulb, RefreshCcw } from "lucide-vue-next";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
@@ -303,7 +315,6 @@ import {
   suggestionSourceKey,
   suggestionStatusKey,
   suggestionStatusVariant,
-  suggestionToEditorPrefill,
 } from "@/utils/dataQualitySuggestion";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 
@@ -459,6 +470,8 @@ function review(suggestion: QualitySuggestion) {
   drawerOpen.value = true;
 }
 
+/** Accept writes the decision for a LABEL suggestion; rules are accepted by
+ * the editor after the rule is actually created. */
 async function accept(note: string) {
   const suggestion = selected.value;
   if (!suggestion) {
@@ -473,15 +486,6 @@ async function accept(note: string) {
       note,
     });
     drawerOpen.value = false;
-    const prefill = suggestionToEditorPrefill(suggestion);
-    if (prefill && canCreateRule.value) {
-      notify.success(t("dataQuality.suggestions.acceptedOpeningEditor"));
-      await router.push({
-        name: "DataQualityRuleNew",
-        query: { suggestion: suggestion.name },
-      });
-      return;
-    }
     notify.success(t("dataQuality.suggestions.accepted"));
     await refreshPage();
   } catch (e: unknown) {
@@ -489,6 +493,24 @@ async function accept(note: string) {
   } finally {
     deciding.value = false;
   }
+}
+
+/** A rule draft stays PENDING while it is reviewed: no decision is written until
+ * the editor saves a rule from it. */
+function canOpenInEditor(suggestion: QualitySuggestion): boolean {
+  return (
+    suggestion.status === QualitySuggestionStatus.PENDING &&
+    suggestion.kind === QualitySuggestionKind.RULE_DRAFT &&
+    canCreateRule.value
+  );
+}
+
+function openEditor(suggestion: QualitySuggestion) {
+  drawerOpen.value = false;
+  void router.push({
+    name: "DataQualityRuleNew",
+    query: { suggestion: suggestion.name },
+  });
 }
 
 async function reject(note: string) {

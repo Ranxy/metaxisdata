@@ -381,6 +381,7 @@ export default [
             "dataQuality.llm.errors.unavailable",
             "dataQuality.llm.noPermission",
             "dataQuality.editor.llmImportHint",
+            "userSelect.loadFailed",
             "dataQuality.runError",
             "dataQuality.updateError",
             // The issue pages' vocabulary and formatError fallbacks, and the

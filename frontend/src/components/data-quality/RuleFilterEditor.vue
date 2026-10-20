@@ -30,11 +30,12 @@
       :key="index"
       class="grid items-start gap-3 rounded-md border p-3 sm:grid-cols-[minmax(0,1fr)_10rem_minmax(0,1fr)_auto]"
     >
-      <Input
-        v-model="clause.column"
-        list="dq-target-columns"
+      <ColumnSelect
+        :model-value="clause.column"
+        :columns="columns"
         :aria-label="t('dataQuality.editor.filterColumn')"
         :placeholder="t('dataQuality.editor.filterColumn')"
+        @update:model-value="(value) => (clause.column = String(value))"
       />
       <Select
         :model-value="String(clause.op)"
@@ -76,6 +77,7 @@
 <script setup lang="ts">
 import { Plus, Trash2 } from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
+import ColumnSelect from "@/components/common/ColumnSelect.vue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -93,6 +95,7 @@ import {
   type FilterClauseForm,
   filterOperatorNeedsValues,
   MAX_FILTER_CLAUSES,
+  type TargetColumnDetail,
 } from "@/utils/dataQualityForm";
 
 /**
@@ -102,6 +105,11 @@ import {
  */
 
 const clauses = defineModel<FilterClauseForm[]>({ required: true });
+
+defineProps<{
+  /** The target's columns; the picker offers them by name and type. */
+  columns: TargetColumnDetail[];
+}>();
 
 const { t } = useI18n();
 

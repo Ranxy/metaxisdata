@@ -105,3 +105,22 @@ export function engineTextClass(engine?: Engine): string {
 export function engineBadgeClass(engine?: Engine): string {
   return `px-2 py-1 text-xs font-medium rounded-full ${styleOf(engine).badgeClass}`;
 }
+
+/**
+ * Engines with no real schema level: a table lives directly under its database.
+ * MySQL's `schema` is a synonym for database, and the TiDB/StarRocks/Doris/
+ * OceanBase family follows it, so asking the user to pick a schema would only
+ * offer an empty level.
+ */
+const SCHEMA_LESS_ENGINES: ReadonlySet<Engine> = new Set([
+  Engine.MYSQL,
+  Engine.TIDB,
+  Engine.MARIADB,
+  Engine.OCEANBASE,
+  Engine.STARROCKS,
+  Engine.DORIS,
+]);
+
+export function isSchemaLessEngine(engine: Engine | undefined): boolean {
+  return engine !== undefined && SCHEMA_LESS_ENGINES.has(engine);
+}
