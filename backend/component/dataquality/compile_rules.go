@@ -122,6 +122,11 @@ func compileUnique(input CompileInput) (CompiledQuery, error) {
 	if err != nil {
 		return CompiledQuery{}, err
 	}
+	if !config.GetCountNulls() {
+		if _, err := requireNullTestColumn(input.Target, column.Name); err != nil {
+			return CompiledQuery{}, err
+		}
+	}
 	if err := compileValidateCountThresholds(input.Config, config.FailThreshold, config.WarnThreshold); err != nil {
 		return CompiledQuery{}, err
 	}
@@ -154,6 +159,11 @@ func compileUniqueCombination(input CompileInput) (CompiledQuery, error) {
 		column, err := requireGroupingColumn(input.Target, name)
 		if err != nil {
 			return CompiledQuery{}, err
+		}
+		if !config.GetCountNulls() {
+			if _, err := requireNullTestColumn(input.Target, column.Name); err != nil {
+				return CompiledQuery{}, err
+			}
 		}
 		columns = append(columns, column.Name)
 	}
@@ -217,7 +227,7 @@ func compileAcceptedValues(input CompileInput) (CompiledQuery, error) {
 	if config == nil {
 		return CompiledQuery{}, invalidConfig("the accepted-values config is missing")
 	}
-	column, err := requireComparisonColumn(input.Target, config.GetColumn())
+	column, err := requireValueComparisonColumn(input.Target, config.GetColumn())
 	if err != nil {
 		return CompiledQuery{}, err
 	}

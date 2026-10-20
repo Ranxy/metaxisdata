@@ -206,10 +206,9 @@ func profileResultIndexes(columns, expected []string) (map[string]int, error) {
 // profileValueString renders one observed value for display, truncated to the
 // storage bound. A NULL renders as the empty string: "no value" and "empty text"
 // both display as nothing, and the null count already carries the distinction.
-// profileValueString renders one observed value for display. Binary values are
-// hex-encoded unconditionally: the stored profile is protojson (which rejects
-// invalid UTF-8), and a validity check alone would let the bytes "0xfffe" and the
-// two bytes ff fe render identically.
+// Binary values are hex-encoded unconditionally: the stored profile is protojson
+// (which rejects invalid UTF-8), and a validity check alone would let the bytes
+// "0xfffe" and the two bytes ff fe render identically.
 func profileValueString(value any, binary bool) string {
 	text := profileValueText(value)
 	if binary || !utf8.ValidString(text) {

@@ -99,8 +99,18 @@ func ClassifyColumnType(columnType string) ColumnKind {
 // Server use it that way; PostgreSQL's BIT/BIT VARYING are bit strings, and a
 // boolean parameter cannot be coerced to them.
 func classifyColumnTypeForEngine(engine storepb.Engine, columnType string) ColumnKind {
-	if engine == storepb.Engine_POSTGRES && columnTypeBaseName(columnType) == "bit" {
-		return ColumnKindString
+	raw := strings.ToLower(strings.TrimSpace(columnType))
+	if engine == storepb.Engine_POSTGRES {
+		switch {
+		case columnTypeBaseName(raw) == "bit":
+			// PostgreSQL BIT/BIT VARYING are bit strings, not booleans: a boolean
+			// parameter cannot be coerced to them.
+			return ColumnKindString
+		case strings.HasSuffix(raw, "[]") || strings.HasPrefix(columnTypeBaseName(raw), "_"):
+			// An array is written and bound as an array literal, not as its element's
+			// scalar kind; the capability table then derives what the array supports.
+			return ColumnKindString
+		}
 	}
 	return ClassifyColumnType(columnType)
 }

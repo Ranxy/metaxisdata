@@ -383,7 +383,7 @@ func validateNullPercentConfig(target ResolvedTarget, config *storepb.NullPercen
 	// column cannot hold is a save-time error rather than a query that silently
 	// matches nothing.
 	if len(config.GetNullValues()) > 0 {
-		if _, err := requireComparisonColumn(target, column.Name); err != nil {
+		if _, err := requireValueComparisonColumn(target, column.Name); err != nil {
 			return err
 		}
 	}
@@ -438,6 +438,11 @@ func validateUniqueConfig(target ResolvedTarget, config *storepb.QualityRuleConf
 	if _, err := requireGroupingColumn(target, unique.GetColumn()); err != nil {
 		return err
 	}
+	if !unique.GetCountNulls() {
+		if _, err := requireNullTestColumn(target, unique.GetColumn()); err != nil {
+			return err
+		}
+	}
 	return validateCountThresholds(config, unique.FailThreshold, unique.WarnThreshold)
 }
 
@@ -472,6 +477,11 @@ func validateUniqueCombinationConfig(target ResolvedTarget, config *storepb.Qual
 			return invalidConfig("column %q is listed more than once", column.Name)
 		}
 		seen[column.Name] = struct{}{}
+		if !combination.GetCountNulls() {
+			if _, err := requireNullTestColumn(target, column.Name); err != nil {
+				return err
+			}
+		}
 	}
 	return validateCountThresholds(config, combination.FailThreshold, combination.WarnThreshold)
 }
@@ -484,7 +494,7 @@ func validateAcceptedValuesConfig(target ResolvedTarget, config *storepb.Quality
 	if accepted == nil {
 		return invalidConfig("the accepted-values config is missing")
 	}
-	column, err := requireComparisonColumn(target, accepted.GetColumn())
+	column, err := requireValueComparisonColumn(target, accepted.GetColumn())
 	if err != nil {
 		return err
 	}
@@ -1106,8 +1116,9 @@ func validateAggregateConfig(target ResolvedTarget, config *storepb.QualityRuleC
 }
 
 // validateAggregateColumnKind enforces an aggregate function's column-type
-// constraint: arithmetic aggregates need numbers, MIN/MAX also accept temporal
-// values, and COUNT accepts anything.
+// constraint: arithmetic and ordering aggregates need numbers (the observation is
+// read as a number, and a temporal MIN/MAX would be a timestamp), COUNT accepts
+// anything, and PostgreSQL money only supports SUM/MIN/MAX.
 func validateAggregateColumnKind(column ColumnInfo, function storepb.QualityAggregateFunction) error {
 	switch function {
 	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT:
@@ -1119,6 +1130,11 @@ func validateAggregateColumnKind(column ColumnInfo, function storepb.QualityAggr
 		if column.Kind != ColumnKindNumeric {
 			return invalidConfig("%s needs a numeric column; %q is %s", aggregateFunctionName(function), column.Name, column.Type)
 		}
+		if isMoneyType(column.Type) && function != storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_SUM {
+			// PostgreSQL defines SUM/MIN/MAX for money, but not AVG/STDDEV/
+			// PERCENTILE_CONT.
+			return invalidConfig("%s is not defined for money columns; use SUM, MIN, MAX or COUNT", aggregateFunctionName(function))
+		}
 		return nil
 	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MIN,
 		storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MAX:
@@ -1127,12 +1143,27 @@ func validateAggregateColumnKind(column ColumnInfo, function storepb.QualityAggr
 		if column.Kind != ColumnKindNumeric {
 			return invalidConfig("%s needs a numeric column; %q is %s", aggregateFunctionName(function), column.Name, column.Type)
 		}
+		if isMoneyType(column.Type) {
+			// money renders as a decorated string, which aggregateFloat parses; the
+			// ordering aggregates exist for it.
+			return nil
+		}
 		return nil
 	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_UNSPECIFIED:
 		return invalidConfig("an aggregate function is required")
 	default:
 		return invalidConfig("unknown aggregate function %d", function)
 	}
+}
+
+// isMoneyType reports whether the engine spelling is a money type. PostgreSQL's
+// money has only SUM/MIN/MAX aggregates.
+func isMoneyType(columnType string) bool {
+	switch columnTypeBaseName(columnType) {
+	case "money", "smallmoney":
+		return true
+	}
+	return false
 }
 
 // aggregateFunctionName renders the enum name without its proto prefix.

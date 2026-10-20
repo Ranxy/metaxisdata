@@ -735,6 +735,10 @@ func TestParseAggregateNumber(t *testing.T) {
 	value, err = parseAggregateNumber("($1.25)")
 	require.NoError(t, err)
 	require.Equal(t, -1.25, value)
+	// A comma-decimal locale renders the separators the other way round.
+	value, err = parseAggregateNumber("1.234,50")
+	require.NoError(t, err)
+	require.Equal(t, 1234.5, value)
 	_, err = parseAggregateNumber("not money")
 	require.Error(t, err)
 }

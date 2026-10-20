@@ -179,7 +179,7 @@ func sampleNullPercent(input CompileInput, limit int) (CompiledQuery, error) {
 // cannot absorb the filter's AND.
 func sampleAcceptedValues(input CompileInput, limit int) (CompiledQuery, error) {
 	config := input.Config.GetAcceptedValues()
-	column, err := requireComparisonColumn(input.Target, config.GetColumn())
+	column, err := requireValueComparisonColumn(input.Target, config.GetColumn())
 	if err != nil {
 		return CompiledQuery{}, err
 	}

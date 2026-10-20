@@ -594,18 +594,34 @@ func parseAggregateNumber(value string) (float64, error) {
 	negative := strings.HasPrefix(trimmed, "(") && strings.HasSuffix(trimmed, ")")
 	cleaned := strings.Map(func(r rune) rune {
 		switch {
-		case r >= '0' && r <= '9', r == '.', r == 'e', r == 'E', r == '+', r == '-':
+		case r >= '0' && r <= '9', r == '.', r == ',', r == 'e', r == 'E', r == '+', r == '-':
 			return r
 		default:
 			return -1
 		}
 	}, strings.Trim(trimmed, "()"))
+	// money is rendered with the server's lc_monetary: the last of '.' and ',' is the
+	// decimal separator and the other is a thousands separator. With only one kind of
+	// separator present, a comma is read as a thousands separator (the en_US default).
+	if dot, comma := strings.LastIndex(cleaned, "."), strings.LastIndex(cleaned, ","); dot >= 0 && comma >= 0 {
+		if comma > dot {
+			cleaned = strings.ReplaceAll(cleaned, ".", "")
+			cleaned = strings.Replace(cleaned, ",", ".", 1)
+		} else {
+			cleaned = strings.ReplaceAll(cleaned, ",", "")
+		}
+	} else if comma >= 0 {
+		cleaned = strings.ReplaceAll(cleaned, ",", "")
+	}
 	if cleaned == "" {
 		return 0, strconv.ErrSyntax
 	}
 	parsed, err := strconv.ParseFloat(cleaned, 64)
 	if err != nil {
 		return 0, err
+	}
+	if math.IsNaN(parsed) || math.IsInf(parsed, 0) {
+		return 0, strconv.ErrSyntax
 	}
 	if negative {
 		parsed = -parsed

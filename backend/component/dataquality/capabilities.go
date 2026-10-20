@@ -37,6 +37,16 @@ type columnCapabilities struct {
 	length bool
 	// extrema: the MIN/MAX aggregates.
 	extrema bool
+	// orderable: the type has a btree ordering operator class, which is what array
+	// comparison, GROUP BY on an array, and MIN/MAX over an array need. The built-in
+	// geometric types compare with = but have no btree opclass (MIN(box) does not
+	// exist, and an array of boxes cannot be compared), so comparison alone is not
+	// enough for arrays.
+	orderable bool
+	// valueComparison: a scalar value can be bound to the column in a predicate
+	// (filter, accepted values, custom null values). An array can be joined to
+	// another array column but a scalar literal cannot be encoded for it.
+	valueComparison bool
 	// text: values render as human text, so the profile's value shapes are
 	// meaningful. This is deliberately not the same as "text operators exist":
 	// binary values have a length but are not words.
@@ -55,13 +65,13 @@ type columnCapabilities struct {
 // textCapabilities is a column rendered as text: every text rule applies.
 var textCapabilities = columnCapabilities{
 	comparison: true, grouping: true, countDistinct: true,
-	regex: true, length: true, extrema: true, text: true,
+	regex: true, length: true, extrema: true, text: true, orderable: true, valueComparison: true,
 }
 
 // scalarCapabilities is a number or a date/time: comparable, groupable and
 // ordered, with no text operators.
 var scalarCapabilities = columnCapabilities{
-	comparison: true, grouping: true, countDistinct: true, extrema: true,
+	comparison: true, grouping: true, countDistinct: true, extrema: true, orderable: true, valueComparison: true,
 }
 
 // capabilitiesFor reports the SQL surface of one column's type.
@@ -70,7 +80,7 @@ func capabilitiesFor(engine storepb.Engine, column ColumnInfo) columnCapabilitie
 	case ColumnKindNumeric, ColumnKindTemporal:
 		return scalarCapabilities
 	case ColumnKindBoolean:
-		return columnCapabilities{comparison: true, grouping: true, countDistinct: true}
+		return columnCapabilities{comparison: true, grouping: true, countDistinct: true, orderable: true, valueComparison: true}
 	case ColumnKindString:
 		// Dispatch on the raw spelling: "character varying[]" would lose its array
 		// suffix to the base-name normalizer, and StarRocks nested types contain
@@ -151,19 +161,24 @@ func postgresStringCapabilities(raw string) columnCapabilities {
 		return postgresArrayFromElement(postgresElementCapabilities(name[1:]))
 	}
 	if index := strings.LastIndexByte(name, '.'); index >= 0 {
-		if name[index+1:] == "citext" {
+		switch name[index+1:] {
+		case "citext":
 			return textCapabilities
+		case "geometry", "geography":
+			return columnCapabilities{}
 		}
 		// A user-defined type may be an enum (comparable and groupable) or a
-		// domain/composite over json (neither). The type string cannot tell them
-		// apart, and a composite cannot even bind a parameter, so the conservative
-		// answer is no capability; the profile only counts non-NULL values.
-		return columnCapabilities{}
+		// domain/composite (whose support depends on its field types). The type string
+		// cannot tell them apart, so the historical rule allowance stays; the profile
+		// claims neither an exact count nor MIN/MAX because composites over json fail
+		// them. A composite predicate cannot bind a parameter — a pre-existing
+		// limitation recorded in the docs.
+		return columnCapabilities{comparison: true, grouping: true, valueComparison: true}
 	}
 	// Range types compare and group; they have no MIN/MAX or text operators.
 	for _, suffix := range []string{"multirange", "range"} {
 		if strings.HasSuffix(name, suffix) {
-			return columnCapabilities{comparison: true, grouping: true, countDistinct: true}
+			return columnCapabilities{comparison: true, valueComparison: true, grouping: true, countDistinct: true, orderable: true}
 		}
 	}
 	if capabilities, ok := postgresTypeCapabilities[name]; ok {
@@ -177,8 +192,8 @@ func postgresStringCapabilities(raw string) columnCapabilities {
 // so both are normalized through the same tables.
 func postgresElementCapabilities(element string) columnCapabilities {
 	element = strings.ToLower(strings.TrimSpace(element))
-	if capabilities, ok := postgresArrayElementCapabilities[element]; ok {
-		return capabilities
+	if _, ok := postgresArrayElementCapabilities[element]; ok {
+		return columnCapabilities{orderable: true}
 	}
 	return capabilitiesFor(storepb.Engine_POSTGRES, ColumnInfo{Type: element, Kind: ClassifyColumnType(element)})
 }
@@ -193,77 +208,66 @@ var postgresTypeCapabilities = map[string]columnCapabilities{
 	"text":      textCapabilities,
 	"name":      textCapabilities,
 	"citext":    textCapabilities,
-	"varbit":    {comparison: true, grouping: true, countDistinct: true},
+	"varbit":    {comparison: true, valueComparison: true, grouping: true, countDistinct: true, orderable: true},
 	// Equality but no ordering aggregates or text operators.
-	"jsonb": {comparison: true, grouping: true, countDistinct: true},
-	"uuid":  {comparison: true, grouping: true, countDistinct: true},
-	"bytea": {comparison: true, grouping: true, countDistinct: true, binary: true},
+	"jsonb": {comparison: true, valueComparison: true, grouping: true, countDistinct: true, orderable: true},
+	"uuid":  {comparison: true, valueComparison: true, grouping: true, countDistinct: true, orderable: true},
+	"bytea": {comparison: true, valueComparison: true, grouping: true, countDistinct: true, binary: true, orderable: true},
 	// Equality, ordering and MIN/MAX, but no text operators.
-	"interval": {comparison: true, grouping: true, countDistinct: true, extrema: true},
-	"inet":     {comparison: true, grouping: true, countDistinct: true, extrema: true},
-	"cidr":     {comparison: true, grouping: true, countDistinct: true, extrema: true},
-	"macaddr":  {comparison: true, grouping: true, countDistinct: true},
-	"macaddr8": {comparison: true, grouping: true, countDistinct: true},
-	"bit":      {comparison: true, grouping: true, countDistinct: true},
+	"interval": {comparison: true, valueComparison: true, grouping: true, countDistinct: true, extrema: true, orderable: true},
+	"inet":     {comparison: true, valueComparison: true, grouping: true, countDistinct: true, extrema: true, orderable: true},
+	"cidr":     {comparison: true, valueComparison: true, grouping: true, countDistinct: true, extrema: true, orderable: true},
+	"macaddr":  {comparison: true, valueComparison: true, grouping: true, countDistinct: true, orderable: true},
+	"macaddr8": {comparison: true, valueComparison: true, grouping: true, countDistinct: true, orderable: true},
+	"bit":      {comparison: true, valueComparison: true, grouping: true, countDistinct: true, orderable: true},
 	// No equality operator at all.
 	"json": {}, "xml": {}, "point": {}, "polygon": {},
 	"geometry": {}, "geography": {}, "refcursor": {}, "txid_snapshot": {},
 	// Comparable but not groupable, and with no MIN/MAX: PostgreSQL defines no
 	// ordering aggregate for the built-in geometric types.
-	"box":      {comparison: true},
-	"line":     {comparison: true},
-	"lseg":     {comparison: true},
-	"path":     {comparison: true},
-	"circle":   {comparison: true},
-	"tsvector": {comparison: true, grouping: true, countDistinct: true},
-	"tsquery":  {comparison: true, grouping: true, countDistinct: true},
-	"oid":      {comparison: true, grouping: true, countDistinct: true},
-	"pg_lsn":   {comparison: true, grouping: true, countDistinct: true},
+	"box":      {comparison: true, valueComparison: true},
+	"line":     {comparison: true, valueComparison: true},
+	"lseg":     {comparison: true, valueComparison: true},
+	"path":     {comparison: true, valueComparison: true},
+	"circle":   {comparison: true, valueComparison: true},
+	"tsvector": {comparison: true, valueComparison: true, grouping: true, countDistinct: true, orderable: true},
+	"tsquery":  {comparison: true, valueComparison: true, grouping: true, countDistinct: true, orderable: true},
+	"oid":      {comparison: true, valueComparison: true, grouping: true, countDistinct: true, orderable: true},
+	"pg_lsn":   {comparison: true, valueComparison: true, grouping: true, countDistinct: true, orderable: true},
 }
 
-// postgresArrayCapabilities derives an array's capabilities from its element. An
-// array compares only when its element does; GROUP BY and COUNT(DISTINCT) need the
-// element to be groupable too. Arrays have no text operators, and MIN/MAX on an
-// array is only safe when the element has an ordering aggregate.
 // postgresArrayFromElement derives an array's capabilities from its element's. An
-// array has MIN/MAX whenever its element is comparable (PostgreSQL defines the
-// aggregates for comparable element types), and GROUP BY/COUNT(DISTINCT) when the
-// element is groupable too.
+// array operation needs the element's btree ordering operator class: comparison and
+// GROUP BY on the array, and MIN/MAX over it, all fail for a type that merely has an
+// = operator (box) — PostgreSQL reports "could not identify a comparison function".
+// Arrays have no text operators.
 func postgresArrayFromElement(elementCaps columnCapabilities) columnCapabilities {
-	capabilities := columnCapabilities{comparison: elementCaps.comparison}
-	if elementCaps.comparison && elementCaps.grouping {
-		capabilities.grouping = true
-		capabilities.countDistinct = true
+	if !elementCaps.orderable {
+		return columnCapabilities{}
 	}
-	capabilities.extrema = elementCaps.comparison
-	return capabilities
+	return columnCapabilities{
+		comparison:    true,
+		grouping:      true,
+		countDistinct: true,
+		extrema:       true,
+		orderable:     true,
+	}
 }
 
-// postgresArrayElementCapabilities is the capability table for an array's element,
-// keyed by the udt_name PostgreSQL stores for the array type ("_int4" arrives here
-// as "int4").
-var postgresArrayElementCapabilities = map[string]columnCapabilities{
-	"int2":        scalarCapabilities,
-	"int4":        scalarCapabilities,
-	"int8":        scalarCapabilities,
-	"float4":      scalarCapabilities,
-	"float8":      scalarCapabilities,
-	"numeric":     scalarCapabilities,
-	"money":       scalarCapabilities,
-	"text":        textCapabilities,
-	"varchar":     textCapabilities,
-	"bpchar":      textCapabilities,
-	"bool":        {comparison: true, grouping: true, countDistinct: true},
-	"uuid":        {comparison: true, grouping: true, countDistinct: true},
-	"bytea":       {comparison: true, grouping: true, countDistinct: true},
-	"jsonb":       {comparison: true, grouping: true, countDistinct: true},
-	"timestamp":   {comparison: true, grouping: true, countDistinct: true, extrema: true},
-	"timestamptz": {comparison: true, grouping: true, countDistinct: true, extrema: true},
-	"date":        {comparison: true, grouping: true, countDistinct: true, extrema: true},
-	"time":        {comparison: true, grouping: true, countDistinct: true, extrema: true},
-	"timetz":      {comparison: true, grouping: true, countDistinct: true, extrema: true},
-	"interval":    {comparison: true, grouping: true, countDistinct: true, extrema: true},
-	"json":        {}, "xml": {}, "point": {}, "polygon": {},
+// postgresArrayElementCapabilities lists the array element udt names whose type has
+// a btree ordering operator class; that is the only element fact array derivation
+// reads. Spellings not listed here fall back to the type table through
+// postgresElementCapabilities.
+var postgresArrayElementCapabilities = map[string]struct{}{
+	"int2": {}, "int4": {}, "int8": {},
+	"float4": {}, "float8": {}, "numeric": {}, "money": {},
+	"text": {}, "varchar": {}, "bpchar": {}, "name": {}, "citext": {},
+	"bool": {}, "uuid": {}, "bytea": {}, "jsonb": {}, "varbit": {},
+	"timestamp": {}, "timestamptz": {}, "date": {}, "time": {}, "timetz": {},
+	"interval": {}, "inet": {}, "cidr": {}, "macaddr": {}, "macaddr8": {},
+	"tsvector": {}, "tsquery": {}, "oid": {}, "pg_lsn": {},
+	"int4range": {}, "int8range": {}, "numrange": {}, "tsrange": {},
+	"tstzrange": {}, "daterange": {},
 }
 
 // mssqlStringCapabilities decides one SQL Server base type name. The legacy text,
@@ -276,25 +280,33 @@ func mssqlStringCapabilities(raw string) columnCapabilities {
 	return columnCapabilities{}
 }
 
+// mssqlTextCapabilities is the text surface without the regex operator SQL Server
+// does not have.
+var mssqlTextCapabilities = columnCapabilities{
+	comparison: true, valueComparison: true, grouping: true, countDistinct: true,
+	length: true, extrema: true, text: true, orderable: true,
+}
+
 var mssqlTypeCapabilities = map[string]columnCapabilities{
 	// SQL Server has no regex operator, so text types carry every other text fact.
-	"char":             {comparison: true, grouping: true, countDistinct: true, length: true, extrema: true, text: true},
-	"varchar":          {comparison: true, grouping: true, countDistinct: true, length: true, extrema: true, text: true},
-	"nchar":            {comparison: true, grouping: true, countDistinct: true, length: true, extrema: true, text: true},
-	"nvarchar":         {comparison: true, grouping: true, countDistinct: true, length: true, extrema: true, text: true},
+	"char":             mssqlTextCapabilities,
+	"varchar":          mssqlTextCapabilities,
+	"nchar":            mssqlTextCapabilities,
+	"nvarchar":         mssqlTextCapabilities,
 	"text":             {text: true, noColumnCount: true},
 	"ntext":            {text: true, noColumnCount: true},
 	"image":            {noColumnCount: true, binary: true},
 	"xml":              {},
-	"binary":           {comparison: true, grouping: true, countDistinct: true, length: true, extrema: true, binary: true},
-	"varbinary":        {comparison: true, grouping: true, countDistinct: true, length: true, extrema: true, binary: true},
-	"uniqueidentifier": {comparison: true, grouping: true, countDistinct: true, length: true, extrema: true},
+	"binary":           {comparison: true, grouping: true, countDistinct: true, length: true, extrema: true, binary: true, orderable: true, valueComparison: true},
+	"varbinary":        {comparison: true, grouping: true, countDistinct: true, length: true, extrema: true, binary: true, orderable: true, valueComparison: true},
+	"uniqueidentifier": {comparison: true, grouping: true, countDistinct: true, length: true, extrema: true, orderable: true, binary: true, valueComparison: true},
 	// sql_variant compares by precedence and orders, but has no LEN.
-	"sql_variant": {comparison: true, grouping: true, countDistinct: true, extrema: true},
+	"sql_variant": {comparison: true, grouping: true, countDistinct: true, extrema: true, orderable: true, valueComparison: true},
 	// Spatial types have no comparison, grouping or aggregation. hierarchyid
-	// compares and groups, but has no MIN/MAX or LEN.
+	// compares, groups, orders and has MIN/MAX, but no LEN; it is binary-valued, so
+	// its display form is hex.
 	"geometry": {}, "geography": {},
-	"hierarchyid": {comparison: true, grouping: true, countDistinct: true, extrema: true},
+	"hierarchyid": {comparison: true, grouping: true, countDistinct: true, extrema: true, orderable: true, binary: true, valueComparison: true},
 }
 
 // mysqlStringCapabilities decides one MySQL-wire base type name. MySQL-family
@@ -316,7 +328,7 @@ var mysqlTypeCapabilities = map[string]columnCapabilities{
 	"enum": textCapabilities, "set": textCapabilities,
 	// JSON: groupable, ordered, measurable and matchable, but a bound string never
 	// compares equal to a JSON document.
-	"json": {grouping: true, countDistinct: true, regex: true, length: true, extrema: true},
+	"json": {grouping: true, countDistinct: true, regex: true, length: true, extrema: true, orderable: true, valueComparison: false},
 	// Spatial types convert to text, but MIN is invalid and value comparison is not
 	// a data quality check the rule author means.
 	"geometry":           {grouping: true, countDistinct: true, binary: true},
@@ -329,12 +341,12 @@ var mysqlTypeCapabilities = map[string]columnCapabilities{
 	"geometrycollection": {grouping: true, countDistinct: true, binary: true},
 	"geomcollection":     {grouping: true, countDistinct: true, binary: true},
 	// Binary and blob values compare, group, order and measure by byte length.
-	"binary":     {comparison: true, grouping: true, countDistinct: true, regex: true, length: true, extrema: true, binary: true},
-	"varbinary":  {comparison: true, grouping: true, countDistinct: true, regex: true, length: true, extrema: true, binary: true},
-	"tinyblob":   {comparison: true, grouping: true, countDistinct: true, regex: true, length: true, extrema: true, binary: true},
+	"binary":     {comparison: true, grouping: true, countDistinct: true, regex: true, length: true, extrema: true, binary: true, orderable: true, valueComparison: true},
+	"varbinary":  {comparison: true, grouping: true, countDistinct: true, regex: true, length: true, extrema: true, binary: true, orderable: true, valueComparison: true},
+	"tinyblob":   {comparison: true, grouping: true, countDistinct: true, regex: true, length: true, extrema: true, binary: true, orderable: true, valueComparison: true},
 	"blob":       {comparison: true, grouping: true, countDistinct: true, regex: true, length: true, extrema: true, binary: true},
 	"mediumblob": {comparison: true, grouping: true, countDistinct: true, regex: true, length: true, extrema: true, binary: true},
-	"longblob":   {comparison: true, grouping: true, countDistinct: true, regex: true, length: true, extrema: true, binary: true},
+	"longblob":   {comparison: true, grouping: true, countDistinct: true, regex: true, length: true, extrema: true, binary: true, orderable: true, valueComparison: true},
 }
 
 // starrocksStringCapabilities decides one StarRocks type. StarRocks compares JSON
@@ -347,14 +359,11 @@ func starrocksStringCapabilities(raw string) columnCapabilities {
 		// An array groups and counts distinctly unless a nested element type is one
 		// the engine refuses to group; the check runs on the raw spelling because
 		// nested types contain spaces and parentheses ("array<struct<a json>>").
-		for _, nested := range []string{"json", "bitmap", "hll", "percentile"} {
-			if strings.Contains(raw, nested) {
-				return columnCapabilities{}
-			}
-		}
-		return columnCapabilities{grouping: true, countDistinct: true}
+		// Struct field names are backticked and may themselves be called "json", so
+		// they are stripped before the token check.
+		return starrocksArrayCapabilities(raw)
 	case name == "json":
-		return columnCapabilities{comparison: true, length: true}
+		return columnCapabilities{comparison: true, valueComparison: true, length: true}
 	case strings.HasPrefix(name, "bitmap"), strings.HasPrefix(name, "hll"):
 		return columnCapabilities{countDistinct: true, noNullTest: true, binary: true}
 	case name == "percentile":
@@ -366,6 +375,38 @@ func starrocksStringCapabilities(raw string) columnCapabilities {
 		return capabilities
 	}
 	return columnCapabilities{}
+}
+
+// starrocksArrayCapabilities decides whether a StarRocks array can be grouped. The
+// nested element types the engine refuses to group are detected on the raw spelling
+// with backticked struct field names removed.
+func starrocksArrayCapabilities(raw string) columnCapabilities {
+	cleaned := stripBacktickedFragments(raw)
+	for _, nested := range []string{"json", "bitmap", "hll", "percentile", "variant", "quantile"} {
+		if strings.Contains(cleaned, nested) {
+			return columnCapabilities{}
+		}
+	}
+	return columnCapabilities{grouping: true, countDistinct: true}
+}
+
+// stripBacktickedFragments removes `field names` from a type spelling, so a struct
+// field called "json" does not make its array look like an array of JSON.
+func stripBacktickedFragments(raw string) string {
+	var builder strings.Builder
+	inFragment := false
+	for _, r := range raw {
+		switch {
+		case r == '`':
+			inFragment = !inFragment
+		case !inFragment:
+			// strings.Builder writes cannot fail.
+			_, _ = builder.WriteRune(r)
+		default:
+			// Inside a backticked fragment: skip the field name.
+		}
+	}
+	return builder.String()
 }
 
 var starrocksTypeCapabilities = map[string]columnCapabilities{
@@ -447,6 +488,23 @@ func requireComparisonColumn(target ResolvedTarget, name string) (ColumnInfo, er
 	return column, nil
 }
 
+// requireValueComparisonColumn resolves a column and requires a scalar value to be
+// bindable in a predicate. Arrays compare column-to-column but a scalar literal
+// cannot be encoded for an array type.
+func requireValueComparisonColumn(target ResolvedTarget, name string) (ColumnInfo, error) {
+	column, err := requireColumn(target, name)
+	if err != nil {
+		return ColumnInfo{}, err
+	}
+	if column.Kind == ColumnKindUnknown {
+		return ColumnInfo{}, invalidConfig("column %q has a type this build cannot classify", column.Name)
+	}
+	if !capabilitiesFor(target.Engine, column).valueComparison {
+		return ColumnInfo{}, invalidConfig("column %q is %s; the engine cannot compare it with a scalar value", column.Name, column.Type)
+	}
+	return column, nil
+}
+
 // requireGroupingColumn resolves a column and requires the engine to group its
 // values, which uniqueness and group-check rules express with GROUP BY.
 func requireGroupingColumn(target ResolvedTarget, name string) (ColumnInfo, error) {
@@ -459,10 +517,6 @@ func requireGroupingColumn(target ResolvedTarget, name string) (ColumnInfo, erro
 	}
 	if !supportsGrouping(column, target.Engine) {
 		return ColumnInfo{}, invalidConfig("column %q is %s; the engine cannot group values of this type", column.Name, column.Type)
-	}
-	// The uniqueness and group-check statements also test the column for NULL.
-	if !supportsNullTest(column, target.Engine) {
-		return ColumnInfo{}, invalidConfig("column %q is %s; the engine cannot test values of this type for NULL", column.Name, column.Type)
 	}
 	return column, nil
 }

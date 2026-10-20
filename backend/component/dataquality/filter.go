@@ -187,8 +187,8 @@ func CompileFilter(dialect Dialect, target ResolvedTarget, filter Filter) (strin
 			if column.Kind == ColumnKindUnknown {
 				return "", nil, invalidConfig("filter column %q has a type this build cannot filter on", column.Name)
 			}
-			if !supportsComparison(column, target.Engine) {
-				return "", nil, invalidConfig("filter column %q is %s; the engine cannot compare values of this type", column.Name, column.Type)
+			if !capabilitiesFor(target.Engine, column).valueComparison {
+				return "", nil, invalidConfig("filter column %q is %s; the engine cannot compare it with a scalar value", column.Name, column.Type)
 			}
 			values, err := convertFilterValues(column, clause.Values)
 			if err != nil {

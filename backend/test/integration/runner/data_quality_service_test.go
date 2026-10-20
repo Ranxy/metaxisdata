@@ -732,9 +732,17 @@ CREATE MATERIALIZED VIEW public.audit_log_tags AS
 	}))
 	require.NoError(t, err)
 	require.Len(t, viewProfiles.Msg.GetColumnProfiles(), 2)
+	viewByColumn := make(map[string]*v1pb.ColumnProfile, 2)
 	for _, profile := range viewProfiles.Msg.GetColumnProfiles() {
+		viewByColumn[profile.GetColumn()] = profile
 		require.Nil(t, profile.GetProfile().MinLength, "an array column has no character length")
 	}
+	// The varchar[] must keep its array facts: exact distinct and MIN/MAX. A regression
+	// to a zero-capability column would still satisfy the MinLength assertion above.
+	arrayTags := viewByColumn["tags"].GetProfile()
+	require.Equal(t, int64(1), arrayTags.GetDistinctCount())
+	require.NotEmpty(t, arrayTags.GetMinValue())
+	require.NotEmpty(t, arrayTags.GetMaxValue())
 
 	// The ordinary columns still carry the facts their types support.
 	require.Equal(t, "1", profiles["id"].GetProfile().GetMinValue())
