@@ -872,7 +872,7 @@ CREATE VIEW public.code_numbers AS SELECT 1::bigint AS n;
 					Column: "payload_json", Values: []string{`{"k":1}`},
 				}},
 			}),
-			want: "the engine cannot compare values of this type",
+			want: "the engine cannot compare it with a scalar value",
 		},
 		{
 			name: "null_percent custom values on json",
@@ -881,12 +881,12 @@ CREATE VIEW public.code_numbers AS SELECT 1::bigint AS n;
 					Column: "payload_json", MaxNullCount: qualityPtr(int64(0)), NullValues: []string{`{}`},
 				}},
 			}),
-			want: "the engine cannot compare values of this type",
+			want: "the engine cannot compare it with a scalar value",
 		},
 		{
 			name: "filter on json",
 			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, rowCountWithFilter("payload_json")),
-			want: "the engine cannot compare values of this type",
+			want: "the engine cannot compare it with a scalar value",
 		},
 		{
 			name: "aggregate MIN on a temporal column",
