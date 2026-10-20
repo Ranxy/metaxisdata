@@ -3,11 +3,15 @@ import type { Duration } from "@bufbuild/protobuf/wkt";
 import { DurationSchema } from "@bufbuild/protobuf/wkt";
 import {
   AcceptedValuesConfigSchema,
+  AggregateConfigSchema,
   CrossColumnConfigSchema,
+  CrossTableConfigSchema,
   CustomSQLConfigSchema,
   QualityFilterOperator as FilterOperator,
   FreshnessConfigSchema,
+  GroupCheckConfigSchema,
   NullPercentConfigSchema,
+  QualityAggregateFunction,
   QualityComparisonOperator,
   QualityDimension,
   QualityEmptyBehavior,
@@ -30,6 +34,8 @@ import {
   RegexConfigSchema,
   RowCountChangeConfigSchema,
   RowCountConfigSchema,
+  SchemaDriftColumnSchema,
+  SchemaDriftConfigSchema,
   StringLengthConfigSchema,
   UniqueCombinationConfigSchema,
   UniqueConfigSchema,
@@ -58,6 +64,29 @@ export const MAX_FILTER_CLAUSES = 10;
 export const MAX_FILTER_VALUES = 100;
 /** accepted_values takes at most 200 values. */
 export const MAX_ACCEPTED_VALUES = 200;
+/** null_percent's extra missing values are capped at 20. */
+export const MAX_NULL_VALUES = 20;
+/** A grouped row-count rule groups by at most five columns. */
+export const MAX_GROUP_COLUMNS = 5;
+
+/** The aggregates the aggregate rule offers. COUNT is the run's total_rows. */
+export const AGGREGATE_FUNCTIONS: QualityAggregateFunction[] = [
+  QualityAggregateFunction.SUM,
+  QualityAggregateFunction.AVG,
+  QualityAggregateFunction.MIN,
+  QualityAggregateFunction.MAX,
+  QualityAggregateFunction.STDDEV,
+  QualityAggregateFunction.PERCENTILE,
+];
+
+/** The aggregates one side of a cross-table rule may use. */
+export const CROSS_TABLE_FUNCTIONS: QualityAggregateFunction[] = [
+  QualityAggregateFunction.COUNT,
+  QualityAggregateFunction.SUM,
+  QualityAggregateFunction.AVG,
+  QualityAggregateFunction.MIN,
+  QualityAggregateFunction.MAX,
+];
 
 /**
  * The 13 rule types the editor offers. CEL_EXPRESSION is reserved for v1.1 and
@@ -77,6 +106,10 @@ export const EDITABLE_RULE_TYPES: QualityRuleType[] = [
   QualityRuleType.CROSS_COLUMN,
   QualityRuleType.FRESHNESS,
   QualityRuleType.CUSTOM_SQL,
+  QualityRuleType.SCHEMA_DRIFT,
+  QualityRuleType.GROUP_CHECK,
+  QualityRuleType.AGGREGATE,
+  QualityRuleType.CROSS_TABLE,
 ];
 
 /**
@@ -86,6 +119,7 @@ export const EDITABLE_RULE_TYPES: QualityRuleType[] = [
  * config, and row_count_change/freshness are percentage- or second-based.
  */
 export const THRESHOLD_METRIC_RULE_TYPES: QualityRuleType[] = [
+  QualityRuleType.GROUP_CHECK,
   QualityRuleType.UNIQUE,
   QualityRuleType.UNIQUE_COMBINATION,
   QualityRuleType.ACCEPTED_VALUES,
@@ -113,6 +147,10 @@ const DIMENSION_BY_RULE_TYPE: Partial<
   [QualityRuleType.CROSS_COLUMN]: QualityDimension.CONSISTENCY,
   [QualityRuleType.FRESHNESS]: QualityDimension.TIMELINESS,
   [QualityRuleType.CUSTOM_SQL]: QualityDimension.ACCURACY,
+  [QualityRuleType.SCHEMA_DRIFT]: QualityDimension.CONSISTENCY,
+  [QualityRuleType.GROUP_CHECK]: QualityDimension.COMPLETENESS,
+  [QualityRuleType.AGGREGATE]: QualityDimension.ACCURACY,
+  [QualityRuleType.CROSS_TABLE]: QualityDimension.CONSISTENCY,
 };
 
 // ---- form state ----
@@ -182,6 +220,39 @@ export interface RuleConfigForm {
   warnLagSeconds?: string;
   // custom_sql
   sql?: string;
+  // null_percent: values that also count as missing
+  nullValues?: string;
+  // schema_drift
+  expectedColumns?: SchemaDriftColumnForm[];
+  checkTypes?: boolean;
+  checkOrder?: boolean;
+  allowExtraColumns?: boolean;
+  // group_check
+  groupColumns?: string;
+  minRowsPerGroup?: string;
+  maxRowsPerGroup?: string;
+  // aggregate
+  aggregateColumn?: string;
+  aggregateFunction?: QualityAggregateFunction;
+  percentile?: string;
+  aggMin?: string;
+  aggMax?: string;
+  aggWarnMin?: string;
+  aggWarnMax?: string;
+  aggInclusive?: boolean;
+  // cross_table
+  rightTable?: string;
+  leftAggFunction?: QualityAggregateFunction;
+  leftAggColumn?: string;
+  rightAggFunction?: QualityAggregateFunction;
+  rightAggColumn?: string;
+}
+
+/** One expected column of a schema-drift snapshot. */
+export interface SchemaDriftColumnForm {
+  name: string;
+  type: string;
+  nullable: boolean;
 }
 
 export interface RuleFormState {
@@ -215,6 +286,13 @@ export interface TargetSelection {
   };
   /** Every column the target's config reads; empty for table-level rules. */
   columns: string[];
+}
+
+/** What the target browser knows about one of the target's columns. */
+export interface TargetColumnDetail {
+  name: string;
+  type: string;
+  nullable: boolean;
 }
 
 /** A form plus its target: the unit the update mask compares. */
@@ -303,6 +381,27 @@ export function emptyConfig(): RuleConfigForm {
     maxLagSeconds: "",
     warnLagSeconds: "",
     sql: "",
+    nullValues: "",
+    expectedColumns: [],
+    checkTypes: true,
+    checkOrder: false,
+    allowExtraColumns: false,
+    groupColumns: "",
+    minRowsPerGroup: "",
+    maxRowsPerGroup: "",
+    aggregateColumn: "",
+    aggregateFunction: QualityAggregateFunction.SUM,
+    percentile: "",
+    aggMin: "",
+    aggMax: "",
+    aggWarnMin: "",
+    aggWarnMax: "",
+    aggInclusive: false,
+    rightTable: "",
+    leftAggFunction: QualityAggregateFunction.COUNT,
+    leftAggColumn: "",
+    rightAggFunction: QualityAggregateFunction.COUNT,
+    rightAggColumn: "",
   };
 }
 
@@ -480,6 +579,18 @@ export function columnsForConfig(form: RuleFormState): string[] {
       return uniqueValues([c.leftColumn ?? "", c.rightColumn ?? ""]);
     case QualityRuleType.FRESHNESS:
       return uniqueValues([c.timestampColumn ?? ""]);
+    case QualityRuleType.SCHEMA_DRIFT:
+      return uniqueValues(
+        (c.expectedColumns ?? []).map((column) => column.name)
+      );
+    case QualityRuleType.GROUP_CHECK:
+      return uniqueValues(parseValueList(c.groupColumns ?? ""));
+    case QualityRuleType.AGGREGATE:
+      return uniqueValues([c.aggregateColumn ?? ""]);
+    case QualityRuleType.CROSS_TABLE:
+      // Only the target's own columns belong in the snapshot; the right side
+      // reads another table and is validated against that table at the API.
+      return uniqueValues([c.leftAggColumn ?? ""]);
     default:
       return [];
   }
@@ -550,6 +661,7 @@ export function buildRuleConfig(form: RuleFormState): QualityRuleConfig {
           case: "nullPercent" as const,
           value: create(NullPercentConfigSchema, {
             column: trimmed(c.nullColumn),
+            nullValues: parseValueList(c.nullValues ?? ""),
             ...(c.nullMetric === "count"
               ? {
                   ...optionalInt64("maxNullCount", c.maxNullCount),
@@ -668,6 +780,72 @@ export function buildRuleConfig(form: RuleFormState): QualityRuleConfig {
             ...optionalDouble("warnThreshold", c.warnThreshold),
           }),
         };
+      case QualityRuleType.SCHEMA_DRIFT:
+        return {
+          case: "schemaDrift" as const,
+          value: create(SchemaDriftConfigSchema, {
+            expectedColumns: (c.expectedColumns ?? [])
+              .filter((column) => column.name.trim())
+              .map((column) =>
+                create(SchemaDriftColumnSchema, {
+                  name: column.name.trim(),
+                  type: column.type.trim(),
+                  nullable: column.nullable,
+                })
+              ),
+            // Unset means true; only an explicit false needs to travel.
+            ...(c.checkTypes === false ? { checkTypes: false } : {}),
+            checkOrder: c.checkOrder ?? false,
+            allowExtraColumns: c.allowExtraColumns ?? false,
+            ...optionalDouble("failThreshold", c.failThreshold),
+            ...optionalDouble("warnThreshold", c.warnThreshold),
+          }),
+        };
+      case QualityRuleType.GROUP_CHECK:
+        return {
+          case: "groupCheck" as const,
+          value: create(GroupCheckConfigSchema, {
+            columns: parseValueList(c.groupColumns ?? ""),
+            ...optionalInt64("minRowsPerGroup", c.minRowsPerGroup),
+            ...optionalInt64("maxRowsPerGroup", c.maxRowsPerGroup),
+            ...optionalDouble("failThreshold", c.failThreshold),
+            ...optionalDouble("warnThreshold", c.warnThreshold),
+          }),
+        };
+      case QualityRuleType.AGGREGATE:
+        return {
+          case: "aggregate" as const,
+          value: create(AggregateConfigSchema, {
+            column: trimmed(c.aggregateColumn),
+            function: c.aggregateFunction ?? QualityAggregateFunction.SUM,
+            ...optionalDouble("percentile", c.percentile),
+            ...optionalDouble("min", c.aggMin),
+            ...optionalDouble("max", c.aggMax),
+            ...optionalDouble("warnMin", c.aggWarnMin),
+            ...optionalDouble("warnMax", c.aggWarnMax),
+            inclusive: c.aggInclusive ?? false,
+          }),
+        };
+      case QualityRuleType.CROSS_TABLE:
+        return {
+          case: "crossTable" as const,
+          value: create(CrossTableConfigSchema, {
+            rightTable: trimmed(c.rightTable),
+            leftFunction: c.leftAggFunction ?? QualityAggregateFunction.COUNT,
+            leftColumn:
+              (c.leftAggFunction ?? QualityAggregateFunction.COUNT) ===
+              QualityAggregateFunction.COUNT
+                ? ""
+                : trimmed(c.leftAggColumn),
+            rightFunction: c.rightAggFunction ?? QualityAggregateFunction.COUNT,
+            rightColumn:
+              (c.rightAggFunction ?? QualityAggregateFunction.COUNT) ===
+              QualityAggregateFunction.COUNT
+                ? ""
+                : trimmed(c.rightAggColumn),
+            ...optionalDouble("tolerance", c.tolerance),
+          }),
+        };
       default:
         return {
           case: "rowCount" as const,
@@ -762,6 +940,7 @@ function configToForm(rule: QualityRule): RuleConfigForm {
     case "nullPercent": {
       const value = config.value;
       form.nullColumn = value.column;
+      form.nullValues = value.nullValues.join(", ");
       form.maxNullCount = optionalStringFromInt64(value.maxNullCount);
       form.warnNullCount = optionalStringFromInt64(value.warnNullCount);
       form.maxNullPct = optionalStringFromDouble(value.maxNullPct);
@@ -858,6 +1037,51 @@ function configToForm(rule: QualityRule): RuleConfigForm {
       form.sql = value.sql;
       form.failThreshold = optionalStringFromDouble(value.failThreshold);
       form.warnThreshold = optionalStringFromDouble(value.warnThreshold);
+      break;
+    }
+    case "schemaDrift": {
+      const value = config.value;
+      form.expectedColumns = value.expectedColumns.map((column) => ({
+        name: column.name,
+        type: column.type,
+        nullable: column.nullable,
+      }));
+      form.checkTypes = value.checkTypes ?? true;
+      form.checkOrder = value.checkOrder;
+      form.allowExtraColumns = value.allowExtraColumns;
+      form.failThreshold = optionalStringFromDouble(value.failThreshold);
+      form.warnThreshold = optionalStringFromDouble(value.warnThreshold);
+      break;
+    }
+    case "groupCheck": {
+      const value = config.value;
+      form.groupColumns = value.columns.join(", ");
+      form.minRowsPerGroup = optionalStringFromInt64(value.minRowsPerGroup);
+      form.maxRowsPerGroup = optionalStringFromInt64(value.maxRowsPerGroup);
+      form.failThreshold = optionalStringFromDouble(value.failThreshold);
+      form.warnThreshold = optionalStringFromDouble(value.warnThreshold);
+      break;
+    }
+    case "aggregate": {
+      const value = config.value;
+      form.aggregateColumn = value.column;
+      form.aggregateFunction = value.function;
+      form.percentile = optionalStringFromDouble(value.percentile);
+      form.aggMin = optionalStringFromDouble(value.min);
+      form.aggMax = optionalStringFromDouble(value.max);
+      form.aggWarnMin = optionalStringFromDouble(value.warnMin);
+      form.aggWarnMax = optionalStringFromDouble(value.warnMax);
+      form.aggInclusive = value.inclusive;
+      break;
+    }
+    case "crossTable": {
+      const value = config.value;
+      form.rightTable = value.rightTable;
+      form.leftAggFunction = value.leftFunction;
+      form.leftAggColumn = value.leftColumn;
+      form.rightAggFunction = value.rightFunction;
+      form.rightAggColumn = value.rightColumn;
+      form.tolerance = optionalStringFromDouble(value.tolerance);
       break;
     }
     default:
@@ -969,13 +1193,29 @@ function normalizeConfigForm(form: RuleFormState): Record<string, unknown> {
       if (text !== "") {
         out[key] = text;
       }
-    } else if (typeof value === "boolean" && value) {
-      out[key] = true;
     } else if (typeof value === "boolean") {
-      out[key] = false;
+      out[key] = value;
+    } else if (Array.isArray(value)) {
+      // The schema-drift snapshot is the only list of rows; a row with no name
+      // is not part of the rule, so it is not part of the comparison either.
+      out[key] = value
+        .map((row) => normalizeConfigRow(row))
+        .filter((row) => row.name !== "");
     }
   }
   return out;
+}
+
+function normalizeConfigRow(row: unknown): Record<string, unknown> {
+  if (!row || typeof row !== "object") {
+    return { name: "" };
+  }
+  const record = row as Record<string, unknown>;
+  return {
+    name: String(record.name ?? "").trim(),
+    type: String(record.type ?? "").trim(),
+    nullable: record.nullable === true,
+  };
 }
 
 function sameSchedule(
@@ -1032,6 +1272,8 @@ export function validateRuleForm(
     c.maxLen,
     c.maxLagSeconds,
     c.warnLagSeconds,
+    c.minRowsPerGroup,
+    c.maxRowsPerGroup,
   ]) {
     if (invalidInteger(value)) {
       invalid();
@@ -1047,6 +1289,11 @@ export function validateRuleForm(
     c.failThreshold,
     c.warnThreshold,
     c.tolerance,
+    c.percentile,
+    c.aggMin,
+    c.aggMax,
+    c.aggWarnMin,
+    c.aggWarnMax,
   ]) {
     if (invalidNumber(value)) {
       invalid();
@@ -1081,6 +1328,12 @@ export function validateRuleForm(
       ) {
         issues.push({
           key: VALIDATION_PREFIX + "nullPercentThresholdRequired",
+        });
+      }
+      if (parseValueList(c.nullValues ?? "").length > MAX_NULL_VALUES) {
+        issues.push({
+          key: VALIDATION_PREFIX + "nullValuesTooMany",
+          params: { max: MAX_NULL_VALUES },
         });
       }
       break;
@@ -1167,6 +1420,104 @@ export function validateRuleForm(
       }
       break;
     }
+    case QualityRuleType.SCHEMA_DRIFT: {
+      const columns = c.expectedColumns ?? [];
+      if (!columns.some((column) => column.name.trim())) {
+        issues.push({ key: VALIDATION_PREFIX + "schemaDriftColumnRequired" });
+      }
+      const seen = new Set<string>();
+      for (const column of columns) {
+        const name = column.name.trim();
+        if (!name) {
+          continue;
+        }
+        if (seen.has(name.toLowerCase())) {
+          issues.push({
+            key: VALIDATION_PREFIX + "schemaDriftDuplicateColumn",
+            params: { name },
+          });
+        }
+        seen.add(name.toLowerCase());
+      }
+      break;
+    }
+    case QualityRuleType.GROUP_CHECK: {
+      const columns = parseValueList(c.groupColumns ?? "");
+      if (columns.length === 0) {
+        issues.push({ key: VALIDATION_PREFIX + "groupColumnsRequired" });
+      } else if (columns.length > MAX_GROUP_COLUMNS) {
+        issues.push({
+          key: VALIDATION_PREFIX + "groupColumnsTooMany",
+          params: { max: MAX_GROUP_COLUMNS },
+        });
+      }
+      if (!hasAny([c.minRowsPerGroup, c.maxRowsPerGroup])) {
+        issues.push({ key: VALIDATION_PREFIX + "groupBoundRequired" });
+      }
+      break;
+    }
+    case QualityRuleType.AGGREGATE: {
+      if (!trimmed(c.aggregateColumn)) {
+        issues.push({ key: VALIDATION_PREFIX + "aggregateColumnRequired" });
+      }
+      if (!hasAny([c.aggMin, c.aggMax])) {
+        issues.push({ key: VALIDATION_PREFIX + "aggregateBoundRequired" });
+      }
+      const min = optionalNumberValue(c.aggMin);
+      const max = optionalNumberValue(c.aggMax);
+      if (min !== undefined && max !== undefined && min > max) {
+        issues.push({ key: VALIDATION_PREFIX + "aggregateRangeOrder" });
+      }
+      const warnMin = optionalNumberValue(c.aggWarnMin);
+      const warnMax = optionalNumberValue(c.aggWarnMax);
+      if (
+        (warnMin !== undefined && min !== undefined && warnMin < min) ||
+        (warnMax !== undefined && max !== undefined && warnMax > max) ||
+        (warnMin !== undefined && warnMax !== undefined && warnMin > warnMax)
+      ) {
+        issues.push({ key: VALIDATION_PREFIX + "aggregateWarnRange" });
+      }
+      if (c.aggregateFunction === QualityAggregateFunction.PERCENTILE) {
+        const percentile = optionalNumberValue(c.percentile);
+        if (percentile === undefined || percentile < 0 || percentile > 100) {
+          issues.push({ key: VALIDATION_PREFIX + "aggregatePercentileRange" });
+        }
+      }
+      break;
+    }
+    case QualityRuleType.CROSS_TABLE: {
+      const right = trimmed(c.rightTable);
+      if (!right) {
+        issues.push({
+          key: VALIDATION_PREFIX + "crossTableRightTableRequired",
+        });
+      } else if (!isRightTableShape(right)) {
+        issues.push({ key: VALIDATION_PREFIX + "crossTableRightTableShape" });
+      }
+      const leftCount =
+        (c.leftAggFunction ?? QualityAggregateFunction.COUNT) ===
+        QualityAggregateFunction.COUNT;
+      const rightCount =
+        (c.rightAggFunction ?? QualityAggregateFunction.COUNT) ===
+        QualityAggregateFunction.COUNT;
+      if (leftCount && trimmed(c.leftAggColumn)) {
+        issues.push({ key: VALIDATION_PREFIX + "crossTableColumnForbidden" });
+      }
+      if (rightCount && trimmed(c.rightAggColumn)) {
+        issues.push({ key: VALIDATION_PREFIX + "crossTableColumnForbidden" });
+      }
+      if (!leftCount && !trimmed(c.leftAggColumn)) {
+        issues.push({ key: VALIDATION_PREFIX + "crossTableColumnRequired" });
+      }
+      if (!rightCount && !trimmed(c.rightAggColumn)) {
+        issues.push({ key: VALIDATION_PREFIX + "crossTableColumnRequired" });
+      }
+      const tolerance = optionalNumberValue(c.tolerance);
+      if (tolerance !== undefined && tolerance < 0) {
+        issues.push({ key: VALIDATION_PREFIX + "crossTableToleranceInvalid" });
+      }
+      break;
+    }
     default:
       break;
   }
@@ -1199,6 +1550,12 @@ export function validateRuleForm(
 
 /** Every validation key lives under this prefix (see DYNAMIC_PREFIXES). */
 export const VALIDATION_PREFIX = "dataQuality.editor.validation.";
+
+/** A right table is `table` or `schema.table` (one dot, no empty segment). */
+function isRightTableShape(value: string): boolean {
+  const parts = value.split(".");
+  return parts.length <= 2 && parts.every((part) => part.trim().length > 0);
+}
 
 // ---- shared helpers ----
 

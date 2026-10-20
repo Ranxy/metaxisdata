@@ -42,6 +42,7 @@ const (
 	DataQualityService_SuggestQualityRule_FullMethodName      = "/metaxisdata.v1.DataQualityService/SuggestQualityRule"
 	DataQualityService_SuggestColumnLabels_FullMethodName     = "/metaxisdata.v1.DataQualityService/SuggestColumnLabels"
 	DataQualityService_ExplainQualityResult_FullMethodName    = "/metaxisdata.v1.DataQualityService/ExplainQualityResult"
+	DataQualityService_GetQualityOverview_FullMethodName      = "/metaxisdata.v1.DataQualityService/GetQualityOverview"
 )
 
 // DataQualityServiceClient is the client API for DataQualityService service.
@@ -115,6 +116,9 @@ type DataQualityServiceClient interface {
 	// REST gateway cannot carry one. The browser reaches the Connect endpoint
 	// directly, the way it does for ExplainSQL.
 	ExplainQualityResult(ctx context.Context, in *ExplainQualityResultRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ExplainQualityResultResponse], error)
+	// Read the workspace's quality summary: how many rules and issues exist, how
+	// the last day went, and the per-day tallies the overview chart draws.
+	GetQualityOverview(ctx context.Context, in *GetQualityOverviewRequest, opts ...grpc.CallOption) (*QualityOverview, error)
 }
 
 type dataQualityServiceClient struct {
@@ -354,6 +358,16 @@ func (c *dataQualityServiceClient) ExplainQualityResult(ctx context.Context, in 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type DataQualityService_ExplainQualityResultClient = grpc.ServerStreamingClient[ExplainQualityResultResponse]
 
+func (c *dataQualityServiceClient) GetQualityOverview(ctx context.Context, in *GetQualityOverviewRequest, opts ...grpc.CallOption) (*QualityOverview, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityOverview)
+	err := c.cc.Invoke(ctx, DataQualityService_GetQualityOverview_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DataQualityServiceServer is the server API for DataQualityService service.
 // All implementations must embed UnimplementedDataQualityServiceServer
 // for forward compatibility.
@@ -425,6 +439,9 @@ type DataQualityServiceServer interface {
 	// REST gateway cannot carry one. The browser reaches the Connect endpoint
 	// directly, the way it does for ExplainSQL.
 	ExplainQualityResult(*ExplainQualityResultRequest, grpc.ServerStreamingServer[ExplainQualityResultResponse]) error
+	// Read the workspace's quality summary: how many rules and issues exist, how
+	// the last day went, and the per-day tallies the overview chart draws.
+	GetQualityOverview(context.Context, *GetQualityOverviewRequest) (*QualityOverview, error)
 	mustEmbedUnimplementedDataQualityServiceServer()
 }
 
@@ -500,6 +517,9 @@ func (UnimplementedDataQualityServiceServer) SuggestColumnLabels(context.Context
 }
 func (UnimplementedDataQualityServiceServer) ExplainQualityResult(*ExplainQualityResultRequest, grpc.ServerStreamingServer[ExplainQualityResultResponse]) error {
 	return status.Error(codes.Unimplemented, "method ExplainQualityResult not implemented")
+}
+func (UnimplementedDataQualityServiceServer) GetQualityOverview(context.Context, *GetQualityOverviewRequest) (*QualityOverview, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQualityOverview not implemented")
 }
 func (UnimplementedDataQualityServiceServer) mustEmbedUnimplementedDataQualityServiceServer() {}
 func (UnimplementedDataQualityServiceServer) testEmbeddedByValue()                            {}
@@ -911,6 +931,24 @@ func _DataQualityService_ExplainQualityResult_Handler(srv interface{}, stream gr
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type DataQualityService_ExplainQualityResultServer = grpc.ServerStreamingServer[ExplainQualityResultResponse]
 
+func _DataQualityService_GetQualityOverview_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQualityOverviewRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).GetQualityOverview(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_GetQualityOverview_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).GetQualityOverview(ctx, req.(*GetQualityOverviewRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DataQualityService_ServiceDesc is the grpc.ServiceDesc for DataQualityService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1001,6 +1039,10 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SuggestColumnLabels",
 			Handler:    _DataQualityService_SuggestColumnLabels_Handler,
+		},
+		{
+			MethodName: "GetQualityOverview",
+			Handler:    _DataQualityService_GetQualityOverview_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

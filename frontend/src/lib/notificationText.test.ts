@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import enUS from "@/locales/en-US.json";
 import zhCN from "@/locales/zh-CN.json";
 import {
+  DataQualityDetailSchema,
+  DataQualityNotificationKind,
   NotificationSchema,
   NotificationSeverity,
   NotificationType,
@@ -59,6 +61,32 @@ function openLineage(kind: OpenLineageFailureKind, fields = {}) {
     detail: {
       case: "openlineage",
       value: create(OpenLineageDetailSchema, { kind, ...fields }),
+    },
+  });
+}
+
+function dataQuality(
+  kind: DataQualityNotificationKind,
+  fields: Partial<{
+    rule: string;
+    ruleTitle: string;
+    targetPath: string;
+    targetGuid: string;
+    observedValue: number;
+    observedUnit: string;
+    issue: string;
+    run: string;
+    errorCode: string;
+    failedRuleCount: number;
+    totalRuleCount: number;
+  }> = {}
+) {
+  return create(NotificationSchema, {
+    type: NotificationType.DATA_QUALITY,
+    severity: NotificationSeverity.WARNING,
+    detail: {
+      case: "dataQuality",
+      value: create(DataQualityDetailSchema, { kind, ...fields }),
     },
   });
 }
@@ -200,6 +228,105 @@ describe("describeNotification", () => {
     expect(text.messageParams).toEqual({ namespace: "mysql://db:3306" });
   });
 
+  it("renders an opened quality issue with its observed value and deep link", () => {
+    const text = describeNotification(
+      dataQuality(DataQualityNotificationKind.ISSUE_OPENED, {
+        rule: "workspaces/ws/qualityRules/rule-1",
+        ruleTitle: "Null rate on orders.id",
+        targetPath: "prod · shop.public.orders.id",
+        observedValue: 0.04,
+        observedUnit: "%",
+        issue: "workspaces/ws/qualityIssues/issue-1",
+        run: "workspaces/ws/qualityRuns/run-1",
+      })
+    );
+    expect(text.titleKey).toBe("notifications.dataQualityIssueOpenedTitle");
+    expect(text.titleParams).toEqual({ rule: "Null rate on orders.id" });
+    expect(text.messageKey).toBe("notifications.dataQualityIssueOpenedMessage");
+    expect(text.messageParams).toEqual({
+      observed: "4%",
+      target: "prod · shop.public.orders.id",
+    });
+    expect(text.href).toBe(
+      "/data-quality/issues/workspaces/ws/qualityIssues/issue-1"
+    );
+  });
+
+  it("links a recovered issue and falls back to the run when there is no issue", () => {
+    const recovered = describeNotification(
+      dataQuality(DataQualityNotificationKind.ISSUE_RECOVERED, {
+        rule: "workspaces/ws/qualityRules/rule-1",
+        ruleTitle: "Null rate",
+        targetPath: "prod · public.orders",
+        issue: "workspaces/ws/qualityIssues/issue-1",
+      })
+    );
+    expect(recovered.titleKey).toBe(
+      "notifications.dataQualityIssueRecoveredTitle"
+    );
+    expect(recovered.messageParams).toEqual({ target: "prod · public.orders" });
+    expect(recovered.href).toBe(
+      "/data-quality/issues/workspaces/ws/qualityIssues/issue-1"
+    );
+
+    const withoutIssue = describeNotification(
+      dataQuality(DataQualityNotificationKind.ISSUE_RECOVERED, {
+        run: "workspaces/ws/qualityRuns/run-1",
+      })
+    );
+    expect(withoutIssue.titleParams).toEqual({ rule: "" });
+    expect(withoutIssue.href).toBe(
+      "/data-quality/runs/workspaces/ws/qualityRuns/run-1"
+    );
+  });
+
+  it("renders an execution failure with its error class and run link", () => {
+    const text = describeNotification(
+      dataQuality(DataQualityNotificationKind.EXECUTION_FAILED, {
+        ruleTitle: "Row count",
+        errorCode: "CONNECTION",
+        run: "workspaces/ws/qualityRuns/run-2",
+      })
+    );
+    expect(text.titleKey).toBe("notifications.dataQualityExecutionFailedTitle");
+    expect(text.messageParams).toEqual({ code: "CONNECTION" });
+    expect(text.href).toBe(
+      "/data-quality/runs/workspaces/ws/qualityRuns/run-2"
+    );
+
+    const noRun = describeNotification(
+      dataQuality(DataQualityNotificationKind.EXECUTION_FAILED, {
+        ruleTitle: "Row count",
+      })
+    );
+    expect(noRun.messageParams).toEqual({ code: "-" });
+    expect(noRun.href).toBe("/data-quality/runs");
+  });
+
+  it("renders the storm summary's tallies", () => {
+    const text = describeNotification(
+      dataQuality(DataQualityNotificationKind.STORM_SUMMARY, {
+        run: "workspaces/ws/qualityRuns/run-3",
+        failedRuleCount: 7,
+        totalRuleCount: 20,
+      })
+    );
+    expect(text.titleKey).toBe("notifications.dataQualityStormSummaryTitle");
+    expect(text.messageParams).toEqual({ failed: 7, total: 20 });
+    expect(text.href).toBe(
+      "/data-quality/runs/workspaces/ws/qualityRuns/run-3"
+    );
+  });
+
+  it("degrades a kind this build does not know", () => {
+    const text = describeNotification(
+      dataQuality(99 as DataQualityNotificationKind)
+    );
+    expect(text.titleKey).toBe("notifications.dataQualityUnknownTitle");
+    expect(text.messageKey).toBe("notifications.dataQualityUnknownMessage");
+    expect(text.href).toBeUndefined();
+  });
+
   // A client older than the server must render its inbox, not an empty row.
   it("falls back for a type or a detail this build does not know", () => {
     const unknown = describeNotification(
@@ -212,6 +339,11 @@ describe("describeNotification", () => {
       create(NotificationSchema, { type: NotificationType.OPENLINEAGE })
     );
     expect(detailMismatch.titleKey).toBe("notifications.unknownTitle");
+
+    const dataQualityMismatch = describeNotification(
+      create(NotificationSchema, { type: NotificationType.DATA_QUALITY })
+    );
+    expect(dataQualityMismatch.titleKey).toBe("notifications.unknownTitle");
 
     const unspecified = describeNotification(
       create(NotificationSchema, {
@@ -250,6 +382,18 @@ describe("describeNotification", () => {
       openLineage(
         OpenLineageFailureKind.OPENLINEAGE_FAILURE_KIND_NAMESPACE_UNMAPPED
       ),
+      dataQuality(DataQualityNotificationKind.ISSUE_OPENED, {
+        ruleTitle: "x",
+        issue: "workspaces/ws/qualityIssues/1",
+      }),
+      dataQuality(DataQualityNotificationKind.ISSUE_RECOVERED, {
+        ruleTitle: "x",
+      }),
+      dataQuality(DataQualityNotificationKind.EXECUTION_FAILED, {
+        ruleTitle: "x",
+      }),
+      dataQuality(DataQualityNotificationKind.STORM_SUMMARY),
+      dataQuality(99 as DataQualityNotificationKind),
       create(NotificationSchema, { type: 99 as NotificationType }),
     ];
     for (const notification of notifications) {

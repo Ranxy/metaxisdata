@@ -131,7 +131,10 @@ describe("DataQualityRuleEditorPage", () => {
           list: [
             {
               guid: `${PREFILL};id`,
-              type: { case: "columnMetadata", value: { name: "id" } },
+              type: {
+                case: "columnMetadata",
+                value: { name: "id", type: "bigint", nullable: false },
+              },
             },
           ],
         },
@@ -234,6 +237,72 @@ describe("DataQualityRuleEditorPage", () => {
     expect(rule.target.metaGuid).toBe(PREFILL);
     expect(rule.target.metaType).toBe(MetaType.TABLE);
     expect(router.currentRoute.value.name).toBe("DataQualityRules");
+  });
+
+  it("creates an aggregate rule with its bounds", async () => {
+    const { wrapper } = await mountEditor(
+      `/data-quality/rules/new?table_guid=${encodeURIComponent(PREFILL)}&meta_type=4`
+    );
+    const selects = wrapper.findAllComponents(Select);
+    await selects[0]?.vm.$emit(
+      "update:modelValue",
+      String(QualityRuleType.AGGREGATE)
+    );
+    await nextTick();
+
+    await fieldInput(wrapper, label("dataQuality.editor.title"))?.setValue(
+      "Average amount"
+    );
+    await fieldInput(wrapper, label("dataQuality.editor.column"))?.setValue(
+      "amount"
+    );
+    await fieldInput(wrapper, label("dataQuality.editor.minValue"))?.setValue(
+      "0"
+    );
+    await fieldInput(wrapper, label("dataQuality.editor.maxValue"))?.setValue(
+      "100"
+    );
+
+    await actionButton(wrapper, label("dataQuality.editor.create")).trigger(
+      "click"
+    );
+    await flushPromises();
+
+    expect(mocks.createQualityRule).toHaveBeenCalledTimes(1);
+    const rule = mocks.createQualityRule.mock.calls[0]?.[0];
+    expect(rule.ruleType).toBe(QualityRuleType.AGGREGATE);
+    expect(rule.config.config.case).toBe("aggregate");
+    expect(rule.config.config.value.column).toBe("amount");
+    expect(rule.config.config.value.min).toBe(0);
+    expect(rule.config.config.value.max).toBe(100);
+  });
+
+  it("fills a schema-drift snapshot from the target's columns", async () => {
+    const { wrapper } = await mountEditor(
+      `/data-quality/rules/new?table_guid=${encodeURIComponent(PREFILL)}&meta_type=4`
+    );
+    const selects = wrapper.findAllComponents(Select);
+    await selects[0]?.vm.$emit(
+      "update:modelValue",
+      String(QualityRuleType.SCHEMA_DRIFT)
+    );
+    await nextTick();
+
+    const fill = wrapper
+      .findAll("button")
+      .find((button) =>
+        button.text().includes(label("dataQuality.editor.fillFromTarget"))
+      );
+    expect(fill).toBeTruthy();
+    await fill?.trigger("click");
+    await nextTick();
+
+    expect(
+      wrapper.findAll("input").some((input) => input.element.value === "id")
+    ).toBe(true);
+    expect(
+      wrapper.findAll("input").some((input) => input.element.value === "bigint")
+    ).toBe(true);
   });
 
   it("updates an edited rule with the minimal mask", async () => {

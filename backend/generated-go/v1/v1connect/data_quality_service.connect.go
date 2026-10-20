@@ -100,6 +100,9 @@ const (
 	// DataQualityServiceExplainQualityResultProcedure is the fully-qualified name of the
 	// DataQualityService's ExplainQualityResult RPC.
 	DataQualityServiceExplainQualityResultProcedure = "/metaxisdata.v1.DataQualityService/ExplainQualityResult"
+	// DataQualityServiceGetQualityOverviewProcedure is the fully-qualified name of the
+	// DataQualityService's GetQualityOverview RPC.
+	DataQualityServiceGetQualityOverviewProcedure = "/metaxisdata.v1.DataQualityService/GetQualityOverview"
 )
 
 // DataQualityServiceClient is a client for the metaxisdata.v1.DataQualityService service.
@@ -163,6 +166,9 @@ type DataQualityServiceClient interface {
 	// REST gateway cannot carry one. The browser reaches the Connect endpoint
 	// directly, the way it does for ExplainSQL.
 	ExplainQualityResult(context.Context, *connect.Request[v1.ExplainQualityResultRequest]) (*connect.ServerStreamForClient[v1.ExplainQualityResultResponse], error)
+	// Read the workspace's quality summary: how many rules and issues exist, how
+	// the last day went, and the per-day tallies the overview chart draws.
+	GetQualityOverview(context.Context, *connect.Request[v1.GetQualityOverviewRequest]) (*connect.Response[v1.QualityOverview], error)
 }
 
 // NewDataQualityServiceClient constructs a client for the metaxisdata.v1.DataQualityService
@@ -308,6 +314,12 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(dataQualityServiceMethods.ByName("ExplainQualityResult")),
 			connect.WithClientOptions(opts...),
 		),
+		getQualityOverview: connect.NewClient[v1.GetQualityOverviewRequest, v1.QualityOverview](
+			httpClient,
+			baseURL+DataQualityServiceGetQualityOverviewProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityOverview")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -335,6 +347,7 @@ type dataQualityServiceClient struct {
 	suggestQualityRule      *connect.Client[v1.SuggestQualityRuleRequest, v1.SuggestQualityRuleResponse]
 	suggestColumnLabels     *connect.Client[v1.SuggestColumnLabelsRequest, v1.SuggestColumnLabelsResponse]
 	explainQualityResult    *connect.Client[v1.ExplainQualityResultRequest, v1.ExplainQualityResultResponse]
+	getQualityOverview      *connect.Client[v1.GetQualityOverviewRequest, v1.QualityOverview]
 }
 
 // ListQualityRules calls metaxisdata.v1.DataQualityService.ListQualityRules.
@@ -447,6 +460,11 @@ func (c *dataQualityServiceClient) ExplainQualityResult(ctx context.Context, req
 	return c.explainQualityResult.CallServerStream(ctx, req)
 }
 
+// GetQualityOverview calls metaxisdata.v1.DataQualityService.GetQualityOverview.
+func (c *dataQualityServiceClient) GetQualityOverview(ctx context.Context, req *connect.Request[v1.GetQualityOverviewRequest]) (*connect.Response[v1.QualityOverview], error) {
+	return c.getQualityOverview.CallUnary(ctx, req)
+}
+
 // DataQualityServiceHandler is an implementation of the metaxisdata.v1.DataQualityService service.
 type DataQualityServiceHandler interface {
 	// List rules, newest first.
@@ -508,6 +526,9 @@ type DataQualityServiceHandler interface {
 	// REST gateway cannot carry one. The browser reaches the Connect endpoint
 	// directly, the way it does for ExplainSQL.
 	ExplainQualityResult(context.Context, *connect.Request[v1.ExplainQualityResultRequest], *connect.ServerStream[v1.ExplainQualityResultResponse]) error
+	// Read the workspace's quality summary: how many rules and issues exist, how
+	// the last day went, and the per-day tallies the overview chart draws.
+	GetQualityOverview(context.Context, *connect.Request[v1.GetQualityOverviewRequest]) (*connect.Response[v1.QualityOverview], error)
 }
 
 // NewDataQualityServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -649,6 +670,12 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		connect.WithSchema(dataQualityServiceMethods.ByName("ExplainQualityResult")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataQualityServiceGetQualityOverviewHandler := connect.NewUnaryHandler(
+		DataQualityServiceGetQualityOverviewProcedure,
+		svc.GetQualityOverview,
+		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityOverview")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/metaxisdata.v1.DataQualityService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DataQualityServiceListQualityRulesProcedure:
@@ -695,6 +722,8 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceSuggestColumnLabelsHandler.ServeHTTP(w, r)
 		case DataQualityServiceExplainQualityResultProcedure:
 			dataQualityServiceExplainQualityResultHandler.ServeHTTP(w, r)
+		case DataQualityServiceGetQualityOverviewProcedure:
+			dataQualityServiceGetQualityOverviewHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -790,4 +819,8 @@ func (UnimplementedDataQualityServiceHandler) SuggestColumnLabels(context.Contex
 
 func (UnimplementedDataQualityServiceHandler) ExplainQualityResult(context.Context, *connect.Request[v1.ExplainQualityResultRequest], *connect.ServerStream[v1.ExplainQualityResultResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ExplainQualityResult is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) GetQualityOverview(context.Context, *connect.Request[v1.GetQualityOverviewRequest]) (*connect.Response[v1.QualityOverview], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityOverview is not implemented"))
 }

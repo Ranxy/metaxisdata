@@ -1164,11 +1164,25 @@ export declare type CrossTableConfig = Message<"metaxisdata.v1.CrossTableConfig"
   rightColumn: string;
 
   /**
-   * The absolute difference tolerated, before the fail/warn thresholds apply.
+   * The absolute difference tolerated before the thresholds apply: the observed
+   * value is max(0, |left - right| - tolerance).
    *
    * @generated from field: optional double tolerance = 6;
    */
   tolerance?: number;
+
+  /**
+   * Difference beyond the tolerance that fails, and the warning level inside it.
+   * The fail threshold defaults to zero.
+   *
+   * @generated from field: optional double fail_threshold = 7;
+   */
+  failThreshold?: number;
+
+  /**
+   * @generated from field: optional double warn_threshold = 8;
+   */
+  warnThreshold?: number;
 };
 
 /**
@@ -3509,6 +3523,174 @@ export declare type ExplainQualityResultResponse = Message<"metaxisdata.v1.Expla
 export declare const ExplainQualityResultResponseSchema: GenMessage<ExplainQualityResultResponse>;
 
 /**
+ * @generated from message metaxisdata.v1.GetQualityOverviewRequest
+ */
+export declare type GetQualityOverviewRequest = Message<"metaxisdata.v1.GetQualityOverviewRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * How many days the trend covers, 1-30. Zero means seven.
+   *
+   * @generated from field: int32 trend_days = 2;
+   */
+  trendDays: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityOverviewRequest.
+ * Use `create(GetQualityOverviewRequestSchema)` to create a new message.
+ */
+export declare const GetQualityOverviewRequestSchema: GenMessage<GetQualityOverviewRequest>;
+
+/**
+ * QualityOverview is the workspace-level summary the overview page renders. It
+ * aggregates the tables instead of listing rows, so the page costs a handful of
+ * queries rather than paging through every result.
+ *
+ * @generated from message metaxisdata.v1.QualityOverview
+ */
+export declare type QualityOverview = Message<"metaxisdata.v1.QualityOverview"> & {
+  /**
+   * Rules by lifecycle state.
+   *
+   * @generated from field: int32 rule_count = 1;
+   */
+  ruleCount: number;
+
+  /**
+   * @generated from field: int32 enabled_rule_count = 2;
+   */
+  enabledRuleCount: number;
+
+  /**
+   * @generated from field: int32 paused_rule_count = 3;
+   */
+  pausedRuleCount: number;
+
+  /**
+   * Tables that at least one enabled rule watches.
+   *
+   * @generated from field: int32 monitored_table_count = 4;
+   */
+  monitoredTableCount: number;
+
+  /**
+   * Issues currently open (status OPEN or ACKNOWLEDGED) by severity.
+   *
+   * @generated from field: int32 open_warning_count = 5;
+   */
+  openWarningCount: number;
+
+  /**
+   * @generated from field: int32 open_error_count = 6;
+   */
+  openErrorCount: number;
+
+  /**
+   * @generated from field: int32 open_critical_count = 7;
+   */
+  openCriticalCount: number;
+
+  /**
+   * The last 24 hours: how many rules failed at least once, how many runs
+   * started, and how their results tallied.
+   *
+   * @generated from field: int32 failing_rule_count = 8;
+   */
+  failingRuleCount: number;
+
+  /**
+   * @generated from field: int32 run_count = 9;
+   */
+  runCount: number;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityRunCounts last_day_counts = 10;
+   */
+  lastDayCounts?: QualityRunCounts;
+
+  /**
+   * The per-day tallies of the trend window, oldest first.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityTrendPoint trend = 11;
+   */
+  trend: QualityTrendPoint[];
+
+  /**
+   * How many days the trend covers.
+   *
+   * @generated from field: int32 trend_days = 12;
+   */
+  trendDays: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityOverview.
+ * Use `create(QualityOverviewSchema)` to create a new message.
+ */
+export declare const QualityOverviewSchema: GenMessage<QualityOverview>;
+
+/**
+ * QualityTrendPoint is one day of result tallies.
+ *
+ * @generated from message metaxisdata.v1.QualityTrendPoint
+ */
+export declare type QualityTrendPoint = Message<"metaxisdata.v1.QualityTrendPoint"> & {
+  /**
+   * The day, as YYYY-MM-DD in UTC.
+   *
+   * @generated from field: string date = 1;
+   */
+  date: string;
+
+  /**
+   * @generated from field: int32 pass = 2;
+   */
+  pass: number;
+
+  /**
+   * @generated from field: int32 warn = 3;
+   */
+  warn: number;
+
+  /**
+   * @generated from field: int32 fail = 4;
+   */
+  fail: number;
+
+  /**
+   * @generated from field: int32 error = 5;
+   */
+  error: number;
+
+  /**
+   * @generated from field: int32 skipped = 6;
+   */
+  skipped: number;
+
+  /**
+   * @generated from field: int32 not_evaluated = 7;
+   */
+  notEvaluated: number;
+
+  /**
+   * @generated from field: int32 total = 8;
+   */
+  total: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityTrendPoint.
+ * Use `create(QualityTrendPointSchema)` to create a new message.
+ */
+export declare const QualityTrendPointSchema: GenMessage<QualityTrendPoint>;
+
+/**
  * QualityRuleType is the observation a rule makes. The value is immutable for a
  * rule: changing the type is a different rule and a new revision.
  *
@@ -4786,6 +4968,17 @@ export declare const DataQualityService: GenService<{
     methodKind: "server_streaming";
     input: typeof ExplainQualityResultRequestSchema;
     output: typeof ExplainQualityResultResponseSchema;
+  },
+  /**
+   * Read the workspace's quality summary: how many rules and issues exist, how
+   * the last day went, and the per-day tallies the overview chart draws.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityOverview
+   */
+  getQualityOverview: {
+    methodKind: "unary";
+    input: typeof GetQualityOverviewRequestSchema;
+    output: typeof QualityOverviewSchema;
   },
 }>;
 

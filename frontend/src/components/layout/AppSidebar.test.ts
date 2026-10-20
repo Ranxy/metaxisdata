@@ -32,6 +32,8 @@ const PERMISSIONS = [
   "metaxisdata.applicationSqls.list",
   "metaxisdata.dataQuality.rules.list",
   "metaxisdata.dataQuality.runs.list",
+  "metaxisdata.dataQuality.issues.list",
+  "metaxisdata.dataQuality.issues.get",
 ];
 
 // The member baseline, as backend/store/predefined_roles.go defines it: read-only, and it
@@ -115,6 +117,7 @@ describe("AppSidebar", () => {
     expect(wrapper.text()).not.toContain("Metadata Browser");
     expect(wrapper.text()).not.toContain("Audit Logs");
     expect(wrapper.text()).not.toContain("Quality Rules");
+    expect(wrapper.text()).not.toContain("Issues");
   });
 
   it("collapses a section, hides its entries and remembers the choice", async () => {
@@ -200,8 +203,12 @@ describe("AppSidebar", () => {
       permissions: MEMBER_PERMISSIONS,
     });
     const { wrapper } = await mountSidebar();
+    await sectionTrigger(wrapper, "Data Quality").trigger("click");
 
     expect(wrapper.text()).toContain("Data Quality");
+    expect(wrapper.text()).toContain("Quality Rules");
+    expect(wrapper.text()).toContain("Quality Runs");
+    expect(wrapper.text()).toContain("Issues");
   });
 
   it("hides the quality section from a caller without its permissions", async () => {
@@ -224,6 +231,7 @@ describe("AppSidebar", () => {
 
     expect(wrapper.text()).toContain("Quality Runs");
     expect(wrapper.text()).not.toContain("Quality Rules");
+    expect(wrapper.text()).not.toContain("Issues");
   });
 
   it("dismisses the mobile drawer after navigating", async () => {

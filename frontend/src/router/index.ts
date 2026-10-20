@@ -246,6 +246,30 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
+        path: "issues",
+        name: "DataQualityIssues",
+        component: () =>
+          import("@/pages/data-quality/DataQualityIssuesPage.vue"),
+        meta: {
+          requiresAuth: true,
+          layout: "default",
+          permission: "metaxisdata.dataQuality.issues.list",
+        },
+      },
+      {
+        // The issue's resource name is carried whole, one path segment per name
+        // segment: a Get needs the real workspace, not the `-` shorthand.
+        path: "issues/:issueId+",
+        name: "DataQualityIssueDetail",
+        component: () =>
+          import("@/pages/data-quality/DataQualityIssueDetailPage.vue"),
+        meta: {
+          requiresAuth: true,
+          layout: "default",
+          permission: "metaxisdata.dataQuality.issues.get",
+        },
+      },
+      {
         path: "runs",
         name: "DataQualityRuns",
         component: () => import("@/pages/data-quality/DataQualityRunsPage.vue"),

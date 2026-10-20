@@ -4520,6 +4520,40 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityOverview:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                Read the workspace's quality summary: how many rules and issues exist, how
+                 the last day went, and the per-day tallies the overview chart draws.
+            operationId: DataQualityService_GetQualityOverview
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: trendDays
+                  in: query
+                  description: How many days the trend covers, 1-30. Zero means seven.
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityOverview'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityRuleResults:
         get:
             tags:
@@ -9521,6 +9555,57 @@ components:
                 QualityIssue is the durable problem behind a rule's failures. A rule has at
                  most one unresolved issue; a later failing run touches it instead of opening
                  another, and a resolved issue is never reopened.
+        QualityOverview:
+            type: object
+            properties:
+                ruleCount:
+                    type: integer
+                    description: Rules by lifecycle state.
+                    format: int32
+                enabledRuleCount:
+                    type: integer
+                    format: int32
+                pausedRuleCount:
+                    type: integer
+                    format: int32
+                monitoredTableCount:
+                    type: integer
+                    description: Tables that at least one enabled rule watches.
+                    format: int32
+                openWarningCount:
+                    type: integer
+                    description: Issues currently open (status OPEN or ACKNOWLEDGED) by severity.
+                    format: int32
+                openErrorCount:
+                    type: integer
+                    format: int32
+                openCriticalCount:
+                    type: integer
+                    format: int32
+                failingRuleCount:
+                    type: integer
+                    description: |-
+                        The last 24 hours: how many rules failed at least once, how many runs
+                         started, and how their results tallied.
+                    format: int32
+                runCount:
+                    type: integer
+                    format: int32
+                lastDayCounts:
+                    $ref: '#/components/schemas/QualityRunCounts'
+                trend:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityTrendPoint'
+                    description: The per-day tallies of the trend window, oldest first.
+                trendDays:
+                    type: integer
+                    description: How many days the trend covers.
+                    format: int32
+            description: |-
+                QualityOverview is the workspace-level summary the overview page renders. It
+                 aggregates the tables instead of listing rows, so the page costs a handful of
+                 queries rather than paging through every result.
         QualityResultSummary:
             type: object
             properties:
@@ -10111,6 +10196,34 @@ components:
                  result can be explained after the rule's thresholds changed. For
                  GREATER_THAN / LESS_THAN only value fields are set; for the range comparisons
                  the lower and upper bounds are.
+        QualityTrendPoint:
+            type: object
+            properties:
+                date:
+                    type: string
+                    description: The day, as YYYY-MM-DD in UTC.
+                pass:
+                    type: integer
+                    format: int32
+                warn:
+                    type: integer
+                    format: int32
+                fail:
+                    type: integer
+                    format: int32
+                error:
+                    type: integer
+                    format: int32
+                skipped:
+                    type: integer
+                    format: int32
+                notEvaluated:
+                    type: integer
+                    format: int32
+                total:
+                    type: integer
+                    format: int32
+            description: QualityTrendPoint is one day of result tallies.
         RangeConfig:
             type: object
             properties:

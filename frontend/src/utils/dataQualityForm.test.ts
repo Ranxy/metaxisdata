@@ -2,7 +2,9 @@ import { create } from "@bufbuild/protobuf";
 import { DurationSchema } from "@bufbuild/protobuf/wkt";
 import { describe, expect, it } from "vitest";
 import {
+  CelExpressionConfigSchema,
   FreshnessConfigSchema,
+  QualityAggregateFunction,
   QualityComparisonOperator,
   QualityDimension,
   QualityEmptyBehavior,
@@ -37,6 +39,7 @@ import {
   MAX_CUSTOM_SQL_BYTES,
   MAX_FILTER_CLAUSES,
   MAX_FILTER_VALUES,
+  MAX_NULL_VALUES,
   MAX_SCHEDULE_MINUTES,
   MIN_SCHEDULE_MINUTES,
   parseValueList,
@@ -143,6 +146,42 @@ const CONFIG_FIXTURES: Partial<
     failThreshold: "0",
     warnThreshold: "1",
   },
+  [QualityRuleType.SCHEMA_DRIFT]: {
+    expectedColumns: [
+      { name: "id", type: "bigint", nullable: false },
+      { name: "email", type: "text", nullable: true },
+    ],
+    checkTypes: false,
+    checkOrder: true,
+    allowExtraColumns: true,
+    failThreshold: "0",
+    warnThreshold: "1",
+  },
+  [QualityRuleType.GROUP_CHECK]: {
+    groupColumns: "region, channel",
+    minRowsPerGroup: "1",
+    maxRowsPerGroup: "1000",
+    failThreshold: "0",
+    warnThreshold: "5",
+  },
+  [QualityRuleType.AGGREGATE]: {
+    aggregateColumn: "amount",
+    aggregateFunction: QualityAggregateFunction.AVG,
+    percentile: "",
+    aggMin: "0",
+    aggMax: "100",
+    aggWarnMin: "10",
+    aggWarnMax: "90",
+    aggInclusive: true,
+  },
+  [QualityRuleType.CROSS_TABLE]: {
+    rightTable: "public.orders_ref",
+    leftAggFunction: QualityAggregateFunction.SUM,
+    leftAggColumn: "amount",
+    rightAggFunction: QualityAggregateFunction.COUNT,
+    rightAggColumn: "",
+    tolerance: "0.5",
+  },
 };
 
 const CONFIG_CASES: Record<string, QualityRuleType> = {
@@ -159,6 +198,10 @@ const CONFIG_CASES: Record<string, QualityRuleType> = {
   crossColumn: QualityRuleType.CROSS_COLUMN,
   freshness: QualityRuleType.FRESHNESS,
   customSql: QualityRuleType.CUSTOM_SQL,
+  schemaDrift: QualityRuleType.SCHEMA_DRIFT,
+  groupCheck: QualityRuleType.GROUP_CHECK,
+  aggregate: QualityRuleType.AGGREGATE,
+  crossTable: QualityRuleType.CROSS_TABLE,
 };
 
 const TARGET: TargetSelection = {
@@ -192,10 +235,18 @@ function ruleFor(ruleType: QualityRuleType): QualityRule {
 }
 
 describe("rule type catalogs", () => {
-  it("offers exactly the thirteen implemented types", () => {
-    expect(EDITABLE_RULE_TYPES).toHaveLength(13);
-    expect(new Set(EDITABLE_RULE_TYPES).size).toBe(13);
+  it("offers every implemented type and not the reserved one", () => {
+    expect(EDITABLE_RULE_TYPES).toHaveLength(17);
+    expect(new Set(EDITABLE_RULE_TYPES).size).toBe(17);
     expect(EDITABLE_RULE_TYPES).not.toContain(QualityRuleType.CEL_EXPRESSION);
+    for (const ruleType of [
+      QualityRuleType.SCHEMA_DRIFT,
+      QualityRuleType.GROUP_CHECK,
+      QualityRuleType.AGGREGATE,
+      QualityRuleType.CROSS_TABLE,
+    ]) {
+      expect(EDITABLE_RULE_TYPES).toContain(ruleType);
+    }
   });
 
   it("suggests a dimension for every type and keeps the metric types inside the editable set", () => {
@@ -207,7 +258,7 @@ describe("rule type catalogs", () => {
     expect(suggestedDimension(99 as QualityRuleType)).toBe(
       QualityDimension.UNSPECIFIED
     );
-    expect(THRESHOLD_METRIC_RULE_TYPES).toHaveLength(9);
+    expect(THRESHOLD_METRIC_RULE_TYPES).toHaveLength(10);
     for (const ruleType of THRESHOLD_METRIC_RULE_TYPES) {
       expect(EDITABLE_RULE_TYPES).toContain(ruleType);
       expect(isThresholdMetricType(ruleType)).toBe(true);
@@ -335,6 +386,20 @@ describe("target selection", () => {
       "updated_at",
     ]);
     expect(columnsForConfig(validForm(QualityRuleType.CUSTOM_SQL))).toEqual([]);
+    expect(columnsForConfig(validForm(QualityRuleType.SCHEMA_DRIFT))).toEqual([
+      "id",
+      "email",
+    ]);
+    expect(columnsForConfig(validForm(QualityRuleType.GROUP_CHECK))).toEqual([
+      "region",
+      "channel",
+    ]);
+    expect(columnsForConfig(validForm(QualityRuleType.AGGREGATE))).toEqual([
+      "amount",
+    ]);
+    expect(columnsForConfig(validForm(QualityRuleType.CROSS_TABLE))).toEqual([
+      "amount",
+    ]);
   });
 });
 
@@ -529,6 +594,23 @@ describe("update mask", () => {
     ).toEqual(["config"]);
   });
 
+  it("treats an edited schema-drift snapshot as a config change", () => {
+    const base = {
+      form: validForm(QualityRuleType.SCHEMA_DRIFT),
+      target: { ...TARGET, columns: ["id", "email"] },
+    };
+    const next = {
+      form: validForm(QualityRuleType.SCHEMA_DRIFT),
+      target: { ...TARGET, columns: ["id", "email"] },
+    };
+    expect(computeUpdateMask(base, next)).toEqual([]);
+    next.form.config.expectedColumns = [
+      { name: "id", type: "varchar", nullable: false },
+      { name: "email", type: "text", nullable: true },
+    ];
+    expect(computeUpdateMask(base, next)).toEqual(["config"]);
+  });
+
   it("ignores whitespace and formatting-only differences", () => {
     const next = snapshot();
     next.form.title = `  ${next.form.title}  `;
@@ -718,6 +800,81 @@ describe("validation", () => {
         },
         "sqlRequired",
       ],
+      [
+        QualityRuleType.SCHEMA_DRIFT,
+        (form) => {
+          form.config = { ...form.config, expectedColumns: [] };
+        },
+        "schemaDriftColumnRequired",
+      ],
+      [
+        QualityRuleType.GROUP_CHECK,
+        (form) => {
+          form.config = { ...form.config, groupColumns: "" };
+        },
+        "groupColumnsRequired",
+      ],
+      [
+        QualityRuleType.GROUP_CHECK,
+        (form) => {
+          form.config = {
+            ...form.config,
+            minRowsPerGroup: "",
+            maxRowsPerGroup: "",
+          };
+        },
+        "groupBoundRequired",
+      ],
+      [
+        QualityRuleType.AGGREGATE,
+        (form) => {
+          form.config = { ...form.config, aggMin: "", aggMax: "" };
+        },
+        "aggregateBoundRequired",
+      ],
+      [
+        QualityRuleType.AGGREGATE,
+        (form) => {
+          form.config = { ...form.config, aggregateColumn: "" };
+        },
+        "aggregateColumnRequired",
+      ],
+      [
+        QualityRuleType.CROSS_TABLE,
+        (form) => {
+          form.config = { ...form.config, rightTable: "" };
+        },
+        "crossTableRightTableRequired",
+      ],
+      [
+        QualityRuleType.CROSS_TABLE,
+        (form) => {
+          form.config = { ...form.config, rightTable: "a.b.c" };
+        },
+        "crossTableRightTableShape",
+      ],
+      [
+        QualityRuleType.CROSS_TABLE,
+        (form) => {
+          form.config = {
+            ...form.config,
+            leftAggFunction: QualityAggregateFunction.SUM,
+            leftAggColumn: "",
+          };
+        },
+        "crossTableColumnRequired",
+      ],
+      [
+        QualityRuleType.CROSS_TABLE,
+        (form) => {
+          form.config = {
+            ...form.config,
+            rightAggFunction: QualityAggregateFunction.COUNT,
+            rightAggColumn: "id",
+          };
+        },
+        "crossTableColumnForbidden",
+      ],
     ];
     for (const [ruleType, mutate, expected] of cases) {
       const form = validForm(ruleType);
@@ -772,6 +929,39 @@ describe("validation", () => {
     expect(valueIssue?.params).toEqual({ max: MAX_FILTER_VALUES });
   });
 
+  it("checks the aggregate range, percentile and null-value limits", () => {
+    const aggregate = validForm(QualityRuleType.AGGREGATE);
+    aggregate.config.aggMin = "10";
+    aggregate.config.aggMax = "5";
+    expect(
+      validateRuleForm(aggregate, TARGET).map((issue) => issue.key)
+    ).toContain(`${VALIDATION_PREFIX}aggregateRangeOrder`);
+
+    aggregate.config.aggMin = "0";
+    aggregate.config.aggMax = "100";
+    aggregate.config.aggWarnMin = "120";
+    expect(
+      validateRuleForm(aggregate, TARGET).map((issue) => issue.key)
+    ).toContain(`${VALIDATION_PREFIX}aggregateWarnRange`);
+
+    const percentile = validForm(QualityRuleType.AGGREGATE);
+    percentile.config.aggregateFunction = QualityAggregateFunction.PERCENTILE;
+    percentile.config.percentile = "120";
+    expect(
+      validateRuleForm(percentile, TARGET).map((issue) => issue.key)
+    ).toContain(`${VALIDATION_PREFIX}aggregatePercentileRange`);
+
+    const nulls = validForm(QualityRuleType.NULL_PERCENT);
+    nulls.config.nullValues = Array.from(
+      { length: MAX_NULL_VALUES + 1 },
+      (_, index) => `v${index}`
+    ).join(",");
+    const nullIssue = validateRuleForm(nulls, TARGET).find(
+      (issue) => issue.key === `${VALIDATION_PREFIX}nullValuesTooMany`
+    );
+    expect(nullIssue?.params).toEqual({ max: MAX_NULL_VALUES });
+  });
+
   it("reports a number that is not a number and a lag that is not whole", () => {
     const form = validForm(QualityRuleType.FRESHNESS);
     form.config.maxLagSeconds = "3.5";
@@ -783,6 +973,145 @@ describe("validation", () => {
     expect(
       validateRuleForm(threshold, TARGET).map((issue) => issue.key)
     ).toContain(`${VALIDATION_PREFIX}numberInvalid`);
+  });
+});
+
+describe("degenerate inputs", () => {
+  it("falls back to a row-count arm for a type without a form", () => {
+    const form = emptyRuleForm(QualityRuleType.UNSPECIFIED);
+    expect(buildRuleConfig(form).config.case).toBe("rowCount");
+  });
+
+  it("reads a rule that has no config or an unsupported arm", () => {
+    const withoutConfig = create(QualityRuleSchema, {
+      ruleType: QualityRuleType.RANGE,
+    });
+    expect(ruleToForm(withoutConfig).config.minValue).toBe("");
+
+    const unsupported = create(QualityRuleSchema, {
+      ruleType: QualityRuleType.CEL_EXPRESSION,
+      config: create(QualityRuleConfigSchema, {
+        config: {
+          case: "celExpression",
+          value: create(CelExpressionConfigSchema, { expression: "x > 0" }),
+        },
+      }),
+    });
+    expect(ruleToForm(unsupported).config.aggregateColumn).toBe("");
+  });
+
+  it("accepts a valid percentile and rejects a missing one", () => {
+    const form = validForm(QualityRuleType.AGGREGATE);
+    form.config.aggregateFunction = QualityAggregateFunction.PERCENTILE;
+    form.config.percentile = "95";
+    expect(validateRuleForm(form, TARGET)).toEqual([]);
+    form.config.percentile = "";
+    expect(validateRuleForm(form, TARGET).map((issue) => issue.key)).toContain(
+      `${VALIDATION_PREFIX}aggregatePercentileRange`
+    );
+  });
+});
+
+describe("more validation branches", () => {
+  const cases: Array<[QualityRuleType, (form: RuleFormState) => void, string]> =
+    [
+      [
+        QualityRuleType.RANGE,
+        (form) => {
+          form.config.column = "";
+        },
+        "columnRequired",
+      ],
+      [
+        QualityRuleType.REGEX,
+        (form) => {
+          form.config.column = "";
+        },
+        "columnRequired",
+      ],
+      [
+        QualityRuleType.STRING_LENGTH,
+        (form) => {
+          form.config.column = "";
+        },
+        "columnRequired",
+      ],
+      [
+        QualityRuleType.FRESHNESS,
+        (form) => {
+          form.config.timestampColumn = "";
+        },
+        "columnRequired",
+      ],
+      [
+        QualityRuleType.NULL_PERCENT,
+        (form) => {
+          form.config.nullColumn = "";
+        },
+        "columnRequired",
+      ],
+    ];
+  for (const [ruleType, mutate, expected] of cases) {
+    it(`requires the checked column for ${ruleType}`, () => {
+      const form = validForm(ruleType);
+      mutate(form);
+      expect(
+        validateRuleForm(form, TARGET).map((issue) => issue.key)
+      ).toContain(`${VALIDATION_PREFIX}${expected}`);
+    });
+  }
+
+  it("flags duplicate schema-drift columns and ignores blank rows", () => {
+    const form = validForm(QualityRuleType.SCHEMA_DRIFT);
+    form.config.expectedColumns = [
+      { name: "id", type: "bigint", nullable: false },
+      { name: "ID", type: "bigint", nullable: false },
+      { name: "  ", type: "", nullable: true },
+    ];
+    const keys = validateRuleForm(form, TARGET).map((issue) => issue.key);
+    expect(keys).toContain(`${VALIDATION_PREFIX}schemaDriftDuplicateColumn`);
+  });
+
+  it("caps the grouping columns", () => {
+    const form = validForm(QualityRuleType.GROUP_CHECK);
+    form.config.groupColumns = "a, b, c, d, e, f";
+    expect(validateRuleForm(form, TARGET).map((issue) => issue.key)).toContain(
+      `${VALIDATION_PREFIX}groupColumnsTooMany`
+    );
+  });
+
+  it("checks both sides of a cross-table rule and its tolerance", () => {
+    const forbidden = validForm(QualityRuleType.CROSS_TABLE);
+    forbidden.config.leftAggFunction = QualityAggregateFunction.COUNT;
+    forbidden.config.leftAggColumn = "amount";
+    expect(
+      validateRuleForm(forbidden, TARGET).map((issue) => issue.key)
+    ).toContain(`${VALIDATION_PREFIX}crossTableColumnForbidden`);
+
+    const required = validForm(QualityRuleType.CROSS_TABLE);
+    required.config.rightAggFunction = QualityAggregateFunction.SUM;
+    required.config.rightAggColumn = "";
+    expect(
+      validateRuleForm(required, TARGET).map((issue) => issue.key)
+    ).toContain(`${VALIDATION_PREFIX}crossTableColumnRequired`);
+
+    const tolerance = validForm(QualityRuleType.CROSS_TABLE);
+    tolerance.config.tolerance = "-1";
+    expect(
+      validateRuleForm(tolerance, TARGET).map((issue) => issue.key)
+    ).toContain(`${VALIDATION_PREFIX}crossTableToleranceInvalid`);
+  });
+
+  it("skips the value count for an operator that takes none", () => {
+    const form = validForm(QualityRuleType.UNIQUE);
+    form.filter = [
+      {
+        column: "deleted_at",
+        op: QualityFilterOperator.IS_NULL,
+        values: "ignored",
+      },
+    ];
+    expect(validateRuleForm(form, TARGET)).toEqual([]);
   });
 });
 

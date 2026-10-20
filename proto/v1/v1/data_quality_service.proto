@@ -224,6 +224,13 @@ service DataQualityService {
     option (metaxisdata.v1.audit) = true;
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.explain";
   }
+
+  // Read the workspace's quality summary: how many rules and issues exist, how
+  // the last day went, and the per-day tallies the overview chart draws.
+  rpc GetQualityOverview(GetQualityOverviewRequest) returns (QualityOverview) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityOverview"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+  }
 }
 
 // QualityRuleType is the observation a rule makes. The value is immutable for a
@@ -1661,4 +1668,53 @@ message ExplainQualityResultResponse {
     ExplainSQLProgress progress = 2;
     ExplainSQLMetadata metadata = 3;
   }
+}
+
+message GetQualityOverviewRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // How many days the trend covers, 1-30. Zero means seven.
+  int32 trend_days = 2;
+}
+
+// QualityOverview is the workspace-level summary the overview page renders. It
+// aggregates the tables instead of listing rows, so the page costs a handful of
+// queries rather than paging through every result.
+message QualityOverview {
+  // Rules by lifecycle state.
+  int32 rule_count = 1;
+  int32 enabled_rule_count = 2;
+  int32 paused_rule_count = 3;
+  // Tables that at least one enabled rule watches.
+  int32 monitored_table_count = 4;
+
+  // Issues currently open (status OPEN or ACKNOWLEDGED) by severity.
+  int32 open_warning_count = 5;
+  int32 open_error_count = 6;
+  int32 open_critical_count = 7;
+
+  // The last 24 hours: how many rules failed at least once, how many runs
+  // started, and how their results tallied.
+  int32 failing_rule_count = 8;
+  int32 run_count = 9;
+  QualityRunCounts last_day_counts = 10;
+
+  // The per-day tallies of the trend window, oldest first.
+  repeated QualityTrendPoint trend = 11;
+  // How many days the trend covers.
+  int32 trend_days = 12;
+}
+
+// QualityTrendPoint is one day of result tallies.
+message QualityTrendPoint {
+  // The day, as YYYY-MM-DD in UTC.
+  string date = 1;
+  int32 pass = 2;
+  int32 warn = 3;
+  int32 fail = 4;
+  int32 error = 5;
+  int32 skipped = 6;
+  int32 not_evaluated = 7;
+  int32 total = 8;
 }

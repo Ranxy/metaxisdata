@@ -151,6 +151,11 @@
           :label="t('dataQuality.editor.warnNullPct')"
         />
       </div>
+      <FormField
+        v-model="config.nullValues"
+        :label="t('dataQuality.editor.nullValues')"
+        :hint="t('dataQuality.editor.nullValuesHint')"
+      />
     </template>
 
     <template v-else-if="ruleType === QualityRuleType.UNIQUE">
@@ -369,13 +374,257 @@
         </p>
       </div>
     </template>
+
+    <template v-else-if="ruleType === QualityRuleType.SCHEMA_DRIFT">
+      <div class="space-y-3">
+        <div class="flex flex-wrap items-start justify-between gap-2">
+          <div class="space-y-1">
+            <Label>{{ t("dataQuality.editor.expectedColumns") }}</Label>
+            <p class="text-sm text-muted-foreground">
+              {{ t("dataQuality.editor.expectedColumnsHint") }}
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            :disabled="columnDetails.length === 0"
+            @click="fillExpectedColumns"
+          >
+            {{ t("dataQuality.editor.fillFromTarget") }}
+          </Button>
+        </div>
+        <div
+          v-for="(column, index) in config.expectedColumns ?? []"
+          :key="index"
+          class="grid items-center gap-2 rounded-md border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]"
+        >
+          <Input
+            v-model="column.name"
+            :aria-label="t('dataQuality.editor.columnName')"
+            :placeholder="t('dataQuality.editor.columnName')"
+          />
+          <Input
+            v-model="column.type"
+            :aria-label="t('dataQuality.editor.columnType')"
+            :placeholder="t('dataQuality.editor.columnType')"
+          />
+          <CheckboxField
+            v-model="column.nullable"
+            :label="t('dataQuality.editor.nullable')"
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            class="h-8 w-8 text-muted-foreground hover:text-destructive"
+            :aria-label="t('dataQuality.editor.removeColumn')"
+            :title="t('dataQuality.editor.removeColumn')"
+            @click="removeExpectedColumn(index)"
+          >
+            <Trash2 class="h-4 w-4" />
+          </Button>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          @click="addExpectedColumn"
+        >
+          <Plus class="mr-1 h-4 w-4" />
+          {{ t("dataQuality.editor.addColumn") }}
+        </Button>
+        <div class="grid gap-4 sm:grid-cols-3">
+          <CheckboxField
+            v-model="config.checkTypes"
+            :label="t('dataQuality.editor.checkTypes')"
+          />
+          <CheckboxField
+            v-model="config.checkOrder"
+            :label="t('dataQuality.editor.checkOrder')"
+          />
+          <CheckboxField
+            v-model="config.allowExtraColumns"
+            :label="t('dataQuality.editor.allowExtraColumns')"
+          />
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <FormField
+            v-model="config.failThreshold"
+            type="number"
+            :label="t('dataQuality.editor.failThreshold')"
+          />
+          <FormField
+            v-model="config.warnThreshold"
+            type="number"
+            :label="t('dataQuality.editor.warnThreshold')"
+          />
+        </div>
+      </div>
+    </template>
+
+    <div
+      v-else-if="ruleType === QualityRuleType.GROUP_CHECK"
+      class="grid gap-4 sm:grid-cols-3"
+    >
+      <FormField
+        v-model="config.groupColumns"
+        list="dq-target-columns"
+        :label="t('dataQuality.editor.groupColumns')"
+        :hint="t('dataQuality.editor.groupColumnsHint')"
+      />
+      <FormField
+        v-model="config.minRowsPerGroup"
+        type="number"
+        :label="t('dataQuality.editor.minRowsPerGroup')"
+      />
+      <FormField
+        v-model="config.maxRowsPerGroup"
+        type="number"
+        :label="t('dataQuality.editor.maxRowsPerGroup')"
+      />
+    </div>
+
+    <template v-else-if="ruleType === QualityRuleType.AGGREGATE">
+      <div class="grid gap-4 sm:grid-cols-2">
+        <FormField
+          v-model="config.aggregateColumn"
+          list="dq-target-columns"
+          :label="t('dataQuality.editor.column')"
+          :hint="t('dataQuality.editor.columnHint')"
+        />
+        <div class="flex flex-col gap-1.5">
+          <Label>{{ t("dataQuality.editor.aggregateFunction") }}</Label>
+          <Select v-model="aggregateFunctionModel">
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem
+                v-for="fn in AGGREGATE_FUNCTIONS"
+                :key="fn"
+                :value="String(fn)"
+              >
+                {{ t(qualityAggregateFunctionKey(fn)) }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <FormField
+          v-if="aggregateFunctionModel === String(QualityAggregateFunction.PERCENTILE)"
+          v-model="config.percentile"
+          type="number"
+          :label="t('dataQuality.editor.percentile')"
+          :hint="t('dataQuality.editor.percentileHint')"
+        />
+        <FormField
+          v-model="config.aggMin"
+          type="number"
+          :label="t('dataQuality.editor.minValue')"
+        />
+        <FormField
+          v-model="config.aggMax"
+          type="number"
+          :label="t('dataQuality.editor.maxValue')"
+        />
+        <FormField
+          v-model="config.aggWarnMin"
+          type="number"
+          :label="t('dataQuality.editor.warnMin')"
+        />
+        <FormField
+          v-model="config.aggWarnMax"
+          type="number"
+          :label="t('dataQuality.editor.warnMax')"
+        />
+      </div>
+      <CheckboxField
+        v-model="config.aggInclusive"
+        :label="t('dataQuality.editor.inclusive')"
+      />
+    </template>
+
+    <div
+      v-else-if="ruleType === QualityRuleType.CROSS_TABLE"
+      class="grid gap-4 sm:grid-cols-2"
+    >
+      <FormField
+        v-model="config.rightTable"
+        class="sm:col-span-2"
+        :label="t('dataQuality.editor.rightTable')"
+        :hint="t('dataQuality.editor.rightTableHint')"
+      />
+      <div class="flex flex-col gap-1.5">
+        <Label>{{ t("dataQuality.editor.leftAggregate") }}</Label>
+        <Select
+          :model-value="String(config.leftAggFunction ?? QualityAggregateFunction.COUNT)"
+          @update:model-value="setLeftFunction"
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem
+              v-for="fn in CROSS_TABLE_FUNCTIONS"
+              :key="fn"
+              :value="String(fn)"
+            >
+              {{ t(qualityAggregateFunctionKey(fn)) }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <FormField
+        v-model="config.leftAggColumn"
+        list="dq-target-columns"
+        :disabled="leftAggregateIsCount"
+        :label="t('dataQuality.editor.leftColumn')"
+        :hint="leftAggregateIsCount ? t('dataQuality.editor.countNeedsNoColumn') : t('dataQuality.editor.columnHint')"
+      />
+      <div class="flex flex-col gap-1.5">
+        <Label>{{ t("dataQuality.editor.rightAggregate") }}</Label>
+        <Select
+          :model-value="String(config.rightAggFunction ?? QualityAggregateFunction.COUNT)"
+          @update:model-value="setRightFunction"
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem
+              v-for="fn in CROSS_TABLE_FUNCTIONS"
+              :key="fn"
+              :value="String(fn)"
+            >
+              {{ t(qualityAggregateFunctionKey(fn)) }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <FormField
+        v-model="config.rightAggColumn"
+        :disabled="rightAggregateIsCount"
+        :label="t('dataQuality.editor.rightColumn')"
+        :hint="rightAggregateIsCount ? t('dataQuality.editor.countNeedsNoColumn') : t('dataQuality.editor.rightColumnHint')"
+      />
+      <FormField
+        v-model="config.tolerance"
+        type="number"
+        class="sm:col-span-2"
+        :label="t('dataQuality.editor.tolerance')"
+        :hint="t('dataQuality.editor.toleranceHint')"
+      />
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { Plus, Trash2 } from "lucide-vue-next";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
+import { Button } from "@/components/ui/button";
 import FormField from "@/components/ui/form-field/FormField.vue";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -385,14 +634,22 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  QualityAggregateFunction,
   QualityComparisonOperator,
   QualityRuleType,
   QualityThresholdMetric,
 } from "@/types/proto-es/v1/data_quality_service_pb";
-import { qualityComparisonOperatorKey } from "@/utils/dataQuality";
 import {
+  qualityAggregateFunctionKey,
+  qualityComparisonOperatorKey,
+} from "@/utils/dataQuality";
+import {
+  AGGREGATE_FUNCTIONS,
+  CROSS_TABLE_FUNCTIONS,
   isThresholdMetricType,
   type RuleConfigForm,
+  type SchemaDriftColumnForm,
+  type TargetColumnDetail,
 } from "@/utils/dataQualityForm";
 import CheckboxField from "./CheckboxField.vue";
 
@@ -402,9 +659,14 @@ import CheckboxField from "./CheckboxField.vue";
  * a rule-type change, so a stale arm can never travel with a new type.
  */
 
-const props = defineProps<{
-  ruleType: QualityRuleType;
-}>();
+const props = withDefaults(
+  defineProps<{
+    ruleType: QualityRuleType;
+    /** Used by the schema-drift snapshot's "fill from target" action. */
+    columnDetails?: TargetColumnDetail[];
+  }>(),
+  { columnDetails: () => [] }
+);
 
 const config = defineModel<RuleConfigForm>({ required: true });
 const thresholdMetric = defineModel<QualityThresholdMetric>("thresholdMetric", {
@@ -437,4 +699,64 @@ const thresholdMetricModel = computed({
     thresholdMetric.value = Number(value) as QualityThresholdMetric;
   },
 });
+
+const aggregateFunctionModel = computed({
+  get: () =>
+    String(config.value.aggregateFunction ?? QualityAggregateFunction.SUM),
+  set: (value: string) => {
+    config.value.aggregateFunction = Number(value) as QualityAggregateFunction;
+  },
+});
+
+const leftAggregateIsCount = computed(
+  () =>
+    (config.value.leftAggFunction ?? QualityAggregateFunction.COUNT) ===
+    QualityAggregateFunction.COUNT
+);
+const rightAggregateIsCount = computed(
+  () =>
+    (config.value.rightAggFunction ?? QualityAggregateFunction.COUNT) ===
+    QualityAggregateFunction.COUNT
+);
+
+// COUNT takes no column. Clearing it when the function becomes COUNT keeps the
+// form and the compiled request in agreement; the server also rejects a stray.
+function setLeftFunction(value: unknown) {
+  const fn = Number(value) as QualityAggregateFunction;
+  config.value.leftAggFunction = fn;
+  if (fn === QualityAggregateFunction.COUNT) {
+    config.value.leftAggColumn = "";
+  }
+}
+
+function setRightFunction(value: unknown) {
+  const fn = Number(value) as QualityAggregateFunction;
+  config.value.rightAggFunction = fn;
+  if (fn === QualityAggregateFunction.COUNT) {
+    config.value.rightAggColumn = "";
+  }
+}
+
+function addExpectedColumn() {
+  config.value.expectedColumns = [
+    ...(config.value.expectedColumns ?? []),
+    { name: "", type: "", nullable: true },
+  ];
+}
+
+function removeExpectedColumn(index: number) {
+  config.value.expectedColumns = (config.value.expectedColumns ?? []).filter(
+    (_, position) => position !== index
+  );
+}
+
+function fillExpectedColumns() {
+  config.value.expectedColumns = props.columnDetails.map(
+    (column): SchemaDriftColumnForm => ({
+      name: column.name,
+      type: column.type,
+      nullable: column.nullable,
+    })
+  );
+}
 </script>

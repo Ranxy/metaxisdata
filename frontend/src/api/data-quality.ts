@@ -4,13 +4,19 @@ import { FieldMaskSchema } from "@bufbuild/protobuf/wkt";
 import {
   CreateQualityRuleRequestSchema,
   DeleteQualityRuleRequestSchema,
+  GetQualityIssueRequestSchema,
   GetQualityRuleRequestSchema,
   GetQualityRunRequestSchema,
+  ListQualityIssuesRequestSchema,
   ListQualityRuleResultsRequestSchema,
   ListQualityRulesRequestSchema,
   ListQualityRunsRequestSchema,
   PreviewQualityRuleRequestSchema,
   QualityDimension,
+  type QualityIssue,
+  QualityIssueSchema,
+  QualityIssueStatus,
+  QualityResolutionReason,
   type QualityRule,
   type QualityRuleResult,
   QualityRuleState,
@@ -21,6 +27,7 @@ import {
   QualitySeverity,
   QualityStatus,
   RunQualityRulesRequestSchema,
+  UpdateQualityIssueRequestSchema,
   UpdateQualityRuleRequestSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { dataQualityClient } from "./client";
@@ -47,6 +54,19 @@ export function qualityRuleID(name: string): string {
 
 /** The id part of a quality run's resource name; the name itself if it has none. */
 export function qualityRunID(name: string): string {
+  return name.slice(name.lastIndexOf("/") + 1);
+}
+
+/** The resource-name segment a quality issue's id occupies. */
+const ISSUE_SEGMENT = "qualityIssues";
+
+/** Format: workspaces/{workspace}/qualityIssues/{quality_issue}. */
+export function qualityIssueName(id: string): string {
+  return `${WORKSPACE_PARENT}/${ISSUE_SEGMENT}/${id}`;
+}
+
+/** The id part of a quality issue's resource name; the name itself if it has none. */
+export function qualityIssueID(name: string): string {
   return name.slice(name.lastIndexOf("/") + 1);
 }
 
@@ -253,4 +273,106 @@ export async function listAllQualityRuleResults(
   return await listAll((pageToken) =>
     listQualityRuleResults({ run, pageSize: 1000, pageToken })
   );
+}
+
+/** One page of issues, most recently seen first. */
+export async function listQualityIssues(options: {
+  pageSize?: number;
+  pageToken?: string;
+  status?: QualityIssueStatus;
+  severity?: QualitySeverity;
+  /** Format: workspaces/{workspace}/qualityRules/{quality_rule}. */
+  rule?: string;
+  targetGuid?: string;
+  /** Format: users/{user}. */
+  owner?: string;
+  startTime?: Timestamp;
+  endTime?: Timestamp;
+  signal?: AbortSignal;
+}): Promise<ListPage<QualityIssue>> {
+  const request = create(ListQualityIssuesRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    pageSize: options.pageSize ?? 50,
+    pageToken: options.pageToken ?? "",
+    status: options.status ?? QualityIssueStatus.UNSPECIFIED,
+    severity: options.severity ?? QualitySeverity.UNSPECIFIED,
+    rule: options.rule ?? "",
+    targetGuid: options.targetGuid ?? "",
+    owner: options.owner ?? "",
+    ...(options.startTime ? { startTime: options.startTime } : {}),
+    ...(options.endTime ? { endTime: options.endTime } : {}),
+  });
+  const response = await dataQualityClient.listQualityIssues(request, {
+    signal: options.signal,
+  });
+  return {
+    items: response.qualityIssues,
+    nextPageToken: response.nextPageToken,
+  };
+}
+
+/** Every issue the caller can see, walking the cursor pages. */
+export async function listAllQualityIssues(
+  options: { pageSize?: number } = {}
+): Promise<QualityIssue[]> {
+  return await listAll((pageToken) =>
+    listQualityIssues({ pageSize: options.pageSize ?? 1000, pageToken })
+  );
+}
+
+/** Read one issue by its full resource name. */
+export async function getQualityIssue(name: string): Promise<QualityIssue> {
+  const request = create(GetQualityIssueRequestSchema, { name });
+  return await dataQualityClient.getQualityIssue(request);
+}
+
+/**
+ * Acknowledge an open issue. Acknowledgement is an action rather than a stored
+ * field, so the update mask names the input-only path `acknowledged`.
+ */
+export async function acknowledgeQualityIssue(
+  issue: QualityIssue
+): Promise<QualityIssue> {
+  const request = create(UpdateQualityIssueRequestSchema, {
+    issue,
+    updateMask: create(FieldMaskSchema, { paths: ["acknowledged"] }),
+    acknowledged: true,
+  });
+  return await dataQualityClient.updateQualityIssue(request);
+}
+
+/** Close an issue with a reason and an optional note. */
+export async function resolveQualityIssue(
+  issue: QualityIssue,
+  reason: QualityResolutionReason,
+  note: string
+): Promise<QualityIssue> {
+  const resolved = create(QualityIssueSchema, issue);
+  resolved.status = QualityIssueStatus.RESOLVED;
+  resolved.resolutionReason = reason;
+  resolved.resolutionNote = note.trim();
+  const request = create(UpdateQualityIssueRequestSchema, {
+    issue: resolved,
+    updateMask: create(FieldMaskSchema, {
+      paths: ["status", "resolution_reason", "resolution_note"],
+    }),
+  });
+  return await dataQualityClient.updateQualityIssue(request);
+}
+
+/**
+ * Mute an issue's notifications until `mutedUntil`. The rule keeps running and
+ * results keep being recorded; only the notifications stop.
+ */
+export async function muteQualityIssue(
+  issue: QualityIssue,
+  mutedUntil: Timestamp
+): Promise<QualityIssue> {
+  const muted = create(QualityIssueSchema, issue);
+  muted.mutedUntil = mutedUntil;
+  const request = create(UpdateQualityIssueRequestSchema, {
+    issue: muted,
+    updateMask: create(FieldMaskSchema, { paths: ["muted_until"] }),
+  });
+  return await dataQualityClient.updateQualityIssue(request);
 }

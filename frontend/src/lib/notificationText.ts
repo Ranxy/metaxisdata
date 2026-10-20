@@ -1,4 +1,7 @@
+import { QualityObservedKind } from "@/types/proto-es/v1/data_quality_service_pb";
 import {
+  type DataQualityDetail,
+  DataQualityNotificationKind,
   type Notification,
   NotificationSeverity,
   NotificationType,
@@ -7,6 +10,7 @@ import {
   type SchemaSyncDetail,
   SyncTrigger,
 } from "@/types/proto-es/v1/notification_service_pb";
+import { formatObservedValue as formatDataQualityValue } from "@/utils/dataQuality";
 
 /**
  * Everything the UI needs to render one message, as i18n keys and parameters
@@ -119,6 +123,92 @@ function openLineageText(detail: OpenLineageDetail): NotificationText {
   return text;
 }
 
+const DATA_QUALITY_PATH = "/data-quality";
+
+/** The app path of a quality issue or run, from its full resource name. */
+function qualityResourceHref(
+  resource: "issues" | "runs",
+  name: string
+): string | undefined {
+  return name ? `${DATA_QUALITY_PATH}/${resource}/${name}` : undefined;
+}
+
+/** The unit a data quality detail recorded, mapped to the observed-value kind. */
+function observedKindFromUnit(unit: string): QualityObservedKind {
+  switch (unit) {
+    case "%":
+      return QualityObservedKind.RATIO;
+    case "rows":
+      return QualityObservedKind.COUNT;
+    case "s":
+      return QualityObservedKind.SECONDS;
+    case "timestamp":
+      return QualityObservedKind.TIMESTAMP;
+    default:
+      return QualityObservedKind.NUMBER;
+  }
+}
+
+/** The observed value as a sentence fragment: "4%", "1,204", "12 s". */
+function observedLabel(detail: DataQualityDetail): string {
+  const kind = observedKindFromUnit(detail.observedUnit);
+  const value = formatDataQualityValue(detail.observedValue, kind);
+  return kind === QualityObservedKind.NUMBER && detail.observedUnit
+    ? `${value} ${detail.observedUnit}`
+    : value;
+}
+
+function dataQualityText(detail: DataQualityDetail): NotificationText {
+  const rule = detail.ruleTitle || detail.rule.split("/").pop() || "";
+  const target = detail.targetPath || detail.targetGuid;
+  const issue = qualityResourceHref("issues", detail.issue);
+  const run = qualityResourceHref("runs", detail.run);
+  switch (detail.kind) {
+    case DataQualityNotificationKind.ISSUE_OPENED:
+      return {
+        titleKey: "notifications.dataQualityIssueOpenedTitle",
+        titleParams: { rule },
+        messageKey: "notifications.dataQualityIssueOpenedMessage",
+        messageParams: { observed: observedLabel(detail), target },
+        href: issue ?? run,
+      };
+    case DataQualityNotificationKind.ISSUE_RECOVERED:
+      return {
+        titleKey: "notifications.dataQualityIssueRecoveredTitle",
+        titleParams: { rule },
+        messageKey: "notifications.dataQualityIssueRecoveredMessage",
+        messageParams: { target },
+        href: issue ?? run,
+      };
+    case DataQualityNotificationKind.EXECUTION_FAILED:
+      return {
+        titleKey: "notifications.dataQualityExecutionFailedTitle",
+        titleParams: { rule },
+        messageKey: "notifications.dataQualityExecutionFailedMessage",
+        messageParams: { code: detail.errorCode || "-" },
+        href: run ?? `${DATA_QUALITY_PATH}/runs`,
+      };
+    case DataQualityNotificationKind.STORM_SUMMARY:
+      return {
+        titleKey: "notifications.dataQualityStormSummaryTitle",
+        titleParams: {},
+        messageKey: "notifications.dataQualityStormSummaryMessage",
+        messageParams: {
+          failed: detail.failedRuleCount,
+          total: detail.totalRuleCount,
+        },
+        href: run ?? `${DATA_QUALITY_PATH}/runs`,
+      };
+    default:
+      return {
+        titleKey: "notifications.dataQualityUnknownTitle",
+        titleParams: {},
+        messageKey: "notifications.dataQualityUnknownMessage",
+        messageParams: {},
+      };
+  }
+}
+
 /**
  * Describes one notification in the reader's language. A type or a detail this
  * build does not know degrades to a generic line instead of an empty row, so a
@@ -136,6 +226,11 @@ export function describeNotification(
     case NotificationType.OPENLINEAGE:
       if (notification.detail.case === "openlineage") {
         return openLineageText(notification.detail.value);
+      }
+      break;
+    case NotificationType.DATA_QUALITY:
+      if (notification.detail.case === "dataQuality") {
+        return dataQualityText(notification.detail.value);
       }
       break;
     default:
