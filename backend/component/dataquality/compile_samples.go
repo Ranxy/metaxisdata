@@ -135,7 +135,14 @@ func sampleQuery(input CompileInput, sql string, args []any, columns []string, l
 // sampleNullPercent selects the rows whose column is NULL.
 func sampleNullPercent(input CompileInput, limit int) (CompiledQuery, error) {
 	config := input.Config.GetNullPercent()
-	column, err := requireColumn(input.Target, config.GetColumn())
+	// The plain null check needs the NULL-test capability (StarRocks bitmap/hll
+	// reject every predicate); only the custom missing values compare the column and
+	// need comparison support. The aggregate compiler applies the same gates, so this
+	// sample can never be stricter than the query it is evidence for.
+	column, err := requireNullTestColumn(input.Target, config.GetColumn())
+	if err == nil && len(config.GetNullValues()) > 0 {
+		_, err = requireComparisonColumn(input.Target, config.GetColumn())
+	}
 	if err != nil {
 		return CompiledQuery{}, err
 	}
@@ -172,7 +179,7 @@ func sampleNullPercent(input CompileInput, limit int) (CompiledQuery, error) {
 // cannot absorb the filter's AND.
 func sampleAcceptedValues(input CompileInput, limit int) (CompiledQuery, error) {
 	config := input.Config.GetAcceptedValues()
-	column, err := requireColumn(input.Target, config.GetColumn())
+	column, err := requireValueComparisonColumn(input.Target, config.GetColumn())
 	if err != nil {
 		return CompiledQuery{}, err
 	}
@@ -254,7 +261,7 @@ func sampleRange(input CompileInput, limit int) (CompiledQuery, error) {
 // does not match, so it is sampled as a failure too, mirroring the aggregate.
 func sampleRegex(input CompileInput, limit int) (CompiledQuery, error) {
 	config := input.Config.GetRegex()
-	column, err := compileStringColumn(input, config.GetColumn())
+	column, err := compileRegexColumn(input, config.GetColumn())
 	if err != nil {
 		return CompiledQuery{}, err
 	}
@@ -282,7 +289,7 @@ func sampleRegex(input CompileInput, limit int) (CompiledQuery, error) {
 // sampleStringLength selects the rows whose text length is outside the bounds.
 func sampleStringLength(input CompileInput, limit int) (CompiledQuery, error) {
 	config := input.Config.GetStringLength()
-	column, err := compileStringColumn(input, config.GetColumn())
+	column, err := compileLengthColumn(input, config.GetColumn())
 	if err != nil {
 		return CompiledQuery{}, err
 	}
@@ -315,7 +322,7 @@ func sampleStringLength(input CompileInput, limit int) (CompiledQuery, error) {
 // the same column names.
 func sampleReferentialIntegrity(input CompileInput, limit int) (CompiledQuery, error) {
 	config := input.Config.GetReferentialIntegrity()
-	childColumn, err := requireColumn(input.Target, config.GetChildColumn())
+	childColumn, err := requireComparisonColumn(input.Target, config.GetChildColumn())
 	if err != nil {
 		return CompiledQuery{}, err
 	}

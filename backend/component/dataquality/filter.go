@@ -171,11 +171,25 @@ func CompileFilter(dialect Dialect, target ResolvedTarget, filter Filter) (strin
 		}
 		quoted := dialect.QuoteIdentifier(column.Name)
 		switch clause.Op {
-		case FilterISNull:
-			conditions = append(conditions, quoted+" IS NULL")
-		case FilterISNotNull:
-			conditions = append(conditions, quoted+" IS NOT NULL")
+		case FilterISNull, FilterISNotNull:
+			if !supportsNullTest(column, target.Engine) {
+				return "", nil, invalidConfig("filter column %q is %s; the engine cannot test values of this type for NULL", column.Name, column.Type)
+			}
+			if clause.Op == FilterISNull {
+				conditions = append(conditions, quoted+" IS NULL")
+			} else {
+				conditions = append(conditions, quoted+" IS NOT NULL")
+			}
 		default:
+			// A value comparison needs equality for the column's type. IS NULL and
+			// IS NOT NULL above need only the NULL-test capability (StarRocks
+			// bitmap/hll/percentile reject even that).
+			if column.Kind == ColumnKindUnknown {
+				return "", nil, invalidConfig("filter column %q has a type this build cannot filter on", column.Name)
+			}
+			if !capabilitiesFor(target.Engine, column).valueComparison {
+				return "", nil, invalidConfig("filter column %q is %s; the engine cannot compare it with a scalar value", column.Name, column.Type)
+			}
 			values, err := convertFilterValues(column, clause.Values)
 			if err != nil {
 				return "", nil, err

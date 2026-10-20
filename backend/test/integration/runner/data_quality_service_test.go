@@ -650,3 +650,455 @@ func TestDataQualityParameterizedRuleRealServerIntegration(t *testing.T) {
 	require.NotEmpty(t, results[0].GetExecutedSql())
 	require.Equal(t, int64(1), results[0].GetTotalRows())
 }
+
+// TestDataQualityColumnProfileJsonRealServerIntegration covers a relation with a
+// jsonb column: PostgreSQL has neither MIN(jsonb) nor CHAR_LENGTH(jsonb), so the
+// aggregate must profile the column by counts and take its distinct count from the
+// sample instead of failing the whole table's request.
+func TestDataQualityColumnProfileJsonRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env, ctx, instanceID, sourceDatabase, databaseName := setupPostgresServiceDatabase(t)
+	require.NoError(t, env.ExecPostgres(ctx, sourceDatabase, `
+CREATE TABLE public.audit_log (
+  id BIGSERIAL PRIMARY KEY,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  payload JSONB NOT NULL,
+  client_mac MACADDR NOT NULL
+);
+INSERT INTO public.audit_log (created_at, payload, client_mac) VALUES
+  ('2026-01-01 00:00:00+00', '{"kind":"login"}', '08:00:2b:01:02:03'),
+  ('2026-01-02 00:00:00+00', '{"kind":"audit"}', '08:00:2b:01:02:04'),
+  ('2026-01-03 00:00:00+00', '{"kind":"login"}', '08:00:2b:01:02:03');
+CREATE MATERIALIZED VIEW public.audit_log_tags AS
+  SELECT payload, ARRAY['x']::varchar[] AS tags FROM public.audit_log;
+`))
+
+	_, err := env.CreateDataSource(ctx, common.FormatInstance(instanceID), &v1pb.DataSource{
+		Type:     v1pb.DataSourceType_READ_ONLY,
+		Username: "postgres",
+		Password: "postgres",
+		Host:     env.PostgresHost,
+		Port:     env.PostgresPort,
+	}, "readonly", false)
+	require.NoError(t, err)
+	env.SyncDatabase(ctx, t, databaseName)
+
+	tableGUID := waitForMetaGUIDByName(ctx, t, env,
+		fmt.Sprintf("%s;%s", instanceID, sourceDatabase), storepb.MetaType_TABLE, "audit_log")
+
+	client := v1connect.NewDataQualityServiceClient(&http.Client{Timeout: 30 * time.Second}, env.BaseURL)
+	resp, err := client.ProfileColumns(ctx, withToken(env.AdminToken(), &v1pb.ProfileColumnsRequest{
+		Parent:    "workspaces/-",
+		TableGuid: tableGUID,
+		MetaType:  v1pb.MetaType_TABLE,
+		Columns:   []string{"id", "created_at", "payload", "client_mac"},
+	}))
+	require.NoError(t, err)
+	require.Len(t, resp.Msg.GetColumnProfiles(), 4)
+	profiles := make(map[string]*v1pb.ColumnProfile, 4)
+	for _, profile := range resp.Msg.GetColumnProfiles() {
+		profiles[profile.GetColumn()] = profile
+	}
+
+	payload := profiles["payload"].GetProfile()
+	require.Equal(t, int64(3), payload.GetTotalRows())
+	require.Equal(t, int64(0), payload.GetNullCount())
+	require.Equal(t, int64(2), payload.GetDistinctCount())
+	require.False(t, payload.GetDistinctEstimated(), "the sample read every row")
+	require.Empty(t, payload.GetMinValue())
+	require.Empty(t, payload.GetMaxValue())
+	require.Nil(t, payload.MinLength)
+	require.Nil(t, payload.MaxLength)
+	require.NotEmpty(t, payload.GetTopValues())
+
+	// macaddr has equality but no MIN/MAX; profiling it must not fail the request.
+	mac := profiles["client_mac"].GetProfile()
+	require.Equal(t, int64(3), mac.GetTotalRows())
+	require.Equal(t, int64(2), mac.GetDistinctCount())
+	require.Empty(t, mac.GetMinValue())
+	require.Empty(t, mac.GetMaxValue())
+	require.Nil(t, mac.MinLength)
+
+	// A materialized view stores its varchar array as "character varying[]"; it must
+	// be profiled as an array (no CHAR_LENGTH) rather than a text scalar.
+	viewGUID := waitForMetaGUIDByName(ctx, t, env,
+		fmt.Sprintf("%s;%s", instanceID, sourceDatabase), storepb.MetaType_MATERIALIZED_VIEW, "audit_log_tags")
+	viewProfiles, err := client.ProfileColumns(ctx, withToken(env.AdminToken(), &v1pb.ProfileColumnsRequest{
+		Parent:    "workspaces/-",
+		TableGuid: viewGUID,
+		MetaType:  v1pb.MetaType_MATERIALIZED_VIEW,
+		Columns:   []string{"payload", "tags"},
+	}))
+	require.NoError(t, err)
+	require.Len(t, viewProfiles.Msg.GetColumnProfiles(), 2)
+	viewByColumn := make(map[string]*v1pb.ColumnProfile, 2)
+	for _, profile := range viewProfiles.Msg.GetColumnProfiles() {
+		viewByColumn[profile.GetColumn()] = profile
+		require.Nil(t, profile.GetProfile().MinLength, "an array column has no character length")
+	}
+	// The varchar[] must keep its array facts: exact distinct and MIN/MAX. A regression
+	// to a zero-capability column would still satisfy the MinLength assertion above.
+	arrayTags := viewByColumn["tags"].GetProfile()
+	require.Equal(t, int64(1), arrayTags.GetDistinctCount())
+	require.NotEmpty(t, arrayTags.GetMinValue())
+	require.NotEmpty(t, arrayTags.GetMaxValue())
+
+	// The ordinary columns still carry the facts their types support.
+	require.Equal(t, "1", profiles["id"].GetProfile().GetMinValue())
+	require.Equal(t, "3", profiles["id"].GetProfile().GetMaxValue())
+	require.NotEmpty(t, profiles["created_at"].GetProfile().GetMinValue())
+}
+
+// qualityPtr is a local pointer helper for the optional proto fields.
+func qualityPtr[T any](value T) *T { return &value }
+
+// TestDataQualityRuleRejectsUnrunnableColumnTypesRealServerIntegration covers the
+// types ColumnKind calls "string" but the engine cannot run text or equality
+// operators on: the rule is refused at save time instead of being stored and
+// recording ERROR on every execution. The cases the engines do support (jsonb
+// equality, CEL) must still save.
+func TestDataQualityRuleRejectsUnrunnableColumnTypesRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env, ctx, instanceID, sourceDatabase, databaseName := setupPostgresServiceDatabase(t)
+	require.NoError(t, env.ExecPostgres(ctx, sourceDatabase, `
+CREATE TABLE public.opaque_probe (
+  id BIGSERIAL PRIMARY KEY,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  payload JSONB NOT NULL,
+  payload_json JSON NOT NULL,
+  doc XML NOT NULL,
+  uid UUID NOT NULL,
+  tags TEXT[] NOT NULL
+);
+INSERT INTO public.opaque_probe (created_at, payload, payload_json, doc, uid, tags)
+VALUES (now(), '{"k":1}', '{"k":1}', '<a/>', '11111111-1111-1111-1111-111111111111', '{a,b}');
+CREATE TABLE public.code_ref (code TEXT PRIMARY KEY);
+INSERT INTO public.code_ref (code) VALUES ('a');
+CREATE VIEW public.code_numbers AS SELECT 1::bigint AS n;
+`))
+	_, err := env.CreateDataSource(ctx, common.FormatInstance(instanceID), &v1pb.DataSource{
+		Type:     v1pb.DataSourceType_READ_ONLY,
+		Username: "postgres",
+		Password: "postgres",
+		Host:     env.PostgresHost,
+		Port:     env.PostgresPort,
+	}, "readonly", false)
+	require.NoError(t, err)
+	env.SyncDatabase(ctx, t, databaseName)
+
+	guidPrefix := fmt.Sprintf("%s;%s", instanceID, sourceDatabase)
+	probeGUID := waitForMetaGUIDByName(ctx, t, env, guidPrefix, storepb.MetaType_TABLE, "opaque_probe")
+	refGUID := waitForMetaGUIDByName(ctx, t, env, guidPrefix, storepb.MetaType_TABLE, "code_ref")
+	client := v1connect.NewDataQualityServiceClient(&http.Client{Timeout: 30 * time.Second}, env.BaseURL)
+	token := env.AdminToken()
+
+	newRule := func(guid string, ruleType v1pb.QualityRuleType, config *v1pb.QualityRuleConfig) *v1pb.QualityRule {
+		return &v1pb.QualityRule{
+			Title:       "opaque type probe " + ruleType.String(),
+			Dimension:   v1pb.QualityDimension_QUALITY_DIMENSION_VALIDITY,
+			RuleType:    ruleType,
+			Target:      &v1pb.QualityTarget{MetaGuid: guid, MetaType: v1pb.MetaType_TABLE},
+			Config:      config,
+			Severity:    v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+			Description: "created by the opaque-type integration scenario",
+		}
+	}
+	filterEq := func(column string) *v1pb.QualityFilter {
+		return &v1pb.QualityFilter{Clauses: []*v1pb.QualityFilterClause{{
+			Column: column,
+			Op:     v1pb.QualityFilterOperator_QUALITY_FILTER_OPERATOR_EQ,
+			Values: []string{`{"k":1}`},
+		}}}
+	}
+	rowCountWithFilter := func(column string) *v1pb.QualityRuleConfig {
+		return &v1pb.QualityRuleConfig{
+			Config: &v1pb.QualityRuleConfig_RowCount{RowCount: &v1pb.RowCountConfig{MinRows: qualityPtr(int64(1))}},
+			Filter: filterEq(column),
+		}
+	}
+
+	rejected := []struct {
+		name string
+		rule *v1pb.QualityRule
+		want string
+	}{
+		{
+			name: "regex on jsonb",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_REGEX, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_Regex{Regex: &v1pb.RegexConfig{Column: "payload", Pattern: "^x"}},
+			}),
+			want: "needs a text type",
+		},
+		{
+			name: "string_length on uuid",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_StringLength{StringLength: &v1pb.StringLengthConfig{
+					Column: "uid", MinLen: qualityPtr(int64(10)),
+				}},
+			}),
+			want: "needs a text type",
+		},
+		{
+			name: "unique on json",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_Unique{Unique: &v1pb.UniqueConfig{Column: "payload_json"}},
+			}),
+			want: "the engine cannot group values of this type",
+		},
+		{
+			name: "unique_combination all columns",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_UniqueCombination{UniqueCombination: &v1pb.UniqueCombinationConfig{
+					AllColumns: true,
+				}},
+			}),
+			want: "the engine cannot group values of this type",
+		},
+		{
+			name: "group_check on xml",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_GroupCheck{GroupCheck: &v1pb.GroupCheckConfig{
+					Columns: []string{"doc"}, MinRowsPerGroup: qualityPtr(int64(1)),
+				}},
+			}),
+			want: "the engine cannot group values of this type",
+		},
+		{
+			name: "accepted_values on json",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_AcceptedValues{AcceptedValues: &v1pb.AcceptedValuesConfig{
+					Column: "payload_json", Values: []string{`{"k":1}`},
+				}},
+			}),
+			want: "the engine cannot compare it with a scalar value",
+		},
+		{
+			name: "null_percent custom values on json",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_NullPercent{NullPercent: &v1pb.NullPercentConfig{
+					Column: "payload_json", MaxNullCount: qualityPtr(int64(0)), NullValues: []string{`{}`},
+				}},
+			}),
+			want: "the engine cannot compare it with a scalar value",
+		},
+		{
+			name: "filter on json",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, rowCountWithFilter("payload_json")),
+			want: "the engine cannot compare it with a scalar value",
+		},
+		{
+			name: "aggregate MIN on a temporal column",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_Aggregate{Aggregate: &v1pb.AggregateConfig{
+					Column: "created_at", Function: v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MIN,
+				}},
+			}),
+			want: "needs a numeric column",
+		},
+		{
+			name: "cross_table MAX on a temporal right column",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_CrossTable{CrossTable: &v1pb.CrossTableConfig{
+					RightTable:    "opaque_probe",
+					LeftFunction:  v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
+					RightFunction: v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MAX,
+					RightColumn:   "created_at",
+				}},
+			}),
+			want: "needs a numeric column",
+		},
+		{
+			name: "cross_table MIN on a temporal left column",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_CrossTable{CrossTable: &v1pb.CrossTableConfig{
+					RightTable:    "code_ref",
+					LeftFunction:  v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MIN,
+					LeftColumn:    "created_at",
+					RightFunction: v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
+				}},
+			}),
+			want: "needs a numeric column",
+		},
+		{
+			name: "referential between jsonb and text",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_ReferentialIntegrity{ReferentialIntegrity: &v1pb.ReferentialIntegrityConfig{
+					ChildColumn: "payload", ParentTable: "code_ref", ParentColumn: "code",
+				}},
+			}),
+			want: "are not comparable",
+		},
+		{
+			name: "cross_table missing right table",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_CrossTable{CrossTable: &v1pb.CrossTableConfig{
+					RightTable:    "dropped_relation",
+					LeftFunction:  v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
+					RightFunction: v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
+				}},
+			}),
+			want: "does not exist or was dropped",
+		},
+		{
+			name: "cross_table MIN on json",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_CrossTable{CrossTable: &v1pb.CrossTableConfig{
+					RightTable:    "opaque_probe",
+					LeftFunction:  v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
+					RightFunction: v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MIN,
+					RightColumn:   "payload_json",
+				}},
+			}),
+			want: "needs a numeric column",
+		},
+	}
+	for _, test := range rejected {
+		_, err := client.CreateQualityRule(ctx, withToken(token, &v1pb.CreateQualityRuleRequest{
+			Parent: "workspaces/-", Rule: test.rule,
+		}))
+		require.Errorf(t, err, "%s must be refused at save time", test.name)
+		require.Equalf(t, connect.CodeInvalidArgument, connect.CodeOf(err), "%s: %v", test.name, err)
+		require.Containsf(t, err.Error(), test.want, "%s: %v", test.name, err)
+	}
+
+	// The dry run rejects the same definitions the save does, so the editor shows
+	// the validation message rather than a raw SQL error.
+	_, err = client.PreviewQualityRule(ctx, withToken(token, &v1pb.PreviewQualityRuleRequest{
+		Parent: "workspaces/-",
+		Rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_REGEX, &v1pb.QualityRuleConfig{
+			Config: &v1pb.QualityRuleConfig_Regex{Regex: &v1pb.RegexConfig{Column: "payload", Pattern: "^x"}},
+		}),
+	}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	require.Contains(t, err.Error(), "needs a text type")
+
+	accepted := []struct {
+		name string
+		rule *v1pb.QualityRule
+	}{
+		{
+			name: "unique on jsonb",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_Unique{Unique: &v1pb.UniqueConfig{Column: "payload"}},
+			}),
+		},
+		{
+			name: "accepted_values on jsonb",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_AcceptedValues{AcceptedValues: &v1pb.AcceptedValuesConfig{
+					Column: "payload", Values: []string{`{"k":1}`},
+				}},
+			}),
+		},
+		{
+			name: "filter on jsonb",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+				rowCountWithFilter("payload")),
+		},
+		{
+			name: "unique_combination on a bigint and a uuid",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_UniqueCombination{UniqueCombination: &v1pb.UniqueCombinationConfig{
+					Columns: []string{"id", "uid"},
+				}},
+			}),
+		},
+		{
+			name: "cel on jsonb",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_CelExpression{CelExpression: &v1pb.CelExpressionConfig{
+					Expression: "size(payload) > 0", Columns: []string{"payload"},
+				}},
+			}),
+		},
+		{
+			name: "referential between two text columns",
+			rule: newRule(refGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_ReferentialIntegrity{ReferentialIntegrity: &v1pb.ReferentialIntegrityConfig{
+					ChildColumn: "code", ParentTable: "code_ref", ParentColumn: "code",
+				}},
+			}),
+		},
+		{
+			name: "cross_table SUM over a view",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_CrossTable{CrossTable: &v1pb.CrossTableConfig{
+					RightTable:    "code_numbers",
+					LeftFunction:  v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
+					RightFunction: v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_SUM,
+					RightColumn:   "n",
+				}},
+			}),
+		},
+		{
+			name: "cross_table COUNT reconciliation",
+			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, &v1pb.QualityRuleConfig{
+				Config: &v1pb.QualityRuleConfig_CrossTable{CrossTable: &v1pb.CrossTableConfig{
+					RightTable:    "code_ref",
+					LeftFunction:  v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
+					RightFunction: v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
+				}},
+			}),
+		},
+	}
+	for _, test := range accepted {
+		_, err := client.CreateQualityRule(ctx, withToken(token, &v1pb.CreateQualityRuleRequest{
+			Parent: "workspaces/-", Rule: test.rule,
+		}))
+		require.NoErrorf(t, err, "%s must remain saveable", test.name)
+	}
+}
+
+// TestDataQualityNullPercentOnJSONRunsRealServerIntegration proves the failed-row
+// sample is never stricter than the aggregate it is evidence for: a plain
+// null_percent rule on a json column (no comparison capability, but IS NULL works)
+// must finish with a verdict, not record ERROR because the sample query could not be
+// compiled.
+func TestDataQualityNullPercentOnJSONRunsRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env, ctx, instanceID, sourceDatabase, databaseName := setupPostgresServiceDatabase(t)
+	require.NoError(t, env.ExecPostgres(ctx, sourceDatabase, `
+CREATE TABLE public.opaque_null (
+  id BIGSERIAL PRIMARY KEY,
+  payload_json JSON
+);
+INSERT INTO public.opaque_null (payload_json) VALUES ('{"a":1}'), (NULL);
+`))
+	_, err := env.CreateDataSource(ctx, common.FormatInstance(instanceID), &v1pb.DataSource{
+		Type:     v1pb.DataSourceType_READ_ONLY,
+		Username: "postgres",
+		Password: "postgres",
+		Host:     env.PostgresHost,
+		Port:     env.PostgresPort,
+	}, "readonly", false)
+	require.NoError(t, err)
+	env.SyncDatabase(ctx, t, databaseName)
+	guid := waitForMetaGUIDByName(ctx, t, env,
+		fmt.Sprintf("%s;%s", instanceID, sourceDatabase), storepb.MetaType_TABLE, "opaque_null")
+
+	fixture := &qualityFixture{
+		env:         env,
+		ctx:         ctx,
+		dataQuality: v1connect.NewDataQualityServiceClient(&http.Client{Timeout: 30 * time.Second}, env.BaseURL),
+	}
+	rule := fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		guid, &v1pb.QualityRuleConfig{Config: &v1pb.QualityRuleConfig_NullPercent{
+			NullPercent: &v1pb.NullPercentConfig{Column: "payload_json", MaxNullCount: qualityPtr(int64(0))},
+		}})
+	run := fixture.runToCompletion(t, rule.GetName())
+	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_FAIL, run.GetOutcome(),
+		"one NULL exceeds max_null_count 0")
+
+	results := fixture.resultsForRun(t, run.GetName())
+	require.Len(t, results, 1)
+	require.NotEqual(t, v1pb.QualityStatus_QUALITY_STATUS_ERROR, results[0].GetStatus(),
+		"a plain null check must never be an execution error: %s", results[0].GetErrorMessage())
+	require.Empty(t, results[0].GetErrorMessage())
+	require.Equal(t, int64(1), results[0].GetFailedRows())
+	require.Equal(t, int64(2), results[0].GetTotalRows())
+}

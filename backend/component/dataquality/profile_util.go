@@ -2,6 +2,7 @@ package dataquality
 
 import (
 	"cmp"
+	"encoding/hex"
 	"fmt"
 	"math"
 	"slices"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -39,11 +41,62 @@ const (
 	profileSampleMethod = "limit"
 )
 
-// profileColumn is one column a profile reads: its registry name and the coarse
-// type class that decides which aggregate expressions it gets.
+// profileFacts is the set of aggregate facts a column's type supports. The rule
+// compiler's ColumnKind is about how a bound literal is read, not about what an
+// aggregate may compute: PostgreSQL and SQL Server have neither MIN/MAX nor a
+// length function for jsonb, xml, spatial or binary types, and SQL Server cannot
+// even COUNT a legacy text column. The profiler only emits a fact the type table in
+// capabilities.go claims — emitting one more fails the whole statement, not just
+// that fact.
+type profileFacts uint8
+
+const (
+	// profileFactDistinct is an exact COUNT(DISTINCT col).
+	profileFactDistinct profileFacts = 1 << iota
+	// profileFactExtrema is MIN/MAX on the column.
+	profileFactExtrema
+	// profileFactLength is MIN/MAX of the character length of the column.
+	profileFactLength
+)
+
+// profileColumn is one column a profile reads: its registry name and the facts its
+// type supports. EstimatedDistinct marks a type without COUNT(DISTINCT) support,
+// whose distinct count comes from the sample instead; Patterns marks a column whose
+// sample values render as human text.
 type profileColumn struct {
-	Name string
-	Kind ColumnKind
+	Name              string
+	Facts             profileFacts
+	EstimatedDistinct bool
+	Patterns          bool
+	// CaseCount selects COUNT(CASE WHEN col IS NOT NULL THEN 1 END) over COUNT(col):
+	// SQL Server rejects the latter for text, ntext and image.
+	CaseCount bool
+	// Binary marks bytes (varbinary, blob, spatial), whose display values are hex
+	// so two different byte strings cannot collide with an ASCII "0x…" spelling.
+	Binary bool
+}
+
+// newProfileColumn derives one column's profile facts from the shared type
+// capability table, so the profile and the rule validators cannot drift apart.
+func newProfileColumn(engine storepb.Engine, column ColumnInfo) profileColumn {
+	capabilities := capabilitiesFor(engine, column)
+	profile := profileColumn{
+		Name:              column.Name,
+		EstimatedDistinct: !capabilities.countDistinct,
+		Patterns:          capabilities.text,
+		CaseCount:         capabilities.noColumnCount,
+		Binary:            capabilities.binary,
+	}
+	if capabilities.countDistinct {
+		profile.Facts |= profileFactDistinct
+	}
+	if capabilities.extrema {
+		profile.Facts |= profileFactExtrema
+	}
+	if capabilities.length {
+		profile.Facts |= profileFactLength
+	}
+	return profile
 }
 
 // profileAggregateAliases is the ordered result shape of the aggregate query:
@@ -56,15 +109,14 @@ func profileAggregateAliases(columns []profileColumn) []string {
 	aliases = append(aliases, "total_rows")
 	for index, column := range columns {
 		prefix := profileAliasPrefix(index)
-		aliases = append(aliases, prefix+"non_null", prefix+"distinct")
-		// A boolean column has no MIN/MAX aggregate: PostgreSQL defines none for
-		// bool and SQL Server rejects MIN/MAX on bit. Its values are summarized by
-		// the sample's frequent values instead.
-		if column.Kind == ColumnKindBoolean {
-			continue
+		aliases = append(aliases, prefix+"non_null")
+		if column.Facts&profileFactDistinct != 0 {
+			aliases = append(aliases, prefix+"distinct")
 		}
-		aliases = append(aliases, prefix+"min", prefix+"max")
-		if column.Kind == ColumnKindString {
+		if column.Facts&profileFactExtrema != 0 {
+			aliases = append(aliases, prefix+"min", prefix+"max")
+		}
+		if column.Facts&profileFactLength != 0 {
 			aliases = append(aliases, prefix+"min_len", prefix+"max_len")
 		}
 	}
@@ -78,34 +130,41 @@ func profileAliasPrefix(index int) string {
 
 // buildProfileAggregateSQL renders the single aggregate statement. It reads the
 // whole table (a profile is not filtered) with one scan: the row count, then per
-// column the non-NULL count, exact distinct count, extremes and — for text — the
-// length bounds.
+// column the non-NULL count and the facts its type supports.
+//
+// A column with no aggregate fact still needs a non-NULL count: COUNT(col) is the
+// default, and only a type that cannot be counted (SQL Server text, ntext, image)
+// uses a CASE expression.
 func buildProfileAggregateSQL(dialect Dialect, table string, columns []profileColumn) string {
 	expressions := make([]string, 0, 1+len(columns)*6)
 	expressions = append(expressions, "COUNT(*) AS total_rows")
 	for index, column := range columns {
 		prefix := profileAliasPrefix(index)
 		quoted := qualify(dialect, column.Name)
-		expressions = append(expressions,
-			"COUNT("+quoted+") AS "+prefix+"non_null",
-			"COUNT(DISTINCT "+quoted+") AS "+prefix+"distinct",
-		)
-		// PostgreSQL has no min(boolean) and SQL Server rejects MIN/MAX on bit, so a
-		// boolean column is only counted.
-		if column.Kind == ColumnKindBoolean {
+		if column.Facts == 0 {
+			if column.CaseCount {
+				expressions = append(expressions,
+					"COUNT(CASE WHEN "+quoted+" IS NOT NULL THEN 1 END) AS "+prefix+"non_null")
+			} else {
+				expressions = append(expressions, "COUNT("+quoted+") AS "+prefix+"non_null")
+			}
 			continue
 		}
-		expressions = append(expressions,
-			"MIN("+quoted+") AS "+prefix+"min",
-			"MAX("+quoted+") AS "+prefix+"max",
-		)
-		if column.Kind != ColumnKindString {
-			continue
+		expressions = append(expressions, "COUNT("+quoted+") AS "+prefix+"non_null")
+		if column.Facts&profileFactDistinct != 0 {
+			expressions = append(expressions, "COUNT(DISTINCT "+quoted+") AS "+prefix+"distinct")
 		}
-		length := dialect.LengthExpr(quoted)
-		expressions = append(expressions,
-			"MIN("+length+") AS "+prefix+"min_len",
-			"MAX("+length+") AS "+prefix+"max_len")
+		if column.Facts&profileFactExtrema != 0 {
+			expressions = append(expressions,
+				"MIN("+quoted+") AS "+prefix+"min",
+				"MAX("+quoted+") AS "+prefix+"max")
+		}
+		if column.Facts&profileFactLength != 0 {
+			length := dialect.LengthExpr(quoted)
+			expressions = append(expressions,
+				"MIN("+length+") AS "+prefix+"min_len",
+				"MAX("+length+") AS "+prefix+"max_len")
+		}
 	}
 	return "SELECT " + strings.Join(expressions, ", ") + " FROM " + table
 }
@@ -147,27 +206,63 @@ func profileResultIndexes(columns, expected []string) (map[string]int, error) {
 // profileValueString renders one observed value for display, truncated to the
 // storage bound. A NULL renders as the empty string: "no value" and "empty text"
 // both display as nothing, and the null count already carries the distinction.
-func profileValueString(value any) string {
-	var text string
+// Binary values are hex-encoded unconditionally: the stored profile is protojson
+// (which rejects invalid UTF-8), and a validity check alone would let the bytes
+// "0xfffe" and the two bytes ff fe render identically.
+func profileValueString(value any, binary bool) string {
+	text := profileValueText(value)
+	if binary || !utf8.ValidString(text) {
+		text = "0x" + hex.EncodeToString([]byte(text))
+	}
+	return common.TruncateUTF8Bytes(text, profileMaxValueBytes)
+}
+
+// profileValueText renders one observed value without truncation. It is the full
+// rendering a sample's distinct count keys on: two values that differ only past
+// the display bound are still two distinct values.
+func profileValueText(value any) string {
 	switch typed := value.(type) {
 	case nil:
 		return ""
 	case string:
-		text = typed
+		return typed
 	case []byte:
-		text = string(typed)
+		return string(typed)
 	case int64:
-		text = strconv.FormatInt(typed, 10)
+		return strconv.FormatInt(typed, 10)
 	case float64:
-		text = strconv.FormatFloat(typed, 'g', -1, 64)
+		return strconv.FormatFloat(typed, 'g', -1, 64)
 	case bool:
-		text = strconv.FormatBool(typed)
+		return strconv.FormatBool(typed)
 	case time.Time:
-		text = typed.UTC().Format(time.RFC3339Nano)
+		return typed.UTC().Format(time.RFC3339Nano)
 	default:
-		text = fmt.Sprintf("%v", value)
+		return fmt.Sprintf("%v", value)
 	}
-	return common.TruncateUTF8Bytes(text, profileMaxValueBytes)
+}
+
+// profileSampleDistinctCount counts the distinct values a sample saw. It is the
+// fallback for a column whose type has no SQL equality for an exact COUNT
+// (PostgreSQL json and xml, spatial types): the sample is the only reading the
+// profile can take without an engine-specific cast.
+func profileSampleDistinctCount(values []any) int64 {
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if value == nil {
+			continue
+		}
+		seen[profileValueText(value)] = struct{}{}
+	}
+	return int64(len(seen))
+}
+
+// profileReadInt64 reads one integer aggregate alias through the row reader.
+func profileReadInt64(read func(string) (any, error), alias string) (int64, error) {
+	value, err := read(alias)
+	if err != nil {
+		return 0, err
+	}
+	return profileInt64(value, alias)
 }
 
 // profileInt64 reads one integer aggregate. The normalized row carries int64; a
@@ -223,7 +318,7 @@ func profilePatterns(values []any) []string {
 		if value == nil {
 			continue
 		}
-		text := strings.TrimSpace(profileValueString(value))
+		text := strings.TrimSpace(profileValueString(value, false))
 		if text == "" {
 			continue
 		}
@@ -294,13 +389,13 @@ func profileLooksLikeAlpha(text string) bool {
 // value is truncated before counting, so two long values that differ only past the
 // display bound merge into one entry instead of producing two indistinguishable
 // rows. The counts are sample frequencies, not table frequencies.
-func profileTopValues(values []any) []*storepb.ProfileValue {
+func profileTopValues(values []any, binary bool) []*storepb.ProfileValue {
 	counts := make(map[string]int64, len(values))
 	for _, value := range values {
 		if value == nil {
 			continue
 		}
-		text := profileValueString(value)
+		text := profileValueString(value, binary)
 		if text == "" {
 			continue
 		}

@@ -167,7 +167,7 @@ func profileSelectedColumns(target ResolvedTarget, columns []string, maxColumns 
 		if column.Kind == ColumnKindUnknown {
 			return nil, invalidConfig("column %q has a type this build cannot profile", column.Name)
 		}
-		selected = append(selected, profileColumn{Name: column.Name, Kind: column.Kind})
+		selected = append(selected, newProfileColumn(target.Engine, column))
 	}
 	if len(selected) > maxColumns {
 		return nil, invalidConfig("a table profile allows at most %d columns, got %d", maxColumns, len(selected))
@@ -241,61 +241,52 @@ func profileFromAggregateColumn(column profileColumn, prefix string, total int64
 	if nonNull < 0 || nonNull > total {
 		return nil, badData("column %q reports %d non-NULL values in %d rows", column.Name, nonNull, total)
 	}
-	distinctValue, err := read(prefix + "distinct")
-	if err != nil {
-		return nil, err
+	profile := &storepb.ColumnProfile{TotalRows: total, NullCount: total - nonNull}
+	if column.Facts&profileFactDistinct != 0 {
+		distinct, err := profileReadInt64(read, prefix+"distinct")
+		if err != nil {
+			return nil, err
+		}
+		profile.DistinctCount = distinct
 	}
-	distinct, err := profileInt64(distinctValue, prefix+"distinct")
-	if err != nil {
-		return nil, err
+	if column.Facts&profileFactExtrema != 0 {
+		minValue, err := read(prefix + "min")
+		if err != nil {
+			return nil, err
+		}
+		maxValue, err := read(prefix + "max")
+		if err != nil {
+			return nil, err
+		}
+		profile.MinValue = profileValueString(minValue, column.Binary)
+		profile.MaxValue = profileValueString(maxValue, column.Binary)
 	}
-	profile := &storepb.ColumnProfile{
-		TotalRows:         total,
-		NullCount:         total - nonNull,
-		DistinctCount:     distinct,
-		DistinctEstimated: false,
-	}
-	// A boolean column has no MIN/MAX aggregate on PostgreSQL or SQL Server, so the
-	// aggregate does not read extremes for it; the sample's frequent values carry
-	// its distribution.
-	if column.Kind == ColumnKindBoolean {
-		return profile, nil
-	}
-	minValue, err := read(prefix + "min")
-	if err != nil {
-		return nil, err
-	}
-	maxValue, err := read(prefix + "max")
-	if err != nil {
-		return nil, err
-	}
-	profile.MinValue = profileValueString(minValue)
-	profile.MaxValue = profileValueString(maxValue)
-	if column.Kind != ColumnKindString {
-		return profile, nil
-	}
-	minLengthValue, err := read(prefix + "min_len")
-	if err != nil {
-		return nil, err
-	}
-	maxLengthValue, err := read(prefix + "max_len")
-	if err != nil {
-		return nil, err
-	}
-	profile.MinLength, err = profileOptionalInt64(minLengthValue, prefix+"min_len")
-	if err != nil {
-		return nil, err
-	}
-	profile.MaxLength, err = profileOptionalInt64(maxLengthValue, prefix+"max_len")
-	if err != nil {
-		return nil, err
+	if column.Facts&profileFactLength != 0 {
+		minLengthValue, err := read(prefix + "min_len")
+		if err != nil {
+			return nil, err
+		}
+		maxLengthValue, err := read(prefix + "max_len")
+		if err != nil {
+			return nil, err
+		}
+		profile.MinLength, err = profileOptionalInt64(minLengthValue, prefix+"min_len")
+		if err != nil {
+			return nil, err
+		}
+		profile.MaxLength, err = profileOptionalInt64(maxLengthValue, prefix+"max_len")
+		if err != nil {
+			return nil, err
+		}
 	}
 	return profile, nil
 }
 
 // applyProfileSample computes the sample-derived summaries: value shapes for
-// string columns and frequent values for low-cardinality columns. A sample with
-// no rows leaves both unset rather than claiming an empty distribution.
+// columns whose values render as text, the estimated distinct count for types
+// without COUNT(DISTINCT), and frequent values for low-cardinality columns. A
+// sample with no rows leaves them unset rather than claiming an empty
+// distribution.
 func applyProfileSample(profiles map[string]*storepb.ColumnProfile, selected []profileColumn, result *db.QueryResult) error {
 	if result == nil {
 		return badData("the profile sample returned no result")
@@ -323,13 +314,19 @@ func applyProfileSample(profiles map[string]*storepb.ColumnProfile, selected []p
 		if profile == nil {
 			continue
 		}
-		if column.Kind == ColumnKindString {
+		if column.Patterns {
 			profile.Patterns = profilePatterns(values[index])
+		}
+		if column.EstimatedDistinct {
+			// The type has no COUNT(DISTINCT) support, so the sample is the only
+			// reading available; it is exact when the sample saw every row.
+			profile.DistinctCount = profileSampleDistinctCount(values[index])
+			profile.DistinctEstimated = result.Truncated || int64(len(result.Rows)) < profile.TotalRows
 		}
 		// Top-K is only meaningful for a low-cardinality column; the cardinality
 		// gate uses the exact aggregate count, the frequencies use the sample.
 		if profile.DistinctCount > 0 && profile.DistinctCount <= profileTopValuesDistinctLimit {
-			profile.TopValues = profileTopValues(values[index])
+			profile.TopValues = profileTopValues(values[index], column.Binary)
 		}
 	}
 	return nil

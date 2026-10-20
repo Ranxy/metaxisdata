@@ -1788,8 +1788,9 @@ export declare type ColumnProfileStats = Message<"metaxisdata.v1.ColumnProfileSt
   distinctCount: bigint;
 
   /**
-   * True when the database refused an exact distinct count and the value came
-   * from a sample.
+   * True when an exact distinct count was unavailable — the column's type has no
+   * SQL equality for one, or the database refused it — and the value came from a
+   * sample.
    *
    * @generated from field: bool distinct_estimated = 4;
    */

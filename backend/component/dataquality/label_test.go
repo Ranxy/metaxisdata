@@ -746,3 +746,30 @@ func TestLabelInvalidErrorCode(t *testing.T) {
 	require.Equal(t, common.Invalid, common.ErrorCode(err))
 	require.NotErrorIs(t, err, errBadData)
 }
+
+// TestLabelProfileSummaryEstimatedDistinct pins that a sample-based distinct count
+// is marked as approximate, so the model does not cite it as an exact fact.
+func TestLabelProfileSummaryEstimatedDistinct(t *testing.T) {
+	t.Parallel()
+
+	exact := labelProfileSummary(&storepb.ColumnProfile{TotalRows: 100, NullCount: 0, DistinctCount: 40})
+	require.Contains(t, exact, "distinct=40")
+
+	estimated := labelProfileSummary(&storepb.ColumnProfile{
+		TotalRows: 100, NullCount: 0, DistinctCount: 7, DistinctEstimated: true,
+	})
+	require.Contains(t, estimated, "distinct=~7")
+}
+
+// TestLabelEvidenceMetricsEstimatedDistinct pins that the persisted label evidence
+// marks a sample-derived distinct count with the same ~ the profile summary uses.
+func TestLabelEvidenceMetricsEstimatedDistinct(t *testing.T) {
+	t.Parallel()
+
+	exact := labelEvidenceMetrics(&storepb.ColumnProfile{TotalRows: 100, DistinctCount: 40})
+	require.Contains(t, exact, "distinct=40")
+	estimated := labelEvidenceMetrics(&storepb.ColumnProfile{
+		TotalRows: 100, DistinctCount: 2, DistinctEstimated: true,
+	})
+	require.Contains(t, estimated, "distinct=~2")
+}

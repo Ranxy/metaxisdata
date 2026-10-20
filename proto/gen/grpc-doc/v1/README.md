@@ -4048,7 +4048,7 @@ without a model. It is the evidence a semantic label cites.
 | total_rows | [int64](#int64) |  |  |
 | null_count | [int64](#int64) |  |  |
 | distinct_count | [int64](#int64) |  |  |
-| distinct_estimated | [bool](#bool) |  | True when the database refused an exact distinct count and the value came from a sample. |
+| distinct_estimated | [bool](#bool) |  | True when an exact distinct count was unavailable — the column&#39;s type has no SQL equality for one, or the database refused it — and the value came from a sample. |
 | min_value | [string](#string) |  | Display forms of the observed extremes, truncated; empty when the column has no comparable values. |
 | max_value | [string](#string) |  |  |
 | min_length | [int64](#int64) | optional | Unset for non-string columns. |

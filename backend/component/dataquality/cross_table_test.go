@@ -304,9 +304,13 @@ func TestValidateCrossTableConfig(t *testing.T) {
 	require.NoError(t, ValidateConfig(pgTarget, storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
 		crossTableConfig("public.customers", storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_SUM, "amount",
 			storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_AVG, "total", proto.Float64(1))))
-	require.NoError(t, ValidateConfig(pgTarget, storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
+	// The evaluator subtracts the two observations as numbers, so a temporal MIN/MAX
+	// is not a difference and is refused even against a COUNT right side.
+	err := ValidateConfig(pgTarget, storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
 		crossTableConfig("customers", storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MIN, "created_at",
-			storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MAX, "created_at", nil)))
+			storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT, "", nil))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "needs a numeric column")
 
 	tests := []struct {
 		name        string

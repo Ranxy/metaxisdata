@@ -47,6 +47,11 @@ var numericTypes = []string{
 	"decimal", "numeric", "float", "double", "real", "serial",
 	"smallserial", "bigserial", "number", "money", "smallmoney",
 	"dec", "fixed",
+	// Integer and decimal spellings of the supported engines: MySQL's YEAR,
+	// StarRocks/Doris' LARGEINT and Doris' DECIMALV3 compare and aggregate as
+	// numbers, so a range or aggregate rule over them is meaningful.
+	"year", "largeint",
+	"decimalv2", "decimalv3", "decimal32", "decimal64", "decimal128",
 }
 
 // temporalTypes are the date/time type names. A rule that parses a timestamp from
@@ -67,13 +72,9 @@ var booleanTypes = []string{
 // and treating an unknown type as text is the conservative choice for validation
 // (values still get passed as parameters, never concatenated).
 func ClassifyColumnType(columnType string) ColumnKind {
-	name := strings.ToLower(strings.TrimSpace(columnType))
+	name := columnTypeBaseName(columnType)
 	if name == "" {
 		return ColumnKindUnknown
-	}
-	// Strip precision and modifier suffixes: "decimal(10,2) unsigned" → "decimal".
-	if index := strings.IndexAny(name, "( "); index >= 0 {
-		name = name[:index]
 	}
 	for _, candidate := range booleanTypes {
 		if name == candidate {
@@ -91,6 +92,39 @@ func ClassifyColumnType(columnType string) ColumnKind {
 		}
 	}
 	return ColumnKindString
+}
+
+// classifyColumnTypeForEngine classifies a type with engine-specific knowledge.
+// The engine-neutral classifier reads "bit" as a boolean because MySQL and SQL
+// Server use it that way; PostgreSQL's BIT/BIT VARYING are bit strings, and a
+// boolean parameter cannot be coerced to them.
+func classifyColumnTypeForEngine(engine storepb.Engine, columnType string) ColumnKind {
+	raw := strings.ToLower(strings.TrimSpace(columnType))
+	if engine == storepb.Engine_POSTGRES {
+		switch {
+		case columnTypeBaseName(raw) == "bit":
+			// PostgreSQL BIT/BIT VARYING are bit strings, not booleans: a boolean
+			// parameter cannot be coerced to them.
+			return ColumnKindString
+		case strings.HasSuffix(raw, "[]") || strings.HasPrefix(columnTypeBaseName(raw), "_"):
+			// An array is written and bound as an array literal, not as its element's
+			// scalar kind; the capability table then derives what the array supports.
+			return ColumnKindString
+		}
+	}
+	return ClassifyColumnType(columnType)
+}
+
+// columnTypeBaseName reduces an engine type string to its base name: precision
+// and modifier suffixes are dropped ("decimal(10,2) unsigned" → "decimal",
+// "character varying" → "character"). A schema-qualified user-defined type keeps
+// its schema ("public.citext"), so a caller can tell it from a built-in name.
+func columnTypeBaseName(columnType string) string {
+	name := strings.ToLower(strings.TrimSpace(columnType))
+	if index := strings.IndexAny(name, "( "); index >= 0 {
+		name = name[:index]
+	}
+	return name
 }
 
 // ColumnInfo is one column of the target relation: what a rule names, what type

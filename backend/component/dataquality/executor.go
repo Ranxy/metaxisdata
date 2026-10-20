@@ -576,7 +576,7 @@ func aggregateFloat(result *db.QueryResult, indexes map[string]int, column strin
 	case int64:
 		return float64(typed), true, nil
 	case string:
-		parsed, err := strconv.ParseFloat(strings.TrimSpace(typed), 64)
+		parsed, err := parseAggregateNumber(typed)
 		if err != nil {
 			return 0, false, badData("column %q is not a number (%q)", column, typed)
 		}
@@ -584,6 +584,49 @@ func aggregateFloat(result *db.QueryResult, indexes map[string]int, column strin
 	default:
 		return 0, false, badData("column %q has an unexpected %T value", column, value)
 	}
+}
+
+// parseAggregateNumber parses a driver's string rendering of a number. PostgreSQL
+// money arrives decorated with the locale's currency symbol and separators, so
+// those are stripped before the parse; a plain numeric string is unaffected.
+func parseAggregateNumber(value string) (float64, error) {
+	trimmed := strings.TrimSpace(value)
+	negative := strings.HasPrefix(trimmed, "(") && strings.HasSuffix(trimmed, ")")
+	cleaned := strings.Map(func(r rune) rune {
+		switch {
+		case r >= '0' && r <= '9', r == '.', r == ',', r == 'e', r == 'E', r == '+', r == '-':
+			return r
+		default:
+			return -1
+		}
+	}, strings.Trim(trimmed, "()"))
+	// money is rendered with the server's lc_monetary: the last of '.' and ',' is the
+	// decimal separator and the other is a thousands separator. With only one kind of
+	// separator present, a comma is read as a thousands separator (the en_US default).
+	if dot, comma := strings.LastIndex(cleaned, "."), strings.LastIndex(cleaned, ","); dot >= 0 && comma >= 0 {
+		if comma > dot {
+			cleaned = strings.ReplaceAll(cleaned, ".", "")
+			cleaned = strings.Replace(cleaned, ",", ".", 1)
+		} else {
+			cleaned = strings.ReplaceAll(cleaned, ",", "")
+		}
+	} else if comma >= 0 {
+		cleaned = strings.ReplaceAll(cleaned, ",", "")
+	}
+	if cleaned == "" {
+		return 0, strconv.ErrSyntax
+	}
+	parsed, err := strconv.ParseFloat(cleaned, 64)
+	if err != nil {
+		return 0, err
+	}
+	if math.IsNaN(parsed) || math.IsInf(parsed, 0) {
+		return 0, strconv.ErrSyntax
+	}
+	if negative {
+		parsed = -parsed
+	}
+	return parsed, nil
 }
 
 // aggregateTimestamp reads one optional timestamp column. The scanner decodes a

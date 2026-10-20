@@ -68,7 +68,7 @@ func compileNullPercent(input CompileInput) (CompiledQuery, error) {
 	if config == nil {
 		return CompiledQuery{}, invalidConfig("the null-percent config is missing")
 	}
-	column, err := requireColumn(input.Target, config.GetColumn())
+	column, err := requireNullTestColumn(input.Target, config.GetColumn())
 	if err != nil {
 		return CompiledQuery{}, err
 	}
@@ -85,7 +85,13 @@ func compileNullPercent(input CompileInput) (CompiledQuery, error) {
 	}
 
 	// The custom missing values appear in the SELECT list, before the filter's
-	// WHERE clause, so compileArgs reconciles the argument order per dialect.
+	// WHERE clause, so compileArgs reconciles the argument order per dialect. They
+	// compare the column with bound values, which a type without equality cannot.
+	if len(config.GetNullValues()) > 0 {
+		if _, err := requireComparisonColumn(input.Target, column.Name); err != nil {
+			return CompiledQuery{}, err
+		}
+	}
 	values, err := nullPercentValues(column, config.GetNullValues())
 	if err != nil {
 		return CompiledQuery{}, err
@@ -112,9 +118,14 @@ func compileUnique(input CompileInput) (CompiledQuery, error) {
 	if config == nil {
 		return CompiledQuery{}, invalidConfig("the unique config is missing")
 	}
-	column, err := requireColumn(input.Target, config.GetColumn())
+	column, err := requireGroupingColumn(input.Target, config.GetColumn())
 	if err != nil {
 		return CompiledQuery{}, err
+	}
+	if !config.GetCountNulls() {
+		if _, err := requireNullTestColumn(input.Target, column.Name); err != nil {
+			return CompiledQuery{}, err
+		}
 	}
 	if err := compileValidateCountThresholds(input.Config, config.FailThreshold, config.WarnThreshold); err != nil {
 		return CompiledQuery{}, err
@@ -145,9 +156,14 @@ func compileUniqueCombination(input CompileInput) (CompiledQuery, error) {
 	}
 	columns := make([]string, 0, len(names))
 	for _, name := range names {
-		column, err := requireColumn(input.Target, name)
+		column, err := requireGroupingColumn(input.Target, name)
 		if err != nil {
 			return CompiledQuery{}, err
+		}
+		if !config.GetCountNulls() {
+			if _, err := requireNullTestColumn(input.Target, column.Name); err != nil {
+				return CompiledQuery{}, err
+			}
 		}
 		columns = append(columns, column.Name)
 	}
@@ -211,7 +227,7 @@ func compileAcceptedValues(input CompileInput) (CompiledQuery, error) {
 	if config == nil {
 		return CompiledQuery{}, invalidConfig("the accepted-values config is missing")
 	}
-	column, err := requireColumn(input.Target, config.GetColumn())
+	column, err := requireValueComparisonColumn(input.Target, config.GetColumn())
 	if err != nil {
 		return CompiledQuery{}, err
 	}
@@ -327,7 +343,7 @@ func compileRegex(input CompileInput) (CompiledQuery, error) {
 	if config == nil {
 		return CompiledQuery{}, invalidConfig("the regex config is missing")
 	}
-	column, err := compileStringColumn(input, config.GetColumn())
+	column, err := compileRegexColumn(input, config.GetColumn())
 	if err != nil {
 		return CompiledQuery{}, err
 	}
@@ -366,7 +382,7 @@ func compileStringLength(input CompileInput) (CompiledQuery, error) {
 	if config == nil {
 		return CompiledQuery{}, invalidConfig("the string-length config is missing")
 	}
-	column, err := compileStringColumn(input, config.GetColumn())
+	column, err := compileLengthColumn(input, config.GetColumn())
 	if err != nil {
 		return CompiledQuery{}, err
 	}
@@ -416,7 +432,7 @@ func compileReferentialIntegrity(input CompileInput) (CompiledQuery, error) {
 	if config == nil {
 		return CompiledQuery{}, invalidConfig("the referential-integrity config is missing")
 	}
-	childColumn, err := requireColumn(input.Target, config.GetChildColumn())
+	childColumn, err := requireComparisonColumn(input.Target, config.GetChildColumn())
 	if err != nil {
 		return CompiledQuery{}, err
 	}

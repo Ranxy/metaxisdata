@@ -330,10 +330,22 @@ func TestValidateAggregateConfig(t *testing.T) {
 			wantMessage: "needs a numeric column",
 		},
 		{
+			name:        "avg on a money column",
+			engine:      storepb.Engine_POSTGRES,
+			config:      aggregateConfig("money_amount", storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_AVG, proto.Float64(0), nil),
+			wantMessage: "not defined for money columns",
+		},
+		{
+			name:        "min on a temporal column",
+			engine:      storepb.Engine_POSTGRES,
+			config:      aggregateConfig("created_at", storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MIN, proto.Float64(0), nil),
+			wantMessage: "needs a numeric column",
+		},
+		{
 			name:        "min on a string column",
 			engine:      storepb.Engine_POSTGRES,
 			config:      aggregateConfig("status", storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MIN, proto.Float64(0), nil),
-			wantMessage: "needs a numeric or temporal column",
+			wantMessage: "needs a numeric column",
 		},
 		{
 			name:        "no bounds",
@@ -387,7 +399,9 @@ func TestValidateAggregateConfig(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			err := ValidateConfig(compileTestTarget(test.engine), storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE, test.config)
+			target := compileTestTarget(test.engine)
+			target.Columns = append(target.Columns, ColumnInfo{Name: "money_amount", Type: "money", Kind: ColumnKindNumeric})
+			err := ValidateConfig(target, storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE, test.config)
 			require.Equal(t, common.Invalid, common.ErrorCode(err))
 			require.Contains(t, err.Error(), test.wantMessage)
 		})

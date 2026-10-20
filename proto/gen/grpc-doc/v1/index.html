@@ -12152,8 +12152,9 @@ inside the fail range. </p></td>
                   <td>distinct_estimated</td>
                   <td><a href="#bool">bool</a></td>
                   <td></td>
-                  <td><p>True when the database refused an exact distinct count and the value came
-from a sample. </p></td>
+                  <td><p>True when an exact distinct count was unavailable — the column&#39;s type has no
+SQL equality for one, or the database refused it — and the value came from a
+sample. </p></td>
                 </tr>
               
                 <tr>

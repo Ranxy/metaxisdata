@@ -97,7 +97,7 @@ func ResolveTarget(ctx context.Context, s *store.Store, guid string, metaType st
 		return nil, orphaned("the target database %q is gone", databaseName)
 	}
 
-	columns, err := metadataColumns(resource.Metadata, metaType)
+	columns, err := metadataColumns(resource.Metadata, metaType, instance.Metadata.GetEngine())
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +129,7 @@ func ResolveTarget(ctx context.Context, s *store.Store, guid string, metaType st
 // for rule validation. A relation type without a column list is a target a rule
 // cannot watch with a column-level check; it resolves with no columns so a
 // table-level rule still compiles.
-func metadataColumns(metadata *storepb.StoredMetadata, metaType storepb.MetaType) ([]ColumnInfo, error) {
+func metadataColumns(metadata *storepb.StoredMetadata, metaType storepb.MetaType, engine storepb.Engine) ([]ColumnInfo, error) {
 	var stored []*storepb.ColumnMetadata
 	switch metaType {
 	case storepb.MetaType_TABLE:
@@ -151,7 +151,7 @@ func metadataColumns(metadata *storepb.StoredMetadata, metaType storepb.MetaType
 		columns = append(columns, ColumnInfo{
 			Name:     column.GetName(),
 			Type:     column.GetType(),
-			Kind:     ClassifyColumnType(column.GetType()),
+			Kind:     classifyColumnTypeForEngine(engine, column.GetType()),
 			Nullable: column.GetNullable(),
 		})
 	}
