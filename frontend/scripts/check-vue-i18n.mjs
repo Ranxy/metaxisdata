@@ -76,6 +76,15 @@ export const DYNAMIC_PREFIXES = [
   "dataQuality.editor.validation",
   // The settings form's validation messages are returned by
   // validateSettingsForm, so the checker cannot follow them either.
+  // Suggestion/label/profile vocabulary returned by the helpers in
+  // src/utils/dataQualitySuggestion.ts, plus the per-column profile facts.
+  "dataQuality.suggestionKind",
+  "dataQuality.suggestionSource",
+  "dataQuality.suggestionStatus",
+  "dataQuality.semanticType",
+  "dataQuality.labelSource",
+  "dataQuality.labelStatus",
+  "dataQuality.profile",
   "dataQualitySettings.validation.",
   "dataQuality.issueStatus",
   "dataQuality.resolutionReason",

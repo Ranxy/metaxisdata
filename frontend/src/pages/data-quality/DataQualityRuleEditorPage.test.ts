@@ -10,8 +10,15 @@ import { Select } from "@/components/ui/select";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
+  QualityRuleConfigSchema,
   QualityRuleSchema,
   QualityRuleType,
+  QualitySuggestionKind,
+  QualitySuggestionSchema,
+  QualitySuggestionSource,
+  QualitySuggestionStatus,
+  QualityTargetSchema,
+  RowCountConfigSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
@@ -20,6 +27,7 @@ import DataQualityRuleEditorPage from "./DataQualityRuleEditorPage.vue";
 
 const mocks = vi.hoisted(() => ({
   createQualityRule: vi.fn(),
+  findQualitySuggestion: vi.fn(),
   getQualityRule: vi.fn(),
   previewQualityRule: vi.fn(),
   updateQualityRule: vi.fn(),
@@ -29,6 +37,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/api/data-quality", () => ({
   createQualityRule: mocks.createQualityRule,
+  findQualitySuggestion: mocks.findQualitySuggestion,
   getQualityRule: mocks.getQualityRule,
   previewQualityRule: mocks.previewQualityRule,
   updateQualityRule: mocks.updateQualityRule,
@@ -78,6 +87,11 @@ async function mountEditor(path: string) {
       {
         path: "/data-quality/rules",
         name: "DataQualityRules",
+        component: { template: "<div />" },
+      },
+      {
+        path: "/data-quality/suggestions",
+        name: "DataQualitySuggestions",
         component: { template: "<div />" },
       },
     ],
@@ -303,6 +317,60 @@ describe("DataQualityRuleEditorPage", () => {
     expect(
       wrapper.findAll("input").some((input) => input.element.value === "bigint")
     ).toBe(true);
+  });
+
+  it("prefills the form from a suggested rule draft", async () => {
+    mocks.findQualitySuggestion.mockResolvedValue(
+      create(QualitySuggestionSchema, {
+        name: "workspaces/ws/qualitySuggestions/draft-1",
+        kind: QualitySuggestionKind.RULE_DRAFT,
+        source: QualitySuggestionSource.NATURAL_LANGUAGE,
+        status: QualitySuggestionStatus.PENDING,
+        target: create(QualityTargetSchema, {
+          metaGuid: PREFILL,
+          metaType: MetaType.TABLE,
+        }),
+        payload: {
+          payload: {
+            case: "rule",
+            value: {
+              title: "Orders should have rows",
+              rationale: "The fact table.",
+              severity: 2,
+              confidence: 0.8,
+              config: create(QualityRuleConfigSchema, {
+                config: {
+                  case: "rowCount",
+                  value: create(RowCountConfigSchema, { minRows: 1n }),
+                },
+              }),
+            },
+          },
+        },
+      })
+    );
+
+    const { wrapper } = await mountEditor(
+      `/data-quality/rules/new?suggestion=${encodeURIComponent("workspaces/ws/qualitySuggestions/draft-1")}`
+    );
+
+    expect(mocks.findQualitySuggestion).toHaveBeenCalledWith(
+      "workspaces/ws/qualitySuggestions/draft-1"
+    );
+    expect(
+      (wrapper.find("#dq-rule-title").element as HTMLInputElement).value
+    ).toBe("Orders should have rows");
+    expect(
+      (
+        fieldInput(wrapper, label("dataQuality.editor.minRows"))
+          ?.element as HTMLInputElement
+      ).value
+    ).toBe("1");
+    expect(wrapper.text()).toContain(
+      label("dataQuality.editor.suggestionPrefilled")
+    );
+    // The target came from the suggestion, not from a query parameter.
+    expect(wrapper.text()).toContain(PREFILL);
   });
 
   it("updates an edited rule with the minimal mask", async () => {

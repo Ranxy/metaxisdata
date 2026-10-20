@@ -87,6 +87,7 @@ const ROUTES = [
   { path: "/data-quality/rules", name: "data quality rules", tableTopMaxY: 260 },
   { path: "/data-quality/runs", name: "data quality runs", tableTopMaxY: 200 },
   { path: "/data-quality/issues", name: "data quality issues", tableTopMaxY: 240 },
+  { path: "/data-quality/suggestions", name: "data quality suggestions", tableTopMaxY: 240 },
   { path: "/data-quality/rules/new", name: "data quality rule editor" },
 ];
 

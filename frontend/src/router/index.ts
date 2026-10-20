@@ -267,6 +267,17 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
+        path: "suggestions",
+        name: "DataQualitySuggestions",
+        component: () =>
+          import("@/pages/data-quality/DataQualitySuggestionsPage.vue"),
+        meta: {
+          requiresAuth: true,
+          layout: "default",
+          permission: "metaxisdata.dataQuality.suggest",
+        },
+      },
+      {
         path: "issues",
         name: "DataQualityIssues",
         component: () =>

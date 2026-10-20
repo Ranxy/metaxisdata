@@ -4,6 +4,7 @@ import { DurationSchema } from "@bufbuild/protobuf/wkt";
 import {
   AcceptedValuesConfigSchema,
   AggregateConfigSchema,
+  CelExpressionConfigSchema,
   CrossColumnConfigSchema,
   CrossTableConfigSchema,
   CustomSQLConfigSchema,
@@ -68,6 +69,11 @@ export const MAX_ACCEPTED_VALUES = 200;
 export const MAX_NULL_VALUES = 20;
 /** A grouped row-count rule groups by at most five columns. */
 export const MAX_GROUP_COLUMNS = 5;
+/** CEL expressions are capped at 4 KiB, 20 referenced columns and 100k rows. */
+export const MAX_CEL_EXPRESSION_BYTES = 4096;
+export const MAX_CEL_COLUMNS = 20;
+export const MAX_CEL_SAMPLE_ROWS = 100_000;
+export const DEFAULT_CEL_SAMPLE_ROWS = 10_000;
 
 /** The aggregates the aggregate rule offers. COUNT is the run's total_rows. */
 export const AGGREGATE_FUNCTIONS: QualityAggregateFunction[] = [
@@ -110,6 +116,7 @@ export const EDITABLE_RULE_TYPES: QualityRuleType[] = [
   QualityRuleType.GROUP_CHECK,
   QualityRuleType.AGGREGATE,
   QualityRuleType.CROSS_TABLE,
+  QualityRuleType.CEL_EXPRESSION,
 ];
 
 /**
@@ -119,6 +126,7 @@ export const EDITABLE_RULE_TYPES: QualityRuleType[] = [
  * config, and row_count_change/freshness are percentage- or second-based.
  */
 export const THRESHOLD_METRIC_RULE_TYPES: QualityRuleType[] = [
+  QualityRuleType.CEL_EXPRESSION,
   QualityRuleType.GROUP_CHECK,
   QualityRuleType.UNIQUE,
   QualityRuleType.UNIQUE_COMBINATION,
@@ -151,6 +159,7 @@ const DIMENSION_BY_RULE_TYPE: Partial<
   [QualityRuleType.GROUP_CHECK]: QualityDimension.COMPLETENESS,
   [QualityRuleType.AGGREGATE]: QualityDimension.ACCURACY,
   [QualityRuleType.CROSS_TABLE]: QualityDimension.CONSISTENCY,
+  [QualityRuleType.CEL_EXPRESSION]: QualityDimension.ACCURACY,
 };
 
 // ---- form state ----
@@ -220,6 +229,10 @@ export interface RuleConfigForm {
   warnLagSeconds?: string;
   // custom_sql
   sql?: string;
+  // cel_expression
+  celExpression?: string;
+  celColumns?: string;
+  celSampleRows?: string;
   // null_percent: values that also count as missing
   nullValues?: string;
   // schema_drift
@@ -381,6 +394,9 @@ export function emptyConfig(): RuleConfigForm {
     maxLagSeconds: "",
     warnLagSeconds: "",
     sql: "",
+    celExpression: "",
+    celColumns: "",
+    celSampleRows: String(DEFAULT_CEL_SAMPLE_ROWS),
     nullValues: "",
     expectedColumns: [],
     checkTypes: true,
@@ -587,6 +603,8 @@ export function columnsForConfig(form: RuleFormState): string[] {
       return uniqueValues(parseValueList(c.groupColumns ?? ""));
     case QualityRuleType.AGGREGATE:
       return uniqueValues([c.aggregateColumn ?? ""]);
+    case QualityRuleType.CEL_EXPRESSION:
+      return uniqueValues(parseValueList(c.celColumns ?? ""));
     case QualityRuleType.CROSS_TABLE:
       // Only the target's own columns belong in the snapshot; the right side
       // reads another table and is validated against that table at the API.
@@ -621,6 +639,55 @@ export function formToRule(
     });
   }
   return rule;
+}
+
+/**
+ * The rule type whose config arm a oneof case names. Used to rebuild a form from
+ * a message that was not built here (a suggested draft's config).
+ */
+export function ruleTypeForConfigCase(
+  configCase: string
+): QualityRuleType | undefined {
+  switch (configCase) {
+    case "rowCount":
+      return QualityRuleType.ROW_COUNT;
+    case "rowCountChange":
+      return QualityRuleType.ROW_COUNT_CHANGE;
+    case "nullPercent":
+      return QualityRuleType.NULL_PERCENT;
+    case "unique":
+      return QualityRuleType.UNIQUE;
+    case "uniqueCombination":
+      return QualityRuleType.UNIQUE_COMBINATION;
+    case "acceptedValues":
+      return QualityRuleType.ACCEPTED_VALUES;
+    case "range":
+      return QualityRuleType.RANGE;
+    case "regex":
+      return QualityRuleType.REGEX;
+    case "stringLength":
+      return QualityRuleType.STRING_LENGTH;
+    case "referentialIntegrity":
+      return QualityRuleType.REFERENTIAL_INTEGRITY;
+    case "crossColumn":
+      return QualityRuleType.CROSS_COLUMN;
+    case "freshness":
+      return QualityRuleType.FRESHNESS;
+    case "customSql":
+      return QualityRuleType.CUSTOM_SQL;
+    case "celExpression":
+      return QualityRuleType.CEL_EXPRESSION;
+    case "schemaDrift":
+      return QualityRuleType.SCHEMA_DRIFT;
+    case "groupCheck":
+      return QualityRuleType.GROUP_CHECK;
+    case "aggregate":
+      return QualityRuleType.AGGREGATE;
+    case "crossTable":
+      return QualityRuleType.CROSS_TABLE;
+    default:
+      return undefined;
+  }
 }
 
 /** The typed config message for the selected rule type. */
@@ -776,6 +843,18 @@ export function buildRuleConfig(form: RuleFormState): QualityRuleConfig {
           case: "customSql" as const,
           value: create(CustomSQLConfigSchema, {
             sql: (c.sql ?? "").trim(),
+            ...optionalDouble("failThreshold", c.failThreshold),
+            ...optionalDouble("warnThreshold", c.warnThreshold),
+          }),
+        };
+      case QualityRuleType.CEL_EXPRESSION:
+        return {
+          case: "celExpression" as const,
+          value: create(CelExpressionConfigSchema, {
+            expression: (c.celExpression ?? "").trim(),
+            columns: parseValueList(c.celColumns ?? ""),
+            sampleRows:
+              optionalIntegerValue(c.celSampleRows) ?? DEFAULT_CEL_SAMPLE_ROWS,
             ...optionalDouble("failThreshold", c.failThreshold),
             ...optionalDouble("warnThreshold", c.warnThreshold),
           }),
@@ -1039,6 +1118,15 @@ function configToForm(rule: QualityRule): RuleConfigForm {
       form.warnThreshold = optionalStringFromDouble(value.warnThreshold);
       break;
     }
+    case "celExpression": {
+      const value = config.value;
+      form.celExpression = value.expression;
+      form.celColumns = value.columns.join(", ");
+      form.celSampleRows = value.sampleRows > 0 ? String(value.sampleRows) : "";
+      form.failThreshold = optionalStringFromDouble(value.failThreshold);
+      form.warnThreshold = optionalStringFromDouble(value.warnThreshold);
+      break;
+    }
     case "schemaDrift": {
       const value = config.value;
       form.expectedColumns = value.expectedColumns.map((column) => ({
@@ -1240,7 +1328,8 @@ function tagsKey(tags: string): string {
  */
 export function validateRuleForm(
   form: RuleFormState,
-  target: TargetSelection | undefined
+  target: TargetSelection | undefined,
+  knownColumns: readonly string[] = []
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const invalid = () =>
@@ -1417,6 +1506,48 @@ export function validateRuleForm(
           key: VALIDATION_PREFIX + "sqlTooLong",
           params: { max: MAX_CUSTOM_SQL_BYTES },
         });
+      }
+      break;
+    }
+    case QualityRuleType.CEL_EXPRESSION: {
+      const expression = (c.celExpression ?? "").trim();
+      if (!expression) {
+        issues.push({ key: VALIDATION_PREFIX + "celExpressionRequired" });
+      } else if (byteLength(expression) > MAX_CEL_EXPRESSION_BYTES) {
+        issues.push({
+          key: VALIDATION_PREFIX + "celExpressionTooLong",
+          params: { max: MAX_CEL_EXPRESSION_BYTES },
+        });
+      }
+      const columns = parseValueList(c.celColumns ?? "");
+      if (columns.length === 0) {
+        issues.push({ key: VALIDATION_PREFIX + "celColumnsRequired" });
+      } else if (columns.length > MAX_CEL_COLUMNS) {
+        issues.push({
+          key: VALIDATION_PREFIX + "celColumnsTooMany",
+          params: { max: MAX_CEL_COLUMNS },
+        });
+      }
+      for (const column of columns) {
+        if (knownColumns.length > 0 && !knownColumns.includes(column)) {
+          issues.push({
+            key: VALIDATION_PREFIX + "celColumnUnknown",
+            params: { column },
+          });
+        }
+      }
+      if (c.celSampleRows !== undefined && c.celSampleRows.trim() !== "") {
+        const sampleRows = optionalIntegerValue(c.celSampleRows);
+        if (
+          sampleRows === undefined ||
+          sampleRows < 0 ||
+          sampleRows > MAX_CEL_SAMPLE_ROWS
+        ) {
+          issues.push({
+            key: VALIDATION_PREFIX + "celSampleRowsInvalid",
+            params: { max: MAX_CEL_SAMPLE_ROWS },
+          });
+        }
       }
       break;
     }

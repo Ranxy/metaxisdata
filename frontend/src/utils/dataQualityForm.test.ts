@@ -36,6 +36,8 @@ import {
   invalidNumber,
   isThresholdMetricType,
   MAX_ACCEPTED_VALUES,
+  MAX_CEL_COLUMNS,
+  MAX_CEL_EXPRESSION_BYTES,
   MAX_CUSTOM_SQL_BYTES,
   MAX_FILTER_CLAUSES,
   MAX_FILTER_VALUES,
@@ -174,6 +176,13 @@ const CONFIG_FIXTURES: Partial<
     aggWarnMax: "90",
     aggInclusive: true,
   },
+  [QualityRuleType.CEL_EXPRESSION]: {
+    celExpression: "amount > 0.0",
+    celColumns: "amount",
+    celSampleRows: "5000",
+    failThreshold: "0",
+    warnThreshold: "1",
+  },
   [QualityRuleType.CROSS_TABLE]: {
     rightTable: "public.orders_ref",
     leftAggFunction: QualityAggregateFunction.SUM,
@@ -202,6 +211,7 @@ const CONFIG_CASES: Record<string, QualityRuleType> = {
   groupCheck: QualityRuleType.GROUP_CHECK,
   aggregate: QualityRuleType.AGGREGATE,
   crossTable: QualityRuleType.CROSS_TABLE,
+  celExpression: QualityRuleType.CEL_EXPRESSION,
 };
 
 const TARGET: TargetSelection = {
@@ -236,9 +246,9 @@ function ruleFor(ruleType: QualityRuleType): QualityRule {
 
 describe("rule type catalogs", () => {
   it("offers every implemented type and not the reserved one", () => {
-    expect(EDITABLE_RULE_TYPES).toHaveLength(17);
-    expect(new Set(EDITABLE_RULE_TYPES).size).toBe(17);
-    expect(EDITABLE_RULE_TYPES).not.toContain(QualityRuleType.CEL_EXPRESSION);
+    expect(EDITABLE_RULE_TYPES).toHaveLength(18);
+    expect(new Set(EDITABLE_RULE_TYPES).size).toBe(18);
+    expect(EDITABLE_RULE_TYPES).toContain(QualityRuleType.CEL_EXPRESSION);
     for (const ruleType of [
       QualityRuleType.SCHEMA_DRIFT,
       QualityRuleType.GROUP_CHECK,
@@ -258,7 +268,7 @@ describe("rule type catalogs", () => {
     expect(suggestedDimension(99 as QualityRuleType)).toBe(
       QualityDimension.UNSPECIFIED
     );
-    expect(THRESHOLD_METRIC_RULE_TYPES).toHaveLength(10);
+    expect(THRESHOLD_METRIC_RULE_TYPES).toHaveLength(11);
     for (const ruleType of THRESHOLD_METRIC_RULE_TYPES) {
       expect(EDITABLE_RULE_TYPES).toContain(ruleType);
       expect(isThresholdMetricType(ruleType)).toBe(true);
@@ -400,6 +410,9 @@ describe("target selection", () => {
     expect(columnsForConfig(validForm(QualityRuleType.CROSS_TABLE))).toEqual([
       "amount",
     ]);
+    expect(columnsForConfig(validForm(QualityRuleType.CEL_EXPRESSION))).toEqual(
+      ["amount"]
+    );
   });
 });
 
@@ -875,6 +888,27 @@ describe("validation", () => {
         },
         "crossTableColumnForbidden",
       ],
+      [
+        QualityRuleType.CEL_EXPRESSION,
+        (form) => {
+          form.config = { ...form.config, celExpression: "  " };
+        },
+        "celExpressionRequired",
+      ],
+      [
+        QualityRuleType.CEL_EXPRESSION,
+        (form) => {
+          form.config = { ...form.config, celColumns: "" };
+        },
+        "celColumnsRequired",
+      ],
+      [
+        QualityRuleType.CEL_EXPRESSION,
+        (form) => {
+          form.config = { ...form.config, celSampleRows: "200000" };
+        },
+        "celSampleRowsInvalid",
+      ],
     ];
     for (const [ruleType, mutate, expected] of cases) {
       const form = validForm(ruleType);
@@ -960,6 +994,34 @@ describe("validation", () => {
       (issue) => issue.key === `${VALIDATION_PREFIX}nullValuesTooMany`
     );
     expect(nullIssue?.params).toEqual({ max: MAX_NULL_VALUES });
+  });
+
+  it("checks the CEL expression's size and its columns against the target", () => {
+    const tooLong = validForm(QualityRuleType.CEL_EXPRESSION);
+    tooLong.config.celExpression = "a".repeat(MAX_CEL_EXPRESSION_BYTES + 1);
+    expect(
+      validateRuleForm(tooLong, TARGET).map((issue) => issue.key)
+    ).toContain(`${VALIDATION_PREFIX}celExpressionTooLong`);
+
+    const unknown = validForm(QualityRuleType.CEL_EXPRESSION);
+    unknown.config.celColumns = "amount, nope";
+    const unknownIssue = validateRuleForm(unknown, TARGET, [
+      "id",
+      "amount",
+    ]).find((issue) => issue.key === `${VALIDATION_PREFIX}celColumnUnknown`);
+    expect(unknownIssue?.params).toEqual({ column: "nope" });
+
+    // Without a known-column list the form accepts any column; the server checks it.
+    expect(validateRuleForm(unknown, TARGET)).toEqual([]);
+
+    const tooMany = validForm(QualityRuleType.CEL_EXPRESSION);
+    tooMany.config.celColumns = Array.from(
+      { length: MAX_CEL_COLUMNS + 1 },
+      (_, index) => `c${index}`
+    ).join(",");
+    expect(
+      validateRuleForm(tooMany, TARGET).map((issue) => issue.key)
+    ).toContain(`${VALIDATION_PREFIX}celColumnsTooMany`);
   });
 
   it("reports a number that is not a number and a lag that is not whole", () => {
