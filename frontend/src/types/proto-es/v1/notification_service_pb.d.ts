@@ -5,6 +5,7 @@
 import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 import type { EmptySchema, Timestamp } from "@bufbuild/protobuf/wkt";
+import type { QualitySeverity, QualityStatus } from "./data_quality_service_pb";
 
 /**
  * Describes the file v1/notification_service.proto.
@@ -66,6 +67,12 @@ export declare type Notification = Message<"metaxisdata.v1.Notification"> & {
      */
     value: OpenLineageDetail;
     case: "openlineage";
+  } | {
+    /**
+     * @generated from field: metaxisdata.v1.DataQualityDetail data_quality = 8;
+     */
+    value: DataQualityDetail;
+    case: "dataQuality";
   } | { case: undefined; value?: undefined };
 };
 
@@ -527,6 +534,121 @@ export declare type KeepAlive = Message<"metaxisdata.v1.KeepAlive"> & {
 export declare const KeepAliveSchema: GenMessage<KeepAlive>;
 
 /**
+ * DataQualityDetail reports one data quality event. The message carries facts
+ * only; the client renders the localized sentence from the kind and these fields.
+ *
+ * @generated from message metaxisdata.v1.DataQualityDetail
+ */
+export declare type DataQualityDetail = Message<"metaxisdata.v1.DataQualityDetail"> & {
+  /**
+   * @generated from field: metaxisdata.v1.DataQualityNotificationKind kind = 1;
+   */
+  kind: DataQualityNotificationKind;
+
+  /**
+   * Format: workspaces/{workspace}/qualityRules/{quality_rule}
+   *
+   * @generated from field: string rule = 2;
+   */
+  rule: string;
+
+  /**
+   * @generated from field: string rule_title = 3;
+   */
+  ruleTitle: string;
+
+  /**
+   * The registry GUID of the rule's target.
+   *
+   * @generated from field: string target_guid = 4;
+   */
+  targetGuid: string;
+
+  /**
+   * The display path: instance/database/schema/table[.column].
+   *
+   * @generated from field: string target_path = 5;
+   */
+  targetPath: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityStatus from_status = 6;
+   */
+  fromStatus: QualityStatus;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityStatus to_status = 7;
+   */
+  toStatus: QualityStatus;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualitySeverity severity = 8;
+   */
+  severity: QualitySeverity;
+
+  /**
+   * The observed value and its unit ("rows", "%", "s", "timestamp").
+   *
+   * @generated from field: double observed_value = 9;
+   */
+  observedValue: number;
+
+  /**
+   * @generated from field: string observed_unit = 10;
+   */
+  observedUnit: string;
+
+  /**
+   * Format: workspaces/{workspace}/qualityIssues/{quality_issue}
+   *
+   * @generated from field: string issue = 11;
+   */
+  issue: string;
+
+  /**
+   * Format: workspaces/{workspace}/qualityRuns/{quality_run}
+   *
+   * @generated from field: string run = 12;
+   */
+  run: string;
+
+  /**
+   * @generated from field: int64 failed_rows = 13;
+   */
+  failedRows: bigint;
+
+  /**
+   * @generated from field: int64 total_rows = 14;
+   */
+  totalRows: bigint;
+
+  /**
+   * The machine-readable failure class for EXECUTION_FAILED.
+   *
+   * @generated from field: string error_code = 15;
+   */
+  errorCode: string;
+
+  /**
+   * The tallies a STORM_SUMMARY merged.
+   *
+   * @generated from field: int32 failed_rule_count = 16;
+   */
+  failedRuleCount: number;
+
+  /**
+   * @generated from field: int32 total_rule_count = 17;
+   */
+  totalRuleCount: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.DataQualityDetail.
+ * Use `create(DataQualityDetailSchema)` to create a new message.
+ */
+export declare const DataQualityDetailSchema: GenMessage<DataQualityDetail>;
+
+/**
  * NotificationType is what a notification is about. It selects which detail
  * message the notification carries.
  *
@@ -552,6 +674,14 @@ export enum NotificationType {
    * @generated from enum value: NOTIFICATION_TYPE_OPENLINEAGE = 2;
    */
   OPENLINEAGE = 2,
+
+  /**
+   * A data quality rule opened, recovered, failed to execute, or failed in a
+   * storm that was merged into one summary.
+   *
+   * @generated from enum value: NOTIFICATION_TYPE_DATA_QUALITY = 3;
+   */
+  DATA_QUALITY = 3,
 }
 
 /**
@@ -719,6 +849,51 @@ export enum OpenLineageFailureKind {
  * Describes the enum metaxisdata.v1.OpenLineageFailureKind.
  */
 export declare const OpenLineageFailureKindSchema: GenEnum<OpenLineageFailureKind>;
+
+/**
+ * DataQualityNotificationKind is the event a data quality notification reports.
+ *
+ * @generated from enum metaxisdata.v1.DataQualityNotificationKind
+ */
+export enum DataQualityNotificationKind {
+  /**
+   * @generated from enum value: DATA_QUALITY_NOTIFICATION_KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * A rule started failing: an issue was opened.
+   *
+   * @generated from enum value: DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED = 1;
+   */
+  ISSUE_OPENED = 1,
+
+  /**
+   * A previously failing rule passes again: its issue resolved itself.
+   *
+   * @generated from enum value: DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED = 2;
+   */
+  ISSUE_RECOVERED = 2,
+
+  /**
+   * A rule could not be executed at all. This is not a data failure.
+   *
+   * @generated from enum value: DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED = 3;
+   */
+  EXECUTION_FAILED = 3,
+
+  /**
+   * One run failed so many rules that the individual messages were merged.
+   *
+   * @generated from enum value: DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY = 4;
+   */
+  STORM_SUMMARY = 4,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.DataQualityNotificationKind.
+ */
+export declare const DataQualityNotificationKindSchema: GenEnum<DataQualityNotificationKind>;
 
 /**
  * NotificationService serves the caller's own in-app messages: the outcome of a

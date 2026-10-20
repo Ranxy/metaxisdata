@@ -4,7 +4,7 @@
 
 import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
-import type { FieldMask } from "@bufbuild/protobuf/wkt";
+import type { Duration, FieldMask } from "@bufbuild/protobuf/wkt";
 
 /**
  * Describes the file v1/setting_service.proto.
@@ -93,6 +93,15 @@ export declare type WorkspaceProfileSetting = Message<"metaxisdata.v1.WorkspaceP
    * @generated from field: repeated string sso_email_identity_idps = 10;
    */
   ssoEmailIdentityIdps: string[];
+
+  /**
+   * Data quality settings. They are read by the quality subsystem and written on
+   * the data quality settings page; every zero value means the server's default,
+   * which is why the reader resolves defaults instead of trusting the wire value.
+   *
+   * @generated from field: metaxisdata.v1.DataQualitySetting data_quality = 11;
+   */
+  dataQuality?: DataQualitySetting;
 };
 
 /**
@@ -100,6 +109,89 @@ export declare type WorkspaceProfileSetting = Message<"metaxisdata.v1.WorkspaceP
  * Use `create(WorkspaceProfileSettingSchema)` to create a new message.
  */
 export declare const WorkspaceProfileSettingSchema: GenMessage<WorkspaceProfileSetting>;
+
+/**
+ * DataQualitySetting configures the data quality subsystem for the workspace.
+ *
+ * @generated from message metaxisdata.v1.DataQualitySetting
+ */
+export declare type DataQualitySetting = Message<"metaxisdata.v1.DataQualitySetting"> & {
+  /**
+   * Whether the LLM-assisted entries (rule draft, failure explanation, column
+   * labels) are enabled. Off by default: the rule engine is fully offline.
+   *
+   * @generated from field: bool enable_llm_analysis = 1;
+   */
+  enableLlmAnalysis: boolean;
+
+  /**
+   * The LLM provider profile the quality analyses use, as a profile resource
+   * name. Empty means the first allowed profile.
+   *
+   * @generated from field: string llm_provider_profile = 2;
+   */
+  llmProviderProfile: string;
+
+  /**
+   * Whether failed checks keep the sampled rows as evidence. Off means a result
+   * records its counts but no values.
+   *
+   * @generated from field: bool store_failure_samples = 3;
+   */
+  storeFailureSamples: boolean;
+
+  /**
+   * How many failed rows a result keeps. Zero means the server default (20);
+   * capped at 100.
+   *
+   * @generated from field: int32 failure_sample_limit = 4;
+   */
+  failureSampleLimit: number;
+
+  /**
+   * The schedule interval new rules start with. Zero means the server default
+   * (one hour).
+   *
+   * @generated from field: google.protobuf.Duration default_schedule_interval = 5;
+   */
+  defaultScheduleInterval?: Duration;
+
+  /**
+   * The workspace's daily execution ceiling; 0 means the server default (10000).
+   *
+   * @generated from field: int32 daily_execution_limit = 6;
+   */
+  dailyExecutionLimit: number;
+
+  /**
+   * The workspace's daily column-analysis ceiling; 0 means the server default.
+   *
+   * @generated from field: int32 daily_column_analysis_limit = 7;
+   */
+  dailyColumnAnalysisLimit: number;
+
+  /**
+   * The maximum number of columns one analysis may cover; 0 means the server
+   * default (50).
+   *
+   * @generated from field: int32 max_columns_per_analysis = 8;
+   */
+  maxColumnsPerAnalysis: number;
+
+  /**
+   * Whether raw sample values may be sent to the LLM. Off by default: only
+   * aggregate profiles leave the deployment.
+   *
+   * @generated from field: bool send_sample_values_to_llm = 9;
+   */
+  sendSampleValuesToLlm: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.DataQualitySetting.
+ * Use `create(DataQualitySettingSchema)` to create a new message.
+ */
+export declare const DataQualitySettingSchema: GenMessage<DataQualitySetting>;
 
 /**
  * @generated from message metaxisdata.v1.GetWorkspaceProfileSettingRequest

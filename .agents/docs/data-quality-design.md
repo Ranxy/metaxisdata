@@ -52,6 +52,8 @@ backend/runner/qualityrunner ─┘
 | D-21 | `custom_sql` 作为缺口兜底可接受：只读、单语句、超时/上限、审计；反复出现的形态升格为规则类型 | 不引入通用 DSL；custom_sql 不是长期方案 |
 | D-22 | count 型规则的 warn/fail 阈值统一为 `fail_threshold` / `warn_threshold`（`optional double`），单位由公共 `threshold_metric` 决定；删除 `mostly_pct`、`max_failed_rows`、`warn_invalid_count`、`max_violation_count` 等分散字段 | 实现 M1.1 时确认的需求-设计口径缺口：原附录只列 warn、fail 固定 0，无法表达“允许少量脏数据”；统一字段让判定器、前端表单与 LLM 草稿校验共用一套阈值语义 |
 | D-23 | run 的状态拆成两个：`status`（生命周期 PENDING/RUNNING/COMPLETED/ABANDONED）+ `outcome`（结果 rollup，NULL 表示未完成） | 手动执行异步后前端必须能区分“排队中/执行中/已完成”；原设计把两者挤在一个 QualityStatus 里，PENDING 无处表达。两列都落库，列表可按 outcome 过滤 |
+| D-24 | `target_schema_changed` 用 registry 的 **schema_hash** 口径（`ListMetaRegistrySchemaHashes`），创建/更新时写入的 `target_meta_hash` 也取同一口径 | 设计原写 `meta_hash`；两者混用会让规则的“结构已变”永远为真。路径快照仍用于展示 |
+| D-25 | 手动执行的规则集不进库：API 建 run 后把 `ruleIDs` 经进程内队列交给 runner（`EnqueueQualityRun(runID, ruleIDs)`）；定时 run 由扫描批次自带规则 | `quality_run` 表没有规则列表列；单副本 + 进程内队列是既有假设，不为此加表/列 |
 
 **包/文件地图**
 
@@ -1071,19 +1073,23 @@ type CompiledQuery struct {
 | `row_count` | `SELECT COUNT(*) AS total_rows FROM <t> <where>` |
 | `row_count_change` | 同上（判定在 Go 内用基线） |
 | `null_percent` | `SELECT COUNT(*) AS total_rows, SUM(CASE WHEN <c> IS NULL THEN 1 ELSE 0 END) AS failed_rows FROM <t> <where>` |
-| `unique` | `SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS groups FROM (SELECT <c>, COUNT(*) AS cnt FROM <t> <where> AND <c> IS NOT NULL GROUP BY <c> HAVING COUNT(*) > 1) dq` |
+| `unique` | `SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS groups, (SELECT COUNT(*) FROM <t> <where>) AS total_rows FROM (SELECT <c>, COUNT(*) AS cnt FROM <t> <where> AND <c> IS NOT NULL GROUP BY <c> HAVING COUNT(*) > 1) dq`（结果列固定 `failed_rows, groups, total_rows`；`total_rows` 是 PERCENT 的分母） |
 | `unique_combination` | 同上，`<c>` 换成 `<c1>, <c2>, ...`，`IS NOT NULL` 对每列 AND |
 | `accepted_values` | `SELECT COUNT(*) AS total_rows, SUM(CASE WHEN <c> IS NULL <or-not-allowed> OR <c> NOT IN (?,...) THEN 1 ELSE 0 END) AS failed_rows FROM <t> <where>` |
-| `range` | `SELECT COUNT(*) AS total_rows, SUM(CASE WHEN <c> < ? OR <c> > ? THEN 1 ELSE 0 END) AS failed_rows FROM <t> <where>` |
+| `range` | `SELECT COUNT(*) AS total_rows, SUM(CASE WHEN <c> < ? OR <c> > ? THEN 1 ELSE 0 END) AS failed_rows FROM <t> <where>`；`inclusive=false`（默认）时两端开区间用 `<`/`>`，`inclusive=true` 时用 `<=`/`>=` |
 | `regex` | `SELECT COUNT(*) AS total_rows, SUM(CASE WHEN <c> IS NULL OR <c> NOT REGEXP ? THEN 1 ELSE 0 END) AS failed_rows FROM <t> <where>` |
 | `string_length` | `... CASE WHEN <len(c)> < ? OR <len(c)> > ? THEN 1 ...` |
-| `referential_integrity` | `SELECT COUNT(*) AS failed_rows FROM <child> c LEFT JOIN <parent> p ON c.<cc> = p.<pc> <child where> AND c.<cc> IS NOT NULL AND p.<pc> IS NULL` |
+| `referential_integrity` | `SELECT COUNT(*) AS total_rows, SUM(CASE WHEN <orphan> THEN 1 ELSE 0 END) AS failed_rows FROM (SELECT * FROM <child> <filter>) c LEFT JOIN <parent> p ON c.<cc> = p.<pc>`（`<orphan>` = `c.<cc> IS NULL` 或（`allow_null=false` 时）`p.<pc> IS NULL`；子表先做 filter 再 JOIN，避免同名列歧义并让 PERCENT 拿到 total） |
 | `cross_column` | `SELECT COUNT(*) AS total_rows, SUM(CASE WHEN NOT (<a> <op> <b>) THEN 1 ELSE 0 END) AS failed_rows FROM <t> <where>` |
 | `freshness` | `SELECT COUNT(*) AS total_rows, MAX(<ts>) AS max_ts FROM <t> <where>` |
-| `custom_sql` | 计数：`SELECT COUNT(*) AS failed_rows FROM (<user sql>) dq`；样本：`SELECT * FROM (<user sql>) dq LIMIT ?`（分开执行） |
+| `custom_sql` | 计数：`SELECT COUNT(*) AS failed_rows FROM (<user sql>) dq`；样本：`SELECT * FROM (<user sql>) dq LIMIT ?`（分开执行）；语句形状只由 `ValidateCustomSQL` 的 omni parser 判定，编译器不再做文本前缀/分号扫描（字符串字面量里的分号会被误判）；无 `total_rows`，因此不接受 `threshold_metric=PERCENT` |
 | `cel_expression` | 样本：`SELECT <referenced columns> FROM <t> <where> LIMIT ?`（Go 内求值，见 §6.8） |
 
 `row_count` 的 warn/fail 用 config 的 min/max/exact 直接判定；其余 COUNT 型规则的阈值来自 config（默认 fail=0）。所有聚合查询只返回一行；扫描器按列名取值，缺列/错类型记 `BAD_DATA` 而不是 panic。
+
+干跑探针在编译产物外包一层不返回行的查询：MySQL 家族/PostgreSQL `SELECT * FROM (<compiled>) dq LIMIT 0`，MSSQL `SELECT TOP 0 * FROM (<compiled>) dq`（`component/dataquality.ProbeStatement`）。它只证明语法、列引用与查询权限，不扫表。
+
+**PERCENT 的适用范围**：只有返回 `total_rows` 的 8 类 count 规则（`unique`、`unique_combination`、`accepted_values`、`range`、`regex`、`string_length`、`referential_integrity`、`cross_column`）接受 `threshold_metric=PERCENT`；`custom_sql`（只有失败行数）、`freshness`（秒）、`row_count`/`row_count_change`（自身边界语义）和 `null_percent`（自带 count/pct 二选一）在保存期拒绝 PERCENT。
 
 ### 6.6 判定器
 
@@ -1768,6 +1774,7 @@ COMMIT
 | `UNSUPPORTED` | 方言不支持该规则 | 保存/运行 |
 | `SQL_SYNTAX` | 自定义 SQL 解析失败 | 保存/运行 |
 | `BAD_DATA` | 结果列缺失/类型不可解析 | evaluator |
+| `EXECUTION` | 执行期未能归类的驱动错误（已脱敏、截断） | executor |
 | `LIMIT_EXCEEDED` | 结果/样本超限 | driver |
 | `ORPHANED` | 目标消失/实例删除/列不存在 | resolver |
 | `QUOTA` | 日执行/分析配额 | runner/api |

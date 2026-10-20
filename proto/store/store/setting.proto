@@ -76,6 +76,10 @@ message WorkspaceProfileSetting {
   // falls back to the identifier claim.
   repeated string sso_email_identity_idps = 18;
 
+  // Data quality settings. Every zero value means the server's default, so the
+  // reader resolves defaults rather than trusting the stored value.
+  DataQualitySetting data_quality = 19;
+
   reserved 3, 6, 7, 8, 11, 13, 17;
   reserved "require_2fa", "token_duration", "announcement", "maximum_role_expiration", "database_change_mode", "enable_metric_collection", "allow_sso_email_identity";
 }
@@ -110,4 +114,18 @@ message EnvironmentSetting {
     map<string, string> tags = 3;
     string color = 4;
   }
+}
+
+// DataQualitySetting is the stored form of the data quality settings; it mirrors
+// metaxisdata.v1.DataQualitySetting.
+message DataQualitySetting {
+  bool enable_llm_analysis = 1;
+  string llm_provider_profile = 2;
+  bool store_failure_samples = 3;
+  int32 failure_sample_limit = 4;
+  google.protobuf.Duration default_schedule_interval = 5;
+  int32 daily_execution_limit = 6;
+  int32 daily_column_analysis_limit = 7;
+  int32 max_columns_per_analysis = 8;
+  bool send_sample_values_to_llm = 9;
 }

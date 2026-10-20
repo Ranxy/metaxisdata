@@ -10,6 +10,7 @@ import (
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	durationpb "google.golang.org/protobuf/types/known/durationpb"
 	fieldmaskpb "google.golang.org/protobuf/types/known/fieldmaskpb"
 	reflect "reflect"
 	sync "sync"
@@ -59,8 +60,12 @@ type WorkspaceProfileSetting struct {
 	// that its configuration, which only an administrator can write, is trusted:
 	// whoever can set an address there can sign in as the account it names.
 	SsoEmailIdentityIdps []string `protobuf:"bytes,10,rep,name=sso_email_identity_idps,json=ssoEmailIdentityIdps,proto3" json:"sso_email_identity_idps,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// Data quality settings. They are read by the quality subsystem and written on
+	// the data quality settings page; every zero value means the server's default,
+	// which is why the reader resolves defaults instead of trusting the wire value.
+	DataQuality   *DataQualitySetting `protobuf:"bytes,11,opt,name=data_quality,json=dataQuality,proto3" json:"data_quality,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *WorkspaceProfileSetting) Reset() {
@@ -156,6 +161,138 @@ func (x *WorkspaceProfileSetting) GetSsoEmailIdentityIdps() []string {
 	return nil
 }
 
+func (x *WorkspaceProfileSetting) GetDataQuality() *DataQualitySetting {
+	if x != nil {
+		return x.DataQuality
+	}
+	return nil
+}
+
+// DataQualitySetting configures the data quality subsystem for the workspace.
+type DataQualitySetting struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Whether the LLM-assisted entries (rule draft, failure explanation, column
+	// labels) are enabled. Off by default: the rule engine is fully offline.
+	EnableLlmAnalysis bool `protobuf:"varint,1,opt,name=enable_llm_analysis,json=enableLlmAnalysis,proto3" json:"enable_llm_analysis,omitempty"`
+	// The LLM provider profile the quality analyses use, as a profile resource
+	// name. Empty means the first allowed profile.
+	LlmProviderProfile string `protobuf:"bytes,2,opt,name=llm_provider_profile,json=llmProviderProfile,proto3" json:"llm_provider_profile,omitempty"`
+	// Whether failed checks keep the sampled rows as evidence. Off means a result
+	// records its counts but no values.
+	StoreFailureSamples bool `protobuf:"varint,3,opt,name=store_failure_samples,json=storeFailureSamples,proto3" json:"store_failure_samples,omitempty"`
+	// How many failed rows a result keeps. Zero means the server default (20);
+	// capped at 100.
+	FailureSampleLimit int32 `protobuf:"varint,4,opt,name=failure_sample_limit,json=failureSampleLimit,proto3" json:"failure_sample_limit,omitempty"`
+	// The schedule interval new rules start with. Zero means the server default
+	// (one hour).
+	DefaultScheduleInterval *durationpb.Duration `protobuf:"bytes,5,opt,name=default_schedule_interval,json=defaultScheduleInterval,proto3" json:"default_schedule_interval,omitempty"`
+	// The workspace's daily execution ceiling; 0 means the server default (10000).
+	DailyExecutionLimit int32 `protobuf:"varint,6,opt,name=daily_execution_limit,json=dailyExecutionLimit,proto3" json:"daily_execution_limit,omitempty"`
+	// The workspace's daily column-analysis ceiling; 0 means the server default.
+	DailyColumnAnalysisLimit int32 `protobuf:"varint,7,opt,name=daily_column_analysis_limit,json=dailyColumnAnalysisLimit,proto3" json:"daily_column_analysis_limit,omitempty"`
+	// The maximum number of columns one analysis may cover; 0 means the server
+	// default (50).
+	MaxColumnsPerAnalysis int32 `protobuf:"varint,8,opt,name=max_columns_per_analysis,json=maxColumnsPerAnalysis,proto3" json:"max_columns_per_analysis,omitempty"`
+	// Whether raw sample values may be sent to the LLM. Off by default: only
+	// aggregate profiles leave the deployment.
+	SendSampleValuesToLlm bool `protobuf:"varint,9,opt,name=send_sample_values_to_llm,json=sendSampleValuesToLlm,proto3" json:"send_sample_values_to_llm,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *DataQualitySetting) Reset() {
+	*x = DataQualitySetting{}
+	mi := &file_v1_setting_service_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DataQualitySetting) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DataQualitySetting) ProtoMessage() {}
+
+func (x *DataQualitySetting) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_setting_service_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DataQualitySetting.ProtoReflect.Descriptor instead.
+func (*DataQualitySetting) Descriptor() ([]byte, []int) {
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *DataQualitySetting) GetEnableLlmAnalysis() bool {
+	if x != nil {
+		return x.EnableLlmAnalysis
+	}
+	return false
+}
+
+func (x *DataQualitySetting) GetLlmProviderProfile() string {
+	if x != nil {
+		return x.LlmProviderProfile
+	}
+	return ""
+}
+
+func (x *DataQualitySetting) GetStoreFailureSamples() bool {
+	if x != nil {
+		return x.StoreFailureSamples
+	}
+	return false
+}
+
+func (x *DataQualitySetting) GetFailureSampleLimit() int32 {
+	if x != nil {
+		return x.FailureSampleLimit
+	}
+	return 0
+}
+
+func (x *DataQualitySetting) GetDefaultScheduleInterval() *durationpb.Duration {
+	if x != nil {
+		return x.DefaultScheduleInterval
+	}
+	return nil
+}
+
+func (x *DataQualitySetting) GetDailyExecutionLimit() int32 {
+	if x != nil {
+		return x.DailyExecutionLimit
+	}
+	return 0
+}
+
+func (x *DataQualitySetting) GetDailyColumnAnalysisLimit() int32 {
+	if x != nil {
+		return x.DailyColumnAnalysisLimit
+	}
+	return 0
+}
+
+func (x *DataQualitySetting) GetMaxColumnsPerAnalysis() int32 {
+	if x != nil {
+		return x.MaxColumnsPerAnalysis
+	}
+	return 0
+}
+
+func (x *DataQualitySetting) GetSendSampleValuesToLlm() bool {
+	if x != nil {
+		return x.SendSampleValuesToLlm
+	}
+	return false
+}
+
 type GetWorkspaceProfileSettingRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -164,7 +301,7 @@ type GetWorkspaceProfileSettingRequest struct {
 
 func (x *GetWorkspaceProfileSettingRequest) Reset() {
 	*x = GetWorkspaceProfileSettingRequest{}
-	mi := &file_v1_setting_service_proto_msgTypes[1]
+	mi := &file_v1_setting_service_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -176,7 +313,7 @@ func (x *GetWorkspaceProfileSettingRequest) String() string {
 func (*GetWorkspaceProfileSettingRequest) ProtoMessage() {}
 
 func (x *GetWorkspaceProfileSettingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_setting_service_proto_msgTypes[1]
+	mi := &file_v1_setting_service_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -189,7 +326,7 @@ func (x *GetWorkspaceProfileSettingRequest) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use GetWorkspaceProfileSettingRequest.ProtoReflect.Descriptor instead.
 func (*GetWorkspaceProfileSettingRequest) Descriptor() ([]byte, []int) {
-	return file_v1_setting_service_proto_rawDescGZIP(), []int{1}
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{2}
 }
 
 type UpdateWorkspaceProfileSettingRequest struct {
@@ -204,7 +341,7 @@ type UpdateWorkspaceProfileSettingRequest struct {
 
 func (x *UpdateWorkspaceProfileSettingRequest) Reset() {
 	*x = UpdateWorkspaceProfileSettingRequest{}
-	mi := &file_v1_setting_service_proto_msgTypes[2]
+	mi := &file_v1_setting_service_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -216,7 +353,7 @@ func (x *UpdateWorkspaceProfileSettingRequest) String() string {
 func (*UpdateWorkspaceProfileSettingRequest) ProtoMessage() {}
 
 func (x *UpdateWorkspaceProfileSettingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_setting_service_proto_msgTypes[2]
+	mi := &file_v1_setting_service_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -229,7 +366,7 @@ func (x *UpdateWorkspaceProfileSettingRequest) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use UpdateWorkspaceProfileSettingRequest.ProtoReflect.Descriptor instead.
 func (*UpdateWorkspaceProfileSettingRequest) Descriptor() ([]byte, []int) {
-	return file_v1_setting_service_proto_rawDescGZIP(), []int{2}
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *UpdateWorkspaceProfileSettingRequest) GetSetting() *WorkspaceProfileSetting {
@@ -254,7 +391,7 @@ type GetDebugConfigRequest struct {
 
 func (x *GetDebugConfigRequest) Reset() {
 	*x = GetDebugConfigRequest{}
-	mi := &file_v1_setting_service_proto_msgTypes[3]
+	mi := &file_v1_setting_service_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -266,7 +403,7 @@ func (x *GetDebugConfigRequest) String() string {
 func (*GetDebugConfigRequest) ProtoMessage() {}
 
 func (x *GetDebugConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_setting_service_proto_msgTypes[3]
+	mi := &file_v1_setting_service_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -279,7 +416,7 @@ func (x *GetDebugConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDebugConfigRequest.ProtoReflect.Descriptor instead.
 func (*GetDebugConfigRequest) Descriptor() ([]byte, []int) {
-	return file_v1_setting_service_proto_rawDescGZIP(), []int{3}
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{4}
 }
 
 type GetDebugConfigResponse struct {
@@ -292,7 +429,7 @@ type GetDebugConfigResponse struct {
 
 func (x *GetDebugConfigResponse) Reset() {
 	*x = GetDebugConfigResponse{}
-	mi := &file_v1_setting_service_proto_msgTypes[4]
+	mi := &file_v1_setting_service_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -304,7 +441,7 @@ func (x *GetDebugConfigResponse) String() string {
 func (*GetDebugConfigResponse) ProtoMessage() {}
 
 func (x *GetDebugConfigResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_setting_service_proto_msgTypes[4]
+	mi := &file_v1_setting_service_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -317,7 +454,7 @@ func (x *GetDebugConfigResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDebugConfigResponse.ProtoReflect.Descriptor instead.
 func (*GetDebugConfigResponse) Descriptor() ([]byte, []int) {
-	return file_v1_setting_service_proto_rawDescGZIP(), []int{4}
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *GetDebugConfigResponse) GetEnabled() bool {
@@ -337,7 +474,7 @@ type UpdateDebugConfigRequest struct {
 
 func (x *UpdateDebugConfigRequest) Reset() {
 	*x = UpdateDebugConfigRequest{}
-	mi := &file_v1_setting_service_proto_msgTypes[5]
+	mi := &file_v1_setting_service_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -349,7 +486,7 @@ func (x *UpdateDebugConfigRequest) String() string {
 func (*UpdateDebugConfigRequest) ProtoMessage() {}
 
 func (x *UpdateDebugConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_setting_service_proto_msgTypes[5]
+	mi := &file_v1_setting_service_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -362,7 +499,7 @@ func (x *UpdateDebugConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateDebugConfigRequest.ProtoReflect.Descriptor instead.
 func (*UpdateDebugConfigRequest) Descriptor() ([]byte, []int) {
-	return file_v1_setting_service_proto_rawDescGZIP(), []int{5}
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *UpdateDebugConfigRequest) GetEnabled() bool {
@@ -382,7 +519,7 @@ type UpdateDebugConfigResponse struct {
 
 func (x *UpdateDebugConfigResponse) Reset() {
 	*x = UpdateDebugConfigResponse{}
-	mi := &file_v1_setting_service_proto_msgTypes[6]
+	mi := &file_v1_setting_service_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -394,7 +531,7 @@ func (x *UpdateDebugConfigResponse) String() string {
 func (*UpdateDebugConfigResponse) ProtoMessage() {}
 
 func (x *UpdateDebugConfigResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_setting_service_proto_msgTypes[6]
+	mi := &file_v1_setting_service_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -407,7 +544,7 @@ func (x *UpdateDebugConfigResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateDebugConfigResponse.ProtoReflect.Descriptor instead.
 func (*UpdateDebugConfigResponse) Descriptor() ([]byte, []int) {
-	return file_v1_setting_service_proto_rawDescGZIP(), []int{6}
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *UpdateDebugConfigResponse) GetEnabled() bool {
@@ -421,7 +558,7 @@ var File_v1_setting_service_proto protoreflect.FileDescriptor
 
 const file_v1_setting_service_proto_rawDesc = "" +
 	"\n" +
-	"\x18v1/setting_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a google/protobuf/field_mask.proto\x1a\x13v1/annotation.proto\"\xea\x03\n" +
+	"\x18v1/setting_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x13v1/annotation.proto\"\xb1\x04\n" +
 	"\x17WorkspaceProfileSetting\x12!\n" +
 	"\fexternal_url\x18\x01 \x01(\tR\vexternalUrl\x12'\n" +
 	"\x0fdisallow_signup\x18\x02 \x01(\bR\x0edisallowSignup\x128\n" +
@@ -433,8 +570,19 @@ const file_v1_setting_service_proto_rawDesc = "" +
 	"\vmcp_enabled\x18\b \x01(\bR\n" +
 	"mcpEnabled\x125\n" +
 	"\x17sso_email_identity_idps\x18\n" +
-	" \x03(\tR\x14ssoEmailIdentityIdpsJ\x04\b\t\x10\n" +
-	"R\x18allow_sso_email_identity\"#\n" +
+	" \x03(\tR\x14ssoEmailIdentityIdps\x12E\n" +
+	"\fdata_quality\x18\v \x01(\v2\".metaxisdata.v1.DataQualitySettingR\vdataQualityJ\x04\b\t\x10\n" +
+	"R\x18allow_sso_email_identity\"\x99\x04\n" +
+	"\x12DataQualitySetting\x12.\n" +
+	"\x13enable_llm_analysis\x18\x01 \x01(\bR\x11enableLlmAnalysis\x120\n" +
+	"\x14llm_provider_profile\x18\x02 \x01(\tR\x12llmProviderProfile\x122\n" +
+	"\x15store_failure_samples\x18\x03 \x01(\bR\x13storeFailureSamples\x120\n" +
+	"\x14failure_sample_limit\x18\x04 \x01(\x05R\x12failureSampleLimit\x12U\n" +
+	"\x19default_schedule_interval\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\x17defaultScheduleInterval\x122\n" +
+	"\x15daily_execution_limit\x18\x06 \x01(\x05R\x13dailyExecutionLimit\x12=\n" +
+	"\x1bdaily_column_analysis_limit\x18\a \x01(\x05R\x18dailyColumnAnalysisLimit\x127\n" +
+	"\x18max_columns_per_analysis\x18\b \x01(\x05R\x15maxColumnsPerAnalysis\x128\n" +
+	"\x19send_sample_values_to_llm\x18\t \x01(\bR\x15sendSampleValuesToLlm\"#\n" +
 	"!GetWorkspaceProfileSettingRequest\"\xab\x01\n" +
 	"$UpdateWorkspaceProfileSettingRequest\x12F\n" +
 	"\asetting\x18\x01 \x01(\v2'.metaxisdata.v1.WorkspaceProfileSettingB\x03\xe0A\x02R\asetting\x12;\n" +
@@ -465,33 +613,37 @@ func file_v1_setting_service_proto_rawDescGZIP() []byte {
 	return file_v1_setting_service_proto_rawDescData
 }
 
-var file_v1_setting_service_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_v1_setting_service_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_v1_setting_service_proto_goTypes = []any{
 	(*WorkspaceProfileSetting)(nil),              // 0: metaxisdata.v1.WorkspaceProfileSetting
-	(*GetWorkspaceProfileSettingRequest)(nil),    // 1: metaxisdata.v1.GetWorkspaceProfileSettingRequest
-	(*UpdateWorkspaceProfileSettingRequest)(nil), // 2: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest
-	(*GetDebugConfigRequest)(nil),                // 3: metaxisdata.v1.GetDebugConfigRequest
-	(*GetDebugConfigResponse)(nil),               // 4: metaxisdata.v1.GetDebugConfigResponse
-	(*UpdateDebugConfigRequest)(nil),             // 5: metaxisdata.v1.UpdateDebugConfigRequest
-	(*UpdateDebugConfigResponse)(nil),            // 6: metaxisdata.v1.UpdateDebugConfigResponse
-	(*fieldmaskpb.FieldMask)(nil),                // 7: google.protobuf.FieldMask
+	(*DataQualitySetting)(nil),                   // 1: metaxisdata.v1.DataQualitySetting
+	(*GetWorkspaceProfileSettingRequest)(nil),    // 2: metaxisdata.v1.GetWorkspaceProfileSettingRequest
+	(*UpdateWorkspaceProfileSettingRequest)(nil), // 3: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest
+	(*GetDebugConfigRequest)(nil),                // 4: metaxisdata.v1.GetDebugConfigRequest
+	(*GetDebugConfigResponse)(nil),               // 5: metaxisdata.v1.GetDebugConfigResponse
+	(*UpdateDebugConfigRequest)(nil),             // 6: metaxisdata.v1.UpdateDebugConfigRequest
+	(*UpdateDebugConfigResponse)(nil),            // 7: metaxisdata.v1.UpdateDebugConfigResponse
+	(*durationpb.Duration)(nil),                  // 8: google.protobuf.Duration
+	(*fieldmaskpb.FieldMask)(nil),                // 9: google.protobuf.FieldMask
 }
 var file_v1_setting_service_proto_depIdxs = []int32{
-	0, // 0: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest.setting:type_name -> metaxisdata.v1.WorkspaceProfileSetting
-	7, // 1: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest.update_mask:type_name -> google.protobuf.FieldMask
-	1, // 2: metaxisdata.v1.SettingService.GetWorkspaceProfileSetting:input_type -> metaxisdata.v1.GetWorkspaceProfileSettingRequest
-	2, // 3: metaxisdata.v1.SettingService.UpdateWorkspaceProfileSetting:input_type -> metaxisdata.v1.UpdateWorkspaceProfileSettingRequest
-	3, // 4: metaxisdata.v1.SettingService.GetDebugConfig:input_type -> metaxisdata.v1.GetDebugConfigRequest
-	5, // 5: metaxisdata.v1.SettingService.UpdateDebugConfig:input_type -> metaxisdata.v1.UpdateDebugConfigRequest
-	0, // 6: metaxisdata.v1.SettingService.GetWorkspaceProfileSetting:output_type -> metaxisdata.v1.WorkspaceProfileSetting
-	0, // 7: metaxisdata.v1.SettingService.UpdateWorkspaceProfileSetting:output_type -> metaxisdata.v1.WorkspaceProfileSetting
-	4, // 8: metaxisdata.v1.SettingService.GetDebugConfig:output_type -> metaxisdata.v1.GetDebugConfigResponse
-	6, // 9: metaxisdata.v1.SettingService.UpdateDebugConfig:output_type -> metaxisdata.v1.UpdateDebugConfigResponse
-	6, // [6:10] is the sub-list for method output_type
-	2, // [2:6] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	1, // 0: metaxisdata.v1.WorkspaceProfileSetting.data_quality:type_name -> metaxisdata.v1.DataQualitySetting
+	8, // 1: metaxisdata.v1.DataQualitySetting.default_schedule_interval:type_name -> google.protobuf.Duration
+	0, // 2: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest.setting:type_name -> metaxisdata.v1.WorkspaceProfileSetting
+	9, // 3: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest.update_mask:type_name -> google.protobuf.FieldMask
+	2, // 4: metaxisdata.v1.SettingService.GetWorkspaceProfileSetting:input_type -> metaxisdata.v1.GetWorkspaceProfileSettingRequest
+	3, // 5: metaxisdata.v1.SettingService.UpdateWorkspaceProfileSetting:input_type -> metaxisdata.v1.UpdateWorkspaceProfileSettingRequest
+	4, // 6: metaxisdata.v1.SettingService.GetDebugConfig:input_type -> metaxisdata.v1.GetDebugConfigRequest
+	6, // 7: metaxisdata.v1.SettingService.UpdateDebugConfig:input_type -> metaxisdata.v1.UpdateDebugConfigRequest
+	0, // 8: metaxisdata.v1.SettingService.GetWorkspaceProfileSetting:output_type -> metaxisdata.v1.WorkspaceProfileSetting
+	0, // 9: metaxisdata.v1.SettingService.UpdateWorkspaceProfileSetting:output_type -> metaxisdata.v1.WorkspaceProfileSetting
+	5, // 10: metaxisdata.v1.SettingService.GetDebugConfig:output_type -> metaxisdata.v1.GetDebugConfigResponse
+	7, // 11: metaxisdata.v1.SettingService.UpdateDebugConfig:output_type -> metaxisdata.v1.UpdateDebugConfigResponse
+	8, // [8:12] is the sub-list for method output_type
+	4, // [4:8] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_v1_setting_service_proto_init() }
@@ -506,7 +658,7 @@ func file_v1_setting_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_setting_service_proto_rawDesc), len(file_v1_setting_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -1,0 +1,295 @@
+package qualityrunner
+
+import (
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
+	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
+	"github.com/Ranxy/metaxisdata/backend/component/state"
+	"github.com/Ranxy/metaxisdata/backend/store"
+
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+)
+
+func qualityRuleStub(id int64, targetGUID string) *store.QualityRuleMessage {
+	return &store.QualityRuleMessage{
+		ID:               id,
+		TargetGUID:       targetGUID,
+		ScheduleInterval: time.Hour,
+	}
+}
+
+func qualityRuleIDs(rules []*store.QualityRuleMessage) []int64 {
+	ids := make([]int64, 0, len(rules))
+	for _, rule := range rules {
+		ids = append(ids, rule.ID)
+	}
+	return ids
+}
+
+func qualityResultStub(status storepb.QualityStatus) *store.QualityRuleResultMessage {
+	return &store.QualityRuleResultMessage{Status: status}
+}
+
+func TestPlanDueRunsGroupsByInstanceAndChunks(t *testing.T) {
+	t.Parallel()
+
+	rules := []*store.QualityRuleMessage{
+		qualityRuleStub(1, "inst-a;db;public;t1"),
+		qualityRuleStub(2, "inst-b;db;public;t2"),
+		qualityRuleStub(3, "inst-a;db;public;t3"),
+		qualityRuleStub(4, "inst-b;db;public;t4"),
+		qualityRuleStub(5, "inst-a;db;public;t5"),
+	}
+
+	plans := planDueRuns(rules, 2)
+	require.Len(t, plans, 3)
+	require.Equal(t, "inst-a", plans[0].instanceResourceID)
+	require.Equal(t, []int64{1, 3}, qualityRuleIDs(plans[0].rules))
+	require.Equal(t, "inst-a", plans[1].instanceResourceID)
+	require.Equal(t, []int64{5}, qualityRuleIDs(plans[1].rules))
+	require.Equal(t, "inst-b", plans[2].instanceResourceID)
+	require.Equal(t, []int64{2, 4}, qualityRuleIDs(plans[2].rules))
+}
+
+func TestPlanDueRunsKeepsOrderForSameInstance(t *testing.T) {
+	t.Parallel()
+
+	rules := []*store.QualityRuleMessage{
+		qualityRuleStub(3, "inst-a;db;public;t3"),
+		qualityRuleStub(1, "inst-a;db;public;t1"),
+		qualityRuleStub(2, "inst-a;db;public;t2"),
+	}
+	plans := planDueRuns(rules, 50)
+	require.Len(t, plans, 1)
+	// The due scan already ordered the rules; grouping must not reorder them.
+	require.Equal(t, []int64{3, 1, 2}, qualityRuleIDs(plans[0].rules))
+}
+
+func TestPlanDueRunsAttributesMalformedTargetToNoInstance(t *testing.T) {
+	t.Parallel()
+
+	plans := planDueRuns([]*store.QualityRuleMessage{nil, qualityRuleStub(7, "not-a-guid")}, 50)
+	require.Len(t, plans, 1)
+	require.Empty(t, plans[0].instanceResourceID)
+	require.Equal(t, []int64{7}, qualityRuleIDs(plans[0].rules))
+}
+
+func TestPlanDueRunsRejectsNonPositiveBatchSize(t *testing.T) {
+	t.Parallel()
+
+	require.Empty(t, planDueRuns([]*store.QualityRuleMessage{qualityRuleStub(1, "inst;db;public;t")}, 0))
+}
+
+func TestNextRunAtUsesTheIntervalButNeverLoopsEveryTick(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.October, 19, 9, 0, 0, 0, time.UTC)
+	require.Equal(t, now.Add(2*time.Hour), nextRunAt(now, 2*time.Hour))
+	// A missing or too-short interval is the API's validation job; the runner's
+	// backstop keeps such a rule from becoming due on every ten-second tick.
+	require.Equal(t, now.Add(minRuleScheduleInterval), nextRunAt(now, 0))
+	require.Equal(t, now.Add(minRuleScheduleInterval), nextRunAt(now, time.Minute))
+}
+
+// A run that could not execute a rule must not look like a run whose rule found
+// bad data: ERROR outranks FAIL in the rollup.
+func TestCountsAndOutcomeSeparatesErrorFromFail(t *testing.T) {
+	t.Parallel()
+
+	counts, outcome := countsAndOutcome([]*store.QualityRuleResultMessage{
+		qualityResultStub(storepb.QualityStatus_QUALITY_STATUS_PASS),
+		qualityResultStub(storepb.QualityStatus_QUALITY_STATUS_FAIL),
+		qualityResultStub(storepb.QualityStatus_QUALITY_STATUS_ERROR),
+		qualityResultStub(storepb.QualityStatus_QUALITY_STATUS_SKIPPED),
+	})
+	require.Equal(t, int32(4), counts.GetTotal())
+	require.Equal(t, int32(1), counts.GetPass())
+	require.Equal(t, int32(1), counts.GetFail())
+	require.Equal(t, int32(1), counts.GetError())
+	require.Equal(t, int32(1), counts.GetSkipped())
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_ERROR, outcome)
+
+	counts, outcome = countsAndOutcome([]*store.QualityRuleResultMessage{
+		qualityResultStub(storepb.QualityStatus_QUALITY_STATUS_WARN),
+		qualityResultStub(storepb.QualityStatus_QUALITY_STATUS_FAIL),
+	})
+	require.Equal(t, int32(2), counts.GetTotal())
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_FAIL, outcome)
+
+	// A run with no results judged nothing; that is not a pass.
+	counts, outcome = countsAndOutcome(nil)
+	require.Equal(t, int32(0), counts.GetTotal())
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, outcome)
+}
+
+func TestManualRuleTasksDeduplicatesAndDropsInvalidIDs(t *testing.T) {
+	t.Parallel()
+
+	tasks := manualRuleTasks([]int64{5, 0, -2, 5, 7, 7})
+	require.Len(t, tasks, 2)
+	require.Equal(t, int64(5), tasks[0].ruleID)
+	require.Equal(t, int64(7), tasks[1].ruleID)
+	require.Nil(t, tasks[0].head)
+}
+
+func TestInflightGuardIsExclusivePerRule(t *testing.T) {
+	t.Parallel()
+
+	runner := &Runner{inflight: make(map[int64]struct{})}
+	require.True(t, runner.acquireInflight(5))
+	require.False(t, runner.acquireInflight(5))
+	// A different rule is independent.
+	require.True(t, runner.acquireInflight(6))
+	runner.releaseInflight(5)
+	require.True(t, runner.acquireInflight(5))
+}
+
+func TestEnqueueQualityRunReportsAFullQueue(t *testing.T) {
+	t.Parallel()
+
+	runner := &Runner{manual: make(chan manualRun, 1)}
+	require.True(t, runner.EnqueueQualityRun(1, []int64{3}))
+
+	// The queue is full, so the API must be told instead of blocking the request.
+	require.False(t, runner.EnqueueQualityRun(2, nil))
+
+	queued := <-runner.manual
+	require.Equal(t, int64(1), queued.runID)
+	require.Equal(t, []int64{3}, queued.ruleIDs)
+	require.True(t, runner.EnqueueQualityRun(3, nil))
+}
+
+func TestBuildRuleResultStoresTheVerdictAndItsEvidence(t *testing.T) {
+	t.Parallel()
+
+	startedAt := time.Date(2026, time.October, 19, 9, 0, 0, 0, time.UTC)
+	finishedAt := startedAt.Add(1500 * time.Millisecond)
+	snapshot := &dataquality.RuleSnapshot{
+		ID:       7,
+		Revision: 4,
+		Target: dataquality.Target{
+			GUID:     "inst;db;public;orders",
+			MetaType: storepb.MetaType_TABLE,
+		},
+	}
+	execution := &dataquality.Execution{
+		Samples:     &storepb.QualityFailureSamples{Samples: []*storepb.FailureSample{{}}},
+		ExecutedSQL: "SELECT COUNT(*) FROM orders",
+		Sampled:     true,
+		Truncated:   true,
+	}
+	thresholds := &storepb.QualityThresholds{}
+	result := buildRuleResult(11, &ruleExecutionOutcome{
+		ruleID:     7,
+		snapshot:   snapshot,
+		startedAt:  startedAt,
+		finishedAt: finishedAt,
+		observation: dataquality.Observation{
+			Observed:     12,
+			ObservedKind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT,
+			FailedRows:   12,
+			TotalRows:    50,
+			Sampled:      true,
+			SampleRows:   500,
+		},
+		execution: execution,
+		state:     dataquality.ResultState{Status: storepb.QualityStatus_QUALITY_STATUS_FAIL, Thresholds: thresholds},
+	})
+
+	require.Equal(t, int64(11), result.RunID)
+	require.Equal(t, int64(7), result.RuleID)
+	require.Equal(t, int32(4), result.RuleRevision)
+	require.Equal(t, dataquality.EngineVersion, result.RuleEngineVersion)
+	require.Equal(t, "inst;db;public;orders", result.TargetGUID)
+	require.Equal(t, storepb.MetaType_TABLE, result.TargetType)
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_FAIL, result.Status)
+	require.NotNil(t, result.ObservedValue)
+	require.InDelta(t, 12, *result.ObservedValue, 1e-9)
+	require.Equal(t, storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT, result.ObservedKind)
+	require.Same(t, thresholds, result.Thresholds)
+	require.Equal(t, int64(12), result.FailedRows)
+	require.Equal(t, int64(50), result.TotalRows)
+	require.True(t, result.Sampled)
+	require.Equal(t, int64(500), result.SampleRows)
+	require.True(t, result.Truncated)
+	require.NotNil(t, result.Sample)
+	require.Equal(t, "SELECT COUNT(*) FROM orders", result.ExecutedSQL)
+	require.Equal(t, int32(1500), result.DurationMS)
+	require.Equal(t, startedAt, result.StartedAt)
+	require.Equal(t, finishedAt, result.FinishedAt)
+	require.Empty(t, result.ErrorCode)
+}
+
+func TestBuildRuleResultKeepsErrorMessageBounded(t *testing.T) {
+	t.Parallel()
+
+	long := make([]byte, maxErrorMessageLength+100)
+	for i := range long {
+		long[i] = 'x'
+	}
+	result := failureRuleResult(1, 2, nil, time.Now().UTC(), storepb.QualityStatus_QUALITY_STATUS_ERROR,
+		dataquality.ErrCodeExecution, string(long))
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_ERROR, result.Status)
+	require.Nil(t, result.ObservedValue)
+	require.Len(t, result.ErrorMessage, maxErrorMessageLength)
+	require.Equal(t, dataquality.ErrCodeExecution, result.ErrorCode)
+	require.Zero(t, result.RuleRevision)
+}
+
+func TestObservedValueIsAbsentForUnjudgedResults(t *testing.T) {
+	t.Parallel()
+
+	require.NotNil(t, observedValue(storepb.QualityStatus_QUALITY_STATUS_PASS, 0))
+	require.NotNil(t, observedValue(storepb.QualityStatus_QUALITY_STATUS_FAIL, 3))
+	require.Nil(t, observedValue(storepb.QualityStatus_QUALITY_STATUS_ERROR, 3))
+	require.Nil(t, observedValue(storepb.QualityStatus_QUALITY_STATUS_SKIPPED, 3))
+	require.Nil(t, observedValue(storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, 3))
+	require.Nil(t, observedValue(storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, 3))
+}
+
+func TestDurationMSClampsNegativeAndOverflow(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC()
+	require.Equal(t, int32(0), durationMS(now, now.Add(-time.Second)))
+	require.Equal(t, int32(2000), durationMS(now, now.Add(2*time.Second)))
+	require.Equal(t, int32(^uint32(0)>>1), durationMS(now.Add(-20*24*time.Hour), now.Add(20*24*time.Hour)))
+}
+
+func TestBaselineFromResultsSkipsUnjudgedResults(t *testing.T) {
+	t.Parallel()
+
+	observed := 42.0
+	// The newest result is an ERROR; the last evaluated one is the baseline.
+	results := []*store.QualityRuleResultMessage{
+		{Status: storepb.QualityStatus_QUALITY_STATUS_ERROR, ObservedValue: &observed},
+		{Status: storepb.QualityStatus_QUALITY_STATUS_PASS, ObservedValue: &observed},
+	}
+	baseline := baselineFromResults(results)
+	require.NotNil(t, baseline)
+	require.InDelta(t, 42, *baseline, 1e-9)
+
+	require.Nil(t, baselineFromResults(nil))
+	require.Nil(t, baselineFromResults([]*store.QualityRuleResultMessage{
+		{Status: storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, ObservedValue: &observed},
+	}))
+}
+
+func TestErrorCodeAndMessageMapsRunnerLevelFailures(t *testing.T) {
+	t.Parallel()
+
+	code, _ := errorCodeAndMessage(dbfactory.ErrNoReadOnlyDataSource)
+	require.Equal(t, dataquality.ErrCodeNoReadOnly, code)
+
+	code, _ = errorCodeAndMessage(state.ErrInstanceConnectionLimit)
+	require.Equal(t, dataquality.ErrCodeQuota, code)
+
+	code, message := errorCodeAndMessage(errors.New("the target refused the statement"))
+	require.Equal(t, dataquality.ErrCodeExecution, code)
+	require.Equal(t, "the target refused the statement", message)
+}

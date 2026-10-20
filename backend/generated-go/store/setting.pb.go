@@ -133,8 +133,11 @@ type WorkspaceProfileSetting struct {
 	// trusted. For a listed provider, field_mapping.subject becomes optional and
 	// falls back to the identifier claim.
 	SsoEmailIdentityIdps []string `protobuf:"bytes,18,rep,name=sso_email_identity_idps,json=ssoEmailIdentityIdps,proto3" json:"sso_email_identity_idps,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// Data quality settings. Every zero value means the server's default, so the
+	// reader resolves defaults rather than trusting the stored value.
+	DataQuality   *DataQualitySetting `protobuf:"bytes,19,opt,name=data_quality,json=dataQuality,proto3" json:"data_quality,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *WorkspaceProfileSetting) Reset() {
@@ -226,6 +229,13 @@ func (x *WorkspaceProfileSetting) GetMcpEnabled() bool {
 func (x *WorkspaceProfileSetting) GetSsoEmailIdentityIdps() []string {
 	if x != nil {
 		return x.SsoEmailIdentityIdps
+	}
+	return nil
+}
+
+func (x *WorkspaceProfileSetting) GetDataQuality() *DataQualitySetting {
+	if x != nil {
+		return x.DataQuality
 	}
 	return nil
 }
@@ -373,6 +383,116 @@ func (x *EnvironmentSetting) GetEnvironments() []*EnvironmentSetting_Environment
 	return nil
 }
 
+// DataQualitySetting is the stored form of the data quality settings; it mirrors
+// metaxisdata.v1.DataQualitySetting.
+type DataQualitySetting struct {
+	state                    protoimpl.MessageState `protogen:"open.v1"`
+	EnableLlmAnalysis        bool                   `protobuf:"varint,1,opt,name=enable_llm_analysis,json=enableLlmAnalysis,proto3" json:"enable_llm_analysis,omitempty"`
+	LlmProviderProfile       string                 `protobuf:"bytes,2,opt,name=llm_provider_profile,json=llmProviderProfile,proto3" json:"llm_provider_profile,omitempty"`
+	StoreFailureSamples      bool                   `protobuf:"varint,3,opt,name=store_failure_samples,json=storeFailureSamples,proto3" json:"store_failure_samples,omitempty"`
+	FailureSampleLimit       int32                  `protobuf:"varint,4,opt,name=failure_sample_limit,json=failureSampleLimit,proto3" json:"failure_sample_limit,omitempty"`
+	DefaultScheduleInterval  *durationpb.Duration   `protobuf:"bytes,5,opt,name=default_schedule_interval,json=defaultScheduleInterval,proto3" json:"default_schedule_interval,omitempty"`
+	DailyExecutionLimit      int32                  `protobuf:"varint,6,opt,name=daily_execution_limit,json=dailyExecutionLimit,proto3" json:"daily_execution_limit,omitempty"`
+	DailyColumnAnalysisLimit int32                  `protobuf:"varint,7,opt,name=daily_column_analysis_limit,json=dailyColumnAnalysisLimit,proto3" json:"daily_column_analysis_limit,omitempty"`
+	MaxColumnsPerAnalysis    int32                  `protobuf:"varint,8,opt,name=max_columns_per_analysis,json=maxColumnsPerAnalysis,proto3" json:"max_columns_per_analysis,omitempty"`
+	SendSampleValuesToLlm    bool                   `protobuf:"varint,9,opt,name=send_sample_values_to_llm,json=sendSampleValuesToLlm,proto3" json:"send_sample_values_to_llm,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
+}
+
+func (x *DataQualitySetting) Reset() {
+	*x = DataQualitySetting{}
+	mi := &file_store_setting_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DataQualitySetting) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DataQualitySetting) ProtoMessage() {}
+
+func (x *DataQualitySetting) ProtoReflect() protoreflect.Message {
+	mi := &file_store_setting_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DataQualitySetting.ProtoReflect.Descriptor instead.
+func (*DataQualitySetting) Descriptor() ([]byte, []int) {
+	return file_store_setting_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *DataQualitySetting) GetEnableLlmAnalysis() bool {
+	if x != nil {
+		return x.EnableLlmAnalysis
+	}
+	return false
+}
+
+func (x *DataQualitySetting) GetLlmProviderProfile() string {
+	if x != nil {
+		return x.LlmProviderProfile
+	}
+	return ""
+}
+
+func (x *DataQualitySetting) GetStoreFailureSamples() bool {
+	if x != nil {
+		return x.StoreFailureSamples
+	}
+	return false
+}
+
+func (x *DataQualitySetting) GetFailureSampleLimit() int32 {
+	if x != nil {
+		return x.FailureSampleLimit
+	}
+	return 0
+}
+
+func (x *DataQualitySetting) GetDefaultScheduleInterval() *durationpb.Duration {
+	if x != nil {
+		return x.DefaultScheduleInterval
+	}
+	return nil
+}
+
+func (x *DataQualitySetting) GetDailyExecutionLimit() int32 {
+	if x != nil {
+		return x.DailyExecutionLimit
+	}
+	return 0
+}
+
+func (x *DataQualitySetting) GetDailyColumnAnalysisLimit() int32 {
+	if x != nil {
+		return x.DailyColumnAnalysisLimit
+	}
+	return 0
+}
+
+func (x *DataQualitySetting) GetMaxColumnsPerAnalysis() int32 {
+	if x != nil {
+		return x.MaxColumnsPerAnalysis
+	}
+	return 0
+}
+
+func (x *DataQualitySetting) GetSendSampleValuesToLlm() bool {
+	if x != nil {
+		return x.SendSampleValuesToLlm
+	}
+	return false
+}
+
 type EnvironmentSetting_Environment struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The resource id of the environment.
@@ -389,7 +509,7 @@ type EnvironmentSetting_Environment struct {
 
 func (x *EnvironmentSetting_Environment) Reset() {
 	*x = EnvironmentSetting_Environment{}
-	mi := &file_store_setting_proto_msgTypes[3]
+	mi := &file_store_setting_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -401,7 +521,7 @@ func (x *EnvironmentSetting_Environment) String() string {
 func (*EnvironmentSetting_Environment) ProtoMessage() {}
 
 func (x *EnvironmentSetting_Environment) ProtoReflect() protoreflect.Message {
-	mi := &file_store_setting_proto_msgTypes[3]
+	mi := &file_store_setting_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -449,7 +569,7 @@ var File_store_setting_proto protoreflect.FileDescriptor
 
 const file_store_setting_proto_rawDesc = "" +
 	"\n" +
-	"\x13store/setting.proto\x12\x11metaxisdata.store\x1a\x1egoogle/protobuf/duration.proto\"\x82\x05\n" +
+	"\x13store/setting.proto\x12\x11metaxisdata.store\x1a\x1egoogle/protobuf/duration.proto\"\xcc\x05\n" +
 	"\x17WorkspaceProfileSetting\x12!\n" +
 	"\fexternal_url\x18\x01 \x01(\tR\vexternalUrl\x12'\n" +
 	"\x0fdisallow_signup\x18\x02 \x01(\bR\x0edisallowSignup\x12\x18\n" +
@@ -461,7 +581,8 @@ const file_store_setting_proto_rawDesc = "" +
 	"\x1dallowed_llm_provider_profiles\x18\x0f \x03(\tR\x1aallowedLlmProviderProfiles\x12\x1f\n" +
 	"\vmcp_enabled\x18\x10 \x01(\bR\n" +
 	"mcpEnabled\x125\n" +
-	"\x17sso_email_identity_idps\x18\x12 \x03(\tR\x14ssoEmailIdentityIdpsJ\x04\b\x03\x10\x04J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tJ\x04\b\v\x10\fJ\x04\b\r\x10\x0eJ\x04\b\x11\x10\x12R\vrequire_2faR\x0etoken_durationR\fannouncementR\x17maximum_role_expirationR\x14database_change_modeR\x18enable_metric_collectionR\x18allow_sso_email_identity\"\x9a\x03\n" +
+	"\x17sso_email_identity_idps\x18\x12 \x03(\tR\x14ssoEmailIdentityIdps\x12H\n" +
+	"\fdata_quality\x18\x13 \x01(\v2%.metaxisdata.store.DataQualitySettingR\vdataQualityJ\x04\b\x03\x10\x04J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tJ\x04\b\v\x10\fJ\x04\b\r\x10\x0eJ\x04\b\x11\x10\x12R\vrequire_2faR\x0etoken_durationR\fannouncementR\x17maximum_role_expirationR\x14database_change_modeR\x18enable_metric_collectionR\x18allow_sso_email_identity\"\x9a\x03\n" +
 	"\x1aPasswordRestrictionSetting\x12\x1d\n" +
 	"\n" +
 	"min_length\x18\x01 \x01(\x05R\tminLength\x12%\n" +
@@ -480,7 +601,17 @@ const file_store_setting_proto_rawDesc = "" +
 	"\x05color\x18\x04 \x01(\tR\x05color\x1a7\n" +
 	"\tTagsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*\xc1\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x99\x04\n" +
+	"\x12DataQualitySetting\x12.\n" +
+	"\x13enable_llm_analysis\x18\x01 \x01(\bR\x11enableLlmAnalysis\x120\n" +
+	"\x14llm_provider_profile\x18\x02 \x01(\tR\x12llmProviderProfile\x122\n" +
+	"\x15store_failure_samples\x18\x03 \x01(\bR\x13storeFailureSamples\x120\n" +
+	"\x14failure_sample_limit\x18\x04 \x01(\x05R\x12failureSampleLimit\x12U\n" +
+	"\x19default_schedule_interval\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\x17defaultScheduleInterval\x122\n" +
+	"\x15daily_execution_limit\x18\x06 \x01(\x05R\x13dailyExecutionLimit\x12=\n" +
+	"\x1bdaily_column_analysis_limit\x18\a \x01(\x05R\x18dailyColumnAnalysisLimit\x127\n" +
+	"\x18max_columns_per_analysis\x18\b \x01(\x05R\x15maxColumnsPerAnalysis\x128\n" +
+	"\x19send_sample_values_to_llm\x18\t \x01(\bR\x15sendSampleValuesToLlm*\xc1\x02\n" +
 	"\vSettingName\x12\x1c\n" +
 	"\x18SETTING_NAME_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vAUTH_SECRET\x10\x01\x12\x11\n" +
@@ -504,25 +635,28 @@ func file_store_setting_proto_rawDescGZIP() []byte {
 }
 
 var file_store_setting_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_store_setting_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_store_setting_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_store_setting_proto_goTypes = []any{
 	(SettingName)(0),                       // 0: metaxisdata.store.SettingName
 	(*WorkspaceProfileSetting)(nil),        // 1: metaxisdata.store.WorkspaceProfileSetting
 	(*PasswordRestrictionSetting)(nil),     // 2: metaxisdata.store.PasswordRestrictionSetting
 	(*EnvironmentSetting)(nil),             // 3: metaxisdata.store.EnvironmentSetting
-	(*EnvironmentSetting_Environment)(nil), // 4: metaxisdata.store.EnvironmentSetting.Environment
-	nil,                                    // 5: metaxisdata.store.EnvironmentSetting.Environment.TagsEntry
-	(*durationpb.Duration)(nil),            // 6: google.protobuf.Duration
+	(*DataQualitySetting)(nil),             // 4: metaxisdata.store.DataQualitySetting
+	(*EnvironmentSetting_Environment)(nil), // 5: metaxisdata.store.EnvironmentSetting.Environment
+	nil,                                    // 6: metaxisdata.store.EnvironmentSetting.Environment.TagsEntry
+	(*durationpb.Duration)(nil),            // 7: google.protobuf.Duration
 }
 var file_store_setting_proto_depIdxs = []int32{
-	6, // 0: metaxisdata.store.PasswordRestrictionSetting.password_rotation:type_name -> google.protobuf.Duration
-	4, // 1: metaxisdata.store.EnvironmentSetting.environments:type_name -> metaxisdata.store.EnvironmentSetting.Environment
-	5, // 2: metaxisdata.store.EnvironmentSetting.Environment.tags:type_name -> metaxisdata.store.EnvironmentSetting.Environment.TagsEntry
-	3, // [3:3] is the sub-list for method output_type
-	3, // [3:3] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	4, // 0: metaxisdata.store.WorkspaceProfileSetting.data_quality:type_name -> metaxisdata.store.DataQualitySetting
+	7, // 1: metaxisdata.store.PasswordRestrictionSetting.password_rotation:type_name -> google.protobuf.Duration
+	5, // 2: metaxisdata.store.EnvironmentSetting.environments:type_name -> metaxisdata.store.EnvironmentSetting.Environment
+	7, // 3: metaxisdata.store.DataQualitySetting.default_schedule_interval:type_name -> google.protobuf.Duration
+	6, // 4: metaxisdata.store.EnvironmentSetting.Environment.tags:type_name -> metaxisdata.store.EnvironmentSetting.Environment.TagsEntry
+	5, // [5:5] is the sub-list for method output_type
+	5, // [5:5] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_store_setting_proto_init() }
@@ -536,7 +670,7 @@ func file_store_setting_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_store_setting_proto_rawDesc), len(file_store_setting_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   5,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

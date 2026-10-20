@@ -603,3 +603,30 @@ func TestMarshalQualityRuleProtoNormalizesNil(t *testing.T) {
 	require.NoError(t, unmarshalQualityRuleProto([]byte("null"), &got))
 	require.True(t, proto.Equal(&storepb.QualityRuleConfig{}, &got))
 }
+
+// qualityRuleByIDsStatementShape pins the reverse lookup the API uses to render a
+// result row's numeric rule_id as a rule resource name.
+func TestQualityRuleByIDsStatementShape(t *testing.T) {
+	t.Parallel()
+
+	require.Contains(t, qualityRuleByIDsStatement, "FROM quality_rule")
+	require.Contains(t, qualityRuleByIDsStatement, "id = ANY($1::bigint[])")
+	require.Contains(t, qualityRuleByIDsStatement, "ORDER BY id")
+}
+
+func TestListQualityRulesByIDsEmptyInputIsEmptySlice(t *testing.T) {
+	t.Parallel()
+
+	// A zero Store has no pool: reaching the database here would panic, so this
+	// also pins that an empty input is a no-op.
+	s := &Store{}
+	rules, err := s.ListQualityRulesByIDs(t.Context(), nil)
+	require.NoError(t, err)
+	require.NotNil(t, rules)
+	require.Empty(t, rules)
+
+	rules, err = s.ListQualityRulesByIDs(t.Context(), []int64{})
+	require.NoError(t, err)
+	require.NotNil(t, rules)
+	require.Empty(t, rules)
+}

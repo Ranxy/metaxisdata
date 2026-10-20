@@ -444,3 +444,43 @@ func (s *Store) ListQualityRuns(ctx context.Context, find *FindQualityRunMessage
 	}
 	return runs, nil
 }
+
+// qualityRunByIDsStatement reads several runs by their numeric primary key. The
+// API addresses a run by its public resource id, but a stored result references
+// its run by the numeric foreign key only, so rendering result rows needs this
+// reverse batch lookup instead of one query per row.
+const qualityRunByIDsStatement = `
+	SELECT ` + qualityRunColumns + `
+	FROM quality_run
+	WHERE id = ANY($1::bigint[])
+	ORDER BY id
+`
+
+// ListQualityRunsByIDs returns the runs whose ids are listed, ordered by id. An
+// empty input is a no-op and never touches the database; the returned slice is
+// non-nil so a caller can range over it unconditionally. Ids that do not exist
+// are simply absent from the result.
+func (s *Store) ListQualityRunsByIDs(ctx context.Context, ids []int64) ([]*QualityRunMessage, error) {
+	if len(ids) == 0 {
+		return []*QualityRunMessage{}, nil
+	}
+
+	rows, err := s.GetDB().QueryContext(ctx, qualityRunByIDsStatement, pq.Array(ids))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to query quality runs by ids")
+	}
+	defer rows.Close()
+
+	result := make([]*QualityRunMessage, 0, len(ids))
+	for rows.Next() {
+		msg, err := scanQualityRun(rows)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to scan quality run")
+		}
+		result = append(result, msg)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to iterate quality runs by ids")
+	}
+	return result, nil
+}
