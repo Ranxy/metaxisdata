@@ -153,4 +153,19 @@ pnpm --dir frontend i18n:glossary --write-doc     # 重写生成表格
 | SQL | SQL | Conventions | Always upper case, including inside Chinese copy. | all keys | en-US: `/\bSql\b/`; zh-CN: `/\bSql\b/` |
 | create | 创建 | Conventions | A button that opens a blank form is 新建; the imperative and the past tense are 创建 (创建时间). | all keys | — |
 | refresh | 刷新 | Conventions | Refresh is 刷新. Reloading a stored definition is 重新加载; Regenerate is 重新生成. | all keys | — |
+| data quality | 数据质量 | Data Quality | The correctness and completeness of the data itself, as opposed to the registry's record of it. | dataQuality., menu. | — |
+| quality rule | 质量规则 | Data Quality | One typed check over one target table or column, run on a schedule or on demand. | dataQuality., menu. | — |
+| rule result | 规则结果 | Data Quality | One rule's outcome in one execution. | dataQuality. | — |
+| execution | 执行 | Data Quality | One batch of rule results produced together, manually or on a schedule; the Chinese noun is 执行, never 运行记录 (that is an OpenLineage run). | dataQuality., menu. | zh-CN: `运行记录` |
+| issue | 质量问题 | Data Quality | A failed or errored rule result that needs attention. | dataQuality. | — |
+| dimension | 维度 | Data Quality | The quality aspect a rule measures, e.g. completeness or timeliness. | dataQuality. | zh-CN: `度量` |
+| severity | 严重级别 | Data Quality | How much an issue on a rule matters. | dataQuality. | zh-CN: `严重程度`, `严重性` |
+| threshold | 阈值 | Data Quality | The bound an observed value is compared with. | dataQuality. | zh-CN: `阀值`, `门槛` |
+| observed value | 实际值 | Data Quality | What a rule measured in one execution. | dataQuality. | zh-CN: `观测值`, `实测值` |
+| failure sample | 失败样本 | Data Quality | A failed row kept as evidence, already truncated. | dataQuality. | zh-CN: `失败样例` |
+| freshness | 时效性 | Data Quality | How recently the data was updated. | dataQuality. | zh-CN: `新鲜度` |
+| uniqueness | 唯一性 | Data Quality | Whether values, or tuples of values, occur only once. | dataQuality. | — |
+| referential integrity | 引用完整性 | Data Quality | Whether a child row's value has a matching parent row. | dataQuality. | zh-CN: `参照完整性` |
+| dry run | 干跑 | Data Quality | Compiling and probing a rule without saving it or creating a run. | dataQuality. | — |
+| sampled | 采样 | Data Quality | Judged from a sample of rows rather than every row. | dataQuality. | zh-CN: `抽样` |
 <!-- END GENERATED GLOSSARY -->

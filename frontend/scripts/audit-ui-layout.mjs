@@ -78,6 +78,11 @@ const ROUTES = [
   // Same failure as audit-logs above: seven columns of long values inside the
   // section's reading column put the revoke action behind a scrollbar.
   { path: "/settings/openlineage", name: "settings openlineage" },
+  // The quality directory pages. The run detail page is deliberately absent: it
+  // needs a real run id, which only the deployment that produced it has, and it
+  // reuses the same page frame and table budgets as the runs list.
+  { path: "/data-quality/rules", name: "data quality rules", tableTopMaxY: 260 },
+  { path: "/data-quality/runs", name: "data quality runs", tableTopMaxY: 200 },
 ];
 
 const MEASURE = `(() => {

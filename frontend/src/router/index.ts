@@ -202,6 +202,52 @@ const routes: RouteRecordRaw[] = [
     },
   },
   {
+    // A quality rule watches the data itself rather than the registry's record of
+    // it, so this is a product destination of its own, not a Data sub-page. The
+    // parent carries the shell flags once, like the OpenLineage section: rules are
+    // the directory, a run is the evidence, and the editor joins them next release.
+    path: "/data-quality",
+    redirect: { name: "DataQualityRules" },
+    meta: { requiresAuth: true, layout: "default", contentWidth: "full" },
+    children: [
+      {
+        path: "rules",
+        name: "DataQualityRules",
+        component: () =>
+          import("@/pages/data-quality/DataQualityRulesPage.vue"),
+        meta: {
+          requiresAuth: true,
+          layout: "default",
+          permission: "metaxisdata.dataQuality.rules.list",
+        },
+      },
+      {
+        path: "runs",
+        name: "DataQualityRuns",
+        component: () => import("@/pages/data-quality/DataQualityRunsPage.vue"),
+        meta: {
+          requiresAuth: true,
+          layout: "default",
+          permission: "metaxisdata.dataQuality.runs.list",
+        },
+      },
+      {
+        // The run's resource name is carried whole, one path segment per
+        // `name` segment (`workspaces/{workspace}/qualityRuns/{run}`): a Get
+        // needs the real workspace, not the `-` shorthand the list accepts.
+        path: "runs/:runId+",
+        name: "DataQualityRunDetail",
+        component: () =>
+          import("@/pages/data-quality/DataQualityRunDetailPage.vue"),
+        meta: {
+          requiresAuth: true,
+          layout: "default",
+          permission: "metaxisdata.dataQuality.runs.get",
+        },
+      },
+    ],
+  },
+  {
     path: "/explain-sql",
     name: "ExplainSQL",
     component: () => import("@/pages/ExplainSQLPage.vue"),

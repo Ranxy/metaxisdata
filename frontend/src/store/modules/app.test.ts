@@ -23,6 +23,7 @@ describe("app store sidebar sections", () => {
     expect(freshStore().collapsedSections).toEqual([
       "datasource",
       "openlineage",
+      "dataQuality",
     ]);
   });
 
@@ -33,7 +34,12 @@ describe("app store sidebar sections", () => {
     expect(store.collapsedSections).toContain("settings");
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}")).toMatchObject(
       {
-        collapsedSections: ["datasource", "openlineage", "settings"],
+        collapsedSections: [
+          "datasource",
+          "openlineage",
+          "dataQuality",
+          "settings",
+        ],
       }
     );
   });
@@ -46,14 +52,22 @@ describe("app store sidebar sections", () => {
 
     // `openlineage` is collapsed by default, so setting it again must not add a
     // duplicate entry.
-    expect(store.collapsedSections).toEqual(["datasource", "openlineage"]);
+    expect(store.collapsedSections).toEqual([
+      "datasource",
+      "openlineage",
+      "dataQuality",
+    ]);
   });
 
   it("restores collapsed sections when the store is recreated", () => {
     freshStore().setSectionCollapsed("datasource", false);
     freshStore().setSectionCollapsed("settings", true);
 
-    expect(freshStore().collapsedSections).toEqual(["openlineage", "settings"]);
+    expect(freshStore().collapsedSections).toEqual([
+      "openlineage",
+      "dataQuality",
+      "settings",
+    ]);
   });
 
   it("ignores a stored payload whose collapsed sections are malformed", () => {
@@ -65,6 +79,7 @@ describe("app store sidebar sections", () => {
     expect(freshStore().collapsedSections).toEqual([
       "datasource",
       "openlineage",
+      "dataQuality",
     ]);
   });
 

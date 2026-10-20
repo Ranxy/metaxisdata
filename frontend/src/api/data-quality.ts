@@ -1,0 +1,256 @@
+import { create } from "@bufbuild/protobuf";
+import type { Timestamp } from "@bufbuild/protobuf/wkt";
+import { FieldMaskSchema } from "@bufbuild/protobuf/wkt";
+import {
+  CreateQualityRuleRequestSchema,
+  DeleteQualityRuleRequestSchema,
+  GetQualityRuleRequestSchema,
+  GetQualityRunRequestSchema,
+  ListQualityRuleResultsRequestSchema,
+  ListQualityRulesRequestSchema,
+  ListQualityRunsRequestSchema,
+  PreviewQualityRuleRequestSchema,
+  QualityDimension,
+  type QualityRule,
+  type QualityRuleResult,
+  QualityRuleState,
+  QualityRuleType,
+  type QualityRun,
+  QualityRunStatus,
+  QualityRunTrigger,
+  QualitySeverity,
+  QualityStatus,
+  RunQualityRulesRequestSchema,
+  UpdateQualityRuleRequestSchema,
+} from "@/types/proto-es/v1/data_quality_service_pb";
+import { dataQualityClient } from "./client";
+import { type ListPage, listAll } from "./list";
+
+/**
+ * The workspace the quality surfaces belong to. The service scopes every query
+ * to the authenticated caller's workspace, so `-` only names the resource.
+ */
+const WORKSPACE_PARENT = "workspaces/-";
+
+/** The resource-name segment a quality rule's id occupies. */
+const RULE_SEGMENT = "qualityRules";
+
+/** Format: workspaces/{workspace}/qualityRules/{quality_rule}. */
+export function qualityRuleName(id: string): string {
+  return `${WORKSPACE_PARENT}/${RULE_SEGMENT}/${id}`;
+}
+
+/** The id part of a quality rule's resource name; the name itself if it has none. */
+export function qualityRuleID(name: string): string {
+  return name.slice(name.lastIndexOf("/") + 1);
+}
+
+/** The id part of a quality run's resource name; the name itself if it has none. */
+export function qualityRunID(name: string): string {
+  return name.slice(name.lastIndexOf("/") + 1);
+}
+
+/** One page of rules, newest first. */
+export async function listQualityRules(options: {
+  pageSize?: number;
+  pageToken?: string;
+  /** A GUID path prefix, not a name match. */
+  instance?: string;
+  database?: string;
+  schema?: string;
+  table?: string;
+  targetGuid?: string;
+  dimension?: QualityDimension;
+  ruleType?: QualityRuleType;
+  severity?: QualitySeverity;
+  state?: QualityRuleState;
+  owner?: string;
+  /** A substring match over the title and description. */
+  search?: string;
+  signal?: AbortSignal;
+}): Promise<ListPage<QualityRule>> {
+  const request = create(ListQualityRulesRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    pageSize: options.pageSize ?? 50,
+    pageToken: options.pageToken ?? "",
+    instance: options.instance ?? "",
+    database: options.database ?? "",
+    schema: options.schema ?? "",
+    table: options.table ?? "",
+    targetGuid: options.targetGuid ?? "",
+    dimension: options.dimension ?? QualityDimension.UNSPECIFIED,
+    ruleType: options.ruleType ?? QualityRuleType.UNSPECIFIED,
+    severity: options.severity ?? QualitySeverity.UNSPECIFIED,
+    state: options.state ?? QualityRuleState.UNSPECIFIED,
+    owner: options.owner ?? "",
+    search: options.search ?? "",
+  });
+  const response = await dataQualityClient.listQualityRules(request, {
+    signal: options.signal,
+  });
+  return {
+    items: response.qualityRules,
+    nextPageToken: response.nextPageToken,
+  };
+}
+
+/** Every rule the caller can see, walking the cursor pages. */
+export async function listAllQualityRules(
+  options: { pageSize?: number } = {}
+): Promise<QualityRule[]> {
+  return await listAll((pageToken) =>
+    listQualityRules({ pageSize: options.pageSize ?? 1000, pageToken })
+  );
+}
+
+/** Read one rule, including its latest result summary. */
+export async function getQualityRule(name: string): Promise<QualityRule> {
+  const request = create(GetQualityRuleRequestSchema, { name });
+  return await dataQualityClient.getQualityRule(request);
+}
+
+/** Create a rule. The server assigns its name and first revision. */
+export async function createQualityRule(
+  rule: QualityRule
+): Promise<QualityRule> {
+  const request = create(CreateQualityRuleRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    rule,
+  });
+  return await dataQualityClient.createQualityRule(request);
+}
+
+/**
+ * Update exactly the fields named by `updateMask`. A semantic edit appends a
+ * revision, so the mask should stay as narrow as the change.
+ */
+export async function updateQualityRule(
+  rule: QualityRule,
+  updateMask: string[]
+): Promise<QualityRule> {
+  const request = create(UpdateQualityRuleRequestSchema, {
+    rule,
+    updateMask: create(FieldMaskSchema, { paths: updateMask }),
+  });
+  return await dataQualityClient.updateQualityRule(request);
+}
+
+/** Archive a rule. Its revisions and results stay readable. */
+export async function deleteQualityRule(name: string): Promise<void> {
+  const request = create(DeleteQualityRuleRequestSchema, { name });
+  await dataQualityClient.deleteQualityRule(request);
+}
+
+/** Compile and probe a rule without saving it or creating a run. */
+export async function previewQualityRule(rule: QualityRule) {
+  const request = create(PreviewQualityRuleRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    rule,
+  });
+  return await dataQualityClient.previewQualityRule(request);
+}
+
+/**
+ * Run rules now. At least one of `rules`, `instance` or `targetGuid` selects
+ * the rules; the server groups them by instance and returns the queued runs.
+ */
+export async function runQualityRules(options: {
+  rules?: string[];
+  /** Format: instances/{instance}. */
+  instance?: string;
+  targetGuid?: string;
+}): Promise<QualityRun[]> {
+  const request = create(RunQualityRulesRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    rules: options.rules ?? [],
+    instance: options.instance ?? "",
+    targetGuid: options.targetGuid ?? "",
+  });
+  const response = await dataQualityClient.runQualityRules(request);
+  return response.runs;
+}
+
+/** One page of runs, newest first. */
+export async function listQualityRuns(options: {
+  pageSize?: number;
+  pageToken?: string;
+  status?: QualityRunStatus;
+  trigger?: QualityRunTrigger;
+  /** Format: instances/{instance}. */
+  instance?: string;
+  startTime?: Timestamp;
+  endTime?: Timestamp;
+  /** Format: users/{user}. */
+  initiator?: string;
+  outcome?: QualityStatus;
+  signal?: AbortSignal;
+}): Promise<ListPage<QualityRun>> {
+  const request = create(ListQualityRunsRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    pageSize: options.pageSize ?? 50,
+    pageToken: options.pageToken ?? "",
+    status: options.status ?? QualityRunStatus.UNSPECIFIED,
+    trigger: options.trigger ?? QualityRunTrigger.UNSPECIFIED,
+    instance: options.instance ?? "",
+    ...(options.startTime ? { startTime: options.startTime } : {}),
+    ...(options.endTime ? { endTime: options.endTime } : {}),
+    initiator: options.initiator ?? "",
+    outcome: options.outcome ?? QualityStatus.UNSPECIFIED,
+  });
+  const response = await dataQualityClient.listQualityRuns(request, {
+    signal: options.signal,
+  });
+  return {
+    items: response.qualityRuns,
+    nextPageToken: response.nextPageToken,
+  };
+}
+
+/** Read one run with its lifecycle state and six-state tallies. */
+export async function getQualityRun(name: string): Promise<QualityRun> {
+  const request = create(GetQualityRunRequestSchema, { name });
+  return await dataQualityClient.getQualityRun(request);
+}
+
+/** One page of per-rule results, typically scoped to one run. */
+export async function listQualityRuleResults(options: {
+  pageSize?: number;
+  pageToken?: string;
+  /** Format: workspaces/{workspace}/qualityRuns/{quality_run}. */
+  run?: string;
+  /** Format: workspaces/{workspace}/qualityRules/{quality_rule}. */
+  rule?: string;
+  status?: QualityStatus;
+  targetGuid?: string;
+  startTime?: Timestamp;
+  endTime?: Timestamp;
+  signal?: AbortSignal;
+}): Promise<ListPage<QualityRuleResult>> {
+  const request = create(ListQualityRuleResultsRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    pageSize: options.pageSize ?? 100,
+    pageToken: options.pageToken ?? "",
+    run: options.run ?? "",
+    rule: options.rule ?? "",
+    status: options.status ?? QualityStatus.UNSPECIFIED,
+    targetGuid: options.targetGuid ?? "",
+    ...(options.startTime ? { startTime: options.startTime } : {}),
+    ...(options.endTime ? { endTime: options.endTime } : {}),
+  });
+  const response = await dataQualityClient.listQualityRuleResults(request, {
+    signal: options.signal,
+  });
+  return {
+    items: response.qualityRuleResults,
+    nextPageToken: response.nextPageToken,
+  };
+}
+
+/** Every result of one run, walking the cursor pages. */
+export async function listAllQualityRuleResults(
+  run: string
+): Promise<QualityRuleResult[]> {
+  return await listAll((pageToken) =>
+    listQualityRuleResults({ run, pageSize: 1000, pageToken })
+  );
+}

@@ -3,6 +3,7 @@
     "Access": "Workspace identity and authorization.",
     "Conventions": "Voice, casing and spelling rules for both languages.",
     "Data": "Metadata objects the registry syncs.",
+    "Data Quality": "The checks that watch the data itself, and their outcomes.",
     "Identity": "Browser login and credentials.",
     "Ingestion": "Applications reporting the SQL they run.",
     "Integration": "Protocols and endpoints this deployment exposes.",
@@ -854,6 +855,237 @@
       "translations": {
         "en-US": "refresh",
         "zh-CN": "刷新"
+      }
+    },
+    {
+      "id": "data-quality",
+      "category": "Data Quality",
+      "definition": "The correctness and completeness of the data itself, as opposed to the registry's record of it.",
+      "translations": {
+        "en-US": "data quality",
+        "zh-CN": "数据质量"
+      },
+      "scope": [
+        "dataQuality.",
+        "menu."
+      ]
+    },
+    {
+      "id": "quality-rule",
+      "category": "Data Quality",
+      "definition": "One typed check over one target table or column, run on a schedule or on demand.",
+      "translations": {
+        "en-US": "quality rule",
+        "zh-CN": "质量规则"
+      },
+      "scope": [
+        "dataQuality.",
+        "menu."
+      ]
+    },
+    {
+      "id": "rule-result",
+      "category": "Data Quality",
+      "definition": "One rule's outcome in one execution.",
+      "translations": {
+        "en-US": "rule result",
+        "zh-CN": "规则结果"
+      },
+      "scope": [
+        "dataQuality."
+      ]
+    },
+    {
+      "id": "execution",
+      "category": "Data Quality",
+      "definition": "One batch of rule results produced together, manually or on a schedule; the Chinese noun is 执行, never 运行记录 (that is an OpenLineage run).",
+      "translations": {
+        "en-US": "execution",
+        "zh-CN": "执行"
+      },
+      "scope": [
+        "dataQuality.",
+        "menu."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "运行记录"
+        ]
+      }
+    },
+    {
+      "id": "issue",
+      "category": "Data Quality",
+      "definition": "A failed or errored rule result that needs attention.",
+      "translations": {
+        "en-US": "issue",
+        "zh-CN": "质量问题"
+      },
+      "scope": [
+        "dataQuality."
+      ]
+    },
+    {
+      "id": "dimension",
+      "category": "Data Quality",
+      "definition": "The quality aspect a rule measures, e.g. completeness or timeliness.",
+      "translations": {
+        "en-US": "dimension",
+        "zh-CN": "维度"
+      },
+      "scope": [
+        "dataQuality."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "度量"
+        ]
+      }
+    },
+    {
+      "id": "severity",
+      "category": "Data Quality",
+      "definition": "How much an issue on a rule matters.",
+      "translations": {
+        "en-US": "severity",
+        "zh-CN": "严重级别"
+      },
+      "scope": [
+        "dataQuality."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "严重程度",
+          "严重性"
+        ]
+      }
+    },
+    {
+      "id": "threshold",
+      "category": "Data Quality",
+      "definition": "The bound an observed value is compared with.",
+      "translations": {
+        "en-US": "threshold",
+        "zh-CN": "阈值"
+      },
+      "scope": [
+        "dataQuality."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "阀值",
+          "门槛"
+        ]
+      }
+    },
+    {
+      "id": "observed-value",
+      "category": "Data Quality",
+      "definition": "What a rule measured in one execution.",
+      "translations": {
+        "en-US": "observed value",
+        "zh-CN": "实际值"
+      },
+      "scope": [
+        "dataQuality."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "观测值",
+          "实测值"
+        ]
+      }
+    },
+    {
+      "id": "failure-sample",
+      "category": "Data Quality",
+      "definition": "A failed row kept as evidence, already truncated.",
+      "translations": {
+        "en-US": "failure sample",
+        "zh-CN": "失败样本"
+      },
+      "scope": [
+        "dataQuality."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "失败样例"
+        ]
+      }
+    },
+    {
+      "id": "freshness",
+      "category": "Data Quality",
+      "definition": "How recently the data was updated.",
+      "translations": {
+        "en-US": "freshness",
+        "zh-CN": "时效性"
+      },
+      "scope": [
+        "dataQuality."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "新鲜度"
+        ]
+      }
+    },
+    {
+      "id": "uniqueness",
+      "category": "Data Quality",
+      "definition": "Whether values, or tuples of values, occur only once.",
+      "translations": {
+        "en-US": "uniqueness",
+        "zh-CN": "唯一性"
+      },
+      "scope": [
+        "dataQuality."
+      ]
+    },
+    {
+      "id": "referential-integrity",
+      "category": "Data Quality",
+      "definition": "Whether a child row's value has a matching parent row.",
+      "translations": {
+        "en-US": "referential integrity",
+        "zh-CN": "引用完整性"
+      },
+      "scope": [
+        "dataQuality."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "参照完整性"
+        ]
+      }
+    },
+    {
+      "id": "dry-run",
+      "category": "Data Quality",
+      "definition": "Compiling and probing a rule without saving it or creating a run.",
+      "translations": {
+        "en-US": "dry run",
+        "zh-CN": "干跑"
+      },
+      "scope": [
+        "dataQuality."
+      ]
+    },
+    {
+      "id": "sampled",
+      "category": "Data Quality",
+      "definition": "Judged from a sample of rows rather than every row.",
+      "translations": {
+        "en-US": "sampled",
+        "zh-CN": "采样"
+      },
+      "scope": [
+        "dataQuality."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "抽样"
+        ]
       }
     }
   ]

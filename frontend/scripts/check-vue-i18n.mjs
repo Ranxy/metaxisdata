@@ -54,6 +54,18 @@ export const DYNAMIC_PREFIXES = [
   // auditLogs.eventNames.* — the audit log page humanizes an RPC method name
   // through a computed key, which the checker cannot follow.
   "auditLogs.eventNames.",
+  // dataQuality.* — src/utils/dataQuality.ts maps an enum to its label key, and
+  // describeThreshold returns the comparison key; the checker cannot follow a
+  // key a helper returns. The vocabulary test there asserts both catalogs.
+  "dataQuality.status",
+  "dataQuality.severity",
+  "dataQuality.dimension",
+  "dataQuality.ruleType",
+  "dataQuality.ruleState",
+  "dataQuality.runStatus",
+  "dataQuality.runTrigger",
+  "dataQuality.errorCode",
+  "dataQuality.threshold",
   // CODE_MESSAGE_KEYS in src/utils/error.ts maps every Connect status code to an
   // "error.*" sentence. The table is exhaustive by type (Record<Code, …>) and its
   // values are checked against the locale schema at compile time, so a stray key
