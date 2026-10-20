@@ -21,6 +21,10 @@ import {
   RowCountConfigSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
+import {
+  DataQualitySettingSchema,
+  WorkspaceProfileSettingSchema,
+} from "@/types/proto-es/v1/setting_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
 import { emptyRuleForm, formToRule } from "@/utils/dataQualityForm";
 import DataQualityRuleEditorPage from "./DataQualityRuleEditorPage.vue";
@@ -31,6 +35,7 @@ const mocks = vi.hoisted(() => ({
   getQualityRule: vi.fn(),
   previewQualityRule: vi.fn(),
   updateQualityRule: vi.fn(),
+  getWorkspaceProfileSetting: vi.fn(),
   listMetadata: vi.fn(),
   listAllInstances: vi.fn(),
 }));
@@ -41,6 +46,10 @@ vi.mock("@/api/data-quality", () => ({
   getQualityRule: mocks.getQualityRule,
   previewQualityRule: mocks.previewQualityRule,
   updateQualityRule: mocks.updateQualityRule,
+}));
+
+vi.mock("@/api/setting", () => ({
+  getWorkspaceProfileSetting: mocks.getWorkspaceProfileSetting,
 }));
 
 vi.mock("@/api/database", () => ({
@@ -57,6 +66,7 @@ const PERMISSIONS = [
   "metaxisdata.dataQuality.rules.list",
   // Preview is a `rules.run` permission on the service.
   "metaxisdata.dataQuality.rules.run",
+  "metaxisdata.dataQuality.suggest",
 ];
 
 const PREFILL = "inst1;db1;public;orders";
@@ -92,6 +102,11 @@ async function mountEditor(path: string) {
       {
         path: "/data-quality/suggestions",
         name: "DataQualitySuggestions",
+        component: { template: "<div />" },
+      },
+      {
+        path: "/settings/data-quality",
+        name: "DataQualitySettings",
         component: { template: "<div />" },
       },
     ],
@@ -137,6 +152,13 @@ describe("DataQualityRuleEditorPage", () => {
     localStorage.clear();
     vi.clearAllMocks();
     mocks.createQualityRule.mockResolvedValue(create(QualityRuleSchema, {}));
+    mocks.getWorkspaceProfileSetting.mockResolvedValue(
+      create(WorkspaceProfileSettingSchema, {
+        dataQuality: create(DataQualitySettingSchema, {
+          enableLlmAnalysis: true,
+        }),
+      })
+    );
     mocks.previewQualityRule.mockResolvedValue(PREVIEW);
     mocks.listMetadata.mockResolvedValue({
       typesStoredMetadata: [
@@ -155,6 +177,37 @@ describe("DataQualityRuleEditorPage", () => {
       ],
     });
     mocks.listAllInstances.mockResolvedValue([]);
+  });
+
+  it("enables Draft with AI only with the switch and the permission", async () => {
+    const { wrapper } = await mountEditor(
+      `/data-quality/rules/new?table_guid=${encodeURIComponent(PREFILL)}&meta_type=4`
+    );
+    const draft = wrapper
+      .findAll("button")
+      .find((button) =>
+        button.text().includes(label("dataQuality.llm.draft.openButton"))
+      );
+    expect(draft).toBeTruthy();
+    expect(draft?.attributes("disabled")).toBeUndefined();
+
+    mocks.getWorkspaceProfileSetting.mockResolvedValue(
+      create(WorkspaceProfileSettingSchema, {
+        dataQuality: create(DataQualitySettingSchema, {
+          enableLlmAnalysis: false,
+        }),
+      })
+    );
+    const { wrapper: disabled } = await mountEditor(
+      `/data-quality/rules/new?table_guid=${encodeURIComponent(PREFILL)}&meta_type=4`
+    );
+    const disabledDraft = disabled
+      .findAll("button")
+      .find((button) =>
+        button.text().includes(label("dataQuality.llm.draft.openButton"))
+      );
+    expect(disabledDraft?.attributes("disabled")).toBeDefined();
+    expect(disabled.text()).toContain(label("dataQuality.llm.disabledHint"));
   });
 
   it("prefills the target from the query so an asset page can link here", async () => {

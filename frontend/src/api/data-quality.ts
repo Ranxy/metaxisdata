@@ -7,6 +7,8 @@ import {
   type ColumnSemanticLabel,
   CreateQualityRuleRequestSchema,
   DeleteQualityRuleRequestSchema,
+  ExplainQualityResultRequestSchema,
+  type ExplainQualityResultResponse,
   GetQualityIssueRequestSchema,
   GetQualityOverviewRequestSchema,
   GetQualityRuleRequestSchema,
@@ -609,4 +611,22 @@ export async function suggestColumnLabels(options: {
     signal: options.signal,
   });
   return response.qualitySuggestions;
+}
+
+/**
+ * Stream an AI explanation of one rule result. The server sends progress steps,
+ * markdown content fragments and a final metadata frame; `forceRegenerate`
+ * bypasses a cached explanation.
+ */
+export function explainQualityResult(options: {
+  name: string;
+  language?: string;
+  forceRegenerate?: boolean;
+}): AsyncIterable<ExplainQualityResultResponse> {
+  const request = create(ExplainQualityResultRequestSchema, {
+    name: options.name,
+    language: options.language ?? "",
+    forceRegenerate: options.forceRegenerate ?? false,
+  });
+  return dataQualityClient.explainQualityResult(request);
 }

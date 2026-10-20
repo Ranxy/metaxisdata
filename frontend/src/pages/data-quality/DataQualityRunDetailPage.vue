@@ -289,6 +289,17 @@
                   </TableCell>
                   <TableCell class="text-right">
                     <Button
+                      v-if="showExplain(result)"
+                      variant="ghost"
+                      size="icon"
+                      class="h-8 w-8"
+                      :title="t('dataQuality.llm.explain.action')"
+                      :aria-label="t('dataQuality.llm.explain.action')"
+                      @click="openExplain(result)"
+                    >
+                      <Sparkles class="h-4 w-4 text-primary" />
+                    </Button>
+                    <Button
                       variant="ghost"
                       size="icon"
                       class="h-8 w-8"
@@ -390,6 +401,12 @@
         </PageState>
       </CardContent>
     </Card>
+
+    <QualityExplainDrawer
+      v-model:open="explainOpen"
+      :result="explainResult"
+      :result-title="explainResult ? ruleLabel(explainResult) : ''"
+    />
   </div>
 </template>
 
@@ -401,6 +418,7 @@ import {
   ListChecks,
   Loader2,
   RefreshCcw,
+  Sparkles,
 } from "lucide-vue-next";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -411,8 +429,10 @@ import {
   listAllQualityRules,
   qualityRuleID,
 } from "@/api/data-quality";
+import { getWorkspaceProfileSetting } from "@/api/setting";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
+import QualityExplainDrawer from "@/components/data-quality/QualityExplainDrawer.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -433,6 +453,7 @@ import {
 } from "@/components/ui/table";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { notify } from "@/lib/notify";
+import { useAuthStore } from "@/store/modules/auth";
 import {
   type QualityRuleResult,
   type QualityRun,
@@ -462,6 +483,7 @@ const POLL_INTERVAL_MS = 3000;
 const { t, locale } = useI18n();
 const route = useRoute();
 const { handleError, formatError } = useErrorHandler();
+const authStore = useAuthStore();
 
 const run = ref<QualityRun>();
 const results = ref<QualityRuleResult[]>([]);
@@ -472,6 +494,12 @@ const isPolling = ref(false);
 const error = ref("");
 const resultsError = ref("");
 const expanded = ref<string[]>([]);
+const llmEnabled = ref(false);
+const explainOpen = ref(false);
+const explainResult = ref<QualityRuleResult>();
+const canExplain = computed(() =>
+  authStore.hasPermission("metaxisdata.dataQuality.explain")
+);
 
 let pollTimer: number | undefined;
 let loading = false;
@@ -684,7 +712,33 @@ async function copySql(sql: string) {
   notify.success(t("common.copied"));
 }
 
+/** Only read the workspace switch; the settings page owns changing it. */
+async function loadLlmSetting() {
+  try {
+    const profile = await getWorkspaceProfileSetting();
+    llmEnabled.value = profile.dataQuality?.enableLlmAnalysis ?? false;
+  } catch {
+    llmEnabled.value = false;
+  }
+}
+
+/** The model explains a verdict, not a pass: only failed/errored rows offer it. */
+function showExplain(result: QualityRuleResult): boolean {
+  return (
+    canExplain.value &&
+    llmEnabled.value &&
+    (result.status === QualityStatus.FAIL ||
+      result.status === QualityStatus.ERROR)
+  );
+}
+
+function openExplain(result: QualityRuleResult) {
+  explainResult.value = result;
+  explainOpen.value = true;
+}
+
 onMounted(() => {
+  void loadLlmSetting();
   void initialLoad();
 });
 

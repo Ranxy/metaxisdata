@@ -369,6 +369,18 @@ export default [
             "dataQuality.asset.profileFailed",
             "dataQuality.asset.suggestFailed",
             "dataQuality.asset.labelUpdateFailed",
+            // LLM availability reasons and error copy returned by helpers.
+            "dataQuality.llm.disabledHint",
+            "dataQuality.llm.errors.budget",
+            "dataQuality.llm.errors.generic",
+            "dataQuality.llm.errors.invalidOutput",
+            "dataQuality.llm.errors.noPermission",
+            "dataQuality.llm.errors.notConfigured",
+            "dataQuality.llm.errors.rateLimited",
+            "dataQuality.llm.errors.timeout",
+            "dataQuality.llm.errors.unavailable",
+            "dataQuality.llm.noPermission",
+            "dataQuality.editor.llmImportHint",
             "dataQuality.runError",
             "dataQuality.updateError",
             // The issue pages' vocabulary and formatError fallbacks, and the

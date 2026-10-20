@@ -84,6 +84,12 @@ export const DYNAMIC_PREFIXES = [
   "dataQuality.semanticType",
   "dataQuality.labelSource",
   "dataQuality.labelStatus",
+  // Error copy and availability reasons returned by src/utils/dataQualityLlm.ts.
+  "dataQuality.llm.errors.",
+  "dataQuality.llm.disabledHint",
+  "dataQuality.llm.noPermission",
+  // Falls back to the editor's static hint by template literal.
+  "dataQuality.editor.llmImportHint",
   "dataQuality.profile",
   "dataQualitySettings.validation.",
   "dataQuality.issueStatus",
