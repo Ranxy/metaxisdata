@@ -502,7 +502,13 @@ func labelProfileSummary(profile *storepb.ColumnProfile) string {
 	if total := profile.GetTotalRows(); total > 0 {
 		parts = append(parts, fmt.Sprintf("null_rate=%.4f", float64(profile.GetNullCount())/float64(total)))
 	}
-	parts = append(parts, fmt.Sprintf("distinct=%d", profile.GetDistinctCount()))
+	if profile.GetDistinctEstimated() {
+		// The count came from the sample because the column's type has no SQL
+		// equality; an exact figure would be a stronger claim than the evidence.
+		parts = append(parts, fmt.Sprintf("distinct=~%d", profile.GetDistinctCount()))
+	} else {
+		parts = append(parts, fmt.Sprintf("distinct=%d", profile.GetDistinctCount()))
+	}
 	if profile.GetMinValue() != "" || profile.GetMaxValue() != "" {
 		parts = append(parts, fmt.Sprintf("min=%q max=%q", profile.GetMinValue(), profile.GetMaxValue()))
 	}

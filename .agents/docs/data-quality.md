@@ -55,6 +55,7 @@ SPA ──ConnectRPC──► DataQualityService (api/v1) ──► component/da
 | D-31 | v1.1 第一批：`schema_drift`（R15，元数据比对）与 `group_check`（R16，每组行数阈值） | 最小可解释语义，不做通用 DSL |
 | D-32 | `schema_drift` 不取只读源、无 SQL（`QueryMetadata`）；`sampled=false`、样本是漂移项列表；`group_check` 走普通只读查询 | 元数据规则不能因没配只读源而阻塞 |
 | D-33 | v1.1 第二批：`aggregate`（R17）、`cross_table`（R18）、`null_percent.null_values`；PERCENTILE 仅 PG/MSSQL，其它引擎保存期拒绝；cross_table 限同实例同库 | 不引入跨库/跨实例；复杂对账仍用 `custom_sql` |
+| D-34 | 画像按 **类型形状** 选聚合事实（与规则编译的 `ColumnKind` 分离）：规则只关心绑定字面量怎么读，画像还要保证 SQL 合法。只有明确列入文本类型的才取 distinct/min/max/长度；json/jsonb、xml、空间、二进制、数组、用户自定义等类型只取非空计数，distinct 由样本给出并标 `distinct_estimated`，不取极值/长度/样式 | 未知类型默认保守（少几个事实，而不是整表语句报错）；`MIN(jsonb)`/`CHAR_LENGTH(jsonb)` 这类错误不再出现 |
 
 ## 2. 工作负载形状
 
@@ -205,6 +206,7 @@ run：`status ∈ {PENDING, RUNNING, COMPLETED, ABANDONED}`；`outcome` 是结�
 ### 3.8 画像、语义标注与建议队列
 
 - 画像（确定性、无 LLM）：每表一条聚合查询（行数/null/distinct/min/max/长度）+ 一条样本查询（`LIMIT 1000`）；Go 内算 Top-K（仅 distinct ≤20 的列）、样式、长度分布；值截断 64 字节、最多 20 个；写 `column_profile`（列级 upsert，`sample_method="limit"`、`engine_version="dq.v1"`）；单次 ≤设置列数、120s、4 MiB 结果。
+- 没有原生文本/排序语义的类型（json/jsonb、xml、空间、二进制、数组、用户自定义/enum 等，见 D-34）只取非空计数：distinct 来自样本并标 `distinct_estimated=true`（样本覆盖全表时为精确值），不取 min/max、长度和样式；前端与 L3 提示词对估算值显示 `≈`/`~`。形状判定在 `profileShapeFor`，文本类型白名单按引擎族维护（MSSQL 的 `text`/`ntext` 不可比较，因此不算文本）。
 - 标注：`column_semantic_label` 唯一键 `(table_guid, table_type, column_name)`；封闭枚举 `QualitySemanticType`；`source=MANUAL|LLM`、`status`、`confidence`、`evidence`；人工标注可覆盖（Upsert），LLM 建议不自动覆盖。
 - 规则候选映射（代码固定）：`ID/BUSINESS_KEY → unique+null_percent`；`EMAIL/PHONE/URL/UUID/IP → regex+null_percent`；`COUNTRY_CODE/CURRENCY/ENUM → accepted_values`；`AMOUNT/QUANTITY → range+null_percent`；`PERCENTAGE → range(0-100)`；`TIMESTAMP/DATE → freshness+range`；`FREE_TEXT → string_length+null_percent`；`UNKNOWN → 不生成规则`。阈值为默认值，不从当前值推导。
 - 建议：`quality_suggestion(kind=RULE_DRAFT|LABEL, source=NATURAL_LANGUAGE|PROFILE, payload, status=PENDING, provider/model/prompt_version)`；决策只允许 PENDING→ACCEPTED/REJECTED（并发重复决策返回 `Conflict` → 客户端 `Aborted`），接受 LABEL 即 upsert 标注，接受 RULE_DRAFT 只改状态。

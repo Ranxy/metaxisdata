@@ -39,11 +39,78 @@ const (
 	profileSampleMethod = "limit"
 )
 
-// profileColumn is one column a profile reads: its registry name and the coarse
-// type class that decides which aggregate expressions it gets.
+// profileShape is the set of aggregate facts a column's type supports. The rule
+// compiler's ColumnKind is about how a bound literal is read, not about what an
+// aggregate may compute: PostgreSQL and SQL Server have neither MIN/MAX nor a
+// length function for json, xml, spatial or binary types, so a profile that
+// treated them as text would fail the whole table's statement.
+type profileShape int
+
+const (
+	// profileShapeCounted supports only the non-NULL count. The distinct count
+	// comes from the sample (see applyProfileSample) so no equality-dependent
+	// aggregate is emitted; extremes and lengths do not exist for the type.
+	profileShapeCounted profileShape = iota
+	// profileShapeBoolean supports a non-NULL count and an exact distinct count.
+	// PostgreSQL defines no MIN/MAX for bool and SQL Server rejects MIN/MAX on bit.
+	profileShapeBoolean
+	// profileShapeScalar supports counts and extremes: numbers and dates.
+	profileShapeScalar
+	// profileShapeText supports counts, extremes and the character-length bounds.
+	profileShapeText
+)
+
+// profileTextTypes are the base type names the profiler can order and measure as
+// text, by engine family. A type that is not listed is profiled as counted: an
+// unlisted type is more likely a document, spatial, binary or user-defined type
+// whose engine rejects MIN/MAX or the length function than a text spelling this
+// list forgot, and a wrong guess fails the whole profile rather than one fact.
+var profileTextTypes = map[storepb.Engine]map[string]struct{}{
+	storepb.Engine_POSTGRES: {
+		"character": {}, "varchar": {}, "text": {},
+	},
+	storepb.Engine_MYSQL:     profileMySQLTextTypes,
+	storepb.Engine_TIDB:      profileMySQLTextTypes,
+	storepb.Engine_MARIADB:   profileMySQLTextTypes,
+	storepb.Engine_OCEANBASE: profileMySQLTextTypes,
+	storepb.Engine_STARROCKS: profileMySQLTextTypes,
+	storepb.Engine_DORIS:     profileMySQLTextTypes,
+	storepb.Engine_MSSQL: {
+		"char": {}, "varchar": {}, "nchar": {}, "nvarchar": {},
+	},
+}
+
+// profileMySQLTextTypes covers the MySQL wire family and StarRocks/Doris.
+var profileMySQLTextTypes = map[string]struct{}{
+	"char": {}, "varchar": {}, "tinytext": {}, "text": {}, "mediumtext": {},
+	"longtext": {}, "enum": {}, "set": {}, "binary": {}, "varbinary": {},
+	"tinyblob": {}, "blob": {}, "mediumblob": {}, "longblob": {}, "string": {},
+}
+
+// profileShapeFor decides which aggregate facts a column may produce from its
+// engine type.
+func profileShapeFor(engine storepb.Engine, column ColumnInfo) profileShape {
+	switch column.Kind {
+	case ColumnKindNumeric, ColumnKindTemporal:
+		return profileShapeScalar
+	case ColumnKindBoolean:
+		return profileShapeBoolean
+	case ColumnKindString:
+		if _, ok := profileTextTypes[engine][columnTypeBaseName(column.Type)]; ok {
+			return profileShapeText
+		}
+		return profileShapeCounted
+	case ColumnKindUnknown:
+		return profileShapeCounted
+	}
+	return profileShapeCounted
+}
+
+// profileColumn is one column a profile reads: its registry name and the
+// aggregate facts its type supports.
 type profileColumn struct {
-	Name string
-	Kind ColumnKind
+	Name  string
+	Shape profileShape
 }
 
 // profileAggregateAliases is the ordered result shape of the aggregate query:
@@ -56,16 +123,21 @@ func profileAggregateAliases(columns []profileColumn) []string {
 	aliases = append(aliases, "total_rows")
 	for index, column := range columns {
 		prefix := profileAliasPrefix(index)
-		aliases = append(aliases, prefix+"non_null", prefix+"distinct")
-		// A boolean column has no MIN/MAX aggregate: PostgreSQL defines none for
-		// bool and SQL Server rejects MIN/MAX on bit. Its values are summarized by
-		// the sample's frequent values instead.
-		if column.Kind == ColumnKindBoolean {
+		aliases = append(aliases, prefix+"non_null")
+		switch column.Shape {
+		case profileShapeCounted:
 			continue
-		}
-		aliases = append(aliases, prefix+"min", prefix+"max")
-		if column.Kind == ColumnKindString {
-			aliases = append(aliases, prefix+"min_len", prefix+"max_len")
+		case profileShapeBoolean:
+			aliases = append(aliases, prefix+"distinct")
+		case profileShapeScalar:
+			aliases = append(aliases, prefix+"distinct", prefix+"min", prefix+"max")
+		case profileShapeText:
+			aliases = append(aliases, prefix+"distinct", prefix+"min", prefix+"max",
+				prefix+"min_len", prefix+"max_len")
+		default:
+			// A new shape must add its aliases here; contributing none keeps the
+			// statement legal while the omission is visible.
+			continue
 		}
 	}
 	return aliases
@@ -78,34 +150,38 @@ func profileAliasPrefix(index int) string {
 
 // buildProfileAggregateSQL renders the single aggregate statement. It reads the
 // whole table (a profile is not filtered) with one scan: the row count, then per
-// column the non-NULL count, exact distinct count, extremes and — for text — the
-// length bounds.
+// column the non-NULL count and the facts its shape supports — exact distinct
+// count, extremes and, for text, the length bounds.
 func buildProfileAggregateSQL(dialect Dialect, table string, columns []profileColumn) string {
 	expressions := make([]string, 0, 1+len(columns)*6)
 	expressions = append(expressions, "COUNT(*) AS total_rows")
 	for index, column := range columns {
 		prefix := profileAliasPrefix(index)
 		quoted := qualify(dialect, column.Name)
-		expressions = append(expressions,
-			"COUNT("+quoted+") AS "+prefix+"non_null",
-			"COUNT(DISTINCT "+quoted+") AS "+prefix+"distinct",
-		)
-		// PostgreSQL has no min(boolean) and SQL Server rejects MIN/MAX on bit, so a
-		// boolean column is only counted.
-		if column.Kind == ColumnKindBoolean {
+		expressions = append(expressions, "COUNT("+quoted+") AS "+prefix+"non_null")
+		switch column.Shape {
+		case profileShapeCounted:
+			continue
+		case profileShapeBoolean:
+			expressions = append(expressions, "COUNT(DISTINCT "+quoted+") AS "+prefix+"distinct")
+		case profileShapeScalar:
+			expressions = append(expressions,
+				"COUNT(DISTINCT "+quoted+") AS "+prefix+"distinct",
+				"MIN("+quoted+") AS "+prefix+"min",
+				"MAX("+quoted+") AS "+prefix+"max")
+		case profileShapeText:
+			length := dialect.LengthExpr(quoted)
+			expressions = append(expressions,
+				"COUNT(DISTINCT "+quoted+") AS "+prefix+"distinct",
+				"MIN("+quoted+") AS "+prefix+"min",
+				"MAX("+quoted+") AS "+prefix+"max",
+				"MIN("+length+") AS "+prefix+"min_len",
+				"MAX("+length+") AS "+prefix+"max_len")
+		default:
+			// A new shape must add its expressions here; a counted one is the
+			// conservative fallback.
 			continue
 		}
-		expressions = append(expressions,
-			"MIN("+quoted+") AS "+prefix+"min",
-			"MAX("+quoted+") AS "+prefix+"max",
-		)
-		if column.Kind != ColumnKindString {
-			continue
-		}
-		length := dialect.LengthExpr(quoted)
-		expressions = append(expressions,
-			"MIN("+length+") AS "+prefix+"min_len",
-			"MAX("+length+") AS "+prefix+"max_len")
 	}
 	return "SELECT " + strings.Join(expressions, ", ") + " FROM " + table
 }
@@ -148,26 +224,55 @@ func profileResultIndexes(columns, expected []string) (map[string]int, error) {
 // storage bound. A NULL renders as the empty string: "no value" and "empty text"
 // both display as nothing, and the null count already carries the distinction.
 func profileValueString(value any) string {
-	var text string
+	return common.TruncateUTF8Bytes(profileValueText(value), profileMaxValueBytes)
+}
+
+// profileValueText renders one observed value without truncation. It is the full
+// rendering a sample's distinct count keys on: two values that differ only past
+// the display bound are still two distinct values.
+func profileValueText(value any) string {
 	switch typed := value.(type) {
 	case nil:
 		return ""
 	case string:
-		text = typed
+		return typed
 	case []byte:
-		text = string(typed)
+		return string(typed)
 	case int64:
-		text = strconv.FormatInt(typed, 10)
+		return strconv.FormatInt(typed, 10)
 	case float64:
-		text = strconv.FormatFloat(typed, 'g', -1, 64)
+		return strconv.FormatFloat(typed, 'g', -1, 64)
 	case bool:
-		text = strconv.FormatBool(typed)
+		return strconv.FormatBool(typed)
 	case time.Time:
-		text = typed.UTC().Format(time.RFC3339Nano)
+		return typed.UTC().Format(time.RFC3339Nano)
 	default:
-		text = fmt.Sprintf("%v", value)
+		return fmt.Sprintf("%v", value)
 	}
-	return common.TruncateUTF8Bytes(text, profileMaxValueBytes)
+}
+
+// profileSampleDistinctCount counts the distinct values a sample saw. It is the
+// fallback for a column whose type has no SQL equality for an exact COUNT
+// (PostgreSQL json and xml, spatial types): the sample is the only reading the
+// profile can take without an engine-specific cast.
+func profileSampleDistinctCount(values []any) int64 {
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if value == nil {
+			continue
+		}
+		seen[profileValueText(value)] = struct{}{}
+	}
+	return int64(len(seen))
+}
+
+// profileReadInt64 reads one integer aggregate alias through the row reader.
+func profileReadInt64(read func(string) (any, error), alias string) (int64, error) {
+	value, err := read(alias)
+	if err != nil {
+		return 0, err
+	}
+	return profileInt64(value, alias)
 }
 
 // profileInt64 reads one integer aggregate. The normalized row carries int64; a

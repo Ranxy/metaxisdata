@@ -167,7 +167,7 @@ func profileSelectedColumns(target ResolvedTarget, columns []string, maxColumns 
 		if column.Kind == ColumnKindUnknown {
 			return nil, invalidConfig("column %q has a type this build cannot profile", column.Name)
 		}
-		selected = append(selected, profileColumn{Name: column.Name, Kind: column.Kind})
+		selected = append(selected, profileColumn{Name: column.Name, Shape: profileShapeFor(target.Engine, column)})
 	}
 	if len(selected) > maxColumns {
 		return nil, invalidConfig("a table profile allows at most %d columns, got %d", maxColumns, len(selected))
@@ -241,54 +241,57 @@ func profileFromAggregateColumn(column profileColumn, prefix string, total int64
 	if nonNull < 0 || nonNull > total {
 		return nil, badData("column %q reports %d non-NULL values in %d rows", column.Name, nonNull, total)
 	}
-	distinctValue, err := read(prefix + "distinct")
-	if err != nil {
-		return nil, err
-	}
-	distinct, err := profileInt64(distinctValue, prefix+"distinct")
-	if err != nil {
-		return nil, err
-	}
-	profile := &storepb.ColumnProfile{
-		TotalRows:         total,
-		NullCount:         total - nonNull,
-		DistinctCount:     distinct,
-		DistinctEstimated: false,
-	}
-	// A boolean column has no MIN/MAX aggregate on PostgreSQL or SQL Server, so the
-	// aggregate does not read extremes for it; the sample's frequent values carry
-	// its distribution.
-	if column.Kind == ColumnKindBoolean {
+	profile := &storepb.ColumnProfile{TotalRows: total, NullCount: total - nonNull}
+	switch column.Shape {
+	case profileShapeCounted:
+		// The type has no SQL equality for an exact count and no ordering or length
+		// function at all; applyProfileSample fills the distinct count from the
+		// sample.
 		return profile, nil
-	}
-	minValue, err := read(prefix + "min")
-	if err != nil {
-		return nil, err
-	}
-	maxValue, err := read(prefix + "max")
-	if err != nil {
-		return nil, err
-	}
-	profile.MinValue = profileValueString(minValue)
-	profile.MaxValue = profileValueString(maxValue)
-	if column.Kind != ColumnKindString {
+	case profileShapeBoolean:
+		distinct, err := profileReadInt64(read, prefix+"distinct")
+		if err != nil {
+			return nil, err
+		}
+		profile.DistinctCount = distinct
 		return profile, nil
-	}
-	minLengthValue, err := read(prefix + "min_len")
-	if err != nil {
-		return nil, err
-	}
-	maxLengthValue, err := read(prefix + "max_len")
-	if err != nil {
-		return nil, err
-	}
-	profile.MinLength, err = profileOptionalInt64(minLengthValue, prefix+"min_len")
-	if err != nil {
-		return nil, err
-	}
-	profile.MaxLength, err = profileOptionalInt64(maxLengthValue, prefix+"max_len")
-	if err != nil {
-		return nil, err
+	case profileShapeScalar, profileShapeText:
+		distinct, err := profileReadInt64(read, prefix+"distinct")
+		if err != nil {
+			return nil, err
+		}
+		minValue, err := read(prefix + "min")
+		if err != nil {
+			return nil, err
+		}
+		maxValue, err := read(prefix + "max")
+		if err != nil {
+			return nil, err
+		}
+		profile.DistinctCount = distinct
+		profile.MinValue = profileValueString(minValue)
+		profile.MaxValue = profileValueString(maxValue)
+		if column.Shape == profileShapeScalar {
+			return profile, nil
+		}
+		minLengthValue, err := read(prefix + "min_len")
+		if err != nil {
+			return nil, err
+		}
+		maxLengthValue, err := read(prefix + "max_len")
+		if err != nil {
+			return nil, err
+		}
+		profile.MinLength, err = profileOptionalInt64(minLengthValue, prefix+"min_len")
+		if err != nil {
+			return nil, err
+		}
+		profile.MaxLength, err = profileOptionalInt64(maxLengthValue, prefix+"max_len")
+		if err != nil {
+			return nil, err
+		}
+	default:
+		// Every shape is handled above; an unknown one keeps the exact counts.
 	}
 	return profile, nil
 }
@@ -323,8 +326,19 @@ func applyProfileSample(profiles map[string]*storepb.ColumnProfile, selected []p
 		if profile == nil {
 			continue
 		}
-		if column.Kind == ColumnKindString {
+		switch column.Shape {
+		case profileShapeCounted:
+			// The type has no SQL equality for an exact distinct count, so the sample
+			// is the only reading available; it is exact when the sample saw every
+			// row.
+			profile.DistinctCount = profileSampleDistinctCount(values[index])
+			profile.DistinctEstimated = result.Truncated || int64(len(result.Rows)) < profile.TotalRows
+		case profileShapeText:
 			profile.Patterns = profilePatterns(values[index])
+		case profileShapeBoolean, profileShapeScalar:
+			// The exact aggregate already carries the distinct count.
+		default:
+			// Every shape is handled above; an unknown one keeps the exact counts.
 		}
 		// Top-K is only meaningful for a low-cardinality column; the cardinality
 		// gate uses the exact aggregate count, the frequencies use the sample.

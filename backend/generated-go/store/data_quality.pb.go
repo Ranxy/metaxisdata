@@ -1891,8 +1891,9 @@ type ColumnProfile struct {
 	TotalRows     int64                  `protobuf:"varint,1,opt,name=total_rows,json=totalRows,proto3" json:"total_rows,omitempty"`
 	NullCount     int64                  `protobuf:"varint,2,opt,name=null_count,json=nullCount,proto3" json:"null_count,omitempty"`
 	DistinctCount int64                  `protobuf:"varint,3,opt,name=distinct_count,json=distinctCount,proto3" json:"distinct_count,omitempty"`
-	// True when the database refused an exact distinct count and the value came
-	// from a sample.
+	// True when an exact distinct count was unavailable — the column's type has no
+	// SQL equality for one, or the database refused it — and the value came from a
+	// sample.
 	DistinctEstimated bool `protobuf:"varint,4,opt,name=distinct_estimated,json=distinctEstimated,proto3" json:"distinct_estimated,omitempty"`
 	// Display forms of the observed extremes, truncated; empty when the column has
 	// no comparable values.

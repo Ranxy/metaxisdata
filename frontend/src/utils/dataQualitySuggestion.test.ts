@@ -346,6 +346,21 @@ describe("column profiles and labels", () => {
     );
   });
 
+  it("marks a sample-based distinct count as approximate", () => {
+    const profile = create(ColumnProfileSchema, {
+      column: "payload",
+      profile: create(ColumnProfileStatsSchema, {
+        totalRows: 1000n,
+        distinctCount: 40n,
+        distinctEstimated: true,
+      }),
+    });
+    expect(columnProfileHighlights(profile)).toContainEqual({
+      key: "dataQuality.profile.distinctValues",
+      params: { count: "≈40" },
+    });
+  });
+
   it("summarises a stored label", () => {
     const label = create(ColumnSemanticLabelSchema, {
       tableGuid: "inst1;db1;public;orders",

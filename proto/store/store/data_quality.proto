@@ -332,8 +332,9 @@ message ColumnProfile {
   int64 total_rows = 1;
   int64 null_count = 2;
   int64 distinct_count = 3;
-  // True when the database refused an exact distinct count and the value came
-  // from a sample.
+  // True when an exact distinct count was unavailable — the column's type has no
+  // SQL equality for one, or the database refused it — and the value came from a
+  // sample.
   bool distinct_estimated = 4;
   // Display forms of the observed extremes, truncated; empty when the column has
   // no comparable values.

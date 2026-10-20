@@ -337,9 +337,14 @@ function profileStatsHighlights(
         ),
       },
     });
+    const distinct = formatRowCount(stats.distinctCount);
     highlights.push({
       key: "dataQuality.profile.distinctValues",
-      params: { count: formatRowCount(stats.distinctCount) },
+      // A type without SQL equality has no exact count; the sample's figure is
+      // marked so the reader does not take a lower bound for the truth.
+      params: {
+        count: stats.distinctEstimated ? `≈${distinct}` : distinct,
+      },
     });
   }
   if (stats.minValue) {

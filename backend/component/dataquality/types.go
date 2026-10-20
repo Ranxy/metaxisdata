@@ -67,13 +67,9 @@ var booleanTypes = []string{
 // and treating an unknown type as text is the conservative choice for validation
 // (values still get passed as parameters, never concatenated).
 func ClassifyColumnType(columnType string) ColumnKind {
-	name := strings.ToLower(strings.TrimSpace(columnType))
+	name := columnTypeBaseName(columnType)
 	if name == "" {
 		return ColumnKindUnknown
-	}
-	// Strip precision and modifier suffixes: "decimal(10,2) unsigned" → "decimal".
-	if index := strings.IndexAny(name, "( "); index >= 0 {
-		name = name[:index]
 	}
 	for _, candidate := range booleanTypes {
 		if name == candidate {
@@ -91,6 +87,18 @@ func ClassifyColumnType(columnType string) ColumnKind {
 		}
 	}
 	return ColumnKindString
+}
+
+// columnTypeBaseName reduces an engine type string to its base name: precision
+// and modifier suffixes are dropped ("decimal(10,2) unsigned" → "decimal",
+// "character varying" → "character"). A schema-qualified user-defined type keeps
+// its schema ("public.citext"), so a caller can tell it from a built-in name.
+func columnTypeBaseName(columnType string) string {
+	name := strings.ToLower(strings.TrimSpace(columnType))
+	if index := strings.IndexAny(name, "( "); index >= 0 {
+		name = name[:index]
+	}
+	return name
 }
 
 // ColumnInfo is one column of the target relation: what a rule names, what type

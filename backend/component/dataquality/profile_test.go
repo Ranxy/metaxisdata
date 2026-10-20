@@ -69,10 +69,17 @@ func profileTestAggregate(selected []profileColumn, total int64, facts map[strin
 // profileTestDefaultFacts is placeholder aggregate data for a column the test does
 // not care about.
 func profileTestDefaultFacts(column profileColumn) []any {
-	if column.Kind == ColumnKindString {
+	switch column.Shape {
+	case profileShapeCounted:
+		return []any{int64(10)}
+	case profileShapeBoolean:
+		return []any{int64(10), int64(5)}
+	case profileShapeScalar:
+		return []any{int64(10), int64(5), int64(1), int64(9)}
+	case profileShapeText:
 		return []any{int64(10), int64(5), "a", "z", int64(1), int64(3)}
 	}
-	return []any{int64(10), int64(5), int64(1), int64(9)}
+	return nil
 }
 
 // profileTestSample builds the sample result for selected columns.
@@ -716,4 +723,178 @@ func TestProfileOptionsDefaults(t *testing.T) {
 	require.Equal(t, 25, queryer.sampleOpts.MaxRows)
 	require.Equal(t, 1024, queryer.aggregateOpts.MaxBytes)
 	require.Equal(t, 5*time.Second, queryer.sampleOpts.Timeout)
+}
+
+// profileCountedTarget is a one-column relation whose column has a type with no
+// native text or ordering semantics (JSON, XML, spatial, binary, user-defined).
+func profileCountedTarget(engine storepb.Engine, columnType string) ResolvedTarget {
+	target := compileTestTarget(engine)
+	target.Columns = []ColumnInfo{{
+		Name: "payload",
+		Type: columnType,
+		Kind: ClassifyColumnType(columnType),
+	}}
+	return target
+}
+
+// TestProfileShapeFor pins which aggregate facts each engine type supports. A type
+// that is not positively recognized as text is counted only: guessing wrong emits
+// MIN/MAX or a length function the engine rejects, which fails the whole profile.
+func TestProfileShapeFor(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		engine     storepb.Engine
+		columnType string
+		want       profileShape
+	}{
+		{storepb.Engine_POSTGRES, "varchar(255)", profileShapeText},
+		{storepb.Engine_POSTGRES, "character varying", profileShapeText},
+		{storepb.Engine_POSTGRES, "text", profileShapeText},
+		{storepb.Engine_POSTGRES, "jsonb", profileShapeCounted},
+		{storepb.Engine_POSTGRES, "json", profileShapeCounted},
+		{storepb.Engine_POSTGRES, "xml", profileShapeCounted},
+		{storepb.Engine_POSTGRES, "uuid", profileShapeCounted},
+		{storepb.Engine_POSTGRES, "bytea", profileShapeCounted},
+		{storepb.Engine_POSTGRES, "interval", profileShapeCounted},
+		{storepb.Engine_POSTGRES, "_int4", profileShapeCounted},
+		{storepb.Engine_POSTGRES, "public.mood", profileShapeCounted},
+		{storepb.Engine_POSTGRES, "bigint", profileShapeScalar},
+		{storepb.Engine_POSTGRES, "boolean", profileShapeBoolean},
+		{storepb.Engine_MYSQL, "varchar(255)", profileShapeText},
+		{storepb.Engine_MYSQL, "blob", profileShapeText},
+		{storepb.Engine_MYSQL, "json", profileShapeCounted},
+		{storepb.Engine_MYSQL, "geometry", profileShapeCounted},
+		{storepb.Engine_STARROCKS, "json", profileShapeCounted},
+		{storepb.Engine_STARROCKS, "array", profileShapeCounted},
+		{storepb.Engine_MSSQL, "nvarchar(255)", profileShapeText},
+		{storepb.Engine_MSSQL, "text", profileShapeCounted},
+		{storepb.Engine_MSSQL, "ntext", profileShapeCounted},
+		{storepb.Engine_MSSQL, "xml", profileShapeCounted},
+		{storepb.Engine_MSSQL, "uniqueidentifier", profileShapeCounted},
+		{storepb.Engine_MSSQL, "datetime", profileShapeScalar},
+		{storepb.Engine_MSSQL, "bit", profileShapeBoolean},
+		{storepb.Engine_ENGINE_UNSPECIFIED, "varchar(255)", profileShapeCounted},
+	}
+	for _, test := range tests {
+		t.Run(test.engine.String()+"/"+test.columnType, func(t *testing.T) {
+			t.Parallel()
+			target := profileCountedTarget(test.engine, test.columnType)
+			selected := profileTestColumns(t, target, "payload")
+			require.Len(t, selected, 1)
+			require.Equal(t, test.want, selected[0].Shape)
+		})
+	}
+}
+
+// TestProfileCountedColumnSQLGoldens pins that a counted column contributes only
+// its non-NULL count: no COUNT(DISTINCT) (PostgreSQL has no equality for json or
+// xml) and no MIN/MAX or length (the engines have no such aggregate for these
+// types). The sample still selects the column so the profile can summarise it.
+func TestProfileCountedColumnSQLGoldens(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		engine       storepb.Engine
+		columnType   string
+		aggregateSQL string
+		sampleSQL    string
+	}{
+		{
+			engine:       storepb.Engine_POSTGRES,
+			columnType:   "jsonb",
+			aggregateSQL: `SELECT COUNT(*) AS total_rows, COUNT("payload") AS c0_non_null FROM "public"."orders"`,
+			sampleSQL:    `SELECT "payload" FROM "public"."orders" LIMIT 1000`,
+		},
+		{
+			engine:       storepb.Engine_MYSQL,
+			columnType:   "json",
+			aggregateSQL: "SELECT COUNT(*) AS total_rows, COUNT(`payload`) AS c0_non_null FROM `shop`.`orders`",
+			sampleSQL:    "SELECT `payload` FROM `shop`.`orders` LIMIT 1000",
+		},
+		{
+			engine:       storepb.Engine_MSSQL,
+			columnType:   "xml",
+			aggregateSQL: "SELECT COUNT(*) AS total_rows, COUNT([payload]) AS c0_non_null FROM [public].[orders]",
+			sampleSQL: "SELECT [payload] FROM [public].[orders] ORDER BY (SELECT NULL) " +
+				"OFFSET 0 ROWS FETCH NEXT 1000 ROWS ONLY",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.engine.String(), func(t *testing.T) {
+			t.Parallel()
+			target := profileCountedTarget(test.engine, test.columnType)
+			selected := profileTestColumns(t, target, "payload")
+			require.Equal(t, []string{"total_rows", "c0_non_null"}, profileAggregateAliases(selected))
+			queryer := &profileFakeQueryer{
+				aggregate: profileTestAggregate(selected, 0, map[string][]any{"payload": {int64(0)}}),
+				sample:    profileTestSample(selected, nil),
+			}
+			_, err := NewProfiler().Profile(context.Background(), queryer, target, []string{"payload"}, ProfileOptions{})
+			require.NoError(t, err)
+			require.Equal(t, test.aggregateSQL, queryer.aggregateSQL)
+			require.Equal(t, test.sampleSQL, queryer.sampleSQL)
+		})
+	}
+}
+
+// TestProfileCountedColumnFromSample pins the counted column's profile: the exact
+// totals from the aggregate, the distinct count and frequent values from the
+// sample, and no extremes, lengths or patterns because the type has none.
+func TestProfileCountedColumnFromSample(t *testing.T) {
+	t.Parallel()
+
+	target := profileCountedTarget(storepb.Engine_POSTGRES, "jsonb")
+	selected := profileTestColumns(t, target, "payload")
+	queryer := &profileFakeQueryer{
+		aggregate: profileTestAggregate(selected, 500, map[string][]any{"payload": {int64(400)}}),
+		sample: profileTestSample(selected, [][]any{
+			{[]byte(`{"kind":"audit"}`)},
+			{[]byte(`{"kind":"login"}`)},
+			{[]byte(`{"kind":"audit"}`)},
+			{nil},
+		}),
+	}
+
+	profile, err := NewProfiler().Profile(context.Background(), queryer, target, []string{"payload"}, ProfileOptions{})
+	require.NoError(t, err)
+	require.Equal(t, int64(4), profile.SampleRows)
+
+	payload := profile.Columns["payload"]
+	require.Equal(t, int64(500), payload.GetTotalRows())
+	require.Equal(t, int64(100), payload.GetNullCount())
+	require.Equal(t, int64(2), payload.GetDistinctCount())
+	require.True(t, payload.GetDistinctEstimated(), "the sample read fewer rows than the table has")
+	require.Empty(t, payload.GetMinValue())
+	require.Empty(t, payload.GetMaxValue())
+	require.Nil(t, payload.MinLength)
+	require.Nil(t, payload.MaxLength)
+	require.Empty(t, payload.GetPatterns(), "a document column has no text shape")
+	require.Len(t, payload.GetTopValues(), 2)
+	require.Equal(t, `{"kind":"audit"}`, payload.GetTopValues()[0].GetValue())
+	require.Equal(t, int64(2), payload.GetTopValues()[0].GetCount())
+	require.Equal(t, `{"kind":"login"}`, payload.GetTopValues()[1].GetValue())
+}
+
+// TestProfileCountedColumnExactSample pins that a sample which saw every row is an
+// exact distinct count, not an estimate.
+func TestProfileCountedColumnExactSample(t *testing.T) {
+	t.Parallel()
+
+	target := profileCountedTarget(storepb.Engine_POSTGRES, "jsonb")
+	selected := profileTestColumns(t, target, "payload")
+	queryer := &profileFakeQueryer{
+		aggregate: profileTestAggregate(selected, 3, map[string][]any{"payload": {int64(3)}}),
+		sample: profileTestSample(selected, [][]any{
+			{[]byte(`{"a":1}`)},
+			{[]byte(`{"a":1}`)},
+			{[]byte(`{"b":2}`)},
+		}),
+	}
+
+	profile, err := NewProfiler().Profile(context.Background(), queryer, target, []string{"payload"}, ProfileOptions{})
+	require.NoError(t, err)
+	payload := profile.Columns["payload"]
+	require.Equal(t, int64(2), payload.GetDistinctCount())
+	require.False(t, payload.GetDistinctEstimated())
 }

@@ -650,3 +650,67 @@ func TestDataQualityParameterizedRuleRealServerIntegration(t *testing.T) {
 	require.NotEmpty(t, results[0].GetExecutedSql())
 	require.Equal(t, int64(1), results[0].GetTotalRows())
 }
+
+// TestDataQualityColumnProfileJsonRealServerIntegration covers a relation with a
+// jsonb column: PostgreSQL has neither MIN(jsonb) nor CHAR_LENGTH(jsonb), so the
+// aggregate must profile the column by counts and take its distinct count from the
+// sample instead of failing the whole table's request.
+func TestDataQualityColumnProfileJsonRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env, ctx, instanceID, sourceDatabase, databaseName := setupPostgresServiceDatabase(t)
+	require.NoError(t, env.ExecPostgres(ctx, sourceDatabase, `
+CREATE TABLE public.audit_log (
+  id BIGSERIAL PRIMARY KEY,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  payload JSONB NOT NULL
+);
+INSERT INTO public.audit_log (created_at, payload) VALUES
+  ('2026-01-01 00:00:00+00', '{"kind":"login"}'),
+  ('2026-01-02 00:00:00+00', '{"kind":"audit"}'),
+  ('2026-01-03 00:00:00+00', '{"kind":"login"}');
+`))
+
+	_, err := env.CreateDataSource(ctx, common.FormatInstance(instanceID), &v1pb.DataSource{
+		Type:     v1pb.DataSourceType_READ_ONLY,
+		Username: "postgres",
+		Password: "postgres",
+		Host:     env.PostgresHost,
+		Port:     env.PostgresPort,
+	}, "readonly", false)
+	require.NoError(t, err)
+	env.SyncDatabase(ctx, t, databaseName)
+
+	tableGUID := waitForMetaGUIDByName(ctx, t, env,
+		fmt.Sprintf("%s;%s", instanceID, sourceDatabase), storepb.MetaType_TABLE, "audit_log")
+
+	client := v1connect.NewDataQualityServiceClient(&http.Client{Timeout: 30 * time.Second}, env.BaseURL)
+	resp, err := client.ProfileColumns(ctx, withToken(env.AdminToken(), &v1pb.ProfileColumnsRequest{
+		Parent:    "workspaces/-",
+		TableGuid: tableGUID,
+		MetaType:  v1pb.MetaType_TABLE,
+		Columns:   []string{"id", "created_at", "payload"},
+	}))
+	require.NoError(t, err)
+	require.Len(t, resp.Msg.GetColumnProfiles(), 3)
+	profiles := make(map[string]*v1pb.ColumnProfile, 3)
+	for _, profile := range resp.Msg.GetColumnProfiles() {
+		profiles[profile.GetColumn()] = profile
+	}
+
+	payload := profiles["payload"].GetProfile()
+	require.Equal(t, int64(3), payload.GetTotalRows())
+	require.Equal(t, int64(0), payload.GetNullCount())
+	require.Equal(t, int64(2), payload.GetDistinctCount())
+	require.False(t, payload.GetDistinctEstimated(), "the sample read every row")
+	require.Empty(t, payload.GetMinValue())
+	require.Empty(t, payload.GetMaxValue())
+	require.Nil(t, payload.MinLength)
+	require.Nil(t, payload.MaxLength)
+	require.NotEmpty(t, payload.GetTopValues())
+
+	// The ordinary columns still carry the facts their types support.
+	require.Equal(t, "1", profiles["id"].GetProfile().GetMinValue())
+	require.Equal(t, "3", profiles["id"].GetProfile().GetMaxValue())
+	require.NotEmpty(t, profiles["created_at"].GetProfile().GetMinValue())
+}
