@@ -2,7 +2,7 @@
 
 > Status: **implemented**. Covers the common lifecycle of `backend/runner/` and the state each runner keeps in the process. Per-runner contracts live in [schemasync.md](schemasync.md) and [lineage-analyzer.md](lineage-analyzer.md); this file is the cross-runner map: startup, shutdown, in-process state, cadences and the single-replica assumption.
 
-## The four runners
+## The five runners
 
 | Runner | Package | Cadence | First run | Purpose |
 | --- | --- | --- | --- | --- |
@@ -10,6 +10,7 @@
 | `lineageanalyzer` | `backend/runner/lineageanalyzer` | full scan 1h, queue consumer 10s | immediate | analyze view/MV/manual/application SQL into `column_lineage` |
 | `lineagevalidation` | `backend/runner/lineagevalidation` | event-driven, 5s settle | one pass at startup | revalidate ingested edges after a sync commits |
 | `maintenance` | `backend/runner/maintenance` | 6h | immediate | retention prunes, token cleanup, ingested-lineage sweep |
+| `qualityrunner` | `backend/runner/qualityrunner` | due scan 10s, manual queue priority | first tick | execute data quality rules in per-instance runs, write results, drive the problem ledger and notifications (see [data-quality.md](data-quality.md)) |
 
 Every runner implements `runner.Runner` (`Name()`, `Run(ctx)`) and is started by `runner.Go`, which wraps the body in a top-level `recover` and logs the runner's start and stop (name + run duration): a panic is logged with its stack and takes down that runner, never the process. `backend/server/server.go` starts the slice, so adding a runner is one entry, not another hard-coded `Add`.
 
@@ -34,6 +35,7 @@ All coordination state is in memory, and the deployment runs **one server proces
 | revalidation trigger + settle window + semaphore | `lineagevalidation` | a startup pass replaces it |
 | table-statistics refresh clock, DDL refresh clock + rotation cursor | `schemasync` | a restart makes every database due for a refresh (intended first pass) |
 | maintenance schedule | `maintenance` | the next tick is 6h away; startup runs one pass |
+| data quality due scan, manual run queue, in-flight rule ids, daily LLM counters | `qualityrunner` (quota counters live in `api/v1`) | rules re-converge from `next_run_at`; queued manual runs are lost (their runs are swept to ABANDONED at startup); LLM counters reset |
 
 Consequences worth knowing before changing this area:
 

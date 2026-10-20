@@ -5,7 +5,7 @@
 
 ## What it is
 
-三个合成一个"内容优先"契约：**骨架**上桌面无顶栏、侧栏 5 个顶层分组、设置降级为页内二级导航、页面标题统一走 `PageHeader`；**OpenLineage 信息架构**分目录层（选对象）/ 关系层（解释依赖）/ 证据层（建立信任）；**血缘图编码**节点按实例、边按来源。
+三个合成一个"内容优先"契约：**骨架**上桌面无顶栏、侧栏 6 个顶层分组、设置降级为页内二级导航、页面标题统一走 `PageHeader`；**OpenLineage 信息架构**分目录层（选对象）/ 关系层（解释依赖）/ 证据层（建立信任）；**血缘图编码**节点按实例、边按来源。
 
 ## Decisions
 
@@ -30,7 +30,7 @@
 | 宽度 | `route.meta.contentWidth !== "full"` 时才包 `mx-auto w-full max-w-[1400px]`；全宽页不加 wrapper 以保住 `h-full` 工作台（[DefaultLayout.vue:61](frontend/src/layouts/DefaultLayout.vue#L61)） |
 | 桌面无顶栏 | `AppHeader` 只在 `lg:hidden` 渲染（48px，drawer 触发 + 品牌）（[AppHeader.vue:6](frontend/src/components/layout/AppHeader.vue#L6)） |
 | 设置 section | [`SettingsLayout.vue`](frontend/src/pages/settings/SettingsLayout.vue)：导航 `md:sticky md:top-0 md:w-52 md:self-start`（`self-start` 必需，否则被 stretch 的 flex item 无可粘滞空间），内容列 `max-w-[860px]`，`settingsContentWidth: "full"` 的页 opt out；[`SettingsNav.vue`](frontend/src/components/layout/SettingsNav.vue) 9 项 |
-| 侧栏 | [`AppSidebar.vue:248-341`](frontend/src/components/layout/AppSidebar.vue#L248-L341) 5 个顶层项，底部 `NotificationBell` + `UserMenu`（[:174-175](frontend/src/components/layout/AppSidebar.vue#L174-L175)）；折叠 rail 下每组前用分隔线代替标题 |
+| 侧栏 | [`AppSidebar.vue:248-341`](frontend/src/components/layout/AppSidebar.vue#L248-L341) 6 个顶层项，底部 `NotificationBell` + `UserMenu`（[:174-175](frontend/src/components/layout/AppSidebar.vue#L174-L175)）；折叠 rail 下每组前用分隔线代替标题 |
 | 页头 | [`PageHeader.vue`](frontend/src/components/layout/PageHeader.vue)：`breadcrumb` slot + 可选 `eyebrow`（11px 大写 accent）+ `h1.text-2xl` + 描述 + `actions` slot（窄屏自动换行到标题下）；被 20+ 个 `.vue` 引用 |
 | 路由 | 设置二级导航挂在 `/settings` children（[router/index.ts:52-142](frontend/src/router/index.ts#L52-L142)），`/settings` redirect 到 GeneralSettings；OpenLineage 父路由统一 `contentWidth: "full"`（[:166-217](frontend/src/router/index.ts#L166-L217)） |
 
