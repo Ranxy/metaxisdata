@@ -1403,6 +1403,16 @@ export declare type QualityRun = Message<"metaxisdata.v1.QualityRun"> & {
    * @generated from field: metaxisdata.v1.QualityStatus outcome = 9;
    */
   outcome: QualityStatus;
+
+  /**
+   * Where the run's rules looked: the distinct targets of its results, taken
+   * from the rule revision each result was judged with. A list view would
+   * otherwise have to join every result back to its rule to answer "what did
+   * this run check?". Empty for a queued run that has no results yet.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityTarget targets = 10;
+   */
+  targets: QualityTarget[];
 };
 
 /**

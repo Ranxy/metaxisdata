@@ -448,6 +448,27 @@ func convertQualityRun(workspaceID string, run *store.QualityRunMessage) *v1pb.Q
 	}
 }
 
+// convertQualityRunTargets turns the per-run target snapshots into the public
+// shape a list view renders. Columns stay empty: the config, which names them,
+// belongs to the rule, not to the run's display summary.
+func convertQualityRunTargets(targets []*store.QualityRunTargetMessage) []*v1pb.QualityTarget {
+	if len(targets) == 0 {
+		return nil
+	}
+	converted := make([]*v1pb.QualityTarget, 0, len(targets))
+	for _, target := range targets {
+		if target == nil {
+			continue
+		}
+		converted = append(converted, &v1pb.QualityTarget{
+			MetaGuid: target.MetaGUID,
+			MetaType: v1pb.MetaType(target.MetaType),
+			Path:     convertQualityTargetPathToV1(target.Path),
+		})
+	}
+	return converted
+}
+
 // qualityRuleUpdate is one parsed UpdateQualityRule mask: the store patch plus the
 // facts the handler needs to revalidate and reschedule.
 type qualityRuleUpdate struct {

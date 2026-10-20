@@ -4980,6 +4980,7 @@ instance that became due in one scheduler tick.
 | initiator | [string](#string) |  | The principal that started the run. Format: users/{user}. Empty for a scheduled run. |
 | instance | [string](#string) |  | The instance this batch belongs to. Format: instances/{instance} |
 | outcome | [QualityStatus](#metaxisdata-v1-QualityStatus) |  | The rollup of the run&#39;s results: the worst status any result reported. Unset until the run completes; ERROR and FAIL stay distinct. |
+| targets | [QualityTarget](#metaxisdata-v1-QualityTarget) | repeated | Where the run&#39;s rules looked: the distinct targets of its results, taken from the rule revision each result was judged with. A list view would otherwise have to join every result back to its rule to answer &#34;what did this run check?&#34;. Empty for a queued run that has no results yet. |
 
 
 

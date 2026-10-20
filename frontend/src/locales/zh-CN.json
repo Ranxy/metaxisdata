@@ -768,6 +768,7 @@
       "paused": "已暂停",
       "unspecified": "未指定"
     },
+    "ruleTarget": "规则目标",
     "ruleType": {
       "acceptedValues": "枚举值",
       "celExpression": "CEL 表达式",

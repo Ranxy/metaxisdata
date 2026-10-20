@@ -10005,6 +10005,16 @@ components:
                         The rollup of the run's results: the worst status any result reported.
                          Unset until the run completes; ERROR and FAIL stay distinct.
                     format: enum
+                targets:
+                    readOnly: true
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityTarget'
+                    description: |-
+                        Where the run's rules looked: the distinct targets of its results, taken
+                         from the rule revision each result was judged with. A list view would
+                         otherwise have to join every result back to its rule to answer "what did
+                         this run check?". Empty for a queued run that has no results yet.
             description: |-
                 QualityRun is one execution batch: manually selected rules, or the rules of one
                  instance that became due in one scheduler tick.

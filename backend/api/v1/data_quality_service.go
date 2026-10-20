@@ -905,11 +905,32 @@ func (s *DataQualityService) ListQualityRuns(ctx context.Context, req *connect.R
 		return nil, err
 	}
 
+	targets, err := s.qualityRunTargets(ctx, runs)
+	if err != nil {
+		return nil, err
+	}
 	response := &v1pb.ListQualityRunsResponse{NextPageToken: nextPageToken}
 	for _, run := range runs {
-		response.QualityRuns = append(response.QualityRuns, convertQualityRun(workspaceID, run))
+		converted := convertQualityRun(workspaceID, run)
+		converted.Targets = convertQualityRunTargets(targets[run.ID])
+		response.QualityRuns = append(response.QualityRuns, converted)
 	}
 	return connect.NewResponse(response), nil
+}
+
+// qualityRunTargets reads the targets of the given runs in one query. A run row
+// stores no target: the evidence is its results and the rule revisions they
+// name, so a list has to join them in a second read rather than per row.
+func (s *DataQualityService) qualityRunTargets(ctx context.Context, runs []*store.QualityRunMessage) (map[int64][]*store.QualityRunTargetMessage, error) {
+	runIDs := make([]int64, 0, len(runs))
+	for _, run := range runs {
+		runIDs = append(runIDs, run.ID)
+	}
+	targets, err := s.store.ListQualityRunTargets(ctx, runIDs)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the quality run targets")
+	}
+	return targets, nil
 }
 
 // qualityRunListFilter maps the request filters onto the store filter.
@@ -960,7 +981,13 @@ func (s *DataQualityService) GetQualityRun(ctx context.Context, req *connect.Req
 	if err != nil {
 		return nil, err
 	}
-	return connect.NewResponse(convertQualityRun(workspaceID, run)), nil
+	targets, err := s.qualityRunTargets(ctx, []*store.QualityRunMessage{run})
+	if err != nil {
+		return nil, err
+	}
+	converted := convertQualityRun(workspaceID, run)
+	converted.Targets = convertQualityRunTargets(targets[run.ID])
+	return connect.NewResponse(converted), nil
 }
 
 // ListQualityRuleResults lists the per-rule results, typically for one run.
