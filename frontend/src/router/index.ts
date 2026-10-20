@@ -267,6 +267,20 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
+        // The rule's own page: what it last found and how it has behaved. The
+        // whole resource name is one param per name segment, like the run and
+        // issue detail routes, because a Get needs the real workspace.
+        path: "rules/:ruleId+",
+        name: "DataQualityRuleDetail",
+        component: () =>
+          import("@/pages/data-quality/DataQualityRuleDetailPage.vue"),
+        meta: {
+          requiresAuth: true,
+          layout: "default",
+          permission: "metaxisdata.dataQuality.rules.get",
+        },
+      },
+      {
         path: "suggestions",
         name: "DataQualitySuggestions",
         component: () =>

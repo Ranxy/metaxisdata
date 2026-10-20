@@ -317,6 +317,7 @@
       "viewAll": "View all",
       "viewRuns": "View runs"
     },
+    "columns": "Columns",
     "comparisonOperator": {
       "eq": "=",
       "gt": ">",
@@ -327,6 +328,7 @@
       "unspecified": "Unspecified"
     },
     "copySql": "Copy SQL",
+    "createdAt": "Created",
     "deleteError": "Failed to archive the rule.",
     "deleteRuleMessage": "The rule stops running and no new results are recorded. Its history stays readable.",
     "deleteRuleTitle": "Archive this rule?",
@@ -569,6 +571,8 @@
     "fetchIssueError": "Failed to load the issue.",
     "fetchIssuesError": "Failed to load the quality issues.",
     "fetchResultsError": "Failed to load the run results.",
+    "fetchRuleError": "Failed to load the rule.",
+    "fetchRuleResultsError": "Failed to load this rule's results.",
     "fetchRulesError": "Failed to load the quality rules.",
     "fetchRunError": "Failed to load the run.",
     "fetchRunsError": "Failed to load the quality runs.",
@@ -726,6 +730,8 @@
       "trendTitle": "Execution trend",
       "windowDays": "{days} days"
     },
+    "passRate": "Pass rate",
+    "passRateValue": "{value}%",
     "pauseRule": "Pause rule",
     "polling": "This run is still executing; the page refreshes automatically.",
     "profile": {
@@ -738,6 +744,9 @@
       "topValues": "top: {values}",
       "truncated": "truncated"
     },
+    "recentExecutions": "Recent executions",
+    "recentExecutionsHint": "The most recent results recorded for this rule.",
+    "recentResultWindow": "Last {count} results",
     "resolutionNote": "Note",
     "resolutionNotePlaceholder": "What was done, or why the failure is expected.",
     "resolutionReason": {
@@ -753,13 +762,17 @@
     "resolveHint": "The next failing run opens a new issue; this one stays in the history.",
     "resolveTitle": "Resolve this issue?",
     "resolvedAt": "Resolved",
+    "resultHistoryLabel": "Result history, oldest to newest",
     "resultStatus": "Status",
     "results": "Results",
     "resultsDescription": "What each rule observed in this execution.",
     "resultsTitle": "Rule results",
     "resumeRule": "Resume rule",
+    "revision": "Revision",
     "rule": "Rule",
+    "ruleDefinition": "Rule definition",
     "ruleDeleted": "Rule archived",
+    "ruleDetailTitle": "Rule detail",
     "ruleEnabled": "Rule enabled",
     "rulePaused": "Rule paused",
     "ruleState": {
@@ -808,6 +821,7 @@
     "runsDescription": "Every execution of the quality rules, with the status each rule reported.",
     "runsTitle": "Quality runs",
     "sampled": "Sampled",
+    "schedule": "Schedule",
     "schema": {
       "atLeastOne": "At least one of: {fields}",
       "atLeastOneHint": "At least one of these fields is required: {fields}"
@@ -906,6 +920,7 @@
       "suggestion": "Suggestion",
       "title": "Suggestion queue"
     },
+    "tags": "Tags",
     "target": {
       "description": "Pick the table or view this rule observes. The column it checks is chosen in the rule form.",
       "fetchError": "Failed to load the target's metadata.",
@@ -918,6 +933,7 @@
       "title": "Select a target"
     },
     "targetChanged": "Target schema changed",
+    "targetChangedHint": "The target's schema changed since this rule was saved; review the rule before the next run.",
     "threshold": "Threshold",
     "thresholdGreaterThan": "> {value}",
     "thresholdInside": "inside [{lower}, {upper}]",

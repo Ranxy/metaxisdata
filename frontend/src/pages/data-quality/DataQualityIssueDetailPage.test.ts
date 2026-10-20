@@ -72,6 +72,11 @@ async function mountPage(permissions: string[]) {
         name: "DataQualityRunDetail",
         component: Dummy,
       },
+      {
+        path: "/data-quality/rules/:ruleId+",
+        name: "DataQualityRuleDetail",
+        component: Dummy,
+      },
     ],
   });
   await router.push(`/data-quality/issues/${ISSUE}`);

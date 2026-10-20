@@ -64,6 +64,11 @@ async function mountSection(permissions: string[]) {
         component: { template: "<div />" },
       },
       {
+        path: "/data-quality/rules/:ruleId+",
+        name: "DataQualityRuleDetail",
+        component: { template: "<div />" },
+      },
+      {
         path: "/data-quality/runs",
         name: "DataQualityRuns",
         component: { template: "<div />" },

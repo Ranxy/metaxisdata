@@ -197,12 +197,12 @@
                 <TableRow>
                   <TableCell>
                     <!-- A result names its rule; the reader follows that name to
-                         the rule itself, mirroring the rules list where the title
-                         is the edit affordance. Without rules.update the route
-                         would refuse the visit, so the label stays plain text. -->
+                         the rule's own page, where the history and the edit
+                         action live. Without rules.get the route would refuse
+                         the visit, so the label stays plain text. -->
                     <RouterLink
-                      v-if="canEditRules"
-                      :to="ruleEditRoute(result)"
+                      v-if="canViewRule"
+                      :to="ruleRoute(result)"
                       class="block max-w-[11rem] truncate font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:max-w-[14rem] md:max-w-sm"
                       :title="ruleLabel(result)"
                     >
@@ -513,10 +513,10 @@ const explainResult = ref<QualityRuleResult>();
 const canExplain = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.explain")
 );
-// The editor route requires the same permission, so a member who may read the
-// run's evidence gets no link it would then refuse to open.
-const canEditRules = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.rules.update")
+// The rule page requires the same permission, so a member who may read the run's
+// evidence gets no link it would then refuse to open.
+const canViewRule = computed(() =>
+  authStore.hasPermission("metaxisdata.dataQuality.rules.get")
 );
 
 let pollTimer: number | undefined;
@@ -697,10 +697,10 @@ function ruleLabel(result: QualityRuleResult): string {
   return ruleTitles.value[result.rule] || qualityRuleID(result.rule);
 }
 
-/** The editor route wants the rule's whole resource name, one param per segment. */
-function ruleEditRoute(result: QualityRuleResult) {
+/** The rule page wants the rule's whole resource name, one param per segment. */
+function ruleRoute(result: QualityRuleResult) {
   return {
-    name: "DataQualityRuleEdit",
+    name: "DataQualityRuleDetail",
     params: { ruleId: result.rule.split("/") },
   };
 }

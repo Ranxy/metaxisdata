@@ -297,6 +297,8 @@ export default [
             // scripts/check-vue-i18n.mjs does trace them.
             "dataQuality.deleteError",
             "dataQuality.fetchResultsError",
+            "dataQuality.fetchRuleError",
+            "dataQuality.fetchRuleResultsError",
             "dataQuality.fetchRulesError",
             "dataQuality.fetchRunError",
             "dataQuality.fetchRunsError",

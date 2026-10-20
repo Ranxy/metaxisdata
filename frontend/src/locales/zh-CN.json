@@ -317,6 +317,7 @@
       "viewAll": "查看全部",
       "viewRuns": "查看执行"
     },
+    "columns": "字段",
     "comparisonOperator": {
       "eq": "=",
       "gt": ">",
@@ -327,6 +328,7 @@
       "unspecified": "未指定"
     },
     "copySql": "复制 SQL",
+    "createdAt": "创建时间",
     "deleteError": "归档规则失败。",
     "deleteRuleMessage": "规则将停止运行，不再产生新结果；历史记录仍然可读。",
     "deleteRuleTitle": "归档这条规则？",
@@ -569,6 +571,8 @@
     "fetchIssueError": "加载问题失败。",
     "fetchIssuesError": "加载质量问题失败。",
     "fetchResultsError": "加载执行结果失败。",
+    "fetchRuleError": "加载规则失败。",
+    "fetchRuleResultsError": "加载该规则的执行结果失败。",
     "fetchRulesError": "加载质量规则失败。",
     "fetchRunError": "加载执行详情失败。",
     "fetchRunsError": "加载质量执行失败。",
@@ -726,6 +730,8 @@
       "trendTitle": "执行趋势",
       "windowDays": "{days} 天"
     },
+    "passRate": "通过率",
+    "passRateValue": "{value}%",
     "pauseRule": "暂停规则",
     "polling": "本次执行仍在进行，页面会自动刷新。",
     "profile": {
@@ -738,6 +744,9 @@
       "topValues": "高频值：{values}",
       "truncated": "已截断"
     },
+    "recentExecutions": "最近执行",
+    "recentExecutionsHint": "该规则最近记录的执行结果。",
+    "recentResultWindow": "最近 {count} 次结果",
     "resolutionNote": "备注",
     "resolutionNotePlaceholder": "做了什么，或为什么这个失败是预期的。",
     "resolutionReason": {
@@ -753,13 +762,17 @@
     "resolveHint": "下一次失败会打开新的问题，这条会留在历史中。",
     "resolveTitle": "解决这条问题？",
     "resolvedAt": "解决时间",
+    "resultHistoryLabel": "执行结果历史，从旧到新",
     "resultStatus": "状态",
     "results": "结果",
     "resultsDescription": "本次执行中每条规则观察到的情况。",
     "resultsTitle": "规则结果",
     "resumeRule": "启用规则",
+    "revision": "版本",
     "rule": "规则",
+    "ruleDefinition": "规则定义",
     "ruleDeleted": "规则已归档",
+    "ruleDetailTitle": "规则详情",
     "ruleEnabled": "规则已启用",
     "rulePaused": "规则已暂停",
     "ruleState": {
@@ -808,6 +821,7 @@
     "runsDescription": "质量规则的每次执行，以及每条规则报告的状态。",
     "runsTitle": "质量执行",
     "sampled": "采样",
+    "schedule": "调度",
     "schema": {
       "atLeastOne": "至少填写一项：{fields}",
       "atLeastOneHint": "以下字段至少填写一项：{fields}"
@@ -906,6 +920,7 @@
       "suggestion": "建议",
       "title": "建议队列"
     },
+    "tags": "标签",
     "target": {
       "description": "选择这条规则观察的表或视图；要检查的字段在规则表单中选择。",
       "fetchError": "加载目标的元数据失败。",
@@ -918,6 +933,7 @@
       "title": "选择目标"
     },
     "targetChanged": "目标 Schema 已变更",
+    "targetChangedHint": "自规则保存以来目标结构已变更，请在下次执行前检查规则。",
     "threshold": "阈值",
     "thresholdGreaterThan": "> {value}",
     "thresholdInside": "位于 [{lower}, {upper}]",

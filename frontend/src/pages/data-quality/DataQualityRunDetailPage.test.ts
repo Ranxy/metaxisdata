@@ -44,7 +44,7 @@ const Dummy = { template: "<div />" };
 const PERMISSIONS = [
   "metaxisdata.dataQuality.runs.get",
   "metaxisdata.dataQuality.rules.list",
-  "metaxisdata.dataQuality.rules.update",
+  "metaxisdata.dataQuality.rules.get",
 ];
 
 async function mountPage(permissions: string[]) {
@@ -64,8 +64,8 @@ async function mountPage(permissions: string[]) {
         component: Dummy,
       },
       {
-        path: "/data-quality/rules/:ruleId+/edit",
-        name: "DataQualityRuleEdit",
+        path: "/data-quality/rules/:ruleId+",
+        name: "DataQualityRuleDetail",
         component: Dummy,
       },
     ],
@@ -114,23 +114,22 @@ describe("DataQualityRunDetailPage", () => {
     mocks.getWorkspaceProfileSetting.mockResolvedValue({});
   });
 
-  it("links a result's rule to the rule editor", async () => {
+  it("links a result's rule to the rule's page", async () => {
     const wrapper = await mountPage(PERMISSIONS);
 
     const link = wrapper.find(
-      'a[href="/data-quality/rules/workspaces/ws/qualityRules/rule-1/edit"]'
+      'a[href="/data-quality/rules/workspaces/ws/qualityRules/rule-1"]'
     );
     expect(link.exists()).toBe(true);
     expect(link.text()).toBe("Orders should have rows");
   });
 
-  it("shows the rule name without a link when the caller cannot edit it", async () => {
-    const wrapper = await mountPage([
-      "metaxisdata.dataQuality.runs.get",
-      "metaxisdata.dataQuality.rules.list",
-    ]);
+  it("shows the rule name without a link when the caller cannot read rules", async () => {
+    const wrapper = await mountPage(["metaxisdata.dataQuality.runs.get"]);
 
     expect(wrapper.text()).toContain("Orders should have rows");
-    expect(wrapper.find('a[href$="/edit"]').exists()).toBe(false);
+    expect(wrapper.find('a[href^="/data-quality/rules/"]').exists()).toBe(
+      false
+    );
   });
 });

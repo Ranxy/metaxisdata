@@ -846,6 +846,14 @@ const ruleName = computed(() => {
   return Array.isArray(param) ? param.join("/") : String(param ?? "");
 });
 
+/** The rule's own page, addressed by its whole resource name. */
+function ruleDetailRoute(name: string) {
+  return {
+    name: "DataQualityRuleDetail",
+    params: { ruleId: name.split("/") },
+  };
+}
+
 watch(
   () => [form.value, target.value] as const,
   () => {
@@ -1135,6 +1143,7 @@ async function save() {
     return;
   }
   saving.value = true;
+  let savedName = isEdit.value ? ruleName.value : "";
   try {
     const rule = currentRule();
     if (isEdit.value) {
@@ -1144,13 +1153,14 @@ async function save() {
       );
       if (mask.length === 0) {
         notify.info(t("dataQuality.editor.noChanges"));
-        await router.push({ name: "DataQualityRules" });
+        await router.push(ruleDetailRoute(ruleName.value));
         return;
       }
       await updateQualityRule(rule, mask);
       notify.success(t("dataQuality.editor.updated"));
     } else {
-      await createQualityRule(rule);
+      const created = await createQualityRule(rule);
+      savedName = created.name;
       notify.success(t("dataQuality.editor.created"));
       // A rule opened from a suggestion is only "accepted" once it exists. If
       // the decision write fails the rule is still saved, so warn rather than
@@ -1167,7 +1177,12 @@ async function save() {
         }
       }
     }
-    await router.push({ name: "DataQualityRules" });
+    // Save lands on the rule's own page: it is where the first result and the
+    // history will appear, so the writer sees what they just created instead of
+    // a list they then have to search.
+    await router.push(
+      savedName ? ruleDetailRoute(savedName) : { name: "DataQualityRules" }
+    );
   } catch (e: unknown) {
     // The server's Invalid message names the field or the compiled-SQL problem;
     // show it at the top where the reader lands, not under the whole form.

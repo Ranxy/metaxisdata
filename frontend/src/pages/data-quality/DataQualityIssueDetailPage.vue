@@ -79,7 +79,19 @@
               <Badge :variant="qualitySeverityVariant(issue.severity)">
                 {{ t(qualitySeverityKey(issue.severity)) }}
               </Badge>
-              <span class="font-medium">{{ ruleTitle }}</span>
+              <RouterLink
+                v-if="issue.rule && canViewRule"
+                :to="ruleRoute(issue.rule)"
+                class="font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                {{ ruleTitle }}
+              </RouterLink>
+              <span
+                v-else
+                class="font-medium"
+              >
+                {{ ruleTitle }}
+              </span>
             </div>
             <div class="font-mono text-xs break-all text-muted-foreground">
               {{ targetPath }}
@@ -445,6 +457,9 @@ const muteHours = ref("24");
 const canUpdate = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.issues.update")
 );
+const canViewRule = computed(() =>
+  authStore.hasPermission("metaxisdata.dataQuality.rules.get")
+);
 
 const mutedUntil = computed(() => {
   const seconds = issue.value?.mutedUntil?.seconds;
@@ -506,6 +521,13 @@ async function loadAcknowledgedBy(name: string) {
   } catch {
     // The trailing id stands.
   }
+}
+
+function ruleRoute(name: string) {
+  return {
+    name: "DataQualityRuleDetail",
+    params: { ruleId: name.split("/") },
+  };
 }
 
 function runRoute(name: string) {
