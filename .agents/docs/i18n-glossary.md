@@ -171,4 +171,5 @@ pnpm --dir frontend i18n:glossary --write-doc     # 重写生成表格
 | suggestion | 建议 | Data Quality | A model-proposed rule draft or column label waiting for a person to accept or reject it. | dataQuality., menu. | zh-CN: `提议`, `意见` |
 | semantic label | 语义标注 | Data Quality | The accepted meaning of a column, such as email address or business key, chosen from the semantic type catalog. | dataQuality. | zh-CN: `语义标签`, `语意标注` |
 | column profile | 字段画像 | Data Quality | The measured facts about a column's values — null rate, distinct count, extremes, lengths — without reading the rows. | dataQuality. | zh-CN: `列画像`, `字段剖析` |
+| owner | 负责人 | Data Quality | The workspace member responsible for a rule. | dataQuality. | zh-CN: `所有者`, `拥有人` |
 <!-- END GENERATED GLOSSARY -->

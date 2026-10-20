@@ -121,7 +121,7 @@ describe("QualityDraftDialog", () => {
     wrapper.unmount();
   });
 
-  it("accepts a draft and reports it to the editor", async () => {
+  it("opens a draft in the editor without accepting it", async () => {
     const wrapper = mountDialog();
     await flushPromises();
     setIntent("Orders must have rows");
@@ -132,12 +132,7 @@ describe("QualityDraftDialog", () => {
     buttonByText(i18n.global.t("dataQuality.llm.draft.openInEditor"))?.click();
     await flushPromises();
 
-    expect(mocks.updateQualitySuggestion).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: SUGGESTION,
-        decision: QualitySuggestionStatus.ACCEPTED,
-      })
-    );
+    expect(mocks.updateQualitySuggestion).not.toHaveBeenCalled();
     expect(wrapper.emitted("accepted")).toHaveLength(1);
     expect(wrapper.emitted("update:open")).toContainEqual([false]);
     wrapper.unmount();

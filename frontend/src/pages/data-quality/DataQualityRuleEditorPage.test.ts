@@ -5,6 +5,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
+import ColumnSelect from "@/components/common/ColumnSelect.vue";
 import FormField from "@/components/ui/form-field/FormField.vue";
 import { Select } from "@/components/ui/select";
 import { i18n } from "@/locales";
@@ -21,6 +22,7 @@ import {
   RowCountConfigSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
+import { InstanceSchema } from "@/types/proto-es/v1/instance_service_pb";
 import {
   DataQualitySettingSchema,
   WorkspaceProfileSettingSchema,
@@ -38,6 +40,8 @@ const mocks = vi.hoisted(() => ({
   getWorkspaceProfileSetting: vi.fn(),
   listMetadata: vi.fn(),
   listAllInstances: vi.fn(),
+  getInstance: vi.fn(),
+  updateQualitySuggestion: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", () => ({
@@ -46,6 +50,7 @@ vi.mock("@/api/data-quality", () => ({
   getQualityRule: mocks.getQualityRule,
   previewQualityRule: mocks.previewQualityRule,
   updateQualityRule: mocks.updateQualityRule,
+  updateQualitySuggestion: mocks.updateQualitySuggestion,
 }));
 
 vi.mock("@/api/setting", () => ({
@@ -58,6 +63,7 @@ vi.mock("@/api/database", () => ({
 
 vi.mock("@/api/instance", () => ({
   listAllInstances: mocks.listAllInstances,
+  getInstance: mocks.getInstance,
 }));
 
 const PERMISSIONS = [
@@ -109,6 +115,11 @@ async function mountEditor(path: string) {
         name: "DataQualitySettings",
         component: { template: "<div />" },
       },
+      {
+        path: "/instances/:instanceId",
+        name: "InstanceDetail",
+        component: { template: "<div />" },
+      },
     ],
   });
   await router.push(path);
@@ -123,6 +134,18 @@ async function mountEditor(path: string) {
   });
   await flushPromises();
   return { wrapper, router };
+}
+
+/** Pick a column in the searchable picker whose label matches `text`. */
+function chooseColumn(
+  wrapper: ReturnType<typeof mount>,
+  text: string,
+  value: string
+) {
+  const select = wrapper
+    .findAllComponents(ColumnSelect)
+    .find((candidate) => candidate.props("label") === text);
+  return select?.vm.$emit("update:modelValue", value);
 }
 
 /** The input of the form field whose visible label matches `text`. */
@@ -152,6 +175,9 @@ describe("DataQualityRuleEditorPage", () => {
     localStorage.clear();
     vi.clearAllMocks();
     mocks.createQualityRule.mockResolvedValue(create(QualityRuleSchema, {}));
+    mocks.updateQualitySuggestion.mockResolvedValue(
+      create(QualitySuggestionSchema, {})
+    );
     mocks.getWorkspaceProfileSetting.mockResolvedValue(
       create(WorkspaceProfileSettingSchema, {
         dataQuality: create(DataQualitySettingSchema, {
@@ -177,6 +203,17 @@ describe("DataQualityRuleEditorPage", () => {
       ],
     });
     mocks.listAllInstances.mockResolvedValue([]);
+    mocks.getInstance.mockResolvedValue(
+      create(InstanceSchema, {
+        name: "instances/inst1",
+        dataSources: [
+          {
+            name: "instances/inst1/dataSources/readonly",
+            type: 2,
+          },
+        ],
+      })
+    );
   });
 
   it("enables Draft with AI only with the switch and the permission", async () => {
@@ -320,9 +357,8 @@ describe("DataQualityRuleEditorPage", () => {
     await fieldInput(wrapper, label("dataQuality.editor.title"))?.setValue(
       "Average amount"
     );
-    await fieldInput(wrapper, label("dataQuality.editor.column"))?.setValue(
-      "amount"
-    );
+    chooseColumn(wrapper, label("dataQuality.editor.column"), "amount");
+    await nextTick();
     await fieldInput(wrapper, label("dataQuality.editor.minValue"))?.setValue(
       "0"
     );
@@ -426,6 +462,111 @@ describe("DataQualityRuleEditorPage", () => {
     expect(wrapper.text()).toContain(PREFILL);
   });
 
+  it("accepts the source suggestion only after the rule is created", async () => {
+    mocks.findQualitySuggestion.mockResolvedValue(
+      create(QualitySuggestionSchema, {
+        name: "workspaces/ws/qualitySuggestions/draft-1",
+        kind: QualitySuggestionKind.RULE_DRAFT,
+        target: create(QualityTargetSchema, {
+          metaGuid: PREFILL,
+          metaType: MetaType.TABLE,
+        }),
+        payload: {
+          payload: {
+            case: "rule",
+            value: {
+              title: "Orders should have rows",
+              severity: 2,
+              confidence: 0.8,
+              config: create(QualityRuleConfigSchema, {
+                config: {
+                  case: "rowCount",
+                  value: create(RowCountConfigSchema, { minRows: 1n }),
+                },
+              }),
+            },
+          },
+        },
+      })
+    );
+    const { wrapper } = await mountEditor(
+      `/data-quality/rules/new?suggestion=${encodeURIComponent("workspaces/ws/qualitySuggestions/draft-1")}`
+    );
+
+    // Opening the draft is not a decision.
+    expect(mocks.updateQualitySuggestion).not.toHaveBeenCalled();
+    await actionButton(wrapper, label("dataQuality.editor.create")).trigger(
+      "click"
+    );
+    await flushPromises();
+
+    expect(mocks.createQualityRule).toHaveBeenCalledTimes(1);
+    expect(mocks.updateQualitySuggestion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "workspaces/ws/qualitySuggestions/draft-1",
+        decision: QualitySuggestionStatus.ACCEPTED,
+      })
+    );
+    wrapper.unmount();
+  });
+
+  it("leaves the suggestion pending when the editor is cancelled", async () => {
+    mocks.findQualitySuggestion.mockResolvedValue(
+      create(QualitySuggestionSchema, {
+        name: "workspaces/ws/qualitySuggestions/draft-1",
+        kind: QualitySuggestionKind.RULE_DRAFT,
+        target: create(QualityTargetSchema, {
+          metaGuid: PREFILL,
+          metaType: MetaType.TABLE,
+        }),
+        payload: {
+          payload: {
+            case: "rule",
+            value: {
+              title: "Orders should have rows",
+              severity: 2,
+              confidence: 0.8,
+              config: create(QualityRuleConfigSchema, {
+                config: {
+                  case: "rowCount",
+                  value: create(RowCountConfigSchema, { minRows: 1n }),
+                },
+              }),
+            },
+          },
+        },
+      })
+    );
+    const { wrapper } = await mountEditor(
+      `/data-quality/rules/new?suggestion=${encodeURIComponent("workspaces/ws/qualitySuggestions/draft-1")}`
+    );
+
+    await actionButton(wrapper, label("common.cancel")).trigger("click");
+    await flushPromises();
+
+    expect(mocks.updateQualitySuggestion).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("warns about a missing READ_ONLY data source on the target card", async () => {
+    mocks.getInstance.mockResolvedValue(
+      create(InstanceSchema, {
+        name: "instances/inst1",
+        dataSources: [],
+      })
+    );
+    const { wrapper } = await mountEditor(
+      `/data-quality/rules/new?table_guid=${encodeURIComponent(PREFILL)}&meta_type=4`
+    );
+    await flushPromises();
+    await nextTick();
+
+    expect(wrapper.text()).toContain(
+      label("dataQuality.editor.readOnlyMissingTitle")
+    );
+    wrapper.unmount();
+  });
+
   it("updates an edited rule with the minimal mask", async () => {
     const baseForm = emptyRuleForm(QualityRuleType.ROW_COUNT);
     baseForm.title = "Row count";
@@ -458,6 +599,8 @@ describe("DataQualityRuleEditorPage", () => {
     ).toBe("Row count");
 
     await wrapper.find("#dq-rule-title").setValue("Row count on orders");
+    await flushPromises();
+    await nextTick();
     await actionButton(
       wrapper,
       label("dataQuality.editor.saveChanges")

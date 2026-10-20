@@ -97,12 +97,13 @@
 
     <template v-else-if="ruleType === QualityRuleType.NULL_PERCENT">
       <div class="grid gap-4 sm:grid-cols-2">
-        <FormField
-          v-model="config.nullColumn"
-          list="dq-target-columns"
-          :label="t('dataQuality.editor.column')"
-          :hint="t('dataQuality.editor.columnHint')"
-        />
+                  <ColumnSelect
+            :model-value="config.nullColumn ?? ''"
+            :columns="columnDetails"
+            :label="t('dataQuality.editor.column')"
+            :hint="t('dataQuality.editor.columnHint')"
+            @update:model-value="(value) => setColumn('nullColumn', value)"
+          />
         <div class="flex flex-col gap-1.5">
           <Label>{{ t("dataQuality.editor.nullMetric") }}</Label>
           <Select v-model="config.nullMetric">
@@ -160,12 +161,13 @@
 
     <template v-else-if="ruleType === QualityRuleType.UNIQUE">
       <div class="grid gap-4 sm:grid-cols-2">
-        <FormField
-          v-model="config.column"
-          list="dq-target-columns"
-          :label="t('dataQuality.editor.column')"
-          :hint="t('dataQuality.editor.columnHint')"
-        />
+                  <ColumnSelect
+            :model-value="config.column ?? ''"
+            :columns="columnDetails"
+            :label="t('dataQuality.editor.column')"
+            :hint="t('dataQuality.editor.columnHint')"
+            @update:model-value="(value) => setColumn('column', value)"
+          />
         <CheckboxField
           v-model="config.countNulls"
           :label="t('dataQuality.editor.countNulls')"
@@ -174,11 +176,14 @@
     </template>
 
     <template v-else-if="ruleType === QualityRuleType.UNIQUE_COMBINATION">
-      <FormField
-        v-model="config.columns"
+      <ColumnSelect
+        multiple
+        :model-value="csvColumns(config.columns)"
+        :columns="columnDetails"
+        :disabled="config.allColumns === true"
         :label="t('dataQuality.editor.columns')"
         :hint="t('dataQuality.editor.columnsHint')"
-        :disabled="config.allColumns === true"
+        @update:model-value="(value) => setCsvColumns('columns', value)"
       />
       <div class="grid gap-4 sm:grid-cols-2">
         <CheckboxField
@@ -194,12 +199,13 @@
 
     <template v-else-if="ruleType === QualityRuleType.ACCEPTED_VALUES">
       <div class="grid gap-4 sm:grid-cols-2">
-        <FormField
-          v-model="config.column"
-          list="dq-target-columns"
-          :label="t('dataQuality.editor.column')"
-          :hint="t('dataQuality.editor.columnHint')"
-        />
+                  <ColumnSelect
+            :model-value="config.column ?? ''"
+            :columns="columnDetails"
+            :label="t('dataQuality.editor.column')"
+            :hint="t('dataQuality.editor.columnHint')"
+            @update:model-value="(value) => setColumn('column', value)"
+          />
         <CheckboxField
           v-model="config.allowNull"
           :label="t('dataQuality.editor.allowNull')"
@@ -214,12 +220,13 @@
 
     <template v-else-if="ruleType === QualityRuleType.RANGE">
       <div class="grid gap-4 sm:grid-cols-3">
-        <FormField
-          v-model="config.column"
-          list="dq-target-columns"
-          :label="t('dataQuality.editor.column')"
-          :hint="t('dataQuality.editor.columnHint')"
-        />
+                  <ColumnSelect
+            :model-value="config.column ?? ''"
+            :columns="columnDetails"
+            :label="t('dataQuality.editor.column')"
+            :hint="t('dataQuality.editor.columnHint')"
+            @update:model-value="(value) => setColumn('column', value)"
+          />
         <FormField
           v-model="config.minValue"
           :label="t('dataQuality.editor.minValue')"
@@ -239,10 +246,12 @@
       v-else-if="ruleType === QualityRuleType.REGEX"
       class="grid gap-4 sm:grid-cols-2"
     >
-      <FormField
-        v-model="config.column"
+      <ColumnSelect
+        :model-value="config.column ?? ''"
+        :columns="columnDetails"
         :label="t('dataQuality.editor.column')"
         :hint="t('dataQuality.editor.columnHint')"
+        @update:model-value="(value) => setColumn('column', value)"
       />
       <FormField
         v-model="config.pattern"
@@ -255,10 +264,12 @@
       v-else-if="ruleType === QualityRuleType.STRING_LENGTH"
       class="grid gap-4 sm:grid-cols-3"
     >
-      <FormField
-        v-model="config.column"
+      <ColumnSelect
+        :model-value="config.column ?? ''"
+        :columns="columnDetails"
         :label="t('dataQuality.editor.column')"
         :hint="t('dataQuality.editor.columnHint')"
+        @update:model-value="(value) => setColumn('column', value)"
       />
       <FormField
         v-model="config.minLen"
@@ -276,22 +287,24 @@
       v-else-if="ruleType === QualityRuleType.REFERENTIAL_INTEGRITY"
     >
       <div class="grid gap-4 sm:grid-cols-2">
-        <FormField
-          v-model="config.childColumn"
-          list="dq-target-columns"
-          :label="t('dataQuality.editor.childColumn')"
-          :hint="t('dataQuality.editor.columnHint')"
-        />
+                  <ColumnSelect
+            :model-value="config.childColumn ?? ''"
+            :columns="columnDetails"
+            :label="t('dataQuality.editor.childColumn')"
+            :hint="t('dataQuality.editor.columnHint')"
+            @update:model-value="(value) => setColumn('childColumn', value)"
+          />
         <FormField
           v-model="config.parentTable"
           :label="t('dataQuality.editor.parentTable')"
           :hint="t('dataQuality.editor.parentTableHint')"
         />
-        <FormField
-          v-model="config.parentColumn"
-          list="dq-target-columns"
-          :label="t('dataQuality.editor.parentColumn')"
-        />
+                  <ColumnSelect
+            :model-value="config.parentColumn ?? ''"
+            :columns="columnDetails"
+            :label="t('dataQuality.editor.parentColumn')"
+            @update:model-value="(value) => setColumn('parentColumn', value)"
+          />
         <CheckboxField
           v-model="config.allowNull"
           :label="t('dataQuality.editor.allowNull')"
@@ -301,12 +314,13 @@
 
     <template v-else-if="ruleType === QualityRuleType.CROSS_COLUMN">
       <div class="grid gap-4 sm:grid-cols-2">
-        <FormField
-          v-model="config.leftColumn"
-          list="dq-target-columns"
-          :label="t('dataQuality.editor.leftColumn')"
-          :hint="t('dataQuality.editor.columnHint')"
-        />
+                  <ColumnSelect
+            :model-value="config.leftColumn ?? ''"
+            :columns="columnDetails"
+            :label="t('dataQuality.editor.leftColumn')"
+            :hint="t('dataQuality.editor.columnHint')"
+            @update:model-value="(value) => setColumn('leftColumn', value)"
+          />
         <div class="flex flex-col gap-1.5">
           <Label>{{ t("dataQuality.editor.crossOperator") }}</Label>
           <Select v-model="crossOperatorModel">
@@ -324,11 +338,12 @@
             </SelectContent>
           </Select>
         </div>
-        <FormField
-          v-model="config.rightColumn"
-          list="dq-target-columns"
-          :label="t('dataQuality.editor.rightColumn')"
-        />
+                  <ColumnSelect
+            :model-value="config.rightColumn ?? ''"
+            :columns="columnDetails"
+            :label="t('dataQuality.editor.rightColumn')"
+            @update:model-value="(value) => setColumn('rightColumn', value)"
+          />
         <FormField
           v-model="config.tolerance"
           type="number"
@@ -342,10 +357,12 @@
       v-else-if="ruleType === QualityRuleType.FRESHNESS"
       class="grid gap-4 sm:grid-cols-3"
     >
-      <FormField
-        v-model="config.timestampColumn"
+      <ColumnSelect
+        :model-value="config.timestampColumn ?? ''"
+        :columns="columnDetails"
         :label="t('dataQuality.editor.timestampColumn')"
         :hint="t('dataQuality.editor.columnHint')"
+        @update:model-value="(value) => setColumn('timestampColumn', value)"
       />
       <FormField
         v-model="config.maxLagSeconds"
@@ -467,11 +484,13 @@
       v-else-if="ruleType === QualityRuleType.GROUP_CHECK"
       class="grid gap-4 sm:grid-cols-3"
     >
-      <FormField
-        v-model="config.groupColumns"
-        list="dq-target-columns"
+      <ColumnSelect
+        multiple
+        :model-value="csvColumns(config.groupColumns)"
+        :columns="columnDetails"
         :label="t('dataQuality.editor.groupColumns')"
         :hint="t('dataQuality.editor.groupColumnsHint')"
+        @update:model-value="(value) => setCsvColumns('groupColumns', value)"
       />
       <FormField
         v-model="config.minRowsPerGroup"
@@ -487,12 +506,13 @@
 
     <template v-else-if="ruleType === QualityRuleType.AGGREGATE">
       <div class="grid gap-4 sm:grid-cols-2">
-        <FormField
-          v-model="config.aggregateColumn"
-          list="dq-target-columns"
-          :label="t('dataQuality.editor.column')"
-          :hint="t('dataQuality.editor.columnHint')"
-        />
+                  <ColumnSelect
+            :model-value="config.aggregateColumn ?? ''"
+            :columns="columnDetails"
+            :label="t('dataQuality.editor.column')"
+            :hint="t('dataQuality.editor.columnHint')"
+            @update:model-value="(value) => setColumn('aggregateColumn', value)"
+          />
         <div class="flex flex-col gap-1.5">
           <Label>{{ t("dataQuality.editor.aggregateFunction") }}</Label>
           <Select v-model="aggregateFunctionModel">
@@ -574,12 +594,13 @@
           </SelectContent>
         </Select>
       </div>
-      <FormField
-        v-model="config.leftAggColumn"
-        list="dq-target-columns"
+      <ColumnSelect
+        :model-value="config.leftAggColumn ?? ''"
+        :columns="columnDetails"
         :disabled="leftAggregateIsCount"
         :label="t('dataQuality.editor.leftColumn')"
         :hint="leftAggregateIsCount ? t('dataQuality.editor.countNeedsNoColumn') : t('dataQuality.editor.columnHint')"
+        @update:model-value="(value) => setColumn('leftAggColumn', value)"
       />
       <div class="flex flex-col gap-1.5">
         <Label>{{ t("dataQuality.editor.rightAggregate") }}</Label>
@@ -601,11 +622,13 @@
           </SelectContent>
         </Select>
       </div>
-      <FormField
-        v-model="config.rightAggColumn"
+      <ColumnSelect
+        :model-value="config.rightAggColumn ?? ''"
+        :columns="columnDetails"
         :disabled="rightAggregateIsCount"
         :label="t('dataQuality.editor.rightColumn')"
         :hint="rightAggregateIsCount ? t('dataQuality.editor.countNeedsNoColumn') : t('dataQuality.editor.rightColumnHint')"
+        @update:model-value="(value) => setColumn('rightAggColumn', value)"
       />
       <FormField
         v-model="config.tolerance"
@@ -631,11 +654,13 @@
         </p>
       </div>
       <div class="grid gap-4 sm:grid-cols-2">
-        <FormField
-          v-model="config.celColumns"
-          list="dq-target-columns"
+        <ColumnSelect
+          multiple
+          :model-value="csvColumns(config.celColumns)"
+          :columns="columnDetails"
           :label="t('dataQuality.editor.celColumns')"
           :hint="t('dataQuality.editor.celColumnsHint')"
+          @update:model-value="(value) => setCsvColumns('celColumns', value)"
         />
         <FormField
           v-model="config.celSampleRows"
@@ -655,6 +680,7 @@
 import { Plus, Trash2 } from "lucide-vue-next";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
+import ColumnSelect from "@/components/common/ColumnSelect.vue";
 import { Button } from "@/components/ui/button";
 import FormField from "@/components/ui/form-field/FormField.vue";
 import { Input } from "@/components/ui/input";
@@ -707,6 +733,39 @@ const thresholdMetric = defineModel<QualityThresholdMetric>("thresholdMetric", {
 });
 
 const { t } = useI18n();
+
+/** A CSV column field as the picker's array form. */
+function csvColumns(value: string | undefined): string[] {
+  return (value ?? "")
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+/** The picker's array back into the CSV field the config builder parses. */
+function setCsvColumns(
+  field: "columns" | "groupColumns" | "celColumns",
+  value: string | string[]
+) {
+  config.value[field] = Array.isArray(value) ? value.join(", ") : value;
+}
+
+function setColumn(
+  field:
+    | "nullColumn"
+    | "column"
+    | "childColumn"
+    | "parentColumn"
+    | "leftColumn"
+    | "rightColumn"
+    | "timestampColumn"
+    | "aggregateColumn"
+    | "leftAggColumn"
+    | "rightAggColumn",
+  value: string | string[]
+) {
+  config.value[field] = String(value);
+}
 
 const isCountRule = computed(() => isThresholdMetricType(props.ruleType));
 

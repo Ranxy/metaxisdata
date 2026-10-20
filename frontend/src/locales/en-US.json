@@ -183,6 +183,12 @@
     "user": "User",
     "userAgent": "User Agent"
   },
+  "columnSelect": {
+    "clear": "Clear column",
+    "noMatch": "No matching columns",
+    "placeholder": "Select a column",
+    "searchPlaceholder": "Search columns"
+  },
   "common": {
     "actions": "Actions",
     "apply": "Apply",
@@ -416,8 +422,9 @@
       "nullable": "Nullable",
       "onEmpty": "When the query returns nothing",
       "onEmptyHint": "The default is not evaluated, so an empty table never looks like a pass.",
+      "openInstance": "Open instance",
       "owner": "Owner",
-      "ownerHint": "Format: users/ID. Leave empty for no owner.",
+      "ownerHint": "Owner of the rule; search a workspace member. Leave empty for no owner.",
       "pageDescription": "One typed check over one table or column, run on a schedule or on demand.",
       "parameters": "Bound parameters",
       "parentColumn": "Parent column",
@@ -433,6 +440,8 @@
       "previewOk": "The rule compiles and its target is reachable.",
       "previewTitle": "Compiled query",
       "previewing": "Compiling...",
+      "readOnlyMissingHint": "This instance has no READ_ONLY data source, so query rules cannot run. Add one under Data Sources on the instance page.",
+      "readOnlyMissingTitle": "No READ_ONLY data source",
       "referencedColumns": "Referenced columns",
       "removeColumn": "Remove column",
       "removeFilter": "Remove filter",
@@ -451,6 +460,7 @@
       "sql": "SQL",
       "sqlHint": "One SELECT or WITH statement, at most 8 KiB. Read-only.",
       "sqlPlaceholder": "SELECT ... — rows returned are failures.",
+      "suggestionAcceptFailed": "Rule saved, but the suggestion could not be marked accepted.",
       "suggestionPrefilled": "Prefilled from a suggestion",
       "suggestionPrefilledHint": "{title} — review the parameters and save to create the rule.",
       "tags": "Tags",
@@ -631,6 +641,7 @@
         "openButton": "Draft with AI",
         "openInEditor": "Open in editor",
         "resultsTitle": "{count} draft(s)",
+        "selectTargetFirst": "Select a target first to draft rules for it.",
         "title": "Draft with AI"
       },
       "enableInSettings": "Open the settings",
@@ -846,9 +857,7 @@
     },
     "suggestions": {
       "accept": "Accept",
-      "acceptAndEdit": "Accept and open editor",
       "accepted": "Suggestion accepted",
-      "acceptedOpeningEditor": "Suggestion accepted; opening the rule editor",
       "allKinds": "All kinds",
       "allSources": "All sources",
       "allStatuses": "All statuses",
@@ -871,6 +880,7 @@
       "noFiltered": "No suggestions match these filters",
       "note": "Note",
       "notePlaceholder": "Optional: why you accepted or rejected it.",
+      "openInEditor": "Open in editor",
       "parameters": "Parameters",
       "promptVersion": "Prompt version",
       "provider": "Model",
@@ -892,6 +902,7 @@
       "noInstances": "No instances are registered.",
       "noSchemas": "This database has no schemas.",
       "noTables": "This schema has no tables.",
+      "tables": "Tables",
       "title": "Select a target"
     },
     "targetChanged": "Target schema changed",
@@ -2287,5 +2298,15 @@
     "userNamePlaceholder": "Enter username",
     "userNameRequired": "Username is required",
     "userType": "Type"
+  },
+  "userSelect": {
+    "clear": "Clear owner",
+    "loadFailed": "Failed to load users.",
+    "noMatch": "No matching users",
+    "noOwner": "No owner",
+    "permissionHint": "You need the users.list permission to choose an owner; the current owner is shown read-only.",
+    "permissionValue": "Current owner (read-only)",
+    "placeholder": "Select a user",
+    "searchPlaceholder": "Search users"
   }
 }

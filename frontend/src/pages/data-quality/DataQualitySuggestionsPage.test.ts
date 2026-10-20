@@ -164,24 +164,21 @@ describe("DataQualitySuggestionsPage", () => {
     wrapper.unmount();
   });
 
-  it("accepts a rule draft and opens the editor with its resource name", async () => {
+  it("opens a rule draft in the editor without accepting it", async () => {
     const { wrapper, router } = await mountPage();
     reviewButton(0)?.click();
     await flushPromises();
 
-    const accept = buttonByText(
-      i18n.global.t("dataQuality.suggestions.acceptAndEdit")
+    const open = buttonByText(
+      i18n.global.t("dataQuality.suggestions.openInEditor")
     );
-    expect(accept).toBeTruthy();
-    accept?.click();
+    expect(open).toBeTruthy();
+    open?.click();
     await flushPromises();
 
-    expect(mocks.updateQualitySuggestion).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: RULE_SUGGESTION,
-        decision: QualitySuggestionStatus.ACCEPTED,
-      })
-    );
+    // Reviewing a draft is not a decision: the suggestion stays pending until
+    // the editor creates a rule from it.
+    expect(mocks.updateQualitySuggestion).not.toHaveBeenCalled();
     expect(router.currentRoute.value.name).toBe("DataQualityRuleNew");
     expect(router.currentRoute.value.query.suggestion).toBe(RULE_SUGGESTION);
     wrapper.unmount();

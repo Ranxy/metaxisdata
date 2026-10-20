@@ -1142,6 +1142,24 @@
           "字段剖析"
         ]
       }
+    },
+    {
+      "id": "owner",
+      "category": "Data Quality",
+      "definition": "The workspace member responsible for a rule.",
+      "translations": {
+        "en-US": "owner",
+        "zh-CN": "负责人"
+      },
+      "scope": [
+        "dataQuality."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "所有者",
+          "拥有人"
+        ]
+      }
     }
   ]
 }

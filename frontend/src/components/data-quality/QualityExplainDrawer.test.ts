@@ -117,8 +117,6 @@ describe("QualityExplainDrawer", () => {
     });
     await settle();
     await new Promise((r) => setTimeout(r, 500));
-    // eslint-disable-next-line no-console
-    console.log("REGENBODY", JSON.stringify(document.body.textContent));
     await vi.waitFor(() => {
       expect(document.body.textContent).toContain("Cached answer");
       expect(document.body.textContent).toContain("openai / gpt-test");

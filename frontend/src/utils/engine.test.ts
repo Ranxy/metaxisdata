@@ -6,6 +6,7 @@ import {
   engineIcon,
   engineLabel,
   engineTextClass,
+  isSchemaLessEngine,
 } from "./engine";
 
 const ENGINES = [
@@ -39,5 +40,23 @@ describe("engine presentation", () => {
     expect(engineBadgeClass(Engine.ENGINE_UNSPECIFIED)).toContain("bg-muted");
     expect(engineLabel(undefined)).toBe("Unknown");
     expect(engineBgClass(undefined)).toBe("bg-muted");
+  });
+});
+
+describe("isSchemaLessEngine", () => {
+  it("treats the MySQL family as schema-less and PostgreSQL/MSSQL as not", () => {
+    for (const engine of [
+      Engine.MYSQL,
+      Engine.TIDB,
+      Engine.MARIADB,
+      Engine.OCEANBASE,
+      Engine.STARROCKS,
+      Engine.DORIS,
+    ]) {
+      expect(isSchemaLessEngine(engine)).toBe(true);
+    }
+    expect(isSchemaLessEngine(Engine.POSTGRES)).toBe(false);
+    expect(isSchemaLessEngine(Engine.MSSQL)).toBe(false);
+    expect(isSchemaLessEngine(undefined)).toBe(false);
   });
 });

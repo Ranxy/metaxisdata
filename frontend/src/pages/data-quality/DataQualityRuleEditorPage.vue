@@ -40,6 +40,50 @@
       </template>
     </PageHeader>
 
+    <!-- Save/validation feedback sits above the first card: the form is long,
+         and an error rendered at its bottom is an error nobody sees. -->
+    <div
+      ref="feedbackRef"
+      class="mx-auto w-full max-w-[960px] space-y-3"
+    >
+      <Alert
+        v-if="saveError"
+        variant="destructive"
+      >
+        <AlertTriangle class="h-4 w-4" />
+        <AlertTitle>{{ t("dataQuality.editor.saveFailed") }}</AlertTitle>
+        <AlertDescription class="flex items-start justify-between gap-3">
+          <span class="break-words">{{ saveError }}</span>
+          <button
+            type="button"
+            class="shrink-0 rounded-sm p-0.5 text-destructive hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            :aria-label="t('common.close')"
+            :title="t('common.close')"
+            @click="saveError = ''"
+          >
+            <X class="h-4 w-4" />
+          </button>
+        </AlertDescription>
+      </Alert>
+      <Alert
+        v-if="issues.length > 0"
+        variant="destructive"
+      >
+        <AlertTriangle class="h-4 w-4" />
+        <AlertTitle>{{ t("dataQuality.editor.validationTitle") }}</AlertTitle>
+        <AlertDescription>
+          <ul class="list-disc space-y-1 pl-5">
+            <li
+              v-for="issue in issues"
+              :key="issue.key"
+            >
+              {{ t(issue.key, issue.params ?? {}) }}
+            </li>
+          </ul>
+        </AlertDescription>
+      </Alert>
+    </div>
+
     <PageState
       :loading="loadingRule"
       :error="loadError"
@@ -72,44 +116,6 @@
             >
               {{ t("dataQuality.suggestions.title") }}
             </RouterLink>
-          </AlertDescription>
-        </Alert>
-
-        <!-- The columns of the selected target, offered by every column field. -->
-        <datalist id="dq-target-columns">
-          <option
-            v-for="column in targetColumns"
-            :key="column"
-            :value="column"
-          />
-        </datalist>
-
-        <Alert
-          v-if="issues.length > 0"
-          variant="destructive"
-        >
-          <AlertTriangle class="h-4 w-4" />
-          <AlertTitle>{{ t("dataQuality.editor.validationTitle") }}</AlertTitle>
-          <AlertDescription>
-            <ul class="list-disc space-y-1 pl-5">
-              <li
-                v-for="issue in issues"
-                :key="issue.key"
-              >
-                {{ t(issue.key, issue.params ?? {}) }}
-              </li>
-            </ul>
-          </AlertDescription>
-        </Alert>
-
-        <Alert
-          v-if="saveError"
-          variant="destructive"
-        >
-          <AlertTriangle class="h-4 w-4" />
-          <AlertTitle>{{ t("dataQuality.editor.saveFailed") }}</AlertTitle>
-          <AlertDescription class="break-words">
-            {{ saveError }}
           </AlertDescription>
         </Alert>
 
@@ -160,6 +166,65 @@
                 {{ t("dataQuality.editor.selectTarget") }}
               </Button>
             </div>
+
+            <Alert
+              v-if="showReadOnlyWarning"
+              variant="warning"
+              class="mt-3"
+            >
+              <AlertTriangle class="h-4 w-4" />
+              <AlertTitle>{{ t("dataQuality.editor.readOnlyMissingTitle") }}</AlertTitle>
+              <AlertDescription class="space-y-1">
+                <p>{{ t("dataQuality.editor.readOnlyMissingHint") }}</p>
+                <RouterLink
+                  v-if="targetInstanceName"
+                  :to="{ name: 'InstanceDetail', params: { instanceId: targetInstanceName } }"
+                  class="text-primary hover:underline"
+                >
+                  {{ t("dataQuality.editor.openInstance") }}
+                </RouterLink>
+              </AlertDescription>
+            </Alert>
+          </CardContent>
+        </Card>
+
+        <!-- Model-drafted rules sit right after the target: without a target
+             there is nothing to draft, and the dialog only queues suggestions. -->
+        <Card>
+          <CardContent class="flex flex-wrap items-center justify-between gap-3 pt-6">
+            <div class="min-w-0">
+              <p class="font-medium">
+                {{ t("dataQuality.editor.llmImport") }}
+              </p>
+              <p class="text-sm text-muted-foreground">
+                <template v-if="!target">
+                  {{ t("dataQuality.llm.draft.selectTargetFirst") }}
+                </template>
+                <template v-else>
+                  {{ t(llmAvailability.reasonKey ?? "dataQuality.editor.llmImportHint") }}
+                  <RouterLink
+                    v-if="!llmEnabled && canSuggest"
+                    :to="{ name: 'DataQualitySettings' }"
+                    class="ml-1 text-primary hover:underline"
+                  >
+                    {{ t("dataQuality.llm.enableInSettings") }}
+                  </RouterLink>
+                </template>
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              :disabled="!target || !llmAvailability.available"
+              :title="
+                !target
+                  ? t('dataQuality.llm.draft.selectTargetFirst')
+                  : t(llmAvailability.reasonKey ?? 'dataQuality.editor.llmImportHint')
+              "
+              @click="llmDialogOpen = true"
+            >
+              <Sparkles class="mr-2 h-4 w-4" />
+              {{ t("dataQuality.llm.draft.openButton") }}
+            </Button>
           </CardContent>
         </Card>
 
@@ -178,12 +243,11 @@
               :label="t('dataQuality.editor.title')"
               :placeholder="t('dataQuality.editor.titlePlaceholder')"
             />
-            <FormField
+            <UserSelect
               id="dq-rule-owner"
               v-model="form.owner"
               :label="t('dataQuality.editor.owner')"
               :hint="t('dataQuality.editor.ownerHint')"
-              placeholder="users/123"
             />
             <div class="space-y-2 md:col-span-2">
               <Label for="dq-rule-description">
@@ -382,38 +446,10 @@
         <!-- Pre-filter -->
         <Card>
           <CardContent class="pt-6">
-            <RuleFilterEditor v-model="form.filter" />
-          </CardContent>
-        </Card>
-
-        <!-- Model-drafted rules: the dialog only queues suggestions; the person
-             still reviews and saves the rule here. -->
-        <Card>
-          <CardContent class="flex flex-wrap items-center justify-between gap-3 pt-6">
-            <div class="min-w-0">
-              <p class="font-medium">
-                {{ t("dataQuality.editor.llmImport") }}
-              </p>
-              <p class="text-sm text-muted-foreground">
-                {{ t(llmAvailability.reasonKey ?? "dataQuality.editor.llmImportHint") }}
-                <RouterLink
-                  v-if="!llmEnabled && canSuggest"
-                  :to="{ name: 'DataQualitySettings' }"
-                  class="ml-1 text-primary hover:underline"
-                >
-                  {{ t("dataQuality.llm.enableInSettings") }}
-                </RouterLink>
-              </p>
-            </div>
-            <Button
-              variant="outline"
-              :disabled="!llmAvailability.available || !target"
-              :title="t(llmAvailability.reasonKey ?? 'dataQuality.editor.llmImportHint')"
-              @click="llmDialogOpen = true"
-            >
-              <Sparkles class="mr-2 h-4 w-4" />
-              {{ t("dataQuality.llm.draft.openButton") }}
-            </Button>
+            <RuleFilterEditor
+              v-model="form.filter"
+              :columns="targetColumnDetails"
+            />
           </CardContent>
         </Card>
 
@@ -501,8 +537,9 @@ import {
   PlayCircle,
   Save,
   Sparkles,
+  X,
 } from "lucide-vue-next";
-import { computed, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import {
@@ -511,10 +548,13 @@ import {
   getQualityRule,
   previewQualityRule,
   updateQualityRule,
+  updateQualitySuggestion,
 } from "@/api/data-quality";
 import { listMetadata } from "@/api/database";
+import { getInstance } from "@/api/instance";
 import { getWorkspaceProfileSetting } from "@/api/setting";
 import PageState from "@/components/common/PageState.vue";
+import UserSelect from "@/components/common/UserSelect.vue";
 import QualityDraftDialog from "@/components/data-quality/QualityDraftDialog.vue";
 import RuleConfigForm from "@/components/data-quality/RuleConfigForm.vue";
 import RuleFilterEditor from "@/components/data-quality/RuleFilterEditor.vue";
@@ -552,10 +592,12 @@ import {
   QualityRuleType,
   type QualitySeverity,
   type QualitySuggestion,
+  QualitySuggestionStatus,
   QualityRuleState as RuleState,
   QualitySeverity as Severity,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
+import { DataSourceType } from "@/types/proto-es/v1/instance_service_pb";
 import {
   qualityEmptyBehaviorKey,
   qualityRuleTypeKey,
@@ -634,6 +676,27 @@ const llmAvailability = computed(() =>
   llmFeatureAvailability(llmEnabled.value, canSuggest.value)
 );
 const targetColumnDetails = ref<TargetColumnDetail[]>([]);
+
+/** The save/validation feedback block, scrolled into view when it appears. */
+const feedbackRef = ref<HTMLElement>();
+/** Whether the target instance has a READ_ONLY data source; undefined = unknown. */
+const readOnlyMissing = ref<boolean>();
+
+const targetInstanceName = computed(() => {
+  const selection = target.value;
+  if (!selection) {
+    return "";
+  }
+  return selection.path.instance || selection.guid.split(";")[0] || "";
+});
+
+/** Schema drift is metadata-only, so it needs no query data source. */
+const showReadOnlyWarning = computed(
+  () =>
+    readOnlyMissing.value === true &&
+    target.value !== undefined &&
+    form.value.ruleType !== QualityRuleType.SCHEMA_DRIFT
+);
 
 const loadingRule = ref(false);
 const loadError = ref("");
@@ -736,6 +799,40 @@ function setOnEmpty(value: unknown) {
 function onTargetSelected(selection: TargetSelection) {
   target.value = selection;
   void refreshTargetColumns(selection.guid);
+  void checkReadOnly(selection);
+}
+
+async function focusFeedback() {
+  await nextTick();
+  feedbackRef.value?.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+/**
+ * Query rules run through the instance's READ_ONLY data source. Detect the gap
+ * as soon as a target is chosen instead of letting the save fail with a server
+ * message; the instance page owns adding the data source.
+ */
+async function checkReadOnly(selection: TargetSelection | undefined) {
+  if (!selection) {
+    readOnlyMissing.value = undefined;
+    return;
+  }
+  const instanceId =
+    selection.path.instance || selection.guid.split(";")[0] || "";
+  if (!instanceId) {
+    readOnlyMissing.value = undefined;
+    return;
+  }
+  try {
+    const instance = await getInstance(`instances/${instanceId}`);
+    readOnlyMissing.value = !instance.dataSources.some(
+      (dataSource) => dataSource.type === DataSourceType.READ_ONLY
+    );
+  } catch {
+    // An instance the caller cannot read is not evidence of a missing data
+    // source; the server check on save remains the authority.
+    readOnlyMissing.value = undefined;
+  }
 }
 
 /** Column suggestions for the config fields; best effort, free text still works. */
@@ -781,6 +878,7 @@ async function loadRule() {
     target.value = originalTarget ? { ...originalTarget } : undefined;
     if (target.value) {
       void refreshTargetColumns(target.value.guid);
+      void checkReadOnly(target.value);
     }
   } catch (e: unknown) {
     loadError.value = formatError(e, "dataQuality.editor.loadFailed");
@@ -808,6 +906,7 @@ async function loadNewPage() {
           target.value = prefill.target;
           if (target.value) {
             void refreshTargetColumns(target.value.guid);
+            void checkReadOnly(target.value);
           }
         }
       }
@@ -830,6 +929,7 @@ function applyPrefill() {
   if (prefilled) {
     target.value = prefilled;
     void refreshTargetColumns(prefilled.guid);
+    void checkReadOnly(prefilled);
   }
 }
 
@@ -847,6 +947,9 @@ function runValidation(): boolean {
     targetColumns.value
   );
   saveError.value = "";
+  if (issues.value.length > 0) {
+    void focusFeedback();
+  }
   return issues.value.length === 0;
 }
 
@@ -911,12 +1014,27 @@ async function save() {
     } else {
       await createQualityRule(rule);
       notify.success(t("dataQuality.editor.created"));
+      // A rule opened from a suggestion is only "accepted" once it exists. If
+      // the decision write fails the rule is still saved, so warn rather than
+      // failing the save.
+      if (suggestionInfo.value) {
+        try {
+          await updateQualitySuggestion({
+            name: suggestionInfo.value.name,
+            decision: QualitySuggestionStatus.ACCEPTED,
+            note: "",
+          });
+        } catch {
+          notify.error(t("dataQuality.editor.suggestionAcceptFailed"));
+        }
+      }
     }
     await router.push({ name: "DataQualityRules" });
   } catch (e: unknown) {
     // The server's Invalid message names the field or the compiled-SQL problem;
-    // inline is where the user can act on it.
+    // show it at the top where the reader lands, not under the whole form.
     saveError.value = formatError(e, "dataQuality.editor.saveFailed");
+    void focusFeedback();
   } finally {
     saving.value = false;
   }

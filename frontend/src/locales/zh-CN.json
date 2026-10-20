@@ -183,6 +183,12 @@
     "user": "用户",
     "userAgent": "用户代理"
   },
+  "columnSelect": {
+    "clear": "清除字段",
+    "noMatch": "没有匹配的字段",
+    "placeholder": "选择字段",
+    "searchPlaceholder": "搜索字段"
+  },
   "common": {
     "actions": "操作",
     "apply": "应用",
@@ -416,8 +422,9 @@
       "nullable": "可空",
       "onEmpty": "查询没有返回结果时",
       "onEmptyHint": "默认是“未评估”，空表不会被当作通过。",
+      "openInstance": "打开实例",
       "owner": "负责人",
-      "ownerHint": "格式：users/ID；留空表示没有负责人。",
+      "ownerHint": "规则负责人；搜索工作区成员。留空表示无负责人。",
       "pageDescription": "对一张表或一个字段做一种类型化检查，按调度执行或按需执行。",
       "parameters": "绑定的参数",
       "parentColumn": "父表字段",
@@ -433,6 +440,8 @@
       "previewOk": "规则可以编译，目标可达。",
       "previewTitle": "编译后的查询",
       "previewing": "正在编译…",
+      "readOnlyMissingHint": "该实例没有 READ_ONLY 数据源，查询型规则无法运行。请到实例页的 Data Sources 中添加。",
+      "readOnlyMissingTitle": "实例缺少 READ_ONLY 数据源",
       "referencedColumns": "引用的字段",
       "removeColumn": "移除字段",
       "removeFilter": "移除筛选",
@@ -451,6 +460,7 @@
       "sql": "SQL",
       "sqlHint": "单条 SELECT 或 WITH 语句，最多 8 KiB，只读。",
       "sqlPlaceholder": "SELECT …，返回的行即失败行。",
+      "suggestionAcceptFailed": "规则已保存，但未能把建议标记为已接受。",
       "suggestionPrefilled": "已从建议预填",
       "suggestionPrefilledHint": "{title} —— 请检查参数后保存以创建规则。",
       "tags": "标签",
@@ -631,6 +641,7 @@
         "openButton": "用 AI 起草",
         "openInEditor": "在编辑器中打开",
         "resultsTitle": "{count} 条草稿",
+        "selectTargetFirst": "请先选择目标，再为它起草规则。",
         "title": "用 AI 起草规则"
       },
       "enableInSettings": "打开设置",
@@ -846,9 +857,7 @@
     },
     "suggestions": {
       "accept": "接受",
-      "acceptAndEdit": "接受并打开编辑器",
       "accepted": "建议已接受",
-      "acceptedOpeningEditor": "建议已接受，正在打开规则编辑器",
       "allKinds": "全部类型",
       "allSources": "全部来源",
       "allStatuses": "全部状态",
@@ -871,6 +880,7 @@
       "noFiltered": "没有符合筛选条件的建议",
       "note": "备注",
       "notePlaceholder": "可选：说明接受或拒绝的原因。",
+      "openInEditor": "在编辑器中打开",
       "parameters": "参数",
       "promptVersion": "提示词版本",
       "provider": "模型",
@@ -892,6 +902,7 @@
       "noInstances": "还没有已注册的实例。",
       "noSchemas": "该数据库下没有 Schema。",
       "noTables": "该 Schema 下没有表。",
+      "tables": "表",
       "title": "选择目标"
     },
     "targetChanged": "目标 Schema 已变更",
@@ -2287,5 +2298,15 @@
     "userNamePlaceholder": "请输入用户名",
     "userNameRequired": "用户名不能为空",
     "userType": "类型"
+  },
+  "userSelect": {
+    "clear": "清除负责人",
+    "loadFailed": "加载用户失败。",
+    "noMatch": "没有匹配的用户",
+    "noOwner": "无负责人",
+    "permissionHint": "选择负责人需要 users.list 权限；当前负责人仅只读显示。",
+    "permissionValue": "当前负责人（只读）",
+    "placeholder": "选择用户",
+    "searchPlaceholder": "搜索用户"
   }
 }
