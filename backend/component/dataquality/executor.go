@@ -160,6 +160,12 @@ func validateExecutionMetric(ruleType storepb.QualityRuleType, config *storepb.Q
 		// percentage of it is not a meaningful threshold.
 		return invalidConfig("schema_drift measures a count of drift items; threshold_metric PERCENT is not supported")
 	}
+	if ruleType == storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE ||
+		ruleType == storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE {
+		// These thresholds bound an absolute value (an interval edge or a tolerated
+		// difference), not a fraction of rows.
+		return invalidConfig("%s thresholds are absolute values; threshold_metric PERCENT is not supported", ruleType)
+	}
 	switch ruleType {
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
@@ -255,6 +261,50 @@ func observationFromAggregate(ruleType storepb.QualityRuleType, compiled Compile
 			ObservedKind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT,
 			FailedRows:   failed,
 			TotalRows:    total,
+		}, nil
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE:
+		total, err := aggregateInt(result, indexes, "total_rows")
+		if err != nil {
+			return Observation{}, err
+		}
+		// An aggregate over no rows (or only NULLs) is SQL NULL, which is missing
+		// data: the evaluator follows on_empty rather than judging it as zero.
+		observed, present, err := aggregateFloat(result, indexes, "observed")
+		if err != nil {
+			return Observation{}, err
+		}
+		if !present {
+			return Observation{
+				ObservedKind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_NUMBER,
+				ObservedNull: true,
+				TotalRows:    total,
+			}, nil
+		}
+		return Observation{
+			Observed:     observed,
+			ObservedKind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_NUMBER,
+			TotalRows:    total,
+		}, nil
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE:
+		left, leftPresent, err := aggregateFloat(result, indexes, "left_value")
+		if err != nil {
+			return Observation{}, err
+		}
+		right, rightPresent, err := aggregateFloat(result, indexes, "right_value")
+		if err != nil {
+			return Observation{}, err
+		}
+		if !leftPresent || !rightPresent {
+			return Observation{
+				ObservedKind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_NUMBER,
+				ObservedNull: true,
+			}, nil
+		}
+		// The observed value is the absolute difference; the tolerance is the GT
+		// threshold the evaluator applies to it.
+		return Observation{
+			Observed:     math.Abs(left - right),
+			ObservedKind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_NUMBER,
 		}, nil
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS:
 		return freshnessObservation(result, indexes)

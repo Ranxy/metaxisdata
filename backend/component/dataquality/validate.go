@@ -160,6 +160,10 @@ func ValidateConfig(target ResolvedTarget, ruleType storepb.QualityRuleType, con
 		return validateSchemaDriftConfig(config)
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK:
 		return validateGroupCheckConfig(target, config)
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE:
+		return validateAggregateConfig(target, config)
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE:
+		return validateCrossTableConfig(target, config)
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION:
 		// The message exists so the config shape does not change in v1.1, but this
 		// build has no evaluator and must not accept a rule it cannot run.
@@ -214,6 +218,12 @@ func validatePercentSupport(ruleType storepb.QualityRuleType, metric storepb.Qua
 		// The drift snapshot is a set of expected columns, not a sample of rows; a
 		// percentage of a tiny fixed list is not a meaningful threshold.
 		return invalidConfig("schema_drift measures a count of drift items; threshold_metric PERCENT is not supported")
+	}
+	if ruleType == storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE ||
+		ruleType == storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE {
+		// These thresholds bound an absolute value (an interval edge or a tolerated
+		// difference), not a fraction of rows.
+		return invalidConfig("%s thresholds are absolute values; threshold_metric PERCENT is not supported", ruleType)
 	}
 	return invalidConfig("threshold_metric PERCENT is not supported by %s: it has no total-rows denominator", ruleType)
 }
@@ -358,7 +368,14 @@ func validateNullPercentConfig(target ResolvedTarget, config *storepb.NullPercen
 	if config == nil {
 		return invalidConfig("the null-percent config is missing")
 	}
-	if _, err := requireColumn(target, config.GetColumn()); err != nil {
+	column, err := requireColumn(target, config.GetColumn())
+	if err != nil {
+		return err
+	}
+	// Custom missing values are a null_percent extension: they are converted with
+	// the column's type here, so a value the column cannot hold is a save-time
+	// error rather than a query that silently matches nothing.
+	if _, err := nullPercentValues(column, config.GetNullValues()); err != nil {
 		return err
 	}
 	countForm := config.MaxNullCount != nil || config.WarnNullCount != nil
@@ -919,4 +936,177 @@ func validateGroupCheckConfig(target ResolvedTarget, config *storepb.QualityRule
 		return err
 	}
 	return validateCountThresholds(config, group.FailThreshold, group.WarnThreshold)
+}
+
+// validateAggregateConfig checks an aggregate rule: the column exists, the
+// function is one this engine can run, PERCENTILE carries a 0–100 percentile, the
+// function's column type fits, and the interval bounds nest properly.
+func validateAggregateConfig(target ResolvedTarget, config *storepb.QualityRuleConfig) error {
+	aggregate := config.GetAggregate()
+	if aggregate == nil {
+		return invalidConfig("the aggregate config is missing")
+	}
+	column, err := requireColumn(target, aggregate.GetColumn())
+	if err != nil {
+		return err
+	}
+	function := aggregate.GetFunction()
+	if ok, reason := aggregateFunctionSupported(target.Engine, function); !ok {
+		return invalidConfig("%s", reason)
+	}
+	if function == storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_PERCENTILE {
+		if aggregate.Percentile == nil {
+			return invalidConfig("an aggregate PERCENTILE needs a percentile")
+		}
+		percentile := *aggregate.Percentile
+		if math.IsNaN(percentile) || math.IsInf(percentile, 0) || percentile < 0 || percentile > 100 {
+			return invalidConfig("percentile %v is outside the accepted 0–100 range", percentile)
+		}
+	} else if aggregate.Percentile != nil {
+		return invalidConfig("percentile is only used by the PERCENTILE function")
+	}
+	if err := validateAggregateColumnKind(column, function); err != nil {
+		return err
+	}
+	return validateAggregateBounds(aggregate)
+}
+
+// validateAggregateColumnKind enforces an aggregate function's column-type
+// constraint: arithmetic aggregates need numbers, MIN/MAX also accept temporal
+// values, and COUNT accepts anything.
+func validateAggregateColumnKind(column ColumnInfo, function storepb.QualityAggregateFunction) error {
+	switch function {
+	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT:
+		return nil
+	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_SUM,
+		storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_AVG,
+		storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_STDDEV,
+		storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_PERCENTILE:
+		if column.Kind != ColumnKindNumeric {
+			return invalidConfig("%s needs a numeric column; %q is %s", aggregateFunctionName(function), column.Name, column.Kind)
+		}
+		return nil
+	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MIN,
+		storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MAX:
+		if column.Kind != ColumnKindNumeric && column.Kind != ColumnKindTemporal {
+			return invalidConfig("%s needs a numeric or temporal column; %q is %s", aggregateFunctionName(function), column.Name, column.Kind)
+		}
+		return nil
+	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_UNSPECIFIED:
+		return invalidConfig("an aggregate function is required")
+	default:
+		return invalidConfig("unknown aggregate function %d", function)
+	}
+}
+
+// aggregateFunctionName renders the enum name without its proto prefix.
+func aggregateFunctionName(function storepb.QualityAggregateFunction) string {
+	return strings.TrimPrefix(function.String(), "QUALITY_AGGREGATE_FUNCTION_")
+}
+
+// validateAggregateBounds checks the fail interval and the warn interval nested
+// inside it: at least one fail bound, finite values, min ≤ max, and each warn
+// bound inside the fail interval so a warning can actually fire before a failure.
+func validateAggregateBounds(aggregate *storepb.AggregateConfig) error {
+	if aggregate.Min == nil && aggregate.Max == nil {
+		return invalidConfig("an aggregate rule needs min or max")
+	}
+	for _, bound := range []struct {
+		name  string
+		value *float64
+	}{
+		{name: "min", value: aggregate.Min},
+		{name: "max", value: aggregate.Max},
+		{name: "warn_min", value: aggregate.WarnMin},
+		{name: "warn_max", value: aggregate.WarnMax},
+	} {
+		if bound.value == nil {
+			continue
+		}
+		if math.IsNaN(*bound.value) || math.IsInf(*bound.value, 0) {
+			return invalidConfig("%s must be a finite number", bound.name)
+		}
+	}
+	if aggregate.Min != nil && aggregate.Max != nil && *aggregate.Min > *aggregate.Max {
+		return invalidConfig("min %v exceeds max %v", *aggregate.Min, *aggregate.Max)
+	}
+	if aggregate.WarnMin != nil {
+		if aggregate.Min != nil && *aggregate.WarnMin < *aggregate.Min {
+			return invalidConfig("warn_min %v is below min %v", *aggregate.WarnMin, *aggregate.Min)
+		}
+		if aggregate.Max != nil && *aggregate.WarnMin > *aggregate.Max {
+			return invalidConfig("warn_min %v is above max %v", *aggregate.WarnMin, *aggregate.Max)
+		}
+	}
+	if aggregate.WarnMax != nil {
+		if aggregate.Max != nil && *aggregate.WarnMax > *aggregate.Max {
+			return invalidConfig("warn_max %v is above max %v", *aggregate.WarnMax, *aggregate.Max)
+		}
+		if aggregate.Min != nil && *aggregate.WarnMax < *aggregate.Min {
+			return invalidConfig("warn_max %v is below min %v", *aggregate.WarnMax, *aggregate.Min)
+		}
+	}
+	if aggregate.WarnMin != nil && aggregate.WarnMax != nil && *aggregate.WarnMin > *aggregate.WarnMax {
+		return invalidConfig("warn_min %v exceeds warn_max %v", *aggregate.WarnMin, *aggregate.WarnMax)
+	}
+	return nil
+}
+
+// validateCrossTableConfig checks a reconciliation: the right table's shape and
+// container, both functions from the allowed set, the column rules for COUNT and
+// non-COUNT sides, the left column's existence and type, and a non-negative
+// tolerance. The right table's own metadata is resolved by the API layer, which is
+// the only place that can look it up in the registry.
+func validateCrossTableConfig(target ResolvedTarget, config *storepb.QualityRuleConfig) error {
+	cross := config.GetCrossTable()
+	if cross == nil {
+		return invalidConfig("the cross-table config is missing")
+	}
+	dialect, err := DialectFor(target.Engine)
+	if err != nil {
+		return invalidConfig("%v", err)
+	}
+	if _, err := compileRightTable(dialect, target, cross.GetRightTable()); err != nil {
+		return err
+	}
+	leftFunction := cross.GetLeftFunction()
+	if ok, reason := crossTableFunctionSupported(leftFunction); !ok {
+		return invalidConfig("left function: %s", reason)
+	}
+	rightFunction := cross.GetRightFunction()
+	if ok, reason := crossTableFunctionSupported(rightFunction); !ok {
+		return invalidConfig("right function: %s", reason)
+	}
+
+	leftColumn := strings.TrimSpace(cross.GetLeftColumn())
+	if leftFunction == storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT {
+		if leftColumn != "" {
+			return invalidConfig("a cross-table COUNT check takes no left_column")
+		}
+	} else {
+		column, err := requireColumn(target, leftColumn)
+		if err != nil {
+			return err
+		}
+		if err := validateAggregateColumnKind(column, leftFunction); err != nil {
+			return err
+		}
+	}
+
+	rightColumn := strings.TrimSpace(cross.GetRightColumn())
+	if rightFunction == storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT {
+		if rightColumn != "" {
+			return invalidConfig("a cross-table COUNT check takes no right_column")
+		}
+	} else if rightColumn == "" {
+		return invalidConfig("a cross-table %s check needs a right_column", aggregateFunctionName(rightFunction))
+	}
+
+	if cross.Tolerance != nil {
+		tolerance := *cross.Tolerance
+		if math.IsNaN(tolerance) || math.IsInf(tolerance, 0) || tolerance < 0 {
+			return invalidConfig("tolerance %v must be a non-negative finite number", tolerance)
+		}
+	}
+	return validateCountThresholds(config, cross.FailThreshold, cross.WarnThreshold)
 }

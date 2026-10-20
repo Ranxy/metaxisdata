@@ -57,6 +57,10 @@ func Evaluate(rule RuleSnapshot, obs Observation, _ time.Time) ResultState {
 		// total_rows is the group count: an empty table has no groups and follows
 		// on_empty, while a table with groups judges the failed-group count or rate.
 		return evaluateCount(rule.Config, rule.Config.GetGroupCheck().FailThreshold, rule.Config.GetGroupCheck().WarnThreshold, obs, onEmpty, true)
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE:
+		return evaluateAggregate(rule.Config, obs, onEmpty)
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE:
+		return evaluateCrossTable(rule.Config, obs, onEmpty)
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS:
 		return evaluateFreshness(rule.Config, obs, onEmpty)
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION:
@@ -182,7 +186,7 @@ func evaluateNullPercent(config *storepb.QualityRuleConfig, obs Observation, onE
 	default:
 		return ResultState{Status: storepb.QualityStatus_QUALITY_STATUS_ERROR}
 	}
-	return applyThresholds(observed, thresholds, storepb.QualityStatus_QUALITY_STATUS_PASS)
+	return applyThresholds(observed, thresholds)
 }
 
 // evaluateCount judges a count-type rule. COUNT compares failed rows; PERCENT
@@ -211,7 +215,7 @@ func evaluateCount(config *storepb.QualityRuleConfig, failThreshold, warnThresho
 	if warnThreshold != nil {
 		thresholds.WarnValue = warnThreshold
 	}
-	return applyThresholds(observed, thresholds, storepb.QualityStatus_QUALITY_STATUS_PASS)
+	return applyThresholds(observed, thresholds)
 }
 
 // evaluateFreshness judges how stale the newest timestamp is. A NULL timestamp is
@@ -233,13 +237,13 @@ func evaluateFreshness(config *storepb.QualityRuleConfig, obs Observation, onEmp
 		return ResultState{Status: emptyStatus(onEmpty, storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED), Thresholds: thresholds}
 	}
 	observed := float64(obs.Observed)
-	return applyThresholds(observed, thresholds, storepb.QualityStatus_QUALITY_STATUS_PASS)
+	return applyThresholds(observed, thresholds)
 }
 
 // applyThresholds compares an observed value with the fail/warn thresholds and
-// returns FAIL, WARN or passStatus. The comparison is strict: a value equal to the
+// returns FAIL, WARN or PASS. The comparison is strict: a value equal to the
 // threshold passes.
-func applyThresholds(observed float64, thresholds *storepb.QualityThresholds, passStatus storepb.QualityStatus) ResultState {
+func applyThresholds(observed float64, thresholds *storepb.QualityThresholds) ResultState {
 	comparison := thresholds.GetComparison()
 	if violates(observed, thresholds.FailValue, thresholds.FailValueUpper, comparison) {
 		return ResultState{Status: storepb.QualityStatus_QUALITY_STATUS_FAIL, Thresholds: thresholds}
@@ -247,7 +251,7 @@ func applyThresholds(observed float64, thresholds *storepb.QualityThresholds, pa
 	if violates(observed, thresholds.WarnValue, thresholds.WarnValueUpper, comparison) {
 		return ResultState{Status: storepb.QualityStatus_QUALITY_STATUS_WARN, Thresholds: thresholds}
 	}
-	return ResultState{Status: passStatus, Thresholds: thresholds}
+	return ResultState{Status: storepb.QualityStatus_QUALITY_STATUS_PASS, Thresholds: thresholds}
 }
 
 // violates reports whether value crosses a threshold pair. An unset threshold is
@@ -314,4 +318,127 @@ func int64Threshold(v *int64) *float64 {
 		return nil
 	}
 	return float64Ptr(float64(*v))
+}
+
+// evaluateAggregate judges one aggregate value against its interval. A NULL
+// aggregate (no rows, or every value NULL) is missing data, which on_empty
+// decides; a real zero is a value and is judged. The interval is open on both ends
+// unless the config marks it inclusive, matching the range rule.
+func evaluateAggregate(config *storepb.QualityRuleConfig, obs Observation, onEmpty storepb.QualityEmptyBehavior) ResultState {
+	aggregate := config.GetAggregate()
+	if aggregate == nil {
+		return ResultState{Status: storepb.QualityStatus_QUALITY_STATUS_ERROR}
+	}
+	thresholds := &storepb.QualityThresholds{
+		Comparison:     storepb.QualityComparison_QUALITY_COMPARISON_OUTSIDE_RANGE,
+		OnEmpty:        onEmpty,
+		FailValue:      aggregate.Min,
+		FailValueUpper: aggregate.Max,
+		WarnValue:      aggregate.WarnMin,
+		WarnValueUpper: aggregate.WarnMax,
+	}
+	if obs.ObservedNull {
+		return ResultState{
+			Status:     emptyStatus(onEmpty, storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED),
+			Thresholds: thresholds,
+		}
+	}
+	if aggregateOutsideBounds(obs.Observed, aggregate) {
+		return ResultState{Status: storepb.QualityStatus_QUALITY_STATUS_FAIL, Thresholds: thresholds}
+	}
+	if aggregateWarnOutsideBounds(obs.Observed, aggregate) {
+		return ResultState{Status: storepb.QualityStatus_QUALITY_STATUS_WARN, Thresholds: thresholds}
+	}
+	return ResultState{Status: storepb.QualityStatus_QUALITY_STATUS_PASS, Thresholds: thresholds}
+}
+
+// aggregateOutsideBounds reports whether value is outside the fail interval. An
+// exclusive bound makes the endpoint a violation (the interval is open); an
+// inclusive one allows it.
+func aggregateOutsideBounds(value float64, config *storepb.AggregateConfig) bool {
+	if config.Min != nil {
+		if config.GetInclusive() {
+			if value < *config.Min {
+				return true
+			}
+		} else if value <= *config.Min {
+			return true
+		}
+	}
+	if config.Max != nil {
+		if config.GetInclusive() {
+			if value > *config.Max {
+				return true
+			}
+		} else if value >= *config.Max {
+			return true
+		}
+	}
+	return false
+}
+
+// aggregateWarnOutsideBounds reports whether value is inside the fail interval but
+// outside a warn bound. The warn interval follows the same open/closed rule.
+func aggregateWarnOutsideBounds(value float64, config *storepb.AggregateConfig) bool {
+	if config.WarnMin != nil {
+		if config.GetInclusive() {
+			if value < *config.WarnMin {
+				return true
+			}
+		} else if value <= *config.WarnMin {
+			return true
+		}
+	}
+	if config.WarnMax != nil {
+		if config.GetInclusive() {
+			if value > *config.WarnMax {
+				return true
+			}
+		} else if value >= *config.WarnMax {
+			return true
+		}
+	}
+	return false
+}
+
+// evaluateCrossTable judges the difference between the two aggregates: the
+// observed value is the raw absolute difference, the tolerance absorbs the part
+// of it that is acceptable, and the configured fail/warn thresholds bound the
+// rest. A NULL on either side is missing data, which on_empty decides.
+func evaluateCrossTable(config *storepb.QualityRuleConfig, obs Observation, onEmpty storepb.QualityEmptyBehavior) ResultState {
+	cross := config.GetCrossTable()
+	if cross == nil {
+		return ResultState{Status: storepb.QualityStatus_QUALITY_STATUS_ERROR}
+	}
+	tolerance := 0.0
+	if cross.Tolerance != nil {
+		tolerance = *cross.Tolerance
+	}
+	failThreshold := 0.0
+	if cross.FailThreshold != nil {
+		failThreshold = *cross.FailThreshold
+	}
+	thresholds := &storepb.QualityThresholds{
+		Comparison: storepb.QualityComparison_QUALITY_COMPARISON_GREATER_THAN,
+		OnEmpty:    onEmpty,
+		FailValue:  float64Ptr(failThreshold),
+		WarnValue:  copyOptionalFloat(cross.WarnThreshold),
+	}
+	if obs.ObservedNull {
+		return ResultState{
+			Status:     emptyStatus(onEmpty, storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED),
+			Thresholds: thresholds,
+		}
+	}
+	excess := math.Abs(obs.Observed) - tolerance
+	if excess < 0 {
+		excess = 0
+	}
+	return applyThresholds(excess, thresholds)
+}
+
+// copyOptionalFloat returns the pointer itself: the threshold snapshot shares the
+// caller's immutable config value.
+func copyOptionalFloat(value *float64) *float64 {
+	return value
 }

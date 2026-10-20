@@ -35,6 +35,8 @@ var compilers = map[storepb.QualityRuleType]compilerFunc{
 	storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL:            compileCustomSQL,
 	storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT:          compileSchemaDrift,
 	storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK:           compileGroupCheck,
+	storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE:             compileAggregate,
+	storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE:           compileCrossTable,
 }
 
 // Compile produces the statement that observes the rule. It rejects a rule type

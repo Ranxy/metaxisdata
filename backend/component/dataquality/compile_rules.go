@@ -79,12 +79,28 @@ func compileNullPercent(input CompileInput) (CompiledQuery, error) {
 	if err != nil {
 		return CompiledQuery{}, err
 	}
-	where, args, err := whereClause(input)
+	where, filterArgs, err := whereClause(input)
 	if err != nil {
 		return CompiledQuery{}, err
 	}
-	condition := qualify(input.Dialect, column.Name) + " IS NULL"
-	return compileCountSelect(table, where, condition, args), nil
+
+	// The custom missing values appear in the SELECT list, before the filter's
+	// WHERE clause, so compileArgs reconciles the argument order per dialect.
+	values, err := nullPercentValues(column, config.GetNullValues())
+	if err != nil {
+		return CompiledQuery{}, err
+	}
+	args := newCompileArgs(input.Dialect, filterArgs)
+	qualified := qualify(input.Dialect, column.Name)
+	condition := qualified + " IS NULL"
+	if len(values) > 0 {
+		placeholders := make([]string, 0, len(values))
+		for _, value := range values {
+			placeholders = append(placeholders, args.add(value))
+		}
+		condition = qualified + " IS NULL OR " + qualified + " IN (" + strings.Join(placeholders, ", ") + ")"
+	}
+	return compileCountSelect(table, where, condition, args.values()), nil
 }
 
 // compileUnique counts the rows that duplicate a non-NULL value. The derived table
@@ -657,4 +673,127 @@ func qualifyColumns(dialect Dialect, columns []string) string {
 		quoted = append(quoted, qualify(dialect, column))
 	}
 	return strings.Join(quoted, ", ")
+}
+
+// compileAggregate bounds one aggregate of a single column. The observed value is
+// the aggregate itself and total_rows is the scanned row count; the evaluator
+// judges the value against an interval, and a NULL aggregate (empty table or an
+// all-NULL column) follows on_empty.
+func compileAggregate(input CompileInput) (CompiledQuery, error) {
+	config := input.Config.GetAggregate()
+	if config == nil {
+		return CompiledQuery{}, invalidConfig("the aggregate config is missing")
+	}
+	function := config.GetFunction()
+	table, err := compileTable(input.Dialect, input.Target)
+	if err != nil {
+		return CompiledQuery{}, err
+	}
+	where, filterArgs, err := whereClause(input)
+	if err != nil {
+		return CompiledQuery{}, err
+	}
+
+	args := newCompileArgs(input.Dialect, filterArgs)
+	quotedColumn := ""
+	if function != storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT {
+		column, err := requireColumn(input.Target, config.GetColumn())
+		if err != nil {
+			return CompiledQuery{}, err
+		}
+		quotedColumn = qualify(input.Dialect, column.Name)
+	}
+	percentilePlaceholder := ""
+	if function == storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_PERCENTILE {
+		if config.Percentile == nil {
+			return CompiledQuery{}, invalidConfig("an aggregate PERCENTILE needs a percentile")
+		}
+		percentile := *config.Percentile
+		if percentile < 0 || percentile > 100 {
+			return CompiledQuery{}, invalidConfig("percentile %v is outside the accepted 0–100 range", percentile)
+		}
+		// PERCENTILE_CONT takes a fraction: 50th percentile is 0.5.
+		percentilePlaceholder = args.add(percentile / 100)
+	}
+	expression, err := aggregateExpression(input.Dialect, function, quotedColumn, percentilePlaceholder)
+	if err != nil {
+		return CompiledQuery{}, err
+	}
+	return CompiledQuery{
+		SQL:     "SELECT COUNT(*) AS total_rows, " + expression + " AS observed FROM " + table + where,
+		Args:    args.values(),
+		Kind:    QueryAggregate,
+		Columns: []string{"total_rows", "observed"},
+	}, nil
+}
+
+// compileCrossTable reconciles one aggregate of the rule's target with one
+// aggregate of another table in the same database. Both sides are scalar
+// subqueries in one statement; the filter applies to the left (target) side only,
+// which is the v1.1 contract.
+func compileCrossTable(input CompileInput) (CompiledQuery, error) {
+	config := input.Config.GetCrossTable()
+	if config == nil {
+		return CompiledQuery{}, invalidConfig("the cross-table config is missing")
+	}
+	leftFunction := config.GetLeftFunction()
+	if ok, reason := crossTableFunctionSupported(leftFunction); !ok {
+		return CompiledQuery{}, invalidConfig("%s", reason)
+	}
+	rightFunction := config.GetRightFunction()
+	if ok, reason := crossTableFunctionSupported(rightFunction); !ok {
+		return CompiledQuery{}, invalidConfig("%s", reason)
+	}
+	leftTable, err := compileTable(input.Dialect, input.Target)
+	if err != nil {
+		return CompiledQuery{}, err
+	}
+	rightTable, err := compileRightTable(input.Dialect, input.Target, config.GetRightTable())
+	if err != nil {
+		return CompiledQuery{}, err
+	}
+	where, filterArgs, err := whereClause(input)
+	if err != nil {
+		return CompiledQuery{}, err
+	}
+
+	leftExpression, err := crossTableExpression(input.Dialect, leftFunction, config.GetLeftColumn(), input.Target)
+	if err != nil {
+		return CompiledQuery{}, err
+	}
+	// The right table is not resolved here (the API resolves it when the rule is
+	// saved), so the right column is only quoted; its existence is checked there.
+	rightExpression, err := crossTableExpression(input.Dialect, rightFunction, config.GetRightColumn(), ResolvedTarget{})
+	if err != nil {
+		return CompiledQuery{}, err
+	}
+	return CompiledQuery{
+		SQL: "SELECT (SELECT " + leftExpression + " FROM " + leftTable + where + ") AS left_value, " +
+			"(SELECT " + rightExpression + " FROM " + rightTable + ") AS right_value",
+		Args:    filterArgs,
+		Kind:    QueryAggregate,
+		Columns: []string{"left_value", "right_value"},
+	}, nil
+}
+
+// crossTableExpression renders one side of a reconciliation. COUNT ignores the
+// column; every other function aggregates it. When the target is resolved the
+// left column is proven to exist; the right side passes an empty target because
+// its table is not part of the rule's resolution.
+func crossTableExpression(dialect Dialect, function storepb.QualityAggregateFunction, column string, target ResolvedTarget) (string, error) {
+	if function == storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT {
+		return "COUNT(*)", nil
+	}
+	column = strings.TrimSpace(column)
+	if column == "" {
+		return "", invalidConfig("a cross-table %s check needs a column", strings.TrimPrefix(function.String(), "QUALITY_AGGREGATE_FUNCTION_"))
+	}
+	if target.GUID != "" {
+		resolved, err := requireColumn(target, column)
+		if err != nil {
+			return "", err
+		}
+		column = resolved.Name
+	}
+	return aggregateExpression(dialect, function, qualify(dialect, column), "")
 }

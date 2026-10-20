@@ -840,8 +840,13 @@ message CrossTableConfig {
   // The right (reference) aggregate; COUNT ignores right_column.
   QualityAggregateFunction right_function = 4;
   string right_column = 5;
-  // The absolute difference tolerated, before the fail/warn thresholds apply.
+  // The absolute difference tolerated before the thresholds apply: the observed
+  // value is max(0, |left - right| - tolerance).
   optional double tolerance = 6;
+  // Difference beyond the tolerance that fails, and the warning level inside it.
+  // The fail threshold defaults to zero.
+  optional double fail_threshold = 7;
+  optional double warn_threshold = 8;
 }
 
 // QualityFilter is the AND filter a rule applies before observing. Values are

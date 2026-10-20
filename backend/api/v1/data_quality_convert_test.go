@@ -48,6 +48,7 @@ func qualityConfigCases() []struct {
 			WarnNullCount: qualityTestPtr(int64(5)),
 			MaxNullPct:    qualityTestPtr(0.5),
 			WarnNullPct:   qualityTestPtr(0.1),
+			NullValues:    []string{"N/A", "-"},
 		}}}},
 		{name: "unique", config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Unique{Unique: &storepb.UniqueConfig{
 			Column:        "id",
@@ -140,6 +141,25 @@ func qualityConfigCases() []struct {
 			MaxRowsPerGroup: qualityTestPtr(int64(1000)),
 			FailThreshold:   qualityTestPtr(2.5),
 			WarnThreshold:   qualityTestPtr(1.5),
+		}}}},
+		{name: "aggregate", config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Aggregate{Aggregate: &storepb.AggregateConfig{
+			Column:     "amount",
+			Function:   storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_PERCENTILE,
+			Percentile: qualityTestPtr(95.0),
+			Min:        qualityTestPtr(1.5),
+			Max:        qualityTestPtr(99.5),
+			WarnMin:    qualityTestPtr(2.5),
+			WarnMax:    qualityTestPtr(98.5),
+			Inclusive:  true,
+		}}}},
+		{name: "cross_table", config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CrossTable{CrossTable: &storepb.CrossTableConfig{
+			RightTable:    "billing.invoices",
+			LeftFunction:  storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
+			RightFunction: storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_SUM,
+			RightColumn:   "total",
+			Tolerance:     qualityTestPtr(0.5),
+			FailThreshold: qualityTestPtr(1.5),
+			WarnThreshold: qualityTestPtr(0.5),
 		}}}},
 	}
 }

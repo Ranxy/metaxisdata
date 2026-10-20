@@ -84,6 +84,14 @@ func (s *DataQualityService) SuggestQualityRule(ctx context.Context, req *connec
 	if err != nil {
 		return nil, err
 	}
+	// The LLM is enabled and configured, so this request may spend the
+	// workspace's daily quota and one concurrency slot. The quota check runs
+	// after the config so a disabled LLM consumes neither.
+	release, err := s.llmQuota.begin(ctx, qualityLLMAnalysis, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	existingRules, err := s.qualityRuleSummaries(ctx, tableGUID)
 	if err != nil {
 		return nil, err
@@ -482,6 +490,14 @@ func (s *DataQualityService) ExplainQualityResult(ctx context.Context, req *conn
 			return nil
 		}
 	}
+
+	// Only a real model call spends the workspace's daily quota and a concurrency
+	// slot: a cache hit replayed above returns before this point.
+	release, err := s.llmQuota.begin(ctx, qualityLLMAnalysis, 0)
+	if err != nil {
+		return err
+	}
+	defer release()
 
 	resolution, err := dataquality.ResolveTarget(ctx, s.store, rule.TargetGUID, rule.TargetType)
 	if err != nil {

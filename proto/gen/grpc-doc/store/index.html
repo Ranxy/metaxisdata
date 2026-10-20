@@ -1693,7 +1693,23 @@ Only meaningful for numeric columns. </p></td>
                   <td>tolerance</td>
                   <td><a href="#double">double</a></td>
                   <td>optional</td>
-                  <td><p>The absolute difference tolerated, before the fail/warn thresholds apply. </p></td>
+                  <td><p>The absolute difference tolerated before the thresholds apply: the observed
+value is max(0, |left - right| - tolerance). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>fail_threshold</td>
+                  <td><a href="#double">double</a></td>
+                  <td>optional</td>
+                  <td><p>Difference beyond the tolerance that fails, and the warning level inside it.
+The fail threshold defaults to zero. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>warn_threshold</td>
+                  <td><a href="#double">double</a></td>
+                  <td>optional</td>
+                  <td><p> </p></td>
                 </tr>
               
             </tbody>

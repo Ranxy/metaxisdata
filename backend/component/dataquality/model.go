@@ -51,6 +51,10 @@ type Observation struct {
 	// was computed from, kept so a result can show "3 / 1200 (0.25%)".
 	FailedRows int64
 	TotalRows  int64
+	// ObservedNull reports that the measured value is SQL NULL: an aggregate over
+	// an empty (or all-NULL) column, or one side of a cross-table reconciliation.
+	// It is not zero; the evaluator follows on_empty for it.
+	ObservedNull bool
 	// MaxTimestamp is the newest value a freshness rule saw; nil when it saw none.
 	MaxTimestamp *time.Time
 	// Baseline is the rule's last successful observation, for row_count_change.

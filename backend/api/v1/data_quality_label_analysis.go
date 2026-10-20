@@ -93,6 +93,14 @@ func (s *DataQualityService) SuggestColumnLabels(ctx context.Context, req *conne
 	if err != nil {
 		return nil, err
 	}
+	// The LLM is enabled and configured, so this request may spend the column
+	// analysis quota and one concurrency slot. L3 has its own, smaller daily
+	// bucket, whose ceiling comes from the workspace setting resolved above.
+	release, err := s.llmQuota.begin(ctx, qualityLLMColumnAnalysis, settings.DailyColumnAnalysisLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 
 	profiles, err := s.qualityLabelProfiles(ctx, resolution.Target, columns)
 	if err != nil {

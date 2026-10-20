@@ -487,7 +487,9 @@ aggregate of another table in the same instance and database.
 | left_column | [string](#string) |  |  |
 | right_function | [QualityAggregateFunction](#metaxisdata-store-QualityAggregateFunction) |  | The right (reference) aggregate; COUNT ignores right_column. |
 | right_column | [string](#string) |  |  |
-| tolerance | [double](#double) | optional | The absolute difference tolerated, before the fail/warn thresholds apply. |
+| tolerance | [double](#double) | optional | The absolute difference tolerated before the thresholds apply: the observed value is max(0, |left - right| - tolerance). |
+| fail_threshold | [double](#double) | optional | Difference beyond the tolerance that fails, and the warning level inside it. The fail threshold defaults to zero. |
+| warn_threshold | [double](#double) | optional |  |
 
 
 

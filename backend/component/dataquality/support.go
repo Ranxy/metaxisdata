@@ -36,7 +36,9 @@ func Supported(engine storepb.Engine, ruleType storepb.QualityRuleType) (bool, s
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK:
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE:
 		return true, ""
 	default:
 		return false, "unknown rule type"
@@ -74,4 +76,49 @@ func RuleTypeForTarget(metaType storepb.MetaType, ruleType storepb.QualityRuleTy
 // source and compiles to no SQL.
 func IsMetadataRule(ruleType storepb.QualityRuleType) bool {
 	return ruleType == storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT
+}
+
+// aggregateFunctionSupported reports whether one aggregate function can be
+// compiled for an engine. COUNT/SUM/AVG/MIN/MAX/STDDEV are available everywhere;
+// only PostgreSQL and SQL Server have a percentile-cont aggregate, so the MySQL
+// family and StarRocks refuse PERCENTILE at save time.
+func aggregateFunctionSupported(engine storepb.Engine, function storepb.QualityAggregateFunction) (bool, string) {
+	switch function {
+	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
+		storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_SUM,
+		storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_AVG,
+		storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MIN,
+		storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MAX,
+		storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_STDDEV:
+		return true, ""
+	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_PERCENTILE:
+		switch engine {
+		case storepb.Engine_POSTGRES, storepb.Engine_MSSQL:
+			return true, ""
+		default:
+			return false, "PERCENTILE is only supported on PostgreSQL and MSSQL"
+		}
+	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_UNSPECIFIED:
+		return false, "an aggregate function is required"
+	default:
+		return false, "unknown aggregate function"
+	}
+}
+
+// crossTableFunctionSupported reports whether one side of a reconciliation may use
+// a function. cross_table compares magnitudes, so STDDEV and PERCENTILE are not
+// offered there.
+func crossTableFunctionSupported(function storepb.QualityAggregateFunction) (bool, string) {
+	switch function {
+	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
+		storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_SUM,
+		storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_AVG,
+		storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MIN,
+		storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MAX:
+		return true, ""
+	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_UNSPECIFIED:
+		return false, "a cross-table function is required"
+	default:
+		return false, "cross_table supports COUNT, SUM, AVG, MIN and MAX only"
+	}
 }

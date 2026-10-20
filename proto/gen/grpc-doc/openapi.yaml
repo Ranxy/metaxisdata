@@ -6458,7 +6458,18 @@ components:
                     type: string
                 tolerance:
                     type: number
-                    description: The absolute difference tolerated, before the fail/warn thresholds apply.
+                    description: |-
+                        The absolute difference tolerated before the thresholds apply: the observed
+                         value is max(0, |left - right| - tolerance).
+                    format: double
+                failThreshold:
+                    type: number
+                    description: |-
+                        Difference beyond the tolerance that fails, and the warning level inside it.
+                         The fail threshold defaults to zero.
+                    format: double
+                warnThreshold:
+                    type: number
                     format: double
             description: |-
                 CrossTableConfig reconciles one aggregate of the rule's table with one

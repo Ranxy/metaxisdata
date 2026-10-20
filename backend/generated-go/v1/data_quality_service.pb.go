@@ -3591,8 +3591,13 @@ type CrossTableConfig struct {
 	// The right (reference) aggregate; COUNT ignores right_column.
 	RightFunction QualityAggregateFunction `protobuf:"varint,4,opt,name=right_function,json=rightFunction,proto3,enum=metaxisdata.v1.QualityAggregateFunction" json:"right_function,omitempty"`
 	RightColumn   string                   `protobuf:"bytes,5,opt,name=right_column,json=rightColumn,proto3" json:"right_column,omitempty"`
-	// The absolute difference tolerated, before the fail/warn thresholds apply.
-	Tolerance     *float64 `protobuf:"fixed64,6,opt,name=tolerance,proto3,oneof" json:"tolerance,omitempty"`
+	// The absolute difference tolerated before the thresholds apply: the observed
+	// value is max(0, |left - right| - tolerance).
+	Tolerance *float64 `protobuf:"fixed64,6,opt,name=tolerance,proto3,oneof" json:"tolerance,omitempty"`
+	// Difference beyond the tolerance that fails, and the warning level inside it.
+	// The fail threshold defaults to zero.
+	FailThreshold *float64 `protobuf:"fixed64,7,opt,name=fail_threshold,json=failThreshold,proto3,oneof" json:"fail_threshold,omitempty"`
+	WarnThreshold *float64 `protobuf:"fixed64,8,opt,name=warn_threshold,json=warnThreshold,proto3,oneof" json:"warn_threshold,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3665,6 +3670,20 @@ func (x *CrossTableConfig) GetRightColumn() string {
 func (x *CrossTableConfig) GetTolerance() float64 {
 	if x != nil && x.Tolerance != nil {
 		return *x.Tolerance
+	}
+	return 0
+}
+
+func (x *CrossTableConfig) GetFailThreshold() float64 {
+	if x != nil && x.FailThreshold != nil {
+		return *x.FailThreshold
+	}
+	return 0
+}
+
+func (x *CrossTableConfig) GetWarnThreshold() float64 {
+	if x != nil && x.WarnThreshold != nil {
+		return *x.WarnThreshold
 	}
 	return 0
 }
@@ -8312,7 +8331,7 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\x04_minB\x06\n" +
 	"\x04_maxB\v\n" +
 	"\t_warn_minB\v\n" +
-	"\t_warn_max\"\xc8\x02\n" +
+	"\t_warn_max\"\xc6\x03\n" +
 	"\x10CrossTableConfig\x12\x1f\n" +
 	"\vright_table\x18\x01 \x01(\tR\n" +
 	"rightTable\x12M\n" +
@@ -8321,9 +8340,13 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"leftColumn\x12O\n" +
 	"\x0eright_function\x18\x04 \x01(\x0e2(.metaxisdata.v1.QualityAggregateFunctionR\rrightFunction\x12!\n" +
 	"\fright_column\x18\x05 \x01(\tR\vrightColumn\x12!\n" +
-	"\ttolerance\x18\x06 \x01(\x01H\x00R\ttolerance\x88\x01\x01B\f\n" +
+	"\ttolerance\x18\x06 \x01(\x01H\x00R\ttolerance\x88\x01\x01\x12*\n" +
+	"\x0efail_threshold\x18\a \x01(\x01H\x01R\rfailThreshold\x88\x01\x01\x12*\n" +
+	"\x0ewarn_threshold\x18\b \x01(\x01H\x02R\rwarnThreshold\x88\x01\x01B\f\n" +
 	"\n" +
-	"_tolerance\"N\n" +
+	"_toleranceB\x11\n" +
+	"\x0f_fail_thresholdB\x11\n" +
+	"\x0f_warn_threshold\"N\n" +
 	"\rQualityFilter\x12=\n" +
 	"\aclauses\x18\x01 \x03(\v2#.metaxisdata.v1.QualityFilterClauseR\aclauses\"|\n" +
 	"\x13QualityFilterClause\x12\x16\n" +
