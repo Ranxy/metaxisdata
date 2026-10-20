@@ -1069,6 +1069,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.GetQualityOverviewRequest"><span class="badge">M</span>GetQualityOverviewRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.GetQualityRuleRequest"><span class="badge">M</span>GetQualityRuleRequest</a>
                 </li>
               
@@ -1173,6 +1177,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.QualityOverview"><span class="badge">M</span>QualityOverview</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.QualityResultSummary"><span class="badge">M</span>QualityResultSummary</a>
                 </li>
               
@@ -1218,6 +1226,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualityThresholds"><span class="badge">M</span>QualityThresholds</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityTrendPoint"><span class="badge">M</span>QualityTrendPoint</a>
                 </li>
               
                 <li>
@@ -12710,6 +12722,37 @@ The fail threshold defaults to zero. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.GetQualityOverviewRequest">GetQualityOverviewRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>trend_days</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many days the trend covers, 1-30. Zero means seven. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.GetQualityRuleRequest">GetQualityRuleRequest</h3>
         <p></p>
 
@@ -14021,6 +14064,108 @@ rule keeps running and results keep being recorded. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.QualityOverview">QualityOverview</h3>
+        <p>QualityOverview is the workspace-level summary the overview page renders. It</p><p>aggregates the tables instead of listing rows, so the page costs a handful of</p><p>queries rather than paging through every result.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>rule_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Rules by lifecycle state. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>enabled_rule_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>paused_rule_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>monitored_table_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Tables that at least one enabled rule watches. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>open_warning_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Issues currently open (status OPEN or ACKNOWLEDGED) by severity. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>open_error_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>open_critical_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>failing_rule_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The last 24 hours: how many rules failed at least once, how many runs
+started, and how their results tallied. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>run_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>last_day_counts</td>
+                  <td><a href="#metaxisdata.v1.QualityRunCounts">QualityRunCounts</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>trend</td>
+                  <td><a href="#metaxisdata.v1.QualityTrendPoint">QualityTrendPoint</a></td>
+                  <td>repeated</td>
+                  <td><p>The per-day tallies of the trend window, oldest first. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>trend_days</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many days the trend covers. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.QualityResultSummary">QualityResultSummary</h3>
         <p>QualityResultSummary is the compact projection of the latest result that a</p><p>rule list shows. It is not a stored entity.</p>
 
@@ -15069,6 +15214,79 @@ the config is authoritative; validation requires them to agree. </p></td>
                 <tr>
                   <td>on_empty</td>
                   <td><a href="#metaxisdata.v1.QualityEmptyBehavior">QualityEmptyBehavior</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityTrendPoint">QualityTrendPoint</h3>
+        <p>QualityTrendPoint is one day of result tallies.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>date</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The day, as YYYY-MM-DD in UTC. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>pass</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>warn</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>fail</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>error</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>skipped</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>not_evaluated</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>total</td>
+                  <td><a href="#int32">int32</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
@@ -17405,6 +17623,14 @@ REST gateway cannot carry one. The browser reaches the Connect endpoint
 directly, the way it does for ExplainSQL.</p></td>
               </tr>
             
+              <tr>
+                <td>GetQualityOverview</td>
+                <td><a href="#metaxisdata.v1.GetQualityOverviewRequest">GetQualityOverviewRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityOverview">QualityOverview</a></td>
+                <td><p>Read the workspace&#39;s quality summary: how many rules and issues exist, how
+the last day went, and the per-day tallies the overview chart draws.</p></td>
+              </tr>
+            
           </tbody>
         </table>
 
@@ -17630,6 +17856,16 @@ directly, the way it does for ExplainSQL.</p></td>
                 <td>POST</td>
                 <td>/v1/{parent=workspaces/*}/qualitySuggestions:suggestLabels</td>
                 <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetQualityOverview</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/qualityOverview</td>
+                <td></td>
               </tr>
               
             

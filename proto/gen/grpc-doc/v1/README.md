@@ -234,6 +234,7 @@
     - [FailureSample](#metaxisdata-v1-FailureSample)
     - [FreshnessConfig](#metaxisdata-v1-FreshnessConfig)
     - [GetQualityIssueRequest](#metaxisdata-v1-GetQualityIssueRequest)
+    - [GetQualityOverviewRequest](#metaxisdata-v1-GetQualityOverviewRequest)
     - [GetQualityRuleRequest](#metaxisdata-v1-GetQualityRuleRequest)
     - [GetQualityRunRequest](#metaxisdata-v1-GetQualityRunRequest)
     - [GroupCheckConfig](#metaxisdata-v1-GroupCheckConfig)
@@ -260,6 +261,7 @@
     - [QualityFilter](#metaxisdata-v1-QualityFilter)
     - [QualityFilterClause](#metaxisdata-v1-QualityFilterClause)
     - [QualityIssue](#metaxisdata-v1-QualityIssue)
+    - [QualityOverview](#metaxisdata-v1-QualityOverview)
     - [QualityResultSummary](#metaxisdata-v1-QualityResultSummary)
     - [QualityRule](#metaxisdata-v1-QualityRule)
     - [QualityRuleConfig](#metaxisdata-v1-QualityRuleConfig)
@@ -272,6 +274,7 @@
     - [QualityTarget](#metaxisdata-v1-QualityTarget)
     - [QualityTargetPath](#metaxisdata-v1-QualityTargetPath)
     - [QualityThresholds](#metaxisdata-v1-QualityThresholds)
+    - [QualityTrendPoint](#metaxisdata-v1-QualityTrendPoint)
     - [RangeConfig](#metaxisdata-v1-RangeConfig)
     - [ReferentialIntegrityConfig](#metaxisdata-v1-ReferentialIntegrityConfig)
     - [RegexConfig](#metaxisdata-v1-RegexConfig)
@@ -4276,6 +4279,22 @@ timestamp follows on_empty.
 
 
 
+<a name="metaxisdata-v1-GetQualityOverviewRequest"></a>
+
+### GetQualityOverviewRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| trend_days | [int32](#int32) |  | How many days the trend covers, 1-30. Zero means seven. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetQualityRuleRequest"></a>
 
 ### GetQualityRuleRequest
@@ -4767,6 +4786,34 @@ another, and a resolved issue is never reopened.
 
 
 
+<a name="metaxisdata-v1-QualityOverview"></a>
+
+### QualityOverview
+QualityOverview is the workspace-level summary the overview page renders. It
+aggregates the tables instead of listing rows, so the page costs a handful of
+queries rather than paging through every result.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| rule_count | [int32](#int32) |  | Rules by lifecycle state. |
+| enabled_rule_count | [int32](#int32) |  |  |
+| paused_rule_count | [int32](#int32) |  |  |
+| monitored_table_count | [int32](#int32) |  | Tables that at least one enabled rule watches. |
+| open_warning_count | [int32](#int32) |  | Issues currently open (status OPEN or ACKNOWLEDGED) by severity. |
+| open_error_count | [int32](#int32) |  |  |
+| open_critical_count | [int32](#int32) |  |  |
+| failing_rule_count | [int32](#int32) |  | The last 24 hours: how many rules failed at least once, how many runs started, and how their results tallied. |
+| run_count | [int32](#int32) |  |  |
+| last_day_counts | [QualityRunCounts](#metaxisdata-v1-QualityRunCounts) |  |  |
+| trend | [QualityTrendPoint](#metaxisdata-v1-QualityTrendPoint) | repeated | The per-day tallies of the trend window, oldest first. |
+| trend_days | [int32](#int32) |  | How many days the trend covers. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-QualityResultSummary"></a>
 
 ### QualityResultSummary
@@ -5061,6 +5108,28 @@ the lower and upper bounds are.
 | fail_value_upper | [double](#double) | optional |  |
 | comparison | [QualityComparison](#metaxisdata-v1-QualityComparison) |  |  |
 | on_empty | [QualityEmptyBehavior](#metaxisdata-v1-QualityEmptyBehavior) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityTrendPoint"></a>
+
+### QualityTrendPoint
+QualityTrendPoint is one day of result tallies.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| date | [string](#string) |  | The day, as YYYY-MM-DD in UTC. |
+| pass | [int32](#int32) |  |  |
+| warn | [int32](#int32) |  |  |
+| fail | [int32](#int32) |  |  |
+| error | [int32](#int32) |  |  |
+| skipped | [int32](#int32) |  |  |
+| not_evaluated | [int32](#int32) |  |  |
+| total | [int32](#int32) |  |  |
 
 
 
@@ -5919,6 +5988,7 @@ created asynchronously and polled until it finishes.
 | ExplainQualityResult | [ExplainQualityResultRequest](#metaxisdata-v1-ExplainQualityResultRequest) | [ExplainQualityResultResponse](#metaxisdata-v1-ExplainQualityResultResponse) stream | Explain one failed result as a stream of hypotheses.
 
 No (google.api.http) annotation: this is a server-streaming method, and the REST gateway cannot carry one. The browser reaches the Connect endpoint directly, the way it does for ExplainSQL. |
+| GetQualityOverview | [GetQualityOverviewRequest](#metaxisdata-v1-GetQualityOverviewRequest) | [QualityOverview](#metaxisdata-v1-QualityOverview) | Read the workspace&#39;s quality summary: how many rules and issues exist, how the last day went, and the per-day tallies the overview chart draws. |
 
  
 
