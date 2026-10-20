@@ -134,7 +134,7 @@
                   {{ t("dataQuality.acknowledged") }}
                 </div>
                 <div class="text-sm">
-                  {{ issue.acknowledgedBy ? principalLabel(issue.acknowledgedBy) : "-" }}
+                  {{ issue.acknowledgedBy ? acknowledgedByLabel : "-" }}
                 </div>
                 <div
                   v-if="issue.acknowledgedTime"
@@ -369,6 +369,7 @@ import {
   qualityRuleID,
   resolveQualityIssue,
 } from "@/api/data-quality";
+import { getUser } from "@/api/user";
 import PageState from "@/components/common/PageState.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -429,6 +430,7 @@ const authStore = useAuthStore();
 
 const issue = ref<QualityIssue>();
 const ruleTitle = ref("");
+const acknowledgedByLabel = ref("");
 const isLoading = ref(true);
 const error = ref("");
 const saveError = ref("");
@@ -480,6 +482,32 @@ function principalLabel(name: string): string {
   return name.split("/").pop() ?? name;
 }
 
+/**
+ * The acknowledged-by cell names the acknowledging user when the caller may read
+ * users, and falls back to the trailing id otherwise. Best effort and silent:
+ * the id is still meaningful, so a missing permission or a failed lookup is not
+ * an error. The generation counter keeps a slower lookup for a previously shown
+ * issue from overwriting the label of the issue now on screen.
+ */
+let acknowledgedByLookup = 0;
+
+async function loadAcknowledgedBy(name: string) {
+  const lookup = ++acknowledgedByLookup;
+  acknowledgedByLabel.value = principalLabel(name);
+  if (!name || !authStore.hasPermission("metaxisdata.users.get")) {
+    return;
+  }
+  try {
+    const user = await getUser(name);
+    if (lookup === acknowledgedByLookup) {
+      acknowledgedByLabel.value =
+        user.title || user.email || principalLabel(name);
+    }
+  } catch {
+    // The trailing id stands.
+  }
+}
+
 function runRoute(name: string) {
   return { name: "DataQualityRunDetail", params: { runId: name.split("/") } };
 }
@@ -490,6 +518,7 @@ async function load() {
   try {
     const loaded = await getQualityIssue(issueName.value);
     issue.value = loaded;
+    void loadAcknowledgedBy(loaded.acknowledgedBy);
     await loadRuleTitle(loaded.rule);
   } catch (e: unknown) {
     error.value = formatError(e, "dataQuality.fetchIssueError");
