@@ -46,6 +46,16 @@ const (
 	// an operator can see what ended recently. Past the window the row is
 	// reclaimed; the audit ledger remains the permanent record.
 	connectedAppRetention = 7 * 24 * time.Hour
+
+	// Data quality retention. Results belong to their run and go with it; issues
+	// keep their history for a quarter after resolution; profiles and the LLM
+	// cache are measured against the data they describe and expire quickly in
+	// comparison.
+	qualityRunRetention        = 90 * 24 * time.Hour
+	qualityIssueRetention      = 90 * 24 * time.Hour
+	qualityProfileRetention    = 7 * 24 * time.Hour
+	qualityLLMCacheRetention   = 7 * 24 * time.Hour
+	qualitySuggestionRetention = 90 * 24 * time.Hour
 )
 
 // LineageRevalidator re-checks ingested lineage whose endpoints the metadata
@@ -71,6 +81,11 @@ type maintenanceStore interface {
 	DeleteExpiredWebRefreshTokens(ctx context.Context, before time.Time) (int64, error)
 	DeleteEmptyOpenLineageDatasets(ctx context.Context, olderThan time.Time) (int64, error)
 	DeleteOpenLineageRunsBefore(ctx context.Context, cutoff time.Time) (int64, error)
+	DeleteExpiredQualityRuns(ctx context.Context, cutoff time.Time) (int64, error)
+	DeleteExpiredQualityIssues(ctx context.Context, cutoff time.Time) (int64, error)
+	DeleteExpiredQualitySuggestions(ctx context.Context, cutoff time.Time) (int64, error)
+	DeleteExpiredColumnProfiles(ctx context.Context, cutoff time.Time) (int64, error)
+	DeleteExpiredDataQualityLLMCache(ctx context.Context, cutoff time.Time) (int64, error)
 	GetWorkspaceGeneralSetting(ctx context.Context) (*storepb.WorkspaceProfileSetting, error)
 }
 
@@ -203,6 +218,51 @@ func (r *Runner) runOnce(ctx context.Context) *passSummary {
 			success: "Pruned expired web refresh tokens",
 			delete: func(ctx context.Context) (int64, error) {
 				return r.store.DeleteExpiredWebRefreshTokens(ctx, now)
+			},
+		},
+		{
+			// Results cascade with their run, so this one item reclaims both.
+			name:    "quality_runs",
+			failure: "Failed to prune expired quality runs",
+			success: "Pruned expired quality runs and their results",
+			delete: func(ctx context.Context) (int64, error) {
+				return r.store.DeleteExpiredQualityRuns(ctx, now.Add(-qualityRunRetention))
+			},
+		},
+		{
+			// Only resolved issues have a retention window; an open issue is the
+			// current state of its rule.
+			name:    "quality_issues",
+			failure: "Failed to prune resolved quality issues",
+			success: "Pruned resolved quality issues",
+			delete: func(ctx context.Context) (int64, error) {
+				return r.store.DeleteExpiredQualityIssues(ctx, now.Add(-qualityIssueRetention))
+			},
+		},
+		{
+			name:    "column_profiles",
+			failure: "Failed to prune stale column profiles",
+			success: "Pruned stale column profiles",
+			delete: func(ctx context.Context) (int64, error) {
+				return r.store.DeleteExpiredColumnProfiles(ctx, now.Add(-qualityProfileRetention))
+			},
+		},
+		{
+			name:    "data_quality_llm_cache",
+			failure: "Failed to prune the data quality LLM cache",
+			success: "Pruned expired data quality LLM cache entries",
+			delete: func(ctx context.Context) (int64, error) {
+				return r.store.DeleteExpiredDataQualityLLMCache(ctx, now.Add(-qualityLLMCacheRetention))
+			},
+		},
+		{
+			// Only decided suggestions are pruned; a pending one is still waiting
+			// for a reviewer.
+			name:    "quality_suggestions",
+			failure: "Failed to prune decided quality suggestions",
+			success: "Pruned decided quality suggestions",
+			delete: func(ctx context.Context) (int64, error) {
+				return r.store.DeleteExpiredQualitySuggestions(ctx, now.Add(-qualitySuggestionRetention))
 			},
 		},
 	}

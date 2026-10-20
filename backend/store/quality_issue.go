@@ -783,3 +783,20 @@ func (s *Store) CountOpenQualityIssues(ctx context.Context) (int, error) {
 	}
 	return count, nil
 }
+
+// DeleteExpiredQualityIssues removes the resolved issues whose resolution is
+// older than cutoff. An unresolved issue is never pruned: it is the current
+// state of the rule, not history.
+func (s *Store) DeleteExpiredQualityIssues(ctx context.Context, cutoff time.Time) (int64, error) {
+	if cutoff.IsZero() {
+		return 0, common.Errorf(common.Invalid, "a cutoff is required")
+	}
+	result, err := s.GetDB().ExecContext(ctx, `
+		DELETE FROM quality_issue
+		WHERE resolved_at IS NOT NULL AND resolved_at < $1
+	`, cutoff)
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to delete expired quality issues")
+	}
+	return result.RowsAffected()
+}

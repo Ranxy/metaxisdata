@@ -22,12 +22,17 @@ import (
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/plugin/db"
 	"github.com/Ranxy/metaxisdata/backend/store"
+	"github.com/Ranxy/metaxisdata/backend/utils"
 )
 
 const (
 	// qualityRuleSelectionLimit caps how many rules one manual run may select, so
 	// a single request cannot queue an unbounded batch.
 	qualityRuleSelectionLimit = 200
+	// Quality rule counts are bounded so one workspace or one table cannot make the
+	// scheduler unmanageable.
+	qualityRuleWorkspaceLimit = 1000
+	qualityRuleTableLimit     = 100
 	// qualityPreviewProbeTimeout bounds the LIMIT 0 dry-run probe. It proves
 	// syntax and permission; it must not scan a table.
 	qualityPreviewProbeTimeout = 10 * time.Second
@@ -352,6 +357,12 @@ func (s *DataQualityService) CreateQualityRule(ctx context.Context, req *connect
 	if err != nil {
 		return nil, err
 	}
+	if err := requireReadOnlySourceForNewRule(storepb.QualityRuleType(rule.GetRuleType()), validated.Resolution); err != nil {
+		return nil, err
+	}
+	if err := s.checkQualityRuleLimits(ctx, validated.Target); err != nil {
+		return nil, err
+	}
 	schemaHash, err := s.targetSchemaHash(ctx, validated.Target)
 	if err != nil {
 		return nil, err
@@ -464,6 +475,47 @@ func (s *DataQualityService) validateRuleInput(ctx context.Context, ruleType sto
 		return nil, filled, err
 	}
 	return validated, filled, nil
+}
+
+// checkQualityRuleLimits refuses a create that would exceed the workspace's or
+// the target table's rule budget, and refuses a query rule whose instance has no
+// read-only data source: such a rule could only ever record ERROR at runtime.
+func (s *DataQualityService) checkQualityRuleLimits(ctx context.Context, target dataquality.ResolvedTarget) error {
+	workspaceRules, err := s.store.CountQualityRules(ctx, &store.FindQualityRuleMessage{})
+	if err != nil {
+		return err
+	}
+	if workspaceRules >= qualityRuleWorkspaceLimit {
+		return connect.NewError(connect.CodeResourceExhausted,
+			errors.Errorf("a workspace allows at most %d quality rules", qualityRuleWorkspaceLimit))
+	}
+	targetGUID := target.GUID
+	tableRules, err := s.store.CountQualityRules(ctx, &store.FindQualityRuleMessage{TargetGUID: &targetGUID})
+	if err != nil {
+		return err
+	}
+	if tableRules >= qualityRuleTableLimit {
+		return connect.NewError(connect.CodeResourceExhausted,
+			errors.Errorf("a table allows at most %d quality rules", qualityRuleTableLimit))
+	}
+	return nil
+}
+
+// requireReadOnlySourceForNewRule rejects a query rule whose instance has no
+// READ_ONLY data source. The rule is validated here rather than left to fail at
+// runtime, because the failure is a configuration mistake, not a data problem.
+func requireReadOnlySourceForNewRule(ruleType storepb.QualityRuleType, resolution *dataquality.Resolution) error {
+	if dataquality.IsMetadataRule(ruleType) {
+		return nil
+	}
+	if resolution == nil || resolution.Instance == nil {
+		return connectErrorInvalid("the rule target has no instance")
+	}
+	if utils.DataSourceFromInstanceWithType(resolution.Instance, storepb.DataSourceType_READ_ONLY) == nil {
+		return connect.NewError(connect.CodeFailedPrecondition, errors.Errorf(
+			"instance %q has no READ_ONLY data source; add one before creating a rule that queries it", resolution.Instance.ResourceID))
+	}
+	return nil
 }
 
 // revalidateQualityRuleDefinition runs the save pipeline on the merged
