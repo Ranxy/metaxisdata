@@ -10,6 +10,9 @@
  *                           row of real data
  *   - h1Count               exactly one page heading per route
  *   - nestedScrollers       pages must not nest their own scroll containers
+ *   - documentOverflow      the window itself must never scroll: the shell is
+ *                           one h-dvh scroller, so a taller document is a
+ *                           second scrollbar over blank space at the bottom
  *   - clippedTableCells     table cells narrower than their own content, which
  *                           is what a column layout that has been squeezed too
  *                           far looks like before it visibly breaks
@@ -126,6 +129,15 @@ const MEASURE = `(() => {
         el.scrollHeight > el.clientHeight + 4
       );
     }).length,
+    // The window itself must never scroll. The shell is h-dvh overflow-hidden,
+    // so any document height beyond the viewport comes from an element that
+    // escaped the scroller — the hidden native <select> radix-vue renders for a
+    // select far down a long form is the classic case — and shows up as a
+    // second scrollbar whose bottom is blank.
+    documentOverflow: Math.max(
+      0,
+      document.documentElement.scrollHeight - innerHeight
+    ),
     mainWidth: Math.round(main.getBoundingClientRect().width),
     scrollWidth: Math.round(main.scrollWidth),
     // A table wide enough to overflow its own overflow-auto wrapper never
@@ -437,6 +449,11 @@ async function main() {
       }
       if (measured.nestedScrollers !== 0) {
         failures.push(`${measured.nestedScrollers} nested scroll container(s)`);
+      }
+      if (measured.documentOverflow > 0) {
+        failures.push(
+          `window scrolls: document is ${measured.documentOverflow}px taller than the viewport`
+        );
       }
       if (
         route.tableTopMaxY !== undefined &&

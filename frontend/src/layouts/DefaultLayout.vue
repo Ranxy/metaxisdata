@@ -25,11 +25,19 @@
 
            `scrollbar-gutter: stable` reserves the scrollbar track whether or not
            a bar is showing, so a page that grows taller than the viewport while
-           it loads cannot shrink the content box and shift everything sideways. -->
+           it loads cannot shrink the content box and shift everything sideways.
+
+           `relative` is part of that contract, not decoration: a control may
+           render an absolutely positioned helper (radix-vue's hidden native
+           <select> for form/autofill) whose static position sits far down a long
+           form. Without a positioned ancestor here it anchors to the initial
+           containing block and inflates the document's scroll area, which gives
+           the window a second scrollbar over blank space at the bottom. Keeping
+           it inside the scroller also keeps it clipped by it. -->
       <main
         ref="mainRef"
         :class="[
-          'min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]',
+          'relative min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]',
           capped ? '' : 'p-4 sm:p-6',
         ]"
       >

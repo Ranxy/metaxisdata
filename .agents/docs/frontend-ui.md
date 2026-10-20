@@ -26,8 +26,8 @@
 
 | 机制 | 实现 |
 | --- | --- |
-| 单一滚动容器 | `<main class="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">` 是壳里唯一滚动区；页面不得嵌套自己的 scroller；`DefaultLayout` 监听 `route.path`（不认 query）把 `main` 滚回顶部（[DefaultLayout.vue:32](frontend/src/layouts/DefaultLayout.vue#L32)） |
-| 宽度 | `route.meta.contentWidth !== "full"` 时才包 `mx-auto w-full max-w-[1400px]`；全宽页不加 wrapper 以保住 `h-full` 工作台（[DefaultLayout.vue:61](frontend/src/layouts/DefaultLayout.vue#L61)） |
+| 单一滚动容器 | `<main class="relative min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">` 是壳里唯一滚动区；`relative` 是契约的一部分——radix-vue 为每个 Select 渲染的隐藏原生 `<select>` 是绝对定位的，没有定位祖先时会锚到初始包含块、按其静态位置把文档撑高（长表单底部出现第二条空滚动条）；页面不得嵌套自己的 scroller；`DefaultLayout` 监听 `route.path`（不认 query）把 `main` 滚回顶部（[DefaultLayout.vue:37](frontend/src/layouts/DefaultLayout.vue#L37)） |
+| 宽度 | `route.meta.contentWidth !== "full"` 时才包 `mx-auto w-full max-w-[1400px]`；全宽页不加 wrapper 以保住 `h-full` 工作台（[DefaultLayout.vue:69](frontend/src/layouts/DefaultLayout.vue#L69)） |
 | 桌面无顶栏 | `AppHeader` 只在 `lg:hidden` 渲染（48px，drawer 触发 + 品牌）（[AppHeader.vue:6](frontend/src/components/layout/AppHeader.vue#L6)） |
 | 设置 section | [`SettingsLayout.vue`](frontend/src/pages/settings/SettingsLayout.vue)：导航 `md:sticky md:top-0 md:w-52 md:self-start`（`self-start` 必需，否则被 stretch 的 flex item 无可粘滞空间），内容列 `max-w-[860px]`，`settingsContentWidth: "full"` 的页 opt out；[`SettingsNav.vue`](frontend/src/components/layout/SettingsNav.vue) 9 项 |
 | 侧栏 | [`AppSidebar.vue:248-341`](frontend/src/components/layout/AppSidebar.vue#L248-L341) 6 个顶层项，底部 `NotificationBell` + `UserMenu`（[:174-175](frontend/src/components/layout/AppSidebar.vue#L174-L175)）；折叠 rail 下每组前用分隔线代替标题 |
@@ -102,7 +102,7 @@
 | 规则 | 破坏后果 |
 | --- | --- |
 | 桌面端（`lg:` 及以上）不得出现顶栏；页面标题一律经 `PageHeader`，heading 不得跳级（h1→h2→h3） | 每页损失 48–56px；`audit:ui` 判 `h1Count !== 1` 或 heading skip（`CardTitle` 为此改为 `<h2>`，偏离上游 shadcn，组件内注明） |
-| 全站只能有一个滚动容器，页面不得嵌套 scroller；禁用 `max-h-[calc(100vh-16rem)]` 一类硬编码视口预留 | 三层滚动上下文；`audit:ui` 的 `nestedScrollers !== 0` 判失败（当前全站 0 处 calc） |
+| 全站只能有一个滚动容器，页面不得嵌套 scroller；窗口本身永不滚动（文档高度不得超过视口）；禁用 `max-h-[calc(100vh-16rem)]` 一类硬编码视口预留 | 三层滚动上下文；绝对定位的隐藏控件逃出 scroller 会把文档撑高，表现为底部空白的窗口滚动条；`audit:ui` 的 `nestedScrollers !== 0` 与 `documentOverflow > 0` 判失败（当前全站 0 处 calc） |
 | 滚动容器始终铺满剩余宽度、由内层 wrapper 约束并居中；`contentWidth: "full"` 只给宽表页与全高工作台 | 滚动条停在居中列右缘、宽屏右侧留死区；反之阅读行长度失控或把宽表列推入横向滚动条 |
 | 设置导航钉在内容区左缘、只给阅读列设上限；滚动容器保留 `scrollbar-gutter: stable`；sticky 导航必须 `md:top-0 md:self-start` | 窗口变宽或滚动条出现会推动导航（"设置页列表位置变化"的根因）；被 stretch 的 flex item 无可粘滞空间，`top-6` 会把导航压到 y=48 而标题在 y=24 |
 | 节点颜色按实例、边颜色按来源；颜色之外必须有线型；未高亮边不得低于 0.85 透明度 | 同名跨实例对象渲染一致、两种写者同色；跌破 WCAG 图形下限后灰度下不可辨 |
