@@ -89,7 +89,7 @@ func (*Executor) Execute(ctx context.Context, queryer db.ReadOnlyQueryer, resolu
 
 	// An aggregate observation is exactly one row; asking for one lets the
 	// scanner stop instead of materializing a second row.
-	result, err := queryer.QueryReadOnly(ctx, compiled.SQL, db.QueryOptions{
+	result, err := queryer.QueryReadOnly(ctx, compiled.SQL, compiled.Args, db.QueryOptions{
 		MaxRows:  1,
 		MaxBytes: opts.MaxBytes,
 		Timeout:  opts.QueryTimeout,
@@ -132,7 +132,7 @@ func addSamples(ctx context.Context, queryer db.ReadOnlyQueryer, input CompileIn
 	if sample.SQL == "" || execution.Observation.FailedRows <= 0 {
 		return nil
 	}
-	sampleResult, err := queryer.QueryReadOnly(ctx, sample.SQL, db.QueryOptions{
+	sampleResult, err := queryer.QueryReadOnly(ctx, sample.SQL, sample.Args, db.QueryOptions{
 		MaxRows:  sampleLimit,
 		MaxBytes: opts.MaxBytes,
 		Timeout:  opts.QueryTimeout,
@@ -185,7 +185,7 @@ func executeCELRule(ctx context.Context, queryer db.ReadOnlyQueryer, resolution 
 
 	// MaxRows is the cap itself, not a page size: only by asking for exactly
 	// sample_rows can the executor tell a capped sample from a complete scan.
-	result, err := queryer.QueryReadOnly(ctx, compiled.SQL, db.QueryOptions{
+	result, err := queryer.QueryReadOnly(ctx, compiled.SQL, compiled.Args, db.QueryOptions{
 		MaxRows:  sampleRows,
 		MaxBytes: opts.MaxBytes,
 		Timeout:  opts.QueryTimeout,

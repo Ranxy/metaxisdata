@@ -111,6 +111,7 @@ pruned.
 | --- | --- |
 | A rule reports `ERROR(NO_READ_ONLY_SOURCE)` | The instance has no read-only data source, or it was removed. |
 | `ERROR(UNSUPPORTED)` | The rule's engine cannot express it (for example regex on SQL Server, or `PERCENTILE` outside PostgreSQL/SQL Server), or a column the rule names was dropped. |
+| A dry run fails with a parameter or SQL error | The message shows the compiled SQL and its bound values; check that the filter values and range/aggregate bounds match the column's type (for example a date written as a plain string, or a numeric bound for a text column). |
 | Rules never run | The rule is paused or archived, the instance is gone, or the daily execution ceiling was reached (the next day resumes). |
 | No notification for a failure | The issue was already open (notifications fire on transitions), the rule is muted, or the run crossed the storm threshold and sent a summary instead. |
 | Model buttons are disabled | Model analysis is off, no allowed provider profile exists, or the caller lacks `suggest`/`explain`. |

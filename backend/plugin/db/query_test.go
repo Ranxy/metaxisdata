@@ -327,7 +327,7 @@ func TestRunReadOnlyQueryCommitsAndAppliesTimeout(t *testing.T) {
 	}
 
 	before := time.Now()
-	result, err := RunReadOnlyQuery(context.Background(), db, "SELECT 1", QueryOptions{Timeout: 30 * time.Second}, hooks)
+	result, err := RunReadOnlyQuery(context.Background(), db, "SELECT 1", nil, QueryOptions{Timeout: 30 * time.Second}, hooks)
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(1)}}, result.Rows)
 	require.Equal(t, []bool{true}, driver.openedReadOnlyTx)
@@ -351,7 +351,7 @@ func TestRunReadOnlyQueryFallsBackToPlainTransaction(t *testing.T) {
 	}
 	db := openFakeDB(t, driver)
 
-	result, err := RunReadOnlyQuery(context.Background(), db, "SELECT 1", QueryOptions{}, ReadOnlyQueryHooks{})
+	result, err := RunReadOnlyQuery(context.Background(), db, "SELECT 1", nil, QueryOptions{}, ReadOnlyQueryHooks{})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(1)}}, result.Rows)
 	require.Equal(t, []bool{true, false}, driver.openedReadOnlyTx)
@@ -369,7 +369,7 @@ func TestRunReadOnlyQueryReturnsScanErrorAndRollsBack(t *testing.T) {
 	db := openFakeDB(t, driver)
 
 	var cleaned int
-	_, err := RunReadOnlyQuery(context.Background(), db, "SELECT 1", QueryOptions{}, ReadOnlyQueryHooks{
+	_, err := RunReadOnlyQuery(context.Background(), db, "SELECT 1", nil, QueryOptions{}, ReadOnlyQueryHooks{
 		Cleanup: func(context.Context, *sql.Tx) {
 			cleaned++
 		},
@@ -383,6 +383,6 @@ func TestRunReadOnlyQueryReturnsScanErrorAndRollsBack(t *testing.T) {
 func TestRunReadOnlyQueryRejectsNilDatabase(t *testing.T) {
 	t.Parallel()
 
-	_, err := RunReadOnlyQuery(context.Background(), nil, "SELECT 1", QueryOptions{}, ReadOnlyQueryHooks{})
+	_, err := RunReadOnlyQuery(context.Background(), nil, "SELECT 1", nil, QueryOptions{}, ReadOnlyQueryHooks{})
 	require.EqualError(t, err, "cannot run a query on a nil database handle")
 }

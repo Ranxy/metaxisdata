@@ -23,14 +23,16 @@ type execFakeQueryer struct {
 	results []*db.QueryResult
 	errs    []error
 	queries []string
+	args    [][]any
 	options []db.QueryOptions
 	next    int
 }
 
-func (f *execFakeQueryer) QueryReadOnly(_ context.Context, query string, opts db.QueryOptions) (*db.QueryResult, error) {
+func (f *execFakeQueryer) QueryReadOnly(_ context.Context, query string, args []any, opts db.QueryOptions) (*db.QueryResult, error) {
 	index := f.next
 	f.next++
 	f.queries = append(f.queries, query)
+	f.args = append(f.args, args)
 	f.options = append(f.options, opts)
 	if index < len(f.errs) && f.errs[index] != nil {
 		return nil, f.errs[index]
@@ -685,4 +687,35 @@ func TestTruncateExecutedSQL(t *testing.T) {
 	require.LessOrEqual(t, len(truncated), maxExecutedSQLBytes)
 	require.True(t, utf8.ValidString(truncated))
 	require.NotEmpty(t, truncated)
+}
+
+// TestExecutePassesCompiledArguments pins the argument contract: the compiled
+// placeholders and the bound values reach the queryer together. A rule with a
+// filter and range bounds used to send the SQL without its arguments, which the
+// driver refused with "expected N arguments, got 0".
+func TestExecutePassesCompiledArguments(t *testing.T) {
+	t.Parallel()
+
+	minValue := "10"
+	maxValue := "100"
+	config := &storepb.QualityRuleConfig{
+		Config: &storepb.QualityRuleConfig_Range{Range: &storepb.RangeConfig{
+			Column: "amount",
+			Min:    &minValue,
+			Max:    &maxValue,
+		}},
+		Filter: &storepb.QualityFilter{Clauses: []*storepb.QualityFilterClause{
+			{Column: "status", Op: storepb.QualityFilterOperator_QUALITY_FILTER_OPERATOR_EQ, Values: []string{"paid"}},
+		}},
+	}
+	queryer := &execFakeQueryer{results: []*db.QueryResult{
+		aggregateRow([]string{"total_rows", "failed_rows"}, int64(10), int64(0)),
+	}}
+	_, err := NewExecutor().Execute(context.Background(), queryer,
+		execTestResolution(storepb.Engine_POSTGRES),
+		execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE, config),
+		ExecOptions{StoreSamples: false})
+	require.NoError(t, err)
+	require.Len(t, queryer.args, 1)
+	require.Equal(t, []any{"paid", int64(10), int64(100)}, queryer.args[0])
 }

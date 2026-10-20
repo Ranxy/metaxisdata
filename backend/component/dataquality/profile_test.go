@@ -32,7 +32,7 @@ type profileFakeQueryer struct {
 	calls         int
 }
 
-func (f *profileFakeQueryer) QueryReadOnly(_ context.Context, query string, opts db.QueryOptions) (*db.QueryResult, error) {
+func (f *profileFakeQueryer) QueryReadOnly(_ context.Context, query string, _ []any, opts db.QueryOptions) (*db.QueryResult, error) {
 	f.calls++
 	switch f.calls {
 	case 1:

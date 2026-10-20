@@ -37,7 +37,11 @@ type QueryResult struct {
 // simply does not implement it and the caller refuses the execution instead of
 // running it with write credentials.
 type ReadOnlyQueryer interface {
-	QueryReadOnly(ctx context.Context, query string, opts QueryOptions) (*QueryResult, error)
+	// QueryReadOnly runs exactly one read-only statement with its bound
+	// arguments. The arguments are the ones the rule compiler produced; a
+	// placeholder without a value is refused by the driver, so the compiler and
+	// its argument list must stay in step.
+	QueryReadOnly(ctx context.Context, query string, args []any, opts QueryOptions) (*QueryResult, error)
 }
 
 // ReadOnlyQueryHooks lets an engine apply and undo session-level settings inside
@@ -62,7 +66,7 @@ type ReadOnlyQueryHooks struct {
 // own error, so the upper layer can map context.DeadlineExceeded to a timeout
 // code, connection/permission failures to their codes, and everything else to a
 // SQL error without losing the cause.
-func RunReadOnlyQuery(ctx context.Context, database *sql.DB, query string, opts QueryOptions, hooks ReadOnlyQueryHooks) (*QueryResult, error) {
+func RunReadOnlyQuery(ctx context.Context, database *sql.DB, query string, args []any, opts QueryOptions, hooks ReadOnlyQueryHooks) (*QueryResult, error) {
 	if database == nil {
 		return nil, errors.New("cannot run a query on a nil database handle")
 	}
@@ -86,7 +90,7 @@ func RunReadOnlyQuery(ctx context.Context, database *sql.DB, query string, opts 
 		}
 	}
 
-	rows, err := tx.QueryContext(ctx, query)
+	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

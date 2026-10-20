@@ -385,13 +385,21 @@ func TestQualityProbeError(t *testing.T) {
 	t.Parallel()
 
 	// A dead data source is a configuration problem, not an invalid rule.
-	unreachable := qualityProbeError(errors.New("dial tcp 127.0.0.1:3306: connect: connection refused"))
+	validated := &dataquality.ValidatedRule{Compiled: dataquality.CompiledQuery{
+		SQL:  "SELECT COUNT(*) AS total_rows FROM orders WHERE dt >= $1",
+		Args: []any{"2026-01-01"},
+	}}
+	unreachable := qualityProbeError(errors.New("dial tcp 127.0.0.1:3306: connect: connection refused"), validated)
 	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(unreachable))
 	require.Contains(t, unreachable.Error(), "unreachable")
 
 	// The SQL text a user wrote is theirs to fix.
-	invalid := qualityProbeError(errors.New("the server rejected the statement"))
+	invalid := qualityProbeError(errors.New("the server rejected the statement"), validated)
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(invalid))
+	// The message names the statement and its bound values so the author can see
+	// which parameter the database refused.
+	require.Contains(t, invalid.Error(), "SELECT COUNT(*) AS total_rows FROM orders")
+	require.Contains(t, invalid.Error(), "2026-01-01")
 }
 
 func TestApplyQualityIssueListFilters(t *testing.T) {

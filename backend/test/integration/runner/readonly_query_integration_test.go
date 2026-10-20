@@ -59,27 +59,27 @@ WHERE datname = '%s' AND pid <> pg_backend_pid();
 	queryer, ok := driver.(db.ReadOnlyQueryer)
 	require.True(t, ok, "the PostgreSQL driver must implement ReadOnlyQueryer")
 
-	result, err := queryer.QueryReadOnly(ctx, "SELECT id, name, age FROM public.users ORDER BY id", db.QueryOptions{MaxRows: 10})
+	result, err := queryer.QueryReadOnly(ctx, "SELECT id, name, age FROM public.users ORDER BY id", nil, db.QueryOptions{MaxRows: 10})
 	require.NoError(t, err)
 	require.Equal(t, []string{"id", "name", "age"}, result.Columns)
 	require.Equal(t, [][]any{{int64(1), "alice", int64(31)}}, result.Rows)
 	require.False(t, result.Truncated)
 
-	result, err = queryer.QueryReadOnly(ctx, "SELECT n FROM generate_series(1, 3) AS n", db.QueryOptions{MaxRows: 2})
+	result, err = queryer.QueryReadOnly(ctx, "SELECT n FROM generate_series(1, 3) AS n", nil, db.QueryOptions{MaxRows: 2})
 	require.NoError(t, err)
 	require.Len(t, result.Rows, 2)
 	require.True(t, result.Truncated)
 
-	result, err = queryer.QueryReadOnly(ctx, "SELECT 'abcdef'", db.QueryOptions{MaxBytes: 3})
+	result, err = queryer.QueryReadOnly(ctx, "SELECT 'abcdef'", nil, db.QueryOptions{MaxBytes: 3})
 	require.NoError(t, err)
 	require.Empty(t, result.Rows)
 	require.True(t, result.Truncated)
 
-	_, err = queryer.QueryReadOnly(ctx, "INSERT INTO public.users (id, name, age) VALUES (2, 'bob', 20)", db.QueryOptions{})
+	_, err = queryer.QueryReadOnly(ctx, "INSERT INTO public.users (id, name, age) VALUES (2, 'bob', 20)", nil, db.QueryOptions{})
 	requireReadOnlyRejection(t, err)
 
 	started := time.Now()
-	_, err = queryer.QueryReadOnly(ctx, "SELECT pg_sleep(5)", db.QueryOptions{Timeout: 250 * time.Millisecond})
+	_, err = queryer.QueryReadOnly(ctx, "SELECT pg_sleep(5)", nil, db.QueryOptions{Timeout: 250 * time.Millisecond})
 	requireTimeout(t, err, started)
 }
 
@@ -113,27 +113,27 @@ func TestMySQLReadOnlyQueryRealServerIntegration(t *testing.T) {
 	queryer, ok := driver.(db.ReadOnlyQueryer)
 	require.True(t, ok, "the MySQL driver must implement ReadOnlyQueryer")
 
-	result, err := queryer.QueryReadOnly(ctx, "SELECT id, name, age FROM users ORDER BY id", db.QueryOptions{MaxRows: 10})
+	result, err := queryer.QueryReadOnly(ctx, "SELECT id, name, age FROM users ORDER BY id", nil, db.QueryOptions{MaxRows: 10})
 	require.NoError(t, err)
 	require.Equal(t, []string{"id", "name", "age"}, result.Columns)
 	require.Equal(t, [][]any{{int64(1), "alice", int64(31)}}, result.Rows)
 	require.False(t, result.Truncated)
 
-	result, err = queryer.QueryReadOnly(ctx, "SELECT n FROM (SELECT 1 AS n UNION ALL SELECT 2 UNION ALL SELECT 3) AS series", db.QueryOptions{MaxRows: 2})
+	result, err = queryer.QueryReadOnly(ctx, "SELECT n FROM (SELECT 1 AS n UNION ALL SELECT 2 UNION ALL SELECT 3) AS series", nil, db.QueryOptions{MaxRows: 2})
 	require.NoError(t, err)
 	require.Len(t, result.Rows, 2)
 	require.True(t, result.Truncated)
 
-	result, err = queryer.QueryReadOnly(ctx, "SELECT 'abcdef'", db.QueryOptions{MaxBytes: 3})
+	result, err = queryer.QueryReadOnly(ctx, "SELECT 'abcdef'", nil, db.QueryOptions{MaxBytes: 3})
 	require.NoError(t, err)
 	require.Empty(t, result.Rows)
 	require.True(t, result.Truncated)
 
-	_, err = queryer.QueryReadOnly(ctx, "INSERT INTO users (id, name, age) VALUES (2, 'bob', 20)", db.QueryOptions{})
+	_, err = queryer.QueryReadOnly(ctx, "INSERT INTO users (id, name, age) VALUES (2, 'bob', 20)", nil, db.QueryOptions{})
 	requireReadOnlyRejection(t, err)
 
 	started := time.Now()
-	_, err = queryer.QueryReadOnly(ctx, "SELECT SLEEP(5)", db.QueryOptions{Timeout: 250 * time.Millisecond})
+	_, err = queryer.QueryReadOnly(ctx, "SELECT SLEEP(5)", nil, db.QueryOptions{Timeout: 250 * time.Millisecond})
 	requireTimeout(t, err, started)
 }
 

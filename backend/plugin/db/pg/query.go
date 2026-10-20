@@ -14,7 +14,7 @@ var _ db.ReadOnlyQueryer = (*Driver)(nil)
 // Connections opened with ConnectionContext.ReadOnly already carry
 // default_transaction_read_only=true and the transaction itself is read-only as
 // well, so either guard refuses a write.
-func (d *Driver) QueryReadOnly(ctx context.Context, query string, opts db.QueryOptions) (*db.QueryResult, error) {
+func (d *Driver) QueryReadOnly(ctx context.Context, query string, args []any, opts db.QueryOptions) (*db.QueryResult, error) {
 	var hooks db.ReadOnlyQueryHooks
 	timeoutMillis := opts.Timeout.Milliseconds()
 	if opts.Timeout > 0 && timeoutMillis > 0 {
@@ -27,5 +27,5 @@ func (d *Driver) QueryReadOnly(ctx context.Context, query string, opts db.QueryO
 			return err
 		}
 	}
-	return db.RunReadOnlyQuery(ctx, d.db, query, opts, hooks)
+	return db.RunReadOnlyQuery(ctx, d.db, query, args, opts, hooks)
 }

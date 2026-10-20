@@ -300,6 +300,7 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | I-14 | 结果资源名最后一段是行 id；其余资源名用不可回收 resource_id | convert 单测 + handler 解析 |
 | I-15 | 软删除保留 revision/结果/问题；表不物理删除规则 | archive 路径 + store 查询过滤 |
 | I-16 | 单副本：inflight/配额/LLM 计数都在进程内；重启收敛、不补跑 | 代码结构 + runner 测试 |
+| I-17 | 编译 SQL 的占位符与 `Args` 必须一起下发：`db.ReadOnlyQueryer.QueryReadOnly(ctx, sql, args, opts)`；预览、执行、画像都传各自的 args（画像无参数传 nil） | `execution_test.go` 的参数断言 + 真 server 集成场景（带 filter 的 range 规则 dry run/执行） |
 
 ## 6. 失败模式
 

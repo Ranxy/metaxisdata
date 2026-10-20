@@ -608,3 +608,45 @@ func qualityRuleNames(rules []*v1pb.QualityRule) []string {
 	}
 	return names
 }
+
+// TestDataQualityParameterizedRuleRealServerIntegration covers the path a
+// parameterized rule takes: the compiled SQL carries placeholders, the preview
+// sends its bound arguments, and execution sends them again. A rule whose SQL
+// and arguments were not sent together used to fail the dry run with
+// "expected N arguments, got 0".
+func TestDataQualityParameterizedRuleRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	fixture := setupQualityMySQLFixture(t, true)
+	minValue := "0"
+	maxValue := "200"
+	config := &v1pb.QualityRuleConfig{
+		Config: &v1pb.QualityRuleConfig_Range{Range: &v1pb.RangeConfig{
+			Column: "age",
+			Min:    &minValue,
+			Max:    &maxValue,
+		}},
+		Filter: &v1pb.QualityFilter{Clauses: []*v1pb.QualityFilterClause{
+			{Column: "id", Op: v1pb.QualityFilterOperator_QUALITY_FILTER_OPERATOR_GT, Values: []string{"0"}},
+		}},
+	}
+	rule := fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
+		v1pb.QualityDimension_QUALITY_DIMENSION_VALIDITY, v1pb.QualitySeverity_QUALITY_SEVERITY_ERROR,
+		fixture.usersGUID, config)
+
+	// The dry run is the reported failure path: it must send the arguments.
+	preview, err := fixture.dataQuality.PreviewQualityRule(fixture.ctx, withToken(fixture.env.AdminToken(), &v1pb.PreviewQualityRuleRequest{
+		Parent: "workspaces/-",
+		Rule:   rule,
+	}))
+	require.NoError(t, err, "a parameterized rule must preview successfully")
+	require.NotEmpty(t, preview.Msg.GetCompiledSql())
+	require.NotEmpty(t, preview.Msg.GetParameters(), "the preview names the bound values")
+
+	run := fixture.runToCompletion(t, rule.GetName())
+	results := fixture.resultsForRun(t, run.GetName())
+	require.Len(t, results, 1)
+	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_PASS, results[0].GetStatus(), "the fixture's age is within 0..200")
+	require.NotEmpty(t, results[0].GetExecutedSql())
+	require.Equal(t, int64(1), results[0].GetTotalRows())
+}
