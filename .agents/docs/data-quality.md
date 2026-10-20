@@ -36,7 +36,7 @@ SPA ──ConnectRPC──► DataQualityService (api/v1) ──► component/da
 | D-12 | LLM 复用 `component/llm`：补 temperature/JSON/usage、共享 provider 解析；不另建 LLM 栈 | `ParseJSON[T]` 严格解码，ExplainSQL 回归绿 |
 | D-13 | 字段画像在 API 请求内同步执行（列数取设置、120s、只读源），不建 job 表 | 长任务不进 API，由上限保证 |
 | D-14 | CEL 是规则类型：Go 内求值、采样级、不生成 SQL | 方言无关；精确需求用 `custom_sql` |
-| D-15 | 前端第 6 个顶层导航 + 5 个子页；趋势图用内联 SVG（`QualityTrendChart`） | 修订 frontend-ui 的顶层导航约定；布局审计登记路由 |
+| D-15 | 前端第 6 个顶层导航 + 5 个入口子页；规则另有独立详情页；趋势图与最近执行用内联 SVG/状态色块条（`QualityTrendChart`、`QualityResultStrip`） | 修订 frontend-ui 的顶层导航约定；布局审计登记路由（详情页为动态 id，与 run/issue 详情一样不登记） |
 | D-16 | 保留期：结果随 run 90d、关闭问题 90d、画像/LLM 缓存 7d、已决建议 90d；由 maintenance runner 每 6h 清理 | 结果随 run 级联删除；只清已解决的问题与已决建议 |
 | D-17 | 不新增运行时依赖：CEL 用 `cel-go`，SQL 校验用 `omni`，图表自绘 | 保持单二进制 |
 | D-18 | 调度 = 进程内 tick + inflight map + 表内 `next_run_at` | 单副本；重启收敛、不补跑 |
@@ -193,9 +193,10 @@ run：`status ∈ {PENDING, RUNNING, COMPLETED, ABANDONED}`；`outcome` 是结�
 
 ### 3.7 前端与 i18n
 
-- 路由：`/data-quality`（重定向概览）、`/rules`（列表）、`/rules/new`、`/rules/:ruleId+/edit`、`/suggestions`、`/issues`、`/issues/:issueId+`、`/runs`、`/runs/:runId+`；`/settings/data-quality` 挂在 Settings。每条路由带 permission，侧栏按权限隐藏（不置灰）。父路由 `contentWidth: "full"`。
-- 导航：侧栏第 6 组“数据质量”（概览/规则/执行/问题/建议），SettingsNav 增加“数据质量”。
-- 页面/组件：`pages/data-quality/`（概览、规则列表、规则编辑器、执行列表/详情、问题列表/详情、建议队列）；`components/data-quality/`（状态/严重级别徽标、趋势图、结果表、规则表单与 filter 编辑器、失败样本、SQL 查看、建议卡、字段分析面板、AI 解释抽屉、草稿对话框、目标选择器、资产页质量区）。复用 shadcn-vue 原语，不新增 tabs 原语。
+- 路由：`/data-quality`（重定向概览）、`/rules`（列表）、`/rules/new`、`/rules/:ruleId+`（规则详情）、`/rules/:ruleId+/edit`、`/suggestions`、`/issues`、`/issues/:issueId+`、`/runs`、`/runs/:runId+`；`/settings/data-quality` 挂在 Settings。每条路由带 permission，侧栏按权限隐藏（不置灰）。父路由 `contentWidth: "full"`。
+- 导航：侧栏第 6 组“数据质量”（概览/规则/执行/问题/建议），SettingsNav 增加“数据质量”。规则详情从规则列表标题、执行详情的规则名、问题详情的规则名与资产页质量区进入（`rules.get` 在 member 基线内，只读可见）。
+- 页面/组件：`pages/data-quality/`（概览、规则列表、规则详情、规则编辑器、执行列表/详情、问题列表/详情、建议队列）；`components/data-quality/`（状态/严重级别徽标、趋势图、最近执行状态色块条、结果表、规则表单与 filter 编辑器、失败样本、SQL 查看、建议卡、字段分析面板、AI 解释抽屉、草稿对话框、目标选择器、资产页质量区）。复用 shadcn-vue 原语，不新增 tabs 原语。
+- 规则详情的信息层级：顶部“最近结果”大状态（图标+状态词+相对时间+实际值/阈值/失败行数）→ 最近 20 次状态色块条（旧→新，按状态着色，点击进 run 详情）→ 状态计数与通过率 → 最近执行表 → 规则定义（目标/字段/类型/维度/严重级别/调度/版本/时间/标签）。运行与编辑分别按 `rules.run`、`rules.update` 显示。
 - API/工具：`api/data-quality.ts` + `api/client.ts` 的 `dataQualityClient`；纯函数在 `src/utils/dataQuality*.ts`（状态/严重级别映射、表单校验、LLM 提示、概览、设置、建议）；`lib/notificationText.ts` 渲染通知文案；无跨页 Pinia 模块。
 - i18n：`dataQuality.*`、`dataQualitySettings.*`、`menu.dataQuality*`、`notifications.dataQuality*`；术语进 `frontend/glossary.json` 的 **Data Quality** 分类；动态 key 已登记 `frontend/scripts/check-vue-i18n.mjs` 的 `DYNAMIC_PREFIXES`。
 - 布局门禁：新路由登记 `frontend/scripts/audit-ui-layout.mjs`（含各表 `tableTopMaxY` 预算）；`ERROR` 与 `FAIL` 文案/徽标必须不同；编辑器保存前必须干跑（`PreviewQualityRule`）。

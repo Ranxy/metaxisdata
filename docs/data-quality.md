@@ -64,6 +64,15 @@ finishes. Every result carries one of six statuses:
 A run's own status is the worst result, and its six-state tallies are shown
 beside it. Failed results can be expanded for samples and the exact SQL.
 
+Every rule has its own page: open its title in Data Quality → Rules, or the rule
+name on a run result, an issue or a table's quality tab. It answers "is this rule
+healthy?" first — the latest status and its observed value, the pass rate, and a
+strip of the last 20 results in one color per status (green pass, amber warning,
+red fail, dark red execution error, grey skipped/not evaluated). Below that sits
+the recent execution table, whose rows open the run behind them, and the rule's
+definition (target, type, schedule, revision, tags). *Run now* and *Edit* appear
+there for callers who hold the matching permission.
+
 ## Problems and notifications
 
 A rule that starts failing opens an **issue**; it is the same issue until it

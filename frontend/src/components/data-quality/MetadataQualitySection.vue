@@ -125,9 +125,12 @@
               class="flex items-center justify-between gap-3 py-2"
             >
               <div class="min-w-0">
-                <div class="truncate text-sm font-medium">
+                <RouterLink
+                  :to="ruleRoute(rule.name)"
+                  class="block truncate text-sm font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
                   {{ rule.title || rule.name.split("/").pop() }}
-                </div>
+                </RouterLink>
                 <div class="mt-1 flex flex-wrap items-center gap-1">
                   <Badge variant="secondary">
                     {{ t(qualityRuleTypeKey(rule.ruleType)) }}
@@ -511,6 +514,13 @@ function labelOf(column: string): ColumnSemanticLabel | undefined {
 
 function profileOf(column: string): ColumnProfile | undefined {
   return profiles.value.find((profile) => profile.column === column);
+}
+
+function ruleRoute(name: string) {
+  return {
+    name: "DataQualityRuleDetail",
+    params: { ruleId: name.split("/") },
+  };
 }
 
 function runRoute(name: string) {

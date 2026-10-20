@@ -106,6 +106,11 @@ async function mountEditor(path: string) {
         component: { template: "<div />" },
       },
       {
+        path: "/data-quality/rules/:ruleId+",
+        name: "DataQualityRuleDetail",
+        component: { template: "<div />" },
+      },
+      {
         path: "/data-quality/suggestions",
         name: "DataQualitySuggestions",
         component: { template: "<div />" },
@@ -175,7 +180,9 @@ describe("DataQualityRuleEditorPage", () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
-    mocks.createQualityRule.mockResolvedValue(create(QualityRuleSchema, {}));
+    mocks.createQualityRule.mockResolvedValue(
+      create(QualityRuleSchema, { name: "workspaces/ws/qualityRules/rule-1" })
+    );
     mocks.updateQualitySuggestion.mockResolvedValue(
       create(QualitySuggestionSchema, {})
     );
@@ -439,7 +446,13 @@ describe("DataQualityRuleEditorPage", () => {
     expect(rule.scheduleInterval.seconds).toBe(3_600n);
     expect(rule.target.metaGuid).toBe(PREFILL);
     expect(rule.target.metaType).toBe(MetaType.TABLE);
-    expect(router.currentRoute.value.name).toBe("DataQualityRules");
+    expect(router.currentRoute.value.name).toBe("DataQualityRuleDetail");
+    expect(router.currentRoute.value.params.ruleId).toEqual([
+      "workspaces",
+      "ws",
+      "qualityRules",
+      "rule-1",
+    ]);
   });
 
   it("creates an aggregate rule with its bounds", async () => {

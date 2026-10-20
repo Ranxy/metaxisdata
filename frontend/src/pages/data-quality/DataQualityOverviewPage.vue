@@ -186,7 +186,17 @@
                   class="flex items-center justify-between gap-3 py-2.5"
                 >
                   <div class="min-w-0">
-                    <div class="truncate text-sm font-medium">
+                    <RouterLink
+                      v-if="canViewRule"
+                      :to="ruleRoute(failure.rule)"
+                      class="block truncate text-sm font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    >
+                      {{ ruleTitle(failure.rule) }}
+                    </RouterLink>
+                    <div
+                      v-else
+                      class="truncate text-sm font-medium"
+                    >
                       {{ ruleTitle(failure.rule) }}
                     </div>
                     <div class="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
@@ -255,7 +265,17 @@
                   class="flex items-center justify-between gap-3 py-2.5"
                 >
                   <div class="min-w-0">
-                    <div class="truncate text-sm font-medium">
+                    <RouterLink
+                      v-if="canViewRule"
+                      :to="ruleRoute(issue.rule)"
+                      class="block truncate text-sm font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    >
+                      {{ ruleTitle(issue.rule) }}
+                    </RouterLink>
+                    <div
+                      v-else
+                      class="truncate text-sm font-medium"
+                    >
                       {{ ruleTitle(issue.rule) }}
                     </div>
                     <div class="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
@@ -373,6 +393,9 @@ const authStore = useAuthStore();
 const canCreate = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.rules.create")
 );
+const canViewRule = computed(() =>
+  authStore.hasPermission("metaxisdata.dataQuality.rules.get")
+);
 
 const EMPTY_OVERVIEW: QualityOverview = create(QualityOverviewSchema, {});
 
@@ -437,6 +460,13 @@ function severityOf(
 
 function ruleTitle(ruleName: string): string {
   return ruleTitles.value[ruleName] || qualityRuleID(ruleName);
+}
+
+function ruleRoute(ruleName: string) {
+  return {
+    name: "DataQualityRuleDetail",
+    params: { ruleId: ruleName.split("/") },
+  };
 }
 
 function runRoute(name: string) {

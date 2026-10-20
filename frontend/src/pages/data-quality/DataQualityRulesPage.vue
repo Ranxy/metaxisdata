@@ -208,22 +208,16 @@
               >
                 <TableCell>
                   <div class="flex max-w-[14rem] min-w-0 items-center gap-2 md:max-w-md">
-                    <button
-                      v-if="canUpdate && rule.state !== QualityRuleState.ARCHIVED"
-                      type="button"
+                    <!-- The title is the way into the rule's own page; editing
+                         is the pencil action, so a reader-only caller still gets
+                         the destination. -->
+                    <RouterLink
+                      :to="ruleRoute(rule)"
                       class="truncate text-left font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                       :title="rule.title"
-                      @click="editRule(rule)"
                     >
                       {{ rule.title || qualityRuleID(rule.name) }}
-                    </button>
-                    <span
-                      v-else
-                      class="truncate font-medium"
-                      :title="rule.title"
-                    >
-                      {{ rule.title || qualityRuleID(rule.name) }}
-                    </span>
+                    </RouterLink>
                     <Badge
                       v-if="rule.orphanedReason"
                       variant="danger"
@@ -422,7 +416,7 @@ import {
 } from "lucide-vue-next";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { useRouter } from "vue-router";
+import { RouterLink, useRouter } from "vue-router";
 import {
   deleteQualityRule,
   listQualityRules,
@@ -641,6 +635,13 @@ function clearFilters() {
 
 function createRule() {
   void router.push({ name: "DataQualityRuleNew" });
+}
+
+function ruleRoute(rule: QualityRule) {
+  return {
+    name: "DataQualityRuleDetail",
+    params: { ruleId: rule.name.split("/") },
+  };
 }
 
 function editRule(rule: QualityRule) {
