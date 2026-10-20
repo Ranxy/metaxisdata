@@ -57,9 +57,11 @@ func CompileFailureRows(input CompileInput, limit int) (CompiledQuery, error) {
 		// is a list of columns and reasons, not rows of the target database.
 		return CompiledQuery{}, nil
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE:
-		// An aggregate or reconciliation result is a value, not a failing row: the
-		// result shows the observed value and its thresholds.
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION:
+		// An aggregate or reconciliation result is a value, not a failing row, and a
+		// CEL rule's failing rows are computed in process from the sample it already
+		// evaluated: none of them needs a separate failed-row statement.
 		return CompiledQuery{}, nil
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE,
@@ -67,8 +69,7 @@ func CompileFailureRows(input CompileInput, limit int) (CompiledQuery, error) {
 		// No failing row exists: the observation is a property of the whole table
 		// or of its newest row, so there is nothing to show.
 		return CompiledQuery{}, nil
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION:
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED:
 		return CompiledQuery{}, invalidConfig("rule type %s has no failed-row sample", input.Type)
 	default:
 		return CompiledQuery{}, invalidConfig("rule type %s has no failed-row sample", input.Type)

@@ -165,9 +165,7 @@ func ValidateConfig(target ResolvedTarget, ruleType storepb.QualityRuleType, con
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE:
 		return validateCrossTableConfig(target, config)
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION:
-		// The message exists so the config shape does not change in v1.1, but this
-		// build has no evaluator and must not accept a rule it cannot run.
-		return invalidConfig("expression rules arrive in v1.1")
+		return validateCELExpressionConfig(target, config)
 	default:
 		return invalidConfig("unknown rule type %s", ruleType)
 	}
@@ -228,11 +226,11 @@ func validatePercentSupport(ruleType storepb.QualityRuleType, metric storepb.Qua
 	return invalidConfig("threshold_metric PERCENT is not supported by %s: it has no total-rows denominator", ruleType)
 }
 
-// ruleTypeAllowsPercent lists the count-type rules whose compiled statement returns
-// total_rows alongside failed_rows, so a percentage threshold has a real
-// denominator. Everything else (custom_sql, freshness, row_count,
-// row_count_change, null_percent and the unimplemented CEL form) has no total to
-// divide by and rejects PERCENT.
+// ruleTypeAllowsPercent lists the count-type rules whose observation carries a
+// denominator, so a percentage threshold has a real meaning. For the SQL count
+// rules that is total_rows; a CEL rule's denominator is the number of sampled rows
+// it evaluated. Everything else (custom_sql, freshness, row_count,
+// row_count_change, null_percent) has no total to divide by and rejects PERCENT.
 func ruleTypeAllowsPercent(ruleType storepb.QualityRuleType) bool {
 	switch ruleType {
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
@@ -243,7 +241,8 @@ func ruleTypeAllowsPercent(ruleType storepb.QualityRuleType) bool {
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK:
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION:
 		return true
 	default:
 		return false
@@ -816,6 +815,30 @@ func validateCustomSQLConfig(target ResolvedTarget, config *storepb.QualityRuleC
 // are a percentage of the filtered rows, so they also stay within 0–100. An unset
 // fail threshold means 0, which is what the evaluator uses; a warn level above the
 // fail level could never be reported because the fail check runs first.
+// validateCELExpressionConfig checks one CEL rule: the referenced columns exist,
+// the sample size is legal, the thresholds are consistent in their unit, and the
+// expression compiles to a bool against those columns' CEL types.
+func validateCELExpressionConfig(target ResolvedTarget, config *storepb.QualityRuleConfig) error {
+	celConfig := config.GetCelExpression()
+	if celConfig == nil {
+		return invalidConfig("the CEL expression config is missing")
+	}
+	columns, err := celColumns(target, celConfig.GetColumns())
+	if err != nil {
+		return err
+	}
+	if _, err := celSampleRows(celConfig.GetSampleRows()); err != nil {
+		return err
+	}
+	if err := validateCountThresholds(config, celConfig.FailThreshold, celConfig.WarnThreshold); err != nil {
+		return err
+	}
+	if _, err := CompileCEL(columns, celConfig.GetExpression()); err != nil {
+		return err
+	}
+	return nil
+}
+
 func validateCountThresholds(config *storepb.QualityRuleConfig, fail, warn *float64) error {
 	percent := thresholdMetric(config) == storepb.QualityThresholdMetric_QUALITY_THRESHOLD_METRIC_PERCENT
 	failValue := 0.0

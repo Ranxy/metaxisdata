@@ -25,8 +25,10 @@ func NewExecutor() *Executor {
 }
 
 // Execute compiles the rule, runs its aggregate statement through the read-only
-// queryer, and interprets the result columns into an Observation. It optionally
-// runs one more bounded query for the failed-row sample.
+// queryer, and interprets the result columns into an Observation. A CEL rule is
+// the exception: its statement returns a sample of rows and the predicate runs in
+// this process. It optionally runs one more bounded query for the failed-row
+// sample.
 //
 // The rule's config must already be valid: validation is the save/dry-run path's
 // job, so a config that fails validation here is a defect rather than a user
@@ -75,6 +77,11 @@ func (*Executor) Execute(ctx context.Context, queryer db.ReadOnlyQueryer, resolu
 	compiled, err := Compile(input)
 	if err != nil {
 		return nil, err
+	}
+	if rule.Type == storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION {
+		// A CEL rule reads a bounded sample of rows and evaluates the predicate in
+		// this process; the query is not an aggregate and its rows are the input.
+		return executeCELRule(ctx, queryer, resolution, rule, opts, compiled)
 	}
 	if compiled.Kind != QueryAggregate {
 		return nil, badData("the compiler returned query kind %d for a rule that is observed by an aggregate", compiled.Kind)
@@ -147,6 +154,98 @@ func addSamples(ctx context.Context, queryer db.ReadOnlyQueryer, input CompileIn
 	return nil
 }
 
+// executeCELRule runs one CEL predicate over a bounded sample of the target's
+// rows. The sample query returns only the columns the expression reads, the
+// predicate runs in this process, and the observation is the count of rows that
+// did not satisfy it.
+//
+// The sample is all the rule ever sees, so the result records whether it was the
+// whole filtered table (fewer rows than the cap) or a sample (the cap was filled),
+// and how many rows were read.
+func executeCELRule(ctx context.Context, queryer db.ReadOnlyQueryer, resolution *Resolution, rule RuleSnapshot, opts ExecOptions, compiled CompiledQuery) (*Execution, error) {
+	config := rule.Config.GetCelExpression()
+	if config == nil {
+		return nil, invalidConfig("the CEL expression config is missing")
+	}
+	columns, err := celColumns(resolution.Target, config.GetColumns())
+	if err != nil {
+		return nil, err
+	}
+	sampleRows, err := celSampleRows(config.GetSampleRows())
+	if err != nil {
+		return nil, err
+	}
+	program, err := CompileCEL(columns, config.GetExpression())
+	if err != nil {
+		return nil, err
+	}
+	if compiled.Kind != QuerySample {
+		return nil, badData("the compiler returned query kind %d for a CEL rule, expect a sample query", compiled.Kind)
+	}
+
+	// MaxRows is the cap itself, not a page size: only by asking for exactly
+	// sample_rows can the executor tell a capped sample from a complete scan.
+	result, err := queryer.QueryReadOnly(ctx, compiled.SQL, db.QueryOptions{
+		MaxRows:  sampleRows,
+		MaxBytes: opts.MaxBytes,
+		Timeout:  opts.QueryTimeout,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := requireSampleColumns(result.Columns, compiled.Columns); err != nil {
+		return nil, err
+	}
+
+	sampleLimit := 0
+	if opts.StoreSamples {
+		sampleLimit = normalizeSampleLimit(opts.SampleLimit)
+	}
+	violations, evaluated, failingRows, err := evaluateCELRows(program, columns, result.Rows, sampleLimit)
+	if err != nil {
+		return nil, err
+	}
+
+	rowsRead := int64(len(result.Rows))
+	sampled := rowsRead == int64(sampleRows)
+	observation := Observation{
+		Observed:     float64(violations),
+		ObservedKind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT,
+		FailedRows:   violations,
+		TotalRows:    evaluated,
+		Sampled:      sampled,
+		SampleRows:   rowsRead,
+		Truncated:    result.Truncated,
+	}
+	execution := &Execution{
+		Observation: observation,
+		ExecutedSQL: truncateExecutedSQL(compiled.SQL),
+		Sampled:     sampled,
+		Truncated:   result.Truncated,
+	}
+	if sampleLimit > 0 && len(failingRows) > 0 {
+		// The failed-row sample is the rows the predicate rejected, already in
+		// memory: no second statement is needed for a CEL rule.
+		execution.Samples = SamplesFromRows(compiled.Columns, failingRows, sampleLimit)
+	}
+	return execution, nil
+}
+
+// requireSampleColumns checks that the sample returned the columns the compiled
+// statement selected, in order. Reading them by position is only safe when the
+// two lists agree.
+func requireSampleColumns(columns []string, expected []string) error {
+	if len(columns) != len(expected) {
+		return badData("the sample returned %d columns, expect %d", len(columns), len(expected))
+	}
+	for index, name := range expected {
+		if !strings.EqualFold(strings.TrimSpace(columns[index]), name) {
+			return badData("the sample column %d is %q, expect %q", index, columns[index], name)
+		}
+	}
+	return nil
+}
+
 // validateExecutionMetric rejects a percentage threshold on a rule whose
 // observation has no total to divide by. Validation refuses the combination when
 // the rule is saved; this is the run-time backstop for a stored rule that this
@@ -176,17 +275,18 @@ func validateExecutionMetric(ruleType storepb.QualityRuleType, config *storepb.Q
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK:
-		// These observations carry total_rows, so the evaluator can compute the
-		// percentage. null_percent ignores the shared metric (its own config
-		// decides count vs percentage) but still has a total, so it is accepted
-		// here rather than refused for a field it does not read.
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION:
+		// These observations carry a denominator, so the evaluator can compute the
+		// percentage. For a CEL rule it is the number of sampled rows the expression
+		// evaluated. null_percent ignores the shared metric (its own config decides
+		// count vs percentage) but still has a total, so it is accepted here rather
+		// than refused for a field it does not read.
 		return nil
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED:
 		return invalidConfig("rule type %s has no total rows for a percentage threshold", ruleType)
 	default:

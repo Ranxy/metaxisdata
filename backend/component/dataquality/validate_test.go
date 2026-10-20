@@ -667,17 +667,16 @@ func TestValidateCustomSQL(t *testing.T) {
 	runValidationCases(t, storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL, validationTarget(storepb.Engine_MYSQL), cases)
 }
 
-// The config message exists for v1.1, but this build has no evaluator: accepting
-// the rule would queue a check that can never run.
-func TestValidateCELExpressionIsNotSupported(t *testing.T) {
+// A CEL rule that compiles to a bool over existing columns is accepted; the
+// per-parameter and per-expression refusals are covered in cel_test.go.
+func TestValidateCELExpressionIsSupported(t *testing.T) {
 	t.Parallel()
 
 	config := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CelExpression{
-		CelExpression: &storepb.CelExpressionConfig{Expression: "amount > 0", Columns: []string{"amount"}, SampleRows: 100},
+		CelExpression: &storepb.CelExpressionConfig{Expression: "amount > 0.0", Columns: []string{"amount"}, SampleRows: 100},
 	}}
 	err := ValidateConfig(validationTarget(storepb.Engine_MYSQL), storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION, config)
-	require.Error(t, err)
-	require.Equal(t, common.Invalid, common.ErrorCode(err))
+	require.NoError(t, err)
 }
 
 // ValidateRule resolves the target first, so a missing store or config is refused

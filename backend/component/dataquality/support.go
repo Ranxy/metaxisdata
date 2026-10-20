@@ -15,7 +15,9 @@ func Supported(engine storepb.Engine, ruleType storepb.QualityRuleType) (bool, s
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED:
 		return false, "the rule type is required"
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION:
-		return false, "expression rules arrive in v1.1"
+		// The expression runs in Go over a bounded sample of rows, so it needs no
+		// engine-side predicate and works on every dialect DialectFor accepts.
+		return true, ""
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX:
 		// T-SQL has no regular-expression operator; the pattern cannot be pushed
 		// down, and evaluating it in process would silently scan the whole table.
