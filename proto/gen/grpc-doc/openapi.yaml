@@ -4126,6 +4126,563 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityRuleResults:
+        get:
+            tags:
+                - DataQualityService
+            description: List the per-rule results of runs, typically filtered by run.
+            operationId: DataQualityService_ListQualityRuleResults
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: |-
+                    The maximum number of results to return. If unspecified, at most 50 are
+                     returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  description: |-
+                    A page token, received from a previous ListQualityRuleResults call. Provide
+                     this to retrieve the subsequent page.
+                  schema:
+                    type: string
+                - name: run
+                  in: query
+                  description: 'Format: workspaces/{workspace}/qualityRuns/{quality_run}'
+                  schema:
+                    type: string
+                - name: rule
+                  in: query
+                  description: 'Format: workspaces/{workspace}/qualityRules/{quality_rule}'
+                  schema:
+                    type: string
+                - name: status
+                  in: query
+                  schema:
+                    enum:
+                        - QUALITY_STATUS_UNSPECIFIED
+                        - QUALITY_STATUS_PASS
+                        - QUALITY_STATUS_WARN
+                        - QUALITY_STATUS_FAIL
+                        - QUALITY_STATUS_ERROR
+                        - QUALITY_STATUS_SKIPPED
+                        - QUALITY_STATUS_NOT_EVALUATED
+                    type: string
+                    format: enum
+                - name: targetGuid
+                  in: query
+                  description: The exact target GUID.
+                  schema:
+                    type: string
+                - name: startTime
+                  in: query
+                  description: Only the results that started at or after this time.
+                  schema:
+                    type: string
+                    format: date-time
+                - name: endTime
+                  in: query
+                  description: Only the results that started before this time.
+                  schema:
+                    type: string
+                    format: date-time
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListQualityRuleResultsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityRules:
+        get:
+            tags:
+                - DataQualityService
+            description: List rules, newest first.
+            operationId: DataQualityService_ListQualityRules
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: |-
+                    The maximum number of rules to return. If unspecified, at most 50 are
+                     returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  description: |-
+                    A page token, received from a previous ListQualityRules call. Provide this
+                     to retrieve the subsequent page.
+                  schema:
+                    type: string
+                - name: instance
+                  in: query
+                  description: |-
+                    The following four filters are GUID path prefixes, not name matches: a rule
+                     matches when its target GUID starts with the given prefix. "instance_1"
+                     therefore selects every rule in that instance, whatever database or table it
+                     watches.
+                  schema:
+                    type: string
+                - name: database
+                  in: query
+                  schema:
+                    type: string
+                - name: schema
+                  in: query
+                  schema:
+                    type: string
+                - name: table
+                  in: query
+                  schema:
+                    type: string
+                - name: targetGuid
+                  in: query
+                  description: The exact target GUID.
+                  schema:
+                    type: string
+                - name: dimension
+                  in: query
+                  schema:
+                    enum:
+                        - QUALITY_DIMENSION_UNSPECIFIED
+                        - QUALITY_DIMENSION_COMPLETENESS
+                        - QUALITY_DIMENSION_VALIDITY
+                        - QUALITY_DIMENSION_UNIQUENESS
+                        - QUALITY_DIMENSION_CONSISTENCY
+                        - QUALITY_DIMENSION_TIMELINESS
+                        - QUALITY_DIMENSION_ACCURACY
+                    type: string
+                    format: enum
+                - name: ruleType
+                  in: query
+                  schema:
+                    enum:
+                        - QUALITY_RULE_TYPE_UNSPECIFIED
+                        - QUALITY_RULE_TYPE_ROW_COUNT
+                        - QUALITY_RULE_TYPE_ROW_COUNT_CHANGE
+                        - QUALITY_RULE_TYPE_NULL_PERCENT
+                        - QUALITY_RULE_TYPE_UNIQUE
+                        - QUALITY_RULE_TYPE_UNIQUE_COMBINATION
+                        - QUALITY_RULE_TYPE_ACCEPTED_VALUES
+                        - QUALITY_RULE_TYPE_RANGE
+                        - QUALITY_RULE_TYPE_REGEX
+                        - QUALITY_RULE_TYPE_STRING_LENGTH
+                        - QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY
+                        - QUALITY_RULE_TYPE_CROSS_COLUMN
+                        - QUALITY_RULE_TYPE_FRESHNESS
+                        - QUALITY_RULE_TYPE_CUSTOM_SQL
+                        - QUALITY_RULE_TYPE_CEL_EXPRESSION
+                    type: string
+                    format: enum
+                - name: severity
+                  in: query
+                  schema:
+                    enum:
+                        - QUALITY_SEVERITY_UNSPECIFIED
+                        - QUALITY_SEVERITY_WARNING
+                        - QUALITY_SEVERITY_ERROR
+                        - QUALITY_SEVERITY_CRITICAL
+                    type: string
+                    format: enum
+                - name: state
+                  in: query
+                  schema:
+                    enum:
+                        - QUALITY_RULE_STATE_UNSPECIFIED
+                        - QUALITY_RULE_STATE_ENABLED
+                        - QUALITY_RULE_STATE_PAUSED
+                        - QUALITY_RULE_STATE_ARCHIVED
+                    type: string
+                    format: enum
+                - name: owner
+                  in: query
+                  description: 'Format: users/{user}.'
+                  schema:
+                    type: string
+                - name: search
+                  in: query
+                  description: A substring match over the title and description.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListQualityRulesResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        post:
+            tags:
+                - DataQualityService
+            description: |-
+                Create a rule. The rule is validated and compiled before it is stored; a
+                 rejected rule is never persisted.
+            operationId: DataQualityService_CreateQualityRule
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/QualityRule'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityRule'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityRules/{qualityRule}:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                Read one rule, including its current revision and a summary of its most
+                 recent result.
+            operationId: DataQualityService_GetQualityRule
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityRule
+                  in: path
+                  description: The qualityRule id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityRule'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        delete:
+            tags:
+                - DataQualityService
+            description: |-
+                Delete a rule. The rule, its revisions and results are only archived, never
+                 physically removed, so history stays readable.
+            operationId: DataQualityService_DeleteQualityRule
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityRule
+                  in: path
+                  description: The qualityRule id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        patch:
+            tags:
+                - DataQualityService
+            description: |-
+                Update a rule. Every semantic edit appends a revision, so a historical
+                 result always stays explainable by the definition that produced it.
+            operationId: DataQualityService_UpdateQualityRule
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityRule
+                  in: path
+                  description: The qualityRule id.
+                  required: true
+                  schema:
+                    type: string
+                - name: updateMask
+                  in: query
+                  schema:
+                    type: string
+                    format: field-mask
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/QualityRule'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityRule'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityRules:preview:
+        post:
+            tags:
+                - DataQualityService
+            description: |-
+                Validate and compile a rule without saving it: config validation, filter
+                 validation and a `LIMIT 0` probe against the target's read-only data
+                 source. It writes nothing and creates no run.
+            operationId: DataQualityService_PreviewQualityRule
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PreviewQualityRuleRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PreviewQualityRuleResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityRules:run:
+        post:
+            tags:
+                - DataQualityService
+            description: |-
+                Execute rules now. The selected rules are grouped by instance, one run is
+                 created per instance, and the runs are queued; the response returns them
+                 while they are still pending. Clients poll GetQualityRun.
+            operationId: DataQualityService_RunQualityRules
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/RunQualityRulesRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/RunQualityRulesResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityRuns:
+        get:
+            tags:
+                - DataQualityService
+            description: List runs, newest first.
+            operationId: DataQualityService_ListQualityRuns
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: |-
+                    The maximum number of runs to return. If unspecified, at most 50 are
+                     returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  description: |-
+                    A page token, received from a previous ListQualityRuns call. Provide this to
+                     retrieve the subsequent page.
+                  schema:
+                    type: string
+                - name: status
+                  in: query
+                  description: The run lifecycle to filter by, e.g. only runs still PENDING.
+                  schema:
+                    enum:
+                        - QUALITY_RUN_STATUS_UNSPECIFIED
+                        - QUALITY_RUN_STATUS_PENDING
+                        - QUALITY_RUN_STATUS_RUNNING
+                        - QUALITY_RUN_STATUS_COMPLETED
+                        - QUALITY_RUN_STATUS_ABANDONED
+                    type: string
+                    format: enum
+                - name: trigger
+                  in: query
+                  schema:
+                    enum:
+                        - QUALITY_RUN_TRIGGER_UNSPECIFIED
+                        - QUALITY_RUN_TRIGGER_MANUAL
+                        - QUALITY_RUN_TRIGGER_SCHEDULED
+                    type: string
+                    format: enum
+                - name: instance
+                  in: query
+                  description: |-
+                    Only the runs that executed rules of this instance.
+                     Format: instances/{instance}
+                  schema:
+                    type: string
+                - name: startTime
+                  in: query
+                  description: Only the runs started at or after this time.
+                  schema:
+                    type: string
+                    format: date-time
+                - name: endTime
+                  in: query
+                  description: Only the runs started before this time.
+                  schema:
+                    type: string
+                    format: date-time
+                - name: initiator
+                  in: query
+                  description: 'Format: users/{user}.'
+                  schema:
+                    type: string
+                - name: outcome
+                  in: query
+                  description: |-
+                    The quality rollup to filter by, e.g. only failed runs. Matches completed
+                     runs only.
+                  schema:
+                    enum:
+                        - QUALITY_STATUS_UNSPECIFIED
+                        - QUALITY_STATUS_PASS
+                        - QUALITY_STATUS_WARN
+                        - QUALITY_STATUS_FAIL
+                        - QUALITY_STATUS_ERROR
+                        - QUALITY_STATUS_SKIPPED
+                        - QUALITY_STATUS_NOT_EVALUATED
+                    type: string
+                    format: enum
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListQualityRunsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityRuns/{qualityRun}:
+        get:
+            tags:
+                - DataQualityService
+            description: Read one run with its six-state tallies.
+            operationId: DataQualityService_GetQualityRun
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityRun
+                  in: path
+                  description: The qualityRun id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityRun'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
 components:
     schemas:
         APIKey:
@@ -4158,6 +4715,26 @@ components:
                         The OpenLineage namespace this key may write to. Empty means the key is
                          unscoped and may submit events for any namespace. Ingestion rejects an
                          event whose job or dataset namespace differs from the scope.
+        AcceptedValuesConfig:
+            type: object
+            properties:
+                column:
+                    type: string
+                values:
+                    type: array
+                    items:
+                        type: string
+                    description: At most 200 values, encoded as strings and converted by the column's type.
+                allowNull:
+                    type: boolean
+                    description: When false (the default), a NULL value is a violation.
+                failThreshold:
+                    type: number
+                    format: double
+                warnThreshold:
+                    type: number
+                    format: double
+            description: AcceptedValuesConfig counts rows whose column value is outside a fixed set.
         AnalysisScope:
             required:
                 - guid
@@ -4779,6 +5356,28 @@ components:
                     type: number
                     format: double
             description: BoundingBox is the bounding box of a spatial index.
+        CelExpressionConfig:
+            type: object
+            properties:
+                expression:
+                    type: string
+                columns:
+                    type: array
+                    items:
+                        type: string
+                    description: The columns the expression reads. They must all exist on the target.
+                sampleRows:
+                    type: integer
+                    format: int32
+                failThreshold:
+                    type: number
+                    format: double
+                warnThreshold:
+                    type: number
+                    format: double
+            description: |-
+                CelExpressionConfig evaluates an expression over a sample of rows in Go. It is
+                 v1.1; the message exists so that the config shape does not change then.
         CheckConstraintMetadata:
             type: object
             properties:
@@ -4876,6 +5475,16 @@ components:
                          This field is populated when syncing from the database. When empty (e.g., when parsing
                          from SQL files), the system cannot automatically drop the constraint.
             description: ColumnMetadata is the metadata for columns.
+        ColumnValue:
+            type: object
+            properties:
+                column:
+                    type: string
+                value:
+                    type: string
+            description: |-
+                ColumnValue is one column of a sampled failed row. Values are truncated before
+                 they are returned, so a wide text column cannot bloat the response.
         ConnectedApp:
             type: object
             properties:
@@ -5035,6 +5644,53 @@ components:
             properties:
                 state:
                     type: string
+        CrossColumnConfig:
+            type: object
+            properties:
+                leftColumn:
+                    type: string
+                rightColumn:
+                    type: string
+                op:
+                    enum:
+                        - QUALITY_COMPARISON_OPERATOR_UNSPECIFIED
+                        - QUALITY_COMPARISON_OPERATOR_EQ
+                        - QUALITY_COMPARISON_OPERATOR_NE
+                        - QUALITY_COMPARISON_OPERATOR_LT
+                        - QUALITY_COMPARISON_OPERATOR_LTE
+                        - QUALITY_COMPARISON_OPERATOR_GT
+                        - QUALITY_COMPARISON_OPERATOR_GTE
+                    type: string
+                    format: enum
+                tolerance:
+                    type: number
+                    description: |-
+                        Tolerance subtracted/added to the comparison to absorb floating point noise.
+                         Only meaningful for numeric columns.
+                    format: double
+                failThreshold:
+                    type: number
+                    format: double
+                warnThreshold:
+                    type: number
+                    format: double
+            description: |-
+                CrossColumnConfig counts rows where two columns of the same row do not satisfy
+                 the comparison.
+        CustomSQLConfig:
+            type: object
+            properties:
+                sql:
+                    type: string
+                failThreshold:
+                    type: number
+                    format: double
+                warnThreshold:
+                    type: number
+                    format: double
+            description: |-
+                CustomSQLConfig counts the rows a read-only statement returns as failures. The
+                 statement is single SELECT/WITH, at most 8 KiB, and is never rewritten.
         DataSource:
             type: object
             properties:
@@ -5639,6 +6295,14 @@ components:
                     items:
                         $ref: '#/components/schemas/ColumnMetadata'
                     description: The columns is the ordered list of columns in a foreign table.
+        FailureSample:
+            type: object
+            properties:
+                columns:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ColumnValue'
+            description: FailureSample is one failed row, already truncated.
         FetchLLMModelsRequest:
             type: object
             properties:
@@ -5725,6 +6389,20 @@ components:
                          The match_type is the PostgreSQL specific field.
                          It's empty string for other databases.
             description: ForeignKeyMetadata is the metadata for foreign keys.
+        FreshnessConfig:
+            type: object
+            properties:
+                timestampColumn:
+                    type: string
+                maxLagSeconds:
+                    type: integer
+                    format: int32
+                warnLagSeconds:
+                    type: integer
+                    format: int32
+            description: |-
+                FreshnessConfig measures how long ago the newest timestamp is. A NULL newest
+                 timestamp follows on_empty.
         FunctionMetadata:
             type: object
             properties:
@@ -6606,6 +7284,33 @@ components:
                         $ref: '#/components/schemas/OpenLineageTask'
                 nextPageToken:
                     type: string
+        ListQualityRuleResultsResponse:
+            type: object
+            properties:
+                qualityRuleResults:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityRuleResult'
+                nextPageToken:
+                    type: string
+        ListQualityRulesResponse:
+            type: object
+            properties:
+                qualityRules:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityRule'
+                nextPageToken:
+                    type: string
+        ListQualityRunsResponse:
+            type: object
+            properties:
+                qualityRuns:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityRun'
+                nextPageToken:
+                    type: string
         ListRolesResponse:
             type: object
             properties:
@@ -7160,6 +7865,25 @@ components:
                  notification table and are not written into the payload; the store stamps
                  them on insert and fills them from the row on read, so the payload and the
                  columns cannot disagree. The payload holds only the message proper.
+        NullPercentConfig:
+            type: object
+            properties:
+                column:
+                    type: string
+                maxNullCount:
+                    type: string
+                warnNullCount:
+                    type: string
+                maxNullPct:
+                    type: number
+                    format: double
+                warnNullPct:
+                    type: number
+                    format: double
+            description: |-
+                NullPercentConfig bounds a column's nulls. Exactly one of the count pair and
+                 the percentage pair carries the fail threshold; each pair's warn field is
+                 optional and must not exceed the fail threshold.
         OAuth2IdentityProviderConfig:
             required:
                 - fieldMapping
@@ -7595,6 +8319,37 @@ components:
                     type: string
                 latestEventType:
                     type: string
+        PreviewQualityRuleRequest:
+            required:
+                - parent
+                - rule
+            type: object
+            properties:
+                parent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
+                rule:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityRule'
+                    description: The rule to validate, typically one that has not been saved yet.
+        PreviewQualityRuleResponse:
+            type: object
+            properties:
+                compiledSql:
+                    type: string
+                    description: The SQL the rule compiles to, for the editor's query preview.
+                referencedColumns:
+                    type: array
+                    items:
+                        type: string
+                    description: The target columns the compiled SQL reads.
+                parameters:
+                    type: array
+                    items:
+                        type: string
+                    description: |-
+                        The filter values the compiler bound, encoded for display, in the order the
+                         placeholders appear in compiled_sql.
         ProcedureMetadata:
             type: object
             properties:
@@ -7623,6 +8378,573 @@ components:
                 skipDump:
                     type: boolean
             description: ProcedureMetadata is the metadata for procedures.
+        QualityFilter:
+            type: object
+            properties:
+                clauses:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityFilterClause'
+            description: |-
+                QualityFilter is the AND filter a rule applies before observing. Values are
+                 encoded as strings and converted by the compiler using the column's type; no
+                 user text reaches SQL unparameterized.
+        QualityFilterClause:
+            type: object
+            properties:
+                column:
+                    type: string
+                op:
+                    enum:
+                        - QUALITY_FILTER_OPERATOR_UNSPECIFIED
+                        - QUALITY_FILTER_OPERATOR_EQ
+                        - QUALITY_FILTER_OPERATOR_NE
+                        - QUALITY_FILTER_OPERATOR_LT
+                        - QUALITY_FILTER_OPERATOR_LTE
+                        - QUALITY_FILTER_OPERATOR_GT
+                        - QUALITY_FILTER_OPERATOR_GTE
+                        - QUALITY_FILTER_OPERATOR_IN
+                        - QUALITY_FILTER_OPERATOR_NOT_IN
+                        - QUALITY_FILTER_OPERATOR_IS_NULL
+                        - QUALITY_FILTER_OPERATOR_IS_NOT_NULL
+                    type: string
+                    format: enum
+                values:
+                    type: array
+                    items:
+                        type: string
+                    description: Unused by IS_NULL / IS_NOT_NULL, at most 100 values for IN / NOT_IN.
+            description: QualityFilterClause is one comparison in a QualityFilter.
+        QualityResultSummary:
+            type: object
+            properties:
+                status:
+                    enum:
+                        - QUALITY_STATUS_UNSPECIFIED
+                        - QUALITY_STATUS_PASS
+                        - QUALITY_STATUS_WARN
+                        - QUALITY_STATUS_FAIL
+                        - QUALITY_STATUS_ERROR
+                        - QUALITY_STATUS_SKIPPED
+                        - QUALITY_STATUS_NOT_EVALUATED
+                    type: string
+                    format: enum
+                observedValue:
+                    type: number
+                    format: double
+                observedKind:
+                    enum:
+                        - QUALITY_OBSERVED_KIND_UNSPECIFIED
+                        - QUALITY_OBSERVED_KIND_COUNT
+                        - QUALITY_OBSERVED_KIND_RATIO
+                        - QUALITY_OBSERVED_KIND_SECONDS
+                        - QUALITY_OBSERVED_KIND_TIMESTAMP
+                        - QUALITY_OBSERVED_KIND_NUMBER
+                    type: string
+                    format: enum
+                failedRows:
+                    type: string
+                totalRows:
+                    type: string
+                run:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityRuns/{quality_run}'
+                finishTime:
+                    type: string
+                    format: date-time
+            description: |-
+                QualityResultSummary is the compact projection of the latest result that a
+                 rule list shows. It is not a stored entity.
+        QualityRule:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityRules/{quality_rule}'
+                title:
+                    type: string
+                    description: The human-readable title, shown in lists and notifications.
+                description:
+                    type: string
+                dimension:
+                    enum:
+                        - QUALITY_DIMENSION_UNSPECIFIED
+                        - QUALITY_DIMENSION_COMPLETENESS
+                        - QUALITY_DIMENSION_VALIDITY
+                        - QUALITY_DIMENSION_UNIQUENESS
+                        - QUALITY_DIMENSION_CONSISTENCY
+                        - QUALITY_DIMENSION_TIMELINESS
+                        - QUALITY_DIMENSION_ACCURACY
+                    type: string
+                    format: enum
+                ruleType:
+                    enum:
+                        - QUALITY_RULE_TYPE_UNSPECIFIED
+                        - QUALITY_RULE_TYPE_ROW_COUNT
+                        - QUALITY_RULE_TYPE_ROW_COUNT_CHANGE
+                        - QUALITY_RULE_TYPE_NULL_PERCENT
+                        - QUALITY_RULE_TYPE_UNIQUE
+                        - QUALITY_RULE_TYPE_UNIQUE_COMBINATION
+                        - QUALITY_RULE_TYPE_ACCEPTED_VALUES
+                        - QUALITY_RULE_TYPE_RANGE
+                        - QUALITY_RULE_TYPE_REGEX
+                        - QUALITY_RULE_TYPE_STRING_LENGTH
+                        - QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY
+                        - QUALITY_RULE_TYPE_CROSS_COLUMN
+                        - QUALITY_RULE_TYPE_FRESHNESS
+                        - QUALITY_RULE_TYPE_CUSTOM_SQL
+                        - QUALITY_RULE_TYPE_CEL_EXPRESSION
+                    type: string
+                    format: enum
+                target:
+                    $ref: '#/components/schemas/QualityTarget'
+                config:
+                    $ref: '#/components/schemas/QualityRuleConfig'
+                severity:
+                    enum:
+                        - QUALITY_SEVERITY_UNSPECIFIED
+                        - QUALITY_SEVERITY_WARNING
+                        - QUALITY_SEVERITY_ERROR
+                        - QUALITY_SEVERITY_CRITICAL
+                    type: string
+                    format: enum
+                state:
+                    enum:
+                        - QUALITY_RULE_STATE_UNSPECIFIED
+                        - QUALITY_RULE_STATE_ENABLED
+                        - QUALITY_RULE_STATE_PAUSED
+                        - QUALITY_RULE_STATE_ARCHIVED
+                    type: string
+                    format: enum
+                owner:
+                    type: string
+                    description: 'Format: users/{user}. Empty when the rule has no owner.'
+                scheduleInterval:
+                    pattern: ^-?(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,9})?s$
+                    type: string
+                    description: |-
+                        How often the rule runs, between 15m and 7d. Zero is rejected: pausing is
+                         how scheduling stops, and a newly created rule first runs on its next
+                         scheduled slot, not immediately.
+                revision:
+                    readOnly: true
+                    type: integer
+                    description: |-
+                        The current revision. Every semantic edit increments it and appends a
+                         revision row.
+                    format: int32
+                targetSchemaChanged:
+                    readOnly: true
+                    type: boolean
+                    description: |-
+                        True when the target's current metadata hash differs from the hash recorded
+                         when the rule was saved, i.e. the target's schema changed underneath it.
+                createTime:
+                    readOnly: true
+                    type: string
+                    format: date-time
+                updateTime:
+                    readOnly: true
+                    type: string
+                    format: date-time
+                lastResult:
+                    readOnly: true
+                    allOf:
+                        - $ref: '#/components/schemas/QualityResultSummary'
+                    description: |-
+                        The most recent result, for the list view. It is not part of the rule and
+                         is only populated by reads, never persisted on write.
+                orphanedReason:
+                    readOnly: true
+                    type: string
+                    description: |-
+                        Why the target can no longer be resolved, e.g. because the table was
+                         dropped. Empty while the target is healthy.
+                muteUntil:
+                    type: string
+                    description: |-
+                        Rule-level mute. It only silences issue notifications; executions still run
+                         and results are still recorded.
+                    format: date-time
+                tags:
+                    type: array
+                    items:
+                        type: string
+            description: QualityRule is one data quality check.
+        QualityRuleConfig:
+            type: object
+            properties:
+                rowCount:
+                    $ref: '#/components/schemas/RowCountConfig'
+                rowCountChange:
+                    $ref: '#/components/schemas/RowCountChangeConfig'
+                nullPercent:
+                    $ref: '#/components/schemas/NullPercentConfig'
+                unique:
+                    $ref: '#/components/schemas/UniqueConfig'
+                uniqueCombination:
+                    $ref: '#/components/schemas/UniqueCombinationConfig'
+                acceptedValues:
+                    $ref: '#/components/schemas/AcceptedValuesConfig'
+                range:
+                    $ref: '#/components/schemas/RangeConfig'
+                regex:
+                    $ref: '#/components/schemas/RegexConfig'
+                stringLength:
+                    $ref: '#/components/schemas/StringLengthConfig'
+                referentialIntegrity:
+                    $ref: '#/components/schemas/ReferentialIntegrityConfig'
+                crossColumn:
+                    $ref: '#/components/schemas/CrossColumnConfig'
+                freshness:
+                    $ref: '#/components/schemas/FreshnessConfig'
+                customSql:
+                    $ref: '#/components/schemas/CustomSQLConfig'
+                celExpression:
+                    allOf:
+                        - $ref: '#/components/schemas/CelExpressionConfig'
+                    description: v1.1.
+                thresholdMetric:
+                    enum:
+                        - QUALITY_THRESHOLD_METRIC_UNSPECIFIED
+                        - QUALITY_THRESHOLD_METRIC_COUNT
+                        - QUALITY_THRESHOLD_METRIC_PERCENT
+                    type: string
+                    format: enum
+                filter:
+                    $ref: '#/components/schemas/QualityFilter'
+                onEmpty:
+                    enum:
+                        - QUALITY_EMPTY_BEHAVIOR_UNSPECIFIED
+                        - QUALITY_EMPTY_BEHAVIOR_NOT_EVALUATED
+                        - QUALITY_EMPTY_BEHAVIOR_PASS
+                        - QUALITY_EMPTY_BEHAVIOR_FAIL
+                    type: string
+                    format: enum
+            description: |-
+                QualityRuleConfig is the typed parameters of one rule. Exactly one arm of the
+                 oneof is set, and it must correspond to the rule's type; the filter, the empty
+                 behavior and the count/percent metric are shared by every type.
+        QualityRuleResult:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityRuleResults/{quality_rule_result}'
+                run:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityRuns/{quality_run}'
+                rule:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityRules/{quality_rule}'
+                ruleRevision:
+                    type: integer
+                    description: The rule revision this result was judged with.
+                    format: int32
+                ruleEngineVersion:
+                    type: string
+                    description: |-
+                        The engine version that produced it, so a changed judgment is traceable to a
+                         changed implementation.
+                target:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityTarget'
+                    description: The target as it was when the result was produced.
+                status:
+                    enum:
+                        - QUALITY_STATUS_UNSPECIFIED
+                        - QUALITY_STATUS_PASS
+                        - QUALITY_STATUS_WARN
+                        - QUALITY_STATUS_FAIL
+                        - QUALITY_STATUS_ERROR
+                        - QUALITY_STATUS_SKIPPED
+                        - QUALITY_STATUS_NOT_EVALUATED
+                    type: string
+                    format: enum
+                observedValue:
+                    type: number
+                    description: The observed value; its unit is observed_kind.
+                    format: double
+                observedKind:
+                    enum:
+                        - QUALITY_OBSERVED_KIND_UNSPECIFIED
+                        - QUALITY_OBSERVED_KIND_COUNT
+                        - QUALITY_OBSERVED_KIND_RATIO
+                        - QUALITY_OBSERVED_KIND_SECONDS
+                        - QUALITY_OBSERVED_KIND_TIMESTAMP
+                        - QUALITY_OBSERVED_KIND_NUMBER
+                    type: string
+                    format: enum
+                thresholds:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityThresholds'
+                    description: The thresholds that were applied, snapshotted.
+                failedRows:
+                    type: string
+                totalRows:
+                    type: string
+                sampled:
+                    type: boolean
+                    description: True when the observation was made over a sample rather than every row.
+                sampleRows:
+                    type: string
+                truncated:
+                    type: boolean
+                    description: True when the samples were cut off by the sample limit.
+                samples:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FailureSample'
+                    description: Failed rows kept as evidence, already truncated per value.
+                executedSql:
+                    type: string
+                    description: The SQL that was executed. Kept so a result can be re-checked by hand.
+                errorCode:
+                    type: string
+                    description: |-
+                        A machine-readable failure class: CONNECTION, AUTH, TIMEOUT, PERMISSION,
+                         UNSUPPORTED, SQL_SYNTAX, BAD_DATA, LIMIT_EXCEEDED or ORPHANED. Empty unless
+                         status is ERROR.
+                errorMessage:
+                    type: string
+                    description: A human-readable failure message. Empty unless status is ERROR.
+                duration:
+                    pattern: ^-?(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,9})?s$
+                    type: string
+                startTime:
+                    type: string
+                    format: date-time
+                finishTime:
+                    type: string
+                    format: date-time
+            description: QualityRuleResult is one rule's outcome in one run.
+        QualityRun:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityRuns/{quality_run}'
+                trigger:
+                    enum:
+                        - QUALITY_RUN_TRIGGER_UNSPECIFIED
+                        - QUALITY_RUN_TRIGGER_MANUAL
+                        - QUALITY_RUN_TRIGGER_SCHEDULED
+                    type: string
+                    format: enum
+                status:
+                    enum:
+                        - QUALITY_RUN_STATUS_UNSPECIFIED
+                        - QUALITY_RUN_STATUS_PENDING
+                        - QUALITY_RUN_STATUS_RUNNING
+                        - QUALITY_RUN_STATUS_COMPLETED
+                        - QUALITY_RUN_STATUS_ABANDONED
+                    type: string
+                    description: |-
+                        The run's lifecycle. A queued or running run reports PENDING / RUNNING here;
+                         its outcome is not known yet.
+                    format: enum
+                counts:
+                    $ref: '#/components/schemas/QualityRunCounts'
+                startTime:
+                    type: string
+                    format: date-time
+                finishTime:
+                    type: string
+                    description: Unset while the run is queued or still executing.
+                    format: date-time
+                initiator:
+                    type: string
+                    description: |-
+                        The principal that started the run. Format: users/{user}. Empty for a
+                         scheduled run.
+                instance:
+                    type: string
+                    description: 'The instance this batch belongs to. Format: instances/{instance}'
+                outcome:
+                    readOnly: true
+                    enum:
+                        - QUALITY_STATUS_UNSPECIFIED
+                        - QUALITY_STATUS_PASS
+                        - QUALITY_STATUS_WARN
+                        - QUALITY_STATUS_FAIL
+                        - QUALITY_STATUS_ERROR
+                        - QUALITY_STATUS_SKIPPED
+                        - QUALITY_STATUS_NOT_EVALUATED
+                    type: string
+                    description: |-
+                        The rollup of the run's results: the worst status any result reported.
+                         Unset until the run completes; ERROR and FAIL stay distinct.
+                    format: enum
+            description: |-
+                QualityRun is one execution batch: manually selected rules, or the rules of one
+                 instance that became due in one scheduler tick.
+        QualityRunCounts:
+            type: object
+            properties:
+                total:
+                    type: integer
+                    format: int32
+                pass:
+                    type: integer
+                    format: int32
+                warn:
+                    type: integer
+                    format: int32
+                fail:
+                    type: integer
+                    format: int32
+                error:
+                    type: integer
+                    format: int32
+                skipped:
+                    type: integer
+                    format: int32
+                notEvaluated:
+                    type: integer
+                    format: int32
+            description: QualityRunCounts is the six-state tally of one run.
+        QualityTarget:
+            type: object
+            properties:
+                metaGuid:
+                    type: string
+                    description: The globally unique metadata GUID of the target table.
+                metaType:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - APPLICATION_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - OPENLINEAGE
+                    type: string
+                    format: enum
+                path:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityTargetPath'
+                    description: |-
+                        Where the target lived when the rule was saved. It is display metadata, not
+                         identity: the GUID and its meta type are the identity.
+                columns:
+                    type: array
+                    items:
+                        type: string
+                    description: |-
+                        The columns the rule reads, as a snapshot for display. The column named in
+                         the config is authoritative; validation requires them to agree.
+            description: QualityTarget is what a rule observes.
+        QualityTargetPath:
+            type: object
+            properties:
+                instance:
+                    type: string
+                database:
+                    type: string
+                schema:
+                    type: string
+                object:
+                    type: string
+                column:
+                    type: string
+                    description: Empty for a table-level rule.
+            description: |-
+                QualityTargetPath is the display snapshot of where a target lived when the
+                 rule was saved.
+        QualityThresholds:
+            type: object
+            properties:
+                warnValue:
+                    type: number
+                    description: Unset means the rule has no warning level.
+                    format: double
+                failValue:
+                    type: number
+                    format: double
+                warnValueUpper:
+                    type: number
+                    format: double
+                failValueUpper:
+                    type: number
+                    format: double
+                comparison:
+                    enum:
+                        - QUALITY_COMPARISON_UNSPECIFIED
+                        - QUALITY_COMPARISON_GREATER_THAN
+                        - QUALITY_COMPARISON_LESS_THAN
+                        - QUALITY_COMPARISON_OUTSIDE_RANGE
+                        - QUALITY_COMPARISON_INSIDE_RANGE
+                    type: string
+                    format: enum
+                onEmpty:
+                    enum:
+                        - QUALITY_EMPTY_BEHAVIOR_UNSPECIFIED
+                        - QUALITY_EMPTY_BEHAVIOR_NOT_EVALUATED
+                        - QUALITY_EMPTY_BEHAVIOR_PASS
+                        - QUALITY_EMPTY_BEHAVIOR_FAIL
+                    type: string
+                    format: enum
+            description: |-
+                QualityThresholds is the threshold snapshot a result records, so a historical
+                 result can be explained after the rule's thresholds changed. For
+                 GREATER_THAN / LESS_THAN only value fields are set; for the range comparisons
+                 the lower and upper bounds are.
+        RangeConfig:
+            type: object
+            properties:
+                column:
+                    type: string
+                min:
+                    type: string
+                max:
+                    type: string
+                inclusive:
+                    type: boolean
+                    description: |-
+                        Whether both bounds are inclusive. Default false, i.e. the interval is open
+                         on both ends.
+                failThreshold:
+                    type: number
+                    format: double
+                warnThreshold:
+                    type: number
+                    format: double
+            description: |-
+                RangeConfig counts rows outside a bound pair. At least one bound is required;
+                 the values are strings parsed with the column's type.
+        ReferentialIntegrityConfig:
+            type: object
+            properties:
+                childColumn:
+                    type: string
+                parentTable:
+                    type: string
+                    description: The parent table as "schema.table".
+                parentColumn:
+                    type: string
+                allowNull:
+                    type: boolean
+                    description: When true, a NULL child value is not an orphan. Default false.
+                failThreshold:
+                    type: number
+                    format: double
+                warnThreshold:
+                    type: number
+                    format: double
+            description: |-
+                ReferentialIntegrityConfig counts child rows with no matching parent row. The
+                 parent must live in the same instance, database and schema.
         RefreshRequest:
             type: object
             properties: {}
@@ -7632,6 +8954,23 @@ components:
             description: |-
                 RefreshResponse is empty: both credentials the refresh produces travel in
                  HttpOnly cookies, so no token ever reaches page JavaScript.
+        RegexConfig:
+            type: object
+            properties:
+                column:
+                    type: string
+                pattern:
+                    type: string
+                failThreshold:
+                    type: number
+                    format: double
+                warnThreshold:
+                    type: number
+                    format: double
+            description: |-
+                RegexConfig counts rows whose column value does not match a regular
+                 expression. The pattern is Go RE2 syntax and is also translated for the
+                 engine's own regex operator.
         RevokeConnectedAppRequest:
             required:
                 - name
@@ -7672,6 +9011,41 @@ components:
                  workspaceMember) are defined in Go and never stored in the DB; custom roles
                  live in the role table. Both resolve identically in the IAM engine.
                  Predefined roles are read-only over this API.
+        RowCountChangeConfig:
+            type: object
+            properties:
+                maxIncreasePct:
+                    type: number
+                    format: double
+                maxDecreasePct:
+                    type: number
+                    format: double
+                warnIncreasePct:
+                    type: number
+                    format: double
+                warnDecreasePct:
+                    type: number
+                    format: double
+            description: |-
+                RowCountChangeConfig bounds the change against the rule's last successful
+                 observation. Without a recent baseline the result is NOT_EVALUATED.
+        RowCountConfig:
+            type: object
+            properties:
+                minRows:
+                    type: string
+                maxRows:
+                    type: string
+                exactRows:
+                    type: string
+                    description: When set, the row count must equal it exactly.
+                warnMinRows:
+                    type: string
+                warnMaxRows:
+                    type: string
+            description: |-
+                RowCountConfig bounds the number of rows. At least one bound is required; a
+                 warn bound makes the rule report WARN before it reports FAIL.
         RuleMetadata:
             type: object
             properties:
@@ -7697,6 +9071,39 @@ components:
                     type: string
                     description: The full CREATE RULE statement.
             description: RuleMetadata is the metadata for PostgreSQL rules.
+        RunQualityRulesRequest:
+            required:
+                - parent
+            type: object
+            properties:
+                parent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
+                rules:
+                    type: array
+                    items:
+                        type: string
+                    description: |-
+                        The rules to run, at most 200. At least one of rules, instance and
+                         target_guid must be set.
+                instance:
+                    type: string
+                    description: |-
+                        Restrict the selection to the enabled rules of one instance.
+                         Format: instances/{instance}
+                targetGuid:
+                    type: string
+                    description: Restrict the selection to the enabled rules that watch this table.
+        RunQualityRulesResponse:
+            type: object
+            properties:
+                runs:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityRun'
+                    description: |-
+                        One run per instance in the selection. All of them are queued and pending
+                         when the response is returned; poll GetQualityRun for their outcome.
         SchemaMetadata:
             type: object
             properties:
@@ -8025,6 +9432,22 @@ components:
                  supported way to read them is the OpenLineageService resources. They are
                  filtered out of ListMetadata/GetMetadata/SearchMetadata rather than
                  serialized as an empty StoredMetadata.
+        StringLengthConfig:
+            type: object
+            properties:
+                column:
+                    type: string
+                minLen:
+                    type: string
+                maxLen:
+                    type: string
+                failThreshold:
+                    type: number
+                    format: double
+                warnThreshold:
+                    type: number
+                    format: double
+            description: StringLengthConfig counts rows whose string length is outside the bounds.
         SyncDatabaseRequest:
             required:
                 - name
@@ -8383,6 +9806,48 @@ components:
                     description: |-
                         The name of the deleted user.
                          Format: users/{user}
+        UniqueCombinationConfig:
+            type: object
+            properties:
+                columns:
+                    type: array
+                    items:
+                        type: string
+                allColumns:
+                    type: boolean
+                    description: |-
+                        Use every column of the target table instead of the list above. That makes
+                         the rule a whole-row duplicate check.
+                countNulls:
+                    type: boolean
+                failThreshold:
+                    type: number
+                    format: double
+                warnThreshold:
+                    type: number
+                    format: double
+            description: |-
+                UniqueCombinationConfig counts duplicated tuples across several columns, or
+                 across every column of the table when all_columns is set.
+        UniqueConfig:
+            type: object
+            properties:
+                column:
+                    type: string
+                countNulls:
+                    type: boolean
+                    description: |-
+                        When true, NULL values are treated as a value: more than one NULL is a
+                         duplicate. The default is false, matching SQL uniqueness.
+                failThreshold:
+                    type: number
+                    format: double
+                warnThreshold:
+                    type: number
+                    format: double
+            description: |-
+                UniqueConfig counts duplicated non-NULL values in one column. The threshold is
+                 measured per threshold_metric; the default fail threshold is zero.
         UpdateDebugConfigRequest:
             required:
                 - enabled
@@ -8614,6 +10079,15 @@ tags:
          and UserService's self-service paths do. The permission catalog still defines
          connectedApps.list and connectedApps.revoke, which are what the handler checks
          before returning another user's rows or revoking another user's connection.
+    - name: DataQualityService
+      description: |-
+        DataQualityService manages the checks that watch the data itself: rules,
+         their executions, and the per-rule results of those executions.
+
+         A rule observes one target — a table, or one column of it — with a typed
+         check (row count, null percent, uniqueness, accepted values, ...) on a
+         schedule or on demand. A run groups the results of one instance; it is
+         created asynchronously and polled until it finishes.
     - name: DatabaseService
     - name: EnvironmentService
       description: |-

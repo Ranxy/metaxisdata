@@ -1,0 +1,605 @@
+syntax = "proto3";
+
+package metaxisdata.store;
+
+option go_package = "generated-go/store";
+
+// This file defines the JSONB payloads of the data quality tables. The scalar
+// columns of those tables (ids, statuses, timestamps, thresholds) are ordinary
+// columns; the messages here are what protojson writes into a JSONB column, which
+// is why their field names are camelCased in the database.
+//
+// The enums are duplicated in metaxisdata.v1 and the two definitions must stay
+// value-compatible: a row written by the runner carries the same numbers the API
+// hands to a browser.
+
+// QualityRuleType is the observation a rule makes. The value is immutable for a
+// rule: changing the type is a different rule and a new revision.
+enum QualityRuleType {
+  QUALITY_RULE_TYPE_UNSPECIFIED = 0;
+  QUALITY_RULE_TYPE_ROW_COUNT = 1;
+  QUALITY_RULE_TYPE_ROW_COUNT_CHANGE = 2;
+  QUALITY_RULE_TYPE_NULL_PERCENT = 3;
+  QUALITY_RULE_TYPE_UNIQUE = 4;
+  QUALITY_RULE_TYPE_UNIQUE_COMBINATION = 5;
+  QUALITY_RULE_TYPE_ACCEPTED_VALUES = 6;
+  QUALITY_RULE_TYPE_RANGE = 7;
+  QUALITY_RULE_TYPE_REGEX = 8;
+  QUALITY_RULE_TYPE_STRING_LENGTH = 9;
+  QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY = 10;
+  QUALITY_RULE_TYPE_CROSS_COLUMN = 11;
+  QUALITY_RULE_TYPE_FRESHNESS = 12;
+  QUALITY_RULE_TYPE_CUSTOM_SQL = 13;
+  // v1.1. The value exists here only so that the two enum definitions stay
+  // value-compatible; v1 never writes it.
+  QUALITY_RULE_TYPE_CEL_EXPRESSION = 14;
+}
+
+// QualityDimension is the data quality dimension a rule measures. It is display
+// metadata and grouping for the overview.
+enum QualityDimension {
+  QUALITY_DIMENSION_UNSPECIFIED = 0;
+  QUALITY_DIMENSION_COMPLETENESS = 1;
+  QUALITY_DIMENSION_VALIDITY = 2;
+  QUALITY_DIMENSION_UNIQUENESS = 3;
+  QUALITY_DIMENSION_CONSISTENCY = 4;
+  QUALITY_DIMENSION_TIMELINESS = 5;
+  QUALITY_DIMENSION_ACCURACY = 6;
+}
+
+// QualitySeverity is how much an issue on this rule matters. It is rule metadata
+// and is copied onto the issue it opens.
+enum QualitySeverity {
+  QUALITY_SEVERITY_UNSPECIFIED = 0;
+  QUALITY_SEVERITY_WARNING = 1;
+  QUALITY_SEVERITY_ERROR = 2;
+  QUALITY_SEVERITY_CRITICAL = 3;
+}
+
+// QualityStatus is the outcome of one rule execution. ERROR is not FAIL: ERROR
+// means the check could not be evaluated at all, FAIL means the data failed it.
+enum QualityStatus {
+  QUALITY_STATUS_UNSPECIFIED = 0;
+  QUALITY_STATUS_PASS = 1;
+  QUALITY_STATUS_WARN = 2;
+  QUALITY_STATUS_FAIL = 3;
+  QUALITY_STATUS_ERROR = 4;
+  QUALITY_STATUS_SKIPPED = 5;
+  QUALITY_STATUS_NOT_EVALUATED = 6;
+}
+
+// QualityRunTrigger is what started a run.
+enum QualityRunTrigger {
+  QUALITY_RUN_TRIGGER_UNSPECIFIED = 0;
+  QUALITY_RUN_TRIGGER_MANUAL = 1;
+  QUALITY_RUN_TRIGGER_SCHEDULED = 2;
+}
+
+// QualityRunStatus is the lifecycle of a run, which is separate from the quality
+// status its results roll up to. A queued run has no outcome yet.
+enum QualityRunStatus {
+  QUALITY_RUN_STATUS_UNSPECIFIED = 0;
+  // Created and waiting for the runner.
+  QUALITY_RUN_STATUS_PENDING = 1;
+  // The runner is executing this run's rules.
+  QUALITY_RUN_STATUS_RUNNING = 2;
+  // Every rule was attempted; outcome holds the rollup.
+  QUALITY_RUN_STATUS_COMPLETED = 3;
+  // A restart discarded the run before it finished. It is not retried.
+  QUALITY_RUN_STATUS_ABANDONED = 4;
+}
+
+// QualityIssueStatus is the lifecycle state of an issue.
+enum QualityIssueStatus {
+  QUALITY_ISSUE_STATUS_UNSPECIFIED = 0;
+  QUALITY_ISSUE_STATUS_OPEN = 1;
+  QUALITY_ISSUE_STATUS_ACKNOWLEDGED = 2;
+  QUALITY_ISSUE_STATUS_RESOLVED = 3;
+}
+
+// QualityResolutionReason is why an issue was closed.
+enum QualityResolutionReason {
+  QUALITY_RESOLUTION_REASON_UNSPECIFIED = 0;
+  QUALITY_RESOLUTION_REASON_FIXED = 1;
+  QUALITY_RESOLUTION_REASON_EXPECTED = 2;
+  QUALITY_RESOLUTION_REASON_NO_ACTION_NEEDED = 3;
+  QUALITY_RESOLUTION_REASON_DUPLICATE = 4;
+  QUALITY_RESOLUTION_REASON_AUTO_RECOVERED = 5;
+}
+
+// QualityRuleState is whether a rule is scheduled. ARCHIVED is the soft-delete
+// state: the rule, its revisions, results and issues stay readable.
+enum QualityRuleState {
+  QUALITY_RULE_STATE_UNSPECIFIED = 0;
+  QUALITY_RULE_STATE_ENABLED = 1;
+  QUALITY_RULE_STATE_PAUSED = 2;
+  QUALITY_RULE_STATE_ARCHIVED = 3;
+}
+
+// QualityObservedKind is the unit of the observed value a result records.
+enum QualityObservedKind {
+  QUALITY_OBSERVED_KIND_UNSPECIFIED = 0;
+  QUALITY_OBSERVED_KIND_COUNT = 1;
+  QUALITY_OBSERVED_KIND_RATIO = 2;
+  QUALITY_OBSERVED_KIND_SECONDS = 3;
+  QUALITY_OBSERVED_KIND_TIMESTAMP = 4;
+  QUALITY_OBSERVED_KIND_NUMBER = 5;
+}
+
+// QualityThresholdMetric selects what a count-type rule's threshold is compared
+// against: the number of failed rows, or failed rows divided by total rows.
+enum QualityThresholdMetric {
+  QUALITY_THRESHOLD_METRIC_UNSPECIFIED = 0;
+  QUALITY_THRESHOLD_METRIC_COUNT = 1;
+  QUALITY_THRESHOLD_METRIC_PERCENT = 2;
+}
+
+// QualityEmptyBehavior is what a rule does when the query succeeded but produced
+// nothing to judge: no rows at all, a NULL timestamp, no baseline to compare
+// with. The default is NOT_EVALUATED so an empty table never looks like a pass.
+enum QualityEmptyBehavior {
+  QUALITY_EMPTY_BEHAVIOR_UNSPECIFIED = 0;
+  QUALITY_EMPTY_BEHAVIOR_NOT_EVALUATED = 1;
+  QUALITY_EMPTY_BEHAVIOR_PASS = 2;
+  QUALITY_EMPTY_BEHAVIOR_FAIL = 3;
+}
+
+// QualityComparison is how the observed value is compared with a threshold.
+enum QualityComparison {
+  QUALITY_COMPARISON_UNSPECIFIED = 0;
+  // The rule fails when the observed value is greater than the threshold:
+  // counts of invalid rows, ratios, and freshness lag.
+  QUALITY_COMPARISON_GREATER_THAN = 1;
+  // The rule fails when the observed value is less than the threshold.
+  QUALITY_COMPARISON_LESS_THAN = 2;
+  // The rule fails when the observed value falls outside [lower, upper]: row
+  // count bounds.
+  QUALITY_COMPARISON_OUTSIDE_RANGE = 3;
+  // The rule fails when the observed value falls inside [lower, upper]: an
+  // accepted range expressed as a pass band.
+  QUALITY_COMPARISON_INSIDE_RANGE = 4;
+}
+
+// QualityFilterOperator is one comparison in a rule's AND filter.
+enum QualityFilterOperator {
+  QUALITY_FILTER_OPERATOR_UNSPECIFIED = 0;
+  QUALITY_FILTER_OPERATOR_EQ = 1;
+  QUALITY_FILTER_OPERATOR_NE = 2;
+  QUALITY_FILTER_OPERATOR_LT = 3;
+  QUALITY_FILTER_OPERATOR_LTE = 4;
+  QUALITY_FILTER_OPERATOR_GT = 5;
+  QUALITY_FILTER_OPERATOR_GTE = 6;
+  QUALITY_FILTER_OPERATOR_IN = 7;
+  QUALITY_FILTER_OPERATOR_NOT_IN = 8;
+  QUALITY_FILTER_OPERATOR_IS_NULL = 9;
+  QUALITY_FILTER_OPERATOR_IS_NOT_NULL = 10;
+}
+
+// QualityComparisonOperator is the SQL comparison a cross-column rule applies
+// between two columns of the same row.
+enum QualityComparisonOperator {
+  QUALITY_COMPARISON_OPERATOR_UNSPECIFIED = 0;
+  QUALITY_COMPARISON_OPERATOR_EQ = 1;
+  QUALITY_COMPARISON_OPERATOR_NE = 2;
+  QUALITY_COMPARISON_OPERATOR_LT = 3;
+  QUALITY_COMPARISON_OPERATOR_LTE = 4;
+  QUALITY_COMPARISON_OPERATOR_GT = 5;
+  QUALITY_COMPARISON_OPERATOR_GTE = 6;
+}
+
+// QualitySemanticType is the closed vocabulary a column may be labeled with. It
+// is the input to the deterministic semantic-type-to-rule mapping; the model may
+// only choose from these values.
+enum QualitySemanticType {
+  QUALITY_SEMANTIC_TYPE_UNSPECIFIED = 0;
+  QUALITY_SEMANTIC_TYPE_EMAIL = 1;
+  QUALITY_SEMANTIC_TYPE_PHONE = 2;
+  QUALITY_SEMANTIC_TYPE_URL = 3;
+  QUALITY_SEMANTIC_TYPE_UUID = 4;
+  QUALITY_SEMANTIC_TYPE_IP = 5;
+  QUALITY_SEMANTIC_TYPE_COUNTRY_CODE = 6;
+  QUALITY_SEMANTIC_TYPE_CURRENCY = 7;
+  QUALITY_SEMANTIC_TYPE_AMOUNT = 8;
+  QUALITY_SEMANTIC_TYPE_QUANTITY = 9;
+  QUALITY_SEMANTIC_TYPE_PERCENTAGE = 10;
+  QUALITY_SEMANTIC_TYPE_ID = 11;
+  QUALITY_SEMANTIC_TYPE_BUSINESS_KEY = 12;
+  QUALITY_SEMANTIC_TYPE_TIMESTAMP = 13;
+  QUALITY_SEMANTIC_TYPE_DATE = 14;
+  QUALITY_SEMANTIC_TYPE_ENUM = 15;
+  QUALITY_SEMANTIC_TYPE_FREE_TEXT = 16;
+  QUALITY_SEMANTIC_TYPE_UNKNOWN = 17;
+}
+
+// QualitySuggestionKind is what a suggestion proposes.
+enum QualitySuggestionKind {
+  QUALITY_SUGGESTION_KIND_UNSPECIFIED = 0;
+  QUALITY_SUGGESTION_KIND_RULE_DRAFT = 1;
+  QUALITY_SUGGESTION_KIND_LABEL = 2;
+}
+
+// QualitySuggestionStatus is where a suggestion is in the review queue.
+enum QualitySuggestionStatus {
+  QUALITY_SUGGESTION_STATUS_UNSPECIFIED = 0;
+  QUALITY_SUGGESTION_STATUS_PENDING = 1;
+  QUALITY_SUGGESTION_STATUS_ACCEPTED = 2;
+  QUALITY_SUGGESTION_STATUS_REJECTED = 3;
+}
+
+// QualitySuggestionSource is what produced a suggestion.
+enum QualitySuggestionSource {
+  QUALITY_SUGGESTION_SOURCE_UNSPECIFIED = 0;
+  QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE = 1;
+  QUALITY_SUGGESTION_SOURCE_PROFILE = 2;
+}
+
+// QualityLabelSource is who asserted a column's semantic label.
+enum QualityLabelSource {
+  QUALITY_LABEL_SOURCE_UNSPECIFIED = 0;
+  QUALITY_LABEL_SOURCE_MANUAL = 1;
+  QUALITY_LABEL_SOURCE_LLM = 2;
+}
+
+// QualityLabelStatus is whether a label is in effect.
+enum QualityLabelStatus {
+  QUALITY_LABEL_STATUS_UNSPECIFIED = 0;
+  QUALITY_LABEL_STATUS_SUGGESTED = 1;
+  QUALITY_LABEL_STATUS_ACCEPTED = 2;
+  QUALITY_LABEL_STATUS_REJECTED = 3;
+}
+
+// QualityTargetPath is the display snapshot of where a rule's target lived when
+// the rule was saved. It is not the identity: the GUID plus its meta type is.
+message QualityTargetPath {
+  string instance = 1;
+  string database = 2;
+  string schema = 3;
+  string object = 4;
+  // Empty for a table-level rule.
+  string column = 5;
+}
+
+// QualityFilter is the AND filter a rule applies before observing. Values are
+// encoded as strings and converted by the compiler using the column's type; no
+// user text reaches SQL unparameterized.
+message QualityFilter {
+  repeated QualityFilterClause clauses = 1;
+}
+
+// QualityFilterClause is one comparison in a QualityFilter.
+message QualityFilterClause {
+  string column = 1;
+  QualityFilterOperator op = 2;
+  // Unused by IS_NULL / IS_NOT_NULL, at most 100 values for IN / NOT_IN.
+  repeated string values = 3;
+}
+
+// QualityThresholds is the threshold snapshot a result records, so a historical
+// result can be explained after the rule's thresholds changed. For
+// GREATER_THAN / LESS_THAN only value fields are set; for the range comparisons
+// the lower and upper bounds are.
+message QualityThresholds {
+  // Unset means the rule has no warning level.
+  optional double warn_value = 1;
+  optional double fail_value = 2;
+  optional double warn_value_upper = 3;
+  optional double fail_value_upper = 4;
+  QualityComparison comparison = 5;
+  QualityEmptyBehavior on_empty = 6;
+}
+
+// QualityRunCounts is the six-state tally of one run.
+message QualityRunCounts {
+  int32 total = 1;
+  int32 pass = 2;
+  int32 warn = 3;
+  int32 fail = 4;
+  int32 error = 5;
+  int32 skipped = 6;
+  int32 not_evaluated = 7;
+}
+
+// QualityFailureSamples holds the rows a failed check sampled as evidence.
+message QualityFailureSamples {
+  repeated FailureSample samples = 1;
+}
+
+// FailureSample is one failed row, already truncated.
+message FailureSample {
+  repeated ColumnValue columns = 1;
+}
+
+// ColumnValue is one column of a sampled failed row. Values are truncated before
+// they are stored, so a wide text column cannot bloat the result row.
+message ColumnValue {
+  string column = 1;
+  string value = 2;
+}
+
+// ColumnProfile is the deterministic statistics of one column. It is computed
+// without a model and is the evidence a semantic label cites.
+message ColumnProfile {
+  int64 total_rows = 1;
+  int64 null_count = 2;
+  int64 distinct_count = 3;
+  // True when the database refused an exact distinct count and the value came
+  // from a sample.
+  bool distinct_estimated = 4;
+  // Display forms of the observed extremes, truncated; empty when the column has
+  // no comparable values.
+  string min_value = 5;
+  string max_value = 6;
+  // Unset for non-string columns.
+  optional int64 min_length = 7;
+  optional int64 max_length = 8;
+  // The most frequent values, at most ten, each truncated.
+  repeated ProfileValue top_values = 9;
+  // Shape summaries such as "numeric", "alpha", "date-like", "mixed".
+  repeated string patterns = 10;
+}
+
+// ProfileValue is one frequent value of a low-cardinality column.
+message ProfileValue {
+  string value = 1;
+  int64 count = 2;
+}
+
+// SemanticLabelEvidence is why a label was assigned. It cites the inputs the
+// labeler saw so a reviewer can check the reasoning without re-running it.
+message SemanticLabelEvidence {
+  // Columns whose values or context the label derives from.
+  repeated string columns = 1;
+  // Profile facts such as "null_rate=0.02" or "distinct=12".
+  repeated string metrics = 2;
+  // Lineage relations that motivated the label, e.g. "join key of orders".
+  repeated string lineage = 3;
+  string rationale = 4;
+}
+
+// QualitySuggestionPayload is the review-queue payload: a rule draft the reviewer
+// can load into the editor, or a semantic label awaiting confirmation.
+message QualitySuggestionPayload {
+  oneof payload {
+    QualityRuleDraftConfig rule = 1;
+    SemanticLabelSuggestion label = 2;
+  }
+}
+
+// QualityRuleDraftConfig is one model-proposed rule, already validated into the
+// typed config. It is never executed without a human saving it as a rule.
+message QualityRuleDraftConfig {
+  QualityRuleConfig config = 1;
+  QualitySeverity severity = 2;
+  string title = 3;
+  string rationale = 4;
+  double confidence = 5;
+}
+
+// SemanticLabelSuggestion is a model-proposed semantic label for one column.
+message SemanticLabelSuggestion {
+  string column = 1;
+  QualitySemanticType label = 2;
+  double confidence = 3;
+  SemanticLabelEvidence evidence = 4;
+  // The rule types the deterministic mapping would suggest for this label, in
+  // display order. The model may rank types but may not invent one.
+  repeated QualityRuleType suggested_rule_types = 5;
+}
+
+// DataQualityLLMResult is the validated output of one analysis, cached so the
+// same question is not paid for twice. It is separate from the SQL explanation
+// cache because its invalidation axis is the rule revision and prompt version,
+// not the SQL text.
+message DataQualityLLMResult {
+  oneof result {
+    RuleDraftResult rule_draft = 1;
+    ExplanationResult explanation = 2;
+  }
+  string prompt_version = 3;
+  string provider = 4;
+  string model = 5;
+  int64 prompt_tokens = 6;
+  int64 completion_tokens = 7;
+  int64 total_tokens = 8;
+}
+
+// RuleDraftResult is the parsed output of one rule-draft analysis.
+message RuleDraftResult {
+  repeated QualityRuleDraftConfig suggestions = 1;
+}
+
+// ExplanationResult is the parsed output of one failure explanation.
+message ExplanationResult {
+  repeated ExplanationHypothesis hypotheses = 1;
+  double confidence = 2;
+  string summary = 3;
+}
+
+// ExplanationHypothesis is one possible cause with the evidence behind it and the
+// next step a responder should take.
+message ExplanationHypothesis {
+  string cause = 1;
+  repeated string evidence = 2;
+  string next_step = 3;
+}
+
+// QualityRuleConfig is the typed parameters of one rule. Exactly one arm of the
+// oneof is set, and it must correspond to the rule's type; the filter, the empty
+// behavior and the count/percent metric are shared by every type.
+message QualityRuleConfig {
+  oneof config {
+    RowCountConfig row_count = 1;
+    RowCountChangeConfig row_count_change = 2;
+    NullPercentConfig null_percent = 3;
+    UniqueConfig unique = 4;
+    UniqueCombinationConfig unique_combination = 5;
+    AcceptedValuesConfig accepted_values = 6;
+    RangeConfig range = 7;
+    RegexConfig regex = 8;
+    StringLengthConfig string_length = 9;
+    ReferentialIntegrityConfig referential_integrity = 10;
+    CrossColumnConfig cross_column = 11;
+    FreshnessConfig freshness = 12;
+    CustomSQLConfig custom_sql = 13;
+    // v1.1.
+    CelExpressionConfig cel_expression = 14;
+  }
+  // How a count-type rule's thresholds are measured: failed rows, or failed rows
+  // divided by total rows. Ignored by types whose config already names the unit.
+  // Numbers 15-27 are reserved for future rule configs; the v1 message uses the
+  // same numbers so the two definitions stay structurally identical.
+  reserved 15 to 27;
+  QualityThresholdMetric threshold_metric = 28;
+  QualityFilter filter = 29;
+  QualityEmptyBehavior on_empty = 30;
+}
+
+// RowCountConfig bounds the number of rows. At least one bound is required; a
+// warn bound makes the rule report WARN before it reports FAIL.
+message RowCountConfig {
+  optional int64 min_rows = 1;
+  optional int64 max_rows = 2;
+  // When set, the row count must equal it exactly.
+  optional int64 exact_rows = 3;
+  optional int64 warn_min_rows = 4;
+  optional int64 warn_max_rows = 5;
+}
+
+// RowCountChangeConfig bounds the change against the rule's last successful
+// observation. Without a recent baseline the result is NOT_EVALUATED.
+message RowCountChangeConfig {
+  optional double max_increase_pct = 1;
+  optional double max_decrease_pct = 2;
+  optional double warn_increase_pct = 3;
+  optional double warn_decrease_pct = 4;
+}
+
+// NullPercentConfig bounds a column's nulls. Exactly one of the count pair and
+// the percentage pair carries the fail threshold; each pair's warn field is
+// optional and must not exceed the fail threshold.
+message NullPercentConfig {
+  string column = 1;
+  optional int64 max_null_count = 2;
+  optional int64 warn_null_count = 3;
+  optional double max_null_pct = 4;
+  optional double warn_null_pct = 5;
+}
+
+// UniqueConfig counts duplicated non-NULL values in one column. The threshold is
+// measured per threshold_metric; the default fail threshold is zero.
+message UniqueConfig {
+  string column = 1;
+  // When true, NULL values are treated as a value: more than one NULL is a
+  // duplicate. The default is false, matching SQL uniqueness.
+  bool count_nulls = 2;
+  optional double fail_threshold = 3;
+  optional double warn_threshold = 4;
+}
+
+// UniqueCombinationConfig counts duplicated tuples across several columns, or
+// across every column of the table when all_columns is set.
+message UniqueCombinationConfig {
+  repeated string columns = 1;
+  // Use every column of the target table instead of the list above. That makes
+  // the rule a whole-row duplicate check.
+  bool all_columns = 2;
+  bool count_nulls = 3;
+  optional double fail_threshold = 4;
+  optional double warn_threshold = 5;
+}
+
+// AcceptedValuesConfig counts rows whose column value is outside a fixed set.
+message AcceptedValuesConfig {
+  string column = 1;
+  // At most 200 values, encoded as strings and converted by the column's type.
+  repeated string values = 2;
+  // When false (the default), a NULL value is a violation.
+  bool allow_null = 3;
+  optional double fail_threshold = 4;
+  optional double warn_threshold = 5;
+}
+
+// RangeConfig counts rows outside a bound pair. At least one bound is required;
+// the values are strings parsed with the column's type.
+message RangeConfig {
+  string column = 1;
+  optional string min = 2;
+  optional string max = 3;
+  // Whether both bounds are inclusive. Default false, i.e. the interval is open
+  // on both ends.
+  bool inclusive = 4;
+  optional double fail_threshold = 5;
+  optional double warn_threshold = 6;
+}
+
+// RegexConfig counts rows whose column value does not match a regular
+// expression. The pattern is Go RE2 syntax and is also translated for the
+// engine's own regex operator.
+message RegexConfig {
+  string column = 1;
+  string pattern = 2;
+  optional double fail_threshold = 3;
+  optional double warn_threshold = 4;
+}
+
+// StringLengthConfig counts rows whose string length is outside the bounds.
+message StringLengthConfig {
+  string column = 1;
+  optional int64 min_len = 2;
+  optional int64 max_len = 3;
+  optional double fail_threshold = 4;
+  optional double warn_threshold = 5;
+}
+
+// ReferentialIntegrityConfig counts child rows with no matching parent row. The
+// parent must live in the same instance, database and schema.
+message ReferentialIntegrityConfig {
+  string child_column = 1;
+  // The parent table as "schema.table".
+  string parent_table = 2;
+  string parent_column = 3;
+  // When true, a NULL child value is not an orphan. Default false.
+  bool allow_null = 4;
+  optional double fail_threshold = 5;
+  optional double warn_threshold = 6;
+}
+
+// CrossColumnConfig counts rows where two columns of the same row do not satisfy
+// the comparison.
+message CrossColumnConfig {
+  string left_column = 1;
+  string right_column = 2;
+  QualityComparisonOperator op = 3;
+  // Tolerance subtracted/added to the comparison to absorb floating point noise.
+  // Only meaningful for numeric columns.
+  optional double tolerance = 4;
+  optional double fail_threshold = 5;
+  optional double warn_threshold = 6;
+}
+
+// FreshnessConfig measures how long ago the newest timestamp is. A NULL newest
+// timestamp follows on_empty.
+message FreshnessConfig {
+  string timestamp_column = 1;
+  int32 max_lag_seconds = 2;
+  optional int32 warn_lag_seconds = 3;
+}
+
+// CustomSQLConfig counts the rows a read-only statement returns as failures. The
+// statement is single SELECT/WITH, at most 8 KiB, and is never rewritten.
+message CustomSQLConfig {
+  string sql = 1;
+  optional double fail_threshold = 2;
+  optional double warn_threshold = 3;
+}
+
+// CelExpressionConfig evaluates an expression over a sample of rows in Go. It is
+// v1.1; the message exists so the config shape does not change then.
+message CelExpressionConfig {
+  string expression = 1;
+  // The columns the expression reads. They must all exist on the target.
+  repeated string columns = 2;
+  int32 sample_rows = 3;
+  optional double fail_threshold = 4;
+  optional double warn_threshold = 5;
+}

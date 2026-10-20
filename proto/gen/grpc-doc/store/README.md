@@ -15,6 +15,63 @@
   
     - [Engine](#metaxisdata-store-Engine)
   
+- [store/data_quality.proto](#store_data_quality-proto)
+    - [AcceptedValuesConfig](#metaxisdata-store-AcceptedValuesConfig)
+    - [CelExpressionConfig](#metaxisdata-store-CelExpressionConfig)
+    - [ColumnProfile](#metaxisdata-store-ColumnProfile)
+    - [ColumnValue](#metaxisdata-store-ColumnValue)
+    - [CrossColumnConfig](#metaxisdata-store-CrossColumnConfig)
+    - [CustomSQLConfig](#metaxisdata-store-CustomSQLConfig)
+    - [DataQualityLLMResult](#metaxisdata-store-DataQualityLLMResult)
+    - [ExplanationHypothesis](#metaxisdata-store-ExplanationHypothesis)
+    - [ExplanationResult](#metaxisdata-store-ExplanationResult)
+    - [FailureSample](#metaxisdata-store-FailureSample)
+    - [FreshnessConfig](#metaxisdata-store-FreshnessConfig)
+    - [NullPercentConfig](#metaxisdata-store-NullPercentConfig)
+    - [ProfileValue](#metaxisdata-store-ProfileValue)
+    - [QualityFailureSamples](#metaxisdata-store-QualityFailureSamples)
+    - [QualityFilter](#metaxisdata-store-QualityFilter)
+    - [QualityFilterClause](#metaxisdata-store-QualityFilterClause)
+    - [QualityRuleConfig](#metaxisdata-store-QualityRuleConfig)
+    - [QualityRuleDraftConfig](#metaxisdata-store-QualityRuleDraftConfig)
+    - [QualityRunCounts](#metaxisdata-store-QualityRunCounts)
+    - [QualitySuggestionPayload](#metaxisdata-store-QualitySuggestionPayload)
+    - [QualityTargetPath](#metaxisdata-store-QualityTargetPath)
+    - [QualityThresholds](#metaxisdata-store-QualityThresholds)
+    - [RangeConfig](#metaxisdata-store-RangeConfig)
+    - [ReferentialIntegrityConfig](#metaxisdata-store-ReferentialIntegrityConfig)
+    - [RegexConfig](#metaxisdata-store-RegexConfig)
+    - [RowCountChangeConfig](#metaxisdata-store-RowCountChangeConfig)
+    - [RowCountConfig](#metaxisdata-store-RowCountConfig)
+    - [RuleDraftResult](#metaxisdata-store-RuleDraftResult)
+    - [SemanticLabelEvidence](#metaxisdata-store-SemanticLabelEvidence)
+    - [SemanticLabelSuggestion](#metaxisdata-store-SemanticLabelSuggestion)
+    - [StringLengthConfig](#metaxisdata-store-StringLengthConfig)
+    - [UniqueCombinationConfig](#metaxisdata-store-UniqueCombinationConfig)
+    - [UniqueConfig](#metaxisdata-store-UniqueConfig)
+  
+    - [QualityComparison](#metaxisdata-store-QualityComparison)
+    - [QualityComparisonOperator](#metaxisdata-store-QualityComparisonOperator)
+    - [QualityDimension](#metaxisdata-store-QualityDimension)
+    - [QualityEmptyBehavior](#metaxisdata-store-QualityEmptyBehavior)
+    - [QualityFilterOperator](#metaxisdata-store-QualityFilterOperator)
+    - [QualityIssueStatus](#metaxisdata-store-QualityIssueStatus)
+    - [QualityLabelSource](#metaxisdata-store-QualityLabelSource)
+    - [QualityLabelStatus](#metaxisdata-store-QualityLabelStatus)
+    - [QualityObservedKind](#metaxisdata-store-QualityObservedKind)
+    - [QualityResolutionReason](#metaxisdata-store-QualityResolutionReason)
+    - [QualityRuleState](#metaxisdata-store-QualityRuleState)
+    - [QualityRuleType](#metaxisdata-store-QualityRuleType)
+    - [QualityRunStatus](#metaxisdata-store-QualityRunStatus)
+    - [QualityRunTrigger](#metaxisdata-store-QualityRunTrigger)
+    - [QualitySemanticType](#metaxisdata-store-QualitySemanticType)
+    - [QualitySeverity](#metaxisdata-store-QualitySeverity)
+    - [QualityStatus](#metaxisdata-store-QualityStatus)
+    - [QualitySuggestionKind](#metaxisdata-store-QualitySuggestionKind)
+    - [QualitySuggestionSource](#metaxisdata-store-QualitySuggestionSource)
+    - [QualitySuggestionStatus](#metaxisdata-store-QualitySuggestionStatus)
+    - [QualityThresholdMetric](#metaxisdata-store-QualityThresholdMetric)
+  
 - [store/openlineage.proto](#store_openlineage-proto)
     - [OpenLineageRunSummary](#metaxisdata-store-OpenLineageRunSummary)
     - [OpenLineageTaskSummary](#metaxisdata-store-OpenLineageTaskSummary)
@@ -266,6 +323,1015 @@ with metaxisdata.v1.Engine.
 | OCEANBASE | 14 |  |
 | STARROCKS | 15 |  |
 | DORIS | 16 |  |
+
+
+ 
+
+ 
+
+ 
+
+
+
+<a name="store_data_quality-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## store/data_quality.proto
+
+
+
+<a name="metaxisdata-store-AcceptedValuesConfig"></a>
+
+### AcceptedValuesConfig
+AcceptedValuesConfig counts rows whose column value is outside a fixed set.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| column | [string](#string) |  |  |
+| values | [string](#string) | repeated | At most 200 values, encoded as strings and converted by the column&#39;s type. |
+| allow_null | [bool](#bool) |  | When false (the default), a NULL value is a violation. |
+| fail_threshold | [double](#double) | optional |  |
+| warn_threshold | [double](#double) | optional |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-CelExpressionConfig"></a>
+
+### CelExpressionConfig
+CelExpressionConfig evaluates an expression over a sample of rows in Go. It is
+v1.1; the message exists so the config shape does not change then.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| expression | [string](#string) |  |  |
+| columns | [string](#string) | repeated | The columns the expression reads. They must all exist on the target. |
+| sample_rows | [int32](#int32) |  |  |
+| fail_threshold | [double](#double) | optional |  |
+| warn_threshold | [double](#double) | optional |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-ColumnProfile"></a>
+
+### ColumnProfile
+ColumnProfile is the deterministic statistics of one column. It is computed
+without a model and is the evidence a semantic label cites.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| total_rows | [int64](#int64) |  |  |
+| null_count | [int64](#int64) |  |  |
+| distinct_count | [int64](#int64) |  |  |
+| distinct_estimated | [bool](#bool) |  | True when the database refused an exact distinct count and the value came from a sample. |
+| min_value | [string](#string) |  | Display forms of the observed extremes, truncated; empty when the column has no comparable values. |
+| max_value | [string](#string) |  |  |
+| min_length | [int64](#int64) | optional | Unset for non-string columns. |
+| max_length | [int64](#int64) | optional |  |
+| top_values | [ProfileValue](#metaxisdata-store-ProfileValue) | repeated | The most frequent values, at most ten, each truncated. |
+| patterns | [string](#string) | repeated | Shape summaries such as &#34;numeric&#34;, &#34;alpha&#34;, &#34;date-like&#34;, &#34;mixed&#34;. |
+
+
+
+
+
+
+<a name="metaxisdata-store-ColumnValue"></a>
+
+### ColumnValue
+ColumnValue is one column of a sampled failed row. Values are truncated before
+they are stored, so a wide text column cannot bloat the result row.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| column | [string](#string) |  |  |
+| value | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-CrossColumnConfig"></a>
+
+### CrossColumnConfig
+CrossColumnConfig counts rows where two columns of the same row do not satisfy
+the comparison.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| left_column | [string](#string) |  |  |
+| right_column | [string](#string) |  |  |
+| op | [QualityComparisonOperator](#metaxisdata-store-QualityComparisonOperator) |  |  |
+| tolerance | [double](#double) | optional | Tolerance subtracted/added to the comparison to absorb floating point noise. Only meaningful for numeric columns. |
+| fail_threshold | [double](#double) | optional |  |
+| warn_threshold | [double](#double) | optional |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-CustomSQLConfig"></a>
+
+### CustomSQLConfig
+CustomSQLConfig counts the rows a read-only statement returns as failures. The
+statement is single SELECT/WITH, at most 8 KiB, and is never rewritten.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| sql | [string](#string) |  |  |
+| fail_threshold | [double](#double) | optional |  |
+| warn_threshold | [double](#double) | optional |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-DataQualityLLMResult"></a>
+
+### DataQualityLLMResult
+DataQualityLLMResult is the validated output of one analysis, cached so the
+same question is not paid for twice. It is separate from the SQL explanation
+cache because its invalidation axis is the rule revision and prompt version,
+not the SQL text.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| rule_draft | [RuleDraftResult](#metaxisdata-store-RuleDraftResult) |  |  |
+| explanation | [ExplanationResult](#metaxisdata-store-ExplanationResult) |  |  |
+| prompt_version | [string](#string) |  |  |
+| provider | [string](#string) |  |  |
+| model | [string](#string) |  |  |
+| prompt_tokens | [int64](#int64) |  |  |
+| completion_tokens | [int64](#int64) |  |  |
+| total_tokens | [int64](#int64) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-ExplanationHypothesis"></a>
+
+### ExplanationHypothesis
+ExplanationHypothesis is one possible cause with the evidence behind it and the
+next step a responder should take.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| cause | [string](#string) |  |  |
+| evidence | [string](#string) | repeated |  |
+| next_step | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-ExplanationResult"></a>
+
+### ExplanationResult
+ExplanationResult is the parsed output of one failure explanation.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| hypotheses | [ExplanationHypothesis](#metaxisdata-store-ExplanationHypothesis) | repeated |  |
+| confidence | [double](#double) |  |  |
+| summary | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-FailureSample"></a>
+
+### FailureSample
+FailureSample is one failed row, already truncated.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| columns | [ColumnValue](#metaxisdata-store-ColumnValue) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-FreshnessConfig"></a>
+
+### FreshnessConfig
+FreshnessConfig measures how long ago the newest timestamp is. A NULL newest
+timestamp follows on_empty.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| timestamp_column | [string](#string) |  |  |
+| max_lag_seconds | [int32](#int32) |  |  |
+| warn_lag_seconds | [int32](#int32) | optional |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-NullPercentConfig"></a>
+
+### NullPercentConfig
+NullPercentConfig bounds a column&#39;s nulls. Exactly one of the count pair and
+the percentage pair carries the fail threshold; each pair&#39;s warn field is
+optional and must not exceed the fail threshold.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| column | [string](#string) |  |  |
+| max_null_count | [int64](#int64) | optional |  |
+| warn_null_count | [int64](#int64) | optional |  |
+| max_null_pct | [double](#double) | optional |  |
+| warn_null_pct | [double](#double) | optional |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-ProfileValue"></a>
+
+### ProfileValue
+ProfileValue is one frequent value of a low-cardinality column.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| value | [string](#string) |  |  |
+| count | [int64](#int64) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityFailureSamples"></a>
+
+### QualityFailureSamples
+QualityFailureSamples holds the rows a failed check sampled as evidence.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| samples | [FailureSample](#metaxisdata-store-FailureSample) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityFilter"></a>
+
+### QualityFilter
+QualityFilter is the AND filter a rule applies before observing. Values are
+encoded as strings and converted by the compiler using the column&#39;s type; no
+user text reaches SQL unparameterized.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| clauses | [QualityFilterClause](#metaxisdata-store-QualityFilterClause) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityFilterClause"></a>
+
+### QualityFilterClause
+QualityFilterClause is one comparison in a QualityFilter.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| column | [string](#string) |  |  |
+| op | [QualityFilterOperator](#metaxisdata-store-QualityFilterOperator) |  |  |
+| values | [string](#string) | repeated | Unused by IS_NULL / IS_NOT_NULL, at most 100 values for IN / NOT_IN. |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityRuleConfig"></a>
+
+### QualityRuleConfig
+QualityRuleConfig is the typed parameters of one rule. Exactly one arm of the
+oneof is set, and it must correspond to the rule&#39;s type; the filter, the empty
+behavior and the count/percent metric are shared by every type.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| row_count | [RowCountConfig](#metaxisdata-store-RowCountConfig) |  |  |
+| row_count_change | [RowCountChangeConfig](#metaxisdata-store-RowCountChangeConfig) |  |  |
+| null_percent | [NullPercentConfig](#metaxisdata-store-NullPercentConfig) |  |  |
+| unique | [UniqueConfig](#metaxisdata-store-UniqueConfig) |  |  |
+| unique_combination | [UniqueCombinationConfig](#metaxisdata-store-UniqueCombinationConfig) |  |  |
+| accepted_values | [AcceptedValuesConfig](#metaxisdata-store-AcceptedValuesConfig) |  |  |
+| range | [RangeConfig](#metaxisdata-store-RangeConfig) |  |  |
+| regex | [RegexConfig](#metaxisdata-store-RegexConfig) |  |  |
+| string_length | [StringLengthConfig](#metaxisdata-store-StringLengthConfig) |  |  |
+| referential_integrity | [ReferentialIntegrityConfig](#metaxisdata-store-ReferentialIntegrityConfig) |  |  |
+| cross_column | [CrossColumnConfig](#metaxisdata-store-CrossColumnConfig) |  |  |
+| freshness | [FreshnessConfig](#metaxisdata-store-FreshnessConfig) |  |  |
+| custom_sql | [CustomSQLConfig](#metaxisdata-store-CustomSQLConfig) |  |  |
+| cel_expression | [CelExpressionConfig](#metaxisdata-store-CelExpressionConfig) |  | v1.1. |
+| threshold_metric | [QualityThresholdMetric](#metaxisdata-store-QualityThresholdMetric) |  |  |
+| filter | [QualityFilter](#metaxisdata-store-QualityFilter) |  |  |
+| on_empty | [QualityEmptyBehavior](#metaxisdata-store-QualityEmptyBehavior) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityRuleDraftConfig"></a>
+
+### QualityRuleDraftConfig
+QualityRuleDraftConfig is one model-proposed rule, already validated into the
+typed config. It is never executed without a human saving it as a rule.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| config | [QualityRuleConfig](#metaxisdata-store-QualityRuleConfig) |  |  |
+| severity | [QualitySeverity](#metaxisdata-store-QualitySeverity) |  |  |
+| title | [string](#string) |  |  |
+| rationale | [string](#string) |  |  |
+| confidence | [double](#double) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityRunCounts"></a>
+
+### QualityRunCounts
+QualityRunCounts is the six-state tally of one run.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| total | [int32](#int32) |  |  |
+| pass | [int32](#int32) |  |  |
+| warn | [int32](#int32) |  |  |
+| fail | [int32](#int32) |  |  |
+| error | [int32](#int32) |  |  |
+| skipped | [int32](#int32) |  |  |
+| not_evaluated | [int32](#int32) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualitySuggestionPayload"></a>
+
+### QualitySuggestionPayload
+QualitySuggestionPayload is the review-queue payload: a rule draft the reviewer
+can load into the editor, or a semantic label awaiting confirmation.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| rule | [QualityRuleDraftConfig](#metaxisdata-store-QualityRuleDraftConfig) |  |  |
+| label | [SemanticLabelSuggestion](#metaxisdata-store-SemanticLabelSuggestion) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityTargetPath"></a>
+
+### QualityTargetPath
+QualityTargetPath is the display snapshot of where a rule&#39;s target lived when
+the rule was saved. It is not the identity: the GUID plus its meta type is.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| instance | [string](#string) |  |  |
+| database | [string](#string) |  |  |
+| schema | [string](#string) |  |  |
+| object | [string](#string) |  |  |
+| column | [string](#string) |  | Empty for a table-level rule. |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityThresholds"></a>
+
+### QualityThresholds
+QualityThresholds is the threshold snapshot a result records, so a historical
+result can be explained after the rule&#39;s thresholds changed. For
+GREATER_THAN / LESS_THAN only value fields are set; for the range comparisons
+the lower and upper bounds are.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| warn_value | [double](#double) | optional | Unset means the rule has no warning level. |
+| fail_value | [double](#double) | optional |  |
+| warn_value_upper | [double](#double) | optional |  |
+| fail_value_upper | [double](#double) | optional |  |
+| comparison | [QualityComparison](#metaxisdata-store-QualityComparison) |  |  |
+| on_empty | [QualityEmptyBehavior](#metaxisdata-store-QualityEmptyBehavior) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-RangeConfig"></a>
+
+### RangeConfig
+RangeConfig counts rows outside a bound pair. At least one bound is required;
+the values are strings parsed with the column&#39;s type.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| column | [string](#string) |  |  |
+| min | [string](#string) | optional |  |
+| max | [string](#string) | optional |  |
+| inclusive | [bool](#bool) |  | Whether both bounds are inclusive. Default false, i.e. the interval is open on both ends. |
+| fail_threshold | [double](#double) | optional |  |
+| warn_threshold | [double](#double) | optional |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-ReferentialIntegrityConfig"></a>
+
+### ReferentialIntegrityConfig
+ReferentialIntegrityConfig counts child rows with no matching parent row. The
+parent must live in the same instance, database and schema.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| child_column | [string](#string) |  |  |
+| parent_table | [string](#string) |  | The parent table as &#34;schema.table&#34;. |
+| parent_column | [string](#string) |  |  |
+| allow_null | [bool](#bool) |  | When true, a NULL child value is not an orphan. Default false. |
+| fail_threshold | [double](#double) | optional |  |
+| warn_threshold | [double](#double) | optional |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-RegexConfig"></a>
+
+### RegexConfig
+RegexConfig counts rows whose column value does not match a regular
+expression. The pattern is Go RE2 syntax and is also translated for the
+engine&#39;s own regex operator.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| column | [string](#string) |  |  |
+| pattern | [string](#string) |  |  |
+| fail_threshold | [double](#double) | optional |  |
+| warn_threshold | [double](#double) | optional |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-RowCountChangeConfig"></a>
+
+### RowCountChangeConfig
+RowCountChangeConfig bounds the change against the rule&#39;s last successful
+observation. Without a recent baseline the result is NOT_EVALUATED.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| max_increase_pct | [double](#double) | optional |  |
+| max_decrease_pct | [double](#double) | optional |  |
+| warn_increase_pct | [double](#double) | optional |  |
+| warn_decrease_pct | [double](#double) | optional |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-RowCountConfig"></a>
+
+### RowCountConfig
+RowCountConfig bounds the number of rows. At least one bound is required; a
+warn bound makes the rule report WARN before it reports FAIL.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| min_rows | [int64](#int64) | optional |  |
+| max_rows | [int64](#int64) | optional |  |
+| exact_rows | [int64](#int64) | optional | When set, the row count must equal it exactly. |
+| warn_min_rows | [int64](#int64) | optional |  |
+| warn_max_rows | [int64](#int64) | optional |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-RuleDraftResult"></a>
+
+### RuleDraftResult
+RuleDraftResult is the parsed output of one rule-draft analysis.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| suggestions | [QualityRuleDraftConfig](#metaxisdata-store-QualityRuleDraftConfig) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-SemanticLabelEvidence"></a>
+
+### SemanticLabelEvidence
+SemanticLabelEvidence is why a label was assigned. It cites the inputs the
+labeler saw so a reviewer can check the reasoning without re-running it.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| columns | [string](#string) | repeated | Columns whose values or context the label derives from. |
+| metrics | [string](#string) | repeated | Profile facts such as &#34;null_rate=0.02&#34; or &#34;distinct=12&#34;. |
+| lineage | [string](#string) | repeated | Lineage relations that motivated the label, e.g. &#34;join key of orders&#34;. |
+| rationale | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-SemanticLabelSuggestion"></a>
+
+### SemanticLabelSuggestion
+SemanticLabelSuggestion is a model-proposed semantic label for one column.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| column | [string](#string) |  |  |
+| label | [QualitySemanticType](#metaxisdata-store-QualitySemanticType) |  |  |
+| confidence | [double](#double) |  |  |
+| evidence | [SemanticLabelEvidence](#metaxisdata-store-SemanticLabelEvidence) |  |  |
+| suggested_rule_types | [QualityRuleType](#metaxisdata-store-QualityRuleType) | repeated | The rule types the deterministic mapping would suggest for this label, in display order. The model may rank types but may not invent one. |
+
+
+
+
+
+
+<a name="metaxisdata-store-StringLengthConfig"></a>
+
+### StringLengthConfig
+StringLengthConfig counts rows whose string length is outside the bounds.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| column | [string](#string) |  |  |
+| min_len | [int64](#int64) | optional |  |
+| max_len | [int64](#int64) | optional |  |
+| fail_threshold | [double](#double) | optional |  |
+| warn_threshold | [double](#double) | optional |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-UniqueCombinationConfig"></a>
+
+### UniqueCombinationConfig
+UniqueCombinationConfig counts duplicated tuples across several columns, or
+across every column of the table when all_columns is set.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| columns | [string](#string) | repeated |  |
+| all_columns | [bool](#bool) |  | Use every column of the target table instead of the list above. That makes the rule a whole-row duplicate check. |
+| count_nulls | [bool](#bool) |  |  |
+| fail_threshold | [double](#double) | optional |  |
+| warn_threshold | [double](#double) | optional |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-UniqueConfig"></a>
+
+### UniqueConfig
+UniqueConfig counts duplicated non-NULL values in one column. The threshold is
+measured per threshold_metric; the default fail threshold is zero.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| column | [string](#string) |  |  |
+| count_nulls | [bool](#bool) |  | When true, NULL values are treated as a value: more than one NULL is a duplicate. The default is false, matching SQL uniqueness. |
+| fail_threshold | [double](#double) | optional |  |
+| warn_threshold | [double](#double) | optional |  |
+
+
+
+
+
+ 
+
+
+<a name="metaxisdata-store-QualityComparison"></a>
+
+### QualityComparison
+QualityComparison is how the observed value is compared with a threshold.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_COMPARISON_UNSPECIFIED | 0 |  |
+| QUALITY_COMPARISON_GREATER_THAN | 1 | The rule fails when the observed value is greater than the threshold: counts of invalid rows, ratios, and freshness lag. |
+| QUALITY_COMPARISON_LESS_THAN | 2 | The rule fails when the observed value is less than the threshold. |
+| QUALITY_COMPARISON_OUTSIDE_RANGE | 3 | The rule fails when the observed value falls outside [lower, upper]: row count bounds. |
+| QUALITY_COMPARISON_INSIDE_RANGE | 4 | The rule fails when the observed value falls inside [lower, upper]: an accepted range expressed as a pass band. |
+
+
+
+<a name="metaxisdata-store-QualityComparisonOperator"></a>
+
+### QualityComparisonOperator
+QualityComparisonOperator is the SQL comparison a cross-column rule applies
+between two columns of the same row.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_COMPARISON_OPERATOR_UNSPECIFIED | 0 |  |
+| QUALITY_COMPARISON_OPERATOR_EQ | 1 |  |
+| QUALITY_COMPARISON_OPERATOR_NE | 2 |  |
+| QUALITY_COMPARISON_OPERATOR_LT | 3 |  |
+| QUALITY_COMPARISON_OPERATOR_LTE | 4 |  |
+| QUALITY_COMPARISON_OPERATOR_GT | 5 |  |
+| QUALITY_COMPARISON_OPERATOR_GTE | 6 |  |
+
+
+
+<a name="metaxisdata-store-QualityDimension"></a>
+
+### QualityDimension
+QualityDimension is the data quality dimension a rule measures. It is display
+metadata and grouping for the overview.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_DIMENSION_UNSPECIFIED | 0 |  |
+| QUALITY_DIMENSION_COMPLETENESS | 1 |  |
+| QUALITY_DIMENSION_VALIDITY | 2 |  |
+| QUALITY_DIMENSION_UNIQUENESS | 3 |  |
+| QUALITY_DIMENSION_CONSISTENCY | 4 |  |
+| QUALITY_DIMENSION_TIMELINESS | 5 |  |
+| QUALITY_DIMENSION_ACCURACY | 6 |  |
+
+
+
+<a name="metaxisdata-store-QualityEmptyBehavior"></a>
+
+### QualityEmptyBehavior
+QualityEmptyBehavior is what a rule does when the query succeeded but produced
+nothing to judge: no rows at all, a NULL timestamp, no baseline to compare
+with. The default is NOT_EVALUATED so an empty table never looks like a pass.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_EMPTY_BEHAVIOR_UNSPECIFIED | 0 |  |
+| QUALITY_EMPTY_BEHAVIOR_NOT_EVALUATED | 1 |  |
+| QUALITY_EMPTY_BEHAVIOR_PASS | 2 |  |
+| QUALITY_EMPTY_BEHAVIOR_FAIL | 3 |  |
+
+
+
+<a name="metaxisdata-store-QualityFilterOperator"></a>
+
+### QualityFilterOperator
+QualityFilterOperator is one comparison in a rule&#39;s AND filter.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_FILTER_OPERATOR_UNSPECIFIED | 0 |  |
+| QUALITY_FILTER_OPERATOR_EQ | 1 |  |
+| QUALITY_FILTER_OPERATOR_NE | 2 |  |
+| QUALITY_FILTER_OPERATOR_LT | 3 |  |
+| QUALITY_FILTER_OPERATOR_LTE | 4 |  |
+| QUALITY_FILTER_OPERATOR_GT | 5 |  |
+| QUALITY_FILTER_OPERATOR_GTE | 6 |  |
+| QUALITY_FILTER_OPERATOR_IN | 7 |  |
+| QUALITY_FILTER_OPERATOR_NOT_IN | 8 |  |
+| QUALITY_FILTER_OPERATOR_IS_NULL | 9 |  |
+| QUALITY_FILTER_OPERATOR_IS_NOT_NULL | 10 |  |
+
+
+
+<a name="metaxisdata-store-QualityIssueStatus"></a>
+
+### QualityIssueStatus
+QualityIssueStatus is the lifecycle state of an issue.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_ISSUE_STATUS_UNSPECIFIED | 0 |  |
+| QUALITY_ISSUE_STATUS_OPEN | 1 |  |
+| QUALITY_ISSUE_STATUS_ACKNOWLEDGED | 2 |  |
+| QUALITY_ISSUE_STATUS_RESOLVED | 3 |  |
+
+
+
+<a name="metaxisdata-store-QualityLabelSource"></a>
+
+### QualityLabelSource
+QualityLabelSource is who asserted a column&#39;s semantic label.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_LABEL_SOURCE_UNSPECIFIED | 0 |  |
+| QUALITY_LABEL_SOURCE_MANUAL | 1 |  |
+| QUALITY_LABEL_SOURCE_LLM | 2 |  |
+
+
+
+<a name="metaxisdata-store-QualityLabelStatus"></a>
+
+### QualityLabelStatus
+QualityLabelStatus is whether a label is in effect.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_LABEL_STATUS_UNSPECIFIED | 0 |  |
+| QUALITY_LABEL_STATUS_SUGGESTED | 1 |  |
+| QUALITY_LABEL_STATUS_ACCEPTED | 2 |  |
+| QUALITY_LABEL_STATUS_REJECTED | 3 |  |
+
+
+
+<a name="metaxisdata-store-QualityObservedKind"></a>
+
+### QualityObservedKind
+QualityObservedKind is the unit of the observed value a result records.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_OBSERVED_KIND_UNSPECIFIED | 0 |  |
+| QUALITY_OBSERVED_KIND_COUNT | 1 |  |
+| QUALITY_OBSERVED_KIND_RATIO | 2 |  |
+| QUALITY_OBSERVED_KIND_SECONDS | 3 |  |
+| QUALITY_OBSERVED_KIND_TIMESTAMP | 4 |  |
+| QUALITY_OBSERVED_KIND_NUMBER | 5 |  |
+
+
+
+<a name="metaxisdata-store-QualityResolutionReason"></a>
+
+### QualityResolutionReason
+QualityResolutionReason is why an issue was closed.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_RESOLUTION_REASON_UNSPECIFIED | 0 |  |
+| QUALITY_RESOLUTION_REASON_FIXED | 1 |  |
+| QUALITY_RESOLUTION_REASON_EXPECTED | 2 |  |
+| QUALITY_RESOLUTION_REASON_NO_ACTION_NEEDED | 3 |  |
+| QUALITY_RESOLUTION_REASON_DUPLICATE | 4 |  |
+| QUALITY_RESOLUTION_REASON_AUTO_RECOVERED | 5 |  |
+
+
+
+<a name="metaxisdata-store-QualityRuleState"></a>
+
+### QualityRuleState
+QualityRuleState is whether a rule is scheduled. ARCHIVED is the soft-delete
+state: the rule, its revisions, results and issues stay readable.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_RULE_STATE_UNSPECIFIED | 0 |  |
+| QUALITY_RULE_STATE_ENABLED | 1 |  |
+| QUALITY_RULE_STATE_PAUSED | 2 |  |
+| QUALITY_RULE_STATE_ARCHIVED | 3 |  |
+
+
+
+<a name="metaxisdata-store-QualityRuleType"></a>
+
+### QualityRuleType
+QualityRuleType is the observation a rule makes. The value is immutable for a
+rule: changing the type is a different rule and a new revision.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_RULE_TYPE_UNSPECIFIED | 0 |  |
+| QUALITY_RULE_TYPE_ROW_COUNT | 1 |  |
+| QUALITY_RULE_TYPE_ROW_COUNT_CHANGE | 2 |  |
+| QUALITY_RULE_TYPE_NULL_PERCENT | 3 |  |
+| QUALITY_RULE_TYPE_UNIQUE | 4 |  |
+| QUALITY_RULE_TYPE_UNIQUE_COMBINATION | 5 |  |
+| QUALITY_RULE_TYPE_ACCEPTED_VALUES | 6 |  |
+| QUALITY_RULE_TYPE_RANGE | 7 |  |
+| QUALITY_RULE_TYPE_REGEX | 8 |  |
+| QUALITY_RULE_TYPE_STRING_LENGTH | 9 |  |
+| QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY | 10 |  |
+| QUALITY_RULE_TYPE_CROSS_COLUMN | 11 |  |
+| QUALITY_RULE_TYPE_FRESHNESS | 12 |  |
+| QUALITY_RULE_TYPE_CUSTOM_SQL | 13 |  |
+| QUALITY_RULE_TYPE_CEL_EXPRESSION | 14 | v1.1. The value exists here only so that the two enum definitions stay value-compatible; v1 never writes it. |
+
+
+
+<a name="metaxisdata-store-QualityRunStatus"></a>
+
+### QualityRunStatus
+QualityRunStatus is the lifecycle of a run, which is separate from the quality
+status its results roll up to. A queued run has no outcome yet.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_RUN_STATUS_UNSPECIFIED | 0 |  |
+| QUALITY_RUN_STATUS_PENDING | 1 | Created and waiting for the runner. |
+| QUALITY_RUN_STATUS_RUNNING | 2 | The runner is executing this run&#39;s rules. |
+| QUALITY_RUN_STATUS_COMPLETED | 3 | Every rule was attempted; outcome holds the rollup. |
+| QUALITY_RUN_STATUS_ABANDONED | 4 | A restart discarded the run before it finished. It is not retried. |
+
+
+
+<a name="metaxisdata-store-QualityRunTrigger"></a>
+
+### QualityRunTrigger
+QualityRunTrigger is what started a run.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_RUN_TRIGGER_UNSPECIFIED | 0 |  |
+| QUALITY_RUN_TRIGGER_MANUAL | 1 |  |
+| QUALITY_RUN_TRIGGER_SCHEDULED | 2 |  |
+
+
+
+<a name="metaxisdata-store-QualitySemanticType"></a>
+
+### QualitySemanticType
+QualitySemanticType is the closed vocabulary a column may be labeled with. It
+is the input to the deterministic semantic-type-to-rule mapping; the model may
+only choose from these values.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_SEMANTIC_TYPE_UNSPECIFIED | 0 |  |
+| QUALITY_SEMANTIC_TYPE_EMAIL | 1 |  |
+| QUALITY_SEMANTIC_TYPE_PHONE | 2 |  |
+| QUALITY_SEMANTIC_TYPE_URL | 3 |  |
+| QUALITY_SEMANTIC_TYPE_UUID | 4 |  |
+| QUALITY_SEMANTIC_TYPE_IP | 5 |  |
+| QUALITY_SEMANTIC_TYPE_COUNTRY_CODE | 6 |  |
+| QUALITY_SEMANTIC_TYPE_CURRENCY | 7 |  |
+| QUALITY_SEMANTIC_TYPE_AMOUNT | 8 |  |
+| QUALITY_SEMANTIC_TYPE_QUANTITY | 9 |  |
+| QUALITY_SEMANTIC_TYPE_PERCENTAGE | 10 |  |
+| QUALITY_SEMANTIC_TYPE_ID | 11 |  |
+| QUALITY_SEMANTIC_TYPE_BUSINESS_KEY | 12 |  |
+| QUALITY_SEMANTIC_TYPE_TIMESTAMP | 13 |  |
+| QUALITY_SEMANTIC_TYPE_DATE | 14 |  |
+| QUALITY_SEMANTIC_TYPE_ENUM | 15 |  |
+| QUALITY_SEMANTIC_TYPE_FREE_TEXT | 16 |  |
+| QUALITY_SEMANTIC_TYPE_UNKNOWN | 17 |  |
+
+
+
+<a name="metaxisdata-store-QualitySeverity"></a>
+
+### QualitySeverity
+QualitySeverity is how much an issue on this rule matters. It is rule metadata
+and is copied onto the issue it opens.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_SEVERITY_UNSPECIFIED | 0 |  |
+| QUALITY_SEVERITY_WARNING | 1 |  |
+| QUALITY_SEVERITY_ERROR | 2 |  |
+| QUALITY_SEVERITY_CRITICAL | 3 |  |
+
+
+
+<a name="metaxisdata-store-QualityStatus"></a>
+
+### QualityStatus
+QualityStatus is the outcome of one rule execution. ERROR is not FAIL: ERROR
+means the check could not be evaluated at all, FAIL means the data failed it.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_STATUS_UNSPECIFIED | 0 |  |
+| QUALITY_STATUS_PASS | 1 |  |
+| QUALITY_STATUS_WARN | 2 |  |
+| QUALITY_STATUS_FAIL | 3 |  |
+| QUALITY_STATUS_ERROR | 4 |  |
+| QUALITY_STATUS_SKIPPED | 5 |  |
+| QUALITY_STATUS_NOT_EVALUATED | 6 |  |
+
+
+
+<a name="metaxisdata-store-QualitySuggestionKind"></a>
+
+### QualitySuggestionKind
+QualitySuggestionKind is what a suggestion proposes.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_SUGGESTION_KIND_UNSPECIFIED | 0 |  |
+| QUALITY_SUGGESTION_KIND_RULE_DRAFT | 1 |  |
+| QUALITY_SUGGESTION_KIND_LABEL | 2 |  |
+
+
+
+<a name="metaxisdata-store-QualitySuggestionSource"></a>
+
+### QualitySuggestionSource
+QualitySuggestionSource is what produced a suggestion.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_SUGGESTION_SOURCE_UNSPECIFIED | 0 |  |
+| QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE | 1 |  |
+| QUALITY_SUGGESTION_SOURCE_PROFILE | 2 |  |
+
+
+
+<a name="metaxisdata-store-QualitySuggestionStatus"></a>
+
+### QualitySuggestionStatus
+QualitySuggestionStatus is where a suggestion is in the review queue.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_SUGGESTION_STATUS_UNSPECIFIED | 0 |  |
+| QUALITY_SUGGESTION_STATUS_PENDING | 1 |  |
+| QUALITY_SUGGESTION_STATUS_ACCEPTED | 2 |  |
+| QUALITY_SUGGESTION_STATUS_REJECTED | 3 |  |
+
+
+
+<a name="metaxisdata-store-QualityThresholdMetric"></a>
+
+### QualityThresholdMetric
+QualityThresholdMetric selects what a count-type rule&#39;s threshold is compared
+against: the number of failed rows, or failed rows divided by total rows.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_THRESHOLD_METRIC_UNSPECIFIED | 0 |  |
+| QUALITY_THRESHOLD_METRIC_COUNT | 1 |  |
+| QUALITY_THRESHOLD_METRIC_PERCENT | 2 |  |
 
 
  
