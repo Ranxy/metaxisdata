@@ -34,6 +34,7 @@ const PERMISSIONS = [
   "metaxisdata.dataQuality.runs.list",
   "metaxisdata.dataQuality.issues.list",
   "metaxisdata.dataQuality.issues.get",
+  "metaxisdata.dataQuality.suggest",
 ];
 
 // The member baseline, as backend/store/predefined_roles.go defines it: read-only, and it
@@ -118,6 +119,8 @@ describe("AppSidebar", () => {
     expect(wrapper.text()).not.toContain("Audit Logs");
     expect(wrapper.text()).not.toContain("Quality Rules");
     expect(wrapper.text()).not.toContain("Issues");
+    expect(wrapper.text()).not.toContain("Suggestions");
+    expect(wrapper.text()).not.toContain("Overview");
   });
 
   it("collapses a section, hides its entries and remembers the choice", async () => {
@@ -206,6 +209,7 @@ describe("AppSidebar", () => {
     await sectionTrigger(wrapper, "Data Quality").trigger("click");
 
     expect(wrapper.text()).toContain("Data Quality");
+    expect(wrapper.text()).toContain("Overview");
     expect(wrapper.text()).toContain("Quality Rules");
     expect(wrapper.text()).toContain("Quality Runs");
     expect(wrapper.text()).toContain("Issues");
@@ -220,6 +224,19 @@ describe("AppSidebar", () => {
     expect(wrapper.text()).not.toContain("Data Quality");
   });
 
+  // A custom role may hold only suggestions: the group must still appear, and
+  // only the entry it can read.
+  it("keeps the quality group for a suggestion-only role", async () => {
+    useAuthStore().user = create(UserSchema, {
+      permissions: ["metaxisdata.dataQuality.suggest"],
+    });
+    const { wrapper } = await mountSidebar();
+    await sectionTrigger(wrapper, "Data Quality").trigger("click");
+
+    expect(wrapper.text()).toContain("Suggestions");
+    expect(wrapper.text()).not.toContain("Quality Rules");
+  });
+
   // A custom role may hold only runs: the group must still appear, because the
   // runs page is the only way to read quality evidence.
   it("keeps the quality group when only one of its entries is allowed", async () => {
@@ -232,6 +249,8 @@ describe("AppSidebar", () => {
     expect(wrapper.text()).toContain("Quality Runs");
     expect(wrapper.text()).not.toContain("Quality Rules");
     expect(wrapper.text()).not.toContain("Issues");
+    expect(wrapper.text()).not.toContain("Suggestions");
+    expect(wrapper.text()).not.toContain("Overview");
   });
 
   it("dismisses the mobile drawer after navigating", async () => {

@@ -58,6 +58,23 @@
         class="mx-auto w-full max-w-[960px] space-y-4"
         @submit.prevent="save"
       >
+        <Alert
+          v-if="suggestionInfo"
+          variant="default"
+        >
+          <Lightbulb class="h-4 w-4" />
+          <AlertTitle>{{ t("dataQuality.editor.suggestionPrefilled") }}</AlertTitle>
+          <AlertDescription>
+            {{ t("dataQuality.editor.suggestionPrefilledHint", { title: suggestionToEditorPrefill(suggestionInfo)?.form.title || suggestionInfo.name.split("/").pop() }) }}
+            <RouterLink
+              :to="{ name: 'DataQualitySuggestions' }"
+              class="ml-1 text-primary hover:underline"
+            >
+              {{ t("dataQuality.suggestions.title") }}
+            </RouterLink>
+          </AlertDescription>
+        </Alert>
+
         <!-- The columns of the selected target, offered by every column field. -->
         <datalist id="dq-target-columns">
           <option
@@ -369,7 +386,8 @@
           </CardContent>
         </Card>
 
-        <!-- LLM draft import stays a placeholder until the suggestion API ships. -->
+        <!-- Model-drafted rules: the dialog only queues suggestions; the person
+             still reviews and saves the rule here. -->
         <Card>
           <CardContent class="flex flex-wrap items-center justify-between gap-3 pt-6">
             <div class="min-w-0">
@@ -377,16 +395,24 @@
                 {{ t("dataQuality.editor.llmImport") }}
               </p>
               <p class="text-sm text-muted-foreground">
-                {{ t("dataQuality.editor.llmImportHint") }}
+                {{ t(llmAvailability.reasonKey ?? "dataQuality.editor.llmImportHint") }}
+                <RouterLink
+                  v-if="!llmEnabled && canSuggest"
+                  :to="{ name: 'DataQualitySettings' }"
+                  class="ml-1 text-primary hover:underline"
+                >
+                  {{ t("dataQuality.llm.enableInSettings") }}
+                </RouterLink>
               </p>
             </div>
             <Button
               variant="outline"
-              :disabled="true"
-              :title="t('dataQuality.editor.llmImportHint')"
+              :disabled="!llmAvailability.available || !target"
+              :title="t(llmAvailability.reasonKey ?? 'dataQuality.editor.llmImportHint')"
+              @click="llmDialogOpen = true"
             >
               <Sparkles class="mr-2 h-4 w-4" />
-              {{ t("dataQuality.editor.llmImportButton") }}
+              {{ t("dataQuality.llm.draft.openButton") }}
             </Button>
           </CardContent>
         </Card>
@@ -452,6 +478,16 @@
       v-model:open="targetOpen"
       @select="onTargetSelected"
     />
+
+    <QualityDraftDialog
+      v-if="target"
+      :open="llmDialogOpen"
+      :table-guid="target.guid"
+      :meta-type="target.metaType ?? MetaType.TABLE"
+      :columns="targetColumns"
+      @update:open="llmDialogOpen = $event"
+      @accepted="applyAcceptedDraft"
+    />
   </div>
 </template>
 
@@ -460,6 +496,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   Database,
+  Lightbulb,
   Loader2,
   PlayCircle,
   Save,
@@ -470,12 +507,15 @@ import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import {
   createQualityRule,
+  findQualitySuggestion,
   getQualityRule,
   previewQualityRule,
   updateQualityRule,
 } from "@/api/data-quality";
 import { listMetadata } from "@/api/database";
+import { getWorkspaceProfileSetting } from "@/api/setting";
 import PageState from "@/components/common/PageState.vue";
+import QualityDraftDialog from "@/components/data-quality/QualityDraftDialog.vue";
 import RuleConfigForm from "@/components/data-quality/RuleConfigForm.vue";
 import RuleFilterEditor from "@/components/data-quality/RuleFilterEditor.vue";
 import TargetPicker from "@/components/data-quality/TargetPicker.vue";
@@ -511,6 +551,7 @@ import {
   type QualityRuleState,
   QualityRuleType,
   type QualitySeverity,
+  type QualitySuggestion,
   QualityRuleState as RuleState,
   QualitySeverity as Severity,
 } from "@/types/proto-es/v1/data_quality_service_pb";
@@ -536,6 +577,8 @@ import {
   targetSelectionFromRule,
   validateRuleForm,
 } from "@/utils/dataQualityForm";
+import { llmFeatureAvailability } from "@/utils/dataQualityLlm";
+import { suggestionToEditorPrefill } from "@/utils/dataQualitySuggestion";
 import { metaTypeSingularLabel } from "@/utils/metaType";
 
 /**
@@ -580,6 +623,16 @@ const form = ref<RuleFormState>(emptyRuleForm());
 const target = ref<TargetSelection>();
 const targetOpen = ref(false);
 const targetColumns = ref<string[]>([]);
+/** The suggestion the page was opened from, for the prefill banner. */
+const suggestionInfo = ref<QualitySuggestion>();
+const llmEnabled = ref(false);
+const llmDialogOpen = ref(false);
+const canSuggest = computed(() =>
+  authStore.hasPermission("metaxisdata.dataQuality.suggest")
+);
+const llmAvailability = computed(() =>
+  llmFeatureAvailability(llmEnabled.value, canSuggest.value)
+);
 const targetColumnDetails = ref<TargetColumnDetail[]>([]);
 
 const loadingRule = ref(false);
@@ -631,9 +684,11 @@ const targetLabel = computed(() => {
     return "";
   }
   const path = target.value.path;
-  return [targetScopeLabel(target.value.path), path.object]
+  const label = [targetScopeLabel(target.value.path), path.object]
     .filter((part) => part && part !== "-")
     .join(" · ");
+  // A suggestion names the target by GUID only; show it rather than nothing.
+  return label || target.value.guid;
 });
 
 /** The rule resource name the edit route carries, one segment per name segment. */
@@ -712,7 +767,7 @@ async function refreshTargetColumns(guid: string) {
 
 async function loadRule() {
   if (!isEdit.value) {
-    applyPrefill();
+    await loadNewPage();
     return;
   }
   loadingRule.value = true;
@@ -731,6 +786,37 @@ async function loadRule() {
     loadError.value = formatError(e, "dataQuality.editor.loadFailed");
   } finally {
     loadingRule.value = false;
+  }
+}
+
+/**
+ * A new page prefills from a suggestion (`?suggestion=<name>`) or from a target
+ * (`?table_guid=...`). The suggestion's draft is converted to the same form the
+ * user would have typed, so nothing is created until they save.
+ */
+async function loadNewPage() {
+  const name =
+    typeof route.query.suggestion === "string" ? route.query.suggestion : "";
+  if (name) {
+    try {
+      const suggestion = await findQualitySuggestion(name);
+      if (suggestion) {
+        const prefill = suggestionToEditorPrefill(suggestion);
+        if (prefill) {
+          suggestionInfo.value = suggestion;
+          form.value = prefill.form;
+          target.value = prefill.target;
+          if (target.value) {
+            void refreshTargetColumns(target.value.guid);
+          }
+        }
+      }
+    } catch {
+      // A missing suggestion is not fatal: the page behaves like a blank new rule.
+    }
+  }
+  if (!target.value) {
+    applyPrefill();
   }
 }
 
@@ -755,7 +841,11 @@ function currentRule(): QualityRule {
 }
 
 function runValidation(): boolean {
-  issues.value = validateRuleForm(form.value, target.value);
+  issues.value = validateRuleForm(
+    form.value,
+    target.value,
+    targetColumns.value
+  );
   saveError.value = "";
   return issues.value.length === 0;
 }
@@ -836,7 +926,34 @@ function cancel() {
   void router.push({ name: "DataQualityRules" });
 }
 
+/** Only read the workspace switch; the settings page owns changing it. */
+async function loadLlmSetting() {
+  try {
+    const profile = await getWorkspaceProfileSetting();
+    llmEnabled.value = profile.dataQuality?.enableLlmAnalysis ?? false;
+  } catch {
+    llmEnabled.value = false;
+  }
+}
+
+/** An accepted draft replaces the form in place, without creating anything. */
+function applyAcceptedDraft(suggestion: QualitySuggestion) {
+  const prefill = suggestionToEditorPrefill(suggestion);
+  if (!prefill) {
+    notify.info(t("dataQuality.llm.draft.cannotPrefill"));
+    return;
+  }
+  form.value = prefill.form;
+  target.value = prefill.target;
+  suggestionInfo.value = suggestion;
+  if (target.value) {
+    void refreshTargetColumns(target.value.guid);
+  }
+  notify.success(t("dataQuality.llm.draft.applied"));
+}
+
 onMounted(() => {
+  void loadLlmSetting();
   void loadRule();
 });
 </script>

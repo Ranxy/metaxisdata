@@ -31,6 +31,7 @@
 import {
   AppWindow,
   ClipboardList,
+  Gauge,
   Globe,
   KeyRound,
   Link2,
@@ -66,6 +67,13 @@ const ALL_ITEMS = computed(() => [
     label: t("menu.environments"),
     path: "/settings/environments",
     icon: Globe,
+    permission: "metaxisdata.settings.get",
+  },
+  {
+    key: "dataQuality",
+    label: t("menu.dataQualitySettings"),
+    path: "/settings/data-quality",
+    icon: Gauge,
     permission: "metaxisdata.settings.get",
   },
   // The policy page and the account list it governs are one job, so they stay

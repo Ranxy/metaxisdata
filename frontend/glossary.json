@@ -1087,6 +1087,61 @@
           "抽样"
         ]
       }
+    },
+    {
+      "id": "suggestion",
+      "category": "Data Quality",
+      "definition": "A model-proposed rule draft or column label waiting for a person to accept or reject it.",
+      "translations": {
+        "en-US": "suggestion",
+        "zh-CN": "建议"
+      },
+      "scope": [
+        "dataQuality.",
+        "menu."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "提议",
+          "意见"
+        ]
+      }
+    },
+    {
+      "id": "semantic-label",
+      "category": "Data Quality",
+      "definition": "The accepted meaning of a column, such as email address or business key, chosen from the semantic type catalog.",
+      "translations": {
+        "en-US": "semantic label",
+        "zh-CN": "语义标注"
+      },
+      "scope": [
+        "dataQuality."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "语义标签",
+          "语意标注"
+        ]
+      }
+    },
+    {
+      "id": "column-profile",
+      "category": "Data Quality",
+      "definition": "The measured facts about a column's values — null rate, distinct count, extremes, lengths — without reading the rows.",
+      "translations": {
+        "en-US": "column profile",
+        "zh-CN": "字段画像"
+      },
+      "scope": [
+        "dataQuality."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "列画像",
+          "字段剖析"
+        ]
+      }
     }
   ]
 }

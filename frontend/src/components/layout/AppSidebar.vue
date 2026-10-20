@@ -188,6 +188,7 @@ import {
   Files,
   Home,
   LayoutDashboard,
+  Lightbulb,
   ListChecks,
   Network,
   PanelLeftClose,
@@ -361,6 +362,13 @@ function buildMenuItems(): MenuItem[] {
       icon: ShieldCheck,
       children: [
         {
+          key: "dataQualityOverview",
+          label: t("menu.dataQualityOverview"),
+          path: "/data-quality",
+          icon: LayoutDashboard,
+          permission: "metaxisdata.dataQuality.rules.list",
+        },
+        {
           key: "dataQualityRules",
           label: t("menu.dataQualityRules"),
           path: "/data-quality/rules",
@@ -380,6 +388,13 @@ function buildMenuItems(): MenuItem[] {
           path: "/data-quality/issues",
           icon: CircleAlert,
           permission: "metaxisdata.dataQuality.issues.list",
+        },
+        {
+          key: "dataQualitySuggestions",
+          label: t("menu.dataQualitySuggestions"),
+          path: "/data-quality/suggestions",
+          icon: Lightbulb,
+          permission: "metaxisdata.dataQuality.suggest",
         },
       ],
     },

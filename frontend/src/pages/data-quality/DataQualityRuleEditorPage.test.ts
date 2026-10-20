@@ -10,28 +10,46 @@ import { Select } from "@/components/ui/select";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
+  QualityRuleConfigSchema,
   QualityRuleSchema,
   QualityRuleType,
+  QualitySuggestionKind,
+  QualitySuggestionSchema,
+  QualitySuggestionSource,
+  QualitySuggestionStatus,
+  QualityTargetSchema,
+  RowCountConfigSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
+import {
+  DataQualitySettingSchema,
+  WorkspaceProfileSettingSchema,
+} from "@/types/proto-es/v1/setting_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
 import { emptyRuleForm, formToRule } from "@/utils/dataQualityForm";
 import DataQualityRuleEditorPage from "./DataQualityRuleEditorPage.vue";
 
 const mocks = vi.hoisted(() => ({
   createQualityRule: vi.fn(),
+  findQualitySuggestion: vi.fn(),
   getQualityRule: vi.fn(),
   previewQualityRule: vi.fn(),
   updateQualityRule: vi.fn(),
+  getWorkspaceProfileSetting: vi.fn(),
   listMetadata: vi.fn(),
   listAllInstances: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", () => ({
   createQualityRule: mocks.createQualityRule,
+  findQualitySuggestion: mocks.findQualitySuggestion,
   getQualityRule: mocks.getQualityRule,
   previewQualityRule: mocks.previewQualityRule,
   updateQualityRule: mocks.updateQualityRule,
+}));
+
+vi.mock("@/api/setting", () => ({
+  getWorkspaceProfileSetting: mocks.getWorkspaceProfileSetting,
 }));
 
 vi.mock("@/api/database", () => ({
@@ -48,6 +66,7 @@ const PERMISSIONS = [
   "metaxisdata.dataQuality.rules.list",
   // Preview is a `rules.run` permission on the service.
   "metaxisdata.dataQuality.rules.run",
+  "metaxisdata.dataQuality.suggest",
 ];
 
 const PREFILL = "inst1;db1;public;orders";
@@ -78,6 +97,16 @@ async function mountEditor(path: string) {
       {
         path: "/data-quality/rules",
         name: "DataQualityRules",
+        component: { template: "<div />" },
+      },
+      {
+        path: "/data-quality/suggestions",
+        name: "DataQualitySuggestions",
+        component: { template: "<div />" },
+      },
+      {
+        path: "/settings/data-quality",
+        name: "DataQualitySettings",
         component: { template: "<div />" },
       },
     ],
@@ -123,6 +152,13 @@ describe("DataQualityRuleEditorPage", () => {
     localStorage.clear();
     vi.clearAllMocks();
     mocks.createQualityRule.mockResolvedValue(create(QualityRuleSchema, {}));
+    mocks.getWorkspaceProfileSetting.mockResolvedValue(
+      create(WorkspaceProfileSettingSchema, {
+        dataQuality: create(DataQualitySettingSchema, {
+          enableLlmAnalysis: true,
+        }),
+      })
+    );
     mocks.previewQualityRule.mockResolvedValue(PREVIEW);
     mocks.listMetadata.mockResolvedValue({
       typesStoredMetadata: [
@@ -141,6 +177,37 @@ describe("DataQualityRuleEditorPage", () => {
       ],
     });
     mocks.listAllInstances.mockResolvedValue([]);
+  });
+
+  it("enables Draft with AI only with the switch and the permission", async () => {
+    const { wrapper } = await mountEditor(
+      `/data-quality/rules/new?table_guid=${encodeURIComponent(PREFILL)}&meta_type=4`
+    );
+    const draft = wrapper
+      .findAll("button")
+      .find((button) =>
+        button.text().includes(label("dataQuality.llm.draft.openButton"))
+      );
+    expect(draft).toBeTruthy();
+    expect(draft?.attributes("disabled")).toBeUndefined();
+
+    mocks.getWorkspaceProfileSetting.mockResolvedValue(
+      create(WorkspaceProfileSettingSchema, {
+        dataQuality: create(DataQualitySettingSchema, {
+          enableLlmAnalysis: false,
+        }),
+      })
+    );
+    const { wrapper: disabled } = await mountEditor(
+      `/data-quality/rules/new?table_guid=${encodeURIComponent(PREFILL)}&meta_type=4`
+    );
+    const disabledDraft = disabled
+      .findAll("button")
+      .find((button) =>
+        button.text().includes(label("dataQuality.llm.draft.openButton"))
+      );
+    expect(disabledDraft?.attributes("disabled")).toBeDefined();
+    expect(disabled.text()).toContain(label("dataQuality.llm.disabledHint"));
   });
 
   it("prefills the target from the query so an asset page can link here", async () => {
@@ -303,6 +370,60 @@ describe("DataQualityRuleEditorPage", () => {
     expect(
       wrapper.findAll("input").some((input) => input.element.value === "bigint")
     ).toBe(true);
+  });
+
+  it("prefills the form from a suggested rule draft", async () => {
+    mocks.findQualitySuggestion.mockResolvedValue(
+      create(QualitySuggestionSchema, {
+        name: "workspaces/ws/qualitySuggestions/draft-1",
+        kind: QualitySuggestionKind.RULE_DRAFT,
+        source: QualitySuggestionSource.NATURAL_LANGUAGE,
+        status: QualitySuggestionStatus.PENDING,
+        target: create(QualityTargetSchema, {
+          metaGuid: PREFILL,
+          metaType: MetaType.TABLE,
+        }),
+        payload: {
+          payload: {
+            case: "rule",
+            value: {
+              title: "Orders should have rows",
+              rationale: "The fact table.",
+              severity: 2,
+              confidence: 0.8,
+              config: create(QualityRuleConfigSchema, {
+                config: {
+                  case: "rowCount",
+                  value: create(RowCountConfigSchema, { minRows: 1n }),
+                },
+              }),
+            },
+          },
+        },
+      })
+    );
+
+    const { wrapper } = await mountEditor(
+      `/data-quality/rules/new?suggestion=${encodeURIComponent("workspaces/ws/qualitySuggestions/draft-1")}`
+    );
+
+    expect(mocks.findQualitySuggestion).toHaveBeenCalledWith(
+      "workspaces/ws/qualitySuggestions/draft-1"
+    );
+    expect(
+      (wrapper.find("#dq-rule-title").element as HTMLInputElement).value
+    ).toBe("Orders should have rows");
+    expect(
+      (
+        fieldInput(wrapper, label("dataQuality.editor.minRows"))
+          ?.element as HTMLInputElement
+      ).value
+    ).toBe("1");
+    expect(wrapper.text()).toContain(
+      label("dataQuality.editor.suggestionPrefilled")
+    );
+    // The target came from the suggestion, not from a query parameter.
+    expect(wrapper.text()).toContain(PREFILL);
   });
 
   it("updates an edited rule with the minimal mask", async () => {

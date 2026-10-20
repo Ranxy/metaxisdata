@@ -59,6 +59,13 @@
       :tabs="tabs"
     />
 
+    <MetadataQualitySection
+      v-if="activeTab === 'quality' && guid"
+      :table-guid="guid"
+      :meta-type="MetaType.TABLE"
+      :columns="table.columns"
+    />
+
     <template v-if="activeTab === 'columns'">
       <MetadataColumnsSection
         :columns="table.columns"
@@ -204,6 +211,7 @@ import {
   watch,
 } from "vue";
 import { useI18n } from "vue-i18n";
+import MetadataQualitySection from "@/components/data-quality/MetadataQualitySection.vue";
 import MetadataHistorySection from "@/components/metadata/MetadataHistorySection.vue";
 import TableLineageSection from "@/components/metadata/TableLineageSection.vue";
 import { Badge } from "@/components/ui/badge";
@@ -216,6 +224,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useAuthStore } from "@/store/modules/auth";
 import { Engine } from "@/types/proto-es/v1/common_pb";
 import {
   MetaType,
@@ -236,8 +245,10 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
+const authStore = useAuthStore();
 
 type DetailTab =
+  | "quality"
   | "columns"
   | "indexes"
   | "lineage"
@@ -247,6 +258,11 @@ type DetailTab =
   | "history";
 
 const activeTab = ref<DetailTab>("columns");
+
+/** The quality tab exists only for a caller who can read the rule catalog. */
+function hasQualityPermission(): boolean {
+  return authStore.hasPermission("metaxisdata.dataQuality.rules.list");
+}
 const columnRowRefs = new Map<string, Element>();
 
 const selectedColumnName = computed(
@@ -269,6 +285,12 @@ const tabs = computed(() => {
       count: props.table.indexes.length,
     },
   ];
+  if (props.guid && hasQualityPermission()) {
+    list.push({
+      value: "quality",
+      label: t("dataQuality.asset.tab"),
+    });
+  }
   if (props.guid) {
     list.push({ value: "lineage", label: t("metadataBrowser.lineage") });
   }

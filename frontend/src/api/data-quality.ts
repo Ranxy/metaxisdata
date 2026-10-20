@@ -2,20 +2,31 @@ import { create } from "@bufbuild/protobuf";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { FieldMaskSchema } from "@bufbuild/protobuf/wkt";
 import {
+  ColumnLabelAction,
+  type ColumnProfile,
+  type ColumnSemanticLabel,
   CreateQualityRuleRequestSchema,
   DeleteQualityRuleRequestSchema,
+  ExplainQualityResultRequestSchema,
+  type ExplainQualityResultResponse,
   GetQualityIssueRequestSchema,
+  GetQualityOverviewRequestSchema,
   GetQualityRuleRequestSchema,
   GetQualityRunRequestSchema,
+  ListColumnLabelsRequestSchema,
+  ListColumnProfilesRequestSchema,
   ListQualityIssuesRequestSchema,
   ListQualityRuleResultsRequestSchema,
   ListQualityRulesRequestSchema,
   ListQualityRunsRequestSchema,
+  ListQualitySuggestionsRequestSchema,
   PreviewQualityRuleRequestSchema,
+  ProfileColumnsRequestSchema,
   QualityDimension,
   type QualityIssue,
   QualityIssueSchema,
   QualityIssueStatus,
+  type QualityOverview,
   QualityResolutionReason,
   type QualityRule,
   type QualityRuleResult,
@@ -24,12 +35,22 @@ import {
   type QualityRun,
   QualityRunStatus,
   QualityRunTrigger,
+  type QualitySemanticType,
   QualitySeverity,
   QualityStatus,
+  type QualitySuggestion,
+  QualitySuggestionKind,
+  QualitySuggestionSource,
+  QualitySuggestionStatus,
   RunQualityRulesRequestSchema,
+  SuggestColumnLabelsRequestSchema,
+  SuggestQualityRuleRequestSchema,
+  UpdateColumnLabelRequestSchema,
   UpdateQualityIssueRequestSchema,
   UpdateQualityRuleRequestSchema,
+  UpdateQualitySuggestionRequestSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
+import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { dataQualityClient } from "./client";
 import { type ListPage, listAll } from "./list";
 
@@ -375,4 +396,237 @@ export async function muteQualityIssue(
     updateMask: create(FieldMaskSchema, { paths: ["muted_until"] }),
   });
   return await dataQualityClient.updateQualityIssue(request);
+}
+
+/** The workspace-level quality summary the overview page renders. */
+export async function getQualityOverview(
+  options: { trendDays?: number; signal?: AbortSignal } = {}
+): Promise<QualityOverview> {
+  const request = create(GetQualityOverviewRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    trendDays: options.trendDays ?? 0,
+  });
+  return await dataQualityClient.getQualityOverview(request, {
+    signal: options.signal,
+  });
+}
+
+// ---- suggestions ----
+
+/** One page of the suggestion queue, newest first. */
+export async function listQualitySuggestions(options: {
+  pageSize?: number;
+  pageToken?: string;
+  status?: QualitySuggestionStatus;
+  kind?: QualitySuggestionKind;
+  source?: QualitySuggestionSource;
+  targetGuid?: string;
+  signal?: AbortSignal;
+}): Promise<ListPage<QualitySuggestion>> {
+  const request = create(ListQualitySuggestionsRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    pageSize: options.pageSize ?? 50,
+    pageToken: options.pageToken ?? "",
+    status: options.status ?? QualitySuggestionStatus.UNSPECIFIED,
+    kind: options.kind ?? QualitySuggestionKind.UNSPECIFIED,
+    source: options.source ?? QualitySuggestionSource.UNSPECIFIED,
+    targetGuid: options.targetGuid ?? "",
+  });
+  const response = await dataQualityClient.listQualitySuggestions(request, {
+    signal: options.signal,
+  });
+  return {
+    items: response.qualitySuggestions,
+    nextPageToken: response.nextPageToken,
+  };
+}
+
+/** Every suggestion the caller can see, walking the cursor pages. */
+export async function listAllQualitySuggestions(
+  options: { pageSize?: number } = {}
+): Promise<QualitySuggestion[]> {
+  return await listAll((pageToken) =>
+    listQualitySuggestions({ pageSize: options.pageSize ?? 1000, pageToken })
+  );
+}
+
+/**
+ * One suggestion by resource name. The service has no Get method, so the editor's
+ * `?suggestion=` prefill walks the queue; a queue is bounded in practice and this
+ * keeps the API shape honest rather than adding a client-side cache.
+ */
+export async function findQualitySuggestion(
+  name: string
+): Promise<QualitySuggestion | undefined> {
+  const suggestions = await listAllQualitySuggestions();
+  return suggestions.find((suggestion) => suggestion.name === name);
+}
+
+/** Accept or reject a suggestion, optionally recording why. */
+export async function updateQualitySuggestion(options: {
+  name: string;
+  decision: QualitySuggestionStatus;
+  note?: string;
+  signal?: AbortSignal;
+}): Promise<QualitySuggestion> {
+  const request = create(UpdateQualitySuggestionRequestSchema, {
+    name: options.name,
+    decision: options.decision,
+    decisionNote: options.note ?? "",
+  });
+  return await dataQualityClient.updateQualitySuggestion(request, {
+    signal: options.signal,
+  });
+}
+
+// ---- column profiles and labels ----
+
+/** Stored profiles of one table's columns. */
+export async function listColumnProfiles(options: {
+  tableGuid: string;
+  metaType: MetaType;
+  columns?: string[];
+  pageSize?: number;
+  pageToken?: string;
+  signal?: AbortSignal;
+}): Promise<ColumnProfile[]> {
+  const request = create(ListColumnProfilesRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    pageSize: options.pageSize ?? 200,
+    pageToken: options.pageToken ?? "",
+    tableGuid: options.tableGuid,
+    metaType: options.metaType,
+    columns: options.columns ?? [],
+  });
+  const response = await dataQualityClient.listColumnProfiles(request, {
+    signal: options.signal,
+  });
+  return response.columnProfiles;
+}
+
+/** Stored semantic labels of one table's columns. */
+export async function listColumnLabels(options: {
+  tableGuid: string;
+  metaType: MetaType;
+  columns?: string[];
+  pageSize?: number;
+  pageToken?: string;
+  signal?: AbortSignal;
+}): Promise<ColumnSemanticLabel[]> {
+  const request = create(ListColumnLabelsRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    pageSize: options.pageSize ?? 200,
+    pageToken: options.pageToken ?? "",
+    tableGuid: options.tableGuid,
+    metaType: options.metaType,
+    columns: options.columns ?? [],
+  });
+  const response = await dataQualityClient.listColumnLabels(request, {
+    signal: options.signal,
+  });
+  return response.columnLabels;
+}
+
+/** Accept a label, or clear the column's label. */
+export async function updateColumnLabel(options: {
+  tableGuid: string;
+  metaType: MetaType;
+  column: string;
+  action: ColumnLabelAction;
+  label?: QualitySemanticType;
+  signal?: AbortSignal;
+}): Promise<ColumnSemanticLabel | undefined> {
+  const request = create(UpdateColumnLabelRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    tableGuid: options.tableGuid,
+    metaType: options.metaType,
+    column: options.column,
+    action: options.action,
+    label: options.label ?? 0,
+  });
+  const response = await dataQualityClient.updateColumnLabel(request, {
+    signal: options.signal,
+  });
+  return response.columnLabel;
+}
+
+/** Measure the columns now (the deterministic profile, no model). */
+export async function profileColumns(options: {
+  tableGuid: string;
+  metaType: MetaType;
+  columns: string[];
+  signal?: AbortSignal;
+}): Promise<ColumnProfile[]> {
+  const request = create(ProfileColumnsRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    tableGuid: options.tableGuid,
+    metaType: options.metaType,
+    columns: options.columns,
+  });
+  const response = await dataQualityClient.profileColumns(request, {
+    signal: options.signal,
+  });
+  return response.columnProfiles;
+}
+
+/** Ask the model for rule drafts and queue them as suggestions. */
+export async function suggestQualityRule(options: {
+  tableGuid: string;
+  metaType: MetaType;
+  columns?: string[];
+  intent?: string;
+  language?: string;
+  signal?: AbortSignal;
+}): Promise<QualitySuggestion[]> {
+  const request = create(SuggestQualityRuleRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    tableGuid: options.tableGuid,
+    metaType: options.metaType,
+    columns: options.columns ?? [],
+    intent: options.intent ?? "",
+    language: options.language ?? "",
+  });
+  const response = await dataQualityClient.suggestQualityRule(request, {
+    signal: options.signal,
+  });
+  return response.qualitySuggestions;
+}
+
+/** Ask the model for semantic column labels and queue them as suggestions. */
+export async function suggestColumnLabels(options: {
+  tableGuid: string;
+  metaType: MetaType;
+  columns?: string[];
+  language?: string;
+  signal?: AbortSignal;
+}): Promise<QualitySuggestion[]> {
+  const request = create(SuggestColumnLabelsRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    tableGuid: options.tableGuid,
+    metaType: options.metaType,
+    columns: options.columns ?? [],
+    language: options.language ?? "",
+  });
+  const response = await dataQualityClient.suggestColumnLabels(request, {
+    signal: options.signal,
+  });
+  return response.qualitySuggestions;
+}
+
+/**
+ * Stream an AI explanation of one rule result. The server sends progress steps,
+ * markdown content fragments and a final metadata frame; `forceRegenerate`
+ * bypasses a cached explanation.
+ */
+export function explainQualityResult(options: {
+  name: string;
+  language?: string;
+  forceRegenerate?: boolean;
+}): AsyncIterable<ExplainQualityResultResponse> {
+  const request = create(ExplainQualityResultRequestSchema, {
+    name: options.name,
+    language: options.language ?? "",
+    forceRegenerate: options.forceRegenerate ?? false,
+  });
+  return dataQualityClient.explainQualityResult(request);
 }
