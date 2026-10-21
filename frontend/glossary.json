@@ -884,6 +884,27 @@
       ]
     },
     {
+      "id": "rule-type",
+      "category": "Data Quality",
+      "definition": "The category a quality rule belongs to; it decides which configuration the rule carries and how its verdict is read.",
+      "translations": {
+        "en-US": "rule type",
+        "zh-CN": "规则类型"
+      },
+      "scope": [
+        "dataQuality."
+      ],
+      "avoid": {
+        "en-US": [
+          "/\\brule kinds?/i"
+        ],
+        "zh-CN": [
+          "规则种类",
+          "检查类型"
+        ]
+      }
+    },
+    {
       "id": "rule-result",
       "category": "Data Quality",
       "definition": "The verdict of an execution.",
@@ -939,6 +960,23 @@
       "avoid": {
         "zh-CN": [
           "度量"
+        ]
+      }
+    },
+    {
+      "id": "timeliness",
+      "category": "Data Quality",
+      "definition": "The quality dimension for whether the data is up to date; the freshness rule measures it, but Chinese copy names the dimension 及时性 and the rule type 时效性.",
+      "translations": {
+        "en-US": "timeliness",
+        "zh-CN": "及时性"
+      },
+      "scope": [
+        "dataQuality.dimension."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "时效性"
         ]
       }
     },
@@ -1043,6 +1081,23 @@
       ]
     },
     {
+      "id": "accepted-values",
+      "category": "Data Quality",
+      "definition": "The rule that every value of a column comes from a fixed list.",
+      "translations": {
+        "en-US": "accepted values",
+        "zh-CN": "允许值"
+      },
+      "scope": [
+        "dataQuality."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "枚举值"
+        ]
+      }
+    },
+    {
       "id": "referential-integrity",
       "category": "Data Quality",
       "definition": "Whether a child row's value has a matching parent row.",
@@ -1056,6 +1111,79 @@
       "avoid": {
         "zh-CN": [
           "参照完整性"
+        ]
+      }
+    },
+    {
+      "id": "schema-drift",
+      "category": "Data Quality",
+      "definition": "The rule that compares the target's live column list with the snapshot taken when the rule was saved.",
+      "translations": {
+        "en-US": "schema drift",
+        "zh-CN": "结构漂移"
+      },
+      "scope": [
+        "dataQuality."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "表结构一致性",
+          "表结构漂移",
+          "字段结构漂移",
+          "模式漂移"
+        ]
+      }
+    },
+    {
+      "id": "grouped-row-count",
+      "category": "Data Quality",
+      "definition": "The rule that groups rows by columns and bounds each group's row count.",
+      "translations": {
+        "en-US": "grouped row count",
+        "zh-CN": "分组行数"
+      },
+      "scope": [
+        "dataQuality."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "分组检查"
+        ]
+      }
+    },
+    {
+      "id": "aggregate-value",
+      "category": "Data Quality",
+      "definition": "The rule that bounds one column's aggregate value (sum, average, extremes, standard deviation or percentile).",
+      "translations": {
+        "en-US": "aggregate value",
+        "zh-CN": "聚合值"
+      },
+      "scope": [
+        "dataQuality."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "聚合检查",
+          "聚合校验"
+        ]
+      }
+    },
+    {
+      "id": "cross-table-reconciliation",
+      "category": "Data Quality",
+      "definition": "The rule that compares one aggregate of the target table with one of another table and bounds their difference.",
+      "translations": {
+        "en-US": "cross-table reconciliation",
+        "zh-CN": "跨表对账"
+      },
+      "scope": [
+        "dataQuality."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "跨表校验",
+          "跨表比较"
         ]
       }
     },

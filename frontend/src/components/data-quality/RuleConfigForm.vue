@@ -9,12 +9,16 @@
     </p>
 
     <!-- Shared by every threshold-carrying config: the unit the fail/warn values
-         are read in. -->
+         are read in, and the values themselves. custom SQL has no row total, so
+         it keeps the fail/warn pair but never the unit. -->
     <div
-      v-if="isCountRule"
+      v-if="isCountRule || ruleType === QualityRuleType.CUSTOM_SQL"
       class="grid gap-4 sm:grid-cols-3"
     >
-      <div class="flex flex-col gap-1.5">
+      <div
+        v-if="isCountRule"
+        class="flex flex-col gap-1.5"
+      >
         <Label>{{ t("dataQuality.editor.thresholdMetric") }}</Label>
         <Select v-model="thresholdMetricModel">
           <SelectTrigger>
@@ -37,7 +41,9 @@
         :error="errorFor('failThreshold')"
         type="number"
         :label="t('dataQuality.editor.failThreshold')"
-        :hint="t('dataQuality.editor.thresholdHint')"
+        :hint="
+          isCountRule ? t('dataQuality.editor.thresholdHint') : undefined
+        "
       />
       <FormField
         v-model="config.warnThreshold"
@@ -831,6 +837,22 @@
         class="sm:col-span-2"
         :label="t('dataQuality.editor.tolerance')"
         :hint="t('dataQuality.editor.toleranceHint')"
+      />
+      <FormField
+        v-model="config.failThreshold"
+        :id="fieldId('failThreshold')"
+        :required="requiredFor('failThreshold')"
+        :error="errorFor('failThreshold')"
+        type="number"
+        :label="t('dataQuality.editor.failThreshold')"
+      />
+      <FormField
+        v-model="config.warnThreshold"
+        :id="fieldId('warnThreshold')"
+        :required="requiredFor('warnThreshold')"
+        :error="errorFor('warnThreshold')"
+        type="number"
+        :label="t('dataQuality.editor.warnThreshold')"
       />
     </div>
     <template v-else-if="ruleType === QualityRuleType.CEL_EXPRESSION">

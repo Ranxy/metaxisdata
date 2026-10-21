@@ -112,6 +112,35 @@
           </Select>
         </div>
 
+        <div class="flex min-w-40 flex-1 flex-col gap-1.5 [&>select]:hidden sm:flex-none">
+          <Label
+            for="data-quality-rule-type"
+            class="text-sm font-medium leading-none"
+          >
+            {{ t("dataQuality.filterRuleType") }}
+          </Label>
+          <Select v-model="ruleType">
+            <SelectTrigger
+              id="data-quality-rule-type"
+              class="w-full sm:w-48"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="-">
+                {{ t("dataQuality.allRuleTypes") }}
+              </SelectItem>
+              <SelectItem
+                v-for="option in EDITABLE_RULE_TYPES"
+                :key="option"
+                :value="String(option)"
+              >
+                {{ t(qualityRuleTypeKey(option)) }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         <div class="flex min-w-32 flex-1 flex-col gap-1.5 [&>select]:hidden sm:flex-none">
           <Label
             for="data-quality-severity"
@@ -530,6 +559,7 @@ import {
   type QualityRule,
   QualityRuleSchema,
   QualityRuleState,
+  QualityRuleType,
   QualitySeverity,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import {
@@ -544,6 +574,7 @@ import {
   qualityStatusVariant,
   targetScopeLabel,
 } from "@/utils/dataQuality";
+import { EDITABLE_RULE_TYPES } from "@/utils/dataQualityForm";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 
 const { t, locale } = useI18n();
@@ -585,12 +616,14 @@ const UNASSIGNED_OWNER = "__unassigned__";
 // request boundary, where they belong. `-` is the "any" item.
 const search = ref("");
 const dimension = ref("-");
+const ruleType = ref("-");
 const severity = ref("-");
 const state = ref("-");
 const scope = ref<QualityTargetScope>();
 const owner = ref("");
 const appliedSearch = ref("");
 const appliedDimension = ref("-");
+const appliedRuleType = ref("-");
 const appliedSeverity = ref("-");
 const appliedState = ref("-");
 const appliedScope = ref<QualityTargetScope>();
@@ -606,6 +639,7 @@ const hasActiveFilters = computed(
   () =>
     appliedSearch.value !== "" ||
     appliedDimension.value !== "-" ||
+    appliedRuleType.value !== "-" ||
     appliedSeverity.value !== "-" ||
     appliedState.value !== "-" ||
     appliedScope.value !== undefined ||
@@ -654,6 +688,12 @@ const stateOptions: Array<{
   { value: QualityRuleState.ARCHIVED, key: "dataQuality.ruleState.archived" },
 ];
 
+/** The rule types the editor can create; UNSPECIFIED is the "any" member. */
+const RULE_TYPE_FILTER_VALUES: QualityRuleType[] = [
+  QualityRuleType.UNSPECIFIED,
+  ...EDITABLE_RULE_TYPES,
+];
+
 const {
   items: rules,
   isLoading,
@@ -683,6 +723,7 @@ const {
         QualityDimension.TIMELINESS,
         QualityDimension.ACCURACY,
       ]),
+      ruleType: enumFromFilter(appliedRuleType.value, RULE_TYPE_FILTER_VALUES),
       severity: enumFromFilter(appliedSeverity.value, [
         QualitySeverity.UNSPECIFIED,
         QualitySeverity.WARNING,
@@ -725,6 +766,7 @@ function enumFromFilter<T extends number>(value: string, members: T[]): T {
 function applyFilters() {
   appliedSearch.value = search.value.trim();
   appliedDimension.value = dimension.value;
+  appliedRuleType.value = ruleType.value;
   appliedSeverity.value = severity.value;
   appliedState.value = state.value;
   appliedScope.value = scope.value ? { ...scope.value } : undefined;
@@ -735,6 +777,7 @@ function applyFilters() {
 function clearFilters() {
   search.value = "";
   dimension.value = "-";
+  ruleType.value = "-";
   severity.value = "-";
   state.value = "-";
   scope.value = undefined;

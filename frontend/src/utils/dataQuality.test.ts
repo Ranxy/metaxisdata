@@ -49,6 +49,7 @@ import {
   qualityResolutionReasonKey,
   qualityRuleStateKey,
   qualityRuleStateVariant,
+  qualityRuleTypeDescriptionKey,
   qualityRuleTypeKey,
   qualitySeverityKey,
   qualitySeverityVariant,
@@ -204,12 +205,54 @@ describe("qualityRuleTypeKey", () => {
     expect(qualityRuleTypeKey(QualityRuleType.CEL_EXPRESSION)).toBe(
       "dataQuality.ruleType.celExpression"
     );
+    expect(qualityRuleTypeKey(QualityRuleType.SCHEMA_DRIFT)).toBe(
+      "dataQuality.ruleType.schemaDrift"
+    );
+    expect(qualityRuleTypeKey(QualityRuleType.GROUP_CHECK)).toBe(
+      "dataQuality.ruleType.groupCheck"
+    );
+    expect(qualityRuleTypeKey(QualityRuleType.AGGREGATE)).toBe(
+      "dataQuality.ruleType.aggregate"
+    );
+    expect(qualityRuleTypeKey(QualityRuleType.CROSS_TABLE)).toBe(
+      "dataQuality.ruleType.crossTable"
+    );
     expect(qualityRuleTypeKey(QualityRuleType.UNSPECIFIED)).toBe(
       "dataQuality.ruleType.unspecified"
     );
     expect(qualityRuleTypeKey(99 as QualityRuleType)).toBe(
       "dataQuality.ruleType.unspecified"
     );
+  });
+
+  // Iterating the enum is what keeps a newly added type from silently falling
+  // into the unspecified fallback, which is a defined key and so invisible to
+  // the catalog test below.
+  it("gives every non-unspecified type its own key", () => {
+    const types = Object.values(QualityRuleType).filter(
+      (value): value is QualityRuleType =>
+        typeof value === "number" && value !== QualityRuleType.UNSPECIFIED
+    );
+    expect(types).toHaveLength(18);
+    const keys = types.map((ruleType) => qualityRuleTypeKey(ruleType));
+    expect(keys).not.toContain("dataQuality.ruleType.unspecified");
+    expect(new Set(keys).size).toBe(types.length);
+  });
+});
+
+describe("qualityRuleTypeDescriptionKey", () => {
+  it("derives one description key per known type and none for an unknown one", () => {
+    expect(qualityRuleTypeDescriptionKey(QualityRuleType.ROW_COUNT)).toBe(
+      "dataQuality.ruleTypeDescription.rowCount"
+    );
+    expect(qualityRuleTypeDescriptionKey(QualityRuleType.SCHEMA_DRIFT)).toBe(
+      "dataQuality.ruleTypeDescription.schemaDrift"
+    );
+    expect(qualityRuleTypeDescriptionKey(QualityRuleType.CROSS_TABLE)).toBe(
+      "dataQuality.ruleTypeDescription.crossTable"
+    );
+    expect(qualityRuleTypeDescriptionKey(QualityRuleType.UNSPECIFIED)).toBe("");
+    expect(qualityRuleTypeDescriptionKey(99 as QualityRuleType)).toBe("");
   });
 });
 
@@ -949,6 +992,61 @@ describe("data quality vocabulary catalogs", () => {
   it("defines every key the helpers can return in both locales", () => {
     const keys = helperKeys();
     expect(keys.length).toBeGreaterThan(0);
+    for (const key of keys) {
+      for (const [locale, catalog] of Object.entries(CATALOGS)) {
+        expect(label(catalog, key), `${locale} is missing ${key}`).toEqual(
+          expect.any(String)
+        );
+      }
+    }
+  });
+
+  // Every type must read differently from every other: the unspecified fallback
+  // is itself a defined key, so the check above cannot notice a type that lost
+  // its label. A duplicate would show up as two identical entries in the select.
+  it("gives every rule type a distinct label and description in both locales", () => {
+    const types = enumValues(QualityRuleType).filter(
+      (value) => value !== QualityRuleType.UNSPECIFIED
+    );
+    expect(types).toHaveLength(18);
+    for (const [locale, catalog] of Object.entries(CATALOGS)) {
+      const labels = types.map((ruleType) =>
+        label(catalog, qualityRuleTypeKey(ruleType))
+      );
+      for (const value of labels) {
+        expect(value, `${locale} rule type label`).toEqual(expect.any(String));
+      }
+      expect(new Set(labels).size, `${locale} rule type labels`).toBe(
+        types.length
+      );
+      expect(labels, `${locale} uses the unspecified label`).not.toContain(
+        label(catalog, "dataQuality.ruleType.unspecified")
+      );
+      const descriptions = types.map((ruleType) =>
+        label(catalog, qualityRuleTypeDescriptionKey(ruleType))
+      );
+      for (const value of descriptions) {
+        expect(value, `${locale} rule type description`).toEqual(
+          expect.any(String)
+        );
+      }
+      expect(
+        new Set(descriptions).size,
+        `${locale} rule type descriptions`
+      ).toBe(types.length);
+    }
+  });
+
+  it("defines the rule-type select's group labels and filter copy in both locales", () => {
+    const keys = [
+      "dataQuality.filterRuleType",
+      "dataQuality.allRuleTypes",
+      "dataQuality.editor.ruleTypeViewHint",
+      "dataQuality.ruleTypeGroup.count",
+      "dataQuality.ruleTypeGroup.value",
+      "dataQuality.ruleTypeGroup.aggregate",
+      "dataQuality.ruleTypeGroup.structure",
+    ];
     for (const key of keys) {
       for (const [locale, catalog] of Object.entries(CATALOGS)) {
         expect(label(catalog, key), `${locale} is missing ${key}`).toEqual(

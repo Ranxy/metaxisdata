@@ -735,3 +735,34 @@ func TestValidateCELExpressionRejectsANonIdentifierColumn(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, common.Invalid, common.ErrorCode(err))
 }
+
+// A money column is refused at save: CEL reads the value as a plain number, while
+// money arrives as decorated currency text and would turn every row into BAD_DATA
+// after the rule was saved.
+func TestValidateCELExpressionRejectsMoneyColumns(t *testing.T) {
+	t.Parallel()
+
+	target := validationTarget(storepb.Engine_POSTGRES)
+	target.Columns = append(target.Columns, ColumnInfo{Name: "balance", Type: "money", Kind: ColumnKindNumeric})
+	config := celRuleConfig("balance > 0.0", []string{"balance"}, 100)
+	err := ValidateConfig(target, storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION, config)
+	require.Error(t, err)
+	require.Equal(t, common.Invalid, common.ErrorCode(err))
+	require.Contains(t, err.Error(), "money")
+}
+
+// A stored money rule still evaluates: the sample value arrives as the decorated
+// string the driver renders, which the shared number normalization strips.
+func TestExecuteCELRuleReadsMoneyValues(t *testing.T) {
+	t.Parallel()
+
+	config := celRuleConfig("amount > 100.0", []string{"amount"}, 10)
+	execution, _, err := runCelExecution(t, config, &db.QueryResult{
+		Columns: []string{"amount"},
+		Rows:    [][]any{{"$1,234.50"}, {"$0.50"}},
+	}, ExecOptions{})
+	require.NoError(t, err)
+	// 1234.50 satisfies the predicate; 0.50 does not and is a violation.
+	require.Equal(t, int64(1), execution.Observation.FailedRows)
+	require.Equal(t, int64(2), execution.Observation.TotalRows)
+}

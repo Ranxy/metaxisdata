@@ -26,8 +26,8 @@ func aggregateConfig(column string, function storepb.QualityAggregateFunction, m
 }
 
 // TestAggregateSQLGoldens pins the aggregate statement on every dialect family:
-// COUNT(*) ignores the column, arithmetic/min/max aggregate it, and the engine
-// spellings differ only for standard deviation.
+// the function aggregates the named column, and the engine spellings differ only
+// for standard deviation.
 func TestAggregateSQLGoldens(t *testing.T) {
 	t.Parallel()
 
@@ -38,13 +38,6 @@ func TestAggregateSQLGoldens(t *testing.T) {
 		pgSQL    string
 		mssqlSQL string
 	}{
-		{
-			name:     "count",
-			config:   aggregateConfig("id", storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT, proto.Float64(1), nil),
-			mysqlSQL: "SELECT COUNT(*) AS total_rows, COUNT(*) AS observed FROM `shop`.`orders`",
-			pgSQL:    `SELECT COUNT(*) AS total_rows, COUNT(*) AS observed FROM "public"."orders"`,
-			mssqlSQL: "SELECT COUNT(*) AS total_rows, COUNT(*) AS observed FROM [public].[orders]",
-		},
 		{
 			name:     "sum",
 			config:   aggregateConfig("amount", storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_SUM, proto.Float64(0), proto.Float64(100)),
@@ -60,11 +53,11 @@ func TestAggregateSQLGoldens(t *testing.T) {
 			mssqlSQL: "SELECT COUNT(*) AS total_rows, AVG([amount]) AS observed FROM [public].[orders]",
 		},
 		{
-			name:     "min on a temporal column",
-			config:   aggregateConfig("created_at", storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MIN, proto.Float64(0), nil),
-			mysqlSQL: "SELECT COUNT(*) AS total_rows, MIN(`created_at`) AS observed FROM `shop`.`orders`",
-			pgSQL:    `SELECT COUNT(*) AS total_rows, MIN("created_at") AS observed FROM "public"."orders"`,
-			mssqlSQL: "SELECT COUNT(*) AS total_rows, MIN([created_at]) AS observed FROM [public].[orders]",
+			name:     "min",
+			config:   aggregateConfig("amount", storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MIN, proto.Float64(0), nil),
+			mysqlSQL: "SELECT COUNT(*) AS total_rows, MIN(`amount`) AS observed FROM `shop`.`orders`",
+			pgSQL:    `SELECT COUNT(*) AS total_rows, MIN("amount") AS observed FROM "public"."orders"`,
+			mssqlSQL: "SELECT COUNT(*) AS total_rows, MIN([amount]) AS observed FROM [public].[orders]",
 		},
 		{
 			name:     "max",
@@ -284,6 +277,12 @@ func TestValidateAggregateConfig(t *testing.T) {
 			engine:      storepb.Engine_POSTGRES,
 			config:      &storepb.QualityRuleConfig{},
 			wantMessage: "empty",
+		},
+		{
+			name:        "count function",
+			engine:      storepb.Engine_POSTGRES,
+			config:      aggregateConfig("id", storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT, proto.Float64(0), nil),
+			wantMessage: "duplicates row_count",
 		},
 		{
 			name:        "unknown column",

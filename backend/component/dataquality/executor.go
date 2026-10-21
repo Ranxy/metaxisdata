@@ -260,49 +260,17 @@ func requireSampleColumns(columns []string, expected []string) error {
 // validateExecutionMetric rejects a percentage threshold on a rule whose
 // observation has no total to divide by. Validation refuses the combination when
 // the rule is saved; this is the run-time backstop for a stored rule that this
-// build judges differently.
+// build judges differently. Both paths consult the same allow-list
+// (ruleTypeAllowsPercent) and the same explanation
+// (percentThresholdUnsupported), so save and execution cannot drift apart.
 func validateExecutionMetric(ruleType storepb.QualityRuleType, config *storepb.QualityRuleConfig) error {
 	if thresholdMetric(config) != storepb.QualityThresholdMetric_QUALITY_THRESHOLD_METRIC_PERCENT {
 		return nil
 	}
-	if ruleType == storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT {
-		// The drift snapshot is a fixed list of expected columns, not a row set; a
-		// percentage of it is not a meaningful threshold.
-		return invalidConfig("schema_drift measures a count of drift items; threshold_metric PERCENT is not supported")
-	}
-	if ruleType == storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE ||
-		ruleType == storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE {
-		// These thresholds bound an absolute value (an interval edge or a tolerated
-		// difference), not a fraction of rows.
-		return invalidConfig("%s thresholds are absolute values; threshold_metric PERCENT is not supported", ruleType)
-	}
-	switch ruleType {
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION:
-		// These observations carry a denominator, so the evaluator can compute the
-		// percentage. For a CEL rule it is the number of sampled rows the expression
-		// evaluated. null_percent ignores the shared metric (its own config decides
-		// count vs percentage) but still has a total, so it is accepted here rather
-		// than refused for a field it does not read.
+	if ruleTypeAllowsPercent(ruleType) {
 		return nil
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED:
-		return invalidConfig("rule type %s has no total rows for a percentage threshold", ruleType)
-	default:
-		return invalidConfig("rule type %s has no total rows for a percentage threshold", ruleType)
 	}
+	return percentThresholdUnsupported(ruleType)
 }
 
 // observationFromAggregate interprets the aggregate row. The compiled statement
@@ -728,10 +696,10 @@ func executeMetadataRule(resolution *Resolution, rule RuleSnapshot, opts ExecOpt
 }
 
 // compareSchemaDrift compares the registry's current columns with the saved
-// snapshot. The items come in a stable order: missing and changed-type columns in
-// snapshot order, then out-of-order shared columns in snapshot order, then extra
-// live columns in live order. Duplicate snapshot entries are ignored here because
-// validation refuses them at save time.
+// snapshot. The items come in a stable order: missing, changed-type and
+// changed-nullability columns in snapshot order, then out-of-order shared columns
+// in snapshot order, then extra live columns in live order. Duplicate snapshot
+// entries are ignored here because validation refuses them at save time.
 func compareSchemaDrift(current []ColumnInfo, config *storepb.SchemaDriftConfig) []schemaDriftItem {
 	live := make(map[string]ColumnInfo, len(current))
 	for _, column := range current {
@@ -754,11 +722,22 @@ func compareSchemaDrift(current []ColumnInfo, config *storepb.SchemaDriftConfig)
 			items = append(items, schemaDriftItem{Column: name, Reason: "missing"})
 			continue
 		}
-		if schemaDriftChecksTypes(config) && !strings.EqualFold(strings.TrimSpace(want.GetType()), strings.TrimSpace(actual.Type)) {
-			items = append(items, schemaDriftItem{
-				Column: name,
-				Reason: fmt.Sprintf("type: %s -> %s", strings.TrimSpace(want.GetType()), strings.TrimSpace(actual.Type)),
-			})
+		if schemaDriftChecksTypes(config) {
+			if !strings.EqualFold(strings.TrimSpace(want.GetType()), strings.TrimSpace(actual.Type)) {
+				items = append(items, schemaDriftItem{
+					Column: name,
+					Reason: fmt.Sprintf("type: %s -> %s", strings.TrimSpace(want.GetType()), strings.TrimSpace(actual.Type)),
+				})
+			}
+			// Nullability is part of the column contract the snapshot records: a
+			// column that gained or lost NOT NULL changes what the rule's checks can
+			// assume about it.
+			if want.GetNullable() != actual.Nullable {
+				items = append(items, schemaDriftItem{
+					Column: name,
+					Reason: fmt.Sprintf("nullable: %s -> %s", schemaDriftNullability(want.GetNullable()), schemaDriftNullability(actual.Nullable)),
+				})
+			}
 		}
 	}
 	if config.GetCheckOrder() {
@@ -841,12 +820,21 @@ func schemaDriftSamples(items []schemaDriftItem, limit int) *storepb.QualityFail
 	return samples
 }
 
-// schemaDriftChecksTypes reports whether a type change counts as drift. Unset
-// means yes: a schema-drift rule protects the column contract, and a type change
-// is the change most worth catching, so the author turns it off explicitly.
+// schemaDriftChecksTypes reports whether the column contract checks (type and
+// nullability) count as drift. Unset means yes: a schema-drift rule protects the
+// column contract, and a type or nullability change is the change most worth
+// catching, so the author turns it off explicitly.
 func schemaDriftChecksTypes(config *storepb.SchemaDriftConfig) bool {
 	if config.CheckTypes == nil {
 		return true
 	}
 	return *config.CheckTypes
+}
+
+// schemaDriftNullability renders one nullability bit for a drift reason.
+func schemaDriftNullability(nullable bool) string {
+	if nullable {
+		return "NULL"
+	}
+	return "NOT NULL"
 }

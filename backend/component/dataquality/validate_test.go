@@ -755,6 +755,57 @@ func TestValidateConfigRejectsPercentWithoutDenominator(t *testing.T) {
 	require.NoError(t, ValidateConfig(target, storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, unique))
 }
 
+// Each PERCENT refusal explains itself through the one helper the save-time gate
+// and the executor's backstop share: a count rule has no denominator, null_percent
+// names its own unit, and the measurement rules bound absolute values.
+func TestPercentRefusalMessages(t *testing.T) {
+	t.Parallel()
+
+	percent := storepb.QualityThresholdMetric_QUALITY_THRESHOLD_METRIC_PERCENT
+	refused := []struct {
+		ruleType storepb.QualityRuleType
+		want     string
+	}{
+		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT, want: "chooses count or percentage in its own config"},
+		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT, want: "drift items"},
+		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE, want: "absolute values"},
+		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, want: "absolute values"},
+		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, want: "no total-rows denominator"},
+		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE, want: "no total-rows denominator"},
+		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS, want: "no total-rows denominator"},
+		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL, want: "no total-rows denominator"},
+		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED, want: "no total-rows denominator"},
+	}
+	for _, test := range refused {
+		err := validatePercentSupport(test.ruleType, percent)
+		require.Equal(t, common.Invalid, common.ErrorCode(err), test.ruleType.String())
+		require.Contains(t, err.Error(), test.want, test.ruleType.String())
+	}
+
+	allowed := []storepb.QualityRuleType{
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION,
+	}
+	for _, ruleType := range allowed {
+		require.NoError(t, validatePercentSupport(ruleType, percent), ruleType.String())
+	}
+
+	// The same refusal reaches the save path with the accurate null_percent text.
+	config := validationNullPercentConfig(&storepb.NullPercentConfig{Column: "name", MaxNullPct: validationPtr(10.0)})
+	config.ThresholdMetric = percent
+	err := ValidateConfig(validationTarget(storepb.Engine_MYSQL), storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT, config)
+	require.Equal(t, common.Invalid, common.ErrorCode(err))
+	require.Contains(t, err.Error(), "chooses count or percentage in its own config")
+}
+
 // parentTableName is the pure half of the parent lookup: it decides which registry
 // object the config names. The GUID it produces has to be the same path the schema
 // syncer registers, or the parent lookup would always miss.

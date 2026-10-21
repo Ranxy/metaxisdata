@@ -71,8 +71,11 @@ type compileGolden struct {
 	mssqlSQL    string
 }
 
-// compileRuleGoldens covers all 13 rule types. StarRocks shares the MySQL
-// expectations: the dialects differ only by the engine the table is quoted for.
+// compileRuleGoldens covers the 13 SQL rule types that share the dialect helpers;
+// the v1.1 and metadata types have their own SQL or behaviour pinned in
+// cel_test.go, schema_drift_test.go, group_check_test.go, aggregate_test.go and
+// cross_table_test.go. StarRocks shares the MySQL expectations: the dialects differ
+// only by the engine the table is quoted for.
 func compileRuleGoldens() []compileGolden {
 	return []compileGolden{
 		{
@@ -1123,4 +1126,44 @@ func TestCompileReferentialIntegrityAllowNull(t *testing.T) {
 	require.Equal(t, "SELECT COUNT(*) AS total_rows, SUM(CASE WHEN c.`status` IS NOT NULL AND p.`code` IS NULL "+
 		"THEN 1 ELSE 0 END) AS failed_rows FROM (SELECT * FROM `shop`.`orders`) c "+
 		"LEFT JOIN `shop`.`customer_status` p ON c.`status` = p.`code`", query.SQL)
+}
+
+// TestRuleTypeCatalogIsComplete is the guard against a new QualityRuleType reaching
+// the API without the per-type tables this package maintains by hand. Every enum
+// value except UNSPECIFIED must have a compiler and be supported on a dialect this
+// build accepts, and only schema_drift may be a metadata rule.
+func TestRuleTypeCatalogIsComplete(t *testing.T) {
+	t.Parallel()
+
+	seen := 0
+	for value, name := range storepb.QualityRuleType_name {
+		ruleType := storepb.QualityRuleType(value)
+		if ruleType == storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED {
+			require.Equal(t, "QUALITY_RULE_TYPE_UNSPECIFIED", name)
+			continue
+		}
+		seen++
+		require.Contains(t, compilers, ruleType, "rule type %s has no compiler", name)
+		require.True(t, RuleTypeForTarget(storepb.MetaType_TABLE, ruleType), "%s must watch a table", name)
+		ok, reason := Supported(storepb.Engine_POSTGRES, ruleType)
+		require.True(t, ok, "%s: %s", name, reason)
+		require.Empty(t, reason, "a supported rule type must not carry a refusal reason")
+	}
+
+	// The enum has 18 real values, and the compiler map covers exactly those: a
+	// stale compiler for a removed value would mean a rule this build cannot
+	// describe.
+	require.Equal(t, 18, seen)
+	require.Len(t, compilers, seen)
+	_, hasUnspecifiedCompiler := compilers[storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED]
+	require.False(t, hasUnspecifiedCompiler)
+
+	metadataRules := 0
+	for ruleType := range compilers {
+		if IsMetadataRule(ruleType) {
+			metadataRules++
+		}
+	}
+	require.Equal(t, 1, metadataRules, "only schema_drift reads the registry instead of the target")
+	require.True(t, IsMetadataRule(storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT))
 }

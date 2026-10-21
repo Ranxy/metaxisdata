@@ -44,7 +44,7 @@ SPA ──ConnectRPC──► DataQualityService (api/v1) ──► component/da
 | D-16 | 保留期：执行随内部批次 90d、关闭问题 90d、画像/LLM 缓存 7d、已决建议 90d；由 maintenance runner 每 6h 清理 | 删除批次级联删除其执行；只清已解决的问题与已决建议 |
 | D-17 | 不新增运行时依赖：CEL 用 `cel-go`，SQL 校验用 `omni`，图表自绘 | 保持单二进制 |
 | D-18 | 调度 = 进程内 tick + inflight map + 表内 `next_run_at` | 单副本；重启收敛、不补跑 |
-| D-19 | count 型规则公共 `threshold_metric`（COUNT/PERCENT） | PERCENT 仅 10 类（§3.2） |
+| D-19 | count 型规则公共 `threshold_metric`（COUNT/PERCENT） | PERCENT 仅 10 类（§3.2）；`null_percent` 用它自己的 `max_null_count`/`max_null_pct` 二选一 |
 | D-20 | RuleSet（contract-like 整体验证）后续再做 | v1/v1.1 不引入该实体；前置能力见 §8 非目标 |
 | D-21 | `custom_sql` 是缺口逃生口：人写单条 SELECT/WITH ≤8 KiB | 只读、超时/上限、审计；反复出现的形态应升格为规则类型 |
 | D-22 | 统一 `fail_threshold`/`warn_threshold`（optional double），单位由 `threshold_metric` 定 | 默认 fail=0、warn 可选；比较严格（等于阈值通过） |
@@ -128,17 +128,17 @@ meta_registry_resource（只读）──< quality_rule >──< quality_rule_rev
 
 - 编译器表 `map[storepb.QualityRuleType]compilerFunc` → `CompiledQuery{SQL, Args, Kind, Columns}`；`Kind` 为 `Aggregate`（一行聚合）、`FailedRows`、`Sample`（样本行）、`Metadata`（无 SQL，元数据比对）。
 - 方言矩阵：MySQL 家族/TiDB/MariaDB/OceanBase/StarRocks/Doris（反引号、`?`、`LIMIT`、`REGEXP`、`CHAR_LENGTH`）、PostgreSQL（`"`、`$n`、`~`/`!~`）、MSSQL（`[ ]`、`@pN`、无正则、`LEN`、`OFFSET … FETCH`、`TOP 0` 探测）。表名按方言 `db.table` / `schema.table` 限定；所有标识符 quote，所有值参数化。
-- 类型能力（`capabilities.go`）：`ColumnKind` 只决定字面量怎么绑定，还不足以决定能生成哪些 SQL。能力按 `comparison`/`grouping`/`countDistinct`/`regex`/`length`/`extrema`/`text` 逐项维护，并有两个否定例外 `noColumnCount`（COUNT(col) 非法）与 `noNullTest`（IS NULL 非法）；表是**按引擎族的允许表**，未列出的类型视为零能力（保存期拒绝，而不是猜一个可能在引擎上不存在的操作）。校验与编译器共用 `requireComparisonColumn`/`requireValueComparisonColumn`/`requireGroupingColumn`/`requireRegexColumn`/`requireLengthColumn`/`requireNullTestColumn`；画像用 `capabilitiesFor` 推导 facts 与非空计数方式，因此两者不会漂移。普通 `null_percent`/`IS [NOT] NULL` filter 需要 NULL 判定能力，`unique`/`unique_combination` 在 `count_nulls=false` 时也需要（`group_check` 不需要）；filter/accepted_values/null_values 还要求 `valueComparison`（数组不可绑定标量）。`cross_table` 与 `aggregate` 的非 COUNT 聚合列必须是 numeric；PG money 只允许 SUM/MIN/MAX。PG schema-qualified 用户自定义类型保留历史规则允许面（composite 谓词绑定为已记录限制）。
+- 类型能力（`capabilities.go`）：`ColumnKind` 只决定字面量怎么绑定，还不足以决定能生成哪些 SQL。能力按 `comparison`/`grouping`/`countDistinct`/`regex`/`length`/`extrema`/`text` 逐项维护，并有两个否定例外 `noColumnCount`（COUNT(col) 非法）与 `noNullTest`（IS NULL 非法）；表是**按引擎族的允许表**，未列出的类型视为零能力（保存期拒绝，而不是猜一个可能在引擎上不存在的操作）。校验与编译器共用 `requireComparisonColumn`/`requireValueComparisonColumn`/`requireGroupingColumn`/`requireRegexColumn`/`requireLengthColumn`/`requireNullTestColumn`；画像用 `capabilitiesFor` 推导 facts 与非空计数方式，因此两者不会漂移。普通 `null_percent`/`IS [NOT] NULL` filter 需要 NULL 判定能力，`unique`/`unique_combination` 在 `count_nulls=false` 时也需要（`group_check` 不需要）；filter/accepted_values/null_values 还要求 `valueComparison`（数组不可绑定标量）。`cross_table` 与 `aggregate` 的非 COUNT 聚合列必须是 numeric；`money`/`smallmoney` 列只允许 SUM/MIN/MAX（PG money 引擎本身如此，校验对所有引擎保守执行）。PG schema-qualified 用户自定义类型保留历史规则允许面（composite 谓词绑定为已记录限制）。
 - 聚合行扫描按 `CompiledQuery.Columns` 取列：缺列/类型不符/行数≠1 → `BAD_DATA`；空集 `SUM` 为 NULL 时按 0 处理（count 型）或按 `on_empty`（aggregate/cross_table 用 `ObservedNull`）。
 - 判定（`Evaluate`）：阈值严格比较（等于不越界）；`null_percent` 用 `max_null_count` 或 `max_null_pct` 二选一；`row_count` 用 min/max/exact + warn；`freshness` 的 lag 在 SQL 内用数据库时钟算（PG `EXTRACT(EPOCH …)`、MySQL `TIMESTAMPDIFF`、MSSQL `DATEDIFF(SECOND, …, SYSUTCDATETIME())`）；空数据由 `on_empty ∈ {NOT_EVALUATED(默认), PASS, FAIL}` 决定并写入 `QualityThresholds` 快照。
 - `row_count_change`：基线 = 本规则最近一条 PASS/WARN/FAIL 执行的 `observed_value`（无 7 天/间隔窗口，见 §7）；`baseline` 为空或 0 → `on_empty`；变化比例与 `max_increase_pct`/`max_decrease_pct` 比较。
-- `aggregate`：观测值 = 聚合值，`total_rows = COUNT(*)`；区间判定（默认开区间，`inclusive` 改闭）；NULL 聚合 → `on_empty`；`PERCENTILE` 仅 PG/MSSQL。
+- `aggregate`：观测值 = 聚合值，`total_rows = COUNT(*)`；区间判定（默认开区间，`inclusive` 改闭）；NULL 聚合 → `on_empty`；`PERCENTILE` 仅 PG/MSSQL；`COUNT` 不是聚合规则的函数（与 `row_count` 重复），保存期拒绝。
 - `group_check`：`total_rows` = 组数、`failed_rows` = 越界组数；阈值按 COUNT 或 PERCENT；样本返回违规组（分组列 + 组行数）。
 - `cross_table`：左右各一个 COUNT/SUM/AVG/MIN/MAX（不同实例/库不支持）；只应用左表 filter；`observed = |left-right|`，判定用 `max(0, |diff| - tolerance)` 与 fail/warn 阈值（`>`）；任一侧 NULL → `on_empty`。
-- `cel_expression`：Go 内求值；SQL 只取 `SELECT <引用列> FROM <t> [WHERE filter] LIMIT sample_rows`（默认 1 万、上限 10 万行，列 ≤20，表达式 ≤4 KiB）；表达式只能引用目标列（名字必须是 CEL 标识符）；`sampled=true`；`matches()` 模式必须是常量。
-- `schema_drift`：把 registry 当前列与保存的快照比对，漂移项 = 缺失列 / 类型不符（`check_types`，未设置时默认 true）/ 顺序不符（`check_order`，默认 false）/ 多余列（`allow_extra_columns=false` 时）；`total_rows = len(expected_columns)`、`failed_rows = 漂移项数`、样本是漂移项列表；无 SQL、无只读源。
+- `cel_expression`：Go 内求值；SQL 只取 `SELECT <引用列> FROM <t> [WHERE filter] LIMIT sample_rows`（默认 1 万、上限 10 万行，列 ≤20，表达式 ≤4 KiB）；表达式只能引用目标列（名字必须是 CEL 标识符）；`sampled=true`；`matches()` 模式必须是常量；引用 `money`/`smallmoney` 列在保存期拒绝（值以货币文本渲染，无法稳定读成数值），历史规则在运行期按聚合路径的数字解析容忍货币符号。
+- `schema_drift`：把 registry 当前列与保存的快照比对，漂移项 = 缺失列 / 类型或可空性不符（`check_types`，未设置时默认 true；可空性漂移项为 `nullable: NOT NULL -> NULL` 或反向）/ 顺序不符（`check_order`，默认 false）/ 多余列（`allow_extra_columns=false` 时）；`total_rows = len(expected_columns)`、`failed_rows = 漂移项数`、样本是漂移项列表；无 SQL、无只读源。
 - `custom_sql`：人写的单条 SELECT/WITH（≤8 KiB，omni 解析校验）；执行 `SELECT COUNT(*) FROM (<sql>) dq`，样本 `SELECT * FROM (<sql>) dq LIMIT n`；无 `total_rows`，因此拒绝 PERCENT。SQL 本身负责 filter，DQ 不重写。
-- **PERCENT 允许集（10 类）**：`unique`、`unique_combination`、`accepted_values`、`range`、`regex`、`string_length`、`referential_integrity`、`cross_column`、`group_check`、`cel_expression`；其余（`custom_sql`、`freshness`、`row_count`、`row_count_change`、`null_percent`、`schema_drift`、`aggregate`、`cross_table`）保存期拒绝。
+- **PERCENT 允许集（10 类）**：`unique`、`unique_combination`、`accepted_values`、`range`、`regex`、`string_length`、`referential_integrity`、`cross_column`、`group_check`、`cel_expression`；其余（`custom_sql`、`freshness`、`row_count`、`row_count_change`、`null_percent`、`schema_drift`、`aggregate`、`cross_table`）保存期拒绝。`null_percent` 不读取共享 `threshold_metric`（其 config 用 `max_null_count`/`max_null_pct` 自选单位），提交 PERCENT 会被拒绝并指向自己的字段。
 - 对象类型：TABLE/EXTERNAL_TABLE 全类型；VIEW/MATERIALIZED_VIEW 只允许表级规则（`row_count`、`row_count_change`、`freshness`、`custom_sql`、`schema_drift`）。
 - 执行 SQL 截断 8 KiB；样本值截断 256 字节；样本行数默认 20、上限 100（工作区设置可下可上，硬上限 100）；单次执行结果内存上限 1 MiB。
 
@@ -196,7 +196,7 @@ meta_registry_resource（只读）──< quality_rule >──< quality_rule_rev
 ### 3.6 API、权限与审计
 
 - `DataQualityService`（`proto/v1/v1/data_quality_service.proto`）共 22 个 RPC：规则 CRUD/预览/手动执行（7）、执行列表/详情（2）、问题列表/详情/处置（3）、画像与标注列表/写入（4）、建议列表/决策（2）、三个 LLM 入口（3），以及聚合读 `GetQualityOverview`（1）。手动执行返回按规则规划的执行；没有 run/result 的 RPC 或消息。
-- 分页统一 `parseLimitAndOffset`（offset token），页上限 1000；手动执行选择集 ≤200 条；规则列表的 instance/database/schema/table 是 **GUID 前缀**过滤，`search` 只匹配 title/description。执行列表可按 rule/target_guid/state/outcome/trigger/instance/initiator/start/end 过滤。
+- 分页统一 `parseLimitAndOffset`（offset token），页上限 1000；手动执行选择集 ≤200 条；规则列表的 instance/database/schema/table 是 **GUID 前缀**过滤，`search` 只匹配 title/description；列表可按 `rule_type`、dimension、severity、state、owner/owner_unassigned 过滤。执行列表可按 rule/target_guid/state/outcome/trigger/instance/initiator/start/end 过滤。
 - 概览（`GetQualityOverview`）：`rule_count` = ENABLED+PAUSED（不含 ARCHIVED），`monitored_table_count` = 至少一条启用规则覆盖的去重表数，打开问题按严重级别计数；`execution_count` 是最近 24 小时**规划**的执行数（含各生命周期状态），而 `last_day_counts` 与 `trend` 只统计已 `COMPLETED` 的执行（pending/running/abandoned 不进趋势），`failing_rule_count` 只算最近 24 小时有 FAIL 执行的规则（`ERROR` 不算）。
 - 错误映射：参数/类型/编译失败 → `InvalidArgument`；目标消失 → 创建期 `NotFound`、运行期 `SKIPPED(ORPHANED)`；无只读源/LLM 未开启/无 provider → `FailedPrecondition`；配额/队列满 → `ResourceExhausted`；revision 冲突/建议已决 → `Aborted`；其余 `Internal`。
 - 权限（`metaxisdata.dataQuality.*`，15 项）：`rules.{get,list,create,update,delete,run}`、`executions.{get,list}`、`issues.{get,list,update}`、`explain`、`suggest`、`profile.run`、`labels.update`。`workspaceMember` 基线 = rules.get/list、executions.get/list、issues.get/list、explain；其余默认仅 `workspaceAdmin`/自定义角色。设置页复用 `settings.get/update`；标注的**读**复用 `rules.list`（经 `ListColumnLabels`）。
@@ -208,7 +208,8 @@ meta_registry_resource（只读）──< quality_rule >──< quality_rule_rev
 - 路由：`/data-quality`（概览）、`/rules`（列表）、`/rules/new`、`/rules/:ruleId+`（规则详情）、`/rules/:ruleId+/edit`、`/suggestions`、`/issues`、`/issues/:issueId+`、`/executions`、`/executions/:executionId+`；`/settings/data-quality` 挂在 Settings。每条路由带 permission，侧栏按权限隐藏（不置灰）。父路由 `contentWidth: "full"`。
 - 导航：侧栏第 6 组“数据质量”（概览/规则/执行/问题/建议），SettingsNav 增加“数据质量”。规则详情从规则列表标题、执行详情的规则名、问题详情的规则名与资产页质量区进入（`rules.get` 在 member 基线内，只读可见）。
 - 页面/组件：`pages/data-quality/`（概览、规则列表、规则详情、规则编辑器、执行列表/详情、问题列表/详情、建议队列）；`components/data-quality/`（状态/严重级别徽标、趋势图、最近执行状态色块条、规则表单与 filter 编辑器、失败样本、SQL 查看、建议卡、字段分析面板、AI 解释抽屉、草稿对话框、目标选择器、资产页质量区）。复用 shadcn-vue 原语，不新增 tabs 原语。
-- 规则列表筛选：标题/描述文本、**目标范围**（实例 → 数据库 → Schema → 表/视图；复用 `TargetPicker` 的 `mode="scope"`，在任一层可停，点表/视图行直接筛到该表）、**负责人**（复用 `UserSelect`；owner 可空，所以除成员外还有“未指定”一项；成员目录一次加载后同时供选择器与列表的负责人列复用，选择器支持懒加载与预载）、维度、严重级别、状态；改动后点“应用”才查询。列表还显示负责人列（邮箱，未指定时显示“未指定”）。`TargetScopeFilter` 与负责人控件只持有待应用值，请求由 `ListQualityRules` 的 instance/database/schema/table（GUID 前缀）以及 owner（`users/{user}`；空表示不限）与 owner_unassigned（只取无负责人的规则，与 owner 互斥）字段承受。
+- 规则列表筛选：标题/描述文本、**目标范围**（实例 → 数据库 → Schema → 表/视图；复用 `TargetPicker` 的 `mode="scope"`，在任一层可停，点表/视图行直接筛到该表）、**负责人**（复用 `UserSelect`；owner 可空，所以除成员外还有“未指定”一项；成员目录一次加载后同时供选择器与列表的负责人列复用，选择器支持懒加载与预载）、**规则类型**（18 类，复用 `ListQualityRules` 的 `rule_type`；“全部类型”发 UNSPECIFIED 即不筛选）、维度、严重级别、状态；改动后点“应用”才查询。列表还显示负责人列（邮箱，未指定时显示“未指定”）。`TargetScopeFilter` 与负责人控件只持有待应用值，请求由 `ListQualityRules` 的 instance/database/schema/table（GUID 前缀）以及 owner（`users/{user}`；空表示不限）与 owner_unassigned（只取无负责人的规则，与 owner 互斥）字段承受。
+- 规则编辑器的规则类型选择：按 4 组（数量与时效 / 取值与关系 / 聚合与对账 / 结构与自定义）分组，选中项下方显示一句说明；目标为 VIEW/MATERIALIZED_VIEW 时只列出后端 `RuleTypeForTarget` 允许的 5 类（行数、行数变化、时效性、自定义 SQL、结构漂移）并显示提示；切换类型会重置 `threshold_metric`（新类型不读该字段时归零为 COUNT）；`on_empty` 仅对 `row_count`/`custom_sql`/`schema_drift` 隐藏（对它们永远无效）。规则类型名称、说明与分组都在 `dataQuality.ruleType*` 文案中维护。
 - 执行列表：一行一条执行（state/outcome 徽标、执行 id、规则、目标、观测值、失败/总行数、trigger、耗时、开始时间）；筛选 state/outcome/trigger，跨页链接带来的 `?rule=`/`?target=` 显示为可移除 chip；offset 分页；点击行进入执行详情。
 - 执行详情：状态/六态、规则链接、目标路径、观测值/阈值、行数（含 sampled/truncated 提示）、失败样本、执行 SQL（可复制）、错误码/消息、耗时、trigger/initiator/instance/revision/engine version、开始/结束时间；`PENDING`/`RUNNING` 时轮询到终态；`FAIL`/`ERROR` 显示 AI 解释入口。
 - 规则详情的信息层级：顶部“最近结果”大状态（图标+状态词+相对时间+实际值/阈值/失败行数）→ 最近 20 次执行状态色块条（旧→新，按状态着色，点击进执行详情）→ 状态计数与通过率 → 最近执行表 → 规则定义（目标/字段/类型/维度/严重级别/负责人/调度/版本/时间/标签；负责人显示成员目录里的邮箱，未指定时显示“未指定”）。运行与编辑分别按 `rules.run`、`rules.update` 显示；“运行”后单条执行跳执行详情，多条进入按规则筛选的执行列表。
@@ -250,7 +251,7 @@ meta_registry_resource（只读）──< quality_rule >──< quality_rule_rev
 | `row_count_change` | `max_increase_pct`、`max_decrease_pct`、`warn_increase_pct`、`warn_decrease_pct` |
 | `null_percent` | `column`、`max_null_count`/`warn_null_count` 或 `max_null_pct`/`warn_null_pct`（二选一）、`null_values`（≤20，自定义缺失值） |
 | `unique` | `column`、`count_nulls`、`fail_threshold`、`warn_threshold` |
-| `unique_combination` | `columns`、`all_columns`、`count_nulls`、`fail_threshold`、`warn_threshold` |
+| `unique_combination` | `columns`（≤10）、`all_columns`、`count_nulls`、`fail_threshold`、`warn_threshold` |
 | `accepted_values` | `column`、`values`（≤200）、`allow_null`、`fail_threshold`、`warn_threshold` |
 | `range` | `column`、`min`/`max`（字符串，按列类型解析）、`inclusive`、`fail_threshold`、`warn_threshold` |
 | `regex` | `column`、`pattern`、`fail_threshold`、`warn_threshold` |
@@ -260,11 +261,11 @@ meta_registry_resource（只读）──< quality_rule >──< quality_rule_rev
 | `freshness` | `timestamp_column`、`max_lag_seconds`、`warn_lag_seconds` |
 | `custom_sql` | `sql`（≤8 KiB）、`fail_threshold`、`warn_threshold` |
 | `cel_expression` | `expression`（≤4 KiB）、`columns`、`sample_rows`（默认 10000，上限 100000）、`fail_threshold`、`warn_threshold` |
-| `schema_drift` | `expected_columns[{name,type}]`、`check_types`（可选，未设置=true）、`check_order`（默认 false）、`allow_extra_columns`（默认 false）、`fail_threshold`、`warn_threshold` |
+| `schema_drift` | `expected_columns[{name,type,nullable}]`、`check_types`（可选，未设置=true；比较类型与可空性）、`check_order`（默认 false）、`allow_extra_columns`（默认 false）、`fail_threshold`、`warn_threshold` |
 | `group_check` | `columns`（1–5）、`min_rows_per_group`/`max_rows_per_group`（至少一个）、`fail_threshold`、`warn_threshold` |
-| `aggregate` | `column`、`function`（SUM/AVG/MIN/MAX/STDDEV/PERCENTILE）、`percentile`、`min`/`max`（至少一个）、`warn_min`/`warn_max`、`inclusive` |
+| `aggregate` | `column`、`function`（SUM/AVG/MIN/MAX/STDDEV/PERCENTILE；COUNT 保存期拒绝，用 `row_count`）、`percentile`、`min`/`max`（至少一个）、`warn_min`/`warn_max`、`inclusive` |
 | `cross_table` | `right_table`、`left_function`/`right_function`（COUNT/SUM/AVG/MIN/MAX）、`left_column`/`right_column`、`tolerance`、`fail_threshold`、`warn_threshold` |
-| 公共 | `threshold_metric`（COUNT/PERCENT）、`filter`（AND 子句）、`on_empty` |
+| 公共 | `threshold_metric`（COUNT/PERCENT；仅 §3.2 的 10 类读取，`null_percent` 用自己的字段）、`filter`（AND 子句）、`on_empty` |
 
 ### 4.3 JSONB 列 → store 消息
 

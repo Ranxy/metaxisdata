@@ -420,7 +420,10 @@ func celIntValue(column ColumnInfo, value any) (any, error) {
 }
 
 // celDoubleValue converts one sample value to the float64 a CEL double variable
-// holds.
+// holds. A string goes through the same normalization the aggregate path uses,
+// because PostgreSQL money reaches a loosely typed driver as decorated currency
+// text ("$1,234.50") and a plain ParseFloat would reject a value the engine
+// considers numeric.
 func celDoubleValue(column ColumnInfo, value any) (any, error) {
 	switch typed := value.(type) {
 	case float64:
@@ -428,7 +431,7 @@ func celDoubleValue(column ColumnInfo, value any) (any, error) {
 	case int64:
 		return float64(typed), nil
 	case string:
-		parsed, err := strconv.ParseFloat(strings.TrimSpace(typed), 64)
+		parsed, err := parseAggregateNumber(typed)
 		if err != nil {
 			return nil, badData("column %q is not a number (%q)", column.Name, typed)
 		}

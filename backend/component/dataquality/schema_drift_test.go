@@ -76,8 +76,8 @@ func TestCompileSchemaDriftEmitsNoSQL(t *testing.T) {
 }
 
 // TestCompareSchemaDrift pins the comparison semantics: missing columns, changed
-// types (check_types), changed order among shared columns (check_order) and extra
-// columns (allow_extra_columns), with stable item order.
+// types and nullability (check_types), changed order among shared columns
+// (check_order) and extra columns (allow_extra_columns), with stable item order.
 func TestCompareSchemaDrift(t *testing.T) {
 	t.Parallel()
 
@@ -213,6 +213,72 @@ func swapColumns(columns []ColumnInfo, left, right int) []ColumnInfo {
 		result[left], result[right] = result[right], result[left]
 	}
 	return result
+}
+
+// setColumnNullable returns a copy of the column list with one column's
+// nullability changed.
+func setColumnNullable(columns []ColumnInfo, name string, nullable bool) []ColumnInfo {
+	result := append([]ColumnInfo{}, columns...)
+	for index := range result {
+		if result[index].Name == name {
+			result[index].Nullable = nullable
+		}
+	}
+	return result
+}
+
+// TestSchemaDriftNullability pins nullability as part of the column contract: a
+// column that gained or lost NOT NULL is drift under check_types, the check can be
+// switched off, and an equal snapshot reports nothing.
+func TestSchemaDriftNullability(t *testing.T) {
+	t.Parallel()
+
+	target := compileTestTarget(storepb.Engine_POSTGRES)
+	tests := []struct {
+		name             string
+		snapshotNullable bool
+		currentNullable  bool
+		checkTypes       *bool
+		want             []schemaDriftItem
+	}{
+		{
+			name:             "gained null",
+			snapshotNullable: false,
+			currentNullable:  true,
+			checkTypes:       proto.Bool(true),
+			want:             []schemaDriftItem{{Column: "email", Reason: "nullable: NOT NULL -> NULL"}},
+		},
+		{
+			name:             "lost null",
+			snapshotNullable: true,
+			currentNullable:  false,
+			checkTypes:       proto.Bool(true),
+			want:             []schemaDriftItem{{Column: "email", Reason: "nullable: NULL -> NOT NULL"}},
+		},
+		{
+			name:             "unchanged",
+			snapshotNullable: true,
+			currentNullable:  true,
+			checkTypes:       proto.Bool(true),
+			want:             nil,
+		},
+		{
+			name:             "check_types off",
+			snapshotNullable: false,
+			currentNullable:  true,
+			checkTypes:       proto.Bool(false),
+			want:             nil,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			snapshot := schemaDriftSnapshot(setColumnNullable(target.Columns, "email", test.snapshotNullable))
+			config := &storepb.SchemaDriftConfig{ExpectedColumns: snapshot, CheckTypes: test.checkTypes}
+			current := setColumnNullable(target.Columns, "email", test.currentNullable)
+			require.Equal(t, test.want, compareSchemaDrift(current, config))
+		})
+	}
 }
 
 // TestSchemaDriftSamples pins the sample shape: one row per drift item, the column

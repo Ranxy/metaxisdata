@@ -20,6 +20,7 @@ import {
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import type { RuleFormState, TargetSelection } from "./dataQualityForm";
 import {
+  allowedRuleTypes,
   buildFilter,
   buildRuleConfig,
   buildTarget,
@@ -34,6 +35,7 @@ import {
   formToRule,
   invalidInteger,
   invalidNumber,
+  isOnEmptyRelevant,
   isThresholdMetricType,
   MAX_ACCEPTED_VALUES,
   MAX_CEL_COLUMNS,
@@ -44,7 +46,10 @@ import {
   MAX_NULL_VALUES,
   MAX_SCHEDULE_MINUTES,
   MIN_SCHEDULE_MINUTES,
+  ON_EMPTY_IRRELEVANT_RULE_TYPES,
   parseValueList,
+  RULE_TYPE_GROUPS,
+  RULE_TYPES_BY_META_TYPE,
   ruleToForm,
   scheduleMinutes,
   scheduleToDuration,
@@ -190,6 +195,8 @@ const CONFIG_FIXTURES: Partial<
     rightAggFunction: QualityAggregateFunction.COUNT,
     rightAggColumn: "",
     tolerance: "0.5",
+    failThreshold: "10",
+    warnThreshold: "5",
   },
 };
 
@@ -245,11 +252,11 @@ function ruleFor(ruleType: QualityRuleType): QualityRule {
 }
 
 describe("rule type catalogs", () => {
-  it("offers every implemented type and not the reserved one", () => {
+  it("offers every editable type", () => {
     expect(EDITABLE_RULE_TYPES).toHaveLength(18);
     expect(new Set(EDITABLE_RULE_TYPES).size).toBe(18);
-    expect(EDITABLE_RULE_TYPES).toContain(QualityRuleType.CEL_EXPRESSION);
     for (const ruleType of [
+      QualityRuleType.CEL_EXPRESSION,
       QualityRuleType.SCHEMA_DRIFT,
       QualityRuleType.GROUP_CHECK,
       QualityRuleType.AGGREGATE,
@@ -259,7 +266,40 @@ describe("rule type catalogs", () => {
     }
   });
 
-  it("suggests a dimension for every type and keeps the metric types inside the editable set", () => {
+  it("lists exactly the percent-capable types for the shared threshold metric", () => {
+    // Mirrors backend/component/dataquality/validate.go ruleTypeAllowsPercent.
+    expect(new Set(THRESHOLD_METRIC_RULE_TYPES)).toEqual(
+      new Set([
+        QualityRuleType.UNIQUE,
+        QualityRuleType.UNIQUE_COMBINATION,
+        QualityRuleType.ACCEPTED_VALUES,
+        QualityRuleType.RANGE,
+        QualityRuleType.REGEX,
+        QualityRuleType.STRING_LENGTH,
+        QualityRuleType.REFERENTIAL_INTEGRITY,
+        QualityRuleType.CROSS_COLUMN,
+        QualityRuleType.GROUP_CHECK,
+        QualityRuleType.CEL_EXPRESSION,
+      ])
+    );
+    expect(THRESHOLD_METRIC_RULE_TYPES).not.toContain(
+      QualityRuleType.CUSTOM_SQL
+    );
+    for (const ruleType of [
+      QualityRuleType.ROW_COUNT,
+      QualityRuleType.ROW_COUNT_CHANGE,
+      QualityRuleType.NULL_PERCENT,
+      QualityRuleType.FRESHNESS,
+      QualityRuleType.SCHEMA_DRIFT,
+      QualityRuleType.AGGREGATE,
+      QualityRuleType.CROSS_TABLE,
+      QualityRuleType.CUSTOM_SQL,
+    ]) {
+      expect(isThresholdMetricType(ruleType), String(ruleType)).toBe(false);
+    }
+  });
+
+  it("suggests a dimension for every type and groups each type once", () => {
     for (const ruleType of EDITABLE_RULE_TYPES) {
       expect(suggestedDimension(ruleType)).not.toBe(
         QualityDimension.UNSPECIFIED
@@ -268,12 +308,54 @@ describe("rule type catalogs", () => {
     expect(suggestedDimension(99 as QualityRuleType)).toBe(
       QualityDimension.UNSPECIFIED
     );
-    expect(THRESHOLD_METRIC_RULE_TYPES).toHaveLength(11);
-    for (const ruleType of THRESHOLD_METRIC_RULE_TYPES) {
-      expect(EDITABLE_RULE_TYPES).toContain(ruleType);
-      expect(isThresholdMetricType(ruleType)).toBe(true);
+    const grouped = RULE_TYPE_GROUPS.flatMap((group) => group.types);
+    expect(grouped).toHaveLength(EDITABLE_RULE_TYPES.length);
+    expect(new Set(grouped)).toEqual(new Set(EDITABLE_RULE_TYPES));
+    for (const group of RULE_TYPE_GROUPS) {
+      expect(group.key.startsWith("dataQuality.ruleTypeGroup.")).toBe(true);
     }
-    expect(isThresholdMetricType(QualityRuleType.ROW_COUNT)).toBe(false);
+  });
+
+  it("limits the offered types by target MetaType", () => {
+    expect(allowedRuleTypes(MetaType.TABLE)).toEqual(EDITABLE_RULE_TYPES);
+    expect(allowedRuleTypes(MetaType.EXTERNAL_TABLE)).toEqual(
+      EDITABLE_RULE_TYPES
+    );
+    expect(allowedRuleTypes(undefined)).toEqual(EDITABLE_RULE_TYPES);
+    const viewTypes = [
+      QualityRuleType.ROW_COUNT,
+      QualityRuleType.ROW_COUNT_CHANGE,
+      QualityRuleType.FRESHNESS,
+      QualityRuleType.CUSTOM_SQL,
+      QualityRuleType.SCHEMA_DRIFT,
+    ];
+    expect(allowedRuleTypes(MetaType.VIEW)).toEqual(viewTypes);
+    expect(allowedRuleTypes(MetaType.MATERIALIZED_VIEW)).toEqual(viewTypes);
+    expect(RULE_TYPES_BY_META_TYPE[MetaType.VIEW]).toEqual(viewTypes);
+    expect(RULE_TYPES_BY_META_TYPE[MetaType.MATERIALIZED_VIEW]).toEqual(
+      viewTypes
+    );
+    for (const ruleType of [
+      QualityRuleType.UNIQUE,
+      QualityRuleType.GROUP_CHECK,
+      QualityRuleType.AGGREGATE,
+      QualityRuleType.CROSS_TABLE,
+      QualityRuleType.CEL_EXPRESSION,
+    ]) {
+      expect(allowedRuleTypes(MetaType.VIEW)).not.toContain(ruleType);
+    }
+  });
+
+  it("keeps on_empty out of the types whose verdict it cannot change", () => {
+    expect(ON_EMPTY_IRRELEVANT_RULE_TYPES).toEqual([
+      QualityRuleType.ROW_COUNT,
+      QualityRuleType.CUSTOM_SQL,
+      QualityRuleType.SCHEMA_DRIFT,
+    ]);
+    expect(isOnEmptyRelevant(QualityRuleType.UNIQUE)).toBe(true);
+    for (const ruleType of ON_EMPTY_IRRELEVANT_RULE_TYPES) {
+      expect(isOnEmptyRelevant(ruleType), String(ruleType)).toBe(false);
+    }
   });
 
   it("resets the config for a new type", () => {
@@ -444,6 +526,19 @@ describe("config conversion", () => {
       expect(back.filter).toEqual(form.filter);
       expect(rule.target?.columns).toEqual(columnsForConfig(form));
     }
+  });
+
+  it("sends and reads the cross-table failure and warning thresholds", () => {
+    const form = validForm(QualityRuleType.CROSS_TABLE);
+    const rule = formToRule(form, { target: TARGET });
+    if (rule.config?.config.case !== "crossTable") {
+      throw new Error("expected a cross-table config arm");
+    }
+    expect(rule.config.config.value.failThreshold).toBe(10);
+    expect(rule.config.config.value.warnThreshold).toBe(5);
+    const back = ruleToForm(rule);
+    expect(back.config.failThreshold).toBe("10");
+    expect(back.config.warnThreshold).toBe("5");
   });
 
   it("keeps an empty config usable", () => {
@@ -1060,6 +1155,19 @@ describe("degenerate inputs", () => {
       }),
     });
     expect(ruleToForm(unsupported).config.aggregateColumn).toBe("");
+  });
+
+  it("reads an unset threshold metric as count", () => {
+    const rule = ruleFor(QualityRuleType.UNIQUE);
+    if (!rule.config) {
+      throw new Error("expected a rule config");
+    }
+    rule.config.thresholdMetric = QualityThresholdMetric.UNSPECIFIED;
+    expect(ruleToForm(rule).thresholdMetric).toBe(QualityThresholdMetric.COUNT);
+    rule.config.thresholdMetric = QualityThresholdMetric.PERCENT;
+    expect(ruleToForm(rule).thresholdMetric).toBe(
+      QualityThresholdMetric.PERCENT
+    );
   });
 
   it("accepts a valid percentile and rejects a missing one", () => {

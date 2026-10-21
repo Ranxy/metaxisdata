@@ -313,15 +313,33 @@
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem
-                    v-for="ruleType in EDITABLE_RULE_TYPES"
-                    :key="ruleType"
-                    :value="String(ruleType)"
+                  <SelectGroup
+                    v-for="group in ruleTypeGroups"
+                    :key="group.key"
                   >
-                    {{ t(qualityRuleTypeKey(ruleType)) }}
-                  </SelectItem>
+                    <SelectLabel>{{ t(group.key) }}</SelectLabel>
+                    <SelectItem
+                      v-for="ruleType in group.types"
+                      :key="ruleType"
+                      :value="String(ruleType)"
+                    >
+                      {{ t(qualityRuleTypeKey(ruleType)) }}
+                    </SelectItem>
+                  </SelectGroup>
                 </SelectContent>
               </Select>
+              <p
+                v-if="selectedTypeDescription"
+                class="text-sm text-muted-foreground"
+              >
+                {{ selectedTypeDescription }}
+              </p>
+              <p
+                v-if="isViewTarget"
+                class="text-sm text-muted-foreground"
+              >
+                {{ t("dataQuality.editor.ruleTypeViewHint") }}
+              </p>
             </div>
 
             <div class="flex flex-col gap-1.5">
@@ -456,7 +474,10 @@
               :column-details="targetColumnDetails"
               :field-errors="fieldErrors"
             />
-            <div class="max-w-sm space-y-1.5 border-t pt-4">
+            <div
+              v-if="isOnEmptyRelevant(form.ruleType)"
+              class="max-w-sm space-y-1.5 border-t pt-4"
+            >
               <Label for="dq-rule-on-empty">
                 {{ t("dataQuality.editor.onEmpty") }}
               </Label>
@@ -617,7 +638,9 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -635,6 +658,7 @@ import {
   type QualitySeverity,
   type QualitySuggestion,
   QualitySuggestionStatus,
+  QualityThresholdMetric,
   QualityRuleState as RuleState,
   QualitySeverity as Severity,
 } from "@/types/proto-es/v1/data_quality_service_pb";
@@ -642,15 +666,19 @@ import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { DataSourceType } from "@/types/proto-es/v1/instance_service_pb";
 import {
   qualityEmptyBehaviorKey,
+  qualityRuleTypeDescriptionKey,
   qualityRuleTypeKey,
   targetScopeLabel,
 } from "@/utils/dataQuality";
 import {
+  allowedRuleTypes,
   computeUpdateMask,
-  EDITABLE_RULE_TYPES,
   emptyConfig,
   emptyRuleForm,
   formToRule,
+  isOnEmptyRelevant,
+  isThresholdMetricType,
+  RULE_TYPE_GROUPS,
   type RuleFormState,
   ruleToForm,
   type ScheduleUnit,
@@ -757,6 +785,28 @@ const llmAvailability = computed(() =>
   llmFeatureAvailability(llmEnabled.value, canSuggest.value)
 );
 const targetColumnDetails = ref<TargetColumnDetail[]>([]);
+
+/** The selected rule type's one-line explanation, shown under the select. */
+const selectedTypeDescription = computed(() => {
+  const key = qualityRuleTypeDescriptionKey(form.value.ruleType);
+  return key ? t(key) : "";
+});
+
+/** Views and materialized views accept table-level rules only. */
+const isViewTarget = computed(
+  () =>
+    target.value?.metaType === MetaType.VIEW ||
+    target.value?.metaType === MetaType.MATERIALIZED_VIEW
+);
+
+/** The rule-type sections, with the types this target cannot watch removed. */
+const ruleTypeGroups = computed(() => {
+  const allowed = allowedRuleTypes(target.value?.metaType);
+  return RULE_TYPE_GROUPS.map((group) => ({
+    key: group.key,
+    types: group.types.filter((ruleType) => allowed.includes(ruleType)),
+  })).filter((group) => group.types.length > 0);
+});
 
 /** The save/validation feedback block, scrolled into view when it appears. */
 const feedbackRef = ref<HTMLElement>();
@@ -875,6 +925,12 @@ function changeRuleType(value: unknown) {
   form.value.ruleType = ruleType;
   form.value.config = emptyConfig();
   form.value.dimension = suggestedDimension(ruleType);
+  // The unit select is hidden for a type without a shared threshold metric, so a
+  // percentage left over from the previous type would be sent with no control to
+  // correct it. Normalize it here instead.
+  if (!isThresholdMetricType(ruleType)) {
+    form.value.thresholdMetric = QualityThresholdMetric.COUNT;
+  }
   preview.value = undefined;
   previewError.value = "";
   issues.value = [];
@@ -902,6 +958,12 @@ function setOnEmpty(value: unknown) {
 
 function onTargetSelected(selection: TargetSelection) {
   target.value = selection;
+  // A target can change the set of legal types; switching to the first allowed
+  // type keeps the form saveable rather than failing at the dry run.
+  const allowed = allowedRuleTypes(selection.metaType);
+  if (!allowed.includes(form.value.ruleType) && allowed[0] !== undefined) {
+    changeRuleType(String(allowed[0]));
+  }
   void refreshTargetColumns(selection.guid);
   void checkReadOnly(selection);
 }

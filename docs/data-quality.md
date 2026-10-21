@@ -32,17 +32,25 @@ fully offline; three model-assisted features are opt-in.
 ## Writing a rule
 
 Data Quality → Rules → **New rule**. Pick the target from the metadata browser,
-choose the rule type, and fill in the parameters; the editor compiles the rule
-server-side and shows the SQL it will run before you save. Saving validates the
-target, the columns and the parameters; a rule that cannot compile is refused.
+then choose the rule type — the list is grouped by family (quantity and timeliness,
+values and relations, aggregates and reconciliation, structure and custom) and a
+one-line description of the selected type sits under the control. Fill in the
+parameters; the editor compiles the rule server-side and shows the SQL it will run
+before you save. Saving validates the target, the columns and the parameters; a
+rule that cannot compile is refused. A view or materialized view only offers the
+table-level checks (row count, row count change, freshness, custom SQL, schema
+drift), because those objects have no column-level type authority.
 
 - **Schedule**: 15 minutes to 7 days. A new rule first runs on its next scheduled
   slot; use **Run now** to check it immediately.
 - **Thresholds**: a count-type rule compares failed rows (or the failed
   percentage) with a warning and a failure level; an aggregate compares its value
-  with a range; freshness compares the lag in seconds.
+  with a range; freshness compares the lag in seconds. Custom SQL rules always
+  count failed rows — they have no row total to take a percentage of.
 - **Empty data**: by default a query that returns nothing is `NOT_EVALUATED`,
-  not a pass. Choose pass or fail per rule if that is the intent.
+  not a pass. Choose pass or fail per rule if that is the intent; row count,
+  custom SQL and schema drift always produce a value, so the setting does not
+  apply to them.
 - **Filters** narrow the rows the rule reads (structured AND conditions only);
   write a custom-SQL rule when the condition needs more.
 - **Preview** runs the compiled statement with `LIMIT 0` against the read-only
@@ -54,8 +62,8 @@ Data Quality → Rules lists every rule with its target and latest execution. Th
 **Target scope** filter narrows the list to a subtree of the metadata tree: pick
 an instance, then drill into a database, schema or table/view, and apply at any
 level — choosing a table (or view) applies that table itself. The text search
-matches a rule's title and description; dimension, severity and state narrow
-further. Filters take effect when you press **Apply**.
+matches a rule's title and description; rule type, dimension, severity and state
+narrow further. Filters take effect when you press **Apply**.
 
 ## Executions and statuses
 
