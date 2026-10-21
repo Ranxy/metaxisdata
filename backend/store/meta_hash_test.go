@@ -197,3 +197,95 @@ func TestCalcMetaHashGolden(t *testing.T) {
 	require.Equal(t, "26fb1c1b8f5bc620ee2a7b7459e879474c515db2d06980df374574838835c65b", mustHex(t, mustCalcMetaHash(t, fixture)))
 	require.Equal(t, "b2798ed060e10d3f0c89a8d1cc311de2a20ad401d99becff7e618d4ea53c1b01", mustHex(t, mustCalcMetaHash(t, manual)))
 }
+
+// TestCalcStoreMetaHashSanitizesNUL pins the jsonb invariant: PostgreSQL jsonb
+// rejects the JSON escape \u0000 with SQLSTATE 22P05, so no persisted string may
+// carry a NUL byte. A Doris BITMAP/HLL column default arrives as a raw 0x00 byte,
+// which is the trigger this guard was added for.
+func TestCalcStoreMetaHashSanitizesNUL(t *testing.T) {
+	t.Parallel()
+
+	meta := &storepb.StoredMetadata{
+		Type: &storepb.StoredMetadata_TableMetadata{TableMetadata: &storepb.TableMetadata{
+			Name:        "dbt",
+			Comment:     "before\x00after",
+			SortingKeys: []string{"a\x00b"},
+			Columns: []*storepb.ColumnMetadata{
+				{Name: "bm", Type: "bitmap", Default: "\x00", Comment: "c\x00d"},
+			},
+		}},
+	}
+
+	metadataBytes, metaHash, err := CalcStoreMetaHash(meta)
+	require.NoError(t, err)
+	require.NotContains(t, string(metadataBytes), "\x00")
+	require.NotContains(t, string(metadataBytes), `\u0000`)
+
+	// The caller's message is not mutated: only what is persisted is sanitized.
+	require.Equal(t, "before\x00after", meta.GetTableMetadata().Comment)
+	require.Equal(t, "\x00", meta.GetTableMetadata().Columns[0].Default)
+
+	persisted := &storepb.StoredMetadata{}
+	require.NoError(t, common.ProtojsonUnmarshaler.Unmarshal(metadataBytes, persisted))
+	require.Equal(t, "before\uFFFDafter", persisted.GetTableMetadata().Comment)
+	require.Equal(t, "\uFFFD", persisted.GetTableMetadata().Columns[0].Default)
+	require.Equal(t, []string{"a\uFFFDb"}, persisted.GetTableMetadata().SortingKeys)
+	require.Equal(t, metaHash, mustCalcMetaHash(t, persisted))
+}
+
+// TestCalcStoreMetaHashSanitizesNULInMap covers map keys, map values and repeated
+// strings, which sanitizeProtoStrings walks alongside singular fields.
+func TestCalcStoreMetaHashSanitizesNULInMap(t *testing.T) {
+	t.Parallel()
+
+	meta := &storepb.StoredMetadata{
+		Type: &storepb.StoredMetadata_ManualSqlMetadata{ManualSqlMetadata: &storepb.ManualSQLMetadata{
+			Name:       "m",
+			SqlText:    "SELECT 1",
+			Tags:       []string{"daily\x00"},
+			Attributes: map[string]string{"owner\x00": "data\x00"},
+		}},
+	}
+
+	metadataBytes, metaHash, err := CalcStoreMetaHash(meta)
+	require.NoError(t, err)
+	require.NotContains(t, string(metadataBytes), `\u0000`)
+
+	persisted := &storepb.StoredMetadata{}
+	require.NoError(t, common.ProtojsonUnmarshaler.Unmarshal(metadataBytes, persisted))
+	require.Equal(t, "data\uFFFD", persisted.GetManualSqlMetadata().GetAttributes()["owner\uFFFD"])
+	require.Equal(t, []string{"daily\uFFFD"}, persisted.GetManualSqlMetadata().GetTags())
+	require.Equal(t, metaHash, mustCalcMetaHash(t, persisted))
+}
+
+// TestCalcStoreMetaHashMapCollisionIsDeterministic pins that two keys which
+// sanitize to the same replacement do not make the persisted bytes depend on Go's
+// randomized map iteration order: the first key in sorted order wins.
+func TestCalcStoreMetaHashMapCollisionIsDeterministic(t *testing.T) {
+	t.Parallel()
+
+	newMeta := func() *storepb.StoredMetadata {
+		return &storepb.StoredMetadata{
+			Type: &storepb.StoredMetadata_ManualSqlMetadata{ManualSqlMetadata: &storepb.ManualSQLMetadata{
+				Name: "m",
+				Attributes: map[string]string{
+					"\x00\uFFFD": "first",
+					"\uFFFD\x00": "second",
+				},
+			}},
+		}
+	}
+
+	metadataBytes, metaHash, err := CalcStoreMetaHash(newMeta())
+	require.NoError(t, err)
+	for range 50 {
+		again, againHash, err := CalcStoreMetaHash(newMeta())
+		require.NoError(t, err)
+		require.Equal(t, metadataBytes, again)
+		require.Equal(t, metaHash, againHash)
+	}
+
+	persisted := &storepb.StoredMetadata{}
+	require.NoError(t, common.ProtojsonUnmarshaler.Unmarshal(metadataBytes, persisted))
+	require.Equal(t, map[string]string{"\uFFFD\uFFFD": "first"}, persisted.GetManualSqlMetadata().GetAttributes())
+}

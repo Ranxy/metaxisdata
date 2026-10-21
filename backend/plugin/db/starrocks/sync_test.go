@@ -1,6 +1,7 @@
 package starrocks
 
 import (
+	"database/sql"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -68,4 +69,30 @@ func TestIsSyncRollup(t *testing.T) {
 	require.False(t, isSyncRollup("ASYNC"))
 	require.False(t, isSyncRollup("MANUAL"))
 	require.False(t, isSyncRollup(""))
+}
+
+// Doris and StarRocks report a BITMAP or HLL column's default as the raw
+// serialized empty value, a single 0x00 byte. Metadata is stored in a PostgreSQL
+// jsonb column, which rejects U+0000 with SQLSTATE 22P05 and takes the whole
+// database's sync batch down, so the driver must drop the byte instead.
+func TestSetColumnMetadataDefaultStripsNUL(t *testing.T) {
+	t.Parallel()
+
+	bitmap := &storepb.ColumnMetadata{Type: "bitmap"}
+	setColumnMetadataDefault(bitmap, sql.NullString{String: "\x00", Valid: true}, false, "")
+	require.Equal(t, "", bitmap.Default)
+
+	// An ordinary default is preserved exactly.
+	literal := &storepb.ColumnMetadata{Type: "varchar(10)"}
+	setColumnMetadataDefault(literal, sql.NullString{String: "hello", Valid: true}, true, "")
+	require.Equal(t, "hello", literal.Default)
+}
+
+func TestSanitizeCatalogString(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "", sanitizeCatalogString("\x00"))
+	require.Equal(t, "BASE TABLE", sanitizeCatalogString("BASE TABLE\x00"))
+	require.Equal(t, "ab", sanitizeCatalogString("a\x00b"))
+	require.Equal(t, "plain", sanitizeCatalogString("plain"))
 }

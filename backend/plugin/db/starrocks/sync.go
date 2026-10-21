@@ -78,6 +78,7 @@ func (d *Driver) SyncInstance(ctx context.Context) (*db.InstanceMetadata, error)
 		if err := rows.Scan(&database.Name); err != nil {
 			return nil, err
 		}
+		database.Name = sanitizeCatalogString(database.Name)
 		databases = append(databases, database)
 	}
 	if err := rows.Err(); err != nil {
@@ -85,7 +86,7 @@ func (d *Driver) SyncInstance(ctx context.Context) (*db.InstanceMetadata, error)
 	}
 
 	return &db.InstanceMetadata{
-		Version:   version,
+		Version:   sanitizeCatalogString(version),
 		Databases: databases,
 		Metadata: &storepb.Instance{
 			MysqlLowerCaseTableNames: lowerCaseTableNames,
@@ -177,12 +178,14 @@ func (d *Driver) getMaterializedViews(ctx context.Context) (map[db.TableKey]*sto
 			if err := rows.Scan(&materializedView.Name, &refreshType, &materializedView.Definition); err != nil {
 				return nil, err
 			}
-			if isSyncRollup(refreshType) {
+			if isSyncRollup(sanitizeCatalogString(refreshType)) {
 				continue
 			}
 		} else if err := rows.Scan(&materializedView.Name, &materializedView.Definition); err != nil {
 			return nil, err
 		}
+		materializedView.Name = sanitizeCatalogString(materializedView.Name)
+		materializedView.Definition = sanitizeCatalogString(materializedView.Definition)
 		key := db.TableKey{Schema: "", Table: materializedView.Name}
 		materializedViewMap[key] = materializedView
 	}
@@ -246,6 +249,12 @@ func (d *Driver) SyncDBSchema(ctx context.Context) (metadata *storepb.DatabaseSc
 		); err != nil {
 			return nil, err
 		}
+		tableName = sanitizeCatalogString(tableName)
+		column.Name = sanitizeCatalogString(column.Name)
+		column.Type = sanitizeCatalogString(column.Type)
+		column.CharacterSet = sanitizeCatalogString(column.CharacterSet)
+		column.Collation = sanitizeCatalogString(column.Collation)
+		column.Comment = sanitizeCatalogString(column.Comment)
 		isNullBool, err := util.ConvertYesNo(nullable)
 		if err != nil {
 			return nil, err
@@ -279,6 +288,8 @@ func (d *Driver) SyncDBSchema(ctx context.Context) (metadata *storepb.DatabaseSc
 		); err != nil {
 			return nil, err
 		}
+		view.Name = sanitizeCatalogString(view.Name)
+		view.Definition = sanitizeCatalogString(view.Definition)
 		key := db.TableKey{Schema: "", Table: view.Name}
 		view.Columns = columnMap[key]
 		viewMap[key] = view
@@ -331,6 +342,12 @@ func (d *Driver) SyncDBSchema(ctx context.Context) (metadata *storepb.DatabaseSc
 		); err != nil {
 			return nil, err
 		}
+		tableName = sanitizeCatalogString(tableName)
+		tableType = sanitizeCatalogString(tableType)
+		engine = sanitizeCatalogString(engine)
+		collation = sanitizeCatalogString(collation)
+		createOptions = sanitizeCatalogString(createOptions)
+		comment = sanitizeCatalogString(comment)
 
 		key := db.TableKey{Schema: "", Table: tableName}
 		// StarRocks reports materialized views as TABLE_TYPE='VIEW', Doris as
@@ -399,12 +416,31 @@ func (d *Driver) SyncDBSchema(ctx context.Context) (metadata *storepb.DatabaseSc
 	return databaseMetadata, nil
 }
 
+// sanitizeCatalogString removes the NUL bytes StarRocks and Doris put in some
+// catalog values. A BITMAP or HLL column's default is the raw serialized empty
+// value, a single 0x00 byte rather than text, and the metadata columns are
+// PostgreSQL jsonb, which cannot represent U+0000. The byte carries no catalog
+// meaning, so it is dropped at the driver boundary instead of being displayed or
+// stored.
+//
+// Two names that differ only by NUL bytes would collapse into one after stripping.
+// Such a name cannot be addressed by SQL, and the syncer drops the duplicate GUID
+// with a warning instead of writing the object twice.
+func sanitizeCatalogString(s string) string {
+	if !strings.ContainsRune(s, 0) {
+		return s
+	}
+	return strings.ReplaceAll(s, "\x00", "")
+}
+
 // setColumnMetadataDefault derives the stored default for a StarRocks/Doris
 // column. Unlike MySQL there is no ON UPDATE support, so only the default value
 // is handled; the catalog returns it unquoted.
 func setColumnMetadataDefault(column *storepb.ColumnMetadata, defaultStr sql.NullString, isNullBool bool, extra string) {
 	if defaultStr.Valid {
-		unquotedDefault := dbmysql.UnquoteMySQLString(defaultStr.String)
+		rawDefault := sanitizeCatalogString(defaultStr.String)
+		// UnquoteMySQLString turns an escaped \0 back into a NUL byte.
+		unquotedDefault := sanitizeCatalogString(dbmysql.UnquoteMySQLString(rawDefault))
 		switch {
 		case dbmysql.IsCurrentTimestampLike(unquotedDefault):
 			// CURRENT_TIMESTAMP, CURRENT_DATE, etc. are function names, not
@@ -417,7 +453,7 @@ func setColumnMetadataDefault(column *storepb.ColumnMetadata, defaultStr sql.Nul
 		default:
 			// Static defaults like DEFAULT 'hello' or DEFAULT 42. Preserve
 			// quotes for dump compatibility.
-			column.Default = defaultStr.String
+			column.Default = rawDefault
 		}
 	} else if strings.Contains(strings.ToUpper(extra), autoIncrementSymbol) {
 		// Use the upper case to be consistent with the dump output.

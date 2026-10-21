@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"math"
 	"slices"
+	"strings"
 
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -21,10 +22,21 @@ import (
 // an explicit, reviewable fingerprint change instead of an accidental one.
 const metaFingerprintDomain = "metaxisdata.meta.fingerprint.v1\x00"
 
+// nulReplacement is what a U+0000 byte becomes when metadata is persisted. It is
+// a code point jsonb accepts, and unlike deletion it keeps the text around the
+// byte from being glued together.
+const nulReplacement = "\uFFFD"
+
 // CalcStoreMetaHash returns the JSON persisted for a registry resource and the
 // fingerprint used to detect changes to it. The two are consistent: hashing the
 // returned JSON with CalcMetaHash reproduces the returned fingerprint.
+//
+// The returned JSON is safe for the jsonb metadata columns that hold a
+// StoredMetadata message (the meta registry, its history and the registry-backed
+// ingestion rows): U+0000, which jsonb cannot represent, is replaced first by
+// sanitizeStoredMetadata.
 func CalcStoreMetaHash(meta *storepb.StoredMetadata) (metadata []byte, metaHash []byte, err error) {
+	meta = sanitizeStoredMetadata(meta)
 	metadataBytes, err := protojson.Marshal(meta)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to marshal metadata")
@@ -35,6 +47,125 @@ func CalcStoreMetaHash(meta *storepb.StoredMetadata) (metadata []byte, metaHash 
 		return nil, nil, err
 	}
 	return metadataBytes, hash, nil
+}
+
+// sanitizeStoredMetadata returns a copy of meta with every U+0000 in its string
+// fields replaced by U+FFFD.
+//
+// The meta registry stores metadata in PostgreSQL jsonb, and jsonb cannot
+// represent U+0000: the JSON escape \u0000 is rejected with SQLSTATE 22P05
+// ("unsupported Unicode escape sequence"), which fails the whole batch write. A
+// driver can be handed a binary catalog value (Doris reports the default of an
+// empty BITMAP/HLL column as a raw 0x00 byte) and an ingestion path can copy
+// arbitrary text, so the metadata this package serializes for those columns is
+// sanitized here in addition to the drivers that can drop the byte at the source.
+//
+// Only StoredMetadata serialized through this path is covered. Object names and
+// GUIDs (text columns) and the stored DDL (TEXT) still fail loudly on a NUL,
+// intentionally: rewriting a name or a DDL would change what the object is.
+func sanitizeStoredMetadata(meta *storepb.StoredMetadata) *storepb.StoredMetadata {
+	cloned, ok := proto.Clone(meta).(*storepb.StoredMetadata)
+	if !ok {
+		return meta
+	}
+	sanitizeProtoStrings(cloned.ProtoReflect())
+	return cloned
+}
+
+// sanitizeProtoStrings replaces U+0000 in every string field of m, descending
+// into submessages, repeated fields and map entries. Only populated fields are
+// visited, so an unset field stays unset.
+func sanitizeProtoStrings(m protoreflect.Message) {
+	m.Range(func(fd protoreflect.FieldDescriptor, v protoreflect.Value) bool {
+		switch {
+		case fd.IsList():
+			if fd.Kind() == protoreflect.MessageKind {
+				list := v.List()
+				for i := range list.Len() {
+					sanitizeProtoStrings(list.Get(i).Message())
+				}
+				return true
+			}
+			if fd.Kind() != protoreflect.StringKind {
+				return true
+			}
+			list := v.List()
+			for i := range list.Len() {
+				if s := list.Get(i).String(); strings.ContainsRune(s, 0) {
+					list.Set(i, protoreflect.ValueOfString(strings.ReplaceAll(s, "\x00", nulReplacement)))
+				}
+			}
+		case fd.IsMap():
+			sanitizeProtoMap(fd, v.Map())
+		case fd.Kind() == protoreflect.MessageKind:
+			sanitizeProtoStrings(v.Message())
+		case fd.Kind() == protoreflect.StringKind:
+			if s := v.String(); strings.ContainsRune(s, 0) {
+				m.Set(fd, protoreflect.ValueOfString(strings.ReplaceAll(s, "\x00", nulReplacement)))
+			}
+		default:
+			// Boolean, enum and numeric fields cannot carry U+0000, and bytes
+			// fields are base64-encoded in JSON, which is safe.
+		}
+		return true
+	})
+}
+
+// sanitizeProtoMap replaces U+0000 in the string keys and string values of a map
+// field, and descends into message values. A changed key cannot be removed and
+// re-added while the map is being ranged, and Go randomizes map iteration order,
+// so the replacements are collected, sorted by the old key and applied
+// afterwards: when two keys sanitize to the same replacement, the first one in
+// that order wins, which keeps the persisted bytes and the fingerprint
+// deterministic.
+func sanitizeProtoMap(fd protoreflect.FieldDescriptor, m protoreflect.Map) {
+	if fd.MapValue().Kind() == protoreflect.MessageKind {
+		m.Range(func(_ protoreflect.MapKey, v protoreflect.Value) bool {
+			sanitizeProtoStrings(v.Message())
+			return true
+		})
+	}
+
+	type replacement struct {
+		oldKey, newKey protoreflect.MapKey
+		value          protoreflect.Value
+		keyChanged     bool
+	}
+	var replacements []replacement
+	m.Range(func(k protoreflect.MapKey, v protoreflect.Value) bool {
+		oldKey := k.String()
+		newKey, keyChanged := k, false
+		if fd.MapKey().Kind() == protoreflect.StringKind && strings.ContainsRune(oldKey, 0) {
+			newKey = protoreflect.ValueOfString(strings.ReplaceAll(oldKey, "\x00", nulReplacement)).MapKey()
+			keyChanged = true
+		}
+		newValue, valueChanged := v, false
+		if fd.MapValue().Kind() == protoreflect.StringKind {
+			if s := v.String(); strings.ContainsRune(s, 0) {
+				newValue = protoreflect.ValueOfString(strings.ReplaceAll(s, "\x00", nulReplacement))
+				valueChanged = true
+			}
+		}
+		if keyChanged || valueChanged {
+			replacements = append(replacements, replacement{oldKey: k, newKey: newKey, value: newValue, keyChanged: keyChanged})
+		}
+		return true
+	})
+	slices.SortFunc(replacements, func(a, b replacement) int {
+		return cmp.Compare(a.oldKey.String(), b.oldKey.String())
+	})
+	for _, r := range replacements {
+		if r.keyChanged {
+			m.Clear(r.oldKey)
+			if m.Has(r.newKey) {
+				// Two keys sanitize to the same replacement: the first one in
+				// sorted order won, so this entry is dropped rather than
+				// overwriting it non-deterministically.
+				continue
+			}
+		}
+		m.Set(r.newKey, r.value)
+	}
 }
 
 // CalcMetaHash returns the change-detection fingerprint of metadata: the

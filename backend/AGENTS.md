@@ -32,6 +32,7 @@ Rules for the Go server. Repo-wide rules live in the root [AGENTS.md](../AGENTS.
 ## Data and JSONB
 
 - JSONB columns hold `protojson.Marshal` output of the `proto/store` message named in the column's SQL comment. Adding or removing proto fields means updating the proto and the store together.
+- JSONB cannot represent U+0000: PostgreSQL rejects the escape `\u0000` with SQLSTATE 22P05 and fails the whole write. For the meta-registry metadata serialized by `store.CalcStoreMetaHash`, U+0000 is replaced with U+FFFD; other JSONB columns (instance/db metadata, audit payload, …) and the text columns holding GUIDs and DDL are not sanitized and still fail loudly.
 - `protojson.Marshal` camelCases proto field names, so a column whose `proto/store` field is `enter_to_send` stores `{"enterToSend": ...}` rather than the snake_case key the column name suggests.
 
 ## Schema Changes
