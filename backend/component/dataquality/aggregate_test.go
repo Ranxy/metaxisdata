@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
@@ -444,4 +445,23 @@ func TestAggregateExecutionRejectsPercentMetric(t *testing.T) {
 		execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE, config), ExecOptions{})
 	require.Equal(t, common.Invalid, common.ErrorCode(err))
 	require.Contains(t, err.Error(), "absolute values")
+}
+
+// TestStoredAggregateCountIsRejected pins the runtime consequence of the save-time
+// COUNT refusal: a rule persisted before that check (here the config is read back
+// from JSONB, as the store does) fails ValidateConfig. The runner maps that failure
+// to ERROR(UNSUPPORTED) before it opens a connection
+// (qualityrunner.executeOne), so the batch never queries the target.
+func TestStoredAggregateCountIsRejected(t *testing.T) {
+	t.Parallel()
+
+	stored := aggregateConfig("id", storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT, proto.Float64(0), nil)
+	encoded, err := protojson.Marshal(stored)
+	require.NoError(t, err)
+	decoded := &storepb.QualityRuleConfig{}
+	require.NoError(t, common.ProtojsonUnmarshaler.Unmarshal(encoded, decoded))
+
+	err = ValidateConfig(compileTestTarget(storepb.Engine_POSTGRES), storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE, decoded)
+	require.Equal(t, common.Invalid, common.ErrorCode(err))
+	require.Contains(t, err.Error(), "aggregate COUNT duplicates row_count")
 }

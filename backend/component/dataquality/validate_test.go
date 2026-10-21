@@ -756,8 +756,8 @@ func TestValidateConfigRejectsPercentWithoutDenominator(t *testing.T) {
 }
 
 // Each PERCENT refusal explains itself through the one helper the save-time gate
-// and the executor's backstop share: a count rule has no denominator, null_percent
-// names its own unit, and the measurement rules bound absolute values.
+// and the executor's backstop share: a count rule names the bounds it uses,
+// null_percent names its own unit, and the measurement rules bound absolute values.
 func TestPercentRefusalMessages(t *testing.T) {
 	t.Parallel()
 
@@ -766,15 +766,15 @@ func TestPercentRefusalMessages(t *testing.T) {
 		ruleType storepb.QualityRuleType
 		want     string
 	}{
+		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, want: "min_rows/max_rows/exact_rows"},
+		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE, want: "max_increase_pct/max_decrease_pct"},
 		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT, want: "chooses count or percentage in its own config"},
+		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS, want: "max_lag_seconds"},
+		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL, want: "returns failed rows directly"},
 		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT, want: "drift items"},
 		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE, want: "absolute values"},
 		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, want: "absolute values"},
-		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, want: "no total-rows denominator"},
-		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE, want: "no total-rows denominator"},
-		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS, want: "no total-rows denominator"},
-		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL, want: "no total-rows denominator"},
-		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED, want: "no total-rows denominator"},
+		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED, want: "rule type is required"},
 	}
 	for _, test := range refused {
 		err := validatePercentSupport(test.ruleType, percent)

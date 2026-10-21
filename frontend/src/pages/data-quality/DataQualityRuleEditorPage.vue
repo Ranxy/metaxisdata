@@ -317,7 +317,9 @@
                     v-for="group in ruleTypeGroups"
                     :key="group.key"
                   >
-                    <SelectLabel>{{ t(group.key) }}</SelectLabel>
+                    <SelectLabel v-if="group.key">
+                      {{ t(group.key) }}
+                    </SelectLabel>
                     <SelectItem
                       v-for="ruleType in group.types"
                       :key="ruleType"
@@ -680,6 +682,7 @@ import {
   isThresholdMetricType,
   RULE_TYPE_GROUPS,
   type RuleFormState,
+  resolveExpectedColumnNullability,
   ruleToForm,
   type ScheduleUnit,
   suggestedDimension,
@@ -802,10 +805,18 @@ const isViewTarget = computed(
 /** The rule-type sections, with the types this target cannot watch removed. */
 const ruleTypeGroups = computed(() => {
   const allowed = allowedRuleTypes(target.value?.metaType);
-  return RULE_TYPE_GROUPS.map((group) => ({
+  const groups = RULE_TYPE_GROUPS.map((group) => ({
     key: group.key,
     types: group.types.filter((ruleType) => allowed.includes(ruleType)),
   })).filter((group) => group.types.length > 0);
+  // A stored rule can name a type this target filters out: a legacy row, or an
+  // enum this build knows but the target does not accept. Keep the value visible
+  // in its own unlabeled group so the select and its description still render; it
+  // is never rewritten here.
+  if (!allowed.includes(form.value.ruleType)) {
+    groups.unshift({ key: "", types: [form.value.ruleType] });
+  }
+  return groups;
 });
 
 /** The save/validation feedback block, scrolled into view when it appears. */
@@ -1059,6 +1070,29 @@ async function refreshTargetColumns(guid: string) {
   }
 }
 
+/**
+ * A schema-drift snapshot saved before nullability was compared leaves the bit
+ * unset. Resolve those rows from the target's current columns after loading, both
+ * on the form and on the baseline it is diffed against, so saving writes explicit
+ * values without a spurious config change; a column the target no longer has
+ * stays unset and is not judged.
+ */
+function resolveLoadedSchemaDriftNullability() {
+  if (form.value.ruleType !== QualityRuleType.SCHEMA_DRIFT) {
+    return;
+  }
+  form.value.config.expectedColumns = resolveExpectedColumnNullability(
+    form.value.config.expectedColumns,
+    targetColumnDetails.value
+  );
+  if (originalForm) {
+    originalForm.config.expectedColumns = resolveExpectedColumnNullability(
+      originalForm.config.expectedColumns,
+      targetColumnDetails.value
+    );
+  }
+}
+
 async function loadRule() {
   if (!isEdit.value) {
     await loadNewPage();
@@ -1074,7 +1108,10 @@ async function loadRule() {
     form.value = ruleToForm(loaded);
     target.value = originalTarget ? { ...originalTarget } : undefined;
     if (target.value) {
-      void refreshTargetColumns(target.value.guid);
+      // The columns are needed to resolve a snapshot saved before nullability was
+      // compared, so resolve after they are on hand.
+      await refreshTargetColumns(target.value.guid);
+      resolveLoadedSchemaDriftNullability();
       void checkReadOnly(target.value);
     }
   } catch (e: unknown) {

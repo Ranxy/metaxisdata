@@ -752,7 +752,7 @@ func TestValidateCELExpressionRejectsMoneyColumns(t *testing.T) {
 }
 
 // A stored money rule still evaluates: the sample value arrives as the decorated
-// string the driver renders, which the shared number normalization strips.
+// string the driver renders, which celParseNumber accepts when unambiguous.
 func TestExecuteCELRuleReadsMoneyValues(t *testing.T) {
 	t.Parallel()
 
@@ -765,4 +765,44 @@ func TestExecuteCELRuleReadsMoneyValues(t *testing.T) {
 	// 1234.50 satisfies the predicate; 0.50 does not and is a violation.
 	require.Equal(t, int64(1), execution.Observation.FailedRows)
 	require.Equal(t, int64(2), execution.Observation.TotalRows)
+}
+
+// celParseNumber accepts a decorated money rendering only when it is unambiguous;
+// an ambiguous separator layout is BAD_DATA rather than a silent locale guess.
+func TestCelParseNumberStrict(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		value   string
+		want    float64
+		wantErr bool
+	}{
+		{name: "plain decimal", value: "12.5", want: 12.5},
+		{name: "scientific", value: "1.5e2", want: 150},
+		{name: "currency prefix with grouping", value: "$1,234.50", want: 1234.5},
+		{name: "negative currency prefix", value: "-$1.23", want: -1.23},
+		{name: "currency after sign", value: "$-1.23", want: -1.23},
+		{name: "parenthesized negative", value: "($12.30)", want: -12.3},
+		{name: "grouped thousands", value: "1,234", want: 1234},
+		{name: "comma decimal with dot grouping", value: "1.234,50", want: 1234.5},
+		{name: "trailing currency symbol", value: "1.23€", want: 1.23},
+		{name: "ambiguous lone comma", value: "1,5", wantErr: true},
+		{name: "ambiguous internal space", value: "1 234,50", wantErr: true},
+		{name: "not a number", value: "not-a-number", wantErr: true},
+		{name: "nan", value: "NaN", wantErr: true},
+		{name: "infinity", value: "Inf", wantErr: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := celParseNumber(test.value)
+			if test.wantErr {
+				require.Error(t, err, test.value)
+				return
+			}
+			require.NoError(t, err, test.value)
+			require.InDelta(t, test.want, got, 1e-9, test.value)
+		})
+	}
 }

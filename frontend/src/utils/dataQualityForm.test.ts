@@ -50,6 +50,7 @@ import {
   parseValueList,
   RULE_TYPE_GROUPS,
   RULE_TYPES_BY_META_TYPE,
+  resolveExpectedColumnNullability,
   ruleToForm,
   scheduleMinutes,
   scheduleToDuration,
@@ -597,6 +598,50 @@ describe("config conversion", () => {
   });
 });
 
+describe("schema drift nullability", () => {
+  it("keeps an unset nullability bit unset through a round trip", () => {
+    const form = validForm(QualityRuleType.SCHEMA_DRIFT);
+    form.config.expectedColumns = [
+      { name: "id", type: "bigint" },
+      { name: "email", type: "text", nullable: true },
+    ];
+    const rule = formToRule(form, { target: TARGET });
+    if (rule.config?.config.case !== "schemaDrift") {
+      throw new Error("expected a schema-drift config arm");
+    }
+    const sent = rule.config.config.value.expectedColumns;
+    expect(sent[0]?.nullable).toBeUndefined();
+    expect(sent[1]?.nullable).toBe(true);
+
+    const back = ruleToForm(rule);
+    expect(back.config.expectedColumns?.[0]?.nullable).toBeUndefined();
+    expect(back.config.expectedColumns?.[1]?.nullable).toBe(true);
+  });
+
+  it("resolves unset rows from the target and leaves unknown columns alone", () => {
+    const targetColumns = [
+      { name: "id", type: "bigint", nullable: false },
+      { name: "email", type: "text", nullable: true },
+    ];
+    const resolved = resolveExpectedColumnNullability(
+      [
+        { name: "id", type: "bigint" },
+        { name: "email", type: "text", nullable: false },
+        { name: "gone", type: "text" },
+      ],
+      targetColumns
+    );
+    expect(resolved?.[0]?.nullable).toBe(false);
+    // An explicit snapshot bit wins over the live column.
+    expect(resolved?.[1]?.nullable).toBe(false);
+    // A column the target no longer has stays unjudged.
+    expect(resolved?.[2]?.nullable).toBeUndefined();
+    expect(
+      resolveExpectedColumnNullability(undefined, targetColumns)
+    ).toBeUndefined();
+  });
+});
+
 describe("schedule defaults", () => {
   it("keeps a new rule's default of one hour", () => {
     expect(emptyRuleForm().schedule).toEqual({ value: "1", unit: "hours" });
@@ -717,6 +762,25 @@ describe("update mask", () => {
       { name: "email", type: "text", nullable: true },
     ];
     expect(computeUpdateMask(base, next)).toEqual(["config"]);
+  });
+
+  // Unset means "do not judge nullability"; an explicit false asserts NOT NULL.
+  // Toggling a legacy row must therefore be a change, not a no-op.
+  it("treats an unset nullability bit as different from an explicit false", () => {
+    const snapshot = (form: RuleFormState) => ({
+      form,
+      target: { ...TARGET, columns: ["id"] },
+    });
+    const base = validForm(QualityRuleType.SCHEMA_DRIFT);
+    base.config.expectedColumns = [{ name: "id", type: "bigint" }];
+    const toggled = validForm(QualityRuleType.SCHEMA_DRIFT);
+    toggled.config.expectedColumns = [
+      { name: "id", type: "bigint", nullable: false },
+    ];
+    expect(computeUpdateMask(snapshot(base), snapshot(base))).toEqual([]);
+    expect(computeUpdateMask(snapshot(base), snapshot(toggled))).toEqual([
+      "config",
+    ]);
   });
 
   it("ignores whitespace and formatting-only differences", () => {
@@ -1168,6 +1232,15 @@ describe("degenerate inputs", () => {
     expect(ruleToForm(rule).thresholdMetric).toBe(
       QualityThresholdMetric.PERCENT
     );
+  });
+
+  it("drops a stored percentage threshold on a type that does not read it", () => {
+    const rule = ruleFor(QualityRuleType.ROW_COUNT);
+    if (!rule.config) {
+      throw new Error("expected a rule config");
+    }
+    rule.config.thresholdMetric = QualityThresholdMetric.PERCENT;
+    expect(ruleToForm(rule).thresholdMetric).toBe(QualityThresholdMetric.COUNT);
   });
 
   it("accepts a valid percentile and rejects a missing one", () => {

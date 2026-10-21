@@ -55,6 +55,9 @@ drift), because those objects have no column-level type authority.
   write a custom-SQL rule when the condition needs more.
 - **Preview** runs the compiled statement with `LIMIT 0` against the read-only
   source: it proves syntax and permission without scanning the table.
+- **Schema drift** compares each column's type and nullability — plus, if you ask
+  for it, order and extra columns — with the snapshot saved when the rule was
+  created. Use *Fill from target* to record the current definition.
 
 ## Browsing rules
 
@@ -155,6 +158,7 @@ runner prunes them. Rules, open issues and accepted labels are not pruned.
 | A dry run fails with a parameter or SQL error | The message shows the compiled SQL and its bound values; check that the filter values and range/aggregate bounds match the column's type (for example a date written as a plain string, or a numeric bound for a text column). |
 | Rules never run | The rule is paused or archived, the instance is gone, or the daily execution ceiling was reached (the next day resumes it; **Run now** still works). |
 | An execution stays pending, or ends abandoned | The instance's connection budget stayed busy past the runner's wait, or the server restarted mid-run. Such checks are not retried automatically; use **Run now** or wait for the next scheduled slot. |
+| A rule that used to run now ends `ERROR(UNSUPPORTED)` | The rule uses a configuration this build no longer accepts, for example an aggregate `COUNT` (use a row count rule instead) or a column type the engine cannot express. Re-create the rule with the supported type. |
 | No notification for a failure | The issue was already open (notifications fire on transitions), the rule is muted, or more than ten rules failed in the same scheduler pass and a summary was sent instead. |
 | Model buttons are disabled | Model analysis is off, no allowed provider profile exists, or the caller lacks `suggest`/`explain`. |
 | A label suggestion cannot be accepted | Profile the columns first; label suggestions require profiles fresher than seven days. |

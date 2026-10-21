@@ -10345,6 +10345,11 @@ components:
                     type: string
                 nullable:
                     type: boolean
+                    description: |-
+                        Whether the column is nullable. Unset means the rule does not judge
+                         nullability for this column: a snapshot written before nullability was
+                         compared stays usable and does not report a false drift. The editor and the
+                         API's fill-from-target path always set it.
             description: SchemaDriftColumn is one column of the snapshot a schema-drift rule expects.
         SchemaDriftConfig:
             type: object
@@ -10359,8 +10364,8 @@ components:
                 checkTypes:
                     type: boolean
                     description: |-
-                        Whether a changed column type is drift. Unset means true: a type change is
-                         drift unless the rule author turns the check off.
+                        Whether a changed column type or nullability is drift. Unset means true:
+                         either change is drift unless the rule author turns the check off.
                 checkOrder:
                     type: boolean
                     description: Whether a changed column order is drift. Default false.

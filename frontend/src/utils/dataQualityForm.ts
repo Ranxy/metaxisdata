@@ -367,7 +367,12 @@ export interface RuleConfigForm {
 export interface SchemaDriftColumnForm {
   name: string;
   type: string;
-  nullable: boolean;
+  /**
+   * The column's nullability in the snapshot. Unset means the rule does not
+   * judge nullability for this column, which is what a snapshot saved before the
+   * comparison existed means; an explicit value asserts the expected bit.
+   */
+  nullable?: boolean;
 }
 
 export interface RuleFormState {
@@ -716,6 +721,32 @@ export function columnsForConfig(form: RuleFormState): string[] {
   }
 }
 
+/**
+ * Fills in an expected column's nullability from the target's current columns,
+ * by exact column name. A row whose nullability is already explicit is left
+ * alone; an unmatched name keeps it unset, so the rule does not judge a column
+ * it cannot see. The editor runs this after loading a rule so a save writes
+ * explicit values instead of a snapshot that re-judges as drift.
+ */
+export function resolveExpectedColumnNullability(
+  expectedColumns: SchemaDriftColumnForm[] | undefined,
+  targetColumns: readonly TargetColumnDetail[]
+): SchemaDriftColumnForm[] | undefined {
+  if (expectedColumns === undefined) {
+    return undefined;
+  }
+  const byName = new Map(
+    targetColumns.map((column) => [column.name, column.nullable])
+  );
+  return expectedColumns.map((column) => {
+    if (column.nullable !== undefined) {
+      return column;
+    }
+    const nullable = byName.get(column.name);
+    return nullable === undefined ? column : { ...column, nullable };
+  });
+}
+
 // ---- form → proto ----
 
 /** The rule request built from the form, its target and (on edit) its base. */
@@ -971,7 +1002,11 @@ export function buildRuleConfig(form: RuleFormState): QualityRuleConfig {
                 create(SchemaDriftColumnSchema, {
                   name: column.name.trim(),
                   type: column.type.trim(),
-                  nullable: column.nullable,
+                  // Unset means "do not judge nullability": leave the field off
+                  // the wire rather than asserting a false it never recorded.
+                  ...(column.nullable === undefined
+                    ? {}
+                    : { nullable: column.nullable }),
                 })
               ),
             // Unset means true; only an explicit false needs to travel.
@@ -1076,9 +1111,12 @@ export function ruleToForm(rule: QualityRule): RuleFormState {
   form.tags = rule.tags.join(", ");
   form.schedule = durationToSchedule(rule.scheduleInterval);
   // UNSPECIFIED means COUNT on the wire; normalize it so the select never opens
-  // blank for a legacy rule or a draft that did not set the metric.
+  // blank for a legacy rule or a draft that did not set the metric. A PERCENT
+  // value survives only where the rule type actually reads the shared metric; a
+  // stored PERCENT elsewhere would be refused on the next save.
   form.thresholdMetric =
-    rule.config?.thresholdMetric === QualityThresholdMetric.PERCENT
+    rule.config?.thresholdMetric === QualityThresholdMetric.PERCENT &&
+    isThresholdMetricType(rule.ruleType)
       ? QualityThresholdMetric.PERCENT
       : QualityThresholdMetric.COUNT;
   form.onEmpty = rule.config?.onEmpty ?? form.onEmpty;
@@ -1413,7 +1451,11 @@ function normalizeConfigRow(row: unknown): Record<string, unknown> {
   return {
     name: String(record.name ?? "").trim(),
     type: String(record.type ?? "").trim(),
-    nullable: record.nullable === true,
+    // Unset and an explicit false assert different things about the column, so
+    // they compare differently; otherwise toggling a previously-unset row to
+    // "not nullable" would look like no change.
+    nullable:
+      record.nullable === undefined ? "unset" : record.nullable === true,
   };
 }
 

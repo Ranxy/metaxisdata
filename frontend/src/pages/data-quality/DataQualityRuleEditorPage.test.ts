@@ -12,6 +12,7 @@ import { Select } from "@/components/ui/select";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
+  QualityAggregateFunction,
   QualityRuleConfigSchema,
   QualityRuleSchema,
   QualityRuleType,
@@ -848,5 +849,101 @@ describe("DataQualityRuleEditorPage", () => {
     expect(mocks.updateQualityRule).toHaveBeenCalledTimes(1);
     const [, mask] = mocks.updateQualityRule.mock.calls[0] ?? [];
     expect(mask).toEqual(["title"]);
+  });
+
+  it("resolves an unset schema-drift nullability from the loaded target columns", async () => {
+    const baseForm = emptyRuleForm(QualityRuleType.SCHEMA_DRIFT);
+    baseForm.title = "Schema drift";
+    baseForm.config.expectedColumns = [
+      { name: "id", type: "bigint" },
+      { name: "legacy_col", type: "text" },
+    ];
+    const stored = formToRule(baseForm, {
+      target: {
+        guid: PREFILL,
+        metaType: MetaType.TABLE,
+        path: {
+          instance: "inst1",
+          database: "db1",
+          schema: "public",
+          object: "orders",
+        },
+        columns: [],
+      },
+    });
+    stored.name = "workspaces/ws/qualityRules/rule-1";
+    mocks.getQualityRule.mockResolvedValue(stored);
+    mocks.updateQualityRule.mockResolvedValue(stored);
+
+    const { wrapper } = await mountEditor(
+      "/data-quality/rules/workspaces/ws/qualityRules/rule-1/edit"
+    );
+    await flushPromises();
+
+    const expected = wrapper
+      .findComponent(RuleConfigForm)
+      .props("modelValue").expectedColumns;
+    // The mock's target column "id" is nullable=false.
+    expect(expected?.[0]?.nullable).toBe(false);
+    // A column the target no longer has stays unjudged instead of inventing a bit.
+    expect(expected?.[1]?.nullable).toBeUndefined();
+
+    // Saving without edits writes nothing: the baseline was resolved the same way.
+    await actionButton(
+      wrapper,
+      label("dataQuality.editor.saveChanges")
+    ).trigger("click");
+    await flushPromises();
+    expect(mocks.previewQualityRule).toHaveBeenCalledTimes(1);
+    expect(mocks.updateQualityRule).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("keeps a stored type outside a view's options visible instead of rewriting it", async () => {
+    const baseForm = emptyRuleForm(QualityRuleType.AGGREGATE);
+    baseForm.title = "Average amount";
+    baseForm.config.aggregateColumn = "amount";
+    baseForm.config.aggregateFunction = QualityAggregateFunction.AVG;
+    baseForm.config.aggMin = "0";
+    baseForm.config.aggMax = "100";
+    const stored = formToRule(baseForm, {
+      target: {
+        guid: PREFILL,
+        metaType: MetaType.VIEW,
+        path: {
+          instance: "inst1",
+          database: "db1",
+          schema: "public",
+          object: "orders",
+        },
+        columns: [],
+      },
+    });
+    stored.name = "workspaces/ws/qualityRules/rule-1";
+    mocks.getQualityRule.mockResolvedValue(stored);
+
+    const { wrapper } = await mountEditor(
+      "/data-quality/rules/workspaces/ws/qualityRules/rule-1/edit"
+    );
+    await flushPromises();
+
+    // The stored value is kept, not silently rewritten to a view-legal type.
+    expect(wrapper.findAllComponents(Select)[0]?.props("modelValue")).toBe(
+      String(QualityRuleType.AGGREGATE)
+    );
+    expect(wrapper.text()).toContain(
+      label("dataQuality.editor.ruleTypeViewHint")
+    );
+    expect(wrapper.text()).toContain(
+      label("dataQuality.ruleTypeDescription.aggregate")
+    );
+
+    // The fallback entry renders with the five view-legal options.
+    const options = await openRuleTypeSelect(wrapper);
+    const labels = optionLabels(options);
+    expect(options).toHaveLength(6);
+    expect(labels).toContain(label("dataQuality.ruleType.aggregate"));
+    expect(mocks.updateQualityRule).not.toHaveBeenCalled();
+    wrapper.unmount();
   });
 });

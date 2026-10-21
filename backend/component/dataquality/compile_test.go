@@ -72,7 +72,7 @@ type compileGolden struct {
 }
 
 // compileRuleGoldens covers the 13 SQL rule types that share the dialect helpers;
-// the v1.1 and metadata types have their own SQL or behaviour pinned in
+// the v1.1 and metadata types have their own SQL or behavior pinned in
 // cel_test.go, schema_drift_test.go, group_check_test.go, aggregate_test.go and
 // cross_table_test.go. StarRocks shares the MySQL expectations: the dialects differ
 // only by the engine the table is quoted for.
@@ -1144,7 +1144,6 @@ func TestRuleTypeCatalogIsComplete(t *testing.T) {
 		}
 		seen++
 		require.Contains(t, compilers, ruleType, "rule type %s has no compiler", name)
-		require.True(t, RuleTypeForTarget(storepb.MetaType_TABLE, ruleType), "%s must watch a table", name)
 		ok, reason := Supported(storepb.Engine_POSTGRES, ruleType)
 		require.True(t, ok, "%s: %s", name, reason)
 		require.Empty(t, reason, "a supported rule type must not carry a refusal reason")
@@ -1157,6 +1156,25 @@ func TestRuleTypeCatalogIsComplete(t *testing.T) {
 	require.Len(t, compilers, seen)
 	_, hasUnspecifiedCompiler := compilers[storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED]
 	require.False(t, hasUnspecifiedCompiler)
+
+	// The object-type matrix: a table accepts every rule type, while a view only
+	// accepts the table-level checks. Asserting the exact sets, not a spot check,
+	// is what keeps RuleTypeForTarget from silently widening.
+	viewAllowed := map[storepb.QualityRuleType]bool{
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT:        true,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE: true,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS:        true,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL:       true,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT:     true,
+	}
+	for ruleType := range compilers {
+		require.True(t, RuleTypeForTarget(storepb.MetaType_TABLE, ruleType), "%s must watch a table", ruleType)
+		require.True(t, RuleTypeForTarget(storepb.MetaType_EXTERNAL_TABLE, ruleType), "%s must watch an external table", ruleType)
+		for _, viewType := range []storepb.MetaType{storepb.MetaType_VIEW, storepb.MetaType_MATERIALIZED_VIEW} {
+			require.Equal(t, viewAllowed[ruleType], RuleTypeForTarget(viewType, ruleType),
+				"%s on %s", ruleType, viewType)
+		}
+	}
 
 	metadataRules := 0
 	for ruleType := range compilers {

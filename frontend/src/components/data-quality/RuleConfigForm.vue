@@ -576,9 +576,12 @@
           class="grid items-center gap-2 rounded-md border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]"
         >
           <Input
-            v-model="column.name"
+            :model-value="column.name"
             :aria-label="t('dataQuality.editor.columnName')"
             :placeholder="t('dataQuality.editor.columnName')"
+            @update:model-value="
+              (value) => setExpectedColumnName(column, String(value))
+            "
           />
           <Input
             v-model="column.type"
@@ -586,8 +589,11 @@
             :placeholder="t('dataQuality.editor.columnType')"
           />
           <CheckboxField
-            v-model="column.nullable"
+            :model-value="column.nullable === true"
             :label="t('dataQuality.editor.nullable')"
+            @update:model-value="
+              (value) => setExpectedColumnNullable(column, value)
+            "
           />
           <Button
             type="button"
@@ -601,6 +607,12 @@
             <Trash2 class="h-4 w-4" />
           </Button>
         </div>
+        <p
+          v-if="(config.expectedColumns ?? []).length > 0"
+          class="text-xs text-muted-foreground"
+        >
+          {{ t("dataQuality.editor.nullableHint") }}
+        </p>
         <Button
           type="button"
           variant="outline"
@@ -1090,8 +1102,38 @@ function setRightFunction(value: unknown) {
 function addExpectedColumn() {
   config.value.expectedColumns = [
     ...(config.value.expectedColumns ?? []),
-    { name: "", type: "", nullable: true },
+    // Nullability starts unset: the rule should not judge it until a target
+    // column or the reader supplies the expected bit.
+    { name: "", type: "" },
   ];
+}
+
+/**
+ * A manual expected-column row borrows the target's own description when the
+ * name matches: type when the row left it blank, and the explicit nullability
+ * either way. This is the same contract "fill from target" records, one row at
+ * a time.
+ */
+function setExpectedColumnName(column: SchemaDriftColumnForm, value: string) {
+  column.name = value;
+  const match = props.columnDetails.find(
+    (detail) => detail.name === value.trim()
+  );
+  if (!match) {
+    return;
+  }
+  if (column.type.trim() === "") {
+    column.type = match.type;
+  }
+  column.nullable = match.nullable;
+}
+
+/** Writes the snapshot bit only once the reader toggles the checkbox. */
+function setExpectedColumnNullable(
+  column: SchemaDriftColumnForm,
+  value: boolean
+) {
+  column.nullable = value;
 }
 
 function removeExpectedColumn(index: number) {

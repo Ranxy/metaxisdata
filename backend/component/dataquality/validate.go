@@ -223,16 +223,26 @@ func validatePercentSupport(ruleType storepb.QualityRuleType, metric storepb.Qua
 }
 
 // percentThresholdUnsupported explains why a threshold in PERCENT is meaningless
-// for one rule type. The save-time gate and the executor's runtime backstop share
-// it, so a rule is refused with the same wording whether it is being saved or
-// re-executed.
+// for one rule type, naming the unit the rule actually uses. The save-time gate and
+// the executor's runtime backstop share it, so a rule is refused with the same
+// wording whether it is being saved or re-executed.
 func percentThresholdUnsupported(ruleType storepb.QualityRuleType) error {
 	switch ruleType {
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT:
+		return invalidConfig("row_count bounds the row count with min_rows/max_rows/exact_rows; threshold_metric PERCENT does not apply")
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE:
+		return invalidConfig("row_count_change bounds the change with max_increase_pct/max_decrease_pct; threshold_metric PERCENT does not apply")
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT:
 		// null_percent names its own unit: max_null_count/warn_null_count or
 		// max_null_pct/warn_null_pct. The shared threshold_metric is never read, so a
 		// PERCENT value there would describe a setting the rule does not use.
 		return invalidConfig("null_percent chooses count or percentage in its own config (max_null_count or max_null_pct); threshold_metric does not apply")
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS:
+		return invalidConfig("freshness bounds the lag with max_lag_seconds; threshold_metric PERCENT does not apply")
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL:
+		// The statement returns failing rows itself, so there is no filtered total to
+		// divide by.
+		return invalidConfig("custom_sql returns failed rows directly, so there is no total to divide by; threshold_metric PERCENT is not supported")
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT:
 		// The drift snapshot is a set of expected columns, not a sample of rows; a
 		// percentage of a tiny fixed list is not a meaningful threshold.
@@ -242,10 +252,10 @@ func percentThresholdUnsupported(ruleType storepb.QualityRuleType) error {
 		// These thresholds bound an absolute value (an interval edge or a tolerated
 		// difference), not a fraction of rows.
 		return invalidConfig("%s thresholds are absolute values; threshold_metric PERCENT is not supported", ruleType)
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED:
+		return invalidConfig("a rule type is required")
 	default:
-		// row_count, row_count_change, freshness and custom_sql observe a whole-table
-		// property and report no total to divide by.
-		return invalidConfig("threshold_metric PERCENT is not supported by %s: it has no total-rows denominator", ruleType)
+		return invalidConfig("threshold_metric PERCENT is not supported by %s", ruleType)
 	}
 }
 

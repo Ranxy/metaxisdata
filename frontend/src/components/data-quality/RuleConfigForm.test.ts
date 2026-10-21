@@ -93,4 +93,80 @@ describe("RuleConfigForm", () => {
     expect(wrapper.text()).not.toContain(THRESHOLD_LABEL());
     wrapper.unmount();
   });
+
+  describe("schema-drift snapshot rows", () => {
+    const TARGET_COLUMNS = [
+      { name: "id", type: "bigint", nullable: false },
+      { name: "email", type: "text", nullable: true },
+    ];
+
+    function mountSchemaDrift(
+      expectedColumns: Array<{
+        name: string;
+        type: string;
+        nullable?: boolean;
+      }>
+    ) {
+      const model = { ...emptyConfig(), expectedColumns };
+      const wrapper = mount(RuleConfigForm, {
+        props: {
+          ruleType: QualityRuleType.SCHEMA_DRIFT,
+          modelValue: model,
+          thresholdMetric: QualityThresholdMetric.COUNT,
+          columnDetails: TARGET_COLUMNS,
+        },
+        global: { plugins: [i18n] },
+      });
+      return { wrapper, model };
+    }
+
+    function nameInput(wrapper: ReturnType<typeof mount>) {
+      return wrapper.find(
+        `input[aria-label="${label("dataQuality.editor.columnName")}"]`
+      );
+    }
+
+    function rowCheckbox(wrapper: ReturnType<typeof mount>) {
+      return wrapper.find('[role="checkbox"]');
+    }
+
+    it("shows an unset nullability as unchecked and only writes it on toggle", async () => {
+      const { wrapper, model } = mountSchemaDrift([
+        { name: "id", type: "bigint" },
+      ]);
+      expect(model.expectedColumns?.[0]?.nullable).toBeUndefined();
+      expect(rowCheckbox(wrapper).attributes("aria-checked")).toBe("false");
+      expect(wrapper.text()).toContain(
+        label("dataQuality.editor.nullableHint")
+      );
+
+      await rowCheckbox(wrapper).trigger("click");
+      expect(model.expectedColumns?.[0]?.nullable).toBe(true);
+      wrapper.unmount();
+    });
+
+    it("fills a manual row's type and nullability from a matching target column", async () => {
+      const { wrapper, model } = mountSchemaDrift([{ name: "", type: "" }]);
+      await nameInput(wrapper).setValue("email");
+
+      expect(model.expectedColumns?.[0]).toEqual({
+        name: "email",
+        type: "text",
+        nullable: true,
+      });
+      expect(rowCheckbox(wrapper).attributes("aria-checked")).toBe("true");
+      wrapper.unmount();
+    });
+
+    it("keeps a type the reader already typed when a name matches", async () => {
+      const { wrapper, model } = mountSchemaDrift([
+        { name: "", type: "custom_type" },
+      ]);
+      await nameInput(wrapper).setValue("id");
+
+      expect(model.expectedColumns?.[0]?.type).toBe("custom_type");
+      expect(model.expectedColumns?.[0]?.nullable).toBe(false);
+      wrapper.unmount();
+    });
+  });
 });

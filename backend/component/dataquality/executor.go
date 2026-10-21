@@ -697,9 +697,10 @@ func executeMetadataRule(resolution *Resolution, rule RuleSnapshot, opts ExecOpt
 
 // compareSchemaDrift compares the registry's current columns with the saved
 // snapshot. The items come in a stable order: missing, changed-type and
-// changed-nullability columns in snapshot order, then out-of-order shared columns
-// in snapshot order, then extra live columns in live order. Duplicate snapshot
-// entries are ignored here because validation refuses them at save time.
+// changed-nullability columns in snapshot order (nullability only when the
+// snapshot records it), then out-of-order shared columns in snapshot order, then
+// extra live columns in live order. Duplicate snapshot entries are ignored here
+// because validation refuses them at save time.
 func compareSchemaDrift(current []ColumnInfo, config *storepb.SchemaDriftConfig) []schemaDriftItem {
 	live := make(map[string]ColumnInfo, len(current))
 	for _, column := range current {
@@ -729,10 +730,11 @@ func compareSchemaDrift(current []ColumnInfo, config *storepb.SchemaDriftConfig)
 					Reason: fmt.Sprintf("type: %s -> %s", strings.TrimSpace(want.GetType()), strings.TrimSpace(actual.Type)),
 				})
 			}
-			// Nullability is part of the column contract the snapshot records: a
-			// column that gained or lost NOT NULL changes what the rule's checks can
-			// assume about it.
-			if want.GetNullable() != actual.Nullable {
+			// Nullability is part of the column contract, but only when the snapshot
+			// records it: a snapshot written before the field existed must not
+			// false-drift against every live column. Unset means "do not judge
+			// nullability".
+			if want.Nullable != nil && want.GetNullable() != actual.Nullable {
 				items = append(items, schemaDriftItem{
 					Column: name,
 					Reason: fmt.Sprintf("nullable: %s -> %s", schemaDriftNullability(want.GetNullable()), schemaDriftNullability(actual.Nullable)),
@@ -820,10 +822,11 @@ func schemaDriftSamples(items []schemaDriftItem, limit int) *storepb.QualityFail
 	return samples
 }
 
-// schemaDriftChecksTypes reports whether the column contract checks (type and
-// nullability) count as drift. Unset means yes: a schema-drift rule protects the
-// column contract, and a type or nullability change is the change most worth
-// catching, so the author turns it off explicitly.
+// schemaDriftChecksTypes reports whether the column contract checks count as
+// drift: the column type always, and nullability only when the snapshot records it
+// (an unset nullable means "do not judge"). Unset check_types means yes: a
+// schema-drift rule protects the column contract, so the author turns it off
+// explicitly.
 func schemaDriftChecksTypes(config *storepb.SchemaDriftConfig) bool {
 	if config.CheckTypes == nil {
 		return true

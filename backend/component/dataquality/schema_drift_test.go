@@ -12,13 +12,15 @@ import (
 )
 
 // schemaDriftSnapshot builds a drift snapshot from a resolved target's columns.
+// The nullability field is written explicitly: a snapshot this helper builds is a
+// complete column contract, so nullability is judged.
 func schemaDriftSnapshot(columns []ColumnInfo) []*storepb.SchemaDriftColumn {
 	snapshot := make([]*storepb.SchemaDriftColumn, 0, len(columns))
 	for _, column := range columns {
 		snapshot = append(snapshot, &storepb.SchemaDriftColumn{
 			Name:     column.Name,
 			Type:     column.Type,
-			Nullable: column.Nullable,
+			Nullable: proto.Bool(column.Nullable),
 		})
 	}
 	return snapshot
@@ -196,6 +198,8 @@ func withoutColumn(columns []ColumnInfo, name string) []ColumnInfo {
 }
 
 // replaceColumnType returns a copy of the column list with one type changed.
+//
+//nolint:unparam // the fixtures change one column today, but the helper stays general.
 func replaceColumnType(columns []ColumnInfo, name, columnType string) []ColumnInfo {
 	result := append([]ColumnInfo{}, columns...)
 	for index := range result {
@@ -217,6 +221,8 @@ func swapColumns(columns []ColumnInfo, left, right int) []ColumnInfo {
 
 // setColumnNullable returns a copy of the column list with one column's
 // nullability changed.
+//
+//nolint:unparam // the fixtures change one column today, but the helper stays general.
 func setColumnNullable(columns []ColumnInfo, name string, nullable bool) []ColumnInfo {
 	result := append([]ColumnInfo{}, columns...)
 	for index := range result {
@@ -227,56 +233,80 @@ func setColumnNullable(columns []ColumnInfo, name string, nullable bool) []Colum
 	return result
 }
 
-// TestSchemaDriftNullability pins nullability as part of the column contract: a
-// column that gained or lost NOT NULL is drift under check_types, the check can be
-// switched off, and an equal snapshot reports nothing.
+// TestSchemaDriftNullability pins nullability as part of the column contract. A
+// snapshot that records it is judged under check_types; an unset field means "do
+// not judge", so a snapshot written before the field existed never false-drifts.
 func TestSchemaDriftNullability(t *testing.T) {
 	t.Parallel()
 
 	target := compileTestTarget(storepb.Engine_POSTGRES)
+	explicitSnapshot := func(nullable bool) *storepb.SchemaDriftConfig {
+		return &storepb.SchemaDriftConfig{
+			ExpectedColumns: schemaDriftSnapshot(setColumnNullable(target.Columns, "email", nullable)),
+		}
+	}
+	// A column entry with no nullable field, as an older snapshot persisted it.
+	unsetSnapshot := func() *storepb.SchemaDriftConfig {
+		columns := schemaDriftSnapshot(target.Columns)
+		columns[1].Nullable = nil
+		return &storepb.SchemaDriftConfig{ExpectedColumns: columns}
+	}
+
 	tests := []struct {
-		name             string
-		snapshotNullable bool
-		currentNullable  bool
-		checkTypes       *bool
-		want             []schemaDriftItem
+		name    string
+		config  *storepb.SchemaDriftConfig
+		current []ColumnInfo
+		want    []schemaDriftItem
 	}{
 		{
-			name:             "gained null",
-			snapshotNullable: false,
-			currentNullable:  true,
-			checkTypes:       proto.Bool(true),
-			want:             []schemaDriftItem{{Column: "email", Reason: "nullable: NOT NULL -> NULL"}},
+			name:    "explicit not-null snapshot sees a gained null",
+			config:  explicitSnapshot(false),
+			current: setColumnNullable(target.Columns, "email", true),
+			want:    []schemaDriftItem{{Column: "email", Reason: "nullable: NOT NULL -> NULL"}},
 		},
 		{
-			name:             "lost null",
-			snapshotNullable: true,
-			currentNullable:  false,
-			checkTypes:       proto.Bool(true),
-			want:             []schemaDriftItem{{Column: "email", Reason: "nullable: NULL -> NOT NULL"}},
+			name:    "explicit nullable snapshot sees a lost null",
+			config:  explicitSnapshot(true),
+			current: target.Columns,
+			want:    []schemaDriftItem{{Column: "email", Reason: "nullable: NULL -> NOT NULL"}},
 		},
 		{
-			name:             "unchanged",
-			snapshotNullable: true,
-			currentNullable:  true,
-			checkTypes:       proto.Bool(true),
-			want:             nil,
+			name:    "explicit and equal",
+			config:  explicitSnapshot(true),
+			current: setColumnNullable(target.Columns, "email", true),
+			want:    nil,
 		},
 		{
-			name:             "check_types off",
-			snapshotNullable: false,
-			currentNullable:  true,
-			checkTypes:       proto.Bool(false),
-			want:             nil,
+			name:    "unset nullable is not judged",
+			config:  unsetSnapshot(),
+			current: setColumnNullable(target.Columns, "email", true),
+			want:    nil,
+		},
+		{
+			name: "check_types off ignores type and nullability",
+			config: func() *storepb.SchemaDriftConfig {
+				config := explicitSnapshot(false)
+				config.CheckTypes = proto.Bool(false)
+				return config
+			}(),
+			current: setColumnNullable(replaceColumnType(target.Columns, "email", "text"), "email", true),
+			want:    nil,
+		},
+		{
+			name:   "check_types unset compares type and nullability",
+			config: explicitSnapshot(false),
+			current: setColumnNullable(
+				replaceColumnType(target.Columns, "email", "text"), "email", true),
+			want: []schemaDriftItem{
+				{Column: "email", Reason: "type: varchar(255) -> text"},
+				{Column: "email", Reason: "nullable: NOT NULL -> NULL"},
+			},
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			snapshot := schemaDriftSnapshot(setColumnNullable(target.Columns, "email", test.snapshotNullable))
-			config := &storepb.SchemaDriftConfig{ExpectedColumns: snapshot, CheckTypes: test.checkTypes}
-			current := setColumnNullable(target.Columns, "email", test.currentNullable)
-			require.Equal(t, test.want, compareSchemaDrift(current, config))
+			require.Equal(t, test.want, compareSchemaDrift(test.current, test.config))
 		})
 	}
 }
