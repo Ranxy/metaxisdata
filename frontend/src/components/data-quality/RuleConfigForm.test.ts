@@ -126,8 +126,25 @@ describe("RuleConfigForm", () => {
       );
     }
 
+    function nameInputs(wrapper: ReturnType<typeof mount>) {
+      return wrapper.findAll(
+        `input[aria-label="${label("dataQuality.editor.columnName")}"]`
+      );
+    }
+
+    function typeInput(wrapper: ReturnType<typeof mount>) {
+      return wrapper.find(
+        `input[aria-label="${label("dataQuality.editor.columnType")}"]`
+      );
+    }
+
     function rowCheckbox(wrapper: ReturnType<typeof mount>) {
       return wrapper.find('[role="checkbox"]');
+    }
+
+    /** The commit point the component resolves a manual row on. */
+    async function commitName(wrapper: ReturnType<typeof mount>) {
+      await nameInput(wrapper).trigger("blur");
     }
 
     it("shows an unset nullability as unchecked and only writes it on toggle", async () => {
@@ -148,6 +165,9 @@ describe("RuleConfigForm", () => {
     it("fills a manual row's type and nullability from a matching target column", async () => {
       const { wrapper, model } = mountSchemaDrift([{ name: "", type: "" }]);
       await nameInput(wrapper).setValue("email");
+      // Typing alone resolves nothing; blur is the commit point.
+      expect(model.expectedColumns?.[0]?.type).toBe("");
+      await commitName(wrapper);
 
       expect(model.expectedColumns?.[0]).toEqual({
         name: "email",
@@ -163,9 +183,77 @@ describe("RuleConfigForm", () => {
         { name: "", type: "custom_type" },
       ]);
       await nameInput(wrapper).setValue("id");
+      await commitName(wrapper);
 
       expect(model.expectedColumns?.[0]?.type).toBe("custom_type");
       expect(model.expectedColumns?.[0]?.nullable).toBe(false);
+      wrapper.unmount();
+    });
+
+    it("clears auto-filled values when the final name matches nothing", async () => {
+      const { wrapper, model } = mountSchemaDrift([{ name: "", type: "" }]);
+      await nameInput(wrapper).setValue("id");
+      await commitName(wrapper);
+      expect(model.expectedColumns?.[0]?.type).toBe("bigint");
+      expect(model.expectedColumns?.[0]?.nullable).toBe(false);
+
+      await nameInput(wrapper).setValue("idx");
+      await commitName(wrapper);
+      // `idx` matches no column, so the transient `id` expectations are gone.
+      expect(model.expectedColumns?.[0]?.type).toBe("");
+      expect(model.expectedColumns?.[0]?.nullable).toBeUndefined();
+      wrapper.unmount();
+    });
+
+    it("keeps values the reader typed or toggled when the name matches nothing", async () => {
+      const { wrapper, model } = mountSchemaDrift([{ name: "", type: "" }]);
+      await nameInput(wrapper).setValue("id");
+      await commitName(wrapper);
+
+      await typeInput(wrapper).setValue("custom_type");
+      await rowCheckbox(wrapper).trigger("click");
+      await nameInput(wrapper).setValue("gone");
+      await commitName(wrapper);
+
+      expect(model.expectedColumns?.[0]?.type).toBe("custom_type");
+      expect(model.expectedColumns?.[0]?.nullable).toBe(true);
+      wrapper.unmount();
+    });
+
+    it("never overwrites a manual nullability toggle on a later name match", async () => {
+      const { wrapper, model } = mountSchemaDrift([{ name: "", type: "" }]);
+      await nameInput(wrapper).setValue("email");
+      await commitName(wrapper);
+      // The target says email is nullable; the reader says it is not.
+      expect(model.expectedColumns?.[0]?.nullable).toBe(true);
+      await rowCheckbox(wrapper).trigger("click");
+      expect(model.expectedColumns?.[0]?.nullable).toBe(false);
+
+      // Committing the same matching name again must not restore the target's bit.
+      await nameInput(wrapper).setValue("email");
+      await commitName(wrapper);
+      expect(model.expectedColumns?.[0]?.nullable).toBe(false);
+      wrapper.unmount();
+    });
+
+    it("does not clear values that fill-from-target recorded", async () => {
+      const { wrapper, model } = mountSchemaDrift([]);
+      const fill = wrapper
+        .findAll("button")
+        .find((button) =>
+          button.text().includes(label("dataQuality.editor.fillFromTarget"))
+        );
+      expect(fill).toBeTruthy();
+      await fill?.trigger("click");
+      expect(model.expectedColumns).toHaveLength(2);
+
+      const second = nameInputs(wrapper)[1];
+      await second?.setValue("gone");
+      await second?.trigger("blur");
+
+      // Values the fill recorded are not auto-fill bookkeeping, so they survive.
+      expect(model.expectedColumns?.[1]?.type).toBe("text");
+      expect(model.expectedColumns?.[1]?.nullable).toBe(true);
       wrapper.unmount();
     });
   });

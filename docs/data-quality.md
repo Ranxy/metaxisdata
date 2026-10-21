@@ -57,7 +57,9 @@ drift), because those objects have no column-level type authority.
   source: it proves syntax and permission without scanning the table.
 - **Schema drift** compares each column's type and nullability — plus, if you ask
   for it, order and extra columns — with the snapshot saved when the rule was
-  created. Use *Fill from target* to record the current definition.
+  created. Columns recorded by an older snapshot that did not store nullability
+  stay unjudged until the rule is saved again. Use *Fill from target* to record
+  the current definition.
 
 ## Browsing rules
 

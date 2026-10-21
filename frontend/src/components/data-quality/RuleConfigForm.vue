@@ -582,11 +582,15 @@
             @update:model-value="
               (value) => setExpectedColumnName(column, String(value))
             "
+            @blur="commitExpectedColumnName(column)"
           />
           <Input
-            v-model="column.type"
+            :model-value="column.type"
             :aria-label="t('dataQuality.editor.columnType')"
             :placeholder="t('dataQuality.editor.columnType')"
+            @update:model-value="
+              (value) => setExpectedColumnType(column, String(value))
+            "
           />
           <CheckboxField
             :model-value="column.nullable === true"
@@ -1109,31 +1113,78 @@ function addExpectedColumn() {
 }
 
 /**
- * A manual expected-column row borrows the target's own description when the
- * name matches: type when the row left it blank, and the explicit nullability
- * either way. This is the same contract "fill from target" records, one row at
- * a time.
+ * Which of a manual snapshot row's values this component filled in from the
+ * target. Only auto-filled values may be refreshed or cleared when the name
+ * changes; a value the reader typed or toggled is theirs.
  */
-function setExpectedColumnName(column: SchemaDriftColumnForm, value: string) {
-  column.name = value;
-  const match = props.columnDetails.find(
-    (detail) => detail.name === value.trim()
-  );
-  if (!match) {
-    return;
+interface ExpectedColumnAutoFill {
+  type: boolean;
+  nullable: boolean;
+}
+const autoFilled = new WeakMap<SchemaDriftColumnForm, ExpectedColumnAutoFill>();
+
+function autoFillMark(column: SchemaDriftColumnForm): ExpectedColumnAutoFill {
+  let mark = autoFilled.get(column);
+  if (!mark) {
+    mark = { type: false, nullable: false };
+    autoFilled.set(column, mark);
   }
-  if (column.type.trim() === "") {
-    column.type = match.type;
-  }
-  column.nullable = match.nullable;
+  return mark;
 }
 
-/** Writes the snapshot bit only once the reader toggles the checkbox. */
+/** Typing only edits the name; the target lookup happens on blur. */
+function setExpectedColumnName(column: SchemaDriftColumnForm, value: string) {
+  column.name = value;
+}
+
+/**
+ * Resolves a manual row against the target when the name field is committed
+ * (blur). A matching column fills a blank or previously auto-filled type, and a
+ * nullability the reader has not set; a name that matches nothing clears what
+ * this behavior filled, so a transient match (`id` -> `idx`) cannot leave stale
+ * expectations behind. Values typed by the reader, toggled by the reader, or
+ * filled from the saved rule/from target carry no mark and are never cleared or
+ * overwritten.
+ */
+function commitExpectedColumnName(column: SchemaDriftColumnForm) {
+  const mark = autoFillMark(column);
+  const match = props.columnDetails.find(
+    (detail) => detail.name === column.name.trim()
+  );
+  if (!match) {
+    if (mark.type) {
+      column.type = "";
+      mark.type = false;
+    }
+    if (mark.nullable) {
+      column.nullable = undefined;
+      mark.nullable = false;
+    }
+    return;
+  }
+  if (column.type.trim() === "" || mark.type) {
+    column.type = match.type;
+    mark.type = true;
+  }
+  if (column.nullable === undefined || mark.nullable) {
+    column.nullable = match.nullable;
+    mark.nullable = true;
+  }
+}
+
+/** A type the reader edits is theirs: a later name match must not overwrite it. */
+function setExpectedColumnType(column: SchemaDriftColumnForm, value: string) {
+  column.type = value;
+  autoFillMark(column).type = false;
+}
+
+/** Writes the snapshot bit and records that the reader chose it. */
 function setExpectedColumnNullable(
   column: SchemaDriftColumnForm,
   value: boolean
 ) {
   column.nullable = value;
+  autoFillMark(column).nullable = false;
 }
 
 function removeExpectedColumn(index: number) {

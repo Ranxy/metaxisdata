@@ -434,7 +434,7 @@
       "nullValues": "Also count as missing",
       "nullValuesHint": "Comma-separated, at most 20 values, converted with the column's type.",
       "nullable": "Nullable",
-      "nullableHint": "Unchecked means nullability is not judged for that column; nullability is part of the snapshot.",
+      "nullableHint": "Checked means the column is nullable; clearing it and saving records \"NOT NULL expected\". Columns from an older snapshot that never recorded nullability stay unjudged until the rule is saved again.",
       "onEmpty": "When the query returns nothing",
       "onEmptyHint": "The default is not evaluated, so an empty table never looks like a pass.",
       "openInstance": "Open instance",

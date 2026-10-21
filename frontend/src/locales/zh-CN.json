@@ -434,7 +434,7 @@
       "nullValues": "也视为缺失的值",
       "nullValuesHint": "逗号分隔，最多 20 个值，按字段类型转换。",
       "nullable": "可空",
-      "nullableHint": "未勾选表示这条字段不判断可空性；可空性是快照的一部分。",
+      "nullableHint": "勾选表示字段可空；取消勾选并保存会记录“期望 NOT NULL”。旧快照里未记录可空性的字段在重新保存前不参与判断。",
       "onEmpty": "查询没有返回结果时",
       "onEmptyHint": "默认是“未评估”，空表不会被当作通过。",
       "openInstance": "打开实例",
