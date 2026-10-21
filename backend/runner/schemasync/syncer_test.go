@@ -11,6 +11,7 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 	"github.com/Ranxy/metaxisdata/backend/store"
 
@@ -756,4 +757,41 @@ func TestBatchMetaCreateDiffDeduplicatesCollidingGUIDs(t *testing.T) {
 	require.Equal(t, guid, updates[0].GUID)
 	require.Len(t, updates[0].Metadata.GetTableMetadata().Columns, 1,
 		"the first entry is kept deterministically")
+}
+
+// A catalog value containing a NUL byte (Doris reports the default of an empty
+// BITMAP/HLL column as a raw 0x00) must not reach the jsonb write. The batch diff
+// builds the bytes that BatchCreateMetaRegistryResourceAt inserts, so this is the
+// last point before the store call that used to fail with SQLSTATE 22P05.
+func TestBatchMetaCreateDiffSanitizesNULMetadata(t *testing.T) {
+	t.Parallel()
+
+	meta := &storepb.StoredMetadata{
+		Type: &storepb.StoredMetadata_TableMetadata{TableMetadata: &storepb.TableMetadata{
+			Name: "dbt",
+			Columns: []*storepb.ColumnMetadata{
+				{Name: "s", Position: 1, Type: "varchar(50)"},
+				{Name: "bm", Position: 2, Type: "bitmap", Default: "\x00"},
+			},
+		}},
+	}
+	batch := &batchMetaCreate{
+		guidList: []*store.CreateMetaRegistryResourceMessage{
+			{MetaRegistryResource: store.MetaRegistryResource{GUID: buildGUID("inst", "db", "rev", "dbt"), ObjectType: storepb.MetaType_TABLE, Metadata: meta}},
+		},
+	}
+
+	updates, deletes, err := batch.diff()
+	require.NoError(t, err)
+	require.Empty(t, deletes)
+	require.Len(t, updates, 1)
+	require.NotContains(t, string(updates[0].MetadataBytes), "\x00")
+	require.NotContains(t, string(updates[0].MetadataBytes), `\u0000`)
+
+	persisted := &storepb.StoredMetadata{}
+	require.NoError(t, common.ProtojsonUnmarshaler.Unmarshal(updates[0].MetadataBytes, persisted))
+	require.Equal(t, "\uFFFD", persisted.GetTableMetadata().Columns[1].Default)
+
+	// The caller's snapshot is unchanged: only the persisted bytes are sanitized.
+	require.Equal(t, "\x00", meta.GetTableMetadata().Columns[1].Default)
 }

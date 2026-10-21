@@ -66,7 +66,9 @@ func (d *Driver) GetObjectDefinition(ctx context.Context, objectType storepb.Met
 	if !definition.Valid || definition.String == "" {
 		return "", false, nil
 	}
-	return definition.String, true, nil
+	// SHOW CREATE comes from the same catalog as the schema queries, and the DDL
+	// is stored in a PostgreSQL TEXT column, which rejects U+0000 just like jsonb.
+	return sanitizeCatalogString(definition.String), true, nil
 }
 
 // showCreateQuery builds the SHOW CREATE statement for an object type, reporting
