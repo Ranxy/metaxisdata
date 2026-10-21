@@ -36,7 +36,8 @@ func TestWorkspaceAdminHoldsWholeCatalog(t *testing.T) {
 }
 
 // TestWorkspaceMemberBaselineExcludesAdministration pins the read baseline: a
-// member may read metadata but not administer the workspace.
+// member may read metadata and the workspace member directory but not
+// administer the workspace.
 func TestWorkspaceMemberBaselineExcludesAdministration(t *testing.T) {
 	t.Parallel()
 
@@ -45,6 +46,7 @@ func TestWorkspaceMemberBaselineExcludesAdministration(t *testing.T) {
 	for _, p := range []permission.Permission{
 		permission.InstancesList,
 		permission.EnvironmentsList,
+		permission.UsersList,
 		permission.DatabasesRead,
 		permission.ManualSQLsCreate,
 		permission.LineageGet,
