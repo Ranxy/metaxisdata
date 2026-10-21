@@ -13,11 +13,17 @@ import DataQualityRulesPage from "./DataQualityRulesPage.vue";
 
 const mocks = vi.hoisted(() => ({
   listQualityRules: vi.fn(),
+  listAllUsers: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/data-quality")>()),
   listQualityRules: mocks.listQualityRules,
+}));
+
+vi.mock("@/api/user", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/user")>()),
+  listAllUsers: mocks.listAllUsers,
 }));
 
 const SCOPE: QualityTargetScope = {
@@ -27,6 +33,10 @@ const SCOPE: QualityTargetScope = {
   table: "orders",
   label: "Orders > shop > public > orders",
 };
+
+const USERS = [
+  create(UserSchema, { name: "users/101", email: "alice@example.com" }),
+];
 
 /** The browser itself is tested separately; this stub reports a picked scope. */
 const TargetScopeFilterStub = defineComponent({
@@ -61,6 +71,7 @@ const UserSelectStub = defineComponent({
     noOwnerLabel: String,
     anyLabel: String,
     clearLabel: String,
+    preloadedUsers: Array,
   },
   emits: ["update:modelValue"],
   setup(props, { emit }) {
@@ -141,6 +152,10 @@ function applyButton(wrapper: ReturnType<typeof mount>) {
     .findAll("button")
     .find((button) => button.text().trim() === i18n.global.t("common.apply"));
 }
+
+beforeEach(() => {
+  mocks.listAllUsers.mockResolvedValue(USERS);
+});
 
 describe("DataQualityRulesPage target scope filter", () => {
   beforeEach(() => {
@@ -287,12 +302,63 @@ describe("DataQualityRulesPage owner filter", () => {
     });
   });
 
-  it("hides the owner filter without users.list", async () => {
+  it("renders the filter but skips the directory without users.list", async () => {
     const wrapper = await mountPage(
       PERMISSIONS.filter((p) => p !== "metaxisdata.users.list")
     );
 
-    expect(wrapper.find(".owner-stub").exists()).toBe(false);
+    expect(wrapper.find(".owner-stub").exists()).toBe(true);
+    expect(mocks.listAllUsers).not.toHaveBeenCalled();
     expect(mocks.listQualityRules).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("DataQualityRulesPage owner column", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it("shows the owner email, or the unassigned label when there is none", async () => {
+    mocks.listQualityRules.mockResolvedValue({
+      items: [
+        create(QualityRuleSchema, {
+          name: "workspaces/default/qualityRules/rule-1",
+          title: "owned rule",
+          owner: "users/101",
+        }),
+        create(QualityRuleSchema, {
+          name: "workspaces/default/qualityRules/rule-2",
+          title: "unowned rule",
+        }),
+      ],
+      nextPageToken: "",
+    });
+    const wrapper = await mountPage();
+
+    expect(wrapper.text()).toContain("alice@example.com");
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.unassignedOwner")
+    );
+    // The cell keeps the resource name in its title, not the email.
+    expect(wrapper.find('td[title="users/101"]').exists()).toBe(true);
+  });
+
+  it("falls back to the raw owner name when the directory fails", async () => {
+    mocks.listAllUsers.mockRejectedValue(new Error("directory unavailable"));
+    mocks.listQualityRules.mockResolvedValue({
+      items: [
+        create(QualityRuleSchema, {
+          name: "workspaces/default/qualityRules/rule-1",
+          title: "owned rule",
+          owner: "users/101",
+        }),
+      ],
+      nextPageToken: "",
+    });
+    const wrapper = await mountPage();
+
+    expect(wrapper.text()).toContain("users/101");
+    expect(wrapper.text()).toContain("owned rule");
   });
 });

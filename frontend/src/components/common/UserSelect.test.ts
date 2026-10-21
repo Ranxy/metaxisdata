@@ -190,4 +190,49 @@ describe("UserSelect", () => {
     expect(wrapper.emitted("update:modelValue")).toContainEqual([""]);
     wrapper.unmount();
   });
+
+  it("defers the directory request until the picker opens when lazy", async () => {
+    const wrapper = await mountSelect(["metaxisdata.users.list"], "", {
+      lazy: true,
+    });
+    expect(mocks.listAllUsers).not.toHaveBeenCalled();
+
+    await openPicker();
+
+    expect(mocks.listAllUsers).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
+  it("uses a preloaded directory without requesting users", async () => {
+    // No users.list: the supplied directory is what makes the picker usable.
+    const wrapper = await mountSelect([], "", { preloadedUsers: USERS });
+    expect(mocks.listAllUsers).not.toHaveBeenCalled();
+    expect(wrapper.text()).not.toContain(
+      i18n.global.t("userSelect.permissionHint")
+    );
+
+    await openPicker();
+    const search = document.body.querySelector<HTMLInputElement>(
+      'input[placeholder="Search users"]'
+    );
+    expect(search).toBeTruthy();
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value"
+    )?.set?.call(search, "bob");
+    search?.dispatchEvent(new Event("input", { bubbles: true }));
+    await nextTick();
+    await flushPromises();
+
+    const items = options();
+    expect(items.map((item) => item.textContent?.trim())).toEqual([
+      "bob@example.comAnalyst",
+    ]);
+    items[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flushPromises();
+
+    expect(mocks.listAllUsers).not.toHaveBeenCalled();
+    expect(wrapper.emitted("update:modelValue")).toContainEqual(["users/102"]);
+    wrapper.unmount();
+  });
 });

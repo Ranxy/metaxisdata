@@ -200,6 +200,17 @@ const props = withDefaults(
     anyLabel?: string;
     /** Overrides the clear (X) action's accessible name. */
     clearLabel?: string;
+    /**
+     * Defer the directory request until the popover first opens. A page that
+     * already loaded the directory passes `preloadedUsers` instead.
+     */
+    lazy?: boolean;
+    /**
+     * A caller-supplied directory. When present the picker never calls
+     * users.list itself — not on mount, not on open — treats itself as
+     * permitted, and searches/selects over these users.
+     */
+    preloadedUsers?: User[];
   }>(),
   {
     modelValue: "",
@@ -212,6 +223,7 @@ const props = withDefaults(
     noOwnerLabel: "",
     anyLabel: "",
     clearLabel: "",
+    lazy: false,
   }
 );
 
@@ -223,8 +235,10 @@ const { t } = useI18n();
 const { formatError } = useErrorMessage();
 const authStore = useAuthStore();
 
-const canList = computed(() =>
-  authStore.hasPermission("metaxisdata.users.list")
+const hasPreloadedUsers = computed(() => props.preloadedUsers !== undefined);
+const canList = computed(
+  () =>
+    hasPreloadedUsers.value || authStore.hasPermission("metaxisdata.users.list")
 );
 
 /** The command row's own values; they never leave the picker. */
@@ -240,8 +254,11 @@ const users = ref<User[]>([]);
 const loadError = ref("");
 let loaded = false;
 
+/** The rows the picker searches: a caller's directory or its own fetch. */
+const directory = computed(() => props.preloadedUsers ?? users.value);
+
 const selectedUser = computed(() =>
-  users.value.find((user) => user.name === props.modelValue)
+  directory.value.find((user) => user.name === props.modelValue)
 );
 const noOwnerText = computed(
   () => props.noOwnerLabel || t("userSelect.noOwner")
@@ -276,8 +293,8 @@ const query = computed(() => searchText.value.trim().toLowerCase());
 
 const visibleUsers = computed(() =>
   query.value === ""
-    ? users.value
-    : users.value.filter(
+    ? directory.value
+    : directory.value.filter(
         (user) =>
           user.email.toLowerCase().includes(query.value) ||
           user.title.toLowerCase().includes(query.value) ||
@@ -286,7 +303,7 @@ const visibleUsers = computed(() =>
 );
 
 async function loadUsers() {
-  if (loaded || !canList.value) {
+  if (loaded || hasPreloadedUsers.value || !canList.value) {
     return;
   }
   try {
@@ -306,7 +323,9 @@ watch(open, (isOpen) => {
 });
 
 onMounted(() => {
-  void loadUsers();
+  if (!props.lazy) {
+    void loadUsers();
+  }
 });
 
 function choose(value: unknown) {

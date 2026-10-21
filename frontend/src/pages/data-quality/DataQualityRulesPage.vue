@@ -62,12 +62,9 @@
         </div>
 
         <!-- Owner is optional, so the picker carries an "unassigned" row besides
-             the members. Without users.list it cannot populate, so callers who
-             lack the permission get no control rather than an empty one. -->
-        <div
-          v-if="canListUsers"
-          class="flex min-w-48 flex-1 flex-col gap-1.5 sm:max-w-64 sm:flex-none"
-        >
+             the members. The directory is loaded once by the page and passed in,
+             so the filter costs no request of its own. -->
+        <div class="flex min-w-48 flex-1 flex-col gap-1.5 sm:max-w-64 sm:flex-none">
           <Label
             for="data-quality-owner"
             class="text-sm font-medium leading-none"
@@ -82,6 +79,7 @@
             :no-owner-value="UNASSIGNED_OWNER"
             :no-owner-label="t('dataQuality.unassignedOwner')"
             :clear-label="t('dataQuality.clearOwnerFilter')"
+            :preloaded-users="userDirectory"
           />
         </div>
 
@@ -228,6 +226,9 @@
                   {{ t("dataQuality.filterState") }}
                 </TableHead>
                 <TableHead class="hidden md:table-cell">
+                  {{ t("dataQuality.filterOwner") }}
+                </TableHead>
+                <TableHead class="hidden md:table-cell">
                   {{ t("dataQuality.lastResult") }}
                 </TableHead>
                 <TableHead class="hidden whitespace-nowrap md:table-cell">
@@ -302,6 +303,12 @@
                     >
                       {{ t("dataQuality.noResultYet") }}
                     </span>
+                    <span
+                      class="max-w-[12rem] truncate text-xs text-muted-foreground"
+                      :title="rule.owner || undefined"
+                    >
+                      {{ ownerName(rule) }}
+                    </span>
                     <span class="text-xs text-muted-foreground">
                       {{ formatRelativeTime(rule.updateTime, locale) }}
                     </span>
@@ -319,6 +326,17 @@
                   <Badge :variant="qualityRuleStateVariant(rule.state)">
                     {{ t(qualityRuleStateKey(rule.state)) }}
                   </Badge>
+                </TableCell>
+                <TableCell
+                  class="hidden md:table-cell"
+                  :title="rule.owner || undefined"
+                >
+                  <span
+                    class="whitespace-nowrap"
+                    :class="{ 'text-muted-foreground': !rule.owner }"
+                  >
+                    {{ ownerName(rule) }}
+                  </span>
                 </TableCell>
                 <TableCell class="hidden md:table-cell">
                   <Badge
@@ -463,6 +481,7 @@ import {
   runQualityRules,
   updateQualityRule,
 } from "@/api/data-quality";
+import { listAllUsers } from "@/api/user";
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
@@ -501,6 +520,7 @@ import {
   QualityRuleState,
   QualitySeverity,
 } from "@/types/proto-es/v1/data_quality_service_pb";
+import type { User } from "@/types/proto-es/v1/user_service_pb";
 import {
   formatTargetPath,
   type QualityTargetScope,
@@ -536,6 +556,14 @@ const canDelete = computed(() =>
 // owner filter's usefulness on being able to name a user.
 const canListUsers = computed(() =>
   authStore.hasPermission("metaxisdata.users.list")
+);
+
+// The directory feeds both the owner column and the filter picker, so the page
+// loads it once; the picker receives it and issues no request of its own. A
+// failed load only costs names — everything falls back to the raw resource name.
+const userDirectory = ref<User[]>([]);
+const usersByName = computed(
+  () => new Map(userDirectory.value.map((user) => [user.name, user.email]))
 );
 
 /**
@@ -730,6 +758,17 @@ function targetTitle(rule: QualityRule): string {
   return scope === "-" ? path : `${scope} · ${path}`;
 }
 
+/**
+ * The owner's email from the directory, its raw resource name while the
+ * directory is loading or when it lacks the user, or the unassigned label.
+ */
+function ownerName(rule: QualityRule): string {
+  if (!rule.owner) {
+    return t("dataQuality.unassignedOwner");
+  }
+  return usersByName.value.get(rule.owner) || rule.owner;
+}
+
 async function runRule(rule: QualityRule) {
   try {
     const runs = await runQualityRules({ rules: [rule.name] });
@@ -793,7 +832,20 @@ async function confirmDelete() {
   }
 }
 
+async function loadUserDirectory() {
+  if (!canListUsers.value) {
+    return;
+  }
+  try {
+    userDirectory.value = await listAllUsers();
+  } catch {
+    // The list still renders; cells fall back to the raw resource name.
+    userDirectory.value = [];
+  }
+}
+
 onMounted(() => {
   void resetPage();
+  void loadUserDirectory();
 });
 </script>
