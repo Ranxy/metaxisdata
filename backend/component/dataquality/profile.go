@@ -7,6 +7,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 	"github.com/Ranxy/metaxisdata/backend/plugin/db"
 )
 
@@ -62,9 +63,13 @@ type TableProfile struct {
 	Truncated bool
 }
 
-// Profiler computes deterministic column profiles. It holds no state and no
-// connection: every call takes the read-only queryer the caller opened.
-type Profiler struct{}
+// Profiler computes deterministic column profiles. It holds no connection: every
+// call takes the read-only queryer the caller opened.
+type Profiler struct {
+	// Metrics records each target query with the purpose it was run for. A nil
+	// value disables instrumentation.
+	Metrics *metrics.Metrics
+}
 
 // NewProfiler returns a profiler.
 func NewProfiler() *Profiler {
@@ -83,7 +88,7 @@ func NewProfiler() *Profiler {
 // source of truth for counts, so a failed or empty sample only drops the
 // sample-derived fields, and a failed sample query is an error rather than a
 // silent partial profile.
-func (*Profiler) Profile(ctx context.Context, queryer db.ReadOnlyQueryer, target ResolvedTarget, columns []string, opts ProfileOptions) (*TableProfile, error) {
+func (p *Profiler) Profile(ctx context.Context, queryer db.ReadOnlyQueryer, target ResolvedTarget, columns []string, opts ProfileOptions) (*TableProfile, error) {
 	if queryer == nil {
 		return nil, common.Errorf(common.Internal, "a read-only queryer is required to profile a table")
 	}
@@ -108,6 +113,8 @@ func (*Profiler) Profile(ctx context.Context, queryer db.ReadOnlyQueryer, target
 		MaxRows:  1,
 		MaxBytes: opts.MaxBytes,
 		Timeout:  opts.QueryTimeout,
+		Purpose:  metrics.QueryPurposeProfileAggregate,
+		Metrics:  p.Metrics,
 	})
 	if err != nil {
 		return nil, err
@@ -124,6 +131,8 @@ func (*Profiler) Profile(ctx context.Context, queryer db.ReadOnlyQueryer, target
 		MaxRows:  opts.SampleRows,
 		MaxBytes: opts.MaxBytes,
 		Timeout:  opts.QueryTimeout,
+		Purpose:  metrics.QueryPurposeProfileSample,
+		Metrics:  p.Metrics,
 	})
 	if err != nil {
 		return nil, err

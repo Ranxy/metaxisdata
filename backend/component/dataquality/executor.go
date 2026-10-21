@@ -10,14 +10,19 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 	"github.com/Ranxy/metaxisdata/backend/plugin/db"
 )
 
 // Executor runs one compiled rule against a read-only queryer and turns its rows
-// into an Observation. It owns no state and no connection: the caller opens the
-// read-only driver, hands it in, and classifies whatever error comes back with
+// into an Observation. It owns no connection: the caller opens the read-only
+// driver, hands it in, and classifies whatever error comes back with
 // ClassifyError.
-type Executor struct{}
+type Executor struct {
+	// Metrics records each target query with the purpose it was run for. A nil
+	// value disables instrumentation.
+	Metrics *metrics.Metrics
+}
 
 // NewExecutor returns an executor.
 func NewExecutor() *Executor {
@@ -36,7 +41,7 @@ func NewExecutor() *Executor {
 // failed sample does not, because the observation is the verdict and the sample is
 // context — with one exception: a cancelled context is returned, because the
 // caller asked to stop.
-func (*Executor) Execute(ctx context.Context, queryer db.ReadOnlyQueryer, resolution *Resolution, rule RuleSnapshot, opts ExecOptions) (*Execution, error) {
+func (e *Executor) Execute(ctx context.Context, queryer db.ReadOnlyQueryer, resolution *Resolution, rule RuleSnapshot, opts ExecOptions) (*Execution, error) {
 	if resolution == nil {
 		return nil, common.Errorf(common.Internal, "a resolved target is required to execute a rule")
 	}
@@ -81,7 +86,7 @@ func (*Executor) Execute(ctx context.Context, queryer db.ReadOnlyQueryer, resolu
 	if rule.Type == storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION {
 		// A CEL rule reads a bounded sample of rows and evaluates the predicate in
 		// this process; the query is not an aggregate and its rows are the input.
-		return executeCELRule(ctx, queryer, resolution, rule, opts, compiled)
+		return executeCELRule(ctx, queryer, resolution, rule, opts, compiled, e.Metrics)
 	}
 	if compiled.Kind != QueryAggregate {
 		return nil, badData("the compiler returned query kind %d for a rule that is observed by an aggregate", compiled.Kind)
@@ -93,6 +98,8 @@ func (*Executor) Execute(ctx context.Context, queryer db.ReadOnlyQueryer, resolu
 		MaxRows:  1,
 		MaxBytes: opts.MaxBytes,
 		Timeout:  opts.QueryTimeout,
+		Purpose:  metrics.QueryPurposeRuleAggregate,
+		Metrics:  e.Metrics,
 	})
 	if err != nil {
 		return nil, err
@@ -109,7 +116,7 @@ func (*Executor) Execute(ctx context.Context, queryer db.ReadOnlyQueryer, resolu
 	execution.Observation.Truncated = result.Truncated
 
 	if opts.StoreSamples {
-		if err := addSamples(ctx, queryer, input, execution, opts); err != nil {
+		if err := addSamples(ctx, queryer, input, execution, opts, e.Metrics); err != nil {
 			return nil, err
 		}
 	}
@@ -120,7 +127,7 @@ func (*Executor) Execute(ctx context.Context, queryer db.ReadOnlyQueryer, resolu
 // with no failed rows, a rule type whose failure is a measurement, and a failed
 // sample query all leave Samples nil: the sample is additional context, never the
 // verdict.
-func addSamples(ctx context.Context, queryer db.ReadOnlyQueryer, input CompileInput, execution *Execution, opts ExecOptions) error {
+func addSamples(ctx context.Context, queryer db.ReadOnlyQueryer, input CompileInput, execution *Execution, opts ExecOptions, m *metrics.Metrics) error {
 	sampleLimit := normalizeSampleLimit(opts.SampleLimit)
 	sample, err := CompileFailureRows(input, sampleLimit)
 	if err != nil {
@@ -136,6 +143,8 @@ func addSamples(ctx context.Context, queryer db.ReadOnlyQueryer, input CompileIn
 		MaxRows:  sampleLimit,
 		MaxBytes: opts.MaxBytes,
 		Timeout:  opts.QueryTimeout,
+		Purpose:  metrics.QueryPurposeRuleSample,
+		Metrics:  m,
 	})
 	if err != nil {
 		// A failed sample is context, not the verdict: the observation stands. The
@@ -162,7 +171,7 @@ func addSamples(ctx context.Context, queryer db.ReadOnlyQueryer, input CompileIn
 // The sample is all the rule ever sees, so the result records whether it was the
 // whole filtered table (fewer rows than the cap) or a sample (the cap was filled),
 // and how many rows were read.
-func executeCELRule(ctx context.Context, queryer db.ReadOnlyQueryer, resolution *Resolution, rule RuleSnapshot, opts ExecOptions, compiled CompiledQuery) (*Execution, error) {
+func executeCELRule(ctx context.Context, queryer db.ReadOnlyQueryer, resolution *Resolution, rule RuleSnapshot, opts ExecOptions, compiled CompiledQuery, m *metrics.Metrics) (*Execution, error) {
 	config := rule.Config.GetCelExpression()
 	if config == nil {
 		return nil, invalidConfig("the CEL expression config is missing")
@@ -189,6 +198,8 @@ func executeCELRule(ctx context.Context, queryer db.ReadOnlyQueryer, resolution 
 		MaxRows:  sampleRows,
 		MaxBytes: opts.MaxBytes,
 		Timeout:  opts.QueryTimeout,
+		Purpose:  metrics.QueryPurposeRuleCELSample,
+		Metrics:  m,
 	})
 	if err != nil {
 		return nil, err

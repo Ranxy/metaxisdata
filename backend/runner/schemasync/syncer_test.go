@@ -13,6 +13,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 	"github.com/Ranxy/metaxisdata/backend/store"
 
 	"github.com/stretchr/testify/require"
@@ -288,7 +289,7 @@ func TestGetOrDefaultLastSyncTime(t *testing.T) {
 func TestAcquireInstanceConnectionEnforcesTheLimit(t *testing.T) {
 	t.Parallel()
 
-	stateCfg, err := state.New()
+	stateCfg, err := state.New(nil)
 	require.NoError(t, err)
 	syncer := &Syncer{stateCfg: stateCfg}
 	instance := &store.InstanceMessage{
@@ -794,4 +795,57 @@ func TestBatchMetaCreateDiffSanitizesNULMetadata(t *testing.T) {
 
 	// The caller's snapshot is unchanged: only the persisted bytes are sanitized.
 	require.Equal(t, "\x00", meta.GetTableMetadata().Columns[1].Default)
+}
+
+// The failure reason is a label on the counter, so it may only name what the sync
+// paths can prove. A driver error has no transient/permanent classification and
+// must collapse to "other".
+func TestSchemaSyncFailureReason(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{name: "connection limit", err: fmt.Errorf("all slots taken: %w", errInstanceConnectionsExhausted), want: metrics.FailureReasonConnectionLimit},
+		{name: "canceled", err: fmt.Errorf("sync stopped: %w", context.Canceled), want: metrics.FailureReasonCanceled},
+		{name: "deadline", err: fmt.Errorf("sync stopped: %w", context.DeadlineExceeded), want: metrics.FailureReasonTimeout},
+		{name: "hidden", err: fmt.Errorf("database %q: %w", "db1", ErrDatabaseHidden), want: metrics.FailureReasonHidden},
+		{name: "not found", err: fmt.Errorf("driver: %w", common.Errorf(common.NotFound, "database is gone")), want: metrics.FailureReasonNotFound},
+		{name: "driver error", err: errors.New("connection refused"), want: metrics.FailureReasonOther},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, schemaSyncFailureReason(tt.err))
+		})
+	}
+
+	require.Equal(t, metrics.FailureReasonOther, schemaSyncFailureReason(common.Errorf(common.Internal, "internal")))
+}
+
+// The committed-write counter is per object type: the diff merges created and
+// updated rows, so one map entry per type is what gets reported.
+func TestCountMetaResourcesByType(t *testing.T) {
+	t.Parallel()
+
+	resource := func(metaType storepb.MetaType) *store.CreateMetaRegistryResourceMessage {
+		return &store.CreateMetaRegistryResourceMessage{
+			MetaRegistryResource: store.MetaRegistryResource{ObjectType: metaType},
+		}
+	}
+
+	counts := countMetaResourcesByType([]*store.CreateMetaRegistryResourceMessage{
+		resource(storepb.MetaType_TABLE),
+		resource(storepb.MetaType_TABLE),
+		resource(storepb.MetaType_COLUMN),
+		resource(storepb.MetaType_VIEW),
+	})
+	require.Equal(t, map[storepb.MetaType]int{
+		storepb.MetaType_TABLE:  2,
+		storepb.MetaType_COLUMN: 1,
+		storepb.MetaType_VIEW:   1,
+	}, counts)
+	require.Empty(t, countMetaResourcesByType(nil))
 }

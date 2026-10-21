@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 )
 
 const (
@@ -119,7 +121,42 @@ func sendRaw(ctx context.Context, ch chan<- rawStreamChunk, chunk rawStreamChunk
 	}
 }
 
+// run drives one agent-loop invocation. It reports the invocation's outcome to
+// cfg.Metrics as one completed model call, labelled with the caller's feature:
+// the loop is the only place that knows how the invocation ended, so no caller
+// records calls, duration or tokens itself.
 func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
+	startedAt := time.Now()
+	outcome := metrics.LLMOutcomeError
+	var (
+		usage            Usage
+		usageReported    bool
+		responseReceived bool
+	)
+	defer func() {
+		// The loop can make several turns; the call metric counts the invocation
+		// once and attributes the tokens the provider reported across its turns.
+		var promptTokens, completionTokens int64
+		if usageReported {
+			promptTokens = usage.PromptTokens
+			completionTokens = usage.CompletionTokens
+		}
+		// The label is the operator-configured title; the resource name embeds a
+		// generated id, which is not a label value. Fall back for callers that
+		// build a config without a title (tests).
+		provider := cfg.Provider.ProfileTitle
+		if provider == "" {
+			provider = cfg.Provider.ProfileName
+		}
+		cfg.Metrics.ObserveLLMCall(cfg.Feature, provider, outcome, time.Since(startedAt), promptTokens, completionTokens)
+		// A call that never got a provider response did not "omit usage": the
+		// missing-usage signal is about completions, so canceled/errored-before-
+		// response invocations are excluded.
+		if responseReceived && !usageReported {
+			cfg.Metrics.CountLLMUsageMissing(cfg.Feature)
+		}
+	}()
+
 	maxTurns := cfg.MaxTurns
 	if maxTurns <= 0 {
 		maxTurns = DefaultMaxTurns
@@ -133,10 +170,7 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 	budget.add(len(cfg.UserPrompt))
 
 	// usage accumulates over the turns the provider reported; a provider that
-	// reports nothing leaves it nil rather than claiming zero tokens.
-	var usage Usage
-	usageReported := false
-
+	// reports nothing leaves usageReported false rather than claiming zero tokens.
 	messages := []AgentMessage{
 		{Role: "system", Content: cfg.SystemPrompt},
 		{Role: "user", Content: cfg.UserPrompt},
@@ -155,11 +189,13 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 
 	for turn := 1; turn <= maxTurns; turn++ {
 		if ctx.Err() != nil {
+			outcome = metrics.LLMOutcomeCanceled
 			sendEvent(ctx, ch, AgentEvent{Type: AgentEventError, Error: ctx.Err()})
 			return
 		}
 
 		if !sendEvent(ctx, ch, AgentEvent{Type: AgentEventTurnStart, Turn: turn}) {
+			outcome = metrics.LLMOutcomeCanceled
 			return
 		}
 
@@ -167,19 +203,25 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 		llmMsgs := ConvertToLlm(messages)
 		assistantMsg, turnUsage, err := streamOneTurn(ctx, cfg, llmMsgs, ch)
 		if err != nil {
+			if ctx.Err() != nil {
+				outcome = metrics.LLMOutcomeCanceled
+			}
 			sendEvent(ctx, ch, AgentEvent{Type: AgentEventError, Error: err})
 			return
 		}
+		responseReceived = true
 		if turnUsage != nil {
 			usageReported = true
 			usage.add(turnUsage)
 			if !sendEvent(ctx, ch, AgentEvent{Type: AgentEventUsage, Turn: turn, Usage: turnUsage}) {
+				outcome = metrics.LLMOutcomeCanceled
 				return
 			}
 		}
 		// An empty completion (an error page from a proxy, an empty content
 		// field) must not be returned or cached as an explanation.
 		if len(assistantMsg.ToolCalls) == 0 && strings.TrimSpace(assistantMsg.Content) == "" {
+			outcome = metrics.LLMOutcomeEmptyResponse
 			sendEvent(ctx, ch, AgentEvent{Type: AgentEventError, Error: errors.New("LLM returned an empty response")})
 			return
 		}
@@ -190,6 +232,7 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 
 		// 2. No tool calls → agent is done.
 		if len(assistantMsg.ToolCalls) == 0 {
+			outcome = metrics.LLMOutcomeSuccess
 			end := AgentEvent{Type: AgentEventAgentEnd}
 			if usageReported {
 				end.Usage = &usage
@@ -201,6 +244,7 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 		// 3. Execute tools sequentially.
 		for _, tc := range assistantMsg.ToolCalls {
 			if !sendEvent(ctx, ch, AgentEvent{Type: AgentEventToolStart, ToolCall: &tc, Turn: turn}) {
+				outcome = metrics.LLMOutcomeCanceled
 				return
 			}
 
@@ -218,6 +262,7 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 				evt.ToolError = execErr.Error()
 			}
 			if !sendEvent(ctx, ch, evt) {
+				outcome = metrics.LLMOutcomeCanceled
 				return
 			}
 

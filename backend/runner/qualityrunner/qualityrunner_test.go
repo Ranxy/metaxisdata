@@ -171,7 +171,7 @@ func TestEnqueueQualityRunReportsAFullQueue(t *testing.T) {
 func TestAdmitRunHoldsTheInstanceBudgetForTheWholeRun(t *testing.T) {
 	t.Parallel()
 
-	stateCfg, err := state.New()
+	stateCfg, err := state.New(nil)
 	require.NoError(t, err)
 	runner := &Runner{stateCfg: stateCfg}
 	instance := &store.InstanceMessage{
@@ -212,7 +212,7 @@ func TestAdmitRunHoldsTheInstanceBudgetForTheWholeRun(t *testing.T) {
 func TestAdmitRunReportsWhenTheBudgetStaysBusy(t *testing.T) {
 	t.Parallel()
 
-	stateCfg, err := state.New()
+	stateCfg, err := state.New(nil)
 	require.NoError(t, err)
 	runner := &Runner{stateCfg: stateCfg}
 	instance := &store.InstanceMessage{
@@ -233,7 +233,7 @@ func TestAdmitRunReportsWhenTheBudgetStaysBusy(t *testing.T) {
 func TestAdmitRunDoesNotLeaseAMissingInstance(t *testing.T) {
 	t.Parallel()
 
-	stateCfg, err := state.New()
+	stateCfg, err := state.New(nil)
 	require.NoError(t, err)
 	runner := &Runner{stateCfg: stateCfg}
 
@@ -250,7 +250,7 @@ func TestAdmitRunDoesNotLeaseAMissingInstance(t *testing.T) {
 func TestRuleConnectionLeaseCoversARetargetedRule(t *testing.T) {
 	t.Parallel()
 
-	stateCfg, err := state.New()
+	stateCfg, err := state.New(nil)
 	require.NoError(t, err)
 	runner := &Runner{stateCfg: stateCfg}
 	runAdmittedForA := runAdmission{instanceResourceID: "inst-a", priority: state.ConnectionPriorityBackground}

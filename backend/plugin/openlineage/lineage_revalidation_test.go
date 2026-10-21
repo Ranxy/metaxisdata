@@ -65,7 +65,7 @@ func TestRevalidationWaitIsCancellable(t *testing.T) {
 func TestNewProcessorInitializesTheRevalidationSemaphore(t *testing.T) {
 	t.Parallel()
 
-	processor := NewProcessor(nil, nil, nil)
+	processor := NewProcessor(nil, nil, nil, nil)
 	require.NotNil(t, processor.revalidateSem)
 	require.Equal(t, 1, cap(processor.revalidateSem))
 }

@@ -175,7 +175,7 @@ func TestResolveRefusesAPersistentlyRevokedToken(t *testing.T) {
 func TestResolveCachesRevocationDecisions(t *testing.T) {
 	t.Parallel()
 
-	stateCfg, err := state.New()
+	stateCfg, err := state.New(nil)
 	require.NoError(t, err)
 
 	token, err := GenerateAccessToken("user@example.com", 7, common.ReleaseModeDev, audienceTestSecret, time.Hour)
@@ -262,7 +262,7 @@ func TestMCPTokenWithoutAGrantSkipsTheConnectedAppCheck(t *testing.T) {
 func TestGrantRevocationCacheDecidesWithinItsWindow(t *testing.T) {
 	t.Parallel()
 
-	stateCfg, err := state.New()
+	stateCfg, err := state.New(nil)
 	require.NoError(t, err)
 	users := fakeUsers{user: &store.UserMessage{ID: 7, Email: "user@example.com"}}
 	grants := &fakeGrants{live: true}

@@ -135,6 +135,16 @@ func (s *Store) GetDB() *sql.DB {
 	return s.dbConnManager.GetDB()
 }
 
+// DBStats reports the metadata pool's database/sql statistics. The metrics
+// collector reads it on every scrape, so the pool type stays inside the store.
+func (s *Store) DBStats() sql.DBStats {
+	db := s.dbConnManager.GetDB()
+	if db == nil {
+		return sql.DBStats{}
+	}
+	return db.Stats()
+}
+
 func getPolicyCacheKey(resourceType storepb.Policy_Resource, resource string, policyType storepb.Policy_Type) string {
 	return fmt.Sprintf("policies/%s/%s/%s", resourceType, resource, policyType)
 }

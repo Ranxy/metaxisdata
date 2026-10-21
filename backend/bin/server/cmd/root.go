@@ -51,6 +51,8 @@ var (
 		corsAllowOrigins string
 		// comma-separated peer IPs/CIDRs whose forwarding headers are trusted.
 		trustedProxies string
+		// address the Prometheus endpoint listens on; empty disables it.
+		metricsAddr string
 	}
 
 	rootCmd = &cobra.Command{
@@ -82,6 +84,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&flags.debug, "debug", false, "whether to enable debug level logging")
 	rootCmd.PersistentFlags().StringVar(&flags.corsAllowOrigins, "cors-allow-origins", "", "comma-separated browser origins allowed to call the API with credentials; empty disables CORS")
 	rootCmd.PersistentFlags().StringVar(&flags.trustedProxies, "trusted-proxies", "", "comma-separated peer IPs or CIDRs whose X-Forwarded-For may be trusted for audit logging")
+	rootCmd.PersistentFlags().StringVar(&flags.metricsAddr, "metrics-addr", "", "address the Prometheus endpoint listens on (for example 127.0.0.1:9090); empty disables it")
 }
 
 // defaultDevCORSOrigins matches the Vite dev server, which proxies /v1 and

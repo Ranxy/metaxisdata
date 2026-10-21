@@ -459,3 +459,18 @@ func TestBuildColumnLineageKeepsFlowOnSourceAndTarget(t *testing.T) {
 	assert.Equal(t, target.GUID, lineage.TargetGUID)
 	assert.Equal(t, target.MetaType, lineage.TargetType)
 }
+
+// A table-level edge names no column on either end, which is how the edge counter
+// tells it from a column-level edge. A dataset-level reference names a source
+// column but no target column and stays column-level.
+func TestOpenLineageTableEdgeCount(t *testing.T) {
+	t.Parallel()
+
+	require.Zero(t, openLineageTableEdgeCount(nil))
+	require.Equal(t, 2, openLineageTableEdgeCount([]*store.ColumnLineage{
+		{SourceColumn: "order_id", TargetColumn: "order_id"},
+		{SourceColumn: "region", TargetColumn: ""},
+		{SourceColumn: "", TargetColumn: ""},
+		{SourceColumn: "", TargetColumn: ""},
+	}))
+}

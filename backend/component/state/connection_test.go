@@ -71,7 +71,7 @@ func receiveGrant(t *testing.T, result <-chan grantResult) grantResult {
 func TestAcquireInstanceConnectionSharesThePerInstanceLimit(t *testing.T) {
 	t.Parallel()
 
-	stateCfg, err := New()
+	stateCfg, err := New(nil)
 	require.NoError(t, err)
 
 	releaseSync, ok := stateCfg.TryAcquireInstanceConnection(connectionRequest(2, ConnectionPriorityBackground))
@@ -97,7 +97,7 @@ func TestAcquireInstanceConnectionSharesThePerInstanceLimit(t *testing.T) {
 func TestAcquireInstanceConnectionWaitsForASlot(t *testing.T) {
 	t.Parallel()
 
-	stateCfg, err := New()
+	stateCfg, err := New(nil)
 	require.NoError(t, err)
 	hold, ok := stateCfg.TryAcquireInstanceConnection(connectionRequest(1, ConnectionPriorityBackground))
 	require.True(t, ok)
@@ -124,7 +124,7 @@ func TestAcquireInstanceConnectionWaitsForASlot(t *testing.T) {
 func TestAcquireInstanceConnectionHonorsItsWaitBudget(t *testing.T) {
 	t.Parallel()
 
-	stateCfg, err := New()
+	stateCfg, err := New(nil)
 	require.NoError(t, err)
 	hold, ok := stateCfg.TryAcquireInstanceConnection(connectionRequest(1, ConnectionPriorityBackground))
 	require.True(t, ok)
@@ -145,7 +145,7 @@ func TestAcquireInstanceConnectionHonorsItsWaitBudget(t *testing.T) {
 func TestCancelledWaiterLeavesTheQueue(t *testing.T) {
 	t.Parallel()
 
-	stateCfg, err := New()
+	stateCfg, err := New(nil)
 	require.NoError(t, err)
 	hold, ok := stateCfg.TryAcquireInstanceConnection(connectionRequest(1, ConnectionPriorityBackground))
 	require.True(t, ok)
@@ -171,7 +171,7 @@ func TestCancelledWaiterLeavesTheQueue(t *testing.T) {
 func TestWaitersAreServedByPriorityThenArrival(t *testing.T) {
 	t.Parallel()
 
-	stateCfg, err := New()
+	stateCfg, err := New(nil)
 	require.NoError(t, err)
 	hold, ok := stateCfg.TryAcquireInstanceConnection(connectionRequest(1, ConnectionPriorityBackground))
 	require.True(t, ok)
@@ -203,7 +203,7 @@ func TestWaitersAreServedByPriorityThenArrival(t *testing.T) {
 func TestTryAcquireDoesNotJumpAQueuedWaiter(t *testing.T) {
 	t.Parallel()
 
-	stateCfg, err := New()
+	stateCfg, err := New(nil)
 	require.NoError(t, err)
 	governor := stateCfg.instanceConnections
 	governor.mu.Lock()
@@ -221,7 +221,7 @@ func TestTryAcquireDoesNotJumpAQueuedWaiter(t *testing.T) {
 func TestReleaseIsIdempotent(t *testing.T) {
 	t.Parallel()
 
-	stateCfg, err := New()
+	stateCfg, err := New(nil)
 	require.NoError(t, err)
 	releaseFirst, ok := stateCfg.TryAcquireInstanceConnection(connectionRequest(1, ConnectionPriorityBackground))
 	require.True(t, ok)
@@ -240,7 +240,7 @@ func TestReleaseIsIdempotent(t *testing.T) {
 func TestUnlimitedBudgetNeverQueues(t *testing.T) {
 	t.Parallel()
 
-	stateCfg, err := New()
+	stateCfg, err := New(nil)
 	require.NoError(t, err)
 	releases := make([]func(), 0, 5)
 	for range 5 {
@@ -260,7 +260,7 @@ func TestUnlimitedBudgetNeverQueues(t *testing.T) {
 func TestAcquireWithACancelledContextDoesNotConsumeASlot(t *testing.T) {
 	t.Parallel()
 
-	stateCfg, err := New()
+	stateCfg, err := New(nil)
 	require.NoError(t, err)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -277,7 +277,7 @@ func TestAcquireWithACancelledContextDoesNotConsumeASlot(t *testing.T) {
 func TestCancelledWaiterNeverLeaksItsSlot(t *testing.T) {
 	t.Parallel()
 
-	stateCfg, err := New()
+	stateCfg, err := New(nil)
 	require.NoError(t, err)
 	for range 200 {
 		hold, ok := stateCfg.TryAcquireInstanceConnection(connectionRequest(1, ConnectionPriorityBackground))

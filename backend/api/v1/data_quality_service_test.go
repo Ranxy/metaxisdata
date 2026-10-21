@@ -799,7 +799,7 @@ func TestRequireReadOnlySourceForNewRule(t *testing.T) {
 func TestAcquireQualityConnectionSharesTheInstanceBudget(t *testing.T) {
 	t.Parallel()
 
-	stateCfg, err := state.New()
+	stateCfg, err := state.New(nil)
 	require.NoError(t, err)
 	service := &DataQualityService{stateCfg: stateCfg}
 	instance := &store.InstanceMessage{

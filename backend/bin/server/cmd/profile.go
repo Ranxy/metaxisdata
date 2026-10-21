@@ -9,9 +9,10 @@ import (
 
 func getBaseProfile() *config.Profile {
 	config := &config.Profile{
-		Mode:  common.ReleaseMode("dev"),
-		Port:  flags.port,
-		PgURL: os.Getenv("PG_URL"),
+		Mode:        common.ReleaseMode("dev"),
+		Port:        flags.port,
+		PgURL:       os.Getenv("PG_URL"),
+		MetricsAddr: flags.metricsAddr,
 	}
 
 	config.RuntimeDebug.Store(flags.debug)

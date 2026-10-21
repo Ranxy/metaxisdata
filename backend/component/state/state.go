@@ -5,6 +5,8 @@ import (
 
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/pkg/errors"
+
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 )
 
 // SSOStateTTL is how long a one-time OAuth2 state nonce stays valid.
@@ -80,7 +82,7 @@ type State struct {
 	MCPSourceCallLimiter *WindowLimiter
 }
 
-func New() (*State, error) {
+func New(m *metrics.Metrics) (*State, error) {
 	revocationCache, err := newRevocationCache()
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create token revocation cache")
@@ -94,7 +96,7 @@ func New() (*State, error) {
 		return nil, errors.Wrapf(err, "failed to create sso state cache")
 	}
 	return &State{
-		instanceConnections:            newConnectionGovernor(),
+		instanceConnections:            newConnectionGovernor(m),
 		TokenRevocationCache:           revocationCache,
 		GrantRevocationCache:           grantRevocationCache,
 		LoginLimiter:                   newLoginLimiter(),

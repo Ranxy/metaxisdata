@@ -32,6 +32,7 @@ import (
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
 	"github.com/Ranxy/metaxisdata/backend/mcp"
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/runner/qualityrunner"
 	"github.com/Ranxy/metaxisdata/backend/runner/schemasync"
@@ -80,6 +81,7 @@ func configureGrpcRouters(
 	llmRegistry *llmcomp.Registry,
 	lineageAnalyzer *lineage.Analyzer,
 	notifier *notification.Service,
+	m *metrics.Metrics,
 ) error {
 	// Note: the gateway response modifier takes the token duration on server startup. If the value is changed,
 	// the user has to restart the server to take the latest value.
@@ -112,9 +114,9 @@ func configureGrpcRouters(
 	applicationService := apiv1.NewApplicationService(stores)
 	// Manual runs are queued to the quality runner; when it is absent the service
 	// still records the run as PENDING rather than dropping the request.
-	dataQualityService := apiv1.NewDataQualityService(stores, dbFactory, qualityRunner, llmRegistry, stateCfg)
+	dataQualityService := apiv1.NewDataQualityService(stores, dbFactory, qualityRunner, llmRegistry, stateCfg, m)
 	llmService := apiv1.NewLLMService(stores, llmRegistry)
-	explainSQLService := apiv1.NewExplainSQLService(stores, llmRegistry, lineageAnalyzer)
+	explainSQLService := apiv1.NewExplainSQLService(stores, llmRegistry, lineageAnalyzer, m)
 	settingService := apiv1.NewSettingService(stores, profile)
 	environmentService := apiv1.NewEnvironmentService(stores)
 	roleService := apiv1.NewRoleService(stores)
@@ -139,6 +141,10 @@ func configureGrpcRouters(
 
 	handlerOpts := connect.WithHandlerOptions(
 		connect.WithInterceptors(
+			// First is outermost: the metrics interceptor sees every call,
+			// including the ones Auth/Throttle/ACL refuse, and the code the client
+			// actually received because ErrorMapping is innermost.
+			apiv1.NewMetricsInterceptor(m),
 			apiv1.NewDebugInterceptor(),
 			auth.New(stores, secret, stateCfg, profile),
 			// After auth so it can tell a signed-in caller from an anonymous one,
@@ -311,13 +317,13 @@ func configureGrpcRouters(
 	}
 
 	// Register OpenLineage event ingestion HTTP handler (plain REST, not ConnectRPC).
-	olHandler := apiv1.NewOpenLineageHandler(stores, profile.TrustedProxies, lineageAnalyzer, notifier)
+	olHandler := apiv1.NewOpenLineageHandler(stores, profile.TrustedProxies, lineageAnalyzer, notifier, m)
 	olGroup := e.Group("/api/v1/lineage")
 	// Ingestion skips the Connect interceptor chain, so it carries its own rate
 	// limit and deadline: a valid key could otherwise drive unbounded concurrent
 	// ingestion with no time bound. Key-less requests are budgeted per resolved
 	// client address, so the same trusted-proxy rules as the audit record apply.
-	olGroup.Use(openLineageIngestionMiddleware(profile.TrustedProxies))
+	olGroup.Use(openLineageIngestionMiddleware(profile.TrustedProxies, m))
 	olHandler.RegisterRoutes(olGroup)
 
 	// Application SQL ingestion, also plain REST: the producers are applications, not

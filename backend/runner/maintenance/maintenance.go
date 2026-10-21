@@ -10,6 +10,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 	"github.com/Ranxy/metaxisdata/backend/runner"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -100,16 +101,19 @@ type Runner struct {
 	// them to keep the cadence and the pass bound observable without waiting.
 	interval    time.Duration
 	passTimeout time.Duration
+	// metrics records pass outcomes; a nil value disables instrumentation.
+	metrics *metrics.Metrics
 }
 
 // NewRunner creates a maintenance runner.
-func NewRunner(stores *store.Store, revalidator LineageRevalidator) *Runner {
+func NewRunner(stores *store.Store, revalidator LineageRevalidator, m *metrics.Metrics) *Runner {
 	return &Runner{
 		store:       stores,
 		revalidator: revalidator,
 		now:         func() time.Time { return time.Now().UTC() },
 		interval:    interval,
 		passTimeout: passTimeout,
+		metrics:     m,
 	}
 }
 
@@ -298,7 +302,26 @@ func (r *Runner) runOnce(ctx context.Context) *passSummary {
 		slog.Any("counts", summary.counts),
 		slog.Any("failed", summary.failed),
 		slog.String("retentionSkipped", summary.retentionSkipped))
+	// One observation per pass: the items are already aggregated here, and a
+	// per-item hook would double count them.
+	r.metrics.ObserveMaintenancePass(len(summary.failed) == 0, r.now().Sub(started), rowCounts(summary.counts), summary.failed)
 	return summary
+}
+
+// rowCounts drops the lineage revalidation items from a pass summary's counts:
+// they count edges re-checked rather than rows deleted, so folding them into the
+// deleted-rows counter would make its value meaningless.
+func rowCounts(counts map[string]int64) map[string]int64 {
+	rows := make(map[string]int64, len(counts))
+	for item, count := range counts {
+		switch item {
+		case "unresolved_lineage", "contradicted_column_claims":
+			continue
+		default:
+			rows[item] = count
+		}
+	}
+	return rows
 }
 
 // pruneItem runs one delete and records its outcome. A failure is logged and the

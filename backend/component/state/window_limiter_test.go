@@ -150,7 +150,7 @@ func TestSSOStateCacheOutgrowsTheStateBudget(t *testing.T) {
 func TestSSOStateFloodCannotEvictAValidNonce(t *testing.T) {
 	t.Parallel()
 
-	stateCfg, err := New()
+	stateCfg, err := New(nil)
 	require.NoError(t, err)
 
 	minted := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)

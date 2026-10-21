@@ -84,7 +84,7 @@ var extraPrincipalLimitedMethods = map[string]bool{
 func TestEveryAuditedMethodIsBudgeted(t *testing.T) {
 	t.Parallel()
 
-	stateCfg, err := state.New()
+	stateCfg, err := state.New(nil)
 	require.NoError(t, err)
 	anonymous := NewThrottleInterceptor(stateCfg, nil)
 
@@ -235,7 +235,7 @@ func TestPrincipalThrottleInterceptorIgnoresWhatItDoesNotBound(t *testing.T) {
 func TestPrincipalThrottleInterceptorCoversStreamingMethods(t *testing.T) {
 	t.Parallel()
 
-	stateCfg, err := state.New()
+	stateCfg, err := state.New(nil)
 	require.NoError(t, err)
 	interceptor := NewPrincipalThrottleInterceptor(stateCfg)
 	ctx := principalBudgetContext(42)
@@ -284,7 +284,7 @@ func TestThrottleInterceptorLogoutBudget(t *testing.T) {
 
 func newTestPrincipalThrottleInterceptor(t *testing.T) *PrincipalThrottleInterceptor {
 	t.Helper()
-	stateCfg, err := state.New()
+	stateCfg, err := state.New(nil)
 	require.NoError(t, err)
 	return NewPrincipalThrottleInterceptor(stateCfg)
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -27,6 +28,9 @@ type Processor struct {
 	// is analyzed with it instead of trusting the producer's run-level
 	// columnLineage facet.
 	lineage *lineage.Analyzer
+	// metrics records ingestion lineage outcomes; a nil value disables
+	// instrumentation.
+	metrics *metrics.Metrics
 	// revalidateSem serializes revalidation passes. The maintenance pass and the
 	// post-sync runner share one processor and can fire at once, and both replace
 	// an object's edges as a set, so overlapping passes would contend on the same
@@ -39,12 +43,13 @@ type Processor struct {
 
 // NewProcessor creates a new event processor. reporter is told about datasets that
 // match no registered instance; it may be nil.
-func NewProcessor(s *store.Store, lineageAnalyzer *lineage.Analyzer, reporter UnmatchedNamespaceReporter) *Processor {
+func NewProcessor(s *store.Store, lineageAnalyzer *lineage.Analyzer, reporter UnmatchedNamespaceReporter, m *metrics.Metrics) *Processor {
 	return &Processor{
 		store:         s,
 		resolver:      NewResolver(s, reporter),
 		lineage:       lineageAnalyzer,
 		revalidateSem: make(chan struct{}, 1),
+		metrics:       m,
 	}
 }
 
@@ -100,7 +105,34 @@ func (p *Processor) ProcessRunEvent(ctx context.Context, event *RunEvent, persis
 		"degradedEdges", report.degradedEdges,
 	)
 
-	return p.store.BatchReplaceColumnLineage(ctx, meta.GUID, meta.Type, kept)
+	if err := p.store.BatchReplaceColumnLineage(ctx, meta.GUID, meta.Type, kept); err != nil {
+		return err
+	}
+	p.recordLineageEdges(kept)
+	return nil
+}
+
+// recordLineageEdges records the edges a run committed, split into column- and
+// table-level. It runs only after the replace succeeded, so the counts describe
+// committed edges rather than edges that were merely derived.
+func (p *Processor) recordLineageEdges(lineages []*store.ColumnLineage) {
+	table := openLineageTableEdgeCount(lineages)
+	p.metrics.AddOpenLineageEdges(metrics.EdgeKindTable, table)
+	p.metrics.AddOpenLineageEdges(metrics.EdgeKindColumn, len(lineages)-table)
+}
+
+// openLineageTableEdgeCount returns how many of lineages are table-level edges. A
+// table-level edge names neither a source nor a target column; an edge that names
+// a source column but no target column is a dataset-level column reference and
+// stays column-level.
+func openLineageTableEdgeCount(lineages []*store.ColumnLineage) int {
+	table := 0
+	for _, lineage := range lineages {
+		if lineage.SourceColumn == "" && lineage.TargetColumn == "" {
+			table++
+		}
+	}
+	return table
 }
 
 // sqlFacetLineage derives lineage from the SQL an event carries, through the

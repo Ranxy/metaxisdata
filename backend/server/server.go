@@ -10,15 +10,20 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/net/http2"
 
 	"github.com/Ranxy/metaxisdata/backend/common/log"
+	"github.com/Ranxy/metaxisdata/backend/common/version"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 	llmcomp "github.com/Ranxy/metaxisdata/backend/component/llm"
 	"github.com/Ranxy/metaxisdata/backend/component/notification"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 	"github.com/Ranxy/metaxisdata/backend/config"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 	"github.com/Ranxy/metaxisdata/backend/migrator"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/catalog"
@@ -48,6 +53,10 @@ const runnerShutdownTimeout = 10 * time.Second
 // worst-case drain.
 const debugLogDrainTimeout = 5 * time.Second
 
+// metricsShutdownTimeout bounds closing the metrics listener. It has its own
+// budget because the graceful-shutdown context may already be spent.
+const metricsShutdownTimeout = 5 * time.Second
+
 // minJWTSecretLength is the minimum length of the JWT signing key. The key must
 // be long enough that it cannot be brute-forced offline.
 const minJWTSecretLength = 32
@@ -66,6 +75,14 @@ type Server struct {
 	maintenance     *maintenance.Runner
 	qualityRunner   *qualityrunner.Runner
 	llmRegistry     *llmcomp.Registry
+
+	// metrics owns the process instruments, metricsRegistry is the private
+	// Prometheus registry they are exposed through, and metricsServer is the
+	// dedicated listener serving it (nil when --metrics-addr is empty).
+	metrics         *metrics.Metrics
+	metricsRegistry *prometheus.Registry
+	metricsServer   *http.Server
+	metricsListener net.Listener
 
 	// stateCfg is the shared in-momory state within the server.
 	stateCfg *state.State
@@ -104,6 +121,26 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 		return nil, errors.Wrap(err, "failed to migrate database schema")
 	}
 
+	// Metrics are process-local and pull-only. The registry is private so a test
+	// can build a second server in one process, and so the endpoint carries what
+	// this server registered rather than whatever other packages put on the
+	// deprecated default registry.
+	s.metrics = metrics.New()
+	s.metricsRegistry = prometheus.NewRegistry()
+	for _, collector := range []prometheus.Collector{
+		collectors.NewGoCollector(),
+		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
+		metrics.NewBuildInfoCollector(version.Version, version.GitCommit),
+		metrics.NewDBPoolCollector(s.store.DBStats),
+	} {
+		if err := s.metricsRegistry.Register(collector); err != nil {
+			return nil, errors.Wrap(err, "failed to register metrics collector")
+		}
+	}
+	if err := s.metrics.Register(s.metricsRegistry); err != nil {
+		return nil, errors.Wrap(err, "failed to register metrics")
+	}
+
 	s.runnerCtx, s.runnerCancel = context.WithCancel(ctx)
 
 	dbFactory := dbfactory.New(stores)
@@ -114,9 +151,9 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	// and the server from agreeing on what was registered.
 	lineageEngines := lineage.NewAnalyzer(catalog.NewCatalogProvide(stores), engines.Registrations()...)
 
-	s.lineageAnalyzer = lineageanalyzer.NewAnalyzer(stores, lineageEngines)
+	s.lineageAnalyzer = lineageanalyzer.NewAnalyzer(stores, lineageEngines, s.metrics)
 
-	stateCfg, err := state.New()
+	stateCfg, err := state.New(s.metrics)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to initialize state")
 	}
@@ -126,18 +163,18 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	// edges, so they share one processor and its lock.
 	// The revalidation paths resolve datasets to check ingested edges, not to report
 	// them: only ingestion names an administrator's inbox as the sink.
-	ingestedLineage := openlineage.NewProcessor(stores, lineageEngines, nil)
-	s.lineageValidate = lineagevalidation.NewRunner(ingestedLineage)
-	s.maintenance = maintenance.NewRunner(stores, ingestedLineage)
+	ingestedLineage := openlineage.NewProcessor(stores, lineageEngines, nil, s.metrics)
+	s.lineageValidate = lineagevalidation.NewRunner(ingestedLineage, s.metrics)
+	s.maintenance = maintenance.NewRunner(stores, ingestedLineage, s.metrics)
 
 	// The notification service is what a background runner reports through: a
 	// finished sync operation to the user who asked for it, and an ingestion or
 	// sync failure to the workspace administrators.
 	s.notifier = notification.New(stores)
-	s.schemaSync = schemasync.NewSyncer(stores, dbFactory, stateCfg, s.lineageAnalyzer, s.lineageValidate, s.notifier)
+	s.schemaSync = schemasync.NewSyncer(stores, dbFactory, stateCfg, s.lineageAnalyzer, s.lineageValidate, s.notifier, s.metrics)
 	// The quality runner executes the rules the API creates: scheduled rules on its
 	// own tick, manual runs from the queue the service hands it.
-	s.qualityRunner = qualityrunner.NewRunner(stores, dbFactory, stateCfg, s.notifier)
+	s.qualityRunner = qualityrunner.NewRunner(stores, dbFactory, stateCfg, s.notifier, s.metrics)
 
 	s.llmRegistry = llmcomp.NewRegistry(stores, profile)
 	if err := s.initializeSetting(ctx); err != nil {
@@ -155,7 +192,7 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	// Configure echo server.
 	s.echoServer = echo.New()
 
-	if err := configureGrpcRouters(ctx, s.echoServer, s.store, s.profile, s.stateCfg, s.profile.Secret, dbFactory, s.schemaSync, s.qualityRunner, s.llmRegistry, lineageEngines, s.notifier); err != nil {
+	if err := configureGrpcRouters(ctx, s.echoServer, s.store, s.profile, s.stateCfg, s.profile.Secret, dbFactory, s.schemaSync, s.qualityRunner, s.llmRegistry, lineageEngines, s.notifier, s.metrics); err != nil {
 		return nil, errors.Wrapf(err, "failed to configure gRPC routers")
 	}
 
@@ -164,10 +201,23 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	// gives each one the shared panic boundary in runner.Go.
 	runners := []runner.Runner{s.lineageAnalyzer, s.schemaSync, s.qualityRunner, s.lineageValidate, s.maintenance}
 	for _, r := range runners {
-		runner.Go(s.runnerCtx, &s.runnerWG, r)
+		runner.Go(s.runnerCtx, &s.runnerWG, r, s.metrics)
 	}
 
-	configureEchoRouters(s.echoServer, profile)
+	// Scrape-time gauges read live state, so they register after the runners and
+	// the connection governor they observe exist.
+	for _, collector := range []prometheus.Collector{
+		metrics.NewLineageAnalysisQueueDepth(s.lineageAnalyzer.QueueStats),
+		metrics.NewInstanceConnectionInUse(stateCfg.ConnectionInUse),
+		metrics.NewInstanceConnectionWaiters(stateCfg.ConnectionWaiters),
+		metrics.NewQualityManualQueueDepth(s.qualityRunner.ManualQueueDepth),
+	} {
+		if err := s.metricsRegistry.Register(collector); err != nil {
+			return nil, errors.Wrap(err, "failed to register metrics collector")
+		}
+	}
+
+	configureEchoRouters(s.echoServer, profile, s.metrics)
 
 	if profile.RuntimeDebug.Load() {
 		s.echoServer.Debug = true
@@ -211,6 +261,18 @@ func (s *Server) Run(_ context.Context, port int) error {
 	}
 
 	s.echoServer.Listener = listener
+
+	// A test builds a bare Server with no profile; only the real one opts into
+	// the metrics listener.
+	if s.profile != nil && s.profile.MetricsAddr != "" {
+		if err := s.startMetricsServer(); err != nil {
+			// The API listener is already bound but Serve has not started, so
+			// http.Server.Shutdown would not close it; without this the port stays
+			// bound for the process lifetime after a failed startup.
+			_ = listener.Close()
+			return err
+		}
+	}
 
 	go func() {
 		// A graceful shutdown stops the server, which makes it return
@@ -263,6 +325,19 @@ func (s *Server) Shutdown(ctx context.Context) error {
 			slog.Duration("timeout", runnerShutdownTimeout))
 	}
 
+	// The metrics endpoint is a second listener. It holds no durable state and
+	// only reads in-memory instruments, so it is closed before the store is. It
+	// gets its own short budget: by this point the graceful context may already be
+	// spent on the main server and the runners.
+	if s.metricsServer != nil {
+		metricsCtx, cancelMetrics := context.WithTimeout(context.Background(), metricsShutdownTimeout)
+		metricsErr := s.metricsServer.Shutdown(metricsCtx)
+		cancelMetrics()
+		if metricsErr != nil {
+			slog.Warn("failed to shut down the metrics server", log.WithError(metricsErr))
+		}
+	}
+
 	// Drain the LLM debug-log writers before the pool closes: they write to the
 	// store, so a queued entry would otherwise be written to a closed connection
 	// pool. The drain gets its own short budget because the shutdown context has no
@@ -282,4 +357,45 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// startMetricsServer binds the dedicated metrics address and serves the private
+// registry's /metrics. It is opt-in: an empty --metrics-addr never reaches it,
+// and the API port never serves metrics.
+func (s *Server) startMetricsServer() error {
+	address := s.profile.MetricsAddr
+	listener, err := net.Listen("tcp", address)
+	if err != nil {
+		return errors.Wrapf(err, "failed to listen on the metrics address %q", address)
+	}
+	s.metricsListener = listener
+	s.metricsServer = &http.Server{
+		Handler:           s.metricsHandler(),
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+	go func() {
+		// A graceful shutdown makes Serve return http.ErrServerClosed; anything
+		// else is a real serve failure worth reporting.
+		if err := s.metricsServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("metrics server listen error", log.WithError(err))
+		}
+	}()
+	return nil
+}
+
+// metricsHandler serves the private registry. It is deliberately a single GET
+// route: the metrics port is not a second API, and a scrape is a read.
+func (s *Server) metricsHandler() http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", "GET, HEAD")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		promhttp.HandlerFor(s.metricsRegistry, promhttp.HandlerOpts{}).ServeHTTP(w, r)
+	}))
+	return mux
 }

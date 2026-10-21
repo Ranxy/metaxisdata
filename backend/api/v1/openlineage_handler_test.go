@@ -13,10 +13,13 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/labstack/echo/v4"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Ranxy/metaxisdata/backend/component/audit"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 	"github.com/Ranxy/metaxisdata/backend/plugin/openlineage"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -524,4 +527,73 @@ func TestIngestionRefusalWithoutANotifierStillAnswers(t *testing.T) {
 	require.NoError(t, h.processBatchEvents(ctx, []byte(body), ingestionKey("ns")))
 	require.Equal(t, http.StatusForbidden, rec.Code)
 	require.Empty(t, notifier.admin)
+}
+
+// The failure kind label reuses the bounded stored enum, lowercased, so the label
+// set cannot grow with stored data.
+func TestOpenLineageFailureKindLabel(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "invalid_event", openLineageFailureKindLabel(storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_INVALID_EVENT))
+	require.Equal(t, "limit_exceeded", openLineageFailureKindLabel(storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_LIMIT_EXCEEDED))
+	require.Equal(t, "scope_mismatch", openLineageFailureKindLabel(storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_SCOPE_MISMATCH))
+	require.Equal(t, "persist_failed", openLineageFailureKindLabel(storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_PERSIST_FAILED))
+	require.Equal(t, "process_failed", openLineageFailureKindLabel(storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_PROCESS_FAILED))
+	require.Equal(t, "namespace_unmapped", openLineageFailureKindLabel(storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_NAMESPACE_UNMAPPED))
+	require.Equal(t, "unspecified", openLineageFailureKindLabel(storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_UNSPECIFIED))
+}
+
+// A batch and a single event share one handler, so the route label is derived
+// from the path suffix.
+func TestOpenLineageIngestRouteLabel(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, metrics.IngestRouteEvent, OpenLineageIngestRouteLabel("/api/v1/lineage"))
+	require.Equal(t, metrics.IngestRouteEvent, OpenLineageIngestRouteLabel(""))
+	require.Equal(t, metrics.IngestRouteBatch, OpenLineageIngestRouteLabel("/api/v1/lineage/batch"))
+}
+
+// TestSingleEventParseFailureIsCounted pins the event-level counter for a
+// request whose body parsed as neither a batch nor a single event. The batch
+// path counts its per-element parse failures, so the single path must too.
+func TestSingleEventParseFailureIsCounted(t *testing.T) {
+	t.Parallel()
+
+	m := metrics.New()
+	registry := prometheus.NewRegistry()
+	require.NoError(t, m.Register(registry))
+	handler := &OpenLineageHandler{metrics: m}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/lineage", strings.NewReader("{not-json"))
+	recorder := httptest.NewRecorder()
+	ctx := echo.New().NewContext(request, recorder)
+
+	require.NoError(t, handler.handleIngestion(ctx, ingestionKey("")))
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+
+	line := metricLine(t, metricExposition(t, registry), "metaxisdata_openlineage_ingest_events_total")
+	require.Contains(t, line, `reason="parse"`)
+	require.Contains(t, line, `result="rejected"`)
+	require.Contains(t, line, `route="event"`)
+}
+
+// metricExposition renders a registry as Prometheus text for label assertions.
+func metricExposition(t *testing.T, registry *prometheus.Registry) string {
+	t.Helper()
+	recorder := httptest.NewRecorder()
+	promhttp.HandlerFor(registry, promhttp.HandlerOpts{}).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	require.Equal(t, http.StatusOK, recorder.Code)
+	return recorder.Body.String()
+}
+
+// metricLine returns the text line exposing the named metric family.
+func metricLine(t *testing.T, exposition, name string) string {
+	t.Helper()
+	for _, line := range strings.Split(exposition, "\n") {
+		if strings.HasPrefix(line, name+"{") || strings.HasPrefix(line, name+" ") {
+			return line
+		}
+	}
+	t.Fatalf("metric %q not found in exposition:\n%s", name, exposition)
+	return ""
 }

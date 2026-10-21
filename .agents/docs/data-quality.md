@@ -160,7 +160,7 @@ run：`status ∈ {PENDING, RUNNING, COMPLETED, ABANDONED}`；`outcome` 是结�
 - 单规则 panic 隔离为 `ERROR(EXECUTION)`；结果整批插入（`persistResults`），插入失败 → run `ABANDONED`；成功则问题迁移 + 通知（best-effort），最后写 counts/outcome 并 `COMPLETED`。
 - 只读通道：`db.ReadOnlyQueryer`；PG 事务内 `SET LOCAL statement_timeout`，MySQL 会话 `MAX_EXECUTION_TIME` 并复位；其余依赖只读账号 + 语句白名单。无 READ_ONLY 数据源 → `ERROR(NO_READ_ONLY_SOURCE)`。
 - 错误码（`dataquality.ClassifyError`，写 `error_code`）：`CONNECTION`、`AUTH`、`TIMEOUT`、`PERMISSION`、`UNSUPPORTED`、`SQL_SYNTAX`、`BAD_DATA`、`LIMIT_EXCEEDED`、`ORPHANED`、`NO_READ_ONLY_SOURCE`、`EXECUTION`（未归类的驱动错误，消息脱敏 + 截断 1 KiB）。`QUOTA` 已不再由 runner 产生，仅为历史结果行保留（前端仍会本地化它）。
-- 日志：每 run 一行 summary（run/规则数/六态计数/耗时）；`ERROR` 结果打 WARN（rule/target/code/耗时，不打 SQL 与样本值）；无 metrics。
+- 日志：每 run 一行 summary（run/规则数/六态计数/耗时）；`ERROR` 结果打 WARN（rule/target/code/耗时，不打 SQL 与样本值）；run/规则/失败码/问题开闭等指标见 [metrics.md](metrics.md)。
 
 ### 3.4 问题、通知与静音
 
@@ -354,7 +354,7 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | 9 | 建议队列无 Get RPC | 编辑器 `?suggestion=` 预填按队列全量查找后匹配（数据量有界；如需可加 GetQualitySuggestion） |
 | 10 | 多副本 | 不支持（单副本假设，见 [security-posture.md](../../docs/security-posture.md)）；两个副本会重复执行、LLM 配额各自计数 |
 | 11 | 分布漂移/ML 异常、分组内多种检查（每组 null/aggregate）、RuleSet | 非目标（§非目标）；RuleSet 在 v1.1 之后单独评审 |
-| 12 | 连接等待的可观测性 | 只有 defer/abandon 的日志行；没有等待时长或饱和度 metrics（全仓无 metrics 栈，见 [backend-open-items.md](backend-open-items.md) D8） |
+| 12 | 连接等待的可观测性 | run 的准入/放弃与并发 run 数已有指标（见 [metrics.md](metrics.md)）；连接等待时长直方图仍是 P1，尚未实现 |
 
 ## 8. Where things live
 

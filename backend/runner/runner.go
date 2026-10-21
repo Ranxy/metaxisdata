@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Ranxy/metaxisdata/backend/common/log"
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 )
 
 // Runner is one background loop. Run blocks until ctx is cancelled.
@@ -34,17 +35,20 @@ type Runner interface {
 // It also owns the runner's lifecycle log line: one when the loop starts and one
 // when it stops with the name and how long it ran, so an operator can tell from
 // the log whether a runner ever started and when it last stopped.
-func Go(ctx context.Context, wg *sync.WaitGroup, r Runner) {
+func Go(ctx context.Context, wg *sync.WaitGroup, r Runner, m *metrics.Metrics) {
 	wg.Go(func() {
 		started := time.Now()
 		slog.Info("background runner started", slog.String("runner", r.Name()))
+		m.RunnerStarted(r.Name())
 		defer func() {
 			if recovered := recover(); recovered != nil {
+				m.RunnerPanicked(r.Name())
 				slog.Error("background runner panicked",
 					slog.String("runner", r.Name()),
 					slog.Any("panic", recovered),
 					log.Stack("panic-stack"))
 			}
+			m.RunnerStopped(r.Name())
 			slog.Info("background runner stopped",
 				slog.String("runner", r.Name()),
 				slog.Duration("duration", time.Since(started)))

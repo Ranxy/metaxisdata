@@ -162,7 +162,7 @@ PG_URL='postgres://<user>:<password>@<db-host>:5432/<database>?sslmode=disable' 
 
 **本 release 必须一次性切换，不能滚动升级。** 它把 MCP 刷新凭据改成原地轮换，并把连接 id 写进 access token；请先停掉所有旧副本，再启动新二进制。旧副本若继续服务 `/oauth/token`，会删除并重新插入授权行，把已吊销的连接静默恢复成未吊销；回滚到旧二进制也是同样的效果。如果必须回滚，请恢复升级前的数据库备份，并轮换部署的签名密钥（`AUTH_SECRET` setting）：所有未过期的令牌都会停止验签，而备份之后做出的吊销也随备份一起丢失，需要重新吊销受影响的已连接应用。
 
-`PG_URL` 与加密密钥两个变量由服务端自身读取，对二进制同样有效。其余 `METAXISDATA_*` 变量属于镜像入口脚本的映射——在裸宿主机上请改用与之对应的 flag：`--port`、`--debug`、`--enable-json-logging`、`--cors-allow-origins`、`--trusted-proxies`。
+`PG_URL` 与加密密钥两个变量由服务端自身读取，对二进制同样有效。其余 `METAXISDATA_*` 变量属于镜像入口脚本的映射——在裸宿主机上请改用与之对应的 flag：`--port`、`--debug`、`--enable-json-logging`、`--cors-allow-origins`、`--trusted-proxies`、`--metrics-addr`。
 
 ```bash
 PG_URL='postgres://<user>:<password>@<db-host>:5432/<database>?sslmode=disable' \
@@ -185,9 +185,10 @@ PG_URL='postgres://<user>:<password>@<db-host>:5432/<database>?sslmode=disable' 
 | `METAXISDATA_ENCRYPTION_KEY` | 可选。默认情况下，用于加密已存数据源凭据的密钥就存放在数据库自身之中，任何能访问数据库的人都能解密全部凭据。如需防范数据库泄露，可以配置它：数据密钥会被一把保存在数据库之外的密钥再包裹一层，此后仅凭数据库泄露无法还原出已存的凭据。代价是：这把密钥从此成为打开已存凭据的唯一钥匙——一旦丢失，服务端会拒绝启动，且每个实例、每个 LLM 供应商的已存凭据都无法再读取，只能逐个重新录入。见 [security-posture.md](security-posture.md)（英文）。 |
 | `METAXISDATA_ENCRYPTION_KEY_PREVIOUS` | 轮换期间使用的旧密钥，多个时逗号分隔。 |
 | `METAXISDATA_JSON_LOGGING=true` | 输出 JSON 日志而不是文本日志。 |
-| `METAXISDATA_DEBUG=true` | debug 级日志，并把 `/debug/pprof` 与 `/metrics` 开放给所有能访问该服务端的人。 |
+| `METAXISDATA_DEBUG=true` | debug 级日志，并把 `/debug/pprof` 开放给所有能访问该服务端的人。 |
 | `METAXISDATA_CORS_ALLOW_ORIGINS` | 允许携带凭据调用 API 的浏览器源，逗号分隔。仅当 SPA 由另一个源提供时需要；留空则不安装任何 CORS 中间件。 |
 | `METAXISDATA_TRUSTED_PROXIES` | 记录审计来源地址时可以采信其 `X-Forwarded-For` 的 peer IP/CIDR，逗号分隔（第 4 步）。 |
+| `METAXISDATA_METRICS_ADDR` | 可选。Prometheus 指标端点的监听地址，例如 `127.0.0.1:9090`；不设置则关闭。该端点匿名且**从不在 API 端口**提供服务，请只绑到抓取方能访问的接口。见 [Prometheus 指标](#prometheus-指标)。 |
 
 ### 健康检查与构建元数据
 
@@ -197,6 +198,21 @@ PG_URL='postgres://<user>:<password>@<db-host>:5432/<database>?sslmode=disable' 
 | `GET /api/version` | 构建该镜像所用的 `version`、`git_commit` 与 `build_time`。SPA 的用户菜单和 *Settings → General* 会读取它。 |
 
 两个端点都是匿名的，除「正在运行哪个 release」之外不泄露任何信息。
+
+### Prometheus 指标
+
+设置 `METAXISDATA_METRICS_ADDR`（直接运行二进制时传 `--metrics-addr`），指标会由独立监听端口提供：
+
+```bash
+PG_URL='postgres://<user>:<password>@<db-host>:5432/<database>?sslmode=disable' \
+  ./metaxisdata --port 8083 --metrics-addr 127.0.0.1:9090
+```
+
+API 端口不再提供 `/metrics`，`--debug` 只控制日志与 pprof。该端点只支持拉取且匿名：把 Prometheus 指向
+`http://<metrics-addr>/metrics`，并让该地址只存在于可信接口或内网。它上报运营计数与耗时——schema 同步、
+血缘分析、OpenLineage 摄取、数据质量 run、LLM 调用、HTTP/RPC 流量、队列深度与元数据库连接池——标签只使用
+有界枚举；实例、库、表、GUID、SQL 和用户数据不会出现在标签里。指标目录、标签规则与节奏见
+[.agents/docs/metrics.md](../.agents/docs/metrics.md)。
 
 ### 运维说明
 

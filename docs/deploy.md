@@ -230,7 +230,7 @@ The `PG_URL` and encryption-key variables below are read by the server itself
 and work identically for the binary. The other `METAXISDATA_*` variables are
 the image entrypoint's mappings — on a bare host, pass the matching flags
 instead: `--port`, `--debug`, `--enable-json-logging`, `--cors-allow-origins`,
-`--trusted-proxies`.
+`--trusted-proxies`, `--metrics-addr`.
 
 ```bash
 PG_URL='postgres://<user>:<password>@<db-host>:5432/<database>?sslmode=disable' \
@@ -268,9 +268,10 @@ the next scan. See [security-posture.md](security-posture.md) and
 | `METAXISDATA_ENCRYPTION_KEY` | Optional. By default, the key that encrypts stored source credentials is kept in the database itself, so anyone who gains access to the database can decrypt every credential. Set it to have that data key wrapped by a key kept outside the database — then a leaked database alone no longer exposes the stored credentials. The cost: the key is then the only way to open them. If it is lost, the server refuses to start, and every stored credential — for every instance and every LLM provider — is unreadable and must be entered again. See [security-posture.md](security-posture.md). |
 | `METAXISDATA_ENCRYPTION_KEY_PREVIOUS` | Previous keys, comma-separated, during a rotation. |
 | `METAXISDATA_JSON_LOGGING=true` | JSON logs instead of text. |
-| `METAXISDATA_DEBUG=true` | Debug-level logging, and exposes `/debug/pprof` and `/metrics` to anyone who can reach the server. |
+| `METAXISDATA_DEBUG=true` | Debug-level logging, and exposes `/debug/pprof` to anyone who can reach the server. |
 | `METAXISDATA_CORS_ALLOW_ORIGINS` | Comma-separated browser origins allowed to call the API with credentials. Only needed when the SPA is served from a different origin; empty installs no CORS middleware at all. |
 | `METAXISDATA_TRUSTED_PROXIES` | Comma-separated peer IPs/CIDRs whose `X-Forwarded-For` may be believed when recording the audit source address (step 4). |
+| `METAXISDATA_METRICS_ADDR` | Optional. Address for the Prometheus endpoint, for example `127.0.0.1:9090`; unset disables it. The endpoint is anonymous and is **never** served on the API port, so bind it to an interface your scraper can reach and nothing else. See [Prometheus metrics](#prometheus-metrics). |
 
 ### Health and build metadata
 
@@ -281,6 +282,26 @@ the next scan. See [security-posture.md](security-posture.md) and
 
 Both endpoints are anonymous and reveal nothing beyond which release is
 running.
+
+### Prometheus metrics
+
+Set `METAXISDATA_METRICS_ADDR` (or pass `--metrics-addr` when running the binary
+directly) to serve Prometheus metrics on a dedicated listener:
+
+```bash
+PG_URL='postgres://<user>:<password>@<db-host>:5432/<database>?sslmode=disable' \
+  ./metaxisdata --port 8083 --metrics-addr 127.0.0.1:9090
+```
+
+The API port never serves `/metrics`, and `--debug` only controls logging and
+pprof. The endpoint is pull-only and anonymous: point Prometheus at
+`http://<metrics-addr>/metrics` and keep that address on a trusted interface or
+an internal network. It reports operational counts and latencies — schema syncs,
+lineage analyses, OpenLineage ingestion, data-quality runs, LLM calls, HTTP/RPC
+traffic, queue depths and the metadata connection pool — using bounded enum
+labels only; instance, database, table, GUID, SQL and user data never appear in a
+label. The metric catalogue, label rules and cadence live in
+[.agents/docs/metrics.md](../.agents/docs/metrics.md).
 
 ### Operational notes
 
