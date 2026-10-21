@@ -418,8 +418,9 @@ func (s *Store) ListApplicationSQLs(ctx context.Context, find *FindApplicationSQ
 }
 
 // SetApplicationSQLKind records the read/write classification the runner derived. It is a filter
-// cache written before the edges, not a claim about them: a failed edge write leaves the kind set
-// until the next analysis rewrites both, and the lineage version records the failure meanwhile.
+// cache over the edges, not a claim about them, and the runner writes it only after the edges
+// commit: a kind that claims a classification the graph does not have would mislead the list
+// filter, while a kind that is still missing is merely stale until the next analysis.
 func (s *Store) SetApplicationSQLKind(ctx context.Context, guid string, kind ApplicationSQLKind) error {
 	if _, err := s.GetDB().ExecContext(ctx, `
 		UPDATE application_sql SET kind = $2, updated_at = NOW() WHERE guid = $1
