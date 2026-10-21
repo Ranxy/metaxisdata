@@ -395,6 +395,26 @@ func TestBuildQualityRuleWhereAppliesEveryFilter(t *testing.T) {
 	}
 }
 
+// The unassigned filter is the "no owner" complement of the owner filter: it
+// renders owner_id IS NULL and binds no argument.
+func TestBuildQualityRuleWhereOwnerUnassigned(t *testing.T) {
+	t.Parallel()
+
+	where, args, err := buildQualityRuleWhere(&FindQualityRuleMessage{OwnerUnassigned: true})
+	require.NoError(t, err)
+	require.Contains(t, where, "owner_id IS NULL")
+	require.Equal(t, []any{storepb.QualityRuleState_QUALITY_RULE_STATE_ARCHIVED}, args,
+		"the unassigned predicate binds no argument")
+
+	// The assigned-owner predicate is unchanged: equality against its bound id.
+	ownerID := int32(7)
+	assignedWhere, assignedArgs, err := buildQualityRuleWhere(&FindQualityRuleMessage{OwnerID: &ownerID})
+	require.NoError(t, err)
+	require.Contains(t, assignedWhere, "owner_id = $1")
+	require.NotContains(t, assignedWhere, "owner_id IS NULL")
+	require.Equal(t, []any{ownerID, storepb.QualityRuleState_QUALITY_RULE_STATE_ARCHIVED}, assignedArgs)
+}
+
 // The default list is the actionable set: soft-deleted and archived rules are
 // hidden, and a caller has to opt in explicitly.
 func TestBuildQualityRuleWhereHidesDeletedAndArchivedByDefault(t *testing.T) {

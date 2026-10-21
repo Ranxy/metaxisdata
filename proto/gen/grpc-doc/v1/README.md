@@ -4515,8 +4515,9 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 | rule_type | [QualityRuleType](#metaxisdata-v1-QualityRuleType) |  |  |
 | severity | [QualitySeverity](#metaxisdata-v1-QualitySeverity) |  |  |
 | state | [QualityRuleState](#metaxisdata-v1-QualityRuleState) |  |  |
-| owner | [string](#string) |  | Format: users/{user}. |
+| owner | [string](#string) |  | Format: users/{user}. Empty means every owner. |
 | search | [string](#string) |  | A substring match over the title and description. |
+| owner_unassigned | [bool](#bool) |  | When true, only rules with no owner are returned. It cannot be combined with a non-empty owner. |
 
 
 

@@ -4749,7 +4749,7 @@ paths:
                     format: enum
                 - name: owner
                   in: query
-                  description: 'Format: users/{user}.'
+                  description: 'Format: users/{user}. Empty means every owner.'
                   schema:
                     type: string
                 - name: search
@@ -4757,6 +4757,13 @@ paths:
                   description: A substring match over the title and description.
                   schema:
                     type: string
+                - name: ownerUnassigned
+                  in: query
+                  description: |-
+                    When true, only rules with no owner are returned. It cannot be combined
+                     with a non-empty owner.
+                  schema:
+                    type: boolean
             responses:
                 "200":
                     description: OK

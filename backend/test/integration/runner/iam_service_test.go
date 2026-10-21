@@ -90,7 +90,7 @@ func TestWorkspaceIamPolicyRealServerIntegration(t *testing.T) {
 
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 	roleName := "roles/it" + suffix
-	listRolesRole := "roles/lr" + suffix
+	listGroupsRole := "roles/lg" + suffix
 
 	_, err = roleClient.CreateRole(ctx, withToken(adminToken, &v1pb.CreateRoleRequest{
 		Role: &v1pb.Role{
@@ -102,9 +102,9 @@ func TestWorkspaceIamPolicyRealServerIntegration(t *testing.T) {
 	require.NoError(t, err)
 	_, err = roleClient.CreateRole(ctx, withToken(adminToken, &v1pb.CreateRoleRequest{
 		Role: &v1pb.Role{
-			Name:        listRolesRole,
-			Title:       "Integration user reader",
-			Permissions: []string{"metaxisdata.users.list"},
+			Name:        listGroupsRole,
+			Title:       "Integration group reader",
+			Permissions: []string{"metaxisdata.groups.list"},
 		},
 	}))
 	require.NoError(t, err)
@@ -120,6 +120,11 @@ func TestWorkspaceIamPolicyRealServerIntegration(t *testing.T) {
 
 	memberToken, err := env.LoginAs(ctx, email, password)
 	require.NoError(t, err)
+
+	// users.list is baseline, so the owner picker and owner filter work for a
+	// non-admin; roles.list still is not.
+	_, err = userClient.ListUsers(ctx, withToken(memberToken, &v1pb.ListUsersRequest{PageSize: 1}))
+	require.NoError(t, err, "the member baseline grants the workspace member directory read")
 
 	// The member baseline covers reads but not role administration.
 	_, err = roleClient.ListRoles(ctx, withToken(memberToken, &v1pb.ListRolesRequest{}))
@@ -154,14 +159,19 @@ func TestWorkspaceIamPolicyRealServerIntegration(t *testing.T) {
 	}))
 	require.NoError(t, err)
 
-	bindings = append(bindings, &v1pb.Binding{Role: listRolesRole, Members: []string{groupName}})
+	// Until the group binding exists, the member does not hold groups.list: the
+	// group is only the vehicle for the role, not the grant itself.
+	_, err = groupClient.ListGroups(ctx, withToken(memberToken, &v1pb.ListGroupsRequest{PageSize: 1}))
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+
+	bindings = append(bindings, &v1pb.Binding{Role: listGroupsRole, Members: []string{groupName}})
 	setResp, err = iamClient.SetWorkspaceIamPolicy(ctx, withToken(adminToken, &v1pb.SetWorkspaceIamPolicyRequest{
 		Policy: &v1pb.IamPolicy{Bindings: bindings},
 		Etag:   setResp.Msg.GetEtag(),
 	}))
 	require.NoError(t, err)
 
-	_, err = userClient.ListUsers(ctx, withToken(memberToken, &v1pb.ListUsersRequest{PageSize: 1}))
+	_, err = groupClient.ListGroups(ctx, withToken(memberToken, &v1pb.ListGroupsRequest{PageSize: 1}))
 	require.NoError(t, err, "a group member inherits the bound role")
 
 	// A stale etag is rejected so the caller re-reads instead of clobbering.
@@ -255,7 +265,7 @@ func TestWorkspaceIamPolicyRealServerIntegration(t *testing.T) {
 	require.NoError(t, err)
 	_, err = roleClient.DeleteRole(ctx, withToken(adminToken, &v1pb.DeleteRoleRequest{Name: roleName}))
 	require.NoError(t, err)
-	_, err = roleClient.DeleteRole(ctx, withToken(adminToken, &v1pb.DeleteRoleRequest{Name: listRolesRole}))
+	_, err = roleClient.DeleteRole(ctx, withToken(adminToken, &v1pb.DeleteRoleRequest{Name: listGroupsRole}))
 	require.NoError(t, err)
 	_, err = groupClient.DeleteGroup(ctx, withToken(adminToken, &v1pb.DeleteGroupRequest{Name: groupName}))
 	require.NoError(t, err)

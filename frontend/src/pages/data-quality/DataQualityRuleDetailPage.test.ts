@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
   getQualityRule: vi.fn(),
   listQualityRuleResults: vi.fn(),
   runQualityRules: vi.fn(),
+  listAllUsers: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", async (importOriginal) => ({
@@ -34,12 +35,21 @@ vi.mock("@/api/data-quality", async (importOriginal) => ({
   runQualityRules: mocks.runQualityRules,
 }));
 
+vi.mock("@/api/user", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/user")>()),
+  listAllUsers: mocks.listAllUsers,
+}));
+
 const RULE = "workspaces/ws/qualityRules/rule-1";
 const RUN = "workspaces/ws/qualityRuns/run-1";
 const START = new Date("2026-10-07T09:30:00Z");
 const Dummy = { template: "<div />" };
 
 const PERMISSIONS = ["metaxisdata.dataQuality.rules.get"];
+
+const USERS = [
+  create(UserSchema, { name: "users/101", email: "alice@example.com" }),
+];
 
 function ruleFixture(overrides = {}) {
   return create(QualityRuleSchema, {
@@ -138,6 +148,7 @@ describe("DataQualityRuleDetailPage", () => {
       items: resultsFixture(),
       nextPageToken: "",
     });
+    mocks.listAllUsers.mockResolvedValue(USERS);
   });
 
   it("answers 'how is this rule doing?' at a glance", async () => {
@@ -211,5 +222,36 @@ describe("DataQualityRuleDetailPage", () => {
 
     expect(router.currentRoute.value.name).toBe("DataQualityRunDetail");
     expect(router.currentRoute.value.params.runId).toEqual(RUN.split("/"));
+  });
+
+  it("names the owner from the workspace directory", async () => {
+    mocks.getQualityRule.mockResolvedValue(ruleFixture({ owner: "users/101" }));
+
+    const { wrapper } = await mountPage([
+      ...PERMISSIONS,
+      "metaxisdata.users.list",
+    ]);
+
+    expect(wrapper.text()).toContain("alice@example.com");
+  });
+
+  it("falls back to the owner's resource name when the directory fails", async () => {
+    mocks.listAllUsers.mockRejectedValue(new Error("directory unavailable"));
+    mocks.getQualityRule.mockResolvedValue(ruleFixture({ owner: "users/101" }));
+
+    const { wrapper } = await mountPage([
+      ...PERMISSIONS,
+      "metaxisdata.users.list",
+    ]);
+
+    expect(wrapper.text()).toContain("users/101");
+  });
+
+  it("says the owner is unassigned when the rule has none", async () => {
+    const { wrapper } = await mountPage();
+
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.unassignedOwner")
+    );
   });
 });

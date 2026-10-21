@@ -61,6 +61,28 @@
           />
         </div>
 
+        <!-- Owner is optional, so the picker carries an "unassigned" row besides
+             the members. The directory is loaded once by the page and passed in,
+             so the filter costs no request of its own. -->
+        <div class="flex min-w-48 flex-1 flex-col gap-1.5 sm:max-w-64 sm:flex-none">
+          <Label
+            for="data-quality-owner"
+            class="text-sm font-medium leading-none"
+          >
+            {{ t("dataQuality.filterOwner") }}
+          </Label>
+          <UserSelect
+            id="data-quality-owner"
+            v-model="owner"
+            :placeholder="t('dataQuality.allOwners')"
+            :any-label="t('dataQuality.allOwners')"
+            :no-owner-value="UNASSIGNED_OWNER"
+            :no-owner-label="t('dataQuality.unassignedOwner')"
+            :clear-label="t('dataQuality.clearOwnerFilter')"
+            :preloaded-users="userDirectory"
+          />
+        </div>
+
         <div class="flex min-w-36 flex-1 flex-col gap-1.5 [&>select]:hidden sm:flex-none">
           <Label
             for="data-quality-dimension"
@@ -204,6 +226,9 @@
                   {{ t("dataQuality.filterState") }}
                 </TableHead>
                 <TableHead class="hidden md:table-cell">
+                  {{ t("dataQuality.filterOwner") }}
+                </TableHead>
+                <TableHead class="hidden md:table-cell">
                   {{ t("dataQuality.lastResult") }}
                 </TableHead>
                 <TableHead class="hidden whitespace-nowrap md:table-cell">
@@ -278,6 +303,12 @@
                     >
                       {{ t("dataQuality.noResultYet") }}
                     </span>
+                    <span
+                      class="max-w-[12rem] truncate text-xs text-muted-foreground"
+                      :title="rule.owner || undefined"
+                    >
+                      {{ ownerName(rule) }}
+                    </span>
                     <span class="text-xs text-muted-foreground">
                       {{ formatRelativeTime(rule.updateTime, locale) }}
                     </span>
@@ -295,6 +326,17 @@
                   <Badge :variant="qualityRuleStateVariant(rule.state)">
                     {{ t(qualityRuleStateKey(rule.state)) }}
                   </Badge>
+                </TableCell>
+                <TableCell
+                  class="hidden md:table-cell"
+                  :title="rule.owner || undefined"
+                >
+                  <span
+                    class="whitespace-nowrap"
+                    :class="{ 'text-muted-foreground': !rule.owner }"
+                  >
+                    {{ ownerName(rule) }}
+                  </span>
                 </TableCell>
                 <TableCell class="hidden md:table-cell">
                   <Badge
@@ -443,6 +485,7 @@ import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import TablePager from "@/components/common/TablePager.vue";
+import UserSelect from "@/components/common/UserSelect.vue";
 import TargetScopeFilter from "@/components/data-quality/TargetScopeFilter.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
@@ -467,6 +510,7 @@ import {
 } from "@/components/ui/table";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { usePagedFetch } from "@/composables/usePagedFetch";
+import { useUserDirectory } from "@/composables/useUserDirectory";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
 import {
@@ -507,6 +551,20 @@ const canUpdate = computed(() =>
 const canDelete = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.rules.delete")
 );
+// The directory feeds both the owner column and the filter picker, so the page
+// loads it once; the picker receives it and issues no request of its own.
+const {
+  users: userDirectory,
+  emailOf,
+  load: loadUserDirectory,
+} = useUserDirectory();
+
+/**
+ * The owner picker's "unassigned" choice. It is a page-local value, never sent:
+ * the request boundary turns it into `ownerUnassigned: true` with an empty
+ * owner.
+ */
+const UNASSIGNED_OWNER = "__unassigned__";
 
 // The filter controls hold strings for the Select; the enums are built at the
 // request boundary, where they belong. `-` is the "any" item.
@@ -515,11 +573,13 @@ const dimension = ref("-");
 const severity = ref("-");
 const state = ref("-");
 const scope = ref<QualityTargetScope>();
+const owner = ref("");
 const appliedSearch = ref("");
 const appliedDimension = ref("-");
 const appliedSeverity = ref("-");
 const appliedState = ref("-");
 const appliedScope = ref<QualityTargetScope>();
+const appliedOwner = ref("");
 
 const pageSize = ref(50);
 const error = ref("");
@@ -533,7 +593,8 @@ const hasActiveFilters = computed(
     appliedDimension.value !== "-" ||
     appliedSeverity.value !== "-" ||
     appliedState.value !== "-" ||
-    appliedScope.value !== undefined
+    appliedScope.value !== undefined ||
+    appliedOwner.value !== ""
 );
 
 const dimensionOptions: Array<{
@@ -619,6 +680,11 @@ const {
         QualityRuleState.PAUSED,
         QualityRuleState.ARCHIVED,
       ]),
+      // The sentinel cannot be sent: an empty owner plus `owner_unassigned` is
+      // how the server reads "only rules nobody owns"; the two fields never both
+      // apply.
+      owner: appliedOwner.value === UNASSIGNED_OWNER ? "" : appliedOwner.value,
+      ownerUnassigned: appliedOwner.value === UNASSIGNED_OWNER,
       signal,
     });
   },
@@ -647,6 +713,7 @@ function applyFilters() {
   appliedSeverity.value = severity.value;
   appliedState.value = state.value;
   appliedScope.value = scope.value ? { ...scope.value } : undefined;
+  appliedOwner.value = owner.value;
   void resetPage();
 }
 
@@ -656,6 +723,7 @@ function clearFilters() {
   severity.value = "-";
   state.value = "-";
   scope.value = undefined;
+  owner.value = "";
   applyFilters();
 }
 
@@ -681,6 +749,11 @@ function targetTitle(rule: QualityRule): string {
   const scope = targetScopeLabel(rule.target?.path);
   const path = formatTargetPath(rule.target?.path);
   return scope === "-" ? path : `${scope} · ${path}`;
+}
+
+/** The owner's email from the directory (raw name if unknown), or "unassigned". */
+function ownerName(rule: QualityRule): string {
+  return rule.owner ? emailOf(rule.owner) : t("dataQuality.unassignedOwner");
 }
 
 async function runRule(rule: QualityRule) {
@@ -748,5 +821,6 @@ async function confirmDelete() {
 
 onMounted(() => {
   void resetPage();
+  void loadUserDirectory();
 });
 </script>

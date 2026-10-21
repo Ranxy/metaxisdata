@@ -106,6 +106,8 @@ export async function listQualityRules(options: {
   severity?: QualitySeverity;
   state?: QualityRuleState;
   owner?: string;
+  /** When true, only rules with no owner; mutually exclusive with a non-empty owner. */
+  ownerUnassigned?: boolean;
   /** A substring match over the title and description. */
   search?: string;
   signal?: AbortSignal;
@@ -124,6 +126,7 @@ export async function listQualityRules(options: {
     severity: options.severity ?? QualitySeverity.UNSPECIFIED,
     state: options.state ?? QualityRuleState.UNSPECIFIED,
     owner: options.owner ?? "",
+    ownerUnassigned: options.ownerUnassigned ?? false,
     search: options.search ?? "",
   });
   const response = await dataQualityClient.listQualityRules(request, {

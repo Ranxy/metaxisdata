@@ -46,6 +46,12 @@
                 </span>
               </span>
               <span
+                v-else-if="showsNoOwnerValue"
+                class="truncate text-muted-foreground"
+              >
+                {{ noOwnerText }}
+              </span>
+              <span
                 v-else
                 class="truncate text-muted-foreground"
               >
@@ -71,12 +77,22 @@
                 <CommandEmpty>{{ t("userSelect.noMatch") }}</CommandEmpty>
                 <CommandGroup>
                   <CommandItem
+                    v-if="query === '' && anyLabel"
+                    :value="ANY_OWNER"
+                  >
+                    <span class="truncate">{{ anyLabel }}</span>
+                    <Check
+                      v-if="modelValue === ''"
+                      class="ml-auto h-4 w-4"
+                    />
+                  </CommandItem>
+                  <CommandItem
                     v-if="query === ''"
                     :value="NO_OWNER"
                   >
-                    <span class="truncate">{{ t("userSelect.noOwner") }}</span>
+                    <span class="truncate">{{ noOwnerText }}</span>
                     <Check
-                      v-if="!modelValue"
+                      v-if="noOwnerSelected"
                       class="ml-auto h-4 w-4"
                     />
                   </CommandItem>
@@ -107,8 +123,8 @@
           v-if="modelValue && !disabled"
           type="button"
           class="absolute right-8 top-1/2 -translate-y-1/2 rounded-sm p-0.5 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          :aria-label="t('userSelect.clear')"
-          :title="t('userSelect.clear')"
+          :aria-label="clearLabel || t('userSelect.clear')"
+          :title="clearLabel || t('userSelect.clear')"
           @click.stop="clear"
         >
           <X class="h-3.5 w-3.5" />
@@ -170,6 +186,31 @@ const props = withDefaults(
     placeholder?: string;
     disabled?: boolean;
     id?: string;
+    /**
+     * The value the "No owner" row emits. A filter that treats a distinct value
+     * as "unassigned" passes its sentinel here; empty keeps the editor's "".
+     */
+    noOwnerValue?: string;
+    /** Overrides the "No owner" row label, e.g. a filter's "Unassigned". */
+    noOwnerLabel?: string;
+    /**
+     * When set, a row that clears the selection is offered above the no-owner
+     * row, so a filter can return to "any". The editor leaves it empty.
+     */
+    anyLabel?: string;
+    /** Overrides the clear (X) action's accessible name. */
+    clearLabel?: string;
+    /**
+     * Defer the directory request until the popover first opens. A page that
+     * already loaded the directory passes `preloadedUsers` instead.
+     */
+    lazy?: boolean;
+    /**
+     * A caller-supplied directory. When present the picker never calls
+     * users.list itself — not on mount, not on open — treats itself as
+     * permitted, and searches/selects over these users.
+     */
+    preloadedUsers?: User[];
   }>(),
   {
     modelValue: "",
@@ -178,6 +219,11 @@ const props = withDefaults(
     placeholder: "",
     disabled: false,
     id: "",
+    noOwnerValue: "",
+    noOwnerLabel: "",
+    anyLabel: "",
+    clearLabel: "",
+    lazy: false,
   }
 );
 
@@ -189,10 +235,14 @@ const { t } = useI18n();
 const { formatError } = useErrorMessage();
 const authStore = useAuthStore();
 
-const canList = computed(() =>
-  authStore.hasPermission("metaxisdata.users.list")
+const hasPreloadedUsers = computed(() => props.preloadedUsers !== undefined);
+const canList = computed(
+  () =>
+    hasPreloadedUsers.value || authStore.hasPermission("metaxisdata.users.list")
 );
 
+/** The command row's own values; they never leave the picker. */
+const ANY_OWNER = "__any_owner__";
 const NO_OWNER = "__no_owner__";
 const fieldId = computed(
   () => props.id || `user-select-${Math.random().toString(36).slice(2, 9)}`
@@ -204,12 +254,31 @@ const users = ref<User[]>([]);
 const loadError = ref("");
 let loaded = false;
 
+/** The rows the picker searches: a caller's directory or its own fetch. */
+const directory = computed(() => props.preloadedUsers ?? users.value);
+
 const selectedUser = computed(() =>
-  users.value.find((user) => user.name === props.modelValue)
+  directory.value.find((user) => user.name === props.modelValue)
 );
-const selectedLabel = computed(
-  () => selectedUser.value?.email || props.modelValue
+const noOwnerText = computed(
+  () => props.noOwnerLabel || t("userSelect.noOwner")
 );
+/**
+ * Whether the "No owner" row is the current choice. Both props are empty by
+ * default, so this is the editor's old "empty value" check; a filter passes its
+ * own sentinel and gets it back.
+ */
+const noOwnerSelected = computed(() => props.modelValue === props.noOwnerValue);
+/** Only a non-empty sentinel replaces the trigger's placeholder. */
+const showsNoOwnerValue = computed(
+  () => props.noOwnerValue !== "" && noOwnerSelected.value
+);
+const selectedLabel = computed(() => {
+  if (selectedUser.value) {
+    return selectedUser.value.email;
+  }
+  return showsNoOwnerValue.value ? noOwnerText.value : props.modelValue;
+});
 
 /** The picker filters its own rows; radix's filter is a pass-through. */
 function identity<T>(values: T): T {
@@ -224,8 +293,8 @@ const query = computed(() => searchText.value.trim().toLowerCase());
 
 const visibleUsers = computed(() =>
   query.value === ""
-    ? users.value
-    : users.value.filter(
+    ? directory.value
+    : directory.value.filter(
         (user) =>
           user.email.toLowerCase().includes(query.value) ||
           user.title.toLowerCase().includes(query.value) ||
@@ -234,7 +303,7 @@ const visibleUsers = computed(() =>
 );
 
 async function loadUsers() {
-  if (loaded || !canList.value) {
+  if (loaded || hasPreloadedUsers.value || !canList.value) {
     return;
   }
   try {
@@ -254,7 +323,9 @@ watch(open, (isOpen) => {
 });
 
 onMounted(() => {
-  void loadUsers();
+  if (!props.lazy) {
+    void loadUsers();
+  }
 });
 
 function choose(value: unknown) {
@@ -262,7 +333,11 @@ function choose(value: unknown) {
     return;
   }
   open.value = false;
-  emit("update:modelValue", value === NO_OWNER ? "" : value);
+  if (value === ANY_OWNER) {
+    emit("update:modelValue", "");
+    return;
+  }
+  emit("update:modelValue", value === NO_OWNER ? props.noOwnerValue : value);
 }
 
 function clear() {

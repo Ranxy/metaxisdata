@@ -277,6 +277,7 @@
     },
     "allDimensions": "全部维度",
     "allIssueStatuses": "全部状态",
+    "allOwners": "全部负责人",
     "allSeverities": "全部严重级别",
     "allStates": "全部状态",
     "asset": {
@@ -317,6 +318,7 @@
       "viewAll": "查看全部",
       "viewRuns": "查看执行"
     },
+    "clearOwnerFilter": "清除负责人筛选",
     "columns": "字段",
     "comparisonOperator": {
       "eq": "=",
@@ -591,6 +593,7 @@
       "notIn": "不属于",
       "unspecified": "未指定"
     },
+    "filterOwner": "负责人",
     "filterSeverity": "严重级别",
     "filterState": "状态",
     "finishedAt": "结束时间",
@@ -956,6 +959,7 @@
     "trigger": "触发方式",
     "truncated": "样本已截断",
     "type": "类型",
+    "unassignedOwner": "未指定",
     "updateError": "更新规则失败。",
     "updatedAt": "更新时间",
     "viewIssue": "查看问题",

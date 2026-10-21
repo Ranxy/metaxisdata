@@ -2341,7 +2341,7 @@ export declare type ListQualityRulesRequest = Message<"metaxisdata.v1.ListQualit
   state: QualityRuleState;
 
   /**
-   * Format: users/{user}.
+   * Format: users/{user}. Empty means every owner.
    *
    * @generated from field: string owner = 13;
    */
@@ -2353,6 +2353,14 @@ export declare type ListQualityRulesRequest = Message<"metaxisdata.v1.ListQualit
    * @generated from field: string search = 14;
    */
   search: string;
+
+  /**
+   * When true, only rules with no owner are returned. It cannot be combined
+   * with a non-empty owner.
+   *
+   * @generated from field: bool owner_unassigned = 15;
+   */
+  ownerUnassigned: boolean;
 };
 
 /**

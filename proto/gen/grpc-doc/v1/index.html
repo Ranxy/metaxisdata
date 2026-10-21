@@ -13374,7 +13374,7 @@ watches. </p></td>
                   <td>owner</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p>Format: users/{user}. </p></td>
+                  <td><p>Format: users/{user}. Empty means every owner. </p></td>
                 </tr>
               
                 <tr>
@@ -13382,6 +13382,14 @@ watches. </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p>A substring match over the title and description. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>owner_unassigned</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>When true, only rules with no owner are returned. It cannot be combined
+with a non-empty owner. </p></td>
                 </tr>
               
             </tbody>
