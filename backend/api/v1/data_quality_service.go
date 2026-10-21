@@ -19,6 +19,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 	llmcomp "github.com/Ranxy/metaxisdata/backend/component/llm"
+	"github.com/Ranxy/metaxisdata/backend/component/state"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/plugin/db"
@@ -44,6 +45,13 @@ const (
 	qualityProfileSampleRows = 1000
 	// qualityProfileQueryTimeout bounds one profile query.
 	qualityProfileQueryTimeout = 120 * time.Second
+	// qualityPreviewConnectionWait bounds how long a dry-run probe waits for one of
+	// the instance's connection slots. The probe itself is a LIMIT 0 statement, so
+	// waiting longer than the probe could take buys nothing.
+	qualityPreviewConnectionWait = 3 * time.Second
+	// qualityProfileConnectionWait bounds how long a profile waits for one of the
+	// instance's connection slots.
+	qualityProfileConnectionWait = 10 * time.Second
 	// qualityProfileMaxBytes bounds the rows a profile query keeps in memory.
 	qualityProfileMaxBytes = 4 << 20
 	// qualityLLMMaxOutputTokens bounds what one analysis may generate. The
@@ -56,10 +64,13 @@ const (
 // narrow interface. A nil scheduler means the run is created and left PENDING,
 // which is the state before the runner is wired in.
 type QualityRunScheduler interface {
-	// EnqueueQualityRun queues a run together with the rules it must execute. It
-	// reports false when its bounded queue is full, in which case the run is
-	// abandoned as a quota failure and the caller gets ResourceExhausted.
-	EnqueueQualityRun(runID int64, ruleIDs []int64) bool
+	// EnqueueQualityRun queues a run together with the instance the API grouped
+	// its rules on and the rules it must execute. It reports false when its
+	// bounded queue is full, in which case the run is abandoned as a quota
+	// failure and the caller gets ResourceExhausted. The runner admits the run
+	// against the instance's connection budget; a run that has to wait stays
+	// PENDING and is not reported as a failure.
+	EnqueueQualityRun(runID int64, instanceResourceID string, ruleIDs []int64) bool
 }
 
 // DataQualityService serves the data quality rules, the runs that execute them
@@ -70,6 +81,10 @@ type DataQualityService struct {
 	store        *store.Store
 	dbFactory    *dbfactory.DBFactory
 	runScheduler QualityRunScheduler
+	// stateCfg is the instance connection governor. The preview probe and the
+	// profile open a target driver on a user's behalf, so they lease a slot from
+	// the same budget the runners use.
+	stateCfg *state.State
 	// llmRegistry lists the enabled provider profiles the LLM analyses can use.
 	// It is nil in tests that never reach an LLM path.
 	llmRegistry *llmcomp.Registry
@@ -79,12 +94,13 @@ type DataQualityService struct {
 }
 
 // NewDataQualityService creates the service. runScheduler may be nil.
-func NewDataQualityService(s *store.Store, dbFactory *dbfactory.DBFactory, runScheduler QualityRunScheduler, llmRegistry *llmcomp.Registry) *DataQualityService {
+func NewDataQualityService(s *store.Store, dbFactory *dbfactory.DBFactory, runScheduler QualityRunScheduler, llmRegistry *llmcomp.Registry, stateCfg *state.State) *DataQualityService {
 	return &DataQualityService{
 		store:        s,
 		dbFactory:    dbFactory,
 		runScheduler: runScheduler,
 		llmRegistry:  llmRegistry,
+		stateCfg:     stateCfg,
 		llmQuota:     newQualityLLMQuota(),
 	}
 }
@@ -639,6 +655,11 @@ func (s *DataQualityService) probeQualityRule(ctx context.Context, validated *da
 	if s.dbFactory == nil {
 		return connect.NewError(connect.CodeFailedPrecondition, errors.New("a database factory is required to probe a rule"))
 	}
+	connection, err := s.acquireQualityConnection(ctx, validated.Resolution.Instance, "the dry run", qualityPreviewConnectionWait)
+	if err != nil {
+		return err
+	}
+	defer connection()
 	driver, err := s.dbFactory.GetReadOnlyDatabaseDriver(ctx, validated.Resolution.Instance, validated.Resolution.Database)
 	if err != nil {
 		if errors.Is(err, dbfactory.ErrNoReadOnlyDataSource) {
@@ -760,7 +781,7 @@ func (s *DataQualityService) RunQualityRules(ctx context.Context, req *connect.R
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create the quality run")
 		}
-		if s.runScheduler != nil && !s.runScheduler.EnqueueQualityRun(run.ID, ruleIDs) {
+		if s.runScheduler != nil && !s.runScheduler.EnqueueQualityRun(run.ID, instance, ruleIDs) {
 			s.abandonUnqueueableQualityRun(ctx, run, len(ruleIDs), now)
 			return nil, connect.NewError(connect.CodeResourceExhausted,
 				errors.New("the quality runner queue is full; retry the run later"))
@@ -775,9 +796,12 @@ func (s *DataQualityService) RunQualityRules(ctx context.Context, req *connect.R
 // stale-run sweep is the backstop if this write fails.
 func (s *DataQualityService) abandonUnqueueableQualityRun(ctx context.Context, run *store.QualityRunMessage, selected int, at time.Time) {
 	counts := &storepb.QualityRunCounts{Total: int32(selected)}
+	// The run executed nothing, so it has no rollup outcome: ABANDONED with an
+	// absent outcome is the honest state (the runner uses the same for a run whose
+	// admission never succeeded).
 	abandonErr := s.store.FinishQualityRun(ctx, run.ID,
 		storepb.QualityRunStatus_QUALITY_RUN_STATUS_ABANDONED,
-		storepb.QualityStatus_QUALITY_STATUS_ERROR, counts, at)
+		storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, counts, at)
 	if abandonErr != nil {
 		slog.Warn("failed to abandon an unqueueable quality run",
 			slog.Int64("run_id", run.ID), clog.WithError(abandonErr))
@@ -1970,8 +1994,13 @@ func (s *DataQualityService) qualityReadOnlyQueryer(ctx context.Context, resolut
 		return nil, nil, connect.NewError(connect.CodeFailedPrecondition,
 			errors.Errorf("a database factory is required to %s", action))
 	}
+	connection, err := s.acquireQualityConnection(ctx, resolution.Instance, action, qualityProfileConnectionWait)
+	if err != nil {
+		return nil, nil, err
+	}
 	driver, err := s.dbFactory.GetReadOnlyDatabaseDriver(ctx, resolution.Instance, resolution.Database)
 	if err != nil {
+		connection()
 		if errors.Is(err, dbfactory.ErrNoReadOnlyDataSource) {
 			return nil, nil, connect.NewError(connect.CodeFailedPrecondition, errors.Wrapf(err,
 				"add a READ_ONLY data source to the instance before %s", action))
@@ -1982,6 +2011,7 @@ func (s *DataQualityService) qualityReadOnlyQueryer(ctx context.Context, resolut
 	queryer, ok := driver.(db.ReadOnlyQueryer)
 	if !ok {
 		_ = driver.Close(ctx)
+		connection()
 		return nil, nil, connect.NewError(connect.CodeFailedPrecondition,
 			errors.Errorf("engine %s does not support read-only queries", resolution.Target.Engine))
 	}
@@ -1989,8 +2019,41 @@ func (s *DataQualityService) qualityReadOnlyQueryer(ctx context.Context, resolut
 		if closeErr := driver.Close(ctx); closeErr != nil {
 			slog.Warn("failed to close the read-only data source", clog.WithError(closeErr))
 		}
+		connection()
 	}
 	return queryer, release, nil
+}
+
+// acquireQualityConnection reserves one of the instance's connection slots for a
+// read-only query an API request runs. A dry run and a profile open a driver on a
+// user's behalf, so they lease from the same budget as the runners instead of
+// pushing the target past its ceiling. A busy instance is reported as
+// ResourceExhausted: the action is retryable and nothing was recorded.
+func (s *DataQualityService) acquireQualityConnection(ctx context.Context, instance *store.InstanceMessage, action string, wait time.Duration) (func(), error) {
+	if s.stateCfg == nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.New("the instance connection governor is not configured"))
+	}
+	if instance == nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.Errorf("cannot run %s without an instance", action))
+	}
+	maximumConnections := int(instance.Metadata.GetMaximumConnections())
+	if maximumConnections <= 0 {
+		maximumConnections = common.DefaultInstanceMaximumConnections
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, wait)
+	defer cancel()
+	release, err := s.stateCfg.AcquireInstanceConnection(waitCtx, state.InstanceConnectionRequest{
+		InstanceID:         instance.ResourceID,
+		MaximumConnections: maximumConnections,
+		// The caller is an API request whose user is waiting, so it takes the
+		// interactive class ahead of the runners' background work.
+		Priority: state.ConnectionPriorityInteractive,
+	})
+	if err != nil {
+		return nil, connect.NewError(connect.CodeResourceExhausted,
+			errors.Errorf("the instance is using all of its connections right now; retry %s shortly", action))
+	}
+	return release, nil
 }
 
 // trimmedQualityColumns trims and de-duplicates a column list, preserving order.

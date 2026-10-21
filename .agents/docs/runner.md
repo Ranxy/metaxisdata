@@ -10,7 +10,7 @@
 | `lineageanalyzer` | `backend/runner/lineageanalyzer` | full scan 1h, queue consumer 10s | immediate | analyze view/MV/manual/application SQL into `column_lineage` |
 | `lineagevalidation` | `backend/runner/lineagevalidation` | event-driven, 5s settle | one pass at startup | revalidate ingested edges after a sync commits |
 | `maintenance` | `backend/runner/maintenance` | 6h | immediate | retention prunes, token cleanup, ingested-lineage sweep |
-| `qualityrunner` | `backend/runner/qualityrunner` | due scan 10s, manual queue priority | first tick | execute data quality rules in per-instance runs, write results, drive the problem ledger and notifications (see [data-quality.md](data-quality.md)) |
+| `qualityrunner` | `backend/runner/qualityrunner` | due scan 10s, manual queue priority | first tick | execute data quality rules in per-instance runs, write results, drive the problem ledger and notifications; each run leases the instance's connection budget before it starts (see [data-quality.md](data-quality.md), [instance-connections.md](instance-connections.md)) |
 
 Every runner implements `runner.Runner` (`Name()`, `Run(ctx)`) and is started by `runner.Go`, which wraps the body in a top-level `recover` and logs the runner's start and stop (name + run duration): a panic is logged with its stack and takes down that runner, never the process. `backend/server/server.go` starts the slice, so adding a runner is one entry, not another hard-coded `Add`.
 
@@ -36,12 +36,14 @@ All coordination state is in memory, and the deployment runs **one server proces
 | table-statistics refresh clock, DDL refresh clock + rotation cursor | `schemasync` | a restart makes every database due for a refresh (intended first pass) |
 | maintenance schedule | `maintenance` | the next tick is 6h away; startup runs one pass |
 | data quality due scan, manual run queue, in-flight rule ids, daily LLM counters | `qualityrunner` (quota counters live in `api/v1`) | rules re-converge from `next_run_at`; queued manual runs are lost (their runs are swept to ABANDONED at startup); LLM counters reset |
+| per-instance connection leases and their wait queues | `state.State.instanceConnections` (shared by every driver-opening path) | held leases vanish; a waiting run observes its context and gives up, and the next scheduled tick retries. See [instance-connections.md](instance-connections.md) |
 
 Consequences worth knowing before changing this area:
 
 - **No cross-process coordination is attempted** (no advisory lock, no lease): running two replicas would duplicate syncs and analyses, split operation messages between processes and double the target database load. Scale the database, not the server.
 - **A restart loses queued work but converges**: the instance scan re-enqueues databases, the hourly analysis scan re-queues stale objects, and startup refreshes statistics and DDL.
 - **Change detection still holds**: metadata fingerprint + `AnalyzerVersion` decide re-analysis; statistics and DDL refreshes are deliberately outside the fingerprint.
+- **Capacity contention is waited out, never recorded as a failure**: a scheduled run that cannot lease its instance's connection budget leaves its rules due, and a manual run that waits too long is abandoned; neither writes a rule result. The queue and its budgets are in [instance-connections.md](instance-connections.md).
 
 ## Derived-data and cache cadences
 
@@ -63,6 +65,7 @@ Consequences worth knowing before changing this area:
 | analysis queue/cadence | `backend/runner/lineageanalyzer/analyzer.go` | `analyzer_test.go`, `backend/test/integration/runner/schemasync_lineage_mysql_service_test.go` |
 | validation trigger/settle | `backend/runner/lineagevalidation/validation.go` | `validation_test.go` |
 | maintenance pass | `backend/runner/maintenance/maintenance.go` | `maintenance_test.go` |
+| per-instance connection budget | `backend/component/state/connection.go` | `backend/component/state/connection_test.go` |
 
 ## Known accepted gaps
 

@@ -200,8 +200,11 @@ const (
 	ErrCodeBadData       = "BAD_DATA"
 	ErrCodeLimitExceeded = "LIMIT_EXCEEDED"
 	ErrCodeOrphaned      = "ORPHANED"
-	ErrCodeQuota         = "QUOTA"
-	ErrCodeNoReadOnly    = "NO_READ_ONLY_SOURCE"
+	// ErrCodeQuota is legacy: capacity contention is deferred before a run starts,
+	// so the runner no longer writes it. It stays because stored results may carry
+	// it and the frontend localizes the code.
+	ErrCodeQuota      = "QUOTA"
+	ErrCodeNoReadOnly = "NO_READ_ONLY_SOURCE"
 )
 
 // ResultState is the verdict of one rule execution: the status plus the

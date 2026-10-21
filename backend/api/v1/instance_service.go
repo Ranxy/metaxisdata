@@ -41,6 +41,12 @@ const batchSyncBudget = 5 * time.Minute
 // not be able to keep that slot until the client gives up.
 const dataSourcePingTimeout = 60 * time.Second
 
+// dataSourceConnectionWait bounds how long a test connection waits for one of
+// the instance's connection slots. A person is waiting on the result, so it gets
+// the interactive class and a short queue; when even that is not enough the
+// action reports backpressure instead of opening an unbudgeted connection.
+const dataSourceConnectionWait = 5 * time.Second
+
 // InstanceService implements the instance service.
 type InstanceService struct {
 	v1connect.UnimplementedInstanceServiceHandler
@@ -726,9 +732,16 @@ func (s *InstanceService) pingDataSource(ctx context.Context, instance *store.In
 	if maximumConnections <= 0 {
 		maximumConnections = common.DefaultInstanceMaximumConnections
 	}
-	release, err := s.stateCfg.AcquireInstanceConnection(instance.ResourceID, maximumConnections)
+	waitCtx, cancelWait := context.WithTimeout(ctx, dataSourceConnectionWait)
+	defer cancelWait()
+	release, err := s.stateCfg.AcquireInstanceConnection(waitCtx, state.InstanceConnectionRequest{
+		InstanceID:         instance.ResourceID,
+		MaximumConnections: maximumConnections,
+		Priority:           state.ConnectionPriorityInteractive,
+	})
 	if err != nil {
-		return connect.NewError(connect.CodeResourceExhausted, err)
+		return connect.NewError(connect.CodeResourceExhausted,
+			errors.Errorf("the instance is using all of its connections right now; retry the test connection shortly: %v", err))
 	}
 	defer release()
 

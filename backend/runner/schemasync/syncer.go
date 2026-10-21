@@ -602,7 +602,18 @@ func (s *Syncer) acquireInstanceConnection(instance *store.InstanceMessage) (fun
 	if maximumConnections <= 0 {
 		maximumConnections = common.DefaultInstanceMaximumConnections
 	}
-	return s.stateCfg.AcquireInstanceConnection(instance.ResourceID, maximumConnections)
+	release, ok := s.stateCfg.TryAcquireInstanceConnection(state.InstanceConnectionRequest{
+		InstanceID:         instance.ResourceID,
+		MaximumConnections: maximumConnections,
+		Priority:           state.ConnectionPriorityBackground,
+	})
+	if !ok {
+		// The checker keeps the database queued and retries on a later tick, so it
+		// must not hold a slot waiting. A queued data-quality run owns the next free
+		// slot; see .agents/docs/instance-connections.md.
+		return nil, errors.Wrapf(state.ErrInstanceConnectionLimit, "instance %q already has all of its outstanding connections", instance.ResourceID)
+	}
+	return release, nil
 }
 
 // GetInstanceMeta gets the instance metadata.
