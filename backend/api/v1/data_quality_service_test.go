@@ -290,6 +290,7 @@ func TestApplyQualityRuleListFilters(t *testing.T) {
 	require.True(t, find.IncludeArchived, "asking for archived rules must include them")
 	require.True(t, find.IncludeDeleted, "archived rules are soft-deleted rows")
 	require.Equal(t, int32(7), *find.OwnerID)
+	require.False(t, find.OwnerUnassigned, "an owner filter never sets the unassigned flag")
 	require.Equal(t, "orders", *find.Search)
 
 	err = applyQualityRuleListFilters(&store.FindQualityRuleMessage{}, &v1pb.ListQualityRulesRequest{Owner: "nobody"})
@@ -301,6 +302,26 @@ func TestApplyQualityRuleListFilters(t *testing.T) {
 	raw := &store.FindQualityRuleMessage{}
 	require.NoError(t, applyQualityRuleListFilters(raw, &v1pb.ListQualityRulesRequest{Instance: "instance_1"}))
 	require.Equal(t, "instance_1", raw.Instance)
+
+	// owner_unassigned selects only rules with no owner: the complement of an
+	// owner filter, never a second condition.
+	unassigned := &store.FindQualityRuleMessage{}
+	require.NoError(t, applyQualityRuleListFilters(unassigned, &v1pb.ListQualityRulesRequest{OwnerUnassigned: true}))
+	require.True(t, unassigned.OwnerUnassigned)
+	require.Nil(t, unassigned.OwnerID)
+
+	// A whitespace-only owner is no owner, so it may accompany the flag.
+	blank := &store.FindQualityRuleMessage{}
+	require.NoError(t, applyQualityRuleListFilters(blank, &v1pb.ListQualityRulesRequest{Owner: "  ", OwnerUnassigned: true}))
+	require.True(t, blank.OwnerUnassigned)
+	require.Nil(t, blank.OwnerID)
+
+	err = applyQualityRuleListFilters(&store.FindQualityRuleMessage{}, &v1pb.ListQualityRulesRequest{
+		Owner:           "users/7",
+		OwnerUnassigned: true,
+	})
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }
 
 func TestQualityRunListFilter(t *testing.T) {

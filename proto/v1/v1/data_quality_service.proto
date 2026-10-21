@@ -1261,11 +1261,15 @@ message ListQualityRulesRequest {
   QualitySeverity severity = 11;
   QualityRuleState state = 12;
 
-  // Format: users/{user}.
+  // Format: users/{user}. Empty means every owner.
   string owner = 13;
 
   // A substring match over the title and description.
   string search = 14;
+
+  // When true, only rules with no owner are returned. It cannot be combined
+  // with a non-empty owner.
+  bool owner_unassigned = 15;
 }
 
 message ListQualityRulesResponse {

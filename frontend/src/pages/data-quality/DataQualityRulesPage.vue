@@ -61,6 +61,30 @@
           />
         </div>
 
+        <!-- Owner is optional, so the picker carries an "unassigned" row besides
+             the members. Without users.list it cannot populate, so callers who
+             lack the permission get no control rather than an empty one. -->
+        <div
+          v-if="canListUsers"
+          class="flex min-w-48 flex-1 flex-col gap-1.5 sm:max-w-64 sm:flex-none"
+        >
+          <Label
+            for="data-quality-owner"
+            class="text-sm font-medium leading-none"
+          >
+            {{ t("dataQuality.filterOwner") }}
+          </Label>
+          <UserSelect
+            id="data-quality-owner"
+            v-model="owner"
+            :placeholder="t('dataQuality.allOwners')"
+            :any-label="t('dataQuality.allOwners')"
+            :no-owner-value="UNASSIGNED_OWNER"
+            :no-owner-label="t('dataQuality.unassignedOwner')"
+            :clear-label="t('dataQuality.clearOwnerFilter')"
+          />
+        </div>
+
         <div class="flex min-w-36 flex-1 flex-col gap-1.5 [&>select]:hidden sm:flex-none">
           <Label
             for="data-quality-dimension"
@@ -443,6 +467,7 @@ import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import TablePager from "@/components/common/TablePager.vue";
+import UserSelect from "@/components/common/UserSelect.vue";
 import TargetScopeFilter from "@/components/data-quality/TargetScopeFilter.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
@@ -507,6 +532,18 @@ const canUpdate = computed(() =>
 const canDelete = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.rules.delete")
 );
+// The owner picker needs users.list to populate; the server also gates the
+// owner filter's usefulness on being able to name a user.
+const canListUsers = computed(() =>
+  authStore.hasPermission("metaxisdata.users.list")
+);
+
+/**
+ * The owner picker's "unassigned" choice. It is a page-local value, never sent:
+ * the request boundary turns it into `ownerUnassigned: true` with an empty
+ * owner.
+ */
+const UNASSIGNED_OWNER = "__unassigned__";
 
 // The filter controls hold strings for the Select; the enums are built at the
 // request boundary, where they belong. `-` is the "any" item.
@@ -515,11 +552,13 @@ const dimension = ref("-");
 const severity = ref("-");
 const state = ref("-");
 const scope = ref<QualityTargetScope>();
+const owner = ref("");
 const appliedSearch = ref("");
 const appliedDimension = ref("-");
 const appliedSeverity = ref("-");
 const appliedState = ref("-");
 const appliedScope = ref<QualityTargetScope>();
+const appliedOwner = ref("");
 
 const pageSize = ref(50);
 const error = ref("");
@@ -533,7 +572,8 @@ const hasActiveFilters = computed(
     appliedDimension.value !== "-" ||
     appliedSeverity.value !== "-" ||
     appliedState.value !== "-" ||
-    appliedScope.value !== undefined
+    appliedScope.value !== undefined ||
+    appliedOwner.value !== ""
 );
 
 const dimensionOptions: Array<{
@@ -619,6 +659,11 @@ const {
         QualityRuleState.PAUSED,
         QualityRuleState.ARCHIVED,
       ]),
+      // The sentinel cannot be sent: an empty owner plus `owner_unassigned` is
+      // how the server reads "only rules nobody owns"; the two fields never both
+      // apply.
+      owner: appliedOwner.value === UNASSIGNED_OWNER ? "" : appliedOwner.value,
+      ownerUnassigned: appliedOwner.value === UNASSIGNED_OWNER,
       signal,
     });
   },
@@ -647,6 +692,7 @@ function applyFilters() {
   appliedSeverity.value = severity.value;
   appliedState.value = state.value;
   appliedScope.value = scope.value ? { ...scope.value } : undefined;
+  appliedOwner.value = owner.value;
   void resetPage();
 }
 
@@ -656,6 +702,7 @@ function clearFilters() {
   severity.value = "-";
   state.value = "-";
   scope.value = undefined;
+  owner.value = "";
   applyFilters();
 }
 

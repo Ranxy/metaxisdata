@@ -277,6 +277,7 @@
     },
     "allDimensions": "All dimensions",
     "allIssueStatuses": "All statuses",
+    "allOwners": "All owners",
     "allSeverities": "All severities",
     "allStates": "All states",
     "asset": {
@@ -317,6 +318,7 @@
       "viewAll": "View all",
       "viewRuns": "View runs"
     },
+    "clearOwnerFilter": "Clear owner filter",
     "columns": "Columns",
     "comparisonOperator": {
       "eq": "=",
@@ -591,6 +593,7 @@
       "notIn": "not in",
       "unspecified": "Unspecified"
     },
+    "filterOwner": "Owner",
     "filterSeverity": "Severity",
     "filterState": "State",
     "finishedAt": "Finished",
@@ -956,6 +959,7 @@
     "trigger": "Trigger",
     "truncated": "Samples truncated",
     "type": "Type",
+    "unassignedOwner": "Unassigned",
     "updateError": "Failed to update the rule.",
     "updatedAt": "Updated",
     "viewIssue": "View issue",

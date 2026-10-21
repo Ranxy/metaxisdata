@@ -285,7 +285,11 @@ func applyQualityRuleListFilters(find *store.FindQualityRuleMessage, request *v1
 		find.IncludeArchived = true
 		find.IncludeDeleted = true
 	}
-	if owner := strings.TrimSpace(request.GetOwner()); owner != "" {
+	owner := strings.TrimSpace(request.GetOwner())
+	if owner != "" && request.GetOwnerUnassigned() {
+		return connectErrorInvalid("owner and owner_unassigned cannot be combined")
+	}
+	if owner != "" {
 		id, err := common.GetUserID(owner)
 		if err != nil {
 			return connectErrorInvalid("invalid owner %q", owner)
@@ -293,6 +297,7 @@ func applyQualityRuleListFilters(find *store.FindQualityRuleMessage, request *v1
 		principalID := int32(id)
 		find.OwnerID = &principalID
 	}
+	find.OwnerUnassigned = request.GetOwnerUnassigned()
 	if search := strings.TrimSpace(request.GetSearch()); search != "" {
 		find.Search = &search
 	}

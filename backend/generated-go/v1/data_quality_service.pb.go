@@ -5617,12 +5617,15 @@ type ListQualityRulesRequest struct {
 	RuleType   QualityRuleType  `protobuf:"varint,10,opt,name=rule_type,json=ruleType,proto3,enum=metaxisdata.v1.QualityRuleType" json:"rule_type,omitempty"`
 	Severity   QualitySeverity  `protobuf:"varint,11,opt,name=severity,proto3,enum=metaxisdata.v1.QualitySeverity" json:"severity,omitempty"`
 	State      QualityRuleState `protobuf:"varint,12,opt,name=state,proto3,enum=metaxisdata.v1.QualityRuleState" json:"state,omitempty"`
-	// Format: users/{user}.
+	// Format: users/{user}. Empty means every owner.
 	Owner string `protobuf:"bytes,13,opt,name=owner,proto3" json:"owner,omitempty"`
 	// A substring match over the title and description.
-	Search        string `protobuf:"bytes,14,opt,name=search,proto3" json:"search,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Search string `protobuf:"bytes,14,opt,name=search,proto3" json:"search,omitempty"`
+	// When true, only rules with no owner are returned. It cannot be combined
+	// with a non-empty owner.
+	OwnerUnassigned bool `protobuf:"varint,15,opt,name=owner_unassigned,json=ownerUnassigned,proto3" json:"owner_unassigned,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *ListQualityRulesRequest) Reset() {
@@ -5751,6 +5754,13 @@ func (x *ListQualityRulesRequest) GetSearch() string {
 		return x.Search
 	}
 	return ""
+}
+
+func (x *ListQualityRulesRequest) GetOwnerUnassigned() bool {
+	if x != nil {
+		return x.OwnerUnassigned
+	}
+	return false
 }
 
 type ListQualityRulesResponse struct {
@@ -8878,7 +8888,7 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\acolumns\x18\x01 \x03(\v2\x1b.metaxisdata.v1.ColumnValueR\acolumns\";\n" +
 	"\vColumnValue\x12\x16\n" +
 	"\x06column\x18\x01 \x01(\tR\x06column\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value\"\x9a\x04\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\"\xc5\x04\n" +
 	"\x17ListQualityRulesRequest\x12\x1b\n" +
 	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x1d\n" +
@@ -8896,7 +8906,8 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\bseverity\x18\v \x01(\x0e2\x1f.metaxisdata.v1.QualitySeverityR\bseverity\x126\n" +
 	"\x05state\x18\f \x01(\x0e2 .metaxisdata.v1.QualityRuleStateR\x05state\x12\x14\n" +
 	"\x05owner\x18\r \x01(\tR\x05owner\x12\x16\n" +
-	"\x06search\x18\x0e \x01(\tR\x06search\"\x84\x01\n" +
+	"\x06search\x18\x0e \x01(\tR\x06search\x12)\n" +
+	"\x10owner_unassigned\x18\x0f \x01(\bR\x0fownerUnassigned\"\x84\x01\n" +
 	"\x18ListQualityRulesResponse\x12@\n" +
 	"\rquality_rules\x18\x01 \x03(\v2\x1b.metaxisdata.v1.QualityRuleR\fqualityRules\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"L\n" +

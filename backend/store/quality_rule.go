@@ -109,6 +109,9 @@ type FindQualityRuleMessage struct {
 	Severity  storepb.QualitySeverity
 	State     storepb.QualityRuleState
 	OwnerID   *int32
+	// OwnerUnassigned selects only rules with no owner (owner_id IS NULL). It is
+	// mutually exclusive with OwnerID.
+	OwnerUnassigned bool
 	// Search matches title or description as a case-insensitive substring.
 	Search *string
 	// IncludeDeleted keeps soft-deleted rows. The default excludes them.
@@ -413,6 +416,9 @@ func buildQualityRuleWhere(find *FindQualityRuleMessage) (string, []any, error) 
 	if v := find.OwnerID; v != nil {
 		args = append(args, *v)
 		where = append(where, fmt.Sprintf("owner_id = $%d", len(args)))
+	}
+	if find.OwnerUnassigned {
+		where = append(where, "owner_id IS NULL")
 	}
 	if v := find.Search; v != nil && strings.TrimSpace(*v) != "" {
 		// Escape LIKE metacharacters so a title containing "_" or "%" matches
