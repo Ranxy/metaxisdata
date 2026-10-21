@@ -153,13 +153,19 @@ CREATE TABLE public.appsql_orders (id INT, total NUMERIC(12,2), status TEXT);
 	require.False(t, hasEdgeTo(selectEdges, ordersGUID),
 		"a read writes nothing: %v", describeEdges(selectEdges))
 
-	// The kind is the runner's answer, written back for the list page.
-	insertStatement, err = env.Store.GetApplicationSQL(ctx, &store.FindApplicationSQLMessage{GUID: &insertGUID})
-	require.NoError(t, err)
-	require.Equal(t, store.ApplicationSQLKindWrite, insertStatement.Kind)
-	selectStatement, err := env.Store.GetApplicationSQL(ctx, &store.FindApplicationSQLMessage{GUID: &selectGUID})
-	require.NoError(t, err)
-	require.Equal(t, store.ApplicationSQLKindRead, selectStatement.Kind)
+	// The kind is the runner's answer, written back for the list page. The runner records it
+	// only after the edges commit — a kind that claims a classification the graph does not
+	// have would mislead the list filter — so it can land after the version row the wait above
+	// observed. Poll it for the same reason: reading it the moment the analysis first becomes
+	// visible is a race, not a statement about the behavior.
+	require.Eventually(t, func() bool {
+		insert, err := env.Store.GetApplicationSQL(ctx, &store.FindApplicationSQLMessage{GUID: &insertGUID})
+		if err != nil || insert == nil || insert.Kind != store.ApplicationSQLKindWrite {
+			return false
+		}
+		read, err := env.Store.GetApplicationSQL(ctx, &store.FindApplicationSQLMessage{GUID: &selectGUID})
+		return err == nil && read != nil && read.Kind == store.ApplicationSQLKindRead
+	}, 30*time.Second, 250*time.Millisecond, "the runner must write back the statement kinds")
 
 	// And the graph draws both statements, which is the whole point of storing them.
 	require.Eventually(t, func() bool {
