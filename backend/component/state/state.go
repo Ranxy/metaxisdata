@@ -1,7 +1,6 @@
 package state
 
 import (
-	"sync"
 	"time"
 
 	lru "github.com/hashicorp/golang-lru/v2"
@@ -23,10 +22,6 @@ const SSOStateTTL = 5 * time.Minute
 // against the real limiter and cache.
 const ssoStateCapacity = 4096
 
-// ErrInstanceConnectionLimit reports that an instance is already using all of
-// its outstanding connection slots; the caller should retry later.
-var ErrInstanceConnectionLimit = errors.New("instance connection limit reached")
-
 type State struct {
 	// TokenRevocationCache caches lookups in the persistent revoked_token table,
 	// which is the authority; see RevocationCache.
@@ -37,8 +32,10 @@ type State struct {
 	// every authenticated request, so sharing one bounded cache would let token
 	// traffic evict connection entries.
 	GrantRevocationCache *RevocationCache
-	// InstanceOutstandingConnections counts the open connections per instance.
-	InstanceOutstandingConnections *resourceLimiter
+	// instanceConnections hands out the per-instance connection budget to every
+	// path that opens a driver against a target database. See
+	// .agents/docs/instance-connections.md.
+	instanceConnections *connectionGovernor
 	// LoginLimiter throttles failed password logins per account and per source.
 	LoginLimiter *LoginLimiter
 	// LoginRequestLimiter bounds anonymous Login requests per source and
@@ -97,7 +94,7 @@ func New() (*State, error) {
 		return nil, errors.Wrapf(err, "failed to create sso state cache")
 	}
 	return &State{
-		InstanceOutstandingConnections: &resourceLimiter{connections: map[string]int{}},
+		instanceConnections:            newConnectionGovernor(),
 		TokenRevocationCache:           revocationCache,
 		GrantRevocationCache:           grantRevocationCache,
 		LoginLimiter:                   newLoginLimiter(),
@@ -114,49 +111,4 @@ func New() (*State, error) {
 		MCPCallLimiter:                 newMCPCallLimiter(),
 		MCPSourceCallLimiter:           newMCPSourceCallLimiter(),
 	}, nil
-}
-
-type resourceLimiter struct {
-	sync.Mutex
-	connections map[string]int
-}
-
-// AcquireInstanceConnection reserves one of the instance's outstanding
-// connection slots and returns the release function. A maximumConnections <= 0
-// means no limit. Every path that opens a driver for an instance — the periodic
-// sync, an API-triggered sync and the connection test — goes through it, so a
-// slow or hostile target cannot stack connections past the instance's ceiling.
-func (s *State) AcquireInstanceConnection(instanceID string, maximumConnections int) (func(), error) {
-	if s.InstanceOutstandingConnections.Increment(instanceID, maximumConnections) {
-		return nil, errors.Wrapf(ErrInstanceConnectionLimit, "instance %q already has %d outstanding connections", instanceID, maximumConnections)
-	}
-	return func() { s.InstanceOutstandingConnections.Decrement(instanceID) }, nil
-}
-
-// limit <= 0 means no limit.
-func (c *resourceLimiter) Increment(key string, limit int) bool {
-	c.Lock()
-	defer c.Unlock()
-	if limit <= 0 {
-		// No limit.
-		// Increment anyway to balance the decrement.
-		c.connections[key]++
-		return false
-	}
-	if c.connections[key] >= limit {
-		return true
-	}
-	c.connections[key]++
-	return false
-}
-
-func (c *resourceLimiter) Decrement(key string) {
-	c.Lock()
-	defer c.Unlock()
-	if c.connections[key] <= 1 {
-		// Never go negative, and do not keep zero entries forever.
-		delete(c.connections, key)
-		return
-	}
-	c.connections[key]--
 }

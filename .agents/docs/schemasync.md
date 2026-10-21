@@ -16,7 +16,7 @@
 | 元数据指纹用自有 canonical 编码，不走 protojson | `backend/store/meta_hash.go`（`CalcMetaHash` / `encodeCanonicalMessage`） | protojson 按镜像随机化 map 字段顺序，会导致全表重写。 |
 | 破坏性删除只记日志，没有收缩阈值或确认开关；`logSchemaSyncDeletion` 是唯一痕迹 | `backend/runner/schemasync/syncer.go:755`、`backend/runner/schemasync/syncer.go:1020` | 有意为之：MySQL 的 `information_schema` 只列连接用户可见的对象，权限变更可以清空快照。详见 `docs/security-posture.md`。 |
 | `deleted = true` 可由任何“目标说这个库没了”的观测写入，`deleted = false` 只能由实例枚举写入；单库同步的成功路径不写 `deleted` | `backend/runner/schemasync/syncer.go:611-618`、`backend/runner/schemasync/syncer.go:800-810`、`backend/runner/schemasync/syncer.go:830` | 一次“读到了某个库的内容”不是一次实例枚举；写成双向就会 flap。详见 `docs/security-posture.md`。 |
-| 每个 driver 打开点都经过实例连接限流：sync 走 `acquireInstanceConnection`，API 侧的连通性探测也调用 `stateCfg.AcquireInstanceConnection` | `backend/runner/schemasync/syncer.go`；`backend/api/v1/instance_service.go` | 绕过限流会让 `maximum_connections` 形同虚设，调用方可以对着一个只握手不响应的目标堆叠无界尝试。 |
+| 每个 driver 打开点都经过实例连接限流：sync 走 `acquireInstanceConnection`（`TryAcquire`，拿不到就把库放回队列），连通性测试走 `Acquire`（Interactive，5s 预算）；排队与优先级见 [instance-connections.md](instance-connections.md) | `backend/runner/schemasync/syncer.go`；`backend/api/v1/instance_service.go`；`backend/component/state/connection.go` | 绕过限流会让 `maximum_connections` 形同虚设，调用方可以对着一个只握手不响应的目标堆叠无界尝试；若 sync 改成阻塞等待，checker 的 tick 会被拖住。 |
 | 实例元数据只写定向 patch：runner 与 API（UpdateInstance、数据源增删改）都用 `UpdateInstanceMessage.MetadataUpdates`，在 store 的行锁内合并；`last_sync_time` / `version` / `mysql_lower_case_table_names` 只由 runner 的 patch 写 | `backend/store/instance.go` 的 `patchInstanceMetadata`；`backend/api/v1/instance_service.go`；`backend/runner/schemasync/syncer.go` 的 `SyncInstance` | 任何调用方整份写回自己读到的 metadata 克隆，都会把并发写入的另一半静默回滚（最坏是刚加的数据源/凭据）。 |
 
 ## 已知问题

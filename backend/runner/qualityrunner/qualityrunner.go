@@ -5,7 +5,10 @@
 // quality check: the rule engine compiles and judges, the API writes and reads,
 // and this runner decides when a rule runs and records what happened. One run
 // covers one instance, so a run's rules share the instance's connection budget
-// and its failures are reported together.
+// and its failures are reported together. A run is admitted against that budget
+// as a whole and holds one lease while it executes; a run that cannot get one
+// waits, then is deferred or abandoned, and never records a capacity failure as
+// a rule result.
 package qualityrunner
 
 import (
@@ -49,6 +52,19 @@ const (
 	// manualQueueCapacity is how many manual runs may wait for the runner. The API
 	// turns a full queue into ResourceExhausted instead of blocking a request.
 	manualQueueCapacity = 64
+	// scheduledAdmissionWait bounds how long one scheduled run waits for the
+	// instance's connection budget before the pass leaves its rules due for the
+	// next tick. Waiting is what turns normal contention into backpressure rather
+	// than a durable ERROR result.
+	scheduledAdmissionWait = 2 * time.Minute
+	// manualAdmissionWait bounds how long a manual run waits for the instance's
+	// connection budget. The run is visible as PENDING while it waits; past the
+	// budget it is abandoned instead of being left for the restart sweep.
+	manualAdmissionWait = 5 * time.Minute
+	// abandonWriteTimeout bounds the best-effort write that closes a manual run
+	// which never executed. It uses a detached context because the runner's own is
+	// usually cancelled by the shutdown that ended the wait.
+	abandonWriteTimeout = 10 * time.Second
 	// staleRunCutoff is how long a PENDING/RUNNING run may predate the process
 	// before the startup sweep abandons it. A restart does not retry such runs;
 	// the next scheduled pass runs the rules again.
@@ -140,8 +156,12 @@ func (r *Runner) overDailyExecutionQuota(ctx context.Context, now time.Time) boo
 // API made: a manual run must not silently widen to every enabled rule of the
 // instance, and quality_run has no column that could persist the selection.
 type manualRun struct {
-	runID   int64
-	ruleIDs []int64
+	runID int64
+	// instanceResourceID is the instance the API grouped this run's rules on. The
+	// queue carries it because admission needs the instance's connection ceiling
+	// before the run's rules are read.
+	instanceResourceID string
+	ruleIDs            []int64
 }
 
 // ruleTask is one rule a run has to execute. head is the rule row the due scan
@@ -156,6 +176,15 @@ type ruleTask struct {
 type dueRunPlan struct {
 	instanceResourceID string
 	rules              []*store.QualityRuleMessage
+}
+
+// runAdmission is what a run holds while it executes: the instance whose
+// connection budget it leased (empty when it needed none) and the priority it was
+// admitted with. A rule whose target moved to another instance after admission
+// cannot use it; see ruleConnectionLease.
+type runAdmission struct {
+	instanceResourceID string
+	priority           state.ConnectionPriority
 }
 
 // ruleExecution is one rule's result plus the inputs the problem ledger and the
@@ -214,12 +243,13 @@ func NewRunner(stores *store.Store, dbFactory *dbfactory.DBFactory, stateCfg *st
 func (*Runner) Name() string { return "qualityrunner" }
 
 // EnqueueQualityRun offers a manual run to the runner and returns false when the
-// queue is full. ruleIDs is the exact rule selection the API made for the run;
-// the runner executes those rules and nothing else. The call does not block: the
-// API maps false to ResourceExhausted and is responsible for closing the run.
-func (r *Runner) EnqueueQualityRun(runID int64, ruleIDs []int64) bool {
+// queue is full. instanceResourceID is the instance the API grouped the rule
+// selection on, and ruleIDs is the exact selection the API made; the runner
+// executes those rules and nothing else. The call does not block: the API maps
+// false to ResourceExhausted and is responsible for closing the run.
+func (r *Runner) EnqueueQualityRun(runID int64, instanceResourceID string, ruleIDs []int64) bool {
 	select {
-	case r.manual <- manualRun{runID: runID, ruleIDs: ruleIDs}:
+	case r.manual <- manualRun{runID: runID, instanceResourceID: instanceResourceID, ruleIDs: ruleIDs}:
 		return true
 	default:
 		return false
@@ -334,6 +364,27 @@ func (r *Runner) startScheduledRun(ctx context.Context, plan dueRunPlan) {
 		return
 	}
 
+	instance, err := r.instanceForAdmission(ctx, plan.instanceResourceID)
+	if err != nil {
+		slog.Warn("failed to read the instance of a scheduled quality run; leaving its rules due",
+			slog.String("instance", plan.instanceResourceID),
+			log.WithError(err))
+		return
+	}
+	release, admission, admitted := r.admitRun(ctx, instance, state.ConnectionPriorityBackground, scheduledAdmissionWait)
+	if !admitted {
+		// The run was never created and no rule's schedule was advanced, so the
+		// next tick retries the same rules. That is the scheduler's queue: the
+		// work is healthy, the instance is busy.
+		slog.Debug("deferred a scheduled quality run: the instance has no free connection slot",
+			slog.String("instance", plan.instanceResourceID),
+			slog.Int("rules", len(tasks)))
+		return
+	}
+	// The release is idempotent and executeRun releases it before the store work,
+	// so this defer only covers the two returns before executeRun is reached.
+	defer release()
+
 	resourceID, err := common.RandomString(12)
 	if err != nil {
 		slog.Error("failed to generate a quality run resource id", log.WithError(err))
@@ -351,7 +402,7 @@ func (r *Runner) startScheduledRun(ctx context.Context, plan dueRunPlan) {
 			log.WithError(err))
 		return
 	}
-	r.executeRun(ctx, run.ID, run.ResourceID, tasks)
+	r.executeRun(ctx, run.ID, run.ResourceID, tasks, admission, release)
 }
 
 // executeManualRun executes a run the API created for an explicit rule
@@ -362,16 +413,133 @@ func (r *Runner) executeManualRun(ctx context.Context, manual manualRun) {
 	// A manual request is the moment to pick up a settings change: the user could
 	// have turned failure samples off just before asking for the run.
 	r.refreshSettings(ctx)
-	r.executeRun(ctx, manual.runID, r.manualRunResourceID(ctx, manual.runID), manualRuleTasks(manual.ruleIDs))
+
+	instance, err := r.instanceForAdmission(ctx, manual.instanceResourceID)
+	if err != nil {
+		slog.Warn("failed to read the instance of a manual quality run; abandoning it",
+			slog.Int64("run", manual.runID),
+			log.WithError(err))
+		r.abandonUnadmittedRun(ctx, manual.runID, len(manual.ruleIDs))
+		return
+	}
+	release, admission, admitted := r.admitRun(ctx, instance, state.ConnectionPriorityManual, manualAdmissionWait)
+	if !admitted {
+		slog.Warn("abandoned a manual quality run: the instance's connection budget stayed busy",
+			slog.Int64("run", manual.runID),
+			slog.String("instance", manual.instanceResourceID),
+			slog.Int("rules", len(manual.ruleIDs)))
+		r.abandonUnadmittedRun(ctx, manual.runID, len(manual.ruleIDs))
+		return
+	}
+	// Idempotent, and executeRun releases it before the store work; this covers any
+	// return a later edit adds between admission and executeRun.
+	defer release()
+	r.executeRun(ctx, manual.runID, r.manualRunResourceID(ctx, manual.runID), manualRuleTasks(manual.ruleIDs), admission, release)
+}
+
+// instanceForAdmission loads the instance a run targets so the run can be
+// admitted against its connection ceiling. A nil instance means the row is gone:
+// the run still executes because target resolution records ORPHANED for its rules
+// without opening a connection. A read error is transient and defers the run,
+// because executing it could open a connection outside the budget.
+func (r *Runner) instanceForAdmission(ctx context.Context, resourceID string) (*store.InstanceMessage, error) {
+	if resourceID == "" {
+		// A rule whose target GUID could not be attributed to an instance cannot
+		// open a connection either; the run records SKIPPED(ORPHANED).
+		return nil, nil
+	}
+	return r.stores.GetInstance(ctx, &store.FindInstanceMessage{ResourceID: &resourceID})
+}
+
+// admitRun reserves the instance's connection budget for one run and returns its
+// lease plus the admission later rules are checked against. A run holds one lease
+// for its whole query phase: its rules execute serially against the same instance
+// and need at most one session at a time, and taking the lease up front is what
+// keeps a mid-run admission from failing. A nil instance needs none: its rules
+// are ORPHANED before a driver is opened.
+func (r *Runner) admitRun(ctx context.Context, instance *store.InstanceMessage, priority state.ConnectionPriority, wait time.Duration) (func(), runAdmission, bool) {
+	// A gone or metadata-less instance is ORPHANED by target resolution before a
+	// driver is opened, so it needs no lease.
+	if instance == nil || instance.Deleted || instance.Metadata == nil {
+		return func() {}, runAdmission{priority: priority}, true
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, wait)
+	defer cancel()
+	release, err := r.stateCfg.AcquireInstanceConnection(waitCtx, state.InstanceConnectionRequest{
+		InstanceID:         instance.ResourceID,
+		MaximumConnections: instanceConnectionLimit(instance),
+		Priority:           priority,
+	})
+	if err != nil {
+		return nil, runAdmission{}, false
+	}
+	return release, runAdmission{instanceResourceID: instance.ResourceID, priority: priority}, true
+}
+
+// ruleConnectionLease returns the budget covering one rule's driver. The run's own
+// lease covers the normal case. A rule whose newest revision targets another
+// instance than the run was admitted for needs a lease on that instance, and a run
+// that needed no lease at all (its instance row was gone) must lease the instance
+// the rule really resolves to before opening a driver.
+//
+// The fallback tries once instead of waiting: it runs while the run already holds
+// another instance's lease, and a blocking wait between two concurrent runs could
+// each hold what the other wants until both deadlines. A rule that cannot be
+// covered is SKIPPED and runs on its next schedule.
+func (r *Runner) ruleConnectionLease(instance *store.InstanceMessage, admission runAdmission) (func(), bool) {
+	if instance == nil || instance.Deleted || instance.Metadata == nil {
+		// Target resolution reports ORPHANED before a driver is opened.
+		return func() {}, true
+	}
+	if admission.instanceResourceID != "" && admission.instanceResourceID == instance.ResourceID {
+		return func() {}, true
+	}
+	return r.stateCfg.TryAcquireInstanceConnection(state.InstanceConnectionRequest{
+		InstanceID:         instance.ResourceID,
+		MaximumConnections: instanceConnectionLimit(instance),
+		Priority:           admission.priority,
+	})
+}
+
+// instanceConnectionLimit is the instance's configured connection ceiling, with
+// the deployment default when the instance does not set one. A non-positive
+// setting means "use the default", not "unlimited"; the schema syncer and the
+// connection test read it the same way.
+func instanceConnectionLimit(instance *store.InstanceMessage) int {
+	maximumConnections := int(instance.Metadata.GetMaximumConnections())
+	if maximumConnections <= 0 {
+		maximumConnections = common.DefaultInstanceMaximumConnections
+	}
+	return maximumConnections
+}
+
+// abandonUnadmittedRun closes a manual run that never got the instance's
+// connection budget. It executed nothing, so ABANDONED with no outcome is the
+// honest terminal state; leaving it PENDING would defer it to the restart sweep
+// and show a run that apparently never ends.
+func (r *Runner) abandonUnadmittedRun(ctx context.Context, runID int64, selected int) {
+	// The runner's context is often already cancelled here (a shutdown ended the
+	// wait), but the row must still reach a terminal state: a PENDING run with no
+	// queue entry would otherwise linger until a later startup sweep.
+	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), abandonWriteTimeout)
+	defer cancel()
+	counts := &storepb.QualityRunCounts{Total: int32(selected)}
+	if err := r.stores.FinishQualityRun(writeCtx, runID, storepb.QualityRunStatus_QUALITY_RUN_STATUS_ABANDONED, storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, counts, time.Now().UTC()); err != nil {
+		slog.Warn("failed to abandon a manual quality run that never got a connection slot",
+			slog.Int64("run", runID),
+			log.WithError(err))
+	}
 }
 
 // executeRun executes one run's rules sequentially, writes the whole run in one
 // result batch, and then applies the problem ledger and the notifications the
 // results imply. The result write is the commit point: nothing touches an issue
 // or an inbox when it failed, because there is no result to explain.
-func (r *Runner) executeRun(ctx context.Context, runID int64, runResourceID string, tasks []ruleTask) {
+func (r *Runner) executeRun(ctx context.Context, runID int64, runResourceID string, tasks []ruleTask, admission runAdmission, release func()) {
 	runCtx, cancel := context.WithTimeout(ctx, runExecutionTimeout)
 	defer cancel()
+	// The release is idempotent, so this net and the caller's defer compose.
+	defer release()
 
 	if err := r.stores.MarkQualityRunRunning(runCtx, runID, time.Now().UTC()); err != nil {
 		// A run that is already terminal (abandoned at startup, or finished by a
@@ -389,11 +557,15 @@ func (r *Runner) executeRun(ctx context.Context, runID int64, runResourceID stri
 		// The previous status is read before this run's results exist, so the
 		// problem planner sees the transition the new result really is.
 		previous := r.previousQualityStatus(runCtx, task.ruleID)
-		execution := r.executeOneSafe(runCtx, runID, task)
+		execution := r.executeOneSafe(runCtx, runID, task, admission)
 		execution.previous = previous
 		executions = append(executions, execution)
 		results = append(results, execution.result)
 	}
+	// Every target query is done. Persisting results, moving the problem ledger and
+	// delivering notifications are store work, so they must not hold a connection
+	// slot on the instance.
+	release()
 
 	if err := r.persistResults(runCtx, results); err != nil {
 		slog.Error("failed to persist quality rule results",
@@ -439,7 +611,7 @@ func (r *Runner) executeRun(ctx context.Context, runID int64, runResourceID stri
 // executeOneSafe isolates one rule's execution: a panic in the rule engine or a
 // driver turns into an ERROR result for that rule instead of killing the run (or
 // the runner, which would lose every remaining rule in the batch).
-func (r *Runner) executeOneSafe(ctx context.Context, runID int64, task ruleTask) (execution *ruleExecution) {
+func (r *Runner) executeOneSafe(ctx context.Context, runID int64, task ruleTask, admission runAdmission) (execution *ruleExecution) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			slog.Error("quality rule execution panicked",
@@ -454,7 +626,7 @@ func (r *Runner) executeOneSafe(ctx context.Context, runID int64, task ruleTask)
 			}
 		}
 	}()
-	return r.executeOne(ctx, runID, task)
+	return r.executeOne(ctx, runID, task, admission)
 }
 
 // persistResults writes one run's results. Results are insert-only, so no
@@ -469,7 +641,7 @@ func (r *Runner) persistResults(ctx context.Context, results []*store.QualityRul
 // executeOne resolves, validates and executes one rule, returning the result row
 // it produced. It never returns nil: every failure path is an ERROR or SKIPPED
 // result, because a run has to account for every rule it picked up.
-func (r *Runner) executeOne(ctx context.Context, runID int64, task ruleTask) *ruleExecution {
+func (r *Runner) executeOne(ctx context.Context, runID int64, task ruleTask, admission runAdmission) *ruleExecution {
 	startedAt := time.Now().UTC()
 	if !r.acquireInflight(task.ruleID) {
 		return &ruleExecution{
@@ -530,14 +702,21 @@ func (r *Runner) executeOne(ctx context.Context, runID int64, task ruleTask) *ru
 	}
 
 	// A metadata rule observes the registry and compiles to no SQL, so it needs
-	// neither the instance's connection budget nor a READ_ONLY data source: it
-	// must not fail because the target has no read-only account. The executor
-	// receives a nil queryer for it.
+	// neither a target connection nor a READ_ONLY data source: it must not fail
+	// because the target has no read-only account. The executor receives a nil
+	// queryer for it.
+	//
+	// The run's lease covers the instance it was admitted for, so one query rule at
+	// a time opens and closes a driver under it. A rule whose target changed to a
+	// different instance after admission cannot use that lease; ruleConnectionLease
+	// then leases the resolved instance for this rule alone, so no driver is ever
+	// opened outside a leased budget.
 	var queryer db.ReadOnlyQueryer
 	if requiresReadOnlySource(snapshot.Type) {
-		release, err := r.acquireInstanceConnection(resolution.Instance)
-		if err != nil {
-			return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, dataquality.ErrCodeQuota, err.Error())
+		release, ok := r.ruleConnectionLease(resolution.Instance, admission)
+		if !ok {
+			return fail(storepb.QualityStatus_QUALITY_STATUS_SKIPPED, "",
+				"the instance had no free connection slot when the rule needed one")
 		}
 		defer release()
 
@@ -671,17 +850,6 @@ func (r *Runner) loadRuleSnapshot(ctx context.Context, task ruleTask) (*dataqual
 		},
 		Config: revision.Config,
 	}, head, nil
-}
-
-// acquireInstanceConnection reserves one of the instance's outstanding
-// connection slots, the same budget the schema syncer uses, so a quality run
-// cannot push a target past its configured ceiling.
-func (r *Runner) acquireInstanceConnection(instance *store.InstanceMessage) (func(), error) {
-	maximumConnections := int(instance.Metadata.GetMaximumConnections())
-	if maximumConnections <= 0 {
-		maximumConnections = common.DefaultInstanceMaximumConnections
-	}
-	return r.stateCfg.AcquireInstanceConnection(instance.ResourceID, maximumConnections)
 }
 
 // ruleBaseline returns the rule's last evaluated observation, the denominator
@@ -975,14 +1143,12 @@ func baselineIsRecent(startedAt, now time.Time, interval time.Duration) bool {
 }
 
 // errorCodeAndMessage classifies an error that happened before or during the
-// read-only query. The two runner-level conditions have explicit codes; every
-// other error goes through the engine's classifier.
+// read-only query. Every error goes through the engine's classifier: capacity
+// contention is never one of them, because a run is admitted against the
+// instance's connection budget before it starts and holds the lease throughout.
 func errorCodeAndMessage(err error) (code string, message string) {
 	if errors.Is(err, dbfactory.ErrNoReadOnlyDataSource) {
 		return dataquality.ErrCodeNoReadOnly, err.Error()
-	}
-	if errors.Is(err, state.ErrInstanceConnectionLimit) {
-		return dataquality.ErrCodeQuota, err.Error()
 	}
 	code, message = dataquality.ClassifyError(err)
 	if message == "" {

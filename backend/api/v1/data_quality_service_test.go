@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
+	"github.com/Ranxy/metaxisdata/backend/component/state"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -789,4 +791,37 @@ func TestRequireReadOnlySourceForNewRule(t *testing.T) {
 
 	// A metadata rule reads no target database, so it needs no data source at all.
 	require.NoError(t, requireReadOnlySourceForNewRule(storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT, adminOnly))
+}
+
+// A dry run and a profile open a target driver on the user's behalf, so they wait
+// for one of the instance's connection slots instead of bypassing the budget the
+// runners share.
+func TestAcquireQualityConnectionSharesTheInstanceBudget(t *testing.T) {
+	t.Parallel()
+
+	stateCfg, err := state.New()
+	require.NoError(t, err)
+	service := &DataQualityService{stateCfg: stateCfg}
+	instance := &store.InstanceMessage{
+		ResourceID: "inst-1",
+		Metadata:   &storepb.Instance{MaximumConnections: 1},
+	}
+	request := state.InstanceConnectionRequest{
+		InstanceID:         instance.ResourceID,
+		MaximumConnections: 1,
+		Priority:           state.ConnectionPriorityBackground,
+	}
+	hold, ok := stateCfg.TryAcquireInstanceConnection(request)
+	require.True(t, ok)
+
+	_, err = service.acquireQualityConnection(context.Background(), instance, "the dry run", 10*time.Millisecond)
+	require.Equal(t, connect.CodeResourceExhausted, connect.CodeOf(err))
+
+	hold()
+	release, err := service.acquireQualityConnection(context.Background(), instance, "the dry run", time.Second)
+	require.NoError(t, err)
+	release()
+
+	_, err = service.acquireQualityConnection(context.Background(), nil, "the dry run", time.Second)
+	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
 }

@@ -1,7 +1,7 @@
 # 数据质量（Data Quality）— Reference
 
 > Status: **implemented**（v1 与 v1.1 全部落地；单副本假设）。维护参考，覆盖 `backend/component/dataquality/`、`backend/runner/qualityrunner/`、`backend/api/v1/data_quality_*.go`、`backend/store/quality_*.go`、`frontend/src/pages/data-quality/`。用户侧说明见 [docs/README.md](../../docs/README.md)；刻意决策见 [security-posture.md](../../docs/security-posture.md)。
-> 关联：[runner.md](runner.md)（后台执行器契约、单副本）、[notifications.md](notifications.md)（站内信与结构化 detail）、[iam-and-permissions.md](iam-and-permissions.md)（权限目录/注解）、[rate-limiting.md](rate-limiting.md)（principal 预算）、[object-ddl-storage.md](object-ddl-storage.md)（DDL 读取）、[lineage-analyzer.md](lineage-analyzer.md)（血缘上下文）、[frontend-ui.md](frontend-ui.md)（骨架/布局门禁）、[i18n-glossary.md](i18n-glossary.md)（术语）、[security-open-items.md](security-open-items.md)。规则：[backend/AGENTS.md](../../backend/AGENTS.md)、[proto/AGENTS.md](../../proto/AGENTS.md)、[backend/migrator/AGENTS.md](../../backend/migrator/AGENTS.md)。
+> 关联：[instance-connections.md](instance-connections.md)（run 级连接准入）、[runner.md](runner.md)（后台执行器契约、单副本）、[notifications.md](notifications.md)（站内信与结构化 detail）、[iam-and-permissions.md](iam-and-permissions.md)（权限目录/注解）、[rate-limiting.md](rate-limiting.md)（principal 预算）、[object-ddl-storage.md](object-ddl-storage.md)（DDL 读取）、[lineage-analyzer.md](lineage-analyzer.md)（血缘上下文）、[frontend-ui.md](frontend-ui.md)（骨架/布局门禁）、[i18n-glossary.md](i18n-glossary.md)（术语）、[security-open-items.md](security-open-items.md)。规则：[backend/AGENTS.md](../../backend/AGENTS.md)、[proto/AGENTS.md](../../proto/AGENTS.md)、[backend/migrator/AGENTS.md](../../backend/migrator/AGENTS.md)。
 
 ## 0. 它是什么
 
@@ -115,7 +115,7 @@ run：`status ∈ {PENDING, RUNNING, COMPLETED, ABANDONED}`；`outcome` 是结�
 - 创建/更新走同一校验链：`ResolveTarget`（registry 当前行 + 实例未删 + 数据库未隐藏 + 列存在）→ `ValidateConfig`（按类型的参数校验 + 列类型/能力校验 + 引用父表校验）→ `ValidateRule` 的 registry 步骤（referential 父表、cross_table 右表）→ `ParseFilter` → `Compile`（SQL/占位符/args/列名）→ 保存时写 `target_meta_hash`（schema_hash 口径）。
 - 语义变更（类型、目标、config、severity/dimension 等）产生新 revision；head 与 revision 在一个事务里写，`SELECT … FOR UPDATE` 串行化并发编辑（`ExpectedRevision` 不匹配 → `Conflict` → 客户端 `Aborted`）。
 - 结果只插入；问题状态是可变列；删除规则 = `ARCHIVED`，历史/问题保留。
-- 干跑 `PreviewQualityRule`：校验 + 编译 + （非元数据规则）只读源 `LIMIT 0 / TOP 0` 探测（10s 超时），不写库、不产生 run。元数据规则（`schema_drift`）跳过探测。
+- 干跑 `PreviewQualityRule`：校验 + 编译 + （非元数据规则）只读源 `LIMIT 0 / TOP 0` 探测（10s 超时），不写库、不产生 run。元数据规则（`schema_drift`）跳过探测。探测与执行走同一个实例连接预算（[instance-connections.md](instance-connections.md)）。
 - 保存时只校验/编译，不校验只读源是否存在；`schema_drift` 在缺失快照时由 API 用当前列填充。
 
 ### 3.2 编译、方言与判定
@@ -145,6 +145,7 @@ run：`status ∈ {PENDING, RUNNING, COMPLETED, ABANDONED}`；`outcome` 是结�
 | tick | 10s（不 jitter） | 到期扫描 |
 | 每轮 due 扫描 | ≤200 条；每实例每 run ≤50 条 | 分批 |
 | 并发 | 至多 2 个实例同时执行；单实例串行 | 进程内 |
+| 连接准入 | scheduled 等待 ≤2m；manual 等待 ≤5m | run 开始前向实例连接预算领 lease；拿不到 scheduled 保持 due、manual `ABANDONED`，不写 `ERROR(QUOTA)`（[instance-connections.md](instance-connections.md)） |
 | 手动队列 | 64 | 满则 API 放弃 run |
 | 单 run 超时 | 15m | 覆盖所有规则与查询 |
 | 单规则查询超时 | 60s（固定；无按规则覆盖） | `QueryOptions.Timeout` |
@@ -155,10 +156,10 @@ run：`status ∈ {PENDING, RUNNING, COMPLETED, ABANDONED}`；`outcome` 是结�
 - 循环：先排空手动队列，再处理 tick；每次扫描/手动前重读设置（读失败保留旧值）。
 - 每日执行上限：UTC 日起算 `COUNT(quality_run)`；触顶时**跳过本轮 due 扫描**（规则保持 due，次日继续），不写 ERROR、不告警（§7）。
 - 到期规则按实例分组、按 ≤50 切 run；每个 run 先落 PENDING，执行时标 RUNNING；执行前推进 `next_run_at`（失败不回退）。
-- 逐规则：inflight 去重（重复触发记 `SKIPPED`）→ 读最新 revision 快照（head revision 不一致时重读 head）→ resolve target（孤儿 → `SKIPPED(ORPHANED)`）→ `RequireTarget`/`ValidateConfig`（不满足 → `ERROR(UNSUPPORTED)`）→ 元数据规则跳过连接；其余按实例 `AcquireInstanceConnection` 取连接预算 + `GetReadOnlyDatabaseDriver` → `Executor.Execute` → `row_count_change` 补基线 → `Evaluate`。
+- 逐规则：inflight 去重（重复触发记 `SKIPPED`）→ 读最新 revision 快照（head revision 不一致时重读 head）→ resolve target（孤儿 → `SKIPPED(ORPHANED)`）→ `RequireTarget`/`ValidateConfig`（不满足 → `ERROR(UNSUPPORTED)`）→ 元数据规则跳过连接；其余在 run 已持有的实例连接 lease 下 `GetReadOnlyDatabaseDriver` → `Executor.Execute` → `row_count_change` 补基线 → `Evaluate`。run 的准入在创建/启动前一次完成（§3.3 连接准入，[instance-connections.md](instance-connections.md)）。
 - 单规则 panic 隔离为 `ERROR(EXECUTION)`；结果整批插入（`persistResults`），插入失败 → run `ABANDONED`；成功则问题迁移 + 通知（best-effort），最后写 counts/outcome 并 `COMPLETED`。
 - 只读通道：`db.ReadOnlyQueryer`；PG 事务内 `SET LOCAL statement_timeout`，MySQL 会话 `MAX_EXECUTION_TIME` 并复位；其余依赖只读账号 + 语句白名单。无 READ_ONLY 数据源 → `ERROR(NO_READ_ONLY_SOURCE)`。
-- 错误码（`dataquality.ClassifyError`，写 `error_code`）：`CONNECTION`、`AUTH`、`TIMEOUT`、`PERMISSION`、`UNSUPPORTED`、`SQL_SYNTAX`、`BAD_DATA`、`LIMIT_EXCEEDED`、`ORPHANED`、`QUOTA`、`NO_READ_ONLY_SOURCE`、`EXECUTION`（未归类的驱动错误，消息脱敏 + 截断 1 KiB）。
+- 错误码（`dataquality.ClassifyError`，写 `error_code`）：`CONNECTION`、`AUTH`、`TIMEOUT`、`PERMISSION`、`UNSUPPORTED`、`SQL_SYNTAX`、`BAD_DATA`、`LIMIT_EXCEEDED`、`ORPHANED`、`NO_READ_ONLY_SOURCE`、`EXECUTION`（未归类的驱动错误，消息脱敏 + 截断 1 KiB）。`QUOTA` 已不再由 runner 产生，仅为历史结果行保留（前端仍会本地化它）。
 - 日志：每 run 一行 summary（run/规则数/六态计数/耗时）；`ERROR` 结果打 WARN（rule/target/code/耗时，不打 SQL 与样本值）；无 metrics。
 
 ### 3.4 问题、通知与静音
@@ -207,7 +208,7 @@ run：`status ∈ {PENDING, RUNNING, COMPLETED, ABANDONED}`；`outcome` 是结�
 
 ### 3.8 画像、语义标注与建议队列
 
-- 画像（确定性、无 LLM）：每表一条聚合查询（行数/null/distinct/min/max/长度）+ 一条样本查询（`LIMIT 1000`）；Go 内算 Top-K（仅 distinct ≤20 的列）、样式、长度分布；值截断 64 字节、最多 20 个；写 `column_profile`（列级 upsert，`sample_method="limit"`、`engine_version="dq.v1"`）；单次 ≤设置列数、120s、4 MiB 结果。
+- 画像（确定性、无 LLM）：每表一条聚合查询（行数/null/distinct/min/max/长度）+ 一条样本查询（`LIMIT 1000`）；画像打开目标库前先领实例连接预算（[instance-connections.md](instance-connections.md)）；Go 内算 Top-K（仅 distinct ≤20 的列）、样式、长度分布；值截断 64 字节、最多 20 个；写 `column_profile`（列级 upsert，`sample_method="limit"`、`engine_version="dq.v1"`）；单次 ≤设置列数、120s、4 MiB 结果。
 - 聚合事实由类型能力表推导（D-34）：`countDistinct` → 精确 distinct，`extrema` → min/max，`length` → 长度上界，`text` → 样式；没有 `countDistinct` 时 distinct 来自样本并标 `distinct_estimated=true`（样本覆盖全表时为精确值），前端与 L3 提示词显示 `≈`/`~`。完全没有能力的列只取非空计数：默认 `COUNT(col)`，MSSQL text/ntext/image 用 `COUNT(CASE WHEN col IS NOT NULL …)`；`binary` 类型的极值/Top 值一律以 `0x…` 展示。推导入口是 `newProfileColumn`，画像与规则校验共用同一张表。
 - 标注：`column_semantic_label` 唯一键 `(table_guid, table_type, column_name)`；封闭枚举 `QualitySemanticType`；`source=MANUAL|LLM`、`status`、`confidence`、`evidence`；人工标注可覆盖（Upsert），LLM 建议不自动覆盖。
 - 规则候选映射（代码固定）：`ID/BUSINESS_KEY → unique+null_percent`；`EMAIL/PHONE/URL/UUID/IP → regex+null_percent`；`COUNTRY_CODE/CURRENCY/ENUM → accepted_values`；`AMOUNT/QUANTITY → range+null_percent`；`PERCENTAGE → range(0-100)`；`TIMESTAMP/DATE → freshness+range`；`FREE_TEXT → string_length+null_percent`；`UNKNOWN → 不生成规则`。阈值为默认值，不从当前值推导。
@@ -284,7 +285,7 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 
 ### 4.5 错误码（结果行 `error_code`）
 
-`CONNECTION` / `AUTH` / `TIMEOUT` / `PERMISSION` / `UNSUPPORTED` / `SQL_SYNTAX` / `BAD_DATA` / `LIMIT_EXCEEDED` / `ORPHANED` / `QUOTA` / `NO_READ_ONLY_SOURCE` / `EXECUTION`（未归类驱动错误，脱敏截断）。LLM 侧错误以 Connect code 返回，不写结果行。
+`CONNECTION` / `AUTH` / `TIMEOUT` / `PERMISSION` / `UNSUPPORTED` / `SQL_SYNTAX` / `BAD_DATA` / `LIMIT_EXCEEDED` / `ORPHANED` / `NO_READ_ONLY_SOURCE` / `EXECUTION`（未归类驱动错误，脱敏截断）。`QUOTA` 是历史值：容量竞争在 run 开始前就被延后，runner 不再产生它（[instance-connections.md](instance-connections.md)）。LLM 侧错误以 Connect code 返回，不写结果行。
 
 ## 5. 不变量
 
@@ -307,6 +308,7 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | I-15 | 软删除保留 revision/结果/问题；表不物理删除规则 | archive 路径 + store 查询过滤 |
 | I-16 | 单副本：inflight/配额/LLM 计数都在进程内；重启收敛、不补跑 | 代码结构 + runner 测试 |
 | I-17 | 编译 SQL 的占位符与 `Args` 必须一起下发：`db.ReadOnlyQueryer.QueryReadOnly(ctx, sql, args, opts)`；预览、执行、画像都传各自的 args（画像无参数传 nil） | `execution_test.go` 的参数断言 + 真 server 集成场景（带 filter 的 range 规则 dry run/执行） |
+| I-18 | run 的连接预算在 run 开始前一次性准入，持有到查询阶段结束（持久化/通知前释放）：scheduled 拿不到 → 不建 run、规则保持 due；manual 拿不到 → `ABANDONED`；规则在准入后目标被改到别的实例 → 由 `ruleConnectionLease` 对实际实例 try-acquire 一次（拿不到记 `SKIPPED`）；任何情况下容量竞争都不写成规则结果或 `ERROR(QUOTA)` | `qualityrunner_test.go` 的 `admitRun`/`ruleConnectionLease` 测试 + governor 单测（[instance-connections.md](instance-connections.md)） |
 
 ## 6. 失败模式
 
@@ -327,6 +329,7 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | 告警风暴（run FAIL 规则 >10） | 逐条 opened/execution-failed 抑制，发一条 STORM_SUMMARY；issue 照建、恢复照发 |
 | 规则/问题静音期内失败或恢复 | 不发送问题通知；执行失败通知不受影响 |
 | 每日执行配额触顶 | 跳过本轮 due 扫描（规则保持 due，次日继续）；不写 ERROR、不告警（§7） |
+| 实例连接预算被占满 | 定时 run 排队 ≤2m 后保持 due、下个 tick 重试；手动 run 排队 ≤5m 后 `ABANDONED`；不写 `ERROR(QUOTA)`、不通知（[instance-connections.md](instance-connections.md)） |
 | 手动队列满 | 该 run 标 `ABANDONED`（outcome ERROR）并返回 `ResourceExhausted` |
 | LLM 未开启/无 provider | `FailedPrecondition`；规则引擎完全可用 |
 | LLM 解析失败/超时/配额耗尽 | 请求失败（Internal/FailedPrecondition/ResourceExhausted）；不缓存、不改规则/问题状态；L3 已入队的建议保持 PENDING |
@@ -351,6 +354,7 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | 9 | 建议队列无 Get RPC | 编辑器 `?suggestion=` 预填按队列全量查找后匹配（数据量有界；如需可加 GetQualitySuggestion） |
 | 10 | 多副本 | 不支持（单副本假设，见 [security-posture.md](../../docs/security-posture.md)）；两个副本会重复执行、LLM 配额各自计数 |
 | 11 | 分布漂移/ML 异常、分组内多种检查（每组 null/aggregate）、RuleSet | 非目标（§非目标）；RuleSet 在 v1.1 之后单独评审 |
+| 12 | 连接等待的可观测性 | 只有 defer/abandon 的日志行；没有等待时长或饱和度 metrics（全仓无 metrics 栈，见 [backend-open-items.md](backend-open-items.md) D8） |
 
 ## 8. Where things live
 
@@ -359,6 +363,7 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | 领域/编译/判定 | `backend/component/dataquality/`：`model.go`、`types.go`、`capabilities.go`、`target.go`、`validate.go`、`compile.go`、`compile_rules.go`、`compile_util.go`、`compile_samples.go`、`dialect.go`、`support.go`、`evaluate.go`、`execution.go`、`executor.go`、`errors.go`、`filter.go`、`issue.go`、`settings.go`、`profile*.go`、`cel.go`、`label.go`、`prompt.go` |
 | 只读查询能力 | `backend/plugin/db/query.go`（`ReadOnlyQueryer`/`QueryOptions`/`QueryResult`、扫描上限）；`plugin/db/{mysql,pg,mssql,starrocks}/query.go`；`backend/component/dbfactory/readonly.go`（`ErrNoReadOnlyDataSource`） |
 | runner | `backend/runner/qualityrunner/qualityrunner.go`（调度/执行/问题迁移/通知）；`backend/server/server.go` 注册第 5 个 runner；保留期清理在 `backend/runner/maintenance/maintenance.go` |
+| 连接准入 | `backend/component/state/connection.go`（governor/优先级/等待队列）；`qualityrunner` 的 `admitRun`；契约与各调用方预算见 [instance-connections.md](instance-connections.md) |
 | API | `backend/api/v1/data_quality_service.go`（CRUD/run/result/issue/profile/preview/overview）、`data_quality_convert.go`、`data_quality_llm_analysis.go`（L1/L2）、`data_quality_label_analysis.go`（L3）、`data_quality_llm_client.go`、`data_quality_llm_quota.go`、`data_quality_overview.go`、`data_quality_cross_table.go` |
 | store | `backend/store/quality_{rule,run,result,issue,profile,label,suggestion,llm_cache,overview}.go`（9 张表） |
 | proto/迁移 | `proto/store/store/data_quality.proto`、`proto/v1/v1/data_quality_service.proto`、notification/setting 扩展；`backend/migrator/migration/0.1/0024##data_quality.sql` + `LATEST.sql` |

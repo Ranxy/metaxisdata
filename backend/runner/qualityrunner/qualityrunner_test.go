@@ -1,6 +1,7 @@
 package qualityrunner
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -153,15 +154,138 @@ func TestEnqueueQualityRunReportsAFullQueue(t *testing.T) {
 	t.Parallel()
 
 	runner := &Runner{manual: make(chan manualRun, 1)}
-	require.True(t, runner.EnqueueQualityRun(1, []int64{3}))
+	require.True(t, runner.EnqueueQualityRun(1, "inst-1", []int64{3}))
 
 	// The queue is full, so the API must be told instead of blocking the request.
-	require.False(t, runner.EnqueueQualityRun(2, nil))
+	require.False(t, runner.EnqueueQualityRun(2, "inst-1", nil))
 
 	queued := <-runner.manual
 	require.Equal(t, int64(1), queued.runID)
+	require.Equal(t, "inst-1", queued.instanceResourceID)
 	require.Equal(t, []int64{3}, queued.ruleIDs)
-	require.True(t, runner.EnqueueQualityRun(3, nil))
+	require.True(t, runner.EnqueueQualityRun(3, "inst-1", nil))
+}
+
+// A run holds one lease for its whole life, so a second run on the same instance
+// waits for it instead of being admitted above the connection budget.
+func TestAdmitRunHoldsTheInstanceBudgetForTheWholeRun(t *testing.T) {
+	t.Parallel()
+
+	stateCfg, err := state.New()
+	require.NoError(t, err)
+	runner := &Runner{stateCfg: stateCfg}
+	instance := &store.InstanceMessage{
+		ResourceID: "inst-1",
+		Metadata:   &storepb.Instance{MaximumConnections: 1},
+	}
+
+	hold, _, admitted := runner.admitRun(context.Background(), instance, state.ConnectionPriorityBackground, time.Second)
+	require.True(t, admitted)
+
+	type admission struct {
+		release func()
+		ok      bool
+	}
+	second := make(chan admission, 1)
+	go func() {
+		release, _, ok := runner.admitRun(context.Background(), instance, state.ConnectionPriorityBackground, time.Second)
+		second <- admission{release: release, ok: ok}
+	}()
+	select {
+	case result := <-second:
+		t.Fatalf("a second run was admitted above the instance budget: %+v", result)
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	hold()
+	select {
+	case result := <-second:
+		require.True(t, result.ok)
+		result.release()
+	case <-time.After(2 * time.Second):
+		t.Fatal("the waiting run was never admitted after the budget was released")
+	}
+}
+
+// A run whose budget never frees up is deferred, not failed: the caller gets
+// false and the rules stay due for the next tick.
+func TestAdmitRunReportsWhenTheBudgetStaysBusy(t *testing.T) {
+	t.Parallel()
+
+	stateCfg, err := state.New()
+	require.NoError(t, err)
+	runner := &Runner{stateCfg: stateCfg}
+	instance := &store.InstanceMessage{
+		ResourceID: "inst-1",
+		Metadata:   &storepb.Instance{MaximumConnections: 1},
+	}
+
+	hold, _, admitted := runner.admitRun(context.Background(), instance, state.ConnectionPriorityBackground, time.Second)
+	require.True(t, admitted)
+	defer hold()
+
+	_, _, admitted = runner.admitRun(context.Background(), instance, state.ConnectionPriorityBackground, 10*time.Millisecond)
+	require.False(t, admitted)
+}
+
+// A run whose instance row is gone needs no lease: target resolution records
+// ORPHANED for its rules before a driver is opened.
+func TestAdmitRunDoesNotLeaseAMissingInstance(t *testing.T) {
+	t.Parallel()
+
+	stateCfg, err := state.New()
+	require.NoError(t, err)
+	runner := &Runner{stateCfg: stateCfg}
+
+	release, admission, admitted := runner.admitRun(context.Background(), nil, state.ConnectionPriorityManual, time.Second)
+	require.True(t, admitted)
+	require.Empty(t, admission.instanceResourceID)
+	require.NotNil(t, release)
+	release()
+}
+
+// A rule retargeted to another instance after its run was admitted cannot open a
+// driver under the run's lease; it leases the instance it actually resolves to, so
+// no driver ever runs outside a leased budget.
+func TestRuleConnectionLeaseCoversARetargetedRule(t *testing.T) {
+	t.Parallel()
+
+	stateCfg, err := state.New()
+	require.NoError(t, err)
+	runner := &Runner{stateCfg: stateCfg}
+	runAdmittedForA := runAdmission{instanceResourceID: "inst-a", priority: state.ConnectionPriorityBackground}
+	instanceA := &store.InstanceMessage{ResourceID: "inst-a", Metadata: &storepb.Instance{}}
+
+	release, ok := runner.ruleConnectionLease(instanceA, runAdmittedForA)
+	require.True(t, ok, "the run's own instance is covered by its lease")
+	release()
+
+	instanceB := &store.InstanceMessage{ResourceID: "inst-b", Metadata: &storepb.Instance{MaximumConnections: 1}}
+	hold, _, admitted := runner.admitRun(context.Background(), instanceB, state.ConnectionPriorityBackground, time.Second)
+	require.True(t, admitted)
+
+	_, ok = runner.ruleConnectionLease(instanceB, runAdmittedForA)
+	require.False(t, ok, "a retargeted rule cannot take another instance's budget without a free slot")
+
+	hold()
+	release, ok = runner.ruleConnectionLease(instanceB, runAdmittedForA)
+	require.True(t, ok)
+	release()
+
+	// A run admitted without a lease (its instance row was gone) still leases the
+	// instance its rule really resolves to.
+	release, ok = runner.ruleConnectionLease(instanceA, runAdmission{})
+	require.True(t, ok)
+	release()
+}
+
+// A non-positive ceiling means "use the deployment default", never "unlimited".
+func TestInstanceConnectionLimitUsesTheDeploymentDefault(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, 4, instanceConnectionLimit(&store.InstanceMessage{Metadata: &storepb.Instance{MaximumConnections: 4}}))
+	require.Equal(t, 10, instanceConnectionLimit(&store.InstanceMessage{Metadata: &storepb.Instance{}}))
+	require.Equal(t, 10, instanceConnectionLimit(&store.InstanceMessage{}))
 }
 
 func TestBuildRuleResultStoresTheVerdictAndItsEvidence(t *testing.T) {
@@ -300,8 +424,10 @@ func TestErrorCodeAndMessageMapsRunnerLevelFailures(t *testing.T) {
 	code, _ := errorCodeAndMessage(dbfactory.ErrNoReadOnlyDataSource)
 	require.Equal(t, dataquality.ErrCodeNoReadOnly, code)
 
+	// Capacity contention is not a rule failure: the runner defers the run before
+	// it executes rather than turning the limiter's error into a QUOTA result.
 	code, _ = errorCodeAndMessage(state.ErrInstanceConnectionLimit)
-	require.Equal(t, dataquality.ErrCodeQuota, code)
+	require.NotEqual(t, dataquality.ErrCodeQuota, code)
 
 	code, message := errorCodeAndMessage(errors.New("the target refused the statement"))
 	require.Equal(t, dataquality.ErrCodeExecution, code)
