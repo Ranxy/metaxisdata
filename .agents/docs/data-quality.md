@@ -201,8 +201,8 @@ run：`status ∈ {PENDING, RUNNING, COMPLETED, ABANDONED}`；`outcome` 是结�
 - 导航：侧栏第 6 组“数据质量”（概览/规则/执行/问题/建议），SettingsNav 增加“数据质量”。规则详情从规则列表标题、执行详情的规则名、问题详情的规则名与资产页质量区进入（`rules.get` 在 member 基线内，只读可见）。
 - 页面/组件：`pages/data-quality/`（概览、规则列表、规则详情、规则编辑器、执行列表/详情、问题列表/详情、建议队列）；`components/data-quality/`（状态/严重级别徽标、趋势图、最近执行状态色块条、结果表、规则表单与 filter 编辑器、失败样本、SQL 查看、建议卡、字段分析面板、AI 解释抽屉、草稿对话框、目标选择器、资产页质量区）。复用 shadcn-vue 原语，不新增 tabs 原语。
 - 规则列表筛选：标题/描述文本、**目标范围**（实例 → 数据库 → Schema → 表/视图；复用 `TargetPicker` 的 `mode="scope"`，在任一层可停，点表/视图行直接筛到该表）、**负责人**（复用 `UserSelect`；owner 可空，所以除成员外还有“未指定”一项；成员目录一次加载后同时供选择器与列表的负责人列复用，选择器支持懒加载与预载）、维度、严重级别、状态；改动后点“应用”才查询。列表还显示负责人列（邮箱，未指定时显示“未指定”）。`TargetScopeFilter` 与负责人控件只持有待应用值，请求由 `ListQualityRules` 的 instance/database/schema/table（GUID 前缀）以及 owner（`users/{user}`；空表示不限）与 owner_unassigned（只取无负责人的规则，与 owner 互斥）字段承受。
-- 规则详情的信息层级：顶部“最近结果”大状态（图标+状态词+相对时间+实际值/阈值/失败行数）→ 最近 20 次状态色块条（旧→新，按状态着色，点击进 run 详情）→ 状态计数与通过率 → 最近执行表 → 规则定义（目标/字段/类型/维度/严重级别/调度/版本/时间/标签）。运行与编辑分别按 `rules.run`、`rules.update` 显示。
-- API/工具：`api/data-quality.ts` + `api/client.ts` 的 `dataQualityClient`；纯函数在 `src/utils/dataQuality*.ts`（状态/严重级别映射、表单校验、LLM 提示、概览、设置、建议）；`lib/notificationText.ts` 渲染通知文案；无跨页 Pinia 模块。
+- 规则详情的信息层级：顶部“最近结果”大状态（图标+状态词+相对时间+实际值/阈值/失败行数）→ 最近 20 次状态色块条（旧→新，按状态着色，点击进 run 详情）→ 状态计数与通过率 → 最近执行表 → 规则定义（目标/字段/类型/维度/严重级别/负责人/调度/版本/时间/标签；负责人显示成员目录里的邮箱，未指定时显示“未指定”）。运行与编辑分别按 `rules.run`、`rules.update` 显示。
+- API/工具：`api/data-quality.ts` + `api/client.ts` 的 `dataQualityClient`；纯函数在 `src/utils/dataQuality*.ts`（状态/严重级别映射、表单校验、LLM 提示、概览、设置、建议）；`lib/notificationText.ts` 渲染通知文案；`composables/useUserDirectory.ts` 是规则页与详情页共用的成员目录（邮箱解析、失败回退原始 `users/{id}`，仅持 `users.list` 时请求）；无跨页 Pinia 模块。
 - i18n：`dataQuality.*`、`dataQualitySettings.*`、`menu.dataQuality*`、`notifications.dataQuality*`；术语进 `frontend/glossary.json` 的 **Data Quality** 分类；动态 key 已登记 `frontend/scripts/check-vue-i18n.mjs` 的 `DYNAMIC_PREFIXES`。
 - 布局门禁：新路由登记 `frontend/scripts/audit-ui-layout.mjs`（含各表 `tableTopMaxY` 预算）；`ERROR` 与 `FAIL` 文案/徽标必须不同；编辑器保存前必须干跑（`PreviewQualityRule`）。
 

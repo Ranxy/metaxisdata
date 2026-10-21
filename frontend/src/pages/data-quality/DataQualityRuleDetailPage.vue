@@ -420,6 +420,18 @@
                 </div>
                 <div>
                   <dt class="text-xs text-muted-foreground">
+                    {{ t("dataQuality.filterOwner") }}
+                  </dt>
+                  <dd
+                    class="mt-0.5"
+                    :class="{ 'text-muted-foreground': !rule.owner }"
+                    :title="rule.owner || undefined"
+                  >
+                    {{ ownerName }}
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-muted-foreground">
                     {{ t("dataQuality.schedule") }}
                   </dt>
                   <dd class="mt-0.5 tabular-nums">
@@ -538,6 +550,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useErrorHandler } from "@/composables/useErrorHandler";
+import { useUserDirectory } from "@/composables/useUserDirectory";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
 import {
@@ -589,6 +602,10 @@ const canUpdate = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.rules.update")
 );
 
+// Owner names come from the workspace directory; the definition falls back to
+// the raw resource name when it is unavailable.
+const { emailOf, load: loadUserDirectory } = useUserDirectory();
+
 const rule = ref<QualityRule>();
 const results = ref<QualityRuleResult[]>([]);
 const isLoading = ref(true);
@@ -628,6 +645,13 @@ const targetTitle = computed(() => {
 });
 
 const ruleColumns = computed(() => rule.value?.target?.columns ?? []);
+
+/** The owner's email from the directory, the raw name if unknown, or unassigned. */
+const ownerName = computed(() =>
+  rule.value?.owner
+    ? emailOf(rule.value.owner)
+    : t("dataQuality.unassignedOwner")
+);
 
 const mutedUntil = computed(() => {
   const seconds = rule.value?.muteUntil?.seconds;
@@ -801,6 +825,10 @@ async function load() {
     return;
   }
   isLoading.value = false;
+  // A rule without an owner needs no directory; the lookup loads at most once.
+  if (rule.value?.owner) {
+    void loadUserDirectory();
+  }
   await loadResults();
 }
 

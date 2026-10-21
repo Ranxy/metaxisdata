@@ -481,7 +481,6 @@ import {
   runQualityRules,
   updateQualityRule,
 } from "@/api/data-quality";
-import { listAllUsers } from "@/api/user";
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
@@ -511,6 +510,7 @@ import {
 } from "@/components/ui/table";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { usePagedFetch } from "@/composables/usePagedFetch";
+import { useUserDirectory } from "@/composables/useUserDirectory";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
 import {
@@ -520,7 +520,6 @@ import {
   QualityRuleState,
   QualitySeverity,
 } from "@/types/proto-es/v1/data_quality_service_pb";
-import type { User } from "@/types/proto-es/v1/user_service_pb";
 import {
   formatTargetPath,
   type QualityTargetScope,
@@ -552,19 +551,13 @@ const canUpdate = computed(() =>
 const canDelete = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.rules.delete")
 );
-// The owner picker needs users.list to populate; the server also gates the
-// owner filter's usefulness on being able to name a user.
-const canListUsers = computed(() =>
-  authStore.hasPermission("metaxisdata.users.list")
-);
-
 // The directory feeds both the owner column and the filter picker, so the page
-// loads it once; the picker receives it and issues no request of its own. A
-// failed load only costs names — everything falls back to the raw resource name.
-const userDirectory = ref<User[]>([]);
-const usersByName = computed(
-  () => new Map(userDirectory.value.map((user) => [user.name, user.email]))
-);
+// loads it once; the picker receives it and issues no request of its own.
+const {
+  users: userDirectory,
+  emailOf,
+  load: loadUserDirectory,
+} = useUserDirectory();
 
 /**
  * The owner picker's "unassigned" choice. It is a page-local value, never sent:
@@ -758,15 +751,9 @@ function targetTitle(rule: QualityRule): string {
   return scope === "-" ? path : `${scope} · ${path}`;
 }
 
-/**
- * The owner's email from the directory, its raw resource name while the
- * directory is loading or when it lacks the user, or the unassigned label.
- */
+/** The owner's email from the directory (raw name if unknown), or "unassigned". */
 function ownerName(rule: QualityRule): string {
-  if (!rule.owner) {
-    return t("dataQuality.unassignedOwner");
-  }
-  return usersByName.value.get(rule.owner) || rule.owner;
+  return rule.owner ? emailOf(rule.owner) : t("dataQuality.unassignedOwner");
 }
 
 async function runRule(rule: QualityRule) {
@@ -829,18 +816,6 @@ async function confirmDelete() {
     handleError(e, "dataQuality.deleteError");
   } finally {
     saving.value = false;
-  }
-}
-
-async function loadUserDirectory() {
-  if (!canListUsers.value) {
-    return;
-  }
-  try {
-    userDirectory.value = await listAllUsers();
-  } catch {
-    // The list still renders; cells fall back to the raw resource name.
-    userDirectory.value = [];
   }
 }
 
