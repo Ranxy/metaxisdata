@@ -2,11 +2,15 @@ import { create } from "@bufbuild/protobuf";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { defineComponent, h } from "vue";
+import { defineComponent, h, nextTick } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
+import { Select } from "@/components/ui/select";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
-import { QualityRuleSchema } from "@/types/proto-es/v1/data_quality_service_pb";
+import {
+  QualityRuleSchema,
+  QualityRuleType,
+} from "@/types/proto-es/v1/data_quality_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
 import type { QualityTargetScope } from "@/utils/dataQuality";
 import DataQualityRulesPage from "./DataQualityRulesPage.vue";
@@ -360,5 +364,71 @@ describe("DataQualityRulesPage owner column", () => {
 
     expect(wrapper.text()).toContain("users/101");
     expect(wrapper.text()).toContain("owned rule");
+  });
+});
+
+describe("DataQualityRulesPage rule type filter", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+    mocks.listQualityRules.mockResolvedValue({
+      items: [],
+      nextPageToken: "",
+    });
+  });
+
+  it("defaults to every type and sends the picked one only after Apply", async () => {
+    const wrapper = await mountPage();
+    expect(wrapper.find("#data-quality-rule-type").exists()).toBe(true);
+    expect(mocks.listQualityRules).toHaveBeenCalledTimes(1);
+    expect(mocks.listQualityRules.mock.calls[0]?.[0]?.ruleType).toBe(
+      QualityRuleType.UNSPECIFIED
+    );
+
+    // The enum filters in template order: dimension, rule type, severity, state.
+    const selects = wrapper.findAllComponents(Select);
+    await selects[1]?.vm.$emit(
+      "update:modelValue",
+      String(QualityRuleType.NULL_PERCENT)
+    );
+    await nextTick();
+    // Picking is pending, like the other filters: no request yet.
+    expect(mocks.listQualityRules).toHaveBeenCalledTimes(1);
+
+    await applyButton(wrapper)?.trigger("click");
+    await flushPromises();
+
+    expect(mocks.listQualityRules).toHaveBeenCalledTimes(2);
+    expect(mocks.listQualityRules.mock.calls[1]?.[0]).toMatchObject({
+      ruleType: QualityRuleType.NULL_PERCENT,
+    });
+  });
+
+  it("clears an applied rule type filter from the empty state", async () => {
+    const wrapper = await mountPage();
+    const selects = wrapper.findAllComponents(Select);
+    await selects[1]?.vm.$emit(
+      "update:modelValue",
+      String(QualityRuleType.NULL_PERCENT)
+    );
+    await nextTick();
+    await applyButton(wrapper)?.trigger("click");
+    await flushPromises();
+
+    const clear = wrapper
+      .findAll("button")
+      .find(
+        (button) =>
+          button.text().trim() === i18n.global.t("common.filter.clear")
+      );
+    expect(clear).toBeTruthy();
+    await clear?.trigger("click");
+    await flushPromises();
+
+    expect(
+      mocks.listQualityRules.mock.calls[
+        mocks.listQualityRules.mock.calls.length - 1
+      ]?.[0]
+    ).toMatchObject({ ruleType: QualityRuleType.UNSPECIFIED });
   });
 });

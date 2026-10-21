@@ -13,7 +13,10 @@ import (
 const (
 	// compileMaxAcceptedValues bounds one accepted_values list.
 	compileMaxAcceptedValues = 200
-	// compileMaxUniqueColumns bounds one unique_combination column list.
+	// compileMaxUniqueColumns is the hard save-time cap on one unique_combination
+	// column list (all_columns uses the target's own column count instead). It is
+	// enforced here and in validation; the API and the editor surface the
+	// validation error rather than documenting a limit of their own.
 	compileMaxUniqueColumns = 10
 	// compileMaxCustomSQLLength bounds a custom SQL definition (8 KiB), matching
 	// the design's storage limit.

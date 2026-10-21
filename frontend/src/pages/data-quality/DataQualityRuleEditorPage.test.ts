@@ -6,11 +6,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
 import ColumnSelect from "@/components/common/ColumnSelect.vue";
+import RuleConfigForm from "@/components/data-quality/RuleConfigForm.vue";
 import FormField from "@/components/ui/form-field/FormField.vue";
 import { Select } from "@/components/ui/select";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
+  QualityAggregateFunction,
   QualityRuleConfigSchema,
   QualityRuleSchema,
   QualityRuleType,
@@ -19,6 +21,7 @@ import {
   QualitySuggestionSource,
   QualitySuggestionStatus,
   QualityTargetSchema,
+  QualityThresholdMetric,
   RowCountConfigSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
@@ -28,8 +31,15 @@ import {
   WorkspaceProfileSettingSchema,
 } from "@/types/proto-es/v1/setting_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
+import { qualityRuleTypeKey } from "@/utils/dataQuality";
 import { emptyRuleForm, formToRule } from "@/utils/dataQualityForm";
 import DataQualityRuleEditorPage from "./DataQualityRuleEditorPage.vue";
+
+// Radix opens a select on pointerdown and calls pointer-capture APIs that jsdom
+// does not implement.
+Element.prototype.hasPointerCapture ??= () => false;
+Element.prototype.setPointerCapture ??= () => {};
+Element.prototype.releasePointerCapture ??= () => {};
 
 const mocks = vi.hoisted(() => ({
   createQualityRule: vi.fn(),
@@ -176,6 +186,25 @@ function actionButton(
   return button as ReturnType<ReturnType<typeof mount>["find"]>;
 }
 
+/** Open the rule-type select and return the portalled option elements. */
+async function openRuleTypeSelect(
+  wrapper: ReturnType<typeof mount>
+): Promise<HTMLElement[]> {
+  const trigger = wrapper.find("#dq-rule-type");
+  expect(trigger.exists(), "no rule-type trigger").toBe(true);
+  await trigger.trigger("pointerdown");
+  await nextTick();
+  await nextTick();
+  return Array.from(
+    document.body.querySelectorAll<HTMLElement>('[role="option"]')
+  );
+}
+
+/** The trimmed text of each option, in the order it renders. */
+function optionLabels(options: HTMLElement[]): string[] {
+  return options.map((option) => option.textContent?.trim() ?? "");
+}
+
 describe("DataQualityRuleEditorPage", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -297,6 +326,104 @@ describe("DataQualityRuleEditorPage", () => {
     expect(
       (wrapper.find("#dq-config-sql").element as HTMLTextAreaElement).value
     ).toBe("");
+  });
+
+  it("offers every rule type in labelled groups for an unfiltered target", async () => {
+    const { wrapper } = await mountEditor(
+      `/data-quality/rules/new?table_guid=${encodeURIComponent(PREFILL)}&meta_type=4`
+    );
+    const options = await openRuleTypeSelect(wrapper);
+    const labels = optionLabels(options);
+    const expected = Object.values(QualityRuleType)
+      .filter(
+        (value): value is QualityRuleType =>
+          typeof value === "number" && value !== QualityRuleType.UNSPECIFIED
+      )
+      .map((ruleType) => label(qualityRuleTypeKey(ruleType)));
+
+    expect(options).toHaveLength(18);
+    expect(new Set(labels)).toEqual(new Set(expected));
+    expect(labels).not.toContain(label("dataQuality.ruleType.unspecified"));
+    // The four family headings the select renders above the options.
+    expect(document.body.querySelectorAll('[role="group"]')).toHaveLength(4);
+    wrapper.unmount();
+  });
+
+  it("hides the types a view cannot watch and explains why", async () => {
+    const { wrapper } = await mountEditor(
+      `/data-quality/rules/new?table_guid=${encodeURIComponent(PREFILL)}&meta_type=5`
+    );
+    await flushPromises();
+
+    expect(wrapper.text()).toContain(
+      label("dataQuality.editor.ruleTypeViewHint")
+    );
+    const options = await openRuleTypeSelect(wrapper);
+    const labels = optionLabels(options);
+    expect(options).toHaveLength(5);
+    expect(new Set(labels)).toEqual(
+      new Set([
+        label("dataQuality.ruleType.rowCount"),
+        label("dataQuality.ruleType.rowCountChange"),
+        label("dataQuality.ruleType.freshness"),
+        label("dataQuality.ruleType.customSql"),
+        label("dataQuality.ruleType.schemaDrift"),
+      ])
+    );
+    expect(labels).not.toContain(label("dataQuality.ruleType.unique"));
+    expect(labels).not.toContain(label("dataQuality.ruleType.aggregate"));
+    wrapper.unmount();
+  });
+
+  it("shows the selected rule type's description", async () => {
+    const { wrapper } = await mountEditor(
+      `/data-quality/rules/new?table_guid=${encodeURIComponent(PREFILL)}&meta_type=4`
+    );
+    expect(wrapper.text()).toContain(
+      label("dataQuality.ruleTypeDescription.rowCount")
+    );
+
+    await wrapper
+      .findAllComponents(Select)[0]
+      ?.vm.$emit("update:modelValue", String(QualityRuleType.AGGREGATE));
+    await nextTick();
+    expect(wrapper.text()).toContain(
+      label("dataQuality.ruleTypeDescription.aggregate")
+    );
+    expect(wrapper.text()).not.toContain(
+      label("dataQuality.ruleTypeDescription.rowCount")
+    );
+    wrapper.unmount();
+  });
+
+  it("resets a percentage threshold when the type no longer reads one", async () => {
+    const { wrapper } = await mountEditor(
+      `/data-quality/rules/new?table_guid=${encodeURIComponent(PREFILL)}&meta_type=4`
+    );
+    await wrapper
+      .findAllComponents(Select)[0]
+      ?.vm.$emit("update:modelValue", String(QualityRuleType.UNIQUE));
+    await nextTick();
+
+    wrapper
+      .findComponent(RuleConfigForm)
+      .vm.$emit("update:thresholdMetric", QualityThresholdMetric.PERCENT);
+    await nextTick();
+    expect(wrapper.findComponent(RuleConfigForm).props("thresholdMetric")).toBe(
+      QualityThresholdMetric.PERCENT
+    );
+    expect(wrapper.find("#dq-rule-on-empty").exists()).toBe(true);
+
+    await wrapper
+      .findAllComponents(Select)[0]
+      ?.vm.$emit("update:modelValue", String(QualityRuleType.ROW_COUNT));
+    await nextTick();
+    expect(wrapper.findComponent(RuleConfigForm).props("thresholdMetric")).toBe(
+      QualityThresholdMetric.COUNT
+    );
+    // on_empty cannot change a row-count verdict, so its select is hidden.
+    expect(wrapper.find("#dq-rule-on-empty").exists()).toBe(false);
+    wrapper.unmount();
   });
 
   it("blocks Dry run on a missing required field without calling the server", async () => {
@@ -722,5 +849,101 @@ describe("DataQualityRuleEditorPage", () => {
     expect(mocks.updateQualityRule).toHaveBeenCalledTimes(1);
     const [, mask] = mocks.updateQualityRule.mock.calls[0] ?? [];
     expect(mask).toEqual(["title"]);
+  });
+
+  it("resolves an unset schema-drift nullability from the loaded target columns", async () => {
+    const baseForm = emptyRuleForm(QualityRuleType.SCHEMA_DRIFT);
+    baseForm.title = "Schema drift";
+    baseForm.config.expectedColumns = [
+      { name: "id", type: "bigint" },
+      { name: "legacy_col", type: "text" },
+    ];
+    const stored = formToRule(baseForm, {
+      target: {
+        guid: PREFILL,
+        metaType: MetaType.TABLE,
+        path: {
+          instance: "inst1",
+          database: "db1",
+          schema: "public",
+          object: "orders",
+        },
+        columns: [],
+      },
+    });
+    stored.name = "workspaces/ws/qualityRules/rule-1";
+    mocks.getQualityRule.mockResolvedValue(stored);
+    mocks.updateQualityRule.mockResolvedValue(stored);
+
+    const { wrapper } = await mountEditor(
+      "/data-quality/rules/workspaces/ws/qualityRules/rule-1/edit"
+    );
+    await flushPromises();
+
+    const expected = wrapper
+      .findComponent(RuleConfigForm)
+      .props("modelValue").expectedColumns;
+    // The mock's target column "id" is nullable=false.
+    expect(expected?.[0]?.nullable).toBe(false);
+    // A column the target no longer has stays unjudged instead of inventing a bit.
+    expect(expected?.[1]?.nullable).toBeUndefined();
+
+    // Saving without edits writes nothing: the baseline was resolved the same way.
+    await actionButton(
+      wrapper,
+      label("dataQuality.editor.saveChanges")
+    ).trigger("click");
+    await flushPromises();
+    expect(mocks.previewQualityRule).toHaveBeenCalledTimes(1);
+    expect(mocks.updateQualityRule).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("keeps a stored type outside a view's options visible instead of rewriting it", async () => {
+    const baseForm = emptyRuleForm(QualityRuleType.AGGREGATE);
+    baseForm.title = "Average amount";
+    baseForm.config.aggregateColumn = "amount";
+    baseForm.config.aggregateFunction = QualityAggregateFunction.AVG;
+    baseForm.config.aggMin = "0";
+    baseForm.config.aggMax = "100";
+    const stored = formToRule(baseForm, {
+      target: {
+        guid: PREFILL,
+        metaType: MetaType.VIEW,
+        path: {
+          instance: "inst1",
+          database: "db1",
+          schema: "public",
+          object: "orders",
+        },
+        columns: [],
+      },
+    });
+    stored.name = "workspaces/ws/qualityRules/rule-1";
+    mocks.getQualityRule.mockResolvedValue(stored);
+
+    const { wrapper } = await mountEditor(
+      "/data-quality/rules/workspaces/ws/qualityRules/rule-1/edit"
+    );
+    await flushPromises();
+
+    // The stored value is kept, not silently rewritten to a view-legal type.
+    expect(wrapper.findAllComponents(Select)[0]?.props("modelValue")).toBe(
+      String(QualityRuleType.AGGREGATE)
+    );
+    expect(wrapper.text()).toContain(
+      label("dataQuality.editor.ruleTypeViewHint")
+    );
+    expect(wrapper.text()).toContain(
+      label("dataQuality.ruleTypeDescription.aggregate")
+    );
+
+    // The fallback entry renders with the five view-legal options.
+    const options = await openRuleTypeSelect(wrapper);
+    const labels = optionLabels(options);
+    expect(options).toHaveLength(6);
+    expect(labels).toContain(label("dataQuality.ruleType.aggregate"));
+    expect(mocks.updateQualityRule).not.toHaveBeenCalled();
+    wrapper.unmount();
   });
 });

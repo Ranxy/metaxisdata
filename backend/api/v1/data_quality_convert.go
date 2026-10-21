@@ -8,6 +8,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -1254,7 +1255,10 @@ func convertColumnSemanticLabelToV1(label *store.ColumnSemanticLabelMessage) *v1
 	}
 }
 
-// convertSchemaDriftColumnsToV1 converts the expected-column snapshot.
+// convertSchemaDriftColumnsToV1 converts the expected-column snapshot. Nullability
+// keeps its presence: an unset field means the rule does not judge it, and
+// materializing a false there would let older snapshots drift on every nullable
+// column.
 func convertSchemaDriftColumnsToV1(columns []*storepb.SchemaDriftColumn) []*v1pb.SchemaDriftColumn {
 	if columns == nil {
 		return nil
@@ -1267,14 +1271,14 @@ func convertSchemaDriftColumnsToV1(columns []*storepb.SchemaDriftColumn) []*v1pb
 		converted = append(converted, &v1pb.SchemaDriftColumn{
 			Name:     column.GetName(),
 			Type:     column.GetType(),
-			Nullable: column.GetNullable(),
+			Nullable: column.Nullable,
 		})
 	}
 	return converted
 }
 
 // convertSchemaDriftColumnsFromV1 converts the expected-column snapshot back into
-// the stored shape.
+// the stored shape, preserving whether the nullable field was present.
 func convertSchemaDriftColumnsFromV1(columns []*v1pb.SchemaDriftColumn) []*storepb.SchemaDriftColumn {
 	if columns == nil {
 		return nil
@@ -1287,7 +1291,7 @@ func convertSchemaDriftColumnsFromV1(columns []*v1pb.SchemaDriftColumn) []*store
 		converted = append(converted, &storepb.SchemaDriftColumn{
 			Name:     column.GetName(),
 			Type:     column.GetType(),
-			Nullable: column.GetNullable(),
+			Nullable: column.Nullable,
 		})
 	}
 	return converted
@@ -1297,7 +1301,8 @@ func convertSchemaDriftColumnsFromV1(columns []*v1pb.SchemaDriftColumn) []*store
 // from the target's current columns when the request did not carry one. It
 // reports whether it wrote anything, so a caller that has to persist the snapshot
 // knows whether the config changed. The snapshot keeps the registry's column
-// order, which is what check_order compares against.
+// order, which is what check_order compares against, and records nullability
+// explicitly: a snapshot this API wrote is a complete column contract.
 func fillSchemaDriftSnapshot(config *storepb.QualityRuleConfig, columns []dataquality.ColumnInfo) bool {
 	drift := config.GetSchemaDrift()
 	if drift == nil || len(drift.GetExpectedColumns()) > 0 || len(columns) == 0 {
@@ -1308,7 +1313,7 @@ func fillSchemaDriftSnapshot(config *storepb.QualityRuleConfig, columns []dataqu
 		expected = append(expected, &storepb.SchemaDriftColumn{
 			Name:     column.Name,
 			Type:     column.Type,
-			Nullable: column.Nullable,
+			Nullable: proto.Bool(column.Nullable),
 		})
 	}
 	drift.ExpectedColumns = expected

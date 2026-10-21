@@ -3240,10 +3240,14 @@ func (x *CelExpressionConfig) GetWarnThreshold() float64 {
 
 // SchemaDriftColumn is one column of the snapshot a schema-drift rule expects.
 type SchemaDriftColumn struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Type          string                 `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"`
-	Nullable      bool                   `protobuf:"varint,3,opt,name=nullable,proto3" json:"nullable,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Name  string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Type  string                 `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"`
+	// Whether the column is nullable. Unset means the rule does not judge
+	// nullability for this column: a snapshot written before nullability was
+	// compared stays usable and does not report a false drift. The editor and the
+	// API's fill-from-target path always set it.
+	Nullable      *bool `protobuf:"varint,3,opt,name=nullable,proto3,oneof" json:"nullable,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3293,8 +3297,8 @@ func (x *SchemaDriftColumn) GetType() string {
 }
 
 func (x *SchemaDriftColumn) GetNullable() bool {
-	if x != nil {
-		return x.Nullable
+	if x != nil && x.Nullable != nil {
+		return *x.Nullable
 	}
 	return false
 }
@@ -3307,8 +3311,8 @@ type SchemaDriftConfig struct {
 	// The snapshot. The API fills it from the current columns when a rule is
 	// created without one, and the editor lets a user adjust it.
 	ExpectedColumns []*SchemaDriftColumn `protobuf:"bytes,1,rep,name=expected_columns,json=expectedColumns,proto3" json:"expected_columns,omitempty"`
-	// Whether a changed column type is drift. Unset means true: a type change is
-	// drift unless the rule author turns the check off.
+	// Whether a changed column type or nullability is drift. Unset means true:
+	// either change is drift unless the rule author turns the check off.
 	CheckTypes *bool `protobuf:"varint,2,opt,name=check_types,json=checkTypes,proto3,oneof" json:"check_types,omitempty"`
 	// Whether a changed column order is drift. Default false.
 	CheckOrder bool `protobuf:"varint,3,opt,name=check_order,json=checkOrder,proto3" json:"check_order,omitempty"`
@@ -8362,11 +8366,12 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\x0efail_threshold\x18\x04 \x01(\x01H\x00R\rfailThreshold\x88\x01\x01\x12*\n" +
 	"\x0ewarn_threshold\x18\x05 \x01(\x01H\x01R\rwarnThreshold\x88\x01\x01B\x11\n" +
 	"\x0f_fail_thresholdB\x11\n" +
-	"\x0f_warn_threshold\"W\n" +
+	"\x0f_warn_threshold\"i\n" +
 	"\x11SchemaDriftColumn\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
-	"\x04type\x18\x02 \x01(\tR\x04type\x12\x1a\n" +
-	"\bnullable\x18\x03 \x01(\bR\bnullable\"\xe6\x02\n" +
+	"\x04type\x18\x02 \x01(\tR\x04type\x12\x1f\n" +
+	"\bnullable\x18\x03 \x01(\bH\x00R\bnullable\x88\x01\x01B\v\n" +
+	"\t_nullable\"\xe6\x02\n" +
 	"\x11SchemaDriftConfig\x12L\n" +
 	"\x10expected_columns\x18\x01 \x03(\v2!.metaxisdata.v1.SchemaDriftColumnR\x0fexpectedColumns\x12$\n" +
 	"\vcheck_types\x18\x02 \x01(\bH\x00R\n" +
@@ -9402,6 +9407,7 @@ func file_v1_data_quality_service_proto_init() {
 	file_v1_data_quality_service_proto_msgTypes[15].OneofWrappers = []any{}
 	file_v1_data_quality_service_proto_msgTypes[16].OneofWrappers = []any{}
 	file_v1_data_quality_service_proto_msgTypes[17].OneofWrappers = []any{}
+	file_v1_data_quality_service_proto_msgTypes[18].OneofWrappers = []any{}
 	file_v1_data_quality_service_proto_msgTypes[19].OneofWrappers = []any{}
 	file_v1_data_quality_service_proto_msgTypes[20].OneofWrappers = []any{}
 	file_v1_data_quality_service_proto_msgTypes[21].OneofWrappers = []any{}

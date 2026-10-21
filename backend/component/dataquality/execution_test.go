@@ -379,8 +379,9 @@ func TestExecuteRequiresItsInputs(t *testing.T) {
 	require.Equal(t, common.Invalid, common.ErrorCode(err))
 }
 
-// A percentage threshold needs a denominator. Types that only count failed rows
-// refuse it here as a run-time backstop; the save path refuses it too.
+// A percentage threshold needs a denominator. Types whose observation is a
+// whole-table property or that name their own unit refuse it here as a run-time
+// backstop; the save path refuses it too, with the same wording.
 func TestExecuteRefusesAPercentageThresholdWithoutATotal(t *testing.T) {
 	t.Parallel()
 
@@ -395,17 +396,30 @@ func TestExecuteRefusesAPercentageThresholdWithoutATotal(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, common.Invalid, common.ErrorCode(err))
 
-	// A count rule with a total accepts it: the evaluator divides failed by total.
+	// null_percent names its own count/percentage unit in its config, so the
+	// shared PERCENT metric is refused even though the observation has a total.
 	nullPercent := &storepb.QualityRuleConfig{
 		Config:          &storepb.QualityRuleConfig_NullPercent{NullPercent: &storepb.NullPercentConfig{Column: "email", MaxNullPct: proto.Float64(5)}},
 		ThresholdMetric: storepb.QualityThresholdMetric_QUALITY_THRESHOLD_METRIC_PERCENT,
 	}
-	queryer := &execFakeQueryer{results: []*db.QueryResult{
-		aggregateRow([]string{"total_rows", "failed_rows"}, int64(10), int64(2)),
-	}}
-	_, err = NewExecutor().Execute(context.Background(), queryer,
+	_, err = NewExecutor().Execute(context.Background(), &execFakeQueryer{},
 		execTestResolution(storepb.Engine_MYSQL),
 		execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT, nullPercent),
+		ExecOptions{})
+	require.Error(t, err)
+	require.Equal(t, common.Invalid, common.ErrorCode(err))
+	require.Contains(t, err.Error(), "chooses count or percentage in its own config")
+
+	// A count rule with a denominator still accepts it.
+	unique := &storepb.QualityRuleConfig{
+		Config:          &storepb.QualityRuleConfig_Unique{Unique: &storepb.UniqueConfig{Column: "email", FailThreshold: proto.Float64(50)}},
+		ThresholdMetric: storepb.QualityThresholdMetric_QUALITY_THRESHOLD_METRIC_PERCENT,
+	}
+	_, err = NewExecutor().Execute(context.Background(), &execFakeQueryer{results: []*db.QueryResult{
+		aggregateRow([]string{"failed_rows", "groups", "total_rows"}, int64(1), int64(1), int64(100)),
+	}},
+		execTestResolution(storepb.Engine_MYSQL),
+		execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, unique),
 		ExecOptions{})
 	require.NoError(t, err)
 }

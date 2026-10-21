@@ -630,7 +630,11 @@ message CelExpressionConfig {
 message SchemaDriftColumn {
   string name = 1;
   string type = 2;
-  bool nullable = 3;
+  // Whether the column is nullable. Unset means the rule does not judge
+  // nullability for this column: a snapshot written before nullability was
+  // compared stays usable and does not report a false drift. The editor and the
+  // API's fill-from-target path always set it.
+  optional bool nullable = 3;
 }
 
 // SchemaDriftConfig compares the live column list with the snapshot taken when
@@ -640,8 +644,8 @@ message SchemaDriftConfig {
   // The snapshot. The API fills it from the current columns when a rule is
   // created without one, and the editor lets a user adjust it.
   repeated SchemaDriftColumn expected_columns = 1;
-  // Whether a changed column type is drift. Unset means true: a type change is
-  // drift unless the rule author turns the check off.
+  // Whether a changed column type or nullability is drift. Unset means true:
+  // either change is drift unless the rule author turns the check off.
   optional bool check_types = 2;
   // Whether a changed column order is drift. Default false.
   bool check_order = 3;

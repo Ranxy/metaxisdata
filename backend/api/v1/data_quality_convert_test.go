@@ -126,8 +126,8 @@ func qualityConfigCases() []struct {
 		}}}},
 		{name: "schema_drift", config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_SchemaDrift{SchemaDrift: &storepb.SchemaDriftConfig{
 			ExpectedColumns: []*storepb.SchemaDriftColumn{
-				{Name: "id", Type: "bigint", Nullable: false},
-				{Name: "email", Type: "varchar(255)", Nullable: true},
+				{Name: "id", Type: "bigint", Nullable: qualityTestPtr(false)},
+				{Name: "email", Type: "varchar(255)", Nullable: qualityTestPtr(true)},
 			},
 			CheckTypes:        qualityTestPtr(true),
 			CheckOrder:        true,
@@ -881,10 +881,16 @@ func TestFillSchemaDriftSnapshot(t *testing.T) {
 		require.Len(t, expected, 3)
 		require.Equal(t, "id", expected[0].GetName())
 		require.Equal(t, "bigint", expected[0].GetType())
+		// An API-filled snapshot records nullability explicitly: an absent field
+		// would tell the evaluator not to judge it.
+		require.NotNil(t, expected[0].Nullable)
 		require.False(t, expected[0].GetNullable())
 		require.Equal(t, "email", expected[1].GetName())
+		require.NotNil(t, expected[1].Nullable)
 		require.True(t, expected[1].GetNullable())
 		require.Equal(t, "amount", expected[2].GetName())
+		require.NotNil(t, expected[2].Nullable)
+		require.True(t, expected[2].GetNullable())
 	})
 
 	t.Run("keeps a user-provided snapshot untouched", func(t *testing.T) {
@@ -924,4 +930,36 @@ func TestSchemaDriftOptionalCheckTypesRoundTrip(t *testing.T) {
 	roundTripped := convertQualityRuleConfigFromV1(convertQualityRuleConfigToV1(config))
 	require.Nil(t, roundTripped.GetSchemaDrift().CheckTypes)
 	require.True(t, proto.Equal(config, roundTripped))
+}
+
+// Nullability presence is part of the snapshot contract: unset means "do not
+// judge", while an explicit false is a real NOT NULL expectation. The v1<->store
+// conversion must not collapse the two.
+func TestSchemaDriftNullablePresenceRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	config := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_SchemaDrift{SchemaDrift: &storepb.SchemaDriftConfig{
+		ExpectedColumns: []*storepb.SchemaDriftColumn{
+			{Name: "unjudged", Type: "text"},
+			{Name: "required", Type: "bigint", Nullable: qualityTestPtr(false)},
+			{Name: "optional", Type: "text", Nullable: qualityTestPtr(true)},
+		},
+	}}}
+
+	public := convertQualityRuleConfigToV1(config)
+	require.Len(t, public.GetConfig().(*v1pb.QualityRuleConfig_SchemaDrift).SchemaDrift.GetExpectedColumns(), 3)
+	publicColumns := public.GetConfig().(*v1pb.QualityRuleConfig_SchemaDrift).SchemaDrift.GetExpectedColumns()
+	require.Nil(t, publicColumns[0].Nullable, "an unset snapshot column must stay unset over the wire")
+	require.NotNil(t, publicColumns[1].Nullable)
+	require.False(t, publicColumns[1].GetNullable())
+	require.NotNil(t, publicColumns[2].Nullable)
+	require.True(t, publicColumns[2].GetNullable())
+
+	roundTripped := convertQualityRuleConfigFromV1(public)
+	require.True(t, proto.Equal(config, roundTripped))
+	stored := roundTripped.GetSchemaDrift().GetExpectedColumns()
+	require.Nil(t, stored[0].Nullable)
+	require.NotNil(t, stored[1].Nullable)
+	require.False(t, stored[1].GetNullable())
+	require.True(t, stored[2].GetNullable())
 }

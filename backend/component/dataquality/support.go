@@ -80,19 +80,28 @@ func IsMetadataRule(ruleType storepb.QualityRuleType) bool {
 	return ruleType == storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT
 }
 
+// aggregateCountUnsupported is the save-time reason a single aggregate COUNT is
+// refused: row_count already bounds the filtered row count, so a second rule type
+// for the same observation would only split the catalog. cross_table still offers
+// COUNT through crossTableFunctionSupported.
+const aggregateCountUnsupported = "aggregate COUNT duplicates row_count; use a row_count rule"
+
 // aggregateFunctionSupported reports whether one aggregate function can be
-// compiled for an engine. COUNT/SUM/AVG/MIN/MAX/STDDEV are available everywhere;
+// compiled for an aggregate rule. SUM/AVG/MIN/MAX/STDDEV are available everywhere;
 // only PostgreSQL and SQL Server have a percentile-cont aggregate, so the MySQL
-// family and StarRocks refuse PERCENTILE at save time.
+// family and StarRocks refuse PERCENTILE at save time. COUNT is not an aggregate
+// rule's function (row_count observes the filtered count); cross_table has its own
+// table for it.
 func aggregateFunctionSupported(engine storepb.Engine, function storepb.QualityAggregateFunction) (bool, string) {
 	switch function {
-	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
-		storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_SUM,
+	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_SUM,
 		storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_AVG,
 		storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MIN,
 		storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MAX,
 		storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_STDDEV:
 		return true, ""
+	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT:
+		return false, aggregateCountUnsupported
 	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_PERCENTILE:
 		switch engine {
 		case storepb.Engine_POSTGRES, storepb.Engine_MSSQL:

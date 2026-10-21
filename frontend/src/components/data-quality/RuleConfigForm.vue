@@ -9,12 +9,16 @@
     </p>
 
     <!-- Shared by every threshold-carrying config: the unit the fail/warn values
-         are read in. -->
+         are read in, and the values themselves. custom SQL has no row total, so
+         it keeps the fail/warn pair but never the unit. -->
     <div
-      v-if="isCountRule"
+      v-if="isCountRule || ruleType === QualityRuleType.CUSTOM_SQL"
       class="grid gap-4 sm:grid-cols-3"
     >
-      <div class="flex flex-col gap-1.5">
+      <div
+        v-if="isCountRule"
+        class="flex flex-col gap-1.5"
+      >
         <Label>{{ t("dataQuality.editor.thresholdMetric") }}</Label>
         <Select v-model="thresholdMetricModel">
           <SelectTrigger>
@@ -37,7 +41,9 @@
         :error="errorFor('failThreshold')"
         type="number"
         :label="t('dataQuality.editor.failThreshold')"
-        :hint="t('dataQuality.editor.thresholdHint')"
+        :hint="
+          isCountRule ? t('dataQuality.editor.thresholdHint') : undefined
+        "
       />
       <FormField
         v-model="config.warnThreshold"
@@ -570,18 +576,28 @@
           class="grid items-center gap-2 rounded-md border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]"
         >
           <Input
-            v-model="column.name"
+            :model-value="column.name"
             :aria-label="t('dataQuality.editor.columnName')"
             :placeholder="t('dataQuality.editor.columnName')"
+            @update:model-value="
+              (value) => setExpectedColumnName(column, String(value))
+            "
+            @blur="commitExpectedColumnName(column)"
           />
           <Input
-            v-model="column.type"
+            :model-value="column.type"
             :aria-label="t('dataQuality.editor.columnType')"
             :placeholder="t('dataQuality.editor.columnType')"
+            @update:model-value="
+              (value) => setExpectedColumnType(column, String(value))
+            "
           />
           <CheckboxField
-            v-model="column.nullable"
+            :model-value="column.nullable === true"
             :label="t('dataQuality.editor.nullable')"
+            @update:model-value="
+              (value) => setExpectedColumnNullable(column, value)
+            "
           />
           <Button
             type="button"
@@ -595,6 +611,12 @@
             <Trash2 class="h-4 w-4" />
           </Button>
         </div>
+        <p
+          v-if="(config.expectedColumns ?? []).length > 0"
+          class="text-xs text-muted-foreground"
+        >
+          {{ t("dataQuality.editor.nullableHint") }}
+        </p>
         <Button
           type="button"
           variant="outline"
@@ -832,6 +854,22 @@
         :label="t('dataQuality.editor.tolerance')"
         :hint="t('dataQuality.editor.toleranceHint')"
       />
+      <FormField
+        v-model="config.failThreshold"
+        :id="fieldId('failThreshold')"
+        :required="requiredFor('failThreshold')"
+        :error="errorFor('failThreshold')"
+        type="number"
+        :label="t('dataQuality.editor.failThreshold')"
+      />
+      <FormField
+        v-model="config.warnThreshold"
+        :id="fieldId('warnThreshold')"
+        :required="requiredFor('warnThreshold')"
+        :error="errorFor('warnThreshold')"
+        type="number"
+        :label="t('dataQuality.editor.warnThreshold')"
+      />
     </div>
     <template v-else-if="ruleType === QualityRuleType.CEL_EXPRESSION">
       <div class="space-y-2">
@@ -1068,8 +1106,85 @@ function setRightFunction(value: unknown) {
 function addExpectedColumn() {
   config.value.expectedColumns = [
     ...(config.value.expectedColumns ?? []),
-    { name: "", type: "", nullable: true },
+    // Nullability starts unset: the rule should not judge it until a target
+    // column or the reader supplies the expected bit.
+    { name: "", type: "" },
   ];
+}
+
+/**
+ * Which of a manual snapshot row's values this component filled in from the
+ * target. Only auto-filled values may be refreshed or cleared when the name
+ * changes; a value the reader typed or toggled is theirs.
+ */
+interface ExpectedColumnAutoFill {
+  type: boolean;
+  nullable: boolean;
+}
+const autoFilled = new WeakMap<SchemaDriftColumnForm, ExpectedColumnAutoFill>();
+
+function autoFillMark(column: SchemaDriftColumnForm): ExpectedColumnAutoFill {
+  let mark = autoFilled.get(column);
+  if (!mark) {
+    mark = { type: false, nullable: false };
+    autoFilled.set(column, mark);
+  }
+  return mark;
+}
+
+/** Typing only edits the name; the target lookup happens on blur. */
+function setExpectedColumnName(column: SchemaDriftColumnForm, value: string) {
+  column.name = value;
+}
+
+/**
+ * Resolves a manual row against the target when the name field is committed
+ * (blur). A matching column fills a blank or previously auto-filled type, and a
+ * nullability the reader has not set; a name that matches nothing clears what
+ * this behavior filled, so a transient match (`id` -> `idx`) cannot leave stale
+ * expectations behind. Values typed by the reader, toggled by the reader, or
+ * filled from the saved rule/from target carry no mark and are never cleared or
+ * overwritten.
+ */
+function commitExpectedColumnName(column: SchemaDriftColumnForm) {
+  const mark = autoFillMark(column);
+  const match = props.columnDetails.find(
+    (detail) => detail.name === column.name.trim()
+  );
+  if (!match) {
+    if (mark.type) {
+      column.type = "";
+      mark.type = false;
+    }
+    if (mark.nullable) {
+      column.nullable = undefined;
+      mark.nullable = false;
+    }
+    return;
+  }
+  if (column.type.trim() === "" || mark.type) {
+    column.type = match.type;
+    mark.type = true;
+  }
+  if (column.nullable === undefined || mark.nullable) {
+    column.nullable = match.nullable;
+    mark.nullable = true;
+  }
+}
+
+/** A type the reader edits is theirs: a later name match must not overwrite it. */
+function setExpectedColumnType(column: SchemaDriftColumnForm, value: string) {
+  column.type = value;
+  autoFillMark(column).type = false;
+}
+
+/** Writes the snapshot bit and records that the reader chose it. */
+function setExpectedColumnNullable(
+  column: SchemaDriftColumnForm,
+  value: boolean
+) {
+  column.nullable = value;
+  autoFillMark(column).nullable = false;
 }
 
 function removeExpectedColumn(index: number) {

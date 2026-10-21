@@ -32,21 +32,34 @@ fully offline; three model-assisted features are opt-in.
 ## Writing a rule
 
 Data Quality → Rules → **New rule**. Pick the target from the metadata browser,
-choose the rule type, and fill in the parameters; the editor compiles the rule
-server-side and shows the SQL it will run before you save. Saving validates the
-target, the columns and the parameters; a rule that cannot compile is refused.
+then choose the rule type — the list is grouped by family (quantity and timeliness,
+values and relations, aggregates and reconciliation, structure and custom) and a
+one-line description of the selected type sits under the control. Fill in the
+parameters; the editor compiles the rule server-side and shows the SQL it will run
+before you save. Saving validates the target, the columns and the parameters; a
+rule that cannot compile is refused. A view or materialized view only offers the
+table-level checks (row count, row count change, freshness, custom SQL, schema
+drift), because those objects have no column-level type authority.
 
 - **Schedule**: 15 minutes to 7 days. A new rule first runs on its next scheduled
   slot; use **Run now** to check it immediately.
 - **Thresholds**: a count-type rule compares failed rows (or the failed
   percentage) with a warning and a failure level; an aggregate compares its value
-  with a range; freshness compares the lag in seconds.
+  with a range; freshness compares the lag in seconds. Custom SQL rules always
+  count failed rows — they have no row total to take a percentage of.
 - **Empty data**: by default a query that returns nothing is `NOT_EVALUATED`,
-  not a pass. Choose pass or fail per rule if that is the intent.
+  not a pass. Choose pass or fail per rule if that is the intent; row count,
+  custom SQL and schema drift always produce a value, so the setting does not
+  apply to them.
 - **Filters** narrow the rows the rule reads (structured AND conditions only);
   write a custom-SQL rule when the condition needs more.
 - **Preview** runs the compiled statement with `LIMIT 0` against the read-only
   source: it proves syntax and permission without scanning the table.
+- **Schema drift** compares each column's type and nullability — plus, if you ask
+  for it, order and extra columns — with the snapshot saved when the rule was
+  created. Columns recorded by an older snapshot that did not store nullability
+  stay unjudged until the rule is saved again. Use *Fill from target* to record
+  the current definition.
 
 ## Browsing rules
 
@@ -54,8 +67,8 @@ Data Quality → Rules lists every rule with its target and latest execution. Th
 **Target scope** filter narrows the list to a subtree of the metadata tree: pick
 an instance, then drill into a database, schema or table/view, and apply at any
 level — choosing a table (or view) applies that table itself. The text search
-matches a rule's title and description; dimension, severity and state narrow
-further. Filters take effect when you press **Apply**.
+matches a rule's title and description; rule type, dimension, severity and state
+narrow further. Filters take effect when you press **Apply**.
 
 ## Executions and statuses
 
@@ -147,6 +160,7 @@ runner prunes them. Rules, open issues and accepted labels are not pruned.
 | A dry run fails with a parameter or SQL error | The message shows the compiled SQL and its bound values; check that the filter values and range/aggregate bounds match the column's type (for example a date written as a plain string, or a numeric bound for a text column). |
 | Rules never run | The rule is paused or archived, the instance is gone, or the daily execution ceiling was reached (the next day resumes it; **Run now** still works). |
 | An execution stays pending, or ends abandoned | The instance's connection budget stayed busy past the runner's wait, or the server restarted mid-run. Such checks are not retried automatically; use **Run now** or wait for the next scheduled slot. |
+| A rule that used to run now ends `ERROR(UNSUPPORTED)` | The rule uses a configuration this build no longer accepts, for example an aggregate `COUNT` (use a row count rule instead) or a column type the engine cannot express. Re-create the rule with the supported type. |
 | No notification for a failure | The issue was already open (notifications fire on transitions), the rule is muted, or more than ten rules failed in the same scheduler pass and a summary was sent instead. |
 | Model buttons are disabled | Model analysis is off, no allowed provider profile exists, or the caller lacks `suggest`/`explain`. |
 | A label suggestion cannot be accepted | Profile the columns first; label suggestions require profiles fresher than seven days. |

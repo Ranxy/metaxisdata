@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
@@ -26,8 +27,8 @@ func aggregateConfig(column string, function storepb.QualityAggregateFunction, m
 }
 
 // TestAggregateSQLGoldens pins the aggregate statement on every dialect family:
-// COUNT(*) ignores the column, arithmetic/min/max aggregate it, and the engine
-// spellings differ only for standard deviation.
+// the function aggregates the named column, and the engine spellings differ only
+// for standard deviation.
 func TestAggregateSQLGoldens(t *testing.T) {
 	t.Parallel()
 
@@ -38,13 +39,6 @@ func TestAggregateSQLGoldens(t *testing.T) {
 		pgSQL    string
 		mssqlSQL string
 	}{
-		{
-			name:     "count",
-			config:   aggregateConfig("id", storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT, proto.Float64(1), nil),
-			mysqlSQL: "SELECT COUNT(*) AS total_rows, COUNT(*) AS observed FROM `shop`.`orders`",
-			pgSQL:    `SELECT COUNT(*) AS total_rows, COUNT(*) AS observed FROM "public"."orders"`,
-			mssqlSQL: "SELECT COUNT(*) AS total_rows, COUNT(*) AS observed FROM [public].[orders]",
-		},
 		{
 			name:     "sum",
 			config:   aggregateConfig("amount", storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_SUM, proto.Float64(0), proto.Float64(100)),
@@ -60,11 +54,11 @@ func TestAggregateSQLGoldens(t *testing.T) {
 			mssqlSQL: "SELECT COUNT(*) AS total_rows, AVG([amount]) AS observed FROM [public].[orders]",
 		},
 		{
-			name:     "min on a temporal column",
-			config:   aggregateConfig("created_at", storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MIN, proto.Float64(0), nil),
-			mysqlSQL: "SELECT COUNT(*) AS total_rows, MIN(`created_at`) AS observed FROM `shop`.`orders`",
-			pgSQL:    `SELECT COUNT(*) AS total_rows, MIN("created_at") AS observed FROM "public"."orders"`,
-			mssqlSQL: "SELECT COUNT(*) AS total_rows, MIN([created_at]) AS observed FROM [public].[orders]",
+			name:     "min",
+			config:   aggregateConfig("amount", storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MIN, proto.Float64(0), nil),
+			mysqlSQL: "SELECT COUNT(*) AS total_rows, MIN(`amount`) AS observed FROM `shop`.`orders`",
+			pgSQL:    `SELECT COUNT(*) AS total_rows, MIN("amount") AS observed FROM "public"."orders"`,
+			mssqlSQL: "SELECT COUNT(*) AS total_rows, MIN([amount]) AS observed FROM [public].[orders]",
 		},
 		{
 			name:     "max",
@@ -286,6 +280,12 @@ func TestValidateAggregateConfig(t *testing.T) {
 			wantMessage: "empty",
 		},
 		{
+			name:        "count function",
+			engine:      storepb.Engine_POSTGRES,
+			config:      aggregateConfig("id", storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT, proto.Float64(0), nil),
+			wantMessage: "duplicates row_count",
+		},
+		{
 			name:        "unknown column",
 			engine:      storepb.Engine_POSTGRES,
 			config:      aggregateConfig("nope", storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_SUM, proto.Float64(0), nil),
@@ -445,4 +445,23 @@ func TestAggregateExecutionRejectsPercentMetric(t *testing.T) {
 		execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE, config), ExecOptions{})
 	require.Equal(t, common.Invalid, common.ErrorCode(err))
 	require.Contains(t, err.Error(), "absolute values")
+}
+
+// TestStoredAggregateCountIsRejected pins the runtime consequence of the save-time
+// COUNT refusal: a rule persisted before that check (here the config is read back
+// from JSONB, as the store does) fails ValidateConfig. The runner maps that failure
+// to ERROR(UNSUPPORTED) before it opens a connection
+// (qualityrunner.executeOne), so the batch never queries the target.
+func TestStoredAggregateCountIsRejected(t *testing.T) {
+	t.Parallel()
+
+	stored := aggregateConfig("id", storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT, proto.Float64(0), nil)
+	encoded, err := protojson.Marshal(stored)
+	require.NoError(t, err)
+	decoded := &storepb.QualityRuleConfig{}
+	require.NoError(t, common.ProtojsonUnmarshaler.Unmarshal(encoded, decoded))
+
+	err = ValidateConfig(compileTestTarget(storepb.Engine_POSTGRES), storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE, decoded)
+	require.Equal(t, common.Invalid, common.ErrorCode(err))
+	require.Contains(t, err.Error(), "aggregate COUNT duplicates row_count")
 }

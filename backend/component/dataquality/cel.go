@@ -420,7 +420,9 @@ func celIntValue(column ColumnInfo, value any) (any, error) {
 }
 
 // celDoubleValue converts one sample value to the float64 a CEL double variable
-// holds.
+// holds. A string is parsed by celParseNumber: PostgreSQL money reaches a loosely
+// typed driver as decorated currency text ("$1,234.50"), and the parser accepts
+// that only when the rendering is unambiguous.
 func celDoubleValue(column ColumnInfo, value any) (any, error) {
 	switch typed := value.(type) {
 	case float64:
@@ -428,7 +430,7 @@ func celDoubleValue(column ColumnInfo, value any) (any, error) {
 	case int64:
 		return float64(typed), nil
 	case string:
-		parsed, err := strconv.ParseFloat(strings.TrimSpace(typed), 64)
+		parsed, err := celParseNumber(typed)
 		if err != nil {
 			return nil, badData("column %q is not a number (%q)", column.Name, typed)
 		}
@@ -438,6 +440,99 @@ func celDoubleValue(column ColumnInfo, value any) (any, error) {
 	default:
 		return nil, badData("column %q has an unexpected %T value", column.Name, value)
 	}
+}
+
+// celCurrencySymbols are the currency signs a money rendering may carry. They are
+// removed wherever they appear: they never separate digits, and PostgreSQL writes a
+// negative amount as "-$1.23".
+const celCurrencySymbols = "$€£¥₹₩₽¢"
+
+// celGroupedCommaNumber matches a comma-grouped number with an optional decimal
+// point: 1,234,567.89. A lone comma outside this shape (1,5) is ambiguous and is
+// refused rather than guessed.
+var celGroupedCommaNumber = regexp.MustCompile(`^[+-]?\d{1,3}(,\d{3})+(\.\d+)?$`)
+
+// celGroupedDotNumber matches a dot-grouped number with an optional comma decimal:
+// 1.234.567,89.
+var celGroupedDotNumber = regexp.MustCompile(`^[+-]?\d{1,3}(\.\d{3})+(,\d+)?$`)
+
+// celParseNumber parses the string rendering of one numeric sample value. A plain
+// decimal or scientific string is the common case. Money is rendered with a
+// currency symbol, grouped thousands and either decimal separator, so a decorated
+// value is accepted only when its separator layout is unambiguous: the last of
+// "." and "," is the decimal separator and the grouping matches three digits.
+// Anything else — "1,5", "1 234,50", a non-finite spelling — is an error, because
+// guessing a locale would silently change the value the rule judges.
+func celParseNumber(raw string) (float64, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return 0, strconv.ErrSyntax
+	}
+	if parsed, ok := celFiniteFloat(trimmed); ok {
+		return parsed, nil
+	}
+
+	// A money rendering may be parenthesized to mean negative and may carry the
+	// currency sign on either side of the number. Remove the sign wherever it
+	// appears, then require no internal whitespace: that spelling ("1 234,50") is
+	// ambiguous, not a separator this parser guesses at.
+	core := trimmed
+	negative := false
+	if strings.HasPrefix(core, "(") && strings.HasSuffix(core, ")") && len(core) > 2 {
+		negative = true
+		core = core[1 : len(core)-1]
+	}
+	core = strings.Map(func(r rune) rune {
+		if strings.ContainsRune(celCurrencySymbols, r) {
+			return -1
+		}
+		return r
+	}, core)
+	core = strings.TrimSpace(core)
+	if core == "" {
+		return 0, strconv.ErrSyntax
+	}
+	// Internal whitespace is the ambiguous spelling "1 234,50" (thousands or a
+	// stray space), never a separator this parser guesses at.
+	if strings.ContainsAny(core, " \t\r\n\u00a0\u202f") {
+		return 0, strconv.ErrSyntax
+	}
+
+	parsed, ok := celParseSeparatedNumber(core)
+	if !ok {
+		return 0, strconv.ErrSyntax
+	}
+	if negative {
+		parsed = -parsed
+	}
+	return parsed, nil
+}
+
+// celParseSeparatedNumber parses a number whose groups use one or both separators.
+func celParseSeparatedNumber(value string) (float64, bool) {
+	switch {
+	case !strings.Contains(value, ","):
+		// No grouping: a plain decimal, possibly with the decoration already
+		// stripped ("1.23€").
+		return celFiniteFloat(value)
+	case celGroupedCommaNumber.MatchString(value):
+		return celFiniteFloat(strings.ReplaceAll(value, ",", ""))
+	case celGroupedDotNumber.MatchString(value):
+		replaced := strings.ReplaceAll(value, ".", "")
+		return celFiniteFloat(strings.Replace(replaced, ",", ".", 1))
+	default:
+		return 0, false
+	}
+}
+
+// celFiniteFloat parses one plain float and rejects NaN and the infinities: they
+// are not data a quality rule can compare.
+func celFiniteFloat(value string) (float64, bool) {
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
+		return 0, false
+	}
+	return parsed, true
 }
 
 // celStringValue converts one sample value to the string a CEL string variable

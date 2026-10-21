@@ -977,7 +977,7 @@ SchemaDriftColumn is one column of the snapshot a schema-drift rule expects.
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  |  |
 | type | [string](#string) |  |  |
-| nullable | [bool](#bool) |  |  |
+| nullable | [bool](#bool) | optional | Whether the column is nullable. Unset means the rule does not judge nullability for this column: a snapshot written before nullability was compared stays usable and does not report a false drift. The editor and the API&#39;s fill-from-target path always set it. |
 
 
 
@@ -995,7 +995,7 @@ database nothing.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | expected_columns | [SchemaDriftColumn](#metaxisdata-store-SchemaDriftColumn) | repeated | The snapshot. The API fills it from the current columns when a rule is created without one, and the editor lets a user adjust it. |
-| check_types | [bool](#bool) | optional | Whether a changed column type is drift. Unset means true: a type change is drift unless the rule author turns the check off. |
+| check_types | [bool](#bool) | optional | Whether a changed column type or nullability is drift. Unset means true: either change is drift unless the rule author turns the check off. |
 | check_order | [bool](#bool) |  | Whether a changed column order is drift. Default false. |
 | allow_extra_columns | [bool](#bool) |  | Whether a column the snapshot does not name is drift. Default false. |
 | fail_threshold | [double](#double) | optional | Drift items tolerated. The metric is always COUNT here. |

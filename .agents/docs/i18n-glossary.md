@@ -155,17 +155,24 @@ pnpm --dir frontend i18n:glossary --write-doc     # 重写生成表格
 | refresh | 刷新 | Conventions | Refresh is 刷新. Reloading a stored definition is 重新加载; Regenerate is 重新生成. | all keys | — |
 | data quality | 数据质量 | Data Quality | The correctness and completeness of the data itself, as opposed to the registry's record of it. | dataQuality., menu. | — |
 | quality rule | 质量规则 | Data Quality | One typed check over one target table or column, run on a schedule or on demand. | dataQuality., menu. | — |
+| rule type | 规则类型 | Data Quality | The category a quality rule belongs to; it decides which configuration the rule carries and how its verdict is read. | dataQuality. | en-US: `/\brule kinds?/i`; zh-CN: `规则种类`, `检查类型` |
 | rule result | 规则结果 | Data Quality | The verdict of an execution. | dataQuality. | — |
 | execution | 执行 | Data Quality | One rule checked once, manually or on a schedule, with its verdict and the evidence behind it; the Chinese noun is 执行, never 运行记录 (that is an OpenLineage run). | dataQuality., menu. | zh-CN: `运行记录` |
 | issue | 质量问题 | Data Quality | A persistent problem behind a rule's failing executions that needs attention. | dataQuality. | — |
 | dimension | 维度 | Data Quality | The quality aspect a rule measures, e.g. completeness or timeliness. | dataQuality. | zh-CN: `度量` |
+| timeliness | 及时性 | Data Quality | The quality dimension for whether the data is up to date; the freshness rule measures it, but Chinese copy names the dimension 及时性 and the rule type 时效性. | dataQuality.dimension. | zh-CN: `时效性` |
 | severity | 严重级别 | Data Quality | How much an issue on a rule matters. | dataQuality. | zh-CN: `严重程度`, `严重性` |
 | threshold | 阈值 | Data Quality | The bound an observed value is compared with. | dataQuality. | zh-CN: `阀值`, `门槛` |
 | observed value | 实际值 | Data Quality | What a rule measured in one execution. | dataQuality. | zh-CN: `观测值`, `实测值` |
 | failure sample | 失败样本 | Data Quality | A failed row kept as evidence, already truncated. | dataQuality. | zh-CN: `失败样例` |
 | freshness | 时效性 | Data Quality | How recently the data was updated. | dataQuality. | zh-CN: `新鲜度` |
 | uniqueness | 唯一性 | Data Quality | Whether values, or tuples of values, occur only once. | dataQuality. | — |
+| accepted values | 允许值 | Data Quality | The rule that every value of a column comes from a fixed list. | dataQuality. | zh-CN: `枚举值` |
 | referential integrity | 引用完整性 | Data Quality | Whether a child row's value has a matching parent row. | dataQuality. | zh-CN: `参照完整性` |
+| schema drift | 结构漂移 | Data Quality | The rule that compares the target's live column list with the snapshot taken when the rule was saved. | dataQuality. | zh-CN: `表结构一致性`, `表结构漂移`, `字段结构漂移`, `模式漂移` |
+| grouped row count | 分组行数 | Data Quality | The rule that groups rows by columns and bounds each group's row count. | dataQuality. | zh-CN: `分组检查` |
+| aggregate value | 聚合值 | Data Quality | The rule that bounds one column's aggregate value (sum, average, extremes, standard deviation or percentile). | dataQuality. | zh-CN: `聚合检查`, `聚合校验` |
+| cross-table reconciliation | 跨表对账 | Data Quality | The rule that compares one aggregate of the target table with one of another table and bounds their difference. | dataQuality. | zh-CN: `跨表校验`, `跨表比较` |
 | dry run | 干跑 | Data Quality | Compiling and probing a rule without saving it or creating an execution. | dataQuality. | — |
 | sampled | 采样 | Data Quality | Judged from a sample of rows rather than every row. | dataQuality. | zh-CN: `抽样` |
 | suggestion | 建议 | Data Quality | A model-proposed rule draft or column label waiting for a person to accept or reject it. | dataQuality., menu. | zh-CN: `提议`, `意见` |

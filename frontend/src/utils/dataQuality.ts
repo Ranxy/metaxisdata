@@ -210,9 +210,31 @@ export function qualityRuleTypeKey(ruleType: QualityRuleType): string {
       return "dataQuality.ruleType.customSql";
     case QualityRuleType.CEL_EXPRESSION:
       return "dataQuality.ruleType.celExpression";
+    case QualityRuleType.SCHEMA_DRIFT:
+      return "dataQuality.ruleType.schemaDrift";
+    case QualityRuleType.GROUP_CHECK:
+      return "dataQuality.ruleType.groupCheck";
+    case QualityRuleType.AGGREGATE:
+      return "dataQuality.ruleType.aggregate";
+    case QualityRuleType.CROSS_TABLE:
+      return "dataQuality.ruleType.crossTable";
     default:
       return "dataQuality.ruleType.unspecified";
   }
+}
+
+/**
+ * The one-line explanation key for a rule type, or "" for an unknown type. It
+ * derives from the label key so the label and its description cannot drift
+ * apart.
+ */
+export function qualityRuleTypeDescriptionKey(
+  ruleType: QualityRuleType
+): string {
+  const key = qualityRuleTypeKey(ruleType);
+  return key === "dataQuality.ruleType.unspecified"
+    ? ""
+    : key.replace("dataQuality.ruleType.", "dataQuality.ruleTypeDescription.");
 }
 
 // ---- rule state ----

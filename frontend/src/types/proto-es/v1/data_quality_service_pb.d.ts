@@ -952,9 +952,14 @@ export declare type SchemaDriftColumn = Message<"metaxisdata.v1.SchemaDriftColum
   type: string;
 
   /**
-   * @generated from field: bool nullable = 3;
+   * Whether the column is nullable. Unset means the rule does not judge
+   * nullability for this column: a snapshot written before nullability was
+   * compared stays usable and does not report a false drift. The editor and the
+   * API's fill-from-target path always set it.
+   *
+   * @generated from field: optional bool nullable = 3;
    */
-  nullable: boolean;
+  nullable?: boolean;
 };
 
 /**
@@ -980,8 +985,8 @@ export declare type SchemaDriftConfig = Message<"metaxisdata.v1.SchemaDriftConfi
   expectedColumns: SchemaDriftColumn[];
 
   /**
-   * Whether a changed column type is drift. Unset means true: a type change is
-   * drift unless the rule author turns the check off.
+   * Whether a changed column type or nullability is drift. Unset means true:
+   * either change is drift unless the rule author turns the check off.
    *
    * @generated from field: optional bool check_types = 2;
    */

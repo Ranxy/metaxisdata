@@ -207,11 +207,11 @@ func validateThresholdMetric(metric storepb.QualityThresholdMetric) error {
 	}
 }
 
-// validatePercentSupport rejects PERCENT where the rule has no denominator. A
-// count-type rule measures failed_rows / total_rows; row_count, row_count_change,
-// null_percent (which names its own percentage form), freshness and custom SQL do
-// not return a total to divide by — custom SQL's statement returns failed rows
-// only — so a percentage threshold there would silently have no meaning.
+// validatePercentSupport is the save-time gate on threshold_metric PERCENT. It
+// consults the one allow-list (ruleTypeAllowsPercent) and explains a refusal with
+// the helper the executor's runtime backstop also uses, so the save path and a
+// stored rule cannot disagree about which types a percentage threshold means
+// anything for.
 func validatePercentSupport(ruleType storepb.QualityRuleType, metric storepb.QualityThresholdMetric) error {
 	if metric != storepb.QualityThresholdMetric_QUALITY_THRESHOLD_METRIC_PERCENT {
 		return nil
@@ -219,25 +219,54 @@ func validatePercentSupport(ruleType storepb.QualityRuleType, metric storepb.Qua
 	if ruleTypeAllowsPercent(ruleType) {
 		return nil
 	}
-	if ruleType == storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT {
+	return percentThresholdUnsupported(ruleType)
+}
+
+// percentThresholdUnsupported explains why a threshold in PERCENT is meaningless
+// for one rule type, naming the unit the rule actually uses. The save-time gate and
+// the executor's runtime backstop share it, so a rule is refused with the same
+// wording whether it is being saved or re-executed.
+func percentThresholdUnsupported(ruleType storepb.QualityRuleType) error {
+	switch ruleType {
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT:
+		return invalidConfig("row_count bounds the row count with min_rows/max_rows/exact_rows; threshold_metric PERCENT does not apply")
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE:
+		return invalidConfig("row_count_change bounds the change with max_increase_pct/max_decrease_pct; threshold_metric PERCENT does not apply")
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT:
+		// null_percent names its own unit: max_null_count/warn_null_count or
+		// max_null_pct/warn_null_pct. The shared threshold_metric is never read, so a
+		// PERCENT value there would describe a setting the rule does not use.
+		return invalidConfig("null_percent chooses count or percentage in its own config (max_null_count or max_null_pct); threshold_metric does not apply")
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS:
+		return invalidConfig("freshness bounds the lag with max_lag_seconds; threshold_metric PERCENT does not apply")
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL:
+		// The statement returns failing rows itself, so there is no filtered total to
+		// divide by.
+		return invalidConfig("custom_sql returns failed rows directly, so there is no total to divide by; threshold_metric PERCENT is not supported")
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT:
 		// The drift snapshot is a set of expected columns, not a sample of rows; a
 		// percentage of a tiny fixed list is not a meaningful threshold.
 		return invalidConfig("schema_drift measures a count of drift items; threshold_metric PERCENT is not supported")
-	}
-	if ruleType == storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE ||
-		ruleType == storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE {
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE:
 		// These thresholds bound an absolute value (an interval edge or a tolerated
 		// difference), not a fraction of rows.
 		return invalidConfig("%s thresholds are absolute values; threshold_metric PERCENT is not supported", ruleType)
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED:
+		return invalidConfig("a rule type is required")
+	default:
+		return invalidConfig("threshold_metric PERCENT is not supported by %s", ruleType)
 	}
-	return invalidConfig("threshold_metric PERCENT is not supported by %s: it has no total-rows denominator", ruleType)
 }
 
 // ruleTypeAllowsPercent lists the count-type rules whose observation carries a
 // denominator, so a percentage threshold has a real meaning. For the SQL count
 // rules that is total_rows; a CEL rule's denominator is the number of sampled rows
-// it evaluated. Everything else (custom_sql, freshness, row_count,
-// row_count_change, null_percent) has no total to divide by and rejects PERCENT.
+// it evaluated. This is the single source of truth for both validatePercentSupport
+// (save) and validateExecutionMetric (runtime backstop). Everything else rejects
+// PERCENT: custom_sql, row_count, row_count_change and freshness report no total to
+// divide by; null_percent names its own count/percentage unit in its config; and
+// schema_drift, aggregate and cross_table bound absolute measurements.
 func ruleTypeAllowsPercent(ruleType storepb.QualityRuleType) bool {
 	switch ruleType {
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
@@ -936,9 +965,10 @@ func validateCustomSQLConfig(target ResolvedTarget, config *storepb.QualityRuleC
 // are a percentage of the filtered rows, so they also stay within 0–100. An unset
 // fail threshold means 0, which is what the evaluator uses; a warn level above the
 // fail level could never be reported because the fail check runs first.
-// validateCELExpressionConfig checks one CEL rule: the referenced columns exist,
-// the sample size is legal, the thresholds are consistent in their unit, and the
-// expression compiles to a bool against those columns' CEL types.
+// validateCELExpressionConfig checks one CEL rule: the referenced columns exist
+// and are representable in CEL (money is not, because it arrives as decorated
+// currency text), the sample size is legal, the thresholds are consistent in their
+// unit, and the expression compiles to a bool against those columns' CEL types.
 func validateCELExpressionConfig(target ResolvedTarget, config *storepb.QualityRuleConfig) error {
 	celConfig := config.GetCelExpression()
 	if celConfig == nil {
@@ -947,6 +977,14 @@ func validateCELExpressionConfig(target ResolvedTarget, config *storepb.QualityR
 	columns, err := celColumns(target, celConfig.GetColumns())
 	if err != nil {
 		return err
+	}
+	// A CEL expression compares the value as a plain number; money reaches this
+	// process as currency text (the aggregate path has to strip it), so a money
+	// column would turn every row into BAD_DATA after the rule was saved.
+	for _, column := range columns {
+		if isMoneyType(column.Type) {
+			return invalidConfig("column %q is %s; a CEL expression reads a value as a plain number, and money renders as decorated currency text; use an aggregate or range rule instead", column.Name, column.Type)
+		}
 	}
 	if _, err := celSampleRows(celConfig.GetSampleRows()); err != nil {
 		return err
@@ -1083,8 +1121,9 @@ func validateGroupCheckConfig(target ResolvedTarget, config *storepb.QualityRule
 }
 
 // validateAggregateConfig checks an aggregate rule: the column exists, the
-// function is one this engine can run, PERCENTILE carries a 0–100 percentile, the
-// function's column type fits, and the interval bounds nest properly.
+// function is one this rule type offers and this engine can run, PERCENTILE
+// carries a 0–100 percentile, the function's column type fits, and the interval
+// bounds nest properly.
 func validateAggregateConfig(target ResolvedTarget, config *storepb.QualityRuleConfig) error {
 	aggregate := config.GetAggregate()
 	if aggregate == nil {
@@ -1095,6 +1134,12 @@ func validateAggregateConfig(target ResolvedTarget, config *storepb.QualityRuleC
 		return err
 	}
 	function := aggregate.GetFunction()
+	if function == storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT {
+		// A single aggregate COUNT observes the filtered row count, which row_count
+		// already bounds; keeping it here would add a second config for one
+		// observation. cross_table still offers COUNT for reconciliations.
+		return invalidConfig("%s", aggregateCountUnsupported)
+	}
 	if ok, reason := aggregateFunctionSupported(target.Engine, function); !ok {
 		return invalidConfig("%s", reason)
 	}
@@ -1117,8 +1162,10 @@ func validateAggregateConfig(target ResolvedTarget, config *storepb.QualityRuleC
 
 // validateAggregateColumnKind enforces an aggregate function's column-type
 // constraint: arithmetic and ordering aggregates need numbers (the observation is
-// read as a number, and a temporal MIN/MAX would be a timestamp), COUNT accepts
-// anything, and PostgreSQL money only supports SUM/MIN/MAX.
+// read as a number, and a temporal MIN/MAX would be a timestamp), COUNT (used by
+// cross-table reconciliations) accepts anything, and a money/smallmoney column
+// only supports SUM/MIN/MAX. The money restriction is conservative and deliberately
+// engine-agnostic; see isMoneyType.
 func validateAggregateColumnKind(column ColumnInfo, function storepb.QualityAggregateFunction) error {
 	switch function {
 	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT:
@@ -1133,7 +1180,7 @@ func validateAggregateColumnKind(column ColumnInfo, function storepb.QualityAggr
 		if isMoneyType(column.Type) && function != storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_SUM {
 			// PostgreSQL defines SUM/MIN/MAX for money, but not AVG/STDDEV/
 			// PERCENTILE_CONT.
-			return invalidConfig("%s is not defined for money columns; use SUM, MIN, MAX or COUNT", aggregateFunctionName(function))
+			return invalidConfig("%s is not defined for money columns; use SUM, MIN or MAX", aggregateFunctionName(function))
 		}
 		return nil
 	case storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MIN,
@@ -1156,8 +1203,10 @@ func validateAggregateColumnKind(column ColumnInfo, function storepb.QualityAggr
 	}
 }
 
-// isMoneyType reports whether the engine spelling is a money type. PostgreSQL's
-// money has only SUM/MIN/MAX aggregates.
+// isMoneyType reports whether the engine spelling is a money/smallmoney column
+// type. PostgreSQL money defines only SUM/MIN/MAX aggregates, and this validation
+// stays conservative on every engine: MSSQL smallmoney is refused the same way
+// rather than risking an observation the reader cannot interpret.
 func isMoneyType(columnType string) bool {
 	switch columnTypeBaseName(columnType) {
 	case "money", "smallmoney":

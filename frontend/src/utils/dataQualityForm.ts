@@ -95,8 +95,8 @@ export const CROSS_TABLE_FUNCTIONS: QualityAggregateFunction[] = [
 ];
 
 /**
- * The 13 rule types the editor offers. CEL_EXPRESSION is reserved for v1.1 and
- * is never accepted by this API, so it has no form.
+ * The 18 rule types the editor offers. Every one has a config form;
+ * CEL_EXPRESSION included now that the API accepts it.
  */
 export const EDITABLE_RULE_TYPES: QualityRuleType[] = [
   QualityRuleType.ROW_COUNT,
@@ -120,14 +120,15 @@ export const EDITABLE_RULE_TYPES: QualityRuleType[] = [
 ];
 
 /**
- * The rule types whose shared `threshold_metric` applies: the count-style
- * configs carry a fail/warn threshold, so it must be read as a count or a
- * percentage. row_count uses bounds, null_percent names its unit in its own
- * config, and row_count_change/freshness are percentage- or second-based.
+ * The rule types whose shared `threshold_metric` applies: their config carries a
+ * fail/warn threshold read as a count or a percentage. Mirrors
+ * `backend/component/dataquality/validate.go` `ruleTypeAllowsPercent`:
+ * row_count uses bounds, null_percent names its unit in its own config,
+ * custom_sql returns failing rows only (no denominator), and
+ * row_count_change/freshness/schema_drift/aggregate/cross_table measure something
+ * other than a share of rows.
  */
 export const THRESHOLD_METRIC_RULE_TYPES: QualityRuleType[] = [
-  QualityRuleType.CEL_EXPRESSION,
-  QualityRuleType.GROUP_CHECK,
   QualityRuleType.UNIQUE,
   QualityRuleType.UNIQUE_COMBINATION,
   QualityRuleType.ACCEPTED_VALUES,
@@ -136,8 +137,109 @@ export const THRESHOLD_METRIC_RULE_TYPES: QualityRuleType[] = [
   QualityRuleType.STRING_LENGTH,
   QualityRuleType.REFERENTIAL_INTEGRITY,
   QualityRuleType.CROSS_COLUMN,
-  QualityRuleType.CUSTOM_SQL,
+  QualityRuleType.GROUP_CHECK,
+  QualityRuleType.CEL_EXPRESSION,
 ];
+
+/** One section of the rule-type select: an i18n group key and its types. */
+export interface RuleTypeGroup {
+  key: string;
+  types: QualityRuleType[];
+}
+
+/**
+ * The editable rule types by family, in the order the editor lists them. Each
+ * type appears in exactly one group.
+ */
+export const RULE_TYPE_GROUPS: RuleTypeGroup[] = [
+  {
+    key: "dataQuality.ruleTypeGroup.count",
+    types: [
+      QualityRuleType.ROW_COUNT,
+      QualityRuleType.ROW_COUNT_CHANGE,
+      QualityRuleType.NULL_PERCENT,
+      QualityRuleType.GROUP_CHECK,
+      QualityRuleType.FRESHNESS,
+    ],
+  },
+  {
+    key: "dataQuality.ruleTypeGroup.value",
+    types: [
+      QualityRuleType.UNIQUE,
+      QualityRuleType.UNIQUE_COMBINATION,
+      QualityRuleType.ACCEPTED_VALUES,
+      QualityRuleType.RANGE,
+      QualityRuleType.REGEX,
+      QualityRuleType.STRING_LENGTH,
+      QualityRuleType.CROSS_COLUMN,
+      QualityRuleType.REFERENTIAL_INTEGRITY,
+    ],
+  },
+  {
+    key: "dataQuality.ruleTypeGroup.aggregate",
+    types: [QualityRuleType.AGGREGATE, QualityRuleType.CROSS_TABLE],
+  },
+  {
+    key: "dataQuality.ruleTypeGroup.structure",
+    types: [
+      QualityRuleType.SCHEMA_DRIFT,
+      QualityRuleType.CUSTOM_SQL,
+      QualityRuleType.CEL_EXPRESSION,
+    ],
+  },
+];
+
+/**
+ * Views and materialized views have no separate registry column rows, so only
+ * table-level rules run against them. Mirrors
+ * `backend/component/dataquality/support.go` `RuleTypeForTarget`.
+ */
+const VIEW_RULE_TYPES: QualityRuleType[] = [
+  QualityRuleType.ROW_COUNT,
+  QualityRuleType.ROW_COUNT_CHANGE,
+  QualityRuleType.FRESHNESS,
+  QualityRuleType.CUSTOM_SQL,
+  QualityRuleType.SCHEMA_DRIFT,
+];
+
+/** The rule types each target MetaType may watch. */
+export const RULE_TYPES_BY_META_TYPE: Partial<
+  Record<MetaType, QualityRuleType[]>
+> = {
+  [MetaType.TABLE]: EDITABLE_RULE_TYPES,
+  [MetaType.EXTERNAL_TABLE]: EDITABLE_RULE_TYPES,
+  [MetaType.VIEW]: VIEW_RULE_TYPES,
+  [MetaType.MATERIALIZED_VIEW]: VIEW_RULE_TYPES,
+};
+
+/**
+ * The rule types the editor may offer for a target; every type when there is no
+ * target yet. Never mutate the returned array.
+ */
+export function allowedRuleTypes(
+  metaType: MetaType | undefined
+): QualityRuleType[] {
+  return (
+    (metaType !== undefined && RULE_TYPES_BY_META_TYPE[metaType]) ||
+    EDITABLE_RULE_TYPES
+  );
+}
+
+/**
+ * The rule types where on_empty never changes the verdict: row_count always
+ * returns one row, schema_drift reads metadata, and a custom SQL rule with no
+ * returned rows has no failing rows. The editor hides the select there.
+ */
+export const ON_EMPTY_IRRELEVANT_RULE_TYPES: QualityRuleType[] = [
+  QualityRuleType.ROW_COUNT,
+  QualityRuleType.CUSTOM_SQL,
+  QualityRuleType.SCHEMA_DRIFT,
+];
+
+/** True when the on_empty behavior can change this rule type's verdict. */
+export function isOnEmptyRelevant(ruleType: QualityRuleType): boolean {
+  return !ON_EMPTY_IRRELEVANT_RULE_TYPES.includes(ruleType);
+}
 
 const DIMENSION_BY_RULE_TYPE: Partial<
   Record<QualityRuleType, QualityDimension>
@@ -265,7 +367,12 @@ export interface RuleConfigForm {
 export interface SchemaDriftColumnForm {
   name: string;
   type: string;
-  nullable: boolean;
+  /**
+   * The column's nullability in the snapshot. Unset means the rule does not
+   * judge nullability for this column, which is what a snapshot saved before the
+   * comparison existed means; an explicit value asserts the expected bit.
+   */
+  nullable?: boolean;
 }
 
 export interface RuleFormState {
@@ -614,6 +721,32 @@ export function columnsForConfig(form: RuleFormState): string[] {
   }
 }
 
+/**
+ * Fills in an expected column's nullability from the target's current columns,
+ * by exact column name. A row whose nullability is already explicit is left
+ * alone; an unmatched name keeps it unset, so the rule does not judge a column
+ * it cannot see. The editor runs this after loading a rule so a save writes
+ * explicit values instead of a snapshot that re-judges as drift.
+ */
+export function resolveExpectedColumnNullability(
+  expectedColumns: SchemaDriftColumnForm[] | undefined,
+  targetColumns: readonly TargetColumnDetail[]
+): SchemaDriftColumnForm[] | undefined {
+  if (expectedColumns === undefined) {
+    return undefined;
+  }
+  const byName = new Map(
+    targetColumns.map((column) => [column.name, column.nullable])
+  );
+  return expectedColumns.map((column) => {
+    if (column.nullable !== undefined) {
+      return column;
+    }
+    const nullable = byName.get(column.name);
+    return nullable === undefined ? column : { ...column, nullable };
+  });
+}
+
 // ---- form → proto ----
 
 /** The rule request built from the form, its target and (on edit) its base. */
@@ -869,7 +1002,11 @@ export function buildRuleConfig(form: RuleFormState): QualityRuleConfig {
                 create(SchemaDriftColumnSchema, {
                   name: column.name.trim(),
                   type: column.type.trim(),
-                  nullable: column.nullable,
+                  // Unset means "do not judge nullability": leave the field off
+                  // the wire rather than asserting a false it never recorded.
+                  ...(column.nullable === undefined
+                    ? {}
+                    : { nullable: column.nullable }),
                 })
               ),
             // Unset means true; only an explicit false needs to travel.
@@ -923,6 +1060,8 @@ export function buildRuleConfig(form: RuleFormState): QualityRuleConfig {
                 ? ""
                 : trimmed(c.rightAggColumn),
             ...optionalDouble("tolerance", c.tolerance),
+            ...optionalDouble("failThreshold", c.failThreshold),
+            ...optionalDouble("warnThreshold", c.warnThreshold),
           }),
         };
       default:
@@ -971,7 +1110,15 @@ export function ruleToForm(rule: QualityRule): RuleFormState {
   form.owner = rule.owner;
   form.tags = rule.tags.join(", ");
   form.schedule = durationToSchedule(rule.scheduleInterval);
-  form.thresholdMetric = rule.config?.thresholdMetric ?? form.thresholdMetric;
+  // UNSPECIFIED means COUNT on the wire; normalize it so the select never opens
+  // blank for a legacy rule or a draft that did not set the metric. A PERCENT
+  // value survives only where the rule type actually reads the shared metric; a
+  // stored PERCENT elsewhere would be refused on the next save.
+  form.thresholdMetric =
+    rule.config?.thresholdMetric === QualityThresholdMetric.PERCENT &&
+    isThresholdMetricType(rule.ruleType)
+      ? QualityThresholdMetric.PERCENT
+      : QualityThresholdMetric.COUNT;
   form.onEmpty = rule.config?.onEmpty ?? form.onEmpty;
   form.filter = filterToForm(rule.config?.filter?.clauses ?? []);
   form.config = configToForm(rule);
@@ -1170,6 +1317,8 @@ function configToForm(rule: QualityRule): RuleConfigForm {
       form.rightAggFunction = value.rightFunction;
       form.rightAggColumn = value.rightColumn;
       form.tolerance = optionalStringFromDouble(value.tolerance);
+      form.failThreshold = optionalStringFromDouble(value.failThreshold);
+      form.warnThreshold = optionalStringFromDouble(value.warnThreshold);
       break;
     }
     default:
@@ -1302,7 +1451,11 @@ function normalizeConfigRow(row: unknown): Record<string, unknown> {
   return {
     name: String(record.name ?? "").trim(),
     type: String(record.type ?? "").trim(),
-    nullable: record.nullable === true,
+    // Unset and an explicit false assert different things about the column, so
+    // they compare differently; otherwise toggling a previously-unset row to
+    // "not nullable" would look like no change.
+    nullable:
+      record.nullable === undefined ? "unset" : record.nullable === true,
   };
 }
 
