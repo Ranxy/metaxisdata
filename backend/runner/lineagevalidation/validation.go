@@ -84,6 +84,9 @@ func NewRunner(revalidator Revalidator, m *metrics.Metrics) *Runner {
 
 // Trigger requests a pass once the current sync round has settled. It never
 // blocks: its caller is a schema sync, which must not wait for lineage work.
+// "Queued" means the signal was accepted, not that it earns its own pass: a
+// signal that arrives during the settle window is folded into the pass about to
+// run (see discardPendingTrigger).
 func (r *Runner) Trigger() {
 	if r == nil || r.revalidator == nil {
 		return

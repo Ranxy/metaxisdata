@@ -1,12 +1,15 @@
 package metrics
 
 import (
+	"database/sql"
 	"net/http"
+	"reflect"
 	"regexp"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
@@ -176,6 +179,16 @@ func TestScrapeCollectors(t *testing.T) {
 		"metaxisdata_instance_connection_waiters":  true,
 		"metaxisdata_quality_manual_queue_depth":   true,
 	}, got)
+
+	// The scrape-time gauges must report the snapshot they were given, with the
+	// bounded label values the catalogue names.
+	require.Equal(t, 3.0, sampleValue(t, families, "metaxisdata_lineage_analysis_queue_depth", map[string]string{"queue": "event"}))
+	require.Equal(t, 4.0, sampleValue(t, families, "metaxisdata_lineage_analysis_queue_depth", map[string]string{"queue": "scan"}))
+	require.Equal(t, 2.0, sampleValue(t, families, "metaxisdata_instance_connection_in_use", nil))
+	require.Equal(t, 1.0, sampleValue(t, families, "metaxisdata_instance_connection_waiters", map[string]string{"priority": "background"}))
+	require.Equal(t, 2.0, sampleValue(t, families, "metaxisdata_instance_connection_waiters", map[string]string{"priority": "manual"}))
+	require.Equal(t, 3.0, sampleValue(t, families, "metaxisdata_instance_connection_waiters", map[string]string{"priority": "interactive"}))
+	require.Equal(t, 5.0, sampleValue(t, families, "metaxisdata_quality_manual_queue_depth", nil))
 }
 
 // TestNilMetricsIsNoop pins that a nil Metrics disables instrumentation instead
@@ -255,6 +268,11 @@ func TestLabelMappings(t *testing.T) {
 	require.Equal(t, "not_evaluated", qualityStatusLabel(storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED))
 	require.Equal(t, "none", qualityErrorCodeLabel(""))
 	require.Equal(t, "sql_syntax", qualityErrorCodeLabel("SQL_SYNTAX"))
+	require.Equal(t, "other", qualityErrorCodeLabel("A_CODE_FROM_THE_FUTURE"))
+
+	require.Equal(t, "get", httpMethodLabel(http.MethodGet))
+	require.Equal(t, "other", httpMethodLabel("FROBNICATE"))
+	require.Equal(t, "other", httpMethodLabel(""))
 
 	require.Equal(t, "success", outcomeLabel(true))
 	require.Equal(t, "failure", outcomeLabel(false))
@@ -321,12 +339,18 @@ func TestRecordersEmitExpectedLabels(t *testing.T) {
 	m.CountLLMQuotaRejection(LLMQuotaAnalysis)
 	m.CountInstanceConnectionTryAcquireRejected()
 	m.RunnerPanicked("schemasync")
+	// net/http accepts arbitrary method tokens; the recorder must not turn one
+	// into a series.
+	m.ObserveHTTPRequest("FROBNICATE", "/api/version", http.StatusMethodNotAllowed, 100*time.Millisecond)
 
 	families, err := registry.Gather()
 	require.NoError(t, err)
 
 	require.Equal(t, 1.0, sampleValue(t, families, "metaxisdata_http_requests_total", map[string]string{
-		"method": http.MethodGet, "route": "/api/version", "status": "200",
+		"method": "get", "route": "/api/version", "status": "200",
+	}))
+	require.Equal(t, 1.0, sampleValue(t, families, "metaxisdata_http_requests_total", map[string]string{
+		"method": "other", "route": "/api/version", "status": "405",
 	}))
 	require.Equal(t, 1.0, sampleValue(t, families, "metaxisdata_rpc_requests_total", map[string]string{
 		"service": "InstanceService", "method": "Get", "code": "ok",
@@ -355,5 +379,91 @@ func TestRecordersEmitExpectedLabels(t *testing.T) {
 	require.Equal(t, 1.0, sampleValue(t, families, "metaxisdata_instance_connection_try_acquire_rejected_total", nil))
 	require.Equal(t, 1.0, sampleValue(t, families, "metaxisdata_runner_panics_total", map[string]string{
 		"runner": "schemasync",
+	}))
+}
+
+// TestEveryInstrumentIsRegistered mirrors the instruments New builds against the
+// collectors Register consumes. Adding an instrument to a domain struct and New
+// but forgetting the domain's collectors() would silently never expose it; this
+// walk makes that a test failure instead.
+func TestEveryInstrumentIsRegistered(t *testing.T) {
+	t.Parallel()
+
+	m := New()
+	registered := make(map[prometheus.Collector]bool)
+	for _, collector := range m.collectors() {
+		registered[collector] = true
+	}
+
+	var missing []string
+	var walk func(prefix string, value reflect.Value)
+	walk = func(prefix string, value reflect.Value) {
+		valueType := value.Type()
+		for i := 0; i < value.NumField(); i++ {
+			field := value.Field(i)
+			name := prefix + valueType.Field(i).Name
+			if field.Kind() == reflect.Struct {
+				walk(name+".", field)
+				continue
+			}
+			if field.Kind() == reflect.Interface && field.IsNil() {
+				continue
+			}
+			if field.Kind() == reflect.Pointer && field.IsNil() {
+				continue
+			}
+			// The instrument fields are unexported, so reflect needs the
+			// addressable value to hand back an interface.
+			addressable := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem()
+			collector, ok := addressable.Interface().(prometheus.Collector)
+			if !ok {
+				continue
+			}
+			if !registered[collector] {
+				missing = append(missing, name)
+			}
+		}
+	}
+	walk("Metrics.", reflect.ValueOf(m).Elem())
+
+	require.Empty(t, missing, "instruments built but never registered")
+}
+
+// TestDBPoolCollector pins the pool collector's names and the state split; the
+// values come from a snapshot, so the test drives database/sql.DBStats directly.
+func TestDBPoolCollector(t *testing.T) {
+	t.Parallel()
+
+	registry := prometheus.NewRegistry()
+	registry.MustRegister(NewDBPoolCollector(func() sql.DBStats {
+		return sql.DBStats{
+			MaxOpenConnections: 50,
+			InUse:              3,
+			Idle:               2,
+			WaitCount:          7,
+			WaitDuration:       time.Second,
+		}
+	}))
+	families, err := registry.Gather()
+	require.NoError(t, err)
+
+	require.Equal(t, 50.0, sampleValue(t, families, "metaxisdata_db_pool_max_open_connections", nil))
+	require.Equal(t, 3.0, sampleValue(t, families, "metaxisdata_db_pool_connections", map[string]string{"state": "in_use"}))
+	require.Equal(t, 2.0, sampleValue(t, families, "metaxisdata_db_pool_connections", map[string]string{"state": "idle"}))
+	require.Equal(t, 7.0, sampleValue(t, families, "metaxisdata_db_pool_wait_total", nil))
+	require.Equal(t, 1.0, sampleValue(t, families, "metaxisdata_db_pool_wait_duration_seconds_total", nil))
+}
+
+// TestBuildInfoCollector pins the deployment-identity series.
+func TestBuildInfoCollector(t *testing.T) {
+	t.Parallel()
+
+	registry := prometheus.NewRegistry()
+	registry.MustRegister(NewBuildInfoCollector("v1.2.3", "abc123"))
+	families, err := registry.Gather()
+	require.NoError(t, err)
+
+	require.Equal(t, 1.0, sampleValue(t, families, "metaxisdata_build_info", map[string]string{
+		"version": "v1.2.3", "git_commit": "abc123",
 	}))
 }

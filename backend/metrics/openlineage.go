@@ -25,6 +25,9 @@ const (
 	IngestReasonScope   = "scope"
 	IngestReasonPersist = "persist"
 	IngestReasonProcess = "process"
+	// IngestReasonNone labels an accepted event, which has no rejection reason.
+	// An explicit value keeps the label free of empty strings.
+	IngestReasonNone = "none"
 )
 
 type openLineageMetrics struct {

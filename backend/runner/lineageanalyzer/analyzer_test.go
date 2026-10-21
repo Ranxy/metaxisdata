@@ -564,15 +564,19 @@ func TestAnalysisFailureResult(t *testing.T) {
 }
 
 // The interrupted branch in analyzeObject records its own outcome, so the drain
-// must be able to tell that error apart from every other timeout. If the sentinel
-// were dropped, the drain would also record a timeout for the same attempt.
-func TestInterruptedErrorStaysAClassifiedTimeout(t *testing.T) {
+// must classify that error as not-a-timeout; otherwise the same attempt would be
+// counted twice. This exercises the predicate the drain calls.
+func TestDrainRecordsTimeoutOnlyForUnclassifiedDeadlines(t *testing.T) {
 	t.Parallel()
 
-	err := fmt.Errorf("%w: %w", errAnalysisInterrupted, context.DeadlineExceeded)
-	require.ErrorIs(t, err, errAnalysisInterrupted)
-	require.ErrorIs(t, err, context.DeadlineExceeded)
-	require.False(t, errors.Is(err, errAnalysisStale))
+	interrupted := fmt.Errorf("%w: %w", errAnalysisInterrupted, context.DeadlineExceeded)
+	require.ErrorIs(t, interrupted, errAnalysisInterrupted)
+	require.ErrorIs(t, interrupted, context.DeadlineExceeded)
+	require.False(t, drainRecordsTimeout(interrupted), "analyzeObject already recorded interrupted")
+
+	require.True(t, drainRecordsTimeout(fmt.Errorf("record state: %w", context.DeadlineExceeded)))
+	require.True(t, drainRecordsTimeout(errors.New("unexpected")))
+	require.False(t, errors.Is(interrupted, errAnalysisStale))
 }
 
 // A table-level edge names no column on either end; every other edge is

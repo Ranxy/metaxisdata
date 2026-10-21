@@ -46,6 +46,7 @@ func (m *Metrics) ObserveHTTPRequest(method, route string, status int, duration 
 	if m == nil {
 		return
 	}
-	m.HTTP.requests.WithLabelValues(method, route, strconv.Itoa(status)).Inc()
-	m.HTTP.requestDuration.WithLabelValues(method, route).Observe(duration.Seconds())
+	methodValue := httpMethodLabel(method)
+	m.HTTP.requests.WithLabelValues(methodValue, route, strconv.Itoa(status)).Inc()
+	m.HTTP.requestDuration.WithLabelValues(methodValue, route).Observe(duration.Seconds())
 }

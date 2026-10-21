@@ -53,6 +53,10 @@ const runnerShutdownTimeout = 10 * time.Second
 // worst-case drain.
 const debugLogDrainTimeout = 5 * time.Second
 
+// metricsShutdownTimeout bounds closing the metrics listener. It has its own
+// budget because the graceful-shutdown context may already be spent.
+const metricsShutdownTimeout = 5 * time.Second
+
 // minJWTSecretLength is the minimum length of the JWT signing key. The key must
 // be long enough that it cannot be brute-forced offline.
 const minJWTSecretLength = 32
@@ -78,6 +82,7 @@ type Server struct {
 	metrics         *metrics.Metrics
 	metricsRegistry *prometheus.Registry
 	metricsServer   *http.Server
+	metricsListener net.Listener
 
 	// stateCfg is the shared in-momory state within the server.
 	stateCfg *state.State
@@ -261,6 +266,10 @@ func (s *Server) Run(_ context.Context, port int) error {
 	// the metrics listener.
 	if s.profile != nil && s.profile.MetricsAddr != "" {
 		if err := s.startMetricsServer(); err != nil {
+			// The API listener is already bound but Serve has not started, so
+			// http.Server.Shutdown would not close it; without this the port stays
+			// bound for the process lifetime after a failed startup.
+			_ = listener.Close()
 			return err
 		}
 	}
@@ -317,10 +326,15 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 
 	// The metrics endpoint is a second listener. It holds no durable state and
-	// only reads in-memory instruments, so it is closed before the store is.
+	// only reads in-memory instruments, so it is closed before the store is. It
+	// gets its own short budget: by this point the graceful context may already be
+	// spent on the main server and the runners.
 	if s.metricsServer != nil {
-		if err := s.metricsServer.Shutdown(ctx); err != nil {
-			slog.Warn("failed to shut down the metrics server", log.WithError(err))
+		metricsCtx, cancelMetrics := context.WithTimeout(context.Background(), metricsShutdownTimeout)
+		metricsErr := s.metricsServer.Shutdown(metricsCtx)
+		cancelMetrics()
+		if metricsErr != nil {
+			slog.Warn("failed to shut down the metrics server", log.WithError(metricsErr))
 		}
 	}
 
@@ -354,9 +368,12 @@ func (s *Server) startMetricsServer() error {
 	if err != nil {
 		return errors.Wrapf(err, "failed to listen on the metrics address %q", address)
 	}
+	s.metricsListener = listener
 	s.metricsServer = &http.Server{
 		Handler:           s.metricsHandler(),
 		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 	go func() {
 		// A graceful shutdown makes Serve return http.ErrServerClosed; anything
@@ -368,10 +385,17 @@ func (s *Server) startMetricsServer() error {
 	return nil
 }
 
-// metricsHandler serves the private registry. It is deliberately a single route:
-// the metrics port is not a second API.
+// metricsHandler serves the private registry. It is deliberately a single GET
+// route: the metrics port is not a second API, and a scrape is a read.
 func (s *Server) metricsHandler() http.Handler {
 	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.HandlerFor(s.metricsRegistry, promhttp.HandlerOpts{}))
+	mux.Handle("/metrics", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", "GET, HEAD")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		promhttp.HandlerFor(s.metricsRegistry, promhttp.HandlerOpts{}).ServeHTTP(w, r)
+	}))
 	return mux
 }

@@ -453,7 +453,7 @@ func (a *Analyzer) drainAndAnalyze(ctx context.Context) {
 						log.WithError(err))
 					// The interrupted branch inside analyzeObject already recorded
 					// its own outcome; every other deadline hit is a timeout here.
-					if !errors.Is(err, errAnalysisInterrupted) {
+					if drainRecordsTimeout(err) {
 						a.metrics.ObserveLineageAnalysis(it.key.MetaType, storepb.Engine_ENGINE_UNSPECIFIED, metrics.AnalysisTimeout)
 					}
 					a.retryAfterFailure(it)
@@ -850,6 +850,13 @@ var errAnalysisStale = errors.New("analysis result is stale")
 // errAnalysisGone tells analyzeObject that the object disappeared before its
 // result could be written, so the result is dropped instead of retried.
 var errAnalysisGone = errors.New("analysis object is gone")
+
+// drainRecordsTimeout reports whether the drain owns the timeout outcome for
+// this error. An interrupted analysis is recorded by analyzeObject; the drain
+// must not count the same attempt as a timeout.
+func drainRecordsTimeout(err error) bool {
+	return !errors.Is(err, errAnalysisInterrupted)
+}
 
 // errAnalysisInterrupted marks an analysis cut short by its deadline or by the
 // runner's shutdown. analyzeObject records that outcome itself; the sentinel is

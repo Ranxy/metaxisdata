@@ -23,6 +23,17 @@ func httpMetricsMiddleware(m *metrics.Metrics) echo.MiddlewareFunc {
 				return next(c)
 			}
 			started := time.Now()
+			method := request.Method
+			route := routeLabel(c)
+			// The recover middleware is installed outside this one, so a panicking
+			// handler unwinds past the normal return. Record it as a 500 here before
+			// letting the panic continue to that boundary.
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					m.ObserveHTTPRequest(method, route, http.StatusInternalServerError, time.Since(started))
+					panic(recovered)
+				}
+			}()
 			err := next(c)
 
 			status := c.Response().Status
@@ -35,7 +46,7 @@ func httpMetricsMiddleware(m *metrics.Metrics) echo.MiddlewareFunc {
 					status = http.StatusInternalServerError
 				}
 			}
-			m.ObserveHTTPRequest(request.Method, routeLabel(c), status, time.Since(started))
+			m.ObserveHTTPRequest(method, route, status, time.Since(started))
 			return err
 		}
 	}

@@ -260,6 +260,7 @@ func (h *OpenLineageHandler) handleIngestion(c echo.Context, keyMessage *store.O
 	event, err := openlineage.ParseRunEvent(body)
 	if err != nil {
 		slog.Warn("invalid OpenLineage event", "error", err)
+		h.metrics.AddOpenLineageIngestEvents(route, metrics.IngestResultRejected, metrics.IngestReasonParse, 1)
 		return h.reportIngestionFailure(c, ingestionFailure{
 			key:    keyMessage,
 			kind:   storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_INVALID_EVENT,
@@ -341,7 +342,7 @@ func (h *OpenLineageHandler) handleIngestion(c echo.Context, keyMessage *store.O
 		failed.cause = processErr
 		return h.reportIngestionFailure(c, failed)
 	}
-	h.metrics.AddOpenLineageIngestEvents(route, metrics.IngestResultAccepted, "", 1)
+	h.metrics.AddOpenLineageIngestEvents(route, metrics.IngestResultAccepted, metrics.IngestReasonNone, 1)
 
 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 }
@@ -480,7 +481,7 @@ func (h *OpenLineageHandler) processBatchEvents(c echo.Context, body []byte, key
 			}
 			continue
 		}
-		h.metrics.AddOpenLineageIngestEvents(route, metrics.IngestResultAccepted, "", 1)
+		h.metrics.AddOpenLineageIngestEvents(route, metrics.IngestResultAccepted, metrics.IngestReasonNone, 1)
 		processed++
 	}
 

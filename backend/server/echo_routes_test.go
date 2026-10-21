@@ -186,5 +186,8 @@ func TestMetricsNotServedOnAPIPort(t *testing.T) {
 	t.Parallel()
 
 	recorder := doRequest(prodTestServer(), http.MethodGet, "/metrics", nil)
-	require.NotContains(t, recorder.Body.String(), "# HELP")
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Contains(t, recorder.Header().Get(echo.HeaderContentType), "text/html",
+		"/metrics must fall through to the SPA, not be served by the metrics handler")
+	require.NotContains(t, recorder.Body.String(), "metaxisdata_")
 }

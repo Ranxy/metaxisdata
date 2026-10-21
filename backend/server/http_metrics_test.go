@@ -6,9 +6,11 @@ import (
 	"testing"
 
 	"github.com/labstack/echo/v4"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Ranxy/metaxisdata/backend/component/audit"
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 )
 
 // TestHTTPMetricsSkipsNonAPITraffic pins the routes excluded from request
@@ -87,4 +89,29 @@ func TestHTTPMetricsRouteLabel(t *testing.T) {
 	recorder = httptest.NewRecorder()
 	spa.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/anything", nil))
 	require.Equal(t, http.StatusOK, recorder.Code)
+}
+
+// TestHTTPMetricsCountsRecoveredPanics pins that a panicking handler's 500 is
+// counted: the recover middleware is installed outside the metrics middleware,
+// so the metric must be recorded before the panic unwinds to it.
+func TestHTTPMetricsCountsRecoveredPanics(t *testing.T) {
+	t.Parallel()
+
+	registry := prometheus.NewRegistry()
+	m := metrics.New()
+	require.NoError(t, m.Register(registry))
+
+	e := echo.New()
+	e.Use(recoverMiddleware)
+	e.Use(httpMetricsMiddleware(m))
+	e.GET("/panic", func(echo.Context) error { panic("boom") })
+
+	recorder := httptest.NewRecorder()
+	e.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/panic", nil))
+	require.Equal(t, http.StatusInternalServerError, recorder.Code)
+
+	line := metricLine(t, metricExposition(t, registry), "metaxisdata_http_requests_total")
+	require.Contains(t, line, `route="/panic"`)
+	require.Contains(t, line, `status="500"`)
+	require.Contains(t, line, `method="get"`)
 }

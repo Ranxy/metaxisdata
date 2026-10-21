@@ -129,8 +129,9 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 	startedAt := time.Now()
 	outcome := metrics.LLMOutcomeError
 	var (
-		usage         Usage
-		usageReported bool
+		usage            Usage
+		usageReported    bool
+		responseReceived bool
 	)
 	defer func() {
 		// The loop can make several turns; the call metric counts the invocation
@@ -140,8 +141,18 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 			promptTokens = usage.PromptTokens
 			completionTokens = usage.CompletionTokens
 		}
-		cfg.Metrics.ObserveLLMCall(cfg.Feature, cfg.Provider.ProfileName, outcome, time.Since(startedAt), promptTokens, completionTokens)
-		if !usageReported {
+		// The label is the operator-configured title; the resource name embeds a
+		// generated id, which is not a label value. Fall back for callers that
+		// build a config without a title (tests).
+		provider := cfg.Provider.ProfileTitle
+		if provider == "" {
+			provider = cfg.Provider.ProfileName
+		}
+		cfg.Metrics.ObserveLLMCall(cfg.Feature, provider, outcome, time.Since(startedAt), promptTokens, completionTokens)
+		// A call that never got a provider response did not "omit usage": the
+		// missing-usage signal is about completions, so canceled/errored-before-
+		// response invocations are excluded.
+		if responseReceived && !usageReported {
 			cfg.Metrics.CountLLMUsageMissing(cfg.Feature)
 		}
 	}()
@@ -198,6 +209,7 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 			sendEvent(ctx, ch, AgentEvent{Type: AgentEventError, Error: err})
 			return
 		}
+		responseReceived = true
 		if turnUsage != nil {
 			usageReported = true
 			usage.add(turnUsage)

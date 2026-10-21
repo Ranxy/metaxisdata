@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"net/http"
 	"strings"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -149,15 +150,69 @@ func qualityStatusLabel(status storepb.QualityStatus) string {
 	}
 }
 
-// qualityErrorCodeLabel renders a stable rule error code. The codes are
-// constants in backend/component/dataquality; a stored legacy row could carry a
-// value this process no longer writes, so the label is lowercased rather than
-// rejected, and an empty code becomes "none".
+// qualityErrorCodeLabel renders a stable rule error code. A stored legacy row
+// could carry a value this process no longer writes, so only the known codes get
+// their own value and anything else collapses to "other"; an empty code is
+// "none". Persisted text must never become an open-ended label value.
 func qualityErrorCodeLabel(code string) string {
-	if code == "" {
+	switch strings.ToUpper(code) {
+	case "":
 		return "none"
+	case "CONNECTION":
+		return "connection"
+	case "AUTH":
+		return "auth"
+	case "TIMEOUT":
+		return "timeout"
+	case "PERMISSION":
+		return "permission"
+	case "UNSUPPORTED":
+		return "unsupported"
+	case "SQL_SYNTAX":
+		return "sql_syntax"
+	case "BAD_DATA":
+		return "bad_data"
+	case "LIMIT_EXCEEDED":
+		return "limit_exceeded"
+	case "ORPHANED":
+		return "orphaned"
+	case "QUOTA":
+		return "quota"
+	case "NO_READ_ONLY_SOURCE":
+		return "no_read_only_source"
+	case "EXECUTION":
+		return "execution"
+	default:
+		return "other"
 	}
-	return strings.ToLower(code)
+}
+
+// httpMethodLabel bounds the HTTP method label. net/http accepts an arbitrary
+// method token from any caller, and a 404/405 still traverses the middleware, so
+// the raw token must never become a label value.
+func httpMethodLabel(method string) string {
+	switch method {
+	case http.MethodGet:
+		return "get"
+	case http.MethodHead:
+		return "head"
+	case http.MethodPost:
+		return "post"
+	case http.MethodPut:
+		return "put"
+	case http.MethodPatch:
+		return "patch"
+	case http.MethodDelete:
+		return "delete"
+	case http.MethodConnect:
+		return "connect"
+	case http.MethodOptions:
+		return "options"
+	case http.MethodTrace:
+		return "trace"
+	default:
+		return "other"
+	}
 }
 
 // outcomeLabel renders a success/failure boolean as a label value.

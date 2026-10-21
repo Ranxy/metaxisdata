@@ -25,7 +25,7 @@
 4. **只允许有界枚举标签**（engine/status/result/reason/…），不加实例、库、表、GUID；
    全部指标合计目标 < 3,000 活跃 series。
 5. **已按 4 个独立范围落地**：基础设施 → 元数据采集 → 血缘/OpenLineage → 数据质量/LLM；
-   v1 只做 P0（66 条），P1/P2 命名已冻结、后续补实现。本方案即 D8 所要求的「重建遥测设施」的决定；
+   v1 只做 P0（66 条，按目录行计），P1/P2 命名已冻结、后续补实现。本方案即 D8 所要求的「重建遥测设施」的决定；
    实现后 D8 已关闭、M25 已收窄为 pprof。
 
 ---
@@ -187,7 +187,7 @@ nil 检查、单位换算都收敛在 `backend/metrics` 内，便于用一个「
 
 **为什么这样切**：
 
-- 抓取是运维/监控系统行为，不应该要求打开会改变应用行为的 debug 开关（M25/D8）。
+- 抓取是运维/监控系统行为，不应该要求打开会改变应用行为的 debug 开关（M25）。
 - 端点默认关闭 + 独立端口 = 默认不可达；开启后是否可达由网络边界决定，符合「loopback / 内网」
   的安全建议，同时避免在 API 端口上新增匿名聚合端点。
 - 不做 Bearer token：pull 场景下 Prometheus 的 `authorization` 配置和密钥轮换成本对自托管产品不划算。
@@ -214,8 +214,8 @@ nil 检查、单位换算都收敛在 `backend/metrics` 内，便于用一个「
 - **禁止**：任何 GUID/ID、实例/库/表/列名、规则标题、SQL 文本、错误消息、用户名/邮箱/IP、
   OpenLineage producer 文本。历史教训就是现在的 `url`/`host` 标签。
 - 直方图上不放 `status` 之类会成倍乘桶的标签（`status` 放 counter 上即可）。
-  `provider` 是唯一非硬编码枚举（运营配置的 LLM profile 名），由配置量而非数据量约束；
-  **已确认保留**（数量很少，且「哪个提供商在变慢」是可行动信号）。
+  `provider` 是唯一非硬编码枚举（运营配置的 LLM profile **title**；资源名里带生成 id，不作为标签值），
+  由配置量而非数据量约束；**已确认保留**（数量很少，且「哪个提供商在变慢」是可行动信号）。
 
 **基数预算**：全部域合计目标 **< 3,000 个活跃 series**（含 bucket 的 `_bucket` 展开）。
 按域的估算见附录 A。守住它的手段是一个**标签名白名单测试**：gather registry 后遍历所有指标，
@@ -251,7 +251,7 @@ SPA catch-all `/*` 折叠为 `spa`。这修掉了今天的原始路径基数问�
 
 | 指标 | 类型 | 标签 | 埋点 | 语义 / 注意 | 优先级 |
 | --- | --- | --- | --- | --- | --- |
-| `metaxisdata_http_requests_total` | counter | `method,route,status` | 中间件退出 | 每个完成的 HTTP 请求一次；`status` 取 `c.Response().Status`，出错时回退 Echo error 码；跳过 `/healthz`、`/debug/pprof/*` 与 gateway 内部回环 | P0 |
+| `metaxisdata_http_requests_total` | counter | `method,route,status` | 中间件退出 | 每个完成的 HTTP 请求一次；`status` 取 `c.Response().Status`，出错时回退 Echo error 码；`method` 只取小写标准方法（get/post/…）+ `other`，**原始 token 不进标签**（net/http 接受任意方法串，404/405 也会经过中间件）；跳过 `/healthz`、`/debug/pprof/*` 与 gateway 内部回环；被 recover 中间件捕获的 panic 记为 500 | P0 |
 | `metaxisdata_http_request_duration_seconds` | histogram | `method,route` | 同上 | 端到端；流式请求在流结束时观测一次 | P0 |
 | `metaxisdata_http_request_size_bytes` | histogram | `method,route` | 中间件入口 | `ContentLength` + header 近似（与旧实现同口径） | P1 |
 | `metaxisdata_http_response_size_bytes` | histogram | `method,route` | 中间件退出 | `c.Response().Size` | P1 |
@@ -284,8 +284,8 @@ SPA catch-all `/*` 折叠为 `spa`。这修掉了今天的原始路径基数问�
 | `metaxisdata_db_pool_wait_total` / `_wait_duration_seconds_total` | counter | — | 同上 | 连接等待次数/时长；`wait_duration` 增长 = 池太小或慢查询 | P0 |
 | `metaxisdata_db_pool_closed_total` | counter | `reason=max_idle\|max_idle_time\|max_lifetime` | 同上 | 连接回收原因 | P1 |
 
-> 需要给 `backend/store` 加一个窄访问器 `func (s *Store) DBStats() sql.DBStats`（旁边是 `GetDB()`，
-> `backend/store/store.go:134-136`），避免把 `*sql.DB` 泄漏到 metrics 包。
+> 已按此实现窄访问器 `func (s *Store) DBStats() sql.DBStats`（旁边是 `GetDB()`，
+> `backend/store/store.go`），避免把 `*sql.DB` 泄漏到 metrics 包。
 
 **Runner 生命周期（`backend/runner/runner.go`）**
 
@@ -307,8 +307,8 @@ SPA catch-all `/*` 折叠为 `spa`。这修掉了今天的原始路径基数问�
 
 | 指标 | 类型 | 标签 | 埋点 | 语义 / 注意 | 优先级 |
 | --- | --- | --- | --- | --- | --- |
-| `metaxisdata_schemasync_scans_total` | counter | `outcome=ok\|error` | `trySyncAll` 的错误返回/成功结尾（`syncer.go:444-514`） | 每轮 15 min 扫描一次；`trySyncAll` 目前不返回错误，需要局部 flag 或小改签名 | P0 |
-| `metaxisdata_schemasync_scan_duration_seconds` | histogram | — | `trySyncAllOnce` defer（`:438-442`） | 扫描本身（不含实例同步） | P0 |
+| `metaxisdata_schemasync_scans_total` | counter | `outcome=success\|failure` | `trySyncAll` 的返回值（`syncer.go`） | 每轮 15 min 扫描一次；`trySyncAll` 现在返回 `ok bool`（store 读取失败或 panic 为 false；单个实例同步失败不算扫描失败） | P0 |
+| `metaxisdata_schemasync_scan_duration_seconds` | histogram | — | `trySyncAllOnce` 的 defer（`syncer.go`） | 一轮实例扫描的墙钟，**包含本轮对到期实例的枚举/同步**（`trySyncAll` 内同步调用 `SyncInstance`）；单库 schema 同步由 checker 并发入队，不在这里 | P0 |
 | `metaxisdata_schemasync_instance_syncs_total` | counter | `engine,outcome` | owner-only defer（`SyncInstance`，`:656`） | 每次真实的实例枚举 | P0 |
 | `metaxisdata_schemasync_instance_sync_duration_seconds` | histogram | `engine` | 同上 | 含目标库往返 | P0 |
 | `metaxisdata_schemasync_database_syncs_total` | counter | `engine,outcome` | owner-only defer（`SyncDatabaseSchema`，`:781`） | 每次真实的库同步；checker 10s 与 API 共用 | P0 |
@@ -363,7 +363,7 @@ SPA catch-all `/*` 折叠为 `spa`。这修掉了今天的原始路径基数问�
 
 | 指标 | 类型 | 标签 | 埋点 | 语义 | 优先级 |
 | --- | --- | --- | --- | --- | --- |
-| `metaxisdata_lineagevalidation_triggers_total` | counter | `result=queued\|coalesced` | `Trigger`（`:82-90`） | 同步提交后触发的 revalidation 是否被合并 | P0 |
+| `metaxisdata_lineagevalidation_triggers_total` | counter | `result=queued\|coalesced` | `Trigger`（`:82-90`） | `queued`=信号进入 channel（可能在 settle 窗口被 `discardPendingTrigger` 折叠，**不保证多跑一次 pass**）；`coalesced`=channel 已满被丢弃 | P0 |
 | `metaxisdata_lineagevalidation_passes_total` | counter | `outcome=ok\|error\|backlog_remaining` | `runOnce`（`:145-180`） | `backlogRemaining` 是函数内局部值，需在函数内埋点 | P0 |
 | `metaxisdata_lineagevalidation_pass_duration_seconds` | histogram | `outcome` | 同上 | | P0 |
 | `metaxisdata_lineagevalidation_edges_total` | counter | `result=revalidated\|still_unknown` | 同上，复用返回值 | | P0 |
@@ -401,8 +401,8 @@ SPA catch-all `/*` 折叠为 `spa`。这修掉了今天的原始路径基数问�
 
 | 指标 | 类型 | 标签 | 埋点 | 语义 / 注意 | 优先级 |
 | --- | --- | --- | --- | --- | --- |
-| `metaxisdata_openlineage_ingest_failures_total` | counter | `failure_kind,route=event\|batch` | `reportIngestionFailure`（`openlineage_handler.go:96-99`）+ 两个 401 分支（`:158-166`）+ 限流 deny（`openlineage_ingestion.go:52-54`，新增 `rate_limited`） | 被拒绝的请求按原因分类；`failure_kind` 复用已有有界枚举（7 个值） | P0 |
-| `metaxisdata_openlineage_ingest_events_total` | counter | `route,result=accepted\|rejected,reason=parse\|limits\|scope\|persist\|process` | 单事件与批次各自的终态分支 | 事件级（一次 1000 条的批次半成功会按事件计数） | P0 |
+| `metaxisdata_openlineage_ingest_failures_total` | counter | `failure_kind,route=event\|batch` | `reportIngestionFailure` + 两个 401 分支（`auth`）+ 限流 deny（`rate_limited`） | 被拒绝的请求按原因分类；`failure_kind` 是 9 个有界值：storepb 枚举的小写形式（`invalid_event`/`limit_exceeded`/`scope_mismatch`/`persist_failed`/`process_failed`/`namespace_unmapped`/`unspecified`）加 `auth`、`rate_limited` | P0 |
+| `metaxisdata_openlineage_ingest_events_total` | counter | `route,result=accepted\|rejected,reason=parse\|limits\|scope\|persist\|process\|none` | 单事件与批次各自的终态分支 | 事件级（一次 1000 条的批次半成功会按事件计数）；accepted 事件的 `reason=none`（不接受空标签值） | P0 |
 | `metaxisdata_openlineage_ingest_process_duration_seconds` | histogram | `route` | 单事件 `:278` / 批内每事件 `:406` | 血缘推导（校验 + 可选 SQL 分析 + 写边），整个请求的延迟由 HTTP 指标覆盖 | P0 |
 | `metaxisdata_openlineage_edges_total` | counter | `kind=column\|table` | `processor.go:103` 写成功后 | 「Airflow 有没有给我们列级血缘」 | P0 |
 | `metaxisdata_openlineage_runs_persisted_total` | counter | `event_type`（归一化） | 单事件 `:269`、批次 `:389-402` | run 行写入量（重投会更新同一 run，计写入不重复） | P1 |
@@ -460,12 +460,13 @@ post-sync runner 调用。**计数必须埋在这两个 Processor 方法里并�
 
 **目标库只读查询（`backend/plugin/db/query.go:69-112`）**
 
-产品里所有目标库只读 SQL 都走 `RunReadOnlyQuery`，这是最省的单一埋点。需要在 `QueryOptions`
-（`:13-23`）加一个 `Purpose` 字段（6 个调用点），否则无法区分聚合/采样/画像。
+产品里所有目标库只读 SQL 都走 `RunReadOnlyQuery`，这是最省的单一埋点。`QueryOptions` 已有
+`Purpose` 字段（6 个调用点分别标记聚合/采样/CEL 采样/画像聚合/画像采样/dry-run）；
+`Options.Metrics` 把记录器带进这个包，避免再穿透构造链。
 
 | 指标 | 类型 | 标签 | 埋点 | 语义 | 优先级 |
 | --- | --- | --- | --- | --- | --- |
-| `metaxisdata_query_readonly_total` | counter | `purpose,outcome=success\|error` | `RunReadOnlyQuery` | 每次目标库只读语句 | P0 |
+| `metaxisdata_query_readonly_total` | counter | `purpose,outcome=success\|failure` | `RunReadOnlyQuery` | 每次目标库只读语句；`purpose` 为空时折叠为 `unspecified` | P0 |
 | `metaxisdata_query_readonly_duration_seconds` | histogram | `purpose` | 同上（从 begin 到 commit） | 「目标库慢」还是「调度慢」的分界线 | P0 |
 | `metaxisdata_query_readonly_rows` | histogram | `purpose` | 扫描结束后 | 聚合类恒为 1；采样/画像是关注点 | P1 |
 | `metaxisdata_query_readonly_truncated_total` | counter | `purpose` | `result.Truncated` | 行/字节上限截断 | P2 |
@@ -497,7 +498,7 @@ ExplainSQL 的 `AgentConfig` **暂不打开** `IncludeUsage`（部分 OpenAI 兼
 | `metaxisdata_llm_usage_missing_total` | counter | `feature` | 无 usage 事件时 | 提供商没报 usage → token 面板会低估；也是网关不支持 `stream_options` 的信号。ExplainSQL 的 token 在 v1 不保证，**这条是它的补偿信号**，因此列为 P0 | P0 |
 | `metaxisdata_llm_parse_failures_total` | counter | `feature` | DQ 三个严格 JSON 解析失败点（`data_quality_llm_analysis.go:110-117,535-542`、`data_quality_label_analysis.go:132-139`） | 模型答了但结构不合格，不缓存不落库 | P0 |
 | `metaxisdata_llm_cache_events_total` | counter | `feature=explain_sql\|dq_explain_result,event=hit\|miss\|write_error` | ExplainSQL 缓存命中/未命中/写失败（`explain_sql_service.go:96-112,117,238-240`）；DQ L2（`data_quality_llm_analysis.go:484-492,592-633,676-678`） | 缓存规避了多少模型调用 | P1 |
-| `metaxisdata_llm_quota_rejections_total` | counter | `kind=analysis\|column_analysis` | `data_quality_llm_quota.go:88-92,99-103` | 日配额/并发拒绝（ResourceExhausted） | P0 |
+| `metaxisdata_llm_quota_rejections_total` | counter | `kind=analysis\|column_analysis` | `data_quality_llm_quota.go` | **仅日配额拒绝**（ResourceExhausted）；共享并发信号量是排队等待，不是拒绝，因此没有对应计数 | P0 |
 | `metaxisdata_llm_quota_used` | gauge | `kind` | 配额增加后（`:93`、`:104`），UTC 日切重置 | 进程本地当日用量 | P1 |
 | `metaxisdata_llm_analyses_in_flight` | gauge | — | `GaugeFunc` 读 semaphore 长度 | 并发上限 2，共享，**不要加 kind 标签** | P1 |
 | `metaxisdata_llm_concurrency_wait_seconds` | histogram | `kind` | 配额通过到拿到 semaphore（`:110-131`） | 「提供商慢」还是「我们自己的并发闸门」 | P2 |
@@ -529,7 +530,7 @@ ExplainSQL 的 `AgentConfig` **暂不打开** `IncludeUsage`（部分 OpenAI 兼
 
 ## 6. 实现状态
 
-v1（P0 66 条）已经实现，按四个可独立评审的范围落地：
+v1（P0 66 条，按目录行计）已经实现，按四个可独立评审的范围落地：
 
 | 范围 | 状态 | 主要落点 |
 | --- | --- | --- |
@@ -555,11 +556,11 @@ v1（P0 66 条）已经实现，按四个可独立评审的范围落地：
 
 ### 7.2 文档与记录
 
-- 新增运维说明：`docs/deploy.md` 的「Health and build metadata」扩成「Health, metrics and build metadata」，
+- 新增运维说明：`docs/deploy.md` 在「Health and build metadata」之后新增「Prometheus metrics」小节，
   写清 `METAXISDATA_METRICS_ADDR`、推荐绑定地址、指标名分组与 scrape 方式。
 - `docs/security-posture.md` 新增一条已接受决策：指标默认关闭、独立监听、**匿名无鉴权**、
   只应绑定在可信网络边界；`--debug` 只影响 pprof。
-- `.agents/docs/security-open-items.md` 的 M25/D8 收窄为「pprof 仍只有 RuntimeDebug 一个闸门」。
+- `.agents/docs/security-open-items.md` 的 M25 收窄为「pprof 仍只有 RuntimeDebug 一个闸门」。
 - `.agents/docs/backend-open-items.md`：D8 关闭（本方案即「重建遥测设施」的决定），并清掉过时的文档残留行。
 - `.agents/docs/runner.md`、`data-quality.md` 中「no metrics」的已知缺口条目更新。
 - `backend/AGENTS.md` 包归属表加 `backend/metrics/`。
@@ -581,9 +582,9 @@ v1（P0 66 条）已经实现，按四个可独立评审的范围落地：
 ## 8. 测试与验证
 
 - `backend/metrics/metrics_test.go`：`TestRegisteredInstruments`（指标名 + 标签集合的黄金表）、`TestScrapeCollectors`、`TestNilMetricsIsNoop`、`TestLabelMappings`、`TestRecordersEmitExpectedLabels`（记录器端到端的标签与数值）。
-- `backend/server/http_metrics_test.go`：跳过的路由、gateway 回环、route 模板折叠；`backend/server/metrics_endpoint_test.go`：私有 registry 的 `/metrics` 响应、不可用地址启动失败。
+- `backend/server/http_metrics_test.go`：跳过的路由、gateway 回环、route 模板折叠、被 recover 捕获的 panic 记为 500；`backend/server/metrics_endpoint_test.go`：私有 registry 的 `/metrics` 响应、非 GET/HEAD 返回 405、监听器启动/抓取/关闭、不可用地址启动失败；`backend/server/openlineage_ingestion_test.go`：限流拒绝的 `failure_kind=rate_limited` 计数。
 - `backend/api/v1/metrics_interceptor_test.go`：procedure 拆分与 Connect code 映射。
-- 各域 hermetic 测试：`schemasync`（失败原因、按类型聚合、重试）、`lineageanalyzer`（终态映射、interrupted/timeout 去重、边计数）、`openlineage`（failure kind、route、边拆分）、`qualityrunner`（规则漏斗标签）、`component/llm`（一次调用、usage_missing、empty response）、`plugin/db`（purpose 传递）。
+- 各域 hermetic 测试：`schemasync`（失败原因、按类型聚合、重试）、`lineageanalyzer`（终态映射、interrupted/timeout 去重、边计数）、`openlineage`（failure kind、route、边拆分、单事件解析失败计数）、`qualityrunner`（规则漏斗标签）、`component/llm`（一次调用、usage_missing、empty response）、`plugin/db`（purpose 传递）。
 - 门禁：`gofmt`、`golangci-lint run --allow-parallel-runners`（本机 v2.14 会报 3 条既有的 `multiline-if-init`，均在本次未触碰的文件）、`go build ./...`、`go vet -tags integration ./...`、`go test ./...`。
 - **未做端到端 scrape 集成测试**：指标端点是可选项，集成 harness 启动真实二进制时尚未传 `--metrics-addr`；监听器与处理器已由单元测试覆盖。
 
@@ -606,7 +607,7 @@ v1（P0 66 条）已经实现，按四个可独立评审的范围落地：
 | HTTP/RPC | ≈ 60 route × 5 method × 15 status（实际稀疏）+ 141 RPC × 18 code（实际稀疏）→ 活跃通常 < 500 |
 | schemasync | engine(9) × outcome(2) × 若干 + object_type(10) × 3 + 12 项维护 → < 200 |
 | lineage | meta_type(4) × engine(9) × result(11) ≈ 396 + 直方图 ≈ 500 |
-| openlineage | failure_kind(8) × route(2) + 事件/边/解析 < 200 |
+| openlineage | failure_kind(9) × route(2) + 事件/边/解析 < 200 |
 | quality | rule_type(19) × status(7) ≈ 133 + error_code ≈ 247 + 直方图 ≈ 400 |
 | query | purpose(6) × outcome(2) + 直方图 < 150 |
 | llm | feature(4) × provider(配置数) × outcome(4) + 直方图 < 200 |

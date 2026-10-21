@@ -7,16 +7,23 @@ import (
 	"testing"
 
 	"github.com/labstack/echo/v4"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
+
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 )
 
 // openLineageIngestionTestServer mounts the middleware built on the two stores
 // with the given trusted proxies. httptest requests carry 192.0.2.1:1234 as their
 // peer address, so a listed proxy in these tests is "192.0.2.1".
 func openLineageIngestionTestServer(keyStore, sourceStore *boundedRateLimiterStore, trustedProxies []string) *echo.Echo {
+	return openLineageIngestionTestServerWithMetrics(keyStore, sourceStore, trustedProxies, nil)
+}
+
+func openLineageIngestionTestServerWithMetrics(keyStore, sourceStore *boundedRateLimiterStore, trustedProxies []string, m *metrics.Metrics) *echo.Echo {
 	e := echo.New()
-	g := e.Group("/api/v1/lineage", openLineageIngestionMiddlewareWithStore(keyStore, sourceStore, trustedProxies, nil))
+	g := e.Group("/api/v1/lineage", openLineageIngestionMiddlewareWithStore(keyStore, sourceStore, trustedProxies, m))
 	g.POST("", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
 	return e
 }
@@ -229,4 +236,29 @@ func TestOpenLineageIngestionMiddlewareTrustAllProxiesLetsTheCallerChooseTheBuck
 		require.Equal(t, http.StatusOK, ingestOpenLineageEvent(e, "", rotatedForwardedFor(i)+", 192.0.2.1"))
 	}
 	require.Greater(t, len(keyStore.visitors), openLineageIngestionBurst, "each leftmost value is its own bucket")
+}
+
+// TestRateLimitDenialIsCounted pins that a refusal produced by the ingestion
+// middleware itself (before the handler) reaches the failures counter; those
+// requests never pass through reportIngestionFailure.
+func TestRateLimitDenialIsCounted(t *testing.T) {
+	t.Parallel()
+
+	m := metrics.New()
+	registry := prometheus.NewRegistry()
+	require.NoError(t, m.Register(registry))
+	// The key budget refuses the second request; the source budget is unfrozen so
+	// the dimension under test is the only one that can refuse.
+	e := openLineageIngestionTestServerWithMetrics(
+		newBoundedRateLimiterStore(rate.Limit(10), 1),
+		unfrozenRateLimiterStore(),
+		nil,
+		m,
+	)
+	require.Equal(t, http.StatusOK, ingestOpenLineageEvent(e, "key-counted", ""))
+	require.Equal(t, http.StatusTooManyRequests, ingestOpenLineageEvent(e, "key-counted", ""))
+
+	line := metricLine(t, metricExposition(t, registry), "metaxisdata_openlineage_ingest_failures_total")
+	require.Contains(t, line, `failure_kind="rate_limited"`)
+	require.Contains(t, line, `route="event"`)
 }
