@@ -37,7 +37,7 @@
     - [QualityFilterClause](#metaxisdata-store-QualityFilterClause)
     - [QualityRuleConfig](#metaxisdata-store-QualityRuleConfig)
     - [QualityRuleDraftConfig](#metaxisdata-store-QualityRuleDraftConfig)
-    - [QualityRunCounts](#metaxisdata-store-QualityRunCounts)
+    - [QualityStatusCounts](#metaxisdata-store-QualityStatusCounts)
     - [QualitySuggestionPayload](#metaxisdata-store-QualitySuggestionPayload)
     - [QualityTargetPath](#metaxisdata-store-QualityTargetPath)
     - [QualityThresholds](#metaxisdata-store-QualityThresholds)
@@ -60,6 +60,8 @@
     - [QualityComparisonOperator](#metaxisdata-store-QualityComparisonOperator)
     - [QualityDimension](#metaxisdata-store-QualityDimension)
     - [QualityEmptyBehavior](#metaxisdata-store-QualityEmptyBehavior)
+    - [QualityExecutionState](#metaxisdata-store-QualityExecutionState)
+    - [QualityExecutionTrigger](#metaxisdata-store-QualityExecutionTrigger)
     - [QualityFilterOperator](#metaxisdata-store-QualityFilterOperator)
     - [QualityIssueStatus](#metaxisdata-store-QualityIssueStatus)
     - [QualityLabelSource](#metaxisdata-store-QualityLabelSource)
@@ -68,8 +70,6 @@
     - [QualityResolutionReason](#metaxisdata-store-QualityResolutionReason)
     - [QualityRuleState](#metaxisdata-store-QualityRuleState)
     - [QualityRuleType](#metaxisdata-store-QualityRuleType)
-    - [QualityRunStatus](#metaxisdata-store-QualityRunStatus)
-    - [QualityRunTrigger](#metaxisdata-store-QualityRunTrigger)
     - [QualitySemanticType](#metaxisdata-store-QualitySemanticType)
     - [QualitySeverity](#metaxisdata-store-QualitySeverity)
     - [QualityStatus](#metaxisdata-store-QualityStatus)
@@ -770,10 +770,10 @@ typed config. It is never executed without a human saving it as a rule.
 
 
 
-<a name="metaxisdata-store-QualityRunCounts"></a>
+<a name="metaxisdata-store-QualityStatusCounts"></a>
 
-### QualityRunCounts
-QualityRunCounts is the six-state tally of one run.
+### QualityStatusCounts
+QualityStatusCounts is the six-state tally of a set of executions.
 
 
 | Field | Type | Label | Description |
@@ -1191,6 +1191,37 @@ with. The default is NOT_EVALUATED so an empty table never looks like a pass.
 
 
 
+<a name="metaxisdata-store-QualityExecutionState"></a>
+
+### QualityExecutionState
+QualityExecutionState is the lifecycle of one execution, separate from the
+quality outcome (Status) that is only known once it finishes. The internal
+dispatch batch uses the same lifecycle.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_EXECUTION_STATE_UNSPECIFIED | 0 |  |
+| QUALITY_EXECUTION_STATE_PENDING | 1 | Planned and waiting for the runner. |
+| QUALITY_EXECUTION_STATE_RUNNING | 2 | The runner is executing the rule. |
+| QUALITY_EXECUTION_STATE_COMPLETED | 3 | The check reached a verdict; Status holds it. |
+| QUALITY_EXECUTION_STATE_ABANDONED | 4 | A restart discarded it before it finished. It is not retried. |
+
+
+
+<a name="metaxisdata-store-QualityExecutionTrigger"></a>
+
+### QualityExecutionTrigger
+QualityExecutionTrigger is what started one execution. The internal dispatch
+batch carries the trigger of its executions.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_EXECUTION_TRIGGER_UNSPECIFIED | 0 |  |
+| QUALITY_EXECUTION_TRIGGER_MANUAL | 1 |  |
+| QUALITY_EXECUTION_TRIGGER_SCHEDULED | 2 |  |
+
+
+
 <a name="metaxisdata-store-QualityFilterOperator"></a>
 
 ### QualityFilterOperator
@@ -1327,35 +1358,6 @@ rule: changing the type is a different rule and a new revision.
 | QUALITY_RULE_TYPE_GROUP_CHECK | 16 | v1.1: groups rows and bounds each group&#39;s row count. |
 | QUALITY_RULE_TYPE_AGGREGATE | 17 | v1.1: aggregates one column and bounds the value. |
 | QUALITY_RULE_TYPE_CROSS_TABLE | 18 | v1.1: reconciles one aggregate of this table with one of another table in the same instance and database. |
-
-
-
-<a name="metaxisdata-store-QualityRunStatus"></a>
-
-### QualityRunStatus
-QualityRunStatus is the lifecycle of a run, which is separate from the quality
-status its results roll up to. A queued run has no outcome yet.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| QUALITY_RUN_STATUS_UNSPECIFIED | 0 |  |
-| QUALITY_RUN_STATUS_PENDING | 1 | Created and waiting for the runner. |
-| QUALITY_RUN_STATUS_RUNNING | 2 | The runner is executing this run&#39;s rules. |
-| QUALITY_RUN_STATUS_COMPLETED | 3 | Every rule was attempted; outcome holds the rollup. |
-| QUALITY_RUN_STATUS_ABANDONED | 4 | A restart discarded the run before it finished. It is not retried. |
-
-
-
-<a name="metaxisdata-store-QualityRunTrigger"></a>
-
-### QualityRunTrigger
-QualityRunTrigger is what started a run.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| QUALITY_RUN_TRIGGER_UNSPECIFIED | 0 |  |
-| QUALITY_RUN_TRIGGER_MANUAL | 1 |  |
-| QUALITY_RUN_TRIGGER_SCHEDULED | 2 |  |
 
 
 
@@ -2873,12 +2875,13 @@ only; the client renders the localized sentence from the kind and these fields.
 | observed_value | [double](#double) |  | The observed value and its unit (&#34;rows&#34;, &#34;%&#34;, &#34;s&#34;, &#34;timestamp&#34;). |
 | observed_unit | [string](#string) |  |  |
 | issue | [string](#string) |  | Format: workspaces/{workspace}/qualityIssues/{quality_issue} |
-| run | [string](#string) |  | Format: workspaces/{workspace}/qualityRuns/{quality_run} |
+| execution | [string](#string) |  | Format: workspaces/{workspace}/qualityExecutions/{quality_execution} |
 | failed_rows | [int64](#int64) |  |  |
 | total_rows | [int64](#int64) |  |  |
 | error_code | [string](#string) |  | The machine-readable failure class for EXECUTION_FAILED. |
 | failed_rule_count | [int32](#int32) |  | The tallies a STORM_SUMMARY merged. |
 | total_rule_count | [int32](#int32) |  |  |
+| instance | [string](#string) |  | The instance whose dispatch batch the summary describes. Format: instances/{instance}. Empty for the per-execution kinds. |
 
 
 
@@ -2995,7 +2998,7 @@ DataQualityNotificationKind is the event a data quality notification reports.
 | DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED | 1 | A rule started failing: an issue was opened. |
 | DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED | 2 | A previously failing rule passes again: its issue resolved itself. |
 | DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED | 3 | A rule could not be executed at all. This is not a data failure. |
-| DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY | 4 | One run failed so many rules that the individual messages were merged. |
+| DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY | 4 | One dispatch batch failed so many rules that the individual messages were merged. |
 
 
 

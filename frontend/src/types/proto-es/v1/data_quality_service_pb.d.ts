@@ -111,12 +111,12 @@ export declare type QualityRule = Message<"metaxisdata.v1.QualityRule"> & {
   updateTime?: Timestamp;
 
   /**
-   * The most recent result, for the list view. It is not part of the rule and
+   * The most recent execution, for the list view. It is not part of the rule and
    * is only populated by reads, never persisted on write.
    *
-   * @generated from field: metaxisdata.v1.QualityResultSummary last_result = 16;
+   * @generated from field: metaxisdata.v1.QualityExecutionSummary last_result = 16;
    */
-  lastResult?: QualityResultSummary;
+  lastResult?: QualityExecutionSummary;
 
   /**
    * Why the target can no longer be resolved, e.g. because the table was
@@ -1290,11 +1290,11 @@ export declare type QualityThresholds = Message<"metaxisdata.v1.QualityThreshold
 export declare const QualityThresholdsSchema: GenMessage<QualityThresholds>;
 
 /**
- * QualityRunCounts is the six-state tally of one run.
+ * QualityStatusCounts is the six-state tally of a set of executions.
  *
- * @generated from message metaxisdata.v1.QualityRunCounts
+ * @generated from message metaxisdata.v1.QualityStatusCounts
  */
-export declare type QualityRunCounts = Message<"metaxisdata.v1.QualityRunCounts"> & {
+export declare type QualityStatusCounts = Message<"metaxisdata.v1.QualityStatusCounts"> & {
   /**
    * @generated from field: int32 total = 1;
    */
@@ -1332,256 +1332,200 @@ export declare type QualityRunCounts = Message<"metaxisdata.v1.QualityRunCounts"
 };
 
 /**
- * Describes the message metaxisdata.v1.QualityRunCounts.
- * Use `create(QualityRunCountsSchema)` to create a new message.
+ * Describes the message metaxisdata.v1.QualityStatusCounts.
+ * Use `create(QualityStatusCountsSchema)` to create a new message.
  */
-export declare const QualityRunCountsSchema: GenMessage<QualityRunCounts>;
+export declare const QualityStatusCountsSchema: GenMessage<QualityStatusCounts>;
 
 /**
- * QualityRun is one execution batch: manually selected rules, or the rules of one
- * instance that became due in one scheduler tick.
+ * QualityExecution is one rule checked once: the durable unit of the data
+ * quality engine. A scheduled tick or a manual request plans one execution per
+ * rule; the runner then executes it and records the verdict and its evidence on
+ * the same row.
  *
- * @generated from message metaxisdata.v1.QualityRun
+ * @generated from message metaxisdata.v1.QualityExecution
  */
-export declare type QualityRun = Message<"metaxisdata.v1.QualityRun"> & {
+export declare type QualityExecution = Message<"metaxisdata.v1.QualityExecution"> & {
   /**
-   * Format: workspaces/{workspace}/qualityRuns/{quality_run}
+   * Format: workspaces/{workspace}/qualityExecutions/{quality_execution}. The
+   * last segment is the row id, which is immutable for the row's lifetime.
    *
    * @generated from field: string name = 1;
    */
   name: string;
-
-  /**
-   * @generated from field: metaxisdata.v1.QualityRunTrigger trigger = 2;
-   */
-  trigger: QualityRunTrigger;
-
-  /**
-   * The run's lifecycle. A queued or running run reports PENDING / RUNNING here;
-   * its outcome is not known yet.
-   *
-   * @generated from field: metaxisdata.v1.QualityRunStatus status = 3;
-   */
-  status: QualityRunStatus;
-
-  /**
-   * @generated from field: metaxisdata.v1.QualityRunCounts counts = 4;
-   */
-  counts?: QualityRunCounts;
-
-  /**
-   * @generated from field: google.protobuf.Timestamp start_time = 5;
-   */
-  startTime?: Timestamp;
-
-  /**
-   * Unset while the run is queued or still executing.
-   *
-   * @generated from field: google.protobuf.Timestamp finish_time = 6;
-   */
-  finishTime?: Timestamp;
-
-  /**
-   * The principal that started the run. Format: users/{user}. Empty for a
-   * scheduled run.
-   *
-   * @generated from field: string initiator = 7;
-   */
-  initiator: string;
-
-  /**
-   * The instance this batch belongs to. Format: instances/{instance}
-   *
-   * @generated from field: string instance = 8;
-   */
-  instance: string;
-
-  /**
-   * The rollup of the run's results: the worst status any result reported.
-   * Unset until the run completes; ERROR and FAIL stay distinct.
-   *
-   * @generated from field: metaxisdata.v1.QualityStatus outcome = 9;
-   */
-  outcome: QualityStatus;
-
-  /**
-   * Where the run's rules looked: the distinct targets of its results, taken
-   * from the rule revision each result was judged with. A list view would
-   * otherwise have to join every result back to its rule to answer "what did
-   * this run check?". Empty for a queued run that has no results yet.
-   *
-   * @generated from field: repeated metaxisdata.v1.QualityTarget targets = 10;
-   */
-  targets: QualityTarget[];
-};
-
-/**
- * Describes the message metaxisdata.v1.QualityRun.
- * Use `create(QualityRunSchema)` to create a new message.
- */
-export declare const QualityRunSchema: GenMessage<QualityRun>;
-
-/**
- * QualityRuleResult is one rule's outcome in one run.
- *
- * @generated from message metaxisdata.v1.QualityRuleResult
- */
-export declare type QualityRuleResult = Message<"metaxisdata.v1.QualityRuleResult"> & {
-  /**
-   * Format: workspaces/{workspace}/qualityRuleResults/{quality_rule_result}
-   *
-   * @generated from field: string name = 1;
-   */
-  name: string;
-
-  /**
-   * Format: workspaces/{workspace}/qualityRuns/{quality_run}
-   *
-   * @generated from field: string run = 2;
-   */
-  run: string;
 
   /**
    * Format: workspaces/{workspace}/qualityRules/{quality_rule}
    *
-   * @generated from field: string rule = 3;
+   * @generated from field: string rule = 2;
    */
   rule: string;
 
   /**
-   * The rule revision this result was judged with.
+   * The rule revision the check was judged with.
    *
-   * @generated from field: int32 rule_revision = 4;
+   * @generated from field: int32 rule_revision = 3;
    */
   ruleRevision: number;
 
   /**
-   * The engine version that produced it, so a changed judgment is traceable to a
-   * changed implementation.
+   * The engine version that produced the verdict, so a changed judgment is
+   * traceable to a changed implementation.
    *
-   * @generated from field: string rule_engine_version = 5;
+   * @generated from field: string rule_engine_version = 4;
    */
   ruleEngineVersion: string;
 
   /**
-   * The target as it was when the result was produced.
+   * The target as it was when the execution was planned.
    *
-   * @generated from field: metaxisdata.v1.QualityTarget target = 6;
+   * @generated from field: metaxisdata.v1.QualityTarget target = 5;
    */
   target?: QualityTarget;
 
   /**
-   * @generated from field: metaxisdata.v1.QualityStatus status = 7;
+   * @generated from field: metaxisdata.v1.QualityExecutionState state = 6;
    */
-  status: QualityStatus;
+  state: QualityExecutionState;
+
+  /**
+   * The quality verdict: PASS, WARN, FAIL, ERROR, SKIPPED or NOT_EVALUATED.
+   * Unset while the execution is PENDING or RUNNING; an ABANDONED execution
+   * never produced one.
+   *
+   * @generated from field: metaxisdata.v1.QualityStatus outcome = 7;
+   */
+  outcome: QualityStatus;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityExecutionTrigger trigger = 8;
+   */
+  trigger: QualityExecutionTrigger;
+
+  /**
+   * The principal that asked for the execution. Format: users/{user}. Empty for
+   * a scheduled execution.
+   *
+   * @generated from field: string initiator = 9;
+   */
+  initiator: string;
+
+  /**
+   * The instance the target lives in. Format: instances/{instance}
+   *
+   * @generated from field: string instance = 10;
+   */
+  instance: string;
 
   /**
    * The observed value; its unit is observed_kind.
    *
-   * @generated from field: double observed_value = 8;
+   * @generated from field: double observed_value = 11;
    */
   observedValue: number;
 
   /**
-   * @generated from field: metaxisdata.v1.QualityObservedKind observed_kind = 9;
+   * @generated from field: metaxisdata.v1.QualityObservedKind observed_kind = 12;
    */
   observedKind: QualityObservedKind;
 
   /**
    * The thresholds that were applied, snapshotted.
    *
-   * @generated from field: metaxisdata.v1.QualityThresholds thresholds = 10;
+   * @generated from field: metaxisdata.v1.QualityThresholds thresholds = 13;
    */
   thresholds?: QualityThresholds;
 
   /**
-   * @generated from field: int64 failed_rows = 11;
+   * @generated from field: int64 failed_rows = 14;
    */
   failedRows: bigint;
 
   /**
-   * @generated from field: int64 total_rows = 12;
+   * @generated from field: int64 total_rows = 15;
    */
   totalRows: bigint;
 
   /**
    * True when the observation was made over a sample rather than every row.
    *
-   * @generated from field: bool sampled = 13;
+   * @generated from field: bool sampled = 16;
    */
   sampled: boolean;
 
   /**
-   * @generated from field: int64 sample_rows = 14;
+   * @generated from field: int64 sample_rows = 17;
    */
   sampleRows: bigint;
 
   /**
    * True when the samples were cut off by the sample limit.
    *
-   * @generated from field: bool truncated = 15;
+   * @generated from field: bool truncated = 18;
    */
   truncated: boolean;
 
   /**
    * Failed rows kept as evidence, already truncated per value.
    *
-   * @generated from field: repeated metaxisdata.v1.FailureSample samples = 16;
+   * @generated from field: repeated metaxisdata.v1.FailureSample samples = 19;
    */
   samples: FailureSample[];
 
   /**
-   * The SQL that was executed. Kept so a result can be re-checked by hand.
+   * The SQL that was executed. Kept so an execution can be re-checked by hand.
    *
-   * @generated from field: string executed_sql = 17;
+   * @generated from field: string executed_sql = 20;
    */
   executedSql: string;
 
   /**
    * A machine-readable failure class: CONNECTION, AUTH, TIMEOUT, PERMISSION,
    * UNSUPPORTED, SQL_SYNTAX, BAD_DATA, LIMIT_EXCEEDED or ORPHANED. Empty unless
-   * status is ERROR.
+   * outcome is ERROR.
    *
-   * @generated from field: string error_code = 18;
+   * @generated from field: string error_code = 21;
    */
   errorCode: string;
 
   /**
-   * A human-readable failure message. Empty unless status is ERROR.
+   * A human-readable failure message. Empty unless outcome is ERROR.
    *
-   * @generated from field: string error_message = 19;
+   * @generated from field: string error_message = 22;
    */
   errorMessage: string;
 
   /**
-   * @generated from field: google.protobuf.Duration duration = 20;
+   * @generated from field: google.protobuf.Duration duration = 23;
    */
   duration?: Duration;
 
   /**
-   * @generated from field: google.protobuf.Timestamp start_time = 21;
+   * @generated from field: google.protobuf.Timestamp start_time = 24;
    */
   startTime?: Timestamp;
 
   /**
-   * @generated from field: google.protobuf.Timestamp finish_time = 22;
+   * Unset while the execution is PENDING or RUNNING.
+   *
+   * @generated from field: google.protobuf.Timestamp finish_time = 25;
    */
   finishTime?: Timestamp;
 };
 
 /**
- * Describes the message metaxisdata.v1.QualityRuleResult.
- * Use `create(QualityRuleResultSchema)` to create a new message.
+ * Describes the message metaxisdata.v1.QualityExecution.
+ * Use `create(QualityExecutionSchema)` to create a new message.
  */
-export declare const QualityRuleResultSchema: GenMessage<QualityRuleResult>;
+export declare const QualityExecutionSchema: GenMessage<QualityExecution>;
 
 /**
- * QualityResultSummary is the compact projection of the latest result that a
- * rule list shows. It is not a stored entity.
+ * QualityExecutionSummary is the compact projection of the latest execution
+ * that a rule list shows. It is not a stored entity.
  *
- * @generated from message metaxisdata.v1.QualityResultSummary
+ * @generated from message metaxisdata.v1.QualityExecutionSummary
  */
-export declare type QualityResultSummary = Message<"metaxisdata.v1.QualityResultSummary"> & {
+export declare type QualityExecutionSummary = Message<"metaxisdata.v1.QualityExecutionSummary"> & {
   /**
    * @generated from field: metaxisdata.v1.QualityStatus status = 1;
    */
@@ -1608,11 +1552,11 @@ export declare type QualityResultSummary = Message<"metaxisdata.v1.QualityResult
   totalRows: bigint;
 
   /**
-   * Format: workspaces/{workspace}/qualityRuns/{quality_run}
+   * Format: workspaces/{workspace}/qualityExecutions/{quality_execution}
    *
-   * @generated from field: string run = 6;
+   * @generated from field: string execution = 6;
    */
-  run: string;
+  execution: string;
 
   /**
    * @generated from field: google.protobuf.Timestamp finish_time = 7;
@@ -1621,10 +1565,10 @@ export declare type QualityResultSummary = Message<"metaxisdata.v1.QualityResult
 };
 
 /**
- * Describes the message metaxisdata.v1.QualityResultSummary.
- * Use `create(QualityResultSummarySchema)` to create a new message.
+ * Describes the message metaxisdata.v1.QualityExecutionSummary.
+ * Use `create(QualityExecutionSummarySchema)` to create a new message.
  */
-export declare const QualityResultSummarySchema: GenMessage<QualityResultSummary>;
+export declare const QualityExecutionSummarySchema: GenMessage<QualityExecutionSummary>;
 
 /**
  * QualityIssue is the durable problem behind a rule's failures. A rule has at
@@ -1666,18 +1610,18 @@ export declare type QualityIssue = Message<"metaxisdata.v1.QualityIssue"> & {
   severity: QualitySeverity;
 
   /**
-   * The run that opened the issue. Unset when it was opened without a run.
+   * The execution that opened the issue. Unset when it was opened without one.
    *
-   * @generated from field: string first_seen_run = 6;
+   * @generated from field: string first_seen_execution = 6;
    */
-  firstSeenRun: string;
+  firstSeenExecution: string;
 
   /**
-   * The newest run that observed the problem again.
+   * The newest execution that observed the problem again.
    *
-   * @generated from field: string last_seen_run = 7;
+   * @generated from field: string last_seen_execution = 7;
    */
-  lastSeenRun: string;
+  lastSeenExecution: string;
 
   /**
    * @generated from field: google.protobuf.Timestamp first_seen_time = 8;
@@ -2579,12 +2523,12 @@ export declare const RunQualityRulesRequestSchema: GenMessage<RunQualityRulesReq
  */
 export declare type RunQualityRulesResponse = Message<"metaxisdata.v1.RunQualityRulesResponse"> & {
   /**
-   * One run per instance in the selection. All of them are queued and pending
-   * when the response is returned; poll GetQualityRun for their outcome.
+   * One execution per selected rule, planned and queued for the runner. All of
+   * them are PENDING when the response is returned; poll GetQualityExecution.
    *
-   * @generated from field: repeated metaxisdata.v1.QualityRun runs = 1;
+   * @generated from field: repeated metaxisdata.v1.QualityExecution executions = 1;
    */
-  runs: QualityRun[];
+  executions: QualityExecution[];
 };
 
 /**
@@ -2594,9 +2538,9 @@ export declare type RunQualityRulesResponse = Message<"metaxisdata.v1.RunQuality
 export declare const RunQualityRulesResponseSchema: GenMessage<RunQualityRulesResponse>;
 
 /**
- * @generated from message metaxisdata.v1.ListQualityRunsRequest
+ * @generated from message metaxisdata.v1.ListQualityExecutionsRequest
  */
-export declare type ListQualityRunsRequest = Message<"metaxisdata.v1.ListQualityRunsRequest"> & {
+export declare type ListQualityExecutionsRequest = Message<"metaxisdata.v1.ListQualityExecutionsRequest"> & {
   /**
    * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
    *
@@ -2605,7 +2549,7 @@ export declare type ListQualityRunsRequest = Message<"metaxisdata.v1.ListQuality
   parent: string;
 
   /**
-   * The maximum number of runs to return. If unspecified, at most 50 are
+   * The maximum number of executions to return. If unspecified, at most 50 are
    * returned. The maximum value is 1000; values above 1000 are coerced to 1000.
    *
    * @generated from field: int32 page_size = 2;
@@ -2613,129 +2557,7 @@ export declare type ListQualityRunsRequest = Message<"metaxisdata.v1.ListQuality
   pageSize: number;
 
   /**
-   * A page token, received from a previous ListQualityRuns call. Provide this to
-   * retrieve the subsequent page.
-   *
-   * @generated from field: string page_token = 3;
-   */
-  pageToken: string;
-
-  /**
-   * The run lifecycle to filter by, e.g. only runs still PENDING.
-   *
-   * @generated from field: metaxisdata.v1.QualityRunStatus status = 4;
-   */
-  status: QualityRunStatus;
-
-  /**
-   * @generated from field: metaxisdata.v1.QualityRunTrigger trigger = 5;
-   */
-  trigger: QualityRunTrigger;
-
-  /**
-   * Only the runs that executed rules of this instance.
-   * Format: instances/{instance}
-   *
-   * @generated from field: string instance = 6;
-   */
-  instance: string;
-
-  /**
-   * Only the runs started at or after this time.
-   *
-   * @generated from field: google.protobuf.Timestamp start_time = 7;
-   */
-  startTime?: Timestamp;
-
-  /**
-   * Only the runs started before this time.
-   *
-   * @generated from field: google.protobuf.Timestamp end_time = 8;
-   */
-  endTime?: Timestamp;
-
-  /**
-   * Format: users/{user}.
-   *
-   * @generated from field: string initiator = 9;
-   */
-  initiator: string;
-
-  /**
-   * The quality rollup to filter by, e.g. only failed runs. Matches completed
-   * runs only.
-   *
-   * @generated from field: metaxisdata.v1.QualityStatus outcome = 10;
-   */
-  outcome: QualityStatus;
-};
-
-/**
- * Describes the message metaxisdata.v1.ListQualityRunsRequest.
- * Use `create(ListQualityRunsRequestSchema)` to create a new message.
- */
-export declare const ListQualityRunsRequestSchema: GenMessage<ListQualityRunsRequest>;
-
-/**
- * @generated from message metaxisdata.v1.ListQualityRunsResponse
- */
-export declare type ListQualityRunsResponse = Message<"metaxisdata.v1.ListQualityRunsResponse"> & {
-  /**
-   * @generated from field: repeated metaxisdata.v1.QualityRun quality_runs = 1;
-   */
-  qualityRuns: QualityRun[];
-
-  /**
-   * @generated from field: string next_page_token = 2;
-   */
-  nextPageToken: string;
-};
-
-/**
- * Describes the message metaxisdata.v1.ListQualityRunsResponse.
- * Use `create(ListQualityRunsResponseSchema)` to create a new message.
- */
-export declare const ListQualityRunsResponseSchema: GenMessage<ListQualityRunsResponse>;
-
-/**
- * @generated from message metaxisdata.v1.GetQualityRunRequest
- */
-export declare type GetQualityRunRequest = Message<"metaxisdata.v1.GetQualityRunRequest"> & {
-  /**
-   * Format: workspaces/{workspace}/qualityRuns/{quality_run}
-   *
-   * @generated from field: string name = 1;
-   */
-  name: string;
-};
-
-/**
- * Describes the message metaxisdata.v1.GetQualityRunRequest.
- * Use `create(GetQualityRunRequestSchema)` to create a new message.
- */
-export declare const GetQualityRunRequestSchema: GenMessage<GetQualityRunRequest>;
-
-/**
- * @generated from message metaxisdata.v1.ListQualityRuleResultsRequest
- */
-export declare type ListQualityRuleResultsRequest = Message<"metaxisdata.v1.ListQualityRuleResultsRequest"> & {
-  /**
-   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
-   *
-   * @generated from field: string parent = 1;
-   */
-  parent: string;
-
-  /**
-   * The maximum number of results to return. If unspecified, at most 50 are
-   * returned. The maximum value is 1000; values above 1000 are coerced to 1000.
-   *
-   * @generated from field: int32 page_size = 2;
-   */
-  pageSize: number;
-
-  /**
-   * A page token, received from a previous ListQualityRuleResults call. Provide
+   * A page token, received from a previous ListQualityExecutions call. Provide
    * this to retrieve the subsequent page.
    *
    * @generated from field: string page_token = 3;
@@ -2743,60 +2565,84 @@ export declare type ListQualityRuleResultsRequest = Message<"metaxisdata.v1.List
   pageToken: string;
 
   /**
-   * Format: workspaces/{workspace}/qualityRuns/{quality_run}
+   * The execution lifecycle to filter by, e.g. only PENDING executions.
    *
-   * @generated from field: string run = 4;
+   * @generated from field: metaxisdata.v1.QualityExecutionState state = 4;
    */
-  run: string;
+  state: QualityExecutionState;
 
   /**
+   * The quality outcome to filter by, e.g. only failed executions. Matches
+   * completed executions only.
+   *
+   * @generated from field: metaxisdata.v1.QualityStatus outcome = 5;
+   */
+  outcome: QualityStatus;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityExecutionTrigger trigger = 6;
+   */
+  trigger: QualityExecutionTrigger;
+
+  /**
+   * Only the executions of this rule.
    * Format: workspaces/{workspace}/qualityRules/{quality_rule}
    *
-   * @generated from field: string rule = 5;
+   * @generated from field: string rule = 7;
    */
   rule: string;
 
   /**
-   * @generated from field: metaxisdata.v1.QualityStatus status = 6;
-   */
-  status: QualityStatus;
-
-  /**
    * The exact target GUID.
    *
-   * @generated from field: string target_guid = 7;
+   * @generated from field: string target_guid = 8;
    */
   targetGuid: string;
 
   /**
-   * Only the results that started at or after this time.
+   * Only the executions of rules of this instance.
+   * Format: instances/{instance}
    *
-   * @generated from field: google.protobuf.Timestamp start_time = 8;
+   * @generated from field: string instance = 9;
+   */
+  instance: string;
+
+  /**
+   * Only the executions this principal started. Format: users/{user}.
+   *
+   * @generated from field: string initiator = 10;
+   */
+  initiator: string;
+
+  /**
+   * Only the executions started at or after this time.
+   *
+   * @generated from field: google.protobuf.Timestamp start_time = 11;
    */
   startTime?: Timestamp;
 
   /**
-   * Only the results that started before this time.
+   * Only the executions started before this time.
    *
-   * @generated from field: google.protobuf.Timestamp end_time = 9;
+   * @generated from field: google.protobuf.Timestamp end_time = 12;
    */
   endTime?: Timestamp;
 };
 
 /**
- * Describes the message metaxisdata.v1.ListQualityRuleResultsRequest.
- * Use `create(ListQualityRuleResultsRequestSchema)` to create a new message.
+ * Describes the message metaxisdata.v1.ListQualityExecutionsRequest.
+ * Use `create(ListQualityExecutionsRequestSchema)` to create a new message.
  */
-export declare const ListQualityRuleResultsRequestSchema: GenMessage<ListQualityRuleResultsRequest>;
+export declare const ListQualityExecutionsRequestSchema: GenMessage<ListQualityExecutionsRequest>;
 
 /**
- * @generated from message metaxisdata.v1.ListQualityRuleResultsResponse
+ * @generated from message metaxisdata.v1.ListQualityExecutionsResponse
  */
-export declare type ListQualityRuleResultsResponse = Message<"metaxisdata.v1.ListQualityRuleResultsResponse"> & {
+export declare type ListQualityExecutionsResponse = Message<"metaxisdata.v1.ListQualityExecutionsResponse"> & {
   /**
-   * @generated from field: repeated metaxisdata.v1.QualityRuleResult quality_rule_results = 1;
+   * @generated from field: repeated metaxisdata.v1.QualityExecution quality_executions = 1;
    */
-  qualityRuleResults: QualityRuleResult[];
+  qualityExecutions: QualityExecution[];
 
   /**
    * @generated from field: string next_page_token = 2;
@@ -2805,10 +2651,28 @@ export declare type ListQualityRuleResultsResponse = Message<"metaxisdata.v1.Lis
 };
 
 /**
- * Describes the message metaxisdata.v1.ListQualityRuleResultsResponse.
- * Use `create(ListQualityRuleResultsResponseSchema)` to create a new message.
+ * Describes the message metaxisdata.v1.ListQualityExecutionsResponse.
+ * Use `create(ListQualityExecutionsResponseSchema)` to create a new message.
  */
-export declare const ListQualityRuleResultsResponseSchema: GenMessage<ListQualityRuleResultsResponse>;
+export declare const ListQualityExecutionsResponseSchema: GenMessage<ListQualityExecutionsResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualityExecutionRequest
+ */
+export declare type GetQualityExecutionRequest = Message<"metaxisdata.v1.GetQualityExecutionRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityExecutions/{quality_execution}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityExecutionRequest.
+ * Use `create(GetQualityExecutionRequestSchema)` to create a new message.
+ */
+export declare const GetQualityExecutionRequestSchema: GenMessage<GetQualityExecutionRequest>;
 
 /**
  * @generated from message metaxisdata.v1.ListQualityIssuesRequest
@@ -3473,11 +3337,11 @@ export declare type SuggestColumnLabelsResponse = Message<"metaxisdata.v1.Sugges
 export declare const SuggestColumnLabelsResponseSchema: GenMessage<SuggestColumnLabelsResponse>;
 
 /**
- * @generated from message metaxisdata.v1.ExplainQualityResultRequest
+ * @generated from message metaxisdata.v1.ExplainQualityExecutionRequest
  */
-export declare type ExplainQualityResultRequest = Message<"metaxisdata.v1.ExplainQualityResultRequest"> & {
+export declare type ExplainQualityExecutionRequest = Message<"metaxisdata.v1.ExplainQualityExecutionRequest"> & {
   /**
-   * Format: workspaces/{workspace}/qualityRuleResults/{quality_rule_result}
+   * Format: workspaces/{workspace}/qualityExecutions/{quality_execution}
    *
    * @generated from field: string name = 1;
    */
@@ -3499,20 +3363,20 @@ export declare type ExplainQualityResultRequest = Message<"metaxisdata.v1.Explai
 };
 
 /**
- * Describes the message metaxisdata.v1.ExplainQualityResultRequest.
- * Use `create(ExplainQualityResultRequestSchema)` to create a new message.
+ * Describes the message metaxisdata.v1.ExplainQualityExecutionRequest.
+ * Use `create(ExplainQualityExecutionRequestSchema)` to create a new message.
  */
-export declare const ExplainQualityResultRequestSchema: GenMessage<ExplainQualityResultRequest>;
+export declare const ExplainQualityExecutionRequestSchema: GenMessage<ExplainQualityExecutionRequest>;
 
 /**
- * @generated from message metaxisdata.v1.ExplainQualityResultResponse
+ * @generated from message metaxisdata.v1.ExplainQualityExecutionResponse
  */
-export declare type ExplainQualityResultResponse = Message<"metaxisdata.v1.ExplainQualityResultResponse"> & {
+export declare type ExplainQualityExecutionResponse = Message<"metaxisdata.v1.ExplainQualityExecutionResponse"> & {
   /**
    * The stream reuses ExplainSQL's event messages: content is a markdown
    * fragment, progress reports one agent step, and metadata is the final frame.
    *
-   * @generated from oneof metaxisdata.v1.ExplainQualityResultResponse.payload
+   * @generated from oneof metaxisdata.v1.ExplainQualityExecutionResponse.payload
    */
   payload: {
     /**
@@ -3536,10 +3400,10 @@ export declare type ExplainQualityResultResponse = Message<"metaxisdata.v1.Expla
 };
 
 /**
- * Describes the message metaxisdata.v1.ExplainQualityResultResponse.
- * Use `create(ExplainQualityResultResponseSchema)` to create a new message.
+ * Describes the message metaxisdata.v1.ExplainQualityExecutionResponse.
+ * Use `create(ExplainQualityExecutionResponseSchema)` to create a new message.
  */
-export declare const ExplainQualityResultResponseSchema: GenMessage<ExplainQualityResultResponse>;
+export declare const ExplainQualityExecutionResponseSchema: GenMessage<ExplainQualityExecutionResponse>;
 
 /**
  * @generated from message metaxisdata.v1.GetQualityOverviewRequest
@@ -3616,22 +3480,22 @@ export declare type QualityOverview = Message<"metaxisdata.v1.QualityOverview"> 
   openCriticalCount: number;
 
   /**
-   * The last 24 hours: how many rules failed at least once, how many runs
-   * started, and how their results tallied.
+   * The last 24 hours: how many rules failed at least once, how many executions
+   * were planned (any lifecycle state), and how the completed ones tallied.
    *
    * @generated from field: int32 failing_rule_count = 8;
    */
   failingRuleCount: number;
 
   /**
-   * @generated from field: int32 run_count = 9;
+   * @generated from field: int32 execution_count = 9;
    */
-  runCount: number;
+  executionCount: number;
 
   /**
-   * @generated from field: metaxisdata.v1.QualityRunCounts last_day_counts = 10;
+   * @generated from field: metaxisdata.v1.QualityStatusCounts last_day_counts = 10;
    */
-  lastDayCounts?: QualityRunCounts;
+  lastDayCounts?: QualityStatusCounts;
 
   /**
    * The per-day tallies of the trend window, oldest first.
@@ -3959,77 +3823,77 @@ export enum QualityStatus {
 export declare const QualityStatusSchema: GenEnum<QualityStatus>;
 
 /**
- * QualityRunTrigger is what started a run.
+ * QualityExecutionTrigger is what started one execution.
  *
- * @generated from enum metaxisdata.v1.QualityRunTrigger
+ * @generated from enum metaxisdata.v1.QualityExecutionTrigger
  */
-export enum QualityRunTrigger {
+export enum QualityExecutionTrigger {
   /**
-   * @generated from enum value: QUALITY_RUN_TRIGGER_UNSPECIFIED = 0;
+   * @generated from enum value: QUALITY_EXECUTION_TRIGGER_UNSPECIFIED = 0;
    */
   UNSPECIFIED = 0,
 
   /**
-   * @generated from enum value: QUALITY_RUN_TRIGGER_MANUAL = 1;
+   * @generated from enum value: QUALITY_EXECUTION_TRIGGER_MANUAL = 1;
    */
   MANUAL = 1,
 
   /**
-   * @generated from enum value: QUALITY_RUN_TRIGGER_SCHEDULED = 2;
+   * @generated from enum value: QUALITY_EXECUTION_TRIGGER_SCHEDULED = 2;
    */
   SCHEDULED = 2,
 }
 
 /**
- * Describes the enum metaxisdata.v1.QualityRunTrigger.
+ * Describes the enum metaxisdata.v1.QualityExecutionTrigger.
  */
-export declare const QualityRunTriggerSchema: GenEnum<QualityRunTrigger>;
+export declare const QualityExecutionTriggerSchema: GenEnum<QualityExecutionTrigger>;
 
 /**
- * QualityRunStatus is the lifecycle of a run, which is separate from the quality
- * status its results roll up to. A queued run has no outcome yet.
+ * QualityExecutionState is the lifecycle of one execution. It is separate from
+ * the quality outcome, which is only known once the check finishes.
  *
- * @generated from enum metaxisdata.v1.QualityRunStatus
+ * @generated from enum metaxisdata.v1.QualityExecutionState
  */
-export enum QualityRunStatus {
+export enum QualityExecutionState {
   /**
-   * @generated from enum value: QUALITY_RUN_STATUS_UNSPECIFIED = 0;
+   * @generated from enum value: QUALITY_EXECUTION_STATE_UNSPECIFIED = 0;
    */
   UNSPECIFIED = 0,
 
   /**
-   * Created and waiting for the runner; clients poll while they see this.
+   * Planned and waiting for the runner.
    *
-   * @generated from enum value: QUALITY_RUN_STATUS_PENDING = 1;
+   * @generated from enum value: QUALITY_EXECUTION_STATE_PENDING = 1;
    */
   PENDING = 1,
 
   /**
-   * The runner is executing this run's rules.
+   * The runner is executing the rule.
    *
-   * @generated from enum value: QUALITY_RUN_STATUS_RUNNING = 2;
+   * @generated from enum value: QUALITY_EXECUTION_STATE_RUNNING = 2;
    */
   RUNNING = 2,
 
   /**
-   * Every rule was attempted; outcome holds the rollup.
+   * The check reached a verdict; outcome holds it.
    *
-   * @generated from enum value: QUALITY_RUN_STATUS_COMPLETED = 3;
+   * @generated from enum value: QUALITY_EXECUTION_STATE_COMPLETED = 3;
    */
   COMPLETED = 3,
 
   /**
-   * A restart discarded the run before it finished. It is not retried.
+   * A restart discarded the execution before it finished. It is not retried.
    *
-   * @generated from enum value: QUALITY_RUN_STATUS_ABANDONED = 4;
+   * @generated from enum value: QUALITY_EXECUTION_STATE_ABANDONED = 4;
    */
   ABANDONED = 4,
 }
 
 /**
- * Describes the enum metaxisdata.v1.QualityRunStatus.
+ * Describes the enum metaxisdata.v1.QualityExecutionState.
  */
-export declare const QualityRunStatusSchema: GenEnum<QualityRunStatus>;
+export declare const QualityExecutionStateSchema: GenEnum<QualityExecutionState>;
 
 /**
  * QualityRuleState is whether a rule is scheduled. ARCHIVED is the soft-delete
@@ -4742,13 +4606,15 @@ export enum QualityAggregateFunction {
 export declare const QualityAggregateFunctionSchema: GenEnum<QualityAggregateFunction>;
 
 /**
- * DataQualityService manages the checks that watch the data itself: rules,
- * their executions, and the per-rule results of those executions.
+ * DataQualityService manages the checks that watch the data itself: rules and
+ * their executions.
  *
  * A rule observes one target — a table, or one column of it — with a typed
  * check (row count, null percent, uniqueness, accepted values, ...) on a
- * schedule or on demand. A run groups the results of one instance; it is
- * created asynchronously and polled until it finishes.
+ * schedule or on demand. An execution is one rule checked once: it is planned
+ * asynchronously, executed by the runner, and polled until it reaches a state
+ * or an outcome. Batching rules for scheduling is an internal concern and is
+ * not exposed as a resource.
  *
  * @generated from service metaxisdata.v1.DataQualityService
  */
@@ -4820,9 +4686,9 @@ export declare const DataQualityService: GenService<{
     output: typeof PreviewQualityRuleResponseSchema;
   },
   /**
-   * Execute rules now. The selected rules are grouped by instance, one run is
-   * created per instance, and the runs are queued; the response returns them
-   * while they are still pending. Clients poll GetQualityRun.
+   * Execute rules now. One execution is planned per selected rule; the call
+   * returns them all as PENDING after queueing them. Clients poll
+   * GetQualityExecution for each execution's state and outcome.
    *
    * @generated from rpc metaxisdata.v1.DataQualityService.RunQualityRules
    */
@@ -4832,34 +4698,24 @@ export declare const DataQualityService: GenService<{
     output: typeof RunQualityRulesResponseSchema;
   },
   /**
-   * List runs, newest first.
+   * List executions, newest first.
    *
-   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityRuns
+   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityExecutions
    */
-  listQualityRuns: {
+  listQualityExecutions: {
     methodKind: "unary";
-    input: typeof ListQualityRunsRequestSchema;
-    output: typeof ListQualityRunsResponseSchema;
+    input: typeof ListQualityExecutionsRequestSchema;
+    output: typeof ListQualityExecutionsResponseSchema;
   },
   /**
-   * Read one run with its six-state tallies.
+   * Read one execution: its state, verdict, and the evidence behind it.
    *
-   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityRun
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityExecution
    */
-  getQualityRun: {
+  getQualityExecution: {
     methodKind: "unary";
-    input: typeof GetQualityRunRequestSchema;
-    output: typeof QualityRunSchema;
-  },
-  /**
-   * List the per-rule results of runs, typically filtered by run.
-   *
-   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityRuleResults
-   */
-  listQualityRuleResults: {
-    methodKind: "unary";
-    input: typeof ListQualityRuleResultsRequestSchema;
-    output: typeof ListQualityRuleResultsResponseSchema;
+    input: typeof GetQualityExecutionRequestSchema;
+    output: typeof QualityExecutionSchema;
   },
   /**
    * List quality issues, newest first.
@@ -4975,18 +4831,18 @@ export declare const DataQualityService: GenService<{
     output: typeof SuggestColumnLabelsResponseSchema;
   },
   /**
-   * Explain one failed result as a stream of hypotheses.
+   * Explain one failed execution as a stream of hypotheses.
    *
    * No (google.api.http) annotation: this is a server-streaming method, and the
    * REST gateway cannot carry one. The browser reaches the Connect endpoint
    * directly, the way it does for ExplainSQL.
    *
-   * @generated from rpc metaxisdata.v1.DataQualityService.ExplainQualityResult
+   * @generated from rpc metaxisdata.v1.DataQualityService.ExplainQualityExecution
    */
-  explainQualityResult: {
+  explainQualityExecution: {
     methodKind: "server_streaming";
-    input: typeof ExplainQualityResultRequestSchema;
-    output: typeof ExplainQualityResultResponseSchema;
+    input: typeof ExplainQualityExecutionRequestSchema;
+    output: typeof ExplainQualityExecutionResponseSchema;
   },
   /**
    * Read the workspace's quality summary: how many rules and issues exist, how

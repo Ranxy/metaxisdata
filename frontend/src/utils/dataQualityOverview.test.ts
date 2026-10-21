@@ -1,7 +1,7 @@
 import { create } from "@bufbuild/protobuf";
 import { describe, expect, it } from "vitest";
 import {
-  QualityRunCountsSchema,
+  QualityStatusCountsSchema,
   QualityTrendPointSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import {
@@ -222,11 +222,11 @@ describe("summary numbers", () => {
     expect(formatPercent(Number.NaN)).toBe("-");
     expect(failurePercent(undefined)).toBe("-");
     expect(
-      failurePercent(create(QualityRunCountsSchema, { total: 0, fail: 1 }))
+      failurePercent(create(QualityStatusCountsSchema, { total: 0, fail: 1 }))
     ).toBe("-");
     expect(
       failurePercent(
-        create(QualityRunCountsSchema, { total: 10, fail: 1, error: 1 })
+        create(QualityStatusCountsSchema, { total: 10, fail: 1, error: 1 })
       )
     ).toBe("20.0%");
   });

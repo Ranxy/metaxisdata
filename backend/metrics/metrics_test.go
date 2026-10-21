@@ -103,12 +103,12 @@ func TestRegisteredInstruments(t *testing.T) {
 		// Data quality.
 		"metaxisdata_quality_due_scan_duration_seconds":       nil,
 		"metaxisdata_quality_due_rules":                       nil,
-		"metaxisdata_quality_runs_created_total":              {"trigger"},
-		"metaxisdata_quality_runs_completed_total":            {"outcome"},
-		"metaxisdata_quality_run_admissions_total":            {"trigger", "result"},
-		"metaxisdata_quality_runs_deferred_total":             {"reason"},
-		"metaxisdata_quality_run_abandoned_total":             {"reason"},
-		"metaxisdata_quality_runs_in_progress":                nil,
+		"metaxisdata_quality_executions_created_total":        {"trigger"},
+		"metaxisdata_quality_executions_completed_total":      {"outcome"},
+		"metaxisdata_quality_execution_admissions_total":      {"trigger", "result"},
+		"metaxisdata_quality_executions_deferred_total":       {"reason"},
+		"metaxisdata_quality_executions_abandoned_total":      {"reason"},
+		"metaxisdata_quality_executions_in_progress":          nil,
 		"metaxisdata_quality_manual_enqueue_rejected_total":   nil,
 		"metaxisdata_quality_rule_executions_total":           {"rule_type", "status"},
 		"metaxisdata_quality_rule_execution_duration_seconds": {"rule_type"},
@@ -225,13 +225,13 @@ func TestNilMetricsIsNoop(t *testing.T) {
 	m.AddOpenLineageEdges(EdgeKindTable, 1)
 	m.ObserveQualityDueScan(time.Second)
 	m.ObserveQualityDueRules(1)
-	m.CountQualityRunCreated(QualityTriggerManual)
-	m.CountQualityRunCompleted(storepb.QualityStatus_QUALITY_STATUS_PASS)
-	m.CountQualityRunAdmission(QualityTriggerManual, true)
-	m.CountQualityRunsDeferred(QualityDeferralAdmissionTimeout)
-	m.CountQualityRunAbandoned(QualityAbandonedQueueFull)
-	m.IncQualityRunsInProgress()
-	m.DecQualityRunsInProgress()
+	m.CountQualityExecutionCreated(QualityTriggerManual)
+	m.CountQualityExecutionCompleted(storepb.QualityStatus_QUALITY_STATUS_PASS)
+	m.CountQualityExecutionAdmission(QualityTriggerManual, true)
+	m.CountQualityExecutionsDeferred(QualityDeferralAdmissionTimeout)
+	m.CountQualityExecutionAbandoned(QualityAbandonedQueueFull)
+	m.IncQualityExecutionsInProgress()
+	m.DecQualityExecutionsInProgress()
 	m.CountQualityManualEnqueueRejected()
 	m.ObserveQualityRuleExecution(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, storepb.QualityStatus_QUALITY_STATUS_FAIL, time.Second)
 	m.CountQualityRuleError(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, "CONNECTION")

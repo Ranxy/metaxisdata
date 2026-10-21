@@ -1,5 +1,5 @@
 import type {
-  QualityRunCounts,
+  QualityStatusCounts,
   QualityTrendPoint,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 
@@ -105,8 +105,8 @@ export function utcDateString(date: Date): string {
 /**
  * The server's per-day points as exactly `days` consecutive UTC days, oldest
  * first. A day the server did not report is a real zero (a workspace with no
- * runs that day), so it is filled rather than skipped: a gap in the line would
- * otherwise read as missing data instead of as "nothing ran".
+ * executions that day), so it is filled rather than skipped: a gap in the line would
+ * otherwise read as missing data instead of as "nothing executed".
  */
 export function normalizeTrend(
   points: readonly QualityTrendPoint[],
@@ -144,7 +144,7 @@ function trendDay(
   return { date, pass, warn, fail, error, skipped, notEvaluated, total };
 }
 
-/** True when at least one day reported a result. */
+/** True when at least one day reported an execution. */
 export function hasTrendData(days: readonly TrendDay[]): boolean {
   return days.some((day) => day.total > 0);
 }
@@ -294,7 +294,7 @@ export function issueSeverityParts(
 
 /**
  * A ratio as a percentage: `4.2%`. A missing denominator is "-", not "0%":
- * "nothing ran" and "nothing failed" are different facts.
+ * "nothing executed" and "nothing failed" are different facts.
  */
 export function formatPercent(value: number, fractionDigits = 1): string {
   if (!Number.isFinite(value)) {
@@ -304,8 +304,10 @@ export function formatPercent(value: number, fractionDigits = 1): string {
   return `${percent.toFixed(fractionDigits)}%`;
 }
 
-/** Failed and errored results as a share of every result in the tally. */
-export function failurePercent(counts: QualityRunCounts | undefined): string {
+/** Failed and errored executions as a share of every execution in the tally. */
+export function failurePercent(
+  counts: QualityStatusCounts | undefined
+): string {
   const total = counts?.total ?? 0;
   if (total <= 0) {
     return "-";
@@ -313,7 +315,7 @@ export function failurePercent(counts: QualityRunCounts | undefined): string {
   return formatPercent(((counts?.fail ?? 0) + (counts?.error ?? 0)) / total);
 }
 
-/** Failed and errored results as a share of the whole window. */
+/** Failed and errored executions as a share of the whole window. */
 export function trendFailurePercent(days: readonly TrendDay[]): string {
   let total = 0;
   let bad = 0;

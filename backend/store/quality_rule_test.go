@@ -133,7 +133,7 @@ func TestScanQualityRuleReadsJSONBAndNullableColumns(t *testing.T) {
 		ThresholdMetric: storepb.QualityThresholdMetric_QUALITY_THRESHOLD_METRIC_PERCENT,
 		OnEmpty:         storepb.QualityEmptyBehavior_QUALITY_EMPTY_BEHAVIOR_PASS,
 	}
-	configJSON, err := marshalQualityRuleProto(config)
+	configJSON, err := marshalQualityProto(config)
 	require.NoError(t, err)
 	targetPath := &storepb.QualityTargetPath{
 		Instance: "instances/inst-1",
@@ -142,7 +142,7 @@ func TestScanQualityRuleReadsJSONBAndNullableColumns(t *testing.T) {
 		Object:   "users",
 		Column:   "email",
 	}
-	targetPathJSON, err := marshalQualityRuleProto(targetPath)
+	targetPathJSON, err := marshalQualityProto(targetPath)
 	require.NoError(t, err)
 
 	msg, err := scanQualityRule(qualityRuleRowStub{
@@ -227,7 +227,7 @@ func TestScanQualityRuleRevision(t *testing.T) {
 			RowCount: &storepb.RowCountConfig{MinRows: proto.Int64(100)},
 		},
 	}
-	configJSON, err := marshalQualityRuleProto(config)
+	configJSON, err := marshalQualityProto(config)
 	require.NoError(t, err)
 
 	msg, err := scanQualityRuleRevision(qualityRuleRevisionRowStub{
@@ -593,10 +593,10 @@ func TestQualityRuleJSONRoundTrip(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			raw, err := marshalQualityRuleProto(tc.config)
+			raw, err := marshalQualityProto(tc.config)
 			require.NoError(t, err)
 			var got storepb.QualityRuleConfig
-			require.NoError(t, unmarshalQualityRuleProto(raw, &got))
+			require.NoError(t, unmarshalQualityProto(raw, &got))
 			require.True(t, proto.Equal(tc.config, &got))
 		})
 	}
@@ -607,20 +607,20 @@ func TestQualityRuleJSONRoundTrip(t *testing.T) {
 func TestMarshalQualityRuleProtoNormalizesNil(t *testing.T) {
 	t.Parallel()
 
-	raw, err := marshalQualityRuleProto(nil)
+	raw, err := marshalQualityProto(nil)
 	require.NoError(t, err)
 	require.Equal(t, "{}", string(raw))
 
 	// A typed nil pointer still reaches protojson as a nil message; its "null"
 	// output must be normalized too.
 	var config *storepb.QualityRuleConfig
-	raw, err = marshalQualityRuleProto(config)
+	raw, err = marshalQualityProto(config)
 	require.NoError(t, err)
 	require.Equal(t, "{}", string(raw))
 
 	// A stored "null" leaves the message empty instead of failing the read.
 	var got storepb.QualityRuleConfig
-	require.NoError(t, unmarshalQualityRuleProto([]byte("null"), &got))
+	require.NoError(t, unmarshalQualityProto([]byte("null"), &got))
 	require.True(t, proto.Equal(&storepb.QualityRuleConfig{}, &got))
 }
 

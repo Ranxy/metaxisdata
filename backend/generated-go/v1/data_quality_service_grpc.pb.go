@@ -27,9 +27,8 @@ const (
 	DataQualityService_DeleteQualityRule_FullMethodName       = "/metaxisdata.v1.DataQualityService/DeleteQualityRule"
 	DataQualityService_PreviewQualityRule_FullMethodName      = "/metaxisdata.v1.DataQualityService/PreviewQualityRule"
 	DataQualityService_RunQualityRules_FullMethodName         = "/metaxisdata.v1.DataQualityService/RunQualityRules"
-	DataQualityService_ListQualityRuns_FullMethodName         = "/metaxisdata.v1.DataQualityService/ListQualityRuns"
-	DataQualityService_GetQualityRun_FullMethodName           = "/metaxisdata.v1.DataQualityService/GetQualityRun"
-	DataQualityService_ListQualityRuleResults_FullMethodName  = "/metaxisdata.v1.DataQualityService/ListQualityRuleResults"
+	DataQualityService_ListQualityExecutions_FullMethodName   = "/metaxisdata.v1.DataQualityService/ListQualityExecutions"
+	DataQualityService_GetQualityExecution_FullMethodName     = "/metaxisdata.v1.DataQualityService/GetQualityExecution"
 	DataQualityService_ListQualityIssues_FullMethodName       = "/metaxisdata.v1.DataQualityService/ListQualityIssues"
 	DataQualityService_GetQualityIssue_FullMethodName         = "/metaxisdata.v1.DataQualityService/GetQualityIssue"
 	DataQualityService_UpdateQualityIssue_FullMethodName      = "/metaxisdata.v1.DataQualityService/UpdateQualityIssue"
@@ -41,7 +40,7 @@ const (
 	DataQualityService_ProfileColumns_FullMethodName          = "/metaxisdata.v1.DataQualityService/ProfileColumns"
 	DataQualityService_SuggestQualityRule_FullMethodName      = "/metaxisdata.v1.DataQualityService/SuggestQualityRule"
 	DataQualityService_SuggestColumnLabels_FullMethodName     = "/metaxisdata.v1.DataQualityService/SuggestColumnLabels"
-	DataQualityService_ExplainQualityResult_FullMethodName    = "/metaxisdata.v1.DataQualityService/ExplainQualityResult"
+	DataQualityService_ExplainQualityExecution_FullMethodName = "/metaxisdata.v1.DataQualityService/ExplainQualityExecution"
 	DataQualityService_GetQualityOverview_FullMethodName      = "/metaxisdata.v1.DataQualityService/GetQualityOverview"
 )
 
@@ -49,13 +48,15 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// DataQualityService manages the checks that watch the data itself: rules,
-// their executions, and the per-rule results of those executions.
+// DataQualityService manages the checks that watch the data itself: rules and
+// their executions.
 //
 // A rule observes one target — a table, or one column of it — with a typed
 // check (row count, null percent, uniqueness, accepted values, ...) on a
-// schedule or on demand. A run groups the results of one instance; it is
-// created asynchronously and polled until it finishes.
+// schedule or on demand. An execution is one rule checked once: it is planned
+// asynchronously, executed by the runner, and polled until it reaches a state
+// or an outcome. Batching rules for scheduling is an internal concern and is
+// not exposed as a resource.
 type DataQualityServiceClient interface {
 	// List rules, newest first.
 	ListQualityRules(ctx context.Context, in *ListQualityRulesRequest, opts ...grpc.CallOption) (*ListQualityRulesResponse, error)
@@ -75,16 +76,14 @@ type DataQualityServiceClient interface {
 	// validation and a `LIMIT 0` probe against the target's read-only data
 	// source. It writes nothing and creates no run.
 	PreviewQualityRule(ctx context.Context, in *PreviewQualityRuleRequest, opts ...grpc.CallOption) (*PreviewQualityRuleResponse, error)
-	// Execute rules now. The selected rules are grouped by instance, one run is
-	// created per instance, and the runs are queued; the response returns them
-	// while they are still pending. Clients poll GetQualityRun.
+	// Execute rules now. One execution is planned per selected rule; the call
+	// returns them all as PENDING after queueing them. Clients poll
+	// GetQualityExecution for each execution's state and outcome.
 	RunQualityRules(ctx context.Context, in *RunQualityRulesRequest, opts ...grpc.CallOption) (*RunQualityRulesResponse, error)
-	// List runs, newest first.
-	ListQualityRuns(ctx context.Context, in *ListQualityRunsRequest, opts ...grpc.CallOption) (*ListQualityRunsResponse, error)
-	// Read one run with its six-state tallies.
-	GetQualityRun(ctx context.Context, in *GetQualityRunRequest, opts ...grpc.CallOption) (*QualityRun, error)
-	// List the per-rule results of runs, typically filtered by run.
-	ListQualityRuleResults(ctx context.Context, in *ListQualityRuleResultsRequest, opts ...grpc.CallOption) (*ListQualityRuleResultsResponse, error)
+	// List executions, newest first.
+	ListQualityExecutions(ctx context.Context, in *ListQualityExecutionsRequest, opts ...grpc.CallOption) (*ListQualityExecutionsResponse, error)
+	// Read one execution: its state, verdict, and the evidence behind it.
+	GetQualityExecution(ctx context.Context, in *GetQualityExecutionRequest, opts ...grpc.CallOption) (*QualityExecution, error)
 	// List quality issues, newest first.
 	ListQualityIssues(ctx context.Context, in *ListQualityIssuesRequest, opts ...grpc.CallOption) (*ListQualityIssuesResponse, error)
 	// Read one quality issue.
@@ -110,12 +109,12 @@ type DataQualityServiceClient interface {
 	SuggestQualityRule(ctx context.Context, in *SuggestQualityRuleRequest, opts ...grpc.CallOption) (*SuggestQualityRuleResponse, error)
 	// Propose semantic labels for up to 50 columns of one table.
 	SuggestColumnLabels(ctx context.Context, in *SuggestColumnLabelsRequest, opts ...grpc.CallOption) (*SuggestColumnLabelsResponse, error)
-	// Explain one failed result as a stream of hypotheses.
+	// Explain one failed execution as a stream of hypotheses.
 	//
 	// No (google.api.http) annotation: this is a server-streaming method, and the
 	// REST gateway cannot carry one. The browser reaches the Connect endpoint
 	// directly, the way it does for ExplainSQL.
-	ExplainQualityResult(ctx context.Context, in *ExplainQualityResultRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ExplainQualityResultResponse], error)
+	ExplainQualityExecution(ctx context.Context, in *ExplainQualityExecutionRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ExplainQualityExecutionResponse], error)
 	// Read the workspace's quality summary: how many rules and issues exist, how
 	// the last day went, and the per-day tallies the overview chart draws.
 	GetQualityOverview(ctx context.Context, in *GetQualityOverviewRequest, opts ...grpc.CallOption) (*QualityOverview, error)
@@ -199,30 +198,20 @@ func (c *dataQualityServiceClient) RunQualityRules(ctx context.Context, in *RunQ
 	return out, nil
 }
 
-func (c *dataQualityServiceClient) ListQualityRuns(ctx context.Context, in *ListQualityRunsRequest, opts ...grpc.CallOption) (*ListQualityRunsResponse, error) {
+func (c *dataQualityServiceClient) ListQualityExecutions(ctx context.Context, in *ListQualityExecutionsRequest, opts ...grpc.CallOption) (*ListQualityExecutionsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListQualityRunsResponse)
-	err := c.cc.Invoke(ctx, DataQualityService_ListQualityRuns_FullMethodName, in, out, cOpts...)
+	out := new(ListQualityExecutionsResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_ListQualityExecutions_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *dataQualityServiceClient) GetQualityRun(ctx context.Context, in *GetQualityRunRequest, opts ...grpc.CallOption) (*QualityRun, error) {
+func (c *dataQualityServiceClient) GetQualityExecution(ctx context.Context, in *GetQualityExecutionRequest, opts ...grpc.CallOption) (*QualityExecution, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(QualityRun)
-	err := c.cc.Invoke(ctx, DataQualityService_GetQualityRun_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *dataQualityServiceClient) ListQualityRuleResults(ctx context.Context, in *ListQualityRuleResultsRequest, opts ...grpc.CallOption) (*ListQualityRuleResultsResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListQualityRuleResultsResponse)
-	err := c.cc.Invoke(ctx, DataQualityService_ListQualityRuleResults_FullMethodName, in, out, cOpts...)
+	out := new(QualityExecution)
+	err := c.cc.Invoke(ctx, DataQualityService_GetQualityExecution_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -339,13 +328,13 @@ func (c *dataQualityServiceClient) SuggestColumnLabels(ctx context.Context, in *
 	return out, nil
 }
 
-func (c *dataQualityServiceClient) ExplainQualityResult(ctx context.Context, in *ExplainQualityResultRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ExplainQualityResultResponse], error) {
+func (c *dataQualityServiceClient) ExplainQualityExecution(ctx context.Context, in *ExplainQualityExecutionRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ExplainQualityExecutionResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &DataQualityService_ServiceDesc.Streams[0], DataQualityService_ExplainQualityResult_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &DataQualityService_ServiceDesc.Streams[0], DataQualityService_ExplainQualityExecution_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[ExplainQualityResultRequest, ExplainQualityResultResponse]{ClientStream: stream}
+	x := &grpc.GenericClientStream[ExplainQualityExecutionRequest, ExplainQualityExecutionResponse]{ClientStream: stream}
 	if err := x.ClientStream.SendMsg(in); err != nil {
 		return nil, err
 	}
@@ -356,7 +345,7 @@ func (c *dataQualityServiceClient) ExplainQualityResult(ctx context.Context, in 
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type DataQualityService_ExplainQualityResultClient = grpc.ServerStreamingClient[ExplainQualityResultResponse]
+type DataQualityService_ExplainQualityExecutionClient = grpc.ServerStreamingClient[ExplainQualityExecutionResponse]
 
 func (c *dataQualityServiceClient) GetQualityOverview(ctx context.Context, in *GetQualityOverviewRequest, opts ...grpc.CallOption) (*QualityOverview, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -372,13 +361,15 @@ func (c *dataQualityServiceClient) GetQualityOverview(ctx context.Context, in *G
 // All implementations must embed UnimplementedDataQualityServiceServer
 // for forward compatibility.
 //
-// DataQualityService manages the checks that watch the data itself: rules,
-// their executions, and the per-rule results of those executions.
+// DataQualityService manages the checks that watch the data itself: rules and
+// their executions.
 //
 // A rule observes one target — a table, or one column of it — with a typed
 // check (row count, null percent, uniqueness, accepted values, ...) on a
-// schedule or on demand. A run groups the results of one instance; it is
-// created asynchronously and polled until it finishes.
+// schedule or on demand. An execution is one rule checked once: it is planned
+// asynchronously, executed by the runner, and polled until it reaches a state
+// or an outcome. Batching rules for scheduling is an internal concern and is
+// not exposed as a resource.
 type DataQualityServiceServer interface {
 	// List rules, newest first.
 	ListQualityRules(context.Context, *ListQualityRulesRequest) (*ListQualityRulesResponse, error)
@@ -398,16 +389,14 @@ type DataQualityServiceServer interface {
 	// validation and a `LIMIT 0` probe against the target's read-only data
 	// source. It writes nothing and creates no run.
 	PreviewQualityRule(context.Context, *PreviewQualityRuleRequest) (*PreviewQualityRuleResponse, error)
-	// Execute rules now. The selected rules are grouped by instance, one run is
-	// created per instance, and the runs are queued; the response returns them
-	// while they are still pending. Clients poll GetQualityRun.
+	// Execute rules now. One execution is planned per selected rule; the call
+	// returns them all as PENDING after queueing them. Clients poll
+	// GetQualityExecution for each execution's state and outcome.
 	RunQualityRules(context.Context, *RunQualityRulesRequest) (*RunQualityRulesResponse, error)
-	// List runs, newest first.
-	ListQualityRuns(context.Context, *ListQualityRunsRequest) (*ListQualityRunsResponse, error)
-	// Read one run with its six-state tallies.
-	GetQualityRun(context.Context, *GetQualityRunRequest) (*QualityRun, error)
-	// List the per-rule results of runs, typically filtered by run.
-	ListQualityRuleResults(context.Context, *ListQualityRuleResultsRequest) (*ListQualityRuleResultsResponse, error)
+	// List executions, newest first.
+	ListQualityExecutions(context.Context, *ListQualityExecutionsRequest) (*ListQualityExecutionsResponse, error)
+	// Read one execution: its state, verdict, and the evidence behind it.
+	GetQualityExecution(context.Context, *GetQualityExecutionRequest) (*QualityExecution, error)
 	// List quality issues, newest first.
 	ListQualityIssues(context.Context, *ListQualityIssuesRequest) (*ListQualityIssuesResponse, error)
 	// Read one quality issue.
@@ -433,12 +422,12 @@ type DataQualityServiceServer interface {
 	SuggestQualityRule(context.Context, *SuggestQualityRuleRequest) (*SuggestQualityRuleResponse, error)
 	// Propose semantic labels for up to 50 columns of one table.
 	SuggestColumnLabels(context.Context, *SuggestColumnLabelsRequest) (*SuggestColumnLabelsResponse, error)
-	// Explain one failed result as a stream of hypotheses.
+	// Explain one failed execution as a stream of hypotheses.
 	//
 	// No (google.api.http) annotation: this is a server-streaming method, and the
 	// REST gateway cannot carry one. The browser reaches the Connect endpoint
 	// directly, the way it does for ExplainSQL.
-	ExplainQualityResult(*ExplainQualityResultRequest, grpc.ServerStreamingServer[ExplainQualityResultResponse]) error
+	ExplainQualityExecution(*ExplainQualityExecutionRequest, grpc.ServerStreamingServer[ExplainQualityExecutionResponse]) error
 	// Read the workspace's quality summary: how many rules and issues exist, how
 	// the last day went, and the per-day tallies the overview chart draws.
 	GetQualityOverview(context.Context, *GetQualityOverviewRequest) (*QualityOverview, error)
@@ -473,14 +462,11 @@ func (UnimplementedDataQualityServiceServer) PreviewQualityRule(context.Context,
 func (UnimplementedDataQualityServiceServer) RunQualityRules(context.Context, *RunQualityRulesRequest) (*RunQualityRulesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RunQualityRules not implemented")
 }
-func (UnimplementedDataQualityServiceServer) ListQualityRuns(context.Context, *ListQualityRunsRequest) (*ListQualityRunsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListQualityRuns not implemented")
+func (UnimplementedDataQualityServiceServer) ListQualityExecutions(context.Context, *ListQualityExecutionsRequest) (*ListQualityExecutionsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListQualityExecutions not implemented")
 }
-func (UnimplementedDataQualityServiceServer) GetQualityRun(context.Context, *GetQualityRunRequest) (*QualityRun, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetQualityRun not implemented")
-}
-func (UnimplementedDataQualityServiceServer) ListQualityRuleResults(context.Context, *ListQualityRuleResultsRequest) (*ListQualityRuleResultsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListQualityRuleResults not implemented")
+func (UnimplementedDataQualityServiceServer) GetQualityExecution(context.Context, *GetQualityExecutionRequest) (*QualityExecution, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQualityExecution not implemented")
 }
 func (UnimplementedDataQualityServiceServer) ListQualityIssues(context.Context, *ListQualityIssuesRequest) (*ListQualityIssuesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListQualityIssues not implemented")
@@ -515,8 +501,8 @@ func (UnimplementedDataQualityServiceServer) SuggestQualityRule(context.Context,
 func (UnimplementedDataQualityServiceServer) SuggestColumnLabels(context.Context, *SuggestColumnLabelsRequest) (*SuggestColumnLabelsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SuggestColumnLabels not implemented")
 }
-func (UnimplementedDataQualityServiceServer) ExplainQualityResult(*ExplainQualityResultRequest, grpc.ServerStreamingServer[ExplainQualityResultResponse]) error {
-	return status.Error(codes.Unimplemented, "method ExplainQualityResult not implemented")
+func (UnimplementedDataQualityServiceServer) ExplainQualityExecution(*ExplainQualityExecutionRequest, grpc.ServerStreamingServer[ExplainQualityExecutionResponse]) error {
+	return status.Error(codes.Unimplemented, "method ExplainQualityExecution not implemented")
 }
 func (UnimplementedDataQualityServiceServer) GetQualityOverview(context.Context, *GetQualityOverviewRequest) (*QualityOverview, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetQualityOverview not implemented")
@@ -668,56 +654,38 @@ func _DataQualityService_RunQualityRules_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
-func _DataQualityService_ListQualityRuns_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListQualityRunsRequest)
+func _DataQualityService_ListQualityExecutions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListQualityExecutionsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(DataQualityServiceServer).ListQualityRuns(ctx, in)
+		return srv.(DataQualityServiceServer).ListQualityExecutions(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: DataQualityService_ListQualityRuns_FullMethodName,
+		FullMethod: DataQualityService_ListQualityExecutions_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DataQualityServiceServer).ListQualityRuns(ctx, req.(*ListQualityRunsRequest))
+		return srv.(DataQualityServiceServer).ListQualityExecutions(ctx, req.(*ListQualityExecutionsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _DataQualityService_GetQualityRun_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetQualityRunRequest)
+func _DataQualityService_GetQualityExecution_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQualityExecutionRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(DataQualityServiceServer).GetQualityRun(ctx, in)
+		return srv.(DataQualityServiceServer).GetQualityExecution(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: DataQualityService_GetQualityRun_FullMethodName,
+		FullMethod: DataQualityService_GetQualityExecution_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DataQualityServiceServer).GetQualityRun(ctx, req.(*GetQualityRunRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DataQualityService_ListQualityRuleResults_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListQualityRuleResultsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DataQualityServiceServer).ListQualityRuleResults(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DataQualityService_ListQualityRuleResults_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DataQualityServiceServer).ListQualityRuleResults(ctx, req.(*ListQualityRuleResultsRequest))
+		return srv.(DataQualityServiceServer).GetQualityExecution(ctx, req.(*GetQualityExecutionRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -920,16 +888,16 @@ func _DataQualityService_SuggestColumnLabels_Handler(srv interface{}, ctx contex
 	return interceptor(ctx, in, info, handler)
 }
 
-func _DataQualityService_ExplainQualityResult_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(ExplainQualityResultRequest)
+func _DataQualityService_ExplainQualityExecution_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ExplainQualityExecutionRequest)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(DataQualityServiceServer).ExplainQualityResult(m, &grpc.GenericServerStream[ExplainQualityResultRequest, ExplainQualityResultResponse]{ServerStream: stream})
+	return srv.(DataQualityServiceServer).ExplainQualityExecution(m, &grpc.GenericServerStream[ExplainQualityExecutionRequest, ExplainQualityExecutionResponse]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type DataQualityService_ExplainQualityResultServer = grpc.ServerStreamingServer[ExplainQualityResultResponse]
+type DataQualityService_ExplainQualityExecutionServer = grpc.ServerStreamingServer[ExplainQualityExecutionResponse]
 
 func _DataQualityService_GetQualityOverview_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetQualityOverviewRequest)
@@ -985,16 +953,12 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _DataQualityService_RunQualityRules_Handler,
 		},
 		{
-			MethodName: "ListQualityRuns",
-			Handler:    _DataQualityService_ListQualityRuns_Handler,
+			MethodName: "ListQualityExecutions",
+			Handler:    _DataQualityService_ListQualityExecutions_Handler,
 		},
 		{
-			MethodName: "GetQualityRun",
-			Handler:    _DataQualityService_GetQualityRun_Handler,
-		},
-		{
-			MethodName: "ListQualityRuleResults",
-			Handler:    _DataQualityService_ListQualityRuleResults_Handler,
+			MethodName: "GetQualityExecution",
+			Handler:    _DataQualityService_GetQualityExecution_Handler,
 		},
 		{
 			MethodName: "ListQualityIssues",
@@ -1047,8 +1011,8 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 	},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "ExplainQualityResult",
-			Handler:       _DataQualityService_ExplainQualityResult_Handler,
+			StreamName:    "ExplainQualityExecution",
+			Handler:       _DataQualityService_ExplainQualityExecution_Handler,
 			ServerStreams: true,
 		},
 	},

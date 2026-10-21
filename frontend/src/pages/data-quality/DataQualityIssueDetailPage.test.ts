@@ -33,12 +33,14 @@ vi.mock("@/api/user", async (importOriginal) => ({
 
 const ISSUE = "workspaces/ws/qualityIssues/issue-1";
 const RULE = "workspaces/ws/qualityRules/rule-1";
+const EXECUTION = "workspaces/ws/qualityExecutions/exec-1";
 const ACKNOWLEDGED_BY = "users/9";
 const Dummy = { template: "<div />" };
 
 const PERMISSIONS = [
   "metaxisdata.dataQuality.issues.get",
   "metaxisdata.dataQuality.rules.get",
+  "metaxisdata.dataQuality.executions.get",
 ];
 
 function issueFixture(acknowledgedBy: string) {
@@ -49,6 +51,8 @@ function issueFixture(acknowledgedBy: string) {
     severity: QualitySeverity.WARNING,
     acknowledgedBy,
     occurrenceCount: 1,
+    firstSeenExecution: EXECUTION,
+    lastSeenExecution: EXECUTION,
   });
 }
 
@@ -68,8 +72,8 @@ async function mountPage(permissions: string[]) {
         component: Dummy,
       },
       {
-        path: "/data-quality/runs/:runId+",
-        name: "DataQualityRunDetail",
+        path: "/data-quality/executions/:executionId+",
+        name: "DataQualityExecutionDetail",
         component: Dummy,
       },
       {
@@ -108,6 +112,20 @@ describe("DataQualityIssueDetailPage", () => {
         title: "Ada Lovelace",
         email: "ada@example.com",
       })
+    );
+  });
+
+  it("links the first and last seen executions", async () => {
+    const wrapper = await mountPage(PERMISSIONS);
+
+    const links = wrapper.findAll("a");
+    expect(
+      links.some((link) =>
+        link.attributes("href")?.includes("qualityExecutions")
+      )
+    ).toBe(true);
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.viewExecution")
     );
   });
 

@@ -3,41 +3,41 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { i18n } from "@/locales";
 import {
-  ExplainQualityResultResponseSchema,
-  QualityRuleResultSchema,
+  ExplainQualityExecutionResponseSchema,
+  QualityExecutionSchema,
   QualityStatus,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import QualityExplainDrawer from "./QualityExplainDrawer.vue";
 
 const mocks = vi.hoisted(() => ({
-  explainQualityResult: vi.fn(),
+  explainQualityExecution: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", () => ({
-  explainQualityResult: mocks.explainQualityResult,
+  explainQualityExecution: mocks.explainQualityExecution,
 }));
 
-function result() {
-  return create(QualityRuleResultSchema, {
-    name: "workspaces/ws/qualityRuleResults/r1",
-    status: QualityStatus.FAIL,
+function execution() {
+  return create(QualityExecutionSchema, {
+    name: "workspaces/ws/qualityExecutions/r1",
+    outcome: QualityStatus.FAIL,
   });
 }
 
 function content(value: string) {
-  return create(ExplainQualityResultResponseSchema, {
+  return create(ExplainQualityExecutionResponseSchema, {
     payload: { case: "content", value },
   });
 }
 
 function progress(type: string) {
-  return create(ExplainQualityResultResponseSchema, {
+  return create(ExplainQualityExecutionResponseSchema, {
     payload: { case: "progress", value: { type, toolName: "read_result" } },
   });
 }
 
 function metadata() {
-  return create(ExplainQualityResultResponseSchema, {
+  return create(ExplainQualityExecutionResponseSchema, {
     payload: {
       case: "metadata",
       value: { provider: "openai", model: "gpt-test", fromCache: false },
@@ -67,7 +67,7 @@ describe("QualityExplainDrawer", () => {
   });
 
   it("streams progress and content and shows the final metadata", async () => {
-    mocks.explainQualityResult.mockReturnValue(
+    mocks.explainQualityExecution.mockReturnValue(
       streamed([
         progress("tool_start"),
         content("The null rate "),
@@ -80,16 +80,16 @@ describe("QualityExplainDrawer", () => {
       attachTo: document.body,
       props: {
         open: true,
-        result: result(),
-        resultTitle: "Null rate on orders.id",
+        execution: execution(),
+        executionTitle: "Null rate on orders.id",
       },
       global: { plugins: [i18n] },
     });
     await settle();
 
-    expect(mocks.explainQualityResult).toHaveBeenCalledWith(
+    expect(mocks.explainQualityExecution).toHaveBeenCalledWith(
       expect.objectContaining({
-        name: "workspaces/ws/qualityRuleResults/r1",
+        name: "workspaces/ws/qualityExecutions/r1",
         language: "en-US",
         forceRegenerate: false,
       })
@@ -107,12 +107,12 @@ describe("QualityExplainDrawer", () => {
   });
 
   it("regenerates with force_regenerate", async () => {
-    mocks.explainQualityResult.mockReturnValue(
+    mocks.explainQualityExecution.mockReturnValue(
       streamed([content("Cached answer"), metadata()])
     );
     const wrapper = mount(QualityExplainDrawer, {
       attachTo: document.body,
-      props: { open: true, result: result() },
+      props: { open: true, execution: execution() },
       global: { plugins: [i18n] },
     });
     await settle();
@@ -131,7 +131,7 @@ describe("QualityExplainDrawer", () => {
     regenerate?.click();
     await settle();
 
-    expect(mocks.explainQualityResult).toHaveBeenLastCalledWith(
+    expect(mocks.explainQualityExecution).toHaveBeenLastCalledWith(
       expect.objectContaining({ forceRegenerate: true })
     );
     wrapper.unmount();
@@ -139,7 +139,7 @@ describe("QualityExplainDrawer", () => {
 
   it("maps a not-configured failure to friendly copy", async () => {
     const { ConnectError, Code } = await import("@connectrpc/connect");
-    mocks.explainQualityResult.mockImplementation(() => {
+    mocks.explainQualityExecution.mockImplementation(() => {
       throw new ConnectError(
         "LLM analysis is disabled",
         Code.FailedPrecondition
@@ -147,7 +147,7 @@ describe("QualityExplainDrawer", () => {
     });
     const wrapper = mount(QualityExplainDrawer, {
       attachTo: document.body,
-      props: { open: true, result: result() },
+      props: { open: true, execution: execution() },
       global: { plugins: [i18n] },
     });
     await settle();

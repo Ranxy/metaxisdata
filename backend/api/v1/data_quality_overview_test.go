@@ -28,8 +28,8 @@ func TestFillQualityTrend(t *testing.T) {
 
 	start := time.Date(2026, time.October, 18, 0, 0, 0, 0, time.UTC)
 	trend := []store.QualityTrendDay{
-		{Date: "2026-10-18", Counts: &storepb.QualityRunCounts{Total: 3, Pass: 2, Fail: 1}},
-		{Date: "2026-10-20", Counts: &storepb.QualityRunCounts{Total: 1, Error: 1}},
+		{Date: "2026-10-18", Counts: &storepb.QualityStatusCounts{Total: 3, Pass: 2, Fail: 1}},
+		{Date: "2026-10-20", Counts: &storepb.QualityStatusCounts{Total: 1, Error: 1}},
 	}
 	points := fillQualityTrend(start, 3, trend)
 	require.Len(t, points, 3)

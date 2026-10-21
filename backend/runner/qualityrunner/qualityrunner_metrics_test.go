@@ -51,14 +51,14 @@ func TestObserveRuleExecutionRecordsOneAttemptPerResult(t *testing.T) {
 	runner := &Runner{metrics: m}
 
 	runner.observeRuleExecution(&ruleExecution{
-		result: &store.QualityRuleResultMessage{
+		result: &store.QualityExecutionMessage{
 			Status:     storepb.QualityStatus_QUALITY_STATUS_FAIL,
 			DurationMS: 250,
 		},
 		snapshot: &dataquality.RuleSnapshot{Type: storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT},
 	})
 	runner.observeRuleExecution(&ruleExecution{
-		result: &store.QualityRuleResultMessage{
+		result: &store.QualityExecutionMessage{
 			Status:     storepb.QualityStatus_QUALITY_STATUS_ERROR,
 			ErrorCode:  dataquality.ErrCodeTimeout,
 			DurationMS: 1000,

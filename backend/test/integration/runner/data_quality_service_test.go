@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
+	"github.com/Ranxy/metaxisdata/backend/store"
 	integrationenv "github.com/Ranxy/metaxisdata/backend/test/integration/env"
 )
 
@@ -91,8 +93,8 @@ func (f *qualityFixture) createRule(t *testing.T, ruleType v1pb.QualityRuleType,
 	return resp.Msg
 }
 
-// runRules starts one manual run for the named rules and returns the queued runs.
-func (f *qualityFixture) runRules(t *testing.T, ruleNames ...string) []*v1pb.QualityRun {
+// runRules plans and queues one execution per named rule and returns them.
+func (f *qualityFixture) runRules(t *testing.T, ruleNames ...string) []*v1pb.QualityExecution {
 	t.Helper()
 
 	resp, err := f.dataQuality.RunQualityRules(f.ctx, withToken(f.env.AdminToken(), &v1pb.RunQualityRulesRequest{
@@ -100,59 +102,47 @@ func (f *qualityFixture) runRules(t *testing.T, ruleNames ...string) []*v1pb.Qua
 		Rules:  ruleNames,
 	}))
 	require.NoError(t, err, "run quality rules")
-	require.NotEmpty(t, resp.Msg.GetRuns(), "a manual run creates at least one run")
-	return resp.Msg.GetRuns()
+	require.NotEmpty(t, resp.Msg.GetExecutions(), "a manual run plans at least one execution")
+	require.Len(t, resp.Msg.GetExecutions(), len(ruleNames), "one execution per selected rule")
+	return resp.Msg.GetExecutions()
 }
 
-// waitForCompletedRun polls one run until the runner finished it.
-func (f *qualityFixture) waitForCompletedRun(t *testing.T, runName string) *v1pb.QualityRun {
+// waitForCompletedExecution polls one execution until the runner finished it.
+func (f *qualityFixture) waitForCompletedExecution(t *testing.T, executionName string) *v1pb.QualityExecution {
 	t.Helper()
 
-	var run *v1pb.QualityRun
+	var execution *v1pb.QualityExecution
 	require.Eventually(t, func() bool {
-		resp, err := f.dataQuality.GetQualityRun(f.ctx, withToken(f.env.AdminToken(), &v1pb.GetQualityRunRequest{Name: runName}))
+		resp, err := f.dataQuality.GetQualityExecution(f.ctx, withToken(f.env.AdminToken(), &v1pb.GetQualityExecutionRequest{Name: executionName}))
 		if err != nil {
 			return false
 		}
-		run = resp.Msg
-		return run.GetStatus() == v1pb.QualityRunStatus_QUALITY_RUN_STATUS_COMPLETED
-	}, 60*time.Second, 250*time.Millisecond, "quality run %s never completed: %s", runName, f.env.ServerLogs())
-	return run
+		execution = resp.Msg
+		return execution.GetState() == v1pb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED
+	}, 60*time.Second, 250*time.Millisecond, "quality execution %s never completed: %s", executionName, f.env.ServerLogs())
+	return execution
 }
 
-// runToCompletion starts one manual run and waits for it.
-func (f *qualityFixture) runToCompletion(t *testing.T, ruleNames ...string) *v1pb.QualityRun {
+// runToCompletion starts one manual execution and waits for it.
+func (f *qualityFixture) runToCompletion(t *testing.T, ruleName string) *v1pb.QualityExecution {
 	t.Helper()
 
-	runs := f.runRules(t, ruleNames...)
-	require.Len(t, runs, 1, "all selected rules live in one instance")
-	return f.waitForCompletedRun(t, runs[0].GetName())
+	executions := f.runRules(t, ruleName)
+	require.Len(t, executions, 1)
+	return f.waitForCompletedExecution(t, executions[0].GetName())
 }
 
-// resultsForRun lists the results of one run.
-func (f *qualityFixture) resultsForRun(t *testing.T, runName string) []*v1pb.QualityRuleResult {
+// executionsForRule lists a rule's executions, newest first.
+func (f *qualityFixture) executionsForRule(t *testing.T, ruleName string) []*v1pb.QualityExecution {
 	t.Helper()
 
-	resp, err := f.dataQuality.ListQualityRuleResults(f.ctx, withToken(f.env.AdminToken(), &v1pb.ListQualityRuleResultsRequest{
-		Parent:   "workspaces/-",
-		Run:      runName,
-		PageSize: 100,
-	}))
-	require.NoError(t, err, "list the run's results")
-	return resp.Msg.GetQualityRuleResults()
-}
-
-// resultsForRule lists a rule's results, newest first.
-func (f *qualityFixture) resultsForRule(t *testing.T, ruleName string) []*v1pb.QualityRuleResult {
-	t.Helper()
-
-	resp, err := f.dataQuality.ListQualityRuleResults(f.ctx, withToken(f.env.AdminToken(), &v1pb.ListQualityRuleResultsRequest{
+	resp, err := f.dataQuality.ListQualityExecutions(f.ctx, withToken(f.env.AdminToken(), &v1pb.ListQualityExecutionsRequest{
 		Parent:   "workspaces/-",
 		Rule:     ruleName,
 		PageSize: 100,
 	}))
-	require.NoError(t, err, "list the rule's results")
-	return resp.Msg.GetQualityRuleResults()
+	require.NoError(t, err, "list the rule's executions")
+	return resp.Msg.GetQualityExecutions()
 }
 
 // listIssues reads one rule's issues in a given state, retrying store write
@@ -239,10 +229,10 @@ func TestDataQualityRuleLifecycleRealServerIntegration(t *testing.T) {
 		fixture.usersGUID, qualityRowCountConfig(1))
 	require.NotEmpty(t, rule.GetName())
 	require.Equal(t, int32(1), rule.GetRevision())
-	require.Nil(t, rule.GetLastResult(), "a fresh rule has no result")
+	require.Nil(t, rule.GetLastResult(), "a fresh rule has no execution summary")
 
 	// Read it back: the target snapshot is filled from the registry and there is
-	// still no result.
+	// still no execution summary.
 	read, err := fixture.dataQuality.GetQualityRule(fixture.ctx, withToken(token(), &v1pb.GetQualityRuleRequest{Name: rule.GetName()}))
 	require.NoError(t, err)
 	require.Equal(t, rule.GetName(), read.Msg.GetName())
@@ -258,7 +248,7 @@ func TestDataQualityRuleLifecycleRealServerIntegration(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, qualityRuleNames(listed.Msg.GetQualityRules()), rule.GetName())
 
-	// Preview compiles and probes the rule without creating a run or a result.
+	// Preview compiles and probes the rule without creating an execution.
 	preview, err := fixture.dataQuality.PreviewQualityRule(fixture.ctx, withToken(token(), &v1pb.PreviewQualityRuleRequest{
 		Parent: "workspaces/-",
 		Rule: &v1pb.QualityRule{
@@ -271,41 +261,36 @@ func TestDataQualityRuleLifecycleRealServerIntegration(t *testing.T) {
 	require.NotEmpty(t, preview.Msg.GetCompiledSql(), "the preview shows the compiled SQL")
 	require.Empty(t, preview.Msg.GetParameters(), "a row count binds no parameters")
 
-	noResultsAfterPreview := fixture.resultsForRule(t, rule.GetName())
-	require.Empty(t, noResultsAfterPreview, "a preview is not an execution")
+	noExecutionsAfterPreview := fixture.executionsForRule(t, rule.GetName())
+	require.Empty(t, noExecutionsAfterPreview, "a preview is not an execution")
 
-	// Run it: the API answers with queued runs, and the runner finishes the run.
-	runs := fixture.runRules(t, rule.GetName())
-	require.Len(t, runs, 1)
-	require.Equal(t, v1pb.QualityRunStatus_QUALITY_RUN_STATUS_PENDING, runs[0].GetStatus())
-	require.Equal(t, "instances/"+fixture.instanceID, runs[0].GetInstance())
-	require.Equal(t, v1pb.QualityRunTrigger_QUALITY_RUN_TRIGGER_MANUAL, runs[0].GetTrigger())
+	// Run it: the API answers with planned PENDING executions, and the runner
+	// finishes each one.
+	executions := fixture.runRules(t, rule.GetName())
+	require.Len(t, executions, 1)
+	require.Equal(t, v1pb.QualityExecutionState_QUALITY_EXECUTION_STATE_PENDING, executions[0].GetState())
+	require.Equal(t, "instances/"+fixture.instanceID, executions[0].GetInstance())
+	require.Equal(t, v1pb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL, executions[0].GetTrigger())
 
-	finished := fixture.waitForCompletedRun(t, runs[0].GetName())
+	finished := fixture.waitForCompletedExecution(t, executions[0].GetName())
 	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_PASS, finished.GetOutcome(),
 		"the users fixture has one row, which meets min_rows=1")
+	require.Equal(t, rule.GetName(), finished.GetRule())
+	require.Equal(t, int32(1), finished.GetRuleRevision())
+	require.Equal(t, int64(1), finished.GetTotalRows())
+	require.Equal(t, int64(0), finished.GetFailedRows())
+	require.NotEmpty(t, finished.GetExecutedSql(), "a query rule records the SQL it ran")
 	require.NotNil(t, finished.GetFinishTime())
+	require.True(t, finished.GetFinishTime().AsTime().After(finished.GetStartTime().AsTime()))
 
-	results := fixture.resultsForRun(t, runs[0].GetName())
-	require.Len(t, results, 1)
-	result := results[0]
-	require.Equal(t, rule.GetName(), result.GetRule())
-	require.Equal(t, runs[0].GetName(), result.GetRun())
-	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_PASS, result.GetStatus())
-	require.Equal(t, int32(1), result.GetRuleRevision())
-	require.Equal(t, int64(1), result.GetTotalRows())
-	require.Equal(t, int64(0), result.GetFailedRows())
-	require.NotEmpty(t, result.GetExecutedSql(), "a query rule records the SQL it ran")
-	require.True(t, result.GetFinishTime().AsTime().After(result.GetStartTime().AsTime()))
-
-	// The list now carries the latest result summary.
+	// The list now carries the latest execution summary.
 	afterRun, err := fixture.dataQuality.GetQualityRule(fixture.ctx, withToken(token(), &v1pb.GetQualityRuleRequest{Name: rule.GetName()}))
 	require.NoError(t, err)
 	require.NotNil(t, afterRun.Msg.GetLastResult())
 	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_PASS, afterRun.Msg.GetLastResult().GetStatus())
-	require.Equal(t, runs[0].GetName(), afterRun.Msg.GetLastResult().GetRun())
+	require.Equal(t, executions[0].GetName(), afterRun.Msg.GetLastResult().GetExecution())
 
-	// A definition edit bumps the revision; the historical result keeps the
+	// A definition edit bumps the revision; the historical execution keeps the
 	// revision it was judged with.
 	updated, err := fixture.dataQuality.UpdateQualityRule(fixture.ctx, withToken(token(), &v1pb.UpdateQualityRuleRequest{
 		Rule: &v1pb.QualityRule{
@@ -319,10 +304,10 @@ func TestDataQualityRuleLifecycleRealServerIntegration(t *testing.T) {
 	require.Equal(t, int32(2), updated.Msg.GetRevision(), "a semantic edit appends a revision")
 	require.Equal(t, int64(1000), updated.Msg.GetConfig().GetRowCount().GetMinRows())
 
-	oldResults := fixture.resultsForRule(t, rule.GetName())
-	require.Len(t, oldResults, 1, "the edit does not rewrite history")
-	require.Equal(t, int32(1), oldResults[0].GetRuleRevision())
-	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_PASS, oldResults[0].GetStatus())
+	oldExecutions := fixture.executionsForRule(t, rule.GetName())
+	require.Len(t, oldExecutions, 1, "the edit does not rewrite history")
+	require.Equal(t, int32(1), oldExecutions[0].GetRuleRevision())
+	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_PASS, oldExecutions[0].GetOutcome())
 
 	// Archiving removes the rule from the default list but keeps it readable and
 	// discoverable through the ARCHIVED filter.
@@ -347,7 +332,7 @@ func TestDataQualityRuleLifecycleRealServerIntegration(t *testing.T) {
 	archiveRead, err := fixture.dataQuality.GetQualityRule(fixture.ctx, withToken(token(), &v1pb.GetQualityRuleRequest{Name: rule.GetName()}))
 	require.NoError(t, err, "an archived rule stays readable so its history can be inspected")
 	require.Equal(t, v1pb.QualityRuleState_QUALITY_RULE_STATE_ARCHIVED, archiveRead.Msg.GetState())
-	require.Len(t, fixture.resultsForRule(t, rule.GetName()), 1, "archiving keeps the results")
+	require.Len(t, fixture.executionsForRule(t, rule.GetName()), 1, "archiving keeps the executions")
 }
 
 // TestDataQualityIssueLifecycleAndNotificationsRealServerIntegration runs a rule
@@ -362,23 +347,20 @@ func TestDataQualityIssueLifecycleAndNotificationsRealServerIntegration(t *testi
 		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_ERROR,
 		fixture.usersGUID, qualityRowCountConfig(1000))
 
-	failedRun := fixture.runToCompletion(t, rule.GetName())
-	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_FAIL, failedRun.GetOutcome())
-	results := fixture.resultsForRun(t, failedRun.GetName())
-	require.Len(t, results, 1)
-	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_FAIL, results[0].GetStatus())
+	failedExecution := fixture.runToCompletion(t, rule.GetName())
+	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_FAIL, failedExecution.GetOutcome())
 	// A row-count verdict is the observed count, not a number of failed rows: the
 	// whole table is one observation, and min_rows=1000 puts it out of range.
-	require.Equal(t, float64(1), results[0].GetObservedValue())
-	require.Equal(t, v1pb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT, results[0].GetObservedKind())
+	require.Equal(t, float64(1), failedExecution.GetObservedValue())
+	require.Equal(t, v1pb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT, failedExecution.GetObservedKind())
 
-	// A FAIL opens exactly one unresolved problem, and the problem names the run
-	// that first saw it.
+	// A FAIL opens exactly one unresolved problem, and the problem names the
+	// execution that first saw it.
 	issue := fixture.waitForIssue(t, rule.GetName(), v1pb.QualityIssueStatus_QUALITY_ISSUE_STATUS_OPEN)
 	require.Equal(t, rule.GetName(), issue.GetRule())
 	require.Equal(t, v1pb.QualitySeverity_QUALITY_SEVERITY_ERROR, issue.GetSeverity())
 	require.Equal(t, fixture.usersGUID, issue.GetTarget().GetMetaGuid())
-	require.Equal(t, failedRun.GetName(), issue.GetFirstSeenRun())
+	require.Equal(t, failedExecution.GetName(), issue.GetFirstSeenExecution())
 	require.Equal(t, int32(1), issue.GetOccurrenceCount())
 	require.Nil(t, issue.GetResolvedTime())
 
@@ -386,7 +368,7 @@ func TestDataQualityIssueLifecycleAndNotificationsRealServerIntegration(t *testi
 		v1pb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED, rule.GetName())
 	detail := openedNotice.GetDataQuality()
 	require.Equal(t, issue.GetName(), detail.GetIssue())
-	require.Equal(t, failedRun.GetName(), detail.GetRun())
+	require.Equal(t, failedExecution.GetName(), detail.GetExecution())
 	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_FAIL, detail.GetToStatus())
 	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, detail.GetFromStatus())
 
@@ -401,8 +383,8 @@ func TestDataQualityIssueLifecycleAndNotificationsRealServerIntegration(t *testi
 	}))
 	require.NoError(t, err)
 
-	recoveredRun := fixture.runToCompletion(t, rule.GetName())
-	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_PASS, recoveredRun.GetOutcome())
+	recoveredExecution := fixture.runToCompletion(t, rule.GetName())
+	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_PASS, recoveredExecution.GetOutcome())
 
 	resolved := fixture.waitForIssue(t, rule.GetName(), v1pb.QualityIssueStatus_QUALITY_ISSUE_STATUS_RESOLVED)
 	require.Equal(t, issue.GetName(), resolved.GetName(), "the same issue is resolved, not replaced")
@@ -412,7 +394,7 @@ func TestDataQualityIssueLifecycleAndNotificationsRealServerIntegration(t *testi
 	recoveredNotice := fixture.waitForNotification(t,
 		v1pb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED, rule.GetName())
 	require.Equal(t, issue.GetName(), recoveredNotice.GetDataQuality().GetIssue())
-	require.Equal(t, recoveredRun.GetName(), recoveredNotice.GetDataQuality().GetRun())
+	require.Equal(t, recoveredExecution.GetName(), recoveredNotice.GetDataQuality().GetExecution())
 }
 
 // TestDataQualityMetadataAndReadOnlyRulesRealServerIntegration covers the two
@@ -441,27 +423,21 @@ func TestDataQualityMetadataAndReadOnlyRulesRealServerIntegration(t *testing.T) 
 
 	// The metadata run needs no connection: it compares the registry snapshot with
 	// the registry's current columns and passes.
-	driftRun := fixture.runToCompletion(t, driftRule.GetName())
-	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_PASS, driftRun.GetOutcome())
-	driftResults := fixture.resultsForRun(t, driftRun.GetName())
-	require.Len(t, driftResults, 1)
-	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_PASS, driftResults[0].GetStatus())
-	require.Empty(t, driftResults[0].GetExecutedSql(), "a metadata rule runs no SQL")
-	require.Equal(t, int64(len(expected)), driftResults[0].GetTotalRows())
+	driftExecution := fixture.runToCompletion(t, driftRule.GetName())
+	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_PASS, driftExecution.GetOutcome())
+	require.Empty(t, driftExecution.GetExecutedSql(), "a metadata rule runs no SQL")
+	require.Equal(t, int64(len(expected)), driftExecution.GetTotalRows())
 
 	// A column the snapshot does not know is drift the next time the rule runs.
 	require.NoError(t, fixture.env.ExecMySQL(fixture.ctx, fmt.Sprintf(
 		"ALTER TABLE %s.users ADD COLUMN nickname VARCHAR(32) NULL;", quoteMySQLIdentifier(fixture.sourceDatabase))))
 	fixture.env.SyncDatabase(fixture.ctx, t, fixture.databaseName)
 
-	driftedRun := fixture.runToCompletion(t, driftRule.GetName())
-	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_FAIL, driftedRun.GetOutcome())
-	driftedResults := fixture.resultsForRun(t, driftedRun.GetName())
-	require.Len(t, driftedResults, 1)
-	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_FAIL, driftedResults[0].GetStatus())
-	require.GreaterOrEqual(t, driftedResults[0].GetFailedRows(), int64(1))
-	require.NotEmpty(t, driftedResults[0].GetSamples(), "the drift items are kept as evidence")
-	require.Empty(t, driftedResults[0].GetExecutedSql())
+	driftedExecution := fixture.runToCompletion(t, driftRule.GetName())
+	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_FAIL, driftedExecution.GetOutcome())
+	require.GreaterOrEqual(t, driftedExecution.GetFailedRows(), int64(1))
+	require.NotEmpty(t, driftedExecution.GetSamples(), "the drift items are kept as evidence")
+	require.Empty(t, driftedExecution.GetExecutedSql())
 
 	// A query rule on the same instance cannot even be created: the missing
 	// READ_ONLY source is a configuration mistake, so the save is refused with an
@@ -643,12 +619,10 @@ func TestDataQualityParameterizedRuleRealServerIntegration(t *testing.T) {
 	require.NotEmpty(t, preview.Msg.GetCompiledSql())
 	require.NotEmpty(t, preview.Msg.GetParameters(), "the preview names the bound values")
 
-	run := fixture.runToCompletion(t, rule.GetName())
-	results := fixture.resultsForRun(t, run.GetName())
-	require.Len(t, results, 1)
-	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_PASS, results[0].GetStatus(), "the fixture's age is within 0..200")
-	require.NotEmpty(t, results[0].GetExecutedSql())
-	require.Equal(t, int64(1), results[0].GetTotalRows())
+	execution := fixture.runToCompletion(t, rule.GetName())
+	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_PASS, execution.GetOutcome(), "the fixture's age is within 0..200")
+	require.NotEmpty(t, execution.GetExecutedSql())
+	require.Equal(t, int64(1), execution.GetTotalRows())
 }
 
 // TestDataQualityColumnProfileJsonRealServerIntegration covers a relation with a
@@ -1090,15 +1064,124 @@ INSERT INTO public.opaque_null (payload_json) VALUES ('{"a":1}'), (NULL);
 		guid, &v1pb.QualityRuleConfig{Config: &v1pb.QualityRuleConfig_NullPercent{
 			NullPercent: &v1pb.NullPercentConfig{Column: "payload_json", MaxNullCount: qualityPtr(int64(0))},
 		}})
-	run := fixture.runToCompletion(t, rule.GetName())
-	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_FAIL, run.GetOutcome(),
+	execution := fixture.runToCompletion(t, rule.GetName())
+	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_FAIL, execution.GetOutcome(),
 		"one NULL exceeds max_null_count 0")
+	require.NotEqual(t, v1pb.QualityStatus_QUALITY_STATUS_ERROR, execution.GetOutcome(),
+		"a plain null check must never be an execution error: %s", execution.GetErrorMessage())
+	require.Empty(t, execution.GetErrorMessage())
+	require.Equal(t, int64(1), execution.GetFailedRows())
+	require.Equal(t, int64(2), execution.GetTotalRows())
+}
 
-	results := fixture.resultsForRun(t, run.GetName())
-	require.Len(t, results, 1)
-	require.NotEqual(t, v1pb.QualityStatus_QUALITY_STATUS_ERROR, results[0].GetStatus(),
-		"a plain null check must never be an execution error: %s", results[0].GetErrorMessage())
-	require.Empty(t, results[0].GetErrorMessage())
-	require.Equal(t, int64(1), results[0].GetFailedRows())
-	require.Equal(t, int64(2), results[0].GetTotalRows())
+// TestDataQualityExecutionStoreLifecycle covers the execution state machine the
+// API and runner rely on, against the real store: a stale planned row is swept
+// to ABANDONED, a verdict written without a snapshot keeps the planned target
+// and revision, and abandoning a batch closes only its unfinished rows.
+func TestDataQualityExecutionStoreLifecycle(t *testing.T) {
+	t.Parallel()
+
+	fixture := setupQualityMySQLFixture(t, true)
+	rule := fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		fixture.usersGUID, qualityRowCountConfig(1))
+	resourceID := rule.GetName()[strings.LastIndex(rule.GetName(), "/")+1:]
+	stored, err := fixture.env.Store.GetQualityRule(fixture.ctx, &store.FindQualityRuleMessage{ResourceID: &resourceID})
+	require.NoError(t, err)
+	require.NotNil(t, stored)
+
+	newBatch := func(t *testing.T) *store.QualityRunMessage {
+		t.Helper()
+		batchResourceID, err := common.RandomString(12)
+		require.NoError(t, err)
+		batch, err := fixture.env.Store.CreateQualityRun(fixture.ctx, &store.QualityRunMessage{
+			ResourceID:         batchResourceID,
+			InstanceResourceID: fixture.instanceID,
+			Trigger:            storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL,
+			Status:             storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_PENDING,
+		})
+		require.NoError(t, err)
+		return batch
+	}
+	plan := func(t *testing.T, batch *store.QualityRunMessage, startedAt time.Time) *store.QualityExecutionMessage {
+		t.Helper()
+		planned := &store.QualityExecutionMessage{
+			RunID:              batch.ID,
+			RuleID:             stored.ID,
+			RuleRevision:       stored.Revision,
+			RuleEngineVersion:  "test",
+			TargetGUID:         stored.TargetGUID,
+			TargetType:         stored.TargetType,
+			TargetPath:         stored.TargetPath,
+			InstanceResourceID: fixture.instanceID,
+			Trigger:            storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL,
+			StartedAt:          startedAt,
+		}
+		require.NoError(t, fixture.env.Store.PlanQualityExecutions(fixture.ctx, []*store.QualityExecutionMessage{planned}))
+		require.NotZero(t, planned.ID, "planning must fill the row id")
+		return planned
+	}
+
+	// A planned row older than the cutoff is swept to ABANDONED, without a
+	// verdict, and cannot be finished afterwards.
+	staleAt := time.Now().UTC().Add(-30 * time.Minute)
+	stale := plan(t, newBatch(t), staleAt)
+	abandoned, err := fixture.env.Store.AbandonStaleQualityExecutions(fixture.ctx, staleAt.Add(time.Minute))
+	require.NoError(t, err)
+	require.Equal(t, int64(1), abandoned)
+	staleRow, err := fixture.env.Store.GetQualityExecution(fixture.ctx, stale.ID)
+	require.NoError(t, err)
+	require.Equal(t, storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_ABANDONED, staleRow.State)
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, staleRow.Status)
+	require.False(t, staleRow.FinishedAt.IsZero())
+	require.Error(t, fixture.env.Store.FinishQualityExecution(fixture.ctx, &store.QualityExecutionMessage{
+		ID: stale.ID, Status: storepb.QualityStatus_QUALITY_STATUS_PASS, FinishedAt: time.Now().UTC(),
+	}), "an abandoned execution must not accept a verdict")
+
+	// A verdict that failed before reading a snapshot keeps the planned target
+	// and revision; a real status is required.
+	running := plan(t, newBatch(t), time.Now().UTC())
+	require.NoError(t, fixture.env.Store.MarkQualityExecutionRunning(fixture.ctx, running.ID, time.Now().UTC()))
+	require.NoError(t, fixture.env.Store.FinishQualityExecution(fixture.ctx, &store.QualityExecutionMessage{
+		ID:         running.ID,
+		Status:     storepb.QualityStatus_QUALITY_STATUS_PASS,
+		FailedRows: 0,
+		TotalRows:  3,
+		StartedAt:  time.Now().UTC(),
+		FinishedAt: time.Now().UTC(),
+	}))
+	finishedRow, err := fixture.env.Store.GetQualityExecution(fixture.ctx, running.ID)
+	require.NoError(t, err)
+	require.Equal(t, storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED, finishedRow.State)
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_PASS, finishedRow.Status)
+	require.Equal(t, stored.Revision, finishedRow.RuleRevision, "the planned revision survives a snapshot-less verdict")
+	require.Equal(t, stored.TargetGUID, finishedRow.TargetGUID, "the planned target survives a snapshot-less verdict")
+	require.Equal(t, fixture.instanceID, finishedRow.InstanceResourceID)
+
+	// Abandoning a batch closes only PENDING/RUNNING rows: a verdict already
+	// written stays COMPLETED and is not counted as abandoned.
+	batch := newBatch(t)
+	first := plan(t, batch, time.Now().UTC())
+	second := plan(t, batch, time.Now().UTC())
+	settled := plan(t, batch, time.Now().UTC())
+	require.NoError(t, fixture.env.Store.MarkQualityExecutionRunning(fixture.ctx, first.ID, time.Now().UTC()))
+	require.NoError(t, fixture.env.Store.MarkQualityExecutionRunning(fixture.ctx, settled.ID, time.Now().UTC()))
+	require.NoError(t, fixture.env.Store.FinishQualityExecution(fixture.ctx, &store.QualityExecutionMessage{
+		ID:         settled.ID,
+		Status:     storepb.QualityStatus_QUALITY_STATUS_WARN,
+		StartedAt:  time.Now().UTC(),
+		FinishedAt: time.Now().UTC(),
+	}))
+	closed, err := fixture.env.Store.AbandonQualityExecutions(fixture.ctx, batch.ID, time.Now().UTC())
+	require.NoError(t, err)
+	require.Equal(t, int64(2), closed)
+	for _, id := range []int64{first.ID, second.ID} {
+		row, err := fixture.env.Store.GetQualityExecution(fixture.ctx, id)
+		require.NoError(t, err)
+		require.Equal(t, storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_ABANDONED, row.State)
+	}
+	settledRow, err := fixture.env.Store.GetQualityExecution(fixture.ctx, settled.ID)
+	require.NoError(t, err)
+	require.Equal(t, storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED, settledRow.State)
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_WARN, settledRow.Status)
 }

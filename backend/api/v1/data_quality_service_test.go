@@ -324,43 +324,70 @@ func TestApplyQualityRuleListFilters(t *testing.T) {
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }
 
-func TestQualityRunListFilter(t *testing.T) {
+func TestApplyQualityExecutionListFilters(t *testing.T) {
 	t.Parallel()
 
+	service := &DataQualityService{}
 	startAt := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
 	endAt := startAt.Add(24 * time.Hour)
-	find, err := qualityRunListFilter(&v1pb.ListQualityRunsRequest{
-		Parent:    "workspaces/ws1",
-		Status:    v1pb.QualityRunStatus_QUALITY_RUN_STATUS_PENDING,
-		Trigger:   v1pb.QualityRunTrigger_QUALITY_RUN_TRIGGER_MANUAL,
-		Instance:  "instances/instance_1",
-		StartTime: timestamppb.New(startAt),
-		EndTime:   timestamppb.New(endAt),
-		Initiator: "users/7",
-		Outcome:   v1pb.QualityStatus_QUALITY_STATUS_FAIL,
+	find := &store.FindQualityExecutionMessage{}
+	err := service.applyQualityExecutionListFilters(t.Context(), find, &v1pb.ListQualityExecutionsRequest{
+		Parent:     "workspaces/ws1",
+		State:      v1pb.QualityExecutionState_QUALITY_EXECUTION_STATE_PENDING,
+		Outcome:    v1pb.QualityStatus_QUALITY_STATUS_FAIL,
+		Trigger:    v1pb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL,
+		TargetGuid: "instance_1;shop;public;orders",
+		Instance:   "instances/instance_1",
+		StartTime:  timestamppb.New(startAt),
+		EndTime:    timestamppb.New(endAt),
+		Initiator:  "users/7",
 	})
 	require.NoError(t, err)
-	require.Equal(t, []storepb.QualityRunStatus{storepb.QualityRunStatus_QUALITY_RUN_STATUS_PENDING}, find.Statuses)
-	require.Equal(t, storepb.QualityRunTrigger_QUALITY_RUN_TRIGGER_MANUAL, *find.Trigger)
+	require.Equal(t, []storepb.QualityExecutionState{storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_PENDING}, find.States)
+	require.Equal(t, []storepb.QualityStatus{storepb.QualityStatus_QUALITY_STATUS_FAIL}, find.Statuses)
+	require.Equal(t, storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL, *find.Trigger)
+	require.Equal(t, "instance_1;shop;public;orders", *find.TargetGUID)
 	require.Equal(t, "instance_1", *find.InstanceResourceID)
 	require.Equal(t, startAt, *find.StartAt)
 	require.Equal(t, endAt, *find.EndAt)
 	require.Equal(t, int32(7), *find.InitiatorID)
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_FAIL, *find.Outcome)
 
-	empty, err := qualityRunListFilter(&v1pb.ListQualityRunsRequest{})
-	require.NoError(t, err)
+	empty := &store.FindQualityExecutionMessage{}
+	require.NoError(t, service.applyQualityExecutionListFilters(t.Context(), empty, &v1pb.ListQualityExecutionsRequest{}))
+	require.Empty(t, empty.States)
 	require.Empty(t, empty.Statuses)
 	require.Nil(t, empty.Trigger)
-	require.Nil(t, empty.Outcome)
+	require.Nil(t, empty.TargetGUID)
+	require.Nil(t, empty.InstanceResourceID)
+	require.Nil(t, empty.StartAt)
+	require.Nil(t, empty.EndAt)
+	require.Nil(t, empty.InitiatorID)
 
-	_, err = qualityRunListFilter(&v1pb.ListQualityRunsRequest{Instance: "not-an-instance-name"})
-	require.Error(t, err)
-	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	for _, request := range []*v1pb.ListQualityExecutionsRequest{
+		{Instance: "not-an-instance-name"},
+		{Initiator: "nobody"},
+		{State: v1pb.QualityExecutionState(99)},
+		{Outcome: v1pb.QualityStatus(99)},
+		{Trigger: v1pb.QualityExecutionTrigger(99)},
+	} {
+		err := service.applyQualityExecutionListFilters(t.Context(), &store.FindQualityExecutionMessage{}, request)
+		require.Error(t, err)
+		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	}
+}
 
-	_, err = qualityRunListFilter(&v1pb.ListQualityRunsRequest{Initiator: "nobody"})
-	require.Error(t, err)
-	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+func TestQualityExecutionIDCollections(t *testing.T) {
+	t.Parallel()
+
+	executions := []*store.QualityExecutionMessage{
+		{ID: 1, RuleID: 7},
+		{ID: 2, RuleID: 7},
+		{ID: 3, RuleID: 9},
+	}
+	require.Equal(t, []int64{7, 9}, qualityExecutionRuleIDs(executions))
+	require.Equal(t, []int64{1, 2, 3}, qualityExecutionIDs(executions))
+	require.Empty(t, qualityExecutionRuleIDs(nil))
+	require.Empty(t, qualityExecutionIDs(nil))
 }
 
 func TestQualityRuleProbeSQL(t *testing.T) {
@@ -585,18 +612,16 @@ func TestParseQualityIssueUpdateRejectsIllegalMasks(t *testing.T) {
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }
 
-func TestQualityIssueForeignKeys(t *testing.T) {
+func TestQualityIssueRuleIDs(t *testing.T) {
 	t.Parallel()
 
-	runs := []*store.QualityIssueMessage{
-		{RuleID: 7, FirstSeenRunID: qualityTestPtr(int64(11)), LastSeenRunID: qualityTestPtr(int64(12))},
-		{RuleID: 7, FirstSeenRunID: qualityTestPtr(int64(12)), LastSeenRunID: nil},
-		{RuleID: 9, FirstSeenRunID: nil, LastSeenRunID: qualityTestPtr(int64(11))},
+	issues := []*store.QualityIssueMessage{
+		{RuleID: 7, FirstSeenExecutionID: qualityTestPtr(int64(11)), LastSeenExecutionID: qualityTestPtr(int64(12))},
+		{RuleID: 7, FirstSeenExecutionID: qualityTestPtr(int64(12)), LastSeenExecutionID: nil},
+		{RuleID: 9, FirstSeenExecutionID: nil, LastSeenExecutionID: qualityTestPtr(int64(11))},
 	}
-	require.Equal(t, []int64{7, 9}, qualityIssueRuleIDs(runs))
-	require.Equal(t, []int64{11, 12}, qualityIssueRunIDs(runs))
+	require.Equal(t, []int64{7, 9}, qualityIssueRuleIDs(issues))
 	require.Empty(t, qualityIssueRuleIDs(nil))
-	require.Empty(t, qualityIssueRunIDs(nil))
 }
 
 func TestCheckQualityIssueAcknowledgeable(t *testing.T) {
@@ -761,7 +786,7 @@ func TestQualityLLMHandlersRequireARequest(t *testing.T) {
 	_, err = service.SuggestColumnLabels(t.Context(), nil)
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 
-	err = service.ExplainQualityResult(t.Context(), nil, nil)
+	err = service.ExplainQualityExecution(t.Context(), nil, nil)
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }
 

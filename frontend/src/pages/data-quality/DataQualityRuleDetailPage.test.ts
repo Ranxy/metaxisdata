@@ -8,7 +8,8 @@ import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
   QualityDimension,
-  QualityRuleResultSchema,
+  QualityExecutionSchema,
+  QualityExecutionState,
   QualityRuleSchema,
   QualityRuleState,
   QualityRuleType,
@@ -23,7 +24,7 @@ import DataQualityRuleDetailPage from "./DataQualityRuleDetailPage.vue";
 
 const mocks = vi.hoisted(() => ({
   getQualityRule: vi.fn(),
-  listQualityRuleResults: vi.fn(),
+  listQualityExecutions: vi.fn(),
   runQualityRules: vi.fn(),
   listAllUsers: vi.fn(),
 }));
@@ -31,7 +32,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/api/data-quality", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/data-quality")>()),
   getQualityRule: mocks.getQualityRule,
-  listQualityRuleResults: mocks.listQualityRuleResults,
+  listQualityExecutions: mocks.listQualityExecutions,
   runQualityRules: mocks.runQualityRules,
 }));
 
@@ -41,7 +42,6 @@ vi.mock("@/api/user", async (importOriginal) => ({
 }));
 
 const RULE = "workspaces/ws/qualityRules/rule-1";
-const RUN = "workspaces/ws/qualityRuns/run-1";
 const START = new Date("2026-10-07T09:30:00Z");
 const Dummy = { template: "<div />" };
 
@@ -80,23 +80,25 @@ function ruleFixture(overrides = {}) {
   });
 }
 
-/** Results arrive newest-first, exactly as the API returns them. */
-function resultFixture(index: number, status: QualityStatus) {
-  return create(QualityRuleResultSchema, {
-    name: `workspaces/ws/qualityRuleResults/${index + 1}`,
-    run: RUN,
+/** Executions arrive newest-first, exactly as the API returns them. */
+function executionFixture(index: number, outcome: QualityStatus) {
+  const at = timestampFromDate(new Date(START.getTime() - index * 60_000));
+  return create(QualityExecutionSchema, {
+    name: `workspaces/ws/qualityExecutions/${index + 1}`,
     rule: RULE,
-    status,
+    state: QualityExecutionState.COMPLETED,
+    outcome,
     observedValue: index,
-    finishTime: timestampFromDate(new Date(START.getTime() - index * 60_000)),
+    startTime: at,
+    finishTime: at,
   });
 }
 
-function resultsFixture() {
+function executionsFixture() {
   return [
-    resultFixture(0, QualityStatus.FAIL),
-    resultFixture(1, QualityStatus.PASS),
-    resultFixture(2, QualityStatus.PASS),
+    executionFixture(0, QualityStatus.FAIL),
+    executionFixture(1, QualityStatus.PASS),
+    executionFixture(2, QualityStatus.PASS),
   ];
 }
 
@@ -121,8 +123,8 @@ async function mountPage(permissions: string[] = PERMISSIONS) {
         component: Dummy,
       },
       {
-        path: "/data-quality/runs/:runId+",
-        name: "DataQualityRunDetail",
+        path: "/data-quality/executions/:executionId+",
+        name: "DataQualityExecutionDetail",
         component: Dummy,
       },
     ],
@@ -144,8 +146,8 @@ describe("DataQualityRuleDetailPage", () => {
     localStorage.clear();
     vi.clearAllMocks();
     mocks.getQualityRule.mockResolvedValue(ruleFixture());
-    mocks.listQualityRuleResults.mockResolvedValue({
-      items: resultsFixture(),
+    mocks.listQualityExecutions.mockResolvedValue({
+      items: executionsFixture(),
       nextPageToken: "",
     });
     mocks.listAllUsers.mockResolvedValue(USERS);
@@ -202,8 +204,8 @@ describe("DataQualityRuleDetailPage", () => {
     expect(buttonTexts).toContain(i18n.global.t("dataQuality.editRule"));
   });
 
-  it("shows the empty state when the rule has never run", async () => {
-    mocks.listQualityRuleResults.mockResolvedValue({
+  it("shows the empty state when the rule has never executed", async () => {
+    mocks.listQualityExecutions.mockResolvedValue({
       items: [],
       nextPageToken: "",
     });
@@ -214,14 +216,16 @@ describe("DataQualityRuleDetailPage", () => {
     expect(wrapper.find('[role="list"]').exists()).toBe(false);
   });
 
-  it("opens the run behind a result row", async () => {
+  it("opens the execution behind a history row", async () => {
     const { wrapper, router } = await mountPage();
 
     await wrapper.findAll("tbody tr")[0].trigger("click");
     await flushPromises();
 
-    expect(router.currentRoute.value.name).toBe("DataQualityRunDetail");
-    expect(router.currentRoute.value.params.runId).toEqual(RUN.split("/"));
+    expect(router.currentRoute.value.name).toBe("DataQualityExecutionDetail");
+    expect(router.currentRoute.value.params.executionId).toEqual(
+      executionsFixture()[0]?.name.split("/")
+    );
   });
 
   it("names the owner from the workspace directory", async () => {

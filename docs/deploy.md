@@ -297,7 +297,7 @@ The API port never serves `/metrics`, and `--debug` only controls logging and
 pprof. The endpoint is pull-only and anonymous: point Prometheus at
 `http://<metrics-addr>/metrics` and keep that address on a trusted interface or
 an internal network. It reports operational counts and latencies — schema syncs,
-lineage analyses, OpenLineage ingestion, data-quality runs, LLM calls, HTTP/RPC
+lineage analyses, OpenLineage ingestion, data-quality executions, LLM calls, HTTP/RPC
 traffic, queue depths and the metadata connection pool — using bounded enum
 labels only; instance, database, table, GUID, SQL and user data never appear in a
 label. The metric catalogue, label rules and cadence live in

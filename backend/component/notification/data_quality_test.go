@@ -24,7 +24,7 @@ func TestDataQualityMessageCarriesTypeSeverityAndDetail(t *testing.T) {
 		ObservedValue: 42,
 		ObservedUnit:  "rows",
 		Issue:         "workspaces/ws/qualityIssues/issue1",
-		Run:           "workspaces/ws/qualityRuns/run1",
+		Execution:     "workspaces/ws/qualityExecutions/101",
 		FailedRows:    42,
 		TotalRows:     100,
 	}
@@ -39,7 +39,8 @@ func TestDataQualityMessageCarriesTypeSeverityAndDetail(t *testing.T) {
 	require.Equal(t, int64(42), message.GetDataQuality().GetFailedRows())
 	require.Equal(t, int64(100), message.GetDataQuality().GetTotalRows())
 	require.Equal(t, "workspaces/ws/qualityIssues/issue1", message.GetDataQuality().GetIssue())
-	require.Equal(t, "workspaces/ws/qualityRuns/run1", message.GetDataQuality().GetRun())
+	require.Equal(t, "workspaces/ws/qualityExecutions/101", message.GetDataQuality().GetExecution())
+	require.Empty(t, message.GetDataQuality().GetInstance())
 	// The envelope has no recipient: the runner chooses the owner or the admins.
 	require.Zero(t, message.GetRecipientId())
 }
@@ -112,7 +113,7 @@ func TestDataQualityDedupeKeyDistinguishesEveryEvent(t *testing.T) {
 	}
 	seen := make(map[string]struct{}, len(kinds))
 	for _, kind := range kinds {
-		key := DataQualityDedupeKey(kind, "workspaces/ws/qualityRuns/run1", now)
+		key := DataQualityDedupeKey(kind, "instances/inst1", now)
 		require.NotEmpty(t, key)
 		_, duplicate := seen[key]
 		require.False(t, duplicate, "kind %s reused another kind's key", kind)

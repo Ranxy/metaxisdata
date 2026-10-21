@@ -606,11 +606,11 @@ export declare type DataQualityDetail = Message<"metaxisdata.v1.DataQualityDetai
   issue: string;
 
   /**
-   * Format: workspaces/{workspace}/qualityRuns/{quality_run}
+   * Format: workspaces/{workspace}/qualityExecutions/{quality_execution}
    *
-   * @generated from field: string run = 12;
+   * @generated from field: string execution = 12;
    */
-  run: string;
+  execution: string;
 
   /**
    * @generated from field: int64 failed_rows = 13;
@@ -640,6 +640,14 @@ export declare type DataQualityDetail = Message<"metaxisdata.v1.DataQualityDetai
    * @generated from field: int32 total_rule_count = 17;
    */
   totalRuleCount: number;
+
+  /**
+   * The instance whose dispatch batch the summary describes. Format:
+   * instances/{instance}. Empty for the per-execution kinds.
+   *
+   * @generated from field: string instance = 18;
+   */
+  instance: string;
 };
 
 /**

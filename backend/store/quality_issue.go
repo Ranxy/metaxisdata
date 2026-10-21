@@ -41,14 +41,14 @@ type QualityIssueMessage struct {
 	TargetType storepb.MetaType
 	Status     storepb.QualityIssueStatus
 	Severity   storepb.QualitySeverity
-	// FirstSeenRunID and LastSeenRunID are nullable in the table: an issue can be
-	// opened by a path that has no run (a manual import, a backfill) even though the
-	// runner always has one.
-	FirstSeenRunID *int64
-	LastSeenRunID  *int64
-	FirstSeenAt    time.Time
-	LastSeenAt     time.Time
-	ResolvedAt     *time.Time
+	// FirstSeenExecutionID and LastSeenExecutionID are nullable in the table: an
+	// issue can be opened by a path that has no execution (a manual import, a
+	// backfill) even though the runner always has one.
+	FirstSeenExecutionID *int64
+	LastSeenExecutionID  *int64
+	FirstSeenAt          time.Time
+	LastSeenAt           time.Time
+	ResolvedAt           *time.Time
 	// ResolutionReason is NULL in the table when it is UNSPECIFIED, so an issue
 	// resolved before reasons existed reads back as UNSPECIFIED rather than as a
 	// made-up value.
@@ -106,7 +106,7 @@ type UpdateQualityIssueMessage struct {
 // scanQualityIssue consumes it. Listing the columns explicitly keeps a schema change
 // from silently shifting a scan.
 const qualityIssueColumns = `id, resource_id, rule_id, target_guid, target_type, status, severity, ` +
-	`first_seen_run_id, last_seen_run_id, first_seen_at, last_seen_at, resolved_at, ` +
+	`first_seen_execution_id, last_seen_execution_id, first_seen_at, last_seen_at, resolved_at, ` +
 	`resolution_reason, resolution_note, acknowledged_by, acknowledged_at, muted_until, ` +
 	`occurrence_count, updated_at`
 
@@ -118,7 +118,8 @@ func scanQualityIssue(row interface{ Scan(...any) error }) (*QualityIssueMessage
 	var (
 		msg                              QualityIssueMessage
 		targetType, status, severity     int16
-		firstSeenRunID, lastSeenRunID    sql.NullInt64
+		firstSeenExecutionID             sql.NullInt64
+		lastSeenExecutionID              sql.NullInt64
 		resolvedAt                       sql.NullTime
 		resolutionReason, acknowledgedBy sql.NullInt32
 		acknowledgedAt, mutedUntil       sql.NullTime
@@ -126,7 +127,7 @@ func scanQualityIssue(row interface{ Scan(...any) error }) (*QualityIssueMessage
 	)
 	if err := row.Scan(
 		&msg.ID, &msg.ResourceID, &msg.RuleID, &msg.TargetGUID, &targetType, &status, &severity,
-		&firstSeenRunID, &lastSeenRunID, &msg.FirstSeenAt, &msg.LastSeenAt, &resolvedAt,
+		&firstSeenExecutionID, &lastSeenExecutionID, &msg.FirstSeenAt, &msg.LastSeenAt, &resolvedAt,
 		&resolutionReason, &msg.ResolutionNote, &acknowledgedBy, &acknowledgedAt, &mutedUntil,
 		&occurrenceCount, &msg.UpdatedAt,
 	); err != nil {
@@ -138,13 +139,13 @@ func scanQualityIssue(row interface{ Scan(...any) error }) (*QualityIssueMessage
 	msg.Severity = storepb.QualitySeverity(severity)
 	msg.OccurrenceCount = occurrenceCount
 
-	if firstSeenRunID.Valid {
-		value := firstSeenRunID.Int64
-		msg.FirstSeenRunID = &value
+	if firstSeenExecutionID.Valid {
+		value := firstSeenExecutionID.Int64
+		msg.FirstSeenExecutionID = &value
 	}
-	if lastSeenRunID.Valid {
-		value := lastSeenRunID.Int64
-		msg.LastSeenRunID = &value
+	if lastSeenExecutionID.Valid {
+		value := lastSeenExecutionID.Int64
+		msg.LastSeenExecutionID = &value
 	}
 	if resolvedAt.Valid {
 		value := resolvedAt.Time
@@ -354,7 +355,7 @@ func (s *Store) GetOpenQualityIssueForRule(ctx context.Context, ruleID int64) (*
 const qualityIssueOpenStatement = `
 	INSERT INTO quality_issue (
 		resource_id, rule_id, target_guid, target_type, status, severity,
-		first_seen_run_id, last_seen_run_id, first_seen_at, last_seen_at,
+		first_seen_execution_id, last_seen_execution_id, first_seen_at, last_seen_at,
 		occurrence_count, updated_at
 	) VALUES (
 		$1, $2, $3, $4, $5, $6,
@@ -412,10 +413,10 @@ func (s *Store) OpenQualityIssue(ctx context.Context, issue *QualityIssueMessage
 	if lastSeenAt.IsZero() {
 		lastSeenAt = firstSeenAt
 	}
-	firstSeenRunID := issue.FirstSeenRunID
-	lastSeenRunID := issue.LastSeenRunID
-	if lastSeenRunID == nil {
-		lastSeenRunID = firstSeenRunID
+	firstSeenExecutionID := issue.FirstSeenExecutionID
+	lastSeenExecutionID := issue.LastSeenExecutionID
+	if lastSeenExecutionID == nil {
+		lastSeenExecutionID = firstSeenExecutionID
 	}
 
 	msg, err := scanQualityIssue(s.GetDB().QueryRowContext(ctx, qualityIssueOpenStatement,
@@ -425,8 +426,8 @@ func (s *Store) OpenQualityIssue(ctx context.Context, issue *QualityIssueMessage
 		int16(issue.TargetType),
 		int16(storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_OPEN),
 		int16(issue.Severity),
-		firstSeenRunID,
-		lastSeenRunID,
+		firstSeenExecutionID,
+		lastSeenExecutionID,
 		firstSeenAt,
 		lastSeenAt,
 		now,
@@ -455,28 +456,29 @@ func (s *Store) OpenQualityIssue(ctx context.Context, issue *QualityIssueMessage
 // qualityIssueTouchStatement records another observation of an unresolved issue. The
 // status guard is the invariant "a resolved issue is never touched": if the issue was
 // resolved between the caller's read and this write, the update matches nothing and
-// the next failing run opens a new issue instead of resurrecting the old one.
+// the next failing execution opens a new issue instead of resurrecting the old one.
 const qualityIssueTouchStatement = `
 	UPDATE quality_issue
-	SET last_seen_at = $1, last_seen_run_id = $2, severity = $3,
+	SET last_seen_at = $1, last_seen_execution_id = $2, severity = $3,
 		occurrence_count = occurrence_count + 1, updated_at = $1
 	WHERE id = $4 AND status <> $5
 	RETURNING id
 `
 
-// TouchQualityIssue records that a run saw the same problem again: it advances the
-// last-seen fields, refreshes the severity (a rule's severity may have been edited)
-// and increments occurrence_count. first_seen_* is never overwritten.
+// TouchQualityIssue records that an execution saw the same problem again: it
+// advances the last-seen fields, refreshes the severity (a rule's severity may
+// have been edited) and increments occurrence_count. first_seen_* is never
+// overwritten.
 //
 // A no-op when the issue no longer exists or has been resolved: the caller read it a
-// moment earlier and the next failing run will open a fresh one, so this is not an
-// error condition.
-func (s *Store) TouchQualityIssue(ctx context.Context, issueID int64, runID int64, severity storepb.QualitySeverity, seenAt time.Time) error {
+// moment earlier and the next failing execution will open a fresh one, so this is not
+// an error condition.
+func (s *Store) TouchQualityIssue(ctx context.Context, issueID int64, executionID int64, severity storepb.QualitySeverity, seenAt time.Time) error {
 	if issueID <= 0 {
 		return common.Errorf(common.Invalid, "quality issue id is required")
 	}
-	if runID <= 0 {
-		return common.Errorf(common.Invalid, "quality run id is required")
+	if executionID <= 0 {
+		return common.Errorf(common.Invalid, "quality execution id is required")
 	}
 	if !qualityIssueSeverityValid(severity) {
 		return common.Errorf(common.Invalid, "invalid quality issue severity %d", severity)
@@ -486,7 +488,7 @@ func (s *Store) TouchQualityIssue(ctx context.Context, issueID int64, runID int6
 	}
 
 	if _, err := s.GetDB().ExecContext(ctx, qualityIssueTouchStatement,
-		seenAt, runID, int16(severity), issueID,
+		seenAt, executionID, int16(severity), issueID,
 		int16(storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_RESOLVED),
 	); err != nil {
 		return errors.Wrapf(err, "failed to touch quality issue %d", issueID)

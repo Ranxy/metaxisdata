@@ -48,10 +48,10 @@ const (
 	// reclaimed; the audit ledger remains the permanent record.
 	connectedAppRetention = 7 * 24 * time.Hour
 
-	// Data quality retention. Results belong to their run and go with it; issues
-	// keep their history for a quarter after resolution; profiles and the LLM
-	// cache are measured against the data they describe and expire quickly in
-	// comparison.
+	// Data quality retention. Executions belong to their dispatch batch and go
+	// with it; issues keep their history for a quarter after resolution;
+	// profiles and the LLM cache are measured against the data they describe and
+	// expire quickly in comparison.
 	qualityRunRetention        = 90 * 24 * time.Hour
 	qualityIssueRetention      = 90 * 24 * time.Hour
 	qualityProfileRetention    = 7 * 24 * time.Hour
@@ -225,10 +225,11 @@ func (r *Runner) runOnce(ctx context.Context) *passSummary {
 			},
 		},
 		{
-			// Results cascade with their run, so this one item reclaims both.
+			// Executions cascade with their internal dispatch batch, so this one
+			// item reclaims both.
 			name:    "quality_runs",
 			failure: "Failed to prune expired quality runs",
-			success: "Pruned expired quality runs and their results",
+			success: "Pruned expired quality runs and their executions",
 			delete: func(ctx context.Context) (int64, error) {
 				return r.store.DeleteExpiredQualityRuns(ctx, now.Add(-qualityRunRetention))
 			},

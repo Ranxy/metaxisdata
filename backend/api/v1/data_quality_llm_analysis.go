@@ -22,14 +22,14 @@ import (
 )
 
 // The two LLM analyses of design §9.2 (natural language -> rule draft) and §9.3
-// (failed result -> hypotheses). Both are audited and permission-gated in the
+// (failed execution -> hypotheses). Both are audited and permission-gated in the
 // proto; the provider, prompt, validation and cache rules live here so the
 // handlers only orchestrate.
 
 const (
-	// qualityExplainRecentResults is how many of the rule's recent results the
-	// explanation prompt carries: enough to show a trend, not a history dump.
-	qualityExplainRecentResults = 10
+	// qualityExplainRecentExecutions is how many of the rule's recent executions
+	// the explanation prompt carries: enough to show a trend, not a history dump.
+	qualityExplainRecentExecutions = 10
 	// qualityExplainSchemaHistory and qualityExplainLineage bound the context
 	// blocks the same prompt carries.
 	qualityExplainSchemaHistory = 5
@@ -447,31 +447,28 @@ func mustMarshalJSON(value any) json.RawMessage {
 	return encoded
 }
 
-// ExplainQualityResult streams an explanation of one failed result.
-func (s *DataQualityService) ExplainQualityResult(ctx context.Context, req *connect.Request[v1pb.ExplainQualityResultRequest], stream *connect.ServerStream[v1pb.ExplainQualityResultResponse]) error {
+// ExplainQualityExecution streams an explanation of one failed execution.
+func (s *DataQualityService) ExplainQualityExecution(ctx context.Context, req *connect.Request[v1pb.ExplainQualityExecutionRequest], stream *connect.ServerStream[v1pb.ExplainQualityExecutionResponse]) error {
 	if req == nil || stream == nil {
 		return connectErrorInvalid("a request and a stream are required")
 	}
-	workspace, resultID, err := parseExplainResultName(req.Msg.GetName())
+	workspaceID, executionID, err := parseQualityExecutionID(req.Msg.GetName())
 	if err != nil {
 		return err
 	}
-	if err := s.validateResourceWorkspace(ctx, workspace); err != nil {
+	if err := s.validateResourceWorkspace(ctx, workspaceID); err != nil {
 		return err
 	}
-	result, err := s.store.GetQualityRuleResult(ctx, resultID)
+	execution, err := s.fetchQualityExecution(ctx, executionID)
 	if err != nil {
-		return connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to read the quality rule result"))
+		return err
 	}
-	if result == nil {
-		return connect.NewError(connect.CodeNotFound, errors.Errorf("quality rule result %d not found", resultID))
-	}
-	rules, err := s.store.ListQualityRulesByIDs(ctx, []int64{result.RuleID})
+	rules, err := s.store.ListQualityRulesByIDs(ctx, []int64{execution.RuleID})
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to read the quality rule"))
 	}
 	if len(rules) == 0 {
-		return connect.NewError(connect.CodeNotFound, errors.New("the rule this result belongs to no longer exists"))
+		return connect.NewError(connect.CodeNotFound, errors.New("the rule this execution belongs to no longer exists"))
 	}
 	rule := rules[0]
 
@@ -480,7 +477,7 @@ func (s *DataQualityService) ExplainQualityResult(ctx context.Context, req *conn
 		return err
 	}
 	language := dataquality.NormalizePromptLanguage(req.Msg.GetLanguage())
-	cacheKey := dataquality.ExplainCacheKey(result.ID, result.RuleRevision, result.Status, language, config.ProfileName, config.ModelName)
+	cacheKey := dataquality.ExplainCacheKey(execution.ID, execution.RuleRevision, execution.Status, language, config.ProfileName, config.ModelName)
 
 	if !req.Msg.GetForceRegenerate() {
 		replayed, err := s.replayCachedExplanation(ctx, cacheKey, stream)
@@ -513,16 +510,16 @@ func (s *DataQualityService) ExplainQualityResult(ctx context.Context, req *conn
 		Target:        resolution.Target,
 		RuleTitle:     rule.Title,
 		RuleType:      rule.RuleType,
-		RuleConfig:    s.qualityRuleConfigAtRevision(ctx, rule, result.RuleRevision),
-		Result:        qualityResultSnapshot(result),
-		RecentResults: s.qualityRecentResultSnapshots(ctx, rule.ID, result.ID),
+		RuleConfig:    s.qualityRuleConfigAtRevision(ctx, rule, execution.RuleRevision),
+		Result:        qualityExecutionSnapshot(execution),
+		RecentResults: s.qualityRecentExecutionSnapshots(ctx, rule.ID, execution.ID),
 		SchemaHistory: s.qualitySchemaHistory(ctx, rule.TargetGUID, rule.TargetType),
 		Lineage:       s.qualityLineage(ctx, rule.TargetGUID, rule.TargetType),
 		IssueStatus:   s.qualityIssueStatus(ctx, rule.ID),
 	}
 	systemPrompt, userPrompt := dataquality.BuildExplainPrompt(explainContext)
-	thinking := &v1pb.ExplainQualityResultResponse{
-		Payload: &v1pb.ExplainQualityResultResponse_Progress{
+	thinking := &v1pb.ExplainQualityExecutionResponse{
+		Payload: &v1pb.ExplainQualityExecutionResponse_Progress{
 			Progress: &v1pb.ExplainSQLProgress{Type: "thinking", Turn: 1},
 		},
 	}
@@ -537,26 +534,26 @@ func (s *DataQualityService) ExplainQualityResult(ctx context.Context, req *conn
 	if err != nil {
 		s.metrics.CountLLMParseFailure(qualityLLMFeatureExplainResult)
 		slog.Warn("the model returned an invalid explanation",
-			slog.Int64("result_id", result.ID),
+			slog.Int64("execution_id", execution.ID),
 			slog.Any("error", err))
 		return connect.NewError(connect.CodeInternal,
 			errors.Wrap(err, "the model returned an explanation that is not valid JSON"))
 	}
-	s.cacheExplanation(ctx, cacheKey, result, explanation, config, language, usage)
-	logQualityLLMUsage("explain_result", rule.TargetGUID, usage)
+	s.cacheExplanation(ctx, cacheKey, execution, explanation, config, language, usage)
+	logQualityLLMUsage("explain_execution", rule.TargetGUID, usage)
 
 	// The stream's content is the rendered explanation, not the raw JSON: the
 	// panel shows prose, and one frame is enough because the structured answer was
 	// completed before anything was shown.
-	content := &v1pb.ExplainQualityResultResponse{
-		Payload: &v1pb.ExplainQualityResultResponse_Content{Content: renderExplanationMarkdown(explanation)},
+	content := &v1pb.ExplainQualityExecutionResponse{
+		Payload: &v1pb.ExplainQualityExecutionResponse_Content{Content: renderExplanationMarkdown(explanation)},
 	}
 	if err := stream.Send(content); err != nil {
 		return err
 	}
 	provider, model, _ := qualityLLMProviderFacts(config, dataquality.ExplainPromptVersion)
-	return stream.Send(&v1pb.ExplainQualityResultResponse{
-		Payload: &v1pb.ExplainQualityResultResponse_Metadata{
+	return stream.Send(&v1pb.ExplainQualityExecutionResponse{
+		Payload: &v1pb.ExplainQualityExecutionResponse_Metadata{
 			Metadata: &v1pb.ExplainSQLMetadata{
 				Summary:   explanation.Summary,
 				Provider:  provider,
@@ -568,30 +565,15 @@ func (s *DataQualityService) ExplainQualityResult(ctx context.Context, req *conn
 	})
 }
 
-// parseExplainResultName resolves the result resource name to its workspace and
-// the numeric row id the name carries. It is pure, so a malformed name is refused
-// before any store read.
-func parseExplainResultName(name string) (string, int64, error) {
-	workspace, resultIDText, err := parseQualityRuleResultName(name)
-	if err != nil {
-		return "", 0, connectErrorInvalid("%v", err)
-	}
-	resultID, err := strconv.ParseInt(strings.TrimSpace(resultIDText), 10, 64)
-	if err != nil || resultID <= 0 {
-		return "", 0, connectErrorInvalid("the quality rule result name does not carry a result id")
-	}
-	return workspace, resultID, nil
-}
-
 // cachedContent builds the content frame a cached explanation replays.
-func cachedContent(explanation dataquality.ExplanationOutput) *v1pb.ExplainQualityResultResponse {
-	return &v1pb.ExplainQualityResultResponse{
-		Payload: &v1pb.ExplainQualityResultResponse_Content{Content: renderExplanationMarkdown(explanation)},
+func cachedContent(explanation dataquality.ExplanationOutput) *v1pb.ExplainQualityExecutionResponse {
+	return &v1pb.ExplainQualityExecutionResponse{
+		Payload: &v1pb.ExplainQualityExecutionResponse_Content{Content: renderExplanationMarkdown(explanation)},
 	}
 }
 
 // replayCachedExplanation streams a cached explanation and reports whether it did.
-func (s *DataQualityService) replayCachedExplanation(ctx context.Context, cacheKey string, stream *connect.ServerStream[v1pb.ExplainQualityResultResponse]) (bool, error) {
+func (s *DataQualityService) replayCachedExplanation(ctx context.Context, cacheKey string, stream *connect.ServerStream[v1pb.ExplainQualityExecutionResponse]) (bool, error) {
 	cached, err := s.store.GetDataQualityLLMCache(ctx, cacheKey)
 	if err != nil {
 		// The cache is an optimization, not the answer: a read failure regenerates
@@ -620,8 +602,8 @@ func (s *DataQualityService) replayCachedExplanation(ctx context.Context, cacheK
 	if err := stream.Send(cachedContent(explanation)); err != nil {
 		return false, err
 	}
-	return true, stream.Send(&v1pb.ExplainQualityResultResponse{
-		Payload: &v1pb.ExplainQualityResultResponse_Metadata{
+	return true, stream.Send(&v1pb.ExplainQualityExecutionResponse{
+		Payload: &v1pb.ExplainQualityExecutionResponse_Metadata{
 			Metadata: &v1pb.ExplainSQLMetadata{
 				Summary:        explanation.Summary,
 				Provider:       cached.Provider,
@@ -637,7 +619,7 @@ func (s *DataQualityService) replayCachedExplanation(ctx context.Context, cacheK
 // cacheExplanation persists one validated explanation for the next identical
 // request. A write failure is logged and swallowed: the user already has the
 // answer.
-func (s *DataQualityService) cacheExplanation(ctx context.Context, cacheKey string, result *store.QualityRuleResultMessage, explanation dataquality.ExplanationOutput, config llm.ResolvedConfig, language string, usage *llm.Usage) {
+func (s *DataQualityService) cacheExplanation(ctx context.Context, cacheKey string, execution *store.QualityExecutionMessage, explanation dataquality.ExplanationOutput, config llm.ResolvedConfig, language string, usage *llm.Usage) {
 	hypotheses := make([]*storepb.ExplanationHypothesis, 0, len(explanation.Hypotheses))
 	for _, hypothesis := range explanation.Hypotheses {
 		hypotheses = append(hypotheses, &storepb.ExplanationHypothesis{
@@ -667,7 +649,7 @@ func (s *DataQualityService) cacheExplanation(ctx context.Context, cacheKey stri
 	cacheRow := &store.DataQualityLLMCacheRow{
 		CacheKey:      cacheKey,
 		Kind:          store.DataQualityLLMCacheKindExplanation,
-		TargetGUID:    result.TargetGUID,
+		TargetGUID:    execution.TargetGUID,
 		Provider:      provider,
 		Model:         model,
 		Language:      language,
@@ -680,27 +662,28 @@ func (s *DataQualityService) cacheExplanation(ctx context.Context, cacheKey stri
 	}
 }
 
-// qualityResultSnapshot maps one stored result to the prompt's plain snapshot.
-func qualityResultSnapshot(result *store.QualityRuleResultMessage) dataquality.ResultSnapshot {
+// qualityExecutionSnapshot maps one stored execution to the prompt's plain
+// snapshot.
+func qualityExecutionSnapshot(execution *store.QualityExecutionMessage) dataquality.ResultSnapshot {
 	return dataquality.ResultSnapshot{
-		Status:        result.Status,
-		ObservedValue: result.ObservedValue,
-		ObservedKind:  result.ObservedKind,
-		FailedRows:    result.FailedRows,
-		TotalRows:     result.TotalRows,
-		Sampled:       result.Sampled,
-		SampleRows:    result.SampleRows,
-		Truncated:     result.Truncated,
-		Thresholds:    result.Thresholds,
-		ErrorCode:     result.ErrorCode,
-		ErrorMessage:  result.ErrorMessage,
-		StartedAt:     result.StartedAt,
+		Status:        execution.Status,
+		ObservedValue: execution.ObservedValue,
+		ObservedKind:  execution.ObservedKind,
+		FailedRows:    execution.FailedRows,
+		TotalRows:     execution.TotalRows,
+		Sampled:       execution.Sampled,
+		SampleRows:    execution.SampleRows,
+		Truncated:     execution.Truncated,
+		Thresholds:    execution.Thresholds,
+		ErrorCode:     execution.ErrorCode,
+		ErrorMessage:  execution.ErrorMessage,
+		StartedAt:     execution.StartedAt,
 	}
 }
 
-// qualityRuleConfigAtRevision returns the rule definition the result was judged
-// with. The revision row is the truth; the current head is the fallback when the
-// revision row was pruned.
+// qualityRuleConfigAtRevision returns the rule definition the execution was
+// judged with. The revision row is the truth; the current head is the fallback
+// when the revision row was pruned.
 func (s *DataQualityService) qualityRuleConfigAtRevision(ctx context.Context, rule *store.QualityRuleMessage, revision int32) *storepb.QualityRuleConfig {
 	revisions, err := s.store.ListQualityRuleRevisions(ctx, rule.ID, nil, nil)
 	if err != nil {
@@ -715,23 +698,24 @@ func (s *DataQualityService) qualityRuleConfigAtRevision(ctx context.Context, ru
 	return rule.Config
 }
 
-// qualityRecentResultSnapshots lists the rule's recent results, newest first, with
-// the result being explained omitted so the prompt does not see it twice.
-func (s *DataQualityService) qualityRecentResultSnapshots(ctx context.Context, ruleID, excludeID int64) []dataquality.ResultSnapshot {
-	results, err := s.store.ListRecentQualityRuleResults(ctx, ruleID, qualityExplainRecentResults+1)
+// qualityRecentExecutionSnapshots lists the rule's recent completed executions,
+// newest first, with the execution being explained omitted so the prompt does not
+// see it twice.
+func (s *DataQualityService) qualityRecentExecutionSnapshots(ctx context.Context, ruleID, excludeID int64) []dataquality.ResultSnapshot {
+	executions, err := s.store.ListRecentQualityExecutions(ctx, ruleID, qualityExplainRecentExecutions+1)
 	if err != nil {
-		slog.Warn("failed to read recent results for the explanation", slog.Int64("rule_id", ruleID), slog.Any("error", err))
+		slog.Warn("failed to read recent executions for the explanation", slog.Int64("rule_id", ruleID), slog.Any("error", err))
 		return nil
 	}
-	snapshots := make([]dataquality.ResultSnapshot, 0, len(results))
-	for _, result := range results {
-		if result.ID == excludeID {
+	snapshots := make([]dataquality.ResultSnapshot, 0, len(executions))
+	for _, execution := range executions {
+		if execution.ID == excludeID {
 			continue
 		}
-		if len(snapshots) == qualityExplainRecentResults {
+		if len(snapshots) == qualityExplainRecentExecutions {
 			break
 		}
-		snapshots = append(snapshots, qualityResultSnapshot(result))
+		snapshots = append(snapshots, qualityExecutionSnapshot(execution))
 	}
 	return snapshots
 }

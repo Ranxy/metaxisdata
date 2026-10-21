@@ -1,14 +1,21 @@
 // Package qualityrunner executes data-quality rules on their schedule and on
 // request.
 //
-// It is the only component that opens a connection to the target database for a
-// quality check: the rule engine compiles and judges, the API writes and reads,
-// and this runner decides when a rule runs and records what happened. One run
-// covers one instance, so a run's rules share the instance's connection budget
-// and its failures are reported together. A run is admitted against that budget
-// as a whole and holds one lease while it executes; a run that cannot get one
-// waits, then is deferred or abandoned, and never records a capacity failure as
-// a rule result.
+// A quality_run row is an internal dispatch batch: it admits one connection
+// lease per instance, groups one scheduler tick's work, aggregates a storm
+// notification and cascades retention. It is never exposed through the API. The
+// durable, user-facing unit is quality_execution: one rule checked once, planned
+// PENDING by the scheduler (or by the API for a manual run), marked RUNNING per
+// rule, and closed by FinishQualityExecution with the verdict and its evidence.
+//
+// This runner is the only component that opens a connection to the target
+// database for a quality check: the rule engine compiles and judges, the API
+// writes and reads, and this runner decides when a rule runs and records what
+// happened. One batch covers one instance, so a batch's rules share the
+// instance's connection budget and its failures are reported together. A batch
+// is admitted against that budget as a whole and holds one lease while it
+// executes; a batch that cannot get one waits, then is deferred or abandoned, and
+// never records a capacity failure as a rule execution.
 package qualityrunner
 
 import (
@@ -42,58 +49,60 @@ const (
 	// dueScanLimit bounds one tick's due-rule query, matching the design's "at
 	// most 200 rules per pass" budget.
 	dueScanLimit = 200
-	// maxRulesPerRun bounds one run. A run covers one instance, so this is also
-	// the most rules the runner executes against one target without creating the
-	// next run.
-	maxRulesPerRun = 50
-	// maxConcurrentInstanceRuns is the per-instance/global concurrency ceiling for
-	// scheduled runs: the design allows two instances to execute at once, and one
-	// instance's runs always run serially.
-	maxConcurrentInstanceRuns = 2
-	// manualQueueCapacity is how many manual runs may wait for the runner. The API
-	// turns a full queue into ResourceExhausted instead of blocking a request.
+	// maxExecutionsPerBatch bounds one internal batch. A batch covers one
+	// instance, so this is also the most executions the runner creates against
+	// one target without creating the next batch.
+	maxExecutionsPerBatch = 50
+	// maxConcurrentInstanceBatches is the per-instance/global concurrency ceiling
+	// for scheduled batches: the design allows two instances to execute at once,
+	// and one instance's batches always run serially.
+	maxConcurrentInstanceBatches = 2
+	// manualQueueCapacity is how many manual batches may wait for the runner. The
+	// API turns a full queue into ResourceExhausted instead of blocking a request.
 	manualQueueCapacity = 64
-	// scheduledAdmissionWait bounds how long one scheduled run waits for the
+	// scheduledAdmissionWait bounds how long one scheduled batch waits for the
 	// instance's connection budget before the pass leaves its rules due for the
 	// next tick. Waiting is what turns normal contention into backpressure rather
-	// than a durable ERROR result.
+	// than a durable ERROR execution.
 	scheduledAdmissionWait = 2 * time.Minute
-	// manualAdmissionWait bounds how long a manual run waits for the instance's
-	// connection budget. The run is visible as PENDING while it waits; past the
-	// budget it is abandoned instead of being left for the restart sweep.
+	// manualAdmissionWait bounds how long a manual batch waits for the instance's
+	// connection budget. The executions are visible as PENDING while it waits;
+	// past the budget they are abandoned instead of being left for the restart
+	// sweep.
 	manualAdmissionWait = 5 * time.Minute
-	// abandonWriteTimeout bounds the best-effort write that closes a manual run
-	// which never executed. It uses a detached context because the runner's own is
+	// abandonWriteTimeout bounds the best-effort write that closes a batch which
+	// never executed. It uses a detached context because the runner's own is
 	// usually cancelled by the shutdown that ended the wait.
 	abandonWriteTimeout = 10 * time.Second
-	// staleRunCutoff is how long a PENDING/RUNNING run may predate the process
-	// before the startup sweep abandons it. A restart does not retry such runs;
-	// the next scheduled pass runs the rules again.
-	staleRunCutoff = 15 * time.Minute
-	// runExecutionTimeout bounds one run, including every rule and every query in
-	// it. It is the design's 15-minute execution budget.
-	runExecutionTimeout = 15 * time.Minute
-	// ruleQueryTimeout bounds one rule's aggregate query. The rule config may
-	// override it up to 300s; this is the default the executor receives.
+	// staleExecutionCutoff is how long a PENDING/RUNNING batch or execution may
+	// predate the process before the startup sweep abandons it. A restart does not
+	// retry such work; the next scheduled pass runs the rules again.
+	staleExecutionCutoff = 15 * time.Minute
+	// batchExecutionTimeout bounds one batch, including every rule and every
+	// query in it. It is the design's 15-minute execution budget.
+	batchExecutionTimeout = 15 * time.Minute
+	// ruleQueryTimeout bounds one rule's aggregate query. It is fixed: the rule
+	// config has no per-rule timeout override.
 	ruleQueryTimeout = 60 * time.Second
 	// ruleResultMaxBytes bounds the aggregate row and the failure sample the
 	// executor keeps in memory.
 	ruleResultMaxBytes = 1 << 20
-	// ruleSampleLimit is how many failing rows one result keeps as evidence.
+	// ruleSampleLimit is how many failing rows one execution keeps as evidence.
 	ruleSampleLimit = 20
 	// minRuleScheduleInterval is the runner's backstop for a rule whose interval is
 	// missing or nonsense. The API validates 15m..7d at write time; this keeps a
 	// bad row from becoming due on every tick.
 	minRuleScheduleInterval = 15 * time.Minute
-	// maxErrorMessageLength bounds the error text stored on a result. Error details
-	// are for an operator, not a log file.
+	// maxErrorMessageLength bounds the error text stored on an execution. Error
+	// details are for an operator, not a log file.
 	maxErrorMessageLength = 1024
 	// maxBaselineAge bounds how old a row_count_change baseline may be. An older
 	// observation describes a different data shape.
 	maxBaselineAge = 7 * 24 * time.Hour
-	// QualityStormThreshold is how many failing rules in one run turn per-rule
-	// notifications into a single summary. A run that fails more rules than this
-	// would otherwise write one inbox message per rule for a single incident.
+	// QualityStormThreshold is how many failing executions in one batch turn
+	// per-rule notifications into a single summary. A batch that fails more rules
+	// than this would otherwise write one inbox message per rule for a single
+	// incident.
 	QualityStormThreshold = 10
 	// qualityIssueResourceIDLength is the length of a generated issue resource id,
 	// matching the other data-quality resource ids.
@@ -131,69 +140,83 @@ func (r *Runner) refreshSettings(ctx context.Context) {
 }
 
 // overDailyExecutionQuota reports whether the workspace already started as many
-// runs today as its settings allow. The tally is a safety valve against a dense
-// schedule, not a correctness boundary: when it trips, the due rules stay due and
-// the next day resumes them.
+// executions today as its settings allow. The tally is a safety valve against a
+// dense schedule, not a correctness boundary: when it trips, the due rules stay
+// due and the next day resumes them.
 func (r *Runner) overDailyExecutionQuota(ctx context.Context, now time.Time) bool {
 	limit := r.settings.DailyExecutionLimit
 	if limit <= 0 {
 		return false
 	}
 	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	count, err := r.stores.CountQualityRunsSince(ctx, dayStart)
+	count, err := r.stores.CountQualityExecutionsSince(ctx, dayStart)
 	if err != nil {
-		slog.Warn("failed to count today's quality runs", log.WithError(err))
+		slog.Warn("failed to count today's quality executions", log.WithError(err))
 		return false
 	}
 	if count < limit {
 		return false
 	}
 	slog.Warn("daily quality execution quota reached; skipping the due scan",
-		slog.Int("runs_today", count), slog.Int("limit", limit))
+		slog.Int("executions_today", count), slog.Int("limit", limit))
 	return true
 }
 
-// manualRun is one queued manual execution. ruleIDs is the exact selection the
-// API made: a manual run must not silently widen to every enabled rule of the
-// instance, and quality_run has no column that could persist the selection.
+// executionTask identifies one planned quality_execution row a batch has to
+// execute. ruleID is known for a scheduled plan, where the due scan read it; a
+// queued manual batch carries the row ids the API planned and resolves each rule
+// id from the row itself.
+type executionTask struct {
+	executionID int64
+	ruleID      int64
+}
+
+// batchExecutionStore is the slice of the store that executing one dispatch
+// batch needs. *store.Store implements it; the runner-level tests inject a fake
+// so the incomplete-batch accounting can be exercised without a database.
+type batchExecutionStore interface {
+	MarkQualityRunRunning(ctx context.Context, batchID int64, at time.Time) error
+	GetQualityExecution(ctx context.Context, id int64) (*store.QualityExecutionMessage, error)
+	ListRecentQualityExecutions(ctx context.Context, ruleID int64, limit int) ([]*store.QualityExecutionMessage, error)
+	MarkQualityExecutionRunning(ctx context.Context, id int64, at time.Time) error
+	FinishQualityExecution(ctx context.Context, execution *store.QualityExecutionMessage) error
+	AbandonQualityExecutions(ctx context.Context, batchID int64, at time.Time) (int64, error)
+	FinishQualityRun(ctx context.Context, batchID int64, status storepb.QualityExecutionState, outcome storepb.QualityStatus, counts *storepb.QualityStatusCounts, at time.Time) error
+}
+
+// manualRun is one queued manual batch. executions is the exact selection the
+// API planned: a manual batch must not silently widen to every enabled rule of
+// the instance. instanceResourceID is the instance the API grouped the batch on;
+// the queue carries it because admission needs the instance's connection ceiling
+// before the batch's rows are read.
 type manualRun struct {
-	runID int64
-	// instanceResourceID is the instance the API grouped this run's rules on. The
-	// queue carries it because admission needs the instance's connection ceiling
-	// before the run's rules are read.
+	batchID            int64
 	instanceResourceID string
-	ruleIDs            []int64
+	executions         []executionTask
 }
 
-// ruleTask is one rule a run has to execute. head is the rule row the due scan
-// read; it is nil for a manual run, whose queue entry carries only rule ids.
-type ruleTask struct {
-	ruleID int64
-	head   *store.QualityRuleMessage
-}
-
-// dueRunPlan is one run the due scan is about to create: one instance, at most
-// maxRulesPerRun rules, already chunked.
-type dueRunPlan struct {
+// dueBatchPlan is one internal batch the due scan is about to create: one
+// instance, at most maxExecutionsPerBatch rules, already chunked.
+type dueBatchPlan struct {
 	instanceResourceID string
 	rules              []*store.QualityRuleMessage
 }
 
-// runAdmission is what a run holds while it executes: the instance whose
+// batchAdmission is what a batch holds while it executes: the instance whose
 // connection budget it leased (empty when it needed none) and the priority it was
 // admitted with. A rule whose target moved to another instance after admission
 // cannot use it; see ruleConnectionLease.
-type runAdmission struct {
+type batchAdmission struct {
 	instanceResourceID string
 	priority           state.ConnectionPriority
 }
 
-// ruleExecution is one rule's result plus the inputs the problem ledger and the
-// notifications need after the run commits: the mutable head (owner, severity,
-// mute, resource id), the immutable definition that was executed, and the rule's
-// status before this run.
+// ruleExecution is one execution's stored row plus the inputs the problem ledger
+// and the notifications need after the row is written: the mutable head (owner,
+// severity, mute, resource id), the immutable definition that was executed, and
+// the rule's status before this execution.
 type ruleExecution struct {
-	result   *store.QualityRuleResultMessage
+	result   *store.QualityExecutionMessage
 	head     *store.QualityRuleMessage
 	snapshot *dataquality.RuleSnapshot
 	previous *storepb.QualityStatus
@@ -205,31 +228,32 @@ type Runner struct {
 	dbFactory *dbfactory.DBFactory
 	stateCfg  *state.State
 	exec      *dataquality.Executor
-	// notifier delivers the problem and execution notifications a run implies.
-	// It is best effort: a delivery failure is logged and never fails the run.
+	// notifier delivers the problem and execution notifications an execution
+	// implies. It is best effort: a delivery failure is logged and never fails the
+	// batch.
 	// A nil notifier keeps the runner silent, which is what its tests want.
 	notifier *notification.Service
-	// metrics records run and rule outcomes; a nil value disables
+	// metrics records execution and rule outcomes; a nil value disables
 	// instrumentation.
 	metrics *metrics.Metrics
 
 	// settings is the workspace's data-quality policy, reloaded on every scan and
-	// manual run. It starts at the documented defaults so a fresh process with an
-	// unreadable setting still behaves sanely.
+	// manual batch. It starts at the documented defaults so a fresh process with
+	// an unreadable setting still behaves sanely.
 	settings dataquality.Settings
 
-	// manual carries the runs the API created. It is buffered so enqueueing never
-	// blocks a request; a full queue is reported back as false.
+	// manual carries the batches the API created. It is buffered so enqueueing
+	// never blocks a request; a full queue is reported back as false.
 	manual chan manualRun
-	// inflight holds the rule ids currently being executed, so a second run that
-	// finds the same rule due records SKIPPED instead of executing it twice.
+	// inflight holds the rule ids currently being executed, so a second execution
+	// that finds the same rule due records SKIPPED instead of executing it twice.
 	inflight map[int64]struct{}
 	mu       sync.Mutex
 }
 
 // NewRunner creates the data-quality runner. The executor is stateless, so one
-// instance is shared by every run. notifier reports opened and recovered problems
-// and execution failures; it may be nil.
+// instance is shared by every batch. notifier reports opened and recovered
+// problems and execution failures; it may be nil.
 func NewRunner(stores *store.Store, dbFactory *dbfactory.DBFactory, stateCfg *state.State, notifier *notification.Service, m *metrics.Metrics) *Runner {
 	exec := dataquality.NewExecutor()
 	exec.Metrics = m
@@ -249,20 +273,25 @@ func NewRunner(stores *store.Store, dbFactory *dbfactory.DBFactory, stateCfg *st
 // Name identifies the runner in the server's lifecycle logs.
 func (*Runner) Name() string { return "qualityrunner" }
 
-// ManualQueueDepth reports how many manual runs are waiting for the runner. It
+// ManualQueueDepth reports how many manual batches are waiting for the runner. It
 // is read by the metrics collector at scrape time.
 func (r *Runner) ManualQueueDepth() int {
 	return len(r.manual)
 }
 
-// EnqueueQualityRun offers a manual run to the runner and returns false when the
-// queue is full. instanceResourceID is the instance the API grouped the rule
-// selection on, and ruleIDs is the exact selection the API made; the runner
-// executes those rules and nothing else. The call does not block: the API maps
-// false to ResourceExhausted and is responsible for closing the run.
-func (r *Runner) EnqueueQualityRun(runID int64, instanceResourceID string, ruleIDs []int64) bool {
+// EnqueueQualityExecutions offers a manual batch to the runner and returns false
+// when the queue is full. instanceResourceID is the instance the API grouped the
+// batch on, and executionIDs are the exact quality_execution rows the API planned
+// and must have executed: the runner executes those rows and nothing else. The
+// call does not block: the API maps false to ResourceExhausted and is responsible
+// for abandoning the batch and its executions.
+func (r *Runner) EnqueueQualityExecutions(batchID int64, instanceResourceID string, executionIDs []int64) bool {
 	select {
-	case r.manual <- manualRun{runID: runID, instanceResourceID: instanceResourceID, ruleIDs: ruleIDs}:
+	case r.manual <- manualRun{
+		batchID:            batchID,
+		instanceResourceID: instanceResourceID,
+		executions:         manualExecutionTasks(executionIDs),
+	}:
 		return true
 	default:
 		r.metrics.CountQualityManualEnqueueRejected()
@@ -270,10 +299,10 @@ func (r *Runner) EnqueueQualityRun(runID int64, instanceResourceID string, ruleI
 	}
 }
 
-// Run starts the quality runner and blocks until ctx is cancelled. Manual runs
+// Run starts the quality runner and blocks until ctx is cancelled. Manual batches
 // take precedence over the periodic due scan.
 func (r *Runner) Run(ctx context.Context) {
-	r.abandonStaleRuns(ctx)
+	r.abandonStaleWork(ctx)
 	r.refreshSettings(ctx)
 
 	ticker := time.NewTicker(tickInterval)
@@ -285,8 +314,8 @@ func (r *Runner) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case run := <-r.manual:
-			r.executeManualRun(ctx, run)
+		case manual := <-r.manual:
+			r.executeManualBatch(ctx, manual)
 			continue
 		default:
 		}
@@ -294,44 +323,55 @@ func (r *Runner) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case run := <-r.manual:
-			r.executeManualRun(ctx, run)
+		case manual := <-r.manual:
+			r.executeManualBatch(ctx, manual)
 		case <-ticker.C:
 			r.scanDue(ctx)
 		}
 	}
 }
 
-// abandonStaleRuns closes the runs a previous process left PENDING or RUNNING.
-// It is a startup-only sweep: a run whose process is gone is not retried, and
-// its results are not invented; the rules run again on their next schedule.
-func (r *Runner) abandonStaleRuns(ctx context.Context) {
-	cutoff := time.Now().UTC().Add(-staleRunCutoff)
-	abandoned, err := r.stores.AbandonStaleQualityRuns(ctx, cutoff)
+// abandonStaleWork closes the batches and executions a previous process left
+// PENDING or RUNNING. It is a startup-only sweep: work whose process is gone is
+// not retried, and its results are not invented; the rules run again on their
+// next schedule. Executions are swept explicitly as well as through their batch,
+// so a row whose batch write was lost still reaches a terminal state.
+func (r *Runner) abandonStaleWork(ctx context.Context) {
+	cutoff := time.Now().UTC().Add(-staleExecutionCutoff)
+	abandonedExecutions, err := r.stores.AbandonStaleQualityExecutions(ctx, cutoff)
 	if err != nil {
-		slog.Error("failed to abandon stale quality runs", log.WithError(err))
+		slog.Error("failed to abandon stale quality executions", log.WithError(err))
+	} else if abandonedExecutions > 0 {
+		for range abandonedExecutions {
+			r.metrics.CountQualityExecutionAbandoned(metrics.QualityAbandonedStaleSweep)
+		}
+		slog.Warn("abandoned quality executions left behind by a previous process",
+			slog.Int64("count", abandonedExecutions),
+			slog.Time("started_before", cutoff))
+	}
+
+	abandonedBatches, err := r.stores.AbandonStaleQualityRuns(ctx, cutoff)
+	if err != nil {
+		slog.Error("failed to abandon stale quality batches", log.WithError(err))
 		return
 	}
-	if abandoned > 0 {
-		for range abandoned {
-			r.metrics.CountQualityRunAbandoned(metrics.QualityAbandonedStaleSweep)
-		}
-		slog.Warn("abandoned quality runs left behind by a previous process",
-			slog.Int64("count", abandoned),
+	if abandonedBatches > 0 {
+		slog.Warn("abandoned internal quality batches left behind by a previous process",
+			slog.Int64("count", abandonedBatches),
 			slog.Time("started_before", cutoff))
 	}
 }
 
-// scanDue creates and executes one run per instance for the rules that are due.
-// A due batch may exceed the per-run limit or span several instances: the rules
-// are grouped by instance, chunked into runs of at most maxRulesPerRun, and the
-// runs of one instance execute serially while at most two instances execute at
-// once.
+// scanDue creates and executes one internal batch per instance for the rules that
+// are due. A due batch may exceed the per-batch limit or span several instances:
+// the rules are grouped by instance, chunked into batches of at most
+// maxExecutionsPerBatch, and one instance's batches execute serially while at most
+// two instances execute at once.
 func (r *Runner) scanDue(ctx context.Context) {
-	// The planning cost is settings refresh, the quota check, the due-rule query
-	// and the chunking. It deliberately stops before wp.Wait(): the scans below
-	// execute the runs, and including them would turn this histogram into a copy
-	// of run duration.
+	// The planning cost is settings refresh, the quota check, the due-rule query,
+	// the chunking, the batch row and the planned execution rows. It deliberately
+	// stops before wp.Wait(): the scans below execute the batches, and including
+	// them would turn this histogram into a copy of batch duration.
 	planningStartedAt := time.Now()
 	observePlanning := func() { r.metrics.ObserveQualityDueScan(time.Since(planningStartedAt)) }
 
@@ -354,13 +394,13 @@ func (r *Runner) scanDue(ctx context.Context) {
 		return
 	}
 
-	plans := planDueRuns(rules, maxRulesPerRun)
+	plans := planDueBatches(rules, maxExecutionsPerBatch)
 	observePlanning()
 	if len(plans) == 0 {
 		return
 	}
 
-	wp := pool.New().WithMaxGoroutines(maxConcurrentInstanceRuns)
+	wp := pool.New().WithMaxGoroutines(maxConcurrentInstanceBatches)
 	for start := 0; start < len(plans); {
 		end := start
 		for end < len(plans) && plans[end].instanceResourceID == plans[start].instanceResourceID {
@@ -371,7 +411,7 @@ func (r *Runner) scanDue(ctx context.Context) {
 		instancePlans := plans[start:end]
 		wp.Go(func() {
 			for _, plan := range instancePlans {
-				r.startScheduledRun(ctx, plan)
+				r.startScheduledBatch(ctx, plan)
 			}
 		})
 		start = end
@@ -379,124 +419,194 @@ func (r *Runner) scanDue(ctx context.Context) {
 	wp.Wait()
 }
 
-// startScheduledRun creates one run for a plan's rules and executes it. The run
-// row exists before any rule runs, so a rule's result always names a run that is
-// observable through the API even while it executes.
-func (r *Runner) startScheduledRun(ctx context.Context, plan dueRunPlan) {
-	tasks := make([]ruleTask, 0, len(plan.rules))
+// startScheduledBatch creates one internal batch and its planned execution rows,
+// then executes them. The batch row exists before any rule runs, so an execution
+// always names a batch; the execution rows themselves are the visible plan.
+func (r *Runner) startScheduledBatch(ctx context.Context, plan dueBatchPlan) {
+	rules := make([]*store.QualityRuleMessage, 0, len(plan.rules))
 	for _, rule := range plan.rules {
-		if rule == nil {
-			continue
+		if rule != nil {
+			rules = append(rules, rule)
 		}
-		tasks = append(tasks, ruleTask{ruleID: rule.ID, head: rule})
 	}
-	if len(tasks) == 0 {
+	if len(rules) == 0 {
 		return
 	}
 
 	instance, err := r.instanceForAdmission(ctx, plan.instanceResourceID)
 	if err != nil {
-		r.metrics.CountQualityRunsDeferred(metrics.QualityDeferralInstanceReadError)
-		slog.Warn("failed to read the instance of a scheduled quality run; leaving its rules due",
+		r.metrics.CountQualityExecutionsDeferred(metrics.QualityDeferralInstanceReadError)
+		slog.Warn("failed to read the instance of a scheduled quality batch; leaving its rules due",
 			slog.String("instance", plan.instanceResourceID),
 			log.WithError(err))
 		return
 	}
-	release, admission, admitted := r.admitRun(ctx, instance, state.ConnectionPriorityBackground, scheduledAdmissionWait)
-	r.metrics.CountQualityRunAdmission(metrics.QualityTriggerScheduled, admitted)
+	release, admission, admitted := r.admitBatch(ctx, instance, state.ConnectionPriorityBackground, scheduledAdmissionWait)
+	r.metrics.CountQualityExecutionAdmission(metrics.QualityTriggerScheduled, admitted)
 	if !admitted {
-		// The run was never created and no rule's schedule was advanced, so the
+		// The batch was never created and no rule's schedule was advanced, so the
 		// next tick retries the same rules. That is the scheduler's queue: the
 		// work is healthy, the instance is busy.
-		r.metrics.CountQualityRunsDeferred(metrics.QualityDeferralAdmissionTimeout)
-		slog.Debug("deferred a scheduled quality run: the instance has no free connection slot",
+		r.metrics.CountQualityExecutionsDeferred(metrics.QualityDeferralAdmissionTimeout)
+		slog.Debug("deferred a scheduled quality batch: the instance has no free connection slot",
 			slog.String("instance", plan.instanceResourceID),
-			slog.Int("rules", len(tasks)))
+			slog.Int("rules", len(rules)))
 		return
 	}
-	// The release is idempotent and executeRun releases it before the store work,
-	// so this defer only covers the two returns before executeRun is reached.
+	// The release is idempotent and executeBatch releases it before the store work,
+	// so this defer only covers the returns before executeBatch is reached.
 	defer release()
 
+	now := time.Now().UTC()
 	resourceID, err := common.RandomString(12)
 	if err != nil {
-		slog.Error("failed to generate a quality run resource id", log.WithError(err))
+		slog.Error("failed to generate an internal quality batch resource id", log.WithError(err))
 		return
 	}
-	run, err := r.stores.CreateQualityRun(ctx, &store.QualityRunMessage{
+	batch, err := r.stores.CreateQualityRun(ctx, &store.QualityRunMessage{
 		ResourceID:         resourceID,
 		InstanceResourceID: plan.instanceResourceID,
-		Trigger:            storepb.QualityRunTrigger_QUALITY_RUN_TRIGGER_SCHEDULED,
-		Status:             storepb.QualityRunStatus_QUALITY_RUN_STATUS_PENDING,
+		Trigger:            storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED,
+		Status:             storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_PENDING,
 	})
 	if err != nil {
-		slog.Error("failed to create a scheduled quality run",
+		slog.Error("failed to create a scheduled quality batch",
 			slog.String("instance", plan.instanceResourceID),
 			log.WithError(err))
 		return
 	}
-	r.metrics.CountQualityRunCreated(metrics.QualityTriggerScheduled)
-	r.executeRun(ctx, run.ID, run.ResourceID, tasks, admission, release)
+
+	planned := make([]*store.QualityExecutionMessage, 0, len(rules))
+	for _, rule := range rules {
+		planned = append(planned, plannedExecution(batch.ID, plan.instanceResourceID, rule, now))
+	}
+	if err := r.stores.PlanQualityExecutions(ctx, planned); err != nil {
+		slog.Error("failed to plan a scheduled quality batch's executions",
+			slog.Int64("batch", batch.ID),
+			slog.Int("executions", len(planned)),
+			log.WithError(err))
+		for range planned {
+			r.metrics.CountQualityExecutionAbandoned(metrics.QualityAbandonedPlanFailed)
+		}
+		r.abandonEmptyBatch(ctx, batch.ID)
+		return
+	}
+	for range planned {
+		r.metrics.CountQualityExecutionCreated(metrics.QualityTriggerScheduled)
+	}
+	// Advance the schedule only after the rows are planned: the tick that picks a
+	// rule up must not pick it up again, and a failed plan leaves the rules due
+	// for the next pass.
+	for _, rule := range rules {
+		r.advanceScheduledRule(ctx, rule)
+	}
+
+	// PlanQualityExecutions fills in each planned row's identity, so the tasks come
+	// from the plan itself without another read.
+	tasks := plannedTasksFromMessages(planned)
+	if len(tasks) != len(planned) {
+		slog.Error("a planned quality execution came back without a row id",
+			slog.Int64("batch", batch.ID),
+			slog.Int("planned", len(planned)),
+			slog.Int("identified", len(tasks)))
+		r.abandonBatch(ctx, r.stores, batch.ID, len(planned), metrics.QualityAbandonedPlanFailed)
+		return
+	}
+	r.executeBatch(ctx, batch.ID, plan.instanceResourceID, tasks, admission, release)
 }
 
-// executeManualRun executes a run the API created for an explicit rule
-// selection. The selection is already resolved to rule ids; the run carries no
-// persisted rule list, and it must not fall back to "all enabled rules of the
-// instance", which could execute a rule the user did not ask for.
-func (r *Runner) executeManualRun(ctx context.Context, manual manualRun) {
+// plannedExecution is the PENDING row the scheduler plans before executing a due
+// rule. The revision, target snapshot and instance are the due scan's view; the
+// runner may execute a newer revision and FinishQualityExecution then records the
+// revision it really judged.
+func plannedExecution(batchID int64, instanceResourceID string, rule *store.QualityRuleMessage, at time.Time) *store.QualityExecutionMessage {
+	return &store.QualityExecutionMessage{
+		RunID:              batchID,
+		RuleID:             rule.ID,
+		RuleRevision:       rule.Revision,
+		RuleEngineVersion:  dataquality.EngineVersion,
+		TargetGUID:         rule.TargetGUID,
+		TargetType:         rule.TargetType,
+		TargetPath:         rule.TargetPath,
+		InstanceResourceID: instanceResourceID,
+		State:              storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_PENDING,
+		Trigger:            storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED,
+		StartedAt:          at,
+	}
+}
+
+// plannedTasksFromMessages builds the task list from the planned rows. The
+// execution id is the public resource identity, and PlanQualityExecutions fills it
+// in on the messages it inserted.
+func plannedTasksFromMessages(planned []*store.QualityExecutionMessage) []executionTask {
+	tasks := make([]executionTask, 0, len(planned))
+	for _, execution := range planned {
+		if execution == nil || execution.ID <= 0 {
+			continue
+		}
+		tasks = append(tasks, executionTask{executionID: execution.ID, ruleID: execution.RuleID})
+	}
+	return tasks
+}
+
+// executeManualBatch executes a batch the API created for an explicit execution
+// selection. The selection is fully planned by the API; the runner executes
+// exactly those execution rows and never widens to every enabled rule of the
+// instance.
+func (r *Runner) executeManualBatch(ctx context.Context, manual manualRun) {
 	// A manual request is the moment to pick up a settings change: the user could
-	// have turned failure samples off just before asking for the run.
+	// have turned failure samples off just before asking for the batch.
 	r.refreshSettings(ctx)
 
 	instance, err := r.instanceForAdmission(ctx, manual.instanceResourceID)
 	if err != nil {
-		slog.Warn("failed to read the instance of a manual quality run; abandoning it",
-			slog.Int64("run", manual.runID),
+		slog.Warn("failed to read the instance of a manual quality batch; abandoning it",
+			slog.Int64("batch", manual.batchID),
 			log.WithError(err))
-		r.abandonUnadmittedRun(ctx, manual.runID, len(manual.ruleIDs), metrics.QualityAbandonedInstanceReadError)
+		r.abandonUnadmittedBatch(ctx, manual.batchID, len(manual.executions), metrics.QualityAbandonedInstanceReadError)
 		return
 	}
-	release, admission, admitted := r.admitRun(ctx, instance, state.ConnectionPriorityManual, manualAdmissionWait)
-	r.metrics.CountQualityRunAdmission(metrics.QualityTriggerManual, admitted)
+	release, admission, admitted := r.admitBatch(ctx, instance, state.ConnectionPriorityManual, manualAdmissionWait)
+	r.metrics.CountQualityExecutionAdmission(metrics.QualityTriggerManual, admitted)
 	if !admitted {
-		slog.Warn("abandoned a manual quality run: the instance's connection budget stayed busy",
-			slog.Int64("run", manual.runID),
+		slog.Warn("abandoned a manual quality batch: the instance's connection budget stayed busy",
+			slog.Int64("batch", manual.batchID),
 			slog.String("instance", manual.instanceResourceID),
-			slog.Int("rules", len(manual.ruleIDs)))
-		r.abandonUnadmittedRun(ctx, manual.runID, len(manual.ruleIDs), metrics.QualityAbandonedAdmissionTimeout)
+			slog.Int("executions", len(manual.executions)))
+		r.abandonUnadmittedBatch(ctx, manual.batchID, len(manual.executions), metrics.QualityAbandonedAdmissionTimeout)
 		return
 	}
-	// Idempotent, and executeRun releases it before the store work; this covers any
-	// return a later edit adds between admission and executeRun.
+	// Idempotent, and executeBatch releases it before the store work; this covers
+	// any return a later edit adds between admission and executeBatch.
 	defer release()
-	r.executeRun(ctx, manual.runID, r.manualRunResourceID(ctx, manual.runID), manualRuleTasks(manual.ruleIDs), admission, release)
+	r.executeBatch(ctx, manual.batchID, manual.instanceResourceID, manual.executions, admission, release)
 }
 
-// instanceForAdmission loads the instance a run targets so the run can be
+// instanceForAdmission loads the instance a batch targets so the batch can be
 // admitted against its connection ceiling. A nil instance means the row is gone:
-// the run still executes because target resolution records ORPHANED for its rules
-// without opening a connection. A read error is transient and defers the run,
-// because executing it could open a connection outside the budget.
+// the executions still run because target resolution records ORPHANED for their
+// rules without opening a connection. A read error is transient and defers the
+// batch, because executing it could open a connection outside the budget.
 func (r *Runner) instanceForAdmission(ctx context.Context, resourceID string) (*store.InstanceMessage, error) {
 	if resourceID == "" {
 		// A rule whose target GUID could not be attributed to an instance cannot
-		// open a connection either; the run records SKIPPED(ORPHANED).
+		// open a connection either; its execution records SKIPPED(ORPHANED).
 		return nil, nil
 	}
 	return r.stores.GetInstance(ctx, &store.FindInstanceMessage{ResourceID: &resourceID})
 }
 
-// admitRun reserves the instance's connection budget for one run and returns its
-// lease plus the admission later rules are checked against. A run holds one lease
-// for its whole query phase: its rules execute serially against the same instance
-// and need at most one session at a time, and taking the lease up front is what
-// keeps a mid-run admission from failing. A nil instance needs none: its rules
-// are ORPHANED before a driver is opened.
-func (r *Runner) admitRun(ctx context.Context, instance *store.InstanceMessage, priority state.ConnectionPriority, wait time.Duration) (func(), runAdmission, bool) {
+// admitBatch reserves the instance's connection budget for one batch and returns
+// its lease plus the admission later rules are checked against. A batch holds one
+// lease for its whole query phase: its rules execute serially against the same
+// instance and need at most one session at a time, and taking the lease up front
+// is what keeps a mid-batch admission from failing. A nil instance needs none: its
+// rules are ORPHANED before a driver is opened.
+func (r *Runner) admitBatch(ctx context.Context, instance *store.InstanceMessage, priority state.ConnectionPriority, wait time.Duration) (func(), batchAdmission, bool) {
 	// A gone or metadata-less instance is ORPHANED by target resolution before a
 	// driver is opened, so it needs no lease.
 	if instance == nil || instance.Deleted || instance.Metadata == nil {
-		return func() {}, runAdmission{priority: priority}, true
+		return func() {}, batchAdmission{priority: priority}, true
 	}
 	waitCtx, cancel := context.WithTimeout(ctx, wait)
 	defer cancel()
@@ -506,22 +616,22 @@ func (r *Runner) admitRun(ctx context.Context, instance *store.InstanceMessage, 
 		Priority:           priority,
 	})
 	if err != nil {
-		return nil, runAdmission{}, false
+		return nil, batchAdmission{}, false
 	}
-	return release, runAdmission{instanceResourceID: instance.ResourceID, priority: priority}, true
+	return release, batchAdmission{instanceResourceID: instance.ResourceID, priority: priority}, true
 }
 
-// ruleConnectionLease returns the budget covering one rule's driver. The run's own
-// lease covers the normal case. A rule whose newest revision targets another
-// instance than the run was admitted for needs a lease on that instance, and a run
-// that needed no lease at all (its instance row was gone) must lease the instance
-// the rule really resolves to before opening a driver.
+// ruleConnectionLease returns the budget covering one rule's driver. The batch's
+// own lease covers the normal case. A rule whose newest revision targets another
+// instance than the batch was admitted for needs a lease on that instance, and a
+// batch that needed no lease at all (its instance row was gone) must lease the
+// instance the rule really resolves to before opening a driver.
 //
-// The fallback tries once instead of waiting: it runs while the run already holds
-// another instance's lease, and a blocking wait between two concurrent runs could
-// each hold what the other wants until both deadlines. A rule that cannot be
-// covered is SKIPPED and runs on its next schedule.
-func (r *Runner) ruleConnectionLease(instance *store.InstanceMessage, admission runAdmission) (func(), bool) {
+// The fallback tries once instead of waiting: it runs while the batch already
+// holds another instance's lease, and a blocking wait between two concurrent
+// batches could each hold what the other wants until both deadlines. A rule that
+// cannot be covered is SKIPPED and runs on its next schedule.
+func (r *Runner) ruleConnectionLease(instance *store.InstanceMessage, admission batchAdmission) (func(), bool) {
 	if instance == nil || instance.Deleted || instance.Metadata == nil {
 		// Target resolution reports ORPHANED before a driver is opened.
 		return func() {}, true
@@ -548,115 +658,250 @@ func instanceConnectionLimit(instance *store.InstanceMessage) int {
 	return maximumConnections
 }
 
-// abandonUnadmittedRun closes a manual run that never got the instance's
+// abandonUnadmittedBatch closes a manual batch that never got the instance's
 // connection budget. It executed nothing, so ABANDONED with no outcome is the
 // honest terminal state; leaving it PENDING would defer it to the restart sweep
-// and show a run that apparently never ends.
-func (r *Runner) abandonUnadmittedRun(ctx context.Context, runID int64, selected int, reason string) {
-	r.metrics.CountQualityRunAbandoned(reason)
+// and show executions that apparently never end.
+func (r *Runner) abandonUnadmittedBatch(ctx context.Context, batchID int64, selected int, reason string) {
 	// The runner's context is often already cancelled here (a shutdown ended the
-	// wait), but the row must still reach a terminal state: a PENDING run with no
-	// queue entry would otherwise linger until a later startup sweep.
+	// wait), but the rows must still reach a terminal state: PENDING executions
+	// with no queue entry would otherwise linger until a later startup sweep.
 	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), abandonWriteTimeout)
 	defer cancel()
-	counts := &storepb.QualityRunCounts{Total: int32(selected)}
-	if err := r.stores.FinishQualityRun(writeCtx, runID, storepb.QualityRunStatus_QUALITY_RUN_STATUS_ABANDONED, storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, counts, time.Now().UTC()); err != nil {
-		slog.Warn("failed to abandon a manual quality run that never got a connection slot",
-			slog.Int64("run", runID),
+	abandoned, err := r.stores.AbandonQualityExecutions(writeCtx, batchID, time.Now().UTC())
+	if err != nil {
+		slog.Warn("failed to abandon a manual quality batch that never got a connection slot",
+			slog.Int64("batch", batchID),
+			log.WithError(err))
+		// The rows are left to the startup sweep; count the planned work as
+		// abandoned so the metric still reflects what the request lost.
+		for range selected {
+			r.metrics.CountQualityExecutionAbandoned(reason)
+		}
+		return
+	}
+	for range abandoned {
+		r.metrics.CountQualityExecutionAbandoned(reason)
+	}
+	if err := r.stores.FinishQualityRun(writeCtx, batchID, storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_ABANDONED, storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, &storepb.QualityStatusCounts{Total: int32(selected)}, time.Now().UTC()); err != nil {
+		slog.Warn("failed to close a manual quality batch that never got a connection slot",
+			slog.Int64("batch", batchID),
 			log.WithError(err))
 	}
 }
 
-// executeRun executes one run's rules sequentially, writes the whole run in one
-// result batch, and then applies the problem ledger and the notifications the
-// results imply. The result write is the commit point: nothing touches an issue
-// or an inbox when it failed, because there is no result to explain.
-func (r *Runner) executeRun(ctx context.Context, runID int64, runResourceID string, tasks []ruleTask, admission runAdmission, release func()) {
-	runCtx, cancel := context.WithTimeout(ctx, runExecutionTimeout)
+// abandonEmptyBatch closes an internal batch no execution row was planned for.
+func (r *Runner) abandonEmptyBatch(ctx context.Context, batchID int64) {
+	if err := r.stores.FinishQualityRun(ctx, batchID, storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_ABANDONED, storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, nil, time.Now().UTC()); err != nil {
+		slog.Warn("failed to close an internal quality batch with no planned executions",
+			slog.Int64("batch", batchID),
+			log.WithError(err))
+	}
+}
+
+// abandonBatch abandons a batch's remaining executions and then the batch. It is
+// used whenever the batch cannot finish cleanly (a verdict write failed, a task
+// was skipped, the batch deadline expired, or the batch could not be marked
+// RUNNING): no execution may be left PENDING/RUNNING and the batch must not
+// report a partial rollup.
+func (r *Runner) abandonBatch(ctx context.Context, st batchExecutionStore, batchID int64, planned int, reason string) {
+	// The batch context is usually alive here, but a cancelled one must not stop
+	// the terminal writes.
+	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), abandonWriteTimeout)
+	defer cancel()
+	abandoned, err := st.AbandonQualityExecutions(writeCtx, batchID, time.Now().UTC())
+	if err != nil {
+		// The rows are left to the startup sweep, but the batch itself must still
+		// reach a terminal state: an ABANDONED batch with orphaned rows is more
+		// honest than a batch that stays RUNNING forever.
+		slog.Error("failed to abandon the remaining executions of a quality batch",
+			slog.Int64("batch", batchID),
+			log.WithError(err))
+	}
+	for range abandoned {
+		r.metrics.CountQualityExecutionAbandoned(reason)
+	}
+	counts := &storepb.QualityStatusCounts{Total: int32(planned)}
+	if err := st.FinishQualityRun(writeCtx, batchID, storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_ABANDONED, storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, counts, time.Now().UTC()); err != nil {
+		slog.Error("failed to abandon a quality batch that could not finish cleanly",
+			slog.Int64("batch", batchID),
+			log.WithError(err))
+	}
+}
+
+// executeBatch executes one batch's planned executions sequentially, writes each
+// verdict through FinishQualityExecution, and then applies the problem ledger and
+// the notifications the verdicts imply. Each execution row is its own commit
+// point: a write failure stops the batch and abandons the rows that never got a
+// verdict instead of leaving them RUNNING.
+func (r *Runner) executeBatch(ctx context.Context, batchID int64, instanceResourceID string, tasks []executionTask, admission batchAdmission, release func()) {
+	r.executeBatchWith(ctx, r.stores, batchID, instanceResourceID, tasks, admission, release)
+}
+
+// executeBatchWith is executeBatch with an injectable store so the batch
+// accounting (including the incomplete path) is testable without PostgreSQL.
+func (r *Runner) executeBatchWith(ctx context.Context, st batchExecutionStore, batchID int64, instanceResourceID string, tasks []executionTask, admission batchAdmission, release func()) {
+	batchCtx, cancel := context.WithTimeout(ctx, batchExecutionTimeout)
 	defer cancel()
 	// The release is idempotent, so this net and the caller's defer compose.
 	defer release()
 
-	if err := r.stores.MarkQualityRunRunning(runCtx, runID, time.Now().UTC()); err != nil {
-		// A run that is already terminal (abandoned at startup, or finished by a
-		// duplicate enqueue) is not an error worth retrying; just log it.
-		r.metrics.CountQualityRunAbandoned(metrics.QualityAbandonedMarkRunningFailed)
-		slog.Warn("quality run cannot be started",
-			slog.Int64("run", runID),
-			slog.Int("rules", len(tasks)),
+	if err := st.MarkQualityRunRunning(batchCtx, batchID, time.Now().UTC()); err != nil {
+		// A batch that is already terminal (abandoned at startup, or finished by a
+		// duplicate enqueue) is not an error worth retrying. Close whatever rows it
+		// still owned instead of leaving them PENDING for the next startup sweep.
+		slog.Warn("quality batch cannot be started",
+			slog.Int64("batch", batchID),
+			slog.Int("executions", len(tasks)),
 			log.WithError(err))
+		r.abandonBatch(ctx, st, batchID, len(tasks), metrics.QualityAbandonedMarkRunningFailed)
 		return
 	}
-	r.metrics.IncQualityRunsInProgress()
-	defer r.metrics.DecQualityRunsInProgress()
 
 	executions := make([]*ruleExecution, 0, len(tasks))
-	results := make([]*store.QualityRuleResultMessage, 0, len(tasks))
-	for _, task := range tasks {
-		// The previous status is read before this run's results exist, so the
-		// problem planner sees the transition the new result really is.
-		previous := r.previousQualityStatus(runCtx, task.ruleID)
-		execution := r.executeOneSafe(runCtx, runID, task, admission)
-		execution.previous = previous
-		r.observeRuleExecution(execution)
-		executions = append(executions, execution)
-		results = append(results, execution.result)
-	}
-	// Every target query is done. Persisting results, moving the problem ledger and
-	// delivering notifications are store work, so they must not hold a connection
-	// slot on the instance.
-	release()
+	aborted := false
 
-	if err := r.persistResults(runCtx, results); err != nil {
-		slog.Error("failed to persist quality rule results",
-			slog.Int64("run", runID),
-			slog.Int("results", len(results)),
-			log.WithError(err))
-		// The rules were already rescheduled, so this pass is not retried. Close
-		// the run instead of leaving it RUNNING for the restart sweep: ABANDONED
-		// says the run produced no trustworthy result.
-		r.metrics.CountQualityRunAbandoned(metrics.QualityAbandonedPersistFailed)
-		_ = r.stores.FinishQualityRun(ctx, runID, storepb.QualityRunStatus_QUALITY_RUN_STATUS_ABANDONED, storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, nil, time.Now().UTC())
-		return
+	for _, task := range tasks {
+		planned, err := loadPlannedExecution(batchCtx, st, batchID, task)
+		if err != nil {
+			slog.Warn("failed to read a planned quality execution; skipping it",
+				slog.Int64("batch", batchID),
+				slog.Int64("execution", task.executionID),
+				log.WithError(err))
+			continue
+		}
+		if planned == nil {
+			continue
+		}
+
+		// The previous status is read before this execution's row is written, so
+		// the problem planner sees the transition the new verdict really is.
+		previous := previousQualityStatus(batchCtx, st, planned.RuleID)
+
+		startedAt := time.Now().UTC()
+		if err := st.MarkQualityExecutionRunning(batchCtx, planned.ID, startedAt); err != nil {
+			// An execution another process already closed (a stale sweep, a retried
+			// dispatch) is not worth retrying. It stays unaccounted for, so the
+			// post-loop accounting abandons the batch; the abandoned counter is
+			// incremented there for the rows that really changed, never here.
+			slog.Warn("quality execution cannot be started",
+				slog.Int64("batch", batchID),
+				slog.Int64("execution", planned.ID),
+				log.WithError(err))
+			continue
+		}
+
+		r.metrics.IncQualityExecutionsInProgress()
+		execution := r.executeOneSafe(batchCtx, planned, startedAt, admission)
+		if execution == nil {
+			r.metrics.DecQualityExecutionsInProgress()
+			continue
+		}
+		execution.previous = previous
+
+		writeErr := st.FinishQualityExecution(batchCtx, execution.result)
+		r.metrics.DecQualityExecutionsInProgress()
+		if writeErr != nil {
+			slog.Error("failed to write a quality execution verdict",
+				slog.Int64("batch", batchID),
+				slog.Int64("execution", planned.ID),
+				slog.Int64("rule", planned.RuleID),
+				log.WithError(writeErr))
+			aborted = true
+			r.abandonBatch(batchCtx, st, batchID, len(tasks), metrics.QualityAbandonedPersistFailed)
+			break
+		}
+		r.observeRuleExecution(execution)
+		r.metrics.CountQualityExecutionCompleted(execution.result.Status)
+		executions = append(executions, execution)
 	}
+
+	// Every target query is done. The ledger, notifications and the batch rollup
+	// are store work, so they must not hold a connection slot on the instance; the
+	// release is idempotent and the deferred one is the panic net.
+	release()
 
 	now := time.Now().UTC()
 	workspaceID := ""
 	if r.notifier != nil {
 		workspaceID = r.workspaceID(ctx)
 	}
-	runResourceName := qualityRunResourceName(workspaceID, runResourceID)
-	if runResourceName == "" {
-		// A manual run's resource id could not be resolved (see
-		// manualRunResourceID). The database id still gives the detail and the
-		// dedupe key a unique target, even though it is not a usable resource name.
-		runResourceName = fmt.Sprintf("qualityRuns/%d", runID)
-	}
-	storm := isQualityRunStorm(results)
-	r.settleQualityResults(ctx, runID, runResourceName, workspaceID, executions, storm, now)
+	// A task that never produced a written verdict (a read or mark failure, a
+	// terminal row owned by another writer, or the batch deadline) must not leave
+	// PENDING/RUNNING rows behind: abandon the batch's unfinished executions and
+	// finish the batch ABANDONED instead of reporting a partial rollup.
+	incomplete := !aborted && len(executions) != len(tasks)
+	// Neither an aborted nor an incomplete batch sends a storm summary, so its
+	// written verdicts keep their per-rule notifications instead of being
+	// suppressed by a summary that will not arrive.
+	storm := !aborted && !incomplete && isQualityStorm(executions)
+	// Verdicts that were written are real rows even if a later write failed or the
+	// batch ran out of time, so their problem transitions and notifications are
+	// settled in both cases.
+	r.settleQualityExecutions(ctx, workspaceID, executions, storm, now)
 
-	counts, outcome := countsAndOutcome(results)
-	if err := r.stores.FinishQualityRun(ctx, runID, storepb.QualityRunStatus_QUALITY_RUN_STATUS_COMPLETED, outcome, counts, now); err != nil {
-		slog.Error("failed to finish a quality run",
-			slog.Int64("run", runID),
-			slog.Int("results", len(results)),
+	if aborted || incomplete {
+		if incomplete {
+			r.abandonBatch(ctx, st, batchID, len(tasks), metrics.QualityAbandonedIncomplete)
+		}
+		return
+	}
+
+	statuses := make([]storepb.QualityStatus, 0, len(executions))
+	for _, execution := range executions {
+		statuses = append(statuses, execution.result.Status)
+	}
+	counts, outcome := dataquality.CountResults(statuses)
+	if err := st.FinishQualityRun(ctx, batchID, storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED, outcome, counts, now); err != nil {
+		slog.Error("failed to finish an internal quality batch",
+			slog.Int64("batch", batchID),
+			slog.Int("executions", len(executions)),
 			log.WithError(err))
-	} else {
-		// Only a run that really reached its terminal rollup counts as completed;
-		// a failed write leaves it for the restart sweep and is not one.
-		r.metrics.CountQualityRunCompleted(outcome)
+		return
 	}
 	if storm {
-		// The design sends the storm summary once the run is finished, so the run
-		// it points at is already terminal when the recipient opens it.
-		r.reportQualityStorm(ctx, runResourceName, counts.GetFail(), counts.GetTotal(), now)
+		// The storm summary is sent once the batch is finished, so the executions it
+		// merges are already terminal when the recipient opens one.
+		r.reportQualityStorm(ctx, batchID, instanceResourceID, counts.GetFail(), counts.GetTotal(), now)
 	}
 }
 
+// loadPlannedExecution reads the PENDING execution row a task names. A nil row is
+// a row that is gone (retention), and a row that is no longer PENDING was already
+// closed by another writer; both are skipped. A row from another batch is a
+// dispatch defect and is refused rather than executed under the wrong batch.
+func loadPlannedExecution(ctx context.Context, st batchExecutionStore, batchID int64, task executionTask) (*store.QualityExecutionMessage, error) {
+	if task.executionID <= 0 {
+		return nil, nil
+	}
+	planned, err := st.GetQualityExecution(ctx, task.executionID)
+	if err != nil {
+		return nil, err
+	}
+	if planned == nil {
+		return nil, nil
+	}
+	if planned.RunID != batchID {
+		slog.Warn("refusing a quality execution planned for another batch",
+			slog.Int64("batch", batchID),
+			slog.Int64("execution", planned.ID),
+			slog.Int64("planned_batch", planned.RunID))
+		return nil, nil
+	}
+	if planned.State != storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_PENDING {
+		slog.Warn("skipping a quality execution that is no longer pending",
+			slog.Int64("batch", batchID),
+			slog.Int64("execution", planned.ID),
+			slog.String("state", planned.State.String()))
+		return nil, nil
+	}
+	return planned, nil
+}
+
 // observeRuleExecution records the per-rule funnel exactly once, right where the
-// run collects each result. This loop is the only place that sees every result
-// an execution attempt produces, so buildRuleResult (the pure result mapping) must
-// not record it too.
+// batch collects each written execution. This loop is the only place that sees
+// every verdict an execution attempt produces, so buildExecutionMessage (the pure
+// row mapping) must not record it too.
 func (r *Runner) observeRuleExecution(execution *ruleExecution) {
 	if execution == nil || execution.result == nil {
 		return
@@ -668,8 +913,9 @@ func (r *Runner) observeRuleExecution(execution *ruleExecution) {
 
 // ruleExecutionType derives the rule type a metric should label an execution
 // with. A rule that failed before its snapshot was read (an inflight skip, a
-// retired revision) still names its type on the due scan's head row; a manual run
-// has no head, so the last resort is "unspecified" rather than a wrong label.
+// retired revision) still names its type on the due scan's head row; a manual
+// execution has no head, so the last resort is "unspecified" rather than a wrong
+// label.
 func ruleExecutionType(execution *ruleExecution) storepb.QualityRuleType {
 	if execution == nil {
 		return storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED
@@ -684,56 +930,40 @@ func ruleExecutionType(execution *ruleExecution) storepb.QualityRuleType {
 }
 
 // executeOneSafe isolates one rule's execution: a panic in the rule engine or a
-// driver turns into an ERROR result for that rule instead of killing the run (or
-// the runner, which would lose every remaining rule in the batch).
-func (r *Runner) executeOneSafe(ctx context.Context, runID int64, task ruleTask, admission runAdmission) (execution *ruleExecution) {
+// driver turns into an ERROR verdict for that execution instead of killing the
+// batch (or the runner, which would lose every remaining execution).
+func (r *Runner) executeOneSafe(ctx context.Context, planned *store.QualityExecutionMessage, startedAt time.Time, admission batchAdmission) (execution *ruleExecution) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			slog.Error("quality rule execution panicked",
-				slog.Int64("run", runID),
-				slog.Int64("rule", task.ruleID),
+				slog.Int64("batch", planned.RunID),
+				slog.Int64("execution", planned.ID),
+				slog.Int64("rule", planned.RuleID),
 				slog.Any("panic", recovered),
 				log.Stack("panic-stack"))
 			execution = &ruleExecution{
-				result: failureRuleResult(runID, task.ruleID, nil, time.Now().UTC(), storepb.QualityStatus_QUALITY_STATUS_ERROR,
+				result: failureExecutionMessage(planned, startedAt, storepb.QualityStatus_QUALITY_STATUS_ERROR,
 					dataquality.ErrCodeExecution, fmt.Sprintf("quality rule execution panicked: %v", recovered)),
-				head: task.head,
 			}
 		}
 	}()
-	return r.executeOne(ctx, runID, task, admission)
+	return r.executeOne(ctx, planned, startedAt, admission)
 }
 
-// persistResults writes one run's results. Results are insert-only, so no
-// conflict handling is needed; an empty batch never touches the database.
-func (r *Runner) persistResults(ctx context.Context, results []*store.QualityRuleResultMessage) error {
-	if len(results) == 0 {
-		return nil
-	}
-	return r.stores.BatchCreateQualityRuleResults(ctx, results)
-}
-
-// executeOne resolves, validates and executes one rule, returning the result row
-// it produced. It never returns nil: every failure path is an ERROR or SKIPPED
-// result, because a run has to account for every rule it picked up.
-func (r *Runner) executeOne(ctx context.Context, runID int64, task ruleTask, admission runAdmission) *ruleExecution {
-	startedAt := time.Now().UTC()
-	if !r.acquireInflight(task.ruleID) {
+// executeOne resolves, validates and executes one rule, returning the completed
+// execution row it produces. It never returns nil: every failure path is an ERROR
+// or SKIPPED verdict, because a batch has to account for every execution it
+// planned.
+func (r *Runner) executeOne(ctx context.Context, planned *store.QualityExecutionMessage, startedAt time.Time, admission batchAdmission) *ruleExecution {
+	if !r.acquireInflight(planned.RuleID) {
 		return &ruleExecution{
-			result: failureRuleResult(runID, task.ruleID, nil, startedAt, storepb.QualityStatus_QUALITY_STATUS_SKIPPED,
-				"", "another run is already executing this rule"),
-			head: task.head,
+			result: failureExecutionMessage(planned, startedAt, storepb.QualityStatus_QUALITY_STATUS_SKIPPED,
+				"", "another batch is already executing this rule"),
 		}
 	}
-	defer r.releaseInflight(task.ruleID)
+	defer r.releaseInflight(planned.RuleID)
 
-	// Advance the schedule before executing, as the design requires: the tick
-	// that picks a rule up must not pick it up again, and a crash mid-run leaves
-	// the rule scheduled for its next interval instead of immediately due. A
-	// manual run has no head row and does not move the schedule.
-	r.advanceScheduledRule(ctx, task.head)
-
-	snapshot, head, err := r.loadRuleSnapshot(ctx, task)
+	snapshot, head, err := r.loadRuleSnapshot(ctx, planned.RuleID)
 	if err != nil {
 		status := storepb.QualityStatus_QUALITY_STATUS_ERROR
 		code := dataquality.ErrCodeExecution
@@ -742,16 +972,16 @@ func (r *Runner) executeOne(ctx context.Context, runID int64, task ruleTask, adm
 			code = ""
 		}
 		return &ruleExecution{
-			result: failureRuleResult(runID, task.ruleID, nil, startedAt, status, code, err.Error()),
+			result: failureExecutionMessage(planned, startedAt, status, code, err.Error()),
 			head:   head,
 		}
 	}
 
-	// fail records one rule this execution could not judge. The snapshot is
-	// carried so a result row still names the definition and target it was about.
+	// fail records one execution the rule could not judge. The snapshot is
+	// carried so the row still names the definition and target it was about.
 	fail := func(status storepb.QualityStatus, code, message string) *ruleExecution {
 		return &ruleExecution{
-			result:   failureRuleResult(runID, task.ruleID, snapshot, startedAt, status, code, message),
+			result:   failureExecutionMessage(planned, startedAt, status, code, message),
 			head:     head,
 			snapshot: snapshot,
 		}
@@ -781,11 +1011,11 @@ func (r *Runner) executeOne(ctx context.Context, runID int64, task ruleTask, adm
 	// because the target has no read-only account. The executor receives a nil
 	// queryer for it.
 	//
-	// The run's lease covers the instance it was admitted for, so one query rule at
-	// a time opens and closes a driver under it. A rule whose target changed to a
-	// different instance after admission cannot use that lease; ruleConnectionLease
-	// then leases the resolved instance for this rule alone, so no driver is ever
-	// opened outside a leased budget.
+	// The batch's lease covers the instance it was admitted for, so one query rule
+	// at a time opens and closes a driver under it. A rule whose target changed to
+	// a different instance after admission cannot use that lease;
+	// ruleConnectionLease then leases the resolved instance for this rule alone, so
+	// no driver is ever opened outside a leased budget.
 	var queryer db.ReadOnlyQueryer
 	if requiresReadOnlySource(snapshot.Type) {
 		release, ok := r.ruleConnectionLease(resolution.Instance, admission)
@@ -831,8 +1061,7 @@ func (r *Runner) executeOne(ctx context.Context, runID int64, task ruleTask, adm
 	}
 	state := dataquality.Evaluate(*snapshot, observation, time.Now().UTC())
 	return &ruleExecution{
-		result: buildRuleResult(runID, &ruleExecutionOutcome{
-			ruleID:      task.ruleID,
+		result: buildExecutionMessage(planned, &ruleExecutionOutcome{
 			snapshot:    snapshot,
 			startedAt:   startedAt,
 			finishedAt:  time.Now().UTC(),
@@ -847,70 +1076,40 @@ func (r *Runner) executeOne(ctx context.Context, runID int64, task ruleTask, adm
 
 // advanceScheduledRule moves one scheduled rule's next_run_at forward. The due
 // scan already returned the rule, so this is a scheduling bookkeeping step: a
-// failure is logged, not fatal, because executing and recording the rule is
-// still more useful than dropping the pass.
+// failure is logged, not fatal, because executing and recording the rule is still
+// more useful than dropping the pass.
 func (r *Runner) advanceScheduledRule(ctx context.Context, head *store.QualityRuleMessage) {
 	if head == nil {
 		return
 	}
 	if err := r.stores.AdvanceQualityRuleNextRun(ctx, head.ID, nextRunAt(time.Now().UTC(), head.ScheduleInterval)); err != nil {
-		slog.Warn("failed to advance a quality rule's next run",
+		slog.Warn("failed to advance a quality rule's next schedule",
 			slog.Int64("rule", head.ID),
 			log.WithError(err))
 	}
 }
 
-// loadRuleSnapshot loads the immutable definition a result is judged with. A
-// rule edited between the due scan and this read is executed with its newest
-// revision, never with the stale head the scan held.
-func (r *Runner) loadRuleSnapshot(ctx context.Context, task ruleTask) (*dataquality.RuleSnapshot, *store.QualityRuleMessage, error) {
-	head := task.head
+// loadRuleSnapshot loads the immutable definition an execution is judged with. A
+// rule edited after its execution row was planned is executed with its newest
+// revision, and FinishQualityExecution records the revision the verdict really
+// judged; the planned row is never rewritten by an edit.
+func (r *Runner) loadRuleSnapshot(ctx context.Context, ruleID int64) (*dataquality.RuleSnapshot, *store.QualityRuleMessage, error) {
 	limit := 1
-	revisions, err := r.stores.ListQualityRuleRevisions(ctx, task.ruleID, &limit, nil)
+	revisions, err := r.stores.ListQualityRuleRevisions(ctx, ruleID, &limit, nil)
 	if err != nil {
-		return nil, head, err
+		return nil, nil, err
 	}
 	if len(revisions) == 0 {
-		return nil, head, common.Errorf(common.NotFound, "quality rule %d has no revision", task.ruleID)
-	}
-
-	if head != nil {
-		if head.Deleted || head.State == storepb.QualityRuleState_QUALITY_RULE_STATE_ARCHIVED {
-			return nil, head, errRuleRetired
-		}
-		if revisions[0].Revision != head.Revision {
-			// The head and its revision row are written in one transaction, so
-			// reading the head again gives the revision to execute.
-			refreshed, err := r.stores.GetQualityRule(ctx, &store.FindQualityRuleMessage{ResourceID: &head.ResourceID})
-			if err != nil {
-				return nil, head, err
-			}
-			if refreshed == nil || refreshed.Deleted || refreshed.State == storepb.QualityRuleState_QUALITY_RULE_STATE_ARCHIVED {
-				return nil, head, errRuleRetired
-			}
-			head = refreshed
-			if refreshed.Revision != revisions[0].Revision {
-				revisions, err = r.stores.ListQualityRuleRevisions(ctx, task.ruleID, &limit, nil)
-				if err != nil {
-					return nil, head, err
-				}
-				if len(revisions) == 0 {
-					return nil, head, common.Errorf(common.NotFound, "quality rule %d has no revision", task.ruleID)
-				}
-			}
-		}
+		return nil, nil, common.Errorf(common.NotFound, "quality rule %d has no revision", ruleID)
 	}
 
 	revision := revisions[0]
-	if head == nil {
-		// A manual run's queue entry carries only the rule id, and the store has no
-		// lookup by internal id. The revision's target identifies the rule closely
-		// enough to read its head, which the problem ledger and the notifications
-		// need for the owner, severity, mute and resource name.
-		head = r.resolveRuleHead(ctx, revision.RuleID, revision.TargetGUID)
-		if head != nil && (head.Deleted || head.State == storepb.QualityRuleState_QUALITY_RULE_STATE_ARCHIVED) {
-			return nil, head, errRuleRetired
-		}
+	// The mutable head carries the owner, severity, mute and resource name the
+	// problem ledger and the notifications need. It is read by internal id with no
+	// lifecycle filter, so an archived or deleted rule still resolves and retires.
+	head := r.resolveRuleHead(ctx, ruleID)
+	if head != nil && (head.Deleted || head.State == storepb.QualityRuleState_QUALITY_RULE_STATE_ARCHIVED) {
+		return nil, head, errRuleRetired
 	}
 	return &dataquality.RuleSnapshot{
 		ID:        revision.RuleID,
@@ -932,19 +1131,19 @@ func (r *Runner) loadRuleSnapshot(ctx context.Context, task ruleTask) (*dataqual
 // not fatal: the rule then reports NOT_EVALUATED, which is the correct "no
 // baseline" verdict rather than a made-up comparison.
 func (r *Runner) ruleBaseline(ctx context.Context, ruleID int64, interval time.Duration) *float64 {
-	results, err := r.stores.ListRecentQualityRuleResults(ctx, ruleID, 1)
+	executions, err := r.stores.ListRecentQualityExecutions(ctx, ruleID, 1)
 	if err != nil {
 		slog.Warn("failed to read a quality rule baseline",
 			slog.Int64("rule", ruleID),
 			log.WithError(err))
 		return nil
 	}
-	return baselineFromResults(results, time.Now().UTC(), interval)
+	return baselineFromExecutions(executions, time.Now().UTC(), interval)
 }
 
 // ruleIntervalForBaseline returns the interval a row_count_change baseline must
 // still fit inside. A rule whose interval is missing falls back to the runner's
-// minimum, so a malformed row cannot make every historical result acceptable.
+// minimum, so a malformed row cannot make every historical execution acceptable.
 func ruleIntervalForBaseline(head *store.QualityRuleMessage) time.Duration {
 	if head != nil && head.ScheduleInterval > 0 {
 		return head.ScheduleInterval
@@ -954,7 +1153,8 @@ func ruleIntervalForBaseline(head *store.QualityRuleMessage) time.Duration {
 
 // acquireInflight marks one rule as being executed and reports whether this
 // caller owns it. The guard is process-local, like the design's in-flight map: a
-// second run of the same rule records SKIPPED instead of executing it twice.
+// second execution of the same rule records SKIPPED instead of executing it
+// twice.
 func (r *Runner) acquireInflight(ruleID int64) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -972,16 +1172,15 @@ func (r *Runner) releaseInflight(ruleID int64) {
 	delete(r.inflight, ruleID)
 }
 
-// errRuleRetired reports that a rule was archived or deleted after it was
-// picked up; the run records SKIPPED rather than executing a retired definition.
+// errRuleRetired reports that a rule was archived or deleted after it was picked
+// up; the execution records SKIPPED rather than executing a retired definition.
 var errRuleRetired = errors.New("quality rule is retired")
 
 // ruleExecutionOutcome is everything one execution produced, in the shape the
-// result row needs. Keeping the failure paths and the evaluated path in one
-// struct makes buildRuleResult the single mapping from a verdict to a stored
-// result.
+// execution row needs. Keeping the failure paths and the evaluated path in one
+// struct makes buildExecutionMessage the single mapping from a verdict to a
+// stored execution.
 type ruleExecutionOutcome struct {
-	ruleID       int64
 	snapshot     *dataquality.RuleSnapshot
 	startedAt    time.Time
 	finishedAt   time.Time
@@ -992,48 +1191,61 @@ type ruleExecutionOutcome struct {
 	errorMessage string
 }
 
-// buildRuleResult maps one execution outcome to the insert-only result row.
-func buildRuleResult(runID int64, outcome *ruleExecutionOutcome) *store.QualityRuleResultMessage {
-	result := &store.QualityRuleResultMessage{
-		RunID:             runID,
-		RuleID:            outcome.ruleID,
-		RuleEngineVersion: dataquality.EngineVersion,
-		Status:            outcome.state.Status,
-		ObservedKind:      outcome.observation.ObservedKind,
-		Thresholds:        outcome.state.Thresholds,
-		FailedRows:        outcome.observation.FailedRows,
-		TotalRows:         outcome.observation.TotalRows,
-		Sampled:           outcome.observation.Sampled,
-		SampleRows:        outcome.observation.SampleRows,
-		Truncated:         outcome.observation.Truncated,
-		ErrorCode:         outcome.errorCode,
-		ErrorMessage:      truncateErrorMessage(outcome.errorMessage),
-		DurationMS:        durationMS(outcome.startedAt, outcome.finishedAt),
-		StartedAt:         outcome.startedAt,
-		FinishedAt:        outcome.finishedAt,
+// buildExecutionMessage maps one execution outcome onto the row
+// FinishQualityExecution writes. The planned PENDING row supplies the identity
+// (id, batch, rule, trigger, initiator) and its revision/target snapshot; a
+// verdict that read a snapshot overwrites them with what was really judged, and a
+// verdict that failed before it could read one keeps the planned values.
+func buildExecutionMessage(planned *store.QualityExecutionMessage, outcome *ruleExecutionOutcome) *store.QualityExecutionMessage {
+	execution := &store.QualityExecutionMessage{}
+	if planned != nil {
+		execution.ID = planned.ID
+		execution.RunID = planned.RunID
+		execution.RuleID = planned.RuleID
+		execution.RuleRevision = planned.RuleRevision
+		execution.TargetGUID = planned.TargetGUID
+		execution.TargetType = planned.TargetType
+		execution.TargetPath = planned.TargetPath
+		execution.InstanceResourceID = planned.InstanceResourceID
+		execution.Trigger = planned.Trigger
+		execution.InitiatorID = planned.InitiatorID
 	}
+	execution.RuleEngineVersion = dataquality.EngineVersion
+	execution.State = storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED
+	execution.Status = outcome.state.Status
+	execution.ObservedKind = outcome.observation.ObservedKind
+	execution.Thresholds = outcome.state.Thresholds
+	execution.FailedRows = outcome.observation.FailedRows
+	execution.TotalRows = outcome.observation.TotalRows
+	execution.Sampled = outcome.observation.Sampled
+	execution.SampleRows = outcome.observation.SampleRows
+	execution.Truncated = outcome.observation.Truncated
+	execution.ErrorCode = outcome.errorCode
+	execution.ErrorMessage = truncateErrorMessage(outcome.errorMessage)
+	execution.DurationMS = durationMS(outcome.startedAt, outcome.finishedAt)
+	execution.StartedAt = outcome.startedAt
+	execution.FinishedAt = outcome.finishedAt
 	if outcome.snapshot != nil {
-		result.RuleRevision = outcome.snapshot.Revision
-		result.TargetGUID = outcome.snapshot.Target.GUID
-		result.TargetType = outcome.snapshot.Target.MetaType
+		execution.RuleRevision = outcome.snapshot.Revision
+		execution.TargetGUID = outcome.snapshot.Target.GUID
+		execution.TargetType = outcome.snapshot.Target.MetaType
+		execution.TargetPath = outcome.snapshot.Target.Path
 	}
 	if outcome.execution != nil {
-		result.Sample = outcome.execution.Samples
-		result.ExecutedSQL = outcome.execution.ExecutedSQL
-		result.Sampled = outcome.execution.Sampled
-		result.Truncated = outcome.execution.Truncated
+		execution.Sample = outcome.execution.Samples
+		execution.ExecutedSQL = outcome.execution.ExecutedSQL
+		execution.Sampled = outcome.execution.Sampled
+		execution.Truncated = outcome.execution.Truncated
 	}
-	result.ObservedValue = observedValue(outcome.state.Status, outcome.observation.Observed)
-	return result
+	execution.ObservedValue = observedValue(outcome.state.Status, outcome.observation.Observed)
+	return execution
 }
 
-// failureRuleResult records a rule that could not be judged. ERROR and SKIPPED
-// results carry no observation, and the thresholds snapshot is nil because no
-// verdict was reached.
-func failureRuleResult(runID int64, ruleID int64, snapshot *dataquality.RuleSnapshot, startedAt time.Time, status storepb.QualityStatus, code, message string) *store.QualityRuleResultMessage {
-	return buildRuleResult(runID, &ruleExecutionOutcome{
-		ruleID:       ruleID,
-		snapshot:     snapshot,
+// failureExecutionMessage records an execution that could not be judged. ERROR and
+// SKIPPED verdicts carry no observation, and the thresholds snapshot is nil
+// because no verdict was reached.
+func failureExecutionMessage(planned *store.QualityExecutionMessage, startedAt time.Time, status storepb.QualityStatus, code, message string) *store.QualityExecutionMessage {
+	return buildExecutionMessage(planned, &ruleExecutionOutcome{
 		startedAt:    startedAt,
 		finishedAt:   time.Now().UTC(),
 		state:        dataquality.ResultState{Status: status},
@@ -1042,10 +1254,10 @@ func failureRuleResult(runID int64, ruleID int64, snapshot *dataquality.RuleSnap
 	})
 }
 
-// observedValue decides whether a result stores a measured value. ERROR,
-// SKIPPED and NOT_EVALUATED results have no measurement; storing zero for them
-// would be indistinguishable from a real zero and would make a trend chart
-// invent a value.
+// observedValue decides whether an execution stores a measured value. ERROR,
+// SKIPPED and NOT_EVALUATED verdicts have no measurement; storing zero for them
+// would be indistinguishable from a real zero and would make a trend chart invent
+// a value.
 func observedValue(status storepb.QualityStatus, observed float64) *float64 {
 	switch status {
 	case storepb.QualityStatus_QUALITY_STATUS_PASS,
@@ -1076,8 +1288,8 @@ func durationMS(startedAt, finishedAt time.Time) int32 {
 	return int32(elapsed)
 }
 
-// truncateErrorMessage bounds the stored error text so one broken query cannot
-// put an unbounded blob in a result row. It cuts on a rune boundary because the
+// truncateErrorMessage bounds the stored error text so one broken query cannot put
+// an unbounded blob in an execution row. It cuts on a rune boundary because the
 // column is UTF-8 text.
 func truncateErrorMessage(message string) string {
 	return common.TruncateUTF8Bytes(message, maxErrorMessageLength)
@@ -1095,12 +1307,12 @@ func nextRunAt(now time.Time, interval time.Duration) time.Time {
 	return now.Add(interval)
 }
 
-// planDueRuns groups the due rules by instance and chunks each instance's rules
-// into runs of at most maxRulesPerRun. Instance order is the order the rules
-// became due in, so the oldest due rule is handled first and the resulting plans
-// keep each instance's chunks adjacent for serial execution.
-func planDueRuns(rules []*store.QualityRuleMessage, maxRulesPerRun int) []dueRunPlan {
-	if maxRulesPerRun <= 0 {
+// planDueBatches groups the due rules by instance and chunks each instance's
+// rules into batches of at most maxExecutionsPerBatch. Instance order is the order
+// the rules became due in, so the oldest due rule is handled first and the
+// resulting plans keep each instance's chunks adjacent for serial execution.
+func planDueBatches(rules []*store.QualityRuleMessage, maxExecutionsPerBatch int) []dueBatchPlan {
+	if maxExecutionsPerBatch <= 0 {
 		return nil
 	}
 	instanceOrder := make([]string, 0, len(rules))
@@ -1121,12 +1333,12 @@ func planDueRuns(rules []*store.QualityRuleMessage, maxRulesPerRun int) []dueRun
 		byInstance[instance] = append(byInstance[instance], rule)
 	}
 
-	plans := make([]dueRunPlan, 0, len(rules)/maxRulesPerRun+1)
+	plans := make([]dueBatchPlan, 0, len(rules)/maxExecutionsPerBatch+1)
 	for _, instance := range instanceOrder {
 		instanceRules := byInstance[instance]
-		for start := 0; start < len(instanceRules); start += maxRulesPerRun {
-			end := min(start+maxRulesPerRun, len(instanceRules))
-			plans = append(plans, dueRunPlan{
+		for start := 0; start < len(instanceRules); start += maxExecutionsPerBatch {
+			end := min(start+maxExecutionsPerBatch, len(instanceRules))
+			plans = append(plans, dueBatchPlan{
 				instanceResourceID: instance,
 				rules:              instanceRules[start:end],
 			})
@@ -1135,55 +1347,41 @@ func planDueRuns(rules []*store.QualityRuleMessage, maxRulesPerRun int) []dueRun
 	return plans
 }
 
-// manualRuleTasks turns an API selection into the runner's per-rule task list,
-// dropping invalid and duplicate ids so one run never executes the same rule
-// twice.
-func manualRuleTasks(ruleIDs []int64) []ruleTask {
-	tasks := make([]ruleTask, 0, len(ruleIDs))
-	seen := make(map[int64]struct{}, len(ruleIDs))
-	for _, ruleID := range ruleIDs {
-		if ruleID <= 0 {
+// manualExecutionTasks turns an API selection into the runner's per-execution
+// task list, dropping invalid and duplicate ids so one batch never executes the
+// same planned row twice.
+func manualExecutionTasks(executionIDs []int64) []executionTask {
+	tasks := make([]executionTask, 0, len(executionIDs))
+	seen := make(map[int64]struct{}, len(executionIDs))
+	for _, executionID := range executionIDs {
+		if executionID <= 0 {
 			continue
 		}
-		if _, ok := seen[ruleID]; ok {
+		if _, ok := seen[executionID]; ok {
 			continue
 		}
-		seen[ruleID] = struct{}{}
-		tasks = append(tasks, ruleTask{ruleID: ruleID})
+		seen[executionID] = struct{}{}
+		tasks = append(tasks, executionTask{executionID: executionID})
 	}
 	return tasks
 }
 
-// countsAndOutcome tallies one run's results into the counts JSONB column and
-// the run's rollup outcome. ERROR outranks FAIL: a run that could not execute a
-// rule is not the same thing as a run whose rule found bad data.
-func countsAndOutcome(results []*store.QualityRuleResultMessage) (*storepb.QualityRunCounts, storepb.QualityStatus) {
-	statuses := make([]storepb.QualityStatus, 0, len(results))
-	for _, result := range results {
-		if result == nil {
+// baselineFromExecutions picks the most recent evaluated observation to use as
+// the row_count_change baseline. ERROR, SKIPPED and NOT_EVALUATED verdicts carry
+// no usable measurement even if one slipped into the observed value.
+func baselineFromExecutions(executions []*store.QualityExecutionMessage, now time.Time, interval time.Duration) *float64 {
+	for _, execution := range executions {
+		if execution == nil || execution.ObservedValue == nil {
 			continue
 		}
-		statuses = append(statuses, result.Status)
-	}
-	return dataquality.CountResults(statuses)
-}
-
-// baselineFromResults picks the most recent evaluated observation to use as the
-// row_count_change baseline. ERROR, SKIPPED and NOT_EVALUATED results carry no
-// usable measurement even if one slipped into the observed value.
-func baselineFromResults(results []*store.QualityRuleResultMessage, now time.Time, interval time.Duration) *float64 {
-	for _, result := range results {
-		if result == nil || result.ObservedValue == nil {
-			continue
-		}
-		switch result.Status {
+		switch execution.Status {
 		case storepb.QualityStatus_QUALITY_STATUS_PASS,
 			storepb.QualityStatus_QUALITY_STATUS_WARN,
 			storepb.QualityStatus_QUALITY_STATUS_FAIL:
-			if !baselineIsRecent(result.StartedAt, now, interval) {
+			if !baselineIsRecent(execution.StartedAt, now, interval) {
 				return nil
 			}
-			return result.ObservedValue
+			return execution.ObservedValue
 		case storepb.QualityStatus_QUALITY_STATUS_ERROR,
 			storepb.QualityStatus_QUALITY_STATUS_SKIPPED,
 			storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED,
@@ -1198,8 +1396,8 @@ func baselineFromResults(results []*store.QualityRuleResultMessage, now time.Tim
 
 // baselineIsRecent reports whether an observation is still a fair denominator for
 // a row-count comparison: no older than a week, and no more than two intervals
-// behind. An older one describes a different data shape and would make the
-// change percentage meaningless.
+// behind. An older one describes a different data shape and would make the change
+// percentage meaningless.
 func baselineIsRecent(startedAt, now time.Time, interval time.Duration) bool {
 	if startedAt.IsZero() {
 		return false
@@ -1219,7 +1417,7 @@ func baselineIsRecent(startedAt, now time.Time, interval time.Duration) bool {
 
 // errorCodeAndMessage classifies an error that happened before or during the
 // read-only query. Every error goes through the engine's classifier: capacity
-// contention is never one of them, because a run is admitted against the
+// contention is never one of them, because a batch is admitted against the
 // instance's connection budget before it starts and holds the lease throughout.
 func errorCodeAndMessage(err error) (code string, message string) {
 	if errors.Is(err, dbfactory.ErrNoReadOnlyDataSource) {
@@ -1232,23 +1430,23 @@ func errorCodeAndMessage(err error) (code string, message string) {
 	return code, message
 }
 
-// settleQualityResults applies one run's committed results to the problem ledger
-// and emits the notifications their transitions imply. Both are best effort: the
-// results are already stored, so a lost issue write or a lost notification is
-// logged and never turns a completed run into a failure.
-func (r *Runner) settleQualityResults(ctx context.Context, runID int64, runResourceName, workspaceID string, executions []*ruleExecution, storm bool, now time.Time) {
+// settleQualityExecutions applies a batch's committed verdicts to the problem
+// ledger and emits the notifications their transitions imply. Both are best
+// effort: the execution rows are already stored, so a lost issue write or a lost
+// notification is logged and never turns a completed batch into a failure.
+func (r *Runner) settleQualityExecutions(ctx context.Context, workspaceID string, executions []*ruleExecution, storm bool, now time.Time) {
 	for _, execution := range executions {
 		if execution == nil || execution.result == nil {
 			continue
 		}
-		r.settleRuleExecution(ctx, runID, runResourceName, workspaceID, execution, storm, now)
+		r.settleRuleExecution(ctx, workspaceID, execution, storm, now)
 	}
 }
 
-// settleRuleExecution decides what one result means for the rule's open issue and
-// its owner's inbox. The issue read is the only state the planner needs: the
-// open issue row and the rule's previous status decide the transition together.
-func (r *Runner) settleRuleExecution(ctx context.Context, runID int64, runResourceName, workspaceID string, execution *ruleExecution, storm bool, now time.Time) {
+// settleRuleExecution decides what one verdict means for the rule's open issue and
+// its owner's inbox. The issue read is the only state the planner needs: the open
+// issue row and the rule's previous status decide the transition together.
+func (r *Runner) settleRuleExecution(ctx context.Context, workspaceID string, execution *ruleExecution, storm bool, now time.Time) {
 	result := execution.result
 	issue, err := r.stores.GetOpenQualityIssueForRule(ctx, result.RuleID)
 	if err != nil {
@@ -1259,10 +1457,10 @@ func (r *Runner) settleRuleExecution(ctx context.Context, runID int64, runResour
 		action := dataquality.PlanIssueTransition(execution.previous, result.Status, issue != nil)
 		switch action {
 		case dataquality.IssueActionOpen:
-			r.openQualityIssue(ctx, runID, runResourceName, workspaceID, execution, storm, now)
+			r.openQualityIssue(ctx, workspaceID, execution, storm, now)
 		case dataquality.IssueActionTouch:
 			if issue != nil {
-				if err := r.stores.TouchQualityIssue(ctx, issue.ID, runID, execution.severity(), now); err != nil {
+				if err := r.stores.TouchQualityIssue(ctx, issue.ID, execution.executionID(), execution.severity(), now); err != nil {
 					slog.Warn("failed to touch a quality issue",
 						slog.Int64("issue", issue.ID),
 						log.WithError(err))
@@ -1270,14 +1468,15 @@ func (r *Runner) settleRuleExecution(ctx context.Context, runID int64, runResour
 			}
 		case dataquality.IssueActionResolve:
 			if issue != nil {
-				r.resolveQualityIssue(ctx, runResourceName, workspaceID, execution, issue, now)
+				r.resolveQualityIssue(ctx, workspaceID, execution, issue, now)
 			}
 		case dataquality.IssueActionNone:
-			// A passing run without an issue, or a status that says nothing about
-			// the problem: the ledger is already correct.
+			// A passing execution without an issue, or a status that says nothing
+			// about the problem: the ledger is already correct.
 		default:
 			// An action this build does not know is a defect, not a reason to stop
-			// the run; the result is stored and the next run will retry the ledger.
+			// the batch; the verdict is stored and the next execution will retry the
+			// ledger.
 			slog.Warn("unknown quality issue action",
 				slog.Int64("rule", result.RuleID),
 				slog.Int("action", int(action)))
@@ -1288,30 +1487,31 @@ func (r *Runner) settleRuleExecution(ctx context.Context, runID int64, runResour
 	// rule is muted, because the mute is about the problem the rule watches, not
 	// about the rule being broken. A storm merges these into one summary.
 	if result.Status == storepb.QualityStatus_QUALITY_STATUS_ERROR && !storm {
-		r.notifyExecutionFailed(ctx, workspaceID, runResourceName, execution, now)
+		r.notifyExecutionFailed(ctx, workspaceID, execution, now)
 	}
 }
 
-// openQualityIssue records a new open problem and, unless the run is a storm or
+// openQualityIssue records a new open problem and, unless the batch is a storm or
 // the rule is muted, announces it.
-func (r *Runner) openQualityIssue(ctx context.Context, runID int64, runResourceName, workspaceID string, execution *ruleExecution, storm bool, now time.Time) {
+func (r *Runner) openQualityIssue(ctx context.Context, workspaceID string, execution *ruleExecution, storm bool, now time.Time) {
 	resourceID, err := common.RandomString(qualityIssueResourceIDLength)
 	if err != nil {
 		slog.Warn("failed to generate a quality issue resource id", log.WithError(err))
 		return
 	}
+	executionID := execution.executionID()
 	created, err := r.stores.OpenQualityIssue(ctx, &store.QualityIssueMessage{
-		ResourceID:      resourceID,
-		RuleID:          execution.result.RuleID,
-		TargetGUID:      execution.targetGUID(),
-		TargetType:      execution.targetType(),
-		Status:          storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_OPEN,
-		Severity:        execution.severity(),
-		FirstSeenRunID:  &runID,
-		LastSeenRunID:   &runID,
-		FirstSeenAt:     now,
-		LastSeenAt:      now,
-		OccurrenceCount: 1,
+		ResourceID:           resourceID,
+		RuleID:               execution.result.RuleID,
+		TargetGUID:           execution.targetGUID(),
+		TargetType:           execution.targetType(),
+		Status:               storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_OPEN,
+		Severity:             execution.severity(),
+		FirstSeenExecutionID: &executionID,
+		LastSeenExecutionID:  &executionID,
+		FirstSeenAt:          now,
+		LastSeenAt:           now,
+		OccurrenceCount:      1,
 	})
 	if err != nil {
 		slog.Warn("failed to open a quality issue",
@@ -1328,14 +1528,14 @@ func (r *Runner) openQualityIssue(ctx context.Context, runID int64, runResourceN
 	if storm || qualityRuleMuted(execution.head, now) {
 		return
 	}
-	r.notifyIssueOpened(ctx, workspaceID, runResourceName, execution, created, now)
+	r.notifyIssueOpened(ctx, workspaceID, execution, created, now)
 }
 
 // resolveQualityIssue closes a recovered problem and tells its recipient, unless
 // the rule or the issue is muted. A recovery is never suppressed by a storm: a
 // storm is a burst of failures, and hiding the recoveries would leave the inbox
 // with only the alarming half of the story.
-func (r *Runner) resolveQualityIssue(ctx context.Context, runResourceName, workspaceID string, execution *ruleExecution, issue *store.QualityIssueMessage, now time.Time) {
+func (r *Runner) resolveQualityIssue(ctx context.Context, workspaceID string, execution *ruleExecution, issue *store.QualityIssueMessage, now time.Time) {
 	if err := r.stores.ResolveQualityIssue(ctx, issue.ID, storepb.QualityResolutionReason_QUALITY_RESOLUTION_REASON_AUTO_RECOVERED, "", now); err != nil {
 		slog.Warn("failed to resolve a quality issue",
 			slog.Int64("issue", issue.ID),
@@ -1350,20 +1550,18 @@ func (r *Runner) resolveQualityIssue(ctx context.Context, runResourceName, works
 		kind:            storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED,
 		execution:       execution,
 		issueResourceID: issue.ResourceID,
-		runResourceName: runResourceName,
 	})
 	r.sendDataQualityNotification(ctx, execution.ownerID(), detail, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_INFO, now)
 }
 
 // notifyIssueOpened announces a new open problem to its rule's owner, or to the
 // workspace administrators when the rule has no owner.
-func (r *Runner) notifyIssueOpened(ctx context.Context, workspaceID, runResourceName string, execution *ruleExecution, issue *store.QualityIssueMessage, now time.Time) {
+func (r *Runner) notifyIssueOpened(ctx context.Context, workspaceID string, execution *ruleExecution, issue *store.QualityIssueMessage, now time.Time) {
 	detail := buildDataQualityDetail(dataQualityDetailInput{
 		workspaceID:     workspaceID,
 		kind:            storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED,
 		execution:       execution,
 		issueResourceID: issue.ResourceID,
-		runResourceName: runResourceName,
 	})
 	r.sendDataQualityNotification(ctx, execution.ownerID(), detail, qualityNotificationSeverity(execution.severity()), now)
 }
@@ -1372,12 +1570,11 @@ func (r *Runner) notifyIssueOpened(ctx context.Context, workspaceID, runResource
 // design makes this alert unmutable and addresses it to the workspace
 // administrators only: a broken rule is an operational failure, not a problem the
 // rule's owner or mute is meant to absorb.
-func (r *Runner) notifyExecutionFailed(ctx context.Context, workspaceID, runResourceName string, execution *ruleExecution, now time.Time) {
+func (r *Runner) notifyExecutionFailed(ctx context.Context, workspaceID string, execution *ruleExecution, now time.Time) {
 	detail := buildDataQualityDetail(dataQualityDetailInput{
-		workspaceID:     workspaceID,
-		kind:            storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED,
-		execution:       execution,
-		runResourceName: runResourceName,
+		workspaceID: workspaceID,
+		kind:        storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED,
+		execution:   execution,
 	})
 	r.sendDataQualityNotification(ctx, execution.ownerID(), detail, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR, now)
 }
@@ -1386,11 +1583,18 @@ func (r *Runner) notifyExecutionFailed(ctx context.Context, workspaceID, runReso
 // Delivery is best effort: the notification service logs its own failures, so a
 // failed write only adds a log line here.
 func (r *Runner) sendDataQualityNotification(ctx context.Context, ownerID *int32, detail *storepb.DataQualityDetail, severity storepb.NotificationSeverity, now time.Time) {
+	r.sendDataQualityNotificationFor(ctx, ownerID, detail, severity, qualityNotificationTarget(detail), now)
+}
+
+// sendDataQualityNotificationFor delivers one message with an explicit dedupe
+// target. It exists for the storm summary, whose event is one internal batch
+// rather than one resource name.
+func (r *Runner) sendDataQualityNotificationFor(ctx context.Context, ownerID *int32, detail *storepb.DataQualityDetail, severity storepb.NotificationSeverity, dedupeTarget string, now time.Time) {
 	if r.notifier == nil || detail == nil {
 		return
 	}
 	message := notification.DataQualityMessage(severity, detail)
-	message.DedupeKey = notification.DataQualityDedupeKey(detail.GetKind(), qualityNotificationTarget(detail), now)
+	message.DedupeKey = notification.DataQualityDedupeKey(detail.GetKind(), dedupeTarget, now)
 	recipientID, toAdmins := qualityNotificationRecipient(detail.GetKind(), ownerID)
 	if toAdmins {
 		if err := r.notifier.SendToWorkspaceAdmins(ctx, message); err != nil {
@@ -1405,14 +1609,20 @@ func (r *Runner) sendDataQualityNotification(ctx context.Context, ownerID *int32
 }
 
 // reportQualityStorm replaces a burst of per-rule notifications with one summary
-// addressed to the workspace administrators. It is sent after the run finished,
-// so the run it points at is terminal when the recipient opens it.
-func (r *Runner) reportQualityStorm(ctx context.Context, runResourceName string, failed, total int32, now time.Time) {
+// addressed to the workspace administrators. It names the instance whose batch
+// produced the burst, not an execution: the storm is about the instance's tick,
+// and the dashboard links the executions. It is sent after the batch finished, so
+// the executions are terminal when the recipient opens one.
+func (r *Runner) reportQualityStorm(ctx context.Context, batchID int64, instanceResourceID string, failed, total int32, now time.Time) {
 	if r.notifier == nil {
 		return
 	}
-	detail := buildStormDetail(runResourceName, failed, total)
-	r.sendDataQualityNotification(ctx, nil, detail, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR, now)
+	detail := buildStormDetail(formatInstanceResourceName(instanceResourceID), failed, total)
+	// The dedupe key is scoped to the internal batch, not the instance: one
+	// scheduler tick can chunk an instance into several batches, and each storm is
+	// its own event. The batch id is internal and never leaves the server.
+	r.sendDataQualityNotificationFor(ctx, nil, detail, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR,
+		fmt.Sprintf("qualityBatch/%d", batchID), now)
 }
 
 // dataQualityDetailInput is everything a notification detail is built from. It is
@@ -1422,7 +1632,6 @@ type dataQualityDetailInput struct {
 	kind            storepb.DataQualityNotificationKind
 	execution       *ruleExecution
 	issueResourceID string
-	runResourceName string
 }
 
 // buildDataQualityDetail maps one execution to the structured payload the client
@@ -1433,10 +1642,10 @@ func buildDataQualityDetail(in dataQualityDetailInput) *storepb.DataQualityDetai
 	result := execution.result
 	detail := &storepb.DataQualityDetail{
 		Kind:       in.kind,
-		Rule:       qualityRuleResourceName(in.workspaceID, execution.ruleResourceID()),
+		Rule:       formatQualityRuleName(in.workspaceID, execution.ruleResourceID()),
 		RuleTitle:  execution.ruleTitle(),
 		TargetGuid: execution.targetGUID(),
-		Run:        in.runResourceName,
+		Execution:  formatQualityExecutionName(in.workspaceID, execution.executionID()),
 		Severity:   execution.severity(),
 		FromStatus: statusOrUnspecified(execution.previous),
 		ToStatus:   result.Status,
@@ -1451,7 +1660,7 @@ func buildDataQualityDetail(in dataQualityDetailInput) *storepb.DataQualityDetai
 		detail.ObservedUnit = qualityObservedUnit(result.ObservedKind)
 	}
 	if in.issueResourceID != "" {
-		detail.Issue = qualityIssueResourceName(in.workspaceID, in.issueResourceID)
+		detail.Issue = formatQualityIssueName(in.workspaceID, in.issueResourceID)
 	}
 	if in.kind == storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED {
 		detail.ErrorCode = result.ErrorCode
@@ -1459,25 +1668,26 @@ func buildDataQualityDetail(in dataQualityDetailInput) *storepb.DataQualityDetai
 	return detail
 }
 
-// buildStormDetail is the summary one storm notification carries: how many rules
-// failed out of how many the run executed, and the run that merged them.
-func buildStormDetail(runResourceName string, failed, total int32) *storepb.DataQualityDetail {
+// buildStormDetail is the summary one storm notification carries: how many
+// executions failed out of how many the instance's batch ran, and the instance
+// whose batch merged them.
+func buildStormDetail(instanceResourceName string, failed, total int32) *storepb.DataQualityDetail {
 	return &storepb.DataQualityDetail{
 		Kind:            storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY,
-		Run:             runResourceName,
+		Instance:        instanceResourceName,
 		Severity:        storepb.QualitySeverity_QUALITY_SEVERITY_ERROR,
 		FailedRuleCount: failed,
 		TotalRuleCount:  total,
 	}
 }
 
-// isQualityRunStorm reports whether one run failed enough rules to be summarized
-// instead of announced rule by rule. Only FAIL results count: a run that could
+// isQualityStorm reports whether one batch failed enough rules to be summarized
+// instead of announced rule by rule. Only FAIL verdicts count: a batch that could
 // not execute its rules is a different alert, not a data-quality storm.
-func isQualityRunStorm(results []*store.QualityRuleResultMessage) bool {
+func isQualityStorm(executions []*ruleExecution) bool {
 	failed := 0
-	for _, result := range results {
-		if result != nil && result.Status == storepb.QualityStatus_QUALITY_STATUS_FAIL {
+	for _, execution := range executions {
+		if execution != nil && execution.result != nil && execution.result.Status == storepb.QualityStatus_QUALITY_STATUS_FAIL {
 			failed++
 		}
 	}
@@ -1485,8 +1695,8 @@ func isQualityRunStorm(results []*store.QualityRuleResultMessage) bool {
 }
 
 // qualityNotificationTarget returns the resource the dedupe key is scoped to: the
-// issue for a problem transition, the rule for an execution failure, the run for
-// a storm.
+// issue for a problem transition, the rule for an execution failure, the instance
+// for a storm.
 func qualityNotificationTarget(detail *storepb.DataQualityDetail) string {
 	switch detail.GetKind() {
 	case storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED,
@@ -1498,7 +1708,10 @@ func qualityNotificationTarget(detail *storepb.DataQualityDetail) string {
 	case storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED:
 		return detail.GetRule()
 	case storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY:
-		return detail.GetRun()
+		// Unreachable in production: reportQualityStorm passes the internal batch
+		// id to sendDataQualityNotificationFor. Kept explicit so the exhaustive
+		// switch states the intent instead of falling through to the default.
+		return ""
 	case storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_UNSPECIFIED:
 		return ""
 	default:
@@ -1510,9 +1723,9 @@ func qualityNotificationTarget(detail *storepb.DataQualityDetail) string {
 // A problem transition goes to the rule's owner when it has one and to the
 // workspace administrators otherwise, so whoever owns the rule is the one asked
 // to look. An execution failure and a storm summary go to the administrators
-// only (design §8.2): the owner already sees the failed execution on the run
-// page, and paging them again for every broken rule would bury the problem
-// alerts that actually need their attention.
+// only (design §8.2): the owner already sees the failed execution on the
+// executions page, and paging them again for every broken rule would bury the
+// problem alerts that actually need their attention.
 func qualityNotificationRecipient(kind storepb.DataQualityNotificationKind, ownerID *int32) (recipientID int32, toAdmins bool) {
 	switch kind {
 	case storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED,
@@ -1607,7 +1820,7 @@ func qualityTargetDisplayPath(path *storepb.QualityTargetPath) string {
 }
 
 // statusOrUnspecified turns the nullable "previous status" into the detail's
-// non-nullable enum. UNSPECIFIED means "there was no earlier result", which the
+// non-nullable enum. UNSPECIFIED means "there was no earlier execution", which the
 // client renders as "first result" rather than as a transition from PASS.
 func statusOrUnspecified(status *storepb.QualityStatus) storepb.QualityStatus {
 	if status == nil {
@@ -1616,10 +1829,10 @@ func statusOrUnspecified(status *storepb.QualityStatus) storepb.QualityStatus {
 	return *status
 }
 
-// qualityRuleResourceName formats a rule resource name. An empty workspace is the
+// formatQualityRuleName formats a rule resource name. An empty workspace is the
 // degraded form used when the workspace could not be read; it still keeps the
 // detail parseable.
-func qualityRuleResourceName(workspaceID, resourceID string) string {
+func formatQualityRuleName(workspaceID, resourceID string) string {
 	if resourceID == "" {
 		return ""
 	}
@@ -1629,8 +1842,8 @@ func qualityRuleResourceName(workspaceID, resourceID string) string {
 	return "workspaces/" + workspaceID + "/qualityRules/" + resourceID
 }
 
-// qualityIssueResourceName formats an issue resource name.
-func qualityIssueResourceName(workspaceID, resourceID string) string {
+// formatQualityIssueName formats an issue resource name.
+func formatQualityIssueName(workspaceID, resourceID string) string {
 	if resourceID == "" {
 		return ""
 	}
@@ -1640,35 +1853,47 @@ func qualityIssueResourceName(workspaceID, resourceID string) string {
 	return "workspaces/" + workspaceID + "/qualityIssues/" + resourceID
 }
 
-// qualityRunResourceName formats a run resource name. An empty resource id means
-// the run row could not be resolved, and the caller substitutes the database id.
-func qualityRunResourceName(workspaceID, resourceID string) string {
-	if resourceID == "" {
+// formatQualityExecutionName formats an execution resource name. An execution is
+// addressed by its numeric row id: the table is insert-only history, so it has no
+// separate public identity column.
+func formatQualityExecutionName(workspaceID string, executionID int64) string {
+	if executionID <= 0 {
 		return ""
 	}
+	name := fmt.Sprintf("qualityExecutions/%d", executionID)
 	if workspaceID == "" {
-		return "qualityRuns/" + resourceID
+		return name
 	}
-	return "workspaces/" + workspaceID + "/qualityRuns/" + resourceID
+	return "workspaces/" + workspaceID + "/" + name
 }
 
-// previousQualityStatus returns the rule's last result status before this run,
-// which is what tells a recovery apart from a rule that never failed. A missing
-// or unreadable history is treated as "no previous result": opening an issue is
-// still correct and the partial unique index prevents a duplicate.
-func (r *Runner) previousQualityStatus(ctx context.Context, ruleID int64) *storepb.QualityStatus {
-	results, err := r.stores.ListRecentQualityRuleResults(ctx, ruleID, 1)
+// formatInstanceResourceName formats the instance a storm summary is scoped to.
+// Instance resource names are top-level, like every parent resource the API
+// accepts, so they carry no workspace prefix.
+func formatInstanceResourceName(instanceResourceID string) string {
+	if instanceResourceID == "" {
+		return ""
+	}
+	return common.InstanceNamePrefix + instanceResourceID
+}
+
+// previousQualityStatus returns the rule's last terminal verdict before this
+// execution, which is what tells a recovery apart from a rule that never failed. A
+// missing or unreadable history is treated as "no previous result": opening an
+// issue is still correct and the partial unique index prevents a duplicate.
+func previousQualityStatus(ctx context.Context, st batchExecutionStore, ruleID int64) *storepb.QualityStatus {
+	executions, err := st.ListRecentQualityExecutions(ctx, ruleID, 1)
 	if err != nil {
-		slog.Warn("failed to read a quality rule's previous result",
+		slog.Warn("failed to read a quality rule's previous execution",
 			slog.Int64("rule", ruleID),
 			log.WithError(err))
 		return nil
 	}
-	for _, result := range results {
-		if result == nil {
+	for _, execution := range executions {
+		if execution == nil {
 			continue
 		}
-		status := result.Status
+		status := execution.Status
 		return &status
 	}
 	return nil
@@ -1686,17 +1911,17 @@ func (r *Runner) workspaceID(ctx context.Context) string {
 	return workspaceID
 }
 
-// resolveRuleHead reads the mutable rule row of a manual run's rule. The queue
-// carries only the rule id and the store has no lookup by internal id, so the
-// rule is found through its revision's target and matched by id; a target holds a
-// handful of rules, so the read stays bounded.
-func (r *Runner) resolveRuleHead(ctx context.Context, ruleID int64, targetGUID string) *store.QualityRuleMessage {
-	if targetGUID == "" {
-		return nil
-	}
-	rules, err := r.stores.ListQualityRules(ctx, &store.FindQualityRuleMessage{TargetGUID: &targetGUID})
+// resolveRuleHead reads the mutable rule row of an execution by its internal id.
+// The lookup has no lifecycle filter, so an archived or deleted rule still
+// resolves and retires; a missing row stays nil and the execution record
+// degrades gracefully.
+func (r *Runner) resolveRuleHead(ctx context.Context, ruleID int64) *store.QualityRuleMessage {
+	// ListQualityRulesByIDs has no lifecycle filter, so an archived or deleted
+	// rule still resolves: loadRuleSnapshot must see it and report SKIPPED rather
+	// than executing a retired definition.
+	rules, err := r.stores.ListQualityRulesByIDs(ctx, []int64{ruleID})
 	if err != nil {
-		slog.Warn("failed to resolve a manual quality rule's head",
+		slog.Warn("failed to resolve a quality rule's head",
 			slog.Int64("rule", ruleID),
 			log.WithError(err))
 		return nil
@@ -1709,35 +1934,13 @@ func (r *Runner) resolveRuleHead(ctx context.Context, ruleID int64, targetGUID s
 	return nil
 }
 
-// manualRunResourceID resolves a manual run's resource id for the notification
-// detail. The queue entry carries only the database id, and the store has no
-// lookup by id, so the run is found among the manual runs that are still
-// waiting or executing. A miss is not fatal: the caller falls back to the
-// database id in the detail.
-func (r *Runner) manualRunResourceID(ctx context.Context, runID int64) string {
-	statuses := []storepb.QualityRunStatus{
-		storepb.QualityRunStatus_QUALITY_RUN_STATUS_PENDING,
-		storepb.QualityRunStatus_QUALITY_RUN_STATUS_RUNNING,
+// executionID returns the numeric row id the execution resource name is built
+// from, or 0 when the row is not available.
+func (e *ruleExecution) executionID() int64 {
+	if e.result == nil {
+		return 0
 	}
-	trigger := storepb.QualityRunTrigger_QUALITY_RUN_TRIGGER_MANUAL
-	limit := 200
-	runs, err := r.stores.ListQualityRuns(ctx, &store.FindQualityRunMessage{
-		Statuses: statuses,
-		Trigger:  &trigger,
-		Limit:    &limit,
-	})
-	if err != nil {
-		slog.Warn("failed to resolve a manual quality run's resource id",
-			slog.Int64("run", runID),
-			log.WithError(err))
-		return ""
-	}
-	for _, run := range runs {
-		if run.ID == runID {
-			return run.ResourceID
-		}
-	}
-	return ""
+	return e.result.ID
 }
 
 // ruleResourceID returns the rule's public resource id, or "" when the mutable
@@ -1765,8 +1968,8 @@ func (e *ruleExecution) ownerID() *int32 {
 	return e.head.OwnerID
 }
 
-// severity returns the rule's current severity. The immutable revision carries
-// the severity the result was judged with, but the notification and the issue row
+// severity returns the rule's current severity. The immutable revision carries the
+// severity the execution was judged with, but the notification and the issue row
 // report the rule's current one; the head wins when it is available.
 func (e *ruleExecution) severity() storepb.QualitySeverity {
 	if e.head != nil {
@@ -1778,7 +1981,7 @@ func (e *ruleExecution) severity() storepb.QualitySeverity {
 	return storepb.QualitySeverity_QUALITY_SEVERITY_UNSPECIFIED
 }
 
-// targetGUID returns the registry GUID the result is about.
+// targetGUID returns the registry GUID the execution is about.
 func (e *ruleExecution) targetGUID() string {
 	if e.snapshot != nil && e.snapshot.Target.GUID != "" {
 		return e.snapshot.Target.GUID
@@ -1789,7 +1992,7 @@ func (e *ruleExecution) targetGUID() string {
 	return ""
 }
 
-// targetType returns the registry object type the result is about.
+// targetType returns the registry object type the execution is about.
 func (e *ruleExecution) targetType() storepb.MetaType {
 	if e.snapshot != nil {
 		return e.snapshot.Target.MetaType
@@ -1802,8 +2005,8 @@ func (e *ruleExecution) targetType() storepb.MetaType {
 
 // requiresReadOnlySource reports whether executing this rule type needs a
 // connection to the target database. Metadata rules (schema_drift) observe the
-// registry instead, so they must run without a READ_ONLY data source; every
-// query rule still requires one.
+// registry instead, so they must run without a READ_ONLY data source; every query
+// rule still requires one.
 func requiresReadOnlySource(ruleType storepb.QualityRuleType) bool {
 	return !dataquality.IsMetadataRule(ruleType)
 }

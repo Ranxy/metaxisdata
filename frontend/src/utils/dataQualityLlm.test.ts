@@ -2,7 +2,7 @@ import { create } from "@bufbuild/protobuf";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { describe, expect, it } from "vitest";
 import {
-  ExplainQualityResultResponseSchema,
+  ExplainQualityExecutionResponseSchema,
   QualityRuleConfigSchema,
   QualitySuggestionKind,
   QualitySuggestionSchema,
@@ -23,13 +23,13 @@ import {
 } from "./dataQualityLlm";
 
 function contentChunk(value: string) {
-  return create(ExplainQualityResultResponseSchema, {
+  return create(ExplainQualityExecutionResponseSchema, {
     payload: { case: "content", value },
   });
 }
 
 function progressChunk(type: string, toolName = "profile") {
-  return create(ExplainQualityResultResponseSchema, {
+  return create(ExplainQualityExecutionResponseSchema, {
     payload: {
       case: "progress",
       value: create(ExplainSQLProgressSchema, { type, toolName }),
@@ -38,7 +38,7 @@ function progressChunk(type: string, toolName = "profile") {
 }
 
 function metadataChunk() {
-  return create(ExplainQualityResultResponseSchema, {
+  return create(ExplainQualityExecutionResponseSchema, {
     payload: {
       case: "metadata",
       value: {
@@ -91,7 +91,7 @@ describe("explanation stream", () => {
     const state = emptyExplanationState();
     applyExplanationChunk(
       state,
-      create(ExplainQualityResultResponseSchema, {})
+      create(ExplainQualityExecutionResponseSchema, {})
     );
     applyExplanationChunk(state, contentChunk("   "));
     expect(state.content).toBe("   ");

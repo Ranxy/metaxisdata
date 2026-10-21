@@ -251,14 +251,14 @@ func TestRenderExplanationMarkdown(t *testing.T) {
 	require.Contains(t, markdown, "_confidence 0.70_")
 }
 
-// The stored result maps to the prompt's plain snapshot without losing the
+// The stored execution maps to the prompt's plain snapshot without losing the
 // evidence a reader needs.
-func TestQualityResultSnapshot(t *testing.T) {
+func TestQualityExecutionSnapshot(t *testing.T) {
 	t.Parallel()
 
 	observed := 3.0
 	started := time.Date(2026, time.October, 7, 9, 30, 0, 0, time.UTC)
-	snapshot := qualityResultSnapshot(&store.QualityRuleResultMessage{
+	snapshot := qualityExecutionSnapshot(&store.QualityExecutionMessage{
 		Status:        storepb.QualityStatus_QUALITY_STATUS_FAIL,
 		ObservedValue: &observed,
 		ObservedKind:  storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT,
@@ -346,27 +346,29 @@ func TestNilAnalysisRequestsAreRejected(t *testing.T) {
 	_, err := service.SuggestQualityRule(t.Context(), nil)
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 
-	err = service.ExplainQualityResult(t.Context(), nil, nil)
+	err = service.ExplainQualityExecution(t.Context(), nil, nil)
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }
 
-// A malformed result name and a non-numeric result id are refused before any
-// store read.
-func TestParseExplainResultNameRejectsMalformedNames(t *testing.T) {
+// A malformed execution name and a non-numeric execution id are refused before
+// any store read.
+func TestParseQualityExecutionIDRejectsMalformedNames(t *testing.T) {
 	t.Parallel()
 
 	for _, name := range []string{
-		"qualityRuleResults/abc",
+		"qualityExecutions/abc",
 		"workspaces/ws/qualityRuns/12",
-		"workspaces/ws/qualityRuleResults/not-a-number",
-		"workspaces/ws/qualityRuleResults/-3",
-		"workspaces/ws/qualityRuleResults/",
+		"workspaces/ws/qualityRuleResults/12",
+		"workspaces/ws/qualityExecutions/not-a-number",
+		"workspaces/ws/qualityExecutions/-3",
+		"workspaces/ws/qualityExecutions/0",
+		"workspaces/ws/qualityExecutions/",
 	} {
-		_, _, err := parseExplainResultName(name)
+		_, _, err := parseQualityExecutionID(name)
 		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err), "name %q", name)
 	}
 
-	workspace, id, err := parseExplainResultName("workspaces/ws/qualityRuleResults/42")
+	workspace, id, err := parseQualityExecutionID("workspaces/ws/qualityExecutions/42")
 	require.NoError(t, err)
 	require.Equal(t, "ws", workspace)
 	require.Equal(t, int64(42), id)

@@ -19,25 +19,25 @@ import (
 // the same length: a schema change that adds a column without touching the scan
 // fails here instead of mis-assigning values at runtime.
 type qualityIssueScannerStub struct {
-	id               int64
-	resourceID       string
-	ruleID           int64
-	targetGUID       string
-	targetType       int16
-	status           int16
-	severity         int16
-	firstSeenRunID   sql.NullInt64
-	lastSeenRunID    sql.NullInt64
-	firstSeenAt      time.Time
-	lastSeenAt       time.Time
-	resolvedAt       sql.NullTime
-	resolutionReason sql.NullInt32
-	resolutionNote   string
-	acknowledgedBy   sql.NullInt32
-	acknowledgedAt   sql.NullTime
-	mutedUntil       sql.NullTime
-	occurrenceCount  int32
-	updatedAt        time.Time
+	id                   int64
+	resourceID           string
+	ruleID               int64
+	targetGUID           string
+	targetType           int16
+	status               int16
+	severity             int16
+	firstSeenExecutionID sql.NullInt64
+	lastSeenExecutionID  sql.NullInt64
+	firstSeenAt          time.Time
+	lastSeenAt           time.Time
+	resolvedAt           sql.NullTime
+	resolutionReason     sql.NullInt32
+	resolutionNote       string
+	acknowledgedBy       sql.NullInt32
+	acknowledgedAt       sql.NullTime
+	mutedUntil           sql.NullTime
+	occurrenceCount      int32
+	updatedAt            time.Time
 }
 
 func (s qualityIssueScannerStub) Scan(dest ...any) error {
@@ -51,8 +51,8 @@ func (s qualityIssueScannerStub) Scan(dest ...any) error {
 	*(dest[4].(*int16)) = s.targetType
 	*(dest[5].(*int16)) = s.status
 	*(dest[6].(*int16)) = s.severity
-	*(dest[7].(*sql.NullInt64)) = s.firstSeenRunID
-	*(dest[8].(*sql.NullInt64)) = s.lastSeenRunID
+	*(dest[7].(*sql.NullInt64)) = s.firstSeenExecutionID
+	*(dest[8].(*sql.NullInt64)) = s.lastSeenExecutionID
 	*(dest[9].(*time.Time)) = s.firstSeenAt
 	*(dest[10].(*time.Time)) = s.lastSeenAt
 	*(dest[11].(*sql.NullTime)) = s.resolvedAt
@@ -101,8 +101,8 @@ func TestScanQualityIssueReadsNullColumnsAsNil(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	require.Nil(t, msg.FirstSeenRunID)
-	require.Nil(t, msg.LastSeenRunID)
+	require.Nil(t, msg.FirstSeenExecutionID)
+	require.Nil(t, msg.LastSeenExecutionID)
 	require.Nil(t, msg.ResolvedAt)
 	require.Nil(t, msg.AcknowledgedBy)
 	require.Nil(t, msg.AcknowledgedAt)
@@ -119,25 +119,25 @@ func TestScanQualityIssueReadsEveryColumn(t *testing.T) {
 	resolvedAt := lastSeen.Add(time.Hour)
 
 	msg, err := scanQualityIssue(qualityIssueScannerStub{
-		id:               7,
-		resourceID:       "abc123",
-		ruleID:           42,
-		targetGUID:       "inst;db;;orders",
-		targetType:       int16(storepb.MetaType_TABLE),
-		status:           int16(storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_ACKNOWLEDGED),
-		severity:         int16(storepb.QualitySeverity_QUALITY_SEVERITY_CRITICAL),
-		firstSeenRunID:   sql.NullInt64{Int64: 100, Valid: true},
-		lastSeenRunID:    sql.NullInt64{Int64: 205, Valid: true},
-		firstSeenAt:      firstSeen,
-		lastSeenAt:       lastSeen,
-		resolvedAt:       sql.NullTime{Time: resolvedAt, Valid: true},
-		resolutionReason: sql.NullInt32{Int32: int32(storepb.QualityResolutionReason_QUALITY_RESOLUTION_REASON_FIXED), Valid: true},
-		resolutionNote:   "backfilled the missing rows",
-		acknowledgedBy:   sql.NullInt32{Int32: 9, Valid: true},
-		acknowledgedAt:   sql.NullTime{Time: lastSeen, Valid: true},
-		mutedUntil:       sql.NullTime{Time: lastSeen.Add(24 * time.Hour), Valid: true},
-		occurrenceCount:  3,
-		updatedAt:        resolvedAt,
+		id:                   7,
+		resourceID:           "abc123",
+		ruleID:               42,
+		targetGUID:           "inst;db;;orders",
+		targetType:           int16(storepb.MetaType_TABLE),
+		status:               int16(storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_ACKNOWLEDGED),
+		severity:             int16(storepb.QualitySeverity_QUALITY_SEVERITY_CRITICAL),
+		firstSeenExecutionID: sql.NullInt64{Int64: 100, Valid: true},
+		lastSeenExecutionID:  sql.NullInt64{Int64: 205, Valid: true},
+		firstSeenAt:          firstSeen,
+		lastSeenAt:           lastSeen,
+		resolvedAt:           sql.NullTime{Time: resolvedAt, Valid: true},
+		resolutionReason:     sql.NullInt32{Int32: int32(storepb.QualityResolutionReason_QUALITY_RESOLUTION_REASON_FIXED), Valid: true},
+		resolutionNote:       "backfilled the missing rows",
+		acknowledgedBy:       sql.NullInt32{Int32: 9, Valid: true},
+		acknowledgedAt:       sql.NullTime{Time: lastSeen, Valid: true},
+		mutedUntil:           sql.NullTime{Time: lastSeen.Add(24 * time.Hour), Valid: true},
+		occurrenceCount:      3,
+		updatedAt:            resolvedAt,
 	})
 	require.NoError(t, err)
 
@@ -148,8 +148,8 @@ func TestScanQualityIssueReadsEveryColumn(t *testing.T) {
 	require.Equal(t, storepb.MetaType_TABLE, msg.TargetType)
 	require.Equal(t, storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_ACKNOWLEDGED, msg.Status)
 	require.Equal(t, storepb.QualitySeverity_QUALITY_SEVERITY_CRITICAL, msg.Severity)
-	require.Equal(t, int64(100), *msg.FirstSeenRunID)
-	require.Equal(t, int64(205), *msg.LastSeenRunID)
+	require.Equal(t, int64(100), *msg.FirstSeenExecutionID)
+	require.Equal(t, int64(205), *msg.LastSeenExecutionID)
 	require.Equal(t, firstSeen, msg.FirstSeenAt)
 	require.Equal(t, lastSeen, msg.LastSeenAt)
 	require.Equal(t, resolvedAt, *msg.ResolvedAt)
@@ -365,15 +365,15 @@ func TestQualityIssueStatementShapesCarryTheirInvariants(t *testing.T) {
 	insertPart := strings.SplitN(qualityIssueOpenStatement, "RETURNING", 2)[0]
 	require.Contains(t, insertPart, "INSERT INTO quality_issue")
 	require.Contains(t, insertPart, "occurrence_count")
-	require.Contains(t, insertPart, "first_seen_run_id")
-	require.Contains(t, insertPart, "last_seen_run_id")
+	require.Contains(t, insertPart, "first_seen_execution_id")
+	require.Contains(t, insertPart, "last_seen_execution_id")
 	require.NotContains(t, insertPart, "resolved_at")
 	require.NotContains(t, insertPart, "acknowledged")
 	require.Contains(t, qualityIssueOpenStatement, "ON CONFLICT DO NOTHING")
 	require.NotContains(t, qualityIssueOpenStatement, "DO UPDATE")
 
 	require.Contains(t, qualityIssueTouchStatement, "last_seen_at = $1")
-	require.Contains(t, qualityIssueTouchStatement, "last_seen_run_id = $2")
+	require.Contains(t, qualityIssueTouchStatement, "last_seen_execution_id = $2")
 	require.Contains(t, qualityIssueTouchStatement, "severity = $3")
 	require.Contains(t, qualityIssueTouchStatement, "occurrence_count = occurrence_count + 1")
 	require.Contains(t, qualityIssueTouchStatement, "WHERE id = $4 AND status <> $5")
@@ -412,8 +412,8 @@ func TestQualityIssueColumnsMatchTheScan(t *testing.T) {
 		"target_type",
 		"status",
 		"severity",
-		"first_seen_run_id",
-		"last_seen_run_id",
+		"first_seen_execution_id",
+		"last_seen_execution_id",
 		"first_seen_at",
 		"last_seen_at",
 		"resolved_at",

@@ -11,6 +11,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 	"github.com/Ranxy/metaxisdata/backend/store"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -32,11 +33,11 @@ func qualityRuleIDs(rules []*store.QualityRuleMessage) []int64 {
 	return ids
 }
 
-func qualityResultStub(status storepb.QualityStatus) *store.QualityRuleResultMessage {
-	return &store.QualityRuleResultMessage{Status: status}
+func qualityExecutionStub(status storepb.QualityStatus) *store.QualityExecutionMessage {
+	return &store.QualityExecutionMessage{Status: status}
 }
 
-func TestPlanDueRunsGroupsByInstanceAndChunks(t *testing.T) {
+func TestPlanDueBatchesGroupsByInstanceAndChunks(t *testing.T) {
 	t.Parallel()
 
 	rules := []*store.QualityRuleMessage{
@@ -47,7 +48,7 @@ func TestPlanDueRunsGroupsByInstanceAndChunks(t *testing.T) {
 		qualityRuleStub(5, "inst-a;db;public;t5"),
 	}
 
-	plans := planDueRuns(rules, 2)
+	plans := planDueBatches(rules, 2)
 	require.Len(t, plans, 3)
 	require.Equal(t, "inst-a", plans[0].instanceResourceID)
 	require.Equal(t, []int64{1, 3}, qualityRuleIDs(plans[0].rules))
@@ -57,7 +58,7 @@ func TestPlanDueRunsGroupsByInstanceAndChunks(t *testing.T) {
 	require.Equal(t, []int64{2, 4}, qualityRuleIDs(plans[2].rules))
 }
 
-func TestPlanDueRunsKeepsOrderForSameInstance(t *testing.T) {
+func TestPlanDueBatchesKeepsOrderForSameInstance(t *testing.T) {
 	t.Parallel()
 
 	rules := []*store.QualityRuleMessage{
@@ -65,25 +66,25 @@ func TestPlanDueRunsKeepsOrderForSameInstance(t *testing.T) {
 		qualityRuleStub(1, "inst-a;db;public;t1"),
 		qualityRuleStub(2, "inst-a;db;public;t2"),
 	}
-	plans := planDueRuns(rules, 50)
+	plans := planDueBatches(rules, 50)
 	require.Len(t, plans, 1)
 	// The due scan already ordered the rules; grouping must not reorder them.
 	require.Equal(t, []int64{3, 1, 2}, qualityRuleIDs(plans[0].rules))
 }
 
-func TestPlanDueRunsAttributesMalformedTargetToNoInstance(t *testing.T) {
+func TestPlanDueBatchesAttributesMalformedTargetToNoInstance(t *testing.T) {
 	t.Parallel()
 
-	plans := planDueRuns([]*store.QualityRuleMessage{nil, qualityRuleStub(7, "not-a-guid")}, 50)
+	plans := planDueBatches([]*store.QualityRuleMessage{nil, qualityRuleStub(7, "not-a-guid")}, 50)
 	require.Len(t, plans, 1)
 	require.Empty(t, plans[0].instanceResourceID)
 	require.Equal(t, []int64{7}, qualityRuleIDs(plans[0].rules))
 }
 
-func TestPlanDueRunsRejectsNonPositiveBatchSize(t *testing.T) {
+func TestPlanDueBatchesRejectsNonPositiveBatchSize(t *testing.T) {
 	t.Parallel()
 
-	require.Empty(t, planDueRuns([]*store.QualityRuleMessage{qualityRuleStub(1, "inst;db;public;t")}, 0))
+	require.Empty(t, planDueBatches([]*store.QualityRuleMessage{qualityRuleStub(1, "inst;db;public;t")}, 0))
 }
 
 func TestNextRunAtUsesTheIntervalButNeverLoopsEveryTick(t *testing.T) {
@@ -97,16 +98,16 @@ func TestNextRunAtUsesTheIntervalButNeverLoopsEveryTick(t *testing.T) {
 	require.Equal(t, now.Add(minRuleScheduleInterval), nextRunAt(now, time.Minute))
 }
 
-// A run that could not execute a rule must not look like a run whose rule found
-// bad data: ERROR outranks FAIL in the rollup.
+// A batch that could not execute a rule must not look like a batch whose rule
+// found bad data: ERROR outranks FAIL in the rollup.
 func TestCountsAndOutcomeSeparatesErrorFromFail(t *testing.T) {
 	t.Parallel()
 
-	counts, outcome := countsAndOutcome([]*store.QualityRuleResultMessage{
-		qualityResultStub(storepb.QualityStatus_QUALITY_STATUS_PASS),
-		qualityResultStub(storepb.QualityStatus_QUALITY_STATUS_FAIL),
-		qualityResultStub(storepb.QualityStatus_QUALITY_STATUS_ERROR),
-		qualityResultStub(storepb.QualityStatus_QUALITY_STATUS_SKIPPED),
+	counts, outcome := dataquality.CountResults([]storepb.QualityStatus{
+		storepb.QualityStatus_QUALITY_STATUS_PASS,
+		storepb.QualityStatus_QUALITY_STATUS_FAIL,
+		storepb.QualityStatus_QUALITY_STATUS_ERROR,
+		storepb.QualityStatus_QUALITY_STATUS_SKIPPED,
 	})
 	require.Equal(t, int32(4), counts.GetTotal())
 	require.Equal(t, int32(1), counts.GetPass())
@@ -115,27 +116,27 @@ func TestCountsAndOutcomeSeparatesErrorFromFail(t *testing.T) {
 	require.Equal(t, int32(1), counts.GetSkipped())
 	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_ERROR, outcome)
 
-	counts, outcome = countsAndOutcome([]*store.QualityRuleResultMessage{
-		qualityResultStub(storepb.QualityStatus_QUALITY_STATUS_WARN),
-		qualityResultStub(storepb.QualityStatus_QUALITY_STATUS_FAIL),
+	counts, outcome = dataquality.CountResults([]storepb.QualityStatus{
+		storepb.QualityStatus_QUALITY_STATUS_WARN,
+		storepb.QualityStatus_QUALITY_STATUS_FAIL,
 	})
 	require.Equal(t, int32(2), counts.GetTotal())
 	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_FAIL, outcome)
 
-	// A run with no results judged nothing; that is not a pass.
-	counts, outcome = countsAndOutcome(nil)
+	// A batch with no executions judged nothing; that is not a pass.
+	counts, outcome = dataquality.CountResults(nil)
 	require.Equal(t, int32(0), counts.GetTotal())
 	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, outcome)
 }
 
-func TestManualRuleTasksDeduplicatesAndDropsInvalidIDs(t *testing.T) {
+func TestManualExecutionTasksDeduplicatesAndDropsInvalidIDs(t *testing.T) {
 	t.Parallel()
 
-	tasks := manualRuleTasks([]int64{5, 0, -2, 5, 7, 7})
+	tasks := manualExecutionTasks([]int64{5, 0, -2, 5, 7, 7})
 	require.Len(t, tasks, 2)
-	require.Equal(t, int64(5), tasks[0].ruleID)
-	require.Equal(t, int64(7), tasks[1].ruleID)
-	require.Nil(t, tasks[0].head)
+	require.Equal(t, int64(5), tasks[0].executionID)
+	require.Equal(t, int64(7), tasks[1].executionID)
+	require.Zero(t, tasks[0].ruleID)
 }
 
 func TestInflightGuardIsExclusivePerRule(t *testing.T) {
@@ -150,25 +151,55 @@ func TestInflightGuardIsExclusivePerRule(t *testing.T) {
 	require.True(t, runner.acquireInflight(5))
 }
 
-func TestEnqueueQualityRunReportsAFullQueue(t *testing.T) {
+func TestEnqueueQualityExecutionsReportsAFullQueue(t *testing.T) {
 	t.Parallel()
 
 	runner := &Runner{manual: make(chan manualRun, 1)}
-	require.True(t, runner.EnqueueQualityRun(1, "inst-1", []int64{3}))
+	require.True(t, runner.EnqueueQualityExecutions(1, "inst-1", []int64{3}))
 
 	// The queue is full, so the API must be told instead of blocking the request.
-	require.False(t, runner.EnqueueQualityRun(2, "inst-1", nil))
+	require.False(t, runner.EnqueueQualityExecutions(2, "inst-1", nil))
 
 	queued := <-runner.manual
-	require.Equal(t, int64(1), queued.runID)
+	require.Equal(t, int64(1), queued.batchID)
 	require.Equal(t, "inst-1", queued.instanceResourceID)
-	require.Equal(t, []int64{3}, queued.ruleIDs)
-	require.True(t, runner.EnqueueQualityRun(3, "inst-1", nil))
+	require.Len(t, queued.executions, 1)
+	require.Equal(t, int64(3), queued.executions[0].executionID)
+	require.True(t, runner.EnqueueQualityExecutions(3, "inst-1", nil))
 }
 
-// A run holds one lease for its whole life, so a second run on the same instance
-// waits for it instead of being admitted above the connection budget.
-func TestAdmitRunHoldsTheInstanceBudgetForTheWholeRun(t *testing.T) {
+// The planned row is what a scheduled tick inserts before execution: the due
+// scan's revision and target snapshot, PENDING, and the trigger that explains it.
+func TestPlannedExecutionCarriesTheDueScanSnapshot(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.October, 19, 9, 0, 0, 0, time.UTC)
+	path := &storepb.QualityTargetPath{Instance: "inst1", Database: "db1", Object: "orders"}
+	rule := &store.QualityRuleMessage{
+		ID:         7,
+		Revision:   3,
+		TargetGUID: "inst1;db1;public;orders",
+		TargetType: storepb.MetaType_TABLE,
+		TargetPath: path,
+	}
+	planned := plannedExecution(11, "inst1", rule, now)
+
+	require.Equal(t, int64(11), planned.RunID)
+	require.Equal(t, int64(7), planned.RuleID)
+	require.Equal(t, int32(3), planned.RuleRevision)
+	require.Equal(t, dataquality.EngineVersion, planned.RuleEngineVersion)
+	require.Equal(t, "inst1;db1;public;orders", planned.TargetGUID)
+	require.Equal(t, storepb.MetaType_TABLE, planned.TargetType)
+	require.Same(t, path, planned.TargetPath)
+	require.Equal(t, "inst1", planned.InstanceResourceID)
+	require.Equal(t, storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_PENDING, planned.State)
+	require.Equal(t, storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED, planned.Trigger)
+	require.Equal(t, now, planned.StartedAt)
+}
+
+// A batch holds one lease for its whole life, so a second batch on the same
+// instance waits for it instead of being admitted above the connection budget.
+func TestAdmitBatchHoldsTheInstanceBudgetForTheWholeBatch(t *testing.T) {
 	t.Parallel()
 
 	stateCfg, err := state.New(nil)
@@ -179,7 +210,7 @@ func TestAdmitRunHoldsTheInstanceBudgetForTheWholeRun(t *testing.T) {
 		Metadata:   &storepb.Instance{MaximumConnections: 1},
 	}
 
-	hold, _, admitted := runner.admitRun(context.Background(), instance, state.ConnectionPriorityBackground, time.Second)
+	hold, _, admitted := runner.admitBatch(context.Background(), instance, state.ConnectionPriorityBackground, time.Second)
 	require.True(t, admitted)
 
 	type admission struct {
@@ -188,12 +219,12 @@ func TestAdmitRunHoldsTheInstanceBudgetForTheWholeRun(t *testing.T) {
 	}
 	second := make(chan admission, 1)
 	go func() {
-		release, _, ok := runner.admitRun(context.Background(), instance, state.ConnectionPriorityBackground, time.Second)
+		release, _, ok := runner.admitBatch(context.Background(), instance, state.ConnectionPriorityBackground, time.Second)
 		second <- admission{release: release, ok: ok}
 	}()
 	select {
 	case result := <-second:
-		t.Fatalf("a second run was admitted above the instance budget: %+v", result)
+		t.Fatalf("a second batch was admitted above the instance budget: %+v", result)
 	case <-time.After(20 * time.Millisecond):
 	}
 
@@ -203,13 +234,13 @@ func TestAdmitRunHoldsTheInstanceBudgetForTheWholeRun(t *testing.T) {
 		require.True(t, result.ok)
 		result.release()
 	case <-time.After(2 * time.Second):
-		t.Fatal("the waiting run was never admitted after the budget was released")
+		t.Fatal("the waiting batch was never admitted after the budget was released")
 	}
 }
 
-// A run whose budget never frees up is deferred, not failed: the caller gets
+// A batch whose budget never frees up is deferred, not failed: the caller gets
 // false and the rules stay due for the next tick.
-func TestAdmitRunReportsWhenTheBudgetStaysBusy(t *testing.T) {
+func TestAdmitBatchReportsWhenTheBudgetStaysBusy(t *testing.T) {
 	t.Parallel()
 
 	stateCfg, err := state.New(nil)
@@ -220,61 +251,61 @@ func TestAdmitRunReportsWhenTheBudgetStaysBusy(t *testing.T) {
 		Metadata:   &storepb.Instance{MaximumConnections: 1},
 	}
 
-	hold, _, admitted := runner.admitRun(context.Background(), instance, state.ConnectionPriorityBackground, time.Second)
+	hold, _, admitted := runner.admitBatch(context.Background(), instance, state.ConnectionPriorityBackground, time.Second)
 	require.True(t, admitted)
 	defer hold()
 
-	_, _, admitted = runner.admitRun(context.Background(), instance, state.ConnectionPriorityBackground, 10*time.Millisecond)
+	_, _, admitted = runner.admitBatch(context.Background(), instance, state.ConnectionPriorityBackground, 10*time.Millisecond)
 	require.False(t, admitted)
 }
 
-// A run whose instance row is gone needs no lease: target resolution records
+// A batch whose instance row is gone needs no lease: target resolution records
 // ORPHANED for its rules before a driver is opened.
-func TestAdmitRunDoesNotLeaseAMissingInstance(t *testing.T) {
+func TestAdmitBatchDoesNotLeaseAMissingInstance(t *testing.T) {
 	t.Parallel()
 
 	stateCfg, err := state.New(nil)
 	require.NoError(t, err)
 	runner := &Runner{stateCfg: stateCfg}
 
-	release, admission, admitted := runner.admitRun(context.Background(), nil, state.ConnectionPriorityManual, time.Second)
+	release, admission, admitted := runner.admitBatch(context.Background(), nil, state.ConnectionPriorityManual, time.Second)
 	require.True(t, admitted)
 	require.Empty(t, admission.instanceResourceID)
 	require.NotNil(t, release)
 	release()
 }
 
-// A rule retargeted to another instance after its run was admitted cannot open a
-// driver under the run's lease; it leases the instance it actually resolves to, so
-// no driver ever runs outside a leased budget.
+// A rule retargeted to another instance after its batch was admitted cannot open
+// a driver under the batch's lease; it leases the instance it actually resolves
+// to, so no driver ever runs outside a leased budget.
 func TestRuleConnectionLeaseCoversARetargetedRule(t *testing.T) {
 	t.Parallel()
 
 	stateCfg, err := state.New(nil)
 	require.NoError(t, err)
 	runner := &Runner{stateCfg: stateCfg}
-	runAdmittedForA := runAdmission{instanceResourceID: "inst-a", priority: state.ConnectionPriorityBackground}
+	batchAdmittedForA := batchAdmission{instanceResourceID: "inst-a", priority: state.ConnectionPriorityBackground}
 	instanceA := &store.InstanceMessage{ResourceID: "inst-a", Metadata: &storepb.Instance{}}
 
-	release, ok := runner.ruleConnectionLease(instanceA, runAdmittedForA)
-	require.True(t, ok, "the run's own instance is covered by its lease")
+	release, ok := runner.ruleConnectionLease(instanceA, batchAdmittedForA)
+	require.True(t, ok, "the batch's own instance is covered by its lease")
 	release()
 
 	instanceB := &store.InstanceMessage{ResourceID: "inst-b", Metadata: &storepb.Instance{MaximumConnections: 1}}
-	hold, _, admitted := runner.admitRun(context.Background(), instanceB, state.ConnectionPriorityBackground, time.Second)
+	hold, _, admitted := runner.admitBatch(context.Background(), instanceB, state.ConnectionPriorityBackground, time.Second)
 	require.True(t, admitted)
 
-	_, ok = runner.ruleConnectionLease(instanceB, runAdmittedForA)
+	_, ok = runner.ruleConnectionLease(instanceB, batchAdmittedForA)
 	require.False(t, ok, "a retargeted rule cannot take another instance's budget without a free slot")
 
 	hold()
-	release, ok = runner.ruleConnectionLease(instanceB, runAdmittedForA)
+	release, ok = runner.ruleConnectionLease(instanceB, batchAdmittedForA)
 	require.True(t, ok)
 	release()
 
-	// A run admitted without a lease (its instance row was gone) still leases the
-	// instance its rule really resolves to.
-	release, ok = runner.ruleConnectionLease(instanceA, runAdmission{})
+	// A batch admitted without a lease (its instance row was gone) still leases
+	// the instance its rule really resolves to.
+	release, ok = runner.ruleConnectionLease(instanceA, batchAdmission{})
 	require.True(t, ok)
 	release()
 }
@@ -288,17 +319,29 @@ func TestInstanceConnectionLimitUsesTheDeploymentDefault(t *testing.T) {
 	require.Equal(t, 10, instanceConnectionLimit(&store.InstanceMessage{}))
 }
 
-func TestBuildRuleResultStoresTheVerdictAndItsEvidence(t *testing.T) {
+func TestBuildExecutionMessageStoresTheVerdictAndItsEvidence(t *testing.T) {
 	t.Parallel()
 
 	startedAt := time.Date(2026, time.October, 19, 9, 0, 0, 0, time.UTC)
 	finishedAt := startedAt.Add(1500 * time.Millisecond)
+	planned := &store.QualityExecutionMessage{
+		ID:                 11,
+		RunID:              3,
+		RuleID:             7,
+		RuleRevision:       1,
+		TargetGUID:         "inst;db;public;orders",
+		TargetType:         storepb.MetaType_TABLE,
+		TargetPath:         &storepb.QualityTargetPath{Instance: "inst", Object: "orders"},
+		InstanceResourceID: "inst",
+		Trigger:            storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED,
+	}
 	snapshot := &dataquality.RuleSnapshot{
 		ID:       7,
 		Revision: 4,
 		Target: dataquality.Target{
 			GUID:     "inst;db;public;orders",
 			MetaType: storepb.MetaType_TABLE,
+			Path:     &storepb.QualityTargetPath{Instance: "inst", Database: "db", Object: "orders"},
 		},
 	}
 	execution := &dataquality.Execution{
@@ -308,8 +351,7 @@ func TestBuildRuleResultStoresTheVerdictAndItsEvidence(t *testing.T) {
 		Truncated:   true,
 	}
 	thresholds := &storepb.QualityThresholds{}
-	result := buildRuleResult(11, &ruleExecutionOutcome{
-		ruleID:     7,
+	result := buildExecutionMessage(planned, &ruleExecutionOutcome{
 		snapshot:   snapshot,
 		startedAt:  startedAt,
 		finishedAt: finishedAt,
@@ -325,12 +367,18 @@ func TestBuildRuleResultStoresTheVerdictAndItsEvidence(t *testing.T) {
 		state:     dataquality.ResultState{Status: storepb.QualityStatus_QUALITY_STATUS_FAIL, Thresholds: thresholds},
 	})
 
-	require.Equal(t, int64(11), result.RunID)
+	require.Equal(t, int64(11), result.ID)
+	require.Equal(t, int64(3), result.RunID)
 	require.Equal(t, int64(7), result.RuleID)
+	// The executed snapshot wins over the planned row: an edit never rewrites the
+	// verdict's definition.
 	require.Equal(t, int32(4), result.RuleRevision)
 	require.Equal(t, dataquality.EngineVersion, result.RuleEngineVersion)
 	require.Equal(t, "inst;db;public;orders", result.TargetGUID)
 	require.Equal(t, storepb.MetaType_TABLE, result.TargetType)
+	require.Equal(t, "db", result.TargetPath.GetDatabase())
+	require.Equal(t, "inst", result.InstanceResourceID)
+	require.Equal(t, storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED, result.State)
 	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_FAIL, result.Status)
 	require.NotNil(t, result.ObservedValue)
 	require.InDelta(t, 12, *result.ObservedValue, 1e-9)
@@ -349,23 +397,46 @@ func TestBuildRuleResultStoresTheVerdictAndItsEvidence(t *testing.T) {
 	require.Empty(t, result.ErrorCode)
 }
 
-func TestBuildRuleResultKeepsErrorMessageBounded(t *testing.T) {
+// A verdict that failed before a snapshot was read still closes the row: the
+// planned revision, target and engine stay on it, so the row explains what was
+// attempted and never disappears.
+func TestFailureExecutionMessageKeepsThePlannedSnapshot(t *testing.T) {
 	t.Parallel()
 
+	startedAt := time.Date(2026, time.October, 19, 9, 0, 0, 0, time.UTC)
+	planned := &store.QualityExecutionMessage{
+		ID:           11,
+		RunID:        3,
+		RuleID:       7,
+		RuleRevision: 2,
+		TargetGUID:   "inst;db;public;orders",
+		TargetType:   storepb.MetaType_TABLE,
+		TargetPath:   &storepb.QualityTargetPath{Instance: "inst", Object: "orders"},
+		Trigger:      storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL,
+	}
 	long := make([]byte, maxErrorMessageLength+100)
 	for i := range long {
 		long[i] = 'x'
 	}
-	result := failureRuleResult(1, 2, nil, time.Now().UTC(), storepb.QualityStatus_QUALITY_STATUS_ERROR,
+	result := failureExecutionMessage(planned, startedAt, storepb.QualityStatus_QUALITY_STATUS_ERROR,
 		dataquality.ErrCodeExecution, string(long))
+
+	require.Equal(t, int64(11), result.ID)
+	require.Equal(t, int64(3), result.RunID)
+	require.Equal(t, int64(7), result.RuleID)
+	require.Equal(t, int32(2), result.RuleRevision)
+	require.Equal(t, "inst;db;public;orders", result.TargetGUID)
+	require.Equal(t, storepb.MetaType_TABLE, result.TargetType)
+	require.Equal(t, "orders", result.TargetPath.GetObject())
+	require.Equal(t, storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED, result.State)
 	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_ERROR, result.Status)
 	require.Nil(t, result.ObservedValue)
 	require.Len(t, result.ErrorMessage, maxErrorMessageLength)
 	require.Equal(t, dataquality.ErrCodeExecution, result.ErrorCode)
-	require.Zero(t, result.RuleRevision)
+	require.Equal(t, startedAt, result.StartedAt)
 }
 
-func TestObservedValueIsAbsentForUnjudgedResults(t *testing.T) {
+func TestObservedValueIsAbsentForUnjudgedExecutions(t *testing.T) {
 	t.Parallel()
 
 	require.NotNil(t, observedValue(storepb.QualityStatus_QUALITY_STATUS_PASS, 0))
@@ -385,37 +456,37 @@ func TestDurationMSClampsNegativeAndOverflow(t *testing.T) {
 	require.Equal(t, int32(^uint32(0)>>1), durationMS(now.Add(-20*24*time.Hour), now.Add(20*24*time.Hour)))
 }
 
-func TestBaselineFromResultsSkipsUnjudgedResults(t *testing.T) {
+func TestBaselineFromExecutionsSkipsUnjudgedVerdicts(t *testing.T) {
 	t.Parallel()
 
 	observed := 42.0
-	// The newest result is an ERROR; the last evaluated one is the baseline.
-	results := []*store.QualityRuleResultMessage{
+	// The newest execution is an ERROR; the last evaluated one is the baseline.
+	executions := []*store.QualityExecutionMessage{
 		{Status: storepb.QualityStatus_QUALITY_STATUS_ERROR, ObservedValue: &observed},
 		{Status: storepb.QualityStatus_QUALITY_STATUS_PASS, ObservedValue: &observed},
 	}
 	now := time.Now().UTC()
-	results[1].StartedAt = now.Add(-time.Minute)
-	baseline := baselineFromResults(results, now, time.Hour)
+	executions[1].StartedAt = now.Add(-time.Minute)
+	baseline := baselineFromExecutions(executions, now, time.Hour)
 	require.NotNil(t, baseline)
 	require.InDelta(t, 42, *baseline, 1e-9)
 
-	require.Nil(t, baselineFromResults(nil, now, time.Hour))
-	require.Nil(t, baselineFromResults([]*store.QualityRuleResultMessage{
+	require.Nil(t, baselineFromExecutions(nil, now, time.Hour))
+	require.Nil(t, baselineFromExecutions([]*store.QualityExecutionMessage{
 		{Status: storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, ObservedValue: &observed},
 	}, now, time.Hour))
 
 	// A week-old observation, or one more than two intervals behind, is no
 	// longer a fair denominator.
-	stale := []*store.QualityRuleResultMessage{
+	stale := []*store.QualityExecutionMessage{
 		{Status: storepb.QualityStatus_QUALITY_STATUS_PASS, ObservedValue: &observed, StartedAt: now.Add(-8 * 24 * time.Hour)},
 	}
-	require.Nil(t, baselineFromResults(stale, now, 24*time.Hour))
-	drifted := []*store.QualityRuleResultMessage{
+	require.Nil(t, baselineFromExecutions(stale, now, 24*time.Hour))
+	drifted := []*store.QualityExecutionMessage{
 		{Status: storepb.QualityStatus_QUALITY_STATUS_PASS, ObservedValue: &observed, StartedAt: now.Add(-3 * time.Hour)},
 	}
-	require.Nil(t, baselineFromResults(drifted, now, time.Hour))
-	require.NotNil(t, baselineFromResults(drifted, now, 4*time.Hour))
+	require.Nil(t, baselineFromExecutions(drifted, now, time.Hour))
+	require.NotNil(t, baselineFromExecutions(drifted, now, 4*time.Hour))
 }
 
 func TestErrorCodeAndMessageMapsRunnerLevelFailures(t *testing.T) {
@@ -424,8 +495,9 @@ func TestErrorCodeAndMessageMapsRunnerLevelFailures(t *testing.T) {
 	code, _ := errorCodeAndMessage(dbfactory.ErrNoReadOnlyDataSource)
 	require.Equal(t, dataquality.ErrCodeNoReadOnly, code)
 
-	// Capacity contention is not a rule failure: the runner defers the run before
-	// it executes rather than turning the limiter's error into a QUOTA result.
+	// Capacity contention is not a rule failure: the runner defers the batch
+	// before it executes rather than turning the limiter's error into a QUOTA
+	// verdict.
 	code, _ = errorCodeAndMessage(state.ErrInstanceConnectionLimit)
 	require.NotEqual(t, dataquality.ErrCodeQuota, code)
 
@@ -438,13 +510,14 @@ func qualityPtr[T any](value T) *T {
 	return &value
 }
 
-// qualityExecutionStub is one evaluated FAIL execution with every input the
-// problem ledger and the notification builders read.
-func qualityExecutionStub(status storepb.QualityStatus) *ruleExecution {
+// ruleExecutionStub is one evaluated FAIL execution with every input the problem
+// ledger and the notification builders read.
+func ruleExecutionStub(status storepb.QualityStatus) *ruleExecution {
 	observed := 7.0
 	previous := storepb.QualityStatus_QUALITY_STATUS_FAIL
 	return &ruleExecution{
-		result: &store.QualityRuleResultMessage{
+		result: &store.QualityExecutionMessage{
+			ID:            101,
 			RunID:         11,
 			RuleID:        7,
 			RuleRevision:  2,
@@ -509,7 +582,7 @@ func TestQualityNotificationRecipient(t *testing.T) {
 
 	for _, kind := range []storepb.DataQualityNotificationKind{executionFailed, storm} {
 		// The rule's owner still gets an administrator-only alert: the owner sees
-		// the failed execution on the run page, not in their inbox.
+		// the failed execution on the executions page, not in their inbox.
 		recipientID, toAdmins := qualityNotificationRecipient(kind, qualityPtr(int32(9)))
 		require.True(t, toAdmins)
 		require.Zero(t, recipientID)
@@ -590,15 +663,15 @@ func TestQualityTargetDisplayPath(t *testing.T) {
 	}))
 }
 
-// Only FAIL results make a storm: a run that could not execute its rules is a
-// different alert, and it must not merge into the data-quality summary.
-func TestIsQualityRunStorm(t *testing.T) {
+// Only FAIL executions make a storm: a batch that could not execute its rules is
+// a different alert, and it must not merge into the data-quality summary.
+func TestIsQualityStorm(t *testing.T) {
 	t.Parallel()
 
-	results := func(statuses ...storepb.QualityStatus) []*store.QualityRuleResultMessage {
-		out := make([]*store.QualityRuleResultMessage, 0, len(statuses))
+	executions := func(statuses ...storepb.QualityStatus) []*ruleExecution {
+		out := make([]*ruleExecution, 0, len(statuses))
 		for _, status := range statuses {
-			out = append(out, qualityResultStub(status))
+			out = append(out, &ruleExecution{result: qualityExecutionStub(status)})
 		}
 		return out
 	}
@@ -607,35 +680,29 @@ func TestIsQualityRunStorm(t *testing.T) {
 	for range QualityStormThreshold {
 		atThreshold = append(atThreshold, storepb.QualityStatus_QUALITY_STATUS_FAIL)
 	}
-	require.False(t, isQualityRunStorm(results(atThreshold...)))
+	require.False(t, isQualityStorm(executions(atThreshold...)))
 
 	overThreshold := make([]storepb.QualityStatus, 0, len(atThreshold)+1)
 	overThreshold = append(overThreshold, atThreshold...)
 	overThreshold = append(overThreshold, storepb.QualityStatus_QUALITY_STATUS_FAIL)
-	require.True(t, isQualityRunStorm(results(overThreshold...)))
+	require.True(t, isQualityStorm(executions(overThreshold...)))
 
 	errors := make([]storepb.QualityStatus, 0, QualityStormThreshold+1)
 	for range QualityStormThreshold + 1 {
 		errors = append(errors, storepb.QualityStatus_QUALITY_STATUS_ERROR)
 	}
-	require.False(t, isQualityRunStorm(results(errors...)))
-
-	mixed := make([]storepb.QualityStatus, 0, len(errors))
-	mixed = append(mixed, errors[1:]...)
-	mixed = append(mixed, storepb.QualityStatus_QUALITY_STATUS_FAIL)
-	require.False(t, isQualityRunStorm(results(mixed...)))
+	require.False(t, isQualityStorm(executions(errors...)))
 }
 
 func TestBuildDataQualityDetailForAnOpenedIssue(t *testing.T) {
 	t.Parallel()
 
-	execution := qualityExecutionStub(storepb.QualityStatus_QUALITY_STATUS_FAIL)
+	execution := ruleExecutionStub(storepb.QualityStatus_QUALITY_STATUS_FAIL)
 	detail := buildDataQualityDetail(dataQualityDetailInput{
 		workspaceID:     "ws1",
 		kind:            storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED,
 		execution:       execution,
 		issueResourceID: "issue1",
-		runResourceName: "workspaces/ws1/qualityRuns/run1",
 	})
 
 	require.Equal(t, storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED, detail.GetKind())
@@ -651,20 +718,19 @@ func TestBuildDataQualityDetailForAnOpenedIssue(t *testing.T) {
 	require.Equal(t, int64(7), detail.GetFailedRows())
 	require.Equal(t, int64(20), detail.GetTotalRows())
 	require.Equal(t, "workspaces/ws1/qualityIssues/issue1", detail.GetIssue())
-	require.Equal(t, "workspaces/ws1/qualityRuns/run1", detail.GetRun())
+	require.Equal(t, "workspaces/ws1/qualityExecutions/101", detail.GetExecution())
 	require.Empty(t, detail.GetErrorCode())
 }
 
 func TestBuildDataQualityDetailForARecovery(t *testing.T) {
 	t.Parallel()
 
-	execution := qualityExecutionStub(storepb.QualityStatus_QUALITY_STATUS_PASS)
+	execution := ruleExecutionStub(storepb.QualityStatus_QUALITY_STATUS_PASS)
 	detail := buildDataQualityDetail(dataQualityDetailInput{
 		workspaceID:     "ws1",
 		kind:            storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED,
 		execution:       execution,
 		issueResourceID: "issue1",
-		runResourceName: "workspaces/ws1/qualityRuns/run2",
 	})
 	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_FAIL, detail.GetFromStatus())
 	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_PASS, detail.GetToStatus())
@@ -673,15 +739,14 @@ func TestBuildDataQualityDetailForARecovery(t *testing.T) {
 func TestBuildDataQualityDetailForAnExecutionFailure(t *testing.T) {
 	t.Parallel()
 
-	execution := qualityExecutionStub(storepb.QualityStatus_QUALITY_STATUS_ERROR)
+	execution := ruleExecutionStub(storepb.QualityStatus_QUALITY_STATUS_ERROR)
 	execution.result.ObservedValue = nil
 	execution.result.ErrorCode = dataquality.ErrCodeTimeout
 	execution.previous = nil
 	detail := buildDataQualityDetail(dataQualityDetailInput{
-		workspaceID:     "ws1",
-		kind:            storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED,
-		execution:       execution,
-		runResourceName: "workspaces/ws1/qualityRuns/run1",
+		workspaceID: "ws1",
+		kind:        storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED,
+		execution:   execution,
 	})
 
 	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, detail.GetFromStatus())
@@ -689,6 +754,7 @@ func TestBuildDataQualityDetailForAnExecutionFailure(t *testing.T) {
 	require.Equal(t, dataquality.ErrCodeTimeout, detail.GetErrorCode())
 	require.Zero(t, detail.GetObservedValue())
 	require.Empty(t, detail.GetIssue())
+	require.Equal(t, "workspaces/ws1/qualityExecutions/101", detail.GetExecution())
 }
 
 func TestQualityNotificationTargetIsScopedToTheEvent(t *testing.T) {
@@ -703,9 +769,11 @@ func TestQualityNotificationTargetIsScopedToTheEvent(t *testing.T) {
 		Kind: storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED,
 		Rule: "workspaces/ws/qualityRules/rule1",
 	}))
-	require.Equal(t, "workspaces/ws/qualityRuns/run1", qualityNotificationTarget(&storepb.DataQualityDetail{
-		Kind: storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY,
-		Run:  "workspaces/ws/qualityRuns/run1",
+	// A storm does not use this helper: it is deduped by the internal batch id
+	// through sendDataQualityNotificationFor, so no resource target is derived.
+	require.Empty(t, qualityNotificationTarget(&storepb.DataQualityDetail{
+		Kind:     storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY,
+		Instance: "instances/inst1",
 	}))
 	require.Empty(t, qualityNotificationTarget(&storepb.DataQualityDetail{
 		Kind: storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_UNSPECIFIED,
@@ -715,11 +783,47 @@ func TestQualityNotificationTargetIsScopedToTheEvent(t *testing.T) {
 func TestBuildStormDetail(t *testing.T) {
 	t.Parallel()
 
-	detail := buildStormDetail("workspaces/ws/qualityRuns/run1", 12, 40)
+	detail := buildStormDetail("instances/inst1", 12, 40)
 	require.Equal(t, storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY, detail.GetKind())
-	require.Equal(t, "workspaces/ws/qualityRuns/run1", detail.GetRun())
+	require.Equal(t, "instances/inst1", detail.GetInstance())
+	require.Empty(t, detail.GetExecution())
 	require.Equal(t, int32(12), detail.GetFailedRuleCount())
 	require.Equal(t, int32(40), detail.GetTotalRuleCount())
+}
+
+// The runner formats execution names the way the API addresses a row: the last
+// segment is the numeric execution id.
+func TestFormatQualityExecutionName(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "workspaces/ws1/qualityExecutions/101", formatQualityExecutionName("ws1", 101))
+	require.Equal(t, "qualityExecutions/101", formatQualityExecutionName("", 101))
+	require.Empty(t, formatQualityExecutionName("ws1", 0))
+}
+
+// Instance resource names are top-level; a storm summary names the instance the
+// same way the API does.
+func TestFormatInstanceResourceName(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "instances/inst1", formatInstanceResourceName("inst1"))
+	require.Empty(t, formatInstanceResourceName(""))
+}
+
+// PlanQualityExecutions fills in each planned row's id; the runner must derive
+// tasks from that identity and drop a row the store did not identify.
+func TestPlannedTasksFromMessages(t *testing.T) {
+	t.Parallel()
+
+	tasks := plannedTasksFromMessages([]*store.QualityExecutionMessage{
+		{ID: 101, RuleID: 7},
+		nil,
+		{ID: 0, RuleID: 8},
+		{ID: 103, RuleID: 9},
+	})
+	require.Len(t, tasks, 2)
+	require.Equal(t, executionTask{executionID: 101, ruleID: 7}, tasks[0])
+	require.Equal(t, executionTask{executionID: 103, ruleID: 9}, tasks[1])
 }
 
 // A metadata rule observes the registry, so it must run without a target
@@ -744,4 +848,134 @@ func TestRequiresReadOnlySource(t *testing.T) {
 	// and the executor cannot disagree about which rules need a queryer.
 	require.Equal(t, dataquality.IsMetadataRule(storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT),
 		!requiresReadOnlySource(storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT))
+}
+
+// fakeBatchStore is the batchExecutionStore the accounting tests drive. It only
+// implements what executeBatchWith touches when no rule is actually executed;
+// that is exactly the incomplete and DB-error paths H1 is about.
+type fakeBatchStore struct {
+	markBatchErr       error
+	planned            map[int64]*store.QualityExecutionMessage
+	loadErr            map[int64]error
+	markExecutionErr   map[int64]error
+	finishExecutionErr error
+	abandonErr         error
+	abandonRows        int64
+	abandonCalls       []int64
+	finishBatchCalls   []fakeFinishBatchCall
+}
+
+type fakeFinishBatchCall struct {
+	status  storepb.QualityExecutionState
+	outcome storepb.QualityStatus
+	counts  *storepb.QualityStatusCounts
+}
+
+func (f *fakeBatchStore) MarkQualityRunRunning(_ context.Context, _ int64, _ time.Time) error {
+	return f.markBatchErr
+}
+
+func (f *fakeBatchStore) GetQualityExecution(_ context.Context, id int64) (*store.QualityExecutionMessage, error) {
+	if err := f.loadErr[id]; err != nil {
+		return nil, err
+	}
+	return f.planned[id], nil
+}
+
+func (*fakeBatchStore) ListRecentQualityExecutions(_ context.Context, _ int64, _ int) ([]*store.QualityExecutionMessage, error) {
+	return nil, nil
+}
+
+func (f *fakeBatchStore) MarkQualityExecutionRunning(_ context.Context, id int64, _ time.Time) error {
+	return f.markExecutionErr[id]
+}
+
+func (f *fakeBatchStore) FinishQualityExecution(_ context.Context, _ *store.QualityExecutionMessage) error {
+	return f.finishExecutionErr
+}
+
+func (f *fakeBatchStore) AbandonQualityExecutions(_ context.Context, batchID int64, _ time.Time) (int64, error) {
+	f.abandonCalls = append(f.abandonCalls, batchID)
+	return f.abandonRows, f.abandonErr
+}
+
+func (f *fakeBatchStore) FinishQualityRun(_ context.Context, _ int64, status storepb.QualityExecutionState, outcome storepb.QualityStatus, counts *storepb.QualityStatusCounts, _ time.Time) error {
+	f.finishBatchCalls = append(f.finishBatchCalls, fakeFinishBatchCall{status: status, outcome: outcome, counts: counts})
+	return nil
+}
+
+func newAccountingRunner() *Runner {
+	return &Runner{metrics: metrics.New()}
+}
+
+// TestExecuteBatchIncompleteAbandonsUnfinishedRows is the H1 regression test: a
+// skipped task (unreadable row, or a row another writer already closed) must turn
+// the whole batch ABANDONED, never a partial COMPLETED rollup, and the rows the
+// batch still owns must be abandoned.
+func TestExecuteBatchIncompleteAbandonsUnfinishedRows(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeBatchStore{
+		planned: map[int64]*store.QualityExecutionMessage{
+			12: {ID: 12, RunID: 5, RuleID: 7, State: storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_PENDING},
+		},
+		loadErr:          map[int64]error{11: errors.New("read failed")},
+		markExecutionErr: map[int64]error{12: errors.New("already closed")},
+		// Deliberately fewer rows than tasks: the batch total must come from the
+		// plan, not from what the abandon UPDATE happened to change.
+		abandonRows: 1,
+	}
+	tasks := []executionTask{{executionID: 11, ruleID: 7}, {executionID: 12, ruleID: 7}}
+
+	newAccountingRunner().executeBatchWith(context.Background(), fake, 5, "inst-1", tasks, batchAdmission{}, func() {})
+
+	require.Equal(t, []int64{5}, fake.abandonCalls, "the batch's unfinished rows are abandoned")
+	require.Len(t, fake.finishBatchCalls, 1)
+	finished := fake.finishBatchCalls[0]
+	require.Equal(t, storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_ABANDONED, finished.status,
+		"an incomplete batch must never be reported COMPLETED")
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, finished.outcome,
+		"an incomplete batch has no rollup outcome")
+	require.Equal(t, int32(len(tasks)), finished.counts.GetTotal(), "the batch accounts for every planned execution")
+}
+
+// TestExecuteBatchMarkRunningFailureAbandonsBatch covers the DB-error residual:
+// when the batch cannot even be marked RUNNING, its planned rows must not linger
+// as PENDING waiting for the next startup sweep.
+func TestExecuteBatchMarkRunningFailureAbandonsBatch(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeBatchStore{
+		markBatchErr: errors.New("batch already terminal"),
+		abandonRows:  1,
+	}
+	tasks := []executionTask{{executionID: 21, ruleID: 7}}
+
+	newAccountingRunner().executeBatchWith(context.Background(), fake, 6, "inst-1", tasks, batchAdmission{}, func() {})
+
+	require.Equal(t, []int64{6}, fake.abandonCalls)
+	require.Len(t, fake.finishBatchCalls, 1)
+	require.Equal(t, storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_ABANDONED, fake.finishBatchCalls[0].status)
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, fake.finishBatchCalls[0].outcome)
+}
+
+// TestExecuteBatchAbandonWriteFailureStillClosesBatch pins the second DB-error
+// residual: a failed abandon UPDATE leaves the rows to the startup sweep, but the
+// batch itself is still closed instead of staying RUNNING forever.
+func TestExecuteBatchAbandonWriteFailureStillClosesBatch(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeBatchStore{
+		loadErr:     map[int64]error{31: errors.New("read failed")},
+		abandonErr:  errors.New("update failed"),
+		abandonRows: 0,
+	}
+	tasks := []executionTask{{executionID: 31, ruleID: 7}}
+
+	newAccountingRunner().executeBatchWith(context.Background(), fake, 7, "inst-1", tasks, batchAdmission{}, func() {})
+
+	require.Equal(t, []int64{7}, fake.abandonCalls, "the abandon is still attempted")
+	require.Len(t, fake.finishBatchCalls, 1)
+	require.Equal(t, storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_ABANDONED, fake.finishBatchCalls[0].status,
+		"the batch must be closed even when the row abandon failed")
 }

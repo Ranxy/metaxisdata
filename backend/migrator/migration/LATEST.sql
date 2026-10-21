@@ -953,24 +953,25 @@ CREATE TABLE IF NOT EXISTS quality_rule_revision (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_rule_revision_rule_rev ON quality_rule_revision(rule_id, revision);
 
--- quality_run is one execution batch: manually selected rules, or the rules of
--- one instance that became due in one scheduler tick.
+-- quality_run is an internal dispatch batch: the rules of one instance that
+-- became due in one scheduler tick, or a manual selection grouped by instance.
+-- It is never exposed through the API; it exists to admit one connection lease
+-- per instance, aggregate a storm notification, and cascade retention.
 CREATE TABLE IF NOT EXISTS quality_run (
     id BIGSERIAL PRIMARY KEY,
     resource_id TEXT COLLATE "C" NOT NULL,
     instance_resource_id TEXT COLLATE "C" NOT NULL DEFAULT '',
     -- 1 MANUAL, 2 SCHEDULED.
     trigger INT2 NOT NULL,
-    -- Lifecycle: 1 PENDING, 2 RUNNING, 3 COMPLETED, 4 ABANDONED (a run whose
+    -- Lifecycle: 1 PENDING, 2 RUNNING, 3 COMPLETED, 4 ABANDONED (a batch whose
     -- process was lost across a restart).
     status INT2 NOT NULL,
-    -- Rollup of the run's results: the worst QualityStatus any result reported
-    -- (1 PASS ... 6 NOT_EVALUATED). NULL while the run has not finished, which
-    -- is what tells a queued run apart from a finished one that evaluated
-    -- nothing.
+    -- Rollup of the batch's terminal executions: the worst QualityStatus any of
+    -- them reported (1 PASS ... 6 NOT_EVALUATED). NULL while the batch has not
+    -- finished.
     outcome INT2,
     counts JSONB NOT NULL DEFAULT '{}',
-    -- Principal id of the user who started the run; NULL for a scheduled run.
+    -- Principal id of the user who started the batch; NULL for a scheduled one.
     initiator_id INT4,
     started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     finished_at TIMESTAMPTZ
@@ -979,22 +980,35 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_run_resource_id ON quality_run(res
 CREATE INDEX IF NOT EXISTS idx_quality_run_started_at ON quality_run(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_quality_run_instance_started ON quality_run(instance_resource_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_quality_run_status ON quality_run(status);
--- The run list can filter by the quality rollup, which only completed runs have.
 CREATE INDEX IF NOT EXISTS idx_quality_run_outcome ON quality_run(outcome) WHERE outcome IS NOT NULL;
 
--- quality_rule_result is one rule's outcome in one run. Rows are insert-only;
--- retention deletes them with their run.
-CREATE TABLE IF NOT EXISTS quality_rule_result (
+-- quality_execution is one rule checked once: the durable, user-facing unit of
+-- the data quality engine. A batch plans one row per rule (PENDING); the runner
+-- marks it RUNNING, then writes the verdict and evidence and marks it COMPLETED.
+CREATE TABLE IF NOT EXISTS quality_execution (
     id BIGSERIAL PRIMARY KEY,
     run_id BIGINT NOT NULL REFERENCES quality_run(id) ON DELETE CASCADE,
     rule_id BIGINT NOT NULL REFERENCES quality_rule(id),
-    -- The revision that produced this result, so editing a rule never rewrites
-    -- its history.
+    -- The revision that produced this execution, so editing a rule never
+    -- rewrites its history.
     rule_revision INT4 NOT NULL,
     rule_engine_version TEXT NOT NULL DEFAULT '',
     target_guid TEXT COLLATE "C" NOT NULL,
     target_type INT2 NOT NULL,
-    status INT2 NOT NULL,
+    target_path JSONB NOT NULL DEFAULT '{}',
+    -- The instance the target lives in; empty for a target that could not be
+    -- attributed to one.
+    instance_resource_id TEXT COLLATE "C" NOT NULL DEFAULT '',
+    -- 1 MANUAL, 2 SCHEDULED.
+    trigger INT2 NOT NULL DEFAULT 0,
+    -- Principal id of the user who asked for a manual execution; NULL for a
+    -- scheduled one.
+    initiator_id INT4,
+    -- Lifecycle: 1 PENDING, 2 RUNNING, 3 COMPLETED, 4 ABANDONED.
+    state INT2 NOT NULL DEFAULT 3,
+    -- The quality verdict (1 PASS ... 6 NOT_EVALUATED). 0 until the execution
+    -- finishes; an ABANDONED execution never produces one.
+    status INT2 NOT NULL DEFAULT 0,
     -- NULL when the check could not produce a value (ERROR or NOT_EVALUATED).
     observed_value DOUBLE PRECISION,
     -- Unit of observed_value: 1 COUNT, 2 RATIO, 3 SECONDS, 4 TIMESTAMP,
@@ -1012,12 +1026,14 @@ CREATE TABLE IF NOT EXISTS quality_rule_result (
     error_message TEXT NOT NULL DEFAULT '',
     duration_ms INT4 NOT NULL DEFAULT 0,
     started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    finished_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    finished_at TIMESTAMPTZ
 );
-CREATE INDEX IF NOT EXISTS idx_quality_rule_result_run ON quality_rule_result(run_id);
-CREATE INDEX IF NOT EXISTS idx_quality_rule_result_rule_time ON quality_rule_result(rule_id, started_at DESC);
-CREATE INDEX IF NOT EXISTS idx_quality_rule_result_target_time ON quality_rule_result(target_guid, target_type, started_at DESC);
-CREATE INDEX IF NOT EXISTS idx_quality_rule_result_started_at ON quality_rule_result(started_at);
+CREATE INDEX IF NOT EXISTS idx_quality_execution_run ON quality_execution(run_id);
+CREATE INDEX IF NOT EXISTS idx_quality_execution_rule_time ON quality_execution(rule_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_quality_execution_target_time ON quality_execution(target_guid, target_type, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_quality_execution_started_at ON quality_execution(started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_quality_execution_state ON quality_execution(state);
+CREATE INDEX IF NOT EXISTS idx_quality_execution_trigger ON quality_execution(trigger);
 
 -- quality_issue is the persistent problem for one rule. The partial unique index
 -- is what makes "at most one unresolved issue per rule" true under concurrent
@@ -1032,8 +1048,8 @@ CREATE TABLE IF NOT EXISTS quality_issue (
     -- "<> 3" so at most one unresolved issue exists per rule.
     status INT2 NOT NULL,
     severity INT2 NOT NULL,
-    first_seen_run_id BIGINT,
-    last_seen_run_id BIGINT,
+    first_seen_execution_id BIGINT,
+    last_seen_execution_id BIGINT,
     first_seen_at TIMESTAMPTZ NOT NULL,
     last_seen_at TIMESTAMPTZ NOT NULL,
     resolved_at TIMESTAMPTZ,
@@ -1141,9 +1157,12 @@ COMMENT ON COLUMN quality_rule.target_path IS 'Stored as QualityTargetPath (prot
 COMMENT ON COLUMN quality_rule.config IS 'Stored as QualityRuleConfig (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_rule_revision.target_path IS 'Stored as QualityTargetPath (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_rule_revision.config IS 'Stored as QualityRuleConfig (proto/store/store/data_quality.proto)';
-COMMENT ON COLUMN quality_run.counts IS 'Stored as QualityRunCounts (proto/store/store/data_quality.proto)';
-COMMENT ON COLUMN quality_rule_result.thresholds IS 'Stored as QualityThresholds (proto/store/store/data_quality.proto)';
-COMMENT ON COLUMN quality_rule_result.sample IS 'Stored as QualityFailureSamples (proto/store/store/data_quality.proto)';
+COMMENT ON COLUMN quality_run.counts IS 'Stored as QualityStatusCounts (proto/store/store/data_quality.proto)';
+COMMENT ON COLUMN quality_execution.target_path IS 'Stored as QualityTargetPath (proto/store/store/data_quality.proto)';
+COMMENT ON COLUMN quality_execution.thresholds IS 'Stored as QualityThresholds (proto/store/store/data_quality.proto)';
+COMMENT ON COLUMN quality_execution.sample IS 'Stored as QualityFailureSamples (proto/store/store/data_quality.proto)';
+COMMENT ON COLUMN quality_execution.state IS 'Lifecycle: 1 PENDING, 2 RUNNING, 3 COMPLETED, 4 ABANDONED';
+COMMENT ON COLUMN quality_run.status IS 'Internal dispatch batch lifecycle: 1 PENDING, 2 RUNNING, 3 COMPLETED, 4 ABANDONED';
 COMMENT ON COLUMN column_profile.profile IS 'Stored as ColumnProfile (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN column_semantic_label.evidence IS 'Stored as SemanticLabelEvidence (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_suggestion.payload IS 'Stored as QualitySuggestionPayload (proto/store/store/data_quality.proto)';
@@ -1152,7 +1171,7 @@ COMMENT ON COLUMN data_quality_llm_cache.result_json IS 'Stored as DataQualityLL
 ALTER SEQUENCE quality_rule_id_seq RESTART WITH 101;
 ALTER SEQUENCE quality_rule_revision_id_seq RESTART WITH 101;
 ALTER SEQUENCE quality_run_id_seq RESTART WITH 101;
-ALTER SEQUENCE quality_rule_result_id_seq RESTART WITH 101;
+ALTER SEQUENCE quality_execution_id_seq RESTART WITH 101;
 ALTER SEQUENCE quality_issue_id_seq RESTART WITH 101;
 ALTER SEQUENCE column_profile_id_seq RESTART WITH 101;
 ALTER SEQUENCE column_semantic_label_id_seq RESTART WITH 101;

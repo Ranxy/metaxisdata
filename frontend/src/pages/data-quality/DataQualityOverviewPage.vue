@@ -94,14 +94,14 @@
             :value="overview.failingRuleCount"
             :hint="failingHint"
             :icon="TriangleAlert"
-            :to="{ name: 'DataQualityRuns' }"
+            :to="{ name: 'DataQualityExecutions' }"
           />
           <StatCard
-            :label="t('dataQuality.overview.statRuns')"
-            :value="overview.runCount"
-            :hint="runsHint"
+            :label="t('dataQuality.overview.statExecutions')"
+            :value="overview.executionCount"
+            :hint="executionsHint"
             :icon="Activity"
-            :to="{ name: 'DataQualityRuns' }"
+            :to="{ name: 'DataQualityExecutions' }"
           />
         </div>
 
@@ -160,12 +160,13 @@
                 </CardDescription>
               </div>
               <Button
+                v-if="canListExecutions"
                 variant="ghost"
                 size="sm"
                 as-child
               >
-                <RouterLink :to="{ name: 'DataQualityRuns' }">
-                  {{ t("dataQuality.viewRun") }}
+                <RouterLink :to="{ name: 'DataQualityExecutions' }">
+                  {{ t("dataQuality.viewAllExecutions") }}
                 </RouterLink>
               </Button>
             </CardHeader>
@@ -201,27 +202,27 @@
                     </div>
                     <div class="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
                       <Badge
-                        :variant="qualityStatusVariant(failure.status)"
+                        :variant="qualityStatusVariant(failure.outcome)"
                         class="mr-1"
                       >
-                        {{ t(qualityStatusKey(failure.status)) }}
+                        {{ t(qualityStatusKey(failure.outcome)) }}
                       </Badge>
                       <span class="tabular-nums">
                         {{ t("dataQuality.failedRows") }}
                         {{ formatRowCount(failure.failedRows, locale) }}
                       </span>
                       <span aria-hidden="true">·</span>
-                      <span :title="formatDateTime(failure.finishTime, locale)">
-                        {{ formatRelativeTime(failure.finishTime, locale) }}
+                      <span :title="formatDateTime(failure.finishTime ?? failure.startTime, locale)">
+                        {{ formatRelativeTime(failure.finishTime ?? failure.startTime, locale) }}
                       </span>
                     </div>
                   </div>
                   <RouterLink
-                    v-if="failure.run"
-                    :to="runRoute(failure.run)"
+                    v-if="canViewExecution"
+                    :to="executionRoute(failure.name)"
                     class="shrink-0 text-xs text-primary hover:underline"
                   >
-                    {{ t("dataQuality.viewRun") }}
+                    {{ t("dataQuality.viewExecution") }}
                   </RouterLink>
                 </li>
               </ul>
@@ -330,8 +331,8 @@ import { RouterLink } from "vue-router";
 import {
   getQualityOverview,
   listAllQualityRules,
+  listQualityExecutions,
   listQualityIssues,
-  listQualityRuleResults,
   qualityRuleID,
 } from "@/api/data-quality";
 import EmptyState from "@/components/common/EmptyState.vue";
@@ -351,11 +352,11 @@ import {
 import { useErrorMessage } from "@/composables/useErrorHandler";
 import { useAuthStore } from "@/store/modules/auth";
 import {
+  type QualityExecution,
   type QualityIssue,
   QualityIssueStatus,
   type QualityOverview,
   QualityOverviewSchema,
-  type QualityRuleResult,
   QualitySeverity,
   QualityStatus,
 } from "@/types/proto-es/v1/data_quality_service_pb";
@@ -396,12 +397,18 @@ const canCreate = computed(() =>
 const canViewRule = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.rules.get")
 );
+const canViewExecution = computed(() =>
+  authStore.hasPermission("metaxisdata.dataQuality.executions.get")
+);
+const canListExecutions = computed(() =>
+  authStore.hasPermission("metaxisdata.dataQuality.executions.list")
+);
 
 const EMPTY_OVERVIEW: QualityOverview = create(QualityOverviewSchema, {});
 
 const overview = ref<QualityOverview>(EMPTY_OVERVIEW);
 const windowDays = ref<TrendWindow>(7);
-const recentFailures = ref<QualityRuleResult[]>([]);
+const recentFailures = ref<QualityExecution[]>([]);
 const openIssues = ref<QualityIssue[]>([]);
 const ruleTitles = ref<Record<string, string>>({});
 const isLoading = ref(true);
@@ -437,9 +444,9 @@ const failingHint = computed(() =>
   })
 );
 
-const runsHint = computed(() => {
+const executionsHint = computed(() => {
   const counts = overview.value.lastDayCounts;
-  return t("dataQuality.overview.runsHint", {
+  return t("dataQuality.overview.executionsHint", {
     pass: counts?.pass ?? 0,
     fail: counts?.fail ?? 0,
   });
@@ -469,8 +476,11 @@ function ruleRoute(ruleName: string) {
   };
 }
 
-function runRoute(name: string) {
-  return { name: "DataQualityRunDetail", params: { runId: name.split("/") } };
+function executionRoute(name: string) {
+  return {
+    name: "DataQualityExecutionDetail",
+    params: { executionId: name.split("/") },
+  };
 }
 
 function issueRoute(name: string) {
@@ -525,21 +535,21 @@ async function loadRuleTitles() {
   }
 }
 
-/** The last day's failures, one row per rule (the newest result wins). */
+/** The last day's failures, one row per rule (the newest execution wins). */
 async function loadRecentFailures() {
   try {
-    const page = await listQualityRuleResults({
-      status: QualityStatus.FAIL,
+    const page = await listQualityExecutions({
+      outcome: QualityStatus.FAIL,
       startTime: timestampFromDate(new Date(Date.now() - 86_400_000)),
       pageSize: 50,
     });
     const seen = new Set<string>();
     recentFailures.value = page.items
-      .filter((result) => {
-        if (seen.has(result.rule)) {
+      .filter((execution) => {
+        if (seen.has(execution.rule)) {
           return false;
         }
-        seen.add(result.rule);
+        seen.add(execution.rule);
         return true;
       })
       .slice(0, 5);

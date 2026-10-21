@@ -158,61 +158,68 @@
         <CardHeader class="flex flex-row items-center justify-between gap-3 border-b">
           <div class="min-w-0 space-y-1">
             <CardTitle class="text-base">
-              {{ t("dataQuality.asset.resultsTitle") }}
+              {{ t("dataQuality.asset.executionsTitle") }}
             </CardTitle>
             <CardDescription>
-              {{ t("dataQuality.asset.resultsDescription") }}
+              {{ t("dataQuality.asset.executionsDescription") }}
             </CardDescription>
           </div>
           <Button
+            v-if="canListExecutions"
             variant="ghost"
             size="sm"
             as-child
           >
-            <RouterLink :to="{ name: 'DataQualityRuns' }">
-              {{ t("dataQuality.asset.viewRuns") }}
+            <RouterLink :to="executionsTo">
+              {{ t("dataQuality.asset.viewExecutions") }}
             </RouterLink>
           </Button>
         </CardHeader>
         <CardContent class="pt-4">
           <EmptyState
-            v-if="results.length === 0"
+            v-if="executions.length === 0"
             compact
             :icon="ListChecks"
-            :title="t('dataQuality.asset.noResults')"
+            :title="t('dataQuality.asset.noExecutions')"
           />
           <ul
             v-else
             class="divide-y"
           >
             <li
-              v-for="result in results.slice(0, 5)"
-              :key="result.name"
+              v-for="execution in executions.slice(0, 5)"
+              :key="execution.name"
               class="flex items-center justify-between gap-3 py-2"
             >
               <div class="min-w-0">
                 <div class="truncate text-sm font-medium">
-                  {{ ruleTitle(result.rule) }}
+                  {{ ruleTitle(execution.rule) }}
                 </div>
                 <div class="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-                  <Badge :variant="qualityStatusVariant(result.status)">
-                    {{ t(qualityStatusKey(result.status)) }}
+                  <Badge :variant="qualityExecutionStateVariant(execution.state)">
+                    {{ t(qualityExecutionStateKey(execution.state)) }}
+                  </Badge>
+                  <Badge
+                    v-if="execution.outcome !== QualityStatus.UNSPECIFIED"
+                    :variant="qualityStatusVariant(execution.outcome)"
+                  >
+                    {{ t(qualityStatusKey(execution.outcome)) }}
                   </Badge>
                   <span class="tabular-nums">
                     {{ t("dataQuality.failedRows") }}
-                    {{ formatRowCount(result.failedRows, locale) }}
+                    {{ formatRowCount(execution.failedRows, locale) }}
                   </span>
-                  <span :title="formatDateTime(result.finishTime, locale)">
-                    {{ formatRelativeTime(result.finishTime, locale) }}
+                  <span :title="formatDateTime(execution.finishTime ?? execution.startTime, locale)">
+                    {{ formatRelativeTime(execution.finishTime ?? execution.startTime, locale) }}
                   </span>
                 </div>
               </div>
               <RouterLink
-                v-if="result.run"
-                :to="runRoute(result.run)"
+                v-if="canViewExecution && execution.name"
+                :to="executionRoute(execution.name)"
                 class="shrink-0 text-xs text-primary hover:underline"
               >
-                {{ t("dataQuality.viewRun") }}
+                {{ t("dataQuality.viewExecution") }}
               </RouterLink>
             </li>
           </ul>
@@ -391,8 +398,8 @@ import { RouterLink } from "vue-router";
 import {
   listColumnLabels,
   listColumnProfiles,
+  listQualityExecutions,
   listQualityIssues,
-  listQualityRuleResults,
   listQualityRules,
   profileColumns,
   suggestColumnLabels,
@@ -423,15 +430,18 @@ import {
   ColumnLabelAction,
   type ColumnProfile,
   type ColumnSemanticLabel,
+  type QualityExecution,
   type QualityIssue,
   QualityIssueStatus,
   type QualityRule,
-  type QualityRuleResult,
+  QualityStatus,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import type { ColumnMetadata } from "@/types/proto-es/v1/database_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
   formatRowCount,
+  qualityExecutionStateKey,
+  qualityExecutionStateVariant,
   qualityIssueStatusKey,
   qualityIssueStatusVariant,
   qualityRuleStateKey,
@@ -451,8 +461,8 @@ import {
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 
 /**
- * The table detail's Data Quality tab: this target's rules, latest results and
- * open issues, plus the deterministic column profiles and accepted semantic
+ * The table detail's Data Quality tab: this target's rules, latest executions
+ * and open issues, plus the deterministic column profiles and accepted semantic
  * labels. Every load is independent — a metadata page must survive a quality
  * fetch failure — and the actions are permission-gated.
  */
@@ -482,9 +492,15 @@ const canSuggest = computed(() =>
 const canUpdateLabels = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.labels.update")
 );
+const canViewExecution = computed(() =>
+  authStore.hasPermission("metaxisdata.dataQuality.executions.get")
+);
+const canListExecutions = computed(() =>
+  authStore.hasPermission("metaxisdata.dataQuality.executions.list")
+);
 
 const rules = ref<QualityRule[]>([]);
-const results = ref<QualityRuleResult[]>([]);
+const executions = ref<QualityExecution[]>([]);
 const openIssues = ref<QualityIssue[]>([]);
 const labels = ref<ColumnSemanticLabel[]>([]);
 const profiles = ref<ColumnProfile[]>([]);
@@ -498,6 +514,11 @@ const createRuleTo = computed(() => ({
     table_guid: props.tableGuid,
     meta_type: String(props.metaType),
   },
+}));
+
+const executionsTo = computed(() => ({
+  name: "DataQualityExecutions",
+  query: { target: props.tableGuid },
 }));
 
 const ruleTitles = computed(() =>
@@ -523,8 +544,11 @@ function ruleRoute(name: string) {
   };
 }
 
-function runRoute(name: string) {
-  return { name: "DataQualityRunDetail", params: { runId: name.split("/") } };
+function executionRoute(name: string) {
+  return {
+    name: "DataQualityExecutionDetail",
+    params: { executionId: name.split("/") },
+  };
 }
 
 function issueRoute(name: string) {
@@ -546,15 +570,15 @@ async function loadRules() {
   }
 }
 
-async function loadResults() {
+async function loadExecutions() {
   try {
-    const page = await listQualityRuleResults({
+    const page = await listQualityExecutions({
       targetGuid: props.tableGuid,
       pageSize: 20,
     });
-    results.value = page.items;
+    executions.value = page.items;
   } catch {
-    results.value = [];
+    executions.value = [];
   }
 }
 
@@ -600,7 +624,7 @@ async function loadAll() {
   }
   await Promise.all([
     loadRules(),
-    loadResults(),
+    loadExecutions(),
     loadIssues(),
     loadLabels(),
     loadProfiles(),

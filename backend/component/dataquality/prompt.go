@@ -804,11 +804,11 @@ func validateExplanation(output ExplanationOutput) error {
 }
 
 // ExplainCacheKey names one cached explanation. The key carries everything the
-// answer depends on: the result row (immutable, insert-only), the rule revision
-// that judged it, the verdict, the prompt version, the provider and model, and
-// the language. A change to any of them is a different question, so a stale entry
-// is never looked up again rather than being wrong.
-func ExplainCacheKey(resultID int64, ruleRevision int32, status storepb.QualityStatus, language, provider, model string) string {
-	return fmt.Sprintf("explain|result:%d|rev:%d|status:%d|prompt:%s|provider:%s|model:%s|lang:%s",
-		resultID, ruleRevision, int32(status), ExplainPromptVersion, provider, model, NormalizePromptLanguage(language))
+// answer depends on: the execution row (immutable, insert-only history), the rule
+// revision that judged it, the verdict, the prompt version, the provider and
+// model, and the language. A change to any of them is a different question, so a
+// stale entry is never looked up again rather than being wrong.
+func ExplainCacheKey(executionID int64, ruleRevision int32, status storepb.QualityStatus, language, provider, model string) string {
+	return fmt.Sprintf("explain|execution:%d|rev:%d|status:%d|prompt:%s|provider:%s|model:%s|lang:%s",
+		executionID, ruleRevision, int32(status), ExplainPromptVersion, provider, model, NormalizePromptLanguage(language))
 }

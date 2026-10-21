@@ -78,25 +78,27 @@ enum QualityStatus {
   QUALITY_STATUS_NOT_EVALUATED = 6;
 }
 
-// QualityRunTrigger is what started a run.
-enum QualityRunTrigger {
-  QUALITY_RUN_TRIGGER_UNSPECIFIED = 0;
-  QUALITY_RUN_TRIGGER_MANUAL = 1;
-  QUALITY_RUN_TRIGGER_SCHEDULED = 2;
+// QualityExecutionTrigger is what started one execution. The internal dispatch
+// batch carries the trigger of its executions.
+enum QualityExecutionTrigger {
+  QUALITY_EXECUTION_TRIGGER_UNSPECIFIED = 0;
+  QUALITY_EXECUTION_TRIGGER_MANUAL = 1;
+  QUALITY_EXECUTION_TRIGGER_SCHEDULED = 2;
 }
 
-// QualityRunStatus is the lifecycle of a run, which is separate from the quality
-// status its results roll up to. A queued run has no outcome yet.
-enum QualityRunStatus {
-  QUALITY_RUN_STATUS_UNSPECIFIED = 0;
-  // Created and waiting for the runner.
-  QUALITY_RUN_STATUS_PENDING = 1;
-  // The runner is executing this run's rules.
-  QUALITY_RUN_STATUS_RUNNING = 2;
-  // Every rule was attempted; outcome holds the rollup.
-  QUALITY_RUN_STATUS_COMPLETED = 3;
-  // A restart discarded the run before it finished. It is not retried.
-  QUALITY_RUN_STATUS_ABANDONED = 4;
+// QualityExecutionState is the lifecycle of one execution, separate from the
+// quality outcome (Status) that is only known once it finishes. The internal
+// dispatch batch uses the same lifecycle.
+enum QualityExecutionState {
+  QUALITY_EXECUTION_STATE_UNSPECIFIED = 0;
+  // Planned and waiting for the runner.
+  QUALITY_EXECUTION_STATE_PENDING = 1;
+  // The runner is executing the rule.
+  QUALITY_EXECUTION_STATE_RUNNING = 2;
+  // The check reached a verdict; Status holds it.
+  QUALITY_EXECUTION_STATE_COMPLETED = 3;
+  // A restart discarded it before it finished. It is not retried.
+  QUALITY_EXECUTION_STATE_ABANDONED = 4;
 }
 
 // QualityIssueStatus is the lifecycle state of an issue.
@@ -298,8 +300,8 @@ message QualityThresholds {
   QualityEmptyBehavior on_empty = 6;
 }
 
-// QualityRunCounts is the six-state tally of one run.
-message QualityRunCounts {
+// QualityStatusCounts is the six-state tally of a set of executions.
+message QualityStatusCounts {
   int32 total = 1;
   int32 pass = 2;
   int32 warn = 3;

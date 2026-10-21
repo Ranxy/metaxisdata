@@ -215,7 +215,8 @@ const routes: RouteRecordRaw[] = [
     // A quality rule watches the data itself rather than the registry's record of
     // it, so this is a product destination of its own, not a Data sub-page. The
     // parent carries the shell flags once, like the OpenLineage section: rules are
-    // the directory, a run is the evidence, and the editor joins them next release.
+    // the directory, an execution is the evidence, and the editor joins them next
+    // release.
     path: "/data-quality",
     meta: { requiresAuth: true, layout: "default", contentWidth: "full" },
     children: [
@@ -254,8 +255,8 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
-        // Same resource-name-per-segment convention as the run detail: a Get
-        // needs the real workspace, which the id alone does not carry.
+        // Same resource-name-per-segment convention as the execution detail: a
+        // Get needs the real workspace, which the id alone does not carry.
         path: "rules/:ruleId+/edit",
         name: "DataQualityRuleEdit",
         component: () =>
@@ -268,8 +269,8 @@ const routes: RouteRecordRaw[] = [
       },
       {
         // The rule's own page: what it last found and how it has behaved. The
-        // whole resource name is one param per name segment, like the run and
-        // issue detail routes, because a Get needs the real workspace.
+        // whole resource name is one param per name segment, like the execution
+        // and issue detail routes, because a Get needs the real workspace.
         path: "rules/:ruleId+",
         name: "DataQualityRuleDetail",
         component: () =>
@@ -316,27 +317,28 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
-        path: "runs",
-        name: "DataQualityRuns",
-        component: () => import("@/pages/data-quality/DataQualityRunsPage.vue"),
+        path: "executions",
+        name: "DataQualityExecutions",
+        component: () =>
+          import("@/pages/data-quality/DataQualityExecutionsPage.vue"),
         meta: {
           requiresAuth: true,
           layout: "default",
-          permission: "metaxisdata.dataQuality.runs.list",
+          permission: "metaxisdata.dataQuality.executions.list",
         },
       },
       {
-        // The run's resource name is carried whole, one path segment per
-        // `name` segment (`workspaces/{workspace}/qualityRuns/{run}`): a Get
-        // needs the real workspace, not the `-` shorthand the list accepts.
-        path: "runs/:runId+",
-        name: "DataQualityRunDetail",
+        // The execution's resource name is carried whole, one path segment per
+        // `name` segment (`workspaces/{workspace}/qualityExecutions/{id}`): a
+        // Get needs the real workspace, not the `-` shorthand the list accepts.
+        path: "executions/:executionId+",
+        name: "DataQualityExecutionDetail",
         component: () =>
-          import("@/pages/data-quality/DataQualityRunDetailPage.vue"),
+          import("@/pages/data-quality/DataQualityExecutionDetailPage.vue"),
         meta: {
           requiresAuth: true,
           layout: "default",
-          permission: "metaxisdata.dataQuality.runs.get",
+          permission: "metaxisdata.dataQuality.executions.get",
         },
       },
     ],

@@ -1,6 +1,6 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import type {
-  ExplainQualityResultResponse,
+  ExplainQualityExecutionResponse,
   QualitySuggestion,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import type {
@@ -42,7 +42,7 @@ export function emptyExplanationState(): QualityExplanationState {
  */
 export function applyExplanationChunk(
   state: QualityExplanationState,
-  chunk: ExplainQualityResultResponse
+  chunk: ExplainQualityExecutionResponse
 ): QualityExplanationState {
   switch (chunk.payload.case) {
     case "content":

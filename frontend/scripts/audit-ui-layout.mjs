@@ -82,13 +82,17 @@ const ROUTES = [
   // Same failure as audit-logs above: seven columns of long values inside the
   // section's reading column put the revoke action behind a scrollbar.
   { path: "/settings/openlineage", name: "settings openlineage" },
-  // The quality pages. The run detail and rule edit routes are deliberately
-  // absent: they need a real run/rule id, which only the deployment that
+  // The quality pages. The execution detail and rule edit routes are deliberately
+  // absent: they need a real execution/rule id, which only the deployment that
   // produced it has. The editor's create route is static and has no data table,
   // so it is audited for the page frame (one heading, no nested scroller).
   { path: "/data-quality", name: "data quality overview" },
   { path: "/data-quality/rules", name: "data quality rules", tableTopMaxY: 260 },
-  { path: "/data-quality/runs", name: "data quality runs", tableTopMaxY: 200 },
+  {
+    path: "/data-quality/executions",
+    name: "data quality executions",
+    tableTopMaxY: 200,
+  },
   { path: "/data-quality/issues", name: "data quality issues", tableTopMaxY: 240 },
   { path: "/data-quality/suggestions", name: "data quality suggestions", tableTopMaxY: 240 },
   { path: "/data-quality/rules/new", name: "data quality rule editor" },

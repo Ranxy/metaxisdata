@@ -18,14 +18,13 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
-// Resource-name prefixes of the three data quality resources. They are local
-// because the quality tables carry no workspace column: the workspace segment is
-// the API's scope proof, not a stored key.
+// Resource-name prefixes of the data quality resources. They are local because
+// the quality tables carry no workspace column: the workspace segment is the
+// API's scope proof, not a stored key.
 const (
-	qualityRulePrefix       = "qualityRules/"
-	qualityRunPrefix        = "qualityRuns/"
-	qualityRuleResultPrefix = "qualityRuleResults/"
-	qualityIssuePrefix      = "qualityIssues/"
+	qualityRulePrefix      = "qualityRules/"
+	qualityExecutionPrefix = "qualityExecutions/"
+	qualityIssuePrefix     = "qualityIssues/"
 
 	// A rule that is scheduled must say how often. The bounds are the design's
 	// accepted range; zero is rejected because pausing is how scheduling stops.
@@ -42,23 +41,28 @@ func parseQualityRuleName(name string) (string, string, error) {
 	return tokens[0], tokens[1], nil
 }
 
-// parseQualityRunName splits workspaces/{workspace}/qualityRuns/{quality_run}.
-func parseQualityRunName(name string) (string, string, error) {
-	tokens, err := common.GetNameParentTokens(name, common.WorkspacePrefix, qualityRunPrefix)
+// parseQualityExecutionName splits
+// workspaces/{workspace}/qualityExecutions/{quality_execution}.
+func parseQualityExecutionName(name string) (string, string, error) {
+	tokens, err := common.GetNameParentTokens(name, common.WorkspacePrefix, qualityExecutionPrefix)
 	if err != nil {
-		return "", "", errors.Wrap(err, "invalid quality run name")
+		return "", "", errors.Wrap(err, "invalid quality execution name")
 	}
 	return tokens[0], tokens[1], nil
 }
 
-// parseQualityRuleResultName splits
-// workspaces/{workspace}/qualityRuleResults/{quality_rule_result}.
-func parseQualityRuleResultName(name string) (string, string, error) {
-	tokens, err := common.GetNameParentTokens(name, common.WorkspacePrefix, qualityRuleResultPrefix)
+// parseQualityExecutionID resolves an execution resource name to its workspace
+// and the numeric row id the last segment carries.
+func parseQualityExecutionID(name string) (string, int64, error) {
+	workspace, executionIDText, err := parseQualityExecutionName(name)
 	if err != nil {
-		return "", "", errors.Wrap(err, "invalid quality rule result name")
+		return "", 0, connectErrorInvalid("%v", err)
 	}
-	return tokens[0], tokens[1], nil
+	executionID, err := strconv.ParseInt(strings.TrimSpace(executionIDText), 10, 64)
+	if err != nil || executionID <= 0 {
+		return "", 0, connectErrorInvalid("the quality execution name does not carry an execution id")
+	}
+	return workspace, executionID, nil
 }
 
 // parseQualityIssueName splits workspaces/{workspace}/qualityIssues/{quality_issue}.
@@ -75,21 +79,15 @@ func formatQualityRuleName(workspace, qualityRule string) string {
 	return common.FormatWorkspace(workspace) + "/" + qualityRulePrefix + qualityRule
 }
 
-// formatQualityRunName renders a run resource name.
-func formatQualityRunName(workspace, qualityRun string) string {
-	return common.FormatWorkspace(workspace) + "/" + qualityRunPrefix + qualityRun
+// formatQualityExecutionName renders an execution resource name. An execution has
+// no public resource id column: the last segment is the row's immutable id.
+func formatQualityExecutionName(workspace string, executionID int64) string {
+	return common.FormatWorkspace(workspace) + "/" + qualityExecutionPrefix + strconv.FormatInt(executionID, 10)
 }
 
 // formatQualityIssueName renders an issue resource name.
 func formatQualityIssueName(workspace, qualityIssue string) string {
 	return common.FormatWorkspace(workspace) + "/" + qualityIssuePrefix + qualityIssue
-}
-
-// formatQualityRuleResultName renders a result resource name. Results have no
-// public resource id column, so the name carries the row's numeric id: it is
-// stable for the row's lifetime and the table is insert-only.
-func formatQualityRuleResultName(workspace, qualityRuleResult string) string {
-	return common.FormatWorkspace(workspace) + "/" + qualityRuleResultPrefix + qualityRuleResult
 }
 
 // isCurrentWorkspace reports whether a resource name's workspace segment is the
@@ -232,12 +230,12 @@ func convertQualityThresholdsToV1(thresholds *storepb.QualityThresholds) *v1pb.Q
 	}
 }
 
-// convertQualityRunCountsToV1 converts the six-state tally.
-func convertQualityRunCountsToV1(counts *storepb.QualityRunCounts) *v1pb.QualityRunCounts {
+// convertQualityStatusCountsToV1 converts the six-state tally.
+func convertQualityStatusCountsToV1(counts *storepb.QualityStatusCounts) *v1pb.QualityStatusCounts {
 	if counts == nil {
 		return nil
 	}
-	return &v1pb.QualityRunCounts{
+	return &v1pb.QualityStatusCounts{
 		Total:        counts.GetTotal(),
 		Pass:         counts.GetPass(),
 		Warn:         counts.GetWarn(),
@@ -329,91 +327,105 @@ func convertQualityRule(workspaceID string, rule *store.QualityRuleMessage) *v1p
 	}
 }
 
-// convertQualityRuleResult converts one stored result. runName and ruleName are
-// resolved by the caller because a result row only stores numeric foreign keys.
-func convertQualityRuleResult(workspaceID string, result *store.QualityRuleResultMessage, runName, ruleName string) *v1pb.QualityRuleResult {
-	if result == nil {
+// convertQualityExecution converts one stored execution. ruleName is resolved by
+// the caller because an execution row stores the rule's numeric id only.
+func convertQualityExecution(workspaceID string, execution *store.QualityExecutionMessage, ruleName string) *v1pb.QualityExecution {
+	if execution == nil {
 		return nil
 	}
-	converted := &v1pb.QualityRuleResult{
-		Name:              formatQualityRuleResultName(workspaceID, strconv.FormatInt(result.ID, 10)),
-		Run:               runName,
+	instance := ""
+	if execution.InstanceResourceID != "" {
+		instance = common.FormatInstance(execution.InstanceResourceID)
+	}
+	converted := &v1pb.QualityExecution{
+		Name:              formatQualityExecutionName(workspaceID, execution.ID),
 		Rule:              ruleName,
-		RuleRevision:      result.RuleRevision,
-		RuleEngineVersion: result.RuleEngineVersion,
+		RuleRevision:      execution.RuleRevision,
+		RuleEngineVersion: execution.RuleEngineVersion,
 		Target: &v1pb.QualityTarget{
-			MetaGuid: result.TargetGUID,
-			MetaType: v1pb.MetaType(result.TargetType),
+			MetaGuid: execution.TargetGUID,
+			MetaType: v1pb.MetaType(execution.TargetType),
+			Path:     convertQualityTargetPathToV1(execution.TargetPath),
 		},
-		Status:        v1pb.QualityStatus(result.Status),
-		ObservedValue: observedValue(result.ObservedValue),
-		ObservedKind:  v1pb.QualityObservedKind(result.ObservedKind),
-		Thresholds:    convertQualityThresholdsToV1(result.Thresholds),
-		FailedRows:    result.FailedRows,
-		TotalRows:     result.TotalRows,
-		Sampled:       result.Sampled,
-		SampleRows:    result.SampleRows,
-		Truncated:     result.Truncated,
-		Samples:       convertQualityFailureSamplesToV1(result.Sample),
-		ExecutedSql:   result.ExecutedSQL,
-		ErrorCode:     result.ErrorCode,
-		ErrorMessage:  result.ErrorMessage,
-		Duration:      durationFromMilliseconds(result.DurationMS),
-		StartTime:     timestamppb.New(result.StartedAt),
-		FinishTime:    timestamppb.New(result.FinishedAt),
+		State:         v1pb.QualityExecutionState(execution.State),
+		Outcome:       v1pb.QualityStatus(execution.Status),
+		Trigger:       v1pb.QualityExecutionTrigger(execution.Trigger),
+		Initiator:     formatQualityOwner(execution.InitiatorID),
+		Instance:      instance,
+		ObservedValue: observedValue(execution.ObservedValue),
+		ObservedKind:  v1pb.QualityObservedKind(execution.ObservedKind),
+		Thresholds:    convertQualityThresholdsToV1(execution.Thresholds),
+		FailedRows:    execution.FailedRows,
+		TotalRows:     execution.TotalRows,
+		Sampled:       execution.Sampled,
+		SampleRows:    execution.SampleRows,
+		Truncated:     execution.Truncated,
+		Samples:       convertQualityFailureSamplesToV1(execution.Sample),
+		ExecutedSql:   execution.ExecutedSQL,
+		ErrorCode:     execution.ErrorCode,
+		ErrorMessage:  execution.ErrorMessage,
+		Duration:      durationFromMilliseconds(execution.DurationMS),
+		StartTime:     timestamppb.New(execution.StartedAt),
+	}
+	// An execution that has not reached a terminal state has no finish time; the
+	// proto field stays unset rather than showing the epoch.
+	if !execution.FinishedAt.IsZero() {
+		converted.FinishTime = timestamppb.New(execution.FinishedAt)
 	}
 	return converted
 }
 
-// convertQualityResultSummary projects the newest result onto the compact shape a
-// rule list shows.
-func convertQualityResultSummary(result *store.QualityRuleResultMessage, runName string) *v1pb.QualityResultSummary {
-	if result == nil {
+// convertQualityExecutionSummary projects the newest execution onto the compact
+// shape a rule list shows.
+func convertQualityExecutionSummary(workspaceID string, execution *store.QualityExecutionMessage) *v1pb.QualityExecutionSummary {
+	if execution == nil {
 		return nil
 	}
-	return &v1pb.QualityResultSummary{
-		Status:        v1pb.QualityStatus(result.Status),
-		ObservedValue: observedValue(result.ObservedValue),
-		ObservedKind:  v1pb.QualityObservedKind(result.ObservedKind),
-		FailedRows:    result.FailedRows,
-		TotalRows:     result.TotalRows,
-		Run:           runName,
-		FinishTime:    timestamppb.New(result.FinishedAt),
+	return &v1pb.QualityExecutionSummary{
+		Status:        v1pb.QualityStatus(execution.Status),
+		ObservedValue: observedValue(execution.ObservedValue),
+		ObservedKind:  v1pb.QualityObservedKind(execution.ObservedKind),
+		FailedRows:    execution.FailedRows,
+		TotalRows:     execution.TotalRows,
+		Execution:     formatQualityExecutionName(workspaceID, execution.ID),
+		FinishTime:    timestamppb.New(execution.FinishedAt),
 	}
 }
 
-// convertQualityIssue converts one issue row. The rule and run names are
-// resolved by the caller because an issue stores numeric foreign keys only.
-func convertQualityIssue(workspaceID string, issue *store.QualityIssueMessage, ruleName string, runNames map[int64]string) *v1pb.QualityIssue {
+// convertQualityIssue converts one issue row. The rule name is resolved by the
+// caller because an issue stores a numeric foreign key only; the first/last seen
+// execution names are built from their row ids.
+func convertQualityIssue(workspaceID string, issue *store.QualityIssueMessage, ruleName string) *v1pb.QualityIssue {
 	if issue == nil {
 		return nil
 	}
 	return &v1pb.QualityIssue{
-		Name:             formatQualityIssueName(workspaceID, issue.ResourceID),
-		Rule:             ruleName,
-		Target:           &v1pb.QualityTarget{MetaGuid: issue.TargetGUID, MetaType: v1pb.MetaType(issue.TargetType)},
-		Status:           v1pb.QualityIssueStatus(issue.Status),
-		Severity:         v1pb.QualitySeverity(issue.Severity),
-		FirstSeenRun:     qualityRunNameOf(runNames, issue.FirstSeenRunID),
-		LastSeenRun:      qualityRunNameOf(runNames, issue.LastSeenRunID),
-		FirstSeenTime:    timestamppb.New(issue.FirstSeenAt),
-		LastSeenTime:     timestamppb.New(issue.LastSeenAt),
-		ResolvedTime:     timestampOrNil(issue.ResolvedAt),
-		ResolutionReason: v1pb.QualityResolutionReason(issue.ResolutionReason),
-		ResolutionNote:   issue.ResolutionNote,
-		AcknowledgedBy:   formatQualityOwner(issue.AcknowledgedBy),
-		AcknowledgedTime: timestampOrNil(issue.AcknowledgedAt),
-		MutedUntil:       timestampOrNil(issue.MutedUntil),
-		OccurrenceCount:  issue.OccurrenceCount,
+		Name:               formatQualityIssueName(workspaceID, issue.ResourceID),
+		Rule:               ruleName,
+		Target:             &v1pb.QualityTarget{MetaGuid: issue.TargetGUID, MetaType: v1pb.MetaType(issue.TargetType)},
+		Status:             v1pb.QualityIssueStatus(issue.Status),
+		Severity:           v1pb.QualitySeverity(issue.Severity),
+		FirstSeenExecution: formatQualityExecutionID(workspaceID, issue.FirstSeenExecutionID),
+		LastSeenExecution:  formatQualityExecutionID(workspaceID, issue.LastSeenExecutionID),
+		FirstSeenTime:      timestamppb.New(issue.FirstSeenAt),
+		LastSeenTime:       timestamppb.New(issue.LastSeenAt),
+		ResolvedTime:       timestampOrNil(issue.ResolvedAt),
+		ResolutionReason:   v1pb.QualityResolutionReason(issue.ResolutionReason),
+		ResolutionNote:     issue.ResolutionNote,
+		AcknowledgedBy:     formatQualityOwner(issue.AcknowledgedBy),
+		AcknowledgedTime:   timestampOrNil(issue.AcknowledgedAt),
+		MutedUntil:         timestampOrNil(issue.MutedUntil),
+		OccurrenceCount:    issue.OccurrenceCount,
 	}
 }
 
-// qualityRunNameOf resolves a nullable numeric run id through the batch map.
-func qualityRunNameOf(runNames map[int64]string, runID *int64) string {
-	if runID == nil {
+// formatQualityExecutionID renders a nullable execution row id as a resource
+// name; an unset id renders empty.
+func formatQualityExecutionID(workspaceID string, executionID *int64) string {
+	if executionID == nil {
 		return ""
 	}
-	return runNames[*runID]
+	return formatQualityExecutionName(workspaceID, *executionID)
 }
 
 // observedValue keeps a legitimate zero distinct from an absent observation.
@@ -424,49 +436,6 @@ func observedValue(value *float64) float64 {
 		return 0
 	}
 	return *value
-}
-
-// convertQualityRun converts one run row into its public shape.
-func convertQualityRun(workspaceID string, run *store.QualityRunMessage) *v1pb.QualityRun {
-	if run == nil {
-		return nil
-	}
-	instance := ""
-	if run.InstanceResourceID != "" {
-		instance = common.FormatInstance(run.InstanceResourceID)
-	}
-	return &v1pb.QualityRun{
-		Name:       formatQualityRunName(workspaceID, run.ResourceID),
-		Trigger:    v1pb.QualityRunTrigger(run.Trigger),
-		Status:     v1pb.QualityRunStatus(run.Status),
-		Counts:     convertQualityRunCountsToV1(run.Counts),
-		StartTime:  timestamppb.New(run.StartedAt),
-		FinishTime: timestampOrNil(run.FinishedAt),
-		Initiator:  formatQualityOwner(run.InitiatorID),
-		Instance:   instance,
-		Outcome:    v1pb.QualityStatus(run.Outcome),
-	}
-}
-
-// convertQualityRunTargets turns the per-run target snapshots into the public
-// shape a list view renders. Columns stay empty: the config, which names them,
-// belongs to the rule, not to the run's display summary.
-func convertQualityRunTargets(targets []*store.QualityRunTargetMessage) []*v1pb.QualityTarget {
-	if len(targets) == 0 {
-		return nil
-	}
-	converted := make([]*v1pb.QualityTarget, 0, len(targets))
-	for _, target := range targets {
-		if target == nil {
-			continue
-		}
-		converted = append(converted, &v1pb.QualityTarget{
-			MetaGuid: target.MetaGUID,
-			MetaType: v1pb.MetaType(target.MetaType),
-			Path:     convertQualityTargetPathToV1(target.Path),
-		})
-	}
-	return converted
 }
 
 // qualityRuleUpdate is one parsed UpdateQualityRule mask: the store patch plus the

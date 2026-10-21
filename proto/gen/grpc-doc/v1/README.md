@@ -229,27 +229,25 @@
     - [CrossTableConfig](#metaxisdata-v1-CrossTableConfig)
     - [CustomSQLConfig](#metaxisdata-v1-CustomSQLConfig)
     - [DeleteQualityRuleRequest](#metaxisdata-v1-DeleteQualityRuleRequest)
-    - [ExplainQualityResultRequest](#metaxisdata-v1-ExplainQualityResultRequest)
-    - [ExplainQualityResultResponse](#metaxisdata-v1-ExplainQualityResultResponse)
+    - [ExplainQualityExecutionRequest](#metaxisdata-v1-ExplainQualityExecutionRequest)
+    - [ExplainQualityExecutionResponse](#metaxisdata-v1-ExplainQualityExecutionResponse)
     - [FailureSample](#metaxisdata-v1-FailureSample)
     - [FreshnessConfig](#metaxisdata-v1-FreshnessConfig)
+    - [GetQualityExecutionRequest](#metaxisdata-v1-GetQualityExecutionRequest)
     - [GetQualityIssueRequest](#metaxisdata-v1-GetQualityIssueRequest)
     - [GetQualityOverviewRequest](#metaxisdata-v1-GetQualityOverviewRequest)
     - [GetQualityRuleRequest](#metaxisdata-v1-GetQualityRuleRequest)
-    - [GetQualityRunRequest](#metaxisdata-v1-GetQualityRunRequest)
     - [GroupCheckConfig](#metaxisdata-v1-GroupCheckConfig)
     - [ListColumnLabelsRequest](#metaxisdata-v1-ListColumnLabelsRequest)
     - [ListColumnLabelsResponse](#metaxisdata-v1-ListColumnLabelsResponse)
     - [ListColumnProfilesRequest](#metaxisdata-v1-ListColumnProfilesRequest)
     - [ListColumnProfilesResponse](#metaxisdata-v1-ListColumnProfilesResponse)
+    - [ListQualityExecutionsRequest](#metaxisdata-v1-ListQualityExecutionsRequest)
+    - [ListQualityExecutionsResponse](#metaxisdata-v1-ListQualityExecutionsResponse)
     - [ListQualityIssuesRequest](#metaxisdata-v1-ListQualityIssuesRequest)
     - [ListQualityIssuesResponse](#metaxisdata-v1-ListQualityIssuesResponse)
-    - [ListQualityRuleResultsRequest](#metaxisdata-v1-ListQualityRuleResultsRequest)
-    - [ListQualityRuleResultsResponse](#metaxisdata-v1-ListQualityRuleResultsResponse)
     - [ListQualityRulesRequest](#metaxisdata-v1-ListQualityRulesRequest)
     - [ListQualityRulesResponse](#metaxisdata-v1-ListQualityRulesResponse)
-    - [ListQualityRunsRequest](#metaxisdata-v1-ListQualityRunsRequest)
-    - [ListQualityRunsResponse](#metaxisdata-v1-ListQualityRunsResponse)
     - [ListQualitySuggestionsRequest](#metaxisdata-v1-ListQualitySuggestionsRequest)
     - [ListQualitySuggestionsResponse](#metaxisdata-v1-ListQualitySuggestionsResponse)
     - [NullPercentConfig](#metaxisdata-v1-NullPercentConfig)
@@ -258,17 +256,16 @@
     - [ProfileColumnsRequest](#metaxisdata-v1-ProfileColumnsRequest)
     - [ProfileColumnsResponse](#metaxisdata-v1-ProfileColumnsResponse)
     - [ProfileValue](#metaxisdata-v1-ProfileValue)
+    - [QualityExecution](#metaxisdata-v1-QualityExecution)
+    - [QualityExecutionSummary](#metaxisdata-v1-QualityExecutionSummary)
     - [QualityFilter](#metaxisdata-v1-QualityFilter)
     - [QualityFilterClause](#metaxisdata-v1-QualityFilterClause)
     - [QualityIssue](#metaxisdata-v1-QualityIssue)
     - [QualityOverview](#metaxisdata-v1-QualityOverview)
-    - [QualityResultSummary](#metaxisdata-v1-QualityResultSummary)
     - [QualityRule](#metaxisdata-v1-QualityRule)
     - [QualityRuleConfig](#metaxisdata-v1-QualityRuleConfig)
     - [QualityRuleDraftConfig](#metaxisdata-v1-QualityRuleDraftConfig)
-    - [QualityRuleResult](#metaxisdata-v1-QualityRuleResult)
-    - [QualityRun](#metaxisdata-v1-QualityRun)
-    - [QualityRunCounts](#metaxisdata-v1-QualityRunCounts)
+    - [QualityStatusCounts](#metaxisdata-v1-QualityStatusCounts)
     - [QualitySuggestion](#metaxisdata-v1-QualitySuggestion)
     - [QualitySuggestionPayload](#metaxisdata-v1-QualitySuggestionPayload)
     - [QualityTarget](#metaxisdata-v1-QualityTarget)
@@ -305,6 +302,8 @@
     - [QualityComparisonOperator](#metaxisdata-v1-QualityComparisonOperator)
     - [QualityDimension](#metaxisdata-v1-QualityDimension)
     - [QualityEmptyBehavior](#metaxisdata-v1-QualityEmptyBehavior)
+    - [QualityExecutionState](#metaxisdata-v1-QualityExecutionState)
+    - [QualityExecutionTrigger](#metaxisdata-v1-QualityExecutionTrigger)
     - [QualityFilterOperator](#metaxisdata-v1-QualityFilterOperator)
     - [QualityIssueStatus](#metaxisdata-v1-QualityIssueStatus)
     - [QualityLabelSource](#metaxisdata-v1-QualityLabelSource)
@@ -313,8 +312,6 @@
     - [QualityResolutionReason](#metaxisdata-v1-QualityResolutionReason)
     - [QualityRuleState](#metaxisdata-v1-QualityRuleState)
     - [QualityRuleType](#metaxisdata-v1-QualityRuleType)
-    - [QualityRunStatus](#metaxisdata-v1-QualityRunStatus)
-    - [QualityRunTrigger](#metaxisdata-v1-QualityRunTrigger)
     - [QualitySemanticType](#metaxisdata-v1-QualitySemanticType)
     - [QualitySeverity](#metaxisdata-v1-QualitySeverity)
     - [QualityStatus](#metaxisdata-v1-QualityStatus)
@@ -4197,15 +4194,15 @@ statement is single SELECT/WITH, at most 8 KiB, and is never rewritten.
 
 
 
-<a name="metaxisdata-v1-ExplainQualityResultRequest"></a>
+<a name="metaxisdata-v1-ExplainQualityExecutionRequest"></a>
 
-### ExplainQualityResultRequest
+### ExplainQualityExecutionRequest
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | Format: workspaces/{workspace}/qualityRuleResults/{quality_rule_result} |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityExecutions/{quality_execution} |
 | language | [string](#string) |  | The language the explanation is written in, e.g. &#34;en&#34; or &#34;zh-CN&#34;. |
 | force_regenerate | [bool](#bool) |  | Regenerate even when a cached explanation exists. |
 
@@ -4214,9 +4211,9 @@ statement is single SELECT/WITH, at most 8 KiB, and is never rewritten.
 
 
 
-<a name="metaxisdata-v1-ExplainQualityResultResponse"></a>
+<a name="metaxisdata-v1-ExplainQualityExecutionResponse"></a>
 
-### ExplainQualityResultResponse
+### ExplainQualityExecutionResponse
 
 
 
@@ -4264,6 +4261,21 @@ timestamp follows on_empty.
 
 
 
+<a name="metaxisdata-v1-GetQualityExecutionRequest"></a>
+
+### GetQualityExecutionRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityExecutions/{quality_execution} |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetQualityIssueRequest"></a>
 
 ### GetQualityIssueRequest
@@ -4304,21 +4316,6 @@ timestamp follows on_empty.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  | Format: workspaces/{workspace}/qualityRules/{quality_rule} |
-
-
-
-
-
-
-<a name="metaxisdata-v1-GetQualityRunRequest"></a>
-
-### GetQualityRunRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | Format: workspaces/{workspace}/qualityRuns/{quality_run} |
 
 
 
@@ -4416,6 +4413,48 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 
 
 
+<a name="metaxisdata-v1-ListQualityExecutionsRequest"></a>
+
+### ListQualityExecutionsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| page_size | [int32](#int32) |  | The maximum number of executions to return. If unspecified, at most 50 are returned. The maximum value is 1000; values above 1000 are coerced to 1000. |
+| page_token | [string](#string) |  | A page token, received from a previous ListQualityExecutions call. Provide this to retrieve the subsequent page. |
+| state | [QualityExecutionState](#metaxisdata-v1-QualityExecutionState) |  | The execution lifecycle to filter by, e.g. only PENDING executions. |
+| outcome | [QualityStatus](#metaxisdata-v1-QualityStatus) |  | The quality outcome to filter by, e.g. only failed executions. Matches completed executions only. |
+| trigger | [QualityExecutionTrigger](#metaxisdata-v1-QualityExecutionTrigger) |  |  |
+| rule | [string](#string) |  | Only the executions of this rule. Format: workspaces/{workspace}/qualityRules/{quality_rule} |
+| target_guid | [string](#string) |  | The exact target GUID. |
+| instance | [string](#string) |  | Only the executions of rules of this instance. Format: instances/{instance} |
+| initiator | [string](#string) |  | Only the executions this principal started. Format: users/{user}. |
+| start_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Only the executions started at or after this time. |
+| end_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Only the executions started before this time. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityExecutionsResponse"></a>
+
+### ListQualityExecutionsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| quality_executions | [QualityExecution](#metaxisdata-v1-QualityExecution) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-ListQualityIssuesRequest"></a>
 
 ### ListQualityIssuesRequest
@@ -4449,45 +4488,6 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | quality_issues | [QualityIssue](#metaxisdata-v1-QualityIssue) | repeated |  |
-| next_page_token | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-ListQualityRuleResultsRequest"></a>
-
-### ListQualityRuleResultsRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
-| page_size | [int32](#int32) |  | The maximum number of results to return. If unspecified, at most 50 are returned. The maximum value is 1000; values above 1000 are coerced to 1000. |
-| page_token | [string](#string) |  | A page token, received from a previous ListQualityRuleResults call. Provide this to retrieve the subsequent page. |
-| run | [string](#string) |  | Format: workspaces/{workspace}/qualityRuns/{quality_run} |
-| rule | [string](#string) |  | Format: workspaces/{workspace}/qualityRules/{quality_rule} |
-| status | [QualityStatus](#metaxisdata-v1-QualityStatus) |  |  |
-| target_guid | [string](#string) |  | The exact target GUID. |
-| start_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Only the results that started at or after this time. |
-| end_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Only the results that started before this time. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-ListQualityRuleResultsResponse"></a>
-
-### ListQualityRuleResultsResponse
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| quality_rule_results | [QualityRuleResult](#metaxisdata-v1-QualityRuleResult) | repeated |  |
 | next_page_token | [string](#string) |  |  |
 
 
@@ -4533,46 +4533,6 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | quality_rules | [QualityRule](#metaxisdata-v1-QualityRule) | repeated |  |
-| next_page_token | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-ListQualityRunsRequest"></a>
-
-### ListQualityRunsRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
-| page_size | [int32](#int32) |  | The maximum number of runs to return. If unspecified, at most 50 are returned. The maximum value is 1000; values above 1000 are coerced to 1000. |
-| page_token | [string](#string) |  | A page token, received from a previous ListQualityRuns call. Provide this to retrieve the subsequent page. |
-| status | [QualityRunStatus](#metaxisdata-v1-QualityRunStatus) |  | The run lifecycle to filter by, e.g. only runs still PENDING. |
-| trigger | [QualityRunTrigger](#metaxisdata-v1-QualityRunTrigger) |  |  |
-| instance | [string](#string) |  | Only the runs that executed rules of this instance. Format: instances/{instance} |
-| start_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Only the runs started at or after this time. |
-| end_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Only the runs started before this time. |
-| initiator | [string](#string) |  | Format: users/{user}. |
-| outcome | [QualityStatus](#metaxisdata-v1-QualityStatus) |  | The quality rollup to filter by, e.g. only failed runs. Matches completed runs only. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-ListQualityRunsResponse"></a>
-
-### ListQualityRunsResponse
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| quality_runs | [QualityRun](#metaxisdata-v1-QualityRun) | repeated |  |
 | next_page_token | [string](#string) |  |  |
 
 
@@ -4721,6 +4681,70 @@ ProfileValue is one frequent value of a low-cardinality column.
 
 
 
+<a name="metaxisdata-v1-QualityExecution"></a>
+
+### QualityExecution
+QualityExecution is one rule checked once: the durable unit of the data
+quality engine. A scheduled tick or a manual request plans one execution per
+rule; the runner then executes it and records the verdict and its evidence on
+the same row.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityExecutions/{quality_execution}. The last segment is the row id, which is immutable for the row&#39;s lifetime. |
+| rule | [string](#string) |  | Format: workspaces/{workspace}/qualityRules/{quality_rule} |
+| rule_revision | [int32](#int32) |  | The rule revision the check was judged with. |
+| rule_engine_version | [string](#string) |  | The engine version that produced the verdict, so a changed judgment is traceable to a changed implementation. |
+| target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  | The target as it was when the execution was planned. |
+| state | [QualityExecutionState](#metaxisdata-v1-QualityExecutionState) |  |  |
+| outcome | [QualityStatus](#metaxisdata-v1-QualityStatus) |  | The quality verdict: PASS, WARN, FAIL, ERROR, SKIPPED or NOT_EVALUATED. Unset while the execution is PENDING or RUNNING; an ABANDONED execution never produced one. |
+| trigger | [QualityExecutionTrigger](#metaxisdata-v1-QualityExecutionTrigger) |  |  |
+| initiator | [string](#string) |  | The principal that asked for the execution. Format: users/{user}. Empty for a scheduled execution. |
+| instance | [string](#string) |  | The instance the target lives in. Format: instances/{instance} |
+| observed_value | [double](#double) |  | The observed value; its unit is observed_kind. |
+| observed_kind | [QualityObservedKind](#metaxisdata-v1-QualityObservedKind) |  |  |
+| thresholds | [QualityThresholds](#metaxisdata-v1-QualityThresholds) |  | The thresholds that were applied, snapshotted. |
+| failed_rows | [int64](#int64) |  |  |
+| total_rows | [int64](#int64) |  |  |
+| sampled | [bool](#bool) |  | True when the observation was made over a sample rather than every row. |
+| sample_rows | [int64](#int64) |  |  |
+| truncated | [bool](#bool) |  | True when the samples were cut off by the sample limit. |
+| samples | [FailureSample](#metaxisdata-v1-FailureSample) | repeated | Failed rows kept as evidence, already truncated per value. |
+| executed_sql | [string](#string) |  | The SQL that was executed. Kept so an execution can be re-checked by hand. |
+| error_code | [string](#string) |  | A machine-readable failure class: CONNECTION, AUTH, TIMEOUT, PERMISSION, UNSUPPORTED, SQL_SYNTAX, BAD_DATA, LIMIT_EXCEEDED or ORPHANED. Empty unless outcome is ERROR. |
+| error_message | [string](#string) |  | A human-readable failure message. Empty unless outcome is ERROR. |
+| duration | [google.protobuf.Duration](#google-protobuf-Duration) |  |  |
+| start_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| finish_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Unset while the execution is PENDING or RUNNING. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityExecutionSummary"></a>
+
+### QualityExecutionSummary
+QualityExecutionSummary is the compact projection of the latest execution
+that a rule list shows. It is not a stored entity.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| status | [QualityStatus](#metaxisdata-v1-QualityStatus) |  |  |
+| observed_value | [double](#double) |  |  |
+| observed_kind | [QualityObservedKind](#metaxisdata-v1-QualityObservedKind) |  |  |
+| failed_rows | [int64](#int64) |  |  |
+| total_rows | [int64](#int64) |  |  |
+| execution | [string](#string) |  | Format: workspaces/{workspace}/qualityExecutions/{quality_execution} |
+| finish_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-QualityFilter"></a>
 
 ### QualityFilter
@@ -4770,8 +4794,8 @@ another, and a resolved issue is never reopened.
 | target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  | The target as it was when the issue was opened. |
 | status | [QualityIssueStatus](#metaxisdata-v1-QualityIssueStatus) |  |  |
 | severity | [QualitySeverity](#metaxisdata-v1-QualitySeverity) |  |  |
-| first_seen_run | [string](#string) |  | The run that opened the issue. Unset when it was opened without a run. |
-| last_seen_run | [string](#string) |  | The newest run that observed the problem again. |
+| first_seen_execution | [string](#string) |  | The execution that opened the issue. Unset when it was opened without one. |
+| last_seen_execution | [string](#string) |  | The newest execution that observed the problem again. |
 | first_seen_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | last_seen_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | resolved_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When the issue was resolved. Unset while it is open or acknowledged. |
@@ -4804,33 +4828,11 @@ queries rather than paging through every result.
 | open_warning_count | [int32](#int32) |  | Issues currently open (status OPEN or ACKNOWLEDGED) by severity. |
 | open_error_count | [int32](#int32) |  |  |
 | open_critical_count | [int32](#int32) |  |  |
-| failing_rule_count | [int32](#int32) |  | The last 24 hours: how many rules failed at least once, how many runs started, and how their results tallied. |
-| run_count | [int32](#int32) |  |  |
-| last_day_counts | [QualityRunCounts](#metaxisdata-v1-QualityRunCounts) |  |  |
+| failing_rule_count | [int32](#int32) |  | The last 24 hours: how many rules failed at least once, how many executions were planned (any lifecycle state), and how the completed ones tallied. |
+| execution_count | [int32](#int32) |  |  |
+| last_day_counts | [QualityStatusCounts](#metaxisdata-v1-QualityStatusCounts) |  |  |
 | trend | [QualityTrendPoint](#metaxisdata-v1-QualityTrendPoint) | repeated | The per-day tallies of the trend window, oldest first. |
 | trend_days | [int32](#int32) |  | How many days the trend covers. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-QualityResultSummary"></a>
-
-### QualityResultSummary
-QualityResultSummary is the compact projection of the latest result that a
-rule list shows. It is not a stored entity.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| status | [QualityStatus](#metaxisdata-v1-QualityStatus) |  |  |
-| observed_value | [double](#double) |  |  |
-| observed_kind | [QualityObservedKind](#metaxisdata-v1-QualityObservedKind) |  |  |
-| failed_rows | [int64](#int64) |  |  |
-| total_rows | [int64](#int64) |  |  |
-| run | [string](#string) |  | Format: workspaces/{workspace}/qualityRuns/{quality_run} |
-| finish_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 
 
 
@@ -4860,7 +4862,7 @@ QualityRule is one data quality check.
 | target_schema_changed | [bool](#bool) |  | True when the target&#39;s current metadata hash differs from the hash recorded when the rule was saved, i.e. the target&#39;s schema changed underneath it. |
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| last_result | [QualityResultSummary](#metaxisdata-v1-QualityResultSummary) |  | The most recent result, for the list view. It is not part of the rule and is only populated by reads, never persisted on write. |
+| last_result | [QualityExecutionSummary](#metaxisdata-v1-QualityExecutionSummary) |  | The most recent execution, for the list view. It is not part of the rule and is only populated by reads, never persisted on write. |
 | orphaned_reason | [string](#string) |  | Why the target can no longer be resolved, e.g. because the table was dropped. Empty while the target is healthy. |
 | mute_until | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Rule-level mute. It only silences issue notifications; executions still run and results are still recorded. |
 | tags | [string](#string) | repeated |  |
@@ -4927,71 +4929,10 @@ typed config. It is never executed without a human saving it as a rule.
 
 
 
-<a name="metaxisdata-v1-QualityRuleResult"></a>
+<a name="metaxisdata-v1-QualityStatusCounts"></a>
 
-### QualityRuleResult
-QualityRuleResult is one rule&#39;s outcome in one run.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | Format: workspaces/{workspace}/qualityRuleResults/{quality_rule_result} |
-| run | [string](#string) |  | Format: workspaces/{workspace}/qualityRuns/{quality_run} |
-| rule | [string](#string) |  | Format: workspaces/{workspace}/qualityRules/{quality_rule} |
-| rule_revision | [int32](#int32) |  | The rule revision this result was judged with. |
-| rule_engine_version | [string](#string) |  | The engine version that produced it, so a changed judgment is traceable to a changed implementation. |
-| target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  | The target as it was when the result was produced. |
-| status | [QualityStatus](#metaxisdata-v1-QualityStatus) |  |  |
-| observed_value | [double](#double) |  | The observed value; its unit is observed_kind. |
-| observed_kind | [QualityObservedKind](#metaxisdata-v1-QualityObservedKind) |  |  |
-| thresholds | [QualityThresholds](#metaxisdata-v1-QualityThresholds) |  | The thresholds that were applied, snapshotted. |
-| failed_rows | [int64](#int64) |  |  |
-| total_rows | [int64](#int64) |  |  |
-| sampled | [bool](#bool) |  | True when the observation was made over a sample rather than every row. |
-| sample_rows | [int64](#int64) |  |  |
-| truncated | [bool](#bool) |  | True when the samples were cut off by the sample limit. |
-| samples | [FailureSample](#metaxisdata-v1-FailureSample) | repeated | Failed rows kept as evidence, already truncated per value. |
-| executed_sql | [string](#string) |  | The SQL that was executed. Kept so a result can be re-checked by hand. |
-| error_code | [string](#string) |  | A machine-readable failure class: CONNECTION, AUTH, TIMEOUT, PERMISSION, UNSUPPORTED, SQL_SYNTAX, BAD_DATA, LIMIT_EXCEEDED or ORPHANED. Empty unless status is ERROR. |
-| error_message | [string](#string) |  | A human-readable failure message. Empty unless status is ERROR. |
-| duration | [google.protobuf.Duration](#google-protobuf-Duration) |  |  |
-| start_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| finish_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-QualityRun"></a>
-
-### QualityRun
-QualityRun is one execution batch: manually selected rules, or the rules of one
-instance that became due in one scheduler tick.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | Format: workspaces/{workspace}/qualityRuns/{quality_run} |
-| trigger | [QualityRunTrigger](#metaxisdata-v1-QualityRunTrigger) |  |  |
-| status | [QualityRunStatus](#metaxisdata-v1-QualityRunStatus) |  | The run&#39;s lifecycle. A queued or running run reports PENDING / RUNNING here; its outcome is not known yet. |
-| counts | [QualityRunCounts](#metaxisdata-v1-QualityRunCounts) |  |  |
-| start_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| finish_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Unset while the run is queued or still executing. |
-| initiator | [string](#string) |  | The principal that started the run. Format: users/{user}. Empty for a scheduled run. |
-| instance | [string](#string) |  | The instance this batch belongs to. Format: instances/{instance} |
-| outcome | [QualityStatus](#metaxisdata-v1-QualityStatus) |  | The rollup of the run&#39;s results: the worst status any result reported. Unset until the run completes; ERROR and FAIL stay distinct. |
-| targets | [QualityTarget](#metaxisdata-v1-QualityTarget) | repeated | Where the run&#39;s rules looked: the distinct targets of its results, taken from the rule revision each result was judged with. A list view would otherwise have to join every result back to its rule to answer &#34;what did this run check?&#34;. Empty for a queued run that has no results yet. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-QualityRunCounts"></a>
-
-### QualityRunCounts
-QualityRunCounts is the six-state tally of one run.
+### QualityStatusCounts
+QualityStatusCounts is the six-state tally of a set of executions.
 
 
 | Field | Type | Label | Description |
@@ -5265,7 +5206,7 @@ warn bound makes the rule report WARN before it reports FAIL.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| runs | [QualityRun](#metaxisdata-v1-QualityRun) | repeated | One run per instance in the selection. All of them are queued and pending when the response is returned; poll GetQualityRun for their outcome. |
+| executions | [QualityExecution](#metaxisdata-v1-QualityExecution) | repeated | One execution per selected rule, planned and queued for the runner. All of them are PENDING when the response is returned; poll GetQualityExecution. |
 
 
 
@@ -5663,6 +5604,35 @@ with. The default is NOT_EVALUATED so an empty table never looks like a pass.
 
 
 
+<a name="metaxisdata-v1-QualityExecutionState"></a>
+
+### QualityExecutionState
+QualityExecutionState is the lifecycle of one execution. It is separate from
+the quality outcome, which is only known once the check finishes.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_EXECUTION_STATE_UNSPECIFIED | 0 |  |
+| QUALITY_EXECUTION_STATE_PENDING | 1 | Planned and waiting for the runner. |
+| QUALITY_EXECUTION_STATE_RUNNING | 2 | The runner is executing the rule. |
+| QUALITY_EXECUTION_STATE_COMPLETED | 3 | The check reached a verdict; outcome holds it. |
+| QUALITY_EXECUTION_STATE_ABANDONED | 4 | A restart discarded the execution before it finished. It is not retried. |
+
+
+
+<a name="metaxisdata-v1-QualityExecutionTrigger"></a>
+
+### QualityExecutionTrigger
+QualityExecutionTrigger is what started one execution.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_EXECUTION_TRIGGER_UNSPECIFIED | 0 |  |
+| QUALITY_EXECUTION_TRIGGER_MANUAL | 1 |  |
+| QUALITY_EXECUTION_TRIGGER_SCHEDULED | 2 |  |
+
+
+
 <a name="metaxisdata-v1-QualityFilterOperator"></a>
 
 ### QualityFilterOperator
@@ -5804,35 +5774,6 @@ rule: changing the type is a different rule and a new revision.
 
 
 
-<a name="metaxisdata-v1-QualityRunStatus"></a>
-
-### QualityRunStatus
-QualityRunStatus is the lifecycle of a run, which is separate from the quality
-status its results roll up to. A queued run has no outcome yet.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| QUALITY_RUN_STATUS_UNSPECIFIED | 0 |  |
-| QUALITY_RUN_STATUS_PENDING | 1 | Created and waiting for the runner; clients poll while they see this. |
-| QUALITY_RUN_STATUS_RUNNING | 2 | The runner is executing this run&#39;s rules. |
-| QUALITY_RUN_STATUS_COMPLETED | 3 | Every rule was attempted; outcome holds the rollup. |
-| QUALITY_RUN_STATUS_ABANDONED | 4 | A restart discarded the run before it finished. It is not retried. |
-
-
-
-<a name="metaxisdata-v1-QualityRunTrigger"></a>
-
-### QualityRunTrigger
-QualityRunTrigger is what started a run.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| QUALITY_RUN_TRIGGER_UNSPECIFIED | 0 |  |
-| QUALITY_RUN_TRIGGER_MANUAL | 1 |  |
-| QUALITY_RUN_TRIGGER_SCHEDULED | 2 |  |
-
-
-
 <a name="metaxisdata-v1-QualitySemanticType"></a>
 
 ### QualitySemanticType
@@ -5956,13 +5897,15 @@ against: the number of failed rows, or failed rows divided by total rows.
 <a name="metaxisdata-v1-DataQualityService"></a>
 
 ### DataQualityService
-DataQualityService manages the checks that watch the data itself: rules,
-their executions, and the per-rule results of those executions.
+DataQualityService manages the checks that watch the data itself: rules and
+their executions.
 
 A rule observes one target — a table, or one column of it — with a typed
 check (row count, null percent, uniqueness, accepted values, ...) on a
-schedule or on demand. A run groups the results of one instance; it is
-created asynchronously and polled until it finishes.
+schedule or on demand. An execution is one rule checked once: it is planned
+asynchronously, executed by the runner, and polled until it reaches a state
+or an outcome. Batching rules for scheduling is an internal concern and is
+not exposed as a resource.
 
 | Method Name | Request Type | Response Type | Description |
 | ----------- | ------------ | ------------- | ------------|
@@ -5972,10 +5915,9 @@ created asynchronously and polled until it finishes.
 | UpdateQualityRule | [UpdateQualityRuleRequest](#metaxisdata-v1-UpdateQualityRuleRequest) | [QualityRule](#metaxisdata-v1-QualityRule) | Update a rule. Every semantic edit appends a revision, so a historical result always stays explainable by the definition that produced it. |
 | DeleteQualityRule | [DeleteQualityRuleRequest](#metaxisdata-v1-DeleteQualityRuleRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Delete a rule. The rule, its revisions and results are only archived, never physically removed, so history stays readable. |
 | PreviewQualityRule | [PreviewQualityRuleRequest](#metaxisdata-v1-PreviewQualityRuleRequest) | [PreviewQualityRuleResponse](#metaxisdata-v1-PreviewQualityRuleResponse) | Validate and compile a rule without saving it: config validation, filter validation and a `LIMIT 0` probe against the target&#39;s read-only data source. It writes nothing and creates no run. |
-| RunQualityRules | [RunQualityRulesRequest](#metaxisdata-v1-RunQualityRulesRequest) | [RunQualityRulesResponse](#metaxisdata-v1-RunQualityRulesResponse) | Execute rules now. The selected rules are grouped by instance, one run is created per instance, and the runs are queued; the response returns them while they are still pending. Clients poll GetQualityRun. |
-| ListQualityRuns | [ListQualityRunsRequest](#metaxisdata-v1-ListQualityRunsRequest) | [ListQualityRunsResponse](#metaxisdata-v1-ListQualityRunsResponse) | List runs, newest first. |
-| GetQualityRun | [GetQualityRunRequest](#metaxisdata-v1-GetQualityRunRequest) | [QualityRun](#metaxisdata-v1-QualityRun) | Read one run with its six-state tallies. |
-| ListQualityRuleResults | [ListQualityRuleResultsRequest](#metaxisdata-v1-ListQualityRuleResultsRequest) | [ListQualityRuleResultsResponse](#metaxisdata-v1-ListQualityRuleResultsResponse) | List the per-rule results of runs, typically filtered by run. |
+| RunQualityRules | [RunQualityRulesRequest](#metaxisdata-v1-RunQualityRulesRequest) | [RunQualityRulesResponse](#metaxisdata-v1-RunQualityRulesResponse) | Execute rules now. One execution is planned per selected rule; the call returns them all as PENDING after queueing them. Clients poll GetQualityExecution for each execution&#39;s state and outcome. |
+| ListQualityExecutions | [ListQualityExecutionsRequest](#metaxisdata-v1-ListQualityExecutionsRequest) | [ListQualityExecutionsResponse](#metaxisdata-v1-ListQualityExecutionsResponse) | List executions, newest first. |
+| GetQualityExecution | [GetQualityExecutionRequest](#metaxisdata-v1-GetQualityExecutionRequest) | [QualityExecution](#metaxisdata-v1-QualityExecution) | Read one execution: its state, verdict, and the evidence behind it. |
 | ListQualityIssues | [ListQualityIssuesRequest](#metaxisdata-v1-ListQualityIssuesRequest) | [ListQualityIssuesResponse](#metaxisdata-v1-ListQualityIssuesResponse) | List quality issues, newest first. |
 | GetQualityIssue | [GetQualityIssueRequest](#metaxisdata-v1-GetQualityIssueRequest) | [QualityIssue](#metaxisdata-v1-QualityIssue) | Read one quality issue. |
 | UpdateQualityIssue | [UpdateQualityIssueRequest](#metaxisdata-v1-UpdateQualityIssueRequest) | [QualityIssue](#metaxisdata-v1-QualityIssue) | Acknowledge, resolve or mute one quality issue. |
@@ -5987,7 +5929,7 @@ created asynchronously and polled until it finishes.
 | ProfileColumns | [ProfileColumnsRequest](#metaxisdata-v1-ProfileColumnsRequest) | [ProfileColumnsResponse](#metaxisdata-v1-ProfileColumnsResponse) | Measure the deterministic statistics of up to 50 columns of one table. |
 | SuggestQualityRule | [SuggestQualityRuleRequest](#metaxisdata-v1-SuggestQualityRuleRequest) | [SuggestQualityRuleResponse](#metaxisdata-v1-SuggestQualityRuleResponse) | Turn a natural-language intent into queued rule drafts. |
 | SuggestColumnLabels | [SuggestColumnLabelsRequest](#metaxisdata-v1-SuggestColumnLabelsRequest) | [SuggestColumnLabelsResponse](#metaxisdata-v1-SuggestColumnLabelsResponse) | Propose semantic labels for up to 50 columns of one table. |
-| ExplainQualityResult | [ExplainQualityResultRequest](#metaxisdata-v1-ExplainQualityResultRequest) | [ExplainQualityResultResponse](#metaxisdata-v1-ExplainQualityResultResponse) stream | Explain one failed result as a stream of hypotheses.
+| ExplainQualityExecution | [ExplainQualityExecutionRequest](#metaxisdata-v1-ExplainQualityExecutionRequest) | [ExplainQualityExecutionResponse](#metaxisdata-v1-ExplainQualityExecutionResponse) stream | Explain one failed execution as a stream of hypotheses.
 
 No (google.api.http) annotation: this is a server-streaming method, and the REST gateway cannot carry one. The browser reaches the Connect endpoint directly, the way it does for ExplainSQL. |
 | GetQualityOverview | [GetQualityOverviewRequest](#metaxisdata-v1-GetQualityOverviewRequest) | [QualityOverview](#metaxisdata-v1-QualityOverview) | Read the workspace&#39;s quality summary: how many rules and issues exist, how the last day went, and the per-day tallies the overview chart draws. |
@@ -7516,12 +7458,13 @@ only; the client renders the localized sentence from the kind and these fields.
 | observed_value | [double](#double) |  | The observed value and its unit (&#34;rows&#34;, &#34;%&#34;, &#34;s&#34;, &#34;timestamp&#34;). |
 | observed_unit | [string](#string) |  |  |
 | issue | [string](#string) |  | Format: workspaces/{workspace}/qualityIssues/{quality_issue} |
-| run | [string](#string) |  | Format: workspaces/{workspace}/qualityRuns/{quality_run} |
+| execution | [string](#string) |  | Format: workspaces/{workspace}/qualityExecutions/{quality_execution} |
 | failed_rows | [int64](#int64) |  |  |
 | total_rows | [int64](#int64) |  |  |
 | error_code | [string](#string) |  | The machine-readable failure class for EXECUTION_FAILED. |
 | failed_rule_count | [int32](#int32) |  | The tallies a STORM_SUMMARY merged. |
 | total_rule_count | [int32](#int32) |  |  |
+| instance | [string](#string) |  | The instance whose dispatch batch the summary describes. Format: instances/{instance}. Empty for the per-execution kinds. |
 
 
 

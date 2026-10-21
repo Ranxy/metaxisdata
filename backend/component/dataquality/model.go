@@ -129,9 +129,10 @@ func Rollup(statuses []storepb.QualityStatus) storepb.QualityStatus {
 	return worst
 }
 
-// RollupCounts returns the run-level state from its six-state tallies, so a run
-// whose results are older than the retention window still reports its rollup.
-func RollupCounts(counts *storepb.QualityRunCounts) storepb.QualityStatus {
+// RollupCounts returns the batch-level state from its six-state tallies, so an
+// internal batch whose executions are older than the retention window still
+// reports its rollup.
+func RollupCounts(counts *storepb.QualityStatusCounts) storepb.QualityStatus {
 	if counts == nil || counts.GetTotal() == 0 {
 		return storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED
 	}
@@ -151,10 +152,10 @@ func RollupCounts(counts *storepb.QualityRunCounts) storepb.QualityStatus {
 	}
 }
 
-// CountResults tallies six states into the message a run row stores, and returns
-// the rollup the run's outcome column holds.
-func CountResults(statuses []storepb.QualityStatus) (*storepb.QualityRunCounts, storepb.QualityStatus) {
-	counts := &storepb.QualityRunCounts{Total: int32(len(statuses))}
+// CountResults tallies six states into the message an internal batch stores, and
+// returns the rollup the batch's outcome column holds.
+func CountResults(statuses []storepb.QualityStatus) (*storepb.QualityStatusCounts, storepb.QualityStatus) {
+	counts := &storepb.QualityStatusCounts{Total: int32(len(statuses))}
 	var pass, warn, fail, errs, skipped, notEvaluated int32
 	for _, status := range statuses {
 		switch status {

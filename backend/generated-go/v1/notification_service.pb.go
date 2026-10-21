@@ -1479,8 +1479,8 @@ type DataQualityDetail struct {
 	ObservedUnit  string  `protobuf:"bytes,10,opt,name=observed_unit,json=observedUnit,proto3" json:"observed_unit,omitempty"`
 	// Format: workspaces/{workspace}/qualityIssues/{quality_issue}
 	Issue string `protobuf:"bytes,11,opt,name=issue,proto3" json:"issue,omitempty"`
-	// Format: workspaces/{workspace}/qualityRuns/{quality_run}
-	Run        string `protobuf:"bytes,12,opt,name=run,proto3" json:"run,omitempty"`
+	// Format: workspaces/{workspace}/qualityExecutions/{quality_execution}
+	Execution  string `protobuf:"bytes,12,opt,name=execution,proto3" json:"execution,omitempty"`
 	FailedRows int64  `protobuf:"varint,13,opt,name=failed_rows,json=failedRows,proto3" json:"failed_rows,omitempty"`
 	TotalRows  int64  `protobuf:"varint,14,opt,name=total_rows,json=totalRows,proto3" json:"total_rows,omitempty"`
 	// The machine-readable failure class for EXECUTION_FAILED.
@@ -1488,8 +1488,11 @@ type DataQualityDetail struct {
 	// The tallies a STORM_SUMMARY merged.
 	FailedRuleCount int32 `protobuf:"varint,16,opt,name=failed_rule_count,json=failedRuleCount,proto3" json:"failed_rule_count,omitempty"`
 	TotalRuleCount  int32 `protobuf:"varint,17,opt,name=total_rule_count,json=totalRuleCount,proto3" json:"total_rule_count,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// The instance whose dispatch batch the summary describes. Format:
+	// instances/{instance}. Empty for the per-execution kinds.
+	Instance      string `protobuf:"bytes,18,opt,name=instance,proto3" json:"instance,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *DataQualityDetail) Reset() {
@@ -1599,9 +1602,9 @@ func (x *DataQualityDetail) GetIssue() string {
 	return ""
 }
 
-func (x *DataQualityDetail) GetRun() string {
+func (x *DataQualityDetail) GetExecution() string {
 	if x != nil {
-		return x.Run
+		return x.Execution
 	}
 	return ""
 }
@@ -1639,6 +1642,13 @@ func (x *DataQualityDetail) GetTotalRuleCount() int32 {
 		return x.TotalRuleCount
 	}
 	return 0
+}
+
+func (x *DataQualityDetail) GetInstance() string {
+	if x != nil {
+		return x.Instance
+	}
+	return ""
 }
 
 var File_v1_notification_service_proto protoreflect.FileDescriptor
@@ -1719,7 +1729,7 @@ const file_v1_notification_service_proto_rawDesc = "" +
 	"\funseen_count\x18\x03 \x01(\x05B\x03\xe0A\x03H\x01R\vunseenCount\x88\x01\x01B\x0f\n" +
 	"\r_unread_countB\x0f\n" +
 	"\r_unseen_count\"\v\n" +
-	"\tKeepAlive\"\xab\x05\n" +
+	"\tKeepAlive\"\xd3\x05\n" +
 	"\x11DataQualityDetail\x12?\n" +
 	"\x04kind\x18\x01 \x01(\x0e2+.metaxisdata.v1.DataQualityNotificationKindR\x04kind\x12\x12\n" +
 	"\x04rule\x18\x02 \x01(\tR\x04rule\x12\x1d\n" +
@@ -1736,8 +1746,8 @@ const file_v1_notification_service_proto_rawDesc = "" +
 	"\x0eobserved_value\x18\t \x01(\x01R\robservedValue\x12#\n" +
 	"\robserved_unit\x18\n" +
 	" \x01(\tR\fobservedUnit\x12\x14\n" +
-	"\x05issue\x18\v \x01(\tR\x05issue\x12\x10\n" +
-	"\x03run\x18\f \x01(\tR\x03run\x12\x1f\n" +
+	"\x05issue\x18\v \x01(\tR\x05issue\x12\x1c\n" +
+	"\texecution\x18\f \x01(\tR\texecution\x12\x1f\n" +
 	"\vfailed_rows\x18\r \x01(\x03R\n" +
 	"failedRows\x12\x1d\n" +
 	"\n" +
@@ -1745,7 +1755,8 @@ const file_v1_notification_service_proto_rawDesc = "" +
 	"\n" +
 	"error_code\x18\x0f \x01(\tR\terrorCode\x12*\n" +
 	"\x11failed_rule_count\x18\x10 \x01(\x05R\x0ffailedRuleCount\x12(\n" +
-	"\x10total_rule_count\x18\x11 \x01(\x05R\x0etotalRuleCount*\x9f\x01\n" +
+	"\x10total_rule_count\x18\x11 \x01(\x05R\x0etotalRuleCount\x12\x1a\n" +
+	"\binstance\x18\x12 \x01(\tR\binstance*\x9f\x01\n" +
 	"\x10NotificationType\x12!\n" +
 	"\x1dNOTIFICATION_TYPE_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dNOTIFICATION_TYPE_SCHEMA_SYNC\x10\x01\x12!\n" +

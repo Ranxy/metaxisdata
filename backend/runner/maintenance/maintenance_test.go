@@ -476,9 +476,9 @@ func TestRunStopsOnContextCancel(t *testing.T) {
 	}
 }
 
-// TestRunOncePrunesDataQualityRetention pins the data quality cutoffs: results go
-// with their run, only resolved issues and decided suggestions are pruned, and
-// profiles and the LLM cache expire on their shorter window.
+// TestRunOncePrunesDataQualityRetention pins the data quality cutoffs: executions go
+// with their dispatch batch, only resolved issues and decided suggestions are pruned,
+// and profiles and the LLM cache expire on their shorter window.
 func TestRunOncePrunesDataQualityRetention(t *testing.T) {
 	t.Parallel()
 

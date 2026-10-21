@@ -5,8 +5,8 @@ names a table or column and a typed check (row count, nulls, uniqueness, accepte
 values, ranges, regex, string length, referential integrity, cross-column
 relations, freshness, aggregates, grouped row counts, schema drift, cross-table
 reconciliation, custom SQL or a CEL expression). A scheduler runs the rules, and
-each run records a status, the observed value, the thresholds it was judged
-against, and (optionally) the rows that failed.
+each execution records a status, the observed value, the thresholds it was
+judged against, and (optionally) the rows that failed.
 
 Everything is in the **Data Quality** section of the sidebar. The rule engine is
 fully offline; three model-assisted features are opt-in.
@@ -19,7 +19,7 @@ fully offline; three model-assisted features are opt-in.
    instance → Data sources → add a `READ_ONLY` account whose database grants are
    `SELECT` only. The schema-drift rule is the exception: it reads metadata and
    needs no data source.
-2. **Check the permissions.** Reading rules, runs and issues is part of the
+2. **Check the permissions.** Reading rules, executions and issues is part of the
    member baseline. Creating, editing, running, acknowledging and resolving need
    `metaxisdata.dataQuality.rules.*` / `.issues.update` (workspace
    administrator or a custom role). Model-assisted paths also need `.suggest` or
@@ -50,18 +50,27 @@ target, the columns and the parameters; a rule that cannot compile is refused.
 
 ## Browsing rules
 
-Data Quality → Rules lists every rule with its target and latest result. The
+Data Quality → Rules lists every rule with its target and latest execution. The
 **Target scope** filter narrows the list to a subtree of the metadata tree: pick
 an instance, then drill into a database, schema or table/view, and apply at any
 level — choosing a table (or view) applies that table itself. The text search
 matches a rule's title and description; dimension, severity and state narrow
 further. Filters take effect when you press **Apply**.
 
-## Runs, results and statuses
+## Executions and statuses
 
-A run is one instance's batch of rules, triggered manually or by the scheduler.
-Open Data Quality → Runs to watch it; a queued or running run is polled until it
-finishes. Every result carries one of six statuses:
+An execution is **one rule checked once**, on demand or by the scheduler. Open
+Data Quality → Executions to watch them: every rule the scheduler or a manual
+run started is one row, and a queued or running row is polled until it finishes.
+The list filters by lifecycle state, outcome and trigger; open a row for the full
+evidence behind it.
+
+An execution's lifecycle is *pending* (planned, waiting for the runner),
+*running*, or *completed*. A queued or running execution left behind by a stopped
+server process is not retried: a startup sweep marks stale rows abandoned, so an
+abandoned row means "the check never finished". The next scheduled slot runs the
+rule again, and *Run now* checks it immediately. Once an execution completes, its
+outcome is one of six statuses:
 
 | Status | Meaning |
 | --- | --- |
@@ -70,35 +79,40 @@ finishes. Every result carries one of six statuses:
 | `SKIPPED` | Deliberately not run: the target disappeared, the rule is archived, or the same rule was already executing. |
 | `NOT_EVALUATED` | The check ran but had nothing to judge (no rows after the filter, a NULL timestamp or aggregate). |
 
-A run's own status is the worst result, and its six-state tallies are shown
-beside it. Failed results can be expanded for samples and the exact SQL.
+An abandoned execution has no outcome. Failed executions can be expanded for
+samples and the exact SQL; the execution detail also shows the rule revision,
+engine version, duration, trigger, instance and, for a manual run, who started
+it. Executions are the durable record: batching rules together for scheduling is
+an internal detail.
 
 Every rule has its own page: open its title in Data Quality → Rules, or the rule
-name on a run result, an issue or a table's quality tab. It answers "is this rule
+name on an execution, an issue or a table's quality tab. It answers "is this rule
 healthy?" first — the latest status and its observed value, the pass rate, and a
-strip of the last 20 results in one color per status (green pass, amber warning,
-red fail, dark red execution error, grey skipped/not evaluated). Below that sits
-the recent execution table, whose rows open the run behind them, and the rule's
-definition (target, type, schedule, revision, tags). *Run now* and *Edit* appear
-there for callers who hold the matching permission.
+strip of the last 20 executions in one color per status (green pass, amber
+warning, red fail, dark red execution error, grey skipped/not evaluated). Below
+that sits the recent execution table, whose rows open the execution behind them,
+and the rule's definition (target, type, schedule, revision, tags). *Run now* and
+*Edit* appear there for callers who hold the matching permission; *Run now* opens
+the execution it planned.
 
 ## Problems and notifications
 
 A rule that starts failing opens an **issue**; it is the same issue until it
 recovers, and its occurrence count grows while it keeps failing. Data Quality →
 Issues lets you acknowledge it, resolve it with a reason, or mute it for a while.
-When a rule passes again its issue resolves itself as *auto-recovered*.
+When a rule passes again its issue resolves itself as *auto-recovered*. Each
+issue links the first and the latest execution that observed the problem.
 
 Issues produce in-app notifications (bell icon) for the rule's owner, or for the
 workspace administrators when there is no owner; a recovered issue notifies the
 same audience. Execution failures always notify the administrators and cannot be
-muted. A run in which more than ten rules fail sends one summary instead of one
-message per rule. There is no email or webhook delivery.
+muted. When more than ten rules fail in the same scheduler pass, one summary
+replaces the per-rule messages. There is no email or webhook delivery.
 
 ## Profiles, labels and suggestions
 
 The table detail page has a **Data Quality** tab: how many rules watch the table,
-their recent results, its open issues, and per-column profiles and semantic
+their recent executions, its open issues, and per-column profiles and semantic
 labels. *Profile columns* computes null counts, distinct counts, extremes,
 lengths, frequent values and value shapes with two queries; *Suggest labels*
 asks the model to name each column's semantic type and proposes rule drafts from
@@ -114,14 +128,15 @@ Settings → Data Quality controls: the model-analysis switch and provider,
 whether failure samples are stored and how many, the default schedule for new
 rules, the daily execution ceiling, the daily column-analysis ceiling, the
 columns per analysis, and whether raw sample values may be sent to the model.
-Zero means the server default; the page shows the effective values.
+Zero means the server default; the page shows the effective values. The daily
+execution ceiling only pauses the *scheduled* scans — **Run now** still works
+when it is reached.
 
 ## Retention
 
-Results are kept 90 days with their run, resolved issues 90 days, column
-profiles and the model result cache 7 days, and decided suggestions 90 days; the
-maintenance runner prunes them. Rules, open issues and accepted labels are not
-pruned.
+Executions are kept 90 days, resolved issues 90 days, column profiles and the
+model result cache 7 days, and decided suggestions 90 days; the maintenance
+runner prunes them. Rules, open issues and accepted labels are not pruned.
 
 ## Troubleshooting
 
@@ -130,8 +145,9 @@ pruned.
 | A rule reports `ERROR(NO_READ_ONLY_SOURCE)` | The instance has no read-only data source, or it was removed. |
 | `ERROR(UNSUPPORTED)` | The rule's engine cannot express it (for example regex on SQL Server, or `PERCENTILE` outside PostgreSQL/SQL Server), or a column the rule names was dropped. |
 | A dry run fails with a parameter or SQL error | The message shows the compiled SQL and its bound values; check that the filter values and range/aggregate bounds match the column's type (for example a date written as a plain string, or a numeric bound for a text column). |
-| Rules never run | The rule is paused or archived, the instance is gone, or the daily execution ceiling was reached (the next day resumes). |
-| No notification for a failure | The issue was already open (notifications fire on transitions), the rule is muted, or the run crossed the storm threshold and sent a summary instead. |
+| Rules never run | The rule is paused or archived, the instance is gone, or the daily execution ceiling was reached (the next day resumes it; **Run now** still works). |
+| An execution stays pending, or ends abandoned | The instance's connection budget stayed busy past the runner's wait, or the server restarted mid-run. Such checks are not retried automatically; use **Run now** or wait for the next scheduled slot. |
+| No notification for a failure | The issue was already open (notifications fire on transitions), the rule is muted, or more than ten rules failed in the same scheduler pass and a summary was sent instead. |
 | Model buttons are disabled | Model analysis is off, no allowed provider profile exists, or the caller lacks `suggest`/`explain`. |
 | A label suggestion cannot be accepted | Profile the columns first; label suggestions require profiles fresher than seven days. |
 

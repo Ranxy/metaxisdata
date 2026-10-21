@@ -66,8 +66,8 @@ var memberBaselinePermissions = permissionSet(
 	// administrator or a custom role.
 	permission.DataQualityRulesGet,
 	permission.DataQualityRulesList,
-	permission.DataQualityRunsGet,
-	permission.DataQualityRunsList,
+	permission.DataQualityExecutionsGet,
+	permission.DataQualityExecutionsList,
 	permission.DataQualityIssuesGet,
 	permission.DataQualityIssuesList,
 	permission.DataQualityExplain,

@@ -6,11 +6,12 @@ import { createMemoryHistory, createRouter } from "vue-router";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
+  QualityExecutionSchema,
+  QualityExecutionState,
   QualityIssueSchema,
-  QualityRuleResultSchema,
   QualityRuleSchema,
-  QualityRunCountsSchema,
   QualityStatus,
+  QualityStatusCountsSchema,
   QualityTrendPointSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
@@ -20,7 +21,7 @@ const mocks = vi.hoisted(() => ({
   getQualityOverview: vi.fn(),
   listAllQualityRules: vi.fn(),
   listQualityIssues: vi.fn(),
-  listQualityRuleResults: vi.fn(),
+  listQualityExecutions: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", async (importOriginal) => ({
@@ -28,20 +29,21 @@ vi.mock("@/api/data-quality", async (importOriginal) => ({
   getQualityOverview: mocks.getQualityOverview,
   listAllQualityRules: mocks.listAllQualityRules,
   listQualityIssues: mocks.listQualityIssues,
-  listQualityRuleResults: mocks.listQualityRuleResults,
+  listQualityExecutions: mocks.listQualityExecutions,
 }));
 
 const PERMISSIONS = [
   "metaxisdata.dataQuality.rules.list",
   "metaxisdata.dataQuality.rules.create",
   "metaxisdata.dataQuality.issues.list",
-  "metaxisdata.dataQuality.runs.list",
+  "metaxisdata.dataQuality.executions.list",
+  "metaxisdata.dataQuality.executions.get",
 ];
 
 const Dummy = { template: "<div />" };
 
 const RULE = "workspaces/ws/qualityRules/rule-1";
-const RUN = "workspaces/ws/qualityRuns/run-1";
+const EXECUTION = "workspaces/ws/qualityExecutions/exec-1";
 const ISSUE = "workspaces/ws/qualityIssues/issue-1";
 
 function today(offsetDays = 0): string {
@@ -60,8 +62,8 @@ function overviewFixture(overrides = {}) {
     openErrorCount: 2,
     openCriticalCount: 1,
     failingRuleCount: 2,
-    runCount: 10,
-    lastDayCounts: create(QualityRunCountsSchema, {
+    executionCount: 10,
+    lastDayCounts: create(QualityStatusCountsSchema, {
       total: 10,
       pass: 7,
       fail: 2,
@@ -107,13 +109,13 @@ async function mountPage() {
         component: Dummy,
       },
       {
-        path: "/data-quality/runs",
-        name: "DataQualityRuns",
+        path: "/data-quality/executions",
+        name: "DataQualityExecutions",
         component: Dummy,
       },
       {
-        path: "/data-quality/runs/:runId+",
-        name: "DataQualityRunDetail",
+        path: "/data-quality/executions/:executionId+",
+        name: "DataQualityExecutionDetail",
         component: Dummy,
       },
       {
@@ -151,13 +153,13 @@ describe("DataQualityOverviewPage", () => {
         title: "Null rate on orders.id",
       }),
     ]);
-    mocks.listQualityRuleResults.mockResolvedValue({
+    mocks.listQualityExecutions.mockResolvedValue({
       items: [
-        create(QualityRuleResultSchema, {
-          name: "workspaces/ws/qualityRuleResults/r1",
+        create(QualityExecutionSchema, {
+          name: EXECUTION,
           rule: RULE,
-          run: RUN,
-          status: QualityStatus.FAIL,
+          state: QualityExecutionState.COMPLETED,
+          outcome: QualityStatus.FAIL,
           failedRows: 40n,
           totalRows: 1000n,
         }),
@@ -201,7 +203,7 @@ describe("DataQualityOverviewPage", () => {
 
   it("asks for the other window when the 30-day toggle is used", async () => {
     const wrapper = await mountPage();
-    const twentyFour = create(QualityRunCountsSchema, { total: 1 });
+    const twentyFour = create(QualityStatusCountsSchema, { total: 1 });
     mocks.getQualityOverview.mockResolvedValue(
       overviewFixture({
         trendDays: 30,

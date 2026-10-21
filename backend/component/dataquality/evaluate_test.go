@@ -39,13 +39,13 @@ func TestRollupOrdersStatesBySeverity(t *testing.T) {
 func TestRollupCounts(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, RollupCounts(&storepb.QualityRunCounts{Total: 0}))
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_ERROR, RollupCounts(&storepb.QualityRunCounts{Total: 3, Error: 1, Fail: 1}))
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_FAIL, RollupCounts(&storepb.QualityRunCounts{Total: 3, Fail: 1, Pass: 2}))
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_WARN, RollupCounts(&storepb.QualityRunCounts{Total: 2, Warn: 1, Pass: 1}))
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, RollupCounts(&storepb.QualityRunCounts{Total: 2, NotEvaluated: 1, Pass: 1}))
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_SKIPPED, RollupCounts(&storepb.QualityRunCounts{Total: 2, Skipped: 2}))
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_PASS, RollupCounts(&storepb.QualityRunCounts{Total: 2, Pass: 2}))
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, RollupCounts(&storepb.QualityStatusCounts{Total: 0}))
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_ERROR, RollupCounts(&storepb.QualityStatusCounts{Total: 3, Error: 1, Fail: 1}))
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_FAIL, RollupCounts(&storepb.QualityStatusCounts{Total: 3, Fail: 1, Pass: 2}))
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_WARN, RollupCounts(&storepb.QualityStatusCounts{Total: 2, Warn: 1, Pass: 1}))
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, RollupCounts(&storepb.QualityStatusCounts{Total: 2, NotEvaluated: 1, Pass: 1}))
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_SKIPPED, RollupCounts(&storepb.QualityStatusCounts{Total: 2, Skipped: 2}))
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_PASS, RollupCounts(&storepb.QualityStatusCounts{Total: 2, Pass: 2}))
 }
 
 func TestCountResultsTalliesSixStates(t *testing.T) {

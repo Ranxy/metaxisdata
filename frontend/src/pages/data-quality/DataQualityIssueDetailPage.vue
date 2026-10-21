@@ -108,11 +108,11 @@
                   {{ formatRelativeTime(issue.firstSeenTime, locale) }}
                 </div>
                 <RouterLink
-                  v-if="issue.firstSeenRun"
-                  :to="runRoute(issue.firstSeenRun)"
+                  v-if="canViewExecution && issue.firstSeenExecution"
+                  :to="executionRoute(issue.firstSeenExecution)"
                   class="mt-1 inline-flex text-xs text-primary hover:underline"
                 >
-                  {{ t("dataQuality.viewRun") }}
+                  {{ t("dataQuality.viewExecution") }}
                 </RouterLink>
               </div>
               <div>
@@ -126,11 +126,11 @@
                   {{ formatRelativeTime(issue.lastSeenTime, locale) }}
                 </div>
                 <RouterLink
-                  v-if="issue.lastSeenRun"
-                  :to="runRoute(issue.lastSeenRun)"
+                  v-if="canViewExecution && issue.lastSeenExecution"
+                  :to="executionRoute(issue.lastSeenExecution)"
                   class="mt-1 inline-flex text-xs text-primary hover:underline"
                 >
-                  {{ t("dataQuality.viewRun") }}
+                  {{ t("dataQuality.viewExecution") }}
                 </RouterLink>
               </div>
               <div>
@@ -460,6 +460,9 @@ const canUpdate = computed(() =>
 const canViewRule = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.rules.get")
 );
+const canViewExecution = computed(() =>
+  authStore.hasPermission("metaxisdata.dataQuality.executions.get")
+);
 
 const mutedUntil = computed(() => {
   const seconds = issue.value?.mutedUntil?.seconds;
@@ -530,8 +533,11 @@ function ruleRoute(name: string) {
   };
 }
 
-function runRoute(name: string) {
-  return { name: "DataQualityRunDetail", params: { runId: name.split("/") } };
+function executionRoute(name: string) {
+  return {
+    name: "DataQualityExecutionDetail",
+    params: { executionId: name.split("/") },
+  };
 }
 
 async function load() {
@@ -563,7 +569,7 @@ async function loadRuleTitle(ruleName: string) {
   }
 }
 
-/** Runs one lifecycle action; true when it landed, so the caller toasts. */
+/** Performs one lifecycle action; true when it landed, so the caller toasts. */
 async function runAction(
   action: () => Promise<QualityIssue>
 ): Promise<boolean> {

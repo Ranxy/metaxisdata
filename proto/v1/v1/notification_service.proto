@@ -338,8 +338,8 @@ message DataQualityDetail {
   string observed_unit = 10;
   // Format: workspaces/{workspace}/qualityIssues/{quality_issue}
   string issue = 11;
-  // Format: workspaces/{workspace}/qualityRuns/{quality_run}
-  string run = 12;
+  // Format: workspaces/{workspace}/qualityExecutions/{quality_execution}
+  string execution = 12;
   int64 failed_rows = 13;
   int64 total_rows = 14;
   // The machine-readable failure class for EXECUTION_FAILED.
@@ -347,4 +347,7 @@ message DataQualityDetail {
   // The tallies a STORM_SUMMARY merged.
   int32 failed_rule_count = 16;
   int32 total_rule_count = 17;
+  // The instance whose dispatch batch the summary describes. Format:
+  // instances/{instance}. Empty for the per-execution kinds.
+  string instance = 18;
 }
