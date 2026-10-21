@@ -119,12 +119,13 @@ func TestConvertToV1NotificationMapsADataQualityDetail(t *testing.T) {
 			ObservedValue:   42,
 			ObservedUnit:    "rows",
 			Issue:           "workspaces/ws/qualityIssues/issue1",
-			Run:             "workspaces/ws/qualityRuns/run1",
+			Execution:       "workspaces/ws/qualityExecutions/42",
 			FailedRows:      42,
 			TotalRows:       100,
 			ErrorCode:       "TIMEOUT",
 			FailedRuleCount: 12,
 			TotalRuleCount:  40,
+			Instance:        "instances/instance_1",
 		}},
 	}, "ws")
 
@@ -144,16 +145,17 @@ func TestConvertToV1NotificationMapsADataQualityDetail(t *testing.T) {
 	require.InDelta(t, 42, detail.GetObservedValue(), 1e-9)
 	require.Equal(t, "rows", detail.GetObservedUnit())
 	require.Equal(t, "workspaces/ws/qualityIssues/issue1", detail.GetIssue())
-	require.Equal(t, "workspaces/ws/qualityRuns/run1", detail.GetRun())
+	require.Equal(t, "workspaces/ws/qualityExecutions/42", detail.GetExecution())
 	require.Equal(t, int64(42), detail.GetFailedRows())
 	require.Equal(t, int64(100), detail.GetTotalRows())
 	require.Equal(t, "TIMEOUT", detail.GetErrorCode())
 	require.Equal(t, int32(12), detail.GetFailedRuleCount())
 	require.Equal(t, int32(40), detail.GetTotalRuleCount())
+	require.Equal(t, "instances/instance_1", detail.GetInstance())
 }
 
-// A storm summary has no issue and no observation; the two tallies are what the
-// client renders.
+// A storm summary has no issue, no execution and no observation; the instance and
+// the two tallies are what the client renders.
 func TestConvertToV1NotificationMapsAStormSummary(t *testing.T) {
 	t.Parallel()
 
@@ -164,7 +166,7 @@ func TestConvertToV1NotificationMapsAStormSummary(t *testing.T) {
 		Severity: storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR,
 		Detail: &storepb.Notification_DataQuality{DataQuality: &storepb.DataQualityDetail{
 			Kind:            storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY,
-			Run:             "workspaces/ws/qualityRuns/run1",
+			Instance:        "instances/instance_1",
 			FailedRuleCount: 12,
 			TotalRuleCount:  40,
 		}},
@@ -173,7 +175,8 @@ func TestConvertToV1NotificationMapsAStormSummary(t *testing.T) {
 	detail := converted.GetDataQuality()
 	require.NotNil(t, detail)
 	require.Equal(t, v1pb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY, detail.GetKind())
-	require.Equal(t, "workspaces/ws/qualityRuns/run1", detail.GetRun())
+	require.Empty(t, detail.GetExecution(), "a storm summary has no single execution")
+	require.Equal(t, "instances/instance_1", detail.GetInstance())
 	require.Equal(t, int32(12), detail.GetFailedRuleCount())
 	require.Equal(t, int32(40), detail.GetTotalRuleCount())
 }

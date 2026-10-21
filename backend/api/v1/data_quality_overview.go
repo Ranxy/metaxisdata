@@ -44,15 +44,15 @@ func (s *DataQualityService) GetQualityOverview(ctx context.Context, req *connec
 	if err != nil {
 		return nil, err
 	}
-	runCount, err := s.store.CountQualityRunsSince(ctx, dayStart)
+	executionCount, err := s.store.CountQualityExecutionsSince(ctx, dayStart)
 	if err != nil {
 		return nil, err
 	}
-	lastDay, err := s.store.QualityResultCountsSince(ctx, dayStart)
+	lastDay, err := s.store.QualityExecutionStatusCountsSince(ctx, dayStart)
 	if err != nil {
 		return nil, err
 	}
-	trend, err := s.store.QualityResultTrend(ctx, trendStart)
+	trend, err := s.store.QualityExecutionTrend(ctx, trendStart)
 	if err != nil {
 		return nil, err
 	}
@@ -67,8 +67,8 @@ func (s *DataQualityService) GetQualityOverview(ctx context.Context, req *connec
 		OpenErrorCount:      int32(issueCounts[storepb.QualitySeverity_QUALITY_SEVERITY_ERROR]),
 		OpenCriticalCount:   int32(issueCounts[storepb.QualitySeverity_QUALITY_SEVERITY_CRITICAL]),
 		FailingRuleCount:    int32(failingRules),
-		RunCount:            int32(runCount),
-		LastDayCounts:       convertQualityRunCountsToV1(lastDay),
+		ExecutionCount:      int32(executionCount),
+		LastDayCounts:       convertQualityStatusCountsToV1(lastDay),
 		Trend:               fillQualityTrend(trendStart, days, trend),
 		TrendDays:           int32(days),
 	}
@@ -89,9 +89,9 @@ func qualityOverviewTrendDays(requested int32) int {
 }
 
 // fillQualityTrend turns the sparse per-day rows into one point per day, so a day
-// without results is a zero bar instead of a gap that shifts the chart.
+// without executions is a zero bar instead of a gap that shifts the chart.
 func fillQualityTrend(start time.Time, days int, trend []store.QualityTrendDay) []*v1pb.QualityTrendPoint {
-	byDay := make(map[string]*storepb.QualityRunCounts, len(trend))
+	byDay := make(map[string]*storepb.QualityStatusCounts, len(trend))
 	for _, day := range trend {
 		byDay[day.Date] = day.Counts
 	}
@@ -100,7 +100,7 @@ func fillQualityTrend(start time.Time, days int, trend []store.QualityTrendDay) 
 		date := start.AddDate(0, 0, offset).Format("2006-01-02")
 		counts := byDay[date]
 		if counts == nil {
-			counts = &storepb.QualityRunCounts{}
+			counts = &storepb.QualityStatusCounts{}
 		}
 		points = append(points, &v1pb.QualityTrendPoint{
 			Date:         date,

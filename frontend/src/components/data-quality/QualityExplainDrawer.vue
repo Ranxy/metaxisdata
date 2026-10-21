@@ -12,7 +12,7 @@
             {{ t("dataQuality.llm.explain.title") }}
           </DialogTitle>
           <DialogDescription class="truncate">
-            {{ resultTitle || t("dataQuality.llm.explain.description") }}
+            {{ executionTitle || t("dataQuality.llm.explain.description") }}
           </DialogDescription>
         </DialogHeader>
 
@@ -114,7 +114,7 @@
           <div class="flex gap-2">
             <Button
               variant="outline"
-              :disabled="streaming || !result"
+              :disabled="streaming || !execution"
               @click="start(true)"
             >
               <RefreshCcw class="mr-2 h-4 w-4" />
@@ -138,7 +138,7 @@ import { Loader2, RefreshCcw } from "lucide-vue-next";
 import MarkdownRender from "markstream-vue";
 import { computed, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { explainQualityResult } from "@/api/data-quality";
+import { explainQualityExecution } from "@/api/data-quality";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -149,7 +149,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { QualityRuleResult } from "@/types/proto-es/v1/data_quality_service_pb";
+import type { QualityExecution } from "@/types/proto-es/v1/data_quality_service_pb";
 import {
   applyExplanationChunk,
   emptyExplanationState,
@@ -158,15 +158,15 @@ import {
 } from "@/utils/dataQualityLlm";
 
 /**
- * The streaming explanation of one failed result. It lives in a side sheet so
- * the run's results stay readable, aggregates content frames into one markdown
- * document, and can force a fresh answer instead of the cached one.
+ * The streaming explanation of one failed execution. It lives in a side sheet so
+ * the execution's evidence stays readable, aggregates content frames into one
+ * markdown document, and can force a fresh answer instead of the cached one.
  */
 
 const props = defineProps<{
   open: boolean;
-  result?: QualityRuleResult;
-  resultTitle?: string;
+  execution?: QualityExecution;
+  executionTitle?: string;
 }>();
 
 const emit = defineEmits<{
@@ -183,7 +183,7 @@ const streaming = computed(
 
 // `immediate` matters: the drawer is usually mounted and opened in one step.
 watch(
-  () => [props.open, props.result?.name] as const,
+  () => [props.open, props.execution?.name] as const,
   ([isOpen]) => {
     if (isOpen) {
       void start(false);
@@ -198,14 +198,14 @@ function reset() {
 }
 
 async function start(forceRegenerate: boolean) {
-  const result = props.result;
+  const execution = props.execution;
   reset();
-  if (!result) {
+  if (!execution) {
     return;
   }
   try {
-    const stream = explainQualityResult({
-      name: result.name,
+    const stream = explainQualityExecution({
+      name: execution.name,
       language: locale.value,
       forceRegenerate,
     });

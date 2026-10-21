@@ -208,11 +208,11 @@ func scanQualityRule(row qualityRuleScanner) (*QualityRuleMessage, error) {
 	}
 
 	msg.TargetPath = &storepb.QualityTargetPath{}
-	if err := unmarshalQualityRuleProto(targetPathJSON, msg.TargetPath); err != nil {
+	if err := unmarshalQualityProto(targetPathJSON, msg.TargetPath); err != nil {
 		return nil, errors.Wrap(err, "failed to unmarshal quality rule target path")
 	}
 	msg.Config = &storepb.QualityRuleConfig{}
-	if err := unmarshalQualityRuleProto(configJSON, msg.Config); err != nil {
+	if err := unmarshalQualityProto(configJSON, msg.Config); err != nil {
 		return nil, errors.Wrap(err, "failed to unmarshal quality rule config")
 	}
 	msg.OwnerID = qualityRuleInt32(ownerID)
@@ -252,21 +252,21 @@ func scanQualityRuleRevision(row qualityRuleScanner) (*QualityRuleRevisionMessag
 	}
 
 	msg.TargetPath = &storepb.QualityTargetPath{}
-	if err := unmarshalQualityRuleProto(targetPathJSON, msg.TargetPath); err != nil {
+	if err := unmarshalQualityProto(targetPathJSON, msg.TargetPath); err != nil {
 		return nil, errors.Wrap(err, "failed to unmarshal quality rule revision target path")
 	}
 	msg.Config = &storepb.QualityRuleConfig{}
-	if err := unmarshalQualityRuleProto(configJSON, msg.Config); err != nil {
+	if err := unmarshalQualityProto(configJSON, msg.Config); err != nil {
 		return nil, errors.Wrap(err, "failed to unmarshal quality rule revision config")
 	}
 	msg.CreatedBy = qualityRuleInt32(createdBy)
 	return &msg, nil
 }
 
-// marshalQualityRuleProto renders a proto message as the JSONB value its column
+// marshalQualityProto renders a proto message as the JSONB value its column
 // stores. A nil message becomes an empty object rather than protojson's "null":
 // the JSONB columns are NOT NULL and every reader expects an object.
-func marshalQualityRuleProto(m proto.Message) ([]byte, error) {
+func marshalQualityProto(m proto.Message) ([]byte, error) {
 	if m == nil {
 		return []byte("{}"), nil
 	}
@@ -280,10 +280,10 @@ func marshalQualityRuleProto(m proto.Message) ([]byte, error) {
 	return raw, nil
 }
 
-// unmarshalQualityRuleProto reads a JSONB column into m. Empty and "null"
+// unmarshalQualityProto reads a JSONB column into m. Empty and "null"
 // payloads leave m at its zero value, so a row written before the object shape
 // was enforced still reads.
-func unmarshalQualityRuleProto(raw []byte, m proto.Message) error {
+func unmarshalQualityProto(raw []byte, m proto.Message) error {
 	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
 		return nil
 	}
@@ -518,11 +518,11 @@ func (s *Store) CreateQualityRule(ctx context.Context, rule *QualityRuleMessage)
 	if config == nil {
 		config = &storepb.QualityRuleConfig{}
 	}
-	targetPathJSON, err := marshalQualityRuleProto(targetPath)
+	targetPathJSON, err := marshalQualityProto(targetPath)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to marshal quality rule target path")
 	}
-	configJSON, err := marshalQualityRuleProto(config)
+	configJSON, err := marshalQualityProto(config)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to marshal quality rule config")
 	}
@@ -750,7 +750,7 @@ func (s *Store) UpdateQualityRule(ctx context.Context, resourceID string, patch 
 		sets = append(sets, fmt.Sprintf("target_type = $%d", len(args)))
 	}
 	if v := patch.TargetPath; v != nil {
-		raw, err := marshalQualityRuleProto(v)
+		raw, err := marshalQualityProto(v)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to marshal quality rule target path")
 		}
@@ -762,7 +762,7 @@ func (s *Store) UpdateQualityRule(ctx context.Context, resourceID string, patch 
 		sets = append(sets, fmt.Sprintf("target_meta_hash = $%d", len(args)))
 	}
 	if v := patch.Config; v != nil {
-		raw, err := marshalQualityRuleProto(v)
+		raw, err := marshalQualityProto(v)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to marshal quality rule config")
 		}
@@ -828,11 +828,11 @@ func (s *Store) UpdateQualityRule(ctx context.Context, resourceID string, patch 
 	}
 
 	if semanticChanged {
-		targetPathJSON, err := marshalQualityRuleProto(updated.TargetPath)
+		targetPathJSON, err := marshalQualityProto(updated.TargetPath)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to marshal quality rule target path")
 		}
-		configJSON, err := marshalQualityRuleProto(updated.Config)
+		configJSON, err := marshalQualityProto(updated.Config)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to marshal quality rule config")
 		}

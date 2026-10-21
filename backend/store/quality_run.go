@@ -3,11 +3,9 @@ package store
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"strings"
 	"time"
 
-	"github.com/lib/pq"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/encoding/protojson"
 
@@ -19,118 +17,46 @@ import (
 // order scanQualityRun reads it.
 const qualityRunColumns = "id, resource_id, instance_resource_id, trigger, status, outcome, counts, initiator_id, started_at, finished_at"
 
-// QualityRunMessage is one row of quality_run: a batch of rules executed
-// together, either on request (MANUAL) or by one scheduler tick (SCHEDULED).
+// QualityRunMessage is one row of quality_run: an internal dispatch batch of
+// rules that are checked together, either on request (MANUAL) or by one
+// scheduler tick (SCHEDULED). The batch is never exposed through the API; it
+// exists to admit one connection lease per instance, aggregate a storm
+// notification, and cascade retention. The user-facing unit is the
+// quality_execution row it plans.
 type QualityRunMessage struct {
 	ID                 int64
 	ResourceID         string
 	InstanceResourceID string
-	Trigger            storepb.QualityRunTrigger
-	// Status is the run's lifecycle, not its quality result. A COMPLETED run can
-	// still have failed rules; Outcome carries what the run found.
-	Status storepb.QualityRunStatus
-	// Outcome is the worst QualityStatus the run's results reported, computed by
-	// the executor when it finishes the run. UNSPECIFIED is how the store spells
-	// the NULL column: a queued run has no outcome yet, and an abandoned run
-	// never produced one. Lifecycle and outcome are separate on purpose, because
-	// a run that finished successfully may still have found a failing rule, and
-	// a run that was abandoned is not a quality failure.
+	Trigger            storepb.QualityExecutionTrigger
+	// Status is the batch's lifecycle, not its quality result. A COMPLETED batch
+	// can still have failed executions; Outcome carries what the batch found.
+	Status storepb.QualityExecutionState
+	// Outcome is the worst QualityStatus the batch's completed executions
+	// reported, computed by the executor when it finishes the batch. UNSPECIFIED
+	// is how the store spells the NULL column: a queued batch has no outcome yet,
+	// and an abandoned batch never produced one. Lifecycle and outcome are
+	// separate on purpose, because a batch that finished successfully may still
+	// have found a failing rule, and a batch that was abandoned is not a quality
+	// failure.
 	Outcome storepb.QualityStatus
-	Counts  *storepb.QualityRunCounts
-	// InitiatorID is the principal that asked for the run; nil for a scheduled
-	// run, which has no human initiator.
+	Counts  *storepb.QualityStatusCounts
+	// InitiatorID is the principal that asked for the batch; nil for a scheduled
+	// batch, which has no human initiator.
 	InitiatorID *int32
 	// StartedAt is stamped by the database when the row is created (queue time)
-	// and rewritten when the runner picks the run up, so a run that sits queued
-	// is still reachable by the stale-run sweep.
+	// and rewritten when the runner picks the batch up, so a batch that sits
+	// queued is still reachable by the stale-batch sweep.
 	StartedAt time.Time
-	// FinishedAt is nil until the run reaches a terminal status.
+	// FinishedAt is nil until the batch reaches a terminal status.
 	FinishedAt *time.Time
-}
-
-// FindQualityRunMessage is the query filter for quality runs. Filters compose
-// with AND; an empty filter lists every run.
-type FindQualityRunMessage struct {
-	ResourceID *string
-	// Statuses keeps only runs in any of the listed lifecycle states.
-	Statuses []storepb.QualityRunStatus
-	// Outcome filters on the rollup status. UNSPECIFIED matches rows whose
-	// outcome is still NULL, which is how a caller asks for unfinished runs.
-	Outcome            *storepb.QualityStatus
-	Trigger            *storepb.QualityRunTrigger
-	InstanceResourceID *string
-	InitiatorID        *int32
-	// StartAt and EndAt bound started_at as the half-open interval
-	// [StartAt, EndAt), so paging over a window cannot return a boundary run
-	// twice.
-	StartAt *time.Time
-	EndAt   *time.Time
-	Limit   *int
-	Offset  *int
-}
-
-// buildQualityRunWhere renders the WHERE predicate and positional arguments for
-// a run filter. It is a pure function so the predicate is unit-testable without
-// a database; ordering and paging stay in the callers.
-func buildQualityRunWhere(find *FindQualityRunMessage) (string, []any) {
-	if find == nil {
-		find = &FindQualityRunMessage{}
-	}
-	conditions := []string{}
-	args := []any{}
-	placeholder := func(value any) string {
-		args = append(args, value)
-		return fmt.Sprintf("$%d", len(args))
-	}
-
-	if find.ResourceID != nil {
-		conditions = append(conditions, "resource_id = "+placeholder(*find.ResourceID))
-	}
-	if len(find.Statuses) > 0 {
-		// The column is INT2 while lib/pq sends int4 arrays for []int32, so the
-		// cast is explicit and lets PostgreSQL narrow the array.
-		statuses := make([]int32, len(find.Statuses))
-		for i, status := range find.Statuses {
-			statuses[i] = int32(status)
-		}
-		conditions = append(conditions, "status = ANY("+placeholder(pq.Array(statuses))+"::int[])")
-	}
-	if find.Outcome != nil {
-		if *find.Outcome == storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED {
-			conditions = append(conditions, "outcome IS NULL")
-		} else {
-			conditions = append(conditions, "outcome = "+placeholder(int32(*find.Outcome))+"::int")
-		}
-	}
-	if find.Trigger != nil {
-		conditions = append(conditions, "trigger = "+placeholder(int32(*find.Trigger))+"::int")
-	}
-	if find.InstanceResourceID != nil {
-		conditions = append(conditions, "instance_resource_id = "+placeholder(*find.InstanceResourceID))
-	}
-	if find.InitiatorID != nil {
-		conditions = append(conditions, "initiator_id = "+placeholder(*find.InitiatorID))
-	}
-	if find.StartAt != nil {
-		conditions = append(conditions, "started_at >= "+placeholder(*find.StartAt))
-	}
-	if find.EndAt != nil {
-		conditions = append(conditions, "started_at < "+placeholder(*find.EndAt))
-	}
-
-	where := strings.Join(conditions, " AND ")
-	if where == "" {
-		where = "TRUE"
-	}
-	return where, args
 }
 
 // marshalQualityRunCounts renders the counts JSONB column. A nil message and an
 // empty message both store "{}", matching the column default, so the column is
 // never NULL.
-func marshalQualityRunCounts(counts *storepb.QualityRunCounts) ([]byte, error) {
+func marshalQualityRunCounts(counts *storepb.QualityStatusCounts) ([]byte, error) {
 	if counts == nil {
-		counts = &storepb.QualityRunCounts{}
+		counts = &storepb.QualityStatusCounts{}
 	}
 	payload, err := protojson.Marshal(counts)
 	if err != nil {
@@ -171,7 +97,7 @@ func scanQualityRun(scanner interface{ Scan(...any) error }) (*QualityRunMessage
 	if outcome.Valid {
 		msg.Outcome = storepb.QualityStatus(outcome.Int32)
 	}
-	msg.Counts = &storepb.QualityRunCounts{}
+	msg.Counts = &storepb.QualityStatusCounts{}
 	if len(countsRaw) > 0 {
 		if err := common.ProtojsonUnmarshaler.Unmarshal(countsRaw, msg.Counts); err != nil {
 			return nil, errors.Wrap(err, "failed to unmarshal quality run counts")
@@ -197,15 +123,15 @@ func (s *Store) CreateQualityRun(ctx context.Context, run *QualityRunMessage) (*
 	if strings.TrimSpace(run.ResourceID) == "" {
 		return nil, common.Errorf(common.Invalid, "quality run resource id is required")
 	}
-	if run.Trigger == storepb.QualityRunTrigger_QUALITY_RUN_TRIGGER_UNSPECIFIED {
+	if run.Trigger == storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_UNSPECIFIED {
 		return nil, common.Errorf(common.Invalid, "quality run trigger is required")
 	}
 
 	status := run.Status
-	if status == storepb.QualityRunStatus_QUALITY_RUN_STATUS_UNSPECIFIED {
-		status = storepb.QualityRunStatus_QUALITY_RUN_STATUS_PENDING
+	if status == storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_UNSPECIFIED {
+		status = storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_PENDING
 	}
-	if status == storepb.QualityRunStatus_QUALITY_RUN_STATUS_COMPLETED || status == storepb.QualityRunStatus_QUALITY_RUN_STATUS_ABANDONED {
+	if status == storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED || status == storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_ABANDONED {
 		return nil, common.Errorf(common.Invalid, "a quality run cannot be created in terminal status %s", status)
 	}
 
@@ -262,7 +188,7 @@ func (s *Store) MarkQualityRunRunning(ctx context.Context, runID int64, at time.
 	}
 	defer tx.Rollback()
 
-	var current storepb.QualityRunStatus
+	var current storepb.QualityExecutionState
 	if err := tx.QueryRowContext(ctx, `SELECT status FROM quality_run WHERE id = $1 FOR UPDATE`, runID).Scan(&current); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return common.Errorf(common.NotFound, "quality run %d not found", runID)
@@ -271,18 +197,18 @@ func (s *Store) MarkQualityRunRunning(ctx context.Context, runID int64, at time.
 	}
 
 	switch current {
-	case storepb.QualityRunStatus_QUALITY_RUN_STATUS_PENDING:
+	case storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_PENDING:
 		_, err = tx.ExecContext(ctx, `
 			UPDATE quality_run SET status = $2, started_at = $3 WHERE id = $1
-		`, runID, storepb.QualityRunStatus_QUALITY_RUN_STATUS_RUNNING, at)
+		`, runID, storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_RUNNING, at)
 		if err != nil {
 			return errors.Wrap(err, "failed to mark quality run running")
 		}
-	case storepb.QualityRunStatus_QUALITY_RUN_STATUS_RUNNING:
+	case storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_RUNNING:
 		// A retried dispatch of a run another worker already owns is a no-op.
-	case storepb.QualityRunStatus_QUALITY_RUN_STATUS_COMPLETED, storepb.QualityRunStatus_QUALITY_RUN_STATUS_ABANDONED:
+	case storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED, storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_ABANDONED:
 		return common.Errorf(common.Conflict, "quality run %d is already %s", runID, current)
-	case storepb.QualityRunStatus_QUALITY_RUN_STATUS_UNSPECIFIED:
+	case storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_UNSPECIFIED:
 		return common.Errorf(common.Internal, "quality run %d has no lifecycle status", runID)
 	default:
 		return common.Errorf(common.Internal, "quality run %d has unknown status %d", runID, current)
@@ -294,21 +220,21 @@ func (s *Store) MarkQualityRunRunning(ctx context.Context, runID int64, at time.
 	return nil
 }
 
-// FinishQualityRun writes a run's terminal status, its rollup outcome, the
-// per-status counts and finished_at. Only a PENDING or RUNNING run can finish;
-// finishing a run twice is a Conflict rather than a rewrite, because the results
-// it reported are already immutable.
+// FinishQualityRun writes a batch's terminal status, its rollup outcome, the
+// per-status counts and finished_at. Only a PENDING or RUNNING batch can finish;
+// finishing a batch twice is a Conflict rather than a rewrite, because the
+// executions it reported are already immutable.
 //
-// A COMPLETED run must carry the rollup outcome: NULL outcome is reserved for
-// runs that never finished (queued) or never produced a rollup (abandoned).
-func (s *Store) FinishQualityRun(ctx context.Context, runID int64, status storepb.QualityRunStatus, outcome storepb.QualityStatus, counts *storepb.QualityRunCounts, at time.Time) error {
+// A COMPLETED batch must carry the rollup outcome: NULL outcome is reserved for
+// batches that never finished (queued) or never produced a rollup (abandoned).
+func (s *Store) FinishQualityRun(ctx context.Context, runID int64, status storepb.QualityExecutionState, outcome storepb.QualityStatus, counts *storepb.QualityStatusCounts, at time.Time) error {
 	if runID <= 0 {
 		return common.Errorf(common.Invalid, "quality run id is required")
 	}
-	if status != storepb.QualityRunStatus_QUALITY_RUN_STATUS_COMPLETED && status != storepb.QualityRunStatus_QUALITY_RUN_STATUS_ABANDONED {
+	if status != storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED && status != storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_ABANDONED {
 		return common.Errorf(common.Invalid, "quality run status %s is not terminal", status)
 	}
-	if status == storepb.QualityRunStatus_QUALITY_RUN_STATUS_COMPLETED && outcome == storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED {
+	if status == storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED && outcome == storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED {
 		return common.Errorf(common.Invalid, "a completed quality run must carry its rollup outcome")
 	}
 
@@ -327,7 +253,7 @@ func (s *Store) FinishQualityRun(ctx context.Context, runID int64, status storep
 	}
 	defer tx.Rollback()
 
-	var current storepb.QualityRunStatus
+	var current storepb.QualityExecutionState
 	if err := tx.QueryRowContext(ctx, `SELECT status FROM quality_run WHERE id = $1 FOR UPDATE`, runID).Scan(&current); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return common.Errorf(common.NotFound, "quality run %d not found", runID)
@@ -336,7 +262,7 @@ func (s *Store) FinishQualityRun(ctx context.Context, runID int64, status storep
 	}
 
 	switch current {
-	case storepb.QualityRunStatus_QUALITY_RUN_STATUS_PENDING, storepb.QualityRunStatus_QUALITY_RUN_STATUS_RUNNING:
+	case storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_PENDING, storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_RUNNING:
 		_, err = tx.ExecContext(ctx, `
 			UPDATE quality_run
 			SET status = $2, outcome = $3, counts = $4, finished_at = $5
@@ -345,9 +271,9 @@ func (s *Store) FinishQualityRun(ctx context.Context, runID int64, status storep
 		if err != nil {
 			return errors.Wrap(err, "failed to finish quality run")
 		}
-	case storepb.QualityRunStatus_QUALITY_RUN_STATUS_COMPLETED, storepb.QualityRunStatus_QUALITY_RUN_STATUS_ABANDONED:
+	case storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED, storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_ABANDONED:
 		return common.Errorf(common.Conflict, "quality run %d is already %s", runID, current)
-	case storepb.QualityRunStatus_QUALITY_RUN_STATUS_UNSPECIFIED:
+	case storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_UNSPECIFIED:
 		return common.Errorf(common.Internal, "quality run %d has no lifecycle status", runID)
 	default:
 		return common.Errorf(common.Internal, "quality run %d has unknown status %d", runID, current)
@@ -378,10 +304,10 @@ func (s *Store) AbandonStaleQualityRuns(ctx context.Context, startedBefore time.
 		SET status = $1, finished_at = NOW()
 		WHERE started_at < $2 AND status IN ($3, $4)
 	`,
-		storepb.QualityRunStatus_QUALITY_RUN_STATUS_ABANDONED,
+		storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_ABANDONED,
 		startedBefore,
-		storepb.QualityRunStatus_QUALITY_RUN_STATUS_PENDING,
-		storepb.QualityRunStatus_QUALITY_RUN_STATUS_RUNNING,
+		storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_PENDING,
+		storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_RUNNING,
 	)
 	if err != nil {
 		return 0, errors.Wrap(err, "failed to abandon stale quality runs")
@@ -393,199 +319,18 @@ func (s *Store) AbandonStaleQualityRuns(ctx context.Context, startedBefore time.
 	return abandoned, nil
 }
 
-// GetQualityRun returns the one run matching the filter, or nil. More than one
-// match is a Conflict: a caller asking for a run is asking for an identity, not
-// a page.
-func (s *Store) GetQualityRun(ctx context.Context, find *FindQualityRunMessage) (*QualityRunMessage, error) {
-	runs, err := s.ListQualityRuns(ctx, find)
-	if err != nil {
-		return nil, err
-	}
-	if len(runs) == 0 {
-		return nil, nil
-	}
-	if len(runs) > 1 {
-		return nil, common.Errorf(common.Conflict, "found %d quality runs, expect 1", len(runs))
-	}
-	return runs[0], nil
-}
+// qualityRunDeleteExpiredStatement reclaims one batch and, through the ON DELETE
+// CASCADE on quality_execution.run_id, every execution the batch planned.
+const qualityRunDeleteExpiredStatement = `DELETE FROM quality_run WHERE started_at < $1`
 
-// ListQualityRuns lists runs matching the filter, newest first. The id breaks
-// ties on started_at so a page boundary is deterministic.
-func (s *Store) ListQualityRuns(ctx context.Context, find *FindQualityRunMessage) ([]*QualityRunMessage, error) {
-	where, args := buildQualityRunWhere(find)
-	query := `SELECT ` + qualityRunColumns + ` FROM quality_run WHERE ` + where + ` ORDER BY started_at DESC, id DESC`
-
-	if find != nil && find.Limit != nil {
-		args = append(args, max(*find.Limit, 0))
-		query += fmt.Sprintf(" LIMIT $%d", len(args))
-	}
-	if find != nil && find.Offset != nil {
-		args = append(args, max(*find.Offset, 0))
-		query += fmt.Sprintf(" OFFSET $%d", len(args))
-	}
-
-	rows, err := s.GetDB().QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to list quality runs")
-	}
-	defer rows.Close()
-
-	var runs []*QualityRunMessage
-	for rows.Next() {
-		run, err := scanQualityRun(rows)
-		if err != nil {
-			return nil, err
-		}
-		runs = append(runs, run)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, errors.Wrap(err, "failed to iterate quality runs")
-	}
-	return runs, nil
-}
-
-// qualityRunByIDsStatement reads several runs by their numeric primary key. The
-// API addresses a run by its public resource id, but a stored result references
-// its run by the numeric foreign key only, so rendering result rows needs this
-// reverse batch lookup instead of one query per row.
-const qualityRunByIDsStatement = `
-	SELECT ` + qualityRunColumns + `
-	FROM quality_run
-	WHERE id = ANY($1::bigint[])
-	ORDER BY id
-`
-
-// ListQualityRunsByIDs returns the runs whose ids are listed, ordered by id. An
-// empty input is a no-op and never touches the database; the returned slice is
-// non-nil so a caller can range over it unconditionally. Ids that do not exist
-// are simply absent from the result.
-func (s *Store) ListQualityRunsByIDs(ctx context.Context, ids []int64) ([]*QualityRunMessage, error) {
-	if len(ids) == 0 {
-		return []*QualityRunMessage{}, nil
-	}
-
-	rows, err := s.GetDB().QueryContext(ctx, qualityRunByIDsStatement, pq.Array(ids))
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to query quality runs by ids")
-	}
-	defer rows.Close()
-
-	result := make([]*QualityRunMessage, 0, len(ids))
-	for rows.Next() {
-		msg, err := scanQualityRun(rows)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to scan quality run")
-		}
-		result = append(result, msg)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, errors.Wrap(err, "failed to iterate quality runs by ids")
-	}
-	return result, nil
-}
-
-// QualityRunTargetMessage is one target a run's rules observed. The path is the
-// display snapshot of the rule revision the result was judged with, not the rule
-// head's current path: an edit after the run must not rewrite its evidence.
-type QualityRunTargetMessage struct {
-	RunID    int64
-	MetaGUID string
-	MetaType storepb.MetaType
-	Path     *storepb.QualityTargetPath
-}
-
-// qualityRunTargetsStatement reads the distinct targets of several runs in one
-// query. It joins the result to the revision it names, because only the revision
-// carries the target path snapshot. DISTINCT ON keeps two rules that watched the
-// same table from listing it twice; the earliest result breaks a tie when rules
-// saved at different times recorded different paths for one GUID.
-const qualityRunTargetsStatement = `
-	SELECT DISTINCT ON (r.run_id, r.target_guid, r.target_type)
-		r.run_id, r.target_guid, r.target_type, rev.target_path
-	FROM quality_rule_result r
-	JOIN quality_rule_revision rev ON rev.rule_id = r.rule_id AND rev.revision = r.rule_revision
-	WHERE r.run_id = ANY($1::bigint[])
-	ORDER BY r.run_id, r.target_guid, r.target_type, r.id
-`
-
-// qualityRunTargetScanner is the row shape scanned from a *sql.Rows. It exists
-// so the mapping is testable without a database.
-type qualityRunTargetScanner interface {
-	Scan(dest ...any) error
-}
-
-// scanQualityRunTarget maps one joined result/revision row to the message.
-func scanQualityRunTarget(scanner qualityRunTargetScanner) (*QualityRunTargetMessage, error) {
-	var (
-		msg      QualityRunTargetMessage
-		pathJSON []byte
-	)
-	if err := scanner.Scan(&msg.RunID, &msg.MetaGUID, &msg.MetaType, &pathJSON); err != nil {
-		return nil, errors.Wrap(err, "failed to scan quality run target")
-	}
-	msg.Path = &storepb.QualityTargetPath{}
-	if err := unmarshalQualityRuleProto(pathJSON, msg.Path); err != nil {
-		return nil, errors.Wrap(err, "failed to unmarshal quality run target path")
-	}
-	return &msg, nil
-}
-
-// ListQualityRunTargets groups the distinct targets of each run's results by run
-// id. An empty input is a no-op and never touches the database; the returned map
-// is non-nil so a caller can index it unconditionally.
-func (s *Store) ListQualityRunTargets(ctx context.Context, runIDs []int64) (map[int64][]*QualityRunTargetMessage, error) {
-	if len(runIDs) == 0 {
-		return map[int64][]*QualityRunTargetMessage{}, nil
-	}
-
-	rows, err := s.GetDB().QueryContext(ctx, qualityRunTargetsStatement, pq.Array(runIDs))
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to list quality run targets")
-	}
-	defer rows.Close()
-
-	targets := make(map[int64][]*QualityRunTargetMessage, len(runIDs))
-	for rows.Next() {
-		target, err := scanQualityRunTarget(rows)
-		if err != nil {
-			return nil, err
-		}
-		targets[target.RunID] = append(targets[target.RunID], target)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, errors.Wrap(err, "failed to iterate quality run targets")
-	}
-	return targets, nil
-}
-
-// CountQualityRunsSince counts the runs started at or after since. It is the
-// workspace's daily execution tally: the runner compares it with the configured
-// ceiling before scanning for due rules, so an accidentally dense schedule
-// cannot hammer the target databases all day.
-func (s *Store) CountQualityRunsSince(ctx context.Context, since time.Time) (int, error) {
-	if since.IsZero() {
-		return 0, common.Errorf(common.Invalid, "a start time is required")
-	}
-	var count int
-	scanErr := s.GetDB().QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM quality_run WHERE started_at >= $1`,
-		since,
-	).Scan(&count)
-	if scanErr != nil {
-		return 0, errors.Wrap(scanErr, "failed to count quality runs")
-	}
-	return count, nil
-}
-
-// DeleteExpiredQualityRuns removes the runs that started before cutoff. Each
-// run's results go with it through the ON DELETE CASCADE, so one statement
-// reclaims a run and the history it holds.
+// DeleteExpiredQualityRuns removes the internal dispatch batches that started
+// before cutoff. Each batch's executions go with it through the ON DELETE
+// CASCADE, so one statement reclaims a batch and the history it holds.
 func (s *Store) DeleteExpiredQualityRuns(ctx context.Context, cutoff time.Time) (int64, error) {
 	if cutoff.IsZero() {
 		return 0, common.Errorf(common.Invalid, "a cutoff is required")
 	}
-	result, err := s.GetDB().ExecContext(ctx, `DELETE FROM quality_run WHERE started_at < $1`, cutoff)
+	result, err := s.GetDB().ExecContext(ctx, qualityRunDeleteExpiredStatement, cutoff)
 	if err != nil {
 		return 0, errors.Wrap(err, "failed to delete expired quality runs")
 	}

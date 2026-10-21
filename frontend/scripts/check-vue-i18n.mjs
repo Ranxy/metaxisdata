@@ -62,8 +62,8 @@ export const DYNAMIC_PREFIXES = [
   "dataQuality.dimension",
   "dataQuality.ruleType",
   "dataQuality.ruleState",
-  "dataQuality.runStatus",
-  "dataQuality.runTrigger",
+  "dataQuality.executionState",
+  "dataQuality.executionTrigger",
   "dataQuality.errorCode",
   "dataQuality.threshold",
   // The editor's vocabulary helpers and its validation messages: the key is

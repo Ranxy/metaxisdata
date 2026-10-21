@@ -269,7 +269,7 @@ SPA catch-all `/*` 折叠为 `spa`。这修掉了今天的原始路径基数问�
 | --- | --- | --- | --- | --- | --- |
 | `metaxisdata_rpc_requests_total` | counter | `service,method,code` | `WrapUnary` / `WrapStreamingHandler` | 每次调用一次；`code` 用 `connect.CodeOf(err).String()`，成功为 `ok`；服务/方法集由 20 个 service、141 个 RPC 限定 | P0 |
 | `metaxisdata_rpc_request_duration_seconds` | histogram | `service,method` | unary | 墙钟；不含 stream | P0 |
-| `metaxisdata_rpc_stream_duration_seconds` | histogram | `service,method` | streaming handler | 3 个 server-streaming RPC（ExplainSQL、SubscribeNotifications、ExplainQualityResult）结束时观测；通知流天然长（30 min 级），桶要覆盖 | P1 |
+| `metaxisdata_rpc_stream_duration_seconds` | histogram | `service,method` | streaming handler | 3 个 server-streaming RPC（ExplainSQL、SubscribeNotifications、ExplainQualityExecution）结束时观测；通知流天然长（30 min 级），桶要覆盖 | P1 |
 | `metaxisdata_rpc_request_size_bytes` / `_response_size_bytes` | histogram | `service,method` | unary | `proto.Size(req.Any()/resp.Any())`，precedent 见 `backend/api/v1/audit.go:39,117` | P2 |
 | `metaxisdata_rpc_in_flight_requests` | gauge | `service` | both wrap | 区分「真忙」与「长连接流」 | P1 |
 
@@ -430,33 +430,33 @@ post-sync runner 调用。**计数必须埋在这两个 Processor 方法里并�
 
 ### 4.4 数据质量：调度 / 规则执行 / 问题台账 / 目标库查询 / 画像
 
-**调度与 run（`backend/runner/qualityrunner/qualityrunner.go`）**
+**调度与执行（`backend/runner/qualityrunner/qualityrunner.go`、`backend/api/v1/data_quality_service.go`）**
+
+`quality_run` 是内部派发批次（连接准入、一个 tick 的分组、风暴聚合、保留期级联），
+**没有任何指标以它为单位**；对外指标一律按执行（`quality_execution`）计。
 
 | 指标 | 类型 | 标签 | 埋点 | 语义 / 注意 | 优先级 |
 | --- | --- | --- | --- | --- | --- |
-| `metaxisdata_quality_due_scan_duration_seconds` | histogram | — | `scanDue` 开始到 `planDueRuns` 之后（`:328-331`），**不要包住 `wp.Wait()`** | 调度层成本；包住执行会退化成 run duration 的重复 | P0 |
-| `metaxisdata_quality_due_rules` | histogram | — | `FindDueQualityRules` 之后（`:319-327`） | 每次扫描到期规则数；p95 顶到 200 说明积压排不干 | P0 |
-| `metaxisdata_quality_runs_created_total` | counter | `trigger=scheduled\|manual` | scheduled `:393-404`、manual `data_quality_service.go:774-783` | run 行创建数（含之后被放弃的） | P0 |
-| `metaxisdata_quality_runs_completed_total` | counter | `outcome`（7 个 QualityStatus） | `:597-603`，`FinishQualityRun` 成功才计 | 正常收尾的 run 及其汇总状态 | P0 |
-| `metaxisdata_quality_run_duration_seconds` | histogram | `outcome`（可选 `trigger`） | `executeRun` 开始（`:539`）到 `FinishQualityRun` 成功 | run 墙钟，15 min 上限；`trigger` 需要给 `executeRun` 加参数（`:538`），v1 可先不加 | P1 |
-| `metaxisdata_quality_run_admissions_total` | counter | `trigger,result=admitted\|deferred` | scheduled `:374-383`、manual `:425-433` | 连接预算准入结果 | P0 |
-| `metaxisdata_quality_runs_deferred_total` | counter | `reason=admission_timeout\|instance_read_error` | `:375-383`、`:367-373` | 没建成 run，规则保持到期等下轮 | P0 |
-| `metaxisdata_quality_run_abandoned_total` | counter | `reason=admission_timeout\|instance_read_error\|stale_sweep\|persist_failed\|queue_full\|mark_running_failed` | `:431`、`:422`、`:296-305`、`:570-580`、`data_quality_service.go:784-788`、`:544-552` | 「run 在悄悄消失」的告警面 | P0 |
-| `metaxisdata_quality_runs_in_progress` | gauge | — | `:544-552` inc / `executeRun` defer dec | 正在执行的 run（名义上限 2） | P0 |
-| `metaxisdata_quality_manual_queue_depth` | gauge | — | `GaugeFunc` 读 `len(r.manual)`（`chan`，容量 64） | 手动队列积压 | P0 |
-| `metaxisdata_quality_manual_enqueue_rejected_total` | counter | — | `EnqueueQualityRun` 的 default 分支（`:250-256`） | 队列满 → API 返回 ResourceExhausted | P0 |
-| `metaxisdata_quality_runs_today` | gauge | — | `overDailyExecutionQuota` 的 `CountQualityRunsSince` 之后（`:142-147`） | 每轮扫描刷新；UTC 零点回落，**不要对它用 rate()** | P1 |
-| `metaxisdata_quality_daily_execution_limit` | gauge | — | `refreshSettings` 成功后（`:123-130`） | 配置上限，和上一条配合看饱和度 | P1 |
-| `metaxisdata_quality_rule_executions_total` | counter | `rule_type,status` | `executeRun` 的 per-rule 循环（`:556-564`），紧跟 `executeOneSafe` | 一个规则一次尝试一条；和插入的结果行一一对应 | P0 |
-| `metaxisdata_quality_rule_execution_duration_seconds` | histogram | `rule_type` | 同上，用 `result.DurationMS`（`:936`） | 单规则端到端（建连+聚合+采样+判定）；目标库耗时看 `query_readonly_*` | P0 |
-| `metaxisdata_quality_rule_errors_total` | counter | `rule_type,error_code` | 同上，`result.ErrorCode != ""` | error code 是已有稳定枚举（`CONNECTION/AUTH/TIMEOUT/...`，`model.go:193-208`）；`QUOTA` 是历史值，出现即回归 | P0 |
-| `metaxisdata_quality_rule_skips_total` | counter | `reason=inflight\|retired\|orphaned\|lease_unavailable` | `executeOne` 的四个返回点（`:646-652`、`:662-673`、`:687-693`、`:716-721`） | 其中两类 `error_code` 为空，无法从错误计数推出 | P1 |
-| `metaxisdata_quality_rule_panics_total` | counter | — | `executeOneSafe` recover（`:615-628`） | 把 panic 和普通 EXECUTION 失败区分开 | P1 |
-| `metaxisdata_quality_storms_total` | counter | — | `:604-608`（`isQualityRunStorm`） | 一次 run 里 >10 条 FAIL | P2 |
-| `metaxisdata_quality_issues_opened_total` | counter | `severity` | 插入成功后（`:1253` 之后） | 新开问题（首次 FAIL） | P1 |
-| `metaxisdata_quality_issues_touched_total` | counter | — | `TouchQualityIssue` 成功后（`:1188-1195`） | 既有问题再次命中 | P1 |
-| `metaxisdata_quality_issues_resolved_total` | counter | — | `ResolveQualityIssue` 成功后（`:1264-1269`） | 自动恢复关闭 | P1 |
-| `metaxisdata_quality_notifications_total` | counter | `kind,result=ok\|error` | `sendDataQualityNotification`（`:1313-1341`） | **投递尝试**，不是收件箱行数（下游有去重） | P2 |
+| `metaxisdata_quality_due_scan_duration_seconds` | histogram | — | `scanDue` 的规划段（settings/quota/`FindDueQualityRules`/`planDueBatches`），**不要包住 `wp.Wait()`** | 调度层成本；包住执行会退化成批次耗时的重复 | P0 |
+| `metaxisdata_quality_due_rules` | histogram | — | `FindDueQualityRules` 之后 | 每次扫描到期规则数；p95 顶到 200 说明积压排不干 | P0 |
+| `metaxisdata_quality_executions_created_total` | counter | `trigger=scheduled\|manual` | scheduled 在 `PlanQualityExecutions` 成功后逐行计（`startScheduledBatch`）；manual 在 API 规划成功后逐行计（`planManualQualityExecutions`） | 规划的执行行数（含之后被放弃的） | P0 |
+| `metaxisdata_quality_executions_completed_total` | counter | `outcome`（6 个 QualityStatus） | `FinishQualityExecution` 成功后（`executeBatch`） | 正常收尾的执行及其判定；`UNSPECIFIED` 不会出现（ABANDONED 不计） | P0 |
+| `metaxisdata_quality_execution_admissions_total` | counter | `trigger,result=admitted\|deferred` | scheduled `startScheduledBatch`、manual `executeManualBatch` 的 `admitBatch` 之后 | 连接预算准入结果（按批次一次） | P0 |
+| `metaxisdata_quality_executions_deferred_total` | counter | `reason=admission_timeout\|instance_read_error` | scheduled 的 `startScheduledBatch` | 定时执行因实例预算/实例读取失败没被规划；规则保持 due 等下轮（manual 不 deferred，拿不到即放弃） | P0 |
+| `metaxisdata_quality_executions_abandoned_total` | counter | `reason=admission_timeout\|instance_read_error\|stale_sweep\|persist_failed\|incomplete\|plan_failed\|queue_full\|mark_running_failed` | startup sweep、manual 准入失败/实例读取失败、`abandonBatch`、规划失败、API 队列满、批次超时/未全部落终态（`incomplete`）、批次无法进入 RUNNING 即被关闭（`mark_running_failed`） | 「执行在悄悄消失」的告警面（按执行行计） | P0 |
+| `metaxisdata_quality_executions_in_progress` | gauge | — | `MarkQualityExecutionRunning` 成功后 inc，终态写入后 dec | 正在执行的规则（两个实例各自串行，名义上限 2） | P0 |
+| `metaxisdata_quality_manual_queue_depth` | gauge | — | `GaugeFunc` 读 `len(r.manual)`（`chan`，容量 64 个批次） | 手动批次积压 | P0 |
+| `metaxisdata_quality_manual_enqueue_rejected_total` | counter | — | `EnqueueQualityExecutions` 的 default 分支 | 队列满 → API 返回 ResourceExhausted | P0 |
+| `metaxisdata_quality_rule_executions_total` | counter | `rule_type,status` | `executeBatch` 的 per-execution 循环，在终态写入成功后 | 一次执行一条；状态是六态判定（含 SKIPPED/NOT_EVALUATED） | P0 |
+| `metaxisdata_quality_rule_execution_duration_seconds` | histogram | `rule_type` | 同上，用 `result.DurationMS`（从 runner 拾起到写完判定） | 单规则端到端（建连+聚合+采样+判定），不含准入等待；目标库耗时看 `query_readonly_*` | P0 |
+| `metaxisdata_quality_rule_errors_total` | counter | `rule_type,error_code` | 同上，`result.ErrorCode != ""` | error code 是已有稳定枚举（`CONNECTION/AUTH/TIMEOUT/...`）；`QUOTA` 是历史值，出现即回归 | P0 |
+| `metaxisdata_quality_rule_skips_total` | counter | `reason=inflight\|retired\|orphaned\|lease_unavailable` | **（未实现）**`executeOne` 的四个 SKIPPED 返回点 | 其中两类 `error_code` 为空，无法从错误计数推出 | P1 |
+| `metaxisdata_quality_rule_panics_total` | counter | — | **（未实现）**`executeOneSafe` recover | 把 panic 和普通 EXECUTION 失败区分开 | P1 |
+| `metaxisdata_quality_storms_total` | counter | — | **（未实现）**`isQualityStorm` | 一次内部批次里 >10 条 FAIL | P2 |
+| `metaxisdata_quality_issues_opened_total` | counter | `severity` | **（未实现）**新开问题插入成功后 | 新开问题（首次 FAIL） | P1 |
+| `metaxisdata_quality_issues_touched_total` | counter | — | **（未实现）**`TouchQualityIssue` 成功后 | 既有问题再次命中 | P1 |
+| `metaxisdata_quality_issues_resolved_total` | counter | — | **（未实现）**`ResolveQualityIssue` 成功后 | 自动恢复关闭 | P1 |
+| `metaxisdata_quality_notifications_total` | counter | `kind,result=ok\|error` | **（未实现）**`sendDataQualityNotification` | **投递尝试**，不是收件箱行数（下游有去重） | P2 |
 
 **目标库只读查询（`backend/plugin/db/query.go:69-112`）**
 
@@ -470,8 +470,8 @@ post-sync runner 调用。**计数必须埋在这两个 Processor 方法里并�
 | `metaxisdata_query_readonly_duration_seconds` | histogram | `purpose` | 同上（从 begin 到 commit） | 「目标库慢」还是「调度慢」的分界线 | P0 |
 | `metaxisdata_query_readonly_rows` | histogram | `purpose` | 扫描结束后 | 聚合类恒为 1；采样/画像是关注点 | P1 |
 | `metaxisdata_query_readonly_truncated_total` | counter | `purpose` | `result.Truncated` | 行/字节上限截断 | P2 |
-| `metaxisdata_quality_profile_total` / `_duration_seconds` | counter/histogram | `outcome` / — | `data_quality_service.go:1947-1961` | 画像请求（两次目标库查询） | P1 |
-| `metaxisdata_quality_profile_columns` | histogram | `engine` | `:1939-1945` | 单次画像列数（上限 200） | P2 |
+| `metaxisdata_quality_profile_total` / `_duration_seconds` | counter/histogram | `outcome` / — | **（未实现）**画像请求（两次目标库查询） | P1 |
+| `metaxisdata_quality_profile_columns` | histogram | `engine` | **（未实现）**单次画像列数（上限 200） | P2 |
 
 > 不要用 `acquireQualityConnection` 的 `action string`（人类文案 `"the dry run"`）当标签；
 > 用 typed purpose 或在两个调用点映射。
@@ -537,7 +537,7 @@ v1（P0 66 条，按目录行计）已经实现，按四个可独立评审的范
 | 基础设施 | 已实现 | `backend/metrics/`（全部 P0 instrument、proto 枚举→标签映射、nil 安全的记录方法、黄金指标名/标签白名单/nil 安全测试）；独立 `--metrics-addr` 监听器与私有 registry（`backend/server/server.go`）；HTTP 中间件（`backend/server/http_metrics.go`）；ConnectRPC 拦截器（`backend/api/v1/metrics_interceptor.go`）；`runner.Go` 的 up/panics；`Store.DBStats` 与自研 `metaxisdata_db_pool_*` collector；删除废弃的 echo-contrib 中间件 |
 | 元数据采集 | 已实现 | `schemasync`（owner-only gate、事务提交后按类型计数、扫描/实例/库/驱动耗时、重试与耗尽、连接预算背压、失败原因）；`maintenance` pass 级汇总（lineage 边数不计入 deleted_rows）；`lineagevalidation` 触发/pass/边；governor 的非阻塞租约拒绝 |
 | 血缘 / OpenLineage | 已实现 | `lineageanalyzer` 的每个终态分支（interrupted 与 timeout 用 sentinel 去重）、解析耗时、in-flight、重试耗尽、列/表边；队列深度 scrape collector；OpenLineage 请求失败（含 401 与限流拒绝）、事件级接受/拒绝、处理耗时、摄取边 |
-| 数据质量 / LLM / 目标库 | 已实现 | `qualityrunner` 调度、run 生命周期、准入/放弃、规则漏斗（每结果一次）；`db.RunReadOnlyQuery` 单一埋点（`QueryOptions.Purpose`）；`RunAgentLoop` 统一记录 calls/duration/tokens/usage_missing；DQ 解析失败与 LLM 配额拒绝 |
+| 数据质量 / LLM / 目标库 | 已实现 | `qualityrunner` 调度、执行规划与生命周期、准入/延后/放弃、规则漏斗（每次执行一次）；`db.RunReadOnlyQuery` 单一埋点（`QueryOptions.Purpose`）；`RunAgentLoop` 统一记录 calls/duration/tokens/usage_missing；DQ 解析失败与 LLM 配额拒绝 |
 
 测试与门禁：`backend/metrics` 有黄金指标名 + 标签白名单 + scrape collector + nil 安全测试；各域新增 hermetic 测试；`go build ./...`、`go vet -tags integration ./...`、`go test ./...` 通过。P1/P2 指标（例如 schemasync 队列 in-flight、DDL 明细、scan 指纹跳过、issue 计数、LLM cache 事件、连接等待时长直方图）尚未实现，命名与语义已在 §4 预留。
 
@@ -599,6 +599,8 @@ v1（P0 66 条，按目录行计）已经实现，按四个可独立评审的范
 7. **指标是进程本地、单副本语义。** 重启归零；不要用 `increase()` 跨重启做长期账。
 8. **HTTP 与 RPC 计数不可相加。** REST gateway 的内部回环已从 HTTP 计数中排除：HTTP 指标是客户端 HTTP 请求，RPC 指标是 API 调用。
 9. **指标端点匿名。** 无鉴权，只应绑定在可信接口/网络边界内；见 `docs/security-posture.md`。
+10. **日执行配额没有专用 gauge。** 用 `increase(metaxisdata_quality_executions_created_total[1d])`
+    对照工作区设置 `daily_execution_limit` 观察饱和度；配额触顶只跳过定时 due 扫描，手动运行不受影响。
 
 ## 附录 A — 基数估算（全部标签组合都被观测到的上限）
 
@@ -626,7 +628,6 @@ v1（P0 66 条，按目录行计）已经实现，按四个可独立评审的范
 | lineage 解析 | `.01 .05 .1 .25 .5 1 2.5 5 10 30 60 120` |
 | OpenLineage 处理 | `.005 .01 .05 .1 .25 .5 1 2.5 5 10 30 60` |
 | revalidation 批 | `.05 .1 .5 1 2.5 5 10 30 60 120 300` |
-| quality run | `.1 .5 1 2.5 5 10 30 60 120 300 600 900` |
 | quality 单规则 | `.01 .05 .1 .25 .5 1 2.5 5 10 30 60 120 300 600` |
 | 目标库只读查询 | `.001 .005 .01 .05 .1 .25 .5 1 2.5 5 10 30 60 120` |
 | LLM 调用 | `.25 .5 1 2.5 5 10 20 30 60 120 300` |

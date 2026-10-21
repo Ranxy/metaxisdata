@@ -29,8 +29,8 @@ import (
 )
 
 const (
-	// qualityRuleSelectionLimit caps how many rules one manual run may select, so
-	// a single request cannot queue an unbounded batch.
+	// qualityRuleSelectionLimit caps how many rules one manual execution request
+	// may select, so a single request cannot queue an unbounded batch.
 	qualityRuleSelectionLimit = 200
 	// Quality rule counts are bounded so one workspace or one table cannot make the
 	// scheduler unmanageable.
@@ -60,28 +60,28 @@ const (
 	qualityLLMMaxOutputTokens = 4096
 )
 
-// QualityRunScheduler queues a freshly created manual run for immediate
+// QualityExecutionScheduler queues a freshly planned manual batch for immediate
 // execution. The quality runner implements it; the API depends only on this
-// narrow interface. A nil scheduler means the run is created and left PENDING,
-// which is the state before the runner is wired in.
-type QualityRunScheduler interface {
-	// EnqueueQualityRun queues a run together with the instance the API grouped
-	// its rules on and the rules it must execute. It reports false when its
-	// bounded queue is full, in which case the run is abandoned as a quota
-	// failure and the caller gets ResourceExhausted. The runner admits the run
-	// against the instance's connection budget; a run that has to wait stays
-	// PENDING and is not reported as a failure.
-	EnqueueQualityRun(runID int64, instanceResourceID string, ruleIDs []int64) bool
+// narrow interface. A nil scheduler means the executions are planned and left
+// PENDING, which is the state before the runner is wired in.
+type QualityExecutionScheduler interface {
+	// EnqueueQualityExecutions queues one internal batch together with the
+	// instance the API grouped its rules on and the execution rows it planned. It
+	// reports false when its bounded queue is full, in which case the batch is
+	// abandoned as a quota failure and the caller gets ResourceExhausted. The
+	// runner admits the batch against the instance's connection budget; a batch
+	// that has to wait stays PENDING and is not reported as a failure.
+	EnqueueQualityExecutions(batchID int64, instanceResourceID string, executionIDs []int64) bool
 }
 
-// DataQualityService serves the data quality rules, the runs that execute them
-// and the per-rule results. The quality tables carry no workspace column
-// (single-tenant deployment), so every request still proves its workspace from
-// the resource name or parent.
+// DataQualityService serves the data quality rules, the executions that check
+// them and the durable issues those checks open. The quality tables carry no
+// workspace column (single-tenant deployment), so every request still proves its
+// workspace from the resource name or parent.
 type DataQualityService struct {
-	store        *store.Store
-	dbFactory    *dbfactory.DBFactory
-	runScheduler QualityRunScheduler
+	store              *store.Store
+	dbFactory          *dbfactory.DBFactory
+	executionScheduler QualityExecutionScheduler
 	// stateCfg is the instance connection governor. The preview probe and the
 	// profile open a target driver on a user's behalf, so they lease a slot from
 	// the same budget the runners use.
@@ -92,23 +92,23 @@ type DataQualityService struct {
 	// llmQuota is the process-wide daily quota and concurrency limit of the LLM
 	// analyses. It is created with the service and shared by every request.
 	llmQuota *qualityLLMQuota
-	// metrics records run, query and LLM outcomes; a nil value disables
+	// metrics records execution, query and LLM outcomes; a nil value disables
 	// instrumentation.
 	metrics *metrics.Metrics
 }
 
-// NewDataQualityService creates the service. runScheduler may be nil.
-func NewDataQualityService(s *store.Store, dbFactory *dbfactory.DBFactory, runScheduler QualityRunScheduler, llmRegistry *llmcomp.Registry, stateCfg *state.State, m *metrics.Metrics) *DataQualityService {
+// NewDataQualityService creates the service. executionScheduler may be nil.
+func NewDataQualityService(s *store.Store, dbFactory *dbfactory.DBFactory, executionScheduler QualityExecutionScheduler, llmRegistry *llmcomp.Registry, stateCfg *state.State, m *metrics.Metrics) *DataQualityService {
 	quota := newQualityLLMQuota()
 	quota.metrics = m
 	return &DataQualityService{
-		store:        s,
-		dbFactory:    dbFactory,
-		runScheduler: runScheduler,
-		llmRegistry:  llmRegistry,
-		stateCfg:     stateCfg,
-		llmQuota:     quota,
-		metrics:      m,
+		store:              s,
+		dbFactory:          dbFactory,
+		executionScheduler: executionScheduler,
+		llmRegistry:        llmRegistry,
+		stateCfg:           stateCfg,
+		llmQuota:           quota,
+		metrics:            m,
 	}
 }
 
@@ -165,16 +165,17 @@ func (s *DataQualityService) ruleResourceID(ctx context.Context, name string) (s
 	return workspace, resourceID, nil
 }
 
-// runResourceID parses a run name and proves its workspace.
-func (s *DataQualityService) runResourceID(ctx context.Context, name string) (string, string, error) {
-	workspace, resourceID, err := parseQualityRunName(name)
+// executionResourceID parses an execution name, proving its workspace, and
+// returns the numeric row id.
+func (s *DataQualityService) executionResourceID(ctx context.Context, name string) (string, int64, error) {
+	workspace, executionID, err := parseQualityExecutionID(name)
 	if err != nil {
-		return "", "", connectErrorInvalid("%v", err)
+		return "", 0, err
 	}
 	if err := s.validateResourceWorkspace(ctx, workspace); err != nil {
-		return "", "", err
+		return "", 0, err
 	}
-	return workspace, resourceID, nil
+	return workspace, executionID, nil
 }
 
 func (s *DataQualityService) fetchQualityRule(ctx context.Context, resourceID string) (*store.QualityRuleMessage, error) {
@@ -195,15 +196,15 @@ func (s *DataQualityService) fetchQualityRule(ctx context.Context, resourceID st
 	return rule, nil
 }
 
-func (s *DataQualityService) fetchQualityRun(ctx context.Context, resourceID string) (*store.QualityRunMessage, error) {
-	run, err := s.store.GetQualityRun(ctx, &store.FindQualityRunMessage{ResourceID: &resourceID})
+func (s *DataQualityService) fetchQualityExecution(ctx context.Context, executionID int64) (*store.QualityExecutionMessage, error) {
+	execution, err := s.store.GetQualityExecution(ctx, executionID)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to read the quality run")
+		return nil, errors.Wrap(err, "failed to read the quality execution")
 	}
-	if run == nil {
-		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("quality run %q not found", resourceID))
+	if execution == nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("quality execution %d not found", executionID))
 	}
-	return run, nil
+	return execution, nil
 }
 
 // ListQualityRules lists rules scoped to the caller's workspace.
@@ -235,11 +236,7 @@ func (s *DataQualityService) ListQualityRules(ctx context.Context, req *connect.
 		return nil, err
 	}
 
-	latest, err := s.latestQualityRuleResults(ctx, rules)
-	if err != nil {
-		return nil, err
-	}
-	runNames, err := s.qualityRunNames(ctx, workspaceID, qualityResultRunIDs(latest))
+	latest, err := s.latestQualityExecutions(ctx, rules)
 	if err != nil {
 		return nil, err
 	}
@@ -252,8 +249,8 @@ func (s *DataQualityService) ListQualityRules(ctx context.Context, req *connect.
 	for _, rule := range rules {
 		converted := convertQualityRule(workspaceID, rule)
 		converted.TargetSchemaChanged = schemaChanged[rule.ID]
-		if result := latest[rule.ID]; result != nil {
-			converted.LastResult = convertQualityResultSummary(result, runNames[result.RunID])
+		if execution := latest[rule.ID]; execution != nil {
+			converted.LastResult = convertQualityExecutionSummary(workspaceID, execution)
 		}
 		response.QualityRules = append(response.QualityRules, converted)
 	}
@@ -333,19 +330,15 @@ func (s *DataQualityService) GetQualityRule(ctx context.Context, req *connect.Re
 }
 
 // enrichQualityRule fills the read-only projections of one rule: whether its
-// target's schema changed and a summary of its newest result.
+// target's schema changed and a summary of its newest execution.
 func (s *DataQualityService) enrichQualityRule(ctx context.Context, workspaceID string, rule *store.QualityRuleMessage) (*v1pb.QualityRule, error) {
 	converted := convertQualityRule(workspaceID, rule)
-	latest, err := s.latestQualityRuleResults(ctx, []*store.QualityRuleMessage{rule})
+	latest, err := s.latestQualityExecutions(ctx, []*store.QualityRuleMessage{rule})
 	if err != nil {
 		return nil, err
 	}
-	runNames, err := s.qualityRunNames(ctx, workspaceID, qualityResultRunIDs(latest))
-	if err != nil {
-		return nil, err
-	}
-	if result := latest[rule.ID]; result != nil {
-		converted.LastResult = convertQualityResultSummary(result, runNames[result.RunID])
+	if execution := latest[rule.ID]; execution != nil {
+		converted.LastResult = convertQualityExecutionSummary(workspaceID, execution)
 	}
 	schemaChanged, err := s.targetSchemaChanges(ctx, []*store.QualityRuleMessage{rule})
 	if err != nil {
@@ -753,7 +746,9 @@ func truncateForError(value string, limit int) string {
 	return value[:limit] + "…"
 }
 
-// RunQualityRules creates one manual run per selected instance and queues it.
+// RunQualityRules plans one execution per selected rule, queues the executions
+// grouped by instance and returns them as PENDING. Clients poll
+// GetQualityExecution for each execution's state and outcome.
 func (s *DataQualityService) RunQualityRules(ctx context.Context, req *connect.Request[v1pb.RunQualityRulesRequest]) (*connect.Response[v1pb.RunQualityRulesResponse], error) {
 	workspaceID, err := s.workspaceID(ctx, req.Msg.GetParent())
 	if err != nil {
@@ -777,51 +772,107 @@ func (s *DataQualityService) RunQualityRules(ctx context.Context, req *connect.R
 	response := &v1pb.RunQualityRulesResponse{}
 	for _, instance := range instanceOrder {
 		group := groups[instance]
-		ruleIDs := make([]int64, 0, len(group))
-		for _, rule := range group {
-			ruleIDs = append(ruleIDs, rule.ID)
-		}
-		resourceID, err := common.RandomString(12)
+		batch, planned, err := s.planManualQualityExecutions(ctx, instance, group, callerID, now)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to generate the quality run id")
+			return nil, err
 		}
-		run, err := s.store.CreateQualityRun(ctx, &store.QualityRunMessage{
-			ResourceID:         resourceID,
-			InstanceResourceID: instance,
-			Trigger:            storepb.QualityRunTrigger_QUALITY_RUN_TRIGGER_MANUAL,
-			Status:             storepb.QualityRunStatus_QUALITY_RUN_STATUS_PENDING,
-			InitiatorID:        callerID,
-		})
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to create the quality run")
-		}
-		s.metrics.CountQualityRunCreated(metrics.QualityTriggerManual)
-		if s.runScheduler != nil && !s.runScheduler.EnqueueQualityRun(run.ID, instance, ruleIDs) {
-			s.abandonUnqueueableQualityRun(ctx, run, len(ruleIDs), now)
+		if s.executionScheduler != nil && !s.executionScheduler.EnqueueQualityExecutions(batch.ID, instance, qualityExecutionIDs(planned)) {
+			for range planned {
+				s.metrics.CountQualityExecutionAbandoned(metrics.QualityAbandonedQueueFull)
+			}
+			s.abandonQualityBatch(ctx, batch.ID, len(planned), now)
 			return nil, connect.NewError(connect.CodeResourceExhausted,
 				errors.New("the quality runner queue is full; retry the run later"))
 		}
-		response.Runs = append(response.Runs, convertQualityRun(workspaceID, run))
+		ruleNames := make(map[int64]string, len(group))
+		for _, rule := range group {
+			ruleNames[rule.ID] = formatQualityRuleName(workspaceID, rule.ResourceID)
+		}
+		for _, execution := range planned {
+			response.Executions = append(response.Executions, convertQualityExecution(workspaceID, execution, ruleNames[execution.RuleID]))
+		}
 	}
 	return connect.NewResponse(response), nil
 }
 
-// abandonUnqueueableQualityRun closes a run whose dispatch lost the queue. It is
-// best effort: the caller is already receiving ResourceExhausted, and the
-// stale-run sweep is the backstop if this write fails.
-func (s *DataQualityService) abandonUnqueueableQualityRun(ctx context.Context, run *store.QualityRunMessage, selected int, at time.Time) {
-	counts := &storepb.QualityRunCounts{Total: int32(selected)}
-	// The run executed nothing, so it has no rollup outcome: ABANDONED with an
-	// absent outcome is the honest state (the runner uses the same for a run whose
-	// admission never succeeded).
-	abandonErr := s.store.FinishQualityRun(ctx, run.ID,
-		storepb.QualityRunStatus_QUALITY_RUN_STATUS_ABANDONED,
-		storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, counts, at)
-	if abandonErr != nil {
-		slog.Warn("failed to abandon an unqueueable quality run",
-			slog.Int64("run_id", run.ID), clog.WithError(abandonErr))
+// planManualQualityExecutions creates the internal dispatch batch for one
+// instance and plans one PENDING execution per selected rule. The batch admits
+// the instance's connection lease and is never exposed; the executions are what
+// the caller receives.
+func (s *DataQualityService) planManualQualityExecutions(ctx context.Context, instance string, rules []*store.QualityRuleMessage, initiator *int32, at time.Time) (*store.QualityRunMessage, []*store.QualityExecutionMessage, error) {
+	resourceID, err := common.RandomString(12)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to generate the quality batch id")
 	}
-	s.metrics.CountQualityRunAbandoned(metrics.QualityAbandonedQueueFull)
+	batch, err := s.store.CreateQualityRun(ctx, &store.QualityRunMessage{
+		ResourceID:         resourceID,
+		InstanceResourceID: instance,
+		Trigger:            storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL,
+		Status:             storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_PENDING,
+		InitiatorID:        initiator,
+	})
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to create the quality batch")
+	}
+
+	planned := make([]*store.QualityExecutionMessage, 0, len(rules))
+	for _, rule := range rules {
+		planned = append(planned, &store.QualityExecutionMessage{
+			RunID:              batch.ID,
+			RuleID:             rule.ID,
+			RuleRevision:       rule.Revision,
+			RuleEngineVersion:  dataquality.EngineVersion,
+			TargetGUID:         rule.TargetGUID,
+			TargetType:         rule.TargetType,
+			TargetPath:         rule.TargetPath,
+			InstanceResourceID: instance,
+			Trigger:            storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL,
+			InitiatorID:        initiator,
+			StartedAt:          at,
+		})
+	}
+	if err := s.store.PlanQualityExecutions(ctx, planned); err != nil {
+		for range planned {
+			s.metrics.CountQualityExecutionAbandoned(metrics.QualityAbandonedPlanFailed)
+		}
+		s.abandonQualityBatch(ctx, batch.ID, 0, at)
+		return nil, nil, errors.Wrap(err, "failed to plan the quality executions")
+	}
+	for range planned {
+		s.metrics.CountQualityExecutionCreated(metrics.QualityTriggerManual)
+	}
+	return batch, planned, nil
+}
+
+// qualityExecutionIDs collects the row ids of a planned batch, for the enqueue
+// call.
+func qualityExecutionIDs(executions []*store.QualityExecutionMessage) []int64 {
+	ids := make([]int64, 0, len(executions))
+	for _, execution := range executions {
+		ids = append(ids, execution.ID)
+	}
+	return ids
+}
+
+// abandonQualityBatch closes a batch whose executions were never planned or
+// queued. It is best effort: the caller is already returning an error, and the
+// stale sweep is the backstop if either write fails.
+func (s *DataQualityService) abandonQualityBatch(ctx context.Context, batchID int64, planned int, at time.Time) {
+	if _, err := s.store.AbandonQualityExecutions(ctx, batchID, at); err != nil {
+		slog.Warn("failed to abandon the quality executions of a failed batch",
+			slog.Int64("batch_id", batchID), clog.WithError(err))
+	}
+	counts := &storepb.QualityStatusCounts{Total: int32(planned)}
+	// The batch executed nothing, so it has no rollup outcome: ABANDONED with an
+	// absent outcome is the honest state (the runner uses the same for a batch
+	// whose admission never succeeded).
+	finishErr := s.store.FinishQualityRun(ctx, batchID,
+		storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_ABANDONED,
+		storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, counts, at)
+	if finishErr != nil {
+		slog.Warn("failed to abandon the quality batch",
+			slog.Int64("batch_id", batchID), clog.WithError(finishErr))
+	}
 }
 
 // selectQualityRulesForRun resolves the request's selection to enabled rules.
@@ -905,13 +956,14 @@ func groupQualityRulesByInstance(rules []*store.QualityRuleMessage) (map[string]
 		}
 		groups[instance] = append(groups[instance], rule)
 	}
-	// A deterministic response order makes the created runs reproducible.
+	// A deterministic response order makes the planned executions reproducible.
 	slices.Sort(order)
 	return groups, order
 }
 
-// ListQualityRuns lists runs scoped to the caller's workspace.
-func (s *DataQualityService) ListQualityRuns(ctx context.Context, req *connect.Request[v1pb.ListQualityRunsRequest]) (*connect.Response[v1pb.ListQualityRunsResponse], error) {
+// ListQualityExecutions lists executions scoped to the caller's workspace,
+// newest first.
+func (s *DataQualityService) ListQualityExecutions(ctx context.Context, req *connect.Request[v1pb.ListQualityExecutionsRequest]) (*connect.Response[v1pb.ListQualityExecutionsResponse], error) {
 	workspaceID, err := s.workspaceID(ctx, req.Msg.GetParent())
 	if err != nil {
 		return nil, err
@@ -926,65 +978,96 @@ func (s *DataQualityService) ListQualityRuns(ctx context.Context, req *connect.R
 	}
 	limitPlusOne := offset.limit + 1
 
-	find, err := qualityRunListFilter(req.Msg)
+	find := &store.FindQualityExecutionMessage{Limit: &limitPlusOne, Offset: &offset.offset}
+	if err := s.applyQualityExecutionListFilters(ctx, find, req.Msg); err != nil {
+		return nil, err
+	}
+	executions, err := s.store.ListQualityExecutions(ctx, find)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list the quality executions")
+	}
+	executions, nextPageToken, err := paginate(executions, offset)
 	if err != nil {
 		return nil, err
 	}
-	find.Limit = &limitPlusOne
-	find.Offset = &offset.offset
+	ruleNames, err := s.qualityRuleNames(ctx, workspaceID, qualityExecutionRuleIDs(executions))
+	if err != nil {
+		return nil, err
+	}
 
-	runs, err := s.store.ListQualityRuns(ctx, find)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to list the quality runs")
-	}
-	runs, nextPageToken, err := paginate(runs, offset)
-	if err != nil {
-		return nil, err
-	}
-
-	targets, err := s.qualityRunTargets(ctx, runs)
-	if err != nil {
-		return nil, err
-	}
-	response := &v1pb.ListQualityRunsResponse{NextPageToken: nextPageToken}
-	for _, run := range runs {
-		converted := convertQualityRun(workspaceID, run)
-		converted.Targets = convertQualityRunTargets(targets[run.ID])
-		response.QualityRuns = append(response.QualityRuns, converted)
+	response := &v1pb.ListQualityExecutionsResponse{NextPageToken: nextPageToken}
+	for _, execution := range executions {
+		response.QualityExecutions = append(response.QualityExecutions,
+			convertQualityExecution(workspaceID, execution, ruleNames[execution.RuleID]))
 	}
 	return connect.NewResponse(response), nil
 }
 
-// qualityRunTargets reads the targets of the given runs in one query. A run row
-// stores no target: the evidence is its results and the rule revisions they
-// name, so a list has to join them in a second read rather than per row.
-func (s *DataQualityService) qualityRunTargets(ctx context.Context, runs []*store.QualityRunMessage) (map[int64][]*store.QualityRunTargetMessage, error) {
-	runIDs := make([]int64, 0, len(runs))
-	for _, run := range runs {
-		runIDs = append(runIDs, run.ID)
+// applyQualityExecutionListFilters maps the request filters onto the store
+// filter. The rule filter names another resource, so it is resolved here; every
+// other filter is a direct mapping.
+func (s *DataQualityService) applyQualityExecutionListFilters(ctx context.Context, find *store.FindQualityExecutionMessage, request *v1pb.ListQualityExecutionsRequest) error {
+	switch state := storepb.QualityExecutionState(request.GetState()); state {
+	case storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_UNSPECIFIED:
+	case storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_PENDING,
+		storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_RUNNING,
+		storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED,
+		storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_ABANDONED:
+		find.States = []storepb.QualityExecutionState{state}
+	default:
+		return connectErrorInvalid("unknown quality execution state %d", state)
 	}
-	targets, err := s.store.ListQualityRunTargets(ctx, runIDs)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read the quality run targets")
-	}
-	return targets, nil
-}
 
-// qualityRunListFilter maps the request filters onto the store filter.
-func qualityRunListFilter(request *v1pb.ListQualityRunsRequest) (*store.FindQualityRunMessage, error) {
-	find := &store.FindQualityRunMessage{}
-	if status := storepb.QualityRunStatus(request.GetStatus()); status != storepb.QualityRunStatus_QUALITY_RUN_STATUS_UNSPECIFIED {
-		find.Statuses = []storepb.QualityRunStatus{status}
+	switch outcome := storepb.QualityStatus(request.GetOutcome()); outcome {
+	case storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED:
+	case storepb.QualityStatus_QUALITY_STATUS_PASS,
+		storepb.QualityStatus_QUALITY_STATUS_WARN,
+		storepb.QualityStatus_QUALITY_STATUS_FAIL,
+		storepb.QualityStatus_QUALITY_STATUS_ERROR,
+		storepb.QualityStatus_QUALITY_STATUS_SKIPPED,
+		storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED:
+		find.Statuses = []storepb.QualityStatus{outcome}
+	default:
+		return connectErrorInvalid("unknown quality status %d", outcome)
 	}
-	if trigger := storepb.QualityRunTrigger(request.GetTrigger()); trigger != storepb.QualityRunTrigger_QUALITY_RUN_TRIGGER_UNSPECIFIED {
-		find.Trigger = &trigger
+
+	if trigger := storepb.QualityExecutionTrigger(request.GetTrigger()); trigger != storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_UNSPECIFIED {
+		switch trigger {
+		case storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL,
+			storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED:
+			find.Trigger = &trigger
+		default:
+			return connectErrorInvalid("unknown quality execution trigger %d", trigger)
+		}
+	}
+	if ruleName := strings.TrimSpace(request.GetRule()); ruleName != "" {
+		_, ruleResourceID, err := s.ruleResourceID(ctx, ruleName)
+		if err != nil {
+			return err
+		}
+		rule, err := s.fetchQualityRule(ctx, ruleResourceID)
+		if err != nil {
+			return err
+		}
+		find.RuleID = &rule.ID
+	}
+	if guid := strings.TrimSpace(request.GetTargetGuid()); guid != "" {
+		find.TargetGUID = &guid
 	}
 	if instance := strings.TrimSpace(request.GetInstance()); instance != "" {
 		instanceID, err := common.GetInstanceID(instance)
 		if err != nil {
-			return nil, connectErrorInvalid("invalid instance %q", instance)
+			return connectErrorInvalid("invalid instance %q", instance)
 		}
 		find.InstanceResourceID = &instanceID
+	}
+	if initiator := strings.TrimSpace(request.GetInitiator()); initiator != "" {
+		id, err := common.GetUserID(initiator)
+		if err != nil {
+			return connectErrorInvalid("invalid initiator %q", initiator)
+		}
+		principalID := int32(id)
+		find.InitiatorID = &principalID
 	}
 	if request.GetStartTime() != nil {
 		startAt := request.GetStartTime().AsTime()
@@ -994,164 +1077,33 @@ func qualityRunListFilter(request *v1pb.ListQualityRunsRequest) (*store.FindQual
 		endAt := request.GetEndTime().AsTime()
 		find.EndAt = &endAt
 	}
-	if initiator := strings.TrimSpace(request.GetInitiator()); initiator != "" {
-		id, err := common.GetUserID(initiator)
-		if err != nil {
-			return nil, connectErrorInvalid("invalid initiator %q", initiator)
-		}
-		principalID := int32(id)
-		find.InitiatorID = &principalID
-	}
-	if outcome := storepb.QualityStatus(request.GetOutcome()); outcome != storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED {
-		find.Outcome = &outcome
-	}
-	return find, nil
-}
-
-// GetQualityRun reads one run.
-func (s *DataQualityService) GetQualityRun(ctx context.Context, req *connect.Request[v1pb.GetQualityRunRequest]) (*connect.Response[v1pb.QualityRun], error) {
-	workspaceID, resourceID, err := s.runResourceID(ctx, req.Msg.GetName())
-	if err != nil {
-		return nil, err
-	}
-	run, err := s.fetchQualityRun(ctx, resourceID)
-	if err != nil {
-		return nil, err
-	}
-	targets, err := s.qualityRunTargets(ctx, []*store.QualityRunMessage{run})
-	if err != nil {
-		return nil, err
-	}
-	converted := convertQualityRun(workspaceID, run)
-	converted.Targets = convertQualityRunTargets(targets[run.ID])
-	return connect.NewResponse(converted), nil
-}
-
-// ListQualityRuleResults lists the per-rule results, typically for one run.
-func (s *DataQualityService) ListQualityRuleResults(ctx context.Context, req *connect.Request[v1pb.ListQualityRuleResultsRequest]) (*connect.Response[v1pb.ListQualityRuleResultsResponse], error) {
-	workspaceID, err := s.workspaceID(ctx, req.Msg.GetParent())
-	if err != nil {
-		return nil, err
-	}
-	offset, err := parseLimitAndOffset(&pageSize{
-		token:   req.Msg.GetPageToken(),
-		limit:   int(req.Msg.GetPageSize()),
-		maximum: qualityListMaximum,
-	})
-	if err != nil {
-		return nil, err
-	}
-	limitPlusOne := offset.limit + 1
-
-	find := &store.FindQualityRuleResultMessage{Limit: &limitPlusOne, Offset: &offset.offset}
-	runNames := make(map[int64]string)
-	ruleNames := make(map[int64]string)
-	if requestRun := strings.TrimSpace(req.Msg.GetRun()); requestRun != "" {
-		_, runResourceID, err := s.runResourceID(ctx, requestRun)
-		if err != nil {
-			return nil, err
-		}
-		run, err := s.fetchQualityRun(ctx, runResourceID)
-		if err != nil {
-			return nil, err
-		}
-		find.RunID = &run.ID
-		runNames[run.ID] = formatQualityRunName(workspaceID, run.ResourceID)
-	}
-	if requestRule := strings.TrimSpace(req.Msg.GetRule()); requestRule != "" {
-		_, ruleResourceID, err := s.ruleResourceID(ctx, requestRule)
-		if err != nil {
-			return nil, err
-		}
-		rule, err := s.fetchQualityRule(ctx, ruleResourceID)
-		if err != nil {
-			return nil, err
-		}
-		find.RuleID = &rule.ID
-		ruleNames[rule.ID] = formatQualityRuleName(workspaceID, rule.ResourceID)
-	}
-	if status := storepb.QualityStatus(req.Msg.GetStatus()); status != storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED {
-		find.Statuses = []storepb.QualityStatus{status}
-	}
-	if guid := strings.TrimSpace(req.Msg.GetTargetGuid()); guid != "" {
-		find.TargetGUID = &guid
-	}
-	if req.Msg.GetStartTime() != nil {
-		startAt := req.Msg.GetStartTime().AsTime()
-		find.StartAt = &startAt
-	}
-	if req.Msg.GetEndTime() != nil {
-		endAt := req.Msg.GetEndTime().AsTime()
-		find.EndAt = &endAt
-	}
-
-	results, err := s.store.ListQualityRuleResults(ctx, find)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to list the quality rule results")
-	}
-	results, nextPageToken, err := paginate(results, offset)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.resolveResultResourceNames(ctx, workspaceID, results, runNames, ruleNames); err != nil {
-		return nil, err
-	}
-
-	response := &v1pb.ListQualityRuleResultsResponse{NextPageToken: nextPageToken}
-	for _, result := range results {
-		response.QualityRuleResults = append(response.QualityRuleResults,
-			convertQualityRuleResult(workspaceID, result, runNames[result.RunID], ruleNames[result.RuleID]))
-	}
-	return connect.NewResponse(response), nil
-}
-
-// resolveResultResourceNames fills the run and rule resource names a result's
-// numeric foreign keys do not carry, batching both lookups for the page.
-func (s *DataQualityService) resolveResultResourceNames(ctx context.Context, workspaceID string, results []*store.QualityRuleResultMessage, runNames, ruleNames map[int64]string) error {
-	var missingRunIDs, missingRuleIDs []int64
-	for _, result := range results {
-		if _, ok := runNames[result.RunID]; !ok {
-			missingRunIDs = append(missingRunIDs, result.RunID)
-		}
-		if _, ok := ruleNames[result.RuleID]; !ok {
-			missingRuleIDs = append(missingRuleIDs, result.RuleID)
-		}
-	}
-	if len(missingRunIDs) > 0 {
-		resolved, err := s.qualityRunNames(ctx, workspaceID, missingRunIDs)
-		if err != nil {
-			return err
-		}
-		for runID, name := range resolved {
-			runNames[runID] = name
-		}
-	}
-	if len(missingRuleIDs) > 0 {
-		resolved, err := s.qualityRuleNames(ctx, workspaceID, missingRuleIDs)
-		if err != nil {
-			return err
-		}
-		for ruleID, name := range resolved {
-			ruleNames[ruleID] = name
-		}
-	}
 	return nil
 }
 
-// qualityRunNames resolves numeric run ids to resource names in one query.
-func (s *DataQualityService) qualityRunNames(ctx context.Context, workspaceID string, runIDs []int64) (map[int64]string, error) {
-	names := make(map[int64]string, len(runIDs))
-	if len(runIDs) == 0 {
-		return names, nil
-	}
-	runs, err := s.store.ListQualityRunsByIDs(ctx, dedupeInt64(runIDs))
+// GetQualityExecution reads one execution.
+func (s *DataQualityService) GetQualityExecution(ctx context.Context, req *connect.Request[v1pb.GetQualityExecutionRequest]) (*connect.Response[v1pb.QualityExecution], error) {
+	workspaceID, executionID, err := s.executionResourceID(ctx, req.Msg.GetName())
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to resolve the quality runs of the results")
+		return nil, err
 	}
-	for _, run := range runs {
-		names[run.ID] = formatQualityRunName(workspaceID, run.ResourceID)
+	execution, err := s.fetchQualityExecution(ctx, executionID)
+	if err != nil {
+		return nil, err
 	}
-	return names, nil
+	ruleNames, err := s.qualityRuleNames(ctx, workspaceID, []int64{execution.RuleID})
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(convertQualityExecution(workspaceID, execution, ruleNames[execution.RuleID])), nil
+}
+
+// qualityExecutionRuleIDs collects the distinct rule ids of the given executions.
+func qualityExecutionRuleIDs(executions []*store.QualityExecutionMessage) []int64 {
+	ruleIDs := make([]int64, 0, len(executions))
+	for _, execution := range executions {
+		ruleIDs = append(ruleIDs, execution.RuleID)
+	}
+	return dedupeInt64(ruleIDs)
 }
 
 // qualityRuleNames resolves numeric rule ids to resource names in one query.
@@ -1162,7 +1114,7 @@ func (s *DataQualityService) qualityRuleNames(ctx context.Context, workspaceID s
 	}
 	rules, err := s.store.ListQualityRulesByIDs(ctx, dedupeInt64(ruleIDs))
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to resolve the quality rules of the results")
+		return nil, errors.Wrap(err, "failed to resolve the quality rules of the executions")
 	}
 	for _, rule := range rules {
 		names[rule.ID] = formatQualityRuleName(workspaceID, rule.ResourceID)
@@ -1170,26 +1122,18 @@ func (s *DataQualityService) qualityRuleNames(ctx context.Context, workspaceID s
 	return names, nil
 }
 
-// latestQualityRuleResults returns each rule's newest result keyed by rule id.
-func (s *DataQualityService) latestQualityRuleResults(ctx context.Context, rules []*store.QualityRuleMessage) (map[int64]*store.QualityRuleResultMessage, error) {
+// latestQualityExecutions returns each rule's newest terminal execution keyed by
+// rule id.
+func (s *DataQualityService) latestQualityExecutions(ctx context.Context, rules []*store.QualityRuleMessage) (map[int64]*store.QualityExecutionMessage, error) {
 	ruleIDs := make([]int64, 0, len(rules))
 	for _, rule := range rules {
 		ruleIDs = append(ruleIDs, rule.ID)
 	}
-	latest, err := s.store.ListLatestQualityRuleResults(ctx, ruleIDs)
+	latest, err := s.store.ListLatestQualityExecutions(ctx, ruleIDs)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to read the rules' latest results")
+		return nil, errors.Wrap(err, "failed to read the rules' latest executions")
 	}
 	return latest, nil
-}
-
-// qualityResultRunIDs collects the distinct run ids of the given latest results.
-func qualityResultRunIDs(latest map[int64]*store.QualityRuleResultMessage) []int64 {
-	runIDs := make([]int64, 0, len(latest))
-	for _, result := range latest {
-		runIDs = append(runIDs, result.RunID)
-	}
-	return runIDs
 }
 
 // dedupeInt64 removes duplicate ids while preserving their first-seen order.
@@ -1344,15 +1288,11 @@ func (s *DataQualityService) ListQualityIssues(ctx context.Context, req *connect
 	if err != nil {
 		return nil, err
 	}
-	runNames, err := s.qualityRunNames(ctx, workspaceID, qualityIssueRunIDs(issues))
-	if err != nil {
-		return nil, err
-	}
 
 	response := &v1pb.ListQualityIssuesResponse{NextPageToken: nextPageToken}
 	for _, issue := range issues {
 		response.QualityIssues = append(response.QualityIssues,
-			convertQualityIssue(workspaceID, issue, ruleNames[issue.RuleID], runNames))
+			convertQualityIssue(workspaceID, issue, ruleNames[issue.RuleID]))
 	}
 	return connect.NewResponse(response), nil
 }
@@ -1424,20 +1364,6 @@ func qualityIssueRuleIDs(issues []*store.QualityIssueMessage) []int64 {
 	return dedupeInt64(ruleIDs)
 }
 
-// qualityIssueRunIDs collects the distinct first/last run ids of the given issues.
-func qualityIssueRunIDs(issues []*store.QualityIssueMessage) []int64 {
-	runIDs := make([]int64, 0, len(issues)*2)
-	for _, issue := range issues {
-		if issue.FirstSeenRunID != nil {
-			runIDs = append(runIDs, *issue.FirstSeenRunID)
-		}
-		if issue.LastSeenRunID != nil {
-			runIDs = append(runIDs, *issue.LastSeenRunID)
-		}
-	}
-	return dedupeInt64(runIDs)
-}
-
 // GetQualityIssue reads one issue.
 func (s *DataQualityService) GetQualityIssue(ctx context.Context, req *connect.Request[v1pb.GetQualityIssueRequest]) (*connect.Response[v1pb.QualityIssue], error) {
 	workspaceID, resourceID, err := s.issueResourceID(ctx, req.Msg.GetName())
@@ -1455,17 +1381,13 @@ func (s *DataQualityService) GetQualityIssue(ctx context.Context, req *connect.R
 	return connect.NewResponse(converted), nil
 }
 
-// convertIssueWithNames resolves one issue's foreign keys and converts it.
+// convertIssueWithNames resolves one issue's rule name and converts it.
 func (s *DataQualityService) convertIssueWithNames(ctx context.Context, workspaceID string, issue *store.QualityIssueMessage) (*v1pb.QualityIssue, error) {
 	ruleNames, err := s.qualityRuleNames(ctx, workspaceID, qualityIssueRuleIDs([]*store.QualityIssueMessage{issue}))
 	if err != nil {
 		return nil, err
 	}
-	runNames, err := s.qualityRunNames(ctx, workspaceID, qualityIssueRunIDs([]*store.QualityIssueMessage{issue}))
-	if err != nil {
-		return nil, err
-	}
-	return convertQualityIssue(workspaceID, issue, ruleNames[issue.RuleID], runNames), nil
+	return convertQualityIssue(workspaceID, issue, ruleNames[issue.RuleID]), nil
 }
 
 // qualityIssueUpdate is one parsed UpdateQualityIssue mask: what the request asks

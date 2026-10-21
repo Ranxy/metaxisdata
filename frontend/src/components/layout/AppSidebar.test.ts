@@ -31,7 +31,7 @@ const PERMISSIONS = [
   "metaxisdata.applications.list",
   "metaxisdata.applicationSqls.list",
   "metaxisdata.dataQuality.rules.list",
-  "metaxisdata.dataQuality.runs.list",
+  "metaxisdata.dataQuality.executions.list",
   "metaxisdata.dataQuality.issues.list",
   "metaxisdata.dataQuality.issues.get",
   "metaxisdata.dataQuality.suggest",
@@ -52,8 +52,8 @@ const MEMBER_PERMISSIONS = [
   // section must be reachable by a member even though writing rules is not.
   "metaxisdata.dataQuality.rules.get",
   "metaxisdata.dataQuality.rules.list",
-  "metaxisdata.dataQuality.runs.get",
-  "metaxisdata.dataQuality.runs.list",
+  "metaxisdata.dataQuality.executions.get",
+  "metaxisdata.dataQuality.executions.list",
   "metaxisdata.dataQuality.issues.get",
   "metaxisdata.dataQuality.issues.list",
   "metaxisdata.dataQuality.explain",
@@ -222,7 +222,7 @@ describe("AppSidebar", () => {
     expect(wrapper.text()).toContain("Data Quality");
     expect(wrapper.text()).toContain("Overview");
     expect(wrapper.text()).toContain("Quality Rules");
-    expect(wrapper.text()).toContain("Quality Runs");
+    expect(wrapper.text()).toContain("Executions");
     expect(wrapper.text()).toContain("Issues");
   });
 
@@ -248,16 +248,16 @@ describe("AppSidebar", () => {
     expect(wrapper.text()).not.toContain("Quality Rules");
   });
 
-  // A custom role may hold only runs: the group must still appear, because the
-  // runs page is the only way to read quality evidence.
+  // A custom role may hold only executions: the group must still appear,
+  // because the executions page is the only way to read quality evidence.
   it("keeps the quality group when only one of its entries is allowed", async () => {
     useAuthStore().user = create(UserSchema, {
-      permissions: ["metaxisdata.dataQuality.runs.list"],
+      permissions: ["metaxisdata.dataQuality.executions.list"],
     });
     const { wrapper } = await mountSidebar();
     await sectionTrigger(wrapper, "Data Quality").trigger("click");
 
-    expect(wrapper.text()).toContain("Quality Runs");
+    expect(wrapper.text()).toContain("Executions");
     expect(wrapper.text()).not.toContain("Quality Rules");
     expect(wrapper.text()).not.toContain("Issues");
     expect(wrapper.text()).not.toContain("Suggestions");
@@ -287,7 +287,7 @@ describe("AppSidebar", () => {
 
   it.each([
     "/data-quality/rules",
-    "/data-quality/runs",
+    "/data-quality/executions",
     "/data-quality/issues",
     "/data-quality/suggestions",
   ])("highlights only the matching quality entry at %s", async (path) => {
@@ -296,11 +296,11 @@ describe("AppSidebar", () => {
     expect(activeHrefs(wrapper)).toEqual([path]);
   });
 
-  it("keeps the runs entry active on a run detail route", async () => {
+  it("keeps the executions entry active on an execution detail route", async () => {
     const { wrapper } = await mountSidebar(
-      "/data-quality/runs/workspaces/ws/qualityRuns/abc"
+      "/data-quality/executions/workspaces/ws/qualityExecutions/abc"
     );
 
-    expect(activeHrefs(wrapper)).toEqual(["/data-quality/runs"]);
+    expect(activeHrefs(wrapper)).toEqual(["/data-quality/executions"]);
   });
 });

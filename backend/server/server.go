@@ -173,7 +173,7 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	s.notifier = notification.New(stores)
 	s.schemaSync = schemasync.NewSyncer(stores, dbFactory, stateCfg, s.lineageAnalyzer, s.lineageValidate, s.notifier, s.metrics)
 	// The quality runner executes the rules the API creates: scheduled rules on its
-	// own tick, manual runs from the queue the service hands it.
+	// own tick, manual executions from the queue the service hands it.
 	s.qualityRunner = qualityrunner.NewRunner(stores, dbFactory, stateCfg, s.notifier, s.metrics)
 
 	s.llmRegistry = llmcomp.NewRegistry(stores, profile)

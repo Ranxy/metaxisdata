@@ -486,12 +486,13 @@ func convertDataQualityDetail(detail *storepb.DataQualityDetail) *v1pb.DataQuali
 		ObservedValue:   detail.GetObservedValue(),
 		ObservedUnit:    detail.GetObservedUnit(),
 		Issue:           detail.GetIssue(),
-		Run:             detail.GetRun(),
+		Execution:       detail.GetExecution(),
 		FailedRows:      detail.GetFailedRows(),
 		TotalRows:       detail.GetTotalRows(),
 		ErrorCode:       detail.GetErrorCode(),
 		FailedRuleCount: detail.GetFailedRuleCount(),
 		TotalRuleCount:  detail.GetTotalRuleCount(),
+		Instance:        detail.GetInstance(),
 	}
 }
 

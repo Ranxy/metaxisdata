@@ -7,34 +7,32 @@ import {
   type ColumnSemanticLabel,
   CreateQualityRuleRequestSchema,
   DeleteQualityRuleRequestSchema,
-  ExplainQualityResultRequestSchema,
-  type ExplainQualityResultResponse,
+  ExplainQualityExecutionRequestSchema,
+  type ExplainQualityExecutionResponse,
+  GetQualityExecutionRequestSchema,
   GetQualityIssueRequestSchema,
   GetQualityOverviewRequestSchema,
   GetQualityRuleRequestSchema,
-  GetQualityRunRequestSchema,
   ListColumnLabelsRequestSchema,
   ListColumnProfilesRequestSchema,
+  ListQualityExecutionsRequestSchema,
   ListQualityIssuesRequestSchema,
-  ListQualityRuleResultsRequestSchema,
   ListQualityRulesRequestSchema,
-  ListQualityRunsRequestSchema,
   ListQualitySuggestionsRequestSchema,
   PreviewQualityRuleRequestSchema,
   ProfileColumnsRequestSchema,
   QualityDimension,
+  type QualityExecution,
+  QualityExecutionState,
+  QualityExecutionTrigger,
   type QualityIssue,
   QualityIssueSchema,
   QualityIssueStatus,
   type QualityOverview,
   QualityResolutionReason,
   type QualityRule,
-  type QualityRuleResult,
   QualityRuleState,
   QualityRuleType,
-  type QualityRun,
-  QualityRunStatus,
-  QualityRunTrigger,
   type QualitySemanticType,
   QualitySeverity,
   QualityStatus,
@@ -73,8 +71,16 @@ export function qualityRuleID(name: string): string {
   return name.slice(name.lastIndexOf("/") + 1);
 }
 
-/** The id part of a quality run's resource name; the name itself if it has none. */
-export function qualityRunID(name: string): string {
+/** The resource-name segment a quality execution's id occupies. */
+const EXECUTION_SEGMENT = "qualityExecutions";
+
+/** Format: workspaces/{workspace}/qualityExecutions/{quality_execution}. */
+export function qualityExecutionName(id: string): string {
+  return `${WORKSPACE_PARENT}/${EXECUTION_SEGMENT}/${id}`;
+}
+
+/** The id part of a quality execution's resource name; the name itself if it has none. */
+export function qualityExecutionID(name: string): string {
   return name.slice(name.lastIndexOf("/") + 1);
 }
 
@@ -140,10 +146,14 @@ export async function listQualityRules(options: {
 
 /** Every rule the caller can see, walking the cursor pages. */
 export async function listAllQualityRules(
-  options: { pageSize?: number } = {}
+  options: { pageSize?: number; state?: QualityRuleState } = {}
 ): Promise<QualityRule[]> {
   return await listAll((pageToken) =>
-    listQualityRules({ pageSize: options.pageSize ?? 1000, pageToken })
+    listQualityRules({
+      pageSize: options.pageSize ?? 1000,
+      pageToken,
+      state: options.state,
+    })
   );
 }
 
@@ -179,13 +189,13 @@ export async function updateQualityRule(
   return await dataQualityClient.updateQualityRule(request);
 }
 
-/** Archive a rule. Its revisions and results stay readable. */
+/** Archive a rule. Its revisions and executions stay readable. */
 export async function deleteQualityRule(name: string): Promise<void> {
   const request = create(DeleteQualityRuleRequestSchema, { name });
   await dataQualityClient.deleteQualityRule(request);
 }
 
-/** Compile and probe a rule without saving it or creating a run. */
+/** Compile and probe a rule without saving it or creating an execution. */
 export async function previewQualityRule(rule: QualityRule) {
   const request = create(PreviewQualityRuleRequestSchema, {
     parent: WORKSPACE_PARENT,
@@ -195,15 +205,15 @@ export async function previewQualityRule(rule: QualityRule) {
 }
 
 /**
- * Run rules now. At least one of `rules`, `instance` or `targetGuid` selects
- * the rules; the server groups them by instance and returns the queued runs.
+ * Run rules now. At least one of `rules`, `instance` or `targetGuid` selects the
+ * rules; the server plans one execution per rule and returns them PENDING.
  */
 export async function runQualityRules(options: {
   rules?: string[];
   /** Format: instances/{instance}. */
   instance?: string;
   targetGuid?: string;
-}): Promise<QualityRun[]> {
+}): Promise<QualityExecution[]> {
   const request = create(RunQualityRulesRequestSchema, {
     parent: WORKSPACE_PARENT,
     rules: options.rules ?? [],
@@ -211,92 +221,59 @@ export async function runQualityRules(options: {
     targetGuid: options.targetGuid ?? "",
   });
   const response = await dataQualityClient.runQualityRules(request);
-  return response.runs;
+  return response.executions;
 }
 
-/** One page of runs, newest first. */
-export async function listQualityRuns(options: {
+/** One page of executions, newest first. */
+export async function listQualityExecutions(options: {
   pageSize?: number;
   pageToken?: string;
-  status?: QualityRunStatus;
-  trigger?: QualityRunTrigger;
+  /** The lifecycle to filter by, e.g. only PENDING executions. */
+  state?: QualityExecutionState;
+  /** The verdict to filter by; completed executions only. */
+  outcome?: QualityStatus;
+  trigger?: QualityExecutionTrigger;
+  /** Format: workspaces/{workspace}/qualityRules/{quality_rule}. */
+  rule?: string;
+  /** The exact target GUID. */
+  targetGuid?: string;
   /** Format: instances/{instance}. */
   instance?: string;
-  startTime?: Timestamp;
-  endTime?: Timestamp;
   /** Format: users/{user}. */
   initiator?: string;
-  outcome?: QualityStatus;
+  startTime?: Timestamp;
+  endTime?: Timestamp;
   signal?: AbortSignal;
-}): Promise<ListPage<QualityRun>> {
-  const request = create(ListQualityRunsRequestSchema, {
+}): Promise<ListPage<QualityExecution>> {
+  const request = create(ListQualityExecutionsRequestSchema, {
     parent: WORKSPACE_PARENT,
     pageSize: options.pageSize ?? 50,
     pageToken: options.pageToken ?? "",
-    status: options.status ?? QualityRunStatus.UNSPECIFIED,
-    trigger: options.trigger ?? QualityRunTrigger.UNSPECIFIED,
-    instance: options.instance ?? "",
-    ...(options.startTime ? { startTime: options.startTime } : {}),
-    ...(options.endTime ? { endTime: options.endTime } : {}),
-    initiator: options.initiator ?? "",
+    state: options.state ?? QualityExecutionState.UNSPECIFIED,
     outcome: options.outcome ?? QualityStatus.UNSPECIFIED,
-  });
-  const response = await dataQualityClient.listQualityRuns(request, {
-    signal: options.signal,
-  });
-  return {
-    items: response.qualityRuns,
-    nextPageToken: response.nextPageToken,
-  };
-}
-
-/** Read one run with its lifecycle state and six-state tallies. */
-export async function getQualityRun(name: string): Promise<QualityRun> {
-  const request = create(GetQualityRunRequestSchema, { name });
-  return await dataQualityClient.getQualityRun(request);
-}
-
-/** One page of per-rule results, typically scoped to one run. */
-export async function listQualityRuleResults(options: {
-  pageSize?: number;
-  pageToken?: string;
-  /** Format: workspaces/{workspace}/qualityRuns/{quality_run}. */
-  run?: string;
-  /** Format: workspaces/{workspace}/qualityRules/{quality_rule}. */
-  rule?: string;
-  status?: QualityStatus;
-  targetGuid?: string;
-  startTime?: Timestamp;
-  endTime?: Timestamp;
-  signal?: AbortSignal;
-}): Promise<ListPage<QualityRuleResult>> {
-  const request = create(ListQualityRuleResultsRequestSchema, {
-    parent: WORKSPACE_PARENT,
-    pageSize: options.pageSize ?? 100,
-    pageToken: options.pageToken ?? "",
-    run: options.run ?? "",
+    trigger: options.trigger ?? QualityExecutionTrigger.UNSPECIFIED,
     rule: options.rule ?? "",
-    status: options.status ?? QualityStatus.UNSPECIFIED,
     targetGuid: options.targetGuid ?? "",
+    instance: options.instance ?? "",
+    initiator: options.initiator ?? "",
     ...(options.startTime ? { startTime: options.startTime } : {}),
     ...(options.endTime ? { endTime: options.endTime } : {}),
   });
-  const response = await dataQualityClient.listQualityRuleResults(request, {
+  const response = await dataQualityClient.listQualityExecutions(request, {
     signal: options.signal,
   });
   return {
-    items: response.qualityRuleResults,
+    items: response.qualityExecutions,
     nextPageToken: response.nextPageToken,
   };
 }
 
-/** Every result of one run, walking the cursor pages. */
-export async function listAllQualityRuleResults(
-  run: string
-): Promise<QualityRuleResult[]> {
-  return await listAll((pageToken) =>
-    listQualityRuleResults({ run, pageSize: 1000, pageToken })
-  );
+/** Read one execution with its state, verdict and evidence. */
+export async function getQualityExecution(
+  name: string
+): Promise<QualityExecution> {
+  const request = create(GetQualityExecutionRequestSchema, { name });
+  return await dataQualityClient.getQualityExecution(request);
 }
 
 /** One page of issues, most recently seen first. */
@@ -386,7 +363,7 @@ export async function resolveQualityIssue(
 
 /**
  * Mute an issue's notifications until `mutedUntil`. The rule keeps running and
- * results keep being recorded; only the notifications stop.
+ * executions keep being recorded; only the notifications stop.
  */
 export async function muteQualityIssue(
   issue: QualityIssue,
@@ -617,19 +594,19 @@ export async function suggestColumnLabels(options: {
 }
 
 /**
- * Stream an AI explanation of one rule result. The server sends progress steps,
- * markdown content fragments and a final metadata frame; `forceRegenerate`
- * bypasses a cached explanation.
+ * Stream an AI explanation of one failed execution. The server sends progress
+ * steps, markdown content fragments and a final metadata frame;
+ * `forceRegenerate` bypasses a cached explanation.
  */
-export function explainQualityResult(options: {
+export function explainQualityExecution(options: {
   name: string;
   language?: string;
   forceRegenerate?: boolean;
-}): AsyncIterable<ExplainQualityResultResponse> {
-  const request = create(ExplainQualityResultRequestSchema, {
+}): AsyncIterable<ExplainQualityExecutionResponse> {
+  const request = create(ExplainQualityExecutionRequestSchema, {
     name: options.name,
     language: options.language ?? "",
     forceRegenerate: options.forceRegenerate ?? false,
   });
-  return dataQualityClient.explainQualityResult(request);
+  return dataQualityClient.explainQualityExecution(request);
 }

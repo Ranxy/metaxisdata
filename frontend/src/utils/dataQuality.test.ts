@@ -9,15 +9,15 @@ import {
   QualityComparisonOperator,
   QualityDimension,
   QualityEmptyBehavior,
+  QualityExecutionSchema,
+  QualityExecutionState,
+  QualityExecutionTrigger,
   QualityFilterOperator,
   QualityIssueStatus,
   QualityObservedKind,
   QualityResolutionReason,
   QualityRuleState,
   QualityRuleType,
-  QualityRunSchema,
-  QualityRunStatus,
-  QualityRunTrigger,
   QualitySeverity,
   QualityStatus,
   QualityTargetPathSchema,
@@ -26,6 +26,7 @@ import {
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import {
   describeThreshold,
+  executionDurationSeconds,
   formatDuration,
   formatObservedValue,
   formatRowCount,
@@ -33,12 +34,15 @@ import {
   formatSeconds,
   formatTargetPath,
   formatWarnThreshold,
-  isRunInProgress,
+  isExecutionInProgress,
   qualityAggregateFunctionKey,
   qualityComparisonOperatorKey,
   qualityDimensionKey,
   qualityEmptyBehaviorKey,
   qualityErrorCodeKey,
+  qualityExecutionStateKey,
+  qualityExecutionStateVariant,
+  qualityExecutionTriggerKey,
   qualityFilterOperatorKey,
   qualityIssueStatusKey,
   qualityIssueStatusVariant,
@@ -46,15 +50,11 @@ import {
   qualityRuleStateKey,
   qualityRuleStateVariant,
   qualityRuleTypeKey,
-  qualityRunStatusKey,
-  qualityRunStatusVariant,
-  qualityRunTriggerKey,
   qualitySeverityKey,
   qualitySeverityVariant,
   qualityStatusKey,
   qualityStatusVariant,
   qualityThresholdMetricKey,
-  runDurationSeconds,
   targetScopeLabel,
 } from "./dataQuality";
 
@@ -241,87 +241,99 @@ describe("rule state", () => {
   });
 });
 
-describe("run lifecycle", () => {
-  it("names and tones every run state", () => {
-    expect(qualityRunStatusKey(QualityRunStatus.PENDING)).toBe(
-      "dataQuality.runStatus.pending"
+describe("execution lifecycle", () => {
+  it("names and tones every execution state", () => {
+    expect(qualityExecutionStateKey(QualityExecutionState.PENDING)).toBe(
+      "dataQuality.executionState.pending"
     );
-    expect(qualityRunStatusKey(QualityRunStatus.RUNNING)).toBe(
-      "dataQuality.runStatus.running"
+    expect(qualityExecutionStateKey(QualityExecutionState.RUNNING)).toBe(
+      "dataQuality.executionState.running"
     );
-    expect(qualityRunStatusKey(QualityRunStatus.COMPLETED)).toBe(
-      "dataQuality.runStatus.completed"
+    expect(qualityExecutionStateKey(QualityExecutionState.COMPLETED)).toBe(
+      "dataQuality.executionState.completed"
     );
-    expect(qualityRunStatusKey(QualityRunStatus.ABANDONED)).toBe(
-      "dataQuality.runStatus.abandoned"
+    expect(qualityExecutionStateKey(QualityExecutionState.ABANDONED)).toBe(
+      "dataQuality.executionState.abandoned"
     );
-    expect(qualityRunStatusKey(QualityRunStatus.UNSPECIFIED)).toBe(
-      "dataQuality.runStatus.unspecified"
+    expect(qualityExecutionStateKey(QualityExecutionState.UNSPECIFIED)).toBe(
+      "dataQuality.executionState.unspecified"
     );
-    expect(qualityRunStatusKey(99 as QualityRunStatus)).toBe(
-      "dataQuality.runStatus.unspecified"
+    expect(qualityExecutionStateKey(99 as QualityExecutionState)).toBe(
+      "dataQuality.executionState.unspecified"
     );
 
-    expect(qualityRunStatusVariant(QualityRunStatus.PENDING)).toBe("info");
-    expect(qualityRunStatusVariant(QualityRunStatus.RUNNING)).toBe("info");
-    expect(qualityRunStatusVariant(QualityRunStatus.COMPLETED)).toBe("success");
-    expect(qualityRunStatusVariant(QualityRunStatus.ABANDONED)).toBe("warning");
-    expect(qualityRunStatusVariant(QualityRunStatus.UNSPECIFIED)).toBe(
+    expect(qualityExecutionStateVariant(QualityExecutionState.PENDING)).toBe(
+      "info"
+    );
+    expect(qualityExecutionStateVariant(QualityExecutionState.RUNNING)).toBe(
+      "info"
+    );
+    expect(qualityExecutionStateVariant(QualityExecutionState.COMPLETED)).toBe(
+      "success"
+    );
+    expect(qualityExecutionStateVariant(QualityExecutionState.ABANDONED)).toBe(
+      "warning"
+    );
+    expect(
+      qualityExecutionStateVariant(QualityExecutionState.UNSPECIFIED)
+    ).toBe("secondary");
+    expect(qualityExecutionStateVariant(99 as QualityExecutionState)).toBe(
       "secondary"
     );
-    expect(qualityRunStatusVariant(99 as QualityRunStatus)).toBe("secondary");
   });
 
   it("names every trigger", () => {
-    expect(qualityRunTriggerKey(QualityRunTrigger.MANUAL)).toBe(
-      "dataQuality.runTrigger.manual"
+    expect(qualityExecutionTriggerKey(QualityExecutionTrigger.MANUAL)).toBe(
+      "dataQuality.executionTrigger.manual"
     );
-    expect(qualityRunTriggerKey(QualityRunTrigger.SCHEDULED)).toBe(
-      "dataQuality.runTrigger.scheduled"
+    expect(qualityExecutionTriggerKey(QualityExecutionTrigger.SCHEDULED)).toBe(
+      "dataQuality.executionTrigger.scheduled"
     );
-    expect(qualityRunTriggerKey(QualityRunTrigger.UNSPECIFIED)).toBe(
-      "dataQuality.runTrigger.unspecified"
-    );
-    expect(qualityRunTriggerKey(99 as QualityRunTrigger)).toBe(
-      "dataQuality.runTrigger.unspecified"
-    );
-  });
-
-  it("polls only while the run can still change", () => {
-    expect(isRunInProgress(QualityRunStatus.PENDING)).toBe(true);
-    expect(isRunInProgress(QualityRunStatus.RUNNING)).toBe(true);
-    expect(isRunInProgress(QualityRunStatus.COMPLETED)).toBe(false);
-    expect(isRunInProgress(QualityRunStatus.ABANDONED)).toBe(false);
-    expect(isRunInProgress(QualityRunStatus.UNSPECIFIED)).toBe(false);
-  });
-
-  it("measures a finished run and leaves a running one undefined", () => {
     expect(
-      runDurationSeconds(
-        create(QualityRunSchema, {
+      qualityExecutionTriggerKey(QualityExecutionTrigger.UNSPECIFIED)
+    ).toBe("dataQuality.executionTrigger.unspecified");
+    expect(qualityExecutionTriggerKey(99 as QualityExecutionTrigger)).toBe(
+      "dataQuality.executionTrigger.unspecified"
+    );
+  });
+
+  it("polls only while the execution can still change", () => {
+    expect(isExecutionInProgress(QualityExecutionState.PENDING)).toBe(true);
+    expect(isExecutionInProgress(QualityExecutionState.RUNNING)).toBe(true);
+    expect(isExecutionInProgress(QualityExecutionState.COMPLETED)).toBe(false);
+    expect(isExecutionInProgress(QualityExecutionState.ABANDONED)).toBe(false);
+    expect(isExecutionInProgress(QualityExecutionState.UNSPECIFIED)).toBe(
+      false
+    );
+  });
+
+  it("measures a finished execution and leaves a running one undefined", () => {
+    expect(
+      executionDurationSeconds(
+        create(QualityExecutionSchema, {
           startTime: { seconds: 1_700_000_000n, nanos: 0 },
           finishTime: { seconds: 1_700_000_125n, nanos: 0 },
         })
       )
     ).toBe(125);
     expect(
-      runDurationSeconds(
-        create(QualityRunSchema, {
+      executionDurationSeconds(
+        create(QualityExecutionSchema, {
           startTime: { seconds: 1_700_000_000n, nanos: 0 },
         })
       )
     ).toBeUndefined();
     expect(
-      runDurationSeconds(
-        create(QualityRunSchema, {
+      executionDurationSeconds(
+        create(QualityExecutionSchema, {
           startTime: { seconds: 1_700_000_200n, nanos: 0 },
           finishTime: { seconds: 1_700_000_000n, nanos: 0 },
         })
       )
     ).toBeUndefined();
     expect(
-      runDurationSeconds(
-        create(QualityRunSchema, {
+      executionDurationSeconds(
+        create(QualityExecutionSchema, {
           startTime: { seconds: 0n, nanos: 0 },
           finishTime: { seconds: 1_700_000_000n, nanos: 0 },
         })
@@ -873,11 +885,11 @@ describe("data quality vocabulary catalogs", () => {
     for (const state of enumValues(QualityRuleState)) {
       keys.push(qualityRuleStateKey(state));
     }
-    for (const status of enumValues(QualityRunStatus)) {
-      keys.push(qualityRunStatusKey(status));
+    for (const state of enumValues(QualityExecutionState)) {
+      keys.push(qualityExecutionStateKey(state));
     }
-    for (const trigger of enumValues(QualityRunTrigger)) {
-      keys.push(qualityRunTriggerKey(trigger));
+    for (const trigger of enumValues(QualityExecutionTrigger)) {
+      keys.push(qualityExecutionTriggerKey(trigger));
     }
     for (const fn of enumValues(QualityAggregateFunction)) {
       keys.push(qualityAggregateFunctionKey(fn));

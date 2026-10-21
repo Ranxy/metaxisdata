@@ -309,7 +309,7 @@
                 </li>
               
                 <li>
-                  <a href="#metaxisdata.store.QualityRunCounts"><span class="badge">M</span>QualityRunCounts</a>
+                  <a href="#metaxisdata.store.QualityStatusCounts"><span class="badge">M</span>QualityStatusCounts</a>
                 </li>
               
                 <li>
@@ -398,6 +398,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.store.QualityExecutionState"><span class="badge">E</span>QualityExecutionState</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityExecutionTrigger"><span class="badge">E</span>QualityExecutionTrigger</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.QualityFilterOperator"><span class="badge">E</span>QualityFilterOperator</a>
                 </li>
               
@@ -427,14 +435,6 @@
               
                 <li>
                   <a href="#metaxisdata.store.QualityRuleType"><span class="badge">E</span>QualityRuleType</a>
-                </li>
-              
-                <li>
-                  <a href="#metaxisdata.store.QualityRunStatus"><span class="badge">E</span>QualityRunStatus</a>
-                </li>
-              
-                <li>
-                  <a href="#metaxisdata.store.QualityRunTrigger"><span class="badge">E</span>QualityRunTrigger</a>
                 </li>
               
                 <li>
@@ -2414,8 +2414,8 @@ converted with the column&#39;s type; at most 20. </p></td>
 
         
       
-        <h3 id="metaxisdata.store.QualityRunCounts">QualityRunCounts</h3>
-        <p>QualityRunCounts is the six-state tally of one run.</p>
+        <h3 id="metaxisdata.store.QualityStatusCounts">QualityStatusCounts</h3>
+        <p>QualityStatusCounts is the six-state tally of a set of executions.</p>
 
         
           <table class="field-table">
@@ -3501,6 +3501,76 @@ accepted range expressed as a pass band.</p></td>
           </tbody>
         </table>
       
+        <h3 id="metaxisdata.store.QualityExecutionState">QualityExecutionState</h3>
+        <p>QualityExecutionState is the lifecycle of one execution, separate from the</p><p>quality outcome (Status) that is only known once it finishes. The internal</p><p>dispatch batch uses the same lifecycle.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_EXECUTION_STATE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_EXECUTION_STATE_PENDING</td>
+                <td>1</td>
+                <td><p>Planned and waiting for the runner.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_EXECUTION_STATE_RUNNING</td>
+                <td>2</td>
+                <td><p>The runner is executing the rule.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_EXECUTION_STATE_COMPLETED</td>
+                <td>3</td>
+                <td><p>The check reached a verdict; Status holds it.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_EXECUTION_STATE_ABANDONED</td>
+                <td>4</td>
+                <td><p>A restart discarded it before it finished. It is not retried.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.QualityExecutionTrigger">QualityExecutionTrigger</h3>
+        <p>QualityExecutionTrigger is what started one execution. The internal dispatch</p><p>batch carries the trigger of its executions.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_EXECUTION_TRIGGER_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_EXECUTION_TRIGGER_MANUAL</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_EXECUTION_TRIGGER_SCHEDULED</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
         <h3 id="metaxisdata.store.QualityFilterOperator">QualityFilterOperator</h3>
         <p>QualityFilterOperator is one comparison in a rule's AND filter.</p>
         <table class="enum-table">
@@ -3929,76 +3999,6 @@ saved. It reads metadata only and never queries the target database.</p></td>
                 <td>18</td>
                 <td><p>v1.1: reconciles one aggregate of this table with one of another table in
 the same instance and database.</p></td>
-              </tr>
-            
-          </tbody>
-        </table>
-      
-        <h3 id="metaxisdata.store.QualityRunStatus">QualityRunStatus</h3>
-        <p>QualityRunStatus is the lifecycle of a run, which is separate from the quality</p><p>status its results roll up to. A queued run has no outcome yet.</p>
-        <table class="enum-table">
-          <thead>
-            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
-          </thead>
-          <tbody>
-            
-              <tr>
-                <td>QUALITY_RUN_STATUS_UNSPECIFIED</td>
-                <td>0</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_RUN_STATUS_PENDING</td>
-                <td>1</td>
-                <td><p>Created and waiting for the runner.</p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_RUN_STATUS_RUNNING</td>
-                <td>2</td>
-                <td><p>The runner is executing this run&#39;s rules.</p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_RUN_STATUS_COMPLETED</td>
-                <td>3</td>
-                <td><p>Every rule was attempted; outcome holds the rollup.</p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_RUN_STATUS_ABANDONED</td>
-                <td>4</td>
-                <td><p>A restart discarded the run before it finished. It is not retried.</p></td>
-              </tr>
-            
-          </tbody>
-        </table>
-      
-        <h3 id="metaxisdata.store.QualityRunTrigger">QualityRunTrigger</h3>
-        <p>QualityRunTrigger is what started a run.</p>
-        <table class="enum-table">
-          <thead>
-            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
-          </thead>
-          <tbody>
-            
-              <tr>
-                <td>QUALITY_RUN_TRIGGER_UNSPECIFIED</td>
-                <td>0</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_RUN_TRIGGER_MANUAL</td>
-                <td>1</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_RUN_TRIGGER_SCHEDULED</td>
-                <td>2</td>
-                <td><p></p></td>
               </tr>
             
           </tbody>
@@ -8474,10 +8474,10 @@ exposes the ciphertext through the API. </p></td>
                 </tr>
               
                 <tr>
-                  <td>run</td>
+                  <td>execution</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p>Format: workspaces/{workspace}/qualityRuns/{quality_run} </p></td>
+                  <td><p>Format: workspaces/{workspace}/qualityExecutions/{quality_execution} </p></td>
                 </tr>
               
                 <tr>
@@ -8513,6 +8513,14 @@ exposes the ciphertext through the API. </p></td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>instance</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The instance whose dispatch batch the summary describes. Format:
+instances/{instance}. Empty for the per-execution kinds. </p></td>
                 </tr>
               
             </tbody>
@@ -8851,7 +8859,8 @@ list is capped; the counts below carry the whole picture. </p></td>
               <tr>
                 <td>DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY</td>
                 <td>4</td>
-                <td><p>One run failed so many rules that the individual messages were merged.</p></td>
+                <td><p>One dispatch batch failed so many rules that the individual messages were
+merged.</p></td>
               </tr>
             
           </tbody>

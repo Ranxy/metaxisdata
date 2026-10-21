@@ -10,7 +10,7 @@
 | `lineageanalyzer` | `backend/runner/lineageanalyzer` | full scan 1h, queue consumer 10s | immediate | analyze view/MV/manual/application SQL into `column_lineage` |
 | `lineagevalidation` | `backend/runner/lineagevalidation` | event-driven, 5s settle | one pass at startup | revalidate ingested edges after a sync commits |
 | `maintenance` | `backend/runner/maintenance` | 6h | immediate | retention prunes, token cleanup, ingested-lineage sweep |
-| `qualityrunner` | `backend/runner/qualityrunner` | due scan 10s, manual queue priority | first tick | execute data quality rules in per-instance runs, write results, drive the problem ledger and notifications; each run leases the instance's connection budget before it starts (see [data-quality.md](data-quality.md), [instance-connections.md](instance-connections.md)) |
+| `qualityrunner` | `backend/runner/qualityrunner` | due scan 10s, manual queue priority | first tick | plan and execute data quality rules as one execution per rule, grouped into internal per-instance dispatch batches, drive the problem ledger and notifications; each batch leases the instance's connection budget before it starts (see [data-quality.md](data-quality.md), [instance-connections.md](instance-connections.md)) |
 
 Every runner implements `runner.Runner` (`Name()`, `Run(ctx)`) and is started by `runner.Go`, which wraps the body in a top-level `recover` and logs the runner's start and stop (name + run duration): a panic is logged with its stack and takes down that runner, never the process. `backend/server/server.go` starts the slice, so adding a runner is one entry, not another hard-coded `Add`.
 
@@ -35,8 +35,8 @@ All coordination state is in memory, and the deployment runs **one server proces
 | revalidation trigger + settle window + semaphore | `lineagevalidation` | a startup pass replaces it |
 | table-statistics refresh clock, DDL refresh clock + rotation cursor | `schemasync` | a restart makes every database due for a refresh (intended first pass) |
 | maintenance schedule | `maintenance` | the next tick is 6h away; startup runs one pass |
-| data quality due scan, manual run queue, in-flight rule ids, daily LLM counters | `qualityrunner` (quota counters live in `api/v1`) | rules re-converge from `next_run_at`; queued manual runs are lost (their runs are swept to ABANDONED at startup); LLM counters reset |
-| per-instance connection leases and their wait queues | `state.State.instanceConnections` (shared by every driver-opening path) | held leases vanish; a waiting run observes its context and gives up, and the next scheduled tick retries. See [instance-connections.md](instance-connections.md) |
+| data quality due scan, manual batch queue, in-flight rule ids, daily LLM counters | `qualityrunner` (quota counters live in `api/v1`) | rules re-converge from `next_run_at`; queued manual batches are lost (their planned executions and batches are swept to ABANDONED at startup); LLM counters reset |
+| per-instance connection leases and their wait queues | `state.State.instanceConnections` (shared by every driver-opening path) | held leases vanish; a waiting batch observes its context and gives up, and the next scheduled tick retries. See [instance-connections.md](instance-connections.md) |
 
 Consequences worth knowing before changing this area:
 

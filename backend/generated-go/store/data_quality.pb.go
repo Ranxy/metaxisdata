@@ -308,114 +308,116 @@ func (QualityStatus) EnumDescriptor() ([]byte, []int) {
 	return file_store_data_quality_proto_rawDescGZIP(), []int{3}
 }
 
-// QualityRunTrigger is what started a run.
-type QualityRunTrigger int32
+// QualityExecutionTrigger is what started one execution. The internal dispatch
+// batch carries the trigger of its executions.
+type QualityExecutionTrigger int32
 
 const (
-	QualityRunTrigger_QUALITY_RUN_TRIGGER_UNSPECIFIED QualityRunTrigger = 0
-	QualityRunTrigger_QUALITY_RUN_TRIGGER_MANUAL      QualityRunTrigger = 1
-	QualityRunTrigger_QUALITY_RUN_TRIGGER_SCHEDULED   QualityRunTrigger = 2
+	QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_UNSPECIFIED QualityExecutionTrigger = 0
+	QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL      QualityExecutionTrigger = 1
+	QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED   QualityExecutionTrigger = 2
 )
 
-// Enum value maps for QualityRunTrigger.
+// Enum value maps for QualityExecutionTrigger.
 var (
-	QualityRunTrigger_name = map[int32]string{
-		0: "QUALITY_RUN_TRIGGER_UNSPECIFIED",
-		1: "QUALITY_RUN_TRIGGER_MANUAL",
-		2: "QUALITY_RUN_TRIGGER_SCHEDULED",
+	QualityExecutionTrigger_name = map[int32]string{
+		0: "QUALITY_EXECUTION_TRIGGER_UNSPECIFIED",
+		1: "QUALITY_EXECUTION_TRIGGER_MANUAL",
+		2: "QUALITY_EXECUTION_TRIGGER_SCHEDULED",
 	}
-	QualityRunTrigger_value = map[string]int32{
-		"QUALITY_RUN_TRIGGER_UNSPECIFIED": 0,
-		"QUALITY_RUN_TRIGGER_MANUAL":      1,
-		"QUALITY_RUN_TRIGGER_SCHEDULED":   2,
+	QualityExecutionTrigger_value = map[string]int32{
+		"QUALITY_EXECUTION_TRIGGER_UNSPECIFIED": 0,
+		"QUALITY_EXECUTION_TRIGGER_MANUAL":      1,
+		"QUALITY_EXECUTION_TRIGGER_SCHEDULED":   2,
 	}
 )
 
-func (x QualityRunTrigger) Enum() *QualityRunTrigger {
-	p := new(QualityRunTrigger)
+func (x QualityExecutionTrigger) Enum() *QualityExecutionTrigger {
+	p := new(QualityExecutionTrigger)
 	*p = x
 	return p
 }
 
-func (x QualityRunTrigger) String() string {
+func (x QualityExecutionTrigger) String() string {
 	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
 }
 
-func (QualityRunTrigger) Descriptor() protoreflect.EnumDescriptor {
+func (QualityExecutionTrigger) Descriptor() protoreflect.EnumDescriptor {
 	return file_store_data_quality_proto_enumTypes[4].Descriptor()
 }
 
-func (QualityRunTrigger) Type() protoreflect.EnumType {
+func (QualityExecutionTrigger) Type() protoreflect.EnumType {
 	return &file_store_data_quality_proto_enumTypes[4]
 }
 
-func (x QualityRunTrigger) Number() protoreflect.EnumNumber {
+func (x QualityExecutionTrigger) Number() protoreflect.EnumNumber {
 	return protoreflect.EnumNumber(x)
 }
 
-// Deprecated: Use QualityRunTrigger.Descriptor instead.
-func (QualityRunTrigger) EnumDescriptor() ([]byte, []int) {
+// Deprecated: Use QualityExecutionTrigger.Descriptor instead.
+func (QualityExecutionTrigger) EnumDescriptor() ([]byte, []int) {
 	return file_store_data_quality_proto_rawDescGZIP(), []int{4}
 }
 
-// QualityRunStatus is the lifecycle of a run, which is separate from the quality
-// status its results roll up to. A queued run has no outcome yet.
-type QualityRunStatus int32
+// QualityExecutionState is the lifecycle of one execution, separate from the
+// quality outcome (Status) that is only known once it finishes. The internal
+// dispatch batch uses the same lifecycle.
+type QualityExecutionState int32
 
 const (
-	QualityRunStatus_QUALITY_RUN_STATUS_UNSPECIFIED QualityRunStatus = 0
-	// Created and waiting for the runner.
-	QualityRunStatus_QUALITY_RUN_STATUS_PENDING QualityRunStatus = 1
-	// The runner is executing this run's rules.
-	QualityRunStatus_QUALITY_RUN_STATUS_RUNNING QualityRunStatus = 2
-	// Every rule was attempted; outcome holds the rollup.
-	QualityRunStatus_QUALITY_RUN_STATUS_COMPLETED QualityRunStatus = 3
-	// A restart discarded the run before it finished. It is not retried.
-	QualityRunStatus_QUALITY_RUN_STATUS_ABANDONED QualityRunStatus = 4
+	QualityExecutionState_QUALITY_EXECUTION_STATE_UNSPECIFIED QualityExecutionState = 0
+	// Planned and waiting for the runner.
+	QualityExecutionState_QUALITY_EXECUTION_STATE_PENDING QualityExecutionState = 1
+	// The runner is executing the rule.
+	QualityExecutionState_QUALITY_EXECUTION_STATE_RUNNING QualityExecutionState = 2
+	// The check reached a verdict; Status holds it.
+	QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED QualityExecutionState = 3
+	// A restart discarded it before it finished. It is not retried.
+	QualityExecutionState_QUALITY_EXECUTION_STATE_ABANDONED QualityExecutionState = 4
 )
 
-// Enum value maps for QualityRunStatus.
+// Enum value maps for QualityExecutionState.
 var (
-	QualityRunStatus_name = map[int32]string{
-		0: "QUALITY_RUN_STATUS_UNSPECIFIED",
-		1: "QUALITY_RUN_STATUS_PENDING",
-		2: "QUALITY_RUN_STATUS_RUNNING",
-		3: "QUALITY_RUN_STATUS_COMPLETED",
-		4: "QUALITY_RUN_STATUS_ABANDONED",
+	QualityExecutionState_name = map[int32]string{
+		0: "QUALITY_EXECUTION_STATE_UNSPECIFIED",
+		1: "QUALITY_EXECUTION_STATE_PENDING",
+		2: "QUALITY_EXECUTION_STATE_RUNNING",
+		3: "QUALITY_EXECUTION_STATE_COMPLETED",
+		4: "QUALITY_EXECUTION_STATE_ABANDONED",
 	}
-	QualityRunStatus_value = map[string]int32{
-		"QUALITY_RUN_STATUS_UNSPECIFIED": 0,
-		"QUALITY_RUN_STATUS_PENDING":     1,
-		"QUALITY_RUN_STATUS_RUNNING":     2,
-		"QUALITY_RUN_STATUS_COMPLETED":   3,
-		"QUALITY_RUN_STATUS_ABANDONED":   4,
+	QualityExecutionState_value = map[string]int32{
+		"QUALITY_EXECUTION_STATE_UNSPECIFIED": 0,
+		"QUALITY_EXECUTION_STATE_PENDING":     1,
+		"QUALITY_EXECUTION_STATE_RUNNING":     2,
+		"QUALITY_EXECUTION_STATE_COMPLETED":   3,
+		"QUALITY_EXECUTION_STATE_ABANDONED":   4,
 	}
 )
 
-func (x QualityRunStatus) Enum() *QualityRunStatus {
-	p := new(QualityRunStatus)
+func (x QualityExecutionState) Enum() *QualityExecutionState {
+	p := new(QualityExecutionState)
 	*p = x
 	return p
 }
 
-func (x QualityRunStatus) String() string {
+func (x QualityExecutionState) String() string {
 	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
 }
 
-func (QualityRunStatus) Descriptor() protoreflect.EnumDescriptor {
+func (QualityExecutionState) Descriptor() protoreflect.EnumDescriptor {
 	return file_store_data_quality_proto_enumTypes[5].Descriptor()
 }
 
-func (QualityRunStatus) Type() protoreflect.EnumType {
+func (QualityExecutionState) Type() protoreflect.EnumType {
 	return &file_store_data_quality_proto_enumTypes[5]
 }
 
-func (x QualityRunStatus) Number() protoreflect.EnumNumber {
+func (x QualityExecutionState) Number() protoreflect.EnumNumber {
 	return protoreflect.EnumNumber(x)
 }
 
-// Deprecated: Use QualityRunStatus.Descriptor instead.
-func (QualityRunStatus) EnumDescriptor() ([]byte, []int) {
+// Deprecated: Use QualityExecutionState.Descriptor instead.
+func (QualityExecutionState) EnumDescriptor() ([]byte, []int) {
 	return file_store_data_quality_proto_rawDescGZIP(), []int{5}
 }
 
@@ -1647,8 +1649,8 @@ func (x *QualityThresholds) GetOnEmpty() QualityEmptyBehavior {
 	return QualityEmptyBehavior_QUALITY_EMPTY_BEHAVIOR_UNSPECIFIED
 }
 
-// QualityRunCounts is the six-state tally of one run.
-type QualityRunCounts struct {
+// QualityStatusCounts is the six-state tally of a set of executions.
+type QualityStatusCounts struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Total         int32                  `protobuf:"varint,1,opt,name=total,proto3" json:"total,omitempty"`
 	Pass          int32                  `protobuf:"varint,2,opt,name=pass,proto3" json:"pass,omitempty"`
@@ -1661,20 +1663,20 @@ type QualityRunCounts struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *QualityRunCounts) Reset() {
-	*x = QualityRunCounts{}
+func (x *QualityStatusCounts) Reset() {
+	*x = QualityStatusCounts{}
 	mi := &file_store_data_quality_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *QualityRunCounts) String() string {
+func (x *QualityStatusCounts) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*QualityRunCounts) ProtoMessage() {}
+func (*QualityStatusCounts) ProtoMessage() {}
 
-func (x *QualityRunCounts) ProtoReflect() protoreflect.Message {
+func (x *QualityStatusCounts) ProtoReflect() protoreflect.Message {
 	mi := &file_store_data_quality_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -1686,54 +1688,54 @@ func (x *QualityRunCounts) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use QualityRunCounts.ProtoReflect.Descriptor instead.
-func (*QualityRunCounts) Descriptor() ([]byte, []int) {
+// Deprecated: Use QualityStatusCounts.ProtoReflect.Descriptor instead.
+func (*QualityStatusCounts) Descriptor() ([]byte, []int) {
 	return file_store_data_quality_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *QualityRunCounts) GetTotal() int32 {
+func (x *QualityStatusCounts) GetTotal() int32 {
 	if x != nil {
 		return x.Total
 	}
 	return 0
 }
 
-func (x *QualityRunCounts) GetPass() int32 {
+func (x *QualityStatusCounts) GetPass() int32 {
 	if x != nil {
 		return x.Pass
 	}
 	return 0
 }
 
-func (x *QualityRunCounts) GetWarn() int32 {
+func (x *QualityStatusCounts) GetWarn() int32 {
 	if x != nil {
 		return x.Warn
 	}
 	return 0
 }
 
-func (x *QualityRunCounts) GetFail() int32 {
+func (x *QualityStatusCounts) GetFail() int32 {
 	if x != nil {
 		return x.Fail
 	}
 	return 0
 }
 
-func (x *QualityRunCounts) GetError() int32 {
+func (x *QualityStatusCounts) GetError() int32 {
 	if x != nil {
 		return x.Error
 	}
 	return 0
 }
 
-func (x *QualityRunCounts) GetSkipped() int32 {
+func (x *QualityStatusCounts) GetSkipped() int32 {
 	if x != nil {
 		return x.Skipped
 	}
 	return 0
 }
 
-func (x *QualityRunCounts) GetNotEvaluated() int32 {
+func (x *QualityStatusCounts) GetNotEvaluated() int32 {
 	if x != nil {
 		return x.NotEvaluated
 	}
@@ -4612,8 +4614,8 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\v_warn_valueB\r\n" +
 	"\v_fail_valueB\x13\n" +
 	"\x11_warn_value_upperB\x13\n" +
-	"\x11_fail_value_upper\"\xb9\x01\n" +
-	"\x10QualityRunCounts\x12\x14\n" +
+	"\x11_fail_value_upper\"\xbc\x01\n" +
+	"\x13QualityStatusCounts\x12\x14\n" +
 	"\x05total\x18\x01 \x01(\x05R\x05total\x12\x12\n" +
 	"\x04pass\x18\x02 \x01(\x05R\x04pass\x12\x12\n" +
 	"\x04warn\x18\x03 \x01(\x05R\x04warn\x12\x12\n" +
@@ -4960,17 +4962,17 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\x13QUALITY_STATUS_FAIL\x10\x03\x12\x18\n" +
 	"\x14QUALITY_STATUS_ERROR\x10\x04\x12\x1a\n" +
 	"\x16QUALITY_STATUS_SKIPPED\x10\x05\x12 \n" +
-	"\x1cQUALITY_STATUS_NOT_EVALUATED\x10\x06*{\n" +
-	"\x11QualityRunTrigger\x12#\n" +
-	"\x1fQUALITY_RUN_TRIGGER_UNSPECIFIED\x10\x00\x12\x1e\n" +
-	"\x1aQUALITY_RUN_TRIGGER_MANUAL\x10\x01\x12!\n" +
-	"\x1dQUALITY_RUN_TRIGGER_SCHEDULED\x10\x02*\xba\x01\n" +
-	"\x10QualityRunStatus\x12\"\n" +
-	"\x1eQUALITY_RUN_STATUS_UNSPECIFIED\x10\x00\x12\x1e\n" +
-	"\x1aQUALITY_RUN_STATUS_PENDING\x10\x01\x12\x1e\n" +
-	"\x1aQUALITY_RUN_STATUS_RUNNING\x10\x02\x12 \n" +
-	"\x1cQUALITY_RUN_STATUS_COMPLETED\x10\x03\x12 \n" +
-	"\x1cQUALITY_RUN_STATUS_ABANDONED\x10\x04*\xa3\x01\n" +
+	"\x1cQUALITY_STATUS_NOT_EVALUATED\x10\x06*\x93\x01\n" +
+	"\x17QualityExecutionTrigger\x12)\n" +
+	"%QUALITY_EXECUTION_TRIGGER_UNSPECIFIED\x10\x00\x12$\n" +
+	" QUALITY_EXECUTION_TRIGGER_MANUAL\x10\x01\x12'\n" +
+	"#QUALITY_EXECUTION_TRIGGER_SCHEDULED\x10\x02*\xd8\x01\n" +
+	"\x15QualityExecutionState\x12'\n" +
+	"#QUALITY_EXECUTION_STATE_UNSPECIFIED\x10\x00\x12#\n" +
+	"\x1fQUALITY_EXECUTION_STATE_PENDING\x10\x01\x12#\n" +
+	"\x1fQUALITY_EXECUTION_STATE_RUNNING\x10\x02\x12%\n" +
+	"!QUALITY_EXECUTION_STATE_COMPLETED\x10\x03\x12%\n" +
+	"!QUALITY_EXECUTION_STATE_ABANDONED\x10\x04*\xa3\x01\n" +
 	"\x12QualityIssueStatus\x12$\n" +
 	" QUALITY_ISSUE_STATUS_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19QUALITY_ISSUE_STATUS_OPEN\x10\x01\x12%\n" +
@@ -5102,8 +5104,8 @@ var file_store_data_quality_proto_goTypes = []any{
 	(QualityDimension)(0),              // 1: metaxisdata.store.QualityDimension
 	(QualitySeverity)(0),               // 2: metaxisdata.store.QualitySeverity
 	(QualityStatus)(0),                 // 3: metaxisdata.store.QualityStatus
-	(QualityRunTrigger)(0),             // 4: metaxisdata.store.QualityRunTrigger
-	(QualityRunStatus)(0),              // 5: metaxisdata.store.QualityRunStatus
+	(QualityExecutionTrigger)(0),       // 4: metaxisdata.store.QualityExecutionTrigger
+	(QualityExecutionState)(0),         // 5: metaxisdata.store.QualityExecutionState
 	(QualityIssueStatus)(0),            // 6: metaxisdata.store.QualityIssueStatus
 	(QualityResolutionReason)(0),       // 7: metaxisdata.store.QualityResolutionReason
 	(QualityRuleState)(0),              // 8: metaxisdata.store.QualityRuleState
@@ -5124,7 +5126,7 @@ var file_store_data_quality_proto_goTypes = []any{
 	(*QualityFilter)(nil),              // 23: metaxisdata.store.QualityFilter
 	(*QualityFilterClause)(nil),        // 24: metaxisdata.store.QualityFilterClause
 	(*QualityThresholds)(nil),          // 25: metaxisdata.store.QualityThresholds
-	(*QualityRunCounts)(nil),           // 26: metaxisdata.store.QualityRunCounts
+	(*QualityStatusCounts)(nil),        // 26: metaxisdata.store.QualityStatusCounts
 	(*QualityFailureSamples)(nil),      // 27: metaxisdata.store.QualityFailureSamples
 	(*FailureSample)(nil),              // 28: metaxisdata.store.FailureSample
 	(*ColumnValue)(nil),                // 29: metaxisdata.store.ColumnValue

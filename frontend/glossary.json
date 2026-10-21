@@ -886,7 +886,7 @@
     {
       "id": "rule-result",
       "category": "Data Quality",
-      "definition": "One rule's outcome in one execution.",
+      "definition": "The verdict of an execution.",
       "translations": {
         "en-US": "rule result",
         "zh-CN": "规则结果"
@@ -898,7 +898,7 @@
     {
       "id": "execution",
       "category": "Data Quality",
-      "definition": "One batch of rule results produced together, manually or on a schedule; the Chinese noun is 执行, never 运行记录 (that is an OpenLineage run).",
+      "definition": "One rule checked once, manually or on a schedule, with its verdict and the evidence behind it; the Chinese noun is 执行, never 运行记录 (that is an OpenLineage run).",
       "translations": {
         "en-US": "execution",
         "zh-CN": "执行"
@@ -916,7 +916,7 @@
     {
       "id": "issue",
       "category": "Data Quality",
-      "definition": "A failed or errored rule result that needs attention.",
+      "definition": "A persistent problem behind a rule's failing executions that needs attention.",
       "translations": {
         "en-US": "issue",
         "zh-CN": "质量问题"
@@ -1062,7 +1062,7 @@
     {
       "id": "dry-run",
       "category": "Data Quality",
-      "definition": "Compiling and probing a rule without saving it or creating a run.",
+      "definition": "Compiling and probing a rule without saving it or creating an execution.",
       "translations": {
         "en-US": "dry run",
         "zh-CN": "干跑"

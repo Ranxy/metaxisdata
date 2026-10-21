@@ -56,8 +56,8 @@ const (
 	DataQualityRulesUpdate             Permission = "metaxisdata.dataQuality.rules.update"
 	DataQualityRulesDelete             Permission = "metaxisdata.dataQuality.rules.delete"
 	DataQualityRulesRun                Permission = "metaxisdata.dataQuality.rules.run"
-	DataQualityRunsGet                 Permission = "metaxisdata.dataQuality.runs.get"
-	DataQualityRunsList                Permission = "metaxisdata.dataQuality.runs.list"
+	DataQualityExecutionsGet           Permission = "metaxisdata.dataQuality.executions.get"
+	DataQualityExecutionsList          Permission = "metaxisdata.dataQuality.executions.list"
 	DataQualityIssuesGet               Permission = "metaxisdata.dataQuality.issues.get"
 	DataQualityIssuesList              Permission = "metaxisdata.dataQuality.issues.list"
 	DataQualityIssuesUpdate            Permission = "metaxisdata.dataQuality.issues.update"
@@ -150,8 +150,8 @@ var allPermissions = []Permission{
 	DataQualityRulesUpdate,
 	DataQualityRulesDelete,
 	DataQualityRulesRun,
-	DataQualityRunsGet,
-	DataQualityRunsList,
+	DataQualityExecutionsGet,
+	DataQualityExecutionsList,
 	DataQualityIssuesGet,
 	DataQualityIssuesList,
 	DataQualityIssuesUpdate,

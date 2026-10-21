@@ -9,9 +9,10 @@ import {
   ColumnProfileSchema,
   ColumnProfileStatsSchema,
   ColumnSemanticLabelSchema,
+  QualityExecutionSchema,
+  QualityExecutionState,
   QualityIssueSchema,
   QualityIssueStatus,
-  QualityRuleResultSchema,
   QualityRuleSchema,
   QualityRuleType,
   QualitySemanticType,
@@ -24,7 +25,7 @@ import MetadataQualitySection from "./MetadataQualitySection.vue";
 
 const mocks = vi.hoisted(() => ({
   listQualityRules: vi.fn(),
-  listQualityRuleResults: vi.fn(),
+  listQualityExecutions: vi.fn(),
   listQualityIssues: vi.fn(),
   listColumnLabels: vi.fn(),
   listColumnProfiles: vi.fn(),
@@ -35,7 +36,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/api/data-quality", () => ({
   listQualityRules: mocks.listQualityRules,
-  listQualityRuleResults: mocks.listQualityRuleResults,
+  listQualityExecutions: mocks.listQualityExecutions,
   listQualityIssues: mocks.listQualityIssues,
   listColumnLabels: mocks.listColumnLabels,
   listColumnProfiles: mocks.listColumnProfiles,
@@ -46,7 +47,7 @@ vi.mock("@/api/data-quality", () => ({
 
 const TABLE = "inst1;db1;public;orders";
 const RULE = "workspaces/ws/qualityRules/rule-1";
-const RUN = "workspaces/ws/qualityRuns/run-1";
+const EXECUTION = "workspaces/ws/qualityExecutions/exec-1";
 
 async function mountSection(permissions: string[]) {
   const router = createRouter({
@@ -69,13 +70,13 @@ async function mountSection(permissions: string[]) {
         component: { template: "<div />" },
       },
       {
-        path: "/data-quality/runs",
-        name: "DataQualityRuns",
+        path: "/data-quality/executions",
+        name: "DataQualityExecutions",
         component: { template: "<div />" },
       },
       {
-        path: "/data-quality/runs/:runId+",
-        name: "DataQualityRunDetail",
+        path: "/data-quality/executions/:executionId+",
+        name: "DataQualityExecutionDetail",
         component: { template: "<div />" },
       },
       {
@@ -139,13 +140,13 @@ describe("MetadataQualitySection", () => {
       ],
       nextPageToken: "",
     });
-    mocks.listQualityRuleResults.mockResolvedValue({
+    mocks.listQualityExecutions.mockResolvedValue({
       items: [
-        create(QualityRuleResultSchema, {
-          name: "result-1",
+        create(QualityExecutionSchema, {
+          name: EXECUTION,
           rule: RULE,
-          run: RUN,
-          status: QualityStatus.FAIL,
+          state: QualityExecutionState.COMPLETED,
+          outcome: QualityStatus.FAIL,
           failedRows: 40n,
           totalRows: 1000n,
         }),
@@ -189,7 +190,7 @@ describe("MetadataQualitySection", () => {
     ]);
   });
 
-  it("renders the table's rules, results, issues and column labels", async () => {
+  it("renders the table's rules, executions, issues and column labels", async () => {
     const wrapper = await mountSection(["metaxisdata.dataQuality.rules.list"]);
 
     expect(wrapper.text()).toContain("Null rate on orders.id");

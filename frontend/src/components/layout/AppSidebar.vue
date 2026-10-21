@@ -380,11 +380,11 @@ function buildMenuItems(): MenuItem[] {
           permission: "metaxisdata.dataQuality.rules.list",
         },
         {
-          key: "dataQualityRuns",
-          label: t("menu.dataQualityRuns"),
-          path: "/data-quality/runs",
+          key: "dataQualityExecutions",
+          label: t("menu.dataQualityExecutions"),
+          path: "/data-quality/executions",
           icon: Activity,
-          permission: "metaxisdata.dataQuality.runs.list",
+          permission: "metaxisdata.dataQuality.executions.list",
         },
         {
           key: "dataQualityIssues",
@@ -432,7 +432,7 @@ const menuItems = computed<MenuItem[]>(() => {
 });
 
 // Section landing pages can sit at a prefix of their siblings ("/data-quality"
-// prefixes "/data-quality/runs"), so an `exact` entry owns only its own route.
+// prefixes "/data-quality/executions"), so an `exact` entry owns only its own route.
 // Every other entry also stays active on its detail routes.
 function isActive(path: string, exact = false): boolean {
   if (exact || path === "/") {

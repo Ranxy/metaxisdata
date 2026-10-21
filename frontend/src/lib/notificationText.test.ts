@@ -75,7 +75,7 @@ function dataQuality(
     observedValue: number;
     observedUnit: string;
     issue: string;
-    run: string;
+    execution: string;
     errorCode: string;
     failedRuleCount: number;
     totalRuleCount: number;
@@ -237,7 +237,7 @@ describe("describeNotification", () => {
         observedValue: 0.04,
         observedUnit: "%",
         issue: "workspaces/ws/qualityIssues/issue-1",
-        run: "workspaces/ws/qualityRuns/run-1",
+        execution: "workspaces/ws/qualityExecutions/exec-1",
       })
     );
     expect(text.titleKey).toBe("notifications.dataQualityIssueOpenedTitle");
@@ -252,7 +252,7 @@ describe("describeNotification", () => {
     );
   });
 
-  it("links a recovered issue and falls back to the run when there is no issue", () => {
+  it("links a recovered issue and falls back to the execution when there is no issue", () => {
     const recovered = describeNotification(
       dataQuality(DataQualityNotificationKind.ISSUE_RECOVERED, {
         rule: "workspaces/ws/qualityRules/rule-1",
@@ -271,51 +271,50 @@ describe("describeNotification", () => {
 
     const withoutIssue = describeNotification(
       dataQuality(DataQualityNotificationKind.ISSUE_RECOVERED, {
-        run: "workspaces/ws/qualityRuns/run-1",
+        execution: "workspaces/ws/qualityExecutions/exec-1",
       })
     );
     expect(withoutIssue.titleParams).toEqual({ rule: "" });
     expect(withoutIssue.href).toBe(
-      "/data-quality/runs/workspaces/ws/qualityRuns/run-1"
+      "/data-quality/executions/workspaces/ws/qualityExecutions/exec-1"
     );
   });
 
-  it("renders an execution failure with its error class and run link", () => {
+  it("renders an execution failure with its error class and execution link", () => {
     const text = describeNotification(
       dataQuality(DataQualityNotificationKind.EXECUTION_FAILED, {
         ruleTitle: "Row count",
         errorCode: "CONNECTION",
-        run: "workspaces/ws/qualityRuns/run-2",
+        execution: "workspaces/ws/qualityExecutions/exec-2",
       })
     );
     expect(text.titleKey).toBe("notifications.dataQualityExecutionFailedTitle");
     expect(text.messageParams).toEqual({ code: "CONNECTION" });
     expect(text.href).toBe(
-      "/data-quality/runs/workspaces/ws/qualityRuns/run-2"
+      "/data-quality/executions/workspaces/ws/qualityExecutions/exec-2"
     );
 
-    const noRun = describeNotification(
+    const noExecution = describeNotification(
       dataQuality(DataQualityNotificationKind.EXECUTION_FAILED, {
         ruleTitle: "Row count",
       })
     );
-    expect(noRun.messageParams).toEqual({ code: "-" });
-    expect(noRun.href).toBe("/data-quality/runs");
+    expect(noExecution.messageParams).toEqual({ code: "-" });
+    expect(noExecution.href).toBe("/data-quality/executions");
   });
 
-  it("renders the storm summary's tallies", () => {
+  it("renders the storm summary's tallies and falls back to the list", () => {
     const text = describeNotification(
       dataQuality(DataQualityNotificationKind.STORM_SUMMARY, {
-        run: "workspaces/ws/qualityRuns/run-3",
         failedRuleCount: 7,
         totalRuleCount: 20,
       })
     );
     expect(text.titleKey).toBe("notifications.dataQualityStormSummaryTitle");
     expect(text.messageParams).toEqual({ failed: 7, total: 20 });
-    expect(text.href).toBe(
-      "/data-quality/runs/workspaces/ws/qualityRuns/run-3"
-    );
+    // A storm merges a whole dispatch batch, so it has no single execution to
+    // link to; the executions list is the honest destination.
+    expect(text.href).toBe("/data-quality/executions");
   });
 
   it("degrades a kind this build does not know", () => {

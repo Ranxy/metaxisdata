@@ -4,35 +4,57 @@ import { mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it } from "vitest";
 import { i18n } from "@/locales";
 import {
-  type QualityRuleResult,
-  QualityRuleResultSchema,
+  type QualityExecution,
+  QualityExecutionSchema,
+  QualityExecutionState,
   QualityStatus,
 } from "@/types/proto-es/v1/data_quality_service_pb";
-import { qualityStatusKey } from "@/utils/dataQuality";
+import {
+  qualityExecutionStateKey,
+  qualityStatusKey,
+} from "@/utils/dataQuality";
 import { formatDateTime } from "@/utils/datetime";
 import QualityResultStrip from "./QualityResultStrip.vue";
 
 const BASE_TIME = new Date("2026-10-07T09:30:00Z");
 const LOCALE = "en-US";
 
-/** A result whose finish time is `minute` minutes after the base instant. */
-function result(name: string, status: QualityStatus, minute: number) {
-  return create(QualityRuleResultSchema, {
-    name: `workspaces/ws/qualityRuleResults/${name}`,
-    status,
+/** A finished execution whose finish time is `minute` minutes after the base. */
+function execution(
+  name: string,
+  outcome: QualityStatus,
+  minute: number
+): QualityExecution {
+  return create(QualityExecutionSchema, {
+    name: `workspaces/ws/qualityExecutions/${name}`,
+    state: QualityExecutionState.COMPLETED,
+    outcome,
+    startTime: timestampFromDate(
+      new Date(BASE_TIME.getTime() + minute * 60_000)
+    ),
     finishTime: timestampFromDate(
       new Date(BASE_TIME.getTime() + minute * 60_000)
     ),
   });
 }
 
+/** A still-running execution: no verdict, so the strip names its state. */
+function pendingExecution(name: string): QualityExecution {
+  return create(QualityExecutionSchema, {
+    name: `workspaces/ws/qualityExecutions/${name}`,
+    state: QualityExecutionState.RUNNING,
+    outcome: QualityStatus.UNSPECIFIED,
+    startTime: timestampFromDate(BASE_TIME),
+  });
+}
+
 /** The square's accessible name, from the same helpers the component uses. */
-function squareLabel(item: QualityRuleResult): string {
-  return `${i18n.global.t(qualityStatusKey(item.status))} · ${formatDateTime(item.finishTime, LOCALE)}`;
+function squareLabel(item: QualityExecution): string {
+  return `${i18n.global.t(qualityStatusKey(item.outcome))} · ${formatDateTime(item.finishTime, LOCALE)}`;
 }
 
 function mountStrip(props: {
-  results: QualityRuleResult[];
+  executions: QualityExecution[];
   label?: string;
   limit?: number;
   selectedName?: string;
@@ -55,13 +77,15 @@ describe("QualityResultStrip", () => {
     i18n.global.locale.value = LOCALE;
   });
 
-  it("renders newest-first results oldest to newest", () => {
-    const newest = result("r-newest", QualityStatus.FAIL, 2);
-    const middle = result("r-middle", QualityStatus.WARN, 1);
-    const oldest = result("r-oldest", QualityStatus.PASS, 0);
+  it("renders newest-first executions oldest to newest", () => {
+    const newest = execution("r-newest", QualityStatus.FAIL, 2);
+    const middle = execution("r-middle", QualityStatus.WARN, 1);
+    const oldest = execution("r-oldest", QualityStatus.PASS, 0);
 
-    // The API returns the newest result first; the strip must show it last.
-    const wrapper = mountStrip({ results: [newest, middle, oldest] });
+    // The API returns the newest execution first; the strip must show it last.
+    const wrapper = mountStrip({
+      executions: [newest, middle, oldest],
+    });
 
     expect(buttonLabels(wrapper)).toEqual([
       squareLabel(oldest),
@@ -73,13 +97,13 @@ describe("QualityResultStrip", () => {
     );
   });
 
-  it("keeps only the newest results when limit truncates", () => {
+  it("keeps only the newest executions when limit truncates", () => {
     const fixtures = [0, 1, 2, 3, 4].map((minute) =>
-      result(`r-${minute}`, QualityStatus.PASS, minute)
+      execution(`r-${minute}`, QualityStatus.PASS, minute)
     );
-    const wrapper = mountStrip({ results: fixtures, limit: 3 });
+    const wrapper = mountStrip({ executions: fixtures, limit: 3 });
 
-    // The oldest two results are dropped, then the window is reversed.
+    // The oldest two executions are dropped, then the window is reversed.
     expect(buttonLabels(wrapper)).toEqual([
       squareLabel(fixtures[2]),
       squareLabel(fixtures[1]),
@@ -87,11 +111,11 @@ describe("QualityResultStrip", () => {
     ]);
   });
 
-  it("shows at most 20 results by default", () => {
+  it("shows at most 20 executions by default", () => {
     const fixtures = Array.from({ length: 25 }, (_, minute) =>
-      result(`r-${minute}`, QualityStatus.PASS, minute)
+      execution(`r-${minute}`, QualityStatus.PASS, minute)
     );
-    const wrapper = mountStrip({ results: fixtures });
+    const wrapper = mountStrip({ executions: fixtures });
 
     const labels = buttonLabels(wrapper);
     expect(labels).toHaveLength(20);
@@ -99,21 +123,21 @@ describe("QualityResultStrip", () => {
     expect(labels[19]).toBe(squareLabel(fixtures[0]));
   });
 
-  it("emits the clicked result", async () => {
-    const newest = result("r-newest", QualityStatus.FAIL, 2);
-    const oldest = result("r-oldest", QualityStatus.PASS, 0);
-    const wrapper = mountStrip({ results: [newest, oldest] });
+  it("emits the clicked execution", async () => {
+    const newest = execution("r-newest", QualityStatus.FAIL, 2);
+    const oldest = execution("r-oldest", QualityStatus.PASS, 0);
+    const wrapper = mountStrip({ executions: [newest, oldest] });
 
-    // The first square is the oldest result, because the strip reads left to right.
+    // The first square is the oldest execution, because the strip reads left to right.
     await wrapper.findAll("button")[0].trigger("click");
 
     expect(wrapper.emitted("select")).toHaveLength(1);
     expect(wrapper.emitted("select")?.[0]?.[0]).toEqual(oldest);
   });
 
-  it("names each square with its status and absolute finish time", () => {
-    const newest = result("r-newest", QualityStatus.ERROR, 2);
-    const wrapper = mountStrip({ results: [newest] });
+  it("names each square with its verdict and absolute finish time", () => {
+    const newest = execution("r-newest", QualityStatus.ERROR, 2);
+    const wrapper = mountStrip({ executions: [newest] });
 
     const button = wrapper.find("button");
     const finishTime = formatDateTime(newest.finishTime, LOCALE);
@@ -125,13 +149,23 @@ describe("QualityResultStrip", () => {
     );
   });
 
+  it("names a pending execution by its lifecycle state, not a verdict", () => {
+    const pending = pendingExecution("r-pending");
+    const wrapper = mountStrip({ executions: [pending] });
+
+    const button = wrapper.find("button");
+    expect(button.attributes("aria-label")).toBe(
+      `${i18n.global.t(qualityExecutionStateKey(QualityExecutionState.RUNNING))} · ${formatDateTime(pending.startTime, LOCALE)}`
+    );
+  });
+
   it("emphasizes the newest square unless a selected one overrides it", () => {
-    const newest = result("r-newest", QualityStatus.FAIL, 2);
-    const middle = result("r-middle", QualityStatus.WARN, 1);
-    const oldest = result("r-oldest", QualityStatus.PASS, 0);
+    const newest = execution("r-newest", QualityStatus.FAIL, 2);
+    const middle = execution("r-middle", QualityStatus.WARN, 1);
+    const oldest = execution("r-oldest", QualityStatus.PASS, 0);
 
     const wrapper = mountStrip({
-      results: [newest, middle, oldest],
+      executions: [newest, middle, oldest],
       selectedName: middle.name,
     });
     const [oldestButton, middleButton, newestButton] =
@@ -145,7 +179,7 @@ describe("QualityResultStrip", () => {
 
     // A selected newest square keeps the primary ring, not both rings.
     const selectedNewest = mountStrip({
-      results: [newest, middle, oldest],
+      executions: [newest, middle, oldest],
       selectedName: newest.name,
     });
     const newestSelectedButton = selectedNewest.findAll("button")[2];
@@ -157,14 +191,14 @@ describe("QualityResultStrip", () => {
     ).toBe(false);
   });
 
-  it("renders nothing when there are no results", () => {
-    const wrapper = mountStrip({ results: [] });
+  it("renders nothing when there are no executions", () => {
+    const wrapper = mountStrip({ executions: [] });
 
     expect(wrapper.findAll("button")).toHaveLength(0);
     expect(wrapper.find('[role="list"]').exists()).toBe(false);
   });
 
-  it("colors each status with its theme token", () => {
+  it("colors each verdict with its theme token", () => {
     const cases: Array<[QualityStatus, string]> = [
       [QualityStatus.PASS, "hsl(var(--success))"],
       [QualityStatus.WARN, "hsl(var(--warning))"],
@@ -176,12 +210,19 @@ describe("QualityResultStrip", () => {
     ];
     for (const [status, color] of cases) {
       const wrapper = mountStrip({
-        results: [result(`r-${status}`, status, 0)],
+        executions: [execution(`r-${status}`, status, 0)],
       });
       expect(wrapper.find("button").attributes("style")).toContain(
         `background-color: ${color}`
       );
       wrapper.unmount();
     }
+  });
+
+  it("colors a pending execution in the info token", () => {
+    const wrapper = mountStrip({ executions: [pendingExecution("r-pending")] });
+    expect(wrapper.find("button").attributes("style")).toContain(
+      "background-color: hsl(var(--info))"
+    );
   });
 });

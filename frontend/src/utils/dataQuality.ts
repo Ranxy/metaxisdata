@@ -6,15 +6,15 @@ import {
   QualityComparisonOperator,
   QualityDimension,
   QualityEmptyBehavior,
+  type QualityExecution,
+  QualityExecutionState,
+  QualityExecutionTrigger,
   QualityFilterOperator,
   QualityIssueStatus,
   type QualityObservedKind,
   QualityResolutionReason,
   QualityRuleState,
   QualityRuleType,
-  type QualityRun,
-  QualityRunStatus,
-  QualityRunTrigger,
   QualitySeverity,
   QualityStatus,
   QualityThresholdMetric,
@@ -25,7 +25,7 @@ import { formatDateTime } from "./datetime";
 /**
  * The data-quality vocabulary, as i18n keys and display strings.
  *
- * The helpers here are pure so the two lists and the run detail cannot render
+ * The helpers here are pure so the lists and the execution detail cannot render
  * the same state differently, and so the enum never reaches the screen: a
  * zh-CN page must print 通过, not `QUALITY_STATUS_PASS`. They return a key (or a
  * locale-formatted string) rather than text, because `t()` belongs in views.
@@ -81,7 +81,7 @@ const DEFAULT_LOCALE = "en-US";
 
 // ---- status ----
 
-/** The label key for a rule result's outcome. */
+/** The label key for an execution's outcome. */
 export function qualityStatusKey(status: QualityStatus): string {
   switch (status) {
     case QualityStatus.PASS:
@@ -101,7 +101,7 @@ export function qualityStatusKey(status: QualityStatus): string {
   }
 }
 
-/** The badge variant for a rule result's outcome. FAIL and ERROR stay distinct. */
+/** The badge variant for an execution's outcome. FAIL and ERROR stay distinct. */
 export function qualityStatusVariant(
   status: QualityStatus
 ): QualityBadgeVariant {
@@ -247,51 +247,53 @@ export function qualityRuleStateVariant(
   }
 }
 
-// ---- run ----
+// ---- execution ----
 
-/** The label key for a run's lifecycle state. */
-export function qualityRunStatusKey(status: QualityRunStatus): string {
-  switch (status) {
-    case QualityRunStatus.PENDING:
-      return "dataQuality.runStatus.pending";
-    case QualityRunStatus.RUNNING:
-      return "dataQuality.runStatus.running";
-    case QualityRunStatus.COMPLETED:
-      return "dataQuality.runStatus.completed";
-    case QualityRunStatus.ABANDONED:
-      return "dataQuality.runStatus.abandoned";
+/** The label key for an execution's lifecycle state. */
+export function qualityExecutionStateKey(state: QualityExecutionState): string {
+  switch (state) {
+    case QualityExecutionState.PENDING:
+      return "dataQuality.executionState.pending";
+    case QualityExecutionState.RUNNING:
+      return "dataQuality.executionState.running";
+    case QualityExecutionState.COMPLETED:
+      return "dataQuality.executionState.completed";
+    case QualityExecutionState.ABANDONED:
+      return "dataQuality.executionState.abandoned";
     default:
-      return "dataQuality.runStatus.unspecified";
+      return "dataQuality.executionState.unspecified";
   }
 }
 
-/** The badge variant for a run's lifecycle state. */
-export function qualityRunStatusVariant(
-  status: QualityRunStatus
+/** The badge variant for an execution's lifecycle state. */
+export function qualityExecutionStateVariant(
+  state: QualityExecutionState
 ): QualityBadgeVariant {
-  switch (status) {
-    case QualityRunStatus.PENDING:
+  switch (state) {
+    case QualityExecutionState.PENDING:
       return "info";
-    case QualityRunStatus.RUNNING:
+    case QualityExecutionState.RUNNING:
       return "info";
-    case QualityRunStatus.COMPLETED:
+    case QualityExecutionState.COMPLETED:
       return "success";
-    case QualityRunStatus.ABANDONED:
+    case QualityExecutionState.ABANDONED:
       return "warning";
     default:
       return "secondary";
   }
 }
 
-/** The label key for what started a run. */
-export function qualityRunTriggerKey(trigger: QualityRunTrigger): string {
+/** The label key for what started an execution. */
+export function qualityExecutionTriggerKey(
+  trigger: QualityExecutionTrigger
+): string {
   switch (trigger) {
-    case QualityRunTrigger.MANUAL:
-      return "dataQuality.runTrigger.manual";
-    case QualityRunTrigger.SCHEDULED:
-      return "dataQuality.runTrigger.scheduled";
+    case QualityExecutionTrigger.MANUAL:
+      return "dataQuality.executionTrigger.manual";
+    case QualityExecutionTrigger.SCHEDULED:
+      return "dataQuality.executionTrigger.scheduled";
     default:
-      return "dataQuality.runTrigger.unspecified";
+      return "dataQuality.executionTrigger.unspecified";
   }
 }
 
@@ -460,21 +462,22 @@ export function qualityFilterOperatorKey(
 }
 
 /**
- * True while a run can still change, i.e. while its detail page should poll.
- * COMPLETED and ABANDONED are final: nothing will update them.
+ * True while an execution can still change, i.e. while its detail page should
+ * poll. COMPLETED and ABANDONED are final: nothing will update them.
  */
-export function isRunInProgress(status: QualityRunStatus): boolean {
+export function isExecutionInProgress(state: QualityExecutionState): boolean {
   return (
-    status === QualityRunStatus.PENDING || status === QualityRunStatus.RUNNING
+    state === QualityExecutionState.PENDING ||
+    state === QualityExecutionState.RUNNING
   );
 }
 
-/** The seconds between a run's start and finish, or undefined while it runs. */
-export function runDurationSeconds(
-  run: Pick<QualityRun, "startTime" | "finishTime">
+/** The seconds between an execution's start and finish, or undefined while it runs. */
+export function executionDurationSeconds(
+  execution: Pick<QualityExecution, "startTime" | "finishTime">
 ): number | undefined {
-  const start = timestampSeconds(run.startTime);
-  const finish = timestampSeconds(run.finishTime);
+  const start = timestampSeconds(execution.startTime);
+  const finish = timestampSeconds(execution.finishTime);
   if (start === undefined || finish === undefined || finish < start) {
     return undefined;
   }
@@ -486,7 +489,7 @@ export function runDurationSeconds(
 /**
  * The fail threshold as a catalog key plus already-formatted bounds, so the
  * caller renders it with the locale's own operator wording. Returns undefined
- * when the snapshot carries no fail bound (an empty-behaviour-only result).
+ * when the snapshot carries no fail bound (an empty-behaviour-only execution).
  */
 export function describeThreshold(
   thresholds: QualityThresholds | undefined,
@@ -555,7 +558,7 @@ export function formatWarnThreshold(
   return undefined;
 }
 
-/** The label key for a result's machine-readable failure class, or "" if unknown. */
+/** The label key for an execution's machine-readable failure class, or "" if unknown. */
 export function qualityErrorCodeKey(code: string): string {
   switch (code.trim().toUpperCase()) {
     case "CONNECTION":
@@ -621,7 +624,7 @@ export function formatRowCount(
 }
 
 /**
- * The observed value in the unit the result recorded: a count, a ratio as a
+ * The observed value in the unit the execution recorded: a count, a ratio as a
  * percentage, a duration, an instant, or a plain number.
  */
 export function formatObservedValue(

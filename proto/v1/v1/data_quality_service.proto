@@ -16,13 +16,15 @@ import "v1/explain_sql_service.proto";
 
 option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
 
-// DataQualityService manages the checks that watch the data itself: rules,
-// their executions, and the per-rule results of those executions.
+// DataQualityService manages the checks that watch the data itself: rules and
+// their executions.
 //
 // A rule observes one target — a table, or one column of it — with a typed
 // check (row count, null percent, uniqueness, accepted values, ...) on a
-// schedule or on demand. A run groups the results of one instance; it is
-// created asynchronously and polled until it finishes.
+// schedule or on demand. An execution is one rule checked once: it is planned
+// asynchronously, executed by the runner, and polled until it reaches a state
+// or an outcome. Batching rules for scheduling is an internal concern and is
+// not exposed as a resource.
 service DataQualityService {
   // List rules, newest first.
   rpc ListQualityRules(ListQualityRulesRequest) returns (ListQualityRulesResponse) {
@@ -83,9 +85,9 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.run";
   }
 
-  // Execute rules now. The selected rules are grouped by instance, one run is
-  // created per instance, and the runs are queued; the response returns them
-  // while they are still pending. Clients poll GetQualityRun.
+  // Execute rules now. One execution is planned per selected rule; the call
+  // returns them all as PENDING after queueing them. Clients poll
+  // GetQualityExecution for each execution's state and outcome.
   rpc RunQualityRules(RunQualityRulesRequest) returns (RunQualityRulesResponse) {
     option (google.api.http) = {
       post: "/v1/{parent=workspaces/*}/qualityRules:run"
@@ -95,25 +97,18 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.run";
   }
 
-  // List runs, newest first.
-  rpc ListQualityRuns(ListQualityRunsRequest) returns (ListQualityRunsResponse) {
-    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityRuns"};
+  // List executions, newest first.
+  rpc ListQualityExecutions(ListQualityExecutionsRequest) returns (ListQualityExecutionsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityExecutions"};
     option (google.api.method_signature) = "parent";
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.runs.list";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.executions.list";
   }
 
-  // Read one run with its six-state tallies.
-  rpc GetQualityRun(GetQualityRunRequest) returns (QualityRun) {
-    option (google.api.http) = {get: "/v1/{name=workspaces/*/qualityRuns/*}"};
+  // Read one execution: its state, verdict, and the evidence behind it.
+  rpc GetQualityExecution(GetQualityExecutionRequest) returns (QualityExecution) {
+    option (google.api.http) = {get: "/v1/{name=workspaces/*/qualityExecutions/*}"};
     option (google.api.method_signature) = "name";
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.runs.get";
-  }
-
-  // List the per-rule results of runs, typically filtered by run.
-  rpc ListQualityRuleResults(ListQualityRuleResultsRequest) returns (ListQualityRuleResultsResponse) {
-    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityRuleResults"};
-    option (google.api.method_signature) = "parent";
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.runs.list";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.executions.get";
   }
 
   // List quality issues, newest first.
@@ -215,12 +210,12 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.suggest";
   }
 
-  // Explain one failed result as a stream of hypotheses.
+  // Explain one failed execution as a stream of hypotheses.
   //
   // No (google.api.http) annotation: this is a server-streaming method, and the
   // REST gateway cannot carry one. The browser reaches the Connect endpoint
   // directly, the way it does for ExplainSQL.
-  rpc ExplainQualityResult(ExplainQualityResultRequest) returns (stream ExplainQualityResultResponse) {
+  rpc ExplainQualityExecution(ExplainQualityExecutionRequest) returns (stream ExplainQualityExecutionResponse) {
     option (metaxisdata.v1.audit) = true;
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.explain";
   }
@@ -297,25 +292,25 @@ enum QualityStatus {
   QUALITY_STATUS_NOT_EVALUATED = 6;
 }
 
-// QualityRunTrigger is what started a run.
-enum QualityRunTrigger {
-  QUALITY_RUN_TRIGGER_UNSPECIFIED = 0;
-  QUALITY_RUN_TRIGGER_MANUAL = 1;
-  QUALITY_RUN_TRIGGER_SCHEDULED = 2;
+// QualityExecutionTrigger is what started one execution.
+enum QualityExecutionTrigger {
+  QUALITY_EXECUTION_TRIGGER_UNSPECIFIED = 0;
+  QUALITY_EXECUTION_TRIGGER_MANUAL = 1;
+  QUALITY_EXECUTION_TRIGGER_SCHEDULED = 2;
 }
 
-// QualityRunStatus is the lifecycle of a run, which is separate from the quality
-// status its results roll up to. A queued run has no outcome yet.
-enum QualityRunStatus {
-  QUALITY_RUN_STATUS_UNSPECIFIED = 0;
-  // Created and waiting for the runner; clients poll while they see this.
-  QUALITY_RUN_STATUS_PENDING = 1;
-  // The runner is executing this run's rules.
-  QUALITY_RUN_STATUS_RUNNING = 2;
-  // Every rule was attempted; outcome holds the rollup.
-  QUALITY_RUN_STATUS_COMPLETED = 3;
-  // A restart discarded the run before it finished. It is not retried.
-  QUALITY_RUN_STATUS_ABANDONED = 4;
+// QualityExecutionState is the lifecycle of one execution. It is separate from
+// the quality outcome, which is only known once the check finishes.
+enum QualityExecutionState {
+  QUALITY_EXECUTION_STATE_UNSPECIFIED = 0;
+  // Planned and waiting for the runner.
+  QUALITY_EXECUTION_STATE_PENDING = 1;
+  // The runner is executing the rule.
+  QUALITY_EXECUTION_STATE_RUNNING = 2;
+  // The check reached a verdict; outcome holds it.
+  QUALITY_EXECUTION_STATE_COMPLETED = 3;
+  // A restart discarded the execution before it finished. It is not retried.
+  QUALITY_EXECUTION_STATE_ABANDONED = 4;
 }
 
 // QualityRuleState is whether a rule is scheduled. ARCHIVED is the soft-delete
@@ -535,9 +530,9 @@ message QualityRule {
 
   google.protobuf.Timestamp update_time = 15 [(google.api.field_behavior) = OUTPUT_ONLY];
 
-  // The most recent result, for the list view. It is not part of the rule and
+  // The most recent execution, for the list view. It is not part of the rule and
   // is only populated by reads, never persisted on write.
-  QualityResultSummary last_result = 16 [(google.api.field_behavior) = OUTPUT_ONLY];
+  QualityExecutionSummary last_result = 16 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   // Why the target can no longer be resolved, e.g. because the table was
   // dropped. Empty while the target is healthy.
@@ -885,8 +880,8 @@ message QualityThresholds {
   QualityEmptyBehavior on_empty = 6;
 }
 
-// QualityRunCounts is the six-state tally of one run.
-message QualityRunCounts {
+// QualityStatusCounts is the six-state tally of a set of executions.
+message QualityStatusCounts {
   int32 total = 1;
   int32 pass = 2;
   int32 warn = 3;
@@ -896,123 +891,97 @@ message QualityRunCounts {
   int32 not_evaluated = 7;
 }
 
-// QualityRun is one execution batch: manually selected rules, or the rules of one
-// instance that became due in one scheduler tick.
-message QualityRun {
+// QualityExecution is one rule checked once: the durable unit of the data
+// quality engine. A scheduled tick or a manual request plans one execution per
+// rule; the runner then executes it and records the verdict and its evidence on
+// the same row.
+message QualityExecution {
   option (google.api.resource) = {
-    type: "metaxisdata/QualityRun"
-    pattern: "workspaces/{workspace}/qualityRuns/{quality_run}"
+    type: "metaxisdata/QualityExecution"
+    pattern: "workspaces/{workspace}/qualityExecutions/{quality_execution}"
   };
 
-  // Format: workspaces/{workspace}/qualityRuns/{quality_run}
+  // Format: workspaces/{workspace}/qualityExecutions/{quality_execution}. The
+  // last segment is the row id, which is immutable for the row's lifetime.
   string name = 1;
-
-  QualityRunTrigger trigger = 2;
-
-  // The run's lifecycle. A queued or running run reports PENDING / RUNNING here;
-  // its outcome is not known yet.
-  QualityRunStatus status = 3;
-
-  QualityRunCounts counts = 4;
-
-  google.protobuf.Timestamp start_time = 5;
-
-  // Unset while the run is queued or still executing.
-  google.protobuf.Timestamp finish_time = 6;
-
-  // The principal that started the run. Format: users/{user}. Empty for a
-  // scheduled run.
-  string initiator = 7;
-
-  // The instance this batch belongs to. Format: instances/{instance}
-  string instance = 8 [(google.api.resource_reference) = {type: "metaxisdata/Instance"}];
-
-  // The rollup of the run's results: the worst status any result reported.
-  // Unset until the run completes; ERROR and FAIL stay distinct.
-  QualityStatus outcome = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
-
-  // Where the run's rules looked: the distinct targets of its results, taken
-  // from the rule revision each result was judged with. A list view would
-  // otherwise have to join every result back to its rule to answer "what did
-  // this run check?". Empty for a queued run that has no results yet.
-  repeated QualityTarget targets = 10 [(google.api.field_behavior) = OUTPUT_ONLY];
-}
-
-// QualityRuleResult is one rule's outcome in one run.
-message QualityRuleResult {
-  option (google.api.resource) = {
-    type: "metaxisdata/QualityRuleResult"
-    pattern: "workspaces/{workspace}/qualityRuleResults/{quality_rule_result}"
-  };
-
-  // Format: workspaces/{workspace}/qualityRuleResults/{quality_rule_result}
-  string name = 1;
-
-  // Format: workspaces/{workspace}/qualityRuns/{quality_run}
-  string run = 2 [(google.api.resource_reference) = {type: "metaxisdata/QualityRun"}];
 
   // Format: workspaces/{workspace}/qualityRules/{quality_rule}
-  string rule = 3 [(google.api.resource_reference) = {type: "metaxisdata/QualityRule"}];
+  string rule = 2 [(google.api.resource_reference) = {type: "metaxisdata/QualityRule"}];
 
-  // The rule revision this result was judged with.
-  int32 rule_revision = 4;
+  // The rule revision the check was judged with.
+  int32 rule_revision = 3;
 
-  // The engine version that produced it, so a changed judgment is traceable to a
-  // changed implementation.
-  string rule_engine_version = 5;
+  // The engine version that produced the verdict, so a changed judgment is
+  // traceable to a changed implementation.
+  string rule_engine_version = 4;
 
-  // The target as it was when the result was produced.
-  QualityTarget target = 6;
+  // The target as it was when the execution was planned.
+  QualityTarget target = 5;
 
-  QualityStatus status = 7;
+  QualityExecutionState state = 6;
+
+  // The quality verdict: PASS, WARN, FAIL, ERROR, SKIPPED or NOT_EVALUATED.
+  // Unset while the execution is PENDING or RUNNING; an ABANDONED execution
+  // never produced one.
+  QualityStatus outcome = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  QualityExecutionTrigger trigger = 8;
+
+  // The principal that asked for the execution. Format: users/{user}. Empty for
+  // a scheduled execution.
+  string initiator = 9 [(google.api.resource_reference) = {type: "metaxisdata/User"}];
+
+  // The instance the target lives in. Format: instances/{instance}
+  string instance = 10 [(google.api.resource_reference) = {type: "metaxisdata/Instance"}];
 
   // The observed value; its unit is observed_kind.
-  double observed_value = 8;
+  double observed_value = 11;
 
-  QualityObservedKind observed_kind = 9;
+  QualityObservedKind observed_kind = 12;
 
   // The thresholds that were applied, snapshotted.
-  QualityThresholds thresholds = 10;
+  QualityThresholds thresholds = 13;
 
-  int64 failed_rows = 11;
-  int64 total_rows = 12;
+  int64 failed_rows = 14;
+  int64 total_rows = 15;
 
   // True when the observation was made over a sample rather than every row.
-  bool sampled = 13;
-  int64 sample_rows = 14;
+  bool sampled = 16;
+  int64 sample_rows = 17;
   // True when the samples were cut off by the sample limit.
-  bool truncated = 15;
+  bool truncated = 18;
 
   // Failed rows kept as evidence, already truncated per value.
-  repeated FailureSample samples = 16;
+  repeated FailureSample samples = 19;
 
-  // The SQL that was executed. Kept so a result can be re-checked by hand.
-  string executed_sql = 17;
+  // The SQL that was executed. Kept so an execution can be re-checked by hand.
+  string executed_sql = 20;
 
   // A machine-readable failure class: CONNECTION, AUTH, TIMEOUT, PERMISSION,
   // UNSUPPORTED, SQL_SYNTAX, BAD_DATA, LIMIT_EXCEEDED or ORPHANED. Empty unless
-  // status is ERROR.
-  string error_code = 18;
+  // outcome is ERROR.
+  string error_code = 21;
 
-  // A human-readable failure message. Empty unless status is ERROR.
-  string error_message = 19;
+  // A human-readable failure message. Empty unless outcome is ERROR.
+  string error_message = 22;
 
-  google.protobuf.Duration duration = 20;
+  google.protobuf.Duration duration = 23;
 
-  google.protobuf.Timestamp start_time = 21;
-  google.protobuf.Timestamp finish_time = 22;
+  google.protobuf.Timestamp start_time = 24;
+  // Unset while the execution is PENDING or RUNNING.
+  google.protobuf.Timestamp finish_time = 25;
 }
 
-// QualityResultSummary is the compact projection of the latest result that a
-// rule list shows. It is not a stored entity.
-message QualityResultSummary {
+// QualityExecutionSummary is the compact projection of the latest execution
+// that a rule list shows. It is not a stored entity.
+message QualityExecutionSummary {
   QualityStatus status = 1;
   double observed_value = 2;
   QualityObservedKind observed_kind = 3;
   int64 failed_rows = 4;
   int64 total_rows = 5;
-  // Format: workspaces/{workspace}/qualityRuns/{quality_run}
-  string run = 6 [(google.api.resource_reference) = {type: "metaxisdata/QualityRun"}];
+  // Format: workspaces/{workspace}/qualityExecutions/{quality_execution}
+  string execution = 6 [(google.api.resource_reference) = {type: "metaxisdata/QualityExecution"}];
   google.protobuf.Timestamp finish_time = 7;
 }
 
@@ -1038,11 +1007,11 @@ message QualityIssue {
 
   QualitySeverity severity = 5;
 
-  // The run that opened the issue. Unset when it was opened without a run.
-  string first_seen_run = 6 [(google.api.resource_reference) = {type: "metaxisdata/QualityRun"}];
+  // The execution that opened the issue. Unset when it was opened without one.
+  string first_seen_execution = 6 [(google.api.resource_reference) = {type: "metaxisdata/QualityExecution"}];
 
-  // The newest run that observed the problem again.
-  string last_seen_run = 7 [(google.api.resource_reference) = {type: "metaxisdata/QualityRun"}];
+  // The newest execution that observed the problem again.
+  string last_seen_execution = 7 [(google.api.resource_reference) = {type: "metaxisdata/QualityExecution"}];
 
   google.protobuf.Timestamp first_seen_time = 8;
   google.protobuf.Timestamp last_seen_time = 9;
@@ -1346,91 +1315,64 @@ message RunQualityRulesRequest {
 }
 
 message RunQualityRulesResponse {
-  // One run per instance in the selection. All of them are queued and pending
-  // when the response is returned; poll GetQualityRun for their outcome.
-  repeated QualityRun runs = 1;
+  // One execution per selected rule, planned and queued for the runner. All of
+  // them are PENDING when the response is returned; poll GetQualityExecution.
+  repeated QualityExecution executions = 1;
 }
 
-message ListQualityRunsRequest {
+message ListQualityExecutionsRequest {
   // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
   string parent = 1 [(google.api.field_behavior) = REQUIRED];
 
-  // The maximum number of runs to return. If unspecified, at most 50 are
+  // The maximum number of executions to return. If unspecified, at most 50 are
   // returned. The maximum value is 1000; values above 1000 are coerced to 1000.
   int32 page_size = 2;
 
-  // A page token, received from a previous ListQualityRuns call. Provide this to
-  // retrieve the subsequent page.
-  string page_token = 3;
-
-  // The run lifecycle to filter by, e.g. only runs still PENDING.
-  QualityRunStatus status = 4;
-  QualityRunTrigger trigger = 5;
-
-  // Only the runs that executed rules of this instance.
-  // Format: instances/{instance}
-  string instance = 6 [(google.api.resource_reference) = {type: "metaxisdata/Instance"}];
-
-  // Only the runs started at or after this time.
-  google.protobuf.Timestamp start_time = 7;
-
-  // Only the runs started before this time.
-  google.protobuf.Timestamp end_time = 8;
-
-  // Format: users/{user}.
-  string initiator = 9;
-
-  // The quality rollup to filter by, e.g. only failed runs. Matches completed
-  // runs only.
-  QualityStatus outcome = 10;
-}
-
-message ListQualityRunsResponse {
-  repeated QualityRun quality_runs = 1;
-  string next_page_token = 2;
-}
-
-message GetQualityRunRequest {
-  // Format: workspaces/{workspace}/qualityRuns/{quality_run}
-  string name = 1 [
-    (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference) = {type: "metaxisdata/QualityRun"}
-  ];
-}
-
-message ListQualityRuleResultsRequest {
-  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
-  string parent = 1 [(google.api.field_behavior) = REQUIRED];
-
-  // The maximum number of results to return. If unspecified, at most 50 are
-  // returned. The maximum value is 1000; values above 1000 are coerced to 1000.
-  int32 page_size = 2;
-
-  // A page token, received from a previous ListQualityRuleResults call. Provide
+  // A page token, received from a previous ListQualityExecutions call. Provide
   // this to retrieve the subsequent page.
   string page_token = 3;
 
-  // Format: workspaces/{workspace}/qualityRuns/{quality_run}
-  string run = 4 [(google.api.resource_reference) = {type: "metaxisdata/QualityRun"}];
+  // The execution lifecycle to filter by, e.g. only PENDING executions.
+  QualityExecutionState state = 4;
 
+  // The quality outcome to filter by, e.g. only failed executions. Matches
+  // completed executions only.
+  QualityStatus outcome = 5;
+
+  QualityExecutionTrigger trigger = 6;
+
+  // Only the executions of this rule.
   // Format: workspaces/{workspace}/qualityRules/{quality_rule}
-  string rule = 5 [(google.api.resource_reference) = {type: "metaxisdata/QualityRule"}];
-
-  QualityStatus status = 6;
+  string rule = 7 [(google.api.resource_reference) = {type: "metaxisdata/QualityRule"}];
 
   // The exact target GUID.
-  string target_guid = 7;
+  string target_guid = 8;
 
-  // Only the results that started at or after this time.
-  google.protobuf.Timestamp start_time = 8;
+  // Only the executions of rules of this instance.
+  // Format: instances/{instance}
+  string instance = 9 [(google.api.resource_reference) = {type: "metaxisdata/Instance"}];
 
-  // Only the results that started before this time.
-  google.protobuf.Timestamp end_time = 9;
+  // Only the executions this principal started. Format: users/{user}.
+  string initiator = 10;
+
+  // Only the executions started at or after this time.
+  google.protobuf.Timestamp start_time = 11;
+
+  // Only the executions started before this time.
+  google.protobuf.Timestamp end_time = 12;
 }
 
-message ListQualityRuleResultsResponse {
-  repeated QualityRuleResult quality_rule_results = 1;
+message ListQualityExecutionsResponse {
+  repeated QualityExecution quality_executions = 1;
   string next_page_token = 2;
+}
+
+message GetQualityExecutionRequest {
+  // Format: workspaces/{workspace}/qualityExecutions/{quality_execution}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualityExecution"}
+  ];
 }
 
 message ListQualityIssuesRequest {
@@ -1657,11 +1599,11 @@ message SuggestColumnLabelsResponse {
   repeated QualitySuggestion quality_suggestions = 1;
 }
 
-message ExplainQualityResultRequest {
-  // Format: workspaces/{workspace}/qualityRuleResults/{quality_rule_result}
+message ExplainQualityExecutionRequest {
+  // Format: workspaces/{workspace}/qualityExecutions/{quality_execution}
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference) = {type: "metaxisdata/QualityRuleResult"}
+    (google.api.resource_reference) = {type: "metaxisdata/QualityExecution"}
   ];
 
   // The language the explanation is written in, e.g. "en" or "zh-CN".
@@ -1671,7 +1613,7 @@ message ExplainQualityResultRequest {
   bool force_regenerate = 3;
 }
 
-message ExplainQualityResultResponse {
+message ExplainQualityExecutionResponse {
   // The stream reuses ExplainSQL's event messages: content is a markdown
   // fragment, progress reports one agent step, and metadata is the final frame.
   oneof payload {
@@ -1705,11 +1647,11 @@ message QualityOverview {
   int32 open_error_count = 6;
   int32 open_critical_count = 7;
 
-  // The last 24 hours: how many rules failed at least once, how many runs
-  // started, and how their results tallied.
+  // The last 24 hours: how many rules failed at least once, how many executions
+  // were planned (any lifecycle state), and how the completed ones tallied.
   int32 failing_rule_count = 8;
-  int32 run_count = 9;
-  QualityRunCounts last_day_counts = 10;
+  int32 execution_count = 9;
+  QualityStatusCounts last_day_counts = 10;
 
   // The per-day tallies of the trend window, oldest first.
   repeated QualityTrendPoint trend = 11;

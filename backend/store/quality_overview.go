@@ -80,98 +80,103 @@ func (s *Store) QualityOpenIssueSeverityCounts(ctx context.Context) (map[storepb
 	return counts, nil
 }
 
-// CountDistinctFailedRulesSince counts the rules that reported a FAIL result at
-// or after since. ERROR is deliberately not counted: a check that could not run
-// failed no data.
+// CountDistinctFailedRulesSince counts the rules whose completed execution at or
+// after since reported FAIL. ERROR is deliberately not counted: a check that
+// could not run failed no data.
 func (s *Store) CountDistinctFailedRulesSince(ctx context.Context, since time.Time) (int, error) {
 	if since.IsZero() {
 		return 0, common.Errorf(common.Invalid, "a start time is required")
 	}
 	var count int
 	scanErr := s.GetDB().QueryRowContext(ctx, `
-		SELECT COUNT(DISTINCT rule_id) FROM quality_rule_result
-		WHERE status = $1 AND started_at >= $2
-	`, int16(storepb.QualityStatus_QUALITY_STATUS_FAIL), since).Scan(&count)
+		SELECT COUNT(DISTINCT rule_id) FROM quality_execution
+		WHERE status = $1 AND state = $2 AND started_at >= $3
+	`, int16(storepb.QualityStatus_QUALITY_STATUS_FAIL),
+		int16(storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED), since).Scan(&count)
 	if scanErr != nil {
 		return 0, errors.Wrap(scanErr, "failed to count failing rules")
 	}
 	return count, nil
 }
 
-// QualityResultCountsSince tallies the results started at or after since.
-func (s *Store) QualityResultCountsSince(ctx context.Context, since time.Time) (*storepb.QualityRunCounts, error) {
+// QualityExecutionStatusCountsSince tallies the completed executions started at
+// or after since. PENDING, RUNNING and ABANDONED rows are excluded: only a
+// completed execution is an observation, so a pending row can never inflate the
+// total or leave a half-written day in the trend.
+func (s *Store) QualityExecutionStatusCountsSince(ctx context.Context, since time.Time) (*storepb.QualityStatusCounts, error) {
 	if since.IsZero() {
 		return nil, common.Errorf(common.Invalid, "a start time is required")
 	}
-	counts := &storepb.QualityRunCounts{}
+	counts := &storepb.QualityStatusCounts{}
 	var err error
-	if counts.Total, err = s.countQualityResults(ctx, since, nil); err != nil {
+	if counts.Total, err = s.countQualityExecutions(ctx, since, nil); err != nil {
 		return nil, err
 	}
-	if counts.Pass, err = s.countQualityResults(ctx, since, ptrStatus(storepb.QualityStatus_QUALITY_STATUS_PASS)); err != nil {
+	if counts.Pass, err = s.countQualityExecutions(ctx, since, ptrStatus(storepb.QualityStatus_QUALITY_STATUS_PASS)); err != nil {
 		return nil, err
 	}
-	if counts.Warn, err = s.countQualityResults(ctx, since, ptrStatus(storepb.QualityStatus_QUALITY_STATUS_WARN)); err != nil {
+	if counts.Warn, err = s.countQualityExecutions(ctx, since, ptrStatus(storepb.QualityStatus_QUALITY_STATUS_WARN)); err != nil {
 		return nil, err
 	}
-	if counts.Fail, err = s.countQualityResults(ctx, since, ptrStatus(storepb.QualityStatus_QUALITY_STATUS_FAIL)); err != nil {
+	if counts.Fail, err = s.countQualityExecutions(ctx, since, ptrStatus(storepb.QualityStatus_QUALITY_STATUS_FAIL)); err != nil {
 		return nil, err
 	}
-	if counts.Error, err = s.countQualityResults(ctx, since, ptrStatus(storepb.QualityStatus_QUALITY_STATUS_ERROR)); err != nil {
+	if counts.Error, err = s.countQualityExecutions(ctx, since, ptrStatus(storepb.QualityStatus_QUALITY_STATUS_ERROR)); err != nil {
 		return nil, err
 	}
-	if counts.Skipped, err = s.countQualityResults(ctx, since, ptrStatus(storepb.QualityStatus_QUALITY_STATUS_SKIPPED)); err != nil {
+	if counts.Skipped, err = s.countQualityExecutions(ctx, since, ptrStatus(storepb.QualityStatus_QUALITY_STATUS_SKIPPED)); err != nil {
 		return nil, err
 	}
-	if counts.NotEvaluated, err = s.countQualityResults(ctx, since, ptrStatus(storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED)); err != nil {
+	if counts.NotEvaluated, err = s.countQualityExecutions(ctx, since, ptrStatus(storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED)); err != nil {
 		return nil, err
 	}
 	return counts, nil
 }
 
-// countQualityResults counts one status, or every result for a nil status.
-func (s *Store) countQualityResults(ctx context.Context, since time.Time, status *storepb.QualityStatus) (int32, error) {
+// countQualityExecutions counts one status among the completed executions, or
+// every completed execution for a nil status.
+func (s *Store) countQualityExecutions(ctx context.Context, since time.Time, status *storepb.QualityStatus) (int32, error) {
 	var count int32
-	query := `SELECT COUNT(*) FROM quality_rule_result WHERE started_at >= $1`
-	args := []any{since}
+	query := `SELECT COUNT(*) FROM quality_execution WHERE state = $1 AND started_at >= $2`
+	args := []any{int16(storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED), since}
 	if status != nil {
-		query += ` AND status = $2`
+		query += ` AND status = $3`
 		args = append(args, int16(*status))
 	}
 	if err := s.GetDB().QueryRowContext(ctx, query, args...).Scan(&count); err != nil {
-		return 0, errors.Wrap(err, "failed to count quality results")
+		return 0, errors.Wrap(err, "failed to count quality executions")
 	}
 	return count, nil
 }
 
-// QualityTrendDay is one day of result tallies.
+// QualityTrendDay is one day of completed-execution tallies.
 type QualityTrendDay struct {
 	// Date is the UTC day, formatted as YYYY-MM-DD.
 	Date   string
-	Counts *storepb.QualityRunCounts
+	Counts *storepb.QualityStatusCounts
 }
 
-// QualityResultTrend groups the results started at or after since into UTC days.
-// Days without results are absent; the caller fills the gaps so a chart does not
-// skip a quiet day.
-func (s *Store) QualityResultTrend(ctx context.Context, since time.Time) ([]QualityTrendDay, error) {
+// QualityExecutionTrend groups the completed executions started at or after
+// since into UTC days. Days without executions are absent; the caller fills the
+// gaps so a chart does not skip a quiet day.
+func (s *Store) QualityExecutionTrend(ctx context.Context, since time.Time) ([]QualityTrendDay, error) {
 	if since.IsZero() {
 		return nil, common.Errorf(common.Invalid, "a start time is required")
 	}
 	rows, err := s.GetDB().QueryContext(ctx, `
 		SELECT to_char(date_trunc('day', started_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day,
 			status, COUNT(*)
-		FROM quality_rule_result
-		WHERE started_at >= $1
+		FROM quality_execution
+		WHERE state = $1 AND started_at >= $2
 		GROUP BY day, status
 		ORDER BY day
-	`, since)
+	`, int16(storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED), since)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to read the quality result trend")
+		return nil, errors.Wrap(err, "failed to read the quality execution trend")
 	}
 	defer rows.Close()
 
-	byDay := make(map[string]*storepb.QualityRunCounts)
+	byDay := make(map[string]*storepb.QualityStatusCounts)
 	var days []string
 	for rows.Next() {
 		var (
@@ -180,11 +185,11 @@ func (s *Store) QualityResultTrend(ctx context.Context, since time.Time) ([]Qual
 			count  int32
 		)
 		if err := rows.Scan(&day, &status, &count); err != nil {
-			return nil, errors.Wrap(err, "failed to scan the quality result trend")
+			return nil, errors.Wrap(err, "failed to scan the quality execution trend")
 		}
 		counts, ok := byDay[day]
 		if !ok {
-			counts = &storepb.QualityRunCounts{}
+			counts = &storepb.QualityStatusCounts{}
 			byDay[day] = counts
 			days = append(days, day)
 		}
@@ -192,7 +197,7 @@ func (s *Store) QualityResultTrend(ctx context.Context, since time.Time) ([]Qual
 		addQualityStatusCount(counts, storepb.QualityStatus(status), count)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, errors.Wrap(err, "failed to iterate the quality result trend")
+		return nil, errors.Wrap(err, "failed to iterate the quality execution trend")
 	}
 
 	trend := make([]QualityTrendDay, 0, len(days))
@@ -203,7 +208,7 @@ func (s *Store) QualityResultTrend(ctx context.Context, since time.Time) ([]Qual
 }
 
 // addQualityStatusCount adds count to the tally of one status.
-func addQualityStatusCount(counts *storepb.QualityRunCounts, status storepb.QualityStatus, count int32) {
+func addQualityStatusCount(counts *storepb.QualityStatusCounts, status storepb.QualityStatus, count int32) {
 	switch status {
 	case storepb.QualityStatus_QUALITY_STATUS_PASS:
 		counts.Pass += count

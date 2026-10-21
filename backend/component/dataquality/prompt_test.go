@@ -387,7 +387,7 @@ func TestExplainCacheKey(t *testing.T) {
 	t.Parallel()
 
 	key := ExplainCacheKey(7, 3, storepb.QualityStatus_QUALITY_STATUS_FAIL, "en-US", "profiles/openai", "gpt-4")
-	require.Contains(t, key, "result:7")
+	require.Contains(t, key, "execution:7")
 	require.Contains(t, key, "rev:3")
 	require.Contains(t, key, "status:3")
 	require.Contains(t, key, "prompt:"+ExplainPromptVersion)

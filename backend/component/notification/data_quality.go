@@ -27,9 +27,10 @@ func DataQualityMessage(severity storepb.NotificationSeverity, detail *storepb.D
 }
 
 // DataQualityDedupeKey builds the suppression key of one data-quality event.
-// target is the resource an event is about: a rule for an execution failure, an
-// issue for a problem transition, a run for a storm summary. An unspecified kind
-// has no defined event and therefore no key: it is never suppressed.
+// target names the event's scope: an issue for a problem transition, a rule for
+// an execution failure, and the internal dispatch batch (an opaque id, not a
+// resource name) for a storm summary. An unspecified kind has no defined event
+// and therefore no key: it is never suppressed.
 func DataQualityDedupeKey(kind storepb.DataQualityNotificationKind, target string, now time.Time) string {
 	event := ""
 	switch kind {
@@ -69,12 +70,13 @@ func boundDataQualityDetail(detail *storepb.DataQualityDetail) *storepb.DataQual
 		ObservedValue:   detail.GetObservedValue(),
 		ObservedUnit:    truncateBytes(detail.GetObservedUnit()),
 		Issue:           truncateBytes(detail.GetIssue()),
-		Run:             truncateBytes(detail.GetRun()),
+		Execution:       truncateBytes(detail.GetExecution()),
 		FailedRows:      detail.GetFailedRows(),
 		TotalRows:       detail.GetTotalRows(),
 		ErrorCode:       truncateBytes(detail.GetErrorCode()),
 		FailedRuleCount: detail.GetFailedRuleCount(),
 		TotalRuleCount:  detail.GetTotalRuleCount(),
+		Instance:        truncateBytes(detail.GetInstance()),
 	}
 	return bounded
 }

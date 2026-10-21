@@ -134,32 +134,30 @@
                       class="text-2xl font-semibold"
                       :class="latestTone.text"
                     >
-                      {{ latest ? t(qualityStatusKey(latest.status)) : t("dataQuality.noResultYet") }}
+                      {{ latestSummary.status ? t(qualityStatusKey(latestSummary.status)) : t("dataQuality.noResultYet") }}
                     </span>
                     <span
-                      v-if="latest"
+                      v-if="latestSummary.status"
                       class="text-sm text-muted-foreground"
-                      :title="formatDateTime(latest.finishTime, locale)"
+                      :title="formatDateTime(latestSummary.finishTime, locale)"
                     >
-                      {{ formatRelativeTime(latest.finishTime, locale) }}
+                      {{ formatRelativeTime(latestSummary.finishTime, locale) }}
                     </span>
                   </div>
                   <p
-                    v-if="latest"
+                    v-if="latestSummary.status"
                     class="text-sm text-muted-foreground"
                   >
                     {{ t("dataQuality.observed") }}
                     <span class="font-medium text-foreground tabular-nums">
-                      {{ observedLabel(latest) }}
+                      {{ latestSummary.observed }}
                     </span>
                     <span aria-hidden="true"> · </span>
                     {{ t("dataQuality.threshold") }}
-                    <span class="tabular-nums">{{ thresholdLabel(latest) }}</span>
+                    <span class="tabular-nums">{{ latestSummary.threshold }}</span>
                     <span aria-hidden="true"> · </span>
                     {{ t("dataQuality.failedRows") }}
-                    <span class="tabular-nums">
-                      {{ formatRowCount(latest.failedRows, locale) }} / {{ formatRowCount(latest.totalRows, locale) }}
-                    </span>
+                    <span class="tabular-nums">{{ latestSummary.rows }}</span>
                   </p>
                   <p
                     v-else
@@ -168,11 +166,11 @@
                     {{ t("dataQuality.noResults") }}
                   </p>
                   <RouterLink
-                    v-if="latest"
-                    :to="runRoute(latest.run)"
+                    v-if="canViewExecution && latestSummary.execution"
+                    :to="executionRoute(latestSummary.execution)"
                     class="inline-flex text-xs text-primary hover:underline"
                   >
-                    {{ t("dataQuality.viewRun") }}
+                    {{ t("dataQuality.viewExecution") }}
                   </RouterLink>
                 </div>
               </div>
@@ -206,18 +204,18 @@
             </div>
 
             <div
-              v-if="results.length > 0"
+              v-if="executions.length > 0"
               class="space-y-2 border-t pt-4"
             >
               <div class="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                <span>{{ t("dataQuality.recentResultWindow", { count: results.length }) }}</span>
+                <span>{{ t("dataQuality.recentResultWindow", { count: executions.length }) }}</span>
                 <span>{{ t("dataQuality.resultHistoryLabel") }}</span>
               </div>
               <QualityResultStrip
-                :results="results"
+                :executions="executions"
                 :limit="RECENT_RESULT_LIMIT"
                 :label="t('dataQuality.resultHistoryLabel')"
-                @select="openResult"
+                @select="openExecution"
               />
             </div>
           </CardContent>
@@ -231,22 +229,22 @@
             </CardHeader>
             <CardContent class="pt-4">
               <PageState
-                :loading="resultsLoading"
-                :error="resultsError"
+                :loading="executionsLoading"
+                :error="executionsError"
               >
                 <template #error>
                   <Button
                     variant="outline"
                     size="sm"
-                    @click="loadResults"
+                    @click="loadExecutions"
                   >
                     {{ t("common.refresh") }}
                   </Button>
                 </template>
                 <EmptyState
-                  v-if="results.length === 0"
+                  v-if="executions.length === 0"
                   :icon="Activity"
-                  :title="t('dataQuality.noResults')"
+                  :title="t('dataQuality.noExecutions')"
                 >
                   <Button
                     v-if="canRun && rule.state !== QualityRuleState.ARCHIVED"
@@ -262,7 +260,7 @@
                   <Table class="[&_th]:whitespace-nowrap">
                     <TableHeader>
                       <TableRow>
-                        <TableHead>{{ t("dataQuality.finishedAt") }}</TableHead>
+                        <TableHead>{{ t("dataQuality.startedAt") }}</TableHead>
                         <TableHead>{{ t("dataQuality.resultStatus") }}</TableHead>
                         <TableHead class="hidden md:table-cell">
                           {{ t("dataQuality.observed") }}
@@ -277,65 +275,68 @@
                           {{ t("dataQuality.duration") }}
                         </TableHead>
                         <TableHead class="w-12 text-right">
-                          <span class="sr-only">{{ t("dataQuality.viewRun") }}</span>
+                          <span class="sr-only">{{ t("dataQuality.viewExecution") }}</span>
                         </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       <TableRow
-                        v-for="result in results"
-                        :key="result.name"
+                        v-for="execution in executions"
+                        :key="execution.name"
                         class="cursor-pointer"
-                        @click="openResult(result)"
+                        @click="openExecution(execution)"
                       >
                         <TableCell
                           class="whitespace-nowrap text-muted-foreground"
-                          :title="formatDateTime(result.finishTime, locale)"
+                          :title="formatDateTime(execution.startTime, locale)"
                         >
-                          {{ formatRelativeTime(result.finishTime, locale) }}
+                          {{ formatRelativeTime(execution.startTime, locale) }}
                         </TableCell>
                         <TableCell>
                           <div class="flex flex-wrap items-center gap-1">
-                            <Badge :variant="qualityStatusVariant(result.status)">
-                              {{ t(qualityStatusKey(result.status)) }}
+                            <Badge
+                              :variant="qualityExecutionStateVariant(execution.state)"
+                            >
+                              {{ t(qualityExecutionStateKey(execution.state)) }}
                             </Badge>
                             <Badge
-                              v-if="result.errorCode"
-                              variant="danger"
-                              :title="result.errorMessage"
+                              v-if="execution.outcome !== QualityStatus.UNSPECIFIED"
+                              :variant="qualityStatusVariant(execution.outcome)"
                             >
-                              {{ errorLabel(result) }}
+                              {{ t(qualityStatusKey(execution.outcome)) }}
+                            </Badge>
+                            <Badge
+                              v-if="execution.errorCode"
+                              variant="danger"
+                              :title="execution.errorMessage"
+                            >
+                              {{ errorLabel(execution) }}
                             </Badge>
                           </div>
                           <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground md:hidden">
-                            <span class="tabular-nums">{{ observedLabel(result) }}</span>
+                            <span class="tabular-nums">{{ observedLabel(execution) }}</span>
                             <span aria-hidden="true">·</span>
-                            <span class="tabular-nums">{{ thresholdLabel(result) }}</span>
+                            <span class="tabular-nums">{{ thresholdLabel(execution) }}</span>
                             <span aria-hidden="true">·</span>
-                            <span class="tabular-nums">
-                              {{ formatRowCount(result.failedRows, locale) }} / {{ formatRowCount(result.totalRows, locale) }}
-                            </span>
+                            <span class="tabular-nums">{{ rowsLabel(execution) }}</span>
                             <span aria-hidden="true">·</span>
-                            <span>{{ durationLabel(result) }}</span>
+                            <span>{{ durationLabel(execution) }}</span>
                           </div>
                         </TableCell>
                         <TableCell class="hidden whitespace-nowrap tabular-nums md:table-cell">
-                          {{ observedLabel(result) }}
+                          {{ observedLabel(execution) }}
                         </TableCell>
                         <TableCell
                           class="hidden whitespace-nowrap tabular-nums md:table-cell"
-                          :title="warnTitle(result)"
+                          :title="warnTitle(execution)"
                         >
-                          {{ thresholdLabel(result) }}
+                          {{ thresholdLabel(execution) }}
                         </TableCell>
                         <TableCell class="hidden tabular-nums md:table-cell">
-                          {{ formatRowCount(result.failedRows, locale) }}
-                          <span class="text-muted-foreground">
-                            / {{ formatRowCount(result.totalRows, locale) }}
-                          </span>
+                          {{ rowsLabel(execution) }}
                         </TableCell>
                         <TableCell class="hidden whitespace-nowrap tabular-nums md:table-cell">
-                          {{ durationLabel(result) }}
+                          {{ durationLabel(execution) }}
                         </TableCell>
                         <TableCell
                           class="text-right"
@@ -345,9 +346,9 @@
                             variant="ghost"
                             size="icon"
                             class="h-8 w-8"
-                            :title="t('dataQuality.viewRun')"
-                            :aria-label="t('dataQuality.viewRun')"
-                            @click="openResult(result)"
+                            :title="t('dataQuality.viewExecution')"
+                            :aria-label="t('dataQuality.viewExecution')"
+                            @click="openExecution(execution)"
                           >
                             <Eye class="h-4 w-4 text-muted-foreground" />
                           </Button>
@@ -523,7 +524,7 @@ import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import {
   getQualityRule,
-  listQualityRuleResults,
+  listQualityExecutions,
   qualityRuleID,
   runQualityRules,
 } from "@/api/data-quality";
@@ -554,21 +555,24 @@ import { useUserDirectory } from "@/composables/useUserDirectory";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
 import {
+  type QualityExecution,
   type QualityRule,
-  type QualityRuleResult,
   QualityRuleState,
   QualityStatus,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import {
   describeThreshold,
-  formatDuration,
+  executionDurationSeconds,
   formatObservedValue,
   formatRowCount,
   formatScheduleInterval,
+  formatSeconds,
   formatTargetPath,
   formatWarnThreshold,
   qualityDimensionKey,
   qualityErrorCodeKey,
+  qualityExecutionStateKey,
+  qualityExecutionStateVariant,
   qualityRuleStateKey,
   qualityRuleStateVariant,
   qualityRuleTypeKey,
@@ -586,7 +590,7 @@ import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
  * member (rules.get is in the member baseline); running and editing are gated.
  */
 
-/** How many recent results a detail read keeps: enough to see a trend. */
+/** How many recent executions a detail read keeps: enough to see a trend. */
 const RECENT_RESULT_LIMIT = 20;
 
 const { t, locale } = useI18n();
@@ -601,17 +605,20 @@ const canRun = computed(() =>
 const canUpdate = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.rules.update")
 );
+const canViewExecution = computed(() =>
+  authStore.hasPermission("metaxisdata.dataQuality.executions.get")
+);
 
 // Owner names come from the workspace directory; the definition falls back to
 // the raw resource name when it is unavailable.
 const { emailOf, load: loadUserDirectory } = useUserDirectory();
 
 const rule = ref<QualityRule>();
-const results = ref<QualityRuleResult[]>([]);
+const executions = ref<QualityExecution[]>([]);
 const isLoading = ref(true);
-const resultsLoading = ref(true);
+const executionsLoading = ref(true);
 const error = ref("");
-const resultsError = ref("");
+const executionsError = ref("");
 const running = ref(false);
 
 // One path segment per resource-name segment; joining restores the name a Get
@@ -629,7 +636,52 @@ const pageTitle = computed(() =>
       : t("dataQuality.ruleDetailTitle")
 );
 
-const latest = computed(() => results.value[0]);
+/** The newest terminal execution, the one whose verdict the hero reports. */
+const latest = computed(() =>
+  executions.value.find(
+    (execution) => execution.outcome !== QualityStatus.UNSPECIFIED
+  )
+);
+
+/** The hero's facts, with the rule's stored last result as the fallback. */
+const latestSummary = computed(() => {
+  const execution = latest.value;
+  if (execution) {
+    const threshold = describeThreshold(
+      execution.thresholds,
+      execution.observedKind
+    );
+    return {
+      status: execution.outcome,
+      finishTime: execution.finishTime,
+      observed: formatObservedValue(
+        execution.observedValue,
+        execution.observedKind,
+        locale.value
+      ),
+      threshold: threshold ? t(threshold.key, threshold.params) : "-",
+      rows: `${formatRowCount(execution.failedRows, locale.value)} / ${formatRowCount(execution.totalRows, locale.value)}`,
+      execution: execution.name,
+    };
+  }
+  const summary = rule.value?.lastResult;
+  return {
+    status: summary?.status,
+    finishTime: summary?.finishTime,
+    observed: summary
+      ? formatObservedValue(
+          summary.observedValue,
+          summary.observedKind,
+          locale.value
+        )
+      : "-",
+    threshold: "-",
+    rows: summary
+      ? `${formatRowCount(summary.failedRows, locale.value)} / ${formatRowCount(summary.totalRows, locale.value)}`
+      : "-",
+    execution: summary?.execution,
+  };
+});
 
 const targetTitle = computed(() => {
   const target = rule.value?.target;
@@ -667,23 +719,26 @@ const STATUS_ORDER = [
   QualityStatus.NOT_EVALUATED,
 ];
 
-/** The state tallies of the recent window, only the ones that occurred. */
+/** The verdict tallies of the recent window, only the ones that occurred. */
 const statusCounts = computed(() =>
   STATUS_ORDER.map((status) => ({
     status,
-    value: results.value.filter((result) => result.status === status).length,
+    value: terminalExecutions.value.filter(
+      (execution) => execution.outcome === status
+    ).length,
   })).filter((count) => count.value > 0)
 );
 
-/** Share of the recent window that passed; empty when there is no history. */
+/** Share of the recent window that passed; empty when there is no verdict. */
 const passRate = computed(() => {
-  if (results.value.length === 0) {
+  const total = terminalExecutions.value.length;
+  if (total === 0) {
     return undefined;
   }
-  const passed = results.value.filter(
-    (result) => result.status === QualityStatus.PASS
+  const passed = terminalExecutions.value.filter(
+    (execution) => execution.outcome === QualityStatus.PASS
   ).length;
-  return Math.round((passed / results.value.length) * 100);
+  return Math.round((passed / total) * 100);
 });
 
 interface StatusTone {
@@ -741,45 +796,77 @@ function statusTone(status: QualityStatus | undefined): StatusTone {
   }
 }
 
-const latestTone = computed(() => statusTone(latest.value?.status));
+const latestTone = computed(() => statusTone(latestSummary.value.status));
 
-function observedLabel(result: QualityRuleResult): string {
-  return formatObservedValue(
-    result.observedValue,
-    result.observedKind,
-    locale.value
-  );
+/** The executions that reached a terminal verdict, newest first. */
+const terminalExecutions = computed(() =>
+  executions.value.filter(
+    (execution) => execution.outcome !== QualityStatus.UNSPECIFIED
+  )
+);
+
+function hasVerdict(execution: QualityExecution): boolean {
+  return execution.outcome !== QualityStatus.UNSPECIFIED;
 }
 
-function thresholdLabel(result: QualityRuleResult): string {
-  const threshold = describeThreshold(result.thresholds, result.observedKind);
+function observedLabel(execution: QualityExecution): string {
+  return hasVerdict(execution)
+    ? formatObservedValue(
+        execution.observedValue,
+        execution.observedKind,
+        locale.value
+      )
+    : "-";
+}
+
+function thresholdLabel(execution: QualityExecution): string {
+  if (!hasVerdict(execution)) {
+    return "-";
+  }
+  const threshold = describeThreshold(
+    execution.thresholds,
+    execution.observedKind
+  );
   return threshold ? t(threshold.key, threshold.params) : "-";
 }
 
-function warnTitle(result: QualityRuleResult): string | undefined {
-  const warn = formatWarnThreshold(result.thresholds, result.observedKind);
+function warnTitle(execution: QualityExecution): string | undefined {
+  const warn = formatWarnThreshold(
+    execution.thresholds,
+    execution.observedKind
+  );
   return warn ? t("dataQuality.warnAt", { value: warn }) : undefined;
 }
 
-function durationLabel(result: QualityRuleResult): string {
-  return formatDuration(result.duration);
+function rowsLabel(execution: QualityExecution): string {
+  return hasVerdict(execution)
+    ? `${formatRowCount(execution.failedRows, locale.value)} / ${formatRowCount(execution.totalRows, locale.value)}`
+    : "-";
 }
 
-function errorLabel(result: QualityRuleResult): string {
-  const key = qualityErrorCodeKey(result.errorCode);
-  return key ? t(key) : result.errorCode;
+function durationLabel(execution: QualityExecution): string {
+  const seconds = executionDurationSeconds(execution);
+  return seconds === undefined ? "-" : formatSeconds(seconds);
 }
 
-function runRoute(name: string) {
-  return { name: "DataQualityRunDetail", params: { runId: name.split("/") } };
+function errorLabel(execution: QualityExecution): string {
+  const key = qualityErrorCodeKey(execution.errorCode);
+  return key ? t(key) : execution.errorCode;
+}
+
+function executionRoute(name: string) {
+  return {
+    name: "DataQualityExecutionDetail",
+    params: { executionId: name.split("/") },
+  };
 }
 
 /** A click that ends a text selection is a copy, not a navigation. */
-function openResult(result: QualityRuleResult) {
+function openExecution(execution: QualityExecution) {
   if (window.getSelection()?.toString()) {
     return;
   }
-  void router.push(runRoute(result.run));
+  void router.push(executionRoute(execution.name));
 }
 
 function editRule() {
@@ -789,39 +876,39 @@ function editRule() {
   });
 }
 
-async function loadResults() {
+async function loadExecutions() {
   if (!rule.value) {
-    results.value = [];
-    resultsLoading.value = false;
+    executions.value = [];
+    executionsLoading.value = false;
     return;
   }
-  resultsLoading.value = true;
+  executionsLoading.value = true;
   try {
-    const page = await listQualityRuleResults({
+    const page = await listQualityExecutions({
       rule: rule.value.name,
       pageSize: RECENT_RESULT_LIMIT,
     });
-    results.value = page.items;
-    resultsError.value = "";
+    executions.value = page.items;
+    executionsError.value = "";
   } catch (e: unknown) {
-    results.value = [];
-    resultsError.value = formatError(e, "dataQuality.fetchRuleResultsError");
+    executions.value = [];
+    executionsError.value = formatError(e, "dataQuality.fetchExecutionsError");
   } finally {
-    resultsLoading.value = false;
+    executionsLoading.value = false;
   }
 }
 
 async function load() {
   isLoading.value = true;
   error.value = "";
-  resultsError.value = "";
+  executionsError.value = "";
   try {
     rule.value = await getQualityRule(ruleName.value);
   } catch (e: unknown) {
     rule.value = undefined;
     error.value = formatError(e, "dataQuality.fetchRuleError");
     isLoading.value = false;
-    resultsLoading.value = false;
+    executionsLoading.value = false;
     return;
   }
   isLoading.value = false;
@@ -829,7 +916,7 @@ async function load() {
   if (rule.value?.owner) {
     void loadUserDirectory();
   }
-  await loadResults();
+  await loadExecutions();
 }
 
 async function runNow() {
@@ -838,16 +925,28 @@ async function runNow() {
   }
   running.value = true;
   try {
-    const runs = await runQualityRules({ rules: [rule.value.name] });
-    notify.success(t("dataQuality.runStarted"));
-    const [run] = runs;
-    if (run) {
-      void router.push(runRoute(run.name));
-    } else {
-      await loadResults();
+    const executions = await runQualityRules({ rules: [rule.value.name] });
+    notify.success(t("dataQuality.executionStarted"));
+    // One rule yields one execution; the page goes straight to it so the
+    // PENDING → RUNNING → COMPLETED poll is visible. A wider selection (the
+    // service can plan several) lands on the filtered list instead.
+    if (executions.length === 1) {
+      const [created] = executions;
+      if (created) {
+        void router.push(executionRoute(created.name));
+        return;
+      }
     }
+    if (executions.length > 1) {
+      void router.push({
+        name: "DataQualityExecutions",
+        query: { rule: rule.value.name },
+      });
+      return;
+    }
+    await loadExecutions();
   } catch (e: unknown) {
-    handleError(e, "dataQuality.runError");
+    handleError(e, "dataQuality.executionError");
   } finally {
     running.value = false;
   }

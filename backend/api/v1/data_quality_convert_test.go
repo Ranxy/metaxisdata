@@ -295,99 +295,13 @@ func TestConvertQualityRuleWithoutOptionalFields(t *testing.T) {
 	require.Equal(t, time.Duration(0), converted.GetScheduleInterval().AsDuration())
 }
 
-func TestConvertQualityRun(t *testing.T) {
+func TestConvertQualityExecution(t *testing.T) {
 	t.Parallel()
 
 	startedAt := time.Date(2026, time.October, 7, 9, 30, 0, 0, time.UTC)
 	finishedAt := startedAt.Add(3 * time.Minute)
-	run := &store.QualityRunMessage{
-		ID:                 11,
-		ResourceID:         "run123",
-		InstanceResourceID: "instance_1",
-		Trigger:            storepb.QualityRunTrigger_QUALITY_RUN_TRIGGER_SCHEDULED,
-		Status:             storepb.QualityRunStatus_QUALITY_RUN_STATUS_COMPLETED,
-		Outcome:            storepb.QualityStatus_QUALITY_STATUS_FAIL,
-		Counts: &storepb.QualityRunCounts{
-			Total: 4, Pass: 2, Fail: 1, Error: 1,
-		},
-		InitiatorID: qualityTestPtr(int32(9)),
-		StartedAt:   startedAt,
-		FinishedAt:  &finishedAt,
-	}
-
-	converted := convertQualityRun("ws1", run)
-	require.NotNil(t, converted)
-	require.Equal(t, "workspaces/ws1/qualityRuns/run123", converted.GetName())
-	require.Equal(t, v1pb.QualityRunTrigger_QUALITY_RUN_TRIGGER_SCHEDULED, converted.GetTrigger())
-	require.Equal(t, v1pb.QualityRunStatus_QUALITY_RUN_STATUS_COMPLETED, converted.GetStatus())
-	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_FAIL, converted.GetOutcome())
-	require.Equal(t, int32(4), converted.GetCounts().GetTotal())
-	require.Equal(t, "users/9", converted.GetInitiator())
-	require.Equal(t, "instances/instance_1", converted.GetInstance())
-	require.Equal(t, startedAt, converted.GetStartTime().AsTime())
-	require.Equal(t, finishedAt, converted.GetFinishTime().AsTime())
-
-	pending := convertQualityRun("ws1", &store.QualityRunMessage{
-		ResourceID: "run456",
-		Status:     storepb.QualityRunStatus_QUALITY_RUN_STATUS_PENDING,
-		StartedAt:  startedAt,
-	})
-	require.Equal(t, v1pb.QualityRunStatus_QUALITY_RUN_STATUS_PENDING, pending.GetStatus())
-	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, pending.GetOutcome())
-	require.Empty(t, pending.GetInitiator())
-	require.Nil(t, pending.GetFinishTime())
-	require.Nil(t, pending.GetCounts())
-
-	require.Nil(t, convertQualityRun("ws1", nil))
-}
-
-func TestConvertQualityRunTargets(t *testing.T) {
-	t.Parallel()
-
-	targets := []*store.QualityRunTargetMessage{
-		{
-			RunID:    11,
-			MetaGUID: "instance_1;shop;public;orders",
-			MetaType: storepb.MetaType_TABLE,
-			Path: &storepb.QualityTargetPath{
-				Instance: "prod",
-				Database: "shop",
-				Schema:   "public",
-				Object:   "orders",
-			},
-		},
-		nil,
-		{
-			RunID:    11,
-			MetaGUID: "instance_1;shop;public;orders;email",
-			MetaType: storepb.MetaType_COLUMN,
-			Path: &storepb.QualityTargetPath{
-				Instance: "prod",
-				Database: "shop",
-				Schema:   "public",
-				Object:   "orders",
-				Column:   "email",
-			},
-		},
-	}
-
-	converted := convertQualityRunTargets(targets)
-	require.Len(t, converted, 2)
-	require.Equal(t, "instance_1;shop;public;orders", converted[0].GetMetaGuid())
-	require.Equal(t, v1pb.MetaType_TABLE, converted[0].GetMetaType())
-	require.Equal(t, "orders", converted[0].GetPath().GetObject())
-	require.Equal(t, "email", converted[1].GetPath().GetColumn())
-
-	require.Nil(t, convertQualityRunTargets(nil))
-}
-
-func TestConvertQualityRuleResult(t *testing.T) {
-	t.Parallel()
-
-	startedAt := time.Date(2026, time.October, 7, 9, 30, 0, 0, time.UTC)
-	finishedAt := startedAt.Add(4 * time.Second)
 	observed := 3.5
-	result := &store.QualityRuleResultMessage{
+	execution := &store.QualityExecutionMessage{
 		ID:                42,
 		RunID:             11,
 		RuleID:            7,
@@ -395,9 +309,18 @@ func TestConvertQualityRuleResult(t *testing.T) {
 		RuleEngineVersion: "dq.v1",
 		TargetGUID:        "instance_1;shop;public;orders",
 		TargetType:        storepb.MetaType_TABLE,
-		Status:            storepb.QualityStatus_QUALITY_STATUS_FAIL,
-		ObservedValue:     &observed,
-		ObservedKind:      storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT,
+		TargetPath: &storepb.QualityTargetPath{
+			Instance: "prod",
+			Database: "shop",
+			Schema:   "public",
+			Object:   "orders",
+		},
+		InstanceResourceID: "instance_1",
+		State:              storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED,
+		Trigger:            storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED,
+		Status:             storepb.QualityStatus_QUALITY_STATUS_FAIL,
+		ObservedValue:      &observed,
+		ObservedKind:       storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT,
 		Thresholds: &storepb.QualityThresholds{
 			FailValue:  qualityTestPtr(0.0),
 			Comparison: storepb.QualityComparison_QUALITY_COMPARISON_GREATER_THAN,
@@ -415,16 +338,20 @@ func TestConvertQualityRuleResult(t *testing.T) {
 		FinishedAt:  finishedAt,
 	}
 
-	converted := convertQualityRuleResult("ws1", result,
-		"workspaces/ws1/qualityRuns/run123", "workspaces/ws1/qualityRules/rule123")
+	converted := convertQualityExecution("ws1", execution, "workspaces/ws1/qualityRules/rule123")
 	require.NotNil(t, converted)
-	require.Equal(t, "workspaces/ws1/qualityRuleResults/42", converted.GetName())
-	require.Equal(t, "workspaces/ws1/qualityRuns/run123", converted.GetRun())
+	require.Equal(t, "workspaces/ws1/qualityExecutions/42", converted.GetName())
 	require.Equal(t, "workspaces/ws1/qualityRules/rule123", converted.GetRule())
 	require.Equal(t, int32(2), converted.GetRuleRevision())
 	require.Equal(t, "dq.v1", converted.GetRuleEngineVersion())
 	require.Equal(t, "instance_1;shop;public;orders", converted.GetTarget().GetMetaGuid())
-	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_FAIL, converted.GetStatus())
+	require.Equal(t, v1pb.MetaType_TABLE, converted.GetTarget().GetMetaType())
+	require.Equal(t, "orders", converted.GetTarget().GetPath().GetObject())
+	require.Equal(t, v1pb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED, converted.GetState())
+	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_FAIL, converted.GetOutcome())
+	require.Equal(t, v1pb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED, converted.GetTrigger())
+	require.Empty(t, converted.GetInitiator())
+	require.Equal(t, "instances/instance_1", converted.GetInstance())
 	require.Equal(t, 3.5, converted.GetObservedValue())
 	require.Equal(t, v1pb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT, converted.GetObservedKind())
 	require.NotNil(t, converted.GetThresholds().FailValue, "an explicit zero threshold must stay set")
@@ -444,24 +371,30 @@ func TestConvertQualityRuleResult(t *testing.T) {
 	require.Equal(t, startedAt, converted.GetStartTime().AsTime())
 	require.Equal(t, finishedAt, converted.GetFinishTime().AsTime())
 
+	pending := convertQualityExecution("ws1", &store.QualityExecutionMessage{
+		ID:          43,
+		State:       storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_PENDING,
+		InitiatorID: qualityTestPtr(int32(9)),
+		StartedAt:   startedAt,
+	}, "")
+	require.Equal(t, v1pb.QualityExecutionState_QUALITY_EXECUTION_STATE_PENDING, pending.GetState())
+	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, pending.GetOutcome())
+	require.Equal(t, "users/9", pending.GetInitiator())
+	require.Nil(t, pending.GetFinishTime())
+	require.Nil(t, pending.GetThresholds())
 	// An absent observation must not invent a value; the status carries the
 	// difference between "zero" and "not measured".
-	absent := convertQualityRuleResult("ws1", &store.QualityRuleResultMessage{
-		ID: 43, Status: storepb.QualityStatus_QUALITY_STATUS_ERROR, StartedAt: startedAt, FinishedAt: finishedAt,
-	}, "", "")
-	require.Equal(t, 0.0, absent.GetObservedValue())
-	require.Nil(t, absent.GetThresholds())
-	require.Empty(t, absent.GetSamples())
-	require.Nil(t, convertQualityRuleResult("ws1", nil, "", ""))
+	require.Equal(t, 0.0, pending.GetObservedValue())
+	require.Empty(t, pending.GetSamples())
+	require.Nil(t, convertQualityExecution("ws1", nil, ""))
 }
 
-func TestConvertQualityResultSummary(t *testing.T) {
+func TestConvertQualityExecutionSummary(t *testing.T) {
 	t.Parallel()
 
 	finishedAt := time.Date(2026, time.October, 7, 9, 30, 0, 0, time.UTC)
-	result := &store.QualityRuleResultMessage{
+	execution := &store.QualityExecutionMessage{
 		ID:            42,
-		RunID:         11,
 		Status:        storepb.QualityStatus_QUALITY_STATUS_WARN,
 		ObservedValue: qualityTestPtr(1.25),
 		ObservedKind:  storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_RATIO,
@@ -469,16 +402,16 @@ func TestConvertQualityResultSummary(t *testing.T) {
 		TotalRows:     100,
 		FinishedAt:    finishedAt,
 	}
-	converted := convertQualityResultSummary(result, "workspaces/ws1/qualityRuns/run123")
+	converted := convertQualityExecutionSummary("ws1", execution)
 	require.NotNil(t, converted)
 	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_WARN, converted.GetStatus())
 	require.Equal(t, 1.25, converted.GetObservedValue())
 	require.Equal(t, v1pb.QualityObservedKind_QUALITY_OBSERVED_KIND_RATIO, converted.GetObservedKind())
 	require.Equal(t, int64(5), converted.GetFailedRows())
 	require.Equal(t, int64(100), converted.GetTotalRows())
-	require.Equal(t, "workspaces/ws1/qualityRuns/run123", converted.GetRun())
+	require.Equal(t, "workspaces/ws1/qualityExecutions/42", converted.GetExecution())
 	require.Equal(t, finishedAt, converted.GetFinishTime().AsTime())
-	require.Nil(t, convertQualityResultSummary(nil, ""))
+	require.Nil(t, convertQualityExecutionSummary("ws1", nil))
 }
 
 func TestQualityResourceNameParsing(t *testing.T) {
@@ -489,15 +422,10 @@ func TestQualityResourceNameParsing(t *testing.T) {
 	require.Equal(t, "ws1", workspace)
 	require.Equal(t, "rule123", ruleID)
 
-	workspace, runID, err := parseQualityRunName("workspaces/ws1/qualityRuns/run123")
+	workspace, executionID, err := parseQualityExecutionID("workspaces/ws1/qualityExecutions/42")
 	require.NoError(t, err)
 	require.Equal(t, "ws1", workspace)
-	require.Equal(t, "run123", runID)
-
-	workspace, resultID, err := parseQualityRuleResultName("workspaces/ws1/qualityRuleResults/42")
-	require.NoError(t, err)
-	require.Equal(t, "ws1", workspace)
-	require.Equal(t, "42", resultID)
+	require.Equal(t, int64(42), executionID)
 
 	invalid := []string{
 		"",
@@ -513,22 +441,27 @@ func TestQualityResourceNameParsing(t *testing.T) {
 		_, _, err := parseQualityRuleName(name)
 		require.Error(t, err, "name %q", name)
 	}
-	require.Error(t, func() error {
-		_, _, err := parseQualityRunName("workspaces/ws1/qualityRules/rule123")
-		return err
-	}())
-	require.Error(t, func() error {
-		_, _, err := parseQualityRuleResultName("workspaces/ws1/qualityRuns/run123")
-		return err
-	}())
+	for _, name := range []string{
+		"",
+		"workspaces/ws1/qualityExecutions",
+		"workspaces/ws1/qualityExecutions/",
+		"workspaces/ws1/qualityExecutions/0",
+		"workspaces/ws1/qualityExecutions/-1",
+		"workspaces/ws1/qualityExecutions/abc",
+		"workspaces/ws1/qualityExecutions/42/extra",
+		"workspaces/ws1/qualityRuns/run123",
+	} {
+		_, _, err := parseQualityExecutionID(name)
+		require.Error(t, err, "name %q", name)
+	}
 }
 
 func TestQualityResourceNameFormatting(t *testing.T) {
 	t.Parallel()
 
 	require.Equal(t, "workspaces/ws1/qualityRules/rule123", formatQualityRuleName("ws1", "rule123"))
-	require.Equal(t, "workspaces/ws1/qualityRuns/run123", formatQualityRunName("ws1", "run123"))
-	require.Equal(t, "workspaces/ws1/qualityRuleResults/42", formatQualityRuleResultName("ws1", "42"))
+	require.Equal(t, "workspaces/ws1/qualityExecutions/42", formatQualityExecutionName("ws1", 42))
+	require.Equal(t, "workspaces/ws1/qualityIssues/issue123", formatQualityIssueName("ws1", "issue123"))
 }
 
 func TestIsCurrentWorkspace(t *testing.T) {
@@ -585,7 +518,7 @@ func TestConvertQualityThresholdsNil(t *testing.T) {
 	t.Parallel()
 
 	require.Nil(t, convertQualityThresholdsToV1(nil))
-	require.Nil(t, convertQualityRunCountsToV1(nil))
+	require.Nil(t, convertQualityStatusCountsToV1(nil))
 	require.Nil(t, convertQualityFailureSamplesToV1(nil))
 	require.Nil(t, convertQualityTargetPathToV1(nil))
 }
@@ -607,31 +540,26 @@ func TestConvertQualityIssue(t *testing.T) {
 	acknowledgedAt := firstSeenAt.Add(2 * time.Hour)
 	mutedUntil := lastSeenAt.Add(24 * time.Hour)
 	issue := &store.QualityIssueMessage{
-		ID:               5,
-		ResourceID:       "issue123",
-		RuleID:           7,
-		TargetGUID:       "instance_1;shop;public;orders",
-		TargetType:       storepb.MetaType_TABLE,
-		Status:           storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_RESOLVED,
-		Severity:         storepb.QualitySeverity_QUALITY_SEVERITY_ERROR,
-		FirstSeenRunID:   qualityTestPtr(int64(11)),
-		LastSeenRunID:    qualityTestPtr(int64(12)),
-		FirstSeenAt:      firstSeenAt,
-		LastSeenAt:       lastSeenAt,
-		ResolvedAt:       &resolvedAt,
-		ResolutionReason: storepb.QualityResolutionReason_QUALITY_RESOLUTION_REASON_FIXED,
-		ResolutionNote:   "backfilled by hand",
-		AcknowledgedBy:   qualityTestPtr(int32(9)),
-		AcknowledgedAt:   &acknowledgedAt,
-		MutedUntil:       &mutedUntil,
-		OccurrenceCount:  3,
+		ID:                   5,
+		ResourceID:           "issue123",
+		RuleID:               7,
+		TargetGUID:           "instance_1;shop;public;orders",
+		TargetType:           storepb.MetaType_TABLE,
+		Status:               storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_RESOLVED,
+		Severity:             storepb.QualitySeverity_QUALITY_SEVERITY_ERROR,
+		FirstSeenExecutionID: qualityTestPtr(int64(101)),
+		LastSeenExecutionID:  qualityTestPtr(int64(102)),
+		FirstSeenAt:          firstSeenAt,
+		LastSeenAt:           lastSeenAt,
+		ResolvedAt:           &resolvedAt,
+		ResolutionReason:     storepb.QualityResolutionReason_QUALITY_RESOLUTION_REASON_FIXED,
+		ResolutionNote:       "backfilled by hand",
+		AcknowledgedBy:       qualityTestPtr(int32(9)),
+		AcknowledgedAt:       &acknowledgedAt,
+		MutedUntil:           &mutedUntil,
+		OccurrenceCount:      3,
 	}
-	runNames := map[int64]string{
-		11: "workspaces/ws1/qualityRuns/run11",
-		12: "workspaces/ws1/qualityRuns/run12",
-	}
-
-	converted := convertQualityIssue("ws1", issue, "workspaces/ws1/qualityRules/rule123", runNames)
+	converted := convertQualityIssue("ws1", issue, "workspaces/ws1/qualityRules/rule123")
 	require.NotNil(t, converted)
 	require.Equal(t, "workspaces/ws1/qualityIssues/issue123", converted.GetName())
 	require.Equal(t, "workspaces/ws1/qualityRules/rule123", converted.GetRule())
@@ -639,8 +567,8 @@ func TestConvertQualityIssue(t *testing.T) {
 	require.Equal(t, v1pb.MetaType_TABLE, converted.GetTarget().GetMetaType())
 	require.Equal(t, v1pb.QualityIssueStatus_QUALITY_ISSUE_STATUS_RESOLVED, converted.GetStatus())
 	require.Equal(t, v1pb.QualitySeverity_QUALITY_SEVERITY_ERROR, converted.GetSeverity())
-	require.Equal(t, "workspaces/ws1/qualityRuns/run11", converted.GetFirstSeenRun())
-	require.Equal(t, "workspaces/ws1/qualityRuns/run12", converted.GetLastSeenRun())
+	require.Equal(t, "workspaces/ws1/qualityExecutions/101", converted.GetFirstSeenExecution())
+	require.Equal(t, "workspaces/ws1/qualityExecutions/102", converted.GetLastSeenExecution())
 	require.Equal(t, firstSeenAt, converted.GetFirstSeenTime().AsTime())
 	require.Equal(t, lastSeenAt, converted.GetLastSeenTime().AsTime())
 	require.Equal(t, resolvedAt, converted.GetResolvedTime().AsTime())
@@ -658,14 +586,14 @@ func TestConvertQualityIssue(t *testing.T) {
 		Status:      storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_OPEN,
 		FirstSeenAt: firstSeenAt,
 		LastSeenAt:  firstSeenAt,
-	}, "", nil)
-	require.Empty(t, open.GetFirstSeenRun())
-	require.Empty(t, open.GetLastSeenRun())
+	}, "")
+	require.Empty(t, open.GetFirstSeenExecution())
+	require.Empty(t, open.GetLastSeenExecution())
 	require.Nil(t, open.GetResolvedTime())
 	require.Nil(t, open.GetAcknowledgedTime())
 	require.Nil(t, open.GetMutedUntil())
 	require.Empty(t, open.GetAcknowledgedBy())
-	require.Nil(t, convertQualityIssue("ws1", nil, "", nil))
+	require.Nil(t, convertQualityIssue("ws1", nil, ""))
 }
 
 func TestQualityIssueResourceName(t *testing.T) {

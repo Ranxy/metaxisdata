@@ -125,9 +125,9 @@ function openLineageText(detail: OpenLineageDetail): NotificationText {
 
 const DATA_QUALITY_PATH = "/data-quality";
 
-/** The app path of a quality issue or run, from its full resource name. */
+/** The app path of a quality issue or execution, from its full resource name. */
 function qualityResourceHref(
-  resource: "issues" | "runs",
+  resource: "issues" | "executions",
   name: string
 ): string | undefined {
   return name ? `${DATA_QUALITY_PATH}/${resource}/${name}` : undefined;
@@ -162,7 +162,8 @@ function dataQualityText(detail: DataQualityDetail): NotificationText {
   const rule = detail.ruleTitle || detail.rule.split("/").pop() || "";
   const target = detail.targetPath || detail.targetGuid;
   const issue = qualityResourceHref("issues", detail.issue);
-  const run = qualityResourceHref("runs", detail.run);
+  const execution = qualityResourceHref("executions", detail.execution);
+  const executionsPage = `${DATA_QUALITY_PATH}/executions`;
   switch (detail.kind) {
     case DataQualityNotificationKind.ISSUE_OPENED:
       return {
@@ -170,7 +171,7 @@ function dataQualityText(detail: DataQualityDetail): NotificationText {
         titleParams: { rule },
         messageKey: "notifications.dataQualityIssueOpenedMessage",
         messageParams: { observed: observedLabel(detail), target },
-        href: issue ?? run,
+        href: issue ?? execution,
       };
     case DataQualityNotificationKind.ISSUE_RECOVERED:
       return {
@@ -178,7 +179,7 @@ function dataQualityText(detail: DataQualityDetail): NotificationText {
         titleParams: { rule },
         messageKey: "notifications.dataQualityIssueRecoveredMessage",
         messageParams: { target },
-        href: issue ?? run,
+        href: issue ?? execution,
       };
     case DataQualityNotificationKind.EXECUTION_FAILED:
       return {
@@ -186,7 +187,7 @@ function dataQualityText(detail: DataQualityDetail): NotificationText {
         titleParams: { rule },
         messageKey: "notifications.dataQualityExecutionFailedMessage",
         messageParams: { code: detail.errorCode || "-" },
-        href: run ?? `${DATA_QUALITY_PATH}/runs`,
+        href: execution ?? executionsPage,
       };
     case DataQualityNotificationKind.STORM_SUMMARY:
       return {
@@ -197,7 +198,9 @@ function dataQualityText(detail: DataQualityDetail): NotificationText {
           failed: detail.failedRuleCount,
           total: detail.totalRuleCount,
         },
-        href: run ?? `${DATA_QUALITY_PATH}/runs`,
+        // A storm summary merges a whole batch, so it links to no single
+        // execution: the executions list is where the individual rows live.
+        href: execution ?? executionsPage,
       };
     default:
       return {

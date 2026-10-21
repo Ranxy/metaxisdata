@@ -339,12 +339,24 @@
                   </span>
                 </TableCell>
                 <TableCell class="hidden md:table-cell">
-                  <Badge
-                    v-if="rule.lastResult"
-                    :variant="qualityStatusVariant(rule.lastResult.status)"
-                  >
-                    {{ t(qualityStatusKey(rule.lastResult.status)) }}
-                  </Badge>
+                  <template v-if="rule.lastResult">
+                    <RouterLink
+                      v-if="canViewExecution && rule.lastResult.execution"
+                      :to="executionRoute(rule.lastResult.execution)"
+                      :title="t('dataQuality.viewExecution')"
+                      class="inline-block hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
+                    >
+                      <Badge :variant="qualityStatusVariant(rule.lastResult.status)">
+                        {{ t(qualityStatusKey(rule.lastResult.status)) }}
+                      </Badge>
+                    </RouterLink>
+                    <Badge
+                      v-else
+                      :variant="qualityStatusVariant(rule.lastResult.status)"
+                    >
+                      {{ t(qualityStatusKey(rule.lastResult.status)) }}
+                    </Badge>
+                  </template>
                   <span
                     v-else
                     class="text-sm text-muted-foreground"
@@ -545,6 +557,9 @@ const canCreate = computed(() =>
 const canRun = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.rules.run")
 );
+const canViewExecution = computed(() =>
+  authStore.hasPermission("metaxisdata.dataQuality.executions.get")
+);
 const canUpdate = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.rules.update")
 );
@@ -738,6 +753,13 @@ function ruleRoute(rule: QualityRule) {
   };
 }
 
+function executionRoute(name: string) {
+  return {
+    name: "DataQualityExecutionDetail",
+    params: { executionId: name.split("/") },
+  };
+}
+
 function editRule(rule: QualityRule) {
   void router.push({
     name: "DataQualityRuleEdit",
@@ -758,17 +780,25 @@ function ownerName(rule: QualityRule): string {
 
 async function runRule(rule: QualityRule) {
   try {
-    const runs = await runQualityRules({ rules: [rule.name] });
-    notify.success(t("dataQuality.runStarted"));
-    const [run] = runs;
-    if (run) {
+    const executions = await runQualityRules({ rules: [rule.name] });
+    notify.success(t("dataQuality.executionStarted"));
+    // One rule yields one execution, which the detail page polls; a service
+    // that planned several lands on the executions list filtered to the rule.
+    if (executions.length === 1) {
+      const [created] = executions;
+      if (created) {
+        void router.push(executionRoute(created.name));
+        return;
+      }
+    }
+    if (executions.length > 1) {
       void router.push({
-        name: "DataQualityRunDetail",
-        params: { runId: run.name.split("/") },
+        name: "DataQualityExecutions",
+        query: { rule: rule.name },
       });
     }
   } catch (e: unknown) {
-    handleError(e, "dataQuality.runError");
+    handleError(e, "dataQuality.executionError");
   }
 }
 

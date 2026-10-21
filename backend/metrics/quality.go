@@ -8,30 +8,32 @@ import (
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
-// Data-quality run triggers.
+// Data-quality execution triggers.
 const (
 	QualityTriggerScheduled = "scheduled"
 	QualityTriggerManual    = "manual"
 )
 
-// Data-quality run admission results.
+// Data-quality execution admission results.
 const (
 	QualityAdmissionAdmitted = "admitted"
 	QualityAdmissionDeferred = "deferred"
 )
 
-// Data-quality run deferral reasons.
+// Data-quality execution deferral reasons.
 const (
 	QualityDeferralAdmissionTimeout  = "admission_timeout"
 	QualityDeferralInstanceReadError = "instance_read_error"
 )
 
-// Data-quality run abandonment reasons.
+// Data-quality execution abandonment reasons.
 const (
 	QualityAbandonedAdmissionTimeout  = "admission_timeout"
 	QualityAbandonedInstanceReadError = "instance_read_error"
 	QualityAbandonedStaleSweep        = "stale_sweep"
 	QualityAbandonedPersistFailed     = "persist_failed"
+	QualityAbandonedIncomplete        = "incomplete"
+	QualityAbandonedPlanFailed        = "plan_failed"
 	QualityAbandonedQueueFull         = "queue_full"
 	QualityAbandonedMarkRunningFailed = "mark_running_failed"
 )
@@ -39,16 +41,16 @@ const (
 type qualityMetrics struct {
 	dueScanDuration       prometheus.Histogram
 	dueRules              prometheus.Histogram
-	runsCreated           *prometheus.CounterVec
-	runsCompleted         *prometheus.CounterVec
-	runAdmissions         *prometheus.CounterVec
-	runsDeferred          *prometheus.CounterVec
-	runAbandoned          *prometheus.CounterVec
-	runsInProgress        prometheus.Gauge
+	executionsCreated     *prometheus.CounterVec
+	executionsCompleted   *prometheus.CounterVec
+	executionAdmissions   *prometheus.CounterVec
+	executionsDeferred    *prometheus.CounterVec
+	executionAbandoned    *prometheus.CounterVec
+	executionsInProgress  prometheus.Gauge
 	manualEnqueueRejected prometheus.Counter
 	ruleExecutions        *prometheus.CounterVec
 	ruleExecutionDuration *prometheus.HistogramVec
-	ruleErrors            *prometheus.CounterVec
+	ruleExecutionErrors   *prometheus.CounterVec
 }
 
 func newQualityMetrics() qualityMetrics {
@@ -67,47 +69,47 @@ func newQualityMetrics() qualityMetrics {
 			Help:      "Due rule rows returned by one scan.",
 			Buckets:   []float64{0, 1, 5, 10, 25, 50, 100, 200},
 		}),
-		runsCreated: prometheus.NewCounterVec(prometheus.CounterOpts{
+		executionsCreated: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: "quality",
-			Name:      "runs_created_total",
-			Help:      "Data-quality run rows created, by trigger.",
+			Name:      "executions_created_total",
+			Help:      "Data-quality execution rows planned, by trigger.",
 		}, []string{"trigger"}),
-		runsCompleted: prometheus.NewCounterVec(prometheus.CounterOpts{
+		executionsCompleted: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: "quality",
-			Name:      "runs_completed_total",
-			Help:      "Data-quality runs completed, by rollup outcome.",
+			Name:      "executions_completed_total",
+			Help:      "Data-quality executions that reached a verdict, by outcome.",
 		}, []string{"outcome"}),
-		runAdmissions: prometheus.NewCounterVec(prometheus.CounterOpts{
+		executionAdmissions: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: "quality",
-			Name:      "run_admissions_total",
-			Help:      "Connection-budget admission decisions for data-quality runs, by trigger and result.",
+			Name:      "execution_admissions_total",
+			Help:      "Connection-budget admission decisions for data-quality batches, by trigger and result.",
 		}, []string{"trigger", "result"}),
-		runsDeferred: prometheus.NewCounterVec(prometheus.CounterOpts{
+		executionsDeferred: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: "quality",
-			Name:      "runs_deferred_total",
-			Help:      "Scheduled data-quality runs not created because admission was not possible, by reason.",
+			Name:      "executions_deferred_total",
+			Help:      "Scheduled data-quality executions not planned because admission was not possible, by reason.",
 		}, []string{"reason"}),
-		runAbandoned: prometheus.NewCounterVec(prometheus.CounterOpts{
+		executionAbandoned: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: "quality",
-			Name:      "run_abandoned_total",
-			Help:      "Data-quality runs abandoned without a completed rollup, by reason.",
+			Name:      "executions_abandoned_total",
+			Help:      "Data-quality executions abandoned without a verdict, by reason.",
 		}, []string{"reason"}),
-		runsInProgress: prometheus.NewGauge(prometheus.GaugeOpts{
+		executionsInProgress: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: "quality",
-			Name:      "runs_in_progress",
-			Help:      "Data-quality runs executing now.",
+			Name:      "executions_in_progress",
+			Help:      "Data-quality executions executing now.",
 		}),
 		manualEnqueueRejected: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: "quality",
 			Name:      "manual_enqueue_rejected_total",
-			Help:      "Manual data-quality runs refused because the queue was full.",
+			Help:      "Manual data-quality batches refused because the queue was full.",
 		}),
 		ruleExecutions: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,
@@ -124,7 +126,7 @@ func newQualityMetrics() qualityMetrics {
 				0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600,
 			},
 		}, []string{"rule_type"}),
-		ruleErrors: prometheus.NewCounterVec(prometheus.CounterOpts{
+		ruleExecutionErrors: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: "quality",
 			Name:      "rule_errors_total",
@@ -137,16 +139,16 @@ func (m qualityMetrics) collectors() []prometheus.Collector {
 	return []prometheus.Collector{
 		m.dueScanDuration,
 		m.dueRules,
-		m.runsCreated,
-		m.runsCompleted,
-		m.runAdmissions,
-		m.runsDeferred,
-		m.runAbandoned,
-		m.runsInProgress,
+		m.executionsCreated,
+		m.executionsCompleted,
+		m.executionAdmissions,
+		m.executionsDeferred,
+		m.executionAbandoned,
+		m.executionsInProgress,
 		m.manualEnqueueRejected,
 		m.ruleExecutions,
 		m.ruleExecutionDuration,
-		m.ruleErrors,
+		m.ruleExecutionErrors,
 	}
 }
 
@@ -166,24 +168,25 @@ func (m *Metrics) ObserveQualityDueRules(count int) {
 	m.Quality.dueRules.Observe(float64(count))
 }
 
-// CountQualityRunCreated records a run row created by either trigger.
-func (m *Metrics) CountQualityRunCreated(trigger string) {
+// CountQualityExecutionCreated records execution rows planned by either trigger.
+func (m *Metrics) CountQualityExecutionCreated(trigger string) {
 	if m == nil {
 		return
 	}
-	m.Quality.runsCreated.WithLabelValues(trigger).Inc()
+	m.Quality.executionsCreated.WithLabelValues(trigger).Inc()
 }
 
-// CountQualityRunCompleted records a run that reached a terminal rollup.
-func (m *Metrics) CountQualityRunCompleted(outcome storepb.QualityStatus) {
+// CountQualityExecutionCompleted records an execution that reached a verdict.
+func (m *Metrics) CountQualityExecutionCompleted(outcome storepb.QualityStatus) {
 	if m == nil {
 		return
 	}
-	m.Quality.runsCompleted.WithLabelValues(qualityStatusLabel(outcome)).Inc()
+	m.Quality.executionsCompleted.WithLabelValues(qualityStatusLabel(outcome)).Inc()
 }
 
-// CountQualityRunAdmission records one connection-budget admission decision.
-func (m *Metrics) CountQualityRunAdmission(trigger string, admitted bool) {
+// CountQualityExecutionAdmission records one connection-budget admission decision
+// for a batch of executions.
+func (m *Metrics) CountQualityExecutionAdmission(trigger string, admitted bool) {
 	if m == nil {
 		return
 	}
@@ -191,42 +194,43 @@ func (m *Metrics) CountQualityRunAdmission(trigger string, admitted bool) {
 	if admitted {
 		result = QualityAdmissionAdmitted
 	}
-	m.Quality.runAdmissions.WithLabelValues(trigger, result).Inc()
+	m.Quality.executionAdmissions.WithLabelValues(trigger, result).Inc()
 }
 
-// CountQualityRunsDeferred records a scheduled run that was not created.
-func (m *Metrics) CountQualityRunsDeferred(reason string) {
+// CountQualityExecutionsDeferred records scheduled executions that were not
+// planned because their instance could not be admitted.
+func (m *Metrics) CountQualityExecutionsDeferred(reason string) {
 	if m == nil {
 		return
 	}
-	m.Quality.runsDeferred.WithLabelValues(reason).Inc()
+	m.Quality.executionsDeferred.WithLabelValues(reason).Inc()
 }
 
-// CountQualityRunAbandoned records a run abandoned without a completed rollup.
-func (m *Metrics) CountQualityRunAbandoned(reason string) {
+// CountQualityExecutionAbandoned records an execution abandoned without a verdict.
+func (m *Metrics) CountQualityExecutionAbandoned(reason string) {
 	if m == nil {
 		return
 	}
-	m.Quality.runAbandoned.WithLabelValues(reason).Inc()
+	m.Quality.executionAbandoned.WithLabelValues(reason).Inc()
 }
 
-// IncQualityRunsInProgress records that a run started executing.
-func (m *Metrics) IncQualityRunsInProgress() {
+// IncQualityExecutionsInProgress records that an execution started running.
+func (m *Metrics) IncQualityExecutionsInProgress() {
 	if m == nil {
 		return
 	}
-	m.Quality.runsInProgress.Inc()
+	m.Quality.executionsInProgress.Inc()
 }
 
-// DecQualityRunsInProgress records that a run stopped executing.
-func (m *Metrics) DecQualityRunsInProgress() {
+// DecQualityExecutionsInProgress records that an execution stopped running.
+func (m *Metrics) DecQualityExecutionsInProgress() {
 	if m == nil {
 		return
 	}
-	m.Quality.runsInProgress.Dec()
+	m.Quality.executionsInProgress.Dec()
 }
 
-// CountQualityManualEnqueueRejected records a manual run refused by a full queue.
+// CountQualityManualEnqueueRejected records a manual batch refused by a full queue.
 func (m *Metrics) CountQualityManualEnqueueRejected() {
 	if m == nil {
 		return
@@ -250,15 +254,15 @@ func (m *Metrics) CountQualityRuleError(ruleType storepb.QualityRuleType, errorC
 	if m == nil || errorCode == "" {
 		return
 	}
-	m.Quality.ruleErrors.WithLabelValues(qualityRuleTypeLabel(ruleType), qualityErrorCodeLabel(errorCode)).Inc()
+	m.Quality.ruleExecutionErrors.WithLabelValues(qualityRuleTypeLabel(ruleType), qualityErrorCodeLabel(errorCode)).Inc()
 }
 
-// NewQualityManualQueueDepth reports the manual run queue depth at scrape time.
+// NewQualityManualQueueDepth reports the manual batch queue depth at scrape time.
 func NewQualityManualQueueDepth(depth func() int) prometheus.Collector {
 	return prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 		Namespace: namespace,
 		Subsystem: "quality",
 		Name:      "manual_queue_depth",
-		Help:      "Manual data-quality runs waiting for the runner.",
+		Help:      "Manual data-quality batches waiting for the runner.",
 	}, func() float64 { return float64(depth()) })
 }
