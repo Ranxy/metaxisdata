@@ -13,6 +13,9 @@ type Profile struct {
 	Port int
 	// PgURL is the PostgreSQL instance connection url
 	PgURL string
+	// MetricsAddr is the address the Prometheus endpoint listens on. An empty
+	// address disables the endpoint; it is never served on the API port.
+	MetricsAddr string
 
 	// can be set in runtime
 	RuntimeDebug atomic.Bool

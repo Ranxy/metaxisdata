@@ -3,9 +3,7 @@ package server
 import (
 	"log/slog"
 	"net/http"
-	"sync/atomic"
 
-	"github.com/labstack/echo-contrib/prometheus"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/pkg/errors"
@@ -13,6 +11,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/common/version"
 	"github.com/Ranxy/metaxisdata/backend/config"
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 
 	connectcors "connectrpc.com/cors"
 )
@@ -20,8 +19,14 @@ import (
 func configureEchoRouters(
 	e *echo.Echo,
 	profile *config.Profile,
+	m *metrics.Metrics,
 ) {
 	e.Use(recoverMiddleware)
+
+	// Installed early so requests refused by the body limit or CSRF protection are
+	// still counted. It labels by route template, never the raw path, and skips
+	// health, pprof and the REST gateway's loopback self-request.
+	e.Use(httpMetricsMiddleware(m))
 
 	// The SPA is the only document this server serves and it rides on an
 	// HttpOnly session cookie, so it must not be framed (the /device approval
@@ -89,14 +94,9 @@ func configureEchoRouters(
 
 	registerPprof(e, &profile.RuntimeDebug)
 
-	// /metrics exposes route-level request counts to anyone who can reach the
-	// server, so it follows the same runtime-debug gate as pprof.
-	e.Use(metricsGateMiddleware(&profile.RuntimeDebug))
-	p := prometheus.NewPrometheus("api", nil)
-	p.RequestCounterURLLabelMappingFunc = func(c echo.Context) string {
-		return c.Request().URL.Path
-	}
-	p.Use(e)
+	// /metrics is not served on the API port. It moved to the dedicated
+	// --metrics-addr listener, which is off by default and independent of the
+	// runtime debug switch (see backend/server/server.go).
 
 	e.GET("/healthz", func(c echo.Context) error {
 		return c.String(http.StatusOK, "OK")
@@ -125,20 +125,6 @@ const contentSecurityPolicy = "default-src 'self'; " +
 	"base-uri 'none'; " +
 	"form-action 'self'; " +
 	"frame-ancestors 'none'"
-
-// metricsGateMiddleware hides the Prometheus endpoint unless runtime debug is
-// enabled. It is checked per request, so the admin setting takes effect without
-// a restart.
-func metricsGateMiddleware(runtimeDebug *atomic.Bool) echo.MiddlewareFunc {
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			if c.Request().URL.Path == "/metrics" && !runtimeDebug.Load() {
-				return echo.ErrNotFound
-			}
-			return next(c)
-		}
-	}
-}
 
 func recoverMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {

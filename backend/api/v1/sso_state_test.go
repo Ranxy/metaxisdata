@@ -17,7 +17,7 @@ import (
 func TestCreateSSOStateIssuesSingleUseNonces(t *testing.T) {
 	t.Parallel()
 
-	stateCfg, err := state.New()
+	stateCfg, err := state.New(nil)
 	require.NoError(t, err)
 	svc := &AuthService{stateCfg: stateCfg}
 	ctx := context.Background()

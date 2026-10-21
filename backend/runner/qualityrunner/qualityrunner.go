@@ -28,6 +28,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 	"github.com/Ranxy/metaxisdata/backend/component/notification"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 	"github.com/Ranxy/metaxisdata/backend/plugin/db"
 	"github.com/Ranxy/metaxisdata/backend/store"
 
@@ -208,6 +209,9 @@ type Runner struct {
 	// It is best effort: a delivery failure is logged and never fails the run.
 	// A nil notifier keeps the runner silent, which is what its tests want.
 	notifier *notification.Service
+	// metrics records run and rule outcomes; a nil value disables
+	// instrumentation.
+	metrics *metrics.Metrics
 
 	// settings is the workspace's data-quality policy, reloaded on every scan and
 	// manual run. It starts at the documented defaults so a fresh process with an
@@ -226,21 +230,30 @@ type Runner struct {
 // NewRunner creates the data-quality runner. The executor is stateless, so one
 // instance is shared by every run. notifier reports opened and recovered problems
 // and execution failures; it may be nil.
-func NewRunner(stores *store.Store, dbFactory *dbfactory.DBFactory, stateCfg *state.State, notifier *notification.Service) *Runner {
+func NewRunner(stores *store.Store, dbFactory *dbfactory.DBFactory, stateCfg *state.State, notifier *notification.Service, m *metrics.Metrics) *Runner {
+	exec := dataquality.NewExecutor()
+	exec.Metrics = m
 	return &Runner{
 		stores:    stores,
 		dbFactory: dbFactory,
 		stateCfg:  stateCfg,
-		exec:      dataquality.NewExecutor(),
+		exec:      exec,
 		notifier:  notifier,
 		manual:    make(chan manualRun, manualQueueCapacity),
 		inflight:  make(map[int64]struct{}),
 		settings:  dataquality.DefaultSettings(),
+		metrics:   m,
 	}
 }
 
 // Name identifies the runner in the server's lifecycle logs.
 func (*Runner) Name() string { return "qualityrunner" }
+
+// ManualQueueDepth reports how many manual runs are waiting for the runner. It
+// is read by the metrics collector at scrape time.
+func (r *Runner) ManualQueueDepth() int {
+	return len(r.manual)
+}
 
 // EnqueueQualityRun offers a manual run to the runner and returns false when the
 // queue is full. instanceResourceID is the instance the API grouped the rule
@@ -252,6 +265,7 @@ func (r *Runner) EnqueueQualityRun(runID int64, instanceResourceID string, ruleI
 	case r.manual <- manualRun{runID: runID, instanceResourceID: instanceResourceID, ruleIDs: ruleIDs}:
 		return true
 	default:
+		r.metrics.CountQualityManualEnqueueRejected()
 		return false
 	}
 }
@@ -299,6 +313,9 @@ func (r *Runner) abandonStaleRuns(ctx context.Context) {
 		return
 	}
 	if abandoned > 0 {
+		for range abandoned {
+			r.metrics.CountQualityRunAbandoned(metrics.QualityAbandonedStaleSweep)
+		}
 		slog.Warn("abandoned quality runs left behind by a previous process",
 			slog.Int64("count", abandoned),
 			slog.Time("started_before", cutoff))
@@ -311,21 +328,34 @@ func (r *Runner) abandonStaleRuns(ctx context.Context) {
 // runs of one instance execute serially while at most two instances execute at
 // once.
 func (r *Runner) scanDue(ctx context.Context) {
+	// The planning cost is settings refresh, the quota check, the due-rule query
+	// and the chunking. It deliberately stops before wp.Wait(): the scans below
+	// execute the runs, and including them would turn this histogram into a copy
+	// of run duration.
+	planningStartedAt := time.Now()
+	observePlanning := func() { r.metrics.ObserveQualityDueScan(time.Since(planningStartedAt)) }
+
 	now := time.Now().UTC()
+
 	r.refreshSettings(ctx)
 	if r.overDailyExecutionQuota(ctx, now) {
+		observePlanning()
 		return
 	}
 	rules, err := r.stores.FindDueQualityRules(ctx, now, dueScanLimit)
 	if err != nil {
+		observePlanning()
 		slog.Error("failed to list due quality rules", log.WithError(err))
 		return
 	}
+	r.metrics.ObserveQualityDueRules(len(rules))
 	if len(rules) == 0 {
+		observePlanning()
 		return
 	}
 
 	plans := planDueRuns(rules, maxRulesPerRun)
+	observePlanning()
 	if len(plans) == 0 {
 		return
 	}
@@ -366,16 +396,19 @@ func (r *Runner) startScheduledRun(ctx context.Context, plan dueRunPlan) {
 
 	instance, err := r.instanceForAdmission(ctx, plan.instanceResourceID)
 	if err != nil {
+		r.metrics.CountQualityRunsDeferred(metrics.QualityDeferralInstanceReadError)
 		slog.Warn("failed to read the instance of a scheduled quality run; leaving its rules due",
 			slog.String("instance", plan.instanceResourceID),
 			log.WithError(err))
 		return
 	}
 	release, admission, admitted := r.admitRun(ctx, instance, state.ConnectionPriorityBackground, scheduledAdmissionWait)
+	r.metrics.CountQualityRunAdmission(metrics.QualityTriggerScheduled, admitted)
 	if !admitted {
 		// The run was never created and no rule's schedule was advanced, so the
 		// next tick retries the same rules. That is the scheduler's queue: the
 		// work is healthy, the instance is busy.
+		r.metrics.CountQualityRunsDeferred(metrics.QualityDeferralAdmissionTimeout)
 		slog.Debug("deferred a scheduled quality run: the instance has no free connection slot",
 			slog.String("instance", plan.instanceResourceID),
 			slog.Int("rules", len(tasks)))
@@ -402,6 +435,7 @@ func (r *Runner) startScheduledRun(ctx context.Context, plan dueRunPlan) {
 			log.WithError(err))
 		return
 	}
+	r.metrics.CountQualityRunCreated(metrics.QualityTriggerScheduled)
 	r.executeRun(ctx, run.ID, run.ResourceID, tasks, admission, release)
 }
 
@@ -419,16 +453,17 @@ func (r *Runner) executeManualRun(ctx context.Context, manual manualRun) {
 		slog.Warn("failed to read the instance of a manual quality run; abandoning it",
 			slog.Int64("run", manual.runID),
 			log.WithError(err))
-		r.abandonUnadmittedRun(ctx, manual.runID, len(manual.ruleIDs))
+		r.abandonUnadmittedRun(ctx, manual.runID, len(manual.ruleIDs), metrics.QualityAbandonedInstanceReadError)
 		return
 	}
 	release, admission, admitted := r.admitRun(ctx, instance, state.ConnectionPriorityManual, manualAdmissionWait)
+	r.metrics.CountQualityRunAdmission(metrics.QualityTriggerManual, admitted)
 	if !admitted {
 		slog.Warn("abandoned a manual quality run: the instance's connection budget stayed busy",
 			slog.Int64("run", manual.runID),
 			slog.String("instance", manual.instanceResourceID),
 			slog.Int("rules", len(manual.ruleIDs)))
-		r.abandonUnadmittedRun(ctx, manual.runID, len(manual.ruleIDs))
+		r.abandonUnadmittedRun(ctx, manual.runID, len(manual.ruleIDs), metrics.QualityAbandonedAdmissionTimeout)
 		return
 	}
 	// Idempotent, and executeRun releases it before the store work; this covers any
@@ -517,7 +552,8 @@ func instanceConnectionLimit(instance *store.InstanceMessage) int {
 // connection budget. It executed nothing, so ABANDONED with no outcome is the
 // honest terminal state; leaving it PENDING would defer it to the restart sweep
 // and show a run that apparently never ends.
-func (r *Runner) abandonUnadmittedRun(ctx context.Context, runID int64, selected int) {
+func (r *Runner) abandonUnadmittedRun(ctx context.Context, runID int64, selected int, reason string) {
+	r.metrics.CountQualityRunAbandoned(reason)
 	// The runner's context is often already cancelled here (a shutdown ended the
 	// wait), but the row must still reach a terminal state: a PENDING run with no
 	// queue entry would otherwise linger until a later startup sweep.
@@ -544,12 +580,15 @@ func (r *Runner) executeRun(ctx context.Context, runID int64, runResourceID stri
 	if err := r.stores.MarkQualityRunRunning(runCtx, runID, time.Now().UTC()); err != nil {
 		// A run that is already terminal (abandoned at startup, or finished by a
 		// duplicate enqueue) is not an error worth retrying; just log it.
+		r.metrics.CountQualityRunAbandoned(metrics.QualityAbandonedMarkRunningFailed)
 		slog.Warn("quality run cannot be started",
 			slog.Int64("run", runID),
 			slog.Int("rules", len(tasks)),
 			log.WithError(err))
 		return
 	}
+	r.metrics.IncQualityRunsInProgress()
+	defer r.metrics.DecQualityRunsInProgress()
 
 	executions := make([]*ruleExecution, 0, len(tasks))
 	results := make([]*store.QualityRuleResultMessage, 0, len(tasks))
@@ -559,6 +598,7 @@ func (r *Runner) executeRun(ctx context.Context, runID int64, runResourceID stri
 		previous := r.previousQualityStatus(runCtx, task.ruleID)
 		execution := r.executeOneSafe(runCtx, runID, task, admission)
 		execution.previous = previous
+		r.observeRuleExecution(execution)
 		executions = append(executions, execution)
 		results = append(results, execution.result)
 	}
@@ -575,6 +615,7 @@ func (r *Runner) executeRun(ctx context.Context, runID int64, runResourceID stri
 		// The rules were already rescheduled, so this pass is not retried. Close
 		// the run instead of leaving it RUNNING for the restart sweep: ABANDONED
 		// says the run produced no trustworthy result.
+		r.metrics.CountQualityRunAbandoned(metrics.QualityAbandonedPersistFailed)
 		_ = r.stores.FinishQualityRun(ctx, runID, storepb.QualityRunStatus_QUALITY_RUN_STATUS_ABANDONED, storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, nil, time.Now().UTC())
 		return
 	}
@@ -600,12 +641,46 @@ func (r *Runner) executeRun(ctx context.Context, runID int64, runResourceID stri
 			slog.Int64("run", runID),
 			slog.Int("results", len(results)),
 			log.WithError(err))
+	} else {
+		// Only a run that really reached its terminal rollup counts as completed;
+		// a failed write leaves it for the restart sweep and is not one.
+		r.metrics.CountQualityRunCompleted(outcome)
 	}
 	if storm {
 		// The design sends the storm summary once the run is finished, so the run
 		// it points at is already terminal when the recipient opens it.
 		r.reportQualityStorm(ctx, runResourceName, counts.GetFail(), counts.GetTotal(), now)
 	}
+}
+
+// observeRuleExecution records the per-rule funnel exactly once, right where the
+// run collects each result. This loop is the only place that sees every result
+// an execution attempt produces, so buildRuleResult (the pure result mapping) must
+// not record it too.
+func (r *Runner) observeRuleExecution(execution *ruleExecution) {
+	if execution == nil || execution.result == nil {
+		return
+	}
+	ruleType := ruleExecutionType(execution)
+	r.metrics.ObserveQualityRuleExecution(ruleType, execution.result.Status, time.Duration(execution.result.DurationMS)*time.Millisecond)
+	r.metrics.CountQualityRuleError(ruleType, execution.result.ErrorCode)
+}
+
+// ruleExecutionType derives the rule type a metric should label an execution
+// with. A rule that failed before its snapshot was read (an inflight skip, a
+// retired revision) still names its type on the due scan's head row; a manual run
+// has no head, so the last resort is "unspecified" rather than a wrong label.
+func ruleExecutionType(execution *ruleExecution) storepb.QualityRuleType {
+	if execution == nil {
+		return storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED
+	}
+	if execution.snapshot != nil {
+		return execution.snapshot.Type
+	}
+	if execution.head != nil {
+		return execution.head.RuleType
+	}
+	return storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED
 }
 
 // executeOneSafe isolates one rule's execution: a panic in the rule engine or a

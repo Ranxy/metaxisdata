@@ -69,5 +69,5 @@ Consequences worth knowing before changing this area:
 
 ## Known accepted gaps
 
-- **No runner metrics**: failure/queue-depth counters are not collected (D8 in [backend-open-items.md](backend-open-items.md)); each pass logs its own summary line (maintenance) or per-item outcome.
+- **Runner metrics exist, and a dead runner is visible**: `runner.Go` reports `metaxisdata_runner_up` and `metaxisdata_runner_panics_total`, and each runner exposes its own success/queue/pass counters (see [metrics.md](metrics.md)). A panicking runner still is not restarted, but its `up` gauge drops to 0 while the process keeps serving.
 - **Per-iteration timeout is per unit or per pass, not per runner lifetime** (`lineagevalidation`, `maintenance` and one analysis scan have pass bounds; a database sync has its driver deadline). A batch of pathological objects can therefore take longer than one interval; the next tick is skipped rather than overlapping.

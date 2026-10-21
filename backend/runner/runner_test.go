@@ -31,7 +31,7 @@ func TestGoRunsTheRunnerAndReleasesTheWaitGroup(t *testing.T) {
 
 	var wg sync.WaitGroup
 	r := &testRunner{}
-	Go(context.Background(), &wg, r)
+	Go(context.Background(), &wg, r, nil)
 	wg.Wait()
 	require.True(t, r.ran)
 }
@@ -43,7 +43,7 @@ func TestGoRecoversAPanickingRunner(t *testing.T) {
 
 	var wg sync.WaitGroup
 	require.NotPanics(t, func() {
-		Go(context.Background(), &wg, &panickingRunner{})
+		Go(context.Background(), &wg, &panickingRunner{}, nil)
 		wg.Wait()
 	})
 }
@@ -120,7 +120,7 @@ func TestGoLogsRunnerLifecycle(t *testing.T) {
 	t.Cleanup(func() { slog.SetDefault(previous) })
 
 	var wg sync.WaitGroup
-	Go(context.Background(), &wg, &testRunner{})
+	Go(context.Background(), &wg, &testRunner{}, nil)
 	wg.Wait()
 
 	started := handler.find(t, "background runner started", "test")
@@ -142,7 +142,7 @@ func TestGoLogsAPanickingRunnerStopping(t *testing.T) {
 
 	var wg sync.WaitGroup
 	require.NotPanics(t, func() {
-		Go(context.Background(), &wg, &panickingRunner{})
+		Go(context.Background(), &wg, &panickingRunner{}, nil)
 		wg.Wait()
 	})
 

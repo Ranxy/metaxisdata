@@ -416,6 +416,21 @@ func verifiedGatewayPeer(header http.Header) string {
 	return peer
 }
 
+// IsGatewayForward reports whether request is the REST gateway's loopback
+// self-request. The HTTP metrics middleware uses it so one client call is
+// counted once: the gateway re-dials this process, and the stamped proof is the
+// same one the audit record trusts.
+func IsGatewayForward(request *http.Request) bool {
+	if request == nil {
+		return false
+	}
+	ip := net.ParseIP(HostFromAddr(request.RemoteAddr))
+	if ip == nil || !ip.IsLoopback() {
+		return false
+	}
+	return verifiedGatewayPeer(request.Header) != ""
+}
+
 // ClientAddress resolves the address a request should be attributed to. The
 // forwarding chain is believed only when the connection itself comes from a
 // configured trusted proxy; otherwise any client could pick its own audit IP or

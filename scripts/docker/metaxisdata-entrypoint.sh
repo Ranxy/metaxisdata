@@ -18,6 +18,9 @@
 #   METAXISDATA_CORS_ALLOW_ORIGINS      comma-separated browser origins
 #   METAXISDATA_TRUSTED_PROXIES         comma-separated IPs/CIDRs whose
 #                                       X-Forwarded-For is believed for audit
+#   METAXISDATA_METRICS_ADDR            address for the Prometheus endpoint
+#                                       (for example 127.0.0.1:9090); unset
+#                                       disables it
 set -eu
 
 # Arguments the caller appends (`docker run … --debug`) are passed through and
@@ -38,6 +41,9 @@ if [ -n "${METAXISDATA_CORS_ALLOW_ORIGINS:-}" ]; then
 fi
 if [ -n "${METAXISDATA_TRUSTED_PROXIES:-}" ]; then
 	set -- --trusted-proxies "${METAXISDATA_TRUSTED_PROXIES}" "$@"
+fi
+if [ -n "${METAXISDATA_METRICS_ADDR:-}" ]; then
+	set -- --metrics-addr "${METAXISDATA_METRICS_ADDR}" "$@"
 fi
 
 exec metaxisdata "$@"

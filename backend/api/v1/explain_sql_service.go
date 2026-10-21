@@ -18,6 +18,7 @@ import (
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -28,6 +29,9 @@ type explainSection struct {
 	Content string `json:"content"`
 }
 
+// explainSQLFeature labels this service's model calls in metrics.
+const explainSQLFeature = "explain_sql"
+
 // ExplainSQLService implements the explain SQL service.
 type ExplainSQLService struct {
 	v1connect.UnimplementedExplainSQLServiceHandler
@@ -37,11 +41,14 @@ type ExplainSQLService struct {
 	// process assembled, so the schema context is built the same way AnalyzeSQL
 	// builds its answer.
 	lineage *lineage.Analyzer
+	// metrics records LLM call, token and cache outcomes; a nil value disables
+	// instrumentation.
+	metrics *metrics.Metrics
 }
 
 // NewExplainSQLService creates a new ExplainSQLService.
-func NewExplainSQLService(st *store.Store, registry *llm.Registry, lineageAnalyzer *lineage.Analyzer) *ExplainSQLService {
-	return &ExplainSQLService{store: st, registry: registry, lineage: lineageAnalyzer}
+func NewExplainSQLService(st *store.Store, registry *llm.Registry, lineageAnalyzer *lineage.Analyzer, m *metrics.Metrics) *ExplainSQLService {
+	return &ExplainSQLService{store: st, registry: registry, lineage: lineageAnalyzer, metrics: m}
 }
 
 // ExplainSQL explains SQL using LLM.
@@ -137,8 +144,13 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 
 	// Run agent loop.
 	var fullResponse strings.Builder
+	// IncludeUsage stays off in v1: some OpenAI-compatible gateways reject the
+	// stream_options field, and a rejected request is worse than missing usage.
+	// The loop reports the missing usage, which is this path's compensation signal.
 	cfg := llm.AgentConfig{
 		Provider:             *resolvedConfig,
+		Feature:              explainSQLFeature,
+		Metrics:              s.metrics,
 		SystemPrompt:         buildSystemPrompt(language, metaType, ctxObjects),
 		UserPrompt:           sqlText,
 		Tools:                tools,

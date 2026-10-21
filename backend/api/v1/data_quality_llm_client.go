@@ -11,6 +11,15 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 )
 
+// LLM feature labels for the three data-quality analyses. The agent loop records
+// one LLM call per invocation with the feature it was given, so these are the only
+// place the data-quality paths label their calls.
+const (
+	qualityLLMFeatureRuleDraft     = "dq_rule_draft"
+	qualityLLMFeatureExplainResult = "dq_explain_result"
+	qualityLLMFeatureColumnLabels  = "dq_column_labels"
+)
+
 // qualityLLMConfig resolves the provider and settings one data quality analysis
 // runs with. The settings are part of the contract for callers that also bound
 // their input with them (the label analysis caps columns per call).
@@ -55,13 +64,18 @@ func (s *DataQualityService) qualityLLMConfig(ctx context.Context) (llm.Resolved
 // prompt asks for a single JSON document, so the call fixes temperature at zero
 // and asks the provider for JSON when it supports the mode; a provider that
 // ignores the mode still answers something the strict parser can read.
-func qualityJSONCompletion(ctx context.Context, config llm.ResolvedConfig, systemPrompt, userPrompt string, maxOutputTokens int) (string, *llm.Usage, error) {
+//
+// feature labels the call in metrics; calls, duration and tokens are recorded by
+// the agent loop, not here.
+func (s *DataQualityService) qualityJSONCompletion(ctx context.Context, config llm.ResolvedConfig, feature, systemPrompt, userPrompt string, maxOutputTokens int) (string, *llm.Usage, error) {
 	if maxOutputTokens <= 0 {
 		maxOutputTokens = qualityLLMMaxOutputTokens
 	}
 	zero := 0.0
 	events := llm.RunAgentLoop(ctx, llm.AgentConfig{
 		Provider:       config,
+		Feature:        feature,
+		Metrics:        s.metrics,
 		SystemPrompt:   systemPrompt,
 		UserPrompt:     userPrompt,
 		MaxTurns:       1,

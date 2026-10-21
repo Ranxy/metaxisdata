@@ -10,9 +10,15 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 
 	apiv1 "github.com/Ranxy/metaxisdata/backend/api/v1"
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 )
 
 const (
+	// openLineageRateLimitedFailureKind is the failure_kind label of a request the
+	// ingestion rate limiter refused. It has no storepb equivalent because the
+	// request never reaches the handler or parses an event.
+	openLineageRateLimitedFailureKind = "rate_limited"
+
 	// openLineageIngestionRate is the sustained requests-per-second budget of one
 	// ingestion key (or of the resolved client address for key-less requests).
 	openLineageIngestionRate = 50
@@ -39,17 +45,20 @@ const (
 // openLineageIngestionMiddleware rate-limits and time-bounds the OpenLineage
 // ingestion routes. They are plain Echo routes and therefore skip the Connect
 // interceptors, which is where the rest of the API gets its protections.
-func openLineageIngestionMiddleware(trustedProxies []string) echo.MiddlewareFunc {
+func openLineageIngestionMiddleware(trustedProxies []string, m *metrics.Metrics) echo.MiddlewareFunc {
 	keyStore := newBoundedRateLimiterStore(openLineageIngestionRate, openLineageIngestionBurst)
 	sourceStore := newBoundedRateLimiterStore(openLineageIngestionSourceRate, openLineageIngestionSourceBurst)
-	return openLineageIngestionMiddlewareWithStore(keyStore, sourceStore, trustedProxies)
+	return openLineageIngestionMiddlewareWithStore(keyStore, sourceStore, trustedProxies, m)
 }
 
 // openLineageIngestionMiddlewareWithStore is the middleware itself. The stores
 // are parameters so a test can drive them with a frozen clock and assert exact
 // budget boundaries instead of racing the token-bucket refill.
-func openLineageIngestionMiddlewareWithStore(keyStore, sourceStore *boundedRateLimiterStore, trustedProxies []string) echo.MiddlewareFunc {
+func openLineageIngestionMiddlewareWithStore(keyStore, sourceStore *boundedRateLimiterStore, trustedProxies []string, m *metrics.Metrics) echo.MiddlewareFunc {
 	deny := func(c echo.Context, _ string, _ error) error {
+		// A refused request never reaches the ingestion handler, so this is the
+		// only place its refusal can be counted.
+		m.CountOpenLineageIngestFailure(openLineageRateLimitedFailureKind, apiv1.OpenLineageIngestRouteLabel(c.Path()))
 		return c.JSON(http.StatusTooManyRequests, map[string]string{"error": "rate limit exceeded"})
 	}
 	// Key by the ingestion key so one noisy producer cannot exhaust another's

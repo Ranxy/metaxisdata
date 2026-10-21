@@ -1,5 +1,7 @@
 package llm
 
+import "github.com/Ranxy/metaxisdata/backend/metrics"
+
 // AgentEvent is emitted by the agent loop to report progress.
 type AgentEvent struct {
 	// Type identifies the event kind.
@@ -49,6 +51,15 @@ const (
 type AgentConfig struct {
 	// Provider configuration for LLM calls.
 	Provider ResolvedConfig
+
+	// Feature labels this caller's model calls in metrics (for example
+	// "explain_sql" or "dq_explain_result"). The agent loop records one LLM call
+	// per invocation, so this is the only place a caller labels its calls.
+	Feature string
+
+	// Metrics records the invocation's call, duration and token outcome. A nil
+	// value disables instrumentation.
+	Metrics *metrics.Metrics
 
 	// SystemPrompt is prepended to the conversation.
 	SystemPrompt string

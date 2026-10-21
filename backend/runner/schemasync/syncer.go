@@ -18,6 +18,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 	"github.com/Ranxy/metaxisdata/backend/plugin/db"
 	"github.com/Ranxy/metaxisdata/backend/runner"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -47,7 +48,7 @@ const (
 // operation to the user who asked for it, and a background failure to the
 // workspace administrators; a nil notifier leaves the runner silent, which is
 // what its own tests want.
-func NewSyncer(stores *store.Store, dbFactory *dbfactory.DBFactory, stateCfg *state.State, lineageQueue LineageQueue, lineageRevalidator LineageRevalidator, notifier Notifier) *Syncer {
+func NewSyncer(stores *store.Store, dbFactory *dbfactory.DBFactory, stateCfg *state.State, lineageQueue LineageQueue, lineageRevalidator LineageRevalidator, notifier Notifier, m *metrics.Metrics) *Syncer {
 	return &Syncer{
 		store:              stores,
 		dbFactory:          dbFactory,
@@ -55,6 +56,7 @@ func NewSyncer(stores *store.Store, dbFactory *dbfactory.DBFactory, stateCfg *st
 		lineageQueue:       lineageQueue,
 		lineageRevalidator: lineageRevalidator,
 		notifier:           notifier,
+		metrics:            m,
 	}
 }
 
@@ -105,6 +107,8 @@ type Syncer struct {
 	statisticsState map[string]time.Time
 	// notifier writes the messages a sync operation produces. See operation.go.
 	notifier Notifier
+	// metrics records sync outcomes; a nil value disables instrumentation.
+	metrics *metrics.Metrics
 	// operations are the user-visible sync operations still waiting for their
 	// databases. The slice is short — one entry per API-triggered sync in flight —
 	// and is guarded by operationMu because the API registers them while the
@@ -280,6 +284,7 @@ func (s *Syncer) scheduleRetry(database *store.DatabaseMessage) bool {
 	}
 	s.databaseSyncRetryMap.Store(key, databaseRetry{attempts: attempts, nextAt: time.Now().Add(databaseSyncRetryBackoff(attempts))})
 	s.databaseSyncMap.Store(key, database)
+	s.metrics.CountSchemaSyncRetry(attempts)
 	return false
 }
 
@@ -382,7 +387,9 @@ func (s *Syncer) Run(ctx context.Context) {
 									slog.String("database", database.DatabaseName),
 									log.WithError(err))
 								s.completeDatabase(ctx, database, err)
-								s.scheduleRetry(database)
+								if s.scheduleRetry(database) {
+									s.metrics.CountSchemaSyncRetriesExhausted(instanceEngine(instanceMap[database.InstanceID]))
+								}
 							}
 						}()
 						slog.Debug("Sync database schema", slog.String("instance", database.InstanceID), slog.String("database", database.DatabaseName))
@@ -392,6 +399,7 @@ func (s *Syncer) Run(ctx context.Context) {
 								// database queued and retry on a later tick. This is
 								// contention, not a failed sync, so it does not
 								// advance the backoff.
+								s.metrics.CountConnectionLimitDeferral(metrics.DeferralDatabase)
 								s.databaseSyncMap.Store(database.String(), database)
 								return
 							}
@@ -412,6 +420,7 @@ func (s *Syncer) Run(ctx context.Context) {
 							// worth interrupting an administrator for.
 							s.completeDatabase(ctx, database, err)
 							if s.scheduleRetry(database) {
+								s.metrics.CountSchemaSyncRetriesExhausted(instanceEngine(instanceMap[database.InstanceID]))
 								s.notifyBackgroundDatabaseFailure(ctx, instanceMap[database.InstanceID], database, err)
 							}
 							return
@@ -438,17 +447,23 @@ func (s *Syncer) Run(ctx context.Context) {
 func (s *Syncer) trySyncAllOnce(ctx context.Context) {
 	ctx, cancel := context.WithTimeout(ctx, 2*instanceSyncInterval)
 	defer cancel()
-	s.trySyncAll(ctx)
+	started := time.Now()
+	ok := s.trySyncAll(ctx)
+	s.metrics.ObserveSchemaSyncScan(ok, time.Since(started))
 }
 
-func (s *Syncer) trySyncAll(ctx context.Context) {
+// trySyncAll runs one instance scan and reports whether it completed. A store
+// read failure or a panic leaves the scan incomplete; an individual instance's
+// failed sync is reported by that sync's own counter, not here.
+func (s *Syncer) trySyncAll(ctx context.Context) (ok bool) {
 	defer func() {
 		if r := recover(); r != nil {
-			err, ok := r.(error)
-			if !ok {
+			err, isError := r.(error)
+			if !isError {
 				err = errors.Errorf("%v", r)
 			}
 			slog.Error("Instance syncer PANIC RECOVER", log.WithError(err), log.Stack("panic-stack"))
+			ok = false
 		}
 	}()
 
@@ -456,7 +471,7 @@ func (s *Syncer) trySyncAll(ctx context.Context) {
 	instances, err := s.store.ListInstances(ctx, &store.FindInstanceMessage{})
 	if err != nil {
 		slog.Error("Failed to retrieve instances", log.WithError(err))
-		return
+		return false
 	}
 	instanceNow := time.Now()
 	// The instances whose sync failed in this round, including the ones skipped
@@ -484,6 +499,12 @@ func (s *Syncer) trySyncAll(ctx context.Context) {
 						slog.String("instance", instance.ResourceID), log.WithError(err))
 					return
 				}
+				if errors.Is(err, errInstanceConnectionsExhausted) {
+					// A saturated connection budget defers the instance to the next
+					// scan instead of failing it; that is backpressure, not a broken
+					// instance, and it has its own counter.
+					s.metrics.CountConnectionLimitDeferral(metrics.DeferralInstance)
+				}
 				s.reportInstanceSyncFailure(ctx, instance, err)
 				failedMu.Lock()
 				failedInstances[instance.ResourceID] = struct{}{}
@@ -506,11 +527,12 @@ func (s *Syncer) trySyncAll(ctx context.Context) {
 	databases, err := s.store.ListDatabases(ctx, &store.FindDatabaseMessage{})
 	if err != nil {
 		slog.Error("Failed to retrieve databases", log.WithError(err))
-		return
+		return false
 	}
 	for _, database := range databasesToEnqueue(databases, instancesMap, failedInstances, databaseNow) {
 		s.enqueueDatabase(database)
 	}
+	return true
 }
 
 // databasesToEnqueue returns the databases the round should queue: those of a
@@ -593,6 +615,45 @@ var errInstanceConnectionsExhausted = state.ErrInstanceConnectionLimit
 // escalate it — the row is history now — and the API maps it to NotFound.
 var ErrDatabaseHidden = errors.New("the target no longer has this database; it has been hidden")
 
+// instanceEngine returns the source engine an instance's metadata names, or the
+// unspecified engine when the instance or its metadata is missing.
+func instanceEngine(instance *store.InstanceMessage) storepb.Engine {
+	if instance == nil {
+		return storepb.Engine_ENGINE_UNSPECIFIED
+	}
+	return instance.Metadata.GetEngine()
+}
+
+// schemaSyncFailureReason maps a failed sync's error to the failure-reason label.
+// Only classifications the sync paths can prove are used: a driver error carries
+// no transient/permanent type, so anything unclassified is "other".
+func schemaSyncFailureReason(err error) string {
+	switch {
+	case errors.Is(err, state.ErrInstanceConnectionLimit):
+		return metrics.FailureReasonConnectionLimit
+	case errors.Is(err, context.Canceled):
+		return metrics.FailureReasonCanceled
+	case errors.Is(err, context.DeadlineExceeded):
+		return metrics.FailureReasonTimeout
+	case errors.Is(err, ErrDatabaseHidden):
+		return metrics.FailureReasonHidden
+	case common.ErrorCode(err) == common.NotFound:
+		return metrics.FailureReasonNotFound
+	default:
+		return metrics.FailureReasonOther
+	}
+}
+
+// countMetaResourcesByType tallies a committed sync's changed rows by object type,
+// so each type is one counter increment instead of one per row.
+func countMetaResourcesByType(resources []*store.CreateMetaRegistryResourceMessage) map[storepb.MetaType]int {
+	counts := make(map[storepb.MetaType]int, len(resources))
+	for _, resource := range resources {
+		counts[resource.ObjectType]++
+	}
+	return counts
+}
+
 // acquireInstanceConnection reserves one of the instance's outstanding
 // connection slots and returns the release func. Every path that opens a driver
 // goes through it, so instance-level and API-triggered syncs are throttled by
@@ -632,7 +693,9 @@ func (s *Syncer) GetInstanceMeta(ctx context.Context, instance *store.InstanceMe
 
 	deadlineCtx, cancelFunc := context.WithDeadline(ctx, time.Now().Add(syncTimeout))
 	defer cancelFunc()
+	driverStarted := time.Now()
 	instanceMeta, err := driver.SyncInstance(deadlineCtx)
+	s.metrics.ObserveDriverCall(instanceEngine(instance), metrics.DriverCallSyncInstance, time.Since(driverStarted))
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to sync instance: %s", instance.ResourceID)
 	}
@@ -668,13 +731,24 @@ func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessa
 			return nil, nil, nil, ctx.Err()
 		}
 	}
+	// The outcome and duration belong to the owner: a waiter reuses the owner's
+	// result and is not a second sync. The clock starts after the gate, so the
+	// time a caller spent waiting for another sync is not reported as sync time.
+	engine := instanceEngine(instance)
+	started := time.Now()
 	defer func() {
 		if r := recover(); r != nil {
 			// Waiters must be released, and a panic is not a result to reuse.
 			s.instanceSyncGate.finish(key, call, nil, nil, nil, errors.Errorf("instance schema sync panicked: %v", r))
+			s.metrics.ObserveInstanceSync(engine, false, time.Since(started))
+			s.metrics.CountSchemaSyncFailure(metrics.SyncStageInstance, metrics.FailureReasonOther)
 			panic(r)
 		}
 		s.instanceSyncGate.finish(key, call, updatedInstance, databases, newDatabases, err)
+		s.metrics.ObserveInstanceSync(engine, err == nil, time.Since(started))
+		if err != nil {
+			s.metrics.CountSchemaSyncFailure(metrics.SyncStageInstance, schemaSyncFailureReason(err))
+		}
 	}()
 
 	instanceMeta, err := s.GetInstanceMeta(ctx, instance)
@@ -798,14 +872,27 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 			return ctx.Err()
 		}
 	}
+	// The outcome and duration belong to the owner: a waiter reuses the owner's
+	// result and is not a second sync. The clock starts after the gate, so the
+	// time a caller spent waiting for another sync is not reported as sync time.
+	// The engine is unknown until the instance row is read; a failure before that
+	// point is still counted, with the unspecified engine label.
+	engine := storepb.Engine_ENGINE_UNSPECIFIED
+	started := time.Now()
 	defer func() {
 		if r := recover(); r != nil {
 			// The waiters must be released, and a panic is not a success they may
 			// reuse.
 			s.databaseSyncGate.finish(key, call, errors.Errorf("database schema sync panicked: %v", r))
+			s.metrics.ObserveDatabaseSync(engine, false, time.Since(started))
+			s.metrics.CountSchemaSyncFailure(metrics.SyncStageDatabase, metrics.FailureReasonOther)
 			panic(r)
 		}
 		s.databaseSyncGate.finish(key, call, err)
+		s.metrics.ObserveDatabaseSync(engine, err == nil, time.Since(started))
+		if err != nil {
+			s.metrics.CountSchemaSyncFailure(metrics.SyncStageDatabase, schemaSyncFailureReason(err))
+		}
 	}()
 
 	instance, err := s.store.GetInstance(ctx, &store.FindInstanceMessage{ResourceID: &database.InstanceID})
@@ -815,6 +902,7 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 	if instance == nil {
 		return errors.Errorf("instance %q not found", database.InstanceID)
 	}
+	engine = instance.Metadata.GetEngine()
 	release, err := s.acquireInstanceConnection(instance)
 	if err != nil {
 		return err
@@ -829,7 +917,9 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 
 	deadlineCtx, cancelFunc := context.WithDeadline(ctx, time.Now().Add(syncTimeout))
 	defer cancelFunc()
+	driverStarted := time.Now()
 	databaseMetadata, err := driver.SyncDBSchema(deadlineCtx)
+	s.metrics.ObserveDriverCall(engine, metrics.DriverCallSyncDBSchema, time.Since(driverStarted))
 	if err != nil {
 		// The target no longer has this database. Every further sync of the row
 		// would fail the same way, so mirror the deletion here instead of leaving
@@ -1032,10 +1122,17 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		return errors.Wrapf(err, "failed to commit transaction for database %q", database.DatabaseName)
 	}
 
+	// Only committed rows are schema changes: work a rollback erased must not be
+	// counted. The diff merges created and updated rows, so the counter reports
+	// them together.
+	for metaType, count := range countMetaResourcesByType(bmc.updates) {
+		s.metrics.AddMetaResourcesWritten(metaType, count)
+	}
+
 	// The deletion log is the only trace of a destructive sync, so it describes
 	// what was committed: logging before the commit reported deletions that a
 	// rollback erased.
-	logSchemaSyncDeletion(common.FormatDatabase(database.InstanceID, database.DatabaseName), bmc.deletes)
+	logSchemaSyncDeletion(common.FormatDatabase(database.InstanceID, database.DatabaseName), bmc.deletes, s.metrics)
 
 	// The statistics refresh is deliberately outside the metadata transaction: it is
 	// a derived estimate for the UI, so a failed estimate write must not roll back
@@ -1347,7 +1444,7 @@ const maxLoggedDeletedGUIDs = 20
 // the connecting user may see, with no error. This log is the only trace of that
 // happening, so it is written after the commit: a rolled-back sync deleted
 // nothing.
-func logSchemaSyncDeletion(database string, deletes []*store.MetaRegistryResource) {
+func logSchemaSyncDeletion(database string, deletes []*store.MetaRegistryResource, m *metrics.Metrics) {
 	if len(deletes) == 0 {
 		return
 	}
@@ -1358,6 +1455,11 @@ func logSchemaSyncDeletion(database string, deletes []*store.MetaRegistryResourc
 		if len(guids) < maxLoggedDeletedGUIDs {
 			guids = append(guids, item.GUID)
 		}
+	}
+	// The caller runs this only after the commit, so these deletions are what the
+	// destructive sync actually removed.
+	for metaType, count := range counts {
+		m.AddMetaResourcesDeleted(metaType, count)
 	}
 	slog.Warn("Deleting metadata resources missing from the synced snapshot",
 		slog.String("database", database),

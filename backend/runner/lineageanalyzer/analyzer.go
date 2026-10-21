@@ -19,6 +19,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 	"github.com/Ranxy/metaxisdata/backend/plugin/dmltarget"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/catalog"
@@ -76,6 +77,8 @@ type Analyzer struct {
 	// decision, and a runner that looked them up from package state could
 	// disagree with the AnalyzeSQL handler about what is registered.
 	lineage *lineage.Analyzer
+	// metrics records analysis outcomes; a nil value disables instrumentation.
+	metrics *metrics.Metrics
 	// analyzeMap holds the event-driven queue: an object whose definition just changed, was
 	// just saved or was just reported. It is drained first, so a backfill cannot push that
 	// work behind the whole registry. Values are the generation of the queued request.
@@ -120,10 +123,11 @@ func analysisRetryBackoff(attempts int) time.Duration {
 
 // NewAnalyzer creates a new lineage Analyzer that resolves statements through
 // lineage, the process's assembled set of engine analyzers.
-func NewAnalyzer(stores *store.Store, lineageAnalyzer *lineage.Analyzer) *Analyzer {
+func NewAnalyzer(stores *store.Store, lineageAnalyzer *lineage.Analyzer, m *metrics.Metrics) *Analyzer {
 	return &Analyzer{
 		store:   stores,
 		lineage: lineageAnalyzer,
+		metrics: m,
 	}
 }
 
@@ -219,6 +223,7 @@ func (a *Analyzer) scheduleRetry(key analyzeKey) {
 		// Drop the retry state: leaving it queued would restart the backoff on
 		// the very next tick, which is the hourly retry loop this replaces.
 		a.retryMap.Delete(key)
+		a.metrics.CountLineageAnalysisRetriesExhausted(key.MetaType)
 		slog.Error("Lineage analysis gave up after repeated failures",
 			slog.String("guid", key.MetaGUID),
 			slog.String("type", key.MetaType.String()))
@@ -236,6 +241,21 @@ func (a *Analyzer) scheduleRetry(key analyzeKey) {
 
 // Name identifies the runner in the server's lifecycle logs.
 func (*Analyzer) Name() string { return "lineageanalyzer" }
+
+// QueueStats reports how many objects are waiting in each analysis queue. It is
+// read by the metrics collector at scrape time: sync.Map has no Len, so both
+// queues are walked. Objects waiting out a retry backoff are counted too.
+func (a *Analyzer) QueueStats() (eventQueue, scanQueue int) {
+	a.analyzeMap.Range(func(_, _ any) bool {
+		eventQueue++
+		return true
+	})
+	a.scanMap.Range(func(_, _ any) bool {
+		scanQueue++
+		return true
+	})
+	return eventQueue, scanQueue
+}
 
 // Run starts the analyzer. It blocks until ctx is cancelled.
 func (a *Analyzer) Run(ctx context.Context) {
@@ -406,9 +426,12 @@ func (a *Analyzer) drainAndAnalyze(ctx context.Context) {
 						slog.String("guid", it.key.MetaGUID),
 						slog.String("type", it.key.MetaType.String()),
 						slog.Any("panic", r))
+					a.metrics.ObserveLineageAnalysis(it.key.MetaType, storepb.Engine_ENGINE_UNSPECIFIED, metrics.AnalysisPanic)
 					a.retryAfterFailure(it)
 				}
 			}()
+			a.metrics.IncLineageAnalysisInFlight()
+			defer a.metrics.DecLineageAnalysisInFlight()
 			objCtx, cancel := context.WithTimeout(ctx, analyzeObjectTimeout)
 			defer cancel()
 			if err := a.analyzeObject(objCtx, it.key.MetaGUID, it.key.MetaType); err != nil {
@@ -416,6 +439,7 @@ func (a *Analyzer) drainAndAnalyze(ctx context.Context) {
 					// The text changed under the analysis. Queue the new text now
 					// instead of waiting for the hourly scan; the write was dropped,
 					// so nothing stale was persisted.
+					a.metrics.ObserveLineageAnalysis(it.key.MetaType, storepb.Engine_ENGINE_UNSPECIFIED, metrics.AnalysisStale)
 					a.QueueAnalysis(it.key.MetaGUID, it.key.MetaType)
 					return
 				}
@@ -427,6 +451,11 @@ func (a *Analyzer) drainAndAnalyze(ctx context.Context) {
 						slog.String("guid", it.key.MetaGUID),
 						slog.String("type", it.key.MetaType.String()),
 						log.WithError(err))
+					// The interrupted branch inside analyzeObject already recorded
+					// its own outcome; every other deadline hit is a timeout here.
+					if !errors.Is(err, errAnalysisInterrupted) {
+						a.metrics.ObserveLineageAnalysis(it.key.MetaType, storepb.Engine_ENGINE_UNSPECIFIED, metrics.AnalysisTimeout)
+					}
 					a.retryAfterFailure(it)
 					return
 				}
@@ -459,19 +488,19 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 	// Extract context from GUID: instanceID;database;schema;name
 	parts := common.SplitMetaGUID(metaGUID)
 	if len(parts) != 4 {
-		return storeError(ctx, a.store, metaGUID, metaType, nil,
-			fmt.Sprintf("invalid GUID format %q", metaGUID))
+		return a.finishFailedAnalysis(ctx, metaType, storepb.Engine_ENGINE_UNSPECIFIED, storeError(ctx, a.store, metaGUID, metaType, nil,
+			fmt.Sprintf("invalid GUID format %q", metaGUID)))
 	}
 	instanceID, database, schema, name := parts[0], parts[1], parts[2], parts[3]
 
 	// Look up instance to get engine type.
 	instance, err := a.store.GetInstance(ctx, &store.FindInstanceMessage{ResourceID: &instanceID})
 	if err != nil {
-		return storeError(ctx, a.store, metaGUID, metaType, err, "failed to get instance")
+		return a.finishFailedAnalysis(ctx, metaType, storepb.Engine_ENGINE_UNSPECIFIED, storeError(ctx, a.store, metaGUID, metaType, err, "failed to get instance"))
 	}
 	if instance == nil {
-		return storeError(ctx, a.store, metaGUID, metaType, nil,
-			fmt.Sprintf("instance %q not found", instanceID))
+		return a.finishFailedAnalysis(ctx, metaType, storepb.Engine_ENGINE_UNSPECIFIED, storeError(ctx, a.store, metaGUID, metaType, nil,
+			fmt.Sprintf("instance %q not found", instanceID)))
 	}
 	engine := instance.Metadata.GetEngine()
 
@@ -479,17 +508,17 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 	// the lookup can be answered from the GUID+type cache.
 	res, err := a.store.GetMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{GUID: &metaGUID, ObjectType: &metaType})
 	if err != nil {
-		return storeError(ctx, a.store, metaGUID, metaType, err, "failed to get meta registry")
+		return a.finishFailedAnalysis(ctx, metaType, engine, storeError(ctx, a.store, metaGUID, metaType, err, "failed to get meta registry"))
 	}
 	if res == nil {
-		return storeError(ctx, a.store, metaGUID, metaType, nil,
-			fmt.Sprintf("meta registry entry not found for GUID %q", metaGUID))
+		return a.finishFailedAnalysis(ctx, metaType, engine, storeError(ctx, a.store, metaGUID, metaType, nil,
+			fmt.Sprintf("meta registry entry not found for GUID %q", metaGUID)))
 	}
 
 	// Get SQL definition and build the full CREATE VIEW statement.
 	definition, wrappedSQL, err := buildSQL(name, engine, metaType, res)
 	if err != nil {
-		return storeError(ctx, a.store, metaGUID, metaType, err, "failed to build SQL")
+		return a.finishFailedAnalysis(ctx, metaType, engine, storeError(ctx, a.store, metaGUID, metaType, err, "failed to build SQL"))
 	}
 	if definition == "" {
 		if emptyDefinitionClearsLineage(metaType) {
@@ -498,7 +527,8 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 			// transaction that marks the new hash analyzed.
 			slog.Debug("Lineage analyzer clearing the edges of an object with no definition",
 				slog.String("guid", metaGUID), slog.String("type", metaType.String()))
-			return markAnalysisFailed(ctx, a.store, metaGUID, metaType, res.MetaHash, nil)
+			return a.finishAnalysisWrite(ctx, metaType, engine, metrics.AnalysisDefinitionCleared,
+				markAnalysisFailed(ctx, a.store, metaGUID, metaType, res.MetaHash, nil))
 		}
 		// A view cannot exist without a defining query, so an empty stored
 		// definition means this snapshot could not read the body (a privilege-limited
@@ -507,14 +537,17 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 		// reads the definition changes the hash and re-analyzes.
 		slog.Warn("Lineage analyzer kept the edges of an object whose definition was unavailable",
 			slog.String("guid", metaGUID), slog.String("type", metaType.String()))
-		return markAnalyzed(ctx, a.store, metaGUID, metaType, res.MetaHash,
-			"lineage analysis skipped: the definition was unavailable in this sync")
+		return a.finishAnalysisWrite(ctx, metaType, engine, metrics.AnalysisDefinitionUnavailable,
+			markAnalyzed(ctx, a.store, metaGUID, metaType, res.MetaHash,
+				"lineage analysis skipped: the definition was unavailable in this sync"))
 	}
 
 	// Run lineage analysis with context so unqualified names resolve correctly.
 	ac := catalog.AnalysisContext{InstanceID: instanceID, Database: database, Schema: schema}
 	analysisCtx := catalog.WithAnalysisContext(ctx, ac)
+	analysisStarted := time.Now()
 	relations, err := a.lineage.Analyze(analysisCtx, engine, wrappedSQL)
+	a.metrics.ObserveLineageAnalyzeDuration(engine, metaType, time.Since(analysisStarted))
 
 	// What an analysis could not represent does not condemn the rest of it: the
 	// analyzers return the edges they did find together with the gap, so the
@@ -529,15 +562,20 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 		// object, and keep the reason visible in error_message.
 		slog.Warn("Lineage analysis skipped: the engine has no lineage analyzer",
 			slog.String("guid", metaGUID), slog.String("engine", engine.String()))
-		return markAnalyzed(ctx, a.store, metaGUID, metaType, res.MetaHash,
-			fmt.Sprintf("engine %s has no lineage analyzer; analysis skipped", engine))
+		return a.finishAnalysisWrite(ctx, metaType, engine, metrics.AnalysisEngineUnsupported,
+			markAnalyzed(ctx, a.store, metaGUID, metaType, res.MetaHash,
+				fmt.Sprintf("engine %s has no lineage analyzer; analysis skipped", engine)))
 	case ctx.Err() != nil:
 		// The deadline hit while the statement was being read. What it says is unknown,
 		// so it must not be recorded as a deterministic parse failure; the drain treats
 		// the interrupted analysis as transient and retries it.
 		slog.Warn("Lineage analysis interrupted",
 			slog.String("guid", metaGUID), slog.String("engine", engine.String()), log.WithError(err))
-		return ctx.Err()
+		// The drain owns timeout/stale/panic; this branch owns interrupted, so it is
+		// recorded here and the error carries the sentinel that tells the drain not
+		// to record a timeout for the same attempt.
+		a.metrics.ObserveLineageAnalysis(metaType, engine, metrics.AnalysisInterrupted)
+		return fmt.Errorf("%w: %w", errAnalysisInterrupted, ctx.Err())
 	default:
 		// A parse error is deterministic — the text does not change between
 		// retries — so the object is recorded as analyzed at the current hash
@@ -547,7 +585,8 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 		// is what keeps a degraded analysis distinguishable from a complete one.
 		slog.Warn("Lineage analysis failed on an unsupported statement",
 			slog.String("guid", metaGUID), slog.String("engine", engine.String()), log.WithError(err))
-		return markAnalysisFailed(ctx, a.store, metaGUID, metaType, res.MetaHash, err)
+		return a.finishAnalysisWrite(ctx, metaType, engine, metrics.AnalysisFailed,
+			markAnalysisFailed(ctx, a.store, metaGUID, metaType, res.MetaHash, err))
 	}
 
 	// What a partial analysis could not model is stored on the version row
@@ -681,8 +720,13 @@ func (a *Analyzer) analyzeObject(ctx context.Context, metaGUID string, metaType 
 		partialMessagePtr = &partialMessage
 	}
 	if err := a.store.ReplaceColumnLineageIfCurrent(ctx, metaGUID, metaType, res.MetaHash, lineage.AnalyzerVersion, lineages, partialMessagePtr); err != nil {
-		return analysisWriteError(ctx, a.store, metaGUID, metaType, err, "failed to replace column lineage")
+		return a.finishFailedAnalysis(ctx, metaType, engine,
+			analysisWriteError(ctx, a.store, metaGUID, metaType, err, "failed to replace column lineage"))
 	}
+	a.metrics.ObserveLineageAnalysis(metaType, engine, metrics.AnalysisStored)
+	columnEdges, tableEdges := analysisEdgeCounts(lineages)
+	a.metrics.AddLineageEdges(metaType, metrics.EdgeKindColumn, columnEdges)
+	a.metrics.AddLineageEdges(metaType, metrics.EdgeKindTable, tableEdges)
 	// The classification is a derived cache for the list page's filter, so it is
 	// written only after the edges commit: a kind that claims a classification the
 	// graph does not have misleads the filter, while a missing kind is merely stale
@@ -803,6 +847,72 @@ func hasCreateKeyword(s string) bool {
 // being retried as a failure.
 var errAnalysisStale = errors.New("analysis result is stale")
 
+// errAnalysisGone tells analyzeObject that the object disappeared before its
+// result could be written, so the result is dropped instead of retried.
+var errAnalysisGone = errors.New("analysis object is gone")
+
+// errAnalysisInterrupted marks an analysis cut short by its deadline or by the
+// runner's shutdown. analyzeObject records that outcome itself; the sentinel is
+// what lets the drain tell this branch apart from every other deadline hit, so
+// the same attempt is not also counted as a timeout.
+var errAnalysisInterrupted = errors.New("analysis is interrupted")
+
+// finishAnalysisWrite records the outcome of a terminal branch once its state
+// write returns. A successful write records the branch result; a failed one is
+// classified like any other failed analysis, so a vanished object, a stale result
+// or a store error is not reported as the branch result.
+func (a *Analyzer) finishAnalysisWrite(ctx context.Context, metaType storepb.MetaType, engine storepb.Engine, result string, writeErr error) error {
+	if writeErr != nil {
+		return a.finishFailedAnalysis(ctx, metaType, engine, writeErr)
+	}
+	a.metrics.ObserveLineageAnalysis(metaType, engine, result)
+	return nil
+}
+
+// finishFailedAnalysis records why an analysis did not reach a result and returns
+// the error the caller must return. A vanished object drops its result silently.
+// A stale result and a deadline/shutdown are recorded by the drain, which owns
+// those outcomes (and re-queues the object); everything else is a store error,
+// recorded here because the drain does not count generic failures.
+func (a *Analyzer) finishFailedAnalysis(ctx context.Context, metaType storepb.MetaType, engine storepb.Engine, err error) error {
+	if result := analysisFailureResult(ctx, err); result != "" {
+		a.metrics.ObserveLineageAnalysis(metaType, engine, result)
+	}
+	if errors.Is(err, errAnalysisGone) {
+		return nil
+	}
+	return err
+}
+
+// analysisFailureResult maps a failed analysis to the outcome recorded for it. It
+// returns "" when the drain records the outcome instead: a stale result or a
+// timeout is retried there. A vanished object is always "gone", even when the
+// context expired meanwhile.
+func analysisFailureResult(ctx context.Context, err error) string {
+	switch {
+	case errors.Is(err, errAnalysisGone):
+		return metrics.AnalysisObjectGone
+	case errors.Is(err, errAnalysisStale), analysisTimedOut(ctx, err):
+		return ""
+	default:
+		return metrics.AnalysisStoreError
+	}
+}
+
+// analysisEdgeCounts splits the edges an analysis submits to the replace into
+// column- and table-level counts. A table-level edge names neither a source nor a
+// target column. The counts are an upper bound on what the replace inserts: it
+// deletes the old set and re-inserts with ON CONFLICT DO NOTHING, which drops
+// duplicates.
+func analysisEdgeCounts(lineages []*store.ColumnLineage) (column, table int) {
+	for _, l := range lineages {
+		if l.SourceColumn == "" && l.TargetColumn == "" {
+			table++
+		}
+	}
+	return len(lineages) - table, table
+}
+
 // storeError surfaces an error before any result exists. It records the message
 // on the object's existing analysis-state row without touching its hash: a
 // transient failure must not make a successful result look unanalyzed, and the
@@ -823,13 +933,14 @@ func storeError(ctx context.Context, s *store.Store, metaGUID string, metaType s
 
 // analysisWriteError classifies a failed result write: a vanished object drops the
 // result, a changed one asks for a re-analysis of the new text, and anything else
-// is a transient store error that the retry map handles.
+// is a transient store error that the retry map handles. analyzeObject turns
+// errAnalysisGone back into a nil return, so the object is not retried.
 func analysisWriteError(ctx context.Context, s *store.Store, metaGUID string, metaType storepb.MetaType, cause error, msg string) error {
 	switch {
 	case errors.Is(cause, store.ErrAnalysisGone):
 		slog.Debug("Lineage analysis dropped: the object disappeared during analysis",
 			slog.String("guid", metaGUID), slog.String("type", metaType.String()))
-		return nil
+		return errAnalysisGone
 	case errors.Is(cause, store.ErrAnalysisStale):
 		return errAnalysisStale
 	default:

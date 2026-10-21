@@ -103,12 +103,13 @@ func (s *DataQualityService) SuggestQualityRule(ctx context.Context, req *connec
 			ColumnComments: qualityColumnComments(resolution.Metadata, metaType),
 		},
 		resolution.Target, requestedColumns, intent, existingRules)
-	text, usage, err := qualityJSONCompletion(ctx, config, systemPrompt, userPrompt, qualityLLMMaxOutputTokens)
+	text, usage, err := s.qualityJSONCompletion(ctx, config, qualityLLMFeatureRuleDraft, systemPrompt, userPrompt, qualityLLMMaxOutputTokens)
 	if err != nil {
 		return nil, err
 	}
 	drafts, err := dataquality.ParseRuleDrafts(text)
 	if err != nil {
+		s.metrics.CountLLMParseFailure(qualityLLMFeatureRuleDraft)
 		slog.Warn("the model returned an invalid rule draft",
 			slog.String("table_guid", tableGUID),
 			slog.Any("error", err))
@@ -528,12 +529,13 @@ func (s *DataQualityService) ExplainQualityResult(ctx context.Context, req *conn
 	if err := stream.Send(thinking); err != nil {
 		return err
 	}
-	text, usage, err := qualityJSONCompletion(ctx, config, systemPrompt, userPrompt, qualityLLMMaxOutputTokens)
+	text, usage, err := s.qualityJSONCompletion(ctx, config, qualityLLMFeatureExplainResult, systemPrompt, userPrompt, qualityLLMMaxOutputTokens)
 	if err != nil {
 		return err
 	}
 	explanation, err := dataquality.ParseExplanation(text)
 	if err != nil {
+		s.metrics.CountLLMParseFailure(qualityLLMFeatureExplainResult)
 		slog.Warn("the model returned an invalid explanation",
 			slog.Int64("result_id", result.ID),
 			slog.Any("error", err))

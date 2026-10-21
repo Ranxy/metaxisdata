@@ -12,6 +12,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 	"github.com/Ranxy/metaxisdata/backend/plugin/db"
 )
 
@@ -157,11 +158,13 @@ func TestProfileReadsAggregateFacts(t *testing.T) {
 		MaxRows:  1,
 		MaxBytes: defaultProfileMaxBytes,
 		Timeout:  defaultProfileQueryTimeout,
+		Purpose:  metrics.QueryPurposeProfileAggregate,
 	}, queryer.aggregateOpts)
 	require.Equal(t, db.QueryOptions{
 		MaxRows:  defaultProfileSampleRows,
 		MaxBytes: defaultProfileMaxBytes,
 		Timeout:  defaultProfileQueryTimeout,
+		Purpose:  metrics.QueryPurposeProfileSample,
 	}, queryer.sampleOpts)
 }
 

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 )
 
 // ConnectionPriority orders the requests waiting for one instance's connection
@@ -50,6 +52,9 @@ var ErrInstanceConnectionLimit = errors.New("instance connection limit reached")
 // concurrently open sessions rather than the driver pools' internal connection
 // count.
 type connectionGovernor struct {
+	// metrics records refused non-blocking lease requests; a nil value disables
+	// instrumentation.
+	metrics *metrics.Metrics
 	mu      sync.Mutex
 	holders map[string]int
 	waiters map[string][]*connectionWaiter
@@ -70,8 +75,9 @@ type connectionWaiter struct {
 	ready    chan struct{}
 }
 
-func newConnectionGovernor() *connectionGovernor {
+func newConnectionGovernor(m *metrics.Metrics) *connectionGovernor {
 	return &connectionGovernor{
+		metrics: m,
 		holders: make(map[string]int),
 		waiters: make(map[string][]*connectionWaiter),
 	}
@@ -93,6 +99,18 @@ func (s *State) AcquireInstanceConnection(ctx context.Context, request InstanceC
 // database queued for the next tick) must not starve the callers that wait.
 func (s *State) TryAcquireInstanceConnection(request InstanceConnectionRequest) (func(), bool) {
 	return s.instanceConnections.tryAcquire(request)
+}
+
+// ConnectionInUse reports the total number of instance connection leases held.
+// It is read by the metrics collector at scrape time.
+func (s *State) ConnectionInUse() int {
+	return s.instanceConnections.inUse()
+}
+
+// ConnectionWaiters reports the requests waiting for an instance connection,
+// by priority label. It is read by the metrics collector at scrape time.
+func (s *State) ConnectionWaiters() map[string]int {
+	return s.instanceConnections.waitersByPriority()
 }
 
 func (g *connectionGovernor) acquire(ctx context.Context, request InstanceConnectionRequest) (func(), error) {
@@ -135,10 +153,50 @@ func (g *connectionGovernor) acquire(ctx context.Context, request InstanceConnec
 	}
 }
 
+func (g *connectionGovernor) inUse() int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	total := 0
+	for _, holders := range g.holders {
+		total += holders
+	}
+	return total
+}
+
+func (g *connectionGovernor) waitersByPriority() map[string]int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	waiters := map[string]int{
+		"background":  0,
+		"manual":      0,
+		"interactive": 0,
+	}
+	for _, queue := range g.waiters {
+		for _, waiter := range queue {
+			waiters[connectionPriorityLabel(waiter.priority)]++
+		}
+	}
+	return waiters
+}
+
+func connectionPriorityLabel(priority ConnectionPriority) string {
+	switch priority {
+	case ConnectionPriorityBackground:
+		return "background"
+	case ConnectionPriorityManual:
+		return "manual"
+	case ConnectionPriorityInteractive:
+		return "interactive"
+	default:
+		return "background"
+	}
+}
+
 func (g *connectionGovernor) tryAcquire(request InstanceConnectionRequest) (func(), bool) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if len(g.waiters[request.InstanceID]) > 0 || !g.admissibleLocked(request) {
+		g.metrics.CountInstanceConnectionTryAcquireRejected()
 		return nil, false
 	}
 	g.holders[request.InstanceID]++

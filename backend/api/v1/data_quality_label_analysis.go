@@ -123,7 +123,7 @@ func (s *DataQualityService) SuggestColumnLabels(ctx context.Context, req *conne
 	for _, batch := range qualityLabelColumnBatches(columns, qualityLabelBatchColumns, qualityLabelMaxBatches) {
 		systemPrompt, userPrompt := dataquality.BuildLabelPrompt(
 			dataquality.LabelPromptVersion, language, resolution.Target, profiles, lineage, existingLabels, batch)
-		text, usage, err := qualityJSONCompletion(ctx, config, systemPrompt, userPrompt, qualityLLMMaxOutputTokens)
+		text, usage, err := s.qualityJSONCompletion(ctx, config, qualityLLMFeatureColumnLabels, systemPrompt, userPrompt, qualityLLMMaxOutputTokens)
 		if err != nil {
 			return nil, err
 		}
@@ -131,6 +131,7 @@ func (s *DataQualityService) SuggestColumnLabels(ctx context.Context, req *conne
 
 		outputs, err := dataquality.ParseLabelSuggestions(text, batch)
 		if err != nil {
+			s.metrics.CountLLMParseFailure(qualityLLMFeatureColumnLabels)
 			slog.Warn("the model returned invalid column labels",
 				slog.String("table_guid", guid),
 				slog.Any("error", err))

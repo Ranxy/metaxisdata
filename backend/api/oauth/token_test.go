@@ -136,7 +136,7 @@ func refreshForm(scope string) url.Values {
 // fake, so the rotation path runs hermetically.
 func newTokenTestServer(t *testing.T, fake *fakeTokenStore, now time.Time) (*Server, *state.State) {
 	t.Helper()
-	stateCfg, err := state.New()
+	stateCfg, err := state.New(nil)
 	require.NoError(t, err)
 	server := NewServer(ServerConfig{
 		TokenStores: fake,

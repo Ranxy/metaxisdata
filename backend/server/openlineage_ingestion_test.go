@@ -16,7 +16,7 @@ import (
 // peer address, so a listed proxy in these tests is "192.0.2.1".
 func openLineageIngestionTestServer(keyStore, sourceStore *boundedRateLimiterStore, trustedProxies []string) *echo.Echo {
 	e := echo.New()
-	g := e.Group("/api/v1/lineage", openLineageIngestionMiddlewareWithStore(keyStore, sourceStore, trustedProxies))
+	g := e.Group("/api/v1/lineage", openLineageIngestionMiddlewareWithStore(keyStore, sourceStore, trustedProxies, nil))
 	g.POST("", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
 	return e
 }
@@ -63,7 +63,7 @@ func TestOpenLineageIngestionMiddlewareRateLimits(t *testing.T) {
 	t.Parallel()
 
 	e := echo.New()
-	g := e.Group("/api/v1/lineage", openLineageIngestionMiddleware(nil))
+	g := e.Group("/api/v1/lineage", openLineageIngestionMiddleware(nil, nil))
 	g.POST("", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
 
 	// 50 rps would need tens of seconds to absorb this many spare requests, so a

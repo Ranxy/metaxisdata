@@ -9,6 +9,7 @@ import (
 	"connectrpc.com/connect"
 
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 )
 
 const (
@@ -44,6 +45,9 @@ type qualityLLMQuota struct {
 	columnAnalyses int
 	// sem is a counting semaphore with qualityLLMConcurrentLimit slots.
 	sem chan struct{}
+	// metrics records daily-quota rejections by kind; a nil value disables
+	// instrumentation.
+	metrics *metrics.Metrics
 }
 
 func newQualityLLMQuota() *qualityLLMQuota {
@@ -87,6 +91,7 @@ func (q *qualityLLMQuota) begin(ctx context.Context, kind qualityLLMKind, column
 	case qualityLLMAnalysis:
 		if q.analyses >= qualityLLMDailyAnalysisLimit {
 			q.mu.Unlock()
+			q.metrics.CountLLMQuotaRejection(metrics.LLMQuotaAnalysis)
 			return nil, connect.NewError(connect.CodeResourceExhausted, errors.New(
 				"the workspace has used its daily data quality LLM analysis limit; it resets at 00:00 UTC"))
 		}
@@ -98,6 +103,7 @@ func (q *qualityLLMQuota) begin(ctx context.Context, kind qualityLLMKind, column
 		}
 		if q.columnAnalyses >= limit {
 			q.mu.Unlock()
+			q.metrics.CountLLMQuotaRejection(metrics.LLMQuotaColumnAnalysis)
 			return nil, connect.NewError(connect.CodeResourceExhausted, errors.New(
 				"the workspace has used its daily column analysis limit; it resets at 00:00 UTC"))
 		}

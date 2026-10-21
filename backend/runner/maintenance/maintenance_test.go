@@ -8,9 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
@@ -501,4 +503,73 @@ func TestRunOncePrunesDataQualityRetention(t *testing.T) {
 	require.Equal(t, passTime.Add(-qualityProfileRetention), stores.cutoff("column_profiles"))
 	require.Equal(t, passTime.Add(-qualityLLMCacheRetention), stores.cutoff("data_quality_llm_cache"))
 	require.Equal(t, passTime.Add(-qualitySuggestionRetention), stores.cutoff("quality_suggestions"))
+}
+
+// The deleted-rows counter is a row counter: the two lineage items count edges
+// re-checked, so folding them in would make the value meaningless.
+func TestRowCountsDropsLineageEdgeCounts(t *testing.T) {
+	t.Parallel()
+
+	rows := rowCounts(map[string]int64{
+		"llm_debug_log":              3,
+		"unresolved_lineage":         5,
+		"contradicted_column_claims": 7,
+	})
+	require.Equal(t, map[string]int64{"llm_debug_log": 3}, rows)
+	require.Empty(t, rowCounts(nil))
+}
+
+// One pass records one pass counter and one deleted-rows entry per item; the
+// lineage edge counts stay out of it, and a failed item is visible as such.
+func TestPassMetricsRecordOutcomeAndItems(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	stores.deleted["llm_debug_log"] = 3
+	stores.errs["revoked_tokens"] = errors.New("table is locked")
+
+	registry := prometheus.NewRegistry()
+	m := metrics.New()
+	require.NoError(t, m.Register(registry))
+
+	runner := newTestRunner(stores, &fakeRevalidator{revalidated: 2})
+	runner.metrics = m
+	runner.runOnce(context.Background())
+
+	require.Equal(t, 1.0, gatheredCounter(t, registry, "metaxisdata_maintenance_passes_total", map[string]string{"outcome": "partial"}))
+	require.Equal(t, 3.0, gatheredCounter(t, registry, "metaxisdata_maintenance_deleted_rows_total", map[string]string{"item": "llm_debug_log"}))
+	require.Equal(t, 1.0, gatheredCounter(t, registry, "metaxisdata_maintenance_item_failures_total", map[string]string{"item": "revoked_tokens"}))
+	require.Equal(t, 0.0, gatheredCounter(t, registry, "metaxisdata_maintenance_deleted_rows_total", map[string]string{"item": "unresolved_lineage"}),
+		"an edge count must not be reported as deleted rows")
+}
+
+// gatheredCounter returns one counter's value from a gathered registry, matched on
+// its full label set; a series that was never recorded is 0.
+func gatheredCounter(t *testing.T, registry *prometheus.Registry, name string, labels map[string]string) float64 {
+	t.Helper()
+
+	families, err := registry.Gather()
+	require.NoError(t, err)
+	for _, family := range families {
+		if family.GetName() != name {
+			continue
+		}
+		for _, metric := range family.GetMetric() {
+			if len(metric.GetLabel()) != len(labels) {
+				continue
+			}
+			matches := true
+			for _, pair := range metric.GetLabel() {
+				value, ok := labels[pair.GetName()]
+				if !ok || value != pair.GetValue() {
+					matches = false
+					break
+				}
+			}
+			if matches && metric.GetCounter() != nil {
+				return metric.GetCounter().GetValue()
+			}
+		}
+	}
+	return 0
 }

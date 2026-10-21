@@ -8,9 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/engines"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -541,4 +543,133 @@ func TestEmptyDefinitionClearsLineage(t *testing.T) {
 	require.True(t, emptyDefinitionClearsLineage(storepb.MetaType_APPLICATION_SQL))
 	require.False(t, emptyDefinitionClearsLineage(storepb.MetaType_VIEW))
 	require.False(t, emptyDefinitionClearsLineage(storepb.MetaType_MATERIALIZED_VIEW))
+}
+
+// A failed analysis maps to exactly one outcome. A stale result and a deadline are
+// left to the drain, which records them and re-queues the object, so recording
+// them here as well would count one attempt twice.
+func TestAnalysisFailureResult(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, metrics.AnalysisObjectGone, analysisFailureResult(context.Background(), errAnalysisGone))
+	require.Equal(t, metrics.AnalysisStoreError, analysisFailureResult(context.Background(), errors.New("the store is down")))
+	require.Empty(t, analysisFailureResult(context.Background(), errAnalysisStale))
+	require.Empty(t, analysisFailureResult(context.Background(), fmt.Errorf("record state: %w", context.DeadlineExceeded)))
+
+	expired, cancel := context.WithTimeout(context.Background(), 0)
+	defer cancel()
+	require.Empty(t, analysisFailureResult(expired, errors.New("lookup canceled by the deadline")))
+	require.Equal(t, metrics.AnalysisObjectGone, analysisFailureResult(expired, errAnalysisGone),
+		"a vanished object is a deterministic outcome even when the deadline expired")
+}
+
+// The interrupted branch in analyzeObject records its own outcome, so the drain
+// must be able to tell that error apart from every other timeout. If the sentinel
+// were dropped, the drain would also record a timeout for the same attempt.
+func TestInterruptedErrorStaysAClassifiedTimeout(t *testing.T) {
+	t.Parallel()
+
+	err := fmt.Errorf("%w: %w", errAnalysisInterrupted, context.DeadlineExceeded)
+	require.ErrorIs(t, err, errAnalysisInterrupted)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.False(t, errors.Is(err, errAnalysisStale))
+}
+
+// A table-level edge names no column on either end; every other edge is
+// column-level, including a dataset-level reference that names a source column.
+func TestAnalysisEdgeCounts(t *testing.T) {
+	t.Parallel()
+
+	column, table := analysisEdgeCounts(nil)
+	require.Zero(t, column)
+	require.Zero(t, table)
+
+	column, table = analysisEdgeCounts([]*store.ColumnLineage{
+		{SourceColumn: "id", TargetColumn: "id"},
+		{SourceColumn: "created_at", TargetColumn: ""},
+		{SourceColumn: "", TargetColumn: ""},
+	})
+	require.Equal(t, 2, column)
+	require.Equal(t, 1, table)
+}
+
+// The terminal branches record through the injected handle, not only through a
+// nil one: the outcome a branch classifies must be observable on the registry.
+func TestTerminalBranchesRecordTheirOutcome(t *testing.T) {
+	t.Parallel()
+
+	m := metrics.New()
+	registry := prometheus.NewRegistry()
+	require.NoError(t, m.Register(registry))
+	analyzer := &Analyzer{metrics: m}
+
+	require.NoError(t, analyzer.finishAnalysisWrite(context.Background(),
+		storepb.MetaType_VIEW, storepb.Engine_MYSQL, metrics.AnalysisFailed, nil))
+	require.NoError(t, analyzer.finishAnalysisWrite(context.Background(),
+		storepb.MetaType_VIEW, storepb.Engine_MYSQL, metrics.AnalysisDefinitionCleared, errAnalysisGone),
+		"a vanished object drops its result")
+	require.Error(t, analyzer.finishFailedAnalysis(context.Background(),
+		storepb.MetaType_MANUAL_SQL, storepb.Engine_POSTGRES, errors.New("the store is down")))
+	require.Error(t, analyzer.finishFailedAnalysis(context.Background(),
+		storepb.MetaType_MANUAL_SQL, storepb.Engine_POSTGRES, errAnalysisStale),
+		"a stale result is retried")
+	require.NoError(t, analyzer.finishFailedAnalysis(context.Background(),
+		storepb.MetaType_APPLICATION_SQL, storepb.Engine_POSTGRES, errAnalysisGone))
+
+	require.Equal(t, 1.0, analysisCounter(t, registry, metrics.AnalysisFailed, storepb.MetaType_VIEW, storepb.Engine_MYSQL))
+	require.Equal(t, 1.0, analysisCounter(t, registry, metrics.AnalysisObjectGone, storepb.MetaType_VIEW, storepb.Engine_MYSQL))
+	require.Equal(t, 1.0, analysisCounter(t, registry, metrics.AnalysisObjectGone, storepb.MetaType_APPLICATION_SQL, storepb.Engine_POSTGRES))
+	require.Equal(t, 1.0, analysisCounter(t, registry, metrics.AnalysisStoreError, storepb.MetaType_MANUAL_SQL, storepb.Engine_POSTGRES))
+	require.Zero(t, analysisCounter(t, registry, metrics.AnalysisStale, storepb.MetaType_MANUAL_SQL, storepb.Engine_POSTGRES),
+		"the drain records stale")
+}
+
+// analysisCounter sums the analysis_objects_total series for one outcome, object
+// type and engine.
+func analysisCounter(t *testing.T, registry *prometheus.Registry, result string, metaType storepb.MetaType, engine storepb.Engine) float64 {
+	t.Helper()
+	families, err := registry.Gather()
+	require.NoError(t, err)
+	for _, family := range families {
+		if family.GetName() != "metaxisdata_lineage_analysis_objects_total" {
+			continue
+		}
+		for _, metric := range family.GetMetric() {
+			labels := make(map[string]string, len(metric.GetLabel()))
+			for _, pair := range metric.GetLabel() {
+				labels[pair.GetName()] = pair.GetValue()
+			}
+			if labels["result"] != result || labels["meta_type"] != analysisMetaTypeName(metaType) || labels["engine"] != analysisEngineName(engine) {
+				continue
+			}
+			return metric.GetCounter().GetValue()
+		}
+	}
+	return 0
+}
+
+func analysisMetaTypeName(metaType storepb.MetaType) string {
+	switch metaType {
+	case storepb.MetaType_VIEW:
+		return "view"
+	case storepb.MetaType_MATERIALIZED_VIEW:
+		return "materialized_view"
+	case storepb.MetaType_MANUAL_SQL:
+		return "manual_sql"
+	case storepb.MetaType_APPLICATION_SQL:
+		return "application_sql"
+	default:
+		return "other"
+	}
+}
+
+func analysisEngineName(engine storepb.Engine) string {
+	switch engine {
+	case storepb.Engine_MYSQL:
+		return "mysql"
+	case storepb.Engine_POSTGRES:
+		return "postgres"
+	default:
+		return "unknown"
+	}
 }

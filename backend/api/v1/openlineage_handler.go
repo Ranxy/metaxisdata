@@ -20,6 +20,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/audit"
 	"github.com/Ranxy/metaxisdata/backend/component/notification"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
 	"github.com/Ranxy/metaxisdata/backend/plugin/openlineage"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -58,16 +59,19 @@ type OpenLineageHandler struct {
 	// administrators. Ingestion is a machine credential's traffic, so there is no
 	// user to tell; a nil notifier leaves the log as the only record.
 	notifier OpenLineageNotifier
+	// metrics records ingestion outcomes; a nil value disables instrumentation.
+	metrics *metrics.Metrics
 }
 
 // NewOpenLineageHandler creates a new OpenLineageHandler. trustedProxies is the
 // list of peers whose forwarding headers the audit record may believe.
-func NewOpenLineageHandler(s *store.Store, trustedProxies []string, lineageAnalyzer *lineage.Analyzer, notifier OpenLineageNotifier) *OpenLineageHandler {
+func NewOpenLineageHandler(s *store.Store, trustedProxies []string, lineageAnalyzer *lineage.Analyzer, notifier OpenLineageNotifier, m *metrics.Metrics) *OpenLineageHandler {
 	return &OpenLineageHandler{
 		store:          s,
-		processor:      openlineage.NewProcessor(s, lineageAnalyzer, notifier),
+		processor:      openlineage.NewProcessor(s, lineageAnalyzer, notifier, m),
 		trustedProxies: trustedProxies,
 		notifier:       notifier,
+		metrics:        m,
 	}
 }
 
@@ -90,10 +94,54 @@ type ingestionFailure struct {
 	failed    int
 }
 
+// Ingestion failure kinds that have no storepb equivalent. A request without a
+// usable key is refused before any event is parsed, so it never carries a stored
+// kind; the rate limiter refuses the rest before this handler sees them.
+const (
+	openLineageFailureKindAuth = "auth"
+)
+
+// OpenLineageIngestRouteLabel renders an ingestion route as a bounded label value.
+// A batch and a single event share one handler, so the path suffix is what tells
+// them apart.
+func OpenLineageIngestRouteLabel(route string) string {
+	if strings.HasSuffix(route, "/batch") {
+		return metrics.IngestRouteBatch
+	}
+	return metrics.IngestRouteEvent
+}
+
+// openLineageFailureKindLabel renders a stored failure kind as a lowercase label
+// value. The values are bounded by the storepb enum, and an unknown one collapses
+// to "unspecified" so the label set cannot grow with stored data.
+func openLineageFailureKindLabel(kind storepb.OpenLineageFailureKind) string {
+	switch kind {
+	case storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_INVALID_EVENT:
+		return "invalid_event"
+	case storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_LIMIT_EXCEEDED:
+		return "limit_exceeded"
+	case storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_SCOPE_MISMATCH:
+		return "scope_mismatch"
+	case storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_PERSIST_FAILED:
+		return "persist_failed"
+	case storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_PROCESS_FAILED:
+		return "process_failed"
+	case storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_NAMESPACE_UNMAPPED:
+		return "namespace_unmapped"
+	case storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_UNSPECIFIED:
+		return "unspecified"
+	default:
+		return "unspecified"
+	}
+}
+
 // reportIngestionFailure notifies the workspace administrators, then writes the
 // HTTP response. One call site per branch keeps "every refused request reaches an
-// inbox" a property of the code rather than of a reviewer's checklist.
+// inbox" a property of the code rather than of a reviewer's checklist. It is also
+// the one place every refused request is counted, except the two authentication
+// branches and the rate-limited requests, which are counted at their own sites.
 func (h *OpenLineageHandler) reportIngestionFailure(c echo.Context, failure ingestionFailure) error {
+	h.metrics.CountOpenLineageIngestFailure(openLineageFailureKindLabel(failure.kind), OpenLineageIngestRouteLabel(c.Path()))
 	h.notifyIngestionFailure(c.Request().Context(), failure)
 	return c.JSON(failure.status, failure.body)
 }
@@ -154,14 +202,17 @@ func (h *OpenLineageHandler) RegisterRoutes(g *echo.Group) {
 func (h *OpenLineageHandler) receiveEvent(c echo.Context) error {
 	started := time.Now()
 
-	// Validate API key.
+	// Validate API key. These two refusals happen before an event exists, so they
+	// have no reportIngestionFailure branch and are counted here.
 	apiKey := ExtractIngestionKey(c.Request())
 	if apiKey == "" {
+		h.metrics.CountOpenLineageIngestFailure(openLineageFailureKindAuth, OpenLineageIngestRouteLabel(c.Path()))
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "missing or invalid Authorization header"})
 	}
 
 	keyMessage, err := h.store.ValidateOpenLineageAPIKey(c.Request().Context(), apiKey)
 	if err != nil {
+		h.metrics.CountOpenLineageIngestFailure(openLineageFailureKindAuth, OpenLineageIngestRouteLabel(c.Path()))
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid API key"})
 	}
 
@@ -174,6 +225,7 @@ func (h *OpenLineageHandler) receiveEvent(c echo.Context) error {
 
 // handleIngestion reads, validates and persists one ingestion request.
 func (h *OpenLineageHandler) handleIngestion(c echo.Context, keyMessage *store.OpenLineageAPIKeyMessage) error {
+	route := OpenLineageIngestRouteLabel(c.Path())
 	// Read body with size limit.
 	body, tooLarge, err := readBodyLimited(c.Request().Body)
 	if err != nil {
@@ -218,6 +270,7 @@ func (h *OpenLineageHandler) handleIngestion(c echo.Context, keyMessage *store.O
 	}
 	if err := openlineage.ValidateEventLimits(event); err != nil {
 		slog.Warn("OpenLineage event exceeds the ingestion limits", "error", err)
+		h.metrics.AddOpenLineageIngestEvents(route, metrics.IngestResultRejected, metrics.IngestReasonLimits, 1)
 		failure := ingestionFailure{
 			key:       keyMessage,
 			kind:      storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_INVALID_EVENT,
@@ -242,6 +295,7 @@ func (h *OpenLineageHandler) handleIngestion(c echo.Context, keyMessage *store.O
 	}
 	if !eventWithinScope(event, keyMessage.ScopeNamespace) {
 		scopeErr := errors.New("API key is not scoped to this OpenLineage namespace")
+		h.metrics.AddOpenLineageIngestEvents(route, metrics.IngestResultRejected, metrics.IngestReasonScope, 1)
 		return h.reportIngestionFailure(c, ingestionFailure{
 			key:       keyMessage,
 			kind:      storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_SCOPE_MISMATCH,
@@ -269,24 +323,31 @@ func (h *OpenLineageHandler) handleIngestion(c echo.Context, keyMessage *store.O
 	persistedRun, err := h.store.UpsertOpenLineageRun(c.Request().Context(), h.runMessageForEvent(event))
 	if err != nil {
 		slog.Error("failed to persist OpenLineage event", "runId", event.Run.RunID, "error", err)
+		h.metrics.AddOpenLineageIngestEvents(route, metrics.IngestResultRejected, metrics.IngestReasonPersist, 1)
 		failed.kind = storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_PERSIST_FAILED
 		failed.body = map[string]string{"error": "failed to persist event"}
 		failed.cause = err
 		return h.reportIngestionFailure(c, failed)
 	}
 
-	if err := h.processor.ProcessRunEvent(c.Request().Context(), event, persistedRun); err != nil {
-		slog.Error("failed to process OpenLineage event", "runId", event.Run.RunID, "error", err)
+	processStarted := time.Now()
+	processErr := h.processor.ProcessRunEvent(c.Request().Context(), event, persistedRun)
+	h.metrics.ObserveOpenLineageProcessDuration(route, time.Since(processStarted))
+	if processErr != nil {
+		slog.Error("failed to process OpenLineage event", "runId", event.Run.RunID, "error", processErr)
+		h.metrics.AddOpenLineageIngestEvents(route, metrics.IngestResultRejected, metrics.IngestReasonProcess, 1)
 		failed.kind = storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_PROCESS_FAILED
 		failed.body = map[string]string{"error": "failed to process event"}
-		failed.cause = err
+		failed.cause = processErr
 		return h.reportIngestionFailure(c, failed)
 	}
+	h.metrics.AddOpenLineageIngestEvents(route, metrics.IngestResultAccepted, "", 1)
 
 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (h *OpenLineageHandler) processBatchEvents(c echo.Context, body []byte, keyMessage *store.OpenLineageAPIKeyMessage) error {
+	route := OpenLineageIngestRouteLabel(c.Path())
 	var rawEvents []json.RawMessage
 	if err := json.Unmarshal(body, &rawEvents); err != nil {
 		return h.reportIngestionFailure(c, ingestionFailure{
@@ -346,6 +407,7 @@ func (h *OpenLineageHandler) processBatchEvents(c echo.Context, body []byte, key
 		event, err := openlineage.ParseRunEvent(raw)
 		if err != nil {
 			slog.Warn("skipping invalid event in batch", "index", i, "error", err)
+			h.metrics.AddOpenLineageIngestEvents(route, metrics.IngestResultRejected, metrics.IngestReasonParse, 1)
 			invalid++
 			if firstErr == nil {
 				firstErr = err
@@ -354,6 +416,7 @@ func (h *OpenLineageHandler) processBatchEvents(c echo.Context, body []byte, key
 		}
 		if err := openlineage.ValidateEventLimits(event); err != nil {
 			slog.Warn("skipping oversized event in batch", "index", i, "error", err)
+			h.metrics.AddOpenLineageIngestEvents(route, metrics.IngestResultRejected, metrics.IngestReasonLimits, 1)
 			invalid++
 			if firstErr == nil {
 				firstErr = err
@@ -362,6 +425,7 @@ func (h *OpenLineageHandler) processBatchEvents(c echo.Context, body []byte, key
 		}
 		if !eventWithinScope(event, keyMessage.ScopeNamespace) {
 			scopeErr := errors.New("API key is not scoped to this OpenLineage namespace")
+			h.metrics.AddOpenLineageIngestEvents(route, metrics.IngestResultRejected, metrics.IngestReasonScope, 1)
 			return h.reportIngestionFailure(c, ingestionFailure{
 				key:       keyMessage,
 				kind:      storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_SCOPE_MISMATCH,
@@ -389,6 +453,7 @@ func (h *OpenLineageHandler) processBatchEvents(c echo.Context, body []byte, key
 	persisted, err := h.store.UpsertOpenLineageRuns(ctx, runs)
 	if err != nil {
 		slog.Error("failed to persist batch events", "events", len(runs), "error", err)
+		h.metrics.AddOpenLineageIngestEvents(route, metrics.IngestResultRejected, metrics.IngestReasonPersist, len(events))
 		return h.reportIngestionFailure(c, ingestionFailure{
 			key:      keyMessage,
 			kind:     storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_PERSIST_FAILED,
@@ -403,14 +468,19 @@ func (h *OpenLineageHandler) processBatchEvents(c echo.Context, body []byte, key
 
 	processed, failed := 0, 0
 	for i, event := range events {
-		if err := h.processor.ProcessRunEvent(ctx, event, runs[i]); err != nil {
-			slog.Error("failed to process batch event", "index", i, "runId", event.Run.RunID, "error", err)
+		processStarted := time.Now()
+		processErr := h.processor.ProcessRunEvent(ctx, event, runs[i])
+		h.metrics.ObserveOpenLineageProcessDuration(route, time.Since(processStarted))
+		if processErr != nil {
+			slog.Error("failed to process batch event", "index", i, "runId", event.Run.RunID, "error", processErr)
+			h.metrics.AddOpenLineageIngestEvents(route, metrics.IngestResultRejected, metrics.IngestReasonProcess, 1)
 			failed++
 			if firstErr == nil {
-				firstErr = err
+				firstErr = processErr
 			}
 			continue
 		}
+		h.metrics.AddOpenLineageIngestEvents(route, metrics.IngestResultAccepted, "", 1)
 		processed++
 	}
 

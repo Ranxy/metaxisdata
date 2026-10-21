@@ -24,7 +24,7 @@ const deviceLoginCreateSourceBudget = 10
 
 func mustState(t *testing.T) *state.State {
 	t.Helper()
-	stateCfg, err := state.New()
+	stateCfg, err := state.New(nil)
 	require.NoError(t, err)
 	return stateCfg
 }
@@ -102,7 +102,7 @@ func TestDeviceLoginStoreErrorMapping(t *testing.T) {
 func TestGetDeviceLoginReturnsAPendingRequest(t *testing.T) {
 	t.Parallel()
 
-	stateCfg, err := state.New()
+	stateCfg, err := state.New(nil)
 	require.NoError(t, err)
 	svc := &AuthService{stateCfg: stateCfg, profile: &config.Profile{}}
 
@@ -137,7 +137,7 @@ func TestGetDeviceLoginReturnsAPendingRequest(t *testing.T) {
 func TestGetDeviceLoginRejectsUnknownCodes(t *testing.T) {
 	t.Parallel()
 
-	stateCfg, err := state.New()
+	stateCfg, err := state.New(nil)
 	require.NoError(t, err)
 	svc := &AuthService{stateCfg: stateCfg, profile: &config.Profile{}}
 	ctx := context.Background()
@@ -159,7 +159,7 @@ func TestGetDeviceLoginRejectsUnknownCodes(t *testing.T) {
 func TestExchangeDeviceLoginRequiresADeviceCode(t *testing.T) {
 	t.Parallel()
 
-	stateCfg, err := state.New()
+	stateCfg, err := state.New(nil)
 	require.NoError(t, err)
 	svc := &AuthService{stateCfg: stateCfg, profile: &config.Profile{}}
 
@@ -172,7 +172,7 @@ func TestExchangeDeviceLoginRequiresADeviceCode(t *testing.T) {
 func TestExchangeDeviceLoginReportsPendingAndThrottles(t *testing.T) {
 	t.Parallel()
 
-	stateCfg, err := state.New()
+	stateCfg, err := state.New(nil)
 	require.NoError(t, err)
 	svc := &AuthService{stateCfg: stateCfg, profile: &config.Profile{}}
 	ctx := context.Background()
@@ -229,7 +229,7 @@ func TestCreateDeviceLoginIsBudgetedOnTheInterceptorChain(t *testing.T) {
 func TestApproveDeviceLoginRequiresACaller(t *testing.T) {
 	t.Parallel()
 
-	stateCfg, err := state.New()
+	stateCfg, err := state.New(nil)
 	require.NoError(t, err)
 	svc := &AuthService{stateCfg: stateCfg}
 

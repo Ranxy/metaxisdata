@@ -17,6 +17,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/component/audit"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 	"github.com/Ranxy/metaxisdata/backend/plugin/openlineage"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -524,4 +525,28 @@ func TestIngestionRefusalWithoutANotifierStillAnswers(t *testing.T) {
 	require.NoError(t, h.processBatchEvents(ctx, []byte(body), ingestionKey("ns")))
 	require.Equal(t, http.StatusForbidden, rec.Code)
 	require.Empty(t, notifier.admin)
+}
+
+// The failure kind label reuses the bounded stored enum, lowercased, so the label
+// set cannot grow with stored data.
+func TestOpenLineageFailureKindLabel(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "invalid_event", openLineageFailureKindLabel(storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_INVALID_EVENT))
+	require.Equal(t, "limit_exceeded", openLineageFailureKindLabel(storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_LIMIT_EXCEEDED))
+	require.Equal(t, "scope_mismatch", openLineageFailureKindLabel(storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_SCOPE_MISMATCH))
+	require.Equal(t, "persist_failed", openLineageFailureKindLabel(storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_PERSIST_FAILED))
+	require.Equal(t, "process_failed", openLineageFailureKindLabel(storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_PROCESS_FAILED))
+	require.Equal(t, "namespace_unmapped", openLineageFailureKindLabel(storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_NAMESPACE_UNMAPPED))
+	require.Equal(t, "unspecified", openLineageFailureKindLabel(storepb.OpenLineageFailureKind_OPENLINEAGE_FAILURE_KIND_UNSPECIFIED))
+}
+
+// A batch and a single event share one handler, so the route label is derived
+// from the path suffix.
+func TestOpenLineageIngestRouteLabel(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, metrics.IngestRouteEvent, OpenLineageIngestRouteLabel("/api/v1/lineage"))
+	require.Equal(t, metrics.IngestRouteEvent, OpenLineageIngestRouteLabel(""))
+	require.Equal(t, metrics.IngestRouteBatch, OpenLineageIngestRouteLabel("/api/v1/lineage/batch"))
 }

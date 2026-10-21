@@ -29,7 +29,7 @@ const (
 
 func newTestThrottleInterceptor(t *testing.T, trustedProxies []string) *ThrottleInterceptor {
 	t.Helper()
-	stateCfg, err := state.New()
+	stateCfg, err := state.New(nil)
 	require.NoError(t, err)
 	return NewThrottleInterceptor(stateCfg, trustedProxies)
 }
@@ -195,7 +195,7 @@ func (stubAuthService) Login(context.Context, *connect.Request[v1pb.LoginRequest
 func TestThrottleInterceptorRunsInTheConnectChain(t *testing.T) {
 	t.Parallel()
 
-	stateCfg, err := state.New()
+	stateCfg, err := state.New(nil)
 	require.NoError(t, err)
 
 	path, handler := v1connect.NewAuthServiceHandler(

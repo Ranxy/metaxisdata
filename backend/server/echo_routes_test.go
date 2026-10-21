@@ -16,27 +16,18 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/config"
 )
 
-// configureEchoRouters registers the Prometheus middleware, which mutates a
-// process-wide registry; a second registration only logs. Both servers are built
-// inside ONE Once because the tests run in parallel: two independent Once bodies
-// (dev and prod) could otherwise call registerMetrics at the same time, which is
-// a data race inside echo-contrib.
+// testServers builds the dev and prod echo servers once per test binary.
+// configureEchoRouters no longer touches process-wide state: every metric is an
+// instrument on the server's private registry, and a nil *metrics.Metrics simply
+// disables recording.
 var (
 	testServersOnce sync.Once
 	devServer       *echo.Echo
 	prodServer      *echo.Echo
 )
 
-// configureEchoRoutersForTest serializes configureEchoRouters across the
-// parallel tests in this package. The registration mutates a process-wide
-// registry, so a call here can race with the hand-built server in
-// server_lifecycle_test.go even though the dev/prod pair share one Once.
-var configureEchoRoutersMu sync.Mutex
-
 func configureEchoRoutersForTest(e *echo.Echo, profile *config.Profile) {
-	configureEchoRoutersMu.Lock()
-	defer configureEchoRoutersMu.Unlock()
-	configureEchoRouters(e, profile)
+	configureEchoRouters(e, profile, nil)
 }
 
 func testServers() {
@@ -188,24 +179,12 @@ func TestRegisterPprofUsesThePointer(t *testing.T) {
 	require.Equal(t, http.StatusOK, doRequest(e, http.MethodGet, "/debug/pprof/goroutine", nil).Code)
 }
 
-// /metrics used to be reachable by anyone. It now follows the runtime-debug
-// gate, checked per request so the admin setting applies without a restart.
-func TestMetricsFollowsRuntimeDebug(t *testing.T) {
+// The Prometheus endpoint moved off the API port: it is served only by the
+// dedicated --metrics-addr listener, which these tests do not start. A GET
+// /metrics here falls through to the SPA catch-all instead of exposing metrics.
+func TestMetricsNotServedOnAPIPort(t *testing.T) {
 	t.Parallel()
 
-	debug := &atomic.Bool{}
-	e := echo.New()
-	e.Use(metricsGateMiddleware(debug))
-	e.GET("/metrics", func(c echo.Context) error {
-		return c.String(http.StatusOK, "metrics")
-	})
-	e.GET("/healthz", func(c echo.Context) error {
-		return c.String(http.StatusOK, "OK")
-	})
-
-	require.Equal(t, http.StatusNotFound, doRequest(e, http.MethodGet, "/metrics", nil).Code)
-	require.Equal(t, http.StatusOK, doRequest(e, http.MethodGet, "/healthz", nil).Code)
-
-	debug.Store(true)
-	require.Equal(t, http.StatusOK, doRequest(e, http.MethodGet, "/metrics", nil).Code)
+	recorder := doRequest(prodTestServer(), http.MethodGet, "/metrics", nil)
+	require.NotContains(t, recorder.Body.String(), "# HELP")
 }

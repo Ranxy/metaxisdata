@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Ranxy/metaxisdata/backend/common/log"
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 )
 
 const (
@@ -58,6 +59,9 @@ type Runner struct {
 	// settleTimer waits out the settle window; production uses time.After, and a
 	// test replaces it to hold the window open instead of racing a clock.
 	settleTimer func(time.Duration) <-chan time.Time
+	// metrics records trigger and pass outcomes; a nil value disables
+	// instrumentation.
+	metrics *metrics.Metrics
 	// trigger holds at most one pending request. A signal that arrives during
 	// settle is folded into the pass about to run, because that pass covers the
 	// same pending edges; a signal that arrives while a pass is running stays
@@ -67,13 +71,14 @@ type Runner struct {
 }
 
 // NewRunner creates a revalidation runner.
-func NewRunner(revalidator Revalidator) *Runner {
+func NewRunner(revalidator Revalidator, m *metrics.Metrics) *Runner {
 	return &Runner{
 		revalidator: revalidator,
 		settle:      settleDelay,
 		passTimeout: passTimeout,
 		settleTimer: time.After,
 		trigger:     make(chan struct{}, 1),
+		metrics:     m,
 	}
 }
 
@@ -85,7 +90,11 @@ func (r *Runner) Trigger() {
 	}
 	select {
 	case r.trigger <- struct{}{}:
+		r.metrics.CountLineageValidationTrigger(metrics.ValidationTriggerQueued)
 	default:
+		// A signal that arrives while one is already pending is folded into the pass
+		// that signal will run, so it earns no pass of its own.
+		r.metrics.CountLineageValidationTrigger(metrics.ValidationTriggerCoalesced)
 	}
 }
 
@@ -143,8 +152,16 @@ func (r *Runner) discardPendingTrigger() {
 // retries the same edges, and a half-finished pass would leave a run's edges
 // replaced in part.
 func (r *Runner) runOnce(ctx context.Context) (revalidated, stillUnknown int) {
+	started := time.Now()
 	passCtx, cancel := context.WithTimeout(ctx, r.passTimeout)
 	defer cancel()
+
+	// The pass outcome is only known at the end, so the observation is deferred;
+	// an error still reports the edges the earlier batches handled.
+	outcome := metrics.ValidationPassOK
+	defer func() {
+		r.metrics.ObserveLineageValidationPass(outcome, time.Since(started), revalidated, stillUnknown)
+	}()
 
 	// limit 0 asks for the implementation's default batch, and hasMore says
 	// whether another batch is waiting. Draining the backlog here means one trigger
@@ -155,6 +172,7 @@ func (r *Runner) runOnce(ctx context.Context) (revalidated, stillUnknown int) {
 		batchRevalidated, batchStillUnknown, hasMore, err := r.revalidator.RevalidateContradictedColumnClaims(passCtx, 0)
 		if err != nil {
 			slog.Error("Failed to revalidate lineage after a schema sync", log.WithError(err))
+			outcome = metrics.ValidationPassError
 			return revalidated, stillUnknown
 		}
 		revalidated += batchRevalidated
@@ -172,6 +190,7 @@ func (r *Runner) runOnce(ctx context.Context) (revalidated, stillUnknown int) {
 	if backlogRemaining {
 		// The batch budget, the deadline, or shutdown ended the pass with batches
 		// still pending; the next trigger continues where this one stopped.
+		outcome = metrics.ValidationPassBacklogRemaining
 		slog.Warn("Revalidation pass ended with a backlog remaining",
 			slog.Int("edges", revalidated),
 			slog.Int("objectsStillUnknown", stillUnknown),

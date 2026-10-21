@@ -6,7 +6,14 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 )
+
+// queryPurposeUnspecified labels a query whose caller did not name a purpose.
+// Keeping one explicit value bounds the label set instead of creating an empty
+// label value.
+const queryPurposeUnspecified = "unspecified"
 
 // QueryOptions bounds one read-only query. The zero value means "no limit" in
 // every field.
@@ -20,6 +27,12 @@ type QueryOptions struct {
 	// Timeout bounds the whole execution, from beginning the transaction to
 	// committing it. 0 means the caller's context is the only deadline.
 	Timeout time.Duration
+	// Purpose labels the query in metrics, and is one of the metrics
+	// QueryPurpose* values. An empty purpose is recorded as "unspecified".
+	Purpose string
+	// Metrics records each query's outcome and duration. A nil value disables
+	// instrumentation.
+	Metrics *metrics.Metrics
 }
 
 // QueryResult is the scanned outcome of one read-only query. Rows holds the
@@ -62,11 +75,33 @@ type ReadOnlyQueryHooks struct {
 // applies opts.Timeout to the context, runs hooks.Prepare, executes exactly one
 // statement, scans it through ScanRows, runs hooks.Cleanup and commits.
 //
+// It is also the single place a target query is measured: the duration runs from
+// begin to commit and excludes the caller's own work, and the outcome is the
+// function's error. Instrumenting this shared implementation keeps the executor,
+// the profiler and the dry run from counting the same statement more than once.
+//
 // Error classification is the caller's job: this function returns the driver's
 // own error, so the upper layer can map context.DeadlineExceeded to a timeout
 // code, connection/permission failures to their codes, and everything else to a
 // SQL error without losing the cause.
 func RunReadOnlyQuery(ctx context.Context, database *sql.DB, query string, args []any, opts QueryOptions, hooks ReadOnlyQueryHooks) (*QueryResult, error) {
+	startedAt := time.Now()
+	result, err := executeReadOnlyQuery(ctx, database, query, args, opts, hooks)
+	opts.Metrics.ObserveReadOnlyQuery(queryPurposeLabel(opts.Purpose), err == nil, time.Since(startedAt))
+	return result, err
+}
+
+// queryPurposeLabel bounds the purpose label to the empty-purpose sentinel.
+func queryPurposeLabel(purpose string) string {
+	if purpose == "" {
+		return queryPurposeUnspecified
+	}
+	return purpose
+}
+
+// executeReadOnlyQuery is the body of RunReadOnlyQuery, split out so the whole
+// execution is measured exactly once by the exported entry point.
+func executeReadOnlyQuery(ctx context.Context, database *sql.DB, query string, args []any, opts QueryOptions, hooks ReadOnlyQueryHooks) (*QueryResult, error) {
 	if database == nil {
 		return nil, errors.New("cannot run a query on a nil database handle")
 	}

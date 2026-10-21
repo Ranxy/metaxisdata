@@ -22,6 +22,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 	"github.com/Ranxy/metaxisdata/backend/plugin/db"
 	"github.com/Ranxy/metaxisdata/backend/store"
 	"github.com/Ranxy/metaxisdata/backend/utils"
@@ -91,17 +92,23 @@ type DataQualityService struct {
 	// llmQuota is the process-wide daily quota and concurrency limit of the LLM
 	// analyses. It is created with the service and shared by every request.
 	llmQuota *qualityLLMQuota
+	// metrics records run, query and LLM outcomes; a nil value disables
+	// instrumentation.
+	metrics *metrics.Metrics
 }
 
 // NewDataQualityService creates the service. runScheduler may be nil.
-func NewDataQualityService(s *store.Store, dbFactory *dbfactory.DBFactory, runScheduler QualityRunScheduler, llmRegistry *llmcomp.Registry, stateCfg *state.State) *DataQualityService {
+func NewDataQualityService(s *store.Store, dbFactory *dbfactory.DBFactory, runScheduler QualityRunScheduler, llmRegistry *llmcomp.Registry, stateCfg *state.State, m *metrics.Metrics) *DataQualityService {
+	quota := newQualityLLMQuota()
+	quota.metrics = m
 	return &DataQualityService{
 		store:        s,
 		dbFactory:    dbFactory,
 		runScheduler: runScheduler,
 		llmRegistry:  llmRegistry,
 		stateCfg:     stateCfg,
-		llmQuota:     newQualityLLMQuota(),
+		llmQuota:     quota,
+		metrics:      m,
 	}
 }
 
@@ -682,6 +689,8 @@ func (s *DataQualityService) probeQualityRule(ctx context.Context, validated *da
 	_, probeErr := queryer.QueryReadOnly(ctx, qualityRuleProbeSQL(validated), validated.Compiled.Args, db.QueryOptions{
 		MaxRows: 1,
 		Timeout: qualityPreviewProbeTimeout,
+		Purpose: metrics.QueryPurposeDryRunProbe,
+		Metrics: s.metrics,
 	})
 	if probeErr != nil {
 		return qualityProbeError(probeErr, validated)
@@ -781,6 +790,7 @@ func (s *DataQualityService) RunQualityRules(ctx context.Context, req *connect.R
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create the quality run")
 		}
+		s.metrics.CountQualityRunCreated(metrics.QualityTriggerManual)
 		if s.runScheduler != nil && !s.runScheduler.EnqueueQualityRun(run.ID, instance, ruleIDs) {
 			s.abandonUnqueueableQualityRun(ctx, run, len(ruleIDs), now)
 			return nil, connect.NewError(connect.CodeResourceExhausted,
@@ -806,6 +816,7 @@ func (s *DataQualityService) abandonUnqueueableQualityRun(ctx context.Context, r
 		slog.Warn("failed to abandon an unqueueable quality run",
 			slog.Int64("run_id", run.ID), clog.WithError(abandonErr))
 	}
+	s.metrics.CountQualityRunAbandoned(metrics.QualityAbandonedQueueFull)
 }
 
 // selectQualityRulesForRun resolves the request's selection to enabled rules.
@@ -1950,7 +1961,9 @@ func (s *DataQualityService) ProfileColumns(ctx context.Context, req *connect.Re
 	}
 	defer release()
 
-	table, err := dataquality.NewProfiler().Profile(ctx, queryer, resolution.Target, columns, dataquality.ProfileOptions{
+	profiler := dataquality.NewProfiler()
+	profiler.Metrics = s.metrics
+	table, err := profiler.Profile(ctx, queryer, resolution.Target, columns, dataquality.ProfileOptions{
 		MaxColumns:   settings.MaxColumnsPerAnalysis,
 		SampleRows:   qualityProfileSampleRows,
 		QueryTimeout: qualityProfileQueryTimeout,

@@ -8,7 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 )
 
 // probeRevalidator counts passes, can hold one open so a test can trigger a pass
@@ -94,7 +97,7 @@ func (p *probeRevalidator) setBlocked(blocked bool) {
 func start(t *testing.T, revalidator Revalidator) (*Runner, func()) {
 	t.Helper()
 
-	runner := NewRunner(revalidator)
+	runner := NewRunner(revalidator, nil)
 	runner.settle = 20 * time.Millisecond
 	return runner, startRunner(t, runner)
 }
@@ -210,7 +213,7 @@ func TestTriggerDuringSettleIsFolded(t *testing.T) {
 	probe := newProbeRevalidator()
 	settleEntered := make(chan struct{}, 1)
 	settleGate := make(chan time.Time, 1)
-	runner := NewRunner(probe)
+	runner := NewRunner(probe, nil)
 	runner.settle = 10 * time.Millisecond
 	runner.settleTimer = func(time.Duration) <-chan time.Time {
 		settleEntered <- struct{}{}
@@ -260,7 +263,7 @@ func TestTriggerDuringSettleIsFolded(t *testing.T) {
 func TestTriggerWithoutARevalidatorIsIgnored(t *testing.T) {
 	t.Parallel()
 
-	runner := NewRunner(nil)
+	runner := NewRunner(nil, nil)
 	require.NotPanics(t, runner.Trigger)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -317,7 +320,7 @@ func TestBacklogIsDrainedInOnePass(t *testing.T) {
 	probe.stillUnknown = 3
 	probe.hasMore = 1
 
-	revalidated, stillUnknown := NewRunner(probe).runOnce(context.Background())
+	revalidated, stillUnknown := NewRunner(probe, nil).runOnce(context.Background())
 
 	require.Equal(t, 2, probe.count(), "a full batch earns a second call")
 	require.Equal(t, 4, revalidated)
@@ -334,7 +337,7 @@ func TestBacklogDrainStopsWhenTheContextEnds(t *testing.T) {
 	probe.hasMore = 10
 	probe.onBatch = cancel
 
-	revalidated, stillUnknown := NewRunner(probe).runOnce(ctx)
+	revalidated, stillUnknown := NewRunner(probe, nil).runOnce(ctx)
 
 	require.Equal(t, 1, probe.count(), "the drain must stop asking once its context ends")
 	require.Equal(t, 1, revalidated, "the batch that ran is still counted")
@@ -351,7 +354,7 @@ func TestBacklogDrainStopsAtThePassDeadline(t *testing.T) {
 	// One batch per 5ms keeps the loop from spinning while the deadline passes, and
 	// keeps the deadline well inside the batch budget so this proves the deadline.
 	probe.onBatch = func() { time.Sleep(5 * time.Millisecond) }
-	runner := NewRunner(probe)
+	runner := NewRunner(probe, nil)
 	runner.passTimeout = 20 * time.Millisecond
 
 	started := time.Now()
@@ -372,11 +375,76 @@ func TestBacklogDrainIsBoundedPerPass(t *testing.T) {
 	probe := newProbeRevalidator()
 	probe.hasMore = math.MaxInt
 	probe.revalidated = 2
-	runner := NewRunner(probe)
+	runner := NewRunner(probe, nil)
 	runner.passTimeout = time.Minute
 
 	revalidated, _ := runner.runOnce(context.Background())
 
 	require.Equal(t, maxRevalidationBatches, probe.count())
 	require.Equal(t, 2*maxRevalidationBatches, revalidated)
+}
+
+// The trigger counter distinguishes a signal that earns a pass from one folded
+// into a pending signal, and the pass counter reports each outcome.
+func TestMetricsRecordTriggerAndPassOutcome(t *testing.T) {
+	t.Parallel()
+
+	registry := prometheus.NewRegistry()
+	m := metrics.New()
+	require.NoError(t, m.Register(registry))
+
+	probe := newProbeRevalidator()
+	runner := NewRunner(probe, m)
+	runner.passTimeout = time.Minute
+
+	runner.Trigger()
+	runner.Trigger()
+	require.Equal(t, 1.0, gatheredCounter(t, registry, "metaxisdata_lineagevalidation_triggers_total", map[string]string{"result": "queued"}))
+	require.Equal(t, 1.0, gatheredCounter(t, registry, "metaxisdata_lineagevalidation_triggers_total", map[string]string{"result": "coalesced"}))
+
+	runner.runOnce(context.Background())
+	require.Equal(t, 1.0, gatheredCounter(t, registry, "metaxisdata_lineagevalidation_passes_total", map[string]string{"outcome": "ok"}))
+	require.Equal(t, 1.0, gatheredCounter(t, registry, "metaxisdata_lineagevalidation_edges_total", map[string]string{"result": "revalidated"}))
+
+	// A failed batch reports the error outcome rather than "ok".
+	probe.err = errors.New("store unavailable")
+	runner.runOnce(context.Background())
+	require.Equal(t, 1.0, gatheredCounter(t, registry, "metaxisdata_lineagevalidation_passes_total", map[string]string{"outcome": "error"}))
+
+	// A pass stopped by the batch budget reports the backlog it leaves behind.
+	probe.err = nil
+	probe.hasMore = math.MaxInt
+	runner.runOnce(context.Background())
+	require.Equal(t, 1.0, gatheredCounter(t, registry, "metaxisdata_lineagevalidation_passes_total", map[string]string{"outcome": "backlog_remaining"}))
+}
+
+// gatheredCounter returns one counter's value from a gathered registry, matched on
+// its full label set; a series that was never recorded is 0.
+func gatheredCounter(t *testing.T, registry *prometheus.Registry, name string, labels map[string]string) float64 {
+	t.Helper()
+
+	families, err := registry.Gather()
+	require.NoError(t, err)
+	for _, family := range families {
+		if family.GetName() != name {
+			continue
+		}
+		for _, metric := range family.GetMetric() {
+			if len(metric.GetLabel()) != len(labels) {
+				continue
+			}
+			matches := true
+			for _, pair := range metric.GetLabel() {
+				value, ok := labels[pair.GetName()]
+				if !ok || value != pair.GetValue() {
+					matches = false
+					break
+				}
+			}
+			if matches && metric.GetCounter() != nil {
+				return metric.GetCounter().GetValue()
+			}
+		}
+	}
+	return 0
 }
