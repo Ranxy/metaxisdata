@@ -25,7 +25,6 @@ type debugLogJob struct {
 	model         string
 	kind          string
 	correlationID string
-	errorCode     string
 	reqBody       string
 	respBody      string
 }
@@ -130,7 +129,6 @@ func writeDebugLog(job debugLogJob) {
 		Model:         job.model,
 		Kind:          job.kind,
 		CorrelationID: job.correlationID,
-		ErrorCode:     job.errorCode,
 		RequestBody:   job.reqBody,
 		ResponseBody:  job.respBody,
 		CreatedAt:     time.Now().UTC(),

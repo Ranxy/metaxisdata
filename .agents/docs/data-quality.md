@@ -439,7 +439,7 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | 13 | AI 起草任务的通知与历史 | 完成不发通知；建议中心任务面板只在页面打开时轮询（2.5s），关闭页面后需回来查看；面板只显示最近 10 个任务 + 独立拉取的 RUNNING 任务、无分页与独立任务详情路由/深链 |
 | 14 | AI 起草任务的执行语义 | 单副本、单 runner 串行：不并行执行多个任务、不续跑、不取消进行中的 provider 调用；取消/配额只会在目标边界生效；提交时配额预检不预占，可能轻微超发；RUNNING 任务取消后、到目标边界前仍显示 RUNNING（cancel_requested 不在资源上暴露）；单任务 panic 已被捕获并标 FAILED，不终止 runner |
 | 15 | 截断调用的 token 用量 | 流在 `finish_reason=length` 处报错时 agent loop 不再读取后续 usage 块，因此该诊断只有 max_tokens/prompt_chars/correlation/finish_reason，没有 prompt/completion tokens；provider/model/stop reason 仍足以复现 |
-| 16 | DQ 调试行的 `error_code` | 正文捕获发生在分类之前，`NewDBDebugLoggerForCall` 不接收分类码，因此 DQ 的 `llm_debug_log.error_code` 可能为空；分类码以任务目标诊断为准，检索 RPC 返回它 |
+| 16 | DQ 调试行的 `error_code` | 分类后由 `SetLLMDebugLogErrorCode` 以 correlation id best-effort 回写；调试行是异步写入的，若 UPDATE 先于 INSERT 到达则该行 `error_code` 留空（无重试）。分类码始终以任务目标诊断为准，检索 RPC 返回它 |
 | 17 | LLM 失败的自动重试与配置 | 不做自动重试；输出上限固定 8192（无按工作区/按 profile 配置，provider 或模型上限更低时会得到 `PROVIDER_STATUS`，需换模型或由运维调整）；原始正文只在 RuntimeDebug 下捕获（7 天）、仅 `suggest` 权限可读且审计正文已脱敏；没有通用调试日志浏览器 |
 
 ## 8. Where things live
