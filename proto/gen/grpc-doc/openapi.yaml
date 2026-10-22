@@ -5100,6 +5100,167 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualitySuggestionJobs:
+        get:
+            tags:
+                - DataQualityService
+            description: List drafting jobs, newest first.
+            operationId: DataQualityService_ListQualitySuggestionJobs
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: |-
+                    The maximum number of jobs to return. If unspecified, at most 20 are
+                     returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  description: A page token, received from a previous ListQualitySuggestionJobs call.
+                  schema:
+                    type: string
+                - name: status
+                  in: query
+                  schema:
+                    enum:
+                        - QUALITY_SUGGESTION_JOB_STATUS_UNSPECIFIED
+                        - QUALITY_SUGGESTION_JOB_STATUS_PENDING
+                        - QUALITY_SUGGESTION_JOB_STATUS_RUNNING
+                        - QUALITY_SUGGESTION_JOB_STATUS_COMPLETED
+                        - QUALITY_SUGGESTION_JOB_STATUS_FAILED
+                        - QUALITY_SUGGESTION_JOB_STATUS_CANCELED
+                    type: string
+                    format: enum
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListQualitySuggestionJobsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        post:
+            tags:
+                - DataQualityService
+            description: |-
+                Start a background AI drafting job over one or more tables. The call returns
+                 as soon as the job is queued: the runner asks the model for each target in
+                 turn, and clients poll GetQualitySuggestionJob (or list the jobs) for
+                 progress. Queued suggestions appear in the review queue like any other.
+            operationId: DataQualityService_CreateQualitySuggestionJob
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CreateQualitySuggestionJobRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualitySuggestionJob'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualitySuggestionJobs/{qualitySuggestionJob}:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                Read one drafting job, including per-target progress and the suggestions it
+                 queued so far.
+            operationId: DataQualityService_GetQualitySuggestionJob
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualitySuggestionJob
+                  in: path
+                  description: The qualitySuggestionJob id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualitySuggestionJob'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualitySuggestionJobs/{qualitySuggestionJob}:cancel:
+        post:
+            tags:
+                - DataQualityService
+            description: |-
+                Ask a drafting job to stop. A pending job is canceled immediately; a running
+                 job finishes its current target, marks the rest skipped and ends CANCELED.
+                 Suggestions already queued are kept.
+            operationId: DataQualityService_CancelQualitySuggestionJob
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualitySuggestionJob
+                  in: path
+                  description: The qualitySuggestionJob id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CancelQualitySuggestionJobRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualitySuggestionJob'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualitySuggestions:
         get:
             tags:
@@ -6162,6 +6323,14 @@ components:
                     type: number
                     format: double
             description: BoundingBox is the bounding box of a spatial index.
+        CancelQualitySuggestionJobRequest:
+            required:
+                - name
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job}'
         CelExpressionConfig:
             type: object
             properties:
@@ -6592,6 +6761,32 @@ components:
                          The suggestion is marked accepted once the rule exists. A decision that
                          cannot be written does not roll the created rule back; it is logged and the
                          suggestion can be decided explicitly.
+        CreateQualitySuggestionJobRequest:
+            required:
+                - parent
+                - intent
+                - targets
+            type: object
+            properties:
+                parent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
+                intent:
+                    type: string
+                    description: |-
+                        The natural-language intent, e.g. "email must not be empty". At most 2000
+                         characters.
+                language:
+                    type: string
+                    description: The language the intent and drafts are written in, e.g. "en" or "zh-CN".
+                targets:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityTarget'
+                    description: |-
+                        The tables or views to draft for, at most 20. Set meta_guid, meta_type and
+                         optionally columns; the path and columns are snapshotted for progress. The
+                         job visits them in order.
         CreateSSOStateResponse:
             type: object
             properties:
@@ -8475,6 +8670,15 @@ components:
                         $ref: '#/components/schemas/QualityRule'
                 nextPageToken:
                     type: string
+        ListQualitySuggestionJobsResponse:
+            type: object
+            properties:
+                qualitySuggestionJobs:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualitySuggestionJob'
+                nextPageToken:
+                    type: string
         ListQualitySuggestionsResponse:
             type: object
             properties:
@@ -10236,6 +10440,108 @@ components:
                 QualitySuggestion is one model-proposed rule draft or semantic label waiting
                  for a reviewer. Nothing here is a rule: accepting a suggestion goes through the
                  normal rule or label path.
+        QualitySuggestionJob:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job}'
+                status:
+                    enum:
+                        - QUALITY_SUGGESTION_JOB_STATUS_UNSPECIFIED
+                        - QUALITY_SUGGESTION_JOB_STATUS_PENDING
+                        - QUALITY_SUGGESTION_JOB_STATUS_RUNNING
+                        - QUALITY_SUGGESTION_JOB_STATUS_COMPLETED
+                        - QUALITY_SUGGESTION_JOB_STATUS_FAILED
+                        - QUALITY_SUGGESTION_JOB_STATUS_CANCELED
+                    type: string
+                    format: enum
+                intent:
+                    type: string
+                    description: The natural-language intent the job drafts for, shared by every target.
+                language:
+                    type: string
+                    description: The language the intent and drafts are written in, e.g. "en" or "zh-CN".
+                targets:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualitySuggestionJobTarget'
+                targetCount:
+                    type: integer
+                    description: Total targets, targets no longer PENDING/RUNNING, and queued suggestions.
+                    format: int32
+                completedTargetCount:
+                    type: integer
+                    format: int32
+                suggestionCount:
+                    type: integer
+                    format: int32
+                provider:
+                    type: string
+                    description: The provider facts of the analysis; set when the runner starts the job.
+                model:
+                    type: string
+                promptVersion:
+                    type: string
+                createTime:
+                    type: string
+                    format: date-time
+                startTime:
+                    type: string
+                    format: date-time
+                finishTime:
+                    type: string
+                    format: date-time
+                error:
+                    type: string
+                    description: Empty unless the whole job failed; per-target failures live on the targets.
+                createdBy:
+                    type: string
+                    description: 'Format: users/{user}.'
+            description: |-
+                QualitySuggestionJob is one background AI drafting run over a set of targets.
+                 It is the durable unit of the asynchronous drafting flow: it outlives the
+                 browser tab that submitted it and is safe to poll.
+        QualitySuggestionJobTarget:
+            type: object
+            properties:
+                targetGuid:
+                    type: string
+                targetType:
+                    type: integer
+                    description: The metaxisdata.v1.MetaType number; the store module does not import v1.
+                    format: int32
+                path:
+                    $ref: '#/components/schemas/QualityTargetPath'
+                columns:
+                    type: array
+                    items:
+                        type: string
+                state:
+                    enum:
+                        - QUALITY_SUGGESTION_JOB_TARGET_STATE_UNSPECIFIED
+                        - QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING
+                        - QUALITY_SUGGESTION_JOB_TARGET_STATE_RUNNING
+                        - QUALITY_SUGGESTION_JOB_TARGET_STATE_DONE
+                        - QUALITY_SUGGESTION_JOB_TARGET_STATE_FAILED
+                        - QUALITY_SUGGESTION_JOB_TARGET_STATE_SKIPPED
+                    type: string
+                    format: enum
+                suggestionResourceIds:
+                    type: array
+                    items:
+                        type: string
+                    description: Resource ids (not names) of the suggestions this target queued.
+                error:
+                    type: string
+                startedAtUnixMs:
+                    type: string
+                finishedAtUnixMs:
+                    type: string
+            description: |-
+                QualitySuggestionJobTarget is one table a background drafting job visits. The
+                 path and columns are a snapshot taken at submission, so the job still renders
+                 after the registry changes; resolution happens again when the model is asked.
         QualitySuggestionPayload:
             type: object
             properties:

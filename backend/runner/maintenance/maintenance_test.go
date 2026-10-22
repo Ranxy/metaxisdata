@@ -105,6 +105,10 @@ func (f *fakeStore) DeleteExpiredQualitySuggestions(ctx context.Context, cutoff 
 	return f.delete(ctx, "quality_suggestions", cutoff)
 }
 
+func (f *fakeStore) DeleteExpiredQualitySuggestionJobs(ctx context.Context, cutoff time.Time) (int64, error) {
+	return f.delete(ctx, "quality_suggestion_jobs", cutoff)
+}
+
 func (f *fakeStore) DeleteExpiredColumnProfiles(ctx context.Context, cutoff time.Time) (int64, error) {
 	return f.delete(ctx, "column_profiles", cutoff)
 }
@@ -488,6 +492,7 @@ func TestRunOncePrunesDataQualityRetention(t *testing.T) {
 	stores.deleted["column_profiles"] = 4
 	stores.deleted["data_quality_llm_cache"] = 5
 	stores.deleted["quality_suggestions"] = 6
+	stores.deleted["quality_suggestion_jobs"] = 7
 
 	summary := newTestRunner(stores, &fakeRevalidator{}).runOnce(context.Background())
 
@@ -497,12 +502,14 @@ func TestRunOncePrunesDataQualityRetention(t *testing.T) {
 	require.Equal(t, int64(4), summary.counts["column_profiles"])
 	require.Equal(t, int64(5), summary.counts["data_quality_llm_cache"])
 	require.Equal(t, int64(6), summary.counts["quality_suggestions"])
+	require.Equal(t, int64(7), summary.counts["quality_suggestion_jobs"])
 
 	require.Equal(t, passTime.Add(-qualityRunRetention), stores.cutoff("quality_runs"))
 	require.Equal(t, passTime.Add(-qualityIssueRetention), stores.cutoff("quality_issues"))
 	require.Equal(t, passTime.Add(-qualityProfileRetention), stores.cutoff("column_profiles"))
 	require.Equal(t, passTime.Add(-qualityLLMCacheRetention), stores.cutoff("data_quality_llm_cache"))
 	require.Equal(t, passTime.Add(-qualitySuggestionRetention), stores.cutoff("quality_suggestions"))
+	require.Equal(t, passTime.Add(-qualitySuggestionJobRetention), stores.cutoff("quality_suggestion_jobs"))
 }
 
 // The deleted-rows counter is a row counter: the two lineage items count edges

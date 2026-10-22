@@ -623,6 +623,28 @@ func TestDataQualityLLMAnalysisIsOffByDefaultRealServerIntegration(t *testing.T)
 	}))
 	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err), "LLM analysis is disabled by default: %v", err)
 
+	// The target and column errors are the caller's, not the switch's: the sync
+	// drafting RPC resolves the target before it checks the provider, so a stale
+	// target reports NotFound and an unknown column InvalidArgument even here.
+	_, err = fixture.dataQuality.SuggestQualityRule(fixture.ctx, withToken(fixture.env.AdminToken(), &v1pb.SuggestQualityRuleRequest{
+		Parent:    "workspaces/-",
+		TableGuid: "doesnotexist;db;public;missing",
+		MetaType:  v1pb.MetaType_TABLE,
+		Intent:    "the email column must not be empty",
+		Language:  "en",
+	}))
+	require.Equal(t, connect.CodeNotFound, connect.CodeOf(err), "an unknown target is NotFound even with the LLM off: %v", err)
+
+	_, err = fixture.dataQuality.SuggestQualityRule(fixture.ctx, withToken(fixture.env.AdminToken(), &v1pb.SuggestQualityRuleRequest{
+		Parent:    "workspaces/-",
+		TableGuid: fixture.usersGUID,
+		MetaType:  v1pb.MetaType_TABLE,
+		Columns:   []string{"no_such_column"},
+		Intent:    "the email column must not be empty",
+		Language:  "en",
+	}))
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err), "an unknown column is InvalidArgument even with the LLM off: %v", err)
+
 	_, err = fixture.dataQuality.SuggestColumnLabels(fixture.ctx, withToken(fixture.env.AdminToken(), &v1pb.SuggestColumnLabelsRequest{
 		Parent:    "workspaces/-",
 		TableGuid: fixture.usersGUID,
@@ -868,6 +890,238 @@ func TestDataQualitySuggestionCenterRealServerIntegration(t *testing.T) {
 	require.Contains(t, redone.Msg.GetResults()[0].GetError(), "already decided")
 	require.Nil(t, redone.Msg.GetResults()[1].GetSuggestion())
 	require.Contains(t, redone.Msg.GetResults()[1].GetError(), "not found")
+}
+
+// TestDataQualitySuggestionJobsRealServerIntegration covers the durable drafting
+// job API: submission validation (LLM disabled by default), reading, listing,
+// status filters and idempotent cancellation. Runner execution is covered by the
+// qualitysuggestionrunner unit tests, since the integration environment has no
+// provider profile.
+func TestDataQualitySuggestionJobsRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	fixture := setupQualityMySQLFixture(t, true)
+	token := fixture.env.AdminToken()
+	client := fixture.dataQuality
+	workspaceID, err := fixture.env.Store.GetWorkspaceID(fixture.ctx)
+	require.NoError(t, err)
+	jobName := func(resourceID string) string {
+		return common.FormatWorkspace(workspaceID) + "/qualitySuggestionJobs/" + resourceID
+	}
+	validTarget := &v1pb.QualityTarget{MetaGuid: fixture.usersGUID, MetaType: v1pb.MetaType_TABLE}
+
+	// LLM analysis is off by default: a well-formed submission is refused before the
+	// job is queued, and nothing is left behind.
+	_, err = client.CreateQualitySuggestionJob(fixture.ctx, withToken(token, &v1pb.CreateQualitySuggestionJobRequest{
+		Parent:  "workspaces/-",
+		Intent:  "email must not be empty",
+		Targets: []*v1pb.QualityTarget{validTarget},
+	}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
+
+	manyTargets := make([]*v1pb.QualityTarget, 0, 21)
+	for index := range 21 {
+		manyTargets = append(manyTargets, &v1pb.QualityTarget{
+			MetaGuid: fmt.Sprintf("instances/inst;shop;public;table_%d", index),
+			MetaType: v1pb.MetaType_TABLE,
+		})
+	}
+	invalidRequests := []struct {
+		name    string
+		request *v1pb.CreateQualitySuggestionJobRequest
+		code    connect.Code
+	}{
+		{
+			name: "no intent",
+			request: &v1pb.CreateQualitySuggestionJobRequest{
+				Parent: "workspaces/-", Targets: []*v1pb.QualityTarget{validTarget},
+			},
+			code: connect.CodeInvalidArgument,
+		},
+		{
+			name: "no targets",
+			request: &v1pb.CreateQualitySuggestionJobRequest{
+				Parent: "workspaces/-", Intent: "anything",
+			},
+			code: connect.CodeInvalidArgument,
+		},
+		{
+			name: "duplicate targets",
+			request: &v1pb.CreateQualitySuggestionJobRequest{
+				Parent: "workspaces/-", Intent: "anything",
+				Targets: []*v1pb.QualityTarget{validTarget, validTarget},
+			},
+			code: connect.CodeInvalidArgument,
+		},
+		{
+			name: "too many targets",
+			request: &v1pb.CreateQualitySuggestionJobRequest{
+				Parent: "workspaces/-", Intent: "anything", Targets: manyTargets,
+			},
+			code: connect.CodeInvalidArgument,
+		},
+		{
+			name: "unknown column",
+			request: &v1pb.CreateQualitySuggestionJobRequest{
+				Parent: "workspaces/-", Intent: "anything",
+				Targets: []*v1pb.QualityTarget{{
+					MetaGuid: fixture.usersGUID, MetaType: v1pb.MetaType_TABLE,
+					Columns: []string{"no_such_column"},
+				}},
+			},
+			code: connect.CodeInvalidArgument,
+		},
+		{
+			name: "unknown target",
+			request: &v1pb.CreateQualitySuggestionJobRequest{
+				Parent: "workspaces/-", Intent: "anything",
+				Targets: []*v1pb.QualityTarget{{
+					MetaGuid: "instances/missing;shop;public;orders", MetaType: v1pb.MetaType_TABLE,
+				}},
+			},
+			code: connect.CodeNotFound,
+		},
+	}
+	for _, test := range invalidRequests {
+		_, err := client.CreateQualitySuggestionJob(fixture.ctx, withToken(token, test.request))
+		require.Errorf(t, err, "%s must be refused", test.name)
+		require.Equalf(t, test.code, connect.CodeOf(err), "%s: %v", test.name, err)
+	}
+
+	// A deep link that names no job is NotFound.
+	_, err = client.GetQualitySuggestionJob(fixture.ctx, withToken(token, &v1pb.GetQualitySuggestionJobRequest{
+		Name: jobName("doesnotexist"),
+	}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+
+	// Nothing was queued by the refused submissions.
+	empty, err := client.ListQualitySuggestionJobs(fixture.ctx, withToken(token, &v1pb.ListQualitySuggestionJobsRequest{
+		Parent: "workspaces/-",
+	}))
+	require.NoError(t, err)
+	require.Empty(t, empty.Msg.GetQualitySuggestionJobs())
+	_, err = client.ListQualitySuggestionJobs(fixture.ctx, withToken(token, &v1pb.ListQualitySuggestionJobsRequest{
+		Parent: "workspaces/-", Status: v1pb.QualitySuggestionJobStatus(99),
+	}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
+	// Seed one RUNNING job (a PENDING one would be claimed by the live runner). Its
+	// targets show one finished target with a queued suggestion and one still
+	// pending.
+	resourceID, err := common.RandomString(12)
+	require.NoError(t, err)
+	seedAt := time.Now().UTC()
+	seedTarget := func(guid string, state storepb.QualitySuggestionJobTargetState, suggestions []string) *storepb.QualitySuggestionJobTarget {
+		target := &storepb.QualitySuggestionJobTarget{
+			TargetGuid: guid,
+			TargetType: int32(storepb.MetaType_TABLE),
+			Path: &storepb.QualityTargetPath{
+				Instance: fixture.instanceID,
+				Database: fixture.sourceDatabase,
+				Object:   "users",
+			},
+			Columns:               []string{"email"},
+			State:                 state,
+			SuggestionResourceIds: suggestions,
+		}
+		// A target only has a start/finish stamp once it was visited.
+		if state != storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING {
+			target.StartedAtUnixMs = seedAt.UnixMilli()
+			target.FinishedAtUnixMs = seedAt.UnixMilli()
+		}
+		return target
+	}
+	seeded, err := fixture.env.Store.CreateQualitySuggestionJob(fixture.ctx, &store.QualitySuggestionJobMessage{
+		ResourceID:    resourceID,
+		Status:        storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_RUNNING,
+		Intent:        "email must not be empty",
+		Language:      "en",
+		Provider:      "profiles/integration",
+		Model:         "integration-model",
+		PromptVersion: "dq.rule_draft.v1",
+		Targets: &storepb.QualitySuggestionJobTargets{Targets: []*storepb.QualitySuggestionJobTarget{
+			seedTarget(fixture.usersGUID, storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_DONE, []string{"sugg1"}),
+			seedTarget("instances/missing;shop;public;orders", storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING, nil),
+		}},
+		CreatedBy: qualityPtr(int32(1)),
+	})
+	require.NoError(t, err)
+	require.NotZero(t, seeded.ID)
+
+	read, err := client.GetQualitySuggestionJob(fixture.ctx, withToken(token, &v1pb.GetQualitySuggestionJobRequest{
+		Name: jobName(resourceID),
+	}))
+	require.NoError(t, err)
+	require.Equal(t, jobName(resourceID), read.Msg.GetName())
+	require.Equal(t, v1pb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_RUNNING, read.Msg.GetStatus())
+	require.Equal(t, "email must not be empty", read.Msg.GetIntent())
+	require.Equal(t, "en", read.Msg.GetLanguage())
+	require.Equal(t, "profiles/integration", read.Msg.GetProvider())
+	require.Equal(t, "integration-model", read.Msg.GetModel())
+	require.Equal(t, "dq.rule_draft.v1", read.Msg.GetPromptVersion())
+	require.Equal(t, "users/1", read.Msg.GetCreatedBy())
+	require.Equal(t, int32(2), read.Msg.GetTargetCount())
+	require.Equal(t, int32(1), read.Msg.GetCompletedTargetCount())
+	require.Equal(t, int32(1), read.Msg.GetSuggestionCount())
+	require.Len(t, read.Msg.GetTargets(), 2)
+	require.Equal(t, fixture.usersGUID, read.Msg.GetTargets()[0].GetTarget().GetMetaGuid())
+	require.Equal(t, v1pb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_DONE, read.Msg.GetTargets()[0].GetState())
+	require.Equal(t, []string{common.FormatWorkspace(workspaceID) + "/qualitySuggestions/sugg1"},
+		read.Msg.GetTargets()[0].GetSuggestions())
+	require.Equal(t, fixture.sourceDatabase, read.Msg.GetTargets()[0].GetTarget().GetPath().GetDatabase())
+	require.NotNil(t, read.Msg.GetTargets()[0].GetStartTime())
+	require.Equal(t, v1pb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING, read.Msg.GetTargets()[1].GetState())
+	require.Nil(t, read.Msg.GetTargets()[1].GetFinishTime(), "a pending target has not finished")
+
+	// The status filters select it or hide it.
+	running, err := client.ListQualitySuggestionJobs(fixture.ctx, withToken(token, &v1pb.ListQualitySuggestionJobsRequest{
+		Parent: "workspaces/-", Status: v1pb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_RUNNING,
+	}))
+	require.NoError(t, err)
+	require.Equal(t, []string{read.Msg.GetName()}, qualitySuggestionJobNames(running.Msg.GetQualitySuggestionJobs()))
+	completed, err := client.ListQualitySuggestionJobs(fixture.ctx, withToken(token, &v1pb.ListQualitySuggestionJobsRequest{
+		Parent: "workspaces/-", Status: v1pb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_COMPLETED,
+	}))
+	require.NoError(t, err)
+	require.Empty(t, completed.Msg.GetQualitySuggestionJobs())
+
+	// Canceling a RUNNING job records the request; the runner stops between targets
+	// and finishes it. The API reports the current row.
+	canceling, err := client.CancelQualitySuggestionJob(fixture.ctx, withToken(token, &v1pb.CancelQualitySuggestionJobRequest{
+		Name: jobName(resourceID),
+	}))
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_RUNNING, canceling.Msg.GetStatus())
+
+	// The runner finishes the seeded job outside this scenario; completing it here
+	// makes the terminal-cancel idempotence observable.
+	require.NoError(t, fixture.env.Store.FinishQualitySuggestionJob(fixture.ctx, seeded.ID,
+		storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_FAILED, "stopped between targets", time.Now().UTC()))
+	terminal, err := client.CancelQualitySuggestionJob(fixture.ctx, withToken(token, &v1pb.CancelQualitySuggestionJobRequest{
+		Name: jobName(resourceID),
+	}))
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_FAILED, terminal.Msg.GetStatus(),
+		"canceling a terminal job returns it unchanged")
+	require.Equal(t, "stopped between targets", terminal.Msg.GetError())
+
+	failed, err := client.ListQualitySuggestionJobs(fixture.ctx, withToken(token, &v1pb.ListQualitySuggestionJobsRequest{
+		Parent: "workspaces/-", Status: v1pb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_FAILED,
+	}))
+	require.NoError(t, err)
+	require.Equal(t, []string{read.Msg.GetName()}, qualitySuggestionJobNames(failed.Msg.GetQualitySuggestionJobs()))
+}
+
+// qualitySuggestionJobNames returns the resource names of a job page.
+func qualitySuggestionJobNames(jobs []*v1pb.QualitySuggestionJob) []string {
+	names := make([]string, 0, len(jobs))
+	for _, job := range jobs {
+		names = append(names, job.GetName())
+	}
+	return names
 }
 
 // qualityRuleNames returns the resource names of a rule page.
@@ -1478,4 +1732,134 @@ func TestDataQualityExecutionStoreLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED, settledRow.State)
 	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_WARN, settledRow.Status)
+}
+
+// TestDataQualitySuggestionJobRunnerConfigFailureRealServerIntegration proves the
+// missing seam for the async drafting flow: a job created through the public API is
+// claimed by the server's registered qualitysuggestionrunner, and the runner closes
+// it when the workspace LLM configuration cannot be resolved. It does not run in
+// parallel: it flips a workspace-wide LLM switch that other scenarios assert is off,
+// and restores it before returning.
+//
+// The submission fail-fasts when the provider configuration is unusable, so the job
+// has to be queued while a provider exists and lose it before the runner claims it.
+// The runner ticks every 5s; the profile is removed immediately after the create
+// RPC, and a claim that wins the (tiny) race simply runs a target to a per-target
+// failure, which is retried with a fresh provider and job.
+func TestDataQualitySuggestionJobRunnerConfigFailureRealServerIntegration(t *testing.T) {
+	fixture := setupQualityMySQLFixture(t, false)
+	token := fixture.env.AdminToken()
+	client := fixture.dataQuality
+	llmClient := v1connect.NewLLMServiceClient(&http.Client{Timeout: 30 * time.Second}, fixture.env.BaseURL)
+	ctx := fixture.ctx
+
+	updateLLMAnalysis := func(enabled bool) {
+		t.Helper()
+		var dataQuality *v1pb.DataQualitySetting
+		if enabled {
+			dataQuality = &v1pb.DataQualitySetting{EnableLlmAnalysis: true}
+		}
+		_, err := fixture.settings.UpdateWorkspaceProfileSetting(ctx, withToken(token, &v1pb.UpdateWorkspaceProfileSettingRequest{
+			Setting:    &v1pb.WorkspaceProfileSetting{DataQuality: dataQuality},
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"data_quality"}},
+		}))
+		require.NoError(t, err)
+	}
+	updateLLMAnalysis(true)
+	t.Cleanup(func() { updateLLMAnalysis(false) })
+
+	// The job rows this scenario creates use the workspace-wide metadata store, so
+	// they must be removed: the suite must not leak rows the suggestion-job list
+	// assertions do not expect.
+	var createdJobs []string
+	t.Cleanup(func() {
+		for _, jobResourceID := range createdJobs {
+			_, _ = fixture.env.Store.GetDB().ExecContext(context.Background(),
+				"DELETE FROM quality_suggestion_job WHERE resource_id = $1", jobResourceID)
+		}
+	})
+
+	createProvider := func() string {
+		t.Helper()
+		resp, err := llmClient.CreateLLMProviderProfile(ctx, withToken(token, &v1pb.CreateLLMProviderProfileRequest{
+			Profile: &v1pb.LlmProviderProfile{
+				Title:   "integration temporary provider",
+				Type:    v1pb.LLMProviderType_LLM_PROVIDER_TYPE_OPENAI,
+				BaseUrl: "http://127.0.0.1:1/v1",
+				ApiKey:  "integration-key",
+				Models:  []*v1pb.LlmProviderModel{{Name: "integration-model", Enabled: true}},
+			},
+		}))
+		require.NoError(t, err)
+		name := resp.Msg.GetName()
+		require.NotEmpty(t, name)
+		// A failed attempt may leave the profile behind; deleting it again is a
+		// harmless NotFound.
+		t.Cleanup(func() {
+			_, _ = llmClient.DeleteLLMProviderProfile(context.Background(), withToken(token, &v1pb.DeleteLLMProviderProfileRequest{Name: name}))
+		})
+		return name
+	}
+	deleteProvider := func(name string) {
+		t.Helper()
+		_, err := llmClient.DeleteLLMProviderProfile(ctx, withToken(token, &v1pb.DeleteLLMProviderProfileRequest{Name: name}))
+		require.NoError(t, err)
+	}
+	waitForTerminal := func(name string) *v1pb.QualitySuggestionJob {
+		t.Helper()
+		var terminal *v1pb.QualitySuggestionJob
+		require.Eventually(t, func() bool {
+			resp, err := client.GetQualitySuggestionJob(ctx, withToken(token, &v1pb.GetQualitySuggestionJobRequest{Name: name}))
+			if err != nil {
+				return false
+			}
+			switch resp.Msg.GetStatus() {
+			case v1pb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_PENDING,
+				v1pb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_RUNNING:
+				return false
+			default:
+				terminal = resp.Msg
+				return true
+			}
+		}, 15*time.Second, 100*time.Millisecond, "the drafting job never reached a terminal status")
+		return terminal
+	}
+
+	var failed *v1pb.QualitySuggestionJob
+	for attempt := 1; attempt <= 3; attempt++ {
+		providerName := createProvider()
+		created, err := client.CreateQualitySuggestionJob(ctx, withToken(token, &v1pb.CreateQualitySuggestionJobRequest{
+			Parent: "workspaces/-",
+			Intent: "email must not be empty",
+			Targets: []*v1pb.QualityTarget{{
+				MetaGuid: fixture.usersGUID,
+				MetaType: v1pb.MetaType_TABLE,
+			}},
+		}))
+		require.NoErrorf(t, err, "attempt %d: create the drafting job", attempt)
+		require.Equal(t, v1pb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_PENDING, created.Msg.GetStatus(),
+			"the API queues the job and returns immediately")
+		createdJobs = append(createdJobs, created.Msg.GetName()[strings.LastIndex(created.Msg.GetName(), "/")+1:])
+		deleteProvider(providerName)
+
+		terminal := waitForTerminal(created.Msg.GetName())
+		if terminal.GetStatus() == v1pb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_FAILED {
+			failed = terminal
+			break
+		}
+		// The runner claimed the job in the window before the provider was removed:
+		// the model call then failed per target and the job completed. Retry with a
+		// fresh provider so the config-failure path is exercised.
+		t.Logf("attempt %d: runner claimed the job before the provider was removed (status %s); retrying",
+			attempt, terminal.GetStatus())
+	}
+
+	require.NotNil(t, failed, "no attempt produced a job the runner failed on the missing provider")
+	require.Equal(t, v1pb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_FAILED, failed.GetStatus())
+	require.Contains(t, strings.ToLower(failed.GetError()), "provider")
+	require.NotEmpty(t, failed.GetStartTime(), "the registered runner claimed the job")
+	require.NotEmpty(t, failed.GetFinishTime())
+	require.Len(t, failed.GetTargets(), 1)
+	require.Equal(t, v1pb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_SKIPPED,
+		failed.GetTargets()[0].GetState(), "a target the runner never asked is skipped, not left pending")
 }

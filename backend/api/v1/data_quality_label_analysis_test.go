@@ -8,6 +8,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -33,7 +34,7 @@ func TestQualityLabelColumnBatches(t *testing.T) {
 
 	// The per-request column cap must fit in the batches one request may make;
 	// otherwise a valid request would be silently truncated.
-	require.GreaterOrEqual(t, qualityLabelBatchColumns*qualityLabelMaxBatches, qualitySuggestMaxColumns)
+	require.GreaterOrEqual(t, qualityLabelBatchColumns*qualityLabelMaxBatches, dataquality.MaxDraftColumns)
 }
 
 // TestQualityLabelStaleProfileColumns pins the freshness rule: a missing, empty

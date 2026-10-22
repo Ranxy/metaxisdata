@@ -1372,6 +1372,127 @@ func (QualityAggregateFunction) EnumDescriptor() ([]byte, []int) {
 	return file_store_data_quality_proto_rawDescGZIP(), []int{21}
 }
 
+// QualitySuggestionJobStatus is the lifecycle of one background AI drafting job.
+// The status is a scalar column; the JSONB targets carry a per-target state.
+type QualitySuggestionJobStatus int32
+
+const (
+	QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_UNSPECIFIED QualitySuggestionJobStatus = 0
+	QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_PENDING     QualitySuggestionJobStatus = 1
+	QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_RUNNING     QualitySuggestionJobStatus = 2
+	QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_COMPLETED   QualitySuggestionJobStatus = 3
+	QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_FAILED      QualitySuggestionJobStatus = 4
+	QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_CANCELED    QualitySuggestionJobStatus = 5
+)
+
+// Enum value maps for QualitySuggestionJobStatus.
+var (
+	QualitySuggestionJobStatus_name = map[int32]string{
+		0: "QUALITY_SUGGESTION_JOB_STATUS_UNSPECIFIED",
+		1: "QUALITY_SUGGESTION_JOB_STATUS_PENDING",
+		2: "QUALITY_SUGGESTION_JOB_STATUS_RUNNING",
+		3: "QUALITY_SUGGESTION_JOB_STATUS_COMPLETED",
+		4: "QUALITY_SUGGESTION_JOB_STATUS_FAILED",
+		5: "QUALITY_SUGGESTION_JOB_STATUS_CANCELED",
+	}
+	QualitySuggestionJobStatus_value = map[string]int32{
+		"QUALITY_SUGGESTION_JOB_STATUS_UNSPECIFIED": 0,
+		"QUALITY_SUGGESTION_JOB_STATUS_PENDING":     1,
+		"QUALITY_SUGGESTION_JOB_STATUS_RUNNING":     2,
+		"QUALITY_SUGGESTION_JOB_STATUS_COMPLETED":   3,
+		"QUALITY_SUGGESTION_JOB_STATUS_FAILED":      4,
+		"QUALITY_SUGGESTION_JOB_STATUS_CANCELED":    5,
+	}
+)
+
+func (x QualitySuggestionJobStatus) Enum() *QualitySuggestionJobStatus {
+	p := new(QualitySuggestionJobStatus)
+	*p = x
+	return p
+}
+
+func (x QualitySuggestionJobStatus) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (QualitySuggestionJobStatus) Descriptor() protoreflect.EnumDescriptor {
+	return file_store_data_quality_proto_enumTypes[22].Descriptor()
+}
+
+func (QualitySuggestionJobStatus) Type() protoreflect.EnumType {
+	return &file_store_data_quality_proto_enumTypes[22]
+}
+
+func (x QualitySuggestionJobStatus) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use QualitySuggestionJobStatus.Descriptor instead.
+func (QualitySuggestionJobStatus) EnumDescriptor() ([]byte, []int) {
+	return file_store_data_quality_proto_rawDescGZIP(), []int{22}
+}
+
+// QualitySuggestionJobTargetState is where one target of a background drafting
+// job stands. SKIPPED means the job stopped before visiting it (cancel or quota),
+// which is different from FAILED: the model was never asked.
+type QualitySuggestionJobTargetState int32
+
+const (
+	QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_UNSPECIFIED QualitySuggestionJobTargetState = 0
+	QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING     QualitySuggestionJobTargetState = 1
+	QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_RUNNING     QualitySuggestionJobTargetState = 2
+	QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_DONE        QualitySuggestionJobTargetState = 3
+	QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_FAILED      QualitySuggestionJobTargetState = 4
+	QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_SKIPPED     QualitySuggestionJobTargetState = 5
+)
+
+// Enum value maps for QualitySuggestionJobTargetState.
+var (
+	QualitySuggestionJobTargetState_name = map[int32]string{
+		0: "QUALITY_SUGGESTION_JOB_TARGET_STATE_UNSPECIFIED",
+		1: "QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING",
+		2: "QUALITY_SUGGESTION_JOB_TARGET_STATE_RUNNING",
+		3: "QUALITY_SUGGESTION_JOB_TARGET_STATE_DONE",
+		4: "QUALITY_SUGGESTION_JOB_TARGET_STATE_FAILED",
+		5: "QUALITY_SUGGESTION_JOB_TARGET_STATE_SKIPPED",
+	}
+	QualitySuggestionJobTargetState_value = map[string]int32{
+		"QUALITY_SUGGESTION_JOB_TARGET_STATE_UNSPECIFIED": 0,
+		"QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING":     1,
+		"QUALITY_SUGGESTION_JOB_TARGET_STATE_RUNNING":     2,
+		"QUALITY_SUGGESTION_JOB_TARGET_STATE_DONE":        3,
+		"QUALITY_SUGGESTION_JOB_TARGET_STATE_FAILED":      4,
+		"QUALITY_SUGGESTION_JOB_TARGET_STATE_SKIPPED":     5,
+	}
+)
+
+func (x QualitySuggestionJobTargetState) Enum() *QualitySuggestionJobTargetState {
+	p := new(QualitySuggestionJobTargetState)
+	*p = x
+	return p
+}
+
+func (x QualitySuggestionJobTargetState) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (QualitySuggestionJobTargetState) Descriptor() protoreflect.EnumDescriptor {
+	return file_store_data_quality_proto_enumTypes[23].Descriptor()
+}
+
+func (QualitySuggestionJobTargetState) Type() protoreflect.EnumType {
+	return &file_store_data_quality_proto_enumTypes[23]
+}
+
+func (x QualitySuggestionJobTargetState) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use QualitySuggestionJobTargetState.Descriptor instead.
+func (QualitySuggestionJobTargetState) EnumDescriptor() ([]byte, []int) {
+	return file_store_data_quality_proto_rawDescGZIP(), []int{23}
+}
+
 // QualityTargetPath is the display snapshot of where a rule's target lived when
 // the rule was saved. It is not the identity: the GUID plus its meta type is.
 type QualityTargetPath struct {
@@ -4587,6 +4708,165 @@ func (x *CrossTableConfig) GetWarnThreshold() float64 {
 	return 0
 }
 
+// QualitySuggestionJobTarget is one table a background drafting job visits. The
+// path and columns are a snapshot taken at submission, so the job still renders
+// after the registry changes; resolution happens again when the model is asked.
+type QualitySuggestionJobTarget struct {
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	TargetGuid string                 `protobuf:"bytes,1,opt,name=target_guid,json=targetGuid,proto3" json:"target_guid,omitempty"`
+	// The metaxisdata.v1.MetaType number; the store module does not import v1.
+	TargetType int32                           `protobuf:"varint,2,opt,name=target_type,json=targetType,proto3" json:"target_type,omitempty"`
+	Path       *QualityTargetPath              `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`
+	Columns    []string                        `protobuf:"bytes,4,rep,name=columns,proto3" json:"columns,omitempty"`
+	State      QualitySuggestionJobTargetState `protobuf:"varint,5,opt,name=state,proto3,enum=metaxisdata.store.QualitySuggestionJobTargetState" json:"state,omitempty"`
+	// Resource ids (not names) of the suggestions this target queued.
+	SuggestionResourceIds []string `protobuf:"bytes,6,rep,name=suggestion_resource_ids,json=suggestionResourceIds,proto3" json:"suggestion_resource_ids,omitempty"`
+	Error                 string   `protobuf:"bytes,7,opt,name=error,proto3" json:"error,omitempty"`
+	StartedAtUnixMs       int64    `protobuf:"varint,8,opt,name=started_at_unix_ms,json=startedAtUnixMs,proto3" json:"started_at_unix_ms,omitempty"`
+	FinishedAtUnixMs      int64    `protobuf:"varint,9,opt,name=finished_at_unix_ms,json=finishedAtUnixMs,proto3" json:"finished_at_unix_ms,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *QualitySuggestionJobTarget) Reset() {
+	*x = QualitySuggestionJobTarget{}
+	mi := &file_store_data_quality_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QualitySuggestionJobTarget) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QualitySuggestionJobTarget) ProtoMessage() {}
+
+func (x *QualitySuggestionJobTarget) ProtoReflect() protoreflect.Message {
+	mi := &file_store_data_quality_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QualitySuggestionJobTarget.ProtoReflect.Descriptor instead.
+func (*QualitySuggestionJobTarget) Descriptor() ([]byte, []int) {
+	return file_store_data_quality_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *QualitySuggestionJobTarget) GetTargetGuid() string {
+	if x != nil {
+		return x.TargetGuid
+	}
+	return ""
+}
+
+func (x *QualitySuggestionJobTarget) GetTargetType() int32 {
+	if x != nil {
+		return x.TargetType
+	}
+	return 0
+}
+
+func (x *QualitySuggestionJobTarget) GetPath() *QualityTargetPath {
+	if x != nil {
+		return x.Path
+	}
+	return nil
+}
+
+func (x *QualitySuggestionJobTarget) GetColumns() []string {
+	if x != nil {
+		return x.Columns
+	}
+	return nil
+}
+
+func (x *QualitySuggestionJobTarget) GetState() QualitySuggestionJobTargetState {
+	if x != nil {
+		return x.State
+	}
+	return QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_UNSPECIFIED
+}
+
+func (x *QualitySuggestionJobTarget) GetSuggestionResourceIds() []string {
+	if x != nil {
+		return x.SuggestionResourceIds
+	}
+	return nil
+}
+
+func (x *QualitySuggestionJobTarget) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *QualitySuggestionJobTarget) GetStartedAtUnixMs() int64 {
+	if x != nil {
+		return x.StartedAtUnixMs
+	}
+	return 0
+}
+
+func (x *QualitySuggestionJobTarget) GetFinishedAtUnixMs() int64 {
+	if x != nil {
+		return x.FinishedAtUnixMs
+	}
+	return 0
+}
+
+// QualitySuggestionJobTargets is the JSONB payload of
+// quality_suggestion_job.targets.
+type QualitySuggestionJobTargets struct {
+	state         protoimpl.MessageState        `protogen:"open.v1"`
+	Targets       []*QualitySuggestionJobTarget `protobuf:"bytes,1,rep,name=targets,proto3" json:"targets,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QualitySuggestionJobTargets) Reset() {
+	*x = QualitySuggestionJobTargets{}
+	mi := &file_store_data_quality_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QualitySuggestionJobTargets) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QualitySuggestionJobTargets) ProtoMessage() {}
+
+func (x *QualitySuggestionJobTargets) ProtoReflect() protoreflect.Message {
+	mi := &file_store_data_quality_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QualitySuggestionJobTargets.ProtoReflect.Descriptor instead.
+func (*QualitySuggestionJobTargets) Descriptor() ([]byte, []int) {
+	return file_store_data_quality_proto_rawDescGZIP(), []int{39}
+}
+
+func (x *QualitySuggestionJobTargets) GetTargets() []*QualitySuggestionJobTarget {
+	if x != nil {
+		return x.Targets
+	}
+	return nil
+}
+
 var File_store_data_quality_proto protoreflect.FileDescriptor
 
 const file_store_data_quality_proto_rawDesc = "" +
@@ -4925,7 +5205,21 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\n" +
 	"_toleranceB\x11\n" +
 	"\x0f_fail_thresholdB\x11\n" +
-	"\x0f_warn_threshold*\xb4\x05\n" +
+	"\x0f_warn_threshold\"\xa6\x03\n" +
+	"\x1aQualitySuggestionJobTarget\x12\x1f\n" +
+	"\vtarget_guid\x18\x01 \x01(\tR\n" +
+	"targetGuid\x12\x1f\n" +
+	"\vtarget_type\x18\x02 \x01(\x05R\n" +
+	"targetType\x128\n" +
+	"\x04path\x18\x03 \x01(\v2$.metaxisdata.store.QualityTargetPathR\x04path\x12\x18\n" +
+	"\acolumns\x18\x04 \x03(\tR\acolumns\x12H\n" +
+	"\x05state\x18\x05 \x01(\x0e22.metaxisdata.store.QualitySuggestionJobTargetStateR\x05state\x126\n" +
+	"\x17suggestion_resource_ids\x18\x06 \x03(\tR\x15suggestionResourceIds\x12\x14\n" +
+	"\x05error\x18\a \x01(\tR\x05error\x12+\n" +
+	"\x12started_at_unix_ms\x18\b \x01(\x03R\x0fstartedAtUnixMs\x12-\n" +
+	"\x13finished_at_unix_ms\x18\t \x01(\x03R\x10finishedAtUnixMs\"f\n" +
+	"\x1bQualitySuggestionJobTargets\x12G\n" +
+	"\atargets\x18\x01 \x03(\v2-.metaxisdata.store.QualitySuggestionJobTargetR\atargets*\xb4\x05\n" +
 	"\x0fQualityRuleType\x12!\n" +
 	"\x1dQUALITY_RULE_TYPE_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bQUALITY_RULE_TYPE_ROW_COUNT\x10\x01\x12&\n" +
@@ -5088,7 +5382,21 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\x1eQUALITY_AGGREGATE_FUNCTION_MIN\x10\x04\x12\"\n" +
 	"\x1eQUALITY_AGGREGATE_FUNCTION_MAX\x10\x05\x12%\n" +
 	"!QUALITY_AGGREGATE_FUNCTION_STDDEV\x10\x06\x12)\n" +
-	"%QUALITY_AGGREGATE_FUNCTION_PERCENTILE\x10\aB\x14Z\x12generated-go/storeb\x06proto3"
+	"%QUALITY_AGGREGATE_FUNCTION_PERCENTILE\x10\a*\xa4\x02\n" +
+	"\x1aQualitySuggestionJobStatus\x12-\n" +
+	")QUALITY_SUGGESTION_JOB_STATUS_UNSPECIFIED\x10\x00\x12)\n" +
+	"%QUALITY_SUGGESTION_JOB_STATUS_PENDING\x10\x01\x12)\n" +
+	"%QUALITY_SUGGESTION_JOB_STATUS_RUNNING\x10\x02\x12+\n" +
+	"'QUALITY_SUGGESTION_JOB_STATUS_COMPLETED\x10\x03\x12(\n" +
+	"$QUALITY_SUGGESTION_JOB_STATUS_FAILED\x10\x04\x12*\n" +
+	"&QUALITY_SUGGESTION_JOB_STATUS_CANCELED\x10\x05*\xc7\x02\n" +
+	"\x1fQualitySuggestionJobTargetState\x123\n" +
+	"/QUALITY_SUGGESTION_JOB_TARGET_STATE_UNSPECIFIED\x10\x00\x12/\n" +
+	"+QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING\x10\x01\x12/\n" +
+	"+QUALITY_SUGGESTION_JOB_TARGET_STATE_RUNNING\x10\x02\x12,\n" +
+	"(QUALITY_SUGGESTION_JOB_TARGET_STATE_DONE\x10\x03\x12.\n" +
+	"*QUALITY_SUGGESTION_JOB_TARGET_STATE_FAILED\x10\x04\x12/\n" +
+	"+QUALITY_SUGGESTION_JOB_TARGET_STATE_SKIPPED\x10\x05B\x14Z\x12generated-go/storeb\x06proto3"
 
 var (
 	file_store_data_quality_proto_rawDescOnce sync.Once
@@ -5102,120 +5410,127 @@ func file_store_data_quality_proto_rawDescGZIP() []byte {
 	return file_store_data_quality_proto_rawDescData
 }
 
-var file_store_data_quality_proto_enumTypes = make([]protoimpl.EnumInfo, 22)
-var file_store_data_quality_proto_msgTypes = make([]protoimpl.MessageInfo, 38)
+var file_store_data_quality_proto_enumTypes = make([]protoimpl.EnumInfo, 24)
+var file_store_data_quality_proto_msgTypes = make([]protoimpl.MessageInfo, 40)
 var file_store_data_quality_proto_goTypes = []any{
-	(QualityRuleType)(0),               // 0: metaxisdata.store.QualityRuleType
-	(QualityDimension)(0),              // 1: metaxisdata.store.QualityDimension
-	(QualitySeverity)(0),               // 2: metaxisdata.store.QualitySeverity
-	(QualityStatus)(0),                 // 3: metaxisdata.store.QualityStatus
-	(QualityExecutionTrigger)(0),       // 4: metaxisdata.store.QualityExecutionTrigger
-	(QualityExecutionState)(0),         // 5: metaxisdata.store.QualityExecutionState
-	(QualityIssueStatus)(0),            // 6: metaxisdata.store.QualityIssueStatus
-	(QualityResolutionReason)(0),       // 7: metaxisdata.store.QualityResolutionReason
-	(QualityRuleState)(0),              // 8: metaxisdata.store.QualityRuleState
-	(QualityObservedKind)(0),           // 9: metaxisdata.store.QualityObservedKind
-	(QualityThresholdMetric)(0),        // 10: metaxisdata.store.QualityThresholdMetric
-	(QualityEmptyBehavior)(0),          // 11: metaxisdata.store.QualityEmptyBehavior
-	(QualityComparison)(0),             // 12: metaxisdata.store.QualityComparison
-	(QualityFilterOperator)(0),         // 13: metaxisdata.store.QualityFilterOperator
-	(QualityComparisonOperator)(0),     // 14: metaxisdata.store.QualityComparisonOperator
-	(QualitySemanticType)(0),           // 15: metaxisdata.store.QualitySemanticType
-	(QualitySuggestionKind)(0),         // 16: metaxisdata.store.QualitySuggestionKind
-	(QualitySuggestionStatus)(0),       // 17: metaxisdata.store.QualitySuggestionStatus
-	(QualitySuggestionSource)(0),       // 18: metaxisdata.store.QualitySuggestionSource
-	(QualityLabelSource)(0),            // 19: metaxisdata.store.QualityLabelSource
-	(QualityLabelStatus)(0),            // 20: metaxisdata.store.QualityLabelStatus
-	(QualityAggregateFunction)(0),      // 21: metaxisdata.store.QualityAggregateFunction
-	(*QualityTargetPath)(nil),          // 22: metaxisdata.store.QualityTargetPath
-	(*QualityFilter)(nil),              // 23: metaxisdata.store.QualityFilter
-	(*QualityFilterClause)(nil),        // 24: metaxisdata.store.QualityFilterClause
-	(*QualityThresholds)(nil),          // 25: metaxisdata.store.QualityThresholds
-	(*QualityStatusCounts)(nil),        // 26: metaxisdata.store.QualityStatusCounts
-	(*QualityFailureSamples)(nil),      // 27: metaxisdata.store.QualityFailureSamples
-	(*FailureSample)(nil),              // 28: metaxisdata.store.FailureSample
-	(*ColumnValue)(nil),                // 29: metaxisdata.store.ColumnValue
-	(*ColumnProfile)(nil),              // 30: metaxisdata.store.ColumnProfile
-	(*ProfileValue)(nil),               // 31: metaxisdata.store.ProfileValue
-	(*SemanticLabelEvidence)(nil),      // 32: metaxisdata.store.SemanticLabelEvidence
-	(*QualitySuggestionPayload)(nil),   // 33: metaxisdata.store.QualitySuggestionPayload
-	(*QualityRuleDraftConfig)(nil),     // 34: metaxisdata.store.QualityRuleDraftConfig
-	(*SemanticLabelSuggestion)(nil),    // 35: metaxisdata.store.SemanticLabelSuggestion
-	(*DataQualityLLMResult)(nil),       // 36: metaxisdata.store.DataQualityLLMResult
-	(*RuleDraftResult)(nil),            // 37: metaxisdata.store.RuleDraftResult
-	(*ExplanationResult)(nil),          // 38: metaxisdata.store.ExplanationResult
-	(*ExplanationHypothesis)(nil),      // 39: metaxisdata.store.ExplanationHypothesis
-	(*QualityRuleConfig)(nil),          // 40: metaxisdata.store.QualityRuleConfig
-	(*RowCountConfig)(nil),             // 41: metaxisdata.store.RowCountConfig
-	(*RowCountChangeConfig)(nil),       // 42: metaxisdata.store.RowCountChangeConfig
-	(*NullPercentConfig)(nil),          // 43: metaxisdata.store.NullPercentConfig
-	(*UniqueConfig)(nil),               // 44: metaxisdata.store.UniqueConfig
-	(*UniqueCombinationConfig)(nil),    // 45: metaxisdata.store.UniqueCombinationConfig
-	(*AcceptedValuesConfig)(nil),       // 46: metaxisdata.store.AcceptedValuesConfig
-	(*RangeConfig)(nil),                // 47: metaxisdata.store.RangeConfig
-	(*RegexConfig)(nil),                // 48: metaxisdata.store.RegexConfig
-	(*StringLengthConfig)(nil),         // 49: metaxisdata.store.StringLengthConfig
-	(*ReferentialIntegrityConfig)(nil), // 50: metaxisdata.store.ReferentialIntegrityConfig
-	(*CrossColumnConfig)(nil),          // 51: metaxisdata.store.CrossColumnConfig
-	(*FreshnessConfig)(nil),            // 52: metaxisdata.store.FreshnessConfig
-	(*CustomSQLConfig)(nil),            // 53: metaxisdata.store.CustomSQLConfig
-	(*CelExpressionConfig)(nil),        // 54: metaxisdata.store.CelExpressionConfig
-	(*SchemaDriftColumn)(nil),          // 55: metaxisdata.store.SchemaDriftColumn
-	(*SchemaDriftConfig)(nil),          // 56: metaxisdata.store.SchemaDriftConfig
-	(*GroupCheckConfig)(nil),           // 57: metaxisdata.store.GroupCheckConfig
-	(*AggregateConfig)(nil),            // 58: metaxisdata.store.AggregateConfig
-	(*CrossTableConfig)(nil),           // 59: metaxisdata.store.CrossTableConfig
+	(QualityRuleType)(0),                 // 0: metaxisdata.store.QualityRuleType
+	(QualityDimension)(0),                // 1: metaxisdata.store.QualityDimension
+	(QualitySeverity)(0),                 // 2: metaxisdata.store.QualitySeverity
+	(QualityStatus)(0),                   // 3: metaxisdata.store.QualityStatus
+	(QualityExecutionTrigger)(0),         // 4: metaxisdata.store.QualityExecutionTrigger
+	(QualityExecutionState)(0),           // 5: metaxisdata.store.QualityExecutionState
+	(QualityIssueStatus)(0),              // 6: metaxisdata.store.QualityIssueStatus
+	(QualityResolutionReason)(0),         // 7: metaxisdata.store.QualityResolutionReason
+	(QualityRuleState)(0),                // 8: metaxisdata.store.QualityRuleState
+	(QualityObservedKind)(0),             // 9: metaxisdata.store.QualityObservedKind
+	(QualityThresholdMetric)(0),          // 10: metaxisdata.store.QualityThresholdMetric
+	(QualityEmptyBehavior)(0),            // 11: metaxisdata.store.QualityEmptyBehavior
+	(QualityComparison)(0),               // 12: metaxisdata.store.QualityComparison
+	(QualityFilterOperator)(0),           // 13: metaxisdata.store.QualityFilterOperator
+	(QualityComparisonOperator)(0),       // 14: metaxisdata.store.QualityComparisonOperator
+	(QualitySemanticType)(0),             // 15: metaxisdata.store.QualitySemanticType
+	(QualitySuggestionKind)(0),           // 16: metaxisdata.store.QualitySuggestionKind
+	(QualitySuggestionStatus)(0),         // 17: metaxisdata.store.QualitySuggestionStatus
+	(QualitySuggestionSource)(0),         // 18: metaxisdata.store.QualitySuggestionSource
+	(QualityLabelSource)(0),              // 19: metaxisdata.store.QualityLabelSource
+	(QualityLabelStatus)(0),              // 20: metaxisdata.store.QualityLabelStatus
+	(QualityAggregateFunction)(0),        // 21: metaxisdata.store.QualityAggregateFunction
+	(QualitySuggestionJobStatus)(0),      // 22: metaxisdata.store.QualitySuggestionJobStatus
+	(QualitySuggestionJobTargetState)(0), // 23: metaxisdata.store.QualitySuggestionJobTargetState
+	(*QualityTargetPath)(nil),            // 24: metaxisdata.store.QualityTargetPath
+	(*QualityFilter)(nil),                // 25: metaxisdata.store.QualityFilter
+	(*QualityFilterClause)(nil),          // 26: metaxisdata.store.QualityFilterClause
+	(*QualityThresholds)(nil),            // 27: metaxisdata.store.QualityThresholds
+	(*QualityStatusCounts)(nil),          // 28: metaxisdata.store.QualityStatusCounts
+	(*QualityFailureSamples)(nil),        // 29: metaxisdata.store.QualityFailureSamples
+	(*FailureSample)(nil),                // 30: metaxisdata.store.FailureSample
+	(*ColumnValue)(nil),                  // 31: metaxisdata.store.ColumnValue
+	(*ColumnProfile)(nil),                // 32: metaxisdata.store.ColumnProfile
+	(*ProfileValue)(nil),                 // 33: metaxisdata.store.ProfileValue
+	(*SemanticLabelEvidence)(nil),        // 34: metaxisdata.store.SemanticLabelEvidence
+	(*QualitySuggestionPayload)(nil),     // 35: metaxisdata.store.QualitySuggestionPayload
+	(*QualityRuleDraftConfig)(nil),       // 36: metaxisdata.store.QualityRuleDraftConfig
+	(*SemanticLabelSuggestion)(nil),      // 37: metaxisdata.store.SemanticLabelSuggestion
+	(*DataQualityLLMResult)(nil),         // 38: metaxisdata.store.DataQualityLLMResult
+	(*RuleDraftResult)(nil),              // 39: metaxisdata.store.RuleDraftResult
+	(*ExplanationResult)(nil),            // 40: metaxisdata.store.ExplanationResult
+	(*ExplanationHypothesis)(nil),        // 41: metaxisdata.store.ExplanationHypothesis
+	(*QualityRuleConfig)(nil),            // 42: metaxisdata.store.QualityRuleConfig
+	(*RowCountConfig)(nil),               // 43: metaxisdata.store.RowCountConfig
+	(*RowCountChangeConfig)(nil),         // 44: metaxisdata.store.RowCountChangeConfig
+	(*NullPercentConfig)(nil),            // 45: metaxisdata.store.NullPercentConfig
+	(*UniqueConfig)(nil),                 // 46: metaxisdata.store.UniqueConfig
+	(*UniqueCombinationConfig)(nil),      // 47: metaxisdata.store.UniqueCombinationConfig
+	(*AcceptedValuesConfig)(nil),         // 48: metaxisdata.store.AcceptedValuesConfig
+	(*RangeConfig)(nil),                  // 49: metaxisdata.store.RangeConfig
+	(*RegexConfig)(nil),                  // 50: metaxisdata.store.RegexConfig
+	(*StringLengthConfig)(nil),           // 51: metaxisdata.store.StringLengthConfig
+	(*ReferentialIntegrityConfig)(nil),   // 52: metaxisdata.store.ReferentialIntegrityConfig
+	(*CrossColumnConfig)(nil),            // 53: metaxisdata.store.CrossColumnConfig
+	(*FreshnessConfig)(nil),              // 54: metaxisdata.store.FreshnessConfig
+	(*CustomSQLConfig)(nil),              // 55: metaxisdata.store.CustomSQLConfig
+	(*CelExpressionConfig)(nil),          // 56: metaxisdata.store.CelExpressionConfig
+	(*SchemaDriftColumn)(nil),            // 57: metaxisdata.store.SchemaDriftColumn
+	(*SchemaDriftConfig)(nil),            // 58: metaxisdata.store.SchemaDriftConfig
+	(*GroupCheckConfig)(nil),             // 59: metaxisdata.store.GroupCheckConfig
+	(*AggregateConfig)(nil),              // 60: metaxisdata.store.AggregateConfig
+	(*CrossTableConfig)(nil),             // 61: metaxisdata.store.CrossTableConfig
+	(*QualitySuggestionJobTarget)(nil),   // 62: metaxisdata.store.QualitySuggestionJobTarget
+	(*QualitySuggestionJobTargets)(nil),  // 63: metaxisdata.store.QualitySuggestionJobTargets
 }
 var file_store_data_quality_proto_depIdxs = []int32{
-	24, // 0: metaxisdata.store.QualityFilter.clauses:type_name -> metaxisdata.store.QualityFilterClause
+	26, // 0: metaxisdata.store.QualityFilter.clauses:type_name -> metaxisdata.store.QualityFilterClause
 	13, // 1: metaxisdata.store.QualityFilterClause.op:type_name -> metaxisdata.store.QualityFilterOperator
 	12, // 2: metaxisdata.store.QualityThresholds.comparison:type_name -> metaxisdata.store.QualityComparison
 	11, // 3: metaxisdata.store.QualityThresholds.on_empty:type_name -> metaxisdata.store.QualityEmptyBehavior
-	28, // 4: metaxisdata.store.QualityFailureSamples.samples:type_name -> metaxisdata.store.FailureSample
-	29, // 5: metaxisdata.store.FailureSample.columns:type_name -> metaxisdata.store.ColumnValue
-	31, // 6: metaxisdata.store.ColumnProfile.top_values:type_name -> metaxisdata.store.ProfileValue
-	34, // 7: metaxisdata.store.QualitySuggestionPayload.rule:type_name -> metaxisdata.store.QualityRuleDraftConfig
-	35, // 8: metaxisdata.store.QualitySuggestionPayload.label:type_name -> metaxisdata.store.SemanticLabelSuggestion
-	40, // 9: metaxisdata.store.QualityRuleDraftConfig.config:type_name -> metaxisdata.store.QualityRuleConfig
+	30, // 4: metaxisdata.store.QualityFailureSamples.samples:type_name -> metaxisdata.store.FailureSample
+	31, // 5: metaxisdata.store.FailureSample.columns:type_name -> metaxisdata.store.ColumnValue
+	33, // 6: metaxisdata.store.ColumnProfile.top_values:type_name -> metaxisdata.store.ProfileValue
+	36, // 7: metaxisdata.store.QualitySuggestionPayload.rule:type_name -> metaxisdata.store.QualityRuleDraftConfig
+	37, // 8: metaxisdata.store.QualitySuggestionPayload.label:type_name -> metaxisdata.store.SemanticLabelSuggestion
+	42, // 9: metaxisdata.store.QualityRuleDraftConfig.config:type_name -> metaxisdata.store.QualityRuleConfig
 	2,  // 10: metaxisdata.store.QualityRuleDraftConfig.severity:type_name -> metaxisdata.store.QualitySeverity
 	15, // 11: metaxisdata.store.SemanticLabelSuggestion.label:type_name -> metaxisdata.store.QualitySemanticType
-	32, // 12: metaxisdata.store.SemanticLabelSuggestion.evidence:type_name -> metaxisdata.store.SemanticLabelEvidence
+	34, // 12: metaxisdata.store.SemanticLabelSuggestion.evidence:type_name -> metaxisdata.store.SemanticLabelEvidence
 	0,  // 13: metaxisdata.store.SemanticLabelSuggestion.suggested_rule_types:type_name -> metaxisdata.store.QualityRuleType
-	37, // 14: metaxisdata.store.DataQualityLLMResult.rule_draft:type_name -> metaxisdata.store.RuleDraftResult
-	38, // 15: metaxisdata.store.DataQualityLLMResult.explanation:type_name -> metaxisdata.store.ExplanationResult
-	34, // 16: metaxisdata.store.RuleDraftResult.suggestions:type_name -> metaxisdata.store.QualityRuleDraftConfig
-	39, // 17: metaxisdata.store.ExplanationResult.hypotheses:type_name -> metaxisdata.store.ExplanationHypothesis
-	41, // 18: metaxisdata.store.QualityRuleConfig.row_count:type_name -> metaxisdata.store.RowCountConfig
-	42, // 19: metaxisdata.store.QualityRuleConfig.row_count_change:type_name -> metaxisdata.store.RowCountChangeConfig
-	43, // 20: metaxisdata.store.QualityRuleConfig.null_percent:type_name -> metaxisdata.store.NullPercentConfig
-	44, // 21: metaxisdata.store.QualityRuleConfig.unique:type_name -> metaxisdata.store.UniqueConfig
-	45, // 22: metaxisdata.store.QualityRuleConfig.unique_combination:type_name -> metaxisdata.store.UniqueCombinationConfig
-	46, // 23: metaxisdata.store.QualityRuleConfig.accepted_values:type_name -> metaxisdata.store.AcceptedValuesConfig
-	47, // 24: metaxisdata.store.QualityRuleConfig.range:type_name -> metaxisdata.store.RangeConfig
-	48, // 25: metaxisdata.store.QualityRuleConfig.regex:type_name -> metaxisdata.store.RegexConfig
-	49, // 26: metaxisdata.store.QualityRuleConfig.string_length:type_name -> metaxisdata.store.StringLengthConfig
-	50, // 27: metaxisdata.store.QualityRuleConfig.referential_integrity:type_name -> metaxisdata.store.ReferentialIntegrityConfig
-	51, // 28: metaxisdata.store.QualityRuleConfig.cross_column:type_name -> metaxisdata.store.CrossColumnConfig
-	52, // 29: metaxisdata.store.QualityRuleConfig.freshness:type_name -> metaxisdata.store.FreshnessConfig
-	53, // 30: metaxisdata.store.QualityRuleConfig.custom_sql:type_name -> metaxisdata.store.CustomSQLConfig
-	54, // 31: metaxisdata.store.QualityRuleConfig.cel_expression:type_name -> metaxisdata.store.CelExpressionConfig
-	56, // 32: metaxisdata.store.QualityRuleConfig.schema_drift:type_name -> metaxisdata.store.SchemaDriftConfig
-	57, // 33: metaxisdata.store.QualityRuleConfig.group_check:type_name -> metaxisdata.store.GroupCheckConfig
-	58, // 34: metaxisdata.store.QualityRuleConfig.aggregate:type_name -> metaxisdata.store.AggregateConfig
-	59, // 35: metaxisdata.store.QualityRuleConfig.cross_table:type_name -> metaxisdata.store.CrossTableConfig
+	39, // 14: metaxisdata.store.DataQualityLLMResult.rule_draft:type_name -> metaxisdata.store.RuleDraftResult
+	40, // 15: metaxisdata.store.DataQualityLLMResult.explanation:type_name -> metaxisdata.store.ExplanationResult
+	36, // 16: metaxisdata.store.RuleDraftResult.suggestions:type_name -> metaxisdata.store.QualityRuleDraftConfig
+	41, // 17: metaxisdata.store.ExplanationResult.hypotheses:type_name -> metaxisdata.store.ExplanationHypothesis
+	43, // 18: metaxisdata.store.QualityRuleConfig.row_count:type_name -> metaxisdata.store.RowCountConfig
+	44, // 19: metaxisdata.store.QualityRuleConfig.row_count_change:type_name -> metaxisdata.store.RowCountChangeConfig
+	45, // 20: metaxisdata.store.QualityRuleConfig.null_percent:type_name -> metaxisdata.store.NullPercentConfig
+	46, // 21: metaxisdata.store.QualityRuleConfig.unique:type_name -> metaxisdata.store.UniqueConfig
+	47, // 22: metaxisdata.store.QualityRuleConfig.unique_combination:type_name -> metaxisdata.store.UniqueCombinationConfig
+	48, // 23: metaxisdata.store.QualityRuleConfig.accepted_values:type_name -> metaxisdata.store.AcceptedValuesConfig
+	49, // 24: metaxisdata.store.QualityRuleConfig.range:type_name -> metaxisdata.store.RangeConfig
+	50, // 25: metaxisdata.store.QualityRuleConfig.regex:type_name -> metaxisdata.store.RegexConfig
+	51, // 26: metaxisdata.store.QualityRuleConfig.string_length:type_name -> metaxisdata.store.StringLengthConfig
+	52, // 27: metaxisdata.store.QualityRuleConfig.referential_integrity:type_name -> metaxisdata.store.ReferentialIntegrityConfig
+	53, // 28: metaxisdata.store.QualityRuleConfig.cross_column:type_name -> metaxisdata.store.CrossColumnConfig
+	54, // 29: metaxisdata.store.QualityRuleConfig.freshness:type_name -> metaxisdata.store.FreshnessConfig
+	55, // 30: metaxisdata.store.QualityRuleConfig.custom_sql:type_name -> metaxisdata.store.CustomSQLConfig
+	56, // 31: metaxisdata.store.QualityRuleConfig.cel_expression:type_name -> metaxisdata.store.CelExpressionConfig
+	58, // 32: metaxisdata.store.QualityRuleConfig.schema_drift:type_name -> metaxisdata.store.SchemaDriftConfig
+	59, // 33: metaxisdata.store.QualityRuleConfig.group_check:type_name -> metaxisdata.store.GroupCheckConfig
+	60, // 34: metaxisdata.store.QualityRuleConfig.aggregate:type_name -> metaxisdata.store.AggregateConfig
+	61, // 35: metaxisdata.store.QualityRuleConfig.cross_table:type_name -> metaxisdata.store.CrossTableConfig
 	10, // 36: metaxisdata.store.QualityRuleConfig.threshold_metric:type_name -> metaxisdata.store.QualityThresholdMetric
-	23, // 37: metaxisdata.store.QualityRuleConfig.filter:type_name -> metaxisdata.store.QualityFilter
+	25, // 37: metaxisdata.store.QualityRuleConfig.filter:type_name -> metaxisdata.store.QualityFilter
 	11, // 38: metaxisdata.store.QualityRuleConfig.on_empty:type_name -> metaxisdata.store.QualityEmptyBehavior
 	14, // 39: metaxisdata.store.CrossColumnConfig.op:type_name -> metaxisdata.store.QualityComparisonOperator
-	55, // 40: metaxisdata.store.SchemaDriftConfig.expected_columns:type_name -> metaxisdata.store.SchemaDriftColumn
+	57, // 40: metaxisdata.store.SchemaDriftConfig.expected_columns:type_name -> metaxisdata.store.SchemaDriftColumn
 	21, // 41: metaxisdata.store.AggregateConfig.function:type_name -> metaxisdata.store.QualityAggregateFunction
 	21, // 42: metaxisdata.store.CrossTableConfig.left_function:type_name -> metaxisdata.store.QualityAggregateFunction
 	21, // 43: metaxisdata.store.CrossTableConfig.right_function:type_name -> metaxisdata.store.QualityAggregateFunction
-	44, // [44:44] is the sub-list for method output_type
-	44, // [44:44] is the sub-list for method input_type
-	44, // [44:44] is the sub-list for extension type_name
-	44, // [44:44] is the sub-list for extension extendee
-	0,  // [0:44] is the sub-list for field type_name
+	24, // 44: metaxisdata.store.QualitySuggestionJobTarget.path:type_name -> metaxisdata.store.QualityTargetPath
+	23, // 45: metaxisdata.store.QualitySuggestionJobTarget.state:type_name -> metaxisdata.store.QualitySuggestionJobTargetState
+	62, // 46: metaxisdata.store.QualitySuggestionJobTargets.targets:type_name -> metaxisdata.store.QualitySuggestionJobTarget
+	47, // [47:47] is the sub-list for method output_type
+	47, // [47:47] is the sub-list for method input_type
+	47, // [47:47] is the sub-list for extension type_name
+	47, // [47:47] is the sub-list for extension extendee
+	0,  // [0:47] is the sub-list for field type_name
 }
 
 func init() { file_store_data_quality_proto_init() }
@@ -5277,8 +5592,8 @@ func file_store_data_quality_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_store_data_quality_proto_rawDesc), len(file_store_data_quality_proto_rawDesc)),
-			NumEnums:      22,
-			NumMessages:   38,
+			NumEnums:      24,
+			NumMessages:   40,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

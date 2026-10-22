@@ -225,12 +225,14 @@
     - [BatchUpdateQualitySuggestionResult](#metaxisdata-v1-BatchUpdateQualitySuggestionResult)
     - [BatchUpdateQualitySuggestionsRequest](#metaxisdata-v1-BatchUpdateQualitySuggestionsRequest)
     - [BatchUpdateQualitySuggestionsResponse](#metaxisdata-v1-BatchUpdateQualitySuggestionsResponse)
+    - [CancelQualitySuggestionJobRequest](#metaxisdata-v1-CancelQualitySuggestionJobRequest)
     - [CelExpressionConfig](#metaxisdata-v1-CelExpressionConfig)
     - [ColumnProfile](#metaxisdata-v1-ColumnProfile)
     - [ColumnProfileStats](#metaxisdata-v1-ColumnProfileStats)
     - [ColumnSemanticLabel](#metaxisdata-v1-ColumnSemanticLabel)
     - [ColumnValue](#metaxisdata-v1-ColumnValue)
     - [CreateQualityRuleRequest](#metaxisdata-v1-CreateQualityRuleRequest)
+    - [CreateQualitySuggestionJobRequest](#metaxisdata-v1-CreateQualitySuggestionJobRequest)
     - [CrossColumnConfig](#metaxisdata-v1-CrossColumnConfig)
     - [CrossTableConfig](#metaxisdata-v1-CrossTableConfig)
     - [CustomSQLConfig](#metaxisdata-v1-CustomSQLConfig)
@@ -243,6 +245,7 @@
     - [GetQualityIssueRequest](#metaxisdata-v1-GetQualityIssueRequest)
     - [GetQualityOverviewRequest](#metaxisdata-v1-GetQualityOverviewRequest)
     - [GetQualityRuleRequest](#metaxisdata-v1-GetQualityRuleRequest)
+    - [GetQualitySuggestionJobRequest](#metaxisdata-v1-GetQualitySuggestionJobRequest)
     - [GetQualitySuggestionRequest](#metaxisdata-v1-GetQualitySuggestionRequest)
     - [GroupCheckConfig](#metaxisdata-v1-GroupCheckConfig)
     - [ListColumnLabelsRequest](#metaxisdata-v1-ListColumnLabelsRequest)
@@ -255,6 +258,8 @@
     - [ListQualityIssuesResponse](#metaxisdata-v1-ListQualityIssuesResponse)
     - [ListQualityRulesRequest](#metaxisdata-v1-ListQualityRulesRequest)
     - [ListQualityRulesResponse](#metaxisdata-v1-ListQualityRulesResponse)
+    - [ListQualitySuggestionJobsRequest](#metaxisdata-v1-ListQualitySuggestionJobsRequest)
+    - [ListQualitySuggestionJobsResponse](#metaxisdata-v1-ListQualitySuggestionJobsResponse)
     - [ListQualitySuggestionsRequest](#metaxisdata-v1-ListQualitySuggestionsRequest)
     - [ListQualitySuggestionsResponse](#metaxisdata-v1-ListQualitySuggestionsResponse)
     - [NullPercentConfig](#metaxisdata-v1-NullPercentConfig)
@@ -274,6 +279,8 @@
     - [QualityRuleDraftConfig](#metaxisdata-v1-QualityRuleDraftConfig)
     - [QualityStatusCounts](#metaxisdata-v1-QualityStatusCounts)
     - [QualitySuggestion](#metaxisdata-v1-QualitySuggestion)
+    - [QualitySuggestionJob](#metaxisdata-v1-QualitySuggestionJob)
+    - [QualitySuggestionJobTarget](#metaxisdata-v1-QualitySuggestionJobTarget)
     - [QualitySuggestionPayload](#metaxisdata-v1-QualitySuggestionPayload)
     - [QualityTarget](#metaxisdata-v1-QualityTarget)
     - [QualityTargetPath](#metaxisdata-v1-QualityTargetPath)
@@ -322,6 +329,8 @@
     - [QualitySemanticType](#metaxisdata-v1-QualitySemanticType)
     - [QualitySeverity](#metaxisdata-v1-QualitySeverity)
     - [QualityStatus](#metaxisdata-v1-QualityStatus)
+    - [QualitySuggestionJobStatus](#metaxisdata-v1-QualitySuggestionJobStatus)
+    - [QualitySuggestionJobTargetState](#metaxisdata-v1-QualitySuggestionJobTargetState)
     - [QualitySuggestionKind](#metaxisdata-v1-QualitySuggestionKind)
     - [QualitySuggestionSource](#metaxisdata-v1-QualitySuggestionSource)
     - [QualitySuggestionStatus](#metaxisdata-v1-QualitySuggestionStatus)
@@ -4092,6 +4101,21 @@ AggregateConfig bounds the value one aggregate over one column produces.
 
 
 
+<a name="metaxisdata-v1-CancelQualitySuggestionJobRequest"></a>
+
+### CancelQualitySuggestionJobRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job} |
+
+
+
+
+
+
 <a name="metaxisdata-v1-CelExpressionConfig"></a>
 
 ### CelExpressionConfig
@@ -4215,6 +4239,24 @@ they are returned, so a wide text column cannot bloat the response.
 | parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
 | rule | [QualityRule](#metaxisdata-v1-QualityRule) |  | The rule to create. Its name is assigned by the server. |
 | suggestion | [string](#string) |  | The suggestion this rule is created from, if any. When set, the rule&#39;s target is taken from the suggestion: a request target that names a different target is rejected rather than silently ignored, so a caller cannot create a rule for one table while accepting another table&#39;s draft. The suggestion is marked accepted once the rule exists. A decision that cannot be written does not roll the created rule back; it is logged and the suggestion can be decided explicitly. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-CreateQualitySuggestionJobRequest"></a>
+
+### CreateQualitySuggestionJobRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| intent | [string](#string) |  | The natural-language intent, e.g. &#34;email must not be empty&#34;. At most 2000 characters. |
+| language | [string](#string) |  | The language the intent and drafts are written in, e.g. &#34;en&#34; or &#34;zh-CN&#34;. |
+| targets | [QualityTarget](#metaxisdata-v1-QualityTarget) | repeated | The tables or views to draft for, at most 20. Set meta_guid, meta_type and optionally columns; the path and columns are snapshotted for progress. The job visits them in order. |
 
 
 
@@ -4420,6 +4462,21 @@ timestamp follows on_empty.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  | Format: workspaces/{workspace}/qualityRules/{quality_rule} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetQualitySuggestionJobRequest"></a>
+
+### GetQualitySuggestionJobRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job} |
 
 
 
@@ -4652,6 +4709,40 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | quality_rules | [QualityRule](#metaxisdata-v1-QualityRule) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualitySuggestionJobsRequest"></a>
+
+### ListQualitySuggestionJobsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| page_size | [int32](#int32) |  | The maximum number of jobs to return. If unspecified, at most 20 are returned. The maximum value is 1000; values above 1000 are coerced to 1000. |
+| page_token | [string](#string) |  | A page token, received from a previous ListQualitySuggestionJobs call. |
+| status | [QualitySuggestionJobStatus](#metaxisdata-v1-QualitySuggestionJobStatus) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualitySuggestionJobsResponse"></a>
+
+### ListQualitySuggestionJobsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| quality_suggestion_jobs | [QualitySuggestionJob](#metaxisdata-v1-QualitySuggestionJob) | repeated |  |
 | next_page_token | [string](#string) |  |  |
 
 
@@ -5096,6 +5187,59 @@ normal rule or label path.
 | decided_by | [string](#string) |  | Who decided it. Format: users/{user}. Empty while pending. |
 | decide_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | decision_note | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualitySuggestionJob"></a>
+
+### QualitySuggestionJob
+QualitySuggestionJob is one background AI drafting run over a set of targets.
+It is the durable unit of the asynchronous drafting flow: it outlives the
+browser tab that submitted it and is safe to poll.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job} |
+| status | [QualitySuggestionJobStatus](#metaxisdata-v1-QualitySuggestionJobStatus) |  |  |
+| intent | [string](#string) |  | The natural-language intent the job drafts for, shared by every target. |
+| language | [string](#string) |  | The language the intent and drafts are written in, e.g. &#34;en&#34; or &#34;zh-CN&#34;. |
+| targets | [QualitySuggestionJobTarget](#metaxisdata-v1-QualitySuggestionJobTarget) | repeated |  |
+| target_count | [int32](#int32) |  | Total targets, targets no longer PENDING/RUNNING, and queued suggestions. |
+| completed_target_count | [int32](#int32) |  |  |
+| suggestion_count | [int32](#int32) |  |  |
+| provider | [string](#string) |  | The provider facts of the analysis; set when the runner starts the job. |
+| model | [string](#string) |  |  |
+| prompt_version | [string](#string) |  |  |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| start_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| finish_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| error | [string](#string) |  | Empty unless the whole job failed; per-target failures live on the targets. |
+| created_by | [string](#string) |  | Format: users/{user}. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualitySuggestionJobTarget"></a>
+
+### QualitySuggestionJobTarget
+QualitySuggestionJobTarget is one target of a drafting job and what happened
+to it. `suggestions` names the queued suggestions this target produced.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  |  |
+| state | [QualitySuggestionJobTargetState](#metaxisdata-v1-QualitySuggestionJobTargetState) |  |  |
+| suggestions | [string](#string) | repeated | The suggestions queued from this target so far. Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion} |
+| error | [string](#string) |  | Empty unless this target failed; then why. |
+| start_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| finish_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 
 
 
@@ -5959,6 +6103,40 @@ means the check could not be evaluated at all, FAIL means the data failed it.
 
 
 
+<a name="metaxisdata-v1-QualitySuggestionJobStatus"></a>
+
+### QualitySuggestionJobStatus
+QualitySuggestionJobStatus is the lifecycle of a background AI drafting job.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_SUGGESTION_JOB_STATUS_UNSPECIFIED | 0 |  |
+| QUALITY_SUGGESTION_JOB_STATUS_PENDING | 1 |  |
+| QUALITY_SUGGESTION_JOB_STATUS_RUNNING | 2 |  |
+| QUALITY_SUGGESTION_JOB_STATUS_COMPLETED | 3 |  |
+| QUALITY_SUGGESTION_JOB_STATUS_FAILED | 4 |  |
+| QUALITY_SUGGESTION_JOB_STATUS_CANCELED | 5 |  |
+
+
+
+<a name="metaxisdata-v1-QualitySuggestionJobTargetState"></a>
+
+### QualitySuggestionJobTargetState
+QualitySuggestionJobTargetState is where one target of a drafting job stands.
+SKIPPED means the job stopped before asking the model for that target; FAILED
+means the model was asked and the target could not produce suggestions.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_SUGGESTION_JOB_TARGET_STATE_UNSPECIFIED | 0 |  |
+| QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING | 1 |  |
+| QUALITY_SUGGESTION_JOB_TARGET_STATE_RUNNING | 2 |  |
+| QUALITY_SUGGESTION_JOB_TARGET_STATE_DONE | 3 |  |
+| QUALITY_SUGGESTION_JOB_TARGET_STATE_FAILED | 4 |  |
+| QUALITY_SUGGESTION_JOB_TARGET_STATE_SKIPPED | 5 |  |
+
+
+
 <a name="metaxisdata-v1-QualitySuggestionKind"></a>
 
 ### QualitySuggestionKind
@@ -6049,6 +6227,10 @@ not exposed as a resource.
 | GetQualitySuggestion | [GetQualitySuggestionRequest](#metaxisdata-v1-GetQualitySuggestionRequest) | [QualitySuggestion](#metaxisdata-v1-QualitySuggestion) | Read one queued suggestion. The queue is paged with ListQualitySuggestions; this exists so a deep link can open one draft without reading the pages. |
 | UpdateQualitySuggestion | [UpdateQualitySuggestionRequest](#metaxisdata-v1-UpdateQualitySuggestionRequest) | [QualitySuggestion](#metaxisdata-v1-QualitySuggestion) | Accept or reject one queued suggestion. A decision is final: the store refuses a second one. |
 | BatchUpdateQualitySuggestions | [BatchUpdateQualitySuggestionsRequest](#metaxisdata-v1-BatchUpdateQualitySuggestionsRequest) | [BatchUpdateQualitySuggestionsResponse](#metaxisdata-v1-BatchUpdateQualitySuggestionsResponse) | Accept or reject many queued suggestions in one call. Each decision is independent: a failure is reported in its own result and does not abort the rest. |
+| CreateQualitySuggestionJob | [CreateQualitySuggestionJobRequest](#metaxisdata-v1-CreateQualitySuggestionJobRequest) | [QualitySuggestionJob](#metaxisdata-v1-QualitySuggestionJob) | Start a background AI drafting job over one or more tables. The call returns as soon as the job is queued: the runner asks the model for each target in turn, and clients poll GetQualitySuggestionJob (or list the jobs) for progress. Queued suggestions appear in the review queue like any other. |
+| GetQualitySuggestionJob | [GetQualitySuggestionJobRequest](#metaxisdata-v1-GetQualitySuggestionJobRequest) | [QualitySuggestionJob](#metaxisdata-v1-QualitySuggestionJob) | Read one drafting job, including per-target progress and the suggestions it queued so far. |
+| ListQualitySuggestionJobs | [ListQualitySuggestionJobsRequest](#metaxisdata-v1-ListQualitySuggestionJobsRequest) | [ListQualitySuggestionJobsResponse](#metaxisdata-v1-ListQualitySuggestionJobsResponse) | List drafting jobs, newest first. |
+| CancelQualitySuggestionJob | [CancelQualitySuggestionJobRequest](#metaxisdata-v1-CancelQualitySuggestionJobRequest) | [QualitySuggestionJob](#metaxisdata-v1-QualitySuggestionJob) | Ask a drafting job to stop. A pending job is canceled immediately; a running job finishes its current target, marks the rest skipped and ends CANCELED. Suggestions already queued are kept. |
 | ListColumnProfiles | [ListColumnProfilesRequest](#metaxisdata-v1-ListColumnProfilesRequest) | [ListColumnProfilesResponse](#metaxisdata-v1-ListColumnProfilesResponse) | List the cached deterministic profiles of columns. Profiles are read-only measurements; there is no get or update. |
 | ListColumnLabels | [ListColumnLabelsRequest](#metaxisdata-v1-ListColumnLabelsRequest) | [ListColumnLabelsResponse](#metaxisdata-v1-ListColumnLabelsResponse) | List the semantic labels asserted on columns. |
 | UpdateColumnLabel | [UpdateColumnLabelRequest](#metaxisdata-v1-UpdateColumnLabelRequest) | [UpdateColumnLabelResponse](#metaxisdata-v1-UpdateColumnLabelResponse) | Accept a proposed semantic label or clear the label of one column. |

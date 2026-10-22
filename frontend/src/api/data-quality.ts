@@ -6,10 +6,12 @@ import {
   BatchCreateQualityRulesRequestSchema,
   type BatchUpdateQualitySuggestionResult,
   BatchUpdateQualitySuggestionsRequestSchema,
+  CancelQualitySuggestionJobRequestSchema,
   ColumnLabelAction,
   type ColumnProfile,
   type ColumnSemanticLabel,
   CreateQualityRuleRequestSchema,
+  CreateQualitySuggestionJobRequestSchema,
   DeleteQualityRuleRequestSchema,
   ExplainQualityExecutionRequestSchema,
   type ExplainQualityExecutionResponse,
@@ -17,12 +19,14 @@ import {
   GetQualityIssueRequestSchema,
   GetQualityOverviewRequestSchema,
   GetQualityRuleRequestSchema,
+  GetQualitySuggestionJobRequestSchema,
   GetQualitySuggestionRequestSchema,
   ListColumnLabelsRequestSchema,
   ListColumnProfilesRequestSchema,
   ListQualityExecutionsRequestSchema,
   ListQualityIssuesRequestSchema,
   ListQualityRulesRequestSchema,
+  ListQualitySuggestionJobsRequestSchema,
   ListQualitySuggestionsRequestSchema,
   PreviewQualityRuleRequestSchema,
   ProfileColumnsRequestSchema,
@@ -42,9 +46,12 @@ import {
   QualitySeverity,
   QualityStatus,
   type QualitySuggestion,
+  type QualitySuggestionJob,
+  QualitySuggestionJobStatus,
   QualitySuggestionKind,
   QualitySuggestionSource,
   QualitySuggestionStatus,
+  type QualityTarget,
   RunQualityRulesRequestSchema,
   SuggestColumnLabelsRequestSchema,
   SuggestQualityRuleRequestSchema,
@@ -517,6 +524,72 @@ export async function batchCreateQualityRules(
   });
   const response = await dataQualityClient.batchCreateQualityRules(request);
   return response.results;
+}
+
+// ---- drafting jobs ----
+
+/**
+ * Submit one durable AI drafting job for several targets. The server runs the
+ * analyses in the background; the returned job is safe to poll and outlives the
+ * browser tab.
+ */
+export async function createQualitySuggestionJob(options: {
+  intent: string;
+  language?: string;
+  targets: QualityTarget[];
+}): Promise<QualitySuggestionJob> {
+  const request = create(CreateQualitySuggestionJobRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    intent: options.intent,
+    language: options.language ?? "",
+    targets: options.targets,
+  });
+  return await dataQualityClient.createQualitySuggestionJob(request);
+}
+
+/** Read one drafting job, including its per-target progress. */
+export async function getQualitySuggestionJob(
+  name: string,
+  signal?: AbortSignal
+): Promise<QualitySuggestionJob> {
+  const request = create(GetQualitySuggestionJobRequestSchema, { name });
+  return await dataQualityClient.getQualitySuggestionJob(request, { signal });
+}
+
+/** One page of drafting jobs, newest first. */
+export async function listQualitySuggestionJobs(
+  options: {
+    pageSize?: number;
+    pageToken?: string;
+    status?: QualitySuggestionJobStatus;
+    signal?: AbortSignal;
+  } = {}
+): Promise<ListPage<QualitySuggestionJob>> {
+  const request = create(ListQualitySuggestionJobsRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    pageSize: options.pageSize ?? 20,
+    pageToken: options.pageToken ?? "",
+    status: options.status ?? QualitySuggestionJobStatus.UNSPECIFIED,
+  });
+  const response = await dataQualityClient.listQualitySuggestionJobs(request, {
+    signal: options.signal,
+  });
+  return {
+    items: response.qualitySuggestionJobs,
+    nextPageToken: response.nextPageToken,
+  };
+}
+
+/**
+ * Ask a job to stop. Canceling between targets is cooperative: a PENDING job
+ * becomes CANCELED immediately, a RUNNING one stops after the current target,
+ * and canceling a terminal job returns it unchanged.
+ */
+export async function cancelQualitySuggestionJob(
+  name: string
+): Promise<QualitySuggestionJob> {
+  const request = create(CancelQualitySuggestionJobRequestSchema, { name });
+  return await dataQualityClient.cancelQualitySuggestionJob(request);
 }
 
 // ---- column profiles and labels ----

@@ -718,3 +718,49 @@ message CrossTableConfig {
   optional double fail_threshold = 7;
   optional double warn_threshold = 8;
 }
+
+// QualitySuggestionJobStatus is the lifecycle of one background AI drafting job.
+// The status is a scalar column; the JSONB targets carry a per-target state.
+enum QualitySuggestionJobStatus {
+  QUALITY_SUGGESTION_JOB_STATUS_UNSPECIFIED = 0;
+  QUALITY_SUGGESTION_JOB_STATUS_PENDING = 1;
+  QUALITY_SUGGESTION_JOB_STATUS_RUNNING = 2;
+  QUALITY_SUGGESTION_JOB_STATUS_COMPLETED = 3;
+  QUALITY_SUGGESTION_JOB_STATUS_FAILED = 4;
+  QUALITY_SUGGESTION_JOB_STATUS_CANCELED = 5;
+}
+
+// QualitySuggestionJobTargetState is where one target of a background drafting
+// job stands. SKIPPED means the job stopped before visiting it (cancel or quota),
+// which is different from FAILED: the model was never asked.
+enum QualitySuggestionJobTargetState {
+  QUALITY_SUGGESTION_JOB_TARGET_STATE_UNSPECIFIED = 0;
+  QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING = 1;
+  QUALITY_SUGGESTION_JOB_TARGET_STATE_RUNNING = 2;
+  QUALITY_SUGGESTION_JOB_TARGET_STATE_DONE = 3;
+  QUALITY_SUGGESTION_JOB_TARGET_STATE_FAILED = 4;
+  QUALITY_SUGGESTION_JOB_TARGET_STATE_SKIPPED = 5;
+}
+
+// QualitySuggestionJobTarget is one table a background drafting job visits. The
+// path and columns are a snapshot taken at submission, so the job still renders
+// after the registry changes; resolution happens again when the model is asked.
+message QualitySuggestionJobTarget {
+  string target_guid = 1;
+  // The metaxisdata.v1.MetaType number; the store module does not import v1.
+  int32 target_type = 2;
+  QualityTargetPath path = 3;
+  repeated string columns = 4;
+  QualitySuggestionJobTargetState state = 5;
+  // Resource ids (not names) of the suggestions this target queued.
+  repeated string suggestion_resource_ids = 6;
+  string error = 7;
+  int64 started_at_unix_ms = 8;
+  int64 finished_at_unix_ms = 9;
+}
+
+// QualitySuggestionJobTargets is the JSONB payload of
+// quality_suggestion_job.targets.
+message QualitySuggestionJobTargets {
+  repeated QualitySuggestionJobTarget targets = 1;
+}

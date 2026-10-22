@@ -63,8 +63,10 @@ drift), because those objects have no column-level type authority.
 
 Rules can also start from a model draft: open **Data Quality → Suggestions**, use
 **Draft with AI** to pick one or more tables and describe the check once, then
-review the queued drafts and create them in bulk. The editor's **Draft with AI**
-button remains the shortcut for the table you are already editing.
+review the queued drafts and create them in bulk. Multi-target drafting runs as a
+background job, so you do not have to keep the page open. The editor's **Draft
+with AI** button remains the shortcut for the table you are already editing and
+waits for that one call.
 
 ## Browsing rules
 
@@ -141,15 +143,19 @@ The **Suggestions** page is the review center. Suggestions arrive from two place
 
 - **Draft with AI** on the Suggestions page: pick one or more tables (a single
   target can also limit its columns), describe in your own words what must hold,
-  and run the draft. The model proposes rule drafts per target; each target is
-  reported separately, so one failure does not cancel the rest.
+  and submit. This starts a **background drafting job** on the server: you can
+  close the page or the browser tab and the model calls continue. The job appears
+  in the **AI drafting jobs** panel on the Suggestions page with its per-target
+  progress, how many suggestions it has queued, and any per-target error; an active
+  job can be canceled, which stops it after the target currently being drafted.
 - **Suggest labels** on a table's Data Quality tab: profile the columns first,
   then let the model name their semantic types and propose the deterministic rule
   types those labels imply.
 
 The queue groups suggestions by target table and filters by status, kind, source
-and target scope. Select rows on the current page to work in bulk (up to 200 per
-submit):
+and target scope. Suggestions produced by a finished drafting job appear like any
+other and are selected on the current page when the job completes. Select rows on
+the current page to work in bulk (up to 200 per submit):
 
 - **Rule drafts** — *Create rules* opens one dialog where you set a schedule,
   severity, dimension and owner for the whole selection; expand a row to edit its
@@ -181,8 +187,9 @@ when it is reached.
 ## Retention
 
 Executions are kept 90 days, resolved issues 90 days, column profiles and the
-model result cache 7 days, and decided suggestions 90 days; the maintenance
-runner prunes them. Rules, open issues and accepted labels are not pruned.
+model result cache 7 days, decided suggestions 90 days, and finished AI drafting
+jobs 90 days; the maintenance runner prunes them. Rules, open issues and accepted
+labels are not pruned.
 
 ## Troubleshooting
 
@@ -196,6 +203,8 @@ runner prunes them. Rules, open issues and accepted labels are not pruned.
 | A rule that used to run now ends `ERROR(UNSUPPORTED)` | The rule uses a configuration this build no longer accepts, for example an aggregate `COUNT` (use a row count rule instead) or a column type the engine cannot express. Re-create the rule with the supported type. |
 | No notification for a failure | The issue was already open (notifications fire on transitions), the rule is muted, or more than ten rules failed in the same scheduler pass and a summary was sent instead. |
 | Model buttons are disabled | Model analysis is off, no allowed provider profile exists, or the caller lacks `suggest`/`explain`. |
+| An AI drafting job failed | Open the **AI drafting jobs** panel: a job-level error means the provider became unavailable or the daily analysis quota ran out after it started; per-target errors (for example a table or column dropped after submission) are shown on the target. Queued suggestions from earlier targets are kept. |
+| An AI drafting job stays queued or running | The server processes one job at a time; a queued job starts on the next runner tick (about five seconds). If the server restarted mid-job, the job is marked failed on startup and is not resumed — submit it again. |
 | A label suggestion cannot be accepted | Profile the columns first; label suggestions require profiles fresher than seven days. |
 
 The API surface, resource names, data model and invariants are documented for

@@ -27,6 +27,8 @@ const mocks = vi.hoisted(() => ({
   suggestQualityRule: vi.fn(),
   batchCreateQualityRules: vi.fn(),
   batchUpdateQualitySuggestions: vi.fn(),
+  listQualitySuggestionJobs: vi.fn(),
+  cancelQualitySuggestionJob: vi.fn(),
   getWorkspaceProfileSetting: vi.fn(),
   listMetadata: vi.fn(),
   listAllInstances: vi.fn(),
@@ -39,6 +41,8 @@ vi.mock("@/api/data-quality", async (importOriginal) => ({
   suggestQualityRule: mocks.suggestQualityRule,
   batchCreateQualityRules: mocks.batchCreateQualityRules,
   batchUpdateQualitySuggestions: mocks.batchUpdateQualitySuggestions,
+  listQualitySuggestionJobs: mocks.listQualitySuggestionJobs,
+  cancelQualitySuggestionJob: mocks.cancelQualitySuggestionJob,
 }));
 
 vi.mock("@/api/setting", () => ({
@@ -230,6 +234,10 @@ describe("DataQualitySuggestionsPage", () => {
     });
     mocks.listMetadata.mockResolvedValue({ typesStoredMetadata: [] });
     mocks.listAllInstances.mockResolvedValue([]);
+    mocks.listQualitySuggestionJobs.mockResolvedValue({
+      items: [],
+      nextPageToken: "",
+    });
     mocks.updateQualitySuggestion.mockImplementation(async (options) =>
       create(QualitySuggestionSchema, { name: options.name })
     );
@@ -416,7 +424,7 @@ describe("DataQualitySuggestionsPage", () => {
     wrapper.unmount();
   });
 
-  it("resets to page one and selects the new suggestions after a workbench run", async () => {
+  it("reloads the jobs panel after a submission and selects what a job settles", async () => {
     mocks.listQualitySuggestions.mockResolvedValue({
       items: queue(),
       nextPageToken: "page-2",
@@ -426,7 +434,9 @@ describe("DataQualitySuggestionsPage", () => {
     expect(document.body.textContent).toContain(
       label("dataQuality.suggestions.workbench.description")
     );
-    // Move off page one so the reset is observable.
+    // The panel loads once on mount (recent page + independent RUNNING list).
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(2);
+    // Move off page one so the completion reset is observable.
     buttonByText(label("common.next"))?.click();
     await flushPromises();
     expect(mocks.listQualitySuggestions).toHaveBeenLastCalledWith(
@@ -435,7 +445,7 @@ describe("DataQualitySuggestionsPage", () => {
 
     const queued = draftSuggestion(
       "workspaces/ws/qualitySuggestions/draft-3",
-      "Queued from the workbench",
+      "Queued by the job",
       OTHER_TARGET
     );
     const missing = draftSuggestion(
@@ -444,16 +454,26 @@ describe("DataQualitySuggestionsPage", () => {
       OTHER_TARGET
     );
     const info = vi.spyOn(notify, "info");
+    const success = vi.spyOn(notify, "success");
+
+    // The workbench only submits a job; the panel reloads immediately.
+    wrapper
+      .findComponent({ name: "SuggestionWorkbench" })
+      .vm.$emit("submitted", { name: "workspaces/ws/qualitySuggestionJobs/j" });
+    await flushPromises();
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(4);
+
+    // When the job settles, its suggestions are the newest rows: page one,
+    // select the visible pending ones, and explain any that are not visible.
     mocks.listQualitySuggestions.mockResolvedValue({
       items: [queued],
       nextPageToken: "",
     });
     wrapper
-      .findComponent({ name: "SuggestionWorkbench" })
-      .vm.$emit("queued", [queued, missing]);
+      .findComponent({ name: "SuggestionJobsPanel" })
+      .vm.$emit("settled", [queued.name, missing.name]);
     await flushPromises();
 
-    // The newly queued rows are newest, so the page asks for page one again.
     expect(mocks.listQualitySuggestions).toHaveBeenLastCalledWith(
       expect.objectContaining({ pageToken: "" })
     );
@@ -466,7 +486,26 @@ describe("DataQualitySuggestionsPage", () => {
         total: 2,
       })
     );
+    expect(success).toHaveBeenCalledWith(
+      label("dataQuality.suggestions.jobs.settledToast", { count: 2 })
+    );
     info.mockRestore();
+    success.mockRestore();
+    wrapper.unmount();
+  });
+
+  it("refreshes the current queue when a job settles without suggestions", async () => {
+    const { wrapper } = await mountPage();
+
+    wrapper
+      .findComponent({ name: "SuggestionJobsPanel" })
+      .vm.$emit("settled", []);
+    await flushPromises();
+
+    expect(mocks.listQualitySuggestions).toHaveBeenCalledTimes(2);
+    expect(wrapper.text()).not.toContain(
+      label("dataQuality.suggestions.selectedCount", { count: 1 })
+    );
     wrapper.unmount();
   });
 
@@ -488,7 +527,9 @@ describe("DataQualitySuggestionsPage", () => {
     const generate = [
       ...document.body.querySelectorAll<HTMLElement>('[role="dialog"] button'),
     ].find((button) =>
-      button.textContent?.includes(label("dataQuality.llm.draft.generate"))
+      button.textContent?.includes(
+        label("dataQuality.suggestions.workbench.submit")
+      )
     ) as HTMLButtonElement | undefined;
     expect(generate?.disabled).toBe(true);
     wrapper.unmount();

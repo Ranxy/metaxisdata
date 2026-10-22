@@ -313,6 +313,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.store.QualitySuggestionJobTarget"><span class="badge">M</span>QualitySuggestionJobTarget</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualitySuggestionJobTargets"><span class="badge">M</span>QualitySuggestionJobTargets</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.QualitySuggestionPayload"><span class="badge">M</span>QualitySuggestionPayload</a>
                 </li>
               
@@ -447,6 +455,14 @@
               
                 <li>
                   <a href="#metaxisdata.store.QualityStatus"><span class="badge">E</span>QualityStatus</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualitySuggestionJobStatus"><span class="badge">E</span>QualitySuggestionJobStatus</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualitySuggestionJobTargetState"><span class="badge">E</span>QualitySuggestionJobTargetState</a>
                 </li>
               
                 <li>
@@ -2480,6 +2496,110 @@ converted with the column&#39;s type; at most 20. </p></td>
 
         
       
+        <h3 id="metaxisdata.store.QualitySuggestionJobTarget">QualitySuggestionJobTarget</h3>
+        <p>QualitySuggestionJobTarget is one table a background drafting job visits. The</p><p>path and columns are a snapshot taken at submission, so the job still renders</p><p>after the registry changes; resolution happens again when the model is asked.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>target_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_type</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The metaxisdata.v1.MetaType number; the store module does not import v1. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>path</td>
+                  <td><a href="#metaxisdata.store.QualityTargetPath">QualityTargetPath</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>columns</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>state</td>
+                  <td><a href="#metaxisdata.store.QualitySuggestionJobTargetState">QualitySuggestionJobTargetState</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>suggestion_resource_ids</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>Resource ids (not names) of the suggestions this target queued. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>error</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>started_at_unix_ms</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>finished_at_unix_ms</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QualitySuggestionJobTargets">QualitySuggestionJobTargets</h3>
+        <p>QualitySuggestionJobTargets is the JSONB payload of</p><p>quality_suggestion_job.targets.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>targets</td>
+                  <td><a href="#metaxisdata.store.QualitySuggestionJobTarget">QualitySuggestionJobTarget</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.store.QualitySuggestionPayload">QualitySuggestionPayload</h3>
         <p>QualitySuggestionPayload is the review-queue payload: a rule draft the reviewer</p><p>can load into the editor, or a semantic label awaiting confirmation.</p>
 
@@ -4208,6 +4328,100 @@ the same instance and database.</p></td>
               <tr>
                 <td>QUALITY_STATUS_NOT_EVALUATED</td>
                 <td>6</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.QualitySuggestionJobStatus">QualitySuggestionJobStatus</h3>
+        <p>QualitySuggestionJobStatus is the lifecycle of one background AI drafting job.</p><p>The status is a scalar column; the JSONB targets carry a per-target state.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_JOB_STATUS_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_JOB_STATUS_PENDING</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_JOB_STATUS_RUNNING</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_JOB_STATUS_COMPLETED</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_JOB_STATUS_FAILED</td>
+                <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_JOB_STATUS_CANCELED</td>
+                <td>5</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.QualitySuggestionJobTargetState">QualitySuggestionJobTargetState</h3>
+        <p>QualitySuggestionJobTargetState is where one target of a background drafting</p><p>job stands. SKIPPED means the job stopped before visiting it (cancel or quota),</p><p>which is different from FAILED: the model was never asked.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_JOB_TARGET_STATE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_JOB_TARGET_STATE_RUNNING</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_JOB_TARGET_STATE_DONE</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_JOB_TARGET_STATE_FAILED</td>
+                <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_JOB_TARGET_STATE_SKIPPED</td>
+                <td>5</td>
                 <td><p></p></td>
               </tr>
             

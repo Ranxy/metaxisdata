@@ -15,13 +15,17 @@ import {
   QualitySemanticType,
   QualitySeverity,
   type QualitySuggestion,
+  type QualitySuggestionJob,
+  QualitySuggestionJobStatus,
+  type QualitySuggestionJobTarget,
+  QualitySuggestionJobTargetState,
   QualitySuggestionKind,
   QualitySuggestionSource,
   QualitySuggestionStatus,
   type SemanticLabelEvidence,
   type SemanticLabelSuggestion,
 } from "@/types/proto-es/v1/data_quality_service_pb";
-import { formatRowCount } from "@/utils/dataQuality";
+import { formatRowCount, type QualityBadgeVariant } from "@/utils/dataQuality";
 import {
   emptyConfig,
   emptyRuleForm,
@@ -38,8 +42,9 @@ import { formatPercent } from "@/utils/dataQualityOverview";
 
 /**
  * The suggestion queue's pure layer: the vocabulary its badges need, the
- * conversion of a suggested rule draft into an editor form, and the display of
- * column profiles and semantic labels in the asset page's quality section.
+ * conversion of a suggested rule draft into an editor form, the durable drafting
+ * job's labels and progress, and the display of column profiles and semantic
+ * labels in the asset page's quality section.
  */
 
 // ---- suggestion vocabulary ----
@@ -555,6 +560,166 @@ export function ruleConfigEntries(config: RuleConfigForm): ConfigEntry[] {
 /** The editor labels for a draft's entries; the component translates them. */
 export function configEntryLabelKey(field: string): string {
   return `dataQuality.editor.${field}`;
+}
+
+// ---- drafting jobs ----
+
+/** The maximum number of targets one drafting job accepts. */
+export const MAX_SUGGESTION_JOB_TARGETS = 20;
+
+/** The label key for a drafting job's lifecycle status. */
+export function suggestionJobStatusKey(
+  status: QualitySuggestionJobStatus
+): string {
+  switch (status) {
+    case QualitySuggestionJobStatus.PENDING:
+      return "dataQuality.suggestionJobStatus.pending";
+    case QualitySuggestionJobStatus.RUNNING:
+      return "dataQuality.suggestionJobStatus.running";
+    case QualitySuggestionJobStatus.COMPLETED:
+      return "dataQuality.suggestionJobStatus.completed";
+    case QualitySuggestionJobStatus.FAILED:
+      return "dataQuality.suggestionJobStatus.failed";
+    case QualitySuggestionJobStatus.CANCELED:
+      return "dataQuality.suggestionJobStatus.canceled";
+    default:
+      return "dataQuality.suggestionJobStatus.unspecified";
+  }
+}
+
+/** The badge variant for a drafting job's lifecycle status. */
+export function suggestionJobStatusVariant(
+  status: QualitySuggestionJobStatus
+): QualityBadgeVariant {
+  switch (status) {
+    case QualitySuggestionJobStatus.PENDING:
+      return "warning";
+    case QualitySuggestionJobStatus.RUNNING:
+      return "info";
+    case QualitySuggestionJobStatus.COMPLETED:
+      return "success";
+    case QualitySuggestionJobStatus.FAILED:
+      return "danger";
+    case QualitySuggestionJobStatus.CANCELED:
+      return "neutral";
+    default:
+      return "secondary";
+  }
+}
+
+/** The label key for one job target's state. */
+export function suggestionJobTargetStateKey(
+  state: QualitySuggestionJobTargetState
+): string {
+  switch (state) {
+    case QualitySuggestionJobTargetState.PENDING:
+      return "dataQuality.suggestionJobTargetState.pending";
+    case QualitySuggestionJobTargetState.RUNNING:
+      return "dataQuality.suggestionJobTargetState.running";
+    case QualitySuggestionJobTargetState.DONE:
+      return "dataQuality.suggestionJobTargetState.done";
+    case QualitySuggestionJobTargetState.FAILED:
+      return "dataQuality.suggestionJobTargetState.failed";
+    case QualitySuggestionJobTargetState.SKIPPED:
+      return "dataQuality.suggestionJobTargetState.skipped";
+    default:
+      return "dataQuality.suggestionJobTargetState.unspecified";
+  }
+}
+
+/** The badge variant for one job target's state. */
+export function suggestionJobTargetStateVariant(
+  state: QualitySuggestionJobTargetState
+): QualityBadgeVariant {
+  switch (state) {
+    case QualitySuggestionJobTargetState.PENDING:
+      return "secondary";
+    case QualitySuggestionJobTargetState.RUNNING:
+      return "info";
+    case QualitySuggestionJobTargetState.DONE:
+      return "success";
+    case QualitySuggestionJobTargetState.FAILED:
+      return "danger";
+    case QualitySuggestionJobTargetState.SKIPPED:
+      return "neutral";
+    default:
+      return "secondary";
+  }
+}
+
+/** A job the runner can still make progress on; polling only matters then. */
+export function isActiveSuggestionJob(job: QualitySuggestionJob): boolean {
+  return (
+    job.status === QualitySuggestionJobStatus.PENDING ||
+    job.status === QualitySuggestionJobStatus.RUNNING
+  );
+}
+
+export interface SuggestionJobProgress {
+  /** Targets the job will visit. */
+  total: number;
+  /** Targets already attempted (done, failed or skipped). */
+  completed: number;
+  /** Completed share, 0-100, for a progress bar or compact label. */
+  percent: number;
+  /** Suggestions the job has queued so far. */
+  suggestions: number;
+}
+
+/** The counts a job row shows: target progress plus queued suggestions. */
+export function suggestionJobProgress(
+  job: QualitySuggestionJob
+): SuggestionJobProgress {
+  const total = Math.max(0, job.targetCount || job.targets.length);
+  const completed = Math.min(total, Math.max(0, job.completedTargetCount));
+  return {
+    total,
+    completed,
+    percent: total > 0 ? Math.round((completed / total) * 100) : 0,
+    suggestions: Math.max(0, job.suggestionCount),
+  };
+}
+
+/** Every suggestion resource name the job has queued so far. */
+export function jobSuggestionNames(job: QualitySuggestionJob): string[] {
+  return job.targets.flatMap((target) => [...target.suggestions]);
+}
+
+/**
+ * A job target as one display name. The job snapshots the path when it is
+ * submitted, so progress stays readable after the registry changes; the caller's
+ * instance title replaces the raw instance id when it is known.
+ */
+export function jobTargetLabel(
+  target: QualitySuggestionJobTarget,
+  instanceTitle = ""
+): string {
+  const path = target.target?.path;
+  if (path && (path.instance || path.database || path.schema || path.object)) {
+    const parts = [
+      instanceTitle || path.instance,
+      path.database,
+      path.schema,
+      path.object,
+    ].filter(Boolean);
+    if (parts.length > 0) {
+      return parts.join(" · ");
+    }
+  }
+  const guid = target.target?.metaGuid ?? "";
+  return guid ? suggestionTargetLabel(guid, instanceTitle) : "-";
+}
+
+/** The intent on one line, shortened so a row cannot grow without bound. */
+export function jobIntentSnippet(
+  job: QualitySuggestionJob,
+  maxLength = 80
+): string {
+  const intent = job.intent.trim().replace(/\s+/g, " ");
+  if (intent.length <= maxLength) {
+    return intent;
+  }
+  return `${intent.slice(0, Math.max(0, maxLength - 1))}…`;
 }
 
 // ---- column profiles and labels ----

@@ -907,6 +907,22 @@
       "unspecified": "Unspecified",
       "warn": "Warn"
     },
+    "suggestionJobStatus": {
+      "canceled": "Canceled",
+      "completed": "Completed",
+      "failed": "Failed",
+      "pending": "Waiting",
+      "running": "Drafting",
+      "unspecified": "Unspecified"
+    },
+    "suggestionJobTargetState": {
+      "done": "Done",
+      "failed": "Failed",
+      "pending": "Waiting",
+      "running": "Drafting",
+      "skipped": "Skipped",
+      "unspecified": "Unspecified"
+    },
     "suggestionKind": {
       "label": "Column label",
       "ruleDraft": "Rule draft",
@@ -999,6 +1015,26 @@
       "filterStatus": "Status",
       "groupCount": "{count} suggestions",
       "ignoreDrafts": "Ignore drafts ({count})",
+      "jobs": {
+        "cancel": "Cancel job",
+        "cancelConfirm": "Cancel it?",
+        "cancelConfirmAction": "Cancel the job",
+        "cancelFailed": "Canceling the job failed.",
+        "cancelKeep": "Keep running",
+        "cancelRequested": "Cancellation requested; the job stops after the current target.",
+        "canceledToast": "The AI drafting job was canceled.",
+        "collapse": "Hide target details",
+        "expand": "Show target details",
+        "fetchFailed": "Failed to load the AI drafting jobs.",
+        "hide": "Hide jobs",
+        "hint": "Jobs run on the server; their suggestions enter the queue when they finish.",
+        "noTargets": "No target records.",
+        "progress": "{completed}/{total} targets · {suggestions} suggestions",
+        "settledToast": "AI drafting finished: {count} suggestions queued.",
+        "show": "Show jobs",
+        "summary": "{active} running · {finished} finished",
+        "title": "AI drafting jobs"
+      },
       "noCreatePermission": "You can accept this draft, but creating a rule needs the rules.create permission. Copy the parameters to keep them.",
       "noFiltered": "No suggestions match these filters",
       "note": "Note",
@@ -1028,17 +1064,18 @@
       "workbench": {
         "addTarget": "Add target",
         "description": "Pick one or more tables and describe the check once; the drafts are queued as suggestions for review.",
-        "doneCount": "Done ({count})",
-        "failed": "Failed",
+        "finish": "Done",
         "generateFailed": "Drafting failed.",
-        "goReview": "Review",
         "noTargets": "No target selected yet.",
-        "resultsHint": "These suggestions still need review. Keep drafting, or batch-create rules from the suggestion list.",
-        "resultsSummary": "Queued suggestions: {count}",
-        "running": "Drafting…",
+        "submit": "Start drafting job",
+        "submitFailed": "Submitting the AI drafting job failed.",
+        "submittedHint": "The job keeps running on the server, so you can close this page; suggestions appear in the queue as each target finishes.",
+        "submittedTargets": "Targets in this job ({count})",
+        "submittedTitle": "AI drafting job submitted",
+        "submitting": "Submitting the job…",
         "targets": "Targets",
         "targetsHint": "With several targets the intent scopes every draft; no per-target columns are sent.",
-        "waiting": "Waiting"
+        "tooManyTargets": "A job accepts at most {max} targets."
       }
     },
     "tags": "Tags",

@@ -37,6 +37,10 @@ const (
 	DataQualityService_GetQualitySuggestion_FullMethodName          = "/metaxisdata.v1.DataQualityService/GetQualitySuggestion"
 	DataQualityService_UpdateQualitySuggestion_FullMethodName       = "/metaxisdata.v1.DataQualityService/UpdateQualitySuggestion"
 	DataQualityService_BatchUpdateQualitySuggestions_FullMethodName = "/metaxisdata.v1.DataQualityService/BatchUpdateQualitySuggestions"
+	DataQualityService_CreateQualitySuggestionJob_FullMethodName    = "/metaxisdata.v1.DataQualityService/CreateQualitySuggestionJob"
+	DataQualityService_GetQualitySuggestionJob_FullMethodName       = "/metaxisdata.v1.DataQualityService/GetQualitySuggestionJob"
+	DataQualityService_ListQualitySuggestionJobs_FullMethodName     = "/metaxisdata.v1.DataQualityService/ListQualitySuggestionJobs"
+	DataQualityService_CancelQualitySuggestionJob_FullMethodName    = "/metaxisdata.v1.DataQualityService/CancelQualitySuggestionJob"
 	DataQualityService_ListColumnProfiles_FullMethodName            = "/metaxisdata.v1.DataQualityService/ListColumnProfiles"
 	DataQualityService_ListColumnLabels_FullMethodName              = "/metaxisdata.v1.DataQualityService/ListColumnLabels"
 	DataQualityService_UpdateColumnLabel_FullMethodName             = "/metaxisdata.v1.DataQualityService/UpdateColumnLabel"
@@ -110,6 +114,20 @@ type DataQualityServiceClient interface {
 	// independent: a failure is reported in its own result and does not abort the
 	// rest.
 	BatchUpdateQualitySuggestions(ctx context.Context, in *BatchUpdateQualitySuggestionsRequest, opts ...grpc.CallOption) (*BatchUpdateQualitySuggestionsResponse, error)
+	// Start a background AI drafting job over one or more tables. The call returns
+	// as soon as the job is queued: the runner asks the model for each target in
+	// turn, and clients poll GetQualitySuggestionJob (or list the jobs) for
+	// progress. Queued suggestions appear in the review queue like any other.
+	CreateQualitySuggestionJob(ctx context.Context, in *CreateQualitySuggestionJobRequest, opts ...grpc.CallOption) (*QualitySuggestionJob, error)
+	// Read one drafting job, including per-target progress and the suggestions it
+	// queued so far.
+	GetQualitySuggestionJob(ctx context.Context, in *GetQualitySuggestionJobRequest, opts ...grpc.CallOption) (*QualitySuggestionJob, error)
+	// List drafting jobs, newest first.
+	ListQualitySuggestionJobs(ctx context.Context, in *ListQualitySuggestionJobsRequest, opts ...grpc.CallOption) (*ListQualitySuggestionJobsResponse, error)
+	// Ask a drafting job to stop. A pending job is canceled immediately; a running
+	// job finishes its current target, marks the rest skipped and ends CANCELED.
+	// Suggestions already queued are kept.
+	CancelQualitySuggestionJob(ctx context.Context, in *CancelQualitySuggestionJobRequest, opts ...grpc.CallOption) (*QualitySuggestionJob, error)
 	// List the cached deterministic profiles of columns. Profiles are read-only
 	// measurements; there is no get or update.
 	ListColumnProfiles(ctx context.Context, in *ListColumnProfilesRequest, opts ...grpc.CallOption) (*ListColumnProfilesResponse, error)
@@ -312,6 +330,46 @@ func (c *dataQualityServiceClient) BatchUpdateQualitySuggestions(ctx context.Con
 	return out, nil
 }
 
+func (c *dataQualityServiceClient) CreateQualitySuggestionJob(ctx context.Context, in *CreateQualitySuggestionJobRequest, opts ...grpc.CallOption) (*QualitySuggestionJob, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualitySuggestionJob)
+	err := c.cc.Invoke(ctx, DataQualityService_CreateQualitySuggestionJob_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) GetQualitySuggestionJob(ctx context.Context, in *GetQualitySuggestionJobRequest, opts ...grpc.CallOption) (*QualitySuggestionJob, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualitySuggestionJob)
+	err := c.cc.Invoke(ctx, DataQualityService_GetQualitySuggestionJob_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) ListQualitySuggestionJobs(ctx context.Context, in *ListQualitySuggestionJobsRequest, opts ...grpc.CallOption) (*ListQualitySuggestionJobsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListQualitySuggestionJobsResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_ListQualitySuggestionJobs_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) CancelQualitySuggestionJob(ctx context.Context, in *CancelQualitySuggestionJobRequest, opts ...grpc.CallOption) (*QualitySuggestionJob, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualitySuggestionJob)
+	err := c.cc.Invoke(ctx, DataQualityService_CancelQualitySuggestionJob_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *dataQualityServiceClient) ListColumnProfiles(ctx context.Context, in *ListColumnProfilesRequest, opts ...grpc.CallOption) (*ListColumnProfilesResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListColumnProfilesResponse)
@@ -464,6 +522,20 @@ type DataQualityServiceServer interface {
 	// independent: a failure is reported in its own result and does not abort the
 	// rest.
 	BatchUpdateQualitySuggestions(context.Context, *BatchUpdateQualitySuggestionsRequest) (*BatchUpdateQualitySuggestionsResponse, error)
+	// Start a background AI drafting job over one or more tables. The call returns
+	// as soon as the job is queued: the runner asks the model for each target in
+	// turn, and clients poll GetQualitySuggestionJob (or list the jobs) for
+	// progress. Queued suggestions appear in the review queue like any other.
+	CreateQualitySuggestionJob(context.Context, *CreateQualitySuggestionJobRequest) (*QualitySuggestionJob, error)
+	// Read one drafting job, including per-target progress and the suggestions it
+	// queued so far.
+	GetQualitySuggestionJob(context.Context, *GetQualitySuggestionJobRequest) (*QualitySuggestionJob, error)
+	// List drafting jobs, newest first.
+	ListQualitySuggestionJobs(context.Context, *ListQualitySuggestionJobsRequest) (*ListQualitySuggestionJobsResponse, error)
+	// Ask a drafting job to stop. A pending job is canceled immediately; a running
+	// job finishes its current target, marks the rest skipped and ends CANCELED.
+	// Suggestions already queued are kept.
+	CancelQualitySuggestionJob(context.Context, *CancelQualitySuggestionJobRequest) (*QualitySuggestionJob, error)
 	// List the cached deterministic profiles of columns. Profiles are read-only
 	// measurements; there is no get or update.
 	ListColumnProfiles(context.Context, *ListColumnProfilesRequest) (*ListColumnProfilesResponse, error)
@@ -546,6 +618,18 @@ func (UnimplementedDataQualityServiceServer) UpdateQualitySuggestion(context.Con
 }
 func (UnimplementedDataQualityServiceServer) BatchUpdateQualitySuggestions(context.Context, *BatchUpdateQualitySuggestionsRequest) (*BatchUpdateQualitySuggestionsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method BatchUpdateQualitySuggestions not implemented")
+}
+func (UnimplementedDataQualityServiceServer) CreateQualitySuggestionJob(context.Context, *CreateQualitySuggestionJobRequest) (*QualitySuggestionJob, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateQualitySuggestionJob not implemented")
+}
+func (UnimplementedDataQualityServiceServer) GetQualitySuggestionJob(context.Context, *GetQualitySuggestionJobRequest) (*QualitySuggestionJob, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQualitySuggestionJob not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ListQualitySuggestionJobs(context.Context, *ListQualitySuggestionJobsRequest) (*ListQualitySuggestionJobsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListQualitySuggestionJobs not implemented")
+}
+func (UnimplementedDataQualityServiceServer) CancelQualitySuggestionJob(context.Context, *CancelQualitySuggestionJobRequest) (*QualitySuggestionJob, error) {
+	return nil, status.Error(codes.Unimplemented, "method CancelQualitySuggestionJob not implemented")
 }
 func (UnimplementedDataQualityServiceServer) ListColumnProfiles(context.Context, *ListColumnProfilesRequest) (*ListColumnProfilesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListColumnProfiles not implemented")
@@ -898,6 +982,78 @@ func _DataQualityService_BatchUpdateQualitySuggestions_Handler(srv interface{}, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataQualityService_CreateQualitySuggestionJob_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateQualitySuggestionJobRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).CreateQualitySuggestionJob(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_CreateQualitySuggestionJob_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).CreateQualitySuggestionJob(ctx, req.(*CreateQualitySuggestionJobRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_GetQualitySuggestionJob_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQualitySuggestionJobRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).GetQualitySuggestionJob(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_GetQualitySuggestionJob_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).GetQualitySuggestionJob(ctx, req.(*GetQualitySuggestionJobRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_ListQualitySuggestionJobs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListQualitySuggestionJobsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).ListQualitySuggestionJobs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_ListQualitySuggestionJobs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).ListQualitySuggestionJobs(ctx, req.(*ListQualitySuggestionJobsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_CancelQualitySuggestionJob_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CancelQualitySuggestionJobRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).CancelQualitySuggestionJob(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_CancelQualitySuggestionJob_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).CancelQualitySuggestionJob(ctx, req.(*CancelQualitySuggestionJobRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DataQualityService_ListColumnProfiles_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListColumnProfilesRequest)
 	if err := dec(in); err != nil {
@@ -1109,6 +1265,22 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "BatchUpdateQualitySuggestions",
 			Handler:    _DataQualityService_BatchUpdateQualitySuggestions_Handler,
+		},
+		{
+			MethodName: "CreateQualitySuggestionJob",
+			Handler:    _DataQualityService_CreateQualitySuggestionJob_Handler,
+		},
+		{
+			MethodName: "GetQualitySuggestionJob",
+			Handler:    _DataQualityService_GetQualitySuggestionJob_Handler,
+		},
+		{
+			MethodName: "ListQualitySuggestionJobs",
+			Handler:    _DataQualityService_ListQualitySuggestionJobs_Handler,
+		},
+		{
+			MethodName: "CancelQualitySuggestionJob",
+			Handler:    _DataQualityService_CancelQualitySuggestionJob_Handler,
 		},
 		{
 			MethodName: "ListColumnProfiles",

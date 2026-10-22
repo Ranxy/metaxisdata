@@ -907,6 +907,22 @@
       "unspecified": "未指定",
       "warn": "警告"
     },
+    "suggestionJobStatus": {
+      "canceled": "已取消",
+      "completed": "已完成",
+      "failed": "失败",
+      "pending": "等待中",
+      "running": "生成中",
+      "unspecified": "未指定"
+    },
+    "suggestionJobTargetState": {
+      "done": "已完成",
+      "failed": "失败",
+      "pending": "等待中",
+      "running": "生成中",
+      "skipped": "已跳过",
+      "unspecified": "未指定"
+    },
     "suggestionKind": {
       "label": "字段标注",
       "ruleDraft": "规则草稿",
@@ -999,6 +1015,26 @@
       "filterStatus": "状态",
       "groupCount": "{count} 条建议",
       "ignoreDrafts": "忽略草稿（{count}）",
+      "jobs": {
+        "cancel": "取消任务",
+        "cancelConfirm": "确定取消？",
+        "cancelConfirmAction": "确认取消",
+        "cancelFailed": "取消任务失败。",
+        "cancelKeep": "继续运行",
+        "cancelRequested": "已请求取消；当前目标完成后停止。",
+        "canceledToast": "AI 起草任务已取消。",
+        "collapse": "收起目标详情",
+        "expand": "展开目标详情",
+        "fetchFailed": "加载 AI 起草任务失败。",
+        "hide": "收起任务",
+        "hint": "任务在服务端执行，完成后建议会进入队列。",
+        "noTargets": "没有目标记录。",
+        "progress": "{completed}/{total} 个目标 · {suggestions} 条建议",
+        "settledToast": "AI 起草任务结束：新增 {count} 条建议。",
+        "show": "展开任务",
+        "summary": "{active} 个进行中 · {finished} 个已结束",
+        "title": "AI 起草任务"
+      },
       "noCreatePermission": "你可以接受这份草稿，但创建规则需要 rules.create 权限；可先复制参数留存。",
       "noFiltered": "没有符合筛选条件的建议",
       "note": "备注",
@@ -1028,17 +1064,18 @@
       "workbench": {
         "addTarget": "添加目标",
         "description": "选择一张或多张表，用一个意图让模型起草规则；草稿会加入建议队列等待评审。",
-        "doneCount": "已完成（{count}）",
-        "failed": "失败",
+        "finish": "完成",
         "generateFailed": "生成失败。",
-        "goReview": "去审阅",
         "noTargets": "还没有选择目标。",
-        "resultsHint": "这些建议仍需评审；可以继续生成，或去建议列表批量创建规则。",
-        "resultsSummary": "已加入建议队列：{count} 条",
-        "running": "生成中…",
+        "submit": "开始后台起草",
+        "submitFailed": "提交 AI 起草任务失败。",
+        "submittedHint": "任务在服务端继续执行，可以关闭本页；每个目标完成后建议会进入队列。",
+        "submittedTargets": "本次目标（{count}）",
+        "submittedTitle": "已提交 AI 起草任务",
+        "submitting": "提交任务中…",
         "targets": "目标",
         "targetsHint": "一次为多张表起草时按意图整体判断，不再单独指定字段。",
-        "waiting": "等待中"
+        "tooManyTargets": "每个任务最多 {max} 个目标。"
       }
     },
     "tags": "标签",
