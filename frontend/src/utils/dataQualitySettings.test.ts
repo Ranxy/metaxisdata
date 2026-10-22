@@ -10,6 +10,7 @@ import {
   LLM_CONCURRENCY_LIMIT_MAX,
   llmDisabled,
   MAX_COLUMNS_PER_ANALYSIS_MAX,
+  MAX_DAILY_COLUMN_ANALYSIS_LIMIT,
   SETTINGS_VALIDATION_PREFIX,
   settingsToForm,
   validateSettingsForm,
@@ -139,7 +140,7 @@ describe("validateSettingsForm", () => {
           failureSampleLimit: String(FAILURE_SAMPLE_LIMIT_MAX),
           maxColumnsPerAnalysis: String(MAX_COLUMNS_PER_ANALYSIS_MAX),
           dailyExecutionLimit: "0",
-          dailyColumnAnalysisLimit: "100",
+          dailyColumnAnalysisLimit: String(MAX_DAILY_COLUMN_ANALYSIS_LIMIT),
           dailyLlmAnalysisLimit: String(DAILY_LLM_ANALYSIS_LIMIT_MAX),
           llmConcurrencyLimit: String(LLM_CONCURRENCY_LIMIT_MAX),
           defaultSchedule: { value: "7", unit: "days" },
@@ -159,6 +160,12 @@ describe("validateSettingsForm", () => {
       [{ failureSampleLimit: "many" }, "failureSampleLimitInvalid"],
       [{ dailyExecutionLimit: "-2" }, "dailyExecutionLimitInvalid"],
       [{ dailyColumnAnalysisLimit: "x" }, "dailyColumnAnalysisLimitInvalid"],
+      [
+        {
+          dailyColumnAnalysisLimit: String(MAX_DAILY_COLUMN_ANALYSIS_LIMIT + 1),
+        },
+        "dailyColumnAnalysisLimitInvalid",
+      ],
       [
         { dailyLlmAnalysisLimit: String(DAILY_LLM_ANALYSIS_LIMIT_MAX + 1) },
         "dailyLlmAnalysisLimitInvalid",
@@ -194,6 +201,29 @@ describe("validateSettingsForm", () => {
         )
       ).toContain(`${SETTINGS_VALIDATION_PREFIX}scheduleInvalid`);
     }
+  });
+
+  it("treats zero and exactly the maximum as valid daily column analyses", () => {
+    expect(
+      validateSettingsForm(baseForm({ dailyColumnAnalysisLimit: "0" }))
+    ).toEqual([]);
+    expect(
+      validateSettingsForm(
+        baseForm({
+          dailyColumnAnalysisLimit: String(MAX_DAILY_COLUMN_ANALYSIS_LIMIT),
+        })
+      )
+    ).toEqual([]);
+    const issue = validateSettingsForm(
+      baseForm({
+        dailyColumnAnalysisLimit: String(MAX_DAILY_COLUMN_ANALYSIS_LIMIT + 1),
+      })
+    ).find(
+      (candidate) =>
+        candidate.key ===
+        `${SETTINGS_VALIDATION_PREFIX}dailyColumnAnalysisLimitInvalid`
+    );
+    expect(issue?.params).toEqual({ max: MAX_DAILY_COLUMN_ANALYSIS_LIMIT });
   });
 
   it("checks both new LLM limits", () => {

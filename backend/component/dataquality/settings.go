@@ -33,6 +33,8 @@ const (
 	DefaultDailyExecutionLimit = 10000
 	// DefaultDailyColumnAnalysisLimit is the daily column-analysis ceiling.
 	DefaultDailyColumnAnalysisLimit = 50
+	// MaxDailyColumnAnalysisLimit is the hard ceiling a workspace may configure.
+	MaxDailyColumnAnalysisLimit = 1000000
 	// DefaultDailyLLMAnalysisLimit is the daily L1+L2 analysis ceiling.
 	DefaultDailyLLMAnalysisLimit = 10000
 	// MaxDailyLLMAnalysisLimit is the hard ceiling a workspace may configure.
@@ -107,7 +109,7 @@ func SettingsFromProfile(profile *storepb.WorkspaceProfileSetting) Settings {
 	settings.FailureSampleLimit = normalizeFailureSampleLimit(dataQuality.GetFailureSampleLimit())
 	settings.DefaultScheduleInterval = normalizeScheduleInterval(dataQuality.GetDefaultScheduleInterval().AsDuration())
 	settings.DailyExecutionLimit = positiveOrDefault(dataQuality.GetDailyExecutionLimit(), DefaultDailyExecutionLimit)
-	settings.DailyColumnAnalysisLimit = positiveOrDefault(dataQuality.GetDailyColumnAnalysisLimit(), DefaultDailyColumnAnalysisLimit)
+	settings.DailyColumnAnalysisLimit = boundedLimit(int(dataQuality.GetDailyColumnAnalysisLimit()), DefaultDailyColumnAnalysisLimit, MaxDailyColumnAnalysisLimit)
 	settings.DailyLLMAnalysisLimit = boundedLimit(int(dataQuality.GetDailyLlmAnalysisLimit()), DefaultDailyLLMAnalysisLimit, MaxDailyLLMAnalysisLimit)
 	settings.LLMConcurrencyLimit = boundedLimit(int(dataQuality.GetLlmConcurrencyLimit()), DefaultLLMConcurrencyLimit, MaxLLMConcurrencyLimit)
 	settings.MaxColumnsPerAnalysis = positiveOrDefault(dataQuality.GetMaxColumnsPerAnalysis(), DefaultMaxColumnsPerAnalysis)

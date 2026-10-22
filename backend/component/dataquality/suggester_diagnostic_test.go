@@ -5,7 +5,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
@@ -95,6 +98,81 @@ data: [DONE]
 	require.Empty(t, diagnostic.GetFinishReason())
 	require.NotEmpty(t, diagnostic.GetCorrelationId())
 	require.False(t, diagnostic.GetDebugCaptured())
+}
+
+// budgetProvider answers a status sequence first (the last repeats) and then a
+// fixed SSE body. It lets a test drive the smaller-budget retry without reaching
+// the llm package's test helpers.
+func budgetProvider(t *testing.T, statuses []int, sseBody string) *httptest.Server {
+	t.Helper()
+	var (
+		mu       sync.Mutex
+		requests int
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		requests++
+		status := statuses[min(requests-1, len(statuses)-1)]
+		mu.Unlock()
+		if status != http.StatusOK {
+			http.Error(w, "the output budget is too large", status)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, sseBody)
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+// A failure after the smaller-budget retry reports the budget the final attempt
+// actually sent, not the configured one; a call without a retry keeps the
+// configured budget.
+func TestJSONCompletionDiagnosticReportsTheAttemptedBudget(t *testing.T) {
+	t.Parallel()
+
+	lengthBody := `data: {"choices":[{"delta":{},"finish_reason":"length"}]}
+`
+	configured := diagnosticConfig(budgetProvider(t, []int{http.StatusBadRequest, http.StatusBadRequest}, lengthBody))
+	configured.MaxOutputTokens = 32768
+	suggester := NewSuggester(nil, nil, nil, nil)
+	_, _, diagnostic, err := suggester.JSONCompletion(context.Background(), configured,
+		LLMFeatureRuleDraft, RuleDraftPromptVersion, "sys", "user", 32768)
+	require.Error(t, err)
+	require.Equal(t, string(llm.FailureProviderStatus), diagnostic.GetErrorCode())
+	require.Equal(t, int32(4096), diagnostic.GetMaxOutputTokens(),
+		"the final attempt was sent with the fallback budget")
+
+	// A truncation after the retry reports the retried budget as well.
+	retried := diagnosticConfig(budgetProvider(t, []int{http.StatusBadRequest, http.StatusOK}, lengthBody))
+	retried.MaxOutputTokens = 32768
+	_, _, diagnostic, err = suggester.JSONCompletion(context.Background(), retried,
+		LLMFeatureRuleDraft, RuleDraftPromptVersion, "sys", "user", 32768)
+	require.Error(t, err)
+	require.Equal(t, string(llm.FailureTruncated), diagnostic.GetErrorCode())
+	require.Equal(t, int32(4096), diagnostic.GetMaxOutputTokens())
+
+	// Without a retry the configured budget is the one that was sent.
+	untried := diagnosticConfig(budgetProvider(t, []int{http.StatusOK}, lengthBody))
+	untried.MaxOutputTokens = 8192
+	_, _, diagnostic, err = suggester.JSONCompletion(context.Background(), untried,
+		LLMFeatureRuleDraft, RuleDraftPromptVersion, "sys", "user", 8192)
+	require.Error(t, err)
+	require.Equal(t, string(llm.FailureTruncated), diagnostic.GetErrorCode())
+	require.Equal(t, int32(8192), diagnostic.GetMaxOutputTokens())
+}
+
+// The classifier only overwrites the budget when the error knows the attempt.
+func TestClassifyLLMDiagnosticUsesTheAttemptedBudget(t *testing.T) {
+	t.Parallel()
+
+	diagnostic := &storepb.QualityLLMDiagnostic{MaxOutputTokens: 32768}
+	classifyLLMDiagnostic(diagnostic, &llm.ResponseError{Code: llm.FailureTruncated, OutputTokens: 4096})
+	require.Equal(t, int32(4096), diagnostic.GetMaxOutputTokens())
+
+	untouched := &storepb.QualityLLMDiagnostic{MaxOutputTokens: 32768}
+	classifyLLMDiagnostic(untouched, &llm.ResponseError{Code: llm.FailureProviderRequest})
+	require.Equal(t, int32(32768), untouched.GetMaxOutputTokens(), "a transport failure attempted no budget")
 }
 
 // A provider failure that is not a response error still gets a classifier.
@@ -218,6 +296,29 @@ func TestJSONCompletionDoesNotClaimACaptureWithoutABody(t *testing.T) {
 	require.Equal(t, string(llm.FailureProviderStatus), diagnostic.GetErrorCode())
 	require.False(t, diagnostic.GetDebugCaptured())
 	require.Empty(t, *written, "no captured row exists to stamp")
+}
+
+// The success path must not observe the capture flag before the stream goroutine
+// has run the debug callback. A slow callback makes the ordering observable: if the
+// agent broke out at the Done chunk instead of draining to the channel close, this
+// would read captured=false (and race). The regression is also caught by -race.
+func TestJSONCompletionWaitsForTheCaptureCallback(t *testing.T) {
+	t.Parallel()
+
+	server := diagnosticProvider(t, `data: {"choices":[{"delta":{"content":"{\"suggestions\":[]}"}}]}
+data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
+data: [DONE]
+`)
+	var callbackRan atomic.Bool
+	suggester, _ := newDebugSuggester(t, func(_, _ string) {
+		time.Sleep(20 * time.Millisecond)
+		callbackRan.Store(true)
+	})
+	_, _, diagnostic, err := suggester.JSONCompletion(context.Background(), diagnosticConfig(server),
+		LLMFeatureRuleDraft, RuleDraftPromptVersion, "sys", "user", 0)
+	require.NoError(t, err)
+	require.True(t, callbackRan.Load(), "the returned call must have run the capture callback")
+	require.True(t, diagnostic.GetDebugCaptured(), "a successful call whose bodies were captured says so")
 }
 
 // A successful call whose text later fails JSON parsing keeps captured=true: Draft

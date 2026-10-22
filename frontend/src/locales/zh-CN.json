@@ -1179,7 +1179,7 @@
   },
   "dataQualitySettings": {
     "dailyColumnAnalysisLimit": "每日字段分析次数",
-    "dailyColumnAnalysisLimitHint": "0 或留空使用服务端默认值。",
+    "dailyColumnAnalysisLimitHint": "0 或留空使用服务端默认值 50；最多 1,000,000。",
     "dailyExecutionLimit": "每日执行次数",
     "dailyExecutionLimitHint": "0 或留空使用服务端默认值。",
     "dailyLlmAnalysisLimit": "每日 AI 分析次数（L1+L2）",
@@ -1225,7 +1225,7 @@
     "usageSection": "今日 AI 用量",
     "usageSectionDescription": "本服务进程的只读计数；每天 00:00 UTC 重置。",
     "validation": {
-      "dailyColumnAnalysisLimitInvalid": "请输入整数分析次数，或留空。",
+      "dailyColumnAnalysisLimitInvalid": "请填写 0 到 {max} 之间的整数分析次数，或留空。",
       "dailyExecutionLimitInvalid": "请输入整数执行次数，或留空。",
       "dailyLlmAnalysisLimitInvalid": "请填写 0 到 {max} 之间的整数，或留空。",
       "failureSampleLimitInvalid": "样本行数必须在 0 到 {max} 之间。",

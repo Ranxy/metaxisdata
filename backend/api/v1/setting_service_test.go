@@ -262,6 +262,11 @@ func TestNormalizeDataQualitySettingRejectsInvalidValues(t *testing.T) {
 			want:    "daily_column_analysis_limit",
 		},
 		{
+			name:    "daily column analysis limit above the cap",
+			setting: &v1pb.DataQualitySetting{DailyColumnAnalysisLimit: dataquality.MaxDailyColumnAnalysisLimit + 1},
+			want:    "daily_column_analysis_limit",
+		},
+		{
 			name:    "negative daily LLM analysis limit",
 			setting: &v1pb.DataQualitySetting{DailyLlmAnalysisLimit: -1},
 			want:    "daily_llm_analysis_limit",
@@ -322,6 +327,13 @@ func TestNormalizeDataQualitySettingRejectsInvalidValues(t *testing.T) {
 	capped, err := normalizeDataQualitySetting(&v1pb.DataQualitySetting{MaxColumnsPerAnalysis: dataquality.MaxColumnsPerAnalysisLimit})
 	require.NoError(t, err)
 	require.Equal(t, int32(dataquality.MaxColumnsPerAnalysisLimit), capped.GetMaxColumnsPerAnalysis())
+
+	// The legacy L3 ceiling accepts zero and exactly its cap.
+	_, err = normalizeDataQualitySetting(&v1pb.DataQualitySetting{DailyColumnAnalysisLimit: 0})
+	require.NoError(t, err)
+	columnCapped, err := normalizeDataQualitySetting(&v1pb.DataQualitySetting{DailyColumnAnalysisLimit: dataquality.MaxDailyColumnAnalysisLimit})
+	require.NoError(t, err)
+	require.Equal(t, int32(dataquality.MaxDailyColumnAnalysisLimit), columnCapped.GetDailyColumnAnalysisLimit())
 }
 
 func TestValidateDataQualityProviderProfile(t *testing.T) {

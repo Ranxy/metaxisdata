@@ -212,8 +212,14 @@ type LlmProviderProfile struct {
 	UpdateTime   *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
 	MaskedApiKey string                 `protobuf:"bytes,9,opt,name=masked_api_key,json=maskedApiKey,proto3" json:"masked_api_key,omitempty"`
 	// The answer budget one analysis requests from this profile, in output tokens.
-	// Zero means the server default (32768). The provider or model may cap lower; a
-	// rejected request is reported on the failed analysis as PROVIDER_STATUS.
+	// Zero means the server default (32768); an explicit value must be 256-131072.
+	// The provider or model may cap lower: the first request that exceeds it is
+	// retried once at 4096 tokens, and a still-rejected request is reported on the
+	// failed analysis as PROVIDER_STATUS.
+	//
+	// An update with an empty field mask writes this field only when it is non-zero
+	// (proto3 cannot distinguish an omitted int32 from an explicit zero); send an
+	// explicit `max_output_tokens` mask to reset it to the server default.
 	MaxOutputTokens int32 `protobuf:"varint,10,opt,name=max_output_tokens,json=maxOutputTokens,proto3" json:"max_output_tokens,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache

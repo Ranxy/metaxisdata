@@ -64,6 +64,10 @@ type Runner struct {
 	now func() time.Time
 	// tick carries the production constant; a test overrides it.
 	tick time.Duration
+	// loadLimits reloads the quota policy for one target. It is a field so a test
+	// can return different limits per target; production re-reads the workspace
+	// settings, while the provider config stays resolved once per job.
+	loadLimits func(ctx context.Context) (dataquality.LLMLimits, error)
 }
 
 // NewRunner creates the suggestion-job runner. It takes the drafting pipeline as
@@ -75,6 +79,13 @@ func NewRunner(stores *store.Store, suggester DraftSuggester) *Runner {
 		suggester: suggester,
 		now:       func() time.Time { return time.Now().UTC() },
 		tick:      tickInterval,
+		loadLimits: func(ctx context.Context) (dataquality.LLMLimits, error) {
+			settings, err := dataquality.LoadSettings(ctx, stores)
+			if err != nil {
+				return dataquality.LLMLimits{}, err
+			}
+			return dataquality.LimitsFromSettings(settings), nil
+		},
 	}
 }
 
@@ -150,6 +161,10 @@ func (r *Runner) processJob(ctx context.Context, job *store.QualitySuggestionJob
 			fmt.Sprintf("the drafting job could not start: %v", err))
 		return
 	}
+	// The provider config is resolved once per job; the quota policy is re-read for
+	// every target so a settings edit applies to the next analysis. A failed reload
+	// keeps the job's snapshot rather than failing the target.
+	jobLimits := dataquality.LimitsFromSettings(settings)
 	provider, model, promptVersion := dataquality.ProviderFacts(config, dataquality.RuleDraftPromptVersion)
 	// The provider facts belong to the job, not to one target: persist them
 	// together with the first progress write.
@@ -186,7 +201,17 @@ func (r *Runner) processJob(ctx context.Context, job *store.QualitySuggestionJob
 		target.StartedAtUnixMs = startedAt.UnixMilli()
 		r.persist(ctx, job, targets)
 
-		created, diagnostic, draftErr := r.suggester.Draft(ctx, config, dataquality.LimitsFromSettings(settings),
+		limits := jobLimits
+		if r.loadLimits != nil {
+			reloaded, loadErr := r.loadLimits(ctx)
+			if loadErr != nil {
+				slog.Warn("failed to reload the quality suggestion job limits; using the job's snapshot",
+					slog.String("job", job.ResourceID), log.WithError(loadErr))
+			} else {
+				limits = reloaded
+			}
+		}
+		created, diagnostic, draftErr := r.suggester.Draft(ctx, config, limits,
 			target.GetTargetGuid(), storepb.MetaType(target.GetTargetType()), target.GetColumns(), job.Intent, job.Language, job.CreatedBy)
 		if draftErr != nil {
 			target.Error = truncateJobError(draftErr)

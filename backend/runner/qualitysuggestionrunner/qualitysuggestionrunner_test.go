@@ -137,6 +137,8 @@ type fakeSuggester struct {
 	config    llm.ResolvedConfig
 	draft     func(targetGUID string) ([]*store.QualitySuggestionMessage, *storepb.QualityLLMDiagnostic, error)
 	calls     []string
+	// limits records the quota policy passed for each drafted target.
+	limits []dataquality.LLMLimits
 }
 
 func (f *fakeSuggester) ResolveConfig(context.Context) (llm.ResolvedConfig, dataquality.Settings, error) {
@@ -146,9 +148,10 @@ func (f *fakeSuggester) ResolveConfig(context.Context) (llm.ResolvedConfig, data
 	return f.config, dataquality.Settings{}, nil
 }
 
-func (f *fakeSuggester) Draft(_ context.Context, _ llm.ResolvedConfig, _ dataquality.LLMLimits, targetGUID string, _ storepb.MetaType, _ []string, _, _ string, _ *int32) ([]*store.QualitySuggestionMessage, *storepb.QualityLLMDiagnostic, error) {
+func (f *fakeSuggester) Draft(_ context.Context, _ llm.ResolvedConfig, limits dataquality.LLMLimits, targetGUID string, _ storepb.MetaType, _ []string, _, _ string, _ *int32) ([]*store.QualitySuggestionMessage, *storepb.QualityLLMDiagnostic, error) {
 	f.mu.Lock()
 	f.calls = append(f.calls, targetGUID)
+	f.limits = append(f.limits, limits)
 	f.mu.Unlock()
 	if f.draft != nil {
 		return f.draft(targetGUID)
@@ -160,6 +163,12 @@ func (f *fakeSuggester) draftedTargets() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]string(nil), f.calls...)
+}
+
+func (f *fakeSuggester) draftedLimits() []dataquality.LLMLimits {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]dataquality.LLMLimits(nil), f.limits...)
 }
 
 // jobTestMessage builds one RUNNING job with the given target GUIDs in PENDING
@@ -195,6 +204,59 @@ func newTestRunner(stores JobStore, suggester DraftSuggester, now time.Time) *Ru
 		now:       func() time.Time { return now },
 		tick:      time.Millisecond,
 	}
+}
+
+// The quota policy is re-resolved for every target, so a settings change made while
+// a job runs applies to the next target instead of the next job.
+func TestProcessJobResolvesTheLimitsForEachTarget(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.October, 22, 9, 0, 0, 0, time.UTC)
+	stores := newFakeJobStore(jobTestMessage("target-a", "target-b"))
+	suggester := &fakeSuggester{}
+	runner := newTestRunner(stores, suggester, now)
+
+	first := dataquality.LLMLimits{DailyAnalyses: 10, DailyColumnAnalyses: 10, Concurrency: 1}
+	second := dataquality.LLMLimits{DailyAnalyses: 20, DailyColumnAnalyses: 20, Concurrency: 2}
+	loads := 0
+	runner.loadLimits = func(context.Context) (dataquality.LLMLimits, error) {
+		loads++
+		if loads == 1 {
+			return first, nil
+		}
+		return second, nil
+	}
+
+	job, err := stores.ClaimPendingQualitySuggestionJob(context.Background(), now)
+	require.NoError(t, err)
+	runner.processJob(context.Background(), job)
+
+	require.Equal(t, 2, loads, "the limits are reloaded for each target")
+	require.Equal(t, []dataquality.LLMLimits{first, second}, suggester.draftedLimits())
+	require.Equal(t, storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_COMPLETED, stores.statuses[0])
+}
+
+// A limit reload failure keeps the job-level snapshot instead of failing the
+// target: quota policy is a guard, not a precondition of drafting.
+func TestProcessJobKeepsTheLimitSnapshotWhenTheReloadFails(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.October, 22, 9, 0, 0, 0, time.UTC)
+	stores := newFakeJobStore(jobTestMessage("target-a"))
+	suggester := &fakeSuggester{}
+	runner := newTestRunner(stores, suggester, now)
+	runner.loadLimits = func(context.Context) (dataquality.LLMLimits, error) {
+		return dataquality.LLMLimits{}, errors.New("settings unavailable")
+	}
+
+	job, err := stores.ClaimPendingQualitySuggestionJob(context.Background(), now)
+	require.NoError(t, err)
+	runner.processJob(context.Background(), job)
+
+	require.Len(t, suggester.draftedLimits(), 1)
+	require.Equal(t, dataquality.LimitsFromSettings(dataquality.Settings{}), suggester.draftedLimits()[0],
+		"the fake ResolveConfig returned zero settings, so the snapshot is the defaults")
+	require.Equal(t, storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_COMPLETED, stores.statuses[0])
 }
 
 // A claimed job visits its targets in order, persists progress after every target,

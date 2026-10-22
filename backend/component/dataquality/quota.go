@@ -41,7 +41,7 @@ type LLMLimits struct {
 func LimitsFromSettings(settings Settings) LLMLimits {
 	return LLMLimits{
 		DailyAnalyses:       boundedLimit(settings.DailyLLMAnalysisLimit, DefaultDailyLLMAnalysisLimit, MaxDailyLLMAnalysisLimit),
-		DailyColumnAnalyses: positiveOrDefault(int32(settings.DailyColumnAnalysisLimit), DefaultDailyColumnAnalysisLimit),
+		DailyColumnAnalyses: boundedLimit(settings.DailyColumnAnalysisLimit, DefaultDailyColumnAnalysisLimit, MaxDailyColumnAnalysisLimit),
 		Concurrency:         boundedLimit(settings.LLMConcurrencyLimit, DefaultLLMConcurrencyLimit, MaxLLMConcurrencyLimit),
 	}
 }
@@ -53,7 +53,7 @@ func (l LLMLimits) dailyLimit(kind LLMQuotaKind) int {
 	case LLMAnalysisQuota:
 		return boundedLimit(l.DailyAnalyses, DefaultDailyLLMAnalysisLimit, MaxDailyLLMAnalysisLimit)
 	case LLMColumnAnalysisQuota:
-		return positiveOrDefault(int32(l.DailyColumnAnalyses), DefaultDailyColumnAnalysisLimit)
+		return boundedLimit(l.DailyColumnAnalyses, DefaultDailyColumnAnalysisLimit, MaxDailyColumnAnalysisLimit)
 	default:
 		return 0
 	}

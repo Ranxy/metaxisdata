@@ -26,6 +26,7 @@ import {
 export const FAILURE_SAMPLE_LIMIT_MAX = 100;
 export const MAX_COLUMNS_PER_ANALYSIS_MAX = 200;
 export const DAILY_LLM_ANALYSIS_LIMIT_MAX = 1_000_000;
+export const MAX_DAILY_COLUMN_ANALYSIS_LIMIT = 1_000_000;
 export const LLM_CONCURRENCY_LIMIT_MAX = 64;
 
 export interface DataQualitySettingsForm {
@@ -133,9 +134,15 @@ export function validateSettingsForm(
   if (execution === "invalid") {
     issue("dailyExecutionLimitInvalid");
   }
-  const columnAnalysis = checkNonNegative(form.dailyColumnAnalysisLimit);
+  const columnAnalysis = checkRange(
+    form.dailyColumnAnalysisLimit,
+    0,
+    MAX_DAILY_COLUMN_ANALYSIS_LIMIT
+  );
   if (columnAnalysis === "invalid") {
-    issue("dailyColumnAnalysisLimitInvalid");
+    issue("dailyColumnAnalysisLimitInvalid", {
+      max: MAX_DAILY_COLUMN_ANALYSIS_LIMIT,
+    });
   }
   const dailyAnalyses = checkRange(
     form.dailyLlmAnalysisLimit,

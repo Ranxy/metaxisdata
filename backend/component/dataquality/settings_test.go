@@ -77,12 +77,14 @@ func TestSettingsFromProfileClampsTheLLMLimits(t *testing.T) {
 
 	profile := &storepb.WorkspaceProfileSetting{
 		DataQuality: &storepb.DataQualitySetting{
-			DailyLlmAnalysisLimit: MaxDailyLLMAnalysisLimit + 100,
-			LlmConcurrencyLimit:   MaxLLMConcurrencyLimit + 5,
+			DailyLlmAnalysisLimit:    MaxDailyLLMAnalysisLimit + 100,
+			DailyColumnAnalysisLimit: MaxDailyColumnAnalysisLimit + 100,
+			LlmConcurrencyLimit:      MaxLLMConcurrencyLimit + 5,
 		},
 	}
 	settings := SettingsFromProfile(profile)
 	require.Equal(t, MaxDailyLLMAnalysisLimit, settings.DailyLLMAnalysisLimit)
+	require.Equal(t, MaxDailyColumnAnalysisLimit, settings.DailyColumnAnalysisLimit)
 	require.Equal(t, MaxLLMConcurrencyLimit, settings.LLMConcurrencyLimit)
 
 	zero := SettingsFromProfile(&storepb.WorkspaceProfileSetting{DataQuality: &storepb.DataQualitySetting{}})

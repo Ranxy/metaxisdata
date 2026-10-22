@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -284,11 +285,13 @@ func (s *Suggester) JSONCompletion(ctx context.Context, config llm.ResolvedConfi
 	}
 	// The capture flag means "the agent loop actually handed us the bodies", not
 	// "a logger was attached": a provider failure returns before the callback, and
-	// only a captured call can be read from the debug log later.
-	debugCaptured := false
+	// only a captured call can be read from the debug log later. The callback runs
+	// on the stream goroutine, so the flag is atomic even though streamOneTurn now
+	// drains to the channel close before returning.
+	var debugCaptured atomic.Bool
 	if debugLogger := s.traceLogger(config, feature, correlationID); debugLogger != nil {
 		agentConfig.DebugLogger = func(reqBody, respBody string) {
-			debugCaptured = true
+			debugCaptured.Store(true)
 			debugLogger(reqBody, respBody)
 		}
 	}
@@ -316,7 +319,7 @@ func (s *Suggester) JSONCompletion(ctx context.Context, config llm.ResolvedConfi
 			if callErr == nil {
 				callErr = errors.New("the LLM analysis failed")
 			}
-			return "", usage, diagnostic, s.failedCompletionError(feature, diagnostic, usage, callErr, debugCaptured)
+			return "", usage, diagnostic, s.failedCompletionError(feature, diagnostic, usage, callErr, debugCaptured.Load())
 		case llm.AgentEventTurnStart, llm.AgentEventToolStart, llm.AgentEventToolEnd, llm.AgentEventAgentEnd:
 			// One turn, no tools: nothing to do for these events.
 		default:
@@ -327,11 +330,11 @@ func (s *Suggester) JSONCompletion(ctx context.Context, config llm.ResolvedConfi
 		// An empty answer is not usable JSON; classify it as a malformed response so
 		// the failure still has a code.
 		callErr := &llm.ResponseError{Code: llm.FailureMalformed, Err: errors.New("the LLM returned an empty response")}
-		return "", usage, diagnostic, s.failedCompletionError(feature, diagnostic, usage, callErr, debugCaptured)
+		return "", usage, diagnostic, s.failedCompletionError(feature, diagnostic, usage, callErr, debugCaptured.Load())
 	}
 	// A successful call may still be unusable (the JSON parse happens in Draft);
 	// the capture flag travels with the diagnostic so that later failure keeps it.
-	diagnostic.DebugCaptured = debugCaptured
+	diagnostic.DebugCaptured = debugCaptured.Load()
 	return builder.String(), usage, diagnostic, nil
 }
 
@@ -404,6 +407,11 @@ func classifyLLMDiagnostic(diagnostic *storepb.QualityLLMDiagnostic, err error) 
 		diagnostic.ErrorCode = string(responseErr.Code)
 		diagnostic.FinishReason = responseErr.FinishReason
 		diagnostic.ProviderStatus = int32(responseErr.StatusCode)
+		// A retried request may have run with the smaller fallback budget: report
+		// the budget that was actually attempted, not the configured one.
+		if responseErr.OutputTokens > 0 {
+			diagnostic.MaxOutputTokens = int32(responseErr.OutputTokens)
+		}
 		return
 	}
 	diagnostic.ErrorCode = string(llm.FailureUnknown)

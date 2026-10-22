@@ -178,8 +178,8 @@ func normalizeDataQualitySetting(dataQuality *v1pb.DataQualitySetting) (*storepb
 	if value := dataQuality.GetDailyExecutionLimit(); value < 0 {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("daily_execution_limit must not be negative"))
 	}
-	if value := dataQuality.GetDailyColumnAnalysisLimit(); value < 0 {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("daily_column_analysis_limit must not be negative"))
+	if value := dataQuality.GetDailyColumnAnalysisLimit(); value < 0 || value > dataquality.MaxDailyColumnAnalysisLimit {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("daily_column_analysis_limit must be between 0 and %d", dataquality.MaxDailyColumnAnalysisLimit))
 	}
 	if value := dataQuality.GetDailyLlmAnalysisLimit(); value < 0 || value > dataquality.MaxDailyLLMAnalysisLimit {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("daily_llm_analysis_limit must be between 0 and %d", dataquality.MaxDailyLLMAnalysisLimit))

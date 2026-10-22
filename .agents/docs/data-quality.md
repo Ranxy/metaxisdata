@@ -75,18 +75,18 @@ SPA ──ConnectRPC──► DataQualityService (api/v1) ──► component/da
 | D-45 | 取消是协作式：PENDING 立即 CANCELED（目标全 SKIPPED）；RUNNING 只置 `cancel_requested`，runner 在目标边界停止并结束为 CANCELED；已入队建议保留；对终态任务取消幂等返回原任务 | 不取消进行中的 provider 调用；不回收已产生的建议 |
 | D-46 | 任务完成不发通知；建议中心的“AI 起草任务”面板在存在 PENDING/RUNNING 任务时每 2.5s 轮询，完成后刷新队列并自动选中当前页可见的新建议 | 无新通知类型；不做任务详情路由/深链；轮询只在有活动任务时发生 |
 
-| D-47 | DQ 的 LLM 输出预算从 4096 提到 **8192** token（L1/L2/L3 共用常量）；`finish_reason=length` 归类为 `TRUNCATED`，错误文案直接告诉用户“模型在输出上限停下，草稿被丢弃——缩小意图或减少列后重试”；不做自动重试 | 大多数截断消失；仍截断时用户知道下一步；自动重试会再消耗一次配额且可能再次截断 |
+| D-47 | DQ 的 LLM 输出预算不再由代码固定：取 provider profile 的 `max_output_tokens`（默认 32768，见 D-52）；`finish_reason=length` 归类为 `TRUNCATED`，错误文案直接告诉用户“模型在输出上限停下，草稿被丢弃——缩小意图或减少列后重试”；不做自动重试 | 大多数截断消失；仍截断时用户知道下一步；自动重试会再消耗一次配额且可能再次截断 |
 | D-48 | 每个失败的起草目标持久化 **`QualityLLMDiagnostic`**（始终开启、不含正文）：分类码、provider/model/prompt 版本、`max_output_tokens`、`finish_reason`、provider 报告的 prompt/completion/total tokens、prompt 字符数、provider HTTP status、correlation id、`debug_captured` | 存在任务的 targets JSONB 中，随 Get/List 返回；不包含 prompt/response 正文，也不含样本行 |
 | D-49 | 每次模型调用生成 **correlation id**；失败以 WARN 记录 feature/provider/model/code/finish_reason/max_tokens/prompt_chars/correlation_id，UI 展示并支持复制该 id | 运维可在服务端日志中按 id 定位；无需打开数据库 |
 | D-50 | **原始 request/response 仅在 RuntimeDebug 打开时捕获**（与 ExplainSQL 同一开关）：写入 `llm_debug_log` 的 `kind`/`correlation_id`/`error_code` 列，保留 7 天；`GetQualitySuggestionJobTargetDebug` 按任务目标索引返回正文（`suggest` 权限、审计），未开启/已被清理时返回 `available=false` | DQ 调试行的 `error_code` 可能为空（捕获早于分类），分类码以任务目标诊断为准；正文只含元数据/DDL/意图/模型输出，不含样本行 |
 | D-51 | 同步编辑器入口不新增 error-details 协议：服务端返回可执行文案，前端按文案识别截断并展示本地化建议，同时保留服务端原文 | 不改变现有 Connect 错误形状；任务路径才有完整结构化诊断 |
 
-| D-52 | LLM provider profile 新增 `max_output_tokens`（JSONB metadata，无迁移）：0=服务端默认 **32768**，显式值 256–131072；该 profile 下的所有分析（L1/L2/L3、ExplainSQL）默认使用该预算，调用方可请求更小的上限 | 输出 token 是计费的实际部分，上限仍是 ceiling 不是预占；provider/模型自身上限更低时请求会被拒绝，失败目标诊断 `PROVIDER_STATUS`，可在 profile 调低 |
+| D-52 | LLM provider profile 新增 `max_output_tokens`（JSONB metadata，无迁移）：0=服务端默认 **32768**，显式值 256–131072；该 profile 下的所有分析（L1/L2/L3、ExplainSQL）默认使用该预算，调用方可请求更小的上限；无 mask 的局部更新只写非零值，显式 `max_output_tokens` mask 才能清回默认 | 输出 token 是计费的实际部分，上限仍是 ceiling 不是预占；provider/模型自身上限更低时首次 400/422 会以 4096 重试一次，仍拒绝则诊断 `PROVIDER_STATUS`，可在 profile 调低 |
 | D-53 | DQ 设置新增 `daily_llm_analysis_limit`（L1+L2，默认 **10000**，范围 1–1000000，0=默认）与 `llm_concurrency_limit`（默认 **8**，1–64，0=默认）；L3 的 `daily_column_analysis_limit`（默认 50）保持独立桶 | 设置页可读写，API 返回解析后的有效值；旧部署未保存设置时直接使用新默认 |
-| D-54 | `LLMQuota` 的日额度与并发来自每次调用加载的 `LLMLimits`；并发从固定 channel 改为 mutex/cond 动态上限，设置变更对下一次分析生效；计数仍进程内、UTC 日滚动、单副本 | `Begin(ctx, kind, limits)`；取消的等待者不消耗额度/槽；进程重启计数归零 |
+| D-54 | `LLMQuota` 的日额度与并发来自每次调用加载的 `LLMLimits`；并发从固定 channel 改为 mutex/cond 动态上限，设置变更对下一次分析生效；后台任务每个目标重新读取设置（provider 配置仍按任务解析一次）；计数仍进程内、UTC 日滚动、单副本 | `Begin(ctx, kind, limits)`；取消的等待者不消耗额度/槽；进程重启计数归零 |
 | D-55 | 新增只读 `GetQualityLLMUsage`（`suggest` 权限、不审计）返回两个桶的 used/limit、in-flight/并发与下一个 00:00 UTC 重置时间；设置页“今日 AI 用量”卡片在加载/保存后刷新 | 不轮询；计数进程内，重启后显示 0；重置时间仍是下一个 UTC 零点 |
 | D-56 | 删除固定的 200 次/日与并发 2，默认提升为 10000/8；输出预算默认 32768 | 显式写入过旧值的部署保留旧值，其余获得新默认 |
-| D-57 | 同步入口与后台任务共用同一 quota 与 limits；任务提交时的额度预检仍 best-effort（不预占） | 并发设置变化不追溯已准入分析（Begin 时采样） |
+| D-57 | 同步入口与后台任务共用同一 quota 与 limits；后台任务逐目标重读 limits，任务提交时的额度预检仍 best-effort（不预占） | 并发设置变化不追溯已准入分析（Begin 时采样） |
 
 ## 2. 工作负载形状
 
@@ -226,7 +226,7 @@ meta_registry_resource（只读）──< quality_rule >──< quality_rule_rev
 
 - L1 有同步与异步两条路径：同步 `SuggestQualityRule` 只服务规则编辑器（需要结果回填表单）；建议中心的多目标起草提交 `CreateQualitySuggestionJob`，由 `qualitysuggestionrunner` 逐目标调用同一个 `dataquality.Suggester`，任务只负责调度、进度持久化与取消，不改变提示词/校验/落库规则。
 
-- 失败诊断（D-47…D-51）：每次调用带 correlation id；失败写入 `QualityLLMDiagnostic`（分类码/provider/model/prompt 版本/max_output_tokens/finish_reason/token 用量/prompt 字符数/provider status/correlation id/debug_captured）并 WARN 日志同字段。输出上限 8192；`finish_reason=length` → `TRUNCATED`，文案提示“缩小意图或减少列后重试”，不自动重试。分类码：`TRUNCATED`、`STREAM_INCOMPLETE`、`PROVIDER_STATUS`、`PROVIDER_REQUEST`、`RESPONSE_TOO_LARGE`、`UNEXPECTED_FINISH_REASON`、`TIMEOUT`、`MALFORMED_RESPONSE`、`PARSE`、`UNKNOWN`。
+- 失败诊断（D-47…D-51）：每次调用带 correlation id；失败写入 `QualityLLMDiagnostic`（分类码/provider/model/prompt 版本/max_output_tokens/finish_reason/token 用量/prompt 字符数/provider status/correlation id/debug_captured）并 WARN 日志同字段。输出预算取 provider profile（默认 32768）；provider 返回 400/422（例如 `max_tokens` 超过模型上限）时会先以 4096 重试一次；`finish_reason=length` → `TRUNCATED`，文案提示“缩小意图或减少列后重试”，不自动重试。分类码：`TRUNCATED`、`STREAM_INCOMPLETE`、`PROVIDER_STATUS`、`PROVIDER_REQUEST`、`RESPONSE_TOO_LARGE`、`UNEXPECTED_FINISH_REASON`、`TIMEOUT`、`MALFORMED_RESPONSE`、`PARSE`、`UNKNOWN`。
 - 原始请求/响应只在 `RuntimeDebug` 打开时写入 `llm_debug_log`（`kind`、`correlation_id`、`error_code`，7 天保留），并经 `GetQualitySuggestionJobTargetDebug` 按任务目标按需读取；未开启、未实际捕获或已过期时只有结构化诊断（`debug_captured` 表示捕获回调确实执行过）。该读取 RPC 审计，但审计 payload 会把 `requestBody`/`responseBody` 脱敏，正文只受 7 天调试日志保留期约束；提示词/响应只含元数据、DDL、意图与模型输出，**不含样本行**。
 - provider：`llm.ResolveConfig(configs, allowlist, settings.LLMProviderProfile)`；未指定时取允许列表首个；无可用 profile → `FailedPrecondition`。
 - 结构化输出：`temperature=0` + JSON mode；`llm.ParseJSON[T]`（剥 code fence、`DisallowUnknownFields`、拒绝多文档/空/null、validator 校验）；解析失败不缓存。L1 草稿词表仅 12 类 v1 规则（`custom_sql`/CEL/v1.1 四类不可由模型提出）；草稿再经列存在/列作用域/`ValidateRule` 过滤，全部被丢则返回空列表 + Warn 日志。
@@ -283,7 +283,7 @@ meta_registry_resource（只读）──< quality_rule >──< quality_rule_rev
 | `failure_sample_limit` | 20 | ≤0→20；>100→100 | 每次执行样本行数 |
 | `default_schedule_interval` | 1h | ≤0→1h；夹到 15m…7d | 新建规则默认间隔 |
 | `daily_execution_limit` | 10000 | ≤0→10000 | 定时扫描的日执行上限（统计 UTC 日已规划执行，含手动规划的行；触顶只跳过定时 due 扫描，手动运行仍可执行） |
-| `daily_column_analysis_limit` | 50 | ≤0→50 | L3 日分析次数 |
+| `daily_column_analysis_limit` | 50 | ≤0→50；上限 1000000 | L3 日分析次数 |
 | `daily_llm_analysis_limit` | 10000 | ≤0→10000；上限 1000000 | L1+L2 日分析次数 |
 | `llm_concurrency_limit` | 8 | ≤0→8；夹到 1–64 | 进程内并发的 DQ LLM 分析数（两个桶共享） |
 | `max_columns_per_analysis` | 50 | ≤0→50；写入校验上限 200 | 单次画像/标注列数 |
@@ -382,7 +382,7 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | I-26 | 每个失败的 LLM 目标都带分类码与 correlation id；任务目标的诊断不含 prompt/response 正文；服务端 WARN 日志含同一 correlation id 与 provider/stop reason/max tokens/prompt chars | `suggester_diagnostic_test.go` + runner/集成场景 |
 | I-27 | 原始请求/响应只在 `RuntimeDebug` 打开时写入 `llm_debug_log`（7 天保留）；读取走 `GetQualitySuggestionJobTargetDebug`（`suggest` 权限、审计），未捕获/已清理一律 `available=false`；提示词/响应不含样本行 | store/debug 单测 + 集成回读场景 |
 | I-28 | LLM 输出预算来自 provider profile（0=32768，256–131072），调用方可请求更小；所有 DQ 分析（含 ExplainSQL）请求的 `max_tokens` 与诊断记录的值一致 | limits/代理请求/诊断测试 |
-| I-29 | 配额与并发上限来自每次调用解析的设置（默认 10000/8，上限 1000000/64）；等待者取消不消耗额度或槽；设置变更对下一次分析生效，进程重启计数归零 | quota 单测 + 集成用量场景 |
+| I-29 | 配额与并发上限来自每次调用解析的设置（默认 10000/8，上限 1000000/64；L3 列上限 1000000）；等待者取消不消耗额度或槽；设置变更对下一次分析生效（后台任务逐目标重读），进程重启计数归零 | quota 单测 + runner 逐目标 limits 场景 + 集成用量场景 |
 
 ## 6. 失败模式
 
@@ -410,9 +410,9 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | 手动队列满 | 该批次及其执行标 `ABANDONED`（无 outcome）并返回 `ResourceExhausted` |
 | LLM 未开启/无 provider | `FailedPrecondition`；规则引擎完全可用 |
 | LLM 解析失败/超时/配额耗尽 | 请求失败（Internal/FailedPrecondition/ResourceExhausted）；不缓存、不改规则/问题状态；L3 已入队的建议保持 PENDING |
-| 模型在输出上限停下（`finish_reason=length`） | 目标 FAILED，诊断码 `TRUNCATED`，文案提示缩小意图/减少列后重试；输出预算 8192；本次草稿丢弃，不自动重试 |
+| 模型在输出上限停下（`finish_reason=length`） | 目标 FAILED，诊断码 `TRUNCATED`，文案提示缩小意图/减少列后重试；输出预算取 provider profile（默认 32768）；本次草稿丢弃，不自动重试 |
 | provider 返回非 2xx | 目标 FAILED，诊断码 `PROVIDER_STATUS` + HTTP status；provider 响应体只写服务端日志，不进错误/诊断；按 correlation id 查日志 |
-| provider/model 的输出上限低于 8192 | 请求带 `max_tokens=8192` 被 provider 拒绝（通常 4xx，诊断码 `PROVIDER_STATUS`）；改用支持 8192 输出 token 的模型，或由运维评估该 provider（当前无按 profile 配置上限，§7 #17） |
+| provider/model 的输出上限低于请求值 | 首次 400/422（例如 `max_tokens` 超过模型上限）会以 `max_tokens=4096` 自动重试一次；仍被拒绝则目标 FAILED，诊断码 `PROVIDER_STATUS`，按 profile 调低预算或换支持该输出上限的模型（D-52） |
 | 流中断/超时/响应过大/异常 finish_reason | 目标 FAILED，诊断码 `STREAM_INCOMPLETE`/`TIMEOUT`/`RESPONSE_TOO_LARGE`/`UNEXPECTED_FINISH_REASON`；重试由用户发起 |
 | 草稿 JSON 解析失败 | 目标 FAILED，诊断码 `PARSE`（保留 token 用量/停止原因）；不落建议 |
 | RuntimeDebug 未开或调试日志已过期 | 结构化诊断仍返回；`GetQualitySuggestionJobTargetDebug` 返回 `available=false`，UI 说明正文未捕获/已清理 |
@@ -453,7 +453,7 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | 14 | AI 起草任务的执行语义 | 单副本、单 runner 串行：不并行执行多个任务、不续跑、不取消进行中的 provider 调用；取消/配额只会在目标边界生效；提交时配额预检不预占，可能轻微超发；RUNNING 任务取消后、到目标边界前仍显示 RUNNING（cancel_requested 不在资源上暴露）；单任务 panic 已被捕获并标 FAILED，不终止 runner |
 | 15 | 截断调用的 token 用量 | 流在 `finish_reason=length` 处报错时 agent loop 不再读取后续 usage 块，因此该诊断只有 max_tokens/prompt_chars/correlation/finish_reason，没有 prompt/completion tokens；provider/model/stop reason 仍足以复现 |
 | 16 | DQ 调试行的 `error_code` | 分类后由 `SetLLMDebugLogErrorCode` 以 correlation id best-effort 回写；调试行是异步写入的，若 UPDATE 先于 INSERT 到达则该行 `error_code` 留空（无重试）。分类码始终以任务目标诊断为准，检索 RPC 返回它 |
-| 17 | LLM 失败的自动重试与配置 | 不做自动重试；输出预算已按 profile 可配置（默认 32768，provider/模型上限更低时得到 `PROVIDER_STATUS`）；日额度/并发可配置但计数是进程内、重启归零（单副本），任务提交的额度预检不预占；原始正文只在 RuntimeDebug 下捕获（7 天）、仅 `suggest` 权限可读且审计正文已脱敏；没有通用调试日志浏览器 |
+| 17 | LLM 失败的自动重试与配置 | 业务失败不做自动重试；输出预算按 profile 可配置（默认 32768），provider 的 400/422（例如 max_tokens 超限）会以 4096 自动重试一次，仍拒绝则得到 `PROVIDER_STATUS`；日额度/并发可配置但计数是进程内、重启归零（单副本），任务提交的额度预检不预占；原始正文只在 RuntimeDebug 下捕获（7 天）、仅 `suggest` 权限可读且审计正文已脱敏；没有通用调试日志浏览器 |
 
 ## 8. Where things live
 

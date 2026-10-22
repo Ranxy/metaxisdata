@@ -402,9 +402,11 @@ func TestLimitsFromSettings(t *testing.T) {
 	require.Equal(t, 3, limits.Concurrency)
 
 	limits = LimitsFromSettings(Settings{
-		DailyLLMAnalysisLimit: MaxDailyLLMAnalysisLimit + 1,
-		LLMConcurrencyLimit:   MaxLLMConcurrencyLimit + 1,
+		DailyLLMAnalysisLimit:    MaxDailyLLMAnalysisLimit + 1,
+		DailyColumnAnalysisLimit: MaxDailyColumnAnalysisLimit + 1,
+		LLMConcurrencyLimit:      MaxLLMConcurrencyLimit + 1,
 	})
 	require.Equal(t, MaxDailyLLMAnalysisLimit, limits.DailyAnalyses)
+	require.Equal(t, MaxDailyColumnAnalysisLimit, limits.DailyColumnAnalyses)
 	require.Equal(t, MaxLLMConcurrencyLimit, limits.Concurrency)
 }

@@ -292,6 +292,28 @@ describe("DataQualitySettingsPage", () => {
     expect(mocks.getQualityLLMUsage).toHaveBeenCalledTimes(2);
   });
 
+  it("validates the daily column-analysis ceiling inline", async () => {
+    const wrapper = await mountPage();
+    await fieldInput(
+      wrapper,
+      i18n.global.t("dataQualitySettings.dailyColumnAnalysisLimit")
+    )?.setValue("1000001");
+
+    const save = wrapper
+      .findAll("button")
+      .find((button) => button.text().includes(i18n.global.t("common.save")));
+    await save?.trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain(
+      i18n.global.t(
+        "dataQualitySettings.validation.dailyColumnAnalysisLimitInvalid",
+        { max: 1_000_000 }
+      )
+    );
+    expect(mocks.updateDataQualitySetting).not.toHaveBeenCalled();
+  });
+
   it("validates the new LLM limits before saving", async () => {
     const wrapper = await mountPage();
     await fieldInput(

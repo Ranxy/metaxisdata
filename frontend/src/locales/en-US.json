@@ -1179,7 +1179,7 @@
   },
   "dataQualitySettings": {
     "dailyColumnAnalysisLimit": "Daily column analyses",
-    "dailyColumnAnalysisLimitHint": "0 or blank uses the server default.",
+    "dailyColumnAnalysisLimitHint": "0 or blank uses the server default (50); at most 1,000,000.",
     "dailyExecutionLimit": "Daily executions",
     "dailyExecutionLimitHint": "0 or blank uses the server default.",
     "dailyLlmAnalysisLimit": "Daily AI analyses (L1+L2)",
@@ -1225,7 +1225,7 @@
     "usageSection": "Today's AI usage",
     "usageSectionDescription": "Read-only counters for this server process; they reset at 00:00 UTC.",
     "validation": {
-      "dailyColumnAnalysisLimitInvalid": "Enter a whole number of analyses, or leave it blank.",
+      "dailyColumnAnalysisLimitInvalid": "Enter a whole number of analyses between 0 and {max}, or leave it blank.",
       "dailyExecutionLimitInvalid": "Enter a whole number of executions, or leave it blank.",
       "dailyLlmAnalysisLimitInvalid": "Enter a whole number between 0 and {max}, or leave it blank.",
       "failureSampleLimitInvalid": "The sample limit must be between 0 and {max}.",
