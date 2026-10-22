@@ -43,6 +43,9 @@ const (
 	// DataQualityServiceCreateQualityRuleProcedure is the fully-qualified name of the
 	// DataQualityService's CreateQualityRule RPC.
 	DataQualityServiceCreateQualityRuleProcedure = "/metaxisdata.v1.DataQualityService/CreateQualityRule"
+	// DataQualityServiceBatchCreateQualityRulesProcedure is the fully-qualified name of the
+	// DataQualityService's BatchCreateQualityRules RPC.
+	DataQualityServiceBatchCreateQualityRulesProcedure = "/metaxisdata.v1.DataQualityService/BatchCreateQualityRules"
 	// DataQualityServiceUpdateQualityRuleProcedure is the fully-qualified name of the
 	// DataQualityService's UpdateQualityRule RPC.
 	DataQualityServiceUpdateQualityRuleProcedure = "/metaxisdata.v1.DataQualityService/UpdateQualityRule"
@@ -73,9 +76,15 @@ const (
 	// DataQualityServiceListQualitySuggestionsProcedure is the fully-qualified name of the
 	// DataQualityService's ListQualitySuggestions RPC.
 	DataQualityServiceListQualitySuggestionsProcedure = "/metaxisdata.v1.DataQualityService/ListQualitySuggestions"
+	// DataQualityServiceGetQualitySuggestionProcedure is the fully-qualified name of the
+	// DataQualityService's GetQualitySuggestion RPC.
+	DataQualityServiceGetQualitySuggestionProcedure = "/metaxisdata.v1.DataQualityService/GetQualitySuggestion"
 	// DataQualityServiceUpdateQualitySuggestionProcedure is the fully-qualified name of the
 	// DataQualityService's UpdateQualitySuggestion RPC.
 	DataQualityServiceUpdateQualitySuggestionProcedure = "/metaxisdata.v1.DataQualityService/UpdateQualitySuggestion"
+	// DataQualityServiceBatchUpdateQualitySuggestionsProcedure is the fully-qualified name of the
+	// DataQualityService's BatchUpdateQualitySuggestions RPC.
+	DataQualityServiceBatchUpdateQualitySuggestionsProcedure = "/metaxisdata.v1.DataQualityService/BatchUpdateQualitySuggestions"
 	// DataQualityServiceListColumnProfilesProcedure is the fully-qualified name of the
 	// DataQualityService's ListColumnProfiles RPC.
 	DataQualityServiceListColumnProfilesProcedure = "/metaxisdata.v1.DataQualityService/ListColumnProfiles"
@@ -112,6 +121,10 @@ type DataQualityServiceClient interface {
 	// Create a rule. The rule is validated and compiled before it is stored; a
 	// rejected rule is never persisted.
 	CreateQualityRule(context.Context, *connect.Request[v1.CreateQualityRuleRequest]) (*connect.Response[v1.QualityRule], error)
+	// Create a batch of rules in one call, optionally from the suggestions they
+	// came from. Each item is validated and stored independently: a failure is
+	// reported in its own result and does not abort the other items.
+	BatchCreateQualityRules(context.Context, *connect.Request[v1.BatchCreateQualityRulesRequest]) (*connect.Response[v1.BatchCreateQualityRulesResponse], error)
 	// Update a rule. Every semantic edit appends a revision, so a historical
 	// result always stays explainable by the definition that produced it.
 	UpdateQualityRule(context.Context, *connect.Request[v1.UpdateQualityRuleRequest]) (*connect.Response[v1.QualityRule], error)
@@ -139,9 +152,16 @@ type DataQualityServiceClient interface {
 	// List the review queue of model-proposed rule drafts and semantic labels,
 	// newest first.
 	ListQualitySuggestions(context.Context, *connect.Request[v1.ListQualitySuggestionsRequest]) (*connect.Response[v1.ListQualitySuggestionsResponse], error)
+	// Read one queued suggestion. The queue is paged with ListQualitySuggestions;
+	// this exists so a deep link can open one draft without reading the pages.
+	GetQualitySuggestion(context.Context, *connect.Request[v1.GetQualitySuggestionRequest]) (*connect.Response[v1.QualitySuggestion], error)
 	// Accept or reject one queued suggestion. A decision is final: the store
 	// refuses a second one.
 	UpdateQualitySuggestion(context.Context, *connect.Request[v1.UpdateQualitySuggestionRequest]) (*connect.Response[v1.QualitySuggestion], error)
+	// Accept or reject many queued suggestions in one call. Each decision is
+	// independent: a failure is reported in its own result and does not abort the
+	// rest.
+	BatchUpdateQualitySuggestions(context.Context, *connect.Request[v1.BatchUpdateQualitySuggestionsRequest]) (*connect.Response[v1.BatchUpdateQualitySuggestionsResponse], error)
 	// List the cached deterministic profiles of columns. Profiles are read-only
 	// measurements; there is no get or update.
 	ListColumnProfiles(context.Context, *connect.Request[v1.ListColumnProfilesRequest]) (*connect.Response[v1.ListColumnProfilesResponse], error)
@@ -193,6 +213,12 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			httpClient,
 			baseURL+DataQualityServiceCreateQualityRuleProcedure,
 			connect.WithSchema(dataQualityServiceMethods.ByName("CreateQualityRule")),
+			connect.WithClientOptions(opts...),
+		),
+		batchCreateQualityRules: connect.NewClient[v1.BatchCreateQualityRulesRequest, v1.BatchCreateQualityRulesResponse](
+			httpClient,
+			baseURL+DataQualityServiceBatchCreateQualityRulesProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("BatchCreateQualityRules")),
 			connect.WithClientOptions(opts...),
 		),
 		updateQualityRule: connect.NewClient[v1.UpdateQualityRuleRequest, v1.QualityRule](
@@ -255,10 +281,22 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(dataQualityServiceMethods.ByName("ListQualitySuggestions")),
 			connect.WithClientOptions(opts...),
 		),
+		getQualitySuggestion: connect.NewClient[v1.GetQualitySuggestionRequest, v1.QualitySuggestion](
+			httpClient,
+			baseURL+DataQualityServiceGetQualitySuggestionProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualitySuggestion")),
+			connect.WithClientOptions(opts...),
+		),
 		updateQualitySuggestion: connect.NewClient[v1.UpdateQualitySuggestionRequest, v1.QualitySuggestion](
 			httpClient,
 			baseURL+DataQualityServiceUpdateQualitySuggestionProcedure,
 			connect.WithSchema(dataQualityServiceMethods.ByName("UpdateQualitySuggestion")),
+			connect.WithClientOptions(opts...),
+		),
+		batchUpdateQualitySuggestions: connect.NewClient[v1.BatchUpdateQualitySuggestionsRequest, v1.BatchUpdateQualitySuggestionsResponse](
+			httpClient,
+			baseURL+DataQualityServiceBatchUpdateQualitySuggestionsProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("BatchUpdateQualitySuggestions")),
 			connect.WithClientOptions(opts...),
 		),
 		listColumnProfiles: connect.NewClient[v1.ListColumnProfilesRequest, v1.ListColumnProfilesResponse](
@@ -314,28 +352,31 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 
 // dataQualityServiceClient implements DataQualityServiceClient.
 type dataQualityServiceClient struct {
-	listQualityRules        *connect.Client[v1.ListQualityRulesRequest, v1.ListQualityRulesResponse]
-	getQualityRule          *connect.Client[v1.GetQualityRuleRequest, v1.QualityRule]
-	createQualityRule       *connect.Client[v1.CreateQualityRuleRequest, v1.QualityRule]
-	updateQualityRule       *connect.Client[v1.UpdateQualityRuleRequest, v1.QualityRule]
-	deleteQualityRule       *connect.Client[v1.DeleteQualityRuleRequest, emptypb.Empty]
-	previewQualityRule      *connect.Client[v1.PreviewQualityRuleRequest, v1.PreviewQualityRuleResponse]
-	runQualityRules         *connect.Client[v1.RunQualityRulesRequest, v1.RunQualityRulesResponse]
-	listQualityExecutions   *connect.Client[v1.ListQualityExecutionsRequest, v1.ListQualityExecutionsResponse]
-	getQualityExecution     *connect.Client[v1.GetQualityExecutionRequest, v1.QualityExecution]
-	listQualityIssues       *connect.Client[v1.ListQualityIssuesRequest, v1.ListQualityIssuesResponse]
-	getQualityIssue         *connect.Client[v1.GetQualityIssueRequest, v1.QualityIssue]
-	updateQualityIssue      *connect.Client[v1.UpdateQualityIssueRequest, v1.QualityIssue]
-	listQualitySuggestions  *connect.Client[v1.ListQualitySuggestionsRequest, v1.ListQualitySuggestionsResponse]
-	updateQualitySuggestion *connect.Client[v1.UpdateQualitySuggestionRequest, v1.QualitySuggestion]
-	listColumnProfiles      *connect.Client[v1.ListColumnProfilesRequest, v1.ListColumnProfilesResponse]
-	listColumnLabels        *connect.Client[v1.ListColumnLabelsRequest, v1.ListColumnLabelsResponse]
-	updateColumnLabel       *connect.Client[v1.UpdateColumnLabelRequest, v1.UpdateColumnLabelResponse]
-	profileColumns          *connect.Client[v1.ProfileColumnsRequest, v1.ProfileColumnsResponse]
-	suggestQualityRule      *connect.Client[v1.SuggestQualityRuleRequest, v1.SuggestQualityRuleResponse]
-	suggestColumnLabels     *connect.Client[v1.SuggestColumnLabelsRequest, v1.SuggestColumnLabelsResponse]
-	explainQualityExecution *connect.Client[v1.ExplainQualityExecutionRequest, v1.ExplainQualityExecutionResponse]
-	getQualityOverview      *connect.Client[v1.GetQualityOverviewRequest, v1.QualityOverview]
+	listQualityRules              *connect.Client[v1.ListQualityRulesRequest, v1.ListQualityRulesResponse]
+	getQualityRule                *connect.Client[v1.GetQualityRuleRequest, v1.QualityRule]
+	createQualityRule             *connect.Client[v1.CreateQualityRuleRequest, v1.QualityRule]
+	batchCreateQualityRules       *connect.Client[v1.BatchCreateQualityRulesRequest, v1.BatchCreateQualityRulesResponse]
+	updateQualityRule             *connect.Client[v1.UpdateQualityRuleRequest, v1.QualityRule]
+	deleteQualityRule             *connect.Client[v1.DeleteQualityRuleRequest, emptypb.Empty]
+	previewQualityRule            *connect.Client[v1.PreviewQualityRuleRequest, v1.PreviewQualityRuleResponse]
+	runQualityRules               *connect.Client[v1.RunQualityRulesRequest, v1.RunQualityRulesResponse]
+	listQualityExecutions         *connect.Client[v1.ListQualityExecutionsRequest, v1.ListQualityExecutionsResponse]
+	getQualityExecution           *connect.Client[v1.GetQualityExecutionRequest, v1.QualityExecution]
+	listQualityIssues             *connect.Client[v1.ListQualityIssuesRequest, v1.ListQualityIssuesResponse]
+	getQualityIssue               *connect.Client[v1.GetQualityIssueRequest, v1.QualityIssue]
+	updateQualityIssue            *connect.Client[v1.UpdateQualityIssueRequest, v1.QualityIssue]
+	listQualitySuggestions        *connect.Client[v1.ListQualitySuggestionsRequest, v1.ListQualitySuggestionsResponse]
+	getQualitySuggestion          *connect.Client[v1.GetQualitySuggestionRequest, v1.QualitySuggestion]
+	updateQualitySuggestion       *connect.Client[v1.UpdateQualitySuggestionRequest, v1.QualitySuggestion]
+	batchUpdateQualitySuggestions *connect.Client[v1.BatchUpdateQualitySuggestionsRequest, v1.BatchUpdateQualitySuggestionsResponse]
+	listColumnProfiles            *connect.Client[v1.ListColumnProfilesRequest, v1.ListColumnProfilesResponse]
+	listColumnLabels              *connect.Client[v1.ListColumnLabelsRequest, v1.ListColumnLabelsResponse]
+	updateColumnLabel             *connect.Client[v1.UpdateColumnLabelRequest, v1.UpdateColumnLabelResponse]
+	profileColumns                *connect.Client[v1.ProfileColumnsRequest, v1.ProfileColumnsResponse]
+	suggestQualityRule            *connect.Client[v1.SuggestQualityRuleRequest, v1.SuggestQualityRuleResponse]
+	suggestColumnLabels           *connect.Client[v1.SuggestColumnLabelsRequest, v1.SuggestColumnLabelsResponse]
+	explainQualityExecution       *connect.Client[v1.ExplainQualityExecutionRequest, v1.ExplainQualityExecutionResponse]
+	getQualityOverview            *connect.Client[v1.GetQualityOverviewRequest, v1.QualityOverview]
 }
 
 // ListQualityRules calls metaxisdata.v1.DataQualityService.ListQualityRules.
@@ -351,6 +392,11 @@ func (c *dataQualityServiceClient) GetQualityRule(ctx context.Context, req *conn
 // CreateQualityRule calls metaxisdata.v1.DataQualityService.CreateQualityRule.
 func (c *dataQualityServiceClient) CreateQualityRule(ctx context.Context, req *connect.Request[v1.CreateQualityRuleRequest]) (*connect.Response[v1.QualityRule], error) {
 	return c.createQualityRule.CallUnary(ctx, req)
+}
+
+// BatchCreateQualityRules calls metaxisdata.v1.DataQualityService.BatchCreateQualityRules.
+func (c *dataQualityServiceClient) BatchCreateQualityRules(ctx context.Context, req *connect.Request[v1.BatchCreateQualityRulesRequest]) (*connect.Response[v1.BatchCreateQualityRulesResponse], error) {
+	return c.batchCreateQualityRules.CallUnary(ctx, req)
 }
 
 // UpdateQualityRule calls metaxisdata.v1.DataQualityService.UpdateQualityRule.
@@ -403,9 +449,20 @@ func (c *dataQualityServiceClient) ListQualitySuggestions(ctx context.Context, r
 	return c.listQualitySuggestions.CallUnary(ctx, req)
 }
 
+// GetQualitySuggestion calls metaxisdata.v1.DataQualityService.GetQualitySuggestion.
+func (c *dataQualityServiceClient) GetQualitySuggestion(ctx context.Context, req *connect.Request[v1.GetQualitySuggestionRequest]) (*connect.Response[v1.QualitySuggestion], error) {
+	return c.getQualitySuggestion.CallUnary(ctx, req)
+}
+
 // UpdateQualitySuggestion calls metaxisdata.v1.DataQualityService.UpdateQualitySuggestion.
 func (c *dataQualityServiceClient) UpdateQualitySuggestion(ctx context.Context, req *connect.Request[v1.UpdateQualitySuggestionRequest]) (*connect.Response[v1.QualitySuggestion], error) {
 	return c.updateQualitySuggestion.CallUnary(ctx, req)
+}
+
+// BatchUpdateQualitySuggestions calls
+// metaxisdata.v1.DataQualityService.BatchUpdateQualitySuggestions.
+func (c *dataQualityServiceClient) BatchUpdateQualitySuggestions(ctx context.Context, req *connect.Request[v1.BatchUpdateQualitySuggestionsRequest]) (*connect.Response[v1.BatchUpdateQualitySuggestionsResponse], error) {
+	return c.batchUpdateQualitySuggestions.CallUnary(ctx, req)
 }
 
 // ListColumnProfiles calls metaxisdata.v1.DataQualityService.ListColumnProfiles.
@@ -458,6 +515,10 @@ type DataQualityServiceHandler interface {
 	// Create a rule. The rule is validated and compiled before it is stored; a
 	// rejected rule is never persisted.
 	CreateQualityRule(context.Context, *connect.Request[v1.CreateQualityRuleRequest]) (*connect.Response[v1.QualityRule], error)
+	// Create a batch of rules in one call, optionally from the suggestions they
+	// came from. Each item is validated and stored independently: a failure is
+	// reported in its own result and does not abort the other items.
+	BatchCreateQualityRules(context.Context, *connect.Request[v1.BatchCreateQualityRulesRequest]) (*connect.Response[v1.BatchCreateQualityRulesResponse], error)
 	// Update a rule. Every semantic edit appends a revision, so a historical
 	// result always stays explainable by the definition that produced it.
 	UpdateQualityRule(context.Context, *connect.Request[v1.UpdateQualityRuleRequest]) (*connect.Response[v1.QualityRule], error)
@@ -485,9 +546,16 @@ type DataQualityServiceHandler interface {
 	// List the review queue of model-proposed rule drafts and semantic labels,
 	// newest first.
 	ListQualitySuggestions(context.Context, *connect.Request[v1.ListQualitySuggestionsRequest]) (*connect.Response[v1.ListQualitySuggestionsResponse], error)
+	// Read one queued suggestion. The queue is paged with ListQualitySuggestions;
+	// this exists so a deep link can open one draft without reading the pages.
+	GetQualitySuggestion(context.Context, *connect.Request[v1.GetQualitySuggestionRequest]) (*connect.Response[v1.QualitySuggestion], error)
 	// Accept or reject one queued suggestion. A decision is final: the store
 	// refuses a second one.
 	UpdateQualitySuggestion(context.Context, *connect.Request[v1.UpdateQualitySuggestionRequest]) (*connect.Response[v1.QualitySuggestion], error)
+	// Accept or reject many queued suggestions in one call. Each decision is
+	// independent: a failure is reported in its own result and does not abort the
+	// rest.
+	BatchUpdateQualitySuggestions(context.Context, *connect.Request[v1.BatchUpdateQualitySuggestionsRequest]) (*connect.Response[v1.BatchUpdateQualitySuggestionsResponse], error)
 	// List the cached deterministic profiles of columns. Profiles are read-only
 	// measurements; there is no get or update.
 	ListColumnProfiles(context.Context, *connect.Request[v1.ListColumnProfilesRequest]) (*connect.Response[v1.ListColumnProfilesResponse], error)
@@ -535,6 +603,12 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		DataQualityServiceCreateQualityRuleProcedure,
 		svc.CreateQualityRule,
 		connect.WithSchema(dataQualityServiceMethods.ByName("CreateQualityRule")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceBatchCreateQualityRulesHandler := connect.NewUnaryHandler(
+		DataQualityServiceBatchCreateQualityRulesProcedure,
+		svc.BatchCreateQualityRules,
+		connect.WithSchema(dataQualityServiceMethods.ByName("BatchCreateQualityRules")),
 		connect.WithHandlerOptions(opts...),
 	)
 	dataQualityServiceUpdateQualityRuleHandler := connect.NewUnaryHandler(
@@ -597,10 +671,22 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		connect.WithSchema(dataQualityServiceMethods.ByName("ListQualitySuggestions")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataQualityServiceGetQualitySuggestionHandler := connect.NewUnaryHandler(
+		DataQualityServiceGetQualitySuggestionProcedure,
+		svc.GetQualitySuggestion,
+		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualitySuggestion")),
+		connect.WithHandlerOptions(opts...),
+	)
 	dataQualityServiceUpdateQualitySuggestionHandler := connect.NewUnaryHandler(
 		DataQualityServiceUpdateQualitySuggestionProcedure,
 		svc.UpdateQualitySuggestion,
 		connect.WithSchema(dataQualityServiceMethods.ByName("UpdateQualitySuggestion")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceBatchUpdateQualitySuggestionsHandler := connect.NewUnaryHandler(
+		DataQualityServiceBatchUpdateQualitySuggestionsProcedure,
+		svc.BatchUpdateQualitySuggestions,
+		connect.WithSchema(dataQualityServiceMethods.ByName("BatchUpdateQualitySuggestions")),
 		connect.WithHandlerOptions(opts...),
 	)
 	dataQualityServiceListColumnProfilesHandler := connect.NewUnaryHandler(
@@ -659,6 +745,8 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceGetQualityRuleHandler.ServeHTTP(w, r)
 		case DataQualityServiceCreateQualityRuleProcedure:
 			dataQualityServiceCreateQualityRuleHandler.ServeHTTP(w, r)
+		case DataQualityServiceBatchCreateQualityRulesProcedure:
+			dataQualityServiceBatchCreateQualityRulesHandler.ServeHTTP(w, r)
 		case DataQualityServiceUpdateQualityRuleProcedure:
 			dataQualityServiceUpdateQualityRuleHandler.ServeHTTP(w, r)
 		case DataQualityServiceDeleteQualityRuleProcedure:
@@ -679,8 +767,12 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceUpdateQualityIssueHandler.ServeHTTP(w, r)
 		case DataQualityServiceListQualitySuggestionsProcedure:
 			dataQualityServiceListQualitySuggestionsHandler.ServeHTTP(w, r)
+		case DataQualityServiceGetQualitySuggestionProcedure:
+			dataQualityServiceGetQualitySuggestionHandler.ServeHTTP(w, r)
 		case DataQualityServiceUpdateQualitySuggestionProcedure:
 			dataQualityServiceUpdateQualitySuggestionHandler.ServeHTTP(w, r)
+		case DataQualityServiceBatchUpdateQualitySuggestionsProcedure:
+			dataQualityServiceBatchUpdateQualitySuggestionsHandler.ServeHTTP(w, r)
 		case DataQualityServiceListColumnProfilesProcedure:
 			dataQualityServiceListColumnProfilesHandler.ServeHTTP(w, r)
 		case DataQualityServiceListColumnLabelsProcedure:
@@ -716,6 +808,10 @@ func (UnimplementedDataQualityServiceHandler) GetQualityRule(context.Context, *c
 
 func (UnimplementedDataQualityServiceHandler) CreateQualityRule(context.Context, *connect.Request[v1.CreateQualityRuleRequest]) (*connect.Response[v1.QualityRule], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.CreateQualityRule is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) BatchCreateQualityRules(context.Context, *connect.Request[v1.BatchCreateQualityRulesRequest]) (*connect.Response[v1.BatchCreateQualityRulesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.BatchCreateQualityRules is not implemented"))
 }
 
 func (UnimplementedDataQualityServiceHandler) UpdateQualityRule(context.Context, *connect.Request[v1.UpdateQualityRuleRequest]) (*connect.Response[v1.QualityRule], error) {
@@ -758,8 +854,16 @@ func (UnimplementedDataQualityServiceHandler) ListQualitySuggestions(context.Con
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ListQualitySuggestions is not implemented"))
 }
 
+func (UnimplementedDataQualityServiceHandler) GetQualitySuggestion(context.Context, *connect.Request[v1.GetQualitySuggestionRequest]) (*connect.Response[v1.QualitySuggestion], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualitySuggestion is not implemented"))
+}
+
 func (UnimplementedDataQualityServiceHandler) UpdateQualitySuggestion(context.Context, *connect.Request[v1.UpdateQualitySuggestionRequest]) (*connect.Response[v1.QualitySuggestion], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.UpdateQualitySuggestion is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) BatchUpdateQualitySuggestions(context.Context, *connect.Request[v1.BatchUpdateQualitySuggestionsRequest]) (*connect.Response[v1.BatchUpdateQualitySuggestionsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.BatchUpdateQualitySuggestions is not implemented"))
 }
 
 func (UnimplementedDataQualityServiceHandler) ListColumnProfiles(context.Context, *connect.Request[v1.ListColumnProfilesRequest]) (*connect.Response[v1.ListColumnProfilesResponse], error) {

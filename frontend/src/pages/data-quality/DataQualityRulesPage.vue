@@ -17,6 +17,14 @@
           {{ t("common.refresh") }}
         </Button>
         <Button
+          v-if="canSuggest"
+          variant="outline"
+          @click="draftWithAi"
+        >
+          <Sparkles class="mr-2 h-4 w-4" />
+          {{ t("dataQuality.llm.draft.openButton") }}
+        </Button>
+        <Button
           v-if="canCreate"
           @click="createRule"
         >
@@ -237,6 +245,14 @@
           >
             <Plus class="mr-2 h-4 w-4" />
             {{ t("dataQuality.newRule") }}
+          </Button>
+          <Button
+            v-if="!hasActiveFilters && canSuggest"
+            variant="outline"
+            @click="draftWithAi"
+          >
+            <Sparkles class="mr-2 h-4 w-4" />
+            {{ t("dataQuality.llm.draft.openButton") }}
           </Button>
         </EmptyState>
 
@@ -509,6 +525,7 @@ import {
   Plus,
   RefreshCcw,
   ShieldCheck,
+  Sparkles,
   Trash2,
   Zap,
 } from "lucide-vue-next";
@@ -584,6 +601,9 @@ const authStore = useAuthStore();
 
 const canCreate = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.rules.create")
+);
+const canSuggest = computed(() =>
+  authStore.hasPermission("metaxisdata.dataQuality.suggest")
 );
 const canRun = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.rules.run")
@@ -787,6 +807,17 @@ function clearFilters() {
 
 function createRule() {
   void router.push({ name: "DataQualityRuleNew" });
+}
+
+/**
+ * AI drafting lives in the suggestion center; this is a discovery path, not a
+ * second implementation. `?draft=1` opens the workbench on arrival.
+ */
+function draftWithAi() {
+  void router.push({
+    name: "DataQualitySuggestions",
+    query: { draft: "1" },
+  });
 }
 
 function ruleRoute(rule: QualityRule) {

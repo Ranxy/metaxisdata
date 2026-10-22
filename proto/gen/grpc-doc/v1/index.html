@@ -1009,6 +1009,30 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.BatchCreateQualityRuleResult"><span class="badge">M</span>BatchCreateQualityRuleResult</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.BatchCreateQualityRulesRequest"><span class="badge">M</span>BatchCreateQualityRulesRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.BatchCreateQualityRulesResponse"><span class="badge">M</span>BatchCreateQualityRulesResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.BatchUpdateQualitySuggestionResult"><span class="badge">M</span>BatchUpdateQualitySuggestionResult</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.BatchUpdateQualitySuggestionsRequest"><span class="badge">M</span>BatchUpdateQualitySuggestionsRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.BatchUpdateQualitySuggestionsResponse"><span class="badge">M</span>BatchUpdateQualitySuggestionsResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.CelExpressionConfig"><span class="badge">M</span>CelExpressionConfig</a>
                 </li>
               
@@ -1078,6 +1102,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.GetQualityRuleRequest"><span class="badge">M</span>GetQualityRuleRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetQualitySuggestionRequest"><span class="badge">M</span>GetQualitySuggestionRequest</a>
                 </li>
               
                 <li>
@@ -11973,6 +12001,180 @@ inside the fail range. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.BatchCreateQualityRuleResult">BatchCreateQualityRuleResult</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>rule</td>
+                  <td><a href="#metaxisdata.v1.QualityRule">QualityRule</a></td>
+                  <td></td>
+                  <td><p>The created rule; unset when this item failed. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>error</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Empty on success; otherwise why this rule could not be created. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.BatchCreateQualityRulesRequest">BatchCreateQualityRulesRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>requests</td>
+                  <td><a href="#metaxisdata.v1.CreateQualityRuleRequest">CreateQualityRuleRequest</a></td>
+                  <td>repeated</td>
+                  <td><p>The rules to create, at most 200, in submission order. Each item is created
+independently, so one rejected rule does not block the others. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.BatchCreateQualityRulesResponse">BatchCreateQualityRulesResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>results</td>
+                  <td><a href="#metaxisdata.v1.BatchCreateQualityRuleResult">BatchCreateQualityRuleResult</a></td>
+                  <td>repeated</td>
+                  <td><p>One result per request, in request order. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.BatchUpdateQualitySuggestionResult">BatchUpdateQualitySuggestionResult</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>suggestion</td>
+                  <td><a href="#metaxisdata.v1.QualitySuggestion">QualitySuggestion</a></td>
+                  <td></td>
+                  <td><p>The decided suggestion; unset when this decision failed. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>error</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Empty on success; otherwise why this suggestion could not be decided. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.BatchUpdateQualitySuggestionsRequest">BatchUpdateQualitySuggestionsRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>requests</td>
+                  <td><a href="#metaxisdata.v1.UpdateQualitySuggestionRequest">UpdateQualitySuggestionRequest</a></td>
+                  <td>repeated</td>
+                  <td><p>The decisions to apply, at most 200, in submission order. Each request
+names one suggestion and is applied independently. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.BatchUpdateQualitySuggestionsResponse">BatchUpdateQualitySuggestionsResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>results</td>
+                  <td><a href="#metaxisdata.v1.BatchUpdateQualitySuggestionResult">BatchUpdateQualitySuggestionResult</a></td>
+                  <td>repeated</td>
+                  <td><p>One result per request, in request order. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.CelExpressionConfig">CelExpressionConfig</h3>
         <p>CelExpressionConfig evaluates an expression over a sample of rows in Go. It is</p><p>v1.1; the message exists so that the config shape does not change then.</p>
 
@@ -12342,6 +12544,17 @@ no comparable values. </p></td>
                   <td><a href="#metaxisdata.v1.QualityRule">QualityRule</a></td>
                   <td></td>
                   <td><p>The rule to create. Its name is assigned by the server. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>suggestion</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The suggestion this rule is created from, if any. When set, the rule&#39;s
+target is taken from the suggestion (the request&#39;s target is ignored) and
+the suggestion is marked accepted once the rule exists. A decision that
+cannot be written does not roll the created rule back; it is logged and the
+suggestion can be decided explicitly. </p></td>
                 </tr>
               
             </tbody>
@@ -12781,6 +12994,30 @@ The fail threshold defaults to zero. </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p>Format: workspaces/{workspace}/qualityRules/{quality_rule} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.GetQualitySuggestionRequest">GetQualitySuggestionRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion} </p></td>
                 </tr>
               
             </tbody>
@@ -13501,6 +13738,36 @@ this to retrieve the subsequent page. </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p>The exact target GUID. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>instance</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The following four filters are GUID path prefixes, the same shape as
+ListQualityRules: a suggestion matches when its target GUID starts with the
+given prefix, so &#34;instance_1&#34; selects every suggestion for that instance. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>database</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>schema</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>table</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
                 </tr>
               
             </tbody>
@@ -17322,6 +17589,15 @@ rejected rule is never persisted.</p></td>
               </tr>
             
               <tr>
+                <td>BatchCreateQualityRules</td>
+                <td><a href="#metaxisdata.v1.BatchCreateQualityRulesRequest">BatchCreateQualityRulesRequest</a></td>
+                <td><a href="#metaxisdata.v1.BatchCreateQualityRulesResponse">BatchCreateQualityRulesResponse</a></td>
+                <td><p>Create a batch of rules in one call, optionally from the suggestions they
+came from. Each item is validated and stored independently: a failure is
+reported in its own result and does not abort the other items.</p></td>
+              </tr>
+            
+              <tr>
                 <td>UpdateQualityRule</td>
                 <td><a href="#metaxisdata.v1.UpdateQualityRuleRequest">UpdateQualityRuleRequest</a></td>
                 <td><a href="#metaxisdata.v1.QualityRule">QualityRule</a></td>
@@ -17399,11 +17675,28 @@ newest first.</p></td>
               </tr>
             
               <tr>
+                <td>GetQualitySuggestion</td>
+                <td><a href="#metaxisdata.v1.GetQualitySuggestionRequest">GetQualitySuggestionRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualitySuggestion">QualitySuggestion</a></td>
+                <td><p>Read one queued suggestion. The queue is paged with ListQualitySuggestions;
+this exists so a deep link can open one draft without reading the pages.</p></td>
+              </tr>
+            
+              <tr>
                 <td>UpdateQualitySuggestion</td>
                 <td><a href="#metaxisdata.v1.UpdateQualitySuggestionRequest">UpdateQualitySuggestionRequest</a></td>
                 <td><a href="#metaxisdata.v1.QualitySuggestion">QualitySuggestion</a></td>
                 <td><p>Accept or reject one queued suggestion. A decision is final: the store
 refuses a second one.</p></td>
+              </tr>
+            
+              <tr>
+                <td>BatchUpdateQualitySuggestions</td>
+                <td><a href="#metaxisdata.v1.BatchUpdateQualitySuggestionsRequest">BatchUpdateQualitySuggestionsRequest</a></td>
+                <td><a href="#metaxisdata.v1.BatchUpdateQualitySuggestionsResponse">BatchUpdateQualitySuggestionsResponse</a></td>
+                <td><p>Accept or reject many queued suggestions in one call. Each decision is
+independent: a failure is reported in its own result and does not abort the
+rest.</p></td>
               </tr>
             
               <tr>
@@ -17519,6 +17812,16 @@ the last day went, and the per-day tallies the overview chart draws.</p></td>
               
               
               <tr>
+                <td>BatchCreateQualityRules</td>
+                <td>POST</td>
+                <td>/v1/{parent=workspaces/*}/qualityRules:batchCreate</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
                 <td>UpdateQualityRule</td>
                 <td>PATCH</td>
                 <td>/v1/{rule.name=workspaces/*/qualityRules/*}</td>
@@ -17619,9 +17922,29 @@ the last day went, and the per-day tallies the overview chart draws.</p></td>
               
               
               <tr>
+                <td>GetQualitySuggestion</td>
+                <td>GET</td>
+                <td>/v1/{name=workspaces/*/qualitySuggestions/*}</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
                 <td>UpdateQualitySuggestion</td>
                 <td>POST</td>
                 <td>/v1/{name=workspaces/*/qualitySuggestions/*}:decide</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>BatchUpdateQualitySuggestions</td>
+                <td>POST</td>
+                <td>/v1/{parent=workspaces/*}/qualitySuggestions:batchDecide</td>
                 <td>*</td>
               </tr>
               

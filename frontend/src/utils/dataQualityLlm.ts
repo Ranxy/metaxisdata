@@ -17,7 +17,7 @@ import {
 /**
  * The LLM surfaces' pure layer: folding the explanation stream, deciding whether
  * an entry point is usable, classifying server errors into copy, and the short
- * form of a suggested draft shown in the draft dialog.
+ * form of a suggested draft shown in the drafting workbench.
  */
 
 // ---- explanation stream ----
@@ -159,7 +159,7 @@ export interface DraftSuggestionSummary {
   rationale: string;
 }
 
-/** The short form of a suggested draft for the AI draft dialog's result list. */
+/** The short form of a suggested draft for the drafting workbench's result list. */
 export function draftSuggestionSummary(
   suggestion: QualitySuggestion
 ): DraftSuggestionSummary | undefined {

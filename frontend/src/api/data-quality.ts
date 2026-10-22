@@ -2,6 +2,10 @@ import { create } from "@bufbuild/protobuf";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { FieldMaskSchema } from "@bufbuild/protobuf/wkt";
 import {
+  type BatchCreateQualityRuleResult,
+  BatchCreateQualityRulesRequestSchema,
+  type BatchUpdateQualitySuggestionResult,
+  BatchUpdateQualitySuggestionsRequestSchema,
   ColumnLabelAction,
   type ColumnProfile,
   type ColumnSemanticLabel,
@@ -13,6 +17,7 @@ import {
   GetQualityIssueRequestSchema,
   GetQualityOverviewRequestSchema,
   GetQualityRuleRequestSchema,
+  GetQualitySuggestionRequestSchema,
   ListColumnLabelsRequestSchema,
   ListColumnProfilesRequestSchema,
   ListQualityExecutionsRequestSchema,
@@ -163,13 +168,22 @@ export async function getQualityRule(name: string): Promise<QualityRule> {
   return await dataQualityClient.getQualityRule(request);
 }
 
-/** Create a rule. The server assigns its name and first revision. */
+/**
+ * Create a rule. The server assigns its name and first revision.
+ *
+ * When `suggestionName` is set the rule is created from that suggestion in one
+ * request: the server takes the target from the suggestion, compiles the rule,
+ * saves it and marks the suggestion accepted. The decision is a side effect —
+ * a failed decision does not roll the rule back.
+ */
 export async function createQualityRule(
-  rule: QualityRule
+  rule: QualityRule,
+  suggestionName = ""
 ): Promise<QualityRule> {
   const request = create(CreateQualityRuleRequestSchema, {
     parent: WORKSPACE_PARENT,
     rule,
+    suggestion: suggestionName,
   });
   return await dataQualityClient.createQualityRule(request);
 }
@@ -401,6 +415,11 @@ export async function listQualitySuggestions(options: {
   kind?: QualitySuggestionKind;
   source?: QualitySuggestionSource;
   targetGuid?: string;
+  /** GUID path prefixes, like the rule list: the deepest one narrows the list. */
+  instance?: string;
+  database?: string;
+  schema?: string;
+  table?: string;
   signal?: AbortSignal;
 }): Promise<ListPage<QualitySuggestion>> {
   const request = create(ListQualitySuggestionsRequestSchema, {
@@ -411,6 +430,10 @@ export async function listQualitySuggestions(options: {
     kind: options.kind ?? QualitySuggestionKind.UNSPECIFIED,
     source: options.source ?? QualitySuggestionSource.UNSPECIFIED,
     targetGuid: options.targetGuid ?? "",
+    instance: options.instance ?? "",
+    database: options.database ?? "",
+    schema: options.schema ?? "",
+    table: options.table ?? "",
   });
   const response = await dataQualityClient.listQualitySuggestions(request, {
     signal: options.signal,
@@ -430,16 +453,13 @@ export async function listAllQualitySuggestions(
   );
 }
 
-/**
- * One suggestion by resource name. The service has no Get method, so the editor's
- * `?suggestion=` prefill walks the queue; a queue is bounded in practice and this
- * keeps the API shape honest rather than adding a client-side cache.
- */
-export async function findQualitySuggestion(
-  name: string
-): Promise<QualitySuggestion | undefined> {
-  const suggestions = await listAllQualitySuggestions();
-  return suggestions.find((suggestion) => suggestion.name === name);
+/** Read one suggestion by resource name; a missing one is `NotFound`. */
+export async function getQualitySuggestion(
+  name: string,
+  signal?: AbortSignal
+): Promise<QualitySuggestion> {
+  const request = create(GetQualitySuggestionRequestSchema, { name });
+  return await dataQualityClient.getQualitySuggestion(request, { signal });
 }
 
 /** Accept or reject a suggestion, optionally recording why. */
@@ -457,6 +477,55 @@ export async function updateQualitySuggestion(options: {
   return await dataQualityClient.updateQualitySuggestion(request, {
     signal: options.signal,
   });
+}
+
+/**
+ * Decide up to 200 suggestions in one call. The results are aligned with
+ * `items`; a decided suggestion has its message set, a failed one has `error`
+ * set and does not stop the rest.
+ */
+export async function batchUpdateQualitySuggestions(
+  items: Array<{
+    name: string;
+    decision: QualitySuggestionStatus;
+    note?: string;
+  }>
+): Promise<BatchUpdateQualitySuggestionResult[]> {
+  const request = create(BatchUpdateQualitySuggestionsRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    requests: items.map((item) =>
+      create(UpdateQualitySuggestionRequestSchema, {
+        name: item.name,
+        decision: item.decision,
+        decisionNote: item.note ?? "",
+      })
+    ),
+  });
+  const response =
+    await dataQualityClient.batchUpdateQualitySuggestions(request);
+  return response.results;
+}
+
+/**
+ * Create up to 200 rules in one call. Each item may name the suggestion it is
+ * created from, which accepts that suggestion server-side. The results are
+ * aligned with `items`; a failed item does not stop the rest.
+ */
+export async function batchCreateQualityRules(
+  items: Array<{ rule: QualityRule; suggestion?: string }>
+): Promise<BatchCreateQualityRuleResult[]> {
+  const request = create(BatchCreateQualityRulesRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    requests: items.map((item) =>
+      create(CreateQualityRuleRequestSchema, {
+        parent: WORKSPACE_PARENT,
+        rule: item.rule,
+        suggestion: item.suggestion ?? "",
+      })
+    ),
+  });
+  const response = await dataQualityClient.batchCreateQualityRules(request);
+  return response.results;
 }
 
 // ---- column profiles and labels ----

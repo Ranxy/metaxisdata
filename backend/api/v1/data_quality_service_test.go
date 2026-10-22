@@ -665,12 +665,26 @@ func TestApplyQualitySuggestionListFilters(t *testing.T) {
 		Kind:       v1pb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT,
 		Source:     v1pb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE,
 		TargetGuid: "instance_1;shop;public;orders",
+		Instance:   "instances/instance_1",
+		Database:   " shop ",
+		Schema:     "public",
+		Table:      " orders ",
 	})
 	require.NoError(t, err)
 	require.Equal(t, []storepb.QualitySuggestionStatus{storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING}, find.Statuses)
 	require.Equal(t, []storepb.QualitySuggestionKind{storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT}, find.Kinds)
 	require.Equal(t, []storepb.QualitySuggestionSource{storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE}, find.Sources)
 	require.Equal(t, "instance_1;shop;public;orders", *find.TargetGUID)
+	require.Equal(t, "instance_1", find.Instance, "an instance resource name is accepted as its GUID segment")
+	require.Equal(t, "shop", find.Database)
+	require.Equal(t, "public", find.Schema)
+	require.Equal(t, "orders", find.TablePrefix)
+
+	// A raw instance id is accepted too: the filter is a GUID prefix, and the
+	// instance name is merely a convenience spelling of it.
+	raw := &store.FindQualitySuggestionMessage{}
+	require.NoError(t, applyQualitySuggestionListFilters(raw, &v1pb.ListQualitySuggestionsRequest{Instance: "instance_1"}))
+	require.Equal(t, "instance_1", raw.Instance)
 
 	empty := &store.FindQualitySuggestionMessage{}
 	require.NoError(t, applyQualitySuggestionListFilters(empty, &v1pb.ListQualitySuggestionsRequest{}))
@@ -678,6 +692,10 @@ func TestApplyQualitySuggestionListFilters(t *testing.T) {
 	require.Empty(t, empty.Kinds)
 	require.Empty(t, empty.Sources)
 	require.Nil(t, empty.TargetGUID)
+	require.Empty(t, empty.Instance)
+	require.Empty(t, empty.Database)
+	require.Empty(t, empty.Schema)
+	require.Empty(t, empty.TablePrefix)
 
 	for name, request := range map[string]*v1pb.ListQualitySuggestionsRequest{
 		"status": {Status: v1pb.QualitySuggestionStatus(99)},
@@ -691,6 +709,70 @@ func TestApplyQualitySuggestionListFilters(t *testing.T) {
 			require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 		})
 	}
+}
+
+// A batch is bounded: an empty one is a mistake and an oversized one would hold
+// the request open for too long. Both are refused before any item is attempted.
+func TestValidateQualityBatchSize(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, validateQualityBatchSize(1))
+	require.NoError(t, validateQualityBatchSize(qualityBatchRequestLimit))
+
+	for _, count := range []int{0, qualityBatchRequestLimit + 1} {
+		err := validateQualityBatchSize(count)
+		require.Error(t, err, "count %d", count)
+		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	}
+}
+
+// A batch item either inherits the batch parent (empty) or repeats it exactly;
+// anything else would create the rule in a workspace the parent does not name.
+func TestQualityBatchItemParentAcceptable(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, qualityBatchItemParentAcceptable("workspaces/-", ""))
+	require.True(t, qualityBatchItemParentAcceptable("workspaces/-", " workspaces/- "))
+	require.True(t, qualityBatchItemParentAcceptable("workspaces/ws1", "workspaces/ws1"))
+	require.False(t, qualityBatchItemParentAcceptable("workspaces/-", "workspaces/other"))
+	require.False(t, qualityBatchItemParentAcceptable("workspaces/ws1", "workspaces/-"))
+}
+
+// A rule created from a suggestion takes the draft's target: the payload and the
+// request's own target must not disagree, and the request's target is ignored.
+func TestRuleTargetForSuggestionTakesTheDraftsTarget(t *testing.T) {
+	t.Parallel()
+
+	rule := &v1pb.QualityRule{
+		Title:  "orders row count",
+		Target: &v1pb.QualityTarget{MetaGuid: "stale;target", MetaType: v1pb.MetaType_VIEW},
+	}
+	suggestion := &store.QualitySuggestionMessage{
+		TargetGUID: "instance_1;shop;public;orders",
+		TargetType: storepb.MetaType_TABLE,
+	}
+	target := ruleTargetForSuggestion(rule, suggestion)
+	require.Equal(t, "instance_1;shop;public;orders", target.GetMetaGuid())
+	require.Equal(t, v1pb.MetaType_TABLE, target.GetMetaType())
+
+	// Without a suggestion the request's target is the rule's target.
+	require.Same(t, rule.GetTarget(), ruleTargetForSuggestion(rule, nil))
+
+	var missing *v1pb.QualityRule
+	require.Nil(t, ruleTargetForSuggestion(missing, nil), "a rule without a target has none to create")
+}
+
+// The batch handlers validate the request envelope themselves, so a nil request is
+// refused before any store read.
+func TestBatchQualityHandlersRequireARequest(t *testing.T) {
+	t.Parallel()
+
+	service := &DataQualityService{}
+	_, err := service.BatchCreateQualityRules(t.Context(), nil)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
+	_, err = service.BatchUpdateQualitySuggestions(t.Context(), nil)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }
 
 func TestApplyColumnProfileAndLabelListFilters(t *testing.T) {

@@ -336,33 +336,40 @@ func qualityRuleStateIsValid(state storepb.QualityRuleState) bool {
 		state == storepb.QualityRuleState_QUALITY_RULE_STATE_ARCHIVED
 }
 
-// qualityRuleGUIDPrefix builds the target GUID prefix the instance/database/
-// schema/table filters select, or "" when no path filter is set. The deepest
-// filter decides the segment count; an intermediate segment may be empty (MySQL
-// has no schema segment), but a deeper filter needs its ancestors because a
-// bare name is not a GUID prefix.
-func qualityRuleGUIDPrefix(find *FindQualityRuleMessage) (string, error) {
+// metaGUIDPrefix builds the target GUID prefix the instance/database/schema/
+// table filters select, or "" when no path filter is set. The deepest filter
+// decides the segment count; an intermediate segment may be empty (MySQL has no
+// schema segment), but a deeper filter needs its ancestors because a bare name
+// is not a GUID prefix. Rules and suggestions filter the same way, so the rule
+// applies to both.
+func metaGUIDPrefix(instance, database, schema, table string) (string, error) {
 	switch {
-	case find.TablePrefix != "":
-		if find.Instance == "" || find.Database == "" {
+	case table != "":
+		if instance == "" || database == "" {
 			return "", common.Errorf(common.Invalid, "a table filter requires instance and database")
 		}
-		return common.BuildMetaGUID(find.Instance, find.Database, find.Schema, find.TablePrefix), nil
-	case find.Schema != "":
-		if find.Instance == "" || find.Database == "" {
+		return common.BuildMetaGUID(instance, database, schema, table), nil
+	case schema != "":
+		if instance == "" || database == "" {
 			return "", common.Errorf(common.Invalid, "a schema filter requires instance and database")
 		}
-		return common.BuildMetaGUID(find.Instance, find.Database, find.Schema), nil
-	case find.Database != "":
-		if find.Instance == "" {
+		return common.BuildMetaGUID(instance, database, schema), nil
+	case database != "":
+		if instance == "" {
 			return "", common.Errorf(common.Invalid, "a database filter requires instance")
 		}
-		return common.BuildMetaGUID(find.Instance, find.Database), nil
-	case find.Instance != "":
-		return common.BuildMetaGUID(find.Instance), nil
+		return common.BuildMetaGUID(instance, database), nil
+	case instance != "":
+		return common.BuildMetaGUID(instance), nil
 	default:
 		return "", nil
 	}
+}
+
+// qualityRuleGUIDPrefix builds the target GUID prefix the rule list path filters
+// select.
+func qualityRuleGUIDPrefix(find *FindQualityRuleMessage) (string, error) {
+	return metaGUIDPrefix(find.Instance, find.Database, find.Schema, find.TablePrefix)
 }
 
 // buildQualityRuleWhere renders the filter as a SQL predicate plus its

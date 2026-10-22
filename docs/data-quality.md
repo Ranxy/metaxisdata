@@ -61,6 +61,11 @@ drift), because those objects have no column-level type authority.
   stay unjudged until the rule is saved again. Use *Fill from target* to record
   the current definition.
 
+Rules can also start from a model draft: open **Data Quality → Suggestions**, use
+**Draft with AI** to pick one or more tables and describe the check once, then
+review the queued drafts and create them in bulk. The editor's **Draft with AI**
+button remains the shortcut for the table you are already editing.
+
 ## Browsing rules
 
 Data Quality → Rules lists every rule with its target and latest execution. The
@@ -130,10 +135,34 @@ labels. *Profile columns* computes null counts, distinct counts, extremes,
 lengths, frequent values and value shapes with two queries; *Suggest labels*
 asks the model to name each column's semantic type and proposes rule drafts from
 a fixed mapping. Both only produce suggestions — nothing becomes a rule until a
-person accepts and saves it.
+person creates the rule.
 
-The **Suggestions** page is the review queue: label proposals (accepting one
-writes the label) and rule drafts (opening one pre-fills the editor).
+The **Suggestions** page is the review center. Suggestions arrive from two places:
+
+- **Draft with AI** on the Suggestions page: pick one or more tables (a single
+  target can also limit its columns), describe in your own words what must hold,
+  and run the draft. The model proposes rule drafts per target; each target is
+  reported separately, so one failure does not cancel the rest.
+- **Suggest labels** on a table's Data Quality tab: profile the columns first,
+  then let the model name their semantic types and propose the deterministic rule
+  types those labels imply.
+
+The queue groups suggestions by target table and filters by status, kind, source
+and target scope. Select any number of rows to work in bulk:
+
+- **Rule drafts** — *Create rules* opens one dialog where you set a schedule,
+  severity and owner for the whole selection; expand a row to edit its title,
+  severity or parameters. One submit creates them all, and each rule is reported
+  separately: a draft that cannot compile is reported with its error and stays
+  pending while the rest are created. Creating a rule accepts its draft.
+  *Ignore drafts* records a rejection instead.
+- **Column labels** — *Accept labels* writes the semantic labels immediately;
+  *Reject labels* discards them. Accepting a label does not touch data.
+
+A single row can also be opened in the editor or turned into a rule on its own.
+Decided suggestions stay visible under *All statuses* with who decided them and
+their note. Nothing the model proposes is enabled or executed without a person
+creating the rule, and the model never sees raw sample rows.
 
 ## Settings
 

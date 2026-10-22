@@ -215,6 +215,63 @@ func qualityRowCountConfig(minRows int64) *v1pb.QualityRuleConfig {
 	}}}
 }
 
+// seedSuggestion stores one pending suggestion directly: the LLM RPCs are off by
+// default, so the review-queue scenarios seed the rows a model would have
+// proposed.
+func (f *qualityFixture) seedSuggestion(t *testing.T, kind storepb.QualitySuggestionKind, payload *storepb.QualitySuggestionPayload) *store.QualitySuggestionMessage {
+	t.Helper()
+
+	resourceID, err := common.RandomString(12)
+	require.NoError(t, err)
+	suggestion, err := f.env.Store.CreateQualitySuggestion(f.ctx, &store.QualitySuggestionMessage{
+		ResourceID:    resourceID,
+		Kind:          kind,
+		Source:        storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE,
+		TargetGUID:    f.usersGUID,
+		TargetType:    storepb.MetaType_TABLE,
+		Payload:       payload,
+		Status:        storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
+		Provider:      "profiles/integration",
+		Model:         "integration-model",
+		PromptVersion: "dq.rule_draft.v1",
+	})
+	require.NoError(t, err)
+	return suggestion
+}
+
+// qualityDraftSuggestionPayload builds a pending rule-draft payload: a row-count
+// rule the fixture table satisfies.
+func qualityDraftSuggestionPayload(title string) *storepb.QualitySuggestionPayload {
+	minRows := int64(1)
+	return &storepb.QualitySuggestionPayload{Payload: &storepb.QualitySuggestionPayload_Rule{
+		Rule: &storepb.QualityRuleDraftConfig{
+			Title:      title,
+			Rationale:  "the fixture table always has at least one row",
+			Confidence: 0.9,
+			Severity:   storepb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+			Config: &storepb.QualityRuleConfig{
+				Config: &storepb.QualityRuleConfig_RowCount{RowCount: &storepb.RowCountConfig{MinRows: &minRows}},
+			},
+		},
+	}}
+}
+
+// qualityLabelSuggestionPayload builds a pending semantic-label proposal.
+func qualityLabelSuggestionPayload(column string, label storepb.QualitySemanticType) *storepb.QualitySuggestionPayload {
+	return &storepb.QualitySuggestionPayload{Payload: &storepb.QualitySuggestionPayload_Label{
+		Label: &storepb.SemanticLabelSuggestion{
+			Column:     column,
+			Label:      label,
+			Confidence: 0.8,
+		},
+	}}
+}
+
+// qualitySuggestionResourceName renders one suggestion's public resource name.
+func qualitySuggestionResourceName(workspaceID, resourceID string) string {
+	return common.FormatWorkspace(workspaceID) + "/qualitySuggestions/" + resourceID
+}
+
 // TestDataQualityRuleLifecycleRealServerIntegration drives one rule from creation
 // through preview, execution, result reading, revision bump and archival, which is
 // the whole M1.4 surface against the real runner.
@@ -574,6 +631,204 @@ func TestDataQualityLLMAnalysisIsOffByDefaultRealServerIntegration(t *testing.T)
 		Language:  "en",
 	}))
 	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err), "LLM analysis is disabled by default: %v", err)
+}
+
+// TestDataQualitySuggestionCenterRealServerIntegration covers the suggestion
+// center's batch surface: creating rules from drafts (single and batch), reading
+// and filtering the queue, and deciding many suggestions in one call.
+func TestDataQualitySuggestionCenterRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	fixture := setupQualityMySQLFixture(t, true)
+	token := fixture.env.AdminToken()
+	client := fixture.dataQuality
+
+	workspaceID, err := fixture.env.Store.GetWorkspaceID(fixture.ctx)
+	require.NoError(t, err)
+	name := func(suggestion *store.QualitySuggestionMessage) string {
+		return qualitySuggestionResourceName(workspaceID, suggestion.ResourceID)
+	}
+
+	draftValid := fixture.seedSuggestion(t, storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT,
+		qualityDraftSuggestionPayload("users row count"))
+	draftInvalid := fixture.seedSuggestion(t, storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT,
+		qualityDraftSuggestionPayload("a draft whose rule request is invalid"))
+	draftSingle := fixture.seedSuggestion(t, storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT,
+		qualityDraftSuggestionPayload("a draft created through CreateQualityRule"))
+	labelSuggestion := fixture.seedSuggestion(t, storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_LABEL,
+		qualityLabelSuggestionPayload("name", storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_FREE_TEXT))
+
+	// An empty batch is a malformed request and fails the whole call.
+	_, err = client.BatchCreateQualityRules(fixture.ctx, withToken(token, &v1pb.BatchCreateQualityRulesRequest{
+		Parent: "workspaces/-",
+	}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
+	// Batch creation: the valid item creates its rule and accepts its draft; the
+	// invalid item fails on its own and leaves its draft pending for a reviewer.
+	batch, err := client.BatchCreateQualityRules(fixture.ctx, withToken(token, &v1pb.BatchCreateQualityRulesRequest{
+		Parent: "workspaces/-",
+		Requests: []*v1pb.CreateQualityRuleRequest{
+			{
+				Parent: "workspaces/-",
+				Rule: &v1pb.QualityRule{
+					Title:     "batch row count from a draft",
+					Dimension: v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+					RuleType:  v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+					Target:    &v1pb.QualityTarget{MetaGuid: fixture.usersGUID, MetaType: v1pb.MetaType_TABLE},
+					Config:    qualityRowCountConfig(1),
+					Severity:  v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+				},
+				Suggestion: name(draftValid),
+			},
+			{
+				Parent: "workspaces/-",
+				Rule: &v1pb.QualityRule{
+					Title:     "batch row count with an invalid config",
+					Dimension: v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+					RuleType:  v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+					Target:    &v1pb.QualityTarget{MetaGuid: fixture.usersGUID, MetaType: v1pb.MetaType_TABLE},
+					// No bound at all: the server refuses this item on its own.
+					Config:   &v1pb.QualityRuleConfig{Config: &v1pb.QualityRuleConfig_RowCount{RowCount: &v1pb.RowCountConfig{}}},
+					Severity: v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+				},
+				Suggestion: name(draftInvalid),
+			},
+		},
+	}))
+	require.NoError(t, err)
+	require.Len(t, batch.Msg.GetResults(), 2, "one result per request, in request order")
+	created := batch.Msg.GetResults()[0].GetRule()
+	require.NotNil(t, created, "the valid item created a rule")
+	require.Empty(t, batch.Msg.GetResults()[0].GetError())
+	require.Equal(t, fixture.usersGUID, created.GetTarget().GetMetaGuid())
+	require.Nil(t, batch.Msg.GetResults()[1].GetRule(), "a failed item reports no rule")
+	require.NotEmpty(t, batch.Msg.GetResults()[1].GetError())
+
+	// The created rule exists, it is not just echoed in the response.
+	read, err := client.GetQualityRule(fixture.ctx, withToken(token, &v1pb.GetQualityRuleRequest{Name: created.GetName()}))
+	require.NoError(t, err)
+	require.Equal(t, created.GetName(), read.Msg.GetName())
+	require.Equal(t, fixture.usersGUID, read.Msg.GetTarget().GetMetaGuid())
+
+	// The accepted draft is decided as a side effect; the failed item's draft is
+	// still waiting for a reviewer.
+	acceptedDraft, err := client.GetQualitySuggestion(fixture.ctx, withToken(token, &v1pb.GetQualitySuggestionRequest{Name: name(draftValid)}))
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED, acceptedDraft.Msg.GetStatus())
+	require.Equal(t, fixture.usersGUID, acceptedDraft.Msg.GetTarget().GetMetaGuid())
+
+	pendingDraft, err := client.GetQualitySuggestion(fixture.ctx, withToken(token, &v1pb.GetQualitySuggestionRequest{Name: name(draftInvalid)}))
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING, pendingDraft.Msg.GetStatus())
+
+	// A deep link that names no suggestion is NotFound instead of a list read.
+	_, err = client.GetQualitySuggestion(fixture.ctx, withToken(token, &v1pb.GetQualitySuggestionRequest{
+		Name: qualitySuggestionResourceName(workspaceID, "doesnotexist"),
+	}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+
+	// Creating a rule from a suggestion takes the draft's target: the request's
+	// own target is ignored.
+	single, err := client.CreateQualityRule(fixture.ctx, withToken(token, &v1pb.CreateQualityRuleRequest{
+		Parent: "workspaces/-",
+		Rule: &v1pb.QualityRule{
+			Title:     "direct create from a draft",
+			Dimension: v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+			RuleType:  v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+			Target:    &v1pb.QualityTarget{MetaGuid: "ignored;target", MetaType: v1pb.MetaType_VIEW},
+			Config:    qualityRowCountConfig(1),
+			Severity:  v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		},
+		Suggestion: name(draftSingle),
+	}))
+	require.NoError(t, err)
+	require.Equal(t, fixture.usersGUID, single.Msg.GetTarget().GetMetaGuid())
+	require.Equal(t, v1pb.MetaType_TABLE, single.Msg.GetTarget().GetMetaType())
+
+	decidedDraft, err := client.GetQualitySuggestion(fixture.ctx, withToken(token, &v1pb.GetQualitySuggestionRequest{Name: name(draftSingle)}))
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED, decidedDraft.Msg.GetStatus())
+
+	// The path filters are GUID prefixes. All seeded suggestions share this
+	// fixture's table GUID, so the filters narrow to them and nothing else.
+	list := func(t *testing.T, request *v1pb.ListQualitySuggestionsRequest) []*v1pb.QualitySuggestion {
+		t.Helper()
+		request.Parent = "workspaces/-"
+		request.PageSize = 100
+		resp, err := client.ListQualitySuggestions(fixture.ctx, withToken(token, request))
+		require.NoError(t, err)
+		return resp.Msg.GetQualitySuggestions()
+	}
+
+	require.Len(t, list(t, &v1pb.ListQualitySuggestionsRequest{TargetGuid: fixture.usersGUID}), 4)
+	require.Len(t, list(t, &v1pb.ListQualitySuggestionsRequest{Instance: fixture.instanceID}), 4)
+	require.Len(t, list(t, &v1pb.ListQualitySuggestionsRequest{Instance: common.FormatInstance(fixture.instanceID)}), 4,
+		"an instance resource name is accepted as its GUID segment")
+	require.Len(t, list(t, &v1pb.ListQualitySuggestionsRequest{
+		Instance: fixture.instanceID,
+		Database: fixture.sourceDatabase,
+	}), 4)
+
+	tableRequest := func(table string) *v1pb.ListQualitySuggestionsRequest {
+		return &v1pb.ListQualitySuggestionsRequest{
+			Instance: fixture.instanceID,
+			Database: fixture.sourceDatabase,
+			Table:    table,
+		}
+	}
+	require.Len(t, list(t, tableRequest("users")), 4, "a table filter selects that table's suggestions")
+	require.Empty(t, list(t, tableRequest("orders")), "the fixture's other table has no suggestions")
+
+	pending := list(t, &v1pb.ListQualitySuggestionsRequest{
+		TargetGuid: fixture.usersGUID,
+		Status:     v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
+	})
+	require.Len(t, pending, 2, "the invalid item's draft and the label are still pending")
+
+	// Batch decisions: accepting the label writes the column label; rejecting the
+	// remaining draft succeeds in the same call.
+	decisions, err := client.BatchUpdateQualitySuggestions(fixture.ctx, withToken(token, &v1pb.BatchUpdateQualitySuggestionsRequest{
+		Parent: "workspaces/-",
+		Requests: []*v1pb.UpdateQualitySuggestionRequest{
+			{Name: name(labelSuggestion), Decision: v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED,
+				DecisionNote: "matches the profile"},
+			{Name: name(draftInvalid), Decision: v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_REJECTED},
+		},
+	}))
+	require.NoError(t, err)
+	require.Len(t, decisions.Msg.GetResults(), 2)
+	require.Equal(t, v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED, decisions.Msg.GetResults()[0].GetSuggestion().GetStatus())
+	require.Equal(t, v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_REJECTED, decisions.Msg.GetResults()[1].GetSuggestion().GetStatus())
+
+	labels, err := client.ListColumnLabels(fixture.ctx, withToken(token, &v1pb.ListColumnLabelsRequest{
+		Parent:    "workspaces/-",
+		TableGuid: fixture.usersGUID,
+		MetaType:  v1pb.MetaType_TABLE,
+	}))
+	require.NoError(t, err)
+	require.Len(t, labels.Msg.GetColumnLabels(), 1, "accepting a label suggestion asserts the label")
+	require.Equal(t, "name", labels.Msg.GetColumnLabels()[0].GetColumn())
+	require.Equal(t, v1pb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_FREE_TEXT, labels.Msg.GetColumnLabels()[0].GetLabel())
+	require.Equal(t, v1pb.QualityLabelSource_QUALITY_LABEL_SOURCE_LLM, labels.Msg.GetColumnLabels()[0].GetSource())
+
+	// Re-deciding fails per item (already decided / not found) without failing the
+	// batch: the response is a success with one error string per bad item.
+	redone, err := client.BatchUpdateQualitySuggestions(fixture.ctx, withToken(token, &v1pb.BatchUpdateQualitySuggestionsRequest{
+		Parent: "workspaces/-",
+		Requests: []*v1pb.UpdateQualitySuggestionRequest{
+			{Name: name(labelSuggestion), Decision: v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED},
+			{Name: qualitySuggestionResourceName(workspaceID, "doesnotexist"), Decision: v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_REJECTED},
+		},
+	}))
+	require.NoError(t, err)
+	require.Len(t, redone.Msg.GetResults(), 2)
+	require.Nil(t, redone.Msg.GetResults()[0].GetSuggestion())
+	require.Contains(t, redone.Msg.GetResults()[0].GetError(), "already decided")
+	require.Nil(t, redone.Msg.GetResults()[1].GetSuggestion())
+	require.Contains(t, redone.Msg.GetResults()[1].GetError(), "not found")
 }
 
 // qualityRuleNames returns the resource names of a rule page.

@@ -354,13 +354,33 @@ func (s *DataQualityService) CreateQualityRule(ctx context.Context, req *connect
 	if err != nil {
 		return nil, err
 	}
-	rule := req.Msg.GetRule()
+	created, err := s.createQualityRuleFromRequest(ctx, workspaceID, req.Msg.GetRule(), req.Msg.GetSuggestion())
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(created), nil
+}
+
+// createQualityRuleFromRequest implements the one create path. When suggestion
+// names a pending rule draft, the draft supplies the target (the request's target
+// is ignored) and is accepted once the rule exists.
+func (s *DataQualityService) createQualityRuleFromRequest(ctx context.Context, workspaceID string, rule *v1pb.QualityRule, suggestionName string) (*v1pb.QualityRule, error) {
 	if rule == nil {
 		return nil, connectErrorInvalid("the rule is required")
 	}
 	if strings.TrimSpace(rule.GetTitle()) == "" {
 		return nil, connectErrorInvalid("title is required")
 	}
+
+	var suggestion *store.QualitySuggestionMessage
+	if name := strings.TrimSpace(suggestionName); name != "" {
+		loaded, err := s.pendingRuleDraftSuggestion(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+		suggestion = loaded
+	}
+
 	settings, settingsErr := dataquality.LoadSettings(ctx, s.store)
 	if settingsErr != nil {
 		return nil, errLoadQualitySettings(settingsErr)
@@ -370,7 +390,7 @@ func (s *DataQualityService) CreateQualityRule(ctx context.Context, req *connect
 		return nil, err
 	}
 	config := convertQualityRuleConfigFromV1(rule.GetConfig())
-	target := rule.GetTarget()
+	target := ruleTargetForSuggestion(rule, suggestion)
 	if target == nil {
 		return nil, connectErrorInvalid("target is required")
 	}
@@ -425,7 +445,60 @@ func (s *DataQualityService) CreateQualityRule(ctx context.Context, req *connect
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the quality rule")
 	}
-	return connect.NewResponse(convertQualityRule(workspaceID, created)), nil
+	if suggestion != nil {
+		s.acceptRuleDraftSuggestion(ctx, suggestion)
+	}
+	return convertQualityRule(workspaceID, created), nil
+}
+
+// pendingRuleDraftSuggestion loads the rule draft a rule is created from and
+// proves it is still undecided: a decided draft is a conflict, not a second
+// accept.
+func (s *DataQualityService) pendingRuleDraftSuggestion(ctx context.Context, name string) (*store.QualitySuggestionMessage, error) {
+	_, resourceID, err := s.qualitySuggestionResourceID(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	suggestion, err := s.fetchQualitySuggestion(ctx, resourceID)
+	if err != nil {
+		return nil, err
+	}
+	if suggestion.Kind != storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT {
+		return nil, connectErrorInvalid("quality suggestion %q is not a rule draft", resourceID)
+	}
+	if suggestion.Status != storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING {
+		return nil, connect.NewError(connect.CodeAborted,
+			errors.Errorf("quality suggestion %q is already decided", resourceID))
+	}
+	return suggestion, nil
+}
+
+// ruleTargetForSuggestion returns the identity a new rule is created for: the
+// draft's target when the rule comes from a suggestion, else the request's. The
+// request's own target is ignored for a draft because a draft can only become the
+// rule it was written for.
+func ruleTargetForSuggestion(rule *v1pb.QualityRule, suggestion *store.QualitySuggestionMessage) *v1pb.QualityTarget {
+	if suggestion == nil {
+		return rule.GetTarget()
+	}
+	return &v1pb.QualityTarget{
+		MetaGuid: suggestion.TargetGUID,
+		MetaType: v1pb.MetaType(suggestion.TargetType),
+	}
+}
+
+// acceptRuleDraftSuggestion records that a rule was created from a suggestion.
+// The rule exists by now, so a failed decision cannot roll it back: it is logged
+// and the reviewer can decide the suggestion explicitly.
+func (s *DataQualityService) acceptRuleDraftSuggestion(ctx context.Context, suggestion *store.QualitySuggestionMessage) {
+	_, err := s.store.DecideQualitySuggestion(ctx, suggestion.ResourceID,
+		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED,
+		int32(currentUserID(ctx)), "", time.Now())
+	if err != nil {
+		slog.Warn("failed to accept the quality suggestion a rule was created from",
+			slog.String("suggestion", suggestion.ResourceID),
+			slog.Any("error", err))
+	}
 }
 
 // UpdateQualityRule applies the update mask to one rule, revalidating the
@@ -1535,6 +1608,32 @@ func (s *DataQualityService) qualitySuggestionResourceID(ctx context.Context, na
 	return workspace, resourceID, nil
 }
 
+// fetchQualitySuggestion reads one suggestion by resource id, reporting a
+// missing row as NotFound.
+func (s *DataQualityService) fetchQualitySuggestion(ctx context.Context, resourceID string) (*store.QualitySuggestionMessage, error) {
+	suggestion, err := s.store.GetQualitySuggestion(ctx, &store.FindQualitySuggestionMessage{ResourceID: &resourceID})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the quality suggestion")
+	}
+	if suggestion == nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("quality suggestion %q not found", resourceID))
+	}
+	return suggestion, nil
+}
+
+// GetQualitySuggestion reads one queued suggestion.
+func (s *DataQualityService) GetQualitySuggestion(ctx context.Context, req *connect.Request[v1pb.GetQualitySuggestionRequest]) (*connect.Response[v1pb.QualitySuggestion], error) {
+	workspaceID, resourceID, err := s.qualitySuggestionResourceID(ctx, req.Msg.GetName())
+	if err != nil {
+		return nil, err
+	}
+	suggestion, err := s.fetchQualitySuggestion(ctx, resourceID)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(convertQualitySuggestion(workspaceID, suggestion)), nil
+}
+
 // ListQualitySuggestions lists the review queue, newest first.
 func (s *DataQualityService) ListQualitySuggestions(ctx context.Context, req *connect.Request[v1pb.ListQualitySuggestionsRequest]) (*connect.Response[v1pb.ListQualitySuggestionsResponse], error) {
 	workspaceID, err := s.workspaceID(ctx, req.Msg.GetParent())
@@ -1574,6 +1673,16 @@ func (s *DataQualityService) ListQualitySuggestions(ctx context.Context, req *co
 // applyQualitySuggestionListFilters maps the review-queue filters onto the store
 // filter.
 func applyQualitySuggestionListFilters(find *store.FindQualitySuggestionMessage, request *v1pb.ListQualitySuggestionsRequest) error {
+	// The four path filters are GUID prefixes, the same shape as the rule list:
+	// the instance is a GUID segment, so an "instances/{instance}" name is accepted
+	// too.
+	if instance := strings.TrimSpace(request.GetInstance()); instance != "" {
+		find.Instance = qualityInstanceSegment(instance)
+	}
+	find.Database = strings.TrimSpace(request.GetDatabase())
+	find.Schema = strings.TrimSpace(request.GetSchema())
+	find.TablePrefix = strings.TrimSpace(request.GetTable())
+
 	switch status := storepb.QualitySuggestionStatus(request.GetStatus()); status {
 	case storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_UNSPECIFIED:
 	case storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
@@ -1610,16 +1719,26 @@ func applyQualitySuggestionListFilters(find *store.FindQualitySuggestionMessage,
 
 // UpdateQualitySuggestion accepts or rejects one queued suggestion.
 func (s *DataQualityService) UpdateQualitySuggestion(ctx context.Context, req *connect.Request[v1pb.UpdateQualitySuggestionRequest]) (*connect.Response[v1pb.QualitySuggestion], error) {
-	workspaceID, resourceID, err := s.qualitySuggestionResourceID(ctx, req.Msg.GetName())
+	updated, err := s.decideQualitySuggestion(ctx, req.Msg.GetName(), req.Msg.GetDecision(), req.Msg.GetDecisionNote())
 	if err != nil {
 		return nil, err
 	}
-	decision, err := qualitySuggestionDecision(req.Msg.GetDecision())
+	return connect.NewResponse(updated), nil
+}
+
+// decideQualitySuggestion records one decision and performs its side effects, so
+// the single and batch RPCs share the label-upsert and conflict behavior.
+func (s *DataQualityService) decideQualitySuggestion(ctx context.Context, name string, decision v1pb.QualitySuggestionStatus, note string) (*v1pb.QualitySuggestion, error) {
+	workspaceID, resourceID, err := s.qualitySuggestionResourceID(ctx, name)
 	if err != nil {
 		return nil, err
 	}
-	updated, err := s.store.DecideQualitySuggestion(ctx, resourceID, decision, int32(currentUserID(ctx)),
-		req.Msg.GetDecisionNote(), time.Now())
+	status, err := qualitySuggestionDecision(decision)
+	if err != nil {
+		return nil, err
+	}
+	updated, err := s.store.DecideQualitySuggestion(ctx, resourceID, status, int32(currentUserID(ctx)),
+		note, time.Now())
 	if err != nil {
 		// A suggestion another reviewer already decided is Aborted for the
 		// client, not the AlreadyExists the shared code mapping would produce.
@@ -1632,7 +1751,7 @@ func (s *DataQualityService) UpdateQualitySuggestion(ctx context.Context, req *c
 	// the rest of the product reads. The decision is already durable at this point,
 	// so a failed label write cannot be rolled back; it is surfaced as Internal with
 	// a retry path (UpdateColumnLabel) instead of silently dropping the label.
-	if decision == storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED &&
+	if status == storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED &&
 		updated.Kind == storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_LABEL {
 		now := time.Now().UTC()
 		label, err := labelSuggestionToLabelMessage(updated, principalIDPointer(currentUserID(ctx)), now)
@@ -1645,9 +1764,10 @@ func (s *DataQualityService) UpdateQualitySuggestion(ctx context.Context, req *c
 				"the suggestion was accepted but its label could not be stored; retry the column label with UpdateColumnLabel"))
 		}
 	}
-	// Accepting a rule draft only records the decision: the reviewer opens the
-	// editor with the draft and saves the rule through the normal rule path.
-	return connect.NewResponse(convertQualitySuggestion(workspaceID, updated)), nil
+	// Accepting a rule draft only records the decision: the reviewer creates the
+	// rule through the normal rule path (optionally in the same request, see
+	// CreateQualityRuleRequest.suggestion).
+	return convertQualitySuggestion(workspaceID, updated), nil
 }
 
 // qualitySuggestionDecision validates the decision enum: a suggestion is only

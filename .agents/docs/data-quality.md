@@ -62,6 +62,11 @@ SPA ──ConnectRPC──► DataQualityService (api/v1) ──► component/da
 | D-34 | 画像的聚合事实**由同一张类型能力表推导**（D-35），不再单独维护白名单：`COUNT(DISTINCT)`/`MIN`/`MAX`/长度分别取 `countDistinct`/`extrema`/`length`；非空计数优先 `COUNT(col)`，只有 `noColumnCount`（MSSQL text/ntext/image）才用 `COUNT(CASE WHEN col IS NOT NULL …)`。distinct 无精确能力时取自样本并标 `distinct_estimated`；样式只对 `text` 类型取；`binary` 类型（MSSQL binary/varbinary/image/uniqueidentifier/hierarchyid、MySQL binary/varbinary/blob/空间、PG bytea、SR varbinary、bitmap/hll、Doris bitmap/hll）的极值与 Top 值**一律**以 `0x…` 展示（既避开 protojson 的 UTF-8 限制，也避免字节串与 ASCII `0x…` 碰撞）。PG 数组按**元素的 btree 排序能力**推导（仅“可比较”不够：`box[]` 会报 `could not identify a comparison function`），表数组 `_int4`、物化视图 `integer[]`/`character varying[]` 一致处理；PG 数组统一按 String 归类以便绑定数组字面量 | `MIN(jsonb)`/`CHAR_LENGTH(jsonb)`/`COUNT(text)`/`COUNT(CASE … bitmap)` 这类整表语句错误不再出现；jsonb/uuid/数组保留精确 distinct；MSSQL binary 类、MySQL JSON 保持可测统计；macaddr/macaddr8 不再伪造 MIN/MAX；Doris DECIMAL（`decimalv3`）归为 numeric |
 | D-35 | 规则保存期按**逐项能力**校验，而不是只比 `ColumnKind`：`comparison`（filter/accepted_values/null_values/referential join）、`grouping`（unique/unique_combination/group_check 的 GROUP BY）、`countDistinct`（画像精确 distinct）、`regex`、`length`、`extrema`（MIN/MAX）、`text`（画像样式），外加 `noColumnCount`/`noNullTest` 两个否定例外，按引擎族维护**允许表**（未列出即拒绝：保存期报错，而不是运行期整条 SQL 失败）。普通 `null_percent`、`IS [NOT] NULL` filter 需要 NULL 判定能力，`unique`/`unique_combination` 在 `count_nulls=false`（会生成 `IS NOT NULL`）时也需要，`group_check` 不需要；只有 StarRocks bitmap/hll/percentile 拒绝（Doris 4.1.4 实测可以 `IS NULL`，故不设该限制）。`comparison` 表示列与列可比较（referential join）；filter/accepted_values/null_values 另外要求 `valueComparison`（标量值可绑定），**数组只能列与列比较**，不能绑定标量。PG 的 schema-qualified 用户自定义类型保留历史规则允许面（enum 的 `= $1`/GROUP BY 可用；composite 谓词绑定是已记录的前置限制），画像只数非空、不声称精确 distinct/MIN/MAX；`referential_integrity` 还要求两侧类型兼容；`cross_table` 保存期解析右表（TABLE/EXTERNAL_TABLE/VIEW/MATERIALIZED_VIEW），**任何非 COUNT 聚合列（左右两侧）必须是 numeric**；`aggregate` 的 MIN/MAX 同样只接受 numeric（观测值按数值读取，时间戳会 BAD_DATA），PG money 只允许 SUM/MIN/MAX（AVG/STDDEV/PERCENTILE 引擎未定义），money 字符串按“最后一个分隔符是小数点”解析（兼容逗号小数 locale） | PG 的 json/xml/几何类型不再被生成不可执行的 SQL；`box` 允许比较但不允许分组，`box[]`/`line[]` 等几何数组直接零能力；`macaddr/macaddr8` 比较/分组/`COUNT(DISTINCT)`（无 MIN/MAX）；MSSQL text/ntext/image 不再被 COUNT/LEN/比较、binary/uniqueidentifier/hierarchyid 统计完整且按 hex 展示；StarRocks JSON 允许比较、拒绝 GROUP BY/REGEXP，bitmap/hll 拒绝 NULL 判定但保留 `COUNT(DISTINCT)` 画像；Doris JSON 允许 GROUP BY/REGEXP/长度、拒绝比较与 COUNT(DISTINCT)；MySQL JSON 比较被拒（绑定字符串永不等于 JSON 值），MySQL 空间类型的 REGEXP/长度按 WKB 字节解释因而拒绝；PG `bit` 按位串（String）而非布尔归类，参数可绑定；PG money 字符串（`$1.23`）在聚合观测里剥离货币符号后解析 |
 
+| D-36 | 建议队列升级为“建议中心”：AI 起草是一等入口（可选多个目标、按目标顺序生成，单目标可限定列），规则编辑器保留上下文快捷入口；生成结果仍只入队 PENDING 建议 | 生成复用 L1/L3 RPC 与配额，前端顺序调用，不新增“生成批次”实体或生成 RPC；队列按目标表分组（GUID 路径分段 + 实例标题展示），不新增列/迁移 |
+| D-37 | 批量创建规则走新 `BatchCreateQualityRules`（≤200 项，逐项校验/落库，结果按请求顺序返回）；`CreateQualityRuleRequest.suggestion` 让“从建议创建”成为一次请求：目标取自建议、规则落库后接受建议，决策失败只记日志不回滚 | 建议的接受是创建规则的副作用；批量非原子，单项失败不中止其余；审计一次调用一行；仍受每表 100/每工作区 1000 条上限与 READ_ONLY 源校验 |
+| D-38 | 批量决策走新 `BatchUpdateQualitySuggestions`（≤200 项，逐项独立）；接受 LABEL 仍立即写标注；已决/不存在的项作为该项错误返回而非整批失败 | 单条 `UpdateQualitySuggestion` 语义不变（已决仍 `Aborted`）；批量与单条共享决策/标注路径 |
+| D-39 | 建议列表新增 instance/database/schema/table GUID 前缀过滤（与规则列表同形），并新增 `GetQualitySuggestion` 供深链；`target_guid` 过滤改为等值或子树匹配 | 复用 `metaGUIDPrefix`/`appendGUIDSubtreeCondition`，无迁移；表/视图目标下与精确匹配等价；编辑器 `?suggestion=` 不再全量扫描队列 |
+
 ## 2. 工作负载形状
 
 ### 2.1 实体与资源名
@@ -195,21 +200,22 @@ meta_registry_resource（只读）──< quality_rule >──< quality_rule_rev
 
 ### 3.6 API、权限与审计
 
-- `DataQualityService`（`proto/v1/v1/data_quality_service.proto`）共 22 个 RPC：规则 CRUD/预览/手动执行（7）、执行列表/详情（2）、问题列表/详情/处置（3）、画像与标注列表/写入（4）、建议列表/决策（2）、三个 LLM 入口（3），以及聚合读 `GetQualityOverview`（1）。手动执行返回按规则规划的执行；没有 run/result 的 RPC 或消息。
-- 分页统一 `parseLimitAndOffset`（offset token），页上限 1000；手动执行选择集 ≤200 条；规则列表的 instance/database/schema/table 是 **GUID 前缀**过滤，`search` 只匹配 title/description；列表可按 `rule_type`、dimension、severity、state、owner/owner_unassigned 过滤。执行列表可按 rule/target_guid/state/outcome/trigger/instance/initiator/start/end 过滤。
+- `DataQualityService`（`proto/v1/v1/data_quality_service.proto`）共 25 个 RPC：规则 CRUD/预览/手动执行（7）+ 批量创建（1）、执行列表/详情（2）、问题列表/详情/处置（3）、画像与标注列表/写入（4）、建议列表/详情/决策/批量决策（4）、三个 LLM 入口（3），以及聚合读 `GetQualityOverview`（1）。手动执行返回按规则规划的执行；没有 run/result 的 RPC 或消息。
+- 分页统一 `parseLimitAndOffset`（offset token），页上限 1000；手动执行选择集 ≤200 条；规则列表的 instance/database/schema/table 是 **GUID 前缀**过滤，`search` 只匹配 title/description；列表可按 `rule_type`、dimension、severity、state、owner/owner_unassigned 过滤。执行列表可按 rule/target_guid/state/outcome/trigger/instance/initiator/start/end 过滤。建议列表同样按 instance/database/schema/table（GUID 前缀）与 status/kind/source/target_guid 过滤；两个批量 RPC 各 ≤200 项，结果与请求同序、逐项独立。
 - 概览（`GetQualityOverview`）：`rule_count` = ENABLED+PAUSED（不含 ARCHIVED），`monitored_table_count` = 至少一条启用规则覆盖的去重表数，打开问题按严重级别计数；`execution_count` 是最近 24 小时**规划**的执行数（含各生命周期状态），而 `last_day_counts` 与 `trend` 只统计已 `COMPLETED` 的执行（pending/running/abandoned 不进趋势），`failing_rule_count` 只算最近 24 小时有 FAIL 执行的规则（`ERROR` 不算）。
 - 错误映射：参数/类型/编译失败 → `InvalidArgument`；目标消失 → 创建期 `NotFound`、运行期 `SKIPPED(ORPHANED)`；无只读源/LLM 未开启/无 provider → `FailedPrecondition`；配额/队列满 → `ResourceExhausted`；revision 冲突/建议已决 → `Aborted`；其余 `Internal`。
 - 权限（`metaxisdata.dataQuality.*`，15 项）：`rules.{get,list,create,update,delete,run}`、`executions.{get,list}`、`issues.{get,list,update}`、`explain`、`suggest`、`profile.run`、`labels.update`。`workspaceMember` 基线 = rules.get/list、executions.get/list、issues.get/list、explain；其余默认仅 `workspaceAdmin`/自定义角色。设置页复用 `settings.get/update`；标注的**读**复用 `rules.list`（经 `ListColumnLabels`）。
-- 审计（proto `audit=true`，每次调用 1 行）：规则创建/更新/删除、手动执行、问题处置、建议决策、画像、标注更新、三个 LLM RPC；只读列表/详情与定时执行不审计。审计行只含请求元数据，不含 LLM 正文/样本。
+- 审计（proto `audit=true`，每次调用 1 行）：规则创建/更新/删除、批量创建、手动执行、问题处置、建议决策/批量决策、画像、标注更新、三个 LLM RPC；只读列表/详情与定时执行不审计。审计行只含请求元数据，不含 LLM 正文/样本。
 - 限流：所有带审计注解的 DQ RPC 自动进入 principal 预算（`(principal, procedure)` 3000/min、部署 30000/min，见 [rate-limiting.md](rate-limiting.md)）；LLM 另有 §3.5 的配额。
 
 ### 3.7 前端与 i18n
 
 - 路由：`/data-quality`（概览）、`/rules`（列表）、`/rules/new`、`/rules/:ruleId+`（规则详情）、`/rules/:ruleId+/edit`、`/suggestions`、`/issues`、`/issues/:issueId+`、`/executions`、`/executions/:executionId+`；`/settings/data-quality` 挂在 Settings。每条路由带 permission，侧栏按权限隐藏（不置灰）。父路由 `contentWidth: "full"`。
 - 导航：侧栏第 6 组“数据质量”（概览/规则/执行/问题/建议），SettingsNav 增加“数据质量”。规则详情从规则列表标题、执行详情的规则名、问题详情的规则名与资产页质量区进入（`rules.get` 在 member 基线内，只读可见）。
-- 页面/组件：`pages/data-quality/`（概览、规则列表、规则详情、规则编辑器、执行列表/详情、问题列表/详情、建议队列）；`components/data-quality/`（状态/严重级别徽标、趋势图、最近执行状态色块条、规则表单与 filter 编辑器、失败样本、SQL 查看、建议卡、字段分析面板、AI 解释抽屉、草稿对话框、目标选择器、资产页质量区）。复用 shadcn-vue 原语，不新增 tabs 原语。
+- 页面/组件：`pages/data-quality/`（概览、规则列表、规则详情、规则编辑器、执行列表/详情、问题列表/详情、建议中心）；`components/data-quality/`（状态/严重级别徽标、趋势图、最近执行状态色块条、规则表单与 filter 编辑器、失败样本、SQL 查看、建议详情抽屉、字段分析面板、AI 解释抽屉、AI 起草工作台 `SuggestionWorkbench`、批量创建规则对话框 `BatchCreateRulesDialog`、批量决策对话框 `BatchDecideSuggestionsDialog`、目标选择器与范围筛选、资产页质量区）。复用 shadcn-vue 原语，不新增 tabs 原语。
 - 规则列表筛选：标题/描述文本、**目标范围**（实例 → 数据库 → Schema → 表/视图；复用 `TargetPicker` 的 `mode="scope"`，在任一层可停，点表/视图行直接筛到该表）、**负责人**（复用 `UserSelect`；owner 可空，所以除成员外还有“未指定”一项；成员目录一次加载后同时供选择器与列表的负责人列复用，选择器支持懒加载与预载）、**规则类型**（18 类，复用 `ListQualityRules` 的 `rule_type`；“全部类型”发 UNSPECIFIED 即不筛选）、维度、严重级别、状态；改动后点“应用”才查询。列表还显示负责人列（邮箱，未指定时显示“未指定”）。`TargetScopeFilter` 与负责人控件只持有待应用值，请求由 `ListQualityRules` 的 instance/database/schema/table（GUID 前缀）以及 owner（`users/{user}`；空表示不限）与 owner_unassigned（只取无负责人的规则，与 owner 互斥）字段承受。
 - 规则编辑器的规则类型选择：按 4 组（数量与时效 / 取值与关系 / 聚合与对账 / 结构与自定义）分组，选中项下方显示一句说明；目标为 VIEW/MATERIALIZED_VIEW 时只列出后端 `RuleTypeForTarget` 允许的 5 类（行数、行数变化、时效性、自定义 SQL、结构漂移）并显示提示；切换类型会重置 `threshold_metric`（新类型不读该字段时归零为 COUNT）；`on_empty` 仅对 `row_count`/`custom_sql`/`schema_drift` 隐藏（对它们永远无效）。规则类型名称、说明与分组都在 `dataQuality.ruleType*` 文案中维护。结构漂移的 `check_types` 文案说明类型与可空性都参与比较；若存量规则的类型不在当前目标允许集内，编辑器仍显示该类型（带视图提示），不会静默改写。
+- 建议中心（`/suggestions`）：顶部“AI 起草”打开 `SuggestionWorkbench`（页模式：可选多个目标、单一目标给列清单、必填意图、按目标顺序生成并显示逐目标进度与部分失败；编辑器模式：目标固定、结果可“填入编辑器”或忽略）；队列按目标表分组（组头显示实例标题/路径、类型、数量、组复选框与折叠），行内可“创建规则”/“接受”/查看详情，已决行只读；多选后批量条按 kind 提供“创建 N 条规则/忽略 N 条草稿”与“接受/拒绝 N 条标注”，混合选择各自只作用于对应 kind；新生成的建议刷新后保持选中，便于立即批量创建；筛选含状态（默认 PENDING）/kind/source/目标范围并显示可移除 chip；三种空状态（无待审、筛选无结果、从未生成）。规则编辑器的“用 AI 起草”复用同一工作台（目标固定），保存时用 `createQualityRule(rule, suggestionName)` 一次请求创建并接受建议；`?suggestion=` 预填改用 `GetQualitySuggestion`。
 - 执行列表：一行一条执行（state/outcome 徽标、执行 id、规则、目标、观测值、失败/总行数、trigger、耗时、开始时间）；筛选 state/outcome/trigger，跨页链接带来的 `?rule=`/`?target=` 显示为可移除 chip；offset 分页；点击行进入执行详情。
 - 执行详情：状态/六态、规则链接、目标路径、观测值/阈值、行数（含 sampled/truncated 提示）、失败样本、执行 SQL（可复制）、错误码/消息、耗时、trigger/initiator/instance/revision/engine version、开始/结束时间；`PENDING`/`RUNNING` 时轮询到终态；`FAIL`/`ERROR` 显示 AI 解释入口。
 - 规则详情的信息层级：顶部“最近结果”大状态（图标+状态词+相对时间+实际值/阈值/失败行数）→ 最近 20 次执行状态色块条（旧→新，按状态着色，点击进执行详情）→ 状态计数与通过率 → 最近执行表 → 规则定义（目标/字段/类型/维度/严重级别/负责人/调度/版本/时间/标签；负责人显示成员目录里的邮箱，未指定时显示“未指定”）。运行与编辑分别按 `rules.run`、`rules.update` 显示；“运行”后单条执行跳执行详情，多条进入按规则筛选的执行列表。
@@ -224,6 +230,7 @@ meta_registry_resource（只读）──< quality_rule >──< quality_rule_rev
 - 标注：`column_semantic_label` 唯一键 `(table_guid, table_type, column_name)`；封闭枚举 `QualitySemanticType`；`source=MANUAL|LLM`、`status`、`confidence`、`evidence`；人工标注可覆盖（Upsert），LLM 建议不自动覆盖。
 - 规则候选映射（代码固定）：`ID/BUSINESS_KEY → unique+null_percent`；`EMAIL/PHONE/URL/UUID/IP → regex+null_percent`；`COUNTRY_CODE/CURRENCY/ENUM → accepted_values`；`AMOUNT/QUANTITY → range+null_percent`；`PERCENTAGE → range(0-100)`；`TIMESTAMP/DATE → freshness+range`；`FREE_TEXT → string_length+null_percent`；`UNKNOWN → 不生成规则`。阈值为默认值，不从当前值推导。
 - 建议：`quality_suggestion(kind=RULE_DRAFT|LABEL, source=NATURAL_LANGUAGE|PROFILE, payload, status=PENDING, provider/model/prompt_version)`；决策只允许 PENDING→ACCEPTED/REJECTED（并发重复决策返回 `Conflict` → 客户端 `Aborted`），接受 LABEL 即 upsert 标注，接受 RULE_DRAFT 只改状态。
+- 建议中心（D-36…D-39）：AI 起草入口在建议中心（可对多目标顺序生成）与规则编辑器（固定目标）共用 `SuggestionWorkbench`；批量创建用 `BatchCreateQualityRules` 逐项执行正常校验链，命名 `suggestion` 的项目标取自建议并在规则落库后接受建议（决策失败只记日志），失败项返回错误且建议保持 PENDING；批量决策用 `BatchUpdateQualitySuggestions`，与单条共享标注写入路径；列表按目标表分组（GUID 分段；实例标题来自实例缓存），并支持 GUID 前缀筛选；无“生成批次”资源、无新增表/迁移。
 
 ## 4. 配置映射
 
@@ -322,6 +329,8 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | I-17 | 编译 SQL 的占位符与 `Args` 必须一起下发：`db.ReadOnlyQueryer.QueryReadOnly(ctx, sql, args, opts)`；预览、执行、画像都传各自的 args（画像无参数传 nil） | `execution_test.go` 的参数断言 + 真 server 集成场景（带 filter 的 range 规则 dry run/执行） |
 | I-18 | 内部批次的连接预算在批次开始前一次性准入，持有到查询阶段结束（持久化/通知前释放）：scheduled 拿不到 → 不建批次、规则保持 due；manual 拿不到 → 已规划的执行与批次 `ABANDONED`（无 outcome）；规则在准入后目标被改到别的实例 → 由 `ruleConnectionLease` 对实际实例 try-acquire 一次（拿不到记 `SKIPPED`）；任何情况下容量竞争都不写成执行结果或 `ERROR(QUOTA)` | `qualityrunner_test.go` 的 `admitBatch`/`ruleConnectionLease` 测试 + governor 单测（[instance-connections.md](instance-connections.md)） |
 | I-19 | `quality_run` 只做内部派发批次：v1 没有 `QualityRun` 资源/消息/RPC，前端没有 `/runs` 页面，问题引用、通知 detail 与概览都不出现批次；对外一律 `QualityExecution` | proto 无 QualityRun、路由与审计清单无 runs、convert/notification 测试 |
+| I-20 | 批量建议/规则 RPC 非原子：每项独立校验与落库，结果与请求同序，单项失败不中止其余；从建议创建规则是“先规则后决策”，决策失败不回滚规则 | `data_quality_batch.go` + `TestDataQualitySuggestionCenterRealServerIntegration` |
+| I-21 | 从建议创建规则时目标只取建议的 `(target_guid, target_type)`，请求自带 target 被忽略；建议必须是 PENDING `RULE_DRAFT` | `ruleTargetForSuggestion`/`pendingRuleDraftSuggestion` 单测 + 集成场景 |
 
 ## 6. 失败模式
 
@@ -350,6 +359,8 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | LLM 解析失败/超时/配额耗尽 | 请求失败（Internal/FailedPrecondition/ResourceExhausted）；不缓存、不改规则/问题状态；L3 已入队的建议保持 PENDING |
 | 画像失败 | 请求失败并返回可渲染错误；已写入的画像行保留，重试会覆盖 |
 | 建议重复决策 | `Conflict` → `Aborted` |
+| 批量创建/决策单项失败 | 该项 result 带 error（已决/不存在/目标消失/config 非法），其余项继续；创建失败的建议保持 PENDING，创建成功的建议被接受；批量调用本身仍返回成功 |
+| 从建议创建规则时决策写失败（并发已决） | 规则已落库不回滚，只记 warning；建议保持他人的决策，可在队列中看到最终状态 |
 | 语义标注冲突 | LLM 建议只在人工接受后写标注；人工标注可随时覆盖，LLM 不会自动改写 |
 | schema 变更 | `target_schema_changed` 按 schema_hash 提示复核；不自动暂停 |
 | 多副本 | 不支持；两个副本会重复执行（单副本假设见 [security-posture.md](../../docs/security-posture.md)） |
@@ -366,10 +377,9 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | 6 | `row_count_change` 基线窗口 | 已实现：≤7 天且 ≤2×interval，否则视为无基线 → `NOT_EVALUATED` |
 | 7 | 保留期清理 | 已实现：maintenance 清理内部批次（级联执行）/resolved issue/column_profile/LLM cache/decided suggestion（§8 `backend/runner/maintenance`） |
 | 8 | L2 的 `ExplainSQLMetadata` 无 usage/prompt_version | usage 只在缓存行与 debug 日志；未改 proto（有意） |
-| 9 | 建议队列无 Get RPC | 编辑器 `?suggestion=` 预填按队列全量查找后匹配（数据量有界；如需可加 GetQualitySuggestion） |
-| 10 | 多副本 | 不支持（单副本假设，见 [security-posture.md](../../docs/security-posture.md)）；两个副本会重复执行、LLM 配额各自计数 |
-| 11 | 分布漂移/ML 异常、分组内多种检查（每组 null/aggregate）、RuleSet | 非目标（§非目标）；RuleSet 在 v1.1 之后单独评审 |
-| 12 | 连接等待的可观测性 | 批次的准入/延后/放弃与在途执行数已有指标（见 [metrics.md](metrics.md)）；连接等待时长直方图仍是 P1，尚未实现 |
+| 9 | 多副本 | 不支持（单副本假设，见 [security-posture.md](../../docs/security-posture.md)）；两个副本会重复执行、LLM 配额各自计数 |
+| 10 | 分布漂移/ML 异常、分组内多种检查（每组 null/aggregate）、RuleSet | 非目标（§非目标）；RuleSet 在 v1.1 之后单独评审 |
+| 11 | 连接等待的可观测性 | 批次的准入/延后/放弃与在途执行数已有指标（见 [metrics.md](metrics.md)）；连接等待时长直方图仍是 P1，尚未实现 |
 
 ## 8. Where things live
 
@@ -379,12 +389,12 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | 只读查询能力 | `backend/plugin/db/query.go`（`ReadOnlyQueryer`/`QueryOptions`/`QueryResult`、扫描上限）；`plugin/db/{mysql,pg,mssql,starrocks}/query.go`；`backend/component/dbfactory/readonly.go`（`ErrNoReadOnlyDataSource`） |
 | runner | `backend/runner/qualityrunner/qualityrunner.go`（调度/规划执行/执行/问题迁移/通知）；`backend/server/server.go` 注册第 5 个 runner；保留期清理在 `backend/runner/maintenance/maintenance.go` |
 | 连接准入 | `backend/component/state/connection.go`（governor/优先级/等待队列）；`qualityrunner` 的 `admitBatch`；契约与各调用方预算见 [instance-connections.md](instance-connections.md) |
-| API | `backend/api/v1/data_quality_service.go`（规则 CRUD/手动执行/执行查询/issue/profile/preview/overview）、`data_quality_convert.go`、`data_quality_llm_analysis.go`（L1/L2）、`data_quality_label_analysis.go`（L3）、`data_quality_llm_client.go`、`data_quality_llm_quota.go`、`data_quality_overview.go`、`data_quality_cross_table.go` |
-| store | `backend/store/quality_{rule,execution,run,issue,profile,label,suggestion,llm_cache,overview}.go`（9 张表；`quality_run` 为内部批次） |
-| proto/迁移 | `proto/store/store/data_quality.proto`、`proto/v1/v1/data_quality_service.proto`、notification/setting 扩展；`backend/migrator/migration/0.1/0024##data_quality.sql` + `0025##quality_execution.sql`（`quality_rule_result` 改名 `quality_execution` 并补执行列）+ `LATEST.sql` |
-| 前端 | `frontend/src/pages/data-quality/`、`pages/settings/DataQualitySettingsPage.vue`、`components/data-quality/`、`api/data-quality.ts`、`utils/dataQuality*.ts`、`lib/notificationText.ts`；路由 `router/index.ts`，侧栏 `AppSidebar.vue`，`SettingsNav.vue` |
-| 单元测试 | `component/dataquality/*_test.go`（19 个测试文件：编译 golden ×4 方言、判定、filter、custom_sql、CEL、画像、标注/prompt、schema_drift、group_check、aggregate、cross_table、null_values、issue、execution、errors、逐项能力矩阵）；`store/quality_execution_test.go` 等 `store/quality_*_test.go`；`runner/qualityrunner/qualityrunner_test.go`；`api/v1/data_quality_*_test.go`；`component/notification/data_quality_test.go`、`api/v1/notification_service_test.go`；前端 `*.test.ts` 与 `lib/notificationText.test.ts` |
-| 集成测试 | `backend/test/integration/runner/data_quality_service_test.go`（规则生命周期、问题/通知、元数据+只读规则、画像/标注、jsonb 画像、不可运行列类型在保存期被拒、json 列上的 plain null_percent 真执行、cross_table 右表为视图、LLM 默认关闭） |
+| API | `backend/api/v1/data_quality_service.go`（规则 CRUD/手动执行/执行查询/issue/profile/preview/overview）、`data_quality_batch.go`（批量创建规则/批量决策建议）、`data_quality_convert.go`、`data_quality_llm_analysis.go`（L1/L2）、`data_quality_label_analysis.go`（L3）、`data_quality_llm_client.go`、`data_quality_llm_quota.go`、`data_quality_overview.go`、`data_quality_cross_table.go` |
+| store | `backend/store/quality_{rule,execution,run,issue,profile,label,suggestion,llm_cache,overview}.go`（9 张表；`quality_run` 为内部批次；建议列表的 GUID 前缀过滤复用 `metaGUIDPrefix`/`appendGUIDSubtreeCondition`） |
+| proto/迁移 | `proto/store/store/data_quality.proto`、`proto/v1/v1/data_quality_service.proto`、notification/setting 扩展；`backend/migrator/migration/0.1/0024##data_quality.sql` + `0025##quality_execution.sql`（`quality_rule_result` 改名 `quality_execution` 并补执行列）+ `LATEST.sql`。建议中心（批量 RPC、Get、前缀过滤）复用现有表，**无新增迁移** |
+| 前端 | `frontend/src/pages/data-quality/`、`pages/settings/DataQualitySettingsPage.vue`、`components/data-quality/`（含 `SuggestionWorkbench.vue`、`BatchCreateRulesDialog.vue`、`BatchDecideSuggestionsDialog.vue`）、`api/data-quality.ts`、`utils/dataQuality*.ts`、`lib/notificationText.ts`；路由 `router/index.ts`，侧栏 `AppSidebar.vue`，`SettingsNav.vue` |
+| 单元测试 | `component/dataquality/*_test.go`（19 个测试文件：编译 golden ×4 方言、判定、filter、custom_sql、CEL、画像、标注/prompt、schema_drift、group_check、aggregate、cross_table、null_values、issue、execution、errors、逐项能力矩阵）；`store/quality_execution_test.go` 等 `store/quality_*_test.go`（含建议 GUID 前缀过滤守卫）；`runner/qualityrunner/qualityrunner_test.go`；`api/v1/data_quality_*_test.go`（含批量大小/项父级/建议目标解析/列表过滤）；`component/notification/data_quality_test.go`、`api/v1/notification_service_test.go`；前端 `*.test.ts` 与 `lib/notificationText.test.ts` |
+| 集成测试 | `backend/test/integration/runner/data_quality_service_test.go`（规则生命周期、问题/通知、元数据+只读规则、画像/标注、jsonb 画像、不可运行列类型在保存期被拒、json 列上的 plain null_percent 真执行、cross_table 右表为视图、LLM 默认关闭、建议中心批量创建/决策与列表前缀过滤） |
 | 权限 | `backend/common/permission/permission.json` + `permission_gen.go`；`store/predefined_roles.go`（member 基线）；前端镜像 `frontend/src/lib/permissions.ts` |
 | 启用点 | 迁移 `0024` + `0025`（随二进制自动执行）；每个实例需配 `READ_ONLY` 数据源；LLM 需设置页开启 `enable_llm_analysis` 且存在允许的 provider profile；无其他开关 |
 | 门禁 | Go：`gofmt`、`golangci-lint`、`go test ./component/dataquality/ ./store/ ./runner/qualityrunner/ ./api/v1/`；proto：`buf format/lint/generate`；迁移链测试；前端：`biome:check`、`lint`、`i18n`、`type-check`、`test run`、`audit:ui` |
