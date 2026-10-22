@@ -432,3 +432,42 @@ describe("DataQualityRulesPage rule type filter", () => {
     ).toMatchObject({ ruleType: QualityRuleType.UNSPECIFIED });
   });
 });
+
+describe("DataQualityRulesPage AI drafting shortcut", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+    mocks.listQualityRules.mockResolvedValue({
+      items: [],
+      nextPageToken: "",
+    });
+  });
+
+  it("offers the suggestion workbench only with the suggest permission", async () => {
+    const withSuggest = await mountPage([
+      ...PERMISSIONS,
+      "metaxisdata.dataQuality.suggest",
+    ]);
+    const entry = withSuggest
+      .findAll("button")
+      .find((button) =>
+        button
+          .text()
+          .includes(i18n.global.t("dataQuality.llm.draft.openButton"))
+      );
+    expect(entry).toBeTruthy();
+    withSuggest.unmount();
+
+    const withoutSuggest = await mountPage(PERMISSIONS);
+    expect(
+      withoutSuggest
+        .findAll("button")
+        .some((button) =>
+          button
+            .text()
+            .includes(i18n.global.t("dataQuality.llm.draft.openButton"))
+        )
+    ).toBe(false);
+    withoutSuggest.unmount();
+  });
+});

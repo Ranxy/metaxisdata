@@ -43,7 +43,7 @@ Element.prototype.releasePointerCapture ??= () => {};
 
 const mocks = vi.hoisted(() => ({
   createQualityRule: vi.fn(),
-  findQualitySuggestion: vi.fn(),
+  getQualitySuggestion: vi.fn(),
   getQualityRule: vi.fn(),
   previewQualityRule: vi.fn(),
   updateQualityRule: vi.fn(),
@@ -51,16 +51,14 @@ const mocks = vi.hoisted(() => ({
   listMetadata: vi.fn(),
   listAllInstances: vi.fn(),
   getInstance: vi.fn(),
-  updateQualitySuggestion: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", () => ({
   createQualityRule: mocks.createQualityRule,
-  findQualitySuggestion: mocks.findQualitySuggestion,
+  getQualitySuggestion: mocks.getQualitySuggestion,
   getQualityRule: mocks.getQualityRule,
   previewQualityRule: mocks.previewQualityRule,
   updateQualityRule: mocks.updateQualityRule,
-  updateQualitySuggestion: mocks.updateQualitySuggestion,
 }));
 
 vi.mock("@/api/setting", () => ({
@@ -211,9 +209,6 @@ describe("DataQualityRuleEditorPage", () => {
     vi.clearAllMocks();
     mocks.createQualityRule.mockResolvedValue(
       create(QualityRuleSchema, { name: "workspaces/ws/qualityRules/rule-1" })
-    );
-    mocks.updateQualitySuggestion.mockResolvedValue(
-      create(QualitySuggestionSchema, {})
     );
     mocks.getWorkspaceProfileSetting.mockResolvedValue(
       create(WorkspaceProfileSettingSchema, {
@@ -648,7 +643,7 @@ describe("DataQualityRuleEditorPage", () => {
   });
 
   it("prefills the form from a suggested rule draft", async () => {
-    mocks.findQualitySuggestion.mockResolvedValue(
+    mocks.getQualitySuggestion.mockResolvedValue(
       create(QualitySuggestionSchema, {
         name: "workspaces/ws/qualitySuggestions/draft-1",
         kind: QualitySuggestionKind.RULE_DRAFT,
@@ -682,7 +677,7 @@ describe("DataQualityRuleEditorPage", () => {
       `/data-quality/rules/new?suggestion=${encodeURIComponent("workspaces/ws/qualitySuggestions/draft-1")}`
     );
 
-    expect(mocks.findQualitySuggestion).toHaveBeenCalledWith(
+    expect(mocks.getQualitySuggestion).toHaveBeenCalledWith(
       "workspaces/ws/qualitySuggestions/draft-1"
     );
     expect(
@@ -701,8 +696,8 @@ describe("DataQualityRuleEditorPage", () => {
     expect(wrapper.text()).toContain(PREFILL);
   });
 
-  it("accepts the source suggestion only after the rule is created", async () => {
-    mocks.findQualitySuggestion.mockResolvedValue(
+  it("creates the rule and accepts the source suggestion in one request", async () => {
+    mocks.getQualitySuggestion.mockResolvedValue(
       create(QualitySuggestionSchema, {
         name: "workspaces/ws/qualitySuggestions/draft-1",
         kind: QualitySuggestionKind.RULE_DRAFT,
@@ -732,25 +727,91 @@ describe("DataQualityRuleEditorPage", () => {
       `/data-quality/rules/new?suggestion=${encodeURIComponent("workspaces/ws/qualitySuggestions/draft-1")}`
     );
 
-    // Opening the draft is not a decision.
-    expect(mocks.updateQualitySuggestion).not.toHaveBeenCalled();
+    await actionButton(wrapper, label("dataQuality.editor.create")).trigger(
+      "click"
+    );
+    await flushPromises();
+
+    // One request both creates the rule and decides the suggestion: the server
+    // takes the target from the suggestion and marks it accepted.
+    expect(mocks.createQualityRule).toHaveBeenCalledTimes(1);
+    expect(mocks.createQualityRule).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Orders should have rows" }),
+      "workspaces/ws/qualitySuggestions/draft-1"
+    );
+    wrapper.unmount();
+  });
+
+  it("detaches the source suggestion when the reader picks another target", async () => {
+    mocks.getQualitySuggestion.mockResolvedValue(
+      create(QualitySuggestionSchema, {
+        name: "workspaces/ws/qualitySuggestions/draft-1",
+        kind: QualitySuggestionKind.RULE_DRAFT,
+        target: create(QualityTargetSchema, {
+          metaGuid: PREFILL,
+          metaType: MetaType.TABLE,
+        }),
+        payload: {
+          payload: {
+            case: "rule",
+            value: {
+              title: "Orders should have rows",
+              severity: 2,
+              confidence: 0.8,
+              config: create(QualityRuleConfigSchema, {
+                config: {
+                  case: "rowCount",
+                  value: create(RowCountConfigSchema, { minRows: 1n }),
+                },
+              }),
+            },
+          },
+        },
+      })
+    );
+    const { wrapper } = await mountEditor(
+      `/data-quality/rules/new?suggestion=${encodeURIComponent("workspaces/ws/qualitySuggestions/draft-1")}`
+    );
+    expect(wrapper.text()).toContain(
+      label("dataQuality.editor.suggestionPrefilled")
+    );
+
+    const NEW_TARGET = "inst2;db2;public;customers";
+    wrapper.findComponent({ name: "TargetPicker" }).vm.$emit("select", {
+      guid: NEW_TARGET,
+      metaType: MetaType.TABLE,
+      path: {
+        instance: "inst2",
+        database: "db2",
+        schema: "public",
+        object: "customers",
+      },
+      columns: [],
+    });
+    await flushPromises();
+
+    // A draft names one target: once the target changes the save must create a
+    // plain rule for the new one, leaving the draft pending for the queue.
+    expect(wrapper.text()).not.toContain(
+      label("dataQuality.editor.suggestionPrefilled")
+    );
+
     await actionButton(wrapper, label("dataQuality.editor.create")).trigger(
       "click"
     );
     await flushPromises();
 
     expect(mocks.createQualityRule).toHaveBeenCalledTimes(1);
-    expect(mocks.updateQualitySuggestion).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: "workspaces/ws/qualitySuggestions/draft-1",
-        decision: QualitySuggestionStatus.ACCEPTED,
-      })
+    const [rule, suggestionName] = mocks.createQualityRule.mock.calls[0] ?? [];
+    expect(suggestionName).toBe("");
+    expect((rule as { target?: { metaGuid?: string } }).target?.metaGuid).toBe(
+      NEW_TARGET
     );
     wrapper.unmount();
   });
 
   it("leaves the suggestion pending when the editor is cancelled", async () => {
-    mocks.findQualitySuggestion.mockResolvedValue(
+    mocks.getQualitySuggestion.mockResolvedValue(
       create(QualitySuggestionSchema, {
         name: "workspaces/ws/qualitySuggestions/draft-1",
         kind: QualitySuggestionKind.RULE_DRAFT,
@@ -783,7 +844,8 @@ describe("DataQualityRuleEditorPage", () => {
     await actionButton(wrapper, label("common.cancel")).trigger("click");
     await flushPromises();
 
-    expect(mocks.updateQualitySuggestion).not.toHaveBeenCalled();
+    // Cancelling creates nothing and decides nothing.
+    expect(mocks.createQualityRule).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 

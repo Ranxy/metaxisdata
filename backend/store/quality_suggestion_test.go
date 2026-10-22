@@ -71,13 +71,14 @@ func suggestionRulePayload(t *testing.T) *storepb.QualitySuggestionPayload {
 func TestQualitySuggestionWhereBindsEveryFilterValue(t *testing.T) {
 	t.Parallel()
 
-	where, args := qualitySuggestionWhere(nil)
+	where, args, err := qualitySuggestionWhere(nil)
+	require.NoError(t, err)
 	require.Equal(t, "TRUE", where)
 	require.Empty(t, args)
 
 	resourceID := "suggestions/abc"
 	targetGUID := "instance_1;db;public;orders"
-	where, args = qualitySuggestionWhere(&FindQualitySuggestionMessage{
+	where, args, err = qualitySuggestionWhere(&FindQualitySuggestionMessage{
 		ResourceID: &resourceID,
 		Statuses: []storepb.QualitySuggestionStatus{
 			storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
@@ -91,10 +92,11 @@ func TestQualitySuggestionWhereBindsEveryFilterValue(t *testing.T) {
 		},
 		TargetGUID: &targetGUID,
 	})
+	require.NoError(t, err)
 	require.Equal(t,
-		"TRUE AND resource_id = $1 AND status = ANY($2::int[]) AND kind = ANY($3::int[]) AND source = ANY($4::int[]) AND target_guid = $5",
+		`TRUE AND resource_id = $1 AND status = ANY($2::int[]) AND kind = ANY($3::int[]) AND source = ANY($4::int[]) AND (target_guid = $5 OR target_guid LIKE $6 ESCAPE E'\\')`,
 		where)
-	require.Len(t, args, 5)
+	require.Len(t, args, 6)
 	require.Equal(t, resourceID, args[0])
 	require.Equal(t, pq.Array([]int32{int32(storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING)}), args[1])
 	require.Equal(t, pq.Array([]int32{
@@ -102,10 +104,54 @@ func TestQualitySuggestionWhereBindsEveryFilterValue(t *testing.T) {
 		int32(storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_LABEL),
 	}), args[2])
 	require.Equal(t, pq.Array([]int32{int32(storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_PROFILE)}), args[3])
+	// The exact target and its subtree share the rules' match semantics; a
+	// metacharacter in the GUID is escaped in the LIKE pattern.
 	require.Equal(t, targetGUID, args[4])
+	require.Equal(t, `instance\_1;db;public;orders;%`, args[5])
 
 	for _, value := range []string{resourceID, targetGUID} {
 		require.NotContains(t, where, value)
+	}
+}
+
+// The review-queue path filters are the same GUID subtree prefixes the rule list
+// uses: the deepest filter decides the segment count, an empty schema segment is
+// valid (MySQL), and a bare name is refused because it is not a GUID prefix.
+func TestQualitySuggestionWhereFiltersByGUIDPathPrefix(t *testing.T) {
+	t.Parallel()
+
+	where, args, err := qualitySuggestionWhere(&FindQualitySuggestionMessage{Instance: "instances/inst-1"})
+	require.NoError(t, err)
+	require.Contains(t, where, "target_guid")
+	require.Equal(t, []any{"instances/inst-1", `instances/inst-1;%`}, args)
+	requirePlaceholdersMatchArgs(t, where, args)
+
+	where, args, err = qualitySuggestionWhere(&FindQualitySuggestionMessage{
+		Instance: "instances/inst-1", Database: "shop", Schema: "public", TablePrefix: "users",
+	})
+	require.NoError(t, err)
+	require.Equal(t, []any{
+		"instances/inst-1;shop;public;users",
+		`instances/inst-1;shop;public;users;%`,
+	}, args)
+	requirePlaceholdersMatchArgs(t, where, args)
+
+	// MySQL metadata GUIDs have no schema segment; the table prefix still has
+	// four segments.
+	_, args, err = qualitySuggestionWhere(&FindQualitySuggestionMessage{
+		Instance: "instances/inst-1", Database: "shop", TablePrefix: "users",
+	})
+	require.NoError(t, err)
+	require.Equal(t, []any{"instances/inst-1;shop;;users", `instances/inst-1;shop;;users;%`}, args)
+
+	for _, find := range []*FindQualitySuggestionMessage{
+		{Database: "shop"},
+		{Schema: "public"},
+		{TablePrefix: "users"},
+	} {
+		_, _, err := qualitySuggestionWhere(find)
+		require.Error(t, err)
+		require.Equal(t, common.Invalid, common.ErrorCode(err))
 	}
 }
 
@@ -113,13 +159,20 @@ func TestQualitySuggestionQueryOrdersNewestAndPaginates(t *testing.T) {
 	t.Parallel()
 
 	limit, offset := 20, 40
-	query, args := qualitySuggestionQuery(&FindQualitySuggestionMessage{Limit: &limit, Offset: &offset})
+	query, args, err := qualitySuggestionQuery(&FindQualitySuggestionMessage{Limit: &limit, Offset: &offset})
+	require.NoError(t, err)
 	require.Contains(t, query, "FROM quality_suggestion")
 	require.Contains(t, query, "ORDER BY created_at DESC, id DESC")
 	require.Contains(t, query, "LIMIT $1")
 	require.Contains(t, query, "OFFSET $2")
 	requirePlaceholdersMatchArgs(t, query, args)
 	require.Equal(t, []any{20, 40}, args)
+
+	// A deeper path filter without its ancestors is refused by the query builder,
+	// not silently dropped.
+	_, _, err = qualitySuggestionQuery(&FindQualitySuggestionMessage{TablePrefix: "users"})
+	require.Error(t, err)
+	require.Equal(t, common.Invalid, common.ErrorCode(err))
 }
 
 func TestScanQualitySuggestionRoundTripsThePayloadAndDecision(t *testing.T) {

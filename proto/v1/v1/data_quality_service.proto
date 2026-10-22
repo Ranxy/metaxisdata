@@ -53,6 +53,18 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.create";
   }
 
+  // Create a batch of rules in one call, optionally from the suggestions they
+  // came from. Each item is validated and stored independently: a failure is
+  // reported in its own result and does not abort the other items.
+  rpc BatchCreateQualityRules(BatchCreateQualityRulesRequest) returns (BatchCreateQualityRulesResponse) {
+    option (google.api.http) = {
+      post: "/v1/{parent=workspaces/*}/qualityRules:batchCreate"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.create";
+  }
+
   // Update a rule. Every semantic edit appends a revision, so a historical
   // result always stays explainable by the definition that produced it.
   rpc UpdateQualityRule(UpdateQualityRuleRequest) returns (QualityRule) {
@@ -144,11 +156,31 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.suggest";
   }
 
+  // Read one queued suggestion. The queue is paged with ListQualitySuggestions;
+  // this exists so a deep link can open one draft without reading the pages.
+  rpc GetQualitySuggestion(GetQualitySuggestionRequest) returns (QualitySuggestion) {
+    option (google.api.http) = {get: "/v1/{name=workspaces/*/qualitySuggestions/*}"};
+    option (google.api.method_signature) = "name";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.suggest";
+  }
+
   // Accept or reject one queued suggestion. A decision is final: the store
   // refuses a second one.
   rpc UpdateQualitySuggestion(UpdateQualitySuggestionRequest) returns (QualitySuggestion) {
     option (google.api.http) = {
       post: "/v1/{name=workspaces/*/qualitySuggestions/*}:decide"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.suggest";
+  }
+
+  // Accept or reject many queued suggestions in one call. Each decision is
+  // independent: a failure is reported in its own result and does not abort the
+  // rest.
+  rpc BatchUpdateQualitySuggestions(BatchUpdateQualitySuggestionsRequest) returns (BatchUpdateQualitySuggestionsResponse) {
+    option (google.api.http) = {
+      post: "/v1/{parent=workspaces/*}/qualitySuggestions:batchDecide"
       body: "*"
     };
     option (metaxisdata.v1.audit) = true;
@@ -1264,6 +1296,42 @@ message CreateQualityRuleRequest {
 
   // The rule to create. Its name is assigned by the server.
   QualityRule rule = 2 [(google.api.field_behavior) = REQUIRED];
+
+  // The suggestion this rule is created from, if any. When set, the rule's
+  // target is taken from the suggestion: a request target that names a
+  // different target is rejected rather than silently ignored, so a caller
+  // cannot create a rule for one table while accepting another table's draft.
+  // The suggestion is marked accepted once the rule exists. A decision that
+  // cannot be written does not roll the created rule back; it is logged and the
+  // suggestion can be decided explicitly.
+  string suggestion = 3 [(google.api.resource_reference) = {type: "metaxisdata/QualitySuggestion"}];
+}
+
+message BatchCreateQualityRulesRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The rules to create, at most 200, in submission order. Each item is created
+  // independently, so one rejected rule does not block the others.
+  repeated CreateQualityRuleRequest requests = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message BatchCreateQualityRulesResponse {
+  // One result per request, in request order.
+  repeated BatchCreateQualityRuleResult results = 1;
+}
+
+message BatchCreateQualityRuleResult {
+  // The created rule; unset when this item failed.
+  QualityRule rule = 1;
+
+  // Empty on success; otherwise why this rule could not be created.
+  string error = 2;
+
+  // The suggestion named by the request item, echoed so a client does not have
+  // to trust the index alone. Empty for an item that named no suggestion.
+  // Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion}
+  string suggestion = 3;
 }
 
 message UpdateQualityRuleRequest {
@@ -1456,6 +1524,14 @@ message ListQualitySuggestionsRequest {
 
   // The exact target GUID.
   string target_guid = 7;
+
+  // The following four filters are GUID path prefixes, the same shape as
+  // ListQualityRules: a suggestion matches when its target GUID starts with the
+  // given prefix, so "instance_1" selects every suggestion for that instance.
+  string instance = 8;
+  string database = 9;
+  string schema = 10;
+  string table = 11;
 }
 
 message ListQualitySuggestionsResponse {
@@ -1476,6 +1552,41 @@ message UpdateQualitySuggestionRequest {
 
   // Why it was decided, shown in the review history.
   string decision_note = 3;
+}
+
+message GetQualitySuggestionRequest {
+  // Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualitySuggestion"}
+  ];
+}
+
+message BatchUpdateQualitySuggestionsRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The decisions to apply, at most 200, in submission order. Each request
+  // names one suggestion and is applied independently.
+  repeated UpdateQualitySuggestionRequest requests = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message BatchUpdateQualitySuggestionsResponse {
+  // One result per request, in request order.
+  repeated BatchUpdateQualitySuggestionResult results = 1;
+}
+
+message BatchUpdateQualitySuggestionResult {
+  // The decided suggestion; unset when this decision failed.
+  QualitySuggestion suggestion = 1;
+
+  // Empty on success; otherwise why this suggestion could not be decided.
+  string error = 2;
+
+  // The suggestion name named by the request item, echoed so a client does not
+  // have to trust the index alone.
+  // Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion}
+  string name = 3;
 }
 
 message ListColumnProfilesRequest {

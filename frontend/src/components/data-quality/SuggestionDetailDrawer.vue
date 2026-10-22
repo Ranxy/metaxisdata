@@ -26,7 +26,7 @@
             {{ t("dataQuality.suggestions.detailTitle") }}
           </DialogTitle>
           <DialogDescription class="truncate">
-            {{ targetLabel }}
+            {{ displayTarget }}
           </DialogDescription>
         </DialogHeader>
 
@@ -211,13 +211,21 @@
                 >
                   {{ t("dataQuality.suggestions.reject") }}
                 </Button>
-                <Button
-                  v-if="draft"
-                  :disabled="deciding || !canCreateRule"
-                  @click="emit('openEditor')"
-                >
-                  {{ t("dataQuality.suggestions.openInEditor") }}
-                </Button>
+                <template v-if="draft">
+                  <Button
+                    variant="outline"
+                    :disabled="deciding || !canCreateRule"
+                    @click="emit('openEditor')"
+                  >
+                    {{ t("dataQuality.suggestions.openInEditor") }}
+                  </Button>
+                  <Button
+                    :disabled="deciding || !canCreateRule"
+                    @click="emit('createRule')"
+                  >
+                    {{ t("dataQuality.suggestions.createRule") }}
+                  </Button>
+                </template>
                 <Button
                   v-else
                   :disabled="deciding"
@@ -302,6 +310,7 @@ import {
   suggestionSourceKey,
   suggestionStatusKey,
   suggestionStatusVariant,
+  suggestionTargetLabel,
   suggestionToEditorPrefill,
 } from "@/utils/dataQualitySuggestion";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
@@ -319,6 +328,8 @@ const props = defineProps<{
   canCreateRule: boolean;
   deciding: boolean;
   error: string;
+  /** The page's display label for the target, with the instance title. */
+  targetLabel?: string;
 }>();
 
 const emit = defineEmits<{
@@ -326,6 +337,7 @@ const emit = defineEmits<{
   accept: [note: string];
   reject: [note: string];
   openEditor: [];
+  createRule: [];
 }>();
 
 const { t, locale } = useI18n();
@@ -347,12 +359,12 @@ const configEntries = computed(() =>
 const evidenceLines = computed(() =>
   label.value ? labelEvidenceLines(label.value.evidence) : []
 );
-const targetLabel = computed(() => {
-  const target = props.suggestion?.target;
-  if (!target) {
-    return "";
+const displayTarget = computed(() => {
+  if (props.targetLabel) {
+    return props.targetLabel;
   }
-  return target.metaGuid;
+  const guid = props.suggestion?.target?.metaGuid;
+  return guid ? suggestionTargetLabel(guid) : "";
 });
 
 function principalLabel(name: string): string {

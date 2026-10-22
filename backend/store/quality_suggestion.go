@@ -72,17 +72,25 @@ type FindQualitySuggestionMessage struct {
 	Kinds      []storepb.QualitySuggestionKind
 	Sources    []storepb.QualitySuggestionSource
 	TargetGUID *string
-	Limit      *int
-	Offset     *int
+	// Instance, Database, Schema and TablePrefix are GUID path prefixes, the same
+	// shape as the rule list filters: a suggestion matches when its target GUID
+	// starts with the prefix.
+	Instance    string
+	Database    string
+	Schema      string
+	TablePrefix string
+	Limit       *int
+	Offset      *int
 }
 
 // qualitySuggestionWhere builds the predicate and positional arguments for a
-// find. Every value is bound and the compared columns are the table's own.
-func qualitySuggestionWhere(find *FindQualitySuggestionMessage) (string, []any) {
+// find. Every value is bound and the compared columns are the table's own; the
+// path filters reuse the rules' GUID subtree semantics.
+func qualitySuggestionWhere(find *FindQualitySuggestionMessage) (string, []any, error) {
 	where := []string{"TRUE"}
 	args := []any{}
 	if find == nil {
-		return strings.Join(where, " AND "), args
+		return strings.Join(where, " AND "), args, nil
 	}
 	if find.ResourceID != nil {
 		args = append(args, *find.ResourceID)
@@ -112,16 +120,25 @@ func qualitySuggestionWhere(find *FindQualitySuggestionMessage) (string, []any) 
 		args = append(args, pq.Array(sources))
 		where = append(where, fmt.Sprintf("source = ANY($%d::int[])", len(args)))
 	}
-	if find.TargetGUID != nil {
-		args = append(args, *find.TargetGUID)
-		where = append(where, fmt.Sprintf("target_guid = $%d", len(args)))
+	if find.TargetGUID != nil && strings.TrimSpace(*find.TargetGUID) != "" {
+		where, args = appendGUIDSubtreeCondition(where, args, "target_guid", strings.TrimSpace(*find.TargetGUID))
 	}
-	return strings.Join(where, " AND "), args
+	prefix, err := metaGUIDPrefix(find.Instance, find.Database, find.Schema, find.TablePrefix)
+	if err != nil {
+		return "", nil, err
+	}
+	if prefix != "" {
+		where, args = appendGUIDSubtreeCondition(where, args, "target_guid", prefix)
+	}
+	return strings.Join(where, " AND "), args, nil
 }
 
 // qualitySuggestionQuery assembles one filtered, ordered suggestion read.
-func qualitySuggestionQuery(find *FindQualitySuggestionMessage) (string, []any) {
-	where, args := qualitySuggestionWhere(find)
+func qualitySuggestionQuery(find *FindQualitySuggestionMessage) (string, []any, error) {
+	where, args, err := qualitySuggestionWhere(find)
+	if err != nil {
+		return "", nil, err
+	}
 	query := `SELECT ` + qualitySuggestionColumns + ` FROM quality_suggestion WHERE ` + where +
 		` ORDER BY created_at DESC, id DESC`
 	if find != nil && find.Limit != nil {
@@ -132,7 +149,7 @@ func qualitySuggestionQuery(find *FindQualitySuggestionMessage) (string, []any) 
 		query += fmt.Sprintf(" OFFSET $%d", len(args)+1)
 		args = append(args, *find.Offset)
 	}
-	return query, args
+	return query, args, nil
 }
 
 // scanQualitySuggestion maps one quality_suggestion row. The nullable review
@@ -341,7 +358,10 @@ func (s *Store) ListQualitySuggestions(ctx context.Context, find *FindQualitySug
 	}
 	defer tx.Rollback()
 
-	query, args := qualitySuggestionQuery(find)
+	query, args, err := qualitySuggestionQuery(find)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to query quality suggestions")

@@ -53,7 +53,10 @@ function groups(
   return [
     {
       metaType: MetaType.TABLE,
-      list: [{ guid: "inst1;db1;public;orders", name: "orders" }],
+      list: [
+        { guid: "inst1;db1;public;orders", name: "orders" },
+        { guid: "inst1;db1;public;users", name: "users" },
+      ],
     },
   ];
 }
@@ -79,7 +82,8 @@ function metadataPage(parent: string) {
 
 async function mountPicker(
   engine: Engine,
-  mode: "target" | "scope" = "target"
+  mode: "target" | "scope" = "target",
+  multiple = false
 ) {
   mocks.listAllInstances.mockResolvedValue([instance(engine)]);
   mocks.listMetadata.mockImplementation(async ({ parentGuid }) =>
@@ -89,7 +93,7 @@ async function mountPicker(
   setActivePinia(pinia);
   const wrapper = mount(TargetPicker, {
     attachTo: document.body,
-    props: { open: true, mode },
+    props: { open: true, mode, multiple },
     global: { plugins: [i18n, pinia] },
   });
   await flushPromises();
@@ -111,6 +115,21 @@ function clickRow(name: string) {
     ),
   ].find((candidate) => candidate.textContent?.trim().startsWith(name));
   button?.click();
+}
+
+/** The multi-select footer action; its label carries the marked count. */
+function addSelectedButton(): HTMLElement | undefined {
+  return [
+    ...document.body.querySelectorAll<HTMLElement>('[role="dialog"] button'),
+  ].find((candidate) => candidate.textContent?.trim().startsWith("Add "));
+}
+
+/** The breadcrumb back arrow that walks one level up. */
+function backButton(): HTMLElement | undefined {
+  const label = i18n.global.t("common.back");
+  return [
+    ...document.body.querySelectorAll<HTMLElement>('[role="dialog"] button'),
+  ].find((candidate) => candidate.getAttribute("aria-label") === label);
 }
 
 function breadcrumbText(): string {
@@ -271,6 +290,60 @@ describe("TargetPicker", () => {
     expect(mocks.listMetadata).toHaveBeenCalledWith(
       expect.objectContaining({ parentGuid: "inst1;db1;" })
     );
+    wrapper.unmount();
+  });
+
+  it("marks several tables and adds them in one go in multi-select mode", async () => {
+    const wrapper = await mountPicker(Engine.POSTGRES, "target", true);
+    clickRow("Orders");
+    await flushPromises();
+    clickRow("shop");
+    await flushPromises();
+    clickRow("public");
+    await flushPromises();
+
+    clickRow("orders");
+    clickRow("users");
+    await flushPromises();
+
+    // Table rows only mark; nothing is chosen until the footer applies them.
+    expect(wrapper.emitted("select")).toBeUndefined();
+    const add = addSelectedButton();
+    expect(add?.textContent).toContain("2");
+    add?.click();
+    await flushPromises();
+
+    const selections = wrapper.emitted("selectMany")?.[0]?.[0] as
+      | Array<{ guid: string }>
+      | undefined;
+    expect(selections?.map((selection) => selection.guid)).toEqual([
+      "inst1;db1;public;orders",
+      "inst1;db1;public;users",
+    ]);
+    expect(wrapper.emitted("update:open")).toContainEqual([false]);
+    wrapper.unmount();
+  });
+
+  it("keeps the multi-select marks while drilling back through a level", async () => {
+    const wrapper = await mountPicker(Engine.POSTGRES, "target", true);
+    clickRow("Orders");
+    await flushPromises();
+    clickRow("shop");
+    await flushPromises();
+    clickRow("public");
+    await flushPromises();
+    clickRow("orders");
+    await flushPromises();
+
+    // Back out to the schema level and return to the tables: the mark remains.
+    backButton()?.click();
+    await flushPromises();
+    clickRow("public");
+    await flushPromises();
+    clickRow("users");
+    await flushPromises();
+
+    expect(addSelectedButton()?.textContent).toContain("2");
     wrapper.unmount();
   });
 });

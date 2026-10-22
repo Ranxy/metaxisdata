@@ -20,28 +20,31 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	DataQualityService_ListQualityRules_FullMethodName        = "/metaxisdata.v1.DataQualityService/ListQualityRules"
-	DataQualityService_GetQualityRule_FullMethodName          = "/metaxisdata.v1.DataQualityService/GetQualityRule"
-	DataQualityService_CreateQualityRule_FullMethodName       = "/metaxisdata.v1.DataQualityService/CreateQualityRule"
-	DataQualityService_UpdateQualityRule_FullMethodName       = "/metaxisdata.v1.DataQualityService/UpdateQualityRule"
-	DataQualityService_DeleteQualityRule_FullMethodName       = "/metaxisdata.v1.DataQualityService/DeleteQualityRule"
-	DataQualityService_PreviewQualityRule_FullMethodName      = "/metaxisdata.v1.DataQualityService/PreviewQualityRule"
-	DataQualityService_RunQualityRules_FullMethodName         = "/metaxisdata.v1.DataQualityService/RunQualityRules"
-	DataQualityService_ListQualityExecutions_FullMethodName   = "/metaxisdata.v1.DataQualityService/ListQualityExecutions"
-	DataQualityService_GetQualityExecution_FullMethodName     = "/metaxisdata.v1.DataQualityService/GetQualityExecution"
-	DataQualityService_ListQualityIssues_FullMethodName       = "/metaxisdata.v1.DataQualityService/ListQualityIssues"
-	DataQualityService_GetQualityIssue_FullMethodName         = "/metaxisdata.v1.DataQualityService/GetQualityIssue"
-	DataQualityService_UpdateQualityIssue_FullMethodName      = "/metaxisdata.v1.DataQualityService/UpdateQualityIssue"
-	DataQualityService_ListQualitySuggestions_FullMethodName  = "/metaxisdata.v1.DataQualityService/ListQualitySuggestions"
-	DataQualityService_UpdateQualitySuggestion_FullMethodName = "/metaxisdata.v1.DataQualityService/UpdateQualitySuggestion"
-	DataQualityService_ListColumnProfiles_FullMethodName      = "/metaxisdata.v1.DataQualityService/ListColumnProfiles"
-	DataQualityService_ListColumnLabels_FullMethodName        = "/metaxisdata.v1.DataQualityService/ListColumnLabels"
-	DataQualityService_UpdateColumnLabel_FullMethodName       = "/metaxisdata.v1.DataQualityService/UpdateColumnLabel"
-	DataQualityService_ProfileColumns_FullMethodName          = "/metaxisdata.v1.DataQualityService/ProfileColumns"
-	DataQualityService_SuggestQualityRule_FullMethodName      = "/metaxisdata.v1.DataQualityService/SuggestQualityRule"
-	DataQualityService_SuggestColumnLabels_FullMethodName     = "/metaxisdata.v1.DataQualityService/SuggestColumnLabels"
-	DataQualityService_ExplainQualityExecution_FullMethodName = "/metaxisdata.v1.DataQualityService/ExplainQualityExecution"
-	DataQualityService_GetQualityOverview_FullMethodName      = "/metaxisdata.v1.DataQualityService/GetQualityOverview"
+	DataQualityService_ListQualityRules_FullMethodName              = "/metaxisdata.v1.DataQualityService/ListQualityRules"
+	DataQualityService_GetQualityRule_FullMethodName                = "/metaxisdata.v1.DataQualityService/GetQualityRule"
+	DataQualityService_CreateQualityRule_FullMethodName             = "/metaxisdata.v1.DataQualityService/CreateQualityRule"
+	DataQualityService_BatchCreateQualityRules_FullMethodName       = "/metaxisdata.v1.DataQualityService/BatchCreateQualityRules"
+	DataQualityService_UpdateQualityRule_FullMethodName             = "/metaxisdata.v1.DataQualityService/UpdateQualityRule"
+	DataQualityService_DeleteQualityRule_FullMethodName             = "/metaxisdata.v1.DataQualityService/DeleteQualityRule"
+	DataQualityService_PreviewQualityRule_FullMethodName            = "/metaxisdata.v1.DataQualityService/PreviewQualityRule"
+	DataQualityService_RunQualityRules_FullMethodName               = "/metaxisdata.v1.DataQualityService/RunQualityRules"
+	DataQualityService_ListQualityExecutions_FullMethodName         = "/metaxisdata.v1.DataQualityService/ListQualityExecutions"
+	DataQualityService_GetQualityExecution_FullMethodName           = "/metaxisdata.v1.DataQualityService/GetQualityExecution"
+	DataQualityService_ListQualityIssues_FullMethodName             = "/metaxisdata.v1.DataQualityService/ListQualityIssues"
+	DataQualityService_GetQualityIssue_FullMethodName               = "/metaxisdata.v1.DataQualityService/GetQualityIssue"
+	DataQualityService_UpdateQualityIssue_FullMethodName            = "/metaxisdata.v1.DataQualityService/UpdateQualityIssue"
+	DataQualityService_ListQualitySuggestions_FullMethodName        = "/metaxisdata.v1.DataQualityService/ListQualitySuggestions"
+	DataQualityService_GetQualitySuggestion_FullMethodName          = "/metaxisdata.v1.DataQualityService/GetQualitySuggestion"
+	DataQualityService_UpdateQualitySuggestion_FullMethodName       = "/metaxisdata.v1.DataQualityService/UpdateQualitySuggestion"
+	DataQualityService_BatchUpdateQualitySuggestions_FullMethodName = "/metaxisdata.v1.DataQualityService/BatchUpdateQualitySuggestions"
+	DataQualityService_ListColumnProfiles_FullMethodName            = "/metaxisdata.v1.DataQualityService/ListColumnProfiles"
+	DataQualityService_ListColumnLabels_FullMethodName              = "/metaxisdata.v1.DataQualityService/ListColumnLabels"
+	DataQualityService_UpdateColumnLabel_FullMethodName             = "/metaxisdata.v1.DataQualityService/UpdateColumnLabel"
+	DataQualityService_ProfileColumns_FullMethodName                = "/metaxisdata.v1.DataQualityService/ProfileColumns"
+	DataQualityService_SuggestQualityRule_FullMethodName            = "/metaxisdata.v1.DataQualityService/SuggestQualityRule"
+	DataQualityService_SuggestColumnLabels_FullMethodName           = "/metaxisdata.v1.DataQualityService/SuggestColumnLabels"
+	DataQualityService_ExplainQualityExecution_FullMethodName       = "/metaxisdata.v1.DataQualityService/ExplainQualityExecution"
+	DataQualityService_GetQualityOverview_FullMethodName            = "/metaxisdata.v1.DataQualityService/GetQualityOverview"
 )
 
 // DataQualityServiceClient is the client API for DataQualityService service.
@@ -66,6 +69,10 @@ type DataQualityServiceClient interface {
 	// Create a rule. The rule is validated and compiled before it is stored; a
 	// rejected rule is never persisted.
 	CreateQualityRule(ctx context.Context, in *CreateQualityRuleRequest, opts ...grpc.CallOption) (*QualityRule, error)
+	// Create a batch of rules in one call, optionally from the suggestions they
+	// came from. Each item is validated and stored independently: a failure is
+	// reported in its own result and does not abort the other items.
+	BatchCreateQualityRules(ctx context.Context, in *BatchCreateQualityRulesRequest, opts ...grpc.CallOption) (*BatchCreateQualityRulesResponse, error)
 	// Update a rule. Every semantic edit appends a revision, so a historical
 	// result always stays explainable by the definition that produced it.
 	UpdateQualityRule(ctx context.Context, in *UpdateQualityRuleRequest, opts ...grpc.CallOption) (*QualityRule, error)
@@ -93,9 +100,16 @@ type DataQualityServiceClient interface {
 	// List the review queue of model-proposed rule drafts and semantic labels,
 	// newest first.
 	ListQualitySuggestions(ctx context.Context, in *ListQualitySuggestionsRequest, opts ...grpc.CallOption) (*ListQualitySuggestionsResponse, error)
+	// Read one queued suggestion. The queue is paged with ListQualitySuggestions;
+	// this exists so a deep link can open one draft without reading the pages.
+	GetQualitySuggestion(ctx context.Context, in *GetQualitySuggestionRequest, opts ...grpc.CallOption) (*QualitySuggestion, error)
 	// Accept or reject one queued suggestion. A decision is final: the store
 	// refuses a second one.
 	UpdateQualitySuggestion(ctx context.Context, in *UpdateQualitySuggestionRequest, opts ...grpc.CallOption) (*QualitySuggestion, error)
+	// Accept or reject many queued suggestions in one call. Each decision is
+	// independent: a failure is reported in its own result and does not abort the
+	// rest.
+	BatchUpdateQualitySuggestions(ctx context.Context, in *BatchUpdateQualitySuggestionsRequest, opts ...grpc.CallOption) (*BatchUpdateQualitySuggestionsResponse, error)
 	// List the cached deterministic profiles of columns. Profiles are read-only
 	// measurements; there is no get or update.
 	ListColumnProfiles(ctx context.Context, in *ListColumnProfilesRequest, opts ...grpc.CallOption) (*ListColumnProfilesResponse, error)
@@ -152,6 +166,16 @@ func (c *dataQualityServiceClient) CreateQualityRule(ctx context.Context, in *Cr
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(QualityRule)
 	err := c.cc.Invoke(ctx, DataQualityService_CreateQualityRule_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) BatchCreateQualityRules(ctx context.Context, in *BatchCreateQualityRulesRequest, opts ...grpc.CallOption) (*BatchCreateQualityRulesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BatchCreateQualityRulesResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_BatchCreateQualityRules_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -258,10 +282,30 @@ func (c *dataQualityServiceClient) ListQualitySuggestions(ctx context.Context, i
 	return out, nil
 }
 
+func (c *dataQualityServiceClient) GetQualitySuggestion(ctx context.Context, in *GetQualitySuggestionRequest, opts ...grpc.CallOption) (*QualitySuggestion, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualitySuggestion)
+	err := c.cc.Invoke(ctx, DataQualityService_GetQualitySuggestion_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *dataQualityServiceClient) UpdateQualitySuggestion(ctx context.Context, in *UpdateQualitySuggestionRequest, opts ...grpc.CallOption) (*QualitySuggestion, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(QualitySuggestion)
 	err := c.cc.Invoke(ctx, DataQualityService_UpdateQualitySuggestion_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) BatchUpdateQualitySuggestions(ctx context.Context, in *BatchUpdateQualitySuggestionsRequest, opts ...grpc.CallOption) (*BatchUpdateQualitySuggestionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BatchUpdateQualitySuggestionsResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_BatchUpdateQualitySuggestions_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -379,6 +423,10 @@ type DataQualityServiceServer interface {
 	// Create a rule. The rule is validated and compiled before it is stored; a
 	// rejected rule is never persisted.
 	CreateQualityRule(context.Context, *CreateQualityRuleRequest) (*QualityRule, error)
+	// Create a batch of rules in one call, optionally from the suggestions they
+	// came from. Each item is validated and stored independently: a failure is
+	// reported in its own result and does not abort the other items.
+	BatchCreateQualityRules(context.Context, *BatchCreateQualityRulesRequest) (*BatchCreateQualityRulesResponse, error)
 	// Update a rule. Every semantic edit appends a revision, so a historical
 	// result always stays explainable by the definition that produced it.
 	UpdateQualityRule(context.Context, *UpdateQualityRuleRequest) (*QualityRule, error)
@@ -406,9 +454,16 @@ type DataQualityServiceServer interface {
 	// List the review queue of model-proposed rule drafts and semantic labels,
 	// newest first.
 	ListQualitySuggestions(context.Context, *ListQualitySuggestionsRequest) (*ListQualitySuggestionsResponse, error)
+	// Read one queued suggestion. The queue is paged with ListQualitySuggestions;
+	// this exists so a deep link can open one draft without reading the pages.
+	GetQualitySuggestion(context.Context, *GetQualitySuggestionRequest) (*QualitySuggestion, error)
 	// Accept or reject one queued suggestion. A decision is final: the store
 	// refuses a second one.
 	UpdateQualitySuggestion(context.Context, *UpdateQualitySuggestionRequest) (*QualitySuggestion, error)
+	// Accept or reject many queued suggestions in one call. Each decision is
+	// independent: a failure is reported in its own result and does not abort the
+	// rest.
+	BatchUpdateQualitySuggestions(context.Context, *BatchUpdateQualitySuggestionsRequest) (*BatchUpdateQualitySuggestionsResponse, error)
 	// List the cached deterministic profiles of columns. Profiles are read-only
 	// measurements; there is no get or update.
 	ListColumnProfiles(context.Context, *ListColumnProfilesRequest) (*ListColumnProfilesResponse, error)
@@ -450,6 +505,9 @@ func (UnimplementedDataQualityServiceServer) GetQualityRule(context.Context, *Ge
 func (UnimplementedDataQualityServiceServer) CreateQualityRule(context.Context, *CreateQualityRuleRequest) (*QualityRule, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateQualityRule not implemented")
 }
+func (UnimplementedDataQualityServiceServer) BatchCreateQualityRules(context.Context, *BatchCreateQualityRulesRequest) (*BatchCreateQualityRulesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method BatchCreateQualityRules not implemented")
+}
 func (UnimplementedDataQualityServiceServer) UpdateQualityRule(context.Context, *UpdateQualityRuleRequest) (*QualityRule, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateQualityRule not implemented")
 }
@@ -480,8 +538,14 @@ func (UnimplementedDataQualityServiceServer) UpdateQualityIssue(context.Context,
 func (UnimplementedDataQualityServiceServer) ListQualitySuggestions(context.Context, *ListQualitySuggestionsRequest) (*ListQualitySuggestionsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListQualitySuggestions not implemented")
 }
+func (UnimplementedDataQualityServiceServer) GetQualitySuggestion(context.Context, *GetQualitySuggestionRequest) (*QualitySuggestion, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQualitySuggestion not implemented")
+}
 func (UnimplementedDataQualityServiceServer) UpdateQualitySuggestion(context.Context, *UpdateQualitySuggestionRequest) (*QualitySuggestion, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateQualitySuggestion not implemented")
+}
+func (UnimplementedDataQualityServiceServer) BatchUpdateQualitySuggestions(context.Context, *BatchUpdateQualitySuggestionsRequest) (*BatchUpdateQualitySuggestionsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method BatchUpdateQualitySuggestions not implemented")
 }
 func (UnimplementedDataQualityServiceServer) ListColumnProfiles(context.Context, *ListColumnProfilesRequest) (*ListColumnProfilesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListColumnProfiles not implemented")
@@ -578,6 +642,24 @@ func _DataQualityService_CreateQualityRule_Handler(srv interface{}, ctx context.
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DataQualityServiceServer).CreateQualityRule(ctx, req.(*CreateQualityRuleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_BatchCreateQualityRules_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BatchCreateQualityRulesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).BatchCreateQualityRules(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_BatchCreateQualityRules_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).BatchCreateQualityRules(ctx, req.(*BatchCreateQualityRulesRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -762,6 +844,24 @@ func _DataQualityService_ListQualitySuggestions_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataQualityService_GetQualitySuggestion_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQualitySuggestionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).GetQualitySuggestion(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_GetQualitySuggestion_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).GetQualitySuggestion(ctx, req.(*GetQualitySuggestionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DataQualityService_UpdateQualitySuggestion_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(UpdateQualitySuggestionRequest)
 	if err := dec(in); err != nil {
@@ -776,6 +876,24 @@ func _DataQualityService_UpdateQualitySuggestion_Handler(srv interface{}, ctx co
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DataQualityServiceServer).UpdateQualitySuggestion(ctx, req.(*UpdateQualitySuggestionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_BatchUpdateQualitySuggestions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BatchUpdateQualitySuggestionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).BatchUpdateQualitySuggestions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_BatchUpdateQualitySuggestions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).BatchUpdateQualitySuggestions(ctx, req.(*BatchUpdateQualitySuggestionsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -937,6 +1055,10 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _DataQualityService_CreateQualityRule_Handler,
 		},
 		{
+			MethodName: "BatchCreateQualityRules",
+			Handler:    _DataQualityService_BatchCreateQualityRules_Handler,
+		},
+		{
 			MethodName: "UpdateQualityRule",
 			Handler:    _DataQualityService_UpdateQualityRule_Handler,
 		},
@@ -977,8 +1099,16 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _DataQualityService_ListQualitySuggestions_Handler,
 		},
 		{
+			MethodName: "GetQualitySuggestion",
+			Handler:    _DataQualityService_GetQualitySuggestion_Handler,
+		},
+		{
 			MethodName: "UpdateQualitySuggestion",
 			Handler:    _DataQualityService_UpdateQualitySuggestion_Handler,
+		},
+		{
+			MethodName: "BatchUpdateQualitySuggestions",
+			Handler:    _DataQualityService_BatchUpdateQualitySuggestions_Handler,
 		},
 		{
 			MethodName: "ListColumnProfiles",

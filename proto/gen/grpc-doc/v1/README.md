@@ -219,6 +219,12 @@
 - [v1/data_quality_service.proto](#v1_data_quality_service-proto)
     - [AcceptedValuesConfig](#metaxisdata-v1-AcceptedValuesConfig)
     - [AggregateConfig](#metaxisdata-v1-AggregateConfig)
+    - [BatchCreateQualityRuleResult](#metaxisdata-v1-BatchCreateQualityRuleResult)
+    - [BatchCreateQualityRulesRequest](#metaxisdata-v1-BatchCreateQualityRulesRequest)
+    - [BatchCreateQualityRulesResponse](#metaxisdata-v1-BatchCreateQualityRulesResponse)
+    - [BatchUpdateQualitySuggestionResult](#metaxisdata-v1-BatchUpdateQualitySuggestionResult)
+    - [BatchUpdateQualitySuggestionsRequest](#metaxisdata-v1-BatchUpdateQualitySuggestionsRequest)
+    - [BatchUpdateQualitySuggestionsResponse](#metaxisdata-v1-BatchUpdateQualitySuggestionsResponse)
     - [CelExpressionConfig](#metaxisdata-v1-CelExpressionConfig)
     - [ColumnProfile](#metaxisdata-v1-ColumnProfile)
     - [ColumnProfileStats](#metaxisdata-v1-ColumnProfileStats)
@@ -237,6 +243,7 @@
     - [GetQualityIssueRequest](#metaxisdata-v1-GetQualityIssueRequest)
     - [GetQualityOverviewRequest](#metaxisdata-v1-GetQualityOverviewRequest)
     - [GetQualityRuleRequest](#metaxisdata-v1-GetQualityRuleRequest)
+    - [GetQualitySuggestionRequest](#metaxisdata-v1-GetQualitySuggestionRequest)
     - [GroupCheckConfig](#metaxisdata-v1-GroupCheckConfig)
     - [ListColumnLabelsRequest](#metaxisdata-v1-ListColumnLabelsRequest)
     - [ListColumnLabelsResponse](#metaxisdata-v1-ListColumnLabelsResponse)
@@ -3989,6 +3996,102 @@ AggregateConfig bounds the value one aggregate over one column produces.
 
 
 
+<a name="metaxisdata-v1-BatchCreateQualityRuleResult"></a>
+
+### BatchCreateQualityRuleResult
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| rule | [QualityRule](#metaxisdata-v1-QualityRule) |  | The created rule; unset when this item failed. |
+| error | [string](#string) |  | Empty on success; otherwise why this rule could not be created. |
+| suggestion | [string](#string) |  | The suggestion named by the request item, echoed so a client does not have to trust the index alone. Empty for an item that named no suggestion. Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-BatchCreateQualityRulesRequest"></a>
+
+### BatchCreateQualityRulesRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| requests | [CreateQualityRuleRequest](#metaxisdata-v1-CreateQualityRuleRequest) | repeated | The rules to create, at most 200, in submission order. Each item is created independently, so one rejected rule does not block the others. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-BatchCreateQualityRulesResponse"></a>
+
+### BatchCreateQualityRulesResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| results | [BatchCreateQualityRuleResult](#metaxisdata-v1-BatchCreateQualityRuleResult) | repeated | One result per request, in request order. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-BatchUpdateQualitySuggestionResult"></a>
+
+### BatchUpdateQualitySuggestionResult
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| suggestion | [QualitySuggestion](#metaxisdata-v1-QualitySuggestion) |  | The decided suggestion; unset when this decision failed. |
+| error | [string](#string) |  | Empty on success; otherwise why this suggestion could not be decided. |
+| name | [string](#string) |  | The suggestion name named by the request item, echoed so a client does not have to trust the index alone. Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-BatchUpdateQualitySuggestionsRequest"></a>
+
+### BatchUpdateQualitySuggestionsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| requests | [UpdateQualitySuggestionRequest](#metaxisdata-v1-UpdateQualitySuggestionRequest) | repeated | The decisions to apply, at most 200, in submission order. Each request names one suggestion and is applied independently. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-BatchUpdateQualitySuggestionsResponse"></a>
+
+### BatchUpdateQualitySuggestionsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| results | [BatchUpdateQualitySuggestionResult](#metaxisdata-v1-BatchUpdateQualitySuggestionResult) | repeated | One result per request, in request order. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-CelExpressionConfig"></a>
 
 ### CelExpressionConfig
@@ -4111,6 +4214,7 @@ they are returned, so a wide text column cannot bloat the response.
 | ----- | ---- | ----- | ----------- |
 | parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
 | rule | [QualityRule](#metaxisdata-v1-QualityRule) |  | The rule to create. Its name is assigned by the server. |
+| suggestion | [string](#string) |  | The suggestion this rule is created from, if any. When set, the rule&#39;s target is taken from the suggestion: a request target that names a different target is rejected rather than silently ignored, so a caller cannot create a rule for one table while accepting another table&#39;s draft. The suggestion is marked accepted once the rule exists. A decision that cannot be written does not roll the created rule back; it is logged and the suggestion can be decided explicitly. |
 
 
 
@@ -4316,6 +4420,21 @@ timestamp follows on_empty.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  | Format: workspaces/{workspace}/qualityRules/{quality_rule} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetQualitySuggestionRequest"></a>
+
+### GetQualitySuggestionRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion} |
 
 
 
@@ -4555,6 +4674,10 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 | kind | [QualitySuggestionKind](#metaxisdata-v1-QualitySuggestionKind) |  |  |
 | source | [QualitySuggestionSource](#metaxisdata-v1-QualitySuggestionSource) |  |  |
 | target_guid | [string](#string) |  | The exact target GUID. |
+| instance | [string](#string) |  | The following four filters are GUID path prefixes, the same shape as ListQualityRules: a suggestion matches when its target GUID starts with the given prefix, so &#34;instance_1&#34; selects every suggestion for that instance. |
+| database | [string](#string) |  |  |
+| schema | [string](#string) |  |  |
+| table | [string](#string) |  |  |
 
 
 
@@ -5912,6 +6035,7 @@ not exposed as a resource.
 | ListQualityRules | [ListQualityRulesRequest](#metaxisdata-v1-ListQualityRulesRequest) | [ListQualityRulesResponse](#metaxisdata-v1-ListQualityRulesResponse) | List rules, newest first. |
 | GetQualityRule | [GetQualityRuleRequest](#metaxisdata-v1-GetQualityRuleRequest) | [QualityRule](#metaxisdata-v1-QualityRule) | Read one rule, including its current revision and a summary of its most recent result. |
 | CreateQualityRule | [CreateQualityRuleRequest](#metaxisdata-v1-CreateQualityRuleRequest) | [QualityRule](#metaxisdata-v1-QualityRule) | Create a rule. The rule is validated and compiled before it is stored; a rejected rule is never persisted. |
+| BatchCreateQualityRules | [BatchCreateQualityRulesRequest](#metaxisdata-v1-BatchCreateQualityRulesRequest) | [BatchCreateQualityRulesResponse](#metaxisdata-v1-BatchCreateQualityRulesResponse) | Create a batch of rules in one call, optionally from the suggestions they came from. Each item is validated and stored independently: a failure is reported in its own result and does not abort the other items. |
 | UpdateQualityRule | [UpdateQualityRuleRequest](#metaxisdata-v1-UpdateQualityRuleRequest) | [QualityRule](#metaxisdata-v1-QualityRule) | Update a rule. Every semantic edit appends a revision, so a historical result always stays explainable by the definition that produced it. |
 | DeleteQualityRule | [DeleteQualityRuleRequest](#metaxisdata-v1-DeleteQualityRuleRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Delete a rule. The rule, its revisions and results are only archived, never physically removed, so history stays readable. |
 | PreviewQualityRule | [PreviewQualityRuleRequest](#metaxisdata-v1-PreviewQualityRuleRequest) | [PreviewQualityRuleResponse](#metaxisdata-v1-PreviewQualityRuleResponse) | Validate and compile a rule without saving it: config validation, filter validation and a `LIMIT 0` probe against the target&#39;s read-only data source. It writes nothing and creates no run. |
@@ -5922,7 +6046,9 @@ not exposed as a resource.
 | GetQualityIssue | [GetQualityIssueRequest](#metaxisdata-v1-GetQualityIssueRequest) | [QualityIssue](#metaxisdata-v1-QualityIssue) | Read one quality issue. |
 | UpdateQualityIssue | [UpdateQualityIssueRequest](#metaxisdata-v1-UpdateQualityIssueRequest) | [QualityIssue](#metaxisdata-v1-QualityIssue) | Acknowledge, resolve or mute one quality issue. |
 | ListQualitySuggestions | [ListQualitySuggestionsRequest](#metaxisdata-v1-ListQualitySuggestionsRequest) | [ListQualitySuggestionsResponse](#metaxisdata-v1-ListQualitySuggestionsResponse) | List the review queue of model-proposed rule drafts and semantic labels, newest first. |
+| GetQualitySuggestion | [GetQualitySuggestionRequest](#metaxisdata-v1-GetQualitySuggestionRequest) | [QualitySuggestion](#metaxisdata-v1-QualitySuggestion) | Read one queued suggestion. The queue is paged with ListQualitySuggestions; this exists so a deep link can open one draft without reading the pages. |
 | UpdateQualitySuggestion | [UpdateQualitySuggestionRequest](#metaxisdata-v1-UpdateQualitySuggestionRequest) | [QualitySuggestion](#metaxisdata-v1-QualitySuggestion) | Accept or reject one queued suggestion. A decision is final: the store refuses a second one. |
+| BatchUpdateQualitySuggestions | [BatchUpdateQualitySuggestionsRequest](#metaxisdata-v1-BatchUpdateQualitySuggestionsRequest) | [BatchUpdateQualitySuggestionsResponse](#metaxisdata-v1-BatchUpdateQualitySuggestionsResponse) | Accept or reject many queued suggestions in one call. Each decision is independent: a failure is reported in its own result and does not abort the rest. |
 | ListColumnProfiles | [ListColumnProfilesRequest](#metaxisdata-v1-ListColumnProfilesRequest) | [ListColumnProfilesResponse](#metaxisdata-v1-ListColumnProfilesResponse) | List the cached deterministic profiles of columns. Profiles are read-only measurements; there is no get or update. |
 | ListColumnLabels | [ListColumnLabelsRequest](#metaxisdata-v1-ListColumnLabelsRequest) | [ListColumnLabelsResponse](#metaxisdata-v1-ListColumnLabelsResponse) | List the semantic labels asserted on columns. |
 | UpdateColumnLabel | [UpdateColumnLabelRequest](#metaxisdata-v1-UpdateColumnLabelRequest) | [UpdateColumnLabelResponse](#metaxisdata-v1-UpdateColumnLabelResponse) | Accept a proposed semantic label or clear the label of one column. |

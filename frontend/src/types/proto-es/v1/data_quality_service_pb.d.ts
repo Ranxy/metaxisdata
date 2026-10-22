@@ -2374,6 +2374,19 @@ export declare type CreateQualityRuleRequest = Message<"metaxisdata.v1.CreateQua
    * @generated from field: metaxisdata.v1.QualityRule rule = 2;
    */
   rule?: QualityRule;
+
+  /**
+   * The suggestion this rule is created from, if any. When set, the rule's
+   * target is taken from the suggestion: a request target that names a
+   * different target is rejected rather than silently ignored, so a caller
+   * cannot create a rule for one table while accepting another table's draft.
+   * The suggestion is marked accepted once the rule exists. A decision that
+   * cannot be written does not roll the created rule back; it is logged and the
+   * suggestion can be decided explicitly.
+   *
+   * @generated from field: string suggestion = 3;
+   */
+  suggestion: string;
 };
 
 /**
@@ -2381,6 +2394,84 @@ export declare type CreateQualityRuleRequest = Message<"metaxisdata.v1.CreateQua
  * Use `create(CreateQualityRuleRequestSchema)` to create a new message.
  */
 export declare const CreateQualityRuleRequestSchema: GenMessage<CreateQualityRuleRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.BatchCreateQualityRulesRequest
+ */
+export declare type BatchCreateQualityRulesRequest = Message<"metaxisdata.v1.BatchCreateQualityRulesRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * The rules to create, at most 200, in submission order. Each item is created
+   * independently, so one rejected rule does not block the others.
+   *
+   * @generated from field: repeated metaxisdata.v1.CreateQualityRuleRequest requests = 2;
+   */
+  requests: CreateQualityRuleRequest[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.BatchCreateQualityRulesRequest.
+ * Use `create(BatchCreateQualityRulesRequestSchema)` to create a new message.
+ */
+export declare const BatchCreateQualityRulesRequestSchema: GenMessage<BatchCreateQualityRulesRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.BatchCreateQualityRulesResponse
+ */
+export declare type BatchCreateQualityRulesResponse = Message<"metaxisdata.v1.BatchCreateQualityRulesResponse"> & {
+  /**
+   * One result per request, in request order.
+   *
+   * @generated from field: repeated metaxisdata.v1.BatchCreateQualityRuleResult results = 1;
+   */
+  results: BatchCreateQualityRuleResult[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.BatchCreateQualityRulesResponse.
+ * Use `create(BatchCreateQualityRulesResponseSchema)` to create a new message.
+ */
+export declare const BatchCreateQualityRulesResponseSchema: GenMessage<BatchCreateQualityRulesResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.BatchCreateQualityRuleResult
+ */
+export declare type BatchCreateQualityRuleResult = Message<"metaxisdata.v1.BatchCreateQualityRuleResult"> & {
+  /**
+   * The created rule; unset when this item failed.
+   *
+   * @generated from field: metaxisdata.v1.QualityRule rule = 1;
+   */
+  rule?: QualityRule;
+
+  /**
+   * Empty on success; otherwise why this rule could not be created.
+   *
+   * @generated from field: string error = 2;
+   */
+  error: string;
+
+  /**
+   * The suggestion named by the request item, echoed so a client does not have
+   * to trust the index alone. Empty for an item that named no suggestion.
+   * Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion}
+   *
+   * @generated from field: string suggestion = 3;
+   */
+  suggestion: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.BatchCreateQualityRuleResult.
+ * Use `create(BatchCreateQualityRuleResultSchema)` to create a new message.
+ */
+export declare const BatchCreateQualityRuleResultSchema: GenMessage<BatchCreateQualityRuleResult>;
 
 /**
  * @generated from message metaxisdata.v1.UpdateQualityRuleRequest
@@ -2881,6 +2972,30 @@ export declare type ListQualitySuggestionsRequest = Message<"metaxisdata.v1.List
    * @generated from field: string target_guid = 7;
    */
   targetGuid: string;
+
+  /**
+   * The following four filters are GUID path prefixes, the same shape as
+   * ListQualityRules: a suggestion matches when its target GUID starts with the
+   * given prefix, so "instance_1" selects every suggestion for that instance.
+   *
+   * @generated from field: string instance = 8;
+   */
+  instance: string;
+
+  /**
+   * @generated from field: string database = 9;
+   */
+  database: string;
+
+  /**
+   * @generated from field: string schema = 10;
+   */
+  schema: string;
+
+  /**
+   * @generated from field: string table = 11;
+   */
+  table: string;
 };
 
 /**
@@ -2942,6 +3057,102 @@ export declare type UpdateQualitySuggestionRequest = Message<"metaxisdata.v1.Upd
  * Use `create(UpdateQualitySuggestionRequestSchema)` to create a new message.
  */
 export declare const UpdateQualitySuggestionRequestSchema: GenMessage<UpdateQualitySuggestionRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualitySuggestionRequest
+ */
+export declare type GetQualitySuggestionRequest = Message<"metaxisdata.v1.GetQualitySuggestionRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualitySuggestionRequest.
+ * Use `create(GetQualitySuggestionRequestSchema)` to create a new message.
+ */
+export declare const GetQualitySuggestionRequestSchema: GenMessage<GetQualitySuggestionRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.BatchUpdateQualitySuggestionsRequest
+ */
+export declare type BatchUpdateQualitySuggestionsRequest = Message<"metaxisdata.v1.BatchUpdateQualitySuggestionsRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * The decisions to apply, at most 200, in submission order. Each request
+   * names one suggestion and is applied independently.
+   *
+   * @generated from field: repeated metaxisdata.v1.UpdateQualitySuggestionRequest requests = 2;
+   */
+  requests: UpdateQualitySuggestionRequest[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.BatchUpdateQualitySuggestionsRequest.
+ * Use `create(BatchUpdateQualitySuggestionsRequestSchema)` to create a new message.
+ */
+export declare const BatchUpdateQualitySuggestionsRequestSchema: GenMessage<BatchUpdateQualitySuggestionsRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.BatchUpdateQualitySuggestionsResponse
+ */
+export declare type BatchUpdateQualitySuggestionsResponse = Message<"metaxisdata.v1.BatchUpdateQualitySuggestionsResponse"> & {
+  /**
+   * One result per request, in request order.
+   *
+   * @generated from field: repeated metaxisdata.v1.BatchUpdateQualitySuggestionResult results = 1;
+   */
+  results: BatchUpdateQualitySuggestionResult[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.BatchUpdateQualitySuggestionsResponse.
+ * Use `create(BatchUpdateQualitySuggestionsResponseSchema)` to create a new message.
+ */
+export declare const BatchUpdateQualitySuggestionsResponseSchema: GenMessage<BatchUpdateQualitySuggestionsResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.BatchUpdateQualitySuggestionResult
+ */
+export declare type BatchUpdateQualitySuggestionResult = Message<"metaxisdata.v1.BatchUpdateQualitySuggestionResult"> & {
+  /**
+   * The decided suggestion; unset when this decision failed.
+   *
+   * @generated from field: metaxisdata.v1.QualitySuggestion suggestion = 1;
+   */
+  suggestion?: QualitySuggestion;
+
+  /**
+   * Empty on success; otherwise why this suggestion could not be decided.
+   *
+   * @generated from field: string error = 2;
+   */
+  error: string;
+
+  /**
+   * The suggestion name named by the request item, echoed so a client does not
+   * have to trust the index alone.
+   * Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion}
+   *
+   * @generated from field: string name = 3;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.BatchUpdateQualitySuggestionResult.
+ * Use `create(BatchUpdateQualitySuggestionResultSchema)` to create a new message.
+ */
+export declare const BatchUpdateQualitySuggestionResultSchema: GenMessage<BatchUpdateQualitySuggestionResult>;
 
 /**
  * @generated from message metaxisdata.v1.ListColumnProfilesRequest
@@ -4657,6 +4868,18 @@ export declare const DataQualityService: GenService<{
     output: typeof QualityRuleSchema;
   },
   /**
+   * Create a batch of rules in one call, optionally from the suggestions they
+   * came from. Each item is validated and stored independently: a failure is
+   * reported in its own result and does not abort the other items.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.BatchCreateQualityRules
+   */
+  batchCreateQualityRules: {
+    methodKind: "unary";
+    input: typeof BatchCreateQualityRulesRequestSchema;
+    output: typeof BatchCreateQualityRulesResponseSchema;
+  },
+  /**
    * Update a rule. Every semantic edit appends a revision, so a historical
    * result always stays explainable by the definition that produced it.
    *
@@ -4764,6 +4987,17 @@ export declare const DataQualityService: GenService<{
     output: typeof ListQualitySuggestionsResponseSchema;
   },
   /**
+   * Read one queued suggestion. The queue is paged with ListQualitySuggestions;
+   * this exists so a deep link can open one draft without reading the pages.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualitySuggestion
+   */
+  getQualitySuggestion: {
+    methodKind: "unary";
+    input: typeof GetQualitySuggestionRequestSchema;
+    output: typeof QualitySuggestionSchema;
+  },
+  /**
    * Accept or reject one queued suggestion. A decision is final: the store
    * refuses a second one.
    *
@@ -4773,6 +5007,18 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof UpdateQualitySuggestionRequestSchema;
     output: typeof QualitySuggestionSchema;
+  },
+  /**
+   * Accept or reject many queued suggestions in one call. Each decision is
+   * independent: a failure is reported in its own result and does not abort the
+   * rest.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.BatchUpdateQualitySuggestions
+   */
+  batchUpdateQualitySuggestions: {
+    methodKind: "unary";
+    input: typeof BatchUpdateQualitySuggestionsRequestSchema;
+    output: typeof BatchUpdateQualitySuggestionsResponseSchema;
   },
   /**
    * List the cached deterministic profiles of columns. Profiles are read-only

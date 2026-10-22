@@ -1,4 +1,5 @@
 import { create } from "@bufbuild/protobuf";
+import { DurationSchema } from "@bufbuild/protobuf/wkt";
 import {
   type ColumnProfile,
   type ColumnProfileStats,
@@ -6,6 +7,7 @@ import {
   QualityDimension,
   QualityLabelSource,
   QualityLabelStatus,
+  type QualityRule,
   type QualityRuleDraftConfig,
   QualityRuleSchema,
   QualityRuleState,
@@ -23,6 +25,7 @@ import { formatRowCount } from "@/utils/dataQuality";
 import {
   emptyConfig,
   emptyRuleForm,
+  formToRule,
   type RuleConfigForm,
   type RuleFormState,
   ruleToForm,
@@ -258,6 +261,259 @@ export function suggestionToEditorPrefill(
     target: targetSelectionFromRule(rule),
     ruleType,
   };
+}
+
+// ---- target grouping and labels ----
+
+/** The four levels of a metadata GUID. */
+export interface SuggestionTargetPath {
+  instance: string;
+  database: string;
+  schema: string;
+  object: string;
+}
+
+/**
+ * A suggestion's target GUID split into its path levels. A GUID is the
+ * `;`-joined resource path, and a MySQL-family target keeps a deliberately empty
+ * schema segment; a shorter GUID (a suggestion queued before a target level
+ * existed, or a hand-written fixture) is read from the right.
+ */
+export function suggestionTargetPath(guid: string): SuggestionTargetPath {
+  // `split` always returns at least one segment, so length 0 cannot occur.
+  const segments = guid.split(";");
+  switch (segments.length) {
+    case 1:
+      return {
+        instance: segments[0],
+        database: "",
+        schema: "",
+        object: "",
+      };
+    case 2:
+      return {
+        instance: segments[0],
+        database: segments[1],
+        schema: "",
+        object: "",
+      };
+    case 3:
+      // MySQL-family GUIDs carry no schema segment.
+      return {
+        instance: segments[0],
+        database: segments[1],
+        schema: "",
+        object: segments[2],
+      };
+    default:
+      return {
+        instance: segments[0],
+        database: segments[1],
+        schema: segments[2],
+        object: segments[3],
+      };
+  }
+}
+
+/**
+ * A target GUID as one display name. The instance title replaces the raw id when
+ * the caller knows it; the remaining levels stay as the GUID carries them.
+ */
+export function suggestionTargetLabel(
+  guid: string,
+  instanceTitle = ""
+): string {
+  const path = suggestionTargetPath(guid);
+  const parts = [
+    instanceTitle || path.instance,
+    path.database,
+    path.schema,
+    path.object,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : "-";
+}
+
+export interface SuggestionTargetGroup {
+  targetGuid: string;
+  targetLabel: string;
+  suggestions: QualitySuggestion[];
+}
+
+/**
+ * The queue grouped by target table, in first-seen order. `instanceTitles` maps a
+ * bare instance id to its display title; an unknown id falls back to the GUID's
+ * own instance segment.
+ */
+export function groupSuggestionsByTarget(
+  suggestions: readonly QualitySuggestion[],
+  instanceTitles: Record<string, string> = {}
+): SuggestionTargetGroup[] {
+  const groups = new Map<string, SuggestionTargetGroup>();
+  for (const suggestion of suggestions) {
+    const targetGuid = suggestion.target?.metaGuid ?? "";
+    let group = groups.get(targetGuid);
+    if (!group) {
+      const instance = suggestionTargetPath(targetGuid).instance;
+      group = {
+        targetGuid,
+        targetLabel: suggestionTargetLabel(
+          targetGuid,
+          instanceTitles[instance] ?? ""
+        ),
+        suggestions: [],
+      };
+      groups.set(targetGuid, group);
+    }
+    group.suggestions.push(suggestion);
+  }
+  return [...groups.values()];
+}
+
+// ---- selection ----
+
+/** A suggestion still waiting for a person's decision. */
+export function isPendingSuggestion(suggestion: QualitySuggestion): boolean {
+  return suggestion.status === QualitySuggestionStatus.PENDING;
+}
+
+/** A pending rule draft: the only suggestion kind a rule can be created from. */
+export function isPendingDraft(suggestion: QualitySuggestion): boolean {
+  return (
+    isPendingSuggestion(suggestion) &&
+    suggestion.kind === QualitySuggestionKind.RULE_DRAFT
+  );
+}
+
+/** A pending semantic label: the only suggestion kind accepted without a rule. */
+export function isPendingLabel(suggestion: QualitySuggestion): boolean {
+  return (
+    isPendingSuggestion(suggestion) &&
+    suggestion.kind === QualitySuggestionKind.LABEL
+  );
+}
+
+export interface SuggestionSelectionCounts {
+  total: number;
+  drafts: number;
+  labels: number;
+}
+
+/** How many selected suggestions are drafts and how many are labels. */
+export function selectionCountsByKind(
+  selected: readonly QualitySuggestion[]
+): SuggestionSelectionCounts {
+  let drafts = 0;
+  let labels = 0;
+  for (const suggestion of selected) {
+    if (suggestion.kind === QualitySuggestionKind.RULE_DRAFT) {
+      drafts += 1;
+    } else if (suggestion.kind === QualitySuggestionKind.LABEL) {
+      labels += 1;
+    }
+  }
+  return { total: selected.length, drafts, labels };
+}
+
+// ---- suggestion → batch rule ----
+
+/** The server's batch limit for rules and suggestions in one call. */
+export const MAX_SUGGESTION_BATCH = 200;
+
+/** The common settings a batch review applies to every selected draft. */
+export interface SuggestionBatchOverrides {
+  /** Unset keeps the draft's own severity. */
+  severity?: QualitySeverity;
+  /** Format: users/{user}; empty means unassigned. */
+  owner?: string;
+  /** Unset keeps the draft's own dimension. */
+  dimension?: QualityDimension;
+  /**
+   * Unset leaves the schedule to the server's workspace default; otherwise the
+   * interval in seconds (15 minutes to 7 days).
+   */
+  scheduleIntervalSeconds?: number;
+}
+
+export interface BuildRuleFromSuggestionOptions {
+  suggestion: QualitySuggestion;
+  overrides?: SuggestionBatchOverrides;
+  /** An inline-edited form for this row; defaults to the draft's prefill. */
+  form?: RuleFormState;
+}
+
+/**
+ * A `CreateQualityRule` payload for one suggestion, ready for the batch call.
+ *
+ * The target comes from the suggestion (the server ignores the request's target
+ * when the suggestion is named), the state is always enabled, and an unset
+ * interval is left empty so the server applies the workspace default. Returns
+ * undefined when the suggestion is not a draft this build can turn into a rule.
+ */
+export function buildRuleFromSuggestion({
+  suggestion,
+  overrides,
+  form: editedForm,
+}: BuildRuleFromSuggestionOptions): QualityRule | undefined {
+  const prefill = suggestionToEditorPrefill(suggestion);
+  if (!prefill?.target) {
+    return undefined;
+  }
+  const rule = formToRule(editedForm ?? prefill.form, {
+    target: prefill.target,
+  });
+  rule.state = QualityRuleState.ENABLED;
+  rule.scheduleInterval = undefined;
+  if (
+    overrides?.scheduleIntervalSeconds !== undefined &&
+    overrides.scheduleIntervalSeconds > 0
+  ) {
+    rule.scheduleInterval = create(DurationSchema, {
+      seconds: BigInt(overrides.scheduleIntervalSeconds),
+      nanos: 0,
+    });
+  }
+  if (overrides?.severity !== undefined) {
+    rule.severity = overrides.severity;
+  }
+  if (overrides?.owner !== undefined) {
+    rule.owner = overrides.owner;
+  }
+  if (overrides?.dimension !== undefined) {
+    rule.dimension = overrides.dimension;
+  }
+  return rule;
+}
+
+// ---- batch results ----
+
+export interface BatchResultFailure {
+  /** The request's index, so the dialog can point at the offending row. */
+  index: number;
+  message: string;
+}
+
+export interface BatchResultSummary {
+  succeeded: number;
+  failed: BatchResultFailure[];
+}
+
+/**
+ * The per-item outcome of a batch call. A result with an error failed; anything
+ * else succeeded. The server aligns results with the request order and keeps
+ * going after a failure, so the summary is all the UI needs.
+ */
+export function summarizeBatchResults(
+  results: ReadonlyArray<{ error: string }>
+): BatchResultSummary {
+  const summary: BatchResultSummary = { succeeded: 0, failed: [] };
+  results.forEach((result, index) => {
+    if (result.error) {
+      summary.failed.push({ index, message: result.error });
+    } else {
+      summary.succeeded += 1;
+    }
+  });
+  return summary;
 }
 
 // ---- draft parameters ----

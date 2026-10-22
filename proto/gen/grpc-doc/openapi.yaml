@@ -4856,6 +4856,18 @@ paths:
                   required: true
                   schema:
                     type: string
+                - name: suggestion
+                  in: query
+                  description: |-
+                    The suggestion this rule is created from, if any. When set, the rule's
+                     target is taken from the suggestion: a request target that names a
+                     different target is rejected rather than silently ignored, so a caller
+                     cannot create a rule for one table while accepting another table's draft.
+                     The suggestion is marked accepted once the rule exists. A decision that
+                     cannot be written does not roll the created rule back; it is logged and the
+                     suggestion can be decided explicitly.
+                  schema:
+                    type: string
             requestBody:
                 content:
                     application/json:
@@ -4977,6 +4989,41 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/QualityRule'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityRules:batchCreate:
+        post:
+            tags:
+                - DataQualityService
+            description: |-
+                Create a batch of rules in one call, optionally from the suggestions they
+                 came from. Each item is validated and stored independently: a failure is
+                 reported in its own result and does not abort the other items.
+            operationId: DataQualityService_BatchCreateQualityRules
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/BatchCreateQualityRulesRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BatchCreateQualityRulesResponse'
                 default:
                     description: Default error response
                     content:
@@ -5116,6 +5163,26 @@ paths:
                   description: The exact target GUID.
                   schema:
                     type: string
+                - name: instance
+                  in: query
+                  description: |-
+                    The following four filters are GUID path prefixes, the same shape as
+                     ListQualityRules: a suggestion matches when its target GUID starts with the
+                     given prefix, so "instance_1" selects every suggestion for that instance.
+                  schema:
+                    type: string
+                - name: database
+                  in: query
+                  schema:
+                    type: string
+                - name: schema
+                  in: query
+                  schema:
+                    type: string
+                - name: table
+                  in: query
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: OK
@@ -5123,6 +5190,40 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ListQualitySuggestionsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualitySuggestions/{qualitySuggestion}:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                Read one queued suggestion. The queue is paged with ListQualitySuggestions;
+                 this exists so a deep link can open one draft without reading the pages.
+            operationId: DataQualityService_GetQualitySuggestion
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualitySuggestion
+                  in: path
+                  description: The qualitySuggestion id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualitySuggestion'
                 default:
                     description: Default error response
                     content:
@@ -5163,6 +5264,41 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/QualitySuggestion'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualitySuggestions:batchDecide:
+        post:
+            tags:
+                - DataQualityService
+            description: |-
+                Accept or reject many queued suggestions in one call. Each decision is
+                 independent: a failure is reported in its own result and does not abort the
+                 rest.
+            operationId: DataQualityService_BatchUpdateQualitySuggestions
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/BatchUpdateQualitySuggestionsRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BatchUpdateQualitySuggestionsResponse'
                 default:
                     description: Default error response
                     content:
@@ -5800,6 +5936,46 @@ components:
                     type: string
                 userAgent:
                     type: string
+        BatchCreateQualityRuleResult:
+            type: object
+            properties:
+                rule:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityRule'
+                    description: The created rule; unset when this item failed.
+                error:
+                    type: string
+                    description: Empty on success; otherwise why this rule could not be created.
+                suggestion:
+                    type: string
+                    description: |-
+                        The suggestion named by the request item, echoed so a client does not have
+                         to trust the index alone. Empty for an item that named no suggestion.
+                         Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion}
+        BatchCreateQualityRulesRequest:
+            required:
+                - parent
+                - requests
+            type: object
+            properties:
+                parent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
+                requests:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CreateQualityRuleRequest'
+                    description: |-
+                        The rules to create, at most 200, in submission order. Each item is created
+                         independently, so one rejected rule does not block the others.
+        BatchCreateQualityRulesResponse:
+            type: object
+            properties:
+                results:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/BatchCreateQualityRuleResult'
+                    description: One result per request, in request order.
         BatchGetUsersResponse:
             type: object
             properties:
@@ -5901,6 +6077,46 @@ components:
                     description: |-
                         One result per requested instance, in request order. Per-instance failures
                          are reported here and do not abort the remaining instances.
+        BatchUpdateQualitySuggestionResult:
+            type: object
+            properties:
+                suggestion:
+                    allOf:
+                        - $ref: '#/components/schemas/QualitySuggestion'
+                    description: The decided suggestion; unset when this decision failed.
+                error:
+                    type: string
+                    description: Empty on success; otherwise why this suggestion could not be decided.
+                name:
+                    type: string
+                    description: |-
+                        The suggestion name named by the request item, echoed so a client does not
+                         have to trust the index alone.
+                         Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion}
+        BatchUpdateQualitySuggestionsRequest:
+            required:
+                - parent
+                - requests
+            type: object
+            properties:
+                parent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
+                requests:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/UpdateQualitySuggestionRequest'
+                    description: |-
+                        The decisions to apply, at most 200, in submission order. Each request
+                         names one suggestion and is applied independently.
+        BatchUpdateQualitySuggestionsResponse:
+            type: object
+            properties:
+                results:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/BatchUpdateQualitySuggestionResult'
+                    description: One result per request, in request order.
         Binding:
             type: object
             properties:
@@ -6353,6 +6569,29 @@ components:
                     type: integer
                     description: The minimum polling interval in seconds.
                     format: int32
+        CreateQualityRuleRequest:
+            required:
+                - parent
+                - rule
+            type: object
+            properties:
+                parent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
+                rule:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityRule'
+                    description: The rule to create. Its name is assigned by the server.
+                suggestion:
+                    type: string
+                    description: |-
+                        The suggestion this rule is created from, if any. When set, the rule's
+                         target is taken from the suggestion: a request target that names a
+                         different target is rejected rather than silently ignored, so a caller
+                         cannot create a rule for one table while accepting another table's draft.
+                         The suggestion is marked accepted once the rule exists. A decision that
+                         cannot be written does not roll the created rule back; it is logged and the
+                         suggestion can be decided explicitly.
         CreateSSOStateResponse:
             type: object
             properties:

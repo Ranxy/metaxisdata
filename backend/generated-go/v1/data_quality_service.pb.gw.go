@@ -127,6 +127,8 @@ func local_request_DataQualityService_GetQualityRule_0(ctx context.Context, mars
 	return msg, metadata, err
 }
 
+var filter_DataQualityService_CreateQualityRule_0 = &utilities.DoubleArray{Encoding: map[string]int{"rule": 0, "parent": 1}, Base: []int{1, 1, 2, 0, 0}, Check: []int{0, 1, 1, 2, 3}}
+
 func request_DataQualityService_CreateQualityRule_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
 		protoReq CreateQualityRuleRequest
@@ -146,6 +148,12 @@ func request_DataQualityService_CreateQualityRule_0(ctx context.Context, marshal
 	protoReq.Parent, err = runtime.String(val)
 	if err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "parent", err)
+	}
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_DataQualityService_CreateQualityRule_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 	msg, err := client.CreateQualityRule(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
@@ -168,7 +176,58 @@ func local_request_DataQualityService_CreateQualityRule_0(ctx context.Context, m
 	if err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "parent", err)
 	}
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_DataQualityService_CreateQualityRule_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
 	msg, err := server.CreateQualityRule(ctx, &protoReq)
+	return msg, metadata, err
+}
+
+func request_DataQualityService_BatchCreateQualityRules_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq BatchCreateQualityRulesRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if req.Body != nil {
+		_, _ = io.Copy(io.Discard, req.Body)
+	}
+	val, ok := pathParams["parent"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "parent")
+	}
+	protoReq.Parent, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "parent", err)
+	}
+	msg, err := client.BatchCreateQualityRules(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+}
+
+func local_request_DataQualityService_BatchCreateQualityRules_0(ctx context.Context, marshaler runtime.Marshaler, server DataQualityServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq BatchCreateQualityRulesRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	val, ok := pathParams["parent"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "parent")
+	}
+	protoReq.Parent, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "parent", err)
+	}
+	msg, err := server.BatchCreateQualityRules(ctx, &protoReq)
 	return msg, metadata, err
 }
 
@@ -700,6 +759,45 @@ func local_request_DataQualityService_ListQualitySuggestions_0(ctx context.Conte
 	return msg, metadata, err
 }
 
+func request_DataQualityService_GetQualitySuggestion_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq GetQualitySuggestionRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	if req.Body != nil {
+		_, _ = io.Copy(io.Discard, req.Body)
+	}
+	val, ok := pathParams["name"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
+	}
+	protoReq.Name, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
+	}
+	msg, err := client.GetQualitySuggestion(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+}
+
+func local_request_DataQualityService_GetQualitySuggestion_0(ctx context.Context, marshaler runtime.Marshaler, server DataQualityServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq GetQualitySuggestionRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	val, ok := pathParams["name"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
+	}
+	protoReq.Name, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
+	}
+	msg, err := server.GetQualitySuggestion(ctx, &protoReq)
+	return msg, metadata, err
+}
+
 func request_DataQualityService_UpdateQualitySuggestion_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
 		protoReq UpdateQualitySuggestionRequest
@@ -742,6 +840,51 @@ func local_request_DataQualityService_UpdateQualitySuggestion_0(ctx context.Cont
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
 	}
 	msg, err := server.UpdateQualitySuggestion(ctx, &protoReq)
+	return msg, metadata, err
+}
+
+func request_DataQualityService_BatchUpdateQualitySuggestions_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq BatchUpdateQualitySuggestionsRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if req.Body != nil {
+		_, _ = io.Copy(io.Discard, req.Body)
+	}
+	val, ok := pathParams["parent"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "parent")
+	}
+	protoReq.Parent, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "parent", err)
+	}
+	msg, err := client.BatchUpdateQualitySuggestions(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+}
+
+func local_request_DataQualityService_BatchUpdateQualitySuggestions_0(ctx context.Context, marshaler runtime.Marshaler, server DataQualityServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq BatchUpdateQualitySuggestionsRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	val, ok := pathParams["parent"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "parent")
+	}
+	protoReq.Parent, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "parent", err)
+	}
+	msg, err := server.BatchUpdateQualitySuggestions(ctx, &protoReq)
 	return msg, metadata, err
 }
 
@@ -1150,6 +1293,26 @@ func RegisterDataQualityServiceHandlerServer(ctx context.Context, mux *runtime.S
 		}
 		forward_DataQualityService_CreateQualityRule_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
+	mux.Handle(http.MethodPost, pattern_DataQualityService_BatchCreateQualityRules_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/BatchCreateQualityRules", runtime.WithHTTPPathPattern("/v1/{parent=workspaces/*}/qualityRules:batchCreate"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := local_request_DataQualityService_BatchCreateQualityRules_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DataQualityService_BatchCreateQualityRules_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
 	mux.Handle(http.MethodPatch, pattern_DataQualityService_UpdateQualityRule_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -1350,6 +1513,26 @@ func RegisterDataQualityServiceHandlerServer(ctx context.Context, mux *runtime.S
 		}
 		forward_DataQualityService_ListQualitySuggestions_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
+	mux.Handle(http.MethodGet, pattern_DataQualityService_GetQualitySuggestion_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/GetQualitySuggestion", runtime.WithHTTPPathPattern("/v1/{name=workspaces/*/qualitySuggestions/*}"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := local_request_DataQualityService_GetQualitySuggestion_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DataQualityService_GetQualitySuggestion_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
 	mux.Handle(http.MethodPost, pattern_DataQualityService_UpdateQualitySuggestion_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -1369,6 +1552,26 @@ func RegisterDataQualityServiceHandlerServer(ctx context.Context, mux *runtime.S
 			return
 		}
 		forward_DataQualityService_UpdateQualitySuggestion_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
+	mux.Handle(http.MethodPost, pattern_DataQualityService_BatchUpdateQualitySuggestions_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/BatchUpdateQualitySuggestions", runtime.WithHTTPPathPattern("/v1/{parent=workspaces/*}/qualitySuggestions:batchDecide"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := local_request_DataQualityService_BatchUpdateQualitySuggestions_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DataQualityService_BatchUpdateQualitySuggestions_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
 	mux.Handle(http.MethodGet, pattern_DataQualityService_ListColumnProfiles_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
@@ -1601,6 +1804,23 @@ func RegisterDataQualityServiceHandlerClient(ctx context.Context, mux *runtime.S
 		}
 		forward_DataQualityService_CreateQualityRule_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
+	mux.Handle(http.MethodPost, pattern_DataQualityService_BatchCreateQualityRules_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/BatchCreateQualityRules", runtime.WithHTTPPathPattern("/v1/{parent=workspaces/*}/qualityRules:batchCreate"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := request_DataQualityService_BatchCreateQualityRules_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DataQualityService_BatchCreateQualityRules_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
 	mux.Handle(http.MethodPatch, pattern_DataQualityService_UpdateQualityRule_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -1771,6 +1991,23 @@ func RegisterDataQualityServiceHandlerClient(ctx context.Context, mux *runtime.S
 		}
 		forward_DataQualityService_ListQualitySuggestions_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
+	mux.Handle(http.MethodGet, pattern_DataQualityService_GetQualitySuggestion_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/GetQualitySuggestion", runtime.WithHTTPPathPattern("/v1/{name=workspaces/*/qualitySuggestions/*}"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := request_DataQualityService_GetQualitySuggestion_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DataQualityService_GetQualitySuggestion_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
 	mux.Handle(http.MethodPost, pattern_DataQualityService_UpdateQualitySuggestion_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -1787,6 +2024,23 @@ func RegisterDataQualityServiceHandlerClient(ctx context.Context, mux *runtime.S
 			return
 		}
 		forward_DataQualityService_UpdateQualitySuggestion_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
+	mux.Handle(http.MethodPost, pattern_DataQualityService_BatchUpdateQualitySuggestions_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/BatchUpdateQualitySuggestions", runtime.WithHTTPPathPattern("/v1/{parent=workspaces/*}/qualitySuggestions:batchDecide"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := request_DataQualityService_BatchUpdateQualitySuggestions_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DataQualityService_BatchUpdateQualitySuggestions_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
 	mux.Handle(http.MethodGet, pattern_DataQualityService_ListColumnProfiles_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
@@ -1911,49 +2165,55 @@ func RegisterDataQualityServiceHandlerClient(ctx context.Context, mux *runtime.S
 }
 
 var (
-	pattern_DataQualityService_ListQualityRules_0        = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityRules"}, ""))
-	pattern_DataQualityService_GetQualityRule_0          = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityRules", "name"}, ""))
-	pattern_DataQualityService_CreateQualityRule_0       = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityRules"}, ""))
-	pattern_DataQualityService_UpdateQualityRule_0       = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityRules", "rule.name"}, ""))
-	pattern_DataQualityService_DeleteQualityRule_0       = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityRules", "name"}, ""))
-	pattern_DataQualityService_PreviewQualityRule_0      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityRules"}, "preview"))
-	pattern_DataQualityService_RunQualityRules_0         = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityRules"}, "run"))
-	pattern_DataQualityService_ListQualityExecutions_0   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityExecutions"}, ""))
-	pattern_DataQualityService_GetQualityExecution_0     = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityExecutions", "name"}, ""))
-	pattern_DataQualityService_ListQualityIssues_0       = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityIssues"}, ""))
-	pattern_DataQualityService_GetQualityIssue_0         = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityIssues", "name"}, ""))
-	pattern_DataQualityService_UpdateQualityIssue_0      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityIssues", "issue.name"}, ""))
-	pattern_DataQualityService_ListQualitySuggestions_0  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualitySuggestions"}, ""))
-	pattern_DataQualityService_UpdateQualitySuggestion_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualitySuggestions", "name"}, "decide"))
-	pattern_DataQualityService_ListColumnProfiles_0      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "columnProfiles"}, ""))
-	pattern_DataQualityService_ListColumnLabels_0        = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "columnLabels"}, ""))
-	pattern_DataQualityService_UpdateColumnLabel_0       = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "columnLabels"}, "update"))
-	pattern_DataQualityService_ProfileColumns_0          = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "columnProfiles"}, "profile"))
-	pattern_DataQualityService_SuggestQualityRule_0      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualitySuggestions"}, "suggestRule"))
-	pattern_DataQualityService_SuggestColumnLabels_0     = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualitySuggestions"}, "suggestLabels"))
-	pattern_DataQualityService_GetQualityOverview_0      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityOverview"}, ""))
+	pattern_DataQualityService_ListQualityRules_0              = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityRules"}, ""))
+	pattern_DataQualityService_GetQualityRule_0                = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityRules", "name"}, ""))
+	pattern_DataQualityService_CreateQualityRule_0             = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityRules"}, ""))
+	pattern_DataQualityService_BatchCreateQualityRules_0       = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityRules"}, "batchCreate"))
+	pattern_DataQualityService_UpdateQualityRule_0             = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityRules", "rule.name"}, ""))
+	pattern_DataQualityService_DeleteQualityRule_0             = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityRules", "name"}, ""))
+	pattern_DataQualityService_PreviewQualityRule_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityRules"}, "preview"))
+	pattern_DataQualityService_RunQualityRules_0               = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityRules"}, "run"))
+	pattern_DataQualityService_ListQualityExecutions_0         = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityExecutions"}, ""))
+	pattern_DataQualityService_GetQualityExecution_0           = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityExecutions", "name"}, ""))
+	pattern_DataQualityService_ListQualityIssues_0             = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityIssues"}, ""))
+	pattern_DataQualityService_GetQualityIssue_0               = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityIssues", "name"}, ""))
+	pattern_DataQualityService_UpdateQualityIssue_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityIssues", "issue.name"}, ""))
+	pattern_DataQualityService_ListQualitySuggestions_0        = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualitySuggestions"}, ""))
+	pattern_DataQualityService_GetQualitySuggestion_0          = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualitySuggestions", "name"}, ""))
+	pattern_DataQualityService_UpdateQualitySuggestion_0       = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualitySuggestions", "name"}, "decide"))
+	pattern_DataQualityService_BatchUpdateQualitySuggestions_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualitySuggestions"}, "batchDecide"))
+	pattern_DataQualityService_ListColumnProfiles_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "columnProfiles"}, ""))
+	pattern_DataQualityService_ListColumnLabels_0              = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "columnLabels"}, ""))
+	pattern_DataQualityService_UpdateColumnLabel_0             = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "columnLabels"}, "update"))
+	pattern_DataQualityService_ProfileColumns_0                = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "columnProfiles"}, "profile"))
+	pattern_DataQualityService_SuggestQualityRule_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualitySuggestions"}, "suggestRule"))
+	pattern_DataQualityService_SuggestColumnLabels_0           = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualitySuggestions"}, "suggestLabels"))
+	pattern_DataQualityService_GetQualityOverview_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityOverview"}, ""))
 )
 
 var (
-	forward_DataQualityService_ListQualityRules_0        = runtime.ForwardResponseMessage
-	forward_DataQualityService_GetQualityRule_0          = runtime.ForwardResponseMessage
-	forward_DataQualityService_CreateQualityRule_0       = runtime.ForwardResponseMessage
-	forward_DataQualityService_UpdateQualityRule_0       = runtime.ForwardResponseMessage
-	forward_DataQualityService_DeleteQualityRule_0       = runtime.ForwardResponseMessage
-	forward_DataQualityService_PreviewQualityRule_0      = runtime.ForwardResponseMessage
-	forward_DataQualityService_RunQualityRules_0         = runtime.ForwardResponseMessage
-	forward_DataQualityService_ListQualityExecutions_0   = runtime.ForwardResponseMessage
-	forward_DataQualityService_GetQualityExecution_0     = runtime.ForwardResponseMessage
-	forward_DataQualityService_ListQualityIssues_0       = runtime.ForwardResponseMessage
-	forward_DataQualityService_GetQualityIssue_0         = runtime.ForwardResponseMessage
-	forward_DataQualityService_UpdateQualityIssue_0      = runtime.ForwardResponseMessage
-	forward_DataQualityService_ListQualitySuggestions_0  = runtime.ForwardResponseMessage
-	forward_DataQualityService_UpdateQualitySuggestion_0 = runtime.ForwardResponseMessage
-	forward_DataQualityService_ListColumnProfiles_0      = runtime.ForwardResponseMessage
-	forward_DataQualityService_ListColumnLabels_0        = runtime.ForwardResponseMessage
-	forward_DataQualityService_UpdateColumnLabel_0       = runtime.ForwardResponseMessage
-	forward_DataQualityService_ProfileColumns_0          = runtime.ForwardResponseMessage
-	forward_DataQualityService_SuggestQualityRule_0      = runtime.ForwardResponseMessage
-	forward_DataQualityService_SuggestColumnLabels_0     = runtime.ForwardResponseMessage
-	forward_DataQualityService_GetQualityOverview_0      = runtime.ForwardResponseMessage
+	forward_DataQualityService_ListQualityRules_0              = runtime.ForwardResponseMessage
+	forward_DataQualityService_GetQualityRule_0                = runtime.ForwardResponseMessage
+	forward_DataQualityService_CreateQualityRule_0             = runtime.ForwardResponseMessage
+	forward_DataQualityService_BatchCreateQualityRules_0       = runtime.ForwardResponseMessage
+	forward_DataQualityService_UpdateQualityRule_0             = runtime.ForwardResponseMessage
+	forward_DataQualityService_DeleteQualityRule_0             = runtime.ForwardResponseMessage
+	forward_DataQualityService_PreviewQualityRule_0            = runtime.ForwardResponseMessage
+	forward_DataQualityService_RunQualityRules_0               = runtime.ForwardResponseMessage
+	forward_DataQualityService_ListQualityExecutions_0         = runtime.ForwardResponseMessage
+	forward_DataQualityService_GetQualityExecution_0           = runtime.ForwardResponseMessage
+	forward_DataQualityService_ListQualityIssues_0             = runtime.ForwardResponseMessage
+	forward_DataQualityService_GetQualityIssue_0               = runtime.ForwardResponseMessage
+	forward_DataQualityService_UpdateQualityIssue_0            = runtime.ForwardResponseMessage
+	forward_DataQualityService_ListQualitySuggestions_0        = runtime.ForwardResponseMessage
+	forward_DataQualityService_GetQualitySuggestion_0          = runtime.ForwardResponseMessage
+	forward_DataQualityService_UpdateQualitySuggestion_0       = runtime.ForwardResponseMessage
+	forward_DataQualityService_BatchUpdateQualitySuggestions_0 = runtime.ForwardResponseMessage
+	forward_DataQualityService_ListColumnProfiles_0            = runtime.ForwardResponseMessage
+	forward_DataQualityService_ListColumnLabels_0              = runtime.ForwardResponseMessage
+	forward_DataQualityService_UpdateColumnLabel_0             = runtime.ForwardResponseMessage
+	forward_DataQualityService_ProfileColumns_0                = runtime.ForwardResponseMessage
+	forward_DataQualityService_SuggestQualityRule_0            = runtime.ForwardResponseMessage
+	forward_DataQualityService_SuggestColumnLabels_0           = runtime.ForwardResponseMessage
+	forward_DataQualityService_GetQualityOverview_0            = runtime.ForwardResponseMessage
 )

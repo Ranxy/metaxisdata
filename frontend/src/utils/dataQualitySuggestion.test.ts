@@ -4,11 +4,14 @@ import {
   ColumnProfileSchema,
   ColumnProfileStatsSchema,
   ColumnSemanticLabelSchema,
+  QualityDimension,
   QualityLabelSource,
   QualityLabelStatus,
   QualityRuleConfigSchema,
+  QualityRuleState,
   QualityRuleType,
   QualitySemanticType,
+  QualitySeverity,
   QualitySuggestionKind,
   QualitySuggestionSchema,
   QualitySuggestionSource,
@@ -21,9 +24,14 @@ import {
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { emptyConfig, emptyRuleForm } from "./dataQualityForm";
 import {
+  buildRuleFromSuggestion,
   columnProfileHighlights,
   configEntryLabelKey,
   formatConfidence,
+  groupSuggestionsByTarget,
+  isPendingDraft,
+  isPendingLabel,
+  isPendingSuggestion,
   labelEvidenceLines,
   labelSourceKey,
   labelStatusKey,
@@ -31,12 +39,16 @@ import {
   labelSummary,
   ruleConfigEntries,
   ruleDraftOf,
+  selectionCountsByKind,
   semanticTypeKey,
   suggestionKindKey,
   suggestionSourceKey,
   suggestionStatusKey,
   suggestionStatusVariant,
+  suggestionTargetLabel,
+  suggestionTargetPath,
   suggestionToEditorPrefill,
+  summarizeBatchResults,
 } from "./dataQualitySuggestion";
 
 function ruleSuggestion() {
@@ -284,6 +296,207 @@ describe("draft parameters", () => {
       { field: "expectedColumns", value: "1" },
     ]);
     expect(configEntryLabelKey("minRows")).toBe("dataQuality.editor.minRows");
+  });
+});
+
+describe("target grouping", () => {
+  it("splits a metadata GUID into its levels", () => {
+    expect(suggestionTargetPath("inst1;db1;public;orders")).toEqual({
+      instance: "inst1",
+      database: "db1",
+      schema: "public",
+      object: "orders",
+    });
+    // The MySQL family keeps an empty schema segment.
+    expect(suggestionTargetPath("inst1;db1;;orders")).toEqual({
+      instance: "inst1",
+      database: "db1",
+      schema: "",
+      object: "orders",
+    });
+    expect(suggestionTargetPath("inst1;db1;orders")).toEqual({
+      instance: "inst1",
+      database: "db1",
+      schema: "",
+      object: "orders",
+    });
+    expect(suggestionTargetPath("inst1;db1")).toEqual({
+      instance: "inst1",
+      database: "db1",
+      schema: "",
+      object: "",
+    });
+    expect(suggestionTargetPath("inst1")).toEqual({
+      instance: "inst1",
+      database: "",
+      schema: "",
+      object: "",
+    });
+  });
+
+  it("labels a target with the instance title when it is known", () => {
+    expect(suggestionTargetLabel("inst1;db1;public;orders")).toBe(
+      "inst1 · db1 · public · orders"
+    );
+    expect(
+      suggestionTargetLabel("inst1;db1;public;orders", "Orders warehouse")
+    ).toBe("Orders warehouse · db1 · public · orders");
+    expect(suggestionTargetLabel("")).toBe("-");
+  });
+
+  it("groups the queue by target in first-seen order", () => {
+    const first = create(QualitySuggestionSchema, {
+      name: "s1",
+      target: create(QualityTargetSchema, {
+        metaGuid: "inst1;db1;public;orders",
+      }),
+    });
+    const second = create(QualitySuggestionSchema, {
+      name: "s2",
+      target: create(QualityTargetSchema, {
+        metaGuid: "inst1;db1;public;users",
+      }),
+    });
+    const third = create(QualitySuggestionSchema, {
+      name: "s3",
+      target: create(QualityTargetSchema, {
+        metaGuid: "inst1;db1;public;orders",
+      }),
+    });
+    const groups = groupSuggestionsByTarget([first, second, third], {
+      inst1: "Warehouse",
+    });
+    expect(groups.map((group) => group.targetGuid)).toEqual([
+      "inst1;db1;public;orders",
+      "inst1;db1;public;users",
+    ]);
+    expect(groups[0]?.suggestions.map((s) => s.name)).toEqual(["s1", "s3"]);
+    expect(groups[0]?.targetLabel).toBe("Warehouse · db1 · public · orders");
+    expect(groups[1]?.suggestions).toHaveLength(1);
+  });
+});
+
+describe("selection", () => {
+  it("counts the selection by kind", () => {
+    const draft = create(QualitySuggestionSchema, {
+      kind: QualitySuggestionKind.RULE_DRAFT,
+      status: QualitySuggestionStatus.PENDING,
+    });
+    const label = create(QualitySuggestionSchema, {
+      kind: QualitySuggestionKind.LABEL,
+      status: QualitySuggestionStatus.PENDING,
+    });
+    expect(selectionCountsByKind([draft, label, draft])).toEqual({
+      total: 3,
+      drafts: 2,
+      labels: 1,
+    });
+    expect(selectionCountsByKind([])).toEqual({
+      total: 0,
+      drafts: 0,
+      labels: 0,
+    });
+  });
+
+  it("separates pending drafts from pending labels", () => {
+    const draft = create(QualitySuggestionSchema, {
+      kind: QualitySuggestionKind.RULE_DRAFT,
+      status: QualitySuggestionStatus.PENDING,
+    });
+    const decided = create(QualitySuggestionSchema, {
+      kind: QualitySuggestionKind.RULE_DRAFT,
+      status: QualitySuggestionStatus.ACCEPTED,
+    });
+    const label = create(QualitySuggestionSchema, {
+      kind: QualitySuggestionKind.LABEL,
+      status: QualitySuggestionStatus.PENDING,
+    });
+    expect(isPendingSuggestion(draft)).toBe(true);
+    expect(isPendingSuggestion(decided)).toBe(false);
+    expect(isPendingDraft(draft)).toBe(true);
+    expect(isPendingDraft(label)).toBe(false);
+    expect(isPendingLabel(label)).toBe(true);
+    expect(isPendingLabel(draft)).toBe(false);
+  });
+});
+
+describe("suggestion → batch rule", () => {
+  it("builds an enabled rule from the draft with the server-default schedule", () => {
+    const rule = buildRuleFromSuggestion({ suggestion: ruleSuggestion() });
+    expect(rule?.title).toBe("Orders should have rows");
+    expect(rule?.ruleType).toBe(QualityRuleType.ROW_COUNT);
+    expect(rule?.state).toBe(QualityRuleState.ENABLED);
+    expect(rule?.target?.metaGuid).toBe("inst1;db1;public;orders");
+    expect(rule?.config?.config.case).toBe("rowCount");
+    // Unset means the server applies the workspace default interval.
+    expect(rule?.scheduleInterval).toBeUndefined();
+    expect(rule?.owner).toBe("");
+  });
+
+  it("applies the batch overrides", () => {
+    const rule = buildRuleFromSuggestion({
+      suggestion: ruleSuggestion(),
+      overrides: {
+        severity: QualitySeverity.ERROR,
+        owner: "users/owner-1",
+        dimension: QualityDimension.ACCURACY,
+        scheduleIntervalSeconds: 3600,
+      },
+    });
+    expect(rule?.severity).toBe(QualitySeverity.ERROR);
+    expect(rule?.owner).toBe("users/owner-1");
+    expect(rule?.dimension).toBe(QualityDimension.ACCURACY);
+    expect(rule?.scheduleInterval?.seconds).toBe(3600n);
+  });
+
+  it("uses an inline-edited form for the row", () => {
+    const prefill = suggestionToEditorPrefill(ruleSuggestion());
+    expect(prefill).toBeDefined();
+    if (!prefill) {
+      return;
+    }
+    const rule = buildRuleFromSuggestion({
+      suggestion: ruleSuggestion(),
+      form: { ...prefill.form, title: "Renamed rule" },
+    });
+    expect(rule?.title).toBe("Renamed rule");
+  });
+
+  it("refuses a label or a draft without a target", () => {
+    expect(
+      buildRuleFromSuggestion({
+        suggestion: create(QualitySuggestionSchema, {
+          kind: QualitySuggestionKind.LABEL,
+        }),
+      })
+    ).toBeUndefined();
+    expect(
+      buildRuleFromSuggestion({
+        suggestion: create(QualitySuggestionSchema, {
+          payload: ruleSuggestion().payload,
+        }),
+      })
+    ).toBeUndefined();
+  });
+});
+
+describe("batch results", () => {
+  it("summarises successes and the index of each failure", () => {
+    expect(
+      summarizeBatchResults([
+        { error: "" },
+        { error: "compile failed" },
+        { error: "" },
+        { error: "already decided" },
+      ])
+    ).toEqual({
+      succeeded: 2,
+      failed: [
+        { index: 1, message: "compile failed" },
+        { index: 3, message: "already decided" },
+      ],
+    });
+    expect(summarizeBatchResults([])).toEqual({ succeeded: 0, failed: [] });
   });
 });
 

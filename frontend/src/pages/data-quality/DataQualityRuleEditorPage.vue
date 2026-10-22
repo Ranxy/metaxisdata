@@ -250,6 +250,12 @@
                     {{ t("dataQuality.llm.enableInSettings") }}
                   </RouterLink>
                 </template>
+                <RouterLink
+                  :to="{ name: 'DataQualitySuggestions' }"
+                  class="ml-1 text-primary hover:underline"
+                >
+                  {{ t("dataQuality.suggestions.openCenter") }}
+                </RouterLink>
               </p>
             </div>
             <Button
@@ -579,13 +585,11 @@
       @select="onTargetSelected"
     />
 
-    <QualityDraftDialog
+    <SuggestionWorkbench
       v-if="target"
-      :open="llmDialogOpen"
-      :table-guid="target.guid"
-      :meta-type="target.metaType ?? MetaType.TABLE"
-      :columns="targetColumns"
-      @update:open="llmDialogOpen = $event"
+      v-model:open="llmDialogOpen"
+      :llm-enabled="llmEnabled"
+      :fixed-target="workbenchTarget"
       @accepted="applyAcceptedDraft"
     />
   </div>
@@ -608,21 +612,20 @@ import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import {
   createQualityRule,
-  findQualitySuggestion,
   getQualityRule,
+  getQualitySuggestion,
   previewQualityRule,
   updateQualityRule,
-  updateQualitySuggestion,
 } from "@/api/data-quality";
 import { listMetadata } from "@/api/database";
 import { getInstance } from "@/api/instance";
 import { getWorkspaceProfileSetting } from "@/api/setting";
 import PageState from "@/components/common/PageState.vue";
 import UserSelect from "@/components/common/UserSelect.vue";
-import QualityDraftDialog from "@/components/data-quality/QualityDraftDialog.vue";
 import RuleConfigForm from "@/components/data-quality/RuleConfigForm.vue";
 import RuleErrorDetails from "@/components/data-quality/RuleErrorDetails.vue";
 import RuleFilterEditor from "@/components/data-quality/RuleFilterEditor.vue";
+import SuggestionWorkbench from "@/components/data-quality/SuggestionWorkbench.vue";
 import TargetPicker from "@/components/data-quality/TargetPicker.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -659,7 +662,6 @@ import {
   QualityRuleType,
   type QualitySeverity,
   type QualitySuggestion,
-  QualitySuggestionStatus,
   QualityThresholdMetric,
   QualityRuleState as RuleState,
   QualitySeverity as Severity,
@@ -788,6 +790,17 @@ const llmAvailability = computed(() =>
   llmFeatureAvailability(llmEnabled.value, canSuggest.value)
 );
 const targetColumnDetails = ref<TargetColumnDetail[]>([]);
+
+/** The fixed target the drafting workbench runs against in editor mode. */
+const workbenchTarget = computed(() =>
+  target.value
+    ? {
+        tableGuid: target.value.guid,
+        metaType: target.value.metaType ?? MetaType.TABLE,
+        columns: targetColumns.value,
+      }
+    : undefined
+);
 
 /** The selected rule type's one-line explanation, shown under the select. */
 const selectedTypeDescription = computed(() => {
@@ -968,6 +981,16 @@ function setOnEmpty(value: unknown) {
 }
 
 function onTargetSelected(selection: TargetSelection) {
+  // A suggestion is accepted only for the target it names. Replacing the target
+  // detaches the draft: it stays pending in the suggestion center and the save
+  // creates a plain rule for the target the reader picked.
+  if (
+    suggestionInfo.value &&
+    selection.guid !== suggestionInfo.value.target?.metaGuid
+  ) {
+    suggestionInfo.value = undefined;
+    notify.info(t("dataQuality.editor.suggestionDetached"));
+  }
   target.value = selection;
   // A target can change the set of legal types; switching to the first allowed
   // type keeps the form saveable rather than failing at the dry run.
@@ -1131,17 +1154,15 @@ async function loadNewPage() {
     typeof route.query.suggestion === "string" ? route.query.suggestion : "";
   if (name) {
     try {
-      const suggestion = await findQualitySuggestion(name);
-      if (suggestion) {
-        const prefill = suggestionToEditorPrefill(suggestion);
-        if (prefill) {
-          suggestionInfo.value = suggestion;
-          form.value = prefill.form;
-          target.value = prefill.target;
-          if (target.value) {
-            void refreshTargetColumns(target.value.guid);
-            void checkReadOnly(target.value);
-          }
+      const suggestion = await getQualitySuggestion(name);
+      const prefill = suggestionToEditorPrefill(suggestion);
+      if (prefill) {
+        suggestionInfo.value = suggestion;
+        form.value = prefill.form;
+        target.value = prefill.target;
+        if (target.value) {
+          void refreshTargetColumns(target.value.guid);
+          void checkReadOnly(target.value);
         }
       }
     } catch {
@@ -1258,23 +1279,15 @@ async function save() {
       await updateQualityRule(rule, mask);
       notify.success(t("dataQuality.editor.updated"));
     } else {
-      const created = await createQualityRule(rule);
+      // A rule opened from a suggestion is accepted by the same request that
+      // creates it: the server takes the target from the suggestion, saves the
+      // rule and decides the suggestion.
+      const created = await createQualityRule(
+        rule,
+        suggestionInfo.value?.name ?? ""
+      );
       savedName = created.name;
       notify.success(t("dataQuality.editor.created"));
-      // A rule opened from a suggestion is only "accepted" once it exists. If
-      // the decision write fails the rule is still saved, so warn rather than
-      // failing the save.
-      if (suggestionInfo.value) {
-        try {
-          await updateQualitySuggestion({
-            name: suggestionInfo.value.name,
-            decision: QualitySuggestionStatus.ACCEPTED,
-            note: "",
-          });
-        } catch {
-          notify.error(t("dataQuality.editor.suggestionAcceptFailed"));
-        }
-      }
     }
     // Save lands on the rule's own page: it is where the first result and the
     // history will appear, so the writer sees what they just created instead of
