@@ -148,6 +148,11 @@ The **Suggestions** page is the review center. Suggestions arrive from two place
   in the **AI drafting jobs** panel on the Suggestions page with its per-target
   progress, how many suggestions it has queued, and any per-target error; an active
   job can be canceled, which stops it after the target currently being drafted.
+  A failed target explains itself: the failure class (for example *Output limit*),
+  a plain-language next step, the provider/model, stop reason, token budget and
+  prompt size, and a **correlation ID** to quote in a support request. When runtime
+  LLM debug was enabled, *View raw request/response* shows the exact prompt and
+  model response (the debug log is kept seven days).
 - **Suggest labels** on a table's Data Quality tab: profile the columns first,
   then let the model name their semantic types and propose the deterministic rule
   types those labels imply.
@@ -187,9 +192,10 @@ when it is reached.
 ## Retention
 
 Executions are kept 90 days, resolved issues 90 days, column profiles and the
-model result cache 7 days, decided suggestions 90 days, and finished AI drafting
-jobs 90 days; the maintenance runner prunes them. Rules, open issues and accepted
-labels are not pruned.
+model result cache 7 days, decided suggestions 90 days, finished AI drafting jobs
+90 days, and captured raw LLM request/response debug entries 7 days; the
+maintenance runner prunes them. Rules, open issues and accepted labels are not
+pruned.
 
 ## Troubleshooting
 
@@ -203,7 +209,7 @@ labels are not pruned.
 | A rule that used to run now ends `ERROR(UNSUPPORTED)` | The rule uses a configuration this build no longer accepts, for example an aggregate `COUNT` (use a row count rule instead) or a column type the engine cannot express. Re-create the rule with the supported type. |
 | No notification for a failure | The issue was already open (notifications fire on transitions), the rule is muted, or more than ten rules failed in the same scheduler pass and a summary was sent instead. |
 | Model buttons are disabled | Model analysis is off, no allowed provider profile exists, or the caller lacks `suggest`/`explain`. |
-| An AI drafting job failed | Open the **AI drafting jobs** panel: a job-level error means the provider became unavailable or the daily analysis quota ran out after it started; per-target errors (for example a table or column dropped after submission) are shown on the target. Queued suggestions from earlier targets are kept. |
+| An AI drafting job failed | Open the **AI drafting jobs** panel and expand the target. A job-level error means the provider became unavailable or the daily analysis quota ran out after it started; a target-level diagnostic names the failure class. *Output limit* means the model hit the output-token budget before finishing its JSON: retry with a narrower intent or fewer columns (the budget is 8,192 tokens). Provider errors carry the provider/model and stop reason but not the provider's body; if a model rejects the 8,192-token output request, use a model that supports that output budget; quote the **correlation ID** to an operator, who can find the matching server log line (and, with runtime debug on, the raw request/response within seven days). Queued suggestions from earlier targets are kept. |
 | An AI drafting job stays queued or running | The server processes one job at a time; a queued job starts on the next runner tick (about five seconds). If the server restarted mid-job, the job is marked failed on startup and is not resumed — submit it again. |
 | A label suggestion cannot be accepted | Profile the columns first; label suggestions require profiles fresher than seven days. |
 

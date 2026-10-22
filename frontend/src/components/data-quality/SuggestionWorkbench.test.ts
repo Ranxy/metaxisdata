@@ -363,6 +363,35 @@ describe("SuggestionWorkbench", () => {
     wrapper.unmount();
   });
 
+  it("maps a truncated synchronous draft to actionable guidance", async () => {
+    const { ConnectError, Code } = await import("@connectrpc/connect");
+    mocks.suggestQualityRule.mockRejectedValue(
+      new ConnectError(
+        "internal: the LLM analysis failed: LLM response was truncated by the provider (finish_reason=length)",
+        Code.Internal
+      )
+    );
+    const wrapper = await mountWorkbench({
+      fixedTarget: {
+        tableGuid: TABLE,
+        metaType: MetaType.TABLE,
+        columns: ["id"],
+      },
+    });
+    await flushPromises();
+    setIntent("Orders must have rows");
+    await flushPromises();
+    buttonByText(label("dataQuality.llm.draft.generate"))?.click();
+    await flushPromises();
+
+    expect(document.body.textContent).toContain(
+      label("dataQuality.suggestions.diagnostic.syncTruncatedHint")
+    );
+    // The server's own sentence stays visible under the friendly hint.
+    expect(document.body.textContent).toContain("finish_reason=length");
+    wrapper.unmount();
+  });
+
   it("disables drafting when the workspace switch is off", async () => {
     const wrapper = await mountWorkbench({ llmEnabled: false });
     await flushPromises();

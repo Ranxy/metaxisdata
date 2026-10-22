@@ -236,7 +236,12 @@ func IsSensitiveAuditField(key string) bool {
 		// The device login polling secret. CreateDeviceLogin returns it, and it
 		// must not end up in an audit record where it could be replayed while
 		// the approval is still open.
-		"devicecode", "device_code":
+		"devicecode", "device_code",
+		// Raw LLM request/response bodies. The debug capture is a seven-day
+		// diagnostic aid; an audited method returns the bodies, and the ledger is
+		// kept forever, so copying them here would outlive the retention window
+		// and the docs' promise that audit rows carry no LLM content.
+		"requestbody", "request_body", "responsebody", "response_body":
 		return true
 	}
 	for _, marker := range []string{"password", "token", "secret", "credential", "servicekey", "apikey", "api_key", "accesskey", "privatekey", "private_key"} {

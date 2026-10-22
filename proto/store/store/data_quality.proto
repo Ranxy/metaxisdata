@@ -745,6 +745,31 @@ enum QualitySuggestionJobTargetState {
 // QualitySuggestionJobTarget is one table a background drafting job visits. The
 // path and columns are a snapshot taken at submission, so the job still renders
 // after the registry changes; resolution happens again when the model is asked.
+// QualityLLMDiagnostic is the structured context of one failed LLM analysis: the
+// classifier code, provider facts, the provider's stop reason, token usage when
+// the provider reported it, and the correlation id that ties the failure to the
+// server log and (when runtime debug was on) the llm_debug_log row. It never
+// contains prompt or response bodies.
+message QualityLLMDiagnostic {
+  // A stable machine-readable classifier, e.g. TRUNCATED, STREAM_INCOMPLETE,
+  // PROVIDER_STATUS, PROVIDER_REQUEST, RESPONSE_TOO_LARGE, TIMEOUT, PARSE, UNKNOWN.
+  string error_code = 1;
+  string provider = 2;
+  string model = 3;
+  string prompt_version = 4;
+  int32 max_output_tokens = 5;
+  string finish_reason = 6;
+  int64 prompt_tokens = 7;
+  int64 completion_tokens = 8;
+  int64 total_tokens = 9;
+  int64 prompt_chars = 10;
+  string correlation_id = 11;
+  int32 provider_status = 12;
+  // Whether the full request/response was persisted to llm_debug_log for this
+  // failure (runtime debug mode was on and the write was attempted).
+  bool debug_captured = 13;
+}
+
 message QualitySuggestionJobTarget {
   string target_guid = 1;
   // The metaxisdata.v1.MetaType number; the store module does not import v1.
@@ -757,6 +782,8 @@ message QualitySuggestionJobTarget {
   string error = 7;
   int64 started_at_unix_ms = 8;
   int64 finished_at_unix_ms = 9;
+  // Set when the target failed in the model call; the classifier and context.
+  QualityLLMDiagnostic diagnostic = 10;
 }
 
 // QualitySuggestionJobTargets is the JSONB payload of

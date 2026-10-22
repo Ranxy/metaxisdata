@@ -218,8 +218,22 @@
             >
               <AlertTriangle class="h-4 w-4" />
               <AlertTitle>{{ errorKey ? t(errorKey) : generateFailedLabel() }}</AlertTitle>
-              <AlertDescription class="break-words">
-                {{ error }}
+              <AlertDescription class="space-y-1 break-words">
+                <!-- A truncation is actionable: say what the limit means, and
+                     keep the server's own sentence underneath it. -->
+                <p
+                  v-if="truncationHintKey"
+                  class="font-medium"
+                >
+                  {{ t(truncationHintKey) }}
+                </p>
+                <p>{{ error }}</p>
+                <p
+                  v-if="truncationHintKey && rawError && rawError !== error"
+                  class="font-mono text-xs"
+                >
+                  {{ rawError }}
+                </p>
               </AlertDescription>
             </Alert>
 
@@ -403,7 +417,9 @@ import {
 import {
   jobTargetLabel,
   MAX_SUGGESTION_JOB_TARGETS,
+  syncDraftErrorHintKey,
 } from "@/utils/dataQualitySuggestion";
+import { extractErrorMessage } from "@/utils/error";
 import { metaTypeSingularLabel } from "@/utils/metaType";
 
 /**
@@ -465,6 +481,8 @@ const submittedJob = ref<QualitySuggestionJob>();
 const busyName = ref("");
 const error = ref("");
 const errorKey = ref("");
+/** The server's own sentence, kept for the truncation hint and its detail line. */
+const rawError = ref("");
 
 /** The one target whose column checklist is shown; undefined when ambiguous. */
 const columnsTargetGuid = computed(() => {
@@ -473,6 +491,10 @@ const columnsTargetGuid = computed(() => {
   }
   return targets.value.length === 1 ? (targets.value[0]?.guid ?? "") : "";
 });
+
+const truncationHintKey = computed(() =>
+  syncDraftErrorHintKey(rawError.value || error.value)
+);
 
 const canGenerate = computed(
   () =>
@@ -513,6 +535,7 @@ function reset() {
   busyName.value = "";
   error.value = "";
   errorKey.value = "";
+  rawError.value = "";
 }
 
 watch(
@@ -693,6 +716,7 @@ async function submitJob() {
   generating.value = true;
   error.value = "";
   errorKey.value = "";
+  rawError.value = "";
   try {
     const job = await createQualitySuggestionJob({
       intent: intent.value.trim(),
@@ -705,6 +729,7 @@ async function submitJob() {
     emit("submitted", job);
   } catch (e: unknown) {
     errorKey.value = explainErrorMessageKey(e);
+    rawError.value = extractErrorMessage(e);
     error.value = formatError(
       e,
       "dataQuality.suggestions.workbench.submitFailed"
@@ -723,6 +748,7 @@ async function generateEditor() {
   generating.value = true;
   error.value = "";
   errorKey.value = "";
+  rawError.value = "";
   results.value = [];
   generated.value = false;
   try {
@@ -739,6 +765,7 @@ async function generateEditor() {
     }
   } catch (e: unknown) {
     errorKey.value = explainErrorMessageKey(e);
+    rawError.value = extractErrorMessage(e);
     error.value = formatError(
       e,
       "dataQuality.suggestions.workbench.generateFailed"
@@ -762,6 +789,7 @@ async function rejectResult(suggestion: QualitySuggestion) {
   busyName.value = suggestion.name;
   error.value = "";
   errorKey.value = "";
+  rawError.value = "";
   try {
     await batchUpdateQualitySuggestions([
       {

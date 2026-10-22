@@ -1005,6 +1005,57 @@
       "decidedBy": "Decided by",
       "description": "Model drafts and column labels waiting for review.",
       "detailTitle": "Suggestion",
+      "diagnostic": {
+        "code": {
+          "malformedResponse": "Malformed response",
+          "parse": "Parse failure",
+          "providerRequest": "Request rejected",
+          "providerStatus": "Provider error",
+          "responseTooLarge": "Response too large",
+          "streamIncomplete": "Incomplete stream",
+          "timeout": "Timeout",
+          "truncated": "Output limit",
+          "unexpectedFinishReason": "Unexpected stop",
+          "unknown": "Unknown error"
+        },
+        "copyCorrelation": "Copy correlation ID",
+        "facts": {
+          "completionTokens": "Completion tokens",
+          "correlationId": "Correlation ID",
+          "finishReason": "Stop reason",
+          "maxOutputTokens": "Max output tokens",
+          "promptChars": "Prompt size (chars)",
+          "promptTokens": "Prompt tokens",
+          "promptVersion": "Prompt version",
+          "provider": "Model",
+          "providerStatus": "Provider HTTP status",
+          "totalTokens": "Total tokens"
+        },
+        "hint": {
+          "malformedResponse": "The provider returned a response this build cannot read. Retry; if it repeats, report the correlation ID.",
+          "parse": "The model returned content that is not valid draft JSON. Retry with a clearer intent.",
+          "providerRequest": "The provider could not process the request. Check the model name and the LLM provider configuration.",
+          "providerStatus": "The provider rejected the call with an HTTP error. Check the LLM provider configuration and its status.",
+          "responseTooLarge": "The model response exceeded the allowed size. Narrow the intent or select fewer columns.",
+          "streamIncomplete": "The provider stream ended before the response finished. Retry; if it repeats, check the provider status.",
+          "timeout": "The model call timed out. Retry, or use a faster model or provider.",
+          "truncated": "The model hit the output-token limit, so its draft was discarded. Retry with a narrower intent or fewer columns.",
+          "unexpectedFinishReason": "The model stopped for an unexpected reason. Retry; if it repeats, check the provider status.",
+          "unknown": "The model call failed for an unclassified reason. Use the correlation ID to find the server log."
+        },
+        "payload": {
+          "description": "Captured only while runtime LLM debug is enabled; the debug log is kept for 7 days.",
+          "download": "Download",
+          "fetchFailed": "Loading the raw payload failed.",
+          "request": "Request",
+          "response": "Response",
+          "title": "Raw request and response",
+          "unavailableHint": "The raw request/response were not captured (runtime LLM debug is off), or the 7-day debug log has expired.",
+          "unavailableTitle": "Raw payload not available"
+        },
+        "syncTruncatedHint": "The model stopped at the output-token limit, so the draft was discarded. Retry with a narrower intent or fewer columns.",
+        "viewPayload": "View raw request/response"
+      },
       "emptyDescription": "Rule drafts and column label suggestions from the model appear here; start with Draft with AI, or analyze columns on a table's page.",
       "emptyTitle": "No suggestions yet",
       "evidence": "Evidence",

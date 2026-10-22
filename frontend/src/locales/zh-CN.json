@@ -1005,6 +1005,57 @@
       "decidedBy": "处理人",
       "description": "等待评审的模型规则草稿与字段标注建议。",
       "detailTitle": "建议",
+      "diagnostic": {
+        "code": {
+          "malformedResponse": "响应格式异常",
+          "parse": "解析失败",
+          "providerRequest": "请求被拒绝",
+          "providerStatus": "提供商错误",
+          "responseTooLarge": "响应过大",
+          "streamIncomplete": "响应流中断",
+          "timeout": "超时",
+          "truncated": "输出上限",
+          "unexpectedFinishReason": "异常停止",
+          "unknown": "未知错误"
+        },
+        "copyCorrelation": "复制关联 ID",
+        "facts": {
+          "completionTokens": "输出 token",
+          "correlationId": "关联 ID",
+          "finishReason": "停止原因",
+          "maxOutputTokens": "最大输出 token",
+          "promptChars": "提示词大小（字符）",
+          "promptTokens": "输入 token",
+          "promptVersion": "提示词版本",
+          "provider": "模型",
+          "providerStatus": "提供商 HTTP 状态",
+          "totalTokens": "总 token"
+        },
+        "hint": {
+          "malformedResponse": "提供商返回了当前版本无法读取的响应。请重试；如果持续出现，请附上关联 ID 反馈。",
+          "parse": "模型返回的内容不是有效的草稿 JSON。请用更清晰的意图重试。",
+          "providerRequest": "提供商无法处理该请求。请检查模型名称和 LLM 提供商配置。",
+          "providerStatus": "提供商以 HTTP 错误拒绝了这次调用。请检查 LLM 提供商配置及其状态。",
+          "responseTooLarge": "模型响应超过允许大小。请缩小意图范围或减少字段。",
+          "streamIncomplete": "提供商的响应流在完成前中断。请重试；如果持续出现，请检查提供商状态。",
+          "timeout": "模型调用超时。请重试，或使用更快的模型/提供商。",
+          "truncated": "模型达到输出 token 上限，草稿已丢弃。请缩小意图范围或减少字段后重试。",
+          "unexpectedFinishReason": "模型因未预期的原因停止。请重试；如果持续出现，请检查提供商状态。",
+          "unknown": "模型调用因未分类原因失败。可用关联 ID 在服务端日志中查找。"
+        },
+        "payload": {
+          "description": "仅在运行时开启 LLM 调试时捕获；调试日志保留 7 天。",
+          "download": "下载",
+          "fetchFailed": "加载原始内容失败。",
+          "request": "请求",
+          "response": "响应",
+          "title": "原始请求与响应",
+          "unavailableHint": "未捕获原始请求/响应（运行时 LLM 调试未开启），或 7 天调试日志已过期。",
+          "unavailableTitle": "原始内容不可用"
+        },
+        "syncTruncatedHint": "模型达到输出 token 上限，草稿已丢弃。请缩小意图范围或减少字段后重试。",
+        "viewPayload": "查看原始请求/响应"
+      },
       "emptyDescription": "模型起草的规则草稿和字段标注建议会出现在这里；可以从「用 AI 起草」开始，或在表详情页分析字段。",
       "emptyTitle": "还没有建议",
       "evidence": "依据",

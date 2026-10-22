@@ -222,7 +222,10 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 		// field) must not be returned or cached as an explanation.
 		if len(assistantMsg.ToolCalls) == 0 && strings.TrimSpace(assistantMsg.Content) == "" {
 			outcome = metrics.LLMOutcomeEmptyResponse
-			sendEvent(ctx, ch, AgentEvent{Type: AgentEventError, Error: errors.New("LLM returned an empty response")})
+			sendEvent(ctx, ch, AgentEvent{Type: AgentEventError, Error: &ResponseError{
+				Code: FailureMalformed,
+				Err:  errors.New("LLM returned an empty response"),
+			}})
 			return
 		}
 		if err := appendMessage(assistantMsg); err != nil {
@@ -297,6 +300,10 @@ func streamOneTurn(ctx context.Context, cfg AgentConfig, llmMsgs []Message, ch c
 	)
 
 	streamCh := streamRaw(ctx, cfg, llmMsgs)
+	// Drain to the channel close instead of breaking on the Done chunk: the stream
+	// goroutine invokes the debug logger and then closes the channel, so waiting for
+	// the close gives the caller a happens-before edge over that callback. Breaking
+	// early let a successful call return while the debug capture was still running.
 	for chunk := range streamCh {
 		if chunk.Error != nil {
 			return AgentMessage{}, nil, chunk.Error
@@ -312,9 +319,6 @@ func streamOneTurn(ctx context.Context, cfg AgentConfig, llmMsgs []Message, ch c
 		}
 		if chunk.Usage != nil {
 			turnUsage = chunk.Usage
-		}
-		if chunk.Done {
-			break
 		}
 	}
 
@@ -383,7 +387,7 @@ func streamRaw(ctx context.Context, cfg AgentConfig, messages []Message) <-chan 
 
 		resp, err := llmHTTPClient.Do(httpReq)
 		if err != nil {
-			sendRaw(ctx, ch, rawStreamChunk{Error: errors.Wrap(err, "LLM request failed")})
+			sendRaw(ctx, ch, rawStreamChunk{Error: &ResponseError{Code: FailureProviderRequest, Err: errors.Wrap(err, "LLM request failed")}})
 			return
 		}
 		defer resp.Body.Close()
@@ -393,7 +397,11 @@ func streamRaw(ctx context.Context, cfg AgentConfig, messages []Message) <-chan 
 			// The body is the provider's, and may echo request details; keep it
 			// in the server log and return only the status to the caller.
 			slog.Error("LLM provider returned a non-OK status", "status", resp.StatusCode, "body", string(errBody))
-			sendRaw(ctx, ch, rawStreamChunk{Error: fmt.Errorf("LLM provider returned status %d", resp.StatusCode)})
+			sendRaw(ctx, ch, rawStreamChunk{Error: &ResponseError{
+				Code:       FailureProviderStatus,
+				StatusCode: resp.StatusCode,
+				Err:        fmt.Errorf("LLM provider returned status %d", resp.StatusCode),
+			}})
 			return
 		}
 
@@ -415,7 +423,10 @@ func streamRaw(ctx context.Context, cfg AgentConfig, messages []Message) <-chan 
 			return
 		}
 		if idle.timedOut() {
-			sendRaw(ctx, ch, rawStreamChunk{Error: errors.Errorf("LLM response stalled: no data received for %s", llmIdleReadTimeout)})
+			sendRaw(ctx, ch, rawStreamChunk{Error: &ResponseError{
+				Code: FailureTimeout,
+				Err:  errors.Errorf("LLM response stalled: no data received for %s", llmIdleReadTimeout),
+			}})
 			return
 		}
 		sendRaw(ctx, ch, rawStreamChunk{Error: parseErr})
@@ -488,7 +499,7 @@ func parseStream(ctx context.Context, body io.Reader, ch chan<- rawStreamChunk) 
 
 		var chunk chatStreamChunk
 		if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &chunk); err != nil {
-			return errors.Wrap(err, "malformed SSE data chunk")
+			return &ResponseError{Code: FailureMalformed, Err: errors.Wrap(err, "malformed SSE data chunk")}
 		}
 
 		for _, choice := range chunk.Choices {
@@ -518,14 +529,22 @@ func parseStream(ctx context.Context, body io.Reader, ch chan<- rawStreamChunk) 
 			}
 			switch *choice.FinishReason {
 			case "length":
-				return errors.New("LLM response was truncated by the provider (finish_reason=length)")
+				return &ResponseError{
+					Code:         FailureTruncated,
+					FinishReason: "length",
+					Err:          errors.New("LLM response was truncated by the provider (finish_reason=length)"),
+				}
 			case "stop", "tool_calls":
 				if finishReason == nil {
 					reason := *choice.FinishReason
 					finishReason = &reason
 				}
 			default:
-				return errors.Errorf("unexpected finish_reason %q from the LLM provider", *choice.FinishReason)
+				return &ResponseError{
+					Code:         FailureUnexpectedFinish,
+					FinishReason: *choice.FinishReason,
+					Err:          errors.Errorf("unexpected finish_reason %q from the LLM provider", *choice.FinishReason),
+				}
 			}
 		}
 
@@ -540,9 +559,12 @@ func parseStream(ctx context.Context, body io.Reader, ch chan<- rawStreamChunk) 
 
 	if err := scanner.Err(); err != nil {
 		if errors.Is(err, errResponseTooLarge) {
-			return errors.Errorf("LLM response exceeded %d bytes", llmMaxResponseBytes)
+			return &ResponseError{
+				Code: FailureResponseTooLarge,
+				Err:  errors.Errorf("LLM response exceeded %d bytes", llmMaxResponseBytes),
+			}
 		}
-		return errors.Wrap(err, "failed to read the LLM response stream")
+		return &ResponseError{Code: FailureProviderRequest, Err: errors.Wrap(err, "failed to read the LLM response stream")}
 	}
 	if finishReason != nil {
 		// A provider that closes the connection without [DONE] has still finished.
@@ -551,7 +573,10 @@ func parseStream(ctx context.Context, body io.Reader, ch chan<- rawStreamChunk) 
 	if !sawSSE && nonStreaming.Len() > 0 {
 		return parseNonStreamingCompletion(ctx, nonStreaming.String(), ch)
 	}
-	return errors.New("LLM response stream ended without a finish_reason or [DONE]")
+	return &ResponseError{
+		Code: FailureStreamIncomplete,
+		Err:  errors.New("LLM response stream ended without a finish_reason or [DONE]"),
+	}
 }
 
 // parseNonStreamingCompletion decodes one complete chat completion into the same
@@ -560,19 +585,28 @@ func parseStream(ctx context.Context, body io.Reader, ch chan<- rawStreamChunk) 
 func parseNonStreamingCompletion(ctx context.Context, body string, ch chan<- rawStreamChunk) error {
 	var response chatCompletionResponse
 	if err := json.Unmarshal([]byte(body), &response); err != nil {
-		return errors.Wrap(err, "the LLM provider returned neither an SSE stream nor a completion object")
+		return &ResponseError{Code: FailureMalformed,
+			Err: errors.Wrap(err, "the LLM provider returned neither an SSE stream nor a completion object")}
 	}
 	if len(response.Choices) == 0 {
-		return errors.New("the LLM provider returned no choices")
+		return &ResponseError{Code: FailureMalformed, Err: errors.New("the LLM provider returned no choices")}
 	}
 	choice := response.Choices[0]
 	if choice.FinishReason != nil {
 		switch *choice.FinishReason {
 		case "length":
-			return errors.New("LLM response was truncated by the provider (finish_reason=length)")
+			return &ResponseError{
+				Code:         FailureTruncated,
+				FinishReason: "length",
+				Err:          errors.New("LLM response was truncated by the provider (finish_reason=length)"),
+			}
 		case "stop", "tool_calls":
 		default:
-			return errors.Errorf("unexpected finish_reason %q from the LLM provider", *choice.FinishReason)
+			return &ResponseError{
+				Code:         FailureUnexpectedFinish,
+				FinishReason: *choice.FinishReason,
+				Err:          errors.Errorf("unexpected finish_reason %q from the LLM provider", *choice.FinishReason),
+			}
 		}
 	}
 	if choice.Message.Content != "" {

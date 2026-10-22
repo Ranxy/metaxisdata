@@ -8,7 +8,9 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"connectrpc.com/connect"
 	"github.com/pkg/errors"
@@ -24,11 +26,19 @@ const (
 	// MaxDraftColumns bounds the columns one draft request (synchronous or job
 	// target) may scope.
 	MaxDraftColumns = 50
-	// MaxLLMOutputTokens bounds what one analysis may generate. The prompts ask
-	// for a small JSON document; this keeps a runaway model cheap.
-	MaxLLMOutputTokens = 4096
+	// MaxLLMOutputTokens bounds what one analysis may generate. A drafting answer
+	// is a JSON document with 1–5 typed rules and rationales (often in Chinese), so
+	// a 4096-token budget could stop mid-JSON; 8192 leaves room for a full answer
+	// while still bounding a runaway model.
+	MaxLLMOutputTokens = 8192
 	// LLMFeatureRuleDraft labels the L1 model calls in metrics.
 	LLMFeatureRuleDraft = "dq_rule_draft"
+	// debugErrorCodeWriteTimeout bounds the best-effort classifier write on the
+	// captured debug row. It is detached because the surrounding call has failed.
+	debugErrorCodeWriteTimeout = 5 * time.Second
+	// DiagnosticCodeParse classifies a model answer that is not the contracted
+	// JSON: the call succeeded but its output is unusable.
+	DiagnosticCodeParse = "PARSE"
 	// draftExistingRules bounds the rule summaries a draft prompt lists.
 	draftExistingRules = 20
 )
@@ -44,13 +54,33 @@ type Suggester struct {
 	registry *llm.Registry
 	quota    *LLMQuota
 	metrics  *metrics.Metrics
+	// newDebugLogger builds the per-call debug capture when runtime debug is on.
+	// It is a field so a test can observe the attachment without a database;
+	// production always uses llm.NewDBDebugLoggerForCall.
+	newDebugLogger func(st *store.Store, provider, model, kind, correlationID string) llm.DebugLogger
+	// setDebugErrorCode records the classifier on a captured debug row after the
+	// failure is classified. It is a field so a test can observe the best-effort
+	// update without a database; production updates the store.
+	setDebugErrorCode func(ctx context.Context, correlationID, code string) error
 }
 
 // NewSuggester creates the shared L1 suggester. registry may be nil, in which case
 // ResolveConfig reports the LLM unconfigured; quota may be nil, in which case
 // drafting is unlimited (test-only).
 func NewSuggester(st *store.Store, registry *llm.Registry, quota *LLMQuota, m *metrics.Metrics) *Suggester {
-	return &Suggester{store: st, registry: registry, quota: quota, metrics: m}
+	return &Suggester{
+		store:          st,
+		registry:       registry,
+		quota:          quota,
+		metrics:        m,
+		newDebugLogger: llm.NewDBDebugLoggerForCall,
+		setDebugErrorCode: func(ctx context.Context, correlationID, code string) error {
+			if st == nil {
+				return nil
+			}
+			return st.SetLLMDebugLogErrorCode(ctx, correlationID, code)
+		},
+	}
 }
 
 // ResolveConfig checks the workspace switch, the provider registry and the
@@ -94,14 +124,14 @@ func (s *Suggester) ResolveConfig(ctx context.Context) (llm.ResolvedConfig, Sett
 // It resolves the target, spends one L1 analysis from the shared quota, asks the
 // model once, and stores every draft the rule pipeline accepts as a PENDING
 // NATURAL_LANGUAGE suggestion. The returned rows are the ones it created.
-func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, targetGUID string, metaType storepb.MetaType, columns []string, intent, language string, createdBy *int32) ([]*store.QualitySuggestionMessage, error) {
+func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, targetGUID string, metaType storepb.MetaType, columns []string, intent, language string, createdBy *int32) ([]*store.QualitySuggestionMessage, *storepb.QualityLLMDiagnostic, error) {
 	resolution, err := ResolveTarget(ctx, s.store, targetGUID, metaType)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for _, column := range columns {
 		if _, ok := resolution.Target.Column(column); !ok {
-			return nil, connect.NewError(connect.CodeInvalidArgument,
+			return nil, nil, connect.NewError(connect.CodeInvalidArgument,
 				errors.Errorf("column %q does not exist on the target", column))
 		}
 	}
@@ -110,13 +140,13 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, target
 	// target consumes neither.
 	release, err := s.quota.Begin(ctx, LLMAnalysisQuota, 0)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer release()
 
 	existingRules, err := s.ruleSummaries(ctx, targetGUID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	systemPrompt, userPrompt := BuildRuleDraftPrompt(
 		RuleDraftContext{
@@ -125,17 +155,22 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, target
 			ColumnComments: columnComments(resolution.Metadata, metaType),
 		},
 		resolution.Target, columns, intent, existingRules)
-	text, usage, err := s.JSONCompletion(ctx, config, LLMFeatureRuleDraft, systemPrompt, userPrompt, MaxLLMOutputTokens)
+	text, usage, diagnostic, err := s.JSONCompletion(ctx, config, LLMFeatureRuleDraft,
+		RuleDraftPromptVersion, systemPrompt, userPrompt, MaxLLMOutputTokens)
 	if err != nil {
-		return nil, err
+		return nil, diagnostic, err
 	}
 	drafts, err := ParseRuleDrafts(text)
 	if err != nil {
 		s.metrics.CountLLMParseFailure(LLMFeatureRuleDraft)
+		ruleDraftParseFailure(diagnostic)
+		s.recordDebugErrorCode(diagnostic)
 		slog.Warn("the model returned an invalid rule draft",
 			slog.String("table_guid", targetGUID),
+			slog.String("code", diagnostic.GetErrorCode()),
+			slog.String("correlation_id", diagnostic.GetCorrelationId()),
 			slog.Any("error", err))
-		return nil, connect.NewError(connect.CodeInternal,
+		return nil, diagnostic, connect.NewError(connect.CodeInternal,
 			errors.Wrap(err, "the model returned a rule draft that is not valid JSON"))
 	}
 
@@ -172,7 +207,7 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, target
 		}
 		resourceID, err := common.RandomString(12)
 		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to generate the suggestion id"))
+			return nil, nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to generate the suggestion id"))
 		}
 		suggestion, err := s.store.CreateQualitySuggestion(ctx, &store.QualitySuggestionMessage{
 			ResourceID: resourceID,
@@ -199,7 +234,7 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, target
 			CreatedAt:     now,
 		})
 		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to queue a rule suggestion"))
+			return nil, nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to queue a rule suggestion"))
 		}
 		created = append(created, suggestion)
 	}
@@ -211,7 +246,7 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, target
 			slog.Int("drafts", len(drafts)))
 	}
 	LogLLMUsage("suggest_rule", targetGUID, usage)
-	return created, nil
+	return created, diagnostic, nil
 }
 
 // JSONCompletion runs one non-agent completion and returns its text. The prompt
@@ -219,14 +254,29 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, target
 // the provider for JSON when it supports the mode; a provider that ignores the mode
 // still answers something the strict parser can read.
 //
-// feature labels the call in metrics; calls, duration and tokens are recorded by
-// the agent loop, not here.
-func (s *Suggester) JSONCompletion(ctx context.Context, config llm.ResolvedConfig, feature, systemPrompt, userPrompt string, maxOutputTokens int) (string, *llm.Usage, error) {
+// Every call gets a correlation id and a diagnostic describing its provider facts;
+// on failure the diagnostic also carries the classifier code, the provider's stop
+// reason/status and the usage it reported, so a failed job target can explain
+// itself. The body capture is attached only when runtime debug is on, and the
+// diagnostic says whether it was captured.
+func (s *Suggester) JSONCompletion(ctx context.Context, config llm.ResolvedConfig, feature, promptVersion, systemPrompt, userPrompt string, maxOutputTokens int) (string, *llm.Usage, *storepb.QualityLLMDiagnostic, error) {
 	if maxOutputTokens <= 0 {
 		maxOutputTokens = MaxLLMOutputTokens
 	}
-	zero := 0.0
-	events := llm.RunAgentLoop(ctx, llm.AgentConfig{
+	correlationID, err := common.RandomString(12)
+	if err != nil {
+		return "", nil, nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to generate the LLM call correlation id"))
+	}
+	diagnostic := &storepb.QualityLLMDiagnostic{
+		Provider:        config.ProfileName,
+		Model:           config.ModelName,
+		PromptVersion:   promptVersion,
+		MaxOutputTokens: int32(maxOutputTokens),
+		PromptChars:     int64(utf8.RuneCountInString(systemPrompt) + utf8.RuneCountInString(userPrompt)),
+		CorrelationId:   correlationID,
+	}
+
+	agentConfig := llm.AgentConfig{
 		Provider:       config,
 		Feature:        feature,
 		Metrics:        s.metrics,
@@ -234,15 +284,28 @@ func (s *Suggester) JSONCompletion(ctx context.Context, config llm.ResolvedConfi
 		UserPrompt:     userPrompt,
 		MaxTurns:       1,
 		MaxTokens:      maxOutputTokens,
-		Temperature:    &zero,
+		Temperature:    protoFloat64Zero(),
 		ResponseFormat: llm.JSONObjectResponseFormat(),
 		IncludeUsage:   true,
-	})
+	}
+	// The capture flag means "the agent loop actually handed us the bodies", not
+	// "a logger was attached": a provider failure returns before the callback, and
+	// only a captured call can be read from the debug log later. The callback runs
+	// on the stream goroutine, so the flag is atomic even though streamOneTurn now
+	// drains to the channel close before returning.
+	var debugCaptured atomic.Bool
+	if debugLogger := s.traceLogger(config, feature, correlationID); debugLogger != nil {
+		agentConfig.DebugLogger = func(reqBody, respBody string) {
+			debugCaptured.Store(true)
+			debugLogger(reqBody, respBody)
+		}
+	}
+
 	var (
 		builder strings.Builder
 		usage   *llm.Usage
 	)
-	for event := range events {
+	for event := range llm.RunAgentLoop(ctx, agentConfig) {
 		switch event.Type {
 		case llm.AgentEventContent:
 			_, _ = builder.WriteString(event.Content)
@@ -257,10 +320,11 @@ func (s *Suggester) JSONCompletion(ctx context.Context, config llm.ResolvedConfi
 			usage.CompletionTokens += event.Usage.CompletionTokens
 			usage.TotalTokens += event.Usage.TotalTokens
 		case llm.AgentEventError:
-			if event.Error != nil {
-				return "", usage, connect.NewError(connect.CodeInternal, errors.Wrap(event.Error, "the LLM analysis failed"))
+			callErr := event.Error
+			if callErr == nil {
+				callErr = errors.New("the LLM analysis failed")
 			}
-			return "", usage, connect.NewError(connect.CodeInternal, errors.New("the LLM analysis failed"))
+			return "", usage, diagnostic, s.failedCompletionError(feature, diagnostic, usage, callErr, debugCaptured.Load())
 		case llm.AgentEventTurnStart, llm.AgentEventToolStart, llm.AgentEventToolEnd, llm.AgentEventAgentEnd:
 			// One turn, no tools: nothing to do for these events.
 		default:
@@ -268,9 +332,118 @@ func (s *Suggester) JSONCompletion(ctx context.Context, config llm.ResolvedConfi
 		}
 	}
 	if builder.Len() == 0 {
-		return "", usage, connect.NewError(connect.CodeInternal, errors.New("the LLM returned an empty response"))
+		// An empty answer is not usable JSON; classify it as a malformed response so
+		// the failure still has a code.
+		callErr := &llm.ResponseError{Code: llm.FailureMalformed, Err: errors.New("the LLM returned an empty response")}
+		return "", usage, diagnostic, s.failedCompletionError(feature, diagnostic, usage, callErr, debugCaptured.Load())
 	}
-	return builder.String(), usage, nil
+	// A successful call may still be unusable (the JSON parse happens in Draft);
+	// the capture flag travels with the diagnostic so that later failure keeps it.
+	diagnostic.DebugCaptured = debugCaptured.Load()
+	return builder.String(), usage, diagnostic, nil
+}
+
+// ruleDraftParseFailure marks a completion diagnostic whose text was not the
+// contracted JSON. The call itself succeeded, so the diagnostic keeps its provider
+// and usage fields; only the classifier changes.
+func ruleDraftParseFailure(diagnostic *storepb.QualityLLMDiagnostic) {
+	diagnostic.ErrorCode = DiagnosticCodeParse
+}
+
+// traceLogger builds the per-call debug capture when runtime debug is on, and nil
+// otherwise. The body of a call is only ever persisted through this path.
+func (s *Suggester) traceLogger(config llm.ResolvedConfig, feature, correlationID string) llm.DebugLogger {
+	if s.registry == nil || !s.registry.DebugEnabled() {
+		return nil
+	}
+	build := s.newDebugLogger
+	if build == nil {
+		build = llm.NewDBDebugLoggerForCall
+	}
+	return build(s.store, config.ProfileName, config.ModelName, feature, correlationID)
+}
+
+// failedCompletionError fills the failure fields of a diagnostic, records the
+// classifier on the captured debug row, logs the failure with the correlation id
+// and returns the actionable connect error.
+func (s *Suggester) failedCompletionError(feature string, diagnostic *storepb.QualityLLMDiagnostic, usage *llm.Usage, callErr error, debugCaptured bool) error {
+	classifyLLMDiagnostic(diagnostic, callErr)
+	if usage != nil {
+		diagnostic.PromptTokens = usage.PromptTokens
+		diagnostic.CompletionTokens = usage.CompletionTokens
+		diagnostic.TotalTokens = usage.TotalTokens
+	}
+	diagnostic.DebugCaptured = debugCaptured
+	s.recordDebugErrorCode(diagnostic)
+	slog.Warn("data quality LLM analysis failed",
+		slog.String("feature", feature),
+		slog.String("provider", diagnostic.GetProvider()),
+		slog.String("model", diagnostic.GetModel()),
+		slog.String("code", diagnostic.GetErrorCode()),
+		slog.String("finish_reason", diagnostic.GetFinishReason()),
+		slog.Int("max_tokens", int(diagnostic.GetMaxOutputTokens())),
+		slog.Int64("prompt_chars", diagnostic.GetPromptChars()),
+		slog.String("correlation_id", diagnostic.GetCorrelationId()),
+		slog.Any("error", callErr))
+	return connect.NewError(connect.CodeInternal, errors.Wrap(actionableCompletionError(diagnostic, callErr), "the LLM analysis failed"))
+}
+
+// recordDebugErrorCode stamps the classifier on the captured debug row, so the
+// retrieval RPC's fallback is meaningful even when the diagnostic was pruned or the
+// client only holds the correlation id. Best effort: the capture is a debug aid.
+func (s *Suggester) recordDebugErrorCode(diagnostic *storepb.QualityLLMDiagnostic) {
+	if !diagnostic.GetDebugCaptured() || s.setDebugErrorCode == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), debugErrorCodeWriteTimeout)
+	defer cancel()
+	if err := s.setDebugErrorCode(ctx, diagnostic.GetCorrelationId(), diagnostic.GetErrorCode()); err != nil {
+		slog.Warn("failed to record the classifier on the LLM debug log",
+			slog.String("correlation_id", diagnostic.GetCorrelationId()),
+			slog.String("code", diagnostic.GetErrorCode()),
+			slog.Any("error", err))
+	}
+}
+
+// classifyLLMDiagnostic maps a call error onto the diagnostic's classifier fields.
+func classifyLLMDiagnostic(diagnostic *storepb.QualityLLMDiagnostic, err error) {
+	var responseErr *llm.ResponseError
+	if errors.As(err, &responseErr) {
+		diagnostic.ErrorCode = string(responseErr.Code)
+		diagnostic.FinishReason = responseErr.FinishReason
+		diagnostic.ProviderStatus = int32(responseErr.StatusCode)
+		return
+	}
+	diagnostic.ErrorCode = string(llm.FailureUnknown)
+}
+
+// actionableCompletionError turns a failed completion into the error the caller
+// shows. A truncation explains the token limit and what to change; every other
+// failure names its correlation id so an operator can find it in the log.
+func actionableCompletionError(diagnostic *storepb.QualityLLMDiagnostic, err error) error {
+	var responseErr *llm.ResponseError
+	if errors.As(err, &responseErr) && responseErr.Code == llm.FailureTruncated {
+		return errors.Errorf(
+			"the model stopped at the output token limit (max_tokens=%d, finish_reason=%s); the draft was discarded — retry with a narrower intent or fewer columns",
+			diagnostic.GetMaxOutputTokens(), finishReasonOrUnknown(diagnostic.GetFinishReason()))
+	}
+	return errors.Errorf("%v (correlation_id=%s)", err, diagnostic.GetCorrelationId())
+}
+
+// finishReasonOrUnknown names a missing stop reason without printing an empty
+// parenthetical.
+func finishReasonOrUnknown(reason string) string {
+	if strings.TrimSpace(reason) == "" {
+		return "unknown"
+	}
+	return reason
+}
+
+// protoFloat64Zero returns a pointer to 0.0 for a call that wants deterministic
+// output. It is a helper so the JSON call's setup stays a plain literal.
+func protoFloat64Zero() *float64 {
+	zero := 0.0
+	return &zero
 }
 
 // ProviderFacts returns the provider/model/prompt-version facts a suggestion or

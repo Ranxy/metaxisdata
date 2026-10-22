@@ -243,3 +243,52 @@ func (s *DataQualityService) CancelQualitySuggestionJob(ctx context.Context, req
 	}
 	return connect.NewResponse(convertQualitySuggestionJob(workspaceID, job)), nil
 }
+
+// GetQualitySuggestionJobTargetDebug returns the raw request/response bodies of
+// one failed target when runtime debug mode captured them. The bodies live in the
+// debug log for seven days, so a pruned capture is reported as unavailable rather
+// than an error; the correlation id and classifier code always come back so the
+// client can still explain the failure.
+func (s *DataQualityService) GetQualitySuggestionJobTargetDebug(ctx context.Context, req *connect.Request[v1pb.GetQualitySuggestionJobTargetDebugRequest]) (*connect.Response[v1pb.GetQualitySuggestionJobTargetDebugResponse], error) {
+	if req == nil {
+		return nil, connectErrorInvalid("a request is required")
+	}
+	_, resourceID, err := s.qualitySuggestionJobResourceID(ctx, req.Msg.GetName())
+	if err != nil {
+		return nil, err
+	}
+	job, err := s.fetchQualitySuggestionJob(ctx, resourceID)
+	if err != nil {
+		return nil, err
+	}
+	targetIndex := int(req.Msg.GetTargetIndex())
+	if targetIndex < 0 || targetIndex >= len(job.Targets.GetTargets()) {
+		return nil, connectErrorInvalid("target_index %d is out of range for a job with %d targets",
+			targetIndex, len(job.Targets.GetTargets()))
+	}
+	diagnostic := job.Targets.GetTargets()[targetIndex].GetDiagnostic()
+	response := &v1pb.GetQualitySuggestionJobTargetDebugResponse{
+		CorrelationId: diagnostic.GetCorrelationId(),
+		ErrorCode:     diagnostic.GetErrorCode(),
+	}
+	// Without runtime debug there was no capture; a missing correlation id means
+	// the same thing. Both are reported as unavailable, not as an error.
+	if !diagnostic.GetDebugCaptured() || diagnostic.GetCorrelationId() == "" {
+		return connect.NewResponse(response), nil
+	}
+	entry, err := s.store.GetLLMDebugLogByCorrelation(ctx, diagnostic.GetCorrelationId())
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the LLM debug log")
+	}
+	if entry == nil {
+		// The seven-day retention pruned it.
+		return connect.NewResponse(response), nil
+	}
+	response.Available = true
+	response.RequestBody = entry.RequestBody
+	response.ResponseBody = entry.ResponseBody
+	if response.ErrorCode == "" {
+		response.ErrorCode = entry.ErrorCode
+	}
+	return connect.NewResponse(response), nil
+}

@@ -20,11 +20,13 @@ const (
 )
 
 type debugLogJob struct {
-	store    *store.Store
-	provider string
-	model    string
-	reqBody  string
-	respBody string
+	store         *store.Store
+	provider      string
+	model         string
+	kind          string
+	correlationID string
+	reqBody       string
+	respBody      string
 }
 
 // debugLogWriter is a fixed-size queue drained by a fixed number of workers. It is
@@ -122,18 +124,42 @@ func ShutdownDebugLogWorkers(ctx context.Context) error {
 func writeDebugLog(job debugLogJob) {
 	ctx, cancel := context.WithTimeout(context.Background(), debugLogWriteTimeout)
 	defer cancel()
-	if err := job.store.InsertLLMDebugLog(ctx, job.provider, job.model, job.reqBody, job.respBody); err != nil {
+	entry := &store.LLMDebugLogEntry{
+		Provider:      job.provider,
+		Model:         job.model,
+		Kind:          job.kind,
+		CorrelationID: job.correlationID,
+		RequestBody:   job.reqBody,
+		ResponseBody:  job.respBody,
+		CreatedAt:     time.Now().UTC(),
+	}
+	if err := job.store.InsertLLMDebugLog(ctx, entry); err != nil {
 		slog.Warn("failed to write the LLM debug log", "error", err)
 	}
 }
 
-// NewDBDebugLogger returns a DebugLogger that persists request/response to
-// the llm_debug_log table. Only call this when runtime debug is enabled. Writes
-// are handed to a bounded worker pool; when the queue is full the entry is
-// dropped with a warning rather than spawning another goroutine.
-func NewDBDebugLogger(st *store.Store, provider, model string) DebugLogger {
+// NewDBDebugLoggerForCall returns a DebugLogger for one correlated call: it
+// persists the request/response to the llm_debug_log table together with the
+// feature kind and the caller's correlation id. Only call this when runtime debug
+// is enabled. Writes are handed to a bounded worker pool; when the queue is full
+// the entry is dropped with a warning rather than spawning another goroutine.
+func NewDBDebugLoggerForCall(st *store.Store, provider, model, kind, correlationID string) DebugLogger {
 	debugLoggers.start()
 	return func(reqBody, respBody string) {
-		debugLoggers.enqueue(debugLogJob{store: st, provider: provider, model: model, reqBody: reqBody, respBody: respBody})
+		debugLoggers.enqueue(debugLogJob{
+			store:         st,
+			provider:      provider,
+			model:         model,
+			kind:          kind,
+			correlationID: correlationID,
+			reqBody:       reqBody,
+			respBody:      respBody,
+		})
 	}
+}
+
+// NewDBDebugLogger returns the ExplainSQL call's DebugLogger: the same capture as
+// NewDBDebugLoggerForCall with the explain_sql kind and no correlation id.
+func NewDBDebugLogger(st *store.Store, provider, model string) DebugLogger {
+	return NewDBDebugLoggerForCall(st, provider, model, "explain_sql", "")
 }

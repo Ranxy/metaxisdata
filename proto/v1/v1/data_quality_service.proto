@@ -227,6 +227,15 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.suggest";
   }
 
+  // Read the raw request and response bodies of one failed target when runtime
+  // debug mode captured them. The target's diagnostic carries the correlation id
+  // and says whether a body is available; llm_debug_log keeps it for seven days.
+  rpc GetQualitySuggestionJobTargetDebug(GetQualitySuggestionJobTargetDebugRequest) returns (GetQualitySuggestionJobTargetDebugResponse) {
+    option (google.api.http) = {get: "/v1/{name=workspaces/*/qualitySuggestionJobs/*}:debug"};
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.suggest";
+  }
+
   // List the cached deterministic profiles of columns. Profiles are read-only
   // measurements; there is no get or update.
   rpc ListColumnProfiles(ListColumnProfilesRequest) returns (ListColumnProfilesResponse) {
@@ -1667,6 +1676,38 @@ message QualitySuggestionJobTarget {
 
   google.protobuf.Timestamp start_time = 5;
   google.protobuf.Timestamp finish_time = 6;
+
+  // Set when the target failed in the model call: the classifier, provider
+  // facts, stop reason and usage behind the error, plus the correlation id that
+  // ties it to the server log and the debug log.
+  QualityLLMDiagnostic diagnostic = 7;
+}
+
+// QualityLLMDiagnostic explains why one LLM analysis failed, in a form a person
+// can act on and an operator can correlate with logs. It never includes the
+// prompt or the model response; those are available on demand when runtime debug
+// mode captured them (see GetQualitySuggestionJobTargetDebug).
+message QualityLLMDiagnostic {
+  // A stable machine-readable classifier, e.g. TRUNCATED (finish_reason=length),
+  // STREAM_INCOMPLETE, PROVIDER_STATUS, PROVIDER_REQUEST, RESPONSE_TOO_LARGE,
+  // TIMEOUT, PARSE, UNKNOWN.
+  string error_code = 1;
+  string provider = 2;
+  string model = 3;
+  string prompt_version = 4;
+  // The output-token budget the call asked for; TRUNCATED points at this.
+  int32 max_output_tokens = 5;
+  string finish_reason = 6;
+  int64 prompt_tokens = 7;
+  int64 completion_tokens = 8;
+  int64 total_tokens = 9;
+  // How large the prompt was, so a context/usage problem is visible.
+  int64 prompt_chars = 10;
+  // Copy this into server logs or the debug log lookup.
+  string correlation_id = 11;
+  int32 provider_status = 12;
+  // Whether GetQualitySuggestionJobTargetDebug can return the raw bodies.
+  bool debug_payload_available = 13;
 }
 
 // QualitySuggestionJob is one background AI drafting run over a set of targets.
@@ -1762,6 +1803,29 @@ message CancelQualitySuggestionJobRequest {
     (google.api.field_behavior) = REQUIRED,
     (google.api.resource_reference) = {type: "metaxisdata/QualitySuggestionJob"}
   ];
+}
+
+message GetQualitySuggestionJobTargetDebugRequest {
+  // Format: workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualitySuggestionJob"}
+  ];
+
+  // The zero-based index of the target in the job's target list.
+  int32 target_index = 2;
+}
+
+message GetQualitySuggestionJobTargetDebugResponse {
+  // False when runtime debug was off, the write failed, or the seven-day debug
+  // log retention already pruned the row.
+  bool available = 1;
+  string correlation_id = 2;
+  string request_body = 3;
+  string response_body = 4;
+  // The classifier code of the failure, so the client can show its hint even
+  // when the raw bodies are gone.
+  string error_code = 5;
 }
 
 message ListColumnProfilesRequest {

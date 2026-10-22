@@ -35,6 +35,7 @@
     - [QualityFailureSamples](#metaxisdata-store-QualityFailureSamples)
     - [QualityFilter](#metaxisdata-store-QualityFilter)
     - [QualityFilterClause](#metaxisdata-store-QualityFilterClause)
+    - [QualityLLMDiagnostic](#metaxisdata-store-QualityLLMDiagnostic)
     - [QualityRuleConfig](#metaxisdata-store-QualityRuleConfig)
     - [QualityRuleDraftConfig](#metaxisdata-store-QualityRuleDraftConfig)
     - [QualityStatusCounts](#metaxisdata-store-QualityStatusCounts)
@@ -717,6 +718,40 @@ QualityFilterClause is one comparison in a QualityFilter.
 
 
 
+<a name="metaxisdata-store-QualityLLMDiagnostic"></a>
+
+### QualityLLMDiagnostic
+QualitySuggestionJobTarget is one table a background drafting job visits. The
+path and columns are a snapshot taken at submission, so the job still renders
+after the registry changes; resolution happens again when the model is asked.
+QualityLLMDiagnostic is the structured context of one failed LLM analysis: the
+classifier code, provider facts, the provider&#39;s stop reason, token usage when
+the provider reported it, and the correlation id that ties the failure to the
+server log and (when runtime debug was on) the llm_debug_log row. It never
+contains prompt or response bodies.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| error_code | [string](#string) |  | A stable machine-readable classifier, e.g. TRUNCATED, STREAM_INCOMPLETE, PROVIDER_STATUS, PROVIDER_REQUEST, RESPONSE_TOO_LARGE, TIMEOUT, PARSE, UNKNOWN. |
+| provider | [string](#string) |  |  |
+| model | [string](#string) |  |  |
+| prompt_version | [string](#string) |  |  |
+| max_output_tokens | [int32](#int32) |  |  |
+| finish_reason | [string](#string) |  |  |
+| prompt_tokens | [int64](#int64) |  |  |
+| completion_tokens | [int64](#int64) |  |  |
+| total_tokens | [int64](#int64) |  |  |
+| prompt_chars | [int64](#int64) |  |  |
+| correlation_id | [string](#string) |  |  |
+| provider_status | [int32](#int32) |  |  |
+| debug_captured | [bool](#bool) |  | Whether the full request/response was persisted to llm_debug_log for this failure (runtime debug mode was on and the write was attempted). |
+
+
+
+
+
+
 <a name="metaxisdata-store-QualityRuleConfig"></a>
 
 ### QualityRuleConfig
@@ -798,9 +833,7 @@ QualityStatusCounts is the six-state tally of a set of executions.
 <a name="metaxisdata-store-QualitySuggestionJobTarget"></a>
 
 ### QualitySuggestionJobTarget
-QualitySuggestionJobTarget is one table a background drafting job visits. The
-path and columns are a snapshot taken at submission, so the job still renders
-after the registry changes; resolution happens again when the model is asked.
+
 
 
 | Field | Type | Label | Description |
@@ -814,6 +847,7 @@ after the registry changes; resolution happens again when the model is asked.
 | error | [string](#string) |  |  |
 | started_at_unix_ms | [int64](#int64) |  |  |
 | finished_at_unix_ms | [int64](#int64) |  |  |
+| diagnostic | [QualityLLMDiagnostic](#metaxisdata-store-QualityLLMDiagnostic) |  | Set when the target failed in the model call; the classifier and context. |
 
 
 

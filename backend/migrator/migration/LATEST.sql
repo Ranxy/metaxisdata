@@ -605,6 +605,12 @@ CREATE TABLE llm_debug_log (
     id BIGSERIAL PRIMARY KEY,
     provider TEXT NOT NULL DEFAULT '',
     model TEXT NOT NULL DEFAULT '',
+    -- The feature that made the call (for example explain_sql or dq_rule_draft).
+    kind TEXT NOT NULL DEFAULT '',
+    -- The caller's correlation id, echoed by the server log and the failure diagnostics.
+    correlation_id TEXT NOT NULL DEFAULT '',
+    -- The classifier code when the call failed; empty for a successful call.
+    error_code TEXT NOT NULL DEFAULT '',
     request_body TEXT NOT NULL DEFAULT '',
     response_body TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -614,6 +620,8 @@ ALTER SEQUENCE llm_debug_log_id_seq RESTART WITH 101;
 
 -- The maintenance runner prunes old debug entries by created_at.
 CREATE INDEX idx_llm_debug_log_created_at ON llm_debug_log(created_at);
+-- A failure's diagnostic carries only the correlation id; look the bodies up by it.
+CREATE INDEX idx_llm_debug_log_correlation_id ON llm_debug_log(correlation_id);
 
 
 -- oauth_client stores RFC 7591 dynamic client registrations for the MCP OAuth

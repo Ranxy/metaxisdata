@@ -5261,6 +5261,47 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualitySuggestionJobs/{qualitySuggestionJob}:debug:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                Read the raw request and response bodies of one failed target when runtime
+                 debug mode captured them. The target's diagnostic carries the correlation id
+                 and says whether a body is available; llm_debug_log keeps it for seven days.
+            operationId: DataQualityService_GetQualitySuggestionJobTargetDebug
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualitySuggestionJob
+                  in: path
+                  description: The qualitySuggestionJob id.
+                  required: true
+                  schema:
+                    type: string
+                - name: targetIndex
+                  in: query
+                  description: The zero-based index of the target in the job's target list.
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetQualitySuggestionJobTargetDebugResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualitySuggestions:
         get:
             tags:
@@ -7863,6 +7904,25 @@ components:
             properties:
                 metadata:
                     $ref: '#/components/schemas/StoredMetadata'
+        GetQualitySuggestionJobTargetDebugResponse:
+            type: object
+            properties:
+                available:
+                    type: boolean
+                    description: |-
+                        False when runtime debug was off, the write failed, or the seven-day debug
+                         log retention already pruned the row.
+                correlationId:
+                    type: string
+                requestBody:
+                    type: string
+                responseBody:
+                    type: string
+                errorCode:
+                    type: string
+                    description: |-
+                        The classifier code of the failure, so the client can show its hint even
+                         when the raw bodies are gone.
         GetUnreadNotificationCountResponse:
             type: object
             properties:
@@ -10099,6 +10159,50 @@ components:
                 QualityIssue is the durable problem behind a rule's failures. A rule has at
                  most one unresolved issue; a later failing run touches it instead of opening
                  another, and a resolved issue is never reopened.
+        QualityLLMDiagnostic:
+            type: object
+            properties:
+                errorCode:
+                    type: string
+                    description: |-
+                        A stable machine-readable classifier, e.g. TRUNCATED (finish_reason=length),
+                         STREAM_INCOMPLETE, PROVIDER_STATUS, PROVIDER_REQUEST, RESPONSE_TOO_LARGE,
+                         TIMEOUT, PARSE, UNKNOWN.
+                provider:
+                    type: string
+                model:
+                    type: string
+                promptVersion:
+                    type: string
+                maxOutputTokens:
+                    type: integer
+                    description: The output-token budget the call asked for; TRUNCATED points at this.
+                    format: int32
+                finishReason:
+                    type: string
+                promptTokens:
+                    type: string
+                completionTokens:
+                    type: string
+                totalTokens:
+                    type: string
+                promptChars:
+                    type: string
+                    description: How large the prompt was, so a context/usage problem is visible.
+                correlationId:
+                    type: string
+                    description: Copy this into server logs or the debug log lookup.
+                providerStatus:
+                    type: integer
+                    format: int32
+                debugPayloadAvailable:
+                    type: boolean
+                    description: Whether GetQualitySuggestionJobTargetDebug can return the raw bodies.
+            description: |-
+                QualityLLMDiagnostic explains why one LLM analysis failed, in a form a person
+                 can act on and an operator can correlate with logs. It never includes the
+                 prompt or the model response; those are available on demand when runtime debug
+                 mode captured them (see GetQualitySuggestionJobTargetDebug).
         QualityOverview:
             type: object
             properties:
@@ -10538,10 +10642,10 @@ components:
                     type: string
                 finishedAtUnixMs:
                     type: string
-            description: |-
-                QualitySuggestionJobTarget is one table a background drafting job visits. The
-                 path and columns are a snapshot taken at submission, so the job still renders
-                 after the registry changes; resolution happens again when the model is asked.
+                diagnostic:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityLLMDiagnostic'
+                    description: Set when the target failed in the model call; the classifier and context.
         QualitySuggestionPayload:
             type: object
             properties:

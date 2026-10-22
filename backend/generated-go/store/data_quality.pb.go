@@ -4711,6 +4711,155 @@ func (x *CrossTableConfig) GetWarnThreshold() float64 {
 // QualitySuggestionJobTarget is one table a background drafting job visits. The
 // path and columns are a snapshot taken at submission, so the job still renders
 // after the registry changes; resolution happens again when the model is asked.
+// QualityLLMDiagnostic is the structured context of one failed LLM analysis: the
+// classifier code, provider facts, the provider's stop reason, token usage when
+// the provider reported it, and the correlation id that ties the failure to the
+// server log and (when runtime debug was on) the llm_debug_log row. It never
+// contains prompt or response bodies.
+type QualityLLMDiagnostic struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// A stable machine-readable classifier, e.g. TRUNCATED, STREAM_INCOMPLETE,
+	// PROVIDER_STATUS, PROVIDER_REQUEST, RESPONSE_TOO_LARGE, TIMEOUT, PARSE, UNKNOWN.
+	ErrorCode        string `protobuf:"bytes,1,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
+	Provider         string `protobuf:"bytes,2,opt,name=provider,proto3" json:"provider,omitempty"`
+	Model            string `protobuf:"bytes,3,opt,name=model,proto3" json:"model,omitempty"`
+	PromptVersion    string `protobuf:"bytes,4,opt,name=prompt_version,json=promptVersion,proto3" json:"prompt_version,omitempty"`
+	MaxOutputTokens  int32  `protobuf:"varint,5,opt,name=max_output_tokens,json=maxOutputTokens,proto3" json:"max_output_tokens,omitempty"`
+	FinishReason     string `protobuf:"bytes,6,opt,name=finish_reason,json=finishReason,proto3" json:"finish_reason,omitempty"`
+	PromptTokens     int64  `protobuf:"varint,7,opt,name=prompt_tokens,json=promptTokens,proto3" json:"prompt_tokens,omitempty"`
+	CompletionTokens int64  `protobuf:"varint,8,opt,name=completion_tokens,json=completionTokens,proto3" json:"completion_tokens,omitempty"`
+	TotalTokens      int64  `protobuf:"varint,9,opt,name=total_tokens,json=totalTokens,proto3" json:"total_tokens,omitempty"`
+	PromptChars      int64  `protobuf:"varint,10,opt,name=prompt_chars,json=promptChars,proto3" json:"prompt_chars,omitempty"`
+	CorrelationId    string `protobuf:"bytes,11,opt,name=correlation_id,json=correlationId,proto3" json:"correlation_id,omitempty"`
+	ProviderStatus   int32  `protobuf:"varint,12,opt,name=provider_status,json=providerStatus,proto3" json:"provider_status,omitempty"`
+	// Whether the full request/response was persisted to llm_debug_log for this
+	// failure (runtime debug mode was on and the write was attempted).
+	DebugCaptured bool `protobuf:"varint,13,opt,name=debug_captured,json=debugCaptured,proto3" json:"debug_captured,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QualityLLMDiagnostic) Reset() {
+	*x = QualityLLMDiagnostic{}
+	mi := &file_store_data_quality_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QualityLLMDiagnostic) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QualityLLMDiagnostic) ProtoMessage() {}
+
+func (x *QualityLLMDiagnostic) ProtoReflect() protoreflect.Message {
+	mi := &file_store_data_quality_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QualityLLMDiagnostic.ProtoReflect.Descriptor instead.
+func (*QualityLLMDiagnostic) Descriptor() ([]byte, []int) {
+	return file_store_data_quality_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *QualityLLMDiagnostic) GetErrorCode() string {
+	if x != nil {
+		return x.ErrorCode
+	}
+	return ""
+}
+
+func (x *QualityLLMDiagnostic) GetProvider() string {
+	if x != nil {
+		return x.Provider
+	}
+	return ""
+}
+
+func (x *QualityLLMDiagnostic) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
+func (x *QualityLLMDiagnostic) GetPromptVersion() string {
+	if x != nil {
+		return x.PromptVersion
+	}
+	return ""
+}
+
+func (x *QualityLLMDiagnostic) GetMaxOutputTokens() int32 {
+	if x != nil {
+		return x.MaxOutputTokens
+	}
+	return 0
+}
+
+func (x *QualityLLMDiagnostic) GetFinishReason() string {
+	if x != nil {
+		return x.FinishReason
+	}
+	return ""
+}
+
+func (x *QualityLLMDiagnostic) GetPromptTokens() int64 {
+	if x != nil {
+		return x.PromptTokens
+	}
+	return 0
+}
+
+func (x *QualityLLMDiagnostic) GetCompletionTokens() int64 {
+	if x != nil {
+		return x.CompletionTokens
+	}
+	return 0
+}
+
+func (x *QualityLLMDiagnostic) GetTotalTokens() int64 {
+	if x != nil {
+		return x.TotalTokens
+	}
+	return 0
+}
+
+func (x *QualityLLMDiagnostic) GetPromptChars() int64 {
+	if x != nil {
+		return x.PromptChars
+	}
+	return 0
+}
+
+func (x *QualityLLMDiagnostic) GetCorrelationId() string {
+	if x != nil {
+		return x.CorrelationId
+	}
+	return ""
+}
+
+func (x *QualityLLMDiagnostic) GetProviderStatus() int32 {
+	if x != nil {
+		return x.ProviderStatus
+	}
+	return 0
+}
+
+func (x *QualityLLMDiagnostic) GetDebugCaptured() bool {
+	if x != nil {
+		return x.DebugCaptured
+	}
+	return false
+}
+
 type QualitySuggestionJobTarget struct {
 	state      protoimpl.MessageState `protogen:"open.v1"`
 	TargetGuid string                 `protobuf:"bytes,1,opt,name=target_guid,json=targetGuid,proto3" json:"target_guid,omitempty"`
@@ -4724,13 +4873,15 @@ type QualitySuggestionJobTarget struct {
 	Error                 string   `protobuf:"bytes,7,opt,name=error,proto3" json:"error,omitempty"`
 	StartedAtUnixMs       int64    `protobuf:"varint,8,opt,name=started_at_unix_ms,json=startedAtUnixMs,proto3" json:"started_at_unix_ms,omitempty"`
 	FinishedAtUnixMs      int64    `protobuf:"varint,9,opt,name=finished_at_unix_ms,json=finishedAtUnixMs,proto3" json:"finished_at_unix_ms,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	// Set when the target failed in the model call; the classifier and context.
+	Diagnostic    *QualityLLMDiagnostic `protobuf:"bytes,10,opt,name=diagnostic,proto3" json:"diagnostic,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *QualitySuggestionJobTarget) Reset() {
 	*x = QualitySuggestionJobTarget{}
-	mi := &file_store_data_quality_proto_msgTypes[38]
+	mi := &file_store_data_quality_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4742,7 +4893,7 @@ func (x *QualitySuggestionJobTarget) String() string {
 func (*QualitySuggestionJobTarget) ProtoMessage() {}
 
 func (x *QualitySuggestionJobTarget) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[38]
+	mi := &file_store_data_quality_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4755,7 +4906,7 @@ func (x *QualitySuggestionJobTarget) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QualitySuggestionJobTarget.ProtoReflect.Descriptor instead.
 func (*QualitySuggestionJobTarget) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{38}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *QualitySuggestionJobTarget) GetTargetGuid() string {
@@ -4821,6 +4972,13 @@ func (x *QualitySuggestionJobTarget) GetFinishedAtUnixMs() int64 {
 	return 0
 }
 
+func (x *QualitySuggestionJobTarget) GetDiagnostic() *QualityLLMDiagnostic {
+	if x != nil {
+		return x.Diagnostic
+	}
+	return nil
+}
+
 // QualitySuggestionJobTargets is the JSONB payload of
 // quality_suggestion_job.targets.
 type QualitySuggestionJobTargets struct {
@@ -4832,7 +4990,7 @@ type QualitySuggestionJobTargets struct {
 
 func (x *QualitySuggestionJobTargets) Reset() {
 	*x = QualitySuggestionJobTargets{}
-	mi := &file_store_data_quality_proto_msgTypes[39]
+	mi := &file_store_data_quality_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4844,7 +5002,7 @@ func (x *QualitySuggestionJobTargets) String() string {
 func (*QualitySuggestionJobTargets) ProtoMessage() {}
 
 func (x *QualitySuggestionJobTargets) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[39]
+	mi := &file_store_data_quality_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4857,7 +5015,7 @@ func (x *QualitySuggestionJobTargets) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QualitySuggestionJobTargets.ProtoReflect.Descriptor instead.
 func (*QualitySuggestionJobTargets) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{39}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *QualitySuggestionJobTargets) GetTargets() []*QualitySuggestionJobTarget {
@@ -5205,7 +5363,23 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\n" +
 	"_toleranceB\x11\n" +
 	"\x0f_fail_thresholdB\x11\n" +
-	"\x0f_warn_threshold\"\xa6\x03\n" +
+	"\x0f_warn_threshold\"\xee\x03\n" +
+	"\x14QualityLLMDiagnostic\x12\x1d\n" +
+	"\n" +
+	"error_code\x18\x01 \x01(\tR\terrorCode\x12\x1a\n" +
+	"\bprovider\x18\x02 \x01(\tR\bprovider\x12\x14\n" +
+	"\x05model\x18\x03 \x01(\tR\x05model\x12%\n" +
+	"\x0eprompt_version\x18\x04 \x01(\tR\rpromptVersion\x12*\n" +
+	"\x11max_output_tokens\x18\x05 \x01(\x05R\x0fmaxOutputTokens\x12#\n" +
+	"\rfinish_reason\x18\x06 \x01(\tR\ffinishReason\x12#\n" +
+	"\rprompt_tokens\x18\a \x01(\x03R\fpromptTokens\x12+\n" +
+	"\x11completion_tokens\x18\b \x01(\x03R\x10completionTokens\x12!\n" +
+	"\ftotal_tokens\x18\t \x01(\x03R\vtotalTokens\x12!\n" +
+	"\fprompt_chars\x18\n" +
+	" \x01(\x03R\vpromptChars\x12%\n" +
+	"\x0ecorrelation_id\x18\v \x01(\tR\rcorrelationId\x12'\n" +
+	"\x0fprovider_status\x18\f \x01(\x05R\x0eproviderStatus\x12%\n" +
+	"\x0edebug_captured\x18\r \x01(\bR\rdebugCaptured\"\xef\x03\n" +
 	"\x1aQualitySuggestionJobTarget\x12\x1f\n" +
 	"\vtarget_guid\x18\x01 \x01(\tR\n" +
 	"targetGuid\x12\x1f\n" +
@@ -5217,7 +5391,11 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\x17suggestion_resource_ids\x18\x06 \x03(\tR\x15suggestionResourceIds\x12\x14\n" +
 	"\x05error\x18\a \x01(\tR\x05error\x12+\n" +
 	"\x12started_at_unix_ms\x18\b \x01(\x03R\x0fstartedAtUnixMs\x12-\n" +
-	"\x13finished_at_unix_ms\x18\t \x01(\x03R\x10finishedAtUnixMs\"f\n" +
+	"\x13finished_at_unix_ms\x18\t \x01(\x03R\x10finishedAtUnixMs\x12G\n" +
+	"\n" +
+	"diagnostic\x18\n" +
+	" \x01(\v2'.metaxisdata.store.QualityLLMDiagnosticR\n" +
+	"diagnostic\"f\n" +
 	"\x1bQualitySuggestionJobTargets\x12G\n" +
 	"\atargets\x18\x01 \x03(\v2-.metaxisdata.store.QualitySuggestionJobTargetR\atargets*\xb4\x05\n" +
 	"\x0fQualityRuleType\x12!\n" +
@@ -5411,7 +5589,7 @@ func file_store_data_quality_proto_rawDescGZIP() []byte {
 }
 
 var file_store_data_quality_proto_enumTypes = make([]protoimpl.EnumInfo, 24)
-var file_store_data_quality_proto_msgTypes = make([]protoimpl.MessageInfo, 40)
+var file_store_data_quality_proto_msgTypes = make([]protoimpl.MessageInfo, 41)
 var file_store_data_quality_proto_goTypes = []any{
 	(QualityRuleType)(0),                 // 0: metaxisdata.store.QualityRuleType
 	(QualityDimension)(0),                // 1: metaxisdata.store.QualityDimension
@@ -5475,8 +5653,9 @@ var file_store_data_quality_proto_goTypes = []any{
 	(*GroupCheckConfig)(nil),             // 59: metaxisdata.store.GroupCheckConfig
 	(*AggregateConfig)(nil),              // 60: metaxisdata.store.AggregateConfig
 	(*CrossTableConfig)(nil),             // 61: metaxisdata.store.CrossTableConfig
-	(*QualitySuggestionJobTarget)(nil),   // 62: metaxisdata.store.QualitySuggestionJobTarget
-	(*QualitySuggestionJobTargets)(nil),  // 63: metaxisdata.store.QualitySuggestionJobTargets
+	(*QualityLLMDiagnostic)(nil),         // 62: metaxisdata.store.QualityLLMDiagnostic
+	(*QualitySuggestionJobTarget)(nil),   // 63: metaxisdata.store.QualitySuggestionJobTarget
+	(*QualitySuggestionJobTargets)(nil),  // 64: metaxisdata.store.QualitySuggestionJobTargets
 }
 var file_store_data_quality_proto_depIdxs = []int32{
 	26, // 0: metaxisdata.store.QualityFilter.clauses:type_name -> metaxisdata.store.QualityFilterClause
@@ -5525,12 +5704,13 @@ var file_store_data_quality_proto_depIdxs = []int32{
 	21, // 43: metaxisdata.store.CrossTableConfig.right_function:type_name -> metaxisdata.store.QualityAggregateFunction
 	24, // 44: metaxisdata.store.QualitySuggestionJobTarget.path:type_name -> metaxisdata.store.QualityTargetPath
 	23, // 45: metaxisdata.store.QualitySuggestionJobTarget.state:type_name -> metaxisdata.store.QualitySuggestionJobTargetState
-	62, // 46: metaxisdata.store.QualitySuggestionJobTargets.targets:type_name -> metaxisdata.store.QualitySuggestionJobTarget
-	47, // [47:47] is the sub-list for method output_type
-	47, // [47:47] is the sub-list for method input_type
-	47, // [47:47] is the sub-list for extension type_name
-	47, // [47:47] is the sub-list for extension extendee
-	0,  // [0:47] is the sub-list for field type_name
+	62, // 46: metaxisdata.store.QualitySuggestionJobTarget.diagnostic:type_name -> metaxisdata.store.QualityLLMDiagnostic
+	63, // 47: metaxisdata.store.QualitySuggestionJobTargets.targets:type_name -> metaxisdata.store.QualitySuggestionJobTarget
+	48, // [48:48] is the sub-list for method output_type
+	48, // [48:48] is the sub-list for method input_type
+	48, // [48:48] is the sub-list for extension type_name
+	48, // [48:48] is the sub-list for extension extendee
+	0,  // [0:48] is the sub-list for field type_name
 }
 
 func init() { file_store_data_quality_proto_init() }
@@ -5593,7 +5773,7 @@ func file_store_data_quality_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_store_data_quality_proto_rawDesc), len(file_store_data_quality_proto_rawDesc)),
 			NumEnums:      24,
-			NumMessages:   40,
+			NumMessages:   41,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

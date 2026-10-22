@@ -11,11 +11,20 @@ import (
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 )
+
+// auditMarshal renders one message exactly as the interceptor does.
+func auditMarshal(t *testing.T, message proto.Message) (*structpb.Struct, map[string]any) {
+	t.Helper()
+	structured, raw := MarshalAuditMessage(message)
+	require.NotNil(t, structured)
+	return structured, raw
+}
 
 // The OAuth2 authorization-code flow carries its credentials under both
 // camelCase protojson names and snake_case form names. Either spelling must be
@@ -28,6 +37,7 @@ func TestSensitiveAuditFieldsAreRedacted(t *testing.T) {
 		"clientSecret", "client_secret",
 		"authorizationCode", "authorizationcode", "authorization_code",
 		"deviceCode", "password",
+		"requestBody", "request_body", "responseBody", "response_body",
 	} {
 		raw := map[string]any{
 			"name":   "instances/i1",
@@ -43,6 +53,33 @@ func TestSensitiveAuditFieldsAreRedacted(t *testing.T) {
 		require.Equal(t, RedactedValue, nested[field], "expected nested %q to be redacted", field)
 		require.Equal(t, "instances/i1", raw["name"])
 	}
+}
+
+// The target-debug RPC returns raw LLM request/response bodies. The audit row must
+// keep the call context but never the bodies: the debug log expires after seven
+// days, while the ledger is kept forever.
+func TestMarshalAuditMessageRedactsLLMDebugBodies(t *testing.T) {
+	t.Parallel()
+
+	message := &v1pb.GetQualitySuggestionJobTargetDebugResponse{
+		Available:     true,
+		CorrelationId: "corr-1",
+		RequestBody:   `{"model":"gpt-4","messages":[{"role":"user","content":"secret prompt"}]}`,
+		ResponseBody:  `{"choices":[{"message":{"content":"secret answer"}}]}`,
+		ErrorCode:     "TRUNCATED",
+	}
+	structured, raw := auditMarshal(t, message)
+	require.Equal(t, RedactedValue, structured.GetFields()["requestBody"].GetStringValue())
+	require.Equal(t, RedactedValue, structured.GetFields()["responseBody"].GetStringValue())
+	require.Equal(t, RedactedValue, raw["requestBody"])
+	require.Equal(t, RedactedValue, raw["responseBody"])
+	require.NotContains(t, fmt.Sprint(structured), "secret prompt")
+	require.NotContains(t, fmt.Sprint(structured), "secret answer")
+
+	// The context that makes the row meaningful is kept.
+	require.True(t, structured.GetFields()["available"].GetBoolValue())
+	require.Equal(t, "corr-1", structured.GetFields()["correlationId"].GetStringValue())
+	require.Equal(t, "TRUNCATED", structured.GetFields()["errorCode"].GetStringValue())
 }
 
 // H6: an anonymous audited request must not be able to write its body into the

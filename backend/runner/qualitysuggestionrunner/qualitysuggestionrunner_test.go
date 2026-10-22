@@ -135,7 +135,7 @@ type fakeSuggester struct {
 	mu        sync.Mutex
 	configErr error
 	config    llm.ResolvedConfig
-	draft     func(targetGUID string) ([]*store.QualitySuggestionMessage, error)
+	draft     func(targetGUID string) ([]*store.QualitySuggestionMessage, *storepb.QualityLLMDiagnostic, error)
 	calls     []string
 }
 
@@ -146,14 +146,14 @@ func (f *fakeSuggester) ResolveConfig(context.Context) (llm.ResolvedConfig, data
 	return f.config, dataquality.Settings{}, nil
 }
 
-func (f *fakeSuggester) Draft(_ context.Context, _ llm.ResolvedConfig, targetGUID string, _ storepb.MetaType, _ []string, _, _ string, _ *int32) ([]*store.QualitySuggestionMessage, error) {
+func (f *fakeSuggester) Draft(_ context.Context, _ llm.ResolvedConfig, targetGUID string, _ storepb.MetaType, _ []string, _, _ string, _ *int32) ([]*store.QualitySuggestionMessage, *storepb.QualityLLMDiagnostic, error) {
 	f.mu.Lock()
 	f.calls = append(f.calls, targetGUID)
 	f.mu.Unlock()
 	if f.draft != nil {
 		return f.draft(targetGUID)
 	}
-	return []*store.QualitySuggestionMessage{{ResourceID: targetGUID + "-s1"}}, nil
+	return []*store.QualitySuggestionMessage{{ResourceID: targetGUID + "-s1"}}, nil, nil
 }
 
 func (f *fakeSuggester) draftedTargets() []string {
@@ -229,17 +229,54 @@ func TestProcessJobCompletesEveryTargetInOrder(t *testing.T) {
 	require.GreaterOrEqual(t, len(stores.progress), 3)
 }
 
+// A failed target keeps the diagnostic the suggester classified, so the job panel
+// can explain the failure without the server log.
+func TestProcessJobPersistsTheFailureDiagnostic(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.October, 22, 9, 0, 0, 0, time.UTC)
+	stores := newFakeJobStore(jobTestMessage("target-a"))
+	diagnostic := &storepb.QualityLLMDiagnostic{
+		ErrorCode:       "TRUNCATED",
+		Provider:        "profiles/openai",
+		Model:           "gpt-4",
+		PromptVersion:   "dq.rule_draft.v1",
+		MaxOutputTokens: 8192,
+		FinishReason:    "length",
+		CorrelationId:   "corr-1",
+		PromptChars:     1234,
+	}
+	suggester := &fakeSuggester{draft: func(string) ([]*store.QualitySuggestionMessage, *storepb.QualityLLMDiagnostic, error) {
+		return nil, diagnostic, errors.New("the model stopped at the output token limit")
+	}}
+	runner := newTestRunner(stores, suggester, now)
+
+	job, err := stores.ClaimPendingQualitySuggestionJob(context.Background(), now)
+	require.NoError(t, err)
+	runner.processJob(context.Background(), job)
+
+	persisted := stores.progress[len(stores.progress)-1].GetTargets()[0]
+	require.Equal(t, storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_FAILED, persisted.GetState())
+	require.Contains(t, persisted.GetError(), "output token limit", "the human error text is kept")
+	require.NotNil(t, persisted.GetDiagnostic())
+	require.Equal(t, "TRUNCATED", persisted.GetDiagnostic().GetErrorCode())
+	require.Equal(t, "length", persisted.GetDiagnostic().GetFinishReason())
+	require.Equal(t, "corr-1", persisted.GetDiagnostic().GetCorrelationId())
+	require.Equal(t, int32(8192), persisted.GetDiagnostic().GetMaxOutputTokens())
+	require.Equal(t, "profiles/openai", persisted.GetDiagnostic().GetProvider())
+}
+
 // A target the model could not draft is recorded FAILED and the rest still run.
 func TestProcessJobContinuesAfterATargetFailure(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, time.October, 22, 9, 0, 0, 0, time.UTC)
 	stores := newFakeJobStore(jobTestMessage("target-a", "target-b"))
-	suggester := &fakeSuggester{draft: func(guid string) ([]*store.QualitySuggestionMessage, error) {
+	suggester := &fakeSuggester{draft: func(guid string) ([]*store.QualitySuggestionMessage, *storepb.QualityLLMDiagnostic, error) {
 		if guid == "target-a" {
-			return nil, errors.New("the model returned nonsense")
+			return nil, nil, errors.New("the model returned nonsense")
 		}
-		return []*store.QualitySuggestionMessage{{ResourceID: guid + "-s1"}}, nil
+		return []*store.QualitySuggestionMessage{{ResourceID: guid + "-s1"}}, nil, nil
 	}}
 	runner := newTestRunner(stores, suggester, now)
 
@@ -269,11 +306,11 @@ func TestProcessJobStopsWhenCancellationIsRequested(t *testing.T) {
 	require.NoError(t, err)
 	// The reviewer cancels while the first target is being drafted: the runner
 	// observes it before visiting the second target.
-	suggester.draft = func(guid string) ([]*store.QualitySuggestionMessage, error) {
+	suggester.draft = func(guid string) ([]*store.QualitySuggestionMessage, *storepb.QualityLLMDiagnostic, error) {
 		stores.mu.Lock()
 		stores.cancelOnGet = true
 		stores.mu.Unlock()
-		return []*store.QualitySuggestionMessage{{ResourceID: guid + "-s1"}}, nil
+		return []*store.QualitySuggestionMessage{{ResourceID: guid + "-s1"}}, nil, nil
 	}
 	runner.processJob(context.Background(), job)
 
@@ -292,8 +329,8 @@ func TestProcessJobStopsWhenTheQuotaRunsOut(t *testing.T) {
 
 	now := time.Date(2026, time.October, 22, 9, 0, 0, 0, time.UTC)
 	stores := newFakeJobStore(jobTestMessage("target-a", "target-b", "target-c"))
-	suggester := &fakeSuggester{draft: func(string) ([]*store.QualitySuggestionMessage, error) {
-		return nil, connect.NewError(connect.CodeResourceExhausted, errors.New("the daily quota is used"))
+	suggester := &fakeSuggester{draft: func(string) ([]*store.QualitySuggestionMessage, *storepb.QualityLLMDiagnostic, error) {
+		return nil, nil, connect.NewError(connect.CodeResourceExhausted, errors.New("the daily quota is used"))
 	}}
 	runner := newTestRunner(stores, suggester, now)
 
@@ -440,11 +477,11 @@ func TestRunSurvivesAPanickingSuggester(t *testing.T) {
 	panicking := jobTestMessageFor(7, "job-panic", "target-panic")
 	following := jobTestMessageFor(8, "job-next", "target-b")
 	stores := newFakeJobStore(panicking, following)
-	suggester := &fakeSuggester{draft: func(guid string) ([]*store.QualitySuggestionMessage, error) {
+	suggester := &fakeSuggester{draft: func(guid string) ([]*store.QualitySuggestionMessage, *storepb.QualityLLMDiagnostic, error) {
 		if guid == "target-panic" {
 			panic("the drafting pipeline exploded")
 		}
-		return []*store.QualitySuggestionMessage{{ResourceID: guid + "-s1"}}, nil
+		return []*store.QualitySuggestionMessage{{ResourceID: guid + "-s1"}}, nil, nil
 	}}
 	runner := newTestRunner(stores, suggester, now)
 	runner.tick = time.Hour

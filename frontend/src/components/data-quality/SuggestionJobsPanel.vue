@@ -156,12 +156,60 @@
             :key="`${job.name}-${index}`"
             class="flex flex-wrap items-start justify-between gap-2 text-sm"
           >
-            <div class="min-w-0">
+            <div class="min-w-0 space-y-2">
               <div class="truncate">
                 {{ jobTargetLabel(target, targetInstanceTitle(target.target?.path?.instance ?? '')) }}
               </div>
+              <template v-if="target.diagnostic">
+                <div class="flex flex-wrap items-center gap-2">
+                  <Badge variant="warning">
+                    {{ t(diagnosticCodeKey(target.diagnostic.errorCode)) }}
+                  </Badge>
+                  <p class="text-sm">
+                    {{ t(diagnosticHintKey(target.diagnostic.errorCode)) }}
+                  </p>
+                </div>
+                <dl class="grid gap-x-4 gap-y-1 text-xs sm:grid-cols-2">
+                  <template
+                    v-for="fact in diagnosticFacts(target.diagnostic)"
+                    :key="fact.labelKey"
+                  >
+                    <dt class="text-muted-foreground">
+                      {{ t(fact.labelKey) }}
+                    </dt>
+                    <dd class="break-words">
+                      {{ fact.value }}
+                    </dd>
+                  </template>
+                </dl>
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="font-mono text-xs">
+                    {{ t("dataQuality.suggestions.diagnostic.facts.correlationId") }}:
+                    {{ target.diagnostic.correlationId || "-" }}
+                  </span>
+                  <Button
+                    v-if="target.diagnostic.correlationId"
+                    variant="ghost"
+                    size="icon"
+                    class="h-7 w-7"
+                    :title="t('dataQuality.suggestions.diagnostic.copyCorrelation')"
+                    :aria-label="t('dataQuality.suggestions.diagnostic.copyCorrelation')"
+                    @click="copyText(target.diagnostic.correlationId)"
+                  >
+                    <Copy class="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    v-if="target.diagnostic.debugPayloadAvailable"
+                    variant="outline"
+                    size="sm"
+                    @click="openDebug(job, index)"
+                  >
+                    {{ t("dataQuality.suggestions.diagnostic.viewPayload") }}
+                  </Button>
+                </div>
+              </template>
               <p
-                v-if="target.error"
+                v-else-if="target.error"
                 class="text-xs break-words text-destructive"
               >
                 {{ target.error }}
@@ -180,10 +228,17 @@
       </div>
     </CardContent>
   </Card>
+
+  <SuggestionJobTargetDebugDialog
+    v-model:open="debugOpen"
+    :job-name="debugSelection?.jobName ?? ''"
+    :target-index="debugSelection?.targetIndex ?? 0"
+    :correlation-id="debugSelection?.correlationId ?? ''"
+  />
 </template>
 
 <script setup lang="ts">
-import { AlertTriangle, ChevronDown } from "lucide-vue-next";
+import { AlertTriangle, ChevronDown, Copy } from "lucide-vue-next";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
@@ -191,6 +246,7 @@ import {
   getQualitySuggestionJob,
   listQualitySuggestionJobs,
 } from "@/api/data-quality";
+import SuggestionJobTargetDebugDialog from "@/components/data-quality/SuggestionJobTargetDebugDialog.vue";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -199,10 +255,14 @@ import { useErrorMessage } from "@/composables/useErrorHandler";
 import { notify } from "@/lib/notify";
 import { useInstanceStore } from "@/store/modules/instance";
 import {
+  type QualityLLMDiagnostic,
   type QualitySuggestionJob,
   QualitySuggestionJobStatus,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import {
+  diagnosticCodeKey,
+  diagnosticHintKey,
+  diagnosticSummary,
   isActiveSuggestionJob,
   jobIntentSnippet,
   jobSuggestionNames,
@@ -286,8 +346,85 @@ const panelSummary = computed(() => {
   });
 });
 
+interface DebugSelection {
+  jobName: string;
+  targetIndex: number;
+  correlationId: string;
+}
+
+const debugOpen = ref(false);
+const debugSelection = ref<DebugSelection>();
+
 function targetInstanceTitle(instanceId: string): string {
   return instanceId ? instanceStore.titleOf(`instances/${instanceId}`) : "";
+}
+
+/**
+ * The compact facts of a failed model call, in display order. Reported-only
+ * values are shown; "-" is skipped and the correlation id is rendered beside
+ * its own copy action.
+ */
+function diagnosticFacts(
+  diagnostic: QualityLLMDiagnostic
+): Array<{ labelKey: string; value: string }> {
+  const summary = diagnosticSummary(diagnostic);
+  const facts = [
+    {
+      labelKey: "dataQuality.suggestions.diagnostic.facts.provider",
+      value: summary.providerModel,
+    },
+    {
+      labelKey: "dataQuality.suggestions.diagnostic.facts.promptVersion",
+      value: summary.promptVersion,
+    },
+    {
+      labelKey: "dataQuality.suggestions.diagnostic.facts.finishReason",
+      value: summary.finishReason,
+    },
+    {
+      labelKey: "dataQuality.suggestions.diagnostic.facts.maxOutputTokens",
+      value: summary.maxOutputTokens,
+    },
+    {
+      labelKey: "dataQuality.suggestions.diagnostic.facts.promptTokens",
+      value: summary.promptTokens,
+    },
+    {
+      labelKey: "dataQuality.suggestions.diagnostic.facts.completionTokens",
+      value: summary.completionTokens,
+    },
+    {
+      labelKey: "dataQuality.suggestions.diagnostic.facts.totalTokens",
+      value: summary.totalTokens,
+    },
+    {
+      labelKey: "dataQuality.suggestions.diagnostic.facts.promptChars",
+      value: summary.promptChars,
+    },
+    {
+      labelKey: "dataQuality.suggestions.diagnostic.facts.providerStatus",
+      value: summary.providerStatus,
+    },
+  ];
+  return facts.filter((fact) => fact.value !== "-");
+}
+
+function openDebug(job: QualitySuggestionJob, index: number) {
+  debugSelection.value = {
+    jobName: job.name,
+    targetIndex: index,
+    correlationId: job.targets[index]?.diagnostic?.correlationId ?? "",
+  };
+  debugOpen.value = true;
+}
+
+/** A correlation id is meant to be pasted into server logs, so copying it is one click. */
+async function copyText(text: string) {
+  if (!text || !navigator.clipboard) {
+    return;
+  }
+  await navigator.clipboard.writeText(text);
+  notify.success(t("common.copied"));
 }
 
 function toggleExpanded(name: string) {
