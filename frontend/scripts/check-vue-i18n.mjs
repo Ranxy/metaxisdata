@@ -81,6 +81,10 @@ export const DYNAMIC_PREFIXES = [
   "dataQuality.suggestionKind",
   "dataQuality.suggestionSource",
   "dataQuality.suggestionStatus",
+  // Job lifecycle and per-target state labels returned by helpers in
+  // src/utils/dataQualitySuggestion.ts.
+  "dataQuality.suggestionJobStatus",
+  "dataQuality.suggestionJobTargetState",
   "dataQuality.semanticType",
   "dataQuality.labelSource",
   "dataQuality.labelStatus",

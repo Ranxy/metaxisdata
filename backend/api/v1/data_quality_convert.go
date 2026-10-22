@@ -1034,6 +1034,138 @@ func convertQualitySuggestion(workspaceID string, suggestion *store.QualitySugge
 	}
 }
 
+// qualitySuggestionJobPrefix is the resource-name prefix of the background
+// drafting jobs.
+const qualitySuggestionJobPrefix = "qualitySuggestionJobs/"
+
+// parseQualitySuggestionJobName splits
+// workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job}.
+func parseQualitySuggestionJobName(name string) (string, string, error) {
+	tokens, err := common.GetNameParentTokens(name, common.WorkspacePrefix, qualitySuggestionJobPrefix)
+	if err != nil {
+		return "", "", errors.Wrap(err, "invalid quality suggestion job name")
+	}
+	return tokens[0], tokens[1], nil
+}
+
+// formatQualitySuggestionJobName renders a job resource name.
+func formatQualitySuggestionJobName(workspace, qualitySuggestionJob string) string {
+	return common.FormatWorkspace(workspace) + "/" + qualitySuggestionJobPrefix + qualitySuggestionJob
+}
+
+// convertQualitySuggestionJob converts one stored job into its public shape: the
+// target snapshots, their suggestion resource names and the counts the page shows.
+func convertQualitySuggestionJob(workspaceID string, job *store.QualitySuggestionJobMessage) *v1pb.QualitySuggestionJob {
+	if job == nil {
+		return nil
+	}
+	converted := &v1pb.QualitySuggestionJob{
+		Name:          formatQualitySuggestionJobName(workspaceID, job.ResourceID),
+		Status:        convertQualitySuggestionJobStatus(job.Status),
+		Intent:        job.Intent,
+		Language:      job.Language,
+		Provider:      job.Provider,
+		Model:         job.Model,
+		PromptVersion: job.PromptVersion,
+		CreateTime:    timestamppb.New(job.CreatedAt),
+		StartTime:     timestampOrNil(job.StartedAt),
+		FinishTime:    timestampOrNil(job.FinishedAt),
+		Error:         job.Error,
+		CreatedBy:     formatQualityOwner(job.CreatedBy),
+	}
+	for _, target := range job.Targets.GetTargets() {
+		if target == nil {
+			continue
+		}
+		convertedTarget := &v1pb.QualitySuggestionJobTarget{
+			Target: &v1pb.QualityTarget{
+				MetaGuid: target.GetTargetGuid(),
+				MetaType: v1pb.MetaType(target.GetTargetType()),
+				Path:     convertQualityTargetPathToV1(target.GetPath()),
+				Columns:  append([]string(nil), target.GetColumns()...),
+			},
+			State:      convertQualitySuggestionJobTargetState(target.GetState()),
+			Error:      target.GetError(),
+			StartTime:  unixMillisecondTimestamp(target.GetStartedAtUnixMs()),
+			FinishTime: unixMillisecondTimestamp(target.GetFinishedAtUnixMs()),
+		}
+		for _, resourceID := range target.GetSuggestionResourceIds() {
+			convertedTarget.Suggestions = append(convertedTarget.Suggestions,
+				formatQualitySuggestionName(workspaceID, resourceID))
+		}
+		converted.Targets = append(converted.Targets, convertedTarget)
+	}
+	converted.TargetCount = int32(len(converted.GetTargets()))
+	for _, target := range converted.GetTargets() {
+		switch target.GetState() {
+		case v1pb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING,
+			v1pb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_RUNNING,
+			v1pb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_UNSPECIFIED:
+			// Still in flight: not completed yet.
+		case v1pb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_DONE,
+			v1pb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_FAILED,
+			v1pb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_SKIPPED:
+			converted.CompletedTargetCount++
+		default:
+			// An unknown state is not counted as completed.
+		}
+		converted.SuggestionCount += int32(len(target.GetSuggestions()))
+	}
+	return converted
+}
+
+// convertQualitySuggestionJobStatus maps the stored lifecycle enum onto its public
+// form. The two enums share their numbering, but the switch keeps an unknown value
+// from leaking through a cast.
+func convertQualitySuggestionJobStatus(status storepb.QualitySuggestionJobStatus) v1pb.QualitySuggestionJobStatus {
+	switch status {
+	case storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_PENDING:
+		return v1pb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_PENDING
+	case storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_RUNNING:
+		return v1pb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_RUNNING
+	case storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_COMPLETED:
+		return v1pb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_COMPLETED
+	case storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_FAILED:
+		return v1pb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_FAILED
+	case storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_CANCELED:
+		return v1pb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_CANCELED
+	case storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_UNSPECIFIED:
+		return v1pb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_UNSPECIFIED
+	default:
+		return v1pb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_UNSPECIFIED
+	}
+}
+
+// convertQualitySuggestionJobTargetState maps one stored target state onto its
+// public form.
+func convertQualitySuggestionJobTargetState(state storepb.QualitySuggestionJobTargetState) v1pb.QualitySuggestionJobTargetState {
+	switch state {
+	case storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING:
+		return v1pb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING
+	case storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_RUNNING:
+		return v1pb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_RUNNING
+	case storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_DONE:
+		return v1pb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_DONE
+	case storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_FAILED:
+		return v1pb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_FAILED
+	case storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_SKIPPED:
+		return v1pb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_SKIPPED
+	case storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_UNSPECIFIED:
+		return v1pb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_UNSPECIFIED
+	default:
+		return v1pb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_UNSPECIFIED
+	}
+}
+
+// unixMillisecondTimestamp renders a stored epoch-millisecond instant, or nil for
+// the zero value (the target has not started/finished).
+func unixMillisecondTimestamp(milliseconds int64) *timestamppb.Timestamp {
+	if milliseconds <= 0 {
+		return nil
+	}
+	return timestamppb.New(time.UnixMilli(milliseconds).UTC())
+}
+
 // convertQualitySuggestionPayloadToV1 converts the review-queue payload.
 func convertQualitySuggestionPayloadToV1(payload *storepb.QualitySuggestionPayload) *v1pb.QualitySuggestionPayload {
 	if payload == nil {

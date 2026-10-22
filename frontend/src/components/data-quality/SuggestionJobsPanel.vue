@@ -1,0 +1,418 @@
+<template>
+  <Card v-if="jobs.length > 0 || error">
+    <CardHeader class="flex flex-row items-center justify-between gap-3 pb-2">
+      <div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+        <CardTitle class="text-base">
+          {{ t("dataQuality.suggestions.jobs.title") }}
+        </CardTitle>
+        <span
+          v-if="panelSummary"
+          class="text-xs text-muted-foreground"
+        >
+          {{ panelSummary }}
+        </span>
+      </div>
+      <div class="flex shrink-0 items-center gap-2">
+        <p class="hidden text-xs text-muted-foreground sm:block">
+          {{ t("dataQuality.suggestions.jobs.hint") }}
+        </p>
+        <Button
+          variant="ghost"
+          size="sm"
+          :aria-expanded="panelExpanded"
+          @click="panelExpanded = !panelExpanded"
+        >
+          {{ panelExpanded ? t("dataQuality.suggestions.jobs.hide") : t("dataQuality.suggestions.jobs.show") }}
+          <ChevronDown
+            class="ml-1 h-4 w-4 transition-transform"
+            :class="{ 'rotate-180': panelExpanded }"
+          />
+        </Button>
+      </div>
+    </CardHeader>
+    <CardContent
+      v-if="panelExpanded"
+      class="space-y-3"
+    >
+      <Alert
+        v-if="error"
+        variant="destructive"
+      >
+        <AlertTriangle class="h-4 w-4" />
+        <AlertTitle>{{ t("dataQuality.suggestions.jobs.fetchFailed") }}</AlertTitle>
+        <AlertDescription class="break-words">
+          {{ error }}
+        </AlertDescription>
+      </Alert>
+
+      <div
+        v-for="job in jobs"
+        :key="job.name"
+        class="rounded-md border"
+      >
+        <div class="flex flex-wrap items-start justify-between gap-2 p-3">
+          <div class="min-w-0 space-y-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <Badge :variant="suggestionJobStatusVariant(job.status)">
+                {{ t(suggestionJobStatusKey(job.status)) }}
+              </Badge>
+              <span
+                class="min-w-0 truncate text-sm font-medium"
+                :title="job.intent"
+              >
+                {{ jobIntentSnippet(job) || "-" }}
+              </span>
+            </div>
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              <span>
+                {{ t("dataQuality.suggestions.jobs.progress", {
+                  completed: suggestionJobProgress(job).completed,
+                  total: suggestionJobProgress(job).total,
+                  suggestions: suggestionJobProgress(job).suggestions,
+                }) }}
+              </span>
+              <span :title="formatDateTime(job.createTime, locale)">
+                {{ formatRelativeTime(job.createTime, locale) }}
+              </span>
+              <span
+                v-if="job.error"
+                class="break-words text-destructive"
+              >
+                {{ job.error }}
+              </span>
+            </div>
+          </div>
+
+          <div class="flex shrink-0 items-center gap-1">
+            <template v-if="isActiveSuggestionJob(job)">
+              <template v-if="cancelTarget === job.name">
+                <span class="text-xs text-muted-foreground">
+                  {{ t("dataQuality.suggestions.jobs.cancelConfirm") }}
+                </span>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  :disabled="canceling === job.name"
+                  @click="confirmCancel(job)"
+                >
+                  {{ t("dataQuality.suggestions.jobs.cancelConfirmAction") }}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  :disabled="canceling === job.name"
+                  @click="cancelTarget = ''"
+                >
+                  {{ t("dataQuality.suggestions.jobs.cancelKeep") }}
+                </Button>
+              </template>
+              <Button
+                v-else
+                variant="outline"
+                size="sm"
+                :disabled="canceling === job.name"
+                @click="cancelTarget = job.name"
+              >
+                {{ t("dataQuality.suggestions.jobs.cancel") }}
+              </Button>
+            </template>
+            <Button
+              variant="ghost"
+              size="icon"
+              class="h-8 w-8"
+              :aria-expanded="expanded.includes(job.name)"
+              :aria-label="
+                expanded.includes(job.name)
+                  ? t('dataQuality.suggestions.jobs.collapse')
+                  : t('dataQuality.suggestions.jobs.expand')
+              "
+              :title="
+                expanded.includes(job.name)
+                  ? t('dataQuality.suggestions.jobs.collapse')
+                  : t('dataQuality.suggestions.jobs.expand')
+              "
+              @click="toggleExpanded(job.name)"
+            >
+              <ChevronDown
+                class="h-4 w-4 transition-transform"
+                :class="{ 'rotate-180': expanded.includes(job.name) }"
+              />
+            </Button>
+          </div>
+        </div>
+
+        <div
+          v-if="expanded.includes(job.name)"
+          class="space-y-2 border-t p-3"
+        >
+          <div
+            v-if="job.targets.length === 0"
+            class="text-sm text-muted-foreground"
+          >
+            {{ t("dataQuality.suggestions.jobs.noTargets") }}
+          </div>
+          <div
+            v-for="(target, index) in job.targets"
+            :key="`${job.name}-${index}`"
+            class="flex flex-wrap items-start justify-between gap-2 text-sm"
+          >
+            <div class="min-w-0">
+              <div class="truncate">
+                {{ jobTargetLabel(target, targetInstanceTitle(target.target?.path?.instance ?? '')) }}
+              </div>
+              <p
+                v-if="target.error"
+                class="text-xs break-words text-destructive"
+              >
+                {{ target.error }}
+              </p>
+            </div>
+            <div class="flex shrink-0 items-center gap-2">
+              <Badge :variant="suggestionJobTargetStateVariant(target.state)">
+                {{ t(suggestionJobTargetStateKey(target.state)) }}
+              </Badge>
+              <span class="text-xs text-muted-foreground">
+                {{ t("dataQuality.suggestions.groupCount", { count: target.suggestions.length }) }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </CardContent>
+  </Card>
+</template>
+
+<script setup lang="ts">
+import { AlertTriangle, ChevronDown } from "lucide-vue-next";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
+import {
+  cancelQualitySuggestionJob,
+  listQualitySuggestionJobs,
+} from "@/api/data-quality";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useErrorMessage } from "@/composables/useErrorHandler";
+import { notify } from "@/lib/notify";
+import { useInstanceStore } from "@/store/modules/instance";
+import {
+  type QualitySuggestionJob,
+  QualitySuggestionJobStatus,
+} from "@/types/proto-es/v1/data_quality_service_pb";
+import {
+  isActiveSuggestionJob,
+  jobIntentSnippet,
+  jobSuggestionNames,
+  jobTargetLabel,
+  suggestionJobProgress,
+  suggestionJobStatusKey,
+  suggestionJobStatusVariant,
+  suggestionJobTargetStateKey,
+  suggestionJobTargetStateVariant,
+} from "@/utils/dataQualitySuggestion";
+import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
+
+/**
+ * The recent AI drafting jobs, polled while one is still active.
+ *
+ * The workbench only submits a job; this panel is how the reader follows it
+ * without keeping the drafting dialog open. A job that finishes while the page
+ * is mounted settles once: the page refreshes the queue, selects the new pending
+ * suggestions when they are visible, and the reader hears about it once.
+ */
+
+const JOBS_PAGE_SIZE = 10;
+const POLL_INTERVAL_MS = 2500;
+
+const props = withDefaults(
+  defineProps<{
+    /** Bumped by the page after a submission to reload immediately. */
+    refreshKey?: number;
+  }>(),
+  { refreshKey: 0 }
+);
+
+const emit = defineEmits<{
+  /** A job left PENDING/RUNNING; `names` are the suggestions it queued. */
+  settled: [suggestionNames: string[]];
+}>();
+
+const { t, locale } = useI18n();
+const { formatError } = useErrorMessage();
+const instanceStore = useInstanceStore();
+
+const jobs = ref<QualitySuggestionJob[]>([]);
+const error = ref("");
+const expanded = ref<string[]>([]);
+const cancelTarget = ref("");
+const canceling = ref("");
+/**
+ * The list is collapsed by default: the panel sits above the suggestion table,
+ * and a long history must not push the queue below the fold. A submission
+ * expands it; the compact header always carries the live counts.
+ */
+const panelExpanded = ref(false);
+
+/** Job names that were active in the last snapshot; transitions come from here. */
+let activeNames = new Set<string>();
+/** Terminal jobs already announced, so a later poll cannot settle them twice. */
+const handled = new Set<string>();
+let pollTimer: ReturnType<typeof setTimeout> | undefined;
+let inFlight = false;
+let disposed = false;
+
+const hasActive = computed(() => jobs.value.some(isActiveSuggestionJob));
+const panelSummary = computed(() => {
+  if (jobs.value.length === 0) {
+    return "";
+  }
+  const active = jobs.value.filter(isActiveSuggestionJob).length;
+  return t("dataQuality.suggestions.jobs.summary", {
+    active,
+    finished: jobs.value.length - active,
+  });
+});
+
+function targetInstanceTitle(instanceId: string): string {
+  return instanceId ? instanceStore.titleOf(`instances/${instanceId}`) : "";
+}
+
+function toggleExpanded(name: string) {
+  expanded.value = expanded.value.includes(name)
+    ? expanded.value.filter((item) => item !== name)
+    : [...expanded.value, name];
+}
+
+/**
+ * Fold one page of jobs into the panel. A job that was active in the previous
+ * snapshot and is terminal now settles exactly once; the first snapshot never
+ * settles anything, so old jobs on page load do not replay toasts.
+ */
+function applyJobs(next: QualitySuggestionJob[]) {
+  if (disposed) {
+    return;
+  }
+  const previousActive = activeNames;
+  const nextActive = new Set(
+    next.filter(isActiveSuggestionJob).map((job) => job.name)
+  );
+  const transitioned = next.filter(
+    (job) =>
+      previousActive.has(job.name) &&
+      !isActiveSuggestionJob(job) &&
+      !handled.has(job.name)
+  );
+  for (const job of transitioned) {
+    handled.add(job.name);
+  }
+  jobs.value = next;
+  activeNames = nextActive;
+  if (transitioned.length > 0) {
+    // Only a completed job's suggestions are new review work; a canceled or
+    // failed job still settles the panel so the page can refresh its queue.
+    emit(
+      "settled",
+      transitioned
+        .filter((job) => job.status === QualitySuggestionJobStatus.COMPLETED)
+        .flatMap((job) => jobSuggestionNames(job))
+    );
+  }
+}
+
+function scheduleNextPoll() {
+  if (disposed) {
+    return;
+  }
+  if (pollTimer !== undefined) {
+    clearTimeout(pollTimer);
+    pollTimer = undefined;
+  }
+  if (!hasActive.value) {
+    return;
+  }
+  pollTimer = setTimeout(() => {
+    pollTimer = undefined;
+    void poll();
+  }, POLL_INTERVAL_MS);
+}
+
+async function loadJobs() {
+  if (inFlight) {
+    return;
+  }
+  inFlight = true;
+  try {
+    const page = await listQualitySuggestionJobs({
+      pageSize: JOBS_PAGE_SIZE,
+    });
+    error.value = "";
+    applyJobs(page.items);
+  } catch (e: unknown) {
+    error.value = formatError(e, "dataQuality.suggestions.jobs.fetchFailed");
+  } finally {
+    inFlight = false;
+    // Re-arm even after a failed poll: an active job is worth retrying, and a
+    // finished one clears the timer here.
+    scheduleNextPoll();
+  }
+}
+
+/** Poll only while a job can still progress; never overlap a request. */
+async function poll() {
+  if (inFlight) {
+    scheduleNextPoll();
+    return;
+  }
+  await loadJobs();
+}
+
+async function confirmCancel(job: QualitySuggestionJob) {
+  canceling.value = job.name;
+  try {
+    const canceled = await cancelQualitySuggestionJob(job.name);
+    notify.success(
+      t(
+        canceled.status === QualitySuggestionJobStatus.CANCELED
+          ? "dataQuality.suggestions.jobs.canceledToast"
+          : "dataQuality.suggestions.jobs.cancelRequested"
+      )
+    );
+    cancelTarget.value = "";
+    await loadJobs();
+  } catch (e: unknown) {
+    notify.error(formatError(e, "dataQuality.suggestions.jobs.cancelFailed"));
+  } finally {
+    canceling.value = "";
+  }
+}
+
+watch(
+  () => props.refreshKey,
+  () => {
+    // A fresh submission is worth showing immediately; a page load stays
+    // collapsed so the queue keeps its place above the fold.
+    panelExpanded.value = true;
+    void loadJobs();
+  }
+);
+
+watch(error, (message) => {
+  if (message) {
+    panelExpanded.value = true;
+  }
+});
+
+onMounted(() => {
+  void loadJobs();
+});
+
+onBeforeUnmount(() => {
+  disposed = true;
+  if (pollTimer !== undefined) {
+    clearTimeout(pollTimer);
+    pollTimer = undefined;
+  }
+});
+</script>

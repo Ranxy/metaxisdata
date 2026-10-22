@@ -12,6 +12,10 @@ import {
   QualityRuleType,
   QualitySemanticType,
   QualitySeverity,
+  QualitySuggestionJobSchema,
+  QualitySuggestionJobStatus,
+  QualitySuggestionJobTargetSchema,
+  QualitySuggestionJobTargetState,
   QualitySuggestionKind,
   QualitySuggestionSchema,
   QualitySuggestionSource,
@@ -29,18 +33,28 @@ import {
   configEntryLabelKey,
   formatConfidence,
   groupSuggestionsByTarget,
+  isActiveSuggestionJob,
   isPendingDraft,
   isPendingLabel,
   isPendingSuggestion,
+  jobIntentSnippet,
+  jobSuggestionNames,
+  jobTargetLabel,
   labelEvidenceLines,
   labelSourceKey,
   labelStatusKey,
   labelSuggestionOf,
   labelSummary,
+  MAX_SUGGESTION_JOB_TARGETS,
   ruleConfigEntries,
   ruleDraftOf,
   selectionCountsByKind,
   semanticTypeKey,
+  suggestionJobProgress,
+  suggestionJobStatusKey,
+  suggestionJobStatusVariant,
+  suggestionJobTargetStateKey,
+  suggestionJobTargetStateVariant,
   suggestionKindKey,
   suggestionSourceKey,
   suggestionStatusKey,
@@ -497,6 +511,225 @@ describe("batch results", () => {
       ],
     });
     expect(summarizeBatchResults([])).toEqual({ succeeded: 0, failed: [] });
+  });
+});
+
+describe("drafting jobs", () => {
+  function jobTarget(
+    options: {
+      guid?: string;
+      state?: QualitySuggestionJobTargetState;
+      suggestions?: string[];
+    } = {}
+  ) {
+    return create(QualitySuggestionJobTargetSchema, {
+      target: create(QualityTargetSchema, {
+        metaGuid: options.guid ?? "inst1;db1;public;orders",
+        metaType: MetaType.TABLE,
+        path: {
+          instance: "inst1",
+          database: "db1",
+          schema: "public",
+          object: "orders",
+        },
+      }),
+      state: options.state ?? QualitySuggestionJobTargetState.PENDING,
+      suggestions: options.suggestions ?? [],
+    });
+  }
+
+  function job(
+    options: {
+      status?: QualitySuggestionJobStatus;
+      targets?: ReturnType<typeof jobTarget>[];
+      targetCount?: number;
+      completedTargetCount?: number;
+      suggestionCount?: number;
+      intent?: string;
+    } = {}
+  ) {
+    return create(QualitySuggestionJobSchema, {
+      name: "workspaces/ws/qualitySuggestionJobs/job-1",
+      status: options.status ?? QualitySuggestionJobStatus.RUNNING,
+      intent: options.intent ?? "Keep orders healthy",
+      targets: options.targets ?? [jobTarget()],
+      targetCount: options.targetCount ?? 2,
+      completedTargetCount: options.completedTargetCount ?? 1,
+      suggestionCount: options.suggestionCount ?? 3,
+    });
+  }
+
+  it("names the job lifecycle and per-target state", () => {
+    expect(suggestionJobStatusKey(QualitySuggestionJobStatus.PENDING)).toBe(
+      "dataQuality.suggestionJobStatus.pending"
+    );
+    expect(suggestionJobStatusKey(QualitySuggestionJobStatus.RUNNING)).toBe(
+      "dataQuality.suggestionJobStatus.running"
+    );
+    expect(suggestionJobStatusKey(QualitySuggestionJobStatus.COMPLETED)).toBe(
+      "dataQuality.suggestionJobStatus.completed"
+    );
+    expect(suggestionJobStatusKey(QualitySuggestionJobStatus.FAILED)).toBe(
+      "dataQuality.suggestionJobStatus.failed"
+    );
+    expect(suggestionJobStatusKey(QualitySuggestionJobStatus.CANCELED)).toBe(
+      "dataQuality.suggestionJobStatus.canceled"
+    );
+    expect(suggestionJobStatusKey(QualitySuggestionJobStatus.UNSPECIFIED)).toBe(
+      "dataQuality.suggestionJobStatus.unspecified"
+    );
+    expect(suggestionJobStatusKey(99 as QualitySuggestionJobStatus)).toBe(
+      "dataQuality.suggestionJobStatus.unspecified"
+    );
+
+    expect(
+      suggestionJobTargetStateKey(QualitySuggestionJobTargetState.PENDING)
+    ).toBe("dataQuality.suggestionJobTargetState.pending");
+    expect(
+      suggestionJobTargetStateKey(QualitySuggestionJobTargetState.RUNNING)
+    ).toBe("dataQuality.suggestionJobTargetState.running");
+    expect(
+      suggestionJobTargetStateKey(QualitySuggestionJobTargetState.DONE)
+    ).toBe("dataQuality.suggestionJobTargetState.done");
+    expect(
+      suggestionJobTargetStateKey(QualitySuggestionJobTargetState.FAILED)
+    ).toBe("dataQuality.suggestionJobTargetState.failed");
+    expect(
+      suggestionJobTargetStateKey(QualitySuggestionJobTargetState.SKIPPED)
+    ).toBe("dataQuality.suggestionJobTargetState.skipped");
+    expect(
+      suggestionJobTargetStateKey(QualitySuggestionJobTargetState.UNSPECIFIED)
+    ).toBe("dataQuality.suggestionJobTargetState.unspecified");
+    expect(
+      suggestionJobTargetStateKey(99 as QualitySuggestionJobTargetState)
+    ).toBe("dataQuality.suggestionJobTargetState.unspecified");
+  });
+
+  it("tones the job and target badges", () => {
+    expect(suggestionJobStatusVariant(QualitySuggestionJobStatus.PENDING)).toBe(
+      "warning"
+    );
+    expect(suggestionJobStatusVariant(QualitySuggestionJobStatus.RUNNING)).toBe(
+      "info"
+    );
+    expect(
+      suggestionJobStatusVariant(QualitySuggestionJobStatus.COMPLETED)
+    ).toBe("success");
+    expect(suggestionJobStatusVariant(QualitySuggestionJobStatus.FAILED)).toBe(
+      "danger"
+    );
+    expect(
+      suggestionJobStatusVariant(QualitySuggestionJobStatus.CANCELED)
+    ).toBe("neutral");
+    expect(
+      suggestionJobStatusVariant(QualitySuggestionJobStatus.UNSPECIFIED)
+    ).toBe("secondary");
+    expect(
+      suggestionJobTargetStateVariant(QualitySuggestionJobTargetState.RUNNING)
+    ).toBe("info");
+    expect(
+      suggestionJobTargetStateVariant(QualitySuggestionJobTargetState.DONE)
+    ).toBe("success");
+    expect(
+      suggestionJobTargetStateVariant(QualitySuggestionJobTargetState.FAILED)
+    ).toBe("danger");
+    expect(
+      suggestionJobTargetStateVariant(QualitySuggestionJobTargetState.SKIPPED)
+    ).toBe("neutral");
+    expect(
+      suggestionJobTargetStateVariant(
+        QualitySuggestionJobTargetState.UNSPECIFIED
+      )
+    ).toBe("secondary");
+  });
+
+  it("knows which jobs are still active", () => {
+    expect(
+      isActiveSuggestionJob(job({ status: QualitySuggestionJobStatus.PENDING }))
+    ).toBe(true);
+    expect(
+      isActiveSuggestionJob(job({ status: QualitySuggestionJobStatus.RUNNING }))
+    ).toBe(true);
+    for (const status of [
+      QualitySuggestionJobStatus.COMPLETED,
+      QualitySuggestionJobStatus.FAILED,
+      QualitySuggestionJobStatus.CANCELED,
+      QualitySuggestionJobStatus.UNSPECIFIED,
+    ]) {
+      expect(isActiveSuggestionJob(job({ status }))).toBe(false);
+    }
+  });
+
+  it("summarises target progress and clamps nonsense", () => {
+    expect(suggestionJobProgress(job())).toEqual({
+      total: 2,
+      completed: 1,
+      percent: 50,
+      suggestions: 3,
+    });
+    expect(
+      suggestionJobProgress(
+        job({
+          targetCount: 0,
+          targets: [],
+          completedTargetCount: 0,
+          suggestionCount: 0,
+        })
+      )
+    ).toEqual({ total: 0, completed: 0, percent: 0, suggestions: 0 });
+    expect(
+      suggestionJobProgress(
+        job({ targetCount: 2, completedTargetCount: 9, suggestionCount: 0 })
+      ).percent
+    ).toBe(100);
+    // A job without the computed counts falls back to its target list.
+    expect(
+      suggestionJobProgress(job({ targets: [jobTarget(), jobTarget()] }))
+    ).toMatchObject({ total: 2 });
+  });
+
+  it("collects the suggestions the job queued", () => {
+    expect(
+      jobSuggestionNames(
+        job({
+          targets: [
+            jobTarget({ suggestions: ["s1", "s2"] }),
+            jobTarget({ guid: "inst1;db1;public;users" }),
+            jobTarget({ suggestions: ["s3"] }),
+          ],
+        })
+      )
+    ).toEqual(["s1", "s2", "s3"]);
+    expect(jobSuggestionNames(job({ targets: [] }))).toEqual([]);
+  });
+
+  it("labels a target from the job's path snapshot", () => {
+    expect(jobTargetLabel(jobTarget())).toBe("inst1 · db1 · public · orders");
+    expect(jobTargetLabel(jobTarget(), "Warehouse")).toBe(
+      "Warehouse · db1 · public · orders"
+    );
+    // A target without a snapshot path falls back to the GUID.
+    const guidOnly = create(QualitySuggestionJobTargetSchema, {
+      target: create(QualityTargetSchema, {
+        metaGuid: "inst1;db1;public;orders",
+        metaType: MetaType.TABLE,
+      }),
+    });
+    expect(jobTargetLabel(guidOnly)).toBe("inst1 · db1 · public · orders");
+    expect(jobTargetLabel(create(QualitySuggestionJobTargetSchema, {}))).toBe(
+      "-"
+    );
+  });
+
+  it("snippets a long intent", () => {
+    expect(
+      jobIntentSnippet(job({ intent: "  Keep\norders   healthy  " }))
+    ).toBe("Keep orders healthy");
+    const long = "x".repeat(120);
+    const snippet = jobIntentSnippet(job({ intent: long }));
+    expect(snippet).toHaveLength(80);
+    expect(snippet.endsWith("…")).toBe(true);
+    expect(MAX_SUGGESTION_JOB_TARGETS).toBe(20);
   });
 });
 

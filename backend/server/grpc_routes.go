@@ -23,6 +23,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/common/stacktrace"
 	"github.com/Ranxy/metaxisdata/backend/component/audit"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 	"github.com/Ranxy/metaxisdata/backend/component/iam"
 	llmcomp "github.com/Ranxy/metaxisdata/backend/component/llm"
@@ -79,6 +80,8 @@ func configureGrpcRouters(
 	schemaSync *schemasync.Syncer,
 	qualityRunner *qualityrunner.Runner,
 	llmRegistry *llmcomp.Registry,
+	suggester *dataquality.Suggester,
+	llmQuota *dataquality.LLMQuota,
 	lineageAnalyzer *lineage.Analyzer,
 	notifier *notification.Service,
 	m *metrics.Metrics,
@@ -114,7 +117,7 @@ func configureGrpcRouters(
 	applicationService := apiv1.NewApplicationService(stores)
 	// Manual executions are planned by the API and queued to the quality runner;
 	// when it is absent they are still planned PENDING rather than dropped.
-	dataQualityService := apiv1.NewDataQualityService(stores, dbFactory, qualityRunner, llmRegistry, stateCfg, m)
+	dataQualityService := apiv1.NewDataQualityService(stores, dbFactory, qualityRunner, suggester, llmQuota, stateCfg, m)
 	llmService := apiv1.NewLLMService(stores, llmRegistry)
 	explainSQLService := apiv1.NewExplainSQLService(stores, llmRegistry, lineageAnalyzer, m)
 	settingService := apiv1.NewSettingService(stores, profile)

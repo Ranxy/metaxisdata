@@ -38,6 +38,8 @@
     - [QualityRuleConfig](#metaxisdata-store-QualityRuleConfig)
     - [QualityRuleDraftConfig](#metaxisdata-store-QualityRuleDraftConfig)
     - [QualityStatusCounts](#metaxisdata-store-QualityStatusCounts)
+    - [QualitySuggestionJobTarget](#metaxisdata-store-QualitySuggestionJobTarget)
+    - [QualitySuggestionJobTargets](#metaxisdata-store-QualitySuggestionJobTargets)
     - [QualitySuggestionPayload](#metaxisdata-store-QualitySuggestionPayload)
     - [QualityTargetPath](#metaxisdata-store-QualityTargetPath)
     - [QualityThresholds](#metaxisdata-store-QualityThresholds)
@@ -73,6 +75,8 @@
     - [QualitySemanticType](#metaxisdata-store-QualitySemanticType)
     - [QualitySeverity](#metaxisdata-store-QualitySeverity)
     - [QualityStatus](#metaxisdata-store-QualityStatus)
+    - [QualitySuggestionJobStatus](#metaxisdata-store-QualitySuggestionJobStatus)
+    - [QualitySuggestionJobTargetState](#metaxisdata-store-QualitySuggestionJobTargetState)
     - [QualitySuggestionKind](#metaxisdata-store-QualitySuggestionKind)
     - [QualitySuggestionSource](#metaxisdata-store-QualitySuggestionSource)
     - [QualitySuggestionStatus](#metaxisdata-store-QualitySuggestionStatus)
@@ -791,6 +795,47 @@ QualityStatusCounts is the six-state tally of a set of executions.
 
 
 
+<a name="metaxisdata-store-QualitySuggestionJobTarget"></a>
+
+### QualitySuggestionJobTarget
+QualitySuggestionJobTarget is one table a background drafting job visits. The
+path and columns are a snapshot taken at submission, so the job still renders
+after the registry changes; resolution happens again when the model is asked.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| target_guid | [string](#string) |  |  |
+| target_type | [int32](#int32) |  | The metaxisdata.v1.MetaType number; the store module does not import v1. |
+| path | [QualityTargetPath](#metaxisdata-store-QualityTargetPath) |  |  |
+| columns | [string](#string) | repeated |  |
+| state | [QualitySuggestionJobTargetState](#metaxisdata-store-QualitySuggestionJobTargetState) |  |  |
+| suggestion_resource_ids | [string](#string) | repeated | Resource ids (not names) of the suggestions this target queued. |
+| error | [string](#string) |  |  |
+| started_at_unix_ms | [int64](#int64) |  |  |
+| finished_at_unix_ms | [int64](#int64) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualitySuggestionJobTargets"></a>
+
+### QualitySuggestionJobTargets
+QualitySuggestionJobTargets is the JSONB payload of
+quality_suggestion_job.targets.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| targets | [QualitySuggestionJobTarget](#metaxisdata-store-QualitySuggestionJobTarget) | repeated |  |
+
+
+
+
+
+
 <a name="metaxisdata-store-QualitySuggestionPayload"></a>
 
 ### QualitySuggestionPayload
@@ -1421,6 +1466,41 @@ means the check could not be evaluated at all, FAIL means the data failed it.
 | QUALITY_STATUS_ERROR | 4 |  |
 | QUALITY_STATUS_SKIPPED | 5 |  |
 | QUALITY_STATUS_NOT_EVALUATED | 6 |  |
+
+
+
+<a name="metaxisdata-store-QualitySuggestionJobStatus"></a>
+
+### QualitySuggestionJobStatus
+QualitySuggestionJobStatus is the lifecycle of one background AI drafting job.
+The status is a scalar column; the JSONB targets carry a per-target state.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_SUGGESTION_JOB_STATUS_UNSPECIFIED | 0 |  |
+| QUALITY_SUGGESTION_JOB_STATUS_PENDING | 1 |  |
+| QUALITY_SUGGESTION_JOB_STATUS_RUNNING | 2 |  |
+| QUALITY_SUGGESTION_JOB_STATUS_COMPLETED | 3 |  |
+| QUALITY_SUGGESTION_JOB_STATUS_FAILED | 4 |  |
+| QUALITY_SUGGESTION_JOB_STATUS_CANCELED | 5 |  |
+
+
+
+<a name="metaxisdata-store-QualitySuggestionJobTargetState"></a>
+
+### QualitySuggestionJobTargetState
+QualitySuggestionJobTargetState is where one target of a background drafting
+job stands. SKIPPED means the job stopped before visiting it (cancel or quota),
+which is different from FAILED: the model was never asked.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_SUGGESTION_JOB_TARGET_STATE_UNSPECIFIED | 0 |  |
+| QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING | 1 |  |
+| QUALITY_SUGGESTION_JOB_TARGET_STATE_RUNNING | 2 |  |
+| QUALITY_SUGGESTION_JOB_TARGET_STATE_DONE | 3 |  |
+| QUALITY_SUGGESTION_JOB_TARGET_STATE_FAILED | 4 |  |
+| QUALITY_SUGGESTION_JOB_TARGET_STATE_SKIPPED | 5 |  |
 
 
 

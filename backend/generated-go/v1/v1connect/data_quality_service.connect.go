@@ -85,6 +85,18 @@ const (
 	// DataQualityServiceBatchUpdateQualitySuggestionsProcedure is the fully-qualified name of the
 	// DataQualityService's BatchUpdateQualitySuggestions RPC.
 	DataQualityServiceBatchUpdateQualitySuggestionsProcedure = "/metaxisdata.v1.DataQualityService/BatchUpdateQualitySuggestions"
+	// DataQualityServiceCreateQualitySuggestionJobProcedure is the fully-qualified name of the
+	// DataQualityService's CreateQualitySuggestionJob RPC.
+	DataQualityServiceCreateQualitySuggestionJobProcedure = "/metaxisdata.v1.DataQualityService/CreateQualitySuggestionJob"
+	// DataQualityServiceGetQualitySuggestionJobProcedure is the fully-qualified name of the
+	// DataQualityService's GetQualitySuggestionJob RPC.
+	DataQualityServiceGetQualitySuggestionJobProcedure = "/metaxisdata.v1.DataQualityService/GetQualitySuggestionJob"
+	// DataQualityServiceListQualitySuggestionJobsProcedure is the fully-qualified name of the
+	// DataQualityService's ListQualitySuggestionJobs RPC.
+	DataQualityServiceListQualitySuggestionJobsProcedure = "/metaxisdata.v1.DataQualityService/ListQualitySuggestionJobs"
+	// DataQualityServiceCancelQualitySuggestionJobProcedure is the fully-qualified name of the
+	// DataQualityService's CancelQualitySuggestionJob RPC.
+	DataQualityServiceCancelQualitySuggestionJobProcedure = "/metaxisdata.v1.DataQualityService/CancelQualitySuggestionJob"
 	// DataQualityServiceListColumnProfilesProcedure is the fully-qualified name of the
 	// DataQualityService's ListColumnProfiles RPC.
 	DataQualityServiceListColumnProfilesProcedure = "/metaxisdata.v1.DataQualityService/ListColumnProfiles"
@@ -162,6 +174,20 @@ type DataQualityServiceClient interface {
 	// independent: a failure is reported in its own result and does not abort the
 	// rest.
 	BatchUpdateQualitySuggestions(context.Context, *connect.Request[v1.BatchUpdateQualitySuggestionsRequest]) (*connect.Response[v1.BatchUpdateQualitySuggestionsResponse], error)
+	// Start a background AI drafting job over one or more tables. The call returns
+	// as soon as the job is queued: the runner asks the model for each target in
+	// turn, and clients poll GetQualitySuggestionJob (or list the jobs) for
+	// progress. Queued suggestions appear in the review queue like any other.
+	CreateQualitySuggestionJob(context.Context, *connect.Request[v1.CreateQualitySuggestionJobRequest]) (*connect.Response[v1.QualitySuggestionJob], error)
+	// Read one drafting job, including per-target progress and the suggestions it
+	// queued so far.
+	GetQualitySuggestionJob(context.Context, *connect.Request[v1.GetQualitySuggestionJobRequest]) (*connect.Response[v1.QualitySuggestionJob], error)
+	// List drafting jobs, newest first.
+	ListQualitySuggestionJobs(context.Context, *connect.Request[v1.ListQualitySuggestionJobsRequest]) (*connect.Response[v1.ListQualitySuggestionJobsResponse], error)
+	// Ask a drafting job to stop. A pending job is canceled immediately; a running
+	// job finishes its current target, marks the rest skipped and ends CANCELED.
+	// Suggestions already queued are kept.
+	CancelQualitySuggestionJob(context.Context, *connect.Request[v1.CancelQualitySuggestionJobRequest]) (*connect.Response[v1.QualitySuggestionJob], error)
 	// List the cached deterministic profiles of columns. Profiles are read-only
 	// measurements; there is no get or update.
 	ListColumnProfiles(context.Context, *connect.Request[v1.ListColumnProfilesRequest]) (*connect.Response[v1.ListColumnProfilesResponse], error)
@@ -299,6 +325,30 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(dataQualityServiceMethods.ByName("BatchUpdateQualitySuggestions")),
 			connect.WithClientOptions(opts...),
 		),
+		createQualitySuggestionJob: connect.NewClient[v1.CreateQualitySuggestionJobRequest, v1.QualitySuggestionJob](
+			httpClient,
+			baseURL+DataQualityServiceCreateQualitySuggestionJobProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("CreateQualitySuggestionJob")),
+			connect.WithClientOptions(opts...),
+		),
+		getQualitySuggestionJob: connect.NewClient[v1.GetQualitySuggestionJobRequest, v1.QualitySuggestionJob](
+			httpClient,
+			baseURL+DataQualityServiceGetQualitySuggestionJobProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualitySuggestionJob")),
+			connect.WithClientOptions(opts...),
+		),
+		listQualitySuggestionJobs: connect.NewClient[v1.ListQualitySuggestionJobsRequest, v1.ListQualitySuggestionJobsResponse](
+			httpClient,
+			baseURL+DataQualityServiceListQualitySuggestionJobsProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ListQualitySuggestionJobs")),
+			connect.WithClientOptions(opts...),
+		),
+		cancelQualitySuggestionJob: connect.NewClient[v1.CancelQualitySuggestionJobRequest, v1.QualitySuggestionJob](
+			httpClient,
+			baseURL+DataQualityServiceCancelQualitySuggestionJobProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("CancelQualitySuggestionJob")),
+			connect.WithClientOptions(opts...),
+		),
 		listColumnProfiles: connect.NewClient[v1.ListColumnProfilesRequest, v1.ListColumnProfilesResponse](
 			httpClient,
 			baseURL+DataQualityServiceListColumnProfilesProcedure,
@@ -369,6 +419,10 @@ type dataQualityServiceClient struct {
 	getQualitySuggestion          *connect.Client[v1.GetQualitySuggestionRequest, v1.QualitySuggestion]
 	updateQualitySuggestion       *connect.Client[v1.UpdateQualitySuggestionRequest, v1.QualitySuggestion]
 	batchUpdateQualitySuggestions *connect.Client[v1.BatchUpdateQualitySuggestionsRequest, v1.BatchUpdateQualitySuggestionsResponse]
+	createQualitySuggestionJob    *connect.Client[v1.CreateQualitySuggestionJobRequest, v1.QualitySuggestionJob]
+	getQualitySuggestionJob       *connect.Client[v1.GetQualitySuggestionJobRequest, v1.QualitySuggestionJob]
+	listQualitySuggestionJobs     *connect.Client[v1.ListQualitySuggestionJobsRequest, v1.ListQualitySuggestionJobsResponse]
+	cancelQualitySuggestionJob    *connect.Client[v1.CancelQualitySuggestionJobRequest, v1.QualitySuggestionJob]
 	listColumnProfiles            *connect.Client[v1.ListColumnProfilesRequest, v1.ListColumnProfilesResponse]
 	listColumnLabels              *connect.Client[v1.ListColumnLabelsRequest, v1.ListColumnLabelsResponse]
 	updateColumnLabel             *connect.Client[v1.UpdateColumnLabelRequest, v1.UpdateColumnLabelResponse]
@@ -465,6 +519,26 @@ func (c *dataQualityServiceClient) BatchUpdateQualitySuggestions(ctx context.Con
 	return c.batchUpdateQualitySuggestions.CallUnary(ctx, req)
 }
 
+// CreateQualitySuggestionJob calls metaxisdata.v1.DataQualityService.CreateQualitySuggestionJob.
+func (c *dataQualityServiceClient) CreateQualitySuggestionJob(ctx context.Context, req *connect.Request[v1.CreateQualitySuggestionJobRequest]) (*connect.Response[v1.QualitySuggestionJob], error) {
+	return c.createQualitySuggestionJob.CallUnary(ctx, req)
+}
+
+// GetQualitySuggestionJob calls metaxisdata.v1.DataQualityService.GetQualitySuggestionJob.
+func (c *dataQualityServiceClient) GetQualitySuggestionJob(ctx context.Context, req *connect.Request[v1.GetQualitySuggestionJobRequest]) (*connect.Response[v1.QualitySuggestionJob], error) {
+	return c.getQualitySuggestionJob.CallUnary(ctx, req)
+}
+
+// ListQualitySuggestionJobs calls metaxisdata.v1.DataQualityService.ListQualitySuggestionJobs.
+func (c *dataQualityServiceClient) ListQualitySuggestionJobs(ctx context.Context, req *connect.Request[v1.ListQualitySuggestionJobsRequest]) (*connect.Response[v1.ListQualitySuggestionJobsResponse], error) {
+	return c.listQualitySuggestionJobs.CallUnary(ctx, req)
+}
+
+// CancelQualitySuggestionJob calls metaxisdata.v1.DataQualityService.CancelQualitySuggestionJob.
+func (c *dataQualityServiceClient) CancelQualitySuggestionJob(ctx context.Context, req *connect.Request[v1.CancelQualitySuggestionJobRequest]) (*connect.Response[v1.QualitySuggestionJob], error) {
+	return c.cancelQualitySuggestionJob.CallUnary(ctx, req)
+}
+
 // ListColumnProfiles calls metaxisdata.v1.DataQualityService.ListColumnProfiles.
 func (c *dataQualityServiceClient) ListColumnProfiles(ctx context.Context, req *connect.Request[v1.ListColumnProfilesRequest]) (*connect.Response[v1.ListColumnProfilesResponse], error) {
 	return c.listColumnProfiles.CallUnary(ctx, req)
@@ -556,6 +630,20 @@ type DataQualityServiceHandler interface {
 	// independent: a failure is reported in its own result and does not abort the
 	// rest.
 	BatchUpdateQualitySuggestions(context.Context, *connect.Request[v1.BatchUpdateQualitySuggestionsRequest]) (*connect.Response[v1.BatchUpdateQualitySuggestionsResponse], error)
+	// Start a background AI drafting job over one or more tables. The call returns
+	// as soon as the job is queued: the runner asks the model for each target in
+	// turn, and clients poll GetQualitySuggestionJob (or list the jobs) for
+	// progress. Queued suggestions appear in the review queue like any other.
+	CreateQualitySuggestionJob(context.Context, *connect.Request[v1.CreateQualitySuggestionJobRequest]) (*connect.Response[v1.QualitySuggestionJob], error)
+	// Read one drafting job, including per-target progress and the suggestions it
+	// queued so far.
+	GetQualitySuggestionJob(context.Context, *connect.Request[v1.GetQualitySuggestionJobRequest]) (*connect.Response[v1.QualitySuggestionJob], error)
+	// List drafting jobs, newest first.
+	ListQualitySuggestionJobs(context.Context, *connect.Request[v1.ListQualitySuggestionJobsRequest]) (*connect.Response[v1.ListQualitySuggestionJobsResponse], error)
+	// Ask a drafting job to stop. A pending job is canceled immediately; a running
+	// job finishes its current target, marks the rest skipped and ends CANCELED.
+	// Suggestions already queued are kept.
+	CancelQualitySuggestionJob(context.Context, *connect.Request[v1.CancelQualitySuggestionJobRequest]) (*connect.Response[v1.QualitySuggestionJob], error)
 	// List the cached deterministic profiles of columns. Profiles are read-only
 	// measurements; there is no get or update.
 	ListColumnProfiles(context.Context, *connect.Request[v1.ListColumnProfilesRequest]) (*connect.Response[v1.ListColumnProfilesResponse], error)
@@ -689,6 +777,30 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		connect.WithSchema(dataQualityServiceMethods.ByName("BatchUpdateQualitySuggestions")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataQualityServiceCreateQualitySuggestionJobHandler := connect.NewUnaryHandler(
+		DataQualityServiceCreateQualitySuggestionJobProcedure,
+		svc.CreateQualitySuggestionJob,
+		connect.WithSchema(dataQualityServiceMethods.ByName("CreateQualitySuggestionJob")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceGetQualitySuggestionJobHandler := connect.NewUnaryHandler(
+		DataQualityServiceGetQualitySuggestionJobProcedure,
+		svc.GetQualitySuggestionJob,
+		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualitySuggestionJob")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceListQualitySuggestionJobsHandler := connect.NewUnaryHandler(
+		DataQualityServiceListQualitySuggestionJobsProcedure,
+		svc.ListQualitySuggestionJobs,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ListQualitySuggestionJobs")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceCancelQualitySuggestionJobHandler := connect.NewUnaryHandler(
+		DataQualityServiceCancelQualitySuggestionJobProcedure,
+		svc.CancelQualitySuggestionJob,
+		connect.WithSchema(dataQualityServiceMethods.ByName("CancelQualitySuggestionJob")),
+		connect.WithHandlerOptions(opts...),
+	)
 	dataQualityServiceListColumnProfilesHandler := connect.NewUnaryHandler(
 		DataQualityServiceListColumnProfilesProcedure,
 		svc.ListColumnProfiles,
@@ -773,6 +885,14 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceUpdateQualitySuggestionHandler.ServeHTTP(w, r)
 		case DataQualityServiceBatchUpdateQualitySuggestionsProcedure:
 			dataQualityServiceBatchUpdateQualitySuggestionsHandler.ServeHTTP(w, r)
+		case DataQualityServiceCreateQualitySuggestionJobProcedure:
+			dataQualityServiceCreateQualitySuggestionJobHandler.ServeHTTP(w, r)
+		case DataQualityServiceGetQualitySuggestionJobProcedure:
+			dataQualityServiceGetQualitySuggestionJobHandler.ServeHTTP(w, r)
+		case DataQualityServiceListQualitySuggestionJobsProcedure:
+			dataQualityServiceListQualitySuggestionJobsHandler.ServeHTTP(w, r)
+		case DataQualityServiceCancelQualitySuggestionJobProcedure:
+			dataQualityServiceCancelQualitySuggestionJobHandler.ServeHTTP(w, r)
 		case DataQualityServiceListColumnProfilesProcedure:
 			dataQualityServiceListColumnProfilesHandler.ServeHTTP(w, r)
 		case DataQualityServiceListColumnLabelsProcedure:
@@ -864,6 +984,22 @@ func (UnimplementedDataQualityServiceHandler) UpdateQualitySuggestion(context.Co
 
 func (UnimplementedDataQualityServiceHandler) BatchUpdateQualitySuggestions(context.Context, *connect.Request[v1.BatchUpdateQualitySuggestionsRequest]) (*connect.Response[v1.BatchUpdateQualitySuggestionsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.BatchUpdateQualitySuggestions is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) CreateQualitySuggestionJob(context.Context, *connect.Request[v1.CreateQualitySuggestionJobRequest]) (*connect.Response[v1.QualitySuggestionJob], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.CreateQualitySuggestionJob is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) GetQualitySuggestionJob(context.Context, *connect.Request[v1.GetQualitySuggestionJobRequest]) (*connect.Response[v1.QualitySuggestionJob], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualitySuggestionJob is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ListQualitySuggestionJobs(context.Context, *connect.Request[v1.ListQualitySuggestionJobsRequest]) (*connect.Response[v1.ListQualitySuggestionJobsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ListQualitySuggestionJobs is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) CancelQualitySuggestionJob(context.Context, *connect.Request[v1.CancelQualitySuggestionJobRequest]) (*connect.Response[v1.QualitySuggestionJob], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.CancelQualitySuggestionJob is not implemented"))
 }
 
 func (UnimplementedDataQualityServiceHandler) ListColumnProfiles(context.Context, *connect.Request[v1.ListColumnProfilesRequest]) (*connect.Response[v1.ListColumnProfilesResponse], error) {

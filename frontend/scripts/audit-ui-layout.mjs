@@ -94,7 +94,11 @@ const ROUTES = [
     tableTopMaxY: 200,
   },
   { path: "/data-quality/issues", name: "data quality issues", tableTopMaxY: 240 },
-  { path: "/data-quality/suggestions", name: "data quality suggestions", tableTopMaxY: 240 },
+  // The suggestion center carries the AI drafting jobs summary above the
+  // queue. It is data, not chrome, and starts collapsed to one summary line
+  // (measured ~274 with a populated history); a submission expands it, which
+  // this audit never does.
+  { path: "/data-quality/suggestions", name: "data quality suggestions", tableTopMaxY: 300 },
   { path: "/data-quality/rules/new", name: "data quality rule editor" },
 ];
 

@@ -31,6 +31,11 @@
       </template>
     </PageHeader>
 
+    <SuggestionJobsPanel
+      :refresh-key="jobsRefreshKey"
+      @settled="onJobsSettled"
+    />
+
     <Card>
       <div class="flex flex-wrap items-end gap-3 border-b p-4">
         <div class="flex min-w-32 flex-1 flex-col gap-1.5 [&>select]:hidden sm:flex-none">
@@ -468,7 +473,7 @@
     <SuggestionWorkbench
       v-model:open="workbenchOpen"
       :llm-enabled="llmEnabled"
-      @queued="onQueued"
+      @submitted="onJobSubmitted"
     />
 
     <SuggestionDetailDrawer
@@ -524,6 +529,7 @@ import TablePager from "@/components/common/TablePager.vue";
 import BatchCreateRulesDialog from "@/components/data-quality/BatchCreateRulesDialog.vue";
 import BatchDecideSuggestionsDialog from "@/components/data-quality/BatchDecideSuggestionsDialog.vue";
 import SuggestionDetailDrawer from "@/components/data-quality/SuggestionDetailDrawer.vue";
+import SuggestionJobsPanel from "@/components/data-quality/SuggestionJobsPanel.vue";
 import SuggestionWorkbench from "@/components/data-quality/SuggestionWorkbench.vue";
 import TargetScopeFilter from "@/components/data-quality/TargetScopeFilter.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
@@ -637,6 +643,7 @@ const selected = ref<QualitySuggestion>();
 const deciding = ref(false);
 const decideError = ref("");
 const workbenchOpen = ref(false);
+const jobsRefreshKey = ref(0);
 const batchCreateOpen = ref(false);
 const batchCreateSuggestions = ref<QualitySuggestion[]>([]);
 const decisionOpen = ref(false);
@@ -1130,27 +1137,42 @@ function onBatchDone(succeededNames: string[]) {
   void refreshPage();
 }
 
-/** Newly queued suggestions stay selected so they can be batch-created at once. */
-async function onQueued(created: QualitySuggestion[]) {
-  // The new suggestions are the newest rows, so they live on the first page; the
-  // reader may have been deep in the queue with filters applied, so refresh page
-  // one rather than the page currently shown.
+/** A new job exists: let the panel reload and start polling immediately. */
+function onJobSubmitted() {
+  jobsRefreshKey.value += 1;
+}
+
+/**
+ * A drafting job settled. Its suggestions are the newest rows, so the queue
+ * moves to page one and selects the ones visible there under the current
+ * filters; the rest stay reviewable in the queue.
+ */
+async function onJobsSettled(suggestionNames: string[]) {
+  if (suggestionNames.length === 0) {
+    await refreshPage();
+    return;
+  }
   await resetPage();
-  const names = new Set(created.map((suggestion) => suggestion.name));
+  const names = new Set(suggestionNames);
   selectedNames.value = suggestions.value
     .filter(
       (suggestion) =>
         names.has(suggestion.name) && isPendingSuggestion(suggestion)
     )
     .map((suggestion) => suggestion.name);
-  if (selectedNames.value.length < created.length) {
+  if (selectedNames.value.length < suggestionNames.length) {
     notify.info(
       t("dataQuality.suggestions.queuedPartial", {
         selected: selectedNames.value.length,
-        total: created.length,
+        total: suggestionNames.length,
       })
     );
   }
+  notify.success(
+    t("dataQuality.suggestions.jobs.settledToast", {
+      count: suggestionNames.length,
+    })
+  );
 }
 
 /** Only the workspace switch is read here; the settings page changes it. */

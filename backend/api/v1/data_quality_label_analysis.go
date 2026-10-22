@@ -23,6 +23,8 @@ import (
 // DefaultRuleDraft decide what a label means and which rules it implies.
 
 const (
+	// qualityLLMFeatureColumnLabels labels the L3 model calls in metrics.
+	qualityLLMFeatureColumnLabels = "dq_column_labels"
 	// qualityLabelBatchColumns is how many columns one label prompt carries. A
 	// batch stays small enough for the model to answer every column it was shown.
 	qualityLabelBatchColumns = 20
@@ -89,14 +91,14 @@ func (s *DataQualityService) SuggestColumnLabels(ctx context.Context, req *conne
 
 	// Provider resolution comes before the profile read so a disabled LLM never
 	// costs a database round trip.
-	config, _, err := s.qualityLLMConfig(ctx)
+	config, _, err := s.suggester.ResolveConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
 	// The LLM is enabled and configured, so this request may spend the column
 	// analysis quota and one concurrency slot. L3 has its own, smaller daily
 	// bucket, whose ceiling comes from the workspace setting resolved above.
-	release, err := s.llmQuota.begin(ctx, qualityLLMColumnAnalysis, settings.DailyColumnAnalysisLimit)
+	release, err := s.quota.Begin(ctx, dataquality.LLMColumnAnalysisQuota, settings.DailyColumnAnalysisLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +117,7 @@ func (s *DataQualityService) SuggestColumnLabels(ctx context.Context, req *conne
 	// prompt contract has no block for it yet); labels still cite profile facts.
 	var lineage []string
 
-	provider, model, promptVersion := qualityLLMProviderFacts(config, dataquality.LabelPromptVersion)
+	provider, model, promptVersion := dataquality.ProviderFacts(config, dataquality.LabelPromptVersion)
 	callerID := principalIDPointer(currentUserID(ctx))
 	now := time.Now().UTC()
 	created := make([]*store.QualitySuggestionMessage, 0, len(columns)*2)
@@ -123,7 +125,7 @@ func (s *DataQualityService) SuggestColumnLabels(ctx context.Context, req *conne
 	for _, batch := range qualityLabelColumnBatches(columns, qualityLabelBatchColumns, qualityLabelMaxBatches) {
 		systemPrompt, userPrompt := dataquality.BuildLabelPrompt(
 			dataquality.LabelPromptVersion, language, resolution.Target, profiles, lineage, existingLabels, batch)
-		text, usage, err := s.qualityJSONCompletion(ctx, config, qualityLLMFeatureColumnLabels, systemPrompt, userPrompt, qualityLLMMaxOutputTokens)
+		text, usage, err := s.suggester.JSONCompletion(ctx, config, qualityLLMFeatureColumnLabels, systemPrompt, userPrompt, dataquality.MaxLLMOutputTokens)
 		if err != nil {
 			return nil, err
 		}
@@ -179,7 +181,7 @@ func (s *DataQualityService) SuggestColumnLabels(ctx context.Context, req *conne
 			}
 		}
 	}
-	logQualityLLMUsage("suggest_column_labels", guid, totalUsage)
+	dataquality.LogLLMUsage("suggest_column_labels", guid, totalUsage)
 
 	suggestions := make([]*v1pb.QualitySuggestion, 0, len(created))
 	for _, suggestion := range created {

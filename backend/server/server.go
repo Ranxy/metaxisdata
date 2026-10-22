@@ -17,6 +17,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/common/version"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 	llmcomp "github.com/Ranxy/metaxisdata/backend/component/llm"
 	"github.com/Ranxy/metaxisdata/backend/component/notification"
@@ -34,6 +35,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/runner/lineagevalidation"
 	"github.com/Ranxy/metaxisdata/backend/runner/maintenance"
 	"github.com/Ranxy/metaxisdata/backend/runner/qualityrunner"
+	"github.com/Ranxy/metaxisdata/backend/runner/qualitysuggestionrunner"
 	"github.com/Ranxy/metaxisdata/backend/runner/schemasync"
 	"github.com/Ranxy/metaxisdata/backend/store"
 
@@ -74,7 +76,9 @@ type Server struct {
 	lineageValidate *lineagevalidation.Runner
 	maintenance     *maintenance.Runner
 	qualityRunner   *qualityrunner.Runner
-	llmRegistry     *llmcomp.Registry
+	// suggestionRunner executes the durable AI drafting jobs the API queues.
+	suggestionRunner *qualitysuggestionrunner.Runner
+	llmRegistry      *llmcomp.Registry
 
 	// metrics owns the process instruments, metricsRegistry is the private
 	// Prometheus registry they are exposed through, and metricsServer is the
@@ -145,6 +149,10 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 
 	dbFactory := dbfactory.New(stores)
 
+	// The LLM registry is process-wide: the explain and suggestion handlers, the
+	// background drafting runner and the LLM settings page all read the same list.
+	s.llmRegistry = llmcomp.NewRegistry(stores, profile)
+
 	// Which engines have an analyzer is a compile-time list, so the process builds
 	// the lineage analyzer once and hands the same value to every consumer. It is
 	// no longer package state an init function fills in, which is what kept a test
@@ -176,7 +184,13 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	// own tick, manual executions from the queue the service hands it.
 	s.qualityRunner = qualityrunner.NewRunner(stores, dbFactory, stateCfg, s.notifier, s.metrics)
 
-	s.llmRegistry = llmcomp.NewRegistry(stores, profile)
+	// The LLM quota and the drafting pipeline are shared by the synchronous
+	// suggestion RPC and the background drafting runner, so a job spends the same
+	// daily budget a request does.
+	llmQuota := dataquality.NewLLMQuota(s.metrics)
+	suggester := dataquality.NewSuggester(stores, s.llmRegistry, llmQuota, s.metrics)
+	s.suggestionRunner = qualitysuggestionrunner.NewRunner(stores, suggester)
+
 	if err := s.initializeSetting(ctx); err != nil {
 		return nil, errors.Wrap(err, "failed to init config")
 	}
@@ -192,14 +206,14 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	// Configure echo server.
 	s.echoServer = echo.New()
 
-	if err := configureGrpcRouters(ctx, s.echoServer, s.store, s.profile, s.stateCfg, s.profile.Secret, dbFactory, s.schemaSync, s.qualityRunner, s.llmRegistry, lineageEngines, s.notifier, s.metrics); err != nil {
+	if err := configureGrpcRouters(ctx, s.echoServer, s.store, s.profile, s.stateCfg, s.profile.Secret, dbFactory, s.schemaSync, s.qualityRunner, s.llmRegistry, suggester, llmQuota, lineageEngines, s.notifier, s.metrics); err != nil {
 		return nil, errors.Wrapf(err, "failed to configure gRPC routers")
 	}
 
 	// Keeping the set in one list (instead of a hand-written Add(4) and four
 	// goroutines) keeps the wait group count and the actual runners in sync, and
 	// gives each one the shared panic boundary in runner.Go.
-	runners := []runner.Runner{s.lineageAnalyzer, s.schemaSync, s.qualityRunner, s.lineageValidate, s.maintenance}
+	runners := []runner.Runner{s.lineageAnalyzer, s.schemaSync, s.qualityRunner, s.suggestionRunner, s.lineageValidate, s.maintenance}
 	for _, r := range runners {
 		runner.Go(s.runnerCtx, &s.runnerWG, r, s.metrics)
 	}

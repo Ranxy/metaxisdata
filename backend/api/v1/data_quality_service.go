@@ -18,7 +18,6 @@ import (
 	clog "github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
-	llmcomp "github.com/Ranxy/metaxisdata/backend/component/llm"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -55,9 +54,6 @@ const (
 	qualityProfileConnectionWait = 10 * time.Second
 	// qualityProfileMaxBytes bounds the rows a profile query keeps in memory.
 	qualityProfileMaxBytes = 4 << 20
-	// qualityLLMMaxOutputTokens bounds what one analysis may generate. The
-	// prompts ask for a small JSON document; this keeps a runaway model cheap.
-	qualityLLMMaxOutputTokens = 4096
 )
 
 // QualityExecutionScheduler queues a freshly planned manual batch for immediate
@@ -86,28 +82,28 @@ type DataQualityService struct {
 	// profile open a target driver on a user's behalf, so they lease a slot from
 	// the same budget the runners use.
 	stateCfg *state.State
-	// llmRegistry lists the enabled provider profiles the LLM analyses can use.
-	// It is nil in tests that never reach an LLM path.
-	llmRegistry *llmcomp.Registry
-	// llmQuota is the process-wide daily quota and concurrency limit of the LLM
-	// analyses. It is created with the service and shared by every request.
-	llmQuota *qualityLLMQuota
+	// suggester is the shared L1 drafting pipeline. The synchronous RPC and the
+	// background suggestion runner call the same instance.
+	suggester *dataquality.Suggester
+	// quota is the process-wide daily quota and concurrency limit of the LLM
+	// analyses, shared by the API handlers and the suggestion runner.
+	quota *dataquality.LLMQuota
 	// metrics records execution, query and LLM outcomes; a nil value disables
 	// instrumentation.
 	metrics *metrics.Metrics
 }
 
 // NewDataQualityService creates the service. executionScheduler may be nil.
-func NewDataQualityService(s *store.Store, dbFactory *dbfactory.DBFactory, executionScheduler QualityExecutionScheduler, llmRegistry *llmcomp.Registry, stateCfg *state.State, m *metrics.Metrics) *DataQualityService {
-	quota := newQualityLLMQuota()
-	quota.metrics = m
+// suggester and quota are created once by the server and shared with the
+// background suggestion runner, so a job spends the same budget a request does.
+func NewDataQualityService(s *store.Store, dbFactory *dbfactory.DBFactory, executionScheduler QualityExecutionScheduler, suggester *dataquality.Suggester, quota *dataquality.LLMQuota, stateCfg *state.State, m *metrics.Metrics) *DataQualityService {
 	return &DataQualityService{
 		store:              s,
 		dbFactory:          dbFactory,
 		executionScheduler: executionScheduler,
-		llmRegistry:        llmRegistry,
+		suggester:          suggester,
+		quota:              quota,
 		stateCfg:           stateCfg,
-		llmQuota:           quota,
 		metrics:            m,
 	}
 }

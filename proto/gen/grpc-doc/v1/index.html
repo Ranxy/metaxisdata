@@ -1033,6 +1033,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.CancelQualitySuggestionJobRequest"><span class="badge">M</span>CancelQualitySuggestionJobRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.CelExpressionConfig"><span class="badge">M</span>CelExpressionConfig</a>
                 </li>
               
@@ -1054,6 +1058,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.CreateQualityRuleRequest"><span class="badge">M</span>CreateQualityRuleRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.CreateQualitySuggestionJobRequest"><span class="badge">M</span>CreateQualitySuggestionJobRequest</a>
                 </li>
               
                 <li>
@@ -1105,6 +1113,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.GetQualitySuggestionJobRequest"><span class="badge">M</span>GetQualitySuggestionJobRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.GetQualitySuggestionRequest"><span class="badge">M</span>GetQualitySuggestionRequest</a>
                 </li>
               
@@ -1150,6 +1162,14 @@
               
                 <li>
                   <a href="#metaxisdata.v1.ListQualityRulesResponse"><span class="badge">M</span>ListQualityRulesResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListQualitySuggestionJobsRequest"><span class="badge">M</span>ListQualitySuggestionJobsRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListQualitySuggestionJobsResponse"><span class="badge">M</span>ListQualitySuggestionJobsResponse</a>
                 </li>
               
                 <li>
@@ -1226,6 +1246,14 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualitySuggestion"><span class="badge">M</span>QualitySuggestion</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualitySuggestionJob"><span class="badge">M</span>QualitySuggestionJob</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualitySuggestionJobTarget"><span class="badge">M</span>QualitySuggestionJobTarget</a>
                 </li>
               
                 <li>
@@ -1415,6 +1443,14 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualityStatus"><span class="badge">E</span>QualityStatus</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualitySuggestionJobStatus"><span class="badge">E</span>QualitySuggestionJobStatus</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualitySuggestionJobTargetState"><span class="badge">E</span>QualitySuggestionJobTargetState</a>
                 </li>
               
                 <li>
@@ -12193,6 +12229,30 @@ names one suggestion and is applied independently. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.CancelQualitySuggestionJobRequest">CancelQualitySuggestionJobRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.CelExpressionConfig">CelExpressionConfig</h3>
         <p>CelExpressionConfig evaluates an expression over a sample of rows in Go. It is</p><p>v1.1; the message exists so that the config shape does not change then.</p>
 
@@ -12575,6 +12635,54 @@ cannot create a rule for one table while accepting another table&#39;s draft.
 The suggestion is marked accepted once the rule exists. A decision that
 cannot be written does not roll the created rule back; it is logged and the
 suggestion can be decided explicitly. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.CreateQualitySuggestionJobRequest">CreateQualitySuggestionJobRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>intent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The natural-language intent, e.g. &#34;email must not be empty&#34;. At most 2000
+characters. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>language</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The language the intent and drafts are written in, e.g. &#34;en&#34; or &#34;zh-CN&#34;. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>targets</td>
+                  <td><a href="#metaxisdata.v1.QualityTarget">QualityTarget</a></td>
+                  <td>repeated</td>
+                  <td><p>The tables or views to draft for, at most 20. Set meta_guid, meta_type and
+optionally columns; the path and columns are snapshotted for progress. The
+job visits them in order. </p></td>
                 </tr>
               
             </tbody>
@@ -13014,6 +13122,30 @@ The fail threshold defaults to zero. </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p>Format: workspaces/{workspace}/qualityRules/{quality_rule} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.GetQualitySuggestionJobRequest">GetQualitySuggestionJobRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job} </p></td>
                 </tr>
               
             </tbody>
@@ -13681,6 +13813,83 @@ with a non-empty owner. </p></td>
                 <tr>
                   <td>quality_rules</td>
                   <td><a href="#metaxisdata.v1.QualityRule">QualityRule</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListQualitySuggestionJobsRequest">ListQualitySuggestionJobsRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The maximum number of jobs to return. If unspecified, at most 20 are
+returned. The maximum value is 1000; values above 1000 are coerced to 1000. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A page token, received from a previous ListQualitySuggestionJobs call. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>status</td>
+                  <td><a href="#metaxisdata.v1.QualitySuggestionJobStatus">QualitySuggestionJobStatus</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListQualitySuggestionJobsResponse">ListQualitySuggestionJobsResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>quality_suggestion_jobs</td>
+                  <td><a href="#metaxisdata.v1.QualitySuggestionJob">QualitySuggestionJob</a></td>
                   <td>repeated</td>
                   <td><p> </p></td>
                 </tr>
@@ -15153,6 +15362,195 @@ and results are still recorded. </p></td>
                 <tr>
                   <td>decision_note</td>
                   <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualitySuggestionJob">QualitySuggestionJob</h3>
+        <p>QualitySuggestionJob is one background AI drafting run over a set of targets.</p><p>It is the durable unit of the asynchronous drafting flow: it outlives the</p><p>browser tab that submitted it and is safe to poll.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>status</td>
+                  <td><a href="#metaxisdata.v1.QualitySuggestionJobStatus">QualitySuggestionJobStatus</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>intent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The natural-language intent the job drafts for, shared by every target. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>language</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The language the intent and drafts are written in, e.g. &#34;en&#34; or &#34;zh-CN&#34;. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>targets</td>
+                  <td><a href="#metaxisdata.v1.QualitySuggestionJobTarget">QualitySuggestionJobTarget</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Total targets, targets no longer PENDING/RUNNING, and queued suggestions. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>completed_target_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>suggestion_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>provider</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The provider facts of the analysis; set when the runner starts the job. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>model</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>prompt_version</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>create_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>start_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>finish_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>error</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Empty unless the whole job failed; per-target failures live on the targets. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>created_by</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: users/{user}. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualitySuggestionJobTarget">QualitySuggestionJobTarget</h3>
+        <p>QualitySuggestionJobTarget is one target of a drafting job and what happened</p><p>to it. `suggestions` names the queued suggestions this target produced.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>target</td>
+                  <td><a href="#metaxisdata.v1.QualityTarget">QualityTarget</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>state</td>
+                  <td><a href="#metaxisdata.v1.QualitySuggestionJobTargetState">QualitySuggestionJobTargetState</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>suggestions</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>The suggestions queued from this target so far.
+Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>error</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Empty unless this target failed; then why. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>start_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>finish_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
@@ -17451,6 +17849,100 @@ the same instance and database.</p></td>
           </tbody>
         </table>
       
+        <h3 id="metaxisdata.v1.QualitySuggestionJobStatus">QualitySuggestionJobStatus</h3>
+        <p>QualitySuggestionJobStatus is the lifecycle of a background AI drafting job.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_JOB_STATUS_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_JOB_STATUS_PENDING</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_JOB_STATUS_RUNNING</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_JOB_STATUS_COMPLETED</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_JOB_STATUS_FAILED</td>
+                <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_JOB_STATUS_CANCELED</td>
+                <td>5</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.QualitySuggestionJobTargetState">QualitySuggestionJobTargetState</h3>
+        <p>QualitySuggestionJobTargetState is where one target of a drafting job stands.</p><p>SKIPPED means the job stopped before asking the model for that target; FAILED</p><p>means the model was asked and the target could not produce suggestions.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_JOB_TARGET_STATE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_JOB_TARGET_STATE_RUNNING</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_JOB_TARGET_STATE_DONE</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_JOB_TARGET_STATE_FAILED</td>
+                <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_JOB_TARGET_STATE_SKIPPED</td>
+                <td>5</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
         <h3 id="metaxisdata.v1.QualitySuggestionKind">QualitySuggestionKind</h3>
         <p>QualitySuggestionKind is what a suggestion proposes.</p>
         <table class="enum-table">
@@ -17720,6 +18212,40 @@ rest.</p></td>
               </tr>
             
               <tr>
+                <td>CreateQualitySuggestionJob</td>
+                <td><a href="#metaxisdata.v1.CreateQualitySuggestionJobRequest">CreateQualitySuggestionJobRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualitySuggestionJob">QualitySuggestionJob</a></td>
+                <td><p>Start a background AI drafting job over one or more tables. The call returns
+as soon as the job is queued: the runner asks the model for each target in
+turn, and clients poll GetQualitySuggestionJob (or list the jobs) for
+progress. Queued suggestions appear in the review queue like any other.</p></td>
+              </tr>
+            
+              <tr>
+                <td>GetQualitySuggestionJob</td>
+                <td><a href="#metaxisdata.v1.GetQualitySuggestionJobRequest">GetQualitySuggestionJobRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualitySuggestionJob">QualitySuggestionJob</a></td>
+                <td><p>Read one drafting job, including per-target progress and the suggestions it
+queued so far.</p></td>
+              </tr>
+            
+              <tr>
+                <td>ListQualitySuggestionJobs</td>
+                <td><a href="#metaxisdata.v1.ListQualitySuggestionJobsRequest">ListQualitySuggestionJobsRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListQualitySuggestionJobsResponse">ListQualitySuggestionJobsResponse</a></td>
+                <td><p>List drafting jobs, newest first.</p></td>
+              </tr>
+            
+              <tr>
+                <td>CancelQualitySuggestionJob</td>
+                <td><a href="#metaxisdata.v1.CancelQualitySuggestionJobRequest">CancelQualitySuggestionJobRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualitySuggestionJob">QualitySuggestionJob</a></td>
+                <td><p>Ask a drafting job to stop. A pending job is canceled immediately; a running
+job finishes its current target, marks the rest skipped and ends CANCELED.
+Suggestions already queued are kept.</p></td>
+              </tr>
+            
+              <tr>
                 <td>ListColumnProfiles</td>
                 <td><a href="#metaxisdata.v1.ListColumnProfilesRequest">ListColumnProfilesRequest</a></td>
                 <td><a href="#metaxisdata.v1.ListColumnProfilesResponse">ListColumnProfilesResponse</a></td>
@@ -17965,6 +18491,46 @@ the last day went, and the per-day tallies the overview chart draws.</p></td>
                 <td>BatchUpdateQualitySuggestions</td>
                 <td>POST</td>
                 <td>/v1/{parent=workspaces/*}/qualitySuggestions:batchDecide</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>CreateQualitySuggestionJob</td>
+                <td>POST</td>
+                <td>/v1/{parent=workspaces/*}/qualitySuggestionJobs</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetQualitySuggestionJob</td>
+                <td>GET</td>
+                <td>/v1/{name=workspaces/*/qualitySuggestionJobs/*}</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListQualitySuggestionJobs</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/qualitySuggestionJobs</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>CancelQualitySuggestionJob</td>
+                <td>POST</td>
+                <td>/v1/{name=workspaces/*/qualitySuggestionJobs/*}:cancel</td>
                 <td>*</td>
               </tr>
               

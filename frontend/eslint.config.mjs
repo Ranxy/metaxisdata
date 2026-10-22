@@ -387,6 +387,27 @@ export default [
             "dataQuality.suggestionStatus.pending",
             "dataQuality.suggestionStatus.rejected",
             "dataQuality.suggestionStatus.unspecified",
+            // Job lifecycle/target-state labels are returned by helpers in
+            // src/utils/dataQualitySuggestion.ts, and the batch/job error copy
+            // is used through formatError(); neither is a static t() call.
+            "dataQuality.suggestionJobStatus.pending",
+            "dataQuality.suggestionJobStatus.running",
+            "dataQuality.suggestionJobStatus.completed",
+            "dataQuality.suggestionJobStatus.failed",
+            "dataQuality.suggestionJobStatus.canceled",
+            "dataQuality.suggestionJobStatus.unspecified",
+            "dataQuality.suggestionJobTargetState.pending",
+            "dataQuality.suggestionJobTargetState.running",
+            "dataQuality.suggestionJobTargetState.done",
+            "dataQuality.suggestionJobTargetState.failed",
+            "dataQuality.suggestionJobTargetState.skipped",
+            "dataQuality.suggestionJobTargetState.unspecified",
+            "dataQuality.suggestions.workbench.submitFailed",
+            "dataQuality.suggestions.jobs.fetchFailed",
+            "dataQuality.suggestions.jobs.cancelFailed",
+            // Chosen by a ternary on the cancel response status.
+            "dataQuality.suggestions.jobs.cancelRequested",
+            "dataQuality.suggestions.jobs.canceledToast",
             "dataQuality.editor.validation.celColumnUnknown",
             "dataQuality.editor.validation.celColumnsRequired",
             "dataQuality.editor.validation.celColumnsTooMany",

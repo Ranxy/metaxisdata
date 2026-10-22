@@ -21,7 +21,7 @@
 
         <div class="min-h-0 flex-1 space-y-5 overflow-auto px-6 py-5">
           <Alert
-            v-if="!availability.available"
+            v-if="!availability.available && !submittedJob"
             variant="warning"
           >
             <AlertTriangle class="h-4 w-4" />
@@ -38,71 +38,87 @@
             </AlertDescription>
           </Alert>
 
-          <!-- Page mode: queue several targets in one run. -->
+          <!-- Page mode after submit: nothing is left in this browser, so the
+               dialog only confirms what the server is now working on. -->
           <section
-            v-if="!editorMode"
-            class="space-y-2"
+            v-if="submittedJob"
+            class="space-y-4"
           >
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <Label>{{ t("dataQuality.suggestions.workbench.targets") }}</Label>
-                <p class="text-sm text-muted-foreground">
-                  {{ t("dataQuality.suggestions.workbench.targetsHint") }}
-                </p>
+            <Alert variant="success">
+              <CheckCircle2 class="h-4 w-4" />
+              <AlertTitle>{{ t("dataQuality.suggestions.workbench.submittedTitle") }}</AlertTitle>
+              <AlertDescription>
+                {{ t("dataQuality.suggestions.workbench.submittedHint") }}
+              </AlertDescription>
+            </Alert>
+            <div class="space-y-2">
+              <div class="text-sm font-medium">
+                {{ t("dataQuality.suggestions.workbench.submittedTargets", { count: submittedTargetLabels.length }) }}
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                :disabled="generating"
-                @click="pickerOpen = true"
-              >
-                <Plus class="mr-2 h-4 w-4" />
-                {{ t("dataQuality.suggestions.workbench.addTarget") }}
-              </Button>
+              <ul class="space-y-1 rounded-md border p-3 text-sm">
+                <li
+                  v-for="(label, index) in submittedTargetLabels"
+                  :key="`${label}-${index}`"
+                  class="truncate"
+                >
+                  {{ label }}
+                </li>
+              </ul>
             </div>
-            <div
-              v-if="targets.length === 0"
-              class="rounded-md border border-dashed p-4 text-sm text-muted-foreground"
-            >
-              {{ t("dataQuality.suggestions.workbench.noTargets") }}
-            </div>
-            <ul
-              v-else
+          </section>
+
+          <template v-else>
+            <!-- Page mode: queue several targets, then submit one durable job. -->
+            <section
+              v-if="!editorMode"
               class="space-y-2"
             >
-              <li
-                v-for="target in targets"
-                :key="target.guid"
-                class="rounded-md border p-3"
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <Label>{{ t("dataQuality.suggestions.workbench.targets") }}</Label>
+                  <p class="text-sm text-muted-foreground">
+                    {{ t("dataQuality.suggestions.workbench.targetsHint") }}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  :disabled="generating"
+                  @click="pickerOpen = true"
+                >
+                  <Plus class="mr-2 h-4 w-4" />
+                  {{ t("dataQuality.suggestions.workbench.addTarget") }}
+                </Button>
+              </div>
+              <div
+                v-if="targets.length === 0"
+                class="rounded-md border border-dashed p-4 text-sm text-muted-foreground"
               >
-                <div class="flex items-start justify-between gap-3">
-                  <div class="min-w-0">
-                    <div class="truncate text-sm font-medium">
-                      {{ targetLabel(target) }}
+                {{ t("dataQuality.suggestions.workbench.noTargets") }}
+              </div>
+              <ul
+                v-else
+                class="space-y-2"
+              >
+                <li
+                  v-for="target in targets"
+                  :key="target.guid"
+                  class="rounded-md border p-3"
+                >
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                      <div class="truncate text-sm font-medium">
+                        {{ targetLabel(target) }}
+                      </div>
+                      <div class="text-xs text-muted-foreground">
+                        {{ metaTypeSingularLabel(target.metaType, t) }}
+                      </div>
                     </div>
-                    <div class="text-xs text-muted-foreground">
-                      {{ metaTypeSingularLabel(target.metaType, t) }}
-                    </div>
-                    <p
-                      v-if="progress[target.guid]?.status === 'failed'"
-                      class="mt-1 text-xs break-words text-destructive"
-                      :title="progress[target.guid]?.message"
-                    >
-                      {{ progressMessage(target.guid) }}
-                    </p>
-                  </div>
-                  <div class="flex shrink-0 items-center gap-2">
-                    <Badge
-                      v-if="progress[target.guid]"
-                      :variant="progressVariant(target.guid)"
-                    >
-                      {{ progressLabel(target.guid) }}
-                    </Badge>
                     <Button
                       v-if="!generating"
                       variant="ghost"
                       size="icon"
-                      class="h-8 w-8"
+                      class="h-8 w-8 shrink-0"
                       :title="t('common.delete')"
                       :aria-label="t('common.delete')"
                       @click="removeTarget(target.guid)"
@@ -110,223 +126,217 @@
                       <X class="h-4 w-4 text-muted-foreground" />
                     </Button>
                   </div>
+                </li>
+              </ul>
+            </section>
+
+            <!-- Columns are only meaningful when the intent can name them: one
+                 fixed target in the editor, one picked target in page mode. -->
+            <section
+              v-if="columnsTargetGuid"
+              class="space-y-2"
+            >
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <Label>{{ t("dataQuality.llm.draft.columns") }}</Label>
+                <div class="flex items-center gap-3 text-xs">
+                  <span class="text-muted-foreground">
+                    {{ t("dataQuality.llm.draft.columnsSelected", { selected: selectedColumns.length, total: columnOptions.length }) }}
+                  </span>
+                  <button
+                    type="button"
+                    class="text-primary hover:underline"
+                    :disabled="generating"
+                    @click="selectAllColumns"
+                  >
+                    {{ t("common.selectAll") }}
+                  </button>
+                  <button
+                    type="button"
+                    class="text-primary hover:underline"
+                    :disabled="generating"
+                    @click="selectedColumns = []"
+                  >
+                    {{ t("common.clear") }}
+                  </button>
                 </div>
-              </li>
-            </ul>
-          </section>
-
-          <!-- Columns are only meaningful when the intent can name them: one
-               fixed target in the editor, one picked target in page mode. -->
-          <section
-            v-if="columnsTargetGuid"
-            class="space-y-2"
-          >
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <Label>{{ t("dataQuality.llm.draft.columns") }}</Label>
-              <div class="flex items-center gap-3 text-xs">
-                <span class="text-muted-foreground">
-                  {{ t("dataQuality.llm.draft.columnsSelected", { selected: selectedColumns.length, total: columnOptions.length }) }}
-                </span>
-                <button
-                  type="button"
-                  class="text-primary hover:underline"
-                  :disabled="generating"
-                  @click="selectAllColumns"
+              </div>
+              <div class="max-h-40 overflow-auto rounded-md border p-2">
+                <div
+                  v-if="columnsLoading"
+                  class="flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground"
                 >
-                  {{ t("common.selectAll") }}
-                </button>
-                <button
-                  type="button"
-                  class="text-primary hover:underline"
-                  :disabled="generating"
-                  @click="selectedColumns = []"
+                  <Loader2 class="h-4 w-4 animate-spin" />
+                  {{ t("common.loading") }}
+                </div>
+                <div
+                  v-else-if="columnOptions.length === 0"
+                  class="px-2 py-1 text-sm text-muted-foreground"
                 >
-                  {{ t("common.clear") }}
-                </button>
+                  {{ t("dataQuality.llm.draft.noColumns") }}
+                </div>
+                <template v-else>
+                  <label
+                    v-for="column in columnOptions"
+                    :key="column"
+                    class="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-muted/50"
+                  >
+                    <Checkbox
+                      :checked="selectedColumns.includes(column)"
+                      @update:checked="(checked: boolean | 'indeterminate') => toggleColumn(column, checked === true)"
+                    />
+                    <span class="font-mono">{{ column }}</span>
+                  </label>
+                </template>
               </div>
-            </div>
-            <div class="max-h-40 overflow-auto rounded-md border p-2">
-              <div
-                v-if="columnsLoading"
-                class="flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground"
-              >
-                <Loader2 class="h-4 w-4 animate-spin" />
-                {{ t("common.loading") }}
-              </div>
-              <div
-                v-else-if="columnOptions.length === 0"
-                class="px-2 py-1 text-sm text-muted-foreground"
-              >
-                {{ t("dataQuality.llm.draft.noColumns") }}
-              </div>
-              <template v-else>
-                <label
-                  v-for="column in columnOptions"
-                  :key="column"
-                  class="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-muted/50"
-                >
-                  <Checkbox
-                    :checked="selectedColumns.includes(column)"
-                    @update:checked="(checked: boolean | 'indeterminate') => toggleColumn(column, checked === true)"
-                  />
-                  <span class="font-mono">{{ column }}</span>
-                </label>
-              </template>
-            </div>
-            <p class="text-sm text-muted-foreground">
-              {{ t("dataQuality.llm.draft.columnsHint") }}
-            </p>
-          </section>
-
-          <div class="space-y-1.5">
-            <div class="flex items-center justify-between gap-2">
-              <Label for="dq-workbench-intent">
-                {{ t("dataQuality.llm.draft.intent") }}
-              </Label>
-              <span class="text-xs text-muted-foreground">{{ intent.length }} / 2000</span>
-            </div>
-            <textarea
-              id="dq-workbench-intent"
-              v-model="intent"
-              maxlength="2000"
-              class="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              :placeholder="t('dataQuality.llm.draft.intentPlaceholder')"
-            />
-            <p class="text-sm text-muted-foreground">
-              {{ t("dataQuality.llm.draft.intentHint") }}
-            </p>
-          </div>
-
-          <Alert
-            v-if="error"
-            variant="destructive"
-          >
-            <AlertTriangle class="h-4 w-4" />
-            <AlertTitle>{{ errorKey ? t(errorKey) : generateFailedLabel() }}</AlertTitle>
-            <AlertDescription class="break-words">
-              {{ error }}
-            </AlertDescription>
-          </Alert>
-
-          <div
-            v-if="generating"
-            class="flex items-center gap-2 text-sm text-muted-foreground"
-          >
-            <Loader2 class="h-4 w-4 animate-spin" />
-            {{ t("dataQuality.llm.draft.generating") }}
-          </div>
-
-          <section
-            v-else-if="results.length > 0"
-            class="space-y-3"
-          >
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <div class="text-sm font-medium">
-                {{
-                  editorMode
-                    ? t("dataQuality.llm.draft.resultsTitle", { count: results.length })
-                    : t("dataQuality.suggestions.workbench.resultsSummary", {
-                        count: results.length,
-                      })
-                }}
-              </div>
-              <RouterLink
-                v-if="editorMode"
-                :to="{ name: 'DataQualitySuggestions' }"
-                class="text-sm text-primary hover:underline"
-              >
-                {{ t("dataQuality.suggestions.openCenter") }}
-              </RouterLink>
-            </div>
-            <p
-              v-if="!editorMode"
-              class="text-sm text-muted-foreground"
-            >
-              {{ t("dataQuality.suggestions.workbench.resultsHint") }}
-            </p>
-            <div
-              v-for="suggestion in results"
-              :key="suggestion.name"
-              class="space-y-2 rounded-md border p-3"
-            >
-              <div class="flex flex-wrap items-center gap-2">
-                <Badge
-                  v-if="draftSummary(suggestion)?.typeKey"
-                  variant="secondary"
-                >
-                  {{ t(draftSummary(suggestion)?.typeKey ?? "") }}
-                </Badge>
-                <span class="text-sm font-medium">
-                  {{ draftSummary(suggestion)?.title }}
-                </span>
-                <span class="text-xs text-muted-foreground">
-                  {{ t("dataQuality.suggestions.confidence") }}
-                  {{ draftSummary(suggestion)?.confidence }}
-                </span>
-              </div>
-              <p
-                v-if="draftSummary(suggestion)?.rationale"
-                class="text-sm break-words text-muted-foreground"
-              >
-                {{ draftSummary(suggestion)?.rationale }}
+              <p class="text-sm text-muted-foreground">
+                {{ t("dataQuality.llm.draft.columnsHint") }}
               </p>
-              <div
-                v-if="editorMode"
-                class="flex justify-end gap-2"
-              >
-                <Button
-                  variant="outline"
-                  size="sm"
-                  :disabled="busyName !== ''"
-                  @click="rejectResult(suggestion)"
-                >
-                  {{ t("dataQuality.suggestions.reject") }}
-                </Button>
-                <Button
-                  size="sm"
-                  :disabled="busyName !== ''"
-                  @click="acceptResult(suggestion)"
-                >
-                  {{ t("dataQuality.llm.draft.openInEditor") }}
-                </Button>
-              </div>
-            </div>
-          </section>
+            </section>
 
-          <EmptyState
-            v-else-if="generated"
-            compact
-            :icon="Sparkles"
-            :title="t('dataQuality.llm.draft.emptyTitle')"
-            :description="t('dataQuality.llm.draft.emptyDescription')"
-          />
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between gap-2">
+                <Label for="dq-workbench-intent">
+                  {{ t("dataQuality.llm.draft.intent") }}
+                </Label>
+                <span class="text-xs text-muted-foreground">{{ intent.length }} / 2000</span>
+              </div>
+              <textarea
+                id="dq-workbench-intent"
+                v-model="intent"
+                maxlength="2000"
+                class="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                :placeholder="t('dataQuality.llm.draft.intentPlaceholder')"
+              />
+              <p class="text-sm text-muted-foreground">
+                {{ t("dataQuality.llm.draft.intentHint") }}
+              </p>
+            </div>
+
+            <Alert
+              v-if="error"
+              variant="destructive"
+            >
+              <AlertTriangle class="h-4 w-4" />
+              <AlertTitle>{{ errorKey ? t(errorKey) : generateFailedLabel() }}</AlertTitle>
+              <AlertDescription class="break-words">
+                {{ error }}
+              </AlertDescription>
+            </Alert>
+
+            <div
+              v-if="generating"
+              class="flex items-center gap-2 text-sm text-muted-foreground"
+            >
+              <Loader2 class="h-4 w-4 animate-spin" />
+              {{
+                editorMode
+                  ? t("dataQuality.llm.draft.generating")
+                  : t("dataQuality.suggestions.workbench.submitting")
+              }}
+            </div>
+
+            <!-- Editor mode only: the synchronous shortcut prefills the form. -->
+            <section
+              v-else-if="editorMode && results.length > 0"
+              class="space-y-3"
+            >
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="text-sm font-medium">
+                  {{ t("dataQuality.llm.draft.resultsTitle", { count: results.length }) }}
+                </div>
+                <RouterLink
+                  :to="{ name: 'DataQualitySuggestions' }"
+                  class="text-sm text-primary hover:underline"
+                >
+                  {{ t("dataQuality.suggestions.openCenter") }}
+                </RouterLink>
+              </div>
+              <div
+                v-for="suggestion in results"
+                :key="suggestion.name"
+                class="space-y-2 rounded-md border p-3"
+              >
+                <div class="flex flex-wrap items-center gap-2">
+                  <Badge
+                    v-if="draftSummary(suggestion)?.typeKey"
+                    variant="secondary"
+                  >
+                    {{ t(draftSummary(suggestion)?.typeKey ?? "") }}
+                  </Badge>
+                  <span class="text-sm font-medium">
+                    {{ draftSummary(suggestion)?.title }}
+                  </span>
+                  <span class="text-xs text-muted-foreground">
+                    {{ t("dataQuality.suggestions.confidence") }}
+                    {{ draftSummary(suggestion)?.confidence }}
+                  </span>
+                </div>
+                <p
+                  v-if="draftSummary(suggestion)?.rationale"
+                  class="text-sm break-words text-muted-foreground"
+                >
+                  {{ draftSummary(suggestion)?.rationale }}
+                </p>
+                <div class="flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    :disabled="busyName !== ''"
+                    @click="rejectResult(suggestion)"
+                  >
+                    {{ t("dataQuality.suggestions.reject") }}
+                  </Button>
+                  <Button
+                    size="sm"
+                    :disabled="busyName !== ''"
+                    @click="acceptResult(suggestion)"
+                  >
+                    {{ t("dataQuality.llm.draft.openInEditor") }}
+                  </Button>
+                </div>
+              </div>
+            </section>
+
+            <EmptyState
+              v-else-if="editorMode && generated"
+              compact
+              :icon="Sparkles"
+              :title="t('dataQuality.llm.draft.emptyTitle')"
+              :description="t('dataQuality.llm.draft.emptyDescription')"
+            />
+          </template>
         </div>
 
         <DialogFooter class="shrink-0 border-t px-6 py-4">
-          <Button
-            variant="outline"
-            :disabled="generating"
-            @click="close"
-          >
-            {{ t("common.close") }}
-          </Button>
-          <Button
-            v-if="!editorMode && results.length > 0 && !generating"
-            @click="finishQueued"
-          >
-            {{ t("dataQuality.suggestions.workbench.goReview") }}
-          </Button>
-          <Button
-            :disabled="!canGenerate"
-            @click="generate"
-          >
-            <Sparkles class="mr-2 h-4 w-4" />
-            {{
-              generating
-                ? t("dataQuality.llm.draft.generating")
-                : t("dataQuality.llm.draft.generate")
-            }}
-          </Button>
+          <template v-if="submittedJob">
+            <Button @click="close">
+              {{ t("dataQuality.suggestions.workbench.finish") }}
+            </Button>
+          </template>
+          <template v-else>
+            <Button
+              variant="outline"
+              :disabled="generating"
+              @click="close"
+            >
+              {{ t("common.close") }}
+            </Button>
+            <Button
+              :disabled="!canGenerate"
+              @click="generate"
+            >
+              <Sparkles class="mr-2 h-4 w-4" />
+              {{
+                generating
+                  ? editorMode
+                    ? t("dataQuality.llm.draft.generating")
+                    : t("dataQuality.suggestions.workbench.submitting")
+                  : editorMode
+                    ? t("dataQuality.llm.draft.generate")
+                    : t("dataQuality.suggestions.workbench.submit")
+              }}
+            </Button>
+          </template>
         </DialogFooter>
       </div>
     </DialogContent>
@@ -342,12 +352,20 @@
 </template>
 
 <script setup lang="ts">
-import { AlertTriangle, Loader2, Plus, Sparkles, X } from "lucide-vue-next";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Loader2,
+  Plus,
+  Sparkles,
+  X,
+} from "lucide-vue-next";
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink } from "vue-router";
 import {
   batchUpdateQualitySuggestions,
+  createQualitySuggestionJob,
   suggestQualityRule,
 } from "@/api/data-quality";
 import { listMetadata } from "@/api/database";
@@ -372,25 +390,29 @@ import { useAuthStore } from "@/store/modules/auth";
 import { useInstanceStore } from "@/store/modules/instance";
 import {
   type QualitySuggestion,
+  type QualitySuggestionJob,
   QualitySuggestionStatus,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
-import type { TargetSelection } from "@/utils/dataQualityForm";
+import { buildTarget, type TargetSelection } from "@/utils/dataQualityForm";
 import {
   draftSuggestionSummary,
   explainErrorMessageKey,
   llmFeatureAvailability,
 } from "@/utils/dataQualityLlm";
+import {
+  jobTargetLabel,
+  MAX_SUGGESTION_JOB_TARGETS,
+} from "@/utils/dataQualitySuggestion";
 import { metaTypeSingularLabel } from "@/utils/metaType";
 
 /**
  * The AI drafting workbench: one dialog with two entry points.
  *
- * Page mode (the suggestion center) queues one or more targets and runs them
- * sequentially; a target's failure is reported per row and does not stop the
- * rest. Editor mode takes a fixed target and keeps the previous behavior — a
- * result is filled into the open form or rejected, and nothing is created here.
- * Every result is only a suggestion; the review queue owns creating rules.
+ * Page mode submits one durable drafting job for several targets and returns
+ * immediately: the server keeps working after the page closes, and the
+ * suggestion center polls the job. Editor mode keeps the synchronous shortcut —
+ * it needs the drafts in place to prefill the form, so it waits for one call.
  */
 
 interface FixedTarget {
@@ -413,7 +435,8 @@ const props = withDefaults(
 const emit = defineEmits<{
   "update:open": [value: boolean];
   accepted: [suggestion: QualitySuggestion];
-  queued: [suggestions: QualitySuggestion[]];
+  /** Page mode submitted job; the page reloads its job panel immediately. */
+  submitted: [job: QualitySuggestionJob];
 }>();
 
 const { t, locale } = useI18n();
@@ -438,19 +461,10 @@ const columnsLoading = ref(false);
 const generating = ref(false);
 const generated = ref(false);
 const results = ref<QualitySuggestion[]>([]);
+const submittedJob = ref<QualitySuggestionJob>();
 const busyName = ref("");
 const error = ref("");
 const errorKey = ref("");
-
-type TargetStatus = "waiting" | "running" | "done" | "failed";
-interface TargetProgress {
-  status: TargetStatus;
-  count: number;
-  message: string;
-  messageKey: string;
-}
-
-const progress = ref<Record<string, TargetProgress>>({});
 
 /** The one target whose column checklist is shown; undefined when ambiguous. */
 const columnsTargetGuid = computed(() => {
@@ -464,11 +478,26 @@ const canGenerate = computed(
   () =>
     availability.value.available &&
     !generating.value &&
+    !submittedJob.value &&
     intent.value.trim() !== "" &&
     (editorMode.value
       ? props.fixedTarget !== undefined
       : targets.value.length > 0)
 );
+
+/** Display labels of the targets the submitted job will visit. */
+const submittedTargetLabels = computed(() =>
+  (submittedJob.value?.targets ?? []).map((target) =>
+    jobTargetLabel(
+      target,
+      targetInstanceTitle(target.target?.path?.instance ?? "")
+    )
+  )
+);
+
+function targetInstanceTitle(instanceId: string): string {
+  return instanceId ? instanceStore.titleOf(`instances/${instanceId}`) : "";
+}
 
 function reset() {
   targets.value = [];
@@ -480,10 +509,10 @@ function reset() {
   generating.value = false;
   generated.value = false;
   results.value = [];
+  submittedJob.value = undefined;
   busyName.value = "";
   error.value = "";
   errorKey.value = "";
-  progress.value = {};
 }
 
 watch(
@@ -509,7 +538,7 @@ watch(
   }
 );
 
-/** The dialog stays open while requests are on the wire; closing would orphan them. */
+/** The dialog stays open while a request is on the wire. */
 function onOpenChange(value: boolean) {
   if (value) {
     return;
@@ -542,7 +571,19 @@ function addTargets(selections: TargetSelection[]) {
   if (added.length === 0) {
     return;
   }
-  targets.value = [...targets.value, ...added];
+  const room = MAX_SUGGESTION_JOB_TARGETS - targets.value.length;
+  const accepted = added.slice(0, Math.max(0, room));
+  if (accepted.length < added.length) {
+    notify.warning(
+      t("dataQuality.suggestions.workbench.tooManyTargets", {
+        max: MAX_SUGGESTION_JOB_TARGETS,
+      })
+    );
+  }
+  if (accepted.length === 0) {
+    return;
+  }
+  targets.value = [...targets.value, ...accepted];
   if (targets.value.length === 1) {
     void loadColumns(targets.value[0]?.guid ?? "");
   } else {
@@ -627,70 +668,56 @@ function toggleColumn(column: string, checked: boolean) {
   }
 }
 
-function progressVariant(
-  guid: string
-): "secondary" | "outline" | "success" | "danger" {
-  switch (progress.value[guid]?.status) {
-    case "running":
-      return "outline";
-    case "done":
-      return "success";
-    case "failed":
-      return "danger";
-    default:
-      return "secondary";
-  }
-}
-
-/** The failed target's friendly reason, in the language of the panel. */
-function progressMessage(guid: string): string {
-  const key = progress.value[guid]?.messageKey;
-  return key ? t(key) : generateFailedLabel();
-}
-
 /** A static reference so the unused-key check can see the fallback copy. */
 function generateFailedLabel(): string {
   return t("dataQuality.suggestions.workbench.generateFailed");
-}
-
-function progressLabel(guid: string): string {
-  const state = progress.value[guid];
-  switch (state?.status) {
-    case "running":
-      return t("dataQuality.suggestions.workbench.running");
-    case "done":
-      return t("dataQuality.suggestions.workbench.doneCount", {
-        count: state.count,
-      });
-    case "failed":
-      return t("dataQuality.suggestions.workbench.failed");
-    default:
-      return t("dataQuality.suggestions.workbench.waiting");
-  }
 }
 
 function draftSummary(suggestion: QualitySuggestion) {
   return draftSuggestionSummary(suggestion);
 }
 
-/** The targets the run visits, in the order they were queued. */
-function generationTargets(): Array<{
-  tableGuid: string;
-  metaType: MetaType;
-  columns: string[];
-}> {
-  if (editorMode.value) {
-    return props.fixedTarget ? [{ ...props.fixedTarget }] : [];
-  }
-  return targets.value.map((target) => ({
-    tableGuid: target.guid,
-    metaType: target.metaType,
-    columns: columnsFor(target.guid),
-  }));
-}
-
 async function generate() {
   if (!canGenerate.value) {
+    return;
+  }
+  if (editorMode.value) {
+    await generateEditor();
+    return;
+  }
+  await submitJob();
+}
+
+/** Page mode: one durable job replaces the browser-side sequential loop. */
+async function submitJob() {
+  generating.value = true;
+  error.value = "";
+  errorKey.value = "";
+  try {
+    const job = await createQualitySuggestionJob({
+      intent: intent.value.trim(),
+      language: locale.value,
+      targets: targets.value.map((target) =>
+        buildTarget({ ...target, columns: columnsFor(target.guid) })
+      ),
+    });
+    submittedJob.value = job;
+    emit("submitted", job);
+  } catch (e: unknown) {
+    errorKey.value = explainErrorMessageKey(e);
+    error.value = formatError(
+      e,
+      "dataQuality.suggestions.workbench.submitFailed"
+    );
+  } finally {
+    generating.value = false;
+  }
+}
+
+/** Editor mode: one synchronous call, because the drafts prefill the form. */
+async function generateEditor() {
+  const target = props.fixedTarget;
+  if (!target) {
     return;
   }
   generating.value = true;
@@ -698,75 +725,27 @@ async function generate() {
   errorKey.value = "";
   results.value = [];
   generated.value = false;
-  const queue = generationTargets();
-  progress.value = Object.fromEntries(
-    queue.map((target) => [
-      target.tableGuid,
-      { status: "waiting", count: 0, message: "", messageKey: "" },
-    ])
-  );
-  const collected: QualitySuggestion[] = [];
-  for (const target of queue) {
-    progress.value = {
-      ...progress.value,
-      [target.tableGuid]: {
-        status: "running",
-        count: 0,
-        message: "",
-        messageKey: "",
-      },
-    };
-    try {
-      const suggestions = await suggestQualityRule({
-        tableGuid: target.tableGuid,
-        metaType: target.metaType,
-        columns: target.columns,
-        intent: intent.value.trim(),
-        language: locale.value,
-      });
-      collected.push(...suggestions);
-      progress.value = {
-        ...progress.value,
-        [target.tableGuid]: {
-          status: "done",
-          count: suggestions.length,
-          message: "",
-          messageKey: "",
-        },
-      };
-    } catch (e: unknown) {
-      // One failed target must not cancel the rest of the run.
-      progress.value = {
-        ...progress.value,
-        [target.tableGuid]: {
-          status: "failed",
-          count: 0,
-          message: formatError(
-            e,
-            "dataQuality.suggestions.workbench.generateFailed"
-          ),
-          messageKey: explainErrorMessageKey(e),
-        },
-      };
-    }
-  }
-  results.value = collected;
-  generated.value = true;
-  generating.value = false;
-  if (collected.length === 0) {
-    const failed = Object.values(progress.value).some(
-      (state) => state.status === "failed"
-    );
-    if (!failed) {
+  try {
+    results.value = await suggestQualityRule({
+      tableGuid: target.tableGuid,
+      metaType: target.metaType,
+      columns: [...selectedColumns.value],
+      intent: intent.value.trim(),
+      language: locale.value,
+    });
+    generated.value = true;
+    if (results.value.length === 0) {
       notify.info(t("dataQuality.llm.draft.emptyTitle"));
     }
+  } catch (e: unknown) {
+    errorKey.value = explainErrorMessageKey(e);
+    error.value = formatError(
+      e,
+      "dataQuality.suggestions.workbench.generateFailed"
+    );
+  } finally {
+    generating.value = false;
   }
-}
-
-/** Page mode's review hand-off: the page refreshes and selects what was queued. */
-function finishQueued() {
-  emit("queued", [...results.value]);
-  close();
 }
 
 /** Editor mode: prefill the form; the editor accepts the suggestion on save. */

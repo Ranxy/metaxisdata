@@ -3155,6 +3155,301 @@ export declare type BatchUpdateQualitySuggestionResult = Message<"metaxisdata.v1
 export declare const BatchUpdateQualitySuggestionResultSchema: GenMessage<BatchUpdateQualitySuggestionResult>;
 
 /**
+ * QualitySuggestionJobTarget is one target of a drafting job and what happened
+ * to it. `suggestions` names the queued suggestions this target produced.
+ *
+ * @generated from message metaxisdata.v1.QualitySuggestionJobTarget
+ */
+export declare type QualitySuggestionJobTarget = Message<"metaxisdata.v1.QualitySuggestionJobTarget"> & {
+  /**
+   * @generated from field: metaxisdata.v1.QualityTarget target = 1;
+   */
+  target?: QualityTarget;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualitySuggestionJobTargetState state = 2;
+   */
+  state: QualitySuggestionJobTargetState;
+
+  /**
+   * The suggestions queued from this target so far.
+   * Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion}
+   *
+   * @generated from field: repeated string suggestions = 3;
+   */
+  suggestions: string[];
+
+  /**
+   * Empty unless this target failed; then why.
+   *
+   * @generated from field: string error = 4;
+   */
+  error: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp start_time = 5;
+   */
+  startTime?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp finish_time = 6;
+   */
+  finishTime?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualitySuggestionJobTarget.
+ * Use `create(QualitySuggestionJobTargetSchema)` to create a new message.
+ */
+export declare const QualitySuggestionJobTargetSchema: GenMessage<QualitySuggestionJobTarget>;
+
+/**
+ * QualitySuggestionJob is one background AI drafting run over a set of targets.
+ * It is the durable unit of the asynchronous drafting flow: it outlives the
+ * browser tab that submitted it and is safe to poll.
+ *
+ * @generated from message metaxisdata.v1.QualitySuggestionJob
+ */
+export declare type QualitySuggestionJob = Message<"metaxisdata.v1.QualitySuggestionJob"> & {
+  /**
+   * Format: workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualitySuggestionJobStatus status = 2;
+   */
+  status: QualitySuggestionJobStatus;
+
+  /**
+   * The natural-language intent the job drafts for, shared by every target.
+   *
+   * @generated from field: string intent = 3;
+   */
+  intent: string;
+
+  /**
+   * The language the intent and drafts are written in, e.g. "en" or "zh-CN".
+   *
+   * @generated from field: string language = 4;
+   */
+  language: string;
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualitySuggestionJobTarget targets = 5;
+   */
+  targets: QualitySuggestionJobTarget[];
+
+  /**
+   * Total targets, targets no longer PENDING/RUNNING, and queued suggestions.
+   *
+   * @generated from field: int32 target_count = 6;
+   */
+  targetCount: number;
+
+  /**
+   * @generated from field: int32 completed_target_count = 7;
+   */
+  completedTargetCount: number;
+
+  /**
+   * @generated from field: int32 suggestion_count = 8;
+   */
+  suggestionCount: number;
+
+  /**
+   * The provider facts of the analysis; set when the runner starts the job.
+   *
+   * @generated from field: string provider = 9;
+   */
+  provider: string;
+
+  /**
+   * @generated from field: string model = 10;
+   */
+  model: string;
+
+  /**
+   * @generated from field: string prompt_version = 11;
+   */
+  promptVersion: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp create_time = 12;
+   */
+  createTime?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp start_time = 13;
+   */
+  startTime?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp finish_time = 14;
+   */
+  finishTime?: Timestamp;
+
+  /**
+   * Empty unless the whole job failed; per-target failures live on the targets.
+   *
+   * @generated from field: string error = 15;
+   */
+  error: string;
+
+  /**
+   * Format: users/{user}.
+   *
+   * @generated from field: string created_by = 16;
+   */
+  createdBy: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualitySuggestionJob.
+ * Use `create(QualitySuggestionJobSchema)` to create a new message.
+ */
+export declare const QualitySuggestionJobSchema: GenMessage<QualitySuggestionJob>;
+
+/**
+ * @generated from message metaxisdata.v1.CreateQualitySuggestionJobRequest
+ */
+export declare type CreateQualitySuggestionJobRequest = Message<"metaxisdata.v1.CreateQualitySuggestionJobRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * The natural-language intent, e.g. "email must not be empty". At most 2000
+   * characters.
+   *
+   * @generated from field: string intent = 2;
+   */
+  intent: string;
+
+  /**
+   * The language the intent and drafts are written in, e.g. "en" or "zh-CN".
+   *
+   * @generated from field: string language = 3;
+   */
+  language: string;
+
+  /**
+   * The tables or views to draft for, at most 20. Set meta_guid, meta_type and
+   * optionally columns; the path and columns are snapshotted for progress. The
+   * job visits them in order.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityTarget targets = 4;
+   */
+  targets: QualityTarget[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.CreateQualitySuggestionJobRequest.
+ * Use `create(CreateQualitySuggestionJobRequestSchema)` to create a new message.
+ */
+export declare const CreateQualitySuggestionJobRequestSchema: GenMessage<CreateQualitySuggestionJobRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualitySuggestionJobRequest
+ */
+export declare type GetQualitySuggestionJobRequest = Message<"metaxisdata.v1.GetQualitySuggestionJobRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualitySuggestionJobRequest.
+ * Use `create(GetQualitySuggestionJobRequestSchema)` to create a new message.
+ */
+export declare const GetQualitySuggestionJobRequestSchema: GenMessage<GetQualitySuggestionJobRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualitySuggestionJobsRequest
+ */
+export declare type ListQualitySuggestionJobsRequest = Message<"metaxisdata.v1.ListQualitySuggestionJobsRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * The maximum number of jobs to return. If unspecified, at most 20 are
+   * returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+   *
+   * @generated from field: int32 page_size = 2;
+   */
+  pageSize: number;
+
+  /**
+   * A page token, received from a previous ListQualitySuggestionJobs call.
+   *
+   * @generated from field: string page_token = 3;
+   */
+  pageToken: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualitySuggestionJobStatus status = 4;
+   */
+  status: QualitySuggestionJobStatus;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualitySuggestionJobsRequest.
+ * Use `create(ListQualitySuggestionJobsRequestSchema)` to create a new message.
+ */
+export declare const ListQualitySuggestionJobsRequestSchema: GenMessage<ListQualitySuggestionJobsRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualitySuggestionJobsResponse
+ */
+export declare type ListQualitySuggestionJobsResponse = Message<"metaxisdata.v1.ListQualitySuggestionJobsResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualitySuggestionJob quality_suggestion_jobs = 1;
+   */
+  qualitySuggestionJobs: QualitySuggestionJob[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualitySuggestionJobsResponse.
+ * Use `create(ListQualitySuggestionJobsResponseSchema)` to create a new message.
+ */
+export declare const ListQualitySuggestionJobsResponseSchema: GenMessage<ListQualitySuggestionJobsResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.CancelQualitySuggestionJobRequest
+ */
+export declare type CancelQualitySuggestionJobRequest = Message<"metaxisdata.v1.CancelQualitySuggestionJobRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.CancelQualitySuggestionJobRequest.
+ * Use `create(CancelQualitySuggestionJobRequestSchema)` to create a new message.
+ */
+export declare const CancelQualitySuggestionJobRequestSchema: GenMessage<CancelQualitySuggestionJobRequest>;
+
+/**
  * @generated from message metaxisdata.v1.ListColumnProfilesRequest
  */
 export declare type ListColumnProfilesRequest = Message<"metaxisdata.v1.ListColumnProfilesRequest"> & {
@@ -4822,6 +5117,92 @@ export enum QualityAggregateFunction {
 export declare const QualityAggregateFunctionSchema: GenEnum<QualityAggregateFunction>;
 
 /**
+ * QualitySuggestionJobStatus is the lifecycle of a background AI drafting job.
+ *
+ * @generated from enum metaxisdata.v1.QualitySuggestionJobStatus
+ */
+export enum QualitySuggestionJobStatus {
+  /**
+   * @generated from enum value: QUALITY_SUGGESTION_JOB_STATUS_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_SUGGESTION_JOB_STATUS_PENDING = 1;
+   */
+  PENDING = 1,
+
+  /**
+   * @generated from enum value: QUALITY_SUGGESTION_JOB_STATUS_RUNNING = 2;
+   */
+  RUNNING = 2,
+
+  /**
+   * @generated from enum value: QUALITY_SUGGESTION_JOB_STATUS_COMPLETED = 3;
+   */
+  COMPLETED = 3,
+
+  /**
+   * @generated from enum value: QUALITY_SUGGESTION_JOB_STATUS_FAILED = 4;
+   */
+  FAILED = 4,
+
+  /**
+   * @generated from enum value: QUALITY_SUGGESTION_JOB_STATUS_CANCELED = 5;
+   */
+  CANCELED = 5,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualitySuggestionJobStatus.
+ */
+export declare const QualitySuggestionJobStatusSchema: GenEnum<QualitySuggestionJobStatus>;
+
+/**
+ * QualitySuggestionJobTargetState is where one target of a drafting job stands.
+ * SKIPPED means the job stopped before asking the model for that target; FAILED
+ * means the model was asked and the target could not produce suggestions.
+ *
+ * @generated from enum metaxisdata.v1.QualitySuggestionJobTargetState
+ */
+export enum QualitySuggestionJobTargetState {
+  /**
+   * @generated from enum value: QUALITY_SUGGESTION_JOB_TARGET_STATE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING = 1;
+   */
+  PENDING = 1,
+
+  /**
+   * @generated from enum value: QUALITY_SUGGESTION_JOB_TARGET_STATE_RUNNING = 2;
+   */
+  RUNNING = 2,
+
+  /**
+   * @generated from enum value: QUALITY_SUGGESTION_JOB_TARGET_STATE_DONE = 3;
+   */
+  DONE = 3,
+
+  /**
+   * @generated from enum value: QUALITY_SUGGESTION_JOB_TARGET_STATE_FAILED = 4;
+   */
+  FAILED = 4,
+
+  /**
+   * @generated from enum value: QUALITY_SUGGESTION_JOB_TARGET_STATE_SKIPPED = 5;
+   */
+  SKIPPED = 5,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualitySuggestionJobTargetState.
+ */
+export declare const QualitySuggestionJobTargetStateSchema: GenEnum<QualitySuggestionJobTargetState>;
+
+/**
  * DataQualityService manages the checks that watch the data itself: rules and
  * their executions.
  *
@@ -5019,6 +5400,52 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof BatchUpdateQualitySuggestionsRequestSchema;
     output: typeof BatchUpdateQualitySuggestionsResponseSchema;
+  },
+  /**
+   * Start a background AI drafting job over one or more tables. The call returns
+   * as soon as the job is queued: the runner asks the model for each target in
+   * turn, and clients poll GetQualitySuggestionJob (or list the jobs) for
+   * progress. Queued suggestions appear in the review queue like any other.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.CreateQualitySuggestionJob
+   */
+  createQualitySuggestionJob: {
+    methodKind: "unary";
+    input: typeof CreateQualitySuggestionJobRequestSchema;
+    output: typeof QualitySuggestionJobSchema;
+  },
+  /**
+   * Read one drafting job, including per-target progress and the suggestions it
+   * queued so far.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualitySuggestionJob
+   */
+  getQualitySuggestionJob: {
+    methodKind: "unary";
+    input: typeof GetQualitySuggestionJobRequestSchema;
+    output: typeof QualitySuggestionJobSchema;
+  },
+  /**
+   * List drafting jobs, newest first.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualitySuggestionJobs
+   */
+  listQualitySuggestionJobs: {
+    methodKind: "unary";
+    input: typeof ListQualitySuggestionJobsRequestSchema;
+    output: typeof ListQualitySuggestionJobsResponseSchema;
+  },
+  /**
+   * Ask a drafting job to stop. A pending job is canceled immediately; a running
+   * job finishes its current target, marks the rest skipped and ends CANCELED.
+   * Suggestions already queued are kept.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.CancelQualitySuggestionJob
+   */
+  cancelQualitySuggestionJob: {
+    methodKind: "unary";
+    input: typeof CancelQualitySuggestionJobRequestSchema;
+    output: typeof QualitySuggestionJobSchema;
   },
   /**
    * List the cached deterministic profiles of columns. Profiles are read-only
