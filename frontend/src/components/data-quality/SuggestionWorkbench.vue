@@ -335,7 +335,9 @@
   <TargetPicker
     v-if="!editorMode"
     v-model:open="pickerOpen"
+    multiple
     @select="addTarget"
+    @select-many="addTargets"
   />
 </template>
 
@@ -523,12 +525,26 @@ function close() {
 }
 
 function addTarget(selection: TargetSelection) {
-  if (targets.value.some((target) => target.guid === selection.guid)) {
+  addTargets([selection]);
+}
+
+/** Add a whole picker selection at once, skipping targets already queued. */
+function addTargets(selections: TargetSelection[]) {
+  const known = new Set(targets.value.map((target) => target.guid));
+  const added: TargetSelection[] = [];
+  for (const selection of selections) {
+    if (known.has(selection.guid)) {
+      continue;
+    }
+    known.add(selection.guid);
+    added.push(selection);
+  }
+  if (added.length === 0) {
     return;
   }
-  targets.value = [...targets.value, selection];
+  targets.value = [...targets.value, ...added];
   if (targets.value.length === 1) {
-    void loadColumns(selection.guid);
+    void loadColumns(targets.value[0]?.guid ?? "");
   } else {
     // Several targets cannot share one column checklist: the intent scopes the
     // draft and each target gets every column.

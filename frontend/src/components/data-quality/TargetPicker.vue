@@ -6,10 +6,10 @@
     <DialogContent class="max-w-2xl">
       <DialogHeader>
         <DialogTitle>
-          {{ isScopeMode ? t("dataQuality.targetScope.title") : t("dataQuality.target.title") }}
+          {{ title }}
         </DialogTitle>
         <DialogDescription>
-          {{ isScopeMode ? t("dataQuality.targetScope.description") : t("dataQuality.target.description") }}
+          {{ description }}
         </DialogDescription>
       </DialogHeader>
 
@@ -70,6 +70,10 @@
             :key="item.guid"
             type="button"
             class="flex w-full items-center justify-between gap-3 border-b px-3 py-2.5 text-left text-sm last:border-b-0 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            :class="{ 'bg-accent/40': isMultiSelect && isSelected(item) }"
+            :aria-pressed="
+              isMultiSelect && step === 'table' ? isSelected(item) : undefined
+            "
             @click="choose(item)"
           >
             <span class="min-w-0 flex-1 truncate font-medium">
@@ -78,7 +82,21 @@
             <span class="shrink-0 text-xs text-muted-foreground">
               {{ metaTypeSingularLabel(item.metaType, t) }}
             </span>
-            <ChevronRight class="h-4 w-4 shrink-0 text-muted-foreground" />
+            <!-- Multi-select marks table rows; the other levels still drill in. -->
+            <span
+              v-if="isMultiSelect && step === 'table'"
+              class="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border border-input"
+              aria-hidden="true"
+            >
+              <Check
+                v-if="isSelected(item)"
+                class="h-3 w-3"
+              />
+            </span>
+            <ChevronRight
+              v-else
+              class="h-4 w-4 shrink-0 text-muted-foreground"
+            />
           </button>
         </div>
       </div>
@@ -89,6 +107,15 @@
           @click="emit('update:open', false)"
         >
           {{ t("common.cancel") }}
+        </Button>
+        <!-- Multi-select applies the accumulated tables in one go; the selection
+             survives drilling into another database or schema. -->
+        <Button
+          v-if="isMultiSelect"
+          :disabled="selected.length === 0"
+          @click="addSelected"
+        >
+          {{ t("dataQuality.target.addSelected", { count: selected.length }) }}
         </Button>
         <!-- In scope mode the picked path itself is the answer: the reader can
              stop at an instance, database, schema or drill all the way into a
@@ -106,7 +133,7 @@
 </template>
 
 <script setup lang="ts">
-import { ArrowLeft, ChevronRight } from "lucide-vue-next";
+import { ArrowLeft, Check, ChevronRight } from "lucide-vue-next";
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { listMetadata } from "@/api/database";
@@ -155,17 +182,41 @@ const props = withDefaults(
     open: boolean;
     /** `scope` applies the picked path prefix instead of requiring a table. */
     mode?: "target" | "scope";
+    /**
+     * In target mode, marks table rows instead of choosing immediately and
+     * accumulates a selection that survives drilling into another database or
+     * schema. Off by default: every other caller keeps the one-click behavior.
+     */
+    multiple?: boolean;
   }>(),
-  { mode: "target" }
+  { mode: "target", multiple: false }
 );
 
 const emit = defineEmits<{
   "update:open": [value: boolean];
   select: [selection: TargetSelection];
+  selectMany: [selections: TargetSelection[]];
   selectScope: [scope: QualityTargetScope];
 }>();
 
 const isScopeMode = computed(() => props.mode === "scope");
+const isMultiSelect = computed(() => props.multiple && !isScopeMode.value);
+const title = computed(() => {
+  if (isScopeMode.value) {
+    return t("dataQuality.targetScope.title");
+  }
+  return isMultiSelect.value
+    ? t("dataQuality.target.multiTitle")
+    : t("dataQuality.target.title");
+});
+const description = computed(() => {
+  if (isScopeMode.value) {
+    return t("dataQuality.targetScope.description");
+  }
+  return isMultiSelect.value
+    ? t("dataQuality.target.multiDescription")
+    : t("dataQuality.target.description");
+});
 
 type Step = "instance" | "database" | "schema" | "table";
 
@@ -191,6 +242,8 @@ const error = ref("");
 const items = ref<BrowserItem[]>([]);
 const instanceTitle = ref("");
 const instanceEngine = ref<Engine>();
+/** Tables marked in multi-select mode, in the order they were marked. */
+const selected = ref<TargetSelection[]>([]);
 
 const instances = computed(() => instanceStore.active);
 
@@ -304,6 +357,7 @@ function reset() {
   filter.value = "";
   error.value = "";
   items.value = [];
+  selected.value = [];
 }
 
 async function loadInstances() {
@@ -414,10 +468,12 @@ function goBack() {
   if (step.value === "table" && schema.value) {
     // Returning to a level has to reload it: the items on screen are the level
     // below, and showing tables under a "schema" breadcrumb would be a lie.
+    // The database's own GUID is authoritative; the fallback keeps the
+    // name-built path for a registry row that carried no GUID beyond the name.
+    const databaseParent =
+      databaseGuid.value || `${instanceId.value};${database.value}`;
     step.value = "schema";
-    void browse(() =>
-      loadGroups(`${instanceId.value};${database.value}`, [MetaType.SCHEMA])
-    );
+    void browse(() => loadGroups(databaseParent, [MetaType.SCHEMA]));
     return;
   }
   if (step.value === "table" || step.value === "schema") {
@@ -456,19 +512,47 @@ function choose(item: BrowserItem) {
         emit("update:open", false);
         return;
       }
-      emit("select", {
-        guid: item.guid,
-        metaType: item.metaType,
-        path: {
-          instance: instanceId.value,
-          database: database.value,
-          schema: schema.value,
-          object: item.name,
-        },
-        columns: [],
-      });
+      if (isMultiSelect.value) {
+        toggleSelected(item);
+        return;
+      }
+      emit("select", selectionFor(item));
       emit("update:open", false);
   }
+}
+
+/** The TargetSelection one table row stands for, with the current path. */
+function selectionFor(item: BrowserItem): TargetSelection {
+  return {
+    guid: item.guid,
+    metaType: item.metaType,
+    path: {
+      instance: instanceId.value,
+      database: database.value,
+      schema: schema.value,
+      object: item.name,
+    },
+    columns: [],
+  };
+}
+
+function isSelected(item: BrowserItem): boolean {
+  return selected.value.some((selection) => selection.guid === item.guid);
+}
+
+function toggleSelected(item: BrowserItem) {
+  selected.value = isSelected(item)
+    ? selected.value.filter((selection) => selection.guid !== item.guid)
+    : [...selected.value, selectionFor(item)];
+}
+
+/** Add every marked table in one go; the selection can span several schemas. */
+function addSelected() {
+  if (selected.value.length === 0) {
+    return;
+  }
+  emit("selectMany", [...selected.value]);
+  emit("update:open", false);
 }
 
 /** Apply the path prefix the reader has reached, without choosing another level. */

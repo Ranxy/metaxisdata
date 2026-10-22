@@ -284,6 +284,56 @@ describe("SuggestionWorkbench", () => {
     wrapper.unmount();
   });
 
+  it("adds several targets from one picker selection", async () => {
+    const wrapper = await mountWorkbench();
+    await flushPromises();
+
+    const picker = wrapper.findComponent({ name: "TargetPicker" });
+    picker.vm.$emit("selectMany", [
+      {
+        guid: TABLE,
+        metaType: MetaType.TABLE,
+        path: {
+          instance: "inst1",
+          database: "db1",
+          schema: "public",
+          object: "orders",
+        },
+        columns: [],
+      },
+      {
+        guid: OTHER_TABLE,
+        metaType: MetaType.TABLE,
+        path: {
+          instance: "inst1",
+          database: "db1",
+          schema: "public",
+          object: "customers",
+        },
+        columns: [],
+      },
+    ]);
+    await flushPromises();
+
+    // Both targets are queued, so the generation run visits both.
+    setIntent("Keep the tables healthy");
+    await flushPromises();
+    buttonByText(label("dataQuality.llm.draft.generate"))?.click();
+    await flushPromises();
+    await flushPromises();
+
+    expect(mocks.suggestQualityRule).toHaveBeenCalledTimes(2);
+    expect(mocks.suggestQualityRule.mock.calls[0]?.[0]).toMatchObject({
+      tableGuid: TABLE,
+      columns: [],
+    });
+    expect(mocks.suggestQualityRule.mock.calls[1]?.[0]).toMatchObject({
+      tableGuid: OTHER_TABLE,
+      columns: [],
+    });
+    wrapper.unmount();
+  });
+
   it("disables drafting when the workspace switch is off", async () => {
     const wrapper = await mountWorkbench({ llmEnabled: false });
     await flushPromises();

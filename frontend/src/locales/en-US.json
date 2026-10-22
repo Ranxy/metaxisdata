@@ -1043,9 +1043,12 @@
     },
     "tags": "Tags",
     "target": {
+      "addSelected": "Add {count} targets",
       "description": "Pick the table or view this rule observes. The column it checks is chosen in the rule form.",
       "fetchError": "Failed to load the target's metadata.",
       "filterPlaceholder": "Filter by name...",
+      "multiDescription": "Pick one or more tables or views; your choices stay marked while you browse other databases or schemas.",
+      "multiTitle": "Select targets",
       "noDatabases": "This instance has no databases.",
       "noInstances": "No instances are registered.",
       "noSchemas": "This database has no schemas.",

@@ -1043,9 +1043,12 @@
     },
     "tags": "标签",
     "target": {
+      "addSelected": "添加 {count} 个目标",
       "description": "选择这条规则观察的表或视图；要检查的字段在规则表单中选择。",
       "fetchError": "加载目标的元数据失败。",
       "filterPlaceholder": "按名称筛选…",
+      "multiDescription": "可选择一张或多张表/视图；切换到其他数据库或 Schema 时已选目标会保留。",
+      "multiTitle": "选择目标",
       "noDatabases": "该实例下没有数据库。",
       "noInstances": "还没有已注册的实例。",
       "noSchemas": "该数据库下没有 Schema。",
