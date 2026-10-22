@@ -244,6 +244,22 @@
                 :hint="t('dataQualitySettings.dailyColumnAnalysisLimitHint')"
               />
               <FormField
+                id="dq-setting-daily-llm-analyses"
+                v-model="form.dailyLlmAnalysisLimit"
+                type="number"
+                :disabled="!canUpdate"
+                :label="t('dataQualitySettings.dailyLlmAnalysisLimit')"
+                :hint="t('dataQualitySettings.dailyLlmAnalysisLimitHint')"
+              />
+              <FormField
+                id="dq-setting-llm-concurrency"
+                v-model="form.llmConcurrencyLimit"
+                type="number"
+                :disabled="!canUpdate"
+                :label="t('dataQualitySettings.llmConcurrencyLimit')"
+                :hint="t('dataQualitySettings.llmConcurrencyLimitHint')"
+              />
+              <FormField
                 id="dq-setting-max-columns"
                 v-model="form.maxColumnsPerAnalysis"
                 type="number"
@@ -254,15 +270,103 @@
             </div>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>{{ t("dataQualitySettings.usageSection") }}</CardTitle>
+            <CardDescription>
+              {{ t("dataQualitySettings.usageSectionDescription") }}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p
+              v-if="!canSuggest"
+              class="text-sm text-muted-foreground"
+            >
+              {{ t("dataQualitySettings.usageNoPermission") }}
+            </p>
+            <div
+              v-else-if="usageLoading"
+              class="flex items-center gap-2 text-sm text-muted-foreground"
+            >
+              <Loader2 class="h-4 w-4 animate-spin" />
+              {{ t("common.loading") }}
+            </div>
+            <Alert
+              v-else-if="usageError"
+              variant="warning"
+            >
+              <AlertTriangle class="h-4 w-4" />
+              <AlertTitle>{{ t("dataQualitySettings.usageFetchFailed") }}</AlertTitle>
+              <AlertDescription class="space-y-2">
+                <p class="break-words">{{ usageError }}</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  @click="loadUsage"
+                >
+                  {{ t("common.refresh") }}
+                </Button>
+              </AlertDescription>
+            </Alert>
+            <div
+              v-else-if="usage"
+              class="grid gap-4 sm:grid-cols-2"
+            >
+              <div>
+                <div class="text-xs text-muted-foreground">
+                  {{ t("dataQualitySettings.usageDailyAnalyses") }}
+                </div>
+                <div class="text-sm font-medium">
+                  {{ ratio(usage.dailyAnalysisUsed, usage.dailyAnalysisLimit) }}
+                </div>
+              </div>
+              <div>
+                <div class="text-xs text-muted-foreground">
+                  {{ t("dataQualitySettings.usageDailyColumnAnalyses") }}
+                </div>
+                <div class="text-sm font-medium">
+                  {{ ratio(usage.dailyColumnAnalysisUsed, usage.dailyColumnAnalysisLimit) }}
+                </div>
+              </div>
+              <div>
+                <div class="text-xs text-muted-foreground">
+                  {{ t("dataQualitySettings.usageConcurrency") }}
+                </div>
+                <div class="text-sm font-medium">
+                  {{ ratio(usage.inFlight, usage.concurrencyLimit) }}
+                </div>
+              </div>
+              <div>
+                <div class="text-xs text-muted-foreground">
+                  {{ t("dataQualitySettings.usageResetsAt") }}
+                </div>
+                <div
+                  class="text-sm font-medium"
+                  :title="formatDateTime(usage.resetsAt, locale)"
+                >
+                  {{ formatRelativeTime(usage.resetsAt, locale) }}
+                </div>
+              </div>
+            </div>
+            <p
+              v-else
+              class="text-sm text-muted-foreground"
+            >
+              -
+            </p>
+          </CardContent>
+        </Card>
       </div>
     </PageState>
   </div>
 </template>
 
 <script setup lang="ts">
-import { AlertTriangle } from "lucide-vue-next";
+import { AlertTriangle, Loader2 } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { getQualityLLMUsage } from "@/api/data-quality";
 import { listProfiles } from "@/api/llm";
 import {
   getWorkspaceProfileSetting,
@@ -292,6 +396,8 @@ import {
 import { useErrorMessage } from "@/composables/useErrorHandler";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
+import type { QualityLLMUsage } from "@/types/proto-es/v1/data_quality_service_pb";
+import { formatRowCount } from "@/utils/dataQuality";
 import type { ScheduleUnit } from "@/utils/dataQualityForm";
 import {
   type DataQualitySettingsForm,
@@ -300,6 +406,7 @@ import {
   settingsToForm,
   validateSettingsForm,
 } from "@/utils/dataQualitySettings";
+import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 import { isProviderAllowed } from "@/utils/llmProvider";
 
 /**
@@ -308,7 +415,7 @@ import { isProviderAllowed } from "@/utils/llmProvider";
  * values (its defaults filled in), and a save writes only that field.
  */
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const { formatError } = useErrorMessage();
 const authStore = useAuthStore();
 
@@ -320,9 +427,16 @@ const isSaving = ref(false);
 const error = ref("");
 const saveError = ref("");
 const original = ref("");
+const usage = ref<QualityLLMUsage>();
+const usageLoading = ref(false);
+const usageError = ref("");
 
 const canUpdate = computed(() =>
   authStore.hasPermission("metaxisdata.settings.update")
+);
+// The usage RPC is part of the data-quality suggest surface, not settings.
+const canSuggest = computed(() =>
+  authStore.hasPermission("metaxisdata.dataQuality.suggest")
 );
 
 const isDirty = computed(() => JSON.stringify(form.value) !== original.value);
@@ -352,6 +466,7 @@ async function load() {
     original.value = JSON.stringify(form.value);
     issues.value = [];
     await loadProfiles(profile.allowedLlmProviderProfiles ?? []);
+    void loadUsage();
   } catch (e: unknown) {
     error.value = formatError(e, "dataQualitySettings.fetchError");
   } finally {
@@ -383,6 +498,38 @@ async function loadProfiles(allowed: string[]) {
   } catch {
     profileOptions.value = [];
   }
+}
+
+/**
+ * Read-only counters for the process-wide analysis quota. They are process
+ * state, so they are refetched on load and again after a save applies new
+ * limits (the save path calls `load`, which calls this).
+ */
+async function loadUsage() {
+  if (!canSuggest.value) {
+    usage.value = undefined;
+    usageError.value = "";
+    usageLoading.value = false;
+    return;
+  }
+  usageLoading.value = true;
+  usageError.value = "";
+  try {
+    usage.value = await getQualityLLMUsage();
+  } catch (e: unknown) {
+    usage.value = undefined;
+    usageError.value = formatError(e, "dataQualitySettings.usageFetchFailed");
+  } finally {
+    usageLoading.value = false;
+  }
+}
+
+/** `used / limit`, both localised. */
+function ratio(used: number, limit: number): string {
+  return t("dataQualitySettings.usageRatio", {
+    used: formatRowCount(used, locale.value),
+    limit: formatRowCount(limit, locale.value),
+  });
 }
 
 async function handleSave() {

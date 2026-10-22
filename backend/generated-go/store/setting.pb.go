@@ -396,6 +396,8 @@ type DataQualitySetting struct {
 	DailyColumnAnalysisLimit int32                  `protobuf:"varint,7,opt,name=daily_column_analysis_limit,json=dailyColumnAnalysisLimit,proto3" json:"daily_column_analysis_limit,omitempty"`
 	MaxColumnsPerAnalysis    int32                  `protobuf:"varint,8,opt,name=max_columns_per_analysis,json=maxColumnsPerAnalysis,proto3" json:"max_columns_per_analysis,omitempty"`
 	SendSampleValuesToLlm    bool                   `protobuf:"varint,9,opt,name=send_sample_values_to_llm,json=sendSampleValuesToLlm,proto3" json:"send_sample_values_to_llm,omitempty"`
+	DailyLlmAnalysisLimit    int32                  `protobuf:"varint,10,opt,name=daily_llm_analysis_limit,json=dailyLlmAnalysisLimit,proto3" json:"daily_llm_analysis_limit,omitempty"`
+	LlmConcurrencyLimit      int32                  `protobuf:"varint,11,opt,name=llm_concurrency_limit,json=llmConcurrencyLimit,proto3" json:"llm_concurrency_limit,omitempty"`
 	unknownFields            protoimpl.UnknownFields
 	sizeCache                protoimpl.SizeCache
 }
@@ -491,6 +493,20 @@ func (x *DataQualitySetting) GetSendSampleValuesToLlm() bool {
 		return x.SendSampleValuesToLlm
 	}
 	return false
+}
+
+func (x *DataQualitySetting) GetDailyLlmAnalysisLimit() int32 {
+	if x != nil {
+		return x.DailyLlmAnalysisLimit
+	}
+	return 0
+}
+
+func (x *DataQualitySetting) GetLlmConcurrencyLimit() int32 {
+	if x != nil {
+		return x.LlmConcurrencyLimit
+	}
+	return 0
 }
 
 type EnvironmentSetting_Environment struct {
@@ -601,7 +617,7 @@ const file_store_setting_proto_rawDesc = "" +
 	"\x05color\x18\x04 \x01(\tR\x05color\x1a7\n" +
 	"\tTagsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x99\x04\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x86\x05\n" +
 	"\x12DataQualitySetting\x12.\n" +
 	"\x13enable_llm_analysis\x18\x01 \x01(\bR\x11enableLlmAnalysis\x120\n" +
 	"\x14llm_provider_profile\x18\x02 \x01(\tR\x12llmProviderProfile\x122\n" +
@@ -611,7 +627,10 @@ const file_store_setting_proto_rawDesc = "" +
 	"\x15daily_execution_limit\x18\x06 \x01(\x05R\x13dailyExecutionLimit\x12=\n" +
 	"\x1bdaily_column_analysis_limit\x18\a \x01(\x05R\x18dailyColumnAnalysisLimit\x127\n" +
 	"\x18max_columns_per_analysis\x18\b \x01(\x05R\x15maxColumnsPerAnalysis\x128\n" +
-	"\x19send_sample_values_to_llm\x18\t \x01(\bR\x15sendSampleValuesToLlm*\xc1\x02\n" +
+	"\x19send_sample_values_to_llm\x18\t \x01(\bR\x15sendSampleValuesToLlm\x127\n" +
+	"\x18daily_llm_analysis_limit\x18\n" +
+	" \x01(\x05R\x15dailyLlmAnalysisLimit\x122\n" +
+	"\x15llm_concurrency_limit\x18\v \x01(\x05R\x13llmConcurrencyLimit*\xc1\x02\n" +
 	"\vSettingName\x12\x1c\n" +
 	"\x18SETTING_NAME_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vAUTH_SECRET\x10\x01\x12\x11\n" +

@@ -196,8 +196,14 @@ type DataQualitySetting struct {
 	// Whether raw sample values may be sent to the LLM. Off by default: only
 	// aggregate profiles leave the deployment.
 	SendSampleValuesToLlm bool `protobuf:"varint,9,opt,name=send_sample_values_to_llm,json=sendSampleValuesToLlm,proto3" json:"send_sample_values_to_llm,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	// The workspace's daily L1+L2 LLM analysis ceiling (rule drafts and failure
+	// explanations). Zero means the server default (10000); capped at 1000000.
+	DailyLlmAnalysisLimit int32 `protobuf:"varint,10,opt,name=daily_llm_analysis_limit,json=dailyLlmAnalysisLimit,proto3" json:"daily_llm_analysis_limit,omitempty"`
+	// How many data quality LLM analyses may run at once in this process. Zero
+	// means the server default (8); accepted range 1-64.
+	LlmConcurrencyLimit int32 `protobuf:"varint,11,opt,name=llm_concurrency_limit,json=llmConcurrencyLimit,proto3" json:"llm_concurrency_limit,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *DataQualitySetting) Reset() {
@@ -291,6 +297,20 @@ func (x *DataQualitySetting) GetSendSampleValuesToLlm() bool {
 		return x.SendSampleValuesToLlm
 	}
 	return false
+}
+
+func (x *DataQualitySetting) GetDailyLlmAnalysisLimit() int32 {
+	if x != nil {
+		return x.DailyLlmAnalysisLimit
+	}
+	return 0
+}
+
+func (x *DataQualitySetting) GetLlmConcurrencyLimit() int32 {
+	if x != nil {
+		return x.LlmConcurrencyLimit
+	}
+	return 0
 }
 
 type GetWorkspaceProfileSettingRequest struct {
@@ -572,7 +592,7 @@ const file_v1_setting_service_proto_rawDesc = "" +
 	"\x17sso_email_identity_idps\x18\n" +
 	" \x03(\tR\x14ssoEmailIdentityIdps\x12E\n" +
 	"\fdata_quality\x18\v \x01(\v2\".metaxisdata.v1.DataQualitySettingR\vdataQualityJ\x04\b\t\x10\n" +
-	"R\x18allow_sso_email_identity\"\x99\x04\n" +
+	"R\x18allow_sso_email_identity\"\x86\x05\n" +
 	"\x12DataQualitySetting\x12.\n" +
 	"\x13enable_llm_analysis\x18\x01 \x01(\bR\x11enableLlmAnalysis\x120\n" +
 	"\x14llm_provider_profile\x18\x02 \x01(\tR\x12llmProviderProfile\x122\n" +
@@ -582,7 +602,10 @@ const file_v1_setting_service_proto_rawDesc = "" +
 	"\x15daily_execution_limit\x18\x06 \x01(\x05R\x13dailyExecutionLimit\x12=\n" +
 	"\x1bdaily_column_analysis_limit\x18\a \x01(\x05R\x18dailyColumnAnalysisLimit\x127\n" +
 	"\x18max_columns_per_analysis\x18\b \x01(\x05R\x15maxColumnsPerAnalysis\x128\n" +
-	"\x19send_sample_values_to_llm\x18\t \x01(\bR\x15sendSampleValuesToLlm\"#\n" +
+	"\x19send_sample_values_to_llm\x18\t \x01(\bR\x15sendSampleValuesToLlm\x127\n" +
+	"\x18daily_llm_analysis_limit\x18\n" +
+	" \x01(\x05R\x15dailyLlmAnalysisLimit\x122\n" +
+	"\x15llm_concurrency_limit\x18\v \x01(\x05R\x13llmConcurrencyLimit\"#\n" +
 	"!GetWorkspaceProfileSettingRequest\"\xab\x01\n" +
 	"$UpdateWorkspaceProfileSettingRequest\x12F\n" +
 	"\asetting\x18\x01 \x01(\v2'.metaxisdata.v1.WorkspaceProfileSettingB\x03\xe0A\x02R\asetting\x12;\n" +

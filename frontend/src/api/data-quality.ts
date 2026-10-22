@@ -17,6 +17,7 @@ import {
   type ExplainQualityExecutionResponse,
   GetQualityExecutionRequestSchema,
   GetQualityIssueRequestSchema,
+  GetQualityLLMUsageRequestSchema,
   GetQualityOverviewRequestSchema,
   GetQualityRuleRequestSchema,
   GetQualitySuggestionJobRequestSchema,
@@ -39,6 +40,7 @@ import {
   type QualityIssue,
   QualityIssueSchema,
   QualityIssueStatus,
+  type QualityLLMUsage,
   type QualityOverview,
   QualityResolutionReason,
   type QualityRule,
@@ -526,6 +528,24 @@ export async function batchCreateQualityRules(
   });
   const response = await dataQualityClient.batchCreateQualityRules(request);
   return response.results;
+}
+
+// ---- LLM usage ----
+
+/**
+ * The process-wide data-quality LLM usage: today's L1/L2 and column-analysis
+ * counters, the concurrency slot usage, and when the daily counters reset.
+ * Read-only; requires the data-quality suggest permission.
+ */
+export async function getQualityLLMUsage(
+  options: { parent?: string; signal?: AbortSignal } = {}
+): Promise<QualityLLMUsage> {
+  const request = create(GetQualityLLMUsageRequestSchema, {
+    parent: options.parent ?? WORKSPACE_PARENT,
+  });
+  return await dataQualityClient.getQualityLLMUsage(request, {
+    signal: options.signal,
+  });
 }
 
 // ---- drafting jobs ----

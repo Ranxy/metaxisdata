@@ -74,12 +74,13 @@ func (s *DataQualityService) CreateQualitySuggestionJob(ctx context.Context, req
 	}
 	// The provider configuration is checked before the job is stored: a disabled
 	// LLM must fail the submission, not every target of a queued job.
-	if _, _, err := s.suggester.ResolveConfig(ctx); err != nil {
+	_, settings, err := s.suggester.ResolveConfig(ctx)
+	if err != nil {
 		return nil, err
 	}
 	// Best effort: the quota is not reserved, so concurrent submissions may
 	// over-admit by one job. Each executed target still spends through Begin.
-	if remaining := s.quota.RemainingAnalyses(); remaining < len(targets.GetTargets()) {
+	if remaining := s.quota.RemainingAnalyses(dataquality.LimitsFromSettings(settings)); remaining < len(targets.GetTargets()) {
 		return nil, connect.NewError(connect.CodeResourceExhausted, errors.Errorf(
 			"the job needs %d analyses but only %d remain in today's data quality LLM quota; it resets at 00:00 UTC",
 			len(targets.GetTargets()), remaining))

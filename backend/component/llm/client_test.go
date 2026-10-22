@@ -88,6 +88,44 @@ func TestStreamRawSendsRequestOptions(t *testing.T) {
 	require.Equal(t, true, streamOptions["include_usage"])
 }
 
+// A caller that sets no cap uses the provider profile's resolved budget, so the
+// profile (not every caller) owns the output ceiling.
+func TestStreamRawUsesTheProviderBudgetWhenNoCallerCapIsSet(t *testing.T) {
+	t.Parallel()
+
+	capture := &capturedRequest{}
+	server := optionProvider(t, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\ndata: [DONE]\n", capture)
+
+	cfg := AgentConfig{Provider: ResolvedConfig{
+		BaseURL: server.URL, ModelName: "test-model", APIKey: "key", MaxOutputTokens: 4096,
+	}}
+	drainStream(streamRaw(context.Background(), cfg, []Message{{Role: "user", Content: "hi"}}))
+
+	body, _ := capture.snapshot(t)
+	var request map[string]any
+	require.NoError(t, json.Unmarshal(body, &request))
+	require.InDelta(t, 4096, request["max_tokens"], 1e-9)
+}
+
+// A caller's smaller cap wins over the profile budget.
+func TestStreamRawKeepsTheCallerCap(t *testing.T) {
+	t.Parallel()
+
+	capture := &capturedRequest{}
+	server := optionProvider(t, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\ndata: [DONE]\n", capture)
+
+	cfg := AgentConfig{
+		Provider:  ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key", MaxOutputTokens: 4096},
+		MaxTokens: 512,
+	}
+	drainStream(streamRaw(context.Background(), cfg, []Message{{Role: "user", Content: "hi"}}))
+
+	body, _ := capture.snapshot(t)
+	var request map[string]any
+	require.NoError(t, json.Unmarshal(body, &request))
+	require.InDelta(t, 512, request["max_tokens"], 1e-9)
+}
+
 // A caller that sets nothing sends exactly the request it sent before the
 // options existed: the fields are omitted, not zeroed.
 func TestStreamRawOmitsUnsetRequestOptions(t *testing.T) {

@@ -33,6 +33,17 @@ const (
 	DefaultDailyExecutionLimit = 10000
 	// DefaultDailyColumnAnalysisLimit is the daily column-analysis ceiling.
 	DefaultDailyColumnAnalysisLimit = 50
+	// MaxDailyColumnAnalysisLimit is the hard ceiling a workspace may configure.
+	MaxDailyColumnAnalysisLimit = 1000000
+	// DefaultDailyLLMAnalysisLimit is the daily L1+L2 analysis ceiling.
+	DefaultDailyLLMAnalysisLimit = 10000
+	// MaxDailyLLMAnalysisLimit is the hard ceiling a workspace may configure.
+	MaxDailyLLMAnalysisLimit = 1000000
+	// DefaultLLMConcurrencyLimit is how many analyses may run at once across
+	// both quotas.
+	DefaultLLMConcurrencyLimit = 8
+	// MaxLLMConcurrencyLimit is the hard concurrency ceiling.
+	MaxLLMConcurrencyLimit = 64
 	// DefaultMaxColumnsPerAnalysis is the maximum number of columns one analysis
 	// covers when the setting does not say.
 	DefaultMaxColumnsPerAnalysis = 50
@@ -52,6 +63,8 @@ type Settings struct {
 	DefaultScheduleInterval  time.Duration
 	DailyExecutionLimit      int
 	DailyColumnAnalysisLimit int
+	DailyLLMAnalysisLimit    int
+	LLMConcurrencyLimit      int
 	MaxColumnsPerAnalysis    int
 	SendSampleValuesToLLM    bool
 }
@@ -66,6 +79,8 @@ func DefaultSettings() Settings {
 		DefaultScheduleInterval:  DefaultScheduleInterval,
 		DailyExecutionLimit:      DefaultDailyExecutionLimit,
 		DailyColumnAnalysisLimit: DefaultDailyColumnAnalysisLimit,
+		DailyLLMAnalysisLimit:    DefaultDailyLLMAnalysisLimit,
+		LLMConcurrencyLimit:      DefaultLLMConcurrencyLimit,
 		MaxColumnsPerAnalysis:    DefaultMaxColumnsPerAnalysis,
 		SendSampleValuesToLLM:    false,
 	}
@@ -94,7 +109,9 @@ func SettingsFromProfile(profile *storepb.WorkspaceProfileSetting) Settings {
 	settings.FailureSampleLimit = normalizeFailureSampleLimit(dataQuality.GetFailureSampleLimit())
 	settings.DefaultScheduleInterval = normalizeScheduleInterval(dataQuality.GetDefaultScheduleInterval().AsDuration())
 	settings.DailyExecutionLimit = positiveOrDefault(dataQuality.GetDailyExecutionLimit(), DefaultDailyExecutionLimit)
-	settings.DailyColumnAnalysisLimit = positiveOrDefault(dataQuality.GetDailyColumnAnalysisLimit(), DefaultDailyColumnAnalysisLimit)
+	settings.DailyColumnAnalysisLimit = boundedLimit(int(dataQuality.GetDailyColumnAnalysisLimit()), DefaultDailyColumnAnalysisLimit, MaxDailyColumnAnalysisLimit)
+	settings.DailyLLMAnalysisLimit = boundedLimit(int(dataQuality.GetDailyLlmAnalysisLimit()), DefaultDailyLLMAnalysisLimit, MaxDailyLLMAnalysisLimit)
+	settings.LLMConcurrencyLimit = boundedLimit(int(dataQuality.GetLlmConcurrencyLimit()), DefaultLLMConcurrencyLimit, MaxLLMConcurrencyLimit)
 	settings.MaxColumnsPerAnalysis = positiveOrDefault(dataQuality.GetMaxColumnsPerAnalysis(), DefaultMaxColumnsPerAnalysis)
 	return settings
 }
@@ -161,4 +178,19 @@ func positiveOrDefault(value, fallback int32) int {
 		return int(fallback)
 	}
 	return int(value)
+}
+
+// boundedLimit resolves an integer setting with a hard ceiling: zero and negative
+// values fall back to the default, and a value above the maximum is clamped. It is
+// shared by the settings reader and the quota, so a stored out-of-band value and a
+// caller-built limit resolve the same way.
+func boundedLimit(value, fallback, maximum int) int {
+	switch {
+	case value <= 0:
+		return fallback
+	case value > maximum:
+		return maximum
+	default:
+		return value
+	}
 }

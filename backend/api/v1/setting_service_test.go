@@ -194,12 +194,16 @@ func TestNormalizeDataQualitySettingAcceptsValidValues(t *testing.T) {
 		DefaultScheduleInterval:  durationpb.New(dataquality.MinScheduleInterval),
 		DailyExecutionLimit:      0,
 		DailyColumnAnalysisLimit: 0,
+		DailyLlmAnalysisLimit:    dataquality.MaxDailyLLMAnalysisLimit,
+		LlmConcurrencyLimit:      dataquality.MaxLLMConcurrencyLimit,
 		MaxColumnsPerAnalysis:    0,
 		SendSampleValuesToLlm:    true,
 	})
 	require.NoError(t, err)
 	require.Equal(t, int32(dataquality.MaxFailureSampleLimit), normalized.GetFailureSampleLimit())
 	require.Equal(t, int32(0), normalized.GetDailyExecutionLimit(), "zero is stored as zero and resolved by the reader")
+	require.Equal(t, int32(dataquality.MaxDailyLLMAnalysisLimit), normalized.GetDailyLlmAnalysisLimit())
+	require.Equal(t, int32(dataquality.MaxLLMConcurrencyLimit), normalized.GetLlmConcurrencyLimit())
 	require.Equal(t, dataquality.MinScheduleInterval, normalized.GetDefaultScheduleInterval().AsDuration())
 	require.True(t, normalized.GetEnableLlmAnalysis())
 	require.True(t, normalized.GetSendSampleValuesToLlm())
@@ -258,6 +262,31 @@ func TestNormalizeDataQualitySettingRejectsInvalidValues(t *testing.T) {
 			want:    "daily_column_analysis_limit",
 		},
 		{
+			name:    "daily column analysis limit above the cap",
+			setting: &v1pb.DataQualitySetting{DailyColumnAnalysisLimit: dataquality.MaxDailyColumnAnalysisLimit + 1},
+			want:    "daily_column_analysis_limit",
+		},
+		{
+			name:    "negative daily LLM analysis limit",
+			setting: &v1pb.DataQualitySetting{DailyLlmAnalysisLimit: -1},
+			want:    "daily_llm_analysis_limit",
+		},
+		{
+			name:    "daily LLM analysis limit above the cap",
+			setting: &v1pb.DataQualitySetting{DailyLlmAnalysisLimit: dataquality.MaxDailyLLMAnalysisLimit + 1},
+			want:    "daily_llm_analysis_limit",
+		},
+		{
+			name:    "negative LLM concurrency limit",
+			setting: &v1pb.DataQualitySetting{LlmConcurrencyLimit: -1},
+			want:    "llm_concurrency_limit",
+		},
+		{
+			name:    "LLM concurrency limit above the cap",
+			setting: &v1pb.DataQualitySetting{LlmConcurrencyLimit: dataquality.MaxLLMConcurrencyLimit + 1},
+			want:    "llm_concurrency_limit",
+		},
+		{
 			name:    "negative max columns",
 			setting: &v1pb.DataQualitySetting{MaxColumnsPerAnalysis: -1},
 			want:    "max_columns_per_analysis",
@@ -298,6 +327,13 @@ func TestNormalizeDataQualitySettingRejectsInvalidValues(t *testing.T) {
 	capped, err := normalizeDataQualitySetting(&v1pb.DataQualitySetting{MaxColumnsPerAnalysis: dataquality.MaxColumnsPerAnalysisLimit})
 	require.NoError(t, err)
 	require.Equal(t, int32(dataquality.MaxColumnsPerAnalysisLimit), capped.GetMaxColumnsPerAnalysis())
+
+	// The legacy L3 ceiling accepts zero and exactly its cap.
+	_, err = normalizeDataQualitySetting(&v1pb.DataQualitySetting{DailyColumnAnalysisLimit: 0})
+	require.NoError(t, err)
+	columnCapped, err := normalizeDataQualitySetting(&v1pb.DataQualitySetting{DailyColumnAnalysisLimit: dataquality.MaxDailyColumnAnalysisLimit})
+	require.NoError(t, err)
+	require.Equal(t, int32(dataquality.MaxDailyColumnAnalysisLimit), columnCapped.GetDailyColumnAnalysisLimit())
 }
 
 func TestValidateDataQualityProviderProfile(t *testing.T) {
@@ -327,6 +363,8 @@ func TestConvertDataQualitySettingRoundTrip(t *testing.T) {
 		DefaultScheduleInterval:  durationpb.New(30 * time.Minute),
 		DailyExecutionLimit:      10000,
 		DailyColumnAnalysisLimit: 50,
+		DailyLlmAnalysisLimit:    25000,
+		LlmConcurrencyLimit:      12,
 		MaxColumnsPerAnalysis:    60,
 		SendSampleValuesToLlm:    true,
 	}
@@ -340,6 +378,8 @@ func TestConvertDataQualitySettingRoundTrip(t *testing.T) {
 	require.Equal(t, 30*time.Minute, apiValue.GetDefaultScheduleInterval().AsDuration())
 	require.Equal(t, stored.GetDailyExecutionLimit(), apiValue.GetDailyExecutionLimit())
 	require.Equal(t, stored.GetDailyColumnAnalysisLimit(), apiValue.GetDailyColumnAnalysisLimit())
+	require.Equal(t, stored.GetDailyLlmAnalysisLimit(), apiValue.GetDailyLlmAnalysisLimit())
+	require.Equal(t, stored.GetLlmConcurrencyLimit(), apiValue.GetLlmConcurrencyLimit())
 	require.Equal(t, stored.GetMaxColumnsPerAnalysis(), apiValue.GetMaxColumnsPerAnalysis())
 	require.Equal(t, stored.GetSendSampleValuesToLlm(), apiValue.GetSendSampleValuesToLlm())
 
@@ -353,6 +393,8 @@ func TestConvertDataQualitySettingRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, stored.GetEnableLlmAnalysis(), back.GetEnableLlmAnalysis())
 	require.Equal(t, stored.GetDefaultScheduleInterval().AsDuration(), back.GetDefaultScheduleInterval().AsDuration())
+	require.Equal(t, stored.GetDailyLlmAnalysisLimit(), back.GetDailyLlmAnalysisLimit())
+	require.Equal(t, stored.GetLlmConcurrencyLimit(), back.GetLlmConcurrencyLimit())
 	require.Equal(t, stored.GetSendSampleValuesToLlm(), back.GetSendSampleValuesToLlm())
 }
 

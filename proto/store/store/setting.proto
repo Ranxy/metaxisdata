@@ -128,4 +128,6 @@ message DataQualitySetting {
   int32 daily_column_analysis_limit = 7;
   int32 max_columns_per_analysis = 8;
   bool send_sample_values_to_llm = 9;
+  int32 daily_llm_analysis_limit = 10;
+  int32 llm_concurrency_limit = 11;
 }

@@ -118,12 +118,16 @@ func (s *LLMService) CreateLLMProviderProfile(ctx context.Context, req *connect.
 	if title == "" {
 		title = autoGenerateTitle(pbProfile)
 	}
+	if err := llm.ValidateMaxOutputTokens(pbProfile.GetMaxOutputTokens()); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 
 	meta := &storepb.LlmProviderProfile{
-		Title:   title,
-		Type:    convertV1LLMProviderType(pbProfile.Type),
-		BaseUrl: baseURL,
-		Models:  convertV1ModelsToStore(pbProfile.Models),
+		Title:           title,
+		Type:            convertV1LLMProviderType(pbProfile.Type),
+		BaseUrl:         baseURL,
+		Models:          convertV1ModelsToStore(pbProfile.Models),
+		MaxOutputTokens: pbProfile.GetMaxOutputTokens(),
 	}
 
 	msg, err := s.store.CreateLLMProfile(ctx, resourceID, meta, pbProfile.ApiKey)
@@ -202,6 +206,12 @@ func buildLLMProfileUpdate(pbProfile *v1pb.LlmProviderProfile, maskPaths []strin
 			apiKey := pbProfile.GetApiKey()
 			update.APIKey = &apiKey
 		}
+		if value := pbProfile.GetMaxOutputTokens(); value != 0 {
+			if err := llm.ValidateMaxOutputTokens(value); err != nil {
+				return nil, connect.NewError(connect.CodeInvalidArgument, err)
+			}
+			update.MaxOutputTokens = &value
+		}
 		return update, nil
 	}
 
@@ -223,6 +233,12 @@ func buildLLMProfileUpdate(pbProfile *v1pb.LlmProviderProfile, maskPaths []strin
 				apiKey := pbProfile.GetApiKey()
 				update.APIKey = &apiKey
 			}
+		case "max_output_tokens":
+			value := pbProfile.GetMaxOutputTokens()
+			if err := llm.ValidateMaxOutputTokens(value); err != nil {
+				return nil, connect.NewError(connect.CodeInvalidArgument, err)
+			}
+			update.MaxOutputTokens = &value
 		default:
 		}
 	}
@@ -295,14 +311,15 @@ func convertProfileToV1(msg *store.LLMProfileMessage) *v1pb.LlmProviderProfile {
 	}
 	meta := msg.Metadata
 	return &v1pb.LlmProviderProfile{
-		Name:         meta.Name,
-		Title:        meta.Title,
-		Type:         convertLLMProviderType(meta.Type),
-		BaseUrl:      meta.BaseUrl,
-		Models:       convertStoreModelsToV1(meta.Models),
-		CreateTime:   meta.CreateTime,
-		UpdateTime:   meta.UpdateTime,
-		MaskedApiKey: maskAPIKey(msg.APIKey),
+		Name:            meta.Name,
+		Title:           meta.Title,
+		Type:            convertLLMProviderType(meta.Type),
+		BaseUrl:         meta.BaseUrl,
+		Models:          convertStoreModelsToV1(meta.Models),
+		MaxOutputTokens: meta.GetMaxOutputTokens(),
+		CreateTime:      meta.CreateTime,
+		UpdateTime:      meta.UpdateTime,
+		MaskedApiKey:    maskAPIKey(msg.APIKey),
 	}
 }
 

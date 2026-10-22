@@ -28,6 +28,9 @@ type ResolvedConfig struct {
 	BaseURL      string
 	APIKey       string // decrypted
 	ModelName    string
+	// MaxOutputTokens is the profile's output budget, resolved through
+	// NormalizeMaxOutputTokens so it is always a usable ceiling.
+	MaxOutputTokens int
 }
 
 // profileStore is the slice of the store the registry needs. Keeping it an
@@ -107,12 +110,13 @@ func (r *Registry) loadEnabled(ctx context.Context) ([]ResolvedConfig, error) {
 					title = p.Metadata.Name
 				}
 				configs = append(configs, ResolvedConfig{
-					ProfileName:  p.Metadata.Name,
-					ProfileTitle: title,
-					Type:         p.Metadata.Type,
-					BaseURL:      p.Metadata.BaseUrl,
-					APIKey:       p.APIKey,
-					ModelName:    m.Name,
+					ProfileName:     p.Metadata.Name,
+					ProfileTitle:    title,
+					Type:            p.Metadata.Type,
+					BaseURL:         p.Metadata.BaseUrl,
+					APIKey:          p.APIKey,
+					ModelName:       m.Name,
+					MaxOutputTokens: NormalizeMaxOutputTokens(p.Metadata.GetMaxOutputTokens()),
 				})
 			}
 		}

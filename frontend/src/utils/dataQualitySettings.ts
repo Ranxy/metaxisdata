@@ -25,6 +25,9 @@ import {
 
 export const FAILURE_SAMPLE_LIMIT_MAX = 100;
 export const MAX_COLUMNS_PER_ANALYSIS_MAX = 200;
+export const DAILY_LLM_ANALYSIS_LIMIT_MAX = 1_000_000;
+export const MAX_DAILY_COLUMN_ANALYSIS_LIMIT = 1_000_000;
+export const LLM_CONCURRENCY_LIMIT_MAX = 64;
 
 export interface DataQualitySettingsForm {
   enableLlmAnalysis: boolean;
@@ -38,6 +41,10 @@ export interface DataQualitySettingsForm {
   dailyExecutionLimit: string;
   /** Blank/0 means the server default. */
   dailyColumnAnalysisLimit: string;
+  /** Blank/0 means the server default (10,000). */
+  dailyLlmAnalysisLimit: string;
+  /** Blank/0 means the server default (8). */
+  llmConcurrencyLimit: string;
   /** Blank/0 means the server default (50); the form caps at 200. */
   maxColumnsPerAnalysis: string;
   sendSampleValuesToLlm: boolean;
@@ -57,6 +64,8 @@ export function settingsToForm(
       : { value: "1", unit: "hours" },
     dailyExecutionLimit: numberToInput(setting?.dailyExecutionLimit),
     dailyColumnAnalysisLimit: numberToInput(setting?.dailyColumnAnalysisLimit),
+    dailyLlmAnalysisLimit: numberToInput(setting?.dailyLlmAnalysisLimit),
+    llmConcurrencyLimit: numberToInput(setting?.llmConcurrencyLimit),
     maxColumnsPerAnalysis: numberToInput(setting?.maxColumnsPerAnalysis),
     sendSampleValuesToLlm: setting?.sendSampleValuesToLlm ?? false,
   };
@@ -79,6 +88,8 @@ export function formToSetting(
         : scheduleToDuration(form.defaultSchedule),
     dailyExecutionLimit: inputToInt(form.dailyExecutionLimit) ?? 0,
     dailyColumnAnalysisLimit: inputToInt(form.dailyColumnAnalysisLimit) ?? 0,
+    dailyLlmAnalysisLimit: inputToInt(form.dailyLlmAnalysisLimit) ?? 0,
+    llmConcurrencyLimit: inputToInt(form.llmConcurrencyLimit) ?? 0,
     maxColumnsPerAnalysis: inputToInt(form.maxColumnsPerAnalysis) ?? 0,
     sendSampleValuesToLlm: form.sendSampleValuesToLlm,
   });
@@ -123,9 +134,33 @@ export function validateSettingsForm(
   if (execution === "invalid") {
     issue("dailyExecutionLimitInvalid");
   }
-  const columnAnalysis = checkNonNegative(form.dailyColumnAnalysisLimit);
+  const columnAnalysis = checkRange(
+    form.dailyColumnAnalysisLimit,
+    0,
+    MAX_DAILY_COLUMN_ANALYSIS_LIMIT
+  );
   if (columnAnalysis === "invalid") {
-    issue("dailyColumnAnalysisLimitInvalid");
+    issue("dailyColumnAnalysisLimitInvalid", {
+      max: MAX_DAILY_COLUMN_ANALYSIS_LIMIT,
+    });
+  }
+  const dailyAnalyses = checkRange(
+    form.dailyLlmAnalysisLimit,
+    0,
+    DAILY_LLM_ANALYSIS_LIMIT_MAX
+  );
+  if (dailyAnalyses === "invalid") {
+    issue("dailyLlmAnalysisLimitInvalid", {
+      max: DAILY_LLM_ANALYSIS_LIMIT_MAX,
+    });
+  }
+  const concurrency = checkRange(
+    form.llmConcurrencyLimit,
+    0,
+    LLM_CONCURRENCY_LIMIT_MAX
+  );
+  if (concurrency === "invalid") {
+    issue("llmConcurrencyLimitInvalid", { max: LLM_CONCURRENCY_LIMIT_MAX });
   }
   const maxColumns = checkRange(
     form.maxColumnsPerAnalysis,

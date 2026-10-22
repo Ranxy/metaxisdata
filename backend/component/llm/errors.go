@@ -38,7 +38,12 @@ type ResponseError struct {
 	FinishReason string
 	// StatusCode is the provider's HTTP status for a non-OK response.
 	StatusCode int
-	Err        error
+	// OutputTokens is the output budget the failing request actually carried, when
+	// a request was sent. It differs from the configured budget when the one-shot
+	// smaller-budget retry was used, and stays 0 for transport/request failures
+	// where nothing reached the provider.
+	OutputTokens int
+	Err          error
 }
 
 // Error returns the underlying message, so existing callers and log lines keep

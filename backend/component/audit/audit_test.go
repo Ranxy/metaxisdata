@@ -26,6 +26,19 @@ func auditMarshal(t *testing.T, message proto.Message) (*structpb.Struct, map[st
 	return structured, raw
 }
 
+// A numeric output budget is a setting, not a credential: the generic "token"
+// marker must not hide it from the audit ledger.
+func TestMaxOutputTokensIsNotASensitiveAuditField(t *testing.T) {
+	t.Parallel()
+
+	for _, field := range []string{"maxOutputTokens", "max_output_tokens"} {
+		require.False(t, IsSensitiveAuditField(field), "expected %q to stay visible", field)
+		raw := map[string]any{field: 4096}
+		SanitizeAuditValue(raw)
+		require.Equal(t, 4096, raw[field], "expected %q to stay visible", field)
+	}
+}
+
 // The OAuth2 authorization-code flow carries its credentials under both
 // camelCase protojson names and snake_case form names. Either spelling must be
 // redacted before an audit row is persisted.

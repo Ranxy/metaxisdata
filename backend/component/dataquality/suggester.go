@@ -26,11 +26,6 @@ const (
 	// MaxDraftColumns bounds the columns one draft request (synchronous or job
 	// target) may scope.
 	MaxDraftColumns = 50
-	// MaxLLMOutputTokens bounds what one analysis may generate. A drafting answer
-	// is a JSON document with 1–5 typed rules and rationales (often in Chinese), so
-	// a 4096-token budget could stop mid-JSON; 8192 leaves room for a full answer
-	// while still bounding a runaway model.
-	MaxLLMOutputTokens = 8192
 	// LLMFeatureRuleDraft labels the L1 model calls in metrics.
 	LLMFeatureRuleDraft = "dq_rule_draft"
 	// debugErrorCodeWriteTimeout bounds the best-effort classifier write on the
@@ -124,7 +119,7 @@ func (s *Suggester) ResolveConfig(ctx context.Context) (llm.ResolvedConfig, Sett
 // It resolves the target, spends one L1 analysis from the shared quota, asks the
 // model once, and stores every draft the rule pipeline accepts as a PENDING
 // NATURAL_LANGUAGE suggestion. The returned rows are the ones it created.
-func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, targetGUID string, metaType storepb.MetaType, columns []string, intent, language string, createdBy *int32) ([]*store.QualitySuggestionMessage, *storepb.QualityLLMDiagnostic, error) {
+func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits LLMLimits, targetGUID string, metaType storepb.MetaType, columns []string, intent, language string, createdBy *int32) ([]*store.QualitySuggestionMessage, *storepb.QualityLLMDiagnostic, error) {
 	resolution, err := ResolveTarget(ctx, s.store, targetGUID, metaType)
 	if err != nil {
 		return nil, nil, err
@@ -138,7 +133,7 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, target
 	// The target resolves, so the analysis may spend the workspace's daily quota
 	// and one concurrency slot. The check runs after resolution so an invalid
 	// target consumes neither.
-	release, err := s.quota.Begin(ctx, LLMAnalysisQuota, 0)
+	release, err := s.quota.Begin(ctx, LLMAnalysisQuota, limits)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -156,7 +151,7 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, target
 		},
 		resolution.Target, columns, intent, existingRules)
 	text, usage, diagnostic, err := s.JSONCompletion(ctx, config, LLMFeatureRuleDraft,
-		RuleDraftPromptVersion, systemPrompt, userPrompt, MaxLLMOutputTokens)
+		RuleDraftPromptVersion, systemPrompt, userPrompt, OutputTokenBudget(config))
 	if err != nil {
 		return nil, diagnostic, err
 	}
@@ -261,7 +256,7 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, target
 // diagnostic says whether it was captured.
 func (s *Suggester) JSONCompletion(ctx context.Context, config llm.ResolvedConfig, feature, promptVersion, systemPrompt, userPrompt string, maxOutputTokens int) (string, *llm.Usage, *storepb.QualityLLMDiagnostic, error) {
 	if maxOutputTokens <= 0 {
-		maxOutputTokens = MaxLLMOutputTokens
+		maxOutputTokens = llm.DefaultMaxOutputTokens
 	}
 	correlationID, err := common.RandomString(12)
 	if err != nil {
@@ -412,6 +407,11 @@ func classifyLLMDiagnostic(diagnostic *storepb.QualityLLMDiagnostic, err error) 
 		diagnostic.ErrorCode = string(responseErr.Code)
 		diagnostic.FinishReason = responseErr.FinishReason
 		diagnostic.ProviderStatus = int32(responseErr.StatusCode)
+		// A retried request may have run with the smaller fallback budget: report
+		// the budget that was actually attempted, not the configured one.
+		if responseErr.OutputTokens > 0 {
+			diagnostic.MaxOutputTokens = int32(responseErr.OutputTokens)
+		}
 		return
 	}
 	diagnostic.ErrorCode = string(llm.FailureUnknown)
@@ -444,6 +444,16 @@ func finishReasonOrUnknown(reason string) string {
 func protoFloat64Zero() *float64 {
 	zero := 0.0
 	return &zero
+}
+
+// OutputTokenBudget resolves the output budget one analysis runs with: the
+// provider profile's resolved value, or the server default for a config built by
+// hand (tests, an older caller). Diagnostics report the actual value sent.
+func OutputTokenBudget(config llm.ResolvedConfig) int {
+	if config.MaxOutputTokens > 0 {
+		return config.MaxOutputTokens
+	}
+	return llm.DefaultMaxOutputTokens
 }
 
 // ProviderFacts returns the provider/model/prompt-version facts a suggestion or

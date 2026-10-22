@@ -3,6 +3,7 @@ package v1
 import (
 	"testing"
 
+	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
 
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -20,6 +21,39 @@ func TestBuildLLMProfileUpdateWithAnEmptyMaskIsPartial(t *testing.T) {
 	require.Nil(t, update.Models, "an omitted model list must be left alone")
 	require.Nil(t, update.BaseURL)
 	require.Nil(t, update.APIKey)
+}
+
+// The output budget is a profile field: an explicit mask writes it (including zero,
+// which clears it back to the default) and the store patch carries it.
+func TestBuildLLMProfileUpdateCarriesTheOutputBudget(t *testing.T) {
+	t.Parallel()
+
+	update, err := buildLLMProfileUpdate(&v1pb.LlmProviderProfile{MaxOutputTokens: 4096}, []string{"max_output_tokens"})
+	require.NoError(t, err)
+	require.NotNil(t, update.MaxOutputTokens)
+	require.Equal(t, int32(4096), *update.MaxOutputTokens)
+
+	// Explicit zero clears the field; the mask must not be ignored.
+	update, err = buildLLMProfileUpdate(&v1pb.LlmProviderProfile{}, []string{"max_output_tokens"})
+	require.NoError(t, err)
+	require.NotNil(t, update.MaxOutputTokens)
+	require.Zero(t, *update.MaxOutputTokens)
+
+	// An empty mask writes a populated value and leaves an unset one alone.
+	update, err = buildLLMProfileUpdate(&v1pb.LlmProviderProfile{MaxOutputTokens: 8192}, nil)
+	require.NoError(t, err)
+	require.NotNil(t, update.MaxOutputTokens)
+	require.Equal(t, int32(8192), *update.MaxOutputTokens)
+
+	update, err = buildLLMProfileUpdate(&v1pb.LlmProviderProfile{Title: "renamed"}, nil)
+	require.NoError(t, err)
+	require.Nil(t, update.MaxOutputTokens)
+
+	// A value outside the supported range is refused for either path.
+	for _, mask := range [][]string{{"max_output_tokens"}, nil} {
+		_, err := buildLLMProfileUpdate(&v1pb.LlmProviderProfile{MaxOutputTokens: 100}, mask)
+		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	}
 }
 
 func TestBuildLLMProfileUpdateWithAMask(t *testing.T) {

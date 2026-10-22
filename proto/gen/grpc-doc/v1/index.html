@@ -1105,6 +1105,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.GetQualityLLMUsageRequest"><span class="badge">M</span>GetQualityLLMUsageRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.GetQualityOverviewRequest"><span class="badge">M</span>GetQualityOverviewRequest</a>
                 </li>
               
@@ -1234,6 +1238,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualityLLMDiagnostic"><span class="badge">M</span>QualityLLMDiagnostic</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityLLMUsage"><span class="badge">M</span>QualityLLMUsage</a>
                 </li>
               
                 <li>
@@ -13088,6 +13096,30 @@ The fail threshold defaults to zero. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.GetQualityLLMUsageRequest">GetQualityLLMUsageRequest</h3>
+        <p>QualityOverview is the workspace-level summary the overview page renders. It</p><p>aggregates the tables instead of listing rows, so the page costs a handful of</p><p>queries rather than paging through every result.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.GetQualityOverviewRequest">GetQualityOverviewRequest</h3>
         <p></p>
 
@@ -14931,8 +14963,74 @@ TIMEOUT, PARSE, UNKNOWN. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.QualityLLMUsage">QualityLLMUsage</h3>
+        <p>QualityLLMUsage is one process's view of the data quality LLM budget: today's</p><p>counters, the effective limits from the workspace settings, and the in-flight</p><p>analyses. A restart resets the counters.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>daily_analysis_used</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>daily_analysis_limit</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>daily_column_analysis_used</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>daily_column_analysis_limit</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>in_flight</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>concurrency_limit</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>resets_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p>When the daily counters roll over (the next 00:00 UTC). </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.QualityOverview">QualityOverview</h3>
-        <p>QualityOverview is the workspace-level summary the overview page renders. It</p><p>aggregates the tables instead of listing rows, so the page costs a handful of</p><p>queries rather than paging through every result.</p>
+        <p></p>
 
         
           <table class="field-table">
@@ -18532,6 +18630,15 @@ directly, the way it does for ExplainSQL.</p></td>
 the last day went, and the per-day tallies the overview chart draws.</p></td>
               </tr>
             
+              <tr>
+                <td>GetQualityLLMUsage</td>
+                <td><a href="#metaxisdata.v1.GetQualityLLMUsageRequest">GetQualityLLMUsageRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityLLMUsage">QualityLLMUsage</a></td>
+                <td><p>Read today&#39;s data quality LLM usage and the effective limits (the workspace
+settings, with server defaults resolved). The counters are process state: a
+restart resets them and they roll over at 00:00 UTC.</p></td>
+              </tr>
+            
           </tbody>
         </table>
 
@@ -18836,6 +18943,16 @@ the last day went, and the per-day tallies the overview chart draws.</p></td>
                 <td>GetQualityOverview</td>
                 <td>GET</td>
                 <td>/v1/{parent=workspaces/*}/qualityOverview</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetQualityLLMUsage</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/qualityLLMUsage</td>
                 <td></td>
               </tr>
               
@@ -22355,6 +22472,21 @@ GetLineage.</p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>max_output_tokens</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The answer budget one analysis requests from this profile, in output tokens.
+Zero means the server default (32768); an explicit value must be 256-131072.
+The provider or model may cap lower: the first request that exceeds it is
+retried once at 4096 tokens, and a still-rejected request is reported on the
+failed analysis as PROVIDER_STATUS.
+
+An update with an empty field mask writes this field only when it is non-zero
+(proto3 cannot distinguish an omitted int32 from an explicit zero); send an
+explicit `max_output_tokens` mask to reset it to the server default. </p></td>
                 </tr>
               
             </tbody>
@@ -26319,6 +26451,22 @@ default (50). </p></td>
                   <td></td>
                   <td><p>Whether raw sample values may be sent to the LLM. Off by default: only
 aggregate profiles leave the deployment. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>daily_llm_analysis_limit</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The workspace&#39;s daily L1&#43;L2 LLM analysis ceiling (rule drafts and failure
+explanations). Zero means the server default (10000); capped at 1000000. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>llm_concurrency_limit</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many data quality LLM analyses may run at once in this process. Zero
+means the server default (8); accepted range 1-64. </p></td>
                 </tr>
               
             </tbody>

@@ -28,15 +28,40 @@ func (f *fakeProfileStore) ListLLMProfiles(_ context.Context, find *store.FindLL
 }
 
 func profileWithModel(name, model string, enabled bool) *store.LLMProfileMessage {
+	return profileWithModelAndBudget(name, model, enabled, 0)
+}
+
+func profileWithModelAndBudget(name, model string, enabled bool, maxOutputTokens int32) *store.LLMProfileMessage {
 	return &store.LLMProfileMessage{
 		Metadata: &storepb.LlmProviderProfile{
-			Name:  name,
-			Title: name,
+			Name:            name,
+			Title:           name,
+			MaxOutputTokens: maxOutputTokens,
 			Models: []*storepb.LlmProviderModel{
 				{Name: model, Enabled: enabled},
 			},
 		},
 	}
+}
+
+// The resolved config carries the profile's output budget: zero resolves to the
+// server default and an explicit value is kept.
+func TestRegistryResolvesTheProfileOutputBudget(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeProfileStore{pages: map[int][]*store.LLMProfileMessage{
+		0: {
+			profileWithModelAndBudget("default-budget", "m1", true, 0),
+			profileWithModelAndBudget("explicit-budget", "m2", true, 4096),
+		},
+	}}
+	registry := &Registry{store: fake}
+
+	configs, err := registry.ListEnabled(context.Background())
+	require.NoError(t, err)
+	require.Len(t, configs, 2)
+	require.Equal(t, DefaultMaxOutputTokens, configs[0].MaxOutputTokens)
+	require.Equal(t, 4096, configs[1].MaxOutputTokens)
 }
 
 func TestRegistryListEnabledCachesUntilInvalidated(t *testing.T) {

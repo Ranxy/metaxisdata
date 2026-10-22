@@ -3,11 +3,14 @@ import { DurationSchema } from "@bufbuild/protobuf/wkt";
 import { describe, expect, it } from "vitest";
 import { DataQualitySettingSchema } from "@/types/proto-es/v1/setting_service_pb";
 import {
+  DAILY_LLM_ANALYSIS_LIMIT_MAX,
   type DataQualitySettingsForm,
   FAILURE_SAMPLE_LIMIT_MAX,
   formToSetting,
+  LLM_CONCURRENCY_LIMIT_MAX,
   llmDisabled,
   MAX_COLUMNS_PER_ANALYSIS_MAX,
+  MAX_DAILY_COLUMN_ANALYSIS_LIMIT,
   SETTINGS_VALIDATION_PREFIX,
   settingsToForm,
   validateSettingsForm,
@@ -24,6 +27,8 @@ function baseForm(
     defaultSchedule: { value: "1", unit: "hours" },
     dailyExecutionLimit: "",
     dailyColumnAnalysisLimit: "",
+    dailyLlmAnalysisLimit: "",
+    llmConcurrencyLimit: "",
     maxColumnsPerAnalysis: "",
     sendSampleValuesToLlm: false,
     ...overrides,
@@ -48,6 +53,8 @@ describe("settingsToForm", () => {
         }),
         dailyExecutionLimit: 10000,
         dailyColumnAnalysisLimit: 0,
+        dailyLlmAnalysisLimit: 5000,
+        llmConcurrencyLimit: 12,
         maxColumnsPerAnalysis: 50,
         sendSampleValuesToLlm: true,
       })
@@ -60,6 +67,8 @@ describe("settingsToForm", () => {
       defaultSchedule: { value: "15", unit: "minutes" },
       dailyExecutionLimit: "10000",
       dailyColumnAnalysisLimit: "",
+      dailyLlmAnalysisLimit: "5000",
+      llmConcurrencyLimit: "12",
       maxColumnsPerAnalysis: "50",
       sendSampleValuesToLlm: true,
     });
@@ -79,6 +88,8 @@ describe("formToSetting", () => {
       }),
       dailyExecutionLimit: 10000,
       dailyColumnAnalysisLimit: 500,
+      dailyLlmAnalysisLimit: 5000,
+      llmConcurrencyLimit: 12,
       maxColumnsPerAnalysis: 50,
       sendSampleValuesToLlm: true,
     });
@@ -92,6 +103,8 @@ describe("formToSetting", () => {
         failureSampleLimit: "",
         dailyExecutionLimit: "",
         dailyColumnAnalysisLimit: "",
+        dailyLlmAnalysisLimit: "",
+        llmConcurrencyLimit: "",
         maxColumnsPerAnalysis: "",
       })
     );
@@ -99,6 +112,8 @@ describe("formToSetting", () => {
     expect(setting.failureSampleLimit).toBe(0);
     expect(setting.dailyExecutionLimit).toBe(0);
     expect(setting.dailyColumnAnalysisLimit).toBe(0);
+    expect(setting.dailyLlmAnalysisLimit).toBe(0);
+    expect(setting.llmConcurrencyLimit).toBe(0);
     expect(setting.maxColumnsPerAnalysis).toBe(0);
     expect(setting.defaultScheduleInterval?.seconds).toBe(3_600n);
   });
@@ -125,7 +140,9 @@ describe("validateSettingsForm", () => {
           failureSampleLimit: String(FAILURE_SAMPLE_LIMIT_MAX),
           maxColumnsPerAnalysis: String(MAX_COLUMNS_PER_ANALYSIS_MAX),
           dailyExecutionLimit: "0",
-          dailyColumnAnalysisLimit: "100",
+          dailyColumnAnalysisLimit: String(MAX_DAILY_COLUMN_ANALYSIS_LIMIT),
+          dailyLlmAnalysisLimit: String(DAILY_LLM_ANALYSIS_LIMIT_MAX),
+          llmConcurrencyLimit: String(LLM_CONCURRENCY_LIMIT_MAX),
           defaultSchedule: { value: "7", unit: "days" },
         })
       )
@@ -143,6 +160,22 @@ describe("validateSettingsForm", () => {
       [{ failureSampleLimit: "many" }, "failureSampleLimitInvalid"],
       [{ dailyExecutionLimit: "-2" }, "dailyExecutionLimitInvalid"],
       [{ dailyColumnAnalysisLimit: "x" }, "dailyColumnAnalysisLimitInvalid"],
+      [
+        {
+          dailyColumnAnalysisLimit: String(MAX_DAILY_COLUMN_ANALYSIS_LIMIT + 1),
+        },
+        "dailyColumnAnalysisLimitInvalid",
+      ],
+      [
+        { dailyLlmAnalysisLimit: String(DAILY_LLM_ANALYSIS_LIMIT_MAX + 1) },
+        "dailyLlmAnalysisLimitInvalid",
+      ],
+      [{ dailyLlmAnalysisLimit: "1.5" }, "dailyLlmAnalysisLimitInvalid"],
+      [
+        { llmConcurrencyLimit: String(LLM_CONCURRENCY_LIMIT_MAX + 1) },
+        "llmConcurrencyLimitInvalid",
+      ],
+      [{ llmConcurrencyLimit: "-1" }, "llmConcurrencyLimitInvalid"],
       [
         { maxColumnsPerAnalysis: String(MAX_COLUMNS_PER_ANALYSIS_MAX + 1) },
         "maxColumnsPerAnalysisInvalid",
@@ -168,6 +201,46 @@ describe("validateSettingsForm", () => {
         )
       ).toContain(`${SETTINGS_VALIDATION_PREFIX}scheduleInvalid`);
     }
+  });
+
+  it("treats zero and exactly the maximum as valid daily column analyses", () => {
+    expect(
+      validateSettingsForm(baseForm({ dailyColumnAnalysisLimit: "0" }))
+    ).toEqual([]);
+    expect(
+      validateSettingsForm(
+        baseForm({
+          dailyColumnAnalysisLimit: String(MAX_DAILY_COLUMN_ANALYSIS_LIMIT),
+        })
+      )
+    ).toEqual([]);
+    const issue = validateSettingsForm(
+      baseForm({
+        dailyColumnAnalysisLimit: String(MAX_DAILY_COLUMN_ANALYSIS_LIMIT + 1),
+      })
+    ).find(
+      (candidate) =>
+        candidate.key ===
+        `${SETTINGS_VALIDATION_PREFIX}dailyColumnAnalysisLimitInvalid`
+    );
+    expect(issue?.params).toEqual({ max: MAX_DAILY_COLUMN_ANALYSIS_LIMIT });
+  });
+
+  it("checks both new LLM limits", () => {
+    const daily = validateSettingsForm(
+      baseForm({
+        dailyLlmAnalysisLimit: String(DAILY_LLM_ANALYSIS_LIMIT_MAX + 1),
+      })
+    ).find(
+      (candidate) =>
+        candidate.key ===
+        `${SETTINGS_VALIDATION_PREFIX}dailyLlmAnalysisLimitInvalid`
+    );
+    expect(daily?.params).toEqual({ max: DAILY_LLM_ANALYSIS_LIMIT_MAX });
+    const concurrency = validateSettingsForm(
+      baseForm({ llmConcurrencyLimit: "0" })
+    );
+    expect(concurrency).toEqual([]);
   });
 
   it("carries the limit in the message parameters", () => {

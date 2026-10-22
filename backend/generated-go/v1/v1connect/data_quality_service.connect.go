@@ -124,6 +124,9 @@ const (
 	// DataQualityServiceGetQualityOverviewProcedure is the fully-qualified name of the
 	// DataQualityService's GetQualityOverview RPC.
 	DataQualityServiceGetQualityOverviewProcedure = "/metaxisdata.v1.DataQualityService/GetQualityOverview"
+	// DataQualityServiceGetQualityLLMUsageProcedure is the fully-qualified name of the
+	// DataQualityService's GetQualityLLMUsage RPC.
+	DataQualityServiceGetQualityLLMUsageProcedure = "/metaxisdata.v1.DataQualityService/GetQualityLLMUsage"
 )
 
 // DataQualityServiceClient is a client for the metaxisdata.v1.DataQualityService service.
@@ -217,6 +220,10 @@ type DataQualityServiceClient interface {
 	// Read the workspace's quality summary: how many rules and issues exist, how
 	// the last day went, and the per-day tallies the overview chart draws.
 	GetQualityOverview(context.Context, *connect.Request[v1.GetQualityOverviewRequest]) (*connect.Response[v1.QualityOverview], error)
+	// Read today's data quality LLM usage and the effective limits (the workspace
+	// settings, with server defaults resolved). The counters are process state: a
+	// restart resets them and they roll over at 00:00 UTC.
+	GetQualityLLMUsage(context.Context, *connect.Request[v1.GetQualityLLMUsageRequest]) (*connect.Response[v1.QualityLLMUsage], error)
 }
 
 // NewDataQualityServiceClient constructs a client for the metaxisdata.v1.DataQualityService
@@ -410,6 +417,12 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityOverview")),
 			connect.WithClientOptions(opts...),
 		),
+		getQualityLLMUsage: connect.NewClient[v1.GetQualityLLMUsageRequest, v1.QualityLLMUsage](
+			httpClient,
+			baseURL+DataQualityServiceGetQualityLLMUsageProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityLLMUsage")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -445,6 +458,7 @@ type dataQualityServiceClient struct {
 	suggestColumnLabels                *connect.Client[v1.SuggestColumnLabelsRequest, v1.SuggestColumnLabelsResponse]
 	explainQualityExecution            *connect.Client[v1.ExplainQualityExecutionRequest, v1.ExplainQualityExecutionResponse]
 	getQualityOverview                 *connect.Client[v1.GetQualityOverviewRequest, v1.QualityOverview]
+	getQualityLLMUsage                 *connect.Client[v1.GetQualityLLMUsageRequest, v1.QualityLLMUsage]
 }
 
 // ListQualityRules calls metaxisdata.v1.DataQualityService.ListQualityRules.
@@ -599,6 +613,11 @@ func (c *dataQualityServiceClient) GetQualityOverview(ctx context.Context, req *
 	return c.getQualityOverview.CallUnary(ctx, req)
 }
 
+// GetQualityLLMUsage calls metaxisdata.v1.DataQualityService.GetQualityLLMUsage.
+func (c *dataQualityServiceClient) GetQualityLLMUsage(ctx context.Context, req *connect.Request[v1.GetQualityLLMUsageRequest]) (*connect.Response[v1.QualityLLMUsage], error) {
+	return c.getQualityLLMUsage.CallUnary(ctx, req)
+}
+
 // DataQualityServiceHandler is an implementation of the metaxisdata.v1.DataQualityService service.
 type DataQualityServiceHandler interface {
 	// List rules, newest first.
@@ -690,6 +709,10 @@ type DataQualityServiceHandler interface {
 	// Read the workspace's quality summary: how many rules and issues exist, how
 	// the last day went, and the per-day tallies the overview chart draws.
 	GetQualityOverview(context.Context, *connect.Request[v1.GetQualityOverviewRequest]) (*connect.Response[v1.QualityOverview], error)
+	// Read today's data quality LLM usage and the effective limits (the workspace
+	// settings, with server defaults resolved). The counters are process state: a
+	// restart resets them and they roll over at 00:00 UTC.
+	GetQualityLLMUsage(context.Context, *connect.Request[v1.GetQualityLLMUsageRequest]) (*connect.Response[v1.QualityLLMUsage], error)
 }
 
 // NewDataQualityServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -879,6 +902,12 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityOverview")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataQualityServiceGetQualityLLMUsageHandler := connect.NewUnaryHandler(
+		DataQualityServiceGetQualityLLMUsageProcedure,
+		svc.GetQualityLLMUsage,
+		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityLLMUsage")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/metaxisdata.v1.DataQualityService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DataQualityServiceListQualityRulesProcedure:
@@ -941,6 +970,8 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceExplainQualityExecutionHandler.ServeHTTP(w, r)
 		case DataQualityServiceGetQualityOverviewProcedure:
 			dataQualityServiceGetQualityOverviewHandler.ServeHTTP(w, r)
+		case DataQualityServiceGetQualityLLMUsageProcedure:
+			dataQualityServiceGetQualityLLMUsageHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1068,4 +1099,8 @@ func (UnimplementedDataQualityServiceHandler) ExplainQualityExecution(context.Co
 
 func (UnimplementedDataQualityServiceHandler) GetQualityOverview(context.Context, *connect.Request[v1.GetQualityOverviewRequest]) (*connect.Response[v1.QualityOverview], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityOverview is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) GetQualityLLMUsage(context.Context, *connect.Request[v1.GetQualityLLMUsageRequest]) (*connect.Response[v1.QualityLLMUsage], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityLLMUsage is not implemented"))
 }

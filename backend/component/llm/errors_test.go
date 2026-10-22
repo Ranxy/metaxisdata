@@ -184,6 +184,7 @@ func TestAgentLoopClassifiesAProviderRequestFailure(t *testing.T) {
 	}
 	responseErr := requireResponseError(t, callErr)
 	require.Equal(t, FailureProviderRequest, responseErr.Code)
+	require.Zero(t, responseErr.OutputTokens, "no request reached the provider, so no budget was attempted")
 }
 
 // The sentinel the size-limited reader returns still unwraps through the

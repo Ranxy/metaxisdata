@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -58,13 +59,13 @@ data: {"choices":[{"delta":{},"finish_reason":"length"}]}
 	require.Error(t, err)
 	require.Equal(t, connect.CodeInternal, connect.CodeOf(err))
 	require.Contains(t, err.Error(), "the model stopped at the output token limit")
-	require.Contains(t, err.Error(), "max_tokens=8192")
+	require.Contains(t, err.Error(), "max_tokens=32768")
 	require.Contains(t, err.Error(), "narrower intent")
 
 	require.NotNil(t, diagnostic)
 	require.Equal(t, string(llm.FailureTruncated), diagnostic.GetErrorCode())
 	require.Equal(t, "length", diagnostic.GetFinishReason())
-	require.Equal(t, int32(MaxLLMOutputTokens), diagnostic.GetMaxOutputTokens())
+	require.Equal(t, int32(llm.DefaultMaxOutputTokens), diagnostic.GetMaxOutputTokens())
 	require.NotEmpty(t, diagnostic.GetCorrelationId())
 	require.Equal(t, "profiles/test", diagnostic.GetProvider())
 	require.Equal(t, "test-model", diagnostic.GetModel())
@@ -84,7 +85,7 @@ data: [DONE]
 `)
 	suggester := NewSuggester(nil, nil, nil, nil)
 	text, usage, diagnostic, err := suggester.JSONCompletion(context.Background(), diagnosticConfig(server),
-		LLMFeatureRuleDraft, RuleDraftPromptVersion, "sys", "user", MaxLLMOutputTokens)
+		LLMFeatureRuleDraft, RuleDraftPromptVersion, "sys", "user", llm.DefaultMaxOutputTokens)
 
 	require.NoError(t, err)
 	require.Equal(t, `{"suggestions":[]}`, text)
@@ -97,6 +98,81 @@ data: [DONE]
 	require.Empty(t, diagnostic.GetFinishReason())
 	require.NotEmpty(t, diagnostic.GetCorrelationId())
 	require.False(t, diagnostic.GetDebugCaptured())
+}
+
+// budgetProvider answers a status sequence first (the last repeats) and then a
+// fixed SSE body. It lets a test drive the smaller-budget retry without reaching
+// the llm package's test helpers.
+func budgetProvider(t *testing.T, statuses []int, sseBody string) *httptest.Server {
+	t.Helper()
+	var (
+		mu       sync.Mutex
+		requests int
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		requests++
+		status := statuses[min(requests-1, len(statuses)-1)]
+		mu.Unlock()
+		if status != http.StatusOK {
+			http.Error(w, "the output budget is too large", status)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, sseBody)
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+// A failure after the smaller-budget retry reports the budget the final attempt
+// actually sent, not the configured one; a call without a retry keeps the
+// configured budget.
+func TestJSONCompletionDiagnosticReportsTheAttemptedBudget(t *testing.T) {
+	t.Parallel()
+
+	lengthBody := `data: {"choices":[{"delta":{},"finish_reason":"length"}]}
+`
+	configured := diagnosticConfig(budgetProvider(t, []int{http.StatusBadRequest, http.StatusBadRequest}, lengthBody))
+	configured.MaxOutputTokens = 32768
+	suggester := NewSuggester(nil, nil, nil, nil)
+	_, _, diagnostic, err := suggester.JSONCompletion(context.Background(), configured,
+		LLMFeatureRuleDraft, RuleDraftPromptVersion, "sys", "user", 32768)
+	require.Error(t, err)
+	require.Equal(t, string(llm.FailureProviderStatus), diagnostic.GetErrorCode())
+	require.Equal(t, int32(4096), diagnostic.GetMaxOutputTokens(),
+		"the final attempt was sent with the fallback budget")
+
+	// A truncation after the retry reports the retried budget as well.
+	retried := diagnosticConfig(budgetProvider(t, []int{http.StatusBadRequest, http.StatusOK}, lengthBody))
+	retried.MaxOutputTokens = 32768
+	_, _, diagnostic, err = suggester.JSONCompletion(context.Background(), retried,
+		LLMFeatureRuleDraft, RuleDraftPromptVersion, "sys", "user", 32768)
+	require.Error(t, err)
+	require.Equal(t, string(llm.FailureTruncated), diagnostic.GetErrorCode())
+	require.Equal(t, int32(4096), diagnostic.GetMaxOutputTokens())
+
+	// Without a retry the configured budget is the one that was sent.
+	untried := diagnosticConfig(budgetProvider(t, []int{http.StatusOK}, lengthBody))
+	untried.MaxOutputTokens = 8192
+	_, _, diagnostic, err = suggester.JSONCompletion(context.Background(), untried,
+		LLMFeatureRuleDraft, RuleDraftPromptVersion, "sys", "user", 8192)
+	require.Error(t, err)
+	require.Equal(t, string(llm.FailureTruncated), diagnostic.GetErrorCode())
+	require.Equal(t, int32(8192), diagnostic.GetMaxOutputTokens())
+}
+
+// The classifier only overwrites the budget when the error knows the attempt.
+func TestClassifyLLMDiagnosticUsesTheAttemptedBudget(t *testing.T) {
+	t.Parallel()
+
+	diagnostic := &storepb.QualityLLMDiagnostic{MaxOutputTokens: 32768}
+	classifyLLMDiagnostic(diagnostic, &llm.ResponseError{Code: llm.FailureTruncated, OutputTokens: 4096})
+	require.Equal(t, int32(4096), diagnostic.GetMaxOutputTokens())
+
+	untouched := &storepb.QualityLLMDiagnostic{MaxOutputTokens: 32768}
+	classifyLLMDiagnostic(untouched, &llm.ResponseError{Code: llm.FailureProviderRequest})
+	require.Equal(t, int32(32768), untouched.GetMaxOutputTokens(), "a transport failure attempted no budget")
 }
 
 // A provider failure that is not a response error still gets a classifier.

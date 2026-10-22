@@ -243,6 +243,7 @@
     - [FreshnessConfig](#metaxisdata-v1-FreshnessConfig)
     - [GetQualityExecutionRequest](#metaxisdata-v1-GetQualityExecutionRequest)
     - [GetQualityIssueRequest](#metaxisdata-v1-GetQualityIssueRequest)
+    - [GetQualityLLMUsageRequest](#metaxisdata-v1-GetQualityLLMUsageRequest)
     - [GetQualityOverviewRequest](#metaxisdata-v1-GetQualityOverviewRequest)
     - [GetQualityRuleRequest](#metaxisdata-v1-GetQualityRuleRequest)
     - [GetQualitySuggestionJobRequest](#metaxisdata-v1-GetQualitySuggestionJobRequest)
@@ -276,6 +277,7 @@
     - [QualityFilterClause](#metaxisdata-v1-QualityFilterClause)
     - [QualityIssue](#metaxisdata-v1-QualityIssue)
     - [QualityLLMDiagnostic](#metaxisdata-v1-QualityLLMDiagnostic)
+    - [QualityLLMUsage](#metaxisdata-v1-QualityLLMUsage)
     - [QualityOverview](#metaxisdata-v1-QualityOverview)
     - [QualityRule](#metaxisdata-v1-QualityRule)
     - [QualityRuleConfig](#metaxisdata-v1-QualityRuleConfig)
@@ -4440,6 +4442,23 @@ timestamp follows on_empty.
 
 
 
+<a name="metaxisdata-v1-GetQualityLLMUsageRequest"></a>
+
+### GetQualityLLMUsageRequest
+QualityOverview is the workspace-level summary the overview page renders. It
+aggregates the tables instead of listing rows, so the page costs a handful of
+queries rather than paging through every result.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetQualityOverviewRequest"></a>
 
 ### GetQualityOverviewRequest
@@ -5093,12 +5112,33 @@ mode captured them (see GetQualitySuggestionJobTargetDebug).
 
 
 
+<a name="metaxisdata-v1-QualityLLMUsage"></a>
+
+### QualityLLMUsage
+QualityLLMUsage is one process&#39;s view of the data quality LLM budget: today&#39;s
+counters, the effective limits from the workspace settings, and the in-flight
+analyses. A restart resets the counters.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| daily_analysis_used | [int32](#int32) |  |  |
+| daily_analysis_limit | [int32](#int32) |  |  |
+| daily_column_analysis_used | [int32](#int32) |  |  |
+| daily_column_analysis_limit | [int32](#int32) |  |  |
+| in_flight | [int32](#int32) |  |  |
+| concurrency_limit | [int32](#int32) |  |  |
+| resets_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When the daily counters roll over (the next 00:00 UTC). |
+
+
+
+
+
+
 <a name="metaxisdata-v1-QualityOverview"></a>
 
 ### QualityOverview
-QualityOverview is the workspace-level summary the overview page renders. It
-aggregates the tables instead of listing rows, so the page costs a handful of
-queries rather than paging through every result.
+
 
 
 | Field | Type | Label | Description |
@@ -6311,6 +6351,7 @@ not exposed as a resource.
 
 No (google.api.http) annotation: this is a server-streaming method, and the REST gateway cannot carry one. The browser reaches the Connect endpoint directly, the way it does for ExplainSQL. |
 | GetQualityOverview | [GetQualityOverviewRequest](#metaxisdata-v1-GetQualityOverviewRequest) | [QualityOverview](#metaxisdata-v1-QualityOverview) | Read the workspace&#39;s quality summary: how many rules and issues exist, how the last day went, and the per-day tallies the overview chart draws. |
+| GetQualityLLMUsage | [GetQualityLLMUsageRequest](#metaxisdata-v1-GetQualityLLMUsageRequest) | [QualityLLMUsage](#metaxisdata-v1-QualityLLMUsage) | Read today&#39;s data quality LLM usage and the effective limits (the workspace settings, with server defaults resolved). The counters are process state: a restart resets them and they roll over at 00:00 UTC. |
 
  
 
@@ -7733,6 +7774,9 @@ usually the SQL naming something the analyzer cannot see.
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | masked_api_key | [string](#string) |  |  |
+| max_output_tokens | [int32](#int32) |  | The answer budget one analysis requests from this profile, in output tokens. Zero means the server default (32768); an explicit value must be 256-131072. The provider or model may cap lower: the first request that exceeds it is retried once at 4096 tokens, and a still-rejected request is reported on the failed analysis as PROVIDER_STATUS.
+
+An update with an empty field mask writes this field only when it is non-zero (proto3 cannot distinguish an omitted int32 from an explicit zero); send an explicit `max_output_tokens` mask to reset it to the server default. |
 
 
 
@@ -9122,6 +9166,8 @@ DataQualitySetting configures the data quality subsystem for the workspace.
 | daily_column_analysis_limit | [int32](#int32) |  | The workspace&#39;s daily column-analysis ceiling; 0 means the server default. |
 | max_columns_per_analysis | [int32](#int32) |  | The maximum number of columns one analysis may cover; 0 means the server default (50). |
 | send_sample_values_to_llm | [bool](#bool) |  | Whether raw sample values may be sent to the LLM. Off by default: only aggregate profiles leave the deployment. |
+| daily_llm_analysis_limit | [int32](#int32) |  | The workspace&#39;s daily L1&#43;L2 LLM analysis ceiling (rule drafts and failure explanations). Zero means the server default (10000); capped at 1000000. |
+| llm_concurrency_limit | [int32](#int32) |  | How many data quality LLM analyses may run at once in this process. Zero means the server default (8); accepted range 1-64. |
 
 
 

@@ -155,6 +155,20 @@
             />
           </div>
 
+          <!-- Max output tokens -->
+          <div class="space-y-2">
+            <Label for="llm-provider-max-output-tokens">
+              {{ t("llmProvider.maxOutputTokens") }}
+            </Label>
+            <FormField
+              id="llm-provider-max-output-tokens"
+              v-model="formData.maxOutputTokens"
+              type="number"
+              :hint="t('llmProvider.maxOutputTokensHint')"
+              :error="maxOutputTokensError"
+            />
+          </div>
+
           <Separator />
 
           <!-- Models section -->
@@ -349,6 +363,8 @@ const formData = reactive({
   title: "",
   baseUrl: "",
   apiKey: "",
+  /** Output-token budget; blank or 0 means the server default (32,768). */
+  maxOutputTokens: "",
   enabledModels: [] as string[],
 });
 
@@ -387,8 +403,44 @@ const filteredModels = computed(() => {
   return availableModels.value.filter((m) => m.toLowerCase().includes(q));
 });
 
+/** The server's accepted output budget: 0 means its default, 32,768. */
+const MIN_MAX_OUTPUT_TOKENS = 256;
+const MAX_MAX_OUTPUT_TOKENS = 131_072;
+
+/** The form's output budget as the request value, or undefined when invalid. */
+function parsedMaxOutputTokens(): number | undefined {
+  const text = formData.maxOutputTokens.trim();
+  if (text === "") {
+    return 0;
+  }
+  const parsed = Number(text);
+  if (!Number.isInteger(parsed)) {
+    return undefined;
+  }
+  if (parsed === 0) {
+    return 0;
+  }
+  return parsed >= MIN_MAX_OUTPUT_TOKENS && parsed <= MAX_MAX_OUTPUT_TOKENS
+    ? parsed
+    : undefined;
+}
+
+const maxOutputTokensError = computed(() => {
+  if (formData.maxOutputTokens.trim() === "") {
+    return "";
+  }
+  return parsedMaxOutputTokens() === undefined
+    ? t("llmProvider.maxOutputTokensInvalid", {
+        min: MIN_MAX_OUTPUT_TOKENS,
+        max: MAX_MAX_OUTPUT_TOKENS,
+      })
+    : "";
+});
+
 const canSave = computed(
-  () => formData.providerType !== LLMProviderType.LLM_PROVIDER_TYPE_UNSPECIFIED
+  () =>
+    formData.providerType !== LLMProviderType.LLM_PROVIDER_TYPE_UNSPECIFIED &&
+    parsedMaxOutputTokens() !== undefined
 );
 
 const autoTitlePreview = computed(() => {
@@ -462,6 +514,8 @@ function editProfile(p: LlmProviderProfile) {
   formData.title = p.title;
   formData.baseUrl = p.baseUrl;
   formData.apiKey = "";
+  formData.maxOutputTokens =
+    p.maxOutputTokens > 0 ? String(p.maxOutputTokens) : "";
   formData.enabledModels = p.models.filter((m) => m.enabled).map((m) => m.name);
   availableModels.value = p.models.map((m) => m.name);
   modelSearch.value = "";
@@ -480,6 +534,7 @@ function startCreate() {
 function resetForm() {
   formData.title = "";
   formData.apiKey = "";
+  formData.maxOutputTokens = "";
   formData.enabledModels = [];
   availableModels.value = [];
   modelSearch.value = "";
@@ -561,13 +616,16 @@ async function saveProfile() {
     apiKey: formData.apiKey,
     models,
     maskedApiKey: "",
+    maxOutputTokens: parsedMaxOutputTokens() ?? 0,
     createTime: undefined,
     updateTime: undefined,
   };
 
   try {
     if (editingProfile.value) {
-      const fields = ["title", "base_url", "models"];
+      // Always name the output budget so clearing it (0) also clears the profile
+      // value instead of leaving the previous cap in place.
+      const fields = ["title", "base_url", "models", "max_output_tokens"];
       if (formData.apiKey) fields.push("api_key");
       await updateProfile(payload, fields);
       showSuccess("llmProvider.updated");

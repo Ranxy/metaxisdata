@@ -15,6 +15,7 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
@@ -1937,4 +1938,109 @@ func TestDataQualitySuggestionJobRunnerConfigFailureRealServerIntegration(t *tes
 	require.Len(t, failed.GetTargets(), 1)
 	require.Equal(t, v1pb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_SKIPPED,
 		failed.GetTargets()[0].GetState(), "a target the runner never asked is skipped, not left pending")
+}
+
+// TestDataQualityLLMLimitsRealServerIntegration exercises the configurable LLM
+// limits end to end: a provider profile's output budget round-trips through the
+// LLM API, the two data-quality limits are writable through the settings API, and
+// the usage RPC reports the effective limits. It does not run in parallel: it
+// changes workspace-wide settings, which other scenarios assert are at their
+// defaults, and restores them before returning.
+func TestDataQualityLLMLimitsRealServerIntegration(t *testing.T) {
+	fixture := setupQualityMySQLFixture(t, false)
+	token := fixture.env.AdminToken()
+	ctx := fixture.ctx
+	llmClient := v1connect.NewLLMServiceClient(&http.Client{Timeout: 30 * time.Second}, fixture.env.BaseURL)
+
+	// A workspace that never saved LLM limits reports the server defaults.
+	defaults, err := fixture.dataQuality.GetQualityLLMUsage(ctx, withToken(token, &v1pb.GetQualityLLMUsageRequest{
+		Parent: "workspaces/-",
+	}))
+	require.NoError(t, err)
+	require.Equal(t, int32(dataquality.DefaultDailyLLMAnalysisLimit), defaults.Msg.GetDailyAnalysisLimit())
+	require.Equal(t, int32(dataquality.DefaultDailyColumnAnalysisLimit), defaults.Msg.GetDailyColumnAnalysisLimit())
+	require.Equal(t, int32(dataquality.DefaultLLMConcurrencyLimit), defaults.Msg.GetConcurrencyLimit())
+	require.Zero(t, defaults.Msg.GetInFlight())
+	require.NotNil(t, defaults.Msg.GetResetsAt())
+	require.Equal(t, 0, defaults.Msg.GetResetsAt().AsTime().UTC().Hour(), "the reset is 00:00 UTC")
+	require.True(t, defaults.Msg.GetResetsAt().AsTime().After(time.Now()))
+
+	// The provider profile owns the output budget; zero clears it back to the
+	// server default.
+	created, err := llmClient.CreateLLMProviderProfile(ctx, withToken(token, &v1pb.CreateLLMProviderProfileRequest{
+		Profile: &v1pb.LlmProviderProfile{
+			Title:           "integration limits provider",
+			Type:            v1pb.LLMProviderType_LLM_PROVIDER_TYPE_OPENAI,
+			BaseUrl:         "http://127.0.0.1:1/v1",
+			ApiKey:          "integration-key",
+			MaxOutputTokens: 4096,
+			Models:          []*v1pb.LlmProviderModel{{Name: "integration-model", Enabled: true}},
+		},
+	}))
+	require.NoError(t, err)
+	require.Equal(t, int32(4096), created.Msg.GetMaxOutputTokens())
+	t.Cleanup(func() {
+		_, _ = llmClient.DeleteLLMProviderProfile(context.Background(), withToken(token, &v1pb.DeleteLLMProviderProfileRequest{Name: created.Msg.GetName()}))
+	})
+
+	updated, err := llmClient.UpdateLLMProviderProfile(ctx, withToken(token, &v1pb.UpdateLLMProviderProfileRequest{
+		Profile: &v1pb.LlmProviderProfile{
+			Name:            created.Msg.GetName(),
+			MaxOutputTokens: 8192,
+		},
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"max_output_tokens"}},
+	}))
+	require.NoError(t, err)
+	require.Equal(t, int32(8192), updated.Msg.GetMaxOutputTokens())
+
+	cleared, err := llmClient.UpdateLLMProviderProfile(ctx, withToken(token, &v1pb.UpdateLLMProviderProfileRequest{
+		Profile: &v1pb.LlmProviderProfile{
+			Name:            created.Msg.GetName(),
+			MaxOutputTokens: 0,
+		},
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"max_output_tokens"}},
+	}))
+	require.NoError(t, err)
+	require.Zero(t, cleared.Msg.GetMaxOutputTokens(), "an explicit zero clears the budget to the server default")
+
+	_, err = llmClient.UpdateLLMProviderProfile(ctx, withToken(token, &v1pb.UpdateLLMProviderProfileRequest{
+		Profile: &v1pb.LlmProviderProfile{
+			Name:            created.Msg.GetName(),
+			MaxOutputTokens: 100,
+		},
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"max_output_tokens"}},
+	}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
+	// The daily and concurrency limits are writable and reported back resolved.
+	_, err = fixture.settings.UpdateWorkspaceProfileSetting(ctx, withToken(token, &v1pb.UpdateWorkspaceProfileSettingRequest{
+		Setting: &v1pb.WorkspaceProfileSetting{DataQuality: &v1pb.DataQualitySetting{
+			EnableLlmAnalysis:        false,
+			StoreFailureSamples:      true,
+			FailureSampleLimit:       20,
+			DailyColumnAnalysisLimit: 77,
+			DailyLlmAnalysisLimit:    123,
+			LlmConcurrencyLimit:      4,
+			MaxColumnsPerAnalysis:    50,
+		}},
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"data_quality"}},
+	}))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = fixture.settings.UpdateWorkspaceProfileSetting(context.Background(), withToken(token, &v1pb.UpdateWorkspaceProfileSettingRequest{
+			Setting:    &v1pb.WorkspaceProfileSetting{},
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"data_quality"}},
+		}))
+	})
+
+	custom, err := fixture.dataQuality.GetQualityLLMUsage(ctx, withToken(token, &v1pb.GetQualityLLMUsageRequest{
+		Parent: "workspaces/-",
+	}))
+	require.NoError(t, err)
+	require.Equal(t, int32(123), custom.Msg.GetDailyAnalysisLimit())
+	require.Equal(t, int32(4), custom.Msg.GetConcurrencyLimit())
+	require.Equal(t, int32(77), custom.Msg.GetDailyColumnAnalysisLimit())
+	require.LessOrEqual(t, custom.Msg.GetDailyAnalysisUsed(), custom.Msg.GetDailyAnalysisLimit())
+	require.Zero(t, custom.Msg.GetInFlight())
 }

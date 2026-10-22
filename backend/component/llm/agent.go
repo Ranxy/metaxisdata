@@ -40,6 +40,12 @@ const (
 	// log; the stream itself is bounded by llmMaxResponseBytes.
 	llmDebugBodyLimit = 1 << 20
 
+	// fallbackMaxOutputTokens is the output budget a provider is retried with when
+	// it rejects the configured/default budget as too large. Several models cap
+	// output lower than the 32K server default (gpt-4-turbo accepts 4K) and give
+	// only a 400/422 as the signal; one retry keeps those profiles usable.
+	fallbackMaxOutputTokens = 4096
+
 	// DefaultMaxTurns is how many LLM calls one agent loop may make before it
 	// gives up. Reaching it is an error, never a silent partial answer.
 	DefaultMaxTurns = 6
@@ -351,44 +357,84 @@ func streamRaw(ctx context.Context, cfg AgentConfig, messages []Message) <-chan 
 		}
 		endpoint := strings.TrimRight(cfg.Provider.BaseURL, "/") + "/v1/chat/completions"
 
-		body := chatRequest{
-			Model:          cfg.Provider.ModelName,
-			Messages:       messages,
-			Stream:         true,
-			Temperature:    cfg.Temperature,
-			MaxTokens:      cfg.MaxTokens,
-			ResponseFormat: cfg.ResponseFormat,
+		maxTokens := cfg.MaxTokens
+		if maxTokens <= 0 {
+			maxTokens = cfg.Provider.MaxOutputTokens
 		}
-		if len(cfg.Tools) > 0 {
-			body.Tools = cfg.Tools
-		}
-		// Usage is only reported in the stream when it is requested; the field is
-		// opt-in because not every OpenAI-compatible gateway accepts it.
-		if cfg.IncludeUsage {
-			body.StreamOptions = &streamOptions{IncludeUsage: true}
-		}
-
-		reqBytes, err := json.Marshal(body)
-		if err != nil {
-			sendRaw(ctx, ch, rawStreamChunk{Error: errors.Wrap(err, "marshal request")})
-			return
-		}
-
 		reqCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
-		httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodPost, endpoint, bytes.NewReader(reqBytes))
+		// buildRequest is reused by the one-shot smaller-budget retry below: the
+		// budget is part of the request body, so a retry must rebuild it.
+		buildRequest := func(budget int) ([]byte, *http.Request, error) {
+			body := chatRequest{
+				Model:          cfg.Provider.ModelName,
+				Messages:       messages,
+				Stream:         true,
+				Temperature:    cfg.Temperature,
+				MaxTokens:      budget,
+				ResponseFormat: cfg.ResponseFormat,
+			}
+			if len(cfg.Tools) > 0 {
+				body.Tools = cfg.Tools
+			}
+			// Usage is only reported in the stream when it is requested; the field is
+			// opt-in because not every OpenAI-compatible gateway accepts it.
+			if cfg.IncludeUsage {
+				body.StreamOptions = &streamOptions{IncludeUsage: true}
+			}
+
+			reqBytes, err := json.Marshal(body)
+			if err != nil {
+				return nil, nil, errors.Wrap(err, "marshal request")
+			}
+			httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodPost, endpoint, bytes.NewReader(reqBytes))
+			if err != nil {
+				return nil, nil, errors.Wrap(err, "create request")
+			}
+			httpReq.Header.Set("Content-Type", "application/json")
+			httpReq.Header.Set("Authorization", "Bearer "+cfg.Provider.APIKey)
+			return reqBytes, httpReq, nil
+		}
+
+		reqBytes, httpReq, err := buildRequest(maxTokens)
 		if err != nil {
-			sendRaw(ctx, ch, rawStreamChunk{Error: errors.Wrap(err, "create request")})
+			sendRaw(ctx, ch, rawStreamChunk{Error: err})
 			return
 		}
-		httpReq.Header.Set("Content-Type", "application/json")
-		httpReq.Header.Set("Authorization", "Bearer "+cfg.Provider.APIKey)
 
 		resp, err := llmHTTPClient.Do(httpReq)
 		if err != nil {
 			sendRaw(ctx, ch, rawStreamChunk{Error: &ResponseError{Code: FailureProviderRequest, Err: errors.Wrap(err, "LLM request failed")}})
 			return
+		}
+
+		// A model whose output cap is below the effective budget rejects the request
+		// with 400/422 before any streaming starts. Retry once with a conservative
+		// budget so an over-large profile/default does not break the call; a second
+		// failure is surfaced with its own status.
+		if shouldRetryWithSmallerOutputBudget(resp.StatusCode, maxTokens) {
+			// The rejected attempt's body is the provider's explanation of which limit
+			// it refused. Read it bounded before closing, and log it only for this
+			// retried attempt: a final failure keeps the ERROR log below.
+			rejectedBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+			_ = resp.Body.Close()
+			slog.Warn("LLM provider rejected the output budget; retrying once with a smaller budget",
+				"status", resp.StatusCode,
+				"max_tokens", fallbackMaxOutputTokens,
+				"original_max_tokens", maxTokens,
+				"body", string(rejectedBody))
+			maxTokens = fallbackMaxOutputTokens
+			reqBytes, httpReq, err = buildRequest(maxTokens)
+			if err != nil {
+				sendRaw(ctx, ch, rawStreamChunk{Error: err})
+				return
+			}
+			resp, err = llmHTTPClient.Do(httpReq)
+			if err != nil {
+				sendRaw(ctx, ch, rawStreamChunk{Error: &ResponseError{Code: FailureProviderRequest, Err: errors.Wrap(err, "LLM request failed")}})
+				return
+			}
 		}
 		defer resp.Body.Close()
 
@@ -398,9 +444,10 @@ func streamRaw(ctx context.Context, cfg AgentConfig, messages []Message) <-chan 
 			// in the server log and return only the status to the caller.
 			slog.Error("LLM provider returned a non-OK status", "status", resp.StatusCode, "body", string(errBody))
 			sendRaw(ctx, ch, rawStreamChunk{Error: &ResponseError{
-				Code:       FailureProviderStatus,
-				StatusCode: resp.StatusCode,
-				Err:        fmt.Errorf("LLM provider returned status %d", resp.StatusCode),
+				Code:         FailureProviderStatus,
+				StatusCode:   resp.StatusCode,
+				OutputTokens: maxTokens,
+				Err:          fmt.Errorf("LLM provider returned status %d", resp.StatusCode),
 			}})
 			return
 		}
@@ -424,15 +471,36 @@ func streamRaw(ctx context.Context, cfg AgentConfig, messages []Message) <-chan 
 		}
 		if idle.timedOut() {
 			sendRaw(ctx, ch, rawStreamChunk{Error: &ResponseError{
-				Code: FailureTimeout,
-				Err:  errors.Errorf("LLM response stalled: no data received for %s", llmIdleReadTimeout),
+				Code:         FailureTimeout,
+				OutputTokens: maxTokens,
+				Err:          errors.Errorf("LLM response stalled: no data received for %s", llmIdleReadTimeout),
 			}})
 			return
 		}
-		sendRaw(ctx, ch, rawStreamChunk{Error: parseErr})
+		sendRaw(ctx, ch, rawStreamChunk{Error: withOutputTokens(parseErr, maxTokens)})
 	}()
 
 	return ch
+}
+
+// withOutputTokens records the output budget the failing request actually carried,
+// so a diagnostic does not report a configured budget the final attempt never sent.
+func withOutputTokens(err error, budget int) error {
+	var responseErr *ResponseError
+	if errors.As(err, &responseErr) && responseErr.OutputTokens == 0 {
+		responseErr.OutputTokens = budget
+	}
+	return err
+}
+
+// shouldRetryWithSmallerOutputBudget reports whether a provider response is the
+// signal to retry the same request once with a smaller output budget: only a
+// 400/422 rejection of an over-large budget qualifies, and never twice.
+func shouldRetryWithSmallerOutputBudget(status int, budget int) bool {
+	if budget <= fallbackMaxOutputTokens {
+		return false
+	}
+	return status == http.StatusBadRequest || status == http.StatusUnprocessableEntity
 }
 
 // parseStream decodes an OpenAI-compatible response as it is read. It handles the
