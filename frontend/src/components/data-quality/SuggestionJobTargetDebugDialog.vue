@@ -53,8 +53,16 @@
           >
             <AlertTriangle class="h-4 w-4" />
             <AlertTitle>{{ t("dataQuality.suggestions.diagnostic.payload.unavailableTitle") }}</AlertTitle>
-            <AlertDescription>
-              {{ t("dataQuality.suggestions.diagnostic.payload.unavailableHint") }}
+            <AlertDescription class="space-y-2">
+              <p>{{ t("dataQuality.suggestions.diagnostic.payload.unavailableHint") }}</p>
+              <Button
+                variant="outline"
+                size="sm"
+                :disabled="loading"
+                @click="load"
+              >
+                {{ t("common.refresh") }}
+              </Button>
             </AlertDescription>
           </Alert>
 
@@ -130,7 +138,7 @@
 
 <script setup lang="ts">
 import { AlertTriangle, Loader2 } from "lucide-vue-next";
-import { ref, watch } from "vue";
+import { onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { getQualitySuggestionJobTargetDebug } from "@/api/data-quality";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -152,8 +160,12 @@ import type { GetQualitySuggestionJobTargetDebugResponse } from "@/types/proto-e
  *
  * They are captured only while runtime LLM debug is enabled and kept for seven
  * days, so the dialog has three states: loading, captured, and "not available
- * (debug off or pruned)". The bodies are read-only and copyable.
+ * (debug off or pruned)". The debug write is asynchronous (a bounded queue), so
+ * the first "unavailable" answer gets one delayed retry before the dialog shows
+ * that message; a manual Refresh is always available afterwards.
  */
+
+const AUTO_RETRY_MS = 1500;
 
 const props = defineProps<{
   open: boolean;
@@ -175,9 +187,28 @@ const loading = ref(false);
 const error = ref("");
 const response = ref<GetQualitySuggestionJobTargetDebugResponse>();
 
+/** Identifies the newest request; an older answer must never write state. */
+let requestID = 0;
+/** One delayed retry per open, for the asynchronous debug-log write. */
+let retryTimer: ReturnType<typeof setTimeout> | undefined;
+let autoRetried = false;
+
+function cancelRetry() {
+  if (retryTimer !== undefined) {
+    clearTimeout(retryTimer);
+    retryTimer = undefined;
+  }
+}
+
 watch(
-  () => props.open,
-  (open) => {
+  () => [props.open, props.jobName, props.targetIndex] as const,
+  ([open]) => {
+    cancelRetry();
+    requestID += 1;
+    response.value = undefined;
+    error.value = "";
+    autoRetried = false;
+    loading.value = false;
     if (open) {
       void load();
     }
@@ -186,26 +217,49 @@ watch(
 );
 
 async function load() {
-  if (loading.value) {
-    return;
-  }
+  cancelRetry();
+  const ticket = ++requestID;
   loading.value = true;
   error.value = "";
   response.value = undefined;
   try {
-    response.value = await getQualitySuggestionJobTargetDebug(
+    const fetched = await getQualitySuggestionJobTargetDebug(
       props.jobName,
       props.targetIndex
     );
+    if (ticket !== requestID) {
+      return;
+    }
+    if (!fetched.available && !autoRetried) {
+      // The body may still be in the debug-writer queue: keep the spinner up and
+      // ask once more before telling the reader the payload is gone.
+      autoRetried = true;
+      retryTimer = setTimeout(() => {
+        retryTimer = undefined;
+        void load();
+      }, AUTO_RETRY_MS);
+      return;
+    }
+    response.value = fetched;
   } catch (e: unknown) {
+    if (ticket !== requestID) {
+      return;
+    }
     error.value = formatError(
       e,
       "dataQuality.suggestions.diagnostic.payload.fetchFailed"
     );
   } finally {
-    loading.value = false;
+    if (ticket === requestID && retryTimer === undefined) {
+      loading.value = false;
+    }
   }
 }
+
+onBeforeUnmount(() => {
+  cancelRetry();
+  requestID += 1;
+});
 
 async function copy(text: string) {
   if (!text || !navigator.clipboard) {

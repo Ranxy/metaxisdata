@@ -28,7 +28,14 @@ function response(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function mountDialog() {
+function mountDialog(
+  overrides: Partial<{
+    open: boolean;
+    jobName: string;
+    targetIndex: number;
+    correlationId: string;
+  }> = {}
+) {
   const pinia = createPinia();
   setActivePinia(pinia);
   return mount(SuggestionJobTargetDebugDialog, {
@@ -38,6 +45,7 @@ function mountDialog() {
       jobName: JOB,
       targetIndex: 1,
       correlationId: CORRELATION,
+      ...overrides,
     },
     global: { plugins: [i18n, pinia] },
   });
@@ -65,6 +73,7 @@ describe("SuggestionJobTargetDebugDialog", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: undefined,
@@ -145,13 +154,23 @@ describe("SuggestionJobTargetDebugDialog", () => {
     });
   });
 
-  it("explains that the bodies were not captured or are pruned", async () => {
+  it("retries once automatically, then explains that the bodies are not captured", async () => {
+    vi.useFakeTimers();
     mocks.getQualitySuggestionJobTargetDebug.mockResolvedValue(
       response({ available: false, requestBody: "", responseBody: "" })
     );
     const wrapper = mountDialog();
-    await flushPromises();
+    await vi.advanceTimersByTimeAsync(0);
 
+    // While the delayed retry is in flight the misleading message is not shown.
+    expect(document.body.textContent).not.toContain(
+      label("dataQuality.suggestions.diagnostic.payload.unavailableTitle")
+    );
+
+    await vi.advanceTimersByTimeAsync(1500);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(mocks.getQualitySuggestionJobTargetDebug).toHaveBeenCalledTimes(2);
     expect(document.body.textContent).toContain(
       label("dataQuality.suggestions.diagnostic.payload.unavailableTitle")
     );
@@ -159,6 +178,114 @@ describe("SuggestionJobTargetDebugDialog", () => {
       label("dataQuality.suggestions.diagnostic.payload.unavailableHint")
     );
     expect(document.body.textContent).not.toContain(REQUEST);
+    // The reader can ask again by hand after the automatic retry.
+    expect(buttonByText(label("common.refresh"))).toBeTruthy();
+    wrapper.unmount();
+  });
+
+  it("shows the bodies when the delayed retry finds the asynchronous write", async () => {
+    vi.useFakeTimers();
+    mocks.getQualitySuggestionJobTargetDebug
+      .mockResolvedValueOnce(
+        response({ available: false, requestBody: "", responseBody: "" })
+      )
+      .mockResolvedValue(response());
+    const wrapper = mountDialog();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mocks.getQualitySuggestionJobTargetDebug).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1500);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(mocks.getQualitySuggestionJobTargetDebug).toHaveBeenCalledTimes(2);
+    expect(document.body.textContent).toContain(REQUEST);
+    expect(document.body.textContent).not.toContain(
+      label("dataQuality.suggestions.diagnostic.payload.unavailableTitle")
+    );
+    wrapper.unmount();
+  });
+
+  it("refetches from the unavailable state on manual refresh", async () => {
+    vi.useFakeTimers();
+    mocks.getQualitySuggestionJobTargetDebug.mockResolvedValue(
+      response({ available: false, requestBody: "", responseBody: "" })
+    );
+    const wrapper = mountDialog();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(1500);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.body.textContent).toContain(
+      label("dataQuality.suggestions.diagnostic.payload.unavailableTitle")
+    );
+
+    mocks.getQualitySuggestionJobTargetDebug.mockResolvedValue(response());
+    buttonByText(label("common.refresh"))?.click();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(mocks.getQualitySuggestionJobTargetDebug).toHaveBeenCalledTimes(3);
+    expect(document.body.textContent).toContain(REQUEST);
+    expect(document.body.textContent).not.toContain(
+      label("dataQuality.suggestions.diagnostic.payload.unavailableTitle")
+    );
+    wrapper.unmount();
+  });
+
+  it("does not leak a previous target's body into a later open", async () => {
+    const OTHER_JOB = "workspaces/ws/qualitySuggestionJobs/job-2";
+    const OTHER_BODY = '{"target":"customers"}';
+    let releaseFirst: (value: ReturnType<typeof response>) => void = () => {};
+    mocks.getQualitySuggestionJobTargetDebug
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            releaseFirst = resolve;
+          })
+      )
+      .mockResolvedValue(
+        response({ requestBody: OTHER_BODY, responseBody: OTHER_BODY })
+      );
+    const wrapper = mountDialog();
+    await flushPromises();
+
+    // Close while the first request is still pending, then open another target.
+    await wrapper.setProps({ open: false });
+    await wrapper.setProps({
+      open: true,
+      jobName: OTHER_JOB,
+      targetIndex: 0,
+    });
+    await flushPromises();
+    expect(document.body.textContent).toContain(OTHER_BODY);
+    expect(document.body.textContent).not.toContain(REQUEST);
+
+    // The stale first answer arrives late and must be ignored.
+    releaseFirst(response());
+    await flushPromises();
+    expect(document.body.textContent).toContain(OTHER_BODY);
+    expect(document.body.textContent).not.toContain(REQUEST);
+    wrapper.unmount();
+  });
+
+  it("renders script-like payloads as escaped text, not elements", async () => {
+    const EVIL =
+      '<script>window.__xss = true</script><img src=x onerror="window.__xss = true">';
+    mocks.getQualitySuggestionJobTargetDebug.mockResolvedValue(
+      response({ requestBody: EVIL, responseBody: EVIL })
+    );
+    const wrapper = mountDialog();
+    await flushPromises();
+
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog?.querySelector("script")).toBeNull();
+    expect(dialog?.querySelector("img")).toBeNull();
+    const pres = [
+      ...document.body.querySelectorAll<HTMLElement>('[role="dialog"] pre'),
+    ];
+    expect(pres).toHaveLength(2);
+    expect(pres[0]?.textContent).toContain(
+      "<script>window.__xss = true</script>"
+    );
+    expect((window as unknown as { __xss?: boolean }).__xss).toBeUndefined();
     wrapper.unmount();
   });
 

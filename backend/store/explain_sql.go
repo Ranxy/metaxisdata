@@ -61,6 +61,12 @@ const getLLMDebugLogByCorrelationQuery = `
 	ORDER BY id DESC
 	LIMIT 1`
 
+// setLLMDebugLogErrorCodeQuery stamps the classifier on the newest capture for one
+// correlation id. It runs after the failure was classified, when the row may
+// already have been written by the asynchronous debug writer.
+const setLLMDebugLogErrorCodeQuery = `
+	UPDATE llm_debug_log SET error_code = $2 WHERE correlation_id = $1`
+
 // InsertLLMDebugLog inserts one debug log entry.
 func (s *Store) InsertLLMDebugLog(ctx context.Context, entry *LLMDebugLogEntry) error {
 	if entry == nil {
@@ -76,6 +82,22 @@ func (s *Store) InsertLLMDebugLog(ctx context.Context, entry *LLMDebugLogEntry) 
 		entry.Provider, entry.Model, entry.Kind, entry.CorrelationID, entry.ErrorCode,
 		entry.RequestBody, entry.ResponseBody, createdAt)
 	return errors.Wrap(err, "failed to insert an LLM debug log entry")
+}
+
+// SetLLMDebugLogErrorCode records the classifier code on the newest captured call
+// for a correlation id. The capture is a debug aid, so this is best effort: an
+// empty id/code or a row that was never written (or was already pruned) is not an
+// error.
+func (s *Store) SetLLMDebugLogErrorCode(ctx context.Context, correlationID, code string) error {
+	correlationID = strings.TrimSpace(correlationID)
+	code = strings.TrimSpace(code)
+	if correlationID == "" || code == "" {
+		return nil
+	}
+	if _, err := s.GetDB().ExecContext(ctx, setLLMDebugLogErrorCodeQuery, correlationID, code); err != nil {
+		return errors.Wrap(err, "failed to set the LLM debug log error code")
+	}
+	return nil
 }
 
 // GetLLMDebugLogByCorrelation returns the newest captured call for one correlation

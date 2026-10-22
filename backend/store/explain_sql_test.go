@@ -34,6 +34,18 @@ func TestGetLLMDebugLogByCorrelationQueryUsesTheIndexedPath(t *testing.T) {
 	requirePlaceholdersMatchArgs(t, getLLMDebugLogByCorrelationQuery, []any{"corr-1"})
 }
 
+// The classifier is stamped onto the row after the failure is classified: the
+// asynchronous writer may have written it first, so the update keys on the indexed
+// correlation id instead of the row id.
+func TestSetLLMDebugLogErrorCodeQueryUsesTheCorrelationID(t *testing.T) {
+	t.Parallel()
+
+	require.Contains(t, setLLMDebugLogErrorCodeQuery, "UPDATE llm_debug_log")
+	require.Contains(t, setLLMDebugLogErrorCodeQuery, "SET error_code = $2")
+	require.Contains(t, setLLMDebugLogErrorCodeQuery, "WHERE correlation_id = $1")
+	requirePlaceholdersMatchArgs(t, setLLMDebugLogErrorCodeQuery, []any{"corr-1", "TRUNCATED"})
+}
+
 // A nil entry and an empty correlation id are refused before the store touches the
 // database, so a caller cannot write a row nothing can find.
 func TestLLMDebugLogRejectsUnusableInput(t *testing.T) {
@@ -47,4 +59,8 @@ func TestLLMDebugLogRejectsUnusableInput(t *testing.T) {
 	entry, err := stores.GetLLMDebugLogByCorrelation(context.Background(), "  ")
 	require.NoError(t, err)
 	require.Nil(t, entry)
+
+	// Updating without an id or a code is a no-op, not an error and not a write.
+	require.NoError(t, stores.SetLLMDebugLogErrorCode(context.Background(), "  ", "TRUNCATED"))
+	require.NoError(t, stores.SetLLMDebugLogErrorCode(context.Background(), "corr-1", "  "))
 }

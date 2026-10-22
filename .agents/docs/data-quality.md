@@ -219,8 +219,8 @@ meta_registry_resource（只读）──< quality_rule >──< quality_rule_rev
 
 - L1 有同步与异步两条路径：同步 `SuggestQualityRule` 只服务规则编辑器（需要结果回填表单）；建议中心的多目标起草提交 `CreateQualitySuggestionJob`，由 `qualitysuggestionrunner` 逐目标调用同一个 `dataquality.Suggester`，任务只负责调度、进度持久化与取消，不改变提示词/校验/落库规则。
 
-- 失败诊断（L-1…L-5）：每次调用带 correlation id；失败写入 `QualityLLMDiagnostic`（分类码/provider/model/prompt 版本/max_output_tokens/finish_reason/token 用量/prompt 字符数/provider status/correlation id/debug_captured）并 WARN 日志同字段。输出上限 8192；`finish_reason=length` → `TRUNCATED`，文案提示“缩小意图或减少列后重试”，不自动重试。分类码：`TRUNCATED`、`STREAM_INCOMPLETE`、`PROVIDER_STATUS`、`PROVIDER_REQUEST`、`RESPONSE_TOO_LARGE`、`UNEXPECTED_FINISH_REASON`、`TIMEOUT`、`MALFORMED_RESPONSE`、`PARSE`、`UNKNOWN`。
-- 原始请求/响应只在 `RuntimeDebug` 打开时写入 `llm_debug_log`（`kind`、`correlation_id`、`error_code`，7 天保留），并经 `GetQualitySuggestionJobTargetDebug` 按任务目标按需读取；未开启或已过期时只有结构化诊断。提示词/响应只含元数据、DDL、意图与模型输出，**不含样本行**。
+- 失败诊断（D-47…D-51）：每次调用带 correlation id；失败写入 `QualityLLMDiagnostic`（分类码/provider/model/prompt 版本/max_output_tokens/finish_reason/token 用量/prompt 字符数/provider status/correlation id/debug_captured）并 WARN 日志同字段。输出上限 8192；`finish_reason=length` → `TRUNCATED`，文案提示“缩小意图或减少列后重试”，不自动重试。分类码：`TRUNCATED`、`STREAM_INCOMPLETE`、`PROVIDER_STATUS`、`PROVIDER_REQUEST`、`RESPONSE_TOO_LARGE`、`UNEXPECTED_FINISH_REASON`、`TIMEOUT`、`MALFORMED_RESPONSE`、`PARSE`、`UNKNOWN`。
+- 原始请求/响应只在 `RuntimeDebug` 打开时写入 `llm_debug_log`（`kind`、`correlation_id`、`error_code`，7 天保留），并经 `GetQualitySuggestionJobTargetDebug` 按任务目标按需读取；未开启、未实际捕获或已过期时只有结构化诊断（`debug_captured` 表示捕获回调确实执行过）。该读取 RPC 审计，但审计 payload 会把 `requestBody`/`responseBody` 脱敏，正文只受 7 天调试日志保留期约束；提示词/响应只含元数据、DDL、意图与模型输出，**不含样本行**。
 - provider：`llm.ResolveConfig(configs, allowlist, settings.LLMProviderProfile)`；未指定时取允许列表首个；无可用 profile → `FailedPrecondition`。
 - 结构化输出：`temperature=0` + JSON mode；`llm.ParseJSON[T]`（剥 code fence、`DisallowUnknownFields`、拒绝多文档/空/null、validator 校验）；解析失败不缓存。L1 草稿词表仅 12 类 v1 规则（`custom_sql`/CEL/v1.1 四类不可由模型提出）；草稿再经列存在/列作用域/`ValidateRule` 过滤，全部被丢则返回空列表 + Warn 日志。
 - L2：缓存 key = `explain|execution:<执行行 id>|rev:<rev>|status:<status>|prompt:dq.explain.v1|provider:<profile>|model:<model>|lang:<en-US|zh-CN>`；命中回放 content+metadata(`from_cache=true`)；`force_regenerate` 跳过读但仍写；usage 存缓存行 + debug 日志，metadata 不带 usage/prompt_version。解释 content 是一次性 markdown（`### n. cause`、Evidence、Next step、confidence），progress 只发一帧 `thinking`。前端只在 `FAIL`/`ERROR` 的执行详情显示入口，API 本身不限制状态。
@@ -236,7 +236,7 @@ meta_registry_resource（只读）──< quality_rule >──< quality_rule_rev
 - 概览（`GetQualityOverview`）：`rule_count` = ENABLED+PAUSED（不含 ARCHIVED），`monitored_table_count` = 至少一条启用规则覆盖的去重表数，打开问题按严重级别计数；`execution_count` 是最近 24 小时**规划**的执行数（含各生命周期状态），而 `last_day_counts` 与 `trend` 只统计已 `COMPLETED` 的执行（pending/running/abandoned 不进趋势），`failing_rule_count` 只算最近 24 小时有 FAIL 执行的规则（`ERROR` 不算）。
 - 错误映射：参数/类型/编译失败 → `InvalidArgument`；目标消失 → 创建期 `NotFound`、运行期 `SKIPPED(ORPHANED)`；无只读源/LLM 未开启/无 provider → `FailedPrecondition`；配额/队列满 → `ResourceExhausted`；revision 冲突/建议已决 → `Aborted`；其余 `Internal`。
 - 权限（`metaxisdata.dataQuality.*`，15 项）：`rules.{get,list,create,update,delete,run}`、`executions.{get,list}`、`issues.{get,list,update}`、`explain`、`suggest`、`profile.run`、`labels.update`。`workspaceMember` 基线 = rules.get/list、executions.get/list、issues.get/list、explain；其余默认仅 `workspaceAdmin`/自定义角色。设置页复用 `settings.get/update`；标注的**读**复用 `rules.list`（经 `ListColumnLabels`）。
-- 审计（proto `audit=true`，每次调用 1 行）：规则创建/更新/删除、批量创建、手动执行、问题处置、建议决策/批量决策、AI 起草任务创建/取消、失败目标的调试图读取、画像、标注更新、三个 LLM RPC；只读列表/详情与定时执行不审计。审计行只含请求元数据，不含 LLM 正文/样本。
+- 审计（proto `audit=true`，每次调用 1 行）：规则创建/更新/删除、批量创建、手动执行、问题处置、建议决策/批量决策、AI 起草任务创建/取消、失败目标的调试图读取、画像、标注更新、三个 LLM RPC；只读列表/详情与定时执行不审计。审计行只含请求元数据，不含 LLM 正文/样本；调试图读取即使带审计，响应中的 `requestBody`/`responseBody` 也会被脱敏（正文只进 7 天调试日志）。
 - 限流：所有带审计注解的 DQ RPC 自动进入 principal 预算（`(principal, procedure)` 3000/min、部署 30000/min，见 [rate-limiting.md](rate-limiting.md)）；LLM 另有 §3.5 的配额。
 
 ### 3.7 前端与 i18n
@@ -399,6 +399,7 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | LLM 解析失败/超时/配额耗尽 | 请求失败（Internal/FailedPrecondition/ResourceExhausted）；不缓存、不改规则/问题状态；L3 已入队的建议保持 PENDING |
 | 模型在输出上限停下（`finish_reason=length`） | 目标 FAILED，诊断码 `TRUNCATED`，文案提示缩小意图/减少列后重试；输出预算 8192；本次草稿丢弃，不自动重试 |
 | provider 返回非 2xx | 目标 FAILED，诊断码 `PROVIDER_STATUS` + HTTP status；provider 响应体只写服务端日志，不进错误/诊断；按 correlation id 查日志 |
+| provider/model 的输出上限低于 8192 | 请求带 `max_tokens=8192` 被 provider 拒绝（通常 4xx，诊断码 `PROVIDER_STATUS`）；改用支持 8192 输出 token 的模型，或由运维评估该 provider（当前无按 profile 配置上限，§7 #17） |
 | 流中断/超时/响应过大/异常 finish_reason | 目标 FAILED，诊断码 `STREAM_INCOMPLETE`/`TIMEOUT`/`RESPONSE_TOO_LARGE`/`UNEXPECTED_FINISH_REASON`；重试由用户发起 |
 | 草稿 JSON 解析失败 | 目标 FAILED，诊断码 `PARSE`（保留 token 用量/停止原因）；不落建议 |
 | RuntimeDebug 未开或调试日志已过期 | 结构化诊断仍返回；`GetQualitySuggestionJobTargetDebug` 返回 `available=false`，UI 说明正文未捕获/已清理 |
@@ -439,7 +440,7 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | 14 | AI 起草任务的执行语义 | 单副本、单 runner 串行：不并行执行多个任务、不续跑、不取消进行中的 provider 调用；取消/配额只会在目标边界生效；提交时配额预检不预占，可能轻微超发；RUNNING 任务取消后、到目标边界前仍显示 RUNNING（cancel_requested 不在资源上暴露）；单任务 panic 已被捕获并标 FAILED，不终止 runner |
 | 15 | 截断调用的 token 用量 | 流在 `finish_reason=length` 处报错时 agent loop 不再读取后续 usage 块，因此该诊断只有 max_tokens/prompt_chars/correlation/finish_reason，没有 prompt/completion tokens；provider/model/stop reason 仍足以复现 |
 | 16 | DQ 调试行的 `error_code` | 正文捕获发生在分类之前，`NewDBDebugLoggerForCall` 不接收分类码，因此 DQ 的 `llm_debug_log.error_code` 可能为空；分类码以任务目标诊断为准，检索 RPC 返回它 |
-| 17 | LLM 失败的自动重试与配置 | 不做自动重试；输出上限固定 8192（无按工作区配置）；原始正文只在 RuntimeDebug 下捕获（7 天）、且仅 `suggest` 权限可读；没有通用调试日志浏览器 |
+| 17 | LLM 失败的自动重试与配置 | 不做自动重试；输出上限固定 8192（无按工作区/按 profile 配置，provider 或模型上限更低时会得到 `PROVIDER_STATUS`，需换模型或由运维调整）；原始正文只在 RuntimeDebug 下捕获（7 天）、仅 `suggest` 权限可读且审计正文已脱敏；没有通用调试日志浏览器 |
 
 ## 8. Where things live
 

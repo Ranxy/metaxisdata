@@ -222,7 +222,10 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 		// field) must not be returned or cached as an explanation.
 		if len(assistantMsg.ToolCalls) == 0 && strings.TrimSpace(assistantMsg.Content) == "" {
 			outcome = metrics.LLMOutcomeEmptyResponse
-			sendEvent(ctx, ch, AgentEvent{Type: AgentEventError, Error: errors.New("LLM returned an empty response")})
+			sendEvent(ctx, ch, AgentEvent{Type: AgentEventError, Error: &ResponseError{
+				Code: FailureMalformed,
+				Err:  errors.New("LLM returned an empty response"),
+			}})
 			return
 		}
 		if err := appendMessage(assistantMsg); err != nil {

@@ -98,7 +98,7 @@ func TestMarshalAuditMessageRedactsTheDeviceLoginSecret(t *testing.T) {
 func TestIsSensitiveAuditField(t *testing.T) {
 	t.Parallel()
 
-	for _, field := range []string{"key", "sslKey", "sslCert", "passwd", "pwd", "bearer", "jwt", "session", "password", "apiKey", "accessKeyId", "sshPrivateKey", "deviceCode", "device_code"} {
+	for _, field := range []string{"key", "sslKey", "sslCert", "passwd", "pwd", "bearer", "jwt", "session", "password", "apiKey", "accessKeyId", "sshPrivateKey", "deviceCode", "device_code", "requestBody", "responseBody"} {
 		require.True(t, audit.IsSensitiveAuditField(field), "expected %q to be redacted", field)
 	}
 	for _, field := range []string{"email", "name", "host", "port", "description", "userCode"} {

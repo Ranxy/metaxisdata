@@ -113,8 +113,31 @@ func TestJSONCompletionClassifiesAnUnclassifiedFailure(t *testing.T) {
 	require.Equal(t, "content_filter", diagnostic.GetFinishReason())
 }
 
-// With runtime debug on, the raw bodies are captured for the correlation id; the
-// diagnostic says so. With it off, no logger is built at all.
+// newDebugSuggester builds a Suggester whose runtime debug is on and whose capture
+// callback and classifier write are observable without a database.
+func newDebugSuggester(t *testing.T, onCapture func(reqBody, respBody string)) (*Suggester, *[]struct{ correlationID, code string }) {
+	t.Helper()
+	profile := &config.Profile{}
+	profile.RuntimeDebug.Store(true)
+	suggester := NewSuggester(nil, llm.NewRegistry(nil, profile), nil, nil)
+	suggester.newDebugLogger = func(_ *store.Store, _, _, _, _ string) llm.DebugLogger {
+		return func(reqBody, respBody string) {
+			if onCapture != nil {
+				onCapture(reqBody, respBody)
+			}
+		}
+	}
+	written := &[]struct{ correlationID, code string }{}
+	suggester.setDebugErrorCode = func(_ context.Context, correlationID, code string) error {
+		*written = append(*written, struct{ correlationID, code string }{correlationID, code})
+		return nil
+	}
+	return suggester, written
+}
+
+// With runtime debug on, the raw bodies are captured for the correlation id and the
+// diagnostic says so only when the callback actually fired. With debug off, no
+// logger is built at all.
 func TestJSONCompletionAttachesTheDebugLoggerOnlyInRuntimeDebug(t *testing.T) {
 	t.Parallel()
 
@@ -125,31 +148,21 @@ data: [DONE]
 
 	t.Run("debug on", func(t *testing.T) {
 		t.Parallel()
-		profile := &config.Profile{}
-		profile.RuntimeDebug.Store(true)
-		suggester := NewSuggester(nil, llm.NewRegistry(nil, profile), nil, nil)
 		var (
 			called      bool
-			gotKind     string
-			gotCorrel   string
 			gotReqBody  string
 			gotRespBody string
 		)
-		suggester.newDebugLogger = func(_ *store.Store, _, _, kind, correlationID string) llm.DebugLogger {
-			return func(reqBody, respBody string) {
-				called = true
-				gotKind = kind
-				gotCorrel = correlationID
-				gotReqBody = reqBody
-				gotRespBody = respBody
-			}
-		}
+		suggester, _ := newDebugSuggester(t, func(reqBody, respBody string) {
+			called = true
+			gotReqBody = reqBody
+			gotRespBody = respBody
+		})
 		_, _, diagnostic, err := suggester.JSONCompletion(context.Background(), diagnosticConfig(server),
 			LLMFeatureRuleDraft, RuleDraftPromptVersion, "sys", "user", 0)
 		require.NoError(t, err)
 		require.True(t, called, "the capture must be attached when runtime debug is on")
-		require.Equal(t, LLMFeatureRuleDraft, gotKind)
-		require.Equal(t, diagnostic.GetCorrelationId(), gotCorrel)
+		require.True(t, diagnostic.GetDebugCaptured(), "a successful call's bodies were captured")
 		require.NotEmpty(t, gotReqBody)
 		require.NotEmpty(t, gotRespBody)
 	})
@@ -166,6 +179,65 @@ data: [DONE]
 		require.NoError(t, err)
 		require.False(t, diagnostic.GetDebugCaptured())
 	})
+}
+
+// A truncated answer still reaches the capture callback (the agent loop logs the
+// bodies before reporting the parse failure), so the dialog can read them.
+func TestJSONCompletionCapturesATruncatedAnswer(t *testing.T) {
+	t.Parallel()
+
+	server := diagnosticProvider(t, `data: {"choices":[{"delta":{"content":"{}"}}]}
+data: {"choices":[{"delta":{},"finish_reason":"length"}]}
+`)
+	suggester, written := newDebugSuggester(t, nil)
+	_, _, diagnostic, err := suggester.JSONCompletion(context.Background(), diagnosticConfig(server),
+		LLMFeatureRuleDraft, RuleDraftPromptVersion, "sys", "user", 0)
+	require.Error(t, err)
+	require.True(t, diagnostic.GetDebugCaptured(), "the bodies were captured before the failure was reported")
+	require.Len(t, *written, 1, "the classifier is stamped on the captured row after classification")
+	require.Equal(t, diagnostic.GetCorrelationId(), (*written)[0].correlationID)
+	require.Equal(t, string(llm.FailureTruncated), (*written)[0].code)
+}
+
+// A provider that fails before returning a response never reaches the capture
+// callback, so debug_captured must be false even with runtime debug on.
+func TestJSONCompletionDoesNotClaimACaptureWithoutABody(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "the provider is down", http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(server.Close)
+
+	suggester, written := newDebugSuggester(t, func(_, _ string) {
+		t.Error("a provider-status failure must not invoke the capture callback")
+	})
+	_, _, diagnostic, err := suggester.JSONCompletion(context.Background(), diagnosticConfig(server),
+		LLMFeatureRuleDraft, RuleDraftPromptVersion, "sys", "user", 0)
+	require.Error(t, err)
+	require.Equal(t, string(llm.FailureProviderStatus), diagnostic.GetErrorCode())
+	require.False(t, diagnostic.GetDebugCaptured())
+	require.Empty(t, *written, "no captured row exists to stamp")
+}
+
+// A successful call whose text later fails JSON parsing keeps captured=true: Draft
+// adds only the PARSE classifier, and the dialog can still open the bodies.
+func TestSuccessfulCompletionKeepsTheCaptureFlagIntoAParseFailure(t *testing.T) {
+	t.Parallel()
+
+	server := diagnosticProvider(t, `data: {"choices":[{"delta":{"content":"not json"}}]}
+data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
+data: [DONE]
+`)
+	suggester, _ := newDebugSuggester(t, nil)
+	_, _, diagnostic, err := suggester.JSONCompletion(context.Background(), diagnosticConfig(server),
+		LLMFeatureRuleDraft, RuleDraftPromptVersion, "sys", "user", 0)
+	require.NoError(t, err)
+	require.True(t, diagnostic.GetDebugCaptured())
+
+	ruleDraftParseFailure(diagnostic)
+	require.Equal(t, "PARSE", diagnostic.GetErrorCode())
+	require.True(t, diagnostic.GetDebugCaptured(), "a later parse failure must not lose the capture")
 }
 
 // A model answer that is not the contracted JSON is a parse failure, distinct from

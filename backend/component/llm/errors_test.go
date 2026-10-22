@@ -135,6 +135,34 @@ func TestAgentLoopClassifiesANonOKProviderStatus(t *testing.T) {
 	require.Contains(t, callErr.Error(), "returned status 503")
 }
 
+// A completion that finishes without any content is a malformed response, not an
+// unclassified failure: the classifier is reachable for the empty-answer case.
+func TestAgentLoopClassifiesAnEmptyCompletion(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, `data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
+data: [DONE]
+`)
+	}))
+	t.Cleanup(server.Close)
+
+	events := collectAgentEvents(t, RunAgentLoop(context.Background(), AgentConfig{
+		Provider: ResolvedConfig{BaseURL: server.URL, ModelName: "test-model"},
+		Feature:  "test",
+	}))
+	var callErr error
+	for _, event := range events {
+		if event.Type == AgentEventError {
+			callErr = event.Error
+		}
+	}
+	responseErr := requireResponseError(t, callErr)
+	require.Equal(t, FailureMalformed, responseErr.Code)
+	require.Contains(t, callErr.Error(), "empty response")
+}
+
 // A request that cannot be made at all is a provider-request failure.
 func TestAgentLoopClassifiesAProviderRequestFailure(t *testing.T) {
 	t.Parallel()
