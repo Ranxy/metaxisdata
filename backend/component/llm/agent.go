@@ -300,6 +300,10 @@ func streamOneTurn(ctx context.Context, cfg AgentConfig, llmMsgs []Message, ch c
 	)
 
 	streamCh := streamRaw(ctx, cfg, llmMsgs)
+	// Drain to the channel close instead of breaking on the Done chunk: the stream
+	// goroutine invokes the debug logger and then closes the channel, so waiting for
+	// the close gives the caller a happens-before edge over that callback. Breaking
+	// early let a successful call return while the debug capture was still running.
 	for chunk := range streamCh {
 		if chunk.Error != nil {
 			return AgentMessage{}, nil, chunk.Error
@@ -315,9 +319,6 @@ func streamOneTurn(ctx context.Context, cfg AgentConfig, llmMsgs []Message, ch c
 		}
 		if chunk.Usage != nil {
 			turnUsage = chunk.Usage
-		}
-		if chunk.Done {
-			break
 		}
 	}
 
