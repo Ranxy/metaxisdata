@@ -301,6 +301,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.store.QualityLLMDiagnostic"><span class="badge">M</span>QualityLLMDiagnostic</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.QualityRuleConfig"><span class="badge">M</span>QualityRuleConfig</a>
                 </li>
               
@@ -2214,6 +2218,116 @@ converted with the column&#39;s type; at most 20. </p></td>
 
         
       
+        <h3 id="metaxisdata.store.QualityLLMDiagnostic">QualityLLMDiagnostic</h3>
+        <p>QualitySuggestionJobTarget is one table a background drafting job visits. The</p><p>path and columns are a snapshot taken at submission, so the job still renders</p><p>after the registry changes; resolution happens again when the model is asked.</p><p>QualityLLMDiagnostic is the structured context of one failed LLM analysis: the</p><p>classifier code, provider facts, the provider's stop reason, token usage when</p><p>the provider reported it, and the correlation id that ties the failure to the</p><p>server log and (when runtime debug was on) the llm_debug_log row. It never</p><p>contains prompt or response bodies.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>error_code</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A stable machine-readable classifier, e.g. TRUNCATED, STREAM_INCOMPLETE,
+PROVIDER_STATUS, PROVIDER_REQUEST, RESPONSE_TOO_LARGE, TIMEOUT, PARSE, UNKNOWN. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>provider</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>model</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>prompt_version</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>max_output_tokens</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>finish_reason</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>prompt_tokens</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>completion_tokens</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>total_tokens</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>prompt_chars</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>correlation_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>provider_status</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>debug_captured</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether the full request/response was persisted to llm_debug_log for this
+failure (runtime debug mode was on and the write was attempted). </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.store.QualityRuleConfig">QualityRuleConfig</h3>
         <p>QualityRuleConfig is the typed parameters of one rule. Exactly one arm of the</p><p>oneof is set, and it must correspond to the rule's type; the filter, the empty</p><p>behavior and the count/percent metric are shared by every type.</p>
 
@@ -2497,7 +2611,7 @@ converted with the column&#39;s type; at most 20. </p></td>
         
       
         <h3 id="metaxisdata.store.QualitySuggestionJobTarget">QualitySuggestionJobTarget</h3>
-        <p>QualitySuggestionJobTarget is one table a background drafting job visits. The</p><p>path and columns are a snapshot taken at submission, so the job still renders</p><p>after the registry changes; resolution happens again when the model is asked.</p>
+        <p></p>
 
         
           <table class="field-table">
@@ -2567,6 +2681,13 @@ converted with the column&#39;s type; at most 20. </p></td>
                   <td><a href="#int64">int64</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>diagnostic</td>
+                  <td><a href="#metaxisdata.store.QualityLLMDiagnostic">QualityLLMDiagnostic</a></td>
+                  <td></td>
+                  <td><p>Set when the target failed in the model call; the classifier and context. </p></td>
                 </tr>
               
             </tbody>

@@ -3195,6 +3195,15 @@ export declare type QualitySuggestionJobTarget = Message<"metaxisdata.v1.Quality
    * @generated from field: google.protobuf.Timestamp finish_time = 6;
    */
   finishTime?: Timestamp;
+
+  /**
+   * Set when the target failed in the model call: the classifier, provider
+   * facts, stop reason and usage behind the error, plus the correlation id that
+   * ties it to the server log and the debug log.
+   *
+   * @generated from field: metaxisdata.v1.QualityLLMDiagnostic diagnostic = 7;
+   */
+  diagnostic?: QualityLLMDiagnostic;
 };
 
 /**
@@ -3202,6 +3211,99 @@ export declare type QualitySuggestionJobTarget = Message<"metaxisdata.v1.Quality
  * Use `create(QualitySuggestionJobTargetSchema)` to create a new message.
  */
 export declare const QualitySuggestionJobTargetSchema: GenMessage<QualitySuggestionJobTarget>;
+
+/**
+ * QualityLLMDiagnostic explains why one LLM analysis failed, in a form a person
+ * can act on and an operator can correlate with logs. It never includes the
+ * prompt or the model response; those are available on demand when runtime debug
+ * mode captured them (see GetQualitySuggestionJobTargetDebug).
+ *
+ * @generated from message metaxisdata.v1.QualityLLMDiagnostic
+ */
+export declare type QualityLLMDiagnostic = Message<"metaxisdata.v1.QualityLLMDiagnostic"> & {
+  /**
+   * A stable machine-readable classifier, e.g. TRUNCATED (finish_reason=length),
+   * STREAM_INCOMPLETE, PROVIDER_STATUS, PROVIDER_REQUEST, RESPONSE_TOO_LARGE,
+   * TIMEOUT, PARSE, UNKNOWN.
+   *
+   * @generated from field: string error_code = 1;
+   */
+  errorCode: string;
+
+  /**
+   * @generated from field: string provider = 2;
+   */
+  provider: string;
+
+  /**
+   * @generated from field: string model = 3;
+   */
+  model: string;
+
+  /**
+   * @generated from field: string prompt_version = 4;
+   */
+  promptVersion: string;
+
+  /**
+   * The output-token budget the call asked for; TRUNCATED points at this.
+   *
+   * @generated from field: int32 max_output_tokens = 5;
+   */
+  maxOutputTokens: number;
+
+  /**
+   * @generated from field: string finish_reason = 6;
+   */
+  finishReason: string;
+
+  /**
+   * @generated from field: int64 prompt_tokens = 7;
+   */
+  promptTokens: bigint;
+
+  /**
+   * @generated from field: int64 completion_tokens = 8;
+   */
+  completionTokens: bigint;
+
+  /**
+   * @generated from field: int64 total_tokens = 9;
+   */
+  totalTokens: bigint;
+
+  /**
+   * How large the prompt was, so a context/usage problem is visible.
+   *
+   * @generated from field: int64 prompt_chars = 10;
+   */
+  promptChars: bigint;
+
+  /**
+   * Copy this into server logs or the debug log lookup.
+   *
+   * @generated from field: string correlation_id = 11;
+   */
+  correlationId: string;
+
+  /**
+   * @generated from field: int32 provider_status = 12;
+   */
+  providerStatus: number;
+
+  /**
+   * Whether GetQualitySuggestionJobTargetDebug can return the raw bodies.
+   *
+   * @generated from field: bool debug_payload_available = 13;
+   */
+  debugPayloadAvailable: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityLLMDiagnostic.
+ * Use `create(QualityLLMDiagnosticSchema)` to create a new message.
+ */
+export declare const QualityLLMDiagnosticSchema: GenMessage<QualityLLMDiagnostic>;
 
 /**
  * QualitySuggestionJob is one background AI drafting run over a set of targets.
@@ -3448,6 +3550,73 @@ export declare type CancelQualitySuggestionJobRequest = Message<"metaxisdata.v1.
  * Use `create(CancelQualitySuggestionJobRequestSchema)` to create a new message.
  */
 export declare const CancelQualitySuggestionJobRequestSchema: GenMessage<CancelQualitySuggestionJobRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualitySuggestionJobTargetDebugRequest
+ */
+export declare type GetQualitySuggestionJobTargetDebugRequest = Message<"metaxisdata.v1.GetQualitySuggestionJobTargetDebugRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * The zero-based index of the target in the job's target list.
+   *
+   * @generated from field: int32 target_index = 2;
+   */
+  targetIndex: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualitySuggestionJobTargetDebugRequest.
+ * Use `create(GetQualitySuggestionJobTargetDebugRequestSchema)` to create a new message.
+ */
+export declare const GetQualitySuggestionJobTargetDebugRequestSchema: GenMessage<GetQualitySuggestionJobTargetDebugRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualitySuggestionJobTargetDebugResponse
+ */
+export declare type GetQualitySuggestionJobTargetDebugResponse = Message<"metaxisdata.v1.GetQualitySuggestionJobTargetDebugResponse"> & {
+  /**
+   * False when runtime debug was off, the write failed, or the seven-day debug
+   * log retention already pruned the row.
+   *
+   * @generated from field: bool available = 1;
+   */
+  available: boolean;
+
+  /**
+   * @generated from field: string correlation_id = 2;
+   */
+  correlationId: string;
+
+  /**
+   * @generated from field: string request_body = 3;
+   */
+  requestBody: string;
+
+  /**
+   * @generated from field: string response_body = 4;
+   */
+  responseBody: string;
+
+  /**
+   * The classifier code of the failure, so the client can show its hint even
+   * when the raw bodies are gone.
+   *
+   * @generated from field: string error_code = 5;
+   */
+  errorCode: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualitySuggestionJobTargetDebugResponse.
+ * Use `create(GetQualitySuggestionJobTargetDebugResponseSchema)` to create a new message.
+ */
+export declare const GetQualitySuggestionJobTargetDebugResponseSchema: GenMessage<GetQualitySuggestionJobTargetDebugResponse>;
 
 /**
  * @generated from message metaxisdata.v1.ListColumnProfilesRequest
@@ -5446,6 +5615,18 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof CancelQualitySuggestionJobRequestSchema;
     output: typeof QualitySuggestionJobSchema;
+  },
+  /**
+   * Read the raw request and response bodies of one failed target when runtime
+   * debug mode captured them. The target's diagnostic carries the correlation id
+   * and says whether a body is available; llm_debug_log keeps it for seven days.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualitySuggestionJobTargetDebug
+   */
+  getQualitySuggestionJobTargetDebug: {
+    methodKind: "unary";
+    input: typeof GetQualitySuggestionJobTargetDebugRequestSchema;
+    output: typeof GetQualitySuggestionJobTargetDebugResponseSchema;
   },
   /**
    * List the cached deterministic profiles of columns. Profiles are read-only

@@ -20,35 +20,36 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	DataQualityService_ListQualityRules_FullMethodName              = "/metaxisdata.v1.DataQualityService/ListQualityRules"
-	DataQualityService_GetQualityRule_FullMethodName                = "/metaxisdata.v1.DataQualityService/GetQualityRule"
-	DataQualityService_CreateQualityRule_FullMethodName             = "/metaxisdata.v1.DataQualityService/CreateQualityRule"
-	DataQualityService_BatchCreateQualityRules_FullMethodName       = "/metaxisdata.v1.DataQualityService/BatchCreateQualityRules"
-	DataQualityService_UpdateQualityRule_FullMethodName             = "/metaxisdata.v1.DataQualityService/UpdateQualityRule"
-	DataQualityService_DeleteQualityRule_FullMethodName             = "/metaxisdata.v1.DataQualityService/DeleteQualityRule"
-	DataQualityService_PreviewQualityRule_FullMethodName            = "/metaxisdata.v1.DataQualityService/PreviewQualityRule"
-	DataQualityService_RunQualityRules_FullMethodName               = "/metaxisdata.v1.DataQualityService/RunQualityRules"
-	DataQualityService_ListQualityExecutions_FullMethodName         = "/metaxisdata.v1.DataQualityService/ListQualityExecutions"
-	DataQualityService_GetQualityExecution_FullMethodName           = "/metaxisdata.v1.DataQualityService/GetQualityExecution"
-	DataQualityService_ListQualityIssues_FullMethodName             = "/metaxisdata.v1.DataQualityService/ListQualityIssues"
-	DataQualityService_GetQualityIssue_FullMethodName               = "/metaxisdata.v1.DataQualityService/GetQualityIssue"
-	DataQualityService_UpdateQualityIssue_FullMethodName            = "/metaxisdata.v1.DataQualityService/UpdateQualityIssue"
-	DataQualityService_ListQualitySuggestions_FullMethodName        = "/metaxisdata.v1.DataQualityService/ListQualitySuggestions"
-	DataQualityService_GetQualitySuggestion_FullMethodName          = "/metaxisdata.v1.DataQualityService/GetQualitySuggestion"
-	DataQualityService_UpdateQualitySuggestion_FullMethodName       = "/metaxisdata.v1.DataQualityService/UpdateQualitySuggestion"
-	DataQualityService_BatchUpdateQualitySuggestions_FullMethodName = "/metaxisdata.v1.DataQualityService/BatchUpdateQualitySuggestions"
-	DataQualityService_CreateQualitySuggestionJob_FullMethodName    = "/metaxisdata.v1.DataQualityService/CreateQualitySuggestionJob"
-	DataQualityService_GetQualitySuggestionJob_FullMethodName       = "/metaxisdata.v1.DataQualityService/GetQualitySuggestionJob"
-	DataQualityService_ListQualitySuggestionJobs_FullMethodName     = "/metaxisdata.v1.DataQualityService/ListQualitySuggestionJobs"
-	DataQualityService_CancelQualitySuggestionJob_FullMethodName    = "/metaxisdata.v1.DataQualityService/CancelQualitySuggestionJob"
-	DataQualityService_ListColumnProfiles_FullMethodName            = "/metaxisdata.v1.DataQualityService/ListColumnProfiles"
-	DataQualityService_ListColumnLabels_FullMethodName              = "/metaxisdata.v1.DataQualityService/ListColumnLabels"
-	DataQualityService_UpdateColumnLabel_FullMethodName             = "/metaxisdata.v1.DataQualityService/UpdateColumnLabel"
-	DataQualityService_ProfileColumns_FullMethodName                = "/metaxisdata.v1.DataQualityService/ProfileColumns"
-	DataQualityService_SuggestQualityRule_FullMethodName            = "/metaxisdata.v1.DataQualityService/SuggestQualityRule"
-	DataQualityService_SuggestColumnLabels_FullMethodName           = "/metaxisdata.v1.DataQualityService/SuggestColumnLabels"
-	DataQualityService_ExplainQualityExecution_FullMethodName       = "/metaxisdata.v1.DataQualityService/ExplainQualityExecution"
-	DataQualityService_GetQualityOverview_FullMethodName            = "/metaxisdata.v1.DataQualityService/GetQualityOverview"
+	DataQualityService_ListQualityRules_FullMethodName                   = "/metaxisdata.v1.DataQualityService/ListQualityRules"
+	DataQualityService_GetQualityRule_FullMethodName                     = "/metaxisdata.v1.DataQualityService/GetQualityRule"
+	DataQualityService_CreateQualityRule_FullMethodName                  = "/metaxisdata.v1.DataQualityService/CreateQualityRule"
+	DataQualityService_BatchCreateQualityRules_FullMethodName            = "/metaxisdata.v1.DataQualityService/BatchCreateQualityRules"
+	DataQualityService_UpdateQualityRule_FullMethodName                  = "/metaxisdata.v1.DataQualityService/UpdateQualityRule"
+	DataQualityService_DeleteQualityRule_FullMethodName                  = "/metaxisdata.v1.DataQualityService/DeleteQualityRule"
+	DataQualityService_PreviewQualityRule_FullMethodName                 = "/metaxisdata.v1.DataQualityService/PreviewQualityRule"
+	DataQualityService_RunQualityRules_FullMethodName                    = "/metaxisdata.v1.DataQualityService/RunQualityRules"
+	DataQualityService_ListQualityExecutions_FullMethodName              = "/metaxisdata.v1.DataQualityService/ListQualityExecutions"
+	DataQualityService_GetQualityExecution_FullMethodName                = "/metaxisdata.v1.DataQualityService/GetQualityExecution"
+	DataQualityService_ListQualityIssues_FullMethodName                  = "/metaxisdata.v1.DataQualityService/ListQualityIssues"
+	DataQualityService_GetQualityIssue_FullMethodName                    = "/metaxisdata.v1.DataQualityService/GetQualityIssue"
+	DataQualityService_UpdateQualityIssue_FullMethodName                 = "/metaxisdata.v1.DataQualityService/UpdateQualityIssue"
+	DataQualityService_ListQualitySuggestions_FullMethodName             = "/metaxisdata.v1.DataQualityService/ListQualitySuggestions"
+	DataQualityService_GetQualitySuggestion_FullMethodName               = "/metaxisdata.v1.DataQualityService/GetQualitySuggestion"
+	DataQualityService_UpdateQualitySuggestion_FullMethodName            = "/metaxisdata.v1.DataQualityService/UpdateQualitySuggestion"
+	DataQualityService_BatchUpdateQualitySuggestions_FullMethodName      = "/metaxisdata.v1.DataQualityService/BatchUpdateQualitySuggestions"
+	DataQualityService_CreateQualitySuggestionJob_FullMethodName         = "/metaxisdata.v1.DataQualityService/CreateQualitySuggestionJob"
+	DataQualityService_GetQualitySuggestionJob_FullMethodName            = "/metaxisdata.v1.DataQualityService/GetQualitySuggestionJob"
+	DataQualityService_ListQualitySuggestionJobs_FullMethodName          = "/metaxisdata.v1.DataQualityService/ListQualitySuggestionJobs"
+	DataQualityService_CancelQualitySuggestionJob_FullMethodName         = "/metaxisdata.v1.DataQualityService/CancelQualitySuggestionJob"
+	DataQualityService_GetQualitySuggestionJobTargetDebug_FullMethodName = "/metaxisdata.v1.DataQualityService/GetQualitySuggestionJobTargetDebug"
+	DataQualityService_ListColumnProfiles_FullMethodName                 = "/metaxisdata.v1.DataQualityService/ListColumnProfiles"
+	DataQualityService_ListColumnLabels_FullMethodName                   = "/metaxisdata.v1.DataQualityService/ListColumnLabels"
+	DataQualityService_UpdateColumnLabel_FullMethodName                  = "/metaxisdata.v1.DataQualityService/UpdateColumnLabel"
+	DataQualityService_ProfileColumns_FullMethodName                     = "/metaxisdata.v1.DataQualityService/ProfileColumns"
+	DataQualityService_SuggestQualityRule_FullMethodName                 = "/metaxisdata.v1.DataQualityService/SuggestQualityRule"
+	DataQualityService_SuggestColumnLabels_FullMethodName                = "/metaxisdata.v1.DataQualityService/SuggestColumnLabels"
+	DataQualityService_ExplainQualityExecution_FullMethodName            = "/metaxisdata.v1.DataQualityService/ExplainQualityExecution"
+	DataQualityService_GetQualityOverview_FullMethodName                 = "/metaxisdata.v1.DataQualityService/GetQualityOverview"
 )
 
 // DataQualityServiceClient is the client API for DataQualityService service.
@@ -128,6 +129,10 @@ type DataQualityServiceClient interface {
 	// job finishes its current target, marks the rest skipped and ends CANCELED.
 	// Suggestions already queued are kept.
 	CancelQualitySuggestionJob(ctx context.Context, in *CancelQualitySuggestionJobRequest, opts ...grpc.CallOption) (*QualitySuggestionJob, error)
+	// Read the raw request and response bodies of one failed target when runtime
+	// debug mode captured them. The target's diagnostic carries the correlation id
+	// and says whether a body is available; llm_debug_log keeps it for seven days.
+	GetQualitySuggestionJobTargetDebug(ctx context.Context, in *GetQualitySuggestionJobTargetDebugRequest, opts ...grpc.CallOption) (*GetQualitySuggestionJobTargetDebugResponse, error)
 	// List the cached deterministic profiles of columns. Profiles are read-only
 	// measurements; there is no get or update.
 	ListColumnProfiles(ctx context.Context, in *ListColumnProfilesRequest, opts ...grpc.CallOption) (*ListColumnProfilesResponse, error)
@@ -370,6 +375,16 @@ func (c *dataQualityServiceClient) CancelQualitySuggestionJob(ctx context.Contex
 	return out, nil
 }
 
+func (c *dataQualityServiceClient) GetQualitySuggestionJobTargetDebug(ctx context.Context, in *GetQualitySuggestionJobTargetDebugRequest, opts ...grpc.CallOption) (*GetQualitySuggestionJobTargetDebugResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetQualitySuggestionJobTargetDebugResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_GetQualitySuggestionJobTargetDebug_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *dataQualityServiceClient) ListColumnProfiles(ctx context.Context, in *ListColumnProfilesRequest, opts ...grpc.CallOption) (*ListColumnProfilesResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListColumnProfilesResponse)
@@ -536,6 +551,10 @@ type DataQualityServiceServer interface {
 	// job finishes its current target, marks the rest skipped and ends CANCELED.
 	// Suggestions already queued are kept.
 	CancelQualitySuggestionJob(context.Context, *CancelQualitySuggestionJobRequest) (*QualitySuggestionJob, error)
+	// Read the raw request and response bodies of one failed target when runtime
+	// debug mode captured them. The target's diagnostic carries the correlation id
+	// and says whether a body is available; llm_debug_log keeps it for seven days.
+	GetQualitySuggestionJobTargetDebug(context.Context, *GetQualitySuggestionJobTargetDebugRequest) (*GetQualitySuggestionJobTargetDebugResponse, error)
 	// List the cached deterministic profiles of columns. Profiles are read-only
 	// measurements; there is no get or update.
 	ListColumnProfiles(context.Context, *ListColumnProfilesRequest) (*ListColumnProfilesResponse, error)
@@ -630,6 +649,9 @@ func (UnimplementedDataQualityServiceServer) ListQualitySuggestionJobs(context.C
 }
 func (UnimplementedDataQualityServiceServer) CancelQualitySuggestionJob(context.Context, *CancelQualitySuggestionJobRequest) (*QualitySuggestionJob, error) {
 	return nil, status.Error(codes.Unimplemented, "method CancelQualitySuggestionJob not implemented")
+}
+func (UnimplementedDataQualityServiceServer) GetQualitySuggestionJobTargetDebug(context.Context, *GetQualitySuggestionJobTargetDebugRequest) (*GetQualitySuggestionJobTargetDebugResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQualitySuggestionJobTargetDebug not implemented")
 }
 func (UnimplementedDataQualityServiceServer) ListColumnProfiles(context.Context, *ListColumnProfilesRequest) (*ListColumnProfilesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListColumnProfiles not implemented")
@@ -1054,6 +1076,24 @@ func _DataQualityService_CancelQualitySuggestionJob_Handler(srv interface{}, ctx
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataQualityService_GetQualitySuggestionJobTargetDebug_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQualitySuggestionJobTargetDebugRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).GetQualitySuggestionJobTargetDebug(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_GetQualitySuggestionJobTargetDebug_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).GetQualitySuggestionJobTargetDebug(ctx, req.(*GetQualitySuggestionJobTargetDebugRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DataQualityService_ListColumnProfiles_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListColumnProfilesRequest)
 	if err := dec(in); err != nil {
@@ -1281,6 +1321,10 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CancelQualitySuggestionJob",
 			Handler:    _DataQualityService_CancelQualitySuggestionJob_Handler,
+		},
+		{
+			MethodName: "GetQualitySuggestionJobTargetDebug",
+			Handler:    _DataQualityService_GetQualitySuggestionJobTargetDebug_Handler,
 		},
 		{
 			MethodName: "ListColumnProfiles",

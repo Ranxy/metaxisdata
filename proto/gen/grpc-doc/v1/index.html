@@ -1117,6 +1117,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.GetQualitySuggestionJobTargetDebugRequest"><span class="badge">M</span>GetQualitySuggestionJobTargetDebugRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetQualitySuggestionJobTargetDebugResponse"><span class="badge">M</span>GetQualitySuggestionJobTargetDebugResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.GetQualitySuggestionRequest"><span class="badge">M</span>GetQualitySuggestionRequest</a>
                 </li>
               
@@ -1222,6 +1230,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualityIssue"><span class="badge">M</span>QualityIssue</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityLLMDiagnostic"><span class="badge">M</span>QualityLLMDiagnostic</a>
                 </li>
               
                 <li>
@@ -13155,6 +13167,91 @@ The fail threshold defaults to zero. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.GetQualitySuggestionJobTargetDebugRequest">GetQualitySuggestionJobTargetDebugRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_index</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The zero-based index of the target in the job&#39;s target list. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.GetQualitySuggestionJobTargetDebugResponse">GetQualitySuggestionJobTargetDebugResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>available</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>False when runtime debug was off, the write failed, or the seven-day debug
+log retention already pruned the row. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>correlation_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>request_body</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>response_body</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>error_code</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The classifier code of the failure, so the client can show its hint even
+when the raw bodies are gone. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.GetQualitySuggestionRequest">GetQualitySuggestionRequest</h3>
         <p></p>
 
@@ -14724,6 +14821,116 @@ rule keeps running and results keep being recorded. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.QualityLLMDiagnostic">QualityLLMDiagnostic</h3>
+        <p>QualityLLMDiagnostic explains why one LLM analysis failed, in a form a person</p><p>can act on and an operator can correlate with logs. It never includes the</p><p>prompt or the model response; those are available on demand when runtime debug</p><p>mode captured them (see GetQualitySuggestionJobTargetDebug).</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>error_code</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A stable machine-readable classifier, e.g. TRUNCATED (finish_reason=length),
+STREAM_INCOMPLETE, PROVIDER_STATUS, PROVIDER_REQUEST, RESPONSE_TOO_LARGE,
+TIMEOUT, PARSE, UNKNOWN. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>provider</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>model</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>prompt_version</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>max_output_tokens</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The output-token budget the call asked for; TRUNCATED points at this. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>finish_reason</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>prompt_tokens</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>completion_tokens</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>total_tokens</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>prompt_chars</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p>How large the prompt was, so a context/usage problem is visible. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>correlation_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Copy this into server logs or the debug log lookup. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>provider_status</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>debug_payload_available</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether GetQualitySuggestionJobTargetDebug can return the raw bodies. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.QualityOverview">QualityOverview</h3>
         <p>QualityOverview is the workspace-level summary the overview page renders. It</p><p>aggregates the tables instead of listing rows, so the page costs a handful of</p><p>queries rather than paging through every result.</p>
 
@@ -15553,6 +15760,15 @@ Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion} </p></td>
                   <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>diagnostic</td>
+                  <td><a href="#metaxisdata.v1.QualityLLMDiagnostic">QualityLLMDiagnostic</a></td>
+                  <td></td>
+                  <td><p>Set when the target failed in the model call: the classifier, provider
+facts, stop reason and usage behind the error, plus the correlation id that
+ties it to the server log and the debug log. </p></td>
                 </tr>
               
             </tbody>
@@ -18246,6 +18462,15 @@ Suggestions already queued are kept.</p></td>
               </tr>
             
               <tr>
+                <td>GetQualitySuggestionJobTargetDebug</td>
+                <td><a href="#metaxisdata.v1.GetQualitySuggestionJobTargetDebugRequest">GetQualitySuggestionJobTargetDebugRequest</a></td>
+                <td><a href="#metaxisdata.v1.GetQualitySuggestionJobTargetDebugResponse">GetQualitySuggestionJobTargetDebugResponse</a></td>
+                <td><p>Read the raw request and response bodies of one failed target when runtime
+debug mode captured them. The target&#39;s diagnostic carries the correlation id
+and says whether a body is available; llm_debug_log keeps it for seven days.</p></td>
+              </tr>
+            
+              <tr>
                 <td>ListColumnProfiles</td>
                 <td><a href="#metaxisdata.v1.ListColumnProfilesRequest">ListColumnProfilesRequest</a></td>
                 <td><a href="#metaxisdata.v1.ListColumnProfilesResponse">ListColumnProfilesResponse</a></td>
@@ -18532,6 +18757,16 @@ the last day went, and the per-day tallies the overview chart draws.</p></td>
                 <td>POST</td>
                 <td>/v1/{name=workspaces/*/qualitySuggestionJobs/*}:cancel</td>
                 <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetQualitySuggestionJobTargetDebug</td>
+                <td>GET</td>
+                <td>/v1/{name=workspaces/*/qualitySuggestionJobs/*}:debug</td>
+                <td></td>
               </tr>
               
             

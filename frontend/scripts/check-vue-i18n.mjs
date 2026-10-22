@@ -85,6 +85,11 @@ export const DYNAMIC_PREFIXES = [
   // src/utils/dataQualitySuggestion.ts.
   "dataQuality.suggestionJobStatus",
   "dataQuality.suggestionJobTargetState",
+  // LLM failure classifier labels/hints and the synchronous truncation hint
+  // returned by helpers in src/utils/dataQualitySuggestion.ts.
+  "dataQuality.suggestions.diagnostic.code",
+  "dataQuality.suggestions.diagnostic.hint",
+  "dataQuality.suggestions.diagnostic.syncTruncatedHint",
   "dataQuality.semanticType",
   "dataQuality.labelSource",
   "dataQuality.labelStatus",

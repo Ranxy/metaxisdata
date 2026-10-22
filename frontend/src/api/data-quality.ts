@@ -20,6 +20,8 @@ import {
   GetQualityOverviewRequestSchema,
   GetQualityRuleRequestSchema,
   GetQualitySuggestionJobRequestSchema,
+  GetQualitySuggestionJobTargetDebugRequestSchema,
+  type GetQualitySuggestionJobTargetDebugResponse,
   GetQualitySuggestionRequestSchema,
   ListColumnLabelsRequestSchema,
   ListColumnProfilesRequestSchema,
@@ -554,6 +556,22 @@ export async function getQualitySuggestionJob(
 ): Promise<QualitySuggestionJob> {
   const request = create(GetQualitySuggestionJobRequestSchema, { name });
   return await dataQualityClient.getQualitySuggestionJob(request, { signal });
+}
+
+/**
+ * The raw request/response bodies of one failed drafting target. Only available
+ * when runtime LLM debug was on at the time and the 7-day debug log has not been
+ * pruned; `available` says which it is.
+ */
+export async function getQualitySuggestionJobTargetDebug(
+  name: string,
+  targetIndex: number
+): Promise<GetQualitySuggestionJobTargetDebugResponse> {
+  const request = create(GetQualitySuggestionJobTargetDebugRequestSchema, {
+    name,
+    targetIndex,
+  });
+  return await dataQualityClient.getQualitySuggestionJobTargetDebug(request);
 }
 
 /** One page of drafting jobs, newest first. */

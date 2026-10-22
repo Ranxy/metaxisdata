@@ -52,7 +52,7 @@ type JobStore interface {
 // implements it; a test uses a fake to control latency, outcome and quota errors.
 type DraftSuggester interface {
 	ResolveConfig(ctx context.Context) (llm.ResolvedConfig, dataquality.Settings, error)
-	Draft(ctx context.Context, config llm.ResolvedConfig, targetGUID string, metaType storepb.MetaType, columns []string, intent, language string, createdBy *int32) ([]*store.QualitySuggestionMessage, error)
+	Draft(ctx context.Context, config llm.ResolvedConfig, targetGUID string, metaType storepb.MetaType, columns []string, intent, language string, createdBy *int32) ([]*store.QualitySuggestionMessage, *storepb.QualityLLMDiagnostic, error)
 }
 
 // Runner claims and executes background AI drafting jobs.
@@ -186,12 +186,19 @@ func (r *Runner) processJob(ctx context.Context, job *store.QualitySuggestionJob
 		target.StartedAtUnixMs = startedAt.UnixMilli()
 		r.persist(ctx, job, targets)
 
-		created, draftErr := r.suggester.Draft(ctx, config, target.GetTargetGuid(),
+		created, diagnostic, draftErr := r.suggester.Draft(ctx, config, target.GetTargetGuid(),
 			storepb.MetaType(target.GetTargetType()), target.GetColumns(), job.Intent, job.Language, job.CreatedBy)
 		if draftErr != nil {
 			target.Error = truncateJobError(draftErr)
+			target.Diagnostic = diagnostic
 			target.State = storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_FAILED
 			target.FinishedAtUnixMs = r.now().UnixMilli()
+			slog.Warn("quality suggestion job target failed",
+				slog.String("job", job.ResourceID),
+				slog.String("target", target.GetTargetGuid()),
+				slog.String("code", diagnostic.GetErrorCode()),
+				slog.String("correlation_id", diagnostic.GetCorrelationId()),
+				slog.Any("error", draftErr))
 			if ctx.Err() != nil {
 				r.stopRemaining(ctx, job, targets, index, storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_FAILED,
 					"the server shut down before the job finished")

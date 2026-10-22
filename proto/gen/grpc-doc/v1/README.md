@@ -246,6 +246,8 @@
     - [GetQualityOverviewRequest](#metaxisdata-v1-GetQualityOverviewRequest)
     - [GetQualityRuleRequest](#metaxisdata-v1-GetQualityRuleRequest)
     - [GetQualitySuggestionJobRequest](#metaxisdata-v1-GetQualitySuggestionJobRequest)
+    - [GetQualitySuggestionJobTargetDebugRequest](#metaxisdata-v1-GetQualitySuggestionJobTargetDebugRequest)
+    - [GetQualitySuggestionJobTargetDebugResponse](#metaxisdata-v1-GetQualitySuggestionJobTargetDebugResponse)
     - [GetQualitySuggestionRequest](#metaxisdata-v1-GetQualitySuggestionRequest)
     - [GroupCheckConfig](#metaxisdata-v1-GroupCheckConfig)
     - [ListColumnLabelsRequest](#metaxisdata-v1-ListColumnLabelsRequest)
@@ -273,6 +275,7 @@
     - [QualityFilter](#metaxisdata-v1-QualityFilter)
     - [QualityFilterClause](#metaxisdata-v1-QualityFilterClause)
     - [QualityIssue](#metaxisdata-v1-QualityIssue)
+    - [QualityLLMDiagnostic](#metaxisdata-v1-QualityLLMDiagnostic)
     - [QualityOverview](#metaxisdata-v1-QualityOverview)
     - [QualityRule](#metaxisdata-v1-QualityRule)
     - [QualityRuleConfig](#metaxisdata-v1-QualityRuleConfig)
@@ -4483,6 +4486,41 @@ timestamp follows on_empty.
 
 
 
+<a name="metaxisdata-v1-GetQualitySuggestionJobTargetDebugRequest"></a>
+
+### GetQualitySuggestionJobTargetDebugRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job} |
+| target_index | [int32](#int32) |  | The zero-based index of the target in the job&#39;s target list. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetQualitySuggestionJobTargetDebugResponse"></a>
+
+### GetQualitySuggestionJobTargetDebugResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| available | [bool](#bool) |  | False when runtime debug was off, the write failed, or the seven-day debug log retention already pruned the row. |
+| correlation_id | [string](#string) |  |  |
+| request_body | [string](#string) |  |  |
+| response_body | [string](#string) |  |  |
+| error_code | [string](#string) |  | The classifier code of the failure, so the client can show its hint even when the raw bodies are gone. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetQualitySuggestionRequest"></a>
 
 ### GetQualitySuggestionRequest
@@ -5025,6 +5063,36 @@ another, and a resolved issue is never reopened.
 
 
 
+<a name="metaxisdata-v1-QualityLLMDiagnostic"></a>
+
+### QualityLLMDiagnostic
+QualityLLMDiagnostic explains why one LLM analysis failed, in a form a person
+can act on and an operator can correlate with logs. It never includes the
+prompt or the model response; those are available on demand when runtime debug
+mode captured them (see GetQualitySuggestionJobTargetDebug).
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| error_code | [string](#string) |  | A stable machine-readable classifier, e.g. TRUNCATED (finish_reason=length), STREAM_INCOMPLETE, PROVIDER_STATUS, PROVIDER_REQUEST, RESPONSE_TOO_LARGE, TIMEOUT, PARSE, UNKNOWN. |
+| provider | [string](#string) |  |  |
+| model | [string](#string) |  |  |
+| prompt_version | [string](#string) |  |  |
+| max_output_tokens | [int32](#int32) |  | The output-token budget the call asked for; TRUNCATED points at this. |
+| finish_reason | [string](#string) |  |  |
+| prompt_tokens | [int64](#int64) |  |  |
+| completion_tokens | [int64](#int64) |  |  |
+| total_tokens | [int64](#int64) |  |  |
+| prompt_chars | [int64](#int64) |  | How large the prompt was, so a context/usage problem is visible. |
+| correlation_id | [string](#string) |  | Copy this into server logs or the debug log lookup. |
+| provider_status | [int32](#int32) |  |  |
+| debug_payload_available | [bool](#bool) |  | Whether GetQualitySuggestionJobTargetDebug can return the raw bodies. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-QualityOverview"></a>
 
 ### QualityOverview
@@ -5240,6 +5308,7 @@ to it. `suggestions` names the queued suggestions this target produced.
 | error | [string](#string) |  | Empty unless this target failed; then why. |
 | start_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | finish_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| diagnostic | [QualityLLMDiagnostic](#metaxisdata-v1-QualityLLMDiagnostic) |  | Set when the target failed in the model call: the classifier, provider facts, stop reason and usage behind the error, plus the correlation id that ties it to the server log and the debug log. |
 
 
 
@@ -6231,6 +6300,7 @@ not exposed as a resource.
 | GetQualitySuggestionJob | [GetQualitySuggestionJobRequest](#metaxisdata-v1-GetQualitySuggestionJobRequest) | [QualitySuggestionJob](#metaxisdata-v1-QualitySuggestionJob) | Read one drafting job, including per-target progress and the suggestions it queued so far. |
 | ListQualitySuggestionJobs | [ListQualitySuggestionJobsRequest](#metaxisdata-v1-ListQualitySuggestionJobsRequest) | [ListQualitySuggestionJobsResponse](#metaxisdata-v1-ListQualitySuggestionJobsResponse) | List drafting jobs, newest first. |
 | CancelQualitySuggestionJob | [CancelQualitySuggestionJobRequest](#metaxisdata-v1-CancelQualitySuggestionJobRequest) | [QualitySuggestionJob](#metaxisdata-v1-QualitySuggestionJob) | Ask a drafting job to stop. A pending job is canceled immediately; a running job finishes its current target, marks the rest skipped and ends CANCELED. Suggestions already queued are kept. |
+| GetQualitySuggestionJobTargetDebug | [GetQualitySuggestionJobTargetDebugRequest](#metaxisdata-v1-GetQualitySuggestionJobTargetDebugRequest) | [GetQualitySuggestionJobTargetDebugResponse](#metaxisdata-v1-GetQualitySuggestionJobTargetDebugResponse) | Read the raw request and response bodies of one failed target when runtime debug mode captured them. The target&#39;s diagnostic carries the correlation id and says whether a body is available; llm_debug_log keeps it for seven days. |
 | ListColumnProfiles | [ListColumnProfilesRequest](#metaxisdata-v1-ListColumnProfilesRequest) | [ListColumnProfilesResponse](#metaxisdata-v1-ListColumnProfilesResponse) | List the cached deterministic profiles of columns. Profiles are read-only measurements; there is no get or update. |
 | ListColumnLabels | [ListColumnLabelsRequest](#metaxisdata-v1-ListColumnLabelsRequest) | [ListColumnLabelsResponse](#metaxisdata-v1-ListColumnLabelsResponse) | List the semantic labels asserted on columns. |
 | UpdateColumnLabel | [UpdateColumnLabelRequest](#metaxisdata-v1-UpdateColumnLabelRequest) | [UpdateColumnLabelResponse](#metaxisdata-v1-UpdateColumnLabelResponse) | Accept a proposed semantic label or clear the label of one column. |

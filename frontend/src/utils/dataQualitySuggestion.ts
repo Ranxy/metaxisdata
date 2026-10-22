@@ -7,6 +7,7 @@ import {
   QualityDimension,
   QualityLabelSource,
   QualityLabelStatus,
+  type QualityLLMDiagnostic,
   type QualityRule,
   type QualityRuleDraftConfig,
   QualityRuleSchema,
@@ -720,6 +721,102 @@ export function jobIntentSnippet(
     return intent;
   }
   return `${intent.slice(0, Math.max(0, maxLength - 1))}…`;
+}
+
+// ---- LLM failure diagnostics ----
+
+/** The classifier suffixes the server may store on a failed model call. */
+function diagnosticSuffix(code: string): string {
+  switch (code.trim().toUpperCase()) {
+    case "TRUNCATED":
+      return "truncated";
+    case "STREAM_INCOMPLETE":
+      return "streamIncomplete";
+    case "PROVIDER_STATUS":
+      return "providerStatus";
+    case "PROVIDER_REQUEST":
+      return "providerRequest";
+    case "RESPONSE_TOO_LARGE":
+      return "responseTooLarge";
+    case "UNEXPECTED_FINISH_REASON":
+      return "unexpectedFinishReason";
+    case "TIMEOUT":
+      return "timeout";
+    case "MALFORMED_RESPONSE":
+      return "malformedResponse";
+    case "PARSE":
+      return "parse";
+    default:
+      return "unknown";
+  }
+}
+
+/** The short label key for a failure classifier code. */
+export function diagnosticCodeKey(code: string): string {
+  return `dataQuality.suggestions.diagnostic.code.${diagnosticSuffix(code)}`;
+}
+
+/** The actionable hint key for a failure classifier code. */
+export function diagnosticHintKey(code: string): string {
+  return `dataQuality.suggestions.diagnostic.hint.${diagnosticSuffix(code)}`;
+}
+
+/**
+ * A token/character count from a diagnostic. Zero means the provider did not
+ * report it, which reads as "-" rather than a fake zero.
+ */
+export function formatDiagnosticCount(value: bigint | number): string {
+  const reported = typeof value === "bigint" ? value > 0n : value > 0;
+  return reported ? formatRowCount(value) : "-";
+}
+
+export interface DiagnosticSummary {
+  /** `provider · model`, or whichever half the provider reported. */
+  providerModel: string;
+  promptVersion: string;
+  finishReason: string;
+  maxOutputTokens: string;
+  promptTokens: string;
+  completionTokens: string;
+  totalTokens: string;
+  promptChars: string;
+  providerStatus: string;
+  correlationId: string;
+}
+
+/** The at-a-glance facts of a failed model call, already formatted for display. */
+export function diagnosticSummary(
+  diagnostic: QualityLLMDiagnostic
+): DiagnosticSummary {
+  return {
+    providerModel:
+      [diagnostic.provider, diagnostic.model].filter(Boolean).join(" · ") ||
+      "-",
+    promptVersion: diagnostic.promptVersion || "-",
+    finishReason: diagnostic.finishReason || "-",
+    maxOutputTokens: formatDiagnosticCount(diagnostic.maxOutputTokens),
+    promptTokens: formatDiagnosticCount(diagnostic.promptTokens),
+    completionTokens: formatDiagnosticCount(diagnostic.completionTokens),
+    totalTokens: formatDiagnosticCount(diagnostic.totalTokens),
+    promptChars: formatDiagnosticCount(diagnostic.promptChars),
+    providerStatus:
+      diagnostic.providerStatus > 0 ? String(diagnostic.providerStatus) : "-",
+    correlationId: diagnostic.correlationId,
+  };
+}
+
+/** The copy that explains an output-token truncation on the synchronous path. */
+const TRUNCATED_ERROR_PATTERN =
+  /finish_reason=length|truncated by the provider|output[- ]token limit/i;
+
+/**
+ * The localized hint for a synchronous drafting error caused by the model
+ * stopping at its output-token limit; the server text stays visible beside it.
+ */
+export function syncDraftErrorHintKey(message: string): string | undefined {
+  return TRUNCATED_ERROR_PATTERN.test(message)
+    ? "dataQuality.suggestions.diagnostic.syncTruncatedHint"
+    : undefined;
 }
 
 // ---- column profiles and labels ----

@@ -3,9 +3,12 @@ package store
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
+
+	"github.com/Ranxy/metaxisdata/backend/common"
 )
 
 // ExplainSQLCacheTTL bounds how long a cached explanation is served. Metadata
@@ -27,13 +30,71 @@ type ExplainSQLCacheRow struct {
 	CreatedAt       time.Time
 }
 
-// InsertLLMDebugLog inserts a debug log entry.
-func (s *Store) InsertLLMDebugLog(ctx context.Context, provider, model, reqBody, respBody string) error {
-	_, err := s.GetDB().ExecContext(ctx, `
-		INSERT INTO llm_debug_log (provider, model, request_body, response_body, created_at)
-		VALUES ($1, $2, $3, $4, NOW())
-	`, provider, model, reqBody, respBody)
-	return err
+// LLMDebugLogEntry is one captured LLM call: the provider facts, the feature that
+// made it, the caller's correlation id, the classifier code when it failed, and
+// the raw request/response bodies. It is only written when runtime debug is on and
+// is pruned after seven days.
+type LLMDebugLogEntry struct {
+	Provider      string
+	Model         string
+	Kind          string
+	CorrelationID string
+	ErrorCode     string
+	RequestBody   string
+	ResponseBody  string
+	CreatedAt     time.Time
+}
+
+// insertLLMDebugLogQuery is the one write of the debug log. The correlation id is
+// what a failure diagnostic carries, so its index is the retrieval path.
+const insertLLMDebugLogQuery = `
+	INSERT INTO llm_debug_log (provider, model, kind, correlation_id, error_code, request_body, response_body, created_at)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+
+// getLLMDebugLogByCorrelationQuery reads the newest capture for one correlation id.
+// A correlation id is per call, so more than one row would only happen after a
+// retried write; the newest is the interesting one.
+const getLLMDebugLogByCorrelationQuery = `
+	SELECT provider, model, kind, correlation_id, error_code, request_body, response_body, created_at
+	FROM llm_debug_log
+	WHERE correlation_id = $1
+	ORDER BY id DESC
+	LIMIT 1`
+
+// InsertLLMDebugLog inserts one debug log entry.
+func (s *Store) InsertLLMDebugLog(ctx context.Context, entry *LLMDebugLogEntry) error {
+	if entry == nil {
+		return common.Errorf(common.Invalid, "an LLM debug log entry is required")
+	}
+	createdAt := entry.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
+	} else {
+		createdAt = createdAt.UTC()
+	}
+	_, err := s.GetDB().ExecContext(ctx, insertLLMDebugLogQuery,
+		entry.Provider, entry.Model, entry.Kind, entry.CorrelationID, entry.ErrorCode,
+		entry.RequestBody, entry.ResponseBody, createdAt)
+	return errors.Wrap(err, "failed to insert an LLM debug log entry")
+}
+
+// GetLLMDebugLogByCorrelation returns the newest captured call for one correlation
+// id, or (nil, nil) when runtime debug did not capture it or retention pruned it.
+func (s *Store) GetLLMDebugLogByCorrelation(ctx context.Context, correlationID string) (*LLMDebugLogEntry, error) {
+	if strings.TrimSpace(correlationID) == "" {
+		return nil, nil
+	}
+	entry := &LLMDebugLogEntry{}
+	err := s.GetDB().QueryRowContext(ctx, getLLMDebugLogByCorrelationQuery, strings.TrimSpace(correlationID)).Scan(
+		&entry.Provider, &entry.Model, &entry.Kind, &entry.CorrelationID, &entry.ErrorCode,
+		&entry.RequestBody, &entry.ResponseBody, &entry.CreatedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, errors.Wrap(err, "failed to read the LLM debug log entry")
+	}
+	return entry, nil
 }
 
 // GetExplainSQLCache looks up a cached explanation by key. Entries older than

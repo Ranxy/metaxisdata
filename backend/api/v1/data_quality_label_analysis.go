@@ -125,7 +125,8 @@ func (s *DataQualityService) SuggestColumnLabels(ctx context.Context, req *conne
 	for _, batch := range qualityLabelColumnBatches(columns, qualityLabelBatchColumns, qualityLabelMaxBatches) {
 		systemPrompt, userPrompt := dataquality.BuildLabelPrompt(
 			dataquality.LabelPromptVersion, language, resolution.Target, profiles, lineage, existingLabels, batch)
-		text, usage, err := s.suggester.JSONCompletion(ctx, config, qualityLLMFeatureColumnLabels, systemPrompt, userPrompt, dataquality.MaxLLMOutputTokens)
+		text, usage, _, err := s.suggester.JSONCompletion(ctx, config, qualityLLMFeatureColumnLabels,
+			dataquality.LabelPromptVersion, systemPrompt, userPrompt, dataquality.MaxLLMOutputTokens)
 		if err != nil {
 			return nil, err
 		}

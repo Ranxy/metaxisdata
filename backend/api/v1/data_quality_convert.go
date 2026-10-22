@@ -1086,6 +1086,7 @@ func convertQualitySuggestionJob(workspaceID string, job *store.QualitySuggestio
 			},
 			State:      convertQualitySuggestionJobTargetState(target.GetState()),
 			Error:      target.GetError(),
+			Diagnostic: convertQualityLLMDiagnosticToV1(target.GetDiagnostic()),
 			StartTime:  unixMillisecondTimestamp(target.GetStartedAtUnixMs()),
 			FinishTime: unixMillisecondTimestamp(target.GetFinishedAtUnixMs()),
 		}
@@ -1112,6 +1113,30 @@ func convertQualitySuggestionJob(workspaceID string, job *store.QualitySuggestio
 		converted.SuggestionCount += int32(len(target.GetSuggestions()))
 	}
 	return converted
+}
+
+// convertQualityLLMDiagnosticToV1 maps the stored failure diagnostic. The public
+// field is debug_payload_available, which says whether the raw bodies were
+// captured; the bodies themselves are read by GetQualitySuggestionJobTargetDebug.
+func convertQualityLLMDiagnosticToV1(diagnostic *storepb.QualityLLMDiagnostic) *v1pb.QualityLLMDiagnostic {
+	if diagnostic == nil {
+		return nil
+	}
+	return &v1pb.QualityLLMDiagnostic{
+		ErrorCode:             diagnostic.GetErrorCode(),
+		Provider:              diagnostic.GetProvider(),
+		Model:                 diagnostic.GetModel(),
+		PromptVersion:         diagnostic.GetPromptVersion(),
+		MaxOutputTokens:       diagnostic.GetMaxOutputTokens(),
+		FinishReason:          diagnostic.GetFinishReason(),
+		PromptTokens:          diagnostic.GetPromptTokens(),
+		CompletionTokens:      diagnostic.GetCompletionTokens(),
+		TotalTokens:           diagnostic.GetTotalTokens(),
+		PromptChars:           diagnostic.GetPromptChars(),
+		CorrelationId:         diagnostic.GetCorrelationId(),
+		ProviderStatus:        diagnostic.GetProviderStatus(),
+		DebugPayloadAvailable: diagnostic.GetDebugCaptured(),
+	}
 }
 
 // convertQualitySuggestionJobStatus maps the stored lifecycle enum onto its public

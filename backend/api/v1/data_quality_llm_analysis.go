@@ -87,7 +87,7 @@ func (s *DataQualityService) SuggestQualityRule(ctx context.Context, req *connec
 	if err != nil {
 		return nil, err
 	}
-	created, err := s.suggester.Draft(ctx, config, tableGUID, metaType, requestedColumns, intent, language,
+	created, _, err := s.suggester.Draft(ctx, config, tableGUID, metaType, requestedColumns, intent, language,
 		principalIDPointer(currentUserID(ctx)))
 	if err != nil {
 		return nil, err
@@ -178,7 +178,8 @@ func (s *DataQualityService) ExplainQualityExecution(ctx context.Context, req *c
 	if err := stream.Send(thinking); err != nil {
 		return err
 	}
-	text, usage, err := s.suggester.JSONCompletion(ctx, config, qualityLLMFeatureExplainResult, systemPrompt, userPrompt, dataquality.MaxLLMOutputTokens)
+	text, usage, _, err := s.suggester.JSONCompletion(ctx, config, qualityLLMFeatureExplainResult,
+		dataquality.ExplainPromptVersion, systemPrompt, userPrompt, dataquality.MaxLLMOutputTokens)
 	if err != nil {
 		return err
 	}

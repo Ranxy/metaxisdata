@@ -1014,7 +1014,7 @@ func TestDataQualitySuggestionJobsRealServerIntegration(t *testing.T) {
 	resourceID, err := common.RandomString(12)
 	require.NoError(t, err)
 	seedAt := time.Now().UTC()
-	seedTarget := func(guid string, state storepb.QualitySuggestionJobTargetState, suggestions []string) *storepb.QualitySuggestionJobTarget {
+	seedTarget := func(guid string, state storepb.QualitySuggestionJobTargetState, suggestions []string, diagnostic *storepb.QualityLLMDiagnostic) *storepb.QualitySuggestionJobTarget {
 		target := &storepb.QualitySuggestionJobTarget{
 			TargetGuid: guid,
 			TargetType: int32(storepb.MetaType_TABLE),
@@ -1026,6 +1026,7 @@ func TestDataQualitySuggestionJobsRealServerIntegration(t *testing.T) {
 			Columns:               []string{"email"},
 			State:                 state,
 			SuggestionResourceIds: suggestions,
+			Diagnostic:            diagnostic,
 		}
 		// A target only has a start/finish stamp once it was visited.
 		if state != storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING {
@@ -1042,9 +1043,30 @@ func TestDataQualitySuggestionJobsRealServerIntegration(t *testing.T) {
 		Provider:      "profiles/integration",
 		Model:         "integration-model",
 		PromptVersion: "dq.rule_draft.v1",
+		// The first target's failure was not captured (runtime debug off); the second
+		// says it was captured but has no row in the debug log any more, so the
+		// retrieval reports the pruned case without error.
 		Targets: &storepb.QualitySuggestionJobTargets{Targets: []*storepb.QualitySuggestionJobTarget{
-			seedTarget(fixture.usersGUID, storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_DONE, []string{"sugg1"}),
-			seedTarget("instances/missing;shop;public;orders", storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING, nil),
+			seedTarget(fixture.usersGUID, storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_DONE, []string{"sugg1"}, &storepb.QualityLLMDiagnostic{
+				ErrorCode:       "TRUNCATED",
+				Provider:        "profiles/integration",
+				Model:           "integration-model",
+				PromptVersion:   "dq.rule_draft.v1",
+				MaxOutputTokens: 8192,
+				FinishReason:    "length",
+				PromptChars:     1234,
+				CorrelationId:   "corr-not-captured",
+				DebugCaptured:   false,
+			}),
+			seedTarget("instances/missing;shop;public;orders", storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING, nil, &storepb.QualityLLMDiagnostic{
+				ErrorCode:       "TIMEOUT",
+				Provider:        "profiles/integration",
+				Model:           "integration-model",
+				PromptVersion:   "dq.rule_draft.v1",
+				MaxOutputTokens: 8192,
+				CorrelationId:   "corr-pruned",
+				DebugCaptured:   true,
+			}),
 		}},
 		CreatedBy: qualityPtr(int32(1)),
 	})
@@ -1073,6 +1095,13 @@ func TestDataQualitySuggestionJobsRealServerIntegration(t *testing.T) {
 		read.Msg.GetTargets()[0].GetSuggestions())
 	require.Equal(t, fixture.sourceDatabase, read.Msg.GetTargets()[0].GetTarget().GetPath().GetDatabase())
 	require.NotNil(t, read.Msg.GetTargets()[0].GetStartTime())
+	firstDiagnostic := read.Msg.GetTargets()[0].GetDiagnostic()
+	require.NotNil(t, firstDiagnostic)
+	require.Equal(t, "TRUNCATED", firstDiagnostic.GetErrorCode())
+	require.Equal(t, "length", firstDiagnostic.GetFinishReason())
+	require.Equal(t, int32(8192), firstDiagnostic.GetMaxOutputTokens())
+	require.Equal(t, "corr-not-captured", firstDiagnostic.GetCorrelationId())
+	require.False(t, firstDiagnostic.GetDebugPayloadAvailable())
 	require.Equal(t, v1pb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING, read.Msg.GetTargets()[1].GetState())
 	require.Nil(t, read.Msg.GetTargets()[1].GetFinishTime(), "a pending target has not finished")
 
@@ -1087,6 +1116,52 @@ func TestDataQualitySuggestionJobsRealServerIntegration(t *testing.T) {
 	}))
 	require.NoError(t, err)
 	require.Empty(t, completed.Msg.GetQualitySuggestionJobs())
+
+	// Reading the raw bodies: runtime debug was off for the first target, and the
+	// second capture was pruned, so both report unavailable with the classifier.
+	debugNotCaptured, err := client.GetQualitySuggestionJobTargetDebug(fixture.ctx, withToken(token,
+		&v1pb.GetQualitySuggestionJobTargetDebugRequest{Name: jobName(resourceID), TargetIndex: 0}))
+	require.NoError(t, err)
+	require.False(t, debugNotCaptured.Msg.GetAvailable())
+	require.Equal(t, "corr-not-captured", debugNotCaptured.Msg.GetCorrelationId())
+	require.Equal(t, "TRUNCATED", debugNotCaptured.Msg.GetErrorCode())
+	require.Empty(t, debugNotCaptured.Msg.GetRequestBody())
+
+	// The second target says its bodies were captured; they are readable while the
+	// debug-log row exists and unavailable once retention prunes it.
+	require.NoError(t, fixture.env.Store.InsertLLMDebugLog(fixture.ctx, &store.LLMDebugLogEntry{
+		Provider:      "profiles/integration",
+		Model:         "integration-model",
+		Kind:          "dq_rule_draft",
+		CorrelationID: "corr-pruned",
+		ErrorCode:     "TIMEOUT",
+		RequestBody:   `{"model":"integration-model"}`,
+		ResponseBody:  `{"error":"timeout"}`,
+	}))
+	debugCaptured, err := client.GetQualitySuggestionJobTargetDebug(fixture.ctx, withToken(token,
+		&v1pb.GetQualitySuggestionJobTargetDebugRequest{Name: jobName(resourceID), TargetIndex: 1}))
+	require.NoError(t, err)
+	require.True(t, debugCaptured.Msg.GetAvailable())
+	require.Equal(t, "corr-pruned", debugCaptured.Msg.GetCorrelationId())
+	require.Equal(t, "TIMEOUT", debugCaptured.Msg.GetErrorCode())
+	require.JSONEq(t, `{"model":"integration-model"}`, debugCaptured.Msg.GetRequestBody())
+	require.JSONEq(t, `{"error":"timeout"}`, debugCaptured.Msg.GetResponseBody())
+
+	_, err = fixture.env.Store.GetDB().ExecContext(fixture.ctx, `DELETE FROM llm_debug_log WHERE correlation_id = $1`, "corr-pruned")
+	require.NoError(t, err)
+	debugPruned, err := client.GetQualitySuggestionJobTargetDebug(fixture.ctx, withToken(token,
+		&v1pb.GetQualitySuggestionJobTargetDebugRequest{Name: jobName(resourceID), TargetIndex: 1}))
+	require.NoError(t, err)
+	require.False(t, debugPruned.Msg.GetAvailable(), "a pruned capture is unavailable, not an error")
+	require.Equal(t, "corr-pruned", debugPruned.Msg.GetCorrelationId())
+	require.Equal(t, "TIMEOUT", debugPruned.Msg.GetErrorCode())
+
+	for _, index := range []int32{-1, 5} {
+		_, err := client.GetQualitySuggestionJobTargetDebug(fixture.ctx, withToken(token,
+			&v1pb.GetQualitySuggestionJobTargetDebugRequest{Name: jobName(resourceID), TargetIndex: index}))
+		require.Error(t, err, "target_index %d", index)
+		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err), "target_index %d", index)
+	}
 
 	// Canceling a RUNNING job records the request; the runner stops between targets
 	// and finishes it. The API reports the current row.

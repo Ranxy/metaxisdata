@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { notify } from "@/lib/notify";
 import { i18n } from "@/locales";
 import {
+  type QualityLLMDiagnostic,
+  QualityLLMDiagnosticSchema,
   type QualitySuggestionJob,
   QualitySuggestionJobSchema,
   QualitySuggestionJobStatus,
@@ -18,12 +20,14 @@ import SuggestionJobsPanel from "./SuggestionJobsPanel.vue";
 const mocks = vi.hoisted(() => ({
   listQualitySuggestionJobs: vi.fn(),
   getQualitySuggestionJob: vi.fn(),
+  getQualitySuggestionJobTargetDebug: vi.fn(),
   cancelQualitySuggestionJob: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", () => ({
   listQualitySuggestionJobs: mocks.listQualitySuggestionJobs,
   getQualitySuggestionJob: mocks.getQualitySuggestionJob,
+  getQualitySuggestionJobTargetDebug: mocks.getQualitySuggestionJobTargetDebug,
   cancelQualitySuggestionJob: mocks.cancelQualitySuggestionJob,
 }));
 
@@ -42,6 +46,7 @@ function targetFixture(options: {
   state?: QualitySuggestionJobTargetState;
   suggestions?: string[];
   error?: string;
+  diagnostic?: QualityLLMDiagnostic;
 }) {
   return create(QualitySuggestionJobTargetSchema, {
     target: create(QualityTargetSchema, {
@@ -57,6 +62,7 @@ function targetFixture(options: {
     state: options.state ?? QualitySuggestionJobTargetState.PENDING,
     suggestions: options.suggestions ?? [],
     error: options.error ?? "",
+    diagnostic: options.diagnostic,
   });
 }
 
@@ -156,17 +162,53 @@ function completedJobs(count: number): QualitySuggestionJob[] {
   );
 }
 
+function truncatedDiagnostic(
+  overrides: Partial<{
+    debugPayloadAvailable: boolean;
+  }> = {}
+): QualityLLMDiagnostic {
+  return create(QualityLLMDiagnosticSchema, {
+    errorCode: "TRUNCATED",
+    provider: "openai",
+    model: "gpt-test",
+    promptVersion: "dq-rules-v3",
+    maxOutputTokens: 8192,
+    finishReason: "length",
+    promptTokens: 1200n,
+    completionTokens: 8192n,
+    totalTokens: 9392n,
+    promptChars: 5400n,
+    correlationId: "corr-123",
+    providerStatus: 200,
+    debugPayloadAvailable: overrides.debugPayloadAvailable ?? true,
+  });
+}
+
+async function expandJobRow() {
+  document.body
+    .querySelector<HTMLElement>(
+      `[aria-label="${label("dataQuality.suggestions.jobs.expand")}"]`
+    )
+    ?.click();
+  await flushPromises();
+}
+
 describe("SuggestionJobsPanel", () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
     document.body.innerHTML = "";
     mocks.getQualitySuggestionJob.mockReset();
+    mocks.getQualitySuggestionJobTargetDebug.mockReset();
     mocks.cancelQualitySuggestionJob.mockReset();
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: undefined,
+    });
   });
 
   it("starts collapsed with a de-duplicated summary and expands on demand", async () => {
@@ -266,6 +308,126 @@ describe("SuggestionJobsPanel", () => {
     expect(document.body.textContent).toContain(
       "the provider rejected the prompt"
     );
+    wrapper.unmount();
+  });
+
+  it("explains a failed model call with its diagnostic details", async () => {
+    mockSnapshots({
+      recent: [
+        jobFixture({
+          targets: [
+            targetFixture({
+              state: QualitySuggestionJobTargetState.FAILED,
+              error:
+                "internal: the LLM analysis failed: LLM response was truncated by the provider (finish_reason=length)",
+              diagnostic: truncatedDiagnostic(),
+            }),
+          ],
+        }),
+      ],
+    });
+    mocks.getQualitySuggestionJobTargetDebug.mockResolvedValue({
+      available: true,
+      correlationId: "corr-123",
+      requestBody: '{"model":"gpt-test"}',
+      responseBody: '{"finish_reason":"length"}',
+      errorCode: "TRUNCATED",
+    });
+    const wrapper = await mountPanel();
+    await expandJobRow();
+
+    // The classifier label and the actionable hint replace the raw error line.
+    expect(document.body.textContent).toContain(
+      label("dataQuality.suggestions.diagnostic.code.truncated")
+    );
+    expect(document.body.textContent).toContain(
+      label("dataQuality.suggestions.diagnostic.hint.truncated")
+    );
+    expect(document.body.textContent).toContain("openai · gpt-test");
+    expect(document.body.textContent).toContain("length");
+    expect(document.body.textContent).toContain("8,192");
+    expect(document.body.textContent).toContain("5,400");
+    expect(document.body.textContent).toContain("corr-123");
+    expect(document.body.textContent).not.toContain(
+      "LLM response was truncated by the provider"
+    );
+
+    buttonByText(
+      label("dataQuality.suggestions.diagnostic.viewPayload")
+    )?.click();
+    await flushPromises();
+
+    expect(mocks.getQualitySuggestionJobTargetDebug).toHaveBeenCalledWith(
+      JOB,
+      0
+    );
+    expect(document.body.textContent).toContain('{"model":"gpt-test"}');
+    wrapper.unmount();
+  });
+
+  it("copies the correlation id and hides the payload action when not captured", async () => {
+    document.body.innerHTML = "";
+    mockSnapshots({
+      recent: [
+        jobFixture({
+          targets: [
+            targetFixture({
+              state: QualitySuggestionJobTargetState.FAILED,
+              diagnostic: truncatedDiagnostic({
+                debugPayloadAvailable: false,
+              }),
+            }),
+          ],
+        }),
+      ],
+    });
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const wrapper = await mountPanel();
+    await expandJobRow();
+
+    // No debug capture: no raw-payload action, but the id stays copyable.
+    expect(
+      buttonByText(label("dataQuality.suggestions.diagnostic.viewPayload"))
+    ).toBeUndefined();
+    document.body
+      .querySelector<HTMLElement>(
+        `[aria-label="${label("dataQuality.suggestions.diagnostic.copyCorrelation")}"]`
+      )
+      ?.click();
+    await flushPromises();
+    expect(writeText).toHaveBeenCalledWith("corr-123");
+    wrapper.unmount();
+  });
+
+  it("keeps the raw error line for a failure without a diagnostic", async () => {
+    mockSnapshots({
+      recent: [
+        jobFixture({
+          targets: [
+            targetFixture({
+              state: QualitySuggestionJobTargetState.FAILED,
+              error: "target metadata disappeared before the draft",
+            }),
+          ],
+        }),
+      ],
+    });
+    const wrapper = await mountPanel();
+    await expandJobRow();
+
+    expect(document.body.textContent).toContain(
+      "target metadata disappeared before the draft"
+    );
+    expect(document.body.textContent).not.toContain(
+      label("dataQuality.suggestions.diagnostic.code.truncated")
+    );
+    expect(
+      buttonByText(label("dataQuality.suggestions.diagnostic.viewPayload"))
+    ).toBeUndefined();
     wrapper.unmount();
   });
 

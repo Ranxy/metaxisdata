@@ -7,6 +7,7 @@ import {
   QualityDimension,
   QualityLabelSource,
   QualityLabelStatus,
+  QualityLLMDiagnosticSchema,
   QualityRuleConfigSchema,
   QualityRuleState,
   QualityRuleType,
@@ -31,7 +32,11 @@ import {
   buildRuleFromSuggestion,
   columnProfileHighlights,
   configEntryLabelKey,
+  diagnosticCodeKey,
+  diagnosticHintKey,
+  diagnosticSummary,
   formatConfidence,
+  formatDiagnosticCount,
   groupSuggestionsByTarget,
   isActiveSuggestionJob,
   isPendingDraft,
@@ -63,6 +68,7 @@ import {
   suggestionTargetPath,
   suggestionToEditorPrefill,
   summarizeBatchResults,
+  syncDraftErrorHintKey,
 } from "./dataQualitySuggestion";
 
 function ruleSuggestion() {
@@ -730,6 +736,106 @@ describe("drafting jobs", () => {
     expect(snippet).toHaveLength(80);
     expect(snippet.endsWith("…")).toBe(true);
     expect(MAX_SUGGESTION_JOB_TARGETS).toBe(20);
+  });
+});
+
+describe("LLM failure diagnostics", () => {
+  const CODES: Array<[string, string]> = [
+    ["TRUNCATED", "truncated"],
+    ["STREAM_INCOMPLETE", "streamIncomplete"],
+    ["PROVIDER_STATUS", "providerStatus"],
+    ["PROVIDER_REQUEST", "providerRequest"],
+    ["RESPONSE_TOO_LARGE", "responseTooLarge"],
+    ["UNEXPECTED_FINISH_REASON", "unexpectedFinishReason"],
+    ["TIMEOUT", "timeout"],
+    ["MALFORMED_RESPONSE", "malformedResponse"],
+    ["PARSE", "parse"],
+  ];
+
+  it("maps every classifier code to its label and hint key", () => {
+    for (const [code, suffix] of CODES) {
+      expect(diagnosticCodeKey(code)).toBe(
+        `dataQuality.suggestions.diagnostic.code.${suffix}`
+      );
+      expect(diagnosticHintKey(code)).toBe(
+        `dataQuality.suggestions.diagnostic.hint.${suffix}`
+      );
+    }
+    // The server sends upper case; a lower-case copy still classifies.
+    expect(diagnosticCodeKey("truncated")).toBe(
+      "dataQuality.suggestions.diagnostic.code.truncated"
+    );
+    expect(diagnosticCodeKey("")).toBe(
+      "dataQuality.suggestions.diagnostic.code.unknown"
+    );
+    expect(diagnosticHintKey("SOMETHING_NEW")).toBe(
+      "dataQuality.suggestions.diagnostic.hint.unknown"
+    );
+  });
+
+  it("formats reported counts and hides unreported zeros", () => {
+    expect(formatDiagnosticCount(0n)).toBe("-");
+    expect(formatDiagnosticCount(0)).toBe("-");
+    expect(formatDiagnosticCount(8192)).toBe("8,192");
+    expect(formatDiagnosticCount(1_234n)).toBe("1,234");
+  });
+
+  it("summarises the provider facts behind a failure", () => {
+    const diagnostic = create(QualityLLMDiagnosticSchema, {
+      errorCode: "TRUNCATED",
+      provider: "openai",
+      model: "gpt-test",
+      promptVersion: "dq-rules-v3",
+      finishReason: "length",
+      maxOutputTokens: 8192,
+      promptTokens: 1200n,
+      completionTokens: 8192n,
+      totalTokens: 9392n,
+      promptChars: 5400n,
+      correlationId: "corr-123",
+      providerStatus: 200,
+      debugPayloadAvailable: true,
+    });
+    expect(diagnosticSummary(diagnostic)).toEqual({
+      providerModel: "openai · gpt-test",
+      promptVersion: "dq-rules-v3",
+      finishReason: "length",
+      maxOutputTokens: "8,192",
+      promptTokens: "1,200",
+      completionTokens: "8,192",
+      totalTokens: "9,392",
+      promptChars: "5,400",
+      providerStatus: "200",
+      correlationId: "corr-123",
+    });
+  });
+
+  it("leaves unreported summary facts empty-looking", () => {
+    const summary = diagnosticSummary(create(QualityLLMDiagnosticSchema, {}));
+    expect(summary.providerModel).toBe("-");
+    expect(summary.promptVersion).toBe("-");
+    expect(summary.finishReason).toBe("-");
+    expect(summary.maxOutputTokens).toBe("-");
+    expect(summary.promptTokens).toBe("-");
+    expect(summary.completionTokens).toBe("-");
+    expect(summary.totalTokens).toBe("-");
+    expect(summary.promptChars).toBe("-");
+    expect(summary.providerStatus).toBe("-");
+    expect(summary.correlationId).toBe("");
+  });
+
+  it("recognises a synchronous truncation error", () => {
+    const key = "dataQuality.suggestions.diagnostic.syncTruncatedHint";
+    expect(
+      syncDraftErrorHintKey(
+        "internal: the LLM analysis failed: LLM response was truncated by the provider (finish_reason=length)"
+      )
+    ).toBe(key);
+    expect(
+      syncDraftErrorHintKey("the model stopped at the output token limit")
+    ).toBe(key);
+    expect(syncDraftErrorHintKey("internal: connection reset")).toBeUndefined();
+    expect(syncDraftErrorHintKey("")).toBeUndefined();
   });
 });
 

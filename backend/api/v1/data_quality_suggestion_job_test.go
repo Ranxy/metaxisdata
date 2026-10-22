@@ -74,6 +74,21 @@ func TestConvertQualitySuggestionJob(t *testing.T) {
 				TargetType: int32(storepb.MetaType_VIEW),
 				State:      storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_FAILED,
 				Error:      "the model returned nonsense",
+				Diagnostic: &storepb.QualityLLMDiagnostic{
+					ErrorCode:        "TRUNCATED",
+					Provider:         "profiles/openai",
+					Model:            "gpt-4",
+					PromptVersion:    "dq.rule_draft.v1",
+					MaxOutputTokens:  8192,
+					FinishReason:     "length",
+					PromptTokens:     1200,
+					CompletionTokens: 8192,
+					TotalTokens:      9392,
+					PromptChars:      12345,
+					CorrelationId:    "corr-1",
+					ProviderStatus:   0,
+					DebugCaptured:    true,
+				},
 			},
 			{
 				TargetGuid: "instances/inst-1;shop;public;pending",
@@ -123,6 +138,20 @@ func TestConvertQualitySuggestionJob(t *testing.T) {
 	require.Equal(t, v1pb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_FAILED, second.GetState())
 	require.Equal(t, "the model returned nonsense", second.GetError())
 	require.Nil(t, second.GetStartTime(), "a target that never started has no start time")
+	diagnostic := second.GetDiagnostic()
+	require.NotNil(t, diagnostic)
+	require.Equal(t, "TRUNCATED", diagnostic.GetErrorCode())
+	require.Equal(t, "profiles/openai", diagnostic.GetProvider())
+	require.Equal(t, "gpt-4", diagnostic.GetModel())
+	require.Equal(t, "dq.rule_draft.v1", diagnostic.GetPromptVersion())
+	require.Equal(t, int32(8192), diagnostic.GetMaxOutputTokens())
+	require.Equal(t, "length", diagnostic.GetFinishReason())
+	require.Equal(t, int64(1200), diagnostic.GetPromptTokens())
+	require.Equal(t, int64(8192), diagnostic.GetCompletionTokens())
+	require.Equal(t, int64(9392), diagnostic.GetTotalTokens())
+	require.Equal(t, int64(12345), diagnostic.GetPromptChars())
+	require.Equal(t, "corr-1", diagnostic.GetCorrelationId())
+	require.True(t, diagnostic.GetDebugPayloadAvailable(), "the capture flag maps onto the public field")
 
 	third := converted.GetTargets()[2]
 	require.Equal(t, v1pb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING, third.GetState())
@@ -166,6 +195,24 @@ func TestApplyQualitySuggestionJobListFilters(t *testing.T) {
 	err := applyQualitySuggestionJobListFilters(&store.FindQualitySuggestionJobMessage{}, &v1pb.ListQualitySuggestionJobsRequest{
 		Status: v1pb.QualitySuggestionJobStatus(99),
 	})
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}
+
+// The target-debug handler validates its envelope before any store read: a
+// malformed job name and a nil request are InvalidArgument.
+func TestGetQualitySuggestionJobTargetDebugValidatesTheRequest(t *testing.T) {
+	t.Parallel()
+
+	service := &DataQualityService{}
+	_, err := service.GetQualitySuggestionJobTargetDebug(t.Context(), nil)
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
+	_, err = service.GetQualitySuggestionJobTargetDebug(t.Context(), connect.NewRequest(&v1pb.GetQualitySuggestionJobTargetDebugRequest{
+		Name:        "qualitySuggestionJobs/job1",
+		TargetIndex: 0,
+	}))
 	require.Error(t, err)
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }

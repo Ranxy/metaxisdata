@@ -36,10 +36,10 @@ func (*realStoreDraftSuggester) ResolveConfig(context.Context) (llm.ResolvedConf
 	}, dataquality.Settings{}, nil
 }
 
-func (s *realStoreDraftSuggester) Draft(ctx context.Context, config llm.ResolvedConfig, targetGUID string, metaType storepb.MetaType, _ []string, _ string, _ string, createdBy *int32) ([]*store.QualitySuggestionMessage, error) {
+func (s *realStoreDraftSuggester) Draft(ctx context.Context, config llm.ResolvedConfig, targetGUID string, metaType storepb.MetaType, _ []string, _ string, _ string, createdBy *int32) ([]*store.QualitySuggestionMessage, *storepb.QualityLLMDiagnostic, error) {
 	resourceID, err := common.RandomString(12)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	created, err := s.store.CreateQualitySuggestion(ctx, &store.QualitySuggestionMessage{
 		ResourceID: resourceID,
@@ -63,9 +63,9 @@ func (s *realStoreDraftSuggester) Draft(ctx context.Context, config llm.Resolved
 		CreatedBy:     createdBy,
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return []*store.QualitySuggestionMessage{created}, nil
+	return []*store.QualitySuggestionMessage{created}, nil, nil
 }
 
 // newIsolatedMetadataStore creates a fresh metadata database on the shared
