@@ -699,6 +699,8 @@ func TestDataQualitySuggestionCenterRealServerIntegration(t *testing.T) {
 	}))
 	require.NoError(t, err)
 	require.Len(t, batch.Msg.GetResults(), 2, "one result per request, in request order")
+	require.Equal(t, name(draftValid), batch.Msg.GetResults()[0].GetSuggestion(), "the result echoes the suggestion it applies")
+	require.Equal(t, name(draftInvalid), batch.Msg.GetResults()[1].GetSuggestion())
 	created := batch.Msg.GetResults()[0].GetRule()
 	require.NotNil(t, created, "the valid item created a rule")
 	require.Empty(t, batch.Msg.GetResults()[0].GetError())
@@ -730,15 +732,35 @@ func TestDataQualitySuggestionCenterRealServerIntegration(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
 
-	// Creating a rule from a suggestion takes the draft's target: the request's
-	// own target is ignored.
+	// Creating a rule from a suggestion refuses a request target that names a
+	// different table: the draft stays pending and no rule is created.
+	_, err = client.CreateQualityRule(fixture.ctx, withToken(token, &v1pb.CreateQualityRuleRequest{
+		Parent: "workspaces/-",
+		Rule: &v1pb.QualityRule{
+			Title:     "direct create from a draft",
+			Dimension: v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+			RuleType:  v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+			Target:    &v1pb.QualityTarget{MetaGuid: "stale;target", MetaType: v1pb.MetaType_VIEW},
+			Config:    qualityRowCountConfig(1),
+			Severity:  v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		},
+		Suggestion: name(draftSingle),
+	}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
+	stillPending, err := client.GetQualitySuggestion(fixture.ctx, withToken(token, &v1pb.GetQualitySuggestionRequest{Name: name(draftSingle)}))
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING, stillPending.Msg.GetStatus())
+
+	// A matching target creates the rule and accepts the draft.
 	single, err := client.CreateQualityRule(fixture.ctx, withToken(token, &v1pb.CreateQualityRuleRequest{
 		Parent: "workspaces/-",
 		Rule: &v1pb.QualityRule{
 			Title:     "direct create from a draft",
 			Dimension: v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
 			RuleType:  v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
-			Target:    &v1pb.QualityTarget{MetaGuid: "ignored;target", MetaType: v1pb.MetaType_VIEW},
+			Target:    &v1pb.QualityTarget{MetaGuid: fixture.usersGUID, MetaType: v1pb.MetaType_TABLE},
 			Config:    qualityRowCountConfig(1),
 			Severity:  v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
 		},
@@ -751,6 +773,21 @@ func TestDataQualitySuggestionCenterRealServerIntegration(t *testing.T) {
 	decidedDraft, err := client.GetQualitySuggestion(fixture.ctx, withToken(token, &v1pb.GetQualitySuggestionRequest{Name: name(draftSingle)}))
 	require.NoError(t, err)
 	require.Equal(t, v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED, decidedDraft.Msg.GetStatus())
+
+	// An already-decided draft cannot create a second rule.
+	_, err = client.CreateQualityRule(fixture.ctx, withToken(token, &v1pb.CreateQualityRuleRequest{
+		Parent: "workspaces/-",
+		Rule: &v1pb.QualityRule{
+			Title:     "a second rule from the same draft",
+			Dimension: v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+			RuleType:  v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+			Config:    qualityRowCountConfig(1),
+			Severity:  v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		},
+		Suggestion: name(draftSingle),
+	}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeAborted, connect.CodeOf(err))
 
 	// The path filters are GUID prefixes. All seeded suggestions share this
 	// fixture's table GUID, so the filters narrow to them and nothing else.
@@ -800,6 +837,8 @@ func TestDataQualitySuggestionCenterRealServerIntegration(t *testing.T) {
 	}))
 	require.NoError(t, err)
 	require.Len(t, decisions.Msg.GetResults(), 2)
+	require.Equal(t, name(labelSuggestion), decisions.Msg.GetResults()[0].GetName(), "the result echoes the suggestion it decided")
+	require.Equal(t, name(draftInvalid), decisions.Msg.GetResults()[1].GetName())
 	require.Equal(t, v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED, decisions.Msg.GetResults()[0].GetSuggestion().GetStatus())
 	require.Equal(t, v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_REJECTED, decisions.Msg.GetResults()[1].GetSuggestion().GetStatus())
 

@@ -280,10 +280,9 @@ export interface SuggestionTargetPath {
  * existed, or a hand-written fixture) is read from the right.
  */
 export function suggestionTargetPath(guid: string): SuggestionTargetPath {
+  // `split` always returns at least one segment, so length 0 cannot occur.
   const segments = guid.split(";");
   switch (segments.length) {
-    case 0:
-      return { instance: "", database: "", schema: "", object: "" };
     case 1:
       return {
         instance: segments[0],

@@ -2377,8 +2377,10 @@ export declare type CreateQualityRuleRequest = Message<"metaxisdata.v1.CreateQua
 
   /**
    * The suggestion this rule is created from, if any. When set, the rule's
-   * target is taken from the suggestion (the request's target is ignored) and
-   * the suggestion is marked accepted once the rule exists. A decision that
+   * target is taken from the suggestion: a request target that names a
+   * different target is rejected rather than silently ignored, so a caller
+   * cannot create a rule for one table while accepting another table's draft.
+   * The suggestion is marked accepted once the rule exists. A decision that
    * cannot be written does not roll the created rule back; it is logged and the
    * suggestion can be decided explicitly.
    *
@@ -2454,6 +2456,15 @@ export declare type BatchCreateQualityRuleResult = Message<"metaxisdata.v1.Batch
    * @generated from field: string error = 2;
    */
   error: string;
+
+  /**
+   * The suggestion named by the request item, echoed so a client does not have
+   * to trust the index alone. Empty for an item that named no suggestion.
+   * Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion}
+   *
+   * @generated from field: string suggestion = 3;
+   */
+  suggestion: string;
 };
 
 /**
@@ -3126,6 +3137,15 @@ export declare type BatchUpdateQualitySuggestionResult = Message<"metaxisdata.v1
    * @generated from field: string error = 2;
    */
   error: string;
+
+  /**
+   * The suggestion name named by the request item, echoed so a client does not
+   * have to trust the index alone.
+   * Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion}
+   *
+   * @generated from field: string name = 3;
+   */
+  name: string;
 };
 
 /**

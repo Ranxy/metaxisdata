@@ -444,15 +444,6 @@ export async function listQualitySuggestions(options: {
   };
 }
 
-/** Every suggestion the caller can see, walking the cursor pages. */
-export async function listAllQualitySuggestions(
-  options: { pageSize?: number } = {}
-): Promise<QualitySuggestion[]> {
-  return await listAll((pageToken) =>
-    listQualitySuggestions({ pageSize: options.pageSize ?? 1000, pageToken })
-  );
-}
-
 /** Read one suggestion by resource name; a missing one is `NotFound`. */
 export async function getQualitySuggestion(
   name: string,

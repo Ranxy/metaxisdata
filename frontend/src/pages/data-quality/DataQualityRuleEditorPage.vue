@@ -981,6 +981,16 @@ function setOnEmpty(value: unknown) {
 }
 
 function onTargetSelected(selection: TargetSelection) {
+  // A suggestion is accepted only for the target it names. Replacing the target
+  // detaches the draft: it stays pending in the suggestion center and the save
+  // creates a plain rule for the target the reader picked.
+  if (
+    suggestionInfo.value &&
+    selection.guid !== suggestionInfo.value.target?.metaGuid
+  ) {
+    suggestionInfo.value = undefined;
+    notify.info(t("dataQuality.editor.suggestionDetached"));
+  }
   target.value = selection;
   // A target can change the set of legal types; switching to the first allowed
   // type keeps the form saveable rather than failing at the dry run.

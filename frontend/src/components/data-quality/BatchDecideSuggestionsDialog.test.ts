@@ -107,8 +107,12 @@ describe("BatchDecideSuggestionsDialog", () => {
     vi.clearAllMocks();
     document.body.innerHTML = "";
     mocks.batchUpdateQualitySuggestions.mockResolvedValue([
-      { suggestion: labelSuggestion(), error: "" },
-      { suggestion: undefined, error: "suggestion already decided" },
+      { suggestion: labelSuggestion(), error: "", name: LABEL },
+      {
+        suggestion: undefined,
+        error: "suggestion already decided",
+        name: DRAFT,
+      },
     ]);
   });
 
@@ -138,6 +142,8 @@ describe("BatchDecideSuggestionsDialog", () => {
       },
     ]);
     expect(document.body.textContent).toContain("suggestion already decided");
+    // The failure row is labelled from the echoed name, not the request index.
+    expect(document.body.textContent).toContain("Orders should have rows");
     expect(document.body.textContent).toContain(
       label("dataQuality.suggestions.batchDecide.partial", {
         succeeded: 1,
@@ -151,8 +157,8 @@ describe("BatchDecideSuggestionsDialog", () => {
 
   it("rejects in bulk and closes after every item succeeded", async () => {
     mocks.batchUpdateQualitySuggestions.mockResolvedValue([
-      { suggestion: labelSuggestion(), error: "" },
-      { suggestion: draftSuggestion(), error: "" },
+      { suggestion: labelSuggestion(), error: "", name: LABEL },
+      { suggestion: draftSuggestion(), error: "", name: DRAFT },
     ]);
     const wrapper = await mountDialog(
       [labelSuggestion(), draftSuggestion()],

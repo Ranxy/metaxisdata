@@ -123,6 +123,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { useErrorMessage } from "@/composables/useErrorHandler";
 import {
+  type BatchUpdateQualitySuggestionResult,
   type QualitySuggestion,
   QualitySuggestionKind,
   QualitySuggestionStatus,
@@ -167,7 +168,7 @@ const note = ref("");
 const updating = ref(false);
 const error = ref("");
 const decidedNames = ref<string[]>([]);
-const results = ref<Array<{ error: string }>>([]);
+const results = ref<BatchUpdateQualitySuggestionResult[]>([]);
 
 const accepted = computed(
   () => props.decision === QualitySuggestionStatus.ACCEPTED
@@ -237,7 +238,10 @@ function reset() {
 }
 
 function suggestionLabel(index: number): string {
-  const suggestion = props.suggestions[index];
+  const echoed = results.value[index]?.name;
+  const suggestion = echoed
+    ? props.suggestions.find((item) => item.name === echoed)
+    : props.suggestions[index];
   if (!suggestion) {
     return "-";
   }
@@ -269,9 +273,15 @@ function submit() {
   )
     .then((created) => {
       results.value = created;
-      decidedNames.value = batch.flatMap((suggestion, index) =>
-        created[index]?.error ? [] : [suggestion.name]
-      );
+      // The server echoes each request's name; fall back to request order only
+      // if a result is missing it.
+      decidedNames.value = created.flatMap((result, index) => {
+        if (result.error) {
+          return [];
+        }
+        const name = result.name || batch[index]?.name;
+        return name ? [name] : [];
+      });
       // The page can refresh behind the dialog; the per-item failures stay here.
       if (decidedNames.value.length > 0) {
         emit("done", [...decidedNames.value]);

@@ -1298,8 +1298,10 @@ message CreateQualityRuleRequest {
   QualityRule rule = 2 [(google.api.field_behavior) = REQUIRED];
 
   // The suggestion this rule is created from, if any. When set, the rule's
-  // target is taken from the suggestion (the request's target is ignored) and
-  // the suggestion is marked accepted once the rule exists. A decision that
+  // target is taken from the suggestion: a request target that names a
+  // different target is rejected rather than silently ignored, so a caller
+  // cannot create a rule for one table while accepting another table's draft.
+  // The suggestion is marked accepted once the rule exists. A decision that
   // cannot be written does not roll the created rule back; it is logged and the
   // suggestion can be decided explicitly.
   string suggestion = 3 [(google.api.resource_reference) = {type: "metaxisdata/QualitySuggestion"}];
@@ -1325,6 +1327,11 @@ message BatchCreateQualityRuleResult {
 
   // Empty on success; otherwise why this rule could not be created.
   string error = 2;
+
+  // The suggestion named by the request item, echoed so a client does not have
+  // to trust the index alone. Empty for an item that named no suggestion.
+  // Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion}
+  string suggestion = 3;
 }
 
 message UpdateQualityRuleRequest {
@@ -1575,6 +1582,11 @@ message BatchUpdateQualitySuggestionResult {
 
   // Empty on success; otherwise why this suggestion could not be decided.
   string error = 2;
+
+  // The suggestion name named by the request item, echoed so a client does not
+  // have to trust the index alone.
+  // Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion}
+  string name = 3;
 }
 
 message ListColumnProfilesRequest {

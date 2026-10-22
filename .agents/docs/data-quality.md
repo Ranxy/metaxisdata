@@ -63,7 +63,7 @@ SPA ──ConnectRPC──► DataQualityService (api/v1) ──► component/da
 | D-35 | 规则保存期按**逐项能力**校验，而不是只比 `ColumnKind`：`comparison`（filter/accepted_values/null_values/referential join）、`grouping`（unique/unique_combination/group_check 的 GROUP BY）、`countDistinct`（画像精确 distinct）、`regex`、`length`、`extrema`（MIN/MAX）、`text`（画像样式），外加 `noColumnCount`/`noNullTest` 两个否定例外，按引擎族维护**允许表**（未列出即拒绝：保存期报错，而不是运行期整条 SQL 失败）。普通 `null_percent`、`IS [NOT] NULL` filter 需要 NULL 判定能力，`unique`/`unique_combination` 在 `count_nulls=false`（会生成 `IS NOT NULL`）时也需要，`group_check` 不需要；只有 StarRocks bitmap/hll/percentile 拒绝（Doris 4.1.4 实测可以 `IS NULL`，故不设该限制）。`comparison` 表示列与列可比较（referential join）；filter/accepted_values/null_values 另外要求 `valueComparison`（标量值可绑定），**数组只能列与列比较**，不能绑定标量。PG 的 schema-qualified 用户自定义类型保留历史规则允许面（enum 的 `= $1`/GROUP BY 可用；composite 谓词绑定是已记录的前置限制），画像只数非空、不声称精确 distinct/MIN/MAX；`referential_integrity` 还要求两侧类型兼容；`cross_table` 保存期解析右表（TABLE/EXTERNAL_TABLE/VIEW/MATERIALIZED_VIEW），**任何非 COUNT 聚合列（左右两侧）必须是 numeric**；`aggregate` 的 MIN/MAX 同样只接受 numeric（观测值按数值读取，时间戳会 BAD_DATA），PG money 只允许 SUM/MIN/MAX（AVG/STDDEV/PERCENTILE 引擎未定义），money 字符串按“最后一个分隔符是小数点”解析（兼容逗号小数 locale） | PG 的 json/xml/几何类型不再被生成不可执行的 SQL；`box` 允许比较但不允许分组，`box[]`/`line[]` 等几何数组直接零能力；`macaddr/macaddr8` 比较/分组/`COUNT(DISTINCT)`（无 MIN/MAX）；MSSQL text/ntext/image 不再被 COUNT/LEN/比较、binary/uniqueidentifier/hierarchyid 统计完整且按 hex 展示；StarRocks JSON 允许比较、拒绝 GROUP BY/REGEXP，bitmap/hll 拒绝 NULL 判定但保留 `COUNT(DISTINCT)` 画像；Doris JSON 允许 GROUP BY/REGEXP/长度、拒绝比较与 COUNT(DISTINCT)；MySQL JSON 比较被拒（绑定字符串永不等于 JSON 值），MySQL 空间类型的 REGEXP/长度按 WKB 字节解释因而拒绝；PG `bit` 按位串（String）而非布尔归类，参数可绑定；PG money 字符串（`$1.23`）在聚合观测里剥离货币符号后解析 |
 
 | D-36 | 建议队列升级为“建议中心”：AI 起草是一等入口（可选多个目标、按目标顺序生成，单目标可限定列），规则编辑器保留上下文快捷入口；生成结果仍只入队 PENDING 建议 | 生成复用 L1/L3 RPC 与配额，前端顺序调用，不新增“生成批次”实体或生成 RPC；队列按目标表分组（GUID 路径分段 + 实例标题展示），不新增列/迁移 |
-| D-37 | 批量创建规则走新 `BatchCreateQualityRules`（≤200 项，逐项校验/落库，结果按请求顺序返回）；`CreateQualityRuleRequest.suggestion` 让“从建议创建”成为一次请求：目标取自建议、规则落库后接受建议，决策失败只记日志不回滚 | 建议的接受是创建规则的副作用；批量非原子，单项失败不中止其余；审计一次调用一行；仍受每表 100/每工作区 1000 条上限与 READ_ONLY 源校验 |
+| D-37 | 批量创建规则走新 `BatchCreateQualityRules`（≤200 项，逐项校验/落库，结果按请求顺序返回，并回显 suggestion/name 便于客户端对齐）；`CreateQualityRuleRequest.suggestion` 让“从建议创建”成为一次请求：目标取自建议（请求 target 为空或与建议一致，不一致直接拒绝）、规则落库后接受建议，决策失败只记日志不回滚 | 建议的接受是创建规则的副作用；批量非原子，单项失败不中止其余；审计一次调用一行；仍受每表 100/每工作区 1000 条上限与 READ_ONLY 源校验；自动接受是非原子“先规则后决策”，并发/重试可能重复建规则（§7 #12） |
 | D-38 | 批量决策走新 `BatchUpdateQualitySuggestions`（≤200 项，逐项独立）；接受 LABEL 仍立即写标注；已决/不存在的项作为该项错误返回而非整批失败 | 单条 `UpdateQualitySuggestion` 语义不变（已决仍 `Aborted`）；批量与单条共享决策/标注路径 |
 | D-39 | 建议列表新增 instance/database/schema/table GUID 前缀过滤（与规则列表同形），并新增 `GetQualitySuggestion` 供深链；`target_guid` 过滤改为等值或子树匹配 | 复用 `metaGUIDPrefix`/`appendGUIDSubtreeCondition`，无迁移；表/视图目标下与精确匹配等价；编辑器 `?suggestion=` 不再全量扫描队列 |
 
@@ -215,7 +215,7 @@ meta_registry_resource（只读）──< quality_rule >──< quality_rule_rev
 - 页面/组件：`pages/data-quality/`（概览、规则列表、规则详情、规则编辑器、执行列表/详情、问题列表/详情、建议中心）；`components/data-quality/`（状态/严重级别徽标、趋势图、最近执行状态色块条、规则表单与 filter 编辑器、失败样本、SQL 查看、建议详情抽屉、字段分析面板、AI 解释抽屉、AI 起草工作台 `SuggestionWorkbench`、批量创建规则对话框 `BatchCreateRulesDialog`、批量决策对话框 `BatchDecideSuggestionsDialog`、目标选择器与范围筛选、资产页质量区）。复用 shadcn-vue 原语，不新增 tabs 原语。
 - 规则列表筛选：标题/描述文本、**目标范围**（实例 → 数据库 → Schema → 表/视图；复用 `TargetPicker` 的 `mode="scope"`，在任一层可停，点表/视图行直接筛到该表）、**负责人**（复用 `UserSelect`；owner 可空，所以除成员外还有“未指定”一项；成员目录一次加载后同时供选择器与列表的负责人列复用，选择器支持懒加载与预载）、**规则类型**（18 类，复用 `ListQualityRules` 的 `rule_type`；“全部类型”发 UNSPECIFIED 即不筛选）、维度、严重级别、状态；改动后点“应用”才查询。列表还显示负责人列（邮箱，未指定时显示“未指定”）。`TargetScopeFilter` 与负责人控件只持有待应用值，请求由 `ListQualityRules` 的 instance/database/schema/table（GUID 前缀）以及 owner（`users/{user}`；空表示不限）与 owner_unassigned（只取无负责人的规则，与 owner 互斥）字段承受。
 - 规则编辑器的规则类型选择：按 4 组（数量与时效 / 取值与关系 / 聚合与对账 / 结构与自定义）分组，选中项下方显示一句说明；目标为 VIEW/MATERIALIZED_VIEW 时只列出后端 `RuleTypeForTarget` 允许的 5 类（行数、行数变化、时效性、自定义 SQL、结构漂移）并显示提示；切换类型会重置 `threshold_metric`（新类型不读该字段时归零为 COUNT）；`on_empty` 仅对 `row_count`/`custom_sql`/`schema_drift` 隐藏（对它们永远无效）。规则类型名称、说明与分组都在 `dataQuality.ruleType*` 文案中维护。结构漂移的 `check_types` 文案说明类型与可空性都参与比较；若存量规则的类型不在当前目标允许集内，编辑器仍显示该类型（带视图提示），不会静默改写。
-- 建议中心（`/suggestions`）：顶部“AI 起草”打开 `SuggestionWorkbench`（页模式：可选多个目标、单一目标给列清单、必填意图、按目标顺序生成并显示逐目标进度与部分失败；编辑器模式：目标固定、结果可“填入编辑器”或忽略）；队列按目标表分组（组头显示实例标题/路径、类型、数量、组复选框与折叠），行内可“创建规则”/“接受”/查看详情，已决行只读；多选后批量条按 kind 提供“创建 N 条规则/忽略 N 条草稿”与“接受/拒绝 N 条标注”，混合选择各自只作用于对应 kind；新生成的建议刷新后保持选中，便于立即批量创建；筛选含状态（默认 PENDING）/kind/source/目标范围并显示可移除 chip；三种空状态（无待审、筛选无结果、从未生成）。规则编辑器的“用 AI 起草”复用同一工作台（目标固定），保存时用 `createQualityRule(rule, suggestionName)` 一次请求创建并接受建议；`?suggestion=` 预填改用 `GetQualitySuggestion`。
+- 建议中心（`/suggestions`）：顶部“AI 起草”打开 `SuggestionWorkbench`（页模式：可选多个目标、单一目标给列清单、必填意图、按目标顺序生成并显示逐目标进度与部分失败；编辑器模式：目标固定、结果可“填入编辑器”或忽略）；队列按目标表分组（组头显示实例标题/路径、类型、数量、组复选框与折叠），行内可“创建规则”/“接受”/查看详情，已决行只读；多选后批量条按 kind 提供“创建 N 条规则/忽略 N 条草稿”与“接受/拒绝 N 条标注”，混合选择各自只作用于对应 kind；新生成的建议在回到队列第一页后保持选中（当前页可见的那些；未全部选中时给出提示），便于立即批量创建；筛选含状态（默认 PENDING）/kind/source/目标范围并显示可移除 chip；三种空状态（无待审、筛选无结果、从未生成）。规则编辑器的“用 AI 起草”复用同一工作台（目标固定），保存时用 `createQualityRule(rule, suggestionName)` 一次请求创建并接受建议；若在编辑器中改了目标，页面先解除建议预填（建议保持 PENDING），避免把规则建到旧目标上而服务端拒绝保存；`?suggestion=` 预填改用 `GetQualitySuggestion`。
 - 执行列表：一行一条执行（state/outcome 徽标、执行 id、规则、目标、观测值、失败/总行数、trigger、耗时、开始时间）；筛选 state/outcome/trigger，跨页链接带来的 `?rule=`/`?target=` 显示为可移除 chip；offset 分页；点击行进入执行详情。
 - 执行详情：状态/六态、规则链接、目标路径、观测值/阈值、行数（含 sampled/truncated 提示）、失败样本、执行 SQL（可复制）、错误码/消息、耗时、trigger/initiator/instance/revision/engine version、开始/结束时间；`PENDING`/`RUNNING` 时轮询到终态；`FAIL`/`ERROR` 显示 AI 解释入口。
 - 规则详情的信息层级：顶部“最近结果”大状态（图标+状态词+相对时间+实际值/阈值/失败行数）→ 最近 20 次执行状态色块条（旧→新，按状态着色，点击进执行详情）→ 状态计数与通过率 → 最近执行表 → 规则定义（目标/字段/类型/维度/严重级别/负责人/调度/版本/时间/标签；负责人显示成员目录里的邮箱，未指定时显示“未指定”）。运行与编辑分别按 `rules.run`、`rules.update` 显示；“运行”后单条执行跳执行详情，多条进入按规则筛选的执行列表。
@@ -230,7 +230,7 @@ meta_registry_resource（只读）──< quality_rule >──< quality_rule_rev
 - 标注：`column_semantic_label` 唯一键 `(table_guid, table_type, column_name)`；封闭枚举 `QualitySemanticType`；`source=MANUAL|LLM`、`status`、`confidence`、`evidence`；人工标注可覆盖（Upsert），LLM 建议不自动覆盖。
 - 规则候选映射（代码固定）：`ID/BUSINESS_KEY → unique+null_percent`；`EMAIL/PHONE/URL/UUID/IP → regex+null_percent`；`COUNTRY_CODE/CURRENCY/ENUM → accepted_values`；`AMOUNT/QUANTITY → range+null_percent`；`PERCENTAGE → range(0-100)`；`TIMESTAMP/DATE → freshness+range`；`FREE_TEXT → string_length+null_percent`；`UNKNOWN → 不生成规则`。阈值为默认值，不从当前值推导。
 - 建议：`quality_suggestion(kind=RULE_DRAFT|LABEL, source=NATURAL_LANGUAGE|PROFILE, payload, status=PENDING, provider/model/prompt_version)`；决策只允许 PENDING→ACCEPTED/REJECTED（并发重复决策返回 `Conflict` → 客户端 `Aborted`），接受 LABEL 即 upsert 标注，接受 RULE_DRAFT 只改状态。
-- 建议中心（D-36…D-39）：AI 起草入口在建议中心（可对多目标顺序生成）与规则编辑器（固定目标）共用 `SuggestionWorkbench`；批量创建用 `BatchCreateQualityRules` 逐项执行正常校验链，命名 `suggestion` 的项目标取自建议并在规则落库后接受建议（决策失败只记日志），失败项返回错误且建议保持 PENDING；批量决策用 `BatchUpdateQualitySuggestions`，与单条共享标注写入路径；列表按目标表分组（GUID 分段；实例标题来自实例缓存），并支持 GUID 前缀筛选；无“生成批次”资源、无新增表/迁移。
+- 建议中心（D-36…D-39）：AI 起草入口在建议中心（可对多目标顺序生成）与规则编辑器（固定目标）共用 `SuggestionWorkbench`；批量创建用 `BatchCreateQualityRules` 逐项执行正常校验链，命名 `suggestion` 的项目标取自建议（请求 target 必须为空或一致），规则落库后接受建议（决策失败只记日志），失败项返回错误且建议保持 PENDING；批量决策用 `BatchUpdateQualitySuggestions`，与单条共享标注写入路径；列表按目标表分组（GUID 分段；实例标题来自实例缓存），并支持 GUID 前缀筛选；无“生成批次”资源、无新增表/迁移。批量结果逐项回显 suggestion/name，客户端不依赖下标；工作台生成后回到队列第一页，仅能自动选中当前页可见的新建议，未选中的给出提示。
 
 ## 4. 配置映射
 
@@ -330,7 +330,7 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | I-18 | 内部批次的连接预算在批次开始前一次性准入，持有到查询阶段结束（持久化/通知前释放）：scheduled 拿不到 → 不建批次、规则保持 due；manual 拿不到 → 已规划的执行与批次 `ABANDONED`（无 outcome）；规则在准入后目标被改到别的实例 → 由 `ruleConnectionLease` 对实际实例 try-acquire 一次（拿不到记 `SKIPPED`）；任何情况下容量竞争都不写成执行结果或 `ERROR(QUOTA)` | `qualityrunner_test.go` 的 `admitBatch`/`ruleConnectionLease` 测试 + governor 单测（[instance-connections.md](instance-connections.md)） |
 | I-19 | `quality_run` 只做内部派发批次：v1 没有 `QualityRun` 资源/消息/RPC，前端没有 `/runs` 页面，问题引用、通知 detail 与概览都不出现批次；对外一律 `QualityExecution` | proto 无 QualityRun、路由与审计清单无 runs、convert/notification 测试 |
 | I-20 | 批量建议/规则 RPC 非原子：每项独立校验与落库，结果与请求同序，单项失败不中止其余；从建议创建规则是“先规则后决策”，决策失败不回滚规则 | `data_quality_batch.go` + `TestDataQualitySuggestionCenterRealServerIntegration` |
-| I-21 | 从建议创建规则时目标只取建议的 `(target_guid, target_type)`，请求自带 target 被忽略；建议必须是 PENDING `RULE_DRAFT` | `ruleTargetForSuggestion`/`pendingRuleDraftSuggestion` 单测 + 集成场景 |
+| I-21 | 从建议创建规则时目标取自建议的 `(target_guid, target_type)`；请求自带的 target 必须为空或与建议一致，不一致返回 `InvalidArgument`（不静默改写）；建议必须是 PENDING `RULE_DRAFT` | `validateRuleTargetAgainstSuggestion`/`pendingRuleDraftSuggestion` 单测 + 集成场景 |
 
 ## 6. 失败模式
 
@@ -360,7 +360,8 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | 画像失败 | 请求失败并返回可渲染错误；已写入的画像行保留，重试会覆盖 |
 | 建议重复决策 | `Conflict` → `Aborted` |
 | 批量创建/决策单项失败 | 该项 result 带 error（已决/不存在/目标消失/config 非法），其余项继续；创建失败的建议保持 PENDING，创建成功的建议被接受；批量调用本身仍返回成功 |
-| 从建议创建规则时决策写失败（并发已决） | 规则已落库不回滚，只记 warning；建议保持他人的决策，可在队列中看到最终状态 |
+| 从建议创建规则时请求 target 与建议不一致 | `InvalidArgument`，不创建规则、建议保持 PENDING；编辑器在改目标时必须先解除建议预填 |
+| 从建议创建规则时决策写失败（并发已决） | 规则已落库不回滚，只记 warning；建议保持他人的决策，可在队列中看到最终状态。同一 PENDING 建议被并发创建或决策失败后重试时，仍可能建出第二条规则（§7 #12） |
 | 语义标注冲突 | LLM 建议只在人工接受后写标注；人工标注可随时覆盖，LLM 不会自动改写 |
 | schema 变更 | `target_schema_changed` 按 schema_hash 提示复核；不自动暂停 |
 | 多副本 | 不支持；两个副本会重复执行（单副本假设见 [security-posture.md](../../docs/security-posture.md)） |
@@ -380,6 +381,7 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | 9 | 多副本 | 不支持（单副本假设，见 [security-posture.md](../../docs/security-posture.md)）；两个副本会重复执行、LLM 配额各自计数 |
 | 10 | 分布漂移/ML 异常、分组内多种检查（每组 null/aggregate）、RuleSet | 非目标（§非目标）；RuleSet 在 v1.1 之后单独评审 |
 | 11 | 连接等待的可观测性 | 批次的准入/延后/放弃与在途执行数已有指标（见 [metrics.md](metrics.md)）；连接等待时长直方图仍是 P1，尚未实现 |
+| 12 | 从建议创建规则的自动接受 | `CreateQualityRule(suggestion)` 是“先建规则、后决策”的非原子序列：两路并发请求可能都通过 PENDING 预检、各建一条规则；决策写失败时规则保留而建议仍 PENDING，队列里再点一次会再建一条。当前只在决策失败时记 warning（批量结果不额外回报），靠 `ValidateRule`/数量上限兜底；彻底修复需要唯一约束/幂等键，留作后续 |
 
 ## 8. Where things live
 

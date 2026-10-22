@@ -4,9 +4,11 @@ import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
+import { Select } from "@/components/ui/select";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
+  QualityDimension,
   QualityRuleConfigSchema,
   QualityRuleSchema,
   QualitySuggestionKind,
@@ -15,6 +17,7 @@ import {
   QualitySuggestionStatus,
   QualityTargetSchema,
   RowCountConfigSchema,
+  SemanticLabelSuggestionSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
@@ -68,6 +71,24 @@ function draftSuggestion(name: string, title: string) {
             },
           }),
         },
+      },
+    },
+  });
+}
+
+function labelSuggestion() {
+  return create(QualitySuggestionSchema, {
+    name: "workspaces/ws/qualitySuggestions/label-1",
+    kind: QualitySuggestionKind.LABEL,
+    status: QualitySuggestionStatus.PENDING,
+    target: create(QualityTargetSchema, {
+      metaGuid: TABLE,
+      metaType: MetaType.TABLE,
+    }),
+    payload: {
+      payload: {
+        case: "label",
+        value: create(SemanticLabelSuggestionSchema, { column: "email" }),
       },
     },
   });
@@ -148,8 +169,9 @@ describe("BatchCreateRulesDialog", () => {
           title: "Orders should have rows",
         }),
         error: "",
+        suggestion: DRAFT_ONE,
       },
-      { rule: undefined, error: "compile failed" },
+      { rule: undefined, error: "compile failed", suggestion: DRAFT_TWO },
     ]);
   });
 
@@ -158,26 +180,37 @@ describe("BatchCreateRulesDialog", () => {
     await flushPromises();
 
     // Expand the first row and rename it.
-    buttonByText(label("dataQuality.suggestions.batchCreate.expand"))?.click();
+    const expand = buttonByText(
+      label("dataQuality.suggestions.batchCreate.expand")
+    );
+    expect(expand?.getAttribute("aria-expanded")).toBe("false");
+    expand?.click();
     await flushPromises();
+    expect(
+      buttonByText(
+        label("dataQuality.suggestions.batchCreate.collapse")
+      )?.getAttribute("aria-expanded")
+    ).toBe("true");
     setInput("#dq-batch-title-0", "Renamed rule");
     await flushPromises();
 
-    // Common severity: every row that was not edited by hand gets it.
-    const severityTrigger = document.querySelector(
-      "#dq-batch-severity"
-    ) as HTMLElement | null;
-    expect(severityTrigger).toBeTruthy();
-    severityTrigger?.dispatchEvent(
-      new PointerEvent("pointerdown", { bubbles: true })
+    // Common severity: applied to every row, overriding the draft's own value.
+    const severitySelect = wrapper
+      .findAllComponents(Select)
+      .find((candidate) => candidate.find("#dq-batch-severity").exists());
+    expect(severitySelect).toBeTruthy();
+    severitySelect?.vm.$emit("update:modelValue", "1");
+    await nextTick();
+
+    // Common dimension, applied to every row like the severity.
+    const dimensionSelect = wrapper
+      .findAllComponents(Select)
+      .find((candidate) => candidate.find("#dq-batch-dimension").exists());
+    expect(dimensionSelect).toBeTruthy();
+    dimensionSelect?.vm.$emit(
+      "update:modelValue",
+      String(QualityDimension.ACCURACY)
     );
-    await nextTick();
-    await nextTick();
-    const errorOption = [
-      ...document.body.querySelectorAll<HTMLElement>('[role="option"]'),
-    ].find((option) => option.textContent?.includes("Error"));
-    expect(errorOption).toBeTruthy();
-    errorOption?.click();
     await nextTick();
     await flushPromises();
 
@@ -191,6 +224,7 @@ describe("BatchCreateRulesDialog", () => {
       rule: {
         title: string;
         severity: number;
+        dimension: number;
         owner: string;
         scheduleInterval?: unknown;
         target?: { metaGuid?: string };
@@ -207,12 +241,14 @@ describe("BatchCreateRulesDialog", () => {
     expect(items[0]?.rule.title).toBe("Renamed rule");
     expect(items[1]?.rule.title).toBe("Orders must stay fresh");
     expect(items[0]?.rule.target?.metaGuid).toBe(TABLE);
-    // The common severity applies (2 = ERROR) and the interval stays unset so
+    // The common severity applies (1 = WARNING) and the interval stays unset so
     // the server applies the workspace default.
-    expect(items[0]?.rule.severity).toBe(2);
-    expect(items[1]?.rule.severity).toBe(2);
+    expect(items[0]?.rule.severity).toBe(1);
+    expect(items[1]?.rule.severity).toBe(1);
     expect(items[0]?.rule.scheduleInterval).toBeUndefined();
     expect(items[0]?.rule.owner).toBe("");
+    expect(items[0]?.rule.dimension).toBe(QualityDimension.ACCURACY);
+    expect(items[1]?.rule.dimension).toBe(QualityDimension.ACCURACY);
 
     expect(document.body.textContent).toContain(
       label("dataQuality.suggestions.batchCreate.partial", {
@@ -224,6 +260,44 @@ describe("BatchCreateRulesDialog", () => {
     expect(document.body.textContent).toContain(
       label("dataQuality.suggestions.batchCreate.createdRules")
     );
+
+    buttonByText(label("common.close"))?.click();
+    await flushPromises();
+    expect(wrapper.emitted("done")).toContainEqual([[DRAFT_ONE]]);
+    wrapper.unmount();
+  });
+
+  it("creates the convertible rows when one draft cannot become a rule", async () => {
+    mocks.batchCreateQualityRules.mockResolvedValue([
+      {
+        rule: create(QualityRuleSchema, {
+          name: "workspaces/ws/qualityRules/rule-1",
+          title: "Orders should have rows",
+        }),
+        error: "",
+        suggestion: DRAFT_ONE,
+      },
+    ]);
+    const wrapper = await mountDialog([
+      draftSuggestion(DRAFT_ONE, "Orders should have rows"),
+      labelSuggestion(),
+    ]);
+    await flushPromises();
+
+    expect(document.body.textContent).toContain(
+      label("dataQuality.suggestions.batchCreate.unsupported", { count: 1 })
+    );
+
+    buttonByText(
+      label("dataQuality.suggestions.batchCreate.submit", { count: 1 })
+    )?.click();
+    await flushPromises();
+
+    const items = mocks.batchCreateQualityRules.mock.calls[0]?.[0] as Array<{
+      suggestion: string;
+    }>;
+    expect(items).toHaveLength(1);
+    expect(items[0]?.suggestion).toBe(DRAFT_ONE);
 
     buttonByText(label("common.close"))?.click();
     await flushPromises();

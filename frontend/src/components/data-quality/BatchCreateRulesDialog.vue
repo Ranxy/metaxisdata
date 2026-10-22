@@ -46,7 +46,7 @@
             <div class="text-sm font-medium">
               {{ t("dataQuality.suggestions.batchCreate.commonTitle") }}
             </div>
-            <div class="grid gap-3 sm:grid-cols-3">
+            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div class="flex flex-col gap-1.5">
                 <Label for="dq-batch-interval">
                   {{ t("dataQuality.suggestions.batchCreate.interval") }}
@@ -83,6 +83,28 @@
                     </SelectItem>
                     <SelectItem :value="String(Severity.ERROR)">
                       {{ t("dataQuality.severity.error") }}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <Label for="dq-batch-dimension">
+                  {{ t("dataQuality.filterDimension") }}
+                </Label>
+                <Select v-model="dimension">
+                  <SelectTrigger id="dq-batch-dimension">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="keep">
+                      {{ t("dataQuality.suggestions.batchCreate.dimensionKeep") }}
+                    </SelectItem>
+                    <SelectItem
+                      v-for="value in dimensionOptions"
+                      :key="value"
+                      :value="String(value)"
+                    >
+                      {{ t(qualityDimensionKey(value)) }}
                     </SelectItem>
                   </SelectContent>
                 </Select>
@@ -154,7 +176,7 @@
                   :key="failure.index"
                   class="break-words"
                 >
-                  <span class="font-medium">{{ rowTitle(failure.index) }}</span>
+                  <span class="font-medium">{{ failureTitle(failure.index) }}</span>
                   <span class="text-muted-foreground">— {{ failure.message }}</span>
                 </li>
               </ul>
@@ -201,6 +223,7 @@
                 <Button
                   variant="ghost"
                   size="sm"
+                  :aria-expanded="row.expanded"
                   @click="row.expanded = !row.expanded"
                 >
                   <ChevronDown
@@ -317,6 +340,7 @@ import { useErrorMessage } from "@/composables/useErrorHandler";
 import { notify } from "@/lib/notify";
 import {
   type BatchCreateQualityRuleResult,
+  QualityDimension,
   type QualityRule,
   type QualitySeverity,
   type QualitySuggestion,
@@ -324,6 +348,7 @@ import {
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
+  qualityDimensionKey,
   qualityRuleTypeKey,
   qualitySeverityKey,
   qualitySeverityVariant,
@@ -417,6 +442,15 @@ const severityOptions: Array<{ value: QualitySeverity; key: string }> = [
   { value: Severity.CRITICAL, key: "dataQuality.severity.critical" },
 ];
 
+const dimensionOptions: QualityDimension[] = [
+  QualityDimension.COMPLETENESS,
+  QualityDimension.VALIDITY,
+  QualityDimension.UNIQUENESS,
+  QualityDimension.CONSISTENCY,
+  QualityDimension.TIMELINESS,
+  QualityDimension.ACCURACY,
+];
+
 interface BatchRow {
   suggestion: QualitySuggestion;
   form: RuleFormState;
@@ -430,12 +464,15 @@ interface BatchRow {
 
 const interval = ref<ScheduleInterval>("default");
 const severity = ref("keep");
+const dimension = ref("keep");
 const owner = ref("");
 const rows = ref<BatchRow[]>([]);
 const unsupportedCount = ref(0);
 const submitting = ref(false);
 const error = ref("");
 const results = ref<BatchCreateQualityRuleResult[]>([]);
+/** The suggestions this submit actually sent; result identity is derived from it. */
+const submittedNames = ref<string[]>([]);
 
 const summary = computed(() =>
   results.value.length > 0 ? summarizeBatchResults(results.value) : undefined
@@ -450,7 +487,6 @@ const createdRules = computed<QualityRule[]>(() =>
 const canSubmit = computed(
   () =>
     !submitting.value &&
-    unsupportedCount.value === 0 &&
     rows.value.length > 0 &&
     rows.value.every((row) => row.title.trim() !== "")
 );
@@ -468,12 +504,14 @@ watch(
 function reset() {
   interval.value = "default";
   severity.value = "keep";
+  dimension.value = "keep";
   owner.value = "";
   rows.value = [];
   unsupportedCount.value = 0;
   submitting.value = false;
   error.value = "";
   results.value = [];
+  submittedNames.value = [];
   for (const suggestion of props.suggestions.slice(0, MAX_SUGGESTION_BATCH)) {
     const prefill = suggestionToEditorPrefill(suggestion);
     if (!prefill?.target) {
@@ -545,11 +583,6 @@ function rowTargetLabel(row: BatchRow): string {
   return suggestionTargetLabel(row.suggestion.target?.metaGuid ?? "");
 }
 
-function rowTitle(index: number): string {
-  const row = rows.value[index];
-  return row?.title.trim() || row?.suggestion.name.split("/").pop() || "-";
-}
-
 function severityKey(value: QualitySeverity): string {
   return qualitySeverityKey(value);
 }
@@ -567,6 +600,9 @@ function commonOverrides(): SuggestionBatchOverrides {
   }
   if (severity.value !== "keep") {
     overrides.severity = Number(severity.value);
+  }
+  if (dimension.value !== "keep") {
+    overrides.dimension = Number(dimension.value);
   }
   return overrides;
 }
@@ -598,6 +634,7 @@ function submit() {
   if (items.length === 0) {
     return;
   }
+  submittedNames.value = items.map((item) => item.suggestion);
   submitting.value = true;
   error.value = "";
   results.value = [];
@@ -647,9 +684,21 @@ function succeededSuggestionNames(): string[] {
     if (result.error) {
       return [];
     }
-    const name = rows.value[index]?.suggestion.name;
+    const name =
+      result.suggestion ||
+      submittedNames.value[index] ||
+      rows.value[index]?.suggestion.name;
     return name ? [name] : [];
   });
+}
+
+/** A failed item's row title, resolved through the echoed suggestion name. */
+function failureTitle(index: number): string {
+  const name = results.value[index]?.suggestion;
+  const row = name
+    ? rows.value.find((item) => item.suggestion.name === name)
+    : rows.value[index];
+  return row?.title.trim() || row?.suggestion.name.split("/").pop() || "-";
 }
 
 function close() {

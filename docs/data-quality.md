@@ -148,11 +148,12 @@ The **Suggestions** page is the review center. Suggestions arrive from two place
   types those labels imply.
 
 The queue groups suggestions by target table and filters by status, kind, source
-and target scope. Select any number of rows to work in bulk:
+and target scope. Select rows on the current page to work in bulk (up to 200 per
+submit):
 
 - **Rule drafts** — *Create rules* opens one dialog where you set a schedule,
-  severity and owner for the whole selection; expand a row to edit its title,
-  severity or parameters. One submit creates them all, and each rule is reported
+  severity, dimension and owner for the whole selection; expand a row to edit its
+  title, severity or parameters. One submit creates them all, and each rule is reported
   separately: a draft that cannot compile is reported with its error and stays
   pending while the rest are created. Creating a rule accepts its draft.
   *Ignore drafts* records a rejection instead.
@@ -160,6 +161,9 @@ and target scope. Select any number of rows to work in bulk:
   *Reject labels* discards them. Accepting a label does not touch data.
 
 A single row can also be opened in the editor or turned into a rule on its own.
+A draft is tied to the target it was written for: if you open it in the editor
+and change the target, the draft is detached (it stays pending in the queue) and
+saving creates a rule for the new target without accepting it.
 Decided suggestions stay visible under *All statuses* with who decided them and
 their note. Nothing the model proposes is enabled or executed without a person
 creating the rule, and the model never sees raw sample rows.

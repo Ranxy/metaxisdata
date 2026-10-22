@@ -738,8 +738,9 @@ func TestQualityBatchItemParentAcceptable(t *testing.T) {
 	require.False(t, qualityBatchItemParentAcceptable("workspaces/ws1", "workspaces/-"))
 }
 
-// A rule created from a suggestion takes the draft's target: the payload and the
-// request's own target must not disagree, and the request's target is ignored.
+// A rule created from a suggestion takes the draft's target. The request target
+// may be omitted or repeat it; a differing target is refused before the rule is
+// built, so the helper is never the thing that silently rewrites a mismatch.
 func TestRuleTargetForSuggestionTakesTheDraftsTarget(t *testing.T) {
 	t.Parallel()
 
@@ -760,6 +761,41 @@ func TestRuleTargetForSuggestionTakesTheDraftsTarget(t *testing.T) {
 
 	var missing *v1pb.QualityRule
 	require.Nil(t, ruleTargetForSuggestion(missing, nil), "a rule without a target has none to create")
+}
+
+// A create-from-suggestion may omit the target (the server fills it from the
+// draft) or repeat it, but naming a different target is refused: the editor's
+// "change target" must detach the draft instead of silently creating the rule
+// elsewhere while accepting it.
+func TestValidateRuleTargetAgainstSuggestion(t *testing.T) {
+	t.Parallel()
+
+	suggestion := &store.QualitySuggestionMessage{
+		TargetGUID: "instance_1;shop;public;orders",
+		TargetType: storepb.MetaType_TABLE,
+	}
+	require.NoError(t, validateRuleTargetAgainstSuggestion(nil, suggestion))
+	require.NoError(t, validateRuleTargetAgainstSuggestion(&v1pb.QualityTarget{}, suggestion))
+	require.NoError(t, validateRuleTargetAgainstSuggestion(&v1pb.QualityTarget{
+		MetaGuid: " instance_1;shop;public;orders ",
+		MetaType: v1pb.MetaType_TABLE,
+	}, suggestion))
+	require.NoError(t, validateRuleTargetAgainstSuggestion(&v1pb.QualityTarget{
+		MetaGuid: "instance_1;shop;public;orders",
+	}, suggestion), "an omitted meta type is filled from the draft")
+
+	for name, target := range map[string]*v1pb.QualityTarget{
+		"other table": {MetaGuid: "instance_1;shop;public;users", MetaType: v1pb.MetaType_TABLE},
+		"other type":  {MetaGuid: "instance_1;shop;public;orders", MetaType: v1pb.MetaType_VIEW},
+	} {
+		err := validateRuleTargetAgainstSuggestion(target, suggestion)
+		require.Error(t, err, name)
+		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err), name)
+	}
+
+	require.NoError(t, validateRuleTargetAgainstSuggestion(
+		&v1pb.QualityTarget{MetaGuid: "anything"}, nil),
+		"without a suggestion the request target is not compared")
 }
 
 // The batch handlers validate the request envelope themselves, so a nil request is

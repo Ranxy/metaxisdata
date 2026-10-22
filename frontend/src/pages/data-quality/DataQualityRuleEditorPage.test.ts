@@ -742,6 +742,74 @@ describe("DataQualityRuleEditorPage", () => {
     wrapper.unmount();
   });
 
+  it("detaches the source suggestion when the reader picks another target", async () => {
+    mocks.getQualitySuggestion.mockResolvedValue(
+      create(QualitySuggestionSchema, {
+        name: "workspaces/ws/qualitySuggestions/draft-1",
+        kind: QualitySuggestionKind.RULE_DRAFT,
+        target: create(QualityTargetSchema, {
+          metaGuid: PREFILL,
+          metaType: MetaType.TABLE,
+        }),
+        payload: {
+          payload: {
+            case: "rule",
+            value: {
+              title: "Orders should have rows",
+              severity: 2,
+              confidence: 0.8,
+              config: create(QualityRuleConfigSchema, {
+                config: {
+                  case: "rowCount",
+                  value: create(RowCountConfigSchema, { minRows: 1n }),
+                },
+              }),
+            },
+          },
+        },
+      })
+    );
+    const { wrapper } = await mountEditor(
+      `/data-quality/rules/new?suggestion=${encodeURIComponent("workspaces/ws/qualitySuggestions/draft-1")}`
+    );
+    expect(wrapper.text()).toContain(
+      label("dataQuality.editor.suggestionPrefilled")
+    );
+
+    const NEW_TARGET = "inst2;db2;public;customers";
+    wrapper.findComponent({ name: "TargetPicker" }).vm.$emit("select", {
+      guid: NEW_TARGET,
+      metaType: MetaType.TABLE,
+      path: {
+        instance: "inst2",
+        database: "db2",
+        schema: "public",
+        object: "customers",
+      },
+      columns: [],
+    });
+    await flushPromises();
+
+    // A draft names one target: once the target changes the save must create a
+    // plain rule for the new one, leaving the draft pending for the queue.
+    expect(wrapper.text()).not.toContain(
+      label("dataQuality.editor.suggestionPrefilled")
+    );
+
+    await actionButton(wrapper, label("dataQuality.editor.create")).trigger(
+      "click"
+    );
+    await flushPromises();
+
+    expect(mocks.createQualityRule).toHaveBeenCalledTimes(1);
+    const [rule, suggestionName] = mocks.createQualityRule.mock.calls[0] ?? [];
+    expect(suggestionName).toBe("");
+    expect((rule as { target?: { metaGuid?: string } }).target?.metaGuid).toBe(
+      NEW_TARGET
+    );
+    wrapper.unmount();
+  });
+
   it("leaves the suggestion pending when the editor is cancelled", async () => {
     mocks.getQualitySuggestion.mockResolvedValue(
       create(QualitySuggestionSchema, {

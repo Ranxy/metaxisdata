@@ -362,8 +362,8 @@ func (s *DataQualityService) CreateQualityRule(ctx context.Context, req *connect
 }
 
 // createQualityRuleFromRequest implements the one create path. When suggestion
-// names a pending rule draft, the draft supplies the target (the request's target
-// is ignored) and is accepted once the rule exists.
+// names a pending rule draft, the draft supplies the target and is accepted once
+// the rule exists; a request target that disagrees with the draft is refused.
 func (s *DataQualityService) createQualityRuleFromRequest(ctx context.Context, workspaceID string, rule *v1pb.QualityRule, suggestionName string) (*v1pb.QualityRule, error) {
 	if rule == nil {
 		return nil, connectErrorInvalid("the rule is required")
@@ -379,6 +379,9 @@ func (s *DataQualityService) createQualityRuleFromRequest(ctx context.Context, w
 			return nil, err
 		}
 		suggestion = loaded
+	}
+	if err := validateRuleTargetAgainstSuggestion(rule.GetTarget(), suggestion); err != nil {
+		return nil, err
 	}
 
 	settings, settingsErr := dataquality.LoadSettings(ctx, s.store)
@@ -474,9 +477,8 @@ func (s *DataQualityService) pendingRuleDraftSuggestion(ctx context.Context, nam
 }
 
 // ruleTargetForSuggestion returns the identity a new rule is created for: the
-// draft's target when the rule comes from a suggestion, else the request's. The
-// request's own target is ignored for a draft because a draft can only become the
-// rule it was written for.
+// draft's target when the rule comes from a suggestion, else the request's. A
+// draft can only become the rule it was written for.
 func ruleTargetForSuggestion(rule *v1pb.QualityRule, suggestion *store.QualitySuggestionMessage) *v1pb.QualityTarget {
 	if suggestion == nil {
 		return rule.GetTarget()
@@ -485,6 +487,25 @@ func ruleTargetForSuggestion(rule *v1pb.QualityRule, suggestion *store.QualitySu
 		MetaGuid: suggestion.TargetGUID,
 		MetaType: v1pb.MetaType(suggestion.TargetType),
 	}
+}
+
+// validateRuleTargetAgainstSuggestion refuses a create-from-suggestion whose
+// request target names a different table. The draft's target is authoritative, so
+// the editor cannot silently accept a draft while creating its rule elsewhere
+// after the reader changed the target. An unset or empty request target is
+// allowed: the server fills it from the suggestion.
+func validateRuleTargetAgainstSuggestion(target *v1pb.QualityTarget, suggestion *store.QualitySuggestionMessage) error {
+	if suggestion == nil || target == nil || strings.TrimSpace(target.GetMetaGuid()) == "" {
+		return nil
+	}
+	if strings.TrimSpace(target.GetMetaGuid()) != suggestion.TargetGUID {
+		return connectErrorInvalid("the rule target must match the suggestion's target")
+	}
+	if target.GetMetaType() != v1pb.MetaType_UNSPECIFIED &&
+		storepb.MetaType(target.GetMetaType()) != suggestion.TargetType {
+		return connectErrorInvalid("the rule target must match the suggestion's target")
+	}
+	return nil
 }
 
 // acceptRuleDraftSuggestion records that a rule was created from a suggestion.

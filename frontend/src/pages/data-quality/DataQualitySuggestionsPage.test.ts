@@ -3,6 +3,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
+import { notify } from "@/lib/notify";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
@@ -127,7 +128,7 @@ function queue() {
   ];
 }
 
-function batchCreateResult(error = "") {
+function batchCreateResult(error = "", suggestion = "") {
   return {
     rule: error
       ? undefined
@@ -136,6 +137,7 @@ function batchCreateResult(error = "") {
           title: "Orders should have rows",
         }),
     error,
+    suggestion,
   };
 }
 
@@ -239,8 +241,8 @@ describe("DataQualitySuggestionsPage", () => {
         }))
     );
     mocks.batchCreateQualityRules.mockResolvedValue([
-      batchCreateResult(),
-      batchCreateResult("compile failed"),
+      batchCreateResult("", DRAFT_ONE),
+      batchCreateResult("compile failed", DRAFT_TWO),
     ]);
   });
 
@@ -261,6 +263,21 @@ describe("DataQualitySuggestionsPage", () => {
     );
     expect(wrapper.text()).toContain(TARGET.split(";").join(" · "));
     expect(wrapper.text()).toContain(OTHER_TARGET.split(";").join(" · "));
+
+    // The group header's collapse control exposes its state.
+    const collapse = document.body.querySelector<HTMLElement>(
+      `[aria-label="${label("dataQuality.suggestions.collapseGroup")}"]`
+    );
+    expect(collapse?.getAttribute("aria-expanded")).toBe("true");
+    collapse?.click();
+    await flushPromises();
+    expect(
+      document.body
+        .querySelector<HTMLElement>(
+          `[aria-label="${label("dataQuality.suggestions.expandGroup")}"]`
+        )
+        ?.getAttribute("aria-expanded")
+    ).toBe("false");
     wrapper.unmount();
   });
 
@@ -337,6 +354,54 @@ describe("DataQualitySuggestionsPage", () => {
     wrapper.unmount();
   });
 
+  it("keeps the draft and label bulk actions separate for a mixed selection", async () => {
+    const { wrapper } = await mountPage();
+
+    // Group headers and row checkboxes share the DOM order: orders group,
+    // draft one, draft two, customers group, label.
+    checkboxes()[0]?.click();
+    checkboxes()[4]?.click();
+    await flushPromises();
+
+    expect(wrapper.text()).toContain(
+      label("dataQuality.suggestions.selectedCount", { count: 3 })
+    );
+    expect(wrapper.text()).toContain(
+      label("dataQuality.suggestions.createRules", { count: 2 })
+    );
+    expect(wrapper.text()).toContain(
+      label("dataQuality.suggestions.ignoreDrafts", { count: 2 })
+    );
+    expect(wrapper.text()).toContain(
+      label("dataQuality.suggestions.acceptLabels", { count: 1 })
+    );
+    expect(wrapper.text()).toContain(
+      label("dataQuality.suggestions.rejectLabels", { count: 1 })
+    );
+
+    // Rejecting only the labels must leave the selected drafts alone.
+    buttonByText(
+      label("dataQuality.suggestions.rejectLabels", { count: 1 })
+    )?.click();
+    await flushPromises();
+    dialogButtonByText(label("dataQuality.suggestions.reject"))?.click();
+    await flushPromises();
+
+    expect(mocks.batchUpdateQualitySuggestions).toHaveBeenCalledWith([
+      { name: LABEL_ONE, decision: QualitySuggestionStatus.REJECTED, note: "" },
+    ]);
+    expect(wrapper.text()).toContain(
+      label("dataQuality.suggestions.selectedCount", { count: 2 })
+    );
+    expect(wrapper.text()).toContain(
+      label("dataQuality.suggestions.createRules", { count: 2 })
+    );
+    expect(wrapper.text()).not.toContain(
+      label("dataQuality.suggestions.acceptLabels", { count: 1 })
+    );
+    wrapper.unmount();
+  });
+
   it("accepts a label from its row", async () => {
     const { wrapper } = await mountPage();
 
@@ -351,32 +416,81 @@ describe("DataQualitySuggestionsPage", () => {
     wrapper.unmount();
   });
 
-  it("opens the workbench from the draft deep link and selects what it queues", async () => {
-    const queued = draftSuggestion(
-      "workspaces/ws/qualitySuggestions/draft-3",
-      "Queued from the workbench",
-      OTHER_TARGET
-    );
+  it("resets to page one and selects the new suggestions after a workbench run", async () => {
+    mocks.listQualitySuggestions.mockResolvedValue({
+      items: queue(),
+      nextPageToken: "page-2",
+    });
     const { wrapper } = await mountPage("/data-quality/suggestions?draft=1");
 
     expect(document.body.textContent).toContain(
       label("dataQuality.suggestions.workbench.description")
     );
+    // Move off page one so the reset is observable.
+    buttonByText(label("common.next"))?.click();
+    await flushPromises();
+    expect(mocks.listQualitySuggestions).toHaveBeenLastCalledWith(
+      expect.objectContaining({ pageToken: "page-2" })
+    );
 
-    // The page listens for the queued event, refreshes, and selects the new
-    // pending suggestions so they can be batch-created immediately.
+    const queued = draftSuggestion(
+      "workspaces/ws/qualitySuggestions/draft-3",
+      "Queued from the workbench",
+      OTHER_TARGET
+    );
+    const missing = draftSuggestion(
+      "workspaces/ws/qualitySuggestions/draft-4",
+      "Queued but filtered out",
+      OTHER_TARGET
+    );
+    const info = vi.spyOn(notify, "info");
     mocks.listQualitySuggestions.mockResolvedValue({
       items: [queued],
       nextPageToken: "",
     });
     wrapper
       .findComponent({ name: "SuggestionWorkbench" })
-      .vm.$emit("queued", [queued]);
+      .vm.$emit("queued", [queued, missing]);
     await flushPromises();
 
+    // The newly queued rows are newest, so the page asks for page one again.
+    expect(mocks.listQualitySuggestions).toHaveBeenLastCalledWith(
+      expect.objectContaining({ pageToken: "" })
+    );
     expect(wrapper.text()).toContain(
       label("dataQuality.suggestions.selectedCount", { count: 1 })
     );
+    expect(info).toHaveBeenCalledWith(
+      label("dataQuality.suggestions.queuedPartial", {
+        selected: 1,
+        total: 2,
+      })
+    );
+    info.mockRestore();
+    wrapper.unmount();
+  });
+
+  it("opens the workbench from the deep link even when the LLM switch is off", async () => {
+    mocks.getWorkspaceProfileSetting.mockResolvedValue({
+      dataQuality: { enableLlmAnalysis: false },
+    });
+    const { wrapper } = await mountPage("/data-quality/suggestions?draft=1");
+    await flushPromises();
+
+    // The deep link is never a dead end: the workbench explains why drafting is
+    // unavailable and points at the settings.
+    expect(document.body.textContent).toContain(
+      label("dataQuality.suggestions.workbench.description")
+    );
+    expect(document.body.textContent).toContain(
+      label("dataQuality.llm.disabledHint")
+    );
+    const generate = [
+      ...document.body.querySelectorAll<HTMLElement>('[role="dialog"] button'),
+    ].find((button) =>
+      button.textContent?.includes(label("dataQuality.llm.draft.generate"))
+    ) as HTMLButtonElement | undefined;
+    expect(generate?.disabled).toBe(true);
     wrapper.unmount();
   });
 

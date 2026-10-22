@@ -4006,6 +4006,7 @@ AggregateConfig bounds the value one aggregate over one column produces.
 | ----- | ---- | ----- | ----------- |
 | rule | [QualityRule](#metaxisdata-v1-QualityRule) |  | The created rule; unset when this item failed. |
 | error | [string](#string) |  | Empty on success; otherwise why this rule could not be created. |
+| suggestion | [string](#string) |  | The suggestion named by the request item, echoed so a client does not have to trust the index alone. Empty for an item that named no suggestion. Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion} |
 
 
 
@@ -4053,6 +4054,7 @@ AggregateConfig bounds the value one aggregate over one column produces.
 | ----- | ---- | ----- | ----------- |
 | suggestion | [QualitySuggestion](#metaxisdata-v1-QualitySuggestion) |  | The decided suggestion; unset when this decision failed. |
 | error | [string](#string) |  | Empty on success; otherwise why this suggestion could not be decided. |
+| name | [string](#string) |  | The suggestion name named by the request item, echoed so a client does not have to trust the index alone. Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion} |
 
 
 
@@ -4212,7 +4214,7 @@ they are returned, so a wide text column cannot bloat the response.
 | ----- | ---- | ----- | ----------- |
 | parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
 | rule | [QualityRule](#metaxisdata-v1-QualityRule) |  | The rule to create. Its name is assigned by the server. |
-| suggestion | [string](#string) |  | The suggestion this rule is created from, if any. When set, the rule&#39;s target is taken from the suggestion (the request&#39;s target is ignored) and the suggestion is marked accepted once the rule exists. A decision that cannot be written does not roll the created rule back; it is logged and the suggestion can be decided explicitly. |
+| suggestion | [string](#string) |  | The suggestion this rule is created from, if any. When set, the rule&#39;s target is taken from the suggestion: a request target that names a different target is rejected rather than silently ignored, so a caller cannot create a rule for one table while accepting another table&#39;s draft. The suggestion is marked accepted once the rule exists. A decision that cannot be written does not roll the created rule back; it is logged and the suggestion can be decided explicitly. |
 
 
 

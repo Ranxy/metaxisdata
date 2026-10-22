@@ -64,6 +64,7 @@ func (s *DataQualityService) BatchCreateQualityRules(ctx context.Context, req *c
 			results = append(results, result)
 			continue
 		}
+		result.Suggestion = strings.TrimSpace(item.GetSuggestion())
 		created, err := s.createQualityRuleFromRequest(ctx, workspaceID, item.GetRule(), item.GetSuggestion())
 		if err != nil {
 			result.Error = err.Error()
@@ -103,6 +104,7 @@ func (s *DataQualityService) BatchUpdateQualitySuggestions(ctx context.Context, 
 		} else {
 			result.Suggestion = updated
 		}
+		result.Name = strings.TrimSpace(item.GetName())
 		results = append(results, result)
 	}
 	return connect.NewResponse(&v1pb.BatchUpdateQualitySuggestionsResponse{Results: results}), nil

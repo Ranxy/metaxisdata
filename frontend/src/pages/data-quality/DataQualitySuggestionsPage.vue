@@ -300,6 +300,9 @@
                             ? t('dataQuality.suggestions.expandGroup')
                             : t('dataQuality.suggestions.collapseGroup')
                         "
+                        :aria-expanded="
+                          !collapsedGroups.includes(group.targetGuid)
+                        "
                         @click="toggleGroupCollapsed(group.targetGuid)"
                       >
                         <ChevronRight
@@ -1129,7 +1132,10 @@ function onBatchDone(succeededNames: string[]) {
 
 /** Newly queued suggestions stay selected so they can be batch-created at once. */
 async function onQueued(created: QualitySuggestion[]) {
-  await refreshPage();
+  // The new suggestions are the newest rows, so they live on the first page; the
+  // reader may have been deep in the queue with filters applied, so refresh page
+  // one rather than the page currently shown.
+  await resetPage();
   const names = new Set(created.map((suggestion) => suggestion.name));
   selectedNames.value = suggestions.value
     .filter(
@@ -1137,8 +1143,13 @@ async function onQueued(created: QualitySuggestion[]) {
         names.has(suggestion.name) && isPendingSuggestion(suggestion)
     )
     .map((suggestion) => suggestion.name);
-  if (selectedNames.value.length === 0) {
-    notify.info(t("dataQuality.suggestions.queuedHint"));
+  if (selectedNames.value.length < created.length) {
+    notify.info(
+      t("dataQuality.suggestions.queuedPartial", {
+        selected: selectedNames.value.length,
+        total: created.length,
+      })
+    );
   }
 }
 
@@ -1156,9 +1167,10 @@ onMounted(async () => {
   void instanceStore.ensureLoaded().catch(() => {});
   void resetPage();
   await loadLlmSetting();
-  // `?draft=1` is the rules page's discovery link; it needs the workspace
-  // switch and the permission before the workbench can open.
-  if (route.query.draft === "1" && llmAvailability.value.available) {
+  // `?draft=1` is the rules page's discovery link. Open it even when the switch
+  // is off or the caller may not draft: the workbench explains why with a link
+  // to the settings, so the link is never a dead end.
+  if (route.query.draft === "1") {
     workbenchOpen.value = true;
   }
 });

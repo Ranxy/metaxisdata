@@ -5774,8 +5774,10 @@ type CreateQualityRuleRequest struct {
 	// The rule to create. Its name is assigned by the server.
 	Rule *QualityRule `protobuf:"bytes,2,opt,name=rule,proto3" json:"rule,omitempty"`
 	// The suggestion this rule is created from, if any. When set, the rule's
-	// target is taken from the suggestion (the request's target is ignored) and
-	// the suggestion is marked accepted once the rule exists. A decision that
+	// target is taken from the suggestion: a request target that names a
+	// different target is rejected rather than silently ignored, so a caller
+	// cannot create a rule for one table while accepting another table's draft.
+	// The suggestion is marked accepted once the rule exists. A decision that
 	// cannot be written does not roll the created rule back; it is logged and the
 	// suggestion can be decided explicitly.
 	Suggestion    string `protobuf:"bytes,3,opt,name=suggestion,proto3" json:"suggestion,omitempty"`
@@ -5939,7 +5941,11 @@ type BatchCreateQualityRuleResult struct {
 	// The created rule; unset when this item failed.
 	Rule *QualityRule `protobuf:"bytes,1,opt,name=rule,proto3" json:"rule,omitempty"`
 	// Empty on success; otherwise why this rule could not be created.
-	Error         string `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	Error string `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	// The suggestion named by the request item, echoed so a client does not have
+	// to trust the index alone. Empty for an item that named no suggestion.
+	// Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion}
+	Suggestion    string `protobuf:"bytes,3,opt,name=suggestion,proto3" json:"suggestion,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5984,6 +5990,13 @@ func (x *BatchCreateQualityRuleResult) GetRule() *QualityRule {
 func (x *BatchCreateQualityRuleResult) GetError() string {
 	if x != nil {
 		return x.Error
+	}
+	return ""
+}
+
+func (x *BatchCreateQualityRuleResult) GetSuggestion() string {
+	if x != nil {
+		return x.Suggestion
 	}
 	return ""
 }
@@ -7259,7 +7272,11 @@ type BatchUpdateQualitySuggestionResult struct {
 	// The decided suggestion; unset when this decision failed.
 	Suggestion *QualitySuggestion `protobuf:"bytes,1,opt,name=suggestion,proto3" json:"suggestion,omitempty"`
 	// Empty on success; otherwise why this suggestion could not be decided.
-	Error         string `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	Error string `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	// The suggestion name named by the request item, echoed so a client does not
+	// have to trust the index alone.
+	// Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion}
+	Name          string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -7304,6 +7321,13 @@ func (x *BatchUpdateQualitySuggestionResult) GetSuggestion() *QualitySuggestion 
 func (x *BatchUpdateQualitySuggestionResult) GetError() string {
 	if x != nil {
 		return x.Error
+	}
+	return ""
+}
+
+func (x *BatchUpdateQualitySuggestionResult) GetName() string {
+	if x != nil {
+		return x.Name
 	}
 	return ""
 }
@@ -9071,10 +9095,13 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\x12I\n" +
 	"\brequests\x18\x02 \x03(\v2(.metaxisdata.v1.CreateQualityRuleRequestB\x03\xe0A\x02R\brequests\"i\n" +
 	"\x1fBatchCreateQualityRulesResponse\x12F\n" +
-	"\aresults\x18\x01 \x03(\v2,.metaxisdata.v1.BatchCreateQualityRuleResultR\aresults\"e\n" +
+	"\aresults\x18\x01 \x03(\v2,.metaxisdata.v1.BatchCreateQualityRuleResultR\aresults\"\x85\x01\n" +
 	"\x1cBatchCreateQualityRuleResult\x12/\n" +
 	"\x04rule\x18\x01 \x01(\v2\x1b.metaxisdata.v1.QualityRuleR\x04rule\x12\x14\n" +
-	"\x05error\x18\x02 \x01(\tR\x05error\"\x8d\x01\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\x12\x1e\n" +
+	"\n" +
+	"suggestion\x18\x03 \x01(\tR\n" +
+	"suggestion\"\x8d\x01\n" +
 	"\x18UpdateQualityRuleRequest\x124\n" +
 	"\x04rule\x18\x01 \x01(\v2\x1b.metaxisdata.v1.QualityRuleB\x03\xe0A\x02R\x04rule\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
@@ -9186,12 +9213,13 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\x12O\n" +
 	"\brequests\x18\x02 \x03(\v2..metaxisdata.v1.UpdateQualitySuggestionRequestB\x03\xe0A\x02R\brequests\"u\n" +
 	"%BatchUpdateQualitySuggestionsResponse\x12L\n" +
-	"\aresults\x18\x01 \x03(\v22.metaxisdata.v1.BatchUpdateQualitySuggestionResultR\aresults\"}\n" +
+	"\aresults\x18\x01 \x03(\v22.metaxisdata.v1.BatchUpdateQualitySuggestionResultR\aresults\"\x91\x01\n" +
 	"\"BatchUpdateQualitySuggestionResult\x12A\n" +
 	"\n" +
 	"suggestion\x18\x01 \x01(\v2!.metaxisdata.v1.QualitySuggestionR\n" +
 	"suggestion\x12\x14\n" +
-	"\x05error\x18\x02 \x01(\tR\x05error\"\xe4\x01\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\"\xe4\x01\n" +
 	"\x19ListColumnProfilesRequest\x12\x1b\n" +
 	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x1d\n" +
