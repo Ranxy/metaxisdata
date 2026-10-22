@@ -52,7 +52,7 @@ type JobStore interface {
 // implements it; a test uses a fake to control latency, outcome and quota errors.
 type DraftSuggester interface {
 	ResolveConfig(ctx context.Context) (llm.ResolvedConfig, dataquality.Settings, error)
-	Draft(ctx context.Context, config llm.ResolvedConfig, targetGUID string, metaType storepb.MetaType, columns []string, intent, language string, createdBy *int32) ([]*store.QualitySuggestionMessage, *storepb.QualityLLMDiagnostic, error)
+	Draft(ctx context.Context, config llm.ResolvedConfig, limits dataquality.LLMLimits, targetGUID string, metaType storepb.MetaType, columns []string, intent, language string, createdBy *int32) ([]*store.QualitySuggestionMessage, *storepb.QualityLLMDiagnostic, error)
 }
 
 // Runner claims and executes background AI drafting jobs.
@@ -141,7 +141,7 @@ func (r *Runner) processJob(ctx context.Context, job *store.QualitySuggestionJob
 		targets = &storepb.QualitySuggestionJobTargets{}
 	}
 
-	config, _, err := r.suggester.ResolveConfig(ctx)
+	config, settings, err := r.suggester.ResolveConfig(ctx)
 	if err != nil {
 		// A job-level failure: the model was never asked for any target.
 		markPendingTargetsSkipped(targets, r.now())
@@ -186,8 +186,8 @@ func (r *Runner) processJob(ctx context.Context, job *store.QualitySuggestionJob
 		target.StartedAtUnixMs = startedAt.UnixMilli()
 		r.persist(ctx, job, targets)
 
-		created, diagnostic, draftErr := r.suggester.Draft(ctx, config, target.GetTargetGuid(),
-			storepb.MetaType(target.GetTargetType()), target.GetColumns(), job.Intent, job.Language, job.CreatedBy)
+		created, diagnostic, draftErr := r.suggester.Draft(ctx, config, dataquality.LimitsFromSettings(settings),
+			target.GetTargetGuid(), storepb.MetaType(target.GetTargetType()), target.GetColumns(), job.Intent, job.Language, job.CreatedBy)
 		if draftErr != nil {
 			target.Error = truncateJobError(draftErr)
 			target.Diagnostic = diagnostic

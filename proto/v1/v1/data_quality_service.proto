@@ -307,6 +307,15 @@ service DataQualityService {
     option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityOverview"};
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
   }
+
+  // Read today's data quality LLM usage and the effective limits (the workspace
+  // settings, with server defaults resolved). The counters are process state: a
+  // restart resets them and they roll over at 00:00 UTC.
+  rpc GetQualityLLMUsage(GetQualityLLMUsageRequest) returns (QualityLLMUsage) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityLLMUsage"};
+    option (google.api.method_signature) = "parent";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.suggest";
+  }
 }
 
 // QualityRuleType is the observation a rule makes. The value is immutable for a
@@ -1988,6 +1997,25 @@ message GetQualityOverviewRequest {
 // QualityOverview is the workspace-level summary the overview page renders. It
 // aggregates the tables instead of listing rows, so the page costs a handful of
 // queries rather than paging through every result.
+message GetQualityLLMUsageRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// QualityLLMUsage is one process's view of the data quality LLM budget: today's
+// counters, the effective limits from the workspace settings, and the in-flight
+// analyses. A restart resets the counters.
+message QualityLLMUsage {
+  int32 daily_analysis_used = 1;
+  int32 daily_analysis_limit = 2;
+  int32 daily_column_analysis_used = 3;
+  int32 daily_column_analysis_limit = 4;
+  int32 in_flight = 5;
+  int32 concurrency_limit = 6;
+  // When the daily counters roll over (the next 00:00 UTC).
+  google.protobuf.Timestamp resets_at = 7;
+}
+
 message QualityOverview {
   // Rules by lifecycle state.
   int32 rule_count = 1;

@@ -183,11 +183,23 @@ creating the rule, and the model never sees raw sample rows.
 
 Settings → Data Quality controls: the model-analysis switch and provider,
 whether failure samples are stored and how many, the default schedule for new
-rules, the daily execution ceiling, the daily column-analysis ceiling, the
-columns per analysis, and whether raw sample values may be sent to the model.
-Zero means the server default; the page shows the effective values. The daily
-execution ceiling only pauses the *scheduled* scans — **Run now** still works
-when it is reached.
+rules, the daily execution ceiling, the **daily AI analysis ceiling (L1+L2,
+default 10,000)**, the daily column-analysis ceiling, the **concurrent LLM calls
+(default 8, range 1–64)**, the columns per analysis, and whether raw sample
+values may be sent to the model. A read-only **Today's AI usage** card shows
+used/limit for both analysis buckets, in-flight/concurrency and when the counters
+reset (00:00 UTC). The counters are process-local: a restart starts them at zero.
+Zero in a field means the server default; the page shows the effective values.
+The daily execution ceiling only pauses the *scheduled* scans — **Run now** still
+works when it is reached.
+
+Settings → LLM providers configures each provider profile, including **Max output
+tokens** (0 = server default 32,768; 256–131,072). It is the ceiling sent to the
+model for every data quality analysis using that profile; unused tokens are not
+charged. If the provider or model caps output lower, the request is rejected and
+the failed target reports a provider-status diagnostic. The DQ limits and the
+usage card are the place to raise the daily/concurrency budget when the defaults
+are too low for your workload.
 
 ## Retention
 
@@ -211,6 +223,8 @@ pruned.
 | Model buttons are disabled | Model analysis is off, no allowed provider profile exists, or the caller lacks `suggest`/`explain`. |
 | An AI drafting job failed | Open the **AI drafting jobs** panel and expand the target. A job-level error means the provider became unavailable or the daily analysis quota ran out after it started; a target-level diagnostic names the failure class. *Output limit* means the model hit the output-token budget before finishing its JSON: retry with a narrower intent or fewer columns (the budget is 8,192 tokens). Provider errors carry the provider/model and stop reason but not the provider's body; if a model rejects the 8,192-token output request, use a model that supports that output budget; quote the **correlation ID** to an operator, who can find the matching server log line (and, with runtime debug on, the raw request/response within seven days). Queued suggestions from earlier targets are kept. |
 | An AI drafting job stays queued or running | The server processes one job at a time; a queued job starts on the next runner tick (about five seconds). If the server restarted mid-job, the job is marked failed on startup and is not resumed — submit it again. |
+| An AI analysis is rejected as over quota | Settings → Data Quality → Today's AI usage shows used/limit and concurrency. Raise **Daily AI analyses** (L1+L2, max 1,000,000) or **Concurrent LLM calls** (1–64); the change applies to the next analysis without a restart. |
+| A model rejects the output budget | The provider profile's **Max output tokens** is above what that model accepts. Lower it (Settings → LLM providers), or use a model with a larger output cap; the failure shows a provider-status diagnostic. |
 | A label suggestion cannot be accepted | Profile the columns first; label suggestions require profiles fresher than seven days. |
 
 The API surface, resource names, data model and invariants are documented for

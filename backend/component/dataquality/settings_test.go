@@ -23,6 +23,8 @@ func TestDefaultSettings(t *testing.T) {
 	require.Equal(t, time.Hour, settings.DefaultScheduleInterval)
 	require.Equal(t, 10000, settings.DailyExecutionLimit)
 	require.Equal(t, 50, settings.DailyColumnAnalysisLimit)
+	require.Equal(t, 10000, settings.DailyLLMAnalysisLimit)
+	require.Equal(t, 8, settings.LLMConcurrencyLimit)
 	require.Equal(t, 50, settings.MaxColumnsPerAnalysis)
 	require.False(t, settings.SendSampleValuesToLLM)
 }
@@ -46,6 +48,8 @@ func TestSettingsFromProfileResolvesExplicitValues(t *testing.T) {
 			DefaultScheduleInterval:  durationpb.New(45 * time.Minute),
 			DailyExecutionLimit:      500,
 			DailyColumnAnalysisLimit: 80,
+			DailyLlmAnalysisLimit:    20000,
+			LlmConcurrencyLimit:      16,
 			MaxColumnsPerAnalysis:    120,
 			SendSampleValuesToLlm:    true,
 		},
@@ -59,9 +63,31 @@ func TestSettingsFromProfileResolvesExplicitValues(t *testing.T) {
 		DefaultScheduleInterval:  45 * time.Minute,
 		DailyExecutionLimit:      500,
 		DailyColumnAnalysisLimit: 80,
+		DailyLLMAnalysisLimit:    20000,
+		LLMConcurrencyLimit:      16,
 		MaxColumnsPerAnalysis:    120,
 		SendSampleValuesToLLM:    true,
 	}, SettingsFromProfile(profile))
+}
+
+// The two LLM limits accept zero (default) and clamp out-of-band stored values to
+// the server bounds when read.
+func TestSettingsFromProfileClampsTheLLMLimits(t *testing.T) {
+	t.Parallel()
+
+	profile := &storepb.WorkspaceProfileSetting{
+		DataQuality: &storepb.DataQualitySetting{
+			DailyLlmAnalysisLimit: MaxDailyLLMAnalysisLimit + 100,
+			LlmConcurrencyLimit:   MaxLLMConcurrencyLimit + 5,
+		},
+	}
+	settings := SettingsFromProfile(profile)
+	require.Equal(t, MaxDailyLLMAnalysisLimit, settings.DailyLLMAnalysisLimit)
+	require.Equal(t, MaxLLMConcurrencyLimit, settings.LLMConcurrencyLimit)
+
+	zero := SettingsFromProfile(&storepb.WorkspaceProfileSetting{DataQuality: &storepb.DataQualitySetting{}})
+	require.Equal(t, DefaultDailyLLMAnalysisLimit, zero.DailyLLMAnalysisLimit)
+	require.Equal(t, DefaultLLMConcurrencyLimit, zero.LLMConcurrencyLimit)
 }
 
 // The settings page writes every boolean explicitly, so a present data_quality

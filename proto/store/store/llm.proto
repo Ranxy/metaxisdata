@@ -31,4 +31,6 @@ message LlmProviderProfile {
   repeated LlmProviderModel models = 6;
   google.protobuf.Timestamp create_time = 7;
   google.protobuf.Timestamp update_time = 8;
+  // The answer budget requested from this profile; 0 means the server default.
+  int32 max_output_tokens = 9;
 }

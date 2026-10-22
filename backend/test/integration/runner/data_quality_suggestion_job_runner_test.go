@@ -36,7 +36,7 @@ func (*realStoreDraftSuggester) ResolveConfig(context.Context) (llm.ResolvedConf
 	}, dataquality.Settings{}, nil
 }
 
-func (s *realStoreDraftSuggester) Draft(ctx context.Context, config llm.ResolvedConfig, targetGUID string, metaType storepb.MetaType, _ []string, _ string, _ string, createdBy *int32) ([]*store.QualitySuggestionMessage, *storepb.QualityLLMDiagnostic, error) {
+func (s *realStoreDraftSuggester) Draft(ctx context.Context, config llm.ResolvedConfig, _ dataquality.LLMLimits, targetGUID string, metaType storepb.MetaType, _ []string, _ string, _ string, createdBy *int32) ([]*store.QualitySuggestionMessage, *storepb.QualityLLMDiagnostic, error) {
 	resourceID, err := common.RandomString(12)
 	if err != nil {
 		return nil, nil, err

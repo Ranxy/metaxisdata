@@ -181,6 +181,12 @@ func normalizeDataQualitySetting(dataQuality *v1pb.DataQualitySetting) (*storepb
 	if value := dataQuality.GetDailyColumnAnalysisLimit(); value < 0 {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("daily_column_analysis_limit must not be negative"))
 	}
+	if value := dataQuality.GetDailyLlmAnalysisLimit(); value < 0 || value > dataquality.MaxDailyLLMAnalysisLimit {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("daily_llm_analysis_limit must be between 0 and %d", dataquality.MaxDailyLLMAnalysisLimit))
+	}
+	if value := dataQuality.GetLlmConcurrencyLimit(); value < 0 || value > dataquality.MaxLLMConcurrencyLimit {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("llm_concurrency_limit must be between 0 and %d", dataquality.MaxLLMConcurrencyLimit))
+	}
 	if value := dataQuality.GetMaxColumnsPerAnalysis(); value < 0 || value > dataquality.MaxColumnsPerAnalysisLimit {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("max_columns_per_analysis must be between 0 and %d", dataquality.MaxColumnsPerAnalysisLimit))
 	}
@@ -196,6 +202,8 @@ func normalizeDataQualitySetting(dataQuality *v1pb.DataQualitySetting) (*storepb
 		FailureSampleLimit:       dataQuality.GetFailureSampleLimit(),
 		DailyExecutionLimit:      dataQuality.GetDailyExecutionLimit(),
 		DailyColumnAnalysisLimit: dataQuality.GetDailyColumnAnalysisLimit(),
+		DailyLlmAnalysisLimit:    dataQuality.GetDailyLlmAnalysisLimit(),
+		LlmConcurrencyLimit:      dataQuality.GetLlmConcurrencyLimit(),
 		MaxColumnsPerAnalysis:    dataQuality.GetMaxColumnsPerAnalysis(),
 		SendSampleValuesToLlm:    dataQuality.GetSendSampleValuesToLlm(),
 	}
@@ -243,6 +251,8 @@ func convertDataQualitySetting(dataQuality *storepb.DataQualitySetting) *v1pb.Da
 		DefaultScheduleInterval:  dataQuality.GetDefaultScheduleInterval(),
 		DailyExecutionLimit:      dataQuality.GetDailyExecutionLimit(),
 		DailyColumnAnalysisLimit: dataQuality.GetDailyColumnAnalysisLimit(),
+		DailyLlmAnalysisLimit:    dataQuality.GetDailyLlmAnalysisLimit(),
+		LlmConcurrencyLimit:      dataQuality.GetLlmConcurrencyLimit(),
 		MaxColumnsPerAnalysis:    dataQuality.GetMaxColumnsPerAnalysis(),
 		SendSampleValuesToLlm:    dataQuality.GetSendSampleValuesToLlm(),
 	}
@@ -264,6 +274,8 @@ func resolveDataQualitySetting(setting *storepb.WorkspaceProfileSetting) *storep
 		DefaultScheduleInterval:  durationpb.New(resolved.DefaultScheduleInterval),
 		DailyExecutionLimit:      int32(resolved.DailyExecutionLimit),
 		DailyColumnAnalysisLimit: int32(resolved.DailyColumnAnalysisLimit),
+		DailyLlmAnalysisLimit:    int32(resolved.DailyLLMAnalysisLimit),
+		LlmConcurrencyLimit:      int32(resolved.LLMConcurrencyLimit),
 		MaxColumnsPerAnalysis:    int32(resolved.MaxColumnsPerAnalysis),
 		SendSampleValuesToLlm:    resolved.SendSampleValuesToLLM,
 	}

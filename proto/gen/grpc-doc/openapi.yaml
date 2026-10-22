@@ -4666,6 +4666,35 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityLLMUsage:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                Read today's data quality LLM usage and the effective limits (the workspace
+                 settings, with server defaults resolved). The counters are process state: a
+                 restart resets them and they roll over at 00:00 UTC.
+            operationId: DataQualityService_GetQualityLLMUsage
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityLLMUsage'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityOverview:
         get:
             tags:
@@ -7049,6 +7078,12 @@ components:
                     format: int32
                 sendSampleValuesToLlm:
                     type: boolean
+                dailyLlmAnalysisLimit:
+                    type: integer
+                    format: int32
+                llmConcurrencyLimit:
+                    type: integer
+                    format: int32
             description: |-
                 DataQualitySetting is the stored form of the data quality settings; it mirrors
                  metaxisdata.v1.DataQualitySetting.
@@ -8822,6 +8857,10 @@ components:
                 updateTime:
                     type: string
                     format: date-time
+                maxOutputTokens:
+                    type: integer
+                    description: The answer budget requested from this profile; 0 means the server default.
+                    format: int32
         LoginRequest:
             type: object
             properties:
@@ -10203,6 +10242,35 @@ components:
                  can act on and an operator can correlate with logs. It never includes the
                  prompt or the model response; those are available on demand when runtime debug
                  mode captured them (see GetQualitySuggestionJobTargetDebug).
+        QualityLLMUsage:
+            type: object
+            properties:
+                dailyAnalysisUsed:
+                    type: integer
+                    format: int32
+                dailyAnalysisLimit:
+                    type: integer
+                    format: int32
+                dailyColumnAnalysisUsed:
+                    type: integer
+                    format: int32
+                dailyColumnAnalysisLimit:
+                    type: integer
+                    format: int32
+                inFlight:
+                    type: integer
+                    format: int32
+                concurrencyLimit:
+                    type: integer
+                    format: int32
+                resetsAt:
+                    type: string
+                    description: When the daily counters roll over (the next 00:00 UTC).
+                    format: date-time
+            description: |-
+                QualityLLMUsage is one process's view of the data quality LLM budget: today's
+                 counters, the effective limits from the workspace settings, and the in-flight
+                 analyses. A restart resets the counters.
         QualityOverview:
             type: object
             properties:
@@ -10250,10 +10318,6 @@ components:
                     type: integer
                     description: How many days the trend covers.
                     format: int32
-            description: |-
-                QualityOverview is the workspace-level summary the overview page renders. It
-                 aggregates the tables instead of listing rows, so the page costs a handful of
-                 queries rather than paging through every result.
         QualityRule:
             type: object
             properties:

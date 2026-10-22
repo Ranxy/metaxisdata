@@ -43,6 +43,9 @@ type UpdateLLMProfileMessage struct {
 	BaseURL    *string
 	APIKey     *string
 	Models     []*storepb.LlmProviderModel
+	// MaxOutputTokens patches the metadata's output budget; nil leaves it alone,
+	// an explicit 0 clears it back to the server default.
+	MaxOutputTokens *int32
 }
 
 // encryptLLMProfileKey replaces the profile's stored API key with the ciphertext
@@ -129,6 +132,9 @@ func (s *Store) UpdateLLMProfile(ctx context.Context, update *UpdateLLMProfileMe
 	}
 	if update.Models != nil {
 		meta.Models = update.Models
+	}
+	if update.MaxOutputTokens != nil {
+		meta.MaxOutputTokens = *update.MaxOutputTokens
 	}
 
 	cloned, ok := proto.Clone(meta).(*storepb.LlmProviderProfile)

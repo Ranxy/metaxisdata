@@ -201,18 +201,22 @@ func (x *LlmProviderModel) GetEnabled() bool {
 }
 
 type LlmProviderProfile struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Title         string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
-	Type          LLMProviderType        `protobuf:"varint,3,opt,name=type,proto3,enum=metaxisdata.v1.LLMProviderType" json:"type,omitempty"`
-	BaseUrl       string                 `protobuf:"bytes,4,opt,name=base_url,json=baseUrl,proto3" json:"base_url,omitempty"`
-	ApiKey        string                 `protobuf:"bytes,5,opt,name=api_key,json=apiKey,proto3" json:"api_key,omitempty"`
-	Models        []*LlmProviderModel    `protobuf:"bytes,6,rep,name=models,proto3" json:"models,omitempty"`
-	CreateTime    *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
-	UpdateTime    *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
-	MaskedApiKey  string                 `protobuf:"bytes,9,opt,name=masked_api_key,json=maskedApiKey,proto3" json:"masked_api_key,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Name         string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Title        string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	Type         LLMProviderType        `protobuf:"varint,3,opt,name=type,proto3,enum=metaxisdata.v1.LLMProviderType" json:"type,omitempty"`
+	BaseUrl      string                 `protobuf:"bytes,4,opt,name=base_url,json=baseUrl,proto3" json:"base_url,omitempty"`
+	ApiKey       string                 `protobuf:"bytes,5,opt,name=api_key,json=apiKey,proto3" json:"api_key,omitempty"`
+	Models       []*LlmProviderModel    `protobuf:"bytes,6,rep,name=models,proto3" json:"models,omitempty"`
+	CreateTime   *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
+	UpdateTime   *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
+	MaskedApiKey string                 `protobuf:"bytes,9,opt,name=masked_api_key,json=maskedApiKey,proto3" json:"masked_api_key,omitempty"`
+	// The answer budget one analysis requests from this profile, in output tokens.
+	// Zero means the server default (32768). The provider or model may cap lower; a
+	// rejected request is reported on the failed analysis as PROVIDER_STATUS.
+	MaxOutputTokens int32 `protobuf:"varint,10,opt,name=max_output_tokens,json=maxOutputTokens,proto3" json:"max_output_tokens,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *LlmProviderProfile) Reset() {
@@ -306,6 +310,13 @@ func (x *LlmProviderProfile) GetMaskedApiKey() string {
 		return x.MaskedApiKey
 	}
 	return ""
+}
+
+func (x *LlmProviderProfile) GetMaxOutputTokens() int32 {
+	if x != nil {
+		return x.MaxOutputTokens
+	}
+	return 0
 }
 
 type ListLLMProviderProfilesRequest struct {
@@ -676,7 +687,7 @@ const file_v1_llm_service_proto_rawDesc = "" +
 	"\x10default_base_url\x18\x04 \x01(\tR\x0edefaultBaseUrl\"@\n" +
 	"\x10LlmProviderModel\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
-	"\aenabled\x18\x02 \x01(\bR\aenabled\"\x95\x03\n" +
+	"\aenabled\x18\x02 \x01(\bR\aenabled\"\xc1\x03\n" +
 	"\x12LlmProviderProfile\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x123\n" +
@@ -688,7 +699,9 @@ const file_v1_llm_service_proto_rawDesc = "" +
 	"createTime\x12@\n" +
 	"\vupdate_time\x18\b \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\n" +
 	"updateTime\x12)\n" +
-	"\x0emasked_api_key\x18\t \x01(\tB\x03\xe0A\x03R\fmaskedApiKey\"\\\n" +
+	"\x0emasked_api_key\x18\t \x01(\tB\x03\xe0A\x03R\fmaskedApiKey\x12*\n" +
+	"\x11max_output_tokens\x18\n" +
+	" \x01(\x05R\x0fmaxOutputTokens\"\\\n" +
 	"\x1eListLLMProviderProfilesRequest\x12\x1b\n" +
 	"\tpage_size\x18\x01 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +

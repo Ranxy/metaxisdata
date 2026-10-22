@@ -185,6 +185,22 @@ export declare type DataQualitySetting = Message<"metaxisdata.v1.DataQualitySett
    * @generated from field: bool send_sample_values_to_llm = 9;
    */
   sendSampleValuesToLlm: boolean;
+
+  /**
+   * The workspace's daily L1+L2 LLM analysis ceiling (rule drafts and failure
+   * explanations). Zero means the server default (10000); capped at 1000000.
+   *
+   * @generated from field: int32 daily_llm_analysis_limit = 10;
+   */
+  dailyLlmAnalysisLimit: number;
+
+  /**
+   * How many data quality LLM analyses may run at once in this process. Zero
+   * means the server default (8); accepted range 1-64.
+   *
+   * @generated from field: int32 llm_concurrency_limit = 11;
+   */
+  llmConcurrencyLimit: number;
 };
 
 /**

@@ -4115,6 +4115,76 @@ export declare const GetQualityOverviewRequestSchema: GenMessage<GetQualityOverv
  * aggregates the tables instead of listing rows, so the page costs a handful of
  * queries rather than paging through every result.
  *
+ * @generated from message metaxisdata.v1.GetQualityLLMUsageRequest
+ */
+export declare type GetQualityLLMUsageRequest = Message<"metaxisdata.v1.GetQualityLLMUsageRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityLLMUsageRequest.
+ * Use `create(GetQualityLLMUsageRequestSchema)` to create a new message.
+ */
+export declare const GetQualityLLMUsageRequestSchema: GenMessage<GetQualityLLMUsageRequest>;
+
+/**
+ * QualityLLMUsage is one process's view of the data quality LLM budget: today's
+ * counters, the effective limits from the workspace settings, and the in-flight
+ * analyses. A restart resets the counters.
+ *
+ * @generated from message metaxisdata.v1.QualityLLMUsage
+ */
+export declare type QualityLLMUsage = Message<"metaxisdata.v1.QualityLLMUsage"> & {
+  /**
+   * @generated from field: int32 daily_analysis_used = 1;
+   */
+  dailyAnalysisUsed: number;
+
+  /**
+   * @generated from field: int32 daily_analysis_limit = 2;
+   */
+  dailyAnalysisLimit: number;
+
+  /**
+   * @generated from field: int32 daily_column_analysis_used = 3;
+   */
+  dailyColumnAnalysisUsed: number;
+
+  /**
+   * @generated from field: int32 daily_column_analysis_limit = 4;
+   */
+  dailyColumnAnalysisLimit: number;
+
+  /**
+   * @generated from field: int32 in_flight = 5;
+   */
+  inFlight: number;
+
+  /**
+   * @generated from field: int32 concurrency_limit = 6;
+   */
+  concurrencyLimit: number;
+
+  /**
+   * When the daily counters roll over (the next 00:00 UTC).
+   *
+   * @generated from field: google.protobuf.Timestamp resets_at = 7;
+   */
+  resetsAt?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityLLMUsage.
+ * Use `create(QualityLLMUsageSchema)` to create a new message.
+ */
+export declare const QualityLLMUsageSchema: GenMessage<QualityLLMUsage>;
+
+/**
  * @generated from message metaxisdata.v1.QualityOverview
  */
 export declare type QualityOverview = Message<"metaxisdata.v1.QualityOverview"> & {
@@ -5713,6 +5783,18 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof GetQualityOverviewRequestSchema;
     output: typeof QualityOverviewSchema;
+  },
+  /**
+   * Read today's data quality LLM usage and the effective limits (the workspace
+   * settings, with server defaults resolved). The counters are process state: a
+   * restart resets them and they roll over at 00:00 UTC.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityLLMUsage
+   */
+  getQualityLLMUsage: {
+    methodKind: "unary";
+    input: typeof GetQualityLLMUsageRequestSchema;
+    output: typeof QualityLLMUsageSchema;
   },
 }>;
 

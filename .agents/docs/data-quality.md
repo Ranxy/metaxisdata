@@ -81,6 +81,13 @@ SPA ──ConnectRPC──► DataQualityService (api/v1) ──► component/da
 | D-50 | **原始 request/response 仅在 RuntimeDebug 打开时捕获**（与 ExplainSQL 同一开关）：写入 `llm_debug_log` 的 `kind`/`correlation_id`/`error_code` 列，保留 7 天；`GetQualitySuggestionJobTargetDebug` 按任务目标索引返回正文（`suggest` 权限、审计），未开启/已被清理时返回 `available=false` | DQ 调试行的 `error_code` 可能为空（捕获早于分类），分类码以任务目标诊断为准；正文只含元数据/DDL/意图/模型输出，不含样本行 |
 | D-51 | 同步编辑器入口不新增 error-details 协议：服务端返回可执行文案，前端按文案识别截断并展示本地化建议，同时保留服务端原文 | 不改变现有 Connect 错误形状；任务路径才有完整结构化诊断 |
 
+| D-52 | LLM provider profile 新增 `max_output_tokens`（JSONB metadata，无迁移）：0=服务端默认 **32768**，显式值 256–131072；该 profile 下的所有分析（L1/L2/L3、ExplainSQL）默认使用该预算，调用方可请求更小的上限 | 输出 token 是计费的实际部分，上限仍是 ceiling 不是预占；provider/模型自身上限更低时请求会被拒绝，失败目标诊断 `PROVIDER_STATUS`，可在 profile 调低 |
+| D-53 | DQ 设置新增 `daily_llm_analysis_limit`（L1+L2，默认 **10000**，范围 1–1000000，0=默认）与 `llm_concurrency_limit`（默认 **8**，1–64，0=默认）；L3 的 `daily_column_analysis_limit`（默认 50）保持独立桶 | 设置页可读写，API 返回解析后的有效值；旧部署未保存设置时直接使用新默认 |
+| D-54 | `LLMQuota` 的日额度与并发来自每次调用加载的 `LLMLimits`；并发从固定 channel 改为 mutex/cond 动态上限，设置变更对下一次分析生效；计数仍进程内、UTC 日滚动、单副本 | `Begin(ctx, kind, limits)`；取消的等待者不消耗额度/槽；进程重启计数归零 |
+| D-55 | 新增只读 `GetQualityLLMUsage`（`suggest` 权限、不审计）返回两个桶的 used/limit、in-flight/并发与下一个 00:00 UTC 重置时间；设置页“今日 AI 用量”卡片在加载/保存后刷新 | 不轮询；计数进程内，重启后显示 0；重置时间仍是下一个 UTC 零点 |
+| D-56 | 删除固定的 200 次/日与并发 2，默认提升为 10000/8；输出预算默认 32768 | 显式写入过旧值的部署保留旧值，其余获得新默认 |
+| D-57 | 同步入口与后台任务共用同一 quota 与 limits；任务提交时的额度预检仍 best-effort（不预占） | 并发设置变化不追溯已准入分析（Begin 时采样） |
+
 ## 2. 工作负载形状
 
 ### 2.1 实体与资源名
@@ -225,13 +232,13 @@ meta_registry_resource（只读）──< quality_rule >──< quality_rule_rev
 - 结构化输出：`temperature=0` + JSON mode；`llm.ParseJSON[T]`（剥 code fence、`DisallowUnknownFields`、拒绝多文档/空/null、validator 校验）；解析失败不缓存。L1 草稿词表仅 12 类 v1 规则（`custom_sql`/CEL/v1.1 四类不可由模型提出）；草稿再经列存在/列作用域/`ValidateRule` 过滤，全部被丢则返回空列表 + Warn 日志。
 - L2：缓存 key = `explain|execution:<执行行 id>|rev:<rev>|status:<status>|prompt:dq.explain.v1|provider:<profile>|model:<model>|lang:<en-US|zh-CN>`；命中回放 content+metadata(`from_cache=true`)；`force_regenerate` 跳过读但仍写；usage 存缓存行 + debug 日志，metadata 不带 usage/prompt_version。解释 content 是一次性 markdown（`### n. cause`、Evidence、Next step、confidence），progress 只发一帧 `thinking`。前端只在 `FAIL`/`ERROR` 的执行详情显示入口，API 本身不限制状态。
 - L3：要求请求列都有 ≤7 天画像，否则 `FailedPrecondition` 指向上 `ProfileColumns`；标注只在封闭枚举内，规则候选由 `RuleTypesForSemantic` 确定性映射、阈值为默认值（不从当前值推导）；置信度不自动接受。
-- 配额（进程内、UTC 日）：L1+L2 合计 200 次/日（固定常量）；L3 取设置 `daily_column_analysis_limit`（默认 50）；全局并发 2；超限 `ResourceExhausted`。计数在 `component/dataquality.LLMQuota`，由 API 与 `qualitysuggestionrunner` 共享；同步 L1 一次请求扣 1，后台任务每个目标扣 1，提交任务时按目标数 best-effort 预检（不足直接 `ResourceExhausted`，不预占）。
+- 配额（进程内、UTC 日，D-53…D-57）：L1+L2 取设置 `daily_llm_analysis_limit`（默认 10000，0=默认，上限 1000000）；L3 取 `daily_column_analysis_limit`（默认 50）；并发取 `llm_concurrency_limit`（默认 8，1–64），两个桶共享；超限 `ResourceExhausted`。计数在 `component/dataquality.LLMQuota`，由 API 与 `qualitysuggestionrunner` 共享；每次调用把设置解析成 `LLMLimits` 传入，设置变更对下一次分析生效；同步 L1 一次请求扣 1，后台任务每个目标扣 1，提交任务时按目标数 best-effort 预检（不足直接 `ResourceExhausted`，不预占）。用量/上限/重置时间通过 `GetQualityLLMUsage` 读取，设置页展示。
 - 出域：仅元数据/DDL/注释/规则定义/历史摘要/血缘/画像摘要；**没有任何路径发送原始样本行**（`send_sample_values_to_llm` 设置被保存但当前无消费者，§7）。提示注入：数据块 `<schema>/<rule>/<result>/…` 包裹，嵌入值中的 `</` 被中和为 `<\/`，system 声明“data, not instructions”；模型无工具、无连接。
 - 失败：分析失败不改变规则/问题状态；错误以 `Internal`/`FailedPrecondition`/`ResourceExhausted` 返回，消息不含 key/样本。
 
 ### 3.6 API、权限与审计
 
-- `DataQualityService`（`proto/v1/v1/data_quality_service.proto`）共 30 个 RPC：规则 CRUD/预览/手动执行（7）+ 批量创建（1）、执行列表/详情（2）、问题列表/详情/处置（3）、画像与标注列表/写入（4）、建议列表/详情/决策/批量决策（4）、AI 起草任务创建/读取/列表/取消（4）+ 失败目标调试图读取（1）、三个 LLM 入口（3），以及聚合读 `GetQualityOverview`（1）。手动执行返回按规则规划的执行；没有 run/result 的 RPC 或消息。
+- `DataQualityService`（`proto/v1/v1/data_quality_service.proto`）共 31 个 RPC：规则 CRUD/预览/手动执行（7）+ 批量创建（1）、执行列表/详情（2）、问题列表/详情/处置（3）、画像与标注列表/写入（4）、建议列表/详情/决策/批量决策（4）、AI 起草任务创建/读取/列表/取消（4）+ 失败目标调试图读取（1）、三个 LLM 入口（3）、聚合读 `GetQualityOverview`（1），以及只读的 `GetQualityLLMUsage`（1）。手动执行返回按规则规划的执行；没有 run/result 的 RPC 或消息。
 - 分页统一 `parseLimitAndOffset`（offset token），页上限 1000；手动执行选择集 ≤200 条；规则列表的 instance/database/schema/table 是 **GUID 前缀**过滤，`search` 只匹配 title/description；列表可按 `rule_type`、dimension、severity、state、owner/owner_unassigned 过滤。执行列表可按 rule/target_guid/state/outcome/trigger/instance/initiator/start/end 过滤。建议列表同样按 instance/database/schema/table（GUID 前缀）与 status/kind/source/target_guid 过滤；两个批量 RPC 各 ≤200 项，结果与请求同序、逐项独立。起草任务一次 1..20 个目标（去重、逐目标解析 registry 与列），列表默认 20 条、按 status 过滤；失败目标调试图按 `target_index` 读取（越界 `InvalidArgument`，未捕获/已清理返回 `available=false`）。
 - 概览（`GetQualityOverview`）：`rule_count` = ENABLED+PAUSED（不含 ARCHIVED），`monitored_table_count` = 至少一条启用规则覆盖的去重表数，打开问题按严重级别计数；`execution_count` 是最近 24 小时**规划**的执行数（含各生命周期状态），而 `last_day_counts` 与 `trend` 只统计已 `COMPLETED` 的执行（pending/running/abandoned 不进趋势），`failing_rule_count` 只算最近 24 小时有 FAIL 执行的规则（`ERROR` 不算）。
 - 错误映射：参数/类型/编译失败 → `InvalidArgument`；目标消失 → 创建期 `NotFound`、运行期 `SKIPPED(ORPHANED)`；无只读源/LLM 未开启/无 provider → `FailedPrecondition`；配额/队列满 → `ResourceExhausted`；revision 冲突/建议已决 → `Aborted`；其余 `Internal`。
@@ -252,6 +259,7 @@ meta_registry_resource（只读）──< quality_rule >──< quality_rule_rev
 - 规则详情的信息层级：顶部“最近结果”大状态（图标+状态词+相对时间+实际值/阈值/失败行数）→ 最近 20 次执行状态色块条（旧→新，按状态着色，点击进执行详情）→ 状态计数与通过率 → 最近执行表 → 规则定义（目标/字段/类型/维度/严重级别/负责人/调度/版本/时间/标签；负责人显示成员目录里的邮箱，未指定时显示“未指定”）。运行与编辑分别按 `rules.run`、`rules.update` 显示；“运行”后单条执行跳执行详情，多条进入按规则筛选的执行列表。
 - API/工具：`api/data-quality.ts` + `api/client.ts` 的 `dataQualityClient`；纯函数在 `src/utils/dataQuality*.ts`（状态/严重级别映射、执行状态辅助、表单校验、LLM 提示、概览、设置、建议）；`lib/notificationText.ts` 渲染通知文案（问题/执行失败链到执行详情，风暴摘要回退到执行列表）；`composables/useUserDirectory.ts` 是规则页与详情页共用的成员目录（邮箱解析、失败回退原始 `users/{id}`，仅持 `users.list` 时请求）；无跨页 Pinia 模块。
 - i18n：`dataQuality.*`、`dataQualitySettings.*`、`menu.dataQuality*`、`notifications.dataQuality*`；执行状态/触发器等动态 key 前缀已在 `DYNAMIC_PREFIXES`；术语进 `frontend/glossary.json` 的 **Data Quality** 分类。
+- 设置页：Settings → Data Quality 的 Limits 卡显示/编辑日分析上限与并发，并有一张只读“今日 AI 用量”卡（used/limit、in-flight/并发、重置时间）；Settings → LLM providers 的 profile 表单有 Max output tokens（0/空=默认 32768，256–131072）。
 - 布局门禁：新路由登记 `frontend/scripts/audit-ui-layout.mjs`（含各表 `tableTopMaxY` 预算；`/data-quality/executions` 为 200，`/data-quality/suggestions` 因折叠的任务摘要为 300）；`ERROR` 与 `FAIL` 文案/徽标必须不同；编辑器保存前必须干跑（`PreviewQualityRule`）。
 
 ### 3.8 画像、语义标注与建议队列
@@ -276,6 +284,8 @@ meta_registry_resource（只读）──< quality_rule >──< quality_rule_rev
 | `default_schedule_interval` | 1h | ≤0→1h；夹到 15m…7d | 新建规则默认间隔 |
 | `daily_execution_limit` | 10000 | ≤0→10000 | 定时扫描的日执行上限（统计 UTC 日已规划执行，含手动规划的行；触顶只跳过定时 due 扫描，手动运行仍可执行） |
 | `daily_column_analysis_limit` | 50 | ≤0→50 | L3 日分析次数 |
+| `daily_llm_analysis_limit` | 10000 | ≤0→10000；上限 1000000 | L1+L2 日分析次数 |
+| `llm_concurrency_limit` | 8 | ≤0→8；夹到 1–64 | 进程内并发的 DQ LLM 分析数（两个桶共享） |
 | `max_columns_per_analysis` | 50 | ≤0→50；写入校验上限 200 | 单次画像/标注列数 |
 | `send_sample_values_to_llm` | false | 按值 | **当前无消费者**（§7） |
 
@@ -371,6 +381,8 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | I-25 | 任务目标快照（guid/type/path/columns）在提交时写入；执行期重新解析目标，孤儿/列消失 → 该目标 FAILED，其余目标继续 | API 校验测试 + 集成/runner 场景 |
 | I-26 | 每个失败的 LLM 目标都带分类码与 correlation id；任务目标的诊断不含 prompt/response 正文；服务端 WARN 日志含同一 correlation id 与 provider/stop reason/max tokens/prompt chars | `suggester_diagnostic_test.go` + runner/集成场景 |
 | I-27 | 原始请求/响应只在 `RuntimeDebug` 打开时写入 `llm_debug_log`（7 天保留）；读取走 `GetQualitySuggestionJobTargetDebug`（`suggest` 权限、审计），未捕获/已清理一律 `available=false`；提示词/响应不含样本行 | store/debug 单测 + 集成回读场景 |
+| I-28 | LLM 输出预算来自 provider profile（0=32768，256–131072），调用方可请求更小；所有 DQ 分析（含 ExplainSQL）请求的 `max_tokens` 与诊断记录的值一致 | limits/代理请求/诊断测试 |
+| I-29 | 配额与并发上限来自每次调用解析的设置（默认 10000/8，上限 1000000/64）；等待者取消不消耗额度或槽；设置变更对下一次分析生效，进程重启计数归零 | quota 单测 + 集成用量场景 |
 
 ## 6. 失败模式
 
@@ -393,6 +405,7 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | 告警风暴（一次批次 FAIL 执行 >10） | 逐条 opened/execution-failed 抑制，发一条 STORM_SUMMARY（带实例与计数）；issue 照建、恢复照发 |
 | 规则/问题静音期内失败或恢复 | 不发送问题通知；执行失败通知不受影响 |
 | 每日执行配额触顶 | 跳过本轮定时 due 扫描（规则保持 due，次日继续）；手动运行不受影响；不写 ERROR、不告警（§7） |
+| DQ LLM 日额度/并发触顶 | LLM 分析返回 `ResourceExhausted`；额度不足时等待并发槽前就快速失败，取消的等待不消耗额度/槽；上限可在 Settings → Data Quality 调整（默认 10000/8） |
 | 实例连接预算被占满 | 定时批次等待 ≤2m 后不建批次、规则保持 due、下个 tick 重试；手动批次等待 ≤5m 后其执行与批次 `ABANDONED`；不写 `ERROR(QUOTA)`、不通知（[instance-connections.md](instance-connections.md)） |
 | 手动队列满 | 该批次及其执行标 `ABANDONED`（无 outcome）并返回 `ResourceExhausted` |
 | LLM 未开启/无 provider | `FailedPrecondition`；规则引擎完全可用 |
@@ -440,25 +453,25 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | 14 | AI 起草任务的执行语义 | 单副本、单 runner 串行：不并行执行多个任务、不续跑、不取消进行中的 provider 调用；取消/配额只会在目标边界生效；提交时配额预检不预占，可能轻微超发；RUNNING 任务取消后、到目标边界前仍显示 RUNNING（cancel_requested 不在资源上暴露）；单任务 panic 已被捕获并标 FAILED，不终止 runner |
 | 15 | 截断调用的 token 用量 | 流在 `finish_reason=length` 处报错时 agent loop 不再读取后续 usage 块，因此该诊断只有 max_tokens/prompt_chars/correlation/finish_reason，没有 prompt/completion tokens；provider/model/stop reason 仍足以复现 |
 | 16 | DQ 调试行的 `error_code` | 分类后由 `SetLLMDebugLogErrorCode` 以 correlation id best-effort 回写；调试行是异步写入的，若 UPDATE 先于 INSERT 到达则该行 `error_code` 留空（无重试）。分类码始终以任务目标诊断为准，检索 RPC 返回它 |
-| 17 | LLM 失败的自动重试与配置 | 不做自动重试；输出上限固定 8192（无按工作区/按 profile 配置，provider 或模型上限更低时会得到 `PROVIDER_STATUS`，需换模型或由运维调整）；原始正文只在 RuntimeDebug 下捕获（7 天）、仅 `suggest` 权限可读且审计正文已脱敏；没有通用调试日志浏览器 |
+| 17 | LLM 失败的自动重试与配置 | 不做自动重试；输出预算已按 profile 可配置（默认 32768，provider/模型上限更低时得到 `PROVIDER_STATUS`）；日额度/并发可配置但计数是进程内、重启归零（单副本），任务提交的额度预检不预占；原始正文只在 RuntimeDebug 下捕获（7 天）、仅 `suggest` 权限可读且审计正文已脱敏；没有通用调试日志浏览器 |
 
 ## 8. Where things live
 
 | 面 | 位置 |
 | --- | --- |
-| 领域/编译/判定 | `backend/component/dataquality/`：`model.go`、`types.go`、`capabilities.go`、`target.go`、`validate.go`、`compile.go`、`compile_rules.go`、`compile_util.go`、`compile_samples.go`、`dialect.go`、`support.go`、`evaluate.go`、`execution.go`、`executor.go`、`errors.go`、`filter.go`、`issue.go`、`settings.go`、`profile*.go`、`cel.go`、`label.go`、`prompt.go`；L1 编排与配额 `suggester.go`、`quota.go`（同步 RPC 与后台 runner 共用，`suggester.go` 产出失败诊断） |
+| 领域/编译/判定 | `backend/component/dataquality/`：`model.go`、`types.go`、`capabilities.go`、`target.go`、`validate.go`、`compile.go`、`compile_rules.go`、`compile_util.go`、`compile_samples.go`、`dialect.go`、`support.go`、`evaluate.go`、`execution.go`、`executor.go`、`errors.go`、`filter.go`、`issue.go`、`settings.go`、`profile*.go`、`cel.go`、`label.go`、`prompt.go`；L1 编排与配额 `suggester.go`、`quota.go`、`settings.go`（同步 RPC 与后台 runner 共用，`suggester.go` 产出失败诊断；quota 的 limits 由调用方按设置传入） |
 | 只读查询能力 | `backend/plugin/db/query.go`（`ReadOnlyQueryer`/`QueryOptions`/`QueryResult`、扫描上限）；`plugin/db/{mysql,pg,mssql,starrocks}/query.go`；`backend/component/dbfactory/readonly.go`（`ErrNoReadOnlyDataSource`） |
 | runner | `backend/runner/qualityrunner/qualityrunner.go`（调度/规划执行/执行/问题迁移/通知）；`backend/runner/qualitysuggestionrunner/`（后台 AI 起草任务：5s tick、启动清扫、逐目标进度、协作取消）；`backend/server/server.go` 注册第 6 个 runner；保留期清理在 `backend/runner/maintenance/maintenance.go` |
 | 连接准入 | `backend/component/state/connection.go`（governor/优先级/等待队列）；`qualityrunner` 的 `admitBatch`；契约与各调用方预算见 [instance-connections.md](instance-connections.md) |
-| API | `backend/api/v1/data_quality_service.go`（规则 CRUD/手动执行/执行查询/issue/profile/preview/overview）、`data_quality_batch.go`（批量创建规则/批量决策建议）、`data_quality_suggestion_job.go`（AI 起草任务创建/读取/列表/取消/失败目标调试图读取）、`data_quality_convert.go`、`data_quality_llm_analysis.go`（L1 同步包装/L2）、`data_quality_label_analysis.go`（L3）、`data_quality_overview.go`、`data_quality_cross_table.go` |
-| store | `backend/store/quality_{rule,execution,run,issue,profile,label,suggestion,suggestion_job,llm_cache,overview}.go`（10 张表；`quality_run` 为内部批次；建议列表的 GUID 前缀过滤复用 `metaGUIDPrefix`/`appendGUIDSubtreeCondition`；起草任务用 `FOR UPDATE SKIP LOCKED` 原子 claim）；`backend/store/explain_sql.go`（`llm_debug_log` 写入/按 correlation id 读取） |
+| API | `backend/api/v1/data_quality_service.go`（规则 CRUD/手动执行/执行查询/issue/profile/preview/overview）、`data_quality_batch.go`（批量创建规则/批量决策建议）、`data_quality_suggestion_job.go`（AI 起草任务创建/读取/列表/取消/失败目标调试图读取）、`data_quality_usage.go`（LLM 用量读取）、`data_quality_convert.go`、`data_quality_llm_analysis.go`（L1 同步包装/L2）、`data_quality_label_analysis.go`（L3）、`data_quality_overview.go`、`data_quality_cross_table.go` |
+| store | `backend/store/quality_{rule,execution,run,issue,profile,label,suggestion,suggestion_job,llm_cache,overview}.go`（10 张表；`quality_run` 为内部批次；建议列表的 GUID 前缀过滤复用 `metaGUIDPrefix`/`appendGUIDSubtreeCondition`；起草任务用 `FOR UPDATE SKIP LOCKED` 原子 claim）；`backend/store/explain_sql.go`（`llm_debug_log` 写入/按 correlation id 读取）；`backend/component/llm/limits.go`（输出预算常量/校验） |
 | proto/迁移 | `proto/store/store/data_quality.proto`、`proto/v1/v1/data_quality_service.proto`、notification/setting 扩展；`backend/migrator/migration/0.1/0024##data_quality.sql` + `0025##quality_execution.sql`（`quality_rule_result` 改名 `quality_execution` 并补执行列）+ `0026##quality_suggestion_job.sql`（后台起草任务表）+ `0027##llm_debug_log_context.sql`（调试日志 kind/correlation/error_code 列）+ `LATEST.sql` |
-| 前端 | `frontend/src/pages/data-quality/`、`pages/settings/DataQualitySettingsPage.vue`、`components/data-quality/`（含 `SuggestionWorkbench.vue`、`SuggestionJobsPanel.vue`、`SuggestionJobTargetDebugDialog.vue`、`BatchCreateRulesDialog.vue`、`BatchDecideSuggestionsDialog.vue`）、`api/data-quality.ts`、`utils/dataQuality*.ts`、`lib/notificationText.ts`；路由 `router/index.ts`，侧栏 `AppSidebar.vue`，`SettingsNav.vue` |
+| 前端 | `frontend/src/pages/data-quality/`、`pages/settings/DataQualitySettingsPage.vue`（含 LLM 用量卡）、`pages/settings/LLMProviderManagementPage.vue`（Max output tokens）、`components/data-quality/`（含 `SuggestionWorkbench.vue`、`SuggestionJobsPanel.vue`、`SuggestionJobTargetDebugDialog.vue`、`BatchCreateRulesDialog.vue`、`BatchDecideSuggestionsDialog.vue`）、`api/data-quality.ts`、`utils/dataQuality*.ts`、`lib/notificationText.ts`；路由 `router/index.ts`，侧栏 `AppSidebar.vue`，`SettingsNav.vue` |
 | 单元测试 | `component/dataquality/*_test.go`（编译 golden ×4 方言、判定、filter、custom_sql、CEL、画像、标注/prompt、schema_drift、group_check、aggregate、cross_table、null_values、issue、execution、errors、逐项能力矩阵、`suggester_test.go`/`quota_test.go`）；`store/quality_execution_test.go` 等 `store/quality_*_test.go`（含建议 GUID 前缀过滤、起草任务生命周期守卫）；`runner/qualityrunner/qualityrunner_test.go`、`runner/qualitysuggestionrunner/qualitysuggestionrunner_test.go`（claim/逐目标/取消/配额/关机/panic/诊断持久化）、`component/llm/errors_test.go`、`component/dataquality/suggester_diagnostic_test.go`、`store/explain_sql_test.go`、`runner/maintenance`；`api/v1/data_quality_*_test.go`（含批量大小/项父级/建议目标解析/列表过滤/起草任务）；`component/notification/data_quality_test.go`、`api/v1/notification_service_test.go`；前端 `*.test.ts` 与 `lib/notificationText.test.ts` |
 | 集成测试 | `backend/test/integration/runner/data_quality_service_test.go`（规则生命周期、问题/通知、元数据+只读规则、画像/标注、jsonb 画像、不可运行列类型在保存期被拒、json 列上的 plain null_percent 真执行、cross_table 右表为视图、LLM 默认关闭、建议中心批量创建/决策与列表前缀过滤、起草任务提交/读取/列表/取消、失败诊断与调试图读取/清理） |
 | 权限 | `backend/common/permission/permission.json` + `permission_gen.go`；`store/predefined_roles.go`（member 基线）；前端镜像 `frontend/src/lib/permissions.ts` |
 | 启用点 | 迁移 `0024` + `0025` + `0026` + `0027`（随二进制自动执行）；每个实例需配 `READ_ONLY` 数据源；LLM 需设置页开启 `enable_llm_analysis` 且存在允许的 provider profile；无其他开关 |
-| 门禁 | Go：`gofmt`、`golangci-lint`、`go test ./component/dataquality/ ./store/ ./runner/qualityrunner/ ./runner/qualitysuggestionrunner/ ./runner/maintenance/ ./api/v1/`；proto：`buf format/lint/generate`；迁移链测试；前端：`biome:check`、`lint`、`i18n`、`type-check`、`test run`、`audit:ui` |
+| 门禁 | Go：`gofmt`、`golangci-lint`、`go test ./component/llm/ ./component/dataquality/ ./store/ ./runner/qualityrunner/ ./runner/qualitysuggestionrunner/ ./runner/maintenance/ ./api/v1/`；proto：`buf format/lint/generate`；迁移链测试；前端：`biome:check`、`lint`、`i18n`、`type-check`、`test run`、`audit:ui` |
 
 > 引擎覆盖待办：CI 目前只有 PostgreSQL + MySQL 的 testcontainers。MSSQL / StarRocks / Doris 的类型能力矩阵由单测 + 手工容器 probe 固化（`capabilities_test.go`），**待 CI 环境增加这三种引擎后补真实集成测试**。MariaDB/TiDB/OceanBase 继承 MySQL 家族规则但未逐一探测（MariaDB 的 JSON 是 LONGTEXT），列入同一待办。
 

@@ -84,8 +84,9 @@ type AgentConfig struct {
 	// in place; 0 is a request for deterministic sampling and is sent.
 	Temperature *float64
 
-	// MaxTokens bounds the generated answer. 0 leaves the provider's default in
-	// place.
+	// MaxTokens bounds the generated answer. 0 falls back to the provider
+	// profile's resolved budget (Provider.MaxOutputTokens); when both are 0 the
+	// request omits the field and the provider's default applies.
 	MaxTokens int
 
 	// ResponseFormat asks the provider for a structured response. Nil leaves the

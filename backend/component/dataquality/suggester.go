@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -26,11 +25,6 @@ const (
 	// MaxDraftColumns bounds the columns one draft request (synchronous or job
 	// target) may scope.
 	MaxDraftColumns = 50
-	// MaxLLMOutputTokens bounds what one analysis may generate. A drafting answer
-	// is a JSON document with 1–5 typed rules and rationales (often in Chinese), so
-	// a 4096-token budget could stop mid-JSON; 8192 leaves room for a full answer
-	// while still bounding a runaway model.
-	MaxLLMOutputTokens = 8192
 	// LLMFeatureRuleDraft labels the L1 model calls in metrics.
 	LLMFeatureRuleDraft = "dq_rule_draft"
 	// debugErrorCodeWriteTimeout bounds the best-effort classifier write on the
@@ -124,7 +118,7 @@ func (s *Suggester) ResolveConfig(ctx context.Context) (llm.ResolvedConfig, Sett
 // It resolves the target, spends one L1 analysis from the shared quota, asks the
 // model once, and stores every draft the rule pipeline accepts as a PENDING
 // NATURAL_LANGUAGE suggestion. The returned rows are the ones it created.
-func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, targetGUID string, metaType storepb.MetaType, columns []string, intent, language string, createdBy *int32) ([]*store.QualitySuggestionMessage, *storepb.QualityLLMDiagnostic, error) {
+func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits LLMLimits, targetGUID string, metaType storepb.MetaType, columns []string, intent, language string, createdBy *int32) ([]*store.QualitySuggestionMessage, *storepb.QualityLLMDiagnostic, error) {
 	resolution, err := ResolveTarget(ctx, s.store, targetGUID, metaType)
 	if err != nil {
 		return nil, nil, err
@@ -138,7 +132,7 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, target
 	// The target resolves, so the analysis may spend the workspace's daily quota
 	// and one concurrency slot. The check runs after resolution so an invalid
 	// target consumes neither.
-	release, err := s.quota.Begin(ctx, LLMAnalysisQuota, 0)
+	release, err := s.quota.Begin(ctx, LLMAnalysisQuota, limits)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -156,7 +150,7 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, target
 		},
 		resolution.Target, columns, intent, existingRules)
 	text, usage, diagnostic, err := s.JSONCompletion(ctx, config, LLMFeatureRuleDraft,
-		RuleDraftPromptVersion, systemPrompt, userPrompt, MaxLLMOutputTokens)
+		RuleDraftPromptVersion, systemPrompt, userPrompt, OutputTokenBudget(config))
 	if err != nil {
 		return nil, diagnostic, err
 	}
@@ -261,7 +255,7 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, target
 // diagnostic says whether it was captured.
 func (s *Suggester) JSONCompletion(ctx context.Context, config llm.ResolvedConfig, feature, promptVersion, systemPrompt, userPrompt string, maxOutputTokens int) (string, *llm.Usage, *storepb.QualityLLMDiagnostic, error) {
 	if maxOutputTokens <= 0 {
-		maxOutputTokens = MaxLLMOutputTokens
+		maxOutputTokens = llm.DefaultMaxOutputTokens
 	}
 	correlationID, err := common.RandomString(12)
 	if err != nil {
@@ -290,13 +284,11 @@ func (s *Suggester) JSONCompletion(ctx context.Context, config llm.ResolvedConfi
 	}
 	// The capture flag means "the agent loop actually handed us the bodies", not
 	// "a logger was attached": a provider failure returns before the callback, and
-	// only a captured call can be read from the debug log later. The callback runs
-	// on the stream goroutine, so the flag is atomic even though streamOneTurn now
-	// drains to the channel close before returning.
-	var debugCaptured atomic.Bool
+	// only a captured call can be read from the debug log later.
+	debugCaptured := false
 	if debugLogger := s.traceLogger(config, feature, correlationID); debugLogger != nil {
 		agentConfig.DebugLogger = func(reqBody, respBody string) {
-			debugCaptured.Store(true)
+			debugCaptured = true
 			debugLogger(reqBody, respBody)
 		}
 	}
@@ -324,7 +316,7 @@ func (s *Suggester) JSONCompletion(ctx context.Context, config llm.ResolvedConfi
 			if callErr == nil {
 				callErr = errors.New("the LLM analysis failed")
 			}
-			return "", usage, diagnostic, s.failedCompletionError(feature, diagnostic, usage, callErr, debugCaptured.Load())
+			return "", usage, diagnostic, s.failedCompletionError(feature, diagnostic, usage, callErr, debugCaptured)
 		case llm.AgentEventTurnStart, llm.AgentEventToolStart, llm.AgentEventToolEnd, llm.AgentEventAgentEnd:
 			// One turn, no tools: nothing to do for these events.
 		default:
@@ -335,11 +327,11 @@ func (s *Suggester) JSONCompletion(ctx context.Context, config llm.ResolvedConfi
 		// An empty answer is not usable JSON; classify it as a malformed response so
 		// the failure still has a code.
 		callErr := &llm.ResponseError{Code: llm.FailureMalformed, Err: errors.New("the LLM returned an empty response")}
-		return "", usage, diagnostic, s.failedCompletionError(feature, diagnostic, usage, callErr, debugCaptured.Load())
+		return "", usage, diagnostic, s.failedCompletionError(feature, diagnostic, usage, callErr, debugCaptured)
 	}
 	// A successful call may still be unusable (the JSON parse happens in Draft);
 	// the capture flag travels with the diagnostic so that later failure keeps it.
-	diagnostic.DebugCaptured = debugCaptured.Load()
+	diagnostic.DebugCaptured = debugCaptured
 	return builder.String(), usage, diagnostic, nil
 }
 
@@ -444,6 +436,16 @@ func finishReasonOrUnknown(reason string) string {
 func protoFloat64Zero() *float64 {
 	zero := 0.0
 	return &zero
+}
+
+// OutputTokenBudget resolves the output budget one analysis runs with: the
+// provider profile's resolved value, or the server default for a config built by
+// hand (tests, an older caller). Diagnostics report the actual value sent.
+func OutputTokenBudget(config llm.ResolvedConfig) int {
+	if config.MaxOutputTokens > 0 {
+		return config.MaxOutputTokens
+	}
+	return llm.DefaultMaxOutputTokens
 }
 
 // ProviderFacts returns the provider/model/prompt-version facts a suggestion or

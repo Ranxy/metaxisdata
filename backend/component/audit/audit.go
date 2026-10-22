@@ -244,6 +244,12 @@ func IsSensitiveAuditField(key string) bool {
 		"requestbody", "request_body", "responsebody", "response_body":
 		return true
 	}
+	// A numeric output budget is not a credential. The generic "token" marker
+	// below would otherwise redact maxOutputTokens from the audit ledger and hide
+	// the configured budget from an operator reading a profile change.
+	if normalized == "maxoutputtokens" || normalized == "max_output_tokens" {
+		return false
+	}
 	for _, marker := range []string{"password", "token", "secret", "credential", "servicekey", "apikey", "api_key", "accesskey", "privatekey", "private_key"} {
 		if strings.Contains(normalized, marker) {
 			return true

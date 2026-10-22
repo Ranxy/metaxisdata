@@ -83,12 +83,12 @@ func (s *DataQualityService) SuggestQualityRule(ctx context.Context, req *connec
 	}
 	language := dataquality.NormalizePromptLanguage(req.Msg.GetLanguage())
 
-	config, _, err := s.suggester.ResolveConfig(ctx)
+	config, settings, err := s.suggester.ResolveConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
-	created, _, err := s.suggester.Draft(ctx, config, tableGUID, metaType, requestedColumns, intent, language,
-		principalIDPointer(currentUserID(ctx)))
+	created, _, err := s.suggester.Draft(ctx, config, dataquality.LimitsFromSettings(settings),
+		tableGUID, metaType, requestedColumns, intent, language, principalIDPointer(currentUserID(ctx)))
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +124,7 @@ func (s *DataQualityService) ExplainQualityExecution(ctx context.Context, req *c
 	}
 	rule := rules[0]
 
-	config, _, err := s.suggester.ResolveConfig(ctx)
+	config, settings, err := s.suggester.ResolveConfig(ctx)
 	if err != nil {
 		return err
 	}
@@ -143,7 +143,7 @@ func (s *DataQualityService) ExplainQualityExecution(ctx context.Context, req *c
 
 	// Only a real model call spends the workspace's daily quota and a concurrency
 	// slot: a cache hit replayed above returns before this point.
-	release, err := s.quota.Begin(ctx, dataquality.LLMAnalysisQuota, 0)
+	release, err := s.quota.Begin(ctx, dataquality.LLMAnalysisQuota, dataquality.LimitsFromSettings(settings))
 	if err != nil {
 		return err
 	}
@@ -179,7 +179,7 @@ func (s *DataQualityService) ExplainQualityExecution(ctx context.Context, req *c
 		return err
 	}
 	text, usage, _, err := s.suggester.JSONCompletion(ctx, config, qualityLLMFeatureExplainResult,
-		dataquality.ExplainPromptVersion, systemPrompt, userPrompt, dataquality.MaxLLMOutputTokens)
+		dataquality.ExplainPromptVersion, systemPrompt, userPrompt, dataquality.OutputTokenBudget(config))
 	if err != nil {
 		return err
 	}

@@ -2888,6 +2888,7 @@ Instance is the proto for instances.
 | models | [LlmProviderModel](#metaxisdata-store-LlmProviderModel) | repeated |  |
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| max_output_tokens | [int32](#int32) |  | The answer budget requested from this profile; 0 means the server default. |
 
 
 
@@ -3344,6 +3345,8 @@ metaxisdata.v1.DataQualitySetting.
 | daily_column_analysis_limit | [int32](#int32) |  |  |
 | max_columns_per_analysis | [int32](#int32) |  |  |
 | send_sample_values_to_llm | [bool](#bool) |  |  |
+| daily_llm_analysis_limit | [int32](#int32) |  |  |
+| llm_concurrency_limit | [int32](#int32) |  |  |
 
 
 

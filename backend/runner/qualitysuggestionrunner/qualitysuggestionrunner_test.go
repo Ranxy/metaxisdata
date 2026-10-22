@@ -146,7 +146,7 @@ func (f *fakeSuggester) ResolveConfig(context.Context) (llm.ResolvedConfig, data
 	return f.config, dataquality.Settings{}, nil
 }
 
-func (f *fakeSuggester) Draft(_ context.Context, _ llm.ResolvedConfig, targetGUID string, _ storepb.MetaType, _ []string, _, _ string, _ *int32) ([]*store.QualitySuggestionMessage, *storepb.QualityLLMDiagnostic, error) {
+func (f *fakeSuggester) Draft(_ context.Context, _ llm.ResolvedConfig, _ dataquality.LLMLimits, targetGUID string, _ storepb.MetaType, _ []string, _, _ string, _ *int32) ([]*store.QualitySuggestionMessage, *storepb.QualityLLMDiagnostic, error) {
 	f.mu.Lock()
 	f.calls = append(f.calls, targetGUID)
 	f.mu.Unlock()

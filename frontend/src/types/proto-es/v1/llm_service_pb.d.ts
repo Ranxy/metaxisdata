@@ -111,6 +111,15 @@ export declare type LlmProviderProfile = Message<"metaxisdata.v1.LlmProviderProf
    * @generated from field: string masked_api_key = 9;
    */
   maskedApiKey: string;
+
+  /**
+   * The answer budget one analysis requests from this profile, in output tokens.
+   * Zero means the server default (32768). The provider or model may cap lower; a
+   * rejected request is reported on the failed analysis as PROVIDER_STATUS.
+   *
+   * @generated from field: int32 max_output_tokens = 10;
+   */
+  maxOutputTokens: number;
 };
 
 /**

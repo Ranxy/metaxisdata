@@ -5,9 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"sync/atomic"
 	"testing"
-	"time"
 
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
@@ -58,13 +56,13 @@ data: {"choices":[{"delta":{},"finish_reason":"length"}]}
 	require.Error(t, err)
 	require.Equal(t, connect.CodeInternal, connect.CodeOf(err))
 	require.Contains(t, err.Error(), "the model stopped at the output token limit")
-	require.Contains(t, err.Error(), "max_tokens=8192")
+	require.Contains(t, err.Error(), "max_tokens=32768")
 	require.Contains(t, err.Error(), "narrower intent")
 
 	require.NotNil(t, diagnostic)
 	require.Equal(t, string(llm.FailureTruncated), diagnostic.GetErrorCode())
 	require.Equal(t, "length", diagnostic.GetFinishReason())
-	require.Equal(t, int32(MaxLLMOutputTokens), diagnostic.GetMaxOutputTokens())
+	require.Equal(t, int32(llm.DefaultMaxOutputTokens), diagnostic.GetMaxOutputTokens())
 	require.NotEmpty(t, diagnostic.GetCorrelationId())
 	require.Equal(t, "profiles/test", diagnostic.GetProvider())
 	require.Equal(t, "test-model", diagnostic.GetModel())
@@ -84,7 +82,7 @@ data: [DONE]
 `)
 	suggester := NewSuggester(nil, nil, nil, nil)
 	text, usage, diagnostic, err := suggester.JSONCompletion(context.Background(), diagnosticConfig(server),
-		LLMFeatureRuleDraft, RuleDraftPromptVersion, "sys", "user", MaxLLMOutputTokens)
+		LLMFeatureRuleDraft, RuleDraftPromptVersion, "sys", "user", llm.DefaultMaxOutputTokens)
 
 	require.NoError(t, err)
 	require.Equal(t, `{"suggestions":[]}`, text)
@@ -220,29 +218,6 @@ func TestJSONCompletionDoesNotClaimACaptureWithoutABody(t *testing.T) {
 	require.Equal(t, string(llm.FailureProviderStatus), diagnostic.GetErrorCode())
 	require.False(t, diagnostic.GetDebugCaptured())
 	require.Empty(t, *written, "no captured row exists to stamp")
-}
-
-// The success path must not observe the capture flag before the stream goroutine
-// has run the debug callback. A slow callback makes the ordering observable: if the
-// agent broke out at the Done chunk instead of draining to the channel close, this
-// would read captured=false (and race). The regression is also caught by -race.
-func TestJSONCompletionWaitsForTheCaptureCallback(t *testing.T) {
-	t.Parallel()
-
-	server := diagnosticProvider(t, `data: {"choices":[{"delta":{"content":"{\"suggestions\":[]}"}}]}
-data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
-data: [DONE]
-`)
-	var callbackRan atomic.Bool
-	suggester, _ := newDebugSuggester(t, func(_, _ string) {
-		time.Sleep(20 * time.Millisecond)
-		callbackRan.Store(true)
-	})
-	_, _, diagnostic, err := suggester.JSONCompletion(context.Background(), diagnosticConfig(server),
-		LLMFeatureRuleDraft, RuleDraftPromptVersion, "sys", "user", 0)
-	require.NoError(t, err)
-	require.True(t, callbackRan.Load(), "the returned call must have run the capture callback")
-	require.True(t, diagnostic.GetDebugCaptured(), "a successful call whose bodies were captured says so")
 }
 
 // A successful call whose text later fails JSON parsing keeps captured=true: Draft

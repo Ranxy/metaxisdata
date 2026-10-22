@@ -50,6 +50,7 @@ const (
 	DataQualityService_SuggestColumnLabels_FullMethodName                = "/metaxisdata.v1.DataQualityService/SuggestColumnLabels"
 	DataQualityService_ExplainQualityExecution_FullMethodName            = "/metaxisdata.v1.DataQualityService/ExplainQualityExecution"
 	DataQualityService_GetQualityOverview_FullMethodName                 = "/metaxisdata.v1.DataQualityService/GetQualityOverview"
+	DataQualityService_GetQualityLLMUsage_FullMethodName                 = "/metaxisdata.v1.DataQualityService/GetQualityLLMUsage"
 )
 
 // DataQualityServiceClient is the client API for DataQualityService service.
@@ -155,6 +156,10 @@ type DataQualityServiceClient interface {
 	// Read the workspace's quality summary: how many rules and issues exist, how
 	// the last day went, and the per-day tallies the overview chart draws.
 	GetQualityOverview(ctx context.Context, in *GetQualityOverviewRequest, opts ...grpc.CallOption) (*QualityOverview, error)
+	// Read today's data quality LLM usage and the effective limits (the workspace
+	// settings, with server defaults resolved). The counters are process state: a
+	// restart resets them and they roll over at 00:00 UTC.
+	GetQualityLLMUsage(ctx context.Context, in *GetQualityLLMUsageRequest, opts ...grpc.CallOption) (*QualityLLMUsage, error)
 }
 
 type dataQualityServiceClient struct {
@@ -474,6 +479,16 @@ func (c *dataQualityServiceClient) GetQualityOverview(ctx context.Context, in *G
 	return out, nil
 }
 
+func (c *dataQualityServiceClient) GetQualityLLMUsage(ctx context.Context, in *GetQualityLLMUsageRequest, opts ...grpc.CallOption) (*QualityLLMUsage, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityLLMUsage)
+	err := c.cc.Invoke(ctx, DataQualityService_GetQualityLLMUsage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DataQualityServiceServer is the server API for DataQualityService service.
 // All implementations must embed UnimplementedDataQualityServiceServer
 // for forward compatibility.
@@ -577,6 +592,10 @@ type DataQualityServiceServer interface {
 	// Read the workspace's quality summary: how many rules and issues exist, how
 	// the last day went, and the per-day tallies the overview chart draws.
 	GetQualityOverview(context.Context, *GetQualityOverviewRequest) (*QualityOverview, error)
+	// Read today's data quality LLM usage and the effective limits (the workspace
+	// settings, with server defaults resolved). The counters are process state: a
+	// restart resets them and they roll over at 00:00 UTC.
+	GetQualityLLMUsage(context.Context, *GetQualityLLMUsageRequest) (*QualityLLMUsage, error)
 	mustEmbedUnimplementedDataQualityServiceServer()
 }
 
@@ -676,6 +695,9 @@ func (UnimplementedDataQualityServiceServer) ExplainQualityExecution(*ExplainQua
 }
 func (UnimplementedDataQualityServiceServer) GetQualityOverview(context.Context, *GetQualityOverviewRequest) (*QualityOverview, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetQualityOverview not implemented")
+}
+func (UnimplementedDataQualityServiceServer) GetQualityLLMUsage(context.Context, *GetQualityLLMUsageRequest) (*QualityLLMUsage, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQualityLLMUsage not implemented")
 }
 func (UnimplementedDataQualityServiceServer) mustEmbedUnimplementedDataQualityServiceServer() {}
 func (UnimplementedDataQualityServiceServer) testEmbeddedByValue()                            {}
@@ -1231,6 +1253,24 @@ func _DataQualityService_GetQualityOverview_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataQualityService_GetQualityLLMUsage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQualityLLMUsageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).GetQualityLLMUsage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_GetQualityLLMUsage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).GetQualityLLMUsage(ctx, req.(*GetQualityLLMUsageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DataQualityService_ServiceDesc is the grpc.ServiceDesc for DataQualityService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1353,6 +1393,10 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetQualityOverview",
 			Handler:    _DataQualityService_GetQualityOverview_Handler,
+		},
+		{
+			MethodName: "GetQualityLLMUsage",
+			Handler:    _DataQualityService_GetQualityLLMUsage_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

@@ -145,6 +145,14 @@ message DataQualitySetting {
   // Whether raw sample values may be sent to the LLM. Off by default: only
   // aggregate profiles leave the deployment.
   bool send_sample_values_to_llm = 9;
+
+  // The workspace's daily L1+L2 LLM analysis ceiling (rule drafts and failure
+  // explanations). Zero means the server default (10000); capped at 1000000.
+  int32 daily_llm_analysis_limit = 10;
+
+  // How many data quality LLM analyses may run at once in this process. Zero
+  // means the server default (8); accepted range 1-64.
+  int32 llm_concurrency_limit = 11;
 }
 
 message GetWorkspaceProfileSettingRequest {}

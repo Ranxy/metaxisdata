@@ -204,10 +204,17 @@ func TestLLMProfileStoresOnlyTheCiphertext(t *testing.T) {
 
 	for i := range fields.Len() {
 		name := string(fields.Get(i).Name())
-		if looksLikeACredential(name) {
-			require.Equal(t, "api_key_ciphertext", name,
-				"the stored field %s looks like a credential: it must be the ciphertext one", name)
+		if !looksLikeACredential(name) {
+			continue
 		}
+		// max_output_tokens is a numeric generation budget, not a secret: it only
+		// matches the credential heuristic because it contains "token".
+		if name == "max_output_tokens" {
+			require.Equal(t, protoreflect.Int32Kind, fields.Get(i).Kind(), "the budget is a number, not a secret")
+			continue
+		}
+		require.Equal(t, "api_key_ciphertext", name,
+			"the stored field %s looks like a credential: it must be the ciphertext one", name)
 	}
 }
 
