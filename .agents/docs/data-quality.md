@@ -62,13 +62,13 @@ SPA ──ConnectRPC──► DataQualityService (api/v1) ──► component/da
 | D-34 | 画像的聚合事实**由同一张类型能力表推导**（D-35），不再单独维护白名单：`COUNT(DISTINCT)`/`MIN`/`MAX`/长度分别取 `countDistinct`/`extrema`/`length`；非空计数优先 `COUNT(col)`，只有 `noColumnCount`（MSSQL text/ntext/image）才用 `COUNT(CASE WHEN col IS NOT NULL …)`。distinct 无精确能力时取自样本并标 `distinct_estimated`；样式只对 `text` 类型取；`binary` 类型（MSSQL binary/varbinary/image/uniqueidentifier/hierarchyid、MySQL binary/varbinary/blob/空间、PG bytea、SR varbinary、bitmap/hll、Doris bitmap/hll）的极值与 Top 值**一律**以 `0x…` 展示（既避开 protojson 的 UTF-8 限制，也避免字节串与 ASCII `0x…` 碰撞）。PG 数组按**元素的 btree 排序能力**推导（仅“可比较”不够：`box[]` 会报 `could not identify a comparison function`），表数组 `_int4`、物化视图 `integer[]`/`character varying[]` 一致处理；PG 数组统一按 String 归类以便绑定数组字面量 | `MIN(jsonb)`/`CHAR_LENGTH(jsonb)`/`COUNT(text)`/`COUNT(CASE … bitmap)` 这类整表语句错误不再出现；jsonb/uuid/数组保留精确 distinct；MSSQL binary 类、MySQL JSON 保持可测统计；macaddr/macaddr8 不再伪造 MIN/MAX；Doris DECIMAL（`decimalv3`）归为 numeric |
 | D-35 | 规则保存期按**逐项能力**校验，而不是只比 `ColumnKind`：`comparison`（filter/accepted_values/null_values/referential join）、`grouping`（unique/unique_combination/group_check 的 GROUP BY）、`countDistinct`（画像精确 distinct）、`regex`、`length`、`extrema`（MIN/MAX）、`text`（画像样式），外加 `noColumnCount`/`noNullTest` 两个否定例外，按引擎族维护**允许表**（未列出即拒绝：保存期报错，而不是运行期整条 SQL 失败）。普通 `null_percent`、`IS [NOT] NULL` filter 需要 NULL 判定能力，`unique`/`unique_combination` 在 `count_nulls=false`（会生成 `IS NOT NULL`）时也需要，`group_check` 不需要；只有 StarRocks bitmap/hll/percentile 拒绝（Doris 4.1.4 实测可以 `IS NULL`，故不设该限制）。`comparison` 表示列与列可比较（referential join）；filter/accepted_values/null_values 另外要求 `valueComparison`（标量值可绑定），**数组只能列与列比较**，不能绑定标量。PG 的 schema-qualified 用户自定义类型保留历史规则允许面（enum 的 `= $1`/GROUP BY 可用；composite 谓词绑定是已记录的前置限制），画像只数非空、不声称精确 distinct/MIN/MAX；`referential_integrity` 还要求两侧类型兼容；`cross_table` 保存期解析右表（TABLE/EXTERNAL_TABLE/VIEW/MATERIALIZED_VIEW），**任何非 COUNT 聚合列（左右两侧）必须是 numeric**；`aggregate` 的 MIN/MAX 同样只接受 numeric（观测值按数值读取，时间戳会 BAD_DATA），PG money 只允许 SUM/MIN/MAX（AVG/STDDEV/PERCENTILE 引擎未定义），money 字符串按“最后一个分隔符是小数点”解析（兼容逗号小数 locale） | PG 的 json/xml/几何类型不再被生成不可执行的 SQL；`box` 允许比较但不允许分组，`box[]`/`line[]` 等几何数组直接零能力；`macaddr/macaddr8` 比较/分组/`COUNT(DISTINCT)`（无 MIN/MAX）；MSSQL text/ntext/image 不再被 COUNT/LEN/比较、binary/uniqueidentifier/hierarchyid 统计完整且按 hex 展示；StarRocks JSON 允许比较、拒绝 GROUP BY/REGEXP，bitmap/hll 拒绝 NULL 判定但保留 `COUNT(DISTINCT)` 画像；Doris JSON 允许 GROUP BY/REGEXP/长度、拒绝比较与 COUNT(DISTINCT)；MySQL JSON 比较被拒（绑定字符串永不等于 JSON 值），MySQL 空间类型的 REGEXP/长度按 WKB 字节解释因而拒绝；PG `bit` 按位串（String）而非布尔归类，参数可绑定；PG money 字符串（`$1.23`）在聚合观测里剥离货币符号后解析 |
 
-| D-36 | 建议队列升级为“建议中心”：AI 起草是一等入口（可选多个目标、按目标顺序生成，单目标可限定列），规则编辑器保留上下文快捷入口；生成结果仍只入队 PENDING 建议 | 生成复用 L1/L3 RPC 与配额，前端顺序调用，不新增“生成批次”实体或生成 RPC；队列按目标表分组（GUID 路径分段 + 实例标题展示），不新增列/迁移 |
+| D-36 | 建议队列升级为“建议中心”：AI 起草是一等入口（可选多个目标、一次提交后台任务，单目标可限定列），规则编辑器保留上下文快捷入口；生成结果仍只入队 PENDING 建议 | 具体异步机制见 D-40…D-46（本行早期“前端顺序调用、不新增生成 RPC”的形态已被 D-40/D-42 取代）；队列按目标表分组（GUID 路径分段 + 实例标题展示），不新增“生成批次”实体 |
 | D-37 | 批量创建规则走新 `BatchCreateQualityRules`（≤200 项，逐项校验/落库，结果按请求顺序返回，并回显 suggestion/name 便于客户端对齐）；`CreateQualityRuleRequest.suggestion` 让“从建议创建”成为一次请求：目标取自建议（请求 target 为空或与建议一致，不一致直接拒绝）、规则落库后接受建议，决策失败只记日志不回滚 | 建议的接受是创建规则的副作用；批量非原子，单项失败不中止其余；审计一次调用一行；仍受每表 100/每工作区 1000 条上限与 READ_ONLY 源校验；自动接受是非原子“先规则后决策”，并发/重试可能重复建规则（§7 #12） |
 | D-38 | 批量决策走新 `BatchUpdateQualitySuggestions`（≤200 项，逐项独立）；接受 LABEL 仍立即写标注；已决/不存在的项作为该项错误返回而非整批失败 | 单条 `UpdateQualitySuggestion` 语义不变（已决仍 `Aborted`）；批量与单条共享决策/标注路径 |
 | D-39 | 建议列表新增 instance/database/schema/table GUID 前缀过滤（与规则列表同形），并新增 `GetQualitySuggestion` 供深链；`target_guid` 过滤改为等值或子树匹配 | 复用 `metaGUIDPrefix`/`appendGUIDSubtreeCondition`，无迁移；表/视图目标下与精确匹配等价；编辑器 `?suggestion=` 不再全量扫描队列 |
 
 | D-40 | 多目标 AI 起草从“浏览器顺序循环”改为**持久化后台任务** `QualitySuggestionJob`：一次提交 = 1 个意图 + 1..20 个目标，API 立即返回，runner 异步逐目标执行；编辑器单目标快捷入口仍同步（需要结果回填表单） | 关闭页面不丢任务；目标与进度存 JSONB；建议仍逐条进 `quality_suggestion`，不引入“生成批次”资源 |
-| D-41 | 新增 `qualitysuggestionrunner`（tick 5s）：启动清扫 15m 前仍在 RUNNING 的任务（标 FAILED、RUNNING 目标 FAILED、PENDING 目标 SKIPPED），原子 claim（`FOR UPDATE SKIP LOCKED`），逐目标持久化进度；单副本、崩溃不续跑 | 已入队建议保留；重启后未完成任务不自动重试；runner 复用 `runner.Go` 的 panic 边界 |
+| D-41 | 新增 `qualitysuggestionrunner`（tick 5s）：**启动时把所有 RUNNING 任务标 FAILED**（单副本，不存在合法在途任务；RUNNING 目标 FAILED、PENDING 目标 SKIPPED），原子 claim（`FOR UPDATE SKIP LOCKED`），逐目标持久化进度；单任务 panic 被捕获后标 FAILED 并继续循环；崩溃不续跑 | 已入队建议保留；重启后未完成任务不自动重试；runner 复用 `runner.Go` 的生命周期，但任务级 panic 不终止 runner |
 | D-42 | L1 编排下沉到 `component/dataquality.Suggester`，同步 RPC 与 runner 共用同一实现；进程级 LLM 配额移入 `component/dataquality.LLMQuota`，由 API 与 runner 共享 | 提示词、校验、建议落库只有一份；同步入口与任务入口的额度/并发限制一致 |
 | D-43 | 任务生命周期 `PENDING → RUNNING → COMPLETED / FAILED / CANCELED`；目标状态 `PENDING → RUNNING → DONE / FAILED / SKIPPED`；`COMPLETED` = 所有目标都被尝试（目标失败只记在目标上），`FAILED` = 任务级失败（配置不可用/配额在开始时耗尽/关机） | 客户端可显示“3/5 完成、1 失败、1 跳过”，不伪造部分完成态；SKIPPED ≠ FAILED（模型未被询问） |
 | D-44 | 提交时 best-effort 预检当日 L1 配额（不足 → `ResourceExhausted`），不预占；每个目标执行时经 `LLMQuota.Begin` 扣减，任务中途耗尽则当前目标 FAILED、其余 SKIPPED、任务 FAILED | 并发提交可能轻微超发；已执行的调用仍被额度计数 |
@@ -136,7 +136,7 @@ meta_registry_resource（只读）──< quality_rule >──< quality_rule_rev
 | `RUNNING` | runner 解析一次 provider 配置并写入任务；逐目标 `PENDING→RUNNING→DONE/FAILED`，每个目标后持久化 targets JSONB；每个目标开始前重读任务以尊重 `cancel_requested` |
 | `COMPLETED` / `FAILED` / `CANCELED` | 终态带 `finished_at`；FAILED 用于配置不可用/配额在开始时耗尽/关机，COMPLETED 表示所有目标都被尝试；取消在目标边界生效并把未访问目标标 `SKIPPED` |
 
-启动清扫把 15 分钟前仍在 `RUNNING` 的任务标 FAILED（RUNNING 目标 FAILED、PENDING 目标 SKIPPED），不续跑；已写入的建议保留。保留期：终态任务 90d 由 maintenance 清理。
+启动时把所有仍在 `RUNNING` 的任务标 FAILED（RUNNING 目标 FAILED、PENDING 目标 SKIPPED）：单副本进程刚启动，不可能存在合法的在途任务，因此不等待任何超时窗口；不续跑，已写入的建议保留。保留期：终态任务 90d 由 maintenance 清理。
 
 ## 3. 核心机制
 
@@ -253,7 +253,7 @@ meta_registry_resource（只读）──< quality_rule >──< quality_rule_rev
 - 标注：`column_semantic_label` 唯一键 `(table_guid, table_type, column_name)`；封闭枚举 `QualitySemanticType`；`source=MANUAL|LLM`、`status`、`confidence`、`evidence`；人工标注可覆盖（Upsert），LLM 建议不自动覆盖。
 - 规则候选映射（代码固定）：`ID/BUSINESS_KEY → unique+null_percent`；`EMAIL/PHONE/URL/UUID/IP → regex+null_percent`；`COUNTRY_CODE/CURRENCY/ENUM → accepted_values`；`AMOUNT/QUANTITY → range+null_percent`；`PERCENTAGE → range(0-100)`；`TIMESTAMP/DATE → freshness+range`；`FREE_TEXT → string_length+null_percent`；`UNKNOWN → 不生成规则`。阈值为默认值，不从当前值推导。
 - 建议：`quality_suggestion(kind=RULE_DRAFT|LABEL, source=NATURAL_LANGUAGE|PROFILE, payload, status=PENDING, provider/model/prompt_version)`；决策只允许 PENDING→ACCEPTED/REJECTED（并发重复决策返回 `Conflict` → 客户端 `Aborted`），接受 LABEL 即 upsert 标注，接受 RULE_DRAFT 只改状态。
-- 建议中心（D-36…D-46）：AI 起草入口在建议中心与规则编辑器共用 `SuggestionWorkbench`；建议中心的多目标起草提交一个后台 `QualitySuggestionJob`（J-1…J-6），API 只做目标/列的 fail-fast 校验、provider 与配额预检后落 PENDING；`qualitysuggestionrunner` 异步逐目标调用 `dataquality.Suggester`（与同步 `SuggestQualityRule` 同一实现），每个目标后持久化进度，建议照常入 `quality_suggestion` 并由任务目标的 `suggestion_resource_ids` 引用；批量创建用 `BatchCreateQualityRules` 逐项执行正常校验链，命名 `suggestion` 的项目标取自建议（请求 target 必须为空或一致），规则落库后接受建议（决策失败只记日志），失败项返回错误且建议保持 PENDING；批量决策用 `BatchUpdateQualitySuggestions`，与单条共享标注写入路径；列表按目标表分组（GUID 分段；实例标题来自实例缓存），并支持 GUID 前缀筛选；建议与任务都无“生成批次”资源（任务本身是唯一批次）。批量结果逐项回显 suggestion/name，客户端不依赖下标。
+- 建议中心（D-36…D-46）：AI 起草入口在建议中心与规则编辑器共用 `SuggestionWorkbench`；建议中心的多目标起草提交一个后台 `QualitySuggestionJob`（生命周期与不变量见 I-22…I-25），API 只做目标/列的 fail-fast 校验、provider 与配额预检后落 PENDING；`qualitysuggestionrunner` 异步逐目标调用 `dataquality.Suggester`（与同步 `SuggestQualityRule` 同一实现），每个目标后持久化进度，建议照常入 `quality_suggestion` 并由任务目标的 `suggestion_resource_ids` 引用；批量创建用 `BatchCreateQualityRules` 逐项执行正常校验链，命名 `suggestion` 的项目标取自建议（请求 target 必须为空或一致），规则落库后接受建议（决策失败只记日志），失败项返回错误且建议保持 PENDING；批量决策用 `BatchUpdateQualitySuggestions`，与单条共享标注写入路径；列表按目标表分组（GUID 分段；实例标题来自实例缓存），并支持 GUID 前缀筛选；建议与任务都无“生成批次”资源（任务本身是唯一批次）。批量结果逐项回显 suggestion/name，客户端不依赖下标。
 
 ## 4. 配置映射
 
@@ -355,7 +355,7 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | I-19 | `quality_run` 只做内部派发批次：v1 没有 `QualityRun` 资源/消息/RPC，前端没有 `/runs` 页面，问题引用、通知 detail 与概览都不出现批次；对外一律 `QualityExecution` | proto 无 QualityRun、路由与审计清单无 runs、convert/notification 测试 |
 | I-20 | 批量建议/规则 RPC 非原子：每项独立校验与落库，结果与请求同序，单项失败不中止其余；从建议创建规则是“先规则后决策”，决策失败不回滚规则 | `data_quality_batch.go` + `TestDataQualitySuggestionCenterRealServerIntegration` |
 | I-21 | 从建议创建规则时目标取自建议的 `(target_guid, target_type)`；请求自带的 target 必须为空或与建议一致，不一致返回 `InvalidArgument`（不静默改写）；建议必须是 PENDING `RULE_DRAFT` | `validateRuleTargetAgainstSuggestion`/`pendingRuleDraftSuggestion` 单测 + 集成场景 |
-| I-22 | AI 起草任务由单进程 runner 原子 claim，同一任务不会被并发执行；重启把 15m 前 RUNNING 的任务标 FAILED、RUNNING 目标 FAILED、PENDING 目标 SKIPPED，已入队建议保留（不续跑） | `ClaimPendingQualitySuggestionJob`/`AbandonStaleQualitySuggestionJobs` 单测 + runner 场景 |
+| I-22 | AI 起草任务由单进程 runner 原子 claim，同一任务不会被并发执行；**启动时所有 RUNNING 任务标 FAILED**（RUNNING 目标 FAILED、PENDING 目标 SKIPPED），已入队建议保留（不续跑） | `ClaimPendingQualitySuggestionJob`/`AbandonStaleQualitySuggestionJobs` 单测 + runner 场景 |
 | I-23 | 任务与同步 L1 共用同一 `LLMQuota`：每个请求/目标至多扣 1 次、全局并发 ≤2；提交时只做 best-effort 预检（不预占），中途耗尽 → 当前目标 FAILED、其余 SKIPPED、任务 FAILED | quota/suggester 单测 + runner quota-stop 场景 |
 | I-24 | 任务状态机 PENDING→RUNNING→COMPLETED/FAILED/CANCELED；目标状态只在 RUNNING 任务内写 DONE/FAILED/SKIPPED；COMPLETED = 所有目标都被尝试；CANCELED 只在目标边界产生并保留已入队建议；终态取消幂等 | store 生命周期守卫 + runner 测试 |
 | I-25 | 任务目标快照（guid/type/path/columns）在提交时写入；执行期重新解析目标，孤儿/列消失 → 该目标 FAILED，其余目标继续 | API 校验测试 + 集成/runner 场景 |
@@ -389,7 +389,8 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | AI 起草任务提交时配额不足（目标数 > 当日剩余） | `ResourceExhausted`，不落任务；预检 best-effort，不预占，两个并发提交可能轻微超发 |
 | 任务执行中 provider 不可用/解析失败 | 该目标 FAILED（error 截断 1 KiB），继续下一个目标；全部尝试后任务 COMPLETED |
 | 任务执行中配额耗尽 | 当前目标 FAILED、其余 SKIPPED、任务 FAILED；已入队建议保留 |
-| 任务执行中服务重启 | 启动清扫把 15m 前 RUNNING 的任务标 FAILED、RUNNING 目标 FAILED、PENDING 目标 SKIPPED；不续跑；已入队建议保留 |
+| 任务执行中服务重启 | 启动时把所有 RUNNING 任务标 FAILED、RUNNING 目标 FAILED、PENDING 目标 SKIPPED；不续跑；已入队建议保留 |
+| 任务执行中单任务 panic | runner 捕获并尽力把该任务标 FAILED（detached 短超时），继续处理后续任务，不终止 runner 循环 |
 | 取消 PENDING / RUNNING 任务 | PENDING → 立即 CANCELED（目标全 SKIPPED）；RUNNING → 置 `cancel_requested`，当前目标结束后停止（其余 SKIPPED，任务 CANCELED）；已入队建议保留；终态取消幂等返回原任务 |
 | 任务目标在提交后被删除/列被删 | 该目标运行期 FAILED（`ResolveTarget`/列校验失败），其余目标继续 |
 | 画像失败 | 请求失败并返回可渲染错误；已写入的画像行保留，重试会覆盖 |
@@ -417,8 +418,8 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | 10 | 分布漂移/ML 异常、分组内多种检查（每组 null/aggregate）、RuleSet | 非目标（§非目标）；RuleSet 在 v1.1 之后单独评审 |
 | 11 | 连接等待的可观测性 | 批次的准入/延后/放弃与在途执行数已有指标（见 [metrics.md](metrics.md)）；连接等待时长直方图仍是 P1，尚未实现 |
 | 12 | 从建议创建规则的自动接受 | `CreateQualityRule(suggestion)` 是“先建规则、后决策”的非原子序列：两路并发请求可能都通过 PENDING 预检、各建一条规则；决策写失败时规则保留而建议仍 PENDING，队列里再点一次会再建一条。当前只在决策失败时记 warning（批量结果不额外回报），靠 `ValidateRule`/数量上限兜底；彻底修复需要唯一约束/幂等键，留作后续 |
-| 13 | AI 起草任务的通知与历史 | 完成不发通知；建议中心任务面板只在页面打开时轮询（2.5s），关闭页面后需回来查看；面板只显示最近 10 个任务、无分页与独立任务详情路由/深链 |
-| 14 | AI 起草任务的执行语义 | 单副本、单 runner 串行：不并行执行多个任务、不续跑、不取消进行中的 provider 调用；取消/配额只会在目标边界生效；提交时配额预检不预占，可能轻微超发 |
+| 13 | AI 起草任务的通知与历史 | 完成不发通知；建议中心任务面板只在页面打开时轮询（2.5s），关闭页面后需回来查看；面板只显示最近 10 个任务 + 独立拉取的 RUNNING 任务、无分页与独立任务详情路由/深链 |
+| 14 | AI 起草任务的执行语义 | 单副本、单 runner 串行：不并行执行多个任务、不续跑、不取消进行中的 provider 调用；取消/配额只会在目标边界生效；提交时配额预检不预占，可能轻微超发；RUNNING 任务取消后、到目标边界前仍显示 RUNNING（cancel_requested 不在资源上暴露）；单任务 panic 已被捕获并标 FAILED，不终止 runner |
 
 ## 8. Where things live
 

@@ -434,8 +434,8 @@ describe("DataQualitySuggestionsPage", () => {
     expect(document.body.textContent).toContain(
       label("dataQuality.suggestions.workbench.description")
     );
-    // The panel loads once on mount.
-    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(1);
+    // The panel loads once on mount (recent page + independent RUNNING list).
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(2);
     // Move off page one so the completion reset is observable.
     buttonByText(label("common.next"))?.click();
     await flushPromises();
@@ -461,7 +461,7 @@ describe("DataQualitySuggestionsPage", () => {
       .findComponent({ name: "SuggestionWorkbench" })
       .vm.$emit("submitted", { name: "workspaces/ws/qualitySuggestionJobs/j" });
     await flushPromises();
-    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(2);
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(4);
 
     // When the job settles, its suggestions are the newest rows: page one,
     // select the visible pending ones, and explain any that are not visible.

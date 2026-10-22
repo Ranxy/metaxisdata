@@ -68,6 +68,19 @@ func (s *DataQualityService) SuggestQualityRule(ctx context.Context, req *connec
 	if len(requestedColumns) > dataquality.MaxDraftColumns {
 		return nil, connectErrorInvalid("at most %d columns may be named", dataquality.MaxDraftColumns)
 	}
+	// Target and column errors are the caller's, independent of the LLM switch: an
+	// invalid target or column must report NotFound/InvalidArgument even when the
+	// analysis is disabled. Draft resolves the target again while it drafts; that
+	// second read keeps its preconditions local and costs one metadata lookup.
+	resolution, err := dataquality.ResolveTarget(ctx, s.store, tableGUID, metaType)
+	if err != nil {
+		return nil, err
+	}
+	for _, column := range requestedColumns {
+		if _, ok := resolution.Target.Column(column); !ok {
+			return nil, connectErrorInvalid("column %q does not exist on the target", column)
+		}
+	}
 	language := dataquality.NormalizePromptLanguage(req.Msg.GetLanguage())
 
 	config, _, err := s.suggester.ResolveConfig(ctx)

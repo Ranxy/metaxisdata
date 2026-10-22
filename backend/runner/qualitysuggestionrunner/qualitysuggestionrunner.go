@@ -3,8 +3,10 @@
 // A job is one intent over 1..20 targets, stored as a single quality_suggestion_job
 // row. This runner claims a PENDING job atomically, resolves the workspace LLM
 // configuration once, then asks the model for one target at a time, persisting the
-// per-target progress after every target. A crash leaves a RUNNING job that the
-// startup sweep marks FAILED; suggestions already queued stay in the review queue.
+// per-target progress after every target. A crash leaves a RUNNING job; because the
+// deployment assumes one replica, every RUNNING job found at startup belongs to a
+// previous process, so the startup sweep marks all of them FAILED. Suggestions
+// already queued stay in the review queue.
 package qualitysuggestionrunner
 
 import (
@@ -26,9 +28,6 @@ const (
 	// tickInterval is how often the runner looks for a pending job. The scan is a
 	// single indexed read, so the loop is cheap.
 	tickInterval = 5 * time.Second
-	// staleJobCutoff is how long a RUNNING job may predate the process before the
-	// startup sweep fails it. Work whose process is gone is not resumed.
-	staleJobCutoff = 15 * time.Minute
 	// finalizeTimeout bounds the writes that close a job on shutdown. They use a
 	// detached context because the runner's own is cancelled by the shutdown that
 	// ended the wait.
@@ -60,12 +59,11 @@ type DraftSuggester interface {
 type Runner struct {
 	store     JobStore
 	suggester DraftSuggester
-	// now is time.Now.UTC in production; a test fixes it so the stale cutoff is
+	// now is time.Now.UTC in production; a test fixes it so the sweep cutoff is
 	// exact.
 	now func() time.Time
-	// tick and staleCutoff carry the production constants; a test overrides them.
-	tick        time.Duration
-	staleCutoff time.Duration
+	// tick carries the production constant; a test overrides it.
+	tick time.Duration
 }
 
 // NewRunner creates the suggestion-job runner. It takes the drafting pipeline as
@@ -73,19 +71,18 @@ type Runner struct {
 // *dataquality.Suggester, and a test can pass a fake against a real store.
 func NewRunner(stores *store.Store, suggester DraftSuggester) *Runner {
 	return &Runner{
-		store:       stores,
-		suggester:   suggester,
-		now:         func() time.Time { return time.Now().UTC() },
-		tick:        tickInterval,
-		staleCutoff: staleJobCutoff,
+		store:     stores,
+		suggester: suggester,
+		now:       func() time.Time { return time.Now().UTC() },
+		tick:      tickInterval,
 	}
 }
 
 // Name identifies the runner in the server's lifecycle logs.
 func (*Runner) Name() string { return "qualitysuggestionrunner" }
 
-// Run blocks until ctx is cancelled. It sweeps the jobs a previous process left
-// RUNNING, then repeatedly claims and executes pending jobs until none is left,
+// Run blocks until ctx is cancelled. It first fails every job a previous process
+// left RUNNING, then repeatedly claims and executes pending jobs until none is left,
 // sleeping for the tick between drains.
 func (r *Runner) Run(ctx context.Context) {
 	r.abandonStale(ctx)
@@ -105,7 +102,7 @@ func (r *Runner) Run(ctx context.Context) {
 			if job == nil {
 				break
 			}
-			r.processJob(ctx, job)
+			r.processJobIsolated(ctx, job)
 		}
 		select {
 		case <-ctx.Done():
@@ -115,11 +112,16 @@ func (r *Runner) Run(ctx context.Context) {
 	}
 }
 
-// abandonStale fails the jobs a previous process left RUNNING. It is a startup-only
-// sweep: a restart does not resume the model calls it interrupted.
+// abandonStale fails every job a previous process left RUNNING. It is a startup-only
+// sweep: a restart does not resume the model calls it interrupted. The cutoff is
+// "now", not an age window: the deployment assumes one replica, so at startup no
+// RUNNING job can have a live owner, and a job started seconds before an unclean
+// restart is just as orphaned as one started hours before it. A job left RUNNING
+// would otherwise be unclaimable (cancel only sets cancel_requested), unfinishable
+// and unprunable forever.
 func (r *Runner) abandonStale(ctx context.Context) {
-	cutoff := r.now().Add(-r.staleCutoff)
-	abandoned, err := r.store.AbandonStaleQualitySuggestionJobs(ctx, cutoff)
+	now := r.now()
+	abandoned, err := r.store.AbandonStaleQualitySuggestionJobs(ctx, now)
 	if err != nil {
 		slog.Error("failed to abandon stale quality suggestion jobs", log.WithError(err))
 		return
@@ -127,7 +129,7 @@ func (r *Runner) abandonStale(ctx context.Context) {
 	if abandoned > 0 {
 		slog.Warn("abandoned quality suggestion jobs left behind by a previous process",
 			slog.Int64("count", abandoned),
-			slog.Time("started_before", cutoff))
+			slog.Time("started_before", now))
 	}
 }
 
@@ -164,11 +166,17 @@ func (r *Runner) processJob(ctx context.Context, job *store.QualitySuggestionJob
 				"the server shut down before the job finished")
 			return
 		}
-		if canceled, err := r.cancelRequested(ctx, job.ResourceID); err != nil {
+		canceled, cancelErr := r.cancelRequested(ctx, job.ResourceID)
+		if cancelErr != nil {
+			// The runner could not prove the job was not cancelled. It must not
+			// report COMPLETED with unvisited targets: close it as FAILED instead.
 			slog.Warn("failed to re-read a quality suggestion job to check for cancellation",
-				slog.String("job", job.ResourceID), log.WithError(err))
-			break
-		} else if canceled {
+				slog.String("job", job.ResourceID), log.WithError(cancelErr))
+			r.stopRemaining(ctx, job, targets, index, storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_FAILED,
+				fmt.Sprintf("failed to check for cancellation: %v", cancelErr))
+			return
+		}
+		if canceled {
 			r.stopRemaining(ctx, job, targets, index, storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_CANCELED, "")
 			return
 		}
@@ -216,6 +224,72 @@ func (r *Runner) processJob(ctx context.Context, job *store.QualitySuggestionJob
 		slog.String("job", job.ResourceID),
 		slog.Int("targets", len(targets.GetTargets())),
 		slog.Int("suggestions", jobSuggestionCount(targets)))
+}
+
+// processJobIsolated runs one claimed job behind a recover boundary. A panic in the
+// drafting pipeline must not kill the runner loop for the rest of the process: the
+// job is closed (best effort) and the loop continues with the next one.
+func (r *Runner) processJobIsolated(ctx context.Context, job *store.QualitySuggestionJobMessage) {
+	defer func() {
+		recovered := recover()
+		if recovered == nil {
+			return
+		}
+		slog.Error("quality suggestion job panicked",
+			slog.String("job", job.ResourceID),
+			slog.Any("panic", recovered),
+			log.Stack("panic-stack"))
+		r.failPanickedJob(job)
+	}()
+	r.processJob(ctx, job)
+}
+
+// failPanickedJob closes a job whose processing panicked: the target being drafted
+// is FAILED ("interrupted"), untouched targets are SKIPPED, and the job itself is
+// FAILED. It uses a detached write budget because the runner's context may already
+// be cancelled, and it is best effort: if the write is lost too, the next startup
+// sweep still fails the RUNNING row.
+func (r *Runner) failPanickedJob(job *store.QualitySuggestionJobMessage) {
+	ctx, cancel := context.WithTimeout(context.Background(), finalizeTimeout)
+	defer cancel()
+
+	targets := job.Targets
+	if targets == nil {
+		targets = &storepb.QualitySuggestionJobTargets{}
+	}
+	now := r.now()
+	for _, target := range targets.GetTargets() {
+		if target == nil {
+			continue
+		}
+		switch target.GetState() {
+		case storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_RUNNING:
+			target.State = storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_FAILED
+			target.Error = "interrupted: the drafting job panicked"
+			target.FinishedAtUnixMs = now.UnixMilli()
+		case storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING,
+			storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_UNSPECIFIED:
+			target.State = storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_SKIPPED
+			target.FinishedAtUnixMs = now.UnixMilli()
+		case storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_DONE,
+			storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_FAILED,
+			storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_SKIPPED:
+			// The target's outcome is history; a panic does not rewrite it.
+		default:
+			// Unknown states are left as stored.
+		}
+	}
+	if err := r.store.UpdateQualitySuggestionJobProgress(ctx, job.ID, targets, job.Provider, job.Model, job.PromptVersion); err != nil {
+		slog.Warn("failed to persist the targets of a panicked quality suggestion job",
+			slog.String("job", job.ResourceID), log.WithError(err))
+	}
+	finishErr := r.store.FinishQualitySuggestionJob(ctx, job.ID,
+		storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_FAILED,
+		"the drafting job failed unexpectedly; queued suggestions are kept", now)
+	if finishErr != nil {
+		slog.Error("failed to finish a panicked quality suggestion job",
+			slog.String("job", job.ResourceID), log.WithError(finishErr))
+	}
 }
 
 // cancelRequested re-reads the job and reports whether a reviewer asked it to stop.

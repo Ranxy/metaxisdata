@@ -146,7 +146,7 @@ The **Suggestions** page is the review center. Suggestions arrive from two place
   and submit. This starts a **background drafting job** on the server: you can
   close the page or the browser tab and the model calls continue. The job appears
   in the **AI drafting jobs** panel on the Suggestions page with its per-target
-  progress, the suggestions it has queued, and any per-target error; an active
+  progress, how many suggestions it has queued, and any per-target error; an active
   job can be canceled, which stops it after the target currently being drafted.
 - **Suggest labels** on a table's Data Quality tab: profile the columns first,
   then let the model name their semantic types and propose the deterministic rule

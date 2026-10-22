@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { notify } from "@/lib/notify";
 import { i18n } from "@/locales";
 import {
+  type QualitySuggestionJob,
   QualitySuggestionJobSchema,
   QualitySuggestionJobStatus,
   QualitySuggestionJobTargetSchema,
@@ -16,15 +17,18 @@ import SuggestionJobsPanel from "./SuggestionJobsPanel.vue";
 
 const mocks = vi.hoisted(() => ({
   listQualitySuggestionJobs: vi.fn(),
+  getQualitySuggestionJob: vi.fn(),
   cancelQualitySuggestionJob: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", () => ({
   listQualitySuggestionJobs: mocks.listQualitySuggestionJobs,
+  getQualitySuggestionJob: mocks.getQualitySuggestionJob,
   cancelQualitySuggestionJob: mocks.cancelQualitySuggestionJob,
 }));
 
 const JOB = "workspaces/ws/qualitySuggestionJobs/job-1";
+const OLD_JOB = "workspaces/ws/qualitySuggestionJobs/job-old";
 const TARGET = "inst1;db1;public;orders";
 const OTHER_TARGET = "inst1;db1;public;customers";
 const NEW_SUGGESTIONS = [
@@ -87,6 +91,31 @@ function jobFixture(
   });
 }
 
+/** One load snapshot: the recent page plus the independent RUNNING list. */
+interface Snapshot {
+  recent: QualitySuggestionJob[];
+  running?: QualitySuggestionJob[];
+}
+
+/**
+ * Answer the two list calls of each load from the same snapshot. The panel
+ * asks for the recent page first and the RUNNING list second; both belong to
+ * one snapshot, so the pair advances together.
+ */
+function mockSnapshots(...snapshots: Snapshot[]) {
+  let pair = 0;
+  mocks.listQualitySuggestionJobs.mockImplementation(
+    async (options: { status?: QualitySuggestionJobStatus } = {}) => {
+      const snapshot = snapshots[Math.min(pair, snapshots.length - 1)];
+      if (options.status === QualitySuggestionJobStatus.RUNNING) {
+        pair += 1;
+        return page(snapshot?.running ?? []);
+      }
+      return page(snapshot?.recent ?? []);
+    }
+  );
+}
+
 async function mountPanel(refreshKey = 0, expanded = true) {
   const pinia = createPinia();
   setActivePinia(pinia);
@@ -117,19 +146,35 @@ function buttonByText(text: string): HTMLElement | undefined {
   );
 }
 
+function completedJobs(count: number): QualitySuggestionJob[] {
+  return Array.from({ length: count }, (_, index) =>
+    jobFixture({
+      name: `workspaces/ws/qualitySuggestionJobs/newer-${index}`,
+      status: QualitySuggestionJobStatus.COMPLETED,
+      intent: `Filled job ${index}`,
+    })
+  );
+}
+
 describe("SuggestionJobsPanel", () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
     document.body.innerHTML = "";
+    mocks.getQualitySuggestionJob.mockReset();
+    mocks.cancelQualitySuggestionJob.mockReset();
   });
 
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  it("starts collapsed with a summary and expands on demand", async () => {
-    mocks.listQualitySuggestionJobs.mockResolvedValue(page([jobFixture()]));
+  it("starts collapsed with a de-duplicated summary and expands on demand", async () => {
+    mockSnapshots({
+      recent: [jobFixture()],
+      // The RUNNING list also carries the job: it must not be listed twice.
+      running: [jobFixture()],
+    });
     const wrapper = await mountPanel(0, false);
     await flushPromises();
 
@@ -148,12 +193,15 @@ describe("SuggestionJobsPanel", () => {
     expect(document.body.textContent).toContain(
       "Keep the orders table healthy"
     );
+    expect(
+      document.body.textContent?.split("Keep the orders table healthy").length
+    ).toBe(2);
     wrapper.unmount();
   });
 
   it("lists a job with its status, intent, progress and per-target details", async () => {
-    mocks.listQualitySuggestionJobs.mockResolvedValue(
-      page([
+    mockSnapshots({
+      recent: [
         jobFixture({
           completed: 1,
           suggestions: 3,
@@ -170,8 +218,8 @@ describe("SuggestionJobsPanel", () => {
             }),
           ],
         }),
-      ])
-    );
+      ],
+    });
     const wrapper = await mountPanel();
     await flushPromises();
 
@@ -223,10 +271,10 @@ describe("SuggestionJobsPanel", () => {
 
   it("polls an active job and settles it exactly once when it completes", async () => {
     vi.useFakeTimers();
-    mocks.listQualitySuggestionJobs
-      .mockResolvedValueOnce(page([jobFixture()]))
-      .mockResolvedValue(
-        page([
+    mockSnapshots(
+      { recent: [jobFixture()] },
+      {
+        recent: [
           jobFixture({
             status: QualitySuggestionJobStatus.COMPLETED,
             completed: 2,
@@ -244,74 +292,222 @@ describe("SuggestionJobsPanel", () => {
               }),
             ],
           }),
-        ])
-      );
+        ],
+      }
+    );
     const wrapper = await mountPanel();
     await vi.advanceTimersByTimeAsync(0);
-    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(1);
+    // Two list calls per load: the recent page and the RUNNING list.
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(2);
 
     await vi.advanceTimersByTimeAsync(2500);
     await vi.advanceTimersByTimeAsync(0);
-    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(2);
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(4);
     expect(wrapper.emitted("settled")).toContainEqual([NEW_SUGGESTIONS]);
 
     // A completed job stops the poll loop.
     await vi.advanceTimersByTimeAsync(10_000);
-    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(2);
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(4);
 
     // A later refresh of the same terminal job must not settle it again.
     await wrapper.setProps({ refreshKey: 1 });
     await vi.advanceTimersByTimeAsync(0);
-    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(3);
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(6);
     expect(wrapper.emitted("settled")).toHaveLength(1);
+    wrapper.unmount();
+  });
+
+  it("polls and settles an active job that is older than the recent page", async () => {
+    vi.useFakeTimers();
+    const olderActive = jobFixture({ name: OLD_JOB });
+    const finished = jobFixture({
+      name: OLD_JOB,
+      status: QualitySuggestionJobStatus.COMPLETED,
+      completed: 2,
+      suggestions: NEW_SUGGESTIONS.length,
+      targets: [
+        targetFixture({
+          state: QualitySuggestionJobTargetState.DONE,
+          suggestions: [NEW_SUGGESTIONS[0] as string],
+        }),
+        targetFixture({
+          guid: OTHER_TARGET,
+          object: "customers",
+          state: QualitySuggestionJobTargetState.DONE,
+          suggestions: [NEW_SUGGESTIONS[1] as string],
+        }),
+      ],
+    });
+    mocks.getQualitySuggestionJob.mockResolvedValue(finished);
+    mockSnapshots(
+      // Ten newer completed jobs fill the recent page; the active job is only
+      // visible through the independent RUNNING list.
+      { recent: completedJobs(10), running: [olderActive] },
+      { recent: completedJobs(10), running: [] }
+    );
+    const wrapper = await mountPanel();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.body.textContent).toContain(
+      label("dataQuality.suggestionJobStatus.running")
+    );
+
+    await vi.advanceTimersByTimeAsync(2500);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(mocks.getQualitySuggestionJob).toHaveBeenCalledWith(OLD_JOB);
+    expect(wrapper.emitted("settled")).toContainEqual([NEW_SUGGESTIONS]);
+    // The terminal job is now in the panel and polling stops.
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(mocks.getQualitySuggestionJob).toHaveBeenCalledTimes(1);
+    expect(wrapper.emitted("settled")).toHaveLength(1);
+    wrapper.unmount();
+  });
+
+  it("retries a failed re-read instead of stalling the poll", async () => {
+    vi.useFakeTimers();
+    const olderActive = jobFixture({ name: OLD_JOB });
+    mocks.getQualitySuggestionJob
+      .mockRejectedValueOnce(new Error("blip"))
+      .mockResolvedValue(
+        jobFixture({
+          name: OLD_JOB,
+          status: QualitySuggestionJobStatus.COMPLETED,
+          completed: 2,
+          suggestions: NEW_SUGGESTIONS.length,
+          targets: [
+            targetFixture({
+              state: QualitySuggestionJobTargetState.DONE,
+              suggestions: [NEW_SUGGESTIONS[0] as string],
+            }),
+            targetFixture({
+              guid: OTHER_TARGET,
+              object: "customers",
+              state: QualitySuggestionJobTargetState.DONE,
+              suggestions: [NEW_SUGGESTIONS[1] as string],
+            }),
+          ],
+        })
+      );
+    mockSnapshots(
+      { recent: completedJobs(10), running: [olderActive] },
+      { recent: completedJobs(10), running: [] },
+      { recent: completedJobs(10), running: [] }
+    );
+    const wrapper = await mountPanel();
+    await vi.advanceTimersByTimeAsync(0);
+
+    // First transition poll: the re-read fails, but polling must continue.
+    await vi.advanceTimersByTimeAsync(2500);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mocks.getQualitySuggestionJob).toHaveBeenCalledTimes(1);
+    expect(wrapper.emitted("settled")).toBeUndefined();
+
+    // Next poll retries the same name and settles it once.
+    await vi.advanceTimersByTimeAsync(2500);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mocks.getQualitySuggestionJob).toHaveBeenCalledTimes(2);
+    expect(wrapper.emitted("settled")).toContainEqual([NEW_SUGGESTIONS]);
+    wrapper.unmount();
+  });
+
+  it("runs a reload requested while a load is in flight instead of dropping it", async () => {
+    vi.useFakeTimers();
+    let releaseRecent: (value: ReturnType<typeof page>) => void = () => {};
+    let releaseRunning: (value: ReturnType<typeof page>) => void = () => {};
+    mocks.listQualitySuggestionJobs
+      .mockResolvedValueOnce(page([jobFixture()]))
+      .mockResolvedValueOnce(page([]))
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            releaseRecent = resolve;
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            releaseRunning = resolve;
+          })
+      )
+      // Later loads see an active job again, so polling re-arms.
+      .mockResolvedValue(page([jobFixture()]));
+    const wrapper = await mountPanel();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(2500);
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(4);
+    // A submission arrives while that poll is unresolved.
+    await wrapper.setProps({ refreshKey: 1 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(4);
+
+    releaseRecent(page([]));
+    releaseRunning(page([]));
+    await vi.advanceTimersByTimeAsync(0);
+
+    // The deferred reload ran immediately: a fresh pair of list calls.
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(6);
+    // It saw an active job again, so the next poll interval is armed.
+    await vi.advanceTimersByTimeAsync(2500);
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(8);
     wrapper.unmount();
   });
 
   it("does not start a second request while a poll is in flight", async () => {
     vi.useFakeTimers();
-    let release: (value: ReturnType<typeof page>) => void = () => {};
+    let releaseRecent: (value: ReturnType<typeof page>) => void = () => {};
+    let releaseRunning: (value: ReturnType<typeof page>) => void = () => {};
     mocks.listQualitySuggestionJobs
       .mockResolvedValueOnce(page([jobFixture()]))
+      .mockResolvedValueOnce(page([]))
       .mockImplementationOnce(
         () =>
           new Promise((resolve) => {
-            release = resolve;
+            releaseRecent = resolve;
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            releaseRunning = resolve;
           })
       );
     const wrapper = await mountPanel();
     await vi.advanceTimersByTimeAsync(0);
-    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(1);
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(2);
 
     await vi.advanceTimersByTimeAsync(2500);
-    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(2);
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(4);
     // The next tick fires while the previous poll is still unresolved.
     await vi.advanceTimersByTimeAsync(2500);
-    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(2);
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(4);
 
-    release(page([jobFixture()]));
+    releaseRecent(page([jobFixture()]));
+    releaseRunning(page([]));
     await vi.advanceTimersByTimeAsync(0);
     wrapper.unmount();
   });
 
   it("clears the poll timer on unmount", async () => {
     vi.useFakeTimers();
-    mocks.listQualitySuggestionJobs.mockResolvedValue(page([jobFixture()]));
+    mockSnapshots({ recent: [jobFixture()] });
     const wrapper = await mountPanel();
     await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(2500);
-    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(2);
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(4);
 
     wrapper.unmount();
     await vi.advanceTimersByTimeAsync(10_000);
-    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(2);
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(4);
   });
 
   it("cancels an active job after a two-step inline confirm", async () => {
     const success = vi.spyOn(notify, "success");
-    mocks.listQualitySuggestionJobs
-      .mockResolvedValueOnce(page([jobFixture()]))
-      .mockResolvedValue(
-        page([
+    mockSnapshots(
+      { recent: [jobFixture()] },
+      {
+        recent: [
           jobFixture({
             status: QualitySuggestionJobStatus.CANCELED,
             completed: 2,
@@ -326,8 +522,9 @@ describe("SuggestionJobsPanel", () => {
               }),
             ],
           }),
-        ])
-      );
+        ],
+      }
+    );
     mocks.cancelQualitySuggestionJob.mockResolvedValue(
       jobFixture({ status: QualitySuggestionJobStatus.CANCELED })
     );
@@ -349,8 +546,8 @@ describe("SuggestionJobsPanel", () => {
     expect(success).toHaveBeenCalledWith(
       label("dataQuality.suggestions.jobs.canceledToast")
     );
-    // The cancel response is followed by a list refresh.
-    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(2);
+    // The cancel response is followed by a list refresh (two calls).
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(4);
     expect(document.body.textContent).toContain(
       label("dataQuality.suggestionJobStatus.canceled")
     );
@@ -361,7 +558,7 @@ describe("SuggestionJobsPanel", () => {
   });
 
   it("keeps the job running when the confirmation is dismissed", async () => {
-    mocks.listQualitySuggestionJobs.mockResolvedValue(page([jobFixture()]));
+    mockSnapshots({ recent: [jobFixture()] });
     const wrapper = await mountPanel();
     await flushPromises();
 
@@ -378,9 +575,10 @@ describe("SuggestionJobsPanel", () => {
   });
 
   it("shows a fetch failure and clears it on the next successful refresh", async () => {
-    mocks.listQualitySuggestionJobs.mockRejectedValueOnce(
-      new Error("network down")
-    );
+    mocks.listQualitySuggestionJobs
+      .mockRejectedValueOnce(new Error("network down"))
+      .mockResolvedValueOnce(page([]))
+      .mockResolvedValue(page([]));
     const wrapper = await mountPanel();
     await flushPromises();
 
@@ -388,14 +586,6 @@ describe("SuggestionJobsPanel", () => {
       label("dataQuality.suggestions.jobs.fetchFailed")
     );
 
-    mocks.listQualitySuggestionJobs.mockResolvedValue(
-      page([
-        jobFixture({
-          status: QualitySuggestionJobStatus.COMPLETED,
-          completed: 2,
-        }),
-      ])
-    );
     await wrapper.setProps({ refreshKey: 1 });
     await flushPromises();
 

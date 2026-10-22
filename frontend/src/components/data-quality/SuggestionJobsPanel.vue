@@ -188,6 +188,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   cancelQualitySuggestionJob,
+  getQualitySuggestionJob,
   listQualitySuggestionJobs,
 } from "@/api/data-quality";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -224,6 +225,9 @@ import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
  */
 
 const JOBS_PAGE_SIZE = 10;
+/** The runner claims the oldest PENDING job first, so an active job may be older
+ * than the recent page; this list finds it independently of the history. */
+const ACTIVE_JOBS_PAGE_SIZE = 20;
 const POLL_INTERVAL_MS = 2500;
 
 const props = withDefaults(
@@ -262,8 +266,15 @@ const handled = new Set<string>();
 let pollTimer: ReturnType<typeof setTimeout> | undefined;
 let inFlight = false;
 let disposed = false;
+/** A reload asked for while a request was in flight must not be dropped. */
+let reloadRequested = false;
+/** Previously-active names we failed to re-read; poll again rather than stall. */
+let retryNames: string[] = [];
 
-const hasActive = computed(() => jobs.value.some(isActiveSuggestionJob));
+/** Something may still progress: a visible active job or an unread transition. */
+function hasActiveWork(): boolean {
+  return jobs.value.some(isActiveSuggestionJob) || retryNames.length > 0;
+}
 const panelSummary = computed(() => {
   if (jobs.value.length === 0) {
     return "";
@@ -329,7 +340,7 @@ function scheduleNextPoll() {
     clearTimeout(pollTimer);
     pollTimer = undefined;
   }
-  if (!hasActive.value) {
+  if (!hasActiveWork()) {
     return;
   }
   pollTimer = setTimeout(() => {
@@ -338,24 +349,96 @@ function scheduleNextPoll() {
   }, POLL_INTERVAL_MS);
 }
 
+/**
+ * The recent page for history plus every RUNNING job, merged by name with the
+ * page's order first. The recent page alone cannot prove nothing is active:
+ * active jobs are the oldest PENDING ones and may sit below the page.
+ */
+async function fetchSnapshot(): Promise<QualitySuggestionJob[]> {
+  const [recent, running] = await Promise.all([
+    listQualitySuggestionJobs({ pageSize: JOBS_PAGE_SIZE }),
+    listQualitySuggestionJobs({
+      status: QualitySuggestionJobStatus.RUNNING,
+      pageSize: ACTIVE_JOBS_PAGE_SIZE,
+    }),
+  ]);
+  const merged = [...recent.items];
+  const seen = new Set(merged.map((job) => job.name));
+  for (const job of running.items) {
+    if (!seen.has(job.name)) {
+      seen.add(job.name);
+      merged.push(job);
+    }
+  }
+  return merged;
+}
+
+/**
+ * A job that was active last time but is absent now may have just finished and
+ * fallen off both lists; re-read it so its transition still settles. Bounded by
+ * the previously-active set (normally zero or one) and skipped once handled.
+ */
+async function rereadMissingActiveJobs(
+  next: QualitySuggestionJob[]
+): Promise<string[]> {
+  const present = new Set(next.map((job) => job.name));
+  // Include last round's failed re-reads: applyJobs replaced activeNames with the
+  // merged snapshot, so a failed name would otherwise never be retried.
+  const candidates = new Set([...activeNames, ...retryNames]);
+  const missing = [...candidates].filter(
+    (name) => !present.has(name) && !handled.has(name)
+  );
+  const retry: string[] = [];
+  for (const name of missing) {
+    try {
+      const job = await getQualitySuggestionJob(name);
+      if (!present.has(job.name)) {
+        present.add(job.name);
+        next.push(job);
+      }
+    } catch {
+      // Polling must not stall on a read that failed; try again next tick.
+      retry.push(name);
+    }
+  }
+  return retry;
+}
+
 async function loadJobs() {
   if (inFlight) {
+    // The caller wants fresh data (e.g. a submission): rerun instead of dropping.
+    reloadRequested = true;
     return;
   }
   inFlight = true;
   try {
-    const page = await listQualitySuggestionJobs({
-      pageSize: JOBS_PAGE_SIZE,
-    });
+    const next = await fetchSnapshot();
+    retryNames = await rereadMissingActiveJobs(next);
     error.value = "";
-    applyJobs(page.items);
+    applyJobs(next);
+    // A failed re-read has to stay "previously active" so the next successful
+    // read still counts as an active→terminal transition.
+    for (const name of retryNames) {
+      activeNames.add(name);
+    }
   } catch (e: unknown) {
     error.value = formatError(e, "dataQuality.suggestions.jobs.fetchFailed");
   } finally {
     inFlight = false;
-    // Re-arm even after a failed poll: an active job is worth retrying, and a
-    // finished one clears the timer here.
-    scheduleNextPoll();
+    if (reloadRequested) {
+      reloadRequested = false;
+      if (pollTimer !== undefined) {
+        clearTimeout(pollTimer);
+        pollTimer = undefined;
+      }
+      // Run now: the deferred reload must not wait for the poll interval, and
+      // its own finally re-arms polling from the fresh snapshot.
+      void loadJobs();
+    } else {
+      // Re-arm even after a failed poll: an active job is worth retrying, and a
+      // finished one clears the timer here.
+      scheduleNextPoll();
+    }
   }
 }
 

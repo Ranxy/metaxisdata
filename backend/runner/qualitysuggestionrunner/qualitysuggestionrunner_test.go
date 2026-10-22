@@ -23,10 +23,15 @@ import (
 type fakeJobStore struct {
 	mu sync.Mutex
 
-	pending      []*store.QualitySuggestionJobMessage
-	claimed      *store.QualitySuggestionJobMessage
+	pending []*store.QualitySuggestionJobMessage
+	claimed *store.QualitySuggestionJobMessage
+	// runningJobs are the jobs a previous process left RUNNING; the fake sweep
+	// emulates the store predicate (status RUNNING and started before the cutoff)
+	// so a test proves which cutoff the runner passes.
+	runningJobs  []*store.QualitySuggestionJobMessage
 	cancelOnGet  bool
 	getCalls     int
+	getErr       error
 	progress     []*storepb.QualitySuggestionJobTargets
 	statuses     []storepb.QualitySuggestionJobStatus
 	errors       []string
@@ -45,7 +50,17 @@ func (f *fakeJobStore) AbandonStaleQualitySuggestionJobs(_ context.Context, cuto
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.staleCutoffs = append(f.staleCutoffs, cutoff)
-	return f.staleCount, nil
+	var abandoned int64
+	for _, job := range f.runningJobs {
+		if job.Status != storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_RUNNING {
+			continue
+		}
+		if job.StartedAt != nil && job.StartedAt.Before(cutoff) {
+			job.Status = storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_FAILED
+			abandoned++
+		}
+	}
+	return abandoned + f.staleCount, nil
 }
 
 func (f *fakeJobStore) ClaimPendingQualitySuggestionJob(_ context.Context, _ time.Time) (*store.QualitySuggestionJobMessage, error) {
@@ -67,6 +82,9 @@ func (f *fakeJobStore) GetQualitySuggestionJob(_ context.Context, _ *store.FindQ
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.getCalls++
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
 	job := cloneJobMessage(f.claimed)
 	job.CancelRequested = f.cancelOnGet
 	return job, nil
@@ -147,6 +165,11 @@ func (f *fakeSuggester) draftedTargets() []string {
 // jobTestMessage builds one RUNNING job with the given target GUIDs in PENDING
 // state, as a claim would return it.
 func jobTestMessage(guids ...string) *store.QualitySuggestionJobMessage {
+	return jobTestMessageFor(7, "job1", guids...)
+}
+
+// jobTestMessageFor builds one RUNNING job with an explicit row id and resource id.
+func jobTestMessageFor(id int64, resourceID string, guids ...string) *store.QualitySuggestionJobMessage {
 	targets := &storepb.QualitySuggestionJobTargets{}
 	for _, guid := range guids {
 		targets.Targets = append(targets.Targets, &storepb.QualitySuggestionJobTarget{
@@ -156,8 +179,8 @@ func jobTestMessage(guids ...string) *store.QualitySuggestionJobMessage {
 		})
 	}
 	return &store.QualitySuggestionJobMessage{
-		ID:         7,
-		ResourceID: "job1",
+		ID:         id,
+		ResourceID: resourceID,
 		Status:     storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_RUNNING,
 		Intent:     "email must not be empty",
 		Language:   "en",
@@ -167,11 +190,10 @@ func jobTestMessage(guids ...string) *store.QualitySuggestionJobMessage {
 
 func newTestRunner(stores JobStore, suggester DraftSuggester, now time.Time) *Runner {
 	return &Runner{
-		store:       stores,
-		suggester:   suggester,
-		now:         func() time.Time { return now },
-		tick:        time.Millisecond,
-		staleCutoff: staleJobCutoff,
+		store:     stores,
+		suggester: suggester,
+		now:       func() time.Time { return now },
+		tick:      time.Millisecond,
 	}
 }
 
@@ -333,8 +355,9 @@ func TestProcessJobFailsWhenConfigIsUnavailable(t *testing.T) {
 	}
 }
 
-// The startup sweep asks the store to abandon RUNNING jobs older than the cutoff.
-func TestAbandonStaleUsesTheCutoff(t *testing.T) {
+// The startup sweep asks the store to abandon every RUNNING job: the cutoff is the
+// startup instant, not an age window.
+func TestAbandonStaleUsesNowAsTheCutoff(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, time.October, 22, 9, 0, 0, 0, time.UTC)
@@ -345,7 +368,114 @@ func TestAbandonStaleUsesTheCutoff(t *testing.T) {
 	runner.abandonStale(context.Background())
 
 	require.Len(t, stores.staleCutoffs, 1)
-	require.Equal(t, now.Add(-staleJobCutoff), stores.staleCutoffs[0])
+	require.Equal(t, now, stores.staleCutoffs[0])
+}
+
+// A RUNNING job started a minute before an unclean restart is orphaned too: at
+// startup, no RUNNING job can have a live owner (single replica), so Run fails it.
+// The old now-15m window left exactly this job RUNNING forever.
+func TestRunFailsRunningJobsLeftByAPreviousProcess(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.October, 22, 9, 0, 0, 0, time.UTC)
+	startedAt := now.Add(-time.Minute)
+	orphan := jobTestMessageFor(9, "orphan", "target-a")
+	orphan.StartedAt = &startedAt
+
+	stores := newFakeJobStore()
+	stores.runningJobs = append(stores.runningJobs, orphan)
+	runner := newTestRunner(stores, &fakeSuggester{}, now)
+	runner.tick = time.Hour
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		runner.Run(ctx)
+		close(done)
+	}()
+	require.Eventually(t, func() bool {
+		stores.mu.Lock()
+		defer stores.mu.Unlock()
+		return orphan.Status == storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_FAILED
+	}, 5*time.Second, 10*time.Millisecond, "the orphaned RUNNING job was not failed at startup")
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the runner did not stop after its context was cancelled")
+	}
+	require.NotEmpty(t, stores.runningJobs)
+}
+
+// A cancel re-read that errors must not fall through to COMPLETED with unvisited
+// targets: the remaining targets are SKIPPED and the job ends FAILED.
+func TestProcessJobFailsWhenTheCancelRecheckErrors(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.October, 22, 9, 0, 0, 0, time.UTC)
+	stores := newFakeJobStore(jobTestMessage("target-a", "target-b"))
+	suggester := &fakeSuggester{}
+	runner := newTestRunner(stores, suggester, now)
+	stores.getErr = errors.New("connection refused")
+
+	job, err := stores.ClaimPendingQualitySuggestionJob(context.Background(), now)
+	require.NoError(t, err)
+	runner.processJob(context.Background(), job)
+
+	require.Empty(t, suggester.draftedTargets(), "the job must not start a target it cannot re-check")
+	require.Equal(t, storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_FAILED, stores.statuses[0])
+	require.Contains(t, stores.errors[0], "failed to check for cancellation")
+	final := stores.progress[len(stores.progress)-1].GetTargets()
+	for _, target := range final {
+		require.Equal(t, storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_SKIPPED, target.GetState())
+	}
+}
+
+// A panic in the drafting pipeline closes the claimed job and does not kill the
+// runner loop: the next queued job still completes.
+func TestRunSurvivesAPanickingSuggester(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.October, 22, 9, 0, 0, 0, time.UTC)
+	panicking := jobTestMessageFor(7, "job-panic", "target-panic")
+	following := jobTestMessageFor(8, "job-next", "target-b")
+	stores := newFakeJobStore(panicking, following)
+	suggester := &fakeSuggester{draft: func(guid string) ([]*store.QualitySuggestionMessage, error) {
+		if guid == "target-panic" {
+			panic("the drafting pipeline exploded")
+		}
+		return []*store.QualitySuggestionMessage{{ResourceID: guid + "-s1"}}, nil
+	}}
+	runner := newTestRunner(stores, suggester, now)
+	runner.tick = time.Hour
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		runner.Run(ctx)
+		close(done)
+	}()
+	for range 2 {
+		select {
+		case <-stores.finished:
+		case <-time.After(5 * time.Second):
+			t.Fatal("the runner stopped after the panic instead of finishing both jobs")
+		}
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the runner did not stop after its context was cancelled")
+	}
+
+	require.Equal(t, []storepb.QualitySuggestionJobStatus{
+		storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_FAILED,
+		storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_COMPLETED,
+	}, stores.statuses, "the panicked job is failed and the following job still completes")
+	require.Contains(t, stores.errors[0], "unexpectedly")
+	require.Equal(t, []string{"target-panic", "target-b"}, suggester.draftedTargets(),
+		"the panicking target was attempted; the following job still ran")
 }
 
 // Run sweeps stale jobs, drains the pending queue and then waits for the next tick;
