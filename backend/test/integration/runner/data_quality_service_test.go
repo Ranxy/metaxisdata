@@ -623,6 +623,28 @@ func TestDataQualityLLMAnalysisIsOffByDefaultRealServerIntegration(t *testing.T)
 	}))
 	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err), "LLM analysis is disabled by default: %v", err)
 
+	// The target and column errors are the caller's, not the switch's: the sync
+	// drafting RPC resolves the target before it checks the provider, so a stale
+	// target reports NotFound and an unknown column InvalidArgument even here.
+	_, err = fixture.dataQuality.SuggestQualityRule(fixture.ctx, withToken(fixture.env.AdminToken(), &v1pb.SuggestQualityRuleRequest{
+		Parent:    "workspaces/-",
+		TableGuid: "doesnotexist;db;public;missing",
+		MetaType:  v1pb.MetaType_TABLE,
+		Intent:    "the email column must not be empty",
+		Language:  "en",
+	}))
+	require.Equal(t, connect.CodeNotFound, connect.CodeOf(err), "an unknown target is NotFound even with the LLM off: %v", err)
+
+	_, err = fixture.dataQuality.SuggestQualityRule(fixture.ctx, withToken(fixture.env.AdminToken(), &v1pb.SuggestQualityRuleRequest{
+		Parent:    "workspaces/-",
+		TableGuid: fixture.usersGUID,
+		MetaType:  v1pb.MetaType_TABLE,
+		Columns:   []string{"no_such_column"},
+		Intent:    "the email column must not be empty",
+		Language:  "en",
+	}))
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err), "an unknown column is InvalidArgument even with the LLM off: %v", err)
+
 	_, err = fixture.dataQuality.SuggestColumnLabels(fixture.ctx, withToken(fixture.env.AdminToken(), &v1pb.SuggestColumnLabelsRequest{
 		Parent:    "workspaces/-",
 		TableGuid: fixture.usersGUID,
