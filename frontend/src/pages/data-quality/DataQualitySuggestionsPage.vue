@@ -445,10 +445,22 @@
                       class="text-right align-top"
                       @click.stop
                     >
-                      <!-- The primary action first, review last: the review
-                           button then sits on the same right edge for rows of
-                           either kind. -->
+                      <!-- The editor shortcut sits before the primary action
+                           and review closes the cell: with the primary button
+                           in the same slot on every row, "Create rule" and
+                           "Accept" share one right edge. -->
                       <div class="flex items-center justify-end gap-1">
+                        <Button
+                          v-if="canEditDraft(suggestion)"
+                          variant="ghost"
+                          size="icon"
+                          class="h-8 w-8"
+                          :title="t('dataQuality.suggestions.openInEditor')"
+                          :aria-label="t('dataQuality.suggestions.openInEditor')"
+                          @click="openEditor(suggestion)"
+                        >
+                          <ExternalLink class="h-4 w-4 text-muted-foreground" />
+                        </Button>
                         <Button
                           v-if="canEditDraft(suggestion)"
                           variant="outline"
@@ -466,17 +478,6 @@
                           @click="acceptLabel(suggestion)"
                         >
                           {{ t("dataQuality.suggestions.accept") }}
-                        </Button>
-                        <Button
-                          v-if="canEditDraft(suggestion)"
-                          variant="ghost"
-                          size="icon"
-                          class="h-8 w-8"
-                          :title="t('dataQuality.suggestions.openInEditor')"
-                          :aria-label="t('dataQuality.suggestions.openInEditor')"
-                          @click="openEditor(suggestion)"
-                        >
-                          <ExternalLink class="h-4 w-4 text-muted-foreground" />
                         </Button>
                         <Button
                           variant="ghost"

@@ -471,6 +471,19 @@ describe("DataQualitySuggestionsPage", () => {
     expect(lastAction(labelCells[6])?.getAttribute("aria-label")).toBe(
       label("dataQuality.suggestions.review")
     );
+
+    // The primary action occupies the same slot (immediately before review) on
+    // both kinds, which is what lets the two buttons share a right edge.
+    const primaryAction = (cell: Element | undefined) => {
+      const buttons = [...(cell?.querySelectorAll("button") ?? [])];
+      return buttons[buttons.length - 2];
+    };
+    expect(primaryAction(draftCells[6])?.textContent).toContain(
+      label("dataQuality.suggestions.createRule")
+    );
+    expect(primaryAction(labelCells[6])?.textContent).toContain(
+      label("dataQuality.suggestions.accept")
+    );
     wrapper.unmount();
   });
 
