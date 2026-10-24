@@ -1,4 +1,5 @@
 import { create } from "@bufbuild/protobuf";
+import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -20,6 +21,7 @@ import {
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
+import { formatRelativeTime } from "@/utils/datetime";
 import DataQualitySuggestionsPage from "./DataQualitySuggestionsPage.vue";
 
 const mocks = vi.hoisted(() => ({
@@ -293,6 +295,56 @@ describe("DataQualitySuggestionsPage", () => {
         )
         ?.getAttribute("aria-expanded")
     ).toBe("false");
+    wrapper.unmount();
+  });
+
+  it("shows a superseded proposal as closed by the server, not decided", async () => {
+    const closed = draftSuggestion(DRAFT_ONE, "Orders should have rows");
+    closed.status = QualitySuggestionStatus.SUPERSEDED;
+    mocks.listQualitySuggestions.mockResolvedValue({
+      items: [closed],
+      nextPageToken: "",
+    });
+    const { wrapper } = await mountPage();
+
+    const row = [
+      ...document.body.querySelectorAll<HTMLElement>("tbody tr"),
+    ].find((candidate) =>
+      candidate.textContent?.includes("Orders should have rows")
+    );
+    expect(row).toBeDefined();
+    expect(row?.textContent).toContain(
+      label("dataQuality.suggestionStatus.superseded")
+    );
+    // Never a human decision, so it must not read as accepted or rejected.
+    expect(row?.textContent).not.toContain(
+      label("dataQuality.suggestionStatus.accepted")
+    );
+    expect(row?.textContent).not.toContain(
+      label("dataQuality.suggestionStatus.rejected")
+    );
+    // Nobody can act on it, so it has no selection checkbox.
+    expect(row?.querySelector('[role="checkbox"]')).toBeNull();
+    wrapper.unmount();
+  });
+
+  it("marks a pending proposal that a later pass refreshed in place", async () => {
+    const refreshed = draftSuggestion(DRAFT_ONE, "Orders should have rows");
+    refreshed.refreshTime = timestampFromDate(
+      new Date(Date.now() - 2 * 60 * 60 * 1000)
+    );
+    mocks.listQualitySuggestions.mockResolvedValue({
+      items: [refreshed],
+      nextPageToken: "",
+    });
+    const { wrapper } = await mountPage();
+
+    // The row keeps its anatomy; the refresh is a hint under the pending badge.
+    expect(wrapper.text()).toContain(
+      label("dataQuality.suggestions.refreshedAt", {
+        time: formatRelativeTime(refreshed.refreshTime, "en-US"),
+      })
+    );
     wrapper.unmount();
   });
 

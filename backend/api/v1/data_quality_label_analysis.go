@@ -39,13 +39,21 @@ const (
 )
 
 // SuggestColumnLabels profiles the requested columns, asks the model for their
-// semantic types, and queues the resulting label and rule-draft suggestions.
+// semantic types, and reconciles the resulting label and rule-draft proposals with
+// the review queue and with the facts already stored for the table.
 //
-// The flow refuses to guess: without a recent profile for every requested column
-// the model would label blind, so the request fails with FailedPrecondition and
-// points at ProfileColumns. A model batch that cannot be parsed fails the whole
-// request as Internal; suggestions queued by earlier batches stay pending, which
-// the reviewer's decision path already handles (reject them).
+// The pass is a generation pass, not an append: a column that already has a label is
+// left out (its label proposal, if pending, is closed), a column that already has a
+// pending proposal is not analyzed again unless force is set, a column whose label
+// proposal was rejected stays rejected, and a rule draft that a saved rule already
+// covers is closed instead of queued. With force, the pass re-analyzes those columns
+// but still refreshes the one pending row per identity rather than duplicating it.
+//
+// The flow refuses to guess: without a recent profile for every analyzed column the
+// model would label blind, so the request fails with FailedPrecondition and points
+// at ProfileColumns. A model batch that cannot be parsed fails the whole request as
+// Internal; suggestions queued by earlier batches stay pending, which the reviewer's
+// decision path already handles (reject them).
 func (s *DataQualityService) SuggestColumnLabels(ctx context.Context, req *connect.Request[v1pb.SuggestColumnLabelsRequest]) (*connect.Response[v1pb.SuggestColumnLabelsResponse], error) {
 	if req == nil {
 		return nil, connectErrorInvalid("a request is required")
@@ -70,17 +78,17 @@ func (s *DataQualityService) SuggestColumnLabels(ctx context.Context, req *conne
 	if err != nil {
 		return nil, err
 	}
-	columns := trimmedQualityColumns(req.Msg.GetColumns())
-	if len(columns) == 0 {
-		columns = resolution.Target.ColumnNames()
+	requestedColumns := trimmedQualityColumns(req.Msg.GetColumns())
+	if len(requestedColumns) == 0 {
+		requestedColumns = resolution.Target.ColumnNames()
 	}
-	if len(columns) == 0 {
+	if len(requestedColumns) == 0 {
 		return nil, connectErrorInvalid("the target has no columns to label")
 	}
-	if len(columns) > settings.MaxColumnsPerAnalysis {
+	if len(requestedColumns) > settings.MaxColumnsPerAnalysis {
 		return nil, connectErrorInvalid("at most %d columns may be labeled at once", settings.MaxColumnsPerAnalysis)
 	}
-	for _, column := range columns {
+	for _, column := range requestedColumns {
 		if _, ok := resolution.Target.Column(column); !ok {
 			return nil, connectErrorInvalid("column %q does not exist on the target", column)
 		}
@@ -88,14 +96,73 @@ func (s *DataQualityService) SuggestColumnLabels(ctx context.Context, req *conne
 	// The evidence and rationale are written in the request's language; an empty or
 	// unsupported tag falls back to English.
 	language := dataquality.NormalizePromptLanguage(req.Msg.GetLanguage())
+	force := req.Msg.GetForceRegenerate()
 
-	// Provider resolution comes before the profile read so a disabled LLM never
-	// costs a database round trip.
+	// Provider resolution comes before any database read so a disabled LLM never
+	// costs a round trip.
 	config, _, err := s.suggester.ResolveConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
-	// The LLM is enabled and configured, so this request may spend the column
+
+	// Decide what still needs a proposal before spending quota. The queue state for
+	// every requested column is read once, because it decides both the analysis set
+	// and which stale proposals this pass should close.
+	summary := &storepb.QualitySuggestionQueueSummary{}
+	existingLabels, err := s.qualityLabelExistingLabels(ctx, resolution.Target, requestedColumns)
+	if err != nil {
+		return nil, err
+	}
+	labelSignatures := make([]string, 0, len(requestedColumns))
+	for _, column := range requestedColumns {
+		labelSignatures = append(labelSignatures, dataquality.LabelSuggestionSignature(column))
+	}
+	labelStates, err := s.store.QualitySuggestionSignatureStates(ctx, guid, metaType, labelSignatures)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to read the label suggestion history"))
+	}
+	columns := make([]string, 0, len(requestedColumns))
+	for _, column := range requestedColumns {
+		signature := dataquality.LabelSuggestionSignature(column)
+		state := labelStates[signature]
+		if _, labeled := existingLabels[column]; labeled && !force {
+			// The fact exists. A pending proposal for it is stale, so this pass closes
+			// it instead of leaving a contradiction in the queue.
+			if state.Pending {
+				superseded, err := s.store.SupersedePendingQualitySuggestions(ctx, guid, metaType,
+					[]string{signature}, "the column already has a semantic label", time.Now())
+				if err != nil {
+					return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to close a stale label suggestion"))
+				}
+				summary.Superseded += int32(superseded)
+			}
+			summary.SkippedExistingFact++
+			summary.SkippedColumns = append(summary.SkippedColumns, column)
+			continue
+		}
+		if !force {
+			if state.Pending {
+				summary.SkippedPending++
+				summary.SkippedColumns = append(summary.SkippedColumns, column)
+				continue
+			}
+			if dataquality.SuggestionDecisionSuppressesLabel(state.LastDecision) {
+				summary.SkippedDecided++
+				summary.SkippedColumns = append(summary.SkippedColumns, column)
+				continue
+			}
+		}
+		columns = append(columns, column)
+	}
+	if len(columns) == 0 {
+		// Every column already has a fact or a proposal. Nothing to spend: returning
+		// the summary is the honest answer.
+		return connect.NewResponse(&v1pb.SuggestColumnLabelsResponse{
+			Summary: convertQualitySuggestionQueueSummary(summary),
+		}), nil
+	}
+
+	// The LLM is enabled and there is work, so this request may spend the column
 	// analysis quota and one concurrency slot. L3 has its own, smaller daily
 	// bucket, whose ceiling comes from the workspace setting resolved above.
 	release, err := s.quota.Begin(ctx, dataquality.LLMColumnAnalysisQuota, dataquality.LimitsFromSettings(settings))
@@ -108,10 +175,13 @@ func (s *DataQualityService) SuggestColumnLabels(ctx context.Context, req *conne
 	if err != nil {
 		return nil, err
 	}
-	existingLabels, err := s.qualityLabelExistingLabels(ctx, resolution.Target, columns)
+	// Saved rules are facts: a draft they already cover must not be queued for
+	// review, and a pending draft they cover is stale and gets closed.
+	rules, err := s.store.ListQualityRules(ctx, &store.FindQualityRuleMessage{TargetGUID: &guid})
 	if err != nil {
-		return nil, err
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to read the target's existing rules"))
 	}
+	ruleSignatures := dataquality.RuleSignatures(rules)
 
 	// Lineage is not part of the v1 label prompt (the graph is available but the
 	// prompt contract has no block for it yet); labels still cite profile facts.
@@ -120,7 +190,16 @@ func (s *DataQualityService) SuggestColumnLabels(ctx context.Context, req *conne
 	provider, model, promptVersion := dataquality.ProviderFacts(config, dataquality.LabelPromptVersion)
 	callerID := principalIDPointer(currentUserID(ctx))
 	now := time.Now().UTC()
-	created := make([]*store.QualitySuggestionMessage, 0, len(columns)*2)
+	queued := make([]*store.QualitySuggestionMessage, 0, len(columns)*2)
+	// Rule drafts are collected while the batches run and reconciled after them, so
+	// one read covers every identity the pass produced.
+	type draftCandidate struct {
+		ruleType  storepb.QualityRuleType
+		draft     *storepb.QualityRuleDraftConfig
+		signature string
+	}
+	draftCandidates := make([]draftCandidate, 0, len(columns)*2)
+	draftIndex := make(map[string]int, len(columns)*2)
 	var totalUsage *llm.Usage
 	for _, batch := range qualityLabelColumnBatches(columns, qualityLabelBatchColumns, qualityLabelMaxBatches) {
 		systemPrompt, userPrompt := dataquality.BuildLabelPrompt(
@@ -143,13 +222,20 @@ func (s *DataQualityService) SuggestColumnLabels(ctx context.Context, req *conne
 		}
 		for _, output := range outputs {
 			labelSuggestion := dataquality.BuildLabelSuggestion(output, profiles[output.Column])
-			queued, err := s.queueQualityLabelSuggestion(ctx, storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_LABEL,
+			queuedSuggestion, created, err := s.queueQualityLabelSuggestion(ctx,
+				storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_LABEL,
+				dataquality.LabelSuggestionSignature(output.Column),
 				&storepb.QualitySuggestionPayload{Payload: &storepb.QualitySuggestionPayload_Label{Label: labelSuggestion}},
 				resolution.Target, provider, model, promptVersion, callerID, now)
 			if err != nil {
 				return nil, err
 			}
-			created = append(created, queued)
+			if created {
+				summary.Created++
+			} else {
+				summary.Refreshed++
+			}
+			queued = append(queued, queuedSuggestion)
 
 			// The rule drafts are deterministic: DefaultRuleDraft's parameters are
 			// defaults the reviewer confirms, never the observed values. Each draft
@@ -172,38 +258,87 @@ func (s *DataQualityService) SuggestColumnLabels(ctx context.Context, req *conne
 						slog.Any("error", err))
 					continue
 				}
-				queued, err := s.queueQualityLabelSuggestion(ctx, storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT,
-					&storepb.QualitySuggestionPayload{Payload: &storepb.QualitySuggestionPayload_Rule{Rule: draft}},
-					resolution.Target, provider, model, promptVersion, callerID, now)
-				if err != nil {
-					return nil, err
+				signature := dataquality.RuleSignature(ruleType, draft.GetConfig())
+				if index, ok := draftIndex[signature]; ok {
+					if draft.GetConfidence() > draftCandidates[index].draft.GetConfidence() {
+						draftCandidates[index].draft = draft
+					}
+					continue
 				}
-				created = append(created, queued)
+				draftIndex[signature] = len(draftCandidates)
+				draftCandidates = append(draftCandidates, draftCandidate{ruleType: ruleType, draft: draft, signature: signature})
 			}
 		}
 	}
+
+	draftSignatures := make([]string, 0, len(draftCandidates))
+	for _, candidate := range draftCandidates {
+		draftSignatures = append(draftSignatures, candidate.signature)
+	}
+	draftStates, err := s.store.QualitySuggestionSignatureStates(ctx, guid, metaType, draftSignatures)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to read the rule draft suggestion history"))
+	}
+	for _, candidate := range draftCandidates {
+		state := draftStates[candidate.signature]
+		if _, covered := ruleSignatures[candidate.signature]; covered {
+			if state.Pending {
+				superseded, err := s.store.SupersedePendingQualitySuggestions(ctx, guid, metaType,
+					[]string{candidate.signature}, "a saved rule with the same identity exists", time.Now())
+				if err != nil {
+					return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to close a stale rule draft suggestion"))
+				}
+				summary.Superseded += int32(superseded)
+			} else {
+				summary.SkippedExistingFact++
+			}
+			continue
+		}
+		if !force && dataquality.SuggestionDecisionSuppressesRuleDraft(state.LastDecision) {
+			summary.SkippedDecided++
+			continue
+		}
+		queuedSuggestion, created, err := s.queueQualityLabelSuggestion(ctx,
+			storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT, candidate.signature,
+			&storepb.QualitySuggestionPayload{Payload: &storepb.QualitySuggestionPayload_Rule{Rule: candidate.draft}},
+			resolution.Target, provider, model, promptVersion, callerID, now)
+		if err != nil {
+			return nil, err
+		}
+		if created {
+			summary.Created++
+		} else {
+			summary.Refreshed++
+		}
+		queued = append(queued, queuedSuggestion)
+	}
 	dataquality.LogLLMUsage("suggest_column_labels", guid, totalUsage)
 
-	suggestions := make([]*v1pb.QualitySuggestion, 0, len(created))
-	for _, suggestion := range created {
+	suggestions := make([]*v1pb.QualitySuggestion, 0, len(queued))
+	for _, suggestion := range queued {
 		suggestions = append(suggestions, convertQualitySuggestion(workspaceID, suggestion))
 	}
-	return connect.NewResponse(&v1pb.SuggestColumnLabelsResponse{QualitySuggestions: suggestions}), nil
+	return connect.NewResponse(&v1pb.SuggestColumnLabelsResponse{
+		QualitySuggestions: suggestions,
+		Summary:            convertQualitySuggestionQueueSummary(summary),
+	}), nil
 }
 
-// queueQualityLabelSuggestion stores one pending suggestion with the provider and
-// prompt facts the review queue records.
-func (s *DataQualityService) queueQualityLabelSuggestion(ctx context.Context, kind storepb.QualitySuggestionKind, payload *storepb.QualitySuggestionPayload, target dataquality.ResolvedTarget, provider, model, promptVersion string, createdBy *int32, now time.Time) (*store.QualitySuggestionMessage, error) {
+// queueQualityLabelSuggestion upserts one pending proposal by its identity. A
+// repeated generation pass refreshes the live row instead of appending a duplicate,
+// and the returned bool says which happened.
+func (s *DataQualityService) queueQualityLabelSuggestion(ctx context.Context, kind storepb.QualitySuggestionKind, signature string, payload *storepb.QualitySuggestionPayload, target dataquality.ResolvedTarget, provider, model, promptVersion string, createdBy *int32, now time.Time) (*store.QualitySuggestionMessage, bool, error) {
 	resourceID, err := common.RandomString(12)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to generate the suggestion id"))
+		return nil, false, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to generate the suggestion id"))
 	}
-	suggestion, err := s.store.CreateQualitySuggestion(ctx, &store.QualitySuggestionMessage{
+	suggestion, created, err := s.store.QueueQualitySuggestion(ctx, &store.QualitySuggestionMessage{
 		ResourceID:    resourceID,
 		Kind:          kind,
 		Source:        storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_PROFILE,
 		TargetGUID:    target.GUID,
 		TargetType:    target.MetaType,
+		Signature:     signature,
 		Payload:       payload,
 		Status:        storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
 		Provider:      provider,
@@ -213,9 +348,9 @@ func (s *DataQualityService) queueQualityLabelSuggestion(ctx context.Context, ki
 		CreatedAt:     now,
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to queue a column-label suggestion"))
+		return nil, false, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to queue a column-label suggestion"))
 	}
-	return suggestion, nil
+	return suggestion, created, nil
 }
 
 // qualityLabelProfiles reads the cached profiles the prompt cites, and refuses

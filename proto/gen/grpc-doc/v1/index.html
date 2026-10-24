@@ -1281,6 +1281,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.QualitySuggestionQueueSummary"><span class="badge">M</span>QualitySuggestionQueueSummary</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.QualityTarget"><span class="badge">M</span>QualityTarget</a>
                 </li>
               
@@ -12705,6 +12709,15 @@ optionally columns; the path and columns are snapshotted for progress. The
 job visits them in order. </p></td>
                 </tr>
               
+                <tr>
+                  <td>force_regenerate</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Re-propose drafts that were already accepted or rejected, and re-analyze
+columns that already have a fact. The queue is still deduplicated by identity:
+regeneration refreshes a pending proposal instead of appending a duplicate. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -15671,6 +15684,14 @@ and results are still recorded. </p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>refresh_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p>When a later generation pass refreshed this pending proposal&#39;s payload.
+Unset when the proposal has not been refreshed. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -15800,6 +15821,15 @@ and results are still recorded. </p></td>
                   <td><p>Format: users/{user}. </p></td>
                 </tr>
               
+                <tr>
+                  <td>deduplicated</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>True when this response returns a job that was already PENDING or RUNNING for
+the same intent, targets and columns. Re-submitting an identical request is
+idempotent: no second job or analysis is started. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -15869,6 +15899,13 @@ facts, stop reason and usage behind the error, plus the correlation id that
 ties it to the server log and the debug log. </p></td>
                 </tr>
               
+                <tr>
+                  <td>summary</td>
+                  <td><a href="#metaxisdata.v1.QualitySuggestionQueueSummary">QualitySuggestionQueueSummary</a></td>
+                  <td></td>
+                  <td><p>What this target&#39;s pass did to the review queue. Set on success. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -15898,6 +15935,75 @@ ties it to the server log and the debug log. </p></td>
                   <td><a href="#metaxisdata.v1.SemanticLabelSuggestion">SemanticLabelSuggestion</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualitySuggestionQueueSummary">QualitySuggestionQueueSummary</h3>
+        <p>QualitySuggestionQueueSummary is what one generation pass did to the review</p><p>queue. Generation reconciles proposals with the facts and with the live queue</p><p>instead of appending rows, so a pass can create, refresh, close or skip</p><p>proposals; these counts let the client explain the result.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>created</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Proposals that did not exist before this pass. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>refreshed</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Pending proposals whose payload this pass updated. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>superseded</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Pending proposals the pass closed because their fact now exists. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>skipped_existing_fact</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Skipped because the fact already exists: the column has a label, or a rule
+with the same identity exists. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>skipped_pending</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Skipped because an equivalent proposal is already pending; the default mode
+leaves it untouched instead of spending another analysis. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>skipped_decided</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Skipped because the same proposal was already accepted or rejected and the
+request did not force regeneration. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>skipped_columns</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>The columns a label pass left out, so the client can name them. </p></td>
                 </tr>
               
             </tbody>
@@ -16769,6 +16875,15 @@ display order. The model may rank types but may not invent one. </p></td>
 &#34;zh-CN&#34;. </p></td>
                 </tr>
               
+                <tr>
+                  <td>force_regenerate</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Re-analyze columns that are already labeled, already have a pending proposal,
+or were already decided. Regeneration still never duplicates: it refreshes the
+one pending proposal per column. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -16790,7 +16905,14 @@ display order. The model may rank types but may not invent one. </p></td>
                   <td>quality_suggestions</td>
                   <td><a href="#metaxisdata.v1.QualitySuggestion">QualitySuggestion</a></td>
                   <td>repeated</td>
-                  <td><p>The queued label proposals, pending review. </p></td>
+                  <td><p>The label and rule-draft proposals this pass queued, created or refreshed. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>summary</td>
+                  <td><a href="#metaxisdata.v1.QualitySuggestionQueueSummary">QualitySuggestionQueueSummary</a></td>
+                  <td></td>
+                  <td><p>What the pass did to the queue, including the columns it left out. </p></td>
                 </tr>
               
             </tbody>
@@ -16852,6 +16974,16 @@ display order. The model may rank types but may not invent one. </p></td>
                   <td><p>The language the intent and the draft are written in, e.g. &#34;en&#34; or &#34;zh-CN&#34;. </p></td>
                 </tr>
               
+                <tr>
+                  <td>force_regenerate</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Re-propose drafts that were already accepted or rejected, and re-analyze
+columns that already have a fact. The queue is still deduplicated by identity:
+regeneration refreshes an existing pending proposal instead of appending a
+duplicate. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -16873,7 +17005,15 @@ display order. The model may rank types but may not invent one. </p></td>
                   <td>quality_suggestions</td>
                   <td><a href="#metaxisdata.v1.QualitySuggestion">QualitySuggestion</a></td>
                   <td>repeated</td>
-                  <td><p>The queued drafts, pending review. </p></td>
+                  <td><p>The drafts this pass queued, created or refreshed. Empty when every draft was
+already covered by a fact, was already decided, or failed validation. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>summary</td>
+                  <td><a href="#metaxisdata.v1.QualitySuggestionQueueSummary">QualitySuggestionQueueSummary</a></td>
+                  <td></td>
+                  <td><p>What the pass did to the queue. </p></td>
                 </tr>
               
             </tbody>
@@ -18316,7 +18456,7 @@ the same instance and database.</p></td>
         </table>
       
         <h3 id="metaxisdata.v1.QualitySuggestionStatus">QualitySuggestionStatus</h3>
-        <p>QualitySuggestionStatus is where a suggestion is in the review queue.</p>
+        <p>QualitySuggestionStatus is where a suggestion is in the review queue.</p><p>PENDING is the one live state. ACCEPTED and REJECTED are human decisions and</p><p>final. SUPERSEDED means the server closed the proposal because its fact already</p><p>exists (the column now has a label, or a rule with the same identity exists) or</p><p>the target changed; it was never decided, and the same proposal may be queued</p><p>again later.</p>
         <table class="enum-table">
           <thead>
             <tr><td>Name</td><td>Number</td><td>Description</td></tr>
@@ -18344,6 +18484,12 @@ the same instance and database.</p></td>
               <tr>
                 <td>QUALITY_SUGGESTION_STATUS_REJECTED</td>
                 <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_STATUS_SUPERSEDED</td>
+                <td>4</td>
                 <td><p></p></td>
               </tr>
             

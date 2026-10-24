@@ -429,12 +429,28 @@
                       </div>
                     </TableCell>
                     <TableCell class="align-top">
-                      <Badge
-                        :variant="suggestionStatusVariant(suggestion.status)"
-                        :title="suggestion.decisionNote"
-                      >
-                        {{ t(suggestionStatusKey(suggestion.status)) }}
-                      </Badge>
+                      <div class="space-y-1">
+                        <Badge
+                          :variant="suggestionStatusVariant(suggestion.status)"
+                          :title="suggestion.decisionNote"
+                        >
+                          {{ t(suggestionStatusKey(suggestion.status)) }}
+                        </Badge>
+                        <!-- A pending proposal re-proposed by a later pass keeps its
+                             row and is refreshed in place; the extra line says so
+                             without adding a column the other rows would leave empty. -->
+                        <div
+                          v-if="suggestion.status === QualitySuggestionStatus.PENDING && suggestion.refreshTime"
+                          class="text-xs whitespace-nowrap text-muted-foreground"
+                          :title="formatDateTime(suggestion.refreshTime, locale)"
+                        >
+                          {{
+                            t("dataQuality.suggestions.refreshedAt", {
+                              time: formatRelativeTime(suggestion.refreshTime, locale),
+                            })
+                          }}
+                        </div>
+                      </div>
                     </TableCell>
                     <TableCell class="hidden whitespace-nowrap align-top text-muted-foreground xl:table-cell">
                       <span :title="formatDateTime(suggestion.createTime, locale)">
@@ -708,6 +724,10 @@ const statusOptions = [
     value: QualitySuggestionStatus.REJECTED,
     key: "dataQuality.suggestionStatus.rejected",
   },
+  {
+    value: QualitySuggestionStatus.SUPERSEDED,
+    key: "dataQuality.suggestionStatus.superseded",
+  },
 ];
 const kindOptions = [
   {
@@ -762,6 +782,7 @@ const {
         QualitySuggestionStatus.PENDING,
         QualitySuggestionStatus.ACCEPTED,
         QualitySuggestionStatus.REJECTED,
+        QualitySuggestionStatus.SUPERSEDED,
       ]),
       kind: enumFromFilter(appliedKind.value, [
         QualitySuggestionKind.UNSPECIFIED,

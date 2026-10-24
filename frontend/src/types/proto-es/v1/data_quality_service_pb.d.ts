@@ -2022,6 +2022,14 @@ export declare type QualitySuggestion = Message<"metaxisdata.v1.QualitySuggestio
    * @generated from field: string decision_note = 13;
    */
   decisionNote: string;
+
+  /**
+   * When a later generation pass refreshed this pending proposal's payload.
+   * Unset when the proposal has not been refreshed.
+   *
+   * @generated from field: google.protobuf.Timestamp refresh_time = 14;
+   */
+  refreshTime?: Timestamp;
 };
 
 /**
@@ -2029,6 +2037,74 @@ export declare type QualitySuggestion = Message<"metaxisdata.v1.QualitySuggestio
  * Use `create(QualitySuggestionSchema)` to create a new message.
  */
 export declare const QualitySuggestionSchema: GenMessage<QualitySuggestion>;
+
+/**
+ * QualitySuggestionQueueSummary is what one generation pass did to the review
+ * queue. Generation reconciles proposals with the facts and with the live queue
+ * instead of appending rows, so a pass can create, refresh, close or skip
+ * proposals; these counts let the client explain the result.
+ *
+ * @generated from message metaxisdata.v1.QualitySuggestionQueueSummary
+ */
+export declare type QualitySuggestionQueueSummary = Message<"metaxisdata.v1.QualitySuggestionQueueSummary"> & {
+  /**
+   * Proposals that did not exist before this pass.
+   *
+   * @generated from field: int32 created = 1;
+   */
+  created: number;
+
+  /**
+   * Pending proposals whose payload this pass updated.
+   *
+   * @generated from field: int32 refreshed = 2;
+   */
+  refreshed: number;
+
+  /**
+   * Pending proposals the pass closed because their fact now exists.
+   *
+   * @generated from field: int32 superseded = 3;
+   */
+  superseded: number;
+
+  /**
+   * Skipped because the fact already exists: the column has a label, or a rule
+   * with the same identity exists.
+   *
+   * @generated from field: int32 skipped_existing_fact = 4;
+   */
+  skippedExistingFact: number;
+
+  /**
+   * Skipped because an equivalent proposal is already pending; the default mode
+   * leaves it untouched instead of spending another analysis.
+   *
+   * @generated from field: int32 skipped_pending = 5;
+   */
+  skippedPending: number;
+
+  /**
+   * Skipped because the same proposal was already accepted or rejected and the
+   * request did not force regeneration.
+   *
+   * @generated from field: int32 skipped_decided = 6;
+   */
+  skippedDecided: number;
+
+  /**
+   * The columns a label pass left out, so the client can name them.
+   *
+   * @generated from field: repeated string skipped_columns = 7;
+   */
+  skippedColumns: string[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualitySuggestionQueueSummary.
+ * Use `create(QualitySuggestionQueueSummarySchema)` to create a new message.
+ */
+export declare const QualitySuggestionQueueSummarySchema: GenMessage<QualitySuggestionQueueSummary>;
 
 /**
  * ColumnProfile is the cached deterministic statistics of one column plus how
@@ -3204,6 +3280,13 @@ export declare type QualitySuggestionJobTarget = Message<"metaxisdata.v1.Quality
    * @generated from field: metaxisdata.v1.QualityLLMDiagnostic diagnostic = 7;
    */
   diagnostic?: QualityLLMDiagnostic;
+
+  /**
+   * What this target's pass did to the review queue. Set on success.
+   *
+   * @generated from field: metaxisdata.v1.QualitySuggestionQueueSummary summary = 8;
+   */
+  summary?: QualitySuggestionQueueSummary;
 };
 
 /**
@@ -3406,6 +3489,15 @@ export declare type QualitySuggestionJob = Message<"metaxisdata.v1.QualitySugges
    * @generated from field: string created_by = 16;
    */
   createdBy: string;
+
+  /**
+   * True when this response returns a job that was already PENDING or RUNNING for
+   * the same intent, targets and columns. Re-submitting an identical request is
+   * idempotent: no second job or analysis is started.
+   *
+   * @generated from field: bool deduplicated = 17;
+   */
+  deduplicated: boolean;
 };
 
 /**
@@ -3448,6 +3540,15 @@ export declare type CreateQualitySuggestionJobRequest = Message<"metaxisdata.v1.
    * @generated from field: repeated metaxisdata.v1.QualityTarget targets = 4;
    */
   targets: QualityTarget[];
+
+  /**
+   * Re-propose drafts that were already accepted or rejected, and re-analyze
+   * columns that already have a fact. The queue is still deduplicated by identity:
+   * regeneration refreshes a pending proposal instead of appending a duplicate.
+   *
+   * @generated from field: bool force_regenerate = 5;
+   */
+  forceRegenerate: boolean;
 };
 
 /**
@@ -3927,6 +4028,16 @@ export declare type SuggestQualityRuleRequest = Message<"metaxisdata.v1.SuggestQ
    * @generated from field: string language = 6;
    */
   language: string;
+
+  /**
+   * Re-propose drafts that were already accepted or rejected, and re-analyze
+   * columns that already have a fact. The queue is still deduplicated by identity:
+   * regeneration refreshes an existing pending proposal instead of appending a
+   * duplicate.
+   *
+   * @generated from field: bool force_regenerate = 7;
+   */
+  forceRegenerate: boolean;
 };
 
 /**
@@ -3940,11 +4051,19 @@ export declare const SuggestQualityRuleRequestSchema: GenMessage<SuggestQualityR
  */
 export declare type SuggestQualityRuleResponse = Message<"metaxisdata.v1.SuggestQualityRuleResponse"> & {
   /**
-   * The queued drafts, pending review.
+   * The drafts this pass queued, created or refreshed. Empty when every draft was
+   * already covered by a fact, was already decided, or failed validation.
    *
    * @generated from field: repeated metaxisdata.v1.QualitySuggestion quality_suggestions = 1;
    */
   qualitySuggestions: QualitySuggestion[];
+
+  /**
+   * What the pass did to the queue.
+   *
+   * @generated from field: metaxisdata.v1.QualitySuggestionQueueSummary summary = 2;
+   */
+  summary?: QualitySuggestionQueueSummary;
 };
 
 /**
@@ -3990,6 +4109,15 @@ export declare type SuggestColumnLabelsRequest = Message<"metaxisdata.v1.Suggest
    * @generated from field: string language = 5;
    */
   language: string;
+
+  /**
+   * Re-analyze columns that are already labeled, already have a pending proposal,
+   * or were already decided. Regeneration still never duplicates: it refreshes the
+   * one pending proposal per column.
+   *
+   * @generated from field: bool force_regenerate = 6;
+   */
+  forceRegenerate: boolean;
 };
 
 /**
@@ -4003,11 +4131,18 @@ export declare const SuggestColumnLabelsRequestSchema: GenMessage<SuggestColumnL
  */
 export declare type SuggestColumnLabelsResponse = Message<"metaxisdata.v1.SuggestColumnLabelsResponse"> & {
   /**
-   * The queued label proposals, pending review.
+   * The label and rule-draft proposals this pass queued, created or refreshed.
    *
    * @generated from field: repeated metaxisdata.v1.QualitySuggestion quality_suggestions = 1;
    */
   qualitySuggestions: QualitySuggestion[];
+
+  /**
+   * What the pass did to the queue, including the columns it left out.
+   *
+   * @generated from field: metaxisdata.v1.QualitySuggestionQueueSummary summary = 2;
+   */
+  summary?: QualitySuggestionQueueSummary;
 };
 
 /**
@@ -4888,6 +5023,12 @@ export declare const QualitySuggestionKindSchema: GenEnum<QualitySuggestionKind>
 /**
  * QualitySuggestionStatus is where a suggestion is in the review queue.
  *
+ * PENDING is the one live state. ACCEPTED and REJECTED are human decisions and
+ * final. SUPERSEDED means the server closed the proposal because its fact already
+ * exists (the column now has a label, or a rule with the same identity exists) or
+ * the target changed; it was never decided, and the same proposal may be queued
+ * again later.
+ *
  * @generated from enum metaxisdata.v1.QualitySuggestionStatus
  */
 export enum QualitySuggestionStatus {
@@ -4910,6 +5051,11 @@ export enum QualitySuggestionStatus {
    * @generated from enum value: QUALITY_SUGGESTION_STATUS_REJECTED = 3;
    */
   REJECTED = 3,
+
+  /**
+   * @generated from enum value: QUALITY_SUGGESTION_STATUS_SUPERSEDED = 4;
+   */
+  SUPERSEDED = 4,
 }
 
 /**

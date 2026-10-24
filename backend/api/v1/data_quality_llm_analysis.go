@@ -87,16 +87,20 @@ func (s *DataQualityService) SuggestQualityRule(ctx context.Context, req *connec
 	if err != nil {
 		return nil, err
 	}
-	created, _, err := s.suggester.Draft(ctx, config, dataquality.LimitsFromSettings(settings),
-		tableGUID, metaType, requestedColumns, intent, language, principalIDPointer(currentUserID(ctx)))
+	queued, summary, _, err := s.suggester.Draft(ctx, config, dataquality.LimitsFromSettings(settings),
+		tableGUID, metaType, requestedColumns, intent, language, req.Msg.GetForceRegenerate(),
+		principalIDPointer(currentUserID(ctx)))
 	if err != nil {
 		return nil, err
 	}
-	suggestions := make([]*v1pb.QualitySuggestion, 0, len(created))
-	for _, suggestion := range created {
+	suggestions := make([]*v1pb.QualitySuggestion, 0, len(queued))
+	for _, suggestion := range queued {
 		suggestions = append(suggestions, convertQualitySuggestion(workspaceID, suggestion))
 	}
-	return connect.NewResponse(&v1pb.SuggestQualityRuleResponse{QualitySuggestions: suggestions}), nil
+	return connect.NewResponse(&v1pb.SuggestQualityRuleResponse{
+		QualitySuggestions: suggestions,
+		Summary:            convertQualitySuggestionQueueSummary(summary),
+	}), nil
 }
 
 // ExplainQualityExecution streams an explanation of one failed execution.

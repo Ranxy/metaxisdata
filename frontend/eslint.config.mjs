@@ -386,7 +386,20 @@ export default [
             "dataQuality.suggestionStatus.accepted",
             "dataQuality.suggestionStatus.pending",
             "dataQuality.suggestionStatus.rejected",
+            "dataQuality.suggestionStatus.superseded",
             "dataQuality.suggestionStatus.unspecified",
+            // The queue summary's counts and empty-reason sentences are chosen
+            // by helpers in src/utils/dataQualitySuggestion.ts and toasted by
+            // src/composables/useSuggestionSummary.ts.
+            "dataQuality.suggestionSummary.created",
+            "dataQuality.suggestionSummary.emptyDecided",
+            "dataQuality.suggestionSummary.emptyLabelExistingFact",
+            "dataQuality.suggestionSummary.emptyPending",
+            "dataQuality.suggestionSummary.emptyRuleExistingFact",
+            "dataQuality.suggestionSummary.emptySuperseded",
+            "dataQuality.suggestionSummary.refreshed",
+            "dataQuality.suggestionSummary.skipped",
+            "dataQuality.suggestionSummary.superseded",
             // Job lifecycle/target-state labels are returned by helpers in
             // src/utils/dataQualitySuggestion.ts, and the batch/job error copy
             // is used through formatError(); neither is a static t() call.

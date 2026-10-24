@@ -3,6 +3,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
+import { notify } from "@/lib/notify";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
@@ -18,6 +19,7 @@ import {
   QualitySemanticType,
   QualitySeverity,
   QualityStatus,
+  QualitySuggestionQueueSummarySchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
@@ -48,6 +50,17 @@ vi.mock("@/api/data-quality", () => ({
 const TABLE = "inst1;db1;public;orders";
 const RULE = "workspaces/ws/qualityRules/rule-1";
 const EXECUTION = "workspaces/ws/qualityExecutions/exec-1";
+const SUGGEST_PERMISSIONS = [
+  "metaxisdata.dataQuality.rules.list",
+  "metaxisdata.dataQuality.rules.create",
+  "metaxisdata.dataQuality.profile.run",
+  "metaxisdata.dataQuality.suggest",
+  "metaxisdata.dataQuality.labels.update",
+];
+
+function label(key: string, params: Record<string, unknown> = {}): string {
+  return i18n.global.t(key, params);
+}
 
 async function mountSection(permissions: string[]) {
   const router = createRouter({
@@ -126,6 +139,7 @@ async function mountSection(permissions: string[]) {
 describe("MetadataQualitySection", () => {
   beforeEach(() => {
     localStorage.clear();
+    document.body.innerHTML = "";
     vi.clearAllMocks();
     mocks.listQualityRules.mockResolvedValue({
       items: [
@@ -188,6 +202,10 @@ describe("MetadataQualitySection", () => {
         }),
       }),
     ]);
+    mocks.suggestColumnLabels.mockResolvedValue({
+      qualitySuggestions: [],
+      summary: create(QualitySuggestionQueueSummarySchema, { created: 2 }),
+    });
   });
 
   it("renders the table's rules, executions, issues and column labels", async () => {
@@ -238,5 +256,95 @@ describe("MetadataQualitySection", () => {
     const wrapper = await mountSection([]);
     expect(wrapper.text()).toBe("");
     expect(mocks.listQualityRules).not.toHaveBeenCalled();
+  });
+
+  it("toasts what the label pass created, refreshed and skipped", async () => {
+    mocks.suggestColumnLabels.mockResolvedValue({
+      qualitySuggestions: [],
+      summary: create(QualitySuggestionQueueSummarySchema, {
+        created: 2,
+        refreshed: 1,
+        skippedExistingFact: 3,
+      }),
+    });
+    const success = vi.spyOn(notify, "success");
+    const wrapper = await mountSection(SUGGEST_PERMISSIONS);
+
+    await wrapper
+      .findAll("button")
+      .find((item) =>
+        item.text().includes(label("dataQuality.asset.suggestLabels"))
+      )
+      ?.trigger("click");
+    await flushPromises();
+
+    // The default action skips columns that already have a fact or a proposal.
+    expect(mocks.suggestColumnLabels).toHaveBeenCalledWith({
+      tableGuid: TABLE,
+      metaType: MetaType.TABLE,
+      columns: ["id", "email"],
+      language: "en-US",
+      forceRegenerate: false,
+    });
+    expect(success).toHaveBeenCalledWith(
+      [
+        label("dataQuality.suggestionSummary.created", { count: 2 }),
+        label("dataQuality.suggestionSummary.refreshed", { count: 1 }),
+        label("dataQuality.suggestionSummary.skipped", { count: 3 }),
+      ].join(" · ")
+    );
+    success.mockRestore();
+    wrapper.unmount();
+  });
+
+  it("explains why a label pass queued nothing", async () => {
+    mocks.suggestColumnLabels.mockResolvedValue({
+      qualitySuggestions: [],
+      summary: create(QualitySuggestionQueueSummarySchema, {
+        skippedExistingFact: 2,
+      }),
+    });
+    const info = vi.spyOn(notify, "info");
+    const wrapper = await mountSection(SUGGEST_PERMISSIONS);
+
+    await wrapper
+      .findAll("button")
+      .find((item) =>
+        item.text().includes(label("dataQuality.asset.suggestLabels"))
+      )
+      ?.trigger("click");
+    await flushPromises();
+
+    expect(info).toHaveBeenCalledWith(
+      label("dataQuality.suggestionSummary.emptyLabelExistingFact", {
+        count: 2,
+      })
+    );
+    info.mockRestore();
+    wrapper.unmount();
+  });
+
+  it("offers a forced regeneration as the split action's second choice", async () => {
+    const wrapper = await mountSection(SUGGEST_PERMISSIONS);
+
+    const trigger = wrapper.find(
+      `[aria-label="${label("dataQuality.asset.suggestRegenerate")}"]`
+    );
+    expect(trigger.exists()).toBe(true);
+    await trigger.trigger("click");
+    await flushPromises();
+
+    const item = document.body.querySelector<HTMLElement>('[role="menuitem"]');
+    // The secondary action says it may refresh existing proposals.
+    expect(item?.textContent).toContain(
+      label("dataQuality.asset.suggestRegenerateHint")
+    );
+    item?.click();
+    await flushPromises();
+
+    expect(mocks.suggestColumnLabels).toHaveBeenCalledWith(
+      expect.objectContaining({ forceRegenerate: true })
+    );
+    wrapper.unmount();
   });
 });

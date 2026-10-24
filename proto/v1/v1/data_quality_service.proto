@@ -464,11 +464,18 @@ enum QualitySuggestionKind {
 }
 
 // QualitySuggestionStatus is where a suggestion is in the review queue.
+//
+// PENDING is the one live state. ACCEPTED and REJECTED are human decisions and
+// final. SUPERSEDED means the server closed the proposal because its fact already
+// exists (the column now has a label, or a rule with the same identity exists) or
+// the target changed; it was never decided, and the same proposal may be queued
+// again later.
 enum QualitySuggestionStatus {
   QUALITY_SUGGESTION_STATUS_UNSPECIFIED = 0;
   QUALITY_SUGGESTION_STATUS_PENDING = 1;
   QUALITY_SUGGESTION_STATUS_ACCEPTED = 2;
   QUALITY_SUGGESTION_STATUS_REJECTED = 3;
+  QUALITY_SUGGESTION_STATUS_SUPERSEDED = 4;
 }
 
 // QualitySuggestionSource is what produced a suggestion.
@@ -1237,6 +1244,34 @@ message QualitySuggestion {
   google.protobuf.Timestamp decide_time = 12;
 
   string decision_note = 13;
+
+  // When a later generation pass refreshed this pending proposal's payload.
+  // Unset when the proposal has not been refreshed.
+  google.protobuf.Timestamp refresh_time = 14;
+}
+
+// QualitySuggestionQueueSummary is what one generation pass did to the review
+// queue. Generation reconciles proposals with the facts and with the live queue
+// instead of appending rows, so a pass can create, refresh, close or skip
+// proposals; these counts let the client explain the result.
+message QualitySuggestionQueueSummary {
+  // Proposals that did not exist before this pass.
+  int32 created = 1;
+  // Pending proposals whose payload this pass updated.
+  int32 refreshed = 2;
+  // Pending proposals the pass closed because their fact now exists.
+  int32 superseded = 3;
+  // Skipped because the fact already exists: the column has a label, or a rule
+  // with the same identity exists.
+  int32 skipped_existing_fact = 4;
+  // Skipped because an equivalent proposal is already pending; the default mode
+  // leaves it untouched instead of spending another analysis.
+  int32 skipped_pending = 5;
+  // Skipped because the same proposal was already accepted or rejected and the
+  // request did not force regeneration.
+  int32 skipped_decided = 6;
+  // The columns a label pass left out, so the client can name them.
+  repeated string skipped_columns = 7;
 }
 
 // ColumnProfile is the cached deterministic statistics of one column plus how
@@ -1690,6 +1725,9 @@ message QualitySuggestionJobTarget {
   // facts, stop reason and usage behind the error, plus the correlation id that
   // ties it to the server log and the debug log.
   QualityLLMDiagnostic diagnostic = 7;
+
+  // What this target's pass did to the review queue. Set on success.
+  QualitySuggestionQueueSummary summary = 8;
 }
 
 // QualityLLMDiagnostic explains why one LLM analysis failed, in a form a person
@@ -1760,6 +1798,11 @@ message QualitySuggestionJob {
 
   // Format: users/{user}.
   string created_by = 16 [(google.api.resource_reference) = {type: "metaxisdata/User"}];
+
+  // True when this response returns a job that was already PENDING or RUNNING for
+  // the same intent, targets and columns. Re-submitting an identical request is
+  // idempotent: no second job or analysis is started.
+  bool deduplicated = 17 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 message CreateQualitySuggestionJobRequest {
@@ -1777,6 +1820,11 @@ message CreateQualitySuggestionJobRequest {
   // optionally columns; the path and columns are snapshotted for progress. The
   // job visits them in order.
   repeated QualityTarget targets = 4 [(google.api.field_behavior) = REQUIRED];
+
+  // Re-propose drafts that were already accepted or rejected, and re-analyze
+  // columns that already have a fact. The queue is still deduplicated by identity:
+  // regeneration refreshes a pending proposal instead of appending a duplicate.
+  bool force_regenerate = 5;
 }
 
 message GetQualitySuggestionJobRequest {
@@ -1935,11 +1983,21 @@ message SuggestQualityRuleRequest {
 
   // The language the intent and the draft are written in, e.g. "en" or "zh-CN".
   string language = 6;
+
+  // Re-propose drafts that were already accepted or rejected, and re-analyze
+  // columns that already have a fact. The queue is still deduplicated by identity:
+  // regeneration refreshes an existing pending proposal instead of appending a
+  // duplicate.
+  bool force_regenerate = 7;
 }
 
 message SuggestQualityRuleResponse {
-  // The queued drafts, pending review.
+  // The drafts this pass queued, created or refreshed. Empty when every draft was
+  // already covered by a fact, was already decided, or failed validation.
   repeated QualitySuggestion quality_suggestions = 1;
+
+  // What the pass did to the queue.
+  QualitySuggestionQueueSummary summary = 2;
 }
 
 message SuggestColumnLabelsRequest {
@@ -1955,11 +2013,19 @@ message SuggestColumnLabelsRequest {
   // The language the evidence and rationale are written in, e.g. "en" or
   // "zh-CN".
   string language = 5;
+
+  // Re-analyze columns that are already labeled, already have a pending proposal,
+  // or were already decided. Regeneration still never duplicates: it refreshes the
+  // one pending proposal per column.
+  bool force_regenerate = 6;
 }
 
 message SuggestColumnLabelsResponse {
-  // The queued label proposals, pending review.
+  // The label and rule-draft proposals this pass queued, created or refreshed.
   repeated QualitySuggestion quality_suggestions = 1;
+
+  // What the pass did to the queue, including the columns it left out.
+  QualitySuggestionQueueSummary summary = 2;
 }
 
 message ExplainQualityExecutionRequest {

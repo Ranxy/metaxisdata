@@ -11,6 +11,7 @@ import {
   QualitySuggestionJobStatus,
   QualitySuggestionJobTargetSchema,
   QualitySuggestionKind,
+  QualitySuggestionQueueSummarySchema,
   QualitySuggestionSchema,
   QualitySuggestionSource,
   QualitySuggestionStatus,
@@ -180,7 +181,10 @@ describe("SuggestionWorkbench", () => {
     localStorage.clear();
     vi.clearAllMocks();
     document.body.innerHTML = "";
-    mocks.suggestQualityRule.mockResolvedValue([draftSuggestion()]);
+    mocks.suggestQualityRule.mockResolvedValue({
+      qualitySuggestions: [draftSuggestion()],
+      summary: create(QualitySuggestionQueueSummarySchema, { created: 1 }),
+    });
     mocks.batchUpdateQualitySuggestions.mockResolvedValue([
       { suggestion: draftSuggestion(), error: "", name: SUGGESTION },
     ]);
@@ -226,10 +230,12 @@ describe("SuggestionWorkbench", () => {
     const request = mocks.createQualitySuggestionJob.mock.calls[0]?.[0] as {
       intent: string;
       language: string;
+      forceRegenerate: boolean;
       targets: Array<{ metaGuid: string; columns: string[] }>;
     };
     expect(request.intent).toBe("Keep the tables healthy");
     expect(request.language).toBe("en-US");
+    expect(request.forceRegenerate).toBe(false);
     // Several targets cannot share one column checklist.
     expect(request.targets.map((target) => target.metaGuid)).toEqual([
       TABLE,
@@ -283,6 +289,93 @@ describe("SuggestionWorkbench", () => {
     wrapper.unmount();
   });
 
+  it("submits force regeneration only when the reader asks for it", async () => {
+    const wrapper = await mountWorkbench();
+    await flushPromises();
+
+    wrapper
+      .findComponent({ name: "TargetPicker" })
+      .vm.$emit("select", pickerSelection(TABLE, "orders"));
+    await flushPromises();
+    setIntent("Orders must have rows");
+    await flushPromises();
+
+    const force = document.body.querySelector<HTMLElement>(
+      `[aria-label="${label("dataQuality.llm.draft.forceRegenerate")}"]`
+    );
+    expect(force).not.toBeNull();
+    force?.click();
+    await flushPromises();
+
+    buttonByText(label("dataQuality.suggestions.workbench.submit"))?.click();
+    await flushPromises();
+
+    const request = mocks.createQualitySuggestionJob.mock.calls[0]?.[0] as {
+      forceRegenerate: boolean;
+    };
+    expect(request.forceRegenerate).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("explains a job that is already running instead of creating another", async () => {
+    const job = jobFixture([TABLE]);
+    job.deduplicated = true;
+    mocks.createQualitySuggestionJob.mockResolvedValue(job);
+    const wrapper = await mountWorkbench();
+    await flushPromises();
+
+    wrapper
+      .findComponent({ name: "TargetPicker" })
+      .vm.$emit("select", pickerSelection(TABLE, "orders"));
+    await flushPromises();
+    setIntent("Orders must have rows");
+    await flushPromises();
+    buttonByText(label("dataQuality.suggestions.workbench.submit"))?.click();
+    await flushPromises();
+
+    // The second submission shares the first job; the reader hears it once.
+    expect(document.body.textContent).toContain(
+      label("dataQuality.suggestions.workbench.deduplicatedTitle")
+    );
+    expect(document.body.textContent).toContain(
+      label("dataQuality.suggestions.workbench.deduplicated")
+    );
+    wrapper.unmount();
+  });
+
+  it("reports what the synchronous pass created and refreshed", async () => {
+    mocks.suggestQualityRule.mockResolvedValue({
+      qualitySuggestions: [draftSuggestion()],
+      summary: create(QualitySuggestionQueueSummarySchema, {
+        created: 1,
+        refreshed: 2,
+        skippedExistingFact: 1,
+      }),
+    });
+    const wrapper = await mountWorkbench({
+      fixedTarget: {
+        tableGuid: TABLE,
+        metaType: MetaType.TABLE,
+        columns: ["id", "amount"],
+      },
+    });
+    await flushPromises();
+
+    setIntent("Orders must have rows");
+    await flushPromises();
+    buttonByText(label("dataQuality.llm.draft.generate"))?.click();
+    await flushPromises();
+
+    expect(document.body.textContent).toContain(
+      [
+        label("dataQuality.suggestionSummary.created", { count: 1 }),
+        label("dataQuality.suggestionSummary.refreshed", { count: 2 }),
+        label("dataQuality.suggestionSummary.skipped", { count: 1 }),
+      ].join(" · ")
+    );
+    wrapper.unmount();
+  });
+
   it("page mode reports a failed submission and emits nothing", async () => {
     const { ConnectError, Code } = await import("@connectrpc/connect");
     mocks.createQualitySuggestionJob.mockRejectedValue(
@@ -328,6 +421,7 @@ describe("SuggestionWorkbench", () => {
       columns: ["id", "amount"],
       intent: "Orders must have rows",
       language: "en-US",
+      forceRegenerate: false,
     });
     expect(document.body.textContent).toContain("Orders should have rows");
 

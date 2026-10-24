@@ -171,6 +171,33 @@ the current page to work in bulk (up to 200 per submit):
 - **Column labels** — *Accept labels* writes the semantic labels immediately;
   *Reject labels* discards them. Accepting a label does not touch data.
 
+### The queue does not accumulate duplicates
+
+Suggestions are proposals about a fact, and the queue keeps **one pending proposal
+per proposal identity**: one per column for a label, one per rule type plus the
+columns it covers for a rule draft. Clicking *Suggest labels* or *Draft with AI*
+again therefore never adds a second copy — the pass **refreshes** the pending
+proposal instead (the row keeps its identity, and its *refreshed* time moves). The
+result toast reports what happened: created, refreshed, and skipped.
+
+A generation pass also reconciles proposals with reality:
+
+- Columns that already have a semantic label are left out, and a pending label
+  proposal for such a column is closed as *Superseded*.
+- Rule drafts already covered by a saved rule are not queued, and a pending draft
+  they cover is closed as *Superseded*.
+- Proposals you already accepted or rejected are not proposed again. *Regenerate*
+  (on the table's Data Quality tab and in the drafting workbench) re-analyzes those
+  columns and rules; it still refreshes rather than duplicates.
+- Submitting the same drafting job twice while the first one is still pending or
+  running returns the first job instead of starting a second analysis.
+
+Because there is only ever one pending proposal per identity, accepting or
+rejecting acts on exactly that proposal: accepting a label writes it (and it will
+not be suggested again while it exists), rejecting it keeps it out of later passes
+until you explicitly regenerate. *Superseded* is not a decision — nobody accepted
+or rejected it; the reason is recorded in its note.
+
 A single row can also be opened in the editor or turned into a rule on its own.
 A draft is tied to the target it was written for: if you open it in the editor
 and change the target, the draft is detached (it stays pending in the queue) and
@@ -204,7 +231,7 @@ are too low for your workload.
 ## Retention
 
 Executions are kept 90 days, resolved issues 90 days, column profiles and the
-model result cache 7 days, decided suggestions 90 days, finished AI drafting jobs
+model result cache 7 days, decided or superseded suggestions 90 days, finished AI drafting jobs
 90 days, and captured raw LLM request/response debug entries 7 days; the
 maintenance runner prunes them. Rules, open issues and accepted labels are not
 pruned.

@@ -18,6 +18,7 @@ import {
   QualitySuggestionJobTargetSchema,
   QualitySuggestionJobTargetState,
   QualitySuggestionKind,
+  QualitySuggestionQueueSummarySchema,
   QualitySuggestionSchema,
   QualitySuggestionSource,
   QualitySuggestionStatus,
@@ -64,6 +65,8 @@ import {
   suggestionSourceKey,
   suggestionStatusKey,
   suggestionStatusVariant,
+  suggestionSummaryReason,
+  suggestionSummaryView,
   suggestionTargetLabel,
   suggestionTargetPath,
   suggestionToEditorPrefill,
@@ -140,6 +143,9 @@ describe("suggestion vocabulary", () => {
     expect(suggestionStatusKey(QualitySuggestionStatus.REJECTED)).toBe(
       "dataQuality.suggestionStatus.rejected"
     );
+    expect(suggestionStatusKey(QualitySuggestionStatus.SUPERSEDED)).toBe(
+      "dataQuality.suggestionStatus.superseded"
+    );
     expect(suggestionStatusKey(QualitySuggestionStatus.UNSPECIFIED)).toBe(
       "dataQuality.suggestionStatus.unspecified"
     );
@@ -157,6 +163,11 @@ describe("suggestion vocabulary", () => {
     );
     expect(suggestionStatusVariant(QualitySuggestionStatus.REJECTED)).toBe(
       "neutral"
+    );
+    // The server closed this one; it is never a person's decision, so it does
+    // not share the rejected tone.
+    expect(suggestionStatusVariant(QualitySuggestionStatus.SUPERSEDED)).toBe(
+      "outline"
     );
     expect(suggestionStatusVariant(99 as QualitySuggestionStatus)).toBe(
       "secondary"
@@ -268,6 +279,109 @@ describe("suggestion vocabulary", () => {
       "join key of orders",
       "Looks like an address.",
     ]);
+  });
+});
+
+describe("generation summary", () => {
+  function summary(
+    fields: Partial<{
+      created: number;
+      refreshed: number;
+      superseded: number;
+      skippedExistingFact: number;
+      skippedPending: number;
+      skippedDecided: number;
+    }>
+  ) {
+    return create(QualitySuggestionQueueSummarySchema, fields);
+  }
+
+  it("shows the non-zero counts a pass produced, in display order", () => {
+    const view = suggestionSummaryView(
+      summary({
+        created: 2,
+        refreshed: 1,
+        superseded: 1,
+        skippedExistingFact: 3,
+        skippedPending: 0,
+        skippedDecided: 0,
+      })
+    );
+
+    expect(view.available).toBe(true);
+    expect(view.queued).toBe(true);
+    expect(view.skipped).toBe(3);
+    expect(view.counts).toEqual([
+      { key: "dataQuality.suggestionSummary.created", count: 2 },
+      { key: "dataQuality.suggestionSummary.refreshed", count: 1 },
+      { key: "dataQuality.suggestionSummary.superseded", count: 1 },
+      { key: "dataQuality.suggestionSummary.skipped", count: 3 },
+    ]);
+  });
+
+  it("does not invent counts when the pass queued nothing", () => {
+    const view = suggestionSummaryView(summary({}));
+
+    expect(view.queued).toBe(false);
+    expect(view.counts).toEqual([]);
+  });
+
+  it("marks the summary unavailable when the server did not report one", () => {
+    const view = suggestionSummaryView(undefined);
+
+    expect(view.available).toBe(false);
+    expect(view.queued).toBe(false);
+    expect(view.counts).toEqual([]);
+  });
+
+  it("explains an empty pass by its strongest reason", () => {
+    expect(
+      suggestionSummaryReason(
+        summary({ skippedExistingFact: 2, skippedPending: 1 }),
+        "label"
+      )
+    ).toEqual({
+      key: "dataQuality.suggestionSummary.emptyLabelExistingFact",
+      count: 2,
+    });
+    expect(
+      suggestionSummaryReason(summary({ skippedExistingFact: 2 }), "rule")
+    ).toEqual({
+      key: "dataQuality.suggestionSummary.emptyRuleExistingFact",
+      count: 2,
+    });
+  });
+
+  it("falls back to pending, decided, superseded, then generic", () => {
+    expect(
+      suggestionSummaryReason(
+        summary({ skippedPending: 3, skippedDecided: 1 }),
+        "rule"
+      )
+    ).toEqual({
+      key: "dataQuality.suggestionSummary.emptyPending",
+      count: 3,
+    });
+    expect(
+      suggestionSummaryReason(summary({ skippedDecided: 2 }), "rule")
+    ).toEqual({
+      key: "dataQuality.suggestionSummary.emptyDecided",
+      count: 2,
+    });
+    expect(suggestionSummaryReason(summary({ superseded: 1 }), "rule")).toEqual(
+      {
+        key: "dataQuality.suggestionSummary.emptySuperseded",
+        count: 1,
+      }
+    );
+    expect(suggestionSummaryReason(summary({}), "rule")).toEqual({
+      key: "dataQuality.suggestionSummary.emptyGeneric",
+      count: 0,
+    });
+    expect(suggestionSummaryReason(undefined, "rule")).toEqual({
+      key: "dataQuality.suggestionSummary.emptyGeneric",
+      count: 0,
+    });
   });
 });
 

@@ -287,6 +287,7 @@
     - [QualitySuggestionJob](#metaxisdata-v1-QualitySuggestionJob)
     - [QualitySuggestionJobTarget](#metaxisdata-v1-QualitySuggestionJobTarget)
     - [QualitySuggestionPayload](#metaxisdata-v1-QualitySuggestionPayload)
+    - [QualitySuggestionQueueSummary](#metaxisdata-v1-QualitySuggestionQueueSummary)
     - [QualityTarget](#metaxisdata-v1-QualityTarget)
     - [QualityTargetPath](#metaxisdata-v1-QualityTargetPath)
     - [QualityThresholds](#metaxisdata-v1-QualityThresholds)
@@ -4262,6 +4263,7 @@ they are returned, so a wide text column cannot bloat the response.
 | intent | [string](#string) |  | The natural-language intent, e.g. &#34;email must not be empty&#34;. At most 2000 characters. |
 | language | [string](#string) |  | The language the intent and drafts are written in, e.g. &#34;en&#34; or &#34;zh-CN&#34;. |
 | targets | [QualityTarget](#metaxisdata-v1-QualityTarget) | repeated | The tables or views to draft for, at most 20. Set meta_guid, meta_type and optionally columns; the path and columns are snapshotted for progress. The job visits them in order. |
+| force_regenerate | [bool](#bool) |  | Re-propose drafts that were already accepted or rejected, and re-analyze columns that already have a fact. The queue is still deduplicated by identity: regeneration refreshes a pending proposal instead of appending a duplicate. |
 
 
 
@@ -5295,6 +5297,7 @@ normal rule or label path.
 | decided_by | [string](#string) |  | Who decided it. Format: users/{user}. Empty while pending. |
 | decide_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | decision_note | [string](#string) |  |  |
+| refresh_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When a later generation pass refreshed this pending proposal&#39;s payload. Unset when the proposal has not been refreshed. |
 
 
 
@@ -5327,6 +5330,7 @@ browser tab that submitted it and is safe to poll.
 | finish_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | error | [string](#string) |  | Empty unless the whole job failed; per-target failures live on the targets. |
 | created_by | [string](#string) |  | Format: users/{user}. |
+| deduplicated | [bool](#bool) |  | True when this response returns a job that was already PENDING or RUNNING for the same intent, targets and columns. Re-submitting an identical request is idempotent: no second job or analysis is started. |
 
 
 
@@ -5349,6 +5353,7 @@ to it. `suggestions` names the queued suggestions this target produced.
 | start_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | finish_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | diagnostic | [QualityLLMDiagnostic](#metaxisdata-v1-QualityLLMDiagnostic) |  | Set when the target failed in the model call: the classifier, provider facts, stop reason and usage behind the error, plus the correlation id that ties it to the server log and the debug log. |
+| summary | [QualitySuggestionQueueSummary](#metaxisdata-v1-QualitySuggestionQueueSummary) |  | What this target&#39;s pass did to the review queue. Set on success. |
 
 
 
@@ -5366,6 +5371,30 @@ can load into the editor, or a semantic label awaiting confirmation.
 | ----- | ---- | ----- | ----------- |
 | rule | [QualityRuleDraftConfig](#metaxisdata-v1-QualityRuleDraftConfig) |  |  |
 | label | [SemanticLabelSuggestion](#metaxisdata-v1-SemanticLabelSuggestion) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualitySuggestionQueueSummary"></a>
+
+### QualitySuggestionQueueSummary
+QualitySuggestionQueueSummary is what one generation pass did to the review
+queue. Generation reconciles proposals with the facts and with the live queue
+instead of appending rows, so a pass can create, refresh, close or skip
+proposals; these counts let the client explain the result.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| created | [int32](#int32) |  | Proposals that did not exist before this pass. |
+| refreshed | [int32](#int32) |  | Pending proposals whose payload this pass updated. |
+| superseded | [int32](#int32) |  | Pending proposals the pass closed because their fact now exists. |
+| skipped_existing_fact | [int32](#int32) |  | Skipped because the fact already exists: the column has a label, or a rule with the same identity exists. |
+| skipped_pending | [int32](#int32) |  | Skipped because an equivalent proposal is already pending; the default mode leaves it untouched instead of spending another analysis. |
+| skipped_decided | [int32](#int32) |  | Skipped because the same proposal was already accepted or rejected and the request did not force regeneration. |
+| skipped_columns | [string](#string) | repeated | The columns a label pass left out, so the client can name them. |
 
 
 
@@ -5698,6 +5727,7 @@ StringLengthConfig counts rows whose string length is outside the bounds.
 | meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
 | columns | [string](#string) | repeated | The columns to label; empty means every column of the table. At most 50. |
 | language | [string](#string) |  | The language the evidence and rationale are written in, e.g. &#34;en&#34; or &#34;zh-CN&#34;. |
+| force_regenerate | [bool](#bool) |  | Re-analyze columns that are already labeled, already have a pending proposal, or were already decided. Regeneration still never duplicates: it refreshes the one pending proposal per column. |
 
 
 
@@ -5712,7 +5742,8 @@ StringLengthConfig counts rows whose string length is outside the bounds.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| quality_suggestions | [QualitySuggestion](#metaxisdata-v1-QualitySuggestion) | repeated | The queued label proposals, pending review. |
+| quality_suggestions | [QualitySuggestion](#metaxisdata-v1-QualitySuggestion) | repeated | The label and rule-draft proposals this pass queued, created or refreshed. |
+| summary | [QualitySuggestionQueueSummary](#metaxisdata-v1-QualitySuggestionQueueSummary) |  | What the pass did to the queue, including the columns it left out. |
 
 
 
@@ -5733,6 +5764,7 @@ StringLengthConfig counts rows whose string length is outside the bounds.
 | columns | [string](#string) | repeated | The columns the intent is about; empty means the rule may use any column. |
 | intent | [string](#string) |  | The natural-language intent, e.g. &#34;email must not be empty&#34;. |
 | language | [string](#string) |  | The language the intent and the draft are written in, e.g. &#34;en&#34; or &#34;zh-CN&#34;. |
+| force_regenerate | [bool](#bool) |  | Re-propose drafts that were already accepted or rejected, and re-analyze columns that already have a fact. The queue is still deduplicated by identity: regeneration refreshes an existing pending proposal instead of appending a duplicate. |
 
 
 
@@ -5747,7 +5779,8 @@ StringLengthConfig counts rows whose string length is outside the bounds.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| quality_suggestions | [QualitySuggestion](#metaxisdata-v1-QualitySuggestion) | repeated | The queued drafts, pending review. |
+| quality_suggestions | [QualitySuggestion](#metaxisdata-v1-QualitySuggestion) | repeated | The drafts this pass queued, created or refreshed. Empty when every draft was already covered by a fact, was already decided, or failed validation. |
+| summary | [QualitySuggestionQueueSummary](#metaxisdata-v1-QualitySuggestionQueueSummary) |  | What the pass did to the queue. |
 
 
 
@@ -6277,12 +6310,19 @@ QualitySuggestionSource is what produced a suggestion.
 ### QualitySuggestionStatus
 QualitySuggestionStatus is where a suggestion is in the review queue.
 
+PENDING is the one live state. ACCEPTED and REJECTED are human decisions and
+final. SUPERSEDED means the server closed the proposal because its fact already
+exists (the column now has a label, or a rule with the same identity exists) or
+the target changed; it was never decided, and the same proposal may be queued
+again later.
+
 | Name | Number | Description |
 | ---- | ------ | ----------- |
 | QUALITY_SUGGESTION_STATUS_UNSPECIFIED | 0 |  |
 | QUALITY_SUGGESTION_STATUS_PENDING | 1 |  |
 | QUALITY_SUGGESTION_STATUS_ACCEPTED | 2 |  |
 | QUALITY_SUGGESTION_STATUS_REJECTED | 3 |  |
+| QUALITY_SUGGESTION_STATUS_SUPERSEDED | 4 |  |
 
 
 

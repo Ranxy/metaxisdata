@@ -24,17 +24,30 @@ const qualitySuggestionJobTargetLimit = 20
 // quality_suggestion_job returns, in the order scanQualitySuggestionJob expects
 // them.
 const qualitySuggestionJobColumns = `id, resource_id, status, intent, language, provider, model,
-	prompt_version, targets, cancel_requested, created_by, created_at, started_at, finished_at, error`
+	prompt_version, targets, request_fingerprint, force_regenerate, cancel_requested, created_by,
+	created_at, started_at, finished_at, error`
 
-// createQualitySuggestionJobQuery inserts one pending job. The runner claims it
-// later; nothing is executed in the request that creates it.
-const createQualitySuggestionJobQuery = `
+// queueQualitySuggestionJobQuery inserts one pending job, unless an identical
+// request is already PENDING or RUNNING. The partial unique index on
+// request_fingerprint is the idempotency guard: a double click or a retried
+// submission returns the job that already exists instead of starting a second
+// analysis. DO NOTHING leaves no returned row when the job already exists.
+const queueQualitySuggestionJobQuery = `
 	INSERT INTO quality_suggestion_job (
 		resource_id, status, intent, language, provider, model, prompt_version,
-		targets, cancel_requested, created_by, created_at
+		targets, request_fingerprint, force_regenerate, cancel_requested, created_by, created_at
 	)
-	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+	ON CONFLICT (request_fingerprint) WHERE status IN (1, 2) DO NOTHING
 	RETURNING id, created_at`
+
+// activeQualitySuggestionJobByFingerprintQuery finds the job that makes an
+// identical submission idempotent.
+const activeQualitySuggestionJobByFingerprintQuery = `SELECT ` + qualitySuggestionJobColumns + `
+	FROM quality_suggestion_job
+	WHERE request_fingerprint = $1 AND status IN (1, 2)
+	ORDER BY id
+	LIMIT 1`
 
 // claimQualitySuggestionJobQuery claims one pending job. FOR UPDATE SKIP LOCKED
 // makes two runner replicas (or a restart overlapping itself) pick different jobs;
@@ -94,7 +107,12 @@ type QualitySuggestionJobMessage struct {
 	Model         string
 	PromptVersion string
 	// Targets is the per-target snapshot; never nil on a row that was read.
-	Targets         *storepb.QualitySuggestionJobTargets
+	Targets *storepb.QualitySuggestionJobTargets
+	// RequestFingerprint identifies an identical submission. At most one PENDING or
+	// RUNNING job may carry it.
+	RequestFingerprint string
+	// ForceRegenerate asks the drafting pass to revisit already decided proposals.
+	ForceRegenerate bool
 	CancelRequested bool
 	CreatedBy       *int32
 	CreatedAt       time.Time
@@ -155,8 +173,9 @@ func scanQualitySuggestionJob(row rowScanner) (*QualitySuggestionJobMessage, err
 	)
 	scanErr := row.Scan(
 		&message.ID, &message.ResourceID, &status, &message.Intent, &message.Language, &message.Provider,
-		&message.Model, &message.PromptVersion, &targets, &message.CancelRequested, &createdBy,
-		&message.CreatedAt, &startedAt, &finishedAt, &message.Error,
+		&message.Model, &message.PromptVersion, &targets, &message.RequestFingerprint,
+		&message.ForceRegenerate, &message.CancelRequested, &createdBy, &message.CreatedAt, &startedAt,
+		&finishedAt, &message.Error,
 	)
 	if scanErr != nil {
 		return nil, scanErr
@@ -281,6 +300,11 @@ func validateQualitySuggestionJob(message *QualitySuggestionJobMessage) error {
 	if strings.TrimSpace(message.Intent) == "" {
 		return common.Errorf(common.Invalid, "quality suggestion job intent is required")
 	}
+	// The fingerprint is what makes a repeated submission idempotent; a job without
+	// one would silently start a second analysis for the same request.
+	if strings.TrimSpace(message.RequestFingerprint) == "" {
+		return common.Errorf(common.Invalid, "quality suggestion job request fingerprint is required")
+	}
 	return validateQualitySuggestionJobTargets(message.Targets)
 }
 
@@ -303,15 +327,17 @@ func marshalQualitySuggestionJobTargets(targets *storepb.QualitySuggestionJobTar
 	return raw, nil
 }
 
-// CreateQualitySuggestionJob inserts one PENDING job and returns it with the id and
-// create time the store assigned.
-func (s *Store) CreateQualitySuggestionJob(ctx context.Context, message *QualitySuggestionJobMessage) (*QualitySuggestionJobMessage, error) {
+// QueueQualitySuggestionJob inserts one PENDING job and reports whether it was
+// created. When a job with the same request fingerprint is already PENDING or
+// RUNNING, that job is returned with created=false: resubmitting an identical
+// request is idempotent, so a double click cannot start a second analysis.
+func (s *Store) QueueQualitySuggestionJob(ctx context.Context, message *QualitySuggestionJobMessage) (*QualitySuggestionJobMessage, bool, error) {
 	if err := validateQualitySuggestionJob(message); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	targetsRaw, err := marshalQualitySuggestionJobTargets(message.Targets)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	createdAt := message.CreatedAt
 	if createdAt.IsZero() {
@@ -324,19 +350,85 @@ func (s *Store) CreateQualitySuggestionJob(ctx context.Context, message *Quality
 		id              int64
 		storedCreatedAt time.Time
 	)
-	insertErr := s.GetDB().QueryRowContext(ctx, createQualitySuggestionJobQuery,
+	insertErr := s.GetDB().QueryRowContext(ctx, queueQualitySuggestionJobQuery,
 		message.ResourceID, int32(message.Status), message.Intent, message.Language, message.Provider,
-		message.Model, message.PromptVersion, targetsRaw, message.CancelRequested, message.CreatedBy,
-		createdAt,
+		message.Model, message.PromptVersion, targetsRaw, message.RequestFingerprint,
+		message.ForceRegenerate, message.CancelRequested, message.CreatedBy, createdAt,
 	).Scan(&id, &storedCreatedAt)
-	if insertErr != nil {
-		return nil, errors.Wrap(insertErr, "failed to create a quality suggestion job")
+	switch {
+	case insertErr == nil:
+		stored := *message
+		stored.ID = id
+		stored.CreatedAt = storedCreatedAt
+		return &stored, true, nil
+	case !errors.Is(insertErr, sql.ErrNoRows):
+		return nil, false, errors.Wrap(insertErr, "failed to create a quality suggestion job")
 	}
 
+	// The conflict target absorbed the insert: an identical request is already
+	// active. Return that job so the caller can poll the work it asked for.
+	existing, err := scanQualitySuggestionJob(s.GetDB().QueryRowContext(ctx,
+		activeQualitySuggestionJobByFingerprintQuery, message.RequestFingerprint))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			// The active job finished between the insert and this read; retry once so
+			// the caller still gets a job representing its request.
+			return s.queueQualitySuggestionJobOnce(ctx, message)
+		}
+		return nil, false, errors.Wrap(err, "failed to read the active quality suggestion job")
+	}
+	return existing, false, nil
+}
+
+// queueQualitySuggestionJobOnce retries an insert after the active job it
+// collided with finished in the gap. It is not expected in practice; it keeps the
+// caller's contract ("you get a job") even then.
+func (s *Store) queueQualitySuggestionJobOnce(ctx context.Context, message *QualitySuggestionJobMessage) (*QualitySuggestionJobMessage, bool, error) {
+	targetsRaw, err := marshalQualitySuggestionJobTargets(message.Targets)
+	if err != nil {
+		return nil, false, err
+	}
+	createdAt := message.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
+	} else {
+		createdAt = createdAt.UTC()
+	}
+	var (
+		id              int64
+		storedCreatedAt time.Time
+	)
+	if err := s.GetDB().QueryRowContext(ctx, queueQualitySuggestionJobQuery,
+		message.ResourceID, int32(message.Status), message.Intent, message.Language, message.Provider,
+		message.Model, message.PromptVersion, targetsRaw, message.RequestFingerprint,
+		message.ForceRegenerate, message.CancelRequested, message.CreatedBy, createdAt,
+	).Scan(&id, &storedCreatedAt); err != nil {
+		return nil, false, errors.Wrap(err, "failed to create a quality suggestion job")
+	}
 	stored := *message
 	stored.ID = id
 	stored.CreatedAt = storedCreatedAt
-	return &stored, nil
+	return &stored, true, nil
+}
+
+// GetActiveQualitySuggestionJobByFingerprint returns the PENDING or RUNNING job
+// with this request fingerprint, or (nil, nil) when none is active. The API reads
+// it before doing provider or quota prechecks so a repeated submission returns the
+// work that is already running instead of failing on a precondition that the first
+// submission passed.
+func (s *Store) GetActiveQualitySuggestionJobByFingerprint(ctx context.Context, fingerprint string) (*QualitySuggestionJobMessage, error) {
+	if strings.TrimSpace(fingerprint) == "" {
+		return nil, common.Errorf(common.Invalid, "quality suggestion job request fingerprint is required")
+	}
+	job, err := scanQualitySuggestionJob(s.GetDB().QueryRowContext(ctx,
+		activeQualitySuggestionJobByFingerprintQuery, fingerprint))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, errors.Wrap(err, "failed to read the active quality suggestion job")
+	}
+	return job, nil
 }
 
 // GetQualitySuggestionJob returns the job the find names, or (nil, nil) when it

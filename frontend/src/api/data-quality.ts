@@ -58,7 +58,9 @@ import {
   type QualityTarget,
   RunQualityRulesRequestSchema,
   SuggestColumnLabelsRequestSchema,
+  type SuggestColumnLabelsResponse,
   SuggestQualityRuleRequestSchema,
+  type SuggestQualityRuleResponse,
   UpdateColumnLabelRequestSchema,
   UpdateQualityIssueRequestSchema,
   UpdateQualityRuleRequestSchema,
@@ -554,17 +556,23 @@ export async function getQualityLLMUsage(
  * Submit one durable AI drafting job for several targets. The server runs the
  * analyses in the background; the returned job is safe to poll and outlives the
  * browser tab.
+ *
+ * An identical request while its job is still PENDING/RUNNING returns that job
+ * with `deduplicated` set instead of starting a second analysis.
  */
 export async function createQualitySuggestionJob(options: {
   intent: string;
   language?: string;
   targets: QualityTarget[];
+  /** Re-propose drafts the queue already decided; pending ones are refreshed. */
+  forceRegenerate?: boolean;
 }): Promise<QualitySuggestionJob> {
   const request = create(CreateQualitySuggestionJobRequestSchema, {
     parent: WORKSPACE_PARENT,
     intent: options.intent,
     language: options.language ?? "",
     targets: options.targets,
+    forceRegenerate: options.forceRegenerate ?? false,
   });
   return await dataQualityClient.createQualitySuggestionJob(request);
 }
@@ -720,15 +728,20 @@ export async function profileColumns(options: {
   return response.columnProfiles;
 }
 
-/** Ask the model for rule drafts and queue them as suggestions. */
+/**
+ * Ask the model for rule drafts and queue them as suggestions. The response
+ * carries the queue summary, which explains why a pass may queue nothing.
+ */
 export async function suggestQualityRule(options: {
   tableGuid: string;
   metaType: MetaType;
   columns?: string[];
   intent?: string;
   language?: string;
+  /** Re-propose drafts the queue already decided; pending ones are refreshed. */
+  forceRegenerate?: boolean;
   signal?: AbortSignal;
-}): Promise<QualitySuggestion[]> {
+}): Promise<SuggestQualityRuleResponse> {
   const request = create(SuggestQualityRuleRequestSchema, {
     parent: WORKSPACE_PARENT,
     tableGuid: options.tableGuid,
@@ -736,32 +749,37 @@ export async function suggestQualityRule(options: {
     columns: options.columns ?? [],
     intent: options.intent ?? "",
     language: options.language ?? "",
+    forceRegenerate: options.forceRegenerate ?? false,
   });
-  const response = await dataQualityClient.suggestQualityRule(request, {
+  return await dataQualityClient.suggestQualityRule(request, {
     signal: options.signal,
   });
-  return response.qualitySuggestions;
 }
 
-/** Ask the model for semantic column labels and queue them as suggestions. */
+/**
+ * Ask the model for semantic column labels and queue them as suggestions. The
+ * response carries the queue summary, including the columns the pass left out.
+ */
 export async function suggestColumnLabels(options: {
   tableGuid: string;
   metaType: MetaType;
   columns?: string[];
   language?: string;
+  /** Re-analyze labeled columns and decided proposals; pending ones are refreshed. */
+  forceRegenerate?: boolean;
   signal?: AbortSignal;
-}): Promise<QualitySuggestion[]> {
+}): Promise<SuggestColumnLabelsResponse> {
   const request = create(SuggestColumnLabelsRequestSchema, {
     parent: WORKSPACE_PARENT,
     tableGuid: options.tableGuid,
     metaType: options.metaType,
     columns: options.columns ?? [],
     language: options.language ?? "",
+    forceRegenerate: options.forceRegenerate ?? false,
   });
-  const response = await dataQualityClient.suggestColumnLabels(request, {
+  return await dataQualityClient.suggestColumnLabels(request, {
     signal: options.signal,
   });
-  return response.qualitySuggestions;
 }
 
 /**

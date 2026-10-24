@@ -1028,9 +1028,27 @@ func convertQualitySuggestion(workspaceID string, suggestion *store.QualitySugge
 		Model:         suggestion.Model,
 		PromptVersion: suggestion.PromptVersion,
 		CreateTime:    timestamppb.New(suggestion.CreatedAt),
+		RefreshTime:   timestampOrNil(suggestion.RefreshedAt),
 		DecidedBy:     formatQualityOwner(suggestion.DecidedBy),
 		DecideTime:    timestampOrNil(suggestion.DecidedAt),
 		DecisionNote:  suggestion.DecisionNote,
+	}
+}
+
+// convertQualitySuggestionQueueSummary maps what one generation pass did to the
+// queue. It is optional: a pass that failed before touching the queue returns none.
+func convertQualitySuggestionQueueSummary(summary *storepb.QualitySuggestionQueueSummary) *v1pb.QualitySuggestionQueueSummary {
+	if summary == nil {
+		return nil
+	}
+	return &v1pb.QualitySuggestionQueueSummary{
+		Created:             summary.GetCreated(),
+		Refreshed:           summary.GetRefreshed(),
+		Superseded:          summary.GetSuperseded(),
+		SkippedExistingFact: summary.GetSkippedExistingFact(),
+		SkippedPending:      summary.GetSkippedPending(),
+		SkippedDecided:      summary.GetSkippedDecided(),
+		SkippedColumns:      append([]string(nil), summary.GetSkippedColumns()...),
 	}
 }
 
@@ -1087,6 +1105,7 @@ func convertQualitySuggestionJob(workspaceID string, job *store.QualitySuggestio
 			State:      convertQualitySuggestionJobTargetState(target.GetState()),
 			Error:      target.GetError(),
 			Diagnostic: convertQualityLLMDiagnosticToV1(target.GetDiagnostic()),
+			Summary:    convertQualitySuggestionQueueSummary(target.GetSummary()),
 			StartTime:  unixMillisecondTimestamp(target.GetStartedAtUnixMs()),
 			FinishTime: unixMillisecondTimestamp(target.GetFinishedAtUnixMs()),
 		}

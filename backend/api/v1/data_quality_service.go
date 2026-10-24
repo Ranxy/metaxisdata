@@ -444,10 +444,31 @@ func (s *DataQualityService) createQualityRuleFromRequest(ctx context.Context, w
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the quality rule")
 	}
+	// A saved rule is the fact; any pending proposal with the same identity is now
+	// stale. Closing it here keeps the review queue consistent with the rule list
+	// even when the rule was written by hand rather than from the draft.
+	s.supersedeMatchingRuleDrafts(ctx, created)
 	if suggestion != nil {
 		s.acceptRuleDraftSuggestion(ctx, suggestion)
 	}
 	return convertQualityRule(workspaceID, created), nil
+}
+
+// supersedeMatchingRuleDrafts closes pending rule-draft proposals that the saved
+// rule now covers. The write is best effort: the rule is already durable, and a
+// stale proposal is a queue blemish, not a correctness problem.
+func (s *DataQualityService) supersedeMatchingRuleDrafts(ctx context.Context, rule *store.QualityRuleMessage) {
+	if rule == nil {
+		return
+	}
+	signature := dataquality.RuleSignature(rule.RuleType, rule.Config)
+	if _, err := s.store.SupersedePendingQualitySuggestions(ctx, rule.TargetGUID, rule.TargetType,
+		[]string{signature}, "a saved rule with the same identity exists", time.Now()); err != nil {
+		slog.Warn("failed to close a pending rule draft covered by a saved rule",
+			slog.String("rule", rule.ResourceID),
+			slog.String("signature", signature),
+			slog.Any("error", err))
+	}
 }
 
 // pendingRuleDraftSuggestion loads the rule draft a rule is created from and
@@ -1704,7 +1725,8 @@ func applyQualitySuggestionListFilters(find *store.FindQualitySuggestionMessage,
 	case storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_UNSPECIFIED:
 	case storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
 		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED,
-		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_REJECTED:
+		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_REJECTED,
+		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_SUPERSEDED:
 		find.Statuses = []storepb.QualitySuggestionStatus{status}
 	default:
 		return connectErrorInvalid("unknown quality suggestion status %d", status)
@@ -1971,6 +1993,17 @@ func (s *DataQualityService) UpdateColumnLabel(ctx context.Context, req *connect
 		})
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to store the column label")
+		}
+		// The label is now a fact, so a pending proposal for this column is stale.
+		// This also covers a proposal the reviewer never opened, which would otherwise
+		// keep asking to assert a label that is already there.
+		if _, err := s.store.SupersedePendingQualitySuggestions(ctx, update.tableGUID, update.metaType,
+			[]string{dataquality.LabelSuggestionSignature(update.column)},
+			"the column label was set manually", time.Now()); err != nil {
+			slog.Warn("failed to close a pending label suggestion after a manual label write",
+				slog.String("table_guid", update.tableGUID),
+				slog.String("column", update.column),
+				slog.Any("error", err))
 		}
 		return connect.NewResponse(&v1pb.UpdateColumnLabelResponse{
 			ColumnLabel: convertColumnSemanticLabelToV1(stored),

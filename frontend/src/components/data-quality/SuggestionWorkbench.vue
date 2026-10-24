@@ -51,6 +51,18 @@
                 {{ t("dataQuality.suggestions.workbench.submittedHint") }}
               </AlertDescription>
             </Alert>
+            <!-- An identical submission while its job is still active returns that
+                 job instead of starting a second analysis. -->
+            <Alert
+              v-if="submittedJob.deduplicated"
+              class="border-info/30 bg-info-subtle text-info [&>svg]:text-info"
+            >
+              <Info class="h-4 w-4" />
+              <AlertTitle>{{ t("dataQuality.suggestions.workbench.deduplicatedTitle") }}</AlertTitle>
+              <AlertDescription>
+                {{ t("dataQuality.suggestions.workbench.deduplicated") }}
+              </AlertDescription>
+            </Alert>
             <div class="space-y-2">
               <div class="text-sm font-medium">
                 {{ t("dataQuality.suggestions.workbench.submittedTargets", { count: submittedTargetLabels.length }) }}
@@ -59,9 +71,17 @@
                 <li
                   v-for="(label, index) in submittedTargetLabels"
                   :key="`${label}-${index}`"
-                  class="truncate"
+                  class="space-y-0.5"
                 >
-                  {{ label }}
+                  <div class="truncate">
+                    {{ label }}
+                  </div>
+                  <div
+                    v-if="submittedTargetSummary(index)"
+                    class="text-xs text-muted-foreground"
+                  >
+                    {{ submittedTargetSummary(index) }}
+                  </div>
                 </li>
               </ul>
             </div>
@@ -212,6 +232,26 @@
               </p>
             </div>
 
+            <!-- Regeneration bypasses the reconciliation skips: reviewed proposals
+                 are re-proposed and labeled columns re-analyzed. It never duplicates,
+                 because the queue still holds one pending proposal per identity. -->
+            <label class="flex cursor-pointer items-start gap-2 rounded-md border p-3">
+              <Checkbox
+                :checked="forceRegenerate"
+                class="mt-0.5"
+                :aria-label="t('dataQuality.llm.draft.forceRegenerate')"
+                @update:checked="(checked: boolean | 'indeterminate') => (forceRegenerate = checked === true)"
+              />
+              <span class="space-y-0.5">
+                <span class="block text-sm font-medium">
+                  {{ t("dataQuality.llm.draft.forceRegenerate") }}
+                </span>
+                <span class="block text-sm text-muted-foreground">
+                  {{ t("dataQuality.llm.draft.forceRegenerateHint") }}
+                </span>
+              </span>
+            </label>
+
             <Alert
               v-if="error"
               variant="destructive"
@@ -255,8 +295,18 @@
               class="space-y-3"
             >
               <div class="flex flex-wrap items-center justify-between gap-2">
-                <div class="text-sm font-medium">
-                  {{ t("dataQuality.llm.draft.resultsTitle", { count: results.length }) }}
+                <div class="space-y-0.5">
+                  <div class="text-sm font-medium">
+                    {{ t("dataQuality.llm.draft.resultsTitle", { count: results.length }) }}
+                  </div>
+                  <!-- The sync call reconciles too: created and refreshed rows share
+                       this list, so the pass's own counts say which is which. -->
+                  <p
+                    v-if="resultSummaryText"
+                    class="text-xs text-muted-foreground"
+                  >
+                    {{ resultSummaryText }}
+                  </p>
                 </div>
                 <RouterLink
                   :to="{ name: 'DataQualitySuggestions' }"
@@ -369,6 +419,7 @@
 import {
   AlertTriangle,
   CheckCircle2,
+  Info,
   Loader2,
   Plus,
   Sparkles,
@@ -399,12 +450,14 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useErrorMessage } from "@/composables/useErrorHandler";
+import { useSuggestionSummary } from "@/composables/useSuggestionSummary";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
 import { useInstanceStore } from "@/store/modules/instance";
 import {
   type QualitySuggestion,
   type QualitySuggestionJob,
+  type QualitySuggestionQueueSummary,
   QualitySuggestionStatus,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
@@ -417,6 +470,7 @@ import {
 import {
   jobTargetLabel,
   MAX_SUGGESTION_JOB_TARGETS,
+  suggestionSummaryView,
   syncDraftErrorHintKey,
 } from "@/utils/dataQualitySuggestion";
 import { extractErrorMessage } from "@/utils/error";
@@ -457,6 +511,7 @@ const emit = defineEmits<{
 
 const { t, locale } = useI18n();
 const { formatError } = useErrorMessage();
+const { summaryText, notifySummary } = useSuggestionSummary();
 const authStore = useAuthStore();
 const instanceStore = useInstanceStore();
 
@@ -477,6 +532,10 @@ const columnsLoading = ref(false);
 const generating = ref(false);
 const generated = ref(false);
 const results = ref<QualitySuggestion[]>([]);
+/** What the last synchronous pass did to the queue, beyond the rows it returned. */
+const resultSummary = ref<QualitySuggestionQueueSummary>();
+/** Re-propose reviewed drafts and re-analyze labeled columns. */
+const forceRegenerate = ref(false);
 const submittedJob = ref<QualitySuggestionJob>();
 const busyName = ref("");
 const error = ref("");
@@ -517,6 +576,25 @@ const submittedTargetLabels = computed(() =>
   )
 );
 
+/** What one submitted target's pass did, once the server reports a summary. */
+function submittedTargetSummary(index: number): string {
+  const target = submittedJob.value?.targets[index];
+  if (
+    !target?.summary ||
+    suggestionSummaryView(target.summary).counts.length === 0
+  ) {
+    return "";
+  }
+  return summaryText(target.summary, "rule", target.suggestions.length);
+}
+
+/** The counts the synchronous pass produced, when it reported them. */
+const resultSummaryText = computed(() =>
+  resultSummary.value
+    ? summaryText(resultSummary.value, "rule", results.value.length)
+    : ""
+);
+
 function targetInstanceTitle(instanceId: string): string {
   return instanceId ? instanceStore.titleOf(`instances/${instanceId}`) : "";
 }
@@ -531,6 +609,8 @@ function reset() {
   generating.value = false;
   generated.value = false;
   results.value = [];
+  resultSummary.value = undefined;
+  forceRegenerate.value = false;
   submittedJob.value = undefined;
   busyName.value = "";
   error.value = "";
@@ -721,6 +801,7 @@ async function submitJob() {
     const job = await createQualitySuggestionJob({
       intent: intent.value.trim(),
       language: locale.value,
+      forceRegenerate: forceRegenerate.value,
       targets: targets.value.map((target) =>
         buildTarget({ ...target, columns: columnsFor(target.guid) })
       ),
@@ -750,19 +831,23 @@ async function generateEditor() {
   errorKey.value = "";
   rawError.value = "";
   results.value = [];
+  resultSummary.value = undefined;
   generated.value = false;
   try {
-    results.value = await suggestQualityRule({
+    const response = await suggestQualityRule({
       tableGuid: target.tableGuid,
       metaType: target.metaType,
       columns: [...selectedColumns.value],
       intent: intent.value.trim(),
       language: locale.value,
+      forceRegenerate: forceRegenerate.value,
     });
+    results.value = response.qualitySuggestions;
+    resultSummary.value = response.summary;
     generated.value = true;
-    if (results.value.length === 0) {
-      notify.info(t("dataQuality.llm.draft.emptyTitle"));
-    }
+    // The drafts that do come back may be old rows refreshed in place, so the
+    // pass's own counts are what the reader needs, not just their number.
+    notifySummary(response.summary, "rule", results.value.length);
   } catch (e: unknown) {
     errorKey.value = explainErrorMessageKey(e);
     rawError.value = extractErrorMessage(e);

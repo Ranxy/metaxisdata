@@ -224,12 +224,13 @@ func (f *qualityFixture) seedSuggestion(t *testing.T, kind storepb.QualitySugges
 
 	resourceID, err := common.RandomString(12)
 	require.NoError(t, err)
-	suggestion, err := f.env.Store.CreateQualitySuggestion(f.ctx, &store.QualitySuggestionMessage{
+	suggestion, queued, err := f.env.Store.QueueQualitySuggestion(f.ctx, &store.QualitySuggestionMessage{
 		ResourceID:    resourceID,
 		Kind:          kind,
 		Source:        storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE,
 		TargetGUID:    f.usersGUID,
 		TargetType:    storepb.MetaType_TABLE,
+		Signature:     "seed:" + resourceID,
 		Payload:       payload,
 		Status:        storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
 		Provider:      "profiles/integration",
@@ -237,6 +238,7 @@ func (f *qualityFixture) seedSuggestion(t *testing.T, kind storepb.QualitySugges
 		PromptVersion: "dq.rule_draft.v1",
 	})
 	require.NoError(t, err)
+	require.True(t, queued)
 	return suggestion
 }
 
@@ -1036,14 +1038,15 @@ func TestDataQualitySuggestionJobsRealServerIntegration(t *testing.T) {
 		}
 		return target
 	}
-	seeded, err := fixture.env.Store.CreateQualitySuggestionJob(fixture.ctx, &store.QualitySuggestionJobMessage{
-		ResourceID:    resourceID,
-		Status:        storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_RUNNING,
-		Intent:        "email must not be empty",
-		Language:      "en",
-		Provider:      "profiles/integration",
-		Model:         "integration-model",
-		PromptVersion: "dq.rule_draft.v1",
+	seeded, _, err := fixture.env.Store.QueueQualitySuggestionJob(fixture.ctx, &store.QualitySuggestionJobMessage{
+		ResourceID:         resourceID,
+		Status:             storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_RUNNING,
+		Intent:             "email must not be empty",
+		RequestFingerprint: "seed:" + resourceID,
+		Language:           "en",
+		Provider:           "profiles/integration",
+		Model:              "integration-model",
+		PromptVersion:      "dq.rule_draft.v1",
 		// The first target's failure was not captured (runtime debug off); the second
 		// says it was captured but has no row in the debug log any more, so the
 		// retrieval reports the pruned case without error.
@@ -2043,4 +2046,141 @@ func TestDataQualityLLMLimitsRealServerIntegration(t *testing.T) {
 	require.Equal(t, int32(77), custom.Msg.GetDailyColumnAnalysisLimit())
 	require.LessOrEqual(t, custom.Msg.GetDailyAnalysisUsed(), custom.Msg.GetDailyAnalysisLimit())
 	require.Zero(t, custom.Msg.GetInFlight())
+}
+
+// Suggestions are keyed by proposal identity, not appended: queueing the same
+// label twice refreshes the one pending row, and closing it as SUPERSEDED lets a
+// later pass queue a fresh row. This exercises the partial unique index and the
+// upsert against the real database.
+func TestQualitySuggestionQueueIsIdempotentRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	fixture := setupQualityMySQLFixture(t, false)
+	ctx := fixture.ctx
+
+	signature := dataquality.LabelSuggestionSignature("email")
+	payload := qualityLabelSuggestionPayload("email", storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_EMAIL)
+	queue := func(resourceID string) (*store.QualitySuggestionMessage, bool) {
+		queued, created, err := fixture.env.Store.QueueQualitySuggestion(ctx, &store.QualitySuggestionMessage{
+			ResourceID: resourceID,
+			Kind:       storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_LABEL,
+			Source:     storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_PROFILE,
+			TargetGUID: fixture.usersGUID,
+			TargetType: storepb.MetaType_TABLE,
+			Signature:  signature,
+			Payload:    payload,
+			Status:     storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
+			Provider:   "profiles/integration",
+			Model:      "integration-model",
+		})
+		require.NoError(t, err)
+		return queued, created
+	}
+
+	firstID, err := common.RandomString(12)
+	require.NoError(t, err)
+	first, created := queue(firstID)
+	require.True(t, created)
+	require.Nil(t, first.RefreshedAt)
+
+	secondID, err := common.RandomString(12)
+	require.NoError(t, err)
+	second, created := queue(secondID)
+	require.False(t, created, "the same proposal must refresh the pending row, not append")
+	require.Equal(t, first.ID, second.ID)
+	require.Equal(t, first.ResourceID, second.ResourceID)
+	require.NotNil(t, second.RefreshedAt)
+
+	pending, err := fixture.env.Store.ListQualitySuggestions(ctx, &store.FindQualitySuggestionMessage{
+		TargetGUID: &fixture.usersGUID,
+		Statuses:   []storepb.QualitySuggestionStatus{storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING},
+		Kinds:      []storepb.QualitySuggestionKind{storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_LABEL},
+	})
+	require.NoError(t, err)
+	require.Len(t, pending, 1)
+
+	states, err := fixture.env.Store.QualitySuggestionSignatureStates(ctx, fixture.usersGUID,
+		storepb.MetaType_TABLE, []string{signature})
+	require.NoError(t, err)
+	require.True(t, states[signature].Pending)
+	require.Equal(t, storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_UNSPECIFIED, states[signature].LastDecision)
+
+	superseded, err := fixture.env.Store.SupersedePendingQualitySuggestions(ctx, fixture.usersGUID,
+		storepb.MetaType_TABLE, append([]string(nil), signature), "the column already has a semantic label", time.Now())
+	require.NoError(t, err)
+	require.Equal(t, int64(1), superseded)
+
+	// Closing a proposal is not a reviewer decision: the signature has no last
+	// decision, so a later pass may still propose it.
+	states, err = fixture.env.Store.QualitySuggestionSignatureStates(ctx, fixture.usersGUID,
+		storepb.MetaType_TABLE, []string{signature})
+	require.NoError(t, err)
+	require.False(t, states[signature].Pending)
+	require.Equal(t, storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_UNSPECIFIED, states[signature].LastDecision)
+
+	againID, err := common.RandomString(12)
+	require.NoError(t, err)
+	_, created = queue(againID)
+	require.True(t, created, "a superseded proposal may be proposed again")
+
+	// A different identity is a different pending proposal.
+	otherID, err := common.RandomString(12)
+	require.NoError(t, err)
+	other, created, err := fixture.env.Store.QueueQualitySuggestion(ctx, &store.QualitySuggestionMessage{
+		ResourceID: otherID,
+		Kind:       storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_LABEL,
+		Source:     storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_PROFILE,
+		TargetGUID: fixture.usersGUID,
+		TargetType: storepb.MetaType_TABLE,
+		Signature:  dataquality.LabelSuggestionSignature("phone"),
+		Payload:    qualityLabelSuggestionPayload("phone", storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_PHONE),
+		Status:     storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
+	})
+	require.NoError(t, err)
+	require.True(t, created)
+	require.NotEqual(t, first.ID, other.ID)
+}
+
+// An identical drafting request is idempotent while the first job is active: the
+// second call returns the existing job instead of inserting a second row. The
+// partial unique index is what makes this hold under concurrent submissions.
+func TestQualitySuggestionJobQueueIsIdempotentRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	fixture := setupQualityMySQLFixture(t, false)
+	ctx := fixture.ctx
+
+	fingerprint := "integration-fingerprint"
+	queue := func(resourceID string) (*store.QualitySuggestionJobMessage, bool) {
+		job, created, err := fixture.env.Store.QueueQualitySuggestionJob(ctx, &store.QualitySuggestionJobMessage{
+			ResourceID: resourceID,
+			Status:     storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_RUNNING,
+			Intent:     "email must not be empty",
+			Language:   "en",
+			Targets: &storepb.QualitySuggestionJobTargets{Targets: []*storepb.QualitySuggestionJobTarget{{
+				TargetGuid: fixture.usersGUID,
+				TargetType: int32(storepb.MetaType_TABLE),
+				State:      storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING,
+			}}},
+			RequestFingerprint: fingerprint,
+		})
+		require.NoError(t, err)
+		return job, created
+	}
+
+	firstID, err := common.RandomString(12)
+	require.NoError(t, err)
+	first, created := queue(firstID)
+	require.True(t, created)
+
+	secondID, err := common.RandomString(12)
+	require.NoError(t, err)
+	second, created := queue(secondID)
+	require.False(t, created)
+	require.Equal(t, first.ResourceID, second.ResourceID)
+
+	active, err := fixture.env.Store.GetActiveQualitySuggestionJobByFingerprint(ctx, fingerprint)
+	require.NoError(t, err)
+	require.NotNil(t, active)
+	require.Equal(t, first.ResourceID, active.ResourceID)
 }

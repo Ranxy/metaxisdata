@@ -274,3 +274,41 @@ func TestSnapshotSuggestionJobTargetsRejectsBadShapes(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }
+
+// A repeated submission of the same intent, language, force flag and target
+// snapshot must produce the same fingerprint: that is what lets the store return
+// the active job instead of starting a second analysis.
+func TestQualitySuggestionJobFingerprintIsStable(t *testing.T) {
+	t.Parallel()
+
+	targets := func(columns []string) *storepb.QualitySuggestionJobTargets {
+		return &storepb.QualitySuggestionJobTargets{Targets: []*storepb.QualitySuggestionJobTarget{
+			{
+				TargetGuid: "instances/i;shop;public;orders",
+				TargetType: int32(storepb.MetaType_TABLE),
+				Columns:    columns,
+			},
+		}}
+	}
+	first, err := qualitySuggestionJobFingerprint("email must not be empty", "en", false, targets([]string{"email", "id"}))
+	require.NoError(t, err)
+	second, err := qualitySuggestionJobFingerprint("email must not be empty", "en", false, targets([]string{"id", "email"}))
+	require.NoError(t, err)
+	require.Equal(t, first, second)
+
+	for name, changed := range map[string]struct {
+		intent   string
+		language string
+		force    bool
+		targets  *storepb.QualitySuggestionJobTargets
+	}{
+		"intent":   {"phone must not be empty", "en", false, targets([]string{"email", "id"})},
+		"language": {"email must not be empty", "zh-CN", false, targets([]string{"email", "id"})},
+		"force":    {"email must not be empty", "en", true, targets([]string{"email", "id"})},
+		"target":   {"email must not be empty", "en", false, targets([]string{"email"})},
+	} {
+		fingerprint, err := qualitySuggestionJobFingerprint(changed.intent, changed.language, changed.force, changed.targets)
+		require.NoError(t, err)
+		require.NotEqual(t, first, fingerprint, "changing %s must change the fingerprint", name)
+	}
+}

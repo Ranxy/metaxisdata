@@ -24,6 +24,8 @@ type qualitySuggestionJobScannerStub struct {
 	model           string
 	promptVersion   string
 	targets         []byte
+	fingerprint     string
+	forceRegenerate bool
 	cancelRequested bool
 	createdBy       sql.NullInt32
 	createdAt       time.Time
@@ -42,12 +44,14 @@ func (s qualitySuggestionJobScannerStub) Scan(dest ...any) error {
 	*(dest[6].(*string)) = s.model
 	*(dest[7].(*string)) = s.promptVersion
 	*(dest[8].(*[]byte)) = s.targets
-	*(dest[9].(*bool)) = s.cancelRequested
-	*(dest[10].(*sql.NullInt32)) = s.createdBy
-	*(dest[11].(*time.Time)) = s.createdAt
-	*(dest[12].(*sql.NullTime)) = s.startedAt
-	*(dest[13].(*sql.NullTime)) = s.finishedAt
-	*(dest[14].(*string)) = s.errText
+	*(dest[9].(*string)) = s.fingerprint
+	*(dest[10].(*bool)) = s.forceRegenerate
+	*(dest[11].(*bool)) = s.cancelRequested
+	*(dest[12].(*sql.NullInt32)) = s.createdBy
+	*(dest[13].(*time.Time)) = s.createdAt
+	*(dest[14].(*sql.NullTime)) = s.startedAt
+	*(dest[15].(*sql.NullTime)) = s.finishedAt
+	*(dest[16].(*string)) = s.errText
 	return nil
 }
 
@@ -130,10 +134,11 @@ func TestValidateQualitySuggestionJob(t *testing.T) {
 	t.Parallel()
 
 	base := &QualitySuggestionJobMessage{
-		ResourceID: "job1",
-		Status:     storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_PENDING,
-		Intent:     "email must not be empty",
-		Targets:    jobTestTargets(t),
+		ResourceID:         "job1",
+		Status:             storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_PENDING,
+		Intent:             "email must not be empty",
+		Targets:            jobTestTargets(t),
+		RequestFingerprint: "fingerprint",
 	}
 	require.NoError(t, validateQualitySuggestionJob(base))
 	require.Equal(t, common.Invalid, common.ErrorCode(validateQualitySuggestionJob(nil)))
@@ -247,9 +252,15 @@ func TestQualitySuggestionJobStatementsGuardTheLifecycle(t *testing.T) {
 	require.Contains(t, qualitySuggestionJobCancelLockQuery, "FOR UPDATE")
 	requirePlaceholdersMatchArgs(t, qualitySuggestionJobCancelLockQuery, []any{"job1"})
 
-	require.Contains(t, createQualitySuggestionJobQuery, "INSERT INTO quality_suggestion_job")
-	require.Contains(t, createQualitySuggestionJobQuery, "RETURNING id, created_at")
-	requirePlaceholdersMatchArgs(t, createQualitySuggestionJobQuery, make([]any, 11))
+	// A job insert is idempotent by request fingerprint: an identical submission
+	// while the first job is active inserts nothing and the handler returns the
+	// existing job.
+	require.Contains(t, queueQualitySuggestionJobQuery, "INSERT INTO quality_suggestion_job")
+	require.Contains(t, queueQualitySuggestionJobQuery, "ON CONFLICT (request_fingerprint) WHERE status IN (1, 2) DO NOTHING")
+	require.Contains(t, queueQualitySuggestionJobQuery, "RETURNING id, created_at")
+	requirePlaceholdersMatchArgs(t, queueQualitySuggestionJobQuery, make([]any, 13))
+	require.Contains(t, activeQualitySuggestionJobByFingerprintQuery, "status IN (1, 2)")
+	requirePlaceholdersMatchArgs(t, activeQualitySuggestionJobByFingerprintQuery, []any{"fp"})
 
 	// Retention only prunes terminal rows: the three status arguments are
 	// COMPLETED, FAILED and CANCELED.
