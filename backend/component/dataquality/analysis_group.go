@@ -2,6 +2,7 @@ package dataquality
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
@@ -25,6 +26,11 @@ type analysisGroup struct {
 	mu    sync.Mutex
 	calls map[string]*analysisCall
 }
+
+// errAnalysisPanicked is what followers of a panicked shared call receive. The
+// leader's panic is re-raised to its caller, so the runner's per-job recover still
+// sees it.
+var errAnalysisPanicked = errors.New("the shared LLM analysis panicked")
 
 // analysisCall is one in-flight shared analysis.
 type analysisCall struct {
@@ -73,8 +79,25 @@ func (g *analysisGroup) Do(ctx context.Context, key string, fn func(context.Cont
 		g.calls[key] = call
 		g.mu.Unlock()
 
-		call.text, call.usage, call.diagnostic, call.err = fn(ctx)
-		call.ctxErr = ctx.Err()
+		// A panic in the shared call must not leave the entry behind: every later
+		// caller of the same prompt would block on a channel nobody closes. Publish a
+		// failure to the waiting callers, drop the entry, and re-panic so the
+		// surrounding runner/job isolation still handles the panic.
+		func() {
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					call.err = errAnalysisPanicked
+					call.ctxErr = nil
+					close(call.done)
+					g.mu.Lock()
+					delete(g.calls, key)
+					g.mu.Unlock()
+					panic(recovered)
+				}
+			}()
+			call.text, call.usage, call.diagnostic, call.err = fn(ctx)
+			call.ctxErr = ctx.Err()
+		}()
 		if call.err == nil && call.ctxErr != nil {
 			call.err = call.ctxErr
 		}

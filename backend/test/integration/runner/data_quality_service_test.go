@@ -2236,3 +2236,48 @@ func TestQualitySuggestionJobQueueIsIdempotentRealServerIntegration(t *testing.T
 	require.NotNil(t, active)
 	require.Equal(t, first.ResourceID, active.ResourceID)
 }
+
+// Reopening is the rollback of a rule-creation claim: it returns an ACCEPTED draft
+// to PENDING and clears the refresh stamp, so the reviewer can retry it. This
+// exercises the ACCEPTED-only guard against the real database.
+func TestQualitySuggestionReopenRollsBackTheClaimRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	fixture := setupQualityMySQLFixture(t, false)
+	ctx := fixture.ctx
+	signature := dataquality.LabelSuggestionSignature("email")
+	payload := qualityLabelSuggestionPayload("email", storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_EMAIL)
+
+	resourceID, err := common.RandomString(12)
+	require.NoError(t, err)
+	queued, created, err := fixture.env.Store.QueueQualitySuggestion(ctx, &store.QualitySuggestionMessage{
+		ResourceID: resourceID,
+		Kind:       storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_LABEL,
+		Source:     storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_PROFILE,
+		TargetGUID: fixture.usersGUID,
+		TargetType: storepb.MetaType_TABLE,
+		Signature:  signature,
+		Payload:    payload,
+		Status:     storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
+	})
+	require.NoError(t, err)
+	require.True(t, created)
+
+	decided, err := fixture.env.Store.DecideQualitySuggestion(ctx, queued.ResourceID,
+		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED,
+		int32(1), "", time.Now())
+	require.NoError(t, err)
+	require.Nil(t, decided.RefreshedAt)
+
+	reopened, err := fixture.env.Store.ReopenQualitySuggestion(ctx, queued.ResourceID)
+	require.NoError(t, err)
+	require.Equal(t, storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING, reopened.Status)
+	require.Nil(t, reopened.DecidedBy)
+	require.Nil(t, reopened.DecidedAt)
+	require.Empty(t, reopened.DecisionNote)
+	require.Nil(t, reopened.RefreshedAt)
+
+	// Reopening is guarded: a PENDING row is not reopened a second time.
+	_, err = fixture.env.Store.ReopenQualitySuggestion(ctx, queued.ResourceID)
+	require.Error(t, err)
+}

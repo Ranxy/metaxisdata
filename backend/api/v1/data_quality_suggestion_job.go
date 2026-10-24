@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -162,6 +163,14 @@ func qualitySuggestionJobFingerprint(intent, language string, force bool, target
 			Columns: slices.Compact(columns),
 		})
 	}
+	// The job visits its targets in order, but the same set in another order asks
+	// the same questions; fingerprint the set, not the presentation order.
+	slices.SortFunc(payload.Targets, func(left, right fingerprintTarget) int {
+		if left.Type != right.Type {
+			return cmp.Compare(left.Type, right.Type)
+		}
+		return cmp.Compare(left.GUID, right.GUID)
+	})
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		return "", connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to encode the quality suggestion job request"))

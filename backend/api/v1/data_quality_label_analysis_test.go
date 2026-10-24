@@ -269,3 +269,68 @@ func TestLabelSuggestionToLabelMessageRejectsBadPayloads(t *testing.T) {
 		})
 	}
 }
+
+// The label pass decides what to analyze and what to close before spending quota.
+// These cases pin the reconciliation rules: fact wins, pending is not re-analyzed,
+// rejection keeps its column out, and force keeps everything in but closes nothing.
+func TestPlanQualityLabelPass(t *testing.T) {
+	t.Parallel()
+
+	columns := []string{"id", "email", "phone", "country", "created_at"}
+	labelSignature := dataquality.LabelSuggestionSignature
+	states := map[string]store.QualitySuggestionSignatureState{
+		labelSignature("email"):      {Pending: true, LastDecision: storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_UNSPECIFIED},
+		labelSignature("phone"):      {LastDecision: storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_REJECTED},
+		labelSignature("country"):    {Pending: true, LastDecision: storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_UNSPECIFIED},
+		labelSignature("created_at"): {LastDecision: storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED},
+	}
+	labels := map[string]storepb.QualitySemanticType{
+		"country": storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_COUNTRY_CODE,
+	}
+
+	t.Run("facts, pending and decided columns are skipped", func(t *testing.T) {
+		t.Parallel()
+
+		plan := planQualityLabelPass(columns, labels, states, false)
+		require.Equal(t, []string{"id", "created_at"}, plan.Columns)
+		require.Equal(t, []string{labelSignature("country")}, plan.SupersedeSignatures,
+			"only a pending proposal whose fact now exists is closed")
+		require.Equal(t, int32(1), plan.Summary.SkippedExistingFact)
+		require.Equal(t, int32(1), plan.Summary.SkippedPending)
+		require.Equal(t, int32(1), plan.Summary.SkippedDecided)
+		require.Equal(t, []string{"email", "phone", "country"}, plan.Summary.SkippedColumns,
+			"skipped columns stay in request order")
+	})
+
+	t.Run("force keeps every column and closes nothing", func(t *testing.T) {
+		t.Parallel()
+
+		plan := planQualityLabelPass(columns, labels, states, true)
+		require.Equal(t, columns, plan.Columns)
+		require.Empty(t, plan.SupersedeSignatures)
+		require.Zero(t, plan.Summary.GetSkippedExistingFact())
+		require.Zero(t, plan.Summary.GetSkippedPending())
+		require.Zero(t, plan.Summary.GetSkippedDecided())
+		require.Empty(t, plan.Summary.GetSkippedColumns())
+	})
+
+	t.Run("nothing to analyze yields an empty plan but the skip counts", func(t *testing.T) {
+		t.Parallel()
+
+		plan := planQualityLabelPass([]string{"country"}, labels, states, false)
+		require.Empty(t, plan.Columns)
+		require.Equal(t, []string{labelSignature("country")}, plan.SupersedeSignatures)
+		require.Equal(t, int32(1), plan.Summary.GetSkippedExistingFact())
+	})
+
+	t.Run("a decided proposal without a fact does not suppress", func(t *testing.T) {
+		t.Parallel()
+
+		onlyAccepted := map[string]store.QualitySuggestionSignatureState{
+			labelSignature("email"): {LastDecision: storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED},
+		}
+		plan := planQualityLabelPass([]string{"email"}, nil, onlyAccepted, false)
+		require.Equal(t, []string{"email"}, plan.Columns,
+			"an accepted label suggestion whose label was cleared may be proposed again")
+	})
+}

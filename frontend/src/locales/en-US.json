@@ -1014,6 +1014,7 @@
         "submitting": "Deciding…",
         "success": "Suggestions decided: {count}."
       },
+      "closedAt": "Closed at",
       "collapseGroup": "Collapse group",
       "column": "Column",
       "confidence": "Confidence",
@@ -1131,6 +1132,7 @@
       "status": "Status",
       "suggestedRuleTypes": "Deterministic rule types",
       "suggestion": "Suggestion",
+      "supersededByServer": "Closed by the server",
       "title": "Suggestion queue",
       "viewAllStatuses": "Show all statuses",
       "workbench": {

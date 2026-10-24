@@ -108,7 +108,6 @@ func (s *DataQualityService) SuggestColumnLabels(ctx context.Context, req *conne
 	// Decide what still needs a proposal before spending quota. The queue state for
 	// every requested column is read once, because it decides both the analysis set
 	// and which stale proposals this pass should close.
-	summary := &storepb.QualitySuggestionQueueSummary{}
 	existingLabels, err := s.qualityLabelExistingLabels(ctx, resolution.Target, requestedColumns)
 	if err != nil {
 		return nil, err
@@ -121,39 +120,19 @@ func (s *DataQualityService) SuggestColumnLabels(ctx context.Context, req *conne
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to read the label suggestion history"))
 	}
-	columns := make([]string, 0, len(requestedColumns))
-	for _, column := range requestedColumns {
-		signature := dataquality.LabelSuggestionSignature(column)
-		state := labelStates[signature]
-		if _, labeled := existingLabels[column]; labeled && !force {
-			// The fact exists. A pending proposal for it is stale, so this pass closes
-			// it instead of leaving a contradiction in the queue.
-			if state.Pending {
-				superseded, err := s.store.SupersedePendingQualitySuggestions(ctx, guid, metaType,
-					[]string{signature}, "the column already has a semantic label", time.Now())
-				if err != nil {
-					return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to close a stale label suggestion"))
-				}
-				summary.Superseded += int32(superseded)
-			}
-			summary.SkippedExistingFact++
-			summary.SkippedColumns = append(summary.SkippedColumns, column)
-			continue
+	plan := planQualityLabelPass(requestedColumns, existingLabels, labelStates, force)
+	summary := plan.Summary
+	if len(plan.SupersedeSignatures) > 0 {
+		// One statement closes every stale proposal this pass found; the returned
+		// count is what actually changed (a concurrent reviewer may have decided one).
+		superseded, supersedeErr := s.store.SupersedePendingQualitySuggestions(ctx, guid, metaType,
+			plan.SupersedeSignatures, "the column already has a semantic label", time.Now())
+		if supersedeErr != nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(supersedeErr, "failed to close stale label suggestions"))
 		}
-		if !force {
-			if state.Pending {
-				summary.SkippedPending++
-				summary.SkippedColumns = append(summary.SkippedColumns, column)
-				continue
-			}
-			if dataquality.SuggestionDecisionSuppressesLabel(state.LastDecision) {
-				summary.SkippedDecided++
-				summary.SkippedColumns = append(summary.SkippedColumns, column)
-				continue
-			}
-		}
-		columns = append(columns, column)
+		summary.Superseded += int32(superseded)
 	}
+	columns := plan.Columns
 	if len(columns) == 0 {
 		// Every column already has a fact or a proposal. Nothing to spend: returning
 		// the summary is the honest answer.
@@ -351,6 +330,60 @@ func (s *DataQualityService) queueQualityLabelSuggestion(ctx context.Context, ki
 		return nil, false, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to queue a column-label suggestion"))
 	}
 	return suggestion, created, nil
+}
+
+// qualityLabelPassPlan is the pure decision of one label pass: which columns still
+// need analysis and which pending proposals the pass should close. Keeping it
+// separate from the handler makes the skip/force/count rules testable without a
+// store, which is where the queue semantics actually live.
+type qualityLabelPassPlan struct {
+	// Columns is the analysis set, in request order.
+	Columns []string
+	// SupersedeSignatures are pending label proposals whose column now has a label.
+	SupersedeSignatures []string
+	// Summary counts the skips; created/refreshed/superseded are filled by the
+	// caller as writes happen.
+	Summary *storepb.QualitySuggestionQueueSummary
+}
+
+// planQualityLabelPass applies the reconciliation rules to the facts and queue
+// state read by the caller. A labeled column is left out and its pending proposal
+// is scheduled for closing; a pending proposal is not analyzed again; a previous
+// rejection keeps the column out; force keeps all of them in the analysis set and
+// closes nothing.
+func planQualityLabelPass(requestedColumns []string, existingLabels map[string]storepb.QualitySemanticType, states map[string]store.QualitySuggestionSignatureState, force bool) qualityLabelPassPlan {
+	plan := qualityLabelPassPlan{
+		Columns: make([]string, 0, len(requestedColumns)),
+		Summary: &storepb.QualitySuggestionQueueSummary{},
+	}
+	for _, column := range requestedColumns {
+		signature := dataquality.LabelSuggestionSignature(column)
+		state := states[signature]
+		if _, labeled := existingLabels[column]; labeled && !force {
+			// The fact exists. A pending proposal for it is stale, so this pass closes
+			// it instead of leaving a contradiction in the queue.
+			if state.Pending {
+				plan.SupersedeSignatures = append(plan.SupersedeSignatures, signature)
+			}
+			plan.Summary.SkippedExistingFact++
+			plan.Summary.SkippedColumns = append(plan.Summary.SkippedColumns, column)
+			continue
+		}
+		if !force {
+			if state.Pending {
+				plan.Summary.SkippedPending++
+				plan.Summary.SkippedColumns = append(plan.Summary.SkippedColumns, column)
+				continue
+			}
+			if dataquality.SuggestionDecisionSuppressesLabel(state.LastDecision) {
+				plan.Summary.SkippedDecided++
+				plan.Summary.SkippedColumns = append(plan.Summary.SkippedColumns, column)
+				continue
+			}
+		}
+		plan.Columns = append(plan.Columns, column)
+	}
+	return plan
 }
 
 // qualityLabelProfiles reads the cached profiles the prompt cites, and refuses

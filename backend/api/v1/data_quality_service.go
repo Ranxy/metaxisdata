@@ -40,6 +40,10 @@ const (
 	qualityPreviewProbeTimeout = 10 * time.Second
 	// qualityListMaximum is the page size ceiling every list here shares.
 	qualityListMaximum = 1000
+	// qualitySuggestionRollbackTimeout bounds the detached write that returns a
+	// claimed draft to PENDING after the rule write failed. The request context may
+	// already be canceled (client gone), but the rollback must still happen.
+	qualitySuggestionRollbackTimeout = 5 * time.Second
 	// qualityProfileSampleRows bounds the sample a profile request reads; the
 	// aggregate query scans the table, the sample only feeds Top-K and patterns.
 	qualityProfileSampleRows = 1000
@@ -461,7 +465,12 @@ func (s *DataQualityService) createQualityRuleFromRequest(ctx context.Context, w
 		// The rule was not written, so the claim must not stand: put the draft back
 		// in the queue for a retry. Best effort, like the decision itself.
 		if suggestion != nil {
-			if _, reopenErr := s.store.ReopenQualitySuggestion(ctx, suggestion.ResourceID); reopenErr != nil {
+			// The request context may be the reason the write failed (client gone), so
+			// the rollback runs detached with its own short deadline.
+			rollbackCtx, cancelRollback := context.WithTimeout(context.WithoutCancel(ctx), qualitySuggestionRollbackTimeout)
+			_, reopenErr := s.store.ReopenQualitySuggestion(rollbackCtx, suggestion.ResourceID)
+			cancelRollback()
+			if reopenErr != nil {
 				slog.Warn("failed to reopen the quality suggestion a failed rule creation had claimed",
 					slog.String("suggestion", suggestion.ResourceID),
 					slog.Any("error", reopenErr))
@@ -484,12 +493,13 @@ func (s *DataQualityService) supersedeMatchingRuleDrafts(ctx context.Context, ru
 		return
 	}
 	signature := dataquality.RuleSignature(rule.RuleType, rule.Config)
-	if _, err := s.store.SupersedePendingQualitySuggestions(ctx, rule.TargetGUID, rule.TargetType,
-		[]string{signature}, "a saved rule with the same identity exists", time.Now()); err != nil {
+	_, supersedeErr := s.store.SupersedePendingQualitySuggestions(ctx, rule.TargetGUID, rule.TargetType,
+		[]string{signature}, "a saved rule with the same identity exists", time.Now())
+	if supersedeErr != nil {
 		slog.Warn("failed to close a pending rule draft covered by a saved rule",
 			slog.String("rule", rule.ResourceID),
 			slog.String("signature", signature),
-			slog.Any("error", err))
+			slog.Any("error", supersedeErr))
 	}
 }
 
@@ -2005,13 +2015,14 @@ func (s *DataQualityService) UpdateColumnLabel(ctx context.Context, req *connect
 		// The label is now a fact, so a pending proposal for this column is stale.
 		// This also covers a proposal the reviewer never opened, which would otherwise
 		// keep asking to assert a label that is already there.
-		if _, err := s.store.SupersedePendingQualitySuggestions(ctx, update.tableGUID, update.metaType,
+		_, supersedeErr := s.store.SupersedePendingQualitySuggestions(ctx, update.tableGUID, update.metaType,
 			[]string{dataquality.LabelSuggestionSignature(update.column)},
-			"the column label was set manually", time.Now()); err != nil {
+			"the column label was set manually", time.Now())
+		if supersedeErr != nil {
 			slog.Warn("failed to close a pending label suggestion after a manual label write",
 				slog.String("table_guid", update.tableGUID),
 				slog.String("column", update.column),
-				slog.Any("error", err))
+				slog.Any("error", supersedeErr))
 		}
 		return connect.NewResponse(&v1pb.UpdateColumnLabelResponse{
 			ColumnLabel: convertColumnSemanticLabelToV1(stored),

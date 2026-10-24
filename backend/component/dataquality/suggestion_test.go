@@ -175,3 +175,102 @@ func TestRuleSignatureIncludesTheFilter(t *testing.T) {
 		RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, first),
 		RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, second))
 }
+
+// Directional rules keep their left/right roles: sorting the column set must not
+// turn "a > b" and "b > a" into one proposal.
+func TestRuleSignatureKeepsDirectionalRoles(t *testing.T) {
+	t.Parallel()
+
+	crossColumn := func(left, right string) *storepb.QualityRuleConfig {
+		return &storepb.QualityRuleConfig{
+			Config: &storepb.QualityRuleConfig_CrossColumn{CrossColumn: &storepb.CrossColumnConfig{
+				LeftColumn: left, RightColumn: right,
+				Op: storepb.QualityComparisonOperator_QUALITY_COMPARISON_OPERATOR_GT,
+			}},
+		}
+	}
+	forward := RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN, crossColumn("a", "b"))
+	reverse := RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN, crossColumn("b", "a"))
+	require.NotEqual(t, forward, reverse, "cross_column is directional")
+
+	crossTable := func(left, right string) *storepb.QualityRuleConfig {
+		return &storepb.QualityRuleConfig{
+			Config: &storepb.QualityRuleConfig_CrossTable{CrossTable: &storepb.CrossTableConfig{
+				LeftColumn: left, RightColumn: right, RightTable: "other",
+				LeftFunction:  storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
+				RightFunction: storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
+			}},
+		}
+	}
+	require.NotEqual(t,
+		RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, crossTable("a", "b")),
+		RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, crossTable("b", "a")),
+		"cross_table sides are not interchangeable")
+}
+
+// Semantic config fields that change what a rule judges are part of its identity;
+// otherwise one proposal overwrites the other and a saved rule suppresses the
+// wrong draft.
+func TestRuleSignatureIncludesSemanticConfigValues(t *testing.T) {
+	t.Parallel()
+
+	regex := func(pattern string) *storepb.QualityRuleConfig {
+		return &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Regex{
+			Regex: &storepb.RegexConfig{Column: "email", Pattern: pattern},
+		}}
+	}
+	require.NotEqual(t,
+		RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX, regex("^.+@.+$")),
+		RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX, regex("^[a-z]+$")),
+		"different regex patterns are different rules")
+
+	accepted := func(values []string, allowNull bool) *storepb.QualityRuleConfig {
+		return &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_AcceptedValues{
+			AcceptedValues: &storepb.AcceptedValuesConfig{Column: "country", Values: values, AllowNull: allowNull},
+		}}
+	}
+	require.NotEqual(t,
+		RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES, accepted([]string{"US", "CA"}, false)),
+		RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES, accepted([]string{"US", "MX"}, false)),
+		"different accepted sets are different rules")
+	require.Equal(t,
+		RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES, accepted([]string{"CA", "US"}, false)),
+		RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES, accepted([]string{"US", "CA"}, false)),
+		"the accepted set is order-insensitive")
+
+	unique := func(countNulls bool) *storepb.QualityRuleConfig {
+		return &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Unique{
+			Unique: &storepb.UniqueConfig{Column: "email", CountNulls: countNulls},
+		}}
+	}
+	require.NotEqual(t,
+		RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, unique(false)),
+		RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, unique(true)),
+		"counting NULLs as a value is a different rule")
+
+	percent := &storepb.QualityRuleConfig{
+		Config:          &storepb.QualityRuleConfig_Unique{Unique: &storepb.UniqueConfig{Column: "email"}},
+		ThresholdMetric: storepb.QualityThresholdMetric_QUALITY_THRESHOLD_METRIC_PERCENT,
+	}
+	count := &storepb.QualityRuleConfig{
+		Config: &storepb.QualityRuleConfig_Unique{Unique: &storepb.UniqueConfig{Column: "email"}},
+	}
+	require.NotEqual(t,
+		RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, percent),
+		RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, count),
+		"COUNT and PERCENT thresholds are different units")
+
+	drift := func(columns ...string) *storepb.QualityRuleConfig {
+		expected := make([]*storepb.SchemaDriftColumn, 0, len(columns))
+		for _, name := range columns {
+			expected = append(expected, &storepb.SchemaDriftColumn{Name: name, Type: "text"})
+		}
+		return &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_SchemaDrift{
+			SchemaDrift: &storepb.SchemaDriftConfig{ExpectedColumns: expected},
+		}}
+	}
+	require.NotEqual(t,
+		RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT, drift("a", "b")),
+		RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT, drift("a", "c")),
+		"a different expected schema is a different rule")
+}

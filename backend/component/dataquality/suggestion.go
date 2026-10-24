@@ -53,6 +53,11 @@ func RuleSignature(ruleType storepb.QualityRuleType, config *storepb.QualityRule
 	if filter := config.GetFilter(); len(filter.GetClauses()) > 0 {
 		parts = append(parts, "filter="+suggestionFilterDigest(filter))
 	}
+	// COUNT is the default unit; only an explicit PERCENT changes what the rule
+	// means, so it participates in the identity.
+	if config.GetThresholdMetric() == storepb.QualityThresholdMetric_QUALITY_THRESHOLD_METRIC_PERCENT {
+		parts = append(parts, "metric=PERCENT")
+	}
 	return suggestionSignatureJoin(parts...)
 }
 
@@ -120,10 +125,19 @@ func ruleSignatureDiscriminators(ruleType storepb.QualityRuleType, config *store
 		}
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN:
 		cross := config.GetCrossColumn()
-		if cross == nil || cross.GetOp() == storepb.QualityComparisonOperator_QUALITY_COMPARISON_OPERATOR_UNSPECIFIED {
+		if cross == nil {
 			return nil
 		}
-		return []string{"op=" + cross.GetOp().String()}
+		// A cross-column comparison is directional: "a > b" and "b > a" are
+		// different rules, so the left/right roles survive the sorted column set.
+		parts := []string{
+			"left=" + suggestionSignatureEscape(cross.GetLeftColumn()),
+			"right=" + suggestionSignatureEscape(cross.GetRightColumn()),
+		}
+		if cross.GetOp() != storepb.QualityComparisonOperator_QUALITY_COMPARISON_OPERATOR_UNSPECIFIED {
+			parts = append(parts, "op="+cross.GetOp().String())
+		}
+		return parts
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE:
 		aggregate := config.GetAggregate()
 		if aggregate == nil {
@@ -143,7 +157,46 @@ func ruleSignatureDiscriminators(ruleType storepb.QualityRuleType, config *store
 			"right=" + suggestionSignatureEscape(cross.GetRightTable()),
 			"left_fn=" + cross.GetLeftFunction().String(),
 			"right_fn=" + cross.GetRightFunction().String(),
+			// The two sides of a reconciliation are not interchangeable.
+			"left_col=" + suggestionSignatureEscape(cross.GetLeftColumn()),
+			"right_col=" + suggestionSignatureEscape(cross.GetRightColumn()),
 		}
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE:
+		unique := config.GetUnique()
+		if unique == nil || !unique.GetCountNulls() {
+			return nil
+		}
+		// Counting NULLs as a value is a different rule, not a threshold variant.
+		return []string{"count_nulls=true"}
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION:
+		combination := config.GetUniqueCombination()
+		if combination == nil || !combination.GetAllColumns() {
+			return nil
+		}
+		return []string{"all_columns=true"}
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES:
+		accepted := config.GetAcceptedValues()
+		if accepted == nil {
+			return nil
+		}
+		values := append([]string(nil), accepted.GetValues()...)
+		slices.Sort(values)
+		return []string{
+			"values=" + suggestionSignatureHash(strings.Join(slices.Compact(values), "\x00")),
+			"allow_null=" + strconv.FormatBool(accepted.GetAllowNull()),
+		}
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX:
+		regex := config.GetRegex()
+		if regex == nil {
+			return nil
+		}
+		return []string{"pattern=" + suggestionSignatureHash(regex.GetPattern())}
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT:
+		drift := config.GetSchemaDrift()
+		if drift == nil {
+			return nil
+		}
+		return []string{"expected=" + suggestionSignatureHash(schemaDriftIdentitySnapshot(drift))}
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL:
 		custom := config.GetCustomSql()
 		if custom == nil {
@@ -159,29 +212,15 @@ func ruleSignatureDiscriminators(ruleType storepb.QualityRuleType, config *store
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED:
 		return nil
 	default:
 		return nil
 	}
-}
-
-// SuggestionSignatureKind returns the kind a signature belongs to, which is useful
-// when a caller only has the stored signature.
-func SuggestionSignatureKind(signature string) storepb.QualitySuggestionKind {
-	if strings.HasPrefix(signature, suggestionSignatureLabelPrefix+"|") {
-		return storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_LABEL
-	}
-	return storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT
 }
 
 // suggestionSignatureColumns renders a column set as one canonical segment: sorted,
@@ -209,14 +248,16 @@ func normalizeSignatureColumns(columns []string) []string {
 	return slices.Compact(normalized)
 }
 
-// suggestionSignatureJoin joins non-empty segments so a signature never has an
-// ambiguous trailing separator.
+// suggestionSignatureJoin joins the segments with "|". Column sets are rendered as
+// one segment and an empty set keeps its separator, so the boundary between the
+// type and the columns stays unambiguous.
 func suggestionSignatureJoin(parts ...string) string {
 	return strings.Join(append([]string(nil), parts...), "|")
 }
 
-// suggestionSignatureEscape keeps separators and case out of the identity: column
-// names are database identifiers, so they are escaped rather than assumed safe.
+// suggestionSignatureEscape keeps separators and control characters out of the
+// identity: column names are database identifiers, and quoted identifiers are
+// case-sensitive, so only escaping (not case folding) is applied.
 func suggestionSignatureEscape(value string) string {
 	return url.QueryEscape(strings.TrimSpace(value))
 }
@@ -243,6 +284,39 @@ func suggestionFilterDigest(filter *storepb.QualityFilter) string {
 	}
 	slices.Sort(clauses)
 	return suggestionSignatureHash(strings.Join(clauses, ";"))
+}
+
+// schemaDriftIdentitySnapshot renders the schema contract a schema_drift rule pins. The
+// expected column order only matters when the rule checks it, so an unordered
+// snapshot folds order away.
+func schemaDriftIdentitySnapshot(drift *storepb.SchemaDriftConfig) string {
+	checkOrder := drift.GetCheckOrder()
+	entries := make([]string, 0, len(drift.GetExpectedColumns()))
+	for _, column := range drift.GetExpectedColumns() {
+		if column == nil {
+			continue
+		}
+		nullable := "unknown"
+		if column.Nullable != nil {
+			nullable = strconv.FormatBool(column.GetNullable())
+		}
+		entries = append(entries, strings.Join([]string{
+			suggestionSignatureEscape(column.GetName()), column.GetType(), nullable,
+		}, "\x00"))
+	}
+	if !checkOrder {
+		slices.Sort(entries)
+	}
+	checkTypes := true
+	if drift.CheckTypes != nil {
+		checkTypes = drift.GetCheckTypes()
+	}
+	return strings.Join([]string{
+		strconv.FormatBool(checkTypes),
+		strconv.FormatBool(checkOrder),
+		strconv.FormatBool(drift.GetAllowExtraColumns()),
+		strings.Join(entries, "\x01"),
+	}, "\x02")
 }
 
 func singleColumn(column string) []string {

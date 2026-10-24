@@ -1014,6 +1014,7 @@
         "submitting": "正在处理…",
         "success": "已处理建议：{count} 条。"
       },
+      "closedAt": "关闭于",
       "collapseGroup": "收起本组",
       "column": "字段",
       "confidence": "置信度",
@@ -1131,6 +1132,7 @@
       "status": "状态",
       "suggestedRuleTypes": "确定性映射出的规则类型",
       "suggestion": "建议",
+      "supersededByServer": "已由系统关闭",
       "title": "建议队列",
       "viewAllStatuses": "查看全部状态",
       "workbench": {

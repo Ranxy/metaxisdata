@@ -290,11 +290,30 @@ func TestQualitySuggestionJobFingerprintIsStable(t *testing.T) {
 			},
 		}}
 	}
+	twoTargets := func() *storepb.QualitySuggestionJobTargets {
+		return &storepb.QualitySuggestionJobTargets{Targets: []*storepb.QualitySuggestionJobTarget{
+			{TargetGuid: "instances/i;shop;public;orders", TargetType: int32(storepb.MetaType_TABLE), Columns: []string{"id"}},
+			{TargetGuid: "instances/i;shop;public;users", TargetType: int32(storepb.MetaType_TABLE), Columns: []string{"email"}},
+		}}
+	}
+	reorderedTargets := func() *storepb.QualitySuggestionJobTargets {
+		return &storepb.QualitySuggestionJobTargets{Targets: []*storepb.QualitySuggestionJobTarget{
+			{TargetGuid: "instances/i;shop;public;users", TargetType: int32(storepb.MetaType_TABLE), Columns: []string{"email"}},
+			{TargetGuid: "instances/i;shop;public;orders", TargetType: int32(storepb.MetaType_TABLE), Columns: []string{"id"}},
+		}}
+	}
 	first, err := qualitySuggestionJobFingerprint("email must not be empty", "en", false, targets([]string{"email", "id"}))
 	require.NoError(t, err)
 	second, err := qualitySuggestionJobFingerprint("email must not be empty", "en", false, targets([]string{"id", "email"}))
 	require.NoError(t, err)
 	require.Equal(t, first, second)
+
+	// The same target set listed in another order asks the same questions.
+	setOrder, err := qualitySuggestionJobFingerprint("email must not be empty", "en", false, twoTargets())
+	require.NoError(t, err)
+	reordered, err := qualitySuggestionJobFingerprint("email must not be empty", "en", false, reorderedTargets())
+	require.NoError(t, err)
+	require.Equal(t, setOrder, reordered)
 
 	for name, changed := range map[string]struct {
 		intent   string

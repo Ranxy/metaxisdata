@@ -176,10 +176,12 @@ the current page to work in bulk (up to 200 per submit):
 Suggestions are proposals about a fact, and the queue keeps **one pending proposal
 per proposal identity**: one per column for a label, one per rule type plus the
 columns it covers for a rule draft. Clicking *Suggest labels* or *Draft with AI*
-again therefore never adds a second copy — the pass **refreshes** the pending
-proposal instead (the row keeps its identity, and its *refreshed* time moves). The
-result toast reports what happened — created, refreshed, skipped — and names the
-columns it left out (up to six, with a count for the rest).
+again therefore never adds a second copy: a rule-draft proposal that is still
+pending is **refreshed** in place (the row keeps its identity, and its *refreshed*
+time moves), while a column that already has a pending label proposal is skipped
+before the model is called. The result toast reports what happened — created,
+refreshed, skipped — and names the columns it left out (up to six, with a count
+for the rest).
 
 A generation pass also reconciles proposals with reality:
 

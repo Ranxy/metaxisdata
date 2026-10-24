@@ -162,3 +162,47 @@ func TestAnalysisGroupRetriesAfterLeaderCancellation(t *testing.T) {
 	require.NoError(t, followerErr)
 	require.Equal(t, int32(1), calls.Load(), "the retry is the first successful model call")
 }
+
+// A panic inside the shared call must not poison the group: waiting followers get
+// an error, the entry is dropped, and a later identical analysis runs normally.
+func TestAnalysisGroupRecoversFromPanic(t *testing.T) {
+	t.Parallel()
+
+	group := newAnalysisGroup()
+	leaderDone := make(chan struct{})
+	releaseLeader := make(chan struct{})
+	panicResult := make(chan any, 1)
+
+	go func() {
+		defer func() { panicResult <- recover() }()
+		_, _, _, _ = group.Do(context.Background(), "key", func(context.Context) (string, *llm.Usage, *storepb.QualityLLMDiagnostic, error) {
+			close(leaderDone)
+			<-releaseLeader
+			panic("provider exploded")
+		})
+	}()
+	<-leaderDone
+
+	followerEntered := make(chan struct{})
+	followerErr := make(chan error, 1)
+	go func() {
+		close(followerEntered)
+		_, _, _, err := group.Do(context.Background(), "key", func(context.Context) (string, *llm.Usage, *storepb.QualityLLMDiagnostic, error) {
+			return analysisResult("never")
+		})
+		followerErr <- err
+	}()
+	<-followerEntered
+	require.Eventually(t, func() bool { return group.waiters("key") == 1 }, time.Second, time.Millisecond)
+	close(releaseLeader)
+
+	require.NotNil(t, <-panicResult, "the leader's panic is re-raised to its caller")
+	require.ErrorIs(t, <-followerErr, errAnalysisPanicked)
+
+	// The entry is gone, so the next identical analysis is served normally.
+	text, _, _, err := group.Do(context.Background(), "key", func(context.Context) (string, *llm.Usage, *storepb.QualityLLMDiagnostic, error) {
+		return analysisResult("after-the-panic")
+	})
+	require.NoError(t, err)
+	require.Equal(t, "after-the-panic", text)
+}

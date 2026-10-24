@@ -87,12 +87,12 @@ SPA ──ConnectRPC──► DataQualityService (api/v1) ──► component/da
 | D-55 | 新增只读 `GetQualityLLMUsage`（`suggest` 权限、不审计）返回两个桶的 used/limit、in-flight/并发与下一个 00:00 UTC 重置时间；设置页“今日 AI 用量”卡片在加载/保存后刷新 | 不轮询；计数进程内，重启后显示 0；重置时间仍是下一个 UTC 零点 |
 | D-56 | 删除固定的 200 次/日与并发 2，默认提升为 10000/8；输出预算默认 32768 | 显式写入过旧值的部署保留旧值，其余获得新默认 |
 | D-57 | 同步入口与后台任务共用同一 quota 与 limits；后台任务逐目标重读 limits，任务提交时的额度预检仍 best-effort（不预占） | 并发设置变化不追溯已准入分析（Begin 时采样） |
-| D-58 | 建议是**关于事实的提案**而非事件流：每条建议有确定性 identity（`label:<column>` / `rule:<type>\|<sorted columns>\|<discriminator>`），存 `quality_suggestion.signature`；部分唯一索引 `(target_guid, target_type, signature) WHERE status = 1` 保证同一 identity 至多一条 PENDING。生成 = **对账**（建立缺失、刷新既有、关闭失效、跳过事实），不是追加 | 连点/并发生成收敛到一行；刷新保留行 id 与 created_at，`refreshed_at` 记录刷新时间；数据库而非读后写是并发仲裁者 |
+| D-58 | 建议是**关于事实的提案**而非事件流：每条建议有确定性 identity（`label\|<column>` / `rule\|<type>\|<sorted columns>\|<discriminator>`），存 `quality_suggestion.signature`；部分唯一索引 `(target_guid, target_type, signature) WHERE status = 1` 保证同一 identity 至多一条 PENDING。生成 = **对账**（建立缺失、刷新既有、关闭失效、跳过事实），不是追加 | 连点/并发生成收敛到一行；刷新保留行 id 与 created_at，`refreshed_at` 记录刷新时间；数据库而非读后写是并发仲裁者 |
 | D-59 | 生成前先与事实和决策对账：列已有标注（LABEL）或已有同 identity 的规则（RULE_DRAFT）→ 不分析/不入队；已有 PENDING → 默认不重复分析（省一次模型调用）；已决 → 默认不再提；`force_regenerate` 强制重析，但仍只刷新不重复。LABEL 只在 REJECTED 时抑制（标注被清除后允许重提），RULE_DRAFT 在 ACCEPTED/REJECTED 时都抑制（接受即视为完成） | 连点「建议标注」不再产生重复，也不再对已标注表重复花 LLM 额度；全部列已处理时直接返回 summary，不扣配额、不调模型 |
 | D-60 | 新增建议状态 `SUPERSEDED`：事实出现（写标注、创建规则）时关闭同 identity 的 PENDING，并写 reason 到 `decision_note`；生成 pass 也会兜底关闭事实已存在的残留 PENDING。它不是人工决策：`decided_by` 为空，不计入接受/拒绝历史 | 队列不出现“与事实矛盾”的待审项；接受/拒绝只作用于唯一在审提案，语义确定；SUPERSEDED 随已决建议保留期清理 |
 | D-61 | AI 起草任务幂等：`quality_suggestion_job.request_fingerprint` = hash(intent, language, force, 目标快照；目标内列排序去重)，部分唯一索引仅覆盖 PENDING/RUNNING；重复提交返回既有任务（响应 `deduplicated=true`），不启动第二次分析 | 双击/重试提交不会产生重复任务与重复建议；任务结束（终态）后同请求可再次提交 |
 | D-62 | 生成结果带 `QualitySuggestionQueueSummary`（created/refreshed/superseded/skipped_existing_fact/skipped_pending/skipped_decided/skipped_columns）：`SuggestQualityRule`、`SuggestColumnLabels` 同步返回，起草任务逐目标持久化到 `targets` JSONB 并在任务面板展示 | 前端能如实说明“新建 N / 刷新 M / 跳过 K 及原因”；不再用“已排队 N 条”暗示追加 |
-| D-63 | identity 的粒度只覆盖“同一条规则”的语义：忽略阈值、标题、理由（同一字段同一规则类型的提案视为同一条）；但 referential 的 parent 表/列、cross_column 的 op、aggregate 的 function/percentile、cross_table 的右表与两侧函数、custom_sql/cel 的文本摘要参与 identity | 同一 proposal 的阈值变体不会再各占一行；真正不同的规则（不同父表、不同聚合函数等）不会被错误合并 |
+| D-63 | identity 的粒度只覆盖“同一条规则”的语义：**忽略**阈值类字段（range/string_length/freshness/aggregate 的上下界、cross_column tolerance、row_count 界限）、标题与理由；**参与** identity 的语义字段：filter、referential 的 parent 表/列、cross_column 的左右列与 op、aggregate 的 function/percentile、cross_table 的右表/两侧函数/左右列、unique 的 count_nulls、unique_combination 的 all_columns、accepted_values 的值集合与 allow_null、regex 的 pattern、schema_drift 的期望列快照与三个检查开关、custom_sql/cel 的文本摘要、threshold_metric（PERCENT）。`on_empty` 视为同一条规则的行为变体，不参与 identity | 同一 proposal 的阈值变体不会再各占一行；真正不同的规则（不同父表、不同聚合函数、不同正则/枚举集合、不同 schema 快照等）不会被错误合并 |
 | D-64 | 进程内 LLM 分析合并：`analysisGroup` 以“feature + prompt 版本 + provider/model + 输出预算 + system/user prompt”的 SHA-256 为 key，同一 prompt 的在途调用只执行一次，结果（text/usage/diagnostic）分发给所有调用方；每个调用方拿到 usage/diagnostic 的副本（失败诊断可被调用方改写）。leader 的 ctx 取消时，仍存活的 follower 重试并成为新 leader | 双击“建议标注”、两个审阅者同时生成、工作台与编辑器并发提交同一请求，只付一次模型调用；队列仍由 identity upsert 收敛。单副本假设下进程内即可，不引入分布式锁 |
 | D-65 | 生成结果里 `skipped_columns` 在 UI 中逐列展示（最多列 6 个，多余以“等 N 列”概括），接在 summary 文案后；仍保留计数原因 | 用户能看到“为什么这次没东西”，而不是只看到“跳过 N”；过长列表不撑爆 toast |
 | D-66 | “从建议创建规则”改为**先 claim 再建规则**：`CreateQualityRule(suggestion)` 在通过全部校验后用 `DecideQualitySuggestion(PENDING→ACCEPTED)` 作原子 claim，claim 成功者才写规则；写规则失败时用 `ReopenQualitySuggestion(ACCEPTED→PENDING)` 回滚 claim（best-effort） | 并发/重试同一 suggestion 至多建出一条规则（另一路 `Aborted`）；崩溃窗口内 suggestion 已接受但无规则是合法状态（接受草稿本就不要求立刻建规则）；彻底消除 §7 #12 的并发重复建规则 |
@@ -397,13 +397,13 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | I-28 | LLM 输出预算来自 provider profile（0=32768，256–131072），调用方可请求更小；所有 DQ 分析（含 ExplainSQL）请求的 `max_tokens` 与诊断记录的值一致 | limits/代理请求/诊断测试 |
 | I-29 | 配额与并发上限来自每次调用解析的设置（默认 10000/8，上限 1000000/64；L3 列上限 1000000）；等待者取消不消耗额度或槽；设置变更对下一次分析生效（后台任务逐目标重读），进程重启计数归零 | quota 单测 + runner 逐目标 limits 场景 + 集成用量场景 |
 | I-30 | 同一 `(target_guid, target_type, signature)` 至多一条 PENDING 建议；并发写入由部分唯一索引收敛为一条，后到者刷新而非新增 | 迁移 `idx_quality_suggestion_pending_signature` + store upsert 语句断言 + `suggestion_test.go` |
-| I-31 | 生成 pass 幂等：同一状态重复执行不新建重复提案，只刷新 payload/provider/refreshed_at；已存在的事实（标注、规则）不再入队 | `Suggester.Draft` 对账逻辑 + L3 预过滤 + handler/集成场景 |
+| I-31 | 生成 pass 幂等：同一状态重复执行不新建重复提案；规则草稿路径会刷新 payload/provider/refreshed_at，L3 对已有 PENDING 的列默认跳过（不刷新、不调模型）；已存在的事实（标注、规则）不再入队 | `Suggester.Draft` 对账逻辑 + `planQualityLabelPass` 单测（skip/force/count/close）+ 集成场景 |
 | I-32 | 事实优先：写人工/接受标注或创建规则后，同 identity 的 PENDING 建议被标 SUPERSEDED（写 reason），不留在队列里；SUPERSEDED 没有 decided_by，不是接受/拒绝 | `SupersedePendingQualitySuggestions` 调用点（`UpdateColumnLabel`、`CreateQualityRule`、两个生成 pass）+ 单测 |
-| I-33 | 已决建议默认不再提议：RULE_DRAFT 的 ACCEPTED/REJECTED、LABEL 的 REJECTED 抑制后续生成；`force_regenerate` 可重提；LABEL 的 ACCEPTED 由“标注事实存在”抑制，标注清除后允许重提 | `SuggestionDecisionSuppresses*` 单测 + 生成路径 |
+| I-33 | 已决建议默认不再提议：RULE_DRAFT 的 ACCEPTED/REJECTED、LABEL 的 REJECTED 抑制后续生成；`force_regenerate` 可重提；LABEL 的 ACCEPTED 由“标注事实存在”抑制，标注清除后允许重提。抑制记忆依赖已决行，保留期（90d）到期后同一提案可能再次出现 | `SuggestionDecisionSuppresses*` 单测 + 生成路径 + D-16 保留期 |
 | I-34 | 相同请求指纹的 PENDING/RUNNING 起草任务至多一个；重复提交返回既有任务且 `deduplicated=true`，不会二次扣额度或重复建建议 | 迁移 `idx_quality_suggestion_job_active_fingerprint` + fingerprint 单测 + 集成场景 |
 | I-35 | 每个任务目标持久化本目标的生成 summary（store proto `QualitySuggestionJobTarget.summary`），与同步入口同形；任务面板可解释每个目标新建/刷新/跳过的数量 | runner 单测（force 透传 + summary 持久化） |
-| I-36 | 同一 prompt（feature/prompt 版本/provider/model/输出预算/system+user 全文）的在途分析至多执行一次，所有调用方共享该结果；leader 取消不毒化仍存活的 follower（follower 重试） | `analysis_group_test.go`（含 `-race`） |
-| I-37 | 从建议创建规则时，PENDING→ACCEPTED 的 claim 成功是写规则的前置条件；规则写失败必须把 claim 回滚为 PENDING（best-effort，失败只记日志） | `reopenQualitySuggestionQuery` 约束 + 集成并发创建场景（恰一成功、恰一 Aborted、规则数=1） |
+| I-36 | 同一 prompt（feature/prompt 版本/provider/model/输出预算/system+user 全文）的在途分析至多执行一次，所有调用方共享该结果；leader 取消不毒化仍存活的 follower（follower 重试）；leader panic 时向 follower 发布错误、清理在途条目并重新抛出 panic（runner 的 panic 隔离仍生效），不允许留下无人关闭的等待通道 | `analysis_group_test.go`（含 `-race` 与 panic 恢复场景） |
+| I-37 | 从建议创建规则时，PENDING→ACCEPTED 的 claim 成功是写规则的前置条件；规则写失败必须把 claim 回滚为 PENDING（best-effort，失败只记日志）。回滚使用 detached 短超时上下文，客户端取消导致的写失败也能回滚 | `reopenQualitySuggestionQuery` 约束 + 集成并发创建场景（恰一成功、恰一 Aborted、规则数=1） |
 | I-38 | 生成结果的 `skipped_columns` 在 UI 逐列展示（上限 6 个 + 省略计数），summary 计数与原因仍保留 | `useSuggestionSummary` 单测 + i18n |
 
 ## 6. 失败模式
@@ -482,7 +482,7 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | 15 | 截断调用的 token 用量 | 流在 `finish_reason=length` 处报错时 agent loop 不再读取后续 usage 块，因此该诊断只有 max_tokens/prompt_chars/correlation/finish_reason，没有 prompt/completion tokens；provider/model/stop reason 仍足以复现 |
 | 16 | DQ 调试行的 `error_code` | 分类后由 `SetLLMDebugLogErrorCode` 以 correlation id best-effort 回写；调试行是异步写入的，若 UPDATE 先于 INSERT 到达则该行 `error_code` 留空（无重试）。分类码始终以任务目标诊断为准，检索 RPC 返回它 |
 | 17 | LLM 失败的自动重试与配置 | 业务失败不做自动重试；输出预算按 profile 可配置（默认 32768），provider 的 400/422（例如 max_tokens 超限）会以 4096 自动重试一次，仍拒绝则得到 `PROVIDER_STATUS`；日额度/并发可配置但计数是进程内、重启归零（单副本），任务提交的额度预检不预占；原始正文只在 RuntimeDebug 下捕获（7 天）、仅 `suggest` 权限可读且审计正文已脱敏；没有通用调试日志浏览器 |
-| 18 | 迁移前的建议行 | 迁移 `0028` 给历史行回填 `signature = 'legacy:' \|\| resource_id`（唯一、不参与去重）并对历史 active 任务回填 `request_fingerprint`，因此升级后旧 PENDING 建议仍可见；功能未上线，不做 re-key。新生成 pass 会在事实出现时把匹配的旧 PENDING 标 SUPERSEDED，但旧行不会与新的同名提案合并 |
+| 18 | 迁移前的建议行 | 迁移 `0028` 给历史行回填 `signature = 'legacy:' \|\| resource_id`（唯一、不参与去重）并对历史 active 任务回填 `request_fingerprint`，因此升级后旧 PENDING 建议仍可见；功能未上线，不做 re-key。旧行不匹配任何新 identity，**不会被新的生成 pass 自动关闭或合并**，只能由审阅者显式接受/拒绝（过期后随保留期清理） |
 
 ## 8. Where things live
 

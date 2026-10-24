@@ -237,6 +237,28 @@
             </section>
 
             <section
+              v-else-if="suggestion.status === QualitySuggestionStatus.SUPERSEDED"
+              class="space-y-2 border-t pt-4"
+            >
+              <div class="flex flex-wrap items-center gap-2 text-sm">
+                <span class="text-muted-foreground">
+                  {{ t("dataQuality.suggestions.supersededByServer") }}
+                </span>
+                <span class="text-muted-foreground">
+                  {{ t("dataQuality.suggestions.closedAt") }}
+                </span>
+                <span :title="formatDateTime(suggestion.decideTime, locale)">
+                  {{ formatRelativeTime(suggestion.decideTime, locale) }}
+                </span>
+              </div>
+              <p
+                v-if="suggestion.decisionNote"
+                class="text-sm break-words text-muted-foreground"
+              >
+                {{ suggestion.decisionNote }}
+              </p>
+            </section>
+            <section
               v-else-if="suggestion.status !== QualitySuggestionStatus.PENDING"
               class="space-y-2 border-t pt-4"
             >

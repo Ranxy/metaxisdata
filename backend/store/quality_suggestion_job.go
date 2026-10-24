@@ -381,8 +381,8 @@ func (s *Store) QueueQualitySuggestionJob(ctx context.Context, message *QualityS
 }
 
 // queueQualitySuggestionJobOnce retries an insert after the active job it
-// collided with finished in the gap. It is not expected in practice; it keeps the
-// caller's contract ("you get a job") even then.
+// collided with finished in the gap. It is not expected in practice; a small
+// bounded loop keeps the caller's contract ("you get a job") even then.
 func (s *Store) queueQualitySuggestionJobOnce(ctx context.Context, message *QualitySuggestionJobMessage) (*QualitySuggestionJobMessage, bool, error) {
 	targetsRaw, err := marshalQualitySuggestionJobTargets(message.Targets)
 	if err != nil {
@@ -394,21 +394,39 @@ func (s *Store) queueQualitySuggestionJobOnce(ctx context.Context, message *Qual
 	} else {
 		createdAt = createdAt.UTC()
 	}
-	var (
-		id              int64
-		storedCreatedAt time.Time
-	)
-	if err := s.GetDB().QueryRowContext(ctx, queueQualitySuggestionJobQuery,
-		message.ResourceID, int32(message.Status), message.Intent, message.Language, message.Provider,
-		message.Model, message.PromptVersion, targetsRaw, message.RequestFingerprint,
-		message.ForceRegenerate, message.CancelRequested, message.CreatedBy, createdAt,
-	).Scan(&id, &storedCreatedAt); err != nil {
-		return nil, false, errors.Wrap(err, "failed to create a quality suggestion job")
+	const attempts = 3
+	for range attempts {
+		var (
+			id              int64
+			storedCreatedAt time.Time
+		)
+		insertErr := s.GetDB().QueryRowContext(ctx, queueQualitySuggestionJobQuery,
+			message.ResourceID, int32(message.Status), message.Intent, message.Language, message.Provider,
+			message.Model, message.PromptVersion, targetsRaw, message.RequestFingerprint,
+			message.ForceRegenerate, message.CancelRequested, message.CreatedBy, createdAt,
+		).Scan(&id, &storedCreatedAt)
+		if insertErr == nil {
+			stored := *message
+			stored.ID = id
+			stored.CreatedAt = storedCreatedAt
+			return &stored, true, nil
+		}
+		if !errors.Is(insertErr, sql.ErrNoRows) {
+			return nil, false, errors.Wrap(insertErr, "failed to create a quality suggestion job")
+		}
+		// The collision finished before the read: adopt its successor if there is
+		// one, otherwise try the insert again.
+		existing, readErr := scanQualitySuggestionJob(s.GetDB().QueryRowContext(ctx,
+			activeQualitySuggestionJobByFingerprintQuery, message.RequestFingerprint))
+		if readErr == nil {
+			return existing, false, nil
+		}
+		if !errors.Is(readErr, sql.ErrNoRows) {
+			return nil, false, errors.Wrap(readErr, "failed to read the active quality suggestion job")
+		}
 	}
-	stored := *message
-	stored.ID = id
-	stored.CreatedAt = storedCreatedAt
-	return &stored, true, nil
+	return nil, false, common.Errorf(common.Internal,
+		"could not create or find the quality suggestion job for request %q", message.RequestFingerprint)
 }
 
 // GetActiveQualitySuggestionJobByFingerprint returns the PENDING or RUNNING job

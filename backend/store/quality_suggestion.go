@@ -50,7 +50,7 @@ const queueQualitySuggestionQuery = `
 // both succeed, and a decision is never rewritten by a later one.
 const decideQualitySuggestionQuery = `
 	UPDATE quality_suggestion
-	SET status = $2, decided_by = $3, decided_at = $4, decision_note = $5
+	SET status = $2, decided_by = $3, decided_at = $4, decision_note = $5, refreshed_at = NULL
 	WHERE resource_id = $1 AND status = 1
 	RETURNING ` + qualitySuggestionColumns
 
@@ -61,7 +61,7 @@ const decideQualitySuggestionQuery = `
 // the guard; reopening is only ever a rollback of this caller's own claim.
 const reopenQualitySuggestionQuery = `
 	UPDATE quality_suggestion
-	SET status = 1, decided_by = NULL, decided_at = NULL, decision_note = ''
+	SET status = 1, decided_by = NULL, decided_at = NULL, decision_note = '', refreshed_at = NULL
 	WHERE resource_id = $1 AND status = 2
 	RETURNING ` + qualitySuggestionColumns
 

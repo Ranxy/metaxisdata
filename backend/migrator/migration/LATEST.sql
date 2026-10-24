@@ -1149,7 +1149,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_suggestion_pending_signature
     ON quality_suggestion(target_guid, target_type, signature)
     WHERE status = 1;
 COMMENT ON COLUMN quality_suggestion.status IS '1 PENDING, 2 ACCEPTED, 3 REJECTED, 4 SUPERSEDED';
-COMMENT ON COLUMN quality_suggestion.signature IS 'Deterministic proposal identity: label:<column> or rule:<type>|<sorted columns>|<discriminator>; one PENDING row per (target, signature)';
+COMMENT ON COLUMN quality_suggestion.signature IS 'Deterministic proposal identity: label|<column> or rule|<type>|<sorted columns>|<discriminator>; one PENDING row per (target, signature)';
 COMMENT ON COLUMN quality_suggestion.refreshed_at IS 'When a later generation pass refreshed this pending proposal';
 
 -- quality_suggestion_job is one background AI drafting job. The job fans out over

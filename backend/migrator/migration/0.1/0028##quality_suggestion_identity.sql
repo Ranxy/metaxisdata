@@ -27,7 +27,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_suggestion_job_active_fingerprint
     WHERE status IN (1, 2);
 
 COMMENT ON COLUMN quality_suggestion.status IS '1 PENDING, 2 ACCEPTED, 3 REJECTED, 4 SUPERSEDED';
-COMMENT ON COLUMN quality_suggestion.signature IS 'Deterministic proposal identity: label:<column> or rule:<type>|<sorted columns>|<discriminator>; one PENDING row per (target, signature)';
+COMMENT ON COLUMN quality_suggestion.signature IS 'Deterministic proposal identity: label|<column> or rule|<type>|<sorted columns>|<discriminator>; one PENDING row per (target, signature)';
 COMMENT ON COLUMN quality_suggestion.refreshed_at IS 'When a later generation pass refreshed this pending proposal';
 COMMENT ON COLUMN quality_suggestion_job.request_fingerprint IS 'Hash of intent, language, target snapshot and force flag; one active job per fingerprint';
 COMMENT ON COLUMN quality_suggestion_job.force_regenerate IS 'Whether the job re-proposes already decided suggestions';
