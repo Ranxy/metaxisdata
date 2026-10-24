@@ -846,17 +846,20 @@ func TestDataQualitySuggestionCenterRealServerIntegration(t *testing.T) {
 		}(index)
 	}
 	race.Wait()
-	successes, aborted := 0, 0
+	successes, aborted, unexpected := 0, 0, 0
 	for _, raceErr := range raceErrs {
 		switch {
 		case raceErr == nil:
 			successes++
 		case connect.CodeOf(raceErr) == connect.CodeAborted:
 			aborted++
+		default:
+			unexpected++
 		}
 	}
 	require.Equal(t, 1, successes, "exactly one concurrent create may succeed")
 	require.Equal(t, 1, aborted, "the losing create reports the draft as already claimed")
+	require.Zero(t, unexpected, "no other failure is acceptable: %v", raceErrs)
 
 	racedRules, err := client.ListQualityRules(fixture.ctx, withToken(token, &v1pb.ListQualityRulesRequest{
 		Parent:   "workspaces/-",
@@ -2107,17 +2110,20 @@ func TestDataQualityLLMLimitsRealServerIntegration(t *testing.T) {
 func TestQualitySuggestionQueueIsIdempotentRealServerIntegration(t *testing.T) {
 	t.Parallel()
 
-	fixture := setupQualityMySQLFixture(t, false)
-	ctx := fixture.ctx
-
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	// A fresh metadata database, so the shared workspace's other scenarios cannot
+	// see this test's rows (and vice versa).
+	stores := newIsolatedMetadataStore(ctx, t)
+	targetGUID := "instances/it;shop;;users"
 	signature := dataquality.LabelSuggestionSignature("email")
 	payload := qualityLabelSuggestionPayload("email", storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_EMAIL)
 	queue := func(resourceID string) (*store.QualitySuggestionMessage, bool) {
-		queued, created, err := fixture.env.Store.QueueQualitySuggestion(ctx, &store.QualitySuggestionMessage{
+		queued, created, err := stores.QueueQualitySuggestion(ctx, &store.QualitySuggestionMessage{
 			ResourceID: resourceID,
 			Kind:       storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_LABEL,
 			Source:     storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_PROFILE,
-			TargetGUID: fixture.usersGUID,
+			TargetGUID: targetGUID,
 			TargetType: storepb.MetaType_TABLE,
 			Signature:  signature,
 			Payload:    payload,
@@ -2143,28 +2149,28 @@ func TestQualitySuggestionQueueIsIdempotentRealServerIntegration(t *testing.T) {
 	require.Equal(t, first.ResourceID, second.ResourceID)
 	require.NotNil(t, second.RefreshedAt)
 
-	pending, err := fixture.env.Store.ListQualitySuggestions(ctx, &store.FindQualitySuggestionMessage{
-		TargetGUID: &fixture.usersGUID,
+	pending, err := stores.ListQualitySuggestions(ctx, &store.FindQualitySuggestionMessage{
+		TargetGUID: &targetGUID,
 		Statuses:   []storepb.QualitySuggestionStatus{storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING},
 		Kinds:      []storepb.QualitySuggestionKind{storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_LABEL},
 	})
 	require.NoError(t, err)
 	require.Len(t, pending, 1)
 
-	states, err := fixture.env.Store.QualitySuggestionSignatureStates(ctx, fixture.usersGUID,
+	states, err := stores.QualitySuggestionSignatureStates(ctx, targetGUID,
 		storepb.MetaType_TABLE, []string{signature})
 	require.NoError(t, err)
 	require.True(t, states[signature].Pending)
 	require.Equal(t, storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_UNSPECIFIED, states[signature].LastDecision)
 
-	superseded, err := fixture.env.Store.SupersedePendingQualitySuggestions(ctx, fixture.usersGUID,
-		storepb.MetaType_TABLE, append([]string(nil), signature), "the column already has a semantic label", time.Now())
+	superseded, err := stores.SupersedePendingQualitySuggestions(ctx, targetGUID,
+		storepb.MetaType_TABLE, []string{signature}, "the column already has a semantic label", time.Now())
 	require.NoError(t, err)
 	require.Equal(t, int64(1), superseded)
 
 	// Closing a proposal is not a reviewer decision: the signature has no last
 	// decision, so a later pass may still propose it.
-	states, err = fixture.env.Store.QualitySuggestionSignatureStates(ctx, fixture.usersGUID,
+	states, err = stores.QualitySuggestionSignatureStates(ctx, targetGUID,
 		storepb.MetaType_TABLE, []string{signature})
 	require.NoError(t, err)
 	require.False(t, states[signature].Pending)
@@ -2178,11 +2184,11 @@ func TestQualitySuggestionQueueIsIdempotentRealServerIntegration(t *testing.T) {
 	// A different identity is a different pending proposal.
 	otherID, err := common.RandomString(12)
 	require.NoError(t, err)
-	other, created, err := fixture.env.Store.QueueQualitySuggestion(ctx, &store.QualitySuggestionMessage{
+	other, created, err := stores.QueueQualitySuggestion(ctx, &store.QualitySuggestionMessage{
 		ResourceID: otherID,
 		Kind:       storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_LABEL,
 		Source:     storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_PROFILE,
-		TargetGUID: fixture.usersGUID,
+		TargetGUID: targetGUID,
 		TargetType: storepb.MetaType_TABLE,
 		Signature:  dataquality.LabelSuggestionSignature("phone"),
 		Payload:    qualityLabelSuggestionPayload("phone", storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_PHONE),
@@ -2199,22 +2205,24 @@ func TestQualitySuggestionQueueIsIdempotentRealServerIntegration(t *testing.T) {
 func TestQualitySuggestionJobQueueIsIdempotentRealServerIntegration(t *testing.T) {
 	t.Parallel()
 
-	fixture := setupQualityMySQLFixture(t, false)
-	ctx := fixture.ctx
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	stores := newIsolatedMetadataStore(ctx, t)
+	targetGUID := "instances/it;shop;;users"
 
 	fingerprint := "integration-fingerprint"
 	queue := func(resourceID string) (*store.QualitySuggestionJobMessage, bool) {
-		job, created, err := fixture.env.Store.QueueQualitySuggestionJob(ctx, &store.QualitySuggestionJobMessage{
-			ResourceID: resourceID,
-			Status:     storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_RUNNING,
-			Intent:     "email must not be empty",
-			Language:   "en",
+		job, created, err := stores.QueueQualitySuggestionJob(ctx, &store.QualitySuggestionJobMessage{
+			ResourceID:         resourceID,
+			Status:             storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_RUNNING,
+			Intent:             "email must not be empty",
+			Language:           "en",
+			RequestFingerprint: fingerprint,
 			Targets: &storepb.QualitySuggestionJobTargets{Targets: []*storepb.QualitySuggestionJobTarget{{
-				TargetGuid: fixture.usersGUID,
+				TargetGuid: targetGUID,
 				TargetType: int32(storepb.MetaType_TABLE),
 				State:      storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING,
 			}}},
-			RequestFingerprint: fingerprint,
 		})
 		require.NoError(t, err)
 		return job, created
@@ -2231,7 +2239,7 @@ func TestQualitySuggestionJobQueueIsIdempotentRealServerIntegration(t *testing.T
 	require.False(t, created)
 	require.Equal(t, first.ResourceID, second.ResourceID)
 
-	active, err := fixture.env.Store.GetActiveQualitySuggestionJobByFingerprint(ctx, fingerprint)
+	active, err := stores.GetActiveQualitySuggestionJobByFingerprint(ctx, fingerprint)
 	require.NoError(t, err)
 	require.NotNil(t, active)
 	require.Equal(t, first.ResourceID, active.ResourceID)
@@ -2243,18 +2251,20 @@ func TestQualitySuggestionJobQueueIsIdempotentRealServerIntegration(t *testing.T
 func TestQualitySuggestionReopenRollsBackTheClaimRealServerIntegration(t *testing.T) {
 	t.Parallel()
 
-	fixture := setupQualityMySQLFixture(t, false)
-	ctx := fixture.ctx
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	stores := newIsolatedMetadataStore(ctx, t)
+	targetGUID := "instances/it;shop;;users"
 	signature := dataquality.LabelSuggestionSignature("email")
 	payload := qualityLabelSuggestionPayload("email", storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_EMAIL)
 
 	resourceID, err := common.RandomString(12)
 	require.NoError(t, err)
-	queued, created, err := fixture.env.Store.QueueQualitySuggestion(ctx, &store.QualitySuggestionMessage{
+	queued, created, err := stores.QueueQualitySuggestion(ctx, &store.QualitySuggestionMessage{
 		ResourceID: resourceID,
 		Kind:       storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_LABEL,
 		Source:     storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_PROFILE,
-		TargetGUID: fixture.usersGUID,
+		TargetGUID: targetGUID,
 		TargetType: storepb.MetaType_TABLE,
 		Signature:  signature,
 		Payload:    payload,
@@ -2263,13 +2273,13 @@ func TestQualitySuggestionReopenRollsBackTheClaimRealServerIntegration(t *testin
 	require.NoError(t, err)
 	require.True(t, created)
 
-	decided, err := fixture.env.Store.DecideQualitySuggestion(ctx, queued.ResourceID,
+	decided, err := stores.DecideQualitySuggestion(ctx, queued.ResourceID,
 		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED,
 		int32(1), "", time.Now())
 	require.NoError(t, err)
 	require.Nil(t, decided.RefreshedAt)
 
-	reopened, err := fixture.env.Store.ReopenQualitySuggestion(ctx, queued.ResourceID)
+	reopened, err := stores.ReopenQualitySuggestion(ctx, queued.ResourceID)
 	require.NoError(t, err)
 	require.Equal(t, storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING, reopened.Status)
 	require.Nil(t, reopened.DecidedBy)
@@ -2278,6 +2288,6 @@ func TestQualitySuggestionReopenRollsBackTheClaimRealServerIntegration(t *testin
 	require.Nil(t, reopened.RefreshedAt)
 
 	// Reopening is guarded: a PENDING row is not reopened a second time.
-	_, err = fixture.env.Store.ReopenQualitySuggestion(ctx, queued.ResourceID)
+	_, err = stores.ReopenQualitySuggestion(ctx, queued.ResourceID)
 	require.Error(t, err)
 }
