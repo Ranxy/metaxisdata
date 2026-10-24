@@ -273,7 +273,7 @@
                   {{ t("dataQuality.suggestions.confidence") }}
                 </TableHead>
                 <TableHead>{{ t("dataQuality.suggestions.status") }}</TableHead>
-                <TableHead class="hidden whitespace-nowrap md:table-cell">
+                <TableHead class="hidden whitespace-nowrap xl:table-cell">
                   {{ t("dataQuality.suggestions.createdAt") }}
                 </TableHead>
                 <TableHead class="w-12 text-right">
@@ -334,29 +334,47 @@
                     v-for="suggestion in group.suggestions"
                     :key="suggestion.name"
                   >
-                    <TableCell class="align-middle">
+                    <TableCell class="align-top">
                       <Checkbox
                         v-if="isPendingSuggestion(suggestion)"
                         :checked="selectedNames.includes(suggestion.name)"
+                        class="mt-0.5"
                         :aria-label="t('dataQuality.suggestions.selectSuggestion')"
                         @update:checked="(checked: boolean | 'indeterminate') => toggleSuggestion(suggestion.name, checked === true)"
                       />
                     </TableCell>
-                    <TableCell>
-                      <div class="flex flex-wrap items-center gap-2">
-                        <Badge variant="outline">
+                    <TableCell class="min-w-56">
+                      <!-- Both kinds read the same way: the kind, the subject
+                           the model proposed (a rule title, or the column a
+                           label belongs to, set in mono), then its reason. -->
+                      <div class="flex items-start gap-2">
+                        <Badge
+                          variant="outline"
+                          class="mt-0.5 shrink-0"
+                        >
                           {{ t(suggestionKindKey(suggestion.kind)) }}
                         </Badge>
-                        <button
-                          type="button"
-                          class="min-w-0 truncate text-left text-sm font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          @click="inspect(suggestion)"
-                        >
-                          {{ suggestionText(suggestion) }}
-                        </button>
+                        <div class="min-w-0 space-y-1">
+                          <button
+                            type="button"
+                            class="line-clamp-1 text-left text-sm font-medium wrap-anywhere hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            :class="{ 'font-mono': isLabelSuggestion(suggestion) }"
+                            :title="suggestionText(suggestion)"
+                            @click="inspect(suggestion)"
+                          >
+                            {{ suggestionText(suggestion) }}
+                          </button>
+                          <p
+                            v-if="suggestionReason(suggestion)"
+                            class="line-clamp-1 text-xs wrap-anywhere text-muted-foreground md:max-xl:hidden"
+                            :title="suggestionReason(suggestion)"
+                          >
+                            {{ suggestionReason(suggestion) }}
+                          </p>
+                        </div>
                       </div>
-                      <!-- Below md the source and time collapse in here. -->
-                      <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground md:hidden">
+                      <!-- Below xl the source and time collapse in here. -->
+                      <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground xl:hidden">
                         <span>{{ t(suggestionSourceKey(suggestion.source)) }}</span>
                         <span aria-hidden="true">·</span>
                         <span :title="formatDateTime(suggestion.createTime, locale)">
@@ -364,36 +382,53 @@
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell class="hidden md:table-cell">
-                      <template v-if="ruleDraftLabel(suggestion)">
-                        <Badge variant="secondary">
+                    <TableCell class="hidden align-top md:table-cell">
+                      <!-- The subtype both kinds carry, then the severity only
+                           a draft has; keeping it out of the confidence cell is
+                           what makes the two kinds' rows line up. Below xl the
+                           columns are cramped enough that the two may wrap. -->
+                      <div class="flex items-center gap-1 max-xl:flex-wrap">
+                        <Badge
+                          v-if="ruleDraftLabel(suggestion)"
+                          variant="secondary"
+                        >
                           {{ t(ruleDraftLabel(suggestion) ?? "") }}
                         </Badge>
-                      </template>
-                      <template v-else-if="labelTypeKey(suggestion)">
-                        <Badge variant="secondary">
+                        <Badge
+                          v-else-if="labelTypeKey(suggestion)"
+                          variant="secondary"
+                        >
                           {{ t(labelTypeKey(suggestion) ?? "") }}
                         </Badge>
-                      </template>
-                      <span
-                        v-else
-                        class="text-muted-foreground"
-                      >-</span>
-                    </TableCell>
-                    <TableCell class="hidden md:table-cell">
-                      <div class="flex flex-wrap items-center gap-2">
+                        <span
+                          v-else
+                          class="text-muted-foreground"
+                        >-</span>
                         <Badge
                           v-if="draftSeverity(suggestion)"
                           :variant="qualitySeverityVariant(draftSeverity(suggestion) ?? QualitySeverity.UNSPECIFIED)"
                         >
                           {{ t(qualitySeverityKey(draftSeverity(suggestion) ?? QualitySeverity.UNSPECIFIED)) }}
                         </Badge>
-                        <span class="text-xs text-muted-foreground">
-                          {{ confidenceOf(suggestion) }}
+                      </div>
+                    </TableCell>
+                    <TableCell class="hidden align-top md:table-cell">
+                      <div class="flex items-center gap-2 max-xl:flex-wrap">
+                        <div
+                          class="h-1.5 w-16 overflow-hidden rounded-full bg-muted"
+                          aria-hidden="true"
+                        >
+                          <div
+                            class="h-full rounded-full bg-primary/70"
+                            :style="{ width: `${confidencePercent(suggestion)}%` }"
+                          />
+                        </div>
+                        <span class="w-12 text-right text-xs tabular-nums text-muted-foreground">
+                          {{ formatConfidence(confidenceOf(suggestion)) }}
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell>
+                    <TableCell class="align-top">
                       <Badge
                         :variant="suggestionStatusVariant(suggestion.status)"
                         :title="suggestion.decisionNote"
@@ -401,20 +436,36 @@
                         {{ t(suggestionStatusKey(suggestion.status)) }}
                       </Badge>
                     </TableCell>
-                    <TableCell class="hidden whitespace-nowrap text-muted-foreground md:table-cell">
+                    <TableCell class="hidden whitespace-nowrap align-top text-muted-foreground xl:table-cell">
                       <span :title="formatDateTime(suggestion.createTime, locale)">
                         {{ formatRelativeTime(suggestion.createTime, locale) }}
                       </span>
                     </TableCell>
                     <TableCell
-                      class="text-right"
+                      class="text-right align-top"
                       @click.stop
                     >
+                      <!-- The editor shortcut sits before the primary action
+                           and review closes the cell: with the primary button
+                           in the same slot on every row, "Create rule" and
+                           "Accept" share one right edge. -->
                       <div class="flex items-center justify-end gap-1">
+                        <Button
+                          v-if="canEditDraft(suggestion)"
+                          variant="ghost"
+                          size="icon"
+                          class="h-8 w-8"
+                          :title="t('dataQuality.suggestions.openInEditor')"
+                          :aria-label="t('dataQuality.suggestions.openInEditor')"
+                          @click="openEditor(suggestion)"
+                        >
+                          <ExternalLink class="h-4 w-4 text-muted-foreground" />
+                        </Button>
                         <Button
                           v-if="canEditDraft(suggestion)"
                           variant="outline"
                           size="sm"
+                          class="min-w-20"
                           @click="openBatchCreate([suggestion])"
                         >
                           {{ t("dataQuality.suggestions.createRule") }}
@@ -423,6 +474,7 @@
                           v-if="isPendingLabel(suggestion) && canDecide"
                           variant="outline"
                           size="sm"
+                          class="min-w-20"
                           @click="acceptLabel(suggestion)"
                         >
                           {{ t("dataQuality.suggestions.accept") }}
@@ -436,17 +488,6 @@
                           @click="inspect(suggestion)"
                         >
                           <Eye class="h-4 w-4 text-muted-foreground" />
-                        </Button>
-                        <Button
-                          v-if="canEditDraft(suggestion)"
-                          variant="ghost"
-                          size="icon"
-                          class="h-8 w-8"
-                          :title="t('dataQuality.suggestions.openInEditor')"
-                          :aria-label="t('dataQuality.suggestions.openInEditor')"
-                          @click="openEditor(suggestion)"
-                        >
-                          <ExternalLink class="h-4 w-4 text-muted-foreground" />
                         </Button>
                       </div>
                     </TableCell>
@@ -932,6 +973,23 @@ function suggestionText(suggestion: QualitySuggestion): string {
   return suggestion.name.split("/").pop() ?? suggestion.name;
 }
 
+/** A label's subject is a column name; a draft's is a rule title. */
+function isLabelSuggestion(suggestion: QualitySuggestion): boolean {
+  return labelSuggestionOf(suggestion) !== undefined;
+}
+
+/**
+ * The model's own one-line reason for a suggestion, whichever kind it is: a
+ * draft's rationale, or the one behind a label. Empty when the payload has none.
+ */
+function suggestionReason(suggestion: QualitySuggestion): string {
+  const rationale =
+    ruleDraftOf(suggestion)?.rationale ||
+    labelSuggestionOf(suggestion)?.evidence?.rationale ||
+    "";
+  return rationale.replace(/\s+/g, " ").trim();
+}
+
 function labelTypeKey(suggestion: QualitySuggestion): string | undefined {
   const label = labelSuggestionOf(suggestion);
   return label && label.label !== QualitySemanticType.UNSPECIFIED
@@ -952,13 +1010,18 @@ function draftSeverity(
   return draft?.severity ? draft.severity : undefined;
 }
 
-function confidenceOf(suggestion: QualitySuggestion): string {
+/** Both kinds carry their own confidence, 0-1; 0 reads as unset. */
+function confidenceOf(suggestion: QualitySuggestion): number {
   const draft = ruleDraftOf(suggestion);
   if (draft) {
-    return formatConfidence(draft.confidence);
+    return draft.confidence;
   }
-  const label = labelSuggestionOf(suggestion);
-  return label ? formatConfidence(label.confidence) : "-";
+  return labelSuggestionOf(suggestion)?.confidence ?? 0;
+}
+
+/** The same confidence as a 0-100 meter width. */
+function confidencePercent(suggestion: QualitySuggestion): number {
+  return Math.round(Math.min(1, Math.max(0, confidenceOf(suggestion))) * 100);
 }
 
 function groupMetaType(group: SuggestionTargetGroup): MetaType {

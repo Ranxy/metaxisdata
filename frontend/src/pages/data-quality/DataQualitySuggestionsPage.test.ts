@@ -9,6 +9,7 @@ import { useAuthStore } from "@/store/modules/auth";
 import {
   QualityRuleConfigSchema,
   QualityRuleSchema,
+  QualitySemanticType,
   QualitySuggestionKind,
   QualitySuggestionSchema,
   QualitySuggestionSource,
@@ -117,7 +118,13 @@ function labelSuggestion(target = OTHER_TARGET) {
         case: "label",
         value: create(SemanticLabelSuggestionSchema, {
           column: "email",
+          label: QualitySemanticType.TIMESTAMP,
           confidence: 0.9,
+          evidence: {
+            columns: ["email"],
+            metrics: ["null_rate=0.0100", "distinct=42"],
+            rationale: "The values look like a timestamp column.",
+          },
         }),
       },
     },
@@ -407,6 +414,109 @@ describe("DataQualitySuggestionsPage", () => {
     expect(wrapper.text()).not.toContain(
       label("dataQuality.suggestions.acceptLabels", { count: 1 })
     );
+    wrapper.unmount();
+  });
+
+  it("gives a draft and a label the same row anatomy", async () => {
+    const { wrapper } = await mountPage();
+
+    // Each kind states what the model proposed and why: a draft's title and
+    // rationale, a label's column and its evidence.
+    expect(wrapper.text()).toContain("Fact table.");
+    expect(wrapper.text()).toContain(
+      "The values look like a timestamp column."
+    );
+
+    const rows = [...document.body.querySelectorAll<HTMLElement>("tbody tr")];
+    const draftRow = rows.find((row) =>
+      row.textContent?.includes("Orders should have rows")
+    );
+    const labelRow = rows.find((row) => row.textContent?.includes("email"));
+    expect(draftRow).toBeDefined();
+    expect(labelRow).toBeDefined();
+
+    // Column order: checkbox, suggestion, type, confidence, status, created,
+    // actions. The subtype is in the type cell, and severity only a draft has
+    // is there too, so it never shifts the confidence reading.
+    const draftCells = draftRow!.querySelectorAll("td");
+    const labelCells = labelRow!.querySelectorAll("td");
+    expect(draftCells[2]?.textContent).toContain(
+      label("dataQuality.ruleType.rowCount")
+    );
+    expect(draftCells[2]?.textContent).toContain(
+      label("dataQuality.severity.error")
+    );
+    expect(labelCells[2]?.textContent).toContain(
+      label("dataQuality.semanticType.timestamp")
+    );
+
+    // Both kinds read confidence the same way: a meter and one percentage.
+    expect(draftCells[3]?.textContent).toContain("80.0%");
+    expect(labelCells[3]?.textContent).toContain("90.0%");
+    expect(draftCells[3]?.textContent).not.toContain(
+      label("dataQuality.severity.error")
+    );
+    expect(
+      draftCells[3]?.querySelector<HTMLElement>('[aria-hidden="true"] > div')
+        ?.style.width
+    ).toBe("80%");
+
+    // Review closes the action cell, so it holds the same right edge on rows
+    // of either kind.
+    const lastAction = (cell: Element | undefined) =>
+      [...(cell?.querySelectorAll("button") ?? [])].pop();
+    expect(lastAction(draftCells[6])?.getAttribute("aria-label")).toBe(
+      label("dataQuality.suggestions.review")
+    );
+    expect(lastAction(labelCells[6])?.getAttribute("aria-label")).toBe(
+      label("dataQuality.suggestions.review")
+    );
+
+    // The primary action occupies the same slot (immediately before review) on
+    // both kinds, which is what lets the two buttons share a right edge.
+    const primaryAction = (cell: Element | undefined) => {
+      const buttons = [...(cell?.querySelectorAll("button") ?? [])];
+      return buttons[buttons.length - 2];
+    };
+    expect(primaryAction(draftCells[6])?.textContent).toContain(
+      label("dataQuality.suggestions.createRule")
+    );
+    expect(primaryAction(labelCells[6])?.textContent).toContain(
+      label("dataQuality.suggestions.accept")
+    );
+    wrapper.unmount();
+  });
+
+  it("omits the reason line when a draft carries none", async () => {
+    mocks.listQualitySuggestions.mockResolvedValue({
+      items: [
+        create(QualitySuggestionSchema, {
+          name: DRAFT_ONE,
+          kind: QualitySuggestionKind.RULE_DRAFT,
+          status: QualitySuggestionStatus.PENDING,
+          target: create(QualityTargetSchema, {
+            metaGuid: TARGET,
+            metaType: MetaType.TABLE,
+          }),
+          payload: {
+            payload: {
+              case: "rule",
+              value: { title: "Bare draft", confidence: 0.5 },
+            },
+          },
+        }),
+      ],
+      nextPageToken: "",
+    });
+    const { wrapper } = await mountPage();
+
+    const row = [
+      ...document.body.querySelectorAll<HTMLElement>("tbody tr"),
+    ].find((candidate) => candidate.textContent?.includes("Bare draft"));
+    expect(row).toBeDefined();
+    expect(row?.querySelectorAll("td")[1]?.querySelector("p")).toBeNull();
+    // Without a reason the row still reads its confidence the usual way.
+    expect(row?.querySelectorAll("td")[3]?.textContent).toContain("50.0%");
     wrapper.unmount();
   });
 
