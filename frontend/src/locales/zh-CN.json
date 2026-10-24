@@ -955,6 +955,8 @@
       "queued": "已加入 {count} 条建议",
       "refreshed": "刷新 {count} 条",
       "skipped": "已跳过 {count} 条",
+      "skippedColumns": "已跳过列：{columns}",
+      "skippedColumnsOverflow": "已跳过列：{columns} 等 {count} 列",
       "superseded": "{count} 条已失效"
     },
     "suggestions": {

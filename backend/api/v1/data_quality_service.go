@@ -420,6 +420,22 @@ func (s *DataQualityService) createQualityRuleFromRequest(ctx context.Context, w
 	now := time.Now()
 	nextRunAt := now.Add(interval)
 	callerID := principalIDPointer(currentUserID(ctx))
+	// Claim the draft before writing the rule. The decision's PENDING→ACCEPTED
+	// guard is the idempotency key for "create a rule from this draft": two
+	// concurrent creates cannot both pass it, so at most one rule is written. If the
+	// rule write fails, the claim is rolled back below.
+	if suggestion != nil {
+		claimed, err := s.store.DecideQualitySuggestion(ctx, suggestion.ResourceID,
+			storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED,
+			int32(currentUserID(ctx)), "", time.Now())
+		if err != nil {
+			if common.ErrorCode(err) == common.Conflict {
+				return nil, connect.NewError(connect.CodeAborted, err)
+			}
+			return nil, errors.Wrap(err, "failed to accept the quality suggestion a rule is created from")
+		}
+		suggestion = claimed
+	}
 	created, err := s.store.CreateQualityRule(ctx, &store.QualityRuleMessage{
 		ResourceID:       resourceID,
 		Title:            rule.GetTitle(),
@@ -442,15 +458,21 @@ func (s *DataQualityService) createQualityRuleFromRequest(ctx context.Context, w
 		UpdatedBy:        callerID,
 	})
 	if err != nil {
+		// The rule was not written, so the claim must not stand: put the draft back
+		// in the queue for a retry. Best effort, like the decision itself.
+		if suggestion != nil {
+			if _, reopenErr := s.store.ReopenQualitySuggestion(ctx, suggestion.ResourceID); reopenErr != nil {
+				slog.Warn("failed to reopen the quality suggestion a failed rule creation had claimed",
+					slog.String("suggestion", suggestion.ResourceID),
+					slog.Any("error", reopenErr))
+			}
+		}
 		return nil, errors.Wrap(err, "failed to create the quality rule")
 	}
 	// A saved rule is the fact; any pending proposal with the same identity is now
 	// stale. Closing it here keeps the review queue consistent with the rule list
 	// even when the rule was written by hand rather than from the draft.
 	s.supersedeMatchingRuleDrafts(ctx, created)
-	if suggestion != nil {
-		s.acceptRuleDraftSuggestion(ctx, suggestion)
-	}
 	return convertQualityRule(workspaceID, created), nil
 }
 
@@ -523,20 +545,6 @@ func validateRuleTargetAgainstSuggestion(target *v1pb.QualityTarget, suggestion 
 		return connectErrorInvalid("the rule target must match the suggestion's target")
 	}
 	return nil
-}
-
-// acceptRuleDraftSuggestion records that a rule was created from a suggestion.
-// The rule exists by now, so a failed decision cannot roll it back: it is logged
-// and the reviewer can decide the suggestion explicitly.
-func (s *DataQualityService) acceptRuleDraftSuggestion(ctx context.Context, suggestion *store.QualitySuggestionMessage) {
-	_, err := s.store.DecideQualitySuggestion(ctx, suggestion.ResourceID,
-		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED,
-		int32(currentUserID(ctx)), "", time.Now())
-	if err != nil {
-		slog.Warn("failed to accept the quality suggestion a rule was created from",
-			slog.String("suggestion", suggestion.ResourceID),
-			slog.Any("error", err))
-	}
 }
 
 // UpdateQualityRule applies the update mask to one rule, revalidating the

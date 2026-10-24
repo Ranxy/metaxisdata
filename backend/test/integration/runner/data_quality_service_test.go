@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -814,6 +815,57 @@ func TestDataQualitySuggestionCenterRealServerIntegration(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, connect.CodeAborted, connect.CodeOf(err))
 
+	// Two concurrent "create a rule from this draft" requests must not both write a
+	// rule: the PENDING→ACCEPTED claim is the idempotency key, so exactly one wins
+	// and the other is Aborted.
+	raceTitle := "concurrent create from a draft"
+	draftRace := fixture.seedSuggestion(t, storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT,
+		qualityDraftSuggestionPayload(raceTitle))
+	createRaceRule := func() error {
+		_, err := client.CreateQualityRule(fixture.ctx, withToken(token, &v1pb.CreateQualityRuleRequest{
+			Parent: "workspaces/-",
+			Rule: &v1pb.QualityRule{
+				Title:     raceTitle,
+				Dimension: v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+				RuleType:  v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+				Target:    &v1pb.QualityTarget{MetaGuid: fixture.usersGUID, MetaType: v1pb.MetaType_TABLE},
+				Config:    qualityRowCountConfig(1),
+				Severity:  v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+			},
+			Suggestion: name(draftRace),
+		}))
+		return err
+	}
+	var race sync.WaitGroup
+	raceErrs := make([]error, 2)
+	for index := range raceErrs {
+		race.Add(1)
+		go func(index int) {
+			defer race.Done()
+			raceErrs[index] = createRaceRule()
+		}(index)
+	}
+	race.Wait()
+	successes, aborted := 0, 0
+	for _, raceErr := range raceErrs {
+		switch {
+		case raceErr == nil:
+			successes++
+		case connect.CodeOf(raceErr) == connect.CodeAborted:
+			aborted++
+		}
+	}
+	require.Equal(t, 1, successes, "exactly one concurrent create may succeed")
+	require.Equal(t, 1, aborted, "the losing create reports the draft as already claimed")
+
+	racedRules, err := client.ListQualityRules(fixture.ctx, withToken(token, &v1pb.ListQualityRulesRequest{
+		Parent:   "workspaces/-",
+		PageSize: 1000,
+		Search:   raceTitle,
+	}))
+	require.NoError(t, err)
+	require.Len(t, racedRules.Msg.GetQualityRules(), 1, "one draft may produce at most one rule")
+
 	// The path filters are GUID prefixes. All seeded suggestions share this
 	// fixture's table GUID, so the filters narrow to them and nothing else.
 	list := func(t *testing.T, request *v1pb.ListQualitySuggestionsRequest) []*v1pb.QualitySuggestion {
@@ -825,14 +877,14 @@ func TestDataQualitySuggestionCenterRealServerIntegration(t *testing.T) {
 		return resp.Msg.GetQualitySuggestions()
 	}
 
-	require.Len(t, list(t, &v1pb.ListQualitySuggestionsRequest{TargetGuid: fixture.usersGUID}), 4)
-	require.Len(t, list(t, &v1pb.ListQualitySuggestionsRequest{Instance: fixture.instanceID}), 4)
-	require.Len(t, list(t, &v1pb.ListQualitySuggestionsRequest{Instance: common.FormatInstance(fixture.instanceID)}), 4,
+	require.Len(t, list(t, &v1pb.ListQualitySuggestionsRequest{TargetGuid: fixture.usersGUID}), 5)
+	require.Len(t, list(t, &v1pb.ListQualitySuggestionsRequest{Instance: fixture.instanceID}), 5)
+	require.Len(t, list(t, &v1pb.ListQualitySuggestionsRequest{Instance: common.FormatInstance(fixture.instanceID)}), 5,
 		"an instance resource name is accepted as its GUID segment")
 	require.Len(t, list(t, &v1pb.ListQualitySuggestionsRequest{
 		Instance: fixture.instanceID,
 		Database: fixture.sourceDatabase,
-	}), 4)
+	}), 5)
 
 	tableRequest := func(table string) *v1pb.ListQualitySuggestionsRequest {
 		return &v1pb.ListQualitySuggestionsRequest{
@@ -841,7 +893,7 @@ func TestDataQualitySuggestionCenterRealServerIntegration(t *testing.T) {
 			Table:    table,
 		}
 	}
-	require.Len(t, list(t, tableRequest("users")), 4, "a table filter selects that table's suggestions")
+	require.Len(t, list(t, tableRequest("users")), 5, "a table filter selects that table's suggestions")
 	require.Empty(t, list(t, tableRequest("orders")), "the fixture's other table has no suggestions")
 
 	pending := list(t, &v1pb.ListQualitySuggestionsRequest{

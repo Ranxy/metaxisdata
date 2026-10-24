@@ -2,6 +2,8 @@ package dataquality
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -14,6 +16,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
@@ -57,6 +60,10 @@ type Suggester struct {
 	// failure is classified. It is a field so a test can observe the best-effort
 	// update without a database; production updates the store.
 	setDebugErrorCode func(ctx context.Context, correlationID, code string) error
+	// analyses coalesces identical in-flight completions (see analysisGroup), so a
+	// double click or two concurrent generation passes pay for one model call. A
+	// test-built Suggester may omit it; the completion then runs uncoalesced.
+	analyses *analysisGroup
 }
 
 // NewSuggester creates the shared L1 suggester. registry may be nil, in which case
@@ -69,6 +76,7 @@ func NewSuggester(st *store.Store, registry *llm.Registry, quota *LLMQuota, m *m
 		quota:          quota,
 		metrics:        m,
 		newDebugLogger: llm.NewDBDebugLoggerForCall,
+		analyses:       newAnalysisGroup(),
 		setDebugErrorCode: func(ctx context.Context, correlationID, code string) error {
 			if st == nil {
 				return nil
@@ -330,6 +338,44 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 // itself. The body capture is attached only when runtime debug is on, and the
 // diagnostic says whether it was captured.
 func (s *Suggester) JSONCompletion(ctx context.Context, config llm.ResolvedConfig, feature, promptVersion, systemPrompt, userPrompt string, maxOutputTokens int) (string, *llm.Usage, *storepb.QualityLLMDiagnostic, error) {
+	if s.analyses == nil {
+		return s.runJSONCompletion(ctx, config, feature, promptVersion, systemPrompt, userPrompt, maxOutputTokens)
+	}
+	budget := maxOutputTokens
+	if budget <= 0 {
+		budget = llm.DefaultMaxOutputTokens
+	}
+	key := analysisKey(config, feature, promptVersion, systemPrompt, userPrompt, budget)
+	text, usage, diagnostic, err := s.analyses.Do(ctx, key, func(ctx context.Context) (string, *llm.Usage, *storepb.QualityLLMDiagnostic, error) {
+		return s.runJSONCompletion(ctx, config, feature, promptVersion, systemPrompt, userPrompt, budget)
+	})
+	// Every caller gets its own usage/diagnostic copy: a caller may enrich the
+	// diagnostic after a parse failure, and sharing the pointer would race.
+	if usage != nil {
+		usageCopy := *usage
+		usage = &usageCopy
+	}
+	if diagnostic != nil {
+		if cloned, ok := proto.Clone(diagnostic).(*storepb.QualityLLMDiagnostic); ok {
+			diagnostic = cloned
+		}
+	}
+	return text, usage, diagnostic, err
+}
+
+// analysisKey identifies one completion by everything that shapes its answer. Two
+// calls with the same key would send the same prompt to the same model; they can
+// share one call.
+func analysisKey(config llm.ResolvedConfig, feature, promptVersion, systemPrompt, userPrompt string, maxOutputTokens int) string {
+	digest := sha256.Sum256([]byte(strings.Join([]string{
+		feature, promptVersion, config.ProfileName, config.ModelName,
+		strconv.Itoa(maxOutputTokens), systemPrompt, userPrompt,
+	}, "\x00")))
+	return hex.EncodeToString(digest[:])
+}
+
+// runJSONCompletion is the uncoalesced completion JSONCompletion wraps.
+func (s *Suggester) runJSONCompletion(ctx context.Context, config llm.ResolvedConfig, feature, promptVersion, systemPrompt, userPrompt string, maxOutputTokens int) (string, *llm.Usage, *storepb.QualityLLMDiagnostic, error) {
 	if maxOutputTokens <= 0 {
 		maxOutputTokens = llm.DefaultMaxOutputTokens
 	}

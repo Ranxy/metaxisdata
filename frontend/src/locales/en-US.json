@@ -955,6 +955,8 @@
       "queued": "{count} suggestion(s) queued",
       "refreshed": "{count} refreshed",
       "skipped": "{count} skipped",
+      "skippedColumns": "Skipped columns: {columns}",
+      "skippedColumnsOverflow": "Skipped columns: {columns} and {count} more",
       "superseded": "{count} superseded"
     },
     "suggestions": {

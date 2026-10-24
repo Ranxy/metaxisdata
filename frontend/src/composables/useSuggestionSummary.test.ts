@@ -33,6 +33,7 @@ function summary(fields: {
   skippedExistingFact?: number;
   skippedPending?: number;
   skippedDecided?: number;
+  skippedColumns?: string[];
 }) {
   return create(QualitySuggestionQueueSummarySchema, fields);
 }
@@ -65,6 +66,38 @@ describe("useSuggestionSummary", () => {
     );
     expect(summaryText(summary({ skippedDecided: 4 }), "rule")).toBe(
       "Nothing new: 4 proposal(s) were already reviewed; regenerate to propose them again."
+    );
+  });
+
+  it("names the columns a label pass left out", () => {
+    const { summaryText } = inSetup(useSuggestionSummary);
+
+    expect(
+      summaryText(
+        summary({
+          skippedExistingFact: 2,
+          skippedColumns: ["email", "phone"],
+        }),
+        "label"
+      )
+    ).toBe(
+      "Nothing new: 2 column(s) already have a label. · Skipped columns: email, phone"
+    );
+  });
+
+  it("summarizes a long skipped-column list instead of naming every column", () => {
+    const { summaryText } = inSetup(useSuggestionSummary);
+
+    expect(
+      summaryText(
+        summary({
+          skippedPending: 8,
+          skippedColumns: ["a", "b", "c", "d", "e", "f", "g", "h"],
+        }),
+        "label"
+      )
+    ).toBe(
+      "Nothing new: 8 matching proposal(s) are already waiting for review. · Skipped columns: a, b, c, d, e, f and 2 more"
     );
   });
 

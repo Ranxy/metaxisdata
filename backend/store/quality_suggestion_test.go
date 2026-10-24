@@ -401,4 +401,10 @@ func TestDecideQualitySuggestionQueryGuardsThePendingState(t *testing.T) {
 	require.Contains(t, queueQualitySuggestionQuery, "refreshed_at = EXCLUDED.created_at")
 	requirePlaceholdersMatchArgs(t, queueQualitySuggestionQuery,
 		[]any{"r", int32(1), int32(2), "g", int32(4), []byte("{}"), "label|x", int32(1), "", "", "", nil, time.Now()})
+
+	// Reopening is the rollback of a claim: it only ever moves an ACCEPTED row back
+	// to PENDING, so it cannot resurrect a rejected or superseded proposal.
+	require.Contains(t, reopenQualitySuggestionQuery, "SET status = 1")
+	require.Contains(t, reopenQualitySuggestionQuery, "WHERE resource_id = $1 AND status = 2")
+	requirePlaceholdersMatchArgs(t, reopenQualitySuggestionQuery, []any{"suggestions/abc"})
 }

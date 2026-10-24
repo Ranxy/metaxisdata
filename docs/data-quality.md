@@ -178,7 +178,8 @@ per proposal identity**: one per column for a label, one per rule type plus the
 columns it covers for a rule draft. Clicking *Suggest labels* or *Draft with AI*
 again therefore never adds a second copy — the pass **refreshes** the pending
 proposal instead (the row keeps its identity, and its *refreshed* time moves). The
-result toast reports what happened: created, refreshed, and skipped.
+result toast reports what happened — created, refreshed, skipped — and names the
+columns it left out (up to six, with a count for the rest).
 
 A generation pass also reconciles proposals with reality:
 
@@ -197,6 +198,11 @@ rejecting acts on exactly that proposal: accepting a label writes it (and it wil
 not be suggested again while it exists), rejecting it keeps it out of later passes
 until you explicitly regenerate. *Superseded* is not a decision — nobody accepted
 or rejected it; the reason is recorded in its note.
+
+Creating a rule from a draft is idempotent as well: if the same draft is used to
+create a rule twice at the same time (two tabs, a retried request), only one of the
+requests writes a rule and the other is told the draft was already claimed. If the
+rule write itself fails, the draft returns to *Pending* so it can be retried.
 
 A single row can also be opened in the editor or turned into a rule on its own.
 A draft is tied to the target it was written for: if you open it in the editor

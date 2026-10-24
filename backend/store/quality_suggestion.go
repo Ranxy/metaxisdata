@@ -54,6 +54,17 @@ const decideQualitySuggestionQuery = `
 	WHERE resource_id = $1 AND status = 1
 	RETURNING ` + qualitySuggestionColumns
 
+// reopenQualitySuggestionQuery puts an accepted suggestion back into the queue.
+// The caller uses it when it claimed a draft in order to create a rule and the rule
+// write then failed: the claim is not a decision the reviewer made, so leaving the
+// draft accepted would hide it without a rule behind it. The ACCEPTED predicate is
+// the guard; reopening is only ever a rollback of this caller's own claim.
+const reopenQualitySuggestionQuery = `
+	UPDATE quality_suggestion
+	SET status = 1, decided_by = NULL, decided_at = NULL, decision_note = ''
+	WHERE resource_id = $1 AND status = 2
+	RETURNING ` + qualitySuggestionColumns
+
 // QualitySuggestionMessage is one row of quality_suggestion: a model-proposed
 // rule draft or semantic label waiting for a reviewer. Nothing in this table is a
 // rule; accepting a suggestion edits or creates one through the normal rule path.
@@ -444,6 +455,24 @@ func (s *Store) DecideQualitySuggestion(ctx context.Context, resourceID string, 
 		return nil, common.Errorf(common.NotFound, "quality suggestion %q not found", resourceID)
 	}
 	return nil, common.Errorf(common.Conflict, "quality suggestion %q is already decided", resourceID)
+}
+
+// ReopenQualitySuggestion returns an accepted suggestion to PENDING. It is the
+// rollback half of claiming a draft to create a rule from it: if the rule write
+// fails, the claim is undone so the reviewer can retry instead of finding the
+// draft silently accepted with no rule behind it.
+func (s *Store) ReopenQualitySuggestion(ctx context.Context, resourceID string) (*QualitySuggestionMessage, error) {
+	if strings.TrimSpace(resourceID) == "" {
+		return nil, common.Errorf(common.Invalid, "quality suggestion resource id is required")
+	}
+	suggestion, err := scanQualitySuggestion(s.GetDB().QueryRowContext(ctx, reopenQualitySuggestionQuery, resourceID))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, common.Errorf(common.Conflict, "quality suggestion %q is not accepted and cannot be reopened", resourceID)
+		}
+		return nil, errors.Wrap(err, "failed to reopen a quality suggestion")
+	}
+	return suggestion, nil
 }
 
 // SupersedePendingQualitySuggestions closes the still-pending proposals with the
