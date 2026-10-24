@@ -42,6 +42,7 @@
     - [QualitySuggestionJobTarget](#metaxisdata-store-QualitySuggestionJobTarget)
     - [QualitySuggestionJobTargets](#metaxisdata-store-QualitySuggestionJobTargets)
     - [QualitySuggestionPayload](#metaxisdata-store-QualitySuggestionPayload)
+    - [QualitySuggestionQueueSummary](#metaxisdata-store-QualitySuggestionQueueSummary)
     - [QualityTargetPath](#metaxisdata-store-QualityTargetPath)
     - [QualityThresholds](#metaxisdata-store-QualityThresholds)
     - [RangeConfig](#metaxisdata-store-RangeConfig)
@@ -848,6 +849,7 @@ QualityStatusCounts is the six-state tally of a set of executions.
 | started_at_unix_ms | [int64](#int64) |  |  |
 | finished_at_unix_ms | [int64](#int64) |  |  |
 | diagnostic | [QualityLLMDiagnostic](#metaxisdata-store-QualityLLMDiagnostic) |  | Set when the target failed in the model call; the classifier and context. |
+| summary | [QualitySuggestionQueueSummary](#metaxisdata-store-QualitySuggestionQueueSummary) |  | What this target&#39;s generation pass did to the review queue. Set on success. |
 
 
 
@@ -881,6 +883,30 @@ can load into the editor, or a semantic label awaiting confirmation.
 | ----- | ---- | ----- | ----------- |
 | rule | [QualityRuleDraftConfig](#metaxisdata-store-QualityRuleDraftConfig) |  |  |
 | label | [SemanticLabelSuggestion](#metaxisdata-store-SemanticLabelSuggestion) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualitySuggestionQueueSummary"></a>
+
+### QualitySuggestionQueueSummary
+QualitySuggestionQueueSummary is what one generation pass did to the review
+queue. Generation reconciles proposals instead of appending them, so a pass can
+create, refresh, close or skip proposals. The counts let the caller tell the
+user what changed without listing every row.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| created | [int32](#int32) |  | Proposals that did not exist before this pass. |
+| refreshed | [int32](#int32) |  | Pending proposals whose payload this pass updated. |
+| superseded | [int32](#int32) |  | Pending proposals closed because their fact now exists or was replaced. |
+| skipped_existing_fact | [int32](#int32) |  | Skipped because the fact already exists: the column has a label, or a rule with the same identity exists. |
+| skipped_pending | [int32](#int32) |  | Skipped because an equivalent proposal is already pending; the default generation mode leaves it untouched instead of spending a model call. |
+| skipped_decided | [int32](#int32) |  | Skipped because the same proposal was already accepted or rejected and the caller did not force regeneration. |
+| skipped_columns | [string](#string) | repeated | The columns a label pass left out, so a caller can name them. |
 
 
 
@@ -1569,12 +1595,19 @@ QualitySuggestionSource is what produced a suggestion.
 ### QualitySuggestionStatus
 QualitySuggestionStatus is where a suggestion is in the review queue.
 
+PENDING is the one live state. ACCEPTED and REJECTED are human decisions and
+are final. SUPERSEDED means the proposal stopped being relevant before anybody
+decided it (the fact it proposed already exists, or the target changed); it is
+closed by the server, never by a reviewer, and its identity may be proposed
+again later.
+
 | Name | Number | Description |
 | ---- | ------ | ----------- |
 | QUALITY_SUGGESTION_STATUS_UNSPECIFIED | 0 |  |
 | QUALITY_SUGGESTION_STATUS_PENDING | 1 |  |
 | QUALITY_SUGGESTION_STATUS_ACCEPTED | 2 |  |
 | QUALITY_SUGGESTION_STATUS_REJECTED | 3 |  |
+| QUALITY_SUGGESTION_STATUS_SUPERSEDED | 4 |  |
 
 
 

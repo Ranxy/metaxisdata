@@ -231,11 +231,18 @@ enum QualitySuggestionKind {
 }
 
 // QualitySuggestionStatus is where a suggestion is in the review queue.
+//
+// PENDING is the one live state. ACCEPTED and REJECTED are human decisions and
+// are final. SUPERSEDED means the proposal stopped being relevant before anybody
+// decided it (the fact it proposed already exists, or the target changed); it is
+// closed by the server, never by a reviewer, and its identity may be proposed
+// again later.
 enum QualitySuggestionStatus {
   QUALITY_SUGGESTION_STATUS_UNSPECIFIED = 0;
   QUALITY_SUGGESTION_STATUS_PENDING = 1;
   QUALITY_SUGGESTION_STATUS_ACCEPTED = 2;
   QUALITY_SUGGESTION_STATUS_REJECTED = 3;
+  QUALITY_SUGGESTION_STATUS_SUPERSEDED = 4;
 }
 
 // QualitySuggestionSource is what produced a suggestion.
@@ -376,6 +383,30 @@ message QualitySuggestionPayload {
     QualityRuleDraftConfig rule = 1;
     SemanticLabelSuggestion label = 2;
   }
+}
+
+// QualitySuggestionQueueSummary is what one generation pass did to the review
+// queue. Generation reconciles proposals instead of appending them, so a pass can
+// create, refresh, close or skip proposals. The counts let the caller tell the
+// user what changed without listing every row.
+message QualitySuggestionQueueSummary {
+  // Proposals that did not exist before this pass.
+  int32 created = 1;
+  // Pending proposals whose payload this pass updated.
+  int32 refreshed = 2;
+  // Pending proposals closed because their fact now exists or was replaced.
+  int32 superseded = 3;
+  // Skipped because the fact already exists: the column has a label, or a rule
+  // with the same identity exists.
+  int32 skipped_existing_fact = 4;
+  // Skipped because an equivalent proposal is already pending; the default
+  // generation mode leaves it untouched instead of spending a model call.
+  int32 skipped_pending = 5;
+  // Skipped because the same proposal was already accepted or rejected and the
+  // caller did not force regeneration.
+  int32 skipped_decided = 6;
+  // The columns a label pass left out, so a caller can name them.
+  repeated string skipped_columns = 7;
 }
 
 // QualityRuleDraftConfig is one model-proposed rule, already validated into the
@@ -784,6 +815,8 @@ message QualitySuggestionJobTarget {
   int64 finished_at_unix_ms = 9;
   // Set when the target failed in the model call; the classifier and context.
   QualityLLMDiagnostic diagnostic = 10;
+  // What this target's generation pass did to the review queue. Set on success.
+  QualitySuggestionQueueSummary summary = 11;
 }
 
 // QualitySuggestionJobTargets is the JSONB payload of

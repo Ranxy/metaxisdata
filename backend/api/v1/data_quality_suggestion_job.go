@@ -1,8 +1,13 @@
 package v1
 
 import (
+	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -68,9 +73,27 @@ func (s *DataQualityService) CreateQualitySuggestionJob(ctx context.Context, req
 		return nil, connectErrorInvalid("intent is longer than %d characters", dataquality.MaxRuleDraftIntentChars)
 	}
 	language := dataquality.NormalizePromptLanguage(req.Msg.GetLanguage())
+	force := req.Msg.GetForceRegenerate()
 	targets, err := s.snapshotSuggestionJobTargets(ctx, req.Msg.GetTargets())
 	if err != nil {
 		return nil, err
+	}
+	// The fingerprint makes an identical submission idempotent: while the first job
+	// is still active, a double click or a retried request returns it instead of
+	// starting a second analysis of the same targets.
+	fingerprint, err := qualitySuggestionJobFingerprint(intent, language, force, targets)
+	if err != nil {
+		return nil, err
+	}
+	// An identical request that is already pending or running is answered with that
+	// job before any precondition check: the work exists, so a repeated click must
+	// not fail on a quota or provider state the first submission already passed.
+	if active, err := s.store.GetActiveQualitySuggestionJobByFingerprint(ctx, fingerprint); err != nil {
+		return nil, errors.Wrap(err, "failed to read the active quality suggestion job")
+	} else if active != nil {
+		converted := convertQualitySuggestionJob(workspaceID, active)
+		converted.Deduplicated = true
+		return connect.NewResponse(converted), nil
 	}
 	// The provider configuration is checked before the job is stored: a disabled
 	// LLM must fail the submission, not every target of a queued job.
@@ -90,19 +113,70 @@ func (s *DataQualityService) CreateQualitySuggestionJob(ctx context.Context, req
 	if err != nil {
 		return nil, errors.New("failed to generate the quality suggestion job id")
 	}
-	created, err := s.store.CreateQualitySuggestionJob(ctx, &store.QualitySuggestionJobMessage{
-		ResourceID: resourceID,
-		Status:     storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_PENDING,
-		Intent:     intent,
-		Language:   language,
-		Targets:    targets,
-		CreatedBy:  principalIDPointer(currentUserID(ctx)),
-		CreatedAt:  time.Now().UTC(),
+	queued, created, err := s.store.QueueQualitySuggestionJob(ctx, &store.QualitySuggestionJobMessage{
+		ResourceID:         resourceID,
+		Status:             storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_PENDING,
+		Intent:             intent,
+		Language:           language,
+		Targets:            targets,
+		RequestFingerprint: fingerprint,
+		ForceRegenerate:    force,
+		CreatedBy:          principalIDPointer(currentUserID(ctx)),
+		CreatedAt:          time.Now().UTC(),
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the quality suggestion job")
 	}
-	return connect.NewResponse(convertQualitySuggestionJob(workspaceID, created)), nil
+	converted := convertQualitySuggestionJob(workspaceID, queued)
+	converted.Deduplicated = !created
+	return connect.NewResponse(converted), nil
+}
+
+// qualitySuggestionJobFingerprint hashes the submission identity: intent,
+// language, force flag and the target snapshot with sorted columns. Two requests
+// with the same fingerprint ask for exactly the same analysis, so the second may
+// share the first job. The encoding is explicit (not protojson) so the bytes do not
+// depend on field ordering.
+func qualitySuggestionJobFingerprint(intent, language string, force bool, targets *storepb.QualitySuggestionJobTargets) (string, error) {
+	type fingerprintTarget struct {
+		GUID    string   `json:"guid"`
+		Type    int32    `json:"type"`
+		Columns []string `json:"columns"`
+	}
+	payload := struct {
+		Intent   string              `json:"intent"`
+		Language string              `json:"language"`
+		Force    bool                `json:"force"`
+		Targets  []fingerprintTarget `json:"targets"`
+	}{
+		Intent:   intent,
+		Language: language,
+		Force:    force,
+		Targets:  make([]fingerprintTarget, 0, len(targets.GetTargets())),
+	}
+	for _, target := range targets.GetTargets() {
+		columns := append([]string(nil), target.GetColumns()...)
+		slices.Sort(columns)
+		payload.Targets = append(payload.Targets, fingerprintTarget{
+			GUID:    target.GetTargetGuid(),
+			Type:    target.GetTargetType(),
+			Columns: slices.Compact(columns),
+		})
+	}
+	// The job visits its targets in order, but the same set in another order asks
+	// the same questions; fingerprint the set, not the presentation order.
+	slices.SortFunc(payload.Targets, func(left, right fingerprintTarget) int {
+		if left.Type != right.Type {
+			return cmp.Compare(left.Type, right.Type)
+		}
+		return cmp.Compare(left.GUID, right.GUID)
+	})
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return "", connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to encode the quality suggestion job request"))
+	}
+	sum := sha256.Sum256(encoded)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // snapshotSuggestionJobTargets validates the request's targets and renders the

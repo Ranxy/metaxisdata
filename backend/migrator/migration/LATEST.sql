@@ -1127,13 +1127,17 @@ CREATE TABLE IF NOT EXISTS quality_suggestion (
     target_guid TEXT COLLATE "C" NOT NULL,
     target_type INT2 NOT NULL,
     payload JSONB NOT NULL DEFAULT '{}',
-    -- 1 PENDING, 2 ACCEPTED, 3 REJECTED.
+    -- Deterministic proposal identity. Rows from before identity-keyed queueing
+    -- carry a unique "legacy:" value and are never deduplicated.
+    signature TEXT COLLATE "C" NOT NULL DEFAULT '',
+    -- 1 PENDING, 2 ACCEPTED, 3 REJECTED, 4 SUPERSEDED.
     status INT2 NOT NULL DEFAULT 1,
     provider TEXT NOT NULL DEFAULT '',
     model TEXT NOT NULL DEFAULT '',
     prompt_version TEXT NOT NULL DEFAULT '',
     created_by INT4,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    refreshed_at TIMESTAMPTZ,
     decided_by INT4,
     decided_at TIMESTAMPTZ,
     decision_note TEXT NOT NULL DEFAULT ''
@@ -1141,6 +1145,12 @@ CREATE TABLE IF NOT EXISTS quality_suggestion (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_suggestion_resource_id ON quality_suggestion(resource_id);
 CREATE INDEX IF NOT EXISTS idx_quality_suggestion_status_time ON quality_suggestion(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_quality_suggestion_target ON quality_suggestion(target_guid, target_type);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_suggestion_pending_signature
+    ON quality_suggestion(target_guid, target_type, signature)
+    WHERE status = 1;
+COMMENT ON COLUMN quality_suggestion.status IS '1 PENDING, 2 ACCEPTED, 3 REJECTED, 4 SUPERSEDED';
+COMMENT ON COLUMN quality_suggestion.signature IS 'Deterministic proposal identity: label|<column> or rule|<type>|<sorted columns>|<discriminator>; one PENDING row per (target, signature)';
+COMMENT ON COLUMN quality_suggestion.refreshed_at IS 'When a later generation pass refreshed this pending proposal';
 
 -- quality_suggestion_job is one background AI drafting job. The job fans out over
 -- its targets, one LLM analysis per target, and leaves the queued suggestions for
@@ -1157,6 +1167,10 @@ CREATE TABLE IF NOT EXISTS quality_suggestion_job (
     model TEXT NOT NULL DEFAULT '',
     prompt_version TEXT NOT NULL DEFAULT '',
     targets JSONB NOT NULL DEFAULT '{}',
+    -- Hash of intent, language, target snapshot and force flag. One active job per
+    -- fingerprint, so re-submitting an identical request is idempotent.
+    request_fingerprint TEXT COLLATE "C" NOT NULL DEFAULT '',
+    force_regenerate BOOLEAN NOT NULL DEFAULT FALSE,
     cancel_requested BOOLEAN NOT NULL DEFAULT FALSE,
     created_by INT4,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -1167,8 +1181,13 @@ CREATE TABLE IF NOT EXISTS quality_suggestion_job (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_suggestion_job_resource_id ON quality_suggestion_job(resource_id);
 CREATE INDEX IF NOT EXISTS idx_quality_suggestion_job_status_id ON quality_suggestion_job(status, id);
 CREATE INDEX IF NOT EXISTS idx_quality_suggestion_job_created_at ON quality_suggestion_job(created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_suggestion_job_active_fingerprint
+    ON quality_suggestion_job(request_fingerprint)
+    WHERE status IN (1, 2);
 COMMENT ON TABLE quality_suggestion_job IS 'Background AI drafting jobs; each fans out over its targets and queues quality_suggestion rows';
 COMMENT ON COLUMN quality_suggestion_job.status IS 'Lifecycle: 1 PENDING, 2 RUNNING, 3 COMPLETED, 4 FAILED, 5 CANCELED';
+COMMENT ON COLUMN quality_suggestion_job.request_fingerprint IS 'Hash of intent, language, target snapshot and force flag; one active job per fingerprint';
+COMMENT ON COLUMN quality_suggestion_job.force_regenerate IS 'Whether the job re-proposes already decided suggestions';
 COMMENT ON COLUMN quality_suggestion_job.targets IS 'Stored as QualitySuggestionJobTargets (proto/store/store/data_quality.proto)';
 
 -- data_quality_llm_cache keeps validated LLM outputs. It is separate from

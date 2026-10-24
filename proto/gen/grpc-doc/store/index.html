@@ -329,6 +329,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.store.QualitySuggestionQueueSummary"><span class="badge">M</span>QualitySuggestionQueueSummary</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.QualityTargetPath"><span class="badge">M</span>QualityTargetPath</a>
                 </li>
               
@@ -2690,6 +2694,13 @@ failure (runtime debug mode was on and the write was attempted). </p></td>
                   <td><p>Set when the target failed in the model call; the classifier and context. </p></td>
                 </tr>
               
+                <tr>
+                  <td>summary</td>
+                  <td><a href="#metaxisdata.store.QualitySuggestionQueueSummary">QualitySuggestionQueueSummary</a></td>
+                  <td></td>
+                  <td><p>What this target&#39;s generation pass did to the review queue. Set on success. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -2743,6 +2754,75 @@ failure (runtime debug mode was on and the write was attempted). </p></td>
                   <td><a href="#metaxisdata.store.SemanticLabelSuggestion">SemanticLabelSuggestion</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QualitySuggestionQueueSummary">QualitySuggestionQueueSummary</h3>
+        <p>QualitySuggestionQueueSummary is what one generation pass did to the review</p><p>queue. Generation reconciles proposals instead of appending them, so a pass can</p><p>create, refresh, close or skip proposals. The counts let the caller tell the</p><p>user what changed without listing every row.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>created</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Proposals that did not exist before this pass. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>refreshed</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Pending proposals whose payload this pass updated. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>superseded</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Pending proposals closed because their fact now exists or was replaced. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>skipped_existing_fact</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Skipped because the fact already exists: the column has a label, or a rule
+with the same identity exists. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>skipped_pending</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Skipped because an equivalent proposal is already pending; the default
+generation mode leaves it untouched instead of spending a model call. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>skipped_decided</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Skipped because the same proposal was already accepted or rejected and the
+caller did not force regeneration. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>skipped_columns</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>The columns a label pass left out, so a caller can name them. </p></td>
                 </tr>
               
             </tbody>
@@ -4608,7 +4688,7 @@ the same instance and database.</p></td>
         </table>
       
         <h3 id="metaxisdata.store.QualitySuggestionStatus">QualitySuggestionStatus</h3>
-        <p>QualitySuggestionStatus is where a suggestion is in the review queue.</p>
+        <p>QualitySuggestionStatus is where a suggestion is in the review queue.</p><p>PENDING is the one live state. ACCEPTED and REJECTED are human decisions and</p><p>are final. SUPERSEDED means the proposal stopped being relevant before anybody</p><p>decided it (the fact it proposed already exists, or the target changed); it is</p><p>closed by the server, never by a reviewer, and its identity may be proposed</p><p>again later.</p>
         <table class="enum-table">
           <thead>
             <tr><td>Name</td><td>Number</td><td>Description</td></tr>
@@ -4636,6 +4716,12 @@ the same instance and database.</p></td>
               <tr>
                 <td>QUALITY_SUGGESTION_STATUS_REJECTED</td>
                 <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_STATUS_SUPERSEDED</td>
+                <td>4</td>
                 <td><p></p></td>
               </tr>
             

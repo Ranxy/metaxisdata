@@ -36,17 +36,18 @@ func (*realStoreDraftSuggester) ResolveConfig(context.Context) (llm.ResolvedConf
 	}, dataquality.Settings{}, nil
 }
 
-func (s *realStoreDraftSuggester) Draft(ctx context.Context, config llm.ResolvedConfig, _ dataquality.LLMLimits, targetGUID string, metaType storepb.MetaType, _ []string, _ string, _ string, createdBy *int32) ([]*store.QualitySuggestionMessage, *storepb.QualityLLMDiagnostic, error) {
+func (s *realStoreDraftSuggester) Draft(ctx context.Context, config llm.ResolvedConfig, _ dataquality.LLMLimits, targetGUID string, metaType storepb.MetaType, _ []string, _ string, _ string, _ bool, createdBy *int32) ([]*store.QualitySuggestionMessage, *storepb.QualitySuggestionQueueSummary, *storepb.QualityLLMDiagnostic, error) {
 	resourceID, err := common.RandomString(12)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	created, err := s.store.CreateQualitySuggestion(ctx, &store.QualitySuggestionMessage{
+	created, _, err := s.store.QueueQualitySuggestion(ctx, &store.QualitySuggestionMessage{
 		ResourceID: resourceID,
 		Kind:       storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT,
 		Source:     storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE,
 		TargetGUID: targetGUID,
 		TargetType: metaType,
+		Signature:  "seed:" + resourceID,
 		Payload: &storepb.QualitySuggestionPayload{
 			Payload: &storepb.QualitySuggestionPayload_Rule{
 				Rule: &storepb.QualityRuleDraftConfig{
@@ -63,9 +64,10 @@ func (s *realStoreDraftSuggester) Draft(ctx context.Context, config llm.Resolved
 		CreatedBy:     createdBy,
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return []*store.QualitySuggestionMessage{created}, nil, nil
+	return []*store.QualitySuggestionMessage{created},
+		&storepb.QualitySuggestionQueueSummary{Created: 1}, nil, nil
 }
 
 // newIsolatedMetadataStore creates a fresh metadata database on the shared
@@ -129,12 +131,13 @@ func TestQualitySuggestionJobRunnerCompletesAgainstTheRealStore(t *testing.T) {
 	}
 	resourceID, err := common.RandomString(12)
 	require.NoError(t, err)
-	_, err = stores.CreateQualitySuggestionJob(ctx, &store.QualitySuggestionJobMessage{
-		ResourceID: resourceID,
-		Status:     storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_PENDING,
-		Intent:     "email must not be empty",
-		Language:   "en",
-		Targets:    targets,
+	_, _, err = stores.QueueQualitySuggestionJob(ctx, &store.QualitySuggestionJobMessage{
+		ResourceID:         resourceID,
+		Status:             storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_PENDING,
+		Intent:             "email must not be empty",
+		Language:           "en",
+		RequestFingerprint: "seed:" + resourceID,
+		Targets:            targets,
 	})
 	require.NoError(t, err)
 

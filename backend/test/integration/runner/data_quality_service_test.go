@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -224,12 +225,13 @@ func (f *qualityFixture) seedSuggestion(t *testing.T, kind storepb.QualitySugges
 
 	resourceID, err := common.RandomString(12)
 	require.NoError(t, err)
-	suggestion, err := f.env.Store.CreateQualitySuggestion(f.ctx, &store.QualitySuggestionMessage{
+	suggestion, queued, err := f.env.Store.QueueQualitySuggestion(f.ctx, &store.QualitySuggestionMessage{
 		ResourceID:    resourceID,
 		Kind:          kind,
 		Source:        storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE,
 		TargetGUID:    f.usersGUID,
 		TargetType:    storepb.MetaType_TABLE,
+		Signature:     "seed:" + resourceID,
 		Payload:       payload,
 		Status:        storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
 		Provider:      "profiles/integration",
@@ -237,6 +239,7 @@ func (f *qualityFixture) seedSuggestion(t *testing.T, kind storepb.QualitySugges
 		PromptVersion: "dq.rule_draft.v1",
 	})
 	require.NoError(t, err)
+	require.True(t, queued)
 	return suggestion
 }
 
@@ -812,6 +815,60 @@ func TestDataQualitySuggestionCenterRealServerIntegration(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, connect.CodeAborted, connect.CodeOf(err))
 
+	// Two concurrent "create a rule from this draft" requests must not both write a
+	// rule: the PENDING→ACCEPTED claim is the idempotency key, so exactly one wins
+	// and the other is Aborted.
+	raceTitle := "concurrent create from a draft"
+	draftRace := fixture.seedSuggestion(t, storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT,
+		qualityDraftSuggestionPayload(raceTitle))
+	createRaceRule := func() error {
+		_, err := client.CreateQualityRule(fixture.ctx, withToken(token, &v1pb.CreateQualityRuleRequest{
+			Parent: "workspaces/-",
+			Rule: &v1pb.QualityRule{
+				Title:     raceTitle,
+				Dimension: v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+				RuleType:  v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+				Target:    &v1pb.QualityTarget{MetaGuid: fixture.usersGUID, MetaType: v1pb.MetaType_TABLE},
+				Config:    qualityRowCountConfig(1),
+				Severity:  v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+			},
+			Suggestion: name(draftRace),
+		}))
+		return err
+	}
+	var race sync.WaitGroup
+	raceErrs := make([]error, 2)
+	for index := range raceErrs {
+		race.Add(1)
+		go func(index int) {
+			defer race.Done()
+			raceErrs[index] = createRaceRule()
+		}(index)
+	}
+	race.Wait()
+	successes, aborted, unexpected := 0, 0, 0
+	for _, raceErr := range raceErrs {
+		switch {
+		case raceErr == nil:
+			successes++
+		case connect.CodeOf(raceErr) == connect.CodeAborted:
+			aborted++
+		default:
+			unexpected++
+		}
+	}
+	require.Equal(t, 1, successes, "exactly one concurrent create may succeed")
+	require.Equal(t, 1, aborted, "the losing create reports the draft as already claimed")
+	require.Zero(t, unexpected, "no other failure is acceptable: %v", raceErrs)
+
+	racedRules, err := client.ListQualityRules(fixture.ctx, withToken(token, &v1pb.ListQualityRulesRequest{
+		Parent:   "workspaces/-",
+		PageSize: 1000,
+		Search:   raceTitle,
+	}))
+	require.NoError(t, err)
+	require.Len(t, racedRules.Msg.GetQualityRules(), 1, "one draft may produce at most one rule")
+
 	// The path filters are GUID prefixes. All seeded suggestions share this
 	// fixture's table GUID, so the filters narrow to them and nothing else.
 	list := func(t *testing.T, request *v1pb.ListQualitySuggestionsRequest) []*v1pb.QualitySuggestion {
@@ -823,14 +880,14 @@ func TestDataQualitySuggestionCenterRealServerIntegration(t *testing.T) {
 		return resp.Msg.GetQualitySuggestions()
 	}
 
-	require.Len(t, list(t, &v1pb.ListQualitySuggestionsRequest{TargetGuid: fixture.usersGUID}), 4)
-	require.Len(t, list(t, &v1pb.ListQualitySuggestionsRequest{Instance: fixture.instanceID}), 4)
-	require.Len(t, list(t, &v1pb.ListQualitySuggestionsRequest{Instance: common.FormatInstance(fixture.instanceID)}), 4,
+	require.Len(t, list(t, &v1pb.ListQualitySuggestionsRequest{TargetGuid: fixture.usersGUID}), 5)
+	require.Len(t, list(t, &v1pb.ListQualitySuggestionsRequest{Instance: fixture.instanceID}), 5)
+	require.Len(t, list(t, &v1pb.ListQualitySuggestionsRequest{Instance: common.FormatInstance(fixture.instanceID)}), 5,
 		"an instance resource name is accepted as its GUID segment")
 	require.Len(t, list(t, &v1pb.ListQualitySuggestionsRequest{
 		Instance: fixture.instanceID,
 		Database: fixture.sourceDatabase,
-	}), 4)
+	}), 5)
 
 	tableRequest := func(table string) *v1pb.ListQualitySuggestionsRequest {
 		return &v1pb.ListQualitySuggestionsRequest{
@@ -839,7 +896,7 @@ func TestDataQualitySuggestionCenterRealServerIntegration(t *testing.T) {
 			Table:    table,
 		}
 	}
-	require.Len(t, list(t, tableRequest("users")), 4, "a table filter selects that table's suggestions")
+	require.Len(t, list(t, tableRequest("users")), 5, "a table filter selects that table's suggestions")
 	require.Empty(t, list(t, tableRequest("orders")), "the fixture's other table has no suggestions")
 
 	pending := list(t, &v1pb.ListQualitySuggestionsRequest{
@@ -1036,14 +1093,15 @@ func TestDataQualitySuggestionJobsRealServerIntegration(t *testing.T) {
 		}
 		return target
 	}
-	seeded, err := fixture.env.Store.CreateQualitySuggestionJob(fixture.ctx, &store.QualitySuggestionJobMessage{
-		ResourceID:    resourceID,
-		Status:        storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_RUNNING,
-		Intent:        "email must not be empty",
-		Language:      "en",
-		Provider:      "profiles/integration",
-		Model:         "integration-model",
-		PromptVersion: "dq.rule_draft.v1",
+	seeded, _, err := fixture.env.Store.QueueQualitySuggestionJob(fixture.ctx, &store.QualitySuggestionJobMessage{
+		ResourceID:         resourceID,
+		Status:             storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_RUNNING,
+		Intent:             "email must not be empty",
+		RequestFingerprint: "seed:" + resourceID,
+		Language:           "en",
+		Provider:           "profiles/integration",
+		Model:              "integration-model",
+		PromptVersion:      "dq.rule_draft.v1",
 		// The first target's failure was not captured (runtime debug off); the second
 		// says it was captured but has no row in the debug log any more, so the
 		// retrieval reports the pruned case without error.
@@ -2043,4 +2101,193 @@ func TestDataQualityLLMLimitsRealServerIntegration(t *testing.T) {
 	require.Equal(t, int32(77), custom.Msg.GetDailyColumnAnalysisLimit())
 	require.LessOrEqual(t, custom.Msg.GetDailyAnalysisUsed(), custom.Msg.GetDailyAnalysisLimit())
 	require.Zero(t, custom.Msg.GetInFlight())
+}
+
+// Suggestions are keyed by proposal identity, not appended: queueing the same
+// label twice refreshes the one pending row, and closing it as SUPERSEDED lets a
+// later pass queue a fresh row. This exercises the partial unique index and the
+// upsert against the real database.
+func TestQualitySuggestionQueueIsIdempotentRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	// A fresh metadata database, so the shared workspace's other scenarios cannot
+	// see this test's rows (and vice versa).
+	stores := newIsolatedMetadataStore(ctx, t)
+	targetGUID := "instances/it;shop;;users"
+	signature := dataquality.LabelSuggestionSignature("email")
+	payload := qualityLabelSuggestionPayload("email", storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_EMAIL)
+	queue := func(resourceID string) (*store.QualitySuggestionMessage, bool) {
+		queued, created, err := stores.QueueQualitySuggestion(ctx, &store.QualitySuggestionMessage{
+			ResourceID: resourceID,
+			Kind:       storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_LABEL,
+			Source:     storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_PROFILE,
+			TargetGUID: targetGUID,
+			TargetType: storepb.MetaType_TABLE,
+			Signature:  signature,
+			Payload:    payload,
+			Status:     storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
+			Provider:   "profiles/integration",
+			Model:      "integration-model",
+		})
+		require.NoError(t, err)
+		return queued, created
+	}
+
+	firstID, err := common.RandomString(12)
+	require.NoError(t, err)
+	first, created := queue(firstID)
+	require.True(t, created)
+	require.Nil(t, first.RefreshedAt)
+
+	secondID, err := common.RandomString(12)
+	require.NoError(t, err)
+	second, created := queue(secondID)
+	require.False(t, created, "the same proposal must refresh the pending row, not append")
+	require.Equal(t, first.ID, second.ID)
+	require.Equal(t, first.ResourceID, second.ResourceID)
+	require.NotNil(t, second.RefreshedAt)
+
+	pending, err := stores.ListQualitySuggestions(ctx, &store.FindQualitySuggestionMessage{
+		TargetGUID: &targetGUID,
+		Statuses:   []storepb.QualitySuggestionStatus{storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING},
+		Kinds:      []storepb.QualitySuggestionKind{storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_LABEL},
+	})
+	require.NoError(t, err)
+	require.Len(t, pending, 1)
+
+	states, err := stores.QualitySuggestionSignatureStates(ctx, targetGUID,
+		storepb.MetaType_TABLE, []string{signature})
+	require.NoError(t, err)
+	require.True(t, states[signature].Pending)
+	require.Equal(t, storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_UNSPECIFIED, states[signature].LastDecision)
+
+	superseded, err := stores.SupersedePendingQualitySuggestions(ctx, targetGUID,
+		storepb.MetaType_TABLE, []string{signature}, "the column already has a semantic label", time.Now())
+	require.NoError(t, err)
+	require.Equal(t, int64(1), superseded)
+
+	// Closing a proposal is not a reviewer decision: the signature has no last
+	// decision, so a later pass may still propose it.
+	states, err = stores.QualitySuggestionSignatureStates(ctx, targetGUID,
+		storepb.MetaType_TABLE, []string{signature})
+	require.NoError(t, err)
+	require.False(t, states[signature].Pending)
+	require.Equal(t, storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_UNSPECIFIED, states[signature].LastDecision)
+
+	againID, err := common.RandomString(12)
+	require.NoError(t, err)
+	_, created = queue(againID)
+	require.True(t, created, "a superseded proposal may be proposed again")
+
+	// A different identity is a different pending proposal.
+	otherID, err := common.RandomString(12)
+	require.NoError(t, err)
+	other, created, err := stores.QueueQualitySuggestion(ctx, &store.QualitySuggestionMessage{
+		ResourceID: otherID,
+		Kind:       storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_LABEL,
+		Source:     storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_PROFILE,
+		TargetGUID: targetGUID,
+		TargetType: storepb.MetaType_TABLE,
+		Signature:  dataquality.LabelSuggestionSignature("phone"),
+		Payload:    qualityLabelSuggestionPayload("phone", storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_PHONE),
+		Status:     storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
+	})
+	require.NoError(t, err)
+	require.True(t, created)
+	require.NotEqual(t, first.ID, other.ID)
+}
+
+// An identical drafting request is idempotent while the first job is active: the
+// second call returns the existing job instead of inserting a second row. The
+// partial unique index is what makes this hold under concurrent submissions.
+func TestQualitySuggestionJobQueueIsIdempotentRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	stores := newIsolatedMetadataStore(ctx, t)
+	targetGUID := "instances/it;shop;;users"
+
+	fingerprint := "integration-fingerprint"
+	queue := func(resourceID string) (*store.QualitySuggestionJobMessage, bool) {
+		job, created, err := stores.QueueQualitySuggestionJob(ctx, &store.QualitySuggestionJobMessage{
+			ResourceID:         resourceID,
+			Status:             storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_RUNNING,
+			Intent:             "email must not be empty",
+			Language:           "en",
+			RequestFingerprint: fingerprint,
+			Targets: &storepb.QualitySuggestionJobTargets{Targets: []*storepb.QualitySuggestionJobTarget{{
+				TargetGuid: targetGUID,
+				TargetType: int32(storepb.MetaType_TABLE),
+				State:      storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING,
+			}}},
+		})
+		require.NoError(t, err)
+		return job, created
+	}
+
+	firstID, err := common.RandomString(12)
+	require.NoError(t, err)
+	first, created := queue(firstID)
+	require.True(t, created)
+
+	secondID, err := common.RandomString(12)
+	require.NoError(t, err)
+	second, created := queue(secondID)
+	require.False(t, created)
+	require.Equal(t, first.ResourceID, second.ResourceID)
+
+	active, err := stores.GetActiveQualitySuggestionJobByFingerprint(ctx, fingerprint)
+	require.NoError(t, err)
+	require.NotNil(t, active)
+	require.Equal(t, first.ResourceID, active.ResourceID)
+}
+
+// Reopening is the rollback of a rule-creation claim: it returns an ACCEPTED draft
+// to PENDING and clears the refresh stamp, so the reviewer can retry it. This
+// exercises the ACCEPTED-only guard against the real database.
+func TestQualitySuggestionReopenRollsBackTheClaimRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	stores := newIsolatedMetadataStore(ctx, t)
+	targetGUID := "instances/it;shop;;users"
+	signature := dataquality.LabelSuggestionSignature("email")
+	payload := qualityLabelSuggestionPayload("email", storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_EMAIL)
+
+	resourceID, err := common.RandomString(12)
+	require.NoError(t, err)
+	queued, created, err := stores.QueueQualitySuggestion(ctx, &store.QualitySuggestionMessage{
+		ResourceID: resourceID,
+		Kind:       storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_LABEL,
+		Source:     storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_PROFILE,
+		TargetGUID: targetGUID,
+		TargetType: storepb.MetaType_TABLE,
+		Signature:  signature,
+		Payload:    payload,
+		Status:     storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
+	})
+	require.NoError(t, err)
+	require.True(t, created)
+
+	decided, err := stores.DecideQualitySuggestion(ctx, queued.ResourceID,
+		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED,
+		int32(1), "", time.Now())
+	require.NoError(t, err)
+	require.Nil(t, decided.RefreshedAt)
+
+	reopened, err := stores.ReopenQualitySuggestion(ctx, queued.ResourceID)
+	require.NoError(t, err)
+	require.Equal(t, storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING, reopened.Status)
+	require.Nil(t, reopened.DecidedBy)
+	require.Nil(t, reopened.DecidedAt)
+	require.Empty(t, reopened.DecisionNote)
+	require.Nil(t, reopened.RefreshedAt)
+
+	// Reopening is guarded: a PENDING row is not reopened a second time.
+	_, err = stores.ReopenQualitySuggestion(ctx, queued.ResourceID)
+	require.Error(t, err)
 }

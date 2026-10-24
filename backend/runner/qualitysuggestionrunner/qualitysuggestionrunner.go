@@ -52,7 +52,7 @@ type JobStore interface {
 // implements it; a test uses a fake to control latency, outcome and quota errors.
 type DraftSuggester interface {
 	ResolveConfig(ctx context.Context) (llm.ResolvedConfig, dataquality.Settings, error)
-	Draft(ctx context.Context, config llm.ResolvedConfig, limits dataquality.LLMLimits, targetGUID string, metaType storepb.MetaType, columns []string, intent, language string, createdBy *int32) ([]*store.QualitySuggestionMessage, *storepb.QualityLLMDiagnostic, error)
+	Draft(ctx context.Context, config llm.ResolvedConfig, limits dataquality.LLMLimits, targetGUID string, metaType storepb.MetaType, columns []string, intent, language string, force bool, createdBy *int32) ([]*store.QualitySuggestionMessage, *storepb.QualitySuggestionQueueSummary, *storepb.QualityLLMDiagnostic, error)
 }
 
 // Runner claims and executes background AI drafting jobs.
@@ -211,8 +211,9 @@ func (r *Runner) processJob(ctx context.Context, job *store.QualitySuggestionJob
 				limits = reloaded
 			}
 		}
-		created, diagnostic, draftErr := r.suggester.Draft(ctx, config, limits,
-			target.GetTargetGuid(), storepb.MetaType(target.GetTargetType()), target.GetColumns(), job.Intent, job.Language, job.CreatedBy)
+		queued, summary, diagnostic, draftErr := r.suggester.Draft(ctx, config, limits,
+			target.GetTargetGuid(), storepb.MetaType(target.GetTargetType()), target.GetColumns(),
+			job.Intent, job.Language, job.ForceRegenerate, job.CreatedBy)
 		if draftErr != nil {
 			target.Error = truncateJobError(draftErr)
 			target.Diagnostic = diagnostic
@@ -244,8 +245,9 @@ func (r *Runner) processJob(ctx context.Context, job *store.QualitySuggestionJob
 		target.Error = ""
 		target.State = storepb.QualitySuggestionJobTargetState_QUALITY_SUGGESTION_JOB_TARGET_STATE_DONE
 		target.FinishedAtUnixMs = r.now().UnixMilli()
-		target.SuggestionResourceIds = make([]string, 0, len(created))
-		for _, suggestion := range created {
+		target.Summary = summary
+		target.SuggestionResourceIds = make([]string, 0, len(queued))
+		for _, suggestion := range queued {
 			target.SuggestionResourceIds = append(target.SuggestionResourceIds, suggestion.ResourceID)
 		}
 		r.persist(ctx, job, targets)

@@ -21,6 +21,7 @@ import {
   type QualitySuggestionJobTarget,
   QualitySuggestionJobTargetState,
   QualitySuggestionKind,
+  type QualitySuggestionQueueSummary,
   QualitySuggestionSource,
   QualitySuggestionStatus,
   type SemanticLabelEvidence,
@@ -83,15 +84,20 @@ export function suggestionStatusKey(status: QualitySuggestionStatus): string {
       return "dataQuality.suggestionStatus.accepted";
     case QualitySuggestionStatus.REJECTED:
       return "dataQuality.suggestionStatus.rejected";
+    case QualitySuggestionStatus.SUPERSEDED:
+      return "dataQuality.suggestionStatus.superseded";
     default:
       return "dataQuality.suggestionStatus.unspecified";
   }
 }
 
-/** The badge variant for a suggestion's decision state. */
+/**
+ * The badge variant for a suggestion's decision state. Superseded is the server's
+ * own closing, never a person's decision, so it stays distinct from rejected.
+ */
 export function suggestionStatusVariant(
   status: QualitySuggestionStatus
-): "success" | "warning" | "neutral" | "secondary" {
+): QualityBadgeVariant {
   switch (status) {
     case QualitySuggestionStatus.PENDING:
       return "warning";
@@ -99,9 +105,117 @@ export function suggestionStatusVariant(
       return "success";
     case QualitySuggestionStatus.REJECTED:
       return "neutral";
+    case QualitySuggestionStatus.SUPERSEDED:
+      return "outline";
     default:
       return "secondary";
   }
+}
+
+// ---- generation summary ----
+
+/** One non-zero count a generation pass reported, with its catalog key. */
+export interface SuggestionSummaryCount {
+  key: string;
+  count: number;
+}
+
+/**
+ * One generation pass's effect on the queue, as the numbers its toast shows.
+ * Generation reconciles proposals with facts and the live queue instead of
+ * appending rows, so a pass that queues nothing is normal and has to be
+ * explained rather than shown as "0 suggestions".
+ */
+export interface SuggestionSummaryView {
+  /** False when the response carried no summary (an older server). */
+  available: boolean;
+  created: number;
+  refreshed: number;
+  superseded: number;
+  /** Every skip reason added up: existing fact, pending proposal, past decision. */
+  skipped: number;
+  /** The non-zero counts, in display order. */
+  counts: SuggestionSummaryCount[];
+  /** This pass created or refreshed at least one proposal. */
+  queued: boolean;
+}
+
+/** One generation pass's queue summary in the shape its toast needs. */
+export function suggestionSummaryView(
+  summary: QualitySuggestionQueueSummary | undefined
+): SuggestionSummaryView {
+  const created = summary?.created ?? 0;
+  const refreshed = summary?.refreshed ?? 0;
+  const superseded = summary?.superseded ?? 0;
+  const skipped =
+    (summary?.skippedExistingFact ?? 0) +
+    (summary?.skippedPending ?? 0) +
+    (summary?.skippedDecided ?? 0);
+  return {
+    available: summary !== undefined,
+    created,
+    refreshed,
+    superseded,
+    skipped,
+    counts: [
+      { key: "dataQuality.suggestionSummary.created", count: created },
+      { key: "dataQuality.suggestionSummary.refreshed", count: refreshed },
+      { key: "dataQuality.suggestionSummary.superseded", count: superseded },
+      { key: "dataQuality.suggestionSummary.skipped", count: skipped },
+    ].filter((item) => item.count > 0),
+    queued: created + refreshed > 0,
+  };
+}
+
+/** Which suggestion kind a pass handled; it changes how a skip is explained. */
+export type SuggestionSummarySubject = "label" | "rule";
+
+export interface SuggestionSummaryReason {
+  key: string;
+  count: number;
+}
+
+/**
+ * Why a pass that queued nothing did nothing, strongest explanation first: the
+ * fact already exists, an equivalent proposal is already pending, or the
+ * proposal had already been decided.
+ */
+export function suggestionSummaryReason(
+  summary: QualitySuggestionQueueSummary | undefined,
+  subject: SuggestionSummarySubject
+): SuggestionSummaryReason {
+  const existingFact = summary?.skippedExistingFact ?? 0;
+  if (existingFact > 0) {
+    return {
+      key:
+        subject === "label"
+          ? "dataQuality.suggestionSummary.emptyLabelExistingFact"
+          : "dataQuality.suggestionSummary.emptyRuleExistingFact",
+      count: existingFact,
+    };
+  }
+  const pending = summary?.skippedPending ?? 0;
+  if (pending > 0) {
+    return {
+      key: "dataQuality.suggestionSummary.emptyPending",
+      count: pending,
+    };
+  }
+  const decided = summary?.skippedDecided ?? 0;
+  if (decided > 0) {
+    return {
+      key: "dataQuality.suggestionSummary.emptyDecided",
+      count: decided,
+    };
+  }
+  const superseded = summary?.superseded ?? 0;
+  if (superseded > 0) {
+    return {
+      key: "dataQuality.suggestionSummary.emptySuperseded",
+      count: superseded,
+    };
+  }
+  return { key: "dataQuality.suggestionSummary.emptyGeneric", count: 0 };
 }
 
 /** The label key for where a column's accepted label came from. */

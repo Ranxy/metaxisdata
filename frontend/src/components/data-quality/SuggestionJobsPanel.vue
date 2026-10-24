@@ -160,6 +160,14 @@
               <div class="truncate">
                 {{ jobTargetLabel(target, targetInstanceTitle(target.target?.path?.instance ?? '')) }}
               </div>
+              <!-- What this target's pass did to the queue: created, refreshed,
+                   skipped, or why it skipped everything. -->
+              <p
+                v-if="targetSummaryText(target)"
+                class="text-xs text-muted-foreground"
+              >
+                {{ targetSummaryText(target) }}
+              </p>
               <template v-if="target.diagnostic">
                 <div class="flex flex-wrap items-center gap-2">
                   <Badge variant="warning">
@@ -252,12 +260,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useErrorMessage } from "@/composables/useErrorHandler";
+import { useSuggestionSummary } from "@/composables/useSuggestionSummary";
 import { notify } from "@/lib/notify";
 import { useInstanceStore } from "@/store/modules/instance";
 import {
   type QualityLLMDiagnostic,
   type QualitySuggestionJob,
   QualitySuggestionJobStatus,
+  type QualitySuggestionJobTarget,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import {
   diagnosticCodeKey,
@@ -305,6 +315,7 @@ const emit = defineEmits<{
 
 const { t, locale } = useI18n();
 const { formatError } = useErrorMessage();
+const { summaryText } = useSuggestionSummary();
 const instanceStore = useInstanceStore();
 
 const jobs = ref<QualitySuggestionJob[]>([]);
@@ -357,6 +368,13 @@ const debugSelection = ref<DebugSelection>();
 
 function targetInstanceTitle(instanceId: string): string {
   return instanceId ? instanceStore.titleOf(`instances/${instanceId}`) : "";
+}
+
+/** What one target's generation pass did; the job persists it per target. */
+function targetSummaryText(target: QualitySuggestionJobTarget): string {
+  return target.summary
+    ? summaryText(target.summary, "rule", target.suggestions.length)
+    : "";
 }
 
 /**

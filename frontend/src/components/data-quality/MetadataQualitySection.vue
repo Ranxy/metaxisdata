@@ -22,16 +22,55 @@
             {{ t("dataQuality.asset.createRule") }}
           </RouterLink>
         </Button>
-        <Button
+        <div
           v-if="canSuggest"
-          variant="outline"
-          size="sm"
-          :disabled="suggesting"
-          @click="suggestLabels"
+          class="flex"
         >
-          <Sparkles class="mr-1 h-4 w-4" />
-          {{ suggesting ? t("dataQuality.asset.suggesting") : t("dataQuality.asset.suggestLabels") }}
-        </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            class="rounded-r-none"
+            :disabled="suggesting"
+            :title="t('dataQuality.asset.suggestLabelsHint')"
+            @click="suggestLabels(false)"
+          >
+            <Sparkles class="mr-1 h-4 w-4" />
+            {{ suggesting ? t("dataQuality.asset.suggesting") : t("dataQuality.asset.suggestLabels") }}
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger as-child>
+              <Button
+                variant="outline"
+                size="sm"
+                class="rounded-l-none border-l-0 px-2"
+                :disabled="suggesting"
+                :title="t('dataQuality.asset.suggestRegenerateHint')"
+                :aria-label="t('dataQuality.asset.suggestRegenerate')"
+              >
+                <ChevronDown class="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              class="max-w-72"
+            >
+              <DropdownMenuItem
+                :disabled="suggesting"
+                @select="suggestLabels(true)"
+              >
+                <div class="space-y-1">
+                  <div class="flex items-center gap-2">
+                    <RefreshCw class="h-4 w-4" />
+                    {{ t("dataQuality.asset.suggestRegenerate") }}
+                  </div>
+                  <p class="text-xs whitespace-normal text-muted-foreground">
+                    {{ t("dataQuality.asset.suggestRegenerateHint") }}
+                  </p>
+                </div>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
         <Button
           v-if="canProfile"
           variant="outline"
@@ -385,9 +424,11 @@
 <script setup lang="ts">
 import {
   Activity,
+  ChevronDown,
   CircleCheck,
   ListChecks,
   Plus,
+  RefreshCw,
   ShieldCheck,
   Sparkles,
   X,
@@ -416,6 +457,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Table,
   TableBody,
   TableCell,
@@ -424,6 +471,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useErrorMessage } from "@/composables/useErrorHandler";
+import { useSuggestionSummary } from "@/composables/useSuggestionSummary";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
 import {
@@ -475,6 +523,7 @@ const props = defineProps<{
 
 const { t, locale } = useI18n();
 const { formatError } = useErrorMessage();
+const { notifySummary } = useSuggestionSummary();
 const authStore = useAuthStore();
 
 const canView = computed(() =>
@@ -659,21 +708,29 @@ async function analyzeColumns() {
   }
 }
 
-async function suggestLabels() {
+/**
+ * Queue label proposals for the sampled columns. `forceRegenerate` re-analyzes
+ * columns that are already labeled or already have a proposal; either way the
+ * server reconciles the queue, so the toast reports what the pass actually did.
+ */
+async function suggestLabels(forceRegenerate: boolean) {
   if (suggesting.value) {
     return;
   }
   suggesting.value = true;
   actionError.value = "";
   try {
-    const suggestions = await suggestColumnLabels({
+    const response = await suggestColumnLabels({
       tableGuid: props.tableGuid,
       metaType: props.metaType,
       columns: sampleColumns(),
       language: locale.value,
+      forceRegenerate,
     });
-    notify.success(
-      t("dataQuality.asset.suggestionsQueued", { count: suggestions.length })
+    notifySummary(
+      response.summary,
+      "label",
+      response.qualitySuggestions.length
     );
   } catch (e: unknown) {
     actionError.value = formatError(e, "dataQuality.asset.suggestFailed");

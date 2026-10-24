@@ -12,6 +12,8 @@ import {
   QualitySuggestionJobStatus,
   QualitySuggestionJobTargetSchema,
   QualitySuggestionJobTargetState,
+  type QualitySuggestionQueueSummary,
+  QualitySuggestionQueueSummarySchema,
   QualityTargetSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
@@ -47,6 +49,7 @@ function targetFixture(options: {
   suggestions?: string[];
   error?: string;
   diagnostic?: QualityLLMDiagnostic;
+  summary?: QualitySuggestionQueueSummary;
 }) {
   return create(QualitySuggestionJobTargetSchema, {
     target: create(QualityTargetSchema, {
@@ -63,6 +66,7 @@ function targetFixture(options: {
     suggestions: options.suggestions ?? [],
     error: options.error ?? "",
     diagnostic: options.diagnostic,
+    summary: options.summary,
   });
 }
 
@@ -251,6 +255,11 @@ describe("SuggestionJobsPanel", () => {
             targetFixture({
               state: QualitySuggestionJobTargetState.DONE,
               suggestions: ["workspaces/ws/qualitySuggestions/s-1"],
+              summary: create(QualitySuggestionQueueSummarySchema, {
+                created: 1,
+                refreshed: 2,
+                skippedDecided: 1,
+              }),
             }),
             targetFixture({
               guid: OTHER_TARGET,
@@ -307,6 +316,15 @@ describe("SuggestionJobsPanel", () => {
     );
     expect(document.body.textContent).toContain(
       "the provider rejected the prompt"
+    );
+    // The job persists each target's generation summary, so the panel can say
+    // what the target's pass created, refreshed and skipped.
+    expect(document.body.textContent).toContain(
+      [
+        label("dataQuality.suggestionSummary.created", { count: 1 }),
+        label("dataQuality.suggestionSummary.refreshed", { count: 2 }),
+        label("dataQuality.suggestionSummary.skipped", { count: 1 }),
+      ].join(" · ")
     );
     wrapper.unmount();
   });

@@ -5369,6 +5369,7 @@ paths:
                         - QUALITY_SUGGESTION_STATUS_PENDING
                         - QUALITY_SUGGESTION_STATUS_ACCEPTED
                         - QUALITY_SUGGESTION_STATUS_REJECTED
+                        - QUALITY_SUGGESTION_STATUS_SUPERSEDED
                     type: string
                     format: enum
                 - name: kind
@@ -6857,6 +6858,12 @@ components:
                         The tables or views to draft for, at most 20. Set meta_guid, meta_type and
                          optionally columns; the path and columns are snapshotted for progress. The
                          job visits them in order.
+                forceRegenerate:
+                    type: boolean
+                    description: |-
+                        Re-propose drafts that were already accepted or rejected, and re-analyze
+                         columns that already have a fact. The queue is still deduplicated by identity:
+                         regeneration refreshes a pending proposal instead of appending a duplicate.
         CreateSSOStateResponse:
             type: object
             properties:
@@ -10584,6 +10591,7 @@ components:
                         - QUALITY_SUGGESTION_STATUS_PENDING
                         - QUALITY_SUGGESTION_STATUS_ACCEPTED
                         - QUALITY_SUGGESTION_STATUS_REJECTED
+                        - QUALITY_SUGGESTION_STATUS_SUPERSEDED
                     type: string
                     format: enum
                 provider:
@@ -10604,6 +10612,12 @@ components:
                     format: date-time
                 decisionNote:
                     type: string
+                refreshTime:
+                    type: string
+                    description: |-
+                        When a later generation pass refreshed this pending proposal's payload.
+                         Unset when the proposal has not been refreshed.
+                    format: date-time
             description: |-
                 QualitySuggestion is one model-proposed rule draft or semantic label waiting
                  for a reviewer. Nothing here is a rule: accepting a suggestion goes through the
@@ -10666,6 +10680,13 @@ components:
                 createdBy:
                     type: string
                     description: 'Format: users/{user}.'
+                deduplicated:
+                    readOnly: true
+                    type: boolean
+                    description: |-
+                        True when this response returns a job that was already PENDING or RUNNING for
+                         the same intent, targets and columns. Re-submitting an identical request is
+                         idempotent: no second job or analysis is started.
             description: |-
                 QualitySuggestionJob is one background AI drafting run over a set of targets.
                  It is the durable unit of the asynchronous drafting flow: it outlives the
@@ -10710,6 +10731,10 @@ components:
                     allOf:
                         - $ref: '#/components/schemas/QualityLLMDiagnostic'
                     description: Set when the target failed in the model call; the classifier and context.
+                summary:
+                    allOf:
+                        - $ref: '#/components/schemas/QualitySuggestionQueueSummary'
+                    description: What this target's generation pass did to the review queue. Set on success.
         QualitySuggestionPayload:
             type: object
             properties:
@@ -10720,6 +10745,49 @@ components:
             description: |-
                 QualitySuggestionPayload is the review-queue payload: a rule draft the reviewer
                  can load into the editor, or a semantic label awaiting confirmation.
+        QualitySuggestionQueueSummary:
+            type: object
+            properties:
+                created:
+                    type: integer
+                    description: Proposals that did not exist before this pass.
+                    format: int32
+                refreshed:
+                    type: integer
+                    description: Pending proposals whose payload this pass updated.
+                    format: int32
+                superseded:
+                    type: integer
+                    description: Pending proposals closed because their fact now exists or was replaced.
+                    format: int32
+                skippedExistingFact:
+                    type: integer
+                    description: |-
+                        Skipped because the fact already exists: the column has a label, or a rule
+                         with the same identity exists.
+                    format: int32
+                skippedPending:
+                    type: integer
+                    description: |-
+                        Skipped because an equivalent proposal is already pending; the default
+                         generation mode leaves it untouched instead of spending a model call.
+                    format: int32
+                skippedDecided:
+                    type: integer
+                    description: |-
+                        Skipped because the same proposal was already accepted or rejected and the
+                         caller did not force regeneration.
+                    format: int32
+                skippedColumns:
+                    type: array
+                    items:
+                        type: string
+                    description: The columns a label pass left out, so a caller can name them.
+            description: |-
+                QualitySuggestionQueueSummary is what one generation pass did to the review
+                 queue. Generation reconciles proposals instead of appending them, so a pass can
+                 create, refresh, close or skip proposals. The counts let the caller tell the
+                 user what changed without listing every row.
         QualityTarget:
             type: object
             properties:
@@ -11567,6 +11635,12 @@ components:
                     description: |-
                         The language the evidence and rationale are written in, e.g. "en" or
                          "zh-CN".
+                forceRegenerate:
+                    type: boolean
+                    description: |-
+                        Re-analyze columns that are already labeled, already have a pending proposal,
+                         or were already decided. Regeneration still never duplicates: it refreshes the
+                         one pending proposal per column.
         SuggestColumnLabelsResponse:
             type: object
             properties:
@@ -11574,7 +11648,11 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/QualitySuggestion'
-                    description: The queued label proposals, pending review.
+                    description: The label and rule-draft proposals this pass queued, created or refreshed.
+                summary:
+                    allOf:
+                        - $ref: '#/components/schemas/QualitySuggestionQueueSummary'
+                    description: What the pass did to the queue, including the columns it left out.
         SuggestQualityRuleRequest:
             required:
                 - parent
@@ -11619,6 +11697,13 @@ components:
                 language:
                     type: string
                     description: The language the intent and the draft are written in, e.g. "en" or "zh-CN".
+                forceRegenerate:
+                    type: boolean
+                    description: |-
+                        Re-propose drafts that were already accepted or rejected, and re-analyze
+                         columns that already have a fact. The queue is still deduplicated by identity:
+                         regeneration refreshes an existing pending proposal instead of appending a
+                         duplicate.
         SuggestQualityRuleResponse:
             type: object
             properties:
@@ -11626,7 +11711,13 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/QualitySuggestion'
-                    description: The queued drafts, pending review.
+                    description: |-
+                        The drafts this pass queued, created or refreshed. Empty when every draft was
+                         already covered by a fact, was already decided, or failed validation.
+                summary:
+                    allOf:
+                        - $ref: '#/components/schemas/QualitySuggestionQueueSummary'
+                    description: What the pass did to the queue.
         SyncDatabaseRequest:
             required:
                 - name
@@ -12144,6 +12235,7 @@ components:
                         - QUALITY_SUGGESTION_STATUS_PENDING
                         - QUALITY_SUGGESTION_STATUS_ACCEPTED
                         - QUALITY_SUGGESTION_STATUS_REJECTED
+                        - QUALITY_SUGGESTION_STATUS_SUPERSEDED
                     type: string
                     description: |-
                         The decision: ACCEPTED or REJECTED. A suggestion starts PENDING and a

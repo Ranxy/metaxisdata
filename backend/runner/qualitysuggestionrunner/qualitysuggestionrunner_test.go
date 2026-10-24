@@ -139,6 +139,8 @@ type fakeSuggester struct {
 	calls     []string
 	// limits records the quota policy passed for each drafted target.
 	limits []dataquality.LLMLimits
+	// forces records the force-regenerate flag passed for each drafted target.
+	forces []bool
 }
 
 func (f *fakeSuggester) ResolveConfig(context.Context) (llm.ResolvedConfig, dataquality.Settings, error) {
@@ -148,15 +150,18 @@ func (f *fakeSuggester) ResolveConfig(context.Context) (llm.ResolvedConfig, data
 	return f.config, dataquality.Settings{}, nil
 }
 
-func (f *fakeSuggester) Draft(_ context.Context, _ llm.ResolvedConfig, limits dataquality.LLMLimits, targetGUID string, _ storepb.MetaType, _ []string, _, _ string, _ *int32) ([]*store.QualitySuggestionMessage, *storepb.QualityLLMDiagnostic, error) {
+func (f *fakeSuggester) Draft(_ context.Context, _ llm.ResolvedConfig, limits dataquality.LLMLimits, targetGUID string, _ storepb.MetaType, _ []string, _, _ string, force bool, _ *int32) ([]*store.QualitySuggestionMessage, *storepb.QualitySuggestionQueueSummary, *storepb.QualityLLMDiagnostic, error) {
 	f.mu.Lock()
 	f.calls = append(f.calls, targetGUID)
 	f.limits = append(f.limits, limits)
+	f.forces = append(f.forces, force)
 	f.mu.Unlock()
 	if f.draft != nil {
-		return f.draft(targetGUID)
+		suggestions, diagnostic, err := f.draft(targetGUID)
+		return suggestions, &storepb.QualitySuggestionQueueSummary{Created: int32(len(suggestions))}, diagnostic, err
 	}
-	return []*store.QualitySuggestionMessage{{ResourceID: targetGUID + "-s1"}}, nil, nil
+	return []*store.QualitySuggestionMessage{{ResourceID: targetGUID + "-s1"}},
+		&storepb.QualitySuggestionQueueSummary{Created: 1}, nil, nil
 }
 
 func (f *fakeSuggester) draftedTargets() []string {
@@ -169,6 +174,12 @@ func (f *fakeSuggester) draftedLimits() []dataquality.LLMLimits {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]dataquality.LLMLimits(nil), f.limits...)
+}
+
+func (f *fakeSuggester) draftedForces() []bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]bool(nil), f.forces...)
 }
 
 // jobTestMessage builds one RUNNING job with the given target GUIDs in PENDING
@@ -233,6 +244,34 @@ func TestProcessJobResolvesTheLimitsForEachTarget(t *testing.T) {
 
 	require.Equal(t, 2, loads, "the limits are reloaded for each target")
 	require.Equal(t, []dataquality.LLMLimits{first, second}, suggester.draftedLimits())
+	require.Equal(t, storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_COMPLETED, stores.statuses[0])
+}
+
+// The job's force flag reaches the drafting pipeline, and what the pass did to the
+// queue is persisted on the target so the client can explain the result later.
+func TestProcessJobPropagatesForceAndPersistsTheQueueSummary(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.October, 22, 9, 0, 0, 0, time.UTC)
+	job := jobTestMessage("target-a")
+	job.ForceRegenerate = true
+	stores := newFakeJobStore(job)
+	suggester := &fakeSuggester{draft: func(guid string) ([]*store.QualitySuggestionMessage, *storepb.QualityLLMDiagnostic, error) {
+		return []*store.QualitySuggestionMessage{{ResourceID: guid + "-s1"}}, nil, nil
+	}}
+	runner := newTestRunner(stores, suggester, now)
+
+	claimed, err := stores.ClaimPendingQualitySuggestionJob(context.Background(), now)
+	require.NoError(t, err)
+	runner.processJob(context.Background(), claimed)
+
+	require.Equal(t, []bool{true}, suggester.draftedForces())
+	require.NotEmpty(t, stores.progress)
+	last := stores.progress[len(stores.progress)-1]
+	require.Len(t, last.GetTargets(), 1)
+	target := last.GetTargets()[0]
+	require.Equal(t, int32(1), target.GetSummary().GetCreated())
+	require.Equal(t, []string{"target-a-s1"}, target.GetSuggestionResourceIds())
 	require.Equal(t, storepb.QualitySuggestionJobStatus_QUALITY_SUGGESTION_JOB_STATUS_COMPLETED, stores.statuses[0])
 }
 

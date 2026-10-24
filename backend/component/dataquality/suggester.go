@@ -2,6 +2,8 @@ package dataquality
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -14,6 +16,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
@@ -57,6 +60,10 @@ type Suggester struct {
 	// failure is classified. It is a field so a test can observe the best-effort
 	// update without a database; production updates the store.
 	setDebugErrorCode func(ctx context.Context, correlationID, code string) error
+	// analyses coalesces identical in-flight completions (see analysisGroup), so a
+	// double click or two concurrent generation passes pay for one model call. A
+	// test-built Suggester may omit it; the completion then runs uncoalesced.
+	analyses *analysisGroup
 }
 
 // NewSuggester creates the shared L1 suggester. registry may be nil, in which case
@@ -69,6 +76,7 @@ func NewSuggester(st *store.Store, registry *llm.Registry, quota *LLMQuota, m *m
 		quota:          quota,
 		metrics:        m,
 		newDebugLogger: llm.NewDBDebugLoggerForCall,
+		analyses:       newAnalysisGroup(),
 		setDebugErrorCode: func(ctx context.Context, correlationID, code string) error {
 			if st == nil {
 				return nil
@@ -117,16 +125,20 @@ func (s *Suggester) ResolveConfig(ctx context.Context) (llm.ResolvedConfig, Sett
 
 // Draft turns one natural-language intent into queued rule drafts for one target.
 // It resolves the target, spends one L1 analysis from the shared quota, asks the
-// model once, and stores every draft the rule pipeline accepts as a PENDING
-// NATURAL_LANGUAGE suggestion. The returned rows are the ones it created.
-func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits LLMLimits, targetGUID string, metaType storepb.MetaType, columns []string, intent, language string, createdBy *int32) ([]*store.QualitySuggestionMessage, *storepb.QualityLLMDiagnostic, error) {
+// model once, and reconciles every draft the rule pipeline accepts with the review
+// queue. Drafts that a rule already covers are not queued again, drafts the
+// reviewer already decided are left alone unless force is set, and a draft that is
+// already pending is refreshed in place rather than appended. The summary reports
+// what the pass did; the returned rows are the proposals it created or refreshed.
+func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits LLMLimits, targetGUID string, metaType storepb.MetaType, columns []string, intent, language string, force bool, createdBy *int32) ([]*store.QualitySuggestionMessage, *storepb.QualitySuggestionQueueSummary, *storepb.QualityLLMDiagnostic, error) {
+	summary := &storepb.QualitySuggestionQueueSummary{}
 	resolution, err := ResolveTarget(ctx, s.store, targetGUID, metaType)
 	if err != nil {
-		return nil, nil, err
+		return nil, summary, nil, err
 	}
 	for _, column := range columns {
 		if _, ok := resolution.Target.Column(column); !ok {
-			return nil, nil, connect.NewError(connect.CodeInvalidArgument,
+			return nil, summary, nil, connect.NewError(connect.CodeInvalidArgument,
 				errors.Errorf("column %q does not exist on the target", column))
 		}
 	}
@@ -135,13 +147,16 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 	// target consumes neither.
 	release, err := s.quota.Begin(ctx, LLMAnalysisQuota, limits)
 	if err != nil {
-		return nil, nil, err
+		return nil, summary, nil, err
 	}
 	defer release()
 
-	existingRules, err := s.ruleSummaries(ctx, targetGUID)
+	// The full rule list is read once: the prompt shows a bounded summary of it,
+	// and reconciliation compares every draft against every rule identity so a
+	// proposal that already exists as a rule is never queued for review again.
+	rules, err := s.targetRules(ctx, targetGUID)
 	if err != nil {
-		return nil, nil, err
+		return nil, summary, nil, err
 	}
 	systemPrompt, userPrompt := BuildRuleDraftPrompt(
 		RuleDraftContext{
@@ -149,11 +164,11 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 			DDL:            s.targetDDL(ctx, targetGUID, metaType),
 			ColumnComments: columnComments(resolution.Metadata, metaType),
 		},
-		resolution.Target, columns, intent, existingRules)
+		resolution.Target, columns, intent, ruleSummaries(rules))
 	text, usage, diagnostic, err := s.JSONCompletion(ctx, config, LLMFeatureRuleDraft,
 		RuleDraftPromptVersion, systemPrompt, userPrompt, OutputTokenBudget(config))
 	if err != nil {
-		return nil, diagnostic, err
+		return nil, summary, diagnostic, err
 	}
 	drafts, err := ParseRuleDrafts(text)
 	if err != nil {
@@ -165,13 +180,21 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 			slog.String("code", diagnostic.GetErrorCode()),
 			slog.String("correlation_id", diagnostic.GetCorrelationId()),
 			slog.Any("error", err))
-		return nil, diagnostic, connect.NewError(connect.CodeInternal,
+		return nil, summary, diagnostic, connect.NewError(connect.CodeInternal,
 			errors.Wrap(err, "the model returned a rule draft that is not valid JSON"))
 	}
 
-	provider, model, promptVersion := ProviderFacts(config, RuleDraftPromptVersion)
-	now := time.Now().UTC()
-	created := make([]*store.QualitySuggestionMessage, 0, len(drafts))
+	// Validate and normalize every draft first, collapsing drafts that propose the
+	// same identity inside one model answer: the queue holds one proposal per
+	// identity, so the best-argued copy wins instead of the pass creating two.
+	type candidateDraft struct {
+		ruleType   storepb.QualityRuleType
+		draft      *storepb.QualityRuleDraftConfig
+		signature  string
+		confidence float64
+	}
+	candidates := make([]candidateDraft, 0, len(drafts))
+	bySignature := make(map[string]int, len(drafts))
 	for _, draft := range drafts {
 		if !draftColumnsAllowed(draft.Columns, columns, resolution.Target) {
 			slog.Warn("dropping a rule draft that names a column outside the request scope",
@@ -200,26 +223,78 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 				slog.Any("error", err))
 			continue
 		}
+		payload := &storepb.QualityRuleDraftConfig{
+			Config:     draftConfig,
+			Severity:   draft.Severity,
+			Title:      draft.Title,
+			Rationale:  draft.Rationale,
+			Confidence: draft.Confidence,
+		}
+		signature := RuleSignature(draft.Type, draftConfig)
+		if index, ok := bySignature[signature]; ok {
+			if draft.Confidence > candidates[index].draft.GetConfidence() {
+				candidates[index].draft = payload
+				candidates[index].confidence = draft.Confidence
+			}
+			continue
+		}
+		bySignature[signature] = len(candidates)
+		candidates = append(candidates, candidateDraft{
+			ruleType:   draft.Type,
+			draft:      payload,
+			signature:  signature,
+			confidence: draft.Confidence,
+		})
+	}
+
+	signatures := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		signatures = append(signatures, candidate.signature)
+	}
+	states, err := s.store.QualitySuggestionSignatureStates(ctx, targetGUID, metaType, signatures)
+	if err != nil {
+		return nil, summary, nil, connect.NewError(connect.CodeInternal,
+			errors.Wrap(err, "failed to read the target's suggestion history"))
+	}
+	ruleSignatures := RuleSignatures(rules)
+
+	provider, model, promptVersion := ProviderFacts(config, RuleDraftPromptVersion)
+	now := time.Now().UTC()
+	queued := make([]*store.QualitySuggestionMessage, 0, len(candidates))
+	for _, candidate := range candidates {
+		if _, ok := ruleSignatures[candidate.signature]; ok {
+			// The fact exists. A pending proposal for it is stale, so close it rather
+			// than leave the queue contradicting the saved rules.
+			if states[candidate.signature].Pending {
+				superseded, err := s.store.SupersedePendingQualitySuggestions(ctx, targetGUID, metaType,
+					[]string{candidate.signature}, "a saved rule with the same identity exists", now)
+				if err != nil {
+					return nil, summary, nil, connect.NewError(connect.CodeInternal,
+						errors.Wrap(err, "failed to close a stale rule draft suggestion"))
+				}
+				summary.Superseded += int32(superseded)
+			} else {
+				summary.SkippedExistingFact++
+			}
+			continue
+		}
+		if !force && SuggestionDecisionSuppressesRuleDraft(states[candidate.signature].LastDecision) {
+			summary.SkippedDecided++
+			continue
+		}
 		resourceID, err := common.RandomString(12)
 		if err != nil {
-			return nil, nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to generate the suggestion id"))
+			return nil, summary, nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to generate the suggestion id"))
 		}
-		suggestion, err := s.store.CreateQualitySuggestion(ctx, &store.QualitySuggestionMessage{
+		suggestion, created, err := s.store.QueueQualitySuggestion(ctx, &store.QualitySuggestionMessage{
 			ResourceID: resourceID,
 			Kind:       storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT,
 			Source:     storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE,
 			TargetGUID: targetGUID,
 			TargetType: metaType,
+			Signature:  candidate.signature,
 			Payload: &storepb.QualitySuggestionPayload{
-				Payload: &storepb.QualitySuggestionPayload_Rule{
-					Rule: &storepb.QualityRuleDraftConfig{
-						Config:     draftConfig,
-						Severity:   draft.Severity,
-						Title:      draft.Title,
-						Rationale:  draft.Rationale,
-						Confidence: draft.Confidence,
-					},
-				},
+				Payload: &storepb.QualitySuggestionPayload_Rule{Rule: candidate.draft},
 			},
 			Status:        storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
 			Provider:      provider,
@@ -229,19 +304,27 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 			CreatedAt:     now,
 		})
 		if err != nil {
-			return nil, nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to queue a rule suggestion"))
+			return nil, summary, nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to queue a rule suggestion"))
 		}
-		created = append(created, suggestion)
+		if created {
+			summary.Created++
+		} else {
+			summary.Refreshed++
+		}
+		queued = append(queued, suggestion)
 	}
-	if len(created) == 0 {
-		// Every draft was refused by the rule pipeline. An empty answer is honest:
-		// the intent did not produce a valid rule, and nothing was queued.
-		slog.Warn("no rule draft survived validation",
+	if len(queued) == 0 {
+		// Every draft was either refused by the rule pipeline, already covered by a
+		// rule, or already decided. An empty queue change is honest: the intent did
+		// not produce a new proposal.
+		slog.Warn("no rule draft was queued",
 			slog.String("table_guid", targetGUID),
-			slog.Int("drafts", len(drafts)))
+			slog.Int("drafts", len(drafts)),
+			slog.Int("covered_by_rule", int(summary.GetSkippedExistingFact())),
+			slog.Int("already_decided", int(summary.GetSkippedDecided())))
 	}
 	LogLLMUsage("suggest_rule", targetGUID, usage)
-	return created, diagnostic, nil
+	return queued, summary, diagnostic, nil
 }
 
 // JSONCompletion runs one non-agent completion and returns its text. The prompt
@@ -255,6 +338,44 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 // itself. The body capture is attached only when runtime debug is on, and the
 // diagnostic says whether it was captured.
 func (s *Suggester) JSONCompletion(ctx context.Context, config llm.ResolvedConfig, feature, promptVersion, systemPrompt, userPrompt string, maxOutputTokens int) (string, *llm.Usage, *storepb.QualityLLMDiagnostic, error) {
+	if s.analyses == nil {
+		return s.runJSONCompletion(ctx, config, feature, promptVersion, systemPrompt, userPrompt, maxOutputTokens)
+	}
+	budget := maxOutputTokens
+	if budget <= 0 {
+		budget = llm.DefaultMaxOutputTokens
+	}
+	key := analysisKey(config, feature, promptVersion, systemPrompt, userPrompt, budget)
+	text, usage, diagnostic, err := s.analyses.Do(ctx, key, func(ctx context.Context) (string, *llm.Usage, *storepb.QualityLLMDiagnostic, error) {
+		return s.runJSONCompletion(ctx, config, feature, promptVersion, systemPrompt, userPrompt, budget)
+	})
+	// Every caller gets its own usage/diagnostic copy: a caller may enrich the
+	// diagnostic after a parse failure, and sharing the pointer would race.
+	if usage != nil {
+		usageCopy := *usage
+		usage = &usageCopy
+	}
+	if diagnostic != nil {
+		if cloned, ok := proto.Clone(diagnostic).(*storepb.QualityLLMDiagnostic); ok {
+			diagnostic = cloned
+		}
+	}
+	return text, usage, diagnostic, err
+}
+
+// analysisKey identifies one completion by everything that shapes its answer. Two
+// calls with the same key would send the same prompt to the same model; they can
+// share one call.
+func analysisKey(config llm.ResolvedConfig, feature, promptVersion, systemPrompt, userPrompt string, maxOutputTokens int) string {
+	digest := sha256.Sum256([]byte(strings.Join([]string{
+		feature, promptVersion, config.ProfileName, config.ModelName,
+		strconv.Itoa(maxOutputTokens), systemPrompt, userPrompt,
+	}, "\x00")))
+	return hex.EncodeToString(digest[:])
+}
+
+// runJSONCompletion is the uncoalesced completion JSONCompletion wraps.
+func (s *Suggester) runJSONCompletion(ctx context.Context, config llm.ResolvedConfig, feature, promptVersion, systemPrompt, userPrompt string, maxOutputTokens int) (string, *llm.Usage, *storepb.QualityLLMDiagnostic, error) {
 	if maxOutputTokens <= 0 {
 		maxOutputTokens = llm.DefaultMaxOutputTokens
 	}
@@ -463,21 +584,27 @@ func ProviderFacts(config llm.ResolvedConfig, promptVersion string) (provider, m
 }
 
 // ruleSummaries renders the target's existing rules as prompt lines.
-func (s *Suggester) ruleSummaries(ctx context.Context, targetGUID string) ([]string, error) {
-	limit := draftExistingRules
-	rules, err := s.store.ListQualityRules(ctx, &store.FindQualityRuleMessage{
-		TargetGUID: &targetGUID,
-		Limit:      &limit,
-	})
+// targetRules reads every rule on one target. A table holds at most a bounded
+// number of rules, so the full list is cheap and is what lets reconciliation prove
+// that a draft is already covered.
+func (s *Suggester) targetRules(ctx context.Context, targetGUID string) ([]*store.QualityRuleMessage, error) {
+	rules, err := s.store.ListQualityRules(ctx, &store.FindQualityRuleMessage{TargetGUID: &targetGUID})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to read the target's existing rules"))
 	}
-	summaries := make([]string, 0, len(rules))
-	for _, rule := range rules {
+	return rules, nil
+}
+
+// ruleSummaries renders the bounded rule context the draft prompt carries. The
+// prompt does not need every rule; reconciliation uses targetRules for that.
+func ruleSummaries(rules []*store.QualityRuleMessage) []string {
+	limit := min(len(rules), draftExistingRules)
+	summaries := make([]string, 0, limit)
+	for _, rule := range rules[:limit] {
 		summaries = append(summaries,
 			fmt.Sprintf("%s (%s, %s)", strings.TrimSpace(rule.Title), rule.RuleType.String(), rule.Severity.String()))
 	}
-	return summaries, nil
+	return summaries
 }
 
 // targetDDL reads the engine's stored CREATE statement when the sync recorded one.

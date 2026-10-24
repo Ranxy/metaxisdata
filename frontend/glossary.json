@@ -871,6 +871,24 @@
       ]
     },
     {
+      "id": "superseded",
+      "category": "Data Quality",
+      "definition": "The server closed a proposal because its fact now exists; it was never a person's decision, and the same proposal may be queued again later.",
+      "translations": {
+        "en-US": "superseded",
+        "zh-CN": "已失效"
+      },
+      "scope": [
+        "dataQuality."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "已取代",
+          "已作废"
+        ]
+      }
+    },
+    {
       "id": "quality-rule",
       "category": "Data Quality",
       "definition": "One typed check over one target table or column, run on a schedule or on demand.",

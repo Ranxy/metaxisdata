@@ -81,6 +81,11 @@ export const DYNAMIC_PREFIXES = [
   "dataQuality.suggestionKind",
   "dataQuality.suggestionSource",
   "dataQuality.suggestionStatus",
+  // The queue summary's counts and empty-reason sentences are chosen by
+  // suggestionSummaryView/suggestionSummaryReason in
+  // src/utils/dataQualitySuggestion.ts and toasted by
+  // src/composables/useSuggestionSummary.ts.
+  "dataQuality.suggestionSummary",
   // Job lifecycle and per-target state labels returned by helpers in
   // src/utils/dataQualitySuggestion.ts.
   "dataQuality.suggestionJobStatus",

@@ -22,12 +22,14 @@ type qualitySuggestionScannerStub struct {
 	targetGUID    string
 	targetType    int16
 	payload       []byte
+	signature     string
 	status        int16
 	provider      string
 	model         string
 	promptVersion string
 	createdBy     sql.NullInt32
 	createdAt     time.Time
+	refreshedAt   sql.NullTime
 	decidedBy     sql.NullInt32
 	decidedAt     sql.NullTime
 	decisionNote  string
@@ -41,15 +43,17 @@ func (s qualitySuggestionScannerStub) Scan(dest ...any) error {
 	*(dest[4].(*string)) = s.targetGUID
 	*(dest[5].(*int16)) = s.targetType
 	*(dest[6].(*[]byte)) = s.payload
-	*(dest[7].(*int16)) = s.status
-	*(dest[8].(*string)) = s.provider
-	*(dest[9].(*string)) = s.model
-	*(dest[10].(*string)) = s.promptVersion
-	*(dest[11].(*sql.NullInt32)) = s.createdBy
-	*(dest[12].(*time.Time)) = s.createdAt
-	*(dest[13].(*sql.NullInt32)) = s.decidedBy
-	*(dest[14].(*sql.NullTime)) = s.decidedAt
-	*(dest[15].(*string)) = s.decisionNote
+	*(dest[7].(*string)) = s.signature
+	*(dest[8].(*int16)) = s.status
+	*(dest[9].(*string)) = s.provider
+	*(dest[10].(*string)) = s.model
+	*(dest[11].(*string)) = s.promptVersion
+	*(dest[12].(*sql.NullInt32)) = s.createdBy
+	*(dest[13].(*time.Time)) = s.createdAt
+	*(dest[14].(*sql.NullTime)) = s.refreshedAt
+	*(dest[15].(*sql.NullInt32)) = s.decidedBy
+	*(dest[16].(*sql.NullTime)) = s.decidedAt
+	*(dest[17].(*string)) = s.decisionNote
 	return nil
 }
 
@@ -249,6 +253,7 @@ func TestValidateQualitySuggestionMatchesKindToPayload(t *testing.T) {
 		Source:     storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_PROFILE,
 		TargetGUID: "g",
 		TargetType: storepb.MetaType_TABLE,
+		Signature:  "rule|QUALITY_RULE_TYPE_UNIQUE|email",
 		Payload:    suggestionRulePayload(t),
 	}
 	require.NoError(t, validateQualitySuggestion(base))
@@ -387,8 +392,19 @@ func TestDecideQualitySuggestionQueryGuardsThePendingState(t *testing.T) {
 	requirePlaceholdersMatchArgs(t, decideQualitySuggestionQuery,
 		[]any{"suggestions/abc", int32(2), int32(5), time.Now(), "note"})
 
-	require.Contains(t, createQualitySuggestionQuery, "INSERT INTO quality_suggestion")
-	require.Contains(t, createQualitySuggestionQuery, "RETURNING id, created_at")
-	requirePlaceholdersMatchArgs(t, createQualitySuggestionQuery,
-		[]any{"r", int32(1), int32(2), "g", int32(4), []byte("{}"), int32(1), "", "", "", nil, time.Now()})
+	// The queue statement is an upsert keyed by proposal identity: the partial
+	// unique index, not a read-then-write, is what makes concurrent generation
+	// passes converge on one pending row.
+	require.Contains(t, queueQualitySuggestionQuery, "INSERT INTO quality_suggestion")
+	require.Contains(t, queueQualitySuggestionQuery, "ON CONFLICT (target_guid, target_type, signature) WHERE status = 1")
+	require.Contains(t, queueQualitySuggestionQuery, "DO UPDATE SET")
+	require.Contains(t, queueQualitySuggestionQuery, "refreshed_at = EXCLUDED.created_at")
+	requirePlaceholdersMatchArgs(t, queueQualitySuggestionQuery,
+		[]any{"r", int32(1), int32(2), "g", int32(4), []byte("{}"), "label|x", int32(1), "", "", "", nil, time.Now()})
+
+	// Reopening is the rollback of a claim: it only ever moves an ACCEPTED row back
+	// to PENDING, so it cannot resurrect a rejected or superseded proposal.
+	require.Contains(t, reopenQualitySuggestionQuery, "SET status = 1")
+	require.Contains(t, reopenQualitySuggestionQuery, "WHERE resource_id = $1 AND status = 2")
+	requirePlaceholdersMatchArgs(t, reopenQualitySuggestionQuery, []any{"suggestions/abc"})
 }
