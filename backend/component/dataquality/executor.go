@@ -329,7 +329,7 @@ func observationFromAggregate(ruleType storepb.QualityRuleType, compiled Compile
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION:
 		// The grouped statement returns failed_rows, groups and total_rows; the
 		// total is the whole filtered table, so a percentage threshold has the
-		// same denominator as every other count rule. "groups" is informational
+		// same denominator as every other count rule. "duplicate_groups" is informational
 		// (how many distinct duplicated keys there are) and has no observation
 		// field, so it is validated as part of the contract and not read.
 		return countObservation(result, indexes)
