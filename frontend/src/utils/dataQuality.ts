@@ -17,10 +17,13 @@ import {
   QualityRuleType,
   QualitySeverity,
   QualityStatus,
+  type QualityTarget,
   QualityThresholdMetric,
   type QualityThresholds,
 } from "@/types/proto-es/v1/data_quality_service_pb";
+import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { formatDateTime } from "./datetime";
+import { guidToRouteParams } from "./guid";
 
 /**
  * The data-quality vocabulary, as i18n keys and display strings.
@@ -631,6 +634,35 @@ export function targetScopeLabel(
   path: QualityTargetPathLike | undefined
 ): string {
   return [path?.instance, path?.database].filter(Boolean).join(" · ") || "-";
+}
+
+/** Where a target's metadata page lives, shaped for a RouterLink `to`. */
+export type QualityTargetMetadataRoute = {
+  name: "MetadataDetail";
+  params: { guid: string[] };
+  query: Record<string, string>;
+};
+
+/**
+ * The metadata detail page a rule's or issue's target names. The GUID travels
+ * as the repeated `guid` param (see `guidToRouteParams`), and the meta type
+ * tells the page which object to load rather than listing its children.
+ *
+ * Returns null when the snapshot has no GUID or no meta type, so callers fall
+ * back to plain text instead of rendering a link that cannot open an object.
+ */
+export function qualityTargetMetadataRoute(
+  target: Pick<QualityTarget, "metaGuid" | "metaType"> | undefined
+): QualityTargetMetadataRoute | null {
+  const guid = target?.metaGuid?.trim();
+  if (!target || !guid || target.metaType === MetaType.UNSPECIFIED) {
+    return null;
+  }
+  return {
+    name: "MetadataDetail",
+    params: { guid: guidToRouteParams(guid) },
+    query: { metaType: String(target.metaType) },
+  };
 }
 
 // ---- formatting ----

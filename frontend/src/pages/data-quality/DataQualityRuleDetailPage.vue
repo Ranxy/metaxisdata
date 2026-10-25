@@ -371,11 +371,17 @@
                   <dt class="text-xs text-muted-foreground">
                     {{ t("dataQuality.ruleTarget") }}
                   </dt>
-                  <dd
-                    class="mt-0.5 font-mono text-xs break-all"
-                    :title="targetTitle"
-                  >
-                    {{ targetTitle }}
+                  <dd class="mt-0.5 font-mono text-xs break-all">
+                    <RouterLink
+                      v-if="targetRoute"
+                      :to="targetRoute"
+                      :title="t('dataQuality.viewMetadata')"
+                      class="inline-flex items-center gap-1 transition-colors hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    >
+                      {{ targetTitle }}
+                      <ExternalLink class="h-3 w-3 shrink-0" />
+                    </RouterLink>
+                    <span v-else>{{ targetTitle }}</span>
                   </dd>
                 </div>
                 <div v-if="ruleColumns.length > 0">
@@ -510,6 +516,7 @@ import {
   BellOff,
   CheckCircle2,
   CircleAlert,
+  ExternalLink,
   Eye,
   HelpCircle,
   MinusCircle,
@@ -580,6 +587,7 @@ import {
   qualitySeverityVariant,
   qualityStatusKey,
   qualityStatusVariant,
+  qualityTargetMetadataRoute,
   targetScopeLabel,
 } from "@/utils/dataQuality";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
@@ -695,6 +703,11 @@ const targetTitle = computed(() => {
   const scope = targetScopeLabel(target.path);
   return scope === "-" ? path : `${scope} · ${path}`;
 });
+
+/** The target's metadata page; absent when the snapshot carries no GUID. */
+const targetRoute = computed(() =>
+  qualityTargetMetadataRoute(rule.value?.target)
+);
 
 const ruleColumns = computed(() => rule.value?.target?.columns ?? []);
 

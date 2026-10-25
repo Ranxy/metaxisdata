@@ -10,7 +10,9 @@ import {
   QualityIssueStatus,
   QualityRuleSchema,
   QualitySeverity,
+  QualityTargetSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
+import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { type User, UserSchema } from "@/types/proto-es/v1/user_service_pb";
 import DataQualityIssueDetailPage from "./DataQualityIssueDetailPage.vue";
 
@@ -43,7 +45,10 @@ const PERMISSIONS = [
   "metaxisdata.dataQuality.executions.get",
 ];
 
-function issueFixture(acknowledgedBy: string) {
+function issueFixture(
+  acknowledgedBy: string,
+  target: { guid?: string; metaType?: MetaType } = {}
+) {
   return create(QualityIssueSchema, {
     name: ISSUE,
     rule: RULE,
@@ -53,6 +58,12 @@ function issueFixture(acknowledgedBy: string) {
     occurrenceCount: 1,
     firstSeenExecution: EXECUTION,
     lastSeenExecution: EXECUTION,
+    // An issue carries the target identity (GUID and type), not a path
+    // snapshot, because the path can change while the issue stays open.
+    target: create(QualityTargetSchema, {
+      metaGuid: target.guid ?? "",
+      metaType: target.metaType ?? MetaType.TABLE,
+    }),
   });
 }
 
@@ -81,6 +92,11 @@ async function mountPage(permissions: string[]) {
         name: "DataQualityRuleDetail",
         component: Dummy,
       },
+      {
+        path: "/metadata/:guid+",
+        name: "MetadataDetail",
+        component: Dummy,
+      },
     ],
   });
   await router.push(`/data-quality/issues/${ISSUE}`);
@@ -92,14 +108,18 @@ async function mountPage(permissions: string[]) {
     global: { plugins: [router, i18n, pinia] },
   });
   await flushPromises();
-  return wrapper;
+  return { wrapper, router };
 }
 
 describe("DataQualityIssueDetailPage", () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
-    mocks.getQualityIssue.mockResolvedValue(issueFixture(ACKNOWLEDGED_BY));
+    mocks.getQualityIssue.mockResolvedValue(
+      issueFixture(ACKNOWLEDGED_BY, {
+        guid: "instance_1;shop;public;orders",
+      })
+    );
     mocks.getQualityRule.mockResolvedValue(
       create(QualityRuleSchema, {
         name: RULE,
@@ -116,7 +136,7 @@ describe("DataQualityIssueDetailPage", () => {
   });
 
   it("links the first and last seen executions", async () => {
-    const wrapper = await mountPage(PERMISSIONS);
+    const { wrapper } = await mountPage(PERMISSIONS);
 
     const links = wrapper.findAll("a");
     expect(
@@ -129,8 +149,50 @@ describe("DataQualityIssueDetailPage", () => {
     );
   });
 
+  it("links the target to its metadata page", async () => {
+    const { wrapper, router } = await mountPage(PERMISSIONS);
+
+    const link = wrapper.find(
+      `a[title="${i18n.global.t("dataQuality.viewMetadata")}"]`
+    );
+    expect(link.exists()).toBe(true);
+    expect(link.text()).toContain("instance_1;shop;public;orders");
+    expect(link.attributes("href")).toBe(
+      "/metadata/instance_1/shop/public/orders?metaType=4"
+    );
+
+    await link.trigger("click");
+    await flushPromises();
+
+    expect(router.currentRoute.value.name).toBe("MetadataDetail");
+    expect(router.currentRoute.value.params.guid).toEqual([
+      "instance_1",
+      "shop",
+      "public",
+      "orders",
+    ]);
+  });
+
+  it("keeps the target as plain text without a usable meta type", async () => {
+    mocks.getQualityIssue.mockResolvedValue(
+      issueFixture(ACKNOWLEDGED_BY, {
+        guid: "instance_1;shop;public;orders",
+        metaType: MetaType.UNSPECIFIED,
+      })
+    );
+
+    const { wrapper } = await mountPage(PERMISSIONS);
+
+    const viewMetadata = i18n.global.t("dataQuality.viewMetadata");
+    expect(wrapper.findAll(`a[title="${viewMetadata}"]`)).toHaveLength(0);
+    expect(wrapper.text()).toContain("instance_1;shop;public;orders");
+  });
+
   it("shows the acknowledging user's display name when the caller may read users", async () => {
-    const wrapper = await mountPage([...PERMISSIONS, "metaxisdata.users.get"]);
+    const { wrapper } = await mountPage([
+      ...PERMISSIONS,
+      "metaxisdata.users.get",
+    ]);
 
     expect(mocks.getUser).toHaveBeenCalledWith(ACKNOWLEDGED_BY);
     expect(wrapper.text()).toContain("Ada Lovelace");
@@ -138,7 +200,7 @@ describe("DataQualityIssueDetailPage", () => {
   });
 
   it("falls back to the trailing id without the user read permission", async () => {
-    const wrapper = await mountPage(PERMISSIONS);
+    const { wrapper } = await mountPage(PERMISSIONS);
 
     expect(mocks.getUser).not.toHaveBeenCalled();
     expect(wrapper.text()).toContain("9");
@@ -148,7 +210,10 @@ describe("DataQualityIssueDetailPage", () => {
   it("keeps the id, silently, when the user lookup fails", async () => {
     mocks.getUser.mockRejectedValue(new Error("permission denied"));
 
-    const wrapper = await mountPage([...PERMISSIONS, "metaxisdata.users.get"]);
+    const { wrapper } = await mountPage([
+      ...PERMISSIONS,
+      "metaxisdata.users.get",
+    ]);
 
     expect(wrapper.text()).toContain("9");
     expect(wrapper.text()).not.toContain("Ada Lovelace");
@@ -169,7 +234,10 @@ describe("DataQualityIssueDetailPage", () => {
         create(UserSchema, { name, title: "Grace Hopper" })
       );
     });
-    const wrapper = await mountPage([...PERMISSIONS, "metaxisdata.users.get"]);
+    const { wrapper } = await mountPage([
+      ...PERMISSIONS,
+      "metaxisdata.users.get",
+    ]);
     expect(wrapper.text()).toContain("9");
 
     mocks.getQualityIssue.mockResolvedValue(issueFixture("users/10"));

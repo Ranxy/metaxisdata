@@ -21,9 +21,11 @@ import {
   QualitySeverity,
   QualityStatus,
   QualityTargetPathSchema,
+  QualityTargetSchema,
   QualityThresholdMetric,
   QualityThresholdsSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
+import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
   describeThreshold,
   executionDurationSeconds,
@@ -55,6 +57,7 @@ import {
   qualitySeverityVariant,
   qualityStatusKey,
   qualityStatusVariant,
+  qualityTargetMetadataRoute,
   qualityThresholdMetricKey,
   targetScopeLabel,
 } from "./dataQuality";
@@ -608,6 +611,58 @@ describe("target formatting", () => {
     ).toBe("prod");
     expect(targetScopeLabel(undefined)).toBe("-");
     expect(targetScopeLabel(create(QualityTargetPathSchema, {}))).toBe("-");
+  });
+});
+
+describe("qualityTargetMetadataRoute", () => {
+  it("carries the GUID and the meta type", () => {
+    expect(
+      qualityTargetMetadataRoute(
+        create(QualityTargetSchema, {
+          metaGuid: "inst;db;public;orders",
+          metaType: MetaType.TABLE,
+        })
+      )
+    ).toEqual({
+      name: "MetadataDetail",
+      params: { guid: ["inst", "db", "public", "orders"] },
+      query: { metaType: String(MetaType.TABLE) },
+    });
+  });
+
+  it("marks an empty MySQL schema segment", () => {
+    expect(
+      qualityTargetMetadataRoute(
+        create(QualityTargetSchema, {
+          metaGuid: "inst;db;;orders",
+          metaType: MetaType.EXTERNAL_TABLE,
+        })
+      )
+    ).toEqual({
+      name: "MetadataDetail",
+      params: { guid: ["inst", "db", "~", "orders"] },
+      query: { metaType: String(MetaType.EXTERNAL_TABLE) },
+    });
+  });
+
+  it("has no route without a GUID or a meta type", () => {
+    expect(qualityTargetMetadataRoute(undefined)).toBeNull();
+    expect(
+      qualityTargetMetadataRoute(
+        create(QualityTargetSchema, {
+          metaGuid: "  ",
+          metaType: MetaType.TABLE,
+        })
+      )
+    ).toBeNull();
+    expect(
+      qualityTargetMetadataRoute(
+        create(QualityTargetSchema, {
+          metaGuid: "inst;db;public;orders",
+          metaType: MetaType.UNSPECIFIED,
+        })
+      )
+    ).toBeNull();
   });
 });
 
