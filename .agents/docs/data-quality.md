@@ -218,7 +218,7 @@ meta_registry_resource（只读）──< quality_rule >──< quality_rule_rev
 - 逐条执行：批次标 RUNNING → inflight 去重（重复触发记 `SKIPPED`）→ 读最新 revision 快照（head revision 不一致时按最新执行，终态记实际 revision）→ resolve target（孤儿 → `SKIPPED(ORPHANED)`）→ `RequireTarget`/`ValidateConfig`（不满足 → `ERROR(UNSUPPORTED)`）→ 元数据规则跳过连接；其余在批次持有的实例 lease 下 `GetReadOnlyDatabaseDriver` → `Executor.Execute` → `row_count_change` 补基线 → `Evaluate` → `FinishQualityExecution`（终态、六态、观测/阈值/行数/样本/SQL/错误/耗时）。每条执行是独立提交点。
 - 单条执行 panic 隔离为 `ERROR(EXECUTION)`，其余继续；终态写失败、批次超时或任一任务未能产出已写入的判定（读取/标记失败、行已被别的写入者终结）→ 放弃该批次剩余执行（ABANDONED）并以 ABANDONED 结束批次，绝不把部分 rollup 标成 COMPLETED；已写入的判定仍会迁移问题并发送逐条通知，但该批次不发风暴摘要。
 - 查询阶段结束（最后一条执行完成）立即释放 lease；随后按批次已写入的判定做问题迁移（`PlanIssueTransition`，用该规则上一条终态执行）与通知（best-effort），最后写批次 counts/outcome（内部）并 `COMPLETED`；风暴摘要等批次完成后再发。
-- 只读通道：`db.ReadOnlyQueryer`；PG 事务内 `SET LOCAL statement_timeout`，MySQL 会话 `MAX_EXECUTION_TIME` 并复位；其余依赖只读账号 + 语句白名单。无 READ_ONLY 数据源 → `ERROR(NO_READ_ONLY_SOURCE)`。
+- 只读通道：`db.ReadOnlyQueryer`；PG 事务内 `SET LOCAL statement_timeout`，MySQL 会话 `MAX_EXECUTION_TIME`（刻意晚于客户端 deadline 1s 再复位：超时一律由客户端 deadline 报错，服务端上限只是兜底）并复位；其余依赖只读账号 + 语句白名单。无 READ_ONLY 数据源 → `ERROR(NO_READ_ONLY_SOURCE)`。
 - 错误码（`dataquality.ClassifyError`，写 `error_code`）：`CONNECTION`、`AUTH`、`TIMEOUT`、`PERMISSION`、`UNSUPPORTED`、`SQL_SYNTAX`、`BAD_DATA`、`LIMIT_EXCEEDED`、`ORPHANED`、`NO_READ_ONLY_SOURCE`、`EXECUTION`（未归类的驱动错误，消息脱敏 + 截断 1 KiB）。`QUOTA` 已不再由 runner 产生，仅为历史执行行保留（前端仍会本地化它）。
 - 日志：没有每批次 INFO 汇总行；只有失败、放弃、清扫等 WARN/ERROR（带 batch/execution/rule id），不打印 SQL 与样本值；准入、延后、放弃、完成、规则漏斗等指标见 [metrics.md](metrics.md)。
 
