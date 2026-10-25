@@ -494,6 +494,32 @@ func TestExecuteSampleFallsBackWithoutKeyColumns(t *testing.T) {
 	require.True(t, execution.Samples.GetSamples()[0].GetColumns()[0].GetIsNull())
 }
 
+// A timed-out sample is not retried without the key columns: the key is not what
+// made the statement slow, and a retry would spend the query budget twice.
+func TestExecuteSampleDoesNotRetryAfterTimeout(t *testing.T) {
+	t.Parallel()
+
+	config := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_NullPercent{
+		NullPercent: &storepb.NullPercentConfig{Column: "email", MaxNullPct: proto.Float64(5)},
+	}}
+	rule := execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT, config)
+	queryer := &execFakeQueryer{
+		errs: []error{
+			nil,
+			context.DeadlineExceeded,
+		},
+		results: []*db.QueryResult{
+			aggregateRow([]string{"total_rows", "failed_rows"}, int64(100), int64(3)),
+		},
+	}
+	execution, err := NewExecutor().Execute(context.Background(), queryer,
+		execTestResolution(storepb.Engine_MYSQL), rule,
+		ExecOptions{StoreSamples: true})
+	require.NoError(t, err)
+	require.Len(t, queryer.queries, 2, "only the aggregate and the keyed sample ran")
+	require.Nil(t, execution.Samples)
+}
+
 // The sample limit follows the workspace rules: unset reads as the default, a
 // large value is clamped, and the statement and the query options agree.
 func TestExecuteNormalizesTheSampleLimit(t *testing.T) {

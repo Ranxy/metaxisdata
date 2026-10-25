@@ -209,10 +209,10 @@ func primaryKeyColumns(metadata *storepb.StoredMetadata, metaType storepb.MetaTy
 // indexColumnName reduces one index key expression to the column it names. The
 // engines print a key differently: PostgreSQL prints it the way it must be
 // written, so a mixed-case or reserved word arrives quoted ("TeamID", "order")
-// and a descending key gets a DESC suffix; MySQL and SQL Server print the bare
-// name (SQL Server may bracket it). A functional key such as lower(email) or a
-// key with a non-default collation or operator class names no single column and
-// is skipped rather than guessed at.
+// and a descending key gets a DESC suffix; MySQL and SQL Server record the bare
+// catalog name, so accepting backticks and brackets there is defensive. A
+// functional key such as lower(email) or a key with a non-default collation or
+// operator class names no single column and is skipped rather than guessed at.
 func indexColumnName(expression string) (string, bool) {
 	name := strings.TrimSpace(expression)
 	for _, suffix := range []string{" desc", " asc"} {

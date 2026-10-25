@@ -25,9 +25,11 @@ fully offline; three model-assisted features are opt-in.
    administrator or a custom role). Model-assisted paths also need `.suggest` or
    `.explain`.
 3. *(Optional)* **Turn on model assistance.** Settings → Data Quality → enable
-   *LLM analysis*, pick a provider profile, then decide whether failure samples
-   are stored and (separately) whether raw sample values may leave the
-   deployment. Everything else works with it off.
+   *LLM analysis* and pick a provider profile. The separate switches for failure
+   samples and for sending raw sample values are independent: storing samples is
+   local to the deployment, and the "send sample values" switch is reserved —
+   no model path includes raw sample rows today. Everything else works with
+   model assistance off.
 
 ## Writing a rule
 

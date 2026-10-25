@@ -10,6 +10,7 @@ import (
 
 	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -485,4 +486,31 @@ func TestQualityExecutionBaselineQueriesReadOnlyCompletedRows(t *testing.T) {
 	require.Contains(t, qualityExecutionLatestStatement, "state = $2")
 	require.Contains(t, qualityExecutionLatestStatement, "DISTINCT ON (rule_id)")
 	require.Contains(t, qualityExecutionLatestStatement, "ORDER BY rule_id, started_at DESC, id DESC")
+}
+
+// Protojson has to keep the optional null marker's three states in JSONB: absent
+// (a sample recorded before the marker existed), an explicit false (the value was
+// an empty string) and an explicit true (the value was SQL NULL). Losing the
+// explicit false would make a new empty string read as "unknown".
+func TestQualityExecutionSampleKeepsTheNullMarker(t *testing.T) {
+	t.Parallel()
+
+	samples := &storepb.QualityFailureSamples{Samples: []*storepb.FailureSample{{Columns: []*storepb.ColumnValue{
+		{Column: "legacy"},
+		{Column: "blank", IsNull: proto.Bool(false)},
+		{Column: "missing", IsNull: proto.Bool(true)},
+	}}}}
+	raw, err := marshalQualityProto(samples)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"isNull":false`)
+	require.Contains(t, string(raw), `"isNull":true`)
+
+	decoded := &storepb.QualityFailureSamples{}
+	require.NoError(t, unmarshalQualityProto(raw, decoded))
+	columns := decoded.GetSamples()[0].GetColumns()
+	require.Nil(t, columns[0].IsNull, "an absent marker stays absent")
+	require.NotNil(t, columns[1].IsNull)
+	require.False(t, *columns[1].IsNull)
+	require.NotNil(t, columns[2].IsNull)
+	require.True(t, *columns[2].IsNull)
 }

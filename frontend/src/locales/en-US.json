@@ -1257,7 +1257,7 @@
     "sendSampleValues": "Send sample values to the model",
     "sendSampleValuesHint": "Off means only aggregate profiles leave the deployment.",
     "storeFailureSamples": "Store failure samples",
-    "storeFailureSamplesHint": "Off records counts only, no row values. On stores failed rows, including a table's primary-key columns when the registry records them, in this deployment only.",
+    "storeFailureSamplesHint": "Off records counts only, no row values. When on, failed rows are stored, including a table's primary-key columns when the registry records them; the values stay in this deployment.",
     "title": "Data quality",
     "unsavedHint": "Unsaved changes",
     "usageConcurrency": "Concurrent LLM calls",

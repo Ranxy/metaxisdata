@@ -144,12 +144,16 @@ func addSamples(ctx context.Context, queryer db.ReadOnlyQueryer, input CompileIn
 		// The key columns only identify the row, and they can make the sample fail
 		// where the checked columns alone would not: the registry may be stale about
 		// the key, or the read-only account may not be granted it. Retry once
-		// without them rather than lose the evidence entirely.
-		fallbackInput := input
-		fallbackInput.Target.KeyColumns = nil
-		fallback, compileErr := CompileFailureRows(fallbackInput, sampleLimit)
-		if compileErr == nil && fallback.SQL != "" {
-			sampleResult, err = queryer.QueryReadOnly(ctx, fallback.SQL, fallback.Args, sampleQueryOptions(opts, sampleLimit, m))
+		// without them rather than lose the evidence entirely — but not after a
+		// timeout, where a retry would spend the query budget twice for the same
+		// slow statement.
+		if code, _ := ClassifyError(err); code != ErrCodeTimeout {
+			fallbackInput := input
+			fallbackInput.Target.KeyColumns = nil
+			fallback, compileErr := CompileFailureRows(fallbackInput, sampleLimit)
+			if compileErr == nil && fallback.SQL != "" {
+				sampleResult, err = queryer.QueryReadOnly(ctx, fallback.SQL, fallback.Args, sampleQueryOptions(opts, sampleLimit, m))
+			}
 		}
 	}
 	if err != nil {
