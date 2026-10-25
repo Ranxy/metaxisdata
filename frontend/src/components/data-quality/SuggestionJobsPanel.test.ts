@@ -215,14 +215,15 @@ describe("SuggestionJobsPanel", () => {
     ).toBeNull();
     const history = buttonByText(label("dataQuality.suggestions.jobs.history"));
     expect(history).toBeTruthy();
-    // The history entry is a dialog trigger, and the progress bar is named by
-    // the text next to it instead of repeating that text.
+    // The history entry is a dialog trigger; the meter is decorative because
+    // the adjacent text carries the counts.
     expect(history?.getAttribute("aria-haspopup")).toBe("dialog");
+    expect(document.body.querySelector('[role="progressbar"]')).toBeNull();
     expect(
       document.body
-        .querySelector('[role="progressbar"]')
-        ?.getAttribute("aria-label")
-    ).toBeNull();
+        .querySelector('[class*="w-24"]')
+        ?.getAttribute("aria-hidden")
+    ).toBe("true");
     wrapper.unmount();
   });
 
@@ -322,6 +323,7 @@ describe("SuggestionJobsPanel", () => {
       jobFixture({ status: QualitySuggestionJobStatus.CANCELED })
     );
     const wrapper = await mountPanel();
+    const callsBeforeCancel = mocks.listQualitySuggestionJobs.mock.calls.length;
 
     buttonByText(label("dataQuality.suggestions.jobs.cancel"))?.click();
     await flushPromises();
@@ -339,7 +341,9 @@ describe("SuggestionJobsPanel", () => {
       label("dataQuality.suggestions.jobs.canceledToast")
     );
     // The cancel answer is followed by a list refresh (two calls).
-    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(4);
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(
+      callsBeforeCancel + 2
+    );
     expect(document.body.textContent).toContain(
       label("dataQuality.suggestionJobStatus.canceled")
     );

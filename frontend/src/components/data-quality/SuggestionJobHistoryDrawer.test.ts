@@ -270,6 +270,19 @@ describe("SuggestionJobHistoryDrawer", () => {
     expect(mocks.listQualitySuggestionJobs).toHaveBeenLastCalledWith(
       expect.objectContaining({ pageToken: "", status: undefined })
     );
+
+    // With the filter already clear, a reopen still rewinds the cursor.
+    buttonByText(label("common.next"))?.click();
+    await flushPromises();
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenLastCalledWith(
+      expect.objectContaining({ pageToken: "next-page" })
+    );
+    await wrapper.setProps({ open: false });
+    await wrapper.setProps({ open: true });
+    await flushPromises();
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenLastCalledWith(
+      expect.objectContaining({ pageToken: "", status: undefined })
+    );
     wrapper.unmount();
   });
 

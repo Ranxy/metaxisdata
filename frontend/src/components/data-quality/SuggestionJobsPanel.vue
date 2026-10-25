@@ -51,13 +51,11 @@
         >
           {{ jobIntentSnippet(spotlightJob) || "-" }}
         </span>
+        <!-- Decorative meter: the counts are stated in the text beside it. -->
         <div
           v-if="spotlightActive"
           class="h-1.5 w-24 overflow-hidden rounded-full bg-muted"
-          role="progressbar"
-          :aria-valuenow="spotlightProgress.percent"
-          aria-valuemin="0"
-          aria-valuemax="100"
+          aria-hidden="true"
         >
           <div
             class="h-full rounded-full bg-primary transition-all"
@@ -278,6 +276,15 @@ const spotlightProgressParams = computed(() => ({
   suggestions: spotlightProgress.value.suggestions,
   count: spotlightProgress.value.suggestions,
 }));
+
+// A cancel confirmation belongs to the job that was live when it was opened;
+// when the spotlight moves on (that job finished), do not leave it dangling.
+watch(
+  () => spotlightJob.value?.name,
+  () => {
+    cancelTarget.value = "";
+  }
+);
 
 /**
  * Fold one page of jobs into the panel. A job that was active in the previous
