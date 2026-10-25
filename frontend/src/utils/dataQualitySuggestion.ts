@@ -302,6 +302,11 @@ export function labelSuggestionOf(
   return payload?.case === "label" ? payload.value : undefined;
 }
 
+/** Whether a suggestion is a semantic label proposal, whatever its status. */
+export function isLabelSuggestion(suggestion: QualitySuggestion): boolean {
+  return labelSuggestionOf(suggestion) !== undefined;
+}
+
 /** Confidence as a percentage; 0/absent reads "-" rather than a fake 0%. */
 export function formatConfidence(confidence: number): string {
   return confidence > 0 ? formatPercent(confidence) : "-";
@@ -320,6 +325,19 @@ export function labelEvidenceLines(
     ...evidence.lineage,
     ...(evidence.rationale ? [evidence.rationale] : []),
   ];
+}
+
+/**
+ * The model's one-line justification for a proposal, whitespace collapsed for a
+ * single-line display: a draft's own rationale, or the rationale in a label's
+ * evidence.
+ */
+export function suggestionRationale(suggestion: QualitySuggestion): string {
+  const rationale =
+    ruleDraftOf(suggestion)?.rationale ||
+    labelSuggestionOf(suggestion)?.evidence?.rationale ||
+    "";
+  return rationale.replace(/\s+/g, " ").trim();
 }
 
 // ---- suggestion → editor ----

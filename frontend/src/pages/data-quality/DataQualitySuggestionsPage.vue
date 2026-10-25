@@ -365,11 +365,11 @@
                             {{ suggestionText(suggestion) }}
                           </button>
                           <p
-                            v-if="suggestionReason(suggestion)"
+                            v-if="suggestionRationale(suggestion)"
                             class="line-clamp-1 text-xs wrap-anywhere text-muted-foreground md:max-xl:hidden"
-                            :title="suggestionReason(suggestion)"
+                            :title="suggestionRationale(suggestion)"
                           >
-                            {{ suggestionReason(suggestion) }}
+                            {{ suggestionRationale(suggestion) }}
                           </p>
                         </div>
                       </div>
@@ -634,6 +634,7 @@ import { llmFeatureAvailability } from "@/utils/dataQualityLlm";
 import {
   formatConfidence,
   groupSuggestionsByTarget,
+  isLabelSuggestion,
   isPendingDraft,
   isPendingLabel,
   isPendingSuggestion,
@@ -644,6 +645,7 @@ import {
   selectionCountsByKind,
   semanticTypeKey,
   suggestionKindKey,
+  suggestionRationale,
   suggestionSourceKey,
   suggestionStatusKey,
   suggestionStatusVariant,
@@ -992,23 +994,6 @@ function suggestionText(suggestion: QualitySuggestion): string {
     );
   }
   return suggestion.name.split("/").pop() ?? suggestion.name;
-}
-
-/** A label's subject is a column name; a draft's is a rule title. */
-function isLabelSuggestion(suggestion: QualitySuggestion): boolean {
-  return labelSuggestionOf(suggestion) !== undefined;
-}
-
-/**
- * The model's own one-line reason for a suggestion, whichever kind it is: a
- * draft's rationale, or the one behind a label. Empty when the payload has none.
- */
-function suggestionReason(suggestion: QualitySuggestion): string {
-  const rationale =
-    ruleDraftOf(suggestion)?.rationale ||
-    labelSuggestionOf(suggestion)?.evidence?.rationale ||
-    "";
-  return rationale.replace(/\s+/g, " ").trim();
 }
 
 function labelTypeKey(suggestion: QualitySuggestion): string | undefined {

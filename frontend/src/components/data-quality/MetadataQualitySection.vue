@@ -126,6 +126,158 @@
       </div>
     </div>
 
+    <!-- The queue read is the one load worth reporting: a pass just queued
+         proposals, and an empty card would otherwise read as "nothing happened". -->
+    <p
+      v-if="suggestionsLoadFailed"
+      class="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm break-words text-destructive"
+    >
+      {{ t("dataQuality.asset.pendingSuggestionsLoadFailed") }}
+    </p>
+
+    <!-- The table's review inbox. Both kinds a generation pass queues for this
+         target appear here — label proposals and rule drafts — so the output of
+         "Suggest labels" is reviewed in place; the card stays absent until
+         something is pending. The list is bounded like the other cards; the rest
+         is one click away in the suggestion center. -->
+    <Card v-if="pendingSuggestions.length > 0">
+      <CardHeader class="flex flex-row items-center justify-between gap-3 border-b">
+        <div class="min-w-0 space-y-1">
+          <div class="flex flex-wrap items-center gap-2">
+            <CardTitle class="text-base">
+              {{ t("dataQuality.asset.pendingSuggestionsTitle") }}
+            </CardTitle>
+            <Badge variant="secondary">
+              {{ pendingSuggestions.length }}{{ pendingSuggestionsTruncated ? "+" : "" }}
+            </Badge>
+          </div>
+          <CardDescription>
+            {{ t("dataQuality.asset.pendingSuggestionsDescription") }}
+          </CardDescription>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          as-child
+        >
+          <RouterLink :to="{ name: 'DataQualitySuggestions' }">
+            {{ t("dataQuality.suggestions.openCenter") }}
+          </RouterLink>
+        </Button>
+      </CardHeader>
+      <CardContent class="pt-4">
+        <!-- A failed decision is explained next to the row, not at the top of
+             the tab where the reader would not connect the two. -->
+        <p
+          v-if="decideError"
+          class="mb-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm break-words text-destructive"
+        >
+          {{ decideError }}
+        </p>
+        <ul class="divide-y">
+          <li
+            v-for="suggestion in visibleSuggestions"
+            :key="suggestion.name"
+            class="flex flex-wrap items-start justify-between gap-3 py-2"
+          >
+            <div class="min-w-0 space-y-1">
+              <div class="flex flex-wrap items-center gap-2">
+                <Badge variant="outline">
+                  {{ t(suggestionKindKey(suggestion.kind)) }}
+                </Badge>
+                <!-- A label proposal names a column; a rule draft names the rule. -->
+                <span
+                  v-if="isLabelSuggestion(suggestion)"
+                  class="font-mono text-sm font-medium"
+                >
+                  {{ labelSuggestionOf(suggestion)?.column || suggestion.name.split("/").pop() }}
+                </span>
+                <span
+                  v-else
+                  class="text-sm font-medium"
+                >
+                  {{ draftTitle(suggestion) }}
+                </span>
+                <Badge
+                  v-if="isLabelSuggestion(suggestion)"
+                  variant="secondary"
+                >
+                  {{ t(semanticTypeKey(labelSuggestionOf(suggestion)?.label ?? 0)) }}
+                </Badge>
+                <template v-else>
+                  <Badge
+                    v-if="draftRuleTypeKey(suggestion)"
+                    variant="secondary"
+                  >
+                    {{ t(draftRuleTypeKey(suggestion) ?? "") }}
+                  </Badge>
+                  <Badge
+                    v-if="draftSeverity(suggestion)"
+                    :variant="qualitySeverityVariant(draftSeverity(suggestion) ?? QualitySeverity.UNSPECIFIED)"
+                  >
+                    {{ t(qualitySeverityKey(draftSeverity(suggestion) ?? QualitySeverity.UNSPECIFIED)) }}
+                  </Badge>
+                </template>
+                <span
+                  class="text-xs text-muted-foreground"
+                  :title="t('dataQuality.suggestions.confidence')"
+                >
+                  {{ formatConfidence(confidenceOf(suggestion)) }}
+                </span>
+                <span
+                  class="text-xs text-muted-foreground"
+                  :title="formatDateTime(suggestion.refreshTime ?? suggestion.createTime, locale)"
+                >
+                  {{ formatRelativeTime(suggestion.refreshTime ?? suggestion.createTime, locale) }}
+                </span>
+              </div>
+              <p
+                v-if="suggestionRationale(suggestion)"
+                class="line-clamp-2 max-w-3xl text-xs text-muted-foreground"
+              >
+                {{ suggestionRationale(suggestion) }}
+              </p>
+            </div>
+            <div class="flex shrink-0 items-center gap-2">
+              <Button
+                v-if="isLabelSuggestion(suggestion)"
+                variant="outline"
+                size="sm"
+                :disabled="decidingSuggestion !== ''"
+                @click="decideSuggestion(suggestion, QualitySuggestionStatus.ACCEPTED)"
+              >
+                {{ t("dataQuality.suggestions.accept") }}
+              </Button>
+              <Button
+                v-else-if="canOpenDraft(suggestion)"
+                variant="outline"
+                size="sm"
+                as-child
+              >
+                <RouterLink :to="draftEditorTo(suggestion)">
+                  {{ t("dataQuality.suggestions.openInEditor") }}
+                </RouterLink>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                :disabled="decidingSuggestion !== ''"
+                @click="decideSuggestion(suggestion, QualitySuggestionStatus.REJECTED)"
+              >
+                {{ t("dataQuality.suggestions.reject") }}
+              </Button>
+            </div>
+          </li>
+        </ul>
+        <p
+          v-if="hiddenSuggestionCount"
+          class="pt-2 text-xs text-muted-foreground"
+        >
+          {{ t("dataQuality.asset.pendingSuggestionsMore", { count: hiddenSuggestionCount }) }}
+        </p>
+      </CardContent>
+    </Card>
+
     <div class="grid gap-4 xl:grid-cols-2">
       <Card>
         <CardHeader class="flex flex-row items-center justify-between gap-3 border-b">
@@ -442,9 +594,11 @@ import {
   listQualityExecutions,
   listQualityIssues,
   listQualityRules,
+  listQualitySuggestions,
   profileColumns,
   suggestColumnLabels,
   updateColumnLabel,
+  updateQualitySuggestion,
 } from "@/api/data-quality";
 import EmptyState from "@/components/common/EmptyState.vue";
 import { Badge } from "@/components/ui/badge";
@@ -482,7 +636,10 @@ import {
   type QualityIssue,
   QualityIssueStatus,
   type QualityRule,
+  QualitySeverity,
   QualityStatus,
+  type QualitySuggestion,
+  QualitySuggestionStatus,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import type { ColumnMetadata } from "@/types/proto-es/v1/database_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
@@ -503,8 +660,14 @@ import {
 import {
   columnProfileHighlights,
   formatConfidence,
+  isLabelSuggestion,
   labelStatusKey,
+  labelSuggestionOf,
+  ruleDraftOf,
   semanticTypeKey,
+  suggestionKindKey,
+  suggestionRationale,
+  suggestionToEditorPrefill,
 } from "@/utils/dataQualitySuggestion";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 
@@ -553,8 +716,13 @@ const executions = ref<QualityExecution[]>([]);
 const openIssues = ref<QualityIssue[]>([]);
 const labels = ref<ColumnSemanticLabel[]>([]);
 const profiles = ref<ColumnProfile[]>([]);
+const pendingSuggestions = ref<QualitySuggestion[]>([]);
+const pendingSuggestionsTruncated = ref(false);
+const suggestionsLoadFailed = ref(false);
 const profiling = ref(false);
 const suggesting = ref(false);
+const decidingSuggestion = ref("");
+const decideError = ref("");
 const actionError = ref("");
 
 const createRuleTo = computed(() => ({
@@ -584,6 +752,75 @@ function labelOf(column: string): ColumnSemanticLabel | undefined {
 
 function profileOf(column: string): ColumnProfile | undefined {
   return profiles.value.find((profile) => profile.column === column);
+}
+
+/** How many pending proposals the tab previews before deferring to the center. */
+const ASSET_SUGGESTION_PREVIEW = 5;
+
+/** How many pending proposals one queue read loads; more shows the "N+" count. */
+const SUGGESTION_PAGE_SIZE = 100;
+
+/** The preview: label proposals first, then rule drafts, newest first within a kind. */
+const visibleSuggestions = computed(() => {
+  const labelProposals = pendingSuggestions.value.filter(isLabelSuggestion);
+  const drafts = pendingSuggestions.value.filter(
+    (suggestion) => !isLabelSuggestion(suggestion)
+  );
+  return [...labelProposals, ...drafts].slice(0, ASSET_SUGGESTION_PREVIEW);
+});
+
+/**
+ * The proposals the card leaves to the center, as a lower bound: a full page
+ * means there are more than that. Undefined leaves the footer out entirely.
+ */
+const hiddenSuggestionCount = computed<string | undefined>(() => {
+  const hidden =
+    pendingSuggestions.value.length - visibleSuggestions.value.length;
+  if (hidden <= 0 && !pendingSuggestionsTruncated.value) {
+    return undefined;
+  }
+  return pendingSuggestionsTruncated.value
+    ? `${Math.max(hidden, 0)}+`
+    : String(hidden);
+});
+
+function draftTitle(suggestion: QualitySuggestion): string {
+  return (
+    ruleDraftOf(suggestion)?.title ||
+    suggestion.name.split("/").pop() ||
+    suggestion.name
+  );
+}
+
+function draftRuleTypeKey(suggestion: QualitySuggestion): string | undefined {
+  const prefill = suggestionToEditorPrefill(suggestion);
+  return prefill ? qualityRuleTypeKey(prefill.ruleType) : undefined;
+}
+
+function draftSeverity(
+  suggestion: QualitySuggestion
+): QualitySeverity | undefined {
+  return ruleDraftOf(suggestion)?.severity;
+}
+
+/** The confidence of either kind; 0 renders as "-" rather than a fake 0%. */
+function confidenceOf(suggestion: QualitySuggestion): number {
+  return (
+    ruleDraftOf(suggestion)?.confidence ??
+    labelSuggestionOf(suggestion)?.confidence ??
+    0
+  );
+}
+
+/** Only a build that can prefill the editor offers a draft's creation path. */
+function canOpenDraft(suggestion: QualitySuggestion): boolean {
+  return (
+    canCreateRule.value && suggestionToEditorPrefill(suggestion) !== undefined
+  );
+}
+
+function draftEditorTo(suggestion: QualitySuggestion) {
+  return { name: "DataQualityRuleNew", query: { suggestion: suggestion.name } };
 }
 
 function ruleRoute(name: string) {
@@ -667,6 +904,31 @@ async function loadProfiles() {
   }
 }
 
+/**
+ * The proposals waiting for review on this table, both kinds: a label pass and
+ * the AI workbench queue rule drafts here too. The queue is behind the suggest
+ * permission — the same one the review actions need — so a read-only caller
+ * never requests it. A failed read keeps the last list and flags the failure
+ * rather than silently pretending the queue is empty.
+ */
+async function loadSuggestions() {
+  if (!canSuggest.value) {
+    return;
+  }
+  try {
+    const page = await listQualitySuggestions({
+      targetGuid: props.tableGuid,
+      status: QualitySuggestionStatus.PENDING,
+      pageSize: SUGGESTION_PAGE_SIZE,
+    });
+    pendingSuggestions.value = page.items;
+    pendingSuggestionsTruncated.value = page.nextPageToken !== "";
+    suggestionsLoadFailed.value = false;
+  } catch {
+    suggestionsLoadFailed.value = true;
+  }
+}
+
 async function loadAll() {
   if (!canView.value) {
     return;
@@ -677,6 +939,7 @@ async function loadAll() {
     loadIssues(),
     loadLabels(),
     loadProfiles(),
+    loadSuggestions(),
   ]);
 }
 
@@ -736,6 +999,48 @@ async function suggestLabels(forceRegenerate: boolean) {
     actionError.value = formatError(e, "dataQuality.asset.suggestFailed");
   } finally {
     suggesting.value = false;
+    // A pass that fails part way keeps the proposals earlier batches queued, so
+    // the card re-reads the queue on failure too instead of trusting the response.
+    await loadSuggestions();
+  }
+}
+
+/**
+ * Decide one proposal from the inbox. Accepting a label writes the column's
+ * label server-side, so the labels list reloads together with the queue. A
+ * failed decision re-reads the queue too: the usual failure is that another
+ * reviewer already decided the row, and the stale row must not survive.
+ */
+async function decideSuggestion(
+  suggestion: QualitySuggestion,
+  decision: QualitySuggestionStatus
+) {
+  if (decidingSuggestion.value) {
+    return;
+  }
+  decidingSuggestion.value = suggestion.name;
+  decideError.value = "";
+  actionError.value = "";
+  try {
+    await updateQualitySuggestion({ name: suggestion.name, decision });
+    notify.success(
+      t(
+        decision === QualitySuggestionStatus.ACCEPTED
+          ? "dataQuality.suggestions.accepted"
+          : "dataQuality.suggestions.rejected"
+      )
+    );
+    await Promise.all([
+      loadSuggestions(),
+      decision === QualitySuggestionStatus.ACCEPTED
+        ? loadLabels()
+        : Promise.resolve(),
+    ]);
+  } catch (e: unknown) {
+    decideError.value = formatError(e, "dataQuality.suggestions.decideError");
+    await loadSuggestions();
+  } finally {
+    decidingSuggestion.value = "";
   }
 }
 
@@ -758,6 +1063,13 @@ async function clearLabel(column: string) {
 onMounted(loadAll);
 watch(
   () => props.tableGuid,
-  () => void loadAll()
+  () => {
+    // The previous target's queue must not leak into the new one while it loads.
+    pendingSuggestions.value = [];
+    pendingSuggestionsTruncated.value = false;
+    suggestionsLoadFailed.value = false;
+    decideError.value = "";
+    void loadAll();
+  }
 );
 </script>

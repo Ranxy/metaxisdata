@@ -149,7 +149,18 @@ labels. *Profile columns* computes null counts, distinct counts, extremes,
 lengths, frequent values and value shapes with two queries; *Suggest labels*
 asks the model to name each column's semantic type and proposes rule drafts from
 a fixed mapping. Both only produce suggestions — nothing becomes a rule until a
-person creates the rule.
+person creates the rule. When the table has proposals waiting, the tab also
+shows a **Suggestions awaiting review** card (it stays hidden otherwise): each
+row names the column, or the rule draft's title, with the proposed semantic
+label or the rule type and severity, the confidence and the model's reason.
+Label proposals are accepted or rejected right there — accepting writes that
+column's label and moves it into the columns table — while a rule draft opens in
+the rule editor, pre-filled, and the rule is created when you save there. At most
+five proposals are previewed; *Open the suggestion center* leads to the full
+queue, where the rest are reviewed in bulk. The card and its actions need the
+`.suggest` permission, so members without it never see it; opening a draft in
+the editor additionally needs the rule-creation permission, so a reviewer
+without it can still reject the draft.
 
 The **Suggestions** page is the review center. Suggestions arrive from two places:
 
@@ -167,7 +178,8 @@ The **Suggestions** page is the review center. Suggestions arrive from two place
   model response (the debug log is kept seven days).
 - **Suggest labels** on a table's Data Quality tab: profile the columns first,
   then let the model name their semantic types and propose the deterministic rule
-  types those labels imply.
+  types those labels imply. The pass reports what it did, and its proposals appear in
+  that tab's review card immediately.
 
 The queue groups suggestions by target table and filters by status, kind, source
 and target scope. Suggestions produced by a finished drafting job appear like any
