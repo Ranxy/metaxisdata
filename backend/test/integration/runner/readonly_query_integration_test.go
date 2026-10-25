@@ -132,6 +132,9 @@ func TestMySQLReadOnlyQueryRealServerIntegration(t *testing.T) {
 	_, err = queryer.QueryReadOnly(ctx, "INSERT INTO users (id, name, age) VALUES (2, 'bob', 20)", nil, db.QueryOptions{})
 	requireReadOnlyRejection(t, err)
 
+	// The deadline has to be what reports the timeout: MySQL's own
+	// MAX_EXECUTION_TIME interrupt is not enough, because it reports an
+	// interrupted SLEEP as the successful row 1 instead of an error.
 	started := time.Now()
 	_, err = queryer.QueryReadOnly(ctx, "SELECT SLEEP(5)", nil, db.QueryOptions{Timeout: 250 * time.Millisecond})
 	requireTimeout(t, err, started)
