@@ -40,6 +40,7 @@ import {
   formatDiagnosticCount,
   groupSuggestionsByTarget,
   isActiveSuggestionJob,
+  isLabelSuggestion,
   isPendingDraft,
   isPendingLabel,
   isPendingSuggestion,
@@ -62,6 +63,7 @@ import {
   suggestionJobTargetStateKey,
   suggestionJobTargetStateVariant,
   suggestionKindKey,
+  suggestionRationale,
   suggestionSourceKey,
   suggestionStatusKey,
   suggestionStatusVariant,
@@ -261,6 +263,8 @@ describe("suggestion vocabulary", () => {
     });
     expect(labelSuggestionOf(label)?.column).toBe("email");
     expect(ruleDraftOf(label)).toBeUndefined();
+    expect(isLabelSuggestion(label)).toBe(true);
+    expect(isLabelSuggestion(rule)).toBe(false);
   });
 
   it("lists a label's evidence", () => {
@@ -279,6 +283,27 @@ describe("suggestion vocabulary", () => {
       "join key of orders",
       "Looks like an address.",
     ]);
+  });
+
+  it("collapses a proposal's rationale to one line, whichever kind it is", () => {
+    expect(suggestionRationale(ruleSuggestion())).toBe(
+      "The table is the fact table for orders."
+    );
+    const label = create(QualitySuggestionSchema, {
+      kind: QualitySuggestionKind.LABEL,
+      payload: {
+        payload: {
+          case: "label",
+          value: create(SemanticLabelSuggestionSchema, {
+            column: "email",
+            evidence: { rationale: "  Values look\n like addresses. " },
+          }),
+        },
+      },
+    });
+    expect(suggestionRationale(label)).toBe("Values look like addresses.");
+    // A proposal whose payload carries no reason reads as empty, not as a dash.
+    expect(suggestionRationale(create(QualitySuggestionSchema, {}))).toBe("");
   });
 });
 
