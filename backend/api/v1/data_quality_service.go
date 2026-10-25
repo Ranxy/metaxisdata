@@ -244,11 +244,16 @@ func (s *DataQualityService) ListQualityRules(ctx context.Context, req *connect.
 	if err != nil {
 		return nil, err
 	}
+	orphaned, err := s.targetOrphanReasons(ctx, rules)
+	if err != nil {
+		return nil, err
+	}
 
 	response := &v1pb.ListQualityRulesResponse{NextPageToken: nextPageToken}
 	for _, rule := range rules {
 		converted := convertQualityRule(workspaceID, rule)
 		converted.TargetSchemaChanged = schemaChanged[rule.ID]
+		converted.OrphanedReason = orphaned[rule.ID]
 		if execution := latest[rule.ID]; execution != nil {
 			converted.LastResult = convertQualityExecutionSummary(workspaceID, execution)
 		}
@@ -330,7 +335,8 @@ func (s *DataQualityService) GetQualityRule(ctx context.Context, req *connect.Re
 }
 
 // enrichQualityRule fills the read-only projections of one rule: whether its
-// target's schema changed and a summary of its newest execution.
+// target's schema changed, whether the target no longer resolves, and a summary
+// of its newest execution.
 func (s *DataQualityService) enrichQualityRule(ctx context.Context, workspaceID string, rule *store.QualityRuleMessage) (*v1pb.QualityRule, error) {
 	converted := convertQualityRule(workspaceID, rule)
 	latest, err := s.latestQualityExecutions(ctx, []*store.QualityRuleMessage{rule})
@@ -345,6 +351,11 @@ func (s *DataQualityService) enrichQualityRule(ctx context.Context, workspaceID 
 		return nil, err
 	}
 	converted.TargetSchemaChanged = schemaChanged[rule.ID]
+	orphaned, err := s.targetOrphanReasons(ctx, []*store.QualityRuleMessage{rule})
+	if err != nil {
+		return nil, err
+	}
+	converted.OrphanedReason = orphaned[rule.ID]
 	return converted, nil
 }
 
@@ -1315,6 +1326,172 @@ func (s *DataQualityService) targetSchemaChanges(ctx context.Context, rules []*s
 		}
 	}
 	return changed, nil
+}
+
+// targetOrphanReasons reports, per rule id, why the rule's target can no longer
+// be resolved. It mirrors the conditions the runner's dataquality.ResolveTarget
+// discovers before executing a rule: the registry row is gone, the instance was
+// deleted or lost its metadata, or the database row is gone or hidden.
+//
+// A rule list is batched: one query for the page's registry rows, one for its
+// instances, and one small cached lookup per distinct target database. A healthy
+// rule is absent from the map.
+func (s *DataQualityService) targetOrphanReasons(ctx context.Context, rules []*store.QualityRuleMessage) (map[int64]string, error) {
+	reasons := make(map[int64]string, len(rules))
+	if len(rules) == 0 {
+		return reasons, nil
+	}
+
+	guids := make([]string, 0, len(rules))
+	seenGUID := make(map[string]struct{}, len(rules))
+	instanceIDs := make([]string, 0, len(rules))
+	seenInstance := make(map[string]struct{}, len(rules))
+	databaseNames := make(map[string]map[string]struct{}, len(rules))
+	for _, rule := range rules {
+		if _, ok := seenGUID[rule.TargetGUID]; !ok {
+			seenGUID[rule.TargetGUID] = struct{}{}
+			guids = append(guids, rule.TargetGUID)
+		}
+		instanceID := ruleTargetInstanceID(rule)
+		if instanceID == "" {
+			continue
+		}
+		if _, ok := seenInstance[instanceID]; !ok {
+			seenInstance[instanceID] = struct{}{}
+			instanceIDs = append(instanceIDs, instanceID)
+		}
+		databaseName := ruleTargetDatabaseName(rule)
+		if databaseName == "" {
+			continue
+		}
+		if databaseNames[instanceID] == nil {
+			databaseNames[instanceID] = make(map[string]struct{})
+		}
+		databaseNames[instanceID][databaseName] = struct{}{}
+	}
+
+	resources, err := s.store.ListMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{GUIDs: &guids})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the rules' targets")
+	}
+	registered := make(map[store.MetaGUIDKey]struct{}, len(resources))
+	for _, resource := range resources {
+		registered[resource.GUIDKey()] = struct{}{}
+	}
+
+	instances, err := s.store.ListInstances(ctx, &store.FindInstanceMessage{ResourceIDs: &instanceIDs, ShowDeleted: true})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the rules' target instances")
+	}
+	type instanceState struct {
+		deleted     bool
+		hasMetadata bool
+	}
+	instanceStates := make(map[string]instanceState, len(instances))
+	for _, instance := range instances {
+		instanceStates[instance.ResourceID] = instanceState{
+			deleted:     instance.Deleted,
+			hasMetadata: instance.Metadata != nil,
+		}
+	}
+	liveDatabases := make(map[string]map[string]bool, len(databaseNames))
+	for instanceID, names := range databaseNames {
+		state, ok := instanceStates[instanceID]
+		if !ok || state.deleted || !state.hasMetadata {
+			continue
+		}
+		byName := make(map[string]bool, len(names))
+		for databaseName := range names {
+			database, err := s.store.GetDatabase(ctx, &store.FindDatabaseMessage{
+				InstanceID:   &instanceID,
+				DatabaseName: &databaseName,
+				ShowDeleted:  true,
+			})
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to read the rules' target databases")
+			}
+			// A missing row and a soft-deleted row are both unresolved.
+			byName[databaseName] = database != nil && !database.Deleted
+		}
+		liveDatabases[instanceID] = byName
+	}
+
+	for _, rule := range rules {
+		key := store.MetaGUIDKey{GUID: rule.TargetGUID, ObjectType: rule.TargetType}
+		_, isRegistered := registered[key]
+		instanceID := ruleTargetInstanceID(rule)
+		state, instanceFound := instanceStates[instanceID]
+		databaseLive := true
+		if databaseName := ruleTargetDatabaseName(rule); databaseName != "" {
+			if live, ok := liveDatabases[instanceID][databaseName]; ok {
+				databaseLive = live
+			}
+		}
+		reason := targetOrphanReason(rule, isRegistered, instanceFound, state.deleted, state.hasMetadata, databaseLive)
+		if reason != "" {
+			reasons[rule.ID] = reason
+		}
+	}
+	return reasons, nil
+}
+
+// targetOrphanReason applies the resolution conditions to one rule. instanceFound
+// is false when the instance row is missing; databaseLive is only consulted when
+// the rule names a database.
+func targetOrphanReason(rule *store.QualityRuleMessage, registered, instanceFound, instanceDeleted, instanceHasMetadata, databaseLive bool) string {
+	if !registered {
+		return fmt.Sprintf("the target %q is no longer in the metadata registry", rule.TargetGUID)
+	}
+	instanceID := ruleTargetInstanceID(rule)
+	if instanceID == "" {
+		return ""
+	}
+	if !instanceFound || instanceDeleted {
+		return fmt.Sprintf("the target's instance %q is gone", instanceID)
+	}
+	if !instanceHasMetadata {
+		return fmt.Sprintf("the target's instance %q has no metadata", instanceID)
+	}
+	databaseName := ruleTargetDatabaseName(rule)
+	if databaseName == "" {
+		return ""
+	}
+	if !databaseLive {
+		return fmt.Sprintf("the target's database %q is gone or hidden", databaseName)
+	}
+	return ""
+}
+
+// ruleTargetInstanceID returns the instance segment of a rule's target, taking it
+// from the saved path snapshot when present and from the GUID otherwise.
+func ruleTargetInstanceID(rule *store.QualityRuleMessage) string {
+	if rule == nil {
+		return ""
+	}
+	if instance := rule.TargetPath.GetInstance(); instance != "" {
+		return instance
+	}
+	segments := common.SplitMetaGUID(rule.TargetGUID)
+	if len(segments) < 1 {
+		return ""
+	}
+	return segments[0]
+}
+
+// ruleTargetDatabaseName returns the database segment of a rule's target, taking
+// it from the saved path snapshot when present and from the GUID otherwise.
+func ruleTargetDatabaseName(rule *store.QualityRuleMessage) string {
+	if rule == nil {
+		return ""
+	}
+	if database := rule.TargetPath.GetDatabase(); database != "" {
+		return database
+	}
+	segments := common.SplitMetaGUID(rule.TargetGUID)
+	if len(segments) < 2 {
+		return ""
+	}
+	return segments[1]
 }
 
 // targetSchemaHash reads the target's current DDL hash for the rule snapshot.
