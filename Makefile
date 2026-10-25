@@ -1,4 +1,4 @@
-.PHONY: run build build-release build-cli build-embed build-binary frontend-dist docker-build docker-build-dev docker-up docker-down test-integration-smoke test-integration-mysql test-integration
+.PHONY: run build build-release build-cli build-embed build-binary frontend-dist docker-build docker-build-dev docker-up docker-down test-integration-smoke test-integration-mysql test-integration-data-quality test-integration
 
 # Build metadata baked into the binary: `metaxisdata --version` and the SPA's
 # user menu read it, so a binary built here can be matched to a commit. The
@@ -90,6 +90,10 @@ test-integration-smoke:
 # databases, so this only narrows which tests run.
 test-integration-mysql:
 	go test -v -count=1 -tags=integration -run 'MySQL.*RealServerIntegration' ./backend/test/integration/runner
+
+# The data-quality end-to-end journey: the whole module against the real server.
+test-integration-data-quality:
+	go test -v -count=1 -tags=integration -run '^TestDataQualityJourneyMySQLRealServerIntegration$' ./backend/test/integration/runner
 
 # The integration gate: all real-server scenarios plus the migrator paths.
 test-integration:

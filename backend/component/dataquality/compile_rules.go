@@ -202,7 +202,7 @@ func compileUniqueQuery(input CompileInput, columns []string, countNulls bool) (
 	// once inside the grouped input. Numbered dialects can reuse the same $n/@pN
 	// for both occurrences, but a positional dialect binds one ? per occurrence, so
 	// its arguments are passed once per appearance in the SQL text.
-	query := "SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS groups, " +
+	query := "SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS duplicate_groups, " +
 		"(SELECT COUNT(*) FROM " + table + where + ") AS total_rows FROM (" +
 		"SELECT " + selectList + ", COUNT(*) AS cnt FROM " + table + innerWhere +
 		" GROUP BY " + selectList + " HAVING COUNT(*) > 1) dq"
@@ -214,7 +214,7 @@ func compileUniqueQuery(input CompileInput, columns []string, countNulls bool) (
 		SQL:     query,
 		Args:    args,
 		Kind:    QueryAggregate,
-		Columns: []string{"failed_rows", "groups", "total_rows"},
+		Columns: []string{"failed_rows", "duplicate_groups", "total_rows"},
 	}, nil
 }
 

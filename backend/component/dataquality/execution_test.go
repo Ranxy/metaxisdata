@@ -416,7 +416,7 @@ func TestExecuteRefusesAPercentageThresholdWithoutATotal(t *testing.T) {
 		ThresholdMetric: storepb.QualityThresholdMetric_QUALITY_THRESHOLD_METRIC_PERCENT,
 	}
 	_, err = NewExecutor().Execute(context.Background(), &execFakeQueryer{results: []*db.QueryResult{
-		aggregateRow([]string{"failed_rows", "groups", "total_rows"}, int64(1), int64(1), int64(100)),
+		aggregateRow([]string{"failed_rows", "duplicate_groups", "total_rows"}, int64(1), int64(1), int64(100)),
 	}},
 		execTestResolution(storepb.Engine_MYSQL),
 		execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, unique),

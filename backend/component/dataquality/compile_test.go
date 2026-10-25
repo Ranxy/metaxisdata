@@ -124,17 +124,17 @@ func compileRuleGoldens() []compileGolden {
 			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Unique{
 				Unique: &storepb.UniqueConfig{Column: "email"},
 			}},
-			wantColumns: []string{"failed_rows", "groups", "total_rows"},
+			wantColumns: []string{"failed_rows", "duplicate_groups", "total_rows"},
 			wantKind:    QueryAggregate,
-			mysqlSQL: "SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS groups, " +
+			mysqlSQL: "SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS duplicate_groups, " +
 				"(SELECT COUNT(*) FROM `shop`.`orders`) AS total_rows FROM " +
 				"(SELECT `email`, COUNT(*) AS cnt FROM `shop`.`orders` WHERE `email` IS NOT NULL " +
 				"GROUP BY `email` HAVING COUNT(*) > 1) dq",
-			postgresSQL: `SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS groups, ` +
+			postgresSQL: `SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS duplicate_groups, ` +
 				`(SELECT COUNT(*) FROM "public"."orders") AS total_rows FROM ` +
 				`(SELECT "email", COUNT(*) AS cnt FROM "public"."orders" WHERE "email" IS NOT NULL ` +
 				`GROUP BY "email" HAVING COUNT(*) > 1) dq`,
-			mssqlSQL: "SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS groups, " +
+			mssqlSQL: "SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS duplicate_groups, " +
 				"(SELECT COUNT(*) FROM [public].[orders]) AS total_rows FROM " +
 				"(SELECT [email], COUNT(*) AS cnt FROM [public].[orders] WHERE [email] IS NOT NULL " +
 				"GROUP BY [email] HAVING COUNT(*) > 1) dq",
@@ -145,19 +145,19 @@ func compileRuleGoldens() []compileGolden {
 			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_UniqueCombination{
 				UniqueCombination: &storepb.UniqueCombinationConfig{Columns: []string{"amount", "status"}},
 			}},
-			wantColumns: []string{"failed_rows", "groups", "total_rows"},
+			wantColumns: []string{"failed_rows", "duplicate_groups", "total_rows"},
 			wantKind:    QueryAggregate,
-			mysqlSQL: "SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS groups, " +
+			mysqlSQL: "SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS duplicate_groups, " +
 				"(SELECT COUNT(*) FROM `shop`.`orders`) AS total_rows FROM " +
 				"(SELECT `amount`, `status`, COUNT(*) AS cnt FROM `shop`.`orders` " +
 				"WHERE `amount` IS NOT NULL AND `status` IS NOT NULL " +
 				"GROUP BY `amount`, `status` HAVING COUNT(*) > 1) dq",
-			postgresSQL: `SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS groups, ` +
+			postgresSQL: `SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS duplicate_groups, ` +
 				`(SELECT COUNT(*) FROM "public"."orders") AS total_rows FROM ` +
 				`(SELECT "amount", "status", COUNT(*) AS cnt FROM "public"."orders" ` +
 				`WHERE "amount" IS NOT NULL AND "status" IS NOT NULL ` +
 				`GROUP BY "amount", "status" HAVING COUNT(*) > 1) dq`,
-			mssqlSQL: "SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS groups, " +
+			mssqlSQL: "SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS duplicate_groups, " +
 				"(SELECT COUNT(*) FROM [public].[orders]) AS total_rows FROM " +
 				"(SELECT [amount], [status], COUNT(*) AS cnt FROM [public].[orders] " +
 				"WHERE [amount] IS NOT NULL AND [status] IS NOT NULL " +
@@ -1010,7 +1010,7 @@ func TestCompileAllColumnUniqueUsesEveryColumn(t *testing.T) {
 		}},
 	})
 	require.NoError(t, err)
-	require.Equal(t, `SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS groups, (SELECT COUNT(*) FROM "public"."orders") AS total_rows FROM (SELECT "id", "email", "amount", "created_at", "status", "qty", "price", "updated_at", "name", COUNT(*) AS cnt FROM "public"."orders" WHERE "id" IS NOT NULL AND "email" IS NOT NULL AND "amount" IS NOT NULL AND "created_at" IS NOT NULL AND "status" IS NOT NULL AND "qty" IS NOT NULL AND "price" IS NOT NULL AND "updated_at" IS NOT NULL AND "name" IS NOT NULL GROUP BY "id", "email", "amount", "created_at", "status", "qty", "price", "updated_at", "name" HAVING COUNT(*) > 1) dq`, query.SQL)
+	require.Equal(t, `SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS duplicate_groups, (SELECT COUNT(*) FROM "public"."orders") AS total_rows FROM (SELECT "id", "email", "amount", "created_at", "status", "qty", "price", "updated_at", "name", COUNT(*) AS cnt FROM "public"."orders" WHERE "id" IS NOT NULL AND "email" IS NOT NULL AND "amount" IS NOT NULL AND "created_at" IS NOT NULL AND "status" IS NOT NULL AND "qty" IS NOT NULL AND "price" IS NOT NULL AND "updated_at" IS NOT NULL AND "name" IS NOT NULL GROUP BY "id", "email", "amount", "created_at", "status", "qty", "price", "updated_at", "name" HAVING COUNT(*) > 1) dq`, query.SQL)
 }
 
 // TestCompileCountNullsKeepsNullKeys pins the count_nulls opt-in: only then does
@@ -1030,7 +1030,7 @@ func TestCompileCountNullsKeepsNullKeys(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotContains(t, query.SQL, "IS NOT NULL")
-	require.Equal(t, "SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS groups, "+
+	require.Equal(t, "SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS duplicate_groups, "+
 		"(SELECT COUNT(*) FROM `shop`.`orders`) AS total_rows FROM "+
 		"(SELECT `email`, COUNT(*) AS cnt FROM `shop`.`orders` GROUP BY `email` HAVING COUNT(*) > 1) dq", query.SQL)
 }
@@ -1056,7 +1056,7 @@ func TestCompileUniqueFilterPlaceholderOrder(t *testing.T) {
 	}{
 		{
 			engine: storepb.Engine_MYSQL,
-			wantSQL: "SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS groups, " +
+			wantSQL: "SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS duplicate_groups, " +
 				"(SELECT COUNT(*) FROM `shop`.`orders` WHERE `status` = ? AND `qty` >= ?) AS total_rows FROM " +
 				"(SELECT `email`, COUNT(*) AS cnt FROM `shop`.`orders` " +
 				"WHERE `status` = ? AND `qty` >= ? AND `email` IS NOT NULL " +
@@ -1066,7 +1066,7 @@ func TestCompileUniqueFilterPlaceholderOrder(t *testing.T) {
 		},
 		{
 			engine: storepb.Engine_POSTGRES,
-			wantSQL: `SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS groups, ` +
+			wantSQL: `SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS duplicate_groups, ` +
 				`(SELECT COUNT(*) FROM "public"."orders" WHERE "status" = $1 AND "qty" >= $2) AS total_rows FROM ` +
 				`(SELECT "email", COUNT(*) AS cnt FROM "public"."orders" ` +
 				`WHERE "status" = $1 AND "qty" >= $2 AND "email" IS NOT NULL ` +
@@ -1075,7 +1075,7 @@ func TestCompileUniqueFilterPlaceholderOrder(t *testing.T) {
 		},
 		{
 			engine: storepb.Engine_MSSQL,
-			wantSQL: "SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS groups, " +
+			wantSQL: "SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS duplicate_groups, " +
 				"(SELECT COUNT(*) FROM [public].[orders] WHERE [status] = @p1 AND [qty] >= @p2) AS total_rows FROM " +
 				"(SELECT [email], COUNT(*) AS cnt FROM [public].[orders] " +
 				"WHERE [status] = @p1 AND [qty] >= @p2 AND [email] IS NOT NULL " +
@@ -1098,7 +1098,7 @@ func TestCompileUniqueFilterPlaceholderOrder(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, test.wantSQL, query.SQL)
 			require.Equal(t, test.wantArgs, query.Args)
-			require.Equal(t, []string{"failed_rows", "groups", "total_rows"}, query.Columns)
+			require.Equal(t, []string{"failed_rows", "duplicate_groups", "total_rows"}, query.Columns)
 		})
 	}
 }
