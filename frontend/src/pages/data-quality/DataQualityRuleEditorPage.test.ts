@@ -48,7 +48,7 @@ const mocks = vi.hoisted(() => ({
   previewQualityRule: vi.fn(),
   updateQualityRule: vi.fn(),
   getWorkspaceProfileSetting: vi.fn(),
-  listMetadata: vi.fn(),
+  listAllMetadata: vi.fn(),
   listAllInstances: vi.fn(),
   getInstance: vi.fn(),
 }));
@@ -66,7 +66,7 @@ vi.mock("@/api/setting", () => ({
 }));
 
 vi.mock("@/api/database", () => ({
-  listMetadata: mocks.listMetadata,
+  listAllMetadata: mocks.listAllMetadata,
 }));
 
 vi.mock("@/api/instance", () => ({
@@ -218,22 +218,22 @@ describe("DataQualityRuleEditorPage", () => {
       })
     );
     mocks.previewQualityRule.mockResolvedValue(PREVIEW);
-    mocks.listMetadata.mockResolvedValue({
-      typesStoredMetadata: [
-        {
-          metaType: MetaType.COLUMN,
-          list: [
-            {
-              guid: `${PREFILL};id`,
-              type: {
-                case: "columnMetadata",
-                value: { name: "id", type: "bigint", nullable: false },
-              },
-            },
-          ],
+    mocks.listAllMetadata.mockResolvedValue([
+      {
+        guid: `${PREFILL};id`,
+        type: {
+          case: "columnMetadata",
+          value: { name: "id", type: "bigint", nullable: false },
         },
-      ],
-    });
+      },
+      {
+        guid: `${PREFILL};amount`,
+        type: {
+          case: "columnMetadata",
+          value: { name: "amount", type: "numeric", nullable: true },
+        },
+      },
+    ]);
     mocks.listAllInstances.mockResolvedValue([]);
     mocks.getInstance.mockResolvedValue(
       create(InstanceSchema, {
@@ -640,6 +640,14 @@ describe("DataQualityRuleEditorPage", () => {
     expect(
       wrapper.findAll("input").some((input) => input.element.value === "bigint")
     ).toBe(true);
+    // Every column of the walked list lands in the snapshot, not just the first.
+    expect(
+      wrapper.findAll("input").some((input) => input.element.value === "amount")
+    ).toBe(true);
+    expect(mocks.listAllMetadata).toHaveBeenCalledWith({
+      parentGuid: PREFILL,
+      metaType: MetaType.COLUMN,
+    });
   });
 
   it("prefills the form from a suggested rule draft", async () => {

@@ -313,7 +313,7 @@ import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink } from "vue-router";
 import { batchCreateQualityRules } from "@/api/data-quality";
-import { listMetadata } from "@/api/database";
+import { listAllMetadata } from "@/api/database";
 import UserSelect from "@/components/common/UserSelect.vue";
 import RuleConfigForm from "@/components/data-quality/RuleConfigForm.vue";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -548,21 +548,20 @@ async function loadColumns() {
   ];
   for (const guid of guids) {
     try {
-      const response = await listMetadata({ parentGuid: guid, pageSize: 200 });
-      const group = response.typesStoredMetadata.find(
-        (item) => item.metaType === MetaType.COLUMN
-      );
-      const details: TargetColumnDetail[] =
-        group?.list.map((item) => {
-          const value = item.type.value as
-            | { name?: string; type?: string; nullable?: boolean }
-            | undefined;
-          return {
-            name: value?.name ?? item.guid,
-            type: value?.type ?? "",
-            nullable: value?.nullable ?? true,
-          };
-        }) ?? [];
+      const columns = await listAllMetadata({
+        parentGuid: guid,
+        metaType: MetaType.COLUMN,
+      });
+      const details: TargetColumnDetail[] = columns.map((item) => {
+        const value = item.type.value as
+          | { name?: string; type?: string; nullable?: boolean }
+          | undefined;
+        return {
+          name: value?.name ?? item.guid,
+          type: value?.type ?? "",
+          nullable: value?.nullable ?? true,
+        };
+      });
       for (const row of rows.value) {
         if ((row.suggestion.target?.metaGuid ?? "") === guid) {
           row.columns = details;

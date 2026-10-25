@@ -34,6 +34,7 @@ const mocks = vi.hoisted(() => ({
   cancelQualitySuggestionJob: vi.fn(),
   getWorkspaceProfileSetting: vi.fn(),
   listMetadata: vi.fn(),
+  listAllMetadata: vi.fn(),
   listAllInstances: vi.fn(),
 }));
 
@@ -54,6 +55,7 @@ vi.mock("@/api/setting", () => ({
 
 vi.mock("@/api/database", () => ({
   listMetadata: mocks.listMetadata,
+  listAllMetadata: mocks.listAllMetadata,
 }));
 
 vi.mock("@/api/instance", () => ({
@@ -242,6 +244,7 @@ describe("DataQualitySuggestionsPage", () => {
       dataQuality: { enableLlmAnalysis: true },
     });
     mocks.listMetadata.mockResolvedValue({ typesStoredMetadata: [] });
+    mocks.listAllMetadata.mockResolvedValue([]);
     mocks.listAllInstances.mockResolvedValue([]);
     mocks.listQualitySuggestionJobs.mockResolvedValue({
       items: [],

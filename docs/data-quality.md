@@ -31,15 +31,19 @@ fully offline; three model-assisted features are opt-in.
 
 ## Writing a rule
 
-Data Quality → Rules → **New rule**. Pick the target from the metadata browser,
-then choose the rule type — the list is grouped by family (quantity and timeliness,
-values and relations, aggregates and reconciliation, structure and custom) and a
-one-line description of the selected type sits under the control. Fill in the
-parameters; the editor compiles the rule server-side and shows the SQL it will run
-before you save. Saving validates the target, the columns and the parameters; a
-rule that cannot compile is refused. A view or materialized view only offers the
-table-level checks (row count, row count change, freshness, custom SQL, schema
-drift), because those objects have no column-level type authority.
+Data Quality → Rules → **New rule**. Pick the target from the metadata browser:
+browse instances → databases → schemas → tables, one level at a time. Below the
+instance, each level pages through the registry with **Load more**, and its
+search box matches names and comments on the server, so a schema with thousands
+of tables is still usable. Then choose the rule type — the list is grouped by
+family (quantity and timeliness, values and relations, aggregates and
+reconciliation, structure and custom) and a one-line description of the selected
+type sits under the control. Fill in the parameters; the editor compiles the
+rule server-side and shows the SQL it will run before you save. Saving validates
+the target, the columns and the parameters; a rule that cannot compile is
+refused. A view or materialized view only offers the table-level checks (row
+count, row count change, freshness, custom SQL, schema drift), because those
+objects have no column-level type authority.
 
 - **Schedule**: 15 minutes to 7 days. A new rule first runs on its next scheduled
   slot; use **Run now** to check it immediately.
