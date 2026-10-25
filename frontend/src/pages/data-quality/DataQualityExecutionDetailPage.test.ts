@@ -87,6 +87,14 @@ function executionFixture(
         columns: [
           { column: "id", value: "1" },
           { column: "email", value: "a@example.com" },
+          { column: "note", value: "", isNull: true },
+          { column: "title", value: "" },
+        ],
+      },
+      {
+        columns: [
+          { column: "id", value: "2" },
+          { column: "email", value: "b@example.com" },
         ],
       },
     ],
@@ -171,6 +179,19 @@ describe("DataQualityExecutionDetailPage", () => {
     expect(text).toContain("inst1");
     expect(text).toContain("users/7".split("/").pop() ?? "");
     expect(wrapper.text()).toContain("a@example.com");
+    expect(wrapper.text()).toContain("b@example.com");
+    // Every sampled row is numbered, so two failures on the same column do not
+    // read as one row repeated.
+    expect(text).toContain(
+      i18n.global.t("dataQuality.sampleRow", { index: 1 })
+    );
+    expect(text).toContain(
+      i18n.global.t("dataQuality.sampleRow", { index: 2 })
+    );
+    // A NULL and an empty string are both empty on the wire; the page has to say
+    // which one it was instead of printing a blank cell.
+    expect(text).toContain(i18n.global.t("dataQuality.sampleNull"));
+    expect(text).toContain(i18n.global.t("dataQuality.sampleEmpty"));
     expect(wrapper.text()).toContain("SELECT COUNT(*) FROM public.orders");
     // A finished execution does not poll.
     expect(text).not.toContain(i18n.global.t("dataQuality.polling"));

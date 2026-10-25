@@ -85,9 +85,10 @@ func truncateExecutedSQL(sql string) string {
 
 // SamplesFromRows turns query rows into the stored failed-row sample. It trusts
 // the caller's limit only up to the maximum, keeps at most that many rows, and
-// truncates every value, because the proto stores display strings. An empty
-// value means SQL NULL: the proto has no null marker, and the null case is the
-// normal one for a null_percent failure.
+// truncates every value, because the proto stores display strings. A SQL NULL is
+// stored as an empty value with is_null set, so it stays distinguishable from an
+// empty string — the two cases a null_percent and a string_length failure sample
+// are made of.
 func SamplesFromRows(columns []string, rows [][]any, limit int) *storepb.QualityFailureSamples {
 	if limit <= 0 || len(columns) == 0 || len(rows) == 0 {
 		return nil
@@ -102,14 +103,15 @@ func SamplesFromRows(columns []string, rows [][]any, limit int) *storepb.Quality
 		}
 		sample := &storepb.FailureSample{Columns: make([]*storepb.ColumnValue, 0, len(columns))}
 		for index, column := range columns {
-			value := ""
+			cell := &storepb.ColumnValue{Column: column}
 			if index < len(row) {
-				value = sampleValueString(row[index])
+				if row[index] == nil {
+					cell.IsNull = true
+				} else {
+					cell.Value = common.TruncateUTF8Bytes(sampleValueString(row[index]), maxSampleValueBytes)
+				}
 			}
-			sample.Columns = append(sample.Columns, &storepb.ColumnValue{
-				Column: column,
-				Value:  common.TruncateUTF8Bytes(value, maxSampleValueBytes),
-			})
+			sample.Columns = append(sample.Columns, cell)
 		}
 		samples.Samples = append(samples.Samples, sample)
 	}

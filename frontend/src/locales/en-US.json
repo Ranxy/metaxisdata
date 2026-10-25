@@ -602,7 +602,7 @@
     "executionsTitle": "Quality executions",
     "failedRows": "Failed rows",
     "failureSamples": "Failure samples",
-    "failureSamplesHint": "Failed rows kept as evidence, truncated per value.",
+    "failureSamplesHint": "Failed rows kept as evidence, truncated per value; a row's primary-key columns are shown when the registry records them.",
     "fetchExecutionError": "Failed to load the execution.",
     "fetchExecutionsError": "Failed to load the quality executions.",
     "fetchIssueError": "Failed to load the issue.",
@@ -873,6 +873,9 @@
     "rulesDescription": "Checks that watch the data itself. A rule observes one table or one column on a schedule or on demand.",
     "rulesTitle": "Quality rules",
     "runNow": "Run now",
+    "sampleEmpty": "empty string",
+    "sampleNull": "NULL",
+    "sampleRow": "Row {index}",
     "sampled": "Sampled",
     "schedule": "Schedule",
     "schema": {

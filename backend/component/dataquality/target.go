@@ -2,6 +2,7 @@ package dataquality
 
 import (
 	"context"
+	"strings"
 
 	"github.com/pkg/errors"
 
@@ -120,6 +121,7 @@ func ResolveTarget(ctx context.Context, s *store.Store, guid string, metaType st
 		Schema:             schemaName,
 		Table:              objectName,
 		Columns:            columns,
+		KeyColumns:         primaryKeyColumns(resource.Metadata, metaType, columns),
 		MetaHash:           resource.MetaHash,
 	}
 	return &Resolution{Target: target, Instance: instance, Database: database, Metadata: resource.Metadata}, nil
@@ -156,6 +158,49 @@ func metadataColumns(metadata *storepb.StoredMetadata, metaType storepb.MetaType
 		})
 	}
 	return columns, nil
+}
+
+// primaryKeyColumns returns the primary-key columns of a registered relation in
+// key order, spelled the way the registry spells its columns. Only an index key
+// that names a column counts: a functional index key has no column to select.
+// The failure sample uses the key to identify a sampled row; a relation whose
+// sync recorded no primary key returns nil, and the sample keeps the checked
+// columns only.
+func primaryKeyColumns(metadata *storepb.StoredMetadata, metaType storepb.MetaType, columns []ColumnInfo) []string {
+	var indexes []*storepb.IndexMetadata
+	switch metaType {
+	case storepb.MetaType_TABLE:
+		indexes = metadata.GetTableMetadata().GetIndexes()
+	case storepb.MetaType_EXTERNAL_TABLE:
+		// A foreign table exposes no index metadata, so it has no key to add.
+		return nil
+	case storepb.MetaType_VIEW:
+		// Views are only watched by table-level rules, which have no row sample.
+		return nil
+	case storepb.MetaType_MATERIALIZED_VIEW:
+		indexes = metadata.GetMaterializedViewMetadata().GetIndexes()
+	default:
+		return nil
+	}
+	for _, index := range indexes {
+		if index == nil || !index.GetPrimary() {
+			continue
+		}
+		keys := make([]string, 0, len(index.GetExpressions()))
+		for _, expression := range index.GetExpressions() {
+			for _, column := range columns {
+				if strings.EqualFold(column.Name, strings.TrimSpace(expression)) {
+					keys = append(keys, column.Name)
+					break
+				}
+			}
+		}
+		if len(keys) > 0 {
+			return keys
+		}
+		return nil
+	}
+	return nil
 }
 
 // RequireTarget verifies the rule type may watch this object type and engine.

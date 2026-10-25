@@ -151,7 +151,7 @@ func TestScanQualityExecutionReadsEveryColumn(t *testing.T) {
 		sampled:            true,
 		sampleRows:         500,
 		truncated:          true,
-		sample:             []byte(`{"samples": [{"columns": [{"column": "id", "value": "7"}]}]}`),
+		sample:             []byte(`{"samples": [{"columns": [{"column": "id", "value": "7"}, {"column": "note", "isNull": true}]}]}`),
 		executedSQL:        "SELECT COUNT(*) FROM t WHERE t.id IS NULL",
 		errorCode:          "BAD_DATA",
 		errorMessage:       "unexpected value",
@@ -192,8 +192,11 @@ func TestScanQualityExecutionReadsEveryColumn(t *testing.T) {
 	require.Equal(t, int64(500), execution.SampleRows)
 	require.True(t, execution.Truncated)
 	require.Len(t, execution.Sample.GetSamples(), 1)
+	require.Len(t, execution.Sample.GetSamples()[0].GetColumns(), 2)
 	require.Equal(t, "id", execution.Sample.GetSamples()[0].GetColumns()[0].GetColumn())
 	require.Equal(t, "7", execution.Sample.GetSamples()[0].GetColumns()[0].GetValue())
+	require.False(t, execution.Sample.GetSamples()[0].GetColumns()[0].GetIsNull())
+	require.True(t, execution.Sample.GetSamples()[0].GetColumns()[1].GetIsNull(), "a stored NULL keeps its marker")
 	require.Equal(t, "SELECT COUNT(*) FROM t WHERE t.id IS NULL", execution.ExecutedSQL)
 	require.Equal(t, "BAD_DATA", execution.ErrorCode)
 	require.Equal(t, "unexpected value", execution.ErrorMessage)

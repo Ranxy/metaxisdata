@@ -332,7 +332,13 @@ message FailureSample {
 // they are stored, so a wide text column cannot bloat the result row.
 message ColumnValue {
   string column = 1;
+
+  // The value rendered as display text. Empty when the column is SQL NULL.
   string value = 2;
+
+  // Whether the value was SQL NULL. Without this flag a NULL and an empty string
+  // both store as an empty value, and the sample cannot say which it was.
+  bool is_null = 3;
 }
 
 // ColumnProfile is the deterministic statistics of one column. It is computed

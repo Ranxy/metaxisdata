@@ -326,12 +326,16 @@ func TestConvertQualityExecution(t *testing.T) {
 			Comparison: storepb.QualityComparison_QUALITY_COMPARISON_GREATER_THAN,
 			OnEmpty:    storepb.QualityEmptyBehavior_QUALITY_EMPTY_BEHAVIOR_NOT_EVALUATED,
 		},
-		FailedRows:  3,
-		TotalRows:   100,
-		Sampled:     true,
-		SampleRows:  20,
-		Truncated:   true,
-		Sample:      &storepb.QualityFailureSamples{Samples: []*storepb.FailureSample{{Columns: []*storepb.ColumnValue{{Column: "id", Value: "1"}, {Column: "amount", Value: "-5"}}}}},
+		FailedRows: 3,
+		TotalRows:  100,
+		Sampled:    true,
+		SampleRows: 20,
+		Truncated:  true,
+		Sample: &storepb.QualityFailureSamples{Samples: []*storepb.FailureSample{{Columns: []*storepb.ColumnValue{
+			{Column: "id", Value: "1"},
+			{Column: "amount", Value: "-5"},
+			{Column: "note", IsNull: true},
+		}}}},
 		ExecutedSQL: "SELECT COUNT(*) FROM orders",
 		DurationMS:  1500,
 		StartedAt:   startedAt,
@@ -363,9 +367,11 @@ func TestConvertQualityExecution(t *testing.T) {
 	require.Equal(t, int64(20), converted.GetSampleRows())
 	require.True(t, converted.GetTruncated())
 	require.Len(t, converted.GetSamples(), 1)
-	require.Len(t, converted.GetSamples()[0].GetColumns(), 2)
+	require.Len(t, converted.GetSamples()[0].GetColumns(), 3)
 	require.Equal(t, "amount", converted.GetSamples()[0].GetColumns()[1].GetColumn())
 	require.Equal(t, "-5", converted.GetSamples()[0].GetColumns()[1].GetValue())
+	require.Equal(t, "note", converted.GetSamples()[0].GetColumns()[2].GetColumn())
+	require.True(t, converted.GetSamples()[0].GetColumns()[2].GetIsNull())
 	require.Equal(t, "SELECT COUNT(*) FROM orders", converted.GetExecutedSql())
 	require.Equal(t, 1500*time.Millisecond, converted.GetDuration().AsDuration())
 	require.Equal(t, startedAt, converted.GetStartTime().AsTime())

@@ -266,6 +266,7 @@ func convertQualityFailureSamplesToV1(samples *storepb.QualityFailureSamples) []
 			row.Columns = append(row.Columns, &v1pb.ColumnValue{
 				Column: value.GetColumn(),
 				Value:  value.GetValue(),
+				IsNull: value.GetIsNull(),
 			})
 		}
 		converted = append(converted, row)

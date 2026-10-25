@@ -5694,9 +5694,13 @@ func (x *FailureSample) GetColumns() []*ColumnValue {
 // ColumnValue is one column of a sampled failed row. Values are truncated before
 // they are returned, so a wide text column cannot bloat the response.
 type ColumnValue struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Column        string                 `protobuf:"bytes,1,opt,name=column,proto3" json:"column,omitempty"`
-	Value         string                 `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Column string                 `protobuf:"bytes,1,opt,name=column,proto3" json:"column,omitempty"`
+	// The value rendered as display text. Empty when the column is SQL NULL.
+	Value string `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	// Whether the value was SQL NULL. Without this flag a NULL and an empty string
+	// both arrive as an empty value, and the sample cannot say which it was.
+	IsNull        bool `protobuf:"varint,3,opt,name=is_null,json=isNull,proto3" json:"is_null,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5743,6 +5747,13 @@ func (x *ColumnValue) GetValue() string {
 		return x.Value
 	}
 	return ""
+}
+
+func (x *ColumnValue) GetIsNull() bool {
+	if x != nil {
+		return x.IsNull
+	}
+	return false
 }
 
 type ListQualityRulesRequest struct {
@@ -10373,10 +10384,11 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\vupdate_time\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"updateTime\"F\n" +
 	"\rFailureSample\x125\n" +
-	"\acolumns\x18\x01 \x03(\v2\x1b.metaxisdata.v1.ColumnValueR\acolumns\";\n" +
+	"\acolumns\x18\x01 \x03(\v2\x1b.metaxisdata.v1.ColumnValueR\acolumns\"T\n" +
 	"\vColumnValue\x12\x16\n" +
 	"\x06column\x18\x01 \x01(\tR\x06column\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value\"\xc5\x04\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\x12\x17\n" +
+	"\ais_null\x18\x03 \x01(\bR\x06isNull\"\xc5\x04\n" +
 	"\x17ListQualityRulesRequest\x12\x1b\n" +
 	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x1d\n" +

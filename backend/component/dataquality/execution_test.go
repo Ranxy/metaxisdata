@@ -620,37 +620,41 @@ func TestExecuteSamplesCustomSQLAsItsOwnRows(t *testing.T) {
 }
 
 // SamplesFromRows is the conversion boundary: every normalized value type has a
-// display form, a NULL is an empty string, and a long value is truncated.
+// display form, a NULL carries the null marker so it stays distinct from an empty
+// string, and a long value is truncated.
 func TestSamplesFromRowsFormatsValues(t *testing.T) {
 	t.Parallel()
 
 	measured := time.Date(2026, time.October, 7, 9, 30, 0, 0, time.UTC)
 	long := strings.Repeat("é", maxSampleValueBytes)
 	samples := SamplesFromRows(
-		[]string{"text", "count", "ratio", "flag", "when", "missing", "long"},
-		[][]any{{"paid", int64(42), 1.5, true, measured, nil, long}},
+		[]string{"text", "count", "ratio", "flag", "when", "missing", "blank", "long"},
+		[][]any{{"paid", int64(42), 1.5, true, measured, nil, "", long}},
 		0,
 	)
 	require.Nil(t, samples, "a non-positive limit means no sample")
 
 	samples = SamplesFromRows(
-		[]string{"text", "count", "ratio", "flag", "when", "missing", "long"},
-		[][]any{{"paid", int64(42), 1.5, true, measured, nil, long}},
+		[]string{"text", "count", "ratio", "flag", "when", "missing", "blank", "long"},
+		[][]any{{"paid", int64(42), 1.5, true, measured, nil, "", long}},
 		20,
 	)
 	require.NotNil(t, samples)
 	require.Len(t, samples.GetSamples(), 1)
 	columns := samples.GetSamples()[0].GetColumns()
-	require.Len(t, columns, 7)
+	require.Len(t, columns, 8)
 	require.Equal(t, "paid", columns[0].GetValue())
 	require.Equal(t, "42", columns[1].GetValue())
 	require.Equal(t, "1.5", columns[2].GetValue())
 	require.Equal(t, "true", columns[3].GetValue())
 	require.Equal(t, "2026-10-07T09:30:00Z", columns[4].GetValue())
-	require.Empty(t, columns[5].GetValue(), "a NULL value is the empty string")
-	require.LessOrEqual(t, len(columns[6].GetValue()), maxSampleValueBytes)
-	require.True(t, utf8.ValidString(columns[6].GetValue()))
-	require.Equal(t, "long", columns[6].GetColumn())
+	require.Empty(t, columns[5].GetValue())
+	require.True(t, columns[5].GetIsNull(), "a NULL value is marked instead of reading as an empty string")
+	require.Empty(t, columns[6].GetValue())
+	require.False(t, columns[6].GetIsNull(), "an empty string is not a NULL")
+	require.LessOrEqual(t, len(columns[7].GetValue()), maxSampleValueBytes)
+	require.True(t, utf8.ValidString(columns[7].GetValue()))
+	require.Equal(t, "long", columns[7].GetColumn())
 }
 
 // The conversion keeps the requested limit, clamps it at the maximum, tolerates a
@@ -669,11 +673,12 @@ func TestSamplesFromRowsBoundsTheSample(t *testing.T) {
 	require.Len(t, samples.GetSamples(), maxSampleLimit)
 
 	// A row with fewer values than columns pads with empty strings rather than
-	// dropping the row or panicking.
+	// dropping the row or panicking; a missing value is not a SQL NULL.
 	samples = SamplesFromRows([]string{"id", "name"}, [][]any{{int64(1)}}, 5)
 	require.Len(t, samples.GetSamples(), 1)
 	require.Len(t, samples.GetSamples()[0].GetColumns(), 2)
 	require.Empty(t, samples.GetSamples()[0].GetColumns()[1].GetValue())
+	require.False(t, samples.GetSamples()[0].GetColumns()[1].GetIsNull())
 
 	require.Nil(t, SamplesFromRows(nil, rows, 5))
 	require.Nil(t, SamplesFromRows([]string{"id"}, nil, 5))

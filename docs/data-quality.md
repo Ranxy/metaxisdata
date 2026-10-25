@@ -104,7 +104,10 @@ outcome is one of six statuses:
 | `NOT_EVALUATED` | The check ran but had nothing to judge (no rows after the filter, a NULL timestamp or aggregate). |
 
 An abandoned execution has no outcome. Failed executions can be expanded for
-samples and the exact SQL; the execution detail also shows the rule revision,
+samples and the exact SQL: each sample is a numbered failed row, carrying the
+row's primary-key columns when the metadata records them plus the checked
+column(s), and showing SQL `NULL` and an empty string as different values rather
+than a blank cell. The execution detail also shows the rule revision,
 engine version, duration, trigger, instance and, for a manual run, who started
 it. Executions are the durable record: batching rules together for scheduling is
 an internal detail.

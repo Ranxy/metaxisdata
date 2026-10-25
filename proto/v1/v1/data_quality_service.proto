@@ -1327,7 +1327,13 @@ message FailureSample {
 // they are returned, so a wide text column cannot bloat the response.
 message ColumnValue {
   string column = 1;
+
+  // The value rendered as display text. Empty when the column is SQL NULL.
   string value = 2;
+
+  // Whether the value was SQL NULL. Without this flag a NULL and an empty string
+  // both arrive as an empty value, and the sample cannot say which it was.
+  bool is_null = 3;
 }
 
 message ListQualityRulesRequest {

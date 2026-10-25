@@ -1598,7 +1598,15 @@ no comparable values. </p></td>
                   <td>value</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>The value rendered as display text. Empty when the column is SQL NULL. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>is_null</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether the value was SQL NULL. Without this flag a NULL and an empty string
+both store as an empty value, and the sample cannot say which it was. </p></td>
                 </tr>
               
             </tbody>

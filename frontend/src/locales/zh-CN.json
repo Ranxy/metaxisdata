@@ -602,7 +602,7 @@
     "executionsTitle": "质量执行",
     "failedRows": "失败行数",
     "failureSamples": "失败样本",
-    "failureSamplesHint": "保留的失败行证据，取值已截断。",
+    "failureSamplesHint": "保留的失败行证据，取值已截断；元数据记录了主键时会一并展示主键列。",
     "fetchExecutionError": "加载执行详情失败。",
     "fetchExecutionsError": "加载质量执行失败。",
     "fetchIssueError": "加载问题失败。",
@@ -873,6 +873,9 @@
     "rulesDescription": "直接检查数据本身的规则。规则按调度或按需观察一张表或一个字段。",
     "rulesTitle": "质量规则",
     "runNow": "立即执行",
+    "sampleEmpty": "空字符串",
+    "sampleNull": "NULL",
+    "sampleRow": "第 {index} 行",
     "sampled": "采样",
     "schedule": "调度",
     "schema": {
