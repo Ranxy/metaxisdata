@@ -770,8 +770,8 @@
       "trendEmptyDescription": "Run a rule or wait for its schedule; results appear here as they land.",
       "trendEmptyTitle": "No executions in this window",
       "trendTitle": "Execution trend",
-      "trendTooltipTotal": "{total} executions",
-      "trendWindowTotal": "{total} executions in this window",
+      "trendTooltipTotal": "{count} execution | {count} executions",
+      "trendWindowTotal": "{count} execution in this window | {count} executions in this window",
       "windowDays": "{days} days"
     },
     "passRate": "Pass rate",

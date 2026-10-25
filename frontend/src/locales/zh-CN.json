@@ -770,8 +770,8 @@
       "trendEmptyDescription": "运行规则或等待调度，结果产生后会出现在这里。",
       "trendEmptyTitle": "这个时间范围内没有执行",
       "trendTitle": "执行趋势",
-      "trendTooltipTotal": "{total} 次执行",
-      "trendWindowTotal": "窗口内共 {total} 次执行",
+      "trendTooltipTotal": "{count} 次执行",
+      "trendWindowTotal": "窗口内共 {count} 次执行",
       "windowDays": "{days} 天"
     },
     "passRate": "通过率",

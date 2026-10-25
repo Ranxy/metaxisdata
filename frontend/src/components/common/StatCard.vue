@@ -28,6 +28,8 @@ export type StatCardTone =
           <p class="mt-1.5 text-[1.75rem] font-semibold leading-9 tracking-tight tabular-nums">
             {{ value }}
           </p>
+          <!-- 11px is the documented micro-text scale: the hint must wrap (not
+               truncate) the numbers it exists to explain. -->
           <p
             v-if="hint"
             class="mt-1 text-[11px] leading-snug text-muted-foreground"

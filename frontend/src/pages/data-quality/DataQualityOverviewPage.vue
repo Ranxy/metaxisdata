@@ -141,7 +141,7 @@
           </CardHeader>
           <CardContent class="pt-4">
             <div v-if="trendLoading">
-              <div class="h-56 animate-pulse rounded-md bg-muted/40" />
+              <div class="h-[264px] animate-pulse rounded-md bg-muted/40" />
             </div>
             <EmptyState
               v-else-if="!hasTrendData(trend)"
@@ -159,7 +159,7 @@
                   {{ t("dataQuality.overview.failureRate", { percent: trendFailurePercent(trend) }) }}
                 </span>
                 <span class="tabular-nums">
-                  {{ t("dataQuality.overview.trendWindowTotal", { total: windowTotal }) }}
+                  {{ t("dataQuality.overview.trendWindowTotal", { count: windowTotal }) }}
                 </span>
               </div>
             </template>
@@ -197,12 +197,12 @@
               />
               <ul
                 v-else
-                class="-mx-2 divide-y divide-border/60"
+                class="divide-y"
               >
                 <li
                   v-for="failure in recentFailures"
                   :key="failure.name"
-                  class="flex items-center justify-between gap-3 rounded-md px-2 py-2.5 transition-colors hover:bg-muted/40"
+                  class="flex items-center justify-between gap-3 py-2.5"
                 >
                   <div class="min-w-0">
                     <RouterLink
@@ -276,12 +276,12 @@
               />
               <ul
                 v-else
-                class="-mx-2 divide-y divide-border/60"
+                class="divide-y"
               >
                 <li
                   v-for="issue in openIssues"
                   :key="issue.name"
-                  class="flex items-center justify-between gap-3 rounded-md px-2 py-2.5 transition-colors hover:bg-muted/40"
+                  class="flex items-center justify-between gap-3 py-2.5"
                 >
                   <div class="min-w-0">
                     <RouterLink

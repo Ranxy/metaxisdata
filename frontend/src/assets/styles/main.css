@@ -60,9 +60,10 @@
 
     /* Large-area status fills. The semantic tones above are tuned for
        glyph-sized marks (a badge, a 9px result square); poured into a chart bar
-       the same hues read as mud. These are the graphic variants: same hues,
-       lifted until a solid block reads as a colour instead of a shadow, and
-       still 3:1 or better against the card. */
+       the same hues read as mud. These are the graphic variants, retuned for
+       area: most are lifted until a solid block reads as a colour instead of a
+       shadow, error is pressed darker so it stays separable from fail, and all
+       keep at least 3:1 against the card. */
     --chart-pass: 152 52% 38%;
     --chart-warn: 32 92% 44%;
     --chart-fail: 0 72% 55%;
