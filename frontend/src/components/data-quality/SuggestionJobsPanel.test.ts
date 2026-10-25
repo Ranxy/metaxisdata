@@ -2,18 +2,13 @@ import { create } from "@bufbuild/protobuf";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { notify } from "@/lib/notify";
 import { i18n } from "@/locales";
 import {
-  type QualityLLMDiagnostic,
-  QualityLLMDiagnosticSchema,
   type QualitySuggestionJob,
   QualitySuggestionJobSchema,
   QualitySuggestionJobStatus,
   QualitySuggestionJobTargetSchema,
   QualitySuggestionJobTargetState,
-  type QualitySuggestionQueueSummary,
-  QualitySuggestionQueueSummarySchema,
   QualityTargetSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
@@ -47,9 +42,6 @@ function targetFixture(options: {
   object?: string;
   state?: QualitySuggestionJobTargetState;
   suggestions?: string[];
-  error?: string;
-  diagnostic?: QualityLLMDiagnostic;
-  summary?: QualitySuggestionQueueSummary;
 }) {
   return create(QualitySuggestionJobTargetSchema, {
     target: create(QualityTargetSchema, {
@@ -64,9 +56,6 @@ function targetFixture(options: {
     }),
     state: options.state ?? QualitySuggestionJobTargetState.PENDING,
     suggestions: options.suggestions ?? [],
-    error: options.error ?? "",
-    diagnostic: options.diagnostic,
-    summary: options.summary,
   });
 }
 
@@ -78,6 +67,7 @@ function jobFixture(
     targets?: ReturnType<typeof targetFixture>[];
     completed?: number;
     suggestions?: number;
+    error?: string;
   } = {}
 ) {
   const targets = options.targets ?? [
@@ -97,6 +87,7 @@ function jobFixture(
     targetCount: targets.length,
     completedTargetCount: options.completed ?? 0,
     suggestionCount: options.suggestions ?? 0,
+    error: options.error ?? "",
     createTime: { seconds: 1_700_000_000n, nanos: 0 },
   });
 }
@@ -126,7 +117,7 @@ function mockSnapshots(...snapshots: Snapshot[]) {
   );
 }
 
-async function mountPanel(refreshKey = 0, expanded = true) {
+async function mountPanel(refreshKey = 0) {
   const pinia = createPinia();
   setActivePinia(pinia);
   const wrapper = mount(SuggestionJobsPanel, {
@@ -135,10 +126,6 @@ async function mountPanel(refreshKey = 0, expanded = true) {
     global: { plugins: [i18n, pinia] },
   });
   await flushPromises();
-  if (expanded) {
-    buttonByText(label("dataQuality.suggestions.jobs.show"))?.click();
-    await flushPromises();
-  }
   return wrapper;
 }
 
@@ -166,37 +153,6 @@ function completedJobs(count: number): QualitySuggestionJob[] {
   );
 }
 
-function truncatedDiagnostic(
-  overrides: Partial<{
-    debugPayloadAvailable: boolean;
-  }> = {}
-): QualityLLMDiagnostic {
-  return create(QualityLLMDiagnosticSchema, {
-    errorCode: "TRUNCATED",
-    provider: "openai",
-    model: "gpt-test",
-    promptVersion: "dq-rules-v3",
-    maxOutputTokens: 8192,
-    finishReason: "length",
-    promptTokens: 1200n,
-    completionTokens: 8192n,
-    totalTokens: 9392n,
-    promptChars: 5400n,
-    correlationId: "corr-123",
-    providerStatus: 200,
-    debugPayloadAvailable: overrides.debugPayloadAvailable ?? true,
-  });
-}
-
-async function expandJobRow() {
-  document.body
-    .querySelector<HTMLElement>(
-      `[aria-label="${label("dataQuality.suggestions.jobs.expand")}"]`
-    )
-    ?.click();
-  await flushPromises();
-}
-
 describe("SuggestionJobsPanel", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -209,243 +165,103 @@ describe("SuggestionJobsPanel", () => {
 
   afterEach(() => {
     vi.useRealTimers();
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: undefined,
-    });
   });
 
-  it("starts collapsed with a de-duplicated summary and expands on demand", async () => {
+  it("stays a fixed strip: summary, the live job and a history entry", async () => {
     mockSnapshots({
-      recent: [jobFixture()],
+      recent: [
+        jobFixture(),
+        jobFixture({
+          name: "workspaces/ws/qualitySuggestionJobs/old",
+          status: QualitySuggestionJobStatus.COMPLETED,
+          intent: "Cover the older tables",
+        }),
+      ],
       // The RUNNING list also carries the job: it must not be listed twice.
       running: [jobFixture()],
     });
-    const wrapper = await mountPanel(0, false);
-    await flushPromises();
+    const wrapper = await mountPanel();
 
     expect(document.body.textContent).toContain(
       label("dataQuality.suggestions.jobs.summary", {
         active: 1,
-        finished: 0,
+        finished: 1,
       })
     );
-    expect(document.body.textContent).not.toContain(
-      "Keep the orders table healthy"
-    );
-
-    buttonByText(label("dataQuality.suggestions.jobs.show"))?.click();
-    await flushPromises();
-    expect(document.body.textContent).toContain(
-      "Keep the orders table healthy"
-    );
-    expect(
-      document.body.textContent?.split("Keep the orders table healthy").length
-    ).toBe(2);
-    wrapper.unmount();
-  });
-
-  it("lists a job with its status, intent, progress and per-target details", async () => {
-    mockSnapshots({
-      recent: [
-        jobFixture({
-          completed: 1,
-          suggestions: 3,
-          targets: [
-            targetFixture({
-              state: QualitySuggestionJobTargetState.DONE,
-              suggestions: ["workspaces/ws/qualitySuggestions/s-1"],
-              summary: create(QualitySuggestionQueueSummarySchema, {
-                created: 1,
-                refreshed: 2,
-                skippedDecided: 1,
-              }),
-            }),
-            targetFixture({
-              guid: OTHER_TARGET,
-              object: "customers",
-              state: QualitySuggestionJobTargetState.FAILED,
-              error: "the provider rejected the prompt",
-            }),
-          ],
-        }),
-      ],
-    });
-    const wrapper = await mountPanel();
-    await flushPromises();
-
-    expect(document.body.textContent).toContain(
-      label("dataQuality.suggestionJobStatus.running")
-    );
+    // The live job is the one line of per-job detail the strip carries.
     expect(document.body.textContent).toContain(
       "Keep the orders table healthy"
     );
     expect(document.body.textContent).toContain(
       label("dataQuality.suggestions.jobs.progress", {
-        completed: 1,
+        completed: 0,
         total: 2,
-        suggestions: 3,
+        suggestions: 0,
+        count: 0,
       })
     );
-
-    const expand = document.body.querySelector<HTMLElement>(
-      `[aria-label="${label("dataQuality.suggestions.jobs.expand")}"]`
-    );
-    expect(expand?.getAttribute("aria-expanded")).toBe("false");
-    expand?.click();
-    await flushPromises();
-
-    expect(
-      document.body
-        .querySelector<HTMLElement>(
-          `[aria-label="${label("dataQuality.suggestions.jobs.collapse")}"]`
-        )
-        ?.getAttribute("aria-expanded")
-    ).toBe("true");
-    expect(document.body.textContent).toContain(
+    // A finished job's intent, its targets and its diagnostics are not rendered
+    // inline; the history drawer is where the list lives.
+    expect(document.body.textContent).not.toContain("Cover the older tables");
+    expect(document.body.textContent).not.toContain(
       "inst1 · db1 · public · orders"
     );
+    expect(
+      document.body.querySelector(
+        `[aria-label="${label("dataQuality.suggestions.jobs.expand")}"]`
+      )
+    ).toBeNull();
+    expect(
+      buttonByText(label("dataQuality.suggestions.jobs.history"))
+    ).toBeTruthy();
+    wrapper.unmount();
+  });
+
+  it("reports the newest finished job, including a failure", async () => {
+    mockSnapshots({
+      recent: [
+        jobFixture({
+          status: QualitySuggestionJobStatus.FAILED,
+          intent: "Draft rules for the customers table",
+          completed: 1,
+          suggestions: 2,
+          error: "the provider rejected the prompt",
+        }),
+      ],
+    });
+    const wrapper = await mountPanel();
+
     expect(document.body.textContent).toContain(
-      "inst1 · db1 · public · customers"
+      label("dataQuality.suggestionJobStatus.failed")
     );
     expect(document.body.textContent).toContain(
-      label("dataQuality.suggestionJobTargetState.done")
-    );
-    expect(document.body.textContent).toContain(
-      label("dataQuality.suggestionJobTargetState.failed")
+      "Draft rules for the customers table"
     );
     expect(document.body.textContent).toContain(
       "the provider rejected the prompt"
     );
-    // The job persists each target's generation summary, so the panel can say
-    // what the target's pass created, refreshed and skipped.
-    expect(document.body.textContent).toContain(
-      [
-        label("dataQuality.suggestionSummary.created", { count: 1 }),
-        label("dataQuality.suggestionSummary.refreshed", { count: 2 }),
-        label("dataQuality.suggestionSummary.skipped", { count: 1 }),
-      ].join(" · ")
-    );
     wrapper.unmount();
   });
 
-  it("explains a failed model call with its diagnostic details", async () => {
-    mockSnapshots({
-      recent: [
-        jobFixture({
-          targets: [
-            targetFixture({
-              state: QualitySuggestionJobTargetState.FAILED,
-              error:
-                "internal: the LLM analysis failed: LLM response was truncated by the provider (finish_reason=length)",
-              diagnostic: truncatedDiagnostic(),
-            }),
-          ],
-        }),
-      ],
-    });
-    mocks.getQualitySuggestionJobTargetDebug.mockResolvedValue({
-      available: true,
-      correlationId: "corr-123",
-      requestBody: '{"model":"gpt-test"}',
-      responseBody: '{"finish_reason":"length"}',
-      errorCode: "TRUNCATED",
-    });
+  it("opens the paginated history drawer on demand", async () => {
+    mockSnapshots({ recent: [jobFixture()] });
     const wrapper = await mountPanel();
-    await expandJobRow();
+    const listCallsBefore = mocks.listQualitySuggestionJobs.mock.calls.length;
 
-    // The classifier label and the actionable hint replace the raw error line.
-    expect(document.body.textContent).toContain(
-      label("dataQuality.suggestions.diagnostic.code.truncated")
-    );
-    expect(document.body.textContent).toContain(
-      label("dataQuality.suggestions.diagnostic.hint.truncated")
-    );
-    expect(document.body.textContent).toContain("openai · gpt-test");
-    expect(document.body.textContent).toContain("length");
-    expect(document.body.textContent).toContain("8,192");
-    expect(document.body.textContent).toContain("5,400");
-    expect(document.body.textContent).toContain("corr-123");
-    expect(document.body.textContent).not.toContain(
-      "LLM response was truncated by the provider"
-    );
-
-    buttonByText(
-      label("dataQuality.suggestions.diagnostic.viewPayload")
-    )?.click();
+    buttonByText(label("dataQuality.suggestions.jobs.history"))?.click();
     await flushPromises();
 
-    expect(mocks.getQualitySuggestionJobTargetDebug).toHaveBeenCalledWith(
-      JOB,
-      0
-    );
-    expect(document.body.textContent).toContain('{"model":"gpt-test"}');
-    wrapper.unmount();
-  });
-
-  it("copies the correlation id and hides the payload action when not captured", async () => {
-    document.body.innerHTML = "";
-    mockSnapshots({
-      recent: [
-        jobFixture({
-          targets: [
-            targetFixture({
-              state: QualitySuggestionJobTargetState.FAILED,
-              diagnostic: truncatedDiagnostic({
-                debugPayloadAvailable: false,
-              }),
-            }),
-          ],
-        }),
-      ],
-    });
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
-    const wrapper = await mountPanel();
-    await expandJobRow();
-
-    // No debug capture: no raw-payload action, but the id stays copyable.
-    expect(
-      buttonByText(label("dataQuality.suggestions.diagnostic.viewPayload"))
-    ).toBeUndefined();
-    document.body
-      .querySelector<HTMLElement>(
-        `[aria-label="${label("dataQuality.suggestions.diagnostic.copyCorrelation")}"]`
-      )
-      ?.click();
-    await flushPromises();
-    expect(writeText).toHaveBeenCalledWith("corr-123");
-    wrapper.unmount();
-  });
-
-  it("keeps the raw error line for a failure without a diagnostic", async () => {
-    mockSnapshots({
-      recent: [
-        jobFixture({
-          targets: [
-            targetFixture({
-              state: QualitySuggestionJobTargetState.FAILED,
-              error: "target metadata disappeared before the draft",
-            }),
-          ],
-        }),
-      ],
-    });
-    const wrapper = await mountPanel();
-    await expandJobRow();
-
+    expect(document.body.querySelector('[role="dialog"]')).not.toBeNull();
     expect(document.body.textContent).toContain(
-      "target metadata disappeared before the draft"
+      label("dataQuality.suggestions.jobs.historyTitle")
     );
-    expect(document.body.textContent).not.toContain(
-      label("dataQuality.suggestions.diagnostic.code.truncated")
+    // The drawer loads its own larger page instead of reusing the strip's snapshot.
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(
+      listCallsBefore + 1
     );
-    expect(
-      buttonByText(label("dataQuality.suggestions.diagnostic.viewPayload"))
-    ).toBeUndefined();
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenLastCalledWith(
+      expect.objectContaining({ pageSize: 20, pageToken: "" })
+    );
     wrapper.unmount();
   });
 
@@ -682,91 +498,18 @@ describe("SuggestionJobsPanel", () => {
     expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(4);
   });
 
-  it("cancels an active job after a two-step inline confirm", async () => {
-    const success = vi.spyOn(notify, "success");
-    mockSnapshots(
-      { recent: [jobFixture()] },
-      {
-        recent: [
-          jobFixture({
-            status: QualitySuggestionJobStatus.CANCELED,
-            completed: 2,
-            targets: [
-              targetFixture({
-                state: QualitySuggestionJobTargetState.SKIPPED,
-              }),
-              targetFixture({
-                guid: OTHER_TARGET,
-                object: "customers",
-                state: QualitySuggestionJobTargetState.SKIPPED,
-              }),
-            ],
-          }),
-        ],
-      }
-    );
-    mocks.cancelQualitySuggestionJob.mockResolvedValue(
-      jobFixture({ status: QualitySuggestionJobStatus.CANCELED })
-    );
-    const wrapper = await mountPanel();
-    await flushPromises();
-
-    buttonByText(label("dataQuality.suggestions.jobs.cancel"))?.click();
-    await flushPromises();
-    expect(document.body.textContent).toContain(
-      label("dataQuality.suggestions.jobs.cancelConfirm")
-    );
-
-    buttonByText(
-      label("dataQuality.suggestions.jobs.cancelConfirmAction")
-    )?.click();
-    await flushPromises();
-
-    expect(mocks.cancelQualitySuggestionJob).toHaveBeenCalledWith(JOB);
-    expect(success).toHaveBeenCalledWith(
-      label("dataQuality.suggestions.jobs.canceledToast")
-    );
-    // The cancel response is followed by a list refresh (two calls).
-    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(4);
-    expect(document.body.textContent).toContain(
-      label("dataQuality.suggestionJobStatus.canceled")
-    );
-    // A canceled job refreshes the queue but selects and toasts nothing.
-    expect(wrapper.emitted("settled")).toContainEqual([[]]);
-    success.mockRestore();
-    wrapper.unmount();
-  });
-
-  it("keeps the job running when the confirmation is dismissed", async () => {
-    mockSnapshots({ recent: [jobFixture()] });
-    const wrapper = await mountPanel();
-    await flushPromises();
-
-    buttonByText(label("dataQuality.suggestions.jobs.cancel"))?.click();
-    await flushPromises();
-    buttonByText(label("dataQuality.suggestions.jobs.cancelKeep"))?.click();
-    await flushPromises();
-
-    expect(mocks.cancelQualitySuggestionJob).not.toHaveBeenCalled();
-    expect(
-      buttonByText(label("dataQuality.suggestions.jobs.cancel"))
-    ).toBeTruthy();
-    wrapper.unmount();
-  });
-
-  it("shows a fetch failure and clears it on the next successful refresh", async () => {
+  it("shows a fetch failure and clears it on retry", async () => {
     mocks.listQualitySuggestionJobs
       .mockRejectedValueOnce(new Error("network down"))
       .mockResolvedValueOnce(page([]))
       .mockResolvedValue(page([]));
     const wrapper = await mountPanel();
-    await flushPromises();
 
     expect(document.body.textContent).toContain(
       label("dataQuality.suggestions.jobs.fetchFailed")
     );
 
-    await wrapper.setProps({ refreshKey: 1 });
+    buttonByText(label("common.retry"))?.click();
     await flushPromises();
 
     expect(document.body.textContent).not.toContain(
