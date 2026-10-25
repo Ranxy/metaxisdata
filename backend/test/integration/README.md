@@ -84,6 +84,18 @@ The main MySQL real-server scenarios live in:
 
 - [/backend/test/integration/runner/schemasync_lineage_mysql_service_test.go](/home/ran/gocode/metaxisdata/backend/test/integration/runner/schemasync_lineage_mysql_service_test.go)
 
+The data-quality end-to-end journey lives in:
+
+- [/backend/test/integration/runner/data_quality_journey_service_test.go](/home/ran/gocode/metaxisdata/backend/test/integration/runner/data_quality_journey_service_test.go)
+
+Run just the journey (the shared harness still boots, so it takes the same setup time as any scenario):
+
+```bash
+go test -v -count=1 -tags=integration \
+  -run '^TestDataQualityJourneyMySQLRealServerIntegration$' \
+  ./backend/test/integration/runner
+```
+
 ## Running CI Mode Locally
 
 You can simulate the GitHub Actions path by starting your own PostgreSQL and MySQL instances, then exporting the integration variables before running the tests.
