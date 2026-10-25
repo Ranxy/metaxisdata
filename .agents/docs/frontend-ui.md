@@ -53,6 +53,7 @@
 | --- | --- | --- |
 | 交互强调色 | `--primary` / `-hover` / `-subtle` / `-subtle-foreground`（cobalt） | 只给可交互元素：主按钮、链接、active 导航、选中态、focus ring。大面积装饰不用它 |
 | 语义色 | `--success` / `--warning` / `--info` / `--danger`，各带 `-subtle`（背景）与 `-foreground`（文字） | 状态徽标、告警、同步结果、危险操作。徽标用 `variant="success|warning|info|danger|secondary|outline"`，不要自拼色 |
+| 图表填充 | `--chart-pass` / `--chart-warn` / `--chart-fail` / `--chart-error`（浅深各一套） | 趋势图这类**大面积**状态色：语义色是为徽标字号调的，铺成柱体会发闷；图表色是同色相按大面积重新调校的图形变体（多数提亮，错误色压深以与失败区分），对卡片仍 ≥3:1 |
 | 表面 | `--background` / `--card` / `--muted` / `--border` / `--input` | 深色下 card 比 background 高一档（6.5% vs 4%），否则卡片边界消失 |
 | 半径 / 阴影 | `--radius: 0.625rem`；`shadow-e1`（卡片）/ `e2`（hover、弹层）/ `e3`（dialog、popover） | 用 elevation 表达层级，不用重边框 |
 | 字号 | 正文 14px；页面标题 24px；卡片标题 16px；辅助 12px；微文本 11px | `CardTitle` 是 16px 的 `<h2>`，页面内不要再局部覆盖字号 |

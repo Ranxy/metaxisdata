@@ -106,8 +106,8 @@ const ROUTES = [
 const MEASURE = `(() => {
   const main = document.querySelector('main');
   if (!main) return { missing: true, pathname: location.pathname };
-  const row = main.querySelector('tbody tr');
-  const table = main.querySelector('table');
+  const row = main.querySelector('table:not(.sr-only) tbody tr');
+  const table = main.querySelector('table:not(.sr-only)');
   const anchor = row || table;
   const y = anchor ? Math.round(anchor.getBoundingClientRect().top) : null;
   const tableY = table ? Math.round(table.getBoundingClientRect().top) : null;
@@ -125,7 +125,7 @@ const MEASURE = `(() => {
     // A cell narrower than its own content is what a squashed table looks like
     // before anything visibly breaks: headers collide and values lose their
     // ellipsis. Truncating cells clip themselves, so they never count here.
-    clippedTableCells: [...main.querySelectorAll('table th, table td')].filter(
+    clippedTableCells: [...main.querySelectorAll('table:not(.sr-only) th, table:not(.sr-only) td')].filter(
       (el) => el.scrollWidth > el.clientWidth + 1
     ).length,
     // Only a box the user can actually scroll counts: overflow:hidden clipping
@@ -153,7 +153,7 @@ const MEASURE = `(() => {
     // reaches main.scrollWidth, and its cells are not narrower than their
     // content either, so both checks above miss it: the columns on the right —
     // often the row actions — simply sit behind a scrollbar nobody notices.
-    overflowingTables: [...main.querySelectorAll('table')]
+    overflowingTables: [...main.querySelectorAll('table:not(.sr-only)')]
       .filter((table) => table.scrollWidth > table.parentElement.clientWidth + 1)
       .map((table) => {
         const hidden = table.scrollWidth - table.parentElement.clientWidth;
@@ -171,7 +171,9 @@ const MEASURE = `(() => {
 const ANCHOR_Y = `(() => {
   const main = document.querySelector('main');
   if (!main) return null;
-  const anchor = main.querySelector('tbody tr') || main.querySelector('table');
+  const anchor =
+    main.querySelector('table:not(.sr-only) tbody tr') ||
+    main.querySelector('table:not(.sr-only)');
   return anchor ? Math.round(anchor.getBoundingClientRect().top) : null;
 })()`;
 
