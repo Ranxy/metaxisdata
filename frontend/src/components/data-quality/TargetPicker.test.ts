@@ -11,6 +11,7 @@ import TargetPicker from "./TargetPicker.vue";
 const mocks = vi.hoisted(() => ({
   listAllInstances: vi.fn(),
   listMetadata: vi.fn(),
+  searchMetadata: vi.fn(),
 }));
 
 vi.mock("@/api/instance", async (importOriginal) => ({
@@ -20,6 +21,7 @@ vi.mock("@/api/instance", async (importOriginal) => ({
 
 vi.mock("@/api/database", () => ({
   listMetadata: mocks.listMetadata,
+  searchMetadata: mocks.searchMetadata,
 }));
 
 function instance(engine: Engine) {
@@ -80,15 +82,67 @@ function metadataPage(parent: string) {
   return { typesStoredMetadata: page, nextPageToken: "" };
 }
 
+/** One meta-type group of a ListMetadata response, with a page token. */
+function groupPage(
+  metaType: MetaType,
+  rows: Array<{ guid: string; name: string }>,
+  nextPageToken = ""
+) {
+  return {
+    typesStoredMetadata: [
+      {
+        metaType,
+        list: rows.map((row) => ({
+          guid: row.guid,
+          type: {
+            case:
+              metaType === MetaType.DATABASE
+                ? "databaseMetadata"
+                : metaType === MetaType.SCHEMA
+                  ? "schemaMetadata"
+                  : "tableMetadata",
+            value: { name: row.name },
+          },
+        })),
+        nextPageToken,
+      },
+    ],
+    nextPageToken: "",
+  };
+}
+
+/** One page of a SearchMetadata response. */
+function searchPage(
+  rows: Array<{ guid: string; name: string }>,
+  nextPageToken = ""
+) {
+  return {
+    results: rows.map((row) => ({
+      guid: row.guid,
+      metaType: MetaType.TABLE,
+      metadata: {
+        guid: row.guid,
+        type: { case: "tableMetadata", value: { name: row.name } },
+      },
+    })),
+    nextPageToken,
+  };
+}
+
 async function mountPicker(
   engine: Engine,
   mode: "target" | "scope" = "target",
-  multiple = false
+  multiple = false,
+  instances?: ReturnType<typeof instance>[]
 ) {
-  mocks.listAllInstances.mockResolvedValue([instance(engine)]);
+  mocks.listAllInstances.mockResolvedValue(instances ?? [instance(engine)]);
   mocks.listMetadata.mockImplementation(async ({ parentGuid }) =>
     metadataPage(parentGuid)
   );
+  mocks.searchMetadata.mockResolvedValue({
+    results: [],
+    nextPageToken: "",
+  });
   const pinia = createPinia();
   setActivePinia(pinia);
   const wrapper = mount(TargetPicker, {
@@ -134,6 +188,37 @@ function backButton(): HTMLElement | undefined {
 
 function breadcrumbText(): string {
   return document.body.querySelector('[role="dialog"]')?.textContent ?? "";
+}
+
+/** The dialog's search box. */
+function searchInput(): HTMLInputElement {
+  const input = document.body.querySelector<HTMLInputElement>(
+    '[role="dialog"] input'
+  );
+  if (!input) {
+    throw new Error("search input not found");
+  }
+  return input;
+}
+
+/** Type a search term and let the debounce and the requests settle. */
+async function typeSearch(term: string) {
+  const input = searchInput();
+  input.value = term;
+  input.dispatchEvent(new Event("input"));
+  await vi.advanceTimersByTimeAsync(300);
+  await flushPromises();
+}
+
+/** A dialog button whose visible label is exactly `label`. */
+function dialogButton(label: string): HTMLElement | undefined {
+  return [
+    ...document.body.querySelectorAll<HTMLElement>('[role="dialog"] button'),
+  ].find((candidate) => candidate.textContent?.trim() === label);
+}
+
+function loadMoreButton(): HTMLElement | undefined {
+  return dialogButton(i18n.global.t("dataQuality.target.loadMore"));
 }
 
 describe("TargetPicker", () => {
@@ -344,6 +429,398 @@ describe("TargetPicker", () => {
     await flushPromises();
 
     expect(addSelectedButton()?.textContent).toContain("2");
+    wrapper.unmount();
+  });
+
+  it("retries a failed level load", async () => {
+    const wrapper = await mountPicker(Engine.POSTGRES);
+    mocks.listMetadata.mockRejectedValueOnce(new Error("level failed"));
+    clickRow("Orders");
+    await flushPromises();
+
+    expect(dialogButton(i18n.global.t("common.retry"))).toBeDefined();
+
+    dialogButton(i18n.global.t("common.retry"))?.click();
+    await flushPromises();
+
+    expect(breadcrumbText()).toContain("shop");
+    wrapper.unmount();
+  });
+
+  it("keeps the empty-schema table fallback when the schema page is retried", async () => {
+    const wrapper = await mountPicker(Engine.POSTGRES);
+    mocks.listMetadata.mockImplementation(
+      ({ parentGuid }: { parentGuid: string }) => {
+        if (parentGuid === "inst1") {
+          return Promise.resolve(metadataPage(parentGuid));
+        }
+        // The first schema page fails; the database really has no schema rows.
+        if (parentGuid === "inst1;db1") {
+          return Promise.reject(new Error("schema page failed"));
+        }
+        return Promise.resolve(metadataPage(parentGuid));
+      }
+    );
+    clickRow("Orders");
+    await flushPromises();
+    clickRow("shop");
+    await flushPromises();
+    expect(dialogButton(i18n.global.t("common.retry"))).toBeDefined();
+
+    mocks.listMetadata.mockImplementation(
+      ({ parentGuid }: { parentGuid: string }) =>
+        Promise.resolve(
+          parentGuid === "inst1;db1"
+            ? { typesStoredMetadata: [], nextPageToken: "" }
+            : metadataPage(parentGuid)
+        )
+    );
+    dialogButton(i18n.global.t("common.retry"))?.click();
+    await flushPromises();
+
+    expect(breadcrumbText()).toContain("Tables");
+    expect(mocks.listMetadata).toHaveBeenCalledWith(
+      expect.objectContaining({ parentGuid: "inst1;db1;" })
+    );
+    wrapper.unmount();
+  });
+
+  it("stays on the schema level when a search supersedes its load", async () => {
+    vi.useFakeTimers();
+    try {
+      const wrapper = await mountPicker(Engine.POSTGRES);
+      let releaseSchema: (value: unknown) => void = () => {};
+      mocks.listMetadata.mockImplementation(
+        ({ parentGuid }: { parentGuid: string }) => {
+          if (parentGuid === "inst1") {
+            return Promise.resolve(metadataPage(parentGuid));
+          }
+          return new Promise((resolve) => {
+            releaseSchema = resolve;
+          });
+        }
+      );
+      clickRow("Orders");
+      await flushPromises();
+      clickRow("shop");
+      await flushPromises();
+
+      // The schema page is still in flight; the search box is visible above the
+      // spinner, and a debounced search supersedes that page.
+      const input = searchInput();
+      input.value = "pub";
+      input.dispatchEvent(new Event("input"));
+      await vi.advanceTimersByTimeAsync(300);
+      await flushPromises();
+      releaseSchema(metadataPage("inst1;db1"));
+      await flushPromises();
+
+      expect(mocks.searchMetadata).toHaveBeenCalledWith(
+        expect.objectContaining({
+          searchStr: "pub",
+          parentGuidPrefix: "inst1;db1",
+          metaType: MetaType.SCHEMA,
+        })
+      );
+      // The superseded answer must not trigger the empty-schema table fallback.
+      expect(breadcrumbText()).not.toContain("Tables");
+      wrapper.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("clears the chosen instance when walking back to the instance list", async () => {
+    const wrapper = await mountPicker(Engine.POSTGRES, "scope");
+    clickRow("Orders");
+    await flushPromises();
+    expect(
+      (applyScopeButton() as HTMLButtonElement | undefined)?.disabled
+    ).toBe(false);
+
+    backButton()?.click();
+    await flushPromises();
+
+    expect(
+      (applyScopeButton() as HTMLButtonElement | undefined)?.disabled
+    ).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("renders the cached instance list in batches", async () => {
+    const all = Array.from({ length: 60 }, (_, index) =>
+      create(InstanceSchema, {
+        name: `instances/inst${index}`,
+        title: `Instance ${index}`,
+        engine: Engine.POSTGRES,
+        state: State.ACTIVE,
+      })
+    );
+    const wrapper = await mountPicker(Engine.POSTGRES, "target", false, all);
+
+    expect(breadcrumbText()).toContain("Instance 49");
+    expect(breadcrumbText()).not.toContain("Instance 50");
+    expect(loadMoreButton()).toBeDefined();
+
+    loadMoreButton()?.click();
+    await flushPromises();
+
+    expect(breadcrumbText()).toContain("Instance 59");
+    expect(loadMoreButton()).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it("does not fall through to tables when the reader backs out mid-load", async () => {
+    const wrapper = await mountPicker(Engine.POSTGRES);
+    let releaseSchema: (value: unknown) => void = () => {};
+    mocks.listMetadata.mockImplementation(
+      ({ parentGuid }: { parentGuid: string }) => {
+        if (parentGuid === "inst1") {
+          return Promise.resolve(metadataPage(parentGuid));
+        }
+        if (parentGuid === "inst1;db1") {
+          // The schema page stays in flight while the reader walks back.
+          return new Promise((resolve) => {
+            releaseSchema = resolve;
+          });
+        }
+        return Promise.resolve(metadataPage(parentGuid));
+      }
+    );
+    clickRow("Orders");
+    await flushPromises();
+    clickRow("shop");
+    await flushPromises();
+
+    backButton()?.click();
+    await flushPromises();
+    releaseSchema(metadataPage("inst1;db1"));
+    await flushPromises();
+
+    // The empty schema answer belongs to the level the reader left; it must not
+    // trigger the "no schemas, show tables" fallback.
+    expect(breadcrumbText()).not.toContain("Tables");
+    expect(mocks.listMetadata).toHaveBeenCalledWith(
+      expect.objectContaining({ parentGuid: "inst1" })
+    );
+    wrapper.unmount();
+  });
+
+  it("loads further table pages instead of stopping at the first", async () => {
+    const wrapper = await mountPicker(Engine.POSTGRES);
+    mocks.listMetadata.mockImplementation(
+      async ({
+        parentGuid,
+        pageToken,
+      }: {
+        parentGuid: string;
+        pageToken?: string;
+      }) => {
+        if (parentGuid === "inst1") {
+          return metadataPage(parentGuid);
+        }
+        if (parentGuid === "inst1;db1") {
+          return metadataPage(parentGuid);
+        }
+        if (pageToken === "tables-page-2") {
+          return groupPage(MetaType.TABLE, [
+            { guid: "inst1;db1;public;invoices", name: "invoices" },
+          ]);
+        }
+        return groupPage(
+          MetaType.TABLE,
+          [
+            { guid: "inst1;db1;public;orders", name: "orders" },
+            { guid: "inst1;db1;public;users", name: "users" },
+          ],
+          "tables-page-2"
+        );
+      }
+    );
+    clickRow("Orders");
+    await flushPromises();
+    clickRow("shop");
+    await flushPromises();
+    clickRow("public");
+    await flushPromises();
+
+    expect(breadcrumbText()).toContain("orders");
+    expect(breadcrumbText()).not.toContain("invoices");
+    expect(loadMoreButton()).toBeDefined();
+
+    loadMoreButton()?.click();
+    await flushPromises();
+
+    expect(mocks.listMetadata).toHaveBeenCalledWith(
+      expect.objectContaining({
+        parentGuid: "inst1;db1;public",
+        pageToken: "tables-page-2",
+        metaType: MetaType.TABLE,
+      })
+    );
+    expect(breadcrumbText()).toContain("invoices");
+    // The level is exhausted, so the footer goes away.
+    expect(loadMoreButton()).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it("searches a level on the server instead of filtering the loaded page", async () => {
+    vi.useFakeTimers();
+    try {
+      const wrapper = await mountPicker(Engine.POSTGRES);
+      clickRow("Orders");
+      await flushPromises();
+      clickRow("shop");
+      await flushPromises();
+      clickRow("public");
+      await flushPromises();
+      mocks.searchMetadata.mockImplementation(
+        async ({ metaType }: { metaType?: MetaType }) =>
+          metaType === MetaType.TABLE
+            ? searchPage([
+                { guid: "inst1;db1;public;invoices", name: "invoices" },
+              ])
+            : searchPage([])
+      );
+
+      await typeSearch("inv");
+
+      // One request per target meta type, scoped to the schema being browsed.
+      expect(mocks.searchMetadata).toHaveBeenCalledTimes(3);
+      expect(mocks.searchMetadata).toHaveBeenCalledWith(
+        expect.objectContaining({
+          searchStr: "inv",
+          parentGuidPrefix: "inst1;db1;public",
+          metaType: MetaType.TABLE,
+        })
+      );
+      expect(breadcrumbText()).toContain("invoices");
+      // The previous page is replaced, not filtered in place.
+      expect(breadcrumbText()).not.toContain("users");
+      wrapper.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("restores the full page when the search is cleared", async () => {
+    vi.useFakeTimers();
+    try {
+      const wrapper = await mountPicker(Engine.POSTGRES);
+      clickRow("Orders");
+      await flushPromises();
+      clickRow("shop");
+      await flushPromises();
+      clickRow("public");
+      await flushPromises();
+      mocks.searchMetadata.mockResolvedValue(
+        searchPage([{ guid: "inst1;db1;public;invoices", name: "invoices" }])
+      );
+
+      await typeSearch("inv");
+      expect(breadcrumbText()).toContain("invoices");
+
+      await typeSearch("");
+
+      expect(breadcrumbText()).toContain("orders");
+      expect(breadcrumbText()).not.toContain("invoices");
+      wrapper.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("says when a server search matches nothing", async () => {
+    vi.useFakeTimers();
+    try {
+      const wrapper = await mountPicker(Engine.POSTGRES);
+      clickRow("Orders");
+      await flushPromises();
+      clickRow("shop");
+      await flushPromises();
+      clickRow("public");
+      await flushPromises();
+
+      await typeSearch("zzz");
+
+      expect(breadcrumbText()).toContain(
+        i18n.global.t("dataQuality.target.noMatches")
+      );
+      wrapper.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("filters the cached instance list without hitting the server", async () => {
+    const wrapper = await mountPicker(Engine.POSTGRES);
+    expect(breadcrumbText()).toContain("Orders");
+
+    // The instance list needs no debounce or request: it is filtered in place.
+    const input = searchInput();
+    input.value = "zzz";
+    input.dispatchEvent(new Event("input"));
+    await flushPromises();
+
+    expect(breadcrumbText()).toContain(
+      i18n.global.t("dataQuality.target.noMatches")
+    );
+    expect(mocks.searchMetadata).not.toHaveBeenCalled();
+    expect(mocks.listMetadata).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("offers a retry when the next page fails and keeps the loaded rows", async () => {
+    const wrapper = await mountPicker(Engine.POSTGRES);
+    mocks.listMetadata.mockImplementation(
+      async ({
+        parentGuid,
+        pageToken,
+      }: {
+        parentGuid: string;
+        pageToken?: string;
+      }) => {
+        if (parentGuid === "inst1") {
+          return metadataPage(parentGuid);
+        }
+        if (parentGuid === "inst1;db1") {
+          return metadataPage(parentGuid);
+        }
+        if (pageToken === "tables-page-2") {
+          throw new Error("page failed");
+        }
+        return groupPage(
+          MetaType.TABLE,
+          [{ guid: "inst1;db1;public;orders", name: "orders" }],
+          "tables-page-2"
+        );
+      }
+    );
+    clickRow("Orders");
+    await flushPromises();
+    clickRow("shop");
+    await flushPromises();
+    clickRow("public");
+    await flushPromises();
+    expect(breadcrumbText()).toContain("orders");
+
+    loadMoreButton()?.click();
+    await flushPromises();
+
+    expect(dialogButton(i18n.global.t("common.retry"))).toBeDefined();
+    expect(breadcrumbText()).toContain("orders");
+
+    // The retry re-runs the failed page instead of dropping the level.
+    mocks.listMetadata.mockResolvedValue(
+      groupPage(MetaType.TABLE, [
+        { guid: "inst1;db1;public;invoices", name: "invoices" },
+      ])
+    );
+    dialogButton(i18n.global.t("common.retry"))?.click();
+    await flushPromises();
+
+    expect(breadcrumbText()).toContain("invoices");
+    expect(dialogButton(i18n.global.t("common.retry"))).toBeUndefined();
     wrapper.unmount();
   });
 });

@@ -19,10 +19,12 @@ import {
   type MetaType,
   SearchManualSQLRequestSchema,
   SearchMetadataRequestSchema,
+  type StoredMetadata,
   SyncDatabaseRequestSchema,
   UpdateManualSQLRequestSchema,
 } from "@/types/proto-es/v1/database_service_pb";
 import { databaseClient } from "./client";
+import { listAll } from "./list";
 
 export async function listDatabases(options: {
   parent: string;
@@ -48,14 +50,16 @@ export async function listDatabases(options: {
  * List stored metadata under a parent GUID.
  *
  * Notes:
- * - If metaType is omitted, backend ignores pageSize and returns first 20 per type.
- * - If metaType is set, nextPageToken can be used for pagination.
+ * - page_size applies per meta type when metaType is omitted: the response
+ *   groups the rows and carries a nextPageToken on each group.
+ * - With metaType set, the response holds exactly one group.
  */
 export async function listMetadata(options: {
   parentGuid: string;
   pageSize?: number;
   pageToken?: string;
   metaType?: MetaType;
+  signal?: AbortSignal;
 }) {
   const request = create(ListMetadataRequestSchema, {
     parentGuid: options.parentGuid,
@@ -63,7 +67,43 @@ export async function listMetadata(options: {
     pageToken: options.pageToken ?? "",
     metaType: options.metaType,
   });
-  return await databaseClient.listMetadata(request);
+  return await databaseClient.listMetadata(request, {
+    signal: options.signal,
+  });
+}
+
+/**
+ * Every child of one meta type under a parent, walked page by page.
+ *
+ * A caller that renders a picker's whole option list cannot guess a page size
+ * large enough — a wide table exceeds any fixed cap, and reading only the first
+ * page used to drop the rest silently. The walk is still the caller's job when
+ * the list only ever grows visually (see `useMetadataChildren`); this helper is
+ * for consumers that need the complete set, such as the rule form's column
+ * suggestions.
+ */
+export async function listAllMetadata(options: {
+  parentGuid: string;
+  metaType: MetaType;
+  pageSize?: number;
+  signal?: AbortSignal;
+}): Promise<StoredMetadata[]> {
+  return await listAll(async (pageToken) => {
+    const response = await listMetadata({
+      parentGuid: options.parentGuid,
+      metaType: options.metaType,
+      pageSize: options.pageSize ?? 1000,
+      pageToken,
+      signal: options.signal,
+    });
+    const group = response.typesStoredMetadata.find(
+      (candidate) => candidate.metaType === options.metaType
+    );
+    return {
+      items: group?.list ?? [],
+      nextPageToken: group?.nextPageToken ?? "",
+    };
+  });
 }
 
 export async function getMetadata(options: {
@@ -125,13 +165,20 @@ export async function searchMetadata(options: {
   searchStr: string;
   parentGuidPrefix?: string;
   metaType?: MetaType;
+  pageSize?: number;
+  pageToken?: string;
+  signal?: AbortSignal;
 }) {
   const request = create(SearchMetadataRequestSchema, {
     searchStr: options.searchStr,
     parentGuidPrefix: options.parentGuidPrefix,
     metaType: options.metaType,
+    pageSize: options.pageSize ?? 0,
+    pageToken: options.pageToken ?? "",
   });
-  return await databaseClient.searchMetadata(request);
+  return await databaseClient.searchMetadata(request, {
+    signal: options.signal,
+  });
 }
 
 export async function syncDatabase(name: string) {

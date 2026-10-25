@@ -617,7 +617,7 @@ import {
   previewQualityRule,
   updateQualityRule,
 } from "@/api/data-quality";
-import { listMetadata } from "@/api/database";
+import { listAllMetadata } from "@/api/database";
 import { getInstance } from "@/api/instance";
 import { getWorkspaceProfileSetting } from "@/api/setting";
 import PageState from "@/components/common/PageState.vue";
@@ -1069,21 +1069,20 @@ async function checkReadOnly(selection: TargetSelection | undefined) {
 /** Column suggestions for the config fields; best effort, free text still works. */
 async function refreshTargetColumns(guid: string) {
   try {
-    const response = await listMetadata({ parentGuid: guid, pageSize: 200 });
-    const columns = response.typesStoredMetadata.find(
-      (group) => group.metaType === MetaType.COLUMN
-    );
-    targetColumnDetails.value =
-      columns?.list.map((item) => {
-        const value = item.type.value as
-          | { name?: string; type?: string; nullable?: boolean }
-          | undefined;
-        return {
-          name: value?.name ?? item.guid,
-          type: value?.type ?? "",
-          nullable: value?.nullable ?? true,
-        };
-      }) ?? [];
+    const columns = await listAllMetadata({
+      parentGuid: guid,
+      metaType: MetaType.COLUMN,
+    });
+    targetColumnDetails.value = columns.map((item) => {
+      const value = item.type.value as
+        | { name?: string; type?: string; nullable?: boolean }
+        | undefined;
+      return {
+        name: value?.name ?? item.guid,
+        type: value?.type ?? "",
+        nullable: value?.nullable ?? true,
+      };
+    });
     targetColumns.value = targetColumnDetails.value.map(
       (column) => column.name
     );

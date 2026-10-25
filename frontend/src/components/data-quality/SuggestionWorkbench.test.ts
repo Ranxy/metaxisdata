@@ -26,7 +26,7 @@ const mocks = vi.hoisted(() => ({
   suggestQualityRule: vi.fn(),
   batchUpdateQualitySuggestions: vi.fn(),
   createQualitySuggestionJob: vi.fn(),
-  listMetadata: vi.fn(),
+  listAllMetadata: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", () => ({
@@ -36,7 +36,7 @@ vi.mock("@/api/data-quality", () => ({
 }));
 
 vi.mock("@/api/database", () => ({
-  listMetadata: mocks.listMetadata,
+  listAllMetadata: mocks.listAllMetadata,
 }));
 
 const PERMISSIONS = ["metaxisdata.dataQuality.suggest"];
@@ -189,23 +189,16 @@ describe("SuggestionWorkbench", () => {
       { suggestion: draftSuggestion(), error: "", name: SUGGESTION },
     ]);
     mocks.createQualitySuggestionJob.mockResolvedValue(jobFixture());
-    mocks.listMetadata.mockResolvedValue({
-      typesStoredMetadata: [
-        {
-          metaType: MetaType.COLUMN,
-          list: [
-            {
-              guid: `${TABLE};id`,
-              type: { case: "columnMetadata", value: { name: "id" } },
-            },
-            {
-              guid: `${TABLE};amount`,
-              type: { case: "columnMetadata", value: { name: "amount" } },
-            },
-          ],
-        },
-      ],
-    });
+    mocks.listAllMetadata.mockResolvedValue([
+      {
+        guid: `${TABLE};id`,
+        type: { case: "columnMetadata", value: { name: "id" } },
+      },
+      {
+        guid: `${TABLE};amount`,
+        type: { case: "columnMetadata", value: { name: "amount" } },
+      },
+    ]);
   });
 
   it("page mode submits one durable job instead of looping in the browser", async () => {
@@ -284,6 +277,10 @@ describe("SuggestionWorkbench", () => {
     const request = mocks.createQualitySuggestionJob.mock.calls[0]?.[0] as {
       targets: Array<{ metaGuid: string; columns: string[] }>;
     };
+    expect(mocks.listAllMetadata).toHaveBeenCalledWith({
+      parentGuid: TABLE,
+      metaType: MetaType.COLUMN,
+    });
     expect(request.targets[0]?.metaGuid).toBe(TABLE);
     expect(request.targets[0]?.columns).toEqual(["id", "amount"]);
     wrapper.unmount();

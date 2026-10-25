@@ -37,19 +37,27 @@
 
         <Input
           v-model="filter"
-          :placeholder="t('dataQuality.target.filterPlaceholder')"
-          :aria-label="t('dataQuality.target.filterPlaceholder')"
+          :placeholder="searchPlaceholder"
+          :aria-label="searchPlaceholder"
+          @update:model-value="onFilterChanged"
         />
 
         <div
-          v-if="error"
-          class="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
+          v-if="displayError"
+          class="flex items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
         >
-          {{ error }}
+          <span class="min-w-0 flex-1">{{ displayError }}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            @click="retryCurrent"
+          >
+            {{ t("common.retry") }}
+          </Button>
         </div>
 
         <div
-          v-else-if="loading"
+          v-else-if="displayLoading"
           class="flex min-h-40 items-center justify-center"
         >
           <AppLoading />
@@ -98,6 +106,44 @@
               class="h-4 w-4 shrink-0 text-muted-foreground"
             />
           </button>
+
+          <!-- A level can run past one page; the footer asks for the rest
+               instead of hiding the tail behind a guessed page size. -->
+          <div
+            v-if="showFooter"
+            class="border-t p-2"
+          >
+            <div
+              v-if="moreError"
+              class="flex items-center justify-between gap-2 text-sm text-destructive"
+            >
+              <span class="min-w-0 flex-1 truncate">{{ moreError }}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                @click="loadMore"
+              >
+                {{ t("common.retry") }}
+              </Button>
+            </div>
+            <div
+              v-else
+              class="flex justify-center"
+            >
+              <Button
+                variant="secondary"
+                size="sm"
+                :disabled="loadingMore"
+                @click="loadMore"
+              >
+                <Loader2
+                  v-if="loadingMore"
+                  class="mr-2 h-4 w-4 animate-spin"
+                />
+                {{ t("dataQuality.target.loadMore") }}
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -133,10 +179,9 @@
 </template>
 
 <script setup lang="ts">
-import { ArrowLeft, Check, ChevronRight } from "lucide-vue-next";
-import { computed, ref, watch } from "vue";
+import { ArrowLeft, Check, ChevronRight, Loader2 } from "lucide-vue-next";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { listMetadata } from "@/api/database";
 import AppLoading from "@/components/common/AppLoading.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -150,9 +195,12 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useErrorMessage } from "@/composables/useErrorHandler";
+import {
+  type MetadataChild,
+  useMetadataChildren,
+} from "@/composables/useMetadataChildren";
 import { useInstanceStore } from "@/store/modules/instance";
 import type { Engine } from "@/types/proto-es/v1/common_pb";
-import type { StoredMetadata } from "@/types/proto-es/v1/database_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import type { QualityTargetScope } from "@/utils/dataQuality";
 import {
@@ -167,6 +215,13 @@ import { metaTypeSingularLabel } from "@/utils/metaType";
  * registry the rest of the product reads. A table (or view) is the target of a
  * rule; the column it checks is chosen in the rule form, because that is part of
  * the typed config rather than of the target identity.
+ *
+ * Every level below the instance can be far larger than one page in a real
+ * estate, so the browser follows page tokens instead of reading a fixed first
+ * page, and the search box queries the server scoped to the level being browsed
+ * instead of filtering the rows already fetched. Instances are the exception:
+ * the app-wide store already walks every page and the list is small enough to
+ * filter locally.
  *
  * `mode="scope"` reuses the same browser as the rules list's target-scope
  * filter: instead of only a table, the picked path itself is the answer, so the
@@ -199,6 +254,10 @@ const emit = defineEmits<{
   selectScope: [scope: QualityTargetScope];
 }>();
 
+const SEARCH_DELAY_MS = 300;
+const PAGE_SIZE = 50;
+const INSTANCE_BATCH = 50;
+
 const isScopeMode = computed(() => props.mode === "scope");
 const isMultiSelect = computed(() => props.multiple && !isScopeMode.value);
 const title = computed(() => {
@@ -220,15 +279,23 @@ const description = computed(() => {
 
 type Step = "instance" | "database" | "schema" | "table";
 
-interface BrowserItem {
-  guid: string;
-  name: string;
-  metaType: MetaType;
-}
-
 const { t } = useI18n();
 const { formatError } = useErrorMessage();
 const instanceStore = useInstanceStore();
+
+const {
+  items: browseItems,
+  loading: browseLoading,
+  loadingMore,
+  hasNext,
+  error: browseError,
+  moreError: browseMoreError,
+  query: browseQuery,
+  load: loadChildren,
+  search: searchChildren,
+  loadMore: loadMoreChildren,
+  reset: resetBrowser,
+} = useMetadataChildren({ pageSize: PAGE_SIZE });
 
 const step = ref<Step>("instance");
 const instanceId = ref("");
@@ -237,15 +304,18 @@ const databaseGuid = ref("");
 const schema = ref("");
 const schemaGuid = ref("");
 const filter = ref("");
-const loading = ref(false);
-const error = ref("");
-const items = ref<BrowserItem[]>([]);
+const instancesLoading = ref(false);
+const instancesError = ref("");
 const instanceTitle = ref("");
 const instanceEngine = ref<Engine>();
 /** Tables marked in multi-select mode, in the order they were marked. */
 const selected = ref<TargetSelection[]>([]);
 
+let filterTimer: ReturnType<typeof setTimeout> | undefined;
+
 const instances = computed(() => instanceStore.active);
+/** Instances are cached in full, so "more" only grows the rendered slice. */
+const instanceLimit = ref(INSTANCE_BATCH);
 
 const breadcrumb = computed(() => {
   const crumbs: Array<{ key: string; label: string; current: boolean }> = [
@@ -259,16 +329,14 @@ const breadcrumb = computed(() => {
     crumbs.push({
       key: "database",
       label: database.value,
-      current:
-        step.value === "schema" ||
-        (step.value === "table" && schema.value === ""),
+      current: step.value === "schema",
     });
   }
   if (schema.value) {
     crumbs.push({
       key: "schema",
       label: schema.value,
-      current: step.value === "table",
+      current: false,
     });
   }
   // The MySQL family has no schema level, so the last breadcrumb is the table
@@ -303,22 +371,109 @@ const currentScopeLabel = computed(() =>
     .join(" > ")
 );
 
-const visibleItems = computed(() => {
+/** The parent GUID whose children the current step lists. */
+function currentParent(): string {
+  switch (step.value) {
+    case "database":
+      return instanceId.value;
+    case "schema":
+      // The database's own GUID is authoritative; the fallback keeps the
+      // name-built path for a registry row that carried no GUID.
+      return databaseGuid.value || `${instanceId.value};${database.value}`;
+    case "table":
+      // The schema's own GUID when there is one; otherwise the MySQL-family
+      // database GUID plus the trailing empty-schema separator.
+      return schemaGuid.value ? schemaGuid.value : `${databaseGuid.value};`;
+    default:
+      return "";
+  }
+}
+
+/** The meta types the current step lists. */
+function currentTypes(): MetaType[] {
+  switch (step.value) {
+    case "database":
+      return [MetaType.DATABASE];
+    case "schema":
+      return [MetaType.SCHEMA];
+    case "table":
+      return TARGET_META_TYPES;
+    default:
+      return [];
+  }
+}
+
+/** The cached instance list, filtered locally by the search box. */
+const filteredInstances = computed<MetadataChild[]>(() => {
   const term = filter.value.trim().toLowerCase();
-  const list =
-    step.value === "instance"
-      ? instances.value.map((instance) => ({
-          guid: instance.name.replace("instances/", ""),
-          name: instance.title || instance.name.replace("instances/", ""),
-          metaType: MetaType.INSTANCE,
-        }))
-      : items.value;
+  const list = instances.value.map((instance) => ({
+    guid: instance.name.replace("instances/", ""),
+    name: instance.title || instance.name.replace("instances/", ""),
+    metaType: MetaType.INSTANCE,
+  }));
   return term
     ? list.filter((item) => item.name.toLowerCase().includes(term))
     : list;
 });
 
+const visibleItems = computed<MetadataChild[]>(() => {
+  if (step.value !== "instance") {
+    // The server already narrowed the level to this search term.
+    return browseItems.value;
+  }
+  return filteredInstances.value.slice(0, instanceLimit.value);
+});
+
+/** Whether another local instance batch would render more rows. */
+const hasMoreInstances = computed(
+  () =>
+    step.value === "instance" &&
+    filteredInstances.value.length > instanceLimit.value
+);
+
+/** Whether the list footer (next page or its retry) is shown. */
+const showFooter = computed(
+  () =>
+    hasMoreInstances.value ||
+    (step.value !== "instance" && (hasNext.value || moreError.value !== ""))
+);
+
+const displayLoading = computed(() =>
+  step.value === "instance" ? instancesLoading.value : browseLoading.value
+);
+
+const displayError = computed(() => {
+  if (step.value === "instance") {
+    return instancesError.value;
+  }
+  return browseError.value
+    ? formatError(browseError.value, "dataQuality.target.fetchError")
+    : "";
+});
+
+const moreError = computed(() =>
+  browseMoreError.value
+    ? formatError(browseMoreError.value, "dataQuality.target.fetchError")
+    : ""
+);
+
+/** Instances are matched by name only; the server also matches comments. */
+const searchPlaceholder = computed(() =>
+  step.value === "instance"
+    ? t("dataQuality.target.searchInstancePlaceholder")
+    : t("dataQuality.target.searchPlaceholder")
+);
+
 const emptyLabel = computed(() => {
+  // A level or the cached instance list can be empty because of the term the
+  // reader typed; saying "no tables" then would be a lie.
+  const searching =
+    step.value === "instance"
+      ? filter.value.trim() !== ""
+      : browseQuery.value !== "";
+  if (searching) {
+    return t("dataQuality.target.noMatches");
+  }
   switch (step.value) {
     case "instance":
       return t("dataQuality.target.noInstances");
@@ -340,12 +495,22 @@ watch(
     if (isOpen) {
       reset();
       void loadInstances();
+      return;
     }
+    // A closed dialog must not keep a debounced search or a level request alive.
+    cancelFilterTimer();
+    resetBrowser();
   },
   { immediate: true }
 );
 
+onBeforeUnmount(() => {
+  cancelFilterTimer();
+});
+
 function reset() {
+  cancelFilterTimer();
+  instanceLimit.value = INSTANCE_BATCH;
   step.value = "instance";
   instanceId.value = "";
   instanceTitle.value = "";
@@ -355,43 +520,101 @@ function reset() {
   schema.value = "";
   schemaGuid.value = "";
   filter.value = "";
-  error.value = "";
-  items.value = [];
+  instancesError.value = "";
   selected.value = [];
+  resetBrowser();
 }
 
 async function loadInstances() {
-  loading.value = true;
-  error.value = "";
+  instancesLoading.value = true;
+  instancesError.value = "";
   try {
     await instanceStore.ensureLoaded();
   } catch (e: unknown) {
-    error.value = formatError(e, "dataQuality.target.fetchError");
+    instancesError.value = formatError(e, "dataQuality.target.fetchError");
   } finally {
-    loading.value = false;
+    instancesLoading.value = false;
   }
 }
 
-async function loadGroups(
-  parentGuid: string,
-  wanted: MetaType[]
-): Promise<BrowserItem[]> {
-  const response = await listMetadata({ parentGuid, pageSize: 100 });
-  return response.typesStoredMetadata
-    .filter((group) => wanted.includes(group.metaType))
-    .flatMap((group) =>
-      group.list.map((item) => ({
-        guid: item.guid,
-        name: storedMetadataName(item),
-        metaType: group.metaType,
-      }))
-    );
+function cancelFilterTimer() {
+  if (filterTimer !== undefined) {
+    clearTimeout(filterTimer);
+    filterTimer = undefined;
+  }
 }
 
-/** The display name of a listed metadata row, whichever arm carries it. */
-function storedMetadataName(item: StoredMetadata): string {
-  const value = item.type.value;
-  return (value as { name?: string } | undefined)?.name ?? item.guid;
+/**
+ * Replace the shown level with its first page. The search box is cleared with
+ * the level: a term typed for the previous level has no meaning here.
+ */
+async function loadLevel(): Promise<MetadataChild[] | null> {
+  cancelFilterTimer();
+  filter.value = "";
+  return await loadChildren(currentParent(), currentTypes());
+}
+
+/** Re-run whatever the failed first page or search was showing. */
+async function retryCurrent() {
+  if (step.value === "instance") {
+    void loadInstances();
+    return;
+  }
+  if (browseQuery.value !== "") {
+    void searchChildren(currentParent(), currentTypes(), browseQuery.value);
+    return;
+  }
+  if (step.value === "schema") {
+    // Retrying the schema level keeps the empty-schema fallback the first load
+    // would have taken.
+    const schemas = await loadChildren(currentParent(), currentTypes());
+    if (
+      schemas !== null &&
+      step.value === "schema" &&
+      schemas.length === 0 &&
+      !browseError.value
+    ) {
+      await showTables();
+    }
+    return;
+  }
+  void loadChildren(currentParent(), currentTypes());
+}
+
+/** The search box: filter the cached instances locally, query the server below. */
+function onFilterChanged(value: string | number) {
+  if (step.value === "instance") {
+    instanceLimit.value = INSTANCE_BATCH;
+    return;
+  }
+  const term = String(value).trim();
+  const parent = currentParent();
+  const types = currentTypes();
+  cancelFilterTimer();
+  filterTimer = setTimeout(() => {
+    filterTimer = undefined;
+    // The reader may have drilled away while the delay ran; that level's own
+    // load already owns the list.
+    if (step.value === "instance" || parent !== currentParent()) {
+      return;
+    }
+    if (term === browseQuery.value && !browseError.value) {
+      return;
+    }
+    if (term === "") {
+      void loadChildren(parent, types);
+    } else {
+      void searchChildren(parent, types, term);
+    }
+  }, SEARCH_DELAY_MS);
+}
+
+function loadMore() {
+  if (step.value === "instance") {
+    instanceLimit.value += INSTANCE_BATCH;
+    return;
+  }
+  void loadMoreChildren();
 }
 
 async function chooseInstance(id: string, title: string) {
@@ -403,7 +626,7 @@ async function chooseInstance(id: string, title: string) {
   schema.value = "";
   schemaGuid.value = "";
   step.value = "database";
-  await browse(async () => loadGroups(id, [MetaType.DATABASE]));
+  await loadLevel();
 }
 
 async function chooseDatabase(name: string, guid: string) {
@@ -419,10 +642,21 @@ async function chooseDatabase(name: string, guid: string) {
     return;
   }
   step.value = "schema";
-  await browse(async () => await loadGroups(guid, [MetaType.SCHEMA]));
+  const schemas = await loadLevel();
+  // A newer request (a debounced search, or Back) superseded this load; its
+  // answer says nothing about whether the database has schemas.
+  if (schemas === null) {
+    return;
+  }
+  // The reader can press Back while the first page is in flight. The level that
+  // owned this load is then gone, so neither its answer nor the empty-schema
+  // fallback below may navigate them somewhere else.
+  if (step.value !== "schema" || databaseGuid.value !== guid) {
+    return;
+  }
   // PostgreSQL/MSSQL deployments may still have no schema rows; the tables then
   // live directly under the database, so keep that path working.
-  if (items.value.length === 0 && !error.value) {
+  if (schemas.length === 0 && !browseError.value) {
     await showTables();
   }
 }
@@ -435,59 +669,39 @@ async function chooseSchema(name: string, guid: string) {
 
 async function showTables() {
   step.value = "table";
-  await browse(async () => {
-    // The schema's own GUID when there is one; otherwise the MySQL-family
-    // database GUID plus the trailing empty-schema separator.
-    const parent = schemaGuid.value
-      ? schemaGuid.value
-      : `${databaseGuid.value};`;
-    return await loadGroups(parent, TARGET_META_TYPES);
-  });
-}
-
-async function browse(load: () => Promise<BrowserItem[]>) {
-  loading.value = true;
-  error.value = "";
-  filter.value = "";
-  try {
-    const loaded = await load();
-    // A row whose name is empty would render as a blank level; drop it so the
-    // empty-schema compatibility path above can take over.
-    items.value = loaded.filter((item) => item.name.trim() !== "");
-  } catch (e: unknown) {
-    items.value = [];
-    error.value = formatError(e, "dataQuality.target.fetchError");
-  } finally {
-    loading.value = false;
-  }
+  await loadLevel();
 }
 
 function goBack() {
-  error.value = "";
+  cancelFilterTimer();
   filter.value = "";
   if (step.value === "table" && schema.value) {
     // Returning to a level has to reload it: the items on screen are the level
     // below, and showing tables under a "schema" breadcrumb would be a lie.
-    // The database's own GUID is authoritative; the fallback keeps the
-    // name-built path for a registry row that carried no GUID beyond the name.
-    const databaseParent =
-      databaseGuid.value || `${instanceId.value};${database.value}`;
+    schema.value = "";
+    schemaGuid.value = "";
     step.value = "schema";
-    void browse(() => loadGroups(databaseParent, [MetaType.SCHEMA]));
+    void loadLevel();
     return;
   }
   if (step.value === "table" || step.value === "schema") {
     database.value = "";
+    databaseGuid.value = "";
     schema.value = "";
+    schemaGuid.value = "";
     step.value = "database";
-    void browse(() => loadGroups(instanceId.value, [MetaType.DATABASE]));
+    void loadLevel();
     return;
   }
   step.value = "instance";
-  items.value = [];
+  instanceId.value = "";
+  instanceTitle.value = "";
+  instanceEngine.value = undefined;
+  instanceLimit.value = INSTANCE_BATCH;
+  resetBrowser();
 }
 
-function choose(item: BrowserItem) {
+function choose(item: MetadataChild) {
   switch (step.value) {
     case "instance":
       void chooseInstance(item.guid, item.name);
@@ -522,7 +736,7 @@ function choose(item: BrowserItem) {
 }
 
 /** The TargetSelection one table row stands for, with the current path. */
-function selectionFor(item: BrowserItem): TargetSelection {
+function selectionFor(item: MetadataChild): TargetSelection {
   return {
     guid: item.guid,
     metaType: item.metaType,
@@ -536,11 +750,11 @@ function selectionFor(item: BrowserItem): TargetSelection {
   };
 }
 
-function isSelected(item: BrowserItem): boolean {
+function isSelected(item: MetadataChild): boolean {
   return selected.value.some((selection) => selection.guid === item.guid);
 }
 
-function toggleSelected(item: BrowserItem) {
+function toggleSelected(item: MetadataChild) {
   selected.value = isSelected(item)
     ? selected.value.filter((selection) => selection.guid !== item.guid)
     : [...selected.value, selectionFor(item)];

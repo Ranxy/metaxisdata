@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
+import RuleConfigForm from "@/components/data-quality/RuleConfigForm.vue";
 import { Select } from "@/components/ui/select";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
@@ -31,7 +32,7 @@ Element.prototype.releasePointerCapture ??= () => {};
 
 const mocks = vi.hoisted(() => ({
   batchCreateQualityRules: vi.fn(),
-  listMetadata: vi.fn(),
+  listAllMetadata: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", () => ({
@@ -39,7 +40,7 @@ vi.mock("@/api/data-quality", () => ({
 }));
 
 vi.mock("@/api/database", () => ({
-  listMetadata: mocks.listMetadata,
+  listAllMetadata: mocks.listAllMetadata,
 }));
 
 const TABLE = "inst1;db1;public;orders";
@@ -146,22 +147,22 @@ describe("BatchCreateRulesDialog", () => {
     localStorage.clear();
     vi.clearAllMocks();
     document.body.innerHTML = "";
-    mocks.listMetadata.mockResolvedValue({
-      typesStoredMetadata: [
-        {
-          metaType: MetaType.COLUMN,
-          list: [
-            {
-              guid: `${TABLE};id`,
-              type: {
-                case: "columnMetadata",
-                value: { name: "id", type: "bigint", nullable: false },
-              },
-            },
-          ],
+    mocks.listAllMetadata.mockResolvedValue([
+      {
+        guid: `${TABLE};id`,
+        type: {
+          case: "columnMetadata",
+          value: { name: "id", type: "bigint", nullable: false },
         },
-      ],
-    });
+      },
+      {
+        guid: `${TABLE};amount`,
+        type: {
+          case: "columnMetadata",
+          value: { name: "amount", type: "numeric", nullable: true },
+        },
+      },
+    ]);
     mocks.batchCreateQualityRules.mockResolvedValue([
       {
         rule: create(QualityRuleSchema, {
@@ -191,6 +192,17 @@ describe("BatchCreateRulesDialog", () => {
         label("dataQuality.suggestions.batchCreate.collapse")
       )?.getAttribute("aria-expanded")
     ).toBe("true");
+    // The whole column list reaches the row's config form, not one page of it.
+    expect(mocks.listAllMetadata).toHaveBeenCalledWith({
+      parentGuid: TABLE,
+      metaType: MetaType.COLUMN,
+    });
+    expect(
+      wrapper.findAllComponents(RuleConfigForm)[0]?.props("columnDetails")
+    ).toEqual([
+      { name: "id", type: "bigint", nullable: false },
+      { name: "amount", type: "numeric", nullable: true },
+    ]);
     setInput("#dq-batch-title-0", "Renamed rule");
     await flushPromises();
 

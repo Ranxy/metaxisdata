@@ -433,7 +433,7 @@ import {
   createQualitySuggestionJob,
   suggestQualityRule,
 } from "@/api/data-quality";
-import { listMetadata } from "@/api/database";
+import { listAllMetadata } from "@/api/database";
 import EmptyState from "@/components/common/EmptyState.vue";
 import TargetPicker from "@/components/data-quality/TargetPicker.vue";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -739,15 +739,14 @@ async function loadColumns(guid: string) {
   }
   columnsLoading.value = true;
   try {
-    const response = await listMetadata({ parentGuid: guid, pageSize: 200 });
-    const group = response.typesStoredMetadata.find(
-      (item) => item.metaType === MetaType.COLUMN
-    );
-    columnOptions.value =
-      group?.list.map((item) => {
-        const value = item.type.value as { name?: string } | undefined;
-        return value?.name ?? item.guid;
-      }) ?? [];
+    const columns = await listAllMetadata({
+      parentGuid: guid,
+      metaType: MetaType.COLUMN,
+    });
+    columnOptions.value = columns.map((item) => {
+      const value = item.type.value as { name?: string } | undefined;
+      return value?.name ?? item.guid;
+    });
     selectedColumns.value = [...columnOptions.value];
   } catch {
     columnOptions.value = [];
