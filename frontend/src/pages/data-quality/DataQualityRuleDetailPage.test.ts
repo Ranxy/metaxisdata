@@ -127,6 +127,11 @@ async function mountPage(permissions: string[] = PERMISSIONS) {
         name: "DataQualityExecutionDetail",
         component: Dummy,
       },
+      {
+        path: "/metadata/:guid+",
+        name: "MetadataDetail",
+        component: Dummy,
+      },
     ],
   });
   await router.push(`/data-quality/rules/${RULE}`);
@@ -225,6 +230,53 @@ describe("DataQualityRuleDetailPage", () => {
     expect(router.currentRoute.value.name).toBe("DataQualityExecutionDetail");
     expect(router.currentRoute.value.params.executionId).toEqual(
       executionsFixture()[0]?.name.split("/")
+    );
+  });
+
+  it("links the rule target to its metadata page", async () => {
+    const { wrapper, router } = await mountPage();
+
+    const link = wrapper.find(
+      `a[title="${i18n.global.t("dataQuality.viewMetadata")}"]`
+    );
+    expect(link.exists()).toBe(true);
+    expect(link.text()).toContain("prod · shop · public.orders");
+    expect(link.attributes("href")).toBe(
+      "/metadata/instance_1/shop/public/orders?metaType=4"
+    );
+
+    await link.trigger("click");
+    await flushPromises();
+
+    expect(router.currentRoute.value.name).toBe("MetadataDetail");
+    expect(router.currentRoute.value.params.guid).toEqual([
+      "instance_1",
+      "shop",
+      "public",
+      "orders",
+    ]);
+    expect(router.currentRoute.value.query.metaType).toBe(
+      String(MetaType.TABLE)
+    );
+  });
+
+  it("renders the target as text when the rule has no target snapshot", async () => {
+    mocks.getQualityRule.mockResolvedValue(ruleFixture({ target: undefined }));
+
+    const { wrapper } = await mountPage();
+
+    const viewMetadata = i18n.global.t("dataQuality.viewMetadata");
+    expect(wrapper.findAll(`a[title="${viewMetadata}"]`)).toHaveLength(0);
+    expect(
+      wrapper
+        .findAll("a")
+        .some((link) => link.attributes("href")?.includes("/metadata/"))
+    ).toBe(false);
+    const targetLabel = wrapper
+      .findAll("dt")
+      .find((dt) => dt.text() === i18n.global.t("dataQuality.ruleTarget"));
+    expect(targetLabel?.element.nextElementSibling?.textContent?.trim()).toBe(
+      "-"
     );
   });
 

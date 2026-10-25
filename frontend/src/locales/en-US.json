@@ -1214,6 +1214,7 @@
     "viewAllExecutions": "View all executions",
     "viewExecution": "View execution",
     "viewIssue": "View issue",
+    "viewMetadata": "View metadata",
     "viewRules": "View rules",
     "warnAt": "Warn at {value}"
   },

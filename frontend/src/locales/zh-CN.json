@@ -1214,6 +1214,7 @@
     "viewAllExecutions": "查看全部执行",
     "viewExecution": "查看执行",
     "viewIssue": "查看问题",
+    "viewMetadata": "查看元数据",
     "viewRules": "查看规则",
     "warnAt": "警告阈值 {value}"
   },

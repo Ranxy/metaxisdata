@@ -94,7 +94,16 @@
               </span>
             </div>
             <div class="font-mono text-xs break-all text-muted-foreground">
-              {{ targetPath }}
+              <RouterLink
+                v-if="targetRoute"
+                :to="targetRoute"
+                :title="t('dataQuality.viewMetadata')"
+                class="inline-flex items-center gap-1 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                {{ targetPath }}
+                <ExternalLink class="h-3 w-3 shrink-0" />
+              </RouterLink>
+              <template v-else>{{ targetPath }}</template>
             </div>
             <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div>
@@ -368,6 +377,7 @@ import {
   BellOff,
   Check,
   CheckCheck,
+  ExternalLink,
   RefreshCcw,
 } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
@@ -425,6 +435,7 @@ import {
   qualityResolutionReasonKey,
   qualitySeverityKey,
   qualitySeverityVariant,
+  qualityTargetMetadataRoute,
   targetScopeLabel,
 } from "@/utils/dataQuality";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
@@ -478,6 +489,11 @@ const targetPath = computed(() => {
   }
   return scope === "-" ? name : `${scope} · ${name}`;
 });
+
+/** The target's metadata page; absent when the snapshot carries no GUID. */
+const targetRoute = computed(() =>
+  qualityTargetMetadataRoute(issue.value?.target)
+);
 
 const RESOLVE_REASONS = [
   QualityResolutionReason.FIXED,
