@@ -309,7 +309,9 @@
                  rejects. A row is numbered because two failures on the same
                  column can otherwise look like the same row repeated, and a
                  NULL or an empty string is printed as such: a blank cell would
-                 read as a rendering defect. -->
+                 read as a rendering defect. A sample recorded before the null
+                 marker existed cannot say which of the two it was, so it gets
+                 the neutral form. -->
             <div class="space-y-2">
               <div
                 v-for="(sample, index) in execution.samples"
@@ -317,7 +319,7 @@
                 class="rounded-md border p-3 text-xs"
               >
                 <div class="mb-1 font-mono text-muted-foreground">
-                  {{ t("dataQuality.sampleRow", { index: index + 1 }) }}
+                  {{ t("dataQuality.sampleNumber", { index: index + 1 }) }}
                 </div>
                 <div
                   v-for="cell in sample.columns"
@@ -331,21 +333,28 @@
                     {{ cell.column }}
                   </span>
                   <span
-                    v-if="cell.isNull"
+                    v-if="cell.isNull === true"
                     class="min-w-0 font-mono text-muted-foreground italic"
                   >
                     {{ t("dataQuality.sampleNull") }}
                   </span>
                   <span
-                    v-else-if="cell.value === ''"
+                    v-else-if="cell.value !== ''"
+                    class="min-w-0 break-all"
+                  >{{ cell.value }}</span>
+                  <span
+                    v-else-if="cell.isNull === false"
                     class="min-w-0 font-mono text-muted-foreground italic"
                   >
                     {{ t("dataQuality.sampleEmpty") }}
                   </span>
                   <span
                     v-else
-                    class="min-w-0 break-all"
-                  >{{ cell.value }}</span>
+                    class="min-w-0 font-mono text-muted-foreground italic"
+                    :title="t('dataQuality.sampleLegacyHint')"
+                  >
+                    {{ t("dataQuality.sampleAmbiguous") }}
+                  </span>
                 </div>
               </div>
             </div>

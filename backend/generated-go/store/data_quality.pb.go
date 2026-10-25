@@ -1967,11 +1967,12 @@ func (x *FailureSample) GetColumns() []*ColumnValue {
 type ColumnValue struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	Column string                 `protobuf:"bytes,1,opt,name=column,proto3" json:"column,omitempty"`
-	// The value rendered as display text. Empty when the column is SQL NULL.
+	// The value rendered as display text. Empty for a SQL NULL and for an empty
+	// string; is_null tells the two apart.
 	Value string `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
-	// Whether the value was SQL NULL. Without this flag a NULL and an empty string
-	// both store as an empty value, and the sample cannot say which it was.
-	IsNull        bool `protobuf:"varint,3,opt,name=is_null,json=isNull,proto3" json:"is_null,omitempty"`
+	// Whether the value was SQL NULL. A sample recorded before this field existed
+	// has no marker, and its NULLs are indistinguishable from empty strings.
+	IsNull        *bool `protobuf:"varint,3,opt,name=is_null,json=isNull,proto3,oneof" json:"is_null,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2021,8 +2022,8 @@ func (x *ColumnValue) GetValue() string {
 }
 
 func (x *ColumnValue) GetIsNull() bool {
-	if x != nil {
-		return x.IsNull
+	if x != nil && x.IsNull != nil {
+		return *x.IsNull
 	}
 	return false
 }
@@ -5203,11 +5204,13 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\x15QualityFailureSamples\x12:\n" +
 	"\asamples\x18\x01 \x03(\v2 .metaxisdata.store.FailureSampleR\asamples\"I\n" +
 	"\rFailureSample\x128\n" +
-	"\acolumns\x18\x01 \x03(\v2\x1e.metaxisdata.store.ColumnValueR\acolumns\"T\n" +
+	"\acolumns\x18\x01 \x03(\v2\x1e.metaxisdata.store.ColumnValueR\acolumns\"e\n" +
 	"\vColumnValue\x12\x16\n" +
 	"\x06column\x18\x01 \x01(\tR\x06column\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value\x12\x17\n" +
-	"\ais_null\x18\x03 \x01(\bR\x06isNull\"\x9f\x03\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\x12\x1c\n" +
+	"\ais_null\x18\x03 \x01(\bH\x00R\x06isNull\x88\x01\x01B\n" +
+	"\n" +
+	"\b_is_null\"\x9f\x03\n" +
 	"\rColumnProfile\x12\x1d\n" +
 	"\n" +
 	"total_rows\x18\x01 \x01(\x03R\ttotalRows\x12\x1d\n" +
@@ -5869,6 +5872,7 @@ func file_store_data_quality_proto_init() {
 		return
 	}
 	file_store_data_quality_proto_msgTypes[3].OneofWrappers = []any{}
+	file_store_data_quality_proto_msgTypes[7].OneofWrappers = []any{}
 	file_store_data_quality_proto_msgTypes[8].OneofWrappers = []any{}
 	file_store_data_quality_proto_msgTypes[11].OneofWrappers = []any{
 		(*QualitySuggestionPayload_Rule)(nil),

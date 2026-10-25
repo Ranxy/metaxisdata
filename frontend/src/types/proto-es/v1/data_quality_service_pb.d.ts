@@ -2275,19 +2275,20 @@ export declare type ColumnValue = Message<"metaxisdata.v1.ColumnValue"> & {
   column: string;
 
   /**
-   * The value rendered as display text. Empty when the column is SQL NULL.
+   * The value rendered as display text. Empty for a SQL NULL and for an empty
+   * string; is_null tells the two apart.
    *
    * @generated from field: string value = 2;
    */
   value: string;
 
   /**
-   * Whether the value was SQL NULL. Without this flag a NULL and an empty string
-   * both arrive as an empty value, and the sample cannot say which it was.
+   * Whether the value was SQL NULL. A sample recorded before this field existed
+   * has no marker, and its NULLs are indistinguishable from empty strings.
    *
-   * @generated from field: bool is_null = 3;
+   * @generated from field: optional bool is_null = 3;
    */
-  isNull: boolean;
+  isNull?: boolean;
 };
 
 /**

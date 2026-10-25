@@ -332,9 +332,10 @@ func TestConvertQualityExecution(t *testing.T) {
 		SampleRows: 20,
 		Truncated:  true,
 		Sample: &storepb.QualityFailureSamples{Samples: []*storepb.FailureSample{{Columns: []*storepb.ColumnValue{
-			{Column: "id", Value: "1"},
+			{Column: "id", Value: "1", IsNull: proto.Bool(false)},
 			{Column: "amount", Value: "-5"},
-			{Column: "note", IsNull: true},
+			{Column: "note", IsNull: proto.Bool(true)},
+			{Column: "legacy"},
 		}}}},
 		ExecutedSQL: "SELECT COUNT(*) FROM orders",
 		DurationMS:  1500,
@@ -367,11 +368,15 @@ func TestConvertQualityExecution(t *testing.T) {
 	require.Equal(t, int64(20), converted.GetSampleRows())
 	require.True(t, converted.GetTruncated())
 	require.Len(t, converted.GetSamples(), 1)
-	require.Len(t, converted.GetSamples()[0].GetColumns(), 3)
+	require.Len(t, converted.GetSamples()[0].GetColumns(), 4)
+	require.NotNil(t, converted.GetSamples()[0].GetColumns()[0].IsNull)
+	require.False(t, converted.GetSamples()[0].GetColumns()[0].GetIsNull(), "an explicit false marker survives the conversion")
 	require.Equal(t, "amount", converted.GetSamples()[0].GetColumns()[1].GetColumn())
 	require.Equal(t, "-5", converted.GetSamples()[0].GetColumns()[1].GetValue())
+	require.Nil(t, converted.GetSamples()[0].GetColumns()[1].IsNull, "a legacy value stays unmarked")
 	require.Equal(t, "note", converted.GetSamples()[0].GetColumns()[2].GetColumn())
 	require.True(t, converted.GetSamples()[0].GetColumns()[2].GetIsNull())
+	require.Nil(t, converted.GetSamples()[0].GetColumns()[3].IsNull, "a legacy row keeps its absence")
 	require.Equal(t, "SELECT COUNT(*) FROM orders", converted.GetExecutedSql())
 	require.Equal(t, 1500*time.Millisecond, converted.GetDuration().AsDuration())
 	require.Equal(t, startedAt, converted.GetStartTime().AsTime())

@@ -1598,15 +1598,16 @@ no comparable values. </p></td>
                   <td>value</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p>The value rendered as display text. Empty when the column is SQL NULL. </p></td>
+                  <td><p>The value rendered as display text. Empty for a SQL NULL and for an empty
+string; is_null tells the two apart. </p></td>
                 </tr>
               
                 <tr>
                   <td>is_null</td>
                   <td><a href="#bool">bool</a></td>
-                  <td></td>
-                  <td><p>Whether the value was SQL NULL. Without this flag a NULL and an empty string
-both store as an empty value, and the sample cannot say which it was. </p></td>
+                  <td>optional</td>
+                  <td><p>Whether the value was SQL NULL. A sample recorded before this field existed
+has no marker, and its NULLs are indistinguishable from empty strings. </p></td>
                 </tr>
               
             </tbody>

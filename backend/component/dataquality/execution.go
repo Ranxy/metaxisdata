@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
@@ -85,10 +87,10 @@ func truncateExecutedSQL(sql string) string {
 
 // SamplesFromRows turns query rows into the stored failed-row sample. It trusts
 // the caller's limit only up to the maximum, keeps at most that many rows, and
-// truncates every value, because the proto stores display strings. A SQL NULL is
-// stored as an empty value with is_null set, so it stays distinguishable from an
-// empty string — the two cases a null_percent and a string_length failure sample
-// are made of.
+// truncates every value, because the proto stores display strings. Every cell of
+// a row that was read records whether it was SQL NULL, so a NULL stays
+// distinguishable from an empty string — the two cases a null_percent and a
+// string_length failure sample are made of.
 func SamplesFromRows(columns []string, rows [][]any, limit int) *storepb.QualityFailureSamples {
 	if limit <= 0 || len(columns) == 0 || len(rows) == 0 {
 		return nil
@@ -106,9 +108,10 @@ func SamplesFromRows(columns []string, rows [][]any, limit int) *storepb.Quality
 			cell := &storepb.ColumnValue{Column: column}
 			if index < len(row) {
 				if row[index] == nil {
-					cell.IsNull = true
+					cell.IsNull = proto.Bool(true)
 				} else {
 					cell.Value = common.TruncateUTF8Bytes(sampleValueString(row[index]), maxSampleValueBytes)
+					cell.IsNull = proto.Bool(false)
 				}
 			}
 			sample.Columns = append(sample.Columns, cell)
@@ -121,14 +124,12 @@ func SamplesFromRows(columns []string, rows [][]any, limit int) *storepb.Quality
 	return samples
 }
 
-// sampleValueString renders one normalized query value as the display string the
-// sample stores. The normalization contract is nil, int64, float64, bool, string
-// or time.Time, so every other type is a last-resort rendering rather than a
-// value this build promises to keep.
+// sampleValueString renders one non-NULL normalized query value as the display
+// string the sample stores. The normalization contract is int64, float64, bool,
+// string or time.Time, so every other type is a last-resort rendering rather than
+// a value this build promises to keep. The caller stores SQL NULL separately.
 func sampleValueString(value any) string {
 	switch typed := value.(type) {
-	case nil:
-		return ""
 	case string:
 		return typed
 	case int64:

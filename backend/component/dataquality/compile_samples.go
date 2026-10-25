@@ -115,17 +115,18 @@ func sampleSelect(dialect Dialect, names []string) string {
 // sampleColumns builds the select list of a failed-row sample: the target's
 // primary-key columns first, so the sampled row can be identified, then the
 // columns that explain the failure. Duplicates are dropped because a checked
-// column can be part of the key, and every name keeps the registry's spelling.
+// column can be part of the key. The comparison is exact on purpose: both lists
+// carry the registry's spelling, and PostgreSQL can hold two columns whose names
+// differ only by case.
 func sampleColumns(target ResolvedTarget, checked ...string) []string {
 	names := make([]string, 0, len(target.KeyColumns)+len(checked))
 	seen := make(map[string]struct{}, len(target.KeyColumns)+len(checked))
 	for _, group := range [][]string{target.KeyColumns, checked} {
 		for _, name := range group {
-			folded := strings.ToLower(name)
-			if _, ok := seen[folded]; ok {
+			if _, ok := seen[name]; ok {
 				continue
 			}
-			seen[folded] = struct{}{}
+			seen[name] = struct{}{}
 			names = append(names, name)
 		}
 	}

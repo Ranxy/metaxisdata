@@ -424,8 +424,9 @@ func TestExecuteRefusesAPercentageThresholdWithoutATotal(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// The failed-row sample is a second bounded query. Its limit, its SQL and the
-// conversion into the proto are pinned here.
+// The failed-row sample is a second bounded query. Its limit, its SQL (the key
+// column identifies the row, the checked column explains it) and the conversion
+// into the proto are pinned here.
 func TestExecuteFetchesFailedRowSamples(t *testing.T) {
 	t.Parallel()
 
@@ -435,24 +436,62 @@ func TestExecuteFetchesFailedRowSamples(t *testing.T) {
 	rule := execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT, config)
 	queryer := &execFakeQueryer{results: []*db.QueryResult{
 		aggregateRow([]string{"total_rows", "failed_rows"}, int64(100), int64(5)),
-		{Columns: []string{"email"}, Rows: [][]any{{"a@example.com"}, {nil}}},
+		{Columns: []string{"id", "email"}, Rows: [][]any{{int64(7), "a@example.com"}, {int64(8), nil}}},
 	}}
 	execution, err := NewExecutor().Execute(context.Background(), queryer,
 		execTestResolution(storepb.Engine_MYSQL), rule,
 		ExecOptions{StoreSamples: true, SampleLimit: 2})
 	require.NoError(t, err)
 	require.Len(t, queryer.queries, 2)
+	require.Contains(t, queryer.queries[1], "`id`, `email`")
 	require.Contains(t, queryer.queries[1], "`email` IS NULL")
 	require.Contains(t, queryer.queries[1], "LIMIT 2")
 	require.Equal(t, 2, queryer.options[1].MaxRows)
 	require.NotNil(t, execution.Samples)
 	require.Len(t, execution.Samples.GetSamples(), 2)
-	require.Equal(t, "a@example.com", execution.Samples.GetSamples()[0].GetColumns()[0].GetValue())
-	require.Equal(t, "email", execution.Samples.GetSamples()[0].GetColumns()[0].GetColumn())
-	// A NULL value has no marker in the proto; the empty string is the contract.
-	require.Empty(t, execution.Samples.GetSamples()[1].GetColumns()[0].GetValue())
+	require.Equal(t, "7", execution.Samples.GetSamples()[0].GetColumns()[0].GetValue())
+	require.Equal(t, "id", execution.Samples.GetSamples()[0].GetColumns()[0].GetColumn())
+	require.Equal(t, "a@example.com", execution.Samples.GetSamples()[0].GetColumns()[1].GetValue())
+	require.Equal(t, "email", execution.Samples.GetSamples()[0].GetColumns()[1].GetColumn())
+	// A NULL is marked, not left as an empty value that reads like an empty string.
+	require.True(t, execution.Samples.GetSamples()[1].GetColumns()[1].GetIsNull())
+	require.Empty(t, execution.Samples.GetSamples()[1].GetColumns()[1].GetValue())
 	require.Equal(t, int64(2), execution.Observation.SampleRows)
 	require.False(t, execution.Sampled)
+}
+
+// A sample widened with the row's key columns retries without them when the
+// database refuses the wider statement, so a stale or unreadable key in the
+// registry does not cost the execution all of its evidence.
+func TestExecuteSampleFallsBackWithoutKeyColumns(t *testing.T) {
+	t.Parallel()
+
+	config := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_NullPercent{
+		NullPercent: &storepb.NullPercentConfig{Column: "email", MaxNullPct: proto.Float64(5)},
+	}}
+	rule := execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT, config)
+	queryer := &execFakeQueryer{
+		errs: []error{
+			nil,
+			errors.New(`column "id" does not exist`),
+		},
+		results: []*db.QueryResult{
+			aggregateRow([]string{"total_rows", "failed_rows"}, int64(100), int64(3)),
+			nil,
+			{Columns: []string{"email"}, Rows: [][]any{{nil}}},
+		},
+	}
+	execution, err := NewExecutor().Execute(context.Background(), queryer,
+		execTestResolution(storepb.Engine_MYSQL), rule,
+		ExecOptions{StoreSamples: true})
+	require.NoError(t, err)
+	require.Len(t, queryer.queries, 3)
+	require.Contains(t, queryer.queries[1], "`id`, `email`")
+	require.Equal(t, "SELECT `email` FROM `shop`.`orders` WHERE (`email` IS NULL) LIMIT 20", queryer.queries[2])
+	require.NotNil(t, execution.Samples)
+	require.Len(t, execution.Samples.GetSamples(), 1)
+	require.Equal(t, "email", execution.Samples.GetSamples()[0].GetColumns()[0].GetColumn())
+	require.True(t, execution.Samples.GetSamples()[0].GetColumns()[0].GetIsNull())
 }
 
 // The sample limit follows the workspace rules: unset reads as the default, a
@@ -650,8 +689,10 @@ func TestSamplesFromRowsFormatsValues(t *testing.T) {
 	require.Equal(t, "2026-10-07T09:30:00Z", columns[4].GetValue())
 	require.Empty(t, columns[5].GetValue())
 	require.True(t, columns[5].GetIsNull(), "a NULL value is marked instead of reading as an empty string")
+	require.NotNil(t, columns[5].IsNull, "a value read from the database always carries the marker")
 	require.Empty(t, columns[6].GetValue())
 	require.False(t, columns[6].GetIsNull(), "an empty string is not a NULL")
+	require.NotNil(t, columns[6].IsNull, "an empty string carries an explicit false marker")
 	require.LessOrEqual(t, len(columns[7].GetValue()), maxSampleValueBytes)
 	require.True(t, utf8.ValidString(columns[7].GetValue()))
 	require.Equal(t, "long", columns[7].GetColumn())
@@ -672,13 +713,14 @@ func TestSamplesFromRowsBoundsTheSample(t *testing.T) {
 	samples = SamplesFromRows([]string{"id"}, rows, 1000)
 	require.Len(t, samples.GetSamples(), maxSampleLimit)
 
-	// A row with fewer values than columns pads with empty strings rather than
-	// dropping the row or panicking; a missing value is not a SQL NULL.
+	// A row with fewer values than columns pads with an empty value rather than
+	// dropping the row or panicking; a missing value has no marker, so it is not
+	// claimed to be a SQL NULL.
 	samples = SamplesFromRows([]string{"id", "name"}, [][]any{{int64(1)}}, 5)
 	require.Len(t, samples.GetSamples(), 1)
 	require.Len(t, samples.GetSamples()[0].GetColumns(), 2)
 	require.Empty(t, samples.GetSamples()[0].GetColumns()[1].GetValue())
-	require.False(t, samples.GetSamples()[0].GetColumns()[1].GetIsNull())
+	require.Nil(t, samples.GetSamples()[0].GetColumns()[1].IsNull)
 
 	require.Nil(t, SamplesFromRows(nil, rows, 5))
 	require.Nil(t, SamplesFromRows([]string{"id"}, nil, 5))

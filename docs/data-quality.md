@@ -104,13 +104,16 @@ outcome is one of six statuses:
 | `NOT_EVALUATED` | The check ran but had nothing to judge (no rows after the filter, a NULL timestamp or aggregate). |
 
 An abandoned execution has no outcome. Failed executions can be expanded for
-samples and the exact SQL: each sample is a numbered failed row, carrying the
-row's primary-key columns when the metadata records them plus the checked
-column(s), and showing SQL `NULL` and an empty string as different values rather
-than a blank cell. The execution detail also shows the rule revision,
-engine version, duration, trigger, instance and, for a manual run, who started
-it. Executions are the durable record: batching rules together for scheduling is
-an internal detail.
+samples and the exact SQL. For a column check on a table whose metadata records
+a primary key, each sample is a numbered failed row led by the key columns and
+then the checked column(s), so two failures on the same column do not look like
+one row repeated; a grouped check returns the grouping key instead. A sample
+recorded after this release shows SQL `NULL` and an empty string as different
+values rather than a blank cell; samples stored before it cannot tell the two
+apart and are labelled as such. The execution detail also shows the rule
+revision, engine version, duration, trigger, instance and, for a manual run, who
+started it. Executions are the durable record: batching rules together for
+scheduling is an internal detail.
 
 Every rule has its own page: open its title in Data Quality → Rules, or the rule
 name on an execution, an issue or a table's quality tab. It answers "is this rule

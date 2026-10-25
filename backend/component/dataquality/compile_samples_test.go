@@ -168,8 +168,9 @@ func TestCompileFailureRowsWithoutKeyColumns(t *testing.T) {
 	require.Equal(t, []string{"id"}, query.Columns)
 	require.Equal(t, "SELECT `id` FROM `shop`.`orders` WHERE (`id` IS NULL) LIMIT 20", query.SQL)
 
-	// With the key known, a checked column that is the key is listed once.
-	target.KeyColumns = []string{"id"}
+	// With the key known it leads the sample in key order, and the checked column
+	// is not repeated just because it is also part of the key.
+	target.KeyColumns = []string{"id", "email"}
 	query, err = CompileFailureRows(CompileInput{
 		Dialect: dialect,
 		Target:  target,
@@ -177,7 +178,8 @@ func TestCompileFailureRowsWithoutKeyColumns(t *testing.T) {
 		Config:  config,
 	}, 20)
 	require.NoError(t, err)
-	require.Equal(t, []string{"id"}, query.Columns)
+	require.Equal(t, []string{"id", "email"}, query.Columns)
+	require.Equal(t, "SELECT `id`, `email` FROM `shop`.`orders` WHERE (`id` IS NULL) LIMIT 20", query.SQL)
 }
 
 // TestCompileFailureRowsShapes pins the complete SQL of the representative rule
