@@ -43,8 +43,13 @@ export interface ChartSegment {
 }
 
 export interface ChartBar {
+  /** The whole day's slot: the bar plus the gap on either side of it. */
+  slotX: number;
+  slotWidth: number;
   x: number;
   width: number;
+  /** Top edge of the stack, i.e. the highest segment's y (the baseline when empty). */
+  top: number;
   total: number;
   segments: ChartSegment[];
   date: string;
@@ -63,6 +68,7 @@ export interface TrendChartGeometry {
   plotHeight: number;
   /** y of the baseline (the bottom of the plot area). */
   baseline: number;
+  paddingTop: number;
   paddingLeft: number;
   paddingRight: number;
   maxValue: number;
@@ -78,15 +84,21 @@ export interface TrendChartOptions {
   paddingRight?: number;
   paddingBottom?: number;
   paddingLeft?: number;
+  /** Bars stop widening past this: seven days must not become seven slabs. */
+  maxBarWidth?: number;
+  /** Grid rows to aim for; the axis still rounds to a readable step. */
+  tickCount?: number;
 }
 
 const DEFAULT_CHART: Required<TrendChartOptions> = {
   width: 720,
-  height: 220,
-  paddingTop: 12,
+  height: 232,
+  paddingTop: 16,
   paddingRight: 12,
-  paddingBottom: 28,
+  paddingBottom: 30,
   paddingLeft: 44,
+  maxBarWidth: 72,
+  tickCount: 5,
 };
 
 /** Clamp a caller-chosen window to what the service accepts. */
@@ -180,6 +192,10 @@ export function niceScale(
  * The stacked-bar geometry for one window. Bars stack pass → warn → fail →
  * error from the baseline; skipped and not-evaluated are counted in `total` but
  * not drawn, because they are the absence of a verdict rather than a severity.
+ *
+ * Width is the caller's measured pixel width, so the SVG can be drawn 1:1 and
+ * nothing in it is stretched: a scaled viewBox distorts the glyphs in the axis
+ * labels as much as the bars.
  */
 export function buildTrendGeometry(
   days: readonly TrendDay[],
@@ -199,9 +215,9 @@ export function buildTrendGeometry(
     (max, day) => Math.max(max, day.pass + day.warn + day.fail + day.error),
     0
   );
-  const scale = niceScale(highest);
+  const scale = niceScale(highest, chart.tickCount);
   const slot = days.length > 0 ? plotWidth / days.length : 0;
-  const barWidth = slot * 0.62;
+  const barWidth = Math.min(slot * 0.62, chart.maxBarWidth);
   const bars: ChartBar[] = days.map((day, index) => {
     const values: Array<[TrendStackKey, number]> = [
       ["pass", day.pass],
@@ -219,9 +235,13 @@ export function buildTrendGeometry(
       stacked += height;
       segments.push({ key, y: baseline - stacked, height });
     }
+    const slotX = chart.paddingLeft + index * slot;
     return {
-      x: chart.paddingLeft + index * slot + (slot - barWidth) / 2,
+      slotX,
+      slotWidth: slot,
+      x: slotX + (slot - barWidth) / 2,
       width: barWidth,
+      top: segments.length > 0 ? segments[segments.length - 1].y : baseline,
       total: day.total,
       segments,
       date: day.date,
@@ -237,6 +257,7 @@ export function buildTrendGeometry(
     plotWidth,
     plotHeight,
     baseline,
+    paddingTop: chart.paddingTop,
     paddingLeft: chart.paddingLeft,
     paddingRight: chart.paddingRight,
     maxValue: scale.max,
@@ -246,19 +267,61 @@ export function buildTrendGeometry(
   };
 }
 
-/** The date labels the axis shows: first, middle and last day. */
-export function trendDateLabels(dates: readonly string[]): string[] {
+/**
+ * The date labels the axis shows: at most `maxLabels`, evenly spaced and
+ * always including the first and last day. Seven bars get seven labels; thirty
+ * get enough to stay readable without colliding.
+ */
+export function trendDateLabels(
+  dates: readonly string[],
+  maxLabels = 3
+): string[] {
   if (dates.length === 0) {
     return [];
   }
-  const first = dates[0];
-  const last = dates[dates.length - 1];
-  if (dates.length <= 2) {
-    return [first, last].filter(
-      (value, index, all) => all.indexOf(value) === index
-    );
+  const wanted = Math.max(2, Math.min(Math.round(maxLabels), dates.length));
+  if (dates.length <= wanted) {
+    return [...dates];
   }
-  return [first, dates[Math.floor((dates.length - 1) / 2)], last];
+  const labels: string[] = [];
+  let previous = -1;
+  for (let slot = 0; slot < wanted; slot += 1) {
+    const index = Math.round((slot * (dates.length - 1)) / (wanted - 1));
+    if (index !== previous) {
+      const date = dates[index];
+      if (date !== undefined) {
+        labels.push(date);
+      }
+      previous = index;
+    }
+  }
+  return labels;
+}
+
+/**
+ * A date bucket on the x axis: `3/10` in both locales. The bucket is a UTC
+ * date, so it is formatted in UTC — a local timezone must not shift it to the
+ * day before.
+ */
+export function formatTrendAxisDate(date: string, locale: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!match) {
+    return date;
+  }
+  const [, year, month, day] = match;
+  return new Intl.DateTimeFormat(locale, {
+    month: "numeric",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+}
+
+/** A count-axis tick: exact while small, compact once it would crowd the gutter. */
+export function formatAxisCount(value: number, locale: string): string {
+  return new Intl.NumberFormat(locale, {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value);
 }
 
 // ---- summary numbers ----

@@ -87,6 +87,7 @@
             :value="issueCount"
             :hint="issueHint"
             :icon="CircleAlert"
+            :tone="issueTone"
             :to="{ name: 'DataQualityIssues' }"
           />
           <StatCard
@@ -94,6 +95,7 @@
             :value="overview.failingRuleCount"
             :hint="failingHint"
             :icon="TriangleAlert"
+            :tone="failingTone"
             :to="{ name: 'DataQualityExecutions' }"
           />
           <StatCard
@@ -115,22 +117,31 @@
                 {{ t("dataQuality.overview.trendDescription") }}
               </CardDescription>
             </div>
-            <div class="flex shrink-0 gap-1">
-              <Button
+            <div
+              class="flex shrink-0 items-center gap-0.5 rounded-lg bg-muted p-0.5"
+              role="group"
+              :aria-label="t('dataQuality.overview.trendTitle')"
+            >
+              <button
                 v-for="option in TREND_WINDOWS"
                 :key="option"
-                size="sm"
-                :variant="windowDays === option ? 'secondary' : 'outline'"
+                type="button"
+                class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:outline-none"
+                :class="
+                  windowDays === option
+                    ? 'bg-card text-foreground shadow-e1'
+                    : 'text-muted-foreground hover:text-foreground'
+                "
                 :aria-pressed="windowDays === option"
                 @click="selectWindow(option)"
               >
                 {{ t("dataQuality.overview.windowDays", { days: option }) }}
-              </Button>
+              </button>
             </div>
           </CardHeader>
-          <CardContent class="pt-6">
+          <CardContent class="pt-4">
             <div v-if="trendLoading">
-              <div class="h-48 animate-pulse rounded-md bg-muted/40" />
+              <div class="h-56 animate-pulse rounded-md bg-muted/40" />
             </div>
             <EmptyState
               v-else-if="!hasTrendData(trend)"
@@ -141,9 +152,16 @@
             />
             <template v-else>
               <QualityTrendChart :days="trend" />
-              <p class="mt-3 text-xs text-muted-foreground">
-                {{ t("dataQuality.overview.failureRate", { percent: trendFailurePercent(trend) }) }}
-              </p>
+              <div
+                class="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t pt-3 text-xs text-muted-foreground"
+              >
+                <span>
+                  {{ t("dataQuality.overview.failureRate", { percent: trendFailurePercent(trend) }) }}
+                </span>
+                <span class="tabular-nums">
+                  {{ t("dataQuality.overview.trendWindowTotal", { total: windowTotal }) }}
+                </span>
+              </div>
             </template>
           </CardContent>
         </Card>
@@ -179,12 +197,12 @@
               />
               <ul
                 v-else
-                class="divide-y"
+                class="-mx-2 divide-y divide-border/60"
               >
                 <li
                   v-for="failure in recentFailures"
                   :key="failure.name"
-                  class="flex items-center justify-between gap-3 py-2.5"
+                  class="flex items-center justify-between gap-3 rounded-md px-2 py-2.5 transition-colors hover:bg-muted/40"
                 >
                   <div class="min-w-0">
                     <RouterLink
@@ -258,12 +276,12 @@
               />
               <ul
                 v-else
-                class="divide-y"
+                class="-mx-2 divide-y divide-border/60"
               >
                 <li
                   v-for="issue in openIssues"
                   :key="issue.name"
-                  class="flex items-center justify-between gap-3 py-2.5"
+                  class="flex items-center justify-between gap-3 rounded-md px-2 py-2.5 transition-colors hover:bg-muted/40"
                 >
                   <div class="min-w-0">
                     <RouterLink
@@ -337,7 +355,7 @@ import {
 } from "@/api/data-quality";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
-import StatCard from "@/components/common/StatCard.vue";
+import StatCard, { type StatCardTone } from "@/components/common/StatCard.vue";
 import QualityTrendChart from "@/components/data-quality/QualityTrendChart.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
@@ -424,7 +442,21 @@ const trend = computed(() =>
   normalizeTrend(overview.value.trend, windowDays.value)
 );
 
+const windowTotal = computed(() =>
+  trend.value.reduce((sum, day) => sum + day.total, 0)
+);
+
 const issueCount = computed(() => openIssueCount(overview.value));
+
+// The tile turns semantic only while it has something to say: a red icon next
+// to a zero reads as an alarm about nothing.
+const issueTone = computed<StatCardTone>(() =>
+  issueCount.value > 0 ? "warning" : "primary"
+);
+
+const failingTone = computed<StatCardTone>(() =>
+  overview.value.failingRuleCount > 0 ? "danger" : "primary"
+);
 
 const issueHint = computed(() => {
   const parts = issueSeverityParts(overview.value);
@@ -448,6 +480,7 @@ const executionsHint = computed(() => {
   const counts = overview.value.lastDayCounts;
   return t("dataQuality.overview.executionsHint", {
     pass: counts?.pass ?? 0,
+    warn: counts?.warn ?? 0,
     fail: counts?.fail ?? 0,
   });
 });

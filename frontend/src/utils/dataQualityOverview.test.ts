@@ -9,7 +9,9 @@ import {
   clampTrendDays,
   DEFAULT_TREND_WINDOW,
   failurePercent,
+  formatAxisCount,
   formatPercent,
+  formatTrendAxisDate,
   hasTrendData,
   issueSeverityParts,
   MAX_TREND_DAYS,
@@ -173,6 +175,44 @@ describe("stacked-bar geometry", () => {
     ]);
   });
 
+  it("caps a bar's width on a wide chart and centres it in its slot", () => {
+    const days = Array.from({ length: 7 }, (_, index) =>
+      day({ date: `2026-03-0${index + 1}`, pass: 1, total: 1 })
+    );
+    const geometry = buildTrendGeometry(days, { width: 1000 });
+    const bar = geometry.bars[0];
+    expect(bar?.slotX).toBe(44);
+    expect(bar?.slotWidth).toBeCloseTo(134.857, 2);
+    expect(bar?.width).toBe(72);
+    expect(bar?.x).toBeCloseTo(44 + (134.857 - 72) / 2, 2);
+  });
+
+  it("marks the top of each stack, and the baseline for an empty day", () => {
+    const geometry = buildTrendGeometry(
+      [
+        day({ date: "2026-03-09", pass: 2, warn: 1, total: 3 }),
+        day({ date: "2026-03-10" }),
+      ],
+      options
+    );
+    const filled = geometry.bars[0];
+    const topSegment = filled?.segments[filled.segments.length - 1];
+    expect(filled?.top).toBe(topSegment?.y);
+    expect(filled?.top).toBeLessThan(geometry.baseline);
+    expect(geometry.bars[1]?.top).toBe(geometry.baseline);
+  });
+
+  it("aims the axis at the requested tick count", () => {
+    const geometry = buildTrendGeometry(
+      [day({ date: "2026-03-09", pass: 22, total: 22 })],
+      { ...options, tickCount: 5 }
+    );
+    expect(geometry.maxValue).toBe(25);
+    expect(geometry.ticks.map((tick) => tick.value)).toEqual([
+      0, 5, 10, 15, 20, 25,
+    ]);
+  });
+
   it("names the first, middle and last day", () => {
     expect(trendDateLabels([])).toEqual([]);
     expect(trendDateLabels(["2026-03-09"])).toEqual(["2026-03-09"]);
@@ -185,6 +225,31 @@ describe("stacked-bar geometry", () => {
       "d",
       "g",
     ]);
+  });
+
+  it("shows more labels when the axis asks for room", () => {
+    const week = ["a", "b", "c", "d", "e", "f", "g"];
+    expect(trendDateLabels(week, 7)).toEqual(week);
+    const month = Array.from({ length: 30 }, (_, index) => `d${index}`);
+    const labels = trendDateLabels(month, 7);
+    expect(labels).toHaveLength(7);
+    expect(labels[0]).toBe("d0");
+    expect(labels[6]).toBe("d29");
+    expect(new Set(labels).size).toBe(labels.length);
+    // Asking for fewer slots than two still keeps both ends.
+    expect(trendDateLabels(week, 1)).toEqual(["a", "g"]);
+  });
+
+  it("formats an axis bucket without a timezone shift", () => {
+    expect(formatTrendAxisDate("2026-03-10", "en-US")).toBe("3/10");
+    expect(formatTrendAxisDate("2026-03-10", "zh-CN")).toBe("3/10");
+    expect(formatTrendAxisDate("not-a-date", "en-US")).toBe("not-a-date");
+  });
+
+  it("compacts large axis counts", () => {
+    expect(formatAxisCount(12, "en-US")).toBe("12");
+    expect(formatAxisCount(1200, "en-US")).toBe("1.2K");
+    expect(formatAxisCount(0, "en-US")).toBe("0");
   });
 });
 

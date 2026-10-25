@@ -1,3 +1,13 @@
+<script lang="ts">
+/** The semantic tone of the icon tile. `primary` is the resting accent. */
+export type StatCardTone =
+  | "primary"
+  | "success"
+  | "warning"
+  | "danger"
+  | "info";
+</script>
+
 <template>
   <component
     :is="to ? RouterLink : 'div'"
@@ -20,14 +30,14 @@
           </p>
           <p
             v-if="hint"
-            class="mt-1 truncate text-xs text-muted-foreground"
+            class="mt-1 text-[11px] leading-snug text-muted-foreground"
           >
             {{ hint }}
           </p>
         </div>
         <span
           v-if="icon"
-          class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary-subtle text-primary-subtle-foreground"
+          :class="['grid h-9 w-9 shrink-0 place-items-center rounded-lg', TONE_CLASS[tone]]"
         >
           <component
             :is="icon"
@@ -56,9 +66,19 @@ withDefaults(
     /** A second line of context under the number. */
     hint?: string;
     icon?: Component;
+    /** Colours the icon tile; only a card with something wrong uses a warm tone. */
+    tone?: StatCardTone;
     /** Turns the card into a link with the matching hover affordance. */
     to?: RouteLocationRaw;
   }>(),
-  { hint: "", icon: undefined, to: undefined }
+  { hint: "", icon: undefined, tone: "primary", to: undefined }
 );
+
+const TONE_CLASS: Record<StatCardTone, string> = {
+  primary: "bg-primary-subtle text-primary-subtle-foreground",
+  success: "bg-success-subtle text-success",
+  warning: "bg-warning-subtle text-warning",
+  danger: "bg-danger-subtle text-danger",
+  info: "bg-info-subtle text-info",
+};
 </script>
