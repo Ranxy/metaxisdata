@@ -94,11 +94,12 @@ const ROUTES = [
     tableTopMaxY: 200,
   },
   { path: "/data-quality/issues", name: "data quality issues", tableTopMaxY: 240 },
-  // The suggestion center carries the AI drafting jobs summary above the
-  // queue. It is data, not chrome, and starts collapsed to one summary line
-  // (measured ~274 with a populated history); a submission expands it, which
-  // this audit never does.
-  { path: "/data-quality/suggestions", name: "data quality suggestions", tableTopMaxY: 300 },
+  // The suggestion center carries the AI drafting job status strip above the
+  // queue. The strip is a fixed two-row block (summary + the one live/recent
+  // job) that never grows with the job history; the old collapsed header
+  // measured ~274, and the always-visible live-job line adds the rest of this
+  // budget. The history drawer is a dialog and stays closed during the audit.
+  { path: "/data-quality/suggestions", name: "data quality suggestions", tableTopMaxY: 320 },
   { path: "/data-quality/rules/new", name: "data quality rule editor" },
 ];
 
