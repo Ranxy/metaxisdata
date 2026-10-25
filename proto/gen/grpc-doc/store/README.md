@@ -451,7 +451,8 @@ they are stored, so a wide text column cannot bloat the result row.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | column | [string](#string) |  |  |
-| value | [string](#string) |  |  |
+| value | [string](#string) |  | The value rendered as display text. Empty for a SQL NULL and for an empty string; is_null tells the two apart. |
+| is_null | [bool](#bool) | optional | Whether the value was SQL NULL. A sample recorded before this field existed has no marker, and its NULLs are indistinguishable from empty strings. |
 
 
 

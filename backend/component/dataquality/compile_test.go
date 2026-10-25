@@ -51,6 +51,7 @@ func compileTestTarget(engine storepb.Engine) ResolvedTarget {
 			{Name: "updated_at", Type: "datetime", Kind: ColumnKindTemporal},
 			{Name: "name", Type: "varchar(100)", Kind: ColumnKindString},
 		},
+		KeyColumns: []string{"id"},
 	}
 }
 

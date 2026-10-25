@@ -112,6 +112,27 @@ func sampleSelect(dialect Dialect, names []string) string {
 	return strings.Join(quoted, ", ")
 }
 
+// sampleColumns builds the select list of a failed-row sample: the target's
+// primary-key columns first, so the sampled row can be identified, then the
+// columns that explain the failure. Duplicates are dropped because a checked
+// column can be part of the key. The comparison is exact on purpose: both lists
+// carry the registry's spelling, and PostgreSQL can hold two columns whose names
+// differ only by case.
+func sampleColumns(target ResolvedTarget, checked ...string) []string {
+	names := make([]string, 0, len(target.KeyColumns)+len(checked))
+	seen := make(map[string]struct{}, len(target.KeyColumns)+len(checked))
+	for _, group := range [][]string{target.KeyColumns, checked} {
+		for _, name := range group {
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
 // sampleLimitClause appends the row bound. T-SQL only accepts OFFSET/FETCH after
 // an ORDER BY, and the sample has no natural order, so a constant ordering is
 // emitted there; the other engines take a plain LIMIT.
@@ -168,10 +189,11 @@ func sampleNullPercent(input CompileInput, limit int) (CompiledQuery, error) {
 		}
 		condition = qualified + " IS NULL OR " + qualified + " IN (" + strings.Join(placeholders, ", ") + ")"
 	}
+	columns := sampleColumns(input.Target, column.Name)
 	return sampleQuery(input,
-		"SELECT "+sampleSelect(input.Dialect, []string{column.Name})+" FROM "+table+
+		"SELECT "+sampleSelect(input.Dialect, columns)+" FROM "+table+
 			compileAppendWhere(where, "("+condition+")"),
-		args.values, []string{column.Name}, limit), nil
+		args.values, columns, limit), nil
 }
 
 // sampleAcceptedValues selects the rows whose value is outside the accepted set.
@@ -205,10 +227,11 @@ func sampleAcceptedValues(input CompileInput, limit int) (CompiledQuery, error) 
 	if !config.GetAllowNull() {
 		condition = qualified + " IS NULL OR " + condition
 	}
+	columns := sampleColumns(input.Target, column.Name)
 	return sampleQuery(input,
-		"SELECT "+sampleSelect(input.Dialect, []string{column.Name})+" FROM "+table+
+		"SELECT "+sampleSelect(input.Dialect, columns)+" FROM "+table+
 			compileAppendWhere(where, "("+condition+")"),
-		args.values, []string{column.Name}, limit), nil
+		args.values, columns, limit), nil
 }
 
 // sampleRange selects the rows outside the configured interval.
@@ -251,10 +274,11 @@ func sampleRange(input CompileInput, limit int) (CompiledQuery, error) {
 		}
 		conditions = append(conditions, qualified+" "+operator+" "+args.add(value))
 	}
+	columns := sampleColumns(input.Target, column.Name)
 	return sampleQuery(input,
-		"SELECT "+sampleSelect(input.Dialect, []string{column.Name})+" FROM "+table+
+		"SELECT "+sampleSelect(input.Dialect, columns)+" FROM "+table+
 			compileAppendWhere(where, "("+strings.Join(conditions, " OR ")+")"),
-		args.values, []string{column.Name}, limit), nil
+		args.values, columns, limit), nil
 }
 
 // sampleRegex selects the rows whose value does not match the pattern. A NULL
@@ -280,10 +304,11 @@ func sampleRegex(input CompileInput, limit int) (CompiledQuery, error) {
 	args := newSampleArgs(input.Dialect, filterArgs)
 	qualified := qualify(input.Dialect, column.Name)
 	condition := qualified + " IS NULL OR " + qualified + " " + operator + " " + args.add(strings.TrimSpace(config.GetPattern()))
+	columns := sampleColumns(input.Target, column.Name)
 	return sampleQuery(input,
-		"SELECT "+sampleSelect(input.Dialect, []string{column.Name})+" FROM "+table+
+		"SELECT "+sampleSelect(input.Dialect, columns)+" FROM "+table+
 			compileAppendWhere(where, "("+condition+")"),
-		args.values, []string{column.Name}, limit), nil
+		args.values, columns, limit), nil
 }
 
 // sampleStringLength selects the rows whose text length is outside the bounds.
@@ -310,10 +335,11 @@ func sampleStringLength(input CompileInput, limit int) (CompiledQuery, error) {
 	if config.MaxLen != nil {
 		conditions = append(conditions, length+" > "+args.add(*config.MaxLen))
 	}
+	columns := sampleColumns(input.Target, column.Name)
 	return sampleQuery(input,
-		"SELECT "+sampleSelect(input.Dialect, []string{column.Name})+" FROM "+table+
+		"SELECT "+sampleSelect(input.Dialect, columns)+" FROM "+table+
 			compileAppendWhere(where, "("+strings.Join(conditions, " OR ")+")"),
-		args.values, []string{column.Name}, limit), nil
+		args.values, columns, limit), nil
 }
 
 // sampleReferentialIntegrity selects the child rows whose foreign-key value has
@@ -391,7 +417,7 @@ func sampleCrossColumn(input CompileInput, limit int) (CompiledQuery, error) {
 	if err != nil {
 		return CompiledQuery{}, err
 	}
-	columns := []string{left.Name, right.Name}
+	columns := sampleColumns(input.Target, left.Name, right.Name)
 	return sampleQuery(input,
 		"SELECT "+sampleSelect(input.Dialect, columns)+" FROM "+table+
 			compileAppendWhere(where, "("+condition+")"),

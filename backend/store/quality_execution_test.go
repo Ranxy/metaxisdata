@@ -10,6 +10,7 @@ import (
 
 	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -151,7 +152,7 @@ func TestScanQualityExecutionReadsEveryColumn(t *testing.T) {
 		sampled:            true,
 		sampleRows:         500,
 		truncated:          true,
-		sample:             []byte(`{"samples": [{"columns": [{"column": "id", "value": "7"}]}]}`),
+		sample:             []byte(`{"samples": [{"columns": [{"column": "id", "value": "7", "isNull": false}, {"column": "note", "isNull": true}, {"column": "legacy"}]}]}`),
 		executedSQL:        "SELECT COUNT(*) FROM t WHERE t.id IS NULL",
 		errorCode:          "BAD_DATA",
 		errorMessage:       "unexpected value",
@@ -192,8 +193,13 @@ func TestScanQualityExecutionReadsEveryColumn(t *testing.T) {
 	require.Equal(t, int64(500), execution.SampleRows)
 	require.True(t, execution.Truncated)
 	require.Len(t, execution.Sample.GetSamples(), 1)
+	require.Len(t, execution.Sample.GetSamples()[0].GetColumns(), 3)
 	require.Equal(t, "id", execution.Sample.GetSamples()[0].GetColumns()[0].GetColumn())
 	require.Equal(t, "7", execution.Sample.GetSamples()[0].GetColumns()[0].GetValue())
+	require.False(t, execution.Sample.GetSamples()[0].GetColumns()[0].GetIsNull())
+	require.NotNil(t, execution.Sample.GetSamples()[0].GetColumns()[0].IsNull, "an explicit false marker survives JSONB")
+	require.True(t, execution.Sample.GetSamples()[0].GetColumns()[1].GetIsNull(), "a stored NULL keeps its marker")
+	require.Nil(t, execution.Sample.GetSamples()[0].GetColumns()[2].IsNull, "a legacy row has no marker, which is not the same as false")
 	require.Equal(t, "SELECT COUNT(*) FROM t WHERE t.id IS NULL", execution.ExecutedSQL)
 	require.Equal(t, "BAD_DATA", execution.ErrorCode)
 	require.Equal(t, "unexpected value", execution.ErrorMessage)
@@ -480,4 +486,31 @@ func TestQualityExecutionBaselineQueriesReadOnlyCompletedRows(t *testing.T) {
 	require.Contains(t, qualityExecutionLatestStatement, "state = $2")
 	require.Contains(t, qualityExecutionLatestStatement, "DISTINCT ON (rule_id)")
 	require.Contains(t, qualityExecutionLatestStatement, "ORDER BY rule_id, started_at DESC, id DESC")
+}
+
+// Protojson has to keep the optional null marker's three states in JSONB: absent
+// (a sample recorded before the marker existed), an explicit false (the value was
+// an empty string) and an explicit true (the value was SQL NULL). Losing the
+// explicit false would make a new empty string read as "unknown".
+func TestQualityExecutionSampleKeepsTheNullMarker(t *testing.T) {
+	t.Parallel()
+
+	samples := &storepb.QualityFailureSamples{Samples: []*storepb.FailureSample{{Columns: []*storepb.ColumnValue{
+		{Column: "legacy"},
+		{Column: "blank", IsNull: proto.Bool(false)},
+		{Column: "missing", IsNull: proto.Bool(true)},
+	}}}}
+	raw, err := marshalQualityProto(samples)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"isNull":false`)
+	require.Contains(t, string(raw), `"isNull":true`)
+
+	decoded := &storepb.QualityFailureSamples{}
+	require.NoError(t, unmarshalQualityProto(raw, decoded))
+	columns := decoded.GetSamples()[0].GetColumns()
+	require.Nil(t, columns[0].IsNull, "an absent marker stays absent")
+	require.NotNil(t, columns[1].IsNull)
+	require.False(t, *columns[1].IsNull)
+	require.NotNil(t, columns[2].IsNull)
+	require.True(t, *columns[2].IsNull)
 }

@@ -263,10 +263,16 @@ func convertQualityFailureSamplesToV1(samples *storepb.QualityFailureSamples) []
 			if value == nil {
 				continue
 			}
-			row.Columns = append(row.Columns, &v1pb.ColumnValue{
+			cell := &v1pb.ColumnValue{
 				Column: value.GetColumn(),
 				Value:  value.GetValue(),
-			})
+			}
+			// Preserve the absence of the marker: a sample recorded before it
+			// existed must not claim the value was not NULL.
+			if value.IsNull != nil {
+				cell.IsNull = proto.Bool(*value.IsNull)
+			}
+			row.Columns = append(row.Columns, cell)
 		}
 		converted = append(converted, row)
 	}

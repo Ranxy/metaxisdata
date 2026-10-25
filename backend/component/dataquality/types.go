@@ -152,6 +152,10 @@ type ResolvedTarget struct {
 	Table string
 	// Columns are the relation's columns in registry order.
 	Columns []ColumnInfo
+	// KeyColumns are the primary-key columns in key order, as far as the registry
+	// records them. A failure sample selects them first so a sampled row can be
+	// identified; it is empty when the engine or the sync did not record a key.
+	KeyColumns []string
 	// MetaHash is the registry hash of the target when it was read.
 	MetaHash []byte
 }

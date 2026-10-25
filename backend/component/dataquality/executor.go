@@ -139,28 +139,47 @@ func addSamples(ctx context.Context, queryer db.ReadOnlyQueryer, input CompileIn
 	if sample.SQL == "" || execution.Observation.FailedRows <= 0 {
 		return nil
 	}
-	sampleResult, err := queryer.QueryReadOnly(ctx, sample.SQL, sample.Args, db.QueryOptions{
-		MaxRows:  sampleLimit,
+	sampleResult, err := queryer.QueryReadOnly(ctx, sample.SQL, sample.Args, sampleQueryOptions(opts, sampleLimit, m))
+	if err != nil && ctx.Err() == nil && len(input.Target.KeyColumns) > 0 {
+		// The key columns only identify the row, and they can make the sample fail
+		// where the checked columns alone would not: the registry may be stale about
+		// the key, or the read-only account may not be granted it. Retry once
+		// without them rather than lose the evidence entirely — but not after a
+		// timeout, where a retry would spend the query budget twice for the same
+		// slow statement.
+		if code, _ := ClassifyError(err); code != ErrCodeTimeout {
+			fallbackInput := input
+			fallbackInput.Target.KeyColumns = nil
+			fallback, compileErr := CompileFailureRows(fallbackInput, sampleLimit)
+			if compileErr == nil && fallback.SQL != "" {
+				sampleResult, err = queryer.QueryReadOnly(ctx, fallback.SQL, fallback.Args, sampleQueryOptions(opts, sampleLimit, m))
+			}
+		}
+	}
+	if err != nil {
+		// A failed sample is context, not the verdict: the observation stands. The
+		// exception is cancellation, which is the caller asking to stop.
+		return ctx.Err()
+	}
+	execution.Samples = SamplesFromRows(sampleResult.Columns, sampleResult.Rows, sampleLimit)
+	if execution.Samples != nil {
+		execution.Observation.SampleRows = int64(len(execution.Samples.GetSamples()))
+	}
+	execution.Truncated = execution.Truncated || sampleResult.Truncated
+	execution.Observation.Truncated = execution.Truncated
+	return nil
+}
+
+// sampleQueryOptions bounds the failed-row sample query: the sample limit rows,
+// the execution's byte and time budget, and its own query purpose.
+func sampleQueryOptions(opts ExecOptions, limit int, m *metrics.Metrics) db.QueryOptions {
+	return db.QueryOptions{
+		MaxRows:  limit,
 		MaxBytes: opts.MaxBytes,
 		Timeout:  opts.QueryTimeout,
 		Purpose:  metrics.QueryPurposeRuleSample,
 		Metrics:  m,
-	})
-	if err != nil {
-		// A failed sample is context, not the verdict: the observation stands. The
-		// exception is cancellation, which is the caller asking to stop.
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return ctxErr
-		}
-	} else {
-		execution.Samples = SamplesFromRows(sampleResult.Columns, sampleResult.Rows, sampleLimit)
-		if execution.Samples != nil {
-			execution.Observation.SampleRows = int64(len(execution.Samples.GetSamples()))
-		}
-		execution.Truncated = execution.Truncated || sampleResult.Truncated
-		execution.Observation.Truncated = execution.Truncated
 	}
-	return nil
 }
 
 // executeCELRule runs one CEL predicate over a bounded sample of the target's

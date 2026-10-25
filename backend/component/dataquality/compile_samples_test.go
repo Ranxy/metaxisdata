@@ -59,20 +59,24 @@ func expectSampleLimit(engine storepb.Engine, limit int) string {
 }
 
 // sampleColumnsFor is the result shape the executor expects back from each rule
-// type's sample statement.
+// type's sample statement. A column-checked sample leads with the target's
+// primary key, because the key is what identifies the failed row; a grouped
+// sample returns only the grouped columns.
 func sampleColumnsFor(t *testing.T, name string) []string {
 	t.Helper()
 	switch name {
-	case "null_percent", "unique", "string_length":
+	case "null_percent", "string_length":
+		return []string{"id", "email"}
+	case "unique":
 		return []string{"email"}
 	case "unique_combination":
 		return []string{"amount", "status"}
 	case "accepted_values":
-		return []string{"status"}
+		return []string{"id", "status"}
 	case "range":
-		return []string{"amount"}
+		return []string{"id", "amount"}
 	case "cross_column":
-		return []string{"qty", "amount"}
+		return []string{"id", "qty", "amount"}
 	case "referential_integrity":
 		return compileTestTarget(storepb.Engine_MYSQL).ColumnNames()
 	case "custom_sql":
@@ -142,6 +146,42 @@ func TestCompileFailureRowsCoversEveryRuleType(t *testing.T) {
 	}
 }
 
+// TestCompileFailureRowsWithoutKeyColumns keeps the sample shape independent of
+// whether the registry knows a primary key: without one the checked columns are
+// all there is, and a checked column that is part of the key is not repeated.
+func TestCompileFailureRowsWithoutKeyColumns(t *testing.T) {
+	t.Parallel()
+
+	dialect := mustDialect(t, storepb.Engine_MYSQL)
+	target := compileTestTarget(storepb.Engine_MYSQL)
+	target.KeyColumns = nil
+	config := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_NullPercent{
+		NullPercent: &storepb.NullPercentConfig{Column: "id", MaxNullPct: proto.Float64(5)},
+	}}
+	query, err := CompileFailureRows(CompileInput{
+		Dialect: dialect,
+		Target:  target,
+		Type:    storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+		Config:  config,
+	}, 20)
+	require.NoError(t, err)
+	require.Equal(t, []string{"id"}, query.Columns)
+	require.Equal(t, "SELECT `id` FROM `shop`.`orders` WHERE (`id` IS NULL) LIMIT 20", query.SQL)
+
+	// With the key known it leads the sample in key order, and the checked column
+	// is not repeated just because it is also part of the key.
+	target.KeyColumns = []string{"id", "email"}
+	query, err = CompileFailureRows(CompileInput{
+		Dialect: dialect,
+		Target:  target,
+		Type:    storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+		Config:  config,
+	}, 20)
+	require.NoError(t, err)
+	require.Equal(t, []string{"id", "email"}, query.Columns)
+	require.Equal(t, "SELECT `id`, `email` FROM `shop`.`orders` WHERE (`id` IS NULL) LIMIT 20", query.SQL)
+}
+
 // TestCompileFailureRowsShapes pins the complete SQL of the representative rule
 // types, so a predicate change fails here instead of being mirrored by the test.
 func TestCompileFailureRowsShapes(t *testing.T) {
@@ -162,19 +202,19 @@ func TestCompileFailureRowsShapes(t *testing.T) {
 			name:   "null percent mysql",
 			golden: goldens["null_percent"],
 			engine: storepb.Engine_MYSQL,
-			want:   "SELECT `email` FROM `shop`.`orders` WHERE (`email` IS NULL) LIMIT 20",
+			want:   "SELECT `id`, `email` FROM `shop`.`orders` WHERE (`email` IS NULL) LIMIT 20",
 		},
 		{
 			name:   "null percent postgres",
 			golden: goldens["null_percent"],
 			engine: storepb.Engine_POSTGRES,
-			want:   `SELECT "email" FROM "public"."orders" WHERE ("email" IS NULL) LIMIT 20`,
+			want:   `SELECT "id", "email" FROM "public"."orders" WHERE ("email" IS NULL) LIMIT 20`,
 		},
 		{
 			name:   "null percent sql server",
 			golden: goldens["null_percent"],
 			engine: storepb.Engine_MSSQL,
-			want: "SELECT [email] FROM [public].[orders] WHERE ([email] IS NULL) " +
+			want: "SELECT [id], [email] FROM [public].[orders] WHERE ([email] IS NULL) " +
 				"ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 20 ROWS ONLY",
 		},
 		{
@@ -188,21 +228,21 @@ func TestCompileFailureRowsShapes(t *testing.T) {
 			name:   "accepted values",
 			golden: goldens["accepted_values"],
 			engine: storepb.Engine_MYSQL,
-			want: "SELECT `status` FROM `shop`.`orders` " +
+			want: "SELECT `id`, `status` FROM `shop`.`orders` " +
 				"WHERE (`status` IS NULL OR `status` NOT IN (?, ?)) LIMIT 20",
 		},
 		{
 			name:   "regex postgres",
 			golden: compileRegexGolden(),
 			engine: storepb.Engine_POSTGRES,
-			want: `SELECT "email" FROM "public"."orders" ` +
+			want: `SELECT "id", "email" FROM "public"."orders" ` +
 				`WHERE ("email" IS NULL OR "email" !~ $1) LIMIT 20`,
 		},
 		{
 			name:   "cross column",
 			golden: goldens["cross_column"],
 			engine: storepb.Engine_MYSQL,
-			want: "SELECT `qty`, `amount` FROM `shop`.`orders` " +
+			want: "SELECT `id`, `qty`, `amount` FROM `shop`.`orders` " +
 				"WHERE (NOT (`qty` >= `amount`)) LIMIT 20",
 		},
 		{
@@ -301,7 +341,7 @@ func TestCompileFailureRowsAppliesTheFilterFirst(t *testing.T) {
 	query, err := CompileFailureRows(input, 5)
 	require.NoError(t, err)
 	require.Equal(t,
-		"SELECT `status` FROM `shop`.`orders` WHERE `status` = ? "+
+		"SELECT `id`, `status` FROM `shop`.`orders` WHERE `status` = ? "+
 			"AND (`status` IS NULL OR `status` NOT IN (?, ?)) LIMIT 5",
 		query.SQL)
 	require.Equal(t, []any{"paid", "paid", "open"}, query.Args)
@@ -312,7 +352,7 @@ func TestCompileFailureRowsAppliesTheFilterFirst(t *testing.T) {
 	query, err = CompileFailureRows(postgresInput, 5)
 	require.NoError(t, err)
 	require.Equal(t,
-		`SELECT "status" FROM "public"."orders" WHERE "status" = $1 `+
+		`SELECT "id", "status" FROM "public"."orders" WHERE "status" = $1 `+
 			`AND ("status" IS NULL OR "status" NOT IN ($2, $3)) LIMIT 5`,
 		query.SQL)
 	require.Equal(t, []any{"paid", "paid", "open"}, query.Args)

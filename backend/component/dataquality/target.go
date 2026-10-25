@@ -2,6 +2,7 @@ package dataquality
 
 import (
 	"context"
+	"strings"
 
 	"github.com/pkg/errors"
 
@@ -120,6 +121,7 @@ func ResolveTarget(ctx context.Context, s *store.Store, guid string, metaType st
 		Schema:             schemaName,
 		Table:              objectName,
 		Columns:            columns,
+		KeyColumns:         primaryKeyColumns(resource.Metadata, metaType, columns),
 		MetaHash:           resource.MetaHash,
 	}
 	return &Resolution{Target: target, Instance: instance, Database: database, Metadata: resource.Metadata}, nil
@@ -156,6 +158,83 @@ func metadataColumns(metadata *storepb.StoredMetadata, metaType storepb.MetaType
 		})
 	}
 	return columns, nil
+}
+
+// primaryKeyColumns returns the primary-key columns of a registered relation in
+// key order, spelled the way the registry spells its columns. Only an index key
+// that names a plain column counts: a functional key has no column to select.
+// The failure sample uses the key to identify a sampled row; a relation whose
+// sync recorded no primary key returns nil, and the sample keeps the checked
+// columns only.
+func primaryKeyColumns(metadata *storepb.StoredMetadata, metaType storepb.MetaType, columns []ColumnInfo) []string {
+	var indexes []*storepb.IndexMetadata
+	switch metaType {
+	case storepb.MetaType_TABLE:
+		indexes = metadata.GetTableMetadata().GetIndexes()
+	case storepb.MetaType_EXTERNAL_TABLE:
+		// A foreign table's sync records no indexes, so it has no key to add.
+		return nil
+	case storepb.MetaType_VIEW, storepb.MetaType_MATERIALIZED_VIEW:
+		// A view is restricted to table-level rules; the one that samples (custom
+		// SQL) returns the rows of its own statement, so it has no key of ours.
+		return nil
+	default:
+		return nil
+	}
+	for _, index := range indexes {
+		if index == nil || !index.GetPrimary() {
+			continue
+		}
+		keys := make([]string, 0, len(index.GetExpressions()))
+		for _, expression := range index.GetExpressions() {
+			name, ok := indexColumnName(expression)
+			if !ok {
+				continue
+			}
+			for _, column := range columns {
+				if column.Name == name {
+					keys = append(keys, column.Name)
+					break
+				}
+			}
+		}
+		if len(keys) > 0 {
+			return keys
+		}
+		return nil
+	}
+	return nil
+}
+
+// indexColumnName reduces one index key expression to the column it names. The
+// engines print a key differently: PostgreSQL prints it the way it must be
+// written, so a mixed-case or reserved word arrives quoted ("TeamID", "order")
+// and a descending key gets a DESC suffix; MySQL and SQL Server record the bare
+// catalog name, so accepting backticks and brackets there is defensive. A
+// functional key such as lower(email) or a key with a non-default collation or
+// operator class names no single column and is skipped rather than guessed at.
+func indexColumnName(expression string) (string, bool) {
+	name := strings.TrimSpace(expression)
+	for _, suffix := range []string{" desc", " asc"} {
+		if len(name) >= len(suffix) && strings.EqualFold(name[len(name)-len(suffix):], suffix) {
+			name = strings.TrimSpace(name[:len(name)-len(suffix)])
+			break
+		}
+	}
+	if len(name) >= 2 {
+		switch {
+		case name[0] == '"' && name[len(name)-1] == '"':
+			return strings.ReplaceAll(name[1:len(name)-1], `""`, `"`), true
+		case name[0] == '`' && name[len(name)-1] == '`':
+			return strings.ReplaceAll(name[1:len(name)-1], "``", "`"), true
+		case name[0] == '[' && name[len(name)-1] == ']':
+			return strings.ReplaceAll(name[1:len(name)-1], "]]", "]"), true
+		}
+	}
+	if name == "" || strings.ContainsAny(name, " \t()\"'`[]") {
+		return "", false
+	}
+	return name, true
 }
 
 // RequireTarget verifies the rule type may watch this object type and engine.

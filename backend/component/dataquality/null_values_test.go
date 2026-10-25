@@ -45,7 +45,7 @@ func TestNullPercentCustomValuesSQL(t *testing.T) {
 			wantSQL: "SELECT COUNT(*) AS total_rows, SUM(CASE WHEN `status` IS NULL OR `status` IN (?, ?) " +
 				"THEN 1 ELSE 0 END) AS failed_rows FROM `shop`.`orders`",
 			wantArgs: []any{"", "N/A"},
-			wantSample: "SELECT `status` FROM `shop`.`orders` " +
+			wantSample: "SELECT `id`, `status` FROM `shop`.`orders` " +
 				"WHERE (`status` IS NULL OR `status` IN (?, ?)) LIMIT 20",
 			wantSampleAg: []any{"", "N/A"},
 		},
@@ -55,7 +55,7 @@ func TestNullPercentCustomValuesSQL(t *testing.T) {
 			wantSQL: "SELECT COUNT(*) AS total_rows, SUM(CASE WHEN `status` IS NULL OR `status` IN (?, ?) " +
 				"THEN 1 ELSE 0 END) AS failed_rows FROM `shop`.`orders`",
 			wantArgs: []any{"", "N/A"},
-			wantSample: "SELECT `status` FROM `shop`.`orders` " +
+			wantSample: "SELECT `id`, `status` FROM `shop`.`orders` " +
 				"WHERE (`status` IS NULL OR `status` IN (?, ?)) LIMIT 20",
 			wantSampleAg: []any{"", "N/A"},
 		},
@@ -65,7 +65,7 @@ func TestNullPercentCustomValuesSQL(t *testing.T) {
 			wantSQL: `SELECT COUNT(*) AS total_rows, SUM(CASE WHEN "status" IS NULL OR "status" IN ($1, $2) ` +
 				`THEN 1 ELSE 0 END) AS failed_rows FROM "public"."orders"`,
 			wantArgs: []any{"", "N/A"},
-			wantSample: `SELECT "status" FROM "public"."orders" ` +
+			wantSample: `SELECT "id", "status" FROM "public"."orders" ` +
 				`WHERE ("status" IS NULL OR "status" IN ($1, $2)) LIMIT 20`,
 			wantSampleAg: []any{"", "N/A"},
 		},
@@ -75,7 +75,7 @@ func TestNullPercentCustomValuesSQL(t *testing.T) {
 			wantSQL: "SELECT COUNT(*) AS total_rows, SUM(CASE WHEN [status] IS NULL OR [status] IN (@p1, @p2) " +
 				"THEN 1 ELSE 0 END) AS failed_rows FROM [public].[orders]",
 			wantArgs: []any{"", "N/A"},
-			wantSample: "SELECT [status] FROM [public].[orders] " +
+			wantSample: "SELECT [id], [status] FROM [public].[orders] " +
 				"WHERE ([status] IS NULL OR [status] IN (@p1, @p2)) " +
 				"ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 20 ROWS ONLY",
 			wantSampleAg: []any{"", "N/A"},
@@ -89,7 +89,7 @@ func TestNullPercentCustomValuesSQL(t *testing.T) {
 			wantSQL: "SELECT COUNT(*) AS total_rows, SUM(CASE WHEN `status` IS NULL OR `status` IN (?, ?) " +
 				"THEN 1 ELSE 0 END) AS failed_rows FROM `shop`.`orders` WHERE `status` = ?",
 			wantArgs: []any{"", "N/A", "paid"},
-			wantSample: "SELECT `status` FROM `shop`.`orders` " +
+			wantSample: "SELECT `id`, `status` FROM `shop`.`orders` " +
 				"WHERE `status` = ? AND (`status` IS NULL OR `status` IN (?, ?)) LIMIT 20",
 			wantSampleAg: []any{"paid", "", "N/A"},
 		},
@@ -102,7 +102,7 @@ func TestNullPercentCustomValuesSQL(t *testing.T) {
 			wantSQL: `SELECT COUNT(*) AS total_rows, SUM(CASE WHEN "status" IS NULL OR "status" IN ($2, $3) ` +
 				`THEN 1 ELSE 0 END) AS failed_rows FROM "public"."orders" WHERE "status" = $1`,
 			wantArgs: []any{"paid", "", "N/A"},
-			wantSample: `SELECT "status" FROM "public"."orders" ` +
+			wantSample: `SELECT "id", "status" FROM "public"."orders" ` +
 				`WHERE "status" = $1 AND ("status" IS NULL OR "status" IN ($2, $3)) LIMIT 20`,
 			wantSampleAg: []any{"paid", "", "N/A"},
 		},
@@ -113,7 +113,7 @@ func TestNullPercentCustomValuesSQL(t *testing.T) {
 			wantSQL: "SELECT COUNT(*) AS total_rows, SUM(CASE WHEN [status] IS NULL OR [status] IN (@p2, @p3) " +
 				"THEN 1 ELSE 0 END) AS failed_rows FROM [public].[orders] WHERE [status] = @p1",
 			wantArgs: []any{"paid", "", "N/A"},
-			wantSample: "SELECT [status] FROM [public].[orders] " +
+			wantSample: "SELECT [id], [status] FROM [public].[orders] " +
 				"WHERE [status] = @p1 AND ([status] IS NULL OR [status] IN (@p2, @p3)) " +
 				"ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 20 ROWS ONLY",
 			wantSampleAg: []any{"paid", "", "N/A"},
@@ -146,7 +146,7 @@ func TestNullPercentCustomValuesSQL(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, test.wantSample, sample.SQL)
 			require.Equal(t, test.wantSampleAg, sample.Args)
-			require.Equal(t, []string{"status"}, sample.Columns)
+			require.Equal(t, []string{"id", "status"}, sample.Columns)
 		})
 	}
 }

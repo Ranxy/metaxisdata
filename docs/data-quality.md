@@ -25,9 +25,11 @@ fully offline; three model-assisted features are opt-in.
    administrator or a custom role). Model-assisted paths also need `.suggest` or
    `.explain`.
 3. *(Optional)* **Turn on model assistance.** Settings → Data Quality → enable
-   *LLM analysis*, pick a provider profile, then decide whether failure samples
-   are stored and (separately) whether raw sample values may leave the
-   deployment. Everything else works with it off.
+   *LLM analysis* and pick a provider profile. The separate switches for failure
+   samples and for sending raw sample values are independent: storing samples is
+   local to the deployment, and the "send sample values" switch is reserved —
+   no model path includes raw sample rows today. Everything else works with
+   model assistance off.
 
 ## Writing a rule
 
@@ -104,10 +106,16 @@ outcome is one of six statuses:
 | `NOT_EVALUATED` | The check ran but had nothing to judge (no rows after the filter, a NULL timestamp or aggregate). |
 
 An abandoned execution has no outcome. Failed executions can be expanded for
-samples and the exact SQL; the execution detail also shows the rule revision,
-engine version, duration, trigger, instance and, for a manual run, who started
-it. Executions are the durable record: batching rules together for scheduling is
-an internal detail.
+samples and the exact SQL. For a column check on a table whose metadata records
+a primary key, each sample is a numbered failed row led by the key columns and
+then the checked column(s), so two failures on the same column do not look like
+one row repeated; a grouped check returns the grouping key instead. A sample
+recorded after this release shows SQL `NULL` and an empty string as different
+values rather than a blank cell; samples stored before it cannot tell the two
+apart and are labelled as such. The execution detail also shows the rule
+revision, engine version, duration, trigger, instance and, for a manual run, who
+started it. Executions are the durable record: batching rules together for
+scheduling is an internal detail.
 
 Every rule has its own page: open its title in Data Quality → Rules, or the rule
 name on an execution, an issue or a table's quality tab. It answers "is this rule
