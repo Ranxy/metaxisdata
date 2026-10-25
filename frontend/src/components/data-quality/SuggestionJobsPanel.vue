@@ -1,6 +1,6 @@
 <template>
   <Card v-if="jobs.length > 0 || error">
-    <CardHeader class="pb-4">
+    <CardHeader class="pt-4 pb-2">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
           <CardTitle class="text-base">
@@ -12,6 +12,12 @@
           >
             {{ panelSummary }}
           </span>
+          <Badge
+            v-if="failedCount > 0"
+            variant="danger"
+          >
+            {{ t("dataQuality.suggestions.jobs.failedCount", { count: failedCount }) }}
+          </Badge>
         </div>
         <div class="flex shrink-0 items-center gap-2">
           <p class="hidden text-xs text-muted-foreground sm:block">
@@ -20,6 +26,7 @@
           <Button
             variant="outline"
             size="sm"
+            aria-haspopup="dialog"
             @click="historyOpen = true"
           >
             <History class="mr-1.5 h-4 w-4" />
@@ -51,7 +58,6 @@
           :aria-valuenow="spotlightProgress.percent"
           aria-valuemin="0"
           aria-valuemax="100"
-          :aria-label="t('dataQuality.suggestions.jobs.progress', spotlightProgressParams)"
         >
           <div
             class="h-full rounded-full bg-primary transition-all"
@@ -75,6 +81,40 @@
         >
           {{ spotlightJob.error }}
         </span>
+        <!-- The live job is the one worth cancelling, and it may be older than
+             the drawer's first page: keep the two-step cancel on the strip. -->
+        <template v-if="spotlightActive">
+          <template v-if="cancelTarget === spotlightJob.name">
+            <span class="text-xs text-muted-foreground">
+              {{ t("dataQuality.suggestions.jobs.cancelConfirm") }}
+            </span>
+            <Button
+              variant="destructive"
+              size="sm"
+              :disabled="canceling === spotlightJob.name"
+              @click="confirmCancel(spotlightJob)"
+            >
+              {{ t("dataQuality.suggestions.jobs.cancelConfirmAction") }}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              :disabled="canceling === spotlightJob.name"
+              @click="cancelTarget = ''"
+            >
+              {{ t("dataQuality.suggestions.jobs.cancelKeep") }}
+            </Button>
+          </template>
+          <Button
+            v-else
+            variant="ghost"
+            size="sm"
+            :disabled="canceling === spotlightJob.name"
+            @click="cancelTarget = spotlightJob.name"
+          >
+            {{ t("dataQuality.suggestions.jobs.cancel") }}
+          </Button>
+        </template>
       </div>
     </CardHeader>
 
@@ -108,6 +148,7 @@ import { AlertTriangle, History } from "lucide-vue-next";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
+  cancelQualitySuggestionJob,
   getQualitySuggestionJob,
   listQualitySuggestionJobs,
 } from "@/api/data-quality";
@@ -117,6 +158,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useErrorMessage } from "@/composables/useErrorHandler";
+import { notify } from "@/lib/notify";
 import {
   type QualitySuggestionJob,
   QualitySuggestionJobStatus,
@@ -172,6 +214,8 @@ const jobs = ref<QualitySuggestionJob[]>([]);
 const error = ref("");
 const loading = ref(false);
 const historyOpen = ref(false);
+const cancelTarget = ref("");
+const canceling = ref("");
 
 /** Job names that were active in the last snapshot; transitions come from here. */
 let activeNames = new Set<string>();
@@ -199,6 +243,12 @@ const panelSummary = computed(() => {
     finished: jobs.value.length - active,
   });
 });
+/** Failures in the recent window; the one-job strip would otherwise hide them. */
+const failedCount = computed(
+  () =>
+    jobs.value.filter((job) => job.status === QualitySuggestionJobStatus.FAILED)
+      .length
+);
 
 /**
  * What the strip reports: a running job first (there is at most one), then a
@@ -384,6 +434,31 @@ async function poll() {
     return;
   }
   await loadJobs();
+}
+
+/**
+ * Cancel the job the strip is reporting. The reload turns the terminal answer
+ * into the usual active→terminal transition, so the page still refreshes its
+ * queue and the reader hears about it once.
+ */
+async function confirmCancel(job: QualitySuggestionJob) {
+  canceling.value = job.name;
+  try {
+    const canceled = await cancelQualitySuggestionJob(job.name);
+    notify.success(
+      t(
+        canceled.status === QualitySuggestionJobStatus.CANCELED
+          ? "dataQuality.suggestions.jobs.canceledToast"
+          : "dataQuality.suggestions.jobs.cancelRequested"
+      )
+    );
+    cancelTarget.value = "";
+    await loadJobs();
+  } catch (e: unknown) {
+    notify.error(formatError(e, "dataQuality.suggestions.jobs.cancelFailed"));
+  } finally {
+    canceling.value = "";
+  }
 }
 
 watch(

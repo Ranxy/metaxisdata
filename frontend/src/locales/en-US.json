@@ -1102,6 +1102,7 @@
         "emptyFiltered": "No jobs match this filter.",
         "emptyTitle": "No drafting jobs yet",
         "expand": "Show target details",
+        "failedCount": "{count} failed",
         "fetchFailed": "Failed to load the AI drafting jobs.",
         "hint": "Jobs run on the server; their suggestions enter the queue when they finish.",
         "history": "Job history",

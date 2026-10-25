@@ -2,6 +2,7 @@ import { create } from "@bufbuild/protobuf";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { notify } from "@/lib/notify";
 import { i18n } from "@/locales";
 import {
   type QualitySuggestionJob,
@@ -12,6 +13,7 @@ import {
   QualityTargetSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
+import SuggestionJobHistoryDrawer from "./SuggestionJobHistoryDrawer.vue";
 import SuggestionJobsPanel from "./SuggestionJobsPanel.vue";
 
 const mocks = vi.hoisted(() => ({
@@ -211,9 +213,16 @@ describe("SuggestionJobsPanel", () => {
         `[aria-label="${label("dataQuality.suggestions.jobs.expand")}"]`
       )
     ).toBeNull();
+    const history = buttonByText(label("dataQuality.suggestions.jobs.history"));
+    expect(history).toBeTruthy();
+    // The history entry is a dialog trigger, and the progress bar is named by
+    // the text next to it instead of repeating that text.
+    expect(history?.getAttribute("aria-haspopup")).toBe("dialog");
     expect(
-      buttonByText(label("dataQuality.suggestions.jobs.history"))
-    ).toBeTruthy();
+      document.body
+        .querySelector('[role="progressbar"]')
+        ?.getAttribute("aria-label")
+    ).toBeNull();
     wrapper.unmount();
   });
 
@@ -240,6 +249,10 @@ describe("SuggestionJobsPanel", () => {
     expect(document.body.textContent).toContain(
       "the provider rejected the prompt"
     );
+    // A failure outside the one-job spotlight still shows up in the strip.
+    expect(document.body.textContent).toContain(
+      label("dataQuality.suggestions.jobs.failedCount", { count: 1 })
+    );
     wrapper.unmount();
   });
 
@@ -262,6 +275,93 @@ describe("SuggestionJobsPanel", () => {
     expect(mocks.listQualitySuggestionJobs).toHaveBeenLastCalledWith(
       expect.objectContaining({ pageSize: 20, pageToken: "" })
     );
+    wrapper.unmount();
+  });
+
+  it("reloads the strip when the history drawer changes a job", async () => {
+    mockSnapshots({ recent: [jobFixture()] });
+    const wrapper = await mountPanel();
+    buttonByText(label("dataQuality.suggestions.jobs.history"))?.click();
+    await flushPromises();
+    const callsBeforeChange = mocks.listQualitySuggestionJobs.mock.calls.length;
+
+    wrapper.findComponent(SuggestionJobHistoryDrawer).vm.$emit("changed");
+    await flushPromises();
+
+    // The strip's summary must not keep showing the pre-cancel state.
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(
+      callsBeforeChange + 2
+    );
+    wrapper.unmount();
+  });
+
+  it("cancels the live job after a two-step confirm and refreshes", async () => {
+    const success = vi.spyOn(notify, "success");
+    mockSnapshots(
+      { recent: [jobFixture()] },
+      {
+        recent: [
+          jobFixture({
+            status: QualitySuggestionJobStatus.CANCELED,
+            completed: 2,
+            targets: [
+              targetFixture({
+                state: QualitySuggestionJobTargetState.SKIPPED,
+              }),
+              targetFixture({
+                guid: OTHER_TARGET,
+                object: "customers",
+                state: QualitySuggestionJobTargetState.SKIPPED,
+              }),
+            ],
+          }),
+        ],
+      }
+    );
+    mocks.cancelQualitySuggestionJob.mockResolvedValue(
+      jobFixture({ status: QualitySuggestionJobStatus.CANCELED })
+    );
+    const wrapper = await mountPanel();
+
+    buttonByText(label("dataQuality.suggestions.jobs.cancel"))?.click();
+    await flushPromises();
+    expect(document.body.textContent).toContain(
+      label("dataQuality.suggestions.jobs.cancelConfirm")
+    );
+
+    buttonByText(
+      label("dataQuality.suggestions.jobs.cancelConfirmAction")
+    )?.click();
+    await flushPromises();
+
+    expect(mocks.cancelQualitySuggestionJob).toHaveBeenCalledWith(JOB);
+    expect(success).toHaveBeenCalledWith(
+      label("dataQuality.suggestions.jobs.canceledToast")
+    );
+    // The cancel answer is followed by a list refresh (two calls).
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(4);
+    expect(document.body.textContent).toContain(
+      label("dataQuality.suggestionJobStatus.canceled")
+    );
+    // A canceled job refreshes the queue but selects and toasts nothing.
+    expect(wrapper.emitted("settled")).toContainEqual([[]]);
+    success.mockRestore();
+    wrapper.unmount();
+  });
+
+  it("keeps the job running when the cancel confirmation is dismissed", async () => {
+    mockSnapshots({ recent: [jobFixture()] });
+    const wrapper = await mountPanel();
+
+    buttonByText(label("dataQuality.suggestions.jobs.cancel"))?.click();
+    await flushPromises();
+    buttonByText(label("dataQuality.suggestions.jobs.cancelKeep"))?.click();
+    await flushPromises();
+
+    expect(mocks.cancelQualitySuggestionJob).not.toHaveBeenCalled();
+    expect(
+      buttonByText(label("dataQuality.suggestions.jobs.cancel"))
+    ).toBeTruthy();
     wrapper.unmount();
   });
 

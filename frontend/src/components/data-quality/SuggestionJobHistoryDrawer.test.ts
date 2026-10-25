@@ -98,7 +98,9 @@ function jobFixture(
   });
 }
 
-function truncatedDiagnostic(): QualityLLMDiagnostic {
+function truncatedDiagnostic(
+  overrides: { debugPayloadAvailable?: boolean } = {}
+): QualityLLMDiagnostic {
   return create(QualityLLMDiagnosticSchema, {
     errorCode: "TRUNCATED",
     provider: "openai",
@@ -112,7 +114,7 @@ function truncatedDiagnostic(): QualityLLMDiagnostic {
     promptChars: 5400n,
     correlationId: "corr-123",
     providerStatus: 200,
-    debugPayloadAvailable: true,
+    debugPayloadAvailable: overrides.debugPayloadAvailable ?? true,
   });
 }
 
@@ -161,6 +163,10 @@ describe("SuggestionJobHistoryDrawer", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: undefined,
+    });
   });
 
   it("lists a page of jobs with status, progress and the pager", async () => {
@@ -225,6 +231,44 @@ describe("SuggestionJobHistoryDrawer", () => {
     await flushPromises();
     expect(mocks.listQualitySuggestionJobs).toHaveBeenLastCalledWith(
       expect.objectContaining({ pageToken: "" })
+    );
+    wrapper.unmount();
+  });
+
+  it("returns to the first unfiltered page when reopened", async () => {
+    mocks.listQualitySuggestionJobs.mockResolvedValue(
+      page([jobFixture()], "next-page")
+    );
+    const wrapper = await mountDrawer();
+
+    buttonByText(label("common.next"))?.click();
+    await flushPromises();
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenLastCalledWith(
+      expect.objectContaining({ pageToken: "next-page" })
+    );
+
+    wrapper
+      .findComponent(Select)
+      .vm.$emit(
+        "update:modelValue",
+        String(QualitySuggestionJobStatus.COMPLETED)
+      );
+    await flushPromises();
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        pageToken: "",
+        status: QualitySuggestionJobStatus.COMPLETED,
+      })
+    );
+
+    await wrapper.setProps({ open: false });
+    await wrapper.setProps({ open: true });
+    await flushPromises();
+
+    // A filter left over from the last visit would hide the job the strip
+    // advertises, so reopening starts over from page one with all statuses.
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenLastCalledWith(
+      expect.objectContaining({ pageToken: "", status: undefined })
     );
     wrapper.unmount();
   });
@@ -408,6 +452,71 @@ describe("SuggestionJobHistoryDrawer", () => {
     wrapper.unmount();
   });
 
+  it("keeps the correlation id copyable and hides the payload action when nothing was captured", async () => {
+    mocks.listQualitySuggestionJobs.mockResolvedValue(
+      page([
+        jobFixture({
+          targets: [
+            targetFixture({
+              state: QualitySuggestionJobTargetState.FAILED,
+              diagnostic: truncatedDiagnostic({ debugPayloadAvailable: false }),
+            }),
+          ],
+        }),
+      ])
+    );
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const wrapper = await mountDrawer();
+    expandButton(label("dataQuality.suggestions.jobs.expand"))?.click();
+    await flushPromises();
+
+    // No debug capture: no raw-payload action, but the id stays copyable.
+    expect(
+      buttonByText(label("dataQuality.suggestions.diagnostic.viewPayload"))
+    ).toBeUndefined();
+    document.body
+      .querySelector<HTMLElement>(
+        `[aria-label="${label("dataQuality.suggestions.diagnostic.copyCorrelation")}"]`
+      )
+      ?.click();
+    await flushPromises();
+    expect(writeText).toHaveBeenCalledWith("corr-123");
+    wrapper.unmount();
+  });
+
+  it("keeps the raw error line for a failure without a diagnostic", async () => {
+    mocks.listQualitySuggestionJobs.mockResolvedValue(
+      page([
+        jobFixture({
+          targets: [
+            targetFixture({
+              state: QualitySuggestionJobTargetState.FAILED,
+              error: "target metadata disappeared before the draft",
+            }),
+          ],
+        }),
+      ])
+    );
+    const wrapper = await mountDrawer();
+    expandButton(label("dataQuality.suggestions.jobs.expand"))?.click();
+    await flushPromises();
+
+    expect(document.body.textContent).toContain(
+      "target metadata disappeared before the draft"
+    );
+    expect(document.body.textContent).not.toContain(
+      label("dataQuality.suggestions.diagnostic.code.truncated")
+    );
+    expect(
+      buttonByText(label("dataQuality.suggestions.diagnostic.viewPayload"))
+    ).toBeUndefined();
+    wrapper.unmount();
+  });
+
   it("cancels an active job after a two-step confirm and asks for a refresh", async () => {
     const success = vi.spyOn(notify, "success");
     mocks.listQualitySuggestionJobs
@@ -455,6 +564,27 @@ describe("SuggestionJobHistoryDrawer", () => {
       label("dataQuality.suggestionJobStatus.canceled")
     );
     success.mockRestore();
+    wrapper.unmount();
+  });
+
+  it("keeps the job and toasts when cancelling fails", async () => {
+    const error = vi.spyOn(notify, "error");
+    mocks.listQualitySuggestionJobs.mockResolvedValue(page([jobFixture()]));
+    mocks.cancelQualitySuggestionJob.mockRejectedValue(new Error("nope"));
+    const wrapper = await mountDrawer();
+
+    buttonByText(label("dataQuality.suggestions.jobs.cancel"))?.click();
+    await flushPromises();
+    buttonByText(
+      label("dataQuality.suggestions.jobs.cancelConfirmAction")
+    )?.click();
+    await flushPromises();
+
+    expect(error).toHaveBeenCalled();
+    // A failed cancel must not churn the page; only the initial load happened.
+    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(1);
+    expect(wrapper.emitted("changed")).toBeUndefined();
+    error.mockRestore();
     wrapper.unmount();
   });
 
@@ -562,6 +692,10 @@ describe("SuggestionJobHistoryDrawer", () => {
 
     expect(document.body.textContent).toContain(
       label("dataQuality.suggestions.jobs.fetchFailed")
+    );
+    // A failed load is not the same as an empty workspace.
+    expect(document.body.textContent).not.toContain(
+      label("dataQuality.suggestions.jobs.emptyTitle")
     );
 
     buttonByText(label("common.refresh"))?.click();

@@ -73,7 +73,7 @@
           </div>
 
           <EmptyState
-            v-else-if="jobs.length === 0"
+            v-else-if="jobs.length === 0 && !error"
             :icon="Inbox"
             :title="
               statusFilter === '-'
@@ -478,7 +478,13 @@ watch(
       expandedName.value = "";
       cancelTarget.value = "";
       debugOpen.value = false;
-      void resetPage();
+      // Reopening starts from the newest page of all statuses: a filter left
+      // behind by the previous visit would hide the job the strip advertises.
+      if (statusFilter.value !== "-") {
+        statusFilter.value = "-";
+      } else {
+        void resetPage();
+      }
     } else {
       stopPoll();
       debugOpen.value = false;
