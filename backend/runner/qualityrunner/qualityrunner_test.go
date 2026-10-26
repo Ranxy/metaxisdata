@@ -979,3 +979,90 @@ func TestExecuteBatchAbandonWriteFailureStillClosesBatch(t *testing.T) {
 	require.Equal(t, storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_ABANDONED, fake.finishBatchCalls[0].status,
 		"the batch must be closed even when the row abandon failed")
 }
+
+// TestBatchContractFiltersReadsEachTargetOnce pins the batch-level contract cache:
+// rules of one target share a single read, a different object type (or target) is
+// read separately, a metadata rule reads nothing (it compiles no SQL), and a failed
+// read is returned without poisoning the cache.
+func TestBatchContractFiltersReadsEachTargetOnce(t *testing.T) {
+	t.Parallel()
+
+	type readCall struct {
+		guid     string
+		metaType storepb.MetaType
+	}
+	var calls []readCall
+	usersFilter := &storepb.QualityFilter{Clauses: []*storepb.QualityFilterClause{{
+		Column: "id",
+		Op:     storepb.QualityFilterOperator_QUALITY_FILTER_OPERATOR_GT,
+		Values: []string{"0"},
+	}}}
+	contracts := newBatchContractFilters(func(_ context.Context, guid string, metaType storepb.MetaType) (*storepb.QualityFilter, error) {
+		calls = append(calls, readCall{guid: guid, metaType: metaType})
+		switch guid {
+		case "users":
+			return usersFilter, nil
+		case "broken":
+			return nil, errors.New("contract read failed")
+		default:
+			return nil, nil
+		}
+	})
+
+	filter, err := contracts.forRule(context.Background(),
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, "users", storepb.MetaType_TABLE)
+	require.NoError(t, err)
+	require.Equal(t, usersFilter, filter)
+	require.Len(t, calls, 1)
+
+	// A second rule on the same target reuses the cached filter.
+	filter, err = contracts.forRule(context.Background(),
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT, "users", storepb.MetaType_TABLE)
+	require.NoError(t, err)
+	require.Equal(t, usersFilter, filter)
+	require.Len(t, calls, 1, "the same target is read once per batch")
+
+	// A target without a contract row caches the absence of a filter.
+	filter, err = contracts.forRule(context.Background(),
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, "orders", storepb.MetaType_TABLE)
+	require.NoError(t, err)
+	require.Nil(t, filter)
+	require.Len(t, calls, 2)
+	_, err = contracts.forRule(context.Background(),
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, "orders", storepb.MetaType_TABLE)
+	require.NoError(t, err)
+	require.Len(t, calls, 2)
+
+	// The GUID alone is not the identity: a different object type is another target.
+	_, err = contracts.forRule(context.Background(),
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, "users", storepb.MetaType_VIEW)
+	require.NoError(t, err)
+	require.Len(t, calls, 3)
+
+	// A metadata rule never reads the contract at all.
+	filter, err = contracts.forRule(context.Background(),
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT, "users", storepb.MetaType_TABLE)
+	require.NoError(t, err)
+	require.Nil(t, filter)
+	require.Len(t, calls, 3, "schema_drift compiles no SQL, so it needs no contract filter")
+
+	// A failed read is returned and retried rather than cached as "no filter".
+	_, err = contracts.forRule(context.Background(),
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, "broken", storepb.MetaType_TABLE)
+	require.Error(t, err)
+	_, err = contracts.forRule(context.Background(),
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, "broken", storepb.MetaType_TABLE)
+	require.Error(t, err)
+	require.Len(t, calls, 5)
+}
+
+// TestLoadBatchContractFilterWithoutAStoreIsNoFilter keeps the accounting runner
+// (which has no store) from panicking if a future test ever executes a rule.
+func TestLoadBatchContractFilterWithoutAStoreIsNoFilter(t *testing.T) {
+	t.Parallel()
+
+	r := &Runner{}
+	filter, err := r.loadBatchContractFilter()(context.Background(), "users", storepb.MetaType_TABLE)
+	require.NoError(t, err)
+	require.Nil(t, filter)
+}

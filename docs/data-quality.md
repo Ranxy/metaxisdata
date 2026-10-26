@@ -96,8 +96,8 @@ add or edit a check without walking the target picker again, show which columns
 have no check yet, and draft checks with the AI copilot on the right — drafts
 appear inside the section they belong to until you create them as checks.
 
-The Checks, Issues and Suggestions lists keep their filters in the address bar,
-so refreshing or sharing a link returns to the same view.
+The Targets, Checks, Issues and Suggestions lists keep their filters in the
+address bar, so refreshing or sharing a link returns to the same view.
 
 Data Quality → **Checks** is the cross-target directory for audit and search:
 every check with its target and latest execution, narrowed by the same target

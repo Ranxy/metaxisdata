@@ -24,6 +24,11 @@ const qualityTargetOpenIssueLimit = 200
 // workspace's history strip shows.
 const qualityTargetRuleHistoryLimit = 20
 
+// qualityTargetDefaultPageSize is what an unset page_size means for the target
+// directory, matching the RPC's documented default. A follow-up page keeps the
+// size its token was issued with instead of re-defaulting.
+const qualityTargetDefaultPageSize = 50
+
 // ListQualityTargets lists the targets that carry quality rules, one row per
 // table or view. The aggregation happens in the store, so the directory costs one
 // query rather than paging through every rule.
@@ -31,9 +36,13 @@ func (s *DataQualityService) ListQualityTargets(ctx context.Context, req *connec
 	if _, err := s.workspaceID(ctx, req.Msg.GetParent()); err != nil {
 		return nil, err
 	}
+	worstStatus, err := qualityTargetWorstStatusFromV1(req.Msg.GetWorstStatus())
+	if err != nil {
+		return nil, err
+	}
 	offset, err := parseLimitAndOffset(&pageSize{
 		token:   req.Msg.GetPageToken(),
-		limit:   int(req.Msg.GetPageSize()),
+		limit:   qualityTargetRequestedPageSize(req.Msg.GetPageSize(), req.Msg.GetPageToken()),
 		maximum: qualityListMaximum,
 	})
 	if err != nil {
@@ -44,7 +53,7 @@ func (s *DataQualityService) ListQualityTargets(ctx context.Context, req *connec
 	find := &store.FindQualityTargetMessage{
 		Limit:           &limitPlusOne,
 		Offset:          &offset.offset,
-		WorstStatus:     storepb.QualityStatus(req.Msg.GetWorstStatus()),
+		WorstStatus:     worstStatus,
 		HasOpenIssue:    req.Msg.GetHasOpenIssue(),
 		HasPendingDraft: req.Msg.GetHasPendingDraft(),
 		Order:           qualityTargetOrderFromV1(req.Msg.GetOrderBy()),
@@ -61,7 +70,9 @@ func (s *DataQualityService) ListQualityTargets(ctx context.Context, req *connec
 
 	// The aggregate query cannot extract the checked column from every config arm
 	// without duplicating that mapping in SQL, so the page's rules are read once and
-	// the column count is filled in Go from the authoritative config.
+	// the column count is filled in Go from the authoritative config. The same
+	// batch answers "does this target still resolve", which the aggregate query
+	// cannot know because it only reads DQ tables.
 	if len(targets) > 0 {
 		keys := make([]store.MetaGUIDKey, 0, len(targets))
 		for _, target := range targets {
@@ -83,8 +94,20 @@ func (s *DataQualityService) ListQualityTargets(ctx context.Context, req *connec
 			}
 			columns[key][column] = struct{}{}
 		}
+		orphanReasons, err := s.targetOrphanReasons(ctx, pageRules)
+		if err != nil {
+			return nil, err
+		}
+		orphaned := make(map[store.MetaGUIDKey]bool, len(targets))
+		for _, rule := range pageRules {
+			if orphanReasons[rule.ID] != "" {
+				orphaned[store.MetaGUIDKey{GUID: rule.TargetGUID, ObjectType: rule.TargetType}] = true
+			}
+		}
 		for _, target := range targets {
-			target.ColumnCount = int32(len(columns[store.MetaGUIDKey{GUID: target.GUID, ObjectType: target.Type}]))
+			key := store.MetaGUIDKey{GUID: target.GUID, ObjectType: target.Type}
+			target.ColumnCount = int32(len(columns[key]))
+			target.Orphaned = orphaned[key]
 		}
 	}
 
@@ -93,6 +116,37 @@ func (s *DataQualityService) ListQualityTargets(ctx context.Context, req *connec
 		response.QualityTargets = append(response.QualityTargets, convertQualityTargetSummary(target))
 	}
 	return connect.NewResponse(response), nil
+}
+
+// qualityTargetRequestedPageSize resolves the page size for a directory request:
+// an unset first page reads the documented default, while a follow-up page keeps
+// the size its token was issued with (parseLimitAndOffset restores it from the
+// token when the request does not repeat it).
+func qualityTargetRequestedPageSize(requested int32, pageToken string) int {
+	if requested > 0 || pageToken != "" {
+		return int(requested)
+	}
+	return qualityTargetDefaultPageSize
+}
+
+// qualityTargetWorstStatusFromV1 maps the worst-status filter, rejecting a value
+// the enum does not define. UNSPECIFIED means "no filter"; every other known
+// status is an exact rank match, so SKIPPED and NOT_EVALUATED are distinct.
+func qualityTargetWorstStatusFromV1(status v1pb.QualityStatus) (storepb.QualityStatus, error) {
+	switch status {
+	case v1pb.QualityStatus_QUALITY_STATUS_UNSPECIFIED:
+		return storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, nil
+	case v1pb.QualityStatus_QUALITY_STATUS_PASS,
+		v1pb.QualityStatus_QUALITY_STATUS_WARN,
+		v1pb.QualityStatus_QUALITY_STATUS_FAIL,
+		v1pb.QualityStatus_QUALITY_STATUS_ERROR,
+		v1pb.QualityStatus_QUALITY_STATUS_SKIPPED,
+		v1pb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED:
+		return storepb.QualityStatus(status), nil
+	default:
+		return storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED,
+			connectErrorInvalid("unknown quality status %d", status)
+	}
 }
 
 // GetQualityTarget reads one target's workspace: its rules with their latest
@@ -126,7 +180,8 @@ func (s *DataQualityService) GetQualityTarget(ctx context.Context, req *connect.
 	if len(rules) > 0 {
 		path = rules[0].TargetPath
 	}
-	if resolution, resolveErr := dataquality.ResolveTarget(ctx, s.store, targetGUID, metaType); resolveErr != nil {
+	var resolution *dataquality.Resolution
+	if resolved, resolveErr := dataquality.ResolveTarget(ctx, s.store, targetGUID, metaType); resolveErr != nil {
 		if !errors.Is(resolveErr, dataquality.ErrOrphaned) {
 			return nil, resolveErr
 		}
@@ -138,7 +193,8 @@ func (s *DataQualityService) GetQualityTarget(ctx context.Context, req *connect.
 		}
 		orphanedReason = resolveErr.Error()
 	} else {
-		path = resolution.Target.Path
+		resolution = resolved
+		path = resolved.Target.Path
 	}
 
 	latest, err := s.latestQualityExecutions(ctx, rules)
@@ -174,6 +230,21 @@ func (s *DataQualityService) GetQualityTarget(ctx context.Context, req *connect.
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read the target's open issues")
 	}
+	// The target's rules exclude archived and deleted ones, so their issues must
+	// too: an archived rule keeps its open issue for the audit trail, but it is not
+	// part of what this workspace currently promises. Filtering here also keeps
+	// ruleNames complete, so an issue row never renders without a rule title.
+	liveRuleIDs := make(map[int64]struct{}, len(rules))
+	for _, rule := range rules {
+		liveRuleIDs[rule.ID] = struct{}{}
+	}
+	liveIssues := make([]*store.QualityIssueMessage, 0, len(openIssues))
+	for _, issue := range openIssues {
+		if _, ok := liveRuleIDs[issue.RuleID]; ok {
+			liveIssues = append(liveIssues, issue)
+		}
+	}
+	openIssues = liveIssues
 
 	summary := &v1pb.QualityTargetSummary{
 		Target: &v1pb.QualityTarget{
@@ -184,6 +255,7 @@ func (s *DataQualityService) GetQualityTarget(ctx context.Context, req *connect.
 		OpenIssueCount:    int32(len(openIssues)),
 		PendingDraftCount: drafts,
 		PendingLabelCount: labels,
+		Orphaned:          orphanedReason != "",
 	}
 	columns := make(map[string]struct{}, len(rules))
 	for _, rule := range rules {
@@ -209,6 +281,18 @@ func (s *DataQualityService) GetQualityTarget(ctx context.Context, req *connect.
 	response := &v1pb.GetQualityTargetResponse{
 		Summary:        summary,
 		OrphanedReason: orphanedReason,
+	}
+	if resolution != nil {
+		// The resolved metadata is the only place that has the columns of a view or
+		// external table (those have no COLUMN registry rows), so the workspace gets
+		// them from here rather than from ListMetadata.
+		for _, column := range resolution.Target.Columns {
+			response.TargetColumns = append(response.TargetColumns, &v1pb.QualityTargetColumn{
+				Name:     column.Name,
+				Type:     column.Type,
+				Nullable: column.Nullable,
+			})
+		}
 	}
 	ruleNames := make(map[int64]string, len(rules))
 	for _, rule := range rules {
@@ -291,6 +375,7 @@ func convertQualityTargetSummary(target *store.QualityTargetMessage) *v1pb.Quali
 		WorstStatus:       v1pb.QualityStatus(target.WorstStatus),
 		LastRunTime:       timeToProtoTimestampPtr(target.LastRunTime),
 		SchemaChanged:     target.SchemaChanged,
+		Orphaned:          target.Orphaned,
 	}
 }
 
@@ -309,15 +394,16 @@ func worstQualityStatus(current, candidate v1pb.QualityStatus) v1pb.QualityStatu
 func qualityStatusRank(status v1pb.QualityStatus) int {
 	switch status {
 	case v1pb.QualityStatus_QUALITY_STATUS_ERROR:
-		return 5
+		return 6
 	case v1pb.QualityStatus_QUALITY_STATUS_FAIL:
-		return 4
+		return 5
 	case v1pb.QualityStatus_QUALITY_STATUS_WARN:
-		return 3
+		return 4
 	case v1pb.QualityStatus_QUALITY_STATUS_PASS:
+		return 3
+	case v1pb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED:
 		return 2
-	case v1pb.QualityStatus_QUALITY_STATUS_SKIPPED,
-		v1pb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED:
+	case v1pb.QualityStatus_QUALITY_STATUS_SKIPPED:
 		return 1
 	case v1pb.QualityStatus_QUALITY_STATUS_UNSPECIFIED:
 		return 0

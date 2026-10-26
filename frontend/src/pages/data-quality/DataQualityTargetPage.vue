@@ -171,6 +171,7 @@
               :target-guid="targetGuid"
               :meta-type="effectiveMetaType"
               :rules="rules"
+              :columns="targetColumns"
               :can-create="canCreate"
               @create="openComposer"
             />
@@ -367,6 +368,7 @@
       v-model:open="composerOpen"
       :rule="editingRule"
       :suggestion="composerSuggestion"
+      :column-details="targetColumns"
       :scope="composerScope"
       :initial-column="composerInitialColumn"
       :target-guid="targetGuid"
@@ -452,6 +454,7 @@ import {
   qualityIssueStatusKey,
   qualityIssueStatusVariant,
 } from "@/utils/dataQuality";
+import type { TargetColumnDetail } from "@/utils/dataQualityForm";
 import { isPendingDraft } from "@/utils/dataQualitySuggestion";
 import {
   groupTargetChecks,
@@ -519,6 +522,12 @@ const issues = ref<QualityIssue[]>([]);
 const summary = ref<QualityTargetSummary>(
   create(QualityTargetSummarySchema, {})
 );
+/**
+ * The target's columns as the aggregate read resolved them. They come from the
+ * API rather than the column registry, so a view or external table (which gets
+ * no COLUMN registry rows) still shows its columns.
+ */
+const targetColumns = ref<TargetColumnDetail[]>([]);
 const orphaned = ref(false);
 /** The target's contract: defaults, published version and drift. */
 const contract = ref<QualityContract>();
@@ -772,6 +781,8 @@ async function load() {
   loading.value = true;
   error.value = "";
   rules.value = [];
+  ruleHistory.value = new Map();
+  targetColumns.value = [];
   suggestions.value = [];
   issues.value = [];
   summary.value = create(QualityTargetSummarySchema, {});
@@ -800,6 +811,11 @@ async function load() {
     ruleHistory.value = new Map(
       response.ruleHistory.map((history) => [history.rule, history.executions])
     );
+    targetColumns.value = response.targetColumns.map((column) => ({
+      name: column.name,
+      type: column.type,
+      nullable: column.nullable,
+    }));
     issues.value = response.openIssues;
     orphaned.value = response.orphanedReason !== "";
   } catch (cause: unknown) {
@@ -1113,12 +1129,18 @@ function syncAddFromQuery() {
   if (loading.value || route.query.add !== "1") {
     return;
   }
-  if (route.query.check !== undefined) {
-    return;
-  }
+  // The flag is consumed first, whatever happens next, so a reload never
+  // re-triggers it and a `check` in the same URL keeps its own path.
   const query = { ...route.query };
   delete query.add;
   void router.replace({ query });
+  if (!canCreate.value) {
+    notify.info(t("dataQuality.workspace.createPermissionRequired"));
+    return;
+  }
+  if (route.query.check !== undefined) {
+    return;
+  }
   openComposer();
 }
 

@@ -529,11 +529,17 @@ const props = withDefaults(
     scope?: ComposerScope;
     /** A column the workspace named, written into the first single-column field. */
     initialColumn?: string;
+    /**
+     * The target's columns as the workspace already read them. When non-empty the
+     * dialog uses these and makes no metadata request of its own.
+     */
+    columnDetails?: TargetColumnDetail[];
   }>(),
   {
     defaultScheduleSeconds: 0,
     defaultSeverity: QualitySeverity.UNSPECIFIED,
     initialColumn: "",
+    columnDetails: () => [],
   }
 );
 
@@ -585,6 +591,8 @@ const columnGuid = computed(() => target.value?.guid ?? props.targetGuid);
 
 const form = ref<RuleFormState>(emptyRuleForm());
 const columns = ref<TargetColumnDetail[]>([]);
+/** Whether the page handed the columns down, so no metadata read is needed. */
+const hasProvidedColumns = computed(() => props.columnDetails.length > 0);
 const columnNames = computed(() => columns.value.map((column) => column.name));
 const issues = ref<ValidationIssue[]>([]);
 const saveError = ref("");
@@ -755,7 +763,7 @@ function reset() {
     applyColumn(form.value.ruleType, prefillColumn.value);
   }
   extraOpen.value = hasDetails(form.value);
-  columns.value = [];
+  columns.value = hasProvidedColumns.value ? [...props.columnDetails] : [];
   issues.value = [];
   saveError.value = "";
   saving.value = false;
@@ -801,10 +809,20 @@ function onDetailsToggle(event: Event) {
 }
 
 /**
- * Column suggestions for the config fields. A failed read is not fatal: every
- * column control accepts free text, so the dialog keeps working without it.
+ * Column suggestions for the config fields. The workspace already reads the
+ * target's columns with its own payload and hands them down, so those are used
+ * verbatim: a VIEW or an EXTERNAL_TABLE has no registry column rows to list, and
+ * a metadata read would only empty the pickers. Only a dialog used on its own
+ * (with no list handed in) falls back to reading them.
+ *
+ * The fallback read is best effort: every column control accepts free text, so
+ * the dialog keeps working when it fails.
  */
 async function loadColumns() {
+  if (hasProvidedColumns.value) {
+    columns.value = [...props.columnDetails];
+    return;
+  }
   const guid = columnGuid.value;
   try {
     const items = await listAllMetadata({
@@ -840,6 +858,25 @@ watch(
     }
   },
   { immediate: true }
+);
+
+/**
+ * The workspace reads the target's columns with the workspace payload, so they
+ * can arrive after the dialog opened; a non-empty hand-down replaces whatever
+ * the dialog had. An emptied hand-down falls back to the metadata read again.
+ */
+watch(
+  () => props.columnDetails,
+  (next) => {
+    if (next.length > 0) {
+      columns.value = [...next];
+      return;
+    }
+    if (props.open) {
+      void loadColumns();
+    }
+  },
+  { deep: true }
 );
 
 function close() {

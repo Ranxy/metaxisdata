@@ -217,6 +217,15 @@ func qualityRowCountConfig(minRows int64) *v1pb.QualityRuleConfig {
 	}}}
 }
 
+// qualityRowCountChangeConfig builds a row-count-change config with one bound. Its
+// first execution has no baseline, so the default empty behavior makes it
+// NOT_EVALUATED.
+func qualityRowCountChangeConfig(maxIncreasePct float64) *v1pb.QualityRuleConfig {
+	return &v1pb.QualityRuleConfig{Config: &v1pb.QualityRuleConfig_RowCountChange{
+		RowCountChange: &v1pb.RowCountChangeConfig{MaxIncreasePct: &maxIncreasePct},
+	}}
+}
+
 // qualityColumnConfig builds a null-percent check on one column.
 func qualityColumnConfig(column string) *v1pb.QualityRuleConfig {
 	return &v1pb.QualityRuleConfig{Config: &v1pb.QualityRuleConfig_NullPercent{
@@ -2353,6 +2362,19 @@ func TestDataQualityTargetDirectoryRealServerIntegration(t *testing.T) {
 	require.NotNil(t, orders)
 	require.Equal(t, int32(1), orders.GetRuleCount())
 	require.Equal(t, int32(1), orders.GetColumnCount())
+	require.False(t, users.GetOrphaned(), "a listed target still resolves")
+	require.False(t, orders.GetOrphaned())
+
+	// A worst-status value outside the enum is refused instead of silently matching
+	// the "never run" rank.
+	_, invalidErr := fixture.dataQuality.ListQualityTargets(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.ListQualityTargetsRequest{
+			Parent:      "workspaces/-",
+			PageSize:    100,
+			WorstStatus: v1pb.QualityStatus(99),
+		}))
+	require.Error(t, invalidErr)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(invalidErr))
 
 	// The search and the "worst status" filter both narrow the directory.
 	require.Len(t, list(&v1pb.ListQualityTargetsRequest{
@@ -2386,8 +2408,139 @@ func TestDataQualityTargetDirectoryRealServerIntegration(t *testing.T) {
 	require.Equal(t, int32(1), get.Msg.GetSummary().GetColumnCount(),
 		"the workspace summary counts the config's checked column")
 	require.Equal(t, "users", get.Msg.GetSummary().GetTarget().GetPath().GetObject())
+	require.False(t, get.Msg.GetSummary().GetOrphaned())
 	require.Empty(t, get.Msg.GetOrphanedReason())
 	require.Empty(t, get.Msg.GetOpenIssues())
+	// The resolved metadata supplies the target's columns, even for object types
+	// that have no COLUMN registry rows (views, external tables).
+	columnNames := make([]string, 0, len(get.Msg.GetTargetColumns()))
+	for _, column := range get.Msg.GetTargetColumns() {
+		require.NotEmpty(t, column.GetType(), "a resolved column carries its engine type")
+		columnNames = append(columnNames, column.GetName())
+	}
+	require.ElementsMatch(t, []string{"id", "name", "age"}, columnNames)
+
+	// A target whose registry row is gone still has rules, so the directory lists it
+	// and marks it orphaned; the workspace stays readable from the path snapshot but
+	// has no resolved columns.
+	orphanGUID := "orphan-instance;missing-db;public;gone"
+	orphanResourceID, err := common.RandomString(12)
+	require.NoError(t, err)
+	minRows := int64(1)
+	_, err = fixture.env.Store.CreateQualityRule(fixture.ctx, &store.QualityRuleMessage{
+		ResourceID: orphanResourceID,
+		Title:      "orphan row count",
+		Dimension:  storepb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+		RuleType:   storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		TargetGUID: orphanGUID,
+		TargetType: storepb.MetaType_TABLE,
+		TargetPath: &storepb.QualityTargetPath{
+			Instance: "orphan-instance", Database: "missing-db", Schema: "public", Object: "gone",
+		},
+		Config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_RowCount{
+			RowCount: &storepb.RowCountConfig{MinRows: &minRows},
+		}},
+		Severity:         storepb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		State:            storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
+		ScheduleInterval: time.Hour,
+	})
+	require.NoError(t, err)
+	withOrphan := list(&v1pb.ListQualityTargetsRequest{Parent: "workspaces/-", PageSize: 100})
+	orphanSummary := (*v1pb.QualityTargetSummary)(nil)
+	for _, target := range withOrphan.GetQualityTargets() {
+		if target.GetTarget().GetMetaGuid() == orphanGUID {
+			orphanSummary = target
+		}
+	}
+	require.NotNil(t, orphanSummary, "a target with rules stays in the directory")
+	require.True(t, orphanSummary.GetOrphaned(), "the directory marks a target whose registry row is gone")
+	orphanTarget, err := fixture.dataQuality.GetQualityTarget(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.GetQualityTargetRequest{
+			Parent:     "workspaces/-",
+			TargetGuid: orphanGUID,
+			MetaType:   v1pb.MetaType_TABLE,
+		}))
+	require.NoError(t, err, "an orphaned target with rules stays readable")
+	require.True(t, orphanTarget.Msg.GetSummary().GetOrphaned())
+	require.NotEmpty(t, orphanTarget.Msg.GetOrphanedReason())
+	require.Len(t, orphanTarget.Msg.GetQualityRules(), 1)
+	require.Empty(t, orphanTarget.Msg.GetTargetColumns(), "an orphaned target has no resolved columns")
+
+	// NOT_EVALUATED and SKIPPED are distinct worst results: a row-count-change check
+	// with no baseline is NOT_EVALUATED, so filtering SKIPPED must not match it.
+	fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE,
+		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		ordersGUID, qualityRowCountChangeConfig(100))
+	// The last rule of a target with no execution is the one just created; find it
+	// by its title prefix instead of guessing the resource id.
+	ordersRules, err := fixture.dataQuality.ListQualityRules(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.ListQualityRulesRequest{
+			Parent:     "workspaces/-",
+			TargetGuid: ordersGUID,
+		}))
+	require.NoError(t, err)
+	var changeRule string
+	for _, rule := range ordersRules.Msg.GetQualityRules() {
+		if rule.GetRuleType() == v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE {
+			changeRule = rule.GetName()
+		}
+	}
+	require.NotEmpty(t, changeRule)
+	firstExecution := fixture.runToCompletion(t, changeRule)
+	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, firstExecution.GetOutcome())
+
+	notEvaluated := list(&v1pb.ListQualityTargetsRequest{
+		Parent:      "workspaces/-",
+		PageSize:    100,
+		WorstStatus: v1pb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED,
+	})
+	require.Len(t, notEvaluated.GetQualityTargets(), 1)
+	require.Equal(t, ordersGUID, notEvaluated.GetQualityTargets()[0].GetTarget().GetMetaGuid())
+	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED,
+		notEvaluated.GetQualityTargets()[0].GetWorstStatus())
+	require.Empty(t, list(&v1pb.ListQualityTargetsRequest{
+		Parent:      "workspaces/-",
+		PageSize:    100,
+		WorstStatus: v1pb.QualityStatus_QUALITY_STATUS_SKIPPED,
+	}).GetQualityTargets(), "a not-evaluated target is not a skipped one")
+
+	// An archived check keeps its open issue in the ledger, but the target workspace
+	// no longer counts or lists it (and every listed issue still resolves its rule
+	// name).
+	failing := fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_ERROR,
+		fixture.usersGUID, qualityRowCountConfig(1_000_000))
+	fixture.runToCompletion(t, failing.GetName())
+	fixture.waitForIssue(t, failing.GetName(), v1pb.QualityIssueStatus_QUALITY_ISSUE_STATUS_OPEN)
+	withIssue, err := fixture.dataQuality.GetQualityTarget(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.GetQualityTargetRequest{
+			Parent:     "workspaces/-",
+			TargetGuid: fixture.usersGUID,
+		}))
+	require.NoError(t, err)
+	require.Equal(t, int32(1), withIssue.Msg.GetSummary().GetOpenIssueCount())
+	require.Len(t, withIssue.Msg.GetOpenIssues(), 1)
+	require.Equal(t, failing.GetName(), withIssue.Msg.GetOpenIssues()[0].GetRule(),
+		"an open issue always resolves its rule name")
+
+	_, err = fixture.dataQuality.DeleteQualityRule(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.DeleteQualityRuleRequest{Name: failing.GetName()}))
+	require.NoError(t, err)
+	afterArchive, err := fixture.dataQuality.GetQualityTarget(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.GetQualityTargetRequest{
+			Parent:     "workspaces/-",
+			TargetGuid: fixture.usersGUID,
+		}))
+	require.NoError(t, err)
+	require.Equal(t, int32(2), afterArchive.Msg.GetSummary().GetRuleCount())
+	require.Equal(t, int32(0), afterArchive.Msg.GetSummary().GetOpenIssueCount(),
+		"an archived rule's issue is not part of the live workspace")
+	require.Empty(t, afterArchive.Msg.GetOpenIssues())
+	require.Empty(t, list(&v1pb.ListQualityTargetsRequest{
+		Parent:       "workspaces/-",
+		PageSize:     100,
+		HasOpenIssue: true,
+	}).GetQualityTargets(), "the directory counts only live rules' issues")
 
 	// A target that neither has rules nor exists in the registry is NotFound.
 	_, err = fixture.dataQuality.GetQualityTarget(fixture.ctx,
@@ -2509,6 +2662,13 @@ func TestDataQualityContractRealServerIntegration(t *testing.T) {
 	require.False(t, second.GetNoChanges())
 	require.Equal(t, int32(2), second.GetRevision().GetVersion())
 	require.Equal(t, int32(2), second.GetRevision().GetCheckCount())
+	// The diff counts are computed inside the publish transaction against the
+	// previous version, so this version records exactly one addition.
+	require.Equal(t, int32(1), second.GetRevision().GetChangeSummary().GetAdded())
+	require.Equal(t, int32(0), second.GetRevision().GetChangeSummary().GetModified())
+	require.Equal(t, int32(0), second.GetRevision().GetChangeSummary().GetRemoved())
+	require.Equal(t, int32(0), second.GetContract().GetChangeSummary().GetAdded(),
+		"the returned view compares the live rules with the version just published")
 
 	// History is newest first and a version can be read with its checks.
 	history, err := fixture.dataQuality.ListQualityContractRevisions(fixture.ctx,

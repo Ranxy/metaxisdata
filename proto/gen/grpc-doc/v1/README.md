@@ -306,6 +306,7 @@
     - [QualitySuggestionPayload](#metaxisdata-v1-QualitySuggestionPayload)
     - [QualitySuggestionQueueSummary](#metaxisdata-v1-QualitySuggestionQueueSummary)
     - [QualityTarget](#metaxisdata-v1-QualityTarget)
+    - [QualityTargetColumn](#metaxisdata-v1-QualityTargetColumn)
     - [QualityTargetPath](#metaxisdata-v1-QualityTargetPath)
     - [QualityTargetSummary](#metaxisdata-v1-QualityTargetSummary)
     - [QualityThresholds](#metaxisdata-v1-QualityThresholds)
@@ -4661,6 +4662,7 @@ queries rather than paging through every result.
 AI drafts are deliberately absent: reading them needs the suggest permission, which this RPC does not require, so the client reads the queue separately when it holds it. |
 | orphaned_reason | [string](#string) |  | Why the target no longer resolves; empty while healthy. The rules stay readable when it is set, because their target path is a snapshot. |
 | rule_history | [QualityRuleHistory](#metaxisdata-v1-QualityRuleHistory) | repeated | Each rule&#39;s recent completed executions, newest first, so the workspace can draw a per-rule history strip without one request per rule. Rules with no completed execution are absent. |
+| target_columns | [QualityTargetColumn](#metaxisdata-v1-QualityTargetColumn) | repeated | The target&#39;s current columns, from the resolved metadata. The workspace uses them for the coverage card and the check dialog&#39;s column fields; unlike ListMetadata(COLUMN) this also covers views and external tables. |
 
 
 
@@ -5758,6 +5760,23 @@ QualityTarget is what a rule observes.
 
 
 
+<a name="metaxisdata-v1-QualityTargetColumn"></a>
+
+### QualityTargetColumn
+QualityTargetColumn is one column of a resolved target.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  |  |
+| type | [string](#string) |  |  |
+| nullable | [bool](#bool) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-QualityTargetPath"></a>
 
 ### QualityTargetPath
@@ -5798,6 +5817,7 @@ plus the counts and health the row and the workspace header render.
 | worst_status | [QualityStatus](#metaxisdata-v1-QualityStatus) |  | The worst latest result across the target&#39;s rules; UNSPECIFIED when no rule has run yet. ERROR outranks FAIL: a check that could not run needs attention more than one whose data failed. |
 | last_run_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | schema_changed | [bool](#bool) |  | Whether at least one rule was saved against a different target schema hash than the registry currently records. |
+| orphaned | [bool](#bool) |  | Whether the target can no longer be resolved (the registry row, instance or database is gone). The rows stay readable because their target path is a snapshot, but runs are skipped. |
 
 
 
@@ -6790,7 +6810,7 @@ not exposed as a resource.
 No (google.api.http) annotation: this is a server-streaming method, and the REST gateway cannot carry one. The browser reaches the Connect endpoint directly, the way it does for ExplainSQL. |
 | GetQualityOverview | [GetQualityOverviewRequest](#metaxisdata-v1-GetQualityOverviewRequest) | [QualityOverview](#metaxisdata-v1-QualityOverview) | Read the workspace&#39;s quality summary: how many rules and issues exist, how the last day went, and the per-day tallies the overview chart draws. |
 | ListQualityTargets | [ListQualityTargetsRequest](#metaxisdata-v1-ListQualityTargetsRequest) | [ListQualityTargetsResponse](#metaxisdata-v1-ListQualityTargetsResponse) | List the targets (tables or views) that have quality rules, one row per target. The counts, the worst latest result and the pending draft tally are aggregated by the database, so the directory does not page through every rule to answer &#34;which table needs attention?&#34;. |
-| GetQualityTarget | [GetQualityTargetRequest](#metaxisdata-v1-GetQualityTargetRequest) | [GetQualityTargetResponse](#metaxisdata-v1-GetQualityTargetResponse) | Read one target&#39;s workspace: its rules (with their latest results), the pending AI drafts and the unresolved issues, in one call. The target is named by GUID because a target is not a resource of its own. |
+| GetQualityTarget | [GetQualityTargetRequest](#metaxisdata-v1-GetQualityTargetRequest) | [GetQualityTargetResponse](#metaxisdata-v1-GetQualityTargetResponse) | Read one target&#39;s workspace: its rules (with their latest results), the unresolved issues and the target&#39;s columns, in one call. AI drafts are not part of the response (reading them needs the suggest permission). The target is named by GUID because a target is not a resource of its own. |
 | GetQualityContract | [GetQualityContractRequest](#metaxisdata-v1-GetQualityContractRequest) | [QualityContract](#metaxisdata-v1-QualityContract) | Read one target&#39;s contract: its target-level defaults, the published version, and whether the live rules differ from that snapshot. |
 | UpdateQualityContract | [UpdateQualityContractRequest](#metaxisdata-v1-UpdateQualityContractRequest) | [QualityContract](#metaxisdata-v1-QualityContract) | Update the target-level defaults. The filter is ANDed into every rule on the target at compile time; the schedule and severity only seed newly authored rules and never rewrite an existing rule. |
 | PublishQualityContract | [PublishQualityContractRequest](#metaxisdata-v1-PublishQualityContractRequest) | [PublishQualityContractResponse](#metaxisdata-v1-PublishQualityContractResponse) | Publish the live rules and settings as the target&#39;s next contract version. Republishing an unchanged contract is a no-op that returns the existing version (no_changes=true). |

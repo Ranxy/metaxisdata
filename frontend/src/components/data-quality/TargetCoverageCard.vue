@@ -37,19 +37,19 @@
 
       <!-- No column metadata to compare against: the description already says
            what the card is for, so there is no second empty message. -->
-      <template v-else-if="columns.length > 0">
+      <template v-else-if="columnList.length > 0">
         <div class="space-y-1.5">
           <div class="flex flex-wrap items-baseline justify-between gap-2">
             <span class="text-sm">{{ coverageSummary }}</span>
             <span class="text-xs tabular-nums text-muted-foreground">
-              {{ coveredColumns.length }}/{{ columns.length }}
+              {{ coveredColumns.length }}/{{ columnList.length }}
             </span>
           </div>
           <div
             class="h-1.5 overflow-hidden rounded-full bg-muted"
             role="progressbar"
             aria-valuemin="0"
-            :aria-valuemax="columns.length"
+            :aria-valuemax="columnList.length"
             :aria-valuenow="coveredColumns.length"
             :aria-label="coverageSummary"
           >
@@ -149,13 +149,15 @@ import {
 } from "@/components/ui/card";
 import type { QualityRule } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
+import type { TargetColumnDetail } from "@/utils/dataQualityForm";
 import { ruleColumn } from "@/utils/dataQualityTarget";
 
 /**
  * Which of the target's columns a rule watches, as a progress line plus the two
- * compact lists. The rules arrive from the page; only the column directory is
- * read here, so the card stays useful when that read fails and the rest of the
- * workspace keeps rendering.
+ * compact lists. The rules arrive from the page, and the columns now usually do
+ * too: the target workspace reads them from the quality API, which also covers
+ * views and external tables. The registry fetch stays as the fallback for a
+ * caller that has no column list of its own.
  */
 
 const props = defineProps<{
@@ -165,6 +167,12 @@ const props = defineProps<{
   metaType: MetaType;
   /** The target's rules, as the page has already loaded them. */
   rules: QualityRule[];
+  /**
+   * The target's columns, when the page already has them. Passing this (even an
+   * empty list) takes precedence over the registry read; leaving it undefined
+   * keeps the card self-sufficient.
+   */
+  columns?: TargetColumnDetail[];
   /** Whether the caller may create a rule; only then is the entry point shown. */
   canCreate: boolean;
 }>();
@@ -179,13 +187,13 @@ const { t } = useI18n();
 /** How many uncovered columns are named before the rest are just counted. */
 const UNCOVERED_PREVIEW = 12;
 
-interface TargetColumn {
-  name: string;
-}
-
-const columns = ref<TargetColumn[]>([]);
+/** The columns the registry read returned; used only when the page passes none. */
+const fetchedColumns = ref<TargetColumnDetail[]>([]);
 const loading = ref(false);
 const loadFailed = ref(false);
+
+/** The columns the card renders: the page's list wins, else the fetched one. */
+const columnList = computed(() => props.columns ?? fetchedColumns.value);
 
 // A page that switches target must not paint the previous target's columns while
 // the new list loads; the ticket drops whatever the old request returns.
@@ -203,15 +211,15 @@ async function loadColumns() {
     if (ticket !== loadTicket) {
       return;
     }
-    columns.value = items.map((item) => {
+    fetchedColumns.value = items.map((item) => {
       const value = item.type.value as { name?: string } | undefined;
-      return { name: value?.name ?? item.guid };
+      return { name: value?.name ?? item.guid, type: "", nullable: true };
     });
   } catch {
     if (ticket !== loadTicket) {
       return;
     }
-    columns.value = [];
+    fetchedColumns.value = [];
     loadFailed.value = true;
   } finally {
     if (ticket === loadTicket) {
@@ -221,10 +229,16 @@ async function loadColumns() {
 }
 
 watch(
-  () => props.targetGuid,
+  () => [props.targetGuid, props.columns] as const,
   () => {
-    columns.value = [];
-    void loadColumns();
+    // The page's list wins: cancel any in-flight read and never request one.
+    loadTicket++;
+    fetchedColumns.value = [];
+    loading.value = false;
+    loadFailed.value = false;
+    if (props.columns === undefined) {
+      void loadColumns();
+    }
   },
   { immediate: true }
 );
@@ -243,7 +257,7 @@ const ruleCountsByColumn = computed(() => {
 });
 
 const coveredColumns = computed(() =>
-  columns.value
+  columnList.value
     .filter((column) => ruleCountsByColumn.value.has(column.name))
     .map((column) => ({
       name: column.name,
@@ -252,7 +266,7 @@ const coveredColumns = computed(() =>
 );
 
 const uncoveredColumns = computed(() =>
-  columns.value
+  columnList.value
     .filter((column) => !ruleCountsByColumn.value.has(column.name))
     .map((column) => column.name)
 );
@@ -268,14 +282,16 @@ const hiddenUncoveredCount = computed(
 const coverageSummary = computed(() =>
   t("dataQuality.coverage.coveredSummary", {
     covered: coveredColumns.value.length,
-    total: columns.value.length,
+    total: columnList.value.length,
   })
 );
 
 const coveragePercent = computed(() => {
-  if (columns.value.length === 0) {
+  if (columnList.value.length === 0) {
     return 0;
   }
-  return Math.round((coveredColumns.value.length / columns.value.length) * 100);
+  return Math.round(
+    (coveredColumns.value.length / columnList.value.length) * 100
+  );
 });
 </script>

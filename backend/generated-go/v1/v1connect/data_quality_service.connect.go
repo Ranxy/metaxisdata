@@ -247,8 +247,9 @@ type DataQualityServiceClient interface {
 	// rule to answer "which table needs attention?".
 	ListQualityTargets(context.Context, *connect.Request[v1.ListQualityTargetsRequest]) (*connect.Response[v1.ListQualityTargetsResponse], error)
 	// Read one target's workspace: its rules (with their latest results), the
-	// pending AI drafts and the unresolved issues, in one call. The target is
-	// named by GUID because a target is not a resource of its own.
+	// unresolved issues and the target's columns, in one call. AI drafts are not
+	// part of the response (reading them needs the suggest permission). The target
+	// is named by GUID because a target is not a resource of its own.
 	GetQualityTarget(context.Context, *connect.Request[v1.GetQualityTargetRequest]) (*connect.Response[v1.GetQualityTargetResponse], error)
 	// Read one target's contract: its target-level defaults, the published version,
 	// and whether the live rules differ from that snapshot.
@@ -846,8 +847,9 @@ type DataQualityServiceHandler interface {
 	// rule to answer "which table needs attention?".
 	ListQualityTargets(context.Context, *connect.Request[v1.ListQualityTargetsRequest]) (*connect.Response[v1.ListQualityTargetsResponse], error)
 	// Read one target's workspace: its rules (with their latest results), the
-	// pending AI drafts and the unresolved issues, in one call. The target is
-	// named by GUID because a target is not a resource of its own.
+	// unresolved issues and the target's columns, in one call. AI drafts are not
+	// part of the response (reading them needs the suggest permission). The target
+	// is named by GUID because a target is not a resource of its own.
 	GetQualityTarget(context.Context, *connect.Request[v1.GetQualityTargetRequest]) (*connect.Response[v1.GetQualityTargetResponse], error)
 	// Read one target's contract: its target-level defaults, the published version,
 	// and whether the live rules differ from that snapshot.

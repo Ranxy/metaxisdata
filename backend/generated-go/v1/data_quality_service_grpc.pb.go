@@ -169,8 +169,9 @@ type DataQualityServiceClient interface {
 	// rule to answer "which table needs attention?".
 	ListQualityTargets(ctx context.Context, in *ListQualityTargetsRequest, opts ...grpc.CallOption) (*ListQualityTargetsResponse, error)
 	// Read one target's workspace: its rules (with their latest results), the
-	// pending AI drafts and the unresolved issues, in one call. The target is
-	// named by GUID because a target is not a resource of its own.
+	// unresolved issues and the target's columns, in one call. AI drafts are not
+	// part of the response (reading them needs the suggest permission). The target
+	// is named by GUID because a target is not a resource of its own.
 	GetQualityTarget(ctx context.Context, in *GetQualityTargetRequest, opts ...grpc.CallOption) (*GetQualityTargetResponse, error)
 	// Read one target's contract: its target-level defaults, the published version,
 	// and whether the live rules differ from that snapshot.
@@ -700,8 +701,9 @@ type DataQualityServiceServer interface {
 	// rule to answer "which table needs attention?".
 	ListQualityTargets(context.Context, *ListQualityTargetsRequest) (*ListQualityTargetsResponse, error)
 	// Read one target's workspace: its rules (with their latest results), the
-	// pending AI drafts and the unresolved issues, in one call. The target is
-	// named by GUID because a target is not a resource of its own.
+	// unresolved issues and the target's columns, in one call. AI drafts are not
+	// part of the response (reading them needs the suggest permission). The target
+	// is named by GUID because a target is not a resource of its own.
 	GetQualityTarget(context.Context, *GetQualityTargetRequest) (*GetQualityTargetResponse, error)
 	// Read one target's contract: its target-level defaults, the published version,
 	// and whether the live rules differ from that snapshot.

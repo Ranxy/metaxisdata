@@ -145,14 +145,18 @@ function isUnresolved(issue: QualityIssue): boolean {
 function statusRank(status: QualityStatus): number {
   switch (status) {
     case QualityStatus.ERROR:
-      return 5;
+      return 6;
     case QualityStatus.FAIL:
-      return 4;
+      return 5;
     case QualityStatus.WARN:
-      return 3;
+      return 4;
     case QualityStatus.PASS:
-      return 2;
+      return 3;
+    // NOT_EVALUATED means the check ran but had nothing to judge; SKIPPED means
+    // it was deliberately not run. They are different outcomes, so they rank
+    // separately here exactly as the server's aggregate does.
     case QualityStatus.NOT_EVALUATED:
+      return 2;
     case QualityStatus.SKIPPED:
       return 1;
     default:

@@ -6,9 +6,12 @@ import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
 import QualityCheckDrawer from "@/components/data-quality/QualityCheckDrawer.vue";
+import TargetCheckRow from "@/components/data-quality/TargetCheckRow.vue";
 import TargetContractCard from "@/components/data-quality/TargetContractCard.vue";
+import TargetCoverageCard from "@/components/data-quality/TargetCoverageCard.vue";
 import TargetDraftCard from "@/components/data-quality/TargetDraftCard.vue";
 import TargetRuleComposer from "@/components/data-quality/TargetRuleComposer.vue";
+import { notify } from "@/lib/notify";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
@@ -21,6 +24,8 @@ import {
   QualityIssueStatus,
   type QualityRule,
   QualityRuleConfigSchema,
+  type QualityRuleHistory,
+  QualityRuleHistorySchema,
   QualityRuleSchema,
   QualityRuleState,
   QualityRuleType,
@@ -30,6 +35,8 @@ import {
   QualitySuggestionKind,
   QualitySuggestionSchema,
   QualitySuggestionStatus,
+  type QualityTargetColumn,
+  QualityTargetColumnSchema,
   QualityTargetPathSchema,
   QualityTargetSchema,
   type QualityTargetSummary,
@@ -253,12 +260,35 @@ function summaryFixture(
   });
 }
 
+/** One column as the aggregate read resolves it. */
+function targetColumn(
+  name: string,
+  type = "text",
+  nullable = true
+): QualityTargetColumn {
+  return create(QualityTargetColumnSchema, { name, type, nullable });
+}
+
+/** One rule's recent completed executions, for the row history strips. */
+function ruleHistoryFixture(rule: string, count = 2): QualityRuleHistory {
+  return create(QualityRuleHistorySchema, {
+    rule,
+    executions: Array.from({ length: count }, (_, index) => ({
+      status: QualityStatus.PASS,
+      execution: `workspaces/ws/qualityExecutions/${rule.split("/").pop()}-${index}`,
+      finishTime: timestampFromDate(new Date(Date.now() - index * 60_000)),
+    })),
+  });
+}
+
 function response(
   options: {
     summary?: QualityTargetSummary;
     rules?: QualityRule[];
     issues?: QualityIssue[];
     orphanedReason?: string;
+    targetColumns?: QualityTargetColumn[];
+    ruleHistory?: QualityRuleHistory[];
   } = {}
 ) {
   return create(GetQualityTargetResponseSchema, {
@@ -266,6 +296,11 @@ function response(
     qualityRules: options.rules ?? rulesFixture(),
     openIssues: options.issues ?? [],
     orphanedReason: options.orphanedReason ?? "",
+    targetColumns: options.targetColumns ?? [
+      targetColumn("email", "text", false),
+      targetColumn("amount", "numeric"),
+    ],
+    ruleHistory: options.ruleHistory ?? [],
   });
 }
 
@@ -551,7 +586,9 @@ describe("DataQualityTargetPage", () => {
     const multiAt = text.indexOf(
       label("dataQuality.workspace.crossColumnRulesTitle")
     );
-    const columnAt = text.indexOf("email");
+    // The coverage card above the sections also names columns, so the section
+    // heading is the last occurrence.
+    const columnAt = text.lastIndexOf("email");
     expect(datasetAt).toBeGreaterThanOrEqual(0);
     expect(multiAt).toBeGreaterThan(datasetAt);
     expect(columnAt).toBeGreaterThan(multiAt);
@@ -1242,6 +1279,85 @@ describe("DataQualityTargetPage", () => {
 
     expect(wrapper.findComponent(TargetRuleComposer).props("open")).toBe(true);
     expect(wrapper.vm.$route.query.add).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it("hands the API's target columns to the coverage card and the composer", async () => {
+    const { wrapper } = await mountPage();
+
+    const expected = [
+      { name: "email", type: "text", nullable: false },
+      { name: "amount", type: "numeric", nullable: true },
+    ];
+    // Both readers get the resolved columns, so a view or external table (which
+    // has no COLUMN registry rows) still offers its fields.
+    expect(wrapper.findComponent(TargetCoverageCard).props("columns")).toEqual(
+      expected
+    );
+    expect(
+      wrapper.findComponent(TargetRuleComposer).props("columnDetails")
+    ).toEqual(expected);
+    expect(mocks.listAllMetadata).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("consumes add=1 without the create permission and explains why", async () => {
+    const info = vi.spyOn(notify, "info");
+    mocks.getQualityTarget.mockResolvedValue(
+      response({ summary: summaryFixture({ ruleCount: 0 }), rules: [] })
+    );
+    const { wrapper, router } = await mountPage(
+      `/data-quality/targets/${TARGET.split(";").join("/")}?add=1`,
+      PERMISSIONS.filter(
+        (permission) => permission !== "metaxisdata.dataQuality.rules.create"
+      )
+    );
+    await flushPromises();
+
+    // The flag is consumed anyway, so a refresh does not replay the refusal.
+    expect(router.currentRoute.value.query.add).toBeUndefined();
+    expect(info).toHaveBeenCalledWith(
+      label("dataQuality.workspace.createPermissionRequired")
+    );
+    expect(wrapper.findComponent(TargetRuleComposer).props("open")).toBe(false);
+    info.mockRestore();
+    wrapper.unmount();
+  });
+
+  it("consumes add=1 alongside a check and opens the check instead", async () => {
+    const { wrapper, router } = await mountPage(
+      `/data-quality/targets/${TARGET.split(";").join("/")}?add=1&check=${encodeURIComponent(RULE_DATASET)}`
+    );
+    await flushPromises();
+
+    // The check wins: its sheet opens, the composer does not, and the add flag
+    // is gone so a later refresh cannot reopen the composer.
+    expect(router.currentRoute.value.query.add).toBeUndefined();
+    expect(router.currentRoute.value.query.check).toBe(RULE_DATASET);
+    expect(wrapper.findComponent(TargetRuleComposer).props("open")).toBe(false);
+    expect(mocks.getQualityRule).toHaveBeenCalledWith(RULE_DATASET);
+    wrapper.unmount();
+  });
+
+  it("clears the previous target's rule history when the target changes", async () => {
+    mocks.getQualityTarget.mockResolvedValueOnce(
+      response({ ruleHistory: [ruleHistoryFixture(RULE_DATASET, 2)] })
+    );
+    mocks.getQualityTarget.mockResolvedValueOnce(response({ ruleHistory: [] }));
+    const { wrapper, router } = await mountPage();
+
+    const before = wrapper.findComponent(TargetCheckRow);
+    expect((before.props("history") as unknown[]).length).toBe(2);
+
+    await router.push("/data-quality/targets/inst1/db1/public/customers");
+    await flushPromises();
+
+    const rows = wrapper.findAllComponents(TargetCheckRow);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect((row.props("history") as unknown[]).length).toBe(0);
+    }
+    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(2);
     wrapper.unmount();
   });
 });

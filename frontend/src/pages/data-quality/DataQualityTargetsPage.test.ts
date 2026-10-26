@@ -3,7 +3,6 @@ import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { nextTick } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
 import { Select } from "@/components/ui/select";
 import { i18n } from "@/locales";
@@ -36,6 +35,7 @@ const PERMISSIONS = [
   "metaxisdata.dataQuality.rules.list",
   "metaxisdata.dataQuality.rules.create",
 ];
+const READ_ONLY_PERMISSIONS = ["metaxisdata.dataQuality.rules.list"];
 
 const Dummy = { template: "<div />" };
 const TargetPickerStub = {
@@ -56,6 +56,8 @@ function summary(options: {
   pendingDraftCount?: number;
   worstStatus?: QualityStatus;
   lastRunTime?: boolean;
+  schemaChanged?: boolean;
+  orphaned?: boolean;
 }): QualityTargetSummary {
   return create(QualityTargetSummarySchema, {
     target: create(QualityTargetSchema, {
@@ -79,13 +81,21 @@ function summary(options: {
       options.lastRunTime === false
         ? undefined
         : timestampFromDate(new Date(Date.now() - 5 * 60_000)),
+    schemaChanged: options.schemaChanged ?? false,
+    orphaned: options.orphaned ?? false,
   });
 }
 
 function directoryRows() {
   return [
-    // Orders watches two columns; one rule has run and passed. One of its two
-    // rules is paused, so the row carries the enabled/total hint.
+    // Server order is authoritative: the failing target comes first.
+    summary({
+      guid: TARGET_CUSTOMERS,
+      object: "customers",
+      ruleCount: 1,
+      worstStatus: QualityStatus.FAIL,
+      pendingDraftCount: 1,
+    }),
     summary({
       guid: TARGET_ORDERS,
       object: "orders",
@@ -96,18 +106,12 @@ function directoryRows() {
       openIssueCount: 1,
       worstStatus: QualityStatus.PASS,
     }),
-    // Customers has one table-level rule whose latest run failed, and a draft.
-    summary({
-      guid: TARGET_CUSTOMERS,
-      object: "customers",
-      ruleCount: 1,
-      worstStatus: QualityStatus.FAIL,
-      pendingDraftCount: 1,
-    }),
   ];
 }
 
-async function mountPage() {
+async function mountPage(
+  options: { path?: string; permissions?: string[] } = {}
+) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -134,11 +138,13 @@ async function mountPage() {
       },
     ],
   });
-  await router.push("/data-quality/targets");
+  await router.push(options.path ?? "/data-quality/targets");
   await router.isReady();
   const pinia = createPinia();
   setActivePinia(pinia);
-  useAuthStore().user = create(UserSchema, { permissions: PERMISSIONS });
+  useAuthStore().user = create(UserSchema, {
+    permissions: options.permissions ?? PERMISSIONS,
+  });
   const wrapper = mount(DataQualityTargetsPage, {
     global: {
       plugins: [router, i18n, pinia],
@@ -146,7 +152,7 @@ async function mountPage() {
     },
   });
   await flushPromises();
-  return wrapper;
+  return { wrapper, router };
 }
 
 /** The table body rows, one per target. */
@@ -160,6 +166,12 @@ function buttonWithLabel(wrapper: ReturnType<typeof mount>, label: string) {
     .find((button) => button.text().trim() === label);
 }
 
+/** Let the 300ms search debounce fire. */
+async function settleSearch() {
+  await new Promise((resolve) => setTimeout(resolve, 350));
+  await flushPromises();
+}
+
 beforeEach(() => {
   localStorage.clear();
   vi.clearAllMocks();
@@ -170,19 +182,22 @@ beforeEach(() => {
 });
 
 describe("DataQualityTargetsPage directory", () => {
-  it("renders one row per target, with its counts and latest result", async () => {
-    const wrapper = await mountPage();
+  it("asks the server for the whole directory and renders its order", async () => {
+    const { wrapper } = await mountPage();
 
-    // One aggregate read, in attention order, for the whole directory.
+    // One aggregate read; no cursor walk and no client sort.
+    expect(mocks.listQualityTargets).toHaveBeenCalledTimes(1);
     expect(mocks.listQualityTargets).toHaveBeenCalledWith({
       pageSize: 1000,
-      pageToken: "",
+      search: "",
+      hasOpenIssue: false,
+      hasPendingDraft: false,
       orderBy: QualityTargetOrder.ATTENTION,
     });
 
     const all = rows(wrapper);
     expect(all).toHaveLength(2);
-    // Attention first: the failing target outranks the passing one.
+    // The rows keep the server's attention order.
     expect(all[0]?.text()).toContain("customers");
     expect(all[1]?.text()).toContain("orders");
 
@@ -201,7 +216,7 @@ describe("DataQualityTargetsPage directory", () => {
   });
 
   it("reads its counts and column count from the summary", async () => {
-    const wrapper = await mountPage();
+    const { wrapper } = await mountPage();
     const [customers, orders] = rows(wrapper);
 
     const customersCells = customers?.findAll("td") ?? [];
@@ -218,95 +233,172 @@ describe("DataQualityTargetsPage directory", () => {
     expect(ordersCells[1]?.text()).toContain("1 / 2");
   });
 
-  it("walks the cursor so a directory past one page stays complete", async () => {
-    mocks.listQualityTargets.mockImplementation(
-      ({ pageToken }: { pageToken: string }) =>
-        Promise.resolve(
-          pageToken === ""
-            ? { items: [directoryRows()[1]], nextPageToken: "next" }
-            : { items: [directoryRows()[0]], nextPageToken: "" }
+  it("shows the schema-changed and orphaned badges on a row", async () => {
+    mocks.listQualityTargets.mockResolvedValue({
+      items: [
+        summary({
+          guid: TARGET_CUSTOMERS,
+          object: "customers",
+          schemaChanged: true,
+        }),
+        summary({
+          guid: TARGET_ORDERS,
+          object: "orders",
+          orphaned: true,
+        }),
+      ],
+      nextPageToken: "",
+    });
+    const { wrapper } = await mountPage();
+    const [customers, orders] = rows(wrapper);
+
+    expect(customers?.text()).toContain(
+      i18n.global.t("dataQuality.targetChanged")
+    );
+    expect(orders?.text()).toContain(i18n.global.t("dataQuality.orphaned"));
+    expect(
+      orders
+        ?.find(
+          `[title="${i18n.global.t("dataQuality.workspace.orphanedHint")}"]`
         )
-    );
-    const wrapper = await mountPage();
-
-    expect(rows(wrapper)).toHaveLength(2);
-    expect(mocks.listQualityTargets).toHaveBeenCalledTimes(2);
-    expect(mocks.listQualityTargets).toHaveBeenLastCalledWith(
-      expect.objectContaining({ pageToken: "next" })
-    );
-  });
-
-  it("re-sorts by rule count from the sort select", async () => {
-    const wrapper = await mountPage();
-    expect(rows(wrapper)[0]?.text()).toContain("customers");
-
-    const sort = wrapper.findComponent(Select);
-    await sort.vm.$emit("update:modelValue", "rules");
-    await nextTick();
-
-    expect(rows(wrapper)[0]?.text()).toContain("orders");
+        .exists()
+    ).toBe(true);
   });
 });
 
-describe("DataQualityTargetsPage filters", () => {
-  it("filters by the search box on the client", async () => {
-    const wrapper = await mountPage();
+describe("DataQualityTargetsPage server filters", () => {
+  it("reads the filters from the URL and sends them on the first request", async () => {
+    const { wrapper } = await mountPage({
+      path: "/data-quality/targets?q=orders&issues=1&drafts=1&sort=rules",
+    });
+
+    expect(mocks.listQualityTargets).toHaveBeenCalledTimes(1);
+    expect(mocks.listQualityTargets).toHaveBeenCalledWith({
+      pageSize: 1000,
+      search: "orders",
+      hasOpenIssue: true,
+      hasPendingDraft: true,
+      orderBy: QualityTargetOrder.RULE_COUNT,
+    });
+    expect(
+      (wrapper.find("#data-quality-target-search").element as HTMLInputElement)
+        .value
+    ).toBe("orders");
+    expect(
+      buttonWithLabel(
+        wrapper,
+        i18n.global.t("dataQuality.targets.onlyIssues")
+      )?.attributes("aria-pressed")
+    ).toBe("true");
+    expect(
+      buttonWithLabel(
+        wrapper,
+        i18n.global.t("dataQuality.targets.onlyDrafts")
+      )?.attributes("aria-pressed")
+    ).toBe("true");
+    expect(wrapper.findComponent(Select).props("modelValue")).toBe("rules");
+  });
+
+  it("re-queries once the search stops changing", async () => {
+    const { wrapper, router } = await mountPage();
     const search = wrapper.find("#data-quality-target-search");
 
     await search.setValue("customers");
-    expect(rows(wrapper)).toHaveLength(1);
-    expect(rows(wrapper)[0]?.text()).toContain("customers");
+    // Typing alone does not hit the server; the debounce does.
+    expect(mocks.listQualityTargets).toHaveBeenCalledTimes(1);
 
-    // The instance and the GUID are searchable too, not just the object name.
-    await search.setValue("instance-1");
-    expect(rows(wrapper)).toHaveLength(2);
+    await settleSearch();
 
-    await search.setValue("nothing-matches");
-    expect(rows(wrapper)).toHaveLength(0);
-    expect(wrapper.text()).toContain(
-      i18n.global.t("dataQuality.targets.emptyFilteredTitle")
+    expect(mocks.listQualityTargets).toHaveBeenCalledTimes(2);
+    expect(mocks.listQualityTargets).toHaveBeenLastCalledWith(
+      expect.objectContaining({ search: "customers" })
     );
+    expect(router.currentRoute.value.query).toEqual({ q: "customers" });
   });
 
-  it("filters by each attention toggle, independently", async () => {
-    const wrapper = await mountPage();
+  it("writes the issue, draft and sort changes to the URL", async () => {
+    const { wrapper, router } = await mountPage({
+      path: "/data-quality/targets?keep=1",
+    });
+
+    await buttonWithLabel(
+      wrapper,
+      i18n.global.t("dataQuality.targets.onlyIssues")
+    )?.trigger("click");
+    await flushPromises();
+    expect(mocks.listQualityTargets).toHaveBeenLastCalledWith(
+      expect.objectContaining({ hasOpenIssue: true })
+    );
+    // A parameter this page does not own survives the rewrite.
+    expect(router.currentRoute.value.query).toEqual({
+      keep: "1",
+      issues: "1",
+    });
+
+    await buttonWithLabel(
+      wrapper,
+      i18n.global.t("dataQuality.targets.onlyDrafts")
+    )?.trigger("click");
+    await flushPromises();
+    expect(mocks.listQualityTargets).toHaveBeenLastCalledWith(
+      expect.objectContaining({ hasPendingDraft: true })
+    );
+
+    await wrapper
+      .findComponent(Select)
+      .vm.$emit("update:modelValue", "lastRun");
+    await flushPromises();
+    expect(mocks.listQualityTargets).toHaveBeenLastCalledWith(
+      expect.objectContaining({ orderBy: QualityTargetOrder.LAST_RUN })
+    );
+    expect(router.currentRoute.value.query).toMatchObject({
+      keep: "1",
+      issues: "1",
+      drafts: "1",
+      sort: "lastRun",
+    });
+  });
+
+  it("filters failing on the client without another request", async () => {
+    const { wrapper, router } = await mountPage();
+    expect(mocks.listQualityTargets).toHaveBeenCalledTimes(1);
 
     const failing = buttonWithLabel(
       wrapper,
       i18n.global.t("dataQuality.targets.onlyFailing")
     );
     await failing?.trigger("click");
+    await flushPromises();
+
+    // FAIL *or* ERROR cannot be one API filter; the rows are narrowed in place.
+    expect(mocks.listQualityTargets).toHaveBeenCalledTimes(1);
     expect(rows(wrapper)).toHaveLength(1);
     expect(rows(wrapper)[0]?.text()).toContain("customers");
     expect(failing?.attributes("aria-pressed")).toBe("true");
+    expect(router.currentRoute.value.query).toEqual({ failing: "1" });
 
-    // Turning it off restores every target.
     await failing?.trigger("click");
+    await flushPromises();
     expect(rows(wrapper)).toHaveLength(2);
-
-    const issues = buttonWithLabel(
-      wrapper,
-      i18n.global.t("dataQuality.targets.onlyIssues")
-    );
-    await issues?.trigger("click");
-    expect(rows(wrapper)).toHaveLength(1);
-    expect(rows(wrapper)[0]?.text()).toContain("orders");
-    await issues?.trigger("click");
-
-    const drafts = buttonWithLabel(
-      wrapper,
-      i18n.global.t("dataQuality.targets.onlyDrafts")
-    );
-    await drafts?.trigger("click");
-    expect(rows(wrapper)).toHaveLength(1);
-    expect(rows(wrapper)[0]?.text()).toContain("customers");
+    expect(router.currentRoute.value.query).toEqual({});
   });
 
-  it("clears the filters from the filtered empty state", async () => {
-    const wrapper = await mountPage();
+  it("clears the filters and the URL from the filtered empty state", async () => {
+    mocks.listQualityTargets.mockImplementation(
+      (options: { search?: string }) =>
+        Promise.resolve({
+          items: options.search === "nothing" ? [] : directoryRows(),
+          nextPageToken: "",
+        })
+    );
+    const { wrapper, router } = await mountPage();
 
     await wrapper.find("#data-quality-target-search").setValue("nothing");
+    await settleSearch();
     expect(rows(wrapper)).toHaveLength(0);
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.targets.emptyFilteredTitle")
+    );
 
     const clear = buttonWithLabel(
       wrapper,
@@ -314,7 +406,16 @@ describe("DataQualityTargetsPage filters", () => {
     );
     expect(clear).toBeTruthy();
     await clear?.trigger("click");
+    await flushPromises();
 
+    expect(router.currentRoute.value.query).toEqual({});
+    expect(mocks.listQualityTargets).toHaveBeenLastCalledWith({
+      pageSize: 1000,
+      search: "",
+      hasOpenIssue: false,
+      hasPendingDraft: false,
+      orderBy: QualityTargetOrder.ATTENTION,
+    });
     expect(rows(wrapper)).toHaveLength(2);
   });
 });
@@ -325,7 +426,7 @@ describe("DataQualityTargetsPage states and links", () => {
       items: [],
       nextPageToken: "",
     });
-    const wrapper = await mountPage();
+    const { wrapper } = await mountPage();
 
     expect(rows(wrapper)).toHaveLength(0);
     expect(wrapper.text()).toContain(
@@ -340,8 +441,63 @@ describe("DataQualityTargetsPage states and links", () => {
     expect(wrapper.findComponent(TargetPickerStub).props("open")).toBe(true);
   });
 
+  it("hides start monitoring and browses metadata without the create permission", async () => {
+    mocks.listQualityTargets.mockResolvedValue({
+      items: [],
+      nextPageToken: "",
+    });
+    const { wrapper, router } = await mountPage({
+      path: "/data-quality/targets?new=1",
+      permissions: READ_ONLY_PERMISSIONS,
+    });
+
+    expect(
+      buttonWithLabel(
+        wrapper,
+        i18n.global.t("dataQuality.targets.startMonitoring")
+      )
+    ).toBeUndefined();
+    expect(wrapper.findComponent(TargetPickerStub).props("open")).toBe(false);
+    // `new=1` is consumed even when it cannot be honored.
+    expect(router.currentRoute.value.query.new).toBeUndefined();
+
+    const browse = wrapper
+      .findAll("a")
+      .find(
+        (link) =>
+          link.text().trim() ===
+          i18n.global.t("dataQuality.targets.browseMetadata")
+      );
+    expect(browse?.attributes("href")).toBe("/metadata");
+    // The header still offers refresh and the flat checks list.
+    expect(
+      buttonWithLabel(wrapper, i18n.global.t("common.refresh"))
+    ).toBeTruthy();
+    expect(
+      wrapper
+        .findAll("a")
+        .some(
+          (link) =>
+            link.text().trim() === i18n.global.t("dataQuality.targets.allRules")
+        )
+    ).toBe(true);
+  });
+
+  it("opens the picker from new=1 and keeps the rest of the query", async () => {
+    const { wrapper, router } = await mountPage({
+      path: "/data-quality/targets?new=1&q=orders",
+    });
+
+    expect(wrapper.findComponent(TargetPickerStub).props("open")).toBe(true);
+    expect(router.currentRoute.value.query).toEqual({ q: "orders" });
+    // The flag is not a filter: the read applies only what remains.
+    expect(mocks.listQualityTargets).toHaveBeenCalledWith(
+      expect.objectContaining({ search: "orders" })
+    );
+  });
+
   it("opens the picked target's workspace ready to add its first check", async () => {
-    const wrapper = await mountPage();
+    const { wrapper } = await mountPage();
     const picker = wrapper.findComponent(TargetPickerStub);
     picker.vm.$emit("select", {
       guid: TARGET_ORDERS,
@@ -364,7 +520,7 @@ describe("DataQualityTargetsPage states and links", () => {
 
   it("shows the error state and retries the load", async () => {
     mocks.listQualityTargets.mockRejectedValue(new Error("boom"));
-    const wrapper = await mountPage();
+    const { wrapper } = await mountPage();
 
     expect(wrapper.text()).toContain(
       i18n.global.t("dataQuality.targets.loadFailed")
@@ -388,7 +544,7 @@ describe("DataQualityTargetsPage states and links", () => {
   });
 
   it("links every row to its workspace with the GUID and meta type", async () => {
-    const wrapper = await mountPage();
+    const { wrapper } = await mountPage();
     const hrefs = wrapper
       .findAll("a")
       .map((link) => link.attributes("href") ?? "");

@@ -4655,6 +4655,15 @@ export declare type QualityTargetSummary = Message<"metaxisdata.v1.QualityTarget
    * @generated from field: bool schema_changed = 11;
    */
   schemaChanged: boolean;
+
+  /**
+   * Whether the target can no longer be resolved (the registry row, instance or
+   * database is gone). The rows stay readable because their target path is a
+   * snapshot, but runs are skipped.
+   *
+   * @generated from field: bool orphaned = 12;
+   */
+  orphaned: boolean;
 };
 
 /**
@@ -4741,6 +4750,15 @@ export declare type GetQualityTargetResponse = Message<"metaxisdata.v1.GetQualit
    * @generated from field: repeated metaxisdata.v1.QualityRuleHistory rule_history = 5;
    */
   ruleHistory: QualityRuleHistory[];
+
+  /**
+   * The target's current columns, from the resolved metadata. The workspace uses
+   * them for the coverage card and the check dialog's column fields; unlike
+   * ListMetadata(COLUMN) this also covers views and external tables.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityTargetColumn target_columns = 6;
+   */
+  targetColumns: QualityTargetColumn[];
 };
 
 /**
@@ -4748,6 +4766,34 @@ export declare type GetQualityTargetResponse = Message<"metaxisdata.v1.GetQualit
  * Use `create(GetQualityTargetResponseSchema)` to create a new message.
  */
 export declare const GetQualityTargetResponseSchema: GenMessage<GetQualityTargetResponse>;
+
+/**
+ * QualityTargetColumn is one column of a resolved target.
+ *
+ * @generated from message metaxisdata.v1.QualityTargetColumn
+ */
+export declare type QualityTargetColumn = Message<"metaxisdata.v1.QualityTargetColumn"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: string type = 2;
+   */
+  type: string;
+
+  /**
+   * @generated from field: bool nullable = 3;
+   */
+  nullable: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityTargetColumn.
+ * Use `create(QualityTargetColumnSchema)` to create a new message.
+ */
+export declare const QualityTargetColumnSchema: GenMessage<QualityTargetColumn>;
 
 /**
  * QualityRuleHistory is one rule's recent completed executions.
@@ -6779,8 +6825,9 @@ export declare const DataQualityService: GenService<{
   },
   /**
    * Read one target's workspace: its rules (with their latest results), the
-   * pending AI drafts and the unresolved issues, in one call. The target is
-   * named by GUID because a target is not a resource of its own.
+   * unresolved issues and the target's columns, in one call. AI drafts are not
+   * part of the response (reading them needs the suggest permission). The target
+   * is named by GUID because a target is not a resource of its own.
    *
    * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityTarget
    */

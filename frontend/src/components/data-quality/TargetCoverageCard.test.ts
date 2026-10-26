@@ -11,6 +11,7 @@ import {
   QualityTargetSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
+import type { TargetColumnDetail } from "@/utils/dataQualityForm";
 import TargetCoverageCard from "./TargetCoverageCard.vue";
 
 const mocks = vi.hoisted(() => ({
@@ -57,6 +58,7 @@ function mountCard(
     targetGuid?: string;
     rules?: QualityRule[];
     canCreate?: boolean;
+    columns?: TargetColumnDetail[];
   } = {}
 ) {
   return mount(TargetCoverageCard, {
@@ -236,5 +238,57 @@ describe("TargetCoverageCard", () => {
     expect(wrapper.text()).toContain(
       t("dataQuality.coverage.coveredSummary", { covered: 0, total: 2 })
     );
+  });
+
+  it("uses the columns the page provides instead of reading the directory", async () => {
+    const wrapper = mountCard({
+      columns: [
+        { name: "email", type: "text", nullable: false },
+        { name: "amount", type: "numeric", nullable: true },
+      ],
+      rules: [columnRule("email")],
+    });
+    await flushPromises();
+
+    // The page's list is authoritative: no registry read at all.
+    expect(mocks.listAllMetadata).not.toHaveBeenCalled();
+    expect(
+      wrapper.find('[role="progressbar"]').attributes("aria-valuemax")
+    ).toBe("2");
+    expect(wrapper.text()).toContain(
+      t("dataQuality.coverage.coveredSummary", { covered: 1, total: 2 })
+    );
+    expect(wrapper.text()).toContain("amount");
+  });
+
+  it("treats an explicit empty list as provided, not as a reason to fetch", async () => {
+    const wrapper = mountCard({ columns: [] });
+    await flushPromises();
+
+    // A view or external table can have no resolvable columns; the fallback read
+    // must not second-guess the page and hit the registry behind it.
+    expect(mocks.listAllMetadata).not.toHaveBeenCalled();
+    expect(wrapper.find('[role="progressbar"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain(t("dataQuality.coverage.loadFailed"));
+  });
+
+  it("follows the page's list when it arrives after mount", async () => {
+    const wrapper = mountCard({ columns: [] });
+    await flushPromises();
+    expect(mocks.listAllMetadata).not.toHaveBeenCalled();
+
+    await wrapper.setProps({
+      columns: [
+        { name: "email", type: "text", nullable: false },
+        { name: "id", type: "int", nullable: false },
+      ],
+    });
+    await flushPromises();
+
+    expect(mocks.listAllMetadata).not.toHaveBeenCalled();
+    expect(
+      wrapper.find('[role="progressbar"]').attributes("aria-valuemax")
+    ).toBe("2");
+    expect(wrapper.text()).toContain("email");
   });
 });

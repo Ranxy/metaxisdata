@@ -1261,6 +1261,7 @@
     },
     "targets": {
       "allRules": "全部检查",
+      "browseMetadata": "浏览元数据",
       "clearFilters": "清除筛选",
       "columnColumns": "覆盖字段",
       "columnDrafts": "待审草案",
@@ -1320,6 +1321,7 @@
       "addRuleHint": "为此目标新增检查",
       "backToTargets": "全部目标",
       "columnRulesHint": "该字段上的检查。",
+      "createPermissionRequired": "你没有为该目标添加检查的权限。",
       "crossColumnRulesHint": "涉及多个字段之间关系的检查。",
       "crossColumnRulesTitle": "跨字段检查",
       "datasetRulesHint": "检查整张表或视图的检查。",

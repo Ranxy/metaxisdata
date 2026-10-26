@@ -62,7 +62,7 @@ func TestTargetWhereAttentionFilters(t *testing.T) {
 		HasPendingDraft: true,
 	}, 13)
 	require.NoError(t, err)
-	require.Equal(t, []any{int32(4)}, args)
+	require.Equal(t, []any{int32(5)}, args)
 	require.Contains(t, where, "COALESCE(r.worst_rank, 0) = $14")
 	require.Contains(t, where, "COALESCE(i.open_issue_count, 0) > 0")
 	require.Contains(t, where, "COALESCE(d.pending_draft_count, 0) > 0")
@@ -73,6 +73,20 @@ func TestTargetWhereAttentionFilters(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"TRUE"}, where)
 	require.Empty(t, args)
+
+	// The two weakest verdicts bind different ranks, so filtering one cannot match
+	// a target whose latest result was the other.
+	_, skippedArgs, err := targetWhere(&FindQualityTargetMessage{
+		WorstStatus: storepb.QualityStatus_QUALITY_STATUS_SKIPPED,
+	}, 0)
+	require.NoError(t, err)
+	_, notEvaluatedArgs, err := targetWhere(&FindQualityTargetMessage{
+		WorstStatus: storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED,
+	}, 0)
+	require.NoError(t, err)
+	require.NotEqual(t, skippedArgs, notEvaluatedArgs)
+	require.Equal(t, int32(1), skippedArgs[0])
+	require.Equal(t, int32(2), notEvaluatedArgs[0])
 }
 
 // The worst-status ranking is what makes "ERROR outranks FAIL" true, and the
@@ -84,24 +98,45 @@ func TestQualityTargetStatusRankRoundTrip(t *testing.T) {
 		status storepb.QualityStatus
 		rank   int32
 	}{
-		{storepb.QualityStatus_QUALITY_STATUS_ERROR, 5},
-		{storepb.QualityStatus_QUALITY_STATUS_FAIL, 4},
-		{storepb.QualityStatus_QUALITY_STATUS_WARN, 3},
-		{storepb.QualityStatus_QUALITY_STATUS_PASS, 2},
+		{storepb.QualityStatus_QUALITY_STATUS_ERROR, 6},
+		{storepb.QualityStatus_QUALITY_STATUS_FAIL, 5},
+		{storepb.QualityStatus_QUALITY_STATUS_WARN, 4},
+		{storepb.QualityStatus_QUALITY_STATUS_PASS, 3},
+		{storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, 2},
 		{storepb.QualityStatus_QUALITY_STATUS_SKIPPED, 1},
-		{storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, 1},
 		{storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, 0},
 	}
 	for _, tc := range cases {
 		require.Equal(t, tc.rank, qualityTargetStatusRank(tc.status))
 	}
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_ERROR, qualityStatusFromRank(5))
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_FAIL, qualityStatusFromRank(4))
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_WARN, qualityStatusFromRank(3))
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_PASS, qualityStatusFromRank(2))
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_ERROR, qualityStatusFromRank(6))
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_FAIL, qualityStatusFromRank(5))
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_WARN, qualityStatusFromRank(4))
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_PASS, qualityStatusFromRank(3))
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, qualityStatusFromRank(2))
 	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_SKIPPED, qualityStatusFromRank(1))
 	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, qualityStatusFromRank(0))
 	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, qualityStatusFromRank(99))
+	// NOT_EVALUATED and SKIPPED are distinct ranks: a directory filter must not
+	// conflate "nothing to judge" with "did not run".
+	require.NotEqual(t, qualityTargetStatusRank(storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED),
+		qualityTargetStatusRank(storepb.QualityStatus_QUALITY_STATUS_SKIPPED))
+}
+
+// The aggregate's SQL CASE is generated from qualityTargetStatusRank, so the
+// statuses it ranks cannot drift from the filter mapping. $8 is SKIPPED and $9 is
+// NOT_EVALUATED, matching the argument order ListQualityTargets binds.
+func TestQualityTargetWorstRankCaseMatchesTheRankFunction(t *testing.T) {
+	t.Parallel()
+
+	expr := qualityTargetWorstRankCase()
+	require.Contains(t, expr, "WHEN $4 THEN 6", "ERROR")
+	require.Contains(t, expr, "WHEN $5 THEN 5", "FAIL")
+	require.Contains(t, expr, "WHEN $6 THEN 4", "WARN")
+	require.Contains(t, expr, "WHEN $7 THEN 3", "PASS")
+	require.Contains(t, expr, "WHEN $8 THEN 1", "SKIPPED")
+	require.Contains(t, expr, "WHEN $9 THEN 2", "NOT_EVALUATED")
+	require.Contains(t, expr, "ELSE 0")
 }
 
 // Every order ends with the GUID, so two rows that tie cannot swap between pages.

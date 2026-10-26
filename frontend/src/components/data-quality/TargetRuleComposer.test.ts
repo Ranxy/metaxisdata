@@ -4,7 +4,9 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
+import ColumnSelect from "@/components/common/ColumnSelect.vue";
 import UserSelect from "@/components/common/UserSelect.vue";
+import RuleConfigForm from "@/components/data-quality/RuleConfigForm.vue";
 import RuleFilterEditor from "@/components/data-quality/RuleFilterEditor.vue";
 import { Select } from "@/components/ui/select";
 import { i18n } from "@/locales";
@@ -32,6 +34,7 @@ import {
   qualityRuleTypeDescriptionKey,
   qualityRuleTypeKey,
 } from "@/utils/dataQuality";
+import type { TargetColumnDetail } from "@/utils/dataQualityForm";
 import TargetRuleComposer from "./TargetRuleComposer.vue";
 
 // Radix opens a select on pointerdown and calls pointer-capture APIs that jsdom
@@ -203,6 +206,7 @@ async function mountComposer(
     suggestion?: ReturnType<typeof suggestionFixture>;
     scope?: "dataset" | "column";
     initialColumn?: string;
+    columnDetails?: TargetColumnDetail[];
   } = {}
 ) {
   const pinia = createPinia();
@@ -223,6 +227,7 @@ async function mountComposer(
       suggestion: options.suggestion,
       scope: options.scope,
       initialColumn: options.initialColumn,
+      columnDetails: options.columnDetails,
     },
     global: { plugins: [i18n, pinia] },
   });
@@ -663,6 +668,75 @@ describe("TargetRuleComposer", () => {
     expect(wrapper.emitted("saved")).toBeUndefined();
     // The dialog still closes: there is nothing to save, not an error.
     expect(wrapper.emitted("update:open")).toEqual([[false]]);
+    wrapper.unmount();
+  });
+
+  it("uses the columns the page hands down without a metadata read", async () => {
+    const provided: TargetColumnDetail[] = [
+      { name: "email", type: "text", nullable: true },
+      { name: "region", type: "text", nullable: false },
+    ];
+    const wrapper = await mountComposer({
+      scope: "column",
+      initialColumn: "email",
+      columnDetails: provided,
+    });
+    await nextTick();
+
+    // The workspace already read the columns; the dialog must not ask again (a
+    // VIEW would come back with none and lose the pickers).
+    expect(mocks.listAllMetadata).not.toHaveBeenCalled();
+    expect(
+      wrapper.findComponent(RuleConfigForm).props("columnDetails")
+    ).toEqual(provided);
+    // The column picker of the check offers exactly the handed-down columns.
+    expect(wrapper.findComponent(ColumnSelect).props("columns")).toEqual(
+      provided
+    );
+    wrapper.unmount();
+  });
+
+  it("applies columns that arrive after the dialog opened", async () => {
+    // The metadata read finds no registry column rows, like a view or an
+    // external table; the workspace's list arrives a moment later.
+    mocks.listAllMetadata.mockResolvedValue([]);
+    const wrapper = await mountComposer();
+    await flushPromises();
+    expect(
+      wrapper.findComponent(RuleConfigForm).props("columnDetails")
+    ).toEqual([]);
+
+    const provided: TargetColumnDetail[] = [
+      { name: "region", type: "text", nullable: true },
+    ];
+    await wrapper.setProps({ columnDetails: provided });
+    await flushPromises();
+
+    expect(
+      wrapper.findComponent(RuleConfigForm).props("columnDetails")
+    ).toEqual(provided);
+    wrapper.unmount();
+  });
+
+  it("falls back to the metadata read when no columns are handed down", async () => {
+    const wrapper = await mountComposer();
+    await flushPromises();
+
+    expect(mocks.listAllMetadata).toHaveBeenCalledWith({
+      parentGuid: TABLE,
+      metaType: MetaType.COLUMN,
+    });
+    expect(
+      wrapper.findComponent(RuleConfigForm).props("columnDetails")
+    ).toEqual([{ name: "email", type: "text", nullable: true }]);
+    wrapper.unmount();
+  });
+
+  it("falls back to the metadata read for an empty hand-down", async () => {
+    const wrapper = await mountComposer({ columnDetails: [] });
+    await flushPromises();
+
+    expect(mocks.listAllMetadata).toHaveBeenCalledTimes(1);
     wrapper.unmount();
   });
 });
