@@ -293,13 +293,15 @@ API 语义：
 **决定：批次仍按实例调度，不改目标级 schedule、不改 `quality_run` 结构。** 一个实例的一份连接租约、一次调度 tick 的规则仍然进同一个派发批次；变化只发生在批次内部的**规则顺序与切块边界**：
 
 - 调度扫描仍按 `(next_run_at, id)` 取 due rules（最老 due 优先），但进入实例后先按目标分组：目标组顺序 = 该目标最早 due 的规则出现顺序；组内保持 due/id 顺序。
-- 切块以**完整目标组**为单位：不超过 50 条上限时优先把整组放进同一批次，放不下就换下一批；只有单个目标自身 >50 条时才允许该目标跨批（这是执行预算的硬约束，不是目标被打散）。
-- `executeBatch` 本来就是顺序 loop，因此同一目标的检查真正**连续执行**；批次的 per-target slice 也因此通常是“该目标本轮的完整集合”，Phase A 的 `latest_run`/批次卡计数含义更准确。
+- 切块以**完整目标组**为单位：批次上限 100 与单表规则上限一致，因此每个合法目标都能放进同一批次；只有绕过 API 上限的存量/导入数据（>100 条）才可能跨批。
+- 完整性的两处保证：due 查询先在存储层按目标聚合、按 first-due 取完整目标组直到 200 条规则预算（跨预算的目标整组保留），所以预算落在目标中间时也不会把目标拆到两个 tick；批次上限 100 ≥ 单目标规则上限，所以目标不会被批大小切开。
+- `executeBatch` 本来就是顺序 loop，因此同一目标的检查真正**连续执行**；批次的 per-target slice 在正常数据下就是“该目标本轮的完整 due 集合”。
+- 规则仍有独立 schedule：批次只含“本轮到期”的检查，不等于目标全部检查。批次卡/目标视图会显示 “本批 N/M 条检查”（M 为目标 live 规则数）来明示 due 子集；若业务要求“一批=目标全量”，仍需目标级 schedule（未做）。
 - 手动运行在 `groupQualityRulesByInstance` 内按 `(target_guid, target_type, id)` 排序，与定时路径的目标局部性一致；响应顺序也因此可复现。
 - 没有把目标组按 GUID 全局排序：那会把“最老 due 先跑”改成字母序，饥饿/公平性变差；GUID 只作为目标身份，不承担调度优先级。
 - 批次卡显示 “{count} 个目标”（多目标批次）让“一批 = 一个实例的一批规则，其中按目标连续”可见。
 
-文件：`backend/runner/qualityrunner/qualityrunner.go`（`planDueBatches` + `planInstanceDueBatches`）、`backend/api/v1/data_quality_service.go`（手动选择排序）、对应单测；前端只增加批次头部的目标数文案。
+文件：`backend/store/quality_rule.go`（due 查询按目标聚合 + `selectDueTargets`）、`backend/runner/qualityrunner/qualityrunner.go`（`planDueBatches`/`planInstanceDueBatches`、批次上限常量）、`backend/api/v1/data_quality_service.go`（手动选择排序）、对应单测；前端批次卡与目标视图的 “N/M 条检查” 提示。
 
 ## 4. 阶段计划
 
@@ -335,9 +337,11 @@ API 语义：
 
 ### Phase B（已实现，本分支）
 
-- ✅ 批次仍按实例调度；批次内按目标分组（目标组按最早 due 顺序、组内 due/id 顺序），切块以完整目标组为单位；仅单目标 >50 条时跨批。
+- ✅ 批次仍按实例调度；批次内按目标分组（目标组按最早 due 顺序、组内 due/id 顺序），切块以完整目标组为单位；批次上限提升到 100（对齐单表规则上限），合法目标不会被批大小切开。
+- ✅ due 扫描在存储层按完整目标组取（`selectDueTargets`），200 条预算不再把目标拆到两个 tick。
 - ✅ 手动运行在实例分组内按 `(target_guid,target_type,id)` 排序，与定时路径一致。
-- 未做（当前不需要）：一目标一批次的调度模型、`quality_run.target_guid`、连接租约与批次身份解耦。若未来要做，需同时决定目标级 schedule 与批量上限，属于新的产品决策。
+- ✅ 规则独立 schedule 导致“本批只含到期检查”时，批次卡/目标视图显示 “本批 N/M 条检查”，不把 due 子集冒充目标全量。
+- 未做（当前不需要）：目标级 schedule、一目标一批次的调度模型、`quality_run.target_guid`、连接租约与批次身份解耦。若未来要做，属于新的产品决策。
 
 ### P2（可选）
 

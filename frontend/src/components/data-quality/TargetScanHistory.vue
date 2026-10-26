@@ -37,6 +37,7 @@
           :run="run"
           :target-guid="targetGuid"
           :rule-titles="ruleTitles"
+          :target-rule-count="targetRuleCount"
           :model-value="expandedRun === run.name"
           @update:model-value="(open) => toggleRun(run.name, open)"
         />
@@ -67,10 +68,12 @@ const props = withDefaults(
     targetGuid: string;
     /** Rule resource name -> title, passed through to the run cards. */
     ruleTitles?: Record<string, string>;
+    /** The target's live rule count, so a due-only batch can say 3/5 checks. */
+    targetRuleCount?: number;
     /** The run whose checks are open, carried by `?run=`. */
     expandRun?: string;
   }>(),
-  { ruleTitles: () => ({}), expandRun: "" }
+  { ruleTitles: () => ({}), targetRuleCount: 0, expandRun: "" }
 );
 
 const emit = defineEmits<{

@@ -909,18 +909,93 @@ func (s *Store) ArchiveQualityRule(ctx context.Context, resourceID string, updat
 
 // FindDueQualityRules returns the enabled, non-deleted rules whose next_run_at
 // has arrived, oldest due first. limit is required and bounds one scheduler tick.
+// dueQualityTarget is one target's due-rule aggregate: when its first rule is due,
+// how many rules are due, and the first rule id as a stable tie-breaker.
+type dueQualityTarget struct {
+	guid      string
+	metaType  storepb.MetaType
+	firstDue  time.Time
+	firstID   int64
+	ruleCount int32
+}
+
+// selectDueTargets takes whole targets in first-due order until the rule budget
+// is met. The target that crosses the budget is included whole, so the result may
+// exceed the budget by at most that target's due-rule count; a target's due rules
+// never straddle two scheduler ticks because of the budget.
+func selectDueTargets(targets []dueQualityTarget, budget int) []dueQualityTarget {
+	if budget <= 0 || len(targets) == 0 {
+		return nil
+	}
+	selected := make([]dueQualityTarget, 0, len(targets))
+	rules := 0
+	for _, target := range targets {
+		selected = append(selected, target)
+		rules += int(target.ruleCount)
+		if rules >= budget {
+			break
+		}
+	}
+	return selected
+}
+
+// FindDueQualityRules returns the enabled, non-deleted rules whose next_run_at
+// has arrived, oldest due first. limit is a target-complete work budget: targets
+// are taken in first-due order until the budget is met, and every due rule of a
+// selected target is returned. A target's rules are therefore never cut by the
+// budget; the result may exceed limit by at most one target's due-rule count.
 func (s *Store) FindDueQualityRules(ctx context.Context, now time.Time, limit int) ([]*QualityRuleMessage, error) {
 	if limit <= 0 {
 		return nil, common.Errorf(common.Invalid, "a positive due-rule limit is required")
 	}
 
-	rows, err := s.GetDB().QueryContext(ctx, `
-		SELECT `+qualityRuleColumns+`
+	targetRows, err := s.GetDB().QueryContext(ctx, `
+		SELECT target_guid, target_type, MIN(next_run_at), MIN(id), (COUNT(*))::INT
 		FROM quality_rule
 		WHERE state = $1 AND deleted = FALSE AND next_run_at IS NOT NULL AND next_run_at <= $2
-		ORDER BY next_run_at ASC, id ASC
-		LIMIT $3`,
-		storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED, now, limit)
+		GROUP BY target_guid, target_type
+		ORDER BY MIN(next_run_at) ASC, MIN(id) ASC`,
+		storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED, now)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to query due quality rule targets")
+	}
+	defer targetRows.Close()
+
+	targets := make([]dueQualityTarget, 0)
+	for targetRows.Next() {
+		var target dueQualityTarget
+		var targetType int16
+		if err := targetRows.Scan(&target.guid, &targetType, &target.firstDue, &target.firstID, &target.ruleCount); err != nil {
+			return nil, errors.Wrap(err, "failed to scan a due quality rule target")
+		}
+		target.metaType = storepb.MetaType(targetType)
+		targets = append(targets, target)
+	}
+	if err := targetRows.Err(); err != nil {
+		return nil, errors.Wrap(err, "rows iteration error for due quality rule targets")
+	}
+
+	selected := selectDueTargets(targets, limit)
+	if len(selected) == 0 {
+		return []*QualityRuleMessage{}, nil
+	}
+	guids := make([]string, 0, len(selected))
+	objectTypes := make([]int16, 0, len(selected))
+	for _, target := range selected {
+		guids = append(guids, target.guid)
+		objectTypes = append(objectTypes, int16(target.metaType))
+	}
+
+	rows, err := s.GetDB().QueryContext(ctx, `
+		SELECT `+qualityRuleColumns+`
+		FROM quality_rule r
+		JOIN unnest($1::text[], $2::int2[]) AS t(guid, object_type)
+			ON r.target_guid = t.guid AND r.target_type = t.object_type
+		WHERE r.state = $3 AND r.deleted = FALSE
+			AND r.next_run_at IS NOT NULL AND r.next_run_at <= $4
+		ORDER BY r.next_run_at ASC, r.id ASC`,
+		pq.Array(guids), pq.Array(objectTypes),
+		storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED, now)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to query due quality rules")
 	}

@@ -695,6 +695,7 @@
       "runFailed": "{count} failed",
       "runIncomplete": "{count} unfinished",
       "runOpenInList": "Open in all executions",
+      "runPartial": "{done}/{all} checks in this batch",
       "runResult": "Batch result",
       "runRunningHint": "The batch is still running; results are incomplete.",
       "runTargets": "{count} targets",

@@ -105,6 +105,12 @@
         {{ t("dataQuality.executions.runChecks", { count: totalChecks }) }}
       </span>
       <span
+        v-if="partialChecks > 0"
+        class="text-xs tabular-nums text-muted-foreground"
+      >
+        {{ t("dataQuality.executions.runPartial", { done: totalChecks, all: partialChecks }) }}
+      </span>
+      <span
         v-if="unfinishedChecks > 0"
         class="text-xs tabular-nums text-warning"
       >
@@ -321,10 +327,16 @@ const props = withDefaults(
     targetGuid: string;
     /** Rule resource name -> title, for the check rows. */
     ruleTitles?: Record<string, string>;
+    /**
+     * The target's live rule count, when the caller knows it. A batch contains
+     * only the checks that were due, so this lets the card say "3/5 checks" when
+     * some rules are on a different schedule.
+     */
+    targetRuleCount?: number;
     /** Whether the checks table is expanded. */
     modelValue?: boolean;
   }>(),
-  { ruleTitles: () => ({}), modelValue: false }
+  { ruleTitles: () => ({}), targetRuleCount: 0, modelValue: false }
 );
 
 const emit = defineEmits<{
@@ -355,6 +367,10 @@ const counts = computed<QualityStatusCounts | undefined>(
   () => slice.value?.counts
 );
 const totalChecks = computed(() => counts.value?.total ?? 0);
+/** The target's live count when the batch only covered its due subset. */
+const partialChecks = computed(() =>
+  props.targetRuleCount > totalChecks.value ? props.targetRuleCount : 0
+);
 const outcome = computed(
   () => slice.value?.outcome ?? QualityStatus.UNSPECIFIED
 );

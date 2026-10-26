@@ -265,6 +265,12 @@
                         {{ countsSummary(summary) }}
                       </div>
                       <div
+                        v-if="partialChecks(summary) > 0"
+                        class="mt-1 text-xs text-muted-foreground tabular-nums"
+                      >
+                        {{ t("dataQuality.executions.runPartial", { done: runSliceCounts(summary)?.total ?? 0, all: partialChecks(summary) }) }}
+                      </div>
+                      <div
                         v-if="unfinishedChecks(summary) > 0"
                         class="mt-1 text-xs text-warning tabular-nums"
                       >
@@ -318,6 +324,7 @@
                     <TargetScanHistory
                       :target-guid="targetGuid(summary)"
                       :rule-titles="ruleTitles"
+                      :target-rule-count="summary.ruleCount"
                       :expand-run="expandedRun"
                       @update:expand-run="onRunToggle"
                     />
@@ -1175,6 +1182,16 @@ function unfinishedChecks(summary: QualityTargetSummary): number {
     0
   );
   return Math.max(0, counts.total - finished);
+}
+
+/**
+ * The target's live rule count when the latest batch covered only the rules that
+ * were due (rules can run on different schedules). Zero means the batch covered
+ * the whole target, or the caller has no rule count.
+ */
+function partialChecks(summary: QualityTargetSummary): number {
+  const total = runSliceCounts(summary)?.total ?? 0;
+  return summary.ruleCount > total ? summary.ruleCount : 0;
 }
 
 function scanTime(summary: QualityTargetSummary) {

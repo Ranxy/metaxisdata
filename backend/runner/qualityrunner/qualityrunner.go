@@ -46,13 +46,16 @@ const (
 	// tickInterval is how often the scheduler looks for due rules. It is not
 	// jittered: the query is a single indexed read and the pass is cheap.
 	tickInterval = 10 * time.Second
-	// dueScanLimit bounds one tick's due-rule query, matching the design's "at
-	// most 200 rules per pass" budget.
+	// dueScanLimit is the target-complete work budget for one tick. The store takes
+	// whole targets in first-due order until the budget is met; a target's due rules
+	// are never cut by it. See FindDueQualityRules.
 	dueScanLimit = 200
-	// maxExecutionsPerBatch bounds one internal batch. A batch covers one
-	// instance, so this is also the most executions the runner creates against
-	// one target without creating the next batch.
-	maxExecutionsPerBatch = 50
+	// maxExecutionsPerBatch bounds one internal batch. It matches the per-target
+	// rule cap, so every legal target fits one batch: a batch covers one instance,
+	// and a target larger than the cap can only come from data that bypassed the API
+	// limit. Raising the cap trades that guarantee against the 15-minute execution
+	// budget; manual target runs already plan up to the same rule count in one batch.
+	maxExecutionsPerBatch = 100
 	// maxConcurrentInstanceBatches is the per-instance/global concurrency ceiling
 	// for scheduled batches: the design allows two instances to execute at once,
 	// and one instance's batches always run serially.
@@ -412,6 +415,10 @@ func (r *Runner) abandonStaleWork(ctx context.Context) {
 // the rules are grouped by instance, chunked into batches of at most
 // maxExecutionsPerBatch, and one instance's batches execute serially while at most
 // two instances execute at once.
+//
+// The store's due query selects whole targets in first-due order until the budget
+// is met, so a target's due rules never straddle two scheduler ticks just because
+// the row budget fell inside its group.
 func (r *Runner) scanDue(ctx context.Context) {
 	// The planning cost is settings refresh, the quota check, the due-rule query,
 	// the chunking, the batch row and the planned execution rows. It deliberately

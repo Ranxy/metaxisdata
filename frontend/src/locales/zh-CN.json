@@ -695,6 +695,7 @@
       "runFailed": "{count} 项失败",
       "runIncomplete": "{count} 项未完成",
       "runOpenInList": "在全部执行中查看",
+      "runPartial": "本批 {done}/{all} 条检查",
       "runResult": "批次结果",
       "runRunningHint": "批次仍在执行，结果尚不完整。",
       "runTargets": "{count} 个目标",

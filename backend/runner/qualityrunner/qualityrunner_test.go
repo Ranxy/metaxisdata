@@ -153,6 +153,26 @@ func TestPlanDueBatchesRejectsNonPositiveBatchSize(t *testing.T) {
 	require.Empty(t, planDueBatches([]*store.QualityRuleMessage{qualityRuleStub(1, "inst;db;public;t")}, 0))
 }
 
+// A target at the API's per-table rule cap fits one scheduled batch; only data
+// that bypassed that cap can split a target.
+func TestScheduledBatchCapacityFitsTheLargestLegalTarget(t *testing.T) {
+	t.Parallel()
+
+	rules := make([]*store.QualityRuleMessage, 0, 100)
+	for id := int64(1); id <= 100; id++ {
+		rules = append(rules, qualityRuleStub(id, "inst;db;public;orders"))
+	}
+	plans := planDueBatches(rules, maxExecutionsPerBatch)
+	require.Len(t, plans, 1, "the largest legal target stays in one batch")
+	require.Len(t, plans[0].rules, 100)
+
+	legacy := make([]*store.QualityRuleMessage, 0, len(rules)+1)
+	legacy = append(legacy, rules...)
+	legacy = append(legacy, qualityRuleStub(101, "inst;db;public;orders"))
+	plans = planDueBatches(legacy, maxExecutionsPerBatch)
+	require.Len(t, plans, 2, "only an over-cap target can span batches")
+}
+
 func TestNextRunAtUsesTheIntervalButNeverLoopsEveryTick(t *testing.T) {
 	t.Parallel()
 

@@ -38,6 +38,13 @@
             {{ t("dataQuality.workspace.recentScanChecks", { count: totalChecks }) }}
           </Badge>
           <Badge
+            v-if="partialChecks > 0"
+            variant="outline"
+            class="tabular-nums"
+          >
+            {{ t("dataQuality.executions.runPartial", { done: totalChecks, all: partialChecks }) }}
+          </Badge>
+          <Badge
             v-for="count in verdictCounts"
             :key="count.status"
             :variant="qualityStatusVariant(count.status)"
@@ -147,6 +154,10 @@ const latestRun = computed(() => props.summary.latestRun);
 const counts = computed(() => latestRun.value?.counts);
 
 const totalChecks = computed(() => counts.value?.total ?? 0);
+/** The target's live rule count when the latest batch covered only due rules. */
+const partialChecks = computed(() =>
+  props.summary.ruleCount > totalChecks.value ? props.summary.ruleCount : 0
+);
 
 /** The verdicts that occurred, in status order, so the badge row is stable. */
 const VERDICT_ORDER: QualityStatus[] = [

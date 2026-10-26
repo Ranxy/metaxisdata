@@ -123,7 +123,11 @@ function executionFixture(): QualityExecution {
 }
 
 async function mountCard(
-  options: { expanded?: boolean; run?: QualityRun } = {}
+  options: {
+    expanded?: boolean;
+    run?: QualityRun;
+    targetRuleCount?: number;
+  } = {}
 ) {
   const router = createRouter({
     history: createMemoryHistory(),
@@ -156,6 +160,7 @@ async function mountCard(
       run: options.run ?? runFixture(),
       targetGuid: TARGET,
       ruleTitles: { [RULE]: "Null rate on orders.id" },
+      targetRuleCount: options.targetRuleCount ?? 0,
       modelValue: options.expanded ?? false,
     },
     global: { plugins: [router, i18n, pinia] },
@@ -228,6 +233,18 @@ describe("QualityRunCard", () => {
     const { wrapper } = await mountCard({ run });
     expect(wrapper.text()).toContain(
       labels()("dataQuality.executions.runTargets", { count: 2 })
+    );
+  });
+
+  it("says how many of the target's checks this batch covered", async () => {
+    const { wrapper } = await mountCard({ targetRuleCount: 10 });
+    expect(wrapper.text()).toContain(
+      labels()("dataQuality.executions.runPartial", { done: 6, all: 10 })
+    );
+
+    const complete = await mountCard({ targetRuleCount: 6 });
+    expect(complete.wrapper.text()).not.toContain(
+      labels()("dataQuality.executions.runPartial", { done: 6, all: 6 })
     );
   });
 
