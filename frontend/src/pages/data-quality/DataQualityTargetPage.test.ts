@@ -1232,4 +1232,14 @@ describe("DataQualityTargetPage", () => {
     );
     wrapper.unmount();
   });
+
+  it("opens the check dialog when the directory sends add=1", async () => {
+    const { wrapper } = await mountPage(
+      `/data-quality/targets/${TARGET.split(";").join("/")}?metaType=${MetaType.TABLE}&add=1`
+    );
+
+    expect(wrapper.findComponent(TargetRuleComposer).props("open")).toBe(true);
+    expect(wrapper.vm.$route.query.add).toBeUndefined();
+    wrapper.unmount();
+  });
 });

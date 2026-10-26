@@ -34,8 +34,12 @@ fully offline; three model-assisted features are opt-in.
 
 ## Adding a check
 
-Data Quality → **Targets** → open a target → **New check** (or the add button in
-the dataset or column section it belongs to). The form opens as a dialog with the
+Data Quality → **Targets** → **Start monitoring** picks a table or view from the
+metadata tree and opens its contract workspace with the check dialog already
+open — this is the section's own way to begin work on a table without visiting
+the metadata browser. The same entry is on the overview and the checks
+directory. For an already-monitored target, open it and use **New check** (or the
+add button in the dataset or column section it belongs to). The form opens as a dialog with the
 target fixed, so a second check on the same table never walks the target picker
 again. The catalogue on the left is grouped into common checks (row count, nulls,
 uniqueness, accepted values, freshness, custom SQL), dataset checks, column
@@ -83,7 +87,8 @@ page open.
 
 Data Quality → **Targets** is the directory: one row per table or view that has
 checks, with its check count, covered columns, latest result, open issues,
-pending AI drafts and last run. Open a target to get its **workspace**: every check
+pending AI drafts and last run. **Start monitoring** opens the metadata picker
+and lands on the chosen target's workspace ready to add its first check. Open a target to get its **workspace**: every check
 on that table, grouped into dataset-level checks, cross-column checks and one
 section per column, with the latest result and a strip of each check's recent
 executions beside it. The workspace can run all of the target's checks at once,

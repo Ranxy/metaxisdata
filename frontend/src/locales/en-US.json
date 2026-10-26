@@ -1279,7 +1279,6 @@
       "onlyDrafts": "Drafts",
       "onlyFailing": "Failing",
       "onlyIssues": "Open issues",
-      "openMetadata": "Browse metadata",
       "openWorkspace": "Open target workspace",
       "pendingDraftsCount": "{count} draft | {count} drafts",
       "rulesCount": "{count} check | {count} checks",
@@ -1289,6 +1288,7 @@
       "sortLastRun": "Last run",
       "sortName": "Target name",
       "sortRules": "Check count",
+      "startMonitoring": "Start monitoring",
       "title": "Quality targets",
       "workspaceHint": "Checks grouped by the target they watch."
     },

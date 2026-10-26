@@ -1279,7 +1279,6 @@
       "onlyDrafts": "有待审草案",
       "onlyFailing": "有失败",
       "onlyIssues": "有未解决问题",
-      "openMetadata": "浏览元数据",
       "openWorkspace": "打开目标工作台",
       "pendingDraftsCount": "{count} 条草案",
       "rulesCount": "{count} 条检查",
@@ -1289,6 +1288,7 @@
       "sortLastRun": "最近执行",
       "sortName": "目标名称",
       "sortRules": "检查数量",
+      "startMonitoring": "开始监控",
       "title": "质量目标",
       "workspaceHint": "按被检查的目标聚合的检查。"
     },

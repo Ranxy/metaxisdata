@@ -121,7 +121,7 @@ meta_registry_resource（只读）
 | 层 | 路由 | 页面 | 职责 |
 | --- | --- | --- | --- |
 | 概览 | `/data-quality` | `DataQualityOverviewPage.vue` | 工作区健康度 + **需关注的目标**（替代“最近失败的规则”）；统计链到目标/检查目录 |
-| **目标目录** | `/data-quality/targets` | `DataQualityTargetsPage.vue` | 一行一个目标（契约入口）：检查数、覆盖字段、最近结果、未解决问题、待审草案、最近执行 |
+| **目标目录** | `/data-quality/targets` | `DataQualityTargetsPage.vue` | 一行一个目标（契约入口）：检查数、覆盖字段、最近结果、未解决问题、待审草案、最近执行；**开始监控**（`TargetPicker`）选中表后直接进工作台 `?add=1` 并打开检查 Dialog |
 | **目标契约工作台** | `/data-quality/targets/:targetGuid+?metaType=&check=&highlight=` | `DataQualityTargetPage.vue` | 表级/跨字段/字段分区、行内结果与历史、覆盖卡、AI 助手、内联草案、契约状态/设置/发布/历史；**唯一创建/编辑入口** |
 | 检查目录 | `/data-quality/checks` | `DataQualityChecksPage.vue` | 跨目标只读目录（审计/搜索）：筛选 + 行链接到工作台 `?check=`；无新建/编辑 |
 | 旧 URL | `/data-quality/rules*` | 重定向 | `/rules` → `/checks`；`/rules/new` → `/targets`；`/rules/:id+` → 解析规则目标后跳工作台 `?check=` |

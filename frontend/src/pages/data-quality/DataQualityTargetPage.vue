@@ -1095,4 +1095,24 @@ watch(targetGuid, () => {
 watch([() => route.query.check, rules, loading], syncCheckFromQuery, {
   immediate: true,
 });
+
+/**
+ * The DQ directory's start-monitoring picker lands here with `add=1`: open the
+ * check dialog as soon as the (possibly empty) workspace is ready, then consume
+ * the flag so a refresh does not reopen it.
+ */
+function syncAddFromQuery() {
+  if (loading.value || route.query.add !== "1") {
+    return;
+  }
+  if (route.query.check !== undefined) {
+    return;
+  }
+  const query = { ...route.query };
+  delete query.add;
+  void router.replace({ query });
+  openComposer();
+}
+
+watch([() => route.query.add, loading], syncAddFromQuery, { immediate: true });
 </script>

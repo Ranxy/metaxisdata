@@ -38,6 +38,11 @@ const PERMISSIONS = [
 ];
 
 const Dummy = { template: "<div />" };
+const TargetPickerStub = {
+  name: "TargetPicker",
+  props: ["open"],
+  template: '<div data-test="target-picker" />',
+};
 
 /** One directory row as the aggregate read returns it. */
 function summary(options: {
@@ -135,7 +140,10 @@ async function mountPage() {
   setActivePinia(pinia);
   useAuthStore().user = create(UserSchema, { permissions: PERMISSIONS });
   const wrapper = mount(DataQualityTargetsPage, {
-    global: { plugins: [router, i18n, pinia] },
+    global: {
+      plugins: [router, i18n, pinia],
+      stubs: { TargetPicker: TargetPickerStub },
+    },
   });
   await flushPromises();
   return wrapper;
@@ -312,7 +320,7 @@ describe("DataQualityTargetsPage filters", () => {
 });
 
 describe("DataQualityTargetsPage states and links", () => {
-  it("guides an empty directory to the metadata browser", async () => {
+  it("starts monitoring from the empty directory", async () => {
     mocks.listQualityTargets.mockResolvedValue({
       items: [],
       nextPageToken: "",
@@ -323,14 +331,35 @@ describe("DataQualityTargetsPage states and links", () => {
     expect(wrapper.text()).toContain(
       i18n.global.t("dataQuality.targets.emptyTitle")
     );
-    const action = wrapper
-      .findAll("a")
-      .find(
-        (link) =>
-          link.text().trim() ===
-          i18n.global.t("dataQuality.targets.openMetadata")
-      );
-    expect(action?.attributes("href")).toBe("/metadata");
+    const action = buttonWithLabel(
+      wrapper,
+      i18n.global.t("dataQuality.targets.startMonitoring")
+    );
+    expect(action).toBeTruthy();
+    await action?.trigger("click");
+    expect(wrapper.findComponent(TargetPickerStub).props("open")).toBe(true);
+  });
+
+  it("opens the picked target's workspace ready to add its first check", async () => {
+    const wrapper = await mountPage();
+    const picker = wrapper.findComponent(TargetPickerStub);
+    picker.vm.$emit("select", {
+      guid: TARGET_ORDERS,
+      metaType: MetaType.TABLE,
+      path: {
+        instance: "instance-1",
+        database: "shop",
+        schema: "public",
+        object: "orders",
+      },
+      columns: [],
+    });
+    await flushPromises();
+    expect(wrapper.vm.$route.name).toBe("DataQualityTarget");
+    expect(wrapper.vm.$route.query).toMatchObject({
+      metaType: String(MetaType.TABLE),
+      add: "1",
+    });
   });
 
   it("shows the error state and retries the load", async () => {

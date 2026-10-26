@@ -5,6 +5,12 @@
       :description="t('dataQuality.checks.description')"
     >
       <template #actions>
+        <Button as-child>
+          <RouterLink :to="{ name: 'DataQualityTargets', query: { new: '1' } }">
+            <Plus class="mr-2 h-4 w-4" />
+            {{ t("dataQuality.targets.startMonitoring") }}
+          </RouterLink>
+        </Button>
         <Button
           variant="outline"
           :disabled="isLoading"
@@ -487,6 +493,7 @@
 <script setup lang="ts">
 import {
   ExternalLink,
+  Plus,
   RefreshCcw,
   ShieldCheck,
   Sparkles,

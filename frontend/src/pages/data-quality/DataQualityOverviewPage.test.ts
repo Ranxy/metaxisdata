@@ -385,9 +385,10 @@ describe("DataQualityOverviewPage", () => {
       .findAll("a")
       .find(
         (link) =>
-          link.text().trim() === i18n.global.t("dataQuality.targets.title")
+          link.text().trim() ===
+          i18n.global.t("dataQuality.targets.startMonitoring")
       );
-    expect(targets?.attributes("href")).toBe("/data-quality/targets");
+    expect(targets?.attributes("href")).toBe("/data-quality/targets?new=1");
     expect(wrapper.find("svg[role='img']").exists()).toBe(false);
   });
 });

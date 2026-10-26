@@ -6,6 +6,14 @@
     >
       <template #actions>
         <Button
+          as-child
+        >
+          <RouterLink :to="{ name: 'DataQualityTargets', query: { new: '1' } }">
+            <Plus class="mr-2 h-4 w-4" />
+            {{ t("dataQuality.targets.startMonitoring") }}
+          </RouterLink>
+        </Button>
+        <Button
           variant="outline"
           :disabled="isLoading"
           @click="load"
@@ -39,12 +47,10 @@
         :title="t('dataQuality.overview.emptyTitle')"
         :description="t('dataQuality.overview.emptyDescription')"
       >
-        <Button
-          variant="outline"
-          as-child
-        >
-          <RouterLink :to="{ name: 'DataQualityTargets' }">
-            {{ t("dataQuality.targets.title") }}
+        <Button as-child>
+          <RouterLink :to="{ name: 'DataQualityTargets', query: { new: '1' } }">
+            <Plus class="mr-2 h-4 w-4" />
+            {{ t("dataQuality.targets.startMonitoring") }}
           </RouterLink>
         </Button>
       </EmptyState>
@@ -320,6 +326,7 @@ import {
   CircleAlert,
   CircleCheck,
   ListChecks,
+  Plus,
   RefreshCcw,
   ShieldCheck,
   Table2,
