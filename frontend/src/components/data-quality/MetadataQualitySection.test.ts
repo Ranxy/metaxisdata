@@ -1,4 +1,5 @@
 import { create } from "@bufbuild/protobuf";
+import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,8 +15,10 @@ import {
   QualityExecutionState,
   QualityIssueSchema,
   QualityIssueStatus,
+  QualityObservedKind,
   QualityRuleConfigSchema,
   QualityRuleSchema,
+  QualityRuleState,
   QualityRuleType,
   QualitySemanticType,
   QualitySeverity,
@@ -63,6 +66,7 @@ const RULE = "workspaces/ws/qualityRules/rule-1";
 const EXECUTION = "workspaces/ws/qualityExecutions/exec-1";
 const LABEL_SUGGESTION = "workspaces/ws/qualitySuggestions/label-1";
 const DRAFT_SUGGESTION = "workspaces/ws/qualitySuggestions/draft-1";
+const BASE_TIME = new Date("2026-10-07T09:30:00Z");
 const SUGGEST_PERMISSIONS = [
   "metaxisdata.dataQuality.rules.list",
   "metaxisdata.dataQuality.rules.create",
@@ -73,6 +77,38 @@ const SUGGEST_PERMISSIONS = [
 
 function label(key: string, params: Record<string, unknown> = {}): string {
   return i18n.global.t(key, params);
+}
+
+/** A rule list row; the preview enriches an execution with it. */
+function rule(name: string, title: string) {
+  return create(QualityRuleSchema, {
+    name,
+    title,
+    ruleType: QualityRuleType.ROW_COUNT,
+    severity: QualitySeverity.ERROR,
+    state: QualityRuleState.ENABLED,
+  });
+}
+
+/** A completed run of `ruleName`, `minute` minutes after the base time. */
+function executionOf(
+  ruleName: string,
+  name = EXECUTION,
+  options: { outcome?: QualityStatus; minute?: number } = {}
+) {
+  return create(QualityExecutionSchema, {
+    name: `workspaces/ws/qualityExecutions/${name}`,
+    rule: ruleName,
+    state: QualityExecutionState.COMPLETED,
+    outcome: options.outcome ?? QualityStatus.FAIL,
+    observedKind: QualityObservedKind.RATIO,
+    observedValue: 0.04,
+    failedRows: 40n,
+    totalRows: 1000n,
+    finishTime: timestampFromDate(
+      new Date(BASE_TIME.getTime() + (options.minute ?? 0) * 60_000)
+    ),
+  });
 }
 
 /** A pending label proposal for the `email` column. */
@@ -104,7 +140,7 @@ function labelSuggestion(
   });
 }
 
-/** A pending rule draft the rule editor can prefill. */
+/** A pending rule draft the target workspace can adjust. */
 function draftSuggestion(options: { name?: string; title?: string } = {}) {
   return create(QualitySuggestionSchema, {
     name: options.name ?? DRAFT_SUGGESTION,
@@ -134,54 +170,27 @@ function draftSuggestion(options: { name?: string; title?: string } = {}) {
   });
 }
 
+type Mounted = Awaited<ReturnType<typeof mountSection>>;
+
+function queryOf(href: string): URLSearchParams {
+  return new URLSearchParams(href.split("?")[1] ?? "");
+}
+
+/** The links whose query names a check, i.e. the preview's rows. */
+function checkRowLinks(wrapper: Mounted) {
+  return wrapper
+    .findAll("a")
+    .filter((link) => queryOf(link.attributes("href") ?? "").has("check"));
+}
+
 async function mountSection(permissions: string[]) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
       { path: "/", component: { template: "<div />" } },
       {
-        path: "/data-quality/rules/new",
-        name: "DataQualityRuleNew",
-        component: { template: "<div />" },
-      },
-      {
-        path: "/data-quality/targets",
-        name: "DataQualityTargets",
-        component: { template: "<div />" },
-      },
-      {
         path: "/data-quality/targets/:targetGuid+",
         name: "DataQualityTarget",
-        component: { template: "<div />" },
-      },
-      {
-        path: "/data-quality/rules",
-        name: "DataQualityRules",
-        component: { template: "<div />" },
-      },
-      {
-        path: "/data-quality/rules/:ruleId+",
-        name: "DataQualityRuleDetail",
-        component: { template: "<div />" },
-      },
-      {
-        path: "/data-quality/executions",
-        name: "DataQualityExecutions",
-        component: { template: "<div />" },
-      },
-      {
-        path: "/data-quality/executions/:executionId+",
-        name: "DataQualityExecutionDetail",
-        component: { template: "<div />" },
-      },
-      {
-        path: "/data-quality/issues",
-        name: "DataQualityIssues",
-        component: { template: "<div />" },
-      },
-      {
-        path: "/data-quality/issues/:issueId+",
-        name: "DataQualityIssueDetail",
         component: { template: "<div />" },
       },
       {
@@ -235,23 +244,14 @@ describe("MetadataQualitySection", () => {
           title: "Null rate on orders.id",
           ruleType: QualityRuleType.NULL_PERCENT,
           severity: QualitySeverity.ERROR,
-          state: 1,
+          state: QualityRuleState.ENABLED,
           lastResult: { status: QualityStatus.FAIL },
         }),
       ],
       nextPageToken: "",
     });
     mocks.listQualityExecutions.mockResolvedValue({
-      items: [
-        create(QualityExecutionSchema, {
-          name: EXECUTION,
-          rule: RULE,
-          state: QualityExecutionState.COMPLETED,
-          outcome: QualityStatus.FAIL,
-          failedRows: 40n,
-          totalRows: 1000n,
-        }),
-      ],
+      items: [executionOf(RULE)],
       nextPageToken: "",
     });
     mocks.listQualityIssues.mockResolvedValue({
@@ -300,57 +300,163 @@ describe("MetadataQualitySection", () => {
     mocks.updateQualitySuggestion.mockResolvedValue(labelSuggestion());
   });
 
-  it("renders the table's rules, executions, issues and column labels", async () => {
+  it("renders the target's counts, newest check result and column facts", async () => {
     const wrapper = await mountSection(["metaxisdata.dataQuality.rules.list"]);
 
+    // The preview names the check by its rule title and shows its latest result.
     expect(wrapper.text()).toContain("Null rate on orders.id");
-    expect(wrapper.text()).toContain(i18n.global.t("dataQuality.status.fail"));
+    expect(wrapper.text()).toContain(label("dataQuality.ruleType.nullPercent"));
+    expect(wrapper.text()).toContain(label("dataQuality.severity.error"));
+    expect(wrapper.text()).toContain(label("dataQuality.status.fail"));
+    expect(wrapper.text()).toContain("4%");
+    // The counts survive: checks, open issues, labelled and profiled columns.
+    expect(wrapper.text()).toContain(label("dataQuality.asset.ruleCount"));
+    expect(wrapper.text()).toContain(label("dataQuality.asset.openIssueCount"));
+    expect(wrapper.text()).toContain(label("dataQuality.asset.labeledCount"));
+    expect(wrapper.text()).toContain(label("dataQuality.asset.profiledCount"));
     // The accepted label and the profile facts show up per column, and the
     // unlabelled column says so explicitly.
-    expect(wrapper.text()).toContain(
-      i18n.global.t("dataQuality.semanticType.id")
-    );
+    expect(wrapper.text()).toContain(label("dataQuality.semanticType.id"));
     expect(wrapper.text()).toContain("990");
-    expect(wrapper.text()).toContain(
-      i18n.global.t("dataQuality.asset.noLabel")
-    );
+    expect(wrapper.text()).toContain(label("dataQuality.asset.noLabel"));
     // Read-only caller: no action buttons.
+    expect(wrapper.text().includes(label("dataQuality.asset.createRule"))).toBe(
+      false
+    );
     expect(
-      wrapper.text().includes(i18n.global.t("dataQuality.asset.createRule"))
-    ).toBe(false);
-    expect(
-      wrapper.text().includes(i18n.global.t("dataQuality.asset.analyzeColumns"))
+      wrapper.text().includes(label("dataQuality.asset.analyzeColumns"))
     ).toBe(false);
     // The queue endpoint needs the suggest permission, so a read-only caller
     // never asks for it.
     expect(mocks.listQualitySuggestions).not.toHaveBeenCalled();
   });
 
-  it("offers the actions its permissions allow", async () => {
-    const wrapper = await mountSection([
-      "metaxisdata.dataQuality.rules.list",
-      "metaxisdata.dataQuality.rules.create",
-      "metaxisdata.dataQuality.profile.run",
-      "metaxisdata.dataQuality.suggest",
-      "metaxisdata.dataQuality.labels.update",
-    ]);
+  it("offers the actions its permissions allow, but never a check creator", async () => {
+    const wrapper = await mountSection(SUGGEST_PERMISSIONS);
 
-    expect(wrapper.text()).toContain(
-      i18n.global.t("dataQuality.asset.createRule")
-    );
-    expect(wrapper.text()).toContain(
-      i18n.global.t("dataQuality.asset.analyzeColumns")
-    );
-    expect(wrapper.text()).toContain(
-      i18n.global.t("dataQuality.asset.suggestLabels")
-    );
+    expect(wrapper.text()).toContain(label("dataQuality.asset.analyzeColumns"));
+    expect(wrapper.text()).toContain(label("dataQuality.asset.suggestLabels"));
     expect(wrapper.find('[aria-label="Clear label"]').exists()).toBe(true);
+    // Authoring lives in the target workspace only: no inline create entrance,
+    // and no link into the removed rule editor.
+    expect(wrapper.text().includes(label("dataQuality.asset.createRule"))).toBe(
+      false
+    );
+    expect(wrapper.find('a[href*="/rules/new"]').exists()).toBe(false);
+    expect(wrapper.find('a[href*="suggestion="]').exists()).toBe(false);
+  });
+
+  it("links the preview and every check row to the target workspace", async () => {
+    const wrapper = await mountSection(["metaxisdata.dataQuality.rules.list"]);
+
+    // The primary entrance opens the workspace for this target and meta type.
+    const workspace = wrapper
+      .findAll("a")
+      .find((link) =>
+        link.text().includes(label("dataQuality.asset.openWorkspace"))
+      );
+    expect(workspace).toBeDefined();
+    const workspaceHref = workspace!.attributes("href") ?? "";
+    expect(workspaceHref.split("?")[0]).toBe(
+      "/data-quality/targets/inst1/db1/public/orders"
+    );
+    expect(queryOf(workspaceHref).get("metaType")).toBe(String(MetaType.TABLE));
+
+    // A check row carries the check's resource name, not a rule-detail route.
+    const [row] = checkRowLinks(wrapper);
+    expect(row).toBeDefined();
+    expect(row.text()).toContain("Null rate on orders.id");
+    const query = queryOf(row.attributes("href") ?? "");
+    expect(query.get("check")).toBe(RULE);
+    expect(query.get("metaType")).toBe(String(MetaType.TABLE));
   });
 
   it("stays out of the page for a caller without rules.list", async () => {
     const wrapper = await mountSection([]);
     expect(wrapper.text()).toBe("");
     expect(mocks.listQualityRules).not.toHaveBeenCalled();
+  });
+
+  it("lists only the newest run of each check and skips unfinished ones", async () => {
+    const other = "workspaces/ws/qualityRules/rule-2";
+    const running = "workspaces/ws/qualityRules/rule-3";
+    mocks.listQualityRules.mockResolvedValue({
+      items: [
+        rule(RULE, "Null rate on orders.id"),
+        rule(other, "Orders have rows"),
+        rule(running, "Orders are fresh"),
+      ],
+      nextPageToken: "",
+    });
+    mocks.listQualityExecutions.mockResolvedValue({
+      items: [
+        executionOf(other, "exec-other-newest", { minute: 3 }),
+        executionOf(RULE, "exec-this", { minute: 2 }),
+        executionOf(other, "exec-other-older", { minute: 1 }),
+        create(QualityExecutionSchema, {
+          name: "workspaces/ws/qualityExecutions/exec-running",
+          rule: running,
+          state: QualityExecutionState.RUNNING,
+          outcome: QualityStatus.UNSPECIFIED,
+        }),
+      ],
+      nextPageToken: "",
+    });
+    const wrapper = await mountSection(["metaxisdata.dataQuality.rules.list"]);
+
+    const rows = checkRowLinks(wrapper);
+    // The older run of the same check is folded into its newest run, and the
+    // still-running check has no verdict yet.
+    expect(rows).toHaveLength(2);
+    expect(rows[0].text()).toContain("Orders have rows");
+    expect(rows[1].text()).toContain("Null rate on orders.id");
+    expect(wrapper.text()).not.toContain("Orders are fresh");
+  });
+
+  it("caps the checks preview at five rows", async () => {
+    const names = Array.from(
+      { length: 8 },
+      (_, index) => `workspaces/ws/qualityRules/rule-${index}`
+    );
+    mocks.listQualityRules.mockResolvedValue({
+      items: names.map((name, index) => rule(name, `Check ${index}`)),
+      nextPageToken: "",
+    });
+    mocks.listQualityExecutions.mockResolvedValue({
+      // Newest first, as the API returns them: rule-7 ran most recently.
+      items: names
+        .map((name, index) =>
+          executionOf(name, `exec-${index}`, { minute: index })
+        )
+        .reverse(),
+      nextPageToken: "",
+    });
+    const wrapper = await mountSection(["metaxisdata.dataQuality.rules.list"]);
+
+    expect(checkRowLinks(wrapper)).toHaveLength(5);
+    expect(wrapper.text()).toContain("Check 7");
+    expect(wrapper.text()).not.toContain("Check 2");
+  });
+
+  it("explains an empty target with the existing empty states", async () => {
+    mocks.listQualityRules.mockResolvedValue({
+      items: [],
+      nextPageToken: "",
+    });
+    mocks.listQualityExecutions.mockResolvedValue({
+      items: [],
+      nextPageToken: "",
+    });
+    const noChecks = await mountSection(["metaxisdata.dataQuality.rules.list"]);
+    expect(noChecks.text()).toContain(label("dataQuality.asset.noRules"));
+    noChecks.unmount();
+
+    mocks.listQualityRules.mockResolvedValue({
+      items: [rule(RULE, "Null rate on orders.id")],
+      nextPageToken: "",
+    });
+    const neverRun = await mountSection(["metaxisdata.dataQuality.rules.list"]);
+    expect(neverRun.text()).toContain(label("dataQuality.asset.noExecutions"));
   });
 
   it("toasts what the label pass created, refreshed and skipped", async () => {
@@ -472,7 +578,7 @@ describe("MetadataQualitySection", () => {
     wrapper.unmount();
   });
 
-  it("lists a rule draft with its type and an editor link", async () => {
+  it("sends a check draft to the target workspace instead of the rule editor", async () => {
     mocks.listQualitySuggestions.mockResolvedValue({
       items: [draftSuggestion()],
       nextPageToken: "",
@@ -485,12 +591,15 @@ describe("MetadataQualitySection", () => {
     expect(wrapper.text()).toContain("Orders should have rows");
     expect(wrapper.text()).toContain(label("dataQuality.ruleType.rowCount"));
     expect(wrapper.text()).toContain(label("dataQuality.severity.error"));
-    // Creating the rule is the editor's job; the card links into it pre-filled.
-    const link = wrapper.find('a[href*="suggestion="]');
-    expect(link.exists()).toBe(true);
-    expect(link.text()).toContain(
-      label("dataQuality.suggestions.openInEditor")
-    );
+    // The draft is examined in the workspace, where the inline composer lives.
+    const openTarget = wrapper
+      .findAll("a")
+      .find((link) => link.text() === label("dataQuality.checks.openTarget"));
+    expect(openTarget).toBeDefined();
+    const query = queryOf(openTarget!.attributes("href") ?? "");
+    expect(query.has("check")).toBe(false);
+    expect(query.get("metaType")).toBe(String(MetaType.TABLE));
+    expect(wrapper.find('a[href*="suggestion="]').exists()).toBe(false);
     wrapper.unmount();
   });
 
@@ -643,7 +752,7 @@ describe("MetadataQualitySection", () => {
     wrapper.unmount();
   });
 
-  it("previews label proposals before rule drafts", async () => {
+  it("previews label proposals before check drafts", async () => {
     mocks.listQualitySuggestions.mockResolvedValue({
       items: [
         draftSuggestion({ name: "draft-0", title: "Draft zero" }),
@@ -668,7 +777,7 @@ describe("MetadataQualitySection", () => {
     wrapper.unmount();
   });
 
-  it("rejects a rule draft from the card", async () => {
+  it("rejects a check draft from the card", async () => {
     mocks.listQualitySuggestions
       .mockResolvedValueOnce({
         items: [draftSuggestion()],
@@ -695,26 +804,6 @@ describe("MetadataQualitySection", () => {
       label("dataQuality.asset.pendingSuggestionsTitle")
     );
     success.mockRestore();
-    wrapper.unmount();
-  });
-
-  it("gives a suggest-only reviewer no editor link for a draft", async () => {
-    mocks.listQualitySuggestions.mockResolvedValue({
-      items: [draftSuggestion()],
-      nextPageToken: "",
-    });
-    const wrapper = await mountSection([
-      "metaxisdata.dataQuality.rules.list",
-      "metaxisdata.dataQuality.suggest",
-    ]);
-
-    expect(wrapper.text()).toContain("Orders should have rows");
-    expect(wrapper.find('a[href*="suggestion="]').exists()).toBe(false);
-    expect(
-      wrapper
-        .findAll("button")
-        .some((item) => item.text() === label("dataQuality.suggestions.reject"))
-    ).toBe(true);
     wrapper.unmount();
   });
 

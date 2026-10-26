@@ -25,18 +25,9 @@
           variant="outline"
           as-child
         >
-          <RouterLink :to="{ name: 'DataQualityRules' }">
+          <RouterLink :to="{ name: 'DataQualityChecks' }">
             <ListChecks class="mr-2 h-4 w-4" />
             {{ t("dataQuality.targets.allRules") }}
-          </RouterLink>
-        </Button>
-        <Button
-          v-if="canCreate"
-          as-child
-        >
-          <RouterLink :to="{ name: 'DataQualityRuleNew' }">
-            <Plus class="mr-2 h-4 w-4" />
-            {{ t("dataQuality.targets.newRule") }}
           </RouterLink>
         </Button>
       </template>
@@ -132,21 +123,11 @@
           :description="t('dataQuality.targets.emptyDescription')"
         >
           <Button
-            v-if="canCreate"
-            as-child
-          >
-            <RouterLink :to="{ name: 'DataQualityRuleNew' }">
-              <Plus class="mr-2 h-4 w-4" />
-              {{ t("dataQuality.targets.emptyAction") }}
-            </RouterLink>
-          </Button>
-          <Button
-            v-else
             variant="outline"
             as-child
           >
-            <RouterLink :to="{ name: 'DataQualityRules' }">
-              {{ t("dataQuality.targets.allRules") }}
+            <RouterLink :to="{ name: 'MetadataBrowser' }">
+              {{ t("dataQuality.targets.openMetadata") }}
             </RouterLink>
           </Button>
         </EmptyState>
@@ -330,7 +311,6 @@ import {
   Check,
   ChevronRight,
   ListChecks,
-  Plus,
   RefreshCcw,
   SearchX,
   ShieldCheck,
@@ -364,7 +344,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useErrorMessage } from "@/composables/useErrorHandler";
-import { useAuthStore } from "@/store/modules/auth";
 import {
   QualityStatus,
   QualityTargetOrder,
@@ -394,11 +373,6 @@ import { metaTypeSingularLabel } from "@/utils/metaType";
 
 const { t, locale } = useI18n();
 const { formatError } = useErrorMessage();
-const authStore = useAuthStore();
-
-const canCreate = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.rules.create")
-);
 
 /** The three "needs attention" filters, all off by default. */
 type TargetToggle = "failing" | "issues" | "drafts";

@@ -570,9 +570,21 @@ async function loadAcknowledgedBy(name: string) {
   }
 }
 
+/**
+ * A rule is a check inside its target's contract workspace; the old per-rule
+ * page is gone, so the link resolves to the workspace with the check selected.
+ */
 function ruleRoute(name: string) {
+  const target = issue.value?.target;
+  if (target?.metaGuid) {
+    return {
+      name: "DataQualityTarget",
+      params: { targetGuid: guidToRouteParams(target.metaGuid) },
+      query: { metaType: String(target.metaType), check: name },
+    };
+  }
   return {
-    name: "DataQualityRuleDetail",
+    name: "DataQualityRuleRedirect",
     params: { ruleId: name.split("/") },
   };
 }

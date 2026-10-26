@@ -9,23 +9,31 @@ import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
   QualityDimension,
+  QualityExecutionSummarySchema,
+  type QualityRule,
   QualityRuleSchema,
   QualityRuleState,
   QualityRuleType,
   QualitySeverity,
+  QualityStatus,
+  QualityTargetPathSchema,
+  QualityTargetSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
+import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
 import type { QualityTargetScope } from "@/utils/dataQuality";
-import DataQualityRulesPage from "./DataQualityRulesPage.vue";
+import DataQualityChecksPage from "./DataQualityChecksPage.vue";
 
 const mocks = vi.hoisted(() => ({
   listQualityRules: vi.fn(),
   listAllUsers: vi.fn(),
+  runQualityRules: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/data-quality")>()),
   listQualityRules: mocks.listQualityRules,
+  runQualityRules: mocks.runQualityRules,
 }));
 
 vi.mock("@/api/user", async (importOriginal) => ({
@@ -110,33 +118,41 @@ const Dummy = { template: "<div />" };
 
 const PERMISSIONS = [
   "metaxisdata.dataQuality.rules.list",
-  "metaxisdata.dataQuality.rules.create",
+  "metaxisdata.dataQuality.rules.run",
   "metaxisdata.users.list",
 ];
+
+const RULE = "workspaces/default/qualityRules/rule-1";
+const TARGET_GUID = "inst1;shop;public;orders";
 
 let activeRouter: ReturnType<typeof createRouter> | undefined;
 
 async function mountPage(
   permissions = PERMISSIONS,
-  path = "/data-quality/rules"
+  path = "/data-quality/checks"
 ) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
       { path: "/", name: "Home", component: Dummy },
       {
-        path: "/data-quality/rules",
-        name: "DataQualityRules",
+        path: "/data-quality/checks",
+        name: "DataQualityChecks",
         component: Dummy,
       },
       {
-        path: "/data-quality/rules/:ruleId+",
-        name: "DataQualityRuleDetail",
+        path: "/data-quality/targets",
+        name: "DataQualityTargets",
         component: Dummy,
       },
       {
-        path: "/data-quality/rules/new",
-        name: "DataQualityRuleNew",
+        path: "/data-quality/targets/:targetGuid+",
+        name: "DataQualityTarget",
+        component: Dummy,
+      },
+      {
+        path: "/data-quality/executions/:executionId+",
+        name: "DataQualityExecutionDetail",
         component: Dummy,
       },
     ],
@@ -147,7 +163,7 @@ async function mountPage(
   const pinia = createPinia();
   setActivePinia(pinia);
   useAuthStore().user = create(UserSchema, { permissions });
-  const wrapper = mount(DataQualityRulesPage, {
+  const wrapper = mount(DataQualityChecksPage, {
     global: {
       plugins: [router, i18n, pinia],
       stubs: {
@@ -176,9 +192,35 @@ function applyButton(wrapper: ReturnType<typeof mount>) {
 
 beforeEach(() => {
   mocks.listAllUsers.mockResolvedValue(USERS);
+  mocks.runQualityRules.mockResolvedValue([]);
 });
 
-describe("DataQualityRulesPage target scope filter", () => {
+/** One check with a resolvable target, as the directory lists it. */
+function ruleFixture(): QualityRule {
+  return create(QualityRuleSchema, {
+    name: RULE,
+    title: "orders are never null",
+    ruleType: QualityRuleType.NULL_PERCENT,
+    severity: QualitySeverity.ERROR,
+    state: QualityRuleState.ENABLED,
+    owner: "users/101",
+    lastResult: create(QualityExecutionSummarySchema, {
+      status: QualityStatus.PASS,
+    }),
+    target: create(QualityTargetSchema, {
+      metaGuid: TARGET_GUID,
+      metaType: MetaType.TABLE,
+      path: create(QualityTargetPathSchema, {
+        instance: "prod",
+        database: "shop",
+        schema: "public",
+        object: "orders",
+      }),
+    }),
+  });
+}
+
+describe("DataQualityChecksPage target scope filter", () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
@@ -210,7 +252,7 @@ describe("DataQualityRulesPage target scope filter", () => {
   });
 });
 
-describe("DataQualityRulesPage owner filter", () => {
+describe("DataQualityChecksPage owner filter", () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
@@ -334,7 +376,7 @@ describe("DataQualityRulesPage owner filter", () => {
   });
 });
 
-describe("DataQualityRulesPage owner column", () => {
+describe("DataQualityChecksPage owner column", () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
@@ -384,7 +426,7 @@ describe("DataQualityRulesPage owner column", () => {
   });
 });
 
-describe("DataQualityRulesPage rule type filter", () => {
+describe("DataQualityChecksPage rule type filter", () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
@@ -450,7 +492,7 @@ describe("DataQualityRulesPage rule type filter", () => {
   });
 });
 
-describe("DataQualityRulesPage AI drafting shortcut", () => {
+describe("DataQualityChecksPage AI drafting shortcut", () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
@@ -489,7 +531,7 @@ describe("DataQualityRulesPage AI drafting shortcut", () => {
   });
 });
 
-describe("DataQualityRulesPage URL filters", () => {
+describe("DataQualityChecksPage URL filters", () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
@@ -611,7 +653,7 @@ describe("DataQualityRulesPage URL filters", () => {
   it("clears the URL with the filters, keeping unrelated parameters", async () => {
     const wrapper = await mountPage(
       PERMISSIONS,
-      "/data-quality/rules?q=none&state=1&keep=1"
+      "/data-quality/checks?q=none&state=1&keep=1"
     );
 
     const clear = wrapper
@@ -647,5 +689,139 @@ describe("DataQualityRulesPage URL filters", () => {
       expect.objectContaining({ search: "external" })
     );
     expect(mocks.listQualityRules).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("DataQualityChecksPage directory rows", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+    mocks.listAllUsers.mockResolvedValue(USERS);
+    mocks.runQualityRules.mockResolvedValue([]);
+    mocks.listQualityRules.mockResolvedValue({
+      items: [ruleFixture()],
+      nextPageToken: "",
+    });
+  });
+
+  it("lists the check with its target, type, health and owner", async () => {
+    const wrapper = await mountPage();
+    const rows = wrapper.findAll("tbody tr");
+    expect(rows).toHaveLength(1);
+
+    const text = wrapper.text();
+    expect(text).toContain("orders are never null");
+    expect(text).toContain("prod · shop · public.orders");
+    expect(text).toContain(i18n.global.t("dataQuality.ruleType.nullPercent"));
+    expect(text).toContain(i18n.global.t("dataQuality.severity.error"));
+    expect(text).toContain(i18n.global.t("dataQuality.ruleState.enabled"));
+    expect(text).toContain(i18n.global.t("dataQuality.status.pass"));
+    expect(text).toContain("alice@example.com");
+  });
+
+  it("links the check title to its target workspace with the check selected", async () => {
+    const wrapper = await mountPage();
+
+    const title = wrapper
+      .findAll("a")
+      .find((link) => link.text().trim() === "orders are never null");
+    expect(title).toBeDefined();
+    const href = title?.attributes("href") ?? "";
+    expect(href).toContain("/data-quality/targets/inst1/shop/public/orders");
+    expect(href).toContain(`check=${RULE}`);
+    expect(href).toContain("metaType=4");
+  });
+
+  it("links the target path and the open-target action to the workspace itself", async () => {
+    const wrapper = await mountPage();
+
+    const targetLinks = wrapper
+      .findAll("a")
+      .filter((link) => link.text().trim() === "prod · shop · public.orders");
+    expect(targetLinks.length).toBeGreaterThan(0);
+    for (const link of targetLinks) {
+      const href = link.attributes("href") ?? "";
+      expect(href).toContain("/data-quality/targets/inst1/shop/public/orders");
+      expect(href).not.toContain("check=");
+    }
+
+    const openTarget = wrapper.find(
+      `a[aria-label="${i18n.global.t("dataQuality.checks.openTarget")}"]`
+    );
+    expect(openTarget.exists()).toBe(true);
+    expect(openTarget.attributes("href")).not.toContain("check=");
+  });
+
+  it("runs a check from the row without offering edit, pause or delete", async () => {
+    const wrapper = await mountPage();
+
+    const run = wrapper.find(
+      `[aria-label="${i18n.global.t("dataQuality.runNow")}"]`
+    );
+    expect(run.exists()).toBe(true);
+    await run.trigger("click");
+    await flushPromises();
+
+    expect(mocks.runQualityRules).toHaveBeenLastCalledWith({ rules: [RULE] });
+
+    for (const key of [
+      "dataQuality.editRule",
+      "dataQuality.pauseRule",
+      "dataQuality.resumeRule",
+    ]) {
+      expect(
+        wrapper.find(`[aria-label="${i18n.global.t(key)}"]`).exists()
+      ).toBe(false);
+    }
+    expect(
+      wrapper.find(`[aria-label="${i18n.global.t("common.delete")}"]`).exists()
+    ).toBe(false);
+  });
+});
+
+describe("DataQualityChecksPage empty and creation", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+    mocks.listAllUsers.mockResolvedValue(USERS);
+    mocks.listQualityRules.mockResolvedValue({
+      items: [],
+      nextPageToken: "",
+    });
+  });
+
+  it("sends an empty directory to the targets page instead of authoring a check here", async () => {
+    const wrapper = await mountPage();
+
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.checks.emptyTitle")
+    );
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.checks.emptyDescription")
+    );
+    const link = wrapper
+      .findAll("a")
+      .find(
+        (candidate) =>
+          candidate.text().trim() === i18n.global.t("dataQuality.targets.title")
+      );
+    expect(link?.attributes("href")).toBe("/data-quality/targets");
+  });
+
+  it("never offers a new-check action on the audit directory", async () => {
+    const wrapper = await mountPage();
+    expect(wrapper.text()).not.toContain(i18n.global.t("dataQuality.newRule"));
+    expect(
+      wrapper
+        .findAll("a")
+        .some((link) => link.attributes("href") === "/data-quality/rules/new")
+    ).toBe(false);
+    expect(
+      wrapper
+        .findAll("button")
+        .some((button) =>
+          button.text().includes(i18n.global.t("dataQuality.newRule"))
+        )
+    ).toBe(false);
   });
 });

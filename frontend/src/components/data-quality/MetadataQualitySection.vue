@@ -10,26 +10,16 @@
           {{ t("dataQuality.asset.description") }}
         </p>
       </div>
+      <!-- The target workspace is the one authoring surface: checks are created
+           and edited there, so the preview only opens it. -->
       <div class="flex flex-wrap gap-2">
         <Button
-          variant="outline"
           size="sm"
           as-child
         >
           <RouterLink :to="targetWorkspaceTo">
             <Target class="mr-1 h-4 w-4" />
             {{ t("dataQuality.asset.openWorkspace") }}
-          </RouterLink>
-        </Button>
-        <Button
-          v-if="canCreateRule"
-          variant="outline"
-          size="sm"
-          as-child
-        >
-          <RouterLink :to="createRuleTo">
-            <Plus class="mr-1 h-4 w-4" />
-            {{ t("dataQuality.asset.createRule") }}
           </RouterLink>
         </Button>
         <div
@@ -145,10 +135,10 @@
       {{ t("dataQuality.asset.pendingSuggestionsLoadFailed") }}
     </p>
 
-    <!-- The table's review inbox. Both kinds a generation pass queues for this
-         target appear here — label proposals and rule drafts — so the output of
+    <!-- The target's review inbox. Both kinds a generation pass queues for this
+         target appear here — label proposals and check drafts — so the output of
          "Suggest labels" is reviewed in place; the card stays absent until
-         something is pending. The list is bounded like the other cards; the rest
+         something is pending. The list is bounded like the other blocks; the rest
          is one click away in the suggestion center. -->
     <Card v-if="pendingSuggestions.length > 0">
       <CardHeader class="flex flex-row items-center justify-between gap-3 border-b">
@@ -195,7 +185,7 @@
                 <Badge variant="outline">
                   {{ t(suggestionKindKey(suggestion.kind)) }}
                 </Badge>
-                <!-- A label proposal names a column; a rule draft names the rule. -->
+                <!-- A label proposal names a column; a check draft names the check. -->
                 <span
                   v-if="isLabelSuggestion(suggestion)"
                   class="font-mono text-sm font-medium"
@@ -258,14 +248,16 @@
               >
                 {{ t("dataQuality.suggestions.accept") }}
               </Button>
+              <!-- A check draft is accepted or adjusted in its target's workspace,
+                   which is where the inline composer and its siblings live. -->
               <Button
-                v-else-if="canOpenDraft(suggestion)"
+                v-else
                 variant="outline"
                 size="sm"
                 as-child
               >
-                <RouterLink :to="draftEditorTo(suggestion)">
-                  {{ t("dataQuality.suggestions.openInEditor") }}
+                <RouterLink :to="targetWorkspaceTo">
+                  {{ t("dataQuality.checks.openTarget") }}
                 </RouterLink>
               </Button>
               <Button
@@ -288,206 +280,73 @@
       </CardContent>
     </Card>
 
-    <div class="grid gap-4 xl:grid-cols-2">
-      <Card>
-        <CardHeader class="flex flex-row items-center justify-between gap-3 border-b">
-          <div class="min-w-0 space-y-1">
-            <CardTitle class="text-base">
-              {{ t("dataQuality.asset.rulesTitle") }}
-            </CardTitle>
-            <CardDescription>
-              {{ t("dataQuality.asset.rulesDescription") }}
-            </CardDescription>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            as-child
-          >
-            <RouterLink :to="{ name: 'DataQualityRules' }">
-              {{ t("dataQuality.asset.viewAll") }}
-            </RouterLink>
-          </Button>
-        </CardHeader>
-        <CardContent class="pt-4">
-          <EmptyState
-            v-if="rules.length === 0"
-            compact
-            :icon="ShieldCheck"
-            :title="t('dataQuality.asset.noRules')"
-          />
-          <ul
-            v-else
-            class="divide-y"
-          >
-            <li
-              v-for="rule in rules.slice(0, 5)"
-              :key="rule.name"
-              class="flex items-center justify-between gap-3 py-2"
-            >
-              <div class="min-w-0">
-                <RouterLink
-                  :to="ruleRoute(rule.name)"
-                  class="block truncate text-sm font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                >
-                  {{ rule.title || rule.name.split("/").pop() }}
-                </RouterLink>
-                <div class="mt-1 flex flex-wrap items-center gap-1">
-                  <Badge variant="secondary">
-                    {{ t(qualityRuleTypeKey(rule.ruleType)) }}
-                  </Badge>
-                  <Badge :variant="qualitySeverityVariant(rule.severity)">
-                    {{ t(qualitySeverityKey(rule.severity)) }}
-                  </Badge>
-                  <Badge :variant="qualityRuleStateVariant(rule.state)">
-                    {{ t(qualityRuleStateKey(rule.state)) }}
-                  </Badge>
-                </div>
-              </div>
-              <Badge
-                v-if="rule.lastResult"
-                :variant="qualityStatusVariant(rule.lastResult.status)"
-              >
-                {{ t(qualityStatusKey(rule.lastResult.status)) }}
-              </Badge>
-            </li>
-          </ul>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader class="flex flex-row items-center justify-between gap-3 border-b">
-          <div class="min-w-0 space-y-1">
-            <CardTitle class="text-base">
-              {{ t("dataQuality.asset.executionsTitle") }}
-            </CardTitle>
-            <CardDescription>
-              {{ t("dataQuality.asset.executionsDescription") }}
-            </CardDescription>
-          </div>
-          <Button
-            v-if="canListExecutions"
-            variant="ghost"
-            size="sm"
-            as-child
-          >
-            <RouterLink :to="executionsTo">
-              {{ t("dataQuality.asset.viewExecutions") }}
-            </RouterLink>
-          </Button>
-        </CardHeader>
-        <CardContent class="pt-4">
-          <EmptyState
-            v-if="executions.length === 0"
-            compact
-            :icon="ListChecks"
-            :title="t('dataQuality.asset.noExecutions')"
-          />
-          <ul
-            v-else
-            class="divide-y"
-          >
-            <li
-              v-for="execution in executions.slice(0, 5)"
-              :key="execution.name"
-              class="flex items-center justify-between gap-3 py-2"
-            >
-              <div class="min-w-0">
-                <div class="truncate text-sm font-medium">
-                  {{ ruleTitle(execution.rule) }}
-                </div>
-                <div class="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-                  <Badge :variant="qualityExecutionStateVariant(execution.state)">
-                    {{ t(qualityExecutionStateKey(execution.state)) }}
-                  </Badge>
-                  <Badge
-                    v-if="execution.outcome !== QualityStatus.UNSPECIFIED"
-                    :variant="qualityStatusVariant(execution.outcome)"
-                  >
-                    {{ t(qualityStatusKey(execution.outcome)) }}
-                  </Badge>
-                  <span class="tabular-nums">
-                    {{ t("dataQuality.failedRows") }}
-                    {{ formatRowCount(execution.failedRows, locale) }}
-                  </span>
-                  <span :title="formatDateTime(execution.finishTime ?? execution.startTime, locale)">
-                    {{ formatRelativeTime(execution.finishTime ?? execution.startTime, locale) }}
-                  </span>
-                </div>
-              </div>
-              <RouterLink
-                v-if="canViewExecution && execution.name"
-                :to="executionRoute(execution.name)"
-                class="shrink-0 text-xs text-primary hover:underline"
-              >
-                {{ t("dataQuality.viewExecution") }}
-              </RouterLink>
-            </li>
-          </ul>
-        </CardContent>
-      </Card>
-    </div>
-
+    <!-- The checks preview: the newest recorded run of each check, so a reader
+         sees what the contract is doing now without opening the workspace. The
+         row links to the workspace, where the check is examined and edited. -->
     <Card>
-      <CardHeader class="flex flex-row items-center justify-between gap-3 border-b">
-        <div class="min-w-0 space-y-1">
-          <CardTitle class="text-base">
-            {{ t("dataQuality.asset.issuesTitle") }}
-          </CardTitle>
-          <CardDescription>
-            {{ t("dataQuality.asset.issuesDescription") }}
-          </CardDescription>
-        </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          as-child
-        >
-          <RouterLink :to="{ name: 'DataQualityIssues' }">
-            {{ t("dataQuality.asset.viewAll") }}
-          </RouterLink>
-        </Button>
+      <CardHeader class="border-b">
+        <CardTitle class="text-base">
+          {{ t("dataQuality.asset.rulesTitle") }}
+        </CardTitle>
+        <CardDescription>
+          {{ t("dataQuality.asset.rulesDescription") }}
+        </CardDescription>
       </CardHeader>
       <CardContent class="pt-4">
         <EmptyState
-          v-if="openIssues.length === 0"
+          v-if="rules.length === 0"
           compact
-          :icon="CircleCheck"
-          :title="t('dataQuality.asset.noIssues')"
+          :icon="ShieldCheck"
+          :title="t('dataQuality.asset.noRules')"
+        />
+        <EmptyState
+          v-else-if="recentChecks.length === 0"
+          compact
+          :icon="ShieldCheck"
+          :title="t('dataQuality.asset.noExecutions')"
         />
         <ul
           v-else
           class="divide-y"
         >
           <li
-            v-for="issue in openIssues.slice(0, 5)"
-            :key="issue.name"
-            class="flex items-center justify-between gap-3 py-2"
+            v-for="row in recentChecks"
+            :key="row.execution.name"
           >
-            <div class="min-w-0">
-              <div class="truncate text-sm font-medium">
-                {{ ruleTitle(issue.rule) }}
+            <RouterLink
+              :to="checkTo(row.ruleName)"
+              class="group flex flex-wrap items-center justify-between gap-3 py-2 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
+            >
+              <div class="min-w-0">
+                <div class="truncate text-sm font-medium group-hover:underline">
+                  {{ ruleTitle(row.ruleName) }}
+                </div>
+                <div
+                  v-if="row.rule"
+                  class="mt-1 flex flex-wrap items-center gap-1"
+                >
+                  <Badge variant="secondary">
+                    {{ t(qualityRuleTypeKey(row.rule.ruleType)) }}
+                  </Badge>
+                  <Badge :variant="qualitySeverityVariant(row.rule.severity)">
+                    {{ t(qualitySeverityKey(row.rule.severity)) }}
+                  </Badge>
+                </div>
               </div>
-              <div class="mt-1 flex flex-wrap items-center gap-1">
-                <Badge :variant="qualityIssueStatusVariant(issue.status)">
-                  {{ t(qualityIssueStatusKey(issue.status)) }}
-                </Badge>
-                <Badge :variant="qualitySeverityVariant(issue.severity)">
-                  {{ t(qualitySeverityKey(issue.severity)) }}
+              <div class="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                <Badge :variant="qualityStatusVariant(row.execution.outcome)">
+                  {{ t(qualityStatusKey(row.execution.outcome)) }}
                 </Badge>
                 <span
-                  class="text-xs text-muted-foreground"
-                  :title="formatDateTime(issue.lastSeenTime, locale)"
+                  v-if="row.execution.observedKind !== QualityObservedKind.UNSPECIFIED"
+                  class="tabular-nums"
                 >
-                  {{ formatRelativeTime(issue.lastSeenTime, locale) }}
+                  {{ formatObservedValue(row.execution.observedValue, row.execution.observedKind, locale) }}
+                </span>
+                <span :title="formatDateTime(row.execution.finishTime, locale)">
+                  {{ formatRelativeTime(row.execution.finishTime, locale) }}
                 </span>
               </div>
-            </div>
-            <RouterLink
-              :to="issueRoute(issue.name)"
-              class="shrink-0 text-xs text-primary hover:underline"
-            >
-              {{ t("dataQuality.viewIssue") }}
             </RouterLink>
           </li>
         </ul>
@@ -587,9 +446,6 @@
 import {
   Activity,
   ChevronDown,
-  CircleCheck,
-  ListChecks,
-  Plus,
   RefreshCw,
   ShieldCheck,
   Sparkles,
@@ -646,6 +502,7 @@ import {
   type QualityExecution,
   type QualityIssue,
   QualityIssueStatus,
+  QualityObservedKind,
   type QualityRule,
   QualitySeverity,
   QualityStatus,
@@ -655,19 +512,14 @@ import {
 import type { ColumnMetadata } from "@/types/proto-es/v1/database_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
-  formatRowCount,
-  qualityExecutionStateKey,
-  qualityExecutionStateVariant,
-  qualityIssueStatusKey,
-  qualityIssueStatusVariant,
-  qualityRuleStateKey,
-  qualityRuleStateVariant,
+  formatObservedValue,
   qualityRuleTypeKey,
   qualitySeverityKey,
   qualitySeverityVariant,
   qualityStatusKey,
   qualityStatusVariant,
 } from "@/utils/dataQuality";
+import { ruleTypeForConfigCase } from "@/utils/dataQualityForm";
 import {
   columnProfileHighlights,
   formatConfidence,
@@ -678,16 +530,18 @@ import {
   semanticTypeKey,
   suggestionKindKey,
   suggestionRationale,
-  suggestionToEditorPrefill,
 } from "@/utils/dataQualitySuggestion";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 import { guidToRouteParams } from "@/utils/guid";
 
 /**
- * The table detail's Data Quality tab: this target's rules, latest executions
- * and open issues, plus the deterministic column profiles and accepted semantic
- * labels. Every load is independent — a metadata page must survive a quality
- * fetch failure — and the actions are permission-gated.
+ * The metadata detail's Data Quality tab: a contract preview of the target, not
+ * a second copy of the target workspace. It keeps the counts, the review inbox
+ * and the column facts, shows the newest recorded run of each check, and points
+ * at the workspace for everything that authors or examines a check.
+ *
+ * Every load is independent — a metadata page must survive a quality fetch
+ * failure — and the actions are permission-gated.
  */
 
 const props = defineProps<{
@@ -704,9 +558,6 @@ const authStore = useAuthStore();
 const canView = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.rules.list")
 );
-const canCreateRule = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.rules.create")
-);
 const canProfile = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.profile.run")
 );
@@ -715,12 +566,6 @@ const canSuggest = computed(() =>
 );
 const canUpdateLabels = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.labels.update")
-);
-const canViewExecution = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.executions.get")
-);
-const canListExecutions = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.executions.list")
 );
 
 const rules = ref<QualityRule[]>([]);
@@ -737,33 +582,70 @@ const decidingSuggestion = ref("");
 const decideError = ref("");
 const actionError = ref("");
 
-const createRuleTo = computed(() => ({
-  name: "DataQualityRuleNew",
-  query: {
-    table_guid: props.tableGuid,
-    meta_type: String(props.metaType),
-  },
-}));
-
-// The target workspace is the same table read as one list of rules; it is the
-// page that can add another rule without walking the target picker again.
+// The target workspace is the one authoring surface; a check row carries the
+// check's resource name so the workspace can open it.
 const targetWorkspaceTo = computed(() => ({
   name: "DataQualityTarget",
   params: { targetGuid: guidToRouteParams(props.tableGuid) },
   query: { metaType: String(props.metaType) },
 }));
 
-const executionsTo = computed(() => ({
-  name: "DataQualityExecutions",
-  query: { target: props.tableGuid },
-}));
+function checkTo(ruleName: string) {
+  return {
+    ...targetWorkspaceTo.value,
+    query: { ...targetWorkspaceTo.value.query, check: ruleName },
+  };
+}
 
-const ruleTitles = computed(() =>
-  Object.fromEntries(rules.value.map((rule) => [rule.name, rule.title]))
+/** How many of the newest checks the preview lists. */
+const RECENT_CHECKS_PREVIEW = 5;
+
+const ruleByName = computed(
+  () => new Map(rules.value.map((rule) => [rule.name, rule]))
 );
 
+interface RecentCheck {
+  ruleName: string;
+  /** The check itself; absent when the rule list failed or no longer holds it. */
+  rule: QualityRule | undefined;
+  execution: QualityExecution;
+}
+
+/**
+ * The newest recorded run of each check, in the order the executions arrived.
+ * An unfinished run has no verdict yet, so it is skipped rather than shown as a
+ * check without a result.
+ */
+const recentChecks = computed<RecentCheck[]>(() => {
+  const seen = new Set<string>();
+  const rows: RecentCheck[] = [];
+  for (const execution of executions.value) {
+    if (
+      execution.outcome === QualityStatus.UNSPECIFIED ||
+      execution.rule === "" ||
+      seen.has(execution.rule)
+    ) {
+      continue;
+    }
+    seen.add(execution.rule);
+    rows.push({
+      ruleName: execution.rule,
+      rule: ruleByName.value.get(execution.rule),
+      execution,
+    });
+    if (rows.length >= RECENT_CHECKS_PREVIEW) {
+      break;
+    }
+  }
+  return rows;
+});
+
 function ruleTitle(ruleName: string): string {
-  return ruleTitles.value[ruleName] || ruleName.split("/").pop() || ruleName;
+  return (
+    ruleByName.value.get(ruleName)?.title ||
+    ruleName.split("/").pop() ||
+    ruleName
+  );
 }
 
 function labelOf(column: string): ColumnSemanticLabel | undefined {
@@ -780,7 +662,7 @@ const ASSET_SUGGESTION_PREVIEW = 5;
 /** How many pending proposals one queue read loads; more shows the "N+" count. */
 const SUGGESTION_PAGE_SIZE = 100;
 
-/** The preview: label proposals first, then rule drafts, newest first within a kind. */
+/** The preview: label proposals first, then check drafts, newest first within a kind. */
 const visibleSuggestions = computed(() => {
   const labelProposals = pendingSuggestions.value.filter(isLabelSuggestion);
   const drafts = pendingSuggestions.value.filter(
@@ -813,8 +695,12 @@ function draftTitle(suggestion: QualitySuggestion): string {
 }
 
 function draftRuleTypeKey(suggestion: QualitySuggestion): string | undefined {
-  const prefill = suggestionToEditorPrefill(suggestion);
-  return prefill ? qualityRuleTypeKey(prefill.ruleType) : undefined;
+  const configCase = ruleDraftOf(suggestion)?.config?.config.case;
+  if (!configCase) {
+    return undefined;
+  }
+  const ruleType = ruleTypeForConfigCase(configCase);
+  return ruleType === undefined ? undefined : qualityRuleTypeKey(ruleType);
 }
 
 function draftSeverity(
@@ -830,38 +716,6 @@ function confidenceOf(suggestion: QualitySuggestion): number {
     labelSuggestionOf(suggestion)?.confidence ??
     0
   );
-}
-
-/** Only a build that can prefill the editor offers a draft's creation path. */
-function canOpenDraft(suggestion: QualitySuggestion): boolean {
-  return (
-    canCreateRule.value && suggestionToEditorPrefill(suggestion) !== undefined
-  );
-}
-
-function draftEditorTo(suggestion: QualitySuggestion) {
-  return { name: "DataQualityRuleNew", query: { suggestion: suggestion.name } };
-}
-
-function ruleRoute(name: string) {
-  return {
-    name: "DataQualityRuleDetail",
-    params: { ruleId: name.split("/") },
-  };
-}
-
-function executionRoute(name: string) {
-  return {
-    name: "DataQualityExecutionDetail",
-    params: { executionId: name.split("/") },
-  };
-}
-
-function issueRoute(name: string) {
-  return {
-    name: "DataQualityIssueDetail",
-    params: { issueId: name.split("/") },
-  };
 }
 
 async function loadRules() {
@@ -925,8 +779,8 @@ async function loadProfiles() {
 }
 
 /**
- * The proposals waiting for review on this table, both kinds: a label pass and
- * the AI workbench queue rule drafts here too. The queue is behind the suggest
+ * The proposals waiting for review on this target, both kinds: a label pass and
+ * the AI workbench queue check drafts here too. The queue is behind the suggest
  * permission — the same one the review actions need — so a read-only caller
  * never requests it. A failed read keeps the last list and flags the failure
  * rather than silently pretending the queue is empty.
@@ -1084,11 +938,12 @@ onMounted(loadAll);
 watch(
   () => props.tableGuid,
   () => {
-    // The previous target's queue must not leak into the new one while it loads.
+    // The previous target's queue and preview must not leak into the new one.
     pendingSuggestions.value = [];
     pendingSuggestionsTruncated.value = false;
     suggestionsLoadFailed.value = false;
     decideError.value = "";
+    executions.value = [];
     void loadAll();
   }
 );

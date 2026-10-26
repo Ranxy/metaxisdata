@@ -142,7 +142,20 @@
                 @click="openIssue(issue)"
               >
                 <TableCell>
+                  <!-- An issue names a check that failed on a target; both lines
+                       lead into that target's workspace, the check selected on
+                       the first one. -->
+                  <RouterLink
+                    v-if="hasTarget(issue)"
+                    :to="issueRuleRoute(issue)"
+                    class="block max-w-[14rem] truncate text-left font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:max-w-md"
+                    :title="ruleTitle(issue)"
+                    @click.stop
+                  >
+                    {{ ruleTitle(issue) }}
+                  </RouterLink>
                   <button
+                    v-else
                     type="button"
                     class="block max-w-[14rem] truncate text-left font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:max-w-md"
                     :title="ruleTitle(issue)"
@@ -150,7 +163,17 @@
                   >
                     {{ ruleTitle(issue) }}
                   </button>
+                  <RouterLink
+                    v-if="hasTarget(issue)"
+                    :to="issueTargetRoute(issue)"
+                    class="block max-w-[14rem] truncate font-mono text-xs text-muted-foreground hover:underline md:max-w-md"
+                    :title="targetLabel(issue)"
+                    @click.stop
+                  >
+                    {{ targetLabel(issue) }}
+                  </RouterLink>
                   <div
+                    v-else
                     class="max-w-[14rem] truncate font-mono text-xs text-muted-foreground md:max-w-md"
                     :title="targetLabel(issue)"
                   >
@@ -234,6 +257,8 @@ import { useI18n } from "vue-i18n";
 import {
   type LocationQuery,
   type LocationQueryRaw,
+  type RouteLocationRaw,
+  RouterLink,
   useRoute,
   useRouter,
 } from "vue-router";
@@ -273,6 +298,7 @@ import {
   type QualitySeverity,
   QualitySeverity as Severity,
 } from "@/types/proto-es/v1/data_quality_service_pb";
+import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
   formatTargetPath,
   qualityIssueStatusKey,
@@ -282,6 +308,7 @@ import {
   targetScopeLabel,
 } from "@/utils/dataQuality";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
+import { guidToRouteParams } from "@/utils/guid";
 
 /**
  * The issue directory. An issue is the persistent problem behind a rule's
@@ -523,14 +550,59 @@ async function loadRuleTitles() {
   }
 }
 
+/** Whether the issue carries the target its rule watched. */
+function hasTarget(issue: QualityIssue): boolean {
+  return Boolean(issue.target?.metaGuid);
+}
+
+/**
+ * The target workspace for one issue, opening the check drawer when a check
+ * name is given. Undefined for the historical rows that carry no snapshot.
+ */
+function targetWorkspaceRoute(
+  issue: QualityIssue,
+  check = ""
+): RouteLocationRaw | undefined {
+  const target = issue.target;
+  if (!target?.metaGuid) {
+    return undefined;
+  }
+  const query: Record<string, string> = {};
+  if (target.metaType !== MetaType.UNSPECIFIED) {
+    query.metaType = String(target.metaType);
+  }
+  if (check) {
+    query.check = check;
+  }
+  return {
+    name: "DataQualityTarget",
+    params: { targetGuid: guidToRouteParams(target.metaGuid) },
+    query,
+  };
+}
+
+/** The failing check's destination: its target's workspace, check selected. */
+function issueRuleRoute(issue: QualityIssue): RouteLocationRaw {
+  return targetWorkspaceRoute(issue, issue.rule) ?? issueDetailRoute(issue);
+}
+
+/** The target itself, without selecting a check. */
+function issueTargetRoute(issue: QualityIssue): RouteLocationRaw {
+  return targetWorkspaceRoute(issue) ?? issueDetailRoute(issue);
+}
+
+function issueDetailRoute(issue: QualityIssue) {
+  return {
+    name: "DataQualityIssueDetail",
+    params: { issueId: issue.name.split("/") },
+  };
+}
+
 function openIssue(issue: QualityIssue) {
   if (window.getSelection()?.toString()) {
     return;
   }
-  void router.push({
-    name: "DataQualityIssueDetail",
-    params: { issueId: issue.name.split("/") },
-  });
+  void router.push(issueDetailRoute(issue));
 }
 
 onMounted(() => {

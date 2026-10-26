@@ -195,7 +195,7 @@
             size="sm"
             as-child
           >
-            <RouterLink :to="{ name: 'DataQualityRules' }">
+            <RouterLink :to="{ name: 'DataQualityChecks' }">
               {{ t("dataQuality.viewRules") }}
             </RouterLink>
           </Button>
@@ -260,9 +260,32 @@
                   <!-- Below md the rule, target, observed, rows, trigger,
                        duration and started columns collapse in here. -->
                   <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground md:hidden">
-                    <span class="min-w-0 truncate">{{ ruleLabel(execution.rule) }}</span>
-                    <span aria-hidden="true">·</span>
+                    <RouterLink
+                      v-if="canViewRule"
+                      :to="ruleTargetRoute(execution)"
+                      class="min-w-0 truncate hover:underline"
+                      @click.stop
+                    >
+                      {{ ruleLabel(execution.rule) }}
+                    </RouterLink>
                     <span
+                      v-else
+                      class="min-w-0 truncate"
+                    >
+                      {{ ruleLabel(execution.rule) }}
+                    </span>
+                    <span aria-hidden="true">·</span>
+                    <RouterLink
+                      v-if="hasTarget(execution)"
+                      :to="executionTargetRoute(execution)"
+                      class="min-w-0 truncate hover:underline"
+                      :title="targetTitle(execution)"
+                      @click.stop
+                    >
+                      {{ targetPath(execution) }}
+                    </RouterLink>
+                    <span
+                      v-else
                       class="min-w-0 truncate"
                       :title="targetTitle(execution)"
                     >
@@ -285,7 +308,7 @@
                 <TableCell class="hidden md:table-cell">
                   <RouterLink
                     v-if="canViewRule"
-                    :to="ruleRoute(execution.rule)"
+                    :to="ruleTargetRoute(execution)"
                     class="block max-w-[11rem] truncate font-medium hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none lg:max-w-[14rem]"
                     :title="ruleLabel(execution.rule)"
                     @click.stop
@@ -301,7 +324,17 @@
                   </div>
                 </TableCell>
                 <TableCell class="hidden max-w-[14rem] md:table-cell">
+                  <RouterLink
+                    v-if="hasTarget(execution)"
+                    :to="executionTargetRoute(execution)"
+                    class="block truncate text-xs hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    :title="targetTitle(execution)"
+                    @click.stop
+                  >
+                    {{ targetPath(execution) }}
+                  </RouterLink>
                   <div
+                    v-else
                     class="truncate text-xs"
                     :title="targetTitle(execution)"
                   >
@@ -366,7 +399,12 @@
 import { Activity, Eye, RefreshCcw, X } from "lucide-vue-next";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { RouterLink, useRoute, useRouter } from "vue-router";
+import {
+  type RouteLocationRaw,
+  RouterLink,
+  useRoute,
+  useRouter,
+} from "vue-router";
 import {
   listAllQualityRules,
   listQualityExecutions,
@@ -406,6 +444,7 @@ import {
   QualityRuleState,
   QualityStatus,
 } from "@/types/proto-es/v1/data_quality_service_pb";
+import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
   executionDurationSeconds,
   formatObservedValue,
@@ -421,6 +460,7 @@ import {
   targetScopeLabel,
 } from "@/utils/dataQuality";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
+import { guidToRouteParams } from "@/utils/guid";
 
 /**
  * Every rule check the workspace has run, newest first. One row is one
@@ -635,9 +675,59 @@ function ruleLabel(ruleName: string): string {
 
 function ruleRoute(ruleName: string) {
   return {
-    name: "DataQualityRuleDetail",
+    name: "DataQualityRuleRedirect",
     params: { ruleId: ruleName.split("/") },
   };
+}
+
+/** Whether the execution carries the target its rule watched. */
+function hasTarget(execution: QualityExecution): boolean {
+  return Boolean(execution.target?.metaGuid);
+}
+
+/**
+ * The target workspace for one execution, opening the check drawer when a check
+ * name is given. Undefined when the execution carries no target: historical
+ * rows can predate the target snapshot.
+ */
+function targetWorkspaceRoute(
+  execution: QualityExecution,
+  check = ""
+): RouteLocationRaw | undefined {
+  const target = execution.target;
+  if (!target?.metaGuid) {
+    return undefined;
+  }
+  // A snapshot without a type is not an error: the target page derives it from
+  // the summary or the rules, so the query carries only what it knows.
+  const query: Record<string, string> = {};
+  if (target.metaType !== MetaType.UNSPECIFIED) {
+    query.metaType = String(target.metaType);
+  }
+  if (check) {
+    query.check = check;
+  }
+  return {
+    name: "DataQualityTarget",
+    params: { targetGuid: guidToRouteParams(target.metaGuid) },
+    query,
+  };
+}
+
+/**
+ * A rule name links into its target's workspace with the check selected. A row
+ * without a target snapshot falls back to the retired per-rule URL, whose
+ * redirect resolves the target itself.
+ */
+function ruleTargetRoute(execution: QualityExecution): RouteLocationRaw {
+  return (
+    targetWorkspaceRoute(execution, execution.rule) ?? ruleRoute(execution.rule)
+  );
+}
+
+/** The target itself, without selecting a check. */
+function executionTargetRoute(execution: QualityExecution): RouteLocationRaw {
+  return targetWorkspaceRoute(execution) ?? ruleRoute(execution.rule);
 }
 
 function targetPath(execution: QualityExecution): string {

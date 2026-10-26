@@ -1,8 +1,8 @@
 <template>
   <div class="space-y-4">
     <PageHeader
-      :title="t('dataQuality.rulesTitle')"
-      :description="t('dataQuality.rulesDescription')"
+      :title="t('dataQuality.checks.title')"
+      :description="t('dataQuality.checks.description')"
     >
       <template #actions>
         <Button
@@ -23,13 +23,6 @@
         >
           <Sparkles class="mr-2 h-4 w-4" />
           {{ t("dataQuality.llm.draft.openButton") }}
-        </Button>
-        <Button
-          v-if="canCreate"
-          @click="createRule"
-        >
-          <Plus class="mr-2 h-4 w-4" />
-          {{ t("dataQuality.newRule") }}
         </Button>
       </template>
     </PageHeader>
@@ -225,10 +218,10 @@
           :title="
             hasActiveFilters
               ? t('dataQuality.noFilteredRules')
-              : t('dataQuality.noRules')
+              : t('dataQuality.checks.emptyTitle')
           "
           :description="
-            hasActiveFilters ? '' : t('dataQuality.noRulesHint')
+            hasActiveFilters ? '' : t('dataQuality.checks.emptyDescription')
           "
         >
           <Button
@@ -240,11 +233,13 @@
             {{ t("common.filter.clear") }}
           </Button>
           <Button
-            v-else-if="canCreate"
-            @click="createRule"
+            v-else
+            variant="outline"
+            as-child
           >
-            <Plus class="mr-2 h-4 w-4" />
-            {{ t("dataQuality.newRule") }}
+            <RouterLink :to="{ name: 'DataQualityTargets' }">
+              {{ t("dataQuality.targets.title") }}
+            </RouterLink>
           </Button>
           <Button
             v-if="!hasActiveFilters && canSuggest"
@@ -261,6 +256,9 @@
             <TableHeader>
               <TableRow>
                 <TableHead>{{ t("dataQuality.rule") }}</TableHead>
+                <TableHead class="hidden md:table-cell">
+                  {{ t("dataQuality.ruleTarget") }}
+                </TableHead>
                 <TableHead class="hidden lg:table-cell">
                   {{ t("dataQuality.type") }}
                 </TableHead>
@@ -293,11 +291,10 @@
               >
                 <TableCell>
                   <div class="flex max-w-[14rem] min-w-0 items-center gap-2 md:max-w-md">
-                    <!-- The title is the way into the rule's own page; editing
-                         is the pencil action, so a reader-only caller still gets
-                         the destination. -->
+                    <!-- The title is the way into the check's target workspace,
+                         with this check selected there. -->
                     <RouterLink
-                      :to="ruleRoute(rule)"
+                      :to="ruleTargetRoute(rule)"
                       class="truncate text-left font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                       :title="rule.title"
                     >
@@ -318,10 +315,15 @@
                     </Badge>
                   </div>
                   <div
-                    class="max-w-[14rem] truncate font-mono text-xs text-muted-foreground md:max-w-md"
+                    class="max-w-[14rem] truncate font-mono text-xs text-muted-foreground md:hidden"
                     :title="targetTitle(rule)"
                   >
-                    {{ targetTitle(rule) }}
+                    <RouterLink
+                      :to="targetRoute(rule)"
+                      class="hover:underline"
+                    >
+                      {{ targetTitle(rule) }}
+                    </RouterLink>
                   </div>
                   <!-- Below md the type, severity, state, last result and
                        updated-at columns collapse in here, so the table never
@@ -358,6 +360,15 @@
                       {{ formatRelativeTime(rule.updateTime, locale) }}
                     </span>
                   </div>
+                </TableCell>
+                <TableCell class="hidden md:table-cell">
+                  <RouterLink
+                    :to="targetRoute(rule)"
+                    class="block max-w-[14rem] truncate text-xs hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    :title="targetTitle(rule)"
+                  >
+                    {{ targetTitle(rule) }}
+                  </RouterLink>
                 </TableCell>
                 <TableCell class="hidden lg:table-cell">
                   {{ t(qualityRuleTypeKey(rule.ruleType)) }}
@@ -425,17 +436,6 @@
                 <TableCell class="text-right">
                   <div class="flex items-center justify-end gap-1">
                     <Button
-                      v-if="canUpdate && rule.state !== QualityRuleState.ARCHIVED"
-                      variant="ghost"
-                      size="icon"
-                      class="h-8 w-8"
-                      :title="t('dataQuality.editRule')"
-                      :aria-label="t('dataQuality.editRule')"
-                      @click="editRule(rule)"
-                    >
-                      <Pencil class="h-4 w-4" />
-                    </Button>
-                    <Button
                       v-if="canRun"
                       variant="ghost"
                       size="icon"
@@ -448,41 +448,18 @@
                       <Zap class="h-4 w-4" />
                     </Button>
                     <Button
-                      v-if="canUpdate && rule.state !== QualityRuleState.ARCHIVED"
                       variant="ghost"
                       size="icon"
                       class="h-8 w-8"
-                      :title="
-                        rule.state === QualityRuleState.ENABLED
-                          ? t('dataQuality.pauseRule')
-                          : t('dataQuality.resumeRule')
-                      "
-                      :aria-label="
-                        rule.state === QualityRuleState.ENABLED
-                          ? t('dataQuality.pauseRule')
-                          : t('dataQuality.resumeRule')
-                      "
-                      @click="toggleRule(rule)"
+                      as-child
                     >
-                      <Pause
-                        v-if="rule.state === QualityRuleState.ENABLED"
-                        class="h-4 w-4"
-                      />
-                      <Play
-                        v-else
-                        class="h-4 w-4"
-                      />
-                    </Button>
-                    <Button
-                      v-if="canDelete && rule.state !== QualityRuleState.ARCHIVED"
-                      variant="ghost"
-                      size="icon"
-                      class="h-8 w-8 text-muted-foreground hover:text-destructive"
-                      :title="t('common.delete')"
-                      :aria-label="t('common.delete')"
-                      @click="askDelete(rule)"
-                    >
-                      <Trash2 class="h-4 w-4" />
+                      <RouterLink
+                        :to="targetRoute(rule)"
+                        :title="t('dataQuality.checks.openTarget')"
+                        :aria-label="t('dataQuality.checks.openTarget')"
+                      >
+                        <ExternalLink class="h-4 w-4" />
+                      </RouterLink>
                     </Button>
                   </div>
                 </TableCell>
@@ -504,29 +481,15 @@
         </div>
       </PageState>
     </Card>
-
-    <ConfirmDeleteDialog
-      v-model="deleteOpen"
-      :title="t('dataQuality.deleteRuleTitle')"
-      :message="t('dataQuality.deleteRuleMessage')"
-      :item-name="deleting?.title ?? ''"
-      :loading="saving"
-      @confirm="confirmDelete"
-    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { create } from "@bufbuild/protobuf";
 import {
-  Pause,
-  Pencil,
-  Play,
-  Plus,
+  ExternalLink,
   RefreshCcw,
   ShieldCheck,
   Sparkles,
-  Trash2,
   Zap,
 } from "lucide-vue-next";
 import { computed, onMounted, ref, watch } from "vue";
@@ -539,13 +502,10 @@ import {
   useRouter,
 } from "vue-router";
 import {
-  deleteQualityRule,
   listQualityRules,
   qualityRuleID,
   runQualityRules,
-  updateQualityRule,
 } from "@/api/data-quality";
-import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import TablePager from "@/components/common/TablePager.vue";
@@ -580,11 +540,11 @@ import { useAuthStore } from "@/store/modules/auth";
 import {
   QualityDimension,
   type QualityRule,
-  QualityRuleSchema,
   QualityRuleState,
   QualityRuleType,
   QualitySeverity,
 } from "@/types/proto-es/v1/data_quality_service_pb";
+import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
   formatTargetPath,
   type QualityTargetScope,
@@ -599,6 +559,14 @@ import {
 } from "@/utils/dataQuality";
 import { EDITABLE_RULE_TYPES } from "@/utils/dataQualityForm";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
+import { guidToRouteParams } from "@/utils/guid";
+
+/**
+ * The cross-target check directory: every check the workspace holds, for audit
+ * and search. It is read-only — a check is authored inside its target's
+ * contract workspace — so a row names its target and links there; the only
+ * action besides "run now" is opening that workspace.
+ */
 
 const { t, locale } = useI18n();
 const route = useRoute();
@@ -606,9 +574,6 @@ const router = useRouter();
 const { handleError } = useErrorHandler();
 const authStore = useAuthStore();
 
-const canCreate = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.rules.create")
-);
 const canSuggest = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.suggest")
 );
@@ -617,12 +582,6 @@ const canRun = computed(() =>
 );
 const canViewExecution = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.executions.get")
-);
-const canUpdate = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.rules.update")
-);
-const canDelete = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.rules.delete")
 );
 // The directory feeds both the owner column and the filter picker, so the page
 // loads it once; the picker receives it and issues no request of its own.
@@ -658,9 +617,6 @@ const appliedOwner = ref("");
 
 const pageSize = ref(50);
 const error = ref("");
-const saving = ref(false);
-const deleteOpen = ref(false);
-const deleting = ref<QualityRule>();
 
 const hasActiveFilters = computed(
   () =>
@@ -1042,10 +998,6 @@ function clearFilters() {
   applyFilters();
 }
 
-function createRule() {
-  void router.push({ name: "DataQualityRuleNew" });
-}
-
 /**
  * AI drafting lives in the suggestion center; this is a discovery path, not a
  * second implementation. `?draft=1` opens the workbench on arrival.
@@ -1057,11 +1009,29 @@ function draftWithAi() {
   });
 }
 
-function ruleRoute(rule: QualityRule) {
+/**
+ * The target workspace route: the check's own target, opening the drawer on the
+ * check when one is named. A check lives inside its target, so the audit
+ * directory links there rather than to a standalone rule page.
+ */
+function targetWorkspaceRoute(target: QualityRule["target"], check = "") {
+  const guid = target?.metaGuid ?? "";
+  const metaType = String(target?.metaType ?? MetaType.UNSPECIFIED);
   return {
-    name: "DataQualityRuleDetail",
-    params: { ruleId: rule.name.split("/") },
+    name: "DataQualityTarget",
+    params: { targetGuid: guidToRouteParams(guid) },
+    query: check ? { metaType, check } : { metaType },
   };
+}
+
+/** The check's own destination: its target's workspace with the check open. */
+function ruleTargetRoute(rule: QualityRule) {
+  return targetWorkspaceRoute(rule.target, rule.name);
+}
+
+/** The target's destination, without selecting a check. */
+function targetRoute(rule: QualityRule) {
+  return targetWorkspaceRoute(rule.target);
 }
 
 function executionRoute(name: string) {
@@ -1069,13 +1039,6 @@ function executionRoute(name: string) {
     name: "DataQualityExecutionDetail",
     params: { executionId: name.split("/") },
   };
-}
-
-function editRule(rule: QualityRule) {
-  void router.push({
-    name: "DataQualityRuleEdit",
-    params: { ruleId: rule.name.split("/") },
-  });
 }
 
 function targetTitle(rule: QualityRule): string {
@@ -1110,53 +1073,6 @@ async function runRule(rule: QualityRule) {
     }
   } catch (e: unknown) {
     handleError(e, "dataQuality.executionError");
-  }
-}
-
-async function toggleRule(rule: QualityRule) {
-  const next =
-    rule.state === QualityRuleState.ENABLED
-      ? QualityRuleState.PAUSED
-      : QualityRuleState.ENABLED;
-  try {
-    // Send the whole rule but write only the state: a full update would append a
-    // revision for an edit nobody made.
-    const updated = create(QualityRuleSchema, rule);
-    updated.state = next;
-    await updateQualityRule(updated, ["state"]);
-    notify.success(
-      t(
-        next === QualityRuleState.ENABLED
-          ? "dataQuality.ruleEnabled"
-          : "dataQuality.rulePaused"
-      )
-    );
-    await refreshPage();
-  } catch (e: unknown) {
-    handleError(e, "dataQuality.updateError");
-  }
-}
-
-function askDelete(rule: QualityRule) {
-  deleting.value = rule;
-  deleteOpen.value = true;
-}
-
-async function confirmDelete() {
-  if (!deleting.value) {
-    return;
-  }
-  saving.value = true;
-  try {
-    await deleteQualityRule(deleting.value.name);
-    notify.success(t("dataQuality.ruleDeleted"));
-    deleteOpen.value = false;
-    deleting.value = undefined;
-    await refreshPage();
-  } catch (e: unknown) {
-    handleError(e, "dataQuality.deleteError");
-  } finally {
-    saving.value = false;
   }
 }
 

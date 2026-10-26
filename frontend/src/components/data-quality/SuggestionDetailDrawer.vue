@@ -215,9 +215,9 @@
                   <Button
                     variant="outline"
                     :disabled="deciding || !canCreateRule"
-                    @click="emit('openEditor')"
+                    @click="emit('openTarget')"
                   >
-                    {{ t("dataQuality.suggestions.openInEditor") }}
+                    {{ t("dataQuality.targets.openWorkspace") }}
                   </Button>
                   <Button
                     :disabled="deciding || !canCreateRule"
@@ -358,7 +358,8 @@ const emit = defineEmits<{
   "update:open": [value: boolean];
   accept: [note: string];
   reject: [note: string];
-  openEditor: [];
+  /** Open the suggestion's target workspace, where its draft is listed inline. */
+  openTarget: [];
   createRule: [];
 }>();
 

@@ -155,9 +155,9 @@ pnpm --dir frontend i18n:glossary --write-doc     # 重写生成表格
 | refresh | 刷新 | Conventions | Refresh is 刷新. Reloading a stored definition is 重新加载; Regenerate is 重新生成. | all keys | — |
 | data quality | 数据质量 | Data Quality | The correctness and completeness of the data itself, as opposed to the registry's record of it. | dataQuality., menu. | — |
 | superseded | 已失效 | Data Quality | The server closed a proposal because its fact now exists; it was never a person's decision, and the same proposal may be queued again later. | dataQuality. | zh-CN: `已取代`, `已作废` |
-| quality rule | 质量规则 | Data Quality | One typed check over one target table or column, run on a schedule or on demand. | dataQuality., menu. | — |
-| rule type | 规则类型 | Data Quality | The category a quality rule belongs to; it decides which configuration the rule carries and how its verdict is read. | dataQuality. | en-US: `/\brule kinds?/i`; zh-CN: `规则种类`, `检查类型` |
-| rule result | 规则结果 | Data Quality | The verdict of an execution. | dataQuality. | — |
+| check | 检查 | Data Quality | One typed check over one target table or column, run on a schedule or on demand, authored inside its target contract. | dataQuality., menu. | — |
+| check type | 检查类型 | Data Quality | The category a check belongs to; it decides which configuration the check carries and how its verdict is read. | dataQuality. | en-US: `/\brule types?/i`; zh-CN: `规则类型`, `规则种类` |
+| check result | 检查结果 | Data Quality | The verdict of an execution. | dataQuality. | — |
 | execution | 执行 | Data Quality | One rule checked once, manually or on a schedule, with its verdict and the evidence behind it; the Chinese noun is 执行, never 运行记录 (that is an OpenLineage run). | dataQuality., menu. | zh-CN: `运行记录` |
 | issue | 质量问题 | Data Quality | A persistent problem behind a rule's failing executions that needs attention. | dataQuality. | — |
 | dimension | 维度 | Data Quality | The quality aspect a rule measures, e.g. completeness or timeliness. | dataQuality. | zh-CN: `度量` |

@@ -118,13 +118,13 @@ async function mountPage() {
         component: Dummy,
       },
       {
-        path: "/data-quality/rules",
-        name: "DataQualityRules",
+        path: "/data-quality/checks",
+        name: "DataQualityChecks",
         component: Dummy,
       },
       {
-        path: "/data-quality/rules/new",
-        name: "DataQualityRuleNew",
+        path: "/metadata",
+        name: "MetadataBrowser",
         component: Dummy,
       },
     ],
@@ -312,7 +312,7 @@ describe("DataQualityTargetsPage filters", () => {
 });
 
 describe("DataQualityTargetsPage states and links", () => {
-  it("guides an empty directory to create its first rule", async () => {
+  it("guides an empty directory to the metadata browser", async () => {
     mocks.listQualityTargets.mockResolvedValue({
       items: [],
       nextPageToken: "",
@@ -328,9 +328,9 @@ describe("DataQualityTargetsPage states and links", () => {
       .find(
         (link) =>
           link.text().trim() ===
-          i18n.global.t("dataQuality.targets.emptyAction")
+          i18n.global.t("dataQuality.targets.openMetadata")
       );
-    expect(action?.attributes("href")).toBe("/data-quality/rules/new");
+    expect(action?.attributes("href")).toBe("/metadata");
   });
 
   it("shows the error state and retries the load", async () => {

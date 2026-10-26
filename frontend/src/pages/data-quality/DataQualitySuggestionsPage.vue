@@ -461,19 +461,22 @@
                       class="text-right align-top"
                       @click.stop
                     >
-                      <!-- The editor shortcut sits before the primary action
+                      <!-- The draft shortcut sits before the primary action
                            and review closes the cell: with the primary button
                            in the same slot on every row, "Create rule" and
-                           "Accept" share one right edge. -->
+                           "Accept" share one right edge. A draft is adjusted
+                           where it will live — inside its target's contract
+                           workspace, which lists the target's pending proposals
+                           inline — so this opens the target, not an editor. -->
                       <div class="flex items-center justify-end gap-1">
                         <Button
                           v-if="canEditDraft(suggestion)"
                           variant="ghost"
                           size="icon"
                           class="h-8 w-8"
-                          :title="t('dataQuality.suggestions.openInEditor')"
-                          :aria-label="t('dataQuality.suggestions.openInEditor')"
-                          @click="openEditor(suggestion)"
+                          :title="t('dataQuality.targets.openWorkspace')"
+                          :aria-label="t('dataQuality.targets.openWorkspace')"
+                          @click="openTarget(suggestion)"
                         >
                           <ExternalLink class="h-4 w-4 text-muted-foreground" />
                         </Button>
@@ -543,7 +546,7 @@
       :error="decideError"
       @accept="accept"
       @reject="reject"
-      @open-editor="selected && openEditor(selected)"
+      @open-target="selected && openTarget(selected)"
       @create-rule="selected && createRuleFromDrawer(selected)"
     />
 
@@ -658,6 +661,7 @@ import {
   suggestionToEditorPrefill,
 } from "@/utils/dataQualitySuggestion";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
+import { guidToRouteParams } from "@/utils/guid";
 import { metaTypeSingularLabel } from "@/utils/metaType";
 
 /**
@@ -1318,12 +1322,30 @@ function inspect(suggestion: QualitySuggestion) {
   drawerOpen.value = true;
 }
 
-function openEditor(suggestion: QualitySuggestion) {
+/**
+ * Where a suggestion is adjusted: its target's contract workspace. The draft
+ * itself needs no query parameter — the workspace reads the target's pending
+ * proposals and renders them inline.
+ */
+function targetWorkspaceRoute(suggestion: QualitySuggestion) {
+  const target = suggestion.target;
+  if (!target?.metaGuid) {
+    return undefined;
+  }
+  return {
+    name: "DataQualityTarget",
+    params: { targetGuid: guidToRouteParams(target.metaGuid) },
+    query: { metaType: String(target.metaType) },
+  };
+}
+
+function openTarget(suggestion: QualitySuggestion) {
+  const route = targetWorkspaceRoute(suggestion);
+  if (!route) {
+    return;
+  }
   drawerOpen.value = false;
-  void router.push({
-    name: "DataQualityRuleNew",
-    query: { suggestion: suggestion.name },
-  });
+  void router.push(route);
 }
 
 function openWorkbench() {

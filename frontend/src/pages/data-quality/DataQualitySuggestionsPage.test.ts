@@ -168,18 +168,13 @@ async function mountPage(path = "/data-quality/suggestions") {
         component: Dummy,
       },
       {
-        path: "/data-quality/rules/new",
-        name: "DataQualityRuleNew",
+        path: "/data-quality/targets",
+        name: "DataQualityTargets",
         component: Dummy,
       },
       {
-        path: "/data-quality/rules/:ruleId+/detail",
-        name: "DataQualityRuleDetail",
-        component: Dummy,
-      },
-      {
-        path: "/data-quality/rules",
-        name: "DataQualityRules",
+        path: "/data-quality/targets/:targetGuid+",
+        name: "DataQualityTarget",
         component: Dummy,
       },
       {
@@ -897,6 +892,53 @@ describe("DataQualitySuggestionsPage", () => {
     await flushPromises();
 
     expect(router.currentRoute.value.query).toEqual({ kind: "1" });
+    wrapper.unmount();
+  });
+
+  it("opens a draft in its target workspace instead of an editor", async () => {
+    const { wrapper, router } = await mountPage();
+
+    const openTarget = [
+      ...document.body.querySelectorAll<HTMLElement>(
+        `button[aria-label="${label("dataQuality.targets.openWorkspace")}"]`
+      ),
+    ];
+    expect(openTarget).toHaveLength(2);
+
+    openTarget[0]?.click();
+    await flushPromises();
+
+    expect(router.currentRoute.value.name).toBe("DataQualityTarget");
+    expect(router.currentRoute.value.params.targetGuid).toEqual([
+      "inst1",
+      "db1",
+      "public",
+      "orders",
+    ]);
+    // The workspace finds the draft inline; no extra query parameter names it.
+    expect(router.currentRoute.value.query).toEqual({
+      metaType: String(MetaType.TABLE),
+    });
+    wrapper.unmount();
+  });
+
+  it("opens the target workspace from the draft's detail drawer", async () => {
+    const { wrapper, router } = await mountPage();
+
+    reviewButton(0)?.click();
+    await flushPromises();
+
+    const button = dialogButtonByText(
+      label("dataQuality.targets.openWorkspace")
+    );
+    expect(button).toBeTruthy();
+    button?.click();
+    await flushPromises();
+
+    expect(router.currentRoute.value.name).toBe("DataQualityTarget");
+    expect(router.currentRoute.value.query).toEqual({
+      metaType: String(MetaType.TABLE),
+    });
     wrapper.unmount();
   });
 });

@@ -8,9 +8,14 @@ import { Select } from "@/components/ui/select";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
+  QualityIssueSchema,
   QualityIssueStatus,
+  QualityRuleSchema,
   QualitySeverity,
+  QualityTargetPathSchema,
+  QualityTargetSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
+import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
 import DataQualityIssuesPage from "./DataQualityIssuesPage.vue";
 
@@ -47,6 +52,11 @@ async function mountPage(path = "/data-quality/issues") {
       {
         path: "/data-quality/issues/:issueId+",
         name: "DataQualityIssueDetail",
+        component: Dummy,
+      },
+      {
+        path: "/data-quality/targets/:targetGuid+",
+        name: "DataQualityTarget",
         component: Dummy,
       },
     ],
@@ -178,4 +188,98 @@ describe("DataQualityIssuesPage URL filters", () => {
     expect(mocks.listQualityIssues).toHaveBeenCalledTimes(2);
     wrapper.unmount();
   });
+
+  it("links the rule and the target into the target workspace", async () => {
+    mocks.listQualityIssues.mockResolvedValue({
+      items: [issueFixture()],
+      nextPageToken: "",
+    });
+    mocks.listAllQualityRules.mockResolvedValue([
+      create(QualityRuleSchema, {
+        name: "workspaces/ws/qualityRules/rule-1",
+        title: "Null rate on orders",
+      }),
+    ]);
+    const wrapper = await mountPage();
+
+    const rule = wrapper
+      .findAll("a")
+      .find((link) => link.text().trim() === "Null rate on orders");
+    expect(rule).toBeDefined();
+    const ruleHref = rule?.attributes("href") ?? "";
+    expect(ruleHref).toContain(
+      "/data-quality/targets/inst1/shop/public/orders"
+    );
+    expect(ruleHref).toContain("metaType=4");
+    expect(ruleHref).toContain("check=workspaces/ws/qualityRules/rule-1");
+
+    const target = wrapper
+      .findAll("a")
+      .find(
+        (link) =>
+          link.text().trim() === "prod · shop · public.orders" &&
+          (link.attributes("href") ?? "").startsWith("/data-quality/targets/")
+      );
+    expect(target).toBeDefined();
+    const targetHref = target?.attributes("href") ?? "";
+    expect(targetHref).toContain(
+      "/data-quality/targets/inst1/shop/public/orders"
+    );
+    expect(targetHref).toContain("metaType=4");
+    expect(targetHref).not.toContain("check=");
+    wrapper.unmount();
+  });
+
+  it("keeps the issue detail behavior when an issue carries no target", async () => {
+    mocks.listQualityIssues.mockResolvedValue({
+      items: [issueFixture({ withTarget: false })],
+      nextPageToken: "",
+    });
+    mocks.listAllQualityRules.mockResolvedValue([
+      create(QualityRuleSchema, {
+        name: "workspaces/ws/qualityRules/rule-1",
+        title: "Null rate on orders",
+      }),
+    ]);
+    const wrapper = await mountPage();
+
+    // No target to link to, so the rule stays a button and no target link shows.
+    expect(
+      wrapper
+        .findAll("a")
+        .some((link) =>
+          (link.attributes("href") ?? "").startsWith("/data-quality/targets/")
+        )
+    ).toBe(false);
+    const ruleButton = wrapper
+      .findAll("button")
+      .find((button) => button.text().trim() === "Null rate on orders");
+    expect(ruleButton).toBeDefined();
+    wrapper.unmount();
+  });
 });
+
+const RULE = "workspaces/ws/qualityRules/rule-1";
+const TARGET_GUID = "inst1;shop;public;orders";
+
+function issueFixture(options: { withTarget?: boolean } = {}) {
+  return create(QualityIssueSchema, {
+    name: "workspaces/ws/qualityIssues/issue-1",
+    rule: RULE,
+    status: QualityIssueStatus.OPEN,
+    severity: QualitySeverity.ERROR,
+    target:
+      options.withTarget === false
+        ? undefined
+        : create(QualityTargetSchema, {
+            metaGuid: TARGET_GUID,
+            metaType: MetaType.TABLE,
+            path: create(QualityTargetPathSchema, {
+              instance: "prod",
+              database: "shop",
+              schema: "public",
+              object: "orders",
+            }),
+          }),
+  });
+}

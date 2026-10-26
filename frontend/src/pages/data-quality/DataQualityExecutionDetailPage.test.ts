@@ -133,7 +133,7 @@ async function mountPage(permissions = PERMISSIONS) {
       },
       {
         path: "/data-quality/rules/:ruleId+",
-        name: "DataQualityRuleDetail",
+        name: "DataQualityRuleRedirect",
         component: Dummy,
       },
     ],

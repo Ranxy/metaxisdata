@@ -16,15 +16,6 @@
           />
           {{ t("common.refresh") }}
         </Button>
-        <Button
-          v-if="canCreate"
-          as-child
-        >
-          <RouterLink :to="{ name: 'DataQualityRuleNew' }">
-            <Plus class="mr-2 h-4 w-4" />
-            {{ t("dataQuality.newRule") }}
-          </RouterLink>
-        </Button>
       </template>
     </PageHeader>
 
@@ -49,12 +40,11 @@
         :description="t('dataQuality.overview.emptyDescription')"
       >
         <Button
-          v-if="canCreate"
+          variant="outline"
           as-child
         >
-          <RouterLink :to="{ name: 'DataQualityRuleNew' }">
-            <Plus class="mr-2 h-4 w-4" />
-            {{ t("dataQuality.newRule") }}
+          <RouterLink :to="{ name: 'DataQualityTargets' }">
+            {{ t("dataQuality.targets.title") }}
           </RouterLink>
         </Button>
       </EmptyState>
@@ -74,7 +64,7 @@
               })
             "
             :icon="ListChecks"
-            :to="{ name: 'DataQualityRules' }"
+            :to="{ name: 'DataQualityChecks' }"
           />
           <StatCard
             :label="t('dataQuality.overview.statMonitoredTables')"
@@ -169,79 +159,72 @@
 
         <div class="grid gap-4 xl:grid-cols-2">
           <Card>
-            <CardHeader class="flex flex-row items-center justify-between gap-3 border-b">
+            <CardHeader class="border-b">
               <div class="min-w-0 space-y-1">
                 <CardTitle class="text-base">
-                  {{ t("dataQuality.overview.recentFailuresTitle") }}
+                  {{ t("dataQuality.overview.attentionTitle") }}
                 </CardTitle>
                 <CardDescription>
-                  {{ t("dataQuality.overview.recentFailuresDescription") }}
+                  {{ t("dataQuality.overview.attentionDescription") }}
                 </CardDescription>
               </div>
-              <Button
-                v-if="canListExecutions"
-                variant="ghost"
-                size="sm"
-                as-child
-              >
-                <RouterLink :to="{ name: 'DataQualityExecutions' }">
-                  {{ t("dataQuality.viewAllExecutions") }}
-                </RouterLink>
-              </Button>
             </CardHeader>
             <CardContent class="pt-4">
               <EmptyState
-                v-if="recentFailures.length === 0"
+                v-if="attentionTargets.length === 0"
                 compact
                 :icon="CircleCheck"
-                :title="t('dataQuality.overview.noRecentFailures')"
+                :title="t('dataQuality.overview.attentionEmpty')"
               />
               <ul
                 v-else
                 class="divide-y"
               >
                 <li
-                  v-for="failure in recentFailures"
-                  :key="failure.name"
-                  class="flex items-center justify-between gap-3 py-2.5"
+                  v-for="target in attentionTargets"
+                  :key="target.target?.metaGuid"
+                  class="py-2.5"
                 >
-                  <div class="min-w-0">
-                    <RouterLink
-                      v-if="canViewRule"
-                      :to="ruleRoute(failure.rule)"
-                      class="block truncate text-sm font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    >
-                      {{ ruleTitle(failure.rule) }}
-                    </RouterLink>
-                    <div
-                      v-else
-                      class="truncate text-sm font-medium"
-                    >
-                      {{ ruleTitle(failure.rule) }}
-                    </div>
-                    <div class="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-                      <Badge
-                        :variant="qualityStatusVariant(failure.outcome)"
-                        class="mr-1"
-                      >
-                        {{ t(qualityStatusKey(failure.outcome)) }}
-                      </Badge>
-                      <span class="tabular-nums">
-                        {{ t("dataQuality.failedRows") }}
-                        {{ formatRowCount(failure.failedRows, locale) }}
-                      </span>
-                      <span aria-hidden="true">·</span>
-                      <span :title="formatDateTime(failure.finishTime ?? failure.startTime, locale)">
-                        {{ formatRelativeTime(failure.finishTime ?? failure.startTime, locale) }}
-                      </span>
-                    </div>
-                  </div>
                   <RouterLink
-                    v-if="canViewExecution"
-                    :to="executionRoute(failure.name)"
-                    class="shrink-0 text-xs text-primary hover:underline"
+                    :to="targetRoute(target)"
+                    class="flex items-start justify-between gap-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   >
-                    {{ t("dataQuality.viewExecution") }}
+                    <div class="min-w-0">
+                      <span class="block truncate text-sm font-medium hover:underline">
+                        {{ targetDisplayName(target) }}
+                      </span>
+                      <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                        <span class="truncate font-mono">
+                          {{ targetFullPath(target) }}
+                        </span>
+                        <span aria-hidden="true">·</span>
+                        <span class="tabular-nums">
+                          {{
+                            t("dataQuality.targets.rulesCount", {
+                              count: target.ruleCount,
+                            })
+                          }}
+                        </span>
+                      </div>
+                    </div>
+                    <div class="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                      <Badge
+                        v-if="target.worstStatus !== QualityStatus.UNSPECIFIED"
+                        :variant="qualityStatusVariant(target.worstStatus)"
+                      >
+                        {{ t(qualityStatusKey(target.worstStatus)) }}
+                      </Badge>
+                      <Badge
+                        v-if="target.openIssueCount > 0"
+                        variant="danger"
+                      >
+                        {{
+                          t("dataQuality.workspace.summaryIssues", {
+                            count: target.openIssueCount,
+                          })
+                        }}
+                      </Badge>
+                    </div>
                   </RouterLink>
                 </li>
               </ul>
@@ -287,7 +270,7 @@
                   <div class="min-w-0">
                     <RouterLink
                       v-if="canViewRule"
-                      :to="ruleRoute(issue.rule)"
+                      :to="issueWorkspaceRoute(issue)"
                       class="block truncate text-sm font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                     >
                       {{ ruleTitle(issue.rule) }}
@@ -331,14 +314,12 @@
 
 <script setup lang="ts">
 import { create } from "@bufbuild/protobuf";
-import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import {
   Activity,
   ChartNoAxesColumn,
   CircleAlert,
   CircleCheck,
   ListChecks,
-  Plus,
   RefreshCcw,
   ShieldCheck,
   Table2,
@@ -350,8 +331,8 @@ import { RouterLink } from "vue-router";
 import {
   getQualityOverview,
   listAllQualityRules,
-  listQualityExecutions,
   listQualityIssues,
+  listQualityTargets,
   qualityRuleID,
 } from "@/api/data-quality";
 import EmptyState from "@/components/common/EmptyState.vue";
@@ -371,16 +352,17 @@ import {
 import { useErrorMessage } from "@/composables/useErrorHandler";
 import { useAuthStore } from "@/store/modules/auth";
 import {
-  type QualityExecution,
   type QualityIssue,
   QualityIssueStatus,
   type QualityOverview,
   QualityOverviewSchema,
   QualitySeverity,
   QualityStatus,
+  QualityTargetOrder,
+  type QualityTargetSummary,
 } from "@/types/proto-es/v1/data_quality_service_pb";
+import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
-  formatRowCount,
   qualityIssueStatusKey,
   qualityIssueStatusVariant,
   qualitySeverityKey,
@@ -398,36 +380,29 @@ import {
   type TrendWindow,
   trendFailurePercent,
 } from "@/utils/dataQualityOverview";
+import { targetDisplayName, targetFullPath } from "@/utils/dataQualityTarget";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
+import { guidToRouteParams } from "@/utils/guid";
 
 /**
  * The quality workspace at a glance: the counts a steward acts on, a stacked
- * bar per day of the last week or month, and the two lists that need attention
- * (recent failures and unresolved issues).
+ * bar per day of the last week or month, the targets whose latest checks failed
+ * or that still have open issues, and the unresolved issues themselves.
  */
 
 const { t, locale } = useI18n();
 const { formatError } = useErrorMessage();
 const authStore = useAuthStore();
 
-const canCreate = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.rules.create")
-);
 const canViewRule = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.rules.get")
-);
-const canViewExecution = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.executions.get")
-);
-const canListExecutions = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.executions.list")
 );
 
 const EMPTY_OVERVIEW: QualityOverview = create(QualityOverviewSchema, {});
 
 const overview = ref<QualityOverview>(EMPTY_OVERVIEW);
 const windowDays = ref<TrendWindow>(7);
-const recentFailures = ref<QualityExecution[]>([]);
+const attentionTargets = ref<QualityTargetSummary[]>([]);
 const openIssues = ref<QualityIssue[]>([]);
 const ruleTitles = ref<Record<string, string>>({});
 const isLoading = ref(true);
@@ -503,17 +478,43 @@ function ruleTitle(ruleName: string): string {
   return ruleTitles.value[ruleName] || qualityRuleID(ruleName);
 }
 
-function ruleRoute(ruleName: string) {
+/**
+ * The retired per-rule URL still resolves through its redirect, which resolves
+ * the check's target. It is the fallback for an issue that carries no target.
+ */
+function ruleRedirectRoute(ruleName: string) {
   return {
-    name: "DataQualityRuleDetail",
+    name: "DataQualityRuleRedirect",
     params: { ruleId: ruleName.split("/") },
   };
 }
 
-function executionRoute(name: string) {
+/** An issue's check, opened inside its target's workspace. */
+function issueWorkspaceRoute(issue: QualityIssue) {
+  const target = issue.target;
+  if (!target?.metaGuid) {
+    return ruleRedirectRoute(issue.rule);
+  }
   return {
-    name: "DataQualityExecutionDetail",
-    params: { executionId: name.split("/") },
+    name: "DataQualityTarget",
+    params: { targetGuid: guidToRouteParams(target.metaGuid) },
+    query: {
+      ...(target.metaType !== MetaType.UNSPECIFIED
+        ? { metaType: String(target.metaType) }
+        : {}),
+      check: issue.rule,
+    },
+  };
+}
+
+/** A target's workspace, the destination every attention row opens. */
+function targetRoute(target: QualityTargetSummary) {
+  return {
+    name: "DataQualityTarget",
+    params: { targetGuid: guidToRouteParams(target.target?.metaGuid ?? "") },
+    query: {
+      metaType: String(target.target?.metaType ?? MetaType.UNSPECIFIED),
+    },
   };
 }
 
@@ -533,7 +534,7 @@ async function load() {
     });
     await Promise.all([
       loadRuleTitles(),
-      loadRecentFailures(),
+      loadAttentionTargets(),
       loadOpenIssues(),
     ]);
   } catch (e: unknown) {
@@ -569,26 +570,26 @@ async function loadRuleTitles() {
   }
 }
 
-/** The last day's failures, one row per rule (the newest execution wins). */
-async function loadRecentFailures() {
+/**
+ * The targets whose latest results failed or that still have open issues. The
+ * server orders by attention, so the first page already holds the worst rows;
+ * the client filter keeps only the targets that actually need a look, and a
+ * failed read degrades the card rather than the page.
+ */
+async function loadAttentionTargets() {
   try {
-    const page = await listQualityExecutions({
-      outcome: QualityStatus.FAIL,
-      startTime: timestampFromDate(new Date(Date.now() - 86_400_000)),
-      pageSize: 50,
+    const page = await listQualityTargets({
+      pageSize: 5,
+      orderBy: QualityTargetOrder.ATTENTION,
     });
-    const seen = new Set<string>();
-    recentFailures.value = page.items
-      .filter((execution) => {
-        if (seen.has(execution.rule)) {
-          return false;
-        }
-        seen.add(execution.rule);
-        return true;
-      })
-      .slice(0, 5);
+    attentionTargets.value = page.items.filter(
+      (target) =>
+        target.worstStatus === QualityStatus.FAIL ||
+        target.worstStatus === QualityStatus.ERROR ||
+        target.openIssueCount > 0
+    );
   } catch {
-    recentFailures.value = [];
+    attentionTargets.value = [];
   }
 }
 

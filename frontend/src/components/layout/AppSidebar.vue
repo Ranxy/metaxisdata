@@ -189,6 +189,7 @@ import {
   Home,
   LayoutDashboard,
   Lightbulb,
+  ListChecks,
   Network,
   PanelLeftClose,
   PanelLeftOpen,
@@ -377,6 +378,13 @@ function buildMenuItems(): MenuItem[] {
           label: t("menu.dataQualityTargets"),
           path: "/data-quality/targets",
           icon: Target,
+          permission: "metaxisdata.dataQuality.rules.list",
+        },
+        {
+          key: "dataQualityChecks",
+          label: t("menu.dataQualityChecks"),
+          path: "/data-quality/checks",
+          icon: ListChecks,
           permission: "metaxisdata.dataQuality.rules.list",
         },
         {

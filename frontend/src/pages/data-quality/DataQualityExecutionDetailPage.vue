@@ -834,9 +834,19 @@ async function loadLlmSetting() {
   }
 }
 
+/** A check is opened inside its target's contract workspace (the old per-rule
+ * page is gone); a stray link without a target falls back to the redirect. */
 function ruleRoute(name: string) {
+  const target = execution.value?.target;
+  if (target?.metaGuid) {
+    return {
+      name: "DataQualityTarget",
+      params: { targetGuid: guidToRouteParams(target.metaGuid) },
+      query: { metaType: String(target.metaType), check: name },
+    };
+  }
   return {
-    name: "DataQualityRuleDetail",
+    name: "DataQualityRuleRedirect",
     params: { ruleId: name.split("/") },
   };
 }

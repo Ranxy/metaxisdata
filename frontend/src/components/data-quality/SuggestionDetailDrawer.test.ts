@@ -4,11 +4,13 @@ import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 import { i18n } from "@/locales";
 import {
+  QualityRuleConfigSchema,
   QualitySemanticType,
   QualitySuggestionKind,
   QualitySuggestionSchema,
   QualitySuggestionStatus,
   QualityTargetSchema,
+  RowCountConfigSchema,
   SemanticLabelSuggestionSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
@@ -77,5 +79,61 @@ describe("SuggestionDetailDrawer superseded proposals", () => {
 
     expect(wrapper.text()).toContain("Decided by");
     expect(wrapper.text()).not.toContain("Closed by the server");
+  });
+});
+
+describe("SuggestionDetailDrawer draft actions", () => {
+  it("opens the suggestion's target instead of a rule editor", async () => {
+    const suggestion = create(QualitySuggestionSchema, {
+      name: "workspaces/ws/qualitySuggestions/draft-1",
+      kind: QualitySuggestionKind.RULE_DRAFT,
+      target: create(QualityTargetSchema, {
+        metaGuid: "inst1;db1;public;users",
+        metaType: MetaType.TABLE,
+      }),
+      payload: {
+        payload: {
+          case: "rule",
+          value: {
+            title: "Users should have rows",
+            confidence: 0.8,
+            config: create(QualityRuleConfigSchema, {
+              config: {
+                case: "rowCount",
+                value: create(RowCountConfigSchema, { minRows: 1n }),
+              },
+            }),
+          },
+        },
+      },
+      status: QualitySuggestionStatus.PENDING,
+    });
+    const wrapper = mount(SuggestionDetailDrawer, {
+      props: {
+        open: true,
+        suggestion,
+        canDecide: true,
+        canCreateRule: true,
+        deciding: false,
+        error: "",
+        targetLabel: "users",
+      },
+      global: { plugins: [i18n], stubs: dialogStubs },
+    });
+
+    const openTarget = wrapper
+      .findAll("button")
+      .find(
+        (button) =>
+          button.text().trim() ===
+          i18n.global.t("dataQuality.targets.openWorkspace")
+      );
+    expect(openTarget).toBeTruthy();
+    await openTarget?.trigger("click");
+
+    expect(wrapper.emitted("openTarget")).toHaveLength(1);
+    expect(wrapper.text()).not.toContain(
+      i18n.global.t("dataQuality.suggestions.openInEditor")
+    );
   });
 });

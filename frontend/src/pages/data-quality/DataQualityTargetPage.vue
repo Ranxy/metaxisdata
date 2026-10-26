@@ -61,7 +61,7 @@
           v-if="canCreate"
           variant="outline"
           :title="t('dataQuality.workspace.addRuleHint')"
-          @click="openComposer"
+          @click="openComposer()"
         >
           <Plus class="mr-2 h-4 w-4" />
           {{ t("dataQuality.workspace.addRule") }}
@@ -185,7 +185,7 @@
                 v-if="canCreate"
                 variant="outline"
                 size="sm"
-                @click="openComposer"
+                @click="openComposer()"
               >
                 <Plus class="mr-2 h-4 w-4" />
                 {{ t("dataQuality.workspace.addRule") }}
@@ -214,6 +214,26 @@
                     {{ sectionHint(section) }}
                   </CardDescription>
                 </div>
+                <Button
+                  v-if="canCreate && section.kind === 'dataset'"
+                  variant="ghost"
+                  size="sm"
+                  class="shrink-0"
+                  @click="openAddCheck({ scope: 'dataset' })"
+                >
+                  <Plus class="mr-1 h-4 w-4" />
+                  {{ t("dataQuality.workspace.addDatasetCheck") }}
+                </Button>
+                <Button
+                  v-if="canCreate && section.kind === 'column'"
+                  variant="ghost"
+                  size="sm"
+                  class="shrink-0"
+                  @click="openAddCheck({ scope: 'column', column: section.column })"
+                >
+                  <Plus class="mr-1 h-4 w-4" />
+                  {{ t("dataQuality.workspace.addColumnCheck") }}
+                </Button>
               </CardHeader>
               <CardContent class="p-0">
                 <div
@@ -229,6 +249,7 @@
                     :highlight="newNames.has(draft.name)"
                     @accepted="onDraftAccepted(draft, $event)"
                     @rejected="onDraftRejected"
+                    @edit="openComposer(draft)"
                     @refresh="loadDrafts"
                   />
                 </div>
@@ -247,6 +268,7 @@
                     :highlight="highlightedRule === rule.name"
                     @run="runRule(rule)"
                     @edit="openEditor(rule)"
+                    @open="openCheck(rule)"
                   />
                 </ul>
               </CardContent>
@@ -344,12 +366,28 @@
       v-if="canCreate || canUpdate"
       v-model:open="composerOpen"
       :rule="editingRule"
+      :suggestion="composerSuggestion"
+      :scope="composerScope"
+      :initial-column="composerInitialColumn"
       :target-guid="targetGuid"
       :meta-type="effectiveMetaType"
       :target-label="displayName"
       :default-schedule-seconds="contractDefaultScheduleSeconds"
       :default-severity="contractDefaultSeverity"
       @saved="onRuleSaved"
+    />
+
+    <!-- One check's own side sheet. It replaces the old rule page: opening a row
+         keeps the target workspace behind it, so its siblings stay in view. -->
+    <QualityCheckDrawer
+      :open="selectedCheck !== ''"
+      :rule-name="selectedCheck"
+      :target-guid="targetGuid"
+      :meta-type="effectiveMetaType"
+      @update:open="onCheckOpenChange"
+      @edit="onCheckEdit"
+      @changed="onCheckChanged"
+      @deleted="onCheckDeleted"
     />
   </div>
 </template>
@@ -366,7 +404,7 @@ import {
 } from "lucide-vue-next";
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { RouterLink, useRoute } from "vue-router";
+import { RouterLink, useRoute, useRouter } from "vue-router";
 import {
   getQualityContract,
   getQualityTarget,
@@ -375,6 +413,7 @@ import {
 } from "@/api/data-quality";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
+import QualityCheckDrawer from "@/components/data-quality/QualityCheckDrawer.vue";
 import TargetCheckRow from "@/components/data-quality/TargetCheckRow.vue";
 import TargetContractCard from "@/components/data-quality/TargetContractCard.vue";
 import TargetCopilotPanel from "@/components/data-quality/TargetCopilotPanel.vue";
@@ -443,6 +482,7 @@ const RULE_PAGE_SIZE = 1000;
 
 const { t, locale } = useI18n();
 const route = useRoute();
+const router = useRouter();
 const authStore = useAuthStore();
 const { formatError } = useErrorMessage();
 
@@ -494,6 +534,14 @@ const newNames = ref<Set<string>>(new Set());
 const composerOpen = ref(false);
 /** The rule the composer edits; undefined makes it create instead. */
 const editingRule = ref<QualityRule>();
+/** The section a new check was opened from, which seeds its type. */
+const composerScope = ref<"dataset" | "column">();
+/** The column a column section named, written into the new check's config. */
+const composerInitialColumn = ref("");
+/** The AI draft the composer was opened from; undefined means a blank create. */
+const composerSuggestion = ref<QualitySuggestion>();
+/** The check whose side sheet is open, by full resource name; empty closes it. */
+const selectedCheck = ref("");
 const copilot = ref<InstanceType<typeof TargetCopilotPanel>>();
 
 /**
@@ -733,6 +781,8 @@ async function load() {
   contractError.value = "";
   contractLoading.value = true;
   newNames.value = new Set();
+  selectedCheck.value = "";
+  composerSuggestion.value = undefined;
   const guid = targetGuid.value;
   const metaType = parseMetaType(route.query.metaType) ?? MetaType.UNSPECIFIED;
   // Drafts need the suggest permission the aggregate read does not, and the
@@ -813,10 +863,117 @@ function onRuleCreated(rule: QualityRule) {
 
 /** A saved rule replaces itself in the list; an edit changes no count. */
 function onRuleSaved(rule: QualityRule) {
-  if (!editingRule.value) {
-    onRuleCreated(rule);
+  const suggestion = composerSuggestion.value;
+  composerSuggestion.value = undefined;
+  if (editingRule.value) {
+    editingRule.value = undefined;
+    replaceRule(rule);
     return;
   }
+  if (suggestion) {
+    // Creating from a draft accepts it server-side in the same request, so the
+    // local queue drops it and the header's draft count follows.
+    suggestions.value = suggestions.value.filter(
+      (item) => item.name !== suggestion.name
+    );
+    newNames.value.delete(suggestion.name);
+    summary.value.pendingDraftCount = Math.max(
+      0,
+      summary.value.pendingDraftCount - 1
+    );
+  }
+  onRuleCreated(rule);
+}
+
+/**
+ * Opens the composer for a new check. A section can narrow it: the dataset header
+ * starts on a table-level check, a column header on a check for that column.
+ */
+function openAddCheck(
+  options: { scope?: "dataset" | "column"; column?: string } = {}
+) {
+  editingRule.value = undefined;
+  composerSuggestion.value = undefined;
+  composerScope.value = options.scope;
+  composerInitialColumn.value = options.column ?? "";
+  composerOpen.value = true;
+}
+
+/** The header's New rule starts a blank create; a row can pass a draft instead. */
+function openComposer(suggestion?: QualitySuggestion) {
+  if (suggestion) {
+    openComposerFromDraft(suggestion);
+    return;
+  }
+  openAddCheck();
+}
+
+/**
+ * A draft's "adjust" opens the same composer prefilled from it, so its typed
+ * config is reviewed beside every other check rather than in a separate editor.
+ */
+function openComposerFromDraft(suggestion: QualitySuggestion) {
+  editingRule.value = undefined;
+  composerSuggestion.value = suggestion;
+  composerScope.value = undefined;
+  composerInitialColumn.value = "";
+  composerOpen.value = true;
+}
+
+/** The row's edit opens the same composer, fixed to that rule. */
+function openEditor(rule: QualityRule) {
+  editingRule.value = rule;
+  composerSuggestion.value = undefined;
+  composerScope.value = undefined;
+  composerInitialColumn.value = "";
+  composerOpen.value = true;
+}
+
+/** A row click opens the check's side sheet without leaving the workspace. */
+function openCheck(rule: QualityRule) {
+  selectedCheck.value = rule.name;
+}
+
+/** Removes `check` from the URL while preserving the other query keys. */
+function removeCheckQuery() {
+  if (route.query.check === undefined) {
+    return;
+  }
+  const query = { ...route.query };
+  delete query.check;
+  void router.replace({ query });
+}
+
+function closeCheck() {
+  selectedCheck.value = "";
+  removeCheckQuery();
+}
+
+function onCheckOpenChange(open: boolean) {
+  if (!open) {
+    closeCheck();
+  }
+}
+
+/**
+ * A check named in the URL opens once the rules have loaded; a name this target
+ * does not have (a stale link) is dropped silently rather than shown as an error.
+ */
+function syncCheckFromQuery() {
+  const name = typeof route.query.check === "string" ? route.query.check : "";
+  if (name === "" || loading.value) {
+    return;
+  }
+  if (rules.value.some((rule) => rule.name === name)) {
+    selectedCheck.value = name;
+    return;
+  }
+  selectedCheck.value = "";
+  removeCheckQuery();
+}
+
+/** Replaces a rule in place, or appends it when it is new to this page. */
+function replaceRule(rule: QualityRule) {
   const index = rules.value.findIndex((item) => item.name === rule.name);
   rules.value =
     index === -1
@@ -824,16 +981,54 @@ function onRuleSaved(rule: QualityRule) {
       : rules.value.map((item, position) => (position === index ? rule : item));
 }
 
-/** The header's New rule always starts a create, even right after an edit. */
-function openComposer() {
-  editingRule.value = undefined;
-  composerOpen.value = true;
+/** The drawer's edit hands the rule to the page's composer, then closes. */
+function onCheckEdit(rule: QualityRule) {
+  openEditor(rule);
+  closeCheck();
 }
 
-/** The row's edit opens the same composer, fixed to that rule. */
-function openEditor(rule: QualityRule) {
-  editingRule.value = rule;
-  composerOpen.value = true;
+/** A pause/resume writes only the state; the counts move with it. */
+function onCheckChanged(rule: QualityRule) {
+  const previous = rules.value.find((item) => item.name === rule.name);
+  replaceRule(rule);
+  if (!previous) {
+    return;
+  }
+  const wasEnabled = previous.state === QualityRuleState.ENABLED;
+  const isEnabled = rule.state === QualityRuleState.ENABLED;
+  if (wasEnabled !== isEnabled) {
+    summary.value.enabledRuleCount += isEnabled ? 1 : -1;
+  }
+  const wasPaused = previous.state === QualityRuleState.PAUSED;
+  const isPaused = rule.state === QualityRuleState.PAUSED;
+  if (wasPaused !== isPaused) {
+    summary.value.pausedRuleCount += isPaused ? 1 : -1;
+  }
+}
+
+/** Archiving drops the row and its count, and closes the sheet. */
+function onCheckDeleted(name: string) {
+  const removed = rules.value.find((item) => item.name === name);
+  rules.value = rules.value.filter((item) => item.name !== name);
+  const history = new Map(ruleHistory.value);
+  history.delete(name);
+  ruleHistory.value = history;
+  if (removed) {
+    summary.value.ruleCount = Math.max(0, summary.value.ruleCount - 1);
+    if (removed.state === QualityRuleState.ENABLED) {
+      summary.value.enabledRuleCount = Math.max(
+        0,
+        summary.value.enabledRuleCount - 1
+      );
+    }
+    if (removed.state === QualityRuleState.PAUSED) {
+      summary.value.pausedRuleCount = Math.max(
+        0,
+        summary.value.pausedRuleCount - 1
+      );
+    }
+  }
+  closeCheck();
 }
 
 /**
@@ -893,5 +1088,11 @@ onMounted(load);
 // the whole workspace reloads with the GUID.
 watch(targetGuid, () => {
   void load();
+});
+
+// A query-opened check waits for the rules it names; watching the loading flag
+// re-runs the resolution when the workspace arrives.
+watch([() => route.query.check, rules, loading], syncCheckFromQuery, {
+  immediate: true,
 });
 </script>

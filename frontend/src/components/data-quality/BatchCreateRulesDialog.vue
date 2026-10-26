@@ -143,7 +143,7 @@
               </AlertTitle>
             </Alert>
             <div
-              v-if="createdRules.length > 0"
+              v-if="createdRuleLinks.length > 0"
               class="space-y-2"
             >
               <div class="text-sm font-medium">
@@ -151,14 +151,16 @@
               </div>
               <ul class="space-y-1 text-sm">
                 <li
-                  v-for="rule in createdRules"
-                  :key="rule.name"
+                  v-for="link in createdRuleLinks"
+                  :key="link.key"
                 >
+                  <!-- A created check lives inside its target's contract
+                       workspace; the drawer there opens it by name. -->
                   <RouterLink
-                    :to="ruleRoute(rule.name)"
+                    :to="link.to"
                     class="text-primary hover:underline"
                   >
-                    {{ rule.title || rule.name.split("/").pop() }}
+                    {{ link.label }}
                   </RouterLink>
                 </li>
               </ul>
@@ -365,6 +367,7 @@ import {
   suggestionToEditorPrefill,
   summarizeBatchResults,
 } from "@/utils/dataQualitySuggestion";
+import { guidToRouteParams } from "@/utils/guid";
 
 /**
  * Create rules from several suggestions in one submit.
@@ -478,10 +481,33 @@ const summary = computed(() =>
   results.value.length > 0 ? summarizeBatchResults(results.value) : undefined
 );
 
-const createdRules = computed<QualityRule[]>(() =>
-  results.value
-    .map((result) => result.rule)
-    .filter((rule): rule is QualityRule => rule !== undefined)
+/**
+ * The created rules as links into their target's contract workspace, where the
+ * check drawer opens them by name. A result without a target (which the server
+ * does not produce) stays plain text.
+ */
+const createdRuleLinks = computed(() =>
+  results.value.flatMap((result) => {
+    const rule = result.rule;
+    const target = rule?.target;
+    if (!rule || !target?.metaGuid) {
+      return [];
+    }
+    return [
+      {
+        key: rule.name,
+        label: rule.title || rule.name.split("/").pop() || rule.name,
+        to: {
+          name: "DataQualityTarget",
+          params: { targetGuid: guidToRouteParams(target.metaGuid) },
+          query: {
+            metaType: String(target.metaType),
+            check: rule.name,
+          },
+        },
+      },
+    ];
+  })
 );
 
 const canSubmit = computed(
@@ -658,13 +684,6 @@ function submit() {
     .finally(() => {
       submitting.value = false;
     });
-}
-
-function ruleRoute(name: string) {
-  return {
-    name: "DataQualityRuleDetail",
-    params: { ruleId: name.split("/") },
-  };
 }
 
 function onOpenChange(value: boolean) {
