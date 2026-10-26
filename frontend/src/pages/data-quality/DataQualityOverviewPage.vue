@@ -81,6 +81,7 @@
             :value="overview.monitoredTableCount"
             :hint="t('dataQuality.overview.statMonitoredTablesHint')"
             :icon="Table2"
+            :to="{ name: 'DataQualityTargets' }"
           />
           <StatCard
             :label="t('dataQuality.overview.statOpenIssues')"

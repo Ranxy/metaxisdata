@@ -12,6 +12,16 @@
       </div>
       <div class="flex flex-wrap gap-2">
         <Button
+          variant="outline"
+          size="sm"
+          as-child
+        >
+          <RouterLink :to="targetWorkspaceTo">
+            <Target class="mr-1 h-4 w-4" />
+            {{ t("dataQuality.asset.openWorkspace") }}
+          </RouterLink>
+        </Button>
+        <Button
           v-if="canCreateRule"
           variant="outline"
           size="sm"
@@ -583,6 +593,7 @@ import {
   RefreshCw,
   ShieldCheck,
   Sparkles,
+  Target,
   X,
 } from "lucide-vue-next";
 import { computed, onMounted, ref, watch } from "vue";
@@ -670,6 +681,7 @@ import {
   suggestionToEditorPrefill,
 } from "@/utils/dataQualitySuggestion";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
+import { guidToRouteParams } from "@/utils/guid";
 
 /**
  * The table detail's Data Quality tab: this target's rules, latest executions
@@ -731,6 +743,14 @@ const createRuleTo = computed(() => ({
     table_guid: props.tableGuid,
     meta_type: String(props.metaType),
   },
+}));
+
+// The target workspace is the same table read as one list of rules; it is the
+// page that can add another rule without walking the target picker again.
+const targetWorkspaceTo = computed(() => ({
+  name: "DataQualityTarget",
+  params: { targetGuid: guidToRouteParams(props.tableGuid) },
+  query: { metaType: String(props.metaType) },
 }));
 
 const executionsTo = computed(() => ({

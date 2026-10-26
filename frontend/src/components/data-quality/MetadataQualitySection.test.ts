@@ -145,6 +145,16 @@ async function mountSection(permissions: string[]) {
         component: { template: "<div />" },
       },
       {
+        path: "/data-quality/targets",
+        name: "DataQualityTargets",
+        component: { template: "<div />" },
+      },
+      {
+        path: "/data-quality/targets/:targetGuid+",
+        name: "DataQualityTarget",
+        component: { template: "<div />" },
+      },
+      {
         path: "/data-quality/rules",
         name: "DataQualityRules",
         component: { template: "<div />" },

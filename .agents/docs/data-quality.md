@@ -1,7 +1,7 @@
 # 数据质量（Data Quality）— Reference
 
 > Status: **implemented**（v1 与 v1.1 全部落地；单副本假设）。维护参考，覆盖 `backend/component/dataquality/`、`backend/runner/qualityrunner/`、`backend/api/v1/data_quality_*.go`、`backend/store/quality_*.go`、`frontend/src/pages/data-quality/`。用户侧说明见 [docs/data-quality.md](../../docs/data-quality.md)；刻意决策见 [security-posture.md](../../docs/security-posture.md)。
-> 关联：[instance-connections.md](instance-connections.md)（内部批次的连接准入）、[runner.md](runner.md)（后台执行器契约、单副本）、[notifications.md](notifications.md)（站内信与结构化 detail）、[iam-and-permissions.md](iam-and-permissions.md)（权限目录/注解）、[rate-limiting.md](rate-limiting.md)（principal 预算）、[object-ddl-storage.md](object-ddl-storage.md)（DDL 读取）、[lineage-analyzer.md](lineage-analyzer.md)（血缘上下文）、[frontend-ui.md](frontend-ui.md)（骨架/布局门禁）、[i18n-glossary.md](i18n-glossary.md)（术语）、[security-open-items.md](security-open-items.md)。规则：[backend/AGENTS.md](../../backend/AGENTS.md)、[proto/AGENTS.md](../../proto/AGENTS.md)、[backend/migrator/AGENTS.md](../../backend/migrator/AGENTS.md)。
+> 关联：[instance-connections.md](instance-connections.md)（内部批次的连接准入）、[runner.md](runner.md)（后台执行器契约、单副本）、[notifications.md](notifications.md)（站内信与结构化 detail）、[iam-and-permissions.md](iam-and-permissions.md)（权限目录/注解）、[rate-limiting.md](rate-limiting.md)（principal 预算）、[object-ddl-storage.md](object-ddl-storage.md)（DDL 读取）、[lineage-analyzer.md](lineage-analyzer.md)（血缘上下文）、[frontend-ui.md](frontend-ui.md)（骨架/布局门禁）、[i18n-glossary.md](i18n-glossary.md)（术语）、[data-quality-target-centric.md](data-quality-target-centric.md)（目标工作台入口与契约化提案）、[security-open-items.md](security-open-items.md)。规则：[backend/AGENTS.md](../../backend/AGENTS.md)、[proto/AGENTS.md](../../proto/AGENTS.md)、[backend/migrator/AGENTS.md](../../backend/migrator/AGENTS.md)。
 
 ## 0. 它是什么
 

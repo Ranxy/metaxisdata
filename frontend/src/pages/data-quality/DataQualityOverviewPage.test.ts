@@ -99,6 +99,11 @@ async function mountPage() {
         component: Dummy,
       },
       {
+        path: "/data-quality/targets",
+        name: "DataQualityTargets",
+        component: Dummy,
+      },
+      {
         path: "/data-quality/rules",
         name: "DataQualityRules",
         component: Dummy,
