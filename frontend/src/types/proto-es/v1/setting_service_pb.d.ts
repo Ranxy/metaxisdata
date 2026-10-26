@@ -149,8 +149,9 @@ export declare type DataQualitySetting = Message<"metaxisdata.v1.DataQualitySett
   failureSampleLimit: number;
 
   /**
-   * The schedule interval new rules start with. Zero means the server default
-   * (one hour).
+   * The schedule interval a target starts with when it gets its first rule.
+   * Zero means the server default (one hour). Existing targets keep their own
+   * schedule.
    *
    * @generated from field: google.protobuf.Duration default_schedule_interval = 5;
    */

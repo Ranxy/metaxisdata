@@ -9784,7 +9784,7 @@ DataQualitySetting configures the data quality subsystem for the workspace.
 | llm_provider_profile | [string](#string) |  | The LLM provider profile the quality analyses use, as a profile resource name. Empty means the first allowed profile. |
 | store_failure_samples | [bool](#bool) |  | Whether failed checks keep the sampled rows as evidence. Off means a result records its counts but no values. |
 | failure_sample_limit | [int32](#int32) |  | How many failed rows a result keeps. Zero means the server default (20); capped at 100. |
-| default_schedule_interval | [google.protobuf.Duration](#google-protobuf-Duration) |  | The schedule interval new rules start with. Zero means the server default (one hour). |
+| default_schedule_interval | [google.protobuf.Duration](#google-protobuf-Duration) |  | The schedule interval a target starts with when it gets its first rule. Zero means the server default (one hour). Existing targets keep their own schedule. |
 | daily_execution_limit | [int32](#int32) |  | The workspace&#39;s daily execution ceiling; 0 means the server default (10000). |
 | daily_column_analysis_limit | [int32](#int32) |  | The workspace&#39;s daily column-analysis ceiling; 0 means the server default. |
 | max_columns_per_analysis | [int32](#int32) |  | The maximum number of columns one analysis may cover; 0 means the server default (50). |

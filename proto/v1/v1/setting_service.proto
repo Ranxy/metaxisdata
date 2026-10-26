@@ -128,8 +128,9 @@ message DataQualitySetting {
   // capped at 100.
   int32 failure_sample_limit = 4;
 
-  // The schedule interval new rules start with. Zero means the server default
-  // (one hour).
+  // The schedule interval a target starts with when it gets its first rule.
+  // Zero means the server default (one hour). Existing targets keep their own
+  // schedule.
   google.protobuf.Duration default_schedule_interval = 5;
 
   // The workspace's daily execution ceiling; 0 means the server default (10000).
