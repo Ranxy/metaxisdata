@@ -1,6 +1,6 @@
 # 数据质量：从「规则目录」到「目标工作台」— 目标中心化重构
 
-> Status: **P0、P1a、P1b 已实现**（分支 `dq-target-centric-refactor`，尚未合并）。P0 是前端目标工作台；P1a 是服务端聚合读、工作台内联新建规则、视图/物化视图/外部表入口与详情页反向锚点；P1b 是薄契约（目标级 filter、作者默认值、发布/版本/差异）。剩余可选工作见 §4 的 P2 与「未做的 P1 小项」。本文既是这次重构的设计记录，也是后续阶段的工作清单。
+> Status: **P0、P1a、P1b 与 P1 小项已实现**（分支 `dq-target-centric-refactor`，尚未合并）。P0 是前端目标工作台；P1a 是服务端聚合读、工作台内联新建规则、视图/物化视图/外部表入口与详情页反向锚点；P1b 是薄契约（目标级 filter、作者默认值、发布/版本/差异）；P1 小项补齐内联编辑、字段覆盖、反向高亮、列表 URL 筛选与每规则最近执行。剩余仅 §4 的 P2（可选）。
 > 关联：[data-quality.md](data-quality.md)（现有实现与不变量）、[frontend-ui.md](frontend-ui.md)（布局门禁）、[i18n-glossary.md](i18n-glossary.md)（术语）、[instance-connections.md](instance-connections.md)（执行侧连接准入）、[security-posture.md](../../docs/security-posture.md)（单副本假设）。
 
 ## 0. 结论摘要
@@ -281,7 +281,7 @@ message GetQualityTargetResponse {
 1. ✅ 契约表与目标级 filter（编译期 AND 到每条规则）；作者默认调度/严重级别（只用于新规则表单）。
 2. ✅ 发布/版本/差异 + `contracts.publish` 权限 + 审计；幂等发布；历史与按需 diff。
 3. 未做：owner/tags 目标级默认值；目标级 filter 对 `custom_sql` 的支持（自定义 SQL 不被改写，属有意边界）。
-4. 未做（P1 小项）：工作台内联「编辑规则」；字段覆盖视图；问题/执行反向锚回时**高亮**具体规则；列表筛选写 URL；每规则最近 N 次执行。
+4. ✅ 工作台内联「编辑规则」（composer 编辑模式 + update mask）；字段覆盖卡；问题/执行/规则详情反向锚回目标并**高亮**具体规则行；规则/问题/建议列表筛选写 URL；`GetQualityTarget.rule_history` 每规则最近 20 次执行（工作台行内色块条）。
 5. ✅（此前）视图/物化视图/外部表入口、详情页反向锚点。
 
 粗估：P1a 聚合读约 3–5 人日（已实现）；P1b 契约约 8–12 人日（已实现）；剩余小项约 3–5 人日。
@@ -321,7 +321,7 @@ message GetQualityTargetResponse {
 | 聚合读 | `backend/store/quality_target.go`（`ListQualityTargets` 的单查询聚合、`CountPendingQualitySuggestions`、排序/rank 守卫）、`backend/api/v1/data_quality_target.go`（两个 handler、顺序/过滤映射、summary 转换）、`proto/v1/v1/data_quality_service.proto` |
 | 契约 | `backend/migrator/migration/0.1/0029##quality_contract.sql`（+ `LATEST.sql`）、`proto/store/store/data_quality.proto`（`QualityContractSettings/Snapshot/Check`）、`backend/store/quality_contract.go`（设置 upsert、发布事务、历史）、`backend/api/v1/data_quality_contract.go`（5 RPC、快照/差异/转换）、`backend/component/dataquality/contract.go`（filter 校验/合并）、`qualityrunner` 执行前读取、前端 `TargetContractCard`/`ContractSettingsDialog`/`ContractPublishDialog`/`ContractHistoryDrawer` |
 | 目标列表 | `frontend/src/pages/data-quality/DataQualityTargetsPage.vue`（测试同名 `.test.ts`） |
-| 目标工作台 | `frontend/src/pages/data-quality/DataQualityTargetPage.vue` + `components/data-quality/TargetCheckRow.vue`、`TargetDraftCard.vue`、`TargetCopilotPanel.vue`、`TargetRuleComposer.vue` |
+| 目标工作台 | `frontend/src/pages/data-quality/DataQualityTargetPage.vue` + `components/data-quality/TargetCheckRow.vue`、`TargetDraftCard.vue`、`TargetCopilotPanel.vue`、`TargetRuleComposer.vue`、`TargetCoverageCard.vue`、`TargetRuleHistoryStrip.vue` |
 | 纯投影 | `frontend/src/utils/dataQualityTarget.ts`（按列/跨字段分组、v1 summary 的排序/搜索/展示辅助） |
 | 路由/导航 | `frontend/src/router/index.ts`（`DataQualityTargets`、`DataQualityTarget`）、`components/layout/AppSidebar.vue`；元数据四个详情页的 DQ 标签页复用 `MetadataQualitySection.vue` |
 | 数据源 | `ListQualityTargets`、`GetQualityTarget`；写路径仍为 `RunQualityRules`、`SuggestQualityRule`、`CreateQualityRule`、`UpdateQualitySuggestion`；草案正文按 `suggest` 权限单独 `ListQualitySuggestions` |

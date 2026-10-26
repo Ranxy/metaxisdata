@@ -52,6 +52,7 @@ const mocks = vi.hoisted(() => ({
   listQualitySuggestions: vi.fn(),
   runQualityRules: vi.fn(),
   createQualityRule: vi.fn(),
+  updateQualityRule: vi.fn(),
   previewQualityRule: vi.fn(),
   listAllMetadata: vi.fn(),
   updateQualitySuggestion: vi.fn(),
@@ -65,6 +66,7 @@ vi.mock("@/api/data-quality", async (importOriginal) => ({
   listQualitySuggestions: mocks.listQualitySuggestions,
   runQualityRules: mocks.runQualityRules,
   createQualityRule: mocks.createQualityRule,
+  updateQualityRule: mocks.updateQualityRule,
   previewQualityRule: mocks.previewQualityRule,
   updateQualitySuggestion: mocks.updateQualitySuggestion,
   suggestQualityRule: mocks.suggestQualityRule,
@@ -127,6 +129,7 @@ function ruleFixture(options: {
     config: options.config,
     severity: QualitySeverity.ERROR,
     state: QualityRuleState.ENABLED,
+    scheduleInterval: { seconds: 3600n, nanos: 0 },
     lastResult:
       options.status === undefined
         ? undefined
@@ -418,12 +421,15 @@ function setInput(selector: string, value: string) {
   element.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+const scrollSpy = vi.fn();
+
 describe("DataQualityTargetPage", () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
     document.body.innerHTML = "";
     i18n.global.locale.value = "en-US";
+    Element.prototype.scrollIntoView = scrollSpy;
     mocks.getQualityTarget.mockResolvedValue(response());
     mocks.getQualityContract.mockResolvedValue(contractFixture());
     mocks.listQualitySuggestions.mockResolvedValue({
@@ -437,6 +443,23 @@ describe("DataQualityTargetPage", () => {
       parameters: [],
     });
     mocks.listAllMetadata.mockResolvedValue([]);
+    mocks.updateQualityRule.mockResolvedValue(
+      create(QualityRuleSchema, {
+        name: RULE_DATASET,
+        title: "Row count floor, revised",
+        ruleType: QualityRuleType.ROW_COUNT,
+        target: target(),
+        severity: QualitySeverity.ERROR,
+        state: QualityRuleState.ENABLED,
+        scheduleInterval: { seconds: 3600n, nanos: 0 },
+        config: create(QualityRuleConfigSchema, {
+          config: {
+            case: "rowCount",
+            value: create(RowCountConfigSchema, { minRows: 5n }),
+          },
+        }),
+      })
+    );
     mocks.createQualityRule.mockResolvedValue(
       create(QualityRuleSchema, {
         name: RULE_CREATED,
@@ -921,6 +944,78 @@ describe("DataQualityTargetPage", () => {
     );
     // Local state only: neither event re-reads the contract.
     expect(mocks.getQualityContract).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
+  it("edits a rule inline and replaces its row without a re-read", async () => {
+    const { wrapper } = await mountPage();
+    const row = wrapper.find("#dq-rule-rule-dataset");
+    expect(row.exists()).toBe(true);
+
+    // The row's pencil opens the workspace composer, fixed to that rule.
+    await row
+      .find(`[aria-label="${label("dataQuality.editRule")}"]`)
+      .trigger("click");
+    await flushPromises();
+    expect(document.body.textContent).toContain(
+      label("dataQuality.composer.editTitle", { title: "Row count floor" })
+    );
+
+    setInput("#dq-composer-title", "Row count floor, revised");
+    setInput("#dq-field-minRows", "5");
+    await flushPromises();
+    dialogButton(label("dataQuality.editor.saveChanges"))?.click();
+    await flushPromises();
+
+    expect(mocks.updateQualityRule).toHaveBeenCalledTimes(1);
+    const [rule, mask] = mocks.updateQualityRule.mock.calls[0] as [
+      QualityRule,
+      string[],
+    ];
+    expect(rule.name).toBe(RULE_DATASET);
+    expect(rule.title).toBe("Row count floor, revised");
+    // The row's own target and state are untouched, so the mask names neither.
+    expect(mask).toContain("title");
+    expect(mask).toContain("config");
+    expect(mask).not.toContain("target");
+    expect(mask).not.toContain("state");
+
+    // The returned rule replaces its row in place; the counts and the read stand.
+    expect(wrapper.find("#dq-rule-rule-dataset").text()).toContain(
+      "Row count floor, revised"
+    );
+    expect(wrapper.text()).toContain(
+      label("dataQuality.workspace.summaryRules", { count: 3 })
+    );
+    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(1);
+    expect(wrapper.findComponent(TargetRuleComposer).props("open")).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("highlights and scrolls to the rule the query names", async () => {
+    const { wrapper } = await mountPage(
+      `/data-quality/targets/${TARGET.split(";").join("/")}?highlight=${encodeURIComponent(RULE_DATASET)}`
+    );
+    await flushPromises();
+
+    expect(wrapper.find("#dq-rule-rule-dataset").classes()).toContain("ring-2");
+    // Only the named row is marked.
+    expect(wrapper.find("#dq-rule-rule-multi").classes()).not.toContain(
+      "ring-2"
+    );
+    expect(scrollSpy).toHaveBeenCalledTimes(1);
+    expect(scrollSpy).toHaveBeenCalledWith({ block: "center" });
+    wrapper.unmount();
+  });
+
+  it("ignores a highlight that names no row on this target", async () => {
+    const { wrapper } = await mountPage(
+      `/data-quality/targets/${TARGET.split(";").join("/")}?highlight=${encodeURIComponent("workspaces/ws/qualityRules/elsewhere")}`
+    );
+    await flushPromises();
+
+    expect(scrollSpy).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain("Row count floor");
     wrapper.unmount();
   });
 });

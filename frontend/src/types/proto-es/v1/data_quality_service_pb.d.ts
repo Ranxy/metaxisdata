@@ -4732,6 +4732,15 @@ export declare type GetQualityTargetResponse = Message<"metaxisdata.v1.GetQualit
    * @generated from field: string orphaned_reason = 4;
    */
   orphanedReason: string;
+
+  /**
+   * Each rule's recent completed executions, newest first, so the workspace can
+   * draw a per-rule history strip without one request per rule. Rules with no
+   * completed execution are absent.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityRuleHistory rule_history = 5;
+   */
+  ruleHistory: QualityRuleHistory[];
 };
 
 /**
@@ -4739,6 +4748,33 @@ export declare type GetQualityTargetResponse = Message<"metaxisdata.v1.GetQualit
  * Use `create(GetQualityTargetResponseSchema)` to create a new message.
  */
 export declare const GetQualityTargetResponseSchema: GenMessage<GetQualityTargetResponse>;
+
+/**
+ * QualityRuleHistory is one rule's recent completed executions.
+ *
+ * @generated from message metaxisdata.v1.QualityRuleHistory
+ */
+export declare type QualityRuleHistory = Message<"metaxisdata.v1.QualityRuleHistory"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityRules/{quality_rule}
+   *
+   * @generated from field: string rule = 1;
+   */
+  rule: string;
+
+  /**
+   * Newest first. At most 20 are returned.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityExecutionSummary executions = 2;
+   */
+  executions: QualityExecutionSummary[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityRuleHistory.
+ * Use `create(QualityRuleHistorySchema)` to create a new message.
+ */
+export declare const QualityRuleHistorySchema: GenMessage<QualityRuleHistory>;
 
 /**
  * QualityContract is the target-level layer above the rules: defaults, the

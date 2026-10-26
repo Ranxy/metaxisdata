@@ -505,7 +505,10 @@ const targetWorkspaceTo = computed(() => {
   return {
     name: "DataQualityTarget",
     params: { targetGuid: guidToRouteParams(target.metaGuid) },
-    query: { metaType: String(target.metaType) },
+    query: {
+      metaType: String(target.metaType),
+      highlight: execution.value?.rule ?? "",
+    },
   };
 });
 const ruleTitle = ref("");

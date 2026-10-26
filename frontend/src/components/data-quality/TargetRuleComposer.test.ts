@@ -9,10 +9,14 @@ import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
   type QualityRule,
+  QualityRuleConfigSchema,
   QualityRuleSchema,
   QualityRuleState,
   QualityRuleType,
   QualitySeverity,
+  QualityTargetPathSchema,
+  QualityTargetSchema,
+  RowCountConfigSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
@@ -27,12 +31,14 @@ Element.prototype.releasePointerCapture ??= () => {};
 
 const mocks = vi.hoisted(() => ({
   createQualityRule: vi.fn(),
+  updateQualityRule: vi.fn(),
   previewQualityRule: vi.fn(),
   listAllMetadata: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", () => ({
   createQualityRule: mocks.createQualityRule,
+  updateQualityRule: mocks.updateQualityRule,
   previewQualityRule: mocks.previewQualityRule,
 }));
 
@@ -46,6 +52,7 @@ const TARGET_LABEL = "prod · shop · public · orders";
 
 const PERMISSIONS = [
   "metaxisdata.dataQuality.rules.create",
+  "metaxisdata.dataQuality.rules.update",
   "metaxisdata.dataQuality.rules.run",
 ];
 
@@ -83,12 +90,55 @@ async function openRuleTypeSelect(): Promise<HTMLElement[]> {
   );
 }
 
+/** A stored rule as the page hands it to the composer for editing. */
+function ruleFixture(
+  options: {
+    title?: string;
+    state?: QualityRuleState;
+    owner?: string;
+    tags?: string[];
+    minRows?: bigint;
+  } = {}
+): QualityRule {
+  return create(QualityRuleSchema, {
+    name: CREATED,
+    title: options.title ?? "Orders have rows",
+    description: "The fact table should not go empty.",
+    ruleType: QualityRuleType.ROW_COUNT,
+    state: options.state ?? QualityRuleState.ENABLED,
+    severity: QualitySeverity.ERROR,
+    owner: options.owner ?? "",
+    tags: options.tags ?? [],
+    scheduleInterval: { seconds: 3600n, nanos: 0 },
+    target: create(QualityTargetSchema, {
+      metaGuid: TABLE,
+      metaType: MetaType.TABLE,
+      path: create(QualityTargetPathSchema, {
+        instance: "inst1",
+        database: "db1",
+        schema: "public",
+        object: "orders",
+      }),
+      columns: [],
+    }),
+    config: create(QualityRuleConfigSchema, {
+      config: {
+        case: "rowCount",
+        value: create(RowCountConfigSchema, {
+          minRows: options.minRows ?? 1n,
+        }),
+      },
+    }),
+  });
+}
+
 async function mountComposer(
   options: {
     metaType?: MetaType;
     permissions?: string[];
     defaultScheduleSeconds?: number;
     defaultSeverity?: QualitySeverity;
+    rule?: QualityRule;
   } = {}
 ) {
   const pinia = createPinia();
@@ -105,6 +155,11 @@ async function mountComposer(
         name: "DataQualityRuleNew",
         component: { template: "<div />" },
       },
+      {
+        path: "/data-quality/rules/:ruleId+/edit",
+        name: "DataQualityRuleEdit",
+        component: { template: "<div />" },
+      },
     ],
   });
   await router.push("/");
@@ -118,6 +173,7 @@ async function mountComposer(
       targetLabel: TARGET_LABEL,
       defaultScheduleSeconds: options.defaultScheduleSeconds,
       defaultSeverity: options.defaultSeverity,
+      rule: options.rule,
     },
     global: { plugins: [i18n, pinia, router] },
   });
@@ -320,6 +376,100 @@ describe("TargetRuleComposer", () => {
     // A rejected create is not a save: nothing is reported and the form stays.
     expect(wrapper.emitted("saved")).toBeUndefined();
     expect(wrapper.emitted("update:open")).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it("edits the rule in place and sends only the changed fields", async () => {
+    const original = ruleFixture();
+    const updated = ruleFixture({ title: "Orders have rows, revised" });
+    mocks.updateQualityRule.mockResolvedValue(updated);
+    const wrapper = await mountComposer({ rule: original });
+
+    // The dialog is fixed to the rule rather than to a blank create form.
+    expect(document.body.textContent).toContain(
+      label("dataQuality.composer.editTitle", { title: "Orders have rows" })
+    );
+    expect(dialogButton(label("dataQuality.editor.saveChanges"))).toBeDefined();
+    // The advanced link opens this rule in the full editor, not a new rule.
+    const advanced = [
+      ...document.body.querySelectorAll<HTMLAnchorElement>('[role="dialog"] a'),
+    ].find(
+      (link) =>
+        link.textContent?.trim() === label("dataQuality.composer.advanced")
+    );
+    expect(advanced?.getAttribute("href")).toContain(
+      "qualityRules/rule-1/edit"
+    );
+
+    setInput("#dq-composer-title", "Orders have rows, revised");
+    setInput("#dq-field-minRows", "5");
+    await flushPromises();
+    dialogButton(label("dataQuality.editor.saveChanges"))?.click();
+    await flushPromises();
+
+    // The dry run still gates the write, exactly as it does for a new rule.
+    expect(mocks.previewQualityRule).toHaveBeenCalledTimes(1);
+    expect(mocks.updateQualityRule).toHaveBeenCalledTimes(1);
+    const [rule, mask] = mocks.updateQualityRule.mock.calls[0] as [
+      QualityRule,
+      string[],
+    ];
+    expect(rule.name).toBe(original.name);
+    expect(rule.title).toBe("Orders have rows, revised");
+    expect(rule.config?.config.case).toBe("rowCount");
+    expect(
+      (rule.config?.config.value as { minRows?: bigint } | undefined)?.minRows
+    ).toBe(5n);
+    // Only what changed travels; target and state stay off the mask.
+    expect(mask).toContain("title");
+    expect(mask).toContain("config");
+    expect(mask).not.toContain("target");
+    expect(mask).not.toContain("state");
+
+    expect(wrapper.emitted("saved")).toEqual([[updated]]);
+    expect(wrapper.emitted("update:open")).toEqual([[false]]);
+    wrapper.unmount();
+  });
+
+  it("keeps the state, owner and tags a rule was saved with", async () => {
+    const original = ruleFixture({
+      state: QualityRuleState.PAUSED,
+      owner: "users/alice",
+      tags: ["nightly"],
+    });
+    mocks.updateQualityRule.mockResolvedValue(
+      ruleFixture({ title: "Renamed", state: QualityRuleState.PAUSED })
+    );
+    const wrapper = await mountComposer({ rule: original });
+
+    setInput("#dq-composer-title", "Renamed");
+    await flushPromises();
+    dialogButton(label("dataQuality.editor.saveChanges"))?.click();
+    await flushPromises();
+
+    const [rule, mask] = mocks.updateQualityRule.mock.calls[0] as [
+      QualityRule,
+      string[],
+    ];
+    expect(rule.state).toBe(QualityRuleState.PAUSED);
+    expect(rule.owner).toBe("users/alice");
+    expect(rule.tags).toEqual(["nightly"]);
+    // A rename is a rename: nothing else is named by the mask.
+    expect(mask).toEqual(["title"]);
+    wrapper.unmount();
+  });
+
+  it("closes without a request when an edit changes nothing", async () => {
+    const wrapper = await mountComposer({ rule: ruleFixture() });
+
+    dialogButton(label("dataQuality.editor.saveChanges"))?.click();
+    await flushPromises();
+
+    expect(mocks.previewQualityRule).not.toHaveBeenCalled();
+    expect(mocks.updateQualityRule).not.toHaveBeenCalled();
+    expect(wrapper.emitted("saved")).toBeUndefined();
+    // The dialog still closes: there is nothing to save, not an error.
+    expect(wrapper.emitted("update:open")).toEqual([[false]]);
     wrapper.unmount();
   });
 });

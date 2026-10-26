@@ -758,3 +758,40 @@ func (s *Store) CountQualityExecutionsSince(ctx context.Context, since time.Time
 	}
 	return count, nil
 }
+
+// ListRecentQualityExecutionsByRuleIDs returns each rule's newest completed
+// executions, up to limitPerRule, in one statement. The workspace draws a history
+// strip per rule, so the query partitions by rule instead of running one query per
+// rule. Rules without a completed execution are absent from the map.
+func (s *Store) ListRecentQualityExecutionsByRuleIDs(ctx context.Context, ruleIDs []int64, limitPerRule int) (map[int64][]*QualityExecutionMessage, error) {
+	if len(ruleIDs) == 0 {
+		return map[int64][]*QualityExecutionMessage{}, nil
+	}
+	if limitPerRule <= 0 {
+		return nil, common.Errorf(common.Invalid, "a positive execution limit is required")
+	}
+	rows, err := s.GetDB().QueryContext(ctx, `
+		WITH ranked AS (
+			SELECT `+qualityExecutionColumns+`,
+				ROW_NUMBER() OVER (PARTITION BY rule_id ORDER BY started_at DESC, id DESC) AS rn
+			FROM quality_execution
+			WHERE rule_id = ANY($1::bigint[]) AND state = $2
+		)
+		SELECT `+qualityExecutionColumns+`
+		FROM ranked
+		WHERE rn <= $3
+		ORDER BY rule_id, started_at DESC, id DESC
+	`, pq.Array(ruleIDs), int16(storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED), limitPerRule)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list the rules' recent executions")
+	}
+	executions, err := scanQualityExecutions(rows)
+	if err != nil {
+		return nil, err
+	}
+	byRule := make(map[int64][]*QualityExecutionMessage, len(ruleIDs))
+	for _, execution := range executions {
+		byRule[execution.RuleID] = append(byRule[execution.RuleID], execution)
+	}
+	return byRule, nil
+}

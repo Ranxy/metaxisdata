@@ -61,7 +61,7 @@
           v-if="canCreate"
           variant="outline"
           :title="t('dataQuality.workspace.addRuleHint')"
-          @click="composerOpen = true"
+          @click="openComposer"
         >
           <Plus class="mr-2 h-4 w-4" />
           {{ t("dataQuality.workspace.addRule") }}
@@ -167,6 +167,14 @@
               {{ t("dataQuality.workspace.draftsLoadFailed") }}
             </p>
 
+            <TargetCoverageCard
+              :target-guid="targetGuid"
+              :meta-type="effectiveMetaType"
+              :rules="rules"
+              :can-create="canCreate"
+              @create="openComposer"
+            />
+
             <EmptyState
               v-if="sections.length === 0"
               :icon="ShieldCheck"
@@ -177,7 +185,7 @@
                 v-if="canCreate"
                 variant="outline"
                 size="sm"
-                @click="composerOpen = true"
+                @click="openComposer"
               >
                 <Plus class="mr-2 h-4 w-4" />
                 {{ t("dataQuality.workspace.addRule") }}
@@ -235,7 +243,10 @@
                     :issue-count="issuesByRule.get(rule.name)?.length ?? 0"
                     :can-run="canRun"
                     :can-update="canUpdate"
+                    :history="ruleHistory.get(rule.name) ?? []"
+                    :highlight="highlightedRule === rule.name"
                     @run="runRule(rule)"
+                    @edit="openEditor(rule)"
                   />
                 </ul>
               </CardContent>
@@ -327,17 +338,18 @@
       </div>
     </PageState>
 
-    <!-- Creating a rule stays on the target: the dialog fixes the target, and a
-         saved rule joins the section it belongs to without a page read. -->
+    <!-- Rule authoring stays on the target: the dialog fixes the target, and the
+         saved rule joins (or replaces itself in) its section without a page read. -->
     <TargetRuleComposer
-      v-if="canCreate"
+      v-if="canCreate || canUpdate"
       v-model:open="composerOpen"
+      :rule="editingRule"
       :target-guid="targetGuid"
       :meta-type="effectiveMetaType"
       :target-label="displayName"
       :default-schedule-seconds="contractDefaultScheduleSeconds"
       :default-severity="contractDefaultSeverity"
-      @saved="onRuleCreated"
+      @saved="onRuleSaved"
     />
   </div>
 </template>
@@ -352,7 +364,7 @@ import {
   Sparkles,
   Zap,
 } from "lucide-vue-next";
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute } from "vue-router";
 import {
@@ -366,6 +378,7 @@ import PageState from "@/components/common/PageState.vue";
 import TargetCheckRow from "@/components/data-quality/TargetCheckRow.vue";
 import TargetContractCard from "@/components/data-quality/TargetContractCard.vue";
 import TargetCopilotPanel from "@/components/data-quality/TargetCopilotPanel.vue";
+import TargetCoverageCard from "@/components/data-quality/TargetCoverageCard.vue";
 import TargetDraftCard from "@/components/data-quality/TargetDraftCard.vue";
 import TargetRuleComposer from "@/components/data-quality/TargetRuleComposer.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
@@ -383,6 +396,7 @@ import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
 import {
   type QualityContract,
+  type QualityExecutionSummary,
   type QualityIssue,
   type QualityRule,
   QualityRuleState,
@@ -457,6 +471,8 @@ const canPublish = computed(() =>
 );
 
 const rules = ref<QualityRule[]>([]);
+/** Per-rule recent completed executions, newest first (server order). */
+const ruleHistory = ref<Map<string, QualityExecutionSummary[]>>(new Map());
 const suggestions = ref<QualitySuggestion[]>([]);
 const issues = ref<QualityIssue[]>([]);
 /** The server's health summary; adjusted in place by local draft decisions. */
@@ -476,6 +492,8 @@ const runningRule = ref("");
 const newNames = ref<Set<string>>(new Set());
 /** The inline composer, open on the target this page names. */
 const composerOpen = ref(false);
+/** The rule the composer edits; undefined makes it create instead. */
+const editingRule = ref<QualityRule>();
 const copilot = ref<InstanceType<typeof TargetCopilotPanel>>();
 
 /**
@@ -528,6 +546,31 @@ const kindLabel = computed(() => {
 const sections = computed(() =>
   groupTargetChecks(rules.value, suggestions.value)
 );
+
+/**
+ * The rule a back-link from another page named with `?highlight=` (a full rule
+ * resource name). It survives the local edits: it only names the row to mark.
+ */
+const highlightedRule = computed(() =>
+  typeof route.query.highlight === "string" ? route.query.highlight : ""
+);
+
+/**
+ * Bring the named row into view once the sections have rendered. A highlight for
+ * a rule that this target does not have (deleted, or another target's) simply
+ * does not resolve; the workspace renders normally.
+ */
+async function scrollToHighlightedRule() {
+  const name = highlightedRule.value;
+  if (name === "") {
+    return;
+  }
+  await nextTick();
+  const element = document.getElementById(
+    `dq-rule-${name.split("/").pop() ?? ""}`
+  );
+  element?.scrollIntoView?.({ block: "center" });
+}
 
 const pendingDrafts = computed(() => suggestions.value.filter(isPendingDraft));
 
@@ -704,6 +747,9 @@ async function load() {
     }
     summary.value = response.summary ?? create(QualityTargetSummarySchema, {});
     rules.value = response.qualityRules;
+    ruleHistory.value = new Map(
+      response.ruleHistory.map((history) => [history.rule, history.executions])
+    );
     issues.value = response.openIssues;
     orphaned.value = response.orphanedReason !== "";
   } catch (cause: unknown) {
@@ -716,6 +762,7 @@ async function load() {
     await contractRead;
     if (ticket === loadTicket) {
       loading.value = false;
+      void scrollToHighlightedRule();
     }
   }
 }
@@ -762,6 +809,31 @@ function onRuleCreated(rule: QualityRule) {
   if (rule.state === QualityRuleState.ENABLED) {
     summary.value.enabledRuleCount += 1;
   }
+}
+
+/** A saved rule replaces itself in the list; an edit changes no count. */
+function onRuleSaved(rule: QualityRule) {
+  if (!editingRule.value) {
+    onRuleCreated(rule);
+    return;
+  }
+  const index = rules.value.findIndex((item) => item.name === rule.name);
+  rules.value =
+    index === -1
+      ? [...rules.value, rule]
+      : rules.value.map((item, position) => (position === index ? rule : item));
+}
+
+/** The header's New rule always starts a create, even right after an edit. */
+function openComposer() {
+  editingRule.value = undefined;
+  composerOpen.value = true;
+}
+
+/** The row's edit opens the same composer, fixed to that rule. */
+function openEditor(rule: QualityRule) {
+  editingRule.value = rule;
+  composerOpen.value = true;
 }
 
 /**

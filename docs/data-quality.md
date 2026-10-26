@@ -85,10 +85,14 @@ Data Quality → **Targets** is the directory: one row per table or view that ha
 quality rules, with its rule count, covered columns, latest result, open issues,
 pending AI drafts and last run. Open a target to get its **workspace**: every rule
 on that table, grouped into dataset-level rules, cross-column rules and one
-section per column, with the latest result beside each rule. The workspace can run
-all of the target's rules at once, add another rule without walking the target
-picker again, and draft rules with the AI copilot on the right — drafts appear
-inside the section they belong to until you create them as rules.
+section per column, with the latest result and a strip of each rule's recent
+executions beside it. The workspace can run all of the target's rules at once,
+add or edit a rule without walking the target picker again, show which columns
+have no check yet, and draft rules with the AI copilot on the right — drafts
+appear inside the section they belong to until you create them as rules.
+
+The target list and the Rules, Issues and Suggestions lists keep their filters in
+the address bar, so refreshing or sharing a link returns to the same view.
 
 Data Quality → **Rules** (linked as *All rules* from the target list) is the
 cross-target directory: every rule with its target and latest execution. The

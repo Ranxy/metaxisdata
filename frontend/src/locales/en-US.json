@@ -346,6 +346,7 @@
     "composer": {
       "advanced": "Open full editor",
       "description": "The target is fixed. The rule joins its section when you create it; filters, owner and tags stay in the full editor.",
+      "editTitle": "Edit {title}",
       "saving": "Saving…",
       "title": "New rule on {target}"
     },
@@ -415,6 +416,17 @@
       "unavailable": "This target cannot be drafted for right now."
     },
     "copySql": "Copy SQL",
+    "coverage": {
+      "addRule": "Add rule",
+      "covered": "Covered",
+      "coveredSummary": "{covered} of {total} columns have checks",
+      "description": "Which columns of this target have a rule.",
+      "loadFailed": "Failed to load the target's columns.",
+      "title": "Column coverage",
+      "uncovered": "No checks",
+      "uncoveredEmpty": "Every column has a check.",
+      "uncoveredTitle": "Columns without checks"
+    },
     "createdAt": "Created",
     "deleteError": "Failed to archive the rule.",
     "deleteRuleMessage": "The rule stops running and no new results are recorded. Its history stays readable.",

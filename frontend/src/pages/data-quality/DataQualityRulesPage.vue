@@ -531,7 +531,13 @@ import {
 } from "lucide-vue-next";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { RouterLink, useRouter } from "vue-router";
+import {
+  type LocationQuery,
+  type LocationQueryRaw,
+  RouterLink,
+  useRoute,
+  useRouter,
+} from "vue-router";
 import {
   deleteQualityRule,
   listQualityRules,
@@ -595,6 +601,7 @@ import { EDITABLE_RULE_TYPES } from "@/utils/dataQualityForm";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 
 const { t, locale } = useI18n();
+const route = useRoute();
 const router = useRouter();
 const { handleError } = useErrorHandler();
 const authStore = useAuthStore();
@@ -714,6 +721,191 @@ const RULE_TYPE_FILTER_VALUES: QualityRuleType[] = [
   ...EDITABLE_RULE_TYPES,
 ];
 
+/** Every member each enum filter accepts, UNSPECIFIED included as "any". */
+const DIMENSION_FILTER_VALUES: QualityDimension[] = [
+  QualityDimension.UNSPECIFIED,
+  ...dimensionOptions.map((option) => option.value),
+];
+const SEVERITY_FILTER_VALUES: QualitySeverity[] = [
+  QualitySeverity.UNSPECIFIED,
+  ...severityOptions.map((option) => option.value),
+];
+const STATE_FILTER_VALUES: QualityRuleState[] = [
+  QualityRuleState.UNSPECIFIED,
+  ...stateOptions.map((option) => option.value),
+];
+
+/** The query parameter each filter travels under. */
+const FILTER_QUERY_KEYS = [
+  "q",
+  "instance",
+  "database",
+  "schema",
+  "table",
+  "owner",
+  "ownerUnassigned",
+  "dimension",
+  "ruleType",
+  "severity",
+  "state",
+] as const;
+
+/** The filters as one value, so a URL and the applied set share a shape. */
+interface RuleFilters {
+  search: string;
+  scope: QualityTargetScope | undefined;
+  owner: string;
+  dimension: string;
+  ruleType: string;
+  severity: string;
+  state: string;
+}
+
+function queryString(value: unknown): string {
+  if (Array.isArray(value)) {
+    return String(value[0] ?? "");
+  }
+  return value === undefined || value === null ? "" : String(value);
+}
+
+/** A numeric enum filter from the URL; anything the enum lacks reads as "any". */
+function enumFilter(value: unknown, members: readonly number[]): string {
+  const raw = queryString(value).trim();
+  if (!raw || raw === "-") {
+    return "-";
+  }
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 && members.includes(parsed)
+    ? String(parsed)
+    : "-";
+}
+
+/** The target-scope filter from the URL; no instance means no scope. */
+function scopeFromQuery(query: LocationQuery): QualityTargetScope | undefined {
+  const instance = queryString(query.instance).trim();
+  if (!instance) {
+    return undefined;
+  }
+  const database = queryString(query.database).trim();
+  const schema = queryString(query.schema).trim();
+  const table = queryString(query.table).trim();
+  return {
+    instance,
+    database,
+    schema,
+    table,
+    // The picker's label is "instance title > path"; a URL carries ids, so the
+    // id stands in until the reader picks the scope again.
+    label: [instance, database, schema, table].filter(Boolean).join(" > "),
+  };
+}
+
+/** The filters a URL carries: reload, shared link and back/forward. */
+function filtersFromQuery(query: LocationQuery): RuleFilters {
+  const owner = queryString(query.owner).trim();
+  return {
+    search: queryString(query.q).trim(),
+    scope: scopeFromQuery(query),
+    // A named member wins: the server rejects it combined with the flag.
+    owner:
+      owner ||
+      (queryString(query.ownerUnassigned) === "1" ? UNASSIGNED_OWNER : ""),
+    dimension: enumFilter(query.dimension, DIMENSION_FILTER_VALUES),
+    ruleType: enumFilter(query.ruleType, RULE_TYPE_FILTER_VALUES),
+    severity: enumFilter(query.severity, SEVERITY_FILTER_VALUES),
+    state: enumFilter(query.state, STATE_FILTER_VALUES),
+  };
+}
+
+/** Only non-default values are written, so the URL stays readable. */
+function queryFromFilters(filters: RuleFilters): Record<string, string> {
+  const query: Record<string, string> = {};
+  if (filters.search) {
+    query.q = filters.search;
+  }
+  if (filters.scope?.instance) {
+    query.instance = filters.scope.instance;
+    if (filters.scope.database) {
+      query.database = filters.scope.database;
+    }
+    if (filters.scope.schema) {
+      query.schema = filters.scope.schema;
+    }
+    if (filters.scope.table) {
+      query.table = filters.scope.table;
+    }
+  }
+  if (filters.owner === UNASSIGNED_OWNER) {
+    query.ownerUnassigned = "1";
+  } else if (filters.owner) {
+    query.owner = filters.owner;
+  }
+  if (filters.dimension !== "-") {
+    query.dimension = filters.dimension;
+  }
+  if (filters.ruleType !== "-") {
+    query.ruleType = filters.ruleType;
+  }
+  if (filters.severity !== "-") {
+    query.severity = filters.severity;
+  }
+  if (filters.state !== "-") {
+    query.state = filters.state;
+  }
+  return query;
+}
+
+function sameFilters(a: RuleFilters, b: RuleFilters): boolean {
+  const aScope = a.scope;
+  const bScope = b.scope;
+  return (
+    a.search === b.search &&
+    a.owner === b.owner &&
+    a.dimension === b.dimension &&
+    a.ruleType === b.ruleType &&
+    a.severity === b.severity &&
+    a.state === b.state &&
+    (aScope?.instance ?? "") === (bScope?.instance ?? "") &&
+    (aScope?.database ?? "") === (bScope?.database ?? "") &&
+    (aScope?.schema ?? "") === (bScope?.schema ?? "") &&
+    (aScope?.table ?? "") === (bScope?.table ?? "")
+  );
+}
+
+/** The filters the request currently applies. */
+function appliedFilters(): RuleFilters {
+  return {
+    search: appliedSearch.value,
+    scope: appliedScope.value,
+    owner: appliedOwner.value,
+    dimension: appliedDimension.value,
+    ruleType: appliedRuleType.value,
+    severity: appliedSeverity.value,
+    state: appliedState.value,
+  };
+}
+
+// Read the URL before the first request: a reloaded or shared link queries what
+// it carries instead of flashing the unfiltered directory first. Both the
+// controls and the applied set start there, so Apply has nothing pending.
+const initialFilters = filtersFromQuery(route.query);
+search.value = initialFilters.search;
+dimension.value = initialFilters.dimension;
+ruleType.value = initialFilters.ruleType;
+severity.value = initialFilters.severity;
+state.value = initialFilters.state;
+scope.value = initialFilters.scope;
+owner.value = initialFilters.owner;
+appliedSearch.value = initialFilters.search;
+appliedDimension.value = initialFilters.dimension;
+appliedRuleType.value = initialFilters.ruleType;
+appliedSeverity.value = initialFilters.severity;
+appliedState.value = initialFilters.state;
+appliedScope.value = initialFilters.scope
+  ? { ...initialFilters.scope }
+  : undefined;
+appliedOwner.value = initialFilters.owner;
+
 const {
   items: rules,
   isLoading,
@@ -734,28 +926,13 @@ const {
       database: appliedScope.value?.database,
       schema: appliedScope.value?.schema,
       table: appliedScope.value?.table,
-      dimension: enumFromFilter(appliedDimension.value, [
-        QualityDimension.UNSPECIFIED,
-        QualityDimension.COMPLETENESS,
-        QualityDimension.VALIDITY,
-        QualityDimension.UNIQUENESS,
-        QualityDimension.CONSISTENCY,
-        QualityDimension.TIMELINESS,
-        QualityDimension.ACCURACY,
-      ]),
+      dimension: enumFromFilter(
+        appliedDimension.value,
+        DIMENSION_FILTER_VALUES
+      ),
       ruleType: enumFromFilter(appliedRuleType.value, RULE_TYPE_FILTER_VALUES),
-      severity: enumFromFilter(appliedSeverity.value, [
-        QualitySeverity.UNSPECIFIED,
-        QualitySeverity.WARNING,
-        QualitySeverity.ERROR,
-        QualitySeverity.CRITICAL,
-      ]),
-      state: enumFromFilter(appliedState.value, [
-        QualityRuleState.UNSPECIFIED,
-        QualityRuleState.ENABLED,
-        QualityRuleState.PAUSED,
-        QualityRuleState.ARCHIVED,
-      ]),
+      severity: enumFromFilter(appliedSeverity.value, SEVERITY_FILTER_VALUES),
+      state: enumFromFilter(appliedState.value, STATE_FILTER_VALUES),
       // The sentinel cannot be sent: an empty owner plus `owner_unassigned` is
       // how the server reads "only rules nobody owns"; the two fields never both
       // apply.
@@ -772,6 +949,63 @@ const {
 // A cursor belongs to the query that produced it, so a new page size restarts
 // the walk at the first page.
 watch(pageSize, () => void resetPage());
+
+/**
+ * Write exactly the applied filters into the URL, preserving any parameter this
+ * page does not own. `replace` keeps history clean: applying a filter is not a
+ * navigation the back button should walk.
+ */
+function writeFiltersToUrl(filters: RuleFilters) {
+  const next: LocationQueryRaw = { ...route.query };
+  for (const key of FILTER_QUERY_KEYS) {
+    delete next[key];
+  }
+  Object.assign(next, queryFromFilters(filters));
+  if (sameQuery(next, route.query)) {
+    return;
+  }
+  void router.replace({ query: next });
+}
+
+/** Whether a query about to be written already reads like the current one. */
+function sameQuery(next: LocationQueryRaw, current: LocationQuery): boolean {
+  const keys = Object.keys(next);
+  if (keys.length !== Object.keys(current).length) {
+    return false;
+  }
+  return keys.every(
+    (key) => queryString(next[key]) === queryString(current[key])
+  );
+}
+
+// A reload, a shared link or back/forward changes the query from outside; the
+// page adopts those filters. The replace this page itself performs writes
+// exactly the applied filters, so the watcher recognizes it and stops — no loop,
+// no second request.
+watch(
+  () => route.query,
+  (query) => {
+    const next = filtersFromQuery(query);
+    if (sameFilters(next, appliedFilters())) {
+      return;
+    }
+    search.value = next.search;
+    dimension.value = next.dimension;
+    ruleType.value = next.ruleType;
+    severity.value = next.severity;
+    state.value = next.state;
+    scope.value = next.scope ? { ...next.scope } : undefined;
+    owner.value = next.owner;
+    appliedSearch.value = next.search;
+    appliedDimension.value = next.dimension;
+    appliedRuleType.value = next.ruleType;
+    appliedSeverity.value = next.severity;
+    appliedState.value = next.state;
+    appliedScope.value = next.scope ? { ...next.scope } : undefined;
+    appliedOwner.value = next.owner;
+    void resetPage();
+  }
+);
 
 /**
  * The Select's value as an enum member. `-` and any value the enum no longer
@@ -791,6 +1025,9 @@ function applyFilters() {
   appliedState.value = state.value;
   appliedScope.value = scope.value ? { ...scope.value } : undefined;
   appliedOwner.value = owner.value;
+  // The URL is written first: the watcher then sees the applied set already
+  // agrees with it, so adopting the route costs no second request.
+  writeFiltersToUrl(appliedFilters());
   void resetPage();
 }
 

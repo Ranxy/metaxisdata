@@ -574,7 +574,12 @@ import {
 } from "lucide-vue-next";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { useRoute, useRouter } from "vue-router";
+import {
+  type LocationQuery,
+  type LocationQueryRaw,
+  useRoute,
+  useRouter,
+} from "vue-router";
 import {
   listQualitySuggestions,
   updateQualitySuggestion,
@@ -687,30 +692,6 @@ const llmAvailability = computed(() =>
   llmFeatureAvailability(llmEnabled.value, canSuggest.value)
 );
 
-const status = ref(String(QualitySuggestionStatus.PENDING));
-const kind = ref("-");
-const source = ref("-");
-const scope = ref<QualityTargetScope>();
-const appliedStatus = ref(String(QualitySuggestionStatus.PENDING));
-const appliedKind = ref("-");
-const appliedSource = ref("-");
-const appliedScope = ref<QualityTargetScope>();
-const pageSize = ref(50);
-const error = ref("");
-const drawerOpen = ref(false);
-const selected = ref<QualitySuggestion>();
-const deciding = ref(false);
-const decideError = ref("");
-const workbenchOpen = ref(false);
-const jobsRefreshKey = ref(0);
-const batchCreateOpen = ref(false);
-const batchCreateSuggestions = ref<QualitySuggestion[]>([]);
-const decisionOpen = ref(false);
-const decisionSuggestions = ref<QualitySuggestion[]>([]);
-const decision = ref(QualitySuggestionStatus.REJECTED);
-const selectedNames = ref<string[]>([]);
-const collapsedGroups = ref<string[]>([]);
-
 const PENDING = String(QualitySuggestionStatus.PENDING);
 
 const statusOptions = [
@@ -752,6 +733,187 @@ const sourceOptions = [
   },
 ];
 
+/** Every member each filter accepts, UNSPECIFIED included as "any". */
+const STATUS_FILTER_VALUES: QualitySuggestionStatus[] = [
+  QualitySuggestionStatus.UNSPECIFIED,
+  ...statusOptions.map((option) => option.value),
+];
+const KIND_FILTER_VALUES: QualitySuggestionKind[] = [
+  QualitySuggestionKind.UNSPECIFIED,
+  ...kindOptions.map((option) => option.value),
+];
+const SOURCE_FILTER_VALUES: QualitySuggestionSource[] = [
+  QualitySuggestionSource.UNSPECIFIED,
+  ...sourceOptions.map((option) => option.value),
+];
+
+/** The query parameter each filter travels under. */
+const FILTER_QUERY_KEYS = [
+  "status",
+  "kind",
+  "source",
+  "instance",
+  "database",
+  "schema",
+  "table",
+] as const;
+
+/** The filters as one value, so a URL and the applied set share a shape. */
+interface SuggestionFilters {
+  status: string;
+  kind: string;
+  source: string;
+  scope: QualityTargetScope | undefined;
+}
+
+function queryString(value: unknown): string {
+  if (Array.isArray(value)) {
+    return String(value[0] ?? "");
+  }
+  return value === undefined || value === null ? "" : String(value);
+}
+
+/** A numeric enum filter from the URL; anything the enum lacks reads as "any". */
+function enumFilter(value: unknown, members: readonly number[]): string {
+  const raw = queryString(value).trim();
+  if (!raw || raw === "-") {
+    return "-";
+  }
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 && members.includes(parsed)
+    ? String(parsed)
+    : "-";
+}
+
+/**
+ * The status filter travels differently from the others: absent means the
+ * page's default pending queue, and `0` (the API's UNSPECIFIED) means every
+ * status, which the controls show as "-" and which must be written because it is
+ * not the default.
+ */
+function statusFromQuery(value: unknown): string {
+  const raw = queryString(value).trim();
+  if (!raw) {
+    return PENDING;
+  }
+  const parsed = Number(raw);
+  if (parsed === QualitySuggestionStatus.UNSPECIFIED) {
+    return "-";
+  }
+  return STATUS_FILTER_VALUES.includes(parsed) ? String(parsed) : PENDING;
+}
+
+/** The target-scope filter from the URL; no instance means no scope. */
+function scopeFromQuery(query: LocationQuery): QualityTargetScope | undefined {
+  const instance = queryString(query.instance).trim();
+  if (!instance) {
+    return undefined;
+  }
+  const database = queryString(query.database).trim();
+  const schema = queryString(query.schema).trim();
+  const table = queryString(query.table).trim();
+  return {
+    instance,
+    database,
+    schema,
+    table,
+    // The picker's label is "instance title > path"; a URL carries ids, so the
+    // id stands in until the reader picks the scope again.
+    label: [instance, database, schema, table].filter(Boolean).join(" > "),
+  };
+}
+
+/** The filters a URL carries: reload, shared link and back/forward. */
+function filtersFromQuery(query: LocationQuery): SuggestionFilters {
+  return {
+    status: statusFromQuery(query.status),
+    kind: enumFilter(query.kind, KIND_FILTER_VALUES),
+    source: enumFilter(query.source, SOURCE_FILTER_VALUES),
+    scope: scopeFromQuery(query),
+  };
+}
+
+/** Only non-default values are written, so the URL stays readable. */
+function queryFromFilters(filters: SuggestionFilters): Record<string, string> {
+  const query: Record<string, string> = {};
+  if (filters.status !== PENDING) {
+    query.status = filters.status === "-" ? "0" : filters.status;
+  }
+  if (filters.kind !== "-") {
+    query.kind = filters.kind;
+  }
+  if (filters.source !== "-") {
+    query.source = filters.source;
+  }
+  if (filters.scope?.instance) {
+    query.instance = filters.scope.instance;
+    if (filters.scope.database) {
+      query.database = filters.scope.database;
+    }
+    if (filters.scope.schema) {
+      query.schema = filters.scope.schema;
+    }
+    if (filters.scope.table) {
+      query.table = filters.scope.table;
+    }
+  }
+  return query;
+}
+
+function sameFilters(a: SuggestionFilters, b: SuggestionFilters): boolean {
+  const aScope = a.scope;
+  const bScope = b.scope;
+  return (
+    a.status === b.status &&
+    a.kind === b.kind &&
+    a.source === b.source &&
+    (aScope?.instance ?? "") === (bScope?.instance ?? "") &&
+    (aScope?.database ?? "") === (bScope?.database ?? "") &&
+    (aScope?.schema ?? "") === (bScope?.schema ?? "") &&
+    (aScope?.table ?? "") === (bScope?.table ?? "")
+  );
+}
+
+/** The filters the request currently applies. */
+function appliedFilters(): SuggestionFilters {
+  return {
+    status: appliedStatus.value,
+    kind: appliedKind.value,
+    source: appliedSource.value,
+    scope: appliedScope.value,
+  };
+}
+
+// Read the URL before the first request: a reloaded or shared link queries what
+// it carries instead of flashing the default pending queue first. `?draft=1` is
+// not a filter — it stays in the query untouched.
+const initialFilters = filtersFromQuery(route.query);
+const status = ref(initialFilters.status);
+const kind = ref(initialFilters.kind);
+const source = ref(initialFilters.source);
+const scope = ref<QualityTargetScope | undefined>(initialFilters.scope);
+const appliedStatus = ref(initialFilters.status);
+const appliedKind = ref(initialFilters.kind);
+const appliedSource = ref(initialFilters.source);
+const appliedScope = ref<QualityTargetScope | undefined>(
+  initialFilters.scope ? { ...initialFilters.scope } : undefined
+);
+const pageSize = ref(50);
+const error = ref("");
+const drawerOpen = ref(false);
+const selected = ref<QualitySuggestion>();
+const deciding = ref(false);
+const decideError = ref("");
+const workbenchOpen = ref(false);
+const jobsRefreshKey = ref(0);
+const batchCreateOpen = ref(false);
+const batchCreateSuggestions = ref<QualitySuggestion[]>([]);
+const decisionOpen = ref(false);
+const decisionSuggestions = ref<QualitySuggestion[]>([]);
+const decision = ref(QualitySuggestionStatus.REJECTED);
+const selectedNames = ref<string[]>([]);
+const collapsedGroups = ref<string[]>([]);
+
 /** The instance display titles the group labels prefer over raw ids. */
 const instanceTitles = computed<Record<string, string>>(() => {
   const titles: Record<string, string> = {};
@@ -779,23 +941,9 @@ const {
     return await listQualitySuggestions({
       pageSize: pageSize.value,
       pageToken,
-      status: enumFromFilter(appliedStatus.value, [
-        QualitySuggestionStatus.UNSPECIFIED,
-        QualitySuggestionStatus.PENDING,
-        QualitySuggestionStatus.ACCEPTED,
-        QualitySuggestionStatus.REJECTED,
-        QualitySuggestionStatus.SUPERSEDED,
-      ]),
-      kind: enumFromFilter(appliedKind.value, [
-        QualitySuggestionKind.UNSPECIFIED,
-        QualitySuggestionKind.RULE_DRAFT,
-        QualitySuggestionKind.LABEL,
-      ]),
-      source: enumFromFilter(appliedSource.value, [
-        QualitySuggestionSource.UNSPECIFIED,
-        QualitySuggestionSource.NATURAL_LANGUAGE,
-        QualitySuggestionSource.PROFILE,
-      ]),
+      status: enumFromFilter(appliedStatus.value, STATUS_FILTER_VALUES),
+      kind: enumFromFilter(appliedKind.value, KIND_FILTER_VALUES),
+      source: enumFromFilter(appliedSource.value, SOURCE_FILTER_VALUES),
       ...scopeFilters(appliedScope.value),
       signal,
     });
@@ -903,6 +1051,69 @@ const emptyDescription = computed(() => {
 
 watch(pageSize, () => void resetPage());
 
+/**
+ * Write exactly the applied filters into the URL. The query is edited rather
+ * than rebuilt, so `?draft=1` and any other parameter this page does not own
+ * survive an Apply or a Clear. `replace` keeps history clean.
+ */
+function writeFiltersToUrl(filters: SuggestionFilters) {
+  const next: LocationQueryRaw = { ...route.query };
+  for (const key of FILTER_QUERY_KEYS) {
+    delete next[key];
+  }
+  Object.assign(next, queryFromFilters(filters));
+  if (sameQuery(next, route.query)) {
+    return;
+  }
+  void router.replace({ query: next });
+}
+
+/** Whether a query about to be written already reads like the current one. */
+function sameQuery(next: LocationQueryRaw, current: LocationQuery): boolean {
+  const keys = Object.keys(next);
+  if (keys.length !== Object.keys(current).length) {
+    return false;
+  }
+  return keys.every(
+    (key) => queryString(next[key]) === queryString(current[key])
+  );
+}
+
+// A reload, a shared link or back/forward changes the query from outside; the
+// page adopts the filters it names. The replace this page itself performs
+// writes exactly the applied filters, so the watcher recognizes it and stops —
+// no loop, no second request. `draft` is not a filter and never reaches here.
+watch(
+  () => route.query,
+  (query) => {
+    const next = filtersFromQuery(query);
+    if (sameFilters(next, appliedFilters())) {
+      return;
+    }
+    status.value = next.status;
+    kind.value = next.kind;
+    source.value = next.source;
+    scope.value = next.scope ? { ...next.scope } : undefined;
+    appliedStatus.value = next.status;
+    appliedKind.value = next.kind;
+    appliedSource.value = next.source;
+    appliedScope.value = next.scope ? { ...next.scope } : undefined;
+    selectedNames.value = [];
+    void resetPage();
+  }
+);
+
+// Closing the workbench is the one action that retires its deep link: the query
+// keeps every filter, and only `draft` goes.
+watch(workbenchOpen, (open) => {
+  if (open || queryString(route.query.draft) !== "1") {
+    return;
+  }
+  const next: LocationQueryRaw = { ...route.query };
+  delete next.draft;
+  void router.replace({ query: next });
+});
+
 // A re-fetch can drop the rows a stale selection points at.
 watch(suggestions, () => {
   const pending = new Set(
@@ -936,6 +1147,9 @@ function applyFilters() {
   appliedSource.value = source.value;
   appliedScope.value = scope.value;
   selectedNames.value = [];
+  // The URL is written first: the watcher then sees the applied set already
+  // agrees with it, so adopting the route costs no second request.
+  writeFiltersToUrl(appliedFilters());
   void resetPage();
 }
 
@@ -970,6 +1184,7 @@ function removeFilter(key: string) {
       return;
   }
   selectedNames.value = [];
+  writeFiltersToUrl(appliedFilters());
   void resetPage();
 }
 
@@ -977,6 +1192,7 @@ function showAllStatuses() {
   status.value = "-";
   appliedStatus.value = "-";
   selectedNames.value = [];
+  writeFiltersToUrl(appliedFilters());
   void resetPage();
 }
 

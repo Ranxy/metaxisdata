@@ -8,8 +8,11 @@ import { Select } from "@/components/ui/select";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
+  QualityDimension,
   QualityRuleSchema,
+  QualityRuleState,
   QualityRuleType,
+  QualitySeverity,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
 import type { QualityTargetScope } from "@/utils/dataQuality";
@@ -111,7 +114,12 @@ const PERMISSIONS = [
   "metaxisdata.users.list",
 ];
 
-async function mountPage(permissions = PERMISSIONS) {
+let activeRouter: ReturnType<typeof createRouter> | undefined;
+
+async function mountPage(
+  permissions = PERMISSIONS,
+  path = "/data-quality/rules"
+) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -133,8 +141,9 @@ async function mountPage(permissions = PERMISSIONS) {
       },
     ],
   });
-  await router.push("/data-quality/rules");
+  await router.push(path);
   await router.isReady();
+  activeRouter = router;
   const pinia = createPinia();
   setActivePinia(pinia);
   useAuthStore().user = create(UserSchema, { permissions });
@@ -149,6 +158,14 @@ async function mountPage(permissions = PERMISSIONS) {
   });
   await flushPromises();
   return wrapper;
+}
+
+/** The query of the current URL, i.e. what a reload or a share would carry. */
+function currentQuery(): Record<string, unknown> {
+  return (activeRouter?.currentRoute.value.query ?? {}) as Record<
+    string,
+    unknown
+  >;
 }
 
 function applyButton(wrapper: ReturnType<typeof mount>) {
@@ -469,5 +486,166 @@ describe("DataQualityRulesPage AI drafting shortcut", () => {
         )
     ).toBe(false);
     withoutSuggest.unmount();
+  });
+});
+
+describe("DataQualityRulesPage URL filters", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+    mocks.listQualityRules.mockResolvedValue({
+      items: [],
+      nextPageToken: "",
+    });
+  });
+
+  it("writes the applied filters to the URL and reads them back", async () => {
+    const wrapper = await mountPage();
+    expect(currentQuery()).toEqual({});
+
+    await wrapper.find("#data-quality-search").setValue("orders");
+    await wrapper.find(".scope-stub").trigger("click");
+    await wrapper.find(".owner-user-stub").trigger("click");
+    const selects = wrapper.findAllComponents(Select);
+    await selects[0]?.vm.$emit(
+      "update:modelValue",
+      String(QualityDimension.COMPLETENESS)
+    );
+    await selects[2]?.vm.$emit(
+      "update:modelValue",
+      String(QualitySeverity.ERROR)
+    );
+    await nextTick();
+
+    await applyButton(wrapper)?.trigger("click");
+    await flushPromises();
+
+    expect(currentQuery()).toMatchObject({
+      q: "orders",
+      instance: "inst1",
+      database: "shop",
+      schema: "public",
+      table: "orders",
+      owner: "users/101",
+      dimension: String(QualityDimension.COMPLETENESS),
+      severity: String(QualitySeverity.ERROR),
+    });
+    // Defaults stay out of the URL.
+    expect(currentQuery().ruleType).toBeUndefined();
+    expect(currentQuery().state).toBeUndefined();
+    expect(mocks.listQualityRules).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        search: "orders",
+        instance: "inst1",
+        owner: "users/101",
+        dimension: QualityDimension.COMPLETENESS,
+        severity: QualitySeverity.ERROR,
+      })
+    );
+    // Applying writes the URL without triggering a second request.
+    expect(mocks.listQualityRules).toHaveBeenCalledTimes(2);
+
+    // A reload at that URL starts from the same applied filters.
+    const fullPath = activeRouter?.currentRoute.value.fullPath ?? "";
+    wrapper.unmount();
+    const reloaded = await mountPage(PERMISSIONS, fullPath);
+
+    expect(mocks.listQualityRules).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        search: "orders",
+        instance: "inst1",
+        database: "shop",
+        schema: "public",
+        table: "orders",
+        owner: "users/101",
+        dimension: QualityDimension.COMPLETENESS,
+        severity: QualitySeverity.ERROR,
+      })
+    );
+    expect(
+      (reloaded.find("#data-quality-search").element as HTMLInputElement).value
+    ).toBe("orders");
+    expect(
+      reloaded.findComponent(TargetScopeFilterStub).props("modelValue")
+    ).toMatchObject({
+      instance: "inst1",
+      database: "shop",
+      schema: "public",
+      table: "orders",
+    });
+    expect(reloaded.findComponent(UserSelectStub).props("modelValue")).toBe(
+      "users/101"
+    );
+    expect(reloaded.findAllComponents(Select)[0]?.props("modelValue")).toBe(
+      String(QualityDimension.COMPLETENESS)
+    );
+    expect(reloaded.findAllComponents(Select)[2]?.props("modelValue")).toBe(
+      String(QualitySeverity.ERROR)
+    );
+  });
+
+  it("writes the unassigned owner as its own flag and reads it back", async () => {
+    const wrapper = await mountPage();
+
+    await wrapper.find(".owner-unassigned-stub").trigger("click");
+    await applyButton(wrapper)?.trigger("click");
+    await flushPromises();
+
+    expect(currentQuery()).toEqual({ ownerUnassigned: "1" });
+    expect(mocks.listQualityRules).toHaveBeenLastCalledWith(
+      expect.objectContaining({ owner: "", ownerUnassigned: true })
+    );
+
+    const fullPath = activeRouter?.currentRoute.value.fullPath ?? "";
+    wrapper.unmount();
+    const reloaded = await mountPage(PERMISSIONS, fullPath);
+
+    expect(reloaded.findComponent(UserSelectStub).props("modelValue")).toBe(
+      "__unassigned__"
+    );
+    expect(mocks.listQualityRules).toHaveBeenLastCalledWith(
+      expect.objectContaining({ owner: "", ownerUnassigned: true })
+    );
+  });
+
+  it("clears the URL with the filters, keeping unrelated parameters", async () => {
+    const wrapper = await mountPage(
+      PERMISSIONS,
+      "/data-quality/rules?q=none&state=1&keep=1"
+    );
+
+    const clear = wrapper
+      .findAll("button")
+      .find(
+        (button) =>
+          button.text().trim() === i18n.global.t("common.filter.clear")
+      );
+    expect(clear).toBeTruthy();
+    await clear?.trigger("click");
+    await flushPromises();
+
+    expect(currentQuery()).toEqual({ keep: "1" });
+    expect(mocks.listQualityRules).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        search: "",
+        state: QualityRuleState.UNSPECIFIED,
+      })
+    );
+  });
+
+  it("adopts a filter change that arrives from outside", async () => {
+    const wrapper = await mountPage();
+    expect(mocks.listQualityRules).toHaveBeenCalledTimes(1);
+
+    await activeRouter?.replace({ query: { q: "external" } });
+    await flushPromises();
+
+    expect(
+      (wrapper.find("#data-quality-search").element as HTMLInputElement).value
+    ).toBe("external");
+    expect(mocks.listQualityRules).toHaveBeenLastCalledWith(
+      expect.objectContaining({ search: "external" })
+    );
+    expect(mocks.listQualityRules).toHaveBeenCalledTimes(2);
   });
 });

@@ -346,6 +346,7 @@
     "composer": {
       "advanced": "打开完整编辑器",
       "description": "目标已固定；创建后规则会出现在对应分组。筛选、负责人与标签仍在完整编辑器中设置。",
+      "editTitle": "编辑 {title}",
       "saving": "正在保存…",
       "title": "在 {target} 上新建规则"
     },
@@ -415,6 +416,17 @@
       "unavailable": "该目标当前无法使用 AI 起草。"
     },
     "copySql": "复制 SQL",
+    "coverage": {
+      "addRule": "添加规则",
+      "covered": "已覆盖",
+      "coveredSummary": "{total} 个字段中已有 {covered} 个配置检查",
+      "description": "该目标上哪些字段已有规则。",
+      "loadFailed": "加载目标字段失败。",
+      "title": "字段覆盖",
+      "uncovered": "无检查",
+      "uncoveredEmpty": "每个字段都已有检查。",
+      "uncoveredTitle": "未覆盖字段"
+    },
     "createdAt": "创建时间",
     "deleteError": "归档规则失败。",
     "deleteRuleMessage": "规则将停止运行，不再产生新结果；历史记录仍然可读。",

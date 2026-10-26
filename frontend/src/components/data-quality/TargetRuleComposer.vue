@@ -6,9 +6,7 @@
     <DialogContent class="max-h-[90vh] gap-0 overflow-hidden p-0 sm:max-w-3xl">
       <div class="flex max-h-[90vh] min-h-0 flex-col">
         <DialogHeader class="shrink-0 border-b px-6 py-5">
-          <DialogTitle>
-            {{ t("dataQuality.composer.title", { target: targetLabel }) }}
-          </DialogTitle>
+          <DialogTitle>{{ title }}</DialogTitle>
           <DialogDescription>
             {{ t("dataQuality.composer.description") }}
           </DialogDescription>
@@ -251,13 +249,15 @@
               {{ t("common.cancel") }}
             </Button>
             <Button
-              :disabled="saving || !target || !canCreate"
+              :disabled="saving || !target || !canSave"
               @click="save"
             >
               {{
                 saving
                   ? t("dataQuality.composer.saving")
-                  : t("dataQuality.editor.create")
+                  : isEdit
+                    ? t("dataQuality.editor.saveChanges")
+                    : t("dataQuality.editor.create")
               }}
             </Button>
           </div>
@@ -274,7 +274,11 @@ import { AlertTriangle } from "lucide-vue-next";
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink } from "vue-router";
-import { createQualityRule, previewQualityRule } from "@/api/data-quality";
+import {
+  createQualityRule,
+  previewQualityRule,
+  updateQualityRule,
+} from "@/api/data-quality";
 import { listAllMetadata } from "@/api/database";
 import RuleConfigForm from "@/components/data-quality/RuleConfigForm.vue";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -318,6 +322,7 @@ import {
 } from "@/utils/dataQuality";
 import {
   allowedRuleTypes,
+  computeUpdateMask,
   durationToSchedule,
   emptyConfig,
   emptyRuleForm,
@@ -325,34 +330,42 @@ import {
   isThresholdMetricType,
   RULE_TYPE_GROUPS,
   type RuleFormState,
+  ruleToForm,
   type ScheduleUnit,
   suggestedDimension,
   type TargetColumnDetail,
   type TargetSelection,
   targetFromQuery,
+  targetSelectionFromRule,
   type ValidationIssue,
   validateRuleForm,
 } from "@/utils/dataQualityForm";
 import { parseRuleError } from "@/utils/dataQualitySchema";
 
 /**
- * Create one rule on the target the page already names.
+ * Create or edit one rule on the target the page already names.
  *
  * The workspace's "New rule" used to hand off to the full editor, which made the
  * reader pick the target they were already looking at. This dialog fixes the
  * target and keeps the common case inline: title, type, parameters and a dry run.
- * Saving emits the created rule so the page can render it in place; the full
- * editor stays one link away for filters, owner and tags.
+ * Saving emits the rule the server returned so the page can render it in place;
+ * the full editor stays one link away for filters, owner and tags.
+ *
+ * With `rule` set the dialog edits that rule instead: the form starts from it and
+ * saving sends only the fields that actually changed, so a rename does not rewrite
+ * the config, and an edit with no change sends nothing at all.
  */
 
 const props = withDefaults(
   defineProps<{
     open: boolean;
-    /** The metadata GUID of the target the rule is created on. */
+    /** The metadata GUID of the target the rule belongs to. */
     targetGuid: string;
     metaType: MetaType;
-    /** The target's display name, used in the title. */
+    /** The target's display name, used in the create title. */
     targetLabel: string;
+    /** The rule to edit; absent means the dialog creates a new one. */
+    rule?: QualityRule;
     /**
      * The contract's default schedule for new rules, in seconds. 0 keeps the form's
      * own default; existing rules are never affected, only this new one.
@@ -376,8 +389,13 @@ const { t } = useI18n();
 const { formatError } = useErrorMessage();
 const authStore = useAuthStore();
 
-const canCreate = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.rules.create")
+const isEdit = computed(() => props.rule !== undefined);
+const canSave = computed(() =>
+  authStore.hasPermission(
+    isEdit.value
+      ? "metaxisdata.dataQuality.rules.update"
+      : "metaxisdata.dataQuality.rules.create"
+  )
 );
 // Preview is a separate permission on the service (`rules.run`): a role allowed
 // to author a rule may still not run one, so the dry run is only attempted when
@@ -386,10 +404,15 @@ const canPreview = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.rules.run")
 );
 
-/** The fixed target, rebuilt from the page's GUID and meta type. */
+/** The fixed target: the edited rule's own, or the page's GUID and meta type. */
 const target = computed<TargetSelection | undefined>(() =>
-  targetFromQuery(props.targetGuid, String(props.metaType))
+  props.rule
+    ? targetSelectionFromRule(props.rule)
+    : targetFromQuery(props.targetGuid, String(props.metaType))
 );
+
+/** The metadata GUID whose columns the config fields suggest. */
+const columnGuid = computed(() => target.value?.guid ?? props.targetGuid);
 
 const form = ref<RuleFormState>(emptyRuleForm());
 const columns = ref<TargetColumnDetail[]>([]);
@@ -397,6 +420,9 @@ const columnNames = computed(() => columns.value.map((column) => column.name));
 const issues = ref<ValidationIssue[]>([]);
 const saveError = ref("");
 const saving = ref(false);
+/** The edit baseline the update mask is computed against. */
+let originalForm: RuleFormState | undefined;
+let originalTarget: TargetSelection | undefined;
 
 /** The rule-type sections, with the types this target cannot watch removed. */
 const ruleTypeGroups = computed(() => {
@@ -434,14 +460,31 @@ const severityOptions = [
   QualitySeverity.CRITICAL,
 ].map((value) => ({ value, key: qualitySeverityKey(value) }));
 
-/** The full editor, prefilled with this target, for what the dialog leaves out. */
-const advancedTo = computed(() => ({
-  name: "DataQualityRuleNew",
-  query: {
-    table_guid: props.targetGuid,
-    meta_type: String(props.metaType),
-  },
-}));
+const title = computed(() => {
+  const rule = props.rule;
+  if (!rule) {
+    return t("dataQuality.composer.title", { target: props.targetLabel });
+  }
+  return t("dataQuality.composer.editTitle", {
+    title: rule.title || rule.name.split("/").pop() || rule.name,
+  });
+});
+
+/** The full editor for what the dialog leaves out; the rule's own page on edit. */
+const advancedTo = computed(() =>
+  props.rule
+    ? {
+        name: "DataQualityRuleEdit",
+        params: { ruleId: props.rule.name.split("/") },
+      }
+    : {
+        name: "DataQualityRuleNew",
+        query: {
+          table_guid: props.targetGuid,
+          meta_type: String(props.metaType),
+        },
+      }
+);
 
 /** A new rule starts on a type this target can watch. */
 function defaultRuleType(): QualityRuleType {
@@ -468,9 +511,16 @@ function initialForm(): RuleFormState {
   return form;
 }
 
-/** The dialog is blank every time it opens, and blank again when it closes. */
+/**
+ * The form each opening starts from: the rule being edited, or a blank new one
+ * carrying the contract's defaults. Closing resets too, so a reopened dialog
+ * never shows the previous session's values or error.
+ */
 function reset() {
-  form.value = initialForm();
+  const rule = props.rule;
+  form.value = rule ? ruleToForm(rule) : initialForm();
+  originalForm = rule ? ruleToForm(rule) : undefined;
+  originalTarget = rule ? targetSelectionFromRule(rule) : undefined;
   columns.value = [];
   issues.value = [];
   saveError.value = "";
@@ -511,13 +561,13 @@ function setScheduleUnit(value: unknown) {
  * column control accepts free text, so the dialog keeps working without it.
  */
 async function loadColumns() {
-  const guid = props.targetGuid;
+  const guid = columnGuid.value;
   try {
     const items = await listAllMetadata({
       parentGuid: guid,
       metaType: MetaType.COLUMN,
     });
-    if (!props.open || guid !== props.targetGuid) {
+    if (!props.open || guid !== columnGuid.value) {
       return;
     }
     columns.value = items.map((item) => {
@@ -531,15 +581,15 @@ async function loadColumns() {
       };
     });
   } catch {
-    if (props.open && guid === props.targetGuid) {
+    if (props.open && guid === columnGuid.value) {
       columns.value = [];
     }
   }
 }
 
 watch(
-  () => props.open,
-  (isOpen) => {
+  () => [props.open, props.rule?.name] as const,
+  ([isOpen]) => {
     reset();
     if (isOpen) {
       void loadColumns();
@@ -559,13 +609,34 @@ function onOpenChange(value: boolean) {
   close();
 }
 
+/** The server's own wording for a rejected rule, rendered in place. */
+function saveFailure(e: unknown) {
+  saveError.value = parseRuleError(
+    formatError(e, "dataQuality.editor.saveFailed")
+  ).message;
+}
+
 /**
- * Validate, dry-run when allowed, then create. The dry run is what turns a rule
- * that cannot compile into an inline message instead of a create failure; a
- * caller without `rules.run` skips it and lets the create carry the verdict.
+ * Compile and probe the rule without saving it. Returns false when the server
+ * rejected it; the message is already in the dialog.
+ */
+async function runPreview(rule: QualityRule): Promise<boolean> {
+  try {
+    await previewQualityRule(rule);
+    return true;
+  } catch (e: unknown) {
+    saveFailure(e);
+    return false;
+  }
+}
+
+/**
+ * Validate, dry-run when allowed, then create or update. The dry run turns a rule
+ * that cannot compile into an inline message instead of a write failure; a caller
+ * without `rules.run` skips it and lets the write carry the verdict.
  */
 async function save() {
-  if (!canCreate.value || saving.value) {
+  if (!canSave.value || saving.value) {
     return;
   }
   saveError.value = "";
@@ -573,19 +644,20 @@ async function save() {
   if (issues.value.length > 0 || !target.value) {
     return;
   }
-  const rule = formToRule(form.value, { target: target.value });
+  if (props.rule) {
+    await saveEdit(props.rule, target.value);
+  } else {
+    await saveCreate(target.value);
+  }
+}
+
+async function saveCreate(selection: TargetSelection) {
+  const rule = formToRule(form.value, { target: selection });
   rule.state = QualityRuleState.ENABLED;
   saving.value = true;
   try {
-    if (canPreview.value) {
-      try {
-        await previewQualityRule(rule);
-      } catch (e: unknown) {
-        saveError.value = parseRuleError(
-          formatError(e, "dataQuality.editor.saveFailed")
-        ).message;
-        return;
-      }
+    if (canPreview.value && !(await runPreview(rule))) {
+      return;
     }
     let created: QualityRule;
     try {
@@ -593,13 +665,47 @@ async function save() {
     } catch (e: unknown) {
       // The server's Invalid message names the field or the compiled-SQL
       // problem; showing it here keeps the form and its input intact.
-      saveError.value = parseRuleError(
-        formatError(e, "dataQuality.editor.saveFailed")
-      ).message;
+      saveFailure(e);
       return;
     }
     notify.success(t("dataQuality.editor.created"));
     emit("saved", created);
+    emit("update:open", false);
+  } finally {
+    saving.value = false;
+  }
+}
+
+/**
+ * An edit sends only the fields that changed. The local mask runs before the dry
+ * run, so a save with nothing to record closes the dialog instead of sending a
+ * request whose only possible answer is "no changes".
+ */
+async function saveEdit(original: QualityRule, selection: TargetSelection) {
+  const rule = formToRule(form.value, { base: original, target: selection });
+  const mask = computeUpdateMask(
+    { form: originalForm ?? form.value, target: originalTarget },
+    { form: form.value, target: selection }
+  );
+  if (mask.length === 0) {
+    notify.info(t("dataQuality.editor.noChanges"));
+    emit("update:open", false);
+    return;
+  }
+  saving.value = true;
+  try {
+    if (canPreview.value && !(await runPreview(rule))) {
+      return;
+    }
+    let updated: QualityRule;
+    try {
+      updated = await updateQualityRule(rule, mask);
+    } catch (e: unknown) {
+      saveFailure(e);
+      return;
+    }
+    notify.success(t("dataQuality.editor.updated"));
+    emit("saved", updated);
     emit("update:open", false);
   } finally {
     saving.value = false;

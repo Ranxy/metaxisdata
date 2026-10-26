@@ -20,6 +20,10 @@ import (
 // unresolved issue, so the bound is above the reachable count.
 const qualityTargetOpenIssueLimit = 200
 
+// qualityTargetRuleHistoryLimit is how many completed executions per rule the
+// workspace's history strip shows.
+const qualityTargetRuleHistoryLimit = 20
+
 // ListQualityTargets lists the targets that carry quality rules, one row per
 // table or view. The aggregation happens in the store, so the directory costs one
 // query rather than paging through every rule.
@@ -112,6 +116,14 @@ func (s *DataQualityService) GetQualityTarget(ctx context.Context, req *connect.
 	if err != nil {
 		return nil, err
 	}
+	ruleIDs := make([]int64, 0, len(rules))
+	for _, rule := range rules {
+		ruleIDs = append(ruleIDs, rule.ID)
+	}
+	history, err := s.store.ListRecentQualityExecutionsByRuleIDs(ctx, ruleIDs, qualityTargetRuleHistoryLimit)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the rules' recent executions")
+	}
 	schemaChanged, err := s.targetSchemaChanges(ctx, rules)
 	if err != nil {
 		return nil, err
@@ -185,6 +197,13 @@ func (s *DataQualityService) GetQualityTarget(ctx context.Context, req *connect.
 			}
 		}
 		response.QualityRules = append(response.QualityRules, converted)
+		if executions := history[rule.ID]; len(executions) > 0 {
+			entry := &v1pb.QualityRuleHistory{Rule: formatQualityRuleName(workspaceID, rule.ResourceID)}
+			for _, execution := range executions {
+				entry.Executions = append(entry.Executions, convertQualityExecutionSummary(workspaceID, execution))
+			}
+			response.RuleHistory = append(response.RuleHistory, entry)
+		}
 	}
 	for _, issue := range openIssues {
 		response.OpenIssues = append(response.OpenIssues, convertQualityIssue(workspaceID, issue, ruleNames[issue.RuleID]))

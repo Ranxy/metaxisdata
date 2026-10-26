@@ -1325,6 +1325,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.QualityRuleHistory"><span class="badge">M</span>QualityRuleHistory</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.QualityStatusCounts"><span class="badge">M</span>QualityStatusCounts</a>
                 </li>
               
@@ -13602,6 +13606,15 @@ separately when it holds it. </p></td>
 readable when it is set, because their target path is a snapshot. </p></td>
                 </tr>
               
+                <tr>
+                  <td>rule_history</td>
+                  <td><a href="#metaxisdata.v1.QualityRuleHistory">QualityRuleHistory</a></td>
+                  <td>repeated</td>
+                  <td><p>Each rule&#39;s recent completed executions, newest first, so the workspace can
+draw a per-rule history strip without one request per rule. Rules with no
+completed execution are absent. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -16375,6 +16388,37 @@ and results are still recorded. </p></td>
                   <td><a href="#double">double</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityRuleHistory">QualityRuleHistory</h3>
+        <p>QualityRuleHistory is one rule's recent completed executions.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>rule</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityRules/{quality_rule} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>executions</td>
+                  <td><a href="#metaxisdata.v1.QualityExecutionSummary">QualityExecutionSummary</a></td>
+                  <td>repeated</td>
+                  <td><p>Newest first. At most 20 are returned. </p></td>
                 </tr>
               
             </tbody>

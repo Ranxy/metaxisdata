@@ -2534,4 +2534,19 @@ func TestDataQualityContractRealServerIntegration(t *testing.T) {
 	// reads COUNT(*) over the filtered rows.
 	execution := fixture.runToCompletion(t, rule.GetName())
 	require.Contains(t, execution.GetExecutedSql(), "`id` > ?", "the contract filter is ANDed into the rule's SQL")
+
+	// The workspace gets each rule's recent executions in the same read.
+	detail, err := fixture.dataQuality.GetQualityTarget(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.GetQualityTargetRequest{
+			Parent:     "workspaces/-",
+			TargetGuid: fixture.usersGUID,
+			MetaType:   v1pb.MetaType_TABLE,
+		}))
+	require.NoError(t, err)
+	historyByRule := make(map[string]*v1pb.QualityRuleHistory, len(detail.Msg.GetRuleHistory()))
+	for _, history := range detail.Msg.GetRuleHistory() {
+		historyByRule[history.GetRule()] = history
+	}
+	require.Contains(t, historyByRule, rule.GetName())
+	require.Len(t, historyByRule[rule.GetName()].GetExecutions(), 1)
 }
