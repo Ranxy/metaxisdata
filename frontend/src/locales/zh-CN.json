@@ -697,6 +697,7 @@
       "runOpenInList": "在全部执行中查看",
       "runResult": "批次结果",
       "runRunningHint": "批次仍在执行，结果尚不完整。",
+      "runTargets": "{count} 个目标",
       "targetColumn": "目标",
       "targetSearch": "搜索目标、Schema 或实例",
       "viewExecutions": "按执行",

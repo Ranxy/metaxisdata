@@ -1,6 +1,6 @@
 # 数据质量：从「规则目录」到「目标工作台」— 目标中心化重构
 
-> Status: **P0、P1a、P1b、P1 小项、产品层 IA 重构与 Phase A 批次读模型已实现**（分支 `dq-target-centric-refactor`，尚未合并）。P0 目标工作台；P1a 服务端聚合读；P1b 薄契约（目标 filter/默认值/发布/版本/差异）；P1 小项内联编辑、字段覆盖、反向高亮、URL 筛选、每检查历史。**最后一轮删除了全部规则中心页面**（规则目录/整页编辑器/规则详情），检查创建与编辑只存在于目标契约工作台，跨目标 `Checks` 目录只读。Phase A 把内部 `quality_run` 提升为只读批次读模型：执行页默认按目标聚合扫描批次（目标行 → 批次卡 → 检查），平铺执行保留为第二视图；目标工作台右栏显示“最近扫描”。剩余 §4 的 P2（可选）与 Phase B（一目标一批次的调度改造，未做）。
+> Status: **P0、P1a、P1b、P1 小项、产品层 IA 重构、Phase A 批次读模型与 Phase B 批次内目标分组已实现**（分支 `dq-target-centric-refactor`，尚未合并）。P0 目标工作台；P1a 服务端聚合读；P1b 薄契约（目标 filter/默认值/发布/版本/差异）；P1 小项内联编辑、字段覆盖、反向高亮、URL 筛选、每检查历史。**最后一轮删除了全部规则中心页面**（规则目录/整页编辑器/规则详情），检查创建与编辑只存在于目标契约工作台，跨目标 `Checks` 目录只读。Phase A 把内部 `quality_run` 提升为只读批次读模型：执行页默认按目标聚合扫描批次（目标行 → 批次卡 → 检查），平铺执行保留为第二视图；目标工作台右栏显示“最近扫描”。Phase B 在**保持实例级调度**的前提下，把批次内规则按目标分组、按完整目标组切块，使同一目标连续执行且尽量同批。剩余 §4 的 P2（可选）；目标级 schedule / 一目标一批次的调度仍是未做项（当前不需要）。
 > 关联：[data-quality.md](data-quality.md)（现有实现与不变量）、[frontend-ui.md](frontend-ui.md)（布局门禁）、[i18n-glossary.md](i18n-glossary.md)（术语）、[instance-connections.md](instance-connections.md)（执行侧连接准入）、[security-posture.md](../../docs/security-posture.md)（单副本假设）。
 
 ## 0. 结论摘要
@@ -288,6 +288,19 @@ API 语义：
 
 文件：`backend/store/quality_run.go`、`backend/api/v1/data_quality_run.go`、`data_quality_target.go` 的富化、`data_quality_convert.go`；前端 `DataQualityExecutionsPage.vue`、`QualityRunCard.vue`、`TargetScanHistory.vue`、`TargetRecentScanCard.vue`、`DataQualityTargetPage.vue`、`api/data-quality.ts`。测试：`store/quality_run_test.go` 守卫、`api/v1/data_quality_run_test.go`、三个前端组件/页面测试。
 
+### 3.9 批次内按目标分组（Phase B）
+
+**决定：批次仍按实例调度，不改目标级 schedule、不改 `quality_run` 结构。** 一个实例的一份连接租约、一次调度 tick 的规则仍然进同一个派发批次；变化只发生在批次内部的**规则顺序与切块边界**：
+
+- 调度扫描仍按 `(next_run_at, id)` 取 due rules（最老 due 优先），但进入实例后先按目标分组：目标组顺序 = 该目标最早 due 的规则出现顺序；组内保持 due/id 顺序。
+- 切块以**完整目标组**为单位：不超过 50 条上限时优先把整组放进同一批次，放不下就换下一批；只有单个目标自身 >50 条时才允许该目标跨批（这是执行预算的硬约束，不是目标被打散）。
+- `executeBatch` 本来就是顺序 loop，因此同一目标的检查真正**连续执行**；批次的 per-target slice 也因此通常是“该目标本轮的完整集合”，Phase A 的 `latest_run`/批次卡计数含义更准确。
+- 手动运行在 `groupQualityRulesByInstance` 内按 `(target_guid, target_type, id)` 排序，与定时路径的目标局部性一致；响应顺序也因此可复现。
+- 没有把目标组按 GUID 全局排序：那会把“最老 due 先跑”改成字母序，饥饿/公平性变差；GUID 只作为目标身份，不承担调度优先级。
+- 批次卡显示 “{count} 个目标”（多目标批次）让“一批 = 一个实例的一批规则，其中按目标连续”可见。
+
+文件：`backend/runner/qualityrunner/qualityrunner.go`（`planDueBatches` + `planInstanceDueBatches`）、`backend/api/v1/data_quality_service.go`（手动选择排序）、对应单测；前端只增加批次头部的目标数文案。
+
 ## 4. 阶段计划
 
 ### P0（已实现，本分支）
@@ -313,6 +326,18 @@ API 语义：
 5. ✅（此前）视图/物化视图/外部表入口、详情页反向锚点。
 
 粗估：P1a 聚合读约 3–5 人日（已实现）；P1b 契约约 8–12 人日（已实现）；剩余小项约 3–5 人日。
+
+### Phase A（已实现，本分支）
+
+- ✅ `QualityRun` 只读资源 + `ListQualityRuns`/`GetQualityRun`；per-target slice；`QualityTargetSummary.latest_run/run_count`；`QualityExecution.run` + by-run 过滤。
+- ✅ 执行页默认“按目标”聚合（目标 → 批次历史 → 检查），`?view=executions` 平铺保留；目标工作台“最近扫描”卡；亚秒耗时的 `nanos` 修正。
+- 未做：目标级 schedule；批次写路径。
+
+### Phase B（已实现，本分支）
+
+- ✅ 批次仍按实例调度；批次内按目标分组（目标组按最早 due 顺序、组内 due/id 顺序），切块以完整目标组为单位；仅单目标 >50 条时跨批。
+- ✅ 手动运行在实例分组内按 `(target_guid,target_type,id)` 排序，与定时路径一致。
+- 未做（当前不需要）：一目标一批次的调度模型、`quality_run.target_guid`、连接租约与批次身份解耦。若未来要做，需同时决定目标级 schedule 与批量上限，属于新的产品决策。
 
 ### P2（可选）
 

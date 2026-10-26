@@ -14,6 +14,12 @@
         {{ t(qualityExecutionTriggerKey(run.trigger)) }}
       </Badge>
       <span
+        v-if="run.targets.length > 1"
+        class="text-xs text-muted-foreground"
+      >
+        {{ t("dataQuality.executions.runTargets", { count: run.targets.length }) }}
+      </span>
+      <span
         v-if="run.initiator"
         class="text-xs text-muted-foreground"
         :title="run.initiator"

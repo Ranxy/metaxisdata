@@ -2738,11 +2738,16 @@ func TestDataQualityRunsRealServerIntegration(t *testing.T) {
 	usersRule := fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
 		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
 		fixture.usersGUID, qualityRowCountConfig(1))
+	// A second rule on the same target: Phase B keeps the target's rules together
+	// in one batch (and the batch executes them back to back).
+	usersNullRule := fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		fixture.usersGUID, qualityColumnConfig("name"))
 	ordersRule := fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
 		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
 		ordersGUID, qualityRowCountConfig(1))
 
-	executions := fixture.runRules(t, usersRule.GetName(), ordersRule.GetName())
+	executions := fixture.runRules(t, usersRule.GetName(), usersNullRule.GetName(), ordersRule.GetName())
 	runName := executions[0].GetRun()
 	require.NotEmpty(t, runName, "an execution names the batch that planned it")
 	for _, execution := range executions {
@@ -2756,16 +2761,18 @@ func TestDataQualityRunsRealServerIntegration(t *testing.T) {
 	require.Equal(t, runName, run.Msg.GetName())
 	require.Equal(t, v1pb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL, run.Msg.GetTrigger())
 	require.Equal(t, v1pb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED, run.Msg.GetState())
-	require.Equal(t, int32(2), run.Msg.GetCounts().GetTotal())
+	require.Equal(t, int32(3), run.Msg.GetCounts().GetTotal())
 	require.Len(t, run.Msg.GetTargets(), 2, "one slice per target, not per execution")
 	slices := make(map[string]*v1pb.QualityRunTarget, len(run.Msg.GetTargets()))
 	for _, slice := range run.Msg.GetTargets() {
 		require.Equal(t, runName, slice.GetRun())
-		require.Equal(t, int32(1), slice.GetCounts().GetTotal())
 		slices[slice.GetTarget().GetMetaGuid()] = slice
 	}
 	require.Contains(t, slices, fixture.usersGUID)
 	require.Contains(t, slices, ordersGUID)
+	require.Equal(t, int32(2), slices[fixture.usersGUID].GetCounts().GetTotal(),
+		"both checks of the target stay in the same batch")
+	require.Equal(t, int32(1), slices[ordersGUID].GetCounts().GetTotal())
 	require.Equal(t, int32(1), slices[fixture.usersGUID].GetRuleRevisionMin())
 
 	// The run directory filters by target and pages like the other lists.
@@ -2787,7 +2794,7 @@ func TestDataQualityRunsRealServerIntegration(t *testing.T) {
 			PageSize: 10,
 		}))
 	require.NoError(t, err)
-	require.Len(t, byRun.Msg.GetQualityExecutions(), 2)
+	require.Len(t, byRun.Msg.GetQualityExecutions(), 3)
 	for _, execution := range byRun.Msg.GetQualityExecutions() {
 		require.Equal(t, runName, execution.GetRun())
 	}
@@ -2803,7 +2810,8 @@ func TestDataQualityRunsRealServerIntegration(t *testing.T) {
 	latest := detail.Msg.GetSummary().GetLatestRun()
 	require.NotNil(t, latest)
 	require.Equal(t, runName, latest.GetRun())
-	require.Equal(t, int32(1), latest.GetCounts().GetTotal())
+	require.Equal(t, int32(2), latest.GetCounts().GetTotal(),
+		"the latest scan carries both checks of the target")
 	require.GreaterOrEqual(t, detail.Msg.GetSummary().GetRunCount(), int32(1))
 
 	// A run name from another resource shape is rejected.

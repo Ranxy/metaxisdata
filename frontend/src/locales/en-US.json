@@ -697,6 +697,7 @@
       "runOpenInList": "Open in all executions",
       "runResult": "Batch result",
       "runRunningHint": "The batch is still running; results are incomplete.",
+      "runTargets": "{count} targets",
       "targetColumn": "Target",
       "targetSearch": "Search targets, schemas or instances",
       "viewExecutions": "By execution",

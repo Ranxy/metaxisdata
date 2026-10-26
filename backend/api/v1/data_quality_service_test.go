@@ -245,11 +245,40 @@ func TestGroupQualityRulesByInstance(t *testing.T) {
 	require.Equal(t, []string{"instance_1", "instance_2"}, order)
 	require.Len(t, groups["instance_1"], 1)
 	require.Len(t, groups["instance_2"], 2)
-	require.Equal(t, int64(3), groups["instance_2"][1].ID)
+	require.Equal(t, int64(3), groups["instance_2"][0].ID, "customers sorts before orders by target GUID")
+	require.Equal(t, int64(1), groups["instance_2"][1].ID)
 
 	groups, order = groupQualityRulesByInstance(nil)
 	require.Empty(t, groups)
 	require.Empty(t, order)
+}
+
+// A manual batch executes its tasks in order, so the same target's checks must be
+// adjacent even when the selection resolved them interleaved.
+func TestGroupQualityRulesByInstanceKeepsTargetsTogether(t *testing.T) {
+	t.Parallel()
+
+	rules := []*store.QualityRuleMessage{
+		{ID: 1, TargetGUID: "instance_1;shop;public;orders", TargetType: storepb.MetaType_TABLE},
+		{ID: 2, TargetGUID: "instance_1;shop;public;customers", TargetType: storepb.MetaType_TABLE},
+		{ID: 3, TargetGUID: "instance_1;shop;public;orders", TargetType: storepb.MetaType_TABLE},
+		{ID: 4, TargetGUID: "instance_1;shop;public;customers", TargetType: storepb.MetaType_TABLE},
+	}
+	groups, _ := groupQualityRulesByInstance(rules)
+	require.Equal(t, int64(2), groups["instance_1"][0].ID)
+	require.Equal(t, int64(4), groups["instance_1"][1].ID)
+	require.Equal(t, int64(1), groups["instance_1"][2].ID)
+	require.Equal(t, int64(3), groups["instance_1"][3].ID)
+
+	// Same GUID, different object type: both the target and its type sort, so a
+	// table and a same-named view never interleave their rules.
+	typed := []*store.QualityRuleMessage{
+		{ID: 1, TargetGUID: "instance_1;shop;public;orders", TargetType: storepb.MetaType_VIEW},
+		{ID: 2, TargetGUID: "instance_1;shop;public;orders", TargetType: storepb.MetaType_TABLE},
+	}
+	groups, _ = groupQualityRulesByInstance(typed)
+	require.Equal(t, int64(2), groups["instance_1"][0].ID)
+	require.Equal(t, int64(1), groups["instance_1"][1].ID)
 }
 
 func TestDedupeInt64(t *testing.T) {

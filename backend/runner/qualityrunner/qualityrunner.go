@@ -196,7 +196,9 @@ type manualRun struct {
 }
 
 // dueBatchPlan is one internal batch the due scan is about to create: one
-// instance, at most maxExecutionsPerBatch rules, already chunked.
+// instance, at most maxExecutionsPerBatch rules, already chunked. Rules are
+// ordered by target so a target's checks run back to back, and a chunk boundary
+// normally falls between targets rather than inside one.
 type dueBatchPlan struct {
 	instanceResourceID string
 	rules              []*store.QualityRuleMessage
@@ -1385,6 +1387,12 @@ func nextRunAt(now time.Time, interval time.Duration) time.Time {
 // rules into batches of at most maxExecutionsPerBatch. Instance order is the order
 // the rules became due in, so the oldest due rule is handled first and the
 // resulting plans keep each instance's chunks adjacent for serial execution.
+//
+// Inside one instance the rules are grouped by target before chunking: the batch
+// executes its tasks sequentially, so a target's checks run back to back, and a
+// chunk boundary falls between targets whenever the cap allows it. Target order is
+// still the order the target first became due in, which keeps the oldest work first
+// instead of reordering the whole instance alphabetically by GUID.
 func planDueBatches(rules []*store.QualityRuleMessage, maxExecutionsPerBatch int) []dueBatchPlan {
 	if maxExecutionsPerBatch <= 0 {
 		return nil
@@ -1409,15 +1417,62 @@ func planDueBatches(rules []*store.QualityRuleMessage, maxExecutionsPerBatch int
 
 	plans := make([]dueBatchPlan, 0, len(rules)/maxExecutionsPerBatch+1)
 	for _, instance := range instanceOrder {
-		instanceRules := byInstance[instance]
-		for start := 0; start < len(instanceRules); start += maxExecutionsPerBatch {
-			end := min(start+maxExecutionsPerBatch, len(instanceRules))
+		plans = append(plans, planInstanceDueBatches(instance, byInstance[instance], maxExecutionsPerBatch)...)
+	}
+	return plans
+}
+
+// dueTargetKey identifies one target inside an instance. The object type is part
+// of the key because a metadata GUID is not unique across object types.
+type dueTargetKey struct {
+	guid     string
+	metaType storepb.MetaType
+}
+
+// planInstanceDueBatches groups one instance's due rules by target, then packs
+// whole target groups into batches. A target larger than the cap is split because
+// its rules cannot fit one batch; every other target stays in a single batch and
+// keeps its rules adjacent.
+func planInstanceDueBatches(instance string, rules []*store.QualityRuleMessage, maxExecutionsPerBatch int) []dueBatchPlan {
+	targetOrder := make([]dueTargetKey, 0, len(rules))
+	byTarget := make(map[dueTargetKey][]*store.QualityRuleMessage, len(rules))
+	for _, rule := range rules {
+		if rule == nil {
+			continue
+		}
+		key := dueTargetKey{guid: rule.TargetGUID, metaType: rule.TargetType}
+		if _, seen := byTarget[key]; !seen {
+			targetOrder = append(targetOrder, key)
+		}
+		byTarget[key] = append(byTarget[key], rule)
+	}
+
+	plans := make([]dueBatchPlan, 0, len(rules)/maxExecutionsPerBatch+1)
+	current := make([]*store.QualityRuleMessage, 0, maxExecutionsPerBatch)
+	flush := func() {
+		if len(current) == 0 {
+			return
+		}
+		plans = append(plans, dueBatchPlan{instanceResourceID: instance, rules: current})
+		current = nil
+	}
+	for _, key := range targetOrder {
+		group := byTarget[key]
+		// A target over the cap is the only case where one target spans batches.
+		for len(group) > maxExecutionsPerBatch {
+			flush()
 			plans = append(plans, dueBatchPlan{
 				instanceResourceID: instance,
-				rules:              instanceRules[start:end],
+				rules:              group[:maxExecutionsPerBatch],
 			})
+			group = group[maxExecutionsPerBatch:]
 		}
+		if len(current)+len(group) > maxExecutionsPerBatch {
+			flush()
+		}
+		current = append(current, group...)
 	}
+	flush()
 	return plans
 }
 

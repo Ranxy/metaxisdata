@@ -209,6 +209,28 @@ describe("QualityRunCard", () => {
     expect(text).toContain("2 s");
   });
 
+  it("names how many targets a multi-target batch covered", async () => {
+    const single = await mountCard();
+    expect(single.wrapper.text()).not.toContain(
+      labels()("dataQuality.executions.runTargets", { count: 1 })
+    );
+
+    const run = runFixture();
+    run.targets = [
+      ...run.targets,
+      create(QualityRunTargetSchema, {
+        target: create(QualityTargetSchema, {
+          metaGuid: "inst1;shop;public;customers",
+          metaType: MetaType.TABLE,
+        }),
+      }),
+    ];
+    const { wrapper } = await mountCard({ run });
+    expect(wrapper.text()).toContain(
+      labels()("dataQuality.executions.runTargets", { count: 2 })
+    );
+  });
+
   it("shows the rule revision range when the slice judged several revisions", async () => {
     const { wrapper } = await mountCard({
       run: runFixture({ min: 3, max: 5 }),

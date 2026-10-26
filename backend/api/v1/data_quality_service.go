@@ -2,6 +2,7 @@ package v1
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"fmt"
 	"log/slog"
@@ -1092,6 +1093,11 @@ func (s *DataQualityService) selectQualityRulesForRun(ctx context.Context, reque
 // groupQualityRulesByInstance groups the selection by the instance its target
 // lives in. A rule whose GUID has no instance segment is dropped: a rule that was
 // validated at save time always has one.
+//
+// Within an instance the rules are ordered by target, so a manual batch runs one
+// target's checks together, matching the scheduler's target-grouped due plan. The
+// request itself does not fix this order: a rule list is resolved through the store
+// and the client's selection order is not meaningful for execution.
 func groupQualityRulesByInstance(rules []*store.QualityRuleMessage) (map[string][]*store.QualityRuleMessage, []string) {
 	groups := make(map[string][]*store.QualityRuleMessage)
 	order := make([]string, 0, len(rules))
@@ -1107,6 +1113,17 @@ func groupQualityRulesByInstance(rules []*store.QualityRuleMessage) (map[string]
 	}
 	// A deterministic response order makes the planned executions reproducible.
 	slices.Sort(order)
+	for _, instance := range order {
+		slices.SortStableFunc(groups[instance], func(left, right *store.QualityRuleMessage) int {
+			if diff := cmp.Compare(left.TargetGUID, right.TargetGUID); diff != 0 {
+				return diff
+			}
+			if diff := cmp.Compare(left.TargetType, right.TargetType); diff != 0 {
+				return diff
+			}
+			return cmp.Compare(left.ID, right.ID)
+		})
+	}
 	return groups, order
 }
 
