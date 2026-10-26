@@ -191,12 +191,12 @@ type DataQualityServiceClient interface {
 	ListQualityExecutions(context.Context, *connect.Request[v1.ListQualityExecutionsRequest]) (*connect.Response[v1.ListQualityExecutionsResponse], error)
 	// Read one execution: its state, verdict, and the evidence behind it.
 	GetQualityExecution(context.Context, *connect.Request[v1.GetQualityExecutionRequest]) (*connect.Response[v1.QualityExecution], error)
-	// List runs, newest first. A run is one dispatch batch: the executions one
-	// scheduler tick or one manual request planned together. Runs are the
-	// batch-level read model the execution directory groups by target; each run
-	// carries one slice per target it touched, with the slice's counts.
+	// List runs, newest first. A run is one dispatch batch that belongs to one
+	// target: the executions one scheduler tick or one manual request planned for
+	// that target. Runs are the batch-level read model the execution directory
+	// groups by target; the run itself carries the target and its counts.
 	ListQualityRuns(context.Context, *connect.Request[v1.ListQualityRunsRequest]) (*connect.Response[v1.ListQualityRunsResponse], error)
-	// Read one run, with every target slice it touched.
+	// Read one run: its target, state, verdict and counts.
 	GetQualityRun(context.Context, *connect.Request[v1.GetQualityRunRequest]) (*connect.Response[v1.QualityRun], error)
 	// List quality issues, newest first.
 	ListQualityIssues(context.Context, *connect.Request[v1.ListQualityIssuesRequest]) (*connect.Response[v1.ListQualityIssuesResponse], error)
@@ -839,12 +839,12 @@ type DataQualityServiceHandler interface {
 	ListQualityExecutions(context.Context, *connect.Request[v1.ListQualityExecutionsRequest]) (*connect.Response[v1.ListQualityExecutionsResponse], error)
 	// Read one execution: its state, verdict, and the evidence behind it.
 	GetQualityExecution(context.Context, *connect.Request[v1.GetQualityExecutionRequest]) (*connect.Response[v1.QualityExecution], error)
-	// List runs, newest first. A run is one dispatch batch: the executions one
-	// scheduler tick or one manual request planned together. Runs are the
-	// batch-level read model the execution directory groups by target; each run
-	// carries one slice per target it touched, with the slice's counts.
+	// List runs, newest first. A run is one dispatch batch that belongs to one
+	// target: the executions one scheduler tick or one manual request planned for
+	// that target. Runs are the batch-level read model the execution directory
+	// groups by target; the run itself carries the target and its counts.
 	ListQualityRuns(context.Context, *connect.Request[v1.ListQualityRunsRequest]) (*connect.Response[v1.ListQualityRunsResponse], error)
-	// Read one run, with every target slice it touched.
+	// Read one run: its target, state, verdict and counts.
 	GetQualityRun(context.Context, *connect.Request[v1.GetQualityRunRequest]) (*connect.Response[v1.QualityRun], error)
 	// List quality issues, newest first.
 	ListQualityIssues(context.Context, *connect.Request[v1.ListQualityIssuesRequest]) (*connect.Response[v1.ListQualityIssuesResponse], error)

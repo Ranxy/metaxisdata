@@ -1345,10 +1345,6 @@
                 </li>
               
                 <li>
-                  <a href="#metaxisdata.v1.QualityRunTarget"><span class="badge">M</span>QualityRunTarget</a>
-                </li>
-              
-                <li>
                   <a href="#metaxisdata.v1.QualityStatusCounts"><span class="badge">M</span>QualityStatusCounts</a>
                 </li>
               
@@ -14466,7 +14462,15 @@ returned. The maximum value is 1000; values above 1000 are coerced to 1000. </p>
                   <td>target_guid</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p>Only runs that planned at least one execution for this target GUID. </p></td>
+                  <td><p>Only runs that belong to this target GUID. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p>The target&#39;s object type. Optional when the caller only knows the GUID; the
+target workspace passes it because a GUID is not unique across object types. </p></td>
                 </tr>
               
                 <tr>
@@ -16614,7 +16618,7 @@ and results are still recorded. </p></td>
         
       
         <h3 id="metaxisdata.v1.QualityRun">QualityRun</h3>
-        <p>QualityRun is one dispatch batch: the executions a scheduler tick or a manual</p><p>request planned together. It is a projection over quality_run and the</p><p>executions it planned, not a second source of truth; the execution remains the</p><p>per-check unit and the evidence.</p>
+        <p>QualityRun is one dispatch batch that belongs to one target: the executions a</p><p>scheduler tick or a manual request planned for that target together. It is a</p><p>projection over quality_run and the executions it planned, not a second source</p><p>of truth; the execution remains the per-check unit and the evidence. The batch</p><p>counts and outcome are therefore the target's counts and outcome.</p>
 
         
           <table class="field-table">
@@ -16693,100 +16697,26 @@ Format: users/{user} </p></td>
                 </tr>
               
                 <tr>
-                  <td>targets</td>
-                  <td><a href="#metaxisdata.v1.QualityRunTarget">QualityRunTarget</a></td>
-                  <td>repeated</td>
-                  <td><p>One slice per target the batch planned executions for. A scheduled batch
-covers one instance, so it can name several targets; a manual target run
-names one. </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
-        <h3 id="metaxisdata.v1.QualityRunTarget">QualityRunTarget</h3>
-        <p>QualityRunTarget is one target's slice of a run: what that run did to that</p><p>target. The directory and the target workspace show this slice, not the</p><p>batch-wide counts, because a batch can cover several targets.</p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
                   <td>target</td>
                   <td><a href="#metaxisdata.v1.QualityTarget">QualityTarget</a></td>
                   <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>counts</td>
-                  <td><a href="#metaxisdata.v1.QualityStatusCounts">QualityStatusCounts</a></td>
-                  <td></td>
-                  <td><p>The slice&#39;s tally: total planned executions for this target, and the
-verdicts they reached. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>outcome</td>
-                  <td><a href="#metaxisdata.v1.QualityStatus">QualityStatus</a></td>
-                  <td></td>
-                  <td><p>The worst verdict in this slice; unset while no execution is terminal. </p></td>
+                  <td><p>Scheduling is a property of the target, so each batch belongs to exactly one
+target; a manual selection that spans targets is split into one batch per
+target. </p></td>
                 </tr>
               
                 <tr>
                   <td>rule_revision_min</td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
-                  <td><p>The range of rule revisions this slice judged, so two batches are only
-compared when they ran the same definition. Zero when the slice is empty. </p></td>
+                  <td><p>The range of rule revisions the batch&#39;s executions actually judged, so two
+batches are only compared when they ran the same definitions. Zero while no
+execution has run. </p></td>
                 </tr>
               
                 <tr>
                   <td>rule_revision_max</td>
                   <td><a href="#int32">int32</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>start_time</td>
-                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>finish_time</td>
-                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
-                  <td></td>
-                  <td><p>Unset while the slice has no terminal execution. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>run</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>The run this slice belongs to, repeated here so the slice can stand alone as
-a target&#39;s `latest_run`. Format: workspaces/{workspace}/qualityRuns/{quality_run} </p></td>
-                </tr>
-              
-                <tr>
-                  <td>state</td>
-                  <td><a href="#metaxisdata.v1.QualityExecutionState">QualityExecutionState</a></td>
-                  <td></td>
-                  <td><p>The parent batch&#39;s lifecycle, repeated for the same reason. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>trigger</td>
-                  <td><a href="#metaxisdata.v1.QualityExecutionTrigger">QualityExecutionTrigger</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
@@ -17567,18 +17497,18 @@ snapshot, but runs are skipped. </p></td>
               
                 <tr>
                   <td>latest_run</td>
-                  <td><a href="#metaxisdata.v1.QualityRunTarget">QualityRunTarget</a></td>
+                  <td><a href="#metaxisdata.v1.QualityRun">QualityRun</a></td>
                   <td></td>
-                  <td><p>The target&#39;s slice of the most recent run that planned any of its checks.
-This is the per-target batch summary the directory and the workspace show;
-unset when the target has never run. </p></td>
+                  <td><p>The target&#39;s most recent run. A run belongs to one target, so it is the
+per-target batch summary the directory and the workspace show; unset when the
+target has never run. </p></td>
                 </tr>
               
                 <tr>
                   <td>run_count</td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
-                  <td><p>How many dispatch batches have planned at least one check for this target. </p></td>
+                  <td><p>How many dispatch batches belong to this target. </p></td>
                 </tr>
               
                 <tr>
@@ -20238,17 +20168,17 @@ GetQualityExecution for each execution&#39;s state and outcome.</p></td>
                 <td>ListQualityRuns</td>
                 <td><a href="#metaxisdata.v1.ListQualityRunsRequest">ListQualityRunsRequest</a></td>
                 <td><a href="#metaxisdata.v1.ListQualityRunsResponse">ListQualityRunsResponse</a></td>
-                <td><p>List runs, newest first. A run is one dispatch batch: the executions one
-scheduler tick or one manual request planned together. Runs are the
-batch-level read model the execution directory groups by target; each run
-carries one slice per target it touched, with the slice&#39;s counts.</p></td>
+                <td><p>List runs, newest first. A run is one dispatch batch that belongs to one
+target: the executions one scheduler tick or one manual request planned for
+that target. Runs are the batch-level read model the execution directory
+groups by target; the run itself carries the target and its counts.</p></td>
               </tr>
             
               <tr>
                 <td>GetQualityRun</td>
                 <td><a href="#metaxisdata.v1.GetQualityRunRequest">GetQualityRunRequest</a></td>
                 <td><a href="#metaxisdata.v1.QualityRun">QualityRun</a></td>
-                <td><p>Read one run, with every target slice it touched.</p></td>
+                <td><p>Read one run: its target, state, verdict and counts.</p></td>
               </tr>
             
               <tr>

@@ -218,53 +218,54 @@ func TestMergedQualityRuleDefinition(t *testing.T) {
 	require.Equal(t, newConfig, config)
 }
 
-func TestGroupQualityRulesByInstance(t *testing.T) {
+func TestGroupQualityRulesForManualRun(t *testing.T) {
 	t.Parallel()
 
 	rules := []*store.QualityRuleMessage{
-		{ID: 1, TargetGUID: "instance_2;shop;public;orders"},
-		{ID: 2, TargetGUID: "instance_1;shop;public;orders"},
-		{ID: 3, TargetGUID: "instance_2;shop;public;customers"},
+		{ID: 1, TargetGUID: "instance_2;shop;public;orders", TargetType: storepb.MetaType_TABLE},
+		{ID: 2, TargetGUID: "instance_1;shop;public;orders", TargetType: storepb.MetaType_TABLE},
+		{ID: 3, TargetGUID: "instance_2;shop;public;customers", TargetType: storepb.MetaType_TABLE},
 		{ID: 4, TargetGUID: "no-instance-segment"},
 	}
-	groups, order := groupQualityRulesByInstance(rules)
-	require.Equal(t, []string{"instance_1", "instance_2"}, order)
-	require.Len(t, groups["instance_1"], 1)
-	require.Len(t, groups["instance_2"], 2)
-	require.Equal(t, int64(3), groups["instance_2"][0].ID, "customers sorts before orders by target GUID")
-	require.Equal(t, int64(1), groups["instance_2"][1].ID)
+	groups := groupQualityRulesForManualRun(rules)
+	require.Len(t, groups, 3, "the malformed GUID is dropped")
+	require.Equal(t, "instance_1", groups[0].instance)
+	require.Equal(t, "instance_2", groups[1].instance)
+	require.Equal(t, "instance_2;shop;public;customers", groups[1].targetGUID)
+	require.Equal(t, "instance_2;shop;public;orders", groups[2].targetGUID)
+	require.Len(t, groups[2].rules, 1)
+	require.Equal(t, int64(1), groups[2].rules[0].ID)
 
-	groups, order = groupQualityRulesByInstance(nil)
-	require.Empty(t, groups)
-	require.Empty(t, order)
+	require.Empty(t, groupQualityRulesForManualRun(nil))
 }
 
-// A manual batch executes its tasks in order, so the same target's checks must be
-// adjacent even when the selection resolved them interleaved.
-func TestGroupQualityRulesByInstanceKeepsTargetsTogether(t *testing.T) {
+// A manual batch belongs to one target and executes its tasks in order, so all of
+// a target's selected checks share one batch, ordered by rule id.
+func TestGroupQualityRulesForManualRunKeepsOneBatchPerTarget(t *testing.T) {
 	t.Parallel()
 
 	rules := []*store.QualityRuleMessage{
+		{ID: 3, TargetGUID: "instance_1;shop;public;orders", TargetType: storepb.MetaType_TABLE},
 		{ID: 1, TargetGUID: "instance_1;shop;public;orders", TargetType: storepb.MetaType_TABLE},
 		{ID: 2, TargetGUID: "instance_1;shop;public;customers", TargetType: storepb.MetaType_TABLE},
-		{ID: 3, TargetGUID: "instance_1;shop;public;orders", TargetType: storepb.MetaType_TABLE},
-		{ID: 4, TargetGUID: "instance_1;shop;public;customers", TargetType: storepb.MetaType_TABLE},
 	}
-	groups, _ := groupQualityRulesByInstance(rules)
-	require.Equal(t, int64(2), groups["instance_1"][0].ID)
-	require.Equal(t, int64(4), groups["instance_1"][1].ID)
-	require.Equal(t, int64(1), groups["instance_1"][2].ID)
-	require.Equal(t, int64(3), groups["instance_1"][3].ID)
+	groups := groupQualityRulesForManualRun(rules)
+	require.Len(t, groups, 2)
+	require.Equal(t, "instance_1;shop;public;customers", groups[0].targetGUID)
+	require.Equal(t, int64(2), groups[0].rules[0].ID)
+	require.Equal(t, "instance_1;shop;public;orders", groups[1].targetGUID)
+	require.Equal(t, []int64{1, 3}, []int64{groups[1].rules[0].ID, groups[1].rules[1].ID})
 
-	// Same GUID, different object type: both the target and its type sort, so a
-	// table and a same-named view never interleave their rules.
+	// Same GUID, different object type: the type is part of the target identity,
+	// so these are two batches even though the GUID matches.
 	typed := []*store.QualityRuleMessage{
 		{ID: 1, TargetGUID: "instance_1;shop;public;orders", TargetType: storepb.MetaType_VIEW},
 		{ID: 2, TargetGUID: "instance_1;shop;public;orders", TargetType: storepb.MetaType_TABLE},
 	}
-	groups, _ = groupQualityRulesByInstance(typed)
-	require.Equal(t, int64(2), groups["instance_1"][0].ID)
-	require.Equal(t, int64(1), groups["instance_1"][1].ID)
+	groups = groupQualityRulesForManualRun(typed)
+	require.Len(t, groups, 2)
+	require.Equal(t, storepb.MetaType_TABLE, groups[0].targetType)
+	require.Equal(t, storepb.MetaType_VIEW, groups[1].targetType)
 }
 
 func TestDedupeInt64(t *testing.T) {

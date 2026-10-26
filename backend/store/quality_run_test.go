@@ -17,6 +17,9 @@ type qualityRunScannerStub struct {
 	id                 int64
 	resourceID         string
 	instanceResourceID string
+	targetGUID         string
+	targetType         storepb.MetaType
+	targetPath         []byte
 	trigger            storepb.QualityExecutionTrigger
 	status             storepb.QualityExecutionState
 	outcome            sql.NullInt32
@@ -30,13 +33,16 @@ func (s qualityRunScannerStub) Scan(dest ...any) error {
 	*(dest[0].(*int64)) = s.id
 	*(dest[1].(*string)) = s.resourceID
 	*(dest[2].(*string)) = s.instanceResourceID
-	*(dest[3].(*storepb.QualityExecutionTrigger)) = s.trigger
-	*(dest[4].(*storepb.QualityExecutionState)) = s.status
-	*(dest[5].(*sql.NullInt32)) = s.outcome
-	*(dest[6].(*[]byte)) = s.counts
-	*(dest[7].(*sql.NullInt32)) = s.initiatorID
-	*(dest[8].(*time.Time)) = s.startedAt
-	*(dest[9].(*sql.NullTime)) = s.finishedAt
+	*(dest[3].(*string)) = s.targetGUID
+	*(dest[4].(*storepb.MetaType)) = s.targetType
+	*(dest[5].(*[]byte)) = s.targetPath
+	*(dest[6].(*storepb.QualityExecutionTrigger)) = s.trigger
+	*(dest[7].(*storepb.QualityExecutionState)) = s.status
+	*(dest[8].(*sql.NullInt32)) = s.outcome
+	*(dest[9].(*[]byte)) = s.counts
+	*(dest[10].(*sql.NullInt32)) = s.initiatorID
+	*(dest[11].(*time.Time)) = s.startedAt
+	*(dest[12].(*sql.NullTime)) = s.finishedAt
 	return nil
 }
 
@@ -48,6 +54,8 @@ func TestScanQualityRunPendingHasNoOutcomeYet(t *testing.T) {
 		id:                 11,
 		resourceID:         "runs/abc",
 		instanceResourceID: "instances/inst1",
+		targetGUID:         "inst1;shop;public;orders",
+		targetType:         storepb.MetaType_TABLE,
 		trigger:            storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL,
 		status:             storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_PENDING,
 		outcome:            sql.NullInt32{},
@@ -83,6 +91,8 @@ func TestScanQualityRunFinishedCarriesOutcomeAndFinisher(t *testing.T) {
 	run, err := scanQualityRun(qualityRunScannerStub{
 		id:         12,
 		resourceID: "runs/def",
+		targetGUID: "inst1;shop;public;orders",
+		targetType: storepb.MetaType_TABLE,
 		trigger:    storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED,
 		status:     storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED,
 		outcome:    sql.NullInt32{Int32: int32(storepb.QualityStatus_QUALITY_STATUS_FAIL), Valid: true},
@@ -130,6 +140,15 @@ func TestCreateQualityRunValidatesInput(t *testing.T) {
 
 	_, err = s.CreateQualityRun(ctx, &QualityRunMessage{
 		ResourceID: "runs/abc",
+		TargetGUID: "inst1;shop;public;orders",
+		Trigger:    storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL,
+	})
+	require.Equal(t, common.Invalid, common.ErrorCode(err), "missing target type")
+
+	_, err = s.CreateQualityRun(ctx, &QualityRunMessage{
+		ResourceID: "runs/abc",
+		TargetGUID: "inst1;shop;public;orders",
+		TargetType: storepb.MetaType_TABLE,
 		Trigger:    storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL,
 		Status:     storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED,
 	})
@@ -189,6 +208,7 @@ func TestBuildQualityRunWhere(t *testing.T) {
 	status := storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED
 	outcome := storepb.QualityStatus_QUALITY_STATUS_FAIL
 	target := "instance_1;shop;public;orders"
+	targetType := storepb.MetaType_TABLE
 	after := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
 	before := after.Add(24 * time.Hour)
 
@@ -198,18 +218,20 @@ func TestBuildQualityRunWhere(t *testing.T) {
 		Status:             &status,
 		Outcome:            &outcome,
 		TargetGUID:         &target,
+		TargetType:         &targetType,
 		StartedAfter:       &after,
 		StartedBefore:      &before,
 	})
 	joined := strings.Join(where, " AND ")
-	require.Equal(t, []any{"instance_1", int32(trigger), int32(status), int32(outcome), target, after, before}, args)
+	require.Equal(t, []any{"instance_1", int32(trigger), int32(status), int32(outcome), target, int32(targetType), after, before}, args)
 	require.Contains(t, joined, "r.instance_resource_id = $1")
 	require.Contains(t, joined, "r.trigger = $2::int")
 	require.Contains(t, joined, "r.status = $3::int")
 	require.Contains(t, joined, "r.outcome = $4::int")
-	require.Contains(t, joined, "EXISTS (SELECT 1 FROM quality_execution e WHERE e.run_id = r.id AND e.target_guid = $5)")
-	require.Contains(t, joined, "r.started_at >= $6")
-	require.Contains(t, joined, "r.started_at < $7")
+	require.Contains(t, joined, "r.target_guid = $5")
+	require.Contains(t, joined, "r.target_type = $6::int2")
+	require.Contains(t, joined, "r.started_at >= $7")
+	require.Contains(t, joined, "r.started_at < $8")
 }
 
 // The run slice outcome is ranked by the same CASE the target directory uses, with
@@ -234,7 +256,7 @@ func TestQualifyQualityRunColumns(t *testing.T) {
 	t.Parallel()
 
 	qualified := qualifyQualityRunColumns("r")
-	require.Equal(t, "r.id, r.resource_id, r.instance_resource_id, r.trigger, r.status, r.outcome, r.counts, r.initiator_id, r.started_at, r.finished_at", qualified)
+	require.Equal(t, "r.id, r.resource_id, r.instance_resource_id, r.target_guid, r.target_type, r.target_path, r.trigger, r.status, r.outcome, r.counts, r.initiator_id, r.started_at, r.finished_at", qualified)
 	require.Len(t, strings.Split(qualified, ", "), len(strings.Split(qualityRunColumns, ",")))
 }
 
@@ -250,12 +272,10 @@ func TestQualityTargetRunSummaryRowAppendsKeyAndCount(t *testing.T) {
 		TargetGUID: "instance_1;shop;public;orders",
 		TargetType: storepb.MetaType_TABLE,
 		Run:        &QualityRunMessage{ID: 42},
-		Slice:      &QualityRunTargetMessage{RunID: 42},
 		RunCount:   3,
 	}
 	require.Equal(t, "instance_1;shop;public;orders", summary.TargetGUID)
 	require.Equal(t, storepb.MetaType_TABLE, summary.TargetType)
 	require.Equal(t, int64(42), summary.Run.ID)
-	require.Equal(t, int64(42), summary.Slice.RunID)
 	require.Equal(t, int32(3), summary.RunCount)
 }

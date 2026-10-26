@@ -14,7 +14,6 @@ import {
   QualityObservedKind,
   type QualityRun,
   QualityRunSchema,
-  QualityRunTargetSchema,
   QualityStatus,
   QualityStatusCountsSchema,
   QualityTargetPathSchema,
@@ -56,53 +55,33 @@ function target() {
   });
 }
 
-/** Batch-wide counts: deliberately larger than the target slice below. */
-function batchCounts() {
-  return create(QualityStatusCountsSchema, {
-    total: 10,
-    pass: 6,
-    fail: 2,
-    error: 1,
-    skipped: 1,
-  });
-}
-
-/** This target's slice of the batch. */
-function sliceCounts(overrides: Record<string, number> = {}) {
-  return create(QualityStatusCountsSchema, {
-    total: 6,
-    pass: 3,
-    fail: 1,
-    error: 1,
-    skipped: 1,
-    ...overrides,
-  });
-}
-
-function runFixture(revision: { min?: number; max?: number } = {}): QualityRun {
+function runFixture(
+  revision: {
+    min?: number;
+    max?: number;
+    trigger?: QualityExecutionTrigger;
+    counts?: Record<string, number>;
+  } = {}
+): QualityRun {
   return create(QualityRunSchema, {
     name: RUN,
     instance: "instances/prod",
-    trigger: QualityExecutionTrigger.MANUAL,
+    trigger: revision.trigger ?? QualityExecutionTrigger.MANUAL,
     state: QualityExecutionState.COMPLETED,
     outcome: QualityStatus.FAIL,
-    counts: batchCounts(),
+    counts: create(QualityStatusCountsSchema, {
+      total: 6,
+      pass: 3,
+      fail: 1,
+      error: 1,
+      skipped: 1,
+      ...revision.counts,
+    }),
     startTime: timestampFromDate(START),
     finishTime: timestampFromDate(FINISH),
-    targets: [
-      create(QualityRunTargetSchema, {
-        target: target(),
-        counts: sliceCounts(),
-        outcome: QualityStatus.FAIL,
-        ruleRevisionMin: revision.min ?? 7,
-        ruleRevisionMax: revision.max ?? 7,
-        startTime: timestampFromDate(START),
-        finishTime: timestampFromDate(FINISH),
-        run: RUN,
-        state: QualityExecutionState.COMPLETED,
-        trigger: QualityExecutionTrigger.MANUAL,
-      }),
-    ],
+    target: target(),
+    ruleRevisionMin: revision.min ?? 7,
+    ruleRevisionMax: revision.max ?? 7,
   });
 }
 
@@ -185,11 +164,10 @@ beforeEach(() => {
 });
 
 describe("QualityRunCard", () => {
-  it("reports the target's slice, not the batch-wide counts", async () => {
+  it("reports the batch's own counts and revision range", async () => {
     const { wrapper } = await mountCard();
     const text = wrapper.text();
 
-    // Slice verdicts: 3 pass, 1 fail, 1 error, 1 skipped, 6 planned.
     expect(text).toContain("3 Pass");
     expect(text).toContain("1 Fail");
     expect(text).toContain(
@@ -201,50 +179,45 @@ describe("QualityRunCard", () => {
     expect(text).toContain(
       labels()("dataQuality.executions.runFailed", { count: 2 })
     );
-    // The batch-wide tally (6 pass, 10 planned) is not this target's story.
-    expect(text).not.toContain("6 Pass");
-    expect(text).not.toContain(
-      labels()("dataQuality.executions.runChecks", { count: 10 })
-    );
-
     expect(text).toContain(
       labels()("dataQuality.executions.revisionSingle", { revision: 7 })
     );
-    // Two seconds between the slice's start and finish.
+    // The run names the one target it belongs to.
+    expect(text).toContain("public.orders");
+    // Two seconds between the batch's start and finish.
     expect(text).toContain("2 s");
   });
 
-  it("names how many targets a multi-target batch covered", async () => {
-    const single = await mountCard();
-    expect(single.wrapper.text()).not.toContain(
-      labels()("dataQuality.executions.runTargets", { count: 1 })
-    );
-
-    const run = runFixture();
-    run.targets = [
-      ...run.targets,
-      create(QualityRunTargetSchema, {
-        target: create(QualityTargetSchema, {
-          metaGuid: "inst1;shop;public;customers",
-          metaType: MetaType.TABLE,
-        }),
-      }),
-    ];
-    const { wrapper } = await mountCard({ run });
-    expect(wrapper.text()).toContain(
-      labels()("dataQuality.executions.runTargets", { count: 2 })
-    );
+  it("belongs to one target: no multi-target badge", async () => {
+    const { wrapper } = await mountCard();
+    // The run carries one target, so the card names it and never claims a
+    // target count.
+    expect(wrapper.text()).toContain("public.orders");
+    expect(wrapper.text()).not.toMatch(/\d+ targets/i);
   });
 
-  it("says how many of the target's checks this batch covered", async () => {
-    const { wrapper } = await mountCard({ targetRuleCount: 10 });
-    expect(wrapper.text()).toContain(
+  it("says how many checks a scheduled batch covered, never for a manual run", async () => {
+    const scheduled = await mountCard({
+      run: runFixture({ trigger: QualityExecutionTrigger.SCHEDULED }),
+      targetRuleCount: 10,
+    });
+    expect(scheduled.wrapper.text()).toContain(
       labels()("dataQuality.executions.runPartial", { done: 6, all: 10 })
     );
 
-    const complete = await mountCard({ targetRuleCount: 6 });
+    const complete = await mountCard({
+      run: runFixture({ trigger: QualityExecutionTrigger.SCHEDULED }),
+      targetRuleCount: 6,
+    });
     expect(complete.wrapper.text()).not.toContain(
       labels()("dataQuality.executions.runPartial", { done: 6, all: 6 })
+    );
+
+    // A manual run planned an explicit selection; its total is not a partial
+    // view of the target's rules.
+    const manual = await mountCard({ targetRuleCount: 10 });
+    expect(manual.wrapper.text()).not.toContain(
+      labels()("dataQuality.executions.runPartial", { done: 6, all: 10 })
     );
   });
 

@@ -5393,10 +5393,10 @@ paths:
             tags:
                 - DataQualityService
             description: |-
-                List runs, newest first. A run is one dispatch batch: the executions one
-                 scheduler tick or one manual request planned together. Runs are the
-                 batch-level read model the execution directory groups by target; each run
-                 carries one slice per target it touched, with the slice's counts.
+                List runs, newest first. A run is one dispatch batch that belongs to one
+                 target: the executions one scheduler tick or one manual request planned for
+                 that target. Runs are the batch-level read model the execution directory
+                 groups by target; the run itself carries the target and its counts.
             operationId: DataQualityService_ListQualityRuns
             parameters:
                 - name: workspace
@@ -5420,9 +5420,36 @@ paths:
                     type: string
                 - name: targetGuid
                   in: query
-                  description: Only runs that planned at least one execution for this target GUID.
+                  description: Only runs that belong to this target GUID.
                   schema:
                     type: string
+                - name: metaType
+                  in: query
+                  description: |-
+                    The target's object type. Optional when the caller only knows the GUID; the
+                     target workspace passes it because a GUID is not unique across object types.
+                  schema:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - APPLICATION_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - OPENLINEAGE
+                    type: string
+                    format: enum
                 - name: instance
                   in: query
                   description: |-
@@ -5492,7 +5519,7 @@ paths:
         get:
             tags:
                 - DataQualityService
-            description: Read one run, with every target slice it touched.
+            description: 'Read one run: its target, state, verdict and counts.'
             operationId: DataQualityService_GetQualityRun
             parameters:
                 - name: workspace
@@ -11474,84 +11501,31 @@ components:
                     type: string
                     description: Unset while the batch is PENDING or RUNNING.
                     format: date-time
-                targets:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/QualityRunTarget'
-                    description: |-
-                        One slice per target the batch planned executions for. A scheduled batch
-                         covers one instance, so it can name several targets; a manual target run
-                         names one.
-            description: |-
-                QualityRun is one dispatch batch: the executions a scheduler tick or a manual
-                 request planned together. It is a projection over quality_run and the
-                 executions it planned, not a second source of truth; the execution remains the
-                 per-check unit and the evidence.
-        QualityRunTarget:
-            type: object
-            properties:
                 target:
-                    $ref: '#/components/schemas/QualityTarget'
-                counts:
                     allOf:
-                        - $ref: '#/components/schemas/QualityStatusCounts'
+                        - $ref: '#/components/schemas/QualityTarget'
                     description: |-
-                        The slice's tally: total planned executions for this target, and the
-                         verdicts they reached.
-                outcome:
-                    enum:
-                        - QUALITY_STATUS_UNSPECIFIED
-                        - QUALITY_STATUS_PASS
-                        - QUALITY_STATUS_WARN
-                        - QUALITY_STATUS_FAIL
-                        - QUALITY_STATUS_ERROR
-                        - QUALITY_STATUS_SKIPPED
-                        - QUALITY_STATUS_NOT_EVALUATED
-                    type: string
-                    description: The worst verdict in this slice; unset while no execution is terminal.
-                    format: enum
+                        Scheduling is a property of the target, so each batch belongs to exactly one
+                         target; a manual selection that spans targets is split into one batch per
+                         target.
                 ruleRevisionMin:
+                    readOnly: true
                     type: integer
                     description: |-
-                        The range of rule revisions this slice judged, so two batches are only
-                         compared when they ran the same definition. Zero when the slice is empty.
+                        The range of rule revisions the batch's executions actually judged, so two
+                         batches are only compared when they ran the same definitions. Zero while no
+                         execution has run.
                     format: int32
                 ruleRevisionMax:
+                    readOnly: true
                     type: integer
                     format: int32
-                startTime:
-                    type: string
-                    format: date-time
-                finishTime:
-                    type: string
-                    description: Unset while the slice has no terminal execution.
-                    format: date-time
-                run:
-                    type: string
-                    description: |-
-                        The run this slice belongs to, repeated here so the slice can stand alone as
-                         a target's `latest_run`. Format: workspaces/{workspace}/qualityRuns/{quality_run}
-                state:
-                    enum:
-                        - QUALITY_EXECUTION_STATE_UNSPECIFIED
-                        - QUALITY_EXECUTION_STATE_PENDING
-                        - QUALITY_EXECUTION_STATE_RUNNING
-                        - QUALITY_EXECUTION_STATE_COMPLETED
-                        - QUALITY_EXECUTION_STATE_ABANDONED
-                    type: string
-                    description: The parent batch's lifecycle, repeated for the same reason.
-                    format: enum
-                trigger:
-                    enum:
-                        - QUALITY_EXECUTION_TRIGGER_UNSPECIFIED
-                        - QUALITY_EXECUTION_TRIGGER_MANUAL
-                        - QUALITY_EXECUTION_TRIGGER_SCHEDULED
-                    type: string
-                    format: enum
             description: |-
-                QualityRunTarget is one target's slice of a run: what that run did to that
-                 target. The directory and the target workspace show this slice, not the
-                 batch-wide counts, because a batch can cover several targets.
+                QualityRun is one dispatch batch that belongs to one target: the executions a
+                 scheduler tick or a manual request planned for that target together. It is a
+                 projection over quality_run and the executions it planned, not a second source
+                 of truth; the execution remains the per-check unit and the evidence. The batch
+                 counts and outcome are therefore the target's counts and outcome.
         QualityStatusCounts:
             type: object
             properties:
@@ -11959,14 +11933,14 @@ components:
                          snapshot, but runs are skipped.
                 latestRun:
                     allOf:
-                        - $ref: '#/components/schemas/QualityRunTarget'
+                        - $ref: '#/components/schemas/QualityRun'
                     description: |-
-                        The target's slice of the most recent run that planned any of its checks.
-                         This is the per-target batch summary the directory and the workspace show;
-                         unset when the target has never run.
+                        The target's most recent run. A run belongs to one target, so it is the
+                         per-target batch summary the directory and the workspace show; unset when the
+                         target has never run.
                 runCount:
                     type: integer
-                    description: How many dispatch batches have planned at least one check for this target.
+                    description: How many dispatch batches belong to this target.
                     format: int32
                 schedule:
                     allOf:

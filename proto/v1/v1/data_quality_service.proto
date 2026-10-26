@@ -124,17 +124,17 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.executions.get";
   }
 
-  // List runs, newest first. A run is one dispatch batch: the executions one
-  // scheduler tick or one manual request planned together. Runs are the
-  // batch-level read model the execution directory groups by target; each run
-  // carries one slice per target it touched, with the slice's counts.
+  // List runs, newest first. A run is one dispatch batch that belongs to one
+  // target: the executions one scheduler tick or one manual request planned for
+  // that target. Runs are the batch-level read model the execution directory
+  // groups by target; the run itself carries the target and its counts.
   rpc ListQualityRuns(ListQualityRunsRequest) returns (ListQualityRunsResponse) {
     option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityRuns"};
     option (google.api.method_signature) = "parent";
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.executions.list";
   }
 
-  // Read one run, with every target slice it touched.
+  // Read one run: its target, state, verdict and counts.
   rpc GetQualityRun(GetQualityRunRequest) returns (QualityRun) {
     option (google.api.http) = {get: "/v1/{name=workspaces/*/qualityRuns/*}"};
     option (google.api.method_signature) = "name";
@@ -1186,10 +1186,11 @@ message QualityExecutionSummary {
   google.protobuf.Timestamp finish_time = 7;
 }
 
-// QualityRun is one dispatch batch: the executions a scheduler tick or a manual
-// request planned together. It is a projection over quality_run and the
-// executions it planned, not a second source of truth; the execution remains the
-// per-check unit and the evidence.
+// QualityRun is one dispatch batch that belongs to one target: the executions a
+// scheduler tick or a manual request planned for that target together. It is a
+// projection over quality_run and the executions it planned, not a second source
+// of truth; the execution remains the per-check unit and the evidence. The batch
+// counts and outcome are therefore the target's counts and outcome.
 message QualityRun {
   option (google.api.resource) = {
     type: "metaxisdata/QualityRun"
@@ -1226,41 +1227,20 @@ message QualityRun {
   // Unset while the batch is PENDING or RUNNING.
   google.protobuf.Timestamp finish_time = 9;
 
-  // One slice per target the batch planned executions for. A scheduled batch
-  // covers one instance, so it can name several targets; a manual target run
-  // names one.
-  repeated QualityRunTarget targets = 10;
-}
+  // Scheduling is a property of the target, so each batch belongs to exactly one
+  // target; a manual selection that spans targets is split into one batch per
+  // target.
+  QualityTarget target = 11;
 
-// QualityRunTarget is one target's slice of a run: what that run did to that
-// target. The directory and the target workspace show this slice, not the
-// batch-wide counts, because a batch can cover several targets.
-message QualityRunTarget {
-  QualityTarget target = 1;
+  // The range of rule revisions the batch's executions actually judged, so two
+  // batches are only compared when they ran the same definitions. Zero while no
+  // execution has run.
+  int32 rule_revision_min = 12 [(google.api.field_behavior) = OUTPUT_ONLY];
+  int32 rule_revision_max = 13 [(google.api.field_behavior) = OUTPUT_ONLY];
 
-  // The slice's tally: total planned executions for this target, and the
-  // verdicts they reached.
-  QualityStatusCounts counts = 2;
-
-  // The worst verdict in this slice; unset while no execution is terminal.
-  QualityStatus outcome = 3;
-
-  // The range of rule revisions this slice judged, so two batches are only
-  // compared when they ran the same definition. Zero when the slice is empty.
-  int32 rule_revision_min = 4;
-  int32 rule_revision_max = 5;
-
-  google.protobuf.Timestamp start_time = 6;
-  // Unset while the slice has no terminal execution.
-  google.protobuf.Timestamp finish_time = 7;
-
-  // The run this slice belongs to, repeated here so the slice can stand alone as
-  // a target's `latest_run`. Format: workspaces/{workspace}/qualityRuns/{quality_run}
-  string run = 8 [(google.api.resource_reference) = {type: "metaxisdata/QualityRun"}];
-
-  // The parent batch's lifecycle, repeated for the same reason.
-  QualityExecutionState state = 9;
-  QualityExecutionTrigger trigger = 10;
+  // The former per-target slices: a batch now names its target directly.
+  reserved 10;
+  reserved "targets";
 }
 
 message ListQualityRunsRequest {
@@ -1274,8 +1254,12 @@ message ListQualityRunsRequest {
   // A page token, received from a previous ListQualityRuns call.
   string page_token = 3;
 
-  // Only runs that planned at least one execution for this target GUID.
+  // Only runs that belong to this target GUID.
   string target_guid = 4;
+
+  // The target's object type. Optional when the caller only knows the GUID; the
+  // target workspace passes it because a GUID is not unique across object types.
+  MetaType meta_type = 11;
 
   // Only runs admitted against this instance.
   // Format: instances/{instance}
@@ -2447,12 +2431,12 @@ message QualityTargetSummary {
   // snapshot, but runs are skipped.
   bool orphaned = 12;
 
-  // The target's slice of the most recent run that planned any of its checks.
-  // This is the per-target batch summary the directory and the workspace show;
-  // unset when the target has never run.
-  QualityRunTarget latest_run = 13;
+  // The target's most recent run. A run belongs to one target, so it is the
+  // per-target batch summary the directory and the workspace show; unset when the
+  // target has never run.
+  QualityRun latest_run = 13;
 
-  // How many dispatch batches have planned at least one check for this target.
+  // How many dispatch batches belong to this target.
   int32 run_count = 14;
 
   // The target's schedule and next run. A target with rules always has a

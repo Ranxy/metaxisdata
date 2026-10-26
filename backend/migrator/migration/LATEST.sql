@@ -979,14 +979,19 @@ CREATE TABLE IF NOT EXISTS quality_rule_revision (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_rule_revision_rule_rev ON quality_rule_revision(rule_id, revision);
 
--- quality_run is an internal dispatch batch: the rules of one instance that
--- became due in one scheduler tick, or a manual selection grouped by instance.
--- It is never exposed through the API; it exists to admit one connection lease
--- per instance, aggregate a storm notification, and cascade retention.
+-- quality_run is an internal dispatch batch that belongs to one target: the
+-- target's checks that became due in one scheduler tick, or a manual selection
+-- grouped by target. It is never exposed through the API as a write path; it
+-- exists to admit one connection lease per instance, aggregate a storm
+-- notification, and cascade retention. target_path is the display snapshot the
+-- plan used, so the batch stays readable if the target is later orphaned.
 CREATE TABLE IF NOT EXISTS quality_run (
     id BIGSERIAL PRIMARY KEY,
     resource_id TEXT COLLATE "C" NOT NULL,
     instance_resource_id TEXT COLLATE "C" NOT NULL DEFAULT '',
+    target_guid TEXT COLLATE "C" NOT NULL,
+    target_type INT2 NOT NULL,
+    target_path JSONB NOT NULL DEFAULT '{}',
     -- 1 MANUAL, 2 SCHEDULED.
     trigger INT2 NOT NULL,
     -- Lifecycle: 1 PENDING, 2 RUNNING, 3 COMPLETED, 4 ABANDONED (a batch whose
@@ -1005,6 +1010,7 @@ CREATE TABLE IF NOT EXISTS quality_run (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_run_resource_id ON quality_run(resource_id);
 CREATE INDEX IF NOT EXISTS idx_quality_run_started_at ON quality_run(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_quality_run_instance_started ON quality_run(instance_resource_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_quality_run_target_started ON quality_run(target_guid, target_type, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_quality_run_status ON quality_run(status);
 CREATE INDEX IF NOT EXISTS idx_quality_run_outcome ON quality_run(outcome) WHERE outcome IS NOT NULL;
 

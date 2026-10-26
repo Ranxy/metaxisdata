@@ -131,17 +131,13 @@ func TestConvertQualityTargetSummary(t *testing.T) {
 			TargetGUID: "instance-1;shop;public;orders",
 			TargetType: storepb.MetaType_TABLE,
 			Run: &store.QualityRunMessage{
-				ID:        42,
-				Trigger:   storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL,
-				Status:    storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED,
-				StartedAt: finishedAt.Add(-time.Minute),
-			},
-			Slice: &store.QualityRunTargetMessage{
-				RunID:           42,
+				ID:              42,
 				TargetGUID:      "instance-1;shop;public;orders",
 				TargetType:      storepb.MetaType_TABLE,
-				Counts:          &storepb.QualityStatusCounts{Total: 3, Fail: 1, Pass: 2},
+				Trigger:         storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL,
+				Status:          storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED,
 				Outcome:         storepb.QualityStatus_QUALITY_STATUS_FAIL,
+				Counts:          &storepb.QualityStatusCounts{Total: 3, Fail: 1, Pass: 2},
 				RuleRevisionMin: 1,
 				RuleRevisionMax: 2,
 				StartedAt:       finishedAt.Add(-time.Minute),
@@ -162,7 +158,8 @@ func TestConvertQualityTargetSummary(t *testing.T) {
 	require.True(t, summary.GetOrphaned())
 	require.Equal(t, int32(2), summary.GetRunCount())
 	require.NotNil(t, summary.GetLatestRun())
-	require.Equal(t, "workspaces/ws1/qualityRuns/42", summary.GetLatestRun().GetRun())
+	require.Equal(t, "workspaces/ws1/qualityRuns/42", summary.GetLatestRun().GetName())
+	require.Equal(t, "instance-1;shop;public;orders", summary.GetLatestRun().GetTarget().GetMetaGuid())
 	require.Equal(t, v1pb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL, summary.GetLatestRun().GetTrigger())
 	require.Equal(t, v1pb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED, summary.GetLatestRun().GetState())
 	require.Equal(t, int32(3), summary.GetLatestRun().GetCounts().GetTotal())

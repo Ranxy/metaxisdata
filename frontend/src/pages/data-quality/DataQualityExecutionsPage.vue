@@ -268,7 +268,7 @@
                         v-if="partialChecks(summary) > 0"
                         class="mt-1 text-xs text-muted-foreground tabular-nums"
                       >
-                        {{ t("dataQuality.executions.runPartial", { done: runSliceCounts(summary)?.total ?? 0, all: partialChecks(summary) }) }}
+                        {{ t("dataQuality.executions.runPartial", { done: runCounts(summary)?.total ?? 0, all: partialChecks(summary) }) }}
                       </div>
                       <div
                         v-if="unfinishedChecks(summary) > 0"
@@ -323,6 +323,7 @@
                   >
                     <TargetScanHistory
                       :target-guid="targetGuid(summary)"
+                      :meta-type="summary.target?.metaType ?? MetaType.UNSPECIFIED"
                       :rule-titles="ruleTitles"
                       :target-rule-count="summary.ruleCount"
                       :expand-run="expandedRun"
@@ -1099,7 +1100,7 @@ function latestRun(summary: QualityTargetSummary) {
   return summary.latestRun;
 }
 
-function runSliceCounts(
+function runCounts(
   summary: QualityTargetSummary
 ): QualityStatusCounts | undefined {
   return summary.latestRun?.counts;
@@ -1147,9 +1148,9 @@ function verdictCount(
   }
 }
 
-/** The verdicts the latest slice recorded, e.g. `3 Pass · 1 Fail`. */
+/** The verdicts the latest batch recorded, e.g. `3 Pass · 1 Fail`. */
 function countsSummary(summary: QualityTargetSummary): string {
-  const counts = runSliceCounts(summary);
+  const counts = runCounts(summary);
   if (!counts) {
     return "";
   }
@@ -1164,7 +1165,7 @@ function countsSummary(summary: QualityTargetSummary): string {
 
 /** Checks that failed or errored in the latest batch. */
 function failedChecks(summary: QualityTargetSummary): number {
-  const counts = runSliceCounts(summary);
+  const counts = runCounts(summary);
   if (!counts) {
     return 0;
   }
@@ -1173,7 +1174,7 @@ function failedChecks(summary: QualityTargetSummary): number {
 
 /** Planned checks that never reached a verdict in the latest batch. */
 function unfinishedChecks(summary: QualityTargetSummary): number {
-  const counts = runSliceCounts(summary);
+  const counts = runCounts(summary);
   if (!counts) {
     return 0;
   }
@@ -1185,12 +1186,17 @@ function unfinishedChecks(summary: QualityTargetSummary): number {
 }
 
 /**
- * The target's live rule count when the latest batch covered only the rules that
- * were due (rules can run on different schedules). Zero means the batch covered
- * the whole target, or the caller has no rule count.
+ * The target's live rule count when a scheduled batch covered only a slice of an
+ * oversize target (batches are target-complete, but a legacy oversize target may
+ * be split). A manual run planned an explicit selection, so it never reads as
+ * partial. Zero means the batch covered the whole target, the caller has no rule
+ * count, or the run was manual.
  */
 function partialChecks(summary: QualityTargetSummary): number {
-  const total = runSliceCounts(summary)?.total ?? 0;
+  if (summary.latestRun?.trigger !== QualityExecutionTrigger.SCHEDULED) {
+    return 0;
+  }
+  const total = runCounts(summary)?.total ?? 0;
   return summary.ruleCount > total ? summary.ruleCount : 0;
 }
 

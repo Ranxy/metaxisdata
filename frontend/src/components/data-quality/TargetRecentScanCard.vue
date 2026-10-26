@@ -119,6 +119,8 @@ import {
 } from "@/components/ui/card";
 import {
   QualityExecutionState,
+  QualityExecutionTrigger,
+  type QualityRun,
   QualityStatus,
   type QualityTargetSummary,
 } from "@/types/proto-es/v1/data_quality_service_pb";
@@ -132,11 +134,10 @@ import {
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 
 /**
- * The most recent scan batch that touched this target, as the workspace's right
- * sidebar shows it: what the batch found, how long it took and which rule
- * revisions it judged. It reads the per-target slice of the batch
- * (`summary.latestRun`), never the batch-wide counts, because one batch can cover
- * several targets.
+ * The most recent scan batch for this target, as the workspace's right sidebar
+ * shows it: what the batch found, how long it took and which rule revisions it
+ * judged. A batch belongs to exactly one target, so `summary.latestRun` is this
+ * target's own run and its counts are this target's counts.
  *
  * Every number here is a verdict count of this target's planned checks. A manual
  * or scheduled run starts PENDING, so a batch may still be running or have been
@@ -150,14 +151,27 @@ const props = defineProps<{
 
 const { t, locale } = useI18n();
 
-const latestRun = computed(() => props.summary.latestRun);
+const latestRun = computed<QualityRun | undefined>(
+  () => props.summary.latestRun
+);
 const counts = computed(() => latestRun.value?.counts);
 
 const totalChecks = computed(() => counts.value?.total ?? 0);
-/** The target's live rule count when the latest batch covered only due rules. */
-const partialChecks = computed(() =>
-  props.summary.ruleCount > totalChecks.value ? props.summary.ruleCount : 0
-);
+/**
+ * The target's live rule count when a scheduled batch covered only a slice of an
+ * oversize target. A manual run planned an explicit selection, so it is not a
+ * partial view of the target.
+ */
+const partialChecks = computed(() => {
+  const run = latestRun.value;
+  if (
+    run?.trigger !== QualityExecutionTrigger.SCHEDULED ||
+    props.summary.ruleCount <= totalChecks.value
+  ) {
+    return 0;
+  }
+  return props.summary.ruleCount;
+});
 
 /** The verdicts that occurred, in status order, so the badge row is stable. */
 const VERDICT_ORDER: QualityStatus[] = [
@@ -228,7 +242,7 @@ const durationLabel = computed(() => {
   return seconds === undefined ? "-" : formatSeconds(seconds);
 });
 
-/** The rule revisions the slice judged; a batch is only comparable at one range. */
+/** The rule revisions the batch judged; it is only comparable at one range. */
 const revisionLabel = computed(() => {
   const run = latestRun.value;
   if (!run || run.ruleRevisionMax === 0) {

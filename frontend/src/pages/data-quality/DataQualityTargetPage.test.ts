@@ -32,8 +32,8 @@ import {
   QualityRuleSchema,
   QualityRuleState,
   QualityRuleType,
-  type QualityRunTarget,
-  QualityRunTargetSchema,
+  type QualityRun,
+  QualityRunSchema,
   QualitySeverity,
   QualityStatus,
   type QualitySuggestion,
@@ -238,7 +238,7 @@ function summaryFixture(
     pendingDraftCount?: number;
     schemaChanged?: boolean;
     withPath?: boolean;
-    latestRun?: QualityRunTarget;
+    latestRun?: QualityRun;
     runCount?: number;
     schedule?: QualityTargetSchedule;
   } = {}
@@ -273,7 +273,7 @@ function summaryFixture(
   });
 }
 
-/** The target's slice of its latest scan batch, as the summary carries it. */
+/** The target's latest scan batch, as the summary carries it. */
 function latestRunFixture(
   options: {
     total?: number;
@@ -282,10 +282,14 @@ function latestRunFixture(
     outcome?: QualityStatus;
     revision?: number;
   } = {}
-): QualityRunTarget {
+): QualityRun {
   const at = timestampFromDate(new Date());
-  return create(QualityRunTargetSchema, {
-    run: "workspaces/ws/qualityRuns/run-1",
+  return create(QualityRunSchema, {
+    name: "workspaces/ws/qualityRuns/run-1",
+    target: create(QualityTargetSchema, {
+      metaGuid: TARGET,
+      metaType: MetaType.TABLE,
+    }),
     outcome: options.outcome ?? QualityStatus.FAIL,
     trigger: QualityExecutionTrigger.MANUAL,
     state: QualityExecutionState.COMPLETED,

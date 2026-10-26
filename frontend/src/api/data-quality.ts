@@ -537,6 +537,8 @@ export async function listQualityRuns(options: {
   pageToken?: string;
   /** Only runs that planned at least one execution for this target GUID. */
   targetGuid?: string;
+  /** The target's object type; pairs with targetGuid to filter by identity. */
+  metaType?: MetaType;
   /** Format: instances/{instance}. */
   instance?: string;
   trigger?: QualityExecutionTrigger;
@@ -551,6 +553,7 @@ export async function listQualityRuns(options: {
     pageSize: options.pageSize ?? 50,
     pageToken: options.pageToken ?? "",
     targetGuid: options.targetGuid ?? "",
+    metaType: options.metaType ?? MetaType.UNSPECIFIED,
     instance: options.instance ?? "",
     trigger: options.trigger ?? QualityExecutionTrigger.UNSPECIFIED,
     state: options.state ?? QualityExecutionState.UNSPECIFIED,

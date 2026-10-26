@@ -16,7 +16,6 @@ import {
   QualityRuleSchema,
   type QualityRun,
   QualityRunSchema,
-  QualityRunTargetSchema,
   QualityStatus,
   QualityStatusCountsSchema,
   QualityTargetOrder,
@@ -77,47 +76,41 @@ function targetFor(guid: string, object: string) {
   });
 }
 
-function slice(
+/** The latest batch of one target: counts and revisions live on the run. */
+function runFor(
   guid: string,
   object: string,
   options: {
     counts?: Record<string, number>;
     outcome?: QualityStatus;
     state?: QualityExecutionState;
-    run?: string;
+    trigger?: QualityExecutionTrigger;
   } = {}
-) {
-  return create(QualityRunTargetSchema, {
-    target: targetFor(guid, object),
+): QualityRun {
+  return create(QualityRunSchema, {
+    name: RUN,
+    instance: "instances/prod",
+    trigger: options.trigger ?? QualityExecutionTrigger.MANUAL,
+    state: options.state ?? QualityExecutionState.COMPLETED,
+    outcome: options.outcome ?? QualityStatus.FAIL,
     counts: create(QualityStatusCountsSchema, {
       total: 2,
       pass: 1,
       fail: 1,
       ...options.counts,
     }),
-    outcome: options.outcome ?? QualityStatus.FAIL,
-    ruleRevisionMin: 3,
-    ruleRevisionMax: 3,
     startTime: timestampFromDate(START),
     finishTime: timestampFromDate(FINISH),
-    run: options.run ?? RUN,
-    state: options.state ?? QualityExecutionState.COMPLETED,
-    trigger: QualityExecutionTrigger.MANUAL,
+    target: targetFor(guid, object),
+    ruleRevisionMin: 3,
+    ruleRevisionMax: 3,
   });
 }
 
 function runFixture(targetGuid: string): QualityRun {
   const object = targetGuid === TARGET_ORDERS ? "orders" : "customers";
-  return create(QualityRunSchema, {
-    name: RUN,
-    instance: "instances/prod",
-    trigger: QualityExecutionTrigger.MANUAL,
-    state: QualityExecutionState.COMPLETED,
-    outcome: QualityStatus.FAIL,
-    counts: create(QualityStatusCountsSchema, { total: 9, pass: 5, fail: 4 }),
-    startTime: timestampFromDate(START),
-    finishTime: timestampFromDate(FINISH),
-    targets: [slice(targetGuid, object)],
+  return runFor(targetGuid, object, {
+    counts: { total: 9, pass: 5, fail: 4 },
   });
 }
 
@@ -127,10 +120,11 @@ function targetSummary(options: {
   latestRun?: QualityTargetSummary["latestRun"];
   runCount?: number;
   orphaned?: boolean;
+  ruleCount?: number;
 }): QualityTargetSummary {
   return create(QualityTargetSummarySchema, {
     target: targetFor(options.guid, options.object),
-    ruleCount: 2,
+    ruleCount: options.ruleCount ?? 2,
     enabledRuleCount: 2,
     pausedRuleCount: 0,
     columnCount: 1,
@@ -152,7 +146,7 @@ function directoryRows(): QualityTargetSummary[] {
     targetSummary({
       guid: TARGET_CUSTOMERS,
       object: "customers",
-      latestRun: slice(TARGET_CUSTOMERS, "customers", {
+      latestRun: runFor(TARGET_CUSTOMERS, "customers", {
         counts: { total: 2, pass: 1, fail: 1 },
         outcome: QualityStatus.FAIL,
       }),
@@ -161,7 +155,7 @@ function directoryRows(): QualityTargetSummary[] {
     targetSummary({
       guid: TARGET_ORDERS,
       object: "orders",
-      latestRun: slice(TARGET_ORDERS, "orders", {
+      latestRun: runFor(TARGET_ORDERS, "orders", {
         counts: { total: 3, pass: 2, error: 1, fail: 0 },
         outcome: QualityStatus.ERROR,
       }),
@@ -301,7 +295,7 @@ describe("DataQualityExecutionsPage by target", () => {
     );
     expect(all[0]?.text()).toContain(labels()("dataQuality.status.fail"));
     expect(all[1]?.text()).toContain(labels()("dataQuality.status.error"));
-    // Compact counts come from that target's slice.
+    // Compact counts come from that target's own batch.
     expect(all[1]?.text()).toContain(
       `2 ${labels()("dataQuality.status.pass")}`
     );
@@ -326,6 +320,7 @@ describe("DataQualityExecutionsPage by target", () => {
 
     expect(mocks.listQualityRuns).toHaveBeenCalledWith({
       targetGuid: TARGET_CUSTOMERS,
+      metaType: MetaType.TABLE,
       pageSize: 20,
     });
     expect(router.currentRoute.value.query.target).toBe(TARGET_CUSTOMERS);
@@ -347,6 +342,7 @@ describe("DataQualityExecutionsPage by target", () => {
 
     expect(mocks.listQualityRuns).toHaveBeenCalledWith({
       targetGuid: TARGET_ORDERS,
+      metaType: MetaType.TABLE,
       pageSize: 20,
     });
     // The run named by the URL opens its checks without another click.
@@ -585,5 +581,51 @@ describe("DataQualityExecutionsPage flat list", () => {
         )
     ).toBe(false);
     wrapper.unmount();
+  });
+
+  it("only discloses partial checks for scheduled batches", async () => {
+    const scheduled = runFor(TARGET_ORDERS, "orders", {
+      counts: { total: 2, pass: 2, fail: 0 },
+      trigger: QualityExecutionTrigger.SCHEDULED,
+    });
+    mocks.listQualityTargets.mockResolvedValue(
+      page([
+        targetSummary({
+          guid: TARGET_ORDERS,
+          object: "orders",
+          latestRun: scheduled,
+          runCount: 1,
+          ruleCount: 5,
+        }),
+      ])
+    );
+    const scheduledPage = await mountPage();
+    expect(scheduledPage.wrapper.text()).toContain(
+      labels()("dataQuality.executions.runPartial", { done: 2, all: 5 })
+    );
+    scheduledPage.wrapper.unmount();
+
+    // The target has 2 live rules in the fixture, so a scheduled batch of an
+    // oversize target would only be partial when more rules exist. Make the
+    // manual case explicit: same counts, manual trigger, no disclosure either way.
+    const manual = runFor(TARGET_ORDERS, "orders", {
+      counts: { total: 2, pass: 2, fail: 0 },
+    });
+    mocks.listQualityTargets.mockResolvedValue(
+      page([
+        targetSummary({
+          guid: TARGET_ORDERS,
+          object: "orders",
+          latestRun: manual,
+          runCount: 1,
+          ruleCount: 5,
+        }),
+      ])
+    );
+    const manualPage = await mountPage();
+    expect(manualPage.wrapper.text()).not.toContain(
+      labels()("dataQuality.executions.runPartial", { done: 2, all: 5 })
+    );
+    manualPage.wrapper.unmount();
   });
 });

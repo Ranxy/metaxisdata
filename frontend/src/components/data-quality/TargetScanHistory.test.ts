@@ -9,7 +9,6 @@ import {
   QualityExecutionTrigger,
   type QualityRun,
   QualityRunSchema,
-  QualityRunTargetSchema,
   QualityStatus,
   QualityStatusCountsSchema,
   QualityTargetSchema,
@@ -49,23 +48,12 @@ function run(name: string): QualityRun {
     counts: create(QualityStatusCountsSchema, { total: 1, pass: 1 }),
     startTime: timestampFromDate(start),
     finishTime: timestampFromDate(new Date(start.getTime() + 1_000)),
-    targets: [
-      create(QualityRunTargetSchema, {
-        target: create(QualityTargetSchema, {
-          metaGuid: TARGET,
-          metaType: MetaType.TABLE,
-        }),
-        counts: create(QualityStatusCountsSchema, { total: 1, pass: 1 }),
-        outcome: QualityStatus.PASS,
-        ruleRevisionMin: 1,
-        ruleRevisionMax: 1,
-        startTime: timestampFromDate(start),
-        finishTime: timestampFromDate(new Date(start.getTime() + 1_000)),
-        run: name,
-        state: QualityExecutionState.COMPLETED,
-        trigger: QualityExecutionTrigger.MANUAL,
-      }),
-    ],
+    target: create(QualityTargetSchema, {
+      metaGuid: TARGET,
+      metaType: MetaType.TABLE,
+    }),
+    ruleRevisionMin: 1,
+    ruleRevisionMax: 1,
   });
 }
 
@@ -77,6 +65,7 @@ async function mountHistory(options: { expandRun?: string } = {}) {
   const wrapper = mount(TargetScanHistory, {
     props: {
       targetGuid: TARGET,
+      metaType: MetaType.TABLE,
       ruleTitles: {},
       expandRun: options.expandRun ?? "",
     },
@@ -101,6 +90,7 @@ describe("TargetScanHistory", () => {
 
     expect(mocks.listQualityRuns).toHaveBeenCalledWith({
       targetGuid: TARGET,
+      metaType: MetaType.TABLE,
       pageSize: 20,
     });
     expect(wrapper.find("h3").text()).toBe(
