@@ -247,7 +247,6 @@ describe("BatchCreateRulesDialog", () => {
         severity: number;
         dimension: number;
         owner: string;
-        scheduleInterval?: unknown;
         target?: { metaGuid?: string };
       };
       suggestion: string;
@@ -262,11 +261,10 @@ describe("BatchCreateRulesDialog", () => {
     expect(items[0]?.rule.title).toBe("Renamed rule");
     expect(items[1]?.rule.title).toBe("Orders must stay fresh");
     expect(items[0]?.rule.target?.metaGuid).toBe(TABLE);
-    // The common severity applies (1 = WARNING) and the interval stays unset so
-    // the server applies the workspace default.
+    // The common severity applies (1 = WARNING); scheduling is the target's, so
+    // the rule carries none.
     expect(items[0]?.rule.severity).toBe(1);
     expect(items[1]?.rule.severity).toBe(1);
-    expect(items[0]?.rule.scheduleInterval).toBeUndefined();
     expect(items[0]?.rule.owner).toBe("");
     expect(items[0]?.rule.dimension).toBe(QualityDimension.ACCURACY);
     expect(items[1]?.rule.dimension).toBe(QualityDimension.ACCURACY);
@@ -336,10 +334,9 @@ describe("BatchCreateRulesDialog", () => {
     await flushPromises();
 
     const items = mocks.batchCreateQualityRules.mock.calls[0]?.[0] as Array<{
-      rule: { severity: number; scheduleInterval?: unknown };
+      rule: { severity: number };
     }>;
     expect(items[0]?.rule.severity).toBe(2);
-    expect(items[0]?.rule.scheduleInterval).toBeUndefined();
     wrapper.unmount();
   });
 

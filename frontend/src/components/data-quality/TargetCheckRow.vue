@@ -56,8 +56,6 @@
           >
             {{ targetPath }}
           </span>
-          <span aria-hidden="true">·</span>
-          <span class="tabular-nums">{{ t("dataQuality.schedule") }} {{ schedule }}</span>
         </div>
         <TargetRuleHistoryStrip
           v-if="history.length > 0"
@@ -131,7 +129,6 @@ import {
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import {
   formatObservedValue,
-  formatScheduleInterval,
   formatTargetPath,
   qualityRuleTypeKey,
   qualitySeverityKey,
@@ -184,9 +181,6 @@ const targetPath = computed(() => {
   const path = formatTargetPath(props.rule.target?.path);
   return path === "-" ? (props.rule.target?.metaGuid ?? "-") : path;
 });
-const schedule = computed(() =>
-  formatScheduleInterval(props.rule.scheduleInterval)
-);
 const observed = computed(() =>
   lastResult.value
     ? formatObservedValue(

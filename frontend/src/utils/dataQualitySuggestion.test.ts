@@ -424,7 +424,6 @@ describe("suggestion → editor prefill", () => {
     // form opens valid instead of with empty selects.
     expect(prefill?.form.dimension).toBe(1);
     expect(prefill?.form.state).toBe(1);
-    expect(prefill?.form.schedule).toEqual({ value: "1", unit: "hours" });
   });
 
   it("refuses a label suggestion or an unusable payload", () => {
@@ -580,15 +579,13 @@ describe("selection", () => {
 });
 
 describe("suggestion → batch rule", () => {
-  it("builds an enabled rule from the draft with the server-default schedule", () => {
+  it("builds an enabled rule from the draft; scheduling is the target's", () => {
     const rule = buildRuleFromSuggestion({ suggestion: ruleSuggestion() });
     expect(rule?.title).toBe("Orders should have rows");
     expect(rule?.ruleType).toBe(QualityRuleType.ROW_COUNT);
     expect(rule?.state).toBe(QualityRuleState.ENABLED);
     expect(rule?.target?.metaGuid).toBe("inst1;db1;public;orders");
     expect(rule?.config?.config.case).toBe("rowCount");
-    // Unset means the server applies the workspace default interval.
-    expect(rule?.scheduleInterval).toBeUndefined();
     expect(rule?.owner).toBe("");
   });
 
@@ -599,13 +596,11 @@ describe("suggestion → batch rule", () => {
         severity: QualitySeverity.ERROR,
         owner: "users/owner-1",
         dimension: QualityDimension.ACCURACY,
-        scheduleIntervalSeconds: 3600,
       },
     });
     expect(rule?.severity).toBe(QualitySeverity.ERROR);
     expect(rule?.owner).toBe("users/owner-1");
     expect(rule?.dimension).toBe(QualityDimension.ACCURACY);
-    expect(rule?.scheduleInterval?.seconds).toBe(3600n);
   });
 
   it("uses an inline-edited form for the row", () => {

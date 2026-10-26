@@ -55,8 +55,9 @@ materialized view only offers table-level checks (row count, row count change,
 freshness, custom SQL, schema drift), because those objects have no column-level
 type authority. Editing a check opens the same dialog from its row or drawer.
 
-- **Schedule**: 15 minutes to 7 days. A new check first runs on its next scheduled
-  slot; use **Run now** to check it immediately.
+- **Schedule**: scheduling belongs to the target, not to one check (see below).
+  All enabled checks on a target run together on the target's schedule, so a new
+  check joins the target's next run; use **Run now** to check it immediately.
 - **Thresholds**: a count-type check compares failed rows (or the failed
   percentage) with a warning and a failure level; an aggregate compares its value
   with a range; freshness compares the lag in seconds. Custom SQL checks always
@@ -109,6 +110,19 @@ effect when you press **Apply**.
 
 ## Contracts and target-level settings
 
+### The target schedule
+
+A target has **one schedule**, shown in its workspace header next to the health
+summary (for example "Schedule: every hour · next in 12 minutes"). It applies to
+every enabled check on the table or view: when it comes due, all of them run in
+the same scheduler pass. Use the pencil next to it to change the cadence (15
+minutes to 7 days); a change reschedules the target from now and never runs it
+immediately. While every check on the target is paused there is no next run, and
+resuming a check schedules the target one interval out. A check you move to a
+different target joins that target's schedule. Editing a single check cannot
+change its cadence — that is deliberate, so one table cannot have checks pulling
+in different directions.
+
 A target's **contract** is the target-level layer above its checks: defaults for
 authoring and a record of what has been published. It lives on the same target
 workspace, under the health summary.
@@ -117,8 +131,10 @@ workspace, under the health summary.
   They are ANDed with each check's own filter at compile time, so changing the
   contract filter changes the next execution without rewriting any check. Written
   custom-SQL checks are not rewritten and stay outside the contract filter.
-- **Authoring defaults** — a default schedule and default severity seed the New
-  check dialog. They never rewrite an existing check or reschedule it.
+- **Authoring defaults** — a default severity seeds the New check dialog. It
+  never rewrites an existing check. The schedule is not a contract setting: it
+  belongs to the target (see above) and is not part of published contract
+  versions.
 - **Publish** — recording the live checks and settings as a version. Publishing
   does not gate execution: checks keep running as they are saved. It keeps a
   history with what changed since the previous version (added, changed, removed
@@ -167,7 +183,7 @@ its observed value, the pass rate, and a strip of the last 20 executions in one
 color per status (green pass, amber warning, red fail, dark red execution error,
 grey skipped/not evaluated). Below that sits the recent execution table, whose
 rows open the execution behind them, and the check's definition (target, type,
-schedule, revision, tags, filter, empty behavior). *Run now*, *Edit*,
+revision, tags, filter, empty behavior). *Run now*, *Edit*,
 *pause/resume* and *Delete* appear there for callers who hold the matching
 permission.
 
@@ -230,8 +246,8 @@ and target scope. Suggestions produced by a finished drafting job appear like an
 other and are selected on the current page when the job completes. Select rows on
 the current page to work in bulk (up to 200 per submit):
 
-- **Check drafts** — *Create checks* opens one dialog where you set a schedule,
-  severity, dimension and owner for the whole selection; expand a row to edit its
+- **Check drafts** — *Create checks* opens one dialog where you set severity,
+  dimension and owner for the whole selection; expand a row to edit its
   title, severity or parameters. One submit creates them all, and each check is reported
   separately: a draft that cannot compile is reported with its error and stays
   pending while the rest are created. Creating a check accepts its draft.
@@ -284,8 +300,8 @@ creating the check, and the model never sees raw sample rows.
 ## Settings
 
 Settings → Data Quality controls: the model-analysis switch and provider,
-whether failure samples are stored and how many, the default schedule for new
-checks, the daily execution ceiling, the **daily AI analysis ceiling (L1+L2,
+whether failure samples are stored and how many, the default schedule a target
+starts with when it gets its first check, the daily execution ceiling, the **daily AI analysis ceiling (L1+L2,
 default 10,000)**, the daily column-analysis ceiling, the **concurrent LLM calls
 (default 8, range 1–64)**, the columns per analysis, and whether raw sample
 values may be sent to the model. A read-only **Today's AI usage** card shows
@@ -319,6 +335,7 @@ pruned.
 | `ERROR(UNSUPPORTED)` | The check's engine cannot express it (for example regex on SQL Server, or `PERCENTILE` outside PostgreSQL/SQL Server), or a column the check names was dropped. |
 | A dry run fails with a parameter or SQL error | The message shows the compiled SQL and its bound values; check that the filter values and range/aggregate bounds match the column's type (for example a date written as a plain string, or a numeric bound for a text column). |
 | Checks never run | The check is paused or archived, the instance is gone, or the daily execution ceiling was reached (the next day resumes it; **Run now** still works). |
+| I cannot change one check's schedule | Scheduling is per target: all enabled checks on the target run together on the schedule shown in its workspace header, and a check inherits it. Change the cadence there, or pause the check to drop it from the target's runs. |
 | An execution stays pending, or ends abandoned | The instance's connection budget stayed busy past the runner's wait, or the server restarted mid-run. Such checks are not retried automatically; use **Run now** or wait for the next scheduled slot. |
 | A check that used to run now ends `ERROR(UNSUPPORTED)` | The check uses a configuration this build no longer accepts, for example an aggregate `COUNT` (use a row count check instead) or a column type the engine cannot express. Re-create the check with the supported type. |
 | No notification for a failure | The issue was already open (notifications fire on transitions), the check is muted, or more than ten checks failed in the same scheduler pass and a summary was sent instead. |

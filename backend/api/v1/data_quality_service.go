@@ -400,7 +400,10 @@ func (s *DataQualityService) createQualityRuleFromRequest(ctx context.Context, w
 	if settingsErr != nil {
 		return nil, errLoadQualitySettings(settingsErr)
 	}
-	interval := resolveCreateScheduleInterval(rule.GetScheduleInterval().AsDuration(), settings)
+	// Scheduling belongs to the target. The workspace default seeds the target's
+	// schedule the first time the target gets a rule; an existing target keeps its
+	// cadence and the new check joins the next run.
+	interval := settings.DefaultScheduleInterval
 	if err := validateQualityScheduleInterval(interval); err != nil {
 		return nil, err
 	}
@@ -433,8 +436,6 @@ func (s *DataQualityService) createQualityRuleFromRequest(ctx context.Context, w
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to generate the quality rule id")
 	}
-	now := time.Now()
-	nextRunAt := now.Add(interval)
 	callerID := principalIDPointer(currentUserID(ctx))
 	// Claim the draft before writing the rule. The decision's PENDING→ACCEPTED
 	// guard is the idempotency key for "create a rule from this draft": two
@@ -453,26 +454,24 @@ func (s *DataQualityService) createQualityRuleFromRequest(ctx context.Context, w
 		suggestion = claimed
 	}
 	created, err := s.store.CreateQualityRule(ctx, &store.QualityRuleMessage{
-		ResourceID:       resourceID,
-		Title:            rule.GetTitle(),
-		Description:      rule.GetDescription(),
-		Dimension:        storepb.QualityDimension(rule.GetDimension()),
-		RuleType:         storepb.QualityRuleType(rule.GetRuleType()),
-		TargetGUID:       validated.Target.GUID,
-		TargetType:       validated.Target.MetaType,
-		TargetPath:       validated.Target.Path,
-		TargetMetaHash:   schemaHash,
-		Config:           config,
-		Severity:         storepb.QualitySeverity(rule.GetSeverity()),
-		State:            storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
-		OwnerID:          ownerID,
-		Tags:             append([]string(nil), rule.GetTags()...),
-		ScheduleInterval: interval,
-		NextRunAt:        &nextRunAt,
-		MuteUntil:        protoTimeOrNil(rule.GetMuteUntil()),
-		CreatedBy:        callerID,
-		UpdatedBy:        callerID,
-	})
+		ResourceID:     resourceID,
+		Title:          rule.GetTitle(),
+		Description:    rule.GetDescription(),
+		Dimension:      storepb.QualityDimension(rule.GetDimension()),
+		RuleType:       storepb.QualityRuleType(rule.GetRuleType()),
+		TargetGUID:     validated.Target.GUID,
+		TargetType:     validated.Target.MetaType,
+		TargetPath:     validated.Target.Path,
+		TargetMetaHash: schemaHash,
+		Config:         config,
+		Severity:       storepb.QualitySeverity(rule.GetSeverity()),
+		State:          storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
+		OwnerID:        ownerID,
+		Tags:           append([]string(nil), rule.GetTags()...),
+		MuteUntil:      protoTimeOrNil(rule.GetMuteUntil()),
+		CreatedBy:      callerID,
+		UpdatedBy:      callerID,
+	}, interval)
 	if err != nil {
 		// The rule was not written, so the claim must not stand: put the draft back
 		// in the queue for a retry. Best effort, like the decision itself.
@@ -590,15 +589,9 @@ func (s *DataQualityService) UpdateQualityRule(ctx context.Context, req *connect
 	}
 	update.Patch.UpdatedBy = principalIDPointer(currentUserID(ctx))
 
-	now := time.Now()
-	effectiveState := current.State
-	if update.Patch.State != nil {
-		effectiveState = *update.Patch.State
-	}
 	if err := s.revalidateQualityRuleDefinition(ctx, update, current); err != nil {
 		return nil, err
 	}
-	s.scheduleUpdatedQualityRule(ctx, update, current, effectiveState, now)
 
 	updated, err := s.store.UpdateQualityRule(ctx, resourceID, update.Patch)
 	if err != nil {
@@ -608,6 +601,9 @@ func (s *DataQualityService) UpdateQualityRule(ctx context.Context, req *connect
 			return nil, connect.NewError(connect.CodeAborted, err)
 		}
 		return nil, errors.Wrap(err, "failed to update the quality rule")
+	}
+	if err := s.syncQualityTargetScheduleAfterRuleUpdate(ctx, update, current, updated); err != nil {
+		return nil, err
 	}
 	converted, err := s.enrichQualityRule(ctx, workspaceID, updated)
 	if err != nil {
@@ -716,33 +712,47 @@ func (s *DataQualityService) revalidateQualityRuleDefinition(ctx context.Context
 	return nil
 }
 
-// scheduleUpdatedQualityRule recomputes next_run_at when the schedule or the
-// lifecycle state changed. Pausing leaves the stored next_run_at alone; enabling
-// a paused rule schedules its next slot instead of firing immediately.
-func (*DataQualityService) scheduleUpdatedQualityRule(_ context.Context, update *qualityRuleUpdate, current *store.QualityRuleMessage, effectiveState storepb.QualityRuleState, now time.Time) {
-	if effectiveState != storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED {
-		return
+// syncQualityTargetScheduleAfterRuleUpdate reconciles the target schedule with a
+// rule edit: pausing the target's last enabled check clears its next run, and
+// enabling the first check schedules the target one interval out instead of
+// firing immediately. Moving a rule between targets reconciles both the new and
+// the old target, because each now owns a different set of checks.
+func (s *DataQualityService) syncQualityTargetScheduleAfterRuleUpdate(ctx context.Context, update *qualityRuleUpdate, current, updated *store.QualityRuleMessage) error {
+	now := time.Now().UTC()
+	if update.TargetMoved {
+		settings, err := dataquality.LoadSettings(ctx, s.store)
+		if err != nil {
+			return errLoadQualitySettings(err)
+		}
+		if _, err := s.store.EnsureQualityTargetSchedule(ctx, updated.TargetGUID, updated.TargetType, settings.DefaultScheduleInterval, now); err != nil {
+			return err
+		}
+		if err := s.store.SyncQualityTargetSchedule(ctx, updated.TargetGUID, updated.TargetType, now); err != nil {
+			return err
+		}
 	}
-	interval := current.ScheduleInterval
-	if update.Patch.ScheduleInterval != nil {
-		interval = *update.Patch.ScheduleInterval
+	if update.StateChanged || update.TargetMoved {
+		if err := s.store.SyncQualityTargetSchedule(ctx, current.TargetGUID, current.TargetType, now); err != nil {
+			return err
+		}
 	}
-	enabling := update.StateChanged && current.State != storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED
-	if !update.ScheduleChanged && !enabling {
-		return
-	}
-	nextRunAt := now.Add(interval)
-	update.Patch.NextRunAt = &nextRunAt
+	return nil
 }
 
-// DeleteQualityRule archives a rule; history behind it stays readable.
+// DeleteQualityRule archives a rule; history behind it stays readable. Archiving
+// the target's last enabled check clears the target's next run, so it stops
+// being a scheduling unit until a check is enabled again.
 func (s *DataQualityService) DeleteQualityRule(ctx context.Context, req *connect.Request[v1pb.DeleteQualityRuleRequest]) (*connect.Response[emptypb.Empty], error) {
 	_, resourceID, err := s.ruleResourceID(ctx, req.Msg.GetName())
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.store.ArchiveQualityRule(ctx, resourceID, int32(currentUserID(ctx))); err != nil {
+	archived, err := s.store.ArchiveQualityRule(ctx, resourceID, int32(currentUserID(ctx)))
+	if err != nil {
 		return nil, errors.Wrap(err, "failed to archive the quality rule")
+	}
+	if err := s.store.SyncQualityTargetSchedule(ctx, archived.TargetGUID, archived.TargetType, time.Now().UTC()); err != nil {
+		return nil, err
 	}
 	return connect.NewResponse(&emptypb.Empty{}), nil
 }

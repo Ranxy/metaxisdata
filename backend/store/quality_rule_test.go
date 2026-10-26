@@ -17,35 +17,33 @@ import (
 // qualityRuleRowStub produces a quality_rule row for scanQualityRule without a
 // database. The destination order is qualityRuleColumns.
 type qualityRuleRowStub struct {
-	id              int64
-	resourceID      string
-	title           string
-	description     string
-	dimension       storepb.QualityDimension
-	ruleType        storepb.QualityRuleType
-	targetGUID      string
-	targetType      storepb.MetaType
-	targetPath      []byte
-	targetMetaHash  []byte
-	config          []byte
-	severity        storepb.QualitySeverity
-	state           storepb.QualityRuleState
-	ownerID         sql.NullInt32
-	tags            pq.StringArray
-	intervalSeconds int32
-	nextRunAt       sql.NullTime
-	muteUntil       sql.NullTime
-	revision        int32
-	createdBy       sql.NullInt32
-	updatedBy       sql.NullInt32
-	createdAt       time.Time
-	updatedAt       time.Time
-	deleted         bool
+	id             int64
+	resourceID     string
+	title          string
+	description    string
+	dimension      storepb.QualityDimension
+	ruleType       storepb.QualityRuleType
+	targetGUID     string
+	targetType     storepb.MetaType
+	targetPath     []byte
+	targetMetaHash []byte
+	config         []byte
+	severity       storepb.QualitySeverity
+	state          storepb.QualityRuleState
+	ownerID        sql.NullInt32
+	tags           pq.StringArray
+	muteUntil      sql.NullTime
+	revision       int32
+	createdBy      sql.NullInt32
+	updatedBy      sql.NullInt32
+	createdAt      time.Time
+	updatedAt      time.Time
+	deleted        bool
 }
 
 func (s qualityRuleRowStub) Scan(dest ...any) error {
-	if len(dest) != 24 {
-		return fmt.Errorf("quality rule stub got %d destinations, want 24", len(dest))
+	if len(dest) != 22 {
+		return fmt.Errorf("quality rule stub got %d destinations, want 22", len(dest))
 	}
 	*(dest[0].(*int64)) = s.id
 	*(dest[1].(*string)) = s.resourceID
@@ -62,15 +60,13 @@ func (s qualityRuleRowStub) Scan(dest ...any) error {
 	*(dest[12].(*storepb.QualityRuleState)) = s.state
 	*(dest[13].(*sql.NullInt32)) = s.ownerID
 	*(dest[14].(*pq.StringArray)) = s.tags
-	*(dest[15].(*int32)) = s.intervalSeconds
-	*(dest[16].(*sql.NullTime)) = s.nextRunAt
-	*(dest[17].(*sql.NullTime)) = s.muteUntil
-	*(dest[18].(*int32)) = s.revision
-	*(dest[19].(*sql.NullInt32)) = s.createdBy
-	*(dest[20].(*sql.NullInt32)) = s.updatedBy
-	*(dest[21].(*time.Time)) = s.createdAt
-	*(dest[22].(*time.Time)) = s.updatedAt
-	*(dest[23].(*bool)) = s.deleted
+	*(dest[15].(*sql.NullTime)) = s.muteUntil
+	*(dest[16].(*int32)) = s.revision
+	*(dest[17].(*sql.NullInt32)) = s.createdBy
+	*(dest[18].(*sql.NullInt32)) = s.updatedBy
+	*(dest[19].(*time.Time)) = s.createdAt
+	*(dest[20].(*time.Time)) = s.updatedAt
+	*(dest[21].(*bool)) = s.deleted
 	return nil
 }
 
@@ -120,7 +116,6 @@ func TestScanQualityRuleReadsJSONBAndNullableColumns(t *testing.T) {
 
 	createdAt := time.Date(2026, time.October, 19, 10, 0, 0, 0, time.UTC)
 	updatedAt := createdAt.Add(time.Hour)
-	nextRunAt := updatedAt.Add(time.Hour)
 	muteUntil := updatedAt.Add(2 * time.Hour)
 
 	config := &storepb.QualityRuleConfig{
@@ -146,30 +141,28 @@ func TestScanQualityRuleReadsJSONBAndNullableColumns(t *testing.T) {
 	require.NoError(t, err)
 
 	msg, err := scanQualityRule(qualityRuleRowStub{
-		id:              101,
-		resourceID:      "quality-rule-1",
-		title:           "email null percent",
-		description:     "keeps the email column populated",
-		dimension:       storepb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
-		ruleType:        storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
-		targetGUID:      "instances/inst-1;shop;public;users",
-		targetType:      storepb.MetaType_COLUMN,
-		targetPath:      targetPathJSON,
-		targetMetaHash:  []byte{0x01, 0x02},
-		config:          configJSON,
-		severity:        storepb.QualitySeverity_QUALITY_SEVERITY_ERROR,
-		state:           storepb.QualityRuleState_QUALITY_RULE_STATE_PAUSED,
-		ownerID:         sql.NullInt32{Int32: 7, Valid: true},
-		tags:            pq.StringArray{"pii", "core"},
-		intervalSeconds: 3600,
-		nextRunAt:       sql.NullTime{Time: nextRunAt, Valid: true},
-		muteUntil:       sql.NullTime{Time: muteUntil, Valid: true},
-		revision:        3,
-		createdBy:       sql.NullInt32{Int32: 4, Valid: true},
-		updatedBy:       sql.NullInt32{Int32: 5, Valid: true},
-		createdAt:       createdAt,
-		updatedAt:       updatedAt,
-		deleted:         true,
+		id:             101,
+		resourceID:     "quality-rule-1",
+		title:          "email null percent",
+		description:    "keeps the email column populated",
+		dimension:      storepb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+		ruleType:       storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+		targetGUID:     "instances/inst-1;shop;public;users",
+		targetType:     storepb.MetaType_COLUMN,
+		targetPath:     targetPathJSON,
+		targetMetaHash: []byte{0x01, 0x02},
+		config:         configJSON,
+		severity:       storepb.QualitySeverity_QUALITY_SEVERITY_ERROR,
+		state:          storepb.QualityRuleState_QUALITY_RULE_STATE_PAUSED,
+		ownerID:        sql.NullInt32{Int32: 7, Valid: true},
+		tags:           pq.StringArray{"pii", "core"},
+		muteUntil:      sql.NullTime{Time: muteUntil, Valid: true},
+		revision:       3,
+		createdBy:      sql.NullInt32{Int32: 4, Valid: true},
+		updatedBy:      sql.NullInt32{Int32: 5, Valid: true},
+		createdAt:      createdAt,
+		updatedAt:      updatedAt,
+		deleted:        true,
 	})
 	require.NoError(t, err)
 	require.Equal(t, int64(101), msg.ID)
@@ -184,8 +177,6 @@ func TestScanQualityRuleReadsJSONBAndNullableColumns(t *testing.T) {
 	require.Equal(t, storepb.QualityRuleState_QUALITY_RULE_STATE_PAUSED, msg.State)
 	require.Equal(t, int32(7), *msg.OwnerID)
 	require.Equal(t, []string{"pii", "core"}, msg.Tags)
-	require.Equal(t, time.Hour, msg.ScheduleInterval)
-	require.Equal(t, nextRunAt, *msg.NextRunAt)
 	require.Equal(t, muteUntil, *msg.MuteUntil)
 	require.Equal(t, int32(3), msg.Revision)
 	require.Equal(t, int32(4), *msg.CreatedBy)
@@ -208,7 +199,6 @@ func TestScanQualityRuleKeepsNullColumnsNil(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Nil(t, msg.OwnerID)
-	require.Nil(t, msg.NextRunAt)
 	require.Nil(t, msg.MuteUntil)
 	require.Nil(t, msg.CreatedBy)
 	require.Nil(t, msg.UpdatedBy)
@@ -466,8 +456,6 @@ func TestQualityRuleSemanticChanged(t *testing.T) {
 	state := storepb.QualityRuleState_QUALITY_RULE_STATE_PAUSED
 	owner := int32(9)
 	tags := []string{"core"}
-	interval := 2 * time.Hour
-	nextRunAt := time.Now()
 	updatedBy := int32(5)
 
 	tests := []struct {
@@ -482,8 +470,6 @@ func TestQualityRuleSemanticChanged(t *testing.T) {
 		{name: "state", patch: &UpdateQualityRuleMessage{State: &state}, want: false},
 		{name: "owner", patch: &UpdateQualityRuleMessage{OwnerID: &owner}, want: false},
 		{name: "tags", patch: &UpdateQualityRuleMessage{Tags: &tags}, want: false},
-		{name: "schedule interval", patch: &UpdateQualityRuleMessage{ScheduleInterval: &interval}, want: false},
-		{name: "next run at", patch: &UpdateQualityRuleMessage{NextRunAt: &nextRunAt}, want: false},
 		{name: "updated by", patch: &UpdateQualityRuleMessage{UpdatedBy: &updatedBy}, want: false},
 		{
 			name: "dimension",
@@ -657,12 +643,12 @@ func TestSelectDueTargetsTakesWholeTargetsUntilTheBudget(t *testing.T) {
 	t.Parallel()
 
 	base := time.Date(2026, time.October, 26, 9, 0, 0, 0, time.UTC)
-	targets := []dueQualityTarget{
+	targets := []dueQualityTargetRow{
 		{guid: "a", firstDue: base, firstID: 1, ruleCount: 2},
 		{guid: "b", firstDue: base.Add(time.Minute), firstID: 2, ruleCount: 3},
 		{guid: "c", firstDue: base.Add(2 * time.Minute), firstID: 3, ruleCount: 1},
 	}
-	guids := func(selected []dueQualityTarget) []string {
+	guids := func(selected []dueQualityTargetRow) []string {
 		result := make([]string, 0, len(selected))
 		for _, target := range selected {
 			result = append(result, target.guid)

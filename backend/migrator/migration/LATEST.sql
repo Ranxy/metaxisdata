@@ -898,8 +898,10 @@ ALTER SEQUENCE application_sql_id_seq RESTART WITH 101;
 ALTER SEQUENCE application_sql_api_key_id_seq RESTART WITH 101;
 
 -- quality_rule is the mutable head of a rule: display metadata, current config,
--- target binding, schedule and state. The immutable definition history lives in
+-- target binding and state. The immutable definition history lives in
 -- quality_rule_revision; both are written in one transaction on every edit.
+-- Scheduling is not a rule property: quality_target_schedule owns the timer for
+-- every enabled rule of one target.
 CREATE TABLE IF NOT EXISTS quality_rule (
     id BIGSERIAL PRIMARY KEY,
     -- API-facing identity: the resource name carries this string, not the row id,
@@ -917,13 +919,10 @@ CREATE TABLE IF NOT EXISTS quality_rule (
     target_meta_hash BYTEA,
     config JSONB NOT NULL DEFAULT '{}',
     severity INT2 NOT NULL,
-    -- 1 ENABLED, 2 PAUSED, 3 ARCHIVED. Only ENABLED rules are scheduled.
+    -- 1 ENABLED, 2 PAUSED, 3 ARCHIVED. Only ENABLED rules run on the target schedule.
     state INT2 NOT NULL DEFAULT 1,
     owner_id INT4 REFERENCES principal(id) ON DELETE SET NULL,
     tags TEXT[] NOT NULL DEFAULT '{}',
-    schedule_interval_seconds INT4 NOT NULL,
-    -- When the scheduler next considers this rule due; NULL means not scheduled.
-    next_run_at TIMESTAMPTZ,
     -- Rule-level mute of issue notifications. A muted rule is still executed and
     -- its results are still recorded; only the notifications stop.
     mute_until TIMESTAMPTZ,
@@ -935,11 +934,30 @@ CREATE TABLE IF NOT EXISTS quality_rule (
     deleted BOOLEAN NOT NULL DEFAULT FALSE
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_rule_resource_id ON quality_rule(resource_id);
-CREATE INDEX IF NOT EXISTS idx_quality_rule_due ON quality_rule(next_run_at)
-    WHERE state = 1 AND deleted = FALSE;
 CREATE INDEX IF NOT EXISTS idx_quality_rule_target ON quality_rule(target_guid, target_type);
 CREATE INDEX IF NOT EXISTS idx_quality_rule_owner ON quality_rule(owner_id);
 CREATE INDEX IF NOT EXISTS idx_quality_rule_tags ON quality_rule USING GIN(tags);
+
+-- quality_target_schedule is the one timer for a target's checks. Scheduling is
+-- per target, not per rule: when next_run_at comes due, every enabled rule of
+-- the target is planned into one dispatch batch. A target row is created with
+-- the first rule and stays while the target has rules; next_run_at is NULL while
+-- the target has no enabled rule.
+CREATE TABLE IF NOT EXISTS quality_target_schedule (
+    target_guid TEXT COLLATE "C" NOT NULL,
+    target_type INT2 NOT NULL,
+    -- 15 minutes..7 days. The API validates the range; the runner keeps a minimum
+    -- backstop for a malformed row.
+    schedule_interval_seconds INT4 NOT NULL,
+    -- When the scheduler next considers the target due; NULL means its checks are
+    -- all paused or archived.
+    next_run_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (target_guid, target_type)
+);
+CREATE INDEX IF NOT EXISTS idx_quality_target_schedule_due ON quality_target_schedule(next_run_at)
+    WHERE next_run_at IS NOT NULL;
 
 -- quality_rule_revision is append-only: every semantic edit snapshots target,
 -- type, dimension, severity and config, so a result can always be explained by

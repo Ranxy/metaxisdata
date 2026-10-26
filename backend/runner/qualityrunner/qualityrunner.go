@@ -46,9 +46,10 @@ const (
 	// tickInterval is how often the scheduler looks for due rules. It is not
 	// jittered: the query is a single indexed read and the pass is cheap.
 	tickInterval = 10 * time.Second
-	// dueScanLimit is the target-complete work budget for one tick. The store takes
-	// whole targets in first-due order until the budget is met; a target's due rules
-	// are never cut by it. See FindDueQualityRules.
+	// dueScanLimit is the target-complete work budget for one tick, counted in
+	// rules. The store takes whole due targets in first-due order until the budget
+	// is met; a target's enabled rules are never cut by it. See
+	// FindDueQualityTargets.
 	dueScanLimit = 200
 	// maxExecutionsPerBatch bounds one internal batch. It matches the per-target
 	// rule cap, so every legal target fits one batch: a batch covers one instance,
@@ -201,10 +202,13 @@ type manualRun struct {
 // dueBatchPlan is one internal batch the due scan is about to create: one
 // instance, at most maxExecutionsPerBatch rules, already chunked. Rules are
 // ordered by target so a target's checks run back to back, and a chunk boundary
-// normally falls between targets rather than inside one.
+// normally falls between targets rather than inside one. advanceTargets names the
+// targets whose last planned chunk this plan holds; a target split across several
+// plans is advanced once, by the plan that created its final execution rows.
 type dueBatchPlan struct {
 	instanceResourceID string
 	rules              []*store.QualityRuleMessage
+	advanceTargets     []*store.DueQualityTarget
 }
 
 // batchAdmission is what a batch holds while it executes: the instance whose
@@ -410,17 +414,17 @@ func (r *Runner) abandonStaleWork(ctx context.Context) {
 	}
 }
 
-// scanDue creates and executes one internal batch per instance for the rules that
-// are due. A due batch may exceed the per-batch limit or span several instances:
-// the rules are grouped by instance, chunked into batches of at most
-// maxExecutionsPerBatch, and one instance's batches execute serially while at most
-// two instances execute at once.
+// scanDue creates and executes one internal batch per instance for the targets
+// whose schedule is due. A due target may exceed the per-batch limit or span
+// several instances: its checks are grouped with the target, chunked into batches
+// of at most maxExecutionsPerBatch, and one instance's batches execute serially
+// while at most two instances execute at once.
 //
-// The store's due query selects whole targets in first-due order until the budget
-// is met, so a target's due rules never straddle two scheduler ticks just because
-// the row budget fell inside its group.
+// The store's due query selects whole targets in first-due order until the work
+// budget is met, so a target's enabled checks never straddle two scheduler ticks
+// just because the budget fell inside its group.
 func (r *Runner) scanDue(ctx context.Context) {
-	// The planning cost is settings refresh, the quota check, the due-rule query,
+	// The planning cost is settings refresh, the quota check, the due-target query,
 	// the chunking, the batch row and the planned execution rows. It deliberately
 	// stops before wp.Wait(): the scans below execute the batches, and including
 	// them would turn this histogram into a copy of batch duration.
@@ -434,19 +438,23 @@ func (r *Runner) scanDue(ctx context.Context) {
 		observePlanning()
 		return
 	}
-	rules, err := r.stores.FindDueQualityRules(ctx, now, dueScanLimit)
+	targets, err := r.stores.FindDueQualityTargets(ctx, now, dueScanLimit)
 	if err != nil {
 		observePlanning()
-		slog.Error("failed to list due quality rules", log.WithError(err))
+		slog.Error("failed to list due quality targets", log.WithError(err))
 		return
 	}
-	r.metrics.ObserveQualityDueRules(len(rules))
-	if len(rules) == 0 {
+	dueRules := 0
+	for _, target := range targets {
+		dueRules += len(target.Rules)
+	}
+	r.metrics.ObserveQualityDueRules(dueRules)
+	if len(targets) == 0 {
 		observePlanning()
 		return
 	}
 
-	plans := planDueBatches(rules, maxExecutionsPerBatch)
+	plans := planDueBatches(targets, maxExecutionsPerBatch)
 	observePlanning()
 	if len(plans) == 0 {
 		return
@@ -547,10 +555,11 @@ func (r *Runner) startScheduledBatch(ctx context.Context, plan dueBatchPlan) {
 		r.metrics.CountQualityExecutionCreated(metrics.QualityTriggerScheduled)
 	}
 	// Advance the schedule only after the rows are planned: the tick that picks a
-	// rule up must not pick it up again, and a failed plan leaves the rules due
-	// for the next pass.
-	for _, rule := range rules {
-		r.advanceScheduledRule(ctx, rule)
+	// target up must not pick it up again, and a failed plan leaves the target due
+	// for the next pass. A target split across chunks is advanced by the plan that
+	// holds its final chunk.
+	for _, target := range plan.advanceTargets {
+		r.advanceScheduledTarget(ctx, target)
 	}
 
 	// PlanQualityExecutions fills in each planned row's identity, so the tasks come
@@ -1140,7 +1149,8 @@ func (r *Runner) executeOne(ctx context.Context, planned *store.QualityExecution
 	if snapshot.Type == storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE {
 		// The executor measures the current row count; the baseline is this rule's
 		// last evaluated observation, which only the store can supply.
-		observation.Baseline = r.ruleBaseline(ctx, snapshot.ID, ruleIntervalForBaseline(head))
+		observation.Baseline = r.ruleBaseline(ctx, snapshot.ID,
+			r.targetScheduleInterval(ctx, snapshot.Target.GUID, snapshot.Target.MetaType))
 	}
 	state := dataquality.Evaluate(*snapshot, observation, time.Now().UTC())
 	return &ruleExecution{
@@ -1157,17 +1167,18 @@ func (r *Runner) executeOne(ctx context.Context, planned *store.QualityExecution
 	}
 }
 
-// advanceScheduledRule moves one scheduled rule's next_run_at forward. The due
-// scan already returned the rule, so this is a scheduling bookkeeping step: a
-// failure is logged, not fatal, because executing and recording the rule is still
-// more useful than dropping the pass.
-func (r *Runner) advanceScheduledRule(ctx context.Context, head *store.QualityRuleMessage) {
-	if head == nil {
+// advanceScheduledTarget moves one due target's next run forward. The due scan
+// already returned the target, so this is a scheduling bookkeeping step: a
+// failure is logged, not fatal, because executing and recording its checks is
+// still more useful than dropping the pass.
+func (r *Runner) advanceScheduledTarget(ctx context.Context, target *store.DueQualityTarget) {
+	if target == nil {
 		return
 	}
-	if err := r.stores.AdvanceQualityRuleNextRun(ctx, head.ID, nextRunAt(time.Now().UTC(), head.ScheduleInterval)); err != nil {
-		slog.Warn("failed to advance a quality rule's next schedule",
-			slog.Int64("rule", head.ID),
+	next := nextRunAt(time.Now().UTC(), target.ScheduleInterval)
+	if err := r.stores.AdvanceQualityTargetNextRun(ctx, target.TargetGUID, target.TargetType, next); err != nil {
+		slog.Warn("failed to advance a quality target's next schedule",
+			slog.String("target", target.TargetGUID),
 			log.WithError(err))
 	}
 }
@@ -1224,14 +1235,22 @@ func (r *Runner) ruleBaseline(ctx context.Context, ruleID int64, interval time.D
 	return baselineFromExecutions(executions, time.Now().UTC(), interval)
 }
 
-// ruleIntervalForBaseline returns the interval a row_count_change baseline must
-// still fit inside. A rule whose interval is missing falls back to the runner's
-// minimum, so a malformed row cannot make every historical execution acceptable.
-func ruleIntervalForBaseline(head *store.QualityRuleMessage) time.Duration {
-	if head != nil && head.ScheduleInterval > 0 {
-		return head.ScheduleInterval
+// targetScheduleInterval returns the interval a row_count_change baseline must
+// still fit inside. The baseline window follows the target's cadence, because
+// scheduling is per target; a missing schedule falls back to the runner's
+// minimum so a malformed row cannot make every historical execution acceptable.
+func (r *Runner) targetScheduleInterval(ctx context.Context, targetGUID string, metaType storepb.MetaType) time.Duration {
+	schedule, err := r.stores.GetQualityTargetSchedule(ctx, targetGUID, metaType)
+	if err != nil {
+		slog.Warn("failed to read a quality target's schedule for a baseline",
+			slog.String("target", targetGUID),
+			log.WithError(err))
+		return minRuleScheduleInterval
 	}
-	return minRuleScheduleInterval
+	if schedule == nil || schedule.ScheduleInterval <= 0 {
+		return minRuleScheduleInterval
+	}
+	return schedule.ScheduleInterval
 }
 
 // acquireInflight marks one rule as being executed and reports whether this
@@ -1378,7 +1397,7 @@ func truncateErrorMessage(message string) string {
 	return common.TruncateUTF8Bytes(message, maxErrorMessageLength)
 }
 
-// nextRunAt is when the scheduler considers the rule next. It is the rule's
+// nextRunAt is when the scheduler considers the target next. It is the target's
 // interval from now, not from its previous due time: a late execution must not
 // queue up catch-up runs.
 func nextRunAt(now time.Time, interval time.Duration) time.Time {
@@ -1390,27 +1409,27 @@ func nextRunAt(now time.Time, interval time.Duration) time.Time {
 	return now.Add(interval)
 }
 
-// planDueBatches groups the due rules by instance and chunks each instance's
-// rules into batches of at most maxExecutionsPerBatch. Instance order is the order
-// the rules became due in, so the oldest due rule is handled first and the
+// planDueBatches groups the due targets by instance and chunks each instance's
+// checks into batches of at most maxExecutionsPerBatch. Instance order is the
+// order the targets became due in, so the oldest target is handled first and the
 // resulting plans keep each instance's chunks adjacent for serial execution.
 //
-// Inside one instance the rules are grouped by target before chunking: the batch
-// executes its tasks sequentially, so a target's checks run back to back, and a
-// chunk boundary falls between targets whenever the cap allows it. Target order is
-// still the order the target first became due in, which keeps the oldest work first
-// instead of reordering the whole instance alphabetically by GUID.
-func planDueBatches(rules []*store.QualityRuleMessage, maxExecutionsPerBatch int) []dueBatchPlan {
+// A target's checks stay together: the target arrived with all of its enabled
+// rules, a chunk boundary falls between targets whenever the cap allows it, and
+// only a target larger than the cap spans batches. Target order is still the
+// order targets became due in, which keeps the oldest work first instead of
+// reordering the whole instance alphabetically by GUID.
+func planDueBatches(targets []*store.DueQualityTarget, maxExecutionsPerBatch int) []dueBatchPlan {
 	if maxExecutionsPerBatch <= 0 {
 		return nil
 	}
-	instanceOrder := make([]string, 0, len(rules))
-	byInstance := make(map[string][]*store.QualityRuleMessage, len(rules))
-	for _, rule := range rules {
-		if rule == nil {
+	instanceOrder := make([]string, 0, len(targets))
+	byInstance := make(map[string][]*store.DueQualityTarget, len(targets))
+	for _, target := range targets {
+		if target == nil {
 			continue
 		}
-		instance, ok := common.GetInstanceFromGUID(rule.TargetGUID)
+		instance, ok := common.GetInstanceFromGUID(target.TargetGUID)
 		if !ok {
 			// A malformed target GUID is still executed (it resolves to ORPHANED),
 			// but it cannot be attributed to an instance.
@@ -1419,52 +1438,36 @@ func planDueBatches(rules []*store.QualityRuleMessage, maxExecutionsPerBatch int
 		if _, seen := byInstance[instance]; !seen {
 			instanceOrder = append(instanceOrder, instance)
 		}
-		byInstance[instance] = append(byInstance[instance], rule)
+		byInstance[instance] = append(byInstance[instance], target)
 	}
 
-	plans := make([]dueBatchPlan, 0, len(rules)/maxExecutionsPerBatch+1)
+	plans := make([]dueBatchPlan, 0, len(targets))
 	for _, instance := range instanceOrder {
 		plans = append(plans, planInstanceDueBatches(instance, byInstance[instance], maxExecutionsPerBatch)...)
 	}
 	return plans
 }
 
-// dueTargetKey identifies one target inside an instance. The object type is part
-// of the key because a metadata GUID is not unique across object types.
-type dueTargetKey struct {
-	guid     string
-	metaType storepb.MetaType
-}
-
-// planInstanceDueBatches groups one instance's due rules by target, then packs
-// whole target groups into batches. A target larger than the cap is split because
-// its rules cannot fit one batch; every other target stays in a single batch and
-// keeps its rules adjacent.
-func planInstanceDueBatches(instance string, rules []*store.QualityRuleMessage, maxExecutionsPerBatch int) []dueBatchPlan {
-	targetOrder := make([]dueTargetKey, 0, len(rules))
-	byTarget := make(map[dueTargetKey][]*store.QualityRuleMessage, len(rules))
-	for _, rule := range rules {
-		if rule == nil {
-			continue
-		}
-		key := dueTargetKey{guid: rule.TargetGUID, metaType: rule.TargetType}
-		if _, seen := byTarget[key]; !seen {
-			targetOrder = append(targetOrder, key)
-		}
-		byTarget[key] = append(byTarget[key], rule)
-	}
-
-	plans := make([]dueBatchPlan, 0, len(rules)/maxExecutionsPerBatch+1)
-	current := make([]*store.QualityRuleMessage, 0, maxExecutionsPerBatch)
+// planInstanceDueBatches packs one instance's due targets into batches. A target
+// larger than the cap is split because its checks cannot fit one batch; every
+// other target stays in a single batch and keeps its checks adjacent. Only the
+// plan that holds a target's final chunk advances that target's schedule, so a
+// split target is rescheduled once.
+func planInstanceDueBatches(instance string, targets []*store.DueQualityTarget, maxExecutionsPerBatch int) []dueBatchPlan {
+	plans := make([]dueBatchPlan, 0, len(targets))
+	current := dueBatchPlan{instanceResourceID: instance}
 	flush := func() {
-		if len(current) == 0 {
+		if len(current.rules) == 0 {
 			return
 		}
-		plans = append(plans, dueBatchPlan{instanceResourceID: instance, rules: current})
-		current = nil
+		plans = append(plans, current)
+		current = dueBatchPlan{instanceResourceID: instance}
 	}
-	for _, key := range targetOrder {
-		group := byTarget[key]
+	for _, target := range targets {
+		if target == nil || len(target.Rules) == 0 {
+			continue
+		}
+		group := target.Rules
 		// A target over the cap is the only case where one target spans batches.
 		for len(group) > maxExecutionsPerBatch {
 			flush()
@@ -1474,10 +1477,11 @@ func planInstanceDueBatches(instance string, rules []*store.QualityRuleMessage, 
 			})
 			group = group[maxExecutionsPerBatch:]
 		}
-		if len(current)+len(group) > maxExecutionsPerBatch {
+		if len(current.rules)+len(group) > maxExecutionsPerBatch {
 			flush()
 		}
-		current = append(current, group...)
+		current.rules = append(current.rules, group...)
+		current.advanceTargets = append(current.advanceTargets, target)
 	}
 	flush()
 	return plans

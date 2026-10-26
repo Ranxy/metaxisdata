@@ -150,7 +150,6 @@ function ruleFixture(
     severity: QualitySeverity.ERROR,
     owner: options.owner ?? "",
     tags: options.tags ?? [],
-    scheduleInterval: { seconds: 3600n, nanos: 0 },
     target: create(QualityTargetSchema, {
       metaGuid: TABLE,
       metaType: MetaType.TABLE,
@@ -200,7 +199,6 @@ async function mountComposer(
   options: {
     metaType?: MetaType;
     permissions?: string[];
-    defaultScheduleSeconds?: number;
     defaultSeverity?: QualitySeverity;
     rule?: QualityRule;
     suggestion?: ReturnType<typeof suggestionFixture>;
@@ -221,7 +219,6 @@ async function mountComposer(
       targetGuid: TABLE,
       metaType: options.metaType ?? MetaType.TABLE,
       targetLabel: TARGET_LABEL,
-      defaultScheduleSeconds: options.defaultScheduleSeconds,
       defaultSeverity: options.defaultSeverity,
       rule: options.rule,
       suggestion: options.suggestion,
@@ -376,16 +373,10 @@ describe("TargetRuleComposer", () => {
     wrapper.unmount();
   });
 
-  it("starts a new rule from the contract's defaults", async () => {
+  it("starts a new rule from the contract's default severity", async () => {
     const wrapper = await mountComposer({
-      defaultScheduleSeconds: 6 * 3600,
       defaultSeverity: QualitySeverity.ERROR,
     });
-
-    // Six hours is the largest whole unit the schedule control can show.
-    expect(
-      document.querySelector<HTMLInputElement>("#dq-composer-schedule")?.value
-    ).toBe("6");
 
     setInput("#dq-composer-title", "Orders have rows");
     setInput("#dq-field-minRows", "1");
@@ -397,7 +388,8 @@ describe("TargetRuleComposer", () => {
     // rule is the observable proof that the contract default applied.
     const [rule] = mocks.createQualityRule.mock.calls[0] as [QualityRule];
     expect(rule.severity).toBe(QualitySeverity.ERROR);
-    expect(rule.scheduleInterval?.seconds).toBe(21600n);
+    // Scheduling belongs to the target, so the rule carries none.
+    expect(rule).not.toHaveProperty("scheduleInterval");
     wrapper.unmount();
   });
 

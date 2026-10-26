@@ -113,6 +113,32 @@
           <span class="text-xs text-muted-foreground">
             {{ lastRunText }}
           </span>
+          <span
+            v-if="targetSchedule?.scheduleInterval"
+            class="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground"
+          >
+            <Clock class="h-3.5 w-3.5" />
+            <span>{{ t("dataQuality.schedule") }}:</span>
+            <span class="tabular-nums">{{ scheduleIntervalLabel }}</span>
+            <span aria-hidden="true">·</span>
+            <span
+              class="tabular-nums"
+              :title="nextRunTitle"
+            >
+              {{ nextRunLabel }}
+            </span>
+            <Button
+              v-if="canUpdate"
+              variant="ghost"
+              size="icon"
+              class="h-6 w-6"
+              :title="t('dataQuality.workspace.editSchedule')"
+              :aria-label="t('dataQuality.workspace.editSchedule')"
+              @click="openScheduleEditor"
+            >
+              <Pencil class="h-3 w-3" />
+            </Button>
+          </span>
         </div>
 
         <!-- The contract sits under the health line: the rules' state first, then
@@ -379,10 +405,104 @@
       :target-guid="targetGuid"
       :meta-type="effectiveMetaType"
       :target-label="displayName"
-      :default-schedule-seconds="contractDefaultScheduleSeconds"
       :default-severity="contractDefaultSeverity"
       @saved="onRuleSaved"
     />
+
+    <!-- The target's one schedule: every enabled check runs on it, so it is
+         edited here rather than on each check. -->
+    <Dialog
+      :open="scheduleOpen"
+      @update:open="onScheduleOpenChange"
+    >
+      <DialogContent class="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{{ t("dataQuality.workspace.editSchedule") }}</DialogTitle>
+          <DialogDescription>
+            {{ t("dataQuality.workspace.scheduleHint") }}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div class="space-y-2">
+          <Label for="dq-target-schedule">
+            {{ t("dataQuality.workspace.scheduleInterval") }}
+          </Label>
+          <div class="flex gap-2">
+            <FormField
+              id="dq-target-schedule"
+              v-model="scheduleValue"
+              type="number"
+              class="min-w-0 flex-1"
+            />
+            <Select
+              :model-value="scheduleUnit"
+              @update:model-value="setScheduleUnit"
+            >
+              <SelectTrigger
+                id="dq-target-schedule-unit"
+                class="w-32"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="minutes">
+                  {{ t("dataQuality.editor.unitMinutes") }}
+                </SelectItem>
+                <SelectItem value="hours">
+                  {{ t("dataQuality.editor.unitHours") }}
+                </SelectItem>
+                <SelectItem value="days">
+                  {{ t("dataQuality.editor.unitDays") }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <p
+            v-if="scheduleIssueKey"
+            class="text-sm text-destructive"
+          >
+            {{ t("dataQuality.editor.validation.scheduleInvalid") }}
+          </p>
+          <div
+            v-else-if="scheduleError"
+            class="space-y-1 text-sm text-destructive"
+          >
+            <p class="font-medium">
+              {{ t("dataQuality.workspace.scheduleUpdateFailed") }}
+            </p>
+            <p
+              v-if="scheduleError !== t('dataQuality.workspace.scheduleUpdateFailed')"
+              class="text-xs break-words"
+            >
+              {{ scheduleError }}
+            </p>
+          </div>
+          <p class="text-sm text-muted-foreground">
+            {{ t("dataQuality.workspace.scheduleDialogHint") }}
+          </p>
+        </div>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            :disabled="scheduleSaving"
+            @click="scheduleOpen = false"
+          >
+            {{ t("common.cancel") }}
+          </Button>
+          <Button
+            :disabled="scheduleSaving || scheduleIssueKey !== ''"
+            @click="saveSchedule"
+          >
+            {{
+              scheduleSaving
+                ? t("dataQuality.composer.saving")
+                : t("common.save")
+            }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <!-- One check's own side sheet. It replaces the old rule page: opening a row
          keeps the target workspace behind it, so its siblings stay in view. -->
@@ -403,7 +523,9 @@
 import { create } from "@bufbuild/protobuf";
 import {
   ChevronRight,
+  Clock,
   Loader2,
+  Pencil,
   Plus,
   ShieldCheck,
   Sparkles,
@@ -417,6 +539,7 @@ import {
   getQualityTarget,
   listQualitySuggestions,
   runQualityRules,
+  updateQualityTargetSchedule,
 } from "@/api/data-quality";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
@@ -438,6 +561,23 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import FormField from "@/components/ui/form-field/FormField.vue";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useErrorMessage } from "@/composables/useErrorHandler";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
@@ -457,10 +597,17 @@ import {
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
+  formatScheduleInterval,
   qualityIssueStatusKey,
   qualityIssueStatusVariant,
 } from "@/utils/dataQuality";
-import type { TargetColumnDetail } from "@/utils/dataQualityForm";
+import {
+  durationToSchedule,
+  type ScheduleUnit,
+  scheduleToDuration,
+  type TargetColumnDetail,
+  validateScheduleInterval,
+} from "@/utils/dataQualityForm";
 import { isPendingDraft } from "@/utils/dataQualitySuggestion";
 import {
   groupTargetChecks,
@@ -535,6 +682,12 @@ const summary = ref<QualityTargetSummary>(
  */
 const targetColumns = ref<TargetColumnDetail[]>([]);
 const orphaned = ref(false);
+/** The target's one schedule editor; every enabled check runs on it. */
+const scheduleOpen = ref(false);
+const scheduleValue = ref("1");
+const scheduleUnit = ref<ScheduleUnit>("hours");
+const scheduleSaving = ref(false);
+const scheduleError = ref("");
 /** The target's contract: defaults, published version and drift. */
 const contract = ref<QualityContract>();
 const contractLoading = ref(true);
@@ -670,10 +823,85 @@ const lastRunText = computed(() =>
     : t("dataQuality.workspace.summaryNeverRun")
 );
 
-/** The contract's seed for a new rule; absent settings keep the form's default. */
-const contractDefaultScheduleSeconds = computed(() =>
-  Number(contract.value?.settings?.defaultScheduleIntervalSeconds ?? 0n)
+/** The target's schedule and next run, as the aggregate read resolved them. */
+const targetSchedule = computed(() => summary.value.schedule);
+
+const scheduleIntervalLabel = computed(() =>
+  formatScheduleInterval(targetSchedule.value?.scheduleInterval)
 );
+
+/** A paused (or empty) target has an interval but no next run. */
+const nextRunLabel = computed(() => {
+  const next = targetSchedule.value?.nextRunTime;
+  return next
+    ? t("dataQuality.workspace.nextRun", {
+        time: formatRelativeTime(next, locale.value),
+      })
+    : t("dataQuality.workspace.noNextRun");
+});
+
+const nextRunTitle = computed(() => {
+  const next = targetSchedule.value?.nextRunTime;
+  return next ? formatDateTime(next, locale.value) : undefined;
+});
+
+/** Live client-side validation for the schedule dialog. */
+const scheduleIssueKey = computed(() => {
+  const [issue] = validateScheduleInterval({
+    value: scheduleValue.value,
+    unit: scheduleUnit.value,
+  });
+  return issue?.key ?? "";
+});
+
+function openScheduleEditor() {
+  const parsed = durationToSchedule(targetSchedule.value?.scheduleInterval);
+  const empty = parsed.value === "";
+  scheduleValue.value = empty ? "1" : parsed.value;
+  scheduleUnit.value = empty ? "hours" : parsed.unit;
+  scheduleError.value = "";
+  scheduleOpen.value = true;
+}
+
+function setScheduleUnit(value: unknown) {
+  scheduleUnit.value = String(value) as ScheduleUnit;
+}
+
+function onScheduleOpenChange(open: boolean) {
+  if (!open) {
+    scheduleOpen.value = false;
+  }
+}
+
+/** Save the target's schedule; the returned schedule patches the summary. */
+async function saveSchedule() {
+  if (scheduleSaving.value || scheduleIssueKey.value !== "") {
+    return;
+  }
+  scheduleSaving.value = true;
+  scheduleError.value = "";
+  try {
+    const updated = await updateQualityTargetSchedule({
+      targetGuid: targetGuid.value,
+      metaType: effectiveMetaType.value,
+      scheduleInterval: scheduleToDuration({
+        value: scheduleValue.value,
+        unit: scheduleUnit.value,
+      }),
+    });
+    summary.value.schedule = updated;
+    scheduleOpen.value = false;
+    notify.success(t("dataQuality.workspace.scheduleUpdated"));
+  } catch (cause: unknown) {
+    scheduleError.value = formatError(
+      cause,
+      "dataQuality.workspace.scheduleUpdateFailed"
+    );
+  } finally {
+    scheduleSaving.value = false;
+  }
+}
+
 const contractDefaultSeverity = computed(
   () => contract.value?.settings?.defaultSeverity ?? QualitySeverity.UNSPECIFIED
 );

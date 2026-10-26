@@ -1,5 +1,4 @@
 import { create } from "@bufbuild/protobuf";
-import { DurationSchema } from "@bufbuild/protobuf/wkt";
 import {
   type ColumnProfile,
   type ColumnProfileStats,
@@ -30,7 +29,6 @@ import {
 import { formatRowCount, type QualityBadgeVariant } from "@/utils/dataQuality";
 import {
   emptyConfig,
-  emptyRuleForm,
   formToRule,
   type RuleConfigForm,
   type RuleFormState,
@@ -384,10 +382,6 @@ export function suggestionToEditorPrefill(
   if (form.severity === QualitySeverity.UNSPECIFIED) {
     form.severity = QualitySeverity.WARNING;
   }
-  const schedule = emptyRuleForm().schedule;
-  if (form.schedule.value === "") {
-    form.schedule = { ...schedule };
-  }
   if (draft.title) {
     form.title = draft.title;
   }
@@ -565,11 +559,6 @@ export interface SuggestionBatchOverrides {
   owner?: string;
   /** Unset keeps the draft's own dimension. */
   dimension?: QualityDimension;
-  /**
-   * Unset leaves the schedule to the server's workspace default; otherwise the
-   * interval in seconds (15 minutes to 7 days).
-   */
-  scheduleIntervalSeconds?: number;
 }
 
 export interface BuildRuleFromSuggestionOptions {
@@ -583,9 +572,9 @@ export interface BuildRuleFromSuggestionOptions {
  * A `CreateQualityRule` payload for one suggestion, ready for the batch call.
  *
  * The target comes from the suggestion (the server ignores the request's target
- * when the suggestion is named), the state is always enabled, and an unset
- * interval is left empty so the server applies the workspace default. Returns
- * undefined when the suggestion is not a draft this build can turn into a rule.
+ * when the suggestion is named) and the state is always enabled. Scheduling is
+ * the target's, so a new check inherits it server-side. Returns undefined when
+ * the suggestion is not a draft this build can turn into a rule.
  */
 export function buildRuleFromSuggestion({
   suggestion,
@@ -600,16 +589,6 @@ export function buildRuleFromSuggestion({
     target: prefill.target,
   });
   rule.state = QualityRuleState.ENABLED;
-  rule.scheduleInterval = undefined;
-  if (
-    overrides?.scheduleIntervalSeconds !== undefined &&
-    overrides.scheduleIntervalSeconds > 0
-  ) {
-    rule.scheduleInterval = create(DurationSchema, {
-      seconds: BigInt(overrides.scheduleIntervalSeconds),
-      nanos: 0,
-    });
-  }
   if (overrides?.severity !== undefined) {
     rule.severity = overrides.severity;
   }

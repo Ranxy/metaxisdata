@@ -704,15 +704,20 @@ func waitForJourneyIssueStatus(t *testing.T, fixture *qualityFixture, ruleName s
 	return issue
 }
 
-// runJourneyScheduledExecution makes one rule due and waits for the scheduler to
-// plan and finish its execution. The observer store is the only way to move a
-// rule's next_run_at; the API can only schedule it at least 15 minutes out.
+// runJourneyScheduledExecution makes one rule's target due and waits for the
+// scheduler to plan and finish its execution. The observer store is the only way
+// to move a target's next run; the API can only schedule it at least 15 minutes
+// out.
 func runJourneyScheduledExecution(t *testing.T, fixture *qualityFixture, ruleName string) *v1pb.QualityExecution {
 	t.Helper()
 
+	resourceID := journeyRuleResourceID(ruleName)
+	rule, err := fixture.env.Store.GetQualityRule(fixture.ctx, &store.FindQualityRuleMessage{ResourceID: &resourceID})
+	require.NoError(t, err)
+	require.NotNil(t, rule)
 	past := time.Now().Add(-time.Minute)
-	_, err := fixture.env.Store.UpdateQualityRule(fixture.ctx, journeyRuleResourceID(ruleName), &store.UpdateQualityRuleMessage{NextRunAt: &past})
-	require.NoError(t, err, "make the rule due")
+	require.NoError(t, fixture.env.Store.AdvanceQualityTargetNextRun(fixture.ctx, rule.TargetGUID, rule.TargetType, past),
+		"make the target due")
 
 	var planned *v1pb.QualityExecution
 	require.Eventually(t, func() bool {
@@ -732,7 +737,7 @@ func runJourneyScheduledExecution(t *testing.T, fixture *qualityFixture, ruleNam
 }
 
 // assertJourneyRuleScheduledAhead checks that the scheduled pass advanced the
-// rule's next slot instead of leaving it due for every tick.
+// target's next slot instead of leaving it due for every tick.
 func assertJourneyRuleScheduledAhead(t *testing.T, fixture *qualityFixture, ruleName string) {
 	t.Helper()
 
@@ -740,8 +745,11 @@ func assertJourneyRuleScheduledAhead(t *testing.T, fixture *qualityFixture, rule
 	rule, err := fixture.env.Store.GetQualityRule(fixture.ctx, &store.FindQualityRuleMessage{ResourceID: &resourceID})
 	require.NoError(t, err)
 	require.NotNil(t, rule)
-	require.NotNil(t, rule.NextRunAt, "a scheduled rule keeps a next slot")
-	require.True(t, rule.NextRunAt.After(time.Now()), "the next slot moved past the run")
+	schedule, err := fixture.env.Store.GetQualityTargetSchedule(fixture.ctx, rule.TargetGUID, rule.TargetType)
+	require.NoError(t, err)
+	require.NotNil(t, schedule, "the target keeps a schedule row")
+	require.NotNil(t, schedule.NextRunAt, "a scheduled target keeps a next slot")
+	require.True(t, schedule.NextRunAt.After(time.Now()), "the next slot moved past the run")
 }
 
 // journeyRuleResourceID returns the last path segment of a rule resource name.

@@ -386,7 +386,6 @@ export interface RuleFormState {
   owner: string;
   /** Comma-separated. */
   tags: string;
-  schedule: { value: string; unit: ScheduleUnit };
   thresholdMetric: QualityThresholdMetric;
   onEmpty: QualityEmptyBehavior;
   filter: FilterClauseForm[];
@@ -541,7 +540,6 @@ export function emptyRuleForm(
     state: QualityRuleState.ENABLED,
     owner: "",
     tags: "",
-    schedule: { value: "1", unit: "hours" },
     thresholdMetric: QualityThresholdMetric.COUNT,
     onEmpty: QualityEmptyBehavior.NOT_EVALUATED,
     filter: [],
@@ -575,6 +573,25 @@ export function scheduleMinutes(schedule: {
   const factor =
     schedule.unit === "minutes" ? 1 : schedule.unit === "hours" ? 60 : 1440;
   return amount * factor;
+}
+
+/**
+ * Client-side checks for a target's schedule interval, as catalog keys. The
+ * target dialog owns this value now; rule forms carry no schedule.
+ */
+export function validateScheduleInterval(schedule: {
+  value: string;
+  unit: ScheduleUnit;
+}): ValidationIssue[] {
+  const minutes = scheduleMinutes(schedule);
+  if (
+    minutes === undefined ||
+    minutes < MIN_SCHEDULE_MINUTES ||
+    minutes > MAX_SCHEDULE_MINUTES
+  ) {
+    return [{ key: VALIDATION_PREFIX + "scheduleInvalid" }];
+  }
+  return [];
 }
 
 /** A stored Duration as the largest whole unit the form can show. */
@@ -763,7 +780,6 @@ export function formToRule(
   rule.state = form.state;
   rule.owner = form.owner.trim();
   rule.tags = uniqueValues(parseValueList(form.tags));
-  rule.scheduleInterval = scheduleToDuration(form.schedule);
   rule.config = buildRuleConfig(form);
   if (options.target) {
     rule.target = buildTarget({
@@ -1109,7 +1125,6 @@ export function ruleToForm(rule: QualityRule): RuleFormState {
   form.state = rule.state;
   form.owner = rule.owner;
   form.tags = rule.tags.join(", ");
-  form.schedule = durationToSchedule(rule.scheduleInterval);
   // UNSPECIFIED means COUNT on the wire; normalize it so the select never opens
   // blank for a legacy rule or a draft that did not set the metric. A PERCENT
   // value survives only where the rule type actually reads the shared metric; a
@@ -1371,9 +1386,6 @@ export function computeUpdateMask(
   if (trimmed(before.owner) !== trimmed(after.owner)) {
     mask.push("owner");
   }
-  if (!sameSchedule(before.schedule, after.schedule)) {
-    mask.push("schedule_interval");
-  }
   if (tagsKey(before.tags) !== tagsKey(after.tags)) {
     mask.push("tags");
   }
@@ -1459,15 +1471,6 @@ function normalizeConfigRow(row: unknown): Record<string, unknown> {
   };
 }
 
-function sameSchedule(
-  before: RuleFormState["schedule"],
-  after: RuleFormState["schedule"]
-): boolean {
-  return (
-    scheduleToDuration(before).seconds === scheduleToDuration(after).seconds
-  );
-}
-
 function tagsKey(tags: string): string {
   return uniqueValues(parseValueList(tags)).join("\u0000");
 }
@@ -1492,14 +1495,6 @@ export function validateRuleForm(
   }
   if (!target) {
     issues.push({ key: VALIDATION_PREFIX + "targetRequired" });
-  }
-  const minutes = scheduleMinutes(form.schedule);
-  if (
-    minutes === undefined ||
-    minutes < MIN_SCHEDULE_MINUTES ||
-    minutes > MAX_SCHEDULE_MINUTES
-  ) {
-    issues.push({ key: VALIDATION_PREFIX + "scheduleInvalid" });
   }
   const c = form.config;
   for (const value of [

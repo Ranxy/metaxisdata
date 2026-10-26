@@ -1385,6 +1385,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.QualityTargetSchedule"><span class="badge">M</span>QualityTargetSchedule</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.QualityTargetSummary"><span class="badge">M</span>QualityTargetSummary</a>
                 </li>
               
@@ -1490,6 +1494,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.UpdateQualitySuggestionRequest"><span class="badge">M</span>UpdateQualitySuggestionRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.UpdateQualityTargetScheduleRequest"><span class="badge">M</span>UpdateQualityTargetScheduleRequest</a>
                 </li>
               
               
@@ -15453,14 +15461,6 @@ nothing has been published yet and the target has content). </p></td>
                 </tr>
               
                 <tr>
-                  <td>default_schedule_interval_seconds</td>
-                  <td><a href="#int64">int64</a></td>
-                  <td></td>
-                  <td><p>The schedule a newly authored rule starts with; 0 means the workspace default.
-Existing rules keep their own interval. </p></td>
-                </tr>
-              
-                <tr>
                   <td>default_severity</td>
                   <td><a href="#metaxisdata.v1.QualitySeverity">QualitySeverity</a></td>
                   <td></td>
@@ -16296,15 +16296,6 @@ were planned (any lifecycle state), and how the completed ones tallied. </p></td
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p>Format: users/{user}. Empty when the rule has no owner. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>schedule_interval</td>
-                  <td><a href="#google.protobuf.Duration">google.protobuf.Duration</a></td>
-                  <td></td>
-                  <td><p>How often the rule runs, between 15m and 7d. Zero is rejected: pausing is
-how scheduling stops, and a newly created rule first runs on its next
-scheduled slot, not immediately. </p></td>
                 </tr>
               
                 <tr>
@@ -17442,6 +17433,38 @@ populated, and is empty for a table-level rule. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.QualityTargetSchedule">QualityTargetSchedule</h3>
+        <p>QualityTargetSchedule is a target's one schedule: the cadence every enabled</p><p>check of the target runs at, and when the target next comes due. Scheduling is</p><p>per target, so all of its checks are planned and executed together.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>schedule_interval</td>
+                  <td><a href="#google.protobuf.Duration">google.protobuf.Duration</a></td>
+                  <td></td>
+                  <td><p>How often the target&#39;s enabled checks run, between 15 minutes and 7 days. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_run_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p>When the scheduler next considers the target due. Unset while the target has
+no enabled check. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.QualityTargetSummary">QualityTargetSummary</h3>
         <p>QualityTargetSummary is one row of the target directory: the target identity</p><p>plus the counts and health the row and the workspace header render.</p>
 
@@ -17556,6 +17579,15 @@ unset when the target has never run. </p></td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
                   <td><p>How many dispatch batches have planned at least one check for this target. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>schedule</td>
+                  <td><a href="#metaxisdata.v1.QualityTargetSchedule">QualityTargetSchedule</a></td>
+                  <td></td>
+                  <td><p>The target&#39;s schedule and next run. A target with rules always has a
+schedule; a target whose checks are all paused has an interval but no next
+run. </p></td>
                 </tr>
               
             </tbody>
@@ -18807,6 +18839,52 @@ decision is final. </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p>Why it was decided, shown in the review history. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.UpdateQualityTargetScheduleRequest">UpdateQualityTargetScheduleRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The target&#39;s metadata GUID. Required. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p>The target&#39;s object type. Optional when rules already exist, because their
+own target carries it. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>schedule_interval</td>
+                  <td><a href="#google.protobuf.Duration">google.protobuf.Duration</a></td>
+                  <td></td>
+                  <td><p>How often the target&#39;s enabled checks run, between 15 minutes and 7 days. </p></td>
                 </tr>
               
             </tbody>
@@ -20069,7 +20147,7 @@ the same instance and database.</p></td>
 
       
         <h3 id="metaxisdata.v1.DataQualityService">DataQualityService</h3>
-        <p>DataQualityService manages the checks that watch the data itself: rules and</p><p>their executions.</p><p>A rule observes one target — a table, or one column of it — with a typed</p><p>check (row count, null percent, uniqueness, accepted values, ...) on a</p><p>schedule or on demand. An execution is one rule checked once: it is planned</p><p>asynchronously, executed by the runner, and polled until it reaches a state</p><p>or an outcome. Batching rules for scheduling is an internal concern and is</p><p>not exposed as a resource.</p>
+        <p>DataQualityService manages the checks that watch the data itself: rules and</p><p>their executions.</p><p>A rule observes one target — a table, or one column of it — with a typed</p><p>check (row count, null percent, uniqueness, accepted values, ...). Scheduling</p><p>belongs to the target: every enabled check on a target runs together when the</p><p>target's schedule comes due, and a check can also run on demand. An execution</p><p>is one rule checked once: it is planned asynchronously, executed by the</p><p>runner, and polled until it reaches a state or an outcome. Batching rules for</p><p>scheduling is an internal concern and is not exposed as a resource.</p>
         <table class="enum-table">
           <thead>
             <tr><td>Method Name</td><td>Request Type</td><td>Response Type</td><td>Description</td></tr>
@@ -20353,6 +20431,15 @@ is named by GUID because a target is not a resource of its own.</p></td>
               </tr>
             
               <tr>
+                <td>UpdateQualityTargetSchedule</td>
+                <td><a href="#metaxisdata.v1.UpdateQualityTargetScheduleRequest">UpdateQualityTargetScheduleRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityTargetSchedule">QualityTargetSchedule</a></td>
+                <td><p>Update one target&#39;s schedule: how often its enabled checks run. Scheduling
+is per target, so this replaces the per-check schedule; a change takes
+effect from the next slot and never runs the target immediately.</p></td>
+              </tr>
+            
+              <tr>
                 <td>GetQualityContract</td>
                 <td><a href="#metaxisdata.v1.GetQualityContractRequest">GetQualityContractRequest</a></td>
                 <td><a href="#metaxisdata.v1.QualityContract">QualityContract</a></td>
@@ -20365,8 +20452,9 @@ and whether the live rules differ from that snapshot.</p></td>
                 <td><a href="#metaxisdata.v1.UpdateQualityContractRequest">UpdateQualityContractRequest</a></td>
                 <td><a href="#metaxisdata.v1.QualityContract">QualityContract</a></td>
                 <td><p>Update the target-level defaults. The filter is ANDed into every rule on the
-target at compile time; the schedule and severity only seed newly authored
-rules and never rewrite an existing rule.</p></td>
+target at compile time; the default severity only seeds newly authored rules
+and never rewrites an existing rule. The target&#39;s schedule is updated through
+UpdateQualityTargetSchedule.</p></td>
               </tr>
             
               <tr>
@@ -20747,6 +20835,16 @@ restart resets them and they roll over at 00:00 UTC.</p></td>
                 <td>GET</td>
                 <td>/v1/{parent=workspaces/*}/qualityTargets:get</td>
                 <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>UpdateQualityTargetSchedule</td>
+                <td>POST</td>
+                <td>/v1/{parent=workspaces/*}/qualityTargets:updateSchedule</td>
+                <td>*</td>
               </tr>
               
             

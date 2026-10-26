@@ -49,7 +49,7 @@ export interface RuleFieldSchema {
 }
 
 export interface CommonFieldSpec {
-  /** "target", "title" or "schedule" — not a config field. */
+  /** "target" or "title" — not a config field. */
   field: string;
   labelKey: string;
   required: true;
@@ -63,11 +63,6 @@ export const COMMON_REQUIRED_FIELDS: CommonFieldSpec[] = [
     required: true,
   },
   { field: "title", labelKey: "dataQuality.editor.title", required: true },
-  {
-    field: "schedule",
-    labelKey: "dataQuality.editor.schedule",
-    required: true,
-  },
 ];
 
 /** The config fields of one rule type. */
@@ -506,8 +501,8 @@ function fieldIsFilled(form: RuleFormState, spec: RuleFieldSpec): boolean {
 
 /**
  * The fields a dry run or save needs but the form has not filled. Common fields
- * (target, title, schedule) come first, then the rule-type catalog, then the
- * conditional arms the catalog cannot express on its own.
+ * (target, title) come first, then the rule-type catalog, then the conditional
+ * arms the catalog cannot express on its own.
  */
 export function missingRequiredFields(
   form: RuleFormState,
@@ -522,12 +517,6 @@ export function missingRequiredFields(
   }
   if (!filled(form.title)) {
     missing.push({ field: "title", labelKey: "dataQuality.editor.title" });
-  }
-  if (form.schedule.value.trim() === "") {
-    missing.push({
-      field: "schedule",
-      labelKey: "dataQuality.editor.schedule",
-    });
   }
 
   const schema = ruleFieldSchema(form.ruleType);

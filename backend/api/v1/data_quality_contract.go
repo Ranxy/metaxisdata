@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"slices"
 	"strings"
-	"time"
 
 	"connectrpc.com/connect"
 	"github.com/pkg/errors"
@@ -407,7 +406,6 @@ func qualityContractChangeSummary(added, modified, removed int32) *v1pb.QualityC
 // qualityContractSettingsEmpty reports whether settings carry anything.
 func qualityContractSettingsEmpty(settings *storepb.QualityContractSettings) bool {
 	return len(settings.GetFilter().GetClauses()) == 0 &&
-		settings.GetDefaultScheduleIntervalSeconds() == 0 &&
 		settings.GetDefaultSeverity() == storepb.QualitySeverity_QUALITY_SEVERITY_UNSPECIFIED
 }
 
@@ -429,14 +427,6 @@ func qualityContractNote(note string) (string, error) {
 // validateQualityContractSettings checks the bounds of the settings that do not
 // need the target's metadata.
 func validateQualityContractSettings(settings *storepb.QualityContractSettings) error {
-	if seconds := settings.GetDefaultScheduleIntervalSeconds(); seconds != 0 {
-		// Bound the raw seconds before converting to a Duration: a huge int64 would
-		// overflow the multiplication and could slip past the range check.
-		if seconds < int64(minQualityScheduleInterval/time.Second) ||
-			seconds > int64(maxQualityScheduleInterval/time.Second) {
-			return connectErrorInvalid("the default schedule must be between 15 minutes and 7 days")
-		}
-	}
 	severity := settings.GetDefaultSeverity()
 	switch severity {
 	case storepb.QualitySeverity_QUALITY_SEVERITY_UNSPECIFIED,
@@ -455,9 +445,8 @@ func convertQualityContractSettingsToV1(settings *storepb.QualityContractSetting
 		return &v1pb.QualityContractSettings{}
 	}
 	return &v1pb.QualityContractSettings{
-		Filter:                         convertQualityFilterToV1(settings.GetFilter()),
-		DefaultScheduleIntervalSeconds: settings.GetDefaultScheduleIntervalSeconds(),
-		DefaultSeverity:                v1pb.QualitySeverity(settings.GetDefaultSeverity()),
+		Filter:          convertQualityFilterToV1(settings.GetFilter()),
+		DefaultSeverity: v1pb.QualitySeverity(settings.GetDefaultSeverity()),
 	}
 }
 
@@ -467,9 +456,8 @@ func convertQualityContractSettingsFromV1(settings *v1pb.QualityContractSettings
 		return &storepb.QualityContractSettings{}
 	}
 	return &storepb.QualityContractSettings{
-		Filter:                         convertQualityFilterFromV1(settings.GetFilter()),
-		DefaultScheduleIntervalSeconds: settings.GetDefaultScheduleIntervalSeconds(),
-		DefaultSeverity:                storepb.QualitySeverity(settings.GetDefaultSeverity()),
+		Filter:          convertQualityFilterFromV1(settings.GetFilter()),
+		DefaultSeverity: storepb.QualitySeverity(settings.GetDefaultSeverity()),
 	}
 }
 

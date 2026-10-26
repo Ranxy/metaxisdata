@@ -1,6 +1,6 @@
 # 数据质量：从「规则目录」到「目标工作台」— 目标中心化重构
 
-> Status: **P0、P1a、P1b、P1 小项、产品层 IA 重构、Phase A 批次读模型与 Phase B 批次内目标分组已实现**（分支 `dq-target-centric-refactor`，尚未合并）。P0 目标工作台；P1a 服务端聚合读；P1b 薄契约（目标 filter/默认值/发布/版本/差异）；P1 小项内联编辑、字段覆盖、反向高亮、URL 筛选、每检查历史。**最后一轮删除了全部规则中心页面**（规则目录/整页编辑器/规则详情），检查创建与编辑只存在于目标契约工作台，跨目标 `Checks` 目录只读。Phase A 把内部 `quality_run` 提升为只读批次读模型：执行页默认按目标聚合扫描批次（目标行 → 批次卡 → 检查），平铺执行保留为第二视图；目标工作台右栏显示“最近扫描”。Phase B 在**保持实例级调度**的前提下，把批次内规则按目标分组、按完整目标组切块，使同一目标连续执行且尽量同批。剩余 §4 的 P2（可选）；目标级 schedule / 一目标一批次的调度仍是未做项（当前不需要）。
+> Status: **P0、P1a、P1b、P1 小项、产品层 IA 重构、Phase A 批次读模型、Phase B 批次内目标分组与 Phase C 目标级调度已实现**（分支 `dq-target-centric-refactor`，尚未合并）。P0 目标工作台；P1a 服务端聚合读；P1b 薄契约（目标 filter/默认值/发布/版本/差异）；P1 小项内联编辑、字段覆盖、反向高亮、URL 筛选、每检查历史。**最后一轮删除了全部规则中心页面**（规则目录/整页编辑器/规则详情），检查创建与编辑只存在于目标契约工作台，跨目标 `Checks` 目录只读。Phase A 把内部 `quality_run` 提升为只读批次读模型：执行页默认按目标聚合扫描批次（目标行 → 批次卡 → 检查），平铺执行保留为第二视图；目标工作台右栏显示“最近扫描”。Phase B 在**保持实例级调度**的前提下，把批次内规则按目标分组、按完整目标组切块，使同一目标连续执行且尽量同批。Phase C 已实现**目标级调度**：调度状态挂在目标上（`quality_target_schedule`），到期目标的全部启用检查同批执行；剩余 §4 的 P2（可选）。
 > 关联：[data-quality.md](data-quality.md)（现有实现与不变量）、[frontend-ui.md](frontend-ui.md)（布局门禁）、[i18n-glossary.md](i18n-glossary.md)（术语）、[instance-connections.md](instance-connections.md)（执行侧连接准入）、[security-posture.md](../../docs/security-posture.md)（单副本假设）。
 
 ## 0. 结论摘要
@@ -278,7 +278,7 @@ API 语义：
 
 - `ListQualityRuns` 按 `started_at DESC, id DESC`，支持 `target_guid`/`instance`/`trigger`/`state`/`outcome`/时间窗/分页；`GetQualityRun` 返回单个批次及全部切片；两者复用 `executions.list` 权限，无 audit 注解。
 - 批次仍是**实例级派发**：一个定时批次可能覆盖多张表（本分支数据里 1 个 tick = 43 条检查/12 张表），因此 UI 只用“目标切片”的计数，绝不把 batch-wide counts 当成某张表的计数。`quality_run` 不是事务单位，slice 可能 `total > 终态和`（未完成/放弃），UI 用 `runIncomplete` 明示。
-- 没有写路径：运行仍走 `RunQualityRules`，批次由 runner/API 内部创建；Phase B 才考虑“一目标一批次”与目标级调度。
+- 没有写路径：运行仍走 `RunQualityRules`，批次由 runner/API 内部创建。Phase C 已把调度改为目标级（§3.10），但批次仍是实例级派发，不做“一目标一批次”。
 
 前端：
 
@@ -302,6 +302,21 @@ API 语义：
 - 批次卡显示 “{count} 个目标”（多目标批次）让“一批 = 一个实例的一批规则，其中按目标连续”可见。
 
 文件：`backend/store/quality_rule.go`（due 查询按目标聚合 + `selectDueTargets`）、`backend/runner/qualityrunner/qualityrunner.go`（`planDueBatches`/`planInstanceDueBatches`、批次上限常量）、`backend/api/v1/data_quality_service.go`（手动选择排序）、对应单测；前端批次卡与目标视图的 “N/M 条检查” 提示。
+
+### 3.10 目标级调度（Phase C）
+
+**决定：调度从规则上移到目标。** 一个目标一个计时器（`quality_target_schedule`，主键 `(target_guid,target_type)`），到期时该目标的**全部启用检查**进入同一批次；规则不再持有 `schedule_interval`/`next_run_at`。
+
+- 到期判定：`next_run_at <= now` 且目标至少一条启用检查；存储层按目标 first-due 排序，按 200 条规则预算取**整目标**，返回每个目标的全部启用检查。
+- 批次：仍按实例派发、按 ≤100 条切块；`executeBatch` 顺序执行，所以目标的检查连续跑。超过 100 条检查的目标仍可跨批（只有绕过 API 上限的数据会这样），只有最后一片推进该目标 schedule。
+- 推进：执行行规划成功后按目标 `next_run_at = now + interval` 一次；手动运行不推进。崩溃/放弃的批次让目标等下一个 interval（不补跑，与旧行为一致）。
+- 规则生命周期：新建检查加入目标下一轮（目标首次有规则时用工作区默认初始化 `now + interval`）；暂停/归档目标最后一个启用检查 → `next_run_at = NULL`，重新启用 → `now + interval`；改目标调度 → `now + interval`；规则换目标时新旧目标都同步。
+- API/UI：`UpdateQualityTargetSchedule`（`rules.update` 权限、审计）改目标调度；`QualityTargetSummary.schedule` 暴露 interval/next run；目标工作台头部显示并编辑；检查编辑器删除 schedule 字段。
+- 契约：`QualityContractSettings` 删除 `default_schedule_interval_seconds`；目标调度不进发布快照/fingerprint。
+- `row_count_change` 的基线新鲜度窗口改用目标 interval（调度是目标级，规则不再有自己的 interval）。
+- 未做：一目标一批次的调度模型、`quality_run.target_guid`、连接租约与批次身份解耦；这些仍属新的产品决策。
+
+文件：`backend/migrator/migration/0.1/0030##quality_target_schedule.sql` + `LATEST.sql`、`backend/store/quality_target_schedule.go`、`backend/store/quality_rule.go`（删 schedule 列/事务内 ensure）、`backend/store/quality_target.go`（summary join）、`backend/runner/qualityrunner/qualityrunner.go`（due target 查询/规划/推进/基线）、`backend/api/v1/data_quality_target.go`（`UpdateQualityTargetSchedule` + summary）、`backend/api/v1/data_quality_service.go`（create/update/archive 同步目标 schedule）、`proto/v1/v1/data_quality_service.proto`；前端目标页调度卡/对话框、`TargetRuleComposer`/`QualityCheckDrawer`/`TargetCheckRow`/`ContractSettingsDialog`/`BatchCreateRulesDialog`、`utils/dataQualityForm.ts`、`utils/dataQualitySuggestion.ts`。测试：store 的 schedule 扫描/整目标预算、runner 的规划/推进/超限分片、integration 的“到期目标全部检查同批 + next slot 推进”、前端目标调度编辑/移除规则级 schedule。
 
 ## 4. 阶段计划
 
@@ -341,7 +356,15 @@ API 语义：
 - ✅ due 扫描在存储层按完整目标组取（`selectDueTargets`），200 条预算不再把目标拆到两个 tick。
 - ✅ 手动运行在实例分组内按 `(target_guid,target_type,id)` 排序，与定时路径一致。
 - ✅ 规则独立 schedule 导致“本批只含到期检查”时，批次卡/目标视图显示 “本批 N/M 条检查”，不把 due 子集冒充目标全量。
-- 未做（当前不需要）：目标级 schedule、一目标一批次的调度模型、`quality_run.target_guid`、连接租约与批次身份解耦。若未来要做，属于新的产品决策。
+- Phase C 起调度改为目标级（§3.10），本节的批次内分组与整目标切块逻辑保留；一目标一批次的调度模型、`quality_run.target_guid`、连接租约与批次身份解耦仍未做，属于新的产品决策。
+
+### Phase C（已实现，本分支）
+
+- ✅ 新增 `quality_target_schedule`（目标级 interval + next_run_at），删除 `quality_rule.schedule_interval_seconds`/`next_run_at` 与 due 索引。
+- ✅ due 扫描以目标为单位取整目标全部启用检查；批次内目标连续；批次上限 100；>100 条规则的目标可跨批且只推进一次。
+- ✅ `next_run_at` 在规划成功后按目标推进；手动运行不推进；暂停最后一条/归档/换目标/改调度都会同步目标 schedule。
+- ✅ `UpdateQualityTargetSchedule` + `QualityTargetSummary.schedule`；目标工作台展示/编辑；规则编辑器与检查详情删除 schedule；契约 settings 删除默认 schedule。
+- ✅ `row_count_change` 基线窗口跟随目标 interval。
 
 ### P2（可选）
 
@@ -362,7 +385,8 @@ API 语义：
 | 7 | 客户端聚合有上限 | 每表 100/工作区 1000 内成立；P1 改服务端聚合，前端只换数据源 |
 | 8 | 权限混合（`rules.list` 是基线，`suggest`/`run`/`create`/`issues.list` 各自独立） | 按块 `v-if`，页面不整页一个 `canView` |
 | 9 | 草案高亮不能替代审阅 | 卡片显示标题/类型/严重级别/置信度/理由；创建可撤销（忽略/删除规则），不提供「全部接受」 |
-| 10 | 目标页过载 | 默认只列「有规则的字段」；未覆盖列/历史/画像放 P1 折叠或抽屉；列表默认 attention 排序 |
+| 10 | 目标调度按目标生效：改 interval 会让该目标全部检查一起变快/变慢 | 明确文案“目标的全部检查按同一调度运行”；规则编辑器不再提供 per-rule schedule |
+| 11 | 目标页过载 | 默认只列「有规则的字段」；未覆盖列/历史/画像放 P1 折叠或抽屉；列表默认 attention 排序 |
 
 ## 6. 验证与门禁
 
@@ -380,6 +404,7 @@ API 语义：
 | 目标列表 | `frontend/src/pages/data-quality/DataQualityTargetsPage.vue`（测试同名 `.test.ts`） |
 | 目标工作台 | `frontend/src/pages/data-quality/DataQualityTargetPage.vue` + `components/data-quality/TargetCheckRow.vue`、`TargetDraftCard.vue`、`TargetCopilotPanel.vue`、`TargetRuleComposer.vue`（唯一检查编辑器）、`TargetCoverageCard.vue`、`TargetRuleHistoryStrip.vue`、`TargetRecentScanCard.vue`（最近扫描批次）、`QualityCheckDrawer.vue`（检查详情） |
 | 执行页（Phase A） | `frontend/src/pages/data-quality/DataQualityExecutionsPage.vue`（默认按目标；`?view=executions` 平铺）、`components/data-quality/QualityRunCard.vue`（批次卡 + 检查明细）、`TargetScanHistory.vue`（目标展开的批次历史） |
+| 目标调度（Phase C） | `backend/store/quality_target_schedule.go`（`Ensure`/`Update`/`Sync`/`FindDueQualityTargets`/`AdvanceQualityTargetNextRun`）、`backend/migrator/migration/0.1/0030##quality_target_schedule.sql` + `LATEST.sql`、`backend/runner/qualityrunner/qualityrunner.go`（due target 规划/目标推进/基线 interval）、`backend/api/v1/data_quality_target.go`（`UpdateQualityTargetSchedule`）、`proto/v1/v1/data_quality_service.proto`（`QualityTargetSchedule`、summary `schedule`）、前端目标页调度展示/编辑、`api/data-quality.ts` |
 | 批次读模型（Phase A） | `backend/store/quality_run.go`（`ListQualityRuns`/`GetQualityRun`/`ListQualityRunTargets`/`ListQualityTargetRunSummaries`）、`backend/api/v1/data_quality_run.go`、`data_quality_target.go`（`latest_run`/`run_count` 富化）、`data_quality_convert.go`、`proto/v1/v1/data_quality_service.proto`（`QualityRun`/`QualityRunTarget`/两个 RPC/`Execution.run`） |
 | 检查目录 | `frontend/src/pages/data-quality/DataQualityChecksPage.vue`（跨目标只读目录；取代已删除的 `DataQualityRulesPage.vue`） |
 | 已删除的旧页面 | `DataQualityRulesPage.vue`、`DataQualityRuleEditorPage.vue`、`DataQualityRuleDetailPage.vue` 及其测试（旧 URL 由 `RedirectQualityRulePage.vue` 兜底） |

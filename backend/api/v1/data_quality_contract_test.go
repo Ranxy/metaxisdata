@@ -1,7 +1,6 @@
 package v1
 
 import (
-	"math"
 	"strings"
 	"testing"
 
@@ -51,7 +50,9 @@ func TestQualityContractFingerprint(t *testing.T) {
 		{RuleResourceId: "a", RuleRevision: 1, Title: "rows", RuleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT},
 		{RuleResourceId: "b", RuleRevision: 3, Title: "email", Column: "email"},
 	}
-	settings := &storepb.QualityContractSettings{DefaultScheduleIntervalSeconds: 3600}
+	settings := &storepb.QualityContractSettings{
+		DefaultSeverity: storepb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+	}
 	base := qualityContractFingerprint(settings, checks)
 	require.Len(t, base, 64)
 	require.Equal(t, base, qualityContractFingerprint(settings, checks))
@@ -62,7 +63,9 @@ func TestQualityContractFingerprint(t *testing.T) {
 	}
 	require.NotEqual(t, base, qualityContractFingerprint(settings, changedCheck))
 
-	changedSettings := &storepb.QualityContractSettings{DefaultScheduleIntervalSeconds: 7200}
+	changedSettings := &storepb.QualityContractSettings{
+		DefaultSeverity: storepb.QualitySeverity_QUALITY_SEVERITY_CRITICAL,
+	}
 	require.NotEqual(t, base, qualityContractFingerprint(changedSettings, checks))
 }
 
@@ -105,22 +108,15 @@ func TestQualityContractChangeSummary(t *testing.T) {
 	require.Equal(t, int32(1), modified)
 }
 
-// Settings validation accepts the documented schedule window and severity catalog
-// and rejects anything else before the store is touched.
+// Settings validation accepts the severity catalog and rejects anything else
+// before the store is touched.
 func TestValidateQualityContractSettings(t *testing.T) {
 	t.Parallel()
 
 	require.NoError(t, validateQualityContractSettings(&storepb.QualityContractSettings{}))
 	require.NoError(t, validateQualityContractSettings(&storepb.QualityContractSettings{
-		DefaultScheduleIntervalSeconds: 900,
-		DefaultSeverity:                storepb.QualitySeverity_QUALITY_SEVERITY_ERROR,
+		DefaultSeverity: storepb.QualitySeverity_QUALITY_SEVERITY_ERROR,
 	}))
-	require.Error(t, validateQualityContractSettings(&storepb.QualityContractSettings{
-		DefaultScheduleIntervalSeconds: 60,
-	}), "less than the minimum")
-	require.Error(t, validateQualityContractSettings(&storepb.QualityContractSettings{
-		DefaultScheduleIntervalSeconds: int64(8 * 24 * 3600),
-	}), "more than the maximum")
 	require.Error(t, validateQualityContractSettings(&storepb.QualityContractSettings{
 		DefaultSeverity: storepb.QualitySeverity(99),
 	}))
@@ -135,18 +131,15 @@ func TestConvertQualityContractSettings(t *testing.T) {
 		Filter: &storepb.QualityFilter{Clauses: []*storepb.QualityFilterClause{
 			{Column: "id", Op: storepb.QualityFilterOperator_QUALITY_FILTER_OPERATOR_GT, Values: []string{"0"}},
 		}},
-		DefaultScheduleIntervalSeconds: 3600,
-		DefaultSeverity:                storepb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		DefaultSeverity: storepb.QualitySeverity_QUALITY_SEVERITY_WARNING,
 	}
 	public := convertQualityContractSettingsToV1(stored)
 	require.Len(t, public.GetFilter().GetClauses(), 1)
 	require.Equal(t, "id", public.GetFilter().GetClauses()[0].GetColumn())
-	require.Equal(t, int64(3600), public.GetDefaultScheduleIntervalSeconds())
 	require.Equal(t, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING, public.GetDefaultSeverity())
 
 	back := convertQualityContractSettingsFromV1(public)
 	require.Equal(t, stored.GetFilter().GetClauses()[0].GetColumn(), back.GetFilter().GetClauses()[0].GetColumn())
-	require.Equal(t, stored.GetDefaultScheduleIntervalSeconds(), back.GetDefaultScheduleIntervalSeconds())
 	require.Equal(t, stored.GetDefaultSeverity(), back.GetDefaultSeverity())
 }
 
@@ -158,16 +151,6 @@ func TestFormatQualityContractPublisher(t *testing.T) {
 	require.Empty(t, formatQualityContractPublisher(nil))
 	id := int32(7)
 	require.Equal(t, "users/7", formatQualityContractPublisher(&id))
-}
-
-// A huge default schedule must be rejected by the raw-seconds bound: converting
-// it to a Duration first could overflow and slip past the window check.
-func TestValidateQualityContractSettingsRejectsOverflow(t *testing.T) {
-	t.Parallel()
-
-	require.Error(t, validateQualityContractSettings(&storepb.QualityContractSettings{
-		DefaultScheduleIntervalSeconds: math.MaxInt64,
-	}))
 }
 
 // The publish note has a bounded size; the handler rejects rather than truncating.

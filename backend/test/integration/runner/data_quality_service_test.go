@@ -14,6 +14,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
@@ -2440,10 +2441,9 @@ func TestDataQualityTargetDirectoryRealServerIntegration(t *testing.T) {
 		Config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_RowCount{
 			RowCount: &storepb.RowCountConfig{MinRows: &minRows},
 		}},
-		Severity:         storepb.QualitySeverity_QUALITY_SEVERITY_WARNING,
-		State:            storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
-		ScheduleInterval: time.Hour,
-	})
+		Severity: storepb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		State:    storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
+	}, time.Hour)
 	require.NoError(t, err)
 	withOrphan := list(&v1pb.ListQualityTargetsRequest{Parent: "workspaces/-", PageSize: 100})
 	orphanSummary := (*v1pb.QualityTargetSummary)(nil)
@@ -2611,12 +2611,10 @@ func TestDataQualityContractRealServerIntegration(t *testing.T) {
 			Op:     v1pb.QualityFilterOperator_QUALITY_FILTER_OPERATOR_GT,
 			Values: []string{"0"},
 		}}},
-		DefaultScheduleIntervalSeconds: 3600,
-		DefaultSeverity:                v1pb.QualitySeverity_QUALITY_SEVERITY_ERROR,
+		DefaultSeverity: v1pb.QualitySeverity_QUALITY_SEVERITY_ERROR,
 	}
 	updated := updateSettings(settings)
 	require.Len(t, updated.GetSettings().GetFilter().GetClauses(), 1)
-	require.Equal(t, int64(3600), updated.GetSettings().GetDefaultScheduleIntervalSeconds())
 	require.True(t, updated.GetHasUnpublishedChanges(), "settings changed after the first read")
 
 	_, err := fixture.dataQuality.UpdateQualityContract(fixture.ctx,
@@ -2813,6 +2811,53 @@ func TestDataQualityRunsRealServerIntegration(t *testing.T) {
 	require.Equal(t, int32(2), latest.GetCounts().GetTotal(),
 		"the latest scan carries both checks of the target")
 	require.GreaterOrEqual(t, detail.Msg.GetSummary().GetRunCount(), int32(1))
+
+	// Target-level scheduling: making one target due plans every enabled check of
+	// that target into one scheduled batch, and the other target (not due) stays
+	// out of it. The target's next slot moves past the run.
+	require.NotNil(t, detail.Msg.GetSummary().GetSchedule())
+	require.Greater(t, detail.Msg.GetSummary().GetSchedule().GetScheduleInterval().AsDuration(), time.Duration(0))
+	madeDueAt := time.Now().UTC()
+	require.NoError(t, fixture.env.Store.AdvanceQualityTargetNextRun(fixture.ctx,
+		fixture.usersGUID, storepb.MetaType_TABLE, madeDueAt.Add(-time.Minute)))
+	var scheduledRun *v1pb.QualityRun
+	require.Eventually(t, func() bool {
+		executions, err := fixture.dataQuality.ListQualityExecutions(fixture.ctx,
+			withToken(fixture.env.AdminToken(), &v1pb.ListQualityExecutionsRequest{
+				Parent:     "workspaces/-",
+				TargetGuid: fixture.usersGUID,
+				Trigger:    v1pb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED,
+				StartTime:  timestamppb.New(madeDueAt),
+				PageSize:   10,
+			}))
+		if err != nil || len(executions.Msg.GetQualityExecutions()) < 2 {
+			return false
+		}
+		run, err := fixture.dataQuality.GetQualityRun(fixture.ctx,
+			withToken(fixture.env.AdminToken(), &v1pb.GetQualityRunRequest{
+				Name: executions.Msg.GetQualityExecutions()[0].GetRun(),
+			}))
+		if err != nil {
+			return false
+		}
+		scheduledRun = run.Msg
+		return true
+	}, 60*time.Second, 250*time.Millisecond, "the scheduler never planned the due target: %s", fixture.env.ServerLogs())
+	require.Equal(t, v1pb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED, scheduledRun.GetTrigger())
+	require.Equal(t, int32(2), scheduledRun.GetCounts().GetTotal(),
+		"one due target plans all of its enabled checks")
+	require.Len(t, scheduledRun.GetTargets(), 1)
+	require.Equal(t, fixture.usersGUID, scheduledRun.GetTargets()[0].GetTarget().GetMetaGuid())
+	scheduled, err := fixture.dataQuality.GetQualityTarget(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.GetQualityTargetRequest{
+			Parent:     "workspaces/-",
+			TargetGuid: fixture.usersGUID,
+			MetaType:   v1pb.MetaType_TABLE,
+		}))
+	require.NoError(t, err)
+	require.NotNil(t, scheduled.Msg.GetSummary().GetSchedule().GetNextRunTime())
+	require.True(t, scheduled.Msg.GetSummary().GetSchedule().GetNextRunTime().AsTime().After(time.Now()),
+		"the scheduled pass advanced the target's next slot")
 
 	// A run name from another resource shape is rejected.
 	_, err = fixture.dataQuality.GetQualityRun(fixture.ctx,

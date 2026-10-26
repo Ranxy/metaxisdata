@@ -260,13 +260,12 @@ describe("schema catalog edge cases", () => {
     ).toEqual(["leftAggColumn", "rightAggColumn"]);
   });
 
-  it("treats a blank schedule and blank title as missing", () => {
+  it("treats a blank title as missing", () => {
     const form = completeForm(QualityRuleType.ROW_COUNT);
-    form.schedule = { value: "", unit: "hours" };
     form.title = "  ";
     expect(
       missingRequiredFields(form, TARGET).map((field) => field.field)
-    ).toEqual(["title", "schedule"]);
+    ).toEqual(["title"]);
   });
 
   it("handles boolean and list values in complete forms", () => {

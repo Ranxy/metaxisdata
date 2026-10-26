@@ -705,7 +705,6 @@ checked with. Rule-level fields always win where they are set.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | filter | [QualityFilter](#metaxisdata-store-QualityFilter) |  | Applied to every rule on the target, ANDed with the rule&#39;s own filter. It is evaluated at compile time, so a contract change affects the next execution without rewriting the rules. |
-| default_schedule_interval_seconds | [int64](#int64) |  | The schedule a newly authored rule starts with; 0 means the workspace default. It does not rewrite existing rules. |
 | default_severity | [QualitySeverity](#metaxisdata-store-QualitySeverity) |  | The severity a newly authored rule starts with; UNSPECIFIED means no default. |
 
 

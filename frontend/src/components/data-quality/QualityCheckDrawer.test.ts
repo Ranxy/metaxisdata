@@ -94,7 +94,6 @@ function ruleFixture(overrides: Record<string, unknown> = {}) {
     severity: QualitySeverity.ERROR,
     state: QualityRuleState.ENABLED,
     revision: 3,
-    scheduleInterval: { seconds: 3600n, nanos: 0 },
     createTime: timestampFromDate(new Date(START.getTime() - 86_400_000)),
     updateTime: timestampFromDate(START),
     tags: ["fact"],

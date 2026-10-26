@@ -19,9 +19,24 @@ import (
 
 func qualityRuleStub(id int64, targetGUID string) *store.QualityRuleMessage {
 	return &store.QualityRuleMessage{
-		ID:               id,
+		ID:         id,
+		TargetGUID: targetGUID,
+		TargetType: storepb.MetaType_TABLE,
+	}
+}
+
+// dueTargetStub builds one due target with its enabled checks; the due scan
+// returns targets this way, so the planner never has to regroup rules by target.
+func dueTargetStub(targetGUID string, ruleIDs ...int64) *store.DueQualityTarget {
+	rules := make([]*store.QualityRuleMessage, 0, len(ruleIDs))
+	for _, id := range ruleIDs {
+		rules = append(rules, qualityRuleStub(id, targetGUID))
+	}
+	return &store.DueQualityTarget{
 		TargetGUID:       targetGUID,
+		TargetType:       storepb.MetaType_TABLE,
 		ScheduleInterval: time.Hour,
+		Rules:            rules,
 	}
 }
 
@@ -37,51 +52,31 @@ func qualityExecutionStub(status storepb.QualityStatus) *store.QualityExecutionM
 	return &store.QualityExecutionMessage{Status: status}
 }
 
-func TestPlanDueBatchesGroupsByInstanceAndChunks(t *testing.T) {
+func TestPlanDueBatchesGroupsDueTargetsByInstanceAndChunks(t *testing.T) {
 	t.Parallel()
 
-	rules := []*store.QualityRuleMessage{
-		qualityRuleStub(1, "inst-a;db;public;t1"),
-		qualityRuleStub(2, "inst-b;db;public;t2"),
-		qualityRuleStub(3, "inst-a;db;public;t3"),
-		qualityRuleStub(4, "inst-b;db;public;t4"),
-		qualityRuleStub(5, "inst-a;db;public;t5"),
+	targets := []*store.DueQualityTarget{
+		dueTargetStub("inst-a;db;public;t1", 1, 2),
+		dueTargetStub("inst-b;db;public;t2", 3, 4),
+		dueTargetStub("inst-a;db;public;t3", 5),
 	}
 
-	plans := planDueBatches(rules, 2)
-	require.Len(t, plans, 3)
+	plans := planDueBatches(targets, 3)
+	require.Len(t, plans, 2)
 	require.Equal(t, "inst-a", plans[0].instanceResourceID)
-	require.Equal(t, []int64{1, 3}, qualityRuleIDs(plans[0].rules))
-	require.Equal(t, "inst-a", plans[1].instanceResourceID)
-	require.Equal(t, []int64{5}, qualityRuleIDs(plans[1].rules))
-	require.Equal(t, "inst-b", plans[2].instanceResourceID)
-	require.Equal(t, []int64{2, 4}, qualityRuleIDs(plans[2].rules))
-}
-
-func TestPlanDueBatchesKeepsOrderForSameInstance(t *testing.T) {
-	t.Parallel()
-
-	rules := []*store.QualityRuleMessage{
-		qualityRuleStub(3, "inst-a;db;public;t3"),
-		qualityRuleStub(1, "inst-a;db;public;t1"),
-		qualityRuleStub(2, "inst-a;db;public;t2"),
-	}
-	plans := planDueBatches(rules, 50)
-	require.Len(t, plans, 1)
-	// Different targets keep the due scan's first-seen order.
-	require.Equal(t, []int64{3, 1, 2}, qualityRuleIDs(plans[0].rules))
+	require.Equal(t, []int64{1, 2, 5}, qualityRuleIDs(plans[0].rules))
+	require.Equal(t, "inst-b", plans[1].instanceResourceID)
+	require.Equal(t, []int64{3, 4}, qualityRuleIDs(plans[1].rules))
 }
 
 func TestPlanDueBatchesKeepsEachTargetContiguous(t *testing.T) {
 	t.Parallel()
 
-	rules := []*store.QualityRuleMessage{
-		qualityRuleStub(1, "inst-a;db;public;orders"),
-		qualityRuleStub(2, "inst-a;db;public;customers"),
-		qualityRuleStub(3, "inst-a;db;public;orders"),
-		qualityRuleStub(4, "inst-a;db;public;customers"),
+	targets := []*store.DueQualityTarget{
+		dueTargetStub("inst;db;public;orders", 1, 3),
+		dueTargetStub("inst;db;public;customers", 2, 4),
 	}
-	plans := planDueBatches(rules, 50)
+	plans := planDueBatches(targets, 50)
 	require.Len(t, plans, 1)
 	require.Equal(t, []int64{1, 3, 2, 4}, qualityRuleIDs(plans[0].rules),
 		"one target's checks run back to back inside the batch")
@@ -90,13 +85,11 @@ func TestPlanDueBatchesKeepsEachTargetContiguous(t *testing.T) {
 func TestPlanDueBatchesDoesNotSplitTargetsAcrossChunks(t *testing.T) {
 	t.Parallel()
 
-	rules := []*store.QualityRuleMessage{
-		qualityRuleStub(1, "inst-a;db;public;orders"),
-		qualityRuleStub(2, "inst-a;db;public;orders"),
-		qualityRuleStub(3, "inst-a;db;public;customers"),
-		qualityRuleStub(4, "inst-a;db;public;customers"),
+	targets := []*store.DueQualityTarget{
+		dueTargetStub("inst-a;db;public;orders", 1, 2),
+		dueTargetStub("inst-a;db;public;customers", 3, 4),
 	}
-	plans := planDueBatches(rules, 3)
+	plans := planDueBatches(targets, 3)
 	require.Len(t, plans, 2)
 	require.Equal(t, []int64{1, 2}, qualityRuleIDs(plans[0].rules))
 	require.Equal(t, []int64{3, 4}, qualityRuleIDs(plans[1].rules),
@@ -106,33 +99,47 @@ func TestPlanDueBatchesDoesNotSplitTargetsAcrossChunks(t *testing.T) {
 func TestPlanDueBatchesSplitsOnlyAnOversizedTarget(t *testing.T) {
 	t.Parallel()
 
-	rules := []*store.QualityRuleMessage{
-		qualityRuleStub(1, "inst-a;db;public;orders"),
-		qualityRuleStub(2, "inst-a;db;public;orders"),
-		qualityRuleStub(3, "inst-a;db;public;orders"),
-		qualityRuleStub(4, "inst-a;db;public;orders"),
-		qualityRuleStub(5, "inst-a;db;public;orders"),
-		qualityRuleStub(6, "inst-a;db;public;customers"),
-		qualityRuleStub(7, "inst-a;db;public;customers"),
+	targets := []*store.DueQualityTarget{
+		dueTargetStub("inst-a;db;public;orders", 1, 2, 3, 4, 5),
+		dueTargetStub("inst-a;db;public;customers", 6, 7),
 	}
-	plans := planDueBatches(rules, 2)
+	plans := planDueBatches(targets, 2)
 	require.Len(t, plans, 4)
 	require.Equal(t, []int64{1, 2}, qualityRuleIDs(plans[0].rules))
 	require.Equal(t, []int64{3, 4}, qualityRuleIDs(plans[1].rules))
 	require.Equal(t, []int64{5}, qualityRuleIDs(plans[2].rules))
 	require.Equal(t, []int64{6, 7}, qualityRuleIDs(plans[3].rules),
 		"a target over the cap is the only one that spans batches")
+
+	// A split target advances only once, by the plan that holds its final chunk.
+	require.Empty(t, plans[0].advanceTargets)
+	require.Empty(t, plans[1].advanceTargets)
+	require.Len(t, plans[2].advanceTargets, 1, "the final chunk advances the oversized target")
+	require.Equal(t, "inst-a;db;public;orders", plans[2].advanceTargets[0].TargetGUID)
+	require.Len(t, plans[3].advanceTargets, 1)
+	require.Equal(t, "inst-a;db;public;customers", plans[3].advanceTargets[0].TargetGUID)
 }
 
-func TestPlanDueBatchesOrdersTargetsByFirstDueRule(t *testing.T) {
+func TestPlanDueBatchesAdvancesEachTargetOnce(t *testing.T) {
 	t.Parallel()
 
-	rules := []*store.QualityRuleMessage{
-		qualityRuleStub(1, "inst-a;db;public;customers"),
-		qualityRuleStub(2, "inst-a;db;public;orders"),
-		qualityRuleStub(3, "inst-a;db;public;customers"),
+	targets := []*store.DueQualityTarget{
+		dueTargetStub("inst-a;db;public;orders", 1, 2),
+		dueTargetStub("inst-a;db;public;customers", 3),
 	}
-	plans := planDueBatches(rules, 50)
+	plans := planDueBatches(targets, 50)
+	require.Len(t, plans, 1)
+	require.Len(t, plans[0].advanceTargets, 2)
+}
+
+func TestPlanDueBatchesOrdersTargetsAsGiven(t *testing.T) {
+	t.Parallel()
+
+	targets := []*store.DueQualityTarget{
+		dueTargetStub("inst-a;db;public;customers", 1, 3),
+		dueTargetStub("inst-a;db;public;orders", 2),
+	}
+	plans := planDueBatches(targets, 50)
 	require.Len(t, plans, 1)
 	require.Equal(t, []int64{1, 3, 2}, qualityRuleIDs(plans[0].rules),
 		"the oldest due target keeps running first instead of a GUID reorder")
@@ -141,7 +148,7 @@ func TestPlanDueBatchesOrdersTargetsByFirstDueRule(t *testing.T) {
 func TestPlanDueBatchesAttributesMalformedTargetToNoInstance(t *testing.T) {
 	t.Parallel()
 
-	plans := planDueBatches([]*store.QualityRuleMessage{nil, qualityRuleStub(7, "not-a-guid")}, 50)
+	plans := planDueBatches([]*store.DueQualityTarget{nil, dueTargetStub("not-a-guid", 7)}, 50)
 	require.Len(t, plans, 1)
 	require.Empty(t, plans[0].instanceResourceID)
 	require.Equal(t, []int64{7}, qualityRuleIDs(plans[0].rules))
@@ -150,7 +157,7 @@ func TestPlanDueBatchesAttributesMalformedTargetToNoInstance(t *testing.T) {
 func TestPlanDueBatchesRejectsNonPositiveBatchSize(t *testing.T) {
 	t.Parallel()
 
-	require.Empty(t, planDueBatches([]*store.QualityRuleMessage{qualityRuleStub(1, "inst;db;public;t")}, 0))
+	require.Empty(t, planDueBatches([]*store.DueQualityTarget{dueTargetStub("inst;db;public;t", 1)}, 0))
 }
 
 // A target at the API's per-table rule cap fits one scheduled batch; only data
@@ -158,18 +165,16 @@ func TestPlanDueBatchesRejectsNonPositiveBatchSize(t *testing.T) {
 func TestScheduledBatchCapacityFitsTheLargestLegalTarget(t *testing.T) {
 	t.Parallel()
 
-	rules := make([]*store.QualityRuleMessage, 0, 100)
+	ids := make([]int64, 0, 100)
 	for id := int64(1); id <= 100; id++ {
-		rules = append(rules, qualityRuleStub(id, "inst;db;public;orders"))
+		ids = append(ids, id)
 	}
-	plans := planDueBatches(rules, maxExecutionsPerBatch)
+	plans := planDueBatches([]*store.DueQualityTarget{dueTargetStub("inst;db;public;orders", ids...)}, maxExecutionsPerBatch)
 	require.Len(t, plans, 1, "the largest legal target stays in one batch")
 	require.Len(t, plans[0].rules, 100)
 
-	legacy := make([]*store.QualityRuleMessage, 0, len(rules)+1)
-	legacy = append(legacy, rules...)
-	legacy = append(legacy, qualityRuleStub(101, "inst;db;public;orders"))
-	plans = planDueBatches(legacy, maxExecutionsPerBatch)
+	ids = append(ids, 101)
+	plans = planDueBatches([]*store.DueQualityTarget{dueTargetStub("inst;db;public;orders", ids...)}, maxExecutionsPerBatch)
 	require.Len(t, plans, 2, "only an over-cap target can span batches")
 }
 

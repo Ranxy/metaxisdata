@@ -246,15 +246,14 @@ func TestConvertQualityRule(t *testing.T) {
 			TimestampColumn: "updated_at",
 			MaxLagSeconds:   3600,
 		}}},
-		Severity:         storepb.QualitySeverity_QUALITY_SEVERITY_CRITICAL,
-		State:            storepb.QualityRuleState_QUALITY_RULE_STATE_PAUSED,
-		OwnerID:          qualityTestPtr(int32(7)),
-		ScheduleInterval: 90 * time.Minute,
-		MuteUntil:        &mutedUntil,
-		Revision:         4,
-		CreatedAt:        createdAt,
-		UpdatedAt:        updatedAt,
-		Tags:             []string{"pii", "tier-1"},
+		Severity:  storepb.QualitySeverity_QUALITY_SEVERITY_CRITICAL,
+		State:     storepb.QualityRuleState_QUALITY_RULE_STATE_PAUSED,
+		OwnerID:   qualityTestPtr(int32(7)),
+		MuteUntil: &mutedUntil,
+		Revision:  4,
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
+		Tags:      []string{"pii", "tier-1"},
 	}
 
 	converted := convertQualityRule("ws1", rule)
@@ -267,7 +266,6 @@ func TestConvertQualityRule(t *testing.T) {
 	require.Equal(t, v1pb.QualitySeverity_QUALITY_SEVERITY_CRITICAL, converted.GetSeverity())
 	require.Equal(t, v1pb.QualityRuleState_QUALITY_RULE_STATE_PAUSED, converted.GetState())
 	require.Equal(t, "users/7", converted.GetOwner())
-	require.Equal(t, 90*time.Minute, converted.GetScheduleInterval().AsDuration())
 	require.Equal(t, int32(4), converted.GetRevision())
 	require.Equal(t, createdAt, converted.GetCreateTime().AsTime())
 	require.Equal(t, updatedAt, converted.GetUpdateTime().AsTime())
@@ -291,8 +289,6 @@ func TestConvertQualityRuleWithoutOptionalFields(t *testing.T) {
 	require.Nil(t, converted.GetMuteUntil())
 	require.Nil(t, converted.GetTarget().GetPath())
 	require.Empty(t, converted.GetTarget().GetColumns())
-	require.NotNil(t, converted.GetScheduleInterval())
-	require.Equal(t, time.Duration(0), converted.GetScheduleInterval().AsDuration())
 }
 
 func TestConvertQualityExecution(t *testing.T) {
@@ -631,16 +627,6 @@ func TestQualityIssueResourceName(t *testing.T) {
 	require.Equal(t, "workspaces/ws1/qualityIssues/issue123", formatQualityIssueName("ws1", "issue123"))
 }
 
-// TestResolveCreateScheduleInterval pins that a new rule without an interval takes
-// the workspace default instead of being rejected, while an explicit interval wins.
-func TestResolveCreateScheduleInterval(t *testing.T) {
-	t.Parallel()
-
-	settings := dataquality.Settings{DefaultScheduleInterval: 2 * time.Hour}
-	require.Equal(t, 30*time.Minute, resolveCreateScheduleInterval(30*time.Minute, settings))
-	require.Equal(t, 2*time.Hour, resolveCreateScheduleInterval(0, settings))
-}
-
 func TestQualitySuggestionPayloadRoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -975,4 +961,22 @@ func TestSchemaDriftNullablePresenceRoundTrip(t *testing.T) {
 	require.NotNil(t, stored[1].Nullable)
 	require.False(t, stored[1].GetNullable())
 	require.True(t, stored[2].GetNullable())
+}
+
+// A target's schedule crosses the API boundary with its interval and next run;
+// an absent schedule row converts to nil rather than a zero interval.
+func TestConvertQualityTargetSchedule(t *testing.T) {
+	t.Parallel()
+
+	nextRun := time.Date(2026, time.October, 26, 12, 0, 0, 0, time.UTC)
+	converted := convertQualityTargetSchedule(&store.QualityTargetScheduleMessage{
+		TargetGUID:       "instance-1;shop;public;orders",
+		TargetType:       storepb.MetaType_TABLE,
+		ScheduleInterval: 2 * time.Hour,
+		NextRunAt:        &nextRun,
+	})
+	require.Equal(t, 2*time.Hour, converted.GetScheduleInterval().AsDuration())
+	require.Equal(t, nextRun, converted.GetNextRunTime().AsTime())
+
+	require.Nil(t, convertQualityTargetSchedule(nil))
 }
