@@ -59,6 +59,35 @@ func (s *DataQualityService) ListQualityTargets(ctx context.Context, req *connec
 		return nil, err
 	}
 
+	// The aggregate query cannot extract the checked column from every config arm
+	// without duplicating that mapping in SQL, so the page's rules are read once and
+	// the column count is filled in Go from the authoritative config.
+	if len(targets) > 0 {
+		keys := make([]store.MetaGUIDKey, 0, len(targets))
+		for _, target := range targets {
+			keys = append(keys, store.MetaGUIDKey{GUID: target.GUID, ObjectType: target.Type})
+		}
+		pageRules, err := s.store.ListQualityRulesByTargets(ctx, keys)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to read the targets' rules")
+		}
+		columns := make(map[store.MetaGUIDKey]map[string]struct{}, len(targets))
+		for _, rule := range pageRules {
+			column := dataquality.ConfigColumn(rule.Config)
+			if column == "" {
+				continue
+			}
+			key := store.MetaGUIDKey{GUID: rule.TargetGUID, ObjectType: rule.TargetType}
+			if columns[key] == nil {
+				columns[key] = map[string]struct{}{}
+			}
+			columns[key][column] = struct{}{}
+		}
+		for _, target := range targets {
+			target.ColumnCount = int32(len(columns[store.MetaGUIDKey{GUID: target.GUID, ObjectType: target.Type}]))
+		}
+	}
+
 	response := &v1pb.ListQualityTargetsResponse{NextPageToken: nextPageToken}
 	for _, target := range targets {
 		response.QualityTargets = append(response.QualityTargets, convertQualityTargetSummary(target))
@@ -168,8 +197,8 @@ func (s *DataQualityService) GetQualityTarget(ctx context.Context, req *connect.
 			storepb.QualityRuleState_QUALITY_RULE_STATE_ARCHIVED:
 		default:
 		}
-		if rule.TargetPath != nil && rule.TargetPath.Column != "" {
-			columns[rule.TargetPath.Column] = struct{}{}
+		if column := dataquality.ConfigColumn(rule.Config); column != "" {
+			columns[column] = struct{}{}
 		}
 		if schemaChanged[rule.ID] {
 			summary.SchemaChanged = true

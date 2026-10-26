@@ -260,7 +260,7 @@ message GetQualityTargetResponse {
 | store | **已实现**：`quality_target.go` 的单查询聚合 + `CountPendingQualitySuggestions`；`quality_contract.go` 未做 |
 | api | **已实现**：聚合读 handler、顺序/过滤映射、summary 转换；发布事务未做 |
 | runner | 未做：规划执行时合成目标级默认值（filter/schedule/severity） |
-| 前端 | **已实现**：目标页接 `GetQualityTarget`/`ListQualityTargets`；工作台内联新建规则（`TargetRuleComposer`，复用 `RuleConfigForm` + `PreviewQualityRule`）；视图/物化视图/外部表的 DQ 标签页；规则/问题/执行详情 → 目标工作台的反向链接。未做：目标级设置面板、发布/变更入口、URL 化筛选、字段覆盖视图 |
+| 前端 | **已实现**：目标页接 `GetQualityTarget`/`ListQualityTargets`；检查 Dialog（唯一编辑器，含 filter/owner/tags/onEmpty 与编辑 mask）、检查抽屉、覆盖卡、每检查历史条、契约设置/发布/历史、视图/物化视图/外部表入口、详情页反向高亮、列表 URL 筛选、Start monitoring 入口 |
 | 文档 | `data-quality.md` §3.6/§3.7 已同步聚合读与路由；契约落地后需再同步 |
 
 ## 4. 阶段计划
@@ -275,9 +275,9 @@ message GetQualityTargetResponse {
 
 ### P1a（已实现，本分支）
 
-1. ✅ `ListQualityTargets` / `GetQualityTarget`：目标目录改服务端聚合；工作台一次读规则 + 摘要 + 未解决问题。**尚未做**每规则最近 N 次执行（`GetQualityTarget` 只带每条规则的 `last_result`）。
-4. ✅ 工作台内联新建规则（`TargetRuleComposer`）：目标固定、类型按对象能力裁剪、`RuleConfigForm` 复用、先预览再创建；保存后就地插入分组，不离开页面。编辑仍走完整编辑器。
-5. ✅（部分）视图/物化视图/外部表的元数据详情接入 `MetadataQualitySection`；规则/问题/执行详情页增加“目标工作台”按钮。未做：字段覆盖视图（未覆盖列 + 语义标注候选槽位）、问题/执行反向锚回目标并**高亮**具体规则。
+1. ✅ `ListQualityTargets` / `GetQualityTarget`：目标目录改服务端聚合；工作台一次读检查 + 摘要 + 未解决问题 + 每检查最近 20 次执行（`rule_history`）。
+4. ✅ 检查 Dialog（`TargetRuleComposer`）是唯一编辑器：新建与编辑、目标固定、类型按对象能力裁剪、完整字段（filter/owner/tags/onEmpty）、预览/update mask；保存后就地更新分组。
+5. ✅ 视图/物化视图/外部表入口；字段覆盖卡；规则/问题/执行详情反向锚回目标并**高亮**具体检查；列表 URL 筛选。
 
 ### P1b（已实现，本分支）
 

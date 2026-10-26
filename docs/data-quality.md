@@ -21,7 +21,7 @@ fully offline; three model-assisted features are opt-in.
    needs no data source.
 2. **Check the permissions.** Reading checks, executions, issues and contracts is
    part of the member baseline. Creating, editing, running, acknowledging and
-   resolving need `metaxisdata.dataQuality.checks.*` / `.issues.update`; publishing
+   resolving need `metaxisdata.dataQuality.rules.*` / `.issues.update`; publishing
    a contract needs `metaxisdata.dataQuality.contracts.publish` (workspace
    administrator or a custom role). Model-assisted paths also need `.suggest` or
    `.explain`.
@@ -96,8 +96,8 @@ add or edit a check without walking the target picker again, show which columns
 have no check yet, and draft checks with the AI copilot on the right — drafts
 appear inside the section they belong to until you create them as checks.
 
-The target list and the Checks, Issues and Suggestions lists keep their filters in
-the address bar, so refreshing or sharing a link returns to the same view.
+The Checks, Issues and Suggestions lists keep their filters in the address bar,
+so refreshing or sharing a link returns to the same view.
 
 Data Quality → **Checks** is the cross-target directory for audit and search:
 every check with its target and latest execution, narrowed by the same target

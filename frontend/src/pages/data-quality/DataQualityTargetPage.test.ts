@@ -115,7 +115,6 @@ function target(column = "", metaType = MetaType.TABLE) {
       database: "shop",
       schema: "public",
       object: "orders",
-      column,
     }),
     columns: column ? [column] : [],
   });
@@ -889,6 +888,9 @@ describe("DataQualityTargetPage", () => {
       label("dataQuality.workspace.summaryRules", { count: 4 })
     );
     expect(mocks.getQualityTarget).toHaveBeenCalledTimes(1);
+    // The contract strip re-reads, so the live checks are no longer mistaken for
+    // the published version and Publish becomes available.
+    expect(mocks.getQualityContract.mock.calls.length).toBeGreaterThan(1);
     wrapper.unmount();
   });
 

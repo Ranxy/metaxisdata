@@ -847,6 +847,8 @@ function onDraftAccepted(draft: QualitySuggestion, rule: QualityRule) {
     0,
     summary.value.pendingDraftCount - 1
   );
+  // The live checks changed, so the contract's published-vs-live diff changed too.
+  void loadContract();
 }
 
 /**
@@ -859,6 +861,9 @@ function onRuleCreated(rule: QualityRule) {
   if (rule.state === QualityRuleState.ENABLED) {
     summary.value.enabledRuleCount += 1;
   }
+  // The contract strip must learn that the live checks no longer match the
+  // published version, otherwise Publish stays disabled until a full reload.
+  void loadContract();
 }
 
 /** A saved rule replaces itself in the list; an edit changes no count. */
@@ -868,6 +873,7 @@ function onRuleSaved(rule: QualityRule) {
   if (editingRule.value) {
     editingRule.value = undefined;
     replaceRule(rule);
+    void loadContract();
     return;
   }
   if (suggestion) {
@@ -1004,6 +1010,7 @@ function onCheckChanged(rule: QualityRule) {
   if (wasPaused !== isPaused) {
     summary.value.pausedRuleCount += isPaused ? 1 : -1;
   }
+  void loadContract();
 }
 
 /** Archiving drops the row and its count, and closes the sheet. */
@@ -1029,6 +1036,7 @@ function onCheckDeleted(name: string) {
     }
   }
   closeCheck();
+  void loadContract();
 }
 
 /**

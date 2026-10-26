@@ -1084,3 +1084,44 @@ func (s *Store) ListQualityRulesByIDs(ctx context.Context, ids []int64) ([]*Qual
 	}
 	return result, nil
 }
+
+// ListQualityRulesByTargets loads the live rules of several targets in one
+// statement. The target directory needs a per-target column count that cannot be
+// expressed by the aggregate query without duplicating the config's arm mapping
+// in SQL, so the handler reads the page's rules and counts the columns in Go.
+func (s *Store) ListQualityRulesByTargets(ctx context.Context, keys []MetaGUIDKey) ([]*QualityRuleMessage, error) {
+	if len(keys) == 0 {
+		return []*QualityRuleMessage{}, nil
+	}
+	guids := make([]string, 0, len(keys))
+	objectTypes := make([]int16, 0, len(keys))
+	for _, key := range keys {
+		guids = append(guids, key.GUID)
+		objectTypes = append(objectTypes, int16(key.ObjectType))
+	}
+	rows, err := s.GetDB().QueryContext(ctx, `
+		SELECT `+qualityRuleColumns+`
+		FROM quality_rule r
+		JOIN unnest($1::text[], $2::int2[]) AS k(guid, object_type)
+			ON r.target_guid = k.guid AND r.target_type = k.object_type
+		WHERE r.deleted = FALSE AND r.state <> $3
+		ORDER BY r.target_guid, r.id
+	`, pq.Array(guids), pq.Array(objectTypes), int16(storepb.QualityRuleState_QUALITY_RULE_STATE_ARCHIVED))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list the quality rules of the targets")
+	}
+	defer rows.Close()
+
+	rules := []*QualityRuleMessage{}
+	for rows.Next() {
+		rule, err := scanQualityRule(rows)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to scan a quality rule of the targets")
+		}
+		rules = append(rules, rule)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to iterate the quality rules of the targets")
+	}
+	return rules, nil
+}

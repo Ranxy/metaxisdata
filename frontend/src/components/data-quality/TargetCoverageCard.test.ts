@@ -3,9 +3,11 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { i18n } from "@/locales";
 import {
+  NullPercentConfigSchema,
   type QualityRule,
+  QualityRuleConfigSchema,
   QualityRuleSchema,
-  QualityTargetPathSchema,
+  QualityRuleType,
   QualityTargetSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
@@ -32,8 +34,13 @@ function column(name: string) {
 
 function columnRule(columnName: string): QualityRule {
   return create(QualityRuleSchema, {
-    target: create(QualityTargetSchema, {
-      path: create(QualityTargetPathSchema, { column: columnName }),
+    ruleType: QualityRuleType.NULL_PERCENT,
+    target: create(QualityTargetSchema, { columns: [columnName] }),
+    config: create(QualityRuleConfigSchema, {
+      config: {
+        case: "nullPercent",
+        value: create(NullPercentConfigSchema, { column: columnName }),
+      },
     }),
   });
 }

@@ -217,6 +217,13 @@ func qualityRowCountConfig(minRows int64) *v1pb.QualityRuleConfig {
 	}}}
 }
 
+// qualityColumnConfig builds a null-percent check on one column.
+func qualityColumnConfig(column string) *v1pb.QualityRuleConfig {
+	return &v1pb.QualityRuleConfig{Config: &v1pb.QualityRuleConfig_NullPercent{
+		NullPercent: &v1pb.NullPercentConfig{Column: column, MaxNullCount: qualityPtr(int64(0))},
+	}}
+}
+
 // seedSuggestion stores one pending suggestion directly: the LLM RPCs are off by
 // default, so the review-queue scenarios seed the rows a model would have
 // proposed.
@@ -2304,12 +2311,12 @@ func TestDataQualityTargetDirectoryRealServerIntegration(t *testing.T) {
 	fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
 		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
 		fixture.usersGUID, qualityRowCountConfig(1))
-	fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+	fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
 		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_ERROR,
-		fixture.usersGUID, qualityRowCountConfig(2))
-	fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		fixture.usersGUID, qualityColumnConfig("name"))
+	fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
 		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
-		ordersGUID, qualityRowCountConfig(1))
+		ordersGUID, qualityColumnConfig("amount"))
 
 	list := func(request *v1pb.ListQualityTargetsRequest) *v1pb.ListQualityTargetsResponse {
 		t.Helper()
@@ -2334,6 +2341,8 @@ func TestDataQualityTargetDirectoryRealServerIntegration(t *testing.T) {
 	require.Equal(t, int32(2), users.GetRuleCount())
 	require.Equal(t, int32(2), users.GetEnabledRuleCount())
 	require.Equal(t, int32(0), users.GetPausedRuleCount())
+	require.Equal(t, int32(1), users.GetColumnCount(),
+		"the checked column is read from the config, not the path snapshot")
 	require.Equal(t, "users", users.GetTarget().GetPath().GetObject())
 	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, users.GetWorstStatus(),
 		"no rule has run yet")
@@ -2343,6 +2352,7 @@ func TestDataQualityTargetDirectoryRealServerIntegration(t *testing.T) {
 	orders := byGUID[ordersGUID]
 	require.NotNil(t, orders)
 	require.Equal(t, int32(1), orders.GetRuleCount())
+	require.Equal(t, int32(1), orders.GetColumnCount())
 
 	// The search and the "worst status" filter both narrow the directory.
 	require.Len(t, list(&v1pb.ListQualityTargetsRequest{
@@ -2373,6 +2383,8 @@ func TestDataQualityTargetDirectoryRealServerIntegration(t *testing.T) {
 	require.NoError(t, err, "get the quality target")
 	require.Len(t, get.Msg.GetQualityRules(), 2)
 	require.Equal(t, int32(2), get.Msg.GetSummary().GetRuleCount())
+	require.Equal(t, int32(1), get.Msg.GetSummary().GetColumnCount(),
+		"the workspace summary counts the config's checked column")
 	require.Equal(t, "users", get.Msg.GetSummary().GetTarget().GetPath().GetObject())
 	require.Empty(t, get.Msg.GetOrphanedReason())
 	require.Empty(t, get.Msg.GetOpenIssues())
@@ -2485,9 +2497,9 @@ func TestDataQualityContractRealServerIntegration(t *testing.T) {
 	require.Equal(t, int32(1), republished.GetRevision().GetVersion(), "republishing unchanged state keeps the version")
 
 	// A new rule is an unpublished addition until the next publish.
-	fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+	fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
 		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
-		fixture.usersGUID, qualityRowCountConfig(2))
+		fixture.usersGUID, qualityColumnConfig("name"))
 	drifted := getContract()
 	require.True(t, drifted.GetHasUnpublishedChanges())
 	require.Equal(t, int32(2), drifted.GetCheckCount())
@@ -2520,6 +2532,8 @@ func TestDataQualityContractRealServerIntegration(t *testing.T) {
 		}))
 	require.NoError(t, err)
 	require.Len(t, version2.Msg.GetChecks(), 2)
+	require.Contains(t, []string{version2.Msg.GetChecks()[0].GetColumn(), version2.Msg.GetChecks()[1].GetColumn()}, "name",
+		"a published check records the config's checked column")
 	version1, err := fixture.dataQuality.GetQualityContractRevision(fixture.ctx,
 		withToken(fixture.env.AdminToken(), &v1pb.GetQualityContractRevisionRequest{
 			Parent:     "workspaces/-",

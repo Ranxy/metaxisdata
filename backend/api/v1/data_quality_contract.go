@@ -29,7 +29,11 @@ func (s *DataQualityService) GetQualityContract(ctx context.Context, req *connec
 	if _, err := s.workspaceID(ctx, req.Msg.GetParent()); err != nil {
 		return nil, err
 	}
-	contract, err := s.qualityContractView(ctx, req.Msg.GetTargetGuid(), storepb.MetaType(req.Msg.GetMetaType()))
+	targetGUID := strings.TrimSpace(req.Msg.GetTargetGuid())
+	if targetGUID == "" {
+		return nil, connectErrorInvalid("target_guid is required")
+	}
+	contract, err := s.qualityContractView(ctx, targetGUID, storepb.MetaType(req.Msg.GetMetaType()))
 	if err != nil {
 		return nil, err
 	}
@@ -378,11 +382,10 @@ func buildQualityContractChecks(rules []*store.QualityRuleMessage) []*storepb.Qu
 }
 
 // contractColumn is the column a rule watches; empty for a table-level rule.
+// The config is authoritative: the target path's column is only a display
+// snapshot and can be missing.
 func contractColumn(rule *store.QualityRuleMessage) string {
-	if rule.TargetPath == nil {
-		return ""
-	}
-	return rule.TargetPath.Column
+	return dataquality.ConfigColumn(rule.Config)
 }
 
 // qualityContractFingerprint hashes the settings and ordered checks. Publishing
