@@ -55,7 +55,7 @@ The harness treats the external services as disposable, but it only drops databa
 
 ## GitHub Actions
 
-GitHub CI is configured in [/.github/workflows/mysql-integration.yml](/home/ran/gocode/metaxisdata/.github/workflows/mysql-integration.yml).
+GitHub CI is configured in [/.github/workflows/mysql-integration.yml](../../../.github/workflows/mysql-integration.yml).
 
 That workflow uses GitHub Actions `services` for:
 
@@ -73,16 +73,16 @@ So the current split is:
 
 The dual-mode database selection lives in:
 
-- [/backend/test/integration/env/testenv.go](/home/ran/gocode/metaxisdata/backend/test/integration/env/testenv.go)
-- [/backend/test/integration/env/service_env.go](/home/ran/gocode/metaxisdata/backend/test/integration/env/service_env.go)
+- [/backend/test/integration/env/testenv.go](env/testenv.go)
+- [/backend/test/integration/env/service_env.go](env/service_env.go)
 
 The shared container-runtime probe used to skip instead of fail lives in:
 
-- [/backend/test/integration/dockerutil/dockerutil.go](/home/ran/gocode/metaxisdata/backend/test/integration/dockerutil/dockerutil.go)
+- [/backend/test/integration/dockerutil/dockerutil.go](dockerutil/dockerutil.go)
 
 The main MySQL real-server scenarios live in:
 
-- [/backend/test/integration/runner/schemasync_lineage_mysql_service_test.go](/home/ran/gocode/metaxisdata/backend/test/integration/runner/schemasync_lineage_mysql_service_test.go)
+- [/backend/test/integration/runner/schemasync_lineage_mysql_service_test.go](runner/schemasync_lineage_mysql_service_test.go)
 
 ## Running CI Mode Locally
 

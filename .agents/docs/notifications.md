@@ -1,7 +1,7 @@
 # 站内信与通知推送 — Reference
 
 > Status: **implemented**（站内信 `4fb0e00`/`32a6bd2`，服务端推送 `a00e3e0`）。本文件是 `backend/component/notification/`、`backend/api/v1/notification_service.go`、`backend/runner/schemasync/operation.go` 与前端 `notification*` 这一族的维护参考。
-> Related: [proto/v1/v1/notification_service.proto](proto/v1/v1/notification_service.proto)、[proto/store/store/notification.proto](proto/store/store/notification.proto)、[docs/security-posture.md:31](docs/security-posture.md#L31)。
+> Related: [proto/v1/v1/notification_service.proto](../../proto/v1/v1/notification_service.proto)、[proto/store/store/notification.proto](../../proto/store/store/notification.proto)、[docs/security-posture.md:31](../../docs/security-posture.md#L31)。
 > 行形状与公开面的字段清单以 proto 为准；本文件只记契约、不变量与耦合。
 
 ## What it is
@@ -15,7 +15,7 @@
 
 消息正文**不落文本**：服务端只存 `type + severity + 结构化 detail`，前端用 i18n 渲染（`en-US` / `zh-CN`）。这是双语与 proto3 前向兼容（老前端遇新类型降级为通用文案）的前提。
 
-`notification` 表是**个人数据**：与其余所有表不同，读路径按 `recipient_id` 作用域而不是 workspace，因此表本身没有 workspace 列（[0017##notification.sql:1-8](backend/migrator/migration/0.1/0017%23%23notification.sql#L1-L8)）。
+`notification` 表是**个人数据**：与其余所有表不同，读路径按 `recipient_id` 作用域而不是 workspace，因此表本身没有 workspace 列（[0017##notification.sql:1-8](../../backend/migrator/migration/0.1/0017%23%23notification.sql#L1-L8)）。
 
 **两个数不是一回事**：`unread`（未读，`read_at IS NULL`）是消息自身的状态，只有点开某一条或"全部已读"才变；`unseen`（未查看）是未读里、`created_at > principal.notification_seen_at` 的那些，是铃铛红点的数字。打开通知（铃铛下拉或 `/notifications`）只把 `notification_seen_at` 推到当前时间，红点清零而消息仍未读——用户点了哪条，哪条才变已读。
 
@@ -58,7 +58,7 @@
 
 ## 数据模型
 
-表与索引（[LATEST.sql:678-705](backend/migrator/migration/LATEST.sql#L678-L705)，与 [0017##notification.sql](backend/migrator/migration/0.1/0017%23%23notification.sql) 同列同索引，只是注释长短不一）：
+表与索引（[LATEST.sql:678-705](../../backend/migrator/migration/LATEST.sql#L678-L705)，与 [0017##notification.sql](../../backend/migrator/migration/0.1/0017%23%23notification.sql) 同列同索引，只是注释长短不一）：
 
 | 列 / 索引 | 形状 | 作用 |
 | --- | --- | --- |
@@ -72,17 +72,17 @@
 
 **读态为什么是列**：未读计数是角标热路径，`payload->>'readTime' IS NULL` 走不了 partial index；`read_at` + 部分索引让计数成为一次索引探针。
 
-水位在 `principal` 上（[0018##notification_seen.sql](backend/migrator/migration/0.1/0018%23%23notification_seen.sql)、[LATEST.sql:31-35](backend/migrator/migration/LATEST.sql#L31-L35)）：
+水位在 `principal` 上（[0018##notification_seen.sql](../../backend/migrator/migration/0.1/0018%23%23notification_seen.sql)、[LATEST.sql:31-35](../../backend/migrator/migration/LATEST.sql#L31-L35)）：
 
 | 列 | 形状 | 作用 |
 | --- | --- | --- |
 | `principal.notification_seen_at` | `TIMESTAMPTZ`，`NULL` = 从没打开过通知 | 红点的水位；`NULL` 时读作"所有未读都是新的"（SQL 里用 `COALESCE(..., '-infinity')` 表达）。**不在 `notification` 表上**：它是"我上次看收件箱是什么时候"，一行一个用户，而给每条消息记一个"看过"标志会让每次打开都 UPDATE 一整批行 |
 
-两个数由**同一条语句**返回（[notification.go:151](backend/store/notification.go#L151)）：`COUNT(*)` 与 `COUNT(*) FILTER (created_at > 水位)`，`WHERE` 由 `notificationScope(recipientID, true)` 拼出，所以 `unseen ≤ unread` 是构造出来的，不是"通常成立"。分两条语句读会拿到两个快照，中间写入的那条能让红点数超过未读数。语句里 join `principal` 只为取水位，`recipient_id` 仍是第一个谓词，未读 partial index 照旧是入口。
+两个数由**同一条语句**返回（[notification.go:151](../../backend/store/notification.go#L151)）：`COUNT(*)` 与 `COUNT(*) FILTER (created_at > 水位)`，`WHERE` 由 `notificationScope(recipientID, true)` 拼出，所以 `unseen ≤ unread` 是构造出来的，不是"通常成立"。分两条语句读会拿到两个快照，中间写入的那条能让红点数超过未读数。语句里 join `principal` 只为取水位，`recipient_id` 仍是第一个谓词，未读 partial index 照旧是入口。
 
 ## 写入路径
 
-唯一写入口是 `notification.Service`（[service.go:83-95](backend/component/notification/service.go#L83-L95)），它同时是推送的起点：
+唯一写入口是 `notification.Service`（[service.go:83-95](../../backend/component/notification/service.go#L83-L95)），它同时是推送的起点：
 
 | 方法 | 契约 |
 | --- | --- |
@@ -96,10 +96,10 @@
 关键实现事实：
 
 - **best-effort 契约**：写通知失败只记日志，绝不影响同步/摄取路径（与 audit 拦截器同约定）。调用方显式忽略返回错误。
-- **写入脱离请求取消但有界**：`Send` / `SendToWorkspaceAdmins` 用 `context.WithTimeout(context.WithoutCancel(ctx), writeTimeout)`，`writeTimeout = 10s`（[service.go:65-68](backend/component/notification/service.go#L65-L68)）。
-- **两层抑制**：进程内闸门 `Service.claim`（`recent` map，`gateLimit = 1<<16`、`gateRetention = 24h`，[service.go:415-445](backend/component/notification/service.go#L415-L445)）先挡掉绝大多数重复，省下"读 IAM policy + 展开组"的成本；数据库唯一索引是第二层，负责跨副本/重启。`dedupe_key` 为空时两层都不生效。写库失败会 `release`，让本窗口内可以重试。
-- **载荷边界在构造函数/消息构造函数里**：`MaxFailureEntries = 100`、`MaxErrorBytes = 2<<10`（按 rune 截断），调用方传什么都不会撑大那条永久保留的行（[service.go:57-63](backend/component/notification/service.go#L57-L63)、[:172-219](backend/component/notification/service.go#L172-L219)）。
-- **窗口常量**（[service.go:37-46](backend/component/notification/service.go#L37-L46)）：`BackgroundFailureWindow = 1h`、`UnmappedNamespaceWindow = 24h`；键见下表。
+- **写入脱离请求取消但有界**：`Send` / `SendToWorkspaceAdmins` 用 `context.WithTimeout(context.WithoutCancel(ctx), writeTimeout)`，`writeTimeout = 10s`（[service.go:65-68](../../backend/component/notification/service.go#L65-L68)）。
+- **两层抑制**：进程内闸门 `Service.claim`（`recent` map，`gateLimit = 1<<16`、`gateRetention = 24h`，[service.go:415-445](../../backend/component/notification/service.go#L415-L445)）先挡掉绝大多数重复，省下"读 IAM policy + 展开组"的成本；数据库唯一索引是第二层，负责跨副本/重启。`dedupe_key` 为空时两层都不生效。写库失败会 `release`，让本窗口内可以重试。
+- **载荷边界在构造函数/消息构造函数里**：`MaxFailureEntries = 100`、`MaxErrorBytes = 2<<10`（按 rune 截断），调用方传什么都不会撑大那条永久保留的行（[service.go:57-63](../../backend/component/notification/service.go#L57-L63)、[:172-219](../../backend/component/notification/service.go#L172-L219)）。
+- **窗口常量**（[service.go:37-46](../../backend/component/notification/service.go#L37-L46)）：`BackgroundFailureWindow = 1h`、`UnmappedNamespaceWindow = 24h`；键见下表。
 
 | 事件类 | 键 | 窗口 |
 | --- | --- | --- |
@@ -109,7 +109,7 @@
 
 ## 同步操作聚合
 
-一个用户可见的同步操作 = 实例元数据步骤 + 它入队的所有库；进程内聚合，`operationTimeout = 2h`（[operation.go:21](backend/runner/schemasync/operation.go#L21)、[:31-66](backend/runner/schemasync/operation.go#L31-L66)）。
+一个用户可见的同步操作 = 实例元数据步骤 + 它入队的所有库；进程内聚合，`operationTimeout = 2h`（[operation.go:21](../../backend/runner/schemasync/operation.go#L21)、[:31-66](../../backend/runner/schemasync/operation.go#L31-L66)）。
 
 - 登记入口：`StartOperation` → `RecordInstanceResult` → `EnqueueDatabases`（登记 pending 并**封口**）→ checker 里 `completeDatabase` 把结果**扇出**给所有包含该库的 op（两个并发操作共享一个库是可能的）。
 - checker 丢弃"实例已不存在"的队列项时也要回报，否则 op 永远等不到结果。
@@ -120,7 +120,7 @@
 
 ## OpenLineage 摄取异常 → 管理员
 
-摄取是 API key 认证的机器流量，异常一律给管理员。所有拒绝分支收成一个 `reportIngestionFailure`（[openlineage_handler.go:93-143](backend/api/v1/openlineage_handler.go#L93-L143)），4xx 与 5xx 共用，severity 由 status 决定。
+摄取是 API key 认证的机器流量，异常一律给管理员。所有拒绝分支收成一个 `reportIngestionFailure`（[openlineage_handler.go:93-143](../../backend/api/v1/openlineage_handler.go#L93-L143)），4xx 与 5xx 共用，severity 由 status 决定。
 
 | 分支 | HTTP | kind | severity | 去重主体 |
 | --- | --- | --- | --- | --- |
@@ -136,7 +136,7 @@
 
 ## 对外 API
 
-`NotificationService` 共 7 个方法（[notification_service.proto](proto/v1/v1/notification_service.proto)）。**不加 `(metaxisdata.v1.permission)` 注解，也不加 `allow_without_credential`，不加 `(metaxisdata.v1.audit)`**：登录必需，作用域由 handler 按当前用户保证，读收件箱不是管理动作、不该进永久审计账本（[notification_service.proto:14-23](proto/v1/v1/notification_service.proto#L14-L23)、[notification_service.go:50-59](backend/api/v1/notification_service.go#L50-L59)）。
+`NotificationService` 共 7 个方法（[notification_service.proto](../../proto/v1/v1/notification_service.proto)）。**不加 `(metaxisdata.v1.permission)` 注解，也不加 `allow_without_credential`，不加 `(metaxisdata.v1.audit)`**：登录必需，作用域由 handler 按当前用户保证，读收件箱不是管理动作、不该进永久审计账本（[notification_service.proto:14-23](../../proto/v1/v1/notification_service.proto#L14-L23)、[notification_service.go:50-59](../../backend/api/v1/notification_service.go#L50-L59)）。
 
 | RPC | HTTP | 说明 |
 | --- | --- | --- |
@@ -152,7 +152,7 @@
 
 **没把两个数合成一个 RPC**：`GetUnreadNotificationCount` 已经是红点的兜底调用，多一个字段就够；改成一个新名字会让"前端比服务端新"的窗口里老前端直接 404。代价是方法名只描述了其中一个数。
 
-**流无 REST 路由**：grpc-gateway 不能代理 server streaming（`ExplainSQL` 的生成网关直接返回 `Unimplemented`），浏览器直接打 Connect 端点。注册处：`connectHandlers` map + `grpcreflect` 静态列表按服务名注册（[grpc_routes.go:99](backend/server/grpc_routes.go#L99)、[:162](backend/server/grpc_routes.go#L162)、[:192](backend/server/grpc_routes.go#L192)）。
+**流无 REST 路由**：grpc-gateway 不能代理 server streaming（`ExplainSQL` 的生成网关直接返回 `Unimplemented`），浏览器直接打 Connect 端点。注册处：`connectHandlers` map + `grpcreflect` 静态列表按服务名注册（[grpc_routes.go:99](../../backend/server/grpc_routes.go#L99)、[:162](../../backend/server/grpc_routes.go#L162)、[:192](../../backend/server/grpc_routes.go#L192)）。
 
 ## 推送流：hub 与 handler
 
@@ -166,9 +166,9 @@
 | `close()` | 结束所有订阅并拒绝新订阅；此后 `subscribe` 立刻返回已关闭通道 | 停机期间新建的流立即正常结束，而非挂住 |
 | 锁 | 所有对 `ch` 的 send/close 都在 hub 锁内 | 不存在"关掉之后又 send"的窗口 |
 
-`SubscribeNotifications` handler（[notification_service.go:244-302](backend/api/v1/notification_service.go#L244-L302)）：先 `notificationCaller`（未登录 `Unauthenticated`）→ `subscriptions == nil` 时 `Unimplemented`（在任何 store 读取之前，因此可用 nil store 单测）→ 解析一次 workspace（流的每条消息共用）→ `Subscribe` → 设 `X-Accel-Buffering: no`（必须在第一次 `Send` 前，connect-go 随首帧发头）→ `heartbeat = 25s` / `lifetime = 30min` 循环。超时收尾与客户端断开都 `return nil`（**不是错误**）。
+`SubscribeNotifications` handler（[notification_service.go:244-302](../../backend/api/v1/notification_service.go#L244-L302)）：先 `notificationCaller`（未登录 `Unauthenticated`）→ `subscriptions == nil` 时 `Unimplemented`（在任何 store 读取之前，因此可用 nil store 单测）→ 解析一次 workspace（流的每条消息共用）→ `Subscribe` → 设 `X-Accel-Buffering: no`（必须在第一次 `Send` 前，connect-go 随首帧发头）→ `heartbeat = 25s` / `lifetime = 30min` 循环。超时收尾与客户端断开都 `return nil`（**不是错误**）。
 
-**停机顺序**：`server.Shutdown` 在 `echoServer.Shutdown(ctx)` **之前** `s.notifier.Close()`（[server.go:225-226](backend/server/server.go#L225-L226)）。常驻流是永不结束的 in-flight 请求，Echo 的 Shutdown 会等它到 `gracefulShutdownPeriod`（10s）。对 nil 的守卫是必须的（`server_lifecycle_test.go` 手工构造的 `Server{}` 没有 notifier）。
+**停机顺序**：`server.Shutdown` 在 `echoServer.Shutdown(ctx)` **之前** `s.notifier.Close()`（[server.go:225-226](../../backend/server/server.go#L225-L226)）。常驻流是永不结束的 in-flight 请求，Echo 的 Shutdown 会等它到 `gracefulShutdownPeriod`（10s）。对 nil 的守卫是必须的（`server_lifecycle_test.go` 手工构造的 `Server{}` 没有 notifier）。
 
 ## 前端
 
@@ -182,18 +182,18 @@
 
 行为要点：
 
-- **流的生命周期归铃铛**：`onMounted → startStreaming()`、`onBeforeUnmount → stopStreaming()`（[NotificationBell.vue:165-175](frontend/src/components/layout/NotificationBell.vue#L165-L175)）。侧栏只在登录后的壳里存在，它的生命周期就是会话的生命周期。
+- **流的生命周期归铃铛**：`onMounted → startStreaming()`、`onBeforeUnmount → stopStreaming()`（[NotificationBell.vue:165-175](../../frontend/src/components/layout/NotificationBell.vue#L165-L175)）。侧栏只在登录后的壳里存在，它的生命周期就是会话的生命周期。
 - **红点由 `unseenCount` 驱动，页面的两处由 `unreadCount` 驱动**：`store.hasUnseen` 画铃铛的红点与数字，`store.hasUnread` 决定"全部已读"按钮可不可点。把其中一个换到另一个上，要么红点清不掉，要么按钮在还有未读时是灰的。
 - **`openInbox()` / `closeInbox()` 是"通知正开着"的登记**：`openInboxCount` 是计数而不是布尔量（铃铛下拉与页面可能同时挂着），为 0 时新消息才点亮红点。打开时乐观清零 `unseenCount` 再调 `MarkNotificationsSeen`（失败只吞掉：下次刷新红点会回来，比开一次通知抛错好）。下拉/页面卸载时必须 `closeInbox()`，否则残留的计数会让红点永远不再亮。
-- **打开期间到达的消息要真的出现在列表里**：`applyArrival` 往 `recent` 前插的条件是"列表已有行 **或** 通知正开着"（[notification.ts:216-258](frontend/src/store/modules/notification.ts#L216-L258)）。水位要盖过这条消息，前提是用户看得到它；空下拉也是"开着"，此时不插入就等于把一个从没展示过的消息永久静音（红点不会再亮，因为水位已经过去了）。
+- **打开期间到达的消息要真的出现在列表里**：`applyArrival` 往 `recent` 前插的条件是"列表已有行 **或** 通知正开着"（[notification.ts:216-258](../../frontend/src/store/modules/notification.ts#L216-L258)）。水位要盖过这条消息，前提是用户看得到它；空下拉也是"开着"，此时不插入就等于把一个从没展示过的消息永久静音（红点不会再亮，因为水位已经过去了）。
 - **页面打开也算打开通知**：`NotificationsPage.vue` 的 `onMounted` 调 `openInbox()`，`onBeforeUnmount` 调 `closeInbox()`；深链或刷新直接进页面时红点同样是清的。
-- **`generation` 把守连接循环**（[notification.ts:70](frontend/src/store/modules/notification.ts#L70)）：`startStreaming`/`stopStreaming` 都推进 `generation`，每条循环只在自己那一代里重连。卸载与随后挂载可能落在同一 tick（布局切换），只用布尔量会让被停止的循环把新的开始误认成自己的，于是每次切换多留一条常驻流，直到 8 条上限把新连接全拒掉。
-- **每次（重）连都 `refresh()` 一次**：这是"丢事件/缓冲溢出被丢订阅/进程重启/标签页被冻结"的统一兜底。任何一帧（含 `KeepAlive`）都重置退避到 `RECONNECT_MIN_MS = 1s`，上限 `RECONNECT_MAX_MS = 30s`。`refreshCounts()` 落地时若 `openInboxCount > 0`，把 `unseenCount` 压回 0，**并且服务端还认为有"新的"时补一次 `MarkNotificationsSeen`**：流漏掉的那条消息正是靠这次刷新发现的（重连/重新可见会同时刷列表与计数），只压数不推水位会让用户关掉下拉后红点又亮——为一条他刚在屏幕上读过的消息（[notification.ts:116-138](frontend/src/store/modules/notification.ts#L116-L138)）。
+- **`generation` 把守连接循环**（[notification.ts:70](../../frontend/src/store/modules/notification.ts#L70)）：`startStreaming`/`stopStreaming` 都推进 `generation`，每条循环只在自己那一代里重连。卸载与随后挂载可能落在同一 tick（布局切换），只用布尔量会让被停止的循环把新的开始误认成自己的，于是每次切换多留一条常驻流，直到 8 条上限把新连接全拒掉。
+- **每次（重）连都 `refresh()` 一次**：这是"丢事件/缓冲溢出被丢订阅/进程重启/标签页被冻结"的统一兜底。任何一帧（含 `KeepAlive`）都重置退避到 `RECONNECT_MIN_MS = 1s`，上限 `RECONNECT_MAX_MS = 30s`。`refreshCounts()` 落地时若 `openInboxCount > 0`，把 `unseenCount` 压回 0，**并且服务端还认为有"新的"时补一次 `MarkNotificationsSeen`**：流漏掉的那条消息正是靠这次刷新发现的（重连/重新可见会同时刷列表与计数），只压数不推水位会让用户关掉下拉后红点又亮——为一条他刚在屏幕上读过的消息（[notification.ts:116-138](../../frontend/src/store/modules/notification.ts#L116-L138)）。
 - **两张票防止旧响应覆盖新值**（`countTicket` / `recentTicket`）：推送到达会推进票号，已过期的 fetch 让位；两个计数共用一张 `countTicket`，因为它们来自同一次服务端计算。
 - **`arrivalSeq`**：每收到一条推送 +1；页面 `watch` 它，只在 `!hasPrevious`（停在第 1 页）时重载首页，不把第 2 页的读者弹回去。
 - **`Unimplemented` 是唯一不重试的错误**（前端比服务端新）：安静停掉；其余交给退避重连，重连的握手会再走一遍 `sessionInterceptor` 的会话刷新。
 - **可见性监听保留**，动作从"拉一次计数"升级为 `refresh()`（计数 + 已加载过的列表）。
-- **深链**（[notificationText.ts](frontend/src/lib/notificationText.ts)）：schema 同步 → `/instances/{instanceId}`；OpenLineage 拒收/失败 → `/openlineage/events`；`NAMESPACE_UNMAPPED` → `/settings/openlineage`（namespace mapping 页）。
+- **深链**（[notificationText.ts](../../frontend/src/lib/notificationText.ts)）：schema 同步 → `/instances/{instanceId}`；OpenLineage 拒收/失败 → `/openlineage/events`；`NAMESPACE_UNMAPPED` → `/settings/openlineage`（namespace mapping 页）。
 - **文案渲染**：组件用返回的 `titleKey`/`messageKey` 调 `t()`；未知 type / 未知 detail 走 fallback 文案。`notifications.*` 同时进 `en-US.json` 与 `zh-CN.json`（各 46 个键）。`eslint.config.mjs` 的 `no-unused-keys` 对这一族加了显式 ignores（规则追不到 `notificationText.ts` 返回值里的键）；若改用别的属性名，`scripts/check-vue-i18n.mjs` 的 `KEY_PROP_RE` 也需要相应处理。
 
 ## Invariants
@@ -233,13 +233,13 @@
 | 服务端停机 | `Close()` 结束所有流，客户端看到干净结束，在 2s 内返回（回归用例钉住） |
 | 服务端返回 `Unimplemented`（前端更新） | store 自行 `stopStreaming()`，不重试 |
 | 会话在流上已过期/被吊销 | 握手期在第一次 `Receive` 被拒，`Unauthenticated`；一元调用同样被拒；前端走会话刷新或登出 |
-| **server-streaming 请求遇到 401 重放** | `sessionInterceptor` 的重放对 server streaming 无效：connect-web 把请求体构造成一次性 async iterable，重放抛 `missing request message`（`Code.Unknown`）。**`frontend/src/api/session.ts` 至今没有为 streaming 缓存输入消息**（[session.ts:73-101](frontend/src/api/session.ts#L73-L101) 无条件 `await next(request)`）。续期已发生，流由连接循环的下一次重连接上；调用方看到一次 `Unknown` 错误。**`ExplainSQL`（同样 server streaming）受影响相同**，是既有缺陷、非本特性引入 |
+| **server-streaming 请求遇到 401 重放** | `sessionInterceptor` 的重放对 server streaming 无效：connect-web 把请求体构造成一次性 async iterable，重放抛 `missing request message`（`Code.Unknown`）。**`frontend/src/api/session.ts` 至今没有为 streaming 缓存输入消息**（[session.ts:73-101](../../frontend/src/api/session.ts#L73-L101) 无条件 `await next(request)`）。续期已发生，流由连接循环的下一次重连接上；调用方看到一次 `Unknown` 错误。**`ExplainSQL`（同样 server streaming）受影响相同**，是既有缺陷、非本特性引入 |
 | 多副本 | 用户在副本 A、消息由副本 B 写出 → 推不到，靠重连/重新可见那次刷新兜；`LISTEN/NOTIFY` 不做 |
 | 另一个标签页改已读 | 本标签页角标要等刷新/重连/重新可见才对齐 |
 | 另一个标签页打开通知 | 同样要等那次刷新：水位在服务端已经推进，红点下一次 `refreshCounts()` 就灭 |
 | `MarkNotificationsSeen` 写库失败 | 前端已经本地清零（乐观），下次刷新红点会回来；不弹错、不阻塞打开，再打开一次就修好 |
 | 前端比服务端新（旧服务端没有 `markSeen` / `unseen_count`） | `markSeen` 报错被吞掉，`unseen_count` 读作 0 → 红点不亮。两者同镜像发布，升级服务端即恢复 |
-| **应用主机与数据库主机时钟不一致** | 水位由 DB `NOW()` 打戳，`created_at` 由应用进程打戳（[notification.go:64](backend/store/notification.go#L64)），比较跨了两个时钟域：应用时钟偏慢时，打开通知后极短时间内写入的消息会被判为"已看过"而不再点亮红点。同机/同集群 + NTP 下不可见，已作为假设写进代码注释 |
+| **应用主机与数据库主机时钟不一致** | 水位由 DB `NOW()` 打戳，`created_at` 由应用进程打戳（[notification.go:64](../../backend/store/notification.go#L64)），比较跨了两个时钟域：应用时钟偏慢时，打开通知后极短时间内写入的消息会被判为"已看过"而不再点亮红点。同机/同集群 + NTP 下不可见，已作为假设写进代码注释 |
 
 ## Open items
 
@@ -259,25 +259,25 @@
 
 代码：
 
-- 迁移：[backend/migrator/migration/0.1/0017##notification.sql](backend/migrator/migration/0.1/0017%23%23notification.sql)、[0018##notification_seen.sql](backend/migrator/migration/0.1/0018%23%23notification_seen.sql)（`principal.notification_seen_at`）、[LATEST.sql:678-705](backend/migrator/migration/LATEST.sql#L678-L705)。
-- 组件（写入口 + 推送 hub）：[backend/component/notification/service.go](backend/component/notification/service.go)、[hub.go](backend/component/notification/hub.go)。
-- store：[backend/store/notification.go](backend/store/notification.go)。
-- API handler 与转换：[backend/api/v1/notification_service.go](backend/api/v1/notification_service.go)。
-- 同步聚合与后台失败通知：[backend/runner/schemasync/operation.go](backend/runner/schemasync/operation.go)、[syncer.go](backend/runner/schemasync/syncer.go)。
-- 摄取失败通知：[backend/api/v1/openlineage_handler.go:93-143](backend/api/v1/openlineage_handler.go#L93-L143)、[backend/plugin/openlineage/resolver.go](backend/plugin/openlineage/resolver.go)。
-- 接线与停机：[backend/server/grpc_routes.go:74-192](backend/server/grpc_routes.go#L74-L192)、[backend/server/server.go:128](backend/server/server.go#L128)、[:225-226](backend/server/server.go#L225-L226)。
-- proto：[proto/v1/v1/notification_service.proto](proto/v1/v1/notification_service.proto)、[proto/store/store/notification.proto](proto/store/store/notification.proto)；生成物 `backend/generated-go/`、`frontend/src/types/proto-es/`、`proto/gen/grpc-doc/` 一起提交。
-- 前端：[api/notification.ts](frontend/src/api/notification.ts)、[store/modules/notification.ts](frontend/src/store/modules/notification.ts)、[lib/notificationText.ts](frontend/src/lib/notificationText.ts)、[components/layout/NotificationBell.vue](frontend/src/components/layout/NotificationBell.vue)、[pages/NotificationsPage.vue](frontend/src/pages/NotificationsPage.vue)、[router/index.ts:270](frontend/src/router/index.ts#L270)、[api/session.ts](frontend/src/api/session.ts)（遗留缺陷）。
-- 启用点：`NotificationBell` 挂在 `AppSidebar` 底部（[AppSidebar.vue:174](frontend/src/components/layout/AppSidebar.vue#L174)）；`/notifications` 不在 `menuItems`，经铃铛下拉"查看全部"进入。服务端无开关——通知随服务启动。
+- 迁移：[backend/migrator/migration/0.1/0017##notification.sql](../../backend/migrator/migration/0.1/0017%23%23notification.sql)、[0018##notification_seen.sql](../../backend/migrator/migration/0.1/0018%23%23notification_seen.sql)（`principal.notification_seen_at`）、[LATEST.sql:678-705](../../backend/migrator/migration/LATEST.sql#L678-L705)。
+- 组件（写入口 + 推送 hub）：[backend/component/notification/service.go](../../backend/component/notification/service.go)、[hub.go](../../backend/component/notification/hub.go)。
+- store：[backend/store/notification.go](../../backend/store/notification.go)。
+- API handler 与转换：[backend/api/v1/notification_service.go](../../backend/api/v1/notification_service.go)。
+- 同步聚合与后台失败通知：[backend/runner/schemasync/operation.go](../../backend/runner/schemasync/operation.go)、[syncer.go](../../backend/runner/schemasync/syncer.go)。
+- 摄取失败通知：[backend/api/v1/openlineage_handler.go:93-143](../../backend/api/v1/openlineage_handler.go#L93-L143)、[backend/plugin/openlineage/resolver.go](../../backend/plugin/openlineage/resolver.go)。
+- 接线与停机：[backend/server/grpc_routes.go:74-192](../../backend/server/grpc_routes.go#L74-L192)、[backend/server/server.go:128](../../backend/server/server.go#L128)、[:225-226](../../backend/server/server.go#L225-L226)。
+- proto：[proto/v1/v1/notification_service.proto](../../proto/v1/v1/notification_service.proto)、[proto/store/store/notification.proto](../../proto/store/store/notification.proto)；生成物 `backend/generated-go/`、`frontend/src/types/proto-es/`、`proto/gen/grpc-doc/` 一起提交。
+- 前端：[api/notification.ts](../../frontend/src/api/notification.ts)、[store/modules/notification.ts](../../frontend/src/store/modules/notification.ts)、[lib/notificationText.ts](../../frontend/src/lib/notificationText.ts)、[components/layout/NotificationBell.vue](../../frontend/src/components/layout/NotificationBell.vue)、[pages/NotificationsPage.vue](../../frontend/src/pages/NotificationsPage.vue)、[router/index.ts:270](../../frontend/src/router/index.ts#L270)、[api/session.ts](../../frontend/src/api/session.ts)（遗留缺陷）。
+- 启用点：`NotificationBell` 挂在 `AppSidebar` 底部（[AppSidebar.vue:174](../../frontend/src/components/layout/AppSidebar.vue#L174)）；`/notifications` 不在 `menuItems`，经铃铛下拉"查看全部"进入。服务端无开关——通知随服务启动。
 
 测试与门禁：
 
-- store 作用域守卫 + 扫描：[backend/store/notification_test.go:35](backend/store/notification_test.go#L35) → `go test ./backend/store/...`。
-- 组件（hub 扇出/上限/溢出/Close、create 路径、两个计数一次读、读不到就只发消息）：[backend/component/notification/hub_test.go](backend/component/notification/hub_test.go)、[service_test.go](backend/component/notification/service_test.go) → `go test ./backend/component/notification/...`。
-- API（转换、鉴权、nil 通道、批次校验、打开通知必须有凭据且不碰 store）：[backend/api/v1/notification_service_test.go](backend/api/v1/notification_service_test.go) → `go test ./backend/api/v1/...`。
-- ACL 守卫（无注解方法必须登记）：[backend/api/v1/acl_interceptor_test.go:145](backend/api/v1/acl_interceptor_test.go#L145)。
-- 生命周期回归：[backend/server/server_lifecycle_test.go](backend/server/server_lifecycle_test.go)。
-- 集成（真 server + PG + MySQL）：[backend/test/integration/runner/notification_service_test.go](backend/test/integration/runner/notification_service_test.go)（7 条，含收件人隔离、流推送、过期/吊销会话、摄取拒收去重、"打开通知只清红点不改读态"）→ `make test-integration-smoke && make test-integration`。迁移链一致性由 `TestMigrateSchemaLATESTMatchesTheIncrementChain` 钉住（`-tags integration ./backend/migrator/`）。
-- 前端 store/api/lib：[store/modules/notification.test.ts](frontend/src/store/modules/notification.test.ts)、[api/notification.test.ts](frontend/src/api/notification.test.ts)、[lib/notificationText.test.ts](frontend/src/lib/notificationText.test.ts) → `pnpm --dir frontend test run`（`src/lib/`、`src/utils/` 有 95% 行 / 85% 分支门槛；红点相关行为：打开即清、开着时刷新补一次水位、空下拉里到达的消息必须进列表）。
-- 前端组件交互：[components/layout/NotificationBell.test.ts](frontend/src/components/layout/NotificationBell.test.ts)（"点开铃铛 = 清红点且不标已读"、"点某条消息才标已读"、"开着下拉时卸载要归还 `openInboxCount`"）、[pages/NotificationsPage.test.ts](frontend/src/pages/NotificationsPage.test.ts)（"进页面清红点、离开后新消息又能点亮"）。
+- store 作用域守卫 + 扫描：[backend/store/notification_test.go:35](../../backend/store/notification_test.go#L35) → `go test ./backend/store/...`。
+- 组件（hub 扇出/上限/溢出/Close、create 路径、两个计数一次读、读不到就只发消息）：[backend/component/notification/hub_test.go](../../backend/component/notification/hub_test.go)、[service_test.go](../../backend/component/notification/service_test.go) → `go test ./backend/component/notification/...`。
+- API（转换、鉴权、nil 通道、批次校验、打开通知必须有凭据且不碰 store）：[backend/api/v1/notification_service_test.go](../../backend/api/v1/notification_service_test.go) → `go test ./backend/api/v1/...`。
+- ACL 守卫（无注解方法必须登记）：[backend/api/v1/acl_interceptor_test.go:145](../../backend/api/v1/acl_interceptor_test.go#L145)。
+- 生命周期回归：[backend/server/server_lifecycle_test.go](../../backend/server/server_lifecycle_test.go)。
+- 集成（真 server + PG + MySQL）：[backend/test/integration/runner/notification_service_test.go](../../backend/test/integration/runner/notification_service_test.go)（7 条，含收件人隔离、流推送、过期/吊销会话、摄取拒收去重、"打开通知只清红点不改读态"）→ `make test-integration-smoke && make test-integration`。迁移链一致性由 `TestMigrateSchemaLATESTMatchesTheIncrementChain` 钉住（`-tags integration ./backend/migrator/`）。
+- 前端 store/api/lib：[store/modules/notification.test.ts](../../frontend/src/store/modules/notification.test.ts)、[api/notification.test.ts](../../frontend/src/api/notification.test.ts)、[lib/notificationText.test.ts](../../frontend/src/lib/notificationText.test.ts) → `pnpm --dir frontend test run`（`src/lib/`、`src/utils/` 有 95% 行 / 85% 分支门槛；红点相关行为：打开即清、开着时刷新补一次水位、空下拉里到达的消息必须进列表）。
+- 前端组件交互：[components/layout/NotificationBell.test.ts](../../frontend/src/components/layout/NotificationBell.test.ts)（"点开铃铛 = 清红点且不标已读"、"点某条消息才标已读"、"开着下拉时卸载要归还 `openInboxCount`"）、[pages/NotificationsPage.test.ts](../../frontend/src/pages/NotificationsPage.test.ts)（"进页面清红点、离开后新消息又能点亮"）。
 - proto 门禁：`buf format -w proto && buf lint proto && (cd proto && buf generate)`。

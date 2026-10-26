@@ -1,7 +1,7 @@
 # 前端布局与血缘展示 — Reference
 
 > Status: **implemented**。骨架、设置 section、OpenLineage 页面、血缘视觉编码均已落地；唯一未做项是全局 ⌘K 命令面板。本文件是 `frontend/src/{layouts,components/layout,pages/settings,pages/openlineage,components/lineage,lib,utils}/` 的布局与信息架构参考（`frontend/AGENTS.md` 是代码规则，本篇不重复）。
-> Related: [frontend/AGENTS.md](frontend/AGENTS.md)（前端代码规则，本篇不重复）、[scripts/audit-ui-layout.mjs](frontend/scripts/audit-ui-layout.mjs)（布局门禁）。
+> Related: [frontend/AGENTS.md](../../frontend/AGENTS.md)（前端代码规则，本篇不重复）、[scripts/audit-ui-layout.mjs](../../frontend/scripts/audit-ui-layout.mjs)（布局门禁）。
 
 ## What it is
 
@@ -26,13 +26,13 @@
 
 | 机制 | 实现 |
 | --- | --- |
-| 单一滚动容器 | `<main class="relative min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">` 是壳里唯一滚动区；`relative` 是契约的一部分——radix-vue 为每个 Select 渲染的隐藏原生 `<select>` 是绝对定位的，没有定位祖先时会锚到初始包含块、按其静态位置把文档撑高（长表单底部出现第二条空滚动条）；页面不得嵌套自己的 scroller；`DefaultLayout` 监听 `route.path`（不认 query）把 `main` 滚回顶部（[DefaultLayout.vue:37](frontend/src/layouts/DefaultLayout.vue#L37)） |
-| 宽度 | `route.meta.contentWidth !== "full"` 时才包 `mx-auto w-full max-w-[1400px]`；全宽页不加 wrapper 以保住 `h-full` 工作台（[DefaultLayout.vue:69](frontend/src/layouts/DefaultLayout.vue#L69)） |
-| 桌面无顶栏 | `AppHeader` 只在 `lg:hidden` 渲染（48px，drawer 触发 + 品牌）（[AppHeader.vue:6](frontend/src/components/layout/AppHeader.vue#L6)） |
-| 设置 section | [`SettingsLayout.vue`](frontend/src/pages/settings/SettingsLayout.vue)：导航 `md:sticky md:top-0 md:w-52 md:self-start`（`self-start` 必需，否则被 stretch 的 flex item 无可粘滞空间），内容列 `max-w-[860px]`，`settingsContentWidth: "full"` 的页 opt out；[`SettingsNav.vue`](frontend/src/components/layout/SettingsNav.vue) 9 项 |
-| 侧栏 | [`AppSidebar.vue:248-341`](frontend/src/components/layout/AppSidebar.vue#L248-L341) 6 个顶层项，底部 `NotificationBell` + `UserMenu`（[:174-175](frontend/src/components/layout/AppSidebar.vue#L174-L175)）；折叠 rail 下每组前用分隔线代替标题 |
-| 页头 | [`PageHeader.vue`](frontend/src/components/layout/PageHeader.vue)：`breadcrumb` slot + 可选 `eyebrow`（11px 大写 accent）+ `h1.text-2xl` + 描述 + `actions` slot（窄屏自动换行到标题下）；被 20+ 个 `.vue` 引用 |
-| 路由 | 设置二级导航挂在 `/settings` children（[router/index.ts:52-142](frontend/src/router/index.ts#L52-L142)），`/settings` redirect 到 GeneralSettings；OpenLineage 父路由统一 `contentWidth: "full"`（[:166-217](frontend/src/router/index.ts#L166-L217)） |
+| 单一滚动容器 | `<main class="relative min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">` 是壳里唯一滚动区；`relative` 是契约的一部分——radix-vue 为每个 Select 渲染的隐藏原生 `<select>` 是绝对定位的，没有定位祖先时会锚到初始包含块、按其静态位置把文档撑高（长表单底部出现第二条空滚动条）；页面不得嵌套自己的 scroller；`DefaultLayout` 监听 `route.path`（不认 query）把 `main` 滚回顶部（[DefaultLayout.vue:37](../../frontend/src/layouts/DefaultLayout.vue#L37)） |
+| 宽度 | `route.meta.contentWidth !== "full"` 时才包 `mx-auto w-full max-w-[1400px]`；全宽页不加 wrapper 以保住 `h-full` 工作台（[DefaultLayout.vue:69](../../frontend/src/layouts/DefaultLayout.vue#L69)） |
+| 桌面无顶栏 | `AppHeader` 只在 `lg:hidden` 渲染（48px，drawer 触发 + 品牌）（[AppHeader.vue:6](../../frontend/src/components/layout/AppHeader.vue#L6)） |
+| 设置 section | [`SettingsLayout.vue`](../../frontend/src/pages/settings/SettingsLayout.vue)：导航 `md:sticky md:top-0 md:w-52 md:self-start`（`self-start` 必需，否则被 stretch 的 flex item 无可粘滞空间），内容列 `max-w-[860px]`，`settingsContentWidth: "full"` 的页 opt out；[`SettingsNav.vue`](../../frontend/src/components/layout/SettingsNav.vue) 9 项 |
+| 侧栏 | [`AppSidebar.vue:248-341`](../../frontend/src/components/layout/AppSidebar.vue#L248-L341) 6 个顶层项，底部 `NotificationBell` + `UserMenu`（[:174-175](../../frontend/src/components/layout/AppSidebar.vue#L174-L175)）；折叠 rail 下每组前用分隔线代替标题 |
+| 页头 | [`PageHeader.vue`](../../frontend/src/components/layout/PageHeader.vue)：`breadcrumb` slot + 可选 `eyebrow`（11px 大写 accent）+ `h1.text-2xl` + 描述 + `actions` slot（窄屏自动换行到标题下）；被 20+ 个 `.vue` 引用 |
+| 路由 | 设置二级导航挂在 `/settings` children（[router/index.ts:52-142](../../frontend/src/router/index.ts#L52-L142)），`/settings` redirect 到 GeneralSettings；OpenLineage 父路由统一 `contentWidth: "full"`（[:166-217](../../frontend/src/router/index.ts#L166-L217)） |
 
 ## OpenLineage 页面
 
@@ -76,11 +76,11 @@
 | 实例归属 | GUID 第一段 = 实例 resource id；实例名来自 `ListInstances`（`useInstanceStore` 已缓存，血缘响应不重复下发） | 节点左侧 4px 色条 + 表头色点 + 表头实例名，同实例同色；标题只放对象名，第二行 `database.schema`，完整名 `实例 · 路径.对象` 在 tooltip；MiniMap 同色 |
 | 血缘来源 | `LineageRelation.metaType`：`OPENLINEAGE`(100) = 摄入写入，其余 = 分析器读 SQL 定义写入 | `SQL 解析` 蓝色实线、`OpenLineage` 紫色虚线、同一对象对两者都写 = `mixed` 第三色点线；所有边带箭头，方向不只靠动画 |
 
-- **色条用 `border-l-4` 不用绝对定位色块**：节点不能 `overflow-hidden`，否则骑在边框上的连接点 Handle 会被裁一半、拖拽热区减半（[LineageNode.vue:9-11](frontend/src/components/lineage/LineageNode.vue#L9-L11)）。
-- **线型是颜色的备份**：`LINEAGE_ORIGIN_DASH = { sql: undefined, openlineage: "7 5", mixed: "2 3" }`（[lineageOrigin.ts:38-42](frontend/src/lib/lineageOrigin.ts#L38-L42)），灰度/色盲下可辨。
-- **对比度**：浅色主题所有 accent 对画布 ≥3:1（WCAG 图形下限），三个来源色额外 ≥4.5:1（来源徽标当 12px 文字用）。未高亮的边用 **0.85** 透明度，可见性由 token 承担而非靠透明度兜底（[lineageGraph.ts:268-275](frontend/src/lib/lineageGraph.ts#L268-L275)）。
-- **图例即过滤器、默认折叠**（`collapsed = ref(true)`，[LineageLegend.vue:154](frontend/src/components/lineage/LineageLegend.vue#L154)）：展开占画布 8.8% 会盖住节点，折叠只占 1.4% 且仍回答"哪种颜色对应哪种来源"。展开列出实例（名称 + 对象数）与两种来源（线型样例 + 边数），点来源行即隐藏该来源的边；`mixed` 是合体、无独立过滤语义，渲染成不可点击的一行；切换对象或 Reset 都恢复全选，否则新对象会看起来"没有血缘"。
-- **调色板**：`--lineage-scope-1..6` 与 `--lineage-sql`/`-openlineage`/`-mixed` 定义在 [`main.css`](frontend/src/assets/styles/main.css)。实例颜色按"实例 id 排序 → 外部 namespace 排序"分配，展开出外部数据集时已上屏的实例不换色；排序用 `compareScopeKeys`（**码点序**而非 locale 序），避免不同语言浏览器给出不同配色（[lineageAsset.ts:155](frontend/src/utils/lineageAsset.ts#L155)、[:202-205](frontend/src/utils/lineageAsset.ts#L202-L205)）。
+- **色条用 `border-l-4` 不用绝对定位色块**：节点不能 `overflow-hidden`，否则骑在边框上的连接点 Handle 会被裁一半、拖拽热区减半（[LineageNode.vue:9-11](../../frontend/src/components/lineage/LineageNode.vue#L9-L11)）。
+- **线型是颜色的备份**：`LINEAGE_ORIGIN_DASH = { sql: undefined, openlineage: "7 5", mixed: "2 3" }`（[lineageOrigin.ts:38-42](../../frontend/src/lib/lineageOrigin.ts#L38-L42)），灰度/色盲下可辨。
+- **对比度**：浅色主题所有 accent 对画布 ≥3:1（WCAG 图形下限），三个来源色额外 ≥4.5:1（来源徽标当 12px 文字用）。未高亮的边用 **0.85** 透明度，可见性由 token 承担而非靠透明度兜底（[lineageGraph.ts:268-275](../../frontend/src/lib/lineageGraph.ts#L268-L275)）。
+- **图例即过滤器、默认折叠**（`collapsed = ref(true)`，[LineageLegend.vue:154](../../frontend/src/components/lineage/LineageLegend.vue#L154)）：展开占画布 8.8% 会盖住节点，折叠只占 1.4% 且仍回答"哪种颜色对应哪种来源"。展开列出实例（名称 + 对象数）与两种来源（线型样例 + 边数），点来源行即隐藏该来源的边；`mixed` 是合体、无独立过滤语义，渲染成不可点击的一行；切换对象或 Reset 都恢复全选，否则新对象会看起来"没有血缘"。
+- **调色板**：`--lineage-scope-1..6` 与 `--lineage-sql`/`-openlineage`/`-mixed` 定义在 [`main.css`](../../frontend/src/assets/styles/main.css)。实例颜色按"实例 id 排序 → 外部 namespace 排序"分配，展开出外部数据集时已上屏的实例不换色；排序用 `compareScopeKeys`（**码点序**而非 locale 序），避免不同语言浏览器给出不同配色（[lineageAsset.ts:155](../../frontend/src/utils/lineageAsset.ts#L155)、[:202-205](../../frontend/src/utils/lineageAsset.ts#L202-L205)）。
 
 文件职责：
 
@@ -96,7 +96,7 @@
 | `src/components/metadata/TableLineageSection.vue` | 关系表：Related Object 加实例色点 + `实例 · 路径` 副行；`Lineage source` 列（来源徽标 + job 名）；总数与表格同一范围 |
 | `src/pages/openlineage/OpenLineageColumnLineagePage.vue` | 字段血缘：标题与关系卡片用实例限定名，卡片补来源徽标 |
 
-**节点高度：先猜后实测（反直觉，必须保留）。** `nodeHeight()` 只能猜——操作行是否折行取决于语言和该节点提供哪些操作（实测带三个操作的节点 164px，而布局一直按 120px 排，每节点叠约 20px 正好吃掉行间隙，表现为"下面节点压住上一个底部"）。实现：`rebuildGraph()` 先按猜测排一次，再 `settleNodeHeights()` 用渲染出的 `.vue-flow__node[data-id]` 的 **`offsetHeight`**（布局尺寸，不受画布缩放影响）重叠；实测值存进 `renderedHeights` 供下次直接用；展开字段列表时该节点实测值失效、退回猜测再重测；循环最多 **4 轮**，位置不影响高度，一至两轮即收敛。**Vue Flow 的 `node.dimensions` 不能作布局依据**：卡片原地长高后它不更新（[LineageGraphPage.vue:1305-1404](frontend/src/pages/LineageGraphPage.vue#L1305-L1404)）。
+**节点高度：先猜后实测（反直觉，必须保留）。** `nodeHeight()` 只能猜——操作行是否折行取决于语言和该节点提供哪些操作（实测带三个操作的节点 164px，而布局一直按 120px 排，每节点叠约 20px 正好吃掉行间隙，表现为"下面节点压住上一个底部"）。实现：`rebuildGraph()` 先按猜测排一次，再 `settleNodeHeights()` 用渲染出的 `.vue-flow__node[data-id]` 的 **`offsetHeight`**（布局尺寸，不受画布缩放影响）重叠；实测值存进 `renderedHeights` 供下次直接用；展开字段列表时该节点实测值失效、退回猜测再重测；循环最多 **4 轮**，位置不影响高度，一至两轮即收敛。**Vue Flow 的 `node.dimensions` 不能作布局依据**：卡片原地长高后它不更新（[LineageGraphPage.vue:1305-1404](../../frontend/src/pages/LineageGraphPage.vue#L1305-L1404)）。
 
 ## Invariants
 
@@ -131,8 +131,8 @@
 
 ## Where things live
 
-- 骨架与布局：[DefaultLayout.vue](frontend/src/layouts/DefaultLayout.vue)、[PageHeader.vue](frontend/src/components/layout/PageHeader.vue)、[AppSidebar.vue](frontend/src/components/layout/AppSidebar.vue)、[AppHeader.vue](frontend/src/components/layout/AppHeader.vue)、[UserMenu.vue](frontend/src/components/layout/UserMenu.vue)、[SettingsNav.vue](frontend/src/components/layout/SettingsNav.vue)、[SettingsLayout.vue](frontend/src/pages/settings/SettingsLayout.vue)；路由 [router/index.ts](frontend/src/router/index.ts)（设置 `:52-142`，OpenLineage `:166-217`）。
-- OpenLineage：[pages/openlineage/](frontend/src/pages/openlineage/)、[components/openlineage/](frontend/src/components/openlineage/)。血缘：[utils/lineageAsset.ts](frontend/src/utils/lineageAsset.ts)、[lib/lineageOrigin.ts](frontend/src/lib/lineageOrigin.ts)、[lib/lineageGraph.ts](frontend/src/lib/lineageGraph.ts)、[lib/openlineageRun.ts](frontend/src/lib/openlineageRun.ts)、[components/lineage/](frontend/src/components/lineage/)、[pages/LineageGraphPage.vue](frontend/src/pages/LineageGraphPage.vue)、[components/metadata/TableLineageSection.vue](frontend/src/components/metadata/TableLineageSection.vue)。
-- 令牌与主题：[assets/styles/main.css](frontend/src/assets/styles/main.css)、[store/modules/app.ts](frontend/src/store/modules/app.ts)（`theme` / `collapsedSections` / `locale`）。无功能开关；布局由 `route.meta.contentWidth` / `settingsContentWidth` 驱动，主题由 `applyTheme` 在首屏挂载前应用。
-- 门禁：[scripts/audit-ui-layout.mjs](frontend/scripts/audit-ui-layout.mjs) → `pnpm --dir frontend audit:ui`（[package.json:21](frontend/package.json#L21)）。CDP 直连浏览器，不引入 puppeteer/playwright；量 `tableTopY`、`firstDataRowY`、`h1Count`、`nestedScrollers`、`clippedTableCells`、横向溢出、heading 跳级、console 错误；退出码 **0** 全部达标 / **1** 有路由越界 / **2** 无法运行。当前 **15** 条路由，预算按 `tableTopY`（表格顶部；表头属数据呈现，不算 chrome）。
-- 测试：[utils/lineageAsset.test.ts](frontend/src/utils/lineageAsset.test.ts)、[utils/lineageTokens.test.ts](frontend/src/utils/lineageTokens.test.ts)（钉住 `main.css` 令牌名，防止 `hsl()` 静默失效）、[lib/lineageOrigin.test.ts](frontend/src/lib/lineageOrigin.test.ts)、[lib/lineageGraph.test.ts](frontend/src/lib/lineageGraph.test.ts)、[lib/openlineageRun.test.ts](frontend/src/lib/openlineageRun.test.ts)、[lib/lineageTrail.test.ts](frontend/src/lib/lineageTrail.test.ts)、[components/layout/AppSidebar.test.ts](frontend/src/components/layout/AppSidebar.test.ts)、[pages/openlineage/](frontend/src/pages/openlineage/) 下 `*.test.ts`；门禁命令 `pnpm --dir frontend biome:check && pnpm --dir frontend lint && pnpm --dir frontend i18n && pnpm --dir frontend type-check && pnpm --dir frontend test run`（`src/lib/`、`src/utils/` 有 95% 行 / 85% 分支门槛，`test:coverage` 检查）。
+- 骨架与布局：[DefaultLayout.vue](../../frontend/src/layouts/DefaultLayout.vue)、[PageHeader.vue](../../frontend/src/components/layout/PageHeader.vue)、[AppSidebar.vue](../../frontend/src/components/layout/AppSidebar.vue)、[AppHeader.vue](../../frontend/src/components/layout/AppHeader.vue)、[UserMenu.vue](../../frontend/src/components/layout/UserMenu.vue)、[SettingsNav.vue](../../frontend/src/components/layout/SettingsNav.vue)、[SettingsLayout.vue](../../frontend/src/pages/settings/SettingsLayout.vue)；路由 [router/index.ts](../../frontend/src/router/index.ts)（设置 `:52-142`，OpenLineage `:166-217`）。
+- OpenLineage：[pages/openlineage/](../../frontend/src/pages/openlineage)、[components/openlineage/](../../frontend/src/components/openlineage)。血缘：[utils/lineageAsset.ts](../../frontend/src/utils/lineageAsset.ts)、[lib/lineageOrigin.ts](../../frontend/src/lib/lineageOrigin.ts)、[lib/lineageGraph.ts](../../frontend/src/lib/lineageGraph.ts)、[lib/openlineageRun.ts](../../frontend/src/lib/openlineageRun.ts)、[components/lineage/](../../frontend/src/components/lineage)、[pages/LineageGraphPage.vue](../../frontend/src/pages/LineageGraphPage.vue)、[components/metadata/TableLineageSection.vue](../../frontend/src/components/metadata/TableLineageSection.vue)。
+- 令牌与主题：[assets/styles/main.css](../../frontend/src/assets/styles/main.css)、[store/modules/app.ts](../../frontend/src/store/modules/app.ts)（`theme` / `collapsedSections` / `locale`）。无功能开关；布局由 `route.meta.contentWidth` / `settingsContentWidth` 驱动，主题由 `applyTheme` 在首屏挂载前应用。
+- 门禁：[scripts/audit-ui-layout.mjs](../../frontend/scripts/audit-ui-layout.mjs) → `pnpm --dir frontend audit:ui`（[package.json:21](../../frontend/package.json#L21)）。CDP 直连浏览器，不引入 puppeteer/playwright；量 `tableTopY`、`firstDataRowY`、`h1Count`、`nestedScrollers`、`clippedTableCells`、横向溢出、heading 跳级、console 错误；退出码 **0** 全部达标 / **1** 有路由越界 / **2** 无法运行。当前 **15** 条路由，预算按 `tableTopY`（表格顶部；表头属数据呈现，不算 chrome）。
+- 测试：[utils/lineageAsset.test.ts](../../frontend/src/utils/lineageAsset.test.ts)、[utils/lineageTokens.test.ts](../../frontend/src/utils/lineageTokens.test.ts)（钉住 `main.css` 令牌名，防止 `hsl()` 静默失效）、[lib/lineageOrigin.test.ts](../../frontend/src/lib/lineageOrigin.test.ts)、[lib/lineageGraph.test.ts](../../frontend/src/lib/lineageGraph.test.ts)、[lib/openlineageRun.test.ts](../../frontend/src/lib/openlineageRun.test.ts)、[lib/lineageTrail.test.ts](../../frontend/src/lib/lineageTrail.test.ts)、[components/layout/AppSidebar.test.ts](../../frontend/src/components/layout/AppSidebar.test.ts)、[pages/openlineage/](../../frontend/src/pages/openlineage) 下 `*.test.ts`；门禁命令 `pnpm --dir frontend biome:check && pnpm --dir frontend lint && pnpm --dir frontend i18n && pnpm --dir frontend type-check && pnpm --dir frontend test run`（`src/lib/`、`src/utils/` 有 95% 行 / 85% 分支门槛，`test:coverage` 检查）。

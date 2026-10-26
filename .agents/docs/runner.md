@@ -2,7 +2,7 @@
 
 > Status: **implemented**. Covers the common lifecycle of `backend/runner/` and the state each runner keeps in the process. Per-runner contracts live in [schemasync.md](schemasync.md) and [lineage-analyzer.md](lineage-analyzer.md); this file is the cross-runner map: startup, shutdown, in-process state, cadences and the single-replica assumption.
 
-## The five runners
+## The six runners
 
 | Runner | Package | Cadence | First run | Purpose |
 | --- | --- | --- | --- | --- |
@@ -11,6 +11,7 @@
 | `lineagevalidation` | `backend/runner/lineagevalidation` | event-driven, 5s settle | one pass at startup | revalidate ingested edges after a sync commits |
 | `maintenance` | `backend/runner/maintenance` | 6h | immediate | retention prunes, token cleanup, ingested-lineage sweep |
 | `qualityrunner` | `backend/runner/qualityrunner` | due scan 10s, manual queue priority | first tick | plan and execute data quality rules as one execution per rule, grouped into internal per-instance dispatch batches, drive the problem ledger and notifications; each batch leases the instance's connection budget before it starts (see [data-quality.md](data-quality.md), [instance-connections.md](instance-connections.md)) |
+| `qualitysuggestionrunner` | `backend/runner/qualitysuggestionrunner` | pending-job scan 5s | startup sweep, then drains pending immediately | claim a durable AI rule-drafting job (`quality_suggestion_job`, 1–20 targets), resolve the provider configuration once per job, draft one target at a time and persist per-target progress; drafts land in the review queue (see [data-quality.md](data-quality.md)) |
 
 Every runner implements `runner.Runner` (`Name()`, `Run(ctx)`) and is started by `runner.Go`, which wraps the body in a top-level `recover` and logs the runner's start and stop (name + run duration): a panic is logged with its stack and takes down that runner, never the process. `backend/server/server.go` starts the slice, so adding a runner is one entry, not another hard-coded `Add`.
 
@@ -36,6 +37,7 @@ All coordination state is in memory, and the deployment runs **one server proces
 | table-statistics refresh clock, DDL refresh clock + rotation cursor | `schemasync` | a restart makes every database due for a refresh (intended first pass) |
 | maintenance schedule | `maintenance` | the next tick is 6h away; startup runs one pass |
 | data quality due scan, manual batch queue, in-flight rule ids, daily LLM counters | `qualityrunner` (quota counters live in `api/v1`) | rules re-converge from `next_run_at`; queued manual batches are lost (their planned executions and batches are swept to ABANDONED at startup); LLM counters reset |
+| claimed suggestion job + per-target progress snapshot | `qualitysuggestionrunner` | the startup sweep fails every RUNNING job the previous process left; suggestions already queued stay in the review queue |
 | per-instance connection leases and their wait queues | `state.State.instanceConnections` (shared by every driver-opening path) | held leases vanish; a waiting batch observes its context and gives up, and the next scheduled tick retries. See [instance-connections.md](instance-connections.md) |
 
 Consequences worth knowing before changing this area:
