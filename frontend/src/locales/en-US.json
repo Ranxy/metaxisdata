@@ -322,6 +322,7 @@
       "tab": "Data Quality",
       "title": "Data quality"
     },
+    "attempt": "Attempt",
     "checks": {
       "description": "Every check across targets, for audit and search. Create and edit checks inside a target's contract workspace.",
       "emptyDescription": "Open a target and add its first check there.",
@@ -665,6 +666,7 @@
       "unspecified": "Unspecified"
     },
     "executions": {
+      "attempt": "Attempt {count}",
       "checkDuration": "Duration",
       "checkFailedRows": "Failed rows",
       "checkObserved": "Observed",
@@ -694,6 +696,7 @@
       "runOpenInList": "Open in all executions",
       "runPartial": "{done}/{all} checks in this batch",
       "runResult": "Batch result",
+      "runRetries": "{count} retries",
       "runRunningHint": "The batch is still running; results are incomplete.",
       "targetColumn": "Target",
       "targetSearch": "Search targets, schemas or instances",

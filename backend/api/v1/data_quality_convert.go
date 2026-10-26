@@ -388,6 +388,7 @@ func convertQualityExecution(workspaceID string, execution *store.QualityExecuti
 		State:         v1pb.QualityExecutionState(execution.State),
 		Outcome:       v1pb.QualityStatus(execution.Status),
 		Trigger:       v1pb.QualityExecutionTrigger(execution.Trigger),
+		Attempt:       execution.Attempt,
 		Initiator:     formatQualityOwner(execution.InitiatorID),
 		Instance:      instance,
 		ObservedValue: observedValue(execution.ObservedValue),
@@ -459,6 +460,7 @@ func convertQualityRun(workspaceID string, run *store.QualityRunMessage) *v1pb.Q
 		FinishTime:      timeToProtoTimestampPtr(run.FinishedAt),
 		RuleRevisionMin: run.RuleRevisionMin,
 		RuleRevisionMax: run.RuleRevisionMax,
+		RetryCount:      run.RetryCount,
 	}
 }
 

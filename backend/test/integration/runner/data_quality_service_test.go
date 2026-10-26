@@ -1778,6 +1778,93 @@ INSERT INTO public.opaque_null (payload_json) VALUES ('{"a":1}'), (NULL);
 // API and runner rely on, against the real store: a stale planned row is swept
 // to ABANDONED, a verdict written without a snapshot keeps the planned target
 // and revision, and abandoning a batch closes only its unfinished rows.
+// TestDataQualityTargetCycleRetryRealServerIntegration pins the scheduled retry
+// budget: an abandoned attempt is retried with the next attempt number, and after
+// the configured attempts the cycle settles so the target can advance instead of
+// retrying forever.
+func TestDataQualityTargetCycleRetryRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	fixture := setupQualityMySQLFixture(t, true)
+	rule := fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		fixture.usersGUID, qualityRowCountConfig(1))
+	resourceID := rule.GetName()[strings.LastIndex(rule.GetName(), "/")+1:]
+	stored, err := fixture.env.Store.GetQualityRule(fixture.ctx, &store.FindQualityRuleMessage{ResourceID: &resourceID})
+	require.NoError(t, err)
+	require.NotNil(t, stored)
+	schedule, err := fixture.env.Store.GetQualityTargetSchedule(fixture.ctx, stored.TargetGUID, stored.TargetType)
+	require.NoError(t, err)
+	require.NotNil(t, schedule)
+	require.NotNil(t, schedule.NextRunAt)
+	cycleStart := *schedule.NextRunAt
+	const maxAttempts = 3
+
+	abandonAttempt := func(attempt int32) {
+		t.Helper()
+		batchResourceID, err := common.RandomString(12)
+		require.NoError(t, err)
+		batch, err := fixture.env.Store.CreateQualityRun(fixture.ctx, &store.QualityRunMessage{
+			ResourceID:         batchResourceID,
+			InstanceResourceID: fixture.instanceID,
+			TargetGUID:         stored.TargetGUID,
+			TargetType:         stored.TargetType,
+			TargetPath:         stored.TargetPath,
+			Trigger:            storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED,
+			Status:             storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_PENDING,
+		})
+		require.NoError(t, err)
+		startedAt := cycleStart.Add(time.Duration(attempt) * time.Minute)
+		execution := &store.QualityExecutionMessage{
+			RunID:              batch.ID,
+			RuleID:             stored.ID,
+			RuleRevision:       stored.Revision,
+			RuleEngineVersion:  "test",
+			TargetGUID:         stored.TargetGUID,
+			TargetType:         stored.TargetType,
+			TargetPath:         stored.TargetPath,
+			InstanceResourceID: fixture.instanceID,
+			Trigger:            storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED,
+			Attempt:            attempt,
+			StartedAt:          startedAt,
+		}
+		require.NoError(t, fixture.env.Store.PlanQualityExecutions(fixture.ctx, []*store.QualityExecutionMessage{execution}))
+		_, err = fixture.env.Store.AbandonQualityExecutions(fixture.ctx, batch.ID, startedAt.Add(time.Second))
+		require.NoError(t, err)
+	}
+	findDue := func() *store.DueQualityTarget {
+		t.Helper()
+		targets, err := fixture.env.Store.FindDueQualityTargets(fixture.ctx,
+			cycleStart.Add(time.Hour), 200, 50, maxAttempts)
+		require.NoError(t, err)
+		for _, target := range targets {
+			if target.TargetGUID == stored.TargetGUID {
+				return target
+			}
+		}
+		t.Fatalf("target %s not in the due set", stored.TargetGUID)
+		return nil
+	}
+
+	abandonAttempt(1)
+	due := findDue()
+	require.Len(t, due.Rules, 1)
+	require.Equal(t, int32(2), due.Rules[0].Attempt, "an abandoned first attempt is retried as attempt 2")
+
+	abandonAttempt(2)
+	due = findDue()
+	require.Len(t, due.Rules, 1)
+	require.Equal(t, int32(3), due.Rules[0].Attempt)
+
+	abandonAttempt(3)
+	due = findDue()
+	require.Empty(t, due.Rules, "an exhausted target has no pending rule")
+	pending, err := fixture.env.Store.CountPendingQualityTargetRules(fixture.ctx,
+		stored.TargetGUID, stored.TargetType, maxAttempts)
+	require.NoError(t, err)
+	require.Zero(t, pending, "the target cycle can settle after the retry budget")
+}
+
 func TestDataQualityExecutionStoreLifecycle(t *testing.T) {
 	t.Parallel()
 
@@ -2876,16 +2963,20 @@ func TestDataQualityRunsRealServerIntegration(t *testing.T) {
 	require.Equal(t, int32(2), scheduledRun.GetCounts().GetTotal(),
 		"one due target plans all of its enabled checks")
 	require.Equal(t, fixture.usersGUID, scheduledRun.GetTarget().GetMetaGuid())
-	scheduled, err := fixture.dataQuality.GetQualityTarget(fixture.ctx,
-		withToken(fixture.env.AdminToken(), &v1pb.GetQualityTargetRequest{
-			Parent:     "workspaces/-",
-			TargetGuid: fixture.usersGUID,
-			MetaType:   v1pb.MetaType_TABLE,
-		}))
-	require.NoError(t, err)
-	require.NotNil(t, scheduled.Msg.GetSummary().GetSchedule().GetNextRunTime())
-	require.True(t, scheduled.Msg.GetSummary().GetSchedule().GetNextRunTime().AsTime().After(time.Now()),
-		"the scheduled pass advanced the target's next slot")
+	require.Eventually(t, func() bool {
+		scheduled, err := fixture.dataQuality.GetQualityTarget(fixture.ctx,
+			withToken(fixture.env.AdminToken(), &v1pb.GetQualityTargetRequest{
+				Parent:     "workspaces/-",
+				TargetGuid: fixture.usersGUID,
+				MetaType:   v1pb.MetaType_TABLE,
+			}))
+		if err != nil {
+			return false
+		}
+		nextRun := scheduled.Msg.GetSummary().GetSchedule().GetNextRunTime()
+		return nextRun != nil && nextRun.AsTime().After(time.Now())
+	}, 10*time.Second, 200*time.Millisecond,
+		"the scheduled pass never advanced the target's next slot")
 
 	// A customized target cadence survives the target being reactivated: pause
 	// every enabled check, then create a new one. The new schedule must use the

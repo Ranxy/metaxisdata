@@ -5378,6 +5378,7 @@ the same row.
 | start_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | finish_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Unset while the execution is PENDING or RUNNING. |
 | run | [string](#string) |  | The dispatch batch that planned this execution, so the execution directory can group checks by the run that produced them. Format: workspaces/{workspace}/qualityRuns/{quality_run} |
+| attempt | [int32](#int32) |  | The scheduled attempt number in the target&#39;s current due cycle: 1 for the first attempt, 2&#43; for a retry after an abandoned attempt. Manual executions always use 1. A retry is planned only while the attempt budget lasts. |
 
 
 
@@ -5680,6 +5681,7 @@ counts and outcome are therefore the target&#39;s counts and outcome.
 | target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  | Scheduling is a property of the target, so each batch belongs to exactly one target; a manual selection that spans targets is split into one batch per target. |
 | rule_revision_min | [int32](#int32) |  | The range of rule revisions the batch&#39;s executions actually judged, so two batches are only compared when they ran the same definitions. Zero while no execution has run. |
 | rule_revision_max | [int32](#int32) |  |  |
+| retry_count | [int32](#int32) |  | How many scheduled attempts in this batch were retries, i.e. executions whose attempt number is greater than one. Zero for a batch whose checks all ran on their first attempt and for manual batches. |
 
 
 

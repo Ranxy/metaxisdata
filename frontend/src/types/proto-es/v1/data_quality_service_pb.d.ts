@@ -1518,6 +1518,15 @@ export declare type QualityExecution = Message<"metaxisdata.v1.QualityExecution"
    * @generated from field: string run = 26;
    */
   run: string;
+
+  /**
+   * The scheduled attempt number in the target's current due cycle: 1 for the
+   * first attempt, 2+ for a retry after an abandoned attempt. Manual executions
+   * always use 1. A retry is planned only while the attempt budget lasts.
+   *
+   * @generated from field: int32 attempt = 27;
+   */
+  attempt: number;
 };
 
 /**
@@ -1674,6 +1683,15 @@ export declare type QualityRun = Message<"metaxisdata.v1.QualityRun"> & {
    * @generated from field: int32 rule_revision_max = 13;
    */
   ruleRevisionMax: number;
+
+  /**
+   * How many scheduled attempts in this batch were retries, i.e. executions whose
+   * attempt number is greater than one. Zero for a batch whose checks all ran on
+   * their first attempt and for manual batches.
+   *
+   * @generated from field: int32 retry_count = 14;
+   */
+  retryCount: number;
 };
 
 /**

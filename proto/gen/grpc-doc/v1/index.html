@@ -15679,6 +15679,15 @@ can group checks by the run that produced them.
 Format: workspaces/{workspace}/qualityRuns/{quality_run} </p></td>
                 </tr>
               
+                <tr>
+                  <td>attempt</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The scheduled attempt number in the target&#39;s current due cycle: 1 for the
+first attempt, 2&#43; for a retry after an abandoned attempt. Manual executions
+always use 1. A retry is planned only while the attempt budget lasts. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -16719,6 +16728,15 @@ execution has run. </p></td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>retry_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many scheduled attempts in this batch were retries, i.e. executions whose
+attempt number is greater than one. Zero for a batch whose checks all ran on
+their first attempt and for manual batches. </p></td>
                 </tr>
               
             </tbody>

@@ -59,9 +59,14 @@ const (
 	// maxExecutionsPerBatch bounds one internal batch. It matches the per-target
 	// rule cap, so every legal target fits one batch: a batch covers one instance,
 	// and a target larger than the cap can only come from data that bypassed the API
-	// limit. Raising the cap trades that guarantee against the 15-minute execution
-	// budget; manual target runs already plan up to the same rule count in one batch.
+	// limit. It is a composition bound, not a time bound: a small target can still
+	// time out, which the target cycle retries below.
 	maxExecutionsPerBatch = 100
+	// maxScheduledRuleAttempts is the initial attempt plus at most two retries for
+	// one check in one target due cycle. A timed-out or abandoned attempt is retried
+	// on the next tick until this budget is used; then the target cycle is allowed
+	// to settle so a permanently failing chunk cannot retry forever.
+	maxScheduledRuleAttempts = 3
 	// maxConcurrentInstanceBatches is the per-instance/global concurrency ceiling
 	// for scheduled batches: the design allows two instances to execute at once,
 	// and one instance's batches always run serially.
@@ -209,12 +214,12 @@ type manualRun struct {
 // dueBatchPlan is one internal batch the due scan is about to create: one
 // instance and exactly one target, with at most maxExecutionsPerBatch rules. A
 // target larger than the cap (only data that bypassed the API limit) spans
-// several plans; only the plan holding its final chunk advances its schedule.
+// several plans. The target schedule is advanced only when the whole cycle is
+// settled, so a plan never advances it by itself.
 type dueBatchPlan struct {
 	instanceResourceID string
 	target             *store.DueQualityTarget
-	rules              []*store.QualityRuleMessage
-	advance            bool
+	rules              []*store.DueQualityRule
 }
 
 // batchAdmission is what a batch holds while it executes: the instance whose
@@ -444,7 +449,7 @@ func (r *Runner) scanDue(ctx context.Context) {
 		observePlanning()
 		return
 	}
-	targets, err := r.stores.FindDueQualityTargets(ctx, now, dueRuleScanLimit, dueTargetScanLimit)
+	targets, err := r.stores.FindDueQualityTargets(ctx, now, dueRuleScanLimit, dueTargetScanLimit, maxScheduledRuleAttempts)
 	if err != nil {
 		observePlanning()
 		slog.Error("failed to list due quality targets", log.WithError(err))
@@ -460,7 +465,23 @@ func (r *Runner) scanDue(ctx context.Context) {
 		return
 	}
 
-	plans := planDueBatches(targets, maxExecutionsPerBatch)
+	// A target with no pending rule has a settled cycle: every enabled check has a
+	// completed attempt or its retry budget is used. Advance its schedule instead of
+	// creating an empty batch.
+	pendingTargets := make([]*store.DueQualityTarget, 0, len(targets))
+	for _, target := range targets {
+		if len(target.Rules) == 0 {
+			r.advanceSettledTarget(ctx, target)
+			continue
+		}
+		pendingTargets = append(pendingTargets, target)
+	}
+	if len(pendingTargets) == 0 {
+		observePlanning()
+		return
+	}
+
+	plans := planDueBatches(pendingTargets, maxExecutionsPerBatch)
 	observePlanning()
 	if len(plans) == 0 {
 		return
@@ -501,9 +522,9 @@ func (r *Runner) scanDue(ctx context.Context) {
 // hold the runner loop, including the manual queue. The skipped targets stay due
 // and are retried on the next tick.
 func (r *Runner) startScheduledBatch(ctx context.Context, plan dueBatchPlan) bool {
-	rules := make([]*store.QualityRuleMessage, 0, len(plan.rules))
+	rules := make([]*store.DueQualityRule, 0, len(plan.rules))
 	for _, rule := range plan.rules {
-		if rule != nil {
+		if rule != nil && rule.Rule != nil {
 			rules = append(rules, rule)
 		}
 	}
@@ -579,13 +600,6 @@ func (r *Runner) startScheduledBatch(ctx context.Context, plan dueBatchPlan) boo
 	for range planned {
 		r.metrics.CountQualityExecutionCreated(metrics.QualityTriggerScheduled)
 	}
-	// Advance the schedule only after the rows are planned: the tick that picks a
-	// target up must not pick it up again, and a failed plan leaves the target due
-	// for the next pass. A target split across chunks is advanced by the plan that
-	// holds its final chunk.
-	if plan.advance {
-		r.advanceScheduledTarget(ctx, plan.target)
-	}
 
 	// PlanQualityExecutions fills in each planned row's identity, so the tasks come
 	// from the plan itself without another read.
@@ -599,6 +613,10 @@ func (r *Runner) startScheduledBatch(ctx context.Context, plan dueBatchPlan) boo
 		return false
 	}
 	r.executeBatch(ctx, batch.ID, plan.instanceResourceID, tasks, admission, release)
+	// A timed-out/incomplete batch leaves ABANDONED executions whose retry budget is
+	// not used yet, so the cycle stays pending and the next tick retries only those
+	// checks. A normal batch settles the cycle here and advances the target now.
+	r.advanceTargetIfCycleComplete(ctx, plan.target)
 	return true
 }
 
@@ -606,7 +624,8 @@ func (r *Runner) startScheduledBatch(ctx context.Context, plan dueBatchPlan) boo
 // rule. The revision, target snapshot and instance are the due scan's view; the
 // runner may execute a newer revision and FinishQualityExecution then records the
 // revision it really judged.
-func plannedExecution(batchID int64, instanceResourceID string, rule *store.QualityRuleMessage, at time.Time) *store.QualityExecutionMessage {
+func plannedExecution(batchID int64, instanceResourceID string, dueRule *store.DueQualityRule, at time.Time) *store.QualityExecutionMessage {
+	rule := dueRule.Rule
 	return &store.QualityExecutionMessage{
 		RunID:              batchID,
 		RuleID:             rule.ID,
@@ -618,6 +637,7 @@ func plannedExecution(batchID int64, instanceResourceID string, rule *store.Qual
 		InstanceResourceID: instanceResourceID,
 		State:              storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_PENDING,
 		Trigger:            storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED,
+		Attempt:            dueRule.Attempt,
 		StartedAt:          at,
 	}
 }
@@ -1193,20 +1213,50 @@ func (r *Runner) executeOne(ctx context.Context, planned *store.QualityExecution
 	}
 }
 
-// advanceScheduledTarget moves one due target's next run forward. The due scan
-// already returned the target, so this is a scheduling bookkeeping step: a
-// failure is logged, not fatal, because executing and recording its checks is
-// still more useful than dropping the pass.
-func (r *Runner) advanceScheduledTarget(ctx context.Context, target *store.DueQualityTarget) {
+// advanceSettledTarget moves a settled target's next run forward. The write only
+// applies while the schedule is still due, so a concurrent interval edit wins. A
+// failure is logged, not fatal: the target remains due and the next tick retries
+// the same settled cycle.
+func (r *Runner) advanceSettledTarget(ctx context.Context, target *store.DueQualityTarget) {
 	if target == nil {
 		return
 	}
-	next := nextRunAt(time.Now().UTC(), target.ScheduleInterval)
-	if err := r.stores.AdvanceQualityTargetNextRun(ctx, target.TargetGUID, target.TargetType, next); err != nil {
+	now := time.Now().UTC()
+	next := nextRunAt(now, target.ScheduleInterval)
+	advanced, err := r.stores.AdvanceDueQualityTargetNextRun(ctx, target.TargetGUID, target.TargetType, next, now)
+	if err != nil {
 		slog.Warn("failed to advance a quality target's next schedule",
 			slog.String("target", target.TargetGUID),
 			log.WithError(err))
+		return
 	}
+	if advanced {
+		slog.Debug("advanced a settled quality target cycle",
+			slog.String("target", target.TargetGUID),
+			slog.Int("pending_rules", 0))
+	}
+}
+
+// advanceTargetIfCycleComplete advances a target when none of its enabled rules
+// still needs an attempt in the current cycle. A batch that timed out leaves
+// ABANDONED executions, which count as attempts until the retry budget is used;
+// the target then stays due and the next tick retries only the unfinished checks.
+// A target with a remaining chunk (a >100-rule target) also stays due.
+func (r *Runner) advanceTargetIfCycleComplete(ctx context.Context, target *store.DueQualityTarget) {
+	if target == nil {
+		return
+	}
+	pending, err := r.stores.CountPendingQualityTargetRules(ctx, target.TargetGUID, target.TargetType, maxScheduledRuleAttempts)
+	if err != nil {
+		slog.Warn("failed to count a quality target's pending rules",
+			slog.String("target", target.TargetGUID),
+			log.WithError(err))
+		return
+	}
+	if pending > 0 {
+		return
+	}
+	r.advanceSettledTarget(ctx, target)
 }
 
 // loadRuleSnapshot loads the immutable definition an execution is judged with. A
@@ -1472,9 +1522,9 @@ func planDueBatches(targets []*store.DueQualityTarget, maxExecutionsPerBatch int
 
 // planInstanceDueBatches turns one instance's due targets into one batch each. A
 // target larger than the cap is split because its checks cannot fit one batch;
-// only the plan holding its final chunk advances its schedule, so a split target
-// is rescheduled once. Every normal target (at most the per-table rule limit) is
-// exactly one batch.
+// the target schedule is advanced only when the whole cycle is settled, so the
+// plan itself never advances it. Every normal target (at most the per-table rule
+// limit) is exactly one batch.
 func planInstanceDueBatches(instance string, targets []*store.DueQualityTarget, maxExecutionsPerBatch int) []dueBatchPlan {
 	plans := make([]dueBatchPlan, 0, len(targets))
 	for _, target := range targets {
@@ -1494,7 +1544,6 @@ func planInstanceDueBatches(instance string, targets []*store.DueQualityTarget, 
 			instanceResourceID: instance,
 			target:             target,
 			rules:              group,
-			advance:            true,
 		})
 	}
 	return plans

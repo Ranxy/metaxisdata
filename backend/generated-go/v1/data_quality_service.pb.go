@@ -4221,7 +4221,11 @@ type QualityExecution struct {
 	// The dispatch batch that planned this execution, so the execution directory
 	// can group checks by the run that produced them.
 	// Format: workspaces/{workspace}/qualityRuns/{quality_run}
-	Run           string `protobuf:"bytes,26,opt,name=run,proto3" json:"run,omitempty"`
+	Run string `protobuf:"bytes,26,opt,name=run,proto3" json:"run,omitempty"`
+	// The scheduled attempt number in the target's current due cycle: 1 for the
+	// first attempt, 2+ for a retry after an abandoned attempt. Manual executions
+	// always use 1. A retry is planned only while the attempt budget lasts.
+	Attempt       int32 `protobuf:"varint,27,opt,name=attempt,proto3" json:"attempt,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4438,6 +4442,13 @@ func (x *QualityExecution) GetRun() string {
 	return ""
 }
 
+func (x *QualityExecution) GetAttempt() int32 {
+	if x != nil {
+		return x.Attempt
+	}
+	return 0
+}
+
 // QualityExecutionSummary is the compact projection of the latest execution
 // that a rule list shows. It is not a stored entity.
 type QualityExecutionSummary struct {
@@ -4571,8 +4582,12 @@ type QualityRun struct {
 	// execution has run.
 	RuleRevisionMin int32 `protobuf:"varint,12,opt,name=rule_revision_min,json=ruleRevisionMin,proto3" json:"rule_revision_min,omitempty"`
 	RuleRevisionMax int32 `protobuf:"varint,13,opt,name=rule_revision_max,json=ruleRevisionMax,proto3" json:"rule_revision_max,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// How many scheduled attempts in this batch were retries, i.e. executions whose
+	// attempt number is greater than one. Zero for a batch whose checks all ran on
+	// their first attempt and for manual batches.
+	RetryCount    int32 `protobuf:"varint,14,opt,name=retry_count,json=retryCount,proto3" json:"retry_count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *QualityRun) Reset() {
@@ -4685,6 +4700,13 @@ func (x *QualityRun) GetRuleRevisionMin() int32 {
 func (x *QualityRun) GetRuleRevisionMax() int32 {
 	if x != nil {
 		return x.RuleRevisionMax
+	}
+	return 0
+}
+
+func (x *QualityRun) GetRetryCount() int32 {
+	if x != nil {
+		return x.RetryCount
 	}
 	return 0
 }
@@ -12361,7 +12383,7 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\x04fail\x18\x04 \x01(\x05R\x04fail\x12\x14\n" +
 	"\x05error\x18\x05 \x01(\x05R\x05error\x12\x18\n" +
 	"\askipped\x18\x06 \x01(\x05R\askipped\x12#\n" +
-	"\rnot_evaluated\x18\a \x01(\x05R\fnotEvaluated\"\xba\n" +
+	"\rnot_evaluated\x18\a \x01(\x05R\fnotEvaluated\"\xd4\n" +
 	"\n" +
 	"\x10QualityExecution\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x120\n" +
@@ -12402,7 +12424,8 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\vfinish_time\x18\x19 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"finishTime\x12-\n" +
 	"\x03run\x18\x1a \x01(\tB\x1b\xfaA\x18\n" +
-	"\x16metaxisdata/QualityRunR\x03run:_\xeaA\\\n" +
+	"\x16metaxisdata/QualityRunR\x03run\x12\x18\n" +
+	"\aattempt\x18\x1b \x01(\x05R\aattempt:_\xeaA\\\n" +
 	"\x1cmetaxisdata/QualityExecution\x12<workspaces/{workspace}/qualityExecutions/{quality_execution}\"\xff\x02\n" +
 	"\x17QualityExecutionSummary\x125\n" +
 	"\x06status\x18\x01 \x01(\x0e2\x1d.metaxisdata.v1.QualityStatusR\x06status\x12%\n" +
@@ -12415,7 +12438,7 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\texecution\x18\x06 \x01(\tB!\xfaA\x1e\n" +
 	"\x1cmetaxisdata/QualityExecutionR\texecution\x12;\n" +
 	"\vfinish_time\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"finishTime\"\xf1\x05\n" +
+	"finishTime\"\x97\x06\n" +
 	"\n" +
 	"QualityRun\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x125\n" +
@@ -12433,7 +12456,9 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"finishTime\x125\n" +
 	"\x06target\x18\v \x01(\v2\x1d.metaxisdata.v1.QualityTargetR\x06target\x12/\n" +
 	"\x11rule_revision_min\x18\f \x01(\x05B\x03\xe0A\x03R\x0fruleRevisionMin\x12/\n" +
-	"\x11rule_revision_max\x18\r \x01(\x05B\x03\xe0A\x03R\x0fruleRevisionMax:M\xeaAJ\n" +
+	"\x11rule_revision_max\x18\r \x01(\x05B\x03\xe0A\x03R\x0fruleRevisionMax\x12$\n" +
+	"\vretry_count\x18\x0e \x01(\x05B\x03\xe0A\x03R\n" +
+	"retryCount:M\xeaAJ\n" +
 	"\x16metaxisdata/QualityRun\x120workspaces/{workspace}/qualityRuns/{quality_run}J\x04\b\n" +
 	"\x10\vR\atargets\"\xab\x04\n" +
 	"\x16ListQualityRunsRequest\x12\x1b\n" +

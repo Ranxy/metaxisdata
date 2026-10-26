@@ -85,7 +85,9 @@ function runFixture(
   });
 }
 
-function executionFixture(): QualityExecution {
+function executionFixture(
+  options: { attempt?: number } = {}
+): QualityExecution {
   return create(QualityExecutionSchema, {
     name: EXECUTION,
     rule: RULE,
@@ -98,6 +100,7 @@ function executionFixture(): QualityExecution {
     totalRows: 1000n,
     startTime: timestampFromDate(START),
     finishTime: timestampFromDate(FINISH),
+    attempt: options.attempt ?? 1,
   });
 }
 
@@ -228,6 +231,27 @@ describe("QualityRunCard", () => {
 
     expect(wrapper.text()).toContain(
       labels()("dataQuality.executions.revisionRange", { min: 3, max: 5 })
+    );
+  });
+
+  it("shows the batch's retry count and a retried check's attempt", async () => {
+    const run = runFixture();
+    run.retryCount = 2;
+    mocks.listQualityExecutions.mockResolvedValue({
+      items: [executionFixture({ attempt: 2 })],
+      nextPageToken: "",
+    });
+    const { wrapper } = await mountCard({ run });
+
+    expect(wrapper.text()).toContain(
+      labels()("dataQuality.executions.runRetries", { count: 2 })
+    );
+
+    await expander(wrapper).trigger("click");
+    await wrapper.setProps({ modelValue: true });
+    await flushPromises();
+    expect(wrapper.text()).toContain(
+      labels()("dataQuality.executions.attempt", { count: 2 })
     );
   });
 

@@ -314,6 +314,7 @@ func TestConvertQualityExecution(t *testing.T) {
 		InstanceResourceID: "instance_1",
 		State:              storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED,
 		Trigger:            storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED,
+		Attempt:            3,
 		Status:             storepb.QualityStatus_QUALITY_STATUS_FAIL,
 		ObservedValue:      &observed,
 		ObservedKind:       storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT,
@@ -345,6 +346,7 @@ func TestConvertQualityExecution(t *testing.T) {
 	require.Equal(t, "workspaces/ws1/qualityRules/rule123", converted.GetRule())
 	require.Equal(t, "workspaces/ws1/qualityRuns/11", converted.GetRun(),
 		"an execution names the dispatch batch that planned it")
+	require.Equal(t, int32(3), converted.GetAttempt())
 	require.Equal(t, int32(2), converted.GetRuleRevision())
 	require.Equal(t, "dq.v1", converted.GetRuleEngineVersion())
 	require.Equal(t, "instance_1;shop;public;orders", converted.GetTarget().GetMetaGuid())

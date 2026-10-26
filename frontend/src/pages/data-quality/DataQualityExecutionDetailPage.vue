@@ -236,6 +236,14 @@
                     {{ execution.ruleRevision }}
                   </div>
                 </div>
+                <div v-if="execution.attempt > 1">
+                  <div class="text-xs text-muted-foreground">
+                    {{ t("dataQuality.attempt") }}
+                  </div>
+                  <div class="text-sm tabular-nums">
+                    {{ t("dataQuality.executions.attempt", { count: execution.attempt }) }}
+                  </div>
+                </div>
                 <div>
                   <div class="text-xs text-muted-foreground">
                     {{ t("dataQuality.engineVersion") }}

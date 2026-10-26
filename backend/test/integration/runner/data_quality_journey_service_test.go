@@ -737,7 +737,8 @@ func runJourneyScheduledExecution(t *testing.T, fixture *qualityFixture, ruleNam
 }
 
 // assertJourneyRuleScheduledAhead checks that the scheduled pass advanced the
-// target's next slot instead of leaving it due for every tick.
+// target's next slot instead of leaving it due for every tick. The advance happens
+// when the batch settles, just after the execution finishes, so this polls.
 func assertJourneyRuleScheduledAhead(t *testing.T, fixture *qualityFixture, ruleName string) {
 	t.Helper()
 
@@ -745,11 +746,13 @@ func assertJourneyRuleScheduledAhead(t *testing.T, fixture *qualityFixture, rule
 	rule, err := fixture.env.Store.GetQualityRule(fixture.ctx, &store.FindQualityRuleMessage{ResourceID: &resourceID})
 	require.NoError(t, err)
 	require.NotNil(t, rule)
-	schedule, err := fixture.env.Store.GetQualityTargetSchedule(fixture.ctx, rule.TargetGUID, rule.TargetType)
-	require.NoError(t, err)
-	require.NotNil(t, schedule, "the target keeps a schedule row")
-	require.NotNil(t, schedule.NextRunAt, "a scheduled target keeps a next slot")
-	require.True(t, schedule.NextRunAt.After(time.Now()), "the next slot moved past the run")
+	require.Eventually(t, func() bool {
+		schedule, err := fixture.env.Store.GetQualityTargetSchedule(fixture.ctx, rule.TargetGUID, rule.TargetType)
+		if err != nil || schedule == nil || schedule.NextRunAt == nil {
+			return false
+		}
+		return schedule.NextRunAt.After(time.Now())
+	}, 10*time.Second, 200*time.Millisecond, "the target's next slot never moved past the run")
 }
 
 // journeyRuleResourceID returns the last path segment of a rule resource name.

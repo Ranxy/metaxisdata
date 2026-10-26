@@ -144,7 +144,7 @@ workspace, under the health summary.
 
 ## Executions and statuses
 
-An execution is **one check checked once**, on demand or by the scheduler. Open
+An execution is **one check checked once**, on demand or by the scheduler. If a scheduled batch times out or is abandoned before a check runs, that check is retried in the same target cycle; the execution detail shows its attempt number (attempt 2 or 3), and the batch card counts how many checks were retries. A check is attempted at most three times per cycle. Open
 Data Quality → Executions to watch them: every check the scheduler or a manual
 run started is one row, and a queued or running row is polled until it finishes.
 The list filters by lifecycle state, outcome and trigger; open a row for the full

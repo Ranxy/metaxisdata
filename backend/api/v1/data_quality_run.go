@@ -87,6 +87,7 @@ func (s *DataQualityService) GetQualityRun(ctx context.Context, req *connect.Req
 	if revisionRange, ok := ranges[runID]; ok {
 		run.RuleRevisionMin = revisionRange.Min
 		run.RuleRevisionMax = revisionRange.Max
+		run.RetryCount = revisionRange.RetryCount
 	}
 	return connect.NewResponse(convertQualityRun(workspaceID, run)), nil
 }
@@ -103,6 +104,7 @@ func (s *DataQualityService) fillQualityRunRevisionRanges(ctx context.Context, r
 		if revisionRange, ok := ranges[run.ID]; ok {
 			run.RuleRevisionMin = revisionRange.Min
 			run.RuleRevisionMax = revisionRange.Max
+			run.RetryCount = revisionRange.RetryCount
 		}
 	}
 	return nil

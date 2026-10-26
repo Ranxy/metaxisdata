@@ -330,6 +330,7 @@ API 语义：
 - 读模型：`QualityRun.target` + `rule_revision_min/max`；删除 `QualityRunTarget` 与 `repeated targets`；`QualityTargetSummary.latest_run` 直接是 `QualityRun`；`ListQualityRuns` 按 `target_guid + meta_type` 直接过滤。
 - 批次卡不再显示“N 个目标”；`N/M` 披露只在 scheduled 批次且目标规则数 > 本批检查数（legacy 超限分片）时出现；手动 run 的 `counts.total` 是显式选择数，不冒充目标全量。
 - 连接租约仍是批次级：一个实例同时只有有限批次，同实例串行；没有把租约提升到目标级。
+- 目标周期（D-71）：一次 due cycle 可跨批次/tick；未完成的检查在下一次扫描按 attempt 2/3 补跑，最多 3 次尝试；批次结束后检查目标是否还有 pending 规则，没有才把 schedule 推进到 `now + interval`；`QualityRun.retry_count`/`QualityExecution.attempt` 让补跑可见。
 
 文件：`backend/migrator/migration/0.1/0031##quality_run_target.sql` + `LATEST.sql`、`backend/store/quality_run.go`（target 列/过滤/目标最新批次/revision range）、`backend/runner/qualityrunner/qualityrunner.go`（一目标一批次、tick 目标预算）、`backend/api/v1/data_quality_service.go`（手动按目标拆批）、`data_quality_run.go`/`data_quality_target.go`/`data_quality_convert.go`、`proto/v1/v1/data_quality_service.proto`；前端 `QualityRunCard`/`TargetScanHistory`/`TargetRecentScanCard`/执行页、`api/data-quality.ts`。测试：store run 扫描/过滤、runner 一目标一批次 plan、API 转换、integration 手动跨目标拆批与 scheduled 批次 target。
 
@@ -383,8 +384,8 @@ API 语义：
 ### Phase C（已实现，本分支）
 
 - ✅ 新增 `quality_target_schedule`（目标级 interval + next_run_at），删除 `quality_rule.schedule_interval_seconds`/`next_run_at` 与 due 索引。
-- ✅ due 扫描以目标为单位取整目标全部启用检查；批次内目标连续；批次上限 100；>100 条规则的目标可跨批且只推进一次。
-- ✅ `next_run_at` 在规划成功后按目标推进；手动运行不推进；暂停最后一条/归档/换目标/改调度都会同步目标 schedule。
+- ✅ due 扫描以目标为单位取周期内未完成的检查；批次内目标连续；批次上限 100；>100 条规则的目标可跨批。
+- ✅ 目标 schedule 在周期 settle 后推进；超时/abandoned 的检查在周期内按 attempt 1..3 补跑；`QualityRun.retry_count` 与 `QualityExecution.attempt` 暴露补跑；手动运行不推进；暂停最后一条/归档/换目标/改调度都会同步目标 schedule。
 - ✅ `UpdateQualityTargetSchedule` + `QualityTargetSummary.schedule`；目标工作台展示/编辑；规则编辑器与检查详情删除 schedule；契约 settings 删除默认 schedule。
 - ✅ `row_count_change` 基线窗口跟随目标 interval。
 

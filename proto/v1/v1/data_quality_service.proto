@@ -1171,6 +1171,11 @@ message QualityExecution {
   // can group checks by the run that produced them.
   // Format: workspaces/{workspace}/qualityRuns/{quality_run}
   string run = 26 [(google.api.resource_reference) = {type: "metaxisdata/QualityRun"}];
+
+  // The scheduled attempt number in the target's current due cycle: 1 for the
+  // first attempt, 2+ for a retry after an abandoned attempt. Manual executions
+  // always use 1. A retry is planned only while the attempt budget lasts.
+  int32 attempt = 27;
 }
 
 // QualityExecutionSummary is the compact projection of the latest execution
@@ -1237,6 +1242,11 @@ message QualityRun {
   // execution has run.
   int32 rule_revision_min = 12 [(google.api.field_behavior) = OUTPUT_ONLY];
   int32 rule_revision_max = 13 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // How many scheduled attempts in this batch were retries, i.e. executions whose
+  // attempt number is greater than one. Zero for a batch whose checks all ran on
+  // their first attempt and for manual batches.
+  int32 retry_count = 14 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   // The former per-target slices: a batch now names its target directly.
   reserved 10;

@@ -28,9 +28,9 @@ func qualityRuleStub(id int64, targetGUID string) *store.QualityRuleMessage {
 // dueTargetStub builds one due target with its enabled checks; the due scan
 // returns targets this way, so the planner never has to regroup rules by target.
 func dueTargetStub(targetGUID string, ruleIDs ...int64) *store.DueQualityTarget {
-	rules := make([]*store.QualityRuleMessage, 0, len(ruleIDs))
+	rules := make([]*store.DueQualityRule, 0, len(ruleIDs))
 	for _, id := range ruleIDs {
-		rules = append(rules, qualityRuleStub(id, targetGUID))
+		rules = append(rules, &store.DueQualityRule{Rule: qualityRuleStub(id, targetGUID), Attempt: 1})
 	}
 	return &store.DueQualityTarget{
 		TargetGUID:       targetGUID,
@@ -40,10 +40,10 @@ func dueTargetStub(targetGUID string, ruleIDs ...int64) *store.DueQualityTarget 
 	}
 }
 
-func qualityRuleIDs(rules []*store.QualityRuleMessage) []int64 {
+func qualityRuleIDs(rules []*store.DueQualityRule) []int64 {
 	ids := make([]int64, 0, len(rules))
 	for _, rule := range rules {
-		ids = append(ids, rule.ID)
+		ids = append(ids, rule.Rule.ID)
 	}
 	return ids
 }
@@ -102,27 +102,11 @@ func TestPlanDueBatchesSplitsOnlyAnOversizedTarget(t *testing.T) {
 	require.Equal(t, []int64{6, 7}, qualityRuleIDs(plans[3].rules),
 		"a target over the cap is the only one that spans batches")
 
-	// A split target advances only once, by the plan that holds its final chunk.
-	require.False(t, plans[0].advance)
-	require.False(t, plans[1].advance)
-	require.True(t, plans[2].advance, "the final chunk advances the oversized target")
+	// Every plan names the target it belongs to; schedule advancement happens when
+	// the cycle settles, not from a plan.
+	require.Equal(t, "inst-a;db;public;orders", plans[1].target.TargetGUID)
 	require.Equal(t, "inst-a;db;public;orders", plans[2].target.TargetGUID)
-	require.True(t, plans[3].advance)
 	require.Equal(t, "inst-a;db;public;customers", plans[3].target.TargetGUID)
-}
-
-func TestPlanDueBatchesAdvancesEachTargetOnce(t *testing.T) {
-	t.Parallel()
-
-	targets := []*store.DueQualityTarget{
-		dueTargetStub("inst-a;db;public;orders", 1, 2),
-		dueTargetStub("inst-a;db;public;customers", 3),
-	}
-	plans := planDueBatches(targets, 50)
-	require.Len(t, plans, 2)
-	for _, plan := range plans {
-		require.True(t, plan.advance, "each target's single batch advances its schedule")
-	}
 }
 
 func TestPlanDueBatchesOrdersTargetsAsGiven(t *testing.T) {
@@ -166,13 +150,10 @@ func TestScheduledBatchCapacityFitsTheLargestLegalTarget(t *testing.T) {
 	plans := planDueBatches([]*store.DueQualityTarget{dueTargetStub("inst;db;public;orders", ids...)}, maxExecutionsPerBatch)
 	require.Len(t, plans, 1, "the largest legal target stays in one batch")
 	require.Len(t, plans[0].rules, 100)
-	require.True(t, plans[0].advance)
 
 	ids = append(ids, 101)
 	plans = planDueBatches([]*store.DueQualityTarget{dueTargetStub("inst;db;public;orders", ids...)}, maxExecutionsPerBatch)
 	require.Len(t, plans, 2, "only an over-cap target can span batches")
-	require.False(t, plans[0].advance)
-	require.True(t, plans[1].advance)
 }
 
 func TestNextRunAtUsesTheIntervalButNeverLoopsEveryTick(t *testing.T) {
@@ -270,7 +251,8 @@ func TestPlannedExecutionCarriesTheDueScanSnapshot(t *testing.T) {
 		TargetType: storepb.MetaType_TABLE,
 		TargetPath: path,
 	}
-	planned := plannedExecution(11, "inst1", rule, now)
+	dueRule := &store.DueQualityRule{Rule: rule, Attempt: 2}
+	planned := plannedExecution(11, "inst1", dueRule, now)
 
 	require.Equal(t, int64(11), planned.RunID)
 	require.Equal(t, int64(7), planned.RuleID)
@@ -282,6 +264,7 @@ func TestPlannedExecutionCarriesTheDueScanSnapshot(t *testing.T) {
 	require.Equal(t, "inst1", planned.InstanceResourceID)
 	require.Equal(t, storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_PENDING, planned.State)
 	require.Equal(t, storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED, planned.Trigger)
+	require.Equal(t, int32(2), planned.Attempt)
 	require.Equal(t, now, planned.StartedAt)
 }
 

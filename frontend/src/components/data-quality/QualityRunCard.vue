@@ -21,6 +21,13 @@
       >
         {{ targetLabel }}
       </span>
+      <Badge
+        v-if="run.retryCount > 0"
+        variant="outline"
+        class="text-xs"
+      >
+        {{ t("dataQuality.executions.runRetries", { count: run.retryCount }) }}
+      </Badge>
       <span
         v-if="run.initiator"
         class="text-xs text-muted-foreground"
@@ -199,6 +206,13 @@
                 >
                   {{ ruleLabel(execution) }}
                 </RouterLink>
+                <Badge
+                  v-if="execution.attempt > 1"
+                  variant="outline"
+                  class="ml-1 align-middle text-[11px]"
+                >
+                  {{ t("dataQuality.executions.attempt", { count: execution.attempt }) }}
+                </Badge>
                 <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground md:hidden">
                   <span class="tabular-nums">{{ observedLabel(execution) }}</span>
                   <span

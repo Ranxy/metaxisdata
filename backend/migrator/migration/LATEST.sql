@@ -1033,6 +1033,10 @@ CREATE TABLE IF NOT EXISTS quality_execution (
     instance_resource_id TEXT COLLATE "C" NOT NULL DEFAULT '',
     -- 1 MANUAL, 2 SCHEDULED.
     trigger INT2 NOT NULL DEFAULT 0,
+    -- The scheduled attempt number in the target's current due cycle: 1 for the
+    -- first attempt, 2+ for a retry after an abandoned attempt. Manual
+    -- executions always use 1.
+    attempt INT2 NOT NULL DEFAULT 1,
     -- Principal id of the user who asked for a manual execution; NULL for a
     -- scheduled one.
     initiator_id INT4,
