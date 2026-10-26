@@ -685,15 +685,30 @@ func TestValidateCELExpressionIsSupported(t *testing.T) {
 func TestValidateRuleRejectsMissingInputs(t *testing.T) {
 	t.Parallel()
 
-	_, err := ValidateRule(t.Context(), nil, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, "inst1;app;orders", storepb.MetaType_TABLE, nil, nil)
+	_, err := ValidateRule(t.Context(), nil, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, "inst1;app;orders", storepb.MetaType_TABLE, nil, nil, nil)
 	require.Error(t, err)
 	require.Equal(t, common.Invalid, common.ErrorCode(err))
 
 	config := validationRowCountConfig(&storepb.RowCountConfig{MinRows: validationPtr(int64(1))})
-	_, err = ValidateRule(t.Context(), nil, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, "inst1;app;orders", storepb.MetaType_TABLE, config, nil)
+	_, err = ValidateRule(t.Context(), nil, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, "inst1;app;orders", storepb.MetaType_TABLE, config, nil, nil)
 	require.Error(t, err)
 	// Resolving a target without a store is a server-side fault, not a bad rule.
 	require.Equal(t, common.Internal, common.ErrorCode(err))
+}
+
+// ValidateRule parses the target contract's filter before resolving the target, so
+// a malformed contract filter is refused as an invalid rule even when the registry
+// is unavailable. The successful merge path needs a live registry and is pinned by
+// contract_test.go's compiler tests plus the runner integration suite.
+func TestValidateRuleRefusesAMalformedContractFilter(t *testing.T) {
+	t.Parallel()
+
+	config := validationRowCountConfig(&storepb.RowCountConfig{MinRows: validationPtr(int64(1))})
+	_, err := ValidateRule(t.Context(), nil, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		"inst1;app;orders", storepb.MetaType_TABLE, config, nil,
+		&storepb.QualityFilter{Clauses: []*storepb.QualityFilterClause{{Column: "status"}}})
+	require.Error(t, err)
+	require.Equal(t, common.Invalid, common.ErrorCode(err))
 }
 
 // PERCENT thresholds are only meaningful where the compiled statement also returns

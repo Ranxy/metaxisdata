@@ -15,6 +15,9 @@ import {
   DeleteQualityRuleRequestSchema,
   ExplainQualityExecutionRequestSchema,
   type ExplainQualityExecutionResponse,
+  GetQualityContractRequestSchema,
+  GetQualityContractRevisionRequestSchema,
+  type GetQualityContractRevisionResponse,
   GetQualityExecutionRequestSchema,
   GetQualityIssueRequestSchema,
   GetQualityLLMUsageRequestSchema,
@@ -28,6 +31,7 @@ import {
   type GetQualityTargetResponse,
   ListColumnLabelsRequestSchema,
   ListColumnProfilesRequestSchema,
+  ListQualityContractRevisionsRequestSchema,
   ListQualityExecutionsRequestSchema,
   ListQualityIssuesRequestSchema,
   ListQualityRulesRequestSchema,
@@ -36,6 +40,11 @@ import {
   ListQualityTargetsRequestSchema,
   PreviewQualityRuleRequestSchema,
   ProfileColumnsRequestSchema,
+  PublishQualityContractRequestSchema,
+  type PublishQualityContractResponse,
+  type QualityContract,
+  type QualityContractRevision,
+  type QualityContractSettings,
   QualityDimension,
   type QualityExecution,
   QualityExecutionState,
@@ -67,6 +76,7 @@ import {
   SuggestQualityRuleRequestSchema,
   type SuggestQualityRuleResponse,
   UpdateColumnLabelRequestSchema,
+  UpdateQualityContractRequestSchema,
   UpdateQualityIssueRequestSchema,
   UpdateQualityRuleRequestSchema,
   UpdateQualitySuggestionRequestSchema,
@@ -183,6 +193,109 @@ export async function getQualityTarget(options: {
   return await dataQualityClient.getQualityTarget(request, {
     signal: options.signal,
   });
+}
+
+// ---- contract ----
+
+/**
+ * Read one target's contract: its target-level defaults, the newest published
+ * version and whether the live rules differ from that snapshot. The target is
+ * named by GUID, like GetQualityTarget; a contract is a projection of the rules,
+ * so it needs no resource name of its own.
+ */
+export async function getQualityContract(options: {
+  targetGuid: string;
+  /** UNSPECIFIED lets the server derive it from the target's rules. */
+  metaType?: MetaType;
+  signal?: AbortSignal;
+}): Promise<QualityContract> {
+  const request = create(GetQualityContractRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    targetGuid: options.targetGuid,
+    metaType: options.metaType ?? MetaType.UNSPECIFIED,
+  });
+  return await dataQualityClient.getQualityContract(request, {
+    signal: options.signal,
+  });
+}
+
+/**
+ * Replace the target-level defaults. The settings message is complete, so a field
+ * left unset is cleared rather than kept; the server records the change as an
+ * unpublished difference from the published version.
+ */
+export async function updateQualityContract(options: {
+  targetGuid: string;
+  metaType?: MetaType;
+  settings: QualityContractSettings;
+}): Promise<QualityContract> {
+  const request = create(UpdateQualityContractRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    targetGuid: options.targetGuid,
+    metaType: options.metaType ?? MetaType.UNSPECIFIED,
+    settings: options.settings,
+  });
+  return await dataQualityClient.updateQualityContract(request);
+}
+
+/**
+ * Record the live rules and settings as the target's next version. Republishing an
+ * unchanged contract is a no-op: the response says so rather than creating a
+ * version that promises nothing new.
+ */
+export async function publishQualityContract(options: {
+  targetGuid: string;
+  metaType?: MetaType;
+  /** Why this version exists; shown in the history. */
+  note?: string;
+}): Promise<PublishQualityContractResponse> {
+  const request = create(PublishQualityContractRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    targetGuid: options.targetGuid,
+    metaType: options.metaType ?? MetaType.UNSPECIFIED,
+    note: options.note ?? "",
+  });
+  return await dataQualityClient.publishQualityContract(request);
+}
+
+/** One page of published versions, newest first. */
+export async function listQualityContractRevisions(options: {
+  targetGuid: string;
+  metaType?: MetaType;
+  pageSize?: number;
+  pageToken?: string;
+  signal?: AbortSignal;
+}): Promise<ListPage<QualityContractRevision>> {
+  const request = create(ListQualityContractRevisionsRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    targetGuid: options.targetGuid,
+    metaType: options.metaType ?? MetaType.UNSPECIFIED,
+    pageSize: options.pageSize ?? 20,
+    pageToken: options.pageToken ?? "",
+  });
+  const response = await dataQualityClient.listQualityContractRevisions(
+    request,
+    { signal: options.signal }
+  );
+  return {
+    items: response.revisions,
+    nextPageToken: response.nextPageToken,
+  };
+}
+
+/** One published version with its checks, so a client can diff it locally. */
+export async function getQualityContractRevision(options: {
+  targetGuid: string;
+  metaType?: MetaType;
+  version: number;
+}): Promise<GetQualityContractRevisionResponse> {
+  const request = create(GetQualityContractRevisionRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    targetGuid: options.targetGuid,
+    metaType: options.metaType ?? MetaType.UNSPECIFIED,
+    version: options.version,
+  });
+  return await dataQualityClient.getQualityContractRevision(request);
 }
 
 /** One page of rules, newest first. */

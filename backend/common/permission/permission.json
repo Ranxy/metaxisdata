@@ -1,92 +1,360 @@
 {
   "permissions": [
-    {"name": "InstancesGet", "id": "metaxisdata.instances.get"},
-    {"name": "InstancesList", "id": "metaxisdata.instances.list"},
-    {"name": "InstancesCreate", "id": "metaxisdata.instances.create"},
-    {"name": "InstancesUpdate", "id": "metaxisdata.instances.update"},
-    {"name": "InstancesDelete", "id": "metaxisdata.instances.delete"},
-    {"name": "InstancesUndelete", "id": "metaxisdata.instances.undelete"},
-    {"name": "InstancesSync", "id": "metaxisdata.instances.sync"},
-    {"name": "EnvironmentsList", "id": "metaxisdata.environments.list"},
-    {"name": "DataSourcesCreate", "id": "metaxisdata.dataSources.create"},
-    {"name": "DataSourcesUpdate", "id": "metaxisdata.dataSources.update"},
-    {"name": "DataSourcesDelete", "id": "metaxisdata.dataSources.delete"},
-    {"name": "DatabasesList", "id": "metaxisdata.databases.list"},
-    {"name": "DatabasesRead", "id": "metaxisdata.databases.read"},
-    {"name": "DatabasesSync", "id": "metaxisdata.databases.sync"},
-    {"name": "ApplicationsGet", "id": "metaxisdata.applications.get"},
-    {"name": "ApplicationsList", "id": "metaxisdata.applications.list"},
-    {"name": "ApplicationsCreate", "id": "metaxisdata.applications.create"},
-    {"name": "ApplicationsUpdate", "id": "metaxisdata.applications.update"},
-    {"name": "ApplicationsDelete", "id": "metaxisdata.applications.delete"},
-    {"name": "ApplicationsApiKeysList", "id": "metaxisdata.applications.apiKeys.list"},
-    {"name": "ApplicationsApiKeysCreate", "id": "metaxisdata.applications.apiKeys.create"},
-    {"name": "ApplicationsApiKeysDelete", "id": "metaxisdata.applications.apiKeys.delete"},
-    {"name": "ApplicationSQLsGet", "id": "metaxisdata.applicationSqls.get"},
-    {"name": "ApplicationSQLsList", "id": "metaxisdata.applicationSqls.list"},
-    {"name": "ApplicationSQLsDelete", "id": "metaxisdata.applicationSqls.delete"},
-    {"name": "ManualSQLsGet", "id": "metaxisdata.manualSqls.get"},
-    {"name": "ManualSQLsList", "id": "metaxisdata.manualSqls.list"},
-    {"name": "ManualSQLsCreate", "id": "metaxisdata.manualSqls.create"},
-    {"name": "ManualSQLsUpdate", "id": "metaxisdata.manualSqls.update"},
-    {"name": "ManualSQLsDelete", "id": "metaxisdata.manualSqls.delete"},
-    {"name": "LineageGet", "id": "metaxisdata.lineage.get"},
-    {"name": "OpenLineageRead", "id": "metaxisdata.openlineage.read"},
-    {"name": "OpenLineageNamespaceMappingsList", "id": "metaxisdata.openlineage.namespaceMappings.list"},
-    {"name": "OpenLineageNamespaceMappingsCreate", "id": "metaxisdata.openlineage.namespaceMappings.create"},
-    {"name": "OpenLineageNamespaceMappingsUpdate", "id": "metaxisdata.openlineage.namespaceMappings.update"},
-    {"name": "OpenLineageNamespaceMappingsDelete", "id": "metaxisdata.openlineage.namespaceMappings.delete"},
-    {"name": "OpenLineageApiKeysList", "id": "metaxisdata.openlineage.apiKeys.list"},
-    {"name": "OpenLineageApiKeysCreate", "id": "metaxisdata.openlineage.apiKeys.create"},
-    {"name": "OpenLineageApiKeysDelete", "id": "metaxisdata.openlineage.apiKeys.delete"},
-    {"name": "LLMProfilesList", "id": "metaxisdata.llm.profiles.list"},
-    {"name": "LLMProfilesCreate", "id": "metaxisdata.llm.profiles.create"},
-    {"name": "LLMProfilesUpdate", "id": "metaxisdata.llm.profiles.update"},
-    {"name": "LLMProfilesDelete", "id": "metaxisdata.llm.profiles.delete"},
-    {"name": "LLMProfilesFetchModels", "id": "metaxisdata.llm.profiles.fetchModels"},
-    {"name": "ExplainSQLExplain", "id": "metaxisdata.explainSql.explain"},
-    {"name": "DataQualityRulesGet", "id": "metaxisdata.dataQuality.rules.get"},
-    {"name": "DataQualityRulesList", "id": "metaxisdata.dataQuality.rules.list"},
-    {"name": "DataQualityRulesCreate", "id": "metaxisdata.dataQuality.rules.create"},
-    {"name": "DataQualityRulesUpdate", "id": "metaxisdata.dataQuality.rules.update"},
-    {"name": "DataQualityRulesDelete", "id": "metaxisdata.dataQuality.rules.delete"},
-    {"name": "DataQualityRulesRun", "id": "metaxisdata.dataQuality.rules.run"},
-    {"name": "DataQualityExecutionsGet", "id": "metaxisdata.dataQuality.executions.get"},
-    {"name": "DataQualityExecutionsList", "id": "metaxisdata.dataQuality.executions.list"},
-    {"name": "DataQualityIssuesGet", "id": "metaxisdata.dataQuality.issues.get"},
-    {"name": "DataQualityIssuesList", "id": "metaxisdata.dataQuality.issues.list"},
-    {"name": "DataQualityIssuesUpdate", "id": "metaxisdata.dataQuality.issues.update"},
-    {"name": "DataQualityExplain", "id": "metaxisdata.dataQuality.explain"},
-    {"name": "DataQualitySuggest", "id": "metaxisdata.dataQuality.suggest"},
-    {"name": "DataQualityProfileRun", "id": "metaxisdata.dataQuality.profile.run"},
-    {"name": "DataQualityLabelsUpdate", "id": "metaxisdata.dataQuality.labels.update"},
-    {"name": "UsersGet", "id": "metaxisdata.users.get"},
-    {"name": "UsersList", "id": "metaxisdata.users.list"},
-    {"name": "UsersCreate", "id": "metaxisdata.users.create"},
-    {"name": "UsersUpdate", "id": "metaxisdata.users.update"},
-    {"name": "UsersDelete", "id": "metaxisdata.users.delete"},
-    {"name": "UsersUndelete", "id": "metaxisdata.users.undelete"},
-    {"name": "GroupsGet", "id": "metaxisdata.groups.get"},
-    {"name": "GroupsList", "id": "metaxisdata.groups.list"},
-    {"name": "GroupsCreate", "id": "metaxisdata.groups.create"},
-    {"name": "GroupsUpdate", "id": "metaxisdata.groups.update"},
-    {"name": "GroupsDelete", "id": "metaxisdata.groups.delete"},
-    {"name": "RolesGet", "id": "metaxisdata.roles.get"},
-    {"name": "RolesList", "id": "metaxisdata.roles.list"},
-    {"name": "RolesCreate", "id": "metaxisdata.roles.create"},
-    {"name": "RolesUpdate", "id": "metaxisdata.roles.update"},
-    {"name": "RolesDelete", "id": "metaxisdata.roles.delete"},
-    {"name": "IAMGetPolicy", "id": "metaxisdata.iam.getPolicy"},
-    {"name": "IAMSetPolicy", "id": "metaxisdata.iam.setPolicy"},
-    {"name": "SettingsGet", "id": "metaxisdata.settings.get"},
-    {"name": "SettingsUpdate", "id": "metaxisdata.settings.update"},
-    {"name": "IdentityProvidersGet", "id": "metaxisdata.identityProviders.get"},
-    {"name": "IdentityProvidersList", "id": "metaxisdata.identityProviders.list"},
-    {"name": "IdentityProvidersCreate", "id": "metaxisdata.identityProviders.create"},
-    {"name": "IdentityProvidersUpdate", "id": "metaxisdata.identityProviders.update"},
-    {"name": "IdentityProvidersDelete", "id": "metaxisdata.identityProviders.delete"},
-    {"name": "ConnectedAppsList", "id": "metaxisdata.connectedApps.list"},
-    {"name": "ConnectedAppsRevoke", "id": "metaxisdata.connectedApps.revoke"},
-    {"name": "AuditLogsSearch", "id": "metaxisdata.auditLogs.search"}
+    {
+      "name": "InstancesGet",
+      "id": "metaxisdata.instances.get"
+    },
+    {
+      "name": "InstancesList",
+      "id": "metaxisdata.instances.list"
+    },
+    {
+      "name": "InstancesCreate",
+      "id": "metaxisdata.instances.create"
+    },
+    {
+      "name": "InstancesUpdate",
+      "id": "metaxisdata.instances.update"
+    },
+    {
+      "name": "InstancesDelete",
+      "id": "metaxisdata.instances.delete"
+    },
+    {
+      "name": "InstancesUndelete",
+      "id": "metaxisdata.instances.undelete"
+    },
+    {
+      "name": "InstancesSync",
+      "id": "metaxisdata.instances.sync"
+    },
+    {
+      "name": "EnvironmentsList",
+      "id": "metaxisdata.environments.list"
+    },
+    {
+      "name": "DataSourcesCreate",
+      "id": "metaxisdata.dataSources.create"
+    },
+    {
+      "name": "DataSourcesUpdate",
+      "id": "metaxisdata.dataSources.update"
+    },
+    {
+      "name": "DataSourcesDelete",
+      "id": "metaxisdata.dataSources.delete"
+    },
+    {
+      "name": "DatabasesList",
+      "id": "metaxisdata.databases.list"
+    },
+    {
+      "name": "DatabasesRead",
+      "id": "metaxisdata.databases.read"
+    },
+    {
+      "name": "DatabasesSync",
+      "id": "metaxisdata.databases.sync"
+    },
+    {
+      "name": "ApplicationsGet",
+      "id": "metaxisdata.applications.get"
+    },
+    {
+      "name": "ApplicationsList",
+      "id": "metaxisdata.applications.list"
+    },
+    {
+      "name": "ApplicationsCreate",
+      "id": "metaxisdata.applications.create"
+    },
+    {
+      "name": "ApplicationsUpdate",
+      "id": "metaxisdata.applications.update"
+    },
+    {
+      "name": "ApplicationsDelete",
+      "id": "metaxisdata.applications.delete"
+    },
+    {
+      "name": "ApplicationsApiKeysList",
+      "id": "metaxisdata.applications.apiKeys.list"
+    },
+    {
+      "name": "ApplicationsApiKeysCreate",
+      "id": "metaxisdata.applications.apiKeys.create"
+    },
+    {
+      "name": "ApplicationsApiKeysDelete",
+      "id": "metaxisdata.applications.apiKeys.delete"
+    },
+    {
+      "name": "ApplicationSQLsGet",
+      "id": "metaxisdata.applicationSqls.get"
+    },
+    {
+      "name": "ApplicationSQLsList",
+      "id": "metaxisdata.applicationSqls.list"
+    },
+    {
+      "name": "ApplicationSQLsDelete",
+      "id": "metaxisdata.applicationSqls.delete"
+    },
+    {
+      "name": "ManualSQLsGet",
+      "id": "metaxisdata.manualSqls.get"
+    },
+    {
+      "name": "ManualSQLsList",
+      "id": "metaxisdata.manualSqls.list"
+    },
+    {
+      "name": "ManualSQLsCreate",
+      "id": "metaxisdata.manualSqls.create"
+    },
+    {
+      "name": "ManualSQLsUpdate",
+      "id": "metaxisdata.manualSqls.update"
+    },
+    {
+      "name": "ManualSQLsDelete",
+      "id": "metaxisdata.manualSqls.delete"
+    },
+    {
+      "name": "LineageGet",
+      "id": "metaxisdata.lineage.get"
+    },
+    {
+      "name": "OpenLineageRead",
+      "id": "metaxisdata.openlineage.read"
+    },
+    {
+      "name": "OpenLineageNamespaceMappingsList",
+      "id": "metaxisdata.openlineage.namespaceMappings.list"
+    },
+    {
+      "name": "OpenLineageNamespaceMappingsCreate",
+      "id": "metaxisdata.openlineage.namespaceMappings.create"
+    },
+    {
+      "name": "OpenLineageNamespaceMappingsUpdate",
+      "id": "metaxisdata.openlineage.namespaceMappings.update"
+    },
+    {
+      "name": "OpenLineageNamespaceMappingsDelete",
+      "id": "metaxisdata.openlineage.namespaceMappings.delete"
+    },
+    {
+      "name": "OpenLineageApiKeysList",
+      "id": "metaxisdata.openlineage.apiKeys.list"
+    },
+    {
+      "name": "OpenLineageApiKeysCreate",
+      "id": "metaxisdata.openlineage.apiKeys.create"
+    },
+    {
+      "name": "OpenLineageApiKeysDelete",
+      "id": "metaxisdata.openlineage.apiKeys.delete"
+    },
+    {
+      "name": "LLMProfilesList",
+      "id": "metaxisdata.llm.profiles.list"
+    },
+    {
+      "name": "LLMProfilesCreate",
+      "id": "metaxisdata.llm.profiles.create"
+    },
+    {
+      "name": "LLMProfilesUpdate",
+      "id": "metaxisdata.llm.profiles.update"
+    },
+    {
+      "name": "LLMProfilesDelete",
+      "id": "metaxisdata.llm.profiles.delete"
+    },
+    {
+      "name": "LLMProfilesFetchModels",
+      "id": "metaxisdata.llm.profiles.fetchModels"
+    },
+    {
+      "name": "ExplainSQLExplain",
+      "id": "metaxisdata.explainSql.explain"
+    },
+    {
+      "name": "DataQualityRulesGet",
+      "id": "metaxisdata.dataQuality.rules.get"
+    },
+    {
+      "name": "DataQualityRulesList",
+      "id": "metaxisdata.dataQuality.rules.list"
+    },
+    {
+      "name": "DataQualityRulesCreate",
+      "id": "metaxisdata.dataQuality.rules.create"
+    },
+    {
+      "name": "DataQualityRulesUpdate",
+      "id": "metaxisdata.dataQuality.rules.update"
+    },
+    {
+      "name": "DataQualityRulesDelete",
+      "id": "metaxisdata.dataQuality.rules.delete"
+    },
+    {
+      "name": "DataQualityRulesRun",
+      "id": "metaxisdata.dataQuality.rules.run"
+    },
+    {
+      "name": "DataQualityExecutionsGet",
+      "id": "metaxisdata.dataQuality.executions.get"
+    },
+    {
+      "name": "DataQualityExecutionsList",
+      "id": "metaxisdata.dataQuality.executions.list"
+    },
+    {
+      "name": "DataQualityIssuesGet",
+      "id": "metaxisdata.dataQuality.issues.get"
+    },
+    {
+      "name": "DataQualityIssuesList",
+      "id": "metaxisdata.dataQuality.issues.list"
+    },
+    {
+      "name": "DataQualityIssuesUpdate",
+      "id": "metaxisdata.dataQuality.issues.update"
+    },
+    {
+      "name": "DataQualityExplain",
+      "id": "metaxisdata.dataQuality.explain"
+    },
+    {
+      "name": "DataQualitySuggest",
+      "id": "metaxisdata.dataQuality.suggest"
+    },
+    {
+      "name": "DataQualityContractsPublish",
+      "id": "metaxisdata.dataQuality.contracts.publish"
+    },
+    {
+      "name": "DataQualityProfileRun",
+      "id": "metaxisdata.dataQuality.profile.run"
+    },
+    {
+      "name": "DataQualityLabelsUpdate",
+      "id": "metaxisdata.dataQuality.labels.update"
+    },
+    {
+      "name": "UsersGet",
+      "id": "metaxisdata.users.get"
+    },
+    {
+      "name": "UsersList",
+      "id": "metaxisdata.users.list"
+    },
+    {
+      "name": "UsersCreate",
+      "id": "metaxisdata.users.create"
+    },
+    {
+      "name": "UsersUpdate",
+      "id": "metaxisdata.users.update"
+    },
+    {
+      "name": "UsersDelete",
+      "id": "metaxisdata.users.delete"
+    },
+    {
+      "name": "UsersUndelete",
+      "id": "metaxisdata.users.undelete"
+    },
+    {
+      "name": "GroupsGet",
+      "id": "metaxisdata.groups.get"
+    },
+    {
+      "name": "GroupsList",
+      "id": "metaxisdata.groups.list"
+    },
+    {
+      "name": "GroupsCreate",
+      "id": "metaxisdata.groups.create"
+    },
+    {
+      "name": "GroupsUpdate",
+      "id": "metaxisdata.groups.update"
+    },
+    {
+      "name": "GroupsDelete",
+      "id": "metaxisdata.groups.delete"
+    },
+    {
+      "name": "RolesGet",
+      "id": "metaxisdata.roles.get"
+    },
+    {
+      "name": "RolesList",
+      "id": "metaxisdata.roles.list"
+    },
+    {
+      "name": "RolesCreate",
+      "id": "metaxisdata.roles.create"
+    },
+    {
+      "name": "RolesUpdate",
+      "id": "metaxisdata.roles.update"
+    },
+    {
+      "name": "RolesDelete",
+      "id": "metaxisdata.roles.delete"
+    },
+    {
+      "name": "IAMGetPolicy",
+      "id": "metaxisdata.iam.getPolicy"
+    },
+    {
+      "name": "IAMSetPolicy",
+      "id": "metaxisdata.iam.setPolicy"
+    },
+    {
+      "name": "SettingsGet",
+      "id": "metaxisdata.settings.get"
+    },
+    {
+      "name": "SettingsUpdate",
+      "id": "metaxisdata.settings.update"
+    },
+    {
+      "name": "IdentityProvidersGet",
+      "id": "metaxisdata.identityProviders.get"
+    },
+    {
+      "name": "IdentityProvidersList",
+      "id": "metaxisdata.identityProviders.list"
+    },
+    {
+      "name": "IdentityProvidersCreate",
+      "id": "metaxisdata.identityProviders.create"
+    },
+    {
+      "name": "IdentityProvidersUpdate",
+      "id": "metaxisdata.identityProviders.update"
+    },
+    {
+      "name": "IdentityProvidersDelete",
+      "id": "metaxisdata.identityProviders.delete"
+    },
+    {
+      "name": "ConnectedAppsList",
+      "id": "metaxisdata.connectedApps.list"
+    },
+    {
+      "name": "ConnectedAppsRevoke",
+      "id": "metaxisdata.connectedApps.revoke"
+    },
+    {
+      "name": "AuditLogsSearch",
+      "id": "metaxisdata.auditLogs.search"
+    }
   ]
 }

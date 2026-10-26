@@ -996,6 +996,18 @@ func (r *Runner) executeOne(ctx context.Context, planned *store.QualityExecution
 		}
 		return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, dataquality.ErrCodeExecution, err.Error())
 	}
+	// The target's contract is read at execution time rather than stored on the
+	// rule, so publishing a contract filter change affects the next execution
+	// without rewriting any rule. A target without a contract row reads as no
+	// filter. A metadata rule compiles no SQL, so its contract filter is carried but
+	// never rendered; reading it unconditionally keeps this path one shape.
+	contract, err := r.stores.GetQualityContract(ctx, snapshot.Target.GUID, snapshot.Target.MetaType)
+	if err != nil {
+		return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, dataquality.ErrCodeExecution, err.Error())
+	}
+	if contract != nil {
+		snapshot.ContractFilter = contract.Settings.GetFilter()
+	}
 	if err := dataquality.RequireTarget(resolution, snapshot.Type); err != nil {
 		return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, dataquality.ErrCodeUnsupported, err.Error())
 	}

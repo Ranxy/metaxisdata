@@ -1097,6 +1097,18 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.GetQualityContractRequest"><span class="badge">M</span>GetQualityContractRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetQualityContractRevisionRequest"><span class="badge">M</span>GetQualityContractRevisionRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetQualityContractRevisionResponse"><span class="badge">M</span>GetQualityContractRevisionResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.GetQualityExecutionRequest"><span class="badge">M</span>GetQualityExecutionRequest</a>
                 </li>
               
@@ -1158,6 +1170,14 @@
               
                 <li>
                   <a href="#metaxisdata.v1.ListColumnProfilesResponse"><span class="badge">M</span>ListColumnProfilesResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListQualityContractRevisionsRequest"><span class="badge">M</span>ListQualityContractRevisionsRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListQualityContractRevisionsResponse"><span class="badge">M</span>ListQualityContractRevisionsResponse</a>
                 </li>
               
                 <li>
@@ -1230,6 +1250,34 @@
               
                 <li>
                   <a href="#metaxisdata.v1.ProfileValue"><span class="badge">M</span>ProfileValue</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.PublishQualityContractRequest"><span class="badge">M</span>PublishQualityContractRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.PublishQualityContractResponse"><span class="badge">M</span>PublishQualityContractResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityContract"><span class="badge">M</span>QualityContract</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityContractChangeSummary"><span class="badge">M</span>QualityContractChangeSummary</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityContractCheck"><span class="badge">M</span>QualityContractCheck</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityContractRevision"><span class="badge">M</span>QualityContractRevision</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityContractSettings"><span class="badge">M</span>QualityContractSettings</a>
                 </li>
               
                 <li>
@@ -1398,6 +1446,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.UpdateColumnLabelResponse"><span class="badge">M</span>UpdateColumnLabelResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.UpdateQualityContractRequest"><span class="badge">M</span>UpdateQualityContractRequest</a>
                 </li>
               
                 <li>
@@ -13094,6 +13146,120 @@ The fail threshold defaults to zero. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.GetQualityContractRequest">GetQualityContractRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p>The target&#39;s object type. Optional when rules already exist. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.GetQualityContractRevisionRequest">GetQualityContractRevisionRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>version</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.GetQualityContractRevisionResponse">GetQualityContractRevisionResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>revision</td>
+                  <td><a href="#metaxisdata.v1.QualityContractRevision">QualityContractRevision</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>checks</td>
+                  <td><a href="#metaxisdata.v1.QualityContractCheck">QualityContractCheck</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.GetQualityExecutionRequest">GetQualityExecutionRequest</h3>
         <p></p>
 
@@ -13661,6 +13827,89 @@ to retrieve the subsequent page. </p></td>
                 <tr>
                   <td>column_profiles</td>
                   <td><a href="#metaxisdata.v1.ColumnProfile">ColumnProfile</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListQualityContractRevisionsRequest">ListQualityContractRevisionsRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListQualityContractRevisionsResponse">ListQualityContractRevisionsResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>revisions</td>
+                  <td><a href="#metaxisdata.v1.QualityContractRevision">QualityContractRevision</a></td>
                   <td>repeated</td>
                   <td><p> </p></td>
                 </tr>
@@ -14657,6 +14906,367 @@ placeholders appear in compiled_sql. </p></td>
                   <td><a href="#int64">int64</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.PublishQualityContractRequest">PublishQualityContractRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>note</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Why this version exists; shown in the history. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.PublishQualityContractResponse">PublishQualityContractResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>contract</td>
+                  <td><a href="#metaxisdata.v1.QualityContract">QualityContract</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>revision</td>
+                  <td><a href="#metaxisdata.v1.QualityContractRevision">QualityContractRevision</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>no_changes</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>True when the live state already matched the newest published version, so no
+new version was created. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityContract">QualityContract</h3>
+        <p>QualityContract is the target-level layer above the rules: defaults, the</p><p>published version and whether the live rules have drifted from it. It is a</p><p>projection, not a second source of truth: editing a rule changes the live</p><p>contract immediately, and publishing records that state as a version.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>target</td>
+                  <td><a href="#metaxisdata.v1.QualityTarget">QualityTarget</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>settings</td>
+                  <td><a href="#metaxisdata.v1.QualityContractSettings">QualityContractSettings</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>published_version</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The newest published version; 0 means the target has never been published. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>published_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>published_by</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: users/{user}. Empty when the publisher is unknown. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>publish_note</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>check_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many live (non-archived) rules the target has. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>change_summary</td>
+                  <td><a href="#metaxisdata.v1.QualityContractChangeSummary">QualityContractChangeSummary</a></td>
+                  <td></td>
+                  <td><p>The live rules compared with the published snapshot. Zero counts when the
+target has never been published. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>has_unpublished_changes</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>True when the live rules or settings differ from the published snapshot (or
+nothing has been published yet and the target has content). </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityContractChangeSummary">QualityContractChangeSummary</h3>
+        <p>QualityContractChangeSummary counts how the live rules differ from the</p><p>published snapshot.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>added</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>modified</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>removed</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityContractCheck">QualityContractCheck</h3>
+        <p>QualityContractCheck is one rule as a published version records it.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>rule</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityRules/{quality_rule} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>rule_revision</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>title</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>rule_type</td>
+                  <td><a href="#metaxisdata.v1.QualityRuleType">QualityRuleType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>severity</td>
+                  <td><a href="#metaxisdata.v1.QualitySeverity">QualitySeverity</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>column</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The column the rule watches; empty for a table-level rule. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityContractRevision">QualityContractRevision</h3>
+        <p>QualityContractRevision is one published version's metadata.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>version</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>published_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>published_by</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: users/{user}. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>note</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>check_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>change_summary</td>
+                  <td><a href="#metaxisdata.v1.QualityContractChangeSummary">QualityContractChangeSummary</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityContractSettings">QualityContractSettings</h3>
+        <p>QualityContractSettings is the target-level layer's mutable configuration.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>filter</td>
+                  <td><a href="#metaxisdata.v1.QualityFilter">QualityFilter</a></td>
+                  <td></td>
+                  <td><p>Applied to every rule on the target, ANDed with the rule&#39;s own filter. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>default_schedule_interval_seconds</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p>The schedule a newly authored rule starts with; 0 means the workspace default.
+Existing rules keep their own interval. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>default_severity</td>
+                  <td><a href="#metaxisdata.v1.QualitySeverity">QualitySeverity</a></td>
+                  <td></td>
+                  <td><p>The severity a newly authored rule starts with; UNSPECIFIED means no default. </p></td>
                 </tr>
               
             </tbody>
@@ -17560,6 +18170,51 @@ duplicate. The default is false, matching SQL uniqueness. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.UpdateQualityContractRequest">UpdateQualityContractRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>settings</td>
+                  <td><a href="#metaxisdata.v1.QualityContractSettings">QualityContractSettings</a></td>
+                  <td></td>
+                  <td><p>The complete settings; the update replaces them rather than patching fields. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.UpdateQualityIssueRequest">UpdateQualityIssueRequest</h3>
         <p></p>
 
@@ -19192,6 +19847,47 @@ named by GUID because a target is not a resource of its own.</p></td>
               </tr>
             
               <tr>
+                <td>GetQualityContract</td>
+                <td><a href="#metaxisdata.v1.GetQualityContractRequest">GetQualityContractRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityContract">QualityContract</a></td>
+                <td><p>Read one target&#39;s contract: its target-level defaults, the published version,
+and whether the live rules differ from that snapshot.</p></td>
+              </tr>
+            
+              <tr>
+                <td>UpdateQualityContract</td>
+                <td><a href="#metaxisdata.v1.UpdateQualityContractRequest">UpdateQualityContractRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityContract">QualityContract</a></td>
+                <td><p>Update the target-level defaults. The filter is ANDed into every rule on the
+target at compile time; the schedule and severity only seed newly authored
+rules and never rewrite an existing rule.</p></td>
+              </tr>
+            
+              <tr>
+                <td>PublishQualityContract</td>
+                <td><a href="#metaxisdata.v1.PublishQualityContractRequest">PublishQualityContractRequest</a></td>
+                <td><a href="#metaxisdata.v1.PublishQualityContractResponse">PublishQualityContractResponse</a></td>
+                <td><p>Publish the live rules and settings as the target&#39;s next contract version.
+Republishing an unchanged contract is a no-op that returns the existing
+version (no_changes=true).</p></td>
+              </tr>
+            
+              <tr>
+                <td>ListQualityContractRevisions</td>
+                <td><a href="#metaxisdata.v1.ListQualityContractRevisionsRequest">ListQualityContractRevisionsRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListQualityContractRevisionsResponse">ListQualityContractRevisionsResponse</a></td>
+                <td><p>List the target&#39;s published contract versions, newest first.</p></td>
+              </tr>
+            
+              <tr>
+                <td>GetQualityContractRevision</td>
+                <td><a href="#metaxisdata.v1.GetQualityContractRevisionRequest">GetQualityContractRevisionRequest</a></td>
+                <td><a href="#metaxisdata.v1.GetQualityContractRevisionResponse">GetQualityContractRevisionResponse</a></td>
+                <td><p>Read one published contract version with its ordered checks, so a client can
+show a diff without downloading every version.</p></td>
+              </tr>
+            
+              <tr>
                 <td>GetQualityLLMUsage</td>
                 <td><a href="#metaxisdata.v1.GetQualityLLMUsageRequest">GetQualityLLMUsageRequest</a></td>
                 <td><a href="#metaxisdata.v1.QualityLLMUsage">QualityLLMUsage</a></td>
@@ -19524,6 +20220,56 @@ restart resets them and they roll over at 00:00 UTC.</p></td>
                 <td>GetQualityTarget</td>
                 <td>GET</td>
                 <td>/v1/{parent=workspaces/*}/qualityTargets:get</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetQualityContract</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/qualityContracts:get</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>UpdateQualityContract</td>
+                <td>POST</td>
+                <td>/v1/{parent=workspaces/*}/qualityContracts:update</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>PublishQualityContract</td>
+                <td>POST</td>
+                <td>/v1/{parent=workspaces/*}/qualityContracts:publish</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListQualityContractRevisions</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/qualityContractRevisions</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetQualityContractRevision</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/qualityContractRevisions:get</td>
                 <td></td>
               </tr>
               

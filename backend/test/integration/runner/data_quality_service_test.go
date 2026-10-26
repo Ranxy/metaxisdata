@@ -2387,3 +2387,151 @@ func TestDataQualityTargetDirectoryRealServerIntegration(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
 }
+
+// TestDataQualityContractRealServerIntegration covers the target-level contract:
+// settings validation, publish/version/diff, the no-op republish, history and the
+// filter the runner ANDs into every rule on the target.
+func TestDataQualityContractRealServerIntegration(t *testing.T) {
+	fixture := setupQualityMySQLFixture(t, true)
+	rule := fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		fixture.usersGUID, qualityRowCountConfig(1))
+
+	getContract := func() *v1pb.QualityContract {
+		t.Helper()
+		response, err := fixture.dataQuality.GetQualityContract(fixture.ctx,
+			withToken(fixture.env.AdminToken(), &v1pb.GetQualityContractRequest{
+				Parent:     "workspaces/-",
+				TargetGuid: fixture.usersGUID,
+				MetaType:   v1pb.MetaType_TABLE,
+			}))
+		require.NoError(t, err, "get the quality contract")
+		return response.Msg
+	}
+	publish := func(note string) *v1pb.PublishQualityContractResponse {
+		t.Helper()
+		response, err := fixture.dataQuality.PublishQualityContract(fixture.ctx,
+			withToken(fixture.env.AdminToken(), &v1pb.PublishQualityContractRequest{
+				Parent:     "workspaces/-",
+				TargetGuid: fixture.usersGUID,
+				MetaType:   v1pb.MetaType_TABLE,
+				Note:       note,
+			}))
+		require.NoError(t, err, "publish the quality contract")
+		return response.Msg
+	}
+
+	contract := getContract()
+	require.Equal(t, int32(0), contract.GetPublishedVersion())
+	require.True(t, contract.GetHasUnpublishedChanges())
+	require.Equal(t, int32(1), contract.GetCheckCount())
+	require.Equal(t, int32(1), contract.GetChangeSummary().GetAdded())
+
+	// The target filter is validated against the target's columns when saved.
+	updateSettings := func(settings *v1pb.QualityContractSettings) *v1pb.QualityContract {
+		t.Helper()
+		response, err := fixture.dataQuality.UpdateQualityContract(fixture.ctx,
+			withToken(fixture.env.AdminToken(), &v1pb.UpdateQualityContractRequest{
+				Parent:     "workspaces/-",
+				TargetGuid: fixture.usersGUID,
+				MetaType:   v1pb.MetaType_TABLE,
+				Settings:   settings,
+			}))
+		require.NoError(t, err, "update the quality contract settings")
+		return response.Msg
+	}
+	settings := &v1pb.QualityContractSettings{
+		Filter: &v1pb.QualityFilter{Clauses: []*v1pb.QualityFilterClause{{
+			Column: "id",
+			Op:     v1pb.QualityFilterOperator_QUALITY_FILTER_OPERATOR_GT,
+			Values: []string{"0"},
+		}}},
+		DefaultScheduleIntervalSeconds: 3600,
+		DefaultSeverity:                v1pb.QualitySeverity_QUALITY_SEVERITY_ERROR,
+	}
+	updated := updateSettings(settings)
+	require.Len(t, updated.GetSettings().GetFilter().GetClauses(), 1)
+	require.Equal(t, int64(3600), updated.GetSettings().GetDefaultScheduleIntervalSeconds())
+	require.True(t, updated.GetHasUnpublishedChanges(), "settings changed after the first read")
+
+	_, err := fixture.dataQuality.UpdateQualityContract(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.UpdateQualityContractRequest{
+			Parent:     "workspaces/-",
+			TargetGuid: fixture.usersGUID,
+			MetaType:   v1pb.MetaType_TABLE,
+			Settings: &v1pb.QualityContractSettings{
+				Filter: &v1pb.QualityFilter{Clauses: []*v1pb.QualityFilterClause{{
+					Column: "no_such_column",
+					Op:     v1pb.QualityFilterOperator_QUALITY_FILTER_OPERATOR_EQ,
+					Values: []string{"x"},
+				}}},
+			},
+		}))
+	require.Error(t, err, "a filter naming a missing column is rejected")
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
+	first := publish("first")
+	require.False(t, first.GetNoChanges())
+	require.Equal(t, int32(1), first.GetRevision().GetVersion())
+	require.Equal(t, int32(1), first.GetRevision().GetCheckCount())
+	require.Equal(t, int32(1), first.GetRevision().GetChangeSummary().GetAdded())
+	require.Equal(t, int32(1), first.GetContract().GetPublishedVersion())
+	require.False(t, first.GetContract().GetHasUnpublishedChanges())
+	require.NotEmpty(t, first.GetContract().GetPublishedBy())
+	require.Equal(t, "first", first.GetContract().GetPublishNote())
+
+	republished := publish("again")
+	require.True(t, republished.GetNoChanges())
+	require.Equal(t, int32(1), republished.GetRevision().GetVersion(), "republishing unchanged state keeps the version")
+
+	// A new rule is an unpublished addition until the next publish.
+	fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		fixture.usersGUID, qualityRowCountConfig(2))
+	drifted := getContract()
+	require.True(t, drifted.GetHasUnpublishedChanges())
+	require.Equal(t, int32(2), drifted.GetCheckCount())
+	require.Equal(t, int32(1), drifted.GetChangeSummary().GetAdded())
+
+	second := publish("second")
+	require.False(t, second.GetNoChanges())
+	require.Equal(t, int32(2), second.GetRevision().GetVersion())
+	require.Equal(t, int32(2), second.GetRevision().GetCheckCount())
+
+	// History is newest first and a version can be read with its checks.
+	history, err := fixture.dataQuality.ListQualityContractRevisions(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.ListQualityContractRevisionsRequest{
+			Parent:     "workspaces/-",
+			TargetGuid: fixture.usersGUID,
+			MetaType:   v1pb.MetaType_TABLE,
+			PageSize:   10,
+		}))
+	require.NoError(t, err)
+	require.Len(t, history.Msg.GetRevisions(), 2)
+	require.Equal(t, int32(2), history.Msg.GetRevisions()[0].GetVersion())
+	require.Equal(t, int32(1), history.Msg.GetRevisions()[1].GetVersion())
+
+	version2, err := fixture.dataQuality.GetQualityContractRevision(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.GetQualityContractRevisionRequest{
+			Parent:     "workspaces/-",
+			TargetGuid: fixture.usersGUID,
+			MetaType:   v1pb.MetaType_TABLE,
+			Version:    2,
+		}))
+	require.NoError(t, err)
+	require.Len(t, version2.Msg.GetChecks(), 2)
+	version1, err := fixture.dataQuality.GetQualityContractRevision(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.GetQualityContractRevisionRequest{
+			Parent:     "workspaces/-",
+			TargetGuid: fixture.usersGUID,
+			MetaType:   v1pb.MetaType_TABLE,
+			Version:    1,
+		}))
+	require.NoError(t, err)
+	require.Len(t, version1.Msg.GetChecks(), 1)
+
+	// The target filter reaches the runner's compiled statement: a row-count rule
+	// reads COUNT(*) over the filtered rows.
+	execution := fixture.runToCompletion(t, rule.GetName())
+	require.Contains(t, execution.GetExecutedSql(), "`id` > ?", "the contract filter is ANDed into the rule's SQL")
+}

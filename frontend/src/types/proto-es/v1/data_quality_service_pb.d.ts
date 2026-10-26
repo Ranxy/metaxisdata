@@ -4741,6 +4741,477 @@ export declare type GetQualityTargetResponse = Message<"metaxisdata.v1.GetQualit
 export declare const GetQualityTargetResponseSchema: GenMessage<GetQualityTargetResponse>;
 
 /**
+ * QualityContract is the target-level layer above the rules: defaults, the
+ * published version and whether the live rules have drifted from it. It is a
+ * projection, not a second source of truth: editing a rule changes the live
+ * contract immediately, and publishing records that state as a version.
+ *
+ * @generated from message metaxisdata.v1.QualityContract
+ */
+export declare type QualityContract = Message<"metaxisdata.v1.QualityContract"> & {
+  /**
+   * @generated from field: metaxisdata.v1.QualityTarget target = 1;
+   */
+  target?: QualityTarget;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityContractSettings settings = 2;
+   */
+  settings?: QualityContractSettings;
+
+  /**
+   * The newest published version; 0 means the target has never been published.
+   *
+   * @generated from field: int32 published_version = 3;
+   */
+  publishedVersion: number;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp published_at = 4;
+   */
+  publishedAt?: Timestamp;
+
+  /**
+   * Format: users/{user}. Empty when the publisher is unknown.
+   *
+   * @generated from field: string published_by = 5;
+   */
+  publishedBy: string;
+
+  /**
+   * @generated from field: string publish_note = 6;
+   */
+  publishNote: string;
+
+  /**
+   * How many live (non-archived) rules the target has.
+   *
+   * @generated from field: int32 check_count = 7;
+   */
+  checkCount: number;
+
+  /**
+   * The live rules compared with the published snapshot. Zero counts when the
+   * target has never been published.
+   *
+   * @generated from field: metaxisdata.v1.QualityContractChangeSummary change_summary = 8;
+   */
+  changeSummary?: QualityContractChangeSummary;
+
+  /**
+   * True when the live rules or settings differ from the published snapshot (or
+   * nothing has been published yet and the target has content).
+   *
+   * @generated from field: bool has_unpublished_changes = 9;
+   */
+  hasUnpublishedChanges: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityContract.
+ * Use `create(QualityContractSchema)` to create a new message.
+ */
+export declare const QualityContractSchema: GenMessage<QualityContract>;
+
+/**
+ * QualityContractSettings is the target-level layer's mutable configuration.
+ *
+ * @generated from message metaxisdata.v1.QualityContractSettings
+ */
+export declare type QualityContractSettings = Message<"metaxisdata.v1.QualityContractSettings"> & {
+  /**
+   * Applied to every rule on the target, ANDed with the rule's own filter.
+   *
+   * @generated from field: metaxisdata.v1.QualityFilter filter = 1;
+   */
+  filter?: QualityFilter;
+
+  /**
+   * The schedule a newly authored rule starts with; 0 means the workspace default.
+   * Existing rules keep their own interval.
+   *
+   * @generated from field: int64 default_schedule_interval_seconds = 2;
+   */
+  defaultScheduleIntervalSeconds: bigint;
+
+  /**
+   * The severity a newly authored rule starts with; UNSPECIFIED means no default.
+   *
+   * @generated from field: metaxisdata.v1.QualitySeverity default_severity = 3;
+   */
+  defaultSeverity: QualitySeverity;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityContractSettings.
+ * Use `create(QualityContractSettingsSchema)` to create a new message.
+ */
+export declare const QualityContractSettingsSchema: GenMessage<QualityContractSettings>;
+
+/**
+ * QualityContractChangeSummary counts how the live rules differ from the
+ * published snapshot.
+ *
+ * @generated from message metaxisdata.v1.QualityContractChangeSummary
+ */
+export declare type QualityContractChangeSummary = Message<"metaxisdata.v1.QualityContractChangeSummary"> & {
+  /**
+   * @generated from field: int32 added = 1;
+   */
+  added: number;
+
+  /**
+   * @generated from field: int32 modified = 2;
+   */
+  modified: number;
+
+  /**
+   * @generated from field: int32 removed = 3;
+   */
+  removed: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityContractChangeSummary.
+ * Use `create(QualityContractChangeSummarySchema)` to create a new message.
+ */
+export declare const QualityContractChangeSummarySchema: GenMessage<QualityContractChangeSummary>;
+
+/**
+ * QualityContractRevision is one published version's metadata.
+ *
+ * @generated from message metaxisdata.v1.QualityContractRevision
+ */
+export declare type QualityContractRevision = Message<"metaxisdata.v1.QualityContractRevision"> & {
+  /**
+   * @generated from field: int32 version = 1;
+   */
+  version: number;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp published_at = 2;
+   */
+  publishedAt?: Timestamp;
+
+  /**
+   * Format: users/{user}.
+   *
+   * @generated from field: string published_by = 3;
+   */
+  publishedBy: string;
+
+  /**
+   * @generated from field: string note = 4;
+   */
+  note: string;
+
+  /**
+   * @generated from field: int32 check_count = 5;
+   */
+  checkCount: number;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityContractChangeSummary change_summary = 6;
+   */
+  changeSummary?: QualityContractChangeSummary;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityContractRevision.
+ * Use `create(QualityContractRevisionSchema)` to create a new message.
+ */
+export declare const QualityContractRevisionSchema: GenMessage<QualityContractRevision>;
+
+/**
+ * QualityContractCheck is one rule as a published version records it.
+ *
+ * @generated from message metaxisdata.v1.QualityContractCheck
+ */
+export declare type QualityContractCheck = Message<"metaxisdata.v1.QualityContractCheck"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityRules/{quality_rule}
+   *
+   * @generated from field: string rule = 1;
+   */
+  rule: string;
+
+  /**
+   * @generated from field: int32 rule_revision = 2;
+   */
+  ruleRevision: number;
+
+  /**
+   * @generated from field: string title = 3;
+   */
+  title: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityRuleType rule_type = 4;
+   */
+  ruleType: QualityRuleType;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualitySeverity severity = 5;
+   */
+  severity: QualitySeverity;
+
+  /**
+   * The column the rule watches; empty for a table-level rule.
+   *
+   * @generated from field: string column = 6;
+   */
+  column: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityContractCheck.
+ * Use `create(QualityContractCheckSchema)` to create a new message.
+ */
+export declare const QualityContractCheckSchema: GenMessage<QualityContractCheck>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualityContractRequest
+ */
+export declare type GetQualityContractRequest = Message<"metaxisdata.v1.GetQualityContractRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * @generated from field: string target_guid = 2;
+   */
+  targetGuid: string;
+
+  /**
+   * The target's object type. Optional when rules already exist.
+   *
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 3;
+   */
+  metaType: MetaType;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityContractRequest.
+ * Use `create(GetQualityContractRequestSchema)` to create a new message.
+ */
+export declare const GetQualityContractRequestSchema: GenMessage<GetQualityContractRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.UpdateQualityContractRequest
+ */
+export declare type UpdateQualityContractRequest = Message<"metaxisdata.v1.UpdateQualityContractRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * @generated from field: string target_guid = 2;
+   */
+  targetGuid: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 3;
+   */
+  metaType: MetaType;
+
+  /**
+   * The complete settings; the update replaces them rather than patching fields.
+   *
+   * @generated from field: metaxisdata.v1.QualityContractSettings settings = 4;
+   */
+  settings?: QualityContractSettings;
+};
+
+/**
+ * Describes the message metaxisdata.v1.UpdateQualityContractRequest.
+ * Use `create(UpdateQualityContractRequestSchema)` to create a new message.
+ */
+export declare const UpdateQualityContractRequestSchema: GenMessage<UpdateQualityContractRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.PublishQualityContractRequest
+ */
+export declare type PublishQualityContractRequest = Message<"metaxisdata.v1.PublishQualityContractRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * @generated from field: string target_guid = 2;
+   */
+  targetGuid: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 3;
+   */
+  metaType: MetaType;
+
+  /**
+   * Why this version exists; shown in the history.
+   *
+   * @generated from field: string note = 4;
+   */
+  note: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.PublishQualityContractRequest.
+ * Use `create(PublishQualityContractRequestSchema)` to create a new message.
+ */
+export declare const PublishQualityContractRequestSchema: GenMessage<PublishQualityContractRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.PublishQualityContractResponse
+ */
+export declare type PublishQualityContractResponse = Message<"metaxisdata.v1.PublishQualityContractResponse"> & {
+  /**
+   * @generated from field: metaxisdata.v1.QualityContract contract = 1;
+   */
+  contract?: QualityContract;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityContractRevision revision = 2;
+   */
+  revision?: QualityContractRevision;
+
+  /**
+   * True when the live state already matched the newest published version, so no
+   * new version was created.
+   *
+   * @generated from field: bool no_changes = 3;
+   */
+  noChanges: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.PublishQualityContractResponse.
+ * Use `create(PublishQualityContractResponseSchema)` to create a new message.
+ */
+export declare const PublishQualityContractResponseSchema: GenMessage<PublishQualityContractResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityContractRevisionsRequest
+ */
+export declare type ListQualityContractRevisionsRequest = Message<"metaxisdata.v1.ListQualityContractRevisionsRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * @generated from field: string target_guid = 2;
+   */
+  targetGuid: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 3;
+   */
+  metaType: MetaType;
+
+  /**
+   * @generated from field: int32 page_size = 4;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: string page_token = 5;
+   */
+  pageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityContractRevisionsRequest.
+ * Use `create(ListQualityContractRevisionsRequestSchema)` to create a new message.
+ */
+export declare const ListQualityContractRevisionsRequestSchema: GenMessage<ListQualityContractRevisionsRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityContractRevisionsResponse
+ */
+export declare type ListQualityContractRevisionsResponse = Message<"metaxisdata.v1.ListQualityContractRevisionsResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityContractRevision revisions = 1;
+   */
+  revisions: QualityContractRevision[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityContractRevisionsResponse.
+ * Use `create(ListQualityContractRevisionsResponseSchema)` to create a new message.
+ */
+export declare const ListQualityContractRevisionsResponseSchema: GenMessage<ListQualityContractRevisionsResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualityContractRevisionRequest
+ */
+export declare type GetQualityContractRevisionRequest = Message<"metaxisdata.v1.GetQualityContractRevisionRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * @generated from field: string target_guid = 2;
+   */
+  targetGuid: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 3;
+   */
+  metaType: MetaType;
+
+  /**
+   * @generated from field: int32 version = 4;
+   */
+  version: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityContractRevisionRequest.
+ * Use `create(GetQualityContractRevisionRequestSchema)` to create a new message.
+ */
+export declare const GetQualityContractRevisionRequestSchema: GenMessage<GetQualityContractRevisionRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualityContractRevisionResponse
+ */
+export declare type GetQualityContractRevisionResponse = Message<"metaxisdata.v1.GetQualityContractRevisionResponse"> & {
+  /**
+   * @generated from field: metaxisdata.v1.QualityContractRevision revision = 1;
+   */
+  revision?: QualityContractRevision;
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityContractCheck checks = 2;
+   */
+  checks: QualityContractCheck[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityContractRevisionResponse.
+ * Use `create(GetQualityContractRevisionResponseSchema)` to create a new message.
+ */
+export declare const GetQualityContractRevisionResponseSchema: GenMessage<GetQualityContractRevisionResponse>;
+
+/**
  * QualityRuleType is the observation a rule makes. The value is immutable for a
  * rule: changing the type is a different rule and a new revision.
  *
@@ -6281,6 +6752,62 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof GetQualityTargetRequestSchema;
     output: typeof GetQualityTargetResponseSchema;
+  },
+  /**
+   * Read one target's contract: its target-level defaults, the published version,
+   * and whether the live rules differ from that snapshot.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityContract
+   */
+  getQualityContract: {
+    methodKind: "unary";
+    input: typeof GetQualityContractRequestSchema;
+    output: typeof QualityContractSchema;
+  },
+  /**
+   * Update the target-level defaults. The filter is ANDed into every rule on the
+   * target at compile time; the schedule and severity only seed newly authored
+   * rules and never rewrite an existing rule.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.UpdateQualityContract
+   */
+  updateQualityContract: {
+    methodKind: "unary";
+    input: typeof UpdateQualityContractRequestSchema;
+    output: typeof QualityContractSchema;
+  },
+  /**
+   * Publish the live rules and settings as the target's next contract version.
+   * Republishing an unchanged contract is a no-op that returns the existing
+   * version (no_changes=true).
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.PublishQualityContract
+   */
+  publishQualityContract: {
+    methodKind: "unary";
+    input: typeof PublishQualityContractRequestSchema;
+    output: typeof PublishQualityContractResponseSchema;
+  },
+  /**
+   * List the target's published contract versions, newest first.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityContractRevisions
+   */
+  listQualityContractRevisions: {
+    methodKind: "unary";
+    input: typeof ListQualityContractRevisionsRequestSchema;
+    output: typeof ListQualityContractRevisionsResponseSchema;
+  },
+  /**
+   * Read one published contract version with its ordered checks, so a client can
+   * show a diff without downloading every version.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityContractRevision
+   */
+  getQualityContractRevision: {
+    methodKind: "unary";
+    input: typeof GetQualityContractRevisionRequestSchema;
+    output: typeof GetQualityContractRevisionResponseSchema;
   },
   /**
    * Read today's data quality LLM usage and the effective limits (the workspace

@@ -241,6 +241,9 @@
     - [ExplainQualityExecutionResponse](#metaxisdata-v1-ExplainQualityExecutionResponse)
     - [FailureSample](#metaxisdata-v1-FailureSample)
     - [FreshnessConfig](#metaxisdata-v1-FreshnessConfig)
+    - [GetQualityContractRequest](#metaxisdata-v1-GetQualityContractRequest)
+    - [GetQualityContractRevisionRequest](#metaxisdata-v1-GetQualityContractRevisionRequest)
+    - [GetQualityContractRevisionResponse](#metaxisdata-v1-GetQualityContractRevisionResponse)
     - [GetQualityExecutionRequest](#metaxisdata-v1-GetQualityExecutionRequest)
     - [GetQualityIssueRequest](#metaxisdata-v1-GetQualityIssueRequest)
     - [GetQualityLLMUsageRequest](#metaxisdata-v1-GetQualityLLMUsageRequest)
@@ -257,6 +260,8 @@
     - [ListColumnLabelsResponse](#metaxisdata-v1-ListColumnLabelsResponse)
     - [ListColumnProfilesRequest](#metaxisdata-v1-ListColumnProfilesRequest)
     - [ListColumnProfilesResponse](#metaxisdata-v1-ListColumnProfilesResponse)
+    - [ListQualityContractRevisionsRequest](#metaxisdata-v1-ListQualityContractRevisionsRequest)
+    - [ListQualityContractRevisionsResponse](#metaxisdata-v1-ListQualityContractRevisionsResponse)
     - [ListQualityExecutionsRequest](#metaxisdata-v1-ListQualityExecutionsRequest)
     - [ListQualityExecutionsResponse](#metaxisdata-v1-ListQualityExecutionsResponse)
     - [ListQualityIssuesRequest](#metaxisdata-v1-ListQualityIssuesRequest)
@@ -275,6 +280,13 @@
     - [ProfileColumnsRequest](#metaxisdata-v1-ProfileColumnsRequest)
     - [ProfileColumnsResponse](#metaxisdata-v1-ProfileColumnsResponse)
     - [ProfileValue](#metaxisdata-v1-ProfileValue)
+    - [PublishQualityContractRequest](#metaxisdata-v1-PublishQualityContractRequest)
+    - [PublishQualityContractResponse](#metaxisdata-v1-PublishQualityContractResponse)
+    - [QualityContract](#metaxisdata-v1-QualityContract)
+    - [QualityContractChangeSummary](#metaxisdata-v1-QualityContractChangeSummary)
+    - [QualityContractCheck](#metaxisdata-v1-QualityContractCheck)
+    - [QualityContractRevision](#metaxisdata-v1-QualityContractRevision)
+    - [QualityContractSettings](#metaxisdata-v1-QualityContractSettings)
     - [QualityExecution](#metaxisdata-v1-QualityExecution)
     - [QualityExecutionSummary](#metaxisdata-v1-QualityExecutionSummary)
     - [QualityFilter](#metaxisdata-v1-QualityFilter)
@@ -317,6 +329,7 @@
     - [UniqueConfig](#metaxisdata-v1-UniqueConfig)
     - [UpdateColumnLabelRequest](#metaxisdata-v1-UpdateColumnLabelRequest)
     - [UpdateColumnLabelResponse](#metaxisdata-v1-UpdateColumnLabelResponse)
+    - [UpdateQualityContractRequest](#metaxisdata-v1-UpdateQualityContractRequest)
     - [UpdateQualityIssueRequest](#metaxisdata-v1-UpdateQualityIssueRequest)
     - [UpdateQualityRuleRequest](#metaxisdata-v1-UpdateQualityRuleRequest)
     - [UpdateQualitySuggestionRequest](#metaxisdata-v1-UpdateQualitySuggestionRequest)
@@ -4421,6 +4434,57 @@ timestamp follows on_empty.
 
 
 
+<a name="metaxisdata-v1-GetQualityContractRequest"></a>
+
+### GetQualityContractRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| target_guid | [string](#string) |  |  |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  | The target&#39;s object type. Optional when rules already exist. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetQualityContractRevisionRequest"></a>
+
+### GetQualityContractRevisionRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| target_guid | [string](#string) |  |  |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+| version | [int32](#int32) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetQualityContractRevisionResponse"></a>
+
+### GetQualityContractRevisionResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| revision | [QualityContractRevision](#metaxisdata-v1-QualityContractRevision) |  |  |
+| checks | [QualityContractCheck](#metaxisdata-v1-QualityContractCheck) | repeated |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetQualityExecutionRequest"></a>
 
 ### GetQualityExecutionRequest
@@ -4685,6 +4749,41 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | column_profiles | [ColumnProfile](#metaxisdata-v1-ColumnProfile) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityContractRevisionsRequest"></a>
+
+### ListQualityContractRevisionsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| target_guid | [string](#string) |  |  |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+| page_size | [int32](#int32) |  |  |
+| page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityContractRevisionsResponse"></a>
+
+### ListQualityContractRevisionsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| revisions | [QualityContractRevision](#metaxisdata-v1-QualityContractRevision) | repeated |  |
 | next_page_token | [string](#string) |  |  |
 
 
@@ -5034,6 +5133,142 @@ ProfileValue is one frequent value of a low-cardinality column.
 | ----- | ---- | ----- | ----------- |
 | value | [string](#string) |  |  |
 | count | [int64](#int64) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-PublishQualityContractRequest"></a>
+
+### PublishQualityContractRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| target_guid | [string](#string) |  |  |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+| note | [string](#string) |  | Why this version exists; shown in the history. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-PublishQualityContractResponse"></a>
+
+### PublishQualityContractResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| contract | [QualityContract](#metaxisdata-v1-QualityContract) |  |  |
+| revision | [QualityContractRevision](#metaxisdata-v1-QualityContractRevision) |  |  |
+| no_changes | [bool](#bool) |  | True when the live state already matched the newest published version, so no new version was created. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityContract"></a>
+
+### QualityContract
+QualityContract is the target-level layer above the rules: defaults, the
+published version and whether the live rules have drifted from it. It is a
+projection, not a second source of truth: editing a rule changes the live
+contract immediately, and publishing records that state as a version.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  |  |
+| settings | [QualityContractSettings](#metaxisdata-v1-QualityContractSettings) |  |  |
+| published_version | [int32](#int32) |  | The newest published version; 0 means the target has never been published. |
+| published_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| published_by | [string](#string) |  | Format: users/{user}. Empty when the publisher is unknown. |
+| publish_note | [string](#string) |  |  |
+| check_count | [int32](#int32) |  | How many live (non-archived) rules the target has. |
+| change_summary | [QualityContractChangeSummary](#metaxisdata-v1-QualityContractChangeSummary) |  | The live rules compared with the published snapshot. Zero counts when the target has never been published. |
+| has_unpublished_changes | [bool](#bool) |  | True when the live rules or settings differ from the published snapshot (or nothing has been published yet and the target has content). |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityContractChangeSummary"></a>
+
+### QualityContractChangeSummary
+QualityContractChangeSummary counts how the live rules differ from the
+published snapshot.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| added | [int32](#int32) |  |  |
+| modified | [int32](#int32) |  |  |
+| removed | [int32](#int32) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityContractCheck"></a>
+
+### QualityContractCheck
+QualityContractCheck is one rule as a published version records it.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| rule | [string](#string) |  | Format: workspaces/{workspace}/qualityRules/{quality_rule} |
+| rule_revision | [int32](#int32) |  |  |
+| title | [string](#string) |  |  |
+| rule_type | [QualityRuleType](#metaxisdata-v1-QualityRuleType) |  |  |
+| severity | [QualitySeverity](#metaxisdata-v1-QualitySeverity) |  |  |
+| column | [string](#string) |  | The column the rule watches; empty for a table-level rule. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityContractRevision"></a>
+
+### QualityContractRevision
+QualityContractRevision is one published version&#39;s metadata.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| version | [int32](#int32) |  |  |
+| published_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| published_by | [string](#string) |  | Format: users/{user}. |
+| note | [string](#string) |  |  |
+| check_count | [int32](#int32) |  |  |
+| change_summary | [QualityContractChangeSummary](#metaxisdata-v1-QualityContractChangeSummary) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityContractSettings"></a>
+
+### QualityContractSettings
+QualityContractSettings is the target-level layer&#39;s mutable configuration.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| filter | [QualityFilter](#metaxisdata-v1-QualityFilter) |  | Applied to every rule on the target, ANDed with the rule&#39;s own filter. |
+| default_schedule_interval_seconds | [int64](#int64) |  | The schedule a newly authored rule starts with; 0 means the workspace default. Existing rules keep their own interval. |
+| default_severity | [QualitySeverity](#metaxisdata-v1-QualitySeverity) |  | The severity a newly authored rule starts with; UNSPECIFIED means no default. |
 
 
 
@@ -5973,6 +6208,24 @@ measured per threshold_metric; the default fail threshold is zero.
 
 
 
+<a name="metaxisdata-v1-UpdateQualityContractRequest"></a>
+
+### UpdateQualityContractRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| target_guid | [string](#string) |  |  |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+| settings | [QualityContractSettings](#metaxisdata-v1-QualityContractSettings) |  | The complete settings; the update replaces them rather than patching fields. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-UpdateQualityIssueRequest"></a>
 
 ### UpdateQualityIssueRequest
@@ -6520,6 +6773,11 @@ No (google.api.http) annotation: this is a server-streaming method, and the REST
 | GetQualityOverview | [GetQualityOverviewRequest](#metaxisdata-v1-GetQualityOverviewRequest) | [QualityOverview](#metaxisdata-v1-QualityOverview) | Read the workspace&#39;s quality summary: how many rules and issues exist, how the last day went, and the per-day tallies the overview chart draws. |
 | ListQualityTargets | [ListQualityTargetsRequest](#metaxisdata-v1-ListQualityTargetsRequest) | [ListQualityTargetsResponse](#metaxisdata-v1-ListQualityTargetsResponse) | List the targets (tables or views) that have quality rules, one row per target. The counts, the worst latest result and the pending draft tally are aggregated by the database, so the directory does not page through every rule to answer &#34;which table needs attention?&#34;. |
 | GetQualityTarget | [GetQualityTargetRequest](#metaxisdata-v1-GetQualityTargetRequest) | [GetQualityTargetResponse](#metaxisdata-v1-GetQualityTargetResponse) | Read one target&#39;s workspace: its rules (with their latest results), the pending AI drafts and the unresolved issues, in one call. The target is named by GUID because a target is not a resource of its own. |
+| GetQualityContract | [GetQualityContractRequest](#metaxisdata-v1-GetQualityContractRequest) | [QualityContract](#metaxisdata-v1-QualityContract) | Read one target&#39;s contract: its target-level defaults, the published version, and whether the live rules differ from that snapshot. |
+| UpdateQualityContract | [UpdateQualityContractRequest](#metaxisdata-v1-UpdateQualityContractRequest) | [QualityContract](#metaxisdata-v1-QualityContract) | Update the target-level defaults. The filter is ANDed into every rule on the target at compile time; the schedule and severity only seed newly authored rules and never rewrite an existing rule. |
+| PublishQualityContract | [PublishQualityContractRequest](#metaxisdata-v1-PublishQualityContractRequest) | [PublishQualityContractResponse](#metaxisdata-v1-PublishQualityContractResponse) | Publish the live rules and settings as the target&#39;s next contract version. Republishing an unchanged contract is a no-op that returns the existing version (no_changes=true). |
+| ListQualityContractRevisions | [ListQualityContractRevisionsRequest](#metaxisdata-v1-ListQualityContractRevisionsRequest) | [ListQualityContractRevisionsResponse](#metaxisdata-v1-ListQualityContractRevisionsResponse) | List the target&#39;s published contract versions, newest first. |
+| GetQualityContractRevision | [GetQualityContractRevisionRequest](#metaxisdata-v1-GetQualityContractRevisionRequest) | [GetQualityContractRevisionResponse](#metaxisdata-v1-GetQualityContractRevisionResponse) | Read one published contract version with its ordered checks, so a client can show a diff without downloading every version. |
 | GetQualityLLMUsage | [GetQualityLLMUsageRequest](#metaxisdata-v1-GetQualityLLMUsageRequest) | [QualityLLMUsage](#metaxisdata-v1-QualityLLMUsage) | Read today&#39;s data quality LLM usage and the effective limits (the workspace settings, with server defaults resolved). The counters are process state: a restart resets them and they roll over at 00:00 UTC. |
 
  

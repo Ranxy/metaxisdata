@@ -325,6 +325,50 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
   }
 
+  // Read one target's contract: its target-level defaults, the published version,
+  // and whether the live rules differ from that snapshot.
+  rpc GetQualityContract(GetQualityContractRequest) returns (QualityContract) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityContracts:get"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+  }
+
+  // Update the target-level defaults. The filter is ANDed into every rule on the
+  // target at compile time; the schedule and severity only seed newly authored
+  // rules and never rewrite an existing rule.
+  rpc UpdateQualityContract(UpdateQualityContractRequest) returns (QualityContract) {
+    option (google.api.http) = {
+      post: "/v1/{parent=workspaces/*}/qualityContracts:update"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.update";
+  }
+
+  // Publish the live rules and settings as the target's next contract version.
+  // Republishing an unchanged contract is a no-op that returns the existing
+  // version (no_changes=true).
+  rpc PublishQualityContract(PublishQualityContractRequest) returns (PublishQualityContractResponse) {
+    option (google.api.http) = {
+      post: "/v1/{parent=workspaces/*}/qualityContracts:publish"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.contracts.publish";
+  }
+
+  // List the target's published contract versions, newest first.
+  rpc ListQualityContractRevisions(ListQualityContractRevisionsRequest) returns (ListQualityContractRevisionsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityContractRevisions"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+  }
+
+  // Read one published contract version with its ordered checks, so a client can
+  // show a diff without downloading every version.
+  rpc GetQualityContractRevision(GetQualityContractRevisionRequest) returns (GetQualityContractRevisionResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityContractRevisions:get"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+  }
+
   // Read today's data quality LLM usage and the effective limits (the workspace
   // settings, with server defaults resolved). The counters are process state: a
   // restart resets them and they roll over at 00:00 UTC.
@@ -2255,4 +2299,134 @@ message GetQualityTargetResponse {
   // Why the target no longer resolves; empty while healthy. The rules stay
   // readable when it is set, because their target path is a snapshot.
   string orphaned_reason = 4;
+}
+
+// QualityContract is the target-level layer above the rules: defaults, the
+// published version and whether the live rules have drifted from it. It is a
+// projection, not a second source of truth: editing a rule changes the live
+// contract immediately, and publishing records that state as a version.
+message QualityContract {
+  QualityTarget target = 1;
+  QualityContractSettings settings = 2;
+
+  // The newest published version; 0 means the target has never been published.
+  int32 published_version = 3;
+  google.protobuf.Timestamp published_at = 4;
+  // Format: users/{user}. Empty when the publisher is unknown.
+  string published_by = 5;
+  string publish_note = 6;
+
+  // How many live (non-archived) rules the target has.
+  int32 check_count = 7;
+
+  // The live rules compared with the published snapshot. Zero counts when the
+  // target has never been published.
+  QualityContractChangeSummary change_summary = 8;
+
+  // True when the live rules or settings differ from the published snapshot (or
+  // nothing has been published yet and the target has content).
+  bool has_unpublished_changes = 9;
+}
+
+// QualityContractSettings is the target-level layer's mutable configuration.
+message QualityContractSettings {
+  // Applied to every rule on the target, ANDed with the rule's own filter.
+  QualityFilter filter = 1;
+  // The schedule a newly authored rule starts with; 0 means the workspace default.
+  // Existing rules keep their own interval.
+  int64 default_schedule_interval_seconds = 2;
+  // The severity a newly authored rule starts with; UNSPECIFIED means no default.
+  QualitySeverity default_severity = 3;
+}
+
+// QualityContractChangeSummary counts how the live rules differ from the
+// published snapshot.
+message QualityContractChangeSummary {
+  int32 added = 1;
+  int32 modified = 2;
+  int32 removed = 3;
+}
+
+// QualityContractRevision is one published version's metadata.
+message QualityContractRevision {
+  int32 version = 1;
+  google.protobuf.Timestamp published_at = 2;
+  // Format: users/{user}.
+  string published_by = 3;
+  string note = 4;
+  int32 check_count = 5;
+  QualityContractChangeSummary change_summary = 6;
+}
+
+// QualityContractCheck is one rule as a published version records it.
+message QualityContractCheck {
+  // Format: workspaces/{workspace}/qualityRules/{quality_rule}
+  string rule = 1 [(google.api.resource_reference) = {type: "metaxisdata/QualityRule"}];
+  int32 rule_revision = 2;
+  string title = 3;
+  QualityRuleType rule_type = 4;
+  QualitySeverity severity = 5;
+  // The column the rule watches; empty for a table-level rule.
+  string column = 6;
+}
+
+message GetQualityContractRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+  string target_guid = 2 [(google.api.field_behavior) = REQUIRED];
+  // The target's object type. Optional when rules already exist.
+  MetaType meta_type = 3;
+}
+
+message UpdateQualityContractRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+  string target_guid = 2 [(google.api.field_behavior) = REQUIRED];
+  MetaType meta_type = 3;
+  // The complete settings; the update replaces them rather than patching fields.
+  QualityContractSettings settings = 4 [(google.api.field_behavior) = REQUIRED];
+}
+
+message PublishQualityContractRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+  string target_guid = 2 [(google.api.field_behavior) = REQUIRED];
+  MetaType meta_type = 3;
+  // Why this version exists; shown in the history.
+  string note = 4;
+}
+
+message PublishQualityContractResponse {
+  QualityContract contract = 1;
+  QualityContractRevision revision = 2;
+  // True when the live state already matched the newest published version, so no
+  // new version was created.
+  bool no_changes = 3;
+}
+
+message ListQualityContractRevisionsRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+  string target_guid = 2 [(google.api.field_behavior) = REQUIRED];
+  MetaType meta_type = 3;
+  int32 page_size = 4;
+  string page_token = 5;
+}
+
+message ListQualityContractRevisionsResponse {
+  repeated QualityContractRevision revisions = 1;
+  string next_page_token = 2;
+}
+
+message GetQualityContractRevisionRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+  string target_guid = 2 [(google.api.field_behavior) = REQUIRED];
+  MetaType meta_type = 3;
+  int32 version = 4;
+}
+
+message GetQualityContractRevisionResponse {
+  QualityContractRevision revision = 1;
+  repeated QualityContractCheck checks = 2;
 }

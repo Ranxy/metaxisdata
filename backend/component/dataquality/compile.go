@@ -11,7 +11,13 @@ type CompileInput struct {
 	Target  ResolvedTarget
 	Type    storepb.QualityRuleType
 	Config  *storepb.QualityRuleConfig
-	Filter  Filter
+	// Filter is the rule's own parsed filter.
+	Filter Filter
+	// ContractFilter is the target contract's parsed filter. It is ANDed after
+	// Filter when the WHERE clause is rendered, so every statement a rule compiles
+	// to (the aggregate, the CEL sample and the failed-row sample) sees the same
+	// rows. The empty filter adds nothing.
+	ContractFilter Filter
 }
 
 // compilerFunc turns a validated rule into the read-only statement that observes
@@ -63,10 +69,13 @@ func Compile(input CompileInput) (CompiledQuery, error) {
 	return compiler(input)
 }
 
-// whereClause renders the filter's predicate, including the WHERE keyword, or ""
-// when the rule has no filter.
+// whereClause renders the predicate's WHERE keyword plus the rule's filter and the
+// target contract's filter, or "" when neither has a clause. The two filters are
+// merged before compilation so one predicate is rendered with one placeholder
+// sequence; compiling them separately and joining the SQL would restart the
+// second filter's numbering at 1.
 func whereClause(input CompileInput) (string, []any, error) {
-	clause, args, err := CompileFilter(input.Dialect, input.Target, input.Filter)
+	clause, args, err := CompileFilter(input.Dialect, input.Target, mergeFilters(input.Filter, input.ContractFilter))
 	if err != nil {
 		return "", nil, err
 	}

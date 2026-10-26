@@ -135,6 +135,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       "metaxisdata.dataQuality.suggest",
       "metaxisdata.dataQuality.profile.run",
       "metaxisdata.dataQuality.labels.update",
+      "metaxisdata.dataQuality.contracts.publish",
     ],
   },
   {

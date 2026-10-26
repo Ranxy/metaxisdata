@@ -63,6 +63,7 @@ const (
 	DataQualityIssuesUpdate            Permission = "metaxisdata.dataQuality.issues.update"
 	DataQualityExplain                 Permission = "metaxisdata.dataQuality.explain"
 	DataQualitySuggest                 Permission = "metaxisdata.dataQuality.suggest"
+	DataQualityContractsPublish        Permission = "metaxisdata.dataQuality.contracts.publish"
 	DataQualityProfileRun              Permission = "metaxisdata.dataQuality.profile.run"
 	DataQualityLabelsUpdate            Permission = "metaxisdata.dataQuality.labels.update"
 	UsersGet                           Permission = "metaxisdata.users.get"
@@ -157,6 +158,7 @@ var allPermissions = []Permission{
 	DataQualityIssuesUpdate,
 	DataQualityExplain,
 	DataQualitySuggest,
+	DataQualityContractsPublish,
 	DataQualityProfileRun,
 	DataQualityLabelsUpdate,
 	UsersGet,

@@ -268,6 +268,8 @@
 </template>
 
 <script setup lang="ts">
+import { create } from "@bufbuild/protobuf";
+import { DurationSchema } from "@bufbuild/protobuf/wkt";
 import { AlertTriangle } from "lucide-vue-next";
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -316,6 +318,7 @@ import {
 } from "@/utils/dataQuality";
 import {
   allowedRuleTypes,
+  durationToSchedule,
   emptyConfig,
   emptyRuleForm,
   formToRule,
@@ -342,14 +345,27 @@ import { parseRuleError } from "@/utils/dataQualitySchema";
  * editor stays one link away for filters, owner and tags.
  */
 
-const props = defineProps<{
-  open: boolean;
-  /** The metadata GUID of the target the rule is created on. */
-  targetGuid: string;
-  metaType: MetaType;
-  /** The target's display name, used in the title. */
-  targetLabel: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    open: boolean;
+    /** The metadata GUID of the target the rule is created on. */
+    targetGuid: string;
+    metaType: MetaType;
+    /** The target's display name, used in the title. */
+    targetLabel: string;
+    /**
+     * The contract's default schedule for new rules, in seconds. 0 keeps the form's
+     * own default; existing rules are never affected, only this new one.
+     */
+    defaultScheduleSeconds?: number;
+    /** The contract's default severity for new rules; UNSPECIFIED keeps the form's. */
+    defaultSeverity?: QualitySeverity;
+  }>(),
+  {
+    defaultScheduleSeconds: 0,
+    defaultSeverity: QualitySeverity.UNSPECIFIED,
+  }
+);
 
 const emit = defineEmits<{
   "update:open": [open: boolean];
@@ -435,9 +451,26 @@ function defaultRuleType(): QualityRuleType {
     : (allowed[0] ?? QualityRuleType.ROW_COUNT);
 }
 
+/** The form a new rule starts from: the contract's defaults, else the built-ins. */
+function initialForm(): RuleFormState {
+  const form = emptyRuleForm(defaultRuleType());
+  if (props.defaultSeverity !== QualitySeverity.UNSPECIFIED) {
+    form.severity = props.defaultSeverity;
+  }
+  if (props.defaultScheduleSeconds > 0) {
+    form.schedule = durationToSchedule(
+      create(DurationSchema, {
+        seconds: BigInt(Math.round(props.defaultScheduleSeconds)),
+        nanos: 0,
+      })
+    );
+  }
+  return form;
+}
+
 /** The dialog is blank every time it opens, and blank again when it closes. */
 function reset() {
-  form.value = emptyRuleForm(defaultRuleType());
+  form.value = initialForm();
   columns.value = [];
   issues.value = [];
   saveError.value = "";

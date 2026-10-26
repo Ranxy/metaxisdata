@@ -52,6 +52,11 @@ const (
 	DataQualityService_GetQualityOverview_FullMethodName                 = "/metaxisdata.v1.DataQualityService/GetQualityOverview"
 	DataQualityService_ListQualityTargets_FullMethodName                 = "/metaxisdata.v1.DataQualityService/ListQualityTargets"
 	DataQualityService_GetQualityTarget_FullMethodName                   = "/metaxisdata.v1.DataQualityService/GetQualityTarget"
+	DataQualityService_GetQualityContract_FullMethodName                 = "/metaxisdata.v1.DataQualityService/GetQualityContract"
+	DataQualityService_UpdateQualityContract_FullMethodName              = "/metaxisdata.v1.DataQualityService/UpdateQualityContract"
+	DataQualityService_PublishQualityContract_FullMethodName             = "/metaxisdata.v1.DataQualityService/PublishQualityContract"
+	DataQualityService_ListQualityContractRevisions_FullMethodName       = "/metaxisdata.v1.DataQualityService/ListQualityContractRevisions"
+	DataQualityService_GetQualityContractRevision_FullMethodName         = "/metaxisdata.v1.DataQualityService/GetQualityContractRevision"
 	DataQualityService_GetQualityLLMUsage_FullMethodName                 = "/metaxisdata.v1.DataQualityService/GetQualityLLMUsage"
 )
 
@@ -167,6 +172,22 @@ type DataQualityServiceClient interface {
 	// pending AI drafts and the unresolved issues, in one call. The target is
 	// named by GUID because a target is not a resource of its own.
 	GetQualityTarget(ctx context.Context, in *GetQualityTargetRequest, opts ...grpc.CallOption) (*GetQualityTargetResponse, error)
+	// Read one target's contract: its target-level defaults, the published version,
+	// and whether the live rules differ from that snapshot.
+	GetQualityContract(ctx context.Context, in *GetQualityContractRequest, opts ...grpc.CallOption) (*QualityContract, error)
+	// Update the target-level defaults. The filter is ANDed into every rule on the
+	// target at compile time; the schedule and severity only seed newly authored
+	// rules and never rewrite an existing rule.
+	UpdateQualityContract(ctx context.Context, in *UpdateQualityContractRequest, opts ...grpc.CallOption) (*QualityContract, error)
+	// Publish the live rules and settings as the target's next contract version.
+	// Republishing an unchanged contract is a no-op that returns the existing
+	// version (no_changes=true).
+	PublishQualityContract(ctx context.Context, in *PublishQualityContractRequest, opts ...grpc.CallOption) (*PublishQualityContractResponse, error)
+	// List the target's published contract versions, newest first.
+	ListQualityContractRevisions(ctx context.Context, in *ListQualityContractRevisionsRequest, opts ...grpc.CallOption) (*ListQualityContractRevisionsResponse, error)
+	// Read one published contract version with its ordered checks, so a client can
+	// show a diff without downloading every version.
+	GetQualityContractRevision(ctx context.Context, in *GetQualityContractRevisionRequest, opts ...grpc.CallOption) (*GetQualityContractRevisionResponse, error)
 	// Read today's data quality LLM usage and the effective limits (the workspace
 	// settings, with server defaults resolved). The counters are process state: a
 	// restart resets them and they roll over at 00:00 UTC.
@@ -510,6 +531,56 @@ func (c *dataQualityServiceClient) GetQualityTarget(ctx context.Context, in *Get
 	return out, nil
 }
 
+func (c *dataQualityServiceClient) GetQualityContract(ctx context.Context, in *GetQualityContractRequest, opts ...grpc.CallOption) (*QualityContract, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityContract)
+	err := c.cc.Invoke(ctx, DataQualityService_GetQualityContract_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) UpdateQualityContract(ctx context.Context, in *UpdateQualityContractRequest, opts ...grpc.CallOption) (*QualityContract, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityContract)
+	err := c.cc.Invoke(ctx, DataQualityService_UpdateQualityContract_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) PublishQualityContract(ctx context.Context, in *PublishQualityContractRequest, opts ...grpc.CallOption) (*PublishQualityContractResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PublishQualityContractResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_PublishQualityContract_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) ListQualityContractRevisions(ctx context.Context, in *ListQualityContractRevisionsRequest, opts ...grpc.CallOption) (*ListQualityContractRevisionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListQualityContractRevisionsResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_ListQualityContractRevisions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) GetQualityContractRevision(ctx context.Context, in *GetQualityContractRevisionRequest, opts ...grpc.CallOption) (*GetQualityContractRevisionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetQualityContractRevisionResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_GetQualityContractRevision_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *dataQualityServiceClient) GetQualityLLMUsage(ctx context.Context, in *GetQualityLLMUsageRequest, opts ...grpc.CallOption) (*QualityLLMUsage, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(QualityLLMUsage)
@@ -632,6 +703,22 @@ type DataQualityServiceServer interface {
 	// pending AI drafts and the unresolved issues, in one call. The target is
 	// named by GUID because a target is not a resource of its own.
 	GetQualityTarget(context.Context, *GetQualityTargetRequest) (*GetQualityTargetResponse, error)
+	// Read one target's contract: its target-level defaults, the published version,
+	// and whether the live rules differ from that snapshot.
+	GetQualityContract(context.Context, *GetQualityContractRequest) (*QualityContract, error)
+	// Update the target-level defaults. The filter is ANDed into every rule on the
+	// target at compile time; the schedule and severity only seed newly authored
+	// rules and never rewrite an existing rule.
+	UpdateQualityContract(context.Context, *UpdateQualityContractRequest) (*QualityContract, error)
+	// Publish the live rules and settings as the target's next contract version.
+	// Republishing an unchanged contract is a no-op that returns the existing
+	// version (no_changes=true).
+	PublishQualityContract(context.Context, *PublishQualityContractRequest) (*PublishQualityContractResponse, error)
+	// List the target's published contract versions, newest first.
+	ListQualityContractRevisions(context.Context, *ListQualityContractRevisionsRequest) (*ListQualityContractRevisionsResponse, error)
+	// Read one published contract version with its ordered checks, so a client can
+	// show a diff without downloading every version.
+	GetQualityContractRevision(context.Context, *GetQualityContractRevisionRequest) (*GetQualityContractRevisionResponse, error)
 	// Read today's data quality LLM usage and the effective limits (the workspace
 	// settings, with server defaults resolved). The counters are process state: a
 	// restart resets them and they roll over at 00:00 UTC.
@@ -741,6 +828,21 @@ func (UnimplementedDataQualityServiceServer) ListQualityTargets(context.Context,
 }
 func (UnimplementedDataQualityServiceServer) GetQualityTarget(context.Context, *GetQualityTargetRequest) (*GetQualityTargetResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetQualityTarget not implemented")
+}
+func (UnimplementedDataQualityServiceServer) GetQualityContract(context.Context, *GetQualityContractRequest) (*QualityContract, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQualityContract not implemented")
+}
+func (UnimplementedDataQualityServiceServer) UpdateQualityContract(context.Context, *UpdateQualityContractRequest) (*QualityContract, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateQualityContract not implemented")
+}
+func (UnimplementedDataQualityServiceServer) PublishQualityContract(context.Context, *PublishQualityContractRequest) (*PublishQualityContractResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PublishQualityContract not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ListQualityContractRevisions(context.Context, *ListQualityContractRevisionsRequest) (*ListQualityContractRevisionsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListQualityContractRevisions not implemented")
+}
+func (UnimplementedDataQualityServiceServer) GetQualityContractRevision(context.Context, *GetQualityContractRevisionRequest) (*GetQualityContractRevisionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQualityContractRevision not implemented")
 }
 func (UnimplementedDataQualityServiceServer) GetQualityLLMUsage(context.Context, *GetQualityLLMUsageRequest) (*QualityLLMUsage, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetQualityLLMUsage not implemented")
@@ -1335,6 +1437,96 @@ func _DataQualityService_GetQualityTarget_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataQualityService_GetQualityContract_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQualityContractRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).GetQualityContract(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_GetQualityContract_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).GetQualityContract(ctx, req.(*GetQualityContractRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_UpdateQualityContract_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateQualityContractRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).UpdateQualityContract(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_UpdateQualityContract_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).UpdateQualityContract(ctx, req.(*UpdateQualityContractRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_PublishQualityContract_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PublishQualityContractRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).PublishQualityContract(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_PublishQualityContract_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).PublishQualityContract(ctx, req.(*PublishQualityContractRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_ListQualityContractRevisions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListQualityContractRevisionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).ListQualityContractRevisions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_ListQualityContractRevisions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).ListQualityContractRevisions(ctx, req.(*ListQualityContractRevisionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_GetQualityContractRevision_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQualityContractRevisionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).GetQualityContractRevision(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_GetQualityContractRevision_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).GetQualityContractRevision(ctx, req.(*GetQualityContractRevisionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DataQualityService_GetQualityLLMUsage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetQualityLLMUsageRequest)
 	if err := dec(in); err != nil {
@@ -1483,6 +1675,26 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetQualityTarget",
 			Handler:    _DataQualityService_GetQualityTarget_Handler,
+		},
+		{
+			MethodName: "GetQualityContract",
+			Handler:    _DataQualityService_GetQualityContract_Handler,
+		},
+		{
+			MethodName: "UpdateQualityContract",
+			Handler:    _DataQualityService_UpdateQualityContract_Handler,
+		},
+		{
+			MethodName: "PublishQualityContract",
+			Handler:    _DataQualityService_PublishQualityContract_Handler,
+		},
+		{
+			MethodName: "ListQualityContractRevisions",
+			Handler:    _DataQualityService_ListQualityContractRevisions_Handler,
+		},
+		{
+			MethodName: "GetQualityContractRevision",
+			Handler:    _DataQualityService_GetQualityContractRevision_Handler,
 		},
 		{
 			MethodName: "GetQualityLLMUsage",

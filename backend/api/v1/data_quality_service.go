@@ -620,6 +620,9 @@ func (s *DataQualityService) UpdateQualityRule(ctx context.Context, req *connect
 // target's current columns. Resolution therefore happens before validation, and
 // the filled snapshot is included in what the store receives. It reports whether
 // it filled the snapshot, so an update can persist a config it did not receive.
+//
+// The target's contract filter is part of the compiled statement, so validation
+// loads it too: a save or a dry run must compile exactly what the runner will run.
 func (s *DataQualityService) validateRuleInput(ctx context.Context, ruleType storepb.QualityRuleType, guid string, metaType storepb.MetaType, config *storepb.QualityRuleConfig) (*dataquality.ValidatedRule, bool, error) {
 	filled := false
 	if ruleType == storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT && config != nil {
@@ -629,7 +632,13 @@ func (s *DataQualityService) validateRuleInput(ctx context.Context, ruleType sto
 		}
 		filled = fillSchemaDriftSnapshot(config, resolution.Target.Columns)
 	}
-	validated, err := dataquality.ValidateRule(ctx, s.store, ruleType, guid, metaType, config, nil)
+	var contractFilter *storepb.QualityFilter
+	if contract, err := s.store.GetQualityContract(ctx, guid, metaType); err != nil {
+		return nil, filled, err
+	} else if contract != nil {
+		contractFilter = contract.Settings.GetFilter()
+	}
+	validated, err := dataquality.ValidateRule(ctx, s.store, ruleType, guid, metaType, config, nil, contractFilter)
 	if err != nil {
 		return nil, filled, err
 	}

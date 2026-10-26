@@ -289,6 +289,18 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.store.QualityContractCheck"><span class="badge">M</span>QualityContractCheck</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityContractSettings"><span class="badge">M</span>QualityContractSettings</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityContractSnapshot"><span class="badge">M</span>QualityContractSnapshot</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.QualityFailureSamples"><span class="badge">M</span>QualityFailureSamples</a>
                 </li>
               
@@ -2136,6 +2148,145 @@ converted with the column&#39;s type; at most 20. </p></td>
                   <td><a href="#int64">int64</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QualityContractCheck">QualityContractCheck</h3>
+        <p>QualityContractCheck is one rule as a published contract records it.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>rule_resource_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The rule&#39;s immutable resource id (the API-facing name segment). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>rule_revision</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The revision whose definition was published. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>title</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>rule_type</td>
+                  <td><a href="#metaxisdata.store.QualityRuleType">QualityRuleType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>severity</td>
+                  <td><a href="#metaxisdata.store.QualitySeverity">QualitySeverity</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>column</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The column the rule watches; empty for a table-level rule. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QualityContractSettings">QualityContractSettings</h3>
+        <p>QualityContractSettings is the target-level layer above the rules: defaults the</p><p>workspace UI uses when authoring, and the filter every rule on the target is</p><p>checked with. Rule-level fields always win where they are set.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>filter</td>
+                  <td><a href="#metaxisdata.store.QualityFilter">QualityFilter</a></td>
+                  <td></td>
+                  <td><p>Applied to every rule on the target, ANDed with the rule&#39;s own filter. It is
+evaluated at compile time, so a contract change affects the next execution
+without rewriting the rules. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>default_schedule_interval_seconds</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p>The schedule a newly authored rule starts with; 0 means the workspace default.
+It does not rewrite existing rules. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>default_severity</td>
+                  <td><a href="#metaxisdata.store.QualitySeverity">QualitySeverity</a></td>
+                  <td></td>
+                  <td><p>The severity a newly authored rule starts with; UNSPECIFIED means no default. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QualityContractSnapshot">QualityContractSnapshot</h3>
+        <p>QualityContractSnapshot is what a published contract version records: the</p><p>target-level settings plus the ordered checks (one per live rule) at publish</p><p>time. The rules remain the mutable source of truth; a revision is the record of</p><p>what a person published.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>settings</td>
+                  <td><a href="#metaxisdata.store.QualityContractSettings">QualityContractSettings</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>checks</td>
+                  <td><a href="#metaxisdata.store.QualityContractCheck">QualityContractCheck</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>fingerprint</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>SHA-256 over the settings and the ordered checks. Two publishes with the same
+fingerprint are the same contract, so the second is a no-op. </p></td>
                 </tr>
               
             </tbody>
