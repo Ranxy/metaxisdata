@@ -1,7 +1,7 @@
 # i18n 术语表 — Reference
 
 > Status: **implemented**。术语数据、门禁与生成文档均已落地。本文件是 `frontend/glossary.json` 的维护参考；`frontend/AGENTS.md` 是前端代码规则，本篇不重复。
-> Related: [frontend/AGENTS.md](frontend/AGENTS.md)（i18n 工作流与门禁）、[glossary.json](frontend/glossary.json)（唯一事实源）、[check-i18n-glossary.mjs](frontend/scripts/check-i18n-glossary.mjs)（门禁与生成器）。
+> Related: [frontend/AGENTS.md](../../frontend/AGENTS.md)（i18n 工作流与门禁）、[glossary.json](../../frontend/glossary.json)（唯一事实源）、[check-i18n-glossary.mjs](../../frontend/scripts/check-i18n-glossary.mjs)（门禁与生成器）。
 
 ## 是什么
 

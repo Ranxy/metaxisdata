@@ -20,7 +20,7 @@ Rules for the Go server. Repo-wide rules live in the root [AGENTS.md](../AGENTS.
 | `backend/plugin/lineage/` | Table/column lineage analyzers, catalog, scope resolution — see [plugin/lineage/AGENTS.md](plugin/lineage/AGENTS.md) |
 | `backend/plugin/openlineage/` | OpenLineage event parsing, processing, resolution, and Airflow links |
 | `backend/plugin/idp/` | Identity providers — OAuth2 only (the OIDC/LDAP config surface is reserved, not implemented) |
-| `backend/runner/` | Background runners: `lineageanalyzer`, `lineagevalidation`, `schemasync`, `maintenance` |
+| `backend/runner/` | Background runners: `lineageanalyzer`, `lineagevalidation`, `schemasync`, `maintenance`, `qualityrunner`, `qualitysuggestionrunner` |
 | `backend/migrator/` | Embedded, versioned schema migrations and the startup migrator — see [migrator/AGENTS.md](migrator/AGENTS.md) |
 | `backend/test/integration/` | Integration harness — see [test/integration/README.md](test/integration/README.md) |
 | `backend/generated-go/` | Generated protobuf/Connect/Gateway code — never hand-edit |

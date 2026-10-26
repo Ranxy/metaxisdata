@@ -1,7 +1,7 @@
 # 服务端内置 MCP（Model Context Protocol）+ OAuth 2.1 授权 — Reference
 
 > Status: **implemented**。Maintenance reference for `backend/mcp/`、`backend/api/oauth/`、`backend/api/v1/oauth_service.go`、`backend/api/v1/connected_app_service.go` 与 `/mcp` 的挂载点。
-> Related: 使用者接入指南 [docs/mcp.md](docs/mcp.md)（不要重复它）;刻意决策 [docs/security-posture.md](docs/security-posture.md);目录内规则 `backend/mcp/AGENTS.md`。
+> Related: 使用者接入指南 [docs/mcp.md](../../docs/mcp.md)（不要重复它）;刻意决策 [docs/security-posture.md](../../docs/security-posture.md);目录内规则 `backend/mcp/AGENTS.md`。
 > SDK: `github.com/modelcontextprotocol/go-sdk v1.8.0`（`go.mod`）。
 
 ## What it is

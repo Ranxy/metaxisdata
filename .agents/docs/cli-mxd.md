@@ -1,7 +1,7 @@
 # Agent CLI（`mxd`）与 Device Login — Reference
 
 > Status: **implemented**。Maintenance reference for `cli/` 与服务端 device login 一侧。
-> Related: 使用者文档 [cli/README.md](cli/README.md);刻意决策（明文 token、scope 只在环境、device 状态进程内）[docs/security-posture.md](docs/security-posture.md);目录规则 `cli/AGENTS.md`、根 `AGENTS.md`。
+> Related: 使用者文档 [cli/README.md](../../cli/README.md);刻意决策（明文 token、scope 只在环境、device 状态进程内）[docs/security-posture.md](../../docs/security-posture.md);目录规则 `cli/AGENTS.md`、根 `AGENTS.md`。
 
 ## What it is
 

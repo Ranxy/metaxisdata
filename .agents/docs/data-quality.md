@@ -13,7 +13,7 @@
 SPA ──ConnectRPC──► DataQualityService (api/v1) ──► component/dataquality（校验/编译/判定/画像/CEL）
                                │                        │
                                │  手动运行/定时扫描：规划 PENDING quality_execution 行，按实例组成内部批次
-                               ├──► store（PG：quality_* 9 张表）◄── qualityrunner（tick 10s / 手动队列）
+                               ├──► store（PG：quality_* 等 10 张表）◄── qualityrunner（tick 10s / 手动队列）
                                │        quality_run = 内部派发批次（不对外）；quality_execution = 对外执行
                                ├──► component/llm（L1/L2/L3，复用 provider）
                                └──► notification.Service（问题迁移 → 站内信）        │
