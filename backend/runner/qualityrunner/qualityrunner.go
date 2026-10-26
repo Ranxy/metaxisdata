@@ -970,7 +970,7 @@ func (r *Runner) executeBatchWith(ctx context.Context, st batchExecutionStore, b
 	if storm {
 		// The storm summary is sent once the batch is finished, so the executions it
 		// merges are already terminal when the recipient opens one.
-		r.reportQualityStorm(ctx, batchID, instanceResourceID, counts.GetFail(), counts.GetTotal(), now)
+		r.reportQualityStorm(ctx, batchID, instanceResourceID, executions[0], counts.GetFail(), counts.GetTotal(), now)
 	}
 }
 
@@ -1762,15 +1762,23 @@ func (r *Runner) sendDataQualityNotificationFor(ctx context.Context, ownerID *in
 }
 
 // reportQualityStorm replaces a burst of per-rule notifications with one summary
-// addressed to the workspace administrators. It names the instance whose batch
-// produced the burst, not an execution: the storm is about the instance's tick,
-// and the dashboard links the executions. It is sent after the batch finished, so
-// the executions are terminal when the recipient opens one.
-func (r *Runner) reportQualityStorm(ctx context.Context, batchID int64, instanceResourceID string, failed, total int32, now time.Time) {
+// addressed to the workspace administrators. A batch belongs to one target, so
+// the summary names that target (and the instance that admitted the batch), not an
+// execution; the dashboard links the executions. It is sent after the batch
+// finished, so the executions are terminal when the recipient opens one.
+func (r *Runner) reportQualityStorm(ctx context.Context, batchID int64, instanceResourceID string, execution *ruleExecution, failed, total int32, now time.Time) {
 	if r.notifier == nil {
 		return
 	}
-	detail := buildStormDetail(formatInstanceResourceName(instanceResourceID), failed, total)
+	targetGUID := ""
+	targetPath := ""
+	if execution != nil {
+		targetGUID = execution.targetGUID()
+		if execution.snapshot != nil {
+			targetPath = qualityTargetDisplayPath(execution.snapshot.Target.Path)
+		}
+	}
+	detail := buildStormDetail(formatInstanceResourceName(instanceResourceID), targetGUID, targetPath, failed, total)
 	// The dedupe key is scoped to the internal batch, not the instance: one
 	// scheduler tick can chunk an instance into several batches, and each storm is
 	// its own event. The batch id is internal and never leaves the server.
@@ -1822,12 +1830,14 @@ func buildDataQualityDetail(in dataQualityDetailInput) *storepb.DataQualityDetai
 }
 
 // buildStormDetail is the summary one storm notification carries: how many
-// executions failed out of how many the instance's batch ran, and the instance
-// whose batch merged them.
-func buildStormDetail(instanceResourceName string, failed, total int32) *storepb.DataQualityDetail {
+// executions failed out of how many the target's batch ran, plus the target and
+// the instance whose batch merged them.
+func buildStormDetail(instanceResourceName, targetGUID, targetPath string, failed, total int32) *storepb.DataQualityDetail {
 	return &storepb.DataQualityDetail{
 		Kind:            storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY,
 		Instance:        instanceResourceName,
+		TargetGuid:      targetGUID,
+		TargetPath:      targetPath,
 		Severity:        storepb.QualitySeverity_QUALITY_SEVERITY_ERROR,
 		FailedRuleCount: failed,
 		TotalRuleCount:  total,

@@ -308,10 +308,16 @@ describe("describeNotification", () => {
       dataQuality(DataQualityNotificationKind.STORM_SUMMARY, {
         failedRuleCount: 7,
         totalRuleCount: 20,
+        targetGuid: "inst1;shop;public;orders",
+        targetPath: "prod.shop.public.orders",
       })
     );
     expect(text.titleKey).toBe("notifications.dataQualityStormSummaryTitle");
-    expect(text.messageParams).toEqual({ failed: 7, total: 20 });
+    expect(text.messageParams).toEqual({
+      failed: 7,
+      total: 20,
+      target: "prod.shop.public.orders",
+    });
     // A storm merges a whole dispatch batch, so it has no single execution to
     // link to; the executions list is the honest destination.
     expect(text.href).toBe("/data-quality/executions");

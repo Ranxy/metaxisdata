@@ -52,7 +52,7 @@ SPA ──ConnectRPC──► DataQualityService (api/v1) ──► component/da
 | D-24 | `target_schema_changed` 用 registry **schema_hash**（`ListMetaRegistrySchemaHashes`）口径；规则保存时写同一口径 | 路径快照仅展示；两套 hash 混用会让“结构已变”永真 |
 | D-25 | 手动运行的规则集不进队列参数：API 先建内部批次并为每条选中规则规划 PENDING 执行行，再经进程内队列 `EnqueueQualityExecutions(batchID, instance, executionIDs)` 交给 runner；runner 只执行这些行 | 队列容量 64 个批次；满则放弃批次及其执行（ABANDONED、无 outcome）并返回 `ResourceExhausted` |
 | D-26 | 设置零值=默认；`data_quality` message 存在性区分“未配置”和显式 false；返回生效值不落库默认 | 0 是“取默认值”，**不是**“不限制/不存”（§4.1） |
-| D-27 | 通知：issue opened/recovered 按 issue 资源名 1h 去重、收件人 owner→admins；execution-failed 只发 admins 且不受静音；同一内部批次内 FAIL 执行 >10 合并 STORM_SUMMARY（每批次一条，去重 key 用内部批次 id，detail 带实例与计数）；恢复不受 storm 抑制 | 静音只影响问题通知；风暴仍创建 issue，只抑制逐条消息 |
+| D-27 | 通知：issue opened/recovered 按 issue 资源名 1h 去重、收件人 owner→admins；execution-failed 只发 admins 且不受静音；同一内部批次内 FAIL 执行 >10 合并 STORM_SUMMARY（每批次一条，去重 key 用内部批次 id，detail 带目标、实例与计数）；恢复不受 storm 抑制 | 静音只影响问题通知；风暴仍创建 issue，只抑制逐条消息 |
 | D-28 | 执行资源名最后一段 = `quality_execution` **行 id**（该表无 resource_id）；`ExplainQualityExecution` 按其查 `store.GetQualityExecution` | 列表、问题引用的 first/last seen 与解析同一 id |
 | D-29 | L2 先收集完整 JSON、解析后再一次性发 content；progress 一帧 + 终帧 metadata；usage 只入缓存行与日志 | `ExplainSQLMetadata` 无 usage/prompt_version 字段，不为统计改协议 |
 | D-30 | L1/L3 只产出 PENDING 建议；接受 LABEL 建议即写 `column_semantic_label`；接受 RULE_DRAFT 只改建议状态 | 规则由编辑器保存才创建；不自动建/启用/执行 |
@@ -231,7 +231,7 @@ meta_registry_resource（只读）──< quality_rule >──< quality_rule_rev
 
 - issue 行：`resource_id`、`rule_id`、target、`severity`（复制规则严重级别）、first/last seen 执行 id + 时间、`occurrence_count`、`resolution_reason/note`、ack 人/时间、`muted_until`。部分唯一索引 `(rule_id) WHERE status <> 3` 保证每规则至多一个未解决问题。
 - 通知 detail（store/v1 同形）：`kind`、`rule`、`rule_title`、`target_guid`、`target_path`、`from_status`/`to_status`、`severity`、`observed_value`/`observed_unit`、`issue`、`execution`、`failed_rows`/`total_rows`、`error_code`；风暴摘要另有 `instance` 与 `failed_rule_count`/`total_rule_count`（没有 execution/run 链接）；不含正文/样本值。
-- 收件人：ISSUE_OPENED/RECOVERED → 规则 owner，owner 为空/无效 → workspace admins；EXECUTION_FAILED/STORM_SUMMARY → admins。去重：`notification.DataQualityDedupeKey`，窗口 1h（storm 的 key 以内部批次 id 为 target，等效每批次一条；实例只出现在 detail 里）。
+- 收件人：ISSUE_OPENED/RECOVERED → 规则 owner，owner 为空/无效 → workspace admins；EXECUTION_FAILED/STORM_SUMMARY → admins。去重：`notification.DataQualityDedupeKey`，窗口 1h（storm 的 key 以内部批次 id 为 target，等效每批次一条；目标与实例出现在 detail 里）。
 - 静音：规则级 `mute_until` 与问题级 `muted_until` 只压制 ISSUE_OPENED/RECOVERED；EXECUTION_FAILED 不受静音；风暴抑制逐条消息但 issue 照建、恢复消息照发。
 - 通知失败只记日志；`notification` 表永久保留，因此 detail 必须限长（构造函数里截断）。
 
@@ -443,7 +443,7 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | 批次无法进入 RUNNING（重复派发/已被清扫/已终结） | 该批次未完成执行与批次标 `ABANDONED`（`mark_running_failed`）；不重试、不补跑；清扫写失败的残留行留给下次启动清扫 |
 | 放弃执行/批次的写入本身失败 | 批次仍尝试以 `ABANDONED` 结束（不因一次清扫写失败停在 RUNNING）；残留 PENDING/RUNNING 行留给下次启动清扫（仅处理启动时已超过 15 分钟的行），不补跑 |
 | 通知写失败 | 只记日志；执行与问题状态不受影响 |
-| 告警风暴（一次批次 FAIL 执行 >10） | 逐条 opened/execution-failed 抑制，发一条 STORM_SUMMARY（带实例与计数）；issue 照建、恢复照发 |
+| 告警风暴（一次批次 FAIL 执行 >10） | 逐条 opened/execution-failed 抑制，发一条 STORM_SUMMARY（带目标、实例与计数）；issue 照建、恢复照发 |
 | 规则/问题静音期内失败或恢复 | 不发送问题通知；执行失败通知不受影响 |
 | 每日执行配额触顶 | 跳过本轮定时 due 扫描（规则保持 due，次日继续）；手动运行不受影响；不写 ERROR、不告警（§7） |
 | DQ LLM 日额度/并发触顶 | LLM 分析返回 `ResourceExhausted`；额度不足时等待并发槽前就快速失败，取消的等待不消耗额度/槽；上限可在 Settings → Data Quality 调整（默认 10000/8） |

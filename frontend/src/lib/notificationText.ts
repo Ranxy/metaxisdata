@@ -189,7 +189,11 @@ function dataQualityText(detail: DataQualityDetail): NotificationText {
         messageParams: { code: detail.errorCode || "-" },
         href: execution ?? executionsPage,
       };
-    case DataQualityNotificationKind.STORM_SUMMARY:
+    case DataQualityNotificationKind.STORM_SUMMARY: {
+      // A run belongs to one target now, so the summary names that target. Old
+      // rows may predate the target fields and fall back to the instance.
+      const stormTarget =
+        detail.targetPath || detail.targetGuid || detail.instance || "-";
       return {
         titleKey: "notifications.dataQualityStormSummaryTitle",
         titleParams: {},
@@ -197,11 +201,13 @@ function dataQualityText(detail: DataQualityDetail): NotificationText {
         messageParams: {
           failed: detail.failedRuleCount,
           total: detail.totalRuleCount,
+          target: stormTarget,
         },
-        // A storm summary merges a whole batch, so it links to no single
+        // A storm summary merges one target's batch, so it links to no single
         // execution: the executions list is where the individual rows live.
         href: execution ?? executionsPage,
       };
+    }
     default:
       return {
         titleKey: "notifications.dataQualityUnknownTitle",

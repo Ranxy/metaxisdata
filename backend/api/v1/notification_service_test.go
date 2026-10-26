@@ -167,6 +167,8 @@ func TestConvertToV1NotificationMapsAStormSummary(t *testing.T) {
 		Detail: &storepb.Notification_DataQuality{DataQuality: &storepb.DataQualityDetail{
 			Kind:            storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY,
 			Instance:        "instances/instance_1",
+			TargetGuid:      "instance_1;shop;public;orders",
+			TargetPath:      "prod.shop.public.orders",
 			FailedRuleCount: 12,
 			TotalRuleCount:  40,
 		}},
@@ -177,6 +179,8 @@ func TestConvertToV1NotificationMapsAStormSummary(t *testing.T) {
 	require.Equal(t, v1pb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY, detail.GetKind())
 	require.Empty(t, detail.GetExecution(), "a storm summary has no single execution")
 	require.Equal(t, "instances/instance_1", detail.GetInstance())
+	require.Equal(t, "instance_1;shop;public;orders", detail.GetTargetGuid())
+	require.Equal(t, "prod.shop.public.orders", detail.GetTargetPath())
 	require.Equal(t, int32(12), detail.GetFailedRuleCount())
 	require.Equal(t, int32(40), detail.GetTotalRuleCount())
 }

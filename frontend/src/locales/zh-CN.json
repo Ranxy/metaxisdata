@@ -2427,7 +2427,7 @@
     "dataQualityIssueOpenedTitle": "质量问题打开：{rule}",
     "dataQualityIssueRecoveredMessage": "检查在 {target} 上重新通过。",
     "dataQualityIssueRecoveredTitle": "质量问题已恢复：{rule}",
-    "dataQualityStormSummaryMessage": "同一批执行中 {total} 条检查有 {failed} 条失败。",
+    "dataQualityStormSummaryMessage": "{target} 在本轮扫描中 {total} 条检查有 {failed} 条失败。",
     "dataQualityStormSummaryTitle": "多条检查同时失败",
     "dataQualityUnknownMessage": "当前版本无法识别的数据质量问题事件。",
     "dataQualityUnknownTitle": "数据质量消息",

@@ -871,9 +871,11 @@ func TestQualityNotificationTargetIsScopedToTheEvent(t *testing.T) {
 func TestBuildStormDetail(t *testing.T) {
 	t.Parallel()
 
-	detail := buildStormDetail("instances/inst1", 12, 40)
+	detail := buildStormDetail("instances/inst1", "inst1;shop;public;orders", "prod.shop.public.orders", 12, 40)
 	require.Equal(t, storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY, detail.GetKind())
 	require.Equal(t, "instances/inst1", detail.GetInstance())
+	require.Equal(t, "inst1;shop;public;orders", detail.GetTargetGuid())
+	require.Equal(t, "prod.shop.public.orders", detail.GetTargetPath())
 	require.Empty(t, detail.GetExecution())
 	require.Equal(t, int32(12), detail.GetFailedRuleCount())
 	require.Equal(t, int32(40), detail.GetTotalRuleCount())
