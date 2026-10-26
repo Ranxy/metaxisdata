@@ -477,7 +477,12 @@ func (r *Runner) scanDue(ctx context.Context) {
 		instancePlans := plans[start:end]
 		wp.Go(func() {
 			for _, plan := range instancePlans {
-				r.startScheduledBatch(ctx, plan)
+				if !r.startScheduledBatch(ctx, plan) {
+					// The instance could not make progress; its remaining due targets
+					// stay due for the next tick instead of each paying another
+					// admission wait in this pass.
+					break
+				}
 			}
 		})
 		start = end
@@ -488,7 +493,14 @@ func (r *Runner) scanDue(ctx context.Context) {
 // startScheduledBatch creates one internal batch and its planned execution rows,
 // then executes them. The batch row exists before any rule runs, so an execution
 // always names a batch; the execution rows themselves are the visible plan.
-func (r *Runner) startScheduledBatch(ctx context.Context, plan dueBatchPlan) {
+//
+// It reports whether the caller may continue with the instance's remaining plans
+// in this pass. A deferral or a store failure returns false because the instance
+// is not making progress: trying the next due target on the same instance would
+// only multiply the admission wait (up to scheduledAdmissionWait per target) and
+// hold the runner loop, including the manual queue. The skipped targets stay due
+// and are retried on the next tick.
+func (r *Runner) startScheduledBatch(ctx context.Context, plan dueBatchPlan) bool {
 	rules := make([]*store.QualityRuleMessage, 0, len(plan.rules))
 	for _, rule := range plan.rules {
 		if rule != nil {
@@ -496,7 +508,7 @@ func (r *Runner) startScheduledBatch(ctx context.Context, plan dueBatchPlan) {
 		}
 	}
 	if len(rules) == 0 {
-		return
+		return true
 	}
 
 	instance, err := r.instanceForAdmission(ctx, plan.instanceResourceID)
@@ -505,7 +517,7 @@ func (r *Runner) startScheduledBatch(ctx context.Context, plan dueBatchPlan) {
 		slog.Warn("failed to read the instance of a scheduled quality batch; leaving its rules due",
 			slog.String("instance", plan.instanceResourceID),
 			log.WithError(err))
-		return
+		return false
 	}
 	release, admission, admitted := r.admitBatch(ctx, instance, state.ConnectionPriorityBackground, scheduledAdmissionWait)
 	r.metrics.CountQualityExecutionAdmission(metrics.QualityTriggerScheduled, admitted)
@@ -517,7 +529,7 @@ func (r *Runner) startScheduledBatch(ctx context.Context, plan dueBatchPlan) {
 		slog.Debug("deferred a scheduled quality batch: the instance has no free connection slot",
 			slog.String("instance", plan.instanceResourceID),
 			slog.Int("rules", len(rules)))
-		return
+		return false
 	}
 	// The release is idempotent and executeBatch releases it before the store work,
 	// so this defer only covers the returns before executeBatch is reached.
@@ -527,7 +539,7 @@ func (r *Runner) startScheduledBatch(ctx context.Context, plan dueBatchPlan) {
 	resourceID, err := common.RandomString(12)
 	if err != nil {
 		slog.Error("failed to generate an internal quality batch resource id", log.WithError(err))
-		return
+		return false
 	}
 	targetPath := plan.target.TargetPath
 	if targetPath == nil {
@@ -546,7 +558,7 @@ func (r *Runner) startScheduledBatch(ctx context.Context, plan dueBatchPlan) {
 		slog.Error("failed to create a scheduled quality batch",
 			slog.String("instance", plan.instanceResourceID),
 			log.WithError(err))
-		return
+		return false
 	}
 
 	planned := make([]*store.QualityExecutionMessage, 0, len(rules))
@@ -562,7 +574,7 @@ func (r *Runner) startScheduledBatch(ctx context.Context, plan dueBatchPlan) {
 			r.metrics.CountQualityExecutionAbandoned(metrics.QualityAbandonedPlanFailed)
 		}
 		r.abandonEmptyBatch(ctx, batch.ID)
-		return
+		return false
 	}
 	for range planned {
 		r.metrics.CountQualityExecutionCreated(metrics.QualityTriggerScheduled)
@@ -584,9 +596,10 @@ func (r *Runner) startScheduledBatch(ctx context.Context, plan dueBatchPlan) {
 			slog.Int("planned", len(planned)),
 			slog.Int("identified", len(tasks)))
 		r.abandonBatch(ctx, r.stores, batch.ID, len(planned), metrics.QualityAbandonedPlanFailed)
-		return
+		return false
 	}
 	r.executeBatch(ctx, batch.ID, plan.instanceResourceID, tasks, admission, release)
+	return true
 }
 
 // plannedExecution is the PENDING row the scheduler plans before executing a due

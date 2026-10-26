@@ -798,7 +798,9 @@ describe("DataQualityTargetPage", () => {
     expect(wrapper.text()).toContain(
       label("dataQuality.workspace.summaryDrafts", { count: 0 })
     );
-    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(1);
+    // The rule list stays local, but the header's next run is re-read because
+    // creating the first check moved the target's schedule.
+    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(2);
     wrapper.unmount();
   });
 
@@ -997,7 +999,9 @@ describe("DataQualityTargetPage", () => {
     expect(wrapper.text()).toContain(
       label("dataQuality.workspace.summaryRules", { count: 4 })
     );
-    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(1);
+    // The rule list stays local; the header's next run is re-read because the
+    // new check joins (or creates) the target's schedule.
+    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(2);
     // The contract strip re-reads, so the live checks are no longer mistaken for
     // the published version and Publish becomes available.
     expect(mocks.getQualityContract.mock.calls.length).toBeGreaterThan(1);
@@ -1133,7 +1137,9 @@ describe("DataQualityTargetPage", () => {
     expect(wrapper.text()).toContain(
       label("dataQuality.workspace.summaryRules", { count: 3 })
     );
-    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(1);
+    // The row is replaced locally; the schedule summary is re-read so a state
+    // change (pause/resume) cannot leave a stale next run in the header.
+    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(2);
     expect(wrapper.findComponent(TargetRuleComposer).props("open")).toBe(false);
     wrapper.unmount();
   });
@@ -1253,8 +1259,9 @@ describe("DataQualityTargetPage", () => {
     expect(wrapper.find("#dq-rule-rule-dataset").text()).toContain(
       "Row count floor, paused"
     );
-    // Pausing moves one rule from enabled to paused without re-reading.
-    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(1);
+    // Pausing moves one rule from enabled to paused locally; only the schedule
+    // summary is re-read because pausing can clear the target's next run.
+    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(2);
     wrapper.unmount();
   });
 
@@ -1269,7 +1276,9 @@ describe("DataQualityTargetPage", () => {
     expect(wrapper.text()).toContain(
       label("dataQuality.workspace.summaryRules", { count: 2 })
     );
-    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(1);
+    // Deleting can clear the target's next run when it was the last enabled
+    // check, so the header's schedule is re-read.
+    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(2);
     wrapper.unmount();
   });
 
@@ -1531,6 +1540,54 @@ describe("DataQualityTargetPage", () => {
     wrapper.unmount();
   });
 
+  it("refreshes the header when the last enabled check is paused", async () => {
+    mocks.getQualityTarget
+      .mockResolvedValueOnce(
+        response({
+          summary: summaryFixture({
+            ruleCount: 1,
+            enabledRuleCount: 1,
+            schedule: targetScheduleFixture({ nextRunInMinutes: 30 }),
+          }),
+          rules: [rulesFixture()[0]],
+        })
+      )
+      .mockResolvedValueOnce(
+        response({
+          summary: summaryFixture({
+            ruleCount: 1,
+            enabledRuleCount: 0,
+            schedule: undefined,
+          }),
+          rules: [rulesFixture()[0]],
+        })
+      );
+    const { wrapper } = await mountPage();
+
+    expect(wrapper.text()).toContain(
+      label("dataQuality.workspace.nextRun", {
+        time: formatRelativeTime(new Date(Date.now() + 30 * 60_000), "en-US"),
+      })
+    );
+
+    const paused = create(QualityRuleSchema, {
+      name: RULE_DATASET,
+      title: "Row count floor",
+      ruleType: QualityRuleType.ROW_COUNT,
+      target: target(),
+      severity: QualitySeverity.ERROR,
+      state: QualityRuleState.PAUSED,
+    });
+    wrapper.findComponent(QualityCheckDrawer).vm.$emit("changed", paused);
+    await flushPromises();
+
+    // The server cleared the target's next run; the header re-read only the
+    // schedule summary and now says so.
+    expect(wrapper.text()).toContain(label("dataQuality.workspace.noNextRun"));
+    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(2);
+    wrapper.unmount();
+  });
+
   it("says there is no next run when every check is paused", async () => {
     mocks.getQualityTarget.mockResolvedValue(
       response({
@@ -1543,6 +1600,18 @@ describe("DataQualityTargetPage", () => {
 
     expect(wrapper.text()).toContain("15m");
     expect(wrapper.text()).toContain(label("dataQuality.workspace.noNextRun"));
+    wrapper.unmount();
+  });
+
+  it("still offers the schedule editor when a legacy target has no schedule row", async () => {
+    const { wrapper } = await mountPage();
+
+    expect(wrapper.text()).toContain(label("dataQuality.workspace.noNextRun"));
+    expect(
+      document.body.querySelector<HTMLElement>(
+        `[aria-label="${label("dataQuality.workspace.editSchedule")}"]`
+      )
+    ).not.toBeNull();
     wrapper.unmount();
   });
 

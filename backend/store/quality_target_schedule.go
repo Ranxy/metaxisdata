@@ -92,7 +92,10 @@ func (s *Store) GetQualityTargetSchedule(ctx context.Context, targetGUID string,
 // ensureQualityTargetSchedule writes one target's schedule row inside an
 // existing transaction, creating it with the given interval when absent. The row
 // starts due one interval from now only when the target already has an enabled
-// rule, so a paused rule never schedules its target.
+// rule, so a paused rule never schedules its target. When the row already exists,
+// a NULL next_run_at is filled with now plus the row's own interval, not the
+// caller's: a target with a customized cadence keeps that cadence when it is
+// reactivated by a new check.
 func ensureQualityTargetSchedule(ctx context.Context, tx *sql.Tx, targetGUID string, targetType storepb.MetaType, interval time.Duration, now time.Time) (*QualityTargetScheduleMessage, error) {
 	if targetGUID == "" {
 		return nil, common.Errorf(common.Invalid, "a target GUID is required")
@@ -111,16 +114,25 @@ func ensureQualityTargetSchedule(ctx context.Context, tx *sql.Tx, targetGUID str
 				SELECT 1 FROM quality_rule r
 				WHERE r.target_guid = $1 AND r.target_type = $2
 					AND r.state = $4 AND r.deleted = FALSE
-			) THEN $5::timestamptz ELSE NULL END
+			) THEN $5::timestamptz + MAKE_INTERVAL(secs => $3::int4) ELSE NULL END
 		ON CONFLICT (target_guid, target_type) DO UPDATE
-		SET next_run_at = COALESCE(quality_target_schedule.next_run_at, EXCLUDED.next_run_at),
+		SET next_run_at = COALESCE(
+				quality_target_schedule.next_run_at,
+				CASE WHEN EXISTS (
+					SELECT 1 FROM quality_rule r
+					WHERE r.target_guid = quality_target_schedule.target_guid
+						AND r.target_type = quality_target_schedule.target_type
+						AND r.state = $4 AND r.deleted = FALSE
+				) THEN $5::timestamptz + MAKE_INTERVAL(secs => quality_target_schedule.schedule_interval_seconds)
+				ELSE NULL END
+			),
 			updated_at = NOW()
 		RETURNING `+qualityTargetScheduleColumns,
 		targetGUID,
 		int16(targetType),
 		int32(interval/time.Second),
 		storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
-		now.Add(interval),
+		now,
 	))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to ensure the quality target schedule")

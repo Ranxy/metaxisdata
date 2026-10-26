@@ -437,15 +437,15 @@ post-sync runner 调用。**计数必须埋在这两个 Processor 方法里并�
 
 | 指标 | 类型 | 标签 | 埋点 | 语义 / 注意 | 优先级 |
 | --- | --- | --- | --- | --- | --- |
-| `metaxisdata_quality_due_scan_duration_seconds` | histogram | — | `scanDue` 的规划段（settings/quota/`FindDueQualityRules`/`planDueBatches`），**不要包住 `wp.Wait()`** | 调度层成本；包住执行会退化成批次耗时的重复 | P0 |
-| `metaxisdata_quality_due_rules` | histogram | — | `FindDueQualityRules` 之后 | 每次扫描到期规则数；p95 顶到 200 说明积压排不干 | P0 |
+| `metaxisdata_quality_due_scan_duration_seconds` | histogram | — | `scanDue` 的规划段（settings/quota/`FindDueQualityTargets`/`planDueBatches`），**不要包住 `wp.Wait()`** | 调度层成本；包住执行会退化成批次耗时的重复 | P0 |
+| `metaxisdata_quality_due_rules` | histogram | — | `FindDueQualityTargets` 之后 | 每次扫描到期规则数；p95 顶到 200 说明积压排不干 | P0 |
 | `metaxisdata_quality_executions_created_total` | counter | `trigger=scheduled\|manual` | scheduled 在 `PlanQualityExecutions` 成功后逐行计（`startScheduledBatch`）；manual 在 API 规划成功后逐行计（`planManualQualityExecutions`） | 规划的执行行数（含之后被放弃的） | P0 |
 | `metaxisdata_quality_executions_completed_total` | counter | `outcome`（6 个 QualityStatus） | `FinishQualityExecution` 成功后（`executeBatch`） | 正常收尾的执行及其判定；`UNSPECIFIED` 不会出现（ABANDONED 不计） | P0 |
 | `metaxisdata_quality_execution_admissions_total` | counter | `trigger,result=admitted\|deferred` | scheduled `startScheduledBatch`、manual `executeManualBatch` 的 `admitBatch` 之后 | 连接预算准入结果（按批次一次） | P0 |
-| `metaxisdata_quality_executions_deferred_total` | counter | `reason=admission_timeout\|instance_read_error` | scheduled 的 `startScheduledBatch` | 定时执行因实例预算/实例读取失败没被规划；规则保持 due 等下轮（manual 不 deferred，拿不到即放弃） | P0 |
+| `metaxisdata_quality_executions_deferred_total` | counter | `reason=admission_timeout\|instance_read_error` | scheduled 的 `startScheduledBatch` | 定时执行因实例预算/实例读取失败没被规划；目标保持 due 等下轮，同实例本轮剩余目标也跳过（manual 不 deferred，拿不到即放弃） | P0 |
 | `metaxisdata_quality_executions_abandoned_total` | counter | `reason=admission_timeout\|instance_read_error\|stale_sweep\|persist_failed\|incomplete\|plan_failed\|queue_full\|mark_running_failed` | startup sweep、manual 准入失败/实例读取失败、`abandonBatch`、规划失败、API 队列满、批次超时/未全部落终态（`incomplete`）、批次无法进入 RUNNING 即被关闭（`mark_running_failed`） | 「执行在悄悄消失」的告警面（按执行行计） | P0 |
 | `metaxisdata_quality_executions_in_progress` | gauge | — | `MarkQualityExecutionRunning` 成功后 inc，终态写入后 dec | 正在执行的规则（两个实例各自串行，名义上限 2） | P0 |
-| `metaxisdata_quality_manual_queue_depth` | gauge | — | `GaugeFunc` 读 `len(r.manual)`（`chan`，容量 64 个批次） | 手动批次积压 | P0 |
+| `metaxisdata_quality_manual_queue_depth` | gauge | — | `GaugeFunc` 读 `len(r.manual)`（`chan`，容量 512 个批次） | 手动批次积压 | P0 |
 | `metaxisdata_quality_manual_enqueue_rejected_total` | counter | — | `EnqueueQualityExecutions` 的 default 分支 | 队列满 → API 返回 ResourceExhausted | P0 |
 | `metaxisdata_quality_rule_executions_total` | counter | `rule_type,status` | `executeBatch` 的 per-execution 循环，在终态写入成功后 | 一次执行一条；状态是六态判定（含 SKIPPED/NOT_EVALUATED） | P0 |
 | `metaxisdata_quality_rule_execution_duration_seconds` | histogram | `rule_type` | 同上，用 `result.DurationMS`（从 runner 拾起到写完判定） | 单规则端到端（建连+聚合+采样+判定），不含准入等待；目标库耗时看 `query_readonly_*` | P0 |

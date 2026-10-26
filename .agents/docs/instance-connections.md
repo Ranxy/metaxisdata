@@ -19,7 +19,7 @@ governor 不是计数器，而是**公平、带优先级、可阻塞的队列**�
 | --- | --- | --- |
 | schemasync | 把库放回队列，下个 tick 重试 | 语义正确，但每个 tick 最多 100 个 goroutine 抢 10 个 slot，绝大多数直接失败重排 |
 | 连通性测试 | `ResourceExhausted` | 可接受，但没有等待 |
-| qualityrunner | **每条规则写一条 `ERROR(QUOTA)` 结果，并给管理员发执行失败通知** | 把竞争记录成规则故障；且 `next_run_at` 已推进，这次检查直接丢失 |
+| qualityrunner | **每条规则写一条 `ERROR(QUOTA)` 结果，并给管理员发执行失败通知** | 把竞争记录成规则故障；且目标的 `next_run_at` 已推进，这次检查直接丢失 |
 
 竞争是结构性的：database checker 每 10s 为每个待同步库起一个 goroutine（全局上限 100），每个都在实例的 10 个 slot 上 try-acquire；定时/手动 DQ 批次与 UI 的测试连接又在同一预算上竞争。没有等待队列时，失败者只能报错。
 
@@ -63,7 +63,7 @@ governor 不是计数器，而是**公平、带优先级、可阻塞的队列**�
 | 调用方 | API | 优先级 | 等待预算 | 拿不到时 |
 | --- | --- | --- | --- | --- |
 | schemasync database checker 的库同步 | `TryAcquire` | Background | 0 | 库保持排队，下个 tick 重试；不算失败、不推进退避 |
-| 定时 DQ 批次 | `Acquire` | Background | 2m（`scheduledAdmissionWait`） | 批次与执行行都不创建、不写结果、不通知；规则保持 due，下个 tick 重试 |
+| 定时 DQ 批次 | `Acquire` | Background | 2m（`scheduledAdmissionWait`） | 批次与执行行都不创建、不写结果、不通知；目标保持 due；同实例本轮剩余的 due 目标也留到下个 tick |
 | 手动 DQ 批次 | `Acquire` | Manual | 5m（`manualAdmissionWait`） | 已规划的 PENDING 执行行（连同内部批次）标 `ABANDONED` 并记日志 |
 | 连通性测试 | `Acquire` | Interactive | 5s（`dataSourceConnectionWait`） | `ResourceExhausted`：实例连接忙，稍后重试 |
 | 规则干跑探测（`PreviewQualityRule` 的 `LIMIT 0`） | `Acquire` | Interactive | 3s（`qualityPreviewConnectionWait`） | `ResourceExhausted`：稍后重试干跑 |
@@ -74,7 +74,7 @@ governor 不是计数器，而是**公平、带优先级、可阻塞的队列**�
 一个批次的执行对同一实例串行执行，任意时刻至多一个会话，所以一个批次只需要一个 lease；在创建批次、规划执行之前一次拿到，批次中途就不会再出现准入失败，`QUOTA` 也就不可能成为执行结果。由此：
 
 - 同一实例的批次天然串行；`maxConcurrentInstanceBatches` 只约束不同实例。
-- 拿不到 lease 的定时批次不会留下任何行：不建批次、不规划执行，规则的 `next_run_at` 本来就未推进，下个 tick 自然重试。
+- 拿不到 lease 的定时批次不会留下任何行：不建批次、不规划执行，目标的 `next_run_at` 本来就未推进；同一实例本轮剩余的 due 目标也不再尝试，统一留到下个 tick，避免每个目标各等一次 2 分钟。
 - lease 覆盖查询与每条执行的终态写入；执行循环一结束就释放，问题迁移与通知都不再持有 slot。
 - 规则在准入后改到别的实例时，`ruleConnectionLease` 只对目标实例 try-acquire 一次：拿不到就记 `SKIPPED`（下个排期再跑），而不是在持有当前批次 lease 的情况下阻塞等待，避免两个并发批次互相等待对方的实例。
 - 手动批次的准入等待发生在 runner 主循环里（批次本就是串行执行），因此等待期间到期扫描会暂停；这是“用户请求优先 + 主循环简单”的取舍。
@@ -87,14 +87,14 @@ governor 不是计数器，而是**公平、带优先级、可阻塞的队列**�
 ## 4. 为什么没有持久化队列
 
 - 部署是单副本（[runner.md](runner.md)）；`quality_execution` 行本身就是手动运行的持久记录：排队期间是 `PENDING`，执行页可见。`quality_run` 只是内部派发批次，不对外。进程重启后由启动清扫把 15 分钟前的 `PENDING/RUNNING` 执行与批次标 `ABANDONED`，不补跑。
-- 定时批次的“队列”就是 `next_run_at`：拿不到 lease 时规则保持 due，下一个 10s tick 自然重试。
+- 定时批次的“队列”就是目标的 `quality_target_schedule.next_run_at`：拿不到 lease 时目标保持 due，下一个 10s tick 自然重试。
 - 多副本需要数据库 lease 或跨进程队列，属于明确非目标。
 
 ## 5. 失败模式
 
 | 场景 | 行为 |
 | --- | --- |
-| 实例预算被 10 个库同步占满，定时 DQ 批次到期 | 批次在队列里等（≤2m）；有 slot 释放就立刻开始，否则本 tick 放弃、规则保持 due |
+| 实例预算被 10 个库同步占满，定时 DQ 批次到期 | 批次在队列里等（≤2m）；有 slot 释放就立刻开始，否则本 tick 放弃、目标保持 due，同实例其余目标也留到下一 tick |
 | 同上，但用户手动触发 | 执行行先 `PENDING` 排队（≤5m）；超时执行与批次标 `ABANDONED`，用户可在执行页看到 |
 | 用户点“测试连接”时预算被占满 | 排队 ≤5s；仍拿不到返回 `ResourceExhausted`，不打开未计量的连接 |
 | 等待期间服务关闭 | ctx 取消，等待者出队；已规划的 PENDING 手动执行与批次由 `abandonUnadmittedBatch` 用 detached ctx 写盘收尾。若进程被强杀，残留的 PENDING 执行要等到某次启动时已超过 15 分钟才被清扫（启动清扫的 cutoff 是 15 分钟，故意避开刚启动时 API 新建的行） |

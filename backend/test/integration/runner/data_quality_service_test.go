@@ -13,6 +13,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -2885,6 +2886,59 @@ func TestDataQualityRunsRealServerIntegration(t *testing.T) {
 	require.NotNil(t, scheduled.Msg.GetSummary().GetSchedule().GetNextRunTime())
 	require.True(t, scheduled.Msg.GetSummary().GetSchedule().GetNextRunTime().AsTime().After(time.Now()),
 		"the scheduled pass advanced the target's next slot")
+
+	// A customized target cadence survives the target being reactivated: pause
+	// every enabled check, then create a new one. The new schedule must use the
+	// target's stored interval, not the workspace default.
+	updatedSchedule, err := fixture.dataQuality.UpdateQualityTargetSchedule(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.UpdateQualityTargetScheduleRequest{
+			Parent:           "workspaces/-",
+			TargetGuid:       fixture.usersGUID,
+			MetaType:         v1pb.MetaType_TABLE,
+			ScheduleInterval: durationpb.New(6 * time.Hour),
+		}))
+	require.NoError(t, err, "update the target schedule")
+	require.Equal(t, 6*time.Hour, updatedSchedule.Msg.GetScheduleInterval().AsDuration())
+	pauseRule := func(name string) {
+		t.Helper()
+		_, err := fixture.dataQuality.UpdateQualityRule(fixture.ctx,
+			withToken(fixture.env.AdminToken(), &v1pb.UpdateQualityRuleRequest{
+				Rule: &v1pb.QualityRule{
+					Name:  name,
+					State: v1pb.QualityRuleState_QUALITY_RULE_STATE_PAUSED,
+				},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"state"}},
+			}))
+		require.NoError(t, err, "pause %s", name)
+	}
+	pauseRule(usersRule.GetName())
+	pauseRule(usersNullRule.GetName())
+	pausedDetail, err := fixture.dataQuality.GetQualityTarget(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.GetQualityTargetRequest{
+			Parent:     "workspaces/-",
+			TargetGuid: fixture.usersGUID,
+			MetaType:   v1pb.MetaType_TABLE,
+		}))
+	require.NoError(t, err)
+	require.Equal(t, 6*time.Hour, pausedDetail.Msg.GetSummary().GetSchedule().GetScheduleInterval().AsDuration())
+	require.Nil(t, pausedDetail.Msg.GetSummary().GetSchedule().GetNextRunTime(),
+		"pausing the last enabled check clears the target's next run")
+	// Creating a check while every check is paused initializes the target's next
+	// run from the row's own 6h interval.
+	fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		fixture.usersGUID, qualityRowCountConfig(1))
+	reactivated, err := fixture.dataQuality.GetQualityTarget(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.GetQualityTargetRequest{
+			Parent:     "workspaces/-",
+			TargetGuid: fixture.usersGUID,
+			MetaType:   v1pb.MetaType_TABLE,
+		}))
+	require.NoError(t, err)
+	require.Equal(t, 6*time.Hour, reactivated.Msg.GetSummary().GetSchedule().GetScheduleInterval().AsDuration())
+	require.WithinDuration(t, time.Now().Add(6*time.Hour),
+		reactivated.Msg.GetSummary().GetSchedule().GetNextRunTime().AsTime(), 2*time.Minute,
+		"a reactivated target keeps its stored cadence for the first slot")
 
 	// A run name from another resource shape is rejected.
 	_, err = fixture.dataQuality.GetQualityRun(fixture.ctx,
