@@ -5601,6 +5601,171 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityTargets:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                List the targets (tables or views) that have quality rules, one row per
+                 target. The counts, the worst latest result and the pending draft tally are
+                 aggregated by the database, so the directory does not page through every
+                 rule to answer "which table needs attention?".
+            operationId: DataQualityService_ListQualityTargets
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: |-
+                    The maximum number of targets to return. If unspecified, at most 50 are
+                     returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  description: A page token, received from a previous ListQualityTargets call.
+                  schema:
+                    type: string
+                - name: instance
+                  in: query
+                  description: |-
+                    The following four filters are GUID path prefixes, the same shape as
+                     ListQualityRules: a target matches when its GUID starts with the prefix.
+                  schema:
+                    type: string
+                - name: database
+                  in: query
+                  schema:
+                    type: string
+                - name: schema
+                  in: query
+                  schema:
+                    type: string
+                - name: table
+                  in: query
+                  schema:
+                    type: string
+                - name: search
+                  in: query
+                  description: A case-insensitive substring over the target's path and GUID.
+                  schema:
+                    type: string
+                - name: worstStatus
+                  in: query
+                  description: |-
+                    Only targets whose worst latest result is this status. UNSPECIFIED keeps
+                     every target, including those whose rules have not run yet.
+                  schema:
+                    enum:
+                        - QUALITY_STATUS_UNSPECIFIED
+                        - QUALITY_STATUS_PASS
+                        - QUALITY_STATUS_WARN
+                        - QUALITY_STATUS_FAIL
+                        - QUALITY_STATUS_ERROR
+                        - QUALITY_STATUS_SKIPPED
+                        - QUALITY_STATUS_NOT_EVALUATED
+                    type: string
+                    format: enum
+                - name: hasOpenIssue
+                  in: query
+                  description: Only targets with at least one unresolved issue.
+                  schema:
+                    type: boolean
+                - name: hasPendingDraft
+                  in: query
+                  description: Only targets with at least one pending AI draft.
+                  schema:
+                    type: boolean
+                - name: orderBy
+                  in: query
+                  schema:
+                    enum:
+                        - QUALITY_TARGET_ORDER_UNSPECIFIED
+                        - QUALITY_TARGET_ORDER_ATTENTION
+                        - QUALITY_TARGET_ORDER_NAME
+                        - QUALITY_TARGET_ORDER_RULE_COUNT
+                        - QUALITY_TARGET_ORDER_LAST_RUN
+                    type: string
+                    format: enum
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListQualityTargetsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityTargets:get:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                Read one target's workspace: its rules (with their latest results), the
+                 pending AI drafts and the unresolved issues, in one call. The target is
+                 named by GUID because a target is not a resource of its own.
+            operationId: DataQualityService_GetQualityTarget
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: targetGuid
+                  in: query
+                  description: The target's metadata GUID. Required.
+                  schema:
+                    type: string
+                - name: metaType
+                  in: query
+                  description: |-
+                    The target's object type. Optional when rules already exist, because their
+                     own target carries it; required to resolve a target that has no rules yet.
+                  schema:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - APPLICATION_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - OPENLINEAGE
+                    type: string
+                    format: enum
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetQualityTargetResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
 components:
     schemas:
         APIKey:
@@ -7973,6 +8138,33 @@ components:
                     description: |-
                         The classifier code of the failure, so the client can show its hint even
                          when the raw bodies are gone.
+        GetQualityTargetResponse:
+            type: object
+            properties:
+                summary:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityTargetSummary'
+                    description: The target's health summary, the same shape the directory lists.
+                qualityRules:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityRule'
+                    description: Every live rule on the target, with its latest result.
+                openIssues:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityIssue'
+                    description: |-
+                        Unresolved issues (OPEN or ACKNOWLEDGED) opened by the target's rules.
+
+                         AI drafts are deliberately absent: reading them needs the suggest
+                         permission, which this RPC does not require, so the client reads the queue
+                         separately when it holds it.
+                orphanedReason:
+                    type: string
+                    description: |-
+                        Why the target no longer resolves; empty while healthy. The rules stay
+                         readable when it is set, because their target path is a snapshot.
         GetUnreadNotificationCountResponse:
             type: object
             properties:
@@ -8796,6 +8988,15 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/QualitySuggestion'
+                nextPageToken:
+                    type: string
+        ListQualityTargetsResponse:
+            type: object
+            properties:
+                qualityTargets:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityTargetSummary'
                 nextPageToken:
                     type: string
         ListRolesResponse:
@@ -10855,6 +11056,64 @@ components:
             description: |-
                 QualityTargetPath is the display snapshot of where a target lived when the
                  rule was saved.
+        QualityTargetSummary:
+            type: object
+            properties:
+                target:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityTarget'
+                    description: |-
+                        The target, named by GUID and object type. Its path is the snapshot stored
+                         with the rules; the column list is empty here.
+                ruleCount:
+                    type: integer
+                    description: Live rules only; archived rules are excluded.
+                    format: int32
+                enabledRuleCount:
+                    type: integer
+                    format: int32
+                pausedRuleCount:
+                    type: integer
+                    format: int32
+                columnCount:
+                    type: integer
+                    description: Distinct columns the target's rules read.
+                    format: int32
+                openIssueCount:
+                    type: integer
+                    format: int32
+                pendingDraftCount:
+                    type: integer
+                    format: int32
+                pendingLabelCount:
+                    type: integer
+                    format: int32
+                worstStatus:
+                    enum:
+                        - QUALITY_STATUS_UNSPECIFIED
+                        - QUALITY_STATUS_PASS
+                        - QUALITY_STATUS_WARN
+                        - QUALITY_STATUS_FAIL
+                        - QUALITY_STATUS_ERROR
+                        - QUALITY_STATUS_SKIPPED
+                        - QUALITY_STATUS_NOT_EVALUATED
+                    type: string
+                    description: |-
+                        The worst latest result across the target's rules; UNSPECIFIED when no rule
+                         has run yet. ERROR outranks FAIL: a check that could not run needs attention
+                         more than one whose data failed.
+                    format: enum
+                lastRunTime:
+                    type: string
+                    format: date-time
+                schemaChanged:
+                    type: boolean
+                    description: |-
+                        Whether at least one rule was saved against a different target schema hash
+                         than the registry currently records.
+            description: |-
+                QualityTargetSummary is one row of the target directory: the target identity
+                 plus the counts and health the row and the workspace header render.
         QualityThresholds:
             type: object
             properties:

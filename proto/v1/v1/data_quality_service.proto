@@ -308,6 +308,23 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
   }
 
+  // List the targets (tables or views) that have quality rules, one row per
+  // target. The counts, the worst latest result and the pending draft tally are
+  // aggregated by the database, so the directory does not page through every
+  // rule to answer "which table needs attention?".
+  rpc ListQualityTargets(ListQualityTargetsRequest) returns (ListQualityTargetsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityTargets"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+  }
+
+  // Read one target's workspace: its rules (with their latest results), the
+  // pending AI drafts and the unresolved issues, in one call. The target is
+  // named by GUID because a target is not a resource of its own.
+  rpc GetQualityTarget(GetQualityTargetRequest) returns (GetQualityTargetResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityTargets:get"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+  }
+
   // Read today's data quality LLM usage and the effective limits (the workspace
   // settings, with server defaults resolved). The counters are process state: a
   // restart resets them and they roll over at 00:00 UTC.
@@ -2125,4 +2142,117 @@ message QualityTrendPoint {
   int32 skipped = 6;
   int32 not_evaluated = 7;
   int32 total = 8;
+}
+
+// QualityTargetOrder is how the target directory is ordered.
+enum QualityTargetOrder {
+  QUALITY_TARGET_ORDER_UNSPECIFIED = 0;
+  // Worst latest result first, then open issues, then pending drafts.
+  QUALITY_TARGET_ORDER_ATTENTION = 1;
+  // The target's object name, ascending.
+  QUALITY_TARGET_ORDER_NAME = 2;
+  // Most rules first.
+  QUALITY_TARGET_ORDER_RULE_COUNT = 3;
+  // Most recent run first; targets that never ran come last.
+  QUALITY_TARGET_ORDER_LAST_RUN = 4;
+}
+
+message ListQualityTargetsRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The maximum number of targets to return. If unspecified, at most 50 are
+  // returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+  int32 page_size = 2;
+
+  // A page token, received from a previous ListQualityTargets call.
+  string page_token = 3;
+
+  // The following four filters are GUID path prefixes, the same shape as
+  // ListQualityRules: a target matches when its GUID starts with the prefix.
+  string instance = 4;
+  string database = 5;
+  string schema = 6;
+  string table = 7;
+
+  // A case-insensitive substring over the target's path and GUID.
+  string search = 8;
+
+  // Only targets whose worst latest result is this status. UNSPECIFIED keeps
+  // every target, including those whose rules have not run yet.
+  QualityStatus worst_status = 9;
+
+  // Only targets with at least one unresolved issue.
+  bool has_open_issue = 10;
+
+  // Only targets with at least one pending AI draft.
+  bool has_pending_draft = 11;
+
+  QualityTargetOrder order_by = 12;
+}
+
+message ListQualityTargetsResponse {
+  repeated QualityTargetSummary quality_targets = 1;
+  string next_page_token = 2;
+}
+
+// QualityTargetSummary is one row of the target directory: the target identity
+// plus the counts and health the row and the workspace header render.
+message QualityTargetSummary {
+  // The target, named by GUID and object type. Its path is the snapshot stored
+  // with the rules; the column list is empty here.
+  QualityTarget target = 1;
+
+  // Live rules only; archived rules are excluded.
+  int32 rule_count = 2;
+  int32 enabled_rule_count = 3;
+  int32 paused_rule_count = 4;
+
+  // Distinct columns the target's rules read.
+  int32 column_count = 5;
+
+  int32 open_issue_count = 6;
+  int32 pending_draft_count = 7;
+  int32 pending_label_count = 8;
+
+  // The worst latest result across the target's rules; UNSPECIFIED when no rule
+  // has run yet. ERROR outranks FAIL: a check that could not run needs attention
+  // more than one whose data failed.
+  QualityStatus worst_status = 9;
+  google.protobuf.Timestamp last_run_time = 10;
+
+  // Whether at least one rule was saved against a different target schema hash
+  // than the registry currently records.
+  bool schema_changed = 11;
+}
+
+message GetQualityTargetRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The target's metadata GUID. Required.
+  string target_guid = 2 [(google.api.field_behavior) = REQUIRED];
+
+  // The target's object type. Optional when rules already exist, because their
+  // own target carries it; required to resolve a target that has no rules yet.
+  MetaType meta_type = 3;
+}
+
+message GetQualityTargetResponse {
+  // The target's health summary, the same shape the directory lists.
+  QualityTargetSummary summary = 1;
+
+  // Every live rule on the target, with its latest result.
+  repeated QualityRule quality_rules = 2;
+
+  // Unresolved issues (OPEN or ACKNOWLEDGED) opened by the target's rules.
+  //
+  // AI drafts are deliberately absent: reading them needs the suggest
+  // permission, which this RPC does not require, so the client reads the queue
+  // separately when it holds it.
+  repeated QualityIssue open_issues = 3;
+
+  // Why the target no longer resolves; empty while healthy. The rules stay
+  // readable when it is set, because their target path is a snapshot.
+  string orphaned_reason = 4;
 }

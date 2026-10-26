@@ -9,7 +9,9 @@ import TargetDraftCard from "@/components/data-quality/TargetDraftCard.vue";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
+  GetQualityTargetResponseSchema,
   NullPercentConfigSchema,
+  type QualityIssue,
   QualityIssueSchema,
   QualityIssueStatus,
   type QualityRule,
@@ -19,11 +21,14 @@ import {
   QualityRuleType,
   QualitySeverity,
   QualityStatus,
+  type QualitySuggestion,
   QualitySuggestionKind,
   QualitySuggestionSchema,
   QualitySuggestionStatus,
   QualityTargetPathSchema,
   QualityTargetSchema,
+  type QualityTargetSummary,
+  QualityTargetSummarySchema,
   RowCountConfigSchema,
   UniqueCombinationConfigSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
@@ -32,9 +37,8 @@ import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
 import DataQualityTargetPage from "./DataQualityTargetPage.vue";
 
 const mocks = vi.hoisted(() => ({
-  listQualityRules: vi.fn(),
+  getQualityTarget: vi.fn(),
   listQualitySuggestions: vi.fn(),
-  listQualityIssues: vi.fn(),
   runQualityRules: vi.fn(),
   createQualityRule: vi.fn(),
   updateQualitySuggestion: vi.fn(),
@@ -43,9 +47,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/api/data-quality", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/data-quality")>()),
-  listQualityRules: mocks.listQualityRules,
+  getQualityTarget: mocks.getQualityTarget,
   listQualitySuggestions: mocks.listQualitySuggestions,
-  listQualityIssues: mocks.listQualityIssues,
   runQualityRules: mocks.runQualityRules,
   createQualityRule: mocks.createQualityRule,
   updateQualitySuggestion: mocks.updateQualitySuggestion,
@@ -72,10 +75,10 @@ const PERMISSIONS = [
   "metaxisdata.dataQuality.issues.get",
 ];
 
-function target(column = "") {
+function target(column = "", metaType = MetaType.TABLE) {
   return create(QualityTargetSchema, {
     metaGuid: TARGET,
-    metaType: MetaType.TABLE,
+    metaType,
     path: create(QualityTargetPathSchema, {
       instance: "prod",
       database: "shop",
@@ -158,6 +161,65 @@ function rulesFixture() {
   ];
 }
 
+function summaryFixture(
+  options: {
+    metaType?: MetaType;
+    ruleCount?: number;
+    enabledRuleCount?: number;
+    openIssueCount?: number;
+    pendingDraftCount?: number;
+    schemaChanged?: boolean;
+    withPath?: boolean;
+  } = {}
+): QualityTargetSummary {
+  return create(QualityTargetSummarySchema, {
+    target: create(QualityTargetSchema, {
+      metaGuid: TARGET,
+      metaType: options.metaType ?? MetaType.TABLE,
+      path:
+        options.withPath === false
+          ? undefined
+          : create(QualityTargetPathSchema, {
+              instance: "prod",
+              database: "shop",
+              schema: "public",
+              object: "orders",
+            }),
+    }),
+    ruleCount: options.ruleCount ?? 3,
+    enabledRuleCount: options.enabledRuleCount ?? options.ruleCount ?? 3,
+    pausedRuleCount: 0,
+    columnCount: 1,
+    openIssueCount: options.openIssueCount ?? 0,
+    pendingDraftCount: options.pendingDraftCount ?? 0,
+    pendingLabelCount: 0,
+    worstStatus: QualityStatus.ERROR,
+    lastRunTime: timestampFromDate(new Date()),
+    schemaChanged: options.schemaChanged ?? false,
+  });
+}
+
+function response(
+  options: {
+    summary?: QualityTargetSummary;
+    rules?: QualityRule[];
+    issues?: QualityIssue[];
+    orphanedReason?: string;
+  } = {}
+) {
+  return create(GetQualityTargetResponseSchema, {
+    summary: options.summary ?? summaryFixture(),
+    qualityRules: options.rules ?? rulesFixture(),
+    openIssues: options.issues ?? [],
+    orphanedReason: options.orphanedReason ?? "",
+  });
+}
+
+/** The pending-draft queue the suggest-capable reader loads separately. */
+function draftPage(suggestions: QualitySuggestion[]) {
+  return { items: suggestions, nextPageToken: "" };
+}
+
 function draftSuggestion(
   name: string,
   title: string,
@@ -215,7 +277,8 @@ function issueFixture() {
 }
 
 async function mountPage(
-  path = `/data-quality/targets/${TARGET.split(";").join("/")}`
+  path = `/data-quality/targets/${TARGET.split(";").join("/")}`,
+  permissions = PERMISSIONS
 ) {
   const router = createRouter({
     history: createMemoryHistory(),
@@ -277,7 +340,7 @@ async function mountPage(
   await router.isReady();
   const pinia = createPinia();
   setActivePinia(pinia);
-  useAuthStore().user = create(UserSchema, { permissions: PERMISSIONS });
+  useAuthStore().user = create(UserSchema, { permissions });
   const wrapper = mount(DataQualityTargetPage, {
     attachTo: document.body,
     global: { plugins: [router, i18n, pinia] },
@@ -308,15 +371,8 @@ describe("DataQualityTargetPage", () => {
     vi.clearAllMocks();
     document.body.innerHTML = "";
     i18n.global.locale.value = "en-US";
-    mocks.listQualityRules.mockResolvedValue({
-      items: rulesFixture(),
-      nextPageToken: "",
-    });
+    mocks.getQualityTarget.mockResolvedValue(response());
     mocks.listQualitySuggestions.mockResolvedValue({
-      items: [],
-      nextPageToken: "",
-    });
-    mocks.listQualityIssues.mockResolvedValue({
       items: [],
       nextPageToken: "",
     });
@@ -345,28 +401,26 @@ describe("DataQualityTargetPage", () => {
     });
   });
 
-  it("reads the target's rules in dataset, cross-column and per-column sections", async () => {
-    mocks.listQualityIssues.mockResolvedValue({
-      items: [issueFixture()],
-      nextPageToken: "",
-    });
-    const { wrapper } = await mountPage();
-
-    // All three reads are scoped to this one target.
-    expect(mocks.listQualityRules).toHaveBeenCalledWith({
-      targetGuid: TARGET,
-      pageSize: 1000,
-    });
-    expect(mocks.listQualitySuggestions).toHaveBeenCalledWith(
-      expect.objectContaining({
-        targetGuid: TARGET,
-        status: QualitySuggestionStatus.PENDING,
-        pageSize: 1000,
+  it("reads the target's whole workspace in one call and groups its rules", async () => {
+    mocks.getQualityTarget.mockResolvedValue(
+      response({
+        summary: summaryFixture({ openIssueCount: 1 }),
+        issues: [issueFixture()],
       })
     );
-    expect(mocks.listQualityIssues).toHaveBeenCalledWith(
-      expect.objectContaining({ targetGuid: TARGET, pageSize: 1000 })
-    );
+    const { wrapper } = await mountPage();
+
+    // One aggregate read; the server derives the meta type from the rules.
+    expect(mocks.getQualityTarget).toHaveBeenCalledWith({
+      targetGuid: TARGET,
+      metaType: MetaType.UNSPECIFIED,
+    });
+    // Drafts are a separate read because they need the suggest permission.
+    expect(mocks.listQualitySuggestions).toHaveBeenCalledWith({
+      targetGuid: TARGET,
+      status: QualitySuggestionStatus.PENDING,
+      pageSize: 1000,
+    });
 
     const text = wrapper.text();
     // The section order is dataset → cross-column → columns, matching the way a
@@ -399,6 +453,7 @@ describe("DataQualityTargetPage", () => {
       label("dataQuality.workspace.summaryIssues", { count: 1 })
     );
     expect(text).toContain("prod · shop · public");
+    expect(text).toContain(label("dataQuality.workspace.kindTable"));
 
     // The open issue is named by the rule that opened it, not by its id.
     expect(text).toContain("Row count floor");
@@ -424,13 +479,19 @@ describe("DataQualityTargetPage", () => {
   });
 
   it("renders AI drafts inline and marks the ones a pass just returned", async () => {
-    mocks.listQualitySuggestions.mockResolvedValue({
-      items: [
+    mocks.getQualityTarget.mockResolvedValue(
+      response({ summary: summaryFixture({ pendingDraftCount: 1 }) })
+    );
+    mocks.listQualitySuggestions.mockResolvedValue(
+      draftPage([
         draftSuggestion(DRAFT_EMAIL, "Emails must not be empty", "email"),
-      ],
-      nextPageToken: "",
-    });
+      ])
+    );
     const { wrapper } = await mountPage();
+
+    expect(wrapper.text()).toContain(
+      label("dataQuality.workspace.summaryDrafts", { count: 1 })
+    );
 
     const existing = wrapper.findAllComponents(TargetDraftCard);
     expect(existing).toHaveLength(1);
@@ -453,7 +514,8 @@ describe("DataQualityTargetPage", () => {
     await flushPromises();
 
     // The new draft joins the column section the pass filed it under, and only
-    // the returned rows carry the transient highlight.
+    // the returned rows carry the transient highlight. The header count follows
+    // the local queue without re-reading the workspace.
     const drafts = wrapper.findAllComponents(TargetDraftCard);
     const created = drafts.find((card) =>
       card.text().includes("Amounts stay in range")
@@ -467,16 +529,22 @@ describe("DataQualityTargetPage", () => {
         ?.classes()
     ).toContain("ring-1");
     expect(wrapper.text()).toContain("amount");
+    expect(wrapper.text()).toContain(
+      label("dataQuality.workspace.summaryDrafts", { count: 2 })
+    );
+    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(1);
     wrapper.unmount();
   });
 
-  it("creates a rule from a draft and keeps the local workspace in sync", async () => {
-    mocks.listQualitySuggestions.mockResolvedValue({
-      items: [
+  it("creates a rule from a draft and adjusts the summary counts in place", async () => {
+    mocks.getQualityTarget.mockResolvedValue(
+      response({ summary: summaryFixture({ pendingDraftCount: 1 }) })
+    );
+    mocks.listQualitySuggestions.mockResolvedValue(
+      draftPage([
         draftSuggestion(DRAFT_EMAIL, "Emails must not be empty", "email"),
-      ],
-      nextPageToken: "",
-    });
+      ])
+    );
     const { wrapper } = await mountPage();
 
     buttonByText(label("dataQuality.workspace.draftAccept"))?.click();
@@ -490,35 +558,46 @@ describe("DataQualityTargetPage", () => {
     expect(suggestionName).toBe(DRAFT_EMAIL);
     expect(createdRule.title).toBe("Emails must not be empty");
 
-    // The draft card is gone and the created rule is rendered without a refetch.
+    // The draft card is gone, the created rule is rendered and the header counts
+    // moved with it; nothing re-reads the workspace.
     expect(wrapper.findAllComponents(TargetDraftCard)).toHaveLength(0);
     expect(wrapper.text()).toContain("Created from draft");
-    expect(mocks.listQualityRules).toHaveBeenCalledTimes(1);
+    expect(wrapper.text()).toContain(
+      label("dataQuality.workspace.summaryRules", { count: 4 })
+    );
+    expect(wrapper.text()).toContain(
+      label("dataQuality.workspace.summaryDrafts", { count: 0 })
+    );
+    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(1);
     wrapper.unmount();
   });
 
-  it("degrades the drafts and issues regions without losing the rules", async () => {
-    mocks.listQualitySuggestions.mockRejectedValue(
-      new ConnectError("drafts down", Code.Internal)
+  it("drops a rejected draft and decrements the draft count", async () => {
+    mocks.getQualityTarget.mockResolvedValue(
+      response({ summary: summaryFixture({ pendingDraftCount: 1 }) })
     );
-    mocks.listQualityIssues.mockRejectedValue(
-      new ConnectError("issues down", Code.Internal)
+    mocks.listQualitySuggestions.mockResolvedValue(
+      draftPage([
+        draftSuggestion(DRAFT_EMAIL, "Emails must not be empty", "email"),
+      ])
     );
     const { wrapper } = await mountPage();
 
-    expect(wrapper.text()).toContain("Row count floor");
+    buttonByText(label("dataQuality.workspace.draftIgnore"))?.click();
+    await flushPromises();
+
+    expect(mocks.updateQualitySuggestion).toHaveBeenCalledTimes(1);
+    expect(wrapper.findAllComponents(TargetDraftCard)).toHaveLength(0);
     expect(wrapper.text()).toContain(
-      label("dataQuality.workspace.draftsLoadFailed")
+      label("dataQuality.workspace.summaryDrafts", { count: 0 })
     );
-    expect(wrapper.text()).toContain(
-      label("dataQuality.workspace.issuesLoadFailed")
-    );
+    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(1);
     wrapper.unmount();
   });
 
-  it("keeps the page behind its own error when the rules read fails, and retries", async () => {
-    mocks.listQualityRules.mockRejectedValue(
-      new ConnectError("rules down", Code.Internal)
+  it("shows the page error when the aggregate read fails, and retries", async () => {
+    mocks.getQualityTarget.mockRejectedValue(
+      new ConnectError("target down", Code.Internal)
     );
     const { wrapper } = await mountPage();
 
@@ -529,14 +608,22 @@ describe("DataQualityTargetPage", () => {
     expect(retry).toBeDefined();
     retry?.click();
     await flushPromises();
-    expect(mocks.listQualityRules).toHaveBeenCalledTimes(2);
+    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(2);
     wrapper.unmount();
   });
 
-  it("explains an empty target and offers the first rule", async () => {
-    mocks.listQualityRules.mockResolvedValue({ items: [], nextPageToken: "" });
+  it("explains an empty target whose metadata still resolves", async () => {
+    mocks.getQualityTarget.mockResolvedValue(
+      response({
+        summary: summaryFixture({ ruleCount: 0, withPath: true }),
+        rules: [],
+      })
+    );
     const { wrapper } = await mountPage();
 
+    // The summary's registry path still names the target and its kind.
+    expect(wrapper.text()).toContain("orders");
+    expect(wrapper.text()).toContain(label("dataQuality.workspace.kindTable"));
     expect(wrapper.text()).toContain(
       label("dataQuality.workspace.noRulesTitle")
     );
@@ -554,14 +641,108 @@ describe("DataQualityTargetPage", () => {
     wrapper.unmount();
   });
 
+  it("survives a response without a summary", async () => {
+    mocks.getQualityTarget.mockResolvedValue(
+      create(GetQualityTargetResponseSchema, {
+        qualityRules: [],
+        openIssues: [],
+        orphanedReason: "",
+      })
+    );
+    const { wrapper } = await mountPage();
+
+    expect(wrapper.text()).toContain(
+      label("dataQuality.workspace.noRulesTitle")
+    );
+    expect(wrapper.text()).not.toContain(
+      label("dataQuality.workspace.rulesLoadFailed")
+    );
+    wrapper.unmount();
+  });
+
+  it("flags an orphaned target whose schema changed", async () => {
+    mocks.getQualityTarget.mockResolvedValue(
+      response({
+        summary: summaryFixture({ schemaChanged: true }),
+        orphanedReason: "table dropped",
+      })
+    );
+    const { wrapper } = await mountPage();
+
+    const text = wrapper.text();
+    expect(text).toContain(label("dataQuality.orphaned"));
+    expect(text).toContain(label("dataQuality.targetChanged"));
+    expect(text).toContain(label("dataQuality.workspace.targetMissingTitle"));
+    expect(text).toContain(label("dataQuality.workspace.targetMissingHint"));
+    wrapper.unmount();
+  });
+
   it("reads the target as the meta type the route names", async () => {
     const { wrapper } = await mountPage(
       `/data-quality/targets/${TARGET.split(";").join("/")}?metaType=${MetaType.VIEW}`
     );
 
-    // The GUID carries no object type, so the query decides how the target is
-    // named; without it the first rule's own meta type would be used.
+    // The query wins over the summary, so the page names the target as a view.
+    expect(mocks.getQualityTarget).toHaveBeenCalledWith({
+      targetGuid: TARGET,
+      metaType: MetaType.VIEW,
+    });
     expect(wrapper.text()).toContain(label("dataQuality.workspace.kindView"));
+    wrapper.unmount();
+  });
+
+  it("falls back to the first rule's meta type when the summary has none", async () => {
+    mocks.getQualityTarget.mockResolvedValue(
+      response({
+        summary: summaryFixture({ metaType: MetaType.UNSPECIFIED }),
+      })
+    );
+    const { wrapper } = await mountPage();
+
+    expect(wrapper.text()).toContain(label("dataQuality.workspace.kindTable"));
+    wrapper.unmount();
+  });
+
+  it("still degrades the drafts region when the refresh after a failed decision fails", async () => {
+    mocks.getQualityTarget.mockResolvedValue(
+      response({ summary: summaryFixture({ pendingDraftCount: 1 }) })
+    );
+    mocks.updateQualitySuggestion.mockRejectedValue(
+      new ConnectError("decision down", Code.Internal)
+    );
+    mocks.listQualitySuggestions
+      .mockResolvedValueOnce(
+        draftPage([
+          draftSuggestion(DRAFT_EMAIL, "Emails must not be empty", "email"),
+        ])
+      )
+      .mockRejectedValue(new ConnectError("drafts down", Code.Internal));
+    const { wrapper } = await mountPage();
+
+    buttonByText(label("dataQuality.workspace.draftIgnore"))?.click();
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("Row count floor");
+    expect(wrapper.text()).toContain(
+      label("dataQuality.workspace.draftsLoadFailed")
+    );
+    wrapper.unmount();
+  });
+
+  it("does not read the draft queue without the suggest permission", async () => {
+    const { wrapper } = await mountPage(
+      `/data-quality/targets/${TARGET.split(";").join("/")}`,
+      PERMISSIONS.filter(
+        (permission) => permission !== "metaxisdata.dataQuality.suggest"
+      )
+    );
+
+    // The aggregate read needs only the rules permission; a reader without the
+    // suggest permission never asks for the queue, so no draft request is made.
+    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(1);
+    expect(mocks.listQualitySuggestions).not.toHaveBeenCalled();
+    expect(wrapper.findAllComponents(TargetDraftCard)).toHaveLength(0);
+    expect(wrapper.text()).toContain("Row count floor");
     wrapper.unmount();
   });
 });

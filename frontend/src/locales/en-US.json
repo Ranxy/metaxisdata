@@ -1309,7 +1309,6 @@
       "draftsTitle": "AI drafts",
       "issuesEmpty": "No open issues.",
       "issuesHint": "Problems opened by this target's failing rules.",
-      "issuesLoadFailed": "Failed to load the issues.",
       "issuesTitle": "Open issues",
       "issuesViewAll": "All issues",
       "kindExternalTable": "External table",

@@ -24,7 +24,7 @@
 
       <template #title-extra>
         <Badge
-          v-if="summary.orphaned"
+          v-if="orphaned"
           variant="danger"
           :title="t('dataQuality.workspace.orphanedHint')"
         >
@@ -120,7 +120,7 @@
         </div>
 
         <p
-          v-if="summary.orphaned"
+          v-if="orphaned"
           class="text-xs text-danger"
         >
           {{ t("dataQuality.workspace.targetMissingTitle") }} —
@@ -240,7 +240,7 @@
               :target-guid="targetGuid"
               :meta-type="effectiveMetaType"
               :can-suggest="canSuggest"
-              :disabled-reason="summary.orphaned ? t('dataQuality.copilot.unavailable') : undefined"
+              :disabled-reason="orphaned ? t('dataQuality.copilot.unavailable') : undefined"
               @drafted="onDrafted"
             />
 
@@ -255,13 +255,7 @@
               </CardHeader>
               <CardContent class="pt-4">
                 <p
-                  v-if="issuesFailed"
-                  class="text-sm text-danger"
-                >
-                  {{ t("dataQuality.workspace.issuesLoadFailed") }}
-                </p>
-                <p
-                  v-else-if="visibleIssues.length === 0"
+                  v-if="visibleIssues.length === 0"
                   class="text-sm text-muted-foreground"
                 >
                   {{ t("dataQuality.workspace.issuesEmpty") }}
@@ -340,8 +334,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute } from "vue-router";
 import {
-  listQualityIssues,
-  listQualityRules,
+  getQualityTarget,
   listQualitySuggestions,
   runQualityRules,
 } from "@/api/data-quality";
@@ -365,27 +358,23 @@ import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
 import {
   type QualityIssue,
-  QualityIssueStatus,
   type QualityRule,
+  QualityRuleState,
   QualityStatus,
   type QualitySuggestion,
   type QualitySuggestionQueueSummary,
   QualitySuggestionStatus,
-  QualityTargetPathSchema,
+  type QualityTargetSummary,
+  QualityTargetSummarySchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
   qualityIssueStatusKey,
   qualityIssueStatusVariant,
 } from "@/utils/dataQuality";
-import {
-  isPendingDraft,
-  suggestionTargetPath,
-} from "@/utils/dataQualitySuggestion";
+import { isPendingDraft } from "@/utils/dataQualitySuggestion";
 import {
   groupTargetChecks,
-  type QualityTargetSummary,
-  summarizeQualityTargets,
   type TargetCheckSection,
   targetDisplayName,
   unresolvedIssuesByRule,
@@ -400,12 +389,15 @@ import { parseMetaType } from "@/utils/metaType";
  * field), with the AI copilot pinned beside them. Drafts appear inline under the
  * section they would join, so accepting one creates the rule exactly there.
  *
- * The three reads are independent: a failed suggestions or issues call degrades
- * one region rather than the page, while a failed rules call is the page's own
- * error because it is what the workspace is.
+ * One aggregate read supplies the health summary, the rules and the open issues;
+ * its failure is the page's own error because it is what the workspace is. AI
+ * drafts need the suggest permission the aggregate read does not require, so a
+ * suggest-capable reader loads that queue separately and a failed draft read
+ * degrades one region. Local decisions then adjust the summary counts in place
+ * rather than re-reading everything.
  */
 
-/** The page reads a target's whole rule set in one request. */
+/** The page re-reads the target's draft queue in one request. */
 const RULE_PAGE_SIZE = 1000;
 
 const { t, locale } = useI18n();
@@ -437,20 +429,31 @@ const canViewIssue = computed(() =>
 const rules = ref<QualityRule[]>([]);
 const suggestions = ref<QualitySuggestion[]>([]);
 const issues = ref<QualityIssue[]>([]);
+/** The server's health summary; adjusted in place by local draft decisions. */
+const summary = ref<QualityTargetSummary>(
+  create(QualityTargetSummarySchema, {})
+);
+const orphaned = ref(false);
 const loading = ref(true);
 const error = ref("");
 const draftsFailed = ref(false);
-const issuesFailed = ref(false);
 const runningAll = ref(false);
 const runningRule = ref("");
 const newNames = ref<Set<string>>(new Set());
 const copilot = ref<InstanceType<typeof TargetCopilotPanel>>();
 
-/** The metadata type the target is read as: the query wins, then the rules. */
+/**
+ * The metadata type the target is read as: the query wins, then the summary the
+ * server resolved, then the rules it returned, then the table default.
+ */
 const effectiveMetaType = computed<MetaType>(() => {
   const fromQuery = parseMetaType(route.query.metaType);
   if (fromQuery !== null) {
     return fromQuery;
+  }
+  const fromSummary = summary.value.target?.metaType;
+  if (fromSummary !== undefined && fromSummary !== MetaType.UNSPECIFIED) {
+    return fromSummary;
   }
   const fromRule = rules.value[0]?.target?.metaType;
   return fromRule !== undefined && fromRule !== MetaType.UNSPECIFIED
@@ -458,45 +461,10 @@ const effectiveMetaType = computed<MetaType>(() => {
     : MetaType.TABLE;
 });
 
-/** The health of this one target, with a path-only fallback before rules load. */
-const summary = computed<QualityTargetSummary>(() => {
-  const found = summarizeQualityTargets(
-    rules.value,
-    issues.value,
-    suggestions.value
-  ).find((item) => item.guid === targetGuid.value);
-  if (found) {
-    return found;
-  }
-  const path = suggestionTargetPath(targetGuid.value);
-  return {
-    guid: targetGuid.value,
-    metaType: effectiveMetaType.value,
-    path: create(QualityTargetPathSchema, {
-      instance: path.instance,
-      database: path.database,
-      schema: path.schema,
-      object: path.object,
-    }),
-    rules: [],
-    ruleCount: 0,
-    enabledCount: 0,
-    pausedCount: 0,
-    columns: [],
-    openIssueCount: 0,
-    pendingDraftCount: 0,
-    pendingLabelCount: 0,
-    worstStatus: undefined,
-    lastRunTime: undefined,
-    orphaned: false,
-    schemaChanged: false,
-  };
-});
-
 const displayName = computed(() => targetDisplayName(summary.value));
 
 const description = computed(() => {
-  const path = summary.value.path;
+  const path = summary.value.target?.path;
   const parts = [path?.instance, path?.database, path?.schema].filter(Boolean);
   return [...parts, kindLabel.value].filter(Boolean).join(" · ");
 });
@@ -533,25 +501,20 @@ const draftStripVisible = computed(
 
 const issuesByRule = computed(() => unresolvedIssuesByRule(issues.value));
 
-const openIssues = computed(() =>
-  issues.value.filter((issue) => issue.status !== QualityIssueStatus.RESOLVED)
-);
-
 /** The card previews the newest problems; the rest are one click away. */
 const ISSUE_PREVIEW_LIMIT = 5;
 const visibleIssues = computed(() =>
-  openIssues.value.slice(0, ISSUE_PREVIEW_LIMIT)
+  issues.value.slice(0, ISSUE_PREVIEW_LIMIT)
 );
 
 const passingCount = computed(
   () =>
-    summary.value.rules.filter(
-      (rule) => rule.lastResult?.status === QualityStatus.PASS
-    ).length
+    rules.value.filter((rule) => rule.lastResult?.status === QualityStatus.PASS)
+      .length
 );
 const failingCount = computed(
   () =>
-    summary.value.rules.filter((rule) => {
+    rules.value.filter((rule) => {
       const status = rule.lastResult?.status;
       return status === QualityStatus.FAIL || status === QualityStatus.ERROR;
     }).length
@@ -645,28 +608,6 @@ async function loadDrafts(ticket = loadTicket) {
   }
 }
 
-async function loadIssues(ticket = loadTicket) {
-  if (!canListIssues.value) {
-    return;
-  }
-  try {
-    const page = await listQualityIssues({
-      targetGuid: targetGuid.value,
-      pageSize: RULE_PAGE_SIZE,
-    });
-    if (ticket !== loadTicket) {
-      return;
-    }
-    issues.value = page.items;
-    issuesFailed.value = false;
-  } catch {
-    if (ticket !== loadTicket) {
-      return;
-    }
-    issuesFailed.value = true;
-  }
-}
-
 async function load() {
   const ticket = ++loadTicket;
   loading.value = true;
@@ -674,33 +615,35 @@ async function load() {
   rules.value = [];
   suggestions.value = [];
   issues.value = [];
+  summary.value = create(QualityTargetSummarySchema, {});
+  orphaned.value = false;
+  draftsFailed.value = false;
   newNames.value = new Set();
   const guid = targetGuid.value;
-  const rulesRead = listQualityRules({
-    targetGuid: guid,
-    pageSize: RULE_PAGE_SIZE,
-  }).then(
-    (page) => page.items,
-    (cause: unknown) => {
-      if (ticket === loadTicket) {
-        error.value = formatError(
-          cause,
-          "dataQuality.workspace.rulesLoadFailed"
-        );
-      }
-      return [];
+  const metaType = parseMetaType(route.query.metaType) ?? MetaType.UNSPECIFIED;
+  // Drafts need the suggest permission the aggregate read does not, so they are
+  // a second read that degrades on its own; start it alongside.
+  const draftsRead = loadDrafts(ticket);
+  try {
+    const response = await getQualityTarget({ targetGuid: guid, metaType });
+    if (ticket !== loadTicket) {
+      return;
     }
-  );
-  const [loadedRules] = await Promise.all([
-    rulesRead,
-    loadDrafts(ticket),
-    loadIssues(ticket),
-  ]);
-  if (ticket !== loadTicket) {
-    return;
+    summary.value = response.summary ?? create(QualityTargetSummarySchema, {});
+    rules.value = response.qualityRules;
+    issues.value = response.openIssues;
+    orphaned.value = response.orphanedReason !== "";
+  } catch (cause: unknown) {
+    if (ticket !== loadTicket) {
+      return;
+    }
+    error.value = formatError(cause, "dataQuality.workspace.rulesLoadFailed");
+  } finally {
+    await draftsRead;
+    if (ticket === loadTicket) {
+      loading.value = false;
+    }
   }
-  rules.value = loadedRules;
-  loading.value = false;
 }
 
 /** The copilot's drafts join the local queue without re-reading the full page. */
@@ -712,6 +655,7 @@ function onDrafted(
   const known = new Set(suggestions.value.map((item) => item.name));
   const added = drafted.filter((item) => !known.has(item.name));
   suggestions.value = [...added, ...suggestions.value];
+  summary.value.pendingDraftCount += added.length;
   // Refreshed proposals keep their identity and are not "new"; only the drafts
   // this pass actually added get the highlight.
   const addedNames = new Set(added.map((item) => item.name));
@@ -724,11 +668,23 @@ function onDraftAccepted(draft: QualitySuggestion, rule: QualityRule) {
   );
   newNames.value.delete(draft.name);
   rules.value = [...rules.value, rule];
+  summary.value.ruleCount += 1;
+  if (rule.state === QualityRuleState.ENABLED) {
+    summary.value.enabledRuleCount += 1;
+  }
+  summary.value.pendingDraftCount = Math.max(
+    0,
+    summary.value.pendingDraftCount - 1
+  );
 }
 
 function onDraftRejected(name: string) {
   suggestions.value = suggestions.value.filter((item) => item.name !== name);
   newNames.value.delete(name);
+  summary.value.pendingDraftCount = Math.max(
+    0,
+    summary.value.pendingDraftCount - 1
+  );
 }
 
 async function runAll() {

@@ -2291,3 +2291,99 @@ func TestQualitySuggestionReopenRollsBackTheClaimRealServerIntegration(t *testin
 	_, err = stores.ReopenQualitySuggestion(ctx, queued.ResourceID)
 	require.Error(t, err)
 }
+
+// TestDataQualityTargetDirectoryRealServerIntegration covers the P1 aggregate
+// reads: the directory groups rules by target in SQL, and one Get returns the
+// target's rules and health without the client paging through every rule.
+func TestDataQualityTargetDirectoryRealServerIntegration(t *testing.T) {
+	fixture := setupQualityMySQLFixture(t, true)
+	ordersGUID := waitForMetaGUIDByName(fixture.ctx, t, fixture.env,
+		fmt.Sprintf("%s;%s", fixture.instanceID, fixture.sourceDatabase),
+		storepb.MetaType_TABLE, "orders")
+
+	fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		fixture.usersGUID, qualityRowCountConfig(1))
+	fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_ERROR,
+		fixture.usersGUID, qualityRowCountConfig(2))
+	fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		ordersGUID, qualityRowCountConfig(1))
+
+	list := func(request *v1pb.ListQualityTargetsRequest) *v1pb.ListQualityTargetsResponse {
+		t.Helper()
+		response, err := fixture.dataQuality.ListQualityTargets(fixture.ctx,
+			withToken(fixture.env.AdminToken(), request))
+		require.NoError(t, err, "list the quality targets")
+		return response.Msg
+	}
+
+	response := list(&v1pb.ListQualityTargetsRequest{
+		Parent:   "workspaces/-",
+		PageSize: 100,
+		OrderBy:  v1pb.QualityTargetOrder_QUALITY_TARGET_ORDER_NAME,
+	})
+	require.Len(t, response.GetQualityTargets(), 2, "one row per target, not per rule")
+	byGUID := make(map[string]*v1pb.QualityTargetSummary, len(response.GetQualityTargets()))
+	for _, target := range response.GetQualityTargets() {
+		byGUID[target.GetTarget().GetMetaGuid()] = target
+	}
+	users := byGUID[fixture.usersGUID]
+	require.NotNil(t, users)
+	require.Equal(t, int32(2), users.GetRuleCount())
+	require.Equal(t, int32(2), users.GetEnabledRuleCount())
+	require.Equal(t, int32(0), users.GetPausedRuleCount())
+	require.Equal(t, "users", users.GetTarget().GetPath().GetObject())
+	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, users.GetWorstStatus(),
+		"no rule has run yet")
+	require.Nil(t, users.GetLastRunTime())
+	require.False(t, users.GetSchemaChanged())
+
+	orders := byGUID[ordersGUID]
+	require.NotNil(t, orders)
+	require.Equal(t, int32(1), orders.GetRuleCount())
+
+	// The search and the "worst status" filter both narrow the directory.
+	require.Len(t, list(&v1pb.ListQualityTargetsRequest{
+		Parent:   "workspaces/-",
+		PageSize: 100,
+		Search:   "orders",
+	}).GetQualityTargets(), 1)
+	require.Empty(t, list(&v1pb.ListQualityTargetsRequest{
+		Parent:      "workspaces/-",
+		PageSize:    100,
+		WorstStatus: v1pb.QualityStatus_QUALITY_STATUS_FAIL,
+	}).GetQualityTargets(), "nothing has run, so no target is failing")
+
+	// The page token pages the directory rather than the rules behind it.
+	paged := list(&v1pb.ListQualityTargetsRequest{Parent: "workspaces/-", PageSize: 1})
+	require.Len(t, paged.GetQualityTargets(), 1)
+	require.NotEmpty(t, paged.GetNextPageToken())
+	next := list(&v1pb.ListQualityTargetsRequest{Parent: "workspaces/-", PageSize: 1, PageToken: paged.GetNextPageToken()})
+	require.Len(t, next.GetQualityTargets(), 1)
+	require.NotEqual(t, paged.GetQualityTargets()[0].GetTarget().GetMetaGuid(), next.GetQualityTargets()[0].GetTarget().GetMetaGuid())
+
+	// One Get returns the target's rules, its summary and its issues.
+	get, err := fixture.dataQuality.GetQualityTarget(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.GetQualityTargetRequest{
+			Parent:     "workspaces/-",
+			TargetGuid: fixture.usersGUID,
+		}))
+	require.NoError(t, err, "get the quality target")
+	require.Len(t, get.Msg.GetQualityRules(), 2)
+	require.Equal(t, int32(2), get.Msg.GetSummary().GetRuleCount())
+	require.Equal(t, "users", get.Msg.GetSummary().GetTarget().GetPath().GetObject())
+	require.Empty(t, get.Msg.GetOrphanedReason())
+	require.Empty(t, get.Msg.GetOpenIssues())
+
+	// A target that neither has rules nor exists in the registry is NotFound.
+	_, err = fixture.dataQuality.GetQualityTarget(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.GetQualityTargetRequest{
+			Parent:     "workspaces/-",
+			TargetGuid: fmt.Sprintf("%s;%s;%s;%s", fixture.instanceID, fixture.sourceDatabase, "public", "missing_table"),
+			MetaType:   v1pb.MetaType_TABLE,
+		}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+}

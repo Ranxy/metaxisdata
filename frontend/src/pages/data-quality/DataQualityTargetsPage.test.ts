@@ -9,33 +9,24 @@ import { Select } from "@/components/ui/select";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
-  QualityExecutionSummarySchema,
-  QualityIssueSchema,
-  QualityIssueStatus,
-  QualityRuleSchema,
-  QualityRuleState,
   QualityStatus,
-  QualitySuggestionKind,
-  QualitySuggestionSchema,
-  QualitySuggestionStatus,
+  QualityTargetOrder,
   QualityTargetPathSchema,
   QualityTargetSchema,
+  type QualityTargetSummary,
+  QualityTargetSummarySchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
 import DataQualityTargetsPage from "./DataQualityTargetsPage.vue";
 
 const mocks = vi.hoisted(() => ({
-  listAllQualityRules: vi.fn(),
-  listQualityIssues: vi.fn(),
-  listQualitySuggestions: vi.fn(),
+  listQualityTargets: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/data-quality")>()),
-  listAllQualityRules: mocks.listAllQualityRules,
-  listQualityIssues: mocks.listQualityIssues,
-  listQualitySuggestions: mocks.listQualitySuggestions,
+  listQualityTargets: mocks.listQualityTargets,
 }));
 
 const TARGET_ORDERS = "instance-1;shop;public;orders";
@@ -48,58 +39,67 @@ const PERMISSIONS = [
 
 const Dummy = { template: "<div />" };
 
-function target(guid: string, object: string, column = "") {
-  return create(QualityTargetSchema, {
-    metaGuid: guid,
-    metaType: MetaType.TABLE,
-    path: create(QualityTargetPathSchema, {
-      instance: "instance-1",
-      database: "shop",
-      schema: "public",
-      object,
-      column,
-    }),
-    columns: column ? [column] : [],
-  });
-}
-
-function rule(options: {
+/** One directory row as the aggregate read returns it. */
+function summary(options: {
   guid: string;
   object: string;
-  column?: string;
-  state?: QualityRuleState;
-  status?: QualityStatus;
-}) {
-  return create(QualityRuleSchema, {
-    name: `workspaces/ws/qualityRules/${options.guid}-${options.column || "table"}`,
-    title: `rule on ${options.object}`,
-    target: target(options.guid, options.object, options.column),
-    state: options.state ?? QualityRuleState.ENABLED,
-    lastResult: options.status
-      ? create(QualityExecutionSummarySchema, {
-          status: options.status,
-          finishTime: timestampFromDate(new Date(Date.now() - 5 * 60_000)),
-        })
-      : undefined,
+  ruleCount?: number;
+  enabledRuleCount?: number;
+  pausedRuleCount?: number;
+  columnCount?: number;
+  openIssueCount?: number;
+  pendingDraftCount?: number;
+  worstStatus?: QualityStatus;
+  lastRunTime?: boolean;
+}): QualityTargetSummary {
+  return create(QualityTargetSummarySchema, {
+    target: create(QualityTargetSchema, {
+      metaGuid: options.guid,
+      metaType: MetaType.TABLE,
+      path: create(QualityTargetPathSchema, {
+        instance: "instance-1",
+        database: "shop",
+        schema: "public",
+        object: options.object,
+      }),
+    }),
+    ruleCount: options.ruleCount ?? 1,
+    enabledRuleCount: options.enabledRuleCount ?? options.ruleCount ?? 1,
+    pausedRuleCount: options.pausedRuleCount ?? 0,
+    columnCount: options.columnCount ?? 0,
+    openIssueCount: options.openIssueCount ?? 0,
+    pendingDraftCount: options.pendingDraftCount ?? 0,
+    worstStatus: options.worstStatus ?? QualityStatus.UNSPECIFIED,
+    lastRunTime:
+      options.lastRunTime === false
+        ? undefined
+        : timestampFromDate(new Date(Date.now() - 5 * 60_000)),
   });
 }
 
-function issue(guid: string, object: string, status: QualityIssueStatus) {
-  return create(QualityIssueSchema, {
-    name: `workspaces/ws/qualityIssues/${guid}-${status}`,
-    rule: `workspaces/ws/qualityRules/${guid}-id`,
-    target: target(guid, object, "id"),
-    status,
-  });
-}
-
-function draft(guid: string, object: string) {
-  return create(QualitySuggestionSchema, {
-    name: `workspaces/ws/qualitySuggestions/${guid}`,
-    kind: QualitySuggestionKind.RULE_DRAFT,
-    target: target(guid, object),
-    status: QualitySuggestionStatus.PENDING,
-  });
+function directoryRows() {
+  return [
+    // Orders watches two columns; one rule has run and passed. One of its two
+    // rules is paused, so the row carries the enabled/total hint.
+    summary({
+      guid: TARGET_ORDERS,
+      object: "orders",
+      ruleCount: 2,
+      enabledRuleCount: 1,
+      pausedRuleCount: 1,
+      columnCount: 2,
+      openIssueCount: 1,
+      worstStatus: QualityStatus.PASS,
+    }),
+    // Customers has one table-level rule whose latest run failed, and a draft.
+    summary({
+      guid: TARGET_CUSTOMERS,
+      object: "customers",
+      ruleCount: 1,
+      worstStatus: QualityStatus.FAIL,
+      pendingDraftCount: 1,
+    }),
+  ];
 }
 
 async function mountPage() {
@@ -155,54 +155,29 @@ function buttonWithLabel(wrapper: ReturnType<typeof mount>, label: string) {
 beforeEach(() => {
   localStorage.clear();
   vi.clearAllMocks();
-  mocks.listAllQualityRules.mockResolvedValue([
-    // Orders watches two columns; one rule has run and passed.
-    rule({
-      guid: TARGET_ORDERS,
-      object: "orders",
-      column: "id",
-      status: QualityStatus.PASS,
-    }),
-    rule({ guid: TARGET_ORDERS, object: "orders", column: "amount" }),
-    // Customers has one table-level rule whose latest run failed.
-    rule({
-      guid: TARGET_CUSTOMERS,
-      object: "customers",
-      status: QualityStatus.FAIL,
-    }),
-  ]);
-  // The page reads open and acknowledged issues separately; the resolved row
-  // rides along in the open page to prove the summarizer still drops it.
-  mocks.listQualityIssues.mockImplementation(
-    ({ status }: { status: QualityIssueStatus }) =>
-      Promise.resolve({
-        items:
-          status === QualityIssueStatus.OPEN
-            ? [
-                issue(TARGET_ORDERS, "orders", QualityIssueStatus.OPEN),
-                issue(TARGET_ORDERS, "orders", QualityIssueStatus.RESOLVED),
-              ]
-            : [],
-        nextPageToken: "",
-      })
-  );
-  mocks.listQualitySuggestions.mockResolvedValue({
-    items: [draft(TARGET_CUSTOMERS, "customers")],
+  mocks.listQualityTargets.mockResolvedValue({
+    items: directoryRows(),
     nextPageToken: "",
   });
 });
 
-describe("DataQualityTargetsPage grouping", () => {
+describe("DataQualityTargetsPage directory", () => {
   it("renders one row per target, with its counts and latest result", async () => {
     const wrapper = await mountPage();
-    const all = rows(wrapper);
 
+    // One aggregate read, in attention order, for the whole directory.
+    expect(mocks.listQualityTargets).toHaveBeenCalledWith({
+      pageSize: 1000,
+      pageToken: "",
+      orderBy: QualityTargetOrder.ATTENTION,
+    });
+
+    const all = rows(wrapper);
     expect(all).toHaveLength(2);
     // Attention first: the failing target outranks the passing one.
     expect(all[0]?.text()).toContain("customers");
     expect(all[1]?.text()).toContain("orders");
 
-    // The two orders rules are one row, not one row each.
     expect(all[0]?.text()).toContain(
       i18n.global.t("dataQuality.targets.rulesCount", { count: 1 })
     );
@@ -217,7 +192,7 @@ describe("DataQualityTargetsPage grouping", () => {
     expect(all[1]?.text()).toContain(i18n.global.t("metadataBrowser.tables"));
   });
 
-  it("counts only unresolved issues and pending drafts", async () => {
+  it("reads its counts and column count from the summary", async () => {
     const wrapper = await mountPage();
     const [customers, orders] = rows(wrapper);
 
@@ -230,6 +205,27 @@ describe("DataQualityTargetsPage grouping", () => {
     expect(customersCells[4]?.text()).toBe("-");
     expect(ordersCells[5]?.text()).toBe("-");
     expect(customersCells[5]?.text()).toBe("1");
+
+    // The paused rule narrows the enabled/total hint without hiding the row.
+    expect(ordersCells[1]?.text()).toContain("1 / 2");
+  });
+
+  it("walks the cursor so a directory past one page stays complete", async () => {
+    mocks.listQualityTargets.mockImplementation(
+      ({ pageToken }: { pageToken: string }) =>
+        Promise.resolve(
+          pageToken === ""
+            ? { items: [directoryRows()[1]], nextPageToken: "next" }
+            : { items: [directoryRows()[0]], nextPageToken: "" }
+        )
+    );
+    const wrapper = await mountPage();
+
+    expect(rows(wrapper)).toHaveLength(2);
+    expect(mocks.listQualityTargets).toHaveBeenCalledTimes(2);
+    expect(mocks.listQualityTargets).toHaveBeenLastCalledWith(
+      expect.objectContaining({ pageToken: "next" })
+    );
   });
 
   it("re-sorts by rule count from the sort select", async () => {
@@ -241,20 +237,6 @@ describe("DataQualityTargetsPage grouping", () => {
     await nextTick();
 
     expect(rows(wrapper)[0]?.text()).toContain("orders");
-  });
-
-  it("keeps the page when the pending-draft block fails", async () => {
-    mocks.listQualitySuggestions.mockRejectedValue(
-      new Error("suggestions unavailable")
-    );
-    const wrapper = await mountPage();
-
-    expect(rows(wrapper)).toHaveLength(2);
-    expect(wrapper.text()).not.toContain(
-      i18n.global.t("dataQuality.targets.loadFailed")
-    );
-    // The draft counts degrade to zero rather than inventing a draft.
-    expect(rows(wrapper)[0]?.findAll("td")[5]?.text()).toBe("-");
   });
 });
 
@@ -330,10 +312,8 @@ describe("DataQualityTargetsPage filters", () => {
 });
 
 describe("DataQualityTargetsPage states and links", () => {
-  it("guides an empty workspace to create its first rule", async () => {
-    mocks.listAllQualityRules.mockResolvedValue([]);
-    mocks.listQualityIssues.mockResolvedValue({ items: [], nextPageToken: "" });
-    mocks.listQualitySuggestions.mockResolvedValue({
+  it("guides an empty directory to create its first rule", async () => {
+    mocks.listQualityTargets.mockResolvedValue({
       items: [],
       nextPageToken: "",
     });
@@ -354,16 +334,17 @@ describe("DataQualityTargetsPage states and links", () => {
   });
 
   it("shows the error state and retries the load", async () => {
-    mocks.listAllQualityRules.mockRejectedValue(new Error("boom"));
+    mocks.listQualityTargets.mockRejectedValue(new Error("boom"));
     const wrapper = await mountPage();
 
     expect(wrapper.text()).toContain(
       i18n.global.t("dataQuality.targets.loadFailed")
     );
 
-    mocks.listAllQualityRules.mockResolvedValue([
-      rule({ guid: TARGET_CUSTOMERS, object: "customers" }),
-    ]);
+    mocks.listQualityTargets.mockResolvedValue({
+      items: directoryRows(),
+      nextPageToken: "",
+    });
     // The header and the error block both offer the retry; either one loads.
     const retry = wrapper
       .findAll("button")
@@ -374,7 +355,7 @@ describe("DataQualityTargetsPage states and links", () => {
     await retry[1]?.trigger("click");
     await flushPromises();
 
-    expect(rows(wrapper)).toHaveLength(1);
+    expect(rows(wrapper)).toHaveLength(2);
   });
 
   it("links every row to its workspace with the GUID and meta type", async () => {

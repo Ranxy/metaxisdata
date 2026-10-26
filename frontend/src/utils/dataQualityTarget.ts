@@ -1,14 +1,13 @@
 // The target workspace's pure projections.
 //
-// A quality rule names one target; the workspace reads a target's rules back as
-// one list. These helpers do that grouping so the pages stay about layout: rules
-// become dataset-level, cross-column or per-column sections, and a target's
-// rule/issue/draft counts and worst latest result become one health summary.
+// The server hands the directory one `QualityTargetSummary` per target, and the
+// workspace reads a target's rules back as one list. These helpers keep the
+// pages about layout: a summary is named, searched and sorted from its own
+// fields, and rules become dataset-level, cross-column or per-column sections.
 // Nothing here fetches or renders.
 
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import {
-  type QualityExecutionSummary,
   type QualityIssue,
   QualityIssueStatus,
   type QualityRule,
@@ -17,41 +16,14 @@ import {
   type QualitySuggestion,
   QualitySuggestionKind,
   QualitySuggestionStatus,
-  type QualityTargetPath,
+  QualityTargetOrder,
+  type QualityTargetSummary,
 } from "@/types/proto-es/v1/data_quality_service_pb";
-import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { formatTargetPath, targetScopeLabel } from "@/utils/dataQuality";
 import {
   ruleDraftOf,
   suggestionTargetPath,
 } from "@/utils/dataQualitySuggestion";
-
-/** The target identity a rule, execution or issue carries. */
-export interface QualityTargetIdentity {
-  guid: string;
-  metaType: MetaType;
-}
-
-/** One target's rules with the counts its list row and header show. */
-export interface QualityTargetSummary extends QualityTargetIdentity {
-  path: QualityTargetPath | undefined;
-  rules: QualityRule[];
-  ruleCount: number;
-  enabledCount: number;
-  pausedCount: number;
-  /** Distinct columns the target's rules read, in section order. */
-  columns: string[];
-  openIssueCount: number;
-  pendingDraftCount: number;
-  pendingLabelCount: number;
-  /** The worst latest result across the target's rules; unset when none ran. */
-  worstStatus: QualityStatus | undefined;
-  lastRunTime: Timestamp | undefined;
-  /** True when at least one rule on the target can no longer resolve it. */
-  orphaned: boolean;
-  /** True when at least one rule's saved schema hash no longer matches. */
-  schemaChanged: boolean;
-}
 
 /** The three sections a target's checks are read in. */
 export type TargetCheckSectionKind = "dataset" | "multi" | "column";
@@ -152,13 +124,6 @@ function isPendingRuleDraft(suggestion: QualitySuggestion): boolean {
   );
 }
 
-function isPendingLabel(suggestion: QualitySuggestion): boolean {
-  return (
-    suggestion.status === QualitySuggestionStatus.PENDING &&
-    suggestion.kind === QualitySuggestionKind.LABEL
-  );
-}
-
 function isUnresolved(issue: QualityIssue): boolean {
   return issue.status !== RESOLVED_ISSUE;
 }
@@ -175,7 +140,6 @@ function statusRank(status: QualityStatus): number {
     case QualityStatus.PASS:
       return 2;
     case QualityStatus.NOT_EVALUATED:
-      return 1;
     case QualityStatus.SKIPPED:
       return 1;
     default:
@@ -183,210 +147,48 @@ function statusRank(status: QualityStatus): number {
   }
 }
 
-/**
- * The worst status of a set of latest results, ignoring rules that never ran.
- * ERROR outranks FAIL: a rule that could not be evaluated needs attention more
- * than one whose data failed.
- */
-export function worstQualityStatus(
-  statuses: Iterable<QualityStatus | undefined>
-): QualityStatus | undefined {
-  let worst: QualityStatus | undefined;
-  for (const status of statuses) {
-    if (status === undefined || status === QualityStatus.UNSPECIFIED) {
-      continue;
-    }
-    if (worst === undefined || statusRank(status) > statusRank(worst)) {
-      worst = status;
-    }
-  }
-  return worst;
-}
-
-function latestTime(
-  a: Timestamp | undefined,
-  b: Timestamp | undefined
-): Timestamp | undefined {
-  if (!a) {
-    return b;
-  }
-  if (!b) {
-    return a;
-  }
-  const aSeconds = a.seconds ?? 0n;
-  const bSeconds = b.seconds ?? 0n;
-  if (aSeconds !== bSeconds) {
-    return aSeconds > bSeconds ? a : b;
-  }
-  return (a.nanos ?? 0) >= (b.nanos ?? 0) ? a : b;
-}
-
-function finishTime(
-  summary: QualityExecutionSummary | undefined
-): Timestamp | undefined {
-  return summary?.finishTime;
-}
-
 /** Rules of a target, excluding the archived ones a directory would hide. */
 function liveRules(rules: readonly QualityRule[]): QualityRule[] {
   return rules.filter((rule) => rule.state !== QualityRuleState.ARCHIVED);
 }
 
-/** The distinct columns a target's rules read, sorted for stable section order. */
-export function targetColumns(rules: readonly QualityRule[]): string[] {
-  const columns = new Set<string>();
-  for (const rule of rules) {
-    const column = ruleColumn(rule);
-    if (column) {
-      columns.add(column);
-    }
+/** The target's GUID, empty when the summary carries no target. */
+function summaryGuid(summary: QualityTargetSummary): string {
+  return summary.target?.metaGuid?.trim() ?? "";
+}
+
+/** The object name the summary's own path snapshot carries, when it has one. */
+function summaryObject(summary: QualityTargetSummary): string {
+  return summary.target?.path?.object?.trim() ?? "";
+}
+
+/** The target's name for a heading: the object name, else the GUID's own. */
+export function targetDisplayName(summary: QualityTargetSummary): string {
+  const guid = summaryGuid(summary);
+  return summaryObject(summary) || suggestionTargetPath(guid).object || guid;
+}
+
+/** The target's coarse location for a subtitle: `instance · database`. */
+export function targetScope(summary: QualityTargetSummary): string {
+  const guid = summaryGuid(summary);
+  const fromPath = targetScopeLabel(summary.target?.path);
+  if (fromPath !== "-") {
+    return fromPath;
   }
-  return [...columns].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  const fromGuid = targetScopeLabel(suggestionTargetPath(guid));
+  return fromGuid === "-" ? guid || "-" : fromGuid;
 }
 
-/**
- * Group rules, issues and pending suggestions into one summary per target.
- *
- * The list page reads every rule once and hands the rows here; the target key is
- * the rule's own target GUID, so a target with no rules never appears. Issues and
- * suggestions are counted by target GUID as well; they do not create a target.
- */
-export function summarizeQualityTargets(
-  rules: readonly QualityRule[],
-  issues: readonly QualityIssue[] = [],
-  suggestions: readonly QualitySuggestion[] = []
-): QualityTargetSummary[] {
-  const summaries = new Map<string, QualityTargetSummary>();
-  for (const rule of liveRules(rules)) {
-    const guid = rule.target?.metaGuid?.trim() ?? "";
-    if (!guid) {
-      continue;
-    }
-    let summary = summaries.get(guid);
-    if (!summary) {
-      summary = {
-        guid,
-        metaType: rule.target?.metaType ?? MetaType.UNSPECIFIED,
-        path: rule.target?.path,
-        rules: [],
-        ruleCount: 0,
-        enabledCount: 0,
-        pausedCount: 0,
-        columns: [],
-        openIssueCount: 0,
-        pendingDraftCount: 0,
-        pendingLabelCount: 0,
-        worstStatus: undefined,
-        lastRunTime: undefined,
-        orphaned: false,
-        schemaChanged: false,
-      };
-      summaries.set(guid, summary);
-    }
-    summary.rules.push(rule);
-    summary.ruleCount += 1;
-    if (rule.state === QualityRuleState.PAUSED) {
-      summary.pausedCount += 1;
-    } else if (rule.state === QualityRuleState.ENABLED) {
-      summary.enabledCount += 1;
-    }
-    if (rule.orphanedReason) {
-      summary.orphaned = true;
-    }
-    if (rule.targetSchemaChanged) {
-      summary.schemaChanged = true;
-    }
-    summary.worstStatus = worstQualityStatus([
-      summary.worstStatus,
-      rule.lastResult?.status,
-    ]);
-    summary.lastRunTime = latestTime(
-      summary.lastRunTime,
-      finishTime(rule.lastResult)
-    );
-    summary.columns = targetColumns(summary.rules);
-  }
-  for (const issue of issues) {
-    if (!isUnresolved(issue)) {
-      continue;
-    }
-    const guid = issue.target?.metaGuid?.trim() ?? "";
-    const summary = summaries.get(guid);
-    if (summary) {
-      summary.openIssueCount += 1;
-    }
-  }
-  for (const suggestion of suggestions) {
-    const guid = suggestion.target?.metaGuid?.trim() ?? "";
-    const summary = summaries.get(guid);
-    if (!summary) {
-      continue;
-    }
-    if (isPendingRuleDraft(suggestion)) {
-      summary.pendingDraftCount += 1;
-    } else if (isPendingLabel(suggestion)) {
-      summary.pendingLabelCount += 1;
-    }
-  }
-  return [...summaries.values()];
+/** The target's full display path, e.g. `schema.orders` or `db.schema.orders`. */
+export function targetFullPath(summary: QualityTargetSummary): string {
+  const guid = summaryGuid(summary);
+  const fromPath = formatTargetPath(summary.target?.path);
+  return fromPath === "-" && guid
+    ? formatTargetPath(suggestionTargetPath(guid))
+    : fromPath;
 }
 
-/** How the target list is ordered. */
-export type QualityTargetOrder = "attention" | "name" | "rules" | "lastRun";
-
-function attentionRank(summary: QualityTargetSummary): number {
-  return statusRank(summary.worstStatus ?? QualityStatus.UNSPECIFIED);
-}
-
-function summaryName(summary: QualityTargetSummary): string {
-  return (
-    summary.path?.object ||
-    suggestionTargetPath(summary.guid).object ||
-    summary.guid
-  );
-}
-
-function compareText(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
-
-/** Sort summaries for the list page; ties fall back to the target name. */
-export function sortQualityTargets(
-  summaries: readonly QualityTargetSummary[],
-  order: QualityTargetOrder
-): QualityTargetSummary[] {
-  const sorted = [...summaries];
-  sorted.sort((a, b) => {
-    switch (order) {
-      case "name":
-        return compareText(summaryName(a), summaryName(b));
-      case "rules":
-        return (
-          b.ruleCount - a.ruleCount ||
-          compareText(summaryName(a), summaryName(b))
-        );
-      case "lastRun": {
-        const diff = toSeconds(b.lastRunTime) - toSeconds(a.lastRunTime);
-        return diff !== 0 ? diff : compareText(summaryName(a), summaryName(b));
-      }
-      case "attention":
-      default:
-        return (
-          attentionRank(b) - attentionRank(a) ||
-          b.openIssueCount - a.openIssueCount ||
-          b.pendingDraftCount - a.pendingDraftCount ||
-          compareText(summaryName(a), summaryName(b))
-        );
-    }
-  });
-  return sorted;
-}
-
-function toSeconds(time: Timestamp | undefined): number {
-  return time?.seconds !== undefined ? Number(time.seconds) : 0;
-}
-
-/** Whether a target matches a free-text search over its path and instance. */
+/** Whether a target matches a free-text search over its path and GUID. */
 export function targetMatchesSearch(
   summary: QualityTargetSummary,
   query: string
@@ -395,14 +197,15 @@ export function targetMatchesSearch(
   if (!term) {
     return true;
   }
-  const path = summary.path;
-  const fallback = suggestionTargetPath(summary.guid);
+  const guid = summaryGuid(summary);
+  const path = summary.target?.path;
+  const fallback = suggestionTargetPath(guid);
   const haystack = [
     path?.instance || fallback.instance,
     path?.database || fallback.database,
     path?.schema || fallback.schema,
     path?.object || fallback.object,
-    summary.guid,
+    guid,
   ]
     .filter(Boolean)
     .join(" ")
@@ -410,20 +213,71 @@ export function targetMatchesSearch(
   return haystack.includes(term);
 }
 
-/** A target's name for a heading: the object name, or the formatted path. */
-export function targetDisplayName(summary: QualityTargetSummary): string {
-  return summary.path?.object?.trim() || summaryName(summary);
+function compareText(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
 }
 
-/** The target's coarse location for a subtitle: `instance · database`. */
-export function targetScope(summary: QualityTargetSummary): string {
-  const path = summary.path ?? suggestionTargetPath(summary.guid);
-  return targetScopeLabel(path) || summary.guid;
+/** How a run time orders against another; never-run sorts after every run. */
+function compareRunTime(a: Timestamp | undefined, b: Timestamp | undefined) {
+  if (!a && !b) {
+    return 0;
+  }
+  if (!a) {
+    return 1;
+  }
+  if (!b) {
+    return -1;
+  }
+  const aSeconds = a.seconds ?? 0n;
+  const bSeconds = b.seconds ?? 0n;
+  if (aSeconds !== bSeconds) {
+    return aSeconds > bSeconds ? -1 : 1;
+  }
+  return (b.nanos ?? 0) - (a.nanos ?? 0);
 }
 
-/** The target's full display path, e.g. `schema.orders` or `db.schema.orders`. */
-export function targetFullPath(summary: QualityTargetSummary): string {
-  return formatTargetPath(summary.path ?? suggestionTargetPath(summary.guid));
+/**
+ * Sort summaries for the directory. Attention ranks the worst latest result
+ * first (ERROR outranks FAIL: a check that could not run needs attention more
+ * than one whose data failed), then open issues and pending drafts. Every order
+ * falls back to the name and then the GUID, so ties stay stable across loads.
+ */
+export function sortQualityTargets(
+  summaries: readonly QualityTargetSummary[],
+  order: QualityTargetOrder
+): QualityTargetSummary[] {
+  const sorted = [...summaries];
+  sorted.sort((a, b) => {
+    switch (order) {
+      case QualityTargetOrder.NAME:
+        return (
+          compareText(targetDisplayName(a), targetDisplayName(b)) ||
+          compareText(summaryGuid(a), summaryGuid(b))
+        );
+      case QualityTargetOrder.RULE_COUNT:
+        return (
+          b.ruleCount - a.ruleCount ||
+          compareText(targetDisplayName(a), targetDisplayName(b)) ||
+          compareText(summaryGuid(a), summaryGuid(b))
+        );
+      case QualityTargetOrder.LAST_RUN:
+        return (
+          compareRunTime(a.lastRunTime, b.lastRunTime) ||
+          compareText(targetDisplayName(a), targetDisplayName(b)) ||
+          compareText(summaryGuid(a), summaryGuid(b))
+        );
+      case QualityTargetOrder.ATTENTION:
+      default:
+        return (
+          statusRank(b.worstStatus) - statusRank(a.worstStatus) ||
+          b.openIssueCount - a.openIssueCount ||
+          b.pendingDraftCount - a.pendingDraftCount ||
+          compareText(targetDisplayName(a), targetDisplayName(b)) ||
+          compareText(summaryGuid(a), summaryGuid(b))
+        );
+    }
+  });
+  return sorted;
 }
 
 /**

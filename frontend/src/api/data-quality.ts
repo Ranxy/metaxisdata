@@ -24,6 +24,8 @@ import {
   GetQualitySuggestionJobTargetDebugRequestSchema,
   type GetQualitySuggestionJobTargetDebugResponse,
   GetQualitySuggestionRequestSchema,
+  GetQualityTargetRequestSchema,
+  type GetQualityTargetResponse,
   ListColumnLabelsRequestSchema,
   ListColumnProfilesRequestSchema,
   ListQualityExecutionsRequestSchema,
@@ -31,6 +33,7 @@ import {
   ListQualityRulesRequestSchema,
   ListQualitySuggestionJobsRequestSchema,
   ListQualitySuggestionsRequestSchema,
+  ListQualityTargetsRequestSchema,
   PreviewQualityRuleRequestSchema,
   ProfileColumnsRequestSchema,
   QualityDimension,
@@ -56,6 +59,8 @@ import {
   QualitySuggestionSource,
   QualitySuggestionStatus,
   type QualityTarget,
+  QualityTargetOrder,
+  type QualityTargetSummary,
   RunQualityRulesRequestSchema,
   SuggestColumnLabelsRequestSchema,
   type SuggestColumnLabelsResponse,
@@ -113,6 +118,71 @@ export function qualityIssueName(id: string): string {
 /** The id part of a quality issue's resource name; the name itself if it has none. */
 export function qualityIssueID(name: string): string {
   return name.slice(name.lastIndexOf("/") + 1);
+}
+
+// ---- targets ----
+
+/** One page of the target directory: every target with rules, in the requested order. */
+export async function listQualityTargets(options: {
+  pageSize?: number;
+  pageToken?: string;
+  /** A GUID path prefix, not a name match. */
+  instance?: string;
+  database?: string;
+  schema?: string;
+  table?: string;
+  /** A case-insensitive substring over the target's path and GUID. */
+  search?: string;
+  /** Only targets whose worst latest result is this status. */
+  worstStatus?: QualityStatus;
+  hasOpenIssue?: boolean;
+  hasPendingDraft?: boolean;
+  orderBy?: QualityTargetOrder;
+  signal?: AbortSignal;
+}): Promise<ListPage<QualityTargetSummary>> {
+  const request = create(ListQualityTargetsRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    pageSize: options.pageSize ?? 50,
+    pageToken: options.pageToken ?? "",
+    instance: options.instance ?? "",
+    database: options.database ?? "",
+    schema: options.schema ?? "",
+    table: options.table ?? "",
+    search: options.search ?? "",
+    worstStatus: options.worstStatus ?? QualityStatus.UNSPECIFIED,
+    hasOpenIssue: options.hasOpenIssue ?? false,
+    hasPendingDraft: options.hasPendingDraft ?? false,
+    orderBy: options.orderBy ?? QualityTargetOrder.UNSPECIFIED,
+  });
+  const response = await dataQualityClient.listQualityTargets(request, {
+    signal: options.signal,
+  });
+  return {
+    items: response.qualityTargets,
+    nextPageToken: response.nextPageToken,
+  };
+}
+
+/**
+ * One target's workspace: its health summary, every live rule and its unresolved
+ * issues. AI drafts are absent because reading them needs the suggest
+ * permission this RPC does not require; the caller reads that queue separately.
+ * A target with no rules still resolves when its metadata type is known.
+ */
+export async function getQualityTarget(options: {
+  targetGuid: string;
+  /** UNSPECIFIED lets the server derive it from the target's rules. */
+  metaType?: MetaType;
+  signal?: AbortSignal;
+}): Promise<GetQualityTargetResponse> {
+  const request = create(GetQualityTargetRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    targetGuid: options.targetGuid,
+    metaType: options.metaType ?? MetaType.UNSPECIFIED,
+  });
+  return await dataQualityClient.getQualityTarget(request, {
+    signal: options.signal,
+  });
 }
 
 /** One page of rules, newest first. */

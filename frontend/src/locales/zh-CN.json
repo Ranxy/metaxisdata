@@ -1309,7 +1309,6 @@
       "draftsTitle": "AI 草案",
       "issuesEmpty": "没有未解决问题。",
       "issuesHint": "该目标上规则失败后打开的问题。",
-      "issuesLoadFailed": "加载问题失败。",
       "issuesTitle": "未解决问题",
       "issuesViewAll": "全部问题",
       "kindExternalTable": "外部表",
