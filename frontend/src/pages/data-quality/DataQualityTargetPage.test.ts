@@ -36,11 +36,19 @@ import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
 import DataQualityTargetPage from "./DataQualityTargetPage.vue";
 
+// Radix opens a select on pointerdown and calls pointer-capture APIs that jsdom
+// does not implement.
+Element.prototype.hasPointerCapture ??= () => false;
+Element.prototype.setPointerCapture ??= () => {};
+Element.prototype.releasePointerCapture ??= () => {};
+
 const mocks = vi.hoisted(() => ({
   getQualityTarget: vi.fn(),
   listQualitySuggestions: vi.fn(),
   runQualityRules: vi.fn(),
   createQualityRule: vi.fn(),
+  previewQualityRule: vi.fn(),
+  listAllMetadata: vi.fn(),
   updateQualitySuggestion: vi.fn(),
   suggestQualityRule: vi.fn(),
 }));
@@ -51,8 +59,15 @@ vi.mock("@/api/data-quality", async (importOriginal) => ({
   listQualitySuggestions: mocks.listQualitySuggestions,
   runQualityRules: mocks.runQualityRules,
   createQualityRule: mocks.createQualityRule,
+  previewQualityRule: mocks.previewQualityRule,
   updateQualitySuggestion: mocks.updateQualitySuggestion,
   suggestQualityRule: mocks.suggestQualityRule,
+}));
+
+// The inline composer lists the target's columns through this API.
+vi.mock("@/api/database", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/database")>()),
+  listAllMetadata: mocks.listAllMetadata,
 }));
 
 const TARGET = "inst1;db1;public;orders";
@@ -359,10 +374,19 @@ function buttonByText(text: string): HTMLElement | undefined {
   );
 }
 
-function linkByText(text: string): HTMLAnchorElement | undefined {
-  return [...document.body.querySelectorAll<HTMLAnchorElement>("a")].find(
-    (link) => link.textContent?.trim() === text
-  );
+function dialogButton(text: string): HTMLElement | undefined {
+  return [
+    ...document.body.querySelectorAll<HTMLElement>('[role="dialog"] button'),
+  ].find((button) => button.textContent?.trim() === text);
+}
+
+function setInput(selector: string, value: string) {
+  const element = document.querySelector(selector) as HTMLInputElement;
+  Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    "value"
+  )?.set?.call(element, value);
+  element.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 describe("DataQualityTargetPage", () => {
@@ -377,6 +401,12 @@ describe("DataQualityTargetPage", () => {
       nextPageToken: "",
     });
     mocks.runQualityRules.mockResolvedValue([]);
+    mocks.previewQualityRule.mockResolvedValue({
+      compiledSql: "SELECT count(*) FROM orders",
+      referencedColumns: [],
+      parameters: [],
+    });
+    mocks.listAllMetadata.mockResolvedValue([]);
     mocks.createQualityRule.mockResolvedValue(
       create(QualityRuleSchema, {
         name: RULE_CREATED,
@@ -636,8 +666,8 @@ describe("DataQualityTargetPage", () => {
     expect(wrapper.text()).toContain(
       label("dataQuality.workspace.issuesEmpty")
     );
-    // The empty state's next step opens the editor on this target.
-    expect(linkByText(label("dataQuality.workspace.addRule"))).toBeDefined();
+    // The empty state's next step opens the inline composer for this target.
+    expect(buttonByText(label("dataQuality.workspace.addRule"))).toBeDefined();
     wrapper.unmount();
   });
 
@@ -726,6 +756,48 @@ describe("DataQualityTargetPage", () => {
     expect(wrapper.text()).toContain(
       label("dataQuality.workspace.draftsLoadFailed")
     );
+    wrapper.unmount();
+  });
+
+  it("creates a rule inline and renders it without re-reading the target", async () => {
+    const created = create(QualityRuleSchema, {
+      name: RULE_CREATED,
+      title: "Orders stay fresh",
+      ruleType: QualityRuleType.ROW_COUNT,
+      target: target(),
+      severity: QualitySeverity.WARNING,
+      state: QualityRuleState.ENABLED,
+    });
+    mocks.createQualityRule.mockResolvedValue(created);
+    const { wrapper } = await mountPage();
+
+    // The header's New rule opens the composer instead of leaving the page.
+    buttonByText(label("dataQuality.workspace.addRule"))?.click();
+    await flushPromises();
+    expect(document.body.textContent).toContain(
+      label("dataQuality.composer.title", { target: "orders" })
+    );
+
+    setInput("#dq-composer-title", "Orders stay fresh");
+    setInput("#dq-field-minRows", "1");
+    await flushPromises();
+    dialogButton(label("dataQuality.editor.create"))?.click();
+    await flushPromises();
+
+    // The request carries the target the page was already showing.
+    expect(mocks.createQualityRule).toHaveBeenCalledTimes(1);
+    const [createdRule] = mocks.createQualityRule.mock.calls[0] as [
+      QualityRule,
+    ];
+    expect(createdRule.target?.metaGuid).toBe(TARGET);
+
+    // The rule joins the page where it belongs and the count moves; the page
+    // does not re-read the workspace.
+    expect(wrapper.text()).toContain("Orders stay fresh");
+    expect(wrapper.text()).toContain(
+      label("dataQuality.workspace.summaryRules", { count: 4 })
+    );
+    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(1);
     wrapper.unmount();
   });
 

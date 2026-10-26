@@ -37,6 +37,16 @@
       </template>
       <template #actions>
         <Button
+          v-if="targetWorkspaceTo"
+          variant="outline"
+          as-child
+        >
+          <RouterLink :to="targetWorkspaceTo">
+            <Target class="mr-2 h-4 w-4" />
+            {{ t("dataQuality.asset.openWorkspace") }}
+          </RouterLink>
+        </Button>
+        <Button
           variant="outline"
           :disabled="isLoading"
           @click="load"
@@ -522,6 +532,7 @@ import {
   MinusCircle,
   Pencil,
   RefreshCcw,
+  Target,
   XCircle,
   Zap,
 } from "lucide-vue-next";
@@ -591,6 +602,7 @@ import {
   targetScopeLabel,
 } from "@/utils/dataQuality";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
+import { guidToRouteParams } from "@/utils/guid";
 
 /**
  * One rule's own page: what it most recently found, how it has behaved over its
@@ -622,6 +634,19 @@ const canViewExecution = computed(() =>
 const { emailOf, load: loadUserDirectory } = useUserDirectory();
 
 const rule = ref<QualityRule>();
+// The workspace reads all of this rule's target's rules; it lives beside the
+// rule so a reader can jump from one check to the picture it belongs to.
+const targetWorkspaceTo = computed(() => {
+  const target = rule.value?.target;
+  if (!target?.metaGuid) {
+    return undefined;
+  }
+  return {
+    name: "DataQualityTarget",
+    params: { targetGuid: guidToRouteParams(target.metaGuid) },
+    query: { metaType: String(target.metaType) },
+  };
+});
 const executions = ref<QualityExecution[]>([]);
 const isLoading = ref(true);
 const executionsLoading = ref(true);

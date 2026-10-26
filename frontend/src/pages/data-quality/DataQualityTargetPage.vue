@@ -60,15 +60,11 @@
         <Button
           v-if="canCreate"
           variant="outline"
-          as-child
+          :title="t('dataQuality.workspace.addRuleHint')"
+          @click="composerOpen = true"
         >
-          <RouterLink
-            :to="newRuleTo"
-            :title="t('dataQuality.workspace.addRuleHint')"
-          >
-            <Plus class="mr-2 h-4 w-4" />
-            {{ t("dataQuality.workspace.addRule") }}
-          </RouterLink>
+          <Plus class="mr-2 h-4 w-4" />
+          {{ t("dataQuality.workspace.addRule") }}
         </Button>
         <Button
           v-if="canSuggest"
@@ -166,12 +162,10 @@
                 v-if="canCreate"
                 variant="outline"
                 size="sm"
-                as-child
+                @click="composerOpen = true"
               >
-                <RouterLink :to="newRuleTo">
-                  <Plus class="mr-2 h-4 w-4" />
-                  {{ t("dataQuality.workspace.addRule") }}
-                </RouterLink>
+                <Plus class="mr-2 h-4 w-4" />
+                {{ t("dataQuality.workspace.addRule") }}
               </Button>
             </EmptyState>
 
@@ -317,6 +311,17 @@
         </div>
       </div>
     </PageState>
+
+    <!-- Creating a rule stays on the target: the dialog fixes the target, and a
+         saved rule joins the section it belongs to without a page read. -->
+    <TargetRuleComposer
+      v-if="canCreate"
+      v-model:open="composerOpen"
+      :target-guid="targetGuid"
+      :meta-type="effectiveMetaType"
+      :target-label="displayName"
+      @saved="onRuleCreated"
+    />
   </div>
 </template>
 
@@ -343,6 +348,7 @@ import PageState from "@/components/common/PageState.vue";
 import TargetCheckRow from "@/components/data-quality/TargetCheckRow.vue";
 import TargetCopilotPanel from "@/components/data-quality/TargetCopilotPanel.vue";
 import TargetDraftCard from "@/components/data-quality/TargetDraftCard.vue";
+import TargetRuleComposer from "@/components/data-quality/TargetRuleComposer.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -440,6 +446,8 @@ const draftsFailed = ref(false);
 const runningAll = ref(false);
 const runningRule = ref("");
 const newNames = ref<Set<string>>(new Set());
+/** The inline composer, open on the target this page names. */
+const composerOpen = ref(false);
 const copilot = ref<InstanceType<typeof TargetCopilotPanel>>();
 
 /**
@@ -527,14 +535,6 @@ const lastRunText = computed(() =>
       })
     : t("dataQuality.workspace.summaryNeverRun")
 );
-
-const newRuleTo = computed(() => ({
-  name: "DataQualityRuleNew",
-  query: {
-    table_guid: targetGuid.value,
-    meta_type: String(effectiveMetaType.value),
-  },
-}));
 
 function sectionTitle(section: TargetCheckSection): string {
   switch (section.kind) {
@@ -676,6 +676,18 @@ function onDraftAccepted(draft: QualitySuggestion, rule: QualityRule) {
     0,
     summary.value.pendingDraftCount - 1
   );
+}
+
+/**
+ * A rule created in the composer joins the local list where the section grouping
+ * files it; only the counts it changed are adjusted, nothing is re-read.
+ */
+function onRuleCreated(rule: QualityRule) {
+  rules.value = [...rules.value, rule];
+  summary.value.ruleCount += 1;
+  if (rule.state === QualityRuleState.ENABLED) {
+    summary.value.enabledRuleCount += 1;
+  }
 }
 
 function onDraftRejected(name: string) {

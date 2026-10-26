@@ -1,6 +1,6 @@
 # 数据质量：从「规则目录」到「目标工作台」— 目标中心化重构
 
-> Status: **P0 与 P1a 已实现**（分支 `dq-target-centric-refactor`，尚未合并）。P0 是前端目标工作台；P1a 是服务端聚合读 + 视图/物化视图/外部表的元数据入口。P1b（薄契约、目标级默认值、发布/版本）与 P2 仍是方案，尚未实现。本文既是这次重构的设计记录，也是后续阶段的工作清单。
+> Status: **P0 与 P1a 已实现**（分支 `dq-target-centric-refactor`，尚未合并）。P0 是前端目标工作台；P1a 是服务端聚合读、工作台内联新建规则、视图/物化视图/外部表入口与详情页反向锚点。P1b（薄契约、目标级默认值、发布/版本）与 P2 仍是方案，尚未实现。本文既是这次重构的设计记录，也是后续阶段的工作清单。
 > 关联：[data-quality.md](data-quality.md)（现有实现与不变量）、[frontend-ui.md](frontend-ui.md)（布局门禁）、[i18n-glossary.md](i18n-glossary.md)（术语）、[instance-connections.md](instance-connections.md)（执行侧连接准入）、[security-posture.md](../../docs/security-posture.md)（单副本假设）。
 
 ## 0. 结论摘要
@@ -250,7 +250,7 @@ message GetQualityTargetResponse {
 | store | **已实现**：`quality_target.go` 的单查询聚合 + `CountPendingQualitySuggestions`；`quality_contract.go` 未做 |
 | api | **已实现**：聚合读 handler、顺序/过滤映射、summary 转换；发布事务未做 |
 | runner | 未做：规划执行时合成目标级默认值（filter/schedule/severity） |
-| 前端 | **已实现**：目标页接 `GetQualityTarget`/`ListQualityTargets`；视图/物化视图/外部表的 DQ 标签页。未做：内联编辑器（复用 `RuleConfigForm` + `PreviewQualityRule`）、目标级设置面板、发布/变更入口、URL 化筛选、问题/执行反向锚点 |
+| 前端 | **已实现**：目标页接 `GetQualityTarget`/`ListQualityTargets`；工作台内联新建规则（`TargetRuleComposer`，复用 `RuleConfigForm` + `PreviewQualityRule`）；视图/物化视图/外部表的 DQ 标签页；规则/问题/执行详情 → 目标工作台的反向链接。未做：目标级设置面板、发布/变更入口、URL 化筛选、字段覆盖视图 |
 | 文档 | `data-quality.md` §3.6/§3.7 已同步聚合读与路由；契约落地后需再同步 |
 
 ## 4. 阶段计划
@@ -266,14 +266,15 @@ message GetQualityTargetResponse {
 ### P1a（已实现，本分支）
 
 1. ✅ `ListQualityTargets` / `GetQualityTarget`：目标目录改服务端聚合；工作台一次读规则 + 摘要 + 未解决问题。**尚未做**每规则最近 N 次执行（`GetQualityTarget` 只带每条规则的 `last_result`）。
-5. ✅（部分）视图/物化视图/外部表的元数据详情接入 `MetadataQualitySection`。未做：字段覆盖视图（未覆盖列 + 语义标注候选槽位）、问题/执行反向锚回目标并高亮检查。
+4. ✅ 工作台内联新建规则（`TargetRuleComposer`）：目标固定、类型按对象能力裁剪、`RuleConfigForm` 复用、先预览再创建；保存后就地插入分组，不离开页面。编辑仍走完整编辑器。
+5. ✅（部分）视图/物化视图/外部表的元数据详情接入 `MetadataQualitySection`；规则/问题/执行详情页增加“目标工作台”按钮。未做：字段覆盖视图（未覆盖列 + 语义标注候选槽位）、问题/执行反向锚回目标并**高亮**具体规则。
 
 ### P1b（下一阶段，需迁移）
 
 1. 契约表 + 目标级默认值（filter/schedule/severity/owner/tags）+ 执行规划合成。
 2. 契约发布/版本/差异（基于 rule_revision）+ `contracts.publish` 权限 + 审计。
-3. 工作台内联「新建/编辑规则」（复用 `RuleConfigForm`，一条预览、批量落库）。
-4. 字段覆盖视图；问题/执行反向锚回目标并高亮检查。
+3. 工作台内联「编辑规则」（复用 `RuleConfigForm` + update mask；P1a 只做了新建）。
+4. 字段覆盖视图；问题/执行反向锚回目标并高亮具体规则。
 5. 列表筛选写 URL、可分享视图；每规则最近 N 次执行。
 
 粗估：P1a 聚合读（已实现）约 3–5 人日；P1b 契约/默认值/发布 16–24 人日；剩余前端（内联编辑、覆盖视图、反向锚点）约 6–10 人日。
@@ -312,7 +313,7 @@ message GetQualityTargetResponse {
 | --- | --- |
 | 聚合读 | `backend/store/quality_target.go`（`ListQualityTargets` 的单查询聚合、`CountPendingQualitySuggestions`、排序/rank 守卫）、`backend/api/v1/data_quality_target.go`（两个 handler、顺序/过滤映射、summary 转换）、`proto/v1/v1/data_quality_service.proto` |
 | 目标列表 | `frontend/src/pages/data-quality/DataQualityTargetsPage.vue`（测试同名 `.test.ts`） |
-| 目标工作台 | `frontend/src/pages/data-quality/DataQualityTargetPage.vue` + `components/data-quality/TargetCheckRow.vue`、`TargetDraftCard.vue`、`TargetCopilotPanel.vue` |
+| 目标工作台 | `frontend/src/pages/data-quality/DataQualityTargetPage.vue` + `components/data-quality/TargetCheckRow.vue`、`TargetDraftCard.vue`、`TargetCopilotPanel.vue`、`TargetRuleComposer.vue` |
 | 纯投影 | `frontend/src/utils/dataQualityTarget.ts`（按列/跨字段分组、v1 summary 的排序/搜索/展示辅助） |
 | 路由/导航 | `frontend/src/router/index.ts`（`DataQualityTargets`、`DataQualityTarget`）、`components/layout/AppSidebar.vue`；元数据四个详情页的 DQ 标签页复用 `MetadataQualitySection.vue` |
 | 数据源 | `ListQualityTargets`、`GetQualityTarget`；写路径仍为 `RunQualityRules`、`SuggestQualityRule`、`CreateQualityRule`、`UpdateQualitySuggestion`；草案正文按 `suggest` 权限单独 `ListQualitySuggestions` |

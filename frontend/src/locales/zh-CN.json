@@ -343,6 +343,12 @@
       "ne": "≠",
       "unspecified": "未指定"
     },
+    "composer": {
+      "advanced": "打开完整编辑器",
+      "description": "目标已固定；创建后规则会出现在对应分组。筛选、负责人与标签仍在完整编辑器中设置。",
+      "saving": "正在保存…",
+      "title": "在 {target} 上新建规则"
+    },
     "copilot": {
       "description": "描述你希望这个目标具备的质量规则；草案会就地出现，创建前始终只是建议。",
       "exampleDuplicates": "为重复的 bus_no 增加检查",
