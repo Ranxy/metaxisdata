@@ -1518,6 +1518,15 @@ export declare type QualityExecution = Message<"metaxisdata.v1.QualityExecution"
    * @generated from field: google.protobuf.Timestamp finish_time = 25;
    */
   finishTime?: Timestamp;
+
+  /**
+   * The dispatch batch that planned this execution, so the execution directory
+   * can group checks by the run that produced them.
+   * Format: workspaces/{workspace}/qualityRuns/{quality_run}
+   *
+   * @generated from field: string run = 26;
+   */
+  run: string;
 };
 
 /**
@@ -1576,6 +1585,292 @@ export declare type QualityExecutionSummary = Message<"metaxisdata.v1.QualityExe
  * Use `create(QualityExecutionSummarySchema)` to create a new message.
  */
 export declare const QualityExecutionSummarySchema: GenMessage<QualityExecutionSummary>;
+
+/**
+ * QualityRun is one dispatch batch: the executions a scheduler tick or a manual
+ * request planned together. It is a projection over quality_run and the
+ * executions it planned, not a second source of truth; the execution remains the
+ * per-check unit and the evidence.
+ *
+ * @generated from message metaxisdata.v1.QualityRun
+ */
+export declare type QualityRun = Message<"metaxisdata.v1.QualityRun"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityRuns/{quality_run}. The last segment is
+   * the row id, which is immutable for the row's lifetime.
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * The instance whose connection budget admitted the batch.
+   * Format: instances/{instance}
+   *
+   * @generated from field: string instance = 2;
+   */
+  instance: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityExecutionTrigger trigger = 3;
+   */
+  trigger: QualityExecutionTrigger;
+
+  /**
+   * The batch lifecycle: PENDING, RUNNING, COMPLETED or ABANDONED. A COMPLETED
+   * batch may still have failed checks; outcome carries what it found.
+   *
+   * @generated from field: metaxisdata.v1.QualityExecutionState state = 4;
+   */
+  state: QualityExecutionState;
+
+  /**
+   * The worst verdict among the batch's terminal executions. Unset while the
+   * batch is queued or running, and on an abandoned batch.
+   *
+   * @generated from field: metaxisdata.v1.QualityStatus outcome = 5;
+   */
+  outcome: QualityStatus;
+
+  /**
+   * The batch-wide tally. total counts every planned execution; the per-verdict
+   * fields count only the ones that reached that verdict.
+   *
+   * @generated from field: metaxisdata.v1.QualityStatusCounts counts = 6;
+   */
+  counts?: QualityStatusCounts;
+
+  /**
+   * The principal that started a manual batch. Empty for a scheduled batch.
+   * Format: users/{user}
+   *
+   * @generated from field: string initiator = 7;
+   */
+  initiator: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp start_time = 8;
+   */
+  startTime?: Timestamp;
+
+  /**
+   * Unset while the batch is PENDING or RUNNING.
+   *
+   * @generated from field: google.protobuf.Timestamp finish_time = 9;
+   */
+  finishTime?: Timestamp;
+
+  /**
+   * One slice per target the batch planned executions for. A scheduled batch
+   * covers one instance, so it can name several targets; a manual target run
+   * names one.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityRunTarget targets = 10;
+   */
+  targets: QualityRunTarget[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityRun.
+ * Use `create(QualityRunSchema)` to create a new message.
+ */
+export declare const QualityRunSchema: GenMessage<QualityRun>;
+
+/**
+ * QualityRunTarget is one target's slice of a run: what that run did to that
+ * target. The directory and the target workspace show this slice, not the
+ * batch-wide counts, because a batch can cover several targets.
+ *
+ * @generated from message metaxisdata.v1.QualityRunTarget
+ */
+export declare type QualityRunTarget = Message<"metaxisdata.v1.QualityRunTarget"> & {
+  /**
+   * @generated from field: metaxisdata.v1.QualityTarget target = 1;
+   */
+  target?: QualityTarget;
+
+  /**
+   * The slice's tally: total planned executions for this target, and the
+   * verdicts they reached.
+   *
+   * @generated from field: metaxisdata.v1.QualityStatusCounts counts = 2;
+   */
+  counts?: QualityStatusCounts;
+
+  /**
+   * The worst verdict in this slice; unset while no execution is terminal.
+   *
+   * @generated from field: metaxisdata.v1.QualityStatus outcome = 3;
+   */
+  outcome: QualityStatus;
+
+  /**
+   * The range of rule revisions this slice judged, so two batches are only
+   * compared when they ran the same definition. Zero when the slice is empty.
+   *
+   * @generated from field: int32 rule_revision_min = 4;
+   */
+  ruleRevisionMin: number;
+
+  /**
+   * @generated from field: int32 rule_revision_max = 5;
+   */
+  ruleRevisionMax: number;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp start_time = 6;
+   */
+  startTime?: Timestamp;
+
+  /**
+   * Unset while the slice has no terminal execution.
+   *
+   * @generated from field: google.protobuf.Timestamp finish_time = 7;
+   */
+  finishTime?: Timestamp;
+
+  /**
+   * The run this slice belongs to, repeated here so the slice can stand alone as
+   * a target's `latest_run`. Format: workspaces/{workspace}/qualityRuns/{quality_run}
+   *
+   * @generated from field: string run = 8;
+   */
+  run: string;
+
+  /**
+   * The parent batch's lifecycle, repeated for the same reason.
+   *
+   * @generated from field: metaxisdata.v1.QualityExecutionState state = 9;
+   */
+  state: QualityExecutionState;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityExecutionTrigger trigger = 10;
+   */
+  trigger: QualityExecutionTrigger;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityRunTarget.
+ * Use `create(QualityRunTargetSchema)` to create a new message.
+ */
+export declare const QualityRunTargetSchema: GenMessage<QualityRunTarget>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityRunsRequest
+ */
+export declare type ListQualityRunsRequest = Message<"metaxisdata.v1.ListQualityRunsRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * The maximum number of runs to return. If unspecified, at most 50 are
+   * returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+   *
+   * @generated from field: int32 page_size = 2;
+   */
+  pageSize: number;
+
+  /**
+   * A page token, received from a previous ListQualityRuns call.
+   *
+   * @generated from field: string page_token = 3;
+   */
+  pageToken: string;
+
+  /**
+   * Only runs that planned at least one execution for this target GUID.
+   *
+   * @generated from field: string target_guid = 4;
+   */
+  targetGuid: string;
+
+  /**
+   * Only runs admitted against this instance.
+   * Format: instances/{instance}
+   *
+   * @generated from field: string instance = 5;
+   */
+  instance: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityExecutionTrigger trigger = 6;
+   */
+  trigger: QualityExecutionTrigger;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityExecutionState state = 7;
+   */
+  state: QualityExecutionState;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityStatus outcome = 8;
+   */
+  outcome: QualityStatus;
+
+  /**
+   * Only runs started at or after this time.
+   *
+   * @generated from field: google.protobuf.Timestamp start_time = 9;
+   */
+  startTime?: Timestamp;
+
+  /**
+   * Only runs started before this time.
+   *
+   * @generated from field: google.protobuf.Timestamp end_time = 10;
+   */
+  endTime?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityRunsRequest.
+ * Use `create(ListQualityRunsRequestSchema)` to create a new message.
+ */
+export declare const ListQualityRunsRequestSchema: GenMessage<ListQualityRunsRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityRunsResponse
+ */
+export declare type ListQualityRunsResponse = Message<"metaxisdata.v1.ListQualityRunsResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityRun quality_runs = 1;
+   */
+  qualityRuns: QualityRun[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityRunsResponse.
+ * Use `create(ListQualityRunsResponseSchema)` to create a new message.
+ */
+export declare const ListQualityRunsResponseSchema: GenMessage<ListQualityRunsResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualityRunRequest
+ */
+export declare type GetQualityRunRequest = Message<"metaxisdata.v1.GetQualityRunRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityRuns/{quality_run}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityRunRequest.
+ * Use `create(GetQualityRunRequestSchema)` to create a new message.
+ */
+export declare const GetQualityRunRequestSchema: GenMessage<GetQualityRunRequest>;
 
 /**
  * QualityIssue is the durable problem behind a rule's failures. A rule has at
@@ -2812,6 +3107,14 @@ export declare type ListQualityExecutionsRequest = Message<"metaxisdata.v1.ListQ
    * @generated from field: google.protobuf.Timestamp end_time = 12;
    */
   endTime?: Timestamp;
+
+  /**
+   * Only the executions planned by this run.
+   * Format: workspaces/{workspace}/qualityRuns/{quality_run}
+   *
+   * @generated from field: string run = 13;
+   */
+  run: string;
 };
 
 /**
@@ -4666,6 +4969,22 @@ export declare type QualityTargetSummary = Message<"metaxisdata.v1.QualityTarget
    * @generated from field: bool orphaned = 12;
    */
   orphaned: boolean;
+
+  /**
+   * The target's slice of the most recent run that planned any of its checks.
+   * This is the per-target batch summary the directory and the workspace show;
+   * unset when the target has never run.
+   *
+   * @generated from field: metaxisdata.v1.QualityRunTarget latest_run = 13;
+   */
+  latestRun?: QualityRunTarget;
+
+  /**
+   * How many dispatch batches have planned at least one check for this target.
+   *
+   * @generated from field: int32 run_count = 14;
+   */
+  runCount: number;
 };
 
 /**
@@ -6592,6 +6911,29 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof GetQualityExecutionRequestSchema;
     output: typeof QualityExecutionSchema;
+  },
+  /**
+   * List runs, newest first. A run is one dispatch batch: the executions one
+   * scheduler tick or one manual request planned together. Runs are the
+   * batch-level read model the execution directory groups by target; each run
+   * carries one slice per target it touched, with the slice's counts.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityRuns
+   */
+  listQualityRuns: {
+    methodKind: "unary";
+    input: typeof ListQualityRunsRequestSchema;
+    output: typeof ListQualityRunsResponseSchema;
+  },
+  /**
+   * Read one run, with every target slice it touched.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityRun
+   */
+  getQualityRun: {
+    methodKind: "unary";
+    input: typeof GetQualityRunRequestSchema;
+    output: typeof QualityRunSchema;
   },
   /**
    * List quality issues, newest first.

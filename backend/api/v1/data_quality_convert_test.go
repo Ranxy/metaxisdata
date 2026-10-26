@@ -347,6 +347,8 @@ func TestConvertQualityExecution(t *testing.T) {
 	require.NotNil(t, converted)
 	require.Equal(t, "workspaces/ws1/qualityExecutions/42", converted.GetName())
 	require.Equal(t, "workspaces/ws1/qualityRules/rule123", converted.GetRule())
+	require.Equal(t, "workspaces/ws1/qualityRuns/11", converted.GetRun(),
+		"an execution names the dispatch batch that planned it")
 	require.Equal(t, int32(2), converted.GetRuleRevision())
 	require.Equal(t, "dq.v1", converted.GetRuleEngineVersion())
 	require.Equal(t, "instance_1;shop;public;orders", converted.GetTarget().GetMetaGuid())

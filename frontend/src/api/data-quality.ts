@@ -23,6 +23,7 @@ import {
   GetQualityLLMUsageRequestSchema,
   GetQualityOverviewRequestSchema,
   GetQualityRuleRequestSchema,
+  GetQualityRunRequestSchema,
   GetQualitySuggestionJobRequestSchema,
   GetQualitySuggestionJobTargetDebugRequestSchema,
   type GetQualitySuggestionJobTargetDebugResponse,
@@ -35,6 +36,7 @@ import {
   ListQualityExecutionsRequestSchema,
   ListQualityIssuesRequestSchema,
   ListQualityRulesRequestSchema,
+  ListQualityRunsRequestSchema,
   ListQualitySuggestionJobsRequestSchema,
   ListQualitySuggestionsRequestSchema,
   ListQualityTargetsRequestSchema,
@@ -58,6 +60,7 @@ import {
   type QualityRule,
   QualityRuleState,
   QualityRuleType,
+  type QualityRun,
   type QualitySemanticType,
   QualitySeverity,
   QualityStatus,
@@ -114,6 +117,19 @@ export function qualityExecutionName(id: string): string {
 
 /** The id part of a quality execution's resource name; the name itself if it has none. */
 export function qualityExecutionID(name: string): string {
+  return name.slice(name.lastIndexOf("/") + 1);
+}
+
+/** The resource-name segment a quality run's id occupies. */
+const RUN_SEGMENT = "qualityRuns";
+
+/** Format: workspaces/{workspace}/qualityRuns/{quality_run}. */
+export function qualityRunName(id: string): string {
+  return `${WORKSPACE_PARENT}/${RUN_SEGMENT}/${id}`;
+}
+
+/** The id part of a quality run's resource name; the name itself if it has none. */
+export function qualityRunID(name: string): string {
   return name.slice(name.lastIndexOf("/") + 1);
 }
 
@@ -447,6 +463,8 @@ export async function listQualityExecutions(options: {
   rule?: string;
   /** The exact target GUID. */
   targetGuid?: string;
+  /** Only the executions planned by this run. */
+  run?: string;
   /** Format: instances/{instance}. */
   instance?: string;
   /** Format: users/{user}. */
@@ -464,6 +482,7 @@ export async function listQualityExecutions(options: {
     trigger: options.trigger ?? QualityExecutionTrigger.UNSPECIFIED,
     rule: options.rule ?? "",
     targetGuid: options.targetGuid ?? "",
+    run: options.run ?? "",
     instance: options.instance ?? "",
     initiator: options.initiator ?? "",
     ...(options.startTime ? { startTime: options.startTime } : {}),
@@ -484,6 +503,53 @@ export async function getQualityExecution(
 ): Promise<QualityExecution> {
   const request = create(GetQualityExecutionRequestSchema, { name });
   return await dataQualityClient.getQualityExecution(request);
+}
+
+/**
+ * One page of runs, newest first. A run is one dispatch batch: the executions a
+ * scheduler tick or a manual request planned together. Each run carries one slice
+ * per target it touched, so a target's slice answers "what did this batch do to
+ * this table?" without reading every execution.
+ */
+export async function listQualityRuns(options: {
+  pageSize?: number;
+  pageToken?: string;
+  /** Only runs that planned at least one execution for this target GUID. */
+  targetGuid?: string;
+  /** Format: instances/{instance}. */
+  instance?: string;
+  trigger?: QualityExecutionTrigger;
+  state?: QualityExecutionState;
+  outcome?: QualityStatus;
+  startTime?: Timestamp;
+  endTime?: Timestamp;
+  signal?: AbortSignal;
+}): Promise<ListPage<QualityRun>> {
+  const request = create(ListQualityRunsRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    pageSize: options.pageSize ?? 50,
+    pageToken: options.pageToken ?? "",
+    targetGuid: options.targetGuid ?? "",
+    instance: options.instance ?? "",
+    trigger: options.trigger ?? QualityExecutionTrigger.UNSPECIFIED,
+    state: options.state ?? QualityExecutionState.UNSPECIFIED,
+    outcome: options.outcome ?? QualityStatus.UNSPECIFIED,
+    ...(options.startTime ? { startTime: options.startTime } : {}),
+    ...(options.endTime ? { endTime: options.endTime } : {}),
+  });
+  const response = await dataQualityClient.listQualityRuns(request, {
+    signal: options.signal,
+  });
+  return {
+    items: response.qualityRuns,
+    nextPageToken: response.nextPageToken,
+  };
+}
+
+/** Read one run with every target slice it touched. */
+export async function getQualityRun(name: string): Promise<QualityRun> {
+  const request = create(GetQualityRunRequestSchema, { name });
+  return await dataQualityClient.getQualityRun(request);
 }
 
 /** One page of issues, most recently seen first. */

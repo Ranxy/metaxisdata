@@ -64,6 +64,12 @@ const (
 	// DataQualityServiceGetQualityExecutionProcedure is the fully-qualified name of the
 	// DataQualityService's GetQualityExecution RPC.
 	DataQualityServiceGetQualityExecutionProcedure = "/metaxisdata.v1.DataQualityService/GetQualityExecution"
+	// DataQualityServiceListQualityRunsProcedure is the fully-qualified name of the
+	// DataQualityService's ListQualityRuns RPC.
+	DataQualityServiceListQualityRunsProcedure = "/metaxisdata.v1.DataQualityService/ListQualityRuns"
+	// DataQualityServiceGetQualityRunProcedure is the fully-qualified name of the DataQualityService's
+	// GetQualityRun RPC.
+	DataQualityServiceGetQualityRunProcedure = "/metaxisdata.v1.DataQualityService/GetQualityRun"
 	// DataQualityServiceListQualityIssuesProcedure is the fully-qualified name of the
 	// DataQualityService's ListQualityIssues RPC.
 	DataQualityServiceListQualityIssuesProcedure = "/metaxisdata.v1.DataQualityService/ListQualityIssues"
@@ -182,6 +188,13 @@ type DataQualityServiceClient interface {
 	ListQualityExecutions(context.Context, *connect.Request[v1.ListQualityExecutionsRequest]) (*connect.Response[v1.ListQualityExecutionsResponse], error)
 	// Read one execution: its state, verdict, and the evidence behind it.
 	GetQualityExecution(context.Context, *connect.Request[v1.GetQualityExecutionRequest]) (*connect.Response[v1.QualityExecution], error)
+	// List runs, newest first. A run is one dispatch batch: the executions one
+	// scheduler tick or one manual request planned together. Runs are the
+	// batch-level read model the execution directory groups by target; each run
+	// carries one slice per target it touched, with the slice's counts.
+	ListQualityRuns(context.Context, *connect.Request[v1.ListQualityRunsRequest]) (*connect.Response[v1.ListQualityRunsResponse], error)
+	// Read one run, with every target slice it touched.
+	GetQualityRun(context.Context, *connect.Request[v1.GetQualityRunRequest]) (*connect.Response[v1.QualityRun], error)
 	// List quality issues, newest first.
 	ListQualityIssues(context.Context, *connect.Request[v1.ListQualityIssuesRequest]) (*connect.Response[v1.ListQualityIssuesResponse], error)
 	// Read one quality issue.
@@ -342,6 +355,18 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			httpClient,
 			baseURL+DataQualityServiceGetQualityExecutionProcedure,
 			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityExecution")),
+			connect.WithClientOptions(opts...),
+		),
+		listQualityRuns: connect.NewClient[v1.ListQualityRunsRequest, v1.ListQualityRunsResponse](
+			httpClient,
+			baseURL+DataQualityServiceListQualityRunsProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityRuns")),
+			connect.WithClientOptions(opts...),
+		),
+		getQualityRun: connect.NewClient[v1.GetQualityRunRequest, v1.QualityRun](
+			httpClient,
+			baseURL+DataQualityServiceGetQualityRunProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityRun")),
 			connect.WithClientOptions(opts...),
 		),
 		listQualityIssues: connect.NewClient[v1.ListQualityIssuesRequest, v1.ListQualityIssuesResponse](
@@ -527,6 +552,8 @@ type dataQualityServiceClient struct {
 	runQualityRules                    *connect.Client[v1.RunQualityRulesRequest, v1.RunQualityRulesResponse]
 	listQualityExecutions              *connect.Client[v1.ListQualityExecutionsRequest, v1.ListQualityExecutionsResponse]
 	getQualityExecution                *connect.Client[v1.GetQualityExecutionRequest, v1.QualityExecution]
+	listQualityRuns                    *connect.Client[v1.ListQualityRunsRequest, v1.ListQualityRunsResponse]
+	getQualityRun                      *connect.Client[v1.GetQualityRunRequest, v1.QualityRun]
 	listQualityIssues                  *connect.Client[v1.ListQualityIssuesRequest, v1.ListQualityIssuesResponse]
 	getQualityIssue                    *connect.Client[v1.GetQualityIssueRequest, v1.QualityIssue]
 	updateQualityIssue                 *connect.Client[v1.UpdateQualityIssueRequest, v1.QualityIssue]
@@ -605,6 +632,16 @@ func (c *dataQualityServiceClient) ListQualityExecutions(ctx context.Context, re
 // GetQualityExecution calls metaxisdata.v1.DataQualityService.GetQualityExecution.
 func (c *dataQualityServiceClient) GetQualityExecution(ctx context.Context, req *connect.Request[v1.GetQualityExecutionRequest]) (*connect.Response[v1.QualityExecution], error) {
 	return c.getQualityExecution.CallUnary(ctx, req)
+}
+
+// ListQualityRuns calls metaxisdata.v1.DataQualityService.ListQualityRuns.
+func (c *dataQualityServiceClient) ListQualityRuns(ctx context.Context, req *connect.Request[v1.ListQualityRunsRequest]) (*connect.Response[v1.ListQualityRunsResponse], error) {
+	return c.listQualityRuns.CallUnary(ctx, req)
+}
+
+// GetQualityRun calls metaxisdata.v1.DataQualityService.GetQualityRun.
+func (c *dataQualityServiceClient) GetQualityRun(ctx context.Context, req *connect.Request[v1.GetQualityRunRequest]) (*connect.Response[v1.QualityRun], error) {
+	return c.getQualityRun.CallUnary(ctx, req)
 }
 
 // ListQualityIssues calls metaxisdata.v1.DataQualityService.ListQualityIssues.
@@ -782,6 +819,13 @@ type DataQualityServiceHandler interface {
 	ListQualityExecutions(context.Context, *connect.Request[v1.ListQualityExecutionsRequest]) (*connect.Response[v1.ListQualityExecutionsResponse], error)
 	// Read one execution: its state, verdict, and the evidence behind it.
 	GetQualityExecution(context.Context, *connect.Request[v1.GetQualityExecutionRequest]) (*connect.Response[v1.QualityExecution], error)
+	// List runs, newest first. A run is one dispatch batch: the executions one
+	// scheduler tick or one manual request planned together. Runs are the
+	// batch-level read model the execution directory groups by target; each run
+	// carries one slice per target it touched, with the slice's counts.
+	ListQualityRuns(context.Context, *connect.Request[v1.ListQualityRunsRequest]) (*connect.Response[v1.ListQualityRunsResponse], error)
+	// Read one run, with every target slice it touched.
+	GetQualityRun(context.Context, *connect.Request[v1.GetQualityRunRequest]) (*connect.Response[v1.QualityRun], error)
 	// List quality issues, newest first.
 	ListQualityIssues(context.Context, *connect.Request[v1.ListQualityIssuesRequest]) (*connect.Response[v1.ListQualityIssuesResponse], error)
 	// Read one quality issue.
@@ -938,6 +982,18 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		DataQualityServiceGetQualityExecutionProcedure,
 		svc.GetQualityExecution,
 		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityExecution")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceListQualityRunsHandler := connect.NewUnaryHandler(
+		DataQualityServiceListQualityRunsProcedure,
+		svc.ListQualityRuns,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityRuns")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceGetQualityRunHandler := connect.NewUnaryHandler(
+		DataQualityServiceGetQualityRunProcedure,
+		svc.GetQualityRun,
+		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityRun")),
 		connect.WithHandlerOptions(opts...),
 	)
 	dataQualityServiceListQualityIssuesHandler := connect.NewUnaryHandler(
@@ -1130,6 +1186,10 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceListQualityExecutionsHandler.ServeHTTP(w, r)
 		case DataQualityServiceGetQualityExecutionProcedure:
 			dataQualityServiceGetQualityExecutionHandler.ServeHTTP(w, r)
+		case DataQualityServiceListQualityRunsProcedure:
+			dataQualityServiceListQualityRunsHandler.ServeHTTP(w, r)
+		case DataQualityServiceGetQualityRunProcedure:
+			dataQualityServiceGetQualityRunHandler.ServeHTTP(w, r)
 		case DataQualityServiceListQualityIssuesProcedure:
 			dataQualityServiceListQualityIssuesHandler.ServeHTTP(w, r)
 		case DataQualityServiceGetQualityIssueProcedure:
@@ -1233,6 +1293,14 @@ func (UnimplementedDataQualityServiceHandler) ListQualityExecutions(context.Cont
 
 func (UnimplementedDataQualityServiceHandler) GetQualityExecution(context.Context, *connect.Request[v1.GetQualityExecutionRequest]) (*connect.Response[v1.QualityExecution], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityExecution is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ListQualityRuns(context.Context, *connect.Request[v1.ListQualityRunsRequest]) (*connect.Response[v1.ListQualityRunsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ListQualityRuns is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) GetQualityRun(context.Context, *connect.Request[v1.GetQualityRunRequest]) (*connect.Response[v1.QualityRun], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityRun is not implemented"))
 }
 
 func (UnimplementedDataQualityServiceHandler) ListQualityIssues(context.Context, *connect.Request[v1.ListQualityIssuesRequest]) (*connect.Response[v1.ListQualityIssuesResponse], error) {

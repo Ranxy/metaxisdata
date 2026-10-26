@@ -33,7 +33,8 @@ const qualityTargetDefaultPageSize = 50
 // table or view. The aggregation happens in the store, so the directory costs one
 // query rather than paging through every rule.
 func (s *DataQualityService) ListQualityTargets(ctx context.Context, req *connect.Request[v1pb.ListQualityTargetsRequest]) (*connect.Response[v1pb.ListQualityTargetsResponse], error) {
-	if _, err := s.workspaceID(ctx, req.Msg.GetParent()); err != nil {
+	workspaceID, err := s.workspaceID(ctx, req.Msg.GetParent())
+	if err != nil {
 		return nil, err
 	}
 	worstStatus, err := qualityTargetWorstStatusFromV1(req.Msg.GetWorstStatus())
@@ -104,16 +105,24 @@ func (s *DataQualityService) ListQualityTargets(ctx context.Context, req *connec
 				orphaned[store.MetaGUIDKey{GUID: rule.TargetGUID, ObjectType: rule.TargetType}] = true
 			}
 		}
+		runSummaries, err := s.store.ListQualityTargetRunSummaries(ctx, keys)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to read the targets' latest runs")
+		}
 		for _, target := range targets {
 			key := store.MetaGUIDKey{GUID: target.GUID, ObjectType: target.Type}
 			target.ColumnCount = int32(len(columns[key]))
 			target.Orphaned = orphaned[key]
+			if summary := runSummaries[key]; summary != nil {
+				target.LatestRun = summary
+				target.RunCount = summary.RunCount
+			}
 		}
 	}
 
 	response := &v1pb.ListQualityTargetsResponse{NextPageToken: nextPageToken}
 	for _, target := range targets {
-		response.QualityTargets = append(response.QualityTargets, convertQualityTargetSummary(target))
+		response.QualityTargets = append(response.QualityTargets, convertQualityTargetSummary(workspaceID, target))
 	}
 	return connect.NewResponse(response), nil
 }
@@ -277,6 +286,15 @@ func (s *DataQualityService) GetQualityTarget(ctx context.Context, req *connect.
 		}
 	}
 	summary.ColumnCount = int32(len(columns))
+	runKey := store.MetaGUIDKey{GUID: targetGUID, ObjectType: metaType}
+	runSummaries, err := s.store.ListQualityTargetRunSummaries(ctx, []store.MetaGUIDKey{runKey})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the target's latest run")
+	}
+	if entry := runSummaries[runKey]; entry != nil {
+		summary.LatestRun = convertQualityRunTarget(workspaceID, entry.Run, entry.Slice)
+		summary.RunCount = entry.RunCount
+	}
 
 	response := &v1pb.GetQualityTargetResponse{
 		Summary:        summary,
@@ -357,9 +375,11 @@ func qualityTargetOrderFromV1(order v1pb.QualityTargetOrder) store.QualityTarget
 	}
 }
 
-// convertQualityTargetSummary turns one aggregate row into the API message.
-func convertQualityTargetSummary(target *store.QualityTargetMessage) *v1pb.QualityTargetSummary {
-	return &v1pb.QualityTargetSummary{
+// convertQualityTargetSummary turns one aggregate row into the API message. The
+// run fields are filled from the same enrichment the directory performs, so a
+// target row and its workspace always agree about the latest batch.
+func convertQualityTargetSummary(workspaceID string, target *store.QualityTargetMessage) *v1pb.QualityTargetSummary {
+	summary := &v1pb.QualityTargetSummary{
 		Target: &v1pb.QualityTarget{
 			MetaGuid: target.GUID,
 			MetaType: v1pb.MetaType(target.Type),
@@ -376,7 +396,12 @@ func convertQualityTargetSummary(target *store.QualityTargetMessage) *v1pb.Quali
 		LastRunTime:       timeToProtoTimestampPtr(target.LastRunTime),
 		SchemaChanged:     target.SchemaChanged,
 		Orphaned:          target.Orphaned,
+		RunCount:          target.RunCount,
 	}
+	if target.LatestRun != nil {
+		summary.LatestRun = convertQualityRunTarget(workspaceID, target.LatestRun.Run, target.LatestRun.Slice)
+	}
+	return summary
 }
 
 // worstQualityStatus returns the worse of the two statuses. The store owns the

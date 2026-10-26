@@ -277,6 +277,11 @@
           </div>
 
           <div class="min-w-0 space-y-4 lg:sticky lg:top-0 lg:self-start">
+            <TargetRecentScanCard
+              :summary="summary"
+              :target-guid="targetGuid"
+            />
+
             <TargetCopilotPanel
               v-if="canSuggest"
               ref="copilot"
@@ -421,6 +426,7 @@ import TargetContractCard from "@/components/data-quality/TargetContractCard.vue
 import TargetCopilotPanel from "@/components/data-quality/TargetCopilotPanel.vue";
 import TargetCoverageCard from "@/components/data-quality/TargetCoverageCard.vue";
 import TargetDraftCard from "@/components/data-quality/TargetDraftCard.vue";
+import TargetRecentScanCard from "@/components/data-quality/TargetRecentScanCard.vue";
 import TargetRuleComposer from "@/components/data-quality/TargetRuleComposer.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";

@@ -25,6 +25,7 @@ import (
 const (
 	qualityRulePrefix      = "qualityRules/"
 	qualityExecutionPrefix = "qualityExecutions/"
+	qualityRunPrefix       = "qualityRuns/"
 	qualityIssuePrefix     = "qualityIssues/"
 
 	// A rule that is scheduled must say how often. The bounds are the design's
@@ -66,6 +67,29 @@ func parseQualityExecutionID(name string) (string, int64, error) {
 	return workspace, executionID, nil
 }
 
+// parseQualityRunName splits workspaces/{workspace}/qualityRuns/{quality_run}.
+func parseQualityRunName(name string) (string, string, error) {
+	tokens, err := common.GetNameParentTokens(name, common.WorkspacePrefix, qualityRunPrefix)
+	if err != nil {
+		return "", "", errors.Wrap(err, "invalid quality run name")
+	}
+	return tokens[0], tokens[1], nil
+}
+
+// parseQualityRunID resolves a run resource name to its workspace and the numeric
+// row id the last segment carries.
+func parseQualityRunID(name string) (string, int64, error) {
+	workspace, runIDText, err := parseQualityRunName(name)
+	if err != nil {
+		return "", 0, connectErrorInvalid("%v", err)
+	}
+	runID, err := strconv.ParseInt(strings.TrimSpace(runIDText), 10, 64)
+	if err != nil || runID <= 0 {
+		return "", 0, connectErrorInvalid("the quality run name does not carry a run id")
+	}
+	return workspace, runID, nil
+}
+
 // parseQualityIssueName splits workspaces/{workspace}/qualityIssues/{quality_issue}.
 func parseQualityIssueName(name string) (string, string, error) {
 	tokens, err := common.GetNameParentTokens(name, common.WorkspacePrefix, qualityIssuePrefix)
@@ -84,6 +108,12 @@ func formatQualityRuleName(workspace, qualityRule string) string {
 // no public resource id column: the last segment is the row's immutable id.
 func formatQualityExecutionName(workspace string, executionID int64) string {
 	return common.FormatWorkspace(workspace) + "/" + qualityExecutionPrefix + strconv.FormatInt(executionID, 10)
+}
+
+// formatQualityRunName renders a run resource name. A run has no public resource
+// id column: the last segment is the row's id, like an execution.
+func formatQualityRunName(workspace string, runID int64) string {
+	return common.FormatWorkspace(workspace) + "/" + qualityRunPrefix + strconv.FormatInt(runID, 10)
 }
 
 // formatQualityIssueName renders an issue resource name.
@@ -373,6 +403,7 @@ func convertQualityExecution(workspaceID string, execution *store.QualityExecuti
 		ErrorMessage:  execution.ErrorMessage,
 		Duration:      durationFromMilliseconds(execution.DurationMS),
 		StartTime:     timestamppb.New(execution.StartedAt),
+		Run:           formatQualityRunName(workspaceID, execution.RunID),
 	}
 	// An execution that has not reached a terminal state has no finish time; the
 	// proto field stays unset rather than showing the epoch.
@@ -397,6 +428,63 @@ func convertQualityExecutionSummary(workspaceID string, execution *store.Quality
 		Execution:     formatQualityExecutionName(workspaceID, execution.ID),
 		FinishTime:    timestamppb.New(execution.FinishedAt),
 	}
+}
+
+// convertQualityRun converts one dispatch batch and its per-target slices. A run
+// is the batch-level read model: the executions remain the evidence, and the
+// slices are projections of them.
+func convertQualityRun(workspaceID string, run *store.QualityRunMessage, slices []*store.QualityRunTargetMessage) *v1pb.QualityRun {
+	if run == nil {
+		return nil
+	}
+	instance := ""
+	if run.InstanceResourceID != "" {
+		instance = common.FormatInstance(run.InstanceResourceID)
+	}
+	converted := &v1pb.QualityRun{
+		Name:       formatQualityRunName(workspaceID, run.ID),
+		Instance:   instance,
+		Trigger:    v1pb.QualityExecutionTrigger(run.Trigger),
+		State:      v1pb.QualityExecutionState(run.Status),
+		Outcome:    v1pb.QualityStatus(run.Outcome),
+		Counts:     convertQualityStatusCountsToV1(run.Counts),
+		Initiator:  formatQualityOwner(run.InitiatorID),
+		StartTime:  timestamppb.New(run.StartedAt),
+		FinishTime: timeToProtoTimestampPtr(run.FinishedAt),
+	}
+	for _, slice := range slices {
+		converted.Targets = append(converted.Targets, convertQualityRunTarget(workspaceID, run, slice))
+	}
+	return converted
+}
+
+// convertQualityRunTarget converts one target's slice of a run. The slice repeats
+// the parent's resource name, lifecycle and trigger so it can stand alone as a
+// target's latest_run; run may be nil only for a slice read without its parent
+// (the target enrichment always passes one).
+func convertQualityRunTarget(workspaceID string, run *store.QualityRunMessage, slice *store.QualityRunTargetMessage) *v1pb.QualityRunTarget {
+	if slice == nil {
+		return nil
+	}
+	converted := &v1pb.QualityRunTarget{
+		Target: &v1pb.QualityTarget{
+			MetaGuid: slice.TargetGUID,
+			MetaType: v1pb.MetaType(slice.TargetType),
+			Path:     convertQualityTargetPathToV1(slice.TargetPath),
+		},
+		Counts:          convertQualityStatusCountsToV1(slice.Counts),
+		Outcome:         v1pb.QualityStatus(slice.Outcome),
+		RuleRevisionMin: slice.RuleRevisionMin,
+		RuleRevisionMax: slice.RuleRevisionMax,
+		StartTime:       timestamppb.New(slice.StartedAt),
+		FinishTime:      timeToProtoTimestampPtr(slice.FinishedAt),
+	}
+	if run != nil {
+		converted.Run = formatQualityRunName(workspaceID, run.ID)
+		converted.State = v1pb.QualityExecutionState(run.Status)
+		converted.Trigger = v1pb.QualityExecutionTrigger(run.Trigger)
+	}
+	return converted
 }
 
 // convertQualityIssue converts one issue row. The rule name is resolved by the

@@ -4698,6 +4698,13 @@ paths:
                   schema:
                     type: string
                     format: date-time
+                - name: run
+                  in: query
+                  description: |-
+                    Only the executions planned by this run.
+                     Format: workspaces/{workspace}/qualityRuns/{quality_run}
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: OK
@@ -5374,6 +5381,138 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/RunQualityRulesResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityRuns:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                List runs, newest first. A run is one dispatch batch: the executions one
+                 scheduler tick or one manual request planned together. Runs are the
+                 batch-level read model the execution directory groups by target; each run
+                 carries one slice per target it touched, with the slice's counts.
+            operationId: DataQualityService_ListQualityRuns
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: |-
+                    The maximum number of runs to return. If unspecified, at most 50 are
+                     returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  description: A page token, received from a previous ListQualityRuns call.
+                  schema:
+                    type: string
+                - name: targetGuid
+                  in: query
+                  description: Only runs that planned at least one execution for this target GUID.
+                  schema:
+                    type: string
+                - name: instance
+                  in: query
+                  description: |-
+                    Only runs admitted against this instance.
+                     Format: instances/{instance}
+                  schema:
+                    type: string
+                - name: trigger
+                  in: query
+                  schema:
+                    enum:
+                        - QUALITY_EXECUTION_TRIGGER_UNSPECIFIED
+                        - QUALITY_EXECUTION_TRIGGER_MANUAL
+                        - QUALITY_EXECUTION_TRIGGER_SCHEDULED
+                    type: string
+                    format: enum
+                - name: state
+                  in: query
+                  schema:
+                    enum:
+                        - QUALITY_EXECUTION_STATE_UNSPECIFIED
+                        - QUALITY_EXECUTION_STATE_PENDING
+                        - QUALITY_EXECUTION_STATE_RUNNING
+                        - QUALITY_EXECUTION_STATE_COMPLETED
+                        - QUALITY_EXECUTION_STATE_ABANDONED
+                    type: string
+                    format: enum
+                - name: outcome
+                  in: query
+                  schema:
+                    enum:
+                        - QUALITY_STATUS_UNSPECIFIED
+                        - QUALITY_STATUS_PASS
+                        - QUALITY_STATUS_WARN
+                        - QUALITY_STATUS_FAIL
+                        - QUALITY_STATUS_ERROR
+                        - QUALITY_STATUS_SKIPPED
+                        - QUALITY_STATUS_NOT_EVALUATED
+                    type: string
+                    format: enum
+                - name: startTime
+                  in: query
+                  description: Only runs started at or after this time.
+                  schema:
+                    type: string
+                    format: date-time
+                - name: endTime
+                  in: query
+                  description: Only runs started before this time.
+                  schema:
+                    type: string
+                    format: date-time
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListQualityRunsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityRuns/{qualityRun}:
+        get:
+            tags:
+                - DataQualityService
+            description: Read one run, with every target slice it touched.
+            operationId: DataQualityService_GetQualityRun
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityRun
+                  in: path
+                  description: The qualityRun id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityRun'
                 default:
                     description: Default error response
                     content:
@@ -9258,6 +9397,15 @@ components:
                         $ref: '#/components/schemas/QualityRule'
                 nextPageToken:
                     type: string
+        ListQualityRunsResponse:
+            type: object
+            properties:
+                qualityRuns:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityRun'
+                nextPageToken:
+                    type: string
         ListQualitySuggestionJobsResponse:
             type: object
             properties:
@@ -10731,6 +10879,12 @@ components:
                     type: string
                     description: Unset while the execution is PENDING or RUNNING.
                     format: date-time
+                run:
+                    type: string
+                    description: |-
+                        The dispatch batch that planned this execution, so the execution directory
+                         can group checks by the run that produced them.
+                         Format: workspaces/{workspace}/qualityRuns/{quality_run}
             description: |-
                 QualityExecution is one rule checked once: the durable unit of the data
                  quality engine. A scheduled tick or a manual request plans one execution per
@@ -11232,6 +11386,148 @@ components:
                         $ref: '#/components/schemas/QualityExecutionSummary'
                     description: Newest first. At most 20 are returned.
             description: QualityRuleHistory is one rule's recent completed executions.
+        QualityRun:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: |-
+                        Format: workspaces/{workspace}/qualityRuns/{quality_run}. The last segment is
+                         the row id, which is immutable for the row's lifetime.
+                instance:
+                    type: string
+                    description: |-
+                        The instance whose connection budget admitted the batch.
+                         Format: instances/{instance}
+                trigger:
+                    enum:
+                        - QUALITY_EXECUTION_TRIGGER_UNSPECIFIED
+                        - QUALITY_EXECUTION_TRIGGER_MANUAL
+                        - QUALITY_EXECUTION_TRIGGER_SCHEDULED
+                    type: string
+                    format: enum
+                state:
+                    enum:
+                        - QUALITY_EXECUTION_STATE_UNSPECIFIED
+                        - QUALITY_EXECUTION_STATE_PENDING
+                        - QUALITY_EXECUTION_STATE_RUNNING
+                        - QUALITY_EXECUTION_STATE_COMPLETED
+                        - QUALITY_EXECUTION_STATE_ABANDONED
+                    type: string
+                    description: |-
+                        The batch lifecycle: PENDING, RUNNING, COMPLETED or ABANDONED. A COMPLETED
+                         batch may still have failed checks; outcome carries what it found.
+                    format: enum
+                outcome:
+                    enum:
+                        - QUALITY_STATUS_UNSPECIFIED
+                        - QUALITY_STATUS_PASS
+                        - QUALITY_STATUS_WARN
+                        - QUALITY_STATUS_FAIL
+                        - QUALITY_STATUS_ERROR
+                        - QUALITY_STATUS_SKIPPED
+                        - QUALITY_STATUS_NOT_EVALUATED
+                    type: string
+                    description: |-
+                        The worst verdict among the batch's terminal executions. Unset while the
+                         batch is queued or running, and on an abandoned batch.
+                    format: enum
+                counts:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityStatusCounts'
+                    description: |-
+                        The batch-wide tally. total counts every planned execution; the per-verdict
+                         fields count only the ones that reached that verdict.
+                initiator:
+                    type: string
+                    description: |-
+                        The principal that started a manual batch. Empty for a scheduled batch.
+                         Format: users/{user}
+                startTime:
+                    type: string
+                    format: date-time
+                finishTime:
+                    type: string
+                    description: Unset while the batch is PENDING or RUNNING.
+                    format: date-time
+                targets:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityRunTarget'
+                    description: |-
+                        One slice per target the batch planned executions for. A scheduled batch
+                         covers one instance, so it can name several targets; a manual target run
+                         names one.
+            description: |-
+                QualityRun is one dispatch batch: the executions a scheduler tick or a manual
+                 request planned together. It is a projection over quality_run and the
+                 executions it planned, not a second source of truth; the execution remains the
+                 per-check unit and the evidence.
+        QualityRunTarget:
+            type: object
+            properties:
+                target:
+                    $ref: '#/components/schemas/QualityTarget'
+                counts:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityStatusCounts'
+                    description: |-
+                        The slice's tally: total planned executions for this target, and the
+                         verdicts they reached.
+                outcome:
+                    enum:
+                        - QUALITY_STATUS_UNSPECIFIED
+                        - QUALITY_STATUS_PASS
+                        - QUALITY_STATUS_WARN
+                        - QUALITY_STATUS_FAIL
+                        - QUALITY_STATUS_ERROR
+                        - QUALITY_STATUS_SKIPPED
+                        - QUALITY_STATUS_NOT_EVALUATED
+                    type: string
+                    description: The worst verdict in this slice; unset while no execution is terminal.
+                    format: enum
+                ruleRevisionMin:
+                    type: integer
+                    description: |-
+                        The range of rule revisions this slice judged, so two batches are only
+                         compared when they ran the same definition. Zero when the slice is empty.
+                    format: int32
+                ruleRevisionMax:
+                    type: integer
+                    format: int32
+                startTime:
+                    type: string
+                    format: date-time
+                finishTime:
+                    type: string
+                    description: Unset while the slice has no terminal execution.
+                    format: date-time
+                run:
+                    type: string
+                    description: |-
+                        The run this slice belongs to, repeated here so the slice can stand alone as
+                         a target's `latest_run`. Format: workspaces/{workspace}/qualityRuns/{quality_run}
+                state:
+                    enum:
+                        - QUALITY_EXECUTION_STATE_UNSPECIFIED
+                        - QUALITY_EXECUTION_STATE_PENDING
+                        - QUALITY_EXECUTION_STATE_RUNNING
+                        - QUALITY_EXECUTION_STATE_COMPLETED
+                        - QUALITY_EXECUTION_STATE_ABANDONED
+                    type: string
+                    description: The parent batch's lifecycle, repeated for the same reason.
+                    format: enum
+                trigger:
+                    enum:
+                        - QUALITY_EXECUTION_TRIGGER_UNSPECIFIED
+                        - QUALITY_EXECUTION_TRIGGER_MANUAL
+                        - QUALITY_EXECUTION_TRIGGER_SCHEDULED
+                    type: string
+                    format: enum
+            description: |-
+                QualityRunTarget is one target's slice of a run: what that run did to that
+                 target. The directory and the target workspace show this slice, not the
+                 batch-wide counts, because a batch can cover several targets.
         QualityStatusCounts:
             type: object
             properties:
@@ -11619,6 +11915,17 @@ components:
                         Whether the target can no longer be resolved (the registry row, instance or
                          database is gone). The rows stay readable because their target path is a
                          snapshot, but runs are skipped.
+                latestRun:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityRunTarget'
+                    description: |-
+                        The target's slice of the most recent run that planned any of its checks.
+                         This is the per-target batch summary the directory and the workspace show;
+                         unset when the target has never run.
+                runCount:
+                    type: integer
+                    description: How many dispatch batches have planned at least one check for this target.
+                    format: int32
             description: |-
                 QualityTargetSummary is one row of the target directory: the target identity
                  plus the counts and health the row and the workspace header render.

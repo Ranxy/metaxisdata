@@ -1203,6 +1203,13 @@ func (s *DataQualityService) applyQualityExecutionListFilters(ctx context.Contex
 	if guid := strings.TrimSpace(request.GetTargetGuid()); guid != "" {
 		find.TargetGUID = &guid
 	}
+	if runName := strings.TrimSpace(request.GetRun()); runName != "" {
+		_, runID, err := parseQualityRunID(runName)
+		if err != nil {
+			return err
+		}
+		find.RunID = &runID
+	}
 	if instance := strings.TrimSpace(request.GetInstance()); instance != "" {
 		instanceID, err := common.GetInstanceID(instance)
 		if err != nil {

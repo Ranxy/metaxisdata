@@ -338,6 +338,7 @@ func TestApplyQualityExecutionListFilters(t *testing.T) {
 		Trigger:    v1pb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL,
 		TargetGuid: "instance_1;shop;public;orders",
 		Instance:   "instances/instance_1",
+		Run:        "workspaces/ws1/qualityRuns/42",
 		StartTime:  timestamppb.New(startAt),
 		EndTime:    timestamppb.New(endAt),
 		Initiator:  "users/7",
@@ -348,6 +349,8 @@ func TestApplyQualityExecutionListFilters(t *testing.T) {
 	require.Equal(t, storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL, *find.Trigger)
 	require.Equal(t, "instance_1;shop;public;orders", *find.TargetGUID)
 	require.Equal(t, "instance_1", *find.InstanceResourceID)
+	require.NotNil(t, find.RunID)
+	require.Equal(t, int64(42), *find.RunID)
 	require.Equal(t, startAt, *find.StartAt)
 	require.Equal(t, endAt, *find.EndAt)
 	require.Equal(t, int32(7), *find.InitiatorID)
@@ -358,6 +361,7 @@ func TestApplyQualityExecutionListFilters(t *testing.T) {
 	require.Empty(t, empty.Statuses)
 	require.Nil(t, empty.Trigger)
 	require.Nil(t, empty.TargetGUID)
+	require.Nil(t, empty.RunID)
 	require.Nil(t, empty.InstanceResourceID)
 	require.Nil(t, empty.StartAt)
 	require.Nil(t, empty.EndAt)
@@ -369,6 +373,8 @@ func TestApplyQualityExecutionListFilters(t *testing.T) {
 		{State: v1pb.QualityExecutionState(99)},
 		{Outcome: v1pb.QualityStatus(99)},
 		{Trigger: v1pb.QualityExecutionTrigger(99)},
+		{Run: "workspaces/ws1/qualityRuns/not-a-number"},
+		{Run: "workspaces/ws1/qualityExecutions/42"},
 	} {
 		err := service.applyQualityExecutionListFilters(t.Context(), &store.FindQualityExecutionMessage{}, request)
 		require.Error(t, err)

@@ -2,6 +2,7 @@ package v1
 
 import (
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
@@ -102,11 +103,13 @@ func TestApplyQualityTargetListFilters(t *testing.T) {
 	require.Equal(t, "orders", *find.Search)
 }
 
-// A summary keeps the snapshot path and the counts the directory renders.
+// A summary keeps the snapshot path, the counts the directory renders, and the
+// target's newest run slice.
 func TestConvertQualityTargetSummary(t *testing.T) {
 	t.Parallel()
 
-	summary := convertQualityTargetSummary(&store.QualityTargetMessage{
+	finishedAt := time.Date(2026, time.October, 7, 9, 30, 0, 0, time.UTC)
+	summary := convertQualityTargetSummary("ws1", &store.QualityTargetMessage{
 		GUID:              "instance-1;shop;public;orders",
 		Type:              storepb.MetaType_TABLE,
 		Path:              &storepb.QualityTargetPath{Instance: "instance-1", Database: "shop", Schema: "public", Object: "orders"},
@@ -120,6 +123,27 @@ func TestConvertQualityTargetSummary(t *testing.T) {
 		WorstStatus:       storepb.QualityStatus_QUALITY_STATUS_FAIL,
 		SchemaChanged:     true,
 		Orphaned:          true,
+		RunCount:          2,
+		LatestRun: &store.QualityTargetRunSummaryMessage{
+			TargetGUID: "instance-1;shop;public;orders",
+			TargetType: storepb.MetaType_TABLE,
+			Run: &store.QualityRunMessage{
+				ID:        42,
+				Trigger:   storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL,
+				Status:    storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED,
+				StartedAt: finishedAt.Add(-time.Minute),
+			},
+			Slice: &store.QualityRunTargetMessage{
+				RunID:           42,
+				TargetGUID:      "instance-1;shop;public;orders",
+				TargetType:      storepb.MetaType_TABLE,
+				Counts:          &storepb.QualityStatusCounts{Total: 3, Fail: 1, Pass: 2},
+				Outcome:         storepb.QualityStatus_QUALITY_STATUS_FAIL,
+				RuleRevisionMin: 1,
+				RuleRevisionMax: 2,
+				StartedAt:       finishedAt.Add(-time.Minute),
+			},
+		},
 	})
 	require.Equal(t, "orders", summary.GetTarget().GetPath().GetObject())
 	require.Equal(t, v1pb.MetaType_TABLE, summary.GetTarget().GetMetaType())
@@ -133,4 +157,20 @@ func TestConvertQualityTargetSummary(t *testing.T) {
 	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_FAIL, summary.GetWorstStatus())
 	require.True(t, summary.GetSchemaChanged())
 	require.True(t, summary.GetOrphaned())
+	require.Equal(t, int32(2), summary.GetRunCount())
+	require.NotNil(t, summary.GetLatestRun())
+	require.Equal(t, "workspaces/ws1/qualityRuns/42", summary.GetLatestRun().GetRun())
+	require.Equal(t, v1pb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL, summary.GetLatestRun().GetTrigger())
+	require.Equal(t, v1pb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED, summary.GetLatestRun().GetState())
+	require.Equal(t, int32(3), summary.GetLatestRun().GetCounts().GetTotal())
+	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_FAIL, summary.GetLatestRun().GetOutcome())
+	require.Equal(t, int32(1), summary.GetLatestRun().GetRuleRevisionMin())
+	require.Equal(t, int32(2), summary.GetLatestRun().GetRuleRevisionMax())
+
+	// A target that has never run carries zero values rather than an empty slice.
+	never := convertQualityTargetSummary("ws1", &store.QualityTargetMessage{
+		GUID: "instance-1;shop;public;orders",
+	})
+	require.Equal(t, int32(0), never.GetRunCount())
+	require.Nil(t, never.GetLatestRun())
 }

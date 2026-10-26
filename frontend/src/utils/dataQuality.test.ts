@@ -362,6 +362,16 @@ describe("execution lifecycle", () => {
         })
       )
     ).toBe(125);
+    // A sub-second check keeps its milliseconds: truncating nanos rendered every
+    // fast execution as "0 ms".
+    expect(
+      executionDurationSeconds(
+        create(QualityExecutionSchema, {
+          startTime: { seconds: 1_700_000_000n, nanos: 100_000_000 },
+          finishTime: { seconds: 1_700_000_000n, nanos: 850_000_000 },
+        })
+      )
+    ).toBeCloseTo(0.75);
     expect(
       executionDurationSeconds(
         create(QualityExecutionSchema, {
