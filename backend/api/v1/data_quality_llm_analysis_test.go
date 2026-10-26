@@ -14,25 +14,34 @@ import (
 )
 
 // The markdown panel renders the hypotheses, their evidence, the next step and the
-// confidence.
+// confidence in the language the answer was requested in.
 func TestRenderExplanationMarkdown(t *testing.T) {
 	t.Parallel()
 
-	markdown := renderExplanationMarkdown(dataquality.ExplanationOutput{
+	output := dataquality.ExplanationOutput{
 		Summary:    "the freshest row is stale",
 		Confidence: 0.7,
 		Hypotheses: []dataquality.ExplanationHypothesis{
 			{Cause: "replication lag", Evidence: []string{"last sync 40m ago", "no errors"}, NextStep: "check the replica lag"},
 			{Cause: "the job stopped", Evidence: []string{"no rows since 09:00"}, NextStep: ""},
 		},
-	})
+	}
+	markdown := renderExplanationMarkdown(output, "en-US")
 	require.Contains(t, markdown, "the freshest row is stale")
 	require.Contains(t, markdown, "### 1. replication lag")
 	require.Contains(t, markdown, "- last sync 40m ago")
+	require.Contains(t, markdown, "**Evidence**")
 	require.Contains(t, markdown, "**Next step:** check the replica lag")
 	require.Contains(t, markdown, "### 2. the job stopped")
 	require.NotContains(t, markdown, "**Next step:**\n\n\n")
 	require.Contains(t, markdown, "_confidence 0.70_")
+
+	translated := renderExplanationMarkdown(output, "zh-CN")
+	require.Contains(t, translated, "**证据**")
+	require.Contains(t, translated, "**下一步：** check the replica lag")
+	require.Contains(t, translated, "_置信度 0.70_")
+	require.NotContains(t, translated, "**Evidence**")
+	require.NotContains(t, translated, "**Next step:**")
 }
 
 // The stored execution maps to the prompt's plain snapshot without losing the

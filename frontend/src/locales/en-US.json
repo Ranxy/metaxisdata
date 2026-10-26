@@ -348,7 +348,7 @@
       "columnGroup": "Column checks",
       "commonGroup": "Common checks",
       "datasetGroup": "Dataset checks",
-      "description": "The target is fixed. The check joins its section when you create it; filter, owner and tags are under More settings.",
+      "description": "The target is fixed. The check joins its section when you save it; filter, owner and tags are under More settings.",
       "editTitle": "Edit {title}",
       "saving": "Saving…",
       "title": "New check on {target}"

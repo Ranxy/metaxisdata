@@ -3,7 +3,10 @@
     :open="open"
     @update:open="onOpenChange"
   >
-    <DialogContent class="max-h-[90vh] gap-0 overflow-hidden p-0 sm:max-w-4xl">
+    <DialogContent
+      class="max-h-[90vh] gap-0 overflow-hidden p-0 sm:max-w-4xl"
+      @open-auto-focus="onOpenAutoFocus"
+    >
       <div class="flex max-h-[90vh] min-h-0 flex-col">
         <DialogHeader class="shrink-0 border-b px-6 py-5">
           <DialogTitle>{{ title }}</DialogTitle>
@@ -20,7 +23,10 @@
              check's form on the right. Each scrolls on its own, so the type list
              stays reachable while a long parameter form is scrolled. -->
         <div class="flex min-h-0 flex-1 overflow-hidden">
-          <aside class="w-64 shrink-0 space-y-4 overflow-auto border-r px-3 py-4">
+          <aside
+            ref="catalogue"
+            class="w-64 shrink-0 space-y-4 overflow-auto border-r px-3 py-4"
+          >
             <p class="px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
               {{ t("dataQuality.composer.chooseType") }}
             </p>
@@ -348,7 +354,7 @@
 import { create } from "@bufbuild/protobuf";
 import { DurationSchema } from "@bufbuild/protobuf/wkt";
 import { AlertTriangle } from "lucide-vue-next";
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   createQualityRule,
@@ -590,6 +596,8 @@ const target = computed<TargetSelection | undefined>(() => {
 const columnGuid = computed(() => target.value?.guid ?? props.targetGuid);
 
 const form = ref<RuleFormState>(emptyRuleForm());
+/** The check-type catalogue pane, focused on the selected type when the dialog opens. */
+const catalogue = ref<HTMLElement | null>(null);
 const columns = ref<TargetColumnDetail[]>([]);
 /** Whether the page handed the columns down, so no metadata read is needed. */
 const hasProvidedColumns = computed(() => props.columnDetails.length > 0);
@@ -888,6 +896,23 @@ function onOpenChange(value: boolean) {
     return;
   }
   close();
+}
+
+/**
+ * Focus the check type the dialog already selected instead of the first item in
+ * the catalogue. Radix autofocuses the first tabbable element, which in edit mode
+ * left a focus ring on an unrelated type at the top of the list while the selected
+ * one sat below the fold.
+ */
+function onOpenAutoFocus(event: Event) {
+  event.preventDefault();
+  void nextTick(() => {
+    const selected = catalogue.value?.querySelector<HTMLButtonElement>(
+      `button[data-rule-type="${form.value.ruleType}"]`
+    );
+    selected?.focus({ preventScroll: true });
+    selected?.scrollIntoView({ block: "nearest" });
+  });
 }
 
 /** The server's own wording for a rejected rule, rendered in place. */

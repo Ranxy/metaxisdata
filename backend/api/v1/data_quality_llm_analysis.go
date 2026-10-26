@@ -136,7 +136,7 @@ func (s *DataQualityService) ExplainQualityExecution(ctx context.Context, req *c
 	cacheKey := dataquality.ExplainCacheKey(execution.ID, execution.RuleRevision, execution.Status, language, config.ProfileName, config.ModelName)
 
 	if !req.Msg.GetForceRegenerate() {
-		replayed, err := s.replayCachedExplanation(ctx, cacheKey, stream)
+		replayed, err := s.replayCachedExplanation(ctx, cacheKey, language, stream)
 		if err != nil {
 			return err
 		}
@@ -203,7 +203,7 @@ func (s *DataQualityService) ExplainQualityExecution(ctx context.Context, req *c
 	// panel shows prose, and one frame is enough because the structured answer was
 	// completed before anything was shown.
 	content := &v1pb.ExplainQualityExecutionResponse{
-		Payload: &v1pb.ExplainQualityExecutionResponse_Content{Content: renderExplanationMarkdown(explanation)},
+		Payload: &v1pb.ExplainQualityExecutionResponse_Content{Content: renderExplanationMarkdown(explanation, language)},
 	}
 	if err := stream.Send(content); err != nil {
 		return err
@@ -223,14 +223,14 @@ func (s *DataQualityService) ExplainQualityExecution(ctx context.Context, req *c
 }
 
 // cachedContent builds the content frame a cached explanation replays.
-func cachedContent(explanation dataquality.ExplanationOutput) *v1pb.ExplainQualityExecutionResponse {
+func cachedContent(explanation dataquality.ExplanationOutput, language string) *v1pb.ExplainQualityExecutionResponse {
 	return &v1pb.ExplainQualityExecutionResponse{
-		Payload: &v1pb.ExplainQualityExecutionResponse_Content{Content: renderExplanationMarkdown(explanation)},
+		Payload: &v1pb.ExplainQualityExecutionResponse_Content{Content: renderExplanationMarkdown(explanation, language)},
 	}
 }
 
 // replayCachedExplanation streams a cached explanation and reports whether it did.
-func (s *DataQualityService) replayCachedExplanation(ctx context.Context, cacheKey string, stream *connect.ServerStream[v1pb.ExplainQualityExecutionResponse]) (bool, error) {
+func (s *DataQualityService) replayCachedExplanation(ctx context.Context, cacheKey, language string, stream *connect.ServerStream[v1pb.ExplainQualityExecutionResponse]) (bool, error) {
 	cached, err := s.store.GetDataQualityLLMCache(ctx, cacheKey)
 	if err != nil {
 		// The cache is an optimization, not the answer: a read failure regenerates
@@ -256,7 +256,7 @@ func (s *DataQualityService) replayCachedExplanation(ctx context.Context, cacheK
 			NextStep: hypothesis.GetNextStep(),
 		})
 	}
-	if err := stream.Send(cachedContent(explanation)); err != nil {
+	if err := stream.Send(cachedContent(explanation, language)); err != nil {
 		return false, err
 	}
 	return true, stream.Send(&v1pb.ExplainQualityExecutionResponse{
@@ -462,7 +462,13 @@ func (s *DataQualityService) qualityIssueStatus(ctx context.Context, ruleID int6
 }
 
 // renderExplanationMarkdown renders the hypotheses as the markdown panel content.
-func renderExplanationMarkdown(explanation dataquality.ExplanationOutput) string {
+// The section labels are the panel's own furniture, not model output, so they
+// follow the language the answer was written in instead of staying English.
+func renderExplanationMarkdown(explanation dataquality.ExplanationOutput, language string) string {
+	evidenceLabel, nextStepLabel, confidenceLabel := "**Evidence**", "**Next step:**", "_confidence %.2f_"
+	if dataquality.NormalizePromptLanguage(language) == "zh-CN" {
+		evidenceLabel, nextStepLabel, confidenceLabel = "**证据**", "**下一步：**", "_置信度 %.2f_"
+	}
 	var builder strings.Builder
 	if summary := strings.TrimSpace(explanation.Summary); summary != "" {
 		_, _ = builder.WriteString(summary)
@@ -471,16 +477,17 @@ func renderExplanationMarkdown(explanation dataquality.ExplanationOutput) string
 	for index, hypothesis := range explanation.Hypotheses {
 		fmt.Fprintf(&builder, "### %d. %s\n\n", index+1, hypothesis.Cause)
 		if len(hypothesis.Evidence) > 0 {
-			_, _ = builder.WriteString("**Evidence**\n")
+			_, _ = builder.WriteString(evidenceLabel)
+			_, _ = builder.WriteString("\n")
 			for _, evidence := range hypothesis.Evidence {
 				fmt.Fprintf(&builder, "- %s\n", evidence)
 			}
 			_, _ = builder.WriteString("\n")
 		}
 		if nextStep := strings.TrimSpace(hypothesis.NextStep); nextStep != "" {
-			fmt.Fprintf(&builder, "**Next step:** %s\n\n", nextStep)
+			fmt.Fprintf(&builder, "%s %s\n\n", nextStepLabel, nextStep)
 		}
 	}
-	fmt.Fprintf(&builder, "_confidence %.2f_\n", explanation.Confidence)
+	fmt.Fprintf(&builder, confidenceLabel+"\n", explanation.Confidence)
 	return builder.String()
 }

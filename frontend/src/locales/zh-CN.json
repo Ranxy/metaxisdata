@@ -348,7 +348,7 @@
       "columnGroup": "字段检查",
       "commonGroup": "常用检查",
       "datasetGroup": "表级检查",
-      "description": "目标已固定；创建后检查会出现在对应分组。筛选、负责人与标签在“更多设置”里。",
+      "description": "目标已固定；保存后检查会出现在对应分组。筛选、负责人与标签在“更多设置”里。",
       "editTitle": "编辑 {title}",
       "saving": "正在保存…",
       "title": "在 {target} 上新建检查"
