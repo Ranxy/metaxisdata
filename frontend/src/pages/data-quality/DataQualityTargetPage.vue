@@ -956,13 +956,18 @@ function openCheck(rule: QualityRule) {
   selectedCheck.value = rule.name;
 }
 
-/** Removes `check` from the URL while preserving the other query keys. */
+/**
+ * Removes `check` from the URL while preserving the other query keys. The edit
+ * flag is dropped with it: it only names an intent to open the composer on that
+ * check, which closing the sheet has already fulfilled or abandoned.
+ */
 function removeCheckQuery() {
-  if (route.query.check === undefined) {
+  if (route.query.check === undefined && route.query.edit === undefined) {
     return;
   }
   const query = { ...route.query };
   delete query.check;
+  delete query.edit;
   void router.replace({ query });
 }
 
@@ -1145,4 +1150,29 @@ function syncAddFromQuery() {
 }
 
 watch([() => route.query.add, loading], syncAddFromQuery, { immediate: true });
+
+/**
+ * The old edit URL arrives as `check=<name>&edit=1`: consume the flag, then open
+ * the workspace composer on that check instead of the read-only sheet. A name
+ * this target does not have is ignored, exactly like a stale `check`.
+ */
+function syncEditFromQuery() {
+  if (loading.value || route.query.edit !== "1") {
+    return;
+  }
+  const query = { ...route.query };
+  delete query.edit;
+  void router.replace({ query });
+  const check = typeof route.query.check === "string" ? route.query.check : "";
+  const rule = rules.value.find((item) => item.name === check);
+  if (!rule) {
+    return;
+  }
+  openEditor(rule);
+  closeCheck();
+}
+
+watch([() => route.query.edit, rules, loading], syncEditFromQuery, {
+  immediate: true,
+});
 </script>

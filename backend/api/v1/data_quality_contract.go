@@ -116,6 +116,10 @@ func (s *DataQualityService) PublishQualityContract(ctx context.Context, req *co
 	}
 	// The version's diff counts are computed by the store inside the publish
 	// transaction, against the snapshot that really is the previous version.
+	note, err := qualityContractNote(req.Msg.GetNote())
+	if err != nil {
+		return nil, err
+	}
 
 	publishedBy := currentUserID(ctx)
 	var publishedByPtr *int32
@@ -128,7 +132,7 @@ func (s *DataQualityService) PublishQualityContract(ctx context.Context, req *co
 		TargetType:  metaType,
 		Settings:    settings,
 		Snapshot:    snapshot,
-		Note:        strings.TrimSpace(req.Msg.GetNote()),
+		Note:        note,
 		PublishedBy: publishedByPtr,
 	})
 	if err != nil {
@@ -407,12 +411,29 @@ func qualityContractSettingsEmpty(settings *storepb.QualityContractSettings) boo
 		settings.GetDefaultSeverity() == storepb.QualitySeverity_QUALITY_SEVERITY_UNSPECIFIED
 }
 
+// maxQualityContractNoteBytes bounds a published version's note. The UI limits
+// the field to 500 characters; the API allows some headroom but not an unbounded
+// value.
+const maxQualityContractNoteBytes = 2000
+
+// qualityContractNote trims a publish note and rejects one that is too long
+// instead of silently truncating the history text.
+func qualityContractNote(note string) (string, error) {
+	note = strings.TrimSpace(note)
+	if len(note) > maxQualityContractNoteBytes {
+		return "", connectErrorInvalid("the publish note is too long (max %d bytes)", maxQualityContractNoteBytes)
+	}
+	return note, nil
+}
+
 // validateQualityContractSettings checks the bounds of the settings that do not
 // need the target's metadata.
 func validateQualityContractSettings(settings *storepb.QualityContractSettings) error {
 	if seconds := settings.GetDefaultScheduleIntervalSeconds(); seconds != 0 {
-		interval := time.Duration(seconds) * time.Second
-		if interval < minQualityScheduleInterval || interval > maxQualityScheduleInterval {
+		// Bound the raw seconds before converting to a Duration: a huge int64 would
+		// overflow the multiplication and could slip past the range check.
+		if seconds < int64(minQualityScheduleInterval/time.Second) ||
+			seconds > int64(maxQualityScheduleInterval/time.Second) {
 			return connectErrorInvalid("the default schedule must be between 15 minutes and 7 days")
 		}
 	}

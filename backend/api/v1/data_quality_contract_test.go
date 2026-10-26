@@ -1,6 +1,8 @@
 package v1
 
 import (
+	"math"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -156,4 +158,26 @@ func TestFormatQualityContractPublisher(t *testing.T) {
 	require.Empty(t, formatQualityContractPublisher(nil))
 	id := int32(7)
 	require.Equal(t, "users/7", formatQualityContractPublisher(&id))
+}
+
+// A huge default schedule must be rejected by the raw-seconds bound: converting
+// it to a Duration first could overflow and slip past the window check.
+func TestValidateQualityContractSettingsRejectsOverflow(t *testing.T) {
+	t.Parallel()
+
+	require.Error(t, validateQualityContractSettings(&storepb.QualityContractSettings{
+		DefaultScheduleIntervalSeconds: math.MaxInt64,
+	}))
+}
+
+// The publish note has a bounded size; the handler rejects rather than truncating.
+func TestQualityContractNote(t *testing.T) {
+	t.Parallel()
+
+	note, err := qualityContractNote("  first  ")
+	require.NoError(t, err)
+	require.Equal(t, "first", note)
+
+	_, err = qualityContractNote(strings.Repeat("x", maxQualityContractNoteBytes+1))
+	require.Error(t, err)
 }

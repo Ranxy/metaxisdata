@@ -215,7 +215,9 @@ export declare type QualityTargetPath = Message<"metaxisdata.v1.QualityTargetPat
   object: string;
 
   /**
-   * Empty for a table-level rule.
+   * Display snapshot only. The checked column is the one named in the rule's
+   * typed config; this field may be empty for rules written before it was
+   * populated, and is empty for a table-level rule.
    *
    * @generated from field: string column = 5;
    */

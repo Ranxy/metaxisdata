@@ -1904,7 +1904,9 @@ type QualityTargetPath struct {
 	Database string                 `protobuf:"bytes,2,opt,name=database,proto3" json:"database,omitempty"`
 	Schema   string                 `protobuf:"bytes,3,opt,name=schema,proto3" json:"schema,omitempty"`
 	Object   string                 `protobuf:"bytes,4,opt,name=object,proto3" json:"object,omitempty"`
-	// Empty for a table-level rule.
+	// Display snapshot only. The checked column is the one named in the rule's
+	// typed config; this field may be empty for rules written before it was
+	// populated, and is empty for a table-level rule.
 	Column        string `protobuf:"bytes,5,opt,name=column,proto3" json:"column,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

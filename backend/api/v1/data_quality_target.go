@@ -379,37 +379,15 @@ func convertQualityTargetSummary(target *store.QualityTargetMessage) *v1pb.Quali
 	}
 }
 
-// worstQualityStatus returns the worse of the two statuses, using the same rank
-// as the store aggregate: ERROR outranks FAIL, and a status that observed
-// nothing ranks below PASS.
+// worstQualityStatus returns the worse of the two statuses. The store owns the
+// one rank table (the aggregate SQL CASE is generated from it), so the API
+// compares through it instead of keeping a second mapping that can drift.
 func worstQualityStatus(current, candidate v1pb.QualityStatus) v1pb.QualityStatus {
-	if qualityStatusRank(candidate) > qualityStatusRank(current) {
+	if store.QualityTargetStatusRank(storepb.QualityStatus(candidate)) >
+		store.QualityTargetStatusRank(storepb.QualityStatus(current)) {
 		return candidate
 	}
 	return current
-}
-
-// qualityStatusRank maps a status onto its severity for picking a target's worst
-// latest result.
-func qualityStatusRank(status v1pb.QualityStatus) int {
-	switch status {
-	case v1pb.QualityStatus_QUALITY_STATUS_ERROR:
-		return 6
-	case v1pb.QualityStatus_QUALITY_STATUS_FAIL:
-		return 5
-	case v1pb.QualityStatus_QUALITY_STATUS_WARN:
-		return 4
-	case v1pb.QualityStatus_QUALITY_STATUS_PASS:
-		return 3
-	case v1pb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED:
-		return 2
-	case v1pb.QualityStatus_QUALITY_STATUS_SKIPPED:
-		return 1
-	case v1pb.QualityStatus_QUALITY_STATUS_UNSPECIFIED:
-		return 0
-	default:
-		return 0
-	}
 }
 
 // timeToProtoTimestampPtr renders a nullable time as a protobuf timestamp.

@@ -1360,4 +1360,35 @@ describe("DataQualityTargetPage", () => {
     expect(mocks.getQualityTarget).toHaveBeenCalledTimes(2);
     wrapper.unmount();
   });
+
+  it("honours the old edit URL by opening the composer and consuming the flag", async () => {
+    const { wrapper, router } = await mountPage(
+      `/data-quality/targets/${TARGET.split(";").join("/")}?check=${encodeURIComponent(RULE_DATASET)}&edit=1`
+    );
+    await flushPromises();
+
+    // The edit intent wins over the read-only sheet: the composer opens on the
+    // check and the URL stops naming either the sheet or the edit flag.
+    const composer = wrapper.findComponent(TargetRuleComposer);
+    expect(composer.props("open")).toBe(true);
+    expect(composer.props("rule")?.name).toBe(RULE_DATASET);
+    expect(router.currentRoute.value.query.edit).toBeUndefined();
+    expect(router.currentRoute.value.query.check).toBeUndefined();
+    expect(document.body.textContent).not.toContain(
+      label("dataQuality.ruleDefinition")
+    );
+    wrapper.unmount();
+  });
+
+  it("clears the edit flag without opening the composer for an unknown check", async () => {
+    const { wrapper, router } = await mountPage(
+      `/data-quality/targets/${TARGET.split(";").join("/")}?check=${encodeURIComponent("workspaces/ws/qualityRules/elsewhere")}&edit=1`
+    );
+    await flushPromises();
+
+    expect(router.currentRoute.value.query.edit).toBeUndefined();
+    expect(wrapper.findComponent(TargetRuleComposer).props("open")).toBe(false);
+    expect(wrapper.text()).toContain("Row count floor");
+    wrapper.unmount();
+  });
 });

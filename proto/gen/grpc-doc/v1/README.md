@@ -5790,7 +5790,7 @@ rule was saved.
 | database | [string](#string) |  |  |
 | schema | [string](#string) |  |  |
 | object | [string](#string) |  |  |
-| column | [string](#string) |  | Empty for a table-level rule. |
+| column | [string](#string) |  | Display snapshot only. The checked column is the one named in the rule&#39;s typed config; this field may be empty for rules written before it was populated, and is empty for a table-level rule. |
 
 
 

@@ -19,6 +19,9 @@ const route = useRoute();
 const router = useRouter();
 
 onMounted(async () => {
+  // The old edit URL keeps its intent: the workspace opens the composer on the
+  // check instead of the read-only sheet.
+  const editing = route.name === "DataQualityRuleEditRedirect";
   const param = route.params.ruleId;
   const parts = Array.isArray(param) ? param : param ? [param] : [];
   const ruleName = parts.join("/");
@@ -32,6 +35,7 @@ onMounted(async () => {
         query: {
           metaType: String(target.metaType),
           check: rule.name,
+          ...(editing ? { edit: "1" } : {}),
         },
       });
       return;

@@ -11551,7 +11551,10 @@ components:
                     type: string
                 column:
                     type: string
-                    description: Empty for a table-level rule.
+                    description: |-
+                        Display snapshot only. The checked column is the one named in the rule's
+                         typed config; this field may be empty for rules written before it was
+                         populated, and is empty for a table-level rule.
             description: |-
                 QualityTargetPath is the display snapshot of where a target lived when the
                  rule was saved.

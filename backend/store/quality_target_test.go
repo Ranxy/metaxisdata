@@ -107,23 +107,23 @@ func TestQualityTargetStatusRankRoundTrip(t *testing.T) {
 		{storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, 0},
 	}
 	for _, tc := range cases {
-		require.Equal(t, tc.rank, qualityTargetStatusRank(tc.status))
+		require.Equal(t, tc.rank, QualityTargetStatusRank(tc.status))
 	}
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_ERROR, qualityStatusFromRank(6))
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_FAIL, qualityStatusFromRank(5))
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_WARN, qualityStatusFromRank(4))
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_PASS, qualityStatusFromRank(3))
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, qualityStatusFromRank(2))
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_SKIPPED, qualityStatusFromRank(1))
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, qualityStatusFromRank(0))
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, qualityStatusFromRank(99))
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_ERROR, QualityTargetStatusFromRank(6))
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_FAIL, QualityTargetStatusFromRank(5))
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_WARN, QualityTargetStatusFromRank(4))
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_PASS, QualityTargetStatusFromRank(3))
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, QualityTargetStatusFromRank(2))
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_SKIPPED, QualityTargetStatusFromRank(1))
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, QualityTargetStatusFromRank(0))
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, QualityTargetStatusFromRank(99))
 	// NOT_EVALUATED and SKIPPED are distinct ranks: a directory filter must not
 	// conflate "nothing to judge" with "did not run".
-	require.NotEqual(t, qualityTargetStatusRank(storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED),
-		qualityTargetStatusRank(storepb.QualityStatus_QUALITY_STATUS_SKIPPED))
+	require.NotEqual(t, QualityTargetStatusRank(storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED),
+		QualityTargetStatusRank(storepb.QualityStatus_QUALITY_STATUS_SKIPPED))
 }
 
-// The aggregate's SQL CASE is generated from qualityTargetStatusRank, so the
+// The aggregate's SQL CASE is generated from QualityTargetStatusRank, so the
 // statuses it ranks cannot drift from the filter mapping. $8 is SKIPPED and $9 is
 // NOT_EVALUATED, matching the argument order ListQualityTargets binds.
 func TestQualityTargetWorstRankCaseMatchesTheRankFunction(t *testing.T) {
