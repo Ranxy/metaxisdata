@@ -333,10 +333,11 @@ const props = withDefaults(
     /** Rule resource name -> title, for the check rows. */
     ruleTitles?: Record<string, string>;
     /**
-     * The target's live rule count, when the caller knows it. A scheduled batch
-     * of an oversize target (split across batches) covers only a slice of the
-     * checks, so this lets the card say "3/5 checks". Manual runs are explicit
-     * selections and never use it.
+     * The target's enabled rule count, when the caller knows it. A scheduled
+     * batch of an oversize target (split across batches) covers only a slice of
+     * the checks, so this lets the card say "3/5 checks". Paused rules are not
+     * expected to run and manual runs are explicit selections, so neither makes
+     * a batch partial.
      */
     targetRuleCount?: number;
     /** Whether the checks table is expanded. */
@@ -367,9 +368,9 @@ const counts = computed<QualityStatusCounts | undefined>(
 );
 const totalChecks = computed(() => counts.value?.total ?? 0);
 /**
- * The target's live count when a scheduled batch covered only a slice of an
- * oversize target. A manual run planned an explicit selection, so its total is
- * the selection's size, not a partial view of the target.
+ * The target's enabled count when a scheduled batch covered only a slice of an
+ * oversize target. Paused rules are not expected to run; a manual run planned an
+ * explicit selection, so its total is the selection's size, not a partial view.
  */
 const partialChecks = computed(() =>
   props.run.trigger === QualityExecutionTrigger.SCHEDULED &&

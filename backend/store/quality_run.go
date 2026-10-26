@@ -423,8 +423,8 @@ func qualifyQualityRunColumns(alias string) string {
 }
 
 // buildQualityRunWhere renders the predicate and positional arguments for a run
-// filter. It is a pure function so the scoping (especially the target EXISTS
-// subquery) can be guard-tested without a database.
+// filter. It is a pure function so the scoping (especially the target identity
+// predicate) can be guard-tested without a database.
 func buildQualityRunWhere(find *FindQualityRunMessage) ([]string, []any) {
 	if find == nil {
 		find = &FindQualityRunMessage{}
@@ -534,8 +534,9 @@ func (r qualityTargetRunSummaryRow) Scan(dest ...any) error {
 }
 
 // ListQualityTargetRunSummaries reads, for each requested target, its newest run
-// and how many runs belong to it. A target that has never run is absent from the
-// map.
+// and how many runs planned at least one execution for it. A target that has
+// never run is absent from the map; a batch that failed before planning any
+// execution is not a scan and does not count or become the latest run.
 func (s *Store) ListQualityTargetRunSummaries(ctx context.Context, keys []MetaGUIDKey) (map[MetaGUIDKey]*QualityTargetRunSummaryMessage, error) {
 	summaries := make(map[MetaGUIDKey]*QualityTargetRunSummaryMessage, len(keys))
 	if len(keys) == 0 {
@@ -554,6 +555,7 @@ func (s *Store) ListQualityTargetRunSummaries(ctx context.Context, keys []MetaGU
 			FROM quality_run r
 			JOIN unnest($1::text[], $2::int2[]) AS k(guid, object_type)
 				ON r.target_guid = k.guid AND r.target_type = k.object_type
+			WHERE EXISTS (SELECT 1 FROM quality_execution e WHERE e.run_id = r.id)
 			ORDER BY r.target_guid, r.target_type, r.started_at DESC, r.id DESC
 		),
 		run_counts AS (
@@ -561,6 +563,7 @@ func (s *Store) ListQualityTargetRunSummaries(ctx context.Context, keys []MetaGU
 			FROM quality_run r
 			JOIN unnest($1::text[], $2::int2[]) AS k(guid, object_type)
 				ON r.target_guid = k.guid AND r.target_type = k.object_type
+			WHERE EXISTS (SELECT 1 FROM quality_execution e WHERE e.run_id = r.id)
 			GROUP BY r.target_guid, r.target_type
 		)
 		SELECT `+qualifyQualityRunColumns("r")+`, r.target_guid, r.target_type, rc.run_count

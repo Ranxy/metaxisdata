@@ -162,6 +162,9 @@ func applyQualityRunListFilters(find *store.FindQualityRunMessage, request *v1pb
 		find.TargetGUID = &targetGUID
 	}
 	if metaType := storepb.MetaType(request.GetMetaType()); metaType != storepb.MetaType_UNSPECIFIED {
+		if _, ok := v1pb.MetaType_name[int32(metaType)]; !ok {
+			return connectErrorInvalid("unknown meta type %d", metaType)
+		}
 		find.TargetType = &metaType
 	}
 	if instance := strings.TrimSpace(request.GetInstance()); instance != "" {

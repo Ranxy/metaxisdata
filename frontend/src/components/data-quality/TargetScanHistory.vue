@@ -71,7 +71,7 @@ const props = withDefaults(
     metaType?: MetaType;
     /** Rule resource name -> title, passed through to the run cards. */
     ruleTitles?: Record<string, string>;
-    /** The target's live rule count, so a due-only batch can say 3/5 checks. */
+    /** The target's enabled rule count, so an oversize split batch can say 3/5 checks. */
     targetRuleCount?: number;
     /** The run whose checks are open, carried by `?run=`. */
     expandRun?: string;

@@ -26,6 +26,7 @@ function summaryFixture(
     latestRun?: QualityRun;
     runCount?: number;
     ruleCount?: number;
+    enabledRuleCount?: number;
   } = {}
 ): QualityTargetSummary {
   return create(QualityTargetSummarySchema, {
@@ -34,6 +35,7 @@ function summaryFixture(
       metaType: MetaType.TABLE,
     }),
     ruleCount: options.ruleCount ?? 0,
+    enabledRuleCount: options.enabledRuleCount ?? options.ruleCount ?? 0,
     runCount: options.runCount ?? 0,
     latestRun: options.latestRun,
   });

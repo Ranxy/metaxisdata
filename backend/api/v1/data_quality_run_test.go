@@ -128,6 +128,7 @@ func TestApplyQualityRunListFilters(t *testing.T) {
 		{name: "trigger", request: &v1pb.ListQualityRunsRequest{Trigger: v1pb.QualityExecutionTrigger(99)}},
 		{name: "state", request: &v1pb.ListQualityRunsRequest{State: v1pb.QualityExecutionState(99)}},
 		{name: "outcome", request: &v1pb.ListQualityRunsRequest{Outcome: v1pb.QualityStatus(99)}},
+		{name: "meta type", request: &v1pb.ListQualityRunsRequest{MetaType: v1pb.MetaType(99)}},
 	}
 	for _, test := range invalid {
 		t.Run(test.name, func(t *testing.T) {

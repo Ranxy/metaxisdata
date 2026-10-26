@@ -325,7 +325,7 @@
                       :target-guid="targetGuid(summary)"
                       :meta-type="summary.target?.metaType ?? MetaType.UNSPECIFIED"
                       :rule-titles="ruleTitles"
-                      :target-rule-count="summary.ruleCount"
+                      :target-rule-count="summary.enabledRuleCount"
                       :expand-run="expandedRun"
                       @update:expand-run="onRunToggle"
                     />
@@ -1186,18 +1186,19 @@ function unfinishedChecks(summary: QualityTargetSummary): number {
 }
 
 /**
- * The target's live rule count when a scheduled batch covered only a slice of an
- * oversize target (batches are target-complete, but a legacy oversize target may
- * be split). A manual run planned an explicit selection, so it never reads as
- * partial. Zero means the batch covered the whole target, the caller has no rule
- * count, or the run was manual.
+ * The target's enabled rule count when a scheduled batch covered only a slice of
+ * an oversize target (batches are target-complete, but a legacy oversize target
+ * may be split). Paused rules are not expected to run, so they never make a
+ * scheduled batch look partial. A manual run planned an explicit selection, so it
+ * never reads as partial. Zero means the batch covered the whole target, the
+ * caller has no rule count, or the run was manual.
  */
 function partialChecks(summary: QualityTargetSummary): number {
   if (summary.latestRun?.trigger !== QualityExecutionTrigger.SCHEDULED) {
     return 0;
   }
   const total = runCounts(summary)?.total ?? 0;
-  return summary.ruleCount > total ? summary.ruleCount : 0;
+  return summary.enabledRuleCount > total ? summary.enabledRuleCount : 0;
 }
 
 function scanTime(summary: QualityTargetSummary) {

@@ -158,19 +158,20 @@ const counts = computed(() => latestRun.value?.counts);
 
 const totalChecks = computed(() => counts.value?.total ?? 0);
 /**
- * The target's live rule count when a scheduled batch covered only a slice of an
- * oversize target. A manual run planned an explicit selection, so it is not a
- * partial view of the target.
+ * The target's enabled rule count when a scheduled batch covered only a slice of
+ * an oversize target. Paused rules are not expected to run, so they never make a
+ * scheduled batch look partial. A manual run planned an explicit selection, so it
+ * is not a partial view of the target.
  */
 const partialChecks = computed(() => {
   const run = latestRun.value;
   if (
     run?.trigger !== QualityExecutionTrigger.SCHEDULED ||
-    props.summary.ruleCount <= totalChecks.value
+    props.summary.enabledRuleCount <= totalChecks.value
   ) {
     return 0;
   }
-  return props.summary.ruleCount;
+  return props.summary.enabledRuleCount;
 });
 
 /** The verdicts that occurred, in status order, so the badge row is stable. */

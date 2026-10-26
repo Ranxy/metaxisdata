@@ -125,7 +125,7 @@ function targetSummary(options: {
   return create(QualityTargetSummarySchema, {
     target: targetFor(options.guid, options.object),
     ruleCount: options.ruleCount ?? 2,
-    enabledRuleCount: 2,
+    enabledRuleCount: options.ruleCount ?? 2,
     pausedRuleCount: 0,
     columnCount: 1,
     openIssueCount: 0,

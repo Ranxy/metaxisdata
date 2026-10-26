@@ -17,3 +17,5 @@ ALTER TABLE quality_run
 
 CREATE INDEX IF NOT EXISTS idx_quality_run_target_started
     ON quality_run(target_guid, target_type, started_at DESC);
+
+COMMENT ON COLUMN quality_run.target_path IS 'Stored as QualityTargetPath (proto/store/store/data_quality.proto)';

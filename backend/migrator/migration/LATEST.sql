@@ -1238,6 +1238,7 @@ COMMENT ON COLUMN quality_rule.config IS 'Stored as QualityRuleConfig (proto/sto
 COMMENT ON COLUMN quality_rule_revision.target_path IS 'Stored as QualityTargetPath (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_rule_revision.config IS 'Stored as QualityRuleConfig (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_run.counts IS 'Stored as QualityStatusCounts (proto/store/store/data_quality.proto)';
+COMMENT ON COLUMN quality_run.target_path IS 'Stored as QualityTargetPath (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_execution.target_path IS 'Stored as QualityTargetPath (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_execution.thresholds IS 'Stored as QualityThresholds (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_execution.sample IS 'Stored as QualityFailureSamples (proto/store/store/data_quality.proto)';
