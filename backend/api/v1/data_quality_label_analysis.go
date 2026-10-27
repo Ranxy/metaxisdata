@@ -229,7 +229,7 @@ func (s *DataQualityService) SuggestColumnLabels(ctx context.Context, req *conne
 						slog.String("column", output.Column))
 					continue
 				}
-				if _, err := dataquality.ValidateRule(ctx, s.store, ruleType, resolution.Target.GUID, resolution.Target.MetaType, draft.GetConfig(), nil); err != nil {
+				if _, err := dataquality.ValidateRule(ctx, s.store, ruleType, resolution.Target.GUID, resolution.Target.MetaType, draft.GetConfig(), nil, nil); err != nil {
 					slog.Warn("dropping a label rule draft that failed validation",
 						slog.String("table_guid", guid),
 						slog.String("column", output.Column),

@@ -19,9 +19,10 @@ fully offline; three model-assisted features are opt-in.
    instance → Data sources → add a `READ_ONLY` account whose database grants are
    `SELECT` only. The schema-drift rule is the exception: it reads metadata and
    needs no data source.
-2. **Check the permissions.** Reading rules, executions and issues is part of the
-   member baseline. Creating, editing, running, acknowledging and resolving need
-   `metaxisdata.dataQuality.rules.*` / `.issues.update` (workspace
+2. **Check the permissions.** Reading rules, executions, issues and contracts is
+   part of the member baseline. Creating, editing, running, acknowledging and
+   resolving need `metaxisdata.dataQuality.rules.*` / `.issues.update`; publishing
+   a contract needs `metaxisdata.dataQuality.contracts.publish` (workspace
    administrator or a custom role). Model-assisted paths also need `.suggest` or
    `.explain`.
 3. *(Optional)* **Turn on model assistance.** Settings → Data Quality → enable
@@ -96,6 +97,25 @@ an instance, then drill into a database, schema or table/view, and apply at any
 level — choosing a table (or view) applies that table itself. The text search
 matches a rule's title and description; rule type, dimension, severity and state
 narrow further. Filters take effect when you press **Apply**.
+
+## Contracts and target-level settings
+
+A target's **contract** is the target-level layer above its rules: defaults for
+authoring and a record of what has been published. It lives on the same target
+workspace, under the health summary.
+
+- **Target filter** — conditions every rule on the table or view is checked with.
+  They are ANDed with each rule's own filter at compile time, so changing the
+  contract filter changes the next execution without rewriting any rule. Written
+  custom-SQL rules are not rewritten and stay outside the contract filter.
+- **Authoring defaults** — a default schedule and default severity seed the New
+  rule dialog. They never rewrite an existing rule or reschedule it.
+- **Publish** — recording the live rules and settings as a version. Publishing
+  does not gate execution: rules keep running as they are saved. It keeps a
+  history with what changed since the previous version (added, changed, removed
+  checks); republishing unchanged state is a no-op that returns the existing
+  version. Publishing needs `metaxisdata.dataQuality.contracts.publish`; editing
+  the settings needs `rules.update`.
 
 ## Executions and statuses
 

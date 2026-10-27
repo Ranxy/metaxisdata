@@ -5161,6 +5161,229 @@ func (x *QualitySuggestionJobTargets) GetTargets() []*QualitySuggestionJobTarget
 	return nil
 }
 
+// QualityContractSettings is the target-level layer above the rules: defaults the
+// workspace UI uses when authoring, and the filter every rule on the target is
+// checked with. Rule-level fields always win where they are set.
+type QualityContractSettings struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Applied to every rule on the target, ANDed with the rule's own filter. It is
+	// evaluated at compile time, so a contract change affects the next execution
+	// without rewriting the rules.
+	Filter *QualityFilter `protobuf:"bytes,1,opt,name=filter,proto3" json:"filter,omitempty"`
+	// The schedule a newly authored rule starts with; 0 means the workspace default.
+	// It does not rewrite existing rules.
+	DefaultScheduleIntervalSeconds int64 `protobuf:"varint,2,opt,name=default_schedule_interval_seconds,json=defaultScheduleIntervalSeconds,proto3" json:"default_schedule_interval_seconds,omitempty"`
+	// The severity a newly authored rule starts with; UNSPECIFIED means no default.
+	DefaultSeverity QualitySeverity `protobuf:"varint,3,opt,name=default_severity,json=defaultSeverity,proto3,enum=metaxisdata.store.QualitySeverity" json:"default_severity,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *QualityContractSettings) Reset() {
+	*x = QualityContractSettings{}
+	mi := &file_store_data_quality_proto_msgTypes[42]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QualityContractSettings) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QualityContractSettings) ProtoMessage() {}
+
+func (x *QualityContractSettings) ProtoReflect() protoreflect.Message {
+	mi := &file_store_data_quality_proto_msgTypes[42]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QualityContractSettings.ProtoReflect.Descriptor instead.
+func (*QualityContractSettings) Descriptor() ([]byte, []int) {
+	return file_store_data_quality_proto_rawDescGZIP(), []int{42}
+}
+
+func (x *QualityContractSettings) GetFilter() *QualityFilter {
+	if x != nil {
+		return x.Filter
+	}
+	return nil
+}
+
+func (x *QualityContractSettings) GetDefaultScheduleIntervalSeconds() int64 {
+	if x != nil {
+		return x.DefaultScheduleIntervalSeconds
+	}
+	return 0
+}
+
+func (x *QualityContractSettings) GetDefaultSeverity() QualitySeverity {
+	if x != nil {
+		return x.DefaultSeverity
+	}
+	return QualitySeverity_QUALITY_SEVERITY_UNSPECIFIED
+}
+
+// QualityContractSnapshot is what a published contract version records: the
+// target-level settings plus the ordered checks (one per live rule) at publish
+// time. The rules remain the mutable source of truth; a revision is the record of
+// what a person published.
+type QualityContractSnapshot struct {
+	state    protoimpl.MessageState   `protogen:"open.v1"`
+	Settings *QualityContractSettings `protobuf:"bytes,1,opt,name=settings,proto3" json:"settings,omitempty"`
+	Checks   []*QualityContractCheck  `protobuf:"bytes,2,rep,name=checks,proto3" json:"checks,omitempty"`
+	// SHA-256 over the settings and the ordered checks. Two publishes with the same
+	// fingerprint are the same contract, so the second is a no-op.
+	Fingerprint   string `protobuf:"bytes,3,opt,name=fingerprint,proto3" json:"fingerprint,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QualityContractSnapshot) Reset() {
+	*x = QualityContractSnapshot{}
+	mi := &file_store_data_quality_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QualityContractSnapshot) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QualityContractSnapshot) ProtoMessage() {}
+
+func (x *QualityContractSnapshot) ProtoReflect() protoreflect.Message {
+	mi := &file_store_data_quality_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QualityContractSnapshot.ProtoReflect.Descriptor instead.
+func (*QualityContractSnapshot) Descriptor() ([]byte, []int) {
+	return file_store_data_quality_proto_rawDescGZIP(), []int{43}
+}
+
+func (x *QualityContractSnapshot) GetSettings() *QualityContractSettings {
+	if x != nil {
+		return x.Settings
+	}
+	return nil
+}
+
+func (x *QualityContractSnapshot) GetChecks() []*QualityContractCheck {
+	if x != nil {
+		return x.Checks
+	}
+	return nil
+}
+
+func (x *QualityContractSnapshot) GetFingerprint() string {
+	if x != nil {
+		return x.Fingerprint
+	}
+	return ""
+}
+
+// QualityContractCheck is one rule as a published contract records it.
+type QualityContractCheck struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The rule's immutable resource id (the API-facing name segment).
+	RuleResourceId string `protobuf:"bytes,1,opt,name=rule_resource_id,json=ruleResourceId,proto3" json:"rule_resource_id,omitempty"`
+	// The revision whose definition was published.
+	RuleRevision int32           `protobuf:"varint,2,opt,name=rule_revision,json=ruleRevision,proto3" json:"rule_revision,omitempty"`
+	Title        string          `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`
+	RuleType     QualityRuleType `protobuf:"varint,4,opt,name=rule_type,json=ruleType,proto3,enum=metaxisdata.store.QualityRuleType" json:"rule_type,omitempty"`
+	Severity     QualitySeverity `protobuf:"varint,5,opt,name=severity,proto3,enum=metaxisdata.store.QualitySeverity" json:"severity,omitempty"`
+	// The column the rule watches; empty for a table-level rule.
+	Column        string `protobuf:"bytes,6,opt,name=column,proto3" json:"column,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QualityContractCheck) Reset() {
+	*x = QualityContractCheck{}
+	mi := &file_store_data_quality_proto_msgTypes[44]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QualityContractCheck) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QualityContractCheck) ProtoMessage() {}
+
+func (x *QualityContractCheck) ProtoReflect() protoreflect.Message {
+	mi := &file_store_data_quality_proto_msgTypes[44]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QualityContractCheck.ProtoReflect.Descriptor instead.
+func (*QualityContractCheck) Descriptor() ([]byte, []int) {
+	return file_store_data_quality_proto_rawDescGZIP(), []int{44}
+}
+
+func (x *QualityContractCheck) GetRuleResourceId() string {
+	if x != nil {
+		return x.RuleResourceId
+	}
+	return ""
+}
+
+func (x *QualityContractCheck) GetRuleRevision() int32 {
+	if x != nil {
+		return x.RuleRevision
+	}
+	return 0
+}
+
+func (x *QualityContractCheck) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *QualityContractCheck) GetRuleType() QualityRuleType {
+	if x != nil {
+		return x.RuleType
+	}
+	return QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED
+}
+
+func (x *QualityContractCheck) GetSeverity() QualitySeverity {
+	if x != nil {
+		return x.Severity
+	}
+	return QualitySeverity_QUALITY_SEVERITY_UNSPECIFIED
+}
+
+func (x *QualityContractCheck) GetColumn() string {
+	if x != nil {
+		return x.Column
+	}
+	return ""
+}
+
 var File_store_data_quality_proto protoreflect.FileDescriptor
 
 const file_store_data_quality_proto_rawDesc = "" +
@@ -5547,7 +5770,22 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"diagnostic\x12J\n" +
 	"\asummary\x18\v \x01(\v20.metaxisdata.store.QualitySuggestionQueueSummaryR\asummary\"f\n" +
 	"\x1bQualitySuggestionJobTargets\x12G\n" +
-	"\atargets\x18\x01 \x03(\v2-.metaxisdata.store.QualitySuggestionJobTargetR\atargets*\xb4\x05\n" +
+	"\atargets\x18\x01 \x03(\v2-.metaxisdata.store.QualitySuggestionJobTargetR\atargets\"\xed\x01\n" +
+	"\x17QualityContractSettings\x128\n" +
+	"\x06filter\x18\x01 \x01(\v2 .metaxisdata.store.QualityFilterR\x06filter\x12I\n" +
+	"!default_schedule_interval_seconds\x18\x02 \x01(\x03R\x1edefaultScheduleIntervalSeconds\x12M\n" +
+	"\x10default_severity\x18\x03 \x01(\x0e2\".metaxisdata.store.QualitySeverityR\x0fdefaultSeverity\"\xc4\x01\n" +
+	"\x17QualityContractSnapshot\x12F\n" +
+	"\bsettings\x18\x01 \x01(\v2*.metaxisdata.store.QualityContractSettingsR\bsettings\x12?\n" +
+	"\x06checks\x18\x02 \x03(\v2'.metaxisdata.store.QualityContractCheckR\x06checks\x12 \n" +
+	"\vfingerprint\x18\x03 \x01(\tR\vfingerprint\"\x94\x02\n" +
+	"\x14QualityContractCheck\x12(\n" +
+	"\x10rule_resource_id\x18\x01 \x01(\tR\x0eruleResourceId\x12#\n" +
+	"\rrule_revision\x18\x02 \x01(\x05R\fruleRevision\x12\x14\n" +
+	"\x05title\x18\x03 \x01(\tR\x05title\x12?\n" +
+	"\trule_type\x18\x04 \x01(\x0e2\".metaxisdata.store.QualityRuleTypeR\bruleType\x12>\n" +
+	"\bseverity\x18\x05 \x01(\x0e2\".metaxisdata.store.QualitySeverityR\bseverity\x12\x16\n" +
+	"\x06column\x18\x06 \x01(\tR\x06column*\xb4\x05\n" +
 	"\x0fQualityRuleType\x12!\n" +
 	"\x1dQUALITY_RULE_TYPE_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bQUALITY_RULE_TYPE_ROW_COUNT\x10\x01\x12&\n" +
@@ -5740,7 +5978,7 @@ func file_store_data_quality_proto_rawDescGZIP() []byte {
 }
 
 var file_store_data_quality_proto_enumTypes = make([]protoimpl.EnumInfo, 24)
-var file_store_data_quality_proto_msgTypes = make([]protoimpl.MessageInfo, 42)
+var file_store_data_quality_proto_msgTypes = make([]protoimpl.MessageInfo, 45)
 var file_store_data_quality_proto_goTypes = []any{
 	(QualityRuleType)(0),                  // 0: metaxisdata.store.QualityRuleType
 	(QualityDimension)(0),                 // 1: metaxisdata.store.QualityDimension
@@ -5808,6 +6046,9 @@ var file_store_data_quality_proto_goTypes = []any{
 	(*QualityLLMDiagnostic)(nil),          // 63: metaxisdata.store.QualityLLMDiagnostic
 	(*QualitySuggestionJobTarget)(nil),    // 64: metaxisdata.store.QualitySuggestionJobTarget
 	(*QualitySuggestionJobTargets)(nil),   // 65: metaxisdata.store.QualitySuggestionJobTargets
+	(*QualityContractSettings)(nil),       // 66: metaxisdata.store.QualityContractSettings
+	(*QualityContractSnapshot)(nil),       // 67: metaxisdata.store.QualityContractSnapshot
+	(*QualityContractCheck)(nil),          // 68: metaxisdata.store.QualityContractCheck
 }
 var file_store_data_quality_proto_depIdxs = []int32{
 	26, // 0: metaxisdata.store.QualityFilter.clauses:type_name -> metaxisdata.store.QualityFilterClause
@@ -5859,11 +6100,17 @@ var file_store_data_quality_proto_depIdxs = []int32{
 	63, // 46: metaxisdata.store.QualitySuggestionJobTarget.diagnostic:type_name -> metaxisdata.store.QualityLLMDiagnostic
 	36, // 47: metaxisdata.store.QualitySuggestionJobTarget.summary:type_name -> metaxisdata.store.QualitySuggestionQueueSummary
 	64, // 48: metaxisdata.store.QualitySuggestionJobTargets.targets:type_name -> metaxisdata.store.QualitySuggestionJobTarget
-	49, // [49:49] is the sub-list for method output_type
-	49, // [49:49] is the sub-list for method input_type
-	49, // [49:49] is the sub-list for extension type_name
-	49, // [49:49] is the sub-list for extension extendee
-	0,  // [0:49] is the sub-list for field type_name
+	25, // 49: metaxisdata.store.QualityContractSettings.filter:type_name -> metaxisdata.store.QualityFilter
+	2,  // 50: metaxisdata.store.QualityContractSettings.default_severity:type_name -> metaxisdata.store.QualitySeverity
+	66, // 51: metaxisdata.store.QualityContractSnapshot.settings:type_name -> metaxisdata.store.QualityContractSettings
+	68, // 52: metaxisdata.store.QualityContractSnapshot.checks:type_name -> metaxisdata.store.QualityContractCheck
+	0,  // 53: metaxisdata.store.QualityContractCheck.rule_type:type_name -> metaxisdata.store.QualityRuleType
+	2,  // 54: metaxisdata.store.QualityContractCheck.severity:type_name -> metaxisdata.store.QualitySeverity
+	55, // [55:55] is the sub-list for method output_type
+	55, // [55:55] is the sub-list for method input_type
+	55, // [55:55] is the sub-list for extension type_name
+	55, // [55:55] is the sub-list for extension extendee
+	0,  // [0:55] is the sub-list for field type_name
 }
 
 func init() { file_store_data_quality_proto_init() }
@@ -5927,7 +6174,7 @@ func file_store_data_quality_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_store_data_quality_proto_rawDesc), len(file_store_data_quality_proto_rawDesc)),
 			NumEnums:      24,
-			NumMessages:   42,
+			NumMessages:   45,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

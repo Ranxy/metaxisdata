@@ -72,12 +72,20 @@ func (e *Executor) Execute(ctx context.Context, queryer db.ReadOnlyQueryer, reso
 	if err != nil {
 		return nil, err
 	}
+	// The contract filter lives outside the rule definition and is read by the
+	// caller at execution time. A malformed one is a stored-data defect, so it is an
+	// Invalid error like a config the compilers refuse, not a runtime surprise.
+	contractFilter, err := ParseFilter(rule.ContractFilter)
+	if err != nil {
+		return nil, err
+	}
 	input := CompileInput{
-		Dialect: dialect,
-		Target:  resolution.Target,
-		Type:    rule.Type,
-		Config:  rule.Config,
-		Filter:  filter,
+		Dialect:        dialect,
+		Target:         resolution.Target,
+		Type:           rule.Type,
+		Config:         rule.Config,
+		Filter:         filter,
+		ContractFilter: contractFilter,
 	}
 	compiled, err := Compile(input)
 	if err != nil {

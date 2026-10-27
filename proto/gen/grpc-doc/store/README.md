@@ -32,6 +32,9 @@
     - [GroupCheckConfig](#metaxisdata-store-GroupCheckConfig)
     - [NullPercentConfig](#metaxisdata-store-NullPercentConfig)
     - [ProfileValue](#metaxisdata-store-ProfileValue)
+    - [QualityContractCheck](#metaxisdata-store-QualityContractCheck)
+    - [QualityContractSettings](#metaxisdata-store-QualityContractSettings)
+    - [QualityContractSnapshot](#metaxisdata-store-QualityContractSnapshot)
     - [QualityFailureSamples](#metaxisdata-store-QualityFailureSamples)
     - [QualityFilter](#metaxisdata-store-QualityFilter)
     - [QualityFilterClause](#metaxisdata-store-QualityFilterClause)
@@ -665,6 +668,65 @@ ProfileValue is one frequent value of a low-cardinality column.
 | ----- | ---- | ----- | ----------- |
 | value | [string](#string) |  |  |
 | count | [int64](#int64) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityContractCheck"></a>
+
+### QualityContractCheck
+QualityContractCheck is one rule as a published contract records it.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| rule_resource_id | [string](#string) |  | The rule&#39;s immutable resource id (the API-facing name segment). |
+| rule_revision | [int32](#int32) |  | The revision whose definition was published. |
+| title | [string](#string) |  |  |
+| rule_type | [QualityRuleType](#metaxisdata-store-QualityRuleType) |  |  |
+| severity | [QualitySeverity](#metaxisdata-store-QualitySeverity) |  |  |
+| column | [string](#string) |  | The column the rule watches; empty for a table-level rule. |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityContractSettings"></a>
+
+### QualityContractSettings
+QualityContractSettings is the target-level layer above the rules: defaults the
+workspace UI uses when authoring, and the filter every rule on the target is
+checked with. Rule-level fields always win where they are set.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| filter | [QualityFilter](#metaxisdata-store-QualityFilter) |  | Applied to every rule on the target, ANDed with the rule&#39;s own filter. It is evaluated at compile time, so a contract change affects the next execution without rewriting the rules. |
+| default_schedule_interval_seconds | [int64](#int64) |  | The schedule a newly authored rule starts with; 0 means the workspace default. It does not rewrite existing rules. |
+| default_severity | [QualitySeverity](#metaxisdata-store-QualitySeverity) |  | The severity a newly authored rule starts with; UNSPECIFIED means no default. |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityContractSnapshot"></a>
+
+### QualityContractSnapshot
+QualityContractSnapshot is what a published contract version records: the
+target-level settings plus the ordered checks (one per live rule) at publish
+time. The rules remain the mutable source of truth; a revision is the record of
+what a person published.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| settings | [QualityContractSettings](#metaxisdata-store-QualityContractSettings) |  |  |
+| checks | [QualityContractCheck](#metaxisdata-store-QualityContractCheck) | repeated |  |
+| fingerprint | [string](#string) |  | SHA-256 over the settings and the ordered checks. Two publishes with the same fingerprint are the same contract, so the second is a no-op. |
 
 
 

@@ -831,3 +831,43 @@ message QualitySuggestionJobTarget {
 message QualitySuggestionJobTargets {
   repeated QualitySuggestionJobTarget targets = 1;
 }
+
+// QualityContractSettings is the target-level layer above the rules: defaults the
+// workspace UI uses when authoring, and the filter every rule on the target is
+// checked with. Rule-level fields always win where they are set.
+message QualityContractSettings {
+  // Applied to every rule on the target, ANDed with the rule's own filter. It is
+  // evaluated at compile time, so a contract change affects the next execution
+  // without rewriting the rules.
+  QualityFilter filter = 1;
+  // The schedule a newly authored rule starts with; 0 means the workspace default.
+  // It does not rewrite existing rules.
+  int64 default_schedule_interval_seconds = 2;
+  // The severity a newly authored rule starts with; UNSPECIFIED means no default.
+  QualitySeverity default_severity = 3;
+}
+
+// QualityContractSnapshot is what a published contract version records: the
+// target-level settings plus the ordered checks (one per live rule) at publish
+// time. The rules remain the mutable source of truth; a revision is the record of
+// what a person published.
+message QualityContractSnapshot {
+  QualityContractSettings settings = 1;
+  repeated QualityContractCheck checks = 2;
+  // SHA-256 over the settings and the ordered checks. Two publishes with the same
+  // fingerprint are the same contract, so the second is a no-op.
+  string fingerprint = 3;
+}
+
+// QualityContractCheck is one rule as a published contract records it.
+message QualityContractCheck {
+  // The rule's immutable resource id (the API-facing name segment).
+  string rule_resource_id = 1;
+  // The revision whose definition was published.
+  int32 rule_revision = 2;
+  string title = 3;
+  QualityRuleType rule_type = 4;
+  QualitySeverity severity = 5;
+  // The column the rule watches; empty for a table-level rule.
+  string column = 6;
+}

@@ -115,6 +115,21 @@
           </span>
         </div>
 
+        <!-- The contract sits under the health line: the rules' state first, then
+             the promise they add up to. Its read degrades on its own. -->
+        <TargetContractCard
+          :target-guid="targetGuid"
+          :meta-type="effectiveMetaType"
+          :contract="contract"
+          :loading="contractLoading"
+          :error="contractError"
+          :can-publish="canPublish"
+          :can-update="canUpdate"
+          @published="onContractChanged"
+          @updated="onContractChanged"
+          @retry="loadContract()"
+        />
+
         <p
           v-if="orphaned"
           class="text-xs text-danger"
@@ -320,6 +335,8 @@
       :target-guid="targetGuid"
       :meta-type="effectiveMetaType"
       :target-label="displayName"
+      :default-schedule-seconds="contractDefaultScheduleSeconds"
+      :default-severity="contractDefaultSeverity"
       @saved="onRuleCreated"
     />
   </div>
@@ -339,6 +356,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute } from "vue-router";
 import {
+  getQualityContract,
   getQualityTarget,
   listQualitySuggestions,
   runQualityRules,
@@ -346,6 +364,7 @@ import {
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import TargetCheckRow from "@/components/data-quality/TargetCheckRow.vue";
+import TargetContractCard from "@/components/data-quality/TargetContractCard.vue";
 import TargetCopilotPanel from "@/components/data-quality/TargetCopilotPanel.vue";
 import TargetDraftCard from "@/components/data-quality/TargetDraftCard.vue";
 import TargetRuleComposer from "@/components/data-quality/TargetRuleComposer.vue";
@@ -363,9 +382,11 @@ import { useErrorMessage } from "@/composables/useErrorHandler";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
 import {
+  type QualityContract,
   type QualityIssue,
   type QualityRule,
   QualityRuleState,
+  QualitySeverity,
   QualityStatus,
   type QualitySuggestion,
   type QualitySuggestionQueueSummary,
@@ -431,6 +452,9 @@ const canListIssues = computed(() =>
 const canViewIssue = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.issues.get")
 );
+const canPublish = computed(() =>
+  authStore.hasPermission("metaxisdata.dataQuality.contracts.publish")
+);
 
 const rules = ref<QualityRule[]>([]);
 const suggestions = ref<QualitySuggestion[]>([]);
@@ -440,6 +464,10 @@ const summary = ref<QualityTargetSummary>(
   create(QualityTargetSummarySchema, {})
 );
 const orphaned = ref(false);
+/** The target's contract: defaults, published version and drift. */
+const contract = ref<QualityContract>();
+const contractLoading = ref(true);
+const contractError = ref("");
 const loading = ref(true);
 const error = ref("");
 const draftsFailed = ref(false);
@@ -536,6 +564,14 @@ const lastRunText = computed(() =>
     : t("dataQuality.workspace.summaryNeverRun")
 );
 
+/** The contract's seed for a new rule; absent settings keep the form's default. */
+const contractDefaultScheduleSeconds = computed(() =>
+  Number(contract.value?.settings?.defaultScheduleIntervalSeconds ?? 0n)
+);
+const contractDefaultSeverity = computed(
+  () => contract.value?.settings?.defaultSeverity ?? QualitySeverity.UNSPECIFIED
+);
+
 function sectionTitle(section: TargetCheckSection): string {
   switch (section.kind) {
     case "dataset":
@@ -608,6 +644,38 @@ async function loadDrafts(ticket = loadTicket) {
   }
 }
 
+/**
+ * Read the contract beside the workspace. A failure degrades only the contract
+ * strip: the rules, drafts and issues are still the page, and the strip offers a
+ * retry of its own.
+ */
+async function loadContract(ticket = loadTicket) {
+  contractLoading.value = true;
+  contractError.value = "";
+  const guid = targetGuid.value;
+  const metaType = parseMetaType(route.query.metaType) ?? MetaType.UNSPECIFIED;
+  try {
+    const loaded = await getQualityContract({
+      targetGuid: guid,
+      metaType,
+    });
+    if (ticket !== loadTicket) {
+      return;
+    }
+    contract.value = loaded;
+  } catch (cause: unknown) {
+    if (ticket !== loadTicket) {
+      return;
+    }
+    contract.value = undefined;
+    contractError.value = formatError(cause, "dataQuality.contract.loadFailed");
+  } finally {
+    if (ticket === loadTicket) {
+      contractLoading.value = false;
+    }
+  }
+}
+
 async function load() {
   const ticket = ++loadTicket;
   loading.value = true;
@@ -618,12 +686,17 @@ async function load() {
   summary.value = create(QualityTargetSummarySchema, {});
   orphaned.value = false;
   draftsFailed.value = false;
+  contract.value = undefined;
+  contractError.value = "";
+  contractLoading.value = true;
   newNames.value = new Set();
   const guid = targetGuid.value;
   const metaType = parseMetaType(route.query.metaType) ?? MetaType.UNSPECIFIED;
-  // Drafts need the suggest permission the aggregate read does not, so they are
-  // a second read that degrades on its own; start it alongside.
+  // Drafts need the suggest permission the aggregate read does not, and the
+  // contract is a projection read of its own; both start alongside the workspace
+  // and degrade one region each instead of failing the page.
   const draftsRead = loadDrafts(ticket);
+  const contractRead = loadContract(ticket);
   try {
     const response = await getQualityTarget({ targetGuid: guid, metaType });
     if (ticket !== loadTicket) {
@@ -640,6 +713,7 @@ async function load() {
     error.value = formatError(cause, "dataQuality.workspace.rulesLoadFailed");
   } finally {
     await draftsRead;
+    await contractRead;
     if (ticket === loadTicket) {
       loading.value = false;
     }
@@ -688,6 +762,16 @@ function onRuleCreated(rule: QualityRule) {
   if (rule.state === QualityRuleState.ENABLED) {
     summary.value.enabledRuleCount += 1;
   }
+}
+
+/**
+ * A publish or a settings save returns the contract it produced; the strip shows
+ * that response rather than re-reading, so the version and drift counts are the
+ * server's own.
+ */
+function onContractChanged(next: QualityContract) {
+  contract.value = next;
+  contractError.value = "";
 }
 
 function onDraftRejected(name: string) {

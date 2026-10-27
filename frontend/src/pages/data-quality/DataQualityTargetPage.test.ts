@@ -5,12 +5,16 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
+import TargetContractCard from "@/components/data-quality/TargetContractCard.vue";
 import TargetDraftCard from "@/components/data-quality/TargetDraftCard.vue";
+import TargetRuleComposer from "@/components/data-quality/TargetRuleComposer.vue";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
   GetQualityTargetResponseSchema,
   NullPercentConfigSchema,
+  type QualityContract,
+  QualityContractSchema,
   type QualityIssue,
   QualityIssueSchema,
   QualityIssueStatus,
@@ -44,6 +48,7 @@ Element.prototype.releasePointerCapture ??= () => {};
 
 const mocks = vi.hoisted(() => ({
   getQualityTarget: vi.fn(),
+  getQualityContract: vi.fn(),
   listQualitySuggestions: vi.fn(),
   runQualityRules: vi.fn(),
   createQualityRule: vi.fn(),
@@ -56,6 +61,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/api/data-quality", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/data-quality")>()),
   getQualityTarget: mocks.getQualityTarget,
+  getQualityContract: mocks.getQualityContract,
   listQualitySuggestions: mocks.listQualitySuggestions,
   runQualityRules: mocks.runQualityRules,
   createQualityRule: mocks.createQualityRule,
@@ -174,6 +180,29 @@ function rulesFixture() {
       status: QualityStatus.ERROR,
     }),
   ];
+}
+
+/** The target's contract: a published version that has drifted from the rules. */
+function contractFixture(
+  options: {
+    version?: number;
+    changes?: boolean;
+    scheduleSeconds?: bigint;
+    severity?: QualitySeverity;
+  } = {}
+): QualityContract {
+  return create(QualityContractSchema, {
+    publishedVersion: options.version ?? 2,
+    publishedAt: timestampFromDate(new Date()),
+    publishedBy: "users/alice",
+    hasUnpublishedChanges: options.changes ?? true,
+    checkCount: 3,
+    changeSummary: { added: 1, modified: 1, removed: 0 },
+    settings: {
+      defaultScheduleIntervalSeconds: options.scheduleSeconds ?? 0n,
+      defaultSeverity: options.severity ?? QualitySeverity.UNSPECIFIED,
+    },
+  });
 }
 
 function summaryFixture(
@@ -396,6 +425,7 @@ describe("DataQualityTargetPage", () => {
     document.body.innerHTML = "";
     i18n.global.locale.value = "en-US";
     mocks.getQualityTarget.mockResolvedValue(response());
+    mocks.getQualityContract.mockResolvedValue(contractFixture());
     mocks.listQualitySuggestions.mockResolvedValue({
       items: [],
       nextPageToken: "",
@@ -815,6 +845,82 @@ describe("DataQualityTargetPage", () => {
     expect(mocks.listQualitySuggestions).not.toHaveBeenCalled();
     expect(wrapper.findAllComponents(TargetDraftCard)).toHaveLength(0);
     expect(wrapper.text()).toContain("Row count floor");
+    wrapper.unmount();
+  });
+
+  it("reads the contract beside the workspace and shows its version", async () => {
+    const { wrapper } = await mountPage();
+
+    // Both reads start together: the contract is a projection, not part of the
+    // workspace payload.
+    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(1);
+    expect(mocks.getQualityContract).toHaveBeenCalledWith({
+      targetGuid: TARGET,
+      metaType: MetaType.UNSPECIFIED,
+    });
+    const text = wrapper.text();
+    expect(text).toContain(
+      label("dataQuality.contract.statePublished", { version: 2 })
+    );
+    // One added and one changed rule are the two unpublished changes.
+    expect(text).toContain(
+      label("dataQuality.contract.unpublishedChanges", { count: 2 })
+    );
+    wrapper.unmount();
+  });
+
+  it("keeps the workspace when only the contract read fails", async () => {
+    mocks.getQualityContract.mockRejectedValue(
+      new ConnectError("contract down", Code.Internal)
+    );
+    const { wrapper } = await mountPage();
+
+    // The rules are the page; a failed contract read degrades one strip.
+    expect(wrapper.text()).toContain("Row count floor");
+    expect(wrapper.text()).toContain(label("dataQuality.contract.loadFailed"));
+
+    buttonByText(label("common.retry"))?.click();
+    await flushPromises();
+    expect(mocks.getQualityContract).toHaveBeenCalledTimes(2);
+    wrapper.unmount();
+  });
+
+  it("hands the contract's defaults to the inline composer", async () => {
+    mocks.getQualityContract.mockResolvedValue(
+      contractFixture({
+        scheduleSeconds: 6n * 3600n,
+        severity: QualitySeverity.ERROR,
+      })
+    );
+    const { wrapper } = await mountPage();
+
+    const composer = wrapper.findComponent(TargetRuleComposer);
+    expect(composer.props("defaultScheduleSeconds")).toBe(21600);
+    expect(composer.props("defaultSeverity")).toBe(QualitySeverity.ERROR);
+    wrapper.unmount();
+  });
+
+  it("shows the contract a publish or a settings save returned", async () => {
+    const { wrapper } = await mountPage();
+    const published = contractFixture({ version: 3, changes: false });
+
+    wrapper.findComponent(TargetContractCard).vm.$emit("published", published);
+    await flushPromises();
+    expect(wrapper.findComponent(TargetContractCard).props("contract")).toEqual(
+      published
+    );
+    expect(wrapper.text()).toContain(
+      label("dataQuality.contract.statePublished", { version: 3 })
+    );
+
+    const updated = contractFixture({ version: 3, changes: true });
+    wrapper.findComponent(TargetContractCard).vm.$emit("updated", updated);
+    await flushPromises();
+    expect(wrapper.findComponent(TargetContractCard).props("contract")).toEqual(
+      updated
+    );
+    // Local state only: neither event re-reads the contract.
+    expect(mocks.getQualityContract).toHaveBeenCalledTimes(1);
     wrapper.unmount();
   });
 });

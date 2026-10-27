@@ -829,3 +829,80 @@ func TestParseAggregateNumber(t *testing.T) {
 	_, err = parseAggregateNumber("not money")
 	require.Error(t, err)
 }
+
+// TestExecuteAppliesTheContractFilter pins that a snapshot's contract filter
+// reaches the executed statement: the rule's own filter and the target's contract
+// filter are both present, the rule's clauses first, and the bound values follow
+// the same order. The contract filter is not stored on the rule, so it has to be
+// carried by the snapshot the executor receives.
+func TestExecuteAppliesTheContractFilter(t *testing.T) {
+	t.Parallel()
+
+	config := &storepb.QualityRuleConfig{
+		Config: &storepb.QualityRuleConfig_RowCount{RowCount: &storepb.RowCountConfig{MinRows: proto.Int64(1)}},
+		Filter: &storepb.QualityFilter{Clauses: []*storepb.QualityFilterClause{
+			{Column: "status", Op: storepb.QualityFilterOperator_QUALITY_FILTER_OPERATOR_EQ, Values: []string{"paid"}},
+		}},
+	}
+	snapshot := execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, config)
+	snapshot.ContractFilter = &storepb.QualityFilter{Clauses: []*storepb.QualityFilterClause{
+		{Column: "amount", Op: storepb.QualityFilterOperator_QUALITY_FILTER_OPERATOR_GTE, Values: []string{"10"}},
+	}}
+	queryer := &execFakeQueryer{results: []*db.QueryResult{
+		aggregateRow([]string{"total_rows"}, int64(42)),
+	}}
+	execution, err := NewExecutor().Execute(context.Background(), queryer,
+		execTestResolution(storepb.Engine_MYSQL), snapshot, ExecOptions{})
+	require.NoError(t, err)
+	require.Len(t, queryer.queries, 1)
+	require.Contains(t, queryer.queries[0], "`status` = ?")
+	require.Contains(t, queryer.queries[0], "AND `amount` >= ?")
+	require.Equal(t, []any{"paid", int64(10)}, queryer.args[0])
+	require.Contains(t, execution.ExecutedSQL, "`amount` >= ?")
+}
+
+// TestExecuteRejectsAMalformedContractFilter pins the executor's refusal of a
+// contract filter whose shape is wrong: it is stored data outside the rule, so the
+// executor reports an Invalid error instead of executing a wider statement.
+func TestExecuteRejectsAMalformedContractFilter(t *testing.T) {
+	t.Parallel()
+
+	snapshot := execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, contractRowCountConfig())
+	snapshot.ContractFilter = &storepb.QualityFilter{Clauses: []*storepb.QualityFilterClause{
+		// Missing the operator.
+		{Column: "status"},
+	}}
+	queryer := &execFakeQueryer{}
+	_, err := NewExecutor().Execute(context.Background(), queryer,
+		execTestResolution(storepb.Engine_MYSQL), snapshot, ExecOptions{})
+	require.Error(t, err)
+	require.Equal(t, common.Invalid, common.ErrorCode(err))
+	require.Empty(t, queryer.queries, "a malformed contract filter must not run a query")
+}
+
+// TestExecuteFailureSampleCarriesTheContractFilter pins the second statement one
+// execution may run: the failed-row sample must select from the same filtered rows
+// as the aggregate, so the contract filter is part of it too (it reuses the same
+// CompileInput).
+func TestExecuteFailureSampleCarriesTheContractFilter(t *testing.T) {
+	t.Parallel()
+
+	config := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_NullPercent{
+		NullPercent: &storepb.NullPercentConfig{Column: "email", MaxNullPct: proto.Float64(5)},
+	}}
+	snapshot := execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT, config)
+	snapshot.ContractFilter = &storepb.QualityFilter{Clauses: []*storepb.QualityFilterClause{
+		{Column: "amount", Op: storepb.QualityFilterOperator_QUALITY_FILTER_OPERATOR_GTE, Values: []string{"10"}},
+	}}
+	queryer := &execFakeQueryer{results: []*db.QueryResult{
+		aggregateRow([]string{"total_rows", "failed_rows"}, int64(100), int64(5)),
+		{Columns: []string{"id", "email"}, Rows: [][]any{{int64(7), nil}}},
+	}}
+	_, err := NewExecutor().Execute(context.Background(), queryer,
+		execTestResolution(storepb.Engine_MYSQL), snapshot,
+		ExecOptions{StoreSamples: true, SampleLimit: 2})
+	require.NoError(t, err)
+	require.Len(t, queryer.queries, 2)
+	require.Contains(t, queryer.queries[1], "`amount` >= ?")
+	require.Equal(t, []any{int64(10)}, queryer.args[1])
+}

@@ -20,8 +20,11 @@ import (
 type ValidatedRule struct {
 	Resolution *Resolution
 	Target     ResolvedTarget
-	Filter     Filter
-	Compiled   CompiledQuery
+	// Filter is the rule's own parsed filter. Compiled is the statement that
+	// actually runs, which already includes the target contract's filter; that
+	// filter is not part of the rule, so it is not reported here.
+	Filter   Filter
+	Compiled CompiledQuery
 }
 
 // ValidateRule is the save/update/dry-run pipeline of design §6.2. Every step is a
@@ -31,9 +34,20 @@ type ValidatedRule struct {
 // filterProto may override the filter stored in the config (the API passes the
 // filter separately when it is edited). The config is cloned for validation and
 // compilation when it does, so the caller's message is not mutated.
-func ValidateRule(ctx context.Context, s *store.Store, ruleType storepb.QualityRuleType, guid string, metaType storepb.MetaType, config *storepb.QualityRuleConfig, filterProto *storepb.QualityFilter) (*ValidatedRule, error) {
+//
+// contractFilterProto is the target contract's filter, ANDed after the rule's own
+// filter at compile time; it comes from the contract rather than the rule, so it is
+// never stored on the rule. Each filter is bounded by MaxFilterClauses on its own;
+// the compiled predicate may therefore carry up to twice that budget.
+func ValidateRule(ctx context.Context, s *store.Store, ruleType storepb.QualityRuleType, guid string, metaType storepb.MetaType, config *storepb.QualityRuleConfig, filterProto *storepb.QualityFilter, contractFilterProto *storepb.QualityFilter) (*ValidatedRule, error) {
 	if config == nil {
 		return nil, invalidConfig("a rule config is required")
+	}
+	// The contract filter's shape does not depend on the target, so a malformed one
+	// is refused before the registry read.
+	contractFilter, err := ParseFilter(contractFilterProto)
+	if err != nil {
+		return nil, err
 	}
 	resolution, err := ResolveTarget(ctx, s, guid, metaType)
 	if err != nil {
@@ -57,6 +71,7 @@ func ValidateRule(ctx context.Context, s *store.Store, ruleType storepb.QualityR
 	if err != nil {
 		return nil, err
 	}
+	compileFilter := mergeFilters(filter, contractFilter)
 	if err := ValidateConfig(resolution.Target, ruleType, effective); err != nil {
 		return nil, err
 	}
@@ -85,7 +100,7 @@ func ValidateRule(ctx context.Context, s *store.Store, ruleType storepb.QualityR
 		Target:  resolution.Target,
 		Type:    ruleType,
 		Config:  effective,
-		Filter:  filter,
+		Filter:  compileFilter,
 	})
 	if err != nil {
 		if common.ErrorCode(err) == common.Invalid {

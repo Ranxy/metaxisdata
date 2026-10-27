@@ -1,6 +1,6 @@
 # 数据质量：从「规则目录」到「目标工作台」— 目标中心化重构
 
-> Status: **P0 与 P1a 已实现**（分支 `dq-target-centric-refactor`，尚未合并）。P0 是前端目标工作台；P1a 是服务端聚合读、工作台内联新建规则、视图/物化视图/外部表入口与详情页反向锚点。P1b（薄契约、目标级默认值、发布/版本）与 P2 仍是方案，尚未实现。本文既是这次重构的设计记录，也是后续阶段的工作清单。
+> Status: **P0、P1a、P1b 已实现**（分支 `dq-target-centric-refactor`，尚未合并）。P0 是前端目标工作台；P1a 是服务端聚合读、工作台内联新建规则、视图/物化视图/外部表入口与详情页反向锚点；P1b 是薄契约（目标级 filter、作者默认值、发布/版本/差异）。剩余可选工作见 §4 的 P2 与「未做的 P1 小项」。本文既是这次重构的设计记录，也是后续阶段的工作清单。
 > 关联：[data-quality.md](data-quality.md)（现有实现与不变量）、[frontend-ui.md](frontend-ui.md)（布局门禁）、[i18n-glossary.md](i18n-glossary.md)（术语）、[instance-connections.md](instance-connections.md)（执行侧连接准入）、[security-posture.md](../../docs/security-posture.md)（单副本假设）。
 
 ## 0. 结论摘要
@@ -170,32 +170,39 @@ meta_registry_resource（只读）
 - 草案身份仍是 `signature`（D-58），事实出现即 `SUPERSEDED`（D-60）；「接受」= 创建规则，不是自动发布。
 - 不发送原始样本行；提示注入防护不变。
 
-### 3.5 P1：薄契约（Contract）
+### 3.5 P1b：薄契约（Contract，已实现）
 
-**为什么需要**：P0 解决了「看得见、就地改」，但每条规则仍要各配一遍 filter/schedule/severity/owner；「这张表的约定」没有可发布、可评审、可比对的载体。Soda 的实践证明，契约的收益主要来自**目标级默认值 + 发布语义**，而不是新编辑器。
+**为什么需要**：P0/P1a 解决了「看得见、就地改」，但每条规则仍要各配一遍 filter；「这张表的约定」没有可发布、可评审、可比对的载体。契约的收益来自**目标级 filter + 作者默认值 + 发布语义**，而不是新编辑器。
 
-**模型**（建议）：
+**已实现模型**（`0029##quality_contract.sql`，`proto/store/store/data_quality.proto`）：
 
 ```
 quality_contract
   target_guid, target_type          -- 目标身份（与 rule 同口径）
-  settings JSONB                    -- 目标级默认：filter, schedule, severity, owner, tags, attributes
-  created_at, updated_at
-  published_revision_id (nullable)  -- 最近一次发布
+  settings JSONB                    -- QualityContractSettings: filter,
+                                    --   default_schedule_interval_seconds, default_severity
+  published_version INT4            -- 最新的已发布版本；0 = 从未发布
 quality_contract_revision
-  contract_id, version
-  snapshot JSONB                    -- 有序 rule 引用（rule_id, rule_revision）+ settings 快照 + checksum
-  published_by, published_at
-  change_summary                    -- 新增/修改/删除/重排的计数（diff 由 rule_revision 计算）
+  contract_id, version              -- 每个 contract 自增
+  snapshot JSONB                    -- QualityContractSnapshot: settings + 有序 checks
+                                    --   (rule_resource_id, rule_revision, title, type, severity, column)
+                                    --   + fingerprint(sha256)
+  check_count, added_count, modified_count, removed_count, note
+  published_by, published_at        -- 版本元数据
 ```
 
-- **规则仍是唯一可变实体**：契约不存规则正文，只存有序引用与默认值；编辑规则 = 改 rule（已有 revision），契约只投影。
-- **发布才定版**：发布 = 写一条 `quality_contract_revision`（快照 + 操作者）；未发布时「契约」就是当前规则集合的投影，UI 显示「有未发布变更」。
-- **目标级默认值合成**：`effective = rule 覆盖 ?? contract.settings ?? workspace 默认`；执行规划时合成 filter/schedule/severity/owner/tags。优先级写进 proto 注释与 UI 提示，避免「目标级与检查级语义不清」。
-- **权限**：新增 `metaxisdata.dataQuality.contracts.publish`（把「发布对外承诺」与「编辑规则」分开，对应 Soda 的 Manage contract）；读取复用 `rules.list`，未发布编辑复用规则 CRUD。
-- **版本差异**：基于 `rule_revision`（已有不可变历史）计算 A/M/R；不做 proposal/request，不做冲突 sync。
-- **只读导出**：P2 再做契约 YAML 导出（供 CI/评审），导入与双向同步明确不做。
-- **不接管**：执行、问题、通知、配额、issue 唯一性全部保持规则粒度；契约不新增执行实体。
+- **规则仍是唯一可变实体**：契约不存规则正文，只存引用 + 默认值；编辑规则 = 改 rule（已有 revision），契约只投影。
+- **发布才定版**：发布写一条 revision（快照 + 计数 + 发布人 + note），并推进 `published_version`；未发布时 UI 显示「未发布变更」。**发布不阻塞执行**——规则保存后照常运行；发布是承诺/审计，不是 draft/publish 门禁。这与 Soda 的 publish 语义不同（我们没有跨团队 review 流程）。
+- **目标级 filter 在编译期合成**：`有效 filter = 规则自身 filter 子句 + 契约 filter 子句`（规则在前），在 `dataquality.whereClause` 一次编译，因此占位符不重编号；预览、手动/定时执行、失败样本都带同一 filter。各自仍受 10 条上限，合计最多 20。`custom_sql` 不重写用户 SQL，因此**不受契约 filter 约束**；`cross_table` 只作用于左表（与规则 filter 同语义）；`schema_drift` 无 SQL、filter 不参与判定。
+- **默认调度/严重级别只作作者默认值**：`TargetRuleComposer` 打开时用它们初始化表单；**不回写已有规则、执行规划不重算调度**。owner/tags 默认值未做（规则级字段，留待需要时再加）。
+- **权限**：读 `rules.list`；改设置 `rules.update`；发布新增 `metaxisdata.dataQuality.contracts.publish`（workspaceAdmin 自动持有，自定义角色可授予）。设置更新与发布都审计；读取不审计。
+- **版本差异**：按 `rule_resource_id` 对比快照：新增 / 移除 / 修改（revision、title、type、severity、column 任一不同）。历史列表只读版本元数据；差异按需拉两个版本快照，客户端计算。
+- **幂等发布**：相同 settings + 相同 checks 的 fingerprint 相同；发布事务在行锁内比较最新 revision 的 fingerprint，相同则返回既有版本（`no_changes=true`），不产生重复版本。
+- **不接管**：执行、问题、通知、配额、issue 唯一性全部保持规则粒度；契约不新增执行实体，也没有独立的契约编辑器。
+
+**实现位置**：`backend/store/quality_contract.go`（CRUD/发布事务/历史）、`backend/api/v1/data_quality_contract.go`（5 个 RPC、快照/差异/转换）、`backend/component/dataquality/contract.go`（filter 校验与合并）、`backend/runner/qualityrunner/qualityrunner.go`（执行前读契约 filter）、`frontend/src/components/data-quality/{TargetContractCard,ContractSettingsDialog,ContractPublishDialog,ContractHistoryDrawer}.vue`。
+
+**测试**：`dataquality/contract_test.go` + 执行/校验测试、`api/v1/data_quality_contract_test.go`、集成 `TestDataQualityContractRealServerIntegration`（真实 PG+MySQL：settings 校验、发布/幂等/历史/差异、契约 filter 进入执行 SQL）。
 
 ### 3.6 读接口（P1a，已实现）
 
@@ -269,15 +276,15 @@ message GetQualityTargetResponse {
 4. ✅ 工作台内联新建规则（`TargetRuleComposer`）：目标固定、类型按对象能力裁剪、`RuleConfigForm` 复用、先预览再创建；保存后就地插入分组，不离开页面。编辑仍走完整编辑器。
 5. ✅（部分）视图/物化视图/外部表的元数据详情接入 `MetadataQualitySection`；规则/问题/执行详情页增加“目标工作台”按钮。未做：字段覆盖视图（未覆盖列 + 语义标注候选槽位）、问题/执行反向锚回目标并**高亮**具体规则。
 
-### P1b（下一阶段，需迁移）
+### P1b（已实现，本分支）
 
-1. 契约表 + 目标级默认值（filter/schedule/severity/owner/tags）+ 执行规划合成。
-2. 契约发布/版本/差异（基于 rule_revision）+ `contracts.publish` 权限 + 审计。
-3. 工作台内联「编辑规则」（复用 `RuleConfigForm` + update mask；P1a 只做了新建）。
-4. 字段覆盖视图；问题/执行反向锚回目标并高亮具体规则。
-5. 列表筛选写 URL、可分享视图；每规则最近 N 次执行。
+1. ✅ 契约表与目标级 filter（编译期 AND 到每条规则）；作者默认调度/严重级别（只用于新规则表单）。
+2. ✅ 发布/版本/差异 + `contracts.publish` 权限 + 审计；幂等发布；历史与按需 diff。
+3. 未做：owner/tags 目标级默认值；目标级 filter 对 `custom_sql` 的支持（自定义 SQL 不被改写，属有意边界）。
+4. 未做（P1 小项）：工作台内联「编辑规则」；字段覆盖视图；问题/执行反向锚回时**高亮**具体规则；列表筛选写 URL；每规则最近 N 次执行。
+5. ✅（此前）视图/物化视图/外部表入口、详情页反向锚点。
 
-粗估：P1a 聚合读（已实现）约 3–5 人日；P1b 契约/默认值/发布 16–24 人日；剩余前端（内联编辑、覆盖视图、反向锚点）约 6–10 人日。
+粗估：P1a 聚合读约 3–5 人日（已实现）；P1b 契约约 8–12 人日（已实现）；剩余小项约 3–5 人日。
 
 ### P2（可选）
 
@@ -312,6 +319,7 @@ message GetQualityTargetResponse {
 | 面 | 位置 |
 | --- | --- |
 | 聚合读 | `backend/store/quality_target.go`（`ListQualityTargets` 的单查询聚合、`CountPendingQualitySuggestions`、排序/rank 守卫）、`backend/api/v1/data_quality_target.go`（两个 handler、顺序/过滤映射、summary 转换）、`proto/v1/v1/data_quality_service.proto` |
+| 契约 | `backend/migrator/migration/0.1/0029##quality_contract.sql`（+ `LATEST.sql`）、`proto/store/store/data_quality.proto`（`QualityContractSettings/Snapshot/Check`）、`backend/store/quality_contract.go`（设置 upsert、发布事务、历史）、`backend/api/v1/data_quality_contract.go`（5 RPC、快照/差异/转换）、`backend/component/dataquality/contract.go`（filter 校验/合并）、`qualityrunner` 执行前读取、前端 `TargetContractCard`/`ContractSettingsDialog`/`ContractPublishDialog`/`ContractHistoryDrawer` |
 | 目标列表 | `frontend/src/pages/data-quality/DataQualityTargetsPage.vue`（测试同名 `.test.ts`） |
 | 目标工作台 | `frontend/src/pages/data-quality/DataQualityTargetPage.vue` + `components/data-quality/TargetCheckRow.vue`、`TargetDraftCard.vue`、`TargetCopilotPanel.vue`、`TargetRuleComposer.vue` |
 | 纯投影 | `frontend/src/utils/dataQualityTarget.ts`（按列/跨字段分组、v1 summary 的排序/搜索/展示辅助） |

@@ -12,6 +12,7 @@ import {
   QualityRuleSchema,
   QualityRuleState,
   QualityRuleType,
+  QualitySeverity,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
@@ -83,7 +84,12 @@ async function openRuleTypeSelect(): Promise<HTMLElement[]> {
 }
 
 async function mountComposer(
-  options: { metaType?: MetaType; permissions?: string[] } = {}
+  options: {
+    metaType?: MetaType;
+    permissions?: string[];
+    defaultScheduleSeconds?: number;
+    defaultSeverity?: QualitySeverity;
+  } = {}
 ) {
   const pinia = createPinia();
   setActivePinia(pinia);
@@ -110,6 +116,8 @@ async function mountComposer(
       targetGuid: TABLE,
       metaType: options.metaType ?? MetaType.TABLE,
       targetLabel: TARGET_LABEL,
+      defaultScheduleSeconds: options.defaultScheduleSeconds,
+      defaultSeverity: options.defaultSeverity,
     },
     global: { plugins: [i18n, pinia, router] },
   });
@@ -231,6 +239,31 @@ describe("TargetRuleComposer", () => {
     // The page renders the created rule in place, so the dialog reports it.
     expect(wrapper.emitted("saved")).toEqual([[created]]);
     expect(wrapper.emitted("update:open")).toEqual([[false]]);
+    wrapper.unmount();
+  });
+
+  it("starts a new rule from the contract's defaults", async () => {
+    const wrapper = await mountComposer({
+      defaultScheduleSeconds: 6 * 3600,
+      defaultSeverity: QualitySeverity.ERROR,
+    });
+
+    // Six hours is the largest whole unit the schedule control can show.
+    expect(
+      document.querySelector<HTMLInputElement>("#dq-composer-schedule")?.value
+    ).toBe("6");
+
+    setInput("#dq-composer-title", "Orders have rows");
+    setInput("#dq-field-minRows", "1");
+    await flushPromises();
+    dialogButton(label("dataQuality.editor.create"))?.click();
+    await flushPromises();
+
+    // The severity select's label only renders once its menu opens, so the saved
+    // rule is the observable proof that the contract default applied.
+    const [rule] = mocks.createQualityRule.mock.calls[0] as [QualityRule];
+    expect(rule.severity).toBe(QualitySeverity.ERROR);
+    expect(rule.scheduleInterval?.seconds).toBe(21600n);
     wrapper.unmount();
   });
 

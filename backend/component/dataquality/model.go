@@ -40,6 +40,12 @@ type RuleSnapshot struct {
 	Severity  storepb.QualitySeverity
 	Target    Target
 	Config    *storepb.QualityRuleConfig
+	// ContractFilter is the target-level filter every rule on the target is checked
+	// with, read from quality_contract at execution time rather than stored on the
+	// rule: publishing a contract change therefore affects the next execution
+	// without rewriting the rule. It is ANDed after the rule's own filter at compile
+	// time, and nil means the target carries no contract filter.
+	ContractFilter *storepb.QualityFilter
 }
 
 // Observation is what one execution measured, before any threshold is applied.

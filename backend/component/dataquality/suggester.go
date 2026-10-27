@@ -216,7 +216,7 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 				slog.String("title", draft.Title))
 			continue
 		}
-		if _, err := ValidateRule(ctx, s.store, draft.Type, targetGUID, metaType, draftConfig, nil); err != nil {
+		if _, err := ValidateRule(ctx, s.store, draft.Type, targetGUID, metaType, draftConfig, nil, nil); err != nil {
 			slog.Warn("dropping a rule draft that failed validation",
 				slog.String("table_guid", targetGUID),
 				slog.String("title", draft.Title),

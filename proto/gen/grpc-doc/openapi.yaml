@@ -4346,6 +4346,257 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityContractRevisions:
+        get:
+            tags:
+                - DataQualityService
+            description: List the target's published contract versions, newest first.
+            operationId: DataQualityService_ListQualityContractRevisions
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: targetGuid
+                  in: query
+                  schema:
+                    type: string
+                - name: metaType
+                  in: query
+                  schema:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - APPLICATION_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - OPENLINEAGE
+                    type: string
+                    format: enum
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListQualityContractRevisionsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityContractRevisions:get:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                Read one published contract version with its ordered checks, so a client can
+                 show a diff without downloading every version.
+            operationId: DataQualityService_GetQualityContractRevision
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: targetGuid
+                  in: query
+                  schema:
+                    type: string
+                - name: metaType
+                  in: query
+                  schema:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - APPLICATION_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - OPENLINEAGE
+                    type: string
+                    format: enum
+                - name: version
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetQualityContractRevisionResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityContracts:get:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                Read one target's contract: its target-level defaults, the published version,
+                 and whether the live rules differ from that snapshot.
+            operationId: DataQualityService_GetQualityContract
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: targetGuid
+                  in: query
+                  schema:
+                    type: string
+                - name: metaType
+                  in: query
+                  description: The target's object type. Optional when rules already exist.
+                  schema:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - APPLICATION_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - OPENLINEAGE
+                    type: string
+                    format: enum
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityContract'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityContracts:publish:
+        post:
+            tags:
+                - DataQualityService
+            description: |-
+                Publish the live rules and settings as the target's next contract version.
+                 Republishing an unchanged contract is a no-op that returns the existing
+                 version (no_changes=true).
+            operationId: DataQualityService_PublishQualityContract
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PublishQualityContractRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PublishQualityContractResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityContracts:update:
+        post:
+            tags:
+                - DataQualityService
+            description: |-
+                Update the target-level defaults. The filter is ANDed into every rule on the
+                 target at compile time; the schedule and severity only seed newly authored
+                 rules and never rewrite an existing rule.
+            operationId: DataQualityService_UpdateQualityContract
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UpdateQualityContractRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityContract'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityExecutions:
         get:
             tags:
@@ -8119,6 +8370,15 @@ components:
             properties:
                 metadata:
                     $ref: '#/components/schemas/StoredMetadata'
+        GetQualityContractRevisionResponse:
+            type: object
+            properties:
+                revision:
+                    $ref: '#/components/schemas/QualityContractRevision'
+                checks:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityContractCheck'
         GetQualitySuggestionJobTargetDebugResponse:
             type: object
             properties:
@@ -8943,6 +9203,15 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/OpenLineageTask'
+                nextPageToken:
+                    type: string
+        ListQualityContractRevisionsResponse:
+            type: object
+            properties:
+                revisions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityContractRevision'
                 nextPageToken:
                     type: string
         ListQualityExecutionsResponse:
@@ -10133,6 +10402,197 @@ components:
                 count:
                     type: string
             description: ProfileValue is one frequent value of a low-cardinality column.
+        PublishQualityContractRequest:
+            required:
+                - parent
+                - targetGuid
+            type: object
+            properties:
+                parent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
+                targetGuid:
+                    type: string
+                metaType:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - APPLICATION_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - OPENLINEAGE
+                    type: string
+                    format: enum
+                note:
+                    type: string
+                    description: Why this version exists; shown in the history.
+        PublishQualityContractResponse:
+            type: object
+            properties:
+                contract:
+                    $ref: '#/components/schemas/QualityContract'
+                revision:
+                    $ref: '#/components/schemas/QualityContractRevision'
+                noChanges:
+                    type: boolean
+                    description: |-
+                        True when the live state already matched the newest published version, so no
+                         new version was created.
+        QualityContract:
+            type: object
+            properties:
+                target:
+                    $ref: '#/components/schemas/QualityTarget'
+                settings:
+                    $ref: '#/components/schemas/QualityContractSettings'
+                publishedVersion:
+                    type: integer
+                    description: The newest published version; 0 means the target has never been published.
+                    format: int32
+                publishedAt:
+                    type: string
+                    format: date-time
+                publishedBy:
+                    type: string
+                    description: 'Format: users/{user}. Empty when the publisher is unknown.'
+                publishNote:
+                    type: string
+                checkCount:
+                    type: integer
+                    description: How many live (non-archived) rules the target has.
+                    format: int32
+                changeSummary:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityContractChangeSummary'
+                    description: |-
+                        The live rules compared with the published snapshot. Zero counts when the
+                         target has never been published.
+                hasUnpublishedChanges:
+                    type: boolean
+                    description: |-
+                        True when the live rules or settings differ from the published snapshot (or
+                         nothing has been published yet and the target has content).
+            description: |-
+                QualityContract is the target-level layer above the rules: defaults, the
+                 published version and whether the live rules have drifted from it. It is a
+                 projection, not a second source of truth: editing a rule changes the live
+                 contract immediately, and publishing records that state as a version.
+        QualityContractChangeSummary:
+            type: object
+            properties:
+                added:
+                    type: integer
+                    format: int32
+                modified:
+                    type: integer
+                    format: int32
+                removed:
+                    type: integer
+                    format: int32
+            description: |-
+                QualityContractChangeSummary counts how the live rules differ from the
+                 published snapshot.
+        QualityContractCheck:
+            type: object
+            properties:
+                ruleResourceId:
+                    type: string
+                    description: The rule's immutable resource id (the API-facing name segment).
+                ruleRevision:
+                    type: integer
+                    description: The revision whose definition was published.
+                    format: int32
+                title:
+                    type: string
+                ruleType:
+                    enum:
+                        - QUALITY_RULE_TYPE_UNSPECIFIED
+                        - QUALITY_RULE_TYPE_ROW_COUNT
+                        - QUALITY_RULE_TYPE_ROW_COUNT_CHANGE
+                        - QUALITY_RULE_TYPE_NULL_PERCENT
+                        - QUALITY_RULE_TYPE_UNIQUE
+                        - QUALITY_RULE_TYPE_UNIQUE_COMBINATION
+                        - QUALITY_RULE_TYPE_ACCEPTED_VALUES
+                        - QUALITY_RULE_TYPE_RANGE
+                        - QUALITY_RULE_TYPE_REGEX
+                        - QUALITY_RULE_TYPE_STRING_LENGTH
+                        - QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY
+                        - QUALITY_RULE_TYPE_CROSS_COLUMN
+                        - QUALITY_RULE_TYPE_FRESHNESS
+                        - QUALITY_RULE_TYPE_CUSTOM_SQL
+                        - QUALITY_RULE_TYPE_CEL_EXPRESSION
+                        - QUALITY_RULE_TYPE_SCHEMA_DRIFT
+                        - QUALITY_RULE_TYPE_GROUP_CHECK
+                        - QUALITY_RULE_TYPE_AGGREGATE
+                        - QUALITY_RULE_TYPE_CROSS_TABLE
+                    type: string
+                    format: enum
+                severity:
+                    enum:
+                        - QUALITY_SEVERITY_UNSPECIFIED
+                        - QUALITY_SEVERITY_WARNING
+                        - QUALITY_SEVERITY_ERROR
+                        - QUALITY_SEVERITY_CRITICAL
+                    type: string
+                    format: enum
+                column:
+                    type: string
+                    description: The column the rule watches; empty for a table-level rule.
+            description: QualityContractCheck is one rule as a published contract records it.
+        QualityContractRevision:
+            type: object
+            properties:
+                version:
+                    type: integer
+                    format: int32
+                publishedAt:
+                    type: string
+                    format: date-time
+                publishedBy:
+                    type: string
+                    description: 'Format: users/{user}.'
+                note:
+                    type: string
+                checkCount:
+                    type: integer
+                    format: int32
+                changeSummary:
+                    $ref: '#/components/schemas/QualityContractChangeSummary'
+            description: QualityContractRevision is one published version's metadata.
+        QualityContractSettings:
+            type: object
+            properties:
+                filter:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityFilter'
+                    description: Applied to every rule on the target, ANDed with the rule's own filter.
+                defaultScheduleIntervalSeconds:
+                    type: string
+                    description: |-
+                        The schedule a newly authored rule starts with; 0 means the workspace default.
+                         Existing rules keep their own interval.
+                defaultSeverity:
+                    enum:
+                        - QUALITY_SEVERITY_UNSPECIFIED
+                        - QUALITY_SEVERITY_WARNING
+                        - QUALITY_SEVERITY_ERROR
+                        - QUALITY_SEVERITY_CRITICAL
+                    type: string
+                    description: The severity a newly authored rule starts with; UNSPECIFIED means no default.
+                    format: enum
+            description: QualityContractSettings is the target-level layer's mutable configuration.
         QualityExecution:
             type: object
             properties:
@@ -12488,6 +12948,44 @@ components:
                     type: string
                     description: The list of fields to update.
                     format: field-mask
+        UpdateQualityContractRequest:
+            required:
+                - parent
+                - targetGuid
+                - settings
+            type: object
+            properties:
+                parent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
+                targetGuid:
+                    type: string
+                metaType:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - APPLICATION_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - OPENLINEAGE
+                    type: string
+                    format: enum
+                settings:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityContractSettings'
+                    description: The complete settings; the update replaces them rather than patching fields.
         UpdateQualitySuggestionRequest:
             required:
                 - name
