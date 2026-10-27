@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { resolveSignInTarget, sanitizeRedirect } from "@/lib/signInRedirect";
+import {
+  isKnownSpaRouteName,
+  resolveSignInTarget,
+  sanitizeRedirect,
+} from "@/lib/signInRedirect";
 
 describe("sanitizeRedirect", () => {
   it("accepts a same-origin absolute path", () => {
@@ -16,6 +20,12 @@ describe("sanitizeRedirect", () => {
     ["an absolute URL", "https://evil.example.com/"],
     ["a protocol-relative path", "//evil.example.com/"],
     ["a backslash smuggled past the prefix check", "/\\evil.example.com/"],
+    // The URL parser strips these before parsing, so `/\t/evil.com` would
+    // become the off-origin `//evil.com` at the point it is navigated to.
+    ["a tab the URL parser would strip", "/\t/evil.example.com/"],
+    ["a line feed the URL parser would strip", "/\n/evil.example.com/"],
+    ["a carriage return the URL parser would strip", "/\r/evil.example.com/"],
+    ["a NUL byte", "/\u0000/evil.example.com/"],
     ["a relative path", "instances"],
     ["an empty value", ""],
     ["nothing", undefined],
@@ -25,8 +35,28 @@ describe("sanitizeRedirect", () => {
   });
 });
 
+describe("isKnownSpaRouteName", () => {
+  it("accepts a route the router matched", () => {
+    expect(isKnownSpaRouteName("MetadataDetail")).toBe(true);
+  });
+
+  it.each([
+    ["the catch-all", "NotFound"],
+    ["a path no record matched", undefined],
+    ["a symbol name", Symbol("route")],
+  ])("rejects %s", (_label, name) => {
+    expect(isKnownSpaRouteName(name)).toBe(false);
+  });
+});
+
 describe("resolveSignInTarget", () => {
   const spaOnly = (path: string) => path.startsWith("/settings");
+
+  it("falls back to home for a redirect the URL parser would reinterpret", () => {
+    expect(resolveSignInTarget("/\t/evil.example.com/", spaOnly)).toEqual({
+      kind: "home",
+    });
+  });
 
   it("falls back to home when there is no redirect", () => {
     expect(resolveSignInTarget(undefined, spaOnly)).toEqual({ kind: "home" });

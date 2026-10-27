@@ -51,6 +51,8 @@ describe("ensurePermissionsLoaded", () => {
     const store = useAuthStore();
     await store.login("dev@example.com", "pw");
     expect(store.permissions).toEqual([]);
+    // The response settled who the caller is, so no later probe is needed.
+    expect(store.sessionChecked).toBe(true);
 
     await store.ensurePermissionsLoaded();
     expect(store.permissions).toEqual(["metaxisdata.instances.list"]);
@@ -102,6 +104,19 @@ describe("ensurePermissionsLoaded", () => {
     expect(store.permissionsLoaded).toBe(true);
   });
 
+  it("records a definitive refusal as a checked session", async () => {
+    mocks.getCurrentUser.mockRejectedValue(
+      new ConnectError("no cookie", Code.Unauthenticated)
+    );
+
+    const store = useAuthStore();
+    await store.ensurePermissionsLoaded();
+
+    // The public login form reads this to avoid probing the cookie again after
+    // the guard already learned there is no session.
+    expect(store.sessionChecked).toBe(true);
+  });
+
   it("keeps a valid session when the request fails for another reason", async () => {
     const store = useAuthStore();
     store.user = create(UserSchema, { name: "users/1" });
@@ -117,6 +132,9 @@ describe("ensurePermissionsLoaded", () => {
     expect(store.isAuthenticated).toBe(true);
     expect(store.user?.name).toBe("users/1");
     expect(store.permissionsLoaded).toBe(false);
+    // Nor is it an answer. The login form would otherwise park a signed-in caller
+    // there for the rest of the page life after one transient failure.
+    expect(store.sessionChecked).toBe(false);
   });
 
   it("shares one request between two navigations in the same tick", async () => {

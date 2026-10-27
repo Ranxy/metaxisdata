@@ -4,6 +4,7 @@ import {
   type NavigationGuard,
   type RouteRecordRaw,
 } from "vue-router";
+import { isKnownSpaRouteName, resolveSignInTarget } from "@/lib/signInRedirect";
 import { useAuthStore } from "@/store/modules/auth";
 
 const routes: RouteRecordRaw[] = [
@@ -555,6 +556,14 @@ export const authGuard: NavigationGuard = async (to) => {
   // almost empty app until the next full page load.
   if (to.meta.requiresAuth !== false) {
     await authStore.ensurePermissionsLoaded();
+  } else if (to.name === "Login" && !authStore.sessionChecked) {
+    // The form itself is public, but a caller who already has a session must not
+    // be parked on it. A full page load starts with an empty store, so the
+    // cookie is only discovered by asking; the shortcut below can only send the
+    // caller on once that question has a definitive answer. `sessionChecked`
+    // keeps the form from asking again after one — including the refusal that
+    // bounced a caller here a moment ago.
+    await authStore.ensurePermissionsLoaded();
   }
 
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
@@ -584,6 +593,33 @@ export const authGuard: NavigationGuard = async (to) => {
     authStore.isAuthenticated &&
     !authStore.requireResetPassword
   ) {
+    // Continue where the caller was headed rather than dropping them on the
+    // default page: a saved `/login?redirect=...` link (and the sign-in URL an
+    // MCP client hands out) has to reach its target once the session is found.
+    const target = resolveSignInTarget(
+      typeof to.query.redirect === "string" ? to.query.redirect : undefined,
+      (path) => isKnownSpaRouteName(router.resolve(path).name)
+    );
+    if (target.kind === "server") {
+      // A server route — the MCP client's /oauth/authorize is the one that
+      // matters — only resumes through a full page load; the router's catch-all
+      // would answer NotFound instead. `replace` keeps the login form out of the
+      // history, or Back would immediately resume the same redirect.
+      window.location.replace(target.path);
+      return false;
+    }
+    if (target.kind === "spa") {
+      const resolved = router.resolve(target.path);
+      // A redirect that names the form itself would loop the two branches of
+      // this guard, so the default page is the only sane answer to it.
+      if (resolved.name !== "Login") {
+        return {
+          path: resolved.path,
+          query: resolved.query,
+          hash: resolved.hash,
+        };
+      }
+    }
     return { name: "Home" };
   }
 
@@ -597,6 +633,31 @@ export const authGuard: NavigationGuard = async (to) => {
     return { name: "Home" };
   }
 };
+
+/**
+ * Answers a refused request: forget the user and, when a session the app
+ * believed in was refused, send the caller to the login form with the path they
+ * were on. A visitor who never signed in is left alone — the guard already
+ * routes them (or is doing so right now), and a second navigation from here
+ * would race it and claim an expiry that never happened.
+ */
+export function handleSessionExpired() {
+  const authStore = useAuthStore();
+  authStore.handleUnauthenticated();
+  if (!authStore.sessionExpired) {
+    return;
+  }
+  const current = router.currentRoute.value;
+  if (current.name === "Login") {
+    // Already on the login form (e.g. a failed password reset): a pushed
+    // navigation would only duplicate the entry.
+    return;
+  }
+  return router.push({
+    name: "Login",
+    query: { expired: "1", redirect: current.fullPath },
+  });
+}
 
 router.beforeEach(authGuard);
 

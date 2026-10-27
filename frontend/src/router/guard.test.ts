@@ -2,7 +2,7 @@ import { create } from "@bufbuild/protobuf";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import router from "@/router";
+import router, { handleSessionExpired } from "@/router";
 import { useAuthStore } from "@/store/modules/auth";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
 
@@ -107,5 +107,61 @@ describe("router auth guard", () => {
     // The permission-bearing profile is loaded once, not on every navigation.
     await router.push("/databases");
     expect(mocks.getCurrentUser).toHaveBeenCalledTimes(1);
+  });
+
+  // The reported bug: following a saved sign-in link with a valid session used
+  // to leave the caller on the form.
+  it("continues to the requested page when the session is already valid", async () => {
+    await router.push("/login?redirect=/databases");
+
+    expect(router.currentRoute.value.name).toBe("DatabaseManagement");
+  });
+
+  it("does not land a signed-in caller on a page they cannot open", async () => {
+    mocks.getCurrentUser.mockResolvedValue(
+      create(UserSchema, { name: "users/1", permissions: [] })
+    );
+
+    await router.push("/login?redirect=/settings/roles");
+
+    // The redirect is not a permission grant: the role page's own guard turns the
+    // caller away exactly as it does for any other navigation.
+    expect(router.currentRoute.value.name).toBe("Home");
+  });
+
+  it("sends an expired session to the login form with its path", async () => {
+    await router.push("/instances");
+    const authStore = useAuthStore();
+    expect(authStore.isAuthenticated).toBe(true);
+
+    await handleSessionExpired();
+
+    expect(authStore.isAuthenticated).toBe(false);
+    expect(authStore.sessionExpired).toBe(true);
+    expect(router.currentRoute.value.name).toBe("Login");
+    expect(router.currentRoute.value.query).toMatchObject({
+      expired: "1",
+      redirect: "/instances",
+    });
+  });
+
+  it("does not navigate for a refusal before there was ever a session", async () => {
+    mocks.getCurrentUser.mockRejectedValue(
+      new ConnectError("no cookie", Code.Unauthenticated)
+    );
+    await router.push("/login?redirect=/databases");
+    const authStore = useAuthStore();
+    expect(authStore.isAuthenticated).toBe(false);
+
+    // A guarded page's first profile request is refused before the caller ever
+    // signed in; the guard is already sending them to the form, so a push here
+    // would race it and invent an expiry.
+    await handleSessionExpired();
+
+    expect(authStore.sessionExpired).toBe(false);
+    expect(router.currentRoute.value.name).toBe("Login");
+    expect(router.currentRoute.value.query).toMatchObject({
+      redirect: "/databases",
+    });
   });
 });

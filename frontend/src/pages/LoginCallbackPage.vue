@@ -97,7 +97,7 @@ import {
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { notify } from "@/lib/notify";
 import { consumeSSOState } from "@/lib/oauth";
-import { resolveSignInTarget } from "@/lib/signInRedirect";
+import { isKnownSpaRouteName, resolveSignInTarget } from "@/lib/signInRedirect";
 import { useAuthStore } from "@/store/modules/auth";
 import type { IdentityProviderUserInfo } from "@/types/proto-es/v1/identity_provider_service_pb";
 
@@ -191,13 +191,14 @@ async function exchange(code: string, state: string) {
       record.redirect,
       // The router's catch-all answers every unknown path, so only a real match
       // counts as an in-app route.
-      (path) => router.resolve(path).name !== "NotFound"
+      (path) => isKnownSpaRouteName(router.resolve(path).name)
     );
     if (target.kind === "server") {
       // A server route has to be loaded from the server. The one that matters is
       // the MCP client's /oauth/authorize, whose round trip through the sign-in
-      // page is how a signed-out user resumes an authorization.
-      window.location.assign(target.path);
+      // page is how a signed-out user resumes an authorization. `replace` keeps
+      // the callback out of the history for the same reason as the login form.
+      window.location.replace(target.path);
       return;
     }
     await router.replace(target.kind === "spa" ? target.path : "/");

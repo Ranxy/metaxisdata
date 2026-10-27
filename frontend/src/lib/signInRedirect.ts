@@ -26,7 +26,25 @@ export function sanitizeRedirect(
   if (redirect.includes("\\")) {
     return undefined;
   }
+  // The URL parser strips ASCII tab, LF and CR before parsing, so `/\t/evil.com`
+  // passes every check above and then resolves to `//evil.com` — an off-origin
+  // URL. Reject every control character rather than enumerate the ones the
+  // browser strips.
+  if (/[\u0000-\u001f\u007f]/.test(redirect)) {
+    return undefined;
+  }
   return redirect;
+}
+
+/**
+ * Whether the router owns a real route for the name `router.resolve(path)` gave
+ * back. An unmatched path answers no record at all (`undefined`), and this app's
+ * catch-all is named `NotFound`; neither is an in-app destination.
+ */
+export function isKnownSpaRouteName(
+  name: string | symbol | null | undefined
+): boolean {
+  return typeof name === "string" && name !== "NotFound";
 }
 
 export type SignInTarget =
