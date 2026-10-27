@@ -10,6 +10,7 @@ import TargetCheckRow from "@/components/data-quality/TargetCheckRow.vue";
 import TargetContractCard from "@/components/data-quality/TargetContractCard.vue";
 import TargetCoverageCard from "@/components/data-quality/TargetCoverageCard.vue";
 import TargetDraftCard from "@/components/data-quality/TargetDraftCard.vue";
+import TargetRecentScanCard from "@/components/data-quality/TargetRecentScanCard.vue";
 import TargetRuleComposer from "@/components/data-quality/TargetRuleComposer.vue";
 import { notify } from "@/lib/notify";
 import { i18n } from "@/locales";
@@ -19,6 +20,8 @@ import {
   NullPercentConfigSchema,
   type QualityContract,
   QualityContractSchema,
+  QualityExecutionState,
+  QualityExecutionTrigger,
   type QualityIssue,
   QualityIssueSchema,
   QualityIssueStatus,
@@ -29,6 +32,8 @@ import {
   QualityRuleSchema,
   QualityRuleState,
   QualityRuleType,
+  type QualityRunTarget,
+  QualityRunTargetSchema,
   QualitySeverity,
   QualityStatus,
   type QualitySuggestion,
@@ -231,6 +236,8 @@ function summaryFixture(
     pendingDraftCount?: number;
     schemaChanged?: boolean;
     withPath?: boolean;
+    latestRun?: QualityRunTarget;
+    runCount?: number;
   } = {}
 ): QualityTargetSummary {
   return create(QualityTargetSummarySchema, {
@@ -257,6 +264,36 @@ function summaryFixture(
     worstStatus: QualityStatus.ERROR,
     lastRunTime: timestampFromDate(new Date()),
     schemaChanged: options.schemaChanged ?? false,
+    latestRun: options.latestRun,
+    runCount: options.runCount ?? 0,
+  });
+}
+
+/** The target's slice of its latest scan batch, as the summary carries it. */
+function latestRunFixture(
+  options: {
+    total?: number;
+    pass?: number;
+    fail?: number;
+    outcome?: QualityStatus;
+    revision?: number;
+  } = {}
+): QualityRunTarget {
+  const at = timestampFromDate(new Date());
+  return create(QualityRunTargetSchema, {
+    run: "workspaces/ws/qualityRuns/run-1",
+    outcome: options.outcome ?? QualityStatus.FAIL,
+    trigger: QualityExecutionTrigger.MANUAL,
+    state: QualityExecutionState.COMPLETED,
+    counts: {
+      total: options.total ?? 3,
+      pass: options.pass ?? 2,
+      fail: options.fail ?? 1,
+    },
+    ruleRevisionMin: options.revision ?? 2,
+    ruleRevisionMax: options.revision ?? 2,
+    startTime: at,
+    finishTime: at,
   });
 }
 
@@ -394,6 +431,11 @@ async function mountPage(
       {
         path: "/data-quality/rules/new",
         name: "DataQualityRuleNew",
+        component: Dummy,
+      },
+      {
+        path: "/data-quality/executions",
+        name: "DataQualityExecutions",
         component: Dummy,
       },
       {
@@ -1388,6 +1430,55 @@ describe("DataQualityTargetPage", () => {
 
     expect(router.currentRoute.value.query.edit).toBeUndefined();
     expect(wrapper.findComponent(TargetRuleComposer).props("open")).toBe(false);
+    expect(wrapper.text()).toContain("Row count floor");
+    wrapper.unmount();
+  });
+
+  it("shows the latest scan at the top of the sidebar and links to its history", async () => {
+    mocks.getQualityTarget.mockResolvedValue(
+      response({
+        summary: summaryFixture({
+          latestRun: latestRunFixture({ total: 3, pass: 2, fail: 1 }),
+          runCount: 5,
+        }),
+      })
+    );
+    const { wrapper } = await mountPage();
+
+    const card = wrapper.findComponent(TargetRecentScanCard);
+    expect(card.exists()).toBe(true);
+    const text = card.text();
+    expect(text).toContain(label("dataQuality.workspace.recentScanTitle"));
+    expect(text).toContain(label("dataQuality.status.fail"));
+    expect(text).toContain(
+      label("dataQuality.workspace.recentScanChecks", { count: 3 })
+    );
+    expect(text).toContain(
+      label("dataQuality.workspace.recentScanFailed", { count: 1 })
+    );
+    expect(text).toContain(
+      label("dataQuality.executions.runCountValue", { count: 5 })
+    );
+
+    const href = card.find("a").attributes("href") ?? "";
+    expect(href).toContain("/data-quality/executions");
+    expect(href).toContain("view=targets");
+    expect(href).toContain("target=inst1");
+    wrapper.unmount();
+  });
+
+  it("still renders the sidebar scan card when the server carries no latest run", async () => {
+    const { wrapper } = await mountPage();
+
+    const card = wrapper.findComponent(TargetRecentScanCard);
+    expect(card.exists()).toBe(true);
+    expect(card.text()).toContain(
+      label("dataQuality.workspace.recentScanEmpty")
+    );
+    expect(card.text()).toContain(
+      label("dataQuality.workspace.recentScanEmptyHint")
+    );
+    // The rest of the workspace is unaffected by the missing batch.
     expect(wrapper.text()).toContain("Row count floor");
     wrapper.unmount();
   });

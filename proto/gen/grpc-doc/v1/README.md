@@ -249,6 +249,7 @@
     - [GetQualityLLMUsageRequest](#metaxisdata-v1-GetQualityLLMUsageRequest)
     - [GetQualityOverviewRequest](#metaxisdata-v1-GetQualityOverviewRequest)
     - [GetQualityRuleRequest](#metaxisdata-v1-GetQualityRuleRequest)
+    - [GetQualityRunRequest](#metaxisdata-v1-GetQualityRunRequest)
     - [GetQualitySuggestionJobRequest](#metaxisdata-v1-GetQualitySuggestionJobRequest)
     - [GetQualitySuggestionJobTargetDebugRequest](#metaxisdata-v1-GetQualitySuggestionJobTargetDebugRequest)
     - [GetQualitySuggestionJobTargetDebugResponse](#metaxisdata-v1-GetQualitySuggestionJobTargetDebugResponse)
@@ -268,6 +269,8 @@
     - [ListQualityIssuesResponse](#metaxisdata-v1-ListQualityIssuesResponse)
     - [ListQualityRulesRequest](#metaxisdata-v1-ListQualityRulesRequest)
     - [ListQualityRulesResponse](#metaxisdata-v1-ListQualityRulesResponse)
+    - [ListQualityRunsRequest](#metaxisdata-v1-ListQualityRunsRequest)
+    - [ListQualityRunsResponse](#metaxisdata-v1-ListQualityRunsResponse)
     - [ListQualitySuggestionJobsRequest](#metaxisdata-v1-ListQualitySuggestionJobsRequest)
     - [ListQualitySuggestionJobsResponse](#metaxisdata-v1-ListQualitySuggestionJobsResponse)
     - [ListQualitySuggestionsRequest](#metaxisdata-v1-ListQualitySuggestionsRequest)
@@ -299,6 +302,8 @@
     - [QualityRuleConfig](#metaxisdata-v1-QualityRuleConfig)
     - [QualityRuleDraftConfig](#metaxisdata-v1-QualityRuleDraftConfig)
     - [QualityRuleHistory](#metaxisdata-v1-QualityRuleHistory)
+    - [QualityRun](#metaxisdata-v1-QualityRun)
+    - [QualityRunTarget](#metaxisdata-v1-QualityRunTarget)
     - [QualityStatusCounts](#metaxisdata-v1-QualityStatusCounts)
     - [QualitySuggestion](#metaxisdata-v1-QualitySuggestion)
     - [QualitySuggestionJob](#metaxisdata-v1-QualitySuggestionJob)
@@ -4565,6 +4570,21 @@ queries rather than paging through every result.
 
 
 
+<a name="metaxisdata-v1-GetQualityRunRequest"></a>
+
+### GetQualityRunRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityRuns/{quality_run} |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetQualitySuggestionJobRequest"></a>
 
 ### GetQualitySuggestionJobRequest
@@ -4815,6 +4835,7 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 | initiator | [string](#string) |  | Only the executions this principal started. Format: users/{user}. |
 | start_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Only the executions started at or after this time. |
 | end_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Only the executions started before this time. |
+| run | [string](#string) |  | Only the executions planned by this run. Format: workspaces/{workspace}/qualityRuns/{quality_run} |
 
 
 
@@ -4915,6 +4936,46 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | quality_rules | [QualityRule](#metaxisdata-v1-QualityRule) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityRunsRequest"></a>
+
+### ListQualityRunsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| page_size | [int32](#int32) |  | The maximum number of runs to return. If unspecified, at most 50 are returned. The maximum value is 1000; values above 1000 are coerced to 1000. |
+| page_token | [string](#string) |  | A page token, received from a previous ListQualityRuns call. |
+| target_guid | [string](#string) |  | Only runs that planned at least one execution for this target GUID. |
+| instance | [string](#string) |  | Only runs admitted against this instance. Format: instances/{instance} |
+| trigger | [QualityExecutionTrigger](#metaxisdata-v1-QualityExecutionTrigger) |  |  |
+| state | [QualityExecutionState](#metaxisdata-v1-QualityExecutionState) |  |  |
+| outcome | [QualityStatus](#metaxisdata-v1-QualityStatus) |  |  |
+| start_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Only runs started at or after this time. |
+| end_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Only runs started before this time. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityRunsResponse"></a>
+
+### ListQualityRunsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| quality_runs | [QualityRun](#metaxisdata-v1-QualityRun) | repeated |  |
 | next_page_token | [string](#string) |  |  |
 
 
@@ -5315,6 +5376,7 @@ the same row.
 | duration | [google.protobuf.Duration](#google-protobuf-Duration) |  |  |
 | start_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | finish_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Unset while the execution is PENDING or RUNNING. |
+| run | [string](#string) |  | The dispatch batch that planned this execution, so the execution directory can group checks by the run that produced them. Format: workspaces/{workspace}/qualityRuns/{quality_run} |
 
 
 
@@ -5594,6 +5656,59 @@ QualityRuleHistory is one rule&#39;s recent completed executions.
 
 
 
+<a name="metaxisdata-v1-QualityRun"></a>
+
+### QualityRun
+QualityRun is one dispatch batch: the executions a scheduler tick or a manual
+request planned together. It is a projection over quality_run and the
+executions it planned, not a second source of truth; the execution remains the
+per-check unit and the evidence.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityRuns/{quality_run}. The last segment is the row id, which is immutable for the row&#39;s lifetime. |
+| instance | [string](#string) |  | The instance whose connection budget admitted the batch. Format: instances/{instance} |
+| trigger | [QualityExecutionTrigger](#metaxisdata-v1-QualityExecutionTrigger) |  |  |
+| state | [QualityExecutionState](#metaxisdata-v1-QualityExecutionState) |  | The batch lifecycle: PENDING, RUNNING, COMPLETED or ABANDONED. A COMPLETED batch may still have failed checks; outcome carries what it found. |
+| outcome | [QualityStatus](#metaxisdata-v1-QualityStatus) |  | The worst verdict among the batch&#39;s terminal executions. Unset while the batch is queued or running, and on an abandoned batch. |
+| counts | [QualityStatusCounts](#metaxisdata-v1-QualityStatusCounts) |  | The batch-wide tally. total counts every planned execution; the per-verdict fields count only the ones that reached that verdict. |
+| initiator | [string](#string) |  | The principal that started a manual batch. Empty for a scheduled batch. Format: users/{user} |
+| start_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| finish_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Unset while the batch is PENDING or RUNNING. |
+| targets | [QualityRunTarget](#metaxisdata-v1-QualityRunTarget) | repeated | One slice per target the batch planned executions for. A scheduled batch covers one instance, so it can name several targets; a manual target run names one. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityRunTarget"></a>
+
+### QualityRunTarget
+QualityRunTarget is one target&#39;s slice of a run: what that run did to that
+target. The directory and the target workspace show this slice, not the
+batch-wide counts, because a batch can cover several targets.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  |  |
+| counts | [QualityStatusCounts](#metaxisdata-v1-QualityStatusCounts) |  | The slice&#39;s tally: total planned executions for this target, and the verdicts they reached. |
+| outcome | [QualityStatus](#metaxisdata-v1-QualityStatus) |  | The worst verdict in this slice; unset while no execution is terminal. |
+| rule_revision_min | [int32](#int32) |  | The range of rule revisions this slice judged, so two batches are only compared when they ran the same definition. Zero when the slice is empty. |
+| rule_revision_max | [int32](#int32) |  |  |
+| start_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| finish_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Unset while the slice has no terminal execution. |
+| run | [string](#string) |  | The run this slice belongs to, repeated here so the slice can stand alone as a target&#39;s `latest_run`. Format: workspaces/{workspace}/qualityRuns/{quality_run} |
+| state | [QualityExecutionState](#metaxisdata-v1-QualityExecutionState) |  | The parent batch&#39;s lifecycle, repeated for the same reason. |
+| trigger | [QualityExecutionTrigger](#metaxisdata-v1-QualityExecutionTrigger) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-QualityStatusCounts"></a>
 
 ### QualityStatusCounts
@@ -5818,6 +5933,8 @@ plus the counts and health the row and the workspace header render.
 | last_run_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | schema_changed | [bool](#bool) |  | Whether at least one rule was saved against a different target schema hash than the registry currently records. |
 | orphaned | [bool](#bool) |  | Whether the target can no longer be resolved (the registry row, instance or database is gone). The rows stay readable because their target path is a snapshot, but runs are skipped. |
+| latest_run | [QualityRunTarget](#metaxisdata-v1-QualityRunTarget) |  | The target&#39;s slice of the most recent run that planned any of its checks. This is the per-target batch summary the directory and the workspace show; unset when the target has never run. |
+| run_count | [int32](#int32) |  | How many dispatch batches have planned at least one check for this target. |
 
 
 
@@ -6787,6 +6904,8 @@ not exposed as a resource.
 | RunQualityRules | [RunQualityRulesRequest](#metaxisdata-v1-RunQualityRulesRequest) | [RunQualityRulesResponse](#metaxisdata-v1-RunQualityRulesResponse) | Execute rules now. One execution is planned per selected rule; the call returns them all as PENDING after queueing them. Clients poll GetQualityExecution for each execution&#39;s state and outcome. |
 | ListQualityExecutions | [ListQualityExecutionsRequest](#metaxisdata-v1-ListQualityExecutionsRequest) | [ListQualityExecutionsResponse](#metaxisdata-v1-ListQualityExecutionsResponse) | List executions, newest first. |
 | GetQualityExecution | [GetQualityExecutionRequest](#metaxisdata-v1-GetQualityExecutionRequest) | [QualityExecution](#metaxisdata-v1-QualityExecution) | Read one execution: its state, verdict, and the evidence behind it. |
+| ListQualityRuns | [ListQualityRunsRequest](#metaxisdata-v1-ListQualityRunsRequest) | [ListQualityRunsResponse](#metaxisdata-v1-ListQualityRunsResponse) | List runs, newest first. A run is one dispatch batch: the executions one scheduler tick or one manual request planned together. Runs are the batch-level read model the execution directory groups by target; each run carries one slice per target it touched, with the slice&#39;s counts. |
+| GetQualityRun | [GetQualityRunRequest](#metaxisdata-v1-GetQualityRunRequest) | [QualityRun](#metaxisdata-v1-QualityRun) | Read one run, with every target slice it touched. |
 | ListQualityIssues | [ListQualityIssuesRequest](#metaxisdata-v1-ListQualityIssuesRequest) | [ListQualityIssuesResponse](#metaxisdata-v1-ListQualityIssuesResponse) | List quality issues, newest first. |
 | GetQualityIssue | [GetQualityIssueRequest](#metaxisdata-v1-GetQualityIssueRequest) | [QualityIssue](#metaxisdata-v1-QualityIssue) | Read one quality issue. |
 | UpdateQualityIssue | [UpdateQualityIssueRequest](#metaxisdata-v1-UpdateQualityIssueRequest) | [QualityIssue](#metaxisdata-v1-QualityIssue) | Acknowledge, resolve or mute one quality issue. |

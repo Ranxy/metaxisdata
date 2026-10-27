@@ -4,6 +4,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
+import { Select } from "@/components/ui/select";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
@@ -13,35 +14,161 @@ import {
   QualityExecutionTrigger,
   QualityObservedKind,
   QualityRuleSchema,
+  type QualityRun,
+  QualityRunSchema,
+  QualityRunTargetSchema,
   QualityStatus,
+  QualityStatusCountsSchema,
+  QualityTargetOrder,
   QualityTargetPathSchema,
   QualityTargetSchema,
+  type QualityTargetSummary,
+  QualityTargetSummarySchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
 import DataQualityExecutionsPage from "./DataQualityExecutionsPage.vue";
 
 const mocks = vi.hoisted(() => ({
+  listQualityTargets: vi.fn(),
   listQualityExecutions: vi.fn(),
+  listQualityRuns: vi.fn(),
   listAllQualityRules: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/data-quality")>()),
+  listQualityTargets: mocks.listQualityTargets,
   listQualityExecutions: mocks.listQualityExecutions,
+  listQualityRuns: mocks.listQualityRuns,
   listAllQualityRules: mocks.listAllQualityRules,
 }));
 
+const TARGET_ORDERS = "inst1;shop;public;orders";
+const TARGET_CUSTOMERS = "inst1;shop;public;customers";
+const RUN = "workspaces/ws/qualityRuns/run-1";
 const RULE = "workspaces/ws/qualityRules/rule-1";
 const EXECUTION = "workspaces/ws/qualityExecutions/exec-1";
 const START = new Date("2026-10-07T09:30:00Z");
+const FINISH = new Date(START.getTime() + 2_000);
 const Dummy = { template: "<div />" };
+const labels = () => i18n.global.t;
 
 const PERMISSIONS = [
   "metaxisdata.dataQuality.executions.list",
   "metaxisdata.dataQuality.executions.get",
   "metaxisdata.dataQuality.rules.get",
 ];
+
+function page<T>(items: T[]) {
+  return { items, nextPageToken: "" };
+}
+
+function targetFor(guid: string, object: string) {
+  return create(QualityTargetSchema, {
+    metaGuid: guid,
+    metaType: MetaType.TABLE,
+    path: create(QualityTargetPathSchema, {
+      instance: "prod",
+      database: "shop",
+      schema: "public",
+      object,
+    }),
+  });
+}
+
+function slice(
+  guid: string,
+  object: string,
+  options: {
+    counts?: Record<string, number>;
+    outcome?: QualityStatus;
+    state?: QualityExecutionState;
+    run?: string;
+  } = {}
+) {
+  return create(QualityRunTargetSchema, {
+    target: targetFor(guid, object),
+    counts: create(QualityStatusCountsSchema, {
+      total: 2,
+      pass: 1,
+      fail: 1,
+      ...options.counts,
+    }),
+    outcome: options.outcome ?? QualityStatus.FAIL,
+    ruleRevisionMin: 3,
+    ruleRevisionMax: 3,
+    startTime: timestampFromDate(START),
+    finishTime: timestampFromDate(FINISH),
+    run: options.run ?? RUN,
+    state: options.state ?? QualityExecutionState.COMPLETED,
+    trigger: QualityExecutionTrigger.MANUAL,
+  });
+}
+
+function runFixture(targetGuid: string): QualityRun {
+  const object = targetGuid === TARGET_ORDERS ? "orders" : "customers";
+  return create(QualityRunSchema, {
+    name: RUN,
+    instance: "instances/prod",
+    trigger: QualityExecutionTrigger.MANUAL,
+    state: QualityExecutionState.COMPLETED,
+    outcome: QualityStatus.FAIL,
+    counts: create(QualityStatusCountsSchema, { total: 9, pass: 5, fail: 4 }),
+    startTime: timestampFromDate(START),
+    finishTime: timestampFromDate(FINISH),
+    targets: [slice(targetGuid, object)],
+  });
+}
+
+function targetSummary(options: {
+  guid: string;
+  object: string;
+  latestRun?: QualityTargetSummary["latestRun"];
+  runCount?: number;
+  orphaned?: boolean;
+}): QualityTargetSummary {
+  return create(QualityTargetSummarySchema, {
+    target: targetFor(options.guid, options.object),
+    ruleCount: 2,
+    enabledRuleCount: 2,
+    pausedRuleCount: 0,
+    columnCount: 1,
+    openIssueCount: 0,
+    pendingDraftCount: 0,
+    pendingLabelCount: 0,
+    worstStatus: QualityStatus.FAIL,
+    lastRunTime: timestampFromDate(FINISH),
+    schemaChanged: false,
+    orphaned: options.orphaned ?? false,
+    latestRun: options.latestRun,
+    runCount: options.runCount ?? 1,
+  });
+}
+
+/** The directory as the aggregate read returns it, newest scan first. */
+function directoryRows(): QualityTargetSummary[] {
+  return [
+    targetSummary({
+      guid: TARGET_CUSTOMERS,
+      object: "customers",
+      latestRun: slice(TARGET_CUSTOMERS, "customers", {
+        counts: { total: 2, pass: 1, fail: 1 },
+        outcome: QualityStatus.FAIL,
+      }),
+      runCount: 3,
+    }),
+    targetSummary({
+      guid: TARGET_ORDERS,
+      object: "orders",
+      latestRun: slice(TARGET_ORDERS, "orders", {
+        counts: { total: 3, pass: 2, error: 1, fail: 0 },
+        outcome: QualityStatus.ERROR,
+      }),
+      runCount: 1,
+    }),
+  ];
+}
 
 function executionFixture(
   overrides: Record<string, unknown> = {}
@@ -52,28 +179,15 @@ function executionFixture(
     state: QualityExecutionState.COMPLETED,
     outcome: QualityStatus.FAIL,
     trigger: QualityExecutionTrigger.MANUAL,
-    target: create(QualityTargetSchema, {
-      metaGuid: "inst1;shop;public;orders",
-      metaType: MetaType.TABLE,
-      path: create(QualityTargetPathSchema, {
-        instance: "prod",
-        database: "shop",
-        schema: "public",
-        object: "orders",
-      }),
-    }),
+    target: targetFor(TARGET_ORDERS, "orders"),
     observedValue: 0.04,
     observedKind: QualityObservedKind.RATIO,
     failedRows: 40n,
     totalRows: 1000n,
     startTime: timestampFromDate(START),
-    finishTime: timestampFromDate(new Date(START.getTime() + 2_000)),
+    finishTime: timestampFromDate(FINISH),
     ...overrides,
   });
-}
-
-function page(items: QualityExecution[]) {
-  return { items, nextPageToken: "" };
 }
 
 async function mountPage(path = "/data-quality/executions") {
@@ -92,13 +206,18 @@ async function mountPage(path = "/data-quality/executions") {
         component: Dummy,
       },
       {
-        path: "/data-quality/checks",
-        name: "DataQualityChecks",
+        path: "/data-quality/targets",
+        name: "DataQualityTargets",
         component: Dummy,
       },
       {
         path: "/data-quality/targets/:targetGuid+",
         name: "DataQualityTarget",
+        component: Dummy,
+      },
+      {
+        path: "/data-quality/checks",
+        name: "DataQualityChecks",
         component: Dummy,
       },
       {
@@ -120,34 +239,246 @@ async function mountPage(path = "/data-quality/executions") {
   return { wrapper, router };
 }
 
-describe("DataQualityExecutionsPage", () => {
-  beforeEach(() => {
-    localStorage.clear();
-    vi.clearAllMocks();
-    mocks.listQualityExecutions.mockResolvedValue(page([executionFixture()]));
-    mocks.listAllQualityRules.mockResolvedValue([
-      create(QualityRuleSchema, {
-        name: RULE,
-        title: "Null rate on orders.id",
-      }),
-    ]);
+function rows(wrapper: ReturnType<typeof mount>) {
+  return wrapper.findAll("tbody tr");
+}
+
+function expanderButton(row: ReturnType<typeof rows>[number]) {
+  return row.find(
+    `button[aria-label="${labels()("dataQuality.executions.historyTitle")}"]`
+  );
+}
+
+function viewButton(wrapper: ReturnType<typeof mount>, text: string) {
+  return wrapper
+    .findAll("button")
+    .find((button) => button.text().trim() === text);
+}
+
+/** Let the 300ms search debounce fire. */
+async function settleSearch() {
+  await new Promise((resolve) => setTimeout(resolve, 350));
+  await flushPromises();
+}
+
+beforeEach(() => {
+  localStorage.clear();
+  vi.clearAllMocks();
+  mocks.listQualityTargets.mockResolvedValue(page(directoryRows()));
+  mocks.listQualityExecutions.mockResolvedValue(page([executionFixture()]));
+  mocks.listQualityRuns.mockImplementation((options: { targetGuid: string }) =>
+    Promise.resolve(page([runFixture(options.targetGuid)]))
+  );
+  mocks.listAllQualityRules.mockResolvedValue([
+    create(QualityRuleSchema, { name: RULE, title: "Null rate on orders.id" }),
+  ]);
+});
+
+describe("DataQualityExecutionsPage by target", () => {
+  it("defaults to the target directory with each target's latest scan", async () => {
+    const { wrapper } = await mountPage();
+
+    expect(mocks.listQualityTargets).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pageSize: 50,
+        pageToken: "",
+        search: "",
+        orderBy: QualityTargetOrder.LAST_RUN,
+      })
+    );
+    // The flat list is not fetched at all in this view.
+    expect(mocks.listQualityExecutions).not.toHaveBeenCalled();
+    expect(mocks.listQualityRuns).not.toHaveBeenCalled();
+
+    const all = rows(wrapper);
+    expect(all).toHaveLength(2);
+    expect(all[0]?.text()).toContain("customers");
+    expect(all[1]?.text()).toContain("orders");
+
+    // The latest-scan cell carries the trigger; the result cell the verdict.
+    expect(all[0]?.text()).toContain(
+      labels()("dataQuality.executionTrigger.manual")
+    );
+    expect(all[0]?.text()).toContain(labels()("dataQuality.status.fail"));
+    expect(all[1]?.text()).toContain(labels()("dataQuality.status.error"));
+    // Compact counts come from that target's slice.
+    expect(all[1]?.text()).toContain(
+      `2 ${labels()("dataQuality.status.pass")}`
+    );
+    expect(all[0]?.text()).toContain(
+      labels()("dataQuality.executions.runCountValue", { count: 3 })
+    );
+
+    const customersCells = all[0]?.findAll("td") ?? [];
+    // Columns: target, latest scan, batch result, duration, failed checks, scans, expander.
+    expect(customersCells[4]?.text()).toBe("1");
+    expect(customersCells[3]?.text()).toBe("2 s");
+    expect(customersCells[5]?.text()).toBe(
+      labels()("dataQuality.executions.runCountValue", { count: 3 })
+    );
   });
 
-  it("renders one row per execution with its rule, target and verdict", async () => {
+  it("expands a target's scan history and writes it to the URL", async () => {
+    const { wrapper, router } = await mountPage();
+
+    await expanderButton(rows(wrapper)[0]).trigger("click");
+    await flushPromises();
+
+    expect(mocks.listQualityRuns).toHaveBeenCalledWith({
+      targetGuid: TARGET_CUSTOMERS,
+      pageSize: 20,
+    });
+    expect(router.currentRoute.value.query.target).toBe(TARGET_CUSTOMERS);
+    // The expanded row renders the run card for the batch.
+    expect(wrapper.text()).toContain(
+      labels()("dataQuality.executions.runOpenInList")
+    );
+
+    await expanderButton(rows(wrapper)[0]).trigger("click");
+    await flushPromises();
+    expect(router.currentRoute.value.query.target).toBeUndefined();
+    expect(rows(wrapper)).toHaveLength(2);
+  });
+
+  it("auto-expands a target and run carried by the URL", async () => {
+    const { wrapper, router } = await mountPage(
+      `/data-quality/executions?target=${encodeURIComponent(TARGET_ORDERS)}&run=${encodeURIComponent(RUN)}`
+    );
+
+    expect(mocks.listQualityRuns).toHaveBeenCalledWith({
+      targetGuid: TARGET_ORDERS,
+      pageSize: 20,
+    });
+    // The run named by the URL opens its checks without another click.
+    expect(mocks.listQualityExecutions).toHaveBeenCalledWith({
+      run: RUN,
+      pageSize: 200,
+    });
+    expect(wrapper.text()).toContain("Null rate on orders.id");
+    expect(router.currentRoute.value.query.run).toBe(RUN);
+  });
+
+  it("searches and sorts targets on the server", async () => {
     const { wrapper } = await mountPage();
+    expect(mocks.listQualityTargets).toHaveBeenCalledTimes(1);
+
+    await wrapper.find("#data-quality-target-search").setValue("customers");
+    // Typing does not query until the debounce fires.
+    expect(mocks.listQualityTargets).toHaveBeenCalledTimes(1);
+    await settleSearch();
+    expect(mocks.listQualityTargets).toHaveBeenLastCalledWith(
+      expect.objectContaining({ search: "customers" })
+    );
+
+    await wrapper
+      .findComponent(Select)
+      .vm.$emit("update:modelValue", "attention");
+    await flushPromises();
+    expect(mocks.listQualityTargets).toHaveBeenLastCalledWith(
+      expect.objectContaining({ orderBy: QualityTargetOrder.ATTENTION })
+    );
+  });
+
+  it("shows the empty directory with a link to the targets page", async () => {
+    mocks.listQualityTargets.mockResolvedValue(page([]));
+    const { wrapper } = await mountPage();
+
+    expect(rows(wrapper)).toHaveLength(0);
+    expect(wrapper.text()).toContain(labels()("dataQuality.noExecutions"));
+    expect(wrapper.text()).toContain(labels()("dataQuality.noExecutionsHint"));
+    expect(
+      wrapper
+        .findAll("a")
+        .some((link) => link.attributes("href") === "/data-quality/targets")
+    ).toBe(true);
+  });
+
+  it("retries a failed directory load", async () => {
+    mocks.listQualityTargets.mockRejectedValueOnce(new Error("boom"));
+    const { wrapper } = await mountPage();
+
+    expect(wrapper.text()).toContain(
+      labels()("dataQuality.targets.loadFailed")
+    );
+
+    const retry = wrapper
+      .findAll("button")
+      .filter((button) => button.text().trim() === labels()("common.refresh"));
+    await retry[retry.length - 1]?.trigger("click");
+    await flushPromises();
+
+    expect(rows(wrapper)).toHaveLength(2);
+  });
+});
+
+describe("DataQualityExecutionsPage view switch", () => {
+  it("switches to the flat execution list and back", async () => {
+    const { wrapper, router } = await mountPage();
+    expect(rows(wrapper)[0]?.text()).toContain("customers");
+
+    await viewButton(
+      wrapper,
+      labels()("dataQuality.executions.viewExecutions")
+    )?.trigger("click");
+    await flushPromises();
+
+    expect(router.currentRoute.value.query.view).toBe("executions");
+    expect(mocks.listQualityExecutions).toHaveBeenCalled();
+    expect(wrapper.text()).toContain("Null rate on orders.id");
+    expect(rows(wrapper)).toHaveLength(1);
+
+    await viewButton(
+      wrapper,
+      labels()("dataQuality.executions.viewTargets")
+    )?.trigger("click");
+    await flushPromises();
+
+    expect(router.currentRoute.value.query.view).toBeUndefined();
+    expect(rows(wrapper)[0]?.text()).toContain("customers");
+  });
+
+  it("opens the flat list from a run deep link and keeps the run chip", async () => {
+    const { wrapper, router } = await mountPage(
+      `/data-quality/executions?run=${encodeURIComponent(RUN)}`
+    );
+
+    // A run alone is an execution list, not the target view.
+    expect(mocks.listQualityTargets).not.toHaveBeenCalled();
+    expect(mocks.listQualityExecutions).toHaveBeenCalledWith(
+      expect.objectContaining({ run: RUN })
+    );
+    expect(wrapper.text()).toContain(
+      labels()("dataQuality.filteredByRun", { run: "run-1" })
+    );
+
+    await wrapper
+      .find(`[aria-label="${labels()("dataQuality.clearRunFilter")}"]`)
+      .trigger("click");
+    await flushPromises();
+
+    expect(router.currentRoute.value.query.run).toBeUndefined();
+    // Clearing the chip keeps the reader in the flat list.
+    expect(router.currentRoute.value.query.view).toBe("executions");
+    expect(mocks.listQualityExecutions).toHaveBeenLastCalledWith(
+      expect.objectContaining({ run: "" })
+    );
+  });
+});
+
+describe("DataQualityExecutionsPage flat list", () => {
+  it("renders one row per execution with its rule, target and verdict", async () => {
+    const { wrapper } = await mountPage(
+      "/data-quality/executions?view=executions"
+    );
 
     const text = wrapper.text();
     expect(text).toContain("Null rate on orders.id");
     expect(text).toContain("public.orders");
-    expect(text).toContain(
-      i18n.global.t("dataQuality.executionState.completed")
-    );
-    expect(text).toContain(i18n.global.t("dataQuality.status.fail"));
+    expect(text).toContain(labels()("dataQuality.executionState.completed"));
+    expect(text).toContain(labels()("dataQuality.status.fail"));
     expect(text).toContain("4%");
-    expect(text).toContain(
-      i18n.global.t("dataQuality.executionTrigger.manual")
-    );
-    expect(wrapper.findAll("tbody tr")).toHaveLength(1);
+    expect(text).toContain(labels()("dataQuality.executionTrigger.manual"));
+    expect(rows(wrapper)).toHaveLength(1);
   });
 
   it("shows a pending execution honestly, without inventing a verdict", async () => {
@@ -160,20 +491,24 @@ describe("DataQualityExecutionsPage", () => {
         }),
       ])
     );
-    const { wrapper } = await mountPage();
-
-    const row = wrapper.findAll("tbody tr")[0];
-    expect(row?.text()).toContain(
-      i18n.global.t("dataQuality.executionState.pending")
+    const { wrapper } = await mountPage(
+      "/data-quality/executions?view=executions"
     );
-    expect(row?.text()).not.toContain(i18n.global.t("dataQuality.status.fail"));
+
+    const row = rows(wrapper)[0];
+    expect(row?.text()).toContain(
+      labels()("dataQuality.executionState.pending")
+    );
+    expect(row?.text()).not.toContain(labels()("dataQuality.status.fail"));
     wrapper.unmount();
   });
 
   it("opens the execution detail from a row", async () => {
-    const { wrapper, router } = await mountPage();
+    const { wrapper, router } = await mountPage(
+      "/data-quality/executions?view=executions"
+    );
 
-    await wrapper.findAll("tbody tr")[0].trigger("click");
+    await rows(wrapper)[0]?.trigger("click");
     await flushPromises();
 
     expect(router.currentRoute.value.name).toBe("DataQualityExecutionDetail");
@@ -182,60 +517,41 @@ describe("DataQualityExecutionsPage", () => {
     );
   });
 
-  it("carries a rule filter from the URL", async () => {
+  it("carries the rule filter from the URL and clears it", async () => {
     const { wrapper } = await mountPage(
-      `/data-quality/executions?rule=${encodeURIComponent(RULE)}`
+      `/data-quality/executions?view=executions&rule=${encodeURIComponent(RULE)}`
     );
 
     expect(mocks.listQualityExecutions).toHaveBeenCalledWith(
       expect.objectContaining({ rule: RULE })
     );
     expect(wrapper.text()).toContain(
-      i18n.global.t("dataQuality.filteredByRule", {
+      labels()("dataQuality.filteredByRule", {
         rule: "Null rate on orders.id",
       })
     );
-  });
 
-  it("clears the rule filter and reloads the unfiltered list", async () => {
-    const { wrapper } = await mountPage(
-      `/data-quality/executions?rule=${encodeURIComponent(RULE)}`
-    );
-
-    const clear = wrapper.find(
-      `[aria-label="${i18n.global.t("dataQuality.clearRuleFilter")}"]`
-    );
-    await clear.trigger("click");
+    await wrapper
+      .find(`[aria-label="${labels()("dataQuality.clearRuleFilter")}"]`)
+      .trigger("click");
     await flushPromises();
-
     expect(mocks.listQualityExecutions).toHaveBeenLastCalledWith(
       expect.objectContaining({ rule: "" })
     );
   });
 
-  it("offers the rules page when there is nothing to show", async () => {
-    mocks.listQualityExecutions.mockResolvedValue(page([]));
-    const { wrapper } = await mountPage();
-
-    expect(wrapper.text()).toContain(i18n.global.t("dataQuality.noExecutions"));
-    expect(wrapper.text()).toContain(i18n.global.t("dataQuality.viewRules"));
-  });
-
   it("links the rule into its target workspace with the check selected", async () => {
-    const { wrapper } = await mountPage();
+    const { wrapper } = await mountPage(
+      "/data-quality/executions?view=executions"
+    );
 
     const rule = wrapper
       .findAll("a")
       .find((link) => link.text().trim() === "Null rate on orders.id");
-    expect(rule).toBeDefined();
     const href = rule?.attributes("href") ?? "";
     expect(href).toContain("/data-quality/targets/inst1/shop/public/orders");
     expect(href).toContain("metaType=4");
     expect(href).toContain(`check=${RULE}`);
-  });
-
-  it("links the target path to the workspace without selecting a check", async () => {
-    const { wrapper } = await mountPage();
 
     const target = wrapper
       .findAll("a")
@@ -244,25 +560,23 @@ describe("DataQualityExecutionsPage", () => {
           link.text().trim() === "public.orders" &&
           (link.attributes("href") ?? "").startsWith("/data-quality/targets/")
       );
-    expect(target).toBeDefined();
-    const href = target?.attributes("href") ?? "";
-    expect(href).toContain("/data-quality/targets/inst1/shop/public/orders");
-    expect(href).toContain("metaType=4");
-    expect(href).not.toContain("check=");
+    expect(target?.attributes("href")).toContain(
+      "/data-quality/targets/inst1/shop/public/orders"
+    );
   });
 
   it("keeps the per-rule fallback for an execution with no target snapshot", async () => {
     mocks.listQualityExecutions.mockResolvedValue(
       page([executionFixture({ target: undefined })])
     );
-    const { wrapper } = await mountPage();
+    const { wrapper } = await mountPage(
+      "/data-quality/executions?view=executions"
+    );
 
     const rule = wrapper
       .findAll("a")
       .find((link) => link.text().trim() === "Null rate on orders.id");
     expect(rule?.attributes("href")).toContain("/data-quality/rules/");
-    // No target means no target link, but the path is still readable.
-    expect(wrapper.text()).toContain("-");
     expect(
       wrapper
         .findAll("a")

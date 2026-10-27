@@ -772,13 +772,25 @@ function secondsOf(duration: Duration | undefined): number | undefined {
   return Number.isFinite(seconds) && seconds > 0 ? seconds : undefined;
 }
 
-/** A Timestamp as epoch seconds, or undefined when unset (zero is unset). */
+/**
+ * A Timestamp as fractional epoch seconds, or undefined when unset (zero is
+ * unset). Nanos matter here: a fast check finishes in a few hundred milliseconds,
+ * and truncating them made every such duration render as "0 ms".
+ */
 function timestampSeconds(
-  timestamp: { seconds?: bigint | number | string | null } | undefined
+  timestamp:
+    | {
+        seconds?: bigint | number | string | null;
+        nanos?: number | null;
+      }
+    | undefined
 ): number | undefined {
   if (!timestamp) {
     return undefined;
   }
   const seconds = Number(timestamp.seconds ?? 0);
-  return Number.isFinite(seconds) && seconds > 0 ? seconds : undefined;
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return undefined;
+  }
+  return seconds + (timestamp.nanos ?? 0) / 1_000_000_000;
 }

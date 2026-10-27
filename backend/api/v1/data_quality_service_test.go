@@ -245,11 +245,40 @@ func TestGroupQualityRulesByInstance(t *testing.T) {
 	require.Equal(t, []string{"instance_1", "instance_2"}, order)
 	require.Len(t, groups["instance_1"], 1)
 	require.Len(t, groups["instance_2"], 2)
-	require.Equal(t, int64(3), groups["instance_2"][1].ID)
+	require.Equal(t, int64(3), groups["instance_2"][0].ID, "customers sorts before orders by target GUID")
+	require.Equal(t, int64(1), groups["instance_2"][1].ID)
 
 	groups, order = groupQualityRulesByInstance(nil)
 	require.Empty(t, groups)
 	require.Empty(t, order)
+}
+
+// A manual batch executes its tasks in order, so the same target's checks must be
+// adjacent even when the selection resolved them interleaved.
+func TestGroupQualityRulesByInstanceKeepsTargetsTogether(t *testing.T) {
+	t.Parallel()
+
+	rules := []*store.QualityRuleMessage{
+		{ID: 1, TargetGUID: "instance_1;shop;public;orders", TargetType: storepb.MetaType_TABLE},
+		{ID: 2, TargetGUID: "instance_1;shop;public;customers", TargetType: storepb.MetaType_TABLE},
+		{ID: 3, TargetGUID: "instance_1;shop;public;orders", TargetType: storepb.MetaType_TABLE},
+		{ID: 4, TargetGUID: "instance_1;shop;public;customers", TargetType: storepb.MetaType_TABLE},
+	}
+	groups, _ := groupQualityRulesByInstance(rules)
+	require.Equal(t, int64(2), groups["instance_1"][0].ID)
+	require.Equal(t, int64(4), groups["instance_1"][1].ID)
+	require.Equal(t, int64(1), groups["instance_1"][2].ID)
+	require.Equal(t, int64(3), groups["instance_1"][3].ID)
+
+	// Same GUID, different object type: both the target and its type sort, so a
+	// table and a same-named view never interleave their rules.
+	typed := []*store.QualityRuleMessage{
+		{ID: 1, TargetGUID: "instance_1;shop;public;orders", TargetType: storepb.MetaType_VIEW},
+		{ID: 2, TargetGUID: "instance_1;shop;public;orders", TargetType: storepb.MetaType_TABLE},
+	}
+	groups, _ = groupQualityRulesByInstance(typed)
+	require.Equal(t, int64(2), groups["instance_1"][0].ID)
+	require.Equal(t, int64(1), groups["instance_1"][1].ID)
 }
 
 func TestDedupeInt64(t *testing.T) {
@@ -338,6 +367,7 @@ func TestApplyQualityExecutionListFilters(t *testing.T) {
 		Trigger:    v1pb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL,
 		TargetGuid: "instance_1;shop;public;orders",
 		Instance:   "instances/instance_1",
+		Run:        "workspaces/ws1/qualityRuns/42",
 		StartTime:  timestamppb.New(startAt),
 		EndTime:    timestamppb.New(endAt),
 		Initiator:  "users/7",
@@ -348,6 +378,8 @@ func TestApplyQualityExecutionListFilters(t *testing.T) {
 	require.Equal(t, storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL, *find.Trigger)
 	require.Equal(t, "instance_1;shop;public;orders", *find.TargetGUID)
 	require.Equal(t, "instance_1", *find.InstanceResourceID)
+	require.NotNil(t, find.RunID)
+	require.Equal(t, int64(42), *find.RunID)
 	require.Equal(t, startAt, *find.StartAt)
 	require.Equal(t, endAt, *find.EndAt)
 	require.Equal(t, int32(7), *find.InitiatorID)
@@ -358,6 +390,7 @@ func TestApplyQualityExecutionListFilters(t *testing.T) {
 	require.Empty(t, empty.Statuses)
 	require.Nil(t, empty.Trigger)
 	require.Nil(t, empty.TargetGUID)
+	require.Nil(t, empty.RunID)
 	require.Nil(t, empty.InstanceResourceID)
 	require.Nil(t, empty.StartAt)
 	require.Nil(t, empty.EndAt)
@@ -369,6 +402,8 @@ func TestApplyQualityExecutionListFilters(t *testing.T) {
 		{State: v1pb.QualityExecutionState(99)},
 		{Outcome: v1pb.QualityStatus(99)},
 		{Trigger: v1pb.QualityExecutionTrigger(99)},
+		{Run: "workspaces/ws1/qualityRuns/not-a-number"},
+		{Run: "workspaces/ws1/qualityExecutions/42"},
 	} {
 		err := service.applyQualityExecutionListFilters(t.Context(), &store.FindQualityExecutionMessage{}, request)
 		require.Error(t, err)

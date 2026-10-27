@@ -2724,3 +2724,101 @@ func TestDataQualityContractRealServerIntegration(t *testing.T) {
 	require.Contains(t, historyByRule, rule.GetName())
 	require.Len(t, historyByRule[rule.GetName()].GetExecutions(), 1)
 }
+
+// TestDataQualityRunsRealServerIntegration covers the Phase A run read model: a
+// manual run plans one batch, the batch carries one slice per target with
+// per-target counts, the target summary exposes the latest slice, and executions
+// can be read back by run.
+func TestDataQualityRunsRealServerIntegration(t *testing.T) {
+	fixture := setupQualityMySQLFixture(t, true)
+	ordersGUID := waitForMetaGUIDByName(fixture.ctx, t, fixture.env,
+		fmt.Sprintf("%s;%s", fixture.instanceID, fixture.sourceDatabase),
+		storepb.MetaType_TABLE, "orders")
+
+	usersRule := fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		fixture.usersGUID, qualityRowCountConfig(1))
+	// A second rule on the same target: Phase B keeps the target's rules together
+	// in one batch (and the batch executes them back to back).
+	usersNullRule := fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		fixture.usersGUID, qualityColumnConfig("name"))
+	ordersRule := fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		ordersGUID, qualityRowCountConfig(1))
+
+	executions := fixture.runRules(t, usersRule.GetName(), usersNullRule.GetName(), ordersRule.GetName())
+	runName := executions[0].GetRun()
+	require.NotEmpty(t, runName, "an execution names the batch that planned it")
+	for _, execution := range executions {
+		require.Equal(t, runName, execution.GetRun(), "a manual run groups one instance's rules into one batch")
+		fixture.waitForCompletedExecution(t, execution.GetName())
+	}
+
+	run, err := fixture.dataQuality.GetQualityRun(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.GetQualityRunRequest{Name: runName}))
+	require.NoError(t, err, "read the batch")
+	require.Equal(t, runName, run.Msg.GetName())
+	require.Equal(t, v1pb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL, run.Msg.GetTrigger())
+	require.Equal(t, v1pb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED, run.Msg.GetState())
+	require.Equal(t, int32(3), run.Msg.GetCounts().GetTotal())
+	require.Len(t, run.Msg.GetTargets(), 2, "one slice per target, not per execution")
+	slices := make(map[string]*v1pb.QualityRunTarget, len(run.Msg.GetTargets()))
+	for _, slice := range run.Msg.GetTargets() {
+		require.Equal(t, runName, slice.GetRun())
+		slices[slice.GetTarget().GetMetaGuid()] = slice
+	}
+	require.Contains(t, slices, fixture.usersGUID)
+	require.Contains(t, slices, ordersGUID)
+	require.Equal(t, int32(2), slices[fixture.usersGUID].GetCounts().GetTotal(),
+		"both checks of the target stay in the same batch")
+	require.Equal(t, int32(1), slices[ordersGUID].GetCounts().GetTotal())
+	require.Equal(t, int32(1), slices[fixture.usersGUID].GetRuleRevisionMin())
+
+	// The run directory filters by target and pages like the other lists.
+	runs, err := fixture.dataQuality.ListQualityRuns(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.ListQualityRunsRequest{
+			Parent:     "workspaces/-",
+			TargetGuid: fixture.usersGUID,
+			PageSize:   10,
+		}))
+	require.NoError(t, err)
+	require.Len(t, runs.Msg.GetQualityRuns(), 1)
+	require.Equal(t, runName, runs.Msg.GetQualityRuns()[0].GetName())
+
+	// Executions can be read back by run, so the flat list can drill into a batch.
+	byRun, err := fixture.dataQuality.ListQualityExecutions(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.ListQualityExecutionsRequest{
+			Parent:   "workspaces/-",
+			Run:      runName,
+			PageSize: 10,
+		}))
+	require.NoError(t, err)
+	require.Len(t, byRun.Msg.GetQualityExecutions(), 3)
+	for _, execution := range byRun.Msg.GetQualityExecutions() {
+		require.Equal(t, runName, execution.GetRun())
+	}
+
+	// The target summary carries the latest batch and how many batches touched it.
+	detail, err := fixture.dataQuality.GetQualityTarget(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.GetQualityTargetRequest{
+			Parent:     "workspaces/-",
+			TargetGuid: fixture.usersGUID,
+			MetaType:   v1pb.MetaType_TABLE,
+		}))
+	require.NoError(t, err)
+	latest := detail.Msg.GetSummary().GetLatestRun()
+	require.NotNil(t, latest)
+	require.Equal(t, runName, latest.GetRun())
+	require.Equal(t, int32(2), latest.GetCounts().GetTotal(),
+		"the latest scan carries both checks of the target")
+	require.GreaterOrEqual(t, detail.Msg.GetSummary().GetRunCount(), int32(1))
+
+	// A run name from another resource shape is rejected.
+	_, err = fixture.dataQuality.GetQualityRun(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.GetQualityRunRequest{
+			Name: "workspaces/-/qualityExecutions/1",
+		}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}

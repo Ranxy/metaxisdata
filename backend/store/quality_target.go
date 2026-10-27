@@ -79,6 +79,12 @@ type QualityTargetMessage struct {
 	// Orphaned is true when the target no longer resolves. It is filled by the
 	// API, which owns the registry read, not by the aggregate query.
 	Orphaned bool
+	// LatestRun is the target's slice of the most recent dispatch batch that
+	// planned any of its checks; nil when it has never run. RunCount is how many
+	// distinct runs planned an execution for it. Both are filled by the API from
+	// ListQualityTargetRunSummaries.
+	LatestRun *QualityTargetRunSummaryMessage
+	RunCount  int32
 }
 
 // qualityTargetStatusRank maps a quality status onto the ordering used to pick a
@@ -134,15 +140,24 @@ func QualityTargetStatusFromRank(rank int32) storepb.QualityStatus {
 // the six status arguments the query binds at $4..$9, in this order: ERROR, FAIL,
 // WARN, PASS, SKIPPED, NOT_EVALUATED.
 func qualityTargetWorstRankCase() string {
-	return fmt.Sprintf(`CASE latest.status
-				WHEN $4 THEN %d WHEN $5 THEN %d WHEN $6 THEN %d
-				WHEN $7 THEN %d WHEN $8 THEN %d WHEN $9 THEN %d ELSE 0 END`,
-		QualityTargetStatusRank(storepb.QualityStatus_QUALITY_STATUS_ERROR),
-		QualityTargetStatusRank(storepb.QualityStatus_QUALITY_STATUS_FAIL),
-		QualityTargetStatusRank(storepb.QualityStatus_QUALITY_STATUS_WARN),
-		QualityTargetStatusRank(storepb.QualityStatus_QUALITY_STATUS_PASS),
-		QualityTargetStatusRank(storepb.QualityStatus_QUALITY_STATUS_SKIPPED),
-		QualityTargetStatusRank(storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED))
+	return qualityTargetWorstRankCaseAt("latest.status", 4)
+}
+
+// qualityTargetWorstRankCaseAt renders the same CASE for a query whose status
+// arguments start at firstPlaceholder. The argument order is fixed: ERROR, FAIL,
+// WARN, PASS, SKIPPED, NOT_EVALUATED. Callers that aggregate a different row set
+// (the run slice) reuse it so the rank mapping never has a second implementation.
+func qualityTargetWorstRankCaseAt(statusExpr string, firstPlaceholder int) string {
+	return fmt.Sprintf(`CASE %s
+				WHEN $%d THEN %d WHEN $%d THEN %d WHEN $%d THEN %d
+				WHEN $%d THEN %d WHEN $%d THEN %d WHEN $%d THEN %d ELSE 0 END`,
+		statusExpr,
+		firstPlaceholder, QualityTargetStatusRank(storepb.QualityStatus_QUALITY_STATUS_ERROR),
+		firstPlaceholder+1, QualityTargetStatusRank(storepb.QualityStatus_QUALITY_STATUS_FAIL),
+		firstPlaceholder+2, QualityTargetStatusRank(storepb.QualityStatus_QUALITY_STATUS_WARN),
+		firstPlaceholder+3, QualityTargetStatusRank(storepb.QualityStatus_QUALITY_STATUS_PASS),
+		firstPlaceholder+4, QualityTargetStatusRank(storepb.QualityStatus_QUALITY_STATUS_SKIPPED),
+		firstPlaceholder+5, QualityTargetStatusRank(storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED))
 }
 
 // targetWhere renders the predicate over the joined aggregate query. It is a

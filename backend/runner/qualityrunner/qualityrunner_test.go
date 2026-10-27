@@ -68,8 +68,74 @@ func TestPlanDueBatchesKeepsOrderForSameInstance(t *testing.T) {
 	}
 	plans := planDueBatches(rules, 50)
 	require.Len(t, plans, 1)
-	// The due scan already ordered the rules; grouping must not reorder them.
+	// Different targets keep the due scan's first-seen order.
 	require.Equal(t, []int64{3, 1, 2}, qualityRuleIDs(plans[0].rules))
+}
+
+func TestPlanDueBatchesKeepsEachTargetContiguous(t *testing.T) {
+	t.Parallel()
+
+	rules := []*store.QualityRuleMessage{
+		qualityRuleStub(1, "inst-a;db;public;orders"),
+		qualityRuleStub(2, "inst-a;db;public;customers"),
+		qualityRuleStub(3, "inst-a;db;public;orders"),
+		qualityRuleStub(4, "inst-a;db;public;customers"),
+	}
+	plans := planDueBatches(rules, 50)
+	require.Len(t, plans, 1)
+	require.Equal(t, []int64{1, 3, 2, 4}, qualityRuleIDs(plans[0].rules),
+		"one target's checks run back to back inside the batch")
+}
+
+func TestPlanDueBatchesDoesNotSplitTargetsAcrossChunks(t *testing.T) {
+	t.Parallel()
+
+	rules := []*store.QualityRuleMessage{
+		qualityRuleStub(1, "inst-a;db;public;orders"),
+		qualityRuleStub(2, "inst-a;db;public;orders"),
+		qualityRuleStub(3, "inst-a;db;public;customers"),
+		qualityRuleStub(4, "inst-a;db;public;customers"),
+	}
+	plans := planDueBatches(rules, 3)
+	require.Len(t, plans, 2)
+	require.Equal(t, []int64{1, 2}, qualityRuleIDs(plans[0].rules))
+	require.Equal(t, []int64{3, 4}, qualityRuleIDs(plans[1].rules),
+		"a chunk boundary falls between targets, not inside one")
+}
+
+func TestPlanDueBatchesSplitsOnlyAnOversizedTarget(t *testing.T) {
+	t.Parallel()
+
+	rules := []*store.QualityRuleMessage{
+		qualityRuleStub(1, "inst-a;db;public;orders"),
+		qualityRuleStub(2, "inst-a;db;public;orders"),
+		qualityRuleStub(3, "inst-a;db;public;orders"),
+		qualityRuleStub(4, "inst-a;db;public;orders"),
+		qualityRuleStub(5, "inst-a;db;public;orders"),
+		qualityRuleStub(6, "inst-a;db;public;customers"),
+		qualityRuleStub(7, "inst-a;db;public;customers"),
+	}
+	plans := planDueBatches(rules, 2)
+	require.Len(t, plans, 4)
+	require.Equal(t, []int64{1, 2}, qualityRuleIDs(plans[0].rules))
+	require.Equal(t, []int64{3, 4}, qualityRuleIDs(plans[1].rules))
+	require.Equal(t, []int64{5}, qualityRuleIDs(plans[2].rules))
+	require.Equal(t, []int64{6, 7}, qualityRuleIDs(plans[3].rules),
+		"a target over the cap is the only one that spans batches")
+}
+
+func TestPlanDueBatchesOrdersTargetsByFirstDueRule(t *testing.T) {
+	t.Parallel()
+
+	rules := []*store.QualityRuleMessage{
+		qualityRuleStub(1, "inst-a;db;public;customers"),
+		qualityRuleStub(2, "inst-a;db;public;orders"),
+		qualityRuleStub(3, "inst-a;db;public;customers"),
+	}
+	plans := planDueBatches(rules, 50)
+	require.Len(t, plans, 1)
+	require.Equal(t, []int64{1, 3, 2}, qualityRuleIDs(plans[0].rules),
+		"the oldest due target keeps running first instead of a GUID reorder")
 }
 
 func TestPlanDueBatchesAttributesMalformedTargetToNoInstance(t *testing.T) {
@@ -85,6 +151,26 @@ func TestPlanDueBatchesRejectsNonPositiveBatchSize(t *testing.T) {
 	t.Parallel()
 
 	require.Empty(t, planDueBatches([]*store.QualityRuleMessage{qualityRuleStub(1, "inst;db;public;t")}, 0))
+}
+
+// A target at the API's per-table rule cap fits one scheduled batch; only data
+// that bypassed that cap can split a target.
+func TestScheduledBatchCapacityFitsTheLargestLegalTarget(t *testing.T) {
+	t.Parallel()
+
+	rules := make([]*store.QualityRuleMessage, 0, 100)
+	for id := int64(1); id <= 100; id++ {
+		rules = append(rules, qualityRuleStub(id, "inst;db;public;orders"))
+	}
+	plans := planDueBatches(rules, maxExecutionsPerBatch)
+	require.Len(t, plans, 1, "the largest legal target stays in one batch")
+	require.Len(t, plans[0].rules, 100)
+
+	legacy := make([]*store.QualityRuleMessage, 0, len(rules)+1)
+	legacy = append(legacy, rules...)
+	legacy = append(legacy, qualityRuleStub(101, "inst;db;public;orders"))
+	plans = planDueBatches(legacy, maxExecutionsPerBatch)
+	require.Len(t, plans, 2, "only an over-cap target can span batches")
 }
 
 func TestNextRunAtUsesTheIntervalButNeverLoopsEveryTick(t *testing.T) {

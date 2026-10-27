@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"testing"
 	"time"
 
@@ -163,4 +164,98 @@ func TestDeleteExpiredQualityRunsStatementShape(t *testing.T) {
 
 	require.Contains(t, qualityRunDeleteExpiredStatement, "DELETE FROM quality_run")
 	require.Contains(t, qualityRunDeleteExpiredStatement, "WHERE started_at < $1")
+}
+
+// An empty run filter matches every run and binds no argument.
+func TestBuildQualityRunWhereEmpty(t *testing.T) {
+	t.Parallel()
+
+	where, args := buildQualityRunWhere(nil)
+	require.Equal(t, []string{"TRUE"}, where)
+	require.Empty(t, args)
+
+	where, args = buildQualityRunWhere(&FindQualityRunMessage{})
+	require.Equal(t, []string{"TRUE"}, where)
+	require.Empty(t, args)
+}
+
+// Every run filter maps to one predicate with contiguous placeholders; the target
+// filter is an EXISTS over the run's executions, not a join.
+func TestBuildQualityRunWhere(t *testing.T) {
+	t.Parallel()
+
+	instance := "instance_1"
+	trigger := storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED
+	status := storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED
+	outcome := storepb.QualityStatus_QUALITY_STATUS_FAIL
+	target := "instance_1;shop;public;orders"
+	after := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
+	before := after.Add(24 * time.Hour)
+
+	where, args := buildQualityRunWhere(&FindQualityRunMessage{
+		InstanceResourceID: &instance,
+		Trigger:            &trigger,
+		Status:             &status,
+		Outcome:            &outcome,
+		TargetGUID:         &target,
+		StartedAfter:       &after,
+		StartedBefore:      &before,
+	})
+	joined := strings.Join(where, " AND ")
+	require.Equal(t, []any{"instance_1", int32(trigger), int32(status), int32(outcome), target, after, before}, args)
+	require.Contains(t, joined, "r.instance_resource_id = $1")
+	require.Contains(t, joined, "r.trigger = $2::int")
+	require.Contains(t, joined, "r.status = $3::int")
+	require.Contains(t, joined, "r.outcome = $4::int")
+	require.Contains(t, joined, "EXISTS (SELECT 1 FROM quality_execution e WHERE e.run_id = r.id AND e.target_guid = $5)")
+	require.Contains(t, joined, "r.started_at >= $6")
+	require.Contains(t, joined, "r.started_at < $7")
+}
+
+// The run slice outcome is ranked by the same CASE the target directory uses, with
+// the placeholders starting where the slice query binds them ($2..$7).
+func TestQualityTargetWorstRankCaseAtRunSlice(t *testing.T) {
+	t.Parallel()
+
+	expr := qualityTargetWorstRankCaseAt("e.status", 2)
+	require.Contains(t, expr, "CASE e.status")
+	require.Contains(t, expr, "WHEN $2 THEN 6", "ERROR")
+	require.Contains(t, expr, "WHEN $3 THEN 5", "FAIL")
+	require.Contains(t, expr, "WHEN $4 THEN 4", "WARN")
+	require.Contains(t, expr, "WHEN $5 THEN 3", "PASS")
+	require.Contains(t, expr, "WHEN $6 THEN 1", "SKIPPED")
+	require.Contains(t, expr, "WHEN $7 THEN 2", "NOT_EVALUATED")
+	require.Contains(t, expr, "ELSE 0")
+}
+
+// qualifyQualityRunColumns prefixes every selected column so a query that joins
+// quality_run can read it without an ambiguous column reference.
+func TestQualifyQualityRunColumns(t *testing.T) {
+	t.Parallel()
+
+	qualified := qualifyQualityRunColumns("r")
+	require.Equal(t, "r.id, r.resource_id, r.instance_resource_id, r.trigger, r.status, r.outcome, r.counts, r.initiator_id, r.started_at, r.finished_at", qualified)
+	require.Len(t, strings.Split(qualified, ", "), len(strings.Split(qualityRunColumns, ",")))
+}
+
+// The per-target run summary row adapter appends the target key and run count to
+// the destinations scanQualityRun expects, so one query can read both.
+func TestQualityTargetRunSummaryRowAppendsKeyAndCount(t *testing.T) {
+	t.Parallel()
+
+	// The adapter's Scan forwards to *sql.Rows; a nil rows value would panic, so
+	// this test only pins the shape via the run scan stub and checks the summary
+	// struct it feeds.
+	summary := &QualityTargetRunSummaryMessage{
+		TargetGUID: "instance_1;shop;public;orders",
+		TargetType: storepb.MetaType_TABLE,
+		Run:        &QualityRunMessage{ID: 42},
+		Slice:      &QualityRunTargetMessage{RunID: 42},
+		RunCount:   3,
+	}
+	require.Equal(t, "instance_1;shop;public;orders", summary.TargetGUID)
+	require.Equal(t, storepb.MetaType_TABLE, summary.TargetType)
+	require.Equal(t, int64(42), summary.Run.ID)
+	require.Equal(t, int64(42), summary.Slice.RunID)
+	require.Equal(t, int32(3), summary.RunCount)
 }

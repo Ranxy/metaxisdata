@@ -30,6 +30,8 @@ const (
 	DataQualityService_RunQualityRules_FullMethodName                    = "/metaxisdata.v1.DataQualityService/RunQualityRules"
 	DataQualityService_ListQualityExecutions_FullMethodName              = "/metaxisdata.v1.DataQualityService/ListQualityExecutions"
 	DataQualityService_GetQualityExecution_FullMethodName                = "/metaxisdata.v1.DataQualityService/GetQualityExecution"
+	DataQualityService_ListQualityRuns_FullMethodName                    = "/metaxisdata.v1.DataQualityService/ListQualityRuns"
+	DataQualityService_GetQualityRun_FullMethodName                      = "/metaxisdata.v1.DataQualityService/GetQualityRun"
 	DataQualityService_ListQualityIssues_FullMethodName                  = "/metaxisdata.v1.DataQualityService/ListQualityIssues"
 	DataQualityService_GetQualityIssue_FullMethodName                    = "/metaxisdata.v1.DataQualityService/GetQualityIssue"
 	DataQualityService_UpdateQualityIssue_FullMethodName                 = "/metaxisdata.v1.DataQualityService/UpdateQualityIssue"
@@ -104,6 +106,13 @@ type DataQualityServiceClient interface {
 	ListQualityExecutions(ctx context.Context, in *ListQualityExecutionsRequest, opts ...grpc.CallOption) (*ListQualityExecutionsResponse, error)
 	// Read one execution: its state, verdict, and the evidence behind it.
 	GetQualityExecution(ctx context.Context, in *GetQualityExecutionRequest, opts ...grpc.CallOption) (*QualityExecution, error)
+	// List runs, newest first. A run is one dispatch batch: the executions one
+	// scheduler tick or one manual request planned together. Runs are the
+	// batch-level read model the execution directory groups by target; each run
+	// carries one slice per target it touched, with the slice's counts.
+	ListQualityRuns(ctx context.Context, in *ListQualityRunsRequest, opts ...grpc.CallOption) (*ListQualityRunsResponse, error)
+	// Read one run, with every target slice it touched.
+	GetQualityRun(ctx context.Context, in *GetQualityRunRequest, opts ...grpc.CallOption) (*QualityRun, error)
 	// List quality issues, newest first.
 	ListQualityIssues(ctx context.Context, in *ListQualityIssuesRequest, opts ...grpc.CallOption) (*ListQualityIssuesResponse, error)
 	// Read one quality issue.
@@ -297,6 +306,26 @@ func (c *dataQualityServiceClient) GetQualityExecution(ctx context.Context, in *
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(QualityExecution)
 	err := c.cc.Invoke(ctx, DataQualityService_GetQualityExecution_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) ListQualityRuns(ctx context.Context, in *ListQualityRunsRequest, opts ...grpc.CallOption) (*ListQualityRunsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListQualityRunsResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_ListQualityRuns_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) GetQualityRun(ctx context.Context, in *GetQualityRunRequest, opts ...grpc.CallOption) (*QualityRun, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityRun)
+	err := c.cc.Invoke(ctx, DataQualityService_GetQualityRun_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -636,6 +665,13 @@ type DataQualityServiceServer interface {
 	ListQualityExecutions(context.Context, *ListQualityExecutionsRequest) (*ListQualityExecutionsResponse, error)
 	// Read one execution: its state, verdict, and the evidence behind it.
 	GetQualityExecution(context.Context, *GetQualityExecutionRequest) (*QualityExecution, error)
+	// List runs, newest first. A run is one dispatch batch: the executions one
+	// scheduler tick or one manual request planned together. Runs are the
+	// batch-level read model the execution directory groups by target; each run
+	// carries one slice per target it touched, with the slice's counts.
+	ListQualityRuns(context.Context, *ListQualityRunsRequest) (*ListQualityRunsResponse, error)
+	// Read one run, with every target slice it touched.
+	GetQualityRun(context.Context, *GetQualityRunRequest) (*QualityRun, error)
 	// List quality issues, newest first.
 	ListQualityIssues(context.Context, *ListQualityIssuesRequest) (*ListQualityIssuesResponse, error)
 	// Read one quality issue.
@@ -764,6 +800,12 @@ func (UnimplementedDataQualityServiceServer) ListQualityExecutions(context.Conte
 }
 func (UnimplementedDataQualityServiceServer) GetQualityExecution(context.Context, *GetQualityExecutionRequest) (*QualityExecution, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetQualityExecution not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ListQualityRuns(context.Context, *ListQualityRunsRequest) (*ListQualityRunsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListQualityRuns not implemented")
+}
+func (UnimplementedDataQualityServiceServer) GetQualityRun(context.Context, *GetQualityRunRequest) (*QualityRun, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQualityRun not implemented")
 }
 func (UnimplementedDataQualityServiceServer) ListQualityIssues(context.Context, *ListQualityIssuesRequest) (*ListQualityIssuesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListQualityIssues not implemented")
@@ -1046,6 +1088,42 @@ func _DataQualityService_GetQualityExecution_Handler(srv interface{}, ctx contex
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DataQualityServiceServer).GetQualityExecution(ctx, req.(*GetQualityExecutionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_ListQualityRuns_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListQualityRunsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).ListQualityRuns(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_ListQualityRuns_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).ListQualityRuns(ctx, req.(*ListQualityRunsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_GetQualityRun_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQualityRunRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).GetQualityRun(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_GetQualityRun_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).GetQualityRun(ctx, req.(*GetQualityRunRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1593,6 +1671,14 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetQualityExecution",
 			Handler:    _DataQualityService_GetQualityExecution_Handler,
+		},
+		{
+			MethodName: "ListQualityRuns",
+			Handler:    _DataQualityService_ListQualityRuns_Handler,
+		},
+		{
+			MethodName: "GetQualityRun",
+			Handler:    _DataQualityService_GetQualityRun_Handler,
 		},
 		{
 			MethodName: "ListQualityIssues",

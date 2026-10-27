@@ -650,3 +650,31 @@ func TestListQualityRulesByIDsEmptyInputIsEmptySlice(t *testing.T) {
 	require.NotNil(t, rules)
 	require.Empty(t, rules)
 }
+
+// The due scan's budget is target-complete: it may exceed the budget by the target
+// that crosses it, but it never selects half a target.
+func TestSelectDueTargetsTakesWholeTargetsUntilTheBudget(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2026, time.October, 26, 9, 0, 0, 0, time.UTC)
+	targets := []dueQualityTarget{
+		{guid: "a", firstDue: base, firstID: 1, ruleCount: 2},
+		{guid: "b", firstDue: base.Add(time.Minute), firstID: 2, ruleCount: 3},
+		{guid: "c", firstDue: base.Add(2 * time.Minute), firstID: 3, ruleCount: 1},
+	}
+	guids := func(selected []dueQualityTarget) []string {
+		result := make([]string, 0, len(selected))
+		for _, target := range selected {
+			result = append(result, target.guid)
+		}
+		return result
+	}
+
+	require.Equal(t, []string{"a"}, guids(selectDueTargets(targets, 2)),
+		"a budget met exactly by the first target stops there")
+	require.Equal(t, []string{"a", "b"}, guids(selectDueTargets(targets, 3)),
+		"the target crossing the budget is included whole")
+	require.Equal(t, []string{"a", "b", "c"}, guids(selectDueTargets(targets, 99)))
+	require.Empty(t, selectDueTargets(targets, 0))
+	require.Empty(t, selectDueTargets(nil, 10))
+}

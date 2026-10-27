@@ -3,9 +3,11 @@ package store
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/encoding/protojson"
 
@@ -335,4 +337,342 @@ func (s *Store) DeleteExpiredQualityRuns(ctx context.Context, cutoff time.Time) 
 		return 0, errors.Wrap(err, "failed to delete expired quality runs")
 	}
 	return result.RowsAffected()
+}
+
+// QualityRunTargetMessage is one target's slice of a quality run: the executions
+// the batch planned for that target, with their tallies, outcome, revision range
+// and observed times. A batch covers one instance, so a scheduled run can name
+// several targets; the slice is what the target directory and workspace show.
+type QualityRunTargetMessage struct {
+	RunID      int64
+	TargetGUID string
+	TargetType storepb.MetaType
+	// TargetPath is the latest path snapshot the slice's executions recorded.
+	TargetPath *storepb.QualityTargetPath
+	Counts     *storepb.QualityStatusCounts
+	// Outcome is the worst verdict among the slice's terminal executions;
+	// UNSPECIFIED while none is terminal.
+	Outcome         storepb.QualityStatus
+	RuleRevisionMin int32
+	RuleRevisionMax int32
+	// StartedAt is the earliest planned start in the slice.
+	StartedAt time.Time
+	// FinishedAt is the latest finish in the slice; nil while none is terminal.
+	FinishedAt *time.Time
+}
+
+// FindQualityRunMessage is the query filter for the run directory. Every field is
+// optional; an empty filter lists every run newest first.
+type FindQualityRunMessage struct {
+	InstanceResourceID *string
+	Trigger            *storepb.QualityExecutionTrigger
+	Status             *storepb.QualityExecutionState
+	Outcome            *storepb.QualityStatus
+	// TargetGUID keeps only runs that planned at least one execution for it.
+	TargetGUID *string
+	// StartedAfter and StartedBefore bound started_at as the half-open interval
+	// [StartedAfter, StartedBefore).
+	StartedAfter  *time.Time
+	StartedBefore *time.Time
+	Limit         *int
+	Offset        *int
+}
+
+// QualityTargetRunSummaryMessage is a target's newest run plus how many runs have
+// touched it. Run is the parent batch; Slice is that run's share for the target,
+// and is nil only if the run's executions vanished between the two reads.
+type QualityTargetRunSummaryMessage struct {
+	TargetGUID string
+	TargetType storepb.MetaType
+	Run        *QualityRunMessage
+	Slice      *QualityRunTargetMessage
+	RunCount   int32
+}
+
+// qualifyQualityRunColumns prefixes qualityRunColumns with a table alias. A query
+// that joins quality_run needs the qualification to keep the unqualified columns
+// unambiguous.
+func qualifyQualityRunColumns(alias string) string {
+	columns := strings.Split(qualityRunColumns, ",")
+	for index := range columns {
+		columns[index] = alias + "." + strings.TrimSpace(columns[index])
+	}
+	return strings.Join(columns, ", ")
+}
+
+// buildQualityRunWhere renders the predicate and positional arguments for a run
+// filter. It is a pure function so the scoping (especially the target EXISTS
+// subquery) can be guard-tested without a database.
+func buildQualityRunWhere(find *FindQualityRunMessage) ([]string, []any) {
+	if find == nil {
+		find = &FindQualityRunMessage{}
+	}
+	where := []string{"TRUE"}
+	args := []any{}
+	addArg := func(value any) string {
+		args = append(args, value)
+		return fmt.Sprintf("$%d", len(args))
+	}
+	if find.InstanceResourceID != nil {
+		where = append(where, "r.instance_resource_id = "+addArg(*find.InstanceResourceID))
+	}
+	if find.Trigger != nil {
+		where = append(where, "r.trigger = "+addArg(int32(*find.Trigger))+"::int")
+	}
+	if find.Status != nil {
+		where = append(where, "r.status = "+addArg(int32(*find.Status))+"::int")
+	}
+	if find.Outcome != nil {
+		where = append(where, "r.outcome = "+addArg(int32(*find.Outcome))+"::int")
+	}
+	if find.TargetGUID != nil {
+		where = append(where, "EXISTS (SELECT 1 FROM quality_execution e WHERE e.run_id = r.id AND e.target_guid = "+addArg(*find.TargetGUID)+")")
+	}
+	if find.StartedAfter != nil {
+		where = append(where, "r.started_at >= "+addArg(*find.StartedAfter))
+	}
+	if find.StartedBefore != nil {
+		where = append(where, "r.started_at < "+addArg(*find.StartedBefore))
+	}
+	return where, args
+}
+
+// ListQualityRuns lists the internal dispatch batches, newest first. A run is
+// readable through the API as a projection only: it still owns no write path.
+func (s *Store) ListQualityRuns(ctx context.Context, find *FindQualityRunMessage) ([]*QualityRunMessage, error) {
+	if find == nil {
+		find = &FindQualityRunMessage{}
+	}
+	where, args := buildQualityRunWhere(find)
+	query := `SELECT ` + qualityRunColumns + ` FROM quality_run r WHERE ` + strings.Join(where, " AND ") +
+		` ORDER BY r.started_at DESC, r.id DESC`
+	if find.Limit != nil {
+		args = append(args, max(*find.Limit, 0))
+		query += fmt.Sprintf(" LIMIT $%d", len(args))
+	}
+	if find.Offset != nil {
+		args = append(args, max(*find.Offset, 0))
+		query += fmt.Sprintf(" OFFSET $%d", len(args))
+	}
+
+	rows, err := s.GetDB().QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list quality runs")
+	}
+	defer rows.Close()
+
+	runs := []*QualityRunMessage{}
+	for rows.Next() {
+		run, err := scanQualityRun(rows)
+		if err != nil {
+			return nil, err
+		}
+		runs = append(runs, run)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to iterate quality runs")
+	}
+	return runs, nil
+}
+
+// GetQualityRun reads one run by its row id. A missing row is (nil, nil), the
+// same contract as the other Get methods here.
+func (s *Store) GetQualityRun(ctx context.Context, id int64) (*QualityRunMessage, error) {
+	if id <= 0 {
+		return nil, common.Errorf(common.Invalid, "a quality run id is required")
+	}
+	run, err := scanQualityRun(s.GetDB().QueryRowContext(ctx, `
+		SELECT `+qualityRunColumns+`
+		FROM quality_run
+		WHERE id = $1`, id))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, errors.Wrap(err, "failed to read the quality run")
+	}
+	return run, nil
+}
+
+// ListQualityRunTargets aggregates the executions of the given runs by target,
+// keyed by run id. An empty input is a no-op. Rows whose verdict is still
+// unspecified count toward the slice total but toward no verdict bucket.
+func (s *Store) ListQualityRunTargets(ctx context.Context, runIDs []int64) (map[int64][]*QualityRunTargetMessage, error) {
+	slices := make(map[int64][]*QualityRunTargetMessage, len(runIDs))
+	if len(runIDs) == 0 {
+		return slices, nil
+	}
+
+	// The six verdicts are bound at $2..$7 in the order the shared rank CASE
+	// reads them: ERROR, FAIL, WARN, PASS, SKIPPED, NOT_EVALUATED.
+	args := []any{
+		pq.Array(runIDs),
+		int32(storepb.QualityStatus_QUALITY_STATUS_ERROR),
+		int32(storepb.QualityStatus_QUALITY_STATUS_FAIL),
+		int32(storepb.QualityStatus_QUALITY_STATUS_WARN),
+		int32(storepb.QualityStatus_QUALITY_STATUS_PASS),
+		int32(storepb.QualityStatus_QUALITY_STATUS_SKIPPED),
+		int32(storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED),
+	}
+	rows, err := s.GetDB().QueryContext(ctx, `
+		SELECT e.run_id, e.target_guid, e.target_type,
+			(COUNT(*))::INT AS total,
+			(COUNT(*) FILTER (WHERE e.status = $5))::INT AS pass,
+			(COUNT(*) FILTER (WHERE e.status = $4))::INT AS warn,
+			(COUNT(*) FILTER (WHERE e.status = $3))::INT AS fail,
+			(COUNT(*) FILTER (WHERE e.status = $2))::INT AS error,
+			(COUNT(*) FILTER (WHERE e.status = $6))::INT AS skipped,
+			(COUNT(*) FILTER (WHERE e.status = $7))::INT AS not_evaluated,
+			MIN(e.rule_revision)::INT AS rule_revision_min,
+			MAX(e.rule_revision)::INT AS rule_revision_max,
+			MIN(e.started_at) AS started_at,
+			MAX(e.finished_at) AS finished_at,
+			COALESCE(MAX(`+qualityTargetWorstRankCaseAt("e.status", 2)+`), 0)::INT AS worst_rank,
+			(ARRAY_AGG(e.target_path ORDER BY e.id DESC))[1] AS target_path
+		FROM quality_execution e
+		WHERE e.run_id = ANY($1::bigint[])
+		GROUP BY e.run_id, e.target_guid, e.target_type
+		ORDER BY e.run_id, e.target_guid, e.target_type
+	`, args...)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to aggregate the quality run targets")
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			slice      QualityRunTargetMessage
+			targetType int16
+			counts     storepb.QualityStatusCounts
+			finished   sql.NullTime
+			worstRank  int32
+			pathRaw    []byte
+		)
+		scanErr := rows.Scan(
+			&slice.RunID, &slice.TargetGUID, &targetType,
+			&counts.Total, &counts.Pass, &counts.Warn, &counts.Fail,
+			&counts.Error, &counts.Skipped, &counts.NotEvaluated,
+			&slice.RuleRevisionMin, &slice.RuleRevisionMax,
+			&slice.StartedAt, &finished, &worstRank, &pathRaw,
+		)
+		if scanErr != nil {
+			return nil, errors.Wrap(scanErr, "failed to scan a quality run target")
+		}
+		slice.TargetType = storepb.MetaType(targetType)
+		slice.Counts = &counts
+		slice.Outcome = QualityTargetStatusFromRank(worstRank)
+		if finished.Valid {
+			slice.FinishedAt = &finished.Time
+		}
+		if len(pathRaw) > 0 {
+			path := &storepb.QualityTargetPath{}
+			if err := common.ProtojsonUnmarshaler.Unmarshal(pathRaw, path); err != nil {
+				return nil, errors.Wrap(err, "failed to unmarshal a quality run target path")
+			}
+			slice.TargetPath = path
+		}
+		slices[slice.RunID] = append(slices[slice.RunID], &slice)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to iterate the quality run targets")
+	}
+	return slices, nil
+}
+
+// qualityTargetRunSummaryRow adapts *sql.Rows for scanQualityRun while this query
+// also returns the target key and the run count. That keeps one query able to read
+// the run's columns and its summary without duplicating the run scan mapping.
+type qualityTargetRunSummaryRow struct {
+	rows     *sql.Rows
+	key      *MetaGUIDKey
+	runCount *int32
+}
+
+func (r qualityTargetRunSummaryRow) Scan(dest ...any) error {
+	extra := []any{&r.key.GUID, &r.key.ObjectType, r.runCount}
+	return r.rows.Scan(append(dest, extra...)...)
+}
+
+// ListQualityTargetRunSummaries reads, for each requested target, its newest run
+// and how many distinct runs planned executions for it. A target that has never
+// run is absent from the map.
+func (s *Store) ListQualityTargetRunSummaries(ctx context.Context, keys []MetaGUIDKey) (map[MetaGUIDKey]*QualityTargetRunSummaryMessage, error) {
+	summaries := make(map[MetaGUIDKey]*QualityTargetRunSummaryMessage, len(keys))
+	if len(keys) == 0 {
+		return summaries, nil
+	}
+	guids := make([]string, 0, len(keys))
+	objectTypes := make([]int16, 0, len(keys))
+	for _, key := range keys {
+		guids = append(guids, key.GUID)
+		objectTypes = append(objectTypes, int16(key.ObjectType))
+	}
+
+	rows, err := s.GetDB().QueryContext(ctx, `
+		WITH latest AS (
+			SELECT DISTINCT ON (e.target_guid, e.target_type)
+				e.target_guid, e.target_type, e.run_id
+			FROM quality_execution e
+			JOIN unnest($1::text[], $2::int2[]) AS k(guid, object_type)
+				ON e.target_guid = k.guid AND e.target_type = k.object_type
+			ORDER BY e.target_guid, e.target_type, e.started_at DESC, e.id DESC
+		),
+		run_counts AS (
+			SELECT e.target_guid, e.target_type, (COUNT(DISTINCT e.run_id))::INT AS run_count
+			FROM quality_execution e
+			JOIN unnest($1::text[], $2::int2[]) AS k(guid, object_type)
+				ON e.target_guid = k.guid AND e.target_type = k.object_type
+			GROUP BY e.target_guid, e.target_type
+		)
+		SELECT `+qualifyQualityRunColumns("r")+`, l.target_guid, l.target_type, rc.run_count
+		FROM latest l
+		JOIN quality_run r ON r.id = l.run_id
+		JOIN run_counts rc ON rc.target_guid = l.target_guid AND rc.target_type = l.target_type
+		ORDER BY l.target_guid, l.target_type
+	`, pq.Array(guids), pq.Array(objectTypes))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the targets' latest runs")
+	}
+	defer rows.Close()
+
+	runIDs := make([]int64, 0, len(keys))
+	for rows.Next() {
+		var (
+			key      MetaGUIDKey
+			runCount int32
+		)
+		run, err := scanQualityRun(qualityTargetRunSummaryRow{rows: rows, key: &key, runCount: &runCount})
+		if err != nil {
+			return nil, err
+		}
+		summaries[key] = &QualityTargetRunSummaryMessage{
+			TargetGUID: key.GUID,
+			TargetType: key.ObjectType,
+			Run:        run,
+			RunCount:   runCount,
+		}
+		runIDs = append(runIDs, run.ID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to iterate the targets' latest runs")
+	}
+
+	// One slice per (run, target) needs the run's executions; read them in one
+	// statement rather than once per target.
+	slices, err := s.ListQualityRunTargets(ctx, runIDs)
+	if err != nil {
+		return nil, err
+	}
+	for key, summary := range summaries {
+		if summary.Run == nil {
+			continue
+		}
+		for _, slice := range slices[summary.Run.ID] {
+			if slice.TargetGUID == key.GUID && slice.TargetType == key.ObjectType {
+				summary.Slice = slice
+				break
+			}
+		}
+	}
+	return summaries, nil
 }

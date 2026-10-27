@@ -123,6 +123,23 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.executions.get";
   }
 
+  // List runs, newest first. A run is one dispatch batch: the executions one
+  // scheduler tick or one manual request planned together. Runs are the
+  // batch-level read model the execution directory groups by target; each run
+  // carries one slice per target it touched, with the slice's counts.
+  rpc ListQualityRuns(ListQualityRunsRequest) returns (ListQualityRunsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityRuns"};
+    option (google.api.method_signature) = "parent";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.executions.list";
+  }
+
+  // Read one run, with every target slice it touched.
+  rpc GetQualityRun(GetQualityRunRequest) returns (QualityRun) {
+    option (google.api.http) = {get: "/v1/{name=workspaces/*/qualityRuns/*}"};
+    option (google.api.method_signature) = "name";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.executions.list";
+  }
+
   // List quality issues, newest first.
   rpc ListQualityIssues(ListQualityIssuesRequest) returns (ListQualityIssuesResponse) {
     option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityIssues"};
@@ -1135,6 +1152,11 @@ message QualityExecution {
   google.protobuf.Timestamp start_time = 24;
   // Unset while the execution is PENDING or RUNNING.
   google.protobuf.Timestamp finish_time = 25;
+
+  // The dispatch batch that planned this execution, so the execution directory
+  // can group checks by the run that produced them.
+  // Format: workspaces/{workspace}/qualityRuns/{quality_run}
+  string run = 26 [(google.api.resource_reference) = {type: "metaxisdata/QualityRun"}];
 }
 
 // QualityExecutionSummary is the compact projection of the latest execution
@@ -1148,6 +1170,124 @@ message QualityExecutionSummary {
   // Format: workspaces/{workspace}/qualityExecutions/{quality_execution}
   string execution = 6 [(google.api.resource_reference) = {type: "metaxisdata/QualityExecution"}];
   google.protobuf.Timestamp finish_time = 7;
+}
+
+// QualityRun is one dispatch batch: the executions a scheduler tick or a manual
+// request planned together. It is a projection over quality_run and the
+// executions it planned, not a second source of truth; the execution remains the
+// per-check unit and the evidence.
+message QualityRun {
+  option (google.api.resource) = {
+    type: "metaxisdata/QualityRun"
+    pattern: "workspaces/{workspace}/qualityRuns/{quality_run}"
+  };
+
+  // Format: workspaces/{workspace}/qualityRuns/{quality_run}. The last segment is
+  // the row id, which is immutable for the row's lifetime.
+  string name = 1;
+
+  // The instance whose connection budget admitted the batch.
+  // Format: instances/{instance}
+  string instance = 2 [(google.api.resource_reference) = {type: "metaxisdata/Instance"}];
+
+  QualityExecutionTrigger trigger = 3;
+
+  // The batch lifecycle: PENDING, RUNNING, COMPLETED or ABANDONED. A COMPLETED
+  // batch may still have failed checks; outcome carries what it found.
+  QualityExecutionState state = 4;
+
+  // The worst verdict among the batch's terminal executions. Unset while the
+  // batch is queued or running, and on an abandoned batch.
+  QualityStatus outcome = 5;
+
+  // The batch-wide tally. total counts every planned execution; the per-verdict
+  // fields count only the ones that reached that verdict.
+  QualityStatusCounts counts = 6;
+
+  // The principal that started a manual batch. Empty for a scheduled batch.
+  // Format: users/{user}
+  string initiator = 7 [(google.api.resource_reference) = {type: "metaxisdata/User"}];
+
+  google.protobuf.Timestamp start_time = 8;
+  // Unset while the batch is PENDING or RUNNING.
+  google.protobuf.Timestamp finish_time = 9;
+
+  // One slice per target the batch planned executions for. A scheduled batch
+  // covers one instance, so it can name several targets; a manual target run
+  // names one.
+  repeated QualityRunTarget targets = 10;
+}
+
+// QualityRunTarget is one target's slice of a run: what that run did to that
+// target. The directory and the target workspace show this slice, not the
+// batch-wide counts, because a batch can cover several targets.
+message QualityRunTarget {
+  QualityTarget target = 1;
+
+  // The slice's tally: total planned executions for this target, and the
+  // verdicts they reached.
+  QualityStatusCounts counts = 2;
+
+  // The worst verdict in this slice; unset while no execution is terminal.
+  QualityStatus outcome = 3;
+
+  // The range of rule revisions this slice judged, so two batches are only
+  // compared when they ran the same definition. Zero when the slice is empty.
+  int32 rule_revision_min = 4;
+  int32 rule_revision_max = 5;
+
+  google.protobuf.Timestamp start_time = 6;
+  // Unset while the slice has no terminal execution.
+  google.protobuf.Timestamp finish_time = 7;
+
+  // The run this slice belongs to, repeated here so the slice can stand alone as
+  // a target's `latest_run`. Format: workspaces/{workspace}/qualityRuns/{quality_run}
+  string run = 8 [(google.api.resource_reference) = {type: "metaxisdata/QualityRun"}];
+
+  // The parent batch's lifecycle, repeated for the same reason.
+  QualityExecutionState state = 9;
+  QualityExecutionTrigger trigger = 10;
+}
+
+message ListQualityRunsRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The maximum number of runs to return. If unspecified, at most 50 are
+  // returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+  int32 page_size = 2;
+
+  // A page token, received from a previous ListQualityRuns call.
+  string page_token = 3;
+
+  // Only runs that planned at least one execution for this target GUID.
+  string target_guid = 4;
+
+  // Only runs admitted against this instance.
+  // Format: instances/{instance}
+  string instance = 5 [(google.api.resource_reference) = {type: "metaxisdata/Instance"}];
+
+  QualityExecutionTrigger trigger = 6;
+  QualityExecutionState state = 7;
+  QualityStatus outcome = 8;
+
+  // Only runs started at or after this time.
+  google.protobuf.Timestamp start_time = 9;
+  // Only runs started before this time.
+  google.protobuf.Timestamp end_time = 10;
+}
+
+message ListQualityRunsResponse {
+  repeated QualityRun quality_runs = 1;
+  string next_page_token = 2;
+}
+
+message GetQualityRunRequest {
+  // Format: workspaces/{workspace}/qualityRuns/{quality_run}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualityRun"}
+  ];
 }
 
 // QualityIssue is the durable problem behind a rule's failures. A rule has at
@@ -1596,6 +1736,10 @@ message ListQualityExecutionsRequest {
 
   // Only the executions started before this time.
   google.protobuf.Timestamp end_time = 12;
+
+  // Only the executions planned by this run.
+  // Format: workspaces/{workspace}/qualityRuns/{quality_run}
+  string run = 13 [(google.api.resource_reference) = {type: "metaxisdata/QualityRun"}];
 }
 
 message ListQualityExecutionsResponse {
@@ -2276,6 +2420,14 @@ message QualityTargetSummary {
   // database is gone). The rows stay readable because their target path is a
   // snapshot, but runs are skipped.
   bool orphaned = 12;
+
+  // The target's slice of the most recent run that planned any of its checks.
+  // This is the per-target batch summary the directory and the workspace show;
+  // unset when the target has never run.
+  QualityRunTarget latest_run = 13;
+
+  // How many dispatch batches have planned at least one check for this target.
+  int32 run_count = 14;
 }
 
 message GetQualityTargetRequest {
