@@ -256,6 +256,7 @@
     - [GetQualitySuggestionRequest](#metaxisdata-v1-GetQualitySuggestionRequest)
     - [GetQualityTargetRequest](#metaxisdata-v1-GetQualityTargetRequest)
     - [GetQualityTargetResponse](#metaxisdata-v1-GetQualityTargetResponse)
+    - [GetQualityTargetScheduleRequest](#metaxisdata-v1-GetQualityTargetScheduleRequest)
     - [GroupCheckConfig](#metaxisdata-v1-GroupCheckConfig)
     - [ListColumnLabelsRequest](#metaxisdata-v1-ListColumnLabelsRequest)
     - [ListColumnLabelsResponse](#metaxisdata-v1-ListColumnLabelsResponse)
@@ -4690,6 +4691,23 @@ AI drafts are deliberately absent: reading them needs the suggest permission, wh
 
 
 
+<a name="metaxisdata-v1-GetQualityTargetScheduleRequest"></a>
+
+### GetQualityTargetScheduleRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| target_guid | [string](#string) |  | The target&#39;s metadata GUID. Required. |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  | The target&#39;s object type. Optional when rules already exist, because their own target carries it; required to resolve a target that has no rules yet. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GroupCheckConfig"></a>
 
 ### GroupCheckConfig
@@ -5378,6 +5396,7 @@ the same row.
 | start_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | finish_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Unset while the execution is PENDING or RUNNING. |
 | run | [string](#string) |  | The dispatch batch that planned this execution, so the execution directory can group checks by the run that produced them. Format: workspaces/{workspace}/qualityRuns/{quality_run} |
+| attempt | [int32](#int32) |  | The scheduled attempt number in the target&#39;s current due cycle: 1 for the first attempt, 2&#43; for a retry after an abandoned attempt. Manual executions always use 1. A retry is planned only while the attempt budget lasts. |
 
 
 
@@ -5680,6 +5699,7 @@ counts and outcome are therefore the target&#39;s counts and outcome.
 | target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  | Scheduling is a property of the target, so each batch belongs to exactly one target; a manual selection that spans targets is split into one batch per target. |
 | rule_revision_min | [int32](#int32) |  | The range of rule revisions the batch&#39;s executions actually judged, so two batches are only compared when they ran the same definitions. Zero while no execution has run. |
 | rule_revision_max | [int32](#int32) |  |  |
+| retry_count | [int32](#int32) |  | How many scheduled attempts in this batch were retries, i.e. executions whose attempt number is greater than one. Zero for a batch whose checks all ran on their first attempt and for manual batches. |
 
 
 
@@ -6946,6 +6966,7 @@ No (google.api.http) annotation: this is a server-streaming method, and the REST
 | ListQualityTargets | [ListQualityTargetsRequest](#metaxisdata-v1-ListQualityTargetsRequest) | [ListQualityTargetsResponse](#metaxisdata-v1-ListQualityTargetsResponse) | List the targets (tables or views) that have quality rules, one row per target. The counts, the worst latest result and the pending draft tally are aggregated by the database, so the directory does not page through every rule to answer &#34;which table needs attention?&#34;. |
 | GetQualityTarget | [GetQualityTargetRequest](#metaxisdata-v1-GetQualityTargetRequest) | [GetQualityTargetResponse](#metaxisdata-v1-GetQualityTargetResponse) | Read one target&#39;s workspace: its rules (with their latest results), the unresolved issues and the target&#39;s columns, in one call. AI drafts are not part of the response (reading them needs the suggest permission). The target is named by GUID because a target is not a resource of its own. |
 | UpdateQualityTargetSchedule | [UpdateQualityTargetScheduleRequest](#metaxisdata-v1-UpdateQualityTargetScheduleRequest) | [QualityTargetSchedule](#metaxisdata-v1-QualityTargetSchedule) | Update one target&#39;s schedule: how often its enabled checks run. Scheduling is per target, so this replaces the per-check schedule; a change takes effect from the next slot and never runs the target immediately. |
+| GetQualityTargetSchedule | [GetQualityTargetScheduleRequest](#metaxisdata-v1-GetQualityTargetScheduleRequest) | [QualityTargetSchedule](#metaxisdata-v1-QualityTargetSchedule) | Read one target&#39;s schedule without the target&#39;s rules, results and issues. A rule lifecycle change can move the target&#39;s next run; the workspace re-reads just this instead of the whole target after every check edit. |
 | GetQualityContract | [GetQualityContractRequest](#metaxisdata-v1-GetQualityContractRequest) | [QualityContract](#metaxisdata-v1-QualityContract) | Read one target&#39;s contract: its target-level defaults, the published version, and whether the live rules differ from that snapshot. |
 | UpdateQualityContract | [UpdateQualityContractRequest](#metaxisdata-v1-UpdateQualityContractRequest) | [QualityContract](#metaxisdata-v1-QualityContract) | Update the target-level defaults. The filter is ANDed into every rule on the target at compile time; the default severity only seeds newly authored rules and never rewrites an existing rule. The target&#39;s schedule is updated through UpdateQualityTargetSchedule. |
 | PublishQualityContract | [PublishQualityContractRequest](#metaxisdata-v1-PublishQualityContractRequest) | [PublishQualityContractResponse](#metaxisdata-v1-PublishQualityContractResponse) | Publish the live rules and settings as the target&#39;s next contract version. Republishing an unchanged contract is a no-op that returns the existing version (no_changes=true). |

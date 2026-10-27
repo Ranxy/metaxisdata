@@ -234,8 +234,24 @@ describe("TargetRecentScanCard", () => {
     wrapper.unmount();
   });
 
-  it("only calls a scheduled batch partial, never a manual selection", async () => {
+  it("only calls a scheduled batch partial at the composition cap", async () => {
     const scheduled = await mountCard(
+      summaryFixture({
+        latestRun: runFixture({
+          total: 100,
+          trigger: QualityExecutionTrigger.SCHEDULED,
+        }),
+        ruleCount: 120,
+      })
+    );
+    expect(scheduled.text()).toContain(
+      t("dataQuality.executions.runPartial", { done: 100, all: 120 })
+    );
+    scheduled.unmount();
+
+    // Fewer executions than the target has checks is normal for a retry batch or
+    // after a check was added; it does not make the batch a slice.
+    const small = await mountCard(
       summaryFixture({
         latestRun: runFixture({
           total: 3,
@@ -244,10 +260,10 @@ describe("TargetRecentScanCard", () => {
         ruleCount: 10,
       })
     );
-    expect(scheduled.text()).toContain(
+    expect(small.text()).not.toContain(
       t("dataQuality.executions.runPartial", { done: 3, all: 10 })
     );
-    scheduled.unmount();
+    small.unmount();
 
     const manual = await mountCard(
       summaryFixture({

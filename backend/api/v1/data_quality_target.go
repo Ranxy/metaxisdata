@@ -144,16 +144,9 @@ func (s *DataQualityService) UpdateQualityTargetSchedule(ctx context.Context, re
 	if err := validateQualityScheduleInterval(interval); err != nil {
 		return nil, err
 	}
-	metaType := storepb.MetaType(req.Msg.GetMetaType())
-	if metaType == storepb.MetaType_UNSPECIFIED {
-		rules, err := s.store.ListQualityRules(ctx, &store.FindQualityRuleMessage{TargetGUID: &targetGUID})
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to read the target's quality rules")
-		}
-		if len(rules) == 0 {
-			return nil, connectErrorInvalid("meta_type is required when the target has no rules")
-		}
-		metaType = rules[0].TargetType
+	metaType, err := s.resolveQualityTargetMetaType(ctx, targetGUID, storepb.MetaType(req.Msg.GetMetaType()))
+	if err != nil {
+		return nil, err
 	}
 	now := time.Now().UTC()
 	// A target with rules always has a schedule row; ensuring first keeps the
@@ -166,6 +159,50 @@ func (s *DataQualityService) UpdateQualityTargetSchedule(ctx context.Context, re
 		return nil, err
 	}
 	return connect.NewResponse(convertQualityTargetSchedule(schedule)), nil
+}
+
+// GetQualityTargetSchedule reads one target's schedule. It exists so the workspace
+// can refresh the schedule after a rule lifecycle change without re-reading the
+// target's rules, executions and issues.
+func (s *DataQualityService) GetQualityTargetSchedule(ctx context.Context, req *connect.Request[v1pb.GetQualityTargetScheduleRequest]) (*connect.Response[v1pb.QualityTargetSchedule], error) {
+	if _, err := s.workspaceID(ctx, req.Msg.GetParent()); err != nil {
+		return nil, err
+	}
+	targetGUID := strings.TrimSpace(req.Msg.GetTargetGuid())
+	if targetGUID == "" {
+		return nil, connectErrorInvalid("target_guid is required")
+	}
+	metaType, err := s.resolveQualityTargetMetaType(ctx, targetGUID, storepb.MetaType(req.Msg.GetMetaType()))
+	if err != nil {
+		return nil, err
+	}
+	schedule, err := s.store.GetQualityTargetSchedule(ctx, targetGUID, metaType)
+	if err != nil {
+		return nil, err
+	}
+	if schedule == nil {
+		// A target whose rules predate the target-level schedule has no row until
+		// it is edited; the caller keeps its last known schedule.
+		return connect.NewResponse(&v1pb.QualityTargetSchedule{}), nil
+	}
+	return connect.NewResponse(convertQualityTargetSchedule(schedule)), nil
+}
+
+// resolveQualityTargetMetaType fills in the object type a schedule request left
+// out. The target's rules carry it; a target with no rules needs it from the
+// caller because the GUID alone is not unique across object types.
+func (s *DataQualityService) resolveQualityTargetMetaType(ctx context.Context, targetGUID string, metaType storepb.MetaType) (storepb.MetaType, error) {
+	if metaType != storepb.MetaType_UNSPECIFIED {
+		return metaType, nil
+	}
+	rules, err := s.store.ListQualityRules(ctx, &store.FindQualityRuleMessage{TargetGUID: &targetGUID})
+	if err != nil {
+		return storepb.MetaType_UNSPECIFIED, errors.Wrap(err, "failed to read the target's quality rules")
+	}
+	if len(rules) == 0 {
+		return storepb.MetaType_UNSPECIFIED, connectErrorInvalid("meta_type is required when the target has no rules")
+	}
+	return rules[0].TargetType, nil
 }
 
 // qualityTargetRequestedPageSize resolves the page size for a directory request:

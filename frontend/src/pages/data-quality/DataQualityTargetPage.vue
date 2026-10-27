@@ -537,6 +537,7 @@ import { RouterLink, useRoute, useRouter } from "vue-router";
 import {
   getQualityContract,
   getQualityTarget,
+  getQualityTargetSchedule,
   listQualitySuggestions,
   runQualityRules,
   updateQualityTargetSchedule,
@@ -1013,19 +1014,24 @@ async function loadContract(ticket = loadTicket) {
 /**
  * A rule lifecycle change can move the target's next run: pausing the last
  * enabled check clears it, resuming one schedules it, and the first check creates
- * the schedule. Re-read only the aggregate summary's schedule so the header stays
- * truthful without reloading the page and losing local row state.
+ * the schedule. Re-read only the schedule so the header stays truthful without
+ * reloading the page and losing local row state.
  */
 async function refreshTargetSchedule() {
   const ticket = loadTicket;
   const guid = targetGuid.value;
   const metaType = parseMetaType(route.query.metaType) ?? MetaType.UNSPECIFIED;
   try {
-    const response = await getQualityTarget({ targetGuid: guid, metaType });
+    const schedule = await getQualityTargetSchedule({
+      targetGuid: guid,
+      metaType,
+    });
     if (ticket !== loadTicket) {
       return;
     }
-    summary.value.schedule = response.summary?.schedule;
+    if (schedule.scheduleInterval) {
+      summary.value.schedule = schedule;
+    }
   } catch {
     // The schedule is supplementary; keep the last known value on failure.
   }

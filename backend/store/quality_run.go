@@ -58,11 +58,13 @@ type QualityRunMessage struct {
 	StartedAt time.Time
 	// FinishedAt is nil until the batch reaches a terminal status.
 	FinishedAt *time.Time
-	// RuleRevisionMin and RuleRevisionMax are the range of rule revisions the
-	// batch's executions actually judged. They are not columns: the read paths
-	// fill them from the executions so an edit after planning is reflected.
+	// RuleRevisionMin, RuleRevisionMax and RetryCount are read projections of the
+	// batch's executions, not columns: the read paths fill them so an edit after
+	// planning and a scheduled retry are reflected.
 	RuleRevisionMin int32
 	RuleRevisionMax int32
+	// RetryCount counts executions whose attempt is greater than one.
+	RetryCount int32
 }
 
 // marshalQualityRunCounts renders the counts JSONB column. A nil message and an
@@ -610,16 +612,18 @@ func (s *Store) ListQualityTargetRunSummaries(ctx context.Context, keys []MetaGU
 		if revisionRange, ok := ranges[summary.Run.ID]; ok {
 			summary.Run.RuleRevisionMin = revisionRange.Min
 			summary.Run.RuleRevisionMax = revisionRange.Max
+			summary.Run.RetryCount = revisionRange.RetryCount
 		}
 	}
 	return summaries, nil
 }
 
-// QualityRunRevisionRange is the range of rule revisions one run's executions
-// actually judged.
+// QualityRunRevisionRange is the read projection of one run's executions: the
+// range of rule revisions they actually judged, and how many of them were retries.
 type QualityRunRevisionRange struct {
-	Min int32
-	Max int32
+	Min        int32
+	Max        int32
+	RetryCount int32
 }
 
 // ListQualityRunRevisionRanges returns the revision range each run judged. The
@@ -631,7 +635,10 @@ func (s *Store) ListQualityRunRevisionRanges(ctx context.Context, runIDs []int64
 		return ranges, nil
 	}
 	rows, err := s.GetDB().QueryContext(ctx, `
-		SELECT run_id, (MIN(rule_revision))::INT, (MAX(rule_revision))::INT
+		SELECT run_id,
+			(MIN(rule_revision))::INT,
+			(MAX(rule_revision))::INT,
+			COALESCE((SUM(GREATEST(attempt, 1) - 1))::INT, 0)
 		FROM quality_execution
 		WHERE run_id = ANY($1::bigint[])
 		GROUP BY run_id
@@ -646,7 +653,7 @@ func (s *Store) ListQualityRunRevisionRanges(ctx context.Context, runIDs []int64
 			runID int64
 			rng   QualityRunRevisionRange
 		)
-		if err := rows.Scan(&runID, &rng.Min, &rng.Max); err != nil {
+		if err := rows.Scan(&runID, &rng.Min, &rng.Max, &rng.RetryCount); err != nil {
 			return nil, errors.Wrap(err, "failed to scan a quality run revision range")
 		}
 		ranges[runID] = rng

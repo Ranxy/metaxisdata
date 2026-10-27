@@ -39,6 +39,7 @@ func qualityRunFixture() *store.QualityRunMessage {
 		FinishedAt:      &finishedAt,
 		RuleRevisionMin: 1,
 		RuleRevisionMax: 3,
+		RetryCount:      2,
 	}
 }
 
@@ -67,6 +68,7 @@ func TestConvertQualityRun(t *testing.T) {
 	require.Equal(t, "orders", converted.GetTarget().GetPath().GetObject())
 	require.Equal(t, int32(1), converted.GetRuleRevisionMin())
 	require.Equal(t, int32(3), converted.GetRuleRevisionMax())
+	require.Equal(t, int32(2), converted.GetRetryCount())
 
 	// A run without a finished time keeps the field unset rather than showing the
 	// epoch; a nil run converts to nil.

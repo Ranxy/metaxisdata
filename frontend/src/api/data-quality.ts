@@ -30,6 +30,7 @@ import {
   GetQualitySuggestionRequestSchema,
   GetQualityTargetRequestSchema,
   type GetQualityTargetResponse,
+  GetQualityTargetScheduleRequestSchema,
   ListColumnLabelsRequestSchema,
   ListColumnProfilesRequestSchema,
   ListQualityContractRevisionsRequestSchema,
@@ -230,6 +231,27 @@ export async function updateQualityTargetSchedule(options: {
     scheduleInterval: options.scheduleInterval,
   });
   return await dataQualityClient.updateQualityTargetSchedule(request);
+}
+
+/**
+ * Read one target's schedule without its rules, executions and issues. A rule
+ * lifecycle change can move the target's next run, so the workspace refreshes
+ * this instead of re-reading the whole target after every check edit.
+ */
+export async function getQualityTargetSchedule(options: {
+  targetGuid: string;
+  /** UNSPECIFIED lets the server derive it from the target's rules. */
+  metaType?: MetaType;
+  signal?: AbortSignal;
+}): Promise<QualityTargetSchedule> {
+  const request = create(GetQualityTargetScheduleRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    targetGuid: options.targetGuid,
+    metaType: options.metaType ?? MetaType.UNSPECIFIED,
+  });
+  return await dataQualityClient.getQualityTargetSchedule(request, {
+    signal: options.signal,
+  });
 }
 
 // ---- contract ----
@@ -528,9 +550,9 @@ export async function getQualityExecution(
 
 /**
  * One page of runs, newest first. A run is one dispatch batch: the executions a
- * scheduler tick or a manual request planned together. Each run carries one slice
- * per target it touched, so a target's slice answers "what did this batch do to
- * this table?" without reading every execution.
+ * scheduler tick or a manual request planned for exactly one target, so the run's
+ * target, counts and outcome answer "what did this batch do to this table?"
+ * without reading every execution.
  */
 export async function listQualityRuns(options: {
   pageSize?: number;

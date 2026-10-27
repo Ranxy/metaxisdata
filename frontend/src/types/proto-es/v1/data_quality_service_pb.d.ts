@@ -1518,6 +1518,15 @@ export declare type QualityExecution = Message<"metaxisdata.v1.QualityExecution"
    * @generated from field: string run = 26;
    */
   run: string;
+
+  /**
+   * The scheduled attempt number in the target's current due cycle: 1 for the
+   * first attempt, 2+ for a retry after an abandoned attempt. Manual executions
+   * always use 1. A retry is planned only while the attempt budget lasts.
+   *
+   * @generated from field: int32 attempt = 27;
+   */
+  attempt: number;
 };
 
 /**
@@ -1674,6 +1683,15 @@ export declare type QualityRun = Message<"metaxisdata.v1.QualityRun"> & {
    * @generated from field: int32 rule_revision_max = 13;
    */
   ruleRevisionMax: number;
+
+  /**
+   * How many scheduled attempts in this batch were retries, i.e. executions whose
+   * attempt number is greater than one. Zero for a batch whose checks all ran on
+   * their first attempt and for manual batches.
+   *
+   * @generated from field: int32 retry_count = 14;
+   */
+  retryCount: number;
 };
 
 /**
@@ -5007,6 +5025,39 @@ export declare type UpdateQualityTargetScheduleRequest = Message<"metaxisdata.v1
 export declare const UpdateQualityTargetScheduleRequestSchema: GenMessage<UpdateQualityTargetScheduleRequest>;
 
 /**
+ * @generated from message metaxisdata.v1.GetQualityTargetScheduleRequest
+ */
+export declare type GetQualityTargetScheduleRequest = Message<"metaxisdata.v1.GetQualityTargetScheduleRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * The target's metadata GUID. Required.
+   *
+   * @generated from field: string target_guid = 2;
+   */
+  targetGuid: string;
+
+  /**
+   * The target's object type. Optional when rules already exist, because their
+   * own target carries it; required to resolve a target that has no rules yet.
+   *
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 3;
+   */
+  metaType: MetaType;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityTargetScheduleRequest.
+ * Use `create(GetQualityTargetScheduleRequestSchema)` to create a new message.
+ */
+export declare const GetQualityTargetScheduleRequestSchema: GenMessage<GetQualityTargetScheduleRequest>;
+
+/**
  * @generated from message metaxisdata.v1.GetQualityTargetRequest
  */
 export declare type GetQualityTargetRequest = Message<"metaxisdata.v1.GetQualityTargetRequest"> & {
@@ -7196,6 +7247,18 @@ export declare const DataQualityService: GenService<{
   updateQualityTargetSchedule: {
     methodKind: "unary";
     input: typeof UpdateQualityTargetScheduleRequestSchema;
+    output: typeof QualityTargetScheduleSchema;
+  },
+  /**
+   * Read one target's schedule without the target's rules, results and issues.
+   * A rule lifecycle change can move the target's next run; the workspace re-reads
+   * just this instead of the whole target after every check edit.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityTargetSchedule
+   */
+  getQualityTargetSchedule: {
+    methodKind: "unary";
+    input: typeof GetQualityTargetScheduleRequestSchema;
     output: typeof QualityTargetScheduleSchema;
   },
   /**

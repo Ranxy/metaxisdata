@@ -64,6 +64,7 @@ Element.prototype.releasePointerCapture ??= () => {};
 
 const mocks = vi.hoisted(() => ({
   getQualityTarget: vi.fn(),
+  getQualityTargetSchedule: vi.fn(),
   getQualityContract: vi.fn(),
   getQualityRule: vi.fn(),
   listQualityExecutions: vi.fn(),
@@ -82,6 +83,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/api/data-quality", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/data-quality")>()),
   getQualityTarget: mocks.getQualityTarget,
+  getQualityTargetSchedule: mocks.getQualityTargetSchedule,
   getQualityContract: mocks.getQualityContract,
   getQualityRule: mocks.getQualityRule,
   listQualityExecutions: mocks.listQualityExecutions,
@@ -565,6 +567,9 @@ describe("DataQualityTargetPage", () => {
     i18n.global.locale.value = "en-US";
     Element.prototype.scrollIntoView = scrollSpy;
     mocks.getQualityTarget.mockResolvedValue(response());
+    mocks.getQualityTargetSchedule.mockResolvedValue(
+      targetScheduleFixture({ nextRunInMinutes: 30 })
+    );
     mocks.getQualityContract.mockResolvedValue(contractFixture());
     mocks.getQualityRule.mockResolvedValue(rulesFixture()[0]);
     mocks.listQualityExecutions.mockResolvedValue({
@@ -800,7 +805,8 @@ describe("DataQualityTargetPage", () => {
     );
     // The rule list stays local, but the header's next run is re-read because
     // creating the first check moved the target's schedule.
-    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(2);
+    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(1);
+    expect(mocks.getQualityTargetSchedule).toHaveBeenCalledTimes(1);
     wrapper.unmount();
   });
 
@@ -961,7 +967,7 @@ describe("DataQualityTargetPage", () => {
     wrapper.unmount();
   });
 
-  it("creates a rule inline and renders it without re-reading the target", async () => {
+  it("creates a rule inline and renders it without re-reading the workspace", async () => {
     const created = create(QualityRuleSchema, {
       name: RULE_CREATED,
       title: "Orders stay fresh",
@@ -1001,7 +1007,8 @@ describe("DataQualityTargetPage", () => {
     );
     // The rule list stays local; the header's next run is re-read because the
     // new check joins (or creates) the target's schedule.
-    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(2);
+    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(1);
+    expect(mocks.getQualityTargetSchedule).toHaveBeenCalledTimes(1);
     // The contract strip re-reads, so the live checks are no longer mistaken for
     // the published version and Publish becomes available.
     expect(mocks.getQualityContract.mock.calls.length).toBeGreaterThan(1);
@@ -1139,7 +1146,8 @@ describe("DataQualityTargetPage", () => {
     );
     // The row is replaced locally; the schedule summary is re-read so a state
     // change (pause/resume) cannot leave a stale next run in the header.
-    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(2);
+    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(1);
+    expect(mocks.getQualityTargetSchedule).toHaveBeenCalledTimes(1);
     expect(wrapper.findComponent(TargetRuleComposer).props("open")).toBe(false);
     wrapper.unmount();
   });
@@ -1261,7 +1269,8 @@ describe("DataQualityTargetPage", () => {
     );
     // Pausing moves one rule from enabled to paused locally; only the schedule
     // summary is re-read because pausing can clear the target's next run.
-    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(2);
+    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(1);
+    expect(mocks.getQualityTargetSchedule).toHaveBeenCalledTimes(1);
     wrapper.unmount();
   });
 
@@ -1278,7 +1287,8 @@ describe("DataQualityTargetPage", () => {
     );
     // Deleting can clear the target's next run when it was the last enabled
     // check, so the header's schedule is re-read.
-    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(2);
+    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(1);
+    expect(mocks.getQualityTargetSchedule).toHaveBeenCalledTimes(1);
     wrapper.unmount();
   });
 
@@ -1541,27 +1551,16 @@ describe("DataQualityTargetPage", () => {
   });
 
   it("refreshes the header when the last enabled check is paused", async () => {
-    mocks.getQualityTarget
-      .mockResolvedValueOnce(
-        response({
-          summary: summaryFixture({
-            ruleCount: 1,
-            enabledRuleCount: 1,
-            schedule: targetScheduleFixture({ nextRunInMinutes: 30 }),
-          }),
-          rules: [rulesFixture()[0]],
-        })
-      )
-      .mockResolvedValueOnce(
-        response({
-          summary: summaryFixture({
-            ruleCount: 1,
-            enabledRuleCount: 0,
-            schedule: undefined,
-          }),
-          rules: [rulesFixture()[0]],
-        })
-      );
+    mocks.getQualityTarget.mockResolvedValue(
+      response({
+        summary: summaryFixture({
+          ruleCount: 1,
+          enabledRuleCount: 1,
+          schedule: targetScheduleFixture({ nextRunInMinutes: 30 }),
+        }),
+        rules: [rulesFixture()[0]],
+      })
+    );
     const { wrapper } = await mountPage();
 
     expect(wrapper.text()).toContain(
@@ -1570,6 +1569,8 @@ describe("DataQualityTargetPage", () => {
       })
     );
 
+    // Pausing the last enabled check leaves the interval but clears the next run.
+    mocks.getQualityTargetSchedule.mockResolvedValue(targetScheduleFixture());
     const paused = create(QualityRuleSchema, {
       name: RULE_DATASET,
       title: "Row count floor",
@@ -1581,10 +1582,10 @@ describe("DataQualityTargetPage", () => {
     wrapper.findComponent(QualityCheckDrawer).vm.$emit("changed", paused);
     await flushPromises();
 
-    // The server cleared the target's next run; the header re-read only the
-    // schedule summary and now says so.
+    // The header re-read only the schedule and now says there is no next run.
     expect(wrapper.text()).toContain(label("dataQuality.workspace.noNextRun"));
-    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(2);
+    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(1);
+    expect(mocks.getQualityTargetSchedule).toHaveBeenCalledTimes(1);
     wrapper.unmount();
   });
 

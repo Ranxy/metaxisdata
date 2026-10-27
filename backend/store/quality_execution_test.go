@@ -31,6 +31,7 @@ type qualityExecutionScannerStub struct {
 	targetPath         []byte
 	instanceResourceID string
 	trigger            storepb.QualityExecutionTrigger
+	attempt            int32
 	initiatorID        sql.NullInt32
 	state              storepb.QualityExecutionState
 	status             storepb.QualityStatus
@@ -52,8 +53,8 @@ type qualityExecutionScannerStub struct {
 }
 
 func (s qualityExecutionScannerStub) Scan(dest ...any) error {
-	if len(dest) != 28 {
-		return fmt.Errorf("scanQualityExecution scanned %d destinations, want 28", len(dest))
+	if len(dest) != 29 {
+		return fmt.Errorf("scanQualityExecution scanned %d destinations, want 29", len(dest))
 	}
 	*(dest[0].(*int64)) = s.id
 	*(dest[1].(*int64)) = s.runID
@@ -65,24 +66,25 @@ func (s qualityExecutionScannerStub) Scan(dest ...any) error {
 	*(dest[7].(*[]byte)) = s.targetPath
 	*(dest[8].(*string)) = s.instanceResourceID
 	*(dest[9].(*storepb.QualityExecutionTrigger)) = s.trigger
-	*(dest[10].(*sql.NullInt32)) = s.initiatorID
-	*(dest[11].(*storepb.QualityExecutionState)) = s.state
-	*(dest[12].(*storepb.QualityStatus)) = s.status
-	*(dest[13].(*sql.NullFloat64)) = s.observedValue
-	*(dest[14].(*storepb.QualityObservedKind)) = s.observedKind
-	*(dest[15].(*[]byte)) = s.thresholds
-	*(dest[16].(*int64)) = s.failedRows
-	*(dest[17].(*int64)) = s.totalRows
-	*(dest[18].(*bool)) = s.sampled
-	*(dest[19].(*int64)) = s.sampleRows
-	*(dest[20].(*bool)) = s.truncated
-	*(dest[21].(*[]byte)) = s.sample
-	*(dest[22].(*string)) = s.executedSQL
-	*(dest[23].(*string)) = s.errorCode
-	*(dest[24].(*string)) = s.errorMessage
-	*(dest[25].(*int32)) = s.durationMS
-	*(dest[26].(*time.Time)) = s.startedAt
-	*(dest[27].(*sql.NullTime)) = s.finishedAt
+	*(dest[10].(*int32)) = s.attempt
+	*(dest[11].(*sql.NullInt32)) = s.initiatorID
+	*(dest[12].(*storepb.QualityExecutionState)) = s.state
+	*(dest[13].(*storepb.QualityStatus)) = s.status
+	*(dest[14].(*sql.NullFloat64)) = s.observedValue
+	*(dest[15].(*storepb.QualityObservedKind)) = s.observedKind
+	*(dest[16].(*[]byte)) = s.thresholds
+	*(dest[17].(*int64)) = s.failedRows
+	*(dest[18].(*int64)) = s.totalRows
+	*(dest[19].(*bool)) = s.sampled
+	*(dest[20].(*int64)) = s.sampleRows
+	*(dest[21].(*bool)) = s.truncated
+	*(dest[22].(*[]byte)) = s.sample
+	*(dest[23].(*string)) = s.executedSQL
+	*(dest[24].(*string)) = s.errorCode
+	*(dest[25].(*string)) = s.errorMessage
+	*(dest[26].(*int32)) = s.durationMS
+	*(dest[27].(*time.Time)) = s.startedAt
+	*(dest[28].(*sql.NullTime)) = s.finishedAt
 	return nil
 }
 
@@ -103,6 +105,7 @@ func TestQualityExecutionColumnsMatchTheScan(t *testing.T) {
 		"target_path",
 		"instance_resource_id",
 		"trigger",
+		"attempt",
 		"initiator_id",
 		"state",
 		"status",
@@ -141,6 +144,7 @@ func TestScanQualityExecutionReadsEveryColumn(t *testing.T) {
 		targetPath:         []byte(`{"instance":"prod","database":"shop","schema":"public","object":"orders","column":"id"}`),
 		instanceResourceID: "instances/inst1",
 		trigger:            storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL,
+		attempt:            2,
 		initiatorID:        sql.NullInt32{Int32: 9, Valid: true},
 		state:              storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED,
 		status:             storepb.QualityStatus_QUALITY_STATUS_FAIL,
@@ -176,6 +180,7 @@ func TestScanQualityExecutionReadsEveryColumn(t *testing.T) {
 	require.Equal(t, "id", execution.TargetPath.GetColumn())
 	require.Equal(t, "instances/inst1", execution.InstanceResourceID)
 	require.Equal(t, storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL, execution.Trigger)
+	require.Equal(t, int32(2), execution.Attempt)
 	require.NotNil(t, execution.InitiatorID)
 	require.Equal(t, int32(9), *execution.InitiatorID)
 	require.Equal(t, storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED, execution.State)

@@ -310,10 +310,10 @@ API 语义：
 **决定：调度从规则上移到目标。** 一个目标一个计时器（`quality_target_schedule`，主键 `(target_guid,target_type)`），到期时该目标的**全部启用检查**进入同一批次；规则不再持有 `schedule_interval`/`next_run_at`。
 
 - 到期判定：`next_run_at <= now` 且目标至少一条启用检查；存储层按目标 first-due 排序，按 200 条规则预算取**整目标**，返回每个目标的全部启用检查。
-- 批次：仍按实例派发、按 ≤100 条切块；`executeBatch` 顺序执行，所以目标的检查连续跑。超过 100 条检查的目标仍可跨批（只有绕过 API 上限的数据会这样），只有最后一片推进该目标 schedule。
-- 推进：执行行规划成功后按目标 `next_run_at = now + interval` 一次；手动运行不推进。崩溃/放弃的批次让目标等下一个 interval（不补跑，与旧行为一致）。
+- 批次：仍按实例派发、按 ≤100 条切块；`executeBatch` 顺序执行，所以目标的检查连续跑。超过 100 条检查的目标仍可跨批（只有绕过 API 上限的数据会这样）；整个目标周期 settle 后才推进 schedule（见 Phase D 的 D-71）。
+- 推进：周期 settle 后按目标 `next_run_at = now + interval` 一次；手动运行不推进。崩溃/放弃的 scheduled 检查按 attempt 预算在后续 tick 补跑，预算耗尽后周期照常 settle（见 D-71）。
 - 规则生命周期：新建检查加入目标下一轮（目标首次有规则时用工作区默认初始化 `now + interval`）；暂停/归档目标最后一个启用检查 → `next_run_at = NULL`，重新启用 → `now + interval`；改目标调度 → `now + interval`；规则换目标时新旧目标都同步。
-- API/UI：`UpdateQualityTargetSchedule`（`rules.update` 权限、审计）改目标调度；`QualityTargetSummary.schedule` 暴露 interval/next run；目标工作台头部显示并编辑；检查编辑器删除 schedule 字段。
+- API/UI：`Get/UpdateQualityTargetSchedule`（读 `rules.list`，写 `rules.update` 权限、审计）读/改目标调度；`QualityTargetSummary.schedule` 暴露 interval/next run；目标工作台头部显示并编辑，规则生命周期后只重读调度而不是整个目标；检查编辑器删除 schedule 字段。
 - 契约：`QualityContractSettings` 删除 `default_schedule_interval_seconds`；目标调度不进发布快照/fingerprint。
 - `row_count_change` 的基线新鲜度窗口改用目标 interval（调度是目标级，规则不再有自己的 interval）。
 - 未做：一目标一批次的调度模型、`quality_run.target_guid`、连接租约与批次身份解耦；这些仍属新的产品决策。
@@ -324,12 +324,13 @@ API 语义：
 
 **决定：`quality_run` 属于一个目标，不再是一个“实例级混合批次”。** 调度仍是目标级（Phase C），但批次行本身携带 `target_guid`/`target_type`/`target_path`，读模型不再需要从 execution 聚合出“目标 slice”。
 
-- 定时：每个 due target 生成一个批次（同实例的批次串行执行，仍按实例领连接租约）；tick 预算同时限制 200 条规则与 50 个目标，避免一 tick 生成过多批次。
-- 手动：选择集按 `(instance,target)` 拆批，一个目标一个批次；队列容量从 64 提到 512。
-- 批次上限 100 保留：API 单表上限 100，合法目标恒为一批；绕过 API 的 >100 条目标仍分片，每个分片仍是单目标批次、只有最后一片推进 schedule。
+- 定时：每个 due target 生成一个批次（同实例的批次串行执行，仍按实例领连接租约）；tick 预算同时限制 200 条规则与 50 个目标，避免一 tick 生成过多批次。扫描只规划，批次交给 2 个 scheduled worker，手动通道不被长批次阻塞（D-72）。
+- 手动：选择集按 `(instance,target)` 拆批，一个目标一个批次；队列容量从 64 提到 512，API 在规划任何批次前先检查整次选择是否放得下。
+- 批次上限 100 保留：API 单表上限 100，合法目标恒为一批；绕过 API 的 >100 条目标仍分片，每个分片仍是单目标批次，整个周期 settle 后才推进 schedule。
 - 读模型：`QualityRun.target` + `rule_revision_min/max`；删除 `QualityRunTarget` 与 `repeated targets`；`QualityTargetSummary.latest_run` 直接是 `QualityRun`；`ListQualityRuns` 按 `target_guid + meta_type` 直接过滤。
-- 批次卡不再显示“N 个目标”；`N/M` 披露只在 scheduled 批次且目标规则数 > 本批检查数（legacy 超限分片）时出现；手动 run 的 `counts.total` 是显式选择数，不冒充目标全量。
+- 批次卡不再显示“N 个目标”；`N/M` 披露只在 scheduled 批次达到单批 100 条组成上限、且目标规则数 > 本批检查数（legacy 超限分片）时出现；手动 run 和重试批次不冒充部分视图。
 - 连接租约仍是批次级：一个实例同时只有有限批次，同实例串行；没有把租约提升到目标级。
+- 目标周期（D-71）：一次 due cycle 可跨批次/tick；未完成的检查在下一次扫描按 attempt 2/3 补跑，最多 3 次尝试；批次结束后检查目标是否还有 pending 规则，没有才把 schedule 推进到 `now + interval`；`QualityRun.retry_count`/`QualityExecution.attempt` 让补跑可见。
 
 文件：`backend/migrator/migration/0.1/0031##quality_run_target.sql` + `LATEST.sql`、`backend/store/quality_run.go`（target 列/过滤/目标最新批次/revision range）、`backend/runner/qualityrunner/qualityrunner.go`（一目标一批次、tick 目标预算）、`backend/api/v1/data_quality_service.go`（手动按目标拆批）、`data_quality_run.go`/`data_quality_target.go`/`data_quality_convert.go`、`proto/v1/v1/data_quality_service.proto`；前端 `QualityRunCard`/`TargetScanHistory`/`TargetRecentScanCard`/执行页、`api/data-quality.ts`。测试：store run 扫描/过滤、runner 一目标一批次 plan、API 转换、integration 手动跨目标拆批与 scheduled 批次 target。
 
@@ -383,8 +384,8 @@ API 语义：
 ### Phase C（已实现，本分支）
 
 - ✅ 新增 `quality_target_schedule`（目标级 interval + next_run_at），删除 `quality_rule.schedule_interval_seconds`/`next_run_at` 与 due 索引。
-- ✅ due 扫描以目标为单位取整目标全部启用检查；批次内目标连续；批次上限 100；>100 条规则的目标可跨批且只推进一次。
-- ✅ `next_run_at` 在规划成功后按目标推进；手动运行不推进；暂停最后一条/归档/换目标/改调度都会同步目标 schedule。
+- ✅ due 扫描以目标为单位取周期内未完成的检查；批次内目标连续；批次上限 100；>100 条规则的目标可跨批。
+- ✅ 目标 schedule 在周期 settle 后推进；超时/abandoned 的检查在周期内按 attempt 1..3 补跑；`QualityRun.retry_count` 与 `QualityExecution.attempt` 暴露补跑；手动运行不推进；暂停最后一条/归档/换目标/改调度都会同步目标 schedule。
 - ✅ `UpdateQualityTargetSchedule` + `QualityTargetSummary.schedule`；目标工作台展示/编辑；规则编辑器与检查详情删除 schedule；契约 settings 删除默认 schedule。
 - ✅ `row_count_change` 基线窗口跟随目标 interval。
 

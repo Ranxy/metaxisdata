@@ -24,6 +24,17 @@ const qualityRuleColumns = `id, resource_id, title, description, dimension, rule
 	owner_id, tags, mute_until, revision,
 	created_by, updated_by, created_at, updated_at, deleted`
 
+// qualifyQualityRuleColumns prefixes qualityRuleColumns with a table alias. A
+// query that joins quality_rule with tables that also carry target_guid or
+// target_type needs the qualification to keep the projection unambiguous.
+func qualifyQualityRuleColumns(alias string) string {
+	columns := strings.Split(qualityRuleColumns, ",")
+	for index := range columns {
+		columns[index] = alias + "." + strings.TrimSpace(columns[index])
+	}
+	return strings.Join(columns, ", ")
+}
+
 // qualityRuleRevisionColumns is the column list every quality_rule_revision read
 // returns, in the order scanQualityRuleRevision consumes it.
 const qualityRuleRevisionColumns = `id, rule_id, revision, target_guid, target_type,

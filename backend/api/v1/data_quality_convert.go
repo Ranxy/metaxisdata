@@ -388,6 +388,7 @@ func convertQualityExecution(workspaceID string, execution *store.QualityExecuti
 		State:         v1pb.QualityExecutionState(execution.State),
 		Outcome:       v1pb.QualityStatus(execution.Status),
 		Trigger:       v1pb.QualityExecutionTrigger(execution.Trigger),
+		Attempt:       execution.Attempt,
 		Initiator:     formatQualityOwner(execution.InitiatorID),
 		Instance:      instance,
 		ObservedValue: observedValue(execution.ObservedValue),
@@ -431,9 +432,9 @@ func convertQualityExecutionSummary(workspaceID string, execution *store.Quality
 	}
 }
 
-// convertQualityRun converts one dispatch batch and its per-target slices. A run
-// is the batch-level read model: the executions remain the evidence, and the
-// slices are projections of them.
+// convertQualityRun converts one dispatch batch. A run is the batch-level read
+// model: it belongs to exactly one target and its counts are that target's counts,
+// while the executions remain the evidence.
 func convertQualityRun(workspaceID string, run *store.QualityRunMessage) *v1pb.QualityRun {
 	if run == nil {
 		return nil
@@ -459,6 +460,7 @@ func convertQualityRun(workspaceID string, run *store.QualityRunMessage) *v1pb.Q
 		FinishTime:      timeToProtoTimestampPtr(run.FinishedAt),
 		RuleRevisionMin: run.RuleRevisionMin,
 		RuleRevisionMax: run.RuleRevisionMax,
+		RetryCount:      run.RetryCount,
 	}
 }
 

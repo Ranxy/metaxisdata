@@ -267,16 +267,114 @@ func (s *Store) AdvanceQualityTargetNextRun(ctx context.Context, targetGUID stri
 	return nil
 }
 
+// CountPendingQualityTargetRules returns how many enabled rules of the target
+// still need an attempt in its current due cycle. A rule is pending until it has
+// a completed scheduled execution since the cycle started or its abandoned
+// attempts reached maxAttempts. Zero means the cycle is settled and the caller may
+// advance the target's schedule.
+func (s *Store) CountPendingQualityTargetRules(ctx context.Context, targetGUID string, targetType storepb.MetaType, maxAttempts int) (int, error) {
+	if targetGUID == "" {
+		return 0, common.Errorf(common.Invalid, "a target GUID is required")
+	}
+	if targetType == storepb.MetaType_UNSPECIFIED {
+		return 0, common.Errorf(common.Invalid, "a target type is required")
+	}
+	if maxAttempts <= 0 {
+		return 0, common.Errorf(common.Invalid, "a positive scheduled-attempt limit is required")
+	}
+
+	var pending int
+	err := s.GetDB().QueryRowContext(ctx, `
+		SELECT (COUNT(*))::INT
+		FROM quality_rule r
+		JOIN quality_target_schedule s
+			ON s.target_guid = r.target_guid AND s.target_type = r.target_type
+		LEFT JOIN LATERAL (
+			SELECT (COUNT(*))::INT AS count,
+				BOOL_OR(e.state = $5) AS completed
+			FROM quality_execution e
+			WHERE e.rule_id = r.id
+				AND e.target_guid = r.target_guid
+				AND e.target_type = r.target_type
+				AND e.trigger = $6
+				AND e.started_at >= s.next_run_at
+		) AS attempts ON TRUE
+		WHERE s.target_guid = $1 AND s.target_type = $2
+			AND s.next_run_at IS NOT NULL
+			AND r.state = $3 AND r.deleted = FALSE
+			AND NOT COALESCE(attempts.completed, FALSE)
+			AND COALESCE(attempts.count, 0) < $4`,
+		targetGUID,
+		int16(targetType),
+		storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
+		maxAttempts,
+		storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED,
+		storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED,
+	).Scan(&pending)
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to count the target's pending quality rules")
+	}
+	return pending, nil
+}
+
+// AdvanceDueQualityTargetNextRun advances a schedule only while it is still due.
+// It is the runner's cycle-completion write: if a reader edited the interval to a
+// future slot while the batch was executing, the update is a no-op instead of
+// overwriting that edit. The target must still have an enabled rule, so an
+// all-paused target is not given a new slot.
+func (s *Store) AdvanceDueQualityTargetNextRun(ctx context.Context, targetGUID string, targetType storepb.MetaType, nextRunAt, now time.Time) (bool, error) {
+	if targetGUID == "" {
+		return false, common.Errorf(common.Invalid, "a target GUID is required")
+	}
+	if targetType == storepb.MetaType_UNSPECIFIED {
+		return false, common.Errorf(common.Invalid, "a target type is required")
+	}
+	if nextRunAt.IsZero() || now.IsZero() {
+		return false, common.Errorf(common.Invalid, "a next run time and now are required")
+	}
+
+	result, err := s.GetDB().ExecContext(ctx, `
+		UPDATE quality_target_schedule s
+		SET next_run_at = $3
+		WHERE s.target_guid = $1 AND s.target_type = $2
+			AND s.next_run_at IS NOT NULL AND s.next_run_at <= $4
+			AND EXISTS (
+				SELECT 1 FROM quality_rule r
+				WHERE r.target_guid = s.target_guid AND r.target_type = s.target_type
+					AND r.state = $5 AND r.deleted = FALSE
+			)`,
+		targetGUID, int16(targetType), nextRunAt, now,
+		storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to advance the due quality target next run")
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, errors.Wrap(err, "failed to get rows affected for the due quality target next run update")
+	}
+	return affected > 0, nil
+}
+
+// DueQualityRule is one rule the current target cycle still has to attempt, with
+// the attempt number the planner must record on its execution row. A rule is
+// pending until its current cycle has a completed attempted execution or its
+// retry budget is exhausted.
+type DueQualityRule struct {
+	Rule    *QualityRuleMessage
+	Attempt int32
+}
+
 // DueQualityTarget is one scheduled target that has come due: its cadence, the
-// time it came due, and every enabled rule the batch must execute. The rules are
-// carried with the target because target-level scheduling runs them together.
+// time it came due, and the enabled rules the current cycle still has to attempt.
+// The rules are carried with the target because target-level scheduling runs them
+// together.
 type DueQualityTarget struct {
 	TargetGUID       string
 	TargetType       storepb.MetaType
 	TargetPath       *storepb.QualityTargetPath
 	ScheduleInterval time.Duration
 	NextRunAt        time.Time
-	Rules            []*QualityRuleMessage
+	Rules            []*DueQualityRule
 }
 
 // dueQualityTargetRow is one target's due aggregate before its rules are read:
@@ -286,7 +384,6 @@ type dueQualityTargetRow struct {
 	metaType  storepb.MetaType
 	interval  time.Duration
 	firstDue  time.Time
-	firstID   int64
 	ruleCount int32
 }
 
@@ -311,29 +408,70 @@ func selectDueTargets(targets []dueQualityTargetRow, ruleBudget, targetBudget in
 	return selected
 }
 
+// dueQualityTargetsStatement selects the targets one tick may execute. The LIMIT
+// is what bounds the tick's read work after a backlog: the Go-side budget then
+// trims this prefix further, but it never has to aggregate every due target.
+const dueQualityTargetsStatement = `
+	SELECT s.target_guid, s.target_type, s.schedule_interval_seconds, s.next_run_at,
+		(COUNT(r.id))::INT
+	FROM quality_target_schedule s
+	JOIN quality_rule r
+		ON r.target_guid = s.target_guid AND r.target_type = s.target_type
+		AND r.state = $1 AND r.deleted = FALSE
+	WHERE s.next_run_at IS NOT NULL AND s.next_run_at <= $2
+	GROUP BY s.target_guid, s.target_type, s.schedule_interval_seconds, s.next_run_at
+	ORDER BY s.next_run_at ASC, s.target_guid ASC
+	LIMIT $3`
+
+// dueQualityTargetRulesStatement reads the pending rules of the selected targets.
+// It re-checks s.next_run_at <= $7 so a target the user postponed between the two
+// statements is not executed against its stale due snapshot.
+var dueQualityTargetRulesStatement = `
+	SELECT ` + qualifyQualityRuleColumns("r") + `, COALESCE(attempts.count, 0)::INT
+	FROM quality_rule r
+	JOIN unnest($1::text[], $2::int2[]) AS t(guid, object_type)
+		ON r.target_guid = t.guid AND r.target_type = t.object_type
+	JOIN quality_target_schedule s
+		ON s.target_guid = r.target_guid AND s.target_type = r.target_type
+	LEFT JOIN LATERAL (
+		SELECT (COUNT(*))::INT AS count,
+			BOOL_OR(e.state = $4) AS completed
+		FROM quality_execution e
+		WHERE e.rule_id = r.id
+			AND e.target_guid = r.target_guid
+			AND e.target_type = r.target_type
+			AND e.trigger = $5
+			AND e.started_at >= s.next_run_at
+	) AS attempts ON TRUE
+	WHERE r.state = $3 AND r.deleted = FALSE
+		AND s.next_run_at <= $7
+		AND NOT COALESCE(attempts.completed, FALSE)
+		AND COALESCE(attempts.count, 0) < $6
+	ORDER BY r.target_guid ASC, r.target_type ASC, r.id ASC`
+
 // FindDueQualityTargets returns the scheduled targets whose next_run_at has
-// arrived, oldest due first, together with every enabled rule of each target.
-// ruleLimit and targetLimit are work budgets: whole targets are taken until
-// either is met, so a target's checks are never cut by a budget.
-func (s *Store) FindDueQualityTargets(ctx context.Context, now time.Time, ruleLimit, targetLimit int) ([]*DueQualityTarget, error) {
+// arrived, oldest due first. Each target carries the enabled rules the current
+// cycle still has to attempt: a rule with a completed execution since the cycle
+// started is done, and a rule whose abandoned attempts reached maxAttempts is
+// exhausted. A target can therefore come back with no rules; that means its cycle
+// is settled and the caller only has to advance its schedule.
+//
+// ruleLimit and targetLimit are work budgets: the due-target query returns at most
+// targetLimit rows and whole targets are then taken until either budget is met, so
+// a target's checks are never cut by a budget.
+func (s *Store) FindDueQualityTargets(ctx context.Context, now time.Time, ruleLimit, targetLimit, maxAttempts int) ([]*DueQualityTarget, error) {
 	if ruleLimit <= 0 {
 		return nil, common.Errorf(common.Invalid, "a positive due-rule limit is required")
 	}
 	if targetLimit <= 0 {
 		return nil, common.Errorf(common.Invalid, "a positive due-target limit is required")
 	}
+	if maxAttempts <= 0 {
+		return nil, common.Errorf(common.Invalid, "a positive scheduled-attempt limit is required")
+	}
 
-	targetRows, err := s.GetDB().QueryContext(ctx, `
-		SELECT s.target_guid, s.target_type, s.schedule_interval_seconds, s.next_run_at,
-			(MIN(r.id))::BIGINT, (COUNT(r.id))::INT
-		FROM quality_target_schedule s
-		JOIN quality_rule r
-			ON r.target_guid = s.target_guid AND r.target_type = s.target_type
-			AND r.state = $1 AND r.deleted = FALSE
-		WHERE s.next_run_at IS NOT NULL AND s.next_run_at <= $2
-		GROUP BY s.target_guid, s.target_type, s.schedule_interval_seconds, s.next_run_at
-		ORDER BY s.next_run_at ASC, s.target_guid ASC`,
-		storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED, now)
+	targetRows, err := s.GetDB().QueryContext(ctx, dueQualityTargetsStatement,
+		storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED, now, targetLimit)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to query due quality target schedules")
 	}
@@ -346,7 +484,7 @@ func (s *Store) FindDueQualityTargets(ctx context.Context, now time.Time, ruleLi
 			targetType      int16
 			intervalSeconds int32
 		)
-		if err := targetRows.Scan(&target.guid, &targetType, &intervalSeconds, &target.firstDue, &target.firstID, &target.ruleCount); err != nil {
+		if err := targetRows.Scan(&target.guid, &targetType, &intervalSeconds, &target.firstDue, &target.ruleCount); err != nil {
 			return nil, errors.Wrap(err, "failed to scan a due quality target schedule")
 		}
 		target.metaType = storepb.MetaType(targetType)
@@ -368,28 +506,26 @@ func (s *Store) FindDueQualityTargets(ctx context.Context, now time.Time, ruleLi
 		objectTypes = append(objectTypes, int16(target.metaType))
 	}
 
-	ruleRows, err := s.GetDB().QueryContext(ctx, `
-		SELECT `+qualityRuleColumns+`
-		FROM quality_rule r
-		JOIN unnest($1::text[], $2::int2[]) AS t(guid, object_type)
-			ON r.target_guid = t.guid AND r.target_type = t.object_type
-		WHERE r.state = $3 AND r.deleted = FALSE
-		ORDER BY r.target_guid ASC, r.target_type ASC, r.id ASC`,
+	ruleRows, err := s.GetDB().QueryContext(ctx, dueQualityTargetRulesStatement,
 		pq.Array(guids), pq.Array(objectTypes),
-		storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED)
+		storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
+		storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED,
+		storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED,
+		maxAttempts, now)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to query the due targets' quality rules")
 	}
 	defer ruleRows.Close()
 
-	byTarget := make(map[targetKey][]*QualityRuleMessage, len(selected))
+	byTarget := make(map[targetKey][]*DueQualityRule, len(selected))
 	for ruleRows.Next() {
-		msg, err := scanQualityRule(ruleRows)
+		var attempt int32
+		msg, err := scanQualityRule(dueQualityRuleRow{rows: ruleRows, attempt: &attempt})
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to scan a due target's quality rule")
 		}
 		key := targetKey{guid: msg.TargetGUID, metaType: msg.TargetType}
-		byTarget[key] = append(byTarget[key], msg)
+		byTarget[key] = append(byTarget[key], &DueQualityRule{Rule: msg, Attempt: attempt + 1})
 	}
 	if err := ruleRows.Err(); err != nil {
 		return nil, errors.Wrap(err, "rows iteration error for due targets' quality rules")
@@ -399,8 +535,8 @@ func (s *Store) FindDueQualityTargets(ctx context.Context, now time.Time, ruleLi
 	for _, target := range selected {
 		key := targetKey{guid: target.guid, metaType: target.metaType}
 		path := &storepb.QualityTargetPath{}
-		if rules := byTarget[key]; len(rules) > 0 && rules[0].TargetPath != nil {
-			path = rules[0].TargetPath
+		if rules := byTarget[key]; len(rules) > 0 && rules[0].Rule.TargetPath != nil {
+			path = rules[0].Rule.TargetPath
 		}
 		result = append(result, &DueQualityTarget{
 			TargetGUID:       target.guid,
@@ -412,6 +548,17 @@ func (s *Store) FindDueQualityTargets(ctx context.Context, now time.Time, ruleLi
 		})
 	}
 	return result, nil
+}
+
+// dueQualityRuleRow adapts *sql.Rows for scanQualityRule while the due query also
+// returns how many scheduled attempts the rule already used in this cycle.
+type dueQualityRuleRow struct {
+	rows    *sql.Rows
+	attempt *int32
+}
+
+func (r dueQualityRuleRow) Scan(dest ...any) error {
+	return r.rows.Scan(append(dest, r.attempt)...)
 }
 
 // targetKey identifies one target: the GUID alone is not unique across object

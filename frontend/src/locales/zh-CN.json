@@ -322,6 +322,7 @@
       "tab": "数据质量",
       "title": "数据质量"
     },
+    "attempt": "尝试",
     "checks": {
       "description": "跨所有目标的检查，用于审计与搜索；创建和编辑在目标的契约工作台中进行。",
       "emptyDescription": "打开一个质量目标，在那里添加第一条检查。",
@@ -665,6 +666,7 @@
       "unspecified": "未指定"
     },
     "executions": {
+      "attempt": "第 {count} 次尝试",
       "checkDuration": "耗时",
       "checkFailedRows": "失败行数",
       "checkObserved": "实际值",
@@ -694,6 +696,7 @@
       "runOpenInList": "在全部执行中查看",
       "runPartial": "本批 {done}/{all} 条检查",
       "runResult": "批次结果",
+      "runRetries": "补跑 {count} 次",
       "runRunningHint": "批次仍在执行，结果尚不完整。",
       "targetColumn": "目标",
       "targetSearch": "搜索目标、Schema 或实例",

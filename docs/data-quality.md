@@ -144,7 +144,7 @@ workspace, under the health summary.
 
 ## Executions and statuses
 
-An execution is **one check checked once**, on demand or by the scheduler. Open
+An execution is **one check checked once**, on demand or by the scheduler. If a scheduled batch times out or is abandoned before a check runs, that check is retried in the same target cycle; the execution detail shows its attempt number (attempt 2 or 3), and the batch card counts how many checks were retries. A check is attempted at most three times per cycle. Open
 Data Quality → Executions to watch them: every check the scheduler or a manual
 run started is one row, and a queued or running row is polled until it finishes.
 The list filters by lifecycle state, outcome and trigger; open a row for the full
@@ -152,10 +152,11 @@ evidence behind it.
 
 An execution's lifecycle is *pending* (planned, waiting for the runner),
 *running*, or *completed*. A queued or running execution left behind by a stopped
-server process is not retried: a startup sweep marks stale rows abandoned, so an
-abandoned row means "the check never finished". The next scheduled slot runs the
-check again, and *Run now* checks it immediately. Once an execution completes, its
-outcome is one of six statuses:
+server process is marked abandoned by a startup sweep instead of being resumed: an
+abandoned row means "the check never finished". A scheduled check is retried on a
+later scheduler tick of the same target cycle, within its three-attempt budget; a
+manual execution is not retried, so use *Run now* again. Once an execution
+completes, its outcome is one of six statuses:
 
 | Status | Meaning |
 | --- | --- |
@@ -336,7 +337,7 @@ pruned.
 | A dry run fails with a parameter or SQL error | The message shows the compiled SQL and its bound values; check that the filter values and range/aggregate bounds match the column's type (for example a date written as a plain string, or a numeric bound for a text column). |
 | Checks never run | The check is paused or archived, the instance is gone, or the daily execution ceiling was reached (the next day resumes it; **Run now** still works). |
 | I cannot change one check's schedule | Scheduling is per target: all enabled checks on the target run together on the schedule shown in its workspace header, and a check inherits it. Change the cadence there, or pause the check to drop it from the target's runs. |
-| An execution stays pending, or ends abandoned | The instance's connection budget stayed busy past the runner's wait, or the server restarted mid-run. Such checks are not retried automatically; use **Run now** or wait for the next scheduled slot. |
+| An execution stays pending, or ends abandoned | The instance's connection budget stayed busy past the runner's wait, or the server restarted mid-run. A scheduled check is retried on a later tick of the same target cycle (at most three attempts); a manual execution is not retried, so use **Run now** again. |
 | A check that used to run now ends `ERROR(UNSUPPORTED)` | The check uses a configuration this build no longer accepts, for example an aggregate `COUNT` (use a row count check instead) or a column type the engine cannot express. Re-create the check with the supported type. |
 | No notification for a failure | The issue was already open (notifications fire on transitions), the check is muted, or more than ten checks failed in one target's scan batch and a summary was sent instead. |
 | Model buttons are disabled | Model analysis is off, no allowed provider profile exists, or the caller lacks `suggest`/`explain`. |

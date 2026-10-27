@@ -66,6 +66,12 @@ const (
 // narrow interface. A nil scheduler means the executions are planned and left
 // PENDING, which is the state before the runner is wired in.
 type QualityExecutionScheduler interface {
+	// HasQualityExecutionQueueRoom reports whether n more manual batches fit in the
+	// queue. RunQualityRules checks its whole multi-target selection with it before
+	// planning any batch, so a full queue cannot leave earlier targets queued while
+	// the RPC fails.
+	HasQualityExecutionQueueRoom(n int) bool
+
 	// EnqueueQualityExecutions queues one internal batch together with the
 	// instance the API grouped its rules on and the execution rows it planned. It
 	// reports false when its bounded queue is full, in which case the batch is
@@ -925,6 +931,13 @@ func (s *DataQualityService) RunQualityRules(ctx context.Context, req *connect.R
 	groups := groupQualityRulesForManualRun(rules)
 	if len(groups) == 0 {
 		return nil, connectErrorInvalid("the selected rules have no resolvable instance")
+	}
+	// Check the whole selection before planning any group: the split is one batch
+	// per target, and failing halfway would leave the earlier targets running while
+	// the request reports an error, so a retry would duplicate their executions.
+	if s.executionScheduler != nil && !s.executionScheduler.HasQualityExecutionQueueRoom(len(groups)) {
+		return nil, connect.NewError(connect.CodeResourceExhausted,
+			errors.New("the quality runner queue is full; retry the run later"))
 	}
 	callerID := principalIDPointer(currentUserID(ctx))
 	now := time.Now()

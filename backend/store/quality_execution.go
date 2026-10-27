@@ -16,7 +16,7 @@ import (
 
 // qualityExecutionColumns is the projection every quality_execution query
 // returns, in the order scanQualityExecution reads it.
-const qualityExecutionColumns = `id, run_id, rule_id, rule_revision, rule_engine_version, target_guid, target_type, target_path, instance_resource_id, trigger, initiator_id, state, status, observed_value, observed_kind, thresholds, failed_rows, total_rows, sampled, sample_rows, truncated, sample, executed_sql, error_code, error_message, duration_ms, started_at, finished_at`
+const qualityExecutionColumns = `id, run_id, rule_id, rule_revision, rule_engine_version, target_guid, target_type, target_path, instance_resource_id, trigger, attempt, initiator_id, state, status, observed_value, observed_kind, thresholds, failed_rows, total_rows, sampled, sample_rows, truncated, sample, executed_sql, error_code, error_message, duration_ms, started_at, finished_at`
 
 // QualityExecutionMessage is one rule checked once: the durable, user-facing
 // unit of the data quality engine. Its public resource name is built from ID,
@@ -46,6 +46,10 @@ type QualityExecutionMessage struct {
 	// UNSPECIFIED until the execution reaches COMPLETED.
 	State   storepb.QualityExecutionState
 	Trigger storepb.QualityExecutionTrigger
+	// Attempt is the scheduled attempt number in the target's current due cycle:
+	// 1 for the first attempt, 2+ for a retry after an abandoned attempt. Manual
+	// executions always use 1.
+	Attempt int32
 	// InitiatorID is the principal that asked for a manual execution; nil for a
 	// scheduled one.
 	InitiatorID *int32
@@ -196,6 +200,7 @@ func scanQualityExecution(scanner interface{ Scan(...any) error }) (*QualityExec
 		&targetPathRaw,
 		&msg.InstanceResourceID,
 		&msg.Trigger,
+		&msg.Attempt,
 		&initiator,
 		&msg.State,
 		&msg.Status,
@@ -250,9 +255,9 @@ func scanQualityExecution(scanner interface{ Scan(...any) error }) (*QualityExec
 const qualityExecutionPlanStatement = `
 	INSERT INTO quality_execution (
 		run_id, rule_id, rule_revision, rule_engine_version, target_guid, target_type,
-		target_path, instance_resource_id, trigger, initiator_id, state, started_at
+		target_path, instance_resource_id, trigger, attempt, initiator_id, state, started_at
 	) VALUES (
-		$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+		$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
 	)
 	RETURNING id
 `
@@ -309,6 +314,10 @@ func (s *Store) PlanQualityExecutions(ctx context.Context, executions []*Quality
 			initiator = sql.NullInt32{Int32: *execution.InitiatorID, Valid: true}
 		}
 		state := storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_PENDING
+		attempt := execution.Attempt
+		if attempt <= 0 {
+			attempt = 1
+		}
 		if err := tx.QueryRowContext(ctx, qualityExecutionPlanStatement,
 			execution.RunID,
 			execution.RuleID,
@@ -319,6 +328,7 @@ func (s *Store) PlanQualityExecutions(ctx context.Context, executions []*Quality
 			targetPathRaw,
 			execution.InstanceResourceID,
 			int32(execution.Trigger),
+			attempt,
 			initiator,
 			int32(state),
 			startedAt,
@@ -329,6 +339,7 @@ func (s *Store) PlanQualityExecutions(ctx context.Context, executions []*Quality
 		// reports the planned executions must not render an UNSPECIFIED state or
 		// the zero time the database replaced.
 		execution.State = state
+		execution.Attempt = attempt
 		execution.StartedAt = startedAt
 	}
 

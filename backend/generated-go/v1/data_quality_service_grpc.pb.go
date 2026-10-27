@@ -55,6 +55,7 @@ const (
 	DataQualityService_ListQualityTargets_FullMethodName                 = "/metaxisdata.v1.DataQualityService/ListQualityTargets"
 	DataQualityService_GetQualityTarget_FullMethodName                   = "/metaxisdata.v1.DataQualityService/GetQualityTarget"
 	DataQualityService_UpdateQualityTargetSchedule_FullMethodName        = "/metaxisdata.v1.DataQualityService/UpdateQualityTargetSchedule"
+	DataQualityService_GetQualityTargetSchedule_FullMethodName           = "/metaxisdata.v1.DataQualityService/GetQualityTargetSchedule"
 	DataQualityService_GetQualityContract_FullMethodName                 = "/metaxisdata.v1.DataQualityService/GetQualityContract"
 	DataQualityService_UpdateQualityContract_FullMethodName              = "/metaxisdata.v1.DataQualityService/UpdateQualityContract"
 	DataQualityService_PublishQualityContract_FullMethodName             = "/metaxisdata.v1.DataQualityService/PublishQualityContract"
@@ -188,6 +189,10 @@ type DataQualityServiceClient interface {
 	// is per target, so this replaces the per-check schedule; a change takes
 	// effect from the next slot and never runs the target immediately.
 	UpdateQualityTargetSchedule(ctx context.Context, in *UpdateQualityTargetScheduleRequest, opts ...grpc.CallOption) (*QualityTargetSchedule, error)
+	// Read one target's schedule without the target's rules, results and issues.
+	// A rule lifecycle change can move the target's next run; the workspace re-reads
+	// just this instead of the whole target after every check edit.
+	GetQualityTargetSchedule(ctx context.Context, in *GetQualityTargetScheduleRequest, opts ...grpc.CallOption) (*QualityTargetSchedule, error)
 	// Read one target's contract: its target-level defaults, the published version,
 	// and whether the live rules differ from that snapshot.
 	GetQualityContract(ctx context.Context, in *GetQualityContractRequest, opts ...grpc.CallOption) (*QualityContract, error)
@@ -578,6 +583,16 @@ func (c *dataQualityServiceClient) UpdateQualityTargetSchedule(ctx context.Conte
 	return out, nil
 }
 
+func (c *dataQualityServiceClient) GetQualityTargetSchedule(ctx context.Context, in *GetQualityTargetScheduleRequest, opts ...grpc.CallOption) (*QualityTargetSchedule, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityTargetSchedule)
+	err := c.cc.Invoke(ctx, DataQualityService_GetQualityTargetSchedule_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *dataQualityServiceClient) GetQualityContract(ctx context.Context, in *GetQualityContractRequest, opts ...grpc.CallOption) (*QualityContract, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(QualityContract)
@@ -763,6 +778,10 @@ type DataQualityServiceServer interface {
 	// is per target, so this replaces the per-check schedule; a change takes
 	// effect from the next slot and never runs the target immediately.
 	UpdateQualityTargetSchedule(context.Context, *UpdateQualityTargetScheduleRequest) (*QualityTargetSchedule, error)
+	// Read one target's schedule without the target's rules, results and issues.
+	// A rule lifecycle change can move the target's next run; the workspace re-reads
+	// just this instead of the whole target after every check edit.
+	GetQualityTargetSchedule(context.Context, *GetQualityTargetScheduleRequest) (*QualityTargetSchedule, error)
 	// Read one target's contract: its target-level defaults, the published version,
 	// and whether the live rules differ from that snapshot.
 	GetQualityContract(context.Context, *GetQualityContractRequest) (*QualityContract, error)
@@ -898,6 +917,9 @@ func (UnimplementedDataQualityServiceServer) GetQualityTarget(context.Context, *
 }
 func (UnimplementedDataQualityServiceServer) UpdateQualityTargetSchedule(context.Context, *UpdateQualityTargetScheduleRequest) (*QualityTargetSchedule, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateQualityTargetSchedule not implemented")
+}
+func (UnimplementedDataQualityServiceServer) GetQualityTargetSchedule(context.Context, *GetQualityTargetScheduleRequest) (*QualityTargetSchedule, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQualityTargetSchedule not implemented")
 }
 func (UnimplementedDataQualityServiceServer) GetQualityContract(context.Context, *GetQualityContractRequest) (*QualityContract, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetQualityContract not implemented")
@@ -1561,6 +1583,24 @@ func _DataQualityService_UpdateQualityTargetSchedule_Handler(srv interface{}, ct
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataQualityService_GetQualityTargetSchedule_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQualityTargetScheduleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).GetQualityTargetSchedule(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_GetQualityTargetSchedule_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).GetQualityTargetSchedule(ctx, req.(*GetQualityTargetScheduleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DataQualityService_GetQualityContract_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetQualityContractRequest)
 	if err := dec(in); err != nil {
@@ -1811,6 +1851,10 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpdateQualityTargetSchedule",
 			Handler:    _DataQualityService_UpdateQualityTargetSchedule_Handler,
+		},
+		{
+			MethodName: "GetQualityTargetSchedule",
+			Handler:    _DataQualityService_GetQualityTargetSchedule_Handler,
 		},
 		{
 			MethodName: "GetQualityContract",
