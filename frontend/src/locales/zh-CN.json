@@ -313,12 +313,6 @@
       "rulesDescription": "目标为这张表的检查。",
       "rulesTitle": "检查",
       "semanticLabel": "语义标注",
-      "suggestFailed": "排队标注建议失败。",
-      "suggestLabels": "建议标注",
-      "suggestLabelsHint": "跳过已有标注或已有待审核建议的字段。",
-      "suggestRegenerate": "重新生成建议",
-      "suggestRegenerateHint": "同时重新分析已有标注的字段，以及已排队或已审核的建议。已有待审核建议会就地刷新，不会重复创建。",
-      "suggesting": "正在排队…",
       "tab": "数据质量",
       "title": "数据质量"
     },
@@ -415,6 +409,8 @@
       "noPermission": "你没有使用 AI 起草的权限。",
       "openSettings": "打开设置",
       "placeholder": "例如：确保数据集在使用前不为空",
+      "quickHint": "无需输入，直接为字段生成标注建议，在建议中心审阅。",
+      "quickTitle": "快捷建议",
       "quotaExceeded": "已达到每日 AI 分析上限，请在额度重置后重试。",
       "title": "AI 助手",
       "unavailable": "该目标当前无法使用 AI 起草。"
@@ -890,7 +886,6 @@
       "truncated": "已截断"
     },
     "recentExecutions": "最近执行",
-    "recentExecutionsHint": "该检查最近记录的执行。",
     "recentResultWindow": "最近 {count} 次执行",
     "resolutionNote": "备注",
     "resolutionNotePlaceholder": "做了什么，或为什么这个失败是预期的。",
@@ -1019,6 +1014,17 @@
       "skipped": "已跳过",
       "unspecified": "未指定",
       "warn": "警告"
+    },
+    "suggest": {
+      "failed": "排队标注建议失败。",
+      "labels": "建议标注",
+      "labelsHint": "跳过已有标注或已有待审核建议的字段。",
+      "profileFailed": "字段分析失败，未能生成标注建议。",
+      "profileRequired": "建议标注需要每个字段的最新画像。请先在元数据页执行“分析字段”，或让有该权限的成员操作。",
+      "profiling": "正在分析字段…",
+      "regenerate": "重新生成建议",
+      "regenerateHint": "同时重新分析已有标注的字段，以及已排队或已审核的建议。已有待审核建议会就地刷新，不会重复创建。",
+      "suggesting": "正在生成建议…"
     },
     "suggestionJobStatus": {
       "canceled": "已取消",
@@ -1380,6 +1386,8 @@
       "kindMaterializedView": "物化视图",
       "kindTable": "表",
       "kindView": "视图",
+      "labelSuggestionsHint": "{count} 条待审阅。",
+      "labelSuggestionsTitle": "字段标注建议",
       "nextRun": "下次 {time}",
       "noNextRun": "无下次运行",
       "noRulesHint": "在下面新增一条，或让 AI 助手起草几条。",

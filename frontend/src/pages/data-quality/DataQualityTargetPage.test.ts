@@ -16,6 +16,8 @@ import { notify } from "@/lib/notify";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
+  ColumnProfileSchema,
+  ColumnProfileStatsSchema,
   GetQualityTargetResponseSchema,
   NullPercentConfigSchema,
   type QualityContract,
@@ -34,10 +36,12 @@ import {
   QualityRuleType,
   type QualityRun,
   QualityRunSchema,
+  QualitySemanticType,
   QualitySeverity,
   QualityStatus,
   type QualitySuggestion,
   QualitySuggestionKind,
+  QualitySuggestionQueueSummarySchema,
   QualitySuggestionSchema,
   QualitySuggestionStatus,
   type QualityTargetColumn,
@@ -49,6 +53,7 @@ import {
   type QualityTargetSummary,
   QualityTargetSummarySchema,
   RowCountConfigSchema,
+  SemanticLabelSuggestionSchema,
   UniqueCombinationConfigSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
@@ -78,6 +83,9 @@ const mocks = vi.hoisted(() => ({
   listAllMetadata: vi.fn(),
   updateQualitySuggestion: vi.fn(),
   suggestQualityRule: vi.fn(),
+  suggestColumnLabels: vi.fn(),
+  listColumnProfiles: vi.fn(),
+  profileColumns: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", async (importOriginal) => ({
@@ -96,6 +104,9 @@ vi.mock("@/api/data-quality", async (importOriginal) => ({
   previewQualityRule: mocks.previewQualityRule,
   updateQualitySuggestion: mocks.updateQualitySuggestion,
   suggestQualityRule: mocks.suggestQualityRule,
+  suggestColumnLabels: mocks.suggestColumnLabels,
+  listColumnProfiles: mocks.listColumnProfiles,
+  profileColumns: mocks.profileColumns,
 }));
 
 // The inline composer lists the target's columns through this API.
@@ -121,6 +132,7 @@ const PERMISSIONS = [
   "metaxisdata.dataQuality.rules.run",
   "metaxisdata.dataQuality.rules.delete",
   "metaxisdata.dataQuality.suggest",
+  "metaxisdata.dataQuality.profile.run",
   "metaxisdata.dataQuality.issues.list",
   "metaxisdata.dataQuality.issues.get",
 ];
@@ -419,6 +431,43 @@ function draftSuggestion(
   });
 }
 
+/** A stored profile for one column, measured just now. */
+function freshProfile(column: string, ageDays = 0) {
+  return create(ColumnProfileSchema, {
+    tableGuid: TARGET,
+    metaType: MetaType.TABLE,
+    column,
+    profile: create(ColumnProfileStatsSchema, { totalRows: 100n }),
+    profiledAt: timestampFromDate(
+      new Date(Date.now() - ageDays * 24 * 60 * 60 * 1000)
+    ),
+  });
+}
+
+/** A pending semantic-label proposal, as the one-click pass queues it. */
+function labelSuggestion(column = "email") {
+  return create(QualitySuggestionSchema, {
+    name: `workspaces/ws/qualitySuggestions/label-${column}`,
+    kind: QualitySuggestionKind.LABEL,
+    status: QualitySuggestionStatus.PENDING,
+    target: create(QualityTargetSchema, {
+      metaGuid: TARGET,
+      metaType: MetaType.TABLE,
+    }),
+    payload: {
+      payload: {
+        case: "label",
+        value: create(SemanticLabelSuggestionSchema, {
+          column,
+          label: QualitySemanticType.EMAIL,
+          confidence: 0.85,
+          evidence: { rationale: "Values look like addresses." },
+        }),
+      },
+    },
+  });
+}
+
 function issueFixture() {
   return create(QualityIssueSchema, {
     name: "workspaces/ws/qualityIssues/issue-1",
@@ -632,6 +681,15 @@ describe("DataQualityTargetPage", () => {
       ],
       summary: undefined,
     });
+    mocks.suggestColumnLabels.mockResolvedValue({
+      qualitySuggestions: [],
+      summary: undefined,
+    });
+    mocks.listColumnProfiles.mockResolvedValue([
+      freshProfile("email"),
+      freshProfile("amount"),
+    ]);
+    mocks.profileColumns.mockResolvedValue([]);
   });
 
   it("reads the target's whole workspace in one call and groups its rules", async () => {
@@ -710,6 +768,146 @@ describe("DataQualityTargetPage", () => {
     expect(mocks.runQualityRules).toHaveBeenLastCalledWith({
       rules: [RULE_DATASET],
     });
+    wrapper.unmount();
+  });
+
+  it("links the target line in the header to the metadata browser", async () => {
+    mocks.getQualityTarget.mockResolvedValue(response());
+    const { wrapper } = await mountPage();
+
+    const link = [
+      ...document.body.querySelectorAll<HTMLAnchorElement>("a"),
+    ].find((candidate) =>
+      candidate.getAttribute("href")?.startsWith("/metadata/")
+    );
+    expect(link).toBeDefined();
+    expect(link?.getAttribute("href")).toBe(
+      `/metadata/${TARGET.split(";").join("/")}?metaType=${MetaType.TABLE}`
+    );
+    expect(link?.textContent).toContain("prod · shop · public");
+    expect(link?.getAttribute("title")).toBe(label("dataQuality.viewMetadata"));
+    wrapper.unmount();
+  });
+
+  it("leaves the target line unlinked when the metadata target is orphaned", async () => {
+    mocks.getQualityTarget.mockResolvedValue(
+      response({ orphanedReason: "The table was dropped." })
+    );
+    const { wrapper } = await mountPage();
+
+    expect(
+      [...document.body.querySelectorAll<HTMLAnchorElement>("a")].some(
+        (candidate) => candidate.getAttribute("href")?.startsWith("/metadata/")
+      )
+    ).toBe(false);
+    expect(wrapper.text()).toContain("prod · shop · public");
+    // A target that no longer exists cannot be analyzed for labels either.
+    expect(
+      buttonByText(label("dataQuality.suggest.labels"))?.hasAttribute(
+        "disabled"
+      )
+    ).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("runs a one-click label pass from the AI panel and surfaces the pending proposals", async () => {
+    // The first read is the page load; the second is the queue read after the
+    // pass, which must show what the pass queued.
+    let queueReads = 0;
+    mocks.listQualitySuggestions.mockImplementation(async () => {
+      queueReads += 1;
+      return queueReads === 1 ? draftPage([]) : draftPage([labelSuggestion()]);
+    });
+    mocks.suggestColumnLabels.mockResolvedValue({
+      qualitySuggestions: [labelSuggestion()],
+      summary: create(QualitySuggestionQueueSummarySchema, { created: 1 }),
+    });
+    const { wrapper } = await mountPage();
+
+    expect(wrapper.text()).not.toContain(
+      label("dataQuality.workspace.labelSuggestionsTitle")
+    );
+
+    buttonByText(label("dataQuality.suggest.labels"))?.click();
+    await flushPromises();
+
+    // The header action labels the target's columns without an intent, in the
+    // reader's language, and without forcing already-proposed columns.
+    expect(mocks.suggestColumnLabels).toHaveBeenCalledWith({
+      tableGuid: TARGET,
+      metaType: MetaType.TABLE,
+      columns: ["email", "amount"],
+      language: "en-US",
+      forceRegenerate: false,
+    });
+    expect(wrapper.text()).toContain(
+      label("dataQuality.workspace.labelSuggestionsTitle")
+    );
+    expect(wrapper.text()).toContain(
+      label("dataQuality.workspace.labelSuggestionsHint", { count: 1 })
+    );
+    wrapper.unmount();
+  });
+
+  it("hides the one-click label pass without the suggest permission", async () => {
+    const { wrapper } = await mountPage(
+      `/data-quality/targets/${TARGET.split(";").join("/")}`,
+      PERMISSIONS.filter(
+        (permission) => permission !== "metaxisdata.dataQuality.suggest"
+      )
+    );
+
+    expect(buttonByText(label("dataQuality.suggest.labels"))).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it("profiles stale columns before asking the model for labels", async () => {
+    mocks.listColumnProfiles.mockResolvedValue([
+      freshProfile("email"),
+      freshProfile("amount", 8),
+    ]);
+    mocks.suggestColumnLabels.mockResolvedValue({
+      qualitySuggestions: [],
+      summary: undefined,
+    });
+    const { wrapper } = await mountPage();
+
+    buttonByText(label("dataQuality.suggest.labels"))?.click();
+    await flushPromises();
+
+    // Only the stale column is measured again, and the analysis finishes before
+    // the label request leaves.
+    expect(mocks.profileColumns).toHaveBeenCalledWith({
+      tableGuid: TARGET,
+      metaType: MetaType.TABLE,
+      columns: ["amount"],
+    });
+    expect(mocks.profileColumns.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.suggestColumnLabels.mock.invocationCallOrder[0] ?? 0
+    );
+    wrapper.unmount();
+  });
+
+  it("explains when stale columns cannot be profiled without permission", async () => {
+    mocks.listColumnProfiles.mockResolvedValue([
+      freshProfile("email", 8),
+      freshProfile("amount", 8),
+    ]);
+    const { wrapper } = await mountPage(
+      undefined,
+      PERMISSIONS.filter(
+        (permission) => permission !== "metaxisdata.dataQuality.profile.run"
+      )
+    );
+
+    buttonByText(label("dataQuality.suggest.labels"))?.click();
+    await flushPromises();
+
+    expect(mocks.profileColumns).not.toHaveBeenCalled();
+    expect(mocks.suggestColumnLabels).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain(
+      label("dataQuality.suggest.profileRequired")
+    );
     wrapper.unmount();
   });
 

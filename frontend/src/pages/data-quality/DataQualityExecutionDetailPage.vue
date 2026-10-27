@@ -216,8 +216,8 @@
                     {{ t("dataQuality.initiator") }}
                   </div>
                   <div
-                    class="truncate font-mono text-sm"
-                    :title="execution.initiator || undefined"
+                    class="truncate text-sm"
+                    :title="initiatorLabel"
                   >
                     {{ initiatorLabel }}
                   </div>
@@ -459,6 +459,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useErrorHandler } from "@/composables/useErrorHandler";
+import { useUserDirectory } from "@/composables/useUserDirectory";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
 import {
@@ -500,6 +501,7 @@ const POLL_INTERVAL_MS = 3000;
 const { t, locale } = useI18n();
 const route = useRoute();
 const { formatError } = useErrorHandler();
+const userDirectory = useUserDirectory();
 const authStore = useAuthStore();
 
 const execution = ref<QualityExecution>();
@@ -642,7 +644,7 @@ const instanceLabel = computed(() =>
 
 const initiatorLabel = computed(() =>
   execution.value?.initiator
-    ? (execution.value.initiator.split("/").pop() ?? "-")
+    ? userDirectory.emailOf(execution.value.initiator)
     : "-"
 );
 
@@ -752,6 +754,9 @@ async function load(notifyErrors: boolean) {
     const loaded = await getQualityExecution(executionName.value);
     execution.value = loaded;
     error.value = "";
+    if (loaded.initiator) {
+      void userDirectory.load();
+    }
     if (loaded.rule) {
       void loadRuleTitle(loaded.rule);
     }

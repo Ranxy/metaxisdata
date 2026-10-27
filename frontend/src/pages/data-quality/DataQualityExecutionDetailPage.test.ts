@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => ({
   getQualityExecution: vi.fn(),
   getQualityRule: vi.fn(),
   getWorkspaceProfileSetting: vi.fn(),
+  listAllUsers: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", async (importOriginal) => ({
@@ -39,6 +40,11 @@ vi.mock("@/api/setting", async (importOriginal) => ({
   getWorkspaceProfileSetting: mocks.getWorkspaceProfileSetting,
 }));
 
+vi.mock("@/api/user", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/user")>()),
+  listAllUsers: mocks.listAllUsers,
+}));
+
 const RULE = "workspaces/ws/qualityRules/rule-1";
 const EXECUTION = "workspaces/ws/qualityExecutions/exec-1";
 const START = new Date("2026-10-07T09:30:00Z");
@@ -49,6 +55,7 @@ const PERMISSIONS = [
   "metaxisdata.dataQuality.executions.list",
   "metaxisdata.dataQuality.rules.get",
   "metaxisdata.dataQuality.explain",
+  "metaxisdata.users.list",
 ];
 
 function executionFixture(
@@ -167,6 +174,9 @@ describe("DataQualityExecutionDetailPage", () => {
     mocks.getWorkspaceProfileSetting.mockResolvedValue({
       dataQuality: { enableLlmAnalysis: true },
     });
+    mocks.listAllUsers.mockResolvedValue([
+      create(UserSchema, { name: "users/7", email: "owner@example.com" }),
+    ]);
   });
 
   afterEach(() => {
@@ -188,7 +198,9 @@ describe("DataQualityExecutionDetailPage", () => {
       i18n.global.t("dataQuality.executionTrigger.manual")
     );
     expect(text).toContain("inst1");
-    expect(text).toContain("users/7".split("/").pop() ?? "");
+    // The initiator is a principal resource name; the page resolves it through
+    // the workspace directory rather than printing the numeric id.
+    expect(text).toContain("owner@example.com");
     expect(wrapper.text()).toContain("a@example.com");
     expect(wrapper.text()).toContain("b@example.com");
     // Every sampled row is numbered, so two failures on the same column do not

@@ -335,7 +335,7 @@ describe("MetadataQualitySection", () => {
     const wrapper = await mountSection(SUGGEST_PERMISSIONS);
 
     expect(wrapper.text()).toContain(label("dataQuality.asset.analyzeColumns"));
-    expect(wrapper.text()).toContain(label("dataQuality.asset.suggestLabels"));
+    expect(wrapper.text()).toContain(label("dataQuality.suggest.labels"));
     expect(wrapper.find('[aria-label="Clear label"]').exists()).toBe(true);
     // Authoring lives in the target workspace only: no inline create entrance,
     // and no link into the removed rule editor.
@@ -473,9 +473,7 @@ describe("MetadataQualitySection", () => {
 
     await wrapper
       .findAll("button")
-      .find((item) =>
-        item.text().includes(label("dataQuality.asset.suggestLabels"))
-      )
+      .find((item) => item.text().includes(label("dataQuality.suggest.labels")))
       ?.trigger("click");
     await flushPromises();
 
@@ -510,9 +508,7 @@ describe("MetadataQualitySection", () => {
 
     await wrapper
       .findAll("button")
-      .find((item) =>
-        item.text().includes(label("dataQuality.asset.suggestLabels"))
-      )
+      .find((item) => item.text().includes(label("dataQuality.suggest.labels")))
       ?.trigger("click");
     await flushPromises();
 
@@ -529,7 +525,7 @@ describe("MetadataQualitySection", () => {
     const wrapper = await mountSection(SUGGEST_PERMISSIONS);
 
     const trigger = wrapper.find(
-      `[aria-label="${label("dataQuality.asset.suggestRegenerate")}"]`
+      `[aria-label="${label("dataQuality.suggest.regenerate")}"]`
     );
     expect(trigger.exists()).toBe(true);
     await trigger.trigger("click");
@@ -538,7 +534,7 @@ describe("MetadataQualitySection", () => {
     const item = document.body.querySelector<HTMLElement>('[role="menuitem"]');
     // The secondary action says it may refresh existing proposals.
     expect(item?.textContent).toContain(
-      label("dataQuality.asset.suggestRegenerateHint")
+      label("dataQuality.suggest.regenerateHint")
     );
     item?.click();
     await flushPromises();
@@ -704,9 +700,7 @@ describe("MetadataQualitySection", () => {
 
     await wrapper
       .findAll("button")
-      .find((item) =>
-        item.text().includes(label("dataQuality.asset.suggestLabels"))
-      )
+      .find((item) => item.text().includes(label("dataQuality.suggest.labels")))
       ?.trigger("click");
     await flushPromises();
 

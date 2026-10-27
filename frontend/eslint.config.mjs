@@ -472,7 +472,8 @@ export default [
             "dataQuality.suggestions.fetchError",
             "dataQuality.suggestions.decideError",
             "dataQuality.asset.profileFailed",
-            "dataQuality.asset.suggestFailed",
+            "dataQuality.suggest.failed",
+            "dataQuality.suggest.profileFailed",
             "dataQuality.asset.labelUpdateFailed",
             // LLM availability reasons and error copy returned by helpers.
             "dataQuality.llm.disabledHint",
