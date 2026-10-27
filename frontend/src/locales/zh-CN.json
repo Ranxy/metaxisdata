@@ -343,6 +343,12 @@
       "ne": "≠",
       "unspecified": "未指定"
     },
+    "composer": {
+      "advanced": "打开完整编辑器",
+      "description": "目标已固定；创建后规则会出现在对应分组。筛选、负责人与标签仍在完整编辑器中设置。",
+      "saving": "正在保存…",
+      "title": "在 {target} 上新建规则"
+    },
     "copilot": {
       "description": "描述你希望这个目标具备的质量规则；草案会就地出现，创建前始终只是建议。",
       "exampleDuplicates": "为重复的 bus_no 增加检查",
@@ -1309,7 +1315,6 @@
       "draftsTitle": "AI 草案",
       "issuesEmpty": "没有未解决问题。",
       "issuesHint": "该目标上规则失败后打开的问题。",
-      "issuesLoadFailed": "加载问题失败。",
       "issuesTitle": "未解决问题",
       "issuesViewAll": "全部问题",
       "kindExternalTable": "外部表",

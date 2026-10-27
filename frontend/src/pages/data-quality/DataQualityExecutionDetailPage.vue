@@ -25,6 +25,16 @@
       </template>
       <template #actions>
         <Button
+          v-if="targetWorkspaceTo"
+          variant="outline"
+          as-child
+        >
+          <RouterLink :to="targetWorkspaceTo">
+            <Target class="mr-2 h-4 w-4" />
+            {{ t("dataQuality.asset.openWorkspace") }}
+          </RouterLink>
+        </Button>
+        <Button
           v-if="showExplain"
           :disabled="isLoading"
           @click="openExplain"
@@ -414,6 +424,7 @@ import {
   Loader2,
   RefreshCcw,
   Sparkles,
+  Target,
   XCircle,
 } from "lucide-vue-next";
 import type { Component } from "vue";
@@ -465,6 +476,7 @@ import {
   targetScopeLabel,
 } from "@/utils/dataQuality";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
+import { guidToRouteParams } from "@/utils/guid";
 
 /**
  * One execution's full record: the verdict, the rule and target it judged, the
@@ -483,6 +495,19 @@ const { formatError } = useErrorHandler();
 const authStore = useAuthStore();
 
 const execution = ref<QualityExecution>();
+// The workspace groups every rule on the execution's target; it is the natural
+// next step from one piece of evidence.
+const targetWorkspaceTo = computed(() => {
+  const target = execution.value?.target;
+  if (!target?.metaGuid) {
+    return undefined;
+  }
+  return {
+    name: "DataQualityTarget",
+    params: { targetGuid: guidToRouteParams(target.metaGuid) },
+    query: { metaType: String(target.metaType) },
+  };
+});
 const ruleTitle = ref("");
 const isLoading = ref(true);
 const isPolling = ref(false);

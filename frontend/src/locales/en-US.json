@@ -343,6 +343,12 @@
       "ne": "≠",
       "unspecified": "Unspecified"
     },
+    "composer": {
+      "advanced": "Open full editor",
+      "description": "The target is fixed. The rule joins its section when you create it; filters, owner and tags stay in the full editor.",
+      "saving": "Saving…",
+      "title": "New rule on {target}"
+    },
     "copilot": {
       "description": "Describe the rules you want for this target. Drafts appear inline and stay proposals until you create them.",
       "exampleDuplicates": "Add a rule for duplicate bus numbers",
@@ -1309,7 +1315,6 @@
       "draftsTitle": "AI drafts",
       "issuesEmpty": "No open issues.",
       "issuesHint": "Problems opened by this target's failing rules.",
-      "issuesLoadFailed": "Failed to load the issues.",
       "issuesTitle": "Open issues",
       "issuesViewAll": "All issues",
       "kindExternalTable": "External table",

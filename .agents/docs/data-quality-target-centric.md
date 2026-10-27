@@ -1,6 +1,6 @@
 # 数据质量：从「规则目录」到「目标工作台」— 目标中心化重构
 
-> Status: **P0 已实现**（分支 `dq-target-centric-refactor`，尚未合并）；P1/P2 为本文提出的方案，尚未实现。P0 之后，本文既是这次重构的设计记录，也是后续阶段的工作清单。P0 只改前端（复用现有 RPC，不新增后端表/接口），P1 起才动 proto 与 store。
+> Status: **P0 与 P1a 已实现**（分支 `dq-target-centric-refactor`，尚未合并）。P0 是前端目标工作台；P1a 是服务端聚合读、工作台内联新建规则、视图/物化视图/外部表入口与详情页反向锚点。P1b（薄契约、目标级默认值、发布/版本）与 P2 仍是方案，尚未实现。本文既是这次重构的设计记录，也是后续阶段的工作清单。
 > 关联：[data-quality.md](data-quality.md)（现有实现与不变量）、[frontend-ui.md](frontend-ui.md)（布局门禁）、[i18n-glossary.md](i18n-glossary.md)（术语）、[instance-connections.md](instance-connections.md)（执行侧连接准入）、[security-posture.md](../../docs/security-posture.md)（单副本假设）。
 
 ## 0. 结论摘要
@@ -197,45 +197,61 @@ quality_contract_revision
 - **只读导出**：P2 再做契约 YAML 导出（供 CI/评审），导入与双向同步明确不做。
 - **不接管**：执行、问题、通知、配额、issue 唯一性全部保持规则粒度；契约不新增执行实体。
 
-### 3.6 读接口（P1）
+### 3.6 读接口（P1a，已实现）
 
-P0 的客户端聚合在工作区上限内成立（每表 100 / 每工作区 1000 条规则），超过后需要服务端聚合。建议：
+P0 的客户端聚合在工作区上限内成立（每表 100 / 每工作区 1000 条规则），但目录没有服务端排序/计数，工作台要发 3 个请求。P1a 加的两个聚合读已落地：
 
 ```proto
+rpc ListQualityTargets(ListQualityTargetsRequest) returns (ListQualityTargetsResponse) {
+  // get: /v1/{parent=workspaces/*}/qualityTargets
+}
 message ListQualityTargetsRequest {
   string parent = 1;                    // workspaces/-
   int32 page_size = 2; string page_token = 3;
-  string instance = 4; string database = 5; string schema = 6;
-  string search = 7;                    // path/object 子串
-  QualityStatus worst_status = 8;       // 只看某类最近结果
-  bool has_open_issue = 9;
-  bool has_pending_suggestion = 10;
-  QualityTargetOrder order_by = 11;     // ATTENTION | NAME | RULE_COUNT | LAST_RUN
+  string instance = 4; string database = 5; string schema = 6; string table = 7;  // GUID 前缀
+  string search = 8;                    // path/GUID 子串
+  QualityStatus worst_status = 9;       // 只匹配该最差最近结果
+  bool has_open_issue = 10; bool has_pending_draft = 11;
+  QualityTargetOrder order_by = 12;     // ATTENTION | NAME | RULE_COUNT | LAST_RUN
 }
-message QualityTarget {
-  QualityTarget target = 1;             // meta_guid, meta_type, path
-  int32 rule_count = 2; int32 enabled_rule_count = 3; int32 paused_rule_count = 4;
-  int32 column_count = 5; int32 open_issue_count = 6; int32 pending_draft_count = 7;
-  QualityExecutionSummary last_result = 8;   // 目标级最差/最近一次
-  google.protobuf.Timestamp last_run_time = 9;
-  bool orphaned = 10; bool schema_changed = 11;
+message QualityTargetSummary {
+  QualityTarget target = 1;             // meta_guid, meta_type, 路径快照
+  int32 rule_count = 2; enabled_rule_count = 3; paused_rule_count = 4; column_count = 5;
+  int32 open_issue_count = 6; pending_draft_count = 7; pending_label_count = 8;
+  QualityStatus worst_status = 9; google.protobuf.Timestamp last_run_time = 10;
+  bool schema_changed = 11;
 }
-rpc GetQualityTarget(...) -> { target, repeated QualityRule rules, repeated QualitySuggestion pending, repeated QualityIssue open_issues, repeated QualityExecution recent_executions }
+
+rpc GetQualityTarget(GetQualityTargetRequest) returns (GetQualityTargetResponse) {
+  // get: /v1/{parent=workspaces/*}/qualityTargets:get
+}
+message GetQualityTargetResponse {
+  QualityTargetSummary summary = 1;
+  repeated QualityRule quality_rules = 2;     // 含 last_result / orphaned_reason / target_schema_changed
+  repeated QualityIssue open_issues = 3;
+  string orphaned_reason = 4;
+}
 ```
 
-实现要点：`quality_rule(target_guid)` 索引已存在（`LATEST.sql:940`）；`ListQualityTargets` 用 `GROUP BY target_guid` + 三个计数子查询；`GetQualityTarget` 用 `DISTINCT ON`/窗口函数一次取每规则最近 N 次执行，替代 P1 的 K 次调用。权限复用 `rules.list`（`GetQualityOverview` 先例）；**不加 audit 注解**即不进审计与 principal 限流（聚合读不落库），除非产品要求「谁看了目标页」。
+实现要点（`backend/store/quality_target.go` + `backend/api/v1/data_quality_target.go`）：
+
+- `ListQualityTargets` 一条 SQL：`live`（非归档规则）→ `targets`（计数、去重字段数、路径快照、`schema_changed` 来自 `meta_registry_resource_schema` join）→ 每规则最新执行（`DISTINCT ON (rule_id)`）→ 最差结果与最近执行时间 → 未解决问题/待审草案/标注计数；排序与过滤都在 SQL，offset 分页沿用 `parseLimitAndOffset`。
+- `GetQualityTarget` 复用现有 store 读：规则 + `ListLatestQualityExecutions` + `ListMetaRegistrySchemaHashes` + `targetOrphanReasons` + 未解决问题；目标已被删除但规则还在时仍返回规则与快照路径（`orphaned_reason` 非空），无规则且 registry 也没有时 `NotFound`。
+- 权限复用 `rules.list`（与 `GetQualityOverview` 同口径），**不加 audit 注解**，不进 principal 限流。
+- **草案不在 Get 响应里**：`ListQualitySuggestions` 需要 `suggest` 权限，而目标读只需 `rules.list`；客户端有 `suggest` 时单独读草案。同理 summary 只给聚合计数，草案正文/样本都不出域。
+- 测试：store 侧对 `targetWhere`（GUID 子树、LIKE 转义、attention 过滤、占位符基数）与排序/rank 做无数据库守卫测试；`api/v1` 侧覆盖顺序映射、worst-status 优先级、summary 转换；集成测试 `TestDataQualityTargetDirectoryRealServerIntegration` 在真实 PostgreSQL + MySQL 上验证聚合、搜索、分页与 Get。
 
 ### 3.7 后端/前端改造面（P1 摘要）
 
 | 层 | 改动 |
 | --- | --- |
-| proto | `data_quality_service.proto` 新增 4 个 RPC/消息（List/Get + Contract CRUD/publish）；`buf format/lint/generate`，生成物随 proto 提交 |
-| 迁移 | `quality_contract` + `quality_contract_revision` 两表；`LATEST.sql` + 增量目录，`backend/migrator/AGENTS.md` 的链测试 |
-| store | `quality_contract.go`；`ListQualityTargets` 聚合查询；不新增规则写路径 |
-| api | 聚合读 handler（按块降级）；发布事务（写 revision + 审计）；权限映射 |
-| runner | 规划执行时合成目标级默认值（filter/schedule/severity）；其余不动 |
-| 前端 | 目标页接 `GetQualityTarget`；「发布/变更」入口；目标级设置面板；内联编辑器（复用 `RuleConfigForm` + `PreviewQualityRule`，批量预览合并）；URL 化筛选；视图/物化视图入口 |
-| 文档 | 本文 P1 落地后转为维护参考；`data-quality.md` §3.7 路由/页面表同步；`i18n-glossary.md` 如引入「契约」术语需走 glossary 流程 |
+| proto | **已实现**：`ListQualityTargets`/`GetQualityTarget` 两个 RPC 与消息；契约 CRUD/publish 未做。`buf format/lint/generate`，生成物随 proto 提交 |
+| 迁移 | 聚合读不需要迁移；契约的 `quality_contract` + `quality_contract_revision` 未做 |
+| store | **已实现**：`quality_target.go` 的单查询聚合 + `CountPendingQualitySuggestions`；`quality_contract.go` 未做 |
+| api | **已实现**：聚合读 handler、顺序/过滤映射、summary 转换；发布事务未做 |
+| runner | 未做：规划执行时合成目标级默认值（filter/schedule/severity） |
+| 前端 | **已实现**：目标页接 `GetQualityTarget`/`ListQualityTargets`；工作台内联新建规则（`TargetRuleComposer`，复用 `RuleConfigForm` + `PreviewQualityRule`）；视图/物化视图/外部表的 DQ 标签页；规则/问题/执行详情 → 目标工作台的反向链接。未做：目标级设置面板、发布/变更入口、URL 化筛选、字段覆盖视图 |
+| 文档 | `data-quality.md` §3.6/§3.7 已同步聚合读与路由；契约落地后需再同步 |
 
 ## 4. 阶段计划
 
@@ -247,16 +263,21 @@ rpc GetQualityTarget(...) -> { target, repeated QualityRule rules, repeated Qual
 
 验收：从任意一张有规则的表，2 次点击内到达「它的全部规则」；在该页可以用自然语言加一条草案并一键建成规则；不需要经过规则列表或目标选择器；页面不产生嵌套滚动、不破坏布局审计。
 
-### P1（下一阶段，需后端）
+### P1a（已实现，本分支）
 
-1. `ListQualityTargets` / `GetQualityTarget`（目标列表改服务端聚合；每规则最近 N 次执行）。
-2. 契约表 + 目标级默认值（filter/schedule/severity/owner/tags）+ 执行规划合成。
-3. 契约发布/版本/差异（基于 rule_revision）+ `contracts.publish` 权限 + 审计。
-4. 工作台内联「新建/编辑规则」（复用 `RuleConfigForm`，一条预览、批量落库）。
-5. 字段覆盖视图（未覆盖列 + 语义标注候选槽位）；视图/物化视图/外部表入口；问题/执行反向锚回目标并高亮检查。
-6. 列表筛选写 URL、可分享视图。
+1. ✅ `ListQualityTargets` / `GetQualityTarget`：目标目录改服务端聚合；工作台一次读规则 + 摘要 + 未解决问题。**尚未做**每规则最近 N 次执行（`GetQualityTarget` 只带每条规则的 `last_result`）。
+4. ✅ 工作台内联新建规则（`TargetRuleComposer`）：目标固定、类型按对象能力裁剪、`RuleConfigForm` 复用、先预览再创建；保存后就地插入分组，不离开页面。编辑仍走完整编辑器。
+5. ✅（部分）视图/物化视图/外部表的元数据详情接入 `MetadataQualitySection`；规则/问题/执行详情页增加“目标工作台”按钮。未做：字段覆盖视图（未覆盖列 + 语义标注候选槽位）、问题/执行反向锚回目标并**高亮**具体规则。
 
-粗估：后端 5–7 人日（聚合读）+ 16–24 人日（契约/默认值/发布）；前端 8–12 人日。
+### P1b（下一阶段，需迁移）
+
+1. 契约表 + 目标级默认值（filter/schedule/severity/owner/tags）+ 执行规划合成。
+2. 契约发布/版本/差异（基于 rule_revision）+ `contracts.publish` 权限 + 审计。
+3. 工作台内联「编辑规则」（复用 `RuleConfigForm` + update mask；P1a 只做了新建）。
+4. 字段覆盖视图；问题/执行反向锚回目标并高亮具体规则。
+5. 列表筛选写 URL、可分享视图；每规则最近 N 次执行。
+
+粗估：P1a 聚合读（已实现）约 3–5 人日；P1b 契约/默认值/发布 16–24 人日；剩余前端（内联编辑、覆盖视图、反向锚点）约 6–10 人日。
 
 ### P2（可选）
 
@@ -286,17 +307,18 @@ rpc GetQualityTarget(...) -> { target, repeated QualityRule rules, repeated Qual
 - 布局：目标列表登记 `audit:ui`（预算 260）；工作台不登记（需要真实 GUID），靠页面测试与人工检查。
 - 后端：P0 零改动；P1 按 `backend/AGENTS.md` 跑 gofmt/golangci-lint/相关 store/api/runner 测试与迁移链测试，proto 走 `buf format/lint/generate`。
 
-## 7. Where things live（P0）
+## 7. Where things live（P0 + P1a）
 
 | 面 | 位置 |
 | --- | --- |
+| 聚合读 | `backend/store/quality_target.go`（`ListQualityTargets` 的单查询聚合、`CountPendingQualitySuggestions`、排序/rank 守卫）、`backend/api/v1/data_quality_target.go`（两个 handler、顺序/过滤映射、summary 转换）、`proto/v1/v1/data_quality_service.proto` |
 | 目标列表 | `frontend/src/pages/data-quality/DataQualityTargetsPage.vue`（测试同名 `.test.ts`） |
-| 目标工作台 | `frontend/src/pages/data-quality/DataQualityTargetPage.vue` + `components/data-quality/TargetCheckRow.vue`、`TargetDraftCard.vue`、`TargetCopilotPanel.vue` |
-| 纯投影 | `frontend/src/utils/dataQualityTarget.ts`（`summarizeQualityTargets`、`sortQualityTargets`、`groupTargetChecks`、`worstQualityStatus` 等） |
-| 路由/导航 | `frontend/src/router/index.ts`（`DataQualityTargets`、`DataQualityTarget`）、`components/layout/AppSidebar.vue` |
-| 数据源 | 现有 `ListQualityRules`（含 `last_result`）、`ListQualitySuggestions`、`ListQualityIssues`、`RunQualityRules`、`SuggestQualityRule`、`CreateQualityRule`、`UpdateQualitySuggestion` |
-| 复用 | `TargetPicker`、`RuleConfigForm`（P1 内联编辑）、`SuggestionDetailDrawer`、`QualityExplainDrawer`（P1 历史/解释）、`useSuggestionSummary`、`buildRuleFromSuggestion`、`suggestionToEditorPrefill` |
-| 入口 | 概览统计卡、元数据表 DQ 标签页「目标工作台」、侧栏「质量目标」 |
+| 目标工作台 | `frontend/src/pages/data-quality/DataQualityTargetPage.vue` + `components/data-quality/TargetCheckRow.vue`、`TargetDraftCard.vue`、`TargetCopilotPanel.vue`、`TargetRuleComposer.vue` |
+| 纯投影 | `frontend/src/utils/dataQualityTarget.ts`（按列/跨字段分组、v1 summary 的排序/搜索/展示辅助） |
+| 路由/导航 | `frontend/src/router/index.ts`（`DataQualityTargets`、`DataQualityTarget`）、`components/layout/AppSidebar.vue`；元数据四个详情页的 DQ 标签页复用 `MetadataQualitySection.vue` |
+| 数据源 | `ListQualityTargets`、`GetQualityTarget`；写路径仍为 `RunQualityRules`、`SuggestQualityRule`、`CreateQualityRule`、`UpdateQualitySuggestion`；草案正文按 `suggest` 权限单独 `ListQualitySuggestions` |
+| 复用 | `TargetPicker`、`RuleConfigForm`（P1b 内联编辑）、`SuggestionDetailDrawer`、`QualityExplainDrawer`（历史/解释）、`useSuggestionSummary`、`buildRuleFromSuggestion`、`suggestionToEditorPrefill` |
+| 入口 | 概览统计卡、元数据四个详情页的 DQ 标签页、侧栏「质量目标」 |
 | 设计参考 | 本文 §2 的 Soda/竞品结论与 URL |
 
 ## 8. 参考

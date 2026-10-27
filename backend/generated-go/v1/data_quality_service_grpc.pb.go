@@ -50,6 +50,8 @@ const (
 	DataQualityService_SuggestColumnLabels_FullMethodName                = "/metaxisdata.v1.DataQualityService/SuggestColumnLabels"
 	DataQualityService_ExplainQualityExecution_FullMethodName            = "/metaxisdata.v1.DataQualityService/ExplainQualityExecution"
 	DataQualityService_GetQualityOverview_FullMethodName                 = "/metaxisdata.v1.DataQualityService/GetQualityOverview"
+	DataQualityService_ListQualityTargets_FullMethodName                 = "/metaxisdata.v1.DataQualityService/ListQualityTargets"
+	DataQualityService_GetQualityTarget_FullMethodName                   = "/metaxisdata.v1.DataQualityService/GetQualityTarget"
 	DataQualityService_GetQualityLLMUsage_FullMethodName                 = "/metaxisdata.v1.DataQualityService/GetQualityLLMUsage"
 )
 
@@ -156,6 +158,15 @@ type DataQualityServiceClient interface {
 	// Read the workspace's quality summary: how many rules and issues exist, how
 	// the last day went, and the per-day tallies the overview chart draws.
 	GetQualityOverview(ctx context.Context, in *GetQualityOverviewRequest, opts ...grpc.CallOption) (*QualityOverview, error)
+	// List the targets (tables or views) that have quality rules, one row per
+	// target. The counts, the worst latest result and the pending draft tally are
+	// aggregated by the database, so the directory does not page through every
+	// rule to answer "which table needs attention?".
+	ListQualityTargets(ctx context.Context, in *ListQualityTargetsRequest, opts ...grpc.CallOption) (*ListQualityTargetsResponse, error)
+	// Read one target's workspace: its rules (with their latest results), the
+	// pending AI drafts and the unresolved issues, in one call. The target is
+	// named by GUID because a target is not a resource of its own.
+	GetQualityTarget(ctx context.Context, in *GetQualityTargetRequest, opts ...grpc.CallOption) (*GetQualityTargetResponse, error)
 	// Read today's data quality LLM usage and the effective limits (the workspace
 	// settings, with server defaults resolved). The counters are process state: a
 	// restart resets them and they roll over at 00:00 UTC.
@@ -479,6 +490,26 @@ func (c *dataQualityServiceClient) GetQualityOverview(ctx context.Context, in *G
 	return out, nil
 }
 
+func (c *dataQualityServiceClient) ListQualityTargets(ctx context.Context, in *ListQualityTargetsRequest, opts ...grpc.CallOption) (*ListQualityTargetsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListQualityTargetsResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_ListQualityTargets_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) GetQualityTarget(ctx context.Context, in *GetQualityTargetRequest, opts ...grpc.CallOption) (*GetQualityTargetResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetQualityTargetResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_GetQualityTarget_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *dataQualityServiceClient) GetQualityLLMUsage(ctx context.Context, in *GetQualityLLMUsageRequest, opts ...grpc.CallOption) (*QualityLLMUsage, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(QualityLLMUsage)
@@ -592,6 +623,15 @@ type DataQualityServiceServer interface {
 	// Read the workspace's quality summary: how many rules and issues exist, how
 	// the last day went, and the per-day tallies the overview chart draws.
 	GetQualityOverview(context.Context, *GetQualityOverviewRequest) (*QualityOverview, error)
+	// List the targets (tables or views) that have quality rules, one row per
+	// target. The counts, the worst latest result and the pending draft tally are
+	// aggregated by the database, so the directory does not page through every
+	// rule to answer "which table needs attention?".
+	ListQualityTargets(context.Context, *ListQualityTargetsRequest) (*ListQualityTargetsResponse, error)
+	// Read one target's workspace: its rules (with their latest results), the
+	// pending AI drafts and the unresolved issues, in one call. The target is
+	// named by GUID because a target is not a resource of its own.
+	GetQualityTarget(context.Context, *GetQualityTargetRequest) (*GetQualityTargetResponse, error)
 	// Read today's data quality LLM usage and the effective limits (the workspace
 	// settings, with server defaults resolved). The counters are process state: a
 	// restart resets them and they roll over at 00:00 UTC.
@@ -695,6 +735,12 @@ func (UnimplementedDataQualityServiceServer) ExplainQualityExecution(*ExplainQua
 }
 func (UnimplementedDataQualityServiceServer) GetQualityOverview(context.Context, *GetQualityOverviewRequest) (*QualityOverview, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetQualityOverview not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ListQualityTargets(context.Context, *ListQualityTargetsRequest) (*ListQualityTargetsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListQualityTargets not implemented")
+}
+func (UnimplementedDataQualityServiceServer) GetQualityTarget(context.Context, *GetQualityTargetRequest) (*GetQualityTargetResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQualityTarget not implemented")
 }
 func (UnimplementedDataQualityServiceServer) GetQualityLLMUsage(context.Context, *GetQualityLLMUsageRequest) (*QualityLLMUsage, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetQualityLLMUsage not implemented")
@@ -1253,6 +1299,42 @@ func _DataQualityService_GetQualityOverview_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataQualityService_ListQualityTargets_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListQualityTargetsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).ListQualityTargets(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_ListQualityTargets_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).ListQualityTargets(ctx, req.(*ListQualityTargetsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_GetQualityTarget_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQualityTargetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).GetQualityTarget(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_GetQualityTarget_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).GetQualityTarget(ctx, req.(*GetQualityTargetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DataQualityService_GetQualityLLMUsage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetQualityLLMUsageRequest)
 	if err := dec(in); err != nil {
@@ -1393,6 +1475,14 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetQualityOverview",
 			Handler:    _DataQualityService_GetQualityOverview_Handler,
+		},
+		{
+			MethodName: "ListQualityTargets",
+			Handler:    _DataQualityService_ListQualityTargets_Handler,
+		},
+		{
+			MethodName: "GetQualityTarget",
+			Handler:    _DataQualityService_GetQualityTarget_Handler,
 		},
 		{
 			MethodName: "GetQualityLLMUsage",

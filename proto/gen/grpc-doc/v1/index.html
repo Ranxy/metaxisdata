@@ -1133,6 +1133,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.GetQualityTargetRequest"><span class="badge">M</span>GetQualityTargetRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetQualityTargetResponse"><span class="badge">M</span>GetQualityTargetResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.GroupCheckConfig"><span class="badge">M</span>GroupCheckConfig</a>
                 </li>
               
@@ -1190,6 +1198,14 @@
               
                 <li>
                   <a href="#metaxisdata.v1.ListQualitySuggestionsResponse"><span class="badge">M</span>ListQualitySuggestionsResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListQualityTargetsRequest"><span class="badge">M</span>ListQualityTargetsRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListQualityTargetsResponse"><span class="badge">M</span>ListQualityTargetsResponse</a>
                 </li>
               
                 <li>
@@ -1290,6 +1306,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualityTargetPath"><span class="badge">M</span>QualityTargetPath</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityTargetSummary"><span class="badge">M</span>QualityTargetSummary</a>
                 </li>
               
                 <li>
@@ -1487,6 +1507,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualitySuggestionStatus"><span class="badge">E</span>QualitySuggestionStatus</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityTargetOrder"><span class="badge">E</span>QualityTargetOrder</a>
                 </li>
               
                 <li>
@@ -13330,6 +13354,95 @@ when the raw bodies are gone. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.GetQualityTargetRequest">GetQualityTargetRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The target&#39;s metadata GUID. Required. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p>The target&#39;s object type. Optional when rules already exist, because their
+own target carries it; required to resolve a target that has no rules yet. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.GetQualityTargetResponse">GetQualityTargetResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>summary</td>
+                  <td><a href="#metaxisdata.v1.QualityTargetSummary">QualityTargetSummary</a></td>
+                  <td></td>
+                  <td><p>The target&#39;s health summary, the same shape the directory lists. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>quality_rules</td>
+                  <td><a href="#metaxisdata.v1.QualityRule">QualityRule</a></td>
+                  <td>repeated</td>
+                  <td><p>Every live rule on the target, with its latest result. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>open_issues</td>
+                  <td><a href="#metaxisdata.v1.QualityIssue">QualityIssue</a></td>
+                  <td>repeated</td>
+                  <td><p>Unresolved issues (OPEN or ACKNOWLEDGED) opened by the target&#39;s rules.
+
+AI drafts are deliberately absent: reading them needs the suggest
+permission, which this RPC does not require, so the client reads the queue
+separately when it holds it. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>orphaned_reason</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Why the target no longer resolves; empty while healthy. The rules stay
+readable when it is set, because their target path is a snapshot. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.GroupCheckConfig">GroupCheckConfig</h3>
         <p>GroupCheckConfig bounds the row count of each group a set of columns forms.</p>
 
@@ -14170,6 +14283,141 @@ given prefix, so &#34;instance_1&#34; selects every suggestion for that instance
                 <tr>
                   <td>quality_suggestions</td>
                   <td><a href="#metaxisdata.v1.QualitySuggestion">QualitySuggestion</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListQualityTargetsRequest">ListQualityTargetsRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The maximum number of targets to return. If unspecified, at most 50 are
+returned. The maximum value is 1000; values above 1000 are coerced to 1000. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A page token, received from a previous ListQualityTargets call. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>instance</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The following four filters are GUID path prefixes, the same shape as
+ListQualityRules: a target matches when its GUID starts with the prefix. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>database</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>schema</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>table</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>search</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A case-insensitive substring over the target&#39;s path and GUID. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>worst_status</td>
+                  <td><a href="#metaxisdata.v1.QualityStatus">QualityStatus</a></td>
+                  <td></td>
+                  <td><p>Only targets whose worst latest result is this status. UNSPECIFIED keeps
+every target, including those whose rules have not run yet. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>has_open_issue</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Only targets with at least one unresolved issue. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>has_pending_draft</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Only targets with at least one pending AI draft. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>order_by</td>
+                  <td><a href="#metaxisdata.v1.QualityTargetOrder">QualityTargetOrder</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListQualityTargetsResponse">ListQualityTargetsResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>quality_targets</td>
+                  <td><a href="#metaxisdata.v1.QualityTargetSummary">QualityTargetSummary</a></td>
                   <td>repeated</td>
                   <td><p> </p></td>
                 </tr>
@@ -16112,6 +16360,104 @@ the config is authoritative; validation requires them to agree. </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p>Empty for a table-level rule. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityTargetSummary">QualityTargetSummary</h3>
+        <p>QualityTargetSummary is one row of the target directory: the target identity</p><p>plus the counts and health the row and the workspace header render.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>target</td>
+                  <td><a href="#metaxisdata.v1.QualityTarget">QualityTarget</a></td>
+                  <td></td>
+                  <td><p>The target, named by GUID and object type. Its path is the snapshot stored
+with the rules; the column list is empty here. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>rule_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Live rules only; archived rules are excluded. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>enabled_rule_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>paused_rule_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>column_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Distinct columns the target&#39;s rules read. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>open_issue_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>pending_draft_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>pending_label_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>worst_status</td>
+                  <td><a href="#metaxisdata.v1.QualityStatus">QualityStatus</a></td>
+                  <td></td>
+                  <td><p>The worst latest result across the target&#39;s rules; UNSPECIFIED when no rule
+has run yet. ERROR outranks FAIL: a check that could not run needs attention
+more than one whose data failed. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>last_run_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>schema_changed</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether at least one rule was saved against a different target schema hash
+than the registry currently records. </p></td>
                 </tr>
               
             </tbody>
@@ -18505,6 +18851,47 @@ the same instance and database.</p></td>
           </tbody>
         </table>
       
+        <h3 id="metaxisdata.v1.QualityTargetOrder">QualityTargetOrder</h3>
+        <p>QualityTargetOrder is how the target directory is ordered.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_TARGET_ORDER_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_TARGET_ORDER_ATTENTION</td>
+                <td>1</td>
+                <td><p>Worst latest result first, then open issues, then pending drafts.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_TARGET_ORDER_NAME</td>
+                <td>2</td>
+                <td><p>The target&#39;s object name, ascending.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_TARGET_ORDER_RULE_COUNT</td>
+                <td>3</td>
+                <td><p>Most rules first.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_TARGET_ORDER_LAST_RUN</td>
+                <td>4</td>
+                <td><p>Most recent run first; targets that never ran come last.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
         <h3 id="metaxisdata.v1.QualityThresholdMetric">QualityThresholdMetric</h3>
         <p>QualityThresholdMetric selects what a count-type rule's threshold is compared</p><p>against: the number of failed rows, or failed rows divided by total rows.</p>
         <table class="enum-table">
@@ -18783,6 +19170,25 @@ directly, the way it does for ExplainSQL.</p></td>
                 <td><a href="#metaxisdata.v1.QualityOverview">QualityOverview</a></td>
                 <td><p>Read the workspace&#39;s quality summary: how many rules and issues exist, how
 the last day went, and the per-day tallies the overview chart draws.</p></td>
+              </tr>
+            
+              <tr>
+                <td>ListQualityTargets</td>
+                <td><a href="#metaxisdata.v1.ListQualityTargetsRequest">ListQualityTargetsRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListQualityTargetsResponse">ListQualityTargetsResponse</a></td>
+                <td><p>List the targets (tables or views) that have quality rules, one row per
+target. The counts, the worst latest result and the pending draft tally are
+aggregated by the database, so the directory does not page through every
+rule to answer &#34;which table needs attention?&#34;.</p></td>
+              </tr>
+            
+              <tr>
+                <td>GetQualityTarget</td>
+                <td><a href="#metaxisdata.v1.GetQualityTargetRequest">GetQualityTargetRequest</a></td>
+                <td><a href="#metaxisdata.v1.GetQualityTargetResponse">GetQualityTargetResponse</a></td>
+                <td><p>Read one target&#39;s workspace: its rules (with their latest results), the
+pending AI drafts and the unresolved issues, in one call. The target is
+named by GUID because a target is not a resource of its own.</p></td>
               </tr>
             
               <tr>
@@ -19098,6 +19504,26 @@ restart resets them and they roll over at 00:00 UTC.</p></td>
                 <td>GetQualityOverview</td>
                 <td>GET</td>
                 <td>/v1/{parent=workspaces/*}/qualityOverview</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListQualityTargets</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/qualityTargets</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetQualityTarget</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/qualityTargets:get</td>
                 <td></td>
               </tr>
               

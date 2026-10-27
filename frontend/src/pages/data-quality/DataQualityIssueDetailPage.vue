@@ -20,6 +20,16 @@
       </template>
       <template #actions>
         <Button
+          v-if="targetWorkspaceTo"
+          variant="outline"
+          as-child
+        >
+          <RouterLink :to="targetWorkspaceTo">
+            <Target class="mr-2 h-4 w-4" />
+            {{ t("dataQuality.asset.openWorkspace") }}
+          </RouterLink>
+        </Button>
+        <Button
           variant="outline"
           :disabled="isLoading || saving"
           @click="load"
@@ -379,6 +389,7 @@ import {
   CheckCheck,
   ExternalLink,
   RefreshCcw,
+  Target,
 } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
@@ -439,6 +450,7 @@ import {
   targetScopeLabel,
 } from "@/utils/dataQuality";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
+import { guidToRouteParams } from "@/utils/guid";
 
 /**
  * One issue's evidence and lifecycle. Acknowledge says "seen, still broken";
@@ -452,6 +464,19 @@ const { formatError } = useErrorHandler();
 const authStore = useAuthStore();
 
 const issue = ref<QualityIssue>();
+// The issue opened against one rule of one target; the workspace is where the
+// rest of that target's checks live.
+const targetWorkspaceTo = computed(() => {
+  const target = issue.value?.target;
+  if (!target?.metaGuid) {
+    return undefined;
+  }
+  return {
+    name: "DataQualityTarget",
+    params: { targetGuid: guidToRouteParams(target.metaGuid) },
+    query: { metaType: String(target.metaType) },
+  };
+});
 const ruleTitle = ref("");
 const acknowledgedByLabel = ref("");
 const isLoading = ref(true);

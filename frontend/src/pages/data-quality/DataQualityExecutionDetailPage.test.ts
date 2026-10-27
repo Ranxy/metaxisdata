@@ -112,6 +112,16 @@ async function mountPage(permissions = PERMISSIONS) {
     routes: [
       { path: "/", name: "Home", component: Dummy },
       {
+        path: "/data-quality/targets",
+        name: "DataQualityTargets",
+        component: Dummy,
+      },
+      {
+        path: "/data-quality/targets/:targetGuid+",
+        name: "DataQualityTarget",
+        component: Dummy,
+      },
+      {
         path: "/data-quality/executions",
         name: "DataQualityExecutions",
         component: Dummy,

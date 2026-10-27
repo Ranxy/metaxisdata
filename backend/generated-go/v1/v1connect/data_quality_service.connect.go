@@ -124,6 +124,12 @@ const (
 	// DataQualityServiceGetQualityOverviewProcedure is the fully-qualified name of the
 	// DataQualityService's GetQualityOverview RPC.
 	DataQualityServiceGetQualityOverviewProcedure = "/metaxisdata.v1.DataQualityService/GetQualityOverview"
+	// DataQualityServiceListQualityTargetsProcedure is the fully-qualified name of the
+	// DataQualityService's ListQualityTargets RPC.
+	DataQualityServiceListQualityTargetsProcedure = "/metaxisdata.v1.DataQualityService/ListQualityTargets"
+	// DataQualityServiceGetQualityTargetProcedure is the fully-qualified name of the
+	// DataQualityService's GetQualityTarget RPC.
+	DataQualityServiceGetQualityTargetProcedure = "/metaxisdata.v1.DataQualityService/GetQualityTarget"
 	// DataQualityServiceGetQualityLLMUsageProcedure is the fully-qualified name of the
 	// DataQualityService's GetQualityLLMUsage RPC.
 	DataQualityServiceGetQualityLLMUsageProcedure = "/metaxisdata.v1.DataQualityService/GetQualityLLMUsage"
@@ -220,6 +226,15 @@ type DataQualityServiceClient interface {
 	// Read the workspace's quality summary: how many rules and issues exist, how
 	// the last day went, and the per-day tallies the overview chart draws.
 	GetQualityOverview(context.Context, *connect.Request[v1.GetQualityOverviewRequest]) (*connect.Response[v1.QualityOverview], error)
+	// List the targets (tables or views) that have quality rules, one row per
+	// target. The counts, the worst latest result and the pending draft tally are
+	// aggregated by the database, so the directory does not page through every
+	// rule to answer "which table needs attention?".
+	ListQualityTargets(context.Context, *connect.Request[v1.ListQualityTargetsRequest]) (*connect.Response[v1.ListQualityTargetsResponse], error)
+	// Read one target's workspace: its rules (with their latest results), the
+	// pending AI drafts and the unresolved issues, in one call. The target is
+	// named by GUID because a target is not a resource of its own.
+	GetQualityTarget(context.Context, *connect.Request[v1.GetQualityTargetRequest]) (*connect.Response[v1.GetQualityTargetResponse], error)
 	// Read today's data quality LLM usage and the effective limits (the workspace
 	// settings, with server defaults resolved). The counters are process state: a
 	// restart resets them and they roll over at 00:00 UTC.
@@ -417,6 +432,18 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityOverview")),
 			connect.WithClientOptions(opts...),
 		),
+		listQualityTargets: connect.NewClient[v1.ListQualityTargetsRequest, v1.ListQualityTargetsResponse](
+			httpClient,
+			baseURL+DataQualityServiceListQualityTargetsProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityTargets")),
+			connect.WithClientOptions(opts...),
+		),
+		getQualityTarget: connect.NewClient[v1.GetQualityTargetRequest, v1.GetQualityTargetResponse](
+			httpClient,
+			baseURL+DataQualityServiceGetQualityTargetProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityTarget")),
+			connect.WithClientOptions(opts...),
+		),
 		getQualityLLMUsage: connect.NewClient[v1.GetQualityLLMUsageRequest, v1.QualityLLMUsage](
 			httpClient,
 			baseURL+DataQualityServiceGetQualityLLMUsageProcedure,
@@ -458,6 +485,8 @@ type dataQualityServiceClient struct {
 	suggestColumnLabels                *connect.Client[v1.SuggestColumnLabelsRequest, v1.SuggestColumnLabelsResponse]
 	explainQualityExecution            *connect.Client[v1.ExplainQualityExecutionRequest, v1.ExplainQualityExecutionResponse]
 	getQualityOverview                 *connect.Client[v1.GetQualityOverviewRequest, v1.QualityOverview]
+	listQualityTargets                 *connect.Client[v1.ListQualityTargetsRequest, v1.ListQualityTargetsResponse]
+	getQualityTarget                   *connect.Client[v1.GetQualityTargetRequest, v1.GetQualityTargetResponse]
 	getQualityLLMUsage                 *connect.Client[v1.GetQualityLLMUsageRequest, v1.QualityLLMUsage]
 }
 
@@ -613,6 +642,16 @@ func (c *dataQualityServiceClient) GetQualityOverview(ctx context.Context, req *
 	return c.getQualityOverview.CallUnary(ctx, req)
 }
 
+// ListQualityTargets calls metaxisdata.v1.DataQualityService.ListQualityTargets.
+func (c *dataQualityServiceClient) ListQualityTargets(ctx context.Context, req *connect.Request[v1.ListQualityTargetsRequest]) (*connect.Response[v1.ListQualityTargetsResponse], error) {
+	return c.listQualityTargets.CallUnary(ctx, req)
+}
+
+// GetQualityTarget calls metaxisdata.v1.DataQualityService.GetQualityTarget.
+func (c *dataQualityServiceClient) GetQualityTarget(ctx context.Context, req *connect.Request[v1.GetQualityTargetRequest]) (*connect.Response[v1.GetQualityTargetResponse], error) {
+	return c.getQualityTarget.CallUnary(ctx, req)
+}
+
 // GetQualityLLMUsage calls metaxisdata.v1.DataQualityService.GetQualityLLMUsage.
 func (c *dataQualityServiceClient) GetQualityLLMUsage(ctx context.Context, req *connect.Request[v1.GetQualityLLMUsageRequest]) (*connect.Response[v1.QualityLLMUsage], error) {
 	return c.getQualityLLMUsage.CallUnary(ctx, req)
@@ -709,6 +748,15 @@ type DataQualityServiceHandler interface {
 	// Read the workspace's quality summary: how many rules and issues exist, how
 	// the last day went, and the per-day tallies the overview chart draws.
 	GetQualityOverview(context.Context, *connect.Request[v1.GetQualityOverviewRequest]) (*connect.Response[v1.QualityOverview], error)
+	// List the targets (tables or views) that have quality rules, one row per
+	// target. The counts, the worst latest result and the pending draft tally are
+	// aggregated by the database, so the directory does not page through every
+	// rule to answer "which table needs attention?".
+	ListQualityTargets(context.Context, *connect.Request[v1.ListQualityTargetsRequest]) (*connect.Response[v1.ListQualityTargetsResponse], error)
+	// Read one target's workspace: its rules (with their latest results), the
+	// pending AI drafts and the unresolved issues, in one call. The target is
+	// named by GUID because a target is not a resource of its own.
+	GetQualityTarget(context.Context, *connect.Request[v1.GetQualityTargetRequest]) (*connect.Response[v1.GetQualityTargetResponse], error)
 	// Read today's data quality LLM usage and the effective limits (the workspace
 	// settings, with server defaults resolved). The counters are process state: a
 	// restart resets them and they roll over at 00:00 UTC.
@@ -902,6 +950,18 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityOverview")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataQualityServiceListQualityTargetsHandler := connect.NewUnaryHandler(
+		DataQualityServiceListQualityTargetsProcedure,
+		svc.ListQualityTargets,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityTargets")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceGetQualityTargetHandler := connect.NewUnaryHandler(
+		DataQualityServiceGetQualityTargetProcedure,
+		svc.GetQualityTarget,
+		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityTarget")),
+		connect.WithHandlerOptions(opts...),
+	)
 	dataQualityServiceGetQualityLLMUsageHandler := connect.NewUnaryHandler(
 		DataQualityServiceGetQualityLLMUsageProcedure,
 		svc.GetQualityLLMUsage,
@@ -970,6 +1030,10 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceExplainQualityExecutionHandler.ServeHTTP(w, r)
 		case DataQualityServiceGetQualityOverviewProcedure:
 			dataQualityServiceGetQualityOverviewHandler.ServeHTTP(w, r)
+		case DataQualityServiceListQualityTargetsProcedure:
+			dataQualityServiceListQualityTargetsHandler.ServeHTTP(w, r)
+		case DataQualityServiceGetQualityTargetProcedure:
+			dataQualityServiceGetQualityTargetHandler.ServeHTTP(w, r)
 		case DataQualityServiceGetQualityLLMUsageProcedure:
 			dataQualityServiceGetQualityLLMUsageHandler.ServeHTTP(w, r)
 		default:
@@ -1099,6 +1163,14 @@ func (UnimplementedDataQualityServiceHandler) ExplainQualityExecution(context.Co
 
 func (UnimplementedDataQualityServiceHandler) GetQualityOverview(context.Context, *connect.Request[v1.GetQualityOverviewRequest]) (*connect.Response[v1.QualityOverview], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityOverview is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ListQualityTargets(context.Context, *connect.Request[v1.ListQualityTargetsRequest]) (*connect.Response[v1.ListQualityTargetsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ListQualityTargets is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) GetQualityTarget(context.Context, *connect.Request[v1.GetQualityTargetRequest]) (*connect.Response[v1.GetQualityTargetResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityTarget is not implemented"))
 }
 
 func (UnimplementedDataQualityServiceHandler) GetQualityLLMUsage(context.Context, *connect.Request[v1.GetQualityLLMUsageRequest]) (*connect.Response[v1.QualityLLMUsage], error) {

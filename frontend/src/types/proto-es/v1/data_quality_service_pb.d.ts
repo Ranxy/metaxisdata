@@ -4470,6 +4470,277 @@ export declare type QualityTrendPoint = Message<"metaxisdata.v1.QualityTrendPoin
 export declare const QualityTrendPointSchema: GenMessage<QualityTrendPoint>;
 
 /**
+ * @generated from message metaxisdata.v1.ListQualityTargetsRequest
+ */
+export declare type ListQualityTargetsRequest = Message<"metaxisdata.v1.ListQualityTargetsRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * The maximum number of targets to return. If unspecified, at most 50 are
+   * returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+   *
+   * @generated from field: int32 page_size = 2;
+   */
+  pageSize: number;
+
+  /**
+   * A page token, received from a previous ListQualityTargets call.
+   *
+   * @generated from field: string page_token = 3;
+   */
+  pageToken: string;
+
+  /**
+   * The following four filters are GUID path prefixes, the same shape as
+   * ListQualityRules: a target matches when its GUID starts with the prefix.
+   *
+   * @generated from field: string instance = 4;
+   */
+  instance: string;
+
+  /**
+   * @generated from field: string database = 5;
+   */
+  database: string;
+
+  /**
+   * @generated from field: string schema = 6;
+   */
+  schema: string;
+
+  /**
+   * @generated from field: string table = 7;
+   */
+  table: string;
+
+  /**
+   * A case-insensitive substring over the target's path and GUID.
+   *
+   * @generated from field: string search = 8;
+   */
+  search: string;
+
+  /**
+   * Only targets whose worst latest result is this status. UNSPECIFIED keeps
+   * every target, including those whose rules have not run yet.
+   *
+   * @generated from field: metaxisdata.v1.QualityStatus worst_status = 9;
+   */
+  worstStatus: QualityStatus;
+
+  /**
+   * Only targets with at least one unresolved issue.
+   *
+   * @generated from field: bool has_open_issue = 10;
+   */
+  hasOpenIssue: boolean;
+
+  /**
+   * Only targets with at least one pending AI draft.
+   *
+   * @generated from field: bool has_pending_draft = 11;
+   */
+  hasPendingDraft: boolean;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityTargetOrder order_by = 12;
+   */
+  orderBy: QualityTargetOrder;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityTargetsRequest.
+ * Use `create(ListQualityTargetsRequestSchema)` to create a new message.
+ */
+export declare const ListQualityTargetsRequestSchema: GenMessage<ListQualityTargetsRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityTargetsResponse
+ */
+export declare type ListQualityTargetsResponse = Message<"metaxisdata.v1.ListQualityTargetsResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityTargetSummary quality_targets = 1;
+   */
+  qualityTargets: QualityTargetSummary[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityTargetsResponse.
+ * Use `create(ListQualityTargetsResponseSchema)` to create a new message.
+ */
+export declare const ListQualityTargetsResponseSchema: GenMessage<ListQualityTargetsResponse>;
+
+/**
+ * QualityTargetSummary is one row of the target directory: the target identity
+ * plus the counts and health the row and the workspace header render.
+ *
+ * @generated from message metaxisdata.v1.QualityTargetSummary
+ */
+export declare type QualityTargetSummary = Message<"metaxisdata.v1.QualityTargetSummary"> & {
+  /**
+   * The target, named by GUID and object type. Its path is the snapshot stored
+   * with the rules; the column list is empty here.
+   *
+   * @generated from field: metaxisdata.v1.QualityTarget target = 1;
+   */
+  target?: QualityTarget;
+
+  /**
+   * Live rules only; archived rules are excluded.
+   *
+   * @generated from field: int32 rule_count = 2;
+   */
+  ruleCount: number;
+
+  /**
+   * @generated from field: int32 enabled_rule_count = 3;
+   */
+  enabledRuleCount: number;
+
+  /**
+   * @generated from field: int32 paused_rule_count = 4;
+   */
+  pausedRuleCount: number;
+
+  /**
+   * Distinct columns the target's rules read.
+   *
+   * @generated from field: int32 column_count = 5;
+   */
+  columnCount: number;
+
+  /**
+   * @generated from field: int32 open_issue_count = 6;
+   */
+  openIssueCount: number;
+
+  /**
+   * @generated from field: int32 pending_draft_count = 7;
+   */
+  pendingDraftCount: number;
+
+  /**
+   * @generated from field: int32 pending_label_count = 8;
+   */
+  pendingLabelCount: number;
+
+  /**
+   * The worst latest result across the target's rules; UNSPECIFIED when no rule
+   * has run yet. ERROR outranks FAIL: a check that could not run needs attention
+   * more than one whose data failed.
+   *
+   * @generated from field: metaxisdata.v1.QualityStatus worst_status = 9;
+   */
+  worstStatus: QualityStatus;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp last_run_time = 10;
+   */
+  lastRunTime?: Timestamp;
+
+  /**
+   * Whether at least one rule was saved against a different target schema hash
+   * than the registry currently records.
+   *
+   * @generated from field: bool schema_changed = 11;
+   */
+  schemaChanged: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityTargetSummary.
+ * Use `create(QualityTargetSummarySchema)` to create a new message.
+ */
+export declare const QualityTargetSummarySchema: GenMessage<QualityTargetSummary>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualityTargetRequest
+ */
+export declare type GetQualityTargetRequest = Message<"metaxisdata.v1.GetQualityTargetRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * The target's metadata GUID. Required.
+   *
+   * @generated from field: string target_guid = 2;
+   */
+  targetGuid: string;
+
+  /**
+   * The target's object type. Optional when rules already exist, because their
+   * own target carries it; required to resolve a target that has no rules yet.
+   *
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 3;
+   */
+  metaType: MetaType;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityTargetRequest.
+ * Use `create(GetQualityTargetRequestSchema)` to create a new message.
+ */
+export declare const GetQualityTargetRequestSchema: GenMessage<GetQualityTargetRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualityTargetResponse
+ */
+export declare type GetQualityTargetResponse = Message<"metaxisdata.v1.GetQualityTargetResponse"> & {
+  /**
+   * The target's health summary, the same shape the directory lists.
+   *
+   * @generated from field: metaxisdata.v1.QualityTargetSummary summary = 1;
+   */
+  summary?: QualityTargetSummary;
+
+  /**
+   * Every live rule on the target, with its latest result.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityRule quality_rules = 2;
+   */
+  qualityRules: QualityRule[];
+
+  /**
+   * Unresolved issues (OPEN or ACKNOWLEDGED) opened by the target's rules.
+   *
+   * AI drafts are deliberately absent: reading them needs the suggest
+   * permission, which this RPC does not require, so the client reads the queue
+   * separately when it holds it.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityIssue open_issues = 3;
+   */
+  openIssues: QualityIssue[];
+
+  /**
+   * Why the target no longer resolves; empty while healthy. The rules stay
+   * readable when it is set, because their target path is a snapshot.
+   *
+   * @generated from field: string orphaned_reason = 4;
+   */
+  orphanedReason: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityTargetResponse.
+ * Use `create(GetQualityTargetResponseSchema)` to create a new message.
+ */
+export declare const GetQualityTargetResponseSchema: GenMessage<GetQualityTargetResponse>;
+
+/**
  * QualityRuleType is the observation a rule makes. The value is immutable for a
  * rule: changing the type is a different rule and a new revision.
  *
@@ -5599,6 +5870,51 @@ export enum QualitySuggestionJobTargetState {
 export declare const QualitySuggestionJobTargetStateSchema: GenEnum<QualitySuggestionJobTargetState>;
 
 /**
+ * QualityTargetOrder is how the target directory is ordered.
+ *
+ * @generated from enum metaxisdata.v1.QualityTargetOrder
+ */
+export enum QualityTargetOrder {
+  /**
+   * @generated from enum value: QUALITY_TARGET_ORDER_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * Worst latest result first, then open issues, then pending drafts.
+   *
+   * @generated from enum value: QUALITY_TARGET_ORDER_ATTENTION = 1;
+   */
+  ATTENTION = 1,
+
+  /**
+   * The target's object name, ascending.
+   *
+   * @generated from enum value: QUALITY_TARGET_ORDER_NAME = 2;
+   */
+  NAME = 2,
+
+  /**
+   * Most rules first.
+   *
+   * @generated from enum value: QUALITY_TARGET_ORDER_RULE_COUNT = 3;
+   */
+  RULE_COUNT = 3,
+
+  /**
+   * Most recent run first; targets that never ran come last.
+   *
+   * @generated from enum value: QUALITY_TARGET_ORDER_LAST_RUN = 4;
+   */
+  LAST_RUN = 4,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityTargetOrder.
+ */
+export declare const QualityTargetOrderSchema: GenEnum<QualityTargetOrder>;
+
+/**
  * DataQualityService manages the checks that watch the data itself: rules and
  * their executions.
  *
@@ -5940,6 +6256,31 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof GetQualityOverviewRequestSchema;
     output: typeof QualityOverviewSchema;
+  },
+  /**
+   * List the targets (tables or views) that have quality rules, one row per
+   * target. The counts, the worst latest result and the pending draft tally are
+   * aggregated by the database, so the directory does not page through every
+   * rule to answer "which table needs attention?".
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityTargets
+   */
+  listQualityTargets: {
+    methodKind: "unary";
+    input: typeof ListQualityTargetsRequestSchema;
+    output: typeof ListQualityTargetsResponseSchema;
+  },
+  /**
+   * Read one target's workspace: its rules (with their latest results), the
+   * pending AI drafts and the unresolved issues, in one call. The target is
+   * named by GUID because a target is not a resource of its own.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityTarget
+   */
+  getQualityTarget: {
+    methodKind: "unary";
+    input: typeof GetQualityTargetRequestSchema;
+    output: typeof GetQualityTargetResponseSchema;
   },
   /**
    * Read today's data quality LLM usage and the effective limits (the workspace

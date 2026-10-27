@@ -198,7 +198,7 @@
           <TableBody>
             <TableRow
               v-for="summary in visible"
-              :key="summary.guid"
+              :key="summary.target?.metaGuid"
             >
               <TableCell>
                 <div class="flex max-w-[14rem] min-w-0 items-center gap-2 md:max-w-md">
@@ -213,7 +213,7 @@
                     {{ targetDisplayName(summary) }}
                   </RouterLink>
                   <Badge variant="outline">
-                    {{ metaTypeSingularLabel(summary.metaType, t) }}
+                    {{ metaTypeSingularLabel(summary.target?.metaType ?? MetaType.UNSPECIFIED, t) }}
                   </Badge>
                 </div>
                 <div
@@ -229,7 +229,7 @@
                     {{ t("dataQuality.targets.rulesCount", { count: summary.ruleCount }) }}
                   </span>
                   <Badge
-                    v-if="summary.worstStatus !== undefined"
+                    v-if="summary.worstStatus !== QualityStatus.UNSPECIFIED"
                     :variant="qualityStatusVariant(summary.worstStatus)"
                   >
                     {{ t(qualityStatusKey(summary.worstStatus)) }}
@@ -242,9 +242,9 @@
                     {{ formatRelativeTime(summary.lastRunTime, locale) }}
                   </span>
                   <span v-else>{{ t("dataQuality.targets.neverRun") }}</span>
-                  <span v-if="summary.columns.length > 0">
+                  <span v-if="summary.columnCount > 0">
                     {{ t("dataQuality.targets.columnColumns") }}
-                    {{ summary.columns.length }}
+                    {{ summary.columnCount }}
                   </span>
                   <span v-if="summary.openIssueCount > 0">
                     {{ t("dataQuality.targets.columnIssues") }}
@@ -263,23 +263,20 @@
                      paused, which explains why the target reports less than it
                      has. -->
                 <div
-                  v-if="summary.pausedCount > 0"
+                  v-if="summary.pausedRuleCount > 0"
                   class="text-xs tabular-nums text-muted-foreground"
                   :title="t('dataQuality.ruleState.enabled')"
                 >
-                  {{ summary.enabledCount }} / {{ summary.ruleCount }}
+                  {{ summary.enabledRuleCount }} / {{ summary.ruleCount }}
                 </div>
               </TableCell>
-              <TableCell
-                class="hidden tabular-nums lg:table-cell"
-                :title="summary.columns.length > 0 ? summary.columns.join(', ') : undefined"
-              >
-                {{ summary.columns.length > 0 ? summary.columns.length : "-" }}
+              <TableCell class="hidden tabular-nums lg:table-cell">
+                {{ summary.columnCount > 0 ? summary.columnCount : "-" }}
               </TableCell>
               <TableCell class="hidden md:table-cell">
                 <template v-if="summary.lastRunTime">
                   <Badge
-                    v-if="summary.worstStatus !== undefined"
+                    v-if="summary.worstStatus !== QualityStatus.UNSPECIFIED"
                     :variant="qualityStatusVariant(summary.worstStatus)"
                   >
                     {{ t(qualityStatusKey(summary.worstStatus)) }}
@@ -341,11 +338,7 @@ import {
 import { computed, onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink } from "vue-router";
-import {
-  listAllQualityRules,
-  listQualityIssues,
-  listQualitySuggestions,
-} from "@/api/data-quality";
+import { listQualityTargets } from "@/api/data-quality";
 import { listAll } from "@/api/list";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
@@ -373,17 +366,14 @@ import {
 import { useErrorMessage } from "@/composables/useErrorHandler";
 import { useAuthStore } from "@/store/modules/auth";
 import {
-  QualityIssueStatus,
   QualityStatus,
-  type QualitySuggestion,
-  QualitySuggestionStatus,
+  QualityTargetOrder,
+  type QualityTargetSummary,
 } from "@/types/proto-es/v1/data_quality_service_pb";
+import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { qualityStatusKey, qualityStatusVariant } from "@/utils/dataQuality";
 import {
-  type QualityTargetOrder,
-  type QualityTargetSummary,
   sortQualityTargets,
-  summarizeQualityTargets,
   targetDisplayName,
   targetFullPath,
   targetMatchesSearch,
@@ -396,10 +386,10 @@ import { metaTypeSingularLabel } from "@/utils/metaType";
 /**
  * The quality directory: every target with rules, one row per table or view.
  *
- * The rule list is the source of truth for which targets exist — a target with
- * no rules is not a quality target — so the page reads every rule once and lets
- * the pure summarizer group them. Issues and pending drafts only decorate rows
- * that already exist; they never add one.
+ * The server aggregates rules, issues and drafts into one summary row per
+ * target, so the page reads the directory once. Search, the attention toggles
+ * and the sort then narrow the already-loaded rows on the client, which keeps
+ * "which target is failing?" instant instead of one round trip per keystroke.
  */
 
 const { t, locale } = useI18n();
@@ -422,27 +412,35 @@ const toggles = reactive<Record<TargetToggle, boolean>>({
   issues: false,
   drafts: false,
 });
-const order = ref("attention");
+/** How the sort select names an order; the API enum is derived from it. */
+type TargetOrder = "attention" | "name" | "rules" | "lastRun";
 
-/** The orders the summary sort knows; anything else falls back to attention. */
-const ORDER_VALUES: readonly QualityTargetOrder[] = [
-  "attention",
-  "name",
-  "rules",
-  "lastRun",
-];
+const order = ref<TargetOrder>("attention");
 
-const sortOptions = computed<
-  Array<{ value: QualityTargetOrder; label: string }>
->(() => [
-  {
-    value: "attention",
-    label: t("dataQuality.targets.sortAttention"),
-  },
-  { value: "name", label: t("dataQuality.targets.sortName") },
-  { value: "rules", label: t("dataQuality.targets.sortRules") },
-  { value: "lastRun", label: t("dataQuality.targets.sortLastRun") },
-]);
+const sortOptions = computed<Array<{ value: TargetOrder; label: string }>>(
+  () => [
+    {
+      value: "attention",
+      label: t("dataQuality.targets.sortAttention"),
+    },
+    { value: "name", label: t("dataQuality.targets.sortName") },
+    { value: "rules", label: t("dataQuality.targets.sortRules") },
+    { value: "lastRun", label: t("dataQuality.targets.sortLastRun") },
+  ]
+);
+
+const selectedOrder = computed<QualityTargetOrder>(() => {
+  switch (order.value) {
+    case "name":
+      return QualityTargetOrder.NAME;
+    case "rules":
+      return QualityTargetOrder.RULE_COUNT;
+    case "lastRun":
+      return QualityTargetOrder.LAST_RUN;
+    default:
+      return QualityTargetOrder.ATTENTION;
+  }
+});
 
 const toggleOptions = computed<Array<{ key: TargetToggle; label: string }>>(
   () => [
@@ -450,12 +448,6 @@ const toggleOptions = computed<Array<{ key: TargetToggle; label: string }>>(
     { key: "issues", label: t("dataQuality.targets.onlyIssues") },
     { key: "drafts", label: t("dataQuality.targets.onlyDrafts") },
   ]
-);
-
-const selectedOrder = computed<QualityTargetOrder>(() =>
-  ORDER_VALUES.includes(order.value as QualityTargetOrder)
-    ? (order.value as QualityTargetOrder)
-    : "attention"
 );
 
 const visible = computed(() =>
@@ -501,8 +493,10 @@ function clearFilters() {
 function workspaceRoute(summary: QualityTargetSummary) {
   return {
     name: "DataQualityTarget",
-    params: { targetGuid: guidToRouteParams(summary.guid) },
-    query: { metaType: String(summary.metaType) },
+    params: { targetGuid: guidToRouteParams(summary.target?.metaGuid ?? "") },
+    query: {
+      metaType: String(summary.target?.metaType ?? MetaType.UNSPECIFIED),
+    },
   };
 }
 
@@ -510,42 +504,15 @@ async function load() {
   isLoading.value = true;
   error.value = "";
   try {
-    // The three reads start together. Rules and issues decide the page: a
-    // failure in either is a failure of the directory, because an empty page
-    // would claim there are no targets. Pending drafts only annotate rows, so
-    // that block degrades to zero counts instead of failing the page.
-    const pendingDrafts = listAll((pageToken) =>
-      listQualitySuggestions({
-        status: QualitySuggestionStatus.PENDING,
+    // One aggregate read: each row already carries its counts and health.
+    // Walking the cursor keeps a directory that outgrew one page complete.
+    summaries.value = await listAll((pageToken) =>
+      listQualityTargets({
         pageSize: 1000,
         pageToken,
+        orderBy: QualityTargetOrder.ATTENTION,
       })
-    ).catch((): QualitySuggestion[] => []);
-    // Archived rules are excluded by the server unless explicitly requested.
-    // Only open and acknowledged issues count. Reading them by status (two
-    // pages) avoids walking the resolved rows that the 90-day ledger keeps.
-    const openIssues = Promise.all([
-      listAll((pageToken) =>
-        listQualityIssues({
-          status: QualityIssueStatus.OPEN,
-          pageSize: 1000,
-          pageToken,
-        })
-      ),
-      listAll((pageToken) =>
-        listQualityIssues({
-          status: QualityIssueStatus.ACKNOWLEDGED,
-          pageSize: 1000,
-          pageToken,
-        })
-      ),
-    ]).then(([open, acknowledged]) => [...open, ...acknowledged]);
-    const [rules, issues, suggestions] = await Promise.all([
-      listAllQualityRules({ pageSize: 1000 }),
-      openIssues,
-      pendingDrafts,
-    ]);
-    summaries.value = summarizeQualityTargets(rules, issues, suggestions);
+    );
   } catch (e: unknown) {
     error.value = formatError(e, "dataQuality.targets.loadFailed");
     summaries.value = [];

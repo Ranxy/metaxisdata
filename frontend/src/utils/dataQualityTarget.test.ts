@@ -2,11 +2,11 @@ import { create } from "@bufbuild/protobuf";
 import { TimestampSchema } from "@bufbuild/protobuf/wkt";
 import { describe, expect, it } from "vitest";
 import {
+  AcceptedValuesConfigSchema,
   AggregateConfigSchema,
   CrossColumnConfigSchema,
   FreshnessConfigSchema,
   NullPercentConfigSchema,
-  QualityExecutionSummarySchema,
   QualityIssueSchema,
   QualityIssueStatus,
   QualityRuleConfigSchema,
@@ -21,11 +21,18 @@ import {
   QualitySuggestionSchema,
   QualitySuggestionSource,
   QualitySuggestionStatus,
+  QualityTargetOrder,
   QualityTargetPathSchema,
   QualityTargetSchema,
+  type QualityTargetSummary,
+  QualityTargetSummarySchema,
+  RangeConfigSchema,
   ReferentialIntegrityConfigSchema,
+  RegexConfigSchema,
   RowCountConfigSchema,
+  StringLengthConfigSchema,
   UniqueCombinationConfigSchema,
+  UniqueConfigSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
@@ -36,13 +43,11 @@ import {
   ruleColumn,
   ruleSectionKey,
   sortQualityTargets,
-  summarizeQualityTargets,
   targetDisplayName,
   targetFullPath,
   targetMatchesSearch,
   targetScope,
   unresolvedIssuesByRule,
-  worstQualityStatus,
 } from "./dataQualityTarget";
 
 function target(guid: string, object: string, column = "") {
@@ -68,10 +73,6 @@ function rule(options: {
   state?: QualityRuleState;
   columns?: string[];
   configCase?: "rowCount" | "nullPercent" | "crossColumn";
-  status?: QualityStatus;
-  finishSeconds?: bigint;
-  orphaned?: boolean;
-  schemaChanged?: boolean;
 }) {
   const column = options.column ?? "";
   const configCase =
@@ -114,53 +115,44 @@ function rule(options: {
     config,
     severity: QualitySeverity.WARNING,
     state: options.state ?? QualityRuleState.ENABLED,
-    orphanedReason: options.orphaned ? "table dropped" : "",
-    targetSchemaChanged: options.schemaChanged ?? false,
-    lastResult: options.status
-      ? create(QualityExecutionSummarySchema, {
-          status: options.status,
-          finishTime: create(TimestampSchema, {
-            seconds: options.finishSeconds ?? 1_700_000_000n,
-          }),
-        })
-      : undefined,
   });
 }
 
-function issue(guid: string, ruleName: string, status: QualityIssueStatus) {
+function issue(ruleName: string, status: QualityIssueStatus) {
   return create(QualityIssueSchema, {
     name: `workspaces/ws/qualityIssues/${ruleName}`,
     rule: ruleName,
-    target: target(guid, "orders"),
+    target: target("g1", "orders"),
     status,
   });
 }
 
 function draft(options: {
-  guid: string;
+  guid?: string;
   name: string;
   column?: string;
-  status?: QualitySuggestionStatus;
   kind?: QualitySuggestionKind;
+  status?: QualitySuggestionStatus;
 }) {
-  const config = create(QualityRuleConfigSchema, {
-    config: options.column
-      ? {
-          case: "nullPercent",
-          value: create(NullPercentConfigSchema, { column: options.column }),
-        }
-      : undefined,
-  });
   return create(QualitySuggestionSchema, {
     name: options.name,
     kind: options.kind ?? QualitySuggestionKind.RULE_DRAFT,
     source: QualitySuggestionSource.NATURAL_LANGUAGE,
-    target: target(options.guid, "orders"),
+    target: target(options.guid ?? "g1", "orders"),
     payload: create(QualitySuggestionPayloadSchema, {
       payload: {
         case: "rule",
         value: create(QualityRuleDraftConfigSchema, {
-          config,
+          config: create(QualityRuleConfigSchema, {
+            config: options.column
+              ? {
+                  case: "nullPercent",
+                  value: create(NullPercentConfigSchema, {
+                    column: options.column,
+                  }),
+                }
+              : undefined,
+          }),
           title: `draft ${options.column ?? "table"}`,
           severity: QualitySeverity.WARNING,
           confidence: 0.8,
@@ -170,6 +162,86 @@ function draft(options: {
     }),
     status: options.status ?? QualitySuggestionStatus.PENDING,
   });
+}
+
+function draftWithConfig(
+  name: string,
+  config: ReturnType<typeof create<typeof QualityRuleConfigSchema>>
+) {
+  return create(QualitySuggestionSchema, {
+    name,
+    kind: QualitySuggestionKind.RULE_DRAFT,
+    source: QualitySuggestionSource.NATURAL_LANGUAGE,
+    target: target("g1", "orders"),
+    payload: create(QualitySuggestionPayloadSchema, {
+      payload: {
+        case: "rule",
+        value: create(QualityRuleDraftConfigSchema, {
+          config,
+          title: name,
+          severity: QualitySeverity.WARNING,
+          confidence: 0.6,
+          rationale: "because",
+        }),
+      },
+    }),
+    status: QualitySuggestionStatus.PENDING,
+  });
+}
+
+/**
+ * A directory row shaped like the server's `QualityTargetSummary`. `noTarget`
+ * and `noPath` model the degraded rows a reader must never see panic on.
+ */
+function summary(
+  options: {
+    guid?: string;
+    instance?: string;
+    database?: string;
+    schema?: string;
+    object?: string;
+    noTarget?: boolean;
+    noPath?: boolean;
+    ruleCount?: number;
+    openIssueCount?: number;
+    pendingDraftCount?: number;
+    worstStatus?: QualityStatus;
+    lastRunTime?: ReturnType<typeof create<typeof TimestampSchema>>;
+    schemaChanged?: boolean;
+  } = {}
+): QualityTargetSummary {
+  const guid = options.guid ?? "instance-1;shop;public;orders";
+  const target = options.noTarget
+    ? undefined
+    : create(QualityTargetSchema, {
+        metaGuid: guid,
+        metaType: MetaType.TABLE,
+        path: options.noPath
+          ? undefined
+          : create(QualityTargetPathSchema, {
+              instance: options.instance ?? "instance-1",
+              database: options.database ?? "shop",
+              schema: options.schema ?? "public",
+              object: options.object ?? "orders",
+            }),
+      });
+  return create(QualityTargetSummarySchema, {
+    target,
+    ruleCount: options.ruleCount ?? 1,
+    enabledRuleCount: options.ruleCount ?? 1,
+    pausedRuleCount: 0,
+    openIssueCount: options.openIssueCount ?? 0,
+    pendingDraftCount: options.pendingDraftCount ?? 0,
+    worstStatus: options.worstStatus ?? QualityStatus.UNSPECIFIED,
+    lastRunTime: options.lastRunTime,
+    schemaChanged: options.schemaChanged ?? false,
+  });
+}
+
+function guids(
+  summaries: readonly QualityTargetSummary[]
+): Array<string | undefined> {
+  return summaries.map((item) => item.target?.metaGuid);
 }
 
 describe("ruleColumn / isCrossColumnRule / ruleSectionKey", () => {
@@ -210,70 +282,112 @@ describe("ruleColumn / isCrossColumnRule / ruleSectionKey", () => {
   });
 });
 
-function draftWithConfig(
-  name: string,
-  config: ReturnType<typeof create<typeof QualityRuleConfigSchema>>
-) {
-  return create(QualitySuggestionSchema, {
-    name,
-    kind: QualitySuggestionKind.RULE_DRAFT,
-    source: QualitySuggestionSource.NATURAL_LANGUAGE,
-    target: target("g1", "orders"),
-    payload: create(QualitySuggestionPayloadSchema, {
-      payload: {
-        case: "rule",
-        value: create(QualityRuleDraftConfigSchema, {
-          config,
-          title: name,
-          severity: QualitySeverity.WARNING,
-          confidence: 0.6,
-          rationale: "because",
-        }),
-      },
-    }),
-    status: QualitySuggestionStatus.PENDING,
-  });
-}
-
 describe("draftColumn / draftSectionKey", () => {
   it("reads the column out of a single-column draft config", () => {
-    const suggestion = draft({ guid: "g1", name: "d1", column: "email" });
+    const suggestion = draft({ name: "d1", column: "email" });
     expect(draftColumn(suggestion)).toBe("email");
     expect(draftSectionKey(suggestion)).toBe("column:email");
   });
 
   it("files a draft with no named column under the dataset section", () => {
-    const suggestion = draft({ guid: "g1", name: "d1" });
+    const suggestion = draft({ name: "d1" });
     expect(draftColumn(suggestion)).toBe("");
     expect(draftSectionKey(suggestion)).toBe("dataset");
   });
 
-  it("reads the column from the arm that names it differently", () => {
-    const config = create(QualityRuleConfigSchema, {
-      config: {
-        case: "freshness",
-        value: create(FreshnessConfigSchema, { timestampColumn: "updated_at" }),
-      },
-    });
-    expect(draftColumn(draftWithConfig("fresh", config))).toBe("updated_at");
-
-    const join = create(QualityRuleConfigSchema, {
-      config: {
-        case: "referentialIntegrity",
-        value: create(ReferentialIntegrityConfigSchema, {
-          childColumn: "customer_id",
+  it("reads the column from every config arm that names one", () => {
+    const arms: Array<
+      [string, ReturnType<typeof create<typeof QualityRuleConfigSchema>>]
+    > = [
+      [
+        "null",
+        create(QualityRuleConfigSchema, {
+          config: {
+            case: "nullPercent",
+            value: create(NullPercentConfigSchema, { column: "email" }),
+          },
         }),
-      },
-    });
-    expect(draftColumn(draftWithConfig("join", join))).toBe("customer_id");
-
-    const aggregate = create(QualityRuleConfigSchema, {
-      config: {
-        case: "aggregate",
-        value: create(AggregateConfigSchema, { column: "amount" }),
-      },
-    });
-    expect(draftColumn(draftWithConfig("sum", aggregate))).toBe("amount");
+      ],
+      [
+        "unique",
+        create(QualityRuleConfigSchema, {
+          config: {
+            case: "unique",
+            value: create(UniqueConfigSchema, { column: "email" }),
+          },
+        }),
+      ],
+      [
+        "accepted",
+        create(QualityRuleConfigSchema, {
+          config: {
+            case: "acceptedValues",
+            value: create(AcceptedValuesConfigSchema, { column: "status" }),
+          },
+        }),
+      ],
+      [
+        "range",
+        create(QualityRuleConfigSchema, {
+          config: {
+            case: "range",
+            value: create(RangeConfigSchema, { column: "amount" }),
+          },
+        }),
+      ],
+      [
+        "regex",
+        create(QualityRuleConfigSchema, {
+          config: {
+            case: "regex",
+            value: create(RegexConfigSchema, { column: "code" }),
+          },
+        }),
+      ],
+      [
+        "length",
+        create(QualityRuleConfigSchema, {
+          config: {
+            case: "stringLength",
+            value: create(StringLengthConfigSchema, { column: "name" }),
+          },
+        }),
+      ],
+      [
+        "freshness",
+        create(QualityRuleConfigSchema, {
+          config: {
+            case: "freshness",
+            value: create(FreshnessConfigSchema, {
+              timestampColumn: "updated_at",
+            }),
+          },
+        }),
+      ],
+      [
+        "join",
+        create(QualityRuleConfigSchema, {
+          config: {
+            case: "referentialIntegrity",
+            value: create(ReferentialIntegrityConfigSchema, {
+              childColumn: "customer_id",
+            }),
+          },
+        }),
+      ],
+      [
+        "aggregate",
+        create(QualityRuleConfigSchema, {
+          config: {
+            case: "aggregate",
+            value: create(AggregateConfigSchema, { column: "amount" }),
+          },
+        }),
+      ],
+    ];
+    for (const [name, config] of arms) {
+      expect(draftColumn(draftWithConfig(name, config))).not.toBe("");
+    }
   });
 
   it("has no column for a typeless or column-less draft config", () => {
@@ -290,6 +404,7 @@ describe("draftColumn / draftSectionKey", () => {
       config: { case: "rowCount", value: create(RowCountConfigSchema, {}) },
     });
     expect(draftColumn(draftWithConfig("rows", rowCount))).toBe("");
+    expect(draftSectionKey(draftWithConfig("rows", rowCount))).toBe("dataset");
 
     const noPayload = create(QualitySuggestionSchema, {
       name: "no-payload",
@@ -314,171 +429,6 @@ describe("draftColumn / draftSectionKey", () => {
   });
 });
 
-describe("summarizeQualityTargets", () => {
-  it("groups rules by target and counts their health", () => {
-    const summaries = summarizeQualityTargets(
-      [
-        rule({
-          guid: "g1",
-          column: "email",
-          status: QualityStatus.PASS,
-          finishSeconds: 10n,
-        }),
-        rule({
-          guid: "g1",
-          column: "phone",
-          status: QualityStatus.FAIL,
-          finishSeconds: 20n,
-        }),
-        rule({
-          guid: "g1",
-          column: "phone",
-          state: QualityRuleState.PAUSED,
-        }),
-        rule({
-          guid: "g2",
-          object: "customers",
-          status: QualityStatus.ERROR,
-          orphaned: true,
-          schemaChanged: true,
-        }),
-      ],
-      [
-        issue("g1", "r1", QualityIssueStatus.OPEN),
-        issue("g1", "r1", QualityIssueStatus.ACKNOWLEDGED),
-        issue("g1", "r1", QualityIssueStatus.RESOLVED),
-        issue("g2", "r2", QualityIssueStatus.OPEN),
-      ],
-      [
-        draft({ guid: "g1", name: "d1", column: "email" }),
-        draft({ guid: "g1", name: "d2" }),
-        draft({
-          guid: "g1",
-          name: "d3",
-          kind: QualitySuggestionKind.LABEL,
-          status: QualitySuggestionStatus.PENDING,
-        }),
-        draft({
-          guid: "g1",
-          name: "d4",
-          status: QualitySuggestionStatus.ACCEPTED,
-        }),
-      ]
-    );
-
-    expect(summaries).toHaveLength(2);
-    const first = summaries.find((summary) => summary.guid === "g1");
-    expect(first).toBeDefined();
-    expect(first?.ruleCount).toBe(3);
-    expect(first?.enabledCount).toBe(2);
-    expect(first?.pausedCount).toBe(1);
-    expect(first?.columns).toEqual(["email", "phone"]);
-    expect(first?.worstStatus).toBe(QualityStatus.FAIL);
-    expect(first?.lastRunTime?.seconds).toBe(20n);
-    expect(first?.openIssueCount).toBe(2);
-    expect(first?.pendingDraftCount).toBe(2);
-    expect(first?.pendingLabelCount).toBe(1);
-    expect(first?.orphaned).toBe(false);
-
-    const second = summaries.find((summary) => summary.guid === "g2");
-    expect(second?.ruleCount).toBe(1);
-    expect(second?.orphaned).toBe(true);
-    expect(second?.schemaChanged).toBe(true);
-    expect(second?.openIssueCount).toBe(1);
-  });
-
-  it("skips archived rules and rules without a target GUID", () => {
-    const archived = rule({
-      guid: "g1",
-      state: QualityRuleState.ARCHIVED,
-    });
-    const noTarget = rule({ guid: "" });
-    expect(summarizeQualityTargets([archived, noTarget])).toEqual([]);
-  });
-
-  it("does not invent a target for issues or suggestions of an unknown target", () => {
-    const summaries = summarizeQualityTargets(
-      [rule({ guid: "g1" })],
-      [issue("g2", "r2", QualityIssueStatus.OPEN)],
-      [draft({ guid: "g2", name: "d1" })]
-    );
-    expect(summaries).toHaveLength(1);
-    expect(summaries[0].openIssueCount).toBe(0);
-    expect(summaries[0].pendingDraftCount).toBe(0);
-  });
-});
-
-describe("sortQualityTargets", () => {
-  const summaries = summarizeQualityTargets([
-    rule({ guid: "g1", object: "orders", status: QualityStatus.PASS }),
-    rule({ guid: "g2", object: "customers", status: QualityStatus.FAIL }),
-    rule({ guid: "g3", object: "buses" }),
-  ]);
-
-  it("orders by attention: failing, then never-run, then passing", () => {
-    const ordered = sortQualityTargets(summaries, "attention");
-    expect(ordered.map((summary) => summary.guid)).toEqual(["g2", "g1", "g3"]);
-  });
-
-  it("orders by name, rule count and last run", () => {
-    expect(
-      sortQualityTargets(summaries, "name").map((summary) => summary.guid)
-    ).toEqual(["g3", "g2", "g1"]);
-    expect(
-      sortQualityTargets(summaries, "rules").map((summary) => summary.guid)
-    ).toEqual(["g3", "g2", "g1"]);
-    expect(
-      sortQualityTargets(summaries, "lastRun").map((summary) => summary.guid)
-    ).toEqual(["g2", "g1", "g3"]);
-  });
-});
-
-describe("search and labels", () => {
-  const summaries = summarizeQualityTargets([
-    rule({ guid: "instance-1;db;public;orders", object: "orders" }),
-  ]);
-
-  it("matches the object, the path and the GUID", () => {
-    expect(targetMatchesSearch(summaries[0], "")).toBe(true);
-    expect(targetMatchesSearch(summaries[0], "ORDER")).toBe(true);
-    expect(targetMatchesSearch(summaries[0], "public")).toBe(true);
-    expect(targetMatchesSearch(summaries[0], "instance-1")).toBe(true);
-    expect(targetMatchesSearch(summaries[0], "customers")).toBe(false);
-  });
-
-  it("renders the target name, scope and full path", () => {
-    expect(targetDisplayName(summaries[0])).toBe("orders");
-    expect(targetScope(summaries[0])).toBe("instance-1 · sales");
-    expect(targetFullPath(summaries[0])).toBe("public.orders");
-  });
-
-  it("falls back to the GUID's own segments when the path is missing", () => {
-    const summary = summarizeQualityTargets([rule({ guid: "g1" })])[0];
-    summary.path = undefined;
-    expect(targetDisplayName(summary)).toBe("g1");
-    expect(targetFullPath(summary)).toBe("-");
-  });
-});
-
-describe("worstQualityStatus", () => {
-  it("ranks error above fail and ignores unset results", () => {
-    expect(worstQualityStatus([])).toBeUndefined();
-    expect(
-      worstQualityStatus([QualityStatus.PASS, undefined, QualityStatus.WARN])
-    ).toBe(QualityStatus.WARN);
-    expect(worstQualityStatus([QualityStatus.FAIL, QualityStatus.ERROR])).toBe(
-      QualityStatus.ERROR
-    );
-    expect(worstQualityStatus([QualityStatus.UNSPECIFIED])).toBeUndefined();
-    expect(worstQualityStatus([QualityStatus.SKIPPED])).toBe(
-      QualityStatus.SKIPPED
-    );
-    expect(
-      worstQualityStatus([QualityStatus.NOT_EVALUATED, QualityStatus.PASS])
-    ).toBe(QualityStatus.PASS);
-  });
-});
-
 describe("groupTargetChecks", () => {
   it("orders dataset, cross-column and column sections", () => {
     const sections = groupTargetChecks(
@@ -489,13 +439,16 @@ describe("groupTargetChecks", () => {
         rule({ guid: "g1", configCase: "crossColumn", columns: ["a", "b"] }),
       ],
       [
-        draft({ guid: "g1", name: "d-email", column: "email" }),
-        draft({ guid: "g1", name: "d-table" }),
+        draft({ name: "d-email", column: "email" }),
+        draft({ name: "d-table" }),
         draft({
-          guid: "g1",
           name: "d-decided",
           column: "email",
           status: QualitySuggestionStatus.ACCEPTED,
+        }),
+        draft({
+          name: "d-label",
+          kind: QualitySuggestionKind.LABEL,
         }),
       ]
     );
@@ -528,9 +481,9 @@ describe("groupTargetChecks", () => {
 describe("unresolvedIssuesByRule", () => {
   it("groups unresolved issues by rule and drops resolved ones", () => {
     const byRule = unresolvedIssuesByRule([
-      issue("g1", "rule-a", QualityIssueStatus.OPEN),
-      issue("g1", "rule-a", QualityIssueStatus.RESOLVED),
-      issue("g1", "rule-b", QualityIssueStatus.ACKNOWLEDGED),
+      issue("rule-a", QualityIssueStatus.OPEN),
+      issue("rule-a", QualityIssueStatus.RESOLVED),
+      issue("rule-b", QualityIssueStatus.ACKNOWLEDGED),
     ]);
     expect(byRule.get("rule-a")).toHaveLength(1);
     expect(byRule.get("rule-b")).toHaveLength(1);
@@ -538,107 +491,217 @@ describe("unresolvedIssuesByRule", () => {
   });
 });
 
-describe("target summary edge cases", () => {
-  function ruleWithFinish(guid: string, seconds: bigint) {
-    return rule({
-      guid,
-      status: QualityStatus.PASS,
-      finishSeconds: seconds,
+describe("target labels", () => {
+  it("names the target by its path snapshot", () => {
+    const row = summary({ object: "orders" });
+    expect(targetDisplayName(row)).toBe("orders");
+    expect(targetScope(row)).toBe("instance-1 · shop");
+    expect(targetFullPath(row)).toBe("public.orders");
+  });
+
+  it("falls back to the GUID's own path segments when the snapshot is missing", () => {
+    const row = summary({ noPath: true, guid: "instance-1;db;public;orders" });
+    expect(targetDisplayName(row)).toBe("orders");
+    expect(targetScope(row)).toBe("instance-1 · db");
+    expect(targetFullPath(row)).toBe("public.orders");
+  });
+
+  it("falls back from an empty path to the GUID segments", () => {
+    const row = summary({
+      guid: "instance-1;shop;public;orders",
+      instance: "",
+      database: "",
+      schema: "",
+      object: "",
     });
+    expect(targetDisplayName(row)).toBe("orders");
+    expect(targetScope(row)).toBe("instance-1 · shop");
+    expect(targetFullPath(row)).toBe("public.orders");
+  });
+
+  it("falls back to the GUID when it carries no object segment", () => {
+    const row = summary({ noPath: true, guid: "g1" });
+    expect(targetDisplayName(row)).toBe("g1");
+    expect(targetScope(row)).toBe("g1");
+    expect(targetFullPath(row)).toBe("-");
+  });
+
+  it("renders a bare summary without panicking", () => {
+    const row = summary({ noTarget: true, guid: "" });
+    expect(targetDisplayName(row)).toBe("");
+    expect(targetScope(row)).toBe("-");
+    expect(targetFullPath(row)).toBe("-");
+  });
+
+  it("uses the GUID for scope when the path has no instance or database", () => {
+    const row = summary({
+      guid: "instance-1;shop;public;orders",
+      noPath: true,
+    });
+    expect(targetScope(row)).toBe("instance-1 · shop");
+  });
+});
+
+describe("targetMatchesSearch", () => {
+  const row = summary({
+    object: "orders",
+    guid: "instance-1;shop;public;orders",
+  });
+
+  it("matches the object, the path and the GUID", () => {
+    expect(targetMatchesSearch(row, "")).toBe(true);
+    expect(targetMatchesSearch(row, "ORDER")).toBe(true);
+    expect(targetMatchesSearch(row, "public")).toBe(true);
+    expect(targetMatchesSearch(row, "instance-1")).toBe(true);
+    expect(targetMatchesSearch(row, "customers")).toBe(false);
+  });
+
+  it("matches through the GUID's path when the snapshot is missing", () => {
+    const noTarget = summary({
+      noPath: true,
+      guid: "instance-1;shop;public;orders",
+    });
+    expect(targetMatchesSearch(noTarget, "orders")).toBe(true);
+    expect(targetMatchesSearch(noTarget, "customers")).toBe(false);
+  });
+
+  it("does not match a bare summary against a real term", () => {
+    expect(
+      targetMatchesSearch(summary({ noTarget: true, guid: "" }), "orders")
+    ).toBe(false);
+  });
+});
+
+describe("sortQualityTargets", () => {
+  function run(
+    guid: string,
+    object: string,
+    extra: Parameters<typeof summary>[0] = {}
+  ) {
+    return summary({ guid, object, ...extra });
   }
 
-  it("keeps the later of two results in the same second", () => {
-    const early = ruleWithFinish("g1", 100n);
-    early.lastResult = create(QualityExecutionSummarySchema, {
-      status: QualityStatus.PASS,
-      finishTime: create(TimestampSchema, { seconds: 100n, nanos: 100 }),
-    });
-    const late = ruleWithFinish("g1", 100n);
-    late.lastResult = create(QualityExecutionSummarySchema, {
-      status: QualityStatus.PASS,
-      finishTime: create(TimestampSchema, { seconds: 100n, nanos: 500 }),
-    });
-    const [summary] = summarizeQualityTargets([early, late]);
-    expect(summary.lastRunTime?.nanos).toBe(500);
-  });
-
-  it("counts a rule whose state is unset as neither enabled nor paused", () => {
-    const [summary] = summarizeQualityTargets([
-      rule({ guid: "g1", state: QualityRuleState.UNSPECIFIED }),
-    ]);
-    expect(summary.ruleCount).toBe(1);
-    expect(summary.enabledCount).toBe(0);
-    expect(summary.pausedCount).toBe(0);
-  });
-
-  it("derives the scope and path from the GUID when the snapshot is missing", () => {
-    const [summary] = summarizeQualityTargets([
-      rule({ guid: "instance-1;db;public;orders" }),
-    ]);
-    summary.path = undefined;
-    expect(targetScope(summary)).toBe("instance-1 · db");
-    expect(targetFullPath(summary)).toBe("public.orders");
-  });
-});
-
-describe("stable ordering", () => {
-  it("keeps equal names in a stable order", () => {
-    const a = rule({ guid: "instance-1;db;public;orders", object: "orders" });
-    const b = rule({ guid: "instance-1;db;other;orders", object: "orders" });
-    b.target = create(QualityTargetSchema, {
-      metaGuid: "instance-1;db;other;orders",
-      metaType: MetaType.TABLE,
-      path: create(QualityTargetPathSchema, {
-        instance: "instance-1",
-        database: "db",
-        schema: "other",
-        object: "orders",
+  it("orders by attention: error, fail, warn, pass, skipped, never run", () => {
+    const rows = [
+      run("g-never", "target-never"),
+      run("g-skipped", "target-skipped", {
+        worstStatus: QualityStatus.SKIPPED,
       }),
-      columns: [],
-    });
-    const ordered = sortQualityTargets(summarizeQualityTargets([a, b]), "name");
-    expect(ordered).toHaveLength(2);
+      run("g-not-evaluated", "target-not-evaluated", {
+        worstStatus: QualityStatus.NOT_EVALUATED,
+      }),
+      run("g-pass", "target-pass", { worstStatus: QualityStatus.PASS }),
+      run("g-warn", "target-warn", { worstStatus: QualityStatus.WARN }),
+      run("g-fail", "target-fail", { worstStatus: QualityStatus.FAIL }),
+      run("g-error", "target-error", { worstStatus: QualityStatus.ERROR }),
+    ];
+
     expect(
-      ordered.map((summary) => summary.guid).sort((x, y) => x.localeCompare(y))
-    ).toEqual(["instance-1;db;other;orders", "instance-1;db;public;orders"]);
-  });
-});
-
-describe("missing finish timestamps", () => {
-  it("sorts a timestamp with no seconds below a real one", () => {
-    const undated = rule({ guid: "g1", status: QualityStatus.PASS });
-    undated.lastResult = create(QualityExecutionSummarySchema, {
-      status: QualityStatus.PASS,
-      finishTime: create(TimestampSchema, {}),
-    });
-    const dated = rule({
-      guid: "g1",
-      status: QualityStatus.PASS,
-      finishSeconds: 50n,
-    });
-    const [summary] = summarizeQualityTargets([undated, dated]);
-    expect(summary.lastRunTime?.seconds).toBe(50n);
+      guids(sortQualityTargets(rows, QualityTargetOrder.ATTENTION))
+    ).toEqual([
+      "g-error",
+      "g-fail",
+      "g-warn",
+      "g-pass",
+      "g-not-evaluated",
+      "g-skipped",
+      "g-never",
+    ]);
   });
 
-  it("falls back to the GUID name when the path has no object", () => {
-    const [summary] = summarizeQualityTargets([rule({ guid: "g1" })]);
-    summary.path = create(QualityTargetPathSchema, { object: "" });
-    expect(targetDisplayName(summary)).toBe("g1");
-  });
-});
+  it("breaks attention ties by open issues, then drafts, then name", () => {
+    const rows = [
+      run("g-beta", "beta", { worstStatus: QualityStatus.FAIL }),
+      run("g-alpha", "alpha", { worstStatus: QualityStatus.FAIL }),
+      run("g-issues", "gamma", {
+        worstStatus: QualityStatus.FAIL,
+        openIssueCount: 2,
+      }),
+      run("g-issue", "delta", {
+        worstStatus: QualityStatus.FAIL,
+        openIssueCount: 1,
+      }),
+      run("g-draft", "epsilon", {
+        worstStatus: QualityStatus.FAIL,
+        pendingDraftCount: 1,
+      }),
+    ];
 
-describe("bare messages", () => {
-  it("treats a rule with no config or target as dataset-level", () => {
-    const bare = create(QualityRuleSchema, {});
-    expect(ruleColumn(bare)).toBe("");
-    expect(isCrossColumnRule(bare)).toBe(false);
-    expect(ruleSectionKey(bare)).toBe("dataset");
+    expect(
+      guids(sortQualityTargets(rows, QualityTargetOrder.ATTENTION))
+    ).toEqual(["g-issues", "g-issue", "g-draft", "g-alpha", "g-beta"]);
   });
 
-  it("skips a rule that carries no target at all", () => {
-    const bare = create(QualityRuleSchema, {
-      state: QualityRuleState.ENABLED,
-    });
-    expect(summarizeQualityTargets([bare])).toEqual([]);
+  it("orders by name and falls back to the GUID for equal names", () => {
+    const rows = [
+      run("x;db;public;orders", "orders"),
+      run("a;db;public;orders", "orders"),
+      run("g-buses", "buses"),
+      run("g-customers", "customers"),
+    ];
+
+    expect(guids(sortQualityTargets(rows, QualityTargetOrder.NAME))).toEqual([
+      "g-buses",
+      "g-customers",
+      "a;db;public;orders",
+      "x;db;public;orders",
+    ]);
+  });
+
+  it("orders by rule count, most rules first", () => {
+    const rows = [
+      run("g-one", "one", { ruleCount: 1 }),
+      run("g-three", "three", { ruleCount: 3 }),
+      run("g-two", "two", { ruleCount: 2 }),
+    ];
+
+    expect(
+      guids(sortQualityTargets(rows, QualityTargetOrder.RULE_COUNT))
+    ).toEqual(["g-three", "g-two", "g-one"]);
+  });
+
+  it("orders by last run, newest first, with never-run targets last", () => {
+    const time = (seconds: bigint, nanos = 0) =>
+      create(TimestampSchema, { seconds, nanos });
+    const rows = [
+      run("g-old", "old", { lastRunTime: time(100n) }),
+      run("g-new", "new", { lastRunTime: time(200n) }),
+      run("g-late", "late", { lastRunTime: time(100n, 500) }),
+      run("g-never", "never"),
+      run("g-never-b", "never-b"),
+    ];
+
+    expect(
+      guids(sortQualityTargets(rows, QualityTargetOrder.LAST_RUN))
+    ).toEqual(["g-new", "g-late", "g-old", "g-never", "g-never-b"]);
+  });
+
+  it("treats an unspecified order as attention", () => {
+    const rows = [
+      run("g-pass", "pass", { worstStatus: QualityStatus.PASS }),
+      run("g-fail", "fail", { worstStatus: QualityStatus.FAIL }),
+    ];
+
+    expect(
+      guids(sortQualityTargets(rows, QualityTargetOrder.UNSPECIFIED))
+    ).toEqual(["g-fail", "g-pass"]);
+  });
+
+  it("keeps duplicate rows stable when every key ties", () => {
+    const rows = [
+      run("g-same", "same", { worstStatus: QualityStatus.PASS }),
+      run("g-same", "same", { worstStatus: QualityStatus.PASS }),
+    ];
+
+    expect(
+      guids(sortQualityTargets(rows, QualityTargetOrder.ATTENTION))
+    ).toEqual(["g-same", "g-same"]);
+    expect(guids(sortQualityTargets(rows, QualityTargetOrder.NAME))).toEqual([
+      "g-same",
+      "g-same",
+    ]);
+    expect(
+      guids(sortQualityTargets(rows, QualityTargetOrder.LAST_RUN))
+    ).toEqual(["g-same", "g-same"]);
   });
 });

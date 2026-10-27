@@ -250,6 +250,8 @@
     - [GetQualitySuggestionJobTargetDebugRequest](#metaxisdata-v1-GetQualitySuggestionJobTargetDebugRequest)
     - [GetQualitySuggestionJobTargetDebugResponse](#metaxisdata-v1-GetQualitySuggestionJobTargetDebugResponse)
     - [GetQualitySuggestionRequest](#metaxisdata-v1-GetQualitySuggestionRequest)
+    - [GetQualityTargetRequest](#metaxisdata-v1-GetQualityTargetRequest)
+    - [GetQualityTargetResponse](#metaxisdata-v1-GetQualityTargetResponse)
     - [GroupCheckConfig](#metaxisdata-v1-GroupCheckConfig)
     - [ListColumnLabelsRequest](#metaxisdata-v1-ListColumnLabelsRequest)
     - [ListColumnLabelsResponse](#metaxisdata-v1-ListColumnLabelsResponse)
@@ -265,6 +267,8 @@
     - [ListQualitySuggestionJobsResponse](#metaxisdata-v1-ListQualitySuggestionJobsResponse)
     - [ListQualitySuggestionsRequest](#metaxisdata-v1-ListQualitySuggestionsRequest)
     - [ListQualitySuggestionsResponse](#metaxisdata-v1-ListQualitySuggestionsResponse)
+    - [ListQualityTargetsRequest](#metaxisdata-v1-ListQualityTargetsRequest)
+    - [ListQualityTargetsResponse](#metaxisdata-v1-ListQualityTargetsResponse)
     - [NullPercentConfig](#metaxisdata-v1-NullPercentConfig)
     - [PreviewQualityRuleRequest](#metaxisdata-v1-PreviewQualityRuleRequest)
     - [PreviewQualityRuleResponse](#metaxisdata-v1-PreviewQualityRuleResponse)
@@ -290,6 +294,7 @@
     - [QualitySuggestionQueueSummary](#metaxisdata-v1-QualitySuggestionQueueSummary)
     - [QualityTarget](#metaxisdata-v1-QualityTarget)
     - [QualityTargetPath](#metaxisdata-v1-QualityTargetPath)
+    - [QualityTargetSummary](#metaxisdata-v1-QualityTargetSummary)
     - [QualityThresholds](#metaxisdata-v1-QualityThresholds)
     - [QualityTrendPoint](#metaxisdata-v1-QualityTrendPoint)
     - [RangeConfig](#metaxisdata-v1-RangeConfig)
@@ -340,6 +345,7 @@
     - [QualitySuggestionKind](#metaxisdata-v1-QualitySuggestionKind)
     - [QualitySuggestionSource](#metaxisdata-v1-QualitySuggestionSource)
     - [QualitySuggestionStatus](#metaxisdata-v1-QualitySuggestionStatus)
+    - [QualityTargetOrder](#metaxisdata-v1-QualityTargetOrder)
     - [QualityThresholdMetric](#metaxisdata-v1-QualityThresholdMetric)
   
     - [DataQualityService](#metaxisdata-v1-DataQualityService)
@@ -4558,6 +4564,43 @@ queries rather than paging through every result.
 
 
 
+<a name="metaxisdata-v1-GetQualityTargetRequest"></a>
+
+### GetQualityTargetRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| target_guid | [string](#string) |  | The target&#39;s metadata GUID. Required. |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  | The target&#39;s object type. Optional when rules already exist, because their own target carries it; required to resolve a target that has no rules yet. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetQualityTargetResponse"></a>
+
+### GetQualityTargetResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| summary | [QualityTargetSummary](#metaxisdata-v1-QualityTargetSummary) |  | The target&#39;s health summary, the same shape the directory lists. |
+| quality_rules | [QualityRule](#metaxisdata-v1-QualityRule) | repeated | Every live rule on the target, with its latest result. |
+| open_issues | [QualityIssue](#metaxisdata-v1-QualityIssue) | repeated | Unresolved issues (OPEN or ACKNOWLEDGED) opened by the target&#39;s rules.
+
+AI drafts are deliberately absent: reading them needs the suggest permission, which this RPC does not require, so the client reads the queue separately when it holds it. |
+| orphaned_reason | [string](#string) |  | Why the target no longer resolves; empty while healthy. The rules stay readable when it is set, because their target path is a snapshot. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GroupCheckConfig"></a>
 
 ### GroupCheckConfig
@@ -4844,6 +4887,48 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | quality_suggestions | [QualitySuggestion](#metaxisdata-v1-QualitySuggestion) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityTargetsRequest"></a>
+
+### ListQualityTargetsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| page_size | [int32](#int32) |  | The maximum number of targets to return. If unspecified, at most 50 are returned. The maximum value is 1000; values above 1000 are coerced to 1000. |
+| page_token | [string](#string) |  | A page token, received from a previous ListQualityTargets call. |
+| instance | [string](#string) |  | The following four filters are GUID path prefixes, the same shape as ListQualityRules: a target matches when its GUID starts with the prefix. |
+| database | [string](#string) |  |  |
+| schema | [string](#string) |  |  |
+| table | [string](#string) |  |  |
+| search | [string](#string) |  | A case-insensitive substring over the target&#39;s path and GUID. |
+| worst_status | [QualityStatus](#metaxisdata-v1-QualityStatus) |  | Only targets whose worst latest result is this status. UNSPECIFIED keeps every target, including those whose rules have not run yet. |
+| has_open_issue | [bool](#bool) |  | Only targets with at least one unresolved issue. |
+| has_pending_draft | [bool](#bool) |  | Only targets with at least one pending AI draft. |
+| order_by | [QualityTargetOrder](#metaxisdata-v1-QualityTargetOrder) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityTargetsResponse"></a>
+
+### ListQualityTargetsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| quality_targets | [QualityTargetSummary](#metaxisdata-v1-QualityTargetSummary) | repeated |  |
 | next_page_token | [string](#string) |  |  |
 
 
@@ -5434,6 +5519,32 @@ rule was saved.
 | schema | [string](#string) |  |  |
 | object | [string](#string) |  |  |
 | column | [string](#string) |  | Empty for a table-level rule. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityTargetSummary"></a>
+
+### QualityTargetSummary
+QualityTargetSummary is one row of the target directory: the target identity
+plus the counts and health the row and the workspace header render.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  | The target, named by GUID and object type. Its path is the snapshot stored with the rules; the column list is empty here. |
+| rule_count | [int32](#int32) |  | Live rules only; archived rules are excluded. |
+| enabled_rule_count | [int32](#int32) |  |  |
+| paused_rule_count | [int32](#int32) |  |  |
+| column_count | [int32](#int32) |  | Distinct columns the target&#39;s rules read. |
+| open_issue_count | [int32](#int32) |  |  |
+| pending_draft_count | [int32](#int32) |  |  |
+| pending_label_count | [int32](#int32) |  |  |
+| worst_status | [QualityStatus](#metaxisdata-v1-QualityStatus) |  | The worst latest result across the target&#39;s rules; UNSPECIFIED when no rule has run yet. ERROR outranks FAIL: a check that could not run needs attention more than one whose data failed. |
+| last_run_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| schema_changed | [bool](#bool) |  | Whether at least one rule was saved against a different target schema hash than the registry currently records. |
 
 
 
@@ -6327,6 +6438,21 @@ again later.
 
 
 
+<a name="metaxisdata-v1-QualityTargetOrder"></a>
+
+### QualityTargetOrder
+QualityTargetOrder is how the target directory is ordered.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_TARGET_ORDER_UNSPECIFIED | 0 |  |
+| QUALITY_TARGET_ORDER_ATTENTION | 1 | Worst latest result first, then open issues, then pending drafts. |
+| QUALITY_TARGET_ORDER_NAME | 2 | The target&#39;s object name, ascending. |
+| QUALITY_TARGET_ORDER_RULE_COUNT | 3 | Most rules first. |
+| QUALITY_TARGET_ORDER_LAST_RUN | 4 | Most recent run first; targets that never ran come last. |
+
+
+
 <a name="metaxisdata-v1-QualityThresholdMetric"></a>
 
 ### QualityThresholdMetric
@@ -6392,6 +6518,8 @@ not exposed as a resource.
 
 No (google.api.http) annotation: this is a server-streaming method, and the REST gateway cannot carry one. The browser reaches the Connect endpoint directly, the way it does for ExplainSQL. |
 | GetQualityOverview | [GetQualityOverviewRequest](#metaxisdata-v1-GetQualityOverviewRequest) | [QualityOverview](#metaxisdata-v1-QualityOverview) | Read the workspace&#39;s quality summary: how many rules and issues exist, how the last day went, and the per-day tallies the overview chart draws. |
+| ListQualityTargets | [ListQualityTargetsRequest](#metaxisdata-v1-ListQualityTargetsRequest) | [ListQualityTargetsResponse](#metaxisdata-v1-ListQualityTargetsResponse) | List the targets (tables or views) that have quality rules, one row per target. The counts, the worst latest result and the pending draft tally are aggregated by the database, so the directory does not page through every rule to answer &#34;which table needs attention?&#34;. |
+| GetQualityTarget | [GetQualityTargetRequest](#metaxisdata-v1-GetQualityTargetRequest) | [GetQualityTargetResponse](#metaxisdata-v1-GetQualityTargetResponse) | Read one target&#39;s workspace: its rules (with their latest results), the pending AI drafts and the unresolved issues, in one call. The target is named by GUID because a target is not a resource of its own. |
 | GetQualityLLMUsage | [GetQualityLLMUsageRequest](#metaxisdata-v1-GetQualityLLMUsageRequest) | [QualityLLMUsage](#metaxisdata-v1-QualityLLMUsage) | Read today&#39;s data quality LLM usage and the effective limits (the workspace settings, with server defaults resolved). The counters are process state: a restart resets them and they roll over at 00:00 UTC. |
 
  

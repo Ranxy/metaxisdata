@@ -34,7 +34,10 @@ fully offline; three model-assisted features are opt-in.
 ## Writing a rule
 
 Data Quality → **Targets** → open a target → **New rule** (or *New rule* in the
-section header). Pick the target from the metadata browser:
+section header). The workspace opens the form as a dialog with the target fixed,
+so a second check on the same table never walks the target picker again; *Open
+full editor* in that dialog keeps the route for filters, owner and tags. From
+there, or from **All rules → New rule**, pick the target from the metadata browser:
 browse instances → databases → schemas → tables, one level at a time. Below the
 instance, each level pages through the registry with **Load more**, and its
 search box matches names and comments on the server, so a schema with thousands

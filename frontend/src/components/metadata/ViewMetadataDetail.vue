@@ -42,6 +42,13 @@
       :tabs="tabs"
     />
 
+    <MetadataQualitySection
+      v-if="activeTab === 'quality' && guid"
+      :table-guid="guid"
+      :meta-type="MetaType.VIEW"
+      :columns="view.columns"
+    />
+
     <template v-if="!guid || activeTab === 'details'">
     <TableLineageSection
       v-if="guid"
@@ -54,7 +61,7 @@
     </template>
 
     <MetadataHistorySection
-      v-else
+      v-else-if="activeTab === 'history' && guid"
       :guid="guid"
       :meta-type="MetaType.VIEW"
     />
@@ -65,11 +72,13 @@
 import { Sparkles } from "lucide-vue-next";
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import MetadataQualitySection from "@/components/data-quality/MetadataQualitySection.vue";
 import MetadataColumnsSection from "@/components/metadata/MetadataColumnsSection.vue";
 import MetadataHistorySection from "@/components/metadata/MetadataHistorySection.vue";
 import MetadataTabGroup from "@/components/metadata/MetadataTabGroup.vue";
 import TableLineageSection from "@/components/metadata/TableLineageSection.vue";
 import { Button } from "@/components/ui/button";
+import { useAuthStore } from "@/store/modules/auth";
 import {
   MetaType,
   type ViewMetadata,
@@ -84,13 +93,27 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
+const authStore = useAuthStore();
 
-const activeTab = ref<"details" | "history">("details");
+type DetailTab = "details" | "quality" | "history";
 
-const tabs = computed(() => [
-  { value: "details" as const, label: t("metadataBrowser.viewDetail") },
-  { value: "history" as const, label: t("metadataBrowser.historyTitle") },
-]);
+const activeTab = ref<DetailTab>("details");
+
+/** The quality tab exists only for a caller who can read the rule catalog. */
+function hasQualityPermission(): boolean {
+  return authStore.hasPermission("metaxisdata.dataQuality.rules.list");
+}
+
+const tabs = computed(() => {
+  const list: Array<{ value: DetailTab; label: string }> = [
+    { value: "details", label: t("metadataBrowser.viewDetail") },
+  ];
+  if (props.guid && hasQualityPermission()) {
+    list.push({ value: "quality", label: t("dataQuality.asset.tab") });
+  }
+  list.push({ value: "history", label: t("metadataBrowser.historyTitle") });
+  return list;
+});
 
 const summaryLine = computed(() => {
   const parts: string[] = [];

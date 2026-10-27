@@ -1,5 +1,6 @@
 import { create } from "@bufbuild/protobuf";
 import { mount } from "@vue/test-utils";
+import { createPinia, setActivePinia } from "pinia";
 import { describe, expect, it } from "vitest";
 import { i18n } from "@/locales";
 import {
@@ -31,11 +32,14 @@ function table(): ExternalTableMetadata {
 }
 
 // Mounted without a guid, so neither the lineage section nor the history tab
-// issues a request: this covers the column list the page renders.
+// issues a request: this covers the column list the page renders. The detail
+// reads the auth store for the permission-gated quality tab, hence the pinia.
 function mountDetail(value: ExternalTableMetadata) {
+  const pinia = createPinia();
+  setActivePinia(pinia);
   return mount(ExternalTableMetadataDetail, {
     props: { table: value },
-    global: { plugins: [i18n] },
+    global: { plugins: [i18n, pinia] },
   });
 }
 
