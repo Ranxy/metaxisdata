@@ -40,13 +40,13 @@
                 </Badge>
               </template>
               <template v-else>
-                <span class="truncate font-medium">{{ selected[0]?.name }}</span>
+                <span class="min-w-0 flex-1 truncate font-medium">{{ selected[0]?.name }}</span>
                 <Badge
                   v-if="selected[0]?.type"
                   variant="outline"
-                  class="shrink-0"
+                  class="max-w-[50%] overflow-hidden"
                 >
-                  {{ selected[0]?.type }}
+                  <span class="truncate">{{ selected[0]?.type }}</span>
                 </Badge>
               </template>
             </span>
@@ -61,7 +61,7 @@
         </PopoverTrigger>
 
         <PopoverContent
-          class="w-[var(--radix-popover-trigger-width)] p-0"
+          class="w-[var(--radix-popover-trigger-width)] min-w-72 max-w-[calc(100vw-2rem)] p-0"
           align="start"
         >
           <Command
@@ -72,7 +72,7 @@
               :placeholder="t('columnSelect.searchPlaceholder')"
               @input="onSearch"
             />
-            <CommandList>
+            <CommandList class="max-h-[min(300px,calc(var(--radix-popper-available-height,22rem)-3rem))]">
               <CommandEmpty>{{ t("columnSelect.noMatch") }}</CommandEmpty>
               <CommandGroup>
                 <CommandItem
@@ -80,17 +80,17 @@
                   :key="column.name"
                   :value="column.name"
                 >
-                  <span class="truncate font-medium">{{ column.name }}</span>
+                  <span class="min-w-0 flex-1 truncate font-medium">{{ column.name }}</span>
                   <Badge
                     v-if="column.type"
                     variant="outline"
-                    class="ml-2 shrink-0"
+                    class="ml-2 max-w-[45%] overflow-hidden"
                   >
-                    {{ column.type }}
+                    <span class="truncate">{{ column.type }}</span>
                   </Badge>
                   <Check
                     v-if="isSelected(column.name)"
-                    class="ml-auto h-4 w-4"
+                    class="ml-2 h-4 w-4 shrink-0"
                   />
                 </CommandItem>
               </CommandGroup>

@@ -28,7 +28,7 @@
     <div
       v-for="(clause, index) in clauses"
       :key="index"
-      class="grid items-start gap-3 rounded-md border p-3 sm:grid-cols-[minmax(0,1fr)_10rem_minmax(0,1fr)_auto]"
+      class="grid items-start gap-3 rounded-md border p-3 sm:grid-cols-[minmax(0,1.4fr)_8rem_minmax(0,1fr)_auto]"
     >
       <ColumnSelect
         :model-value="clause.column"

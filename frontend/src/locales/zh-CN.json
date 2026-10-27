@@ -890,7 +890,6 @@
       "truncated": "已截断"
     },
     "recentExecutions": "最近执行",
-    "recentExecutionsHint": "该检查最近记录的执行。",
     "recentResultWindow": "最近 {count} 次执行",
     "resolutionNote": "备注",
     "resolutionNotePlaceholder": "做了什么，或为什么这个失败是预期的。",

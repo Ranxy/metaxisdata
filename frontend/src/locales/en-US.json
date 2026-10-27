@@ -890,8 +890,7 @@
       "truncated": "truncated"
     },
     "recentExecutions": "Recent executions",
-    "recentExecutionsHint": "The most recent executions recorded for this check.",
-    "recentResultWindow": "Last {count} executions",
+    "recentResultWindow": "Last {count} execution | Last {count} executions",
     "resolutionNote": "Note",
     "resolutionNotePlaceholder": "What was done, or why the failure is expected.",
     "resolutionReason": {

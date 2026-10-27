@@ -160,7 +160,7 @@
                       </div>
                     </div>
 
-                    <div class="flex shrink-0 flex-col gap-2 sm:items-end">
+                    <div class="flex shrink-0 flex-col gap-2 sm:max-w-[45%] sm:items-end">
                       <div
                         v-if="passRate !== undefined"
                         class="text-right"
@@ -189,7 +189,7 @@
                   </div>
 
                   <div
-                    v-if="executions.length > 0"
+                    v-if="executions.length > 1"
                     class="space-y-2 border-t pt-4"
                   >
                     <div class="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
@@ -211,9 +211,6 @@
                   <CardTitle class="text-base">
                     {{ t("dataQuality.recentExecutions") }}
                   </CardTitle>
-                  <CardDescription>
-                    {{ t("dataQuality.recentExecutionsHint") }}
-                  </CardDescription>
                 </CardHeader>
                 <CardContent class="pt-4">
                   <p
@@ -230,21 +227,17 @@
                   <Table v-else>
                     <TableHeader>
                       <TableRow>
-                        <TableHead class="whitespace-nowrap">
+                        <TableHead>
                           {{ t("dataQuality.startedAt") }}
                         </TableHead>
-                        <TableHead>{{ t("dataQuality.resultStatus") }}</TableHead>
-                        <TableHead class="hidden whitespace-nowrap sm:table-cell">
+                        <TableHead>
+                          {{ t("dataQuality.resultStatus") }}
+                        </TableHead>
+                        <TableHead class="hidden sm:table-cell">
                           {{ t("dataQuality.observed") }}
                         </TableHead>
-                        <TableHead class="hidden whitespace-nowrap sm:table-cell">
+                        <TableHead class="hidden sm:table-cell">
                           {{ t("dataQuality.failedRows") }}
-                        </TableHead>
-                        <TableHead class="hidden whitespace-nowrap sm:table-cell">
-                          {{ t("dataQuality.trigger") }}
-                        </TableHead>
-                        <TableHead class="hidden whitespace-nowrap sm:table-cell">
-                          {{ t("dataQuality.duration") }}
                         </TableHead>
                       </TableRow>
                     </TableHeader>
@@ -268,17 +261,14 @@
                           >
                             {{ formatRelativeTime(execution.startTime, locale) }}
                           </span>
+                          <div class="mt-0.5 text-xs text-muted-foreground">
+                            {{ executionMeta(execution) }}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <div class="flex flex-wrap items-center gap-1">
-                            <Badge :variant="qualityExecutionStateVariant(execution.state)">
-                              {{ t(qualityExecutionStateKey(execution.state)) }}
-                            </Badge>
-                            <Badge
-                              v-if="execution.outcome !== QualityStatus.UNSPECIFIED"
-                              :variant="qualityStatusVariant(execution.outcome)"
-                            >
-                              {{ t(qualityStatusKey(execution.outcome)) }}
+                            <Badge :variant="executionBadge(execution).variant">
+                              {{ t(executionBadge(execution).key) }}
                             </Badge>
                             <Badge
                               v-if="execution.errorCode"
@@ -294,12 +284,6 @@
                         </TableCell>
                         <TableCell class="hidden tabular-nums sm:table-cell">
                           {{ rowsLabel(execution) }}
-                        </TableCell>
-                        <TableCell class="hidden whitespace-nowrap sm:table-cell">
-                          {{ t(qualityExecutionTriggerKey(execution.trigger)) }}
-                        </TableCell>
-                        <TableCell class="hidden whitespace-nowrap tabular-nums sm:table-cell">
-                          {{ durationLabel(execution) }}
                         </TableCell>
                       </TableRow>
                     </TableBody>
@@ -384,7 +368,7 @@
                         {{ filterText }}
                       </dd>
                     </div>
-                    <div>
+                    <div v-if="rule && isOnEmptyRelevant(rule.ruleType)">
                       <dt class="text-xs text-muted-foreground">
                         {{ t("dataQuality.editor.onEmpty") }}
                       </dt>
@@ -438,7 +422,7 @@
           </PageState>
         </div>
 
-        <DialogFooter class="shrink-0 flex-wrap items-center gap-2 border-t px-6 py-4">
+        <DialogFooter class="shrink-0 flex-row flex-wrap items-center justify-end gap-2 border-t px-6 py-4">
           <Button
             v-if="canRun && !archived"
             :disabled="running"
@@ -493,7 +477,6 @@
           </Button>
           <Button
             variant="ghost"
-            class="ml-auto"
             @click="close"
           >
             {{ t("common.close") }}
@@ -560,13 +543,7 @@ import QualityResultStrip from "@/components/data-quality/QualityResultStrip.vue
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -620,6 +597,7 @@ import {
   qualityTargetMetadataRoute,
   targetScopeLabel,
 } from "@/utils/dataQuality";
+import { isOnEmptyRelevant } from "@/utils/dataQualityForm";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 
 /**
@@ -1008,9 +986,30 @@ function rowsLabel(execution: QualityExecution): string {
     : "-";
 }
 
-function durationLabel(execution: QualityExecution): string {
+/** How the execution was triggered, plus how long it took once it finished. */
+function executionMeta(execution: QualityExecution): string {
+  const trigger = t(qualityExecutionTriggerKey(execution.trigger));
   const seconds = executionDurationSeconds(execution);
-  return seconds === undefined ? "-" : formatSeconds(seconds);
+  return seconds === undefined
+    ? trigger
+    : `${trigger} · ${formatSeconds(seconds)}`;
+}
+
+/**
+ * One badge per execution: the verdict once it has run, the lifecycle state
+ * before that. Printing "Completed" next to "Fail" would say the same thing
+ * twice and, in the sheet's narrow table, wrap the two onto separate lines.
+ */
+function executionBadge(execution: QualityExecution) {
+  return hasVerdict(execution)
+    ? {
+        key: qualityStatusKey(execution.outcome),
+        variant: qualityStatusVariant(execution.outcome),
+      }
+    : {
+        key: qualityExecutionStateKey(execution.state),
+        variant: qualityExecutionStateVariant(execution.state),
+      };
 }
 
 function errorLabel(execution: QualityExecution): string {

@@ -283,12 +283,49 @@ describe("QualityCheckDrawer", () => {
     expect(text).toContain(label("dataQuality.recentExecutions"));
     expect(text).toContain(label("dataQuality.executionTrigger.scheduled"));
 
-    // The definition carries the pre-filter and the empty-table behaviour too.
+    // The definition carries the pre-filter; the empty-table behaviour is
+    // omitted for row count, where it cannot change the verdict either way.
     expect(text).toContain(label("dataQuality.editor.filter"));
     expect(text).toContain("region");
-    expect(text).toContain(label("dataQuality.editor.onEmpty"));
-    expect(text).toContain(label("dataQuality.emptyBehavior.fail"));
+    expect(text).not.toContain(label("dataQuality.editor.onEmpty"));
     expect(text).toContain("fact");
+    wrapper.unmount();
+  });
+
+  it("reports a completed execution by its verdict alone", async () => {
+    const { wrapper } = await mountDrawer();
+
+    // The lifecycle state and the verdict would say the same thing twice; the
+    // narrow table shows only the verdict, so its row stays one line high.
+    const text = document.body.textContent ?? "";
+    expect(text).toContain(label("dataQuality.status.fail"));
+    expect(text).not.toContain(label("dataQuality.executionState.completed"));
+
+    // Trigger and duration travel inside the started cell rather than as their
+    // own columns, which is what used to push the sheet into a sideways scroll.
+    expect(text).toContain(
+      `${label("dataQuality.executionTrigger.scheduled")} · 0 ms`
+    );
+    const headers = [...document.body.querySelectorAll("th")].map((th) =>
+      th.textContent?.trim()
+    );
+    expect(headers).not.toContain(label("dataQuality.trigger"));
+    expect(headers).not.toContain(label("dataQuality.duration"));
+    wrapper.unmount();
+  });
+
+  it("drops the history strip for a single execution", async () => {
+    mocks.listQualityExecutions.mockResolvedValue({
+      items: [executionFixture(0, "FAIL")],
+      nextPageToken: "",
+    });
+    const { wrapper } = await mountDrawer();
+
+    // One square is not a history; the table below already carries the run.
+    expect(document.body.querySelector('[role="list"]')).toBeNull();
+    expect(document.body.textContent).toContain(
+      label("dataQuality.status.fail")
+    );
     wrapper.unmount();
   });
 
