@@ -320,6 +320,13 @@ export default [
             "dataQuality.thresholdLessThan",
             "dataQuality.thresholdOutside",
             "dataQuality.thresholdValue",
+            // The target workspace hands these to formatError as its inline
+            // failure sentence; the rule cannot follow a key passed to another
+            // handler (scripts/check-vue-i18n.mjs still traces the literal).
+            "dataQuality.workspace.draftCreateFailed",
+            "dataQuality.workspace.draftRejectedFailed",
+            "dataQuality.workspace.runAllFailed",
+            "dataQuality.workspace.runRuleFailed",
             // Reached through handleError / formatError or a ternary that names
             // the key; the rule cannot follow either, while
             // scripts/check-vue-i18n.mjs does trace them.

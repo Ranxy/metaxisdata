@@ -87,6 +87,16 @@ const ROUTES = [
   // produced it has. The editor's create route is static and has no data table,
   // so it is audited for the page frame (one heading, no nested scroller).
   { path: "/data-quality", name: "data quality overview" },
+  // The target list is the section's directory: a search row and a table whose
+  // chrome budget matches the rule list it replaces as the primary entry.
+  {
+    path: "/data-quality/targets",
+    name: "data quality targets",
+    tableTopMaxY: 260,
+  },
+  // The target workspace route needs a real target GUID, like the rule detail,
+  // so it is not registered here; its layout invariants are exercised by its
+  // page test instead.
   { path: "/data-quality/rules", name: "data quality rules", tableTopMaxY: 260 },
   {
     path: "/data-quality/executions",

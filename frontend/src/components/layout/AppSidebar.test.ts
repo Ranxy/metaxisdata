@@ -128,7 +128,7 @@ describe("AppSidebar", () => {
     // Section children stay hidden until the section or a route opens them.
     expect(wrapper.text()).not.toContain("Metadata Browser");
     expect(wrapper.text()).not.toContain("Audit Logs");
-    expect(wrapper.text()).not.toContain("Quality Rules");
+    expect(wrapper.text()).not.toContain("Quality Targets");
     expect(wrapper.text()).not.toContain("Issues");
     expect(wrapper.text()).not.toContain("Suggestions");
     expect(wrapper.text()).not.toContain("Overview");
@@ -221,7 +221,7 @@ describe("AppSidebar", () => {
 
     expect(wrapper.text()).toContain("Data Quality");
     expect(wrapper.text()).toContain("Overview");
-    expect(wrapper.text()).toContain("Quality Rules");
+    expect(wrapper.text()).toContain("Quality Targets");
     expect(wrapper.text()).toContain("Executions");
     expect(wrapper.text()).toContain("Issues");
   });
@@ -245,7 +245,7 @@ describe("AppSidebar", () => {
     await sectionTrigger(wrapper, "Data Quality").trigger("click");
 
     expect(wrapper.text()).toContain("Suggestions");
-    expect(wrapper.text()).not.toContain("Quality Rules");
+    expect(wrapper.text()).not.toContain("Quality Targets");
   });
 
   // A custom role may hold only executions: the group must still appear,
@@ -258,7 +258,7 @@ describe("AppSidebar", () => {
     await sectionTrigger(wrapper, "Data Quality").trigger("click");
 
     expect(wrapper.text()).toContain("Executions");
-    expect(wrapper.text()).not.toContain("Quality Rules");
+    expect(wrapper.text()).not.toContain("Quality Targets");
     expect(wrapper.text()).not.toContain("Issues");
     expect(wrapper.text()).not.toContain("Suggestions");
     expect(wrapper.text()).not.toContain("Overview");
@@ -286,7 +286,7 @@ describe("AppSidebar", () => {
   });
 
   it.each([
-    "/data-quality/rules",
+    "/data-quality/targets",
     "/data-quality/executions",
     "/data-quality/issues",
     "/data-quality/suggestions",

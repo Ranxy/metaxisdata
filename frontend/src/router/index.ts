@@ -214,9 +214,9 @@ const routes: RouteRecordRaw[] = [
   {
     // A quality rule watches the data itself rather than the registry's record of
     // it, so this is a product destination of its own, not a Data sub-page. The
-    // parent carries the shell flags once, like the OpenLineage section: rules are
-    // the directory, an execution is the evidence, and the editor joins them next
-    // release.
+    // parent carries the shell flags once, like the OpenLineage section: a target
+    // is the directory, an execution is the evidence, and the rule editor joins
+    // them next release.
     path: "/data-quality",
     meta: { requiresAuth: true, layout: "default", contentWidth: "full" },
     children: [
@@ -226,6 +226,34 @@ const routes: RouteRecordRaw[] = [
         name: "DataQualityOverview",
         component: () =>
           import("@/pages/data-quality/DataQualityOverviewPage.vue"),
+        meta: {
+          requiresAuth: true,
+          layout: "default",
+          permission: "metaxisdata.dataQuality.rules.list",
+        },
+      },
+      {
+        // The directory is grouped by what the rules watch: one row per table or
+        // view, which is the unit a reader maintains. The cross-target rule list
+        // stays reachable behind "All rules" and the overview's stat cards.
+        path: "targets",
+        name: "DataQualityTargets",
+        component: () =>
+          import("@/pages/data-quality/DataQualityTargetsPage.vue"),
+        meta: {
+          requiresAuth: true,
+          layout: "default",
+          permission: "metaxisdata.dataQuality.rules.list",
+        },
+      },
+      {
+        // One target's rules as one workspace. The GUID travels as the repeated
+        // `:targetGuid` param (see utils/guid.ts); a GUID does not carry the
+        // object type, so `metaType` arrives as a query.
+        path: "targets/:targetGuid+",
+        name: "DataQualityTarget",
+        component: () =>
+          import("@/pages/data-quality/DataQualityTargetPage.vue"),
         meta: {
           requiresAuth: true,
           layout: "default",

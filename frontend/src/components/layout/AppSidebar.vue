@@ -189,7 +189,6 @@ import {
   Home,
   LayoutDashboard,
   Lightbulb,
-  ListChecks,
   Network,
   PanelLeftClose,
   PanelLeftOpen,
@@ -199,6 +198,7 @@ import {
   ShieldCheck,
   Sparkles,
   Table2,
+  Target,
   X,
 } from "lucide-vue-next";
 import { computed, watch } from "vue";
@@ -373,10 +373,10 @@ function buildMenuItems(): MenuItem[] {
           exact: true,
         },
         {
-          key: "dataQualityRules",
-          label: t("menu.dataQualityRules"),
-          path: "/data-quality/rules",
-          icon: ListChecks,
+          key: "dataQualityTargets",
+          label: t("menu.dataQualityTargets"),
+          path: "/data-quality/targets",
+          icon: Target,
           permission: "metaxisdata.dataQuality.rules.list",
         },
         {
