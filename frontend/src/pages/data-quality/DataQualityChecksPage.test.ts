@@ -711,7 +711,7 @@ describe("DataQualityChecksPage directory rows", () => {
 
     const text = wrapper.text();
     expect(text).toContain("orders are never null");
-    expect(text).toContain("prod · shop · public.orders");
+    expect(text).toContain("public.orders · prod · shop");
     expect(text).toContain(i18n.global.t("dataQuality.ruleType.nullPercent"));
     expect(text).toContain(i18n.global.t("dataQuality.severity.error"));
     expect(text).toContain(i18n.global.t("dataQuality.ruleState.enabled"));
@@ -737,7 +737,7 @@ describe("DataQualityChecksPage directory rows", () => {
 
     const targetLinks = wrapper
       .findAll("a")
-      .filter((link) => link.text().trim() === "prod · shop · public.orders");
+      .filter((link) => link.text().trim() === "public.orders · prod · shop");
     expect(targetLinks.length).toBeGreaterThan(0);
     for (const link of targetLinks) {
       const href = link.attributes("href") ?? "";

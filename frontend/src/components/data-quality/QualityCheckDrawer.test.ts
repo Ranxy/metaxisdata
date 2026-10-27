@@ -3,7 +3,7 @@ import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
 import { notify } from "@/lib/notify";
 import { i18n } from "@/locales";
@@ -34,6 +34,7 @@ import QualityCheckDrawer from "./QualityCheckDrawer.vue";
 
 const mocks = vi.hoisted(() => ({
   getQualityRule: vi.fn(),
+  getQualityExecution: vi.fn(),
   listQualityExecutions: vi.fn(),
   runQualityRules: vi.fn(),
   updateQualityRule: vi.fn(),
@@ -43,6 +44,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/api/data-quality", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/data-quality")>()),
   getQualityRule: mocks.getQualityRule,
+  getQualityExecution: mocks.getQualityExecution,
   listQualityExecutions: mocks.listQualityExecutions,
   runQualityRules: mocks.runQualityRules,
   updateQualityRule: mocks.updateQualityRule,
@@ -152,6 +154,15 @@ function executionsFixture() {
   ];
 }
 
+/** The execution `runQualityRules` plans: it starts without a verdict. */
+function plannedExecution(state: QualityExecutionState) {
+  return create(QualityExecutionSchema, {
+    name: "workspaces/ws/qualityExecutions/run-1",
+    rule: RULE,
+    state,
+  });
+}
+
 async function mountDrawer(
   options: {
     permissions?: string[];
@@ -218,6 +229,10 @@ function confirmDialog(): HTMLElement | undefined {
 }
 
 describe("QualityCheckDrawer", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
@@ -407,6 +422,105 @@ describe("QualityCheckDrawer", () => {
     expect(document.body.textContent).toContain(
       label("error.permissionDenied")
     );
+    wrapper.unmount();
+  });
+
+  it("waits for a manual run to settle before re-reading the check", async () => {
+    const planned = plannedExecution(QualityExecutionState.PENDING);
+    mocks.runQualityRules.mockResolvedValue([planned]);
+    mocks.getQualityExecution
+      .mockResolvedValueOnce(plannedExecution(QualityExecutionState.RUNNING))
+      .mockResolvedValueOnce(plannedExecution(QualityExecutionState.COMPLETED));
+    const { wrapper } = await mountDrawer();
+    expect(mocks.getQualityRule).toHaveBeenCalledTimes(1);
+
+    vi.useFakeTimers();
+    buttonByText(label("dataQuality.runNow"))?.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mocks.runQualityRules).toHaveBeenCalledWith({ rules: [RULE] });
+
+    // The first poll only sees RUNNING, so the sheet does not refresh yet.
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(mocks.getQualityExecution).toHaveBeenCalledWith(planned.name);
+    expect(mocks.getQualityRule).toHaveBeenCalledTimes(1);
+
+    // The second poll sees the verdict; the re-read now runs once and hands the
+    // refreshed rule back to the workspace.
+    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mocks.getQualityRule).toHaveBeenCalledTimes(2);
+    expect(mocks.listQualityExecutions).toHaveBeenCalledTimes(2);
+    expect(wrapper.emitted("changed")).toHaveLength(1);
+    expect(
+      (
+        buttonByText(label("dataQuality.runNow")) as
+          | HTMLButtonElement
+          | undefined
+      )?.disabled
+    ).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("does not poll or refresh when the planned run is already final", async () => {
+    const done = plannedExecution(QualityExecutionState.COMPLETED);
+    mocks.runQualityRules.mockResolvedValue([done]);
+    const { wrapper } = await mountDrawer();
+
+    vi.useFakeTimers();
+    buttonByText(label("dataQuality.runNow"))?.click();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(mocks.getQualityExecution).not.toHaveBeenCalled();
+    expect(mocks.getQualityRule).toHaveBeenCalledTimes(2);
+    expect(wrapper.emitted("changed")).toHaveLength(1);
+    wrapper.unmount();
+  });
+
+  it("stops polling when the sheet unmounts", async () => {
+    mocks.runQualityRules.mockResolvedValue([
+      plannedExecution(QualityExecutionState.PENDING),
+    ]);
+    mocks.getQualityExecution.mockResolvedValue(
+      plannedExecution(QualityExecutionState.RUNNING)
+    );
+    const { wrapper } = await mountDrawer();
+
+    vi.useFakeTimers();
+    buttonByText(label("dataQuality.runNow"))?.click();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(mocks.getQualityExecution).toHaveBeenCalledTimes(1);
+
+    wrapper.unmount();
+    await vi.advanceTimersByTimeAsync(10_000);
+    // A canceled poll must not keep reading (or writing) after the sheet is gone.
+    expect(mocks.getQualityExecution).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes at the deadline even if the run never settles", async () => {
+    mocks.runQualityRules.mockResolvedValue([
+      plannedExecution(QualityExecutionState.PENDING),
+    ]);
+    mocks.getQualityExecution.mockResolvedValue(
+      plannedExecution(QualityExecutionState.RUNNING)
+    );
+    const { wrapper } = await mountDrawer();
+
+    vi.useFakeTimers();
+    buttonByText(label("dataQuality.runNow"))?.click();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(0);
+
+    // The timeout still lets the reader see whatever the runner recorded.
+    expect(mocks.getQualityRule).toHaveBeenCalledTimes(2);
+    expect(
+      (
+        buttonByText(label("dataQuality.runNow")) as
+          | HTMLButtonElement
+          | undefined
+      )?.disabled
+    ).toBe(false);
     wrapper.unmount();
   });
 });

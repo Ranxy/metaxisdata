@@ -76,24 +76,29 @@ type QualityTargetMessage struct {
 	// SchemaChanged is true when at least one rule's saved target hash differs
 	// from the current registry schema hash.
 	SchemaChanged bool
+	// Orphaned is true when the target no longer resolves. It is filled by the
+	// API, which owns the registry read, not by the aggregate query.
+	Orphaned bool
 }
 
 // qualityTargetStatusRank maps a quality status onto the ordering used to pick a
 // target's worst latest result. ERROR outranks FAIL: a check that could not run
-// needs attention more than one whose data failed. SKIPPED and NOT_EVALUATED are
-// weaker than PASS because they observed nothing.
-func qualityTargetStatusRank(status storepb.QualityStatus) int32 {
+// needs attention more than one whose data failed. SKIPPED is the weakest verdict
+// (the check was deliberately not run) and NOT_EVALUATED sits just above it, so a
+// directory filter can tell "nothing to judge" apart from "did not run".
+func QualityTargetStatusRank(status storepb.QualityStatus) int32 {
 	switch status {
 	case storepb.QualityStatus_QUALITY_STATUS_ERROR:
-		return 5
+		return 6
 	case storepb.QualityStatus_QUALITY_STATUS_FAIL:
-		return 4
+		return 5
 	case storepb.QualityStatus_QUALITY_STATUS_WARN:
-		return 3
+		return 4
 	case storepb.QualityStatus_QUALITY_STATUS_PASS:
+		return 3
+	case storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED:
 		return 2
-	case storepb.QualityStatus_QUALITY_STATUS_SKIPPED,
-		storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED:
+	case storepb.QualityStatus_QUALITY_STATUS_SKIPPED:
 		return 1
 	case storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED:
 		return 0
@@ -104,21 +109,40 @@ func qualityTargetStatusRank(status storepb.QualityStatus) int32 {
 
 // qualityStatusFromRank is the inverse of qualityTargetStatusRank. A rank below
 // one means no rule has run.
-func qualityStatusFromRank(rank int32) storepb.QualityStatus {
+func QualityTargetStatusFromRank(rank int32) storepb.QualityStatus {
 	switch rank {
-	case 5:
+	case 6:
 		return storepb.QualityStatus_QUALITY_STATUS_ERROR
-	case 4:
+	case 5:
 		return storepb.QualityStatus_QUALITY_STATUS_FAIL
-	case 3:
+	case 4:
 		return storepb.QualityStatus_QUALITY_STATUS_WARN
-	case 2:
+	case 3:
 		return storepb.QualityStatus_QUALITY_STATUS_PASS
+	case 2:
+		return storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED
 	case 1:
 		return storepb.QualityStatus_QUALITY_STATUS_SKIPPED
 	default:
 		return storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED
 	}
+}
+
+// qualityTargetWorstRankCase renders the CASE expression the aggregate applies to
+// each rule's latest status. The rank numbers come from qualityTargetStatusRank,
+// so the SQL mapping cannot drift from the filter mapping; the placeholders are
+// the six status arguments the query binds at $4..$9, in this order: ERROR, FAIL,
+// WARN, PASS, SKIPPED, NOT_EVALUATED.
+func qualityTargetWorstRankCase() string {
+	return fmt.Sprintf(`CASE latest.status
+				WHEN $4 THEN %d WHEN $5 THEN %d WHEN $6 THEN %d
+				WHEN $7 THEN %d WHEN $8 THEN %d WHEN $9 THEN %d ELSE 0 END`,
+		QualityTargetStatusRank(storepb.QualityStatus_QUALITY_STATUS_ERROR),
+		QualityTargetStatusRank(storepb.QualityStatus_QUALITY_STATUS_FAIL),
+		QualityTargetStatusRank(storepb.QualityStatus_QUALITY_STATUS_WARN),
+		QualityTargetStatusRank(storepb.QualityStatus_QUALITY_STATUS_PASS),
+		QualityTargetStatusRank(storepb.QualityStatus_QUALITY_STATUS_SKIPPED),
+		QualityTargetStatusRank(storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED))
 }
 
 // targetWhere renders the predicate over the joined aggregate query. It is a
@@ -161,7 +185,7 @@ func targetWhere(find *FindQualityTargetMessage, base int) ([]string, []any, err
 			base+len(args), base+len(args)))
 	}
 	if find.WorstStatus != storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED {
-		args = append(args, qualityTargetStatusRank(find.WorstStatus))
+		args = append(args, QualityTargetStatusRank(find.WorstStatus))
 		where = append(where, fmt.Sprintf("COALESCE(r.worst_rank, 0) = $%d", base+len(args)))
 	}
 	if find.HasOpenIssue {
@@ -181,10 +205,6 @@ func (s *Store) ListQualityTargets(ctx context.Context, find *FindQualityTargetM
 	if find == nil {
 		find = &FindQualityTargetMessage{}
 	}
-	filter, filterArgs, err := targetWhere(find, 13)
-	if err != nil {
-		return nil, err
-	}
 	args := []any{
 		int16(storepb.QualityRuleState_QUALITY_RULE_STATE_ARCHIVED),
 		int16(storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED),
@@ -199,6 +219,10 @@ func (s *Store) ListQualityTargets(ctx context.Context, find *FindQualityTargetM
 		int16(storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT),
 		int16(storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_LABEL),
 		int16(storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING),
+	}
+	filter, filterArgs, err := targetWhere(find, len(args))
+	if err != nil {
+		return nil, err
 	}
 	query := `WITH live AS (
 		SELECT r.id, r.target_guid, r.target_type, r.target_path, r.state, r.target_meta_hash
@@ -227,19 +251,18 @@ func (s *Store) ListQualityTargets(ctx context.Context, find *FindQualityTargetM
 	),
 	results AS (
 		SELECT l.target_guid, l.target_type,
-			MAX(CASE latest.status
-				WHEN $4 THEN 5 WHEN $5 THEN 4 WHEN $6 THEN 3
-				WHEN $7 THEN 2 WHEN $8 THEN 1 WHEN $9 THEN 1 ELSE 0 END)::INT AS worst_rank,
+			MAX(` + qualityTargetWorstRankCase() + `)::INT AS worst_rank,
 			MAX(latest.finished_at) AS last_run_time
 		FROM latest
 		JOIN live l ON l.id = latest.rule_id
 		GROUP BY l.target_guid, l.target_type
 	),
 	issues AS (
-		SELECT target_guid, target_type, (COUNT(*))::INT AS open_issue_count
-		FROM quality_issue
-		WHERE status <> $10
-		GROUP BY target_guid, target_type
+		SELECT i.target_guid, i.target_type, (COUNT(*))::INT AS open_issue_count
+		FROM quality_issue i
+		JOIN quality_rule r ON r.id = i.rule_id
+		WHERE i.status <> $10 AND r.deleted = FALSE AND r.state <> $1
+		GROUP BY i.target_guid, i.target_type
 	),
 	drafts AS (
 		SELECT target_guid, target_type,
@@ -258,19 +281,17 @@ func (s *Store) ListQualityTargets(ctx context.Context, find *FindQualityTargetM
 	LEFT JOIN issues i ON i.target_guid = t.target_guid AND i.target_type = t.target_type
 	LEFT JOIN drafts d ON d.target_guid = t.target_guid AND d.target_type = t.target_type
 	WHERE ` + strings.Join(filter, " AND ") + `
-	ORDER BY ` + qualityTargetOrderClause(find.Order) +
-		fmt.Sprintf(" LIMIT $%d", len(args)+len(filterArgs)+1) +
-		fmt.Sprintf(" OFFSET $%d", len(args)+len(filterArgs)+2)
+	ORDER BY ` + qualityTargetOrderClause(find.Order)
 	args = append(args, filterArgs...)
+	// Limit and offset are optional, like the other list stores: omitting them
+	// must mean "no bound", not LIMIT 0.
 	if find.Limit != nil {
 		args = append(args, max(*find.Limit, 0))
-	} else {
-		args = append(args, 0)
+		query += fmt.Sprintf(" LIMIT $%d", len(args))
 	}
 	if find.Offset != nil {
 		args = append(args, max(*find.Offset, 0))
-	} else {
-		args = append(args, 0)
+		query += fmt.Sprintf(" OFFSET $%d", len(args))
 	}
 
 	rows, err := s.GetDB().QueryContext(ctx, query, args...)
@@ -301,7 +322,7 @@ func (s *Store) ListQualityTargets(ctx context.Context, find *FindQualityTargetM
 		}
 		message.GUID = targetGUID
 		message.Type = storepb.MetaType(targetType)
-		message.WorstStatus = qualityStatusFromRank(worstRank)
+		message.WorstStatus = QualityTargetStatusFromRank(worstRank)
 		message.SchemaChanged = schemaChange
 		if lastRunTime.Valid {
 			message.LastRunTime = &lastRunTime.Time

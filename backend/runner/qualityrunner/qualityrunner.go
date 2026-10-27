@@ -211,6 +211,49 @@ type batchAdmission struct {
 	priority           state.ConnectionPriority
 }
 
+// batchContractFilters caches one target's contract filter for the duration of a
+// batch. Rules of the same table usually execute together, so the batch reads the
+// contract once instead of once per execution. A metadata rule compiles no SQL, so
+// it never asks for a filter: the filter would be carried but never rendered.
+type batchContractFilters struct {
+	load     func(ctx context.Context, targetGUID string, metaType storepb.MetaType) (*storepb.QualityFilter, error)
+	byTarget map[contractFilterKey]*storepb.QualityFilter
+}
+
+// contractFilterKey identifies one target: the GUID alone is not unique across
+// object types.
+type contractFilterKey struct {
+	targetGUID string
+	metaType   storepb.MetaType
+}
+
+// newBatchContractFilters starts an empty cache for one batch.
+func newBatchContractFilters(load func(ctx context.Context, targetGUID string, metaType storepb.MetaType) (*storepb.QualityFilter, error)) *batchContractFilters {
+	return &batchContractFilters{
+		load:     load,
+		byTarget: make(map[contractFilterKey]*storepb.QualityFilter),
+	}
+}
+
+// forRule returns the contract filter to AND into one rule's statement, reading it
+// at most once per target per batch. A metadata rule (schema_drift) observes the
+// registry and compiles no SQL, so it returns no filter without a store read.
+func (f *batchContractFilters) forRule(ctx context.Context, ruleType storepb.QualityRuleType, targetGUID string, metaType storepb.MetaType) (*storepb.QualityFilter, error) {
+	if dataquality.IsMetadataRule(ruleType) {
+		return nil, nil
+	}
+	key := contractFilterKey{targetGUID: targetGUID, metaType: metaType}
+	if cached, ok := f.byTarget[key]; ok {
+		return cached, nil
+	}
+	filter, err := f.load(ctx, targetGUID, metaType)
+	if err != nil {
+		return nil, err
+	}
+	f.byTarget[key] = filter
+	return filter, nil
+}
+
 // ruleExecution is one execution's stored row plus the inputs the problem ledger
 // and the notifications need after the row is written: the mutable head (owner,
 // severity, mute, resource id), the immutable definition that was executed, and
@@ -729,6 +772,22 @@ func (r *Runner) abandonBatch(ctx context.Context, st batchExecutionStore, batch
 	}
 }
 
+// loadBatchContractFilter reads one target's contract filter for the batch cache.
+// A nil store (the accounting tests) reads as "no contract", and a target without a
+// contract row does too.
+func (r *Runner) loadBatchContractFilter() func(ctx context.Context, targetGUID string, metaType storepb.MetaType) (*storepb.QualityFilter, error) {
+	return func(ctx context.Context, targetGUID string, metaType storepb.MetaType) (*storepb.QualityFilter, error) {
+		if r.stores == nil {
+			return nil, nil
+		}
+		contract, err := r.stores.GetQualityContract(ctx, targetGUID, metaType)
+		if err != nil || contract == nil {
+			return nil, err
+		}
+		return contract.Settings.GetFilter(), nil
+	}
+}
+
 // executeBatch executes one batch's planned executions sequentially, writes each
 // verdict through FinishQualityExecution, and then applies the problem ledger and
 // the notifications the verdicts imply. Each execution row is its own commit
@@ -757,6 +816,11 @@ func (r *Runner) executeBatchWith(ctx context.Context, st batchExecutionStore, b
 		r.abandonBatch(ctx, st, batchID, len(tasks), metrics.QualityAbandonedMarkRunningFailed)
 		return
 	}
+
+	// The contract filter is read at execution time (a publish takes effect for the
+	// next run) but cached for the batch, so a target with many rules costs one read
+	// rather than one per execution.
+	contracts := newBatchContractFilters(r.loadBatchContractFilter())
 
 	executions := make([]*ruleExecution, 0, len(tasks))
 	aborted := false
@@ -792,7 +856,7 @@ func (r *Runner) executeBatchWith(ctx context.Context, st batchExecutionStore, b
 		}
 
 		r.metrics.IncQualityExecutionsInProgress()
-		execution := r.executeOneSafe(batchCtx, planned, startedAt, admission)
+		execution := r.executeOneSafe(batchCtx, planned, startedAt, admission, contracts)
 		if execution == nil {
 			r.metrics.DecQualityExecutionsInProgress()
 			continue
@@ -932,7 +996,7 @@ func ruleExecutionType(execution *ruleExecution) storepb.QualityRuleType {
 // executeOneSafe isolates one rule's execution: a panic in the rule engine or a
 // driver turns into an ERROR verdict for that execution instead of killing the
 // batch (or the runner, which would lose every remaining execution).
-func (r *Runner) executeOneSafe(ctx context.Context, planned *store.QualityExecutionMessage, startedAt time.Time, admission batchAdmission) (execution *ruleExecution) {
+func (r *Runner) executeOneSafe(ctx context.Context, planned *store.QualityExecutionMessage, startedAt time.Time, admission batchAdmission, contracts *batchContractFilters) (execution *ruleExecution) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			slog.Error("quality rule execution panicked",
@@ -947,14 +1011,14 @@ func (r *Runner) executeOneSafe(ctx context.Context, planned *store.QualityExecu
 			}
 		}
 	}()
-	return r.executeOne(ctx, planned, startedAt, admission)
+	return r.executeOne(ctx, planned, startedAt, admission, contracts)
 }
 
 // executeOne resolves, validates and executes one rule, returning the completed
 // execution row it produces. It never returns nil: every failure path is an ERROR
 // or SKIPPED verdict, because a batch has to account for every execution it
 // planned.
-func (r *Runner) executeOne(ctx context.Context, planned *store.QualityExecutionMessage, startedAt time.Time, admission batchAdmission) *ruleExecution {
+func (r *Runner) executeOne(ctx context.Context, planned *store.QualityExecutionMessage, startedAt time.Time, admission batchAdmission, contracts *batchContractFilters) *ruleExecution {
 	if !r.acquireInflight(planned.RuleID) {
 		return &ruleExecution{
 			result: failureExecutionMessage(planned, startedAt, storepb.QualityStatus_QUALITY_STATUS_SKIPPED,
@@ -996,18 +1060,16 @@ func (r *Runner) executeOne(ctx context.Context, planned *store.QualityExecution
 		}
 		return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, dataquality.ErrCodeExecution, err.Error())
 	}
-	// The target's contract is read at execution time rather than stored on the
-	// rule, so publishing a contract filter change affects the next execution
-	// without rewriting any rule. A target without a contract row reads as no
-	// filter. A metadata rule compiles no SQL, so its contract filter is carried but
-	// never rendered; reading it unconditionally keeps this path one shape.
-	contract, err := r.stores.GetQualityContract(ctx, snapshot.Target.GUID, snapshot.Target.MetaType)
+	// The target's contract filter is ANDed into every statement the rule compiles
+	// to. It is read at execution time (so publishing a contract change takes
+	// effect for the next run without rewriting any rule) and cached per batch, so a
+	// target with many rules is read once. A target without a contract row reads as
+	// no filter; a metadata rule skips the read entirely (it compiles no SQL).
+	contractFilter, err := contracts.forRule(ctx, snapshot.Type, snapshot.Target.GUID, snapshot.Target.MetaType)
 	if err != nil {
 		return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, dataquality.ErrCodeExecution, err.Error())
 	}
-	if contract != nil {
-		snapshot.ContractFilter = contract.Settings.GetFilter()
-	}
+	snapshot.ContractFilter = contractFilter
 	if err := dataquality.RequireTarget(resolution, snapshot.Type); err != nil {
 		return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, dataquality.ErrCodeUnsupported, err.Error())
 	}

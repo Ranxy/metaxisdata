@@ -91,19 +91,18 @@ func (s *Store) UpsertQualityContractSettings(ctx context.Context, targetGUID st
 }
 
 // PublishQualityContractInput is one publish attempt. Snapshot is built by the
-// caller from the live rules; this method owns the version number and the
-// no-op-on-identical-fingerprint rule.
+// caller from the live rules; this method owns the version number, the
+// no-op-on-identical-fingerprint rule, and the diff counts against the previous
+// version. The counts are computed under the contract row lock, so two concurrent
+// publishes cannot record a diff against a predecessor that was not the previous
+// version.
 type PublishQualityContractInput struct {
-	TargetGUID    string
-	TargetType    storepb.MetaType
-	Settings      *storepb.QualityContractSettings
-	Snapshot      *storepb.QualityContractSnapshot
-	CheckCount    int32
-	AddedCount    int32
-	ModifiedCount int32
-	RemovedCount  int32
-	Note          string
-	PublishedBy   *int32
+	TargetGUID  string
+	TargetType  storepb.MetaType
+	Settings    *storepb.QualityContractSettings
+	Snapshot    *storepb.QualityContractSnapshot
+	Note        string
+	PublishedBy *int32
 }
 
 // PublishQualityContractRevision records the snapshot as the next version.
@@ -166,6 +165,20 @@ func (s *Store) PublishQualityContractRevision(ctx context.Context, input *Publi
 		ORDER BY version DESC
 		LIMIT 1
 	`, contractID).Scan(&latestID, &latestVersion, &latestFingerprint, &latestSnapshot)
+	// The inserted version's counts describe the step from the newest published
+	// version to this snapshot. They are computed from the snapshot read under the
+	// row lock, not from a caller's earlier read, so a concurrent publish cannot
+	// make the history record a diff against the wrong predecessor.
+	var publishedChecks []*storepb.QualityContractCheck
+	if latestErr == nil && len(latestSnapshot) > 0 {
+		publishedSnapshot := &storepb.QualityContractSnapshot{}
+		if unmarshalErr := common.ProtojsonUnmarshaler.Unmarshal(latestSnapshot, publishedSnapshot); unmarshalErr != nil {
+			return nil, nil, false, errors.Wrap(unmarshalErr, "failed to read the latest contract snapshot")
+		}
+		publishedChecks = publishedSnapshot.GetChecks()
+	}
+	added, modified, removed := QualityContractCheckDiff(publishedChecks, input.Snapshot.GetChecks())
+
 	switch {
 	case latestErr == nil:
 		if latestFingerprint.Valid && input.Snapshot.GetFingerprint() != "" &&
@@ -198,8 +211,8 @@ func (s *Store) PublishQualityContractRevision(ctx context.Context, input *Publi
 			(contract_id, version, snapshot, check_count, added_count, modified_count, removed_count, note, published_by)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING `+qualityContractRevisionColumns,
-		contractID, nextVersion, snapshotPayload, input.CheckCount, input.AddedCount,
-		input.ModifiedCount, input.RemovedCount, input.Note, input.PublishedBy))
+		contractID, nextVersion, snapshotPayload, int32(len(input.Snapshot.GetChecks())), added,
+		modified, removed, input.Note, input.PublishedBy))
 	if err != nil {
 		return nil, nil, false, errors.Wrap(err, "failed to insert the contract revision")
 	}
@@ -326,4 +339,44 @@ func scanQualityContractRevision(scanner interface{ Scan(dest ...any) error }) (
 		message.PublishedBy = &id
 	}
 	return &message, nil
+}
+
+// QualityContractCheckDiff counts how the live checks differ from the published
+// ones: added (a rule the snapshot does not name), removed (a snapshot rule that
+// no longer exists), and modified (same rule resource id, a different revision or
+// display field). It is the one comparison the store's publish transaction and the
+// API's read view share, so a version's counts always mean the same thing.
+func QualityContractCheckDiff(published, live []*storepb.QualityContractCheck) (added, modified, removed int32) {
+	publishedByID := make(map[string]*storepb.QualityContractCheck, len(published))
+	for _, check := range published {
+		publishedByID[check.GetRuleResourceId()] = check
+	}
+	liveByID := make(map[string]*storepb.QualityContractCheck, len(live))
+	for _, check := range live {
+		liveByID[check.GetRuleResourceId()] = check
+		previous, ok := publishedByID[check.GetRuleResourceId()]
+		if !ok {
+			added++
+			continue
+		}
+		if !qualityContractCheckEqual(previous, check) {
+			modified++
+		}
+	}
+	for _, check := range published {
+		if _, ok := liveByID[check.GetRuleResourceId()]; !ok {
+			removed++
+		}
+	}
+	return added, modified, removed
+}
+
+// qualityContractCheckEqual reports whether two checks describe the same rule
+// definition and display state.
+func qualityContractCheckEqual(a, b *storepb.QualityContractCheck) bool {
+	return a.GetRuleRevision() == b.GetRuleRevision() &&
+		a.GetTitle() == b.GetTitle() &&
+		a.GetRuleType() == b.GetRuleType() &&
+		a.GetSeverity() == b.GetSeverity() &&
+		a.GetColumn() == b.GetColumn()
 }

@@ -3,6 +3,7 @@ package v1
 import (
 	"testing"
 
+	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -38,6 +39,46 @@ func TestWorstQualityStatus(t *testing.T) {
 		worstQualityStatus(v1pb.QualityStatus_QUALITY_STATUS_SKIPPED, v1pb.QualityStatus_QUALITY_STATUS_PASS))
 	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_UNSPECIFIED,
 		worstQualityStatus(v1pb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, v1pb.QualityStatus_QUALITY_STATUS_UNSPECIFIED))
+	// NOT_EVALUATED outranks SKIPPED: the check ran and had nothing to judge,
+	// whereas a skipped check never ran.
+	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED,
+		worstQualityStatus(v1pb.QualityStatus_QUALITY_STATUS_SKIPPED, v1pb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED))
+}
+
+// The worst-status filter accepts the six real verdicts, keeps UNSPECIFIED as "no
+// filter", and refuses a value outside the enum instead of silently matching the
+// "never run" rank (the ListQualityExecutions list already behaves this way).
+func TestQualityTargetWorstStatusFromV1(t *testing.T) {
+	t.Parallel()
+
+	for _, status := range []v1pb.QualityStatus{
+		v1pb.QualityStatus_QUALITY_STATUS_UNSPECIFIED,
+		v1pb.QualityStatus_QUALITY_STATUS_PASS,
+		v1pb.QualityStatus_QUALITY_STATUS_WARN,
+		v1pb.QualityStatus_QUALITY_STATUS_FAIL,
+		v1pb.QualityStatus_QUALITY_STATUS_ERROR,
+		v1pb.QualityStatus_QUALITY_STATUS_SKIPPED,
+		v1pb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED,
+	} {
+		mapped, err := qualityTargetWorstStatusFromV1(status)
+		require.NoError(t, err, status.String())
+		require.Equal(t, storepb.QualityStatus(status), mapped)
+	}
+
+	_, err := qualityTargetWorstStatusFromV1(v1pb.QualityStatus(99))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}
+
+// An unset page size reads the RPC's documented default on the first page, while a
+// follow-up page keeps the size its token was issued with.
+func TestQualityTargetRequestedPageSize(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, qualityTargetDefaultPageSize, qualityTargetRequestedPageSize(0, ""))
+	require.Equal(t, 100, qualityTargetRequestedPageSize(100, ""))
+	require.Equal(t, 0, qualityTargetRequestedPageSize(0, "token"), "the token carries the size")
+	require.Equal(t, 25, qualityTargetRequestedPageSize(25, "token"))
 }
 
 // The list filters map resource names and raw ids alike; the rule-only filters
@@ -78,6 +119,7 @@ func TestConvertQualityTargetSummary(t *testing.T) {
 		PendingLabelCount: 5,
 		WorstStatus:       storepb.QualityStatus_QUALITY_STATUS_FAIL,
 		SchemaChanged:     true,
+		Orphaned:          true,
 	})
 	require.Equal(t, "orders", summary.GetTarget().GetPath().GetObject())
 	require.Equal(t, v1pb.MetaType_TABLE, summary.GetTarget().GetMetaType())
@@ -90,4 +132,5 @@ func TestConvertQualityTargetSummary(t *testing.T) {
 	require.Equal(t, int32(5), summary.GetPendingLabelCount())
 	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_FAIL, summary.GetWorstStatus())
 	require.True(t, summary.GetSchemaChanged())
+	require.True(t, summary.GetOrphaned())
 }

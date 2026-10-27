@@ -222,9 +222,6 @@
                   {{ t("dataQuality.trigger") }}
                 </TableHead>
                 <TableHead class="hidden whitespace-nowrap md:table-cell">
-                  {{ t("dataQuality.duration") }}
-                </TableHead>
-                <TableHead class="hidden whitespace-nowrap md:table-cell">
                   {{ t("dataQuality.startedAt") }}
                 </TableHead>
                 <TableHead class="w-12 text-right">
@@ -350,14 +347,14 @@
                 <TableCell class="hidden md:table-cell">
                   {{ t(qualityExecutionTriggerKey(execution.trigger)) }}
                 </TableCell>
-                <TableCell class="hidden whitespace-nowrap tabular-nums md:table-cell">
-                  {{ durationLabel(execution) }}
-                </TableCell>
                 <TableCell
                   class="hidden whitespace-nowrap text-muted-foreground md:table-cell"
                   :title="formatDateTime(execution.startTime, locale)"
                 >
                   {{ formatRelativeTime(execution.startTime, locale) }}
+                  <div class="mt-1 text-xs tabular-nums">
+                    {{ t("dataQuality.duration") }} {{ durationLabel(execution) }}
+                  </div>
                 </TableCell>
                 <TableCell
                   class="text-right"

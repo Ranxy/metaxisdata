@@ -1,6 +1,8 @@
 package v1
 
 import (
+	"math"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -65,7 +67,8 @@ func TestQualityContractFingerprint(t *testing.T) {
 }
 
 // The change summary names added, removed and modified checks, and ignores a
-// check whose display fields and revision are unchanged.
+// check whose display fields and revision are unchanged. The comparison itself is
+// the store's, so a publish transaction and this read view agree on the counts.
 func TestQualityContractChangeSummary(t *testing.T) {
 	t.Parallel()
 
@@ -79,15 +82,27 @@ func TestQualityContractChangeSummary(t *testing.T) {
 		{RuleResourceId: "changed", RuleRevision: 2},
 		{RuleResourceId: "added", RuleRevision: 1},
 	}
-	summary := qualityContractChangeSummary(published, live)
-	require.Equal(t, int32(1), summary.Added)
-	require.Equal(t, int32(1), summary.Modified)
-	require.Equal(t, int32(1), summary.Removed)
+	added, modified, removed := store.QualityContractCheckDiff(published, live)
+	summary := qualityContractChangeSummary(added, modified, removed)
+	require.Equal(t, int32(1), summary.GetAdded())
+	require.Equal(t, int32(1), summary.GetModified())
+	require.Equal(t, int32(1), summary.GetRemoved())
 
-	empty := qualityContractChangeSummary(published, published)
-	require.Equal(t, int32(0), empty.Added)
-	require.Equal(t, int32(0), empty.Modified)
-	require.Equal(t, int32(0), empty.Removed)
+	added, modified, removed = store.QualityContractCheckDiff(published, published)
+	empty := qualityContractChangeSummary(added, modified, removed)
+	require.Equal(t, int32(0), empty.GetAdded())
+	require.Equal(t, int32(0), empty.GetModified())
+	require.Equal(t, int32(0), empty.GetRemoved())
+
+	// A column change alone counts as modified: the published check records the
+	// checked column.
+	renamed := []*storepb.QualityContractCheck{
+		{RuleResourceId: "same", RuleRevision: 1, Column: "email"},
+		{RuleResourceId: "changed", RuleRevision: 1},
+		{RuleResourceId: "removed", RuleRevision: 1},
+	}
+	_, modified, _ = store.QualityContractCheckDiff(published, renamed)
+	require.Equal(t, int32(1), modified)
 }
 
 // Settings validation accepts the documented schedule window and severity catalog
@@ -143,4 +158,26 @@ func TestFormatQualityContractPublisher(t *testing.T) {
 	require.Empty(t, formatQualityContractPublisher(nil))
 	id := int32(7)
 	require.Equal(t, "users/7", formatQualityContractPublisher(&id))
+}
+
+// A huge default schedule must be rejected by the raw-seconds bound: converting
+// it to a Duration first could overflow and slip past the window check.
+func TestValidateQualityContractSettingsRejectsOverflow(t *testing.T) {
+	t.Parallel()
+
+	require.Error(t, validateQualityContractSettings(&storepb.QualityContractSettings{
+		DefaultScheduleIntervalSeconds: math.MaxInt64,
+	}))
+}
+
+// The publish note has a bounded size; the handler rejects rather than truncating.
+func TestQualityContractNote(t *testing.T) {
+	t.Parallel()
+
+	note, err := qualityContractNote("  first  ")
+	require.NoError(t, err)
+	require.Equal(t, "first", note)
+
+	_, err = qualityContractNote(strings.Repeat("x", maxQualityContractNoteBytes+1))
+	require.Error(t, err)
 }

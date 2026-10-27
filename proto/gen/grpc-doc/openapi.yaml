@@ -5962,8 +5962,9 @@ paths:
                 - DataQualityService
             description: |-
                 Read one target's workspace: its rules (with their latest results), the
-                 pending AI drafts and the unresolved issues, in one call. The target is
-                 named by GUID because a target is not a resource of its own.
+                 unresolved issues and the target's columns, in one call. AI drafts are not
+                 part of the response (reading them needs the suggest permission). The target
+                 is named by GUID because a target is not a resource of its own.
             operationId: DataQualityService_GetQualityTarget
             parameters:
                 - name: workspace
@@ -8433,6 +8434,14 @@ components:
                         Each rule's recent completed executions, newest first, so the workspace can
                          draw a per-rule history strip without one request per rule. Rules with no
                          completed execution are absent.
+                targetColumns:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityTargetColumn'
+                    description: |-
+                        The target's current columns, from the resolved metadata. The workspace uses
+                         them for the coverage card and the check dialog's column fields; unlike
+                         ListMetadata(COLUMN) this also covers views and external tables.
         GetUnreadNotificationCountResponse:
             type: object
             properties:
@@ -11519,6 +11528,16 @@ components:
                         The columns the rule reads, as a snapshot for display. The column named in
                          the config is authoritative; validation requires them to agree.
             description: QualityTarget is what a rule observes.
+        QualityTargetColumn:
+            type: object
+            properties:
+                name:
+                    type: string
+                type:
+                    type: string
+                nullable:
+                    type: boolean
+            description: QualityTargetColumn is one column of a resolved target.
         QualityTargetPath:
             type: object
             properties:
@@ -11532,7 +11551,10 @@ components:
                     type: string
                 column:
                     type: string
-                    description: Empty for a table-level rule.
+                    description: |-
+                        Display snapshot only. The checked column is the one named in the rule's
+                         typed config; this field may be empty for rules written before it was
+                         populated, and is empty for a table-level rule.
             description: |-
                 QualityTargetPath is the display snapshot of where a target lived when the
                  rule was saved.
@@ -11591,6 +11613,12 @@ components:
                     description: |-
                         Whether at least one rule was saved against a different target schema hash
                          than the registry currently records.
+                orphaned:
+                    type: boolean
+                    description: |-
+                        Whether the target can no longer be resolved (the registry row, instance or
+                         database is gone). The rows stay readable because their target path is a
+                         snapshot, but runs are skipped.
             description: |-
                 QualityTargetSummary is one row of the target directory: the target identity
                  plus the counts and health the row and the workspace header render.

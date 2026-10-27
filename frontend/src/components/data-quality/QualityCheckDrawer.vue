@@ -549,11 +549,12 @@ import {
   Zap,
 } from "lucide-vue-next";
 import type { Component } from "vue";
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink, useRouter } from "vue-router";
 import {
   deleteQualityRule,
+  getQualityExecution,
   getQualityRule,
   listQualityExecutions,
   runQualityRules,
@@ -596,6 +597,7 @@ import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
 import {
   type QualityExecution,
+  QualityExecutionState,
   type QualityRule,
   QualityRuleSchema,
   QualityRuleState,
@@ -642,6 +644,10 @@ import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 
 /** How many recent executions the sheet reads and shows. */
 const RECENT_EXECUTION_LIMIT = 20;
+
+/** How often a manual run's planned executions are polled, and for how long. */
+const RUN_POLL_INTERVAL_MS = 2000;
+const RUN_POLL_TIMEOUT_MS = 60_000;
 
 const props = defineProps<{
   open: boolean;
@@ -703,6 +709,86 @@ const explainOpen = ref(false);
 
 /** Guards a slow read of the previous check landing on the new one. */
 let loadTicket = 0;
+
+/** The pending run poll; cleared when the sheet closes, switches or unmounts. */
+let pollTimer: ReturnType<typeof setTimeout> | undefined;
+/** Bumped on every cancellation so a stale poll loop stops resolving work. */
+let pollToken = 0;
+/** True once the sheet is gone; a finishing run must then not paint or emit. */
+let unmounted = false;
+
+function stopPolling() {
+  pollToken += 1;
+  if (pollTimer !== undefined) {
+    clearTimeout(pollTimer);
+    pollTimer = undefined;
+  }
+}
+
+/** A planned run is settled once the runner has completed or abandoned it. */
+function isExecutionSettled(execution: QualityExecution): boolean {
+  return (
+    execution.state === QualityExecutionState.COMPLETED ||
+    execution.state === QualityExecutionState.ABANDONED
+  );
+}
+
+/**
+ * Wait until every execution a manual run planned has a verdict.
+ *
+ * `runQualityRules` only plans executions: the response names them PENDING (or
+ * RUNNING) and carries no verdict. Polling until they settle is what makes the
+ * re-read that follows show the result this click produced rather than the
+ * previous one. A failed poll is not a failed run: the wait keeps trying until
+ * the deadline, and a timeout still lets the caller refresh.
+ */
+function waitForRun(names: string[]): Promise<void> {
+  return new Promise((resolve) => {
+    const token = ++pollToken;
+    const deadline = Date.now() + RUN_POLL_TIMEOUT_MS;
+    const finish = () => {
+      if (pollTimer !== undefined) {
+        clearTimeout(pollTimer);
+        pollTimer = undefined;
+      }
+      resolve();
+    };
+    const poll = async () => {
+      if (token !== pollToken) {
+        finish();
+        return;
+      }
+      try {
+        const settled = await Promise.all(
+          names.map((name) => getQualityExecution(name))
+        );
+        if (token !== pollToken) {
+          finish();
+          return;
+        }
+        if (settled.every(isExecutionSettled) || Date.now() >= deadline) {
+          finish();
+          return;
+        }
+      } catch {
+        if (token !== pollToken) {
+          finish();
+          return;
+        }
+        if (Date.now() >= deadline) {
+          finish();
+          return;
+        }
+      }
+      pollTimer = setTimeout(() => {
+        void poll();
+      }, RUN_POLL_INTERVAL_MS);
+    };
+    pollTimer = setTimeout(() => {
+      void poll();
+    }, RUN_POLL_INTERVAL_MS);
+  });
+}
 
 const ruleTitle = computed(
   () =>
@@ -1028,12 +1114,18 @@ async function load() {
 watch(
   () => [props.open, props.ruleName] as const,
   ([isOpen]) => {
+    stopPolling();
     if (isOpen) {
       void load();
     }
   },
   { immediate: true }
 );
+
+onBeforeUnmount(() => {
+  unmounted = true;
+  stopPolling();
+});
 
 function close() {
   emit("update:open", false);
@@ -1043,12 +1135,25 @@ async function runNow() {
   if (!rule.value || running.value) {
     return;
   }
+  const name = rule.value.name;
   running.value = true;
   try {
-    await runQualityRules({ rules: [rule.value.name] });
+    const planned = await runQualityRules({ rules: [name] });
     notify.success(t("dataQuality.executionStarted"));
-    // The re-read carries the new last result; handing it back keeps the row the
-    // sheet was opened from in step without the workspace re-reading anything.
+    // The call only plans the run. Wait for the runner to settle the plan before
+    // re-reading, otherwise the refreshed last result is still the old verdict.
+    const unsettled = planned
+      .filter((execution) => !isExecutionSettled(execution))
+      .map((execution) => execution.name)
+      .filter(Boolean);
+    if (unsettled.length > 0) {
+      await waitForRun(unsettled);
+    }
+    // Closing, switching or unmounting the sheet cancels the wait; do not paint
+    // a workspace that is no longer showing this check.
+    if (unmounted || !props.open || props.ruleName !== name) {
+      return;
+    }
     await load();
     if (rule.value) {
       emit("changed", rule.value);
@@ -1056,7 +1161,9 @@ async function runNow() {
   } catch (cause: unknown) {
     notify.error(formatError(cause, "dataQuality.executionError"));
   } finally {
-    running.value = false;
+    if (!unmounted) {
+      running.value = false;
+    }
   }
 }
 

@@ -1357,6 +1357,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.QualityTargetColumn"><span class="badge">M</span>QualityTargetColumn</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.QualityTargetPath"><span class="badge">M</span>QualityTargetPath</a>
                 </li>
               
@@ -13615,6 +13619,15 @@ draw a per-rule history strip without one request per rule. Rules with no
 completed execution are absent. </p></td>
                 </tr>
               
+                <tr>
+                  <td>target_columns</td>
+                  <td><a href="#metaxisdata.v1.QualityTargetColumn">QualityTargetColumn</a></td>
+                  <td>repeated</td>
+                  <td><p>The target&#39;s current columns, from the resolved metadata. The workspace uses
+them for the coverage card and the check dialog&#39;s column fields; unlike
+ListMetadata(COLUMN) this also covers views and external tables. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -16971,6 +16984,44 @@ the config is authoritative; validation requires them to agree. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.QualityTargetColumn">QualityTargetColumn</h3>
+        <p>QualityTargetColumn is one column of a resolved target.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>type</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>nullable</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.QualityTargetPath">QualityTargetPath</h3>
         <p>QualityTargetPath is the display snapshot of where a target lived when the</p><p>rule was saved.</p>
 
@@ -17013,7 +17064,9 @@ the config is authoritative; validation requires them to agree. </p></td>
                   <td>column</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p>Empty for a table-level rule. </p></td>
+                  <td><p>Display snapshot only. The checked column is the one named in the rule&#39;s
+typed config; this field may be empty for rules written before it was
+populated, and is empty for a table-level rule. </p></td>
                 </tr>
               
             </tbody>
@@ -17112,6 +17165,15 @@ more than one whose data failed. </p></td>
                   <td></td>
                   <td><p>Whether at least one rule was saved against a different target schema hash
 than the registry currently records. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>orphaned</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether the target can no longer be resolved (the registry row, instance or
+database is gone). The rows stay readable because their target path is a
+snapshot, but runs are skipped. </p></td>
                 </tr>
               
             </tbody>
@@ -19886,8 +19948,9 @@ rule to answer &#34;which table needs attention?&#34;.</p></td>
                 <td><a href="#metaxisdata.v1.GetQualityTargetRequest">GetQualityTargetRequest</a></td>
                 <td><a href="#metaxisdata.v1.GetQualityTargetResponse">GetQualityTargetResponse</a></td>
                 <td><p>Read one target&#39;s workspace: its rules (with their latest results), the
-pending AI drafts and the unresolved issues, in one call. The target is
-named by GUID because a target is not a resource of its own.</p></td>
+unresolved issues and the target&#39;s columns, in one call. AI drafts are not
+part of the response (reading them needs the suggest permission). The target
+is named by GUID because a target is not a resource of its own.</p></td>
               </tr>
             
               <tr>

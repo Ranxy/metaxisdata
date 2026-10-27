@@ -114,18 +114,12 @@ func (s *DataQualityService) PublishQualityContract(ctx context.Context, req *co
 		Checks:      checks,
 		Fingerprint: qualityContractFingerprint(settings, checks),
 	}
-	var publishedChecks []*storepb.QualityContractCheck
-	var latest *store.QualityContractRevisionMessage
-	if contract != nil {
-		latest, err = s.store.GetLatestQualityContractRevision(ctx, contract.ID)
-		if err != nil {
-			return nil, err
-		}
-		if latest != nil {
-			publishedChecks = latest.Snapshot.GetChecks()
-		}
+	// The version's diff counts are computed by the store inside the publish
+	// transaction, against the snapshot that really is the previous version.
+	note, err := qualityContractNote(req.Msg.GetNote())
+	if err != nil {
+		return nil, err
 	}
-	change := qualityContractChangeSummary(publishedChecks, checks)
 
 	publishedBy := currentUserID(ctx)
 	var publishedByPtr *int32
@@ -134,16 +128,12 @@ func (s *DataQualityService) PublishQualityContract(ctx context.Context, req *co
 		publishedByPtr = &id
 	}
 	revision, storedContract, created, err := s.store.PublishQualityContractRevision(ctx, &store.PublishQualityContractInput{
-		TargetGUID:    targetGUID,
-		TargetType:    metaType,
-		Settings:      settings,
-		Snapshot:      snapshot,
-		CheckCount:    int32(len(checks)),
-		AddedCount:    change.GetAdded(),
-		ModifiedCount: change.GetModified(),
-		RemovedCount:  change.GetRemoved(),
-		Note:          strings.TrimSpace(req.Msg.GetNote()),
-		PublishedBy:   publishedByPtr,
+		TargetGUID:  targetGUID,
+		TargetType:  metaType,
+		Settings:    settings,
+		Snapshot:    snapshot,
+		Note:        note,
+		PublishedBy: publishedByPtr,
 	})
 	if err != nil {
 		return nil, err
@@ -282,8 +272,8 @@ func (s *DataQualityService) qualityContractViewWith(ctx context.Context, target
 		PublishedVersion: qualityContractPublishedVersion(contract),
 	}
 	if latest != nil {
-		published := qualityContractChangeSummary(latest.Snapshot.GetChecks(), checks)
-		view.ChangeSummary = published
+		added, modified, removed := store.QualityContractCheckDiff(latest.Snapshot.GetChecks(), checks)
+		view.ChangeSummary = qualityContractChangeSummary(added, modified, removed)
 		view.PublishedAt = timestamppb.New(latest.PublishedAt.UTC())
 		view.PublishedBy = formatQualityContractPublisher(latest.PublishedBy)
 		view.PublishNote = latest.Note
@@ -403,43 +393,15 @@ func qualityContractFingerprint(settings *storepb.QualityContractSettings, check
 	return hex.EncodeToString(sum[:])
 }
 
-// qualityContractChangeSummary compares the published checks with the live ones:
-// added, removed, and modified (same rule id, different revision or display
-// fields).
-func qualityContractChangeSummary(published, live []*storepb.QualityContractCheck) *v1pb.QualityContractChangeSummary {
-	publishedByID := make(map[string]*storepb.QualityContractCheck, len(published))
-	for _, check := range published {
-		publishedByID[check.GetRuleResourceId()] = check
+// qualityContractChangeSummary renders the counts the store computed into the API
+// message. The comparison itself lives in the store so the publish transaction and
+// this read view cannot disagree about what "added/modified/removed" means.
+func qualityContractChangeSummary(added, modified, removed int32) *v1pb.QualityContractChangeSummary {
+	return &v1pb.QualityContractChangeSummary{
+		Added:    added,
+		Modified: modified,
+		Removed:  removed,
 	}
-	liveByID := make(map[string]*storepb.QualityContractCheck, len(live))
-	summary := &v1pb.QualityContractChangeSummary{}
-	for _, check := range live {
-		liveByID[check.GetRuleResourceId()] = check
-		previous, ok := publishedByID[check.GetRuleResourceId()]
-		if !ok {
-			summary.Added++
-			continue
-		}
-		if !qualityContractCheckEqual(previous, check) {
-			summary.Modified++
-		}
-	}
-	for _, check := range published {
-		if _, ok := liveByID[check.GetRuleResourceId()]; !ok {
-			summary.Removed++
-		}
-	}
-	return summary
-}
-
-// qualityContractCheckEqual reports whether two checks describe the same rule
-// definition and display state.
-func qualityContractCheckEqual(a, b *storepb.QualityContractCheck) bool {
-	return a.GetRuleRevision() == b.GetRuleRevision() &&
-		a.GetTitle() == b.GetTitle() &&
-		a.GetRuleType() == b.GetRuleType() &&
-		a.GetSeverity() == b.GetSeverity() &&
-		a.GetColumn() == b.GetColumn()
 }
 
 // qualityContractSettingsEmpty reports whether settings carry anything.
@@ -449,12 +411,29 @@ func qualityContractSettingsEmpty(settings *storepb.QualityContractSettings) boo
 		settings.GetDefaultSeverity() == storepb.QualitySeverity_QUALITY_SEVERITY_UNSPECIFIED
 }
 
+// maxQualityContractNoteBytes bounds a published version's note. The UI limits
+// the field to 500 characters; the API allows some headroom but not an unbounded
+// value.
+const maxQualityContractNoteBytes = 2000
+
+// qualityContractNote trims a publish note and rejects one that is too long
+// instead of silently truncating the history text.
+func qualityContractNote(note string) (string, error) {
+	note = strings.TrimSpace(note)
+	if len(note) > maxQualityContractNoteBytes {
+		return "", connectErrorInvalid("the publish note is too long (max %d bytes)", maxQualityContractNoteBytes)
+	}
+	return note, nil
+}
+
 // validateQualityContractSettings checks the bounds of the settings that do not
 // need the target's metadata.
 func validateQualityContractSettings(settings *storepb.QualityContractSettings) error {
 	if seconds := settings.GetDefaultScheduleIntervalSeconds(); seconds != 0 {
-		interval := time.Duration(seconds) * time.Second
-		if interval < minQualityScheduleInterval || interval > maxQualityScheduleInterval {
+		// Bound the raw seconds before converting to a Duration: a huge int64 would
+		// overflow the multiplication and could slip past the range check.
+		if seconds < int64(minQualityScheduleInterval/time.Second) ||
+			seconds > int64(maxQualityScheduleInterval/time.Second) {
 			return connectErrorInvalid("the default schedule must be between 15 minutes and 7 days")
 		}
 	}

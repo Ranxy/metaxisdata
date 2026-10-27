@@ -318,8 +318,9 @@ service DataQualityService {
   }
 
   // Read one target's workspace: its rules (with their latest results), the
-  // pending AI drafts and the unresolved issues, in one call. The target is
-  // named by GUID because a target is not a resource of its own.
+  // unresolved issues and the target's columns, in one call. AI drafts are not
+  // part of the response (reading them needs the suggest permission). The target
+  // is named by GUID because a target is not a resource of its own.
   rpc GetQualityTarget(GetQualityTargetRequest) returns (GetQualityTargetResponse) {
     option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityTargets:get"};
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
@@ -726,7 +727,9 @@ message QualityTargetPath {
   string database = 2;
   string schema = 3;
   string object = 4;
-  // Empty for a table-level rule.
+  // Display snapshot only. The checked column is the one named in the rule's
+  // typed config; this field may be empty for rules written before it was
+  // populated, and is empty for a table-level rule.
   string column = 5;
 }
 
@@ -2268,6 +2271,11 @@ message QualityTargetSummary {
   // Whether at least one rule was saved against a different target schema hash
   // than the registry currently records.
   bool schema_changed = 11;
+
+  // Whether the target can no longer be resolved (the registry row, instance or
+  // database is gone). The rows stay readable because their target path is a
+  // snapshot, but runs are skipped.
+  bool orphaned = 12;
 }
 
 message GetQualityTargetRequest {
@@ -2304,6 +2312,18 @@ message GetQualityTargetResponse {
   // draw a per-rule history strip without one request per rule. Rules with no
   // completed execution are absent.
   repeated QualityRuleHistory rule_history = 5;
+
+  // The target's current columns, from the resolved metadata. The workspace uses
+  // them for the coverage card and the check dialog's column fields; unlike
+  // ListMetadata(COLUMN) this also covers views and external tables.
+  repeated QualityTargetColumn target_columns = 6;
+}
+
+// QualityTargetColumn is one column of a resolved target.
+message QualityTargetColumn {
+  string name = 1;
+  string type = 2;
+  bool nullable = 3;
 }
 
 // QualityRuleHistory is one rule's recent completed executions.

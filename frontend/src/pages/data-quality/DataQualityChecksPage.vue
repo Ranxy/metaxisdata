@@ -38,7 +38,7 @@
            the application-SQL list. Typing or picking does not re-query; Apply
            does. The target scope narrows by a metadata subtree (instance →
            database → schema → table/view) and is applied with the rest. -->
-      <div class="flex flex-wrap items-end gap-3 border-b p-4">
+      <div class="flex flex-wrap items-end gap-3 border-b px-4 py-3">
         <div class="flex min-w-48 flex-1 flex-col gap-1.5 sm:max-w-sm sm:flex-none">
           <Label
             for="data-quality-search"
@@ -262,9 +262,6 @@
             <TableHeader>
               <TableRow>
                 <TableHead>{{ t("dataQuality.rule") }}</TableHead>
-                <TableHead class="hidden md:table-cell">
-                  {{ t("dataQuality.ruleTarget") }}
-                </TableHead>
                 <TableHead class="hidden lg:table-cell">
                   {{ t("dataQuality.type") }}
                 </TableHead>
@@ -280,7 +277,7 @@
                 <TableHead class="hidden md:table-cell">
                   {{ t("dataQuality.lastResult") }}
                 </TableHead>
-                <TableHead class="hidden whitespace-nowrap md:table-cell">
+                <TableHead class="hidden whitespace-nowrap 2xl:table-cell">
                   {{ t("dataQuality.updatedAt") }}
                 </TableHead>
                 <TableHead class="w-12 text-right md:w-32">
@@ -321,9 +318,10 @@
                     </Badge>
                   </div>
                   <div
-                    class="max-w-[14rem] truncate font-mono text-xs text-muted-foreground md:hidden"
+                    class="max-w-[14rem] truncate font-mono text-xs text-muted-foreground"
                     :title="targetTitle(rule)"
                   >
+                    <span class="sr-only">{{ t("dataQuality.ruleTarget") }}: </span>
                     <RouterLink
                       :to="targetRoute(rule)"
                       class="hover:underline"
@@ -367,16 +365,7 @@
                     </span>
                   </div>
                 </TableCell>
-                <TableCell class="hidden md:table-cell">
-                  <RouterLink
-                    :to="targetRoute(rule)"
-                    class="block max-w-[14rem] truncate text-xs hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    :title="targetTitle(rule)"
-                  >
-                    {{ targetTitle(rule) }}
-                  </RouterLink>
-                </TableCell>
-                <TableCell class="hidden lg:table-cell">
+                <TableCell class="hidden whitespace-nowrap lg:table-cell">
                   {{ t(qualityRuleTypeKey(rule.ruleType)) }}
                 </TableCell>
                 <TableCell class="hidden md:table-cell">
@@ -434,7 +423,7 @@
                   </div>
                 </TableCell>
                 <TableCell
-                  class="hidden whitespace-nowrap text-muted-foreground md:table-cell"
+                  class="hidden whitespace-nowrap text-muted-foreground 2xl:table-cell"
                   :title="formatDateTime(rule.updateTime, locale)"
                 >
                   {{ formatRelativeTime(rule.updateTime, locale) }}
@@ -1048,10 +1037,13 @@ function executionRoute(name: string) {
   };
 }
 
+// The table's row subline is width-capped, so the object goes first: truncating
+// the instance/database is recoverable from the tooltip, truncating the table name
+// is not.
 function targetTitle(rule: QualityRule): string {
   const scope = targetScopeLabel(rule.target?.path);
   const path = formatTargetPath(rule.target?.path);
-  return scope === "-" ? path : `${scope} · ${path}`;
+  return path === "-" ? scope : `${path} · ${scope}`;
 }
 
 /** The owner's email from the directory (raw name if unknown), or "unassigned". */

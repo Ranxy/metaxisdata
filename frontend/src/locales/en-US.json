@@ -348,7 +348,7 @@
       "columnGroup": "Column checks",
       "commonGroup": "Common checks",
       "datasetGroup": "Dataset checks",
-      "description": "The target is fixed. The check joins its section when you create it; filter, owner and tags are under More settings.",
+      "description": "The target is fixed. The check joins its section when you save it; filter, owner and tags are under More settings.",
       "editTitle": "Edit {title}",
       "saving": "Saving…",
       "title": "New check on {target}"
@@ -1261,6 +1261,7 @@
     },
     "targets": {
       "allRules": "All checks",
+      "browseMetadata": "Browse metadata",
       "clearFilters": "Clear filters",
       "columnColumns": "Columns covered",
       "columnDrafts": "Pending drafts",
@@ -1320,6 +1321,7 @@
       "addRuleHint": "Add a check to this target",
       "backToTargets": "All targets",
       "columnRulesHint": "Checks on this column.",
+      "createPermissionRequired": "You do not have permission to add checks to this target.",
       "crossColumnRulesHint": "Checks that relate several columns.",
       "crossColumnRulesTitle": "Cross-column checks",
       "datasetRulesHint": "Checks that watch the whole table or view.",

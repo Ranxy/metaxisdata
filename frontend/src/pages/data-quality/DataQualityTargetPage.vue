@@ -171,6 +171,7 @@
               :target-guid="targetGuid"
               :meta-type="effectiveMetaType"
               :rules="rules"
+              :columns="targetColumns"
               :can-create="canCreate"
               @create="openComposer"
             />
@@ -367,6 +368,7 @@
       v-model:open="composerOpen"
       :rule="editingRule"
       :suggestion="composerSuggestion"
+      :column-details="targetColumns"
       :scope="composerScope"
       :initial-column="composerInitialColumn"
       :target-guid="targetGuid"
@@ -452,6 +454,7 @@ import {
   qualityIssueStatusKey,
   qualityIssueStatusVariant,
 } from "@/utils/dataQuality";
+import type { TargetColumnDetail } from "@/utils/dataQualityForm";
 import { isPendingDraft } from "@/utils/dataQualitySuggestion";
 import {
   groupTargetChecks,
@@ -519,6 +522,12 @@ const issues = ref<QualityIssue[]>([]);
 const summary = ref<QualityTargetSummary>(
   create(QualityTargetSummarySchema, {})
 );
+/**
+ * The target's columns as the aggregate read resolved them. They come from the
+ * API rather than the column registry, so a view or external table (which gets
+ * no COLUMN registry rows) still shows its columns.
+ */
+const targetColumns = ref<TargetColumnDetail[]>([]);
 const orphaned = ref(false);
 /** The target's contract: defaults, published version and drift. */
 const contract = ref<QualityContract>();
@@ -772,6 +781,8 @@ async function load() {
   loading.value = true;
   error.value = "";
   rules.value = [];
+  ruleHistory.value = new Map();
+  targetColumns.value = [];
   suggestions.value = [];
   issues.value = [];
   summary.value = create(QualityTargetSummarySchema, {});
@@ -800,6 +811,11 @@ async function load() {
     ruleHistory.value = new Map(
       response.ruleHistory.map((history) => [history.rule, history.executions])
     );
+    targetColumns.value = response.targetColumns.map((column) => ({
+      name: column.name,
+      type: column.type,
+      nullable: column.nullable,
+    }));
     issues.value = response.openIssues;
     orphaned.value = response.orphanedReason !== "";
   } catch (cause: unknown) {
@@ -940,13 +956,18 @@ function openCheck(rule: QualityRule) {
   selectedCheck.value = rule.name;
 }
 
-/** Removes `check` from the URL while preserving the other query keys. */
+/**
+ * Removes `check` from the URL while preserving the other query keys. The edit
+ * flag is dropped with it: it only names an intent to open the composer on that
+ * check, which closing the sheet has already fulfilled or abandoned.
+ */
 function removeCheckQuery() {
-  if (route.query.check === undefined) {
+  if (route.query.check === undefined && route.query.edit === undefined) {
     return;
   }
   const query = { ...route.query };
   delete query.check;
+  delete query.edit;
   void router.replace({ query });
 }
 
@@ -1113,14 +1134,45 @@ function syncAddFromQuery() {
   if (loading.value || route.query.add !== "1") {
     return;
   }
-  if (route.query.check !== undefined) {
-    return;
-  }
+  // The flag is consumed first, whatever happens next, so a reload never
+  // re-triggers it and a `check` in the same URL keeps its own path.
   const query = { ...route.query };
   delete query.add;
   void router.replace({ query });
+  if (!canCreate.value) {
+    notify.info(t("dataQuality.workspace.createPermissionRequired"));
+    return;
+  }
+  if (route.query.check !== undefined) {
+    return;
+  }
   openComposer();
 }
 
 watch([() => route.query.add, loading], syncAddFromQuery, { immediate: true });
+
+/**
+ * The old edit URL arrives as `check=<name>&edit=1`: consume the flag, then open
+ * the workspace composer on that check instead of the read-only sheet. A name
+ * this target does not have is ignored, exactly like a stale `check`.
+ */
+function syncEditFromQuery() {
+  if (loading.value || route.query.edit !== "1") {
+    return;
+  }
+  const query = { ...route.query };
+  delete query.edit;
+  void router.replace({ query });
+  const check = typeof route.query.check === "string" ? route.query.check : "";
+  const rule = rules.value.find((item) => item.name === check);
+  if (!rule) {
+    return;
+  }
+  openEditor(rule);
+  closeCheck();
+}
+
+watch([() => route.query.edit, rules, loading], syncEditFromQuery, {
+  immediate: true,
+});
 </script>

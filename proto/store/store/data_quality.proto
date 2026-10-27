@@ -274,7 +274,9 @@ message QualityTargetPath {
   string database = 2;
   string schema = 3;
   string object = 4;
-  // Empty for a table-level rule.
+  // Display snapshot only. The checked column is the one named in the rule's
+  // typed config; this field may be empty for rules written before it was
+  // populated, and is empty for a table-level rule.
   string column = 5;
 }
 
