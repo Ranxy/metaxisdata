@@ -434,7 +434,7 @@ func convertQualityExecutionSummary(workspaceID string, execution *store.Quality
 // convertQualityRun converts one dispatch batch and its per-target slices. A run
 // is the batch-level read model: the executions remain the evidence, and the
 // slices are projections of them.
-func convertQualityRun(workspaceID string, run *store.QualityRunMessage, slices []*store.QualityRunTargetMessage) *v1pb.QualityRun {
+func convertQualityRun(workspaceID string, run *store.QualityRunMessage) *v1pb.QualityRun {
 	if run == nil {
 		return nil
 	}
@@ -442,50 +442,24 @@ func convertQualityRun(workspaceID string, run *store.QualityRunMessage, slices 
 	if run.InstanceResourceID != "" {
 		instance = common.FormatInstance(run.InstanceResourceID)
 	}
-	converted := &v1pb.QualityRun{
-		Name:       formatQualityRunName(workspaceID, run.ID),
-		Instance:   instance,
-		Trigger:    v1pb.QualityExecutionTrigger(run.Trigger),
-		State:      v1pb.QualityExecutionState(run.Status),
-		Outcome:    v1pb.QualityStatus(run.Outcome),
-		Counts:     convertQualityStatusCountsToV1(run.Counts),
-		Initiator:  formatQualityOwner(run.InitiatorID),
-		StartTime:  timestamppb.New(run.StartedAt),
-		FinishTime: timeToProtoTimestampPtr(run.FinishedAt),
-	}
-	for _, slice := range slices {
-		converted.Targets = append(converted.Targets, convertQualityRunTarget(workspaceID, run, slice))
-	}
-	return converted
-}
-
-// convertQualityRunTarget converts one target's slice of a run. The slice repeats
-// the parent's resource name, lifecycle and trigger so it can stand alone as a
-// target's latest_run; run may be nil only for a slice read without its parent
-// (the target enrichment always passes one).
-func convertQualityRunTarget(workspaceID string, run *store.QualityRunMessage, slice *store.QualityRunTargetMessage) *v1pb.QualityRunTarget {
-	if slice == nil {
-		return nil
-	}
-	converted := &v1pb.QualityRunTarget{
+	return &v1pb.QualityRun{
+		Name:     formatQualityRunName(workspaceID, run.ID),
+		Instance: instance,
 		Target: &v1pb.QualityTarget{
-			MetaGuid: slice.TargetGUID,
-			MetaType: v1pb.MetaType(slice.TargetType),
-			Path:     convertQualityTargetPathToV1(slice.TargetPath),
+			MetaGuid: run.TargetGUID,
+			MetaType: v1pb.MetaType(run.TargetType),
+			Path:     convertQualityTargetPathToV1(run.TargetPath),
 		},
-		Counts:          convertQualityStatusCountsToV1(slice.Counts),
-		Outcome:         v1pb.QualityStatus(slice.Outcome),
-		RuleRevisionMin: slice.RuleRevisionMin,
-		RuleRevisionMax: slice.RuleRevisionMax,
-		StartTime:       timestamppb.New(slice.StartedAt),
-		FinishTime:      timeToProtoTimestampPtr(slice.FinishedAt),
+		Trigger:         v1pb.QualityExecutionTrigger(run.Trigger),
+		State:           v1pb.QualityExecutionState(run.Status),
+		Outcome:         v1pb.QualityStatus(run.Outcome),
+		Counts:          convertQualityStatusCountsToV1(run.Counts),
+		Initiator:       formatQualityOwner(run.InitiatorID),
+		StartTime:       timestamppb.New(run.StartedAt),
+		FinishTime:      timeToProtoTimestampPtr(run.FinishedAt),
+		RuleRevisionMin: run.RuleRevisionMin,
+		RuleRevisionMax: run.RuleRevisionMax,
 	}
-	if run != nil {
-		converted.Run = formatQualityRunName(workspaceID, run.ID)
-		converted.State = v1pb.QualityExecutionState(run.Status)
-		converted.Trigger = v1pb.QualityExecutionTrigger(run.Trigger)
-	}
-	return converted
 }
 
 // convertQualityIssue converts one issue row. The rule name is resolved by the

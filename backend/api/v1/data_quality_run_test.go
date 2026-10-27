@@ -13,53 +13,42 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
-// qualityRunFixture is one dispatch batch with one target's slice, shaped like
-// the store reads them.
-func qualityRunFixture() (*store.QualityRunMessage, []*store.QualityRunTargetMessage) {
+// qualityRunFixture is one dispatch batch that belongs to one target, shaped like
+// the store reads it.
+func qualityRunFixture() *store.QualityRunMessage {
 	startedAt := time.Date(2026, time.October, 7, 9, 30, 0, 0, time.UTC)
 	finishedAt := startedAt.Add(4 * time.Minute)
 	initiator := int32(7)
-	run := &store.QualityRunMessage{
+	return &store.QualityRunMessage{
 		ID:                 42,
 		ResourceID:         "runabc",
 		InstanceResourceID: "instance_1",
-		Trigger:            storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL,
-		Status:             storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED,
-		Outcome:            storepb.QualityStatus_QUALITY_STATUS_FAIL,
-		Counts: &storepb.QualityStatusCounts{
-			Total: 3, Pass: 1, Fail: 2,
-		},
-		InitiatorID: &initiator,
-		StartedAt:   startedAt,
-		FinishedAt:  &finishedAt,
-	}
-	slices := []*store.QualityRunTargetMessage{{
-		RunID:      42,
-		TargetGUID: "instance_1;shop;public;orders",
-		TargetType: storepb.MetaType_TABLE,
+		TargetGUID:         "instance_1;shop;public;orders",
+		TargetType:         storepb.MetaType_TABLE,
 		TargetPath: &storepb.QualityTargetPath{
 			Instance: "prod", Database: "shop", Schema: "public", Object: "orders",
 		},
+		Trigger: storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL,
+		Status:  storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED,
+		Outcome: storepb.QualityStatus_QUALITY_STATUS_FAIL,
 		Counts: &storepb.QualityStatusCounts{
-			Total: 2, Pass: 1, Fail: 1,
+			Total: 3, Pass: 1, Fail: 2,
 		},
-		Outcome:         storepb.QualityStatus_QUALITY_STATUS_FAIL,
-		RuleRevisionMin: 1,
-		RuleRevisionMax: 3,
+		InitiatorID:     &initiator,
 		StartedAt:       startedAt,
 		FinishedAt:      &finishedAt,
-	}}
-	return run, slices
+		RuleRevisionMin: 1,
+		RuleRevisionMax: 3,
+	}
 }
 
-// The run converter carries the batch identity, lifecycle, counts and its
-// per-target slices, and the slice repeats the parent's name/state/trigger so it
-// can stand alone as a target's latest_run.
+// The run converter carries the batch identity, its one target, lifecycle,
+// counts and the revision range its executions judged.
 func TestConvertQualityRun(t *testing.T) {
 	t.Parallel()
 
-	run, slices := qualityRunFixture()
-	converted := convertQualityRun("ws1", run, slices)
+	run := qualityRunFixture()
+	converted := convertQualityRun("ws1", run)
 	require.NotNil(t, converted)
 	require.Equal(t, "workspaces/ws1/qualityRuns/42", converted.GetName())
 	require.Equal(t, "instances/instance_1", converted.GetInstance())
@@ -73,37 +62,17 @@ func TestConvertQualityRun(t *testing.T) {
 	require.Equal(t, run.StartedAt, converted.GetStartTime().AsTime())
 	require.Equal(t, run.FinishedAt.UTC(), converted.GetFinishTime().AsTime())
 
-	require.Len(t, converted.GetTargets(), 1)
-	slice := converted.GetTargets()[0]
-	require.Equal(t, "instance_1;shop;public;orders", slice.GetTarget().GetMetaGuid())
-	require.Equal(t, v1pb.MetaType_TABLE, slice.GetTarget().GetMetaType())
-	require.Equal(t, "orders", slice.GetTarget().GetPath().GetObject())
-	require.Equal(t, int32(2), slice.GetCounts().GetTotal())
-	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_FAIL, slice.GetOutcome())
-	require.Equal(t, int32(1), slice.GetRuleRevisionMin())
-	require.Equal(t, int32(3), slice.GetRuleRevisionMax())
-	require.Equal(t, "workspaces/ws1/qualityRuns/42", slice.GetRun(),
-		"the slice repeats its parent run so latest_run stands alone")
-	require.Equal(t, v1pb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED, slice.GetState())
-	require.Equal(t, v1pb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL, slice.GetTrigger())
-	require.Equal(t, slices[0].StartedAt, slice.GetStartTime().AsTime())
-	require.Equal(t, slices[0].FinishedAt.UTC(), slice.GetFinishTime().AsTime())
+	require.Equal(t, "instance_1;shop;public;orders", converted.GetTarget().GetMetaGuid())
+	require.Equal(t, v1pb.MetaType_TABLE, converted.GetTarget().GetMetaType())
+	require.Equal(t, "orders", converted.GetTarget().GetPath().GetObject())
+	require.Equal(t, int32(1), converted.GetRuleRevisionMin())
+	require.Equal(t, int32(3), converted.GetRuleRevisionMax())
 
 	// A run without a finished time keeps the field unset rather than showing the
-	// epoch, and a run with no slices converts to an empty targets list.
+	// epoch; a nil run converts to nil.
 	run.FinishedAt = nil
-	require.Nil(t, convertQualityRun("ws1", run, nil).GetFinishTime())
-	require.Empty(t, convertQualityRun("ws1", run, nil).GetTargets())
-	require.Nil(t, convertQualityRun("ws1", nil, slices))
-
-	// A slice read without its parent still renders its own fields; the three
-	// parent-derived fields stay unset.
-	orphanSlice := convertQualityRunTarget("ws1", nil, slices[0])
-	require.NotNil(t, orphanSlice)
-	require.Empty(t, orphanSlice.GetRun())
-	require.Equal(t, v1pb.QualityExecutionState_QUALITY_EXECUTION_STATE_UNSPECIFIED, orphanSlice.GetState())
-	require.Equal(t, v1pb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_UNSPECIFIED, orphanSlice.GetTrigger())
-	require.Nil(t, convertQualityRunTarget("ws1", run, nil))
+	require.Nil(t, convertQualityRun("ws1", run).GetFinishTime())
+	require.Nil(t, convertQualityRun("ws1", nil))
 }
 
 // The run list filters validate every enum instead of silently widening the
@@ -117,6 +86,7 @@ func TestApplyQualityRunListFilters(t *testing.T) {
 	require.NoError(t, applyQualityRunListFilters(find, &v1pb.ListQualityRunsRequest{
 		Instance:   "instances/instance_1",
 		TargetGuid: " instance_1;shop;public;orders ",
+		MetaType:   v1pb.MetaType_TABLE,
 		Trigger:    v1pb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED,
 		State:      v1pb.QualityExecutionState_QUALITY_EXECUTION_STATE_RUNNING,
 		Outcome:    v1pb.QualityStatus_QUALITY_STATUS_WARN,
@@ -127,6 +97,8 @@ func TestApplyQualityRunListFilters(t *testing.T) {
 	require.Equal(t, "instance_1", *find.InstanceResourceID)
 	require.NotNil(t, find.TargetGUID)
 	require.Equal(t, "instance_1;shop;public;orders", *find.TargetGUID)
+	require.NotNil(t, find.TargetType)
+	require.Equal(t, storepb.MetaType_TABLE, *find.TargetType)
 	require.NotNil(t, find.Trigger)
 	require.Equal(t, storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED, *find.Trigger)
 	require.NotNil(t, find.Status)
@@ -146,6 +118,7 @@ func TestApplyQualityRunListFilters(t *testing.T) {
 	require.Nil(t, empty.Status)
 	require.Nil(t, empty.Outcome)
 	require.Nil(t, empty.TargetGUID)
+	require.Nil(t, empty.TargetType)
 	require.Nil(t, empty.InstanceResourceID)
 
 	invalid := []struct {
@@ -155,6 +128,7 @@ func TestApplyQualityRunListFilters(t *testing.T) {
 		{name: "trigger", request: &v1pb.ListQualityRunsRequest{Trigger: v1pb.QualityExecutionTrigger(99)}},
 		{name: "state", request: &v1pb.ListQualityRunsRequest{State: v1pb.QualityExecutionState(99)}},
 		{name: "outcome", request: &v1pb.ListQualityRunsRequest{Outcome: v1pb.QualityStatus(99)}},
+		{name: "meta type", request: &v1pb.ListQualityRunsRequest{MetaType: v1pb.MetaType(99)}},
 	}
 	for _, test := range invalid {
 		t.Run(test.name, func(t *testing.T) {

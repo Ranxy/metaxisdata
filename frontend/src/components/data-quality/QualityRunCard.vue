@@ -1,8 +1,9 @@
 <template>
   <Card class="overflow-hidden">
-    <!-- One run is one dispatch batch. The header is the batch, the counts row
-         is this target's slice of it: a scheduled batch can cover several
-         targets, so the batch-wide totals would misreport this table. -->
+    <!-- One run is one dispatch batch and belongs to exactly one target, so the
+         run's counts and outcome are this table's own. A manual run may hold
+         only the explicitly selected checks; the partial disclosure below is
+         therefore reserved for scheduled runs. -->
     <div class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b bg-muted/30 px-3 py-2">
       <span
         class="text-sm font-medium whitespace-nowrap"
@@ -14,10 +15,11 @@
         {{ t(qualityExecutionTriggerKey(run.trigger)) }}
       </Badge>
       <span
-        v-if="run.targets.length > 1"
+        v-if="targetLabel"
         class="text-xs text-muted-foreground"
+        :title="targetLabel"
       >
-        {{ t("dataQuality.executions.runTargets", { count: run.targets.length }) }}
+        {{ targetLabel }}
       </span>
       <span
         v-if="run.initiator"
@@ -292,6 +294,7 @@ import { useUserDirectory } from "@/composables/useUserDirectory";
 import {
   type QualityExecution,
   QualityExecutionState,
+  QualityExecutionTrigger,
   type QualityRun,
   QualityStatus,
   type QualityStatusCounts,
@@ -302,6 +305,7 @@ import {
   formatObservedValue,
   formatRowCount,
   formatSeconds,
+  formatTargetPath,
   qualityExecutionStateKey,
   qualityExecutionStateVariant,
   qualityExecutionTriggerKey,
@@ -312,25 +316,28 @@ import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 import { guidToRouteParams } from "@/utils/guid";
 
 /**
- * One scan batch as a target sees it: the batch header, this target's slice of
- * the counts, and the checks themselves on demand.
+ * One scan batch as a target sees it: the batch header, its counts and the
+ * checks themselves on demand.
  *
- * The counts always come from `run.targets[target]`, never from the batch-wide
- * tally: a scheduled batch can cover several targets, and this card answers
- * "what did this batch do to this table?".
+ * A batch now belongs to exactly one target, so `run.counts`/`run.outcome` are
+ * this table's own numbers. A manual run may contain only an explicit selection
+ * of the target's checks, while a scheduled run covers every enabled check; the
+ * "N/M checks" disclosure therefore only applies to a scheduled run.
  */
 
 const props = withDefaults(
   defineProps<{
     run: QualityRun;
-    /** The target whose slice and checks this card shows. */
+    /** The target whose checks this card shows. */
     targetGuid: string;
     /** Rule resource name -> title, for the check rows. */
     ruleTitles?: Record<string, string>;
     /**
-     * The target's live rule count, when the caller knows it. A batch contains
-     * only the checks that were due, so this lets the card say "3/5 checks" when
-     * some rules are on a different schedule.
+     * The target's enabled rule count, when the caller knows it. A scheduled
+     * batch of an oversize target (split across batches) covers only a slice of
+     * the checks, so this lets the card say "3/5 checks". Paused rules are not
+     * expected to run and manual runs are explicit selections, so neither makes
+     * a batch partial.
      */
     targetRuleCount?: number;
     /** Whether the checks table is expanded. */
@@ -356,26 +363,30 @@ const VERDICT_ORDER: QualityStatus[] = [
   QualityStatus.NOT_EVALUATED,
 ];
 
-/** This target's slice of the batch; the batch may have covered many targets. */
-const slice = computed(() =>
-  props.run.targets.find(
-    (candidate) => candidate.target?.metaGuid === props.targetGuid
-  )
-);
-
 const counts = computed<QualityStatusCounts | undefined>(
-  () => slice.value?.counts
+  () => props.run.counts
 );
 const totalChecks = computed(() => counts.value?.total ?? 0);
-/** The target's live count when the batch only covered its due subset. */
+/**
+ * The target's enabled count when a scheduled batch covered only a slice of an
+ * oversize target. Paused rules are not expected to run; a manual run planned an
+ * explicit selection, so its total is the selection's size, not a partial view.
+ */
 const partialChecks = computed(() =>
-  props.targetRuleCount > totalChecks.value ? props.targetRuleCount : 0
+  props.run.trigger === QualityExecutionTrigger.SCHEDULED &&
+  props.targetRuleCount > totalChecks.value
+    ? props.targetRuleCount
+    : 0
 );
-const outcome = computed(
-  () => slice.value?.outcome ?? QualityStatus.UNSPECIFIED
-);
+const outcome = computed(() => props.run.outcome);
 
-const startTime = computed(() => slice.value?.startTime ?? props.run.startTime);
+const startTime = computed(() => props.run.startTime);
+
+/** The one target this batch belongs to, named in the header. */
+const targetLabel = computed(() => {
+  const path = formatTargetPath(props.run.target?.path);
+  return path === "-" ? (props.run.target?.metaGuid ?? "") : path;
+});
 
 function verdictCount(status: QualityStatus): number {
   const current = counts.value;
@@ -401,7 +412,7 @@ function verdictCount(status: QualityStatus): number {
 }
 
 /**
- * The verdicts this slice recorded, in status order. ERROR has its own badge
+ * The verdicts this batch recorded, in status order. ERROR has its own badge
  * (the "runErrors" wording), so it is left out here to avoid counting it twice.
  */
 const verdictCounts = computed(() =>
@@ -427,25 +438,25 @@ const unfinishedChecks = computed(() => {
 const durationLabel = computed(() => {
   const seconds = executionDurationSeconds({
     startTime: startTime.value,
-    finishTime: slice.value?.finishTime ?? props.run.finishTime,
+    finishTime: props.run.finishTime,
   });
   return seconds === undefined ? "-" : formatSeconds(seconds);
 });
 
-/** The rule revisions this slice judged; a batch is only comparable at one range. */
+/** The rule revisions this batch judged; it is only comparable at one range. */
 const revisionLabel = computed(() => {
-  const current = slice.value;
-  if (!current || current.ruleRevisionMax === 0) {
+  const run = props.run;
+  if (run.ruleRevisionMax === 0) {
     return "";
   }
-  if (current.ruleRevisionMin === current.ruleRevisionMax) {
+  if (run.ruleRevisionMin === run.ruleRevisionMax) {
     return t("dataQuality.executions.revisionSingle", {
-      revision: current.ruleRevisionMax,
+      revision: run.ruleRevisionMax,
     });
   }
   return t("dataQuality.executions.revisionRange", {
-    min: current.ruleRevisionMin,
-    max: current.ruleRevisionMax,
+    min: run.ruleRevisionMin,
+    max: run.ruleRevisionMax,
   });
 });
 
@@ -480,7 +491,7 @@ function ruleLabel(execution: QualityExecution): string {
 /** The check's workspace row: its target, with this check selected. */
 function checkRoute(execution: QualityExecution) {
   const query: Record<string, string> = {};
-  const metaType = slice.value?.target?.metaType ?? MetaType.UNSPECIFIED;
+  const metaType = props.run.target?.metaType ?? MetaType.UNSPECIFIED;
   if (metaType !== MetaType.UNSPECIFIED) {
     query.metaType = String(metaType);
   }

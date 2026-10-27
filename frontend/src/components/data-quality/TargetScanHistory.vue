@@ -57,6 +57,7 @@ import QualityRunCard from "@/components/data-quality/QualityRunCard.vue";
 import { Button } from "@/components/ui/button";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import type { QualityRun } from "@/types/proto-es/v1/data_quality_service_pb";
+import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 
 /**
  * A target's scan history, newest batch first, lazily loaded under its directory
@@ -66,14 +67,21 @@ import type { QualityRun } from "@/types/proto-es/v1/data_quality_service_pb";
 const props = withDefaults(
   defineProps<{
     targetGuid: string;
+    /** The target's object type; runs are filtered by target identity. */
+    metaType?: MetaType;
     /** Rule resource name -> title, passed through to the run cards. */
     ruleTitles?: Record<string, string>;
-    /** The target's live rule count, so a due-only batch can say 3/5 checks. */
+    /** The target's enabled rule count, so an oversize split batch can say 3/5 checks. */
     targetRuleCount?: number;
     /** The run whose checks are open, carried by `?run=`. */
     expandRun?: string;
   }>(),
-  { ruleTitles: () => ({}), targetRuleCount: 0, expandRun: "" }
+  {
+    ruleTitles: () => ({}),
+    targetRuleCount: 0,
+    expandRun: "",
+    metaType: MetaType.UNSPECIFIED,
+  }
 );
 
 const emit = defineEmits<{
@@ -99,6 +107,7 @@ async function load() {
   try {
     const page = await listQualityRuns({
       targetGuid: props.targetGuid,
+      metaType: props.metaType,
       pageSize: 20,
     });
     runs.value = page.items;

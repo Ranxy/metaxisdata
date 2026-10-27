@@ -656,11 +656,14 @@ func TestSelectDueTargetsTakesWholeTargetsUntilTheBudget(t *testing.T) {
 		return result
 	}
 
-	require.Equal(t, []string{"a"}, guids(selectDueTargets(targets, 2)),
-		"a budget met exactly by the first target stops there")
-	require.Equal(t, []string{"a", "b"}, guids(selectDueTargets(targets, 3)),
-		"the target crossing the budget is included whole")
-	require.Equal(t, []string{"a", "b", "c"}, guids(selectDueTargets(targets, 99)))
-	require.Empty(t, selectDueTargets(targets, 0))
-	require.Empty(t, selectDueTargets(nil, 10))
+	require.Equal(t, []string{"a"}, guids(selectDueTargets(targets, 2, 99)),
+		"a rule budget met exactly by the first target stops there")
+	require.Equal(t, []string{"a", "b"}, guids(selectDueTargets(targets, 3, 99)),
+		"the target crossing the rule budget is included whole")
+	require.Equal(t, []string{"a", "b", "c"}, guids(selectDueTargets(targets, 99, 99)))
+	require.Equal(t, []string{"a", "b"}, guids(selectDueTargets(targets, 99, 2)),
+		"the target budget bounds how many batches one tick creates")
+	require.Empty(t, selectDueTargets(targets, 0, 99))
+	require.Empty(t, selectDueTargets(targets, 99, 0))
+	require.Empty(t, selectDueTargets(nil, 10, 10))
 }

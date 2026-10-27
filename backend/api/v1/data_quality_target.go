@@ -338,7 +338,7 @@ func (s *DataQualityService) GetQualityTarget(ctx context.Context, req *connect.
 		return nil, errors.Wrap(err, "failed to read the target's latest run")
 	}
 	if entry := runSummaries[runKey]; entry != nil {
-		summary.LatestRun = convertQualityRunTarget(workspaceID, entry.Run, entry.Slice)
+		summary.LatestRun = convertQualityRun(workspaceID, entry.Run)
 		summary.RunCount = entry.RunCount
 	}
 
@@ -451,7 +451,7 @@ func convertQualityTargetSummary(workspaceID string, target *store.QualityTarget
 		}
 	}
 	if target.LatestRun != nil {
-		summary.LatestRun = convertQualityRunTarget(workspaceID, target.LatestRun.Run, target.LatestRun.Slice)
+		summary.LatestRun = convertQualityRun(workspaceID, target.LatestRun.Run)
 	}
 	return summary
 }

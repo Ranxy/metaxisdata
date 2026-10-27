@@ -19,7 +19,7 @@ const qualityRunDefaultPageSize = 50
 
 // ListQualityRuns lists the internal dispatch batches, newest first. A run is a
 // read-only projection: it groups the executions one scheduler tick or one manual
-// request planned, and each run carries one slice per target it touched.
+// request planned for one target, and the run itself names that target.
 func (s *DataQualityService) ListQualityRuns(ctx context.Context, req *connect.Request[v1pb.ListQualityRunsRequest]) (*connect.Response[v1pb.ListQualityRunsResponse], error) {
 	workspaceID, err := s.workspaceID(ctx, req.Msg.GetParent())
 	if err != nil {
@@ -56,20 +56,18 @@ func (s *DataQualityService) ListQualityRuns(ctx context.Context, req *connect.R
 	for _, run := range runs {
 		runIDs = append(runIDs, run.ID)
 	}
-	slices, err := s.store.ListQualityRunTargets(ctx, runIDs)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read the runs' target slices")
+	if err := s.fillQualityRunRevisionRanges(ctx, runs, runIDs); err != nil {
+		return nil, err
 	}
 
 	response := &v1pb.ListQualityRunsResponse{NextPageToken: nextPageToken}
 	for _, run := range runs {
-		response.QualityRuns = append(response.QualityRuns,
-			convertQualityRun(workspaceID, run, slices[run.ID]))
+		response.QualityRuns = append(response.QualityRuns, convertQualityRun(workspaceID, run))
 	}
 	return connect.NewResponse(response), nil
 }
 
-// GetQualityRun reads one run, with every target slice it touched.
+// GetQualityRun reads one run: its target, state, verdict and counts.
 func (s *DataQualityService) GetQualityRun(ctx context.Context, req *connect.Request[v1pb.GetQualityRunRequest]) (*connect.Response[v1pb.QualityRun], error) {
 	workspaceID, runID, err := s.runResourceID(ctx, req.Msg.GetName())
 	if err != nil {
@@ -82,11 +80,32 @@ func (s *DataQualityService) GetQualityRun(ctx context.Context, req *connect.Req
 	if run == nil {
 		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("quality run %d not found", runID))
 	}
-	slices, err := s.store.ListQualityRunTargets(ctx, []int64{runID})
+	ranges, err := s.store.ListQualityRunRevisionRanges(ctx, []int64{runID})
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to read the run's target slices")
+		return nil, err
 	}
-	return connect.NewResponse(convertQualityRun(workspaceID, run, slices[runID])), nil
+	if revisionRange, ok := ranges[runID]; ok {
+		run.RuleRevisionMin = revisionRange.Min
+		run.RuleRevisionMax = revisionRange.Max
+	}
+	return connect.NewResponse(convertQualityRun(workspaceID, run)), nil
+}
+
+// fillQualityRunRevisionRanges reads the revision range each run judged and puts
+// it on the message. It is one aggregate query for the whole page, not one per
+// run.
+func (s *DataQualityService) fillQualityRunRevisionRanges(ctx context.Context, runs []*store.QualityRunMessage, runIDs []int64) error {
+	ranges, err := s.store.ListQualityRunRevisionRanges(ctx, runIDs)
+	if err != nil {
+		return errors.Wrap(err, "failed to read the runs' rule revision ranges")
+	}
+	for _, run := range runs {
+		if revisionRange, ok := ranges[run.ID]; ok {
+			run.RuleRevisionMin = revisionRange.Min
+			run.RuleRevisionMax = revisionRange.Max
+		}
+	}
+	return nil
 }
 
 // runResourceID parses a run name, proving its workspace, and returns the numeric
@@ -141,6 +160,12 @@ func applyQualityRunListFilters(find *store.FindQualityRunMessage, request *v1pb
 
 	if targetGUID := strings.TrimSpace(request.GetTargetGuid()); targetGUID != "" {
 		find.TargetGUID = &targetGUID
+	}
+	if metaType := storepb.MetaType(request.GetMetaType()); metaType != storepb.MetaType_UNSPECIFIED {
+		if _, ok := v1pb.MetaType_name[int32(metaType)]; !ok {
+			return connectErrorInvalid("unknown meta type %d", metaType)
+		}
+		find.TargetType = &metaType
 	}
 	if instance := strings.TrimSpace(request.GetInstance()); instance != "" {
 		instanceID := qualityInstanceSegment(instance)

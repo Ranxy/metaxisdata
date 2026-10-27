@@ -92,7 +92,10 @@ func (s *Store) GetQualityTargetSchedule(ctx context.Context, targetGUID string,
 // ensureQualityTargetSchedule writes one target's schedule row inside an
 // existing transaction, creating it with the given interval when absent. The row
 // starts due one interval from now only when the target already has an enabled
-// rule, so a paused rule never schedules its target.
+// rule, so a paused rule never schedules its target. When the row already exists,
+// a NULL next_run_at is filled with now plus the row's own interval, not the
+// caller's: a target with a customized cadence keeps that cadence when it is
+// reactivated by a new check.
 func ensureQualityTargetSchedule(ctx context.Context, tx *sql.Tx, targetGUID string, targetType storepb.MetaType, interval time.Duration, now time.Time) (*QualityTargetScheduleMessage, error) {
 	if targetGUID == "" {
 		return nil, common.Errorf(common.Invalid, "a target GUID is required")
@@ -111,16 +114,25 @@ func ensureQualityTargetSchedule(ctx context.Context, tx *sql.Tx, targetGUID str
 				SELECT 1 FROM quality_rule r
 				WHERE r.target_guid = $1 AND r.target_type = $2
 					AND r.state = $4 AND r.deleted = FALSE
-			) THEN $5::timestamptz ELSE NULL END
+			) THEN $5::timestamptz + MAKE_INTERVAL(secs => $3::int4) ELSE NULL END
 		ON CONFLICT (target_guid, target_type) DO UPDATE
-		SET next_run_at = COALESCE(quality_target_schedule.next_run_at, EXCLUDED.next_run_at),
+		SET next_run_at = COALESCE(
+				quality_target_schedule.next_run_at,
+				CASE WHEN EXISTS (
+					SELECT 1 FROM quality_rule r
+					WHERE r.target_guid = quality_target_schedule.target_guid
+						AND r.target_type = quality_target_schedule.target_type
+						AND r.state = $4 AND r.deleted = FALSE
+				) THEN $5::timestamptz + MAKE_INTERVAL(secs => quality_target_schedule.schedule_interval_seconds)
+				ELSE NULL END
+			),
 			updated_at = NOW()
 		RETURNING `+qualityTargetScheduleColumns,
 		targetGUID,
 		int16(targetType),
 		int32(interval/time.Second),
 		storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
-		now.Add(interval),
+		now,
 	))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to ensure the quality target schedule")
@@ -261,6 +273,7 @@ func (s *Store) AdvanceQualityTargetNextRun(ctx context.Context, targetGUID stri
 type DueQualityTarget struct {
 	TargetGUID       string
 	TargetType       storepb.MetaType
+	TargetPath       *storepb.QualityTargetPath
 	ScheduleInterval time.Duration
 	NextRunAt        time.Time
 	Rules            []*QualityRuleMessage
@@ -277,12 +290,13 @@ type dueQualityTargetRow struct {
 	ruleCount int32
 }
 
-// selectDueTargets takes whole targets in first-due order until the rule budget
-// is met. The target that crosses the budget is included whole, so the result may
-// exceed the budget by at most that target's enabled-rule count; a target's
-// checks never straddle two scheduler ticks because of the budget.
-func selectDueTargets(targets []dueQualityTargetRow, budget int) []dueQualityTargetRow {
-	if budget <= 0 || len(targets) == 0 {
+// selectDueTargets takes whole targets in first-due order until either the rule
+// budget or the target budget is met. Both budgets exist because a target now
+// becomes its own batch: the rule budget bounds work, the target budget bounds how
+// many batches one tick creates. The target that crosses a budget is included
+// whole, so a target's checks are never cut by a budget.
+func selectDueTargets(targets []dueQualityTargetRow, ruleBudget, targetBudget int) []dueQualityTargetRow {
+	if ruleBudget <= 0 || targetBudget <= 0 || len(targets) == 0 {
 		return nil
 	}
 	selected := make([]dueQualityTargetRow, 0, len(targets))
@@ -290,7 +304,7 @@ func selectDueTargets(targets []dueQualityTargetRow, budget int) []dueQualityTar
 	for _, target := range targets {
 		selected = append(selected, target)
 		rules += int(target.ruleCount)
-		if rules >= budget {
+		if rules >= ruleBudget || len(selected) >= targetBudget {
 			break
 		}
 	}
@@ -299,11 +313,14 @@ func selectDueTargets(targets []dueQualityTargetRow, budget int) []dueQualityTar
 
 // FindDueQualityTargets returns the scheduled targets whose next_run_at has
 // arrived, oldest due first, together with every enabled rule of each target.
-// limit is a work budget in rules: whole targets are taken until the budget is
-// met, so a target's checks are never cut by the budget.
-func (s *Store) FindDueQualityTargets(ctx context.Context, now time.Time, limit int) ([]*DueQualityTarget, error) {
-	if limit <= 0 {
+// ruleLimit and targetLimit are work budgets: whole targets are taken until
+// either is met, so a target's checks are never cut by a budget.
+func (s *Store) FindDueQualityTargets(ctx context.Context, now time.Time, ruleLimit, targetLimit int) ([]*DueQualityTarget, error) {
+	if ruleLimit <= 0 {
 		return nil, common.Errorf(common.Invalid, "a positive due-rule limit is required")
+	}
+	if targetLimit <= 0 {
+		return nil, common.Errorf(common.Invalid, "a positive due-target limit is required")
 	}
 
 	targetRows, err := s.GetDB().QueryContext(ctx, `
@@ -340,7 +357,7 @@ func (s *Store) FindDueQualityTargets(ctx context.Context, now time.Time, limit 
 		return nil, errors.Wrap(err, "rows iteration error for due quality target schedules")
 	}
 
-	selected := selectDueTargets(rows, limit)
+	selected := selectDueTargets(rows, ruleLimit, targetLimit)
 	if len(selected) == 0 {
 		return []*DueQualityTarget{}, nil
 	}
@@ -381,9 +398,14 @@ func (s *Store) FindDueQualityTargets(ctx context.Context, now time.Time, limit 
 	result := make([]*DueQualityTarget, 0, len(selected))
 	for _, target := range selected {
 		key := targetKey{guid: target.guid, metaType: target.metaType}
+		path := &storepb.QualityTargetPath{}
+		if rules := byTarget[key]; len(rules) > 0 && rules[0].TargetPath != nil {
+			path = rules[0].TargetPath
+		}
 		result = append(result, &DueQualityTarget{
 			TargetGUID:       target.guid,
 			TargetType:       target.metaType,
+			TargetPath:       path,
 			ScheduleInterval: target.interval,
 			NextRunAt:        target.firstDue,
 			Rules:            byTarget[key],

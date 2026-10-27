@@ -7,8 +7,8 @@ import { i18n } from "@/locales";
 import {
   QualityExecutionState,
   QualityExecutionTrigger,
-  type QualityRunTarget,
-  QualityRunTargetSchema,
+  type QualityRun,
+  QualityRunSchema,
   QualityStatus,
   QualityTargetSchema,
   type QualityTargetSummary,
@@ -22,13 +22,20 @@ const START = new Date("2026-10-07T09:30:00Z");
 const Dummy = { template: "<div />" };
 
 function summaryFixture(
-  options: { latestRun?: QualityRunTarget; runCount?: number } = {}
+  options: {
+    latestRun?: QualityRun;
+    runCount?: number;
+    ruleCount?: number;
+    enabledRuleCount?: number;
+  } = {}
 ): QualityTargetSummary {
   return create(QualityTargetSummarySchema, {
     target: create(QualityTargetSchema, {
       metaGuid: TABLE,
       metaType: MetaType.TABLE,
     }),
+    ruleCount: options.ruleCount ?? 0,
+    enabledRuleCount: options.enabledRuleCount ?? options.ruleCount ?? 0,
     runCount: options.runCount ?? 0,
     latestRun: options.latestRun,
   });
@@ -50,11 +57,15 @@ function runFixture(
     revisionMax?: number;
     running?: boolean;
   } = {}
-): QualityRunTarget {
+): QualityRun {
   const start = timestampFromDate(START);
   const finish = timestampFromDate(new Date(START.getTime() + 90_000));
-  return create(QualityRunTargetSchema, {
-    run: "workspaces/ws/qualityRuns/run-1",
+  return create(QualityRunSchema, {
+    name: "workspaces/ws/qualityRuns/run-1",
+    target: create(QualityTargetSchema, {
+      metaGuid: TABLE,
+      metaType: MetaType.TABLE,
+    }),
     outcome: options.outcome ?? QualityStatus.FAIL,
     trigger: options.trigger ?? QualityExecutionTrigger.MANUAL,
     state: options.state ?? QualityExecutionState.COMPLETED,
@@ -121,7 +132,7 @@ describe("TargetRecentScanCard", () => {
     wrapper.unmount();
   });
 
-  it("summarizes the latest batch's target slice without the batch-wide counts", async () => {
+  it("summarizes the latest batch's own counts", async () => {
     const wrapper = await mountCard(
       summaryFixture({
         latestRun: runFixture(),
@@ -221,5 +232,32 @@ describe("TargetRecentScanCard", () => {
       t("dataQuality.executions.revisionRange", { min: 2, max: 2 })
     );
     wrapper.unmount();
+  });
+
+  it("only calls a scheduled batch partial, never a manual selection", async () => {
+    const scheduled = await mountCard(
+      summaryFixture({
+        latestRun: runFixture({
+          total: 3,
+          trigger: QualityExecutionTrigger.SCHEDULED,
+        }),
+        ruleCount: 10,
+      })
+    );
+    expect(scheduled.text()).toContain(
+      t("dataQuality.executions.runPartial", { done: 3, all: 10 })
+    );
+    scheduled.unmount();
+
+    const manual = await mountCard(
+      summaryFixture({
+        latestRun: runFixture({ total: 3 }),
+        ruleCount: 10,
+      })
+    );
+    expect(manual.text()).not.toContain(
+      t("dataQuality.executions.runPartial", { done: 3, all: 10 })
+    );
+    manual.unmount();
   });
 });

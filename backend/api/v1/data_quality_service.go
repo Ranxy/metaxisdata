@@ -907,7 +907,7 @@ func truncateForError(value string, limit int) string {
 }
 
 // RunQualityRules plans one execution per selected rule, queues the executions
-// grouped by instance and returns them as PENDING. Clients poll
+// grouped into one batch per target and returns them as PENDING. Clients poll
 // GetQualityExecution for each execution's state and outcome.
 func (s *DataQualityService) RunQualityRules(ctx context.Context, req *connect.Request[v1pb.RunQualityRulesRequest]) (*connect.Response[v1pb.RunQualityRulesResponse], error) {
 	workspaceID, err := s.workspaceID(ctx, req.Msg.GetParent())
@@ -922,21 +922,20 @@ func (s *DataQualityService) RunQualityRules(ctx context.Context, req *connect.R
 		return nil, connectErrorInvalid("no enabled quality rules match the selection")
 	}
 
-	groups, instanceOrder := groupQualityRulesByInstance(rules)
-	if len(instanceOrder) == 0 {
+	groups := groupQualityRulesForManualRun(rules)
+	if len(groups) == 0 {
 		return nil, connectErrorInvalid("the selected rules have no resolvable instance")
 	}
 	callerID := principalIDPointer(currentUserID(ctx))
 	now := time.Now()
 
 	response := &v1pb.RunQualityRulesResponse{}
-	for _, instance := range instanceOrder {
-		group := groups[instance]
-		batch, planned, err := s.planManualQualityExecutions(ctx, instance, group, callerID, now)
+	for _, group := range groups {
+		batch, planned, err := s.planManualQualityExecutions(ctx, group, callerID, now)
 		if err != nil {
 			return nil, err
 		}
-		if s.executionScheduler != nil && !s.executionScheduler.EnqueueQualityExecutions(batch.ID, instance, qualityExecutionIDs(planned)) {
+		if s.executionScheduler != nil && !s.executionScheduler.EnqueueQualityExecutions(batch.ID, group.instance, qualityExecutionIDs(planned)) {
 			for range planned {
 				s.metrics.CountQualityExecutionAbandoned(metrics.QualityAbandonedQueueFull)
 			}
@@ -944,8 +943,8 @@ func (s *DataQualityService) RunQualityRules(ctx context.Context, req *connect.R
 			return nil, connect.NewError(connect.CodeResourceExhausted,
 				errors.New("the quality runner queue is full; retry the run later"))
 		}
-		ruleNames := make(map[int64]string, len(group))
-		for _, rule := range group {
+		ruleNames := make(map[int64]string, len(group.rules))
+		for _, rule := range group.rules {
 			ruleNames[rule.ID] = formatQualityRuleName(workspaceID, rule.ResourceID)
 		}
 		for _, execution := range planned {
@@ -955,18 +954,24 @@ func (s *DataQualityService) RunQualityRules(ctx context.Context, req *connect.R
 	return connect.NewResponse(response), nil
 }
 
-// planManualQualityExecutions creates the internal dispatch batch for one
-// instance and plans one PENDING execution per selected rule. The batch admits
-// the instance's connection lease and is never exposed; the executions are what
-// the caller receives.
-func (s *DataQualityService) planManualQualityExecutions(ctx context.Context, instance string, rules []*store.QualityRuleMessage, initiator *int32, at time.Time) (*store.QualityRunMessage, []*store.QualityExecutionMessage, error) {
+// planManualQualityExecutions creates the internal dispatch batch for one target
+// and plans one PENDING execution per selected rule of that target. The batch
+// carries the target identity; the executions are what the caller receives.
+func (s *DataQualityService) planManualQualityExecutions(ctx context.Context, group *manualRunGroup, initiator *int32, at time.Time) (*store.QualityRunMessage, []*store.QualityExecutionMessage, error) {
 	resourceID, err := common.RandomString(12)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to generate the quality batch id")
 	}
+	targetPath := group.targetPath
+	if targetPath == nil {
+		targetPath = &storepb.QualityTargetPath{}
+	}
 	batch, err := s.store.CreateQualityRun(ctx, &store.QualityRunMessage{
 		ResourceID:         resourceID,
-		InstanceResourceID: instance,
+		InstanceResourceID: group.instance,
+		TargetGUID:         group.targetGUID,
+		TargetType:         group.targetType,
+		TargetPath:         targetPath,
 		Trigger:            storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL,
 		Status:             storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_PENDING,
 		InitiatorID:        initiator,
@@ -975,8 +980,8 @@ func (s *DataQualityService) planManualQualityExecutions(ctx context.Context, in
 		return nil, nil, errors.Wrap(err, "failed to create the quality batch")
 	}
 
-	planned := make([]*store.QualityExecutionMessage, 0, len(rules))
-	for _, rule := range rules {
+	planned := make([]*store.QualityExecutionMessage, 0, len(group.rules))
+	for _, rule := range group.rules {
 		planned = append(planned, &store.QualityExecutionMessage{
 			RunID:              batch.ID,
 			RuleID:             rule.ID,
@@ -985,7 +990,7 @@ func (s *DataQualityService) planManualQualityExecutions(ctx context.Context, in
 			TargetGUID:         rule.TargetGUID,
 			TargetType:         rule.TargetType,
 			TargetPath:         rule.TargetPath,
-			InstanceResourceID: instance,
+			InstanceResourceID: group.instance,
 			Trigger:            storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL,
 			InitiatorID:        initiator,
 			StartedAt:          at,
@@ -1100,41 +1105,70 @@ func (s *DataQualityService) selectQualityRulesForRun(ctx context.Context, reque
 	return s.store.ListQualityRules(ctx, find)
 }
 
-// groupQualityRulesByInstance groups the selection by the instance its target
-// lives in. A rule whose GUID has no instance segment is dropped: a rule that was
-// validated at save time always has one.
-//
-// Within an instance the rules are ordered by target, so a manual batch runs one
-// target's checks together, matching the scheduler's target-grouped due plan. The
-// request itself does not fix this order: a rule list is resolved through the store
-// and the client's selection order is not meaningful for execution.
-func groupQualityRulesByInstance(rules []*store.QualityRuleMessage) (map[string][]*store.QualityRuleMessage, []string) {
-	groups := make(map[string][]*store.QualityRuleMessage)
-	order := make([]string, 0, len(rules))
+// manualRunGroup is one target's share of a manual selection: the checks to run
+// and the batch identity the run will carry. A manual selection that spans
+// targets becomes one batch per target, matching the one-target-per-batch model.
+type manualRunGroup struct {
+	instance   string
+	targetGUID string
+	targetType storepb.MetaType
+	targetPath *storepb.QualityTargetPath
+	rules      []*store.QualityRuleMessage
+}
+
+// manualTargetKey identifies one target inside a manual selection: the GUID alone
+// is not unique across object types.
+type manualTargetKey struct {
+	guid     string
+	metaType storepb.MetaType
+}
+
+// groupQualityRulesForManualRun groups the selection by instance and target. A
+// rule whose GUID has no instance segment is dropped: a rule that was validated at
+// save time always has one. Groups are ordered deterministically (instance, then
+// target identity) and each group's rules by id, so the planned executions and the
+// response are reproducible regardless of the client's selection order.
+func groupQualityRulesForManualRun(rules []*store.QualityRuleMessage) []*manualRunGroup {
+	byTarget := make(map[manualTargetKey]*manualRunGroup, len(rules))
+	order := make([]manualTargetKey, 0, len(rules))
 	for _, rule := range rules {
 		instance, ok := common.GetInstanceFromGUID(rule.TargetGUID)
 		if !ok {
 			continue
 		}
-		if _, exists := groups[instance]; !exists {
-			order = append(order, instance)
+		key := manualTargetKey{guid: rule.TargetGUID, metaType: rule.TargetType}
+		group, exists := byTarget[key]
+		if !exists {
+			group = &manualRunGroup{
+				instance:   instance,
+				targetGUID: rule.TargetGUID,
+				targetType: rule.TargetType,
+				targetPath: rule.TargetPath,
+			}
+			byTarget[key] = group
+			order = append(order, key)
 		}
-		groups[instance] = append(groups[instance], rule)
+		group.rules = append(group.rules, rule)
 	}
-	// A deterministic response order makes the planned executions reproducible.
-	slices.Sort(order)
-	for _, instance := range order {
-		slices.SortStableFunc(groups[instance], func(left, right *store.QualityRuleMessage) int {
-			if diff := cmp.Compare(left.TargetGUID, right.TargetGUID); diff != 0 {
-				return diff
-			}
-			if diff := cmp.Compare(left.TargetType, right.TargetType); diff != 0 {
-				return diff
-			}
+
+	groups := make([]*manualRunGroup, 0, len(order))
+	for _, key := range order {
+		group := byTarget[key]
+		slices.SortStableFunc(group.rules, func(left, right *store.QualityRuleMessage) int {
 			return cmp.Compare(left.ID, right.ID)
 		})
+		groups = append(groups, group)
 	}
-	return groups, order
+	slices.SortFunc(groups, func(left, right *manualRunGroup) int {
+		if diff := cmp.Compare(left.instance, right.instance); diff != 0 {
+			return diff
+		}
+		if diff := cmp.Compare(left.targetGUID, right.targetGUID); diff != 0 {
+			return diff
+		}
+		return cmp.Compare(left.targetType, right.targetType)
+	})
+	return groups
 }
 
 // ListQualityExecutions lists executions scoped to the caller's workspace,

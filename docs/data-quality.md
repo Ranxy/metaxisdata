@@ -115,7 +115,7 @@ effect when you press **Apply**.
 A target has **one schedule**, shown in its workspace header next to the health
 summary (for example "Schedule: every hour · next in 12 minutes"). It applies to
 every enabled check on the table or view: when it comes due, all of them run in
-the same scheduler pass. Use the pencil next to it to change the cadence (15
+one scan batch. Use the pencil next to it to change the cadence (15
 minutes to 7 days); a change reschedules the target from now and never runs it
 immediately. While every check on the target is paused there is no next run, and
 resuming a check schedules the target one interval out. A check you move to a
@@ -198,7 +198,7 @@ issue links the first and the latest execution that observed the problem.
 Issues produce in-app notifications (bell icon) for the check's owner, or for the
 workspace administrators when there is no owner; a recovered issue notifies the
 same audience. Execution failures always notify the administrators and cannot be
-muted. When more than ten checks fail in the same scheduler pass, one summary
+muted. When more than ten checks in one target's scan batch fail, one summary
 replaces the per-check messages. There is no email or webhook delivery.
 
 ## Profiles, labels and suggestions
@@ -338,7 +338,7 @@ pruned.
 | I cannot change one check's schedule | Scheduling is per target: all enabled checks on the target run together on the schedule shown in its workspace header, and a check inherits it. Change the cadence there, or pause the check to drop it from the target's runs. |
 | An execution stays pending, or ends abandoned | The instance's connection budget stayed busy past the runner's wait, or the server restarted mid-run. Such checks are not retried automatically; use **Run now** or wait for the next scheduled slot. |
 | A check that used to run now ends `ERROR(UNSUPPORTED)` | The check uses a configuration this build no longer accepts, for example an aggregate `COUNT` (use a row count check instead) or a column type the engine cannot express. Re-create the check with the supported type. |
-| No notification for a failure | The issue was already open (notifications fire on transitions), the check is muted, or more than ten checks failed in the same scheduler pass and a summary was sent instead. |
+| No notification for a failure | The issue was already open (notifications fire on transitions), the check is muted, or more than ten checks failed in one target's scan batch and a summary was sent instead. |
 | Model buttons are disabled | Model analysis is off, no allowed provider profile exists, or the caller lacks `suggest`/`explain`. |
 | An AI drafting job failed | Open the **AI drafting jobs** panel and expand the target. A job-level error means the provider became unavailable or the daily analysis quota ran out after it started; a target-level diagnostic names the failure class. *Output limit* means the model hit the output-token budget before finishing its JSON: retry with a narrower intent or fewer columns (the budget is the provider profile's Max output tokens, default 32,768). Provider errors carry the provider/model and stop reason but not the provider's body; the server retries once at 4,096 tokens when a model rejects the requested budget, and if it is still rejected, lower the profile's Max output tokens or use a model that supports that output budget; quote the **correlation ID** to an operator, who can find the matching server log line (and, with runtime debug on, the raw request/response within seven days). Queued suggestions from earlier targets are kept. |
 | An AI drafting job stays queued or running | The server processes one job at a time; a queued job starts on the next runner tick (about five seconds). If the server restarted mid-job, the job is marked failed on startup and is not resumed — submit it again. |

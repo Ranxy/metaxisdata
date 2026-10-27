@@ -114,7 +114,7 @@
             {{ lastRunText }}
           </span>
           <span
-            v-if="targetSchedule?.scheduleInterval"
+            v-if="summary.ruleCount > 0"
             class="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground"
           >
             <Clock class="h-3.5 w-3.5" />
@@ -1010,6 +1010,27 @@ async function loadContract(ticket = loadTicket) {
   }
 }
 
+/**
+ * A rule lifecycle change can move the target's next run: pausing the last
+ * enabled check clears it, resuming one schedules it, and the first check creates
+ * the schedule. Re-read only the aggregate summary's schedule so the header stays
+ * truthful without reloading the page and losing local row state.
+ */
+async function refreshTargetSchedule() {
+  const ticket = loadTicket;
+  const guid = targetGuid.value;
+  const metaType = parseMetaType(route.query.metaType) ?? MetaType.UNSPECIFIED;
+  try {
+    const response = await getQualityTarget({ targetGuid: guid, metaType });
+    if (ticket !== loadTicket) {
+      return;
+    }
+    summary.value.schedule = response.summary?.schedule;
+  } catch {
+    // The schedule is supplementary; keep the last known value on failure.
+  }
+}
+
 async function load() {
   const ticket = ++loadTicket;
   loading.value = true;
@@ -1099,6 +1120,7 @@ function onDraftAccepted(draft: QualitySuggestion, rule: QualityRule) {
   );
   // The live checks changed, so the contract's published-vs-live diff changed too.
   void loadContract();
+  void refreshTargetSchedule();
 }
 
 /**
@@ -1114,6 +1136,7 @@ function onRuleCreated(rule: QualityRule) {
   // The contract strip must learn that the live checks no longer match the
   // published version, otherwise Publish stays disabled until a full reload.
   void loadContract();
+  void refreshTargetSchedule();
 }
 
 /** A saved rule replaces itself in the list; an edit changes no count. */
@@ -1124,6 +1147,7 @@ function onRuleSaved(rule: QualityRule) {
     editingRule.value = undefined;
     replaceRule(rule);
     void loadContract();
+    void refreshTargetSchedule();
     return;
   }
   if (suggestion) {
@@ -1266,6 +1290,7 @@ function onCheckChanged(rule: QualityRule) {
     summary.value.pausedRuleCount += isPaused ? 1 : -1;
   }
   void loadContract();
+  void refreshTargetSchedule();
 }
 
 /** Archiving drops the row and its count, and closes the sheet. */
@@ -1292,6 +1317,7 @@ function onCheckDeleted(name: string) {
   }
   closeCheck();
   void loadContract();
+  void refreshTargetSchedule();
 }
 
 /**
