@@ -1,6 +1,6 @@
 import { create } from "@bufbuild/protobuf";
 import { createPinia, setActivePinia } from "pinia";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NavigationGuardNext, RouteLocationNormalized } from "vue-router";
 import router, { authGuard } from "@/router";
 import { useAuthStore } from "@/store/modules/auth";
@@ -45,6 +45,10 @@ describe("auth guard", () => {
     vi.restoreAllMocks();
   });
 
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("sends a signed-out caller to the login form with the target it wanted", async () => {
     setAuth({ authenticated: false });
 
@@ -73,6 +77,73 @@ describe("auth guard", () => {
     setAuth();
 
     await expect(guard("/login")).resolves.toEqual({ name: "Home" });
+  });
+
+  // The reported bug: a saved sign-in link that names a destination used to
+  // stop on the form even though the browser still had a session, because the
+  // guard never asked who the caller was on a public route.
+  it("resumes the page a signed-in caller asked for at the login form", async () => {
+    setAuth();
+
+    await expect(guard("/login?redirect=/settings/general")).resolves.toEqual({
+      path: "/settings/general",
+      query: {},
+      hash: "",
+    });
+  });
+
+  it("keeps the target's own query string", async () => {
+    setAuth();
+
+    await expect(
+      guard(
+        "/login?redirect=/metadata/test-pg-1/dataforge/public/llm_provider_profile?metaType=4"
+      )
+    ).resolves.toEqual({
+      path: "/metadata/test-pg-1/dataforge/public/llm_provider_profile",
+      query: { metaType: "4" },
+      hash: "",
+    });
+  });
+
+  // The MCP client's browser sign-in is a server route: only a full page load
+  // resumes the authorization, so it must not be handed to the router.
+  it("hands a server route back to the browser", async () => {
+    setAuth();
+    const replace = vi.fn();
+    vi.stubGlobal("window", { location: { replace } });
+
+    await expect(
+      guard("/login?redirect=%2Foauth%2Fauthorize%3Fclient_id%3Dabc")
+    ).resolves.toBe(false);
+    expect(replace).toHaveBeenCalledWith("/oauth/authorize?client_id=abc");
+  });
+
+  it("does not bounce a redirect that names the login form itself", async () => {
+    setAuth();
+
+    await expect(
+      guard("/login?redirect=/login?redirect=/settings/general")
+    ).resolves.toEqual({ name: "Home" });
+  });
+
+  // A repeated parameter arrives as an array; only a single string is a target.
+  it("ignores a redirect parameter that repeats", async () => {
+    setAuth();
+
+    await expect(
+      guard("/login?redirect=/settings/general&redirect=/settings/users")
+    ).resolves.toEqual({ name: "Home" });
+  });
+
+  // The URL parser strips tab and newlines, so this value would reach
+  // `location.replace` as `//evil.example.com` — an off-origin URL.
+  it("rejects a redirect that hides an origin behind a stripped control character", async () => {
+    setAuth();
+
+    await expect(
+      guard("/login?redirect=/%09/evil.example.com")
+    ).resolves.toEqual({ name: "Home" });
   });
 
   it("sends a caller missing the page permission home", async () => {
@@ -115,14 +186,22 @@ describe("auth guard", () => {
     await expect(guard("/login")).resolves.toBeUndefined();
   });
 
-  it("loads the profile before a protected page, but not for the login form", async () => {
+  it("loads the profile before a protected page", async () => {
     const auth = setAuth();
 
     await guard("/settings/general");
     expect(auth.ensurePermissionsLoaded).toHaveBeenCalledTimes(1);
+  });
 
-    auth.ensurePermissionsLoaded = vi.fn().mockResolvedValue(undefined);
+  it("probes the session before showing the login form", async () => {
+    const auth = setAuth();
+
     await guard("/login");
-    expect(auth.ensurePermissionsLoaded).not.toHaveBeenCalled();
+    expect(auth.ensurePermissionsLoaded).toHaveBeenCalledTimes(1);
+
+    // The store records the answer, so the form's next arrival must not ask again.
+    auth.sessionChecked = true;
+    await guard("/login");
+    expect(auth.ensurePermissionsLoaded).toHaveBeenCalledTimes(1);
   });
 });

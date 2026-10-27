@@ -454,7 +454,7 @@ import { Separator } from "@/components/ui/separator";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { useSSOLogin } from "@/composables/useSSOLogin";
 import { notify } from "@/lib/notify";
-import { resolveSignInTarget } from "@/lib/signInRedirect";
+import { isKnownSpaRouteName, resolveSignInTarget } from "@/lib/signInRedirect";
 import type { AppLocale } from "@/locales";
 import { useAppStore } from "@/store/modules/app";
 import { useAuthStore } from "@/store/modules/auth";
@@ -501,11 +501,19 @@ function findSSOProvider(target: string): IdentityProvider | undefined {
   );
 }
 
+// The redirect target is a query parameter, so a repeated `?redirect=` arrives
+// as an array; only a single string names a path.
+function redirectTarget(): string | undefined {
+  return typeof route.query.redirect === "string"
+    ? route.query.redirect
+    : undefined;
+}
+
 async function handleSSOLogin(provider: IdentityProvider) {
   errorMessage.value = "";
   try {
     const started = await startSSOLogin(provider, {
-      redirect: route.query.redirect as string | undefined,
+      redirect: redirectTarget(),
     });
     if (!started) {
       errorMessage.value = t("login.ssoUnavailable");
@@ -600,12 +608,13 @@ async function handleLogin() {
     // the router would answer NotFound instead of resuming the authorization.
     // `matched.length` cannot tell the two apart — the catch-all route matches
     // everything — so the decision is made on whether a real route has that name.
-    const target = resolveSignInTarget(
-      route.query.redirect as string | undefined,
-      (path) => router.resolve(path).name !== "NotFound"
+    const target = resolveSignInTarget(redirectTarget(), (path) =>
+      isKnownSpaRouteName(router.resolve(path).name)
     );
     if (target.kind === "server") {
-      window.location.assign(target.path);
+      // `replace` keeps the login form out of the history: with the session
+      // established, Back would only be bounced forward again by the guard.
+      window.location.replace(target.path);
       return;
     }
     router.push(target.kind === "spa" ? target.path : { name: "Home" });
@@ -642,8 +651,8 @@ async function handleResetPassword() {
       return;
     }
 
-    const redirect = route.query.redirect as string;
-    router.push(redirect || { name: "Home" });
+    const redirect = redirectTarget();
+    router.push(redirect ?? { name: "Home" });
   } catch (error) {
     errorMessage.value = formatError(error, "resetPassword.failed");
     console.error("Password reset error:", error);

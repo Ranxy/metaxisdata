@@ -27,6 +27,11 @@ interface AuthState {
   // effective permissions. The login response carries the user without them, so
   // permission-gated UI must wait for the profile to be loaded.
   permissionsLoaded: boolean;
+  // Whether this page life has already learned who the caller is: a full load
+  // starts with an empty store, so the login form needs this to tell "no
+  // session" from "not looked for yet", and to not probe again right after the
+  // refusal that put the caller there. A failed request is not an answer.
+  sessionChecked: boolean;
   // The server rejected a session we believed in (as opposed to the user having
   // never signed in). The guard reads it to explain the bounce on the login page.
   sessionExpired: boolean;
@@ -39,6 +44,7 @@ export const useAuthStore = defineStore("auth", {
     isLoading: false,
     requireResetPassword: false,
     permissionsLoaded: false,
+    sessionChecked: false,
     sessionExpired: false,
   }),
 
@@ -86,6 +92,8 @@ export const useAuthStore = defineStore("auth", {
       // The login response has no permissions; ensurePermissionsLoaded()
       // resolves them once the caller enters an authenticated page.
       this.permissionsLoaded = false;
+      // The response settles who the caller is, so no later probe is needed.
+      this.sessionChecked = true;
       this.sessionExpired = false;
       return response;
     },
@@ -218,6 +226,8 @@ export const useAuthStore = defineStore("auth", {
         this.isAuthenticated = true;
         this.requireResetPassword = false;
         this.permissionsLoaded = true;
+        // The server has answered, and the answer is a session.
+        this.sessionChecked = true;
         await this.syncLanguage(); // a failed write is swallowed; see changeLanguage
       } catch (error) {
         // Only the server rejecting the session ends it. A network blip or a 5xx
@@ -226,6 +236,9 @@ export const useAuthStore = defineStore("auth", {
         // would do exactly that on the next navigation.
         if (errorCode(error) === Code.Unauthenticated) {
           this.handleUnauthenticated();
+          // A definitive refusal. Asking again cannot change it, and the login
+          // form uses this to avoid probing the cookie a second time.
+          this.sessionChecked = true;
         }
       } finally {
         this.isLoading = false;
