@@ -583,9 +583,9 @@ describe("DataQualityExecutionsPage flat list", () => {
     wrapper.unmount();
   });
 
-  it("only discloses partial checks for scheduled batches", async () => {
+  it("only discloses a partial slice at the batch composition cap", async () => {
     const scheduled = runFor(TARGET_ORDERS, "orders", {
-      counts: { total: 2, pass: 2, fail: 0 },
+      counts: { total: 100, pass: 100, fail: 0 },
       trigger: QualityExecutionTrigger.SCHEDULED,
     });
     mocks.listQualityTargets.mockResolvedValue(
@@ -595,19 +595,40 @@ describe("DataQualityExecutionsPage flat list", () => {
           object: "orders",
           latestRun: scheduled,
           runCount: 1,
-          ruleCount: 5,
+          ruleCount: 120,
         }),
       ])
     );
     const scheduledPage = await mountPage();
     expect(scheduledPage.wrapper.text()).toContain(
-      labels()("dataQuality.executions.runPartial", { done: 2, all: 5 })
+      labels()("dataQuality.executions.runPartial", { done: 100, all: 120 })
     );
     scheduledPage.wrapper.unmount();
 
-    // The target has 2 live rules in the fixture, so a scheduled batch of an
-    // oversize target would only be partial when more rules exist. Make the
-    // manual case explicit: same counts, manual trigger, no disclosure either way.
+    // A scheduled batch below the cap ran fewer checks by design (a retry, or it
+    // predates a check added since), so it is not a slice of the target.
+    const small = runFor(TARGET_ORDERS, "orders", {
+      counts: { total: 2, pass: 2, fail: 0 },
+      trigger: QualityExecutionTrigger.SCHEDULED,
+    });
+    mocks.listQualityTargets.mockResolvedValue(
+      page([
+        targetSummary({
+          guid: TARGET_ORDERS,
+          object: "orders",
+          latestRun: small,
+          runCount: 1,
+          ruleCount: 5,
+        }),
+      ])
+    );
+    const smallPage = await mountPage();
+    expect(smallPage.wrapper.text()).not.toContain(
+      labels()("dataQuality.executions.runPartial", { done: 2, all: 5 })
+    );
+    smallPage.wrapper.unmount();
+
+    // A manual run planned an explicit selection, so it is never partial.
     const manual = runFor(TARGET_ORDERS, "orders", {
       counts: { total: 2, pass: 2, fail: 0 },
     });

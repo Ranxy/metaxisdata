@@ -256,6 +256,7 @@
     - [GetQualitySuggestionRequest](#metaxisdata-v1-GetQualitySuggestionRequest)
     - [GetQualityTargetRequest](#metaxisdata-v1-GetQualityTargetRequest)
     - [GetQualityTargetResponse](#metaxisdata-v1-GetQualityTargetResponse)
+    - [GetQualityTargetScheduleRequest](#metaxisdata-v1-GetQualityTargetScheduleRequest)
     - [GroupCheckConfig](#metaxisdata-v1-GroupCheckConfig)
     - [ListColumnLabelsRequest](#metaxisdata-v1-ListColumnLabelsRequest)
     - [ListColumnLabelsResponse](#metaxisdata-v1-ListColumnLabelsResponse)
@@ -4690,6 +4691,23 @@ AI drafts are deliberately absent: reading them needs the suggest permission, wh
 
 
 
+<a name="metaxisdata-v1-GetQualityTargetScheduleRequest"></a>
+
+### GetQualityTargetScheduleRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| target_guid | [string](#string) |  | The target&#39;s metadata GUID. Required. |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  | The target&#39;s object type. Optional when rules already exist, because their own target carries it; required to resolve a target that has no rules yet. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GroupCheckConfig"></a>
 
 ### GroupCheckConfig
@@ -6948,6 +6966,7 @@ No (google.api.http) annotation: this is a server-streaming method, and the REST
 | ListQualityTargets | [ListQualityTargetsRequest](#metaxisdata-v1-ListQualityTargetsRequest) | [ListQualityTargetsResponse](#metaxisdata-v1-ListQualityTargetsResponse) | List the targets (tables or views) that have quality rules, one row per target. The counts, the worst latest result and the pending draft tally are aggregated by the database, so the directory does not page through every rule to answer &#34;which table needs attention?&#34;. |
 | GetQualityTarget | [GetQualityTargetRequest](#metaxisdata-v1-GetQualityTargetRequest) | [GetQualityTargetResponse](#metaxisdata-v1-GetQualityTargetResponse) | Read one target&#39;s workspace: its rules (with their latest results), the unresolved issues and the target&#39;s columns, in one call. AI drafts are not part of the response (reading them needs the suggest permission). The target is named by GUID because a target is not a resource of its own. |
 | UpdateQualityTargetSchedule | [UpdateQualityTargetScheduleRequest](#metaxisdata-v1-UpdateQualityTargetScheduleRequest) | [QualityTargetSchedule](#metaxisdata-v1-QualityTargetSchedule) | Update one target&#39;s schedule: how often its enabled checks run. Scheduling is per target, so this replaces the per-check schedule; a change takes effect from the next slot and never runs the target immediately. |
+| GetQualityTargetSchedule | [GetQualityTargetScheduleRequest](#metaxisdata-v1-GetQualityTargetScheduleRequest) | [QualityTargetSchedule](#metaxisdata-v1-QualityTargetSchedule) | Read one target&#39;s schedule without the target&#39;s rules, results and issues. A rule lifecycle change can move the target&#39;s next run; the workspace re-reads just this instead of the whole target after every check edit. |
 | GetQualityContract | [GetQualityContractRequest](#metaxisdata-v1-GetQualityContractRequest) | [QualityContract](#metaxisdata-v1-QualityContract) | Read one target&#39;s contract: its target-level defaults, the published version, and whether the live rules differ from that snapshot. |
 | UpdateQualityContract | [UpdateQualityContractRequest](#metaxisdata-v1-UpdateQualityContractRequest) | [QualityContract](#metaxisdata-v1-QualityContract) | Update the target-level defaults. The filter is ANDed into every rule on the target at compile time; the default severity only seeds newly authored rules and never rewrites an existing rule. The target&#39;s schedule is updated through UpdateQualityTargetSchedule. |
 | PublishQualityContract | [PublishQualityContractRequest](#metaxisdata-v1-PublishQualityContractRequest) | [PublishQualityContractResponse](#metaxisdata-v1-PublishQualityContractResponse) | Publish the live rules and settings as the target&#39;s next contract version. Republishing an unchanged contract is a no-op that returns the existing version (no_changes=true). |

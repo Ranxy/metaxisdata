@@ -804,6 +804,7 @@ import {
 } from "@/components/ui/table";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { usePagedFetch } from "@/composables/usePagedFetch";
+import { partialQualityRunChecks } from "@/lib/qualityRun";
 import { useAuthStore } from "@/store/modules/auth";
 import {
   type QualityExecution,
@@ -1188,17 +1189,11 @@ function unfinishedChecks(summary: QualityTargetSummary): number {
 /**
  * The target's enabled rule count when a scheduled batch covered only a slice of
  * an oversize target (batches are target-complete, but a legacy oversize target
- * may be split). Paused rules are not expected to run, so they never make a
- * scheduled batch look partial. A manual run planned an explicit selection, so it
- * never reads as partial. Zero means the batch covered the whole target, the
- * caller has no rule count, or the run was manual.
+ * may be split). Only a batch at the composition cap is disclosed, so a retry
+ * batch or a check added since the run never reads as partial.
  */
 function partialChecks(summary: QualityTargetSummary): number {
-  if (summary.latestRun?.trigger !== QualityExecutionTrigger.SCHEDULED) {
-    return 0;
-  }
-  const total = runCounts(summary)?.total ?? 0;
-  return summary.enabledRuleCount > total ? summary.enabledRuleCount : 0;
+  return partialQualityRunChecks(summary.latestRun, summary.enabledRuleCount);
 }
 
 function scanTime(summary: QualityTargetSummary) {

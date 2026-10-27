@@ -6185,6 +6185,67 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityTargets:getSchedule:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                Read one target's schedule without the target's rules, results and issues.
+                 A rule lifecycle change can move the target's next run; the workspace re-reads
+                 just this instead of the whole target after every check edit.
+            operationId: DataQualityService_GetQualityTargetSchedule
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: targetGuid
+                  in: query
+                  description: The target's metadata GUID. Required.
+                  schema:
+                    type: string
+                - name: metaType
+                  in: query
+                  description: |-
+                    The target's object type. Optional when rules already exist, because their
+                     own target carries it; required to resolve a target that has no rules yet.
+                  schema:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - APPLICATION_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - OPENLINEAGE
+                    type: string
+                    format: enum
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityTargetSchedule'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityTargets:updateSchedule:
         post:
             tags:

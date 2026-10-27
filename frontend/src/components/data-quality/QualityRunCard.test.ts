@@ -199,28 +199,33 @@ describe("QualityRunCard", () => {
     expect(wrapper.text()).not.toMatch(/\d+ targets/i);
   });
 
-  it("says how many checks a scheduled batch covered, never for a manual run", async () => {
-    const scheduled = await mountCard({
+  it("discloses a partial slice only at the batch composition cap", async () => {
+    const partial = await mountCard({
+      run: runFixture({
+        trigger: QualityExecutionTrigger.SCHEDULED,
+        counts: { total: 100 },
+      }),
+      targetRuleCount: 120,
+    });
+    expect(partial.wrapper.text()).toContain(
+      labels()("dataQuality.executions.runPartial", { done: 100, all: 120 })
+    );
+
+    // A smaller scheduled batch is a retry, or it ran before a check was added: it
+    // held fewer executions without being a slice of an oversize target.
+    const small = await mountCard({
       run: runFixture({ trigger: QualityExecutionTrigger.SCHEDULED }),
       targetRuleCount: 10,
     });
-    expect(scheduled.wrapper.text()).toContain(
+    expect(small.wrapper.text()).not.toContain(
       labels()("dataQuality.executions.runPartial", { done: 6, all: 10 })
-    );
-
-    const complete = await mountCard({
-      run: runFixture({ trigger: QualityExecutionTrigger.SCHEDULED }),
-      targetRuleCount: 6,
-    });
-    expect(complete.wrapper.text()).not.toContain(
-      labels()("dataQuality.executions.runPartial", { done: 6, all: 6 })
     );
 
     // A manual run planned an explicit selection; its total is not a partial
     // view of the target's rules.
-    const manual = await mountCard({ targetRuleCount: 10 });
+    const manual = await mountCard({ targetRuleCount: 120 });
     expect(manual.wrapper.text()).not.toContain(
-      labels()("dataQuality.executions.runPartial", { done: 6, all: 10 })
+      labels()("dataQuality.executions.runPartial", { done: 6, all: 120 })
     );
   });
 

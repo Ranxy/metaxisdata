@@ -356,6 +356,14 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.update";
   }
 
+  // Read one target's schedule without the target's rules, results and issues.
+  // A rule lifecycle change can move the target's next run; the workspace re-reads
+  // just this instead of the whole target after every check edit.
+  rpc GetQualityTargetSchedule(GetQualityTargetScheduleRequest) returns (QualityTargetSchedule) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityTargets:getSchedule"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+  }
+
   // Read one target's contract: its target-level defaults, the published version,
   // and whether the live rules differ from that snapshot.
   rpc GetQualityContract(GetQualityContractRequest) returns (QualityContract) {
@@ -2468,6 +2476,18 @@ message UpdateQualityTargetScheduleRequest {
 
   // How often the target's enabled checks run, between 15 minutes and 7 days.
   google.protobuf.Duration schedule_interval = 4 [(google.api.field_behavior) = REQUIRED];
+}
+
+message GetQualityTargetScheduleRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The target's metadata GUID. Required.
+  string target_guid = 2 [(google.api.field_behavior) = REQUIRED];
+
+  // The target's object type. Optional when rules already exist, because their
+  // own target carries it; required to resolve a target that has no rules yet.
+  MetaType meta_type = 3;
 }
 
 message GetQualityTargetRequest {

@@ -305,10 +305,10 @@ import {
 } from "@/components/ui/table";
 import { useErrorMessage } from "@/composables/useErrorHandler";
 import { useUserDirectory } from "@/composables/useUserDirectory";
+import { partialQualityRunChecks } from "@/lib/qualityRun";
 import {
   type QualityExecution,
   QualityExecutionState,
-  QualityExecutionTrigger,
   type QualityRun,
   QualityStatus,
   type QualityStatusCounts,
@@ -347,11 +347,11 @@ const props = withDefaults(
     /** Rule resource name -> title, for the check rows. */
     ruleTitles?: Record<string, string>;
     /**
-     * The target's enabled rule count, when the caller knows it. A scheduled
-     * batch of an oversize target (split across batches) covers only a slice of
-     * the checks, so this lets the card say "3/5 checks". Paused rules are not
-     * expected to run and manual runs are explicit selections, so neither makes
-     * a batch partial.
+     * The target's current enabled rule count, when the caller knows it. It is
+     * only used to disclose "N/M checks" when a scheduled batch sits at the
+     * composition cap and therefore covers just a slice of an oversize target.
+     * Paused rules are not expected to run and manual runs are explicit
+     * selections, so neither makes a batch partial.
      */
     targetRuleCount?: number;
     /** Whether the checks table is expanded. */
@@ -385,12 +385,11 @@ const totalChecks = computed(() => counts.value?.total ?? 0);
  * The target's enabled count when a scheduled batch covered only a slice of an
  * oversize target. Paused rules are not expected to run; a manual run planned an
  * explicit selection, so its total is the selection's size, not a partial view.
+ * Only a batch at the composition cap is disclosed, so a retry batch or a check
+ * added since the run cannot make a complete batch look partial.
  */
 const partialChecks = computed(() =>
-  props.run.trigger === QualityExecutionTrigger.SCHEDULED &&
-  props.targetRuleCount > totalChecks.value
-    ? props.targetRuleCount
-    : 0
+  partialQualityRunChecks(props.run, props.targetRuleCount)
 );
 const outcome = computed(() => props.run.outcome);
 

@@ -644,9 +644,9 @@ func TestSelectDueTargetsTakesWholeTargetsUntilTheBudget(t *testing.T) {
 
 	base := time.Date(2026, time.October, 26, 9, 0, 0, 0, time.UTC)
 	targets := []dueQualityTargetRow{
-		{guid: "a", firstDue: base, firstID: 1, ruleCount: 2},
-		{guid: "b", firstDue: base.Add(time.Minute), firstID: 2, ruleCount: 3},
-		{guid: "c", firstDue: base.Add(2 * time.Minute), firstID: 3, ruleCount: 1},
+		{guid: "a", firstDue: base, ruleCount: 2},
+		{guid: "b", firstDue: base.Add(time.Minute), ruleCount: 3},
+		{guid: "c", firstDue: base.Add(2 * time.Minute), ruleCount: 1},
 	}
 	guids := func(selected []dueQualityTargetRow) []string {
 		result := make([]string, 0, len(selected))

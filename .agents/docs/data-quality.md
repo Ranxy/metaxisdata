@@ -43,14 +43,14 @@ SPA ──ConnectRPC──► DataQualityService (api/v1) ──► component/da
 | D-15 | 前端第 6 个顶层导航 + 6 个入口子页（概览/质量目标/检查/执行/问题/建议）；检查的创建与编辑只在目标工作台，跨目标检查目录只读；执行页默认按目标展示扫描批次，平铺执行作为第二视图；趋势图与最近执行用内联 SVG/状态色块条（`QualityTrendChart`、`QualityResultStrip`） | 修订 frontend-ui 的顶层导航约定；布局审计登记路由（工作台/详情页为动态 id，不登记；`/data-quality/executions` 预算 200） |
 | D-16 | 保留期：执行随内部批次 90d、关闭问题 90d、画像/LLM 缓存/LLM 调试日志 7d、已决建议 90d、已结束的 AI 起草任务 90d；由 maintenance runner 每 6h 清理 | 删除批次级联删除其执行；只清已解决的问题与已决建议；PENDING/RUNNING 的建议与任务不清理 |
 | D-17 | 不新增运行时依赖：CEL 用 `cel-go`，SQL 校验用 `omni`，图表自绘 | 保持单二进制 |
-| D-18 | 调度 = 进程内 tick + inflight map + `quality_target_schedule.next_run_at`（目标级，D-69） | 单副本；重启收敛、不补跑；目标最后一个启用检查暂停 → `next_run_at` NULL |
+| D-18 | 调度 = 进程内 tick + inflight map + `quality_target_schedule.next_run_at`（目标级，D-69）；due 扫描只规划，批次交给后台 scheduled worker 执行（手动通道独立，D-72） | 单副本；重启后未完成的 scheduled 检查按周期预算补跑（D-71），手动不补跑；目标最后一个启用检查暂停 → `next_run_at` NULL |
 | D-19 | count 型规则公共 `threshold_metric`（COUNT/PERCENT） | PERCENT 仅 10 类（§3.2）；`null_percent` 用它自己的 `max_null_count`/`max_null_pct` 二选一 |
 | D-20 | RuleSet（contract-like 整体验证）后续再做 | v1/v1.1 不引入该实体；前置能力见 §8 非目标 |
 | D-21 | `custom_sql` 是缺口逃生口：人写单条 SELECT/WITH ≤8 KiB | 只读、超时/上限、审计；反复出现的形态应升格为规则类型 |
 | D-22 | 统一 `fail_threshold`/`warn_threshold`（optional double），单位由 `threshold_metric` 定 | 默认 fail=0、warn 可选；比较严格（等于阈值通过） |
 | D-23 | 执行拆 `state`（PENDING/RUNNING/COMPLETED/ABANDONED）+ 六态 `outcome`（完成前 `UNSPECIFIED`）；批次另有同形 lifecycle/outcome/counts，作为只读的 `QualityRun` 对目标展示 | 前端能区分“排队/执行中/已完成/已放弃”；执行与批次都可按 state/outcome 过滤 |
 | D-24 | `target_schema_changed` 用 registry **schema_hash**（`ListMetaRegistrySchemaHashes`）口径；规则保存时写同一口径 | 路径快照仅展示；两套 hash 混用会让“结构已变”永真 |
-| D-25 | 手动运行的规则集不进队列参数：API 先建内部批次并为每条选中规则规划 PENDING 执行行，再经进程内队列 `EnqueueQualityExecutions(batchID, instance, executionIDs)` 交给 runner；runner 只执行这些行 | 队列容量 64 个批次；满则放弃批次及其执行（ABANDONED、无 outcome）并返回 `ResourceExhausted` |
+| D-25 | 手动运行的规则集不进队列参数：API 先建内部批次并为每条选中规则规划 PENDING 执行行，再经进程内队列 `EnqueueQualityExecutions(batchID, instance, executionIDs)` 交给 runner；runner 只执行这些行 | 队列容量 512 个批次；API 在规划任何批次前先检查整次选择是否放得下；满则放弃批次及其执行（ABANDONED、无 outcome）并返回 `ResourceExhausted` |
 | D-26 | 设置零值=默认；`data_quality` message 存在性区分“未配置”和显式 false；返回生效值不落库默认 | 0 是“取默认值”，**不是**“不限制/不存”（§4.1） |
 | D-27 | 通知：issue opened/recovered 按 issue 资源名 1h 去重、收件人 owner→admins；execution-failed 只发 admins 且不受静音；同一内部批次内 FAIL 执行 >10 合并 STORM_SUMMARY（每批次一条，去重 key 用内部批次 id，detail 带目标、实例与计数）；恢复不受 storm 抑制 | 静音只影响问题通知；风暴仍创建 issue，只抑制逐条消息 |
 | D-28 | 执行资源名最后一段 = `quality_execution` **行 id**（该表无 resource_id）；`ExplainQualityExecution` 按其查 `store.GetQualityExecution` | 列表、问题引用的 first/last seen 与解析同一 id |
@@ -100,9 +100,10 @@ SPA ──ConnectRPC──► DataQualityService (api/v1) ──► component/da
 | D-66 | “从建议创建规则”改为**先 claim 再建规则**：`CreateQualityRule(suggestion)` 在通过全部校验后用 `DecideQualitySuggestion(PENDING→ACCEPTED)` 作原子 claim，claim 成功者才写规则；写规则失败时用 `ReopenQualitySuggestion(ACCEPTED→PENDING)` 回滚 claim（best-effort） | 并发/重试同一 suggestion 至多建出一条规则（另一路 `Aborted`）；崩溃窗口内 suggestion 已接受但无规则是合法状态（接受草稿本就不要求立刻建规则）；彻底消除 §7 #12 的并发重复建规则 |
 | D-67 | 目标选择器（`TargetPicker`）在实例以下每一层都跟随 `ListMetadata` 的 page token 分页：首页按 meta type 分组返回、每组 token 独立推进，“加载更多”按需取下一页（失败可重试且不丢已载入行）；搜索走 `SearchMetadata`，以当前层父 GUID 前缀 + 每个目标 meta type 各一条请求，合并顺序固定为表/视图/物化视图并保留各组 token；实例层复用全量实例缓存、本地过滤并分批渲染。分页/搜索状态收敛在 `composables/useMetadataChildren`（ticket + `AbortSignal`，旧层级/旧关键词的迟到响应不能覆盖新结果）。规则表单的列清单改用 `listAllMetadata` 走完所有页，不再固定 `page_size=200` | 大 schema/数据库不再被截断到第一页，搜索是全量数据的服务端匹配而不是“只搜已加载的行”；`SearchMetadata` 一次只接受一个 `meta_type`，故表/视图/物化视图是三条共享一次防抖的请求；无后端/协议改动，`TargetPicker` 的三个调用方（规则编辑器、目标范围筛选、多选工作台）自动获得分页与搜索 |
 | D-68 | 元数据页数据质量标签页新增**待审建议卡**：按 `status=PENDING`、`target_guid=当前目标`、`page_size=100` 读同一建议队列，**标注建议与规则草稿两种 kind 都显示**；非空才渲染，最多预览 5 条（标注在前、草稿在后），其余以“另有 N 条”指向建议中心（读满一页时计数带 `+`）。每行显示 kind、字段名/标题、语义标注或规则类型+严重级别、置信度、理由与刷新/创建时间；标注行的动作“接受/拒绝”（接受同时刷新字段标注），草稿行在可预填时给“在编辑器中打开”，并保留“拒绝”；卡头链接建议中心；“建议标注” pass 结束后（含部分批次失败）重新拉取，结果因此留在本页可见；队列读取失败时就地提示而不是伪装成空队列；决策失败在卡内提示并重读队列，清掉已被他人处理的陈旧行 | 草稿不在此卡直接建规则：复用编辑器预填，避免把批量创建/确认流程塞进资产页；列表接口属 `suggest` 权限，只读成员不请求也不显示，“在编辑器中打开”另需 `rules.create`（仅有 `suggest` 的审阅者只能拒绝草稿）；卡片只是同一队列的按目标预览（最多 5 条，不引入嵌套滚动容器），不改变队列语义；无后端/协议改动 |
-| D-69 | **目标级调度**：调度状态从规则迁到目标（`quality_target_schedule`，PK `(target_guid,target_type)`，`schedule_interval_seconds` + `next_run_at`）；到期扫描以目标为单位，取该目标**全部启用规则**组成批次；`next_run_at` 在目标执行行规划成功后按目标推进一次；规则不再有 `schedule_interval`/`next_run_at`，新建检查加入目标的下一轮；最后一个启用检查暂停/归档 → 目标 `next_run_at = NULL`，重新启用 → `now + interval`；目标改期 → `now + interval`。`UpdateQualityTargetSchedule`（`rules.update` 权限、审计）修改目标调度；契约 settings 删除 `default_schedule_interval_seconds`，工作区默认值只用于目标首次建规则时初始化 | 目标到期即执行它全部启用检查；`row_count_change` 基线窗口跟随目标 interval；>100 条规则的目标可跨批，只有分片最后一片推进该目标 schedule；崩溃/放弃的目标等下一个 interval（不补跑）；手动运行不推进 schedule |
-| D-70 | **一目标一批次 / 批次目标身份**：`quality_run` 增加 `target_guid`/`target_type`/`target_path`，每个批次只属于一个目标；定时每个到期目标一个批次（同实例串行、仍按实例领连接租约），tick 同时受 200 条规则和 50 个目标预算约束；手动选择按 `(instance,target)` 拆成每目标一个批次，队列容量 512；读模型 `QualityRun.target` + `rule_revision_min/max` 取代 per-target slice，`QualityTargetSummary.latest_run` 直接是 `QualityRun`；`ListQualityRuns` 可按 target_guid+meta_type 直接过滤 | 合法目标（≤100 条规则）恒为一批；绕过 API 上限的 >100 条目标仍分片，每个分片仍是单目标批次、只有最后一片推进 schedule；手动 run 的 counts.total 是显式选择数，不冒充目标全量 |
+| D-69 | **目标级调度**：调度状态从规则迁到目标（`quality_target_schedule`，PK `(target_guid,target_type)`，`schedule_interval_seconds` + `next_run_at`）；到期扫描以目标为单位，取该目标**本周期的全部待执行规则**组成批次；`next_run_at` 只在目标周期 settle（没有 pending 规则）后推进——批次结束时立即检查，due 扫描发现空 pending 时也推进，规划本身不推进；规则不再有 `schedule_interval`/`next_run_at`，新建检查加入目标的下一轮；最后一个启用检查暂停/归档 → 目标 `next_run_at = NULL`，重新启用 → `now + interval`；目标改期 → `now + interval`。`UpdateQualityTargetSchedule`（`rules.update` 权限、审计）修改目标调度；契约 settings 删除 `default_schedule_interval_seconds`，工作区默认值只用于目标首次建规则时初始化 | 目标到期即执行它全部启用检查；`row_count_change` 基线窗口跟随目标 interval；>100 条规则的目标跨批、超时批次跨 tick 都属于同一个目标周期；崩溃/ABANDONED 的 scheduled 检查按重试预算补跑，耗尽后周期照常 settle；手动运行不推进 schedule |
+| D-70 | **一目标一批次 / 批次目标身份**：`quality_run` 增加 `target_guid`/`target_type`/`target_path`，每个批次只属于一个目标；定时每个到期目标一个批次（同实例串行、仍按实例领连接租约），tick 同时受 200 条规则和 50 个目标预算约束；手动选择按 `(instance,target)` 拆成每目标一个批次，队列容量 512；读模型 `QualityRun.target` + `rule_revision_min/max` 取代 per-target slice，`QualityTargetSummary.latest_run` 直接是 `QualityRun`；`ListQualityRuns` 可按 target_guid+meta_type 直接过滤 | 合法目标（≤100 条规则）恒为一批；绕过 API 上限的 >100 条目标仍分片，每个分片仍是单目标批次，整个周期 settle 后才推进 schedule；手动 run 的 counts.total 是显式选择数，不冒充目标全量 |
 | D-71 | **目标周期重试**：目标一次 due cycle 内，规则只有在出现 COMPLETED 的 scheduled execution 后才算完成；ABANDONED 的尝试可在本周期内补跑，`quality_execution.attempt` 记录第几次尝试（1 起始，最多 3 次，即最多 2 次补跑）。due 查询按 target `next_run_at` 找本周期尚未完成的规则，并返回下一次 `attempt`；目标 schedule 在周期settle（没有 pending 规则）后才推进，通常由批次结束时的检查立即推进，due 扫描发现空 pending 时也会推进。每批次最多仍 100 条，>100 目标跨批次、超时批次跨 tick 都属于同一个目标周期。`QualityRun.retry_count` 暴露该批次的重试执行数，前端批次卡显示“补跑 N 次”，执行行显示 attempt | 超时/abandon 的检查不会被静默丢弃，也不会重复跑已完成的检查；重试预算耗尽后周期照常 settle，不再无限重试；手动执行不算周期进度、不推进 schedule；目标 schedule 在周期完成后才前进，慢批次会让下一轮从完成时间起算 |
+| D-72 | **调度执行与手动通道分离**：due 扫描只做设置刷新、配额检查、到期查询和分片规划，然后把每个实例的计划作为一个 group 投递到容量 64 的进程内队列；2 个 scheduled worker 按 group 串行执行批次。手动通道仍由主循环优先排空，长 scheduled 批次不再拖住“Run now”。group 占用实例槽位，扫描跳过已有 queued/running group 的实例，同一实例的批次跨 tick 也保持串行。worker 开始前重读目标 schedule：周期已 settle 或用户刚改期的陈旧计划直接跳过 | 手动请求最多等一次到期查询/规划，不再等整轮 50 个目标 × 15 分钟；队列满时剩余目标保持 due，下个 tick 重试，不建批次、不推进 schedule；scheduled 并发仍为最多 2 个实例 |
 
 ## 2. 工作负载形状
 
@@ -111,7 +112,7 @@ SPA ──ConnectRPC──► DataQualityService (api/v1) ──► component/da
 ```
 meta_registry_resource（只读）──< quality_rule >──< quality_rule_revision（不可变）
                                         │
-                                        ├──< quality_run（内部派发批次，不对外）──< quality_execution（对外执行，一条规则一次）
+                                        ├──< quality_run（只读派发批次，一条 target 一批）──< quality_execution（对外执行，一条规则一次）
                                         │                                              │
                                         │                                              └──< quality_issue（每规则至多一个未解决）
                                         ├──< quality_suggestion（待审建议）
@@ -142,7 +143,7 @@ meta_registry_resource（只读）──< quality_rule >──< quality_rule_rev
 | `SKIPPED` | 有意不执行：目标 orphaned、规则已归档、同规则并发执行中 |
 | `NOT_EVALUATED` | 已执行但无可判定数据：过滤后 0 行、`MAX(ts)` NULL、聚合 NULL、无基线 |
 
-执行生命周期：`state ∈ {PENDING, RUNNING, COMPLETED, ABANDONED}`。`outcome`（六态）只在 `COMPLETED` 时存在；`ABANDONED` 从不产生判定（重启丢弃、准入超时、批次超时/未为全部执行落终态、写失败等）。启动时把超过 15 分钟的 PENDING/RUNNING 执行与批次标 `ABANDONED`（不补跑）。内部批次另有同形的 lifecycle/outcome/counts（`outcome` 为其已完成执行的最坏 rank），从不对外。
+执行生命周期：`state ∈ {PENDING, RUNNING, COMPLETED, ABANDONED}`。`outcome`（六态）只在 `COMPLETED` 时存在；`ABANDONED` 从不产生判定（重启丢弃、准入超时、批次超时/未为全部执行落终态、写失败等）。启动时把超过 15 分钟的 PENDING/RUNNING 执行与批次标 `ABANDONED`；scheduled 检查在周期重试预算内于后续 tick 补跑，手动执行不补跑。内部批次另有同形的 lifecycle/outcome/counts（`outcome` 为其已完成执行的最坏 rank），从不对外。
 
 **问题生命周期**（由 `dataquality.PlanIssueTransition` 决定，判定在执行终态写入之后执行）：
 
@@ -208,17 +209,17 @@ meta_registry_resource（只读）──< quality_rule >──< quality_rule_rev
 | 每轮 due 扫描 | ≤200 条规则且 ≤50 个目标；每个内部批次 ≤100 条执行 | 整目标取用；目标批次数量有界 |
 | 并发 | 至多 2 个实例同时执行；单实例的批次串行 | 进程内 |
 | 连接准入 | scheduled 等待 ≤2m；manual 等待 ≤5m | 批次开始前向实例连接预算领 lease；scheduled 拿不到则不建批次、规则保持 due；manual 拿不到则把已规划的执行与批次标 `ABANDONED`（无 outcome），不写 `ERROR(QUOTA)`（[instance-connections.md](instance-connections.md)） |
-| 手动队列 | 64 个批次 | 满则 API 放弃该批次及其执行并返回 `ResourceExhausted` |
+| 手动队列 | 512 个批次 | API 在规划前检查整次选择；满则放弃批次及其执行并返回 `ResourceExhausted` |
 | 单批次超时 | 15m | 覆盖批次内所有执行与查询；超时后未开始的执行与批次标 `ABANDONED`，不写部分 rollup |
 | 单次执行查询超时 | 60s（固定；无按规则覆盖） | `QueryOptions.Timeout` |
 | 执行结果/样本上限 | 1 MiB / 20 行（设置） | `ExecOptions` |
 | 风暴阈值 | 一次内部批次 FAIL 执行 >10 | 合并通知 |
-| 启动清扫 | 15m 前的 PENDING/RUNNING 执行与批次 → ABANDONED | 不补跑 |
+| 启动清扫 | 15m 前的 PENDING/RUNNING 执行与批次 → ABANDONED | scheduled 检查按周期重试预算补跑；手动执行不补跑 |
 | 每日执行上限 | UTC 日起算 `COUNT(quality_execution)`（含手动规划的行） | 触顶**只跳过定时 due 扫描**，手动运行仍可执行 |
 
-- 循环：先排空手动队列，再处理 tick；每次扫描/手动前重读设置（读失败保留旧值）。
+- 循环：先排空手动队列，再处理 tick；tick 只做到期规划并把批次投递给 2 个 scheduled worker，执行不占用主循环；每次扫描/手动前重读设置（读失败保留旧值）。
 - 每日执行上限：触顶时跳过本轮 due 扫描（规则保持 due，次日继续），不写 ERROR、不告警（§7）。
-- 定时（D-69/D-70/D-71）：到期目标 = `quality_target_schedule.next_run_at <= now` 且至少一条启用检查；store 按 first-due 顺序取整目标，直到 200 条规则或 50 个目标预算，返回该目标周期内**尚未完成**的启用检查（COMPLETED 的已尝试、重试预算耗尽的已结束，ABANDONED 的会带下一个 attempt 返回）。每个目标生成一个批次（同实例串行）；批次行带目标身份与 path，规划每条检查一条 PENDING 执行（revision、target 快照、实例、trigger、attempt、started_at）。目标 schedule 不再在规划时推进：整个周期 settle 后推进（批次结束检查 pending，下一次 due 扫描的零 pending 目标也会推进）。目标超过 100 条检查时分片，超时/abandon 的检查下一个 tick 补跑，重试预算 3 次。同实例的多个目标按 first-due 顺序串行准入；某个目标准入失败/实例读取失败后，本轮跳过该实例剩余目标（它们仍 due，下一个 tick 重试），避免每个目标各等一次 2 分钟并拖住 manual 队列。
+- 定时（D-69/D-70/D-71/D-72）：到期目标 = `quality_target_schedule.next_run_at <= now` 且至少一条启用检查；store 按 first-due 顺序取整目标，直到 200 条规则或 50 个目标预算，返回该目标周期内**尚未完成**的启用检查（COMPLETED 的已尝试、重试预算耗尽的已结束，ABANDONED 的会带下一个 attempt 返回）。每个目标生成一个批次（同实例串行）；批次行带目标身份与 path，规划每条检查一条 PENDING 执行（revision、target 快照、实例、trigger、attempt、started_at）。目标 schedule 不再在规划时推进：整个周期 settle 后推进（批次结束检查 pending，下一次 due 扫描的零 pending 目标也会推进）。目标超过 100 条检查时分片，超时/abandon 的检查下一个 tick 补跑，重试预算 3 次。同实例的多个目标按 first-due 顺序串行准入；某个目标准入失败/实例读取失败后，本轮跳过该实例剩余目标（它们仍 due，下一个 tick 重试），避免每个目标各等一次 2 分钟。扫描本身只规划，把每个实例的计划交给 scheduled worker（D-72），不阻塞手动通道。
 - 目标调度：`UpdateQualityTargetSchedule` 修改 interval 后从 `now + interval` 重排；目标没有启用检查时只保存 interval、`next_run_at` 为 NULL。规则新建/编辑/暂停/归档/换目标都会同步目标 schedule（见 §3.3 API 描述）。
 - 手动（D-70）：API 解析选择集（规则列表/实例/目标）、按 `(instance,target)` 拆批，每个目标建一个批次并规划 PENDING 执行（trigger MANUAL、initiator、目标快照来自 head revision），再按批入队 `EnqueueQualityExecutions(batchID, instance, executionIDs)`；runner 只执行这些行，绝不扩选。队列容量 512；队列满 → API 放弃该批次与执行并返回 `ResourceExhausted`。
 - 逐条执行：批次标 RUNNING → inflight 去重（重复触发记 `SKIPPED`）→ 读最新 revision 快照（head revision 不一致时按最新执行，终态记实际 revision）→ resolve target（孤儿 → `SKIPPED(ORPHANED)`）→ `RequireTarget`/`ValidateConfig`（不满足 → `ERROR(UNSUPPORTED)`）→ 元数据规则跳过连接；其余在批次持有的实例 lease 下 `GetReadOnlyDatabaseDriver` → `Executor.Execute` → `row_count_change` 补基线 → `Evaluate` → `FinishQualityExecution`（终态、六态、观测/阈值/行数/样本/SQL/错误/耗时）。每条执行是独立提交点。
@@ -259,7 +260,7 @@ meta_registry_resource（只读）──< quality_rule >──< quality_rule_rev
 
 ### 3.6 API、权限与审计
 
-- `DataQualityService`（`proto/v1/v1/data_quality_service.proto`）共 41 个 RPC：规则 CRUD/预览/手动执行（7）+ 批量创建（1）、执行列表/详情（2）、问题列表/详情/处置（3）、画像与标注列表/写入（4）、建议列表/详情/决策/批量决策（4）、AI 起草任务创建/读取/列表/取消（4）+ 失败目标调试图读取（1）、三个 LLM 入口（3）、聚合读 `GetQualityOverview`（1）、目标聚合读 `ListQualityTargets`/`GetQualityTarget`（2）、只读批次 `ListQualityRuns`/`GetQualityRun`（2）、目标调度 `UpdateQualityTargetSchedule`（1）、契约 `Get/Update/Publish/ListRevisions/GetRevision`（5），以及只读的 `GetQualityLLMUsage`（1）。手动执行返回按规则规划的执行；执行仍是最小判定单位，run 没有写路径。
+- `DataQualityService`（`proto/v1/v1/data_quality_service.proto`）共 42 个 RPC：规则 CRUD/预览/手动执行（7）+ 批量创建（1）、执行列表/详情（2）、问题列表/详情/处置（3）、画像与标注列表/写入（4）、建议列表/详情/决策/批量决策（4）、AI 起草任务创建/读取/列表/取消（4）+ 失败目标调试图读取（1）、三个 LLM 入口（3）、聚合读 `GetQualityOverview`（1）、目标聚合读 `ListQualityTargets`/`GetQualityTarget`（2）、只读批次 `ListQualityRuns`/`GetQualityRun`（2）、目标调度 `Get/UpdateQualityTargetSchedule`（2）、契约 `Get/Update/Publish/ListRevisions/GetRevision`（5），以及只读的 `GetQualityLLMUsage`（1）。手动执行返回按规则规划的执行；执行仍是最小判定单位，run 没有写路径。
 - 契约（`Get/Update/Publish/ListQualityContractRevisions/GetQualityContractRevision`）：`quality_contract` 每目标一行（settings：filter、默认严重级别；D-69 起目标调度不在契约 settings 里），`quality_contract_revision` 是**显式发布**产生的快照（settings + 有序 checks：rule_resource_id/revision/title/type/severity/column + fingerprint），带 check/added/modified/removed 计数、note、发布人/时间。`PublishQualityContract` 在行锁内比较最新 revision 的 fingerprint：相同则返回既有版本（`no_changes=true`），不产生重复版本；差异按 `rule_resource_id` 比较 revision/title/type/severity/column。设置更新与发布审计；读取复用 `rules.list`。**发布不阻塞执行**：规则保存后照常运行，发布只记录承诺与版本历史。
 - 目标级 filter 在编译期合成：`规则 filter 子句 + 契约 filter 子句`一次 `CompileFilter`（规则在前，合计 ≤20），因此预览/手动/定时执行/失败样本使用同一 SQL；`custom_sql` 不重写用户 SQL、不受契约 filter 约束，`cross_table` 只作用于左表，`schema_drift` 无 SQL。默认严重级别只是 `TargetRuleComposer` 的初始值；目标调度已由 D-69 上移，契约 settings 不再有默认调度。权限：改设置复用 `rules.update`，发布用新增的 `dataQuality.contracts.publish`（workspaceAdmin 自动持有）。
 - 目标目录（`ListQualityTargets`）：一条 SQL 按 `target_guid` 聚合非归档规则，返回每目标的规则/启用/暂停数、去重字段数、未解决问题数（只统计未归档/未删除规则的问题）、待审草案/标注数、最差最近结果（ERROR>FAIL>WARN>PASS>NOT_EVALUATED>SKIPPED>未跑，与概览口径一致；`worst_status` 过滤可区分“无数据可判”和“有意跳过”，未知枚举 `InvalidArgument`）、最近执行时间、`schema_changed`（规则快照 hash 与 registry 当前 hash 不同）与 `orphaned`（目标已不可解析）；目录页按服务端 search/has_open_issue/has_pending_draft/order_by 查询，未指定页大小默认 50；支持 instance/database/schema/table GUID 前缀、path/GUID 子串搜索、worst_status/has_open_issue/has_pending_draft 过滤与 attention/name/rule_count/last_run 排序，offset 分页、页上限 1000。`GetQualityTarget` 按 GUID 读一个目标：规则（含最近结果、`orphaned_reason`、`target_schema_changed`）、未解决问题、与目录同形的 summary、以及每规则最近 20 次已完成执行（`rule_history`，工作台行内色块条）与目标列 `target_columns`（来自 ResolveTarget，视图/外部表也可用；供覆盖卡与检查 Dialog 的列字段）；`column_count` 与契约 check 的 `column` 都由规则的 **config 主列**推导（`dataquality.ConfigColumn`：null_percent/unique/accepted_values/range/regex/string_length/referential_integrity/freshness/aggregate 的单列字段），不读 `target_path.column`（那是展示快照，可能为空），也**不**用 `target.columns`（含 filter 列与 schema_drift 快照列）；目标已不可解析但仍有规则时仍返回规则与快照路径（`summary.orphaned=true`、`orphaned_reason` 非空、`target_columns` 为空），无规则且不可解析时 `NotFound`。两者只需 `rules.list`（聚合计数与概览同口径），**不审计、不进 principal 限流**；草案正文不在 Get 里（读取草案需 `suggest` 权限，客户端按权限单独 `ListQualitySuggestions`）。
@@ -400,7 +401,7 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | I-13 | 提示中的数据库内容是不可信数据块（`</` 被中和）；模型无连接/凭据 | prompt 构造单测 |
 | I-14 | 执行资源名最后一段是 `quality_execution` 行 id（表无 resource_id）；规则/问题/建议用不可回收 resource_id；内部批次没有对外名字 | convert 单测 + handler 解析 |
 | I-15 | 软删除保留 revision/执行/问题；表不物理删除规则 | archive 路径 + store 查询过滤 |
-| I-16 | 单副本：inflight/配额/LLM 计数都在进程内；重启收敛、不补跑 | 代码结构 + runner 测试 |
+| I-16 | 单副本：inflight/配额/LLM 计数、scheduled 队列和实例槽位都在进程内；重启后 scheduled 检查按周期预算补跑，手动不补跑 | 代码结构 + runner 测试 |
 | I-17 | 编译 SQL 的占位符与 `Args` 必须一起下发：`db.ReadOnlyQueryer.QueryReadOnly(ctx, sql, args, opts)`；预览、执行、画像都传各自的 args（画像无参数传 nil） | `execution_test.go` 的参数断言 + 真 server 集成场景（带 filter 的 range 规则 dry run/执行） |
 | I-18 | 内部批次的连接预算在批次开始前一次性准入，持有到查询阶段结束（持久化/通知前释放）：scheduled 拿不到 → 不建批次、规则保持 due；manual 拿不到 → 已规划的执行与批次 `ABANDONED`（无 outcome）；规则在准入后目标被改到别的实例 → 由 `ruleConnectionLease` 对实际实例 try-acquire 一次（拿不到记 `SKIPPED`）；任何情况下容量竞争都不写成执行结果或 `ERROR(QUOTA)` | `qualityrunner_test.go` 的 `admitBatch`/`ruleConnectionLease` 测试 + governor 单测（[instance-connections.md](instance-connections.md)） |
 | I-19 | `quality_run` 只读暴露为 `QualityRun`（`ListQualityRuns`/`GetQualityRun`，批次属于一个目标）；没有 run 写路径，也没有独立 `/runs` 页面；执行页按目标聚合批次，目标工作台显示最近扫描；对外最小单位仍是 `QualityExecution` | `quality_run.go`/`data_quality_run.go` 读路径、目标 `latest_run` 富化、前端批次卡测试 |
@@ -432,17 +433,17 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | --- | --- |
 | 实例没有 READ_ONLY 数据源 | 查询型规则**创建即拒绝**（`FailedPrecondition`，文案含配置入口）；创建后数据源被移除则运行期 `ERROR(NO_READ_ONLY_SOURCE)`；预览/执行同样拒绝；不回退 ADMIN |
 | 目标库连接失败/凭据失效 | 执行 `ERROR(CONNECTION/AUTH/PERMISSION)`，执行失败通知（admins）；下一次排期自然重试 |
-| 查询超时 | `ERROR(TIMEOUT)`；不自动重试 |
+| 查询超时 | `ERROR(TIMEOUT)`；scheduled 在周期预算内重试（≤3 次），手动不重试 |
 | 结果集超上限 | 截断并 `truncated=true`，状态照常判定；UI 显示“已截断” |
 | 保存后列被删/类型变了 | 运行期 `ERROR(UNSUPPORTED)`（ValidateConfig 失败）；预览阶段则拒绝保存 |
 | 目标被删/实例被删/数据库隐藏 | 规则显示 `orphaned_reason`；运行期 `SKIPPED(ORPHANED)`；不通知 |
 | 同一规则并发触发 | 进程内 inflight 去重 → 后到者 `SKIPPED` |
 | 规则编辑中 | 执行永远带实际 revision；历史不变 |
-| 服务重启 | 启动时清扫超过 15 分钟的 PENDING/RUNNING 执行与批次 → `ABANDONED`；规则按 `next_run_at` 收敛；不补跑 |
+| 服务重启 | 启动时清扫超过 15 分钟的 PENDING/RUNNING 执行与批次 → `ABANDONED`；目标按 `next_run_at` 收敛；scheduled 未完成检查按周期预算补跑，手动不补跑 |
 | 单条执行 panic | 该执行 `ERROR(EXECUTION)`，同批次其余执行继续 |
 | 执行终态写失败 / 批次超时 / 任务未产出判定 | 该批次剩余执行 `ABANDONED`、批次 `ABANDONED`（不写部分 rollup）；已写入判定的 issue 迁移与逐条通知照常（不发风暴摘要） |
-| 批次无法进入 RUNNING（重复派发/已被清扫/已终结） | 该批次未完成执行与批次标 `ABANDONED`（`mark_running_failed`）；不重试、不补跑；清扫写失败的残留行留给下次启动清扫 |
-| 放弃执行/批次的写入本身失败 | 批次仍尝试以 `ABANDONED` 结束（不因一次清扫写失败停在 RUNNING）；残留 PENDING/RUNNING 行留给下次启动清扫（仅处理启动时已超过 15 分钟的行），不补跑 |
+| 批次无法进入 RUNNING（重复派发/已被清扫/已终结） | 该批次未完成执行与批次标 `ABANDONED`（`mark_running_failed`）；批次本身不重试；其 scheduled 检查计入 attempt，预算内下个 tick 补跑，手动不补跑；清扫写失败的残留行留给下次启动清扫 |
+| 放弃执行/批次的写入本身失败 | 批次仍尝试以 `ABANDONED` 结束（不因一次清扫写失败停在 RUNNING）；残留 PENDING/RUNNING 行留给下次启动清扫（仅处理启动时已超过 15 分钟的行）；scheduled 检查在预算内下个 tick 补跑，手动不补跑 |
 | 通知写失败 | 只记日志；执行与问题状态不受影响 |
 | 告警风暴（一次批次 FAIL 执行 >10） | 逐条 opened/execution-failed 抑制，发一条 STORM_SUMMARY（带目标、实例与计数）；issue 照建、恢复照发 |
 | 规则/问题静音期内失败或恢复 | 不发送问题通知；执行失败通知不受影响 |
@@ -514,7 +515,7 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | 只读查询能力 | `backend/plugin/db/query.go`（`ReadOnlyQueryer`/`QueryOptions`/`QueryResult`、扫描上限）；`plugin/db/{mysql,pg,mssql,starrocks}/query.go`；`backend/component/dbfactory/readonly.go`（`ErrNoReadOnlyDataSource`） |
 | runner | `backend/runner/qualityrunner/qualityrunner.go`（调度/规划执行/执行/问题迁移/通知）；`backend/runner/qualitysuggestionrunner/`（后台 AI 起草任务：5s tick、启动清扫、逐目标进度、协作取消）；`backend/server/server.go` 注册第 6 个 runner；保留期清理在 `backend/runner/maintenance/maintenance.go` |
 | 连接准入 | `backend/component/state/connection.go`（governor/优先级/等待队列）；`qualityrunner` 的 `admitBatch`；契约与各调用方预算见 [instance-connections.md](instance-connections.md) |
-| API | `backend/api/v1/data_quality_service.go`（规则 CRUD/手动执行/执行查询/issue/profile/preview/overview）、`data_quality_run.go`（批次只读 `ListQualityRuns`/`GetQualityRun`，run 自带 target 与 revision range）、`data_quality_batch.go`（批量创建规则/批量决策建议）、`data_quality_suggestion_job.go`（AI 起草任务创建/读取/列表/取消/失败目标调试图读取）、`data_quality_usage.go`（LLM 用量读取）、`data_quality_convert.go`、`data_quality_llm_analysis.go`（L1 同步包装/L2）、`data_quality_label_analysis.go`（L3）、`data_quality_overview.go`、`data_quality_cross_table.go`、`data_quality_target.go`（目标目录/工作台聚合读 `ListQualityTargets`/`GetQualityTarget`，富化 `latest_run`/`run_count` 与目标 `schedule`；`UpdateQualityTargetSchedule` 改目标调度） |
+| API | `backend/api/v1/data_quality_service.go`（规则 CRUD/手动执行/执行查询/issue/profile/preview/overview）、`data_quality_run.go`（批次只读 `ListQualityRuns`/`GetQualityRun`，run 自带 target 与 revision range）、`data_quality_batch.go`（批量创建规则/批量决策建议）、`data_quality_suggestion_job.go`（AI 起草任务创建/读取/列表/取消/失败目标调试图读取）、`data_quality_usage.go`（LLM 用量读取）、`data_quality_convert.go`、`data_quality_llm_analysis.go`（L1 同步包装/L2）、`data_quality_label_analysis.go`（L3）、`data_quality_overview.go`、`data_quality_cross_table.go`、`data_quality_target.go`（目标目录/工作台聚合读 `ListQualityTargets`/`GetQualityTarget`，富化 `latest_run`/`run_count` 与目标 `schedule`；`Get/UpdateQualityTargetSchedule` 读/改目标调度，规则生命周期后只刷调度） |
 | store | `backend/store/quality_{rule,execution,run,issue,profile,label,suggestion,suggestion_job,llm_cache,overview,target,contract,target_schedule}.go`（13 张表 + 目标聚合读；`quality_run.go` 的 `ListQualityRuns`/`GetQualityRun`/`ListQualityTargetRunSummaries`/`ListQualityRunRevisionRanges`；`quality_contract.go` 的设置/发布事务/历史；`quality_target.go` 的 `ListQualityTargets` 一条 SQL 聚合，`CountPendingQualitySuggestions` 只数草案；`quality_run` 既是派发批次也是只读批次读模型；建议列表的 GUID 前缀过滤复用 `metaGUIDPrefix`/`appendGUIDSubtreeCondition`；起草任务用 `FOR UPDATE SKIP LOCKED` 原子 claim；建议 `QueueQualitySuggestion` upsert / `SupersedePendingQualitySuggestions` / `QualitySuggestionSignatureStates` / `ReopenQualitySuggestion`；任务 `QueueQualitySuggestionJob` 按指纹幂等 + `GetActive`）；`backend/store/explain_sql.go`（`llm_debug_log` 写入/按 correlation id 读取）；`backend/component/llm/limits.go`（输出预算常量/校验） |
 | proto/迁移 | `proto/store/store/data_quality.proto`、`proto/v1/v1/data_quality_service.proto`、notification/setting 扩展；`backend/migrator/migration/0.1/0024##data_quality.sql` + `0025##quality_execution.sql`（`quality_rule_result` 改名 `quality_execution` 并补执行列）+ `0026##quality_suggestion_job.sql`（后台起草任务表）+ `0027##llm_debug_log_context.sql`（调试日志 kind/correlation/error_code 列）+ `0028##quality_suggestion_identity.sql`（`signature`/`refreshed_at`、PENDING 唯一索引、任务 `request_fingerprint`/`force_regenerate`）+ `0029##quality_contract.sql`（`quality_contract`/`quality_contract_revision`，契约设置与发布快照）+ `0030##quality_target_schedule.sql`（目标级调度表；规则表删 `schedule_interval_seconds`/`next_run_at`）+ `0031##quality_run_target.sql`（批次目标身份）+ `0032##quality_execution_attempt.sql`（周期尝试号/补跑预算）+ `LATEST.sql` |
 | 前端 | `frontend/src/pages/data-quality/`（含 `DataQualityChecksPage`、`DataQualityTargetPage`、`DataQualityExecutionsPage`、`RedirectQualityRulePage`）、`pages/settings/DataQualitySettingsPage.vue`、`pages/settings/LLMProviderManagementPage.vue`、`components/data-quality/`（含 `QualityCheckDrawer`、`QualityRunCard`、`TargetScanHistory`、`TargetRecentScanCard`、`TargetRuleComposer`、`TargetCoverageCard`、`TargetRuleHistoryStrip`、`SuggestionWorkbench.vue`、`SuggestionJobsPanel.vue`、`SuggestionJobHistoryDrawer.vue`、`SuggestionJobTargetDebugDialog.vue`、`BatchCreateRulesDialog.vue`、`BatchDecideSuggestionsDialog.vue`、契约四件套）、`api/data-quality.ts`、`utils/dataQuality*.ts`、`composables/useSuggestionSummary.ts`、`lib/notificationText.ts`；路由 `router/index.ts`，侧栏 `AppSidebar.vue`，`SettingsNav.vue` |

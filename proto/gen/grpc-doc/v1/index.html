@@ -1157,6 +1157,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.GetQualityTargetScheduleRequest"><span class="badge">M</span>GetQualityTargetScheduleRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.GroupCheckConfig"><span class="badge">M</span>GroupCheckConfig</a>
                 </li>
               
@@ -13683,6 +13687,45 @@ ListMetadata(COLUMN) this also covers views and external tables. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.GetQualityTargetScheduleRequest">GetQualityTargetScheduleRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The target&#39;s metadata GUID. Required. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p>The target&#39;s object type. Optional when rules already exist, because their
+own target carries it; required to resolve a target that has no rules yet. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.GroupCheckConfig">GroupCheckConfig</h3>
         <p>GroupCheckConfig bounds the row count of each group a set of columns forms.</p>
 
@@ -20388,6 +20431,15 @@ effect from the next slot and never runs the target immediately.</p></td>
               </tr>
             
               <tr>
+                <td>GetQualityTargetSchedule</td>
+                <td><a href="#metaxisdata.v1.GetQualityTargetScheduleRequest">GetQualityTargetScheduleRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityTargetSchedule">QualityTargetSchedule</a></td>
+                <td><p>Read one target&#39;s schedule without the target&#39;s rules, results and issues.
+A rule lifecycle change can move the target&#39;s next run; the workspace re-reads
+just this instead of the whole target after every check edit.</p></td>
+              </tr>
+            
+              <tr>
                 <td>GetQualityContract</td>
                 <td><a href="#metaxisdata.v1.GetQualityContractRequest">GetQualityContractRequest</a></td>
                 <td><a href="#metaxisdata.v1.QualityContract">QualityContract</a></td>
@@ -20793,6 +20845,16 @@ restart resets them and they roll over at 00:00 UTC.</p></td>
                 <td>POST</td>
                 <td>/v1/{parent=workspaces/*}/qualityTargets:updateSchedule</td>
                 <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetQualityTargetSchedule</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/qualityTargets:getSchedule</td>
+                <td></td>
               </tr>
               
             

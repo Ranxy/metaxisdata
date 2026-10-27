@@ -86,7 +86,7 @@ governor 不是计数器，而是**公平、带优先级、可阻塞的队列**�
 
 ## 4. 为什么没有持久化队列
 
-- 部署是单副本（[runner.md](runner.md)）；`quality_execution` 行本身就是手动运行的持久记录：排队期间是 `PENDING`，执行页可见。`quality_run` 只是内部派发批次，不对外。进程重启后由启动清扫把 15 分钟前的 `PENDING/RUNNING` 执行与批次标 `ABANDONED`，不补跑。
+- 部署是单副本（[runner.md](runner.md)）；`quality_execution` 行本身就是手动运行的持久记录：排队期间是 `PENDING`，执行页可见。`quality_run` 是只读的派发批次（`QualityRun`），不是写入路径；手动队列在进程内，容量 512。进程重启后由启动清扫把 15 分钟前的 `PENDING/RUNNING` 执行与批次标 `ABANDONED`；scheduled 检查按目标周期重试预算补跑，手动执行不补跑。
 - 定时批次的“队列”就是目标的 `quality_target_schedule.next_run_at`：拿不到 lease 时目标保持 due，下一个 10s tick 自然重试。
 - 多副本需要数据库 lease 或跨进程队列，属于明确非目标。
 

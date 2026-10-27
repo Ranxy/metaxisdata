@@ -696,7 +696,7 @@
       "runOpenInList": "Open in all executions",
       "runPartial": "{done}/{all} checks in this batch",
       "runResult": "Batch result",
-      "runRetries": "{count} retries",
+      "runRetries": "{count} retry | {count} retries",
       "runRunningHint": "The batch is still running; results are incomplete.",
       "targetColumn": "Target",
       "targetSearch": "Search targets, schemas or instances",

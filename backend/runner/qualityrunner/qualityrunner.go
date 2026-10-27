@@ -28,8 +28,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sourcegraph/conc/pool"
-
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
@@ -71,6 +69,11 @@ const (
 	// for scheduled batches: the design allows two instances to execute at once,
 	// and one instance's batches always run serially.
 	maxConcurrentInstanceBatches = 2
+	// scheduledQueueCapacity bounds the instance groups waiting for a scheduled
+	// worker. One due scan hands over at most one group per instance (at most
+	// dueTargetScanLimit); a full queue leaves the rest of the pass due for the next
+	// tick instead of blocking the runner loop, which also drains manual batches.
+	scheduledQueueCapacity = 64
 	// manualQueueCapacity is how many manual batches may wait for the runner. A
 	// manual selection is split into one batch per target, so a 200-rule selection
 	// can create up to 200 batches. The API turns a full queue into
@@ -129,7 +132,7 @@ const (
 // executor for the failing rows that make a FAIL result explainable; the
 // workspace settings decide whether they are kept and how many.
 func (r *Runner) execOptions() dataquality.ExecOptions {
-	settings := r.settings
+	settings := r.currentSettings()
 	sampleLimit := settings.FailureSampleLimit
 	if sampleLimit <= 0 {
 		sampleLimit = ruleSampleLimit
@@ -143,6 +146,15 @@ func (r *Runner) execOptions() dataquality.ExecOptions {
 	}
 }
 
+// currentSettings returns the settings snapshot the runner last loaded. The
+// scheduled workers and the manual lane run concurrently, so the snapshot is
+// guarded instead of being read from the field directly.
+func (r *Runner) currentSettings() dataquality.Settings {
+	r.settingsMu.RLock()
+	defer r.settingsMu.RUnlock()
+	return r.settings
+}
+
 // refreshSettings reloads the workspace data-quality settings. A read failure
 // keeps the previous value: settings are a policy, and a transient store error
 // must not silently switch the sample policy or the daily ceiling.
@@ -152,7 +164,9 @@ func (r *Runner) refreshSettings(ctx context.Context) {
 		slog.Warn("failed to load the data quality settings", log.WithError(err))
 		return
 	}
+	r.settingsMu.Lock()
 	r.settings = settings
+	r.settingsMu.Unlock()
 }
 
 // overDailyExecutionQuota reports whether the workspace already started as many
@@ -160,7 +174,7 @@ func (r *Runner) refreshSettings(ctx context.Context) {
 // dense schedule, not a correctness boundary: when it trips, the due rules stay
 // due and the next day resumes them.
 func (r *Runner) overDailyExecutionQuota(ctx context.Context, now time.Time) bool {
-	limit := r.settings.DailyExecutionLimit
+	limit := r.currentSettings().DailyExecutionLimit
 	if limit <= 0 {
 		return false
 	}
@@ -220,6 +234,15 @@ type dueBatchPlan struct {
 	instanceResourceID string
 	target             *store.DueQualityTarget
 	rules              []*store.DueQualityRule
+}
+
+// scheduledGroup is one instance's due plans in execution order. The due scan
+// hands over one group per instance, and a worker runs its plans serially: one
+// instance's batches must not execute concurrently, even when a later tick finds
+// more of its targets due while the earlier group is still queued.
+type scheduledGroup struct {
+	instanceResourceID string
+	plans              []dueBatchPlan
 }
 
 // batchAdmission is what a batch holds while it executes: the instance whose
@@ -304,14 +327,25 @@ type Runner struct {
 	// manual batch. It starts at the documented defaults so a fresh process with
 	// an unreadable setting still behaves sanely.
 	settings dataquality.Settings
+	// settingsMu guards settings: the manual lane reloads it while the scheduled
+	// workers read it.
+	settingsMu sync.RWMutex
 
 	// manual carries the batches the API created. It is buffered so enqueueing
 	// never blocks a request; a full queue is reported back as false.
 	manual chan manualRun
+	// scheduled carries the due scan's instance groups to the scheduled workers, so
+	// the runner loop that drains manual batches never executes a scheduled batch
+	// itself. A full queue leaves the remaining due targets for the next tick.
+	scheduled chan scheduledGroup
 	// inflight holds the rule ids currently being executed, so a second execution
 	// that finds the same rule due records SKIPPED instead of executing it twice.
 	inflight map[int64]struct{}
-	mu       sync.Mutex
+	// scheduledInstances holds the instances whose queued or running group owns their
+	// scheduled execution slot. The due scan skips them, keeping one instance's
+	// batches serial across ticks as well as within a pass.
+	scheduledInstances map[string]struct{}
+	mu                 sync.Mutex
 }
 
 // NewRunner creates the data-quality runner. The executor is stateless, so one
@@ -321,15 +355,17 @@ func NewRunner(stores *store.Store, dbFactory *dbfactory.DBFactory, stateCfg *st
 	exec := dataquality.NewExecutor()
 	exec.Metrics = m
 	return &Runner{
-		stores:    stores,
-		dbFactory: dbFactory,
-		stateCfg:  stateCfg,
-		exec:      exec,
-		notifier:  notifier,
-		manual:    make(chan manualRun, manualQueueCapacity),
-		inflight:  make(map[int64]struct{}),
-		settings:  dataquality.DefaultSettings(),
-		metrics:   m,
+		stores:             stores,
+		dbFactory:          dbFactory,
+		stateCfg:           stateCfg,
+		exec:               exec,
+		notifier:           notifier,
+		manual:             make(chan manualRun, manualQueueCapacity),
+		scheduled:          make(chan scheduledGroup, scheduledQueueCapacity),
+		inflight:           make(map[int64]struct{}),
+		scheduledInstances: make(map[string]struct{}),
+		settings:           dataquality.DefaultSettings(),
+		metrics:            m,
 	}
 }
 
@@ -340,6 +376,17 @@ func (*Runner) Name() string { return "qualityrunner" }
 // is read by the metrics collector at scrape time.
 func (r *Runner) ManualQueueDepth() int {
 	return len(r.manual)
+}
+
+// HasQualityExecutionQueueRoom reports whether n more manual batches fit in the
+// queue. The API checks a whole multi-target selection before planning any batch,
+// so a failure cannot leave earlier targets already queued; enqueueing still
+// re-checks, so a race at worst returns ResourceExhausted.
+func (r *Runner) HasQualityExecutionQueueRoom(n int) bool {
+	if n <= 0 {
+		return true
+	}
+	return len(r.manual)+n <= cap(r.manual)
 }
 
 // EnqueueQualityExecutions offers a manual batch to the runner and returns false
@@ -363,10 +410,22 @@ func (r *Runner) EnqueueQualityExecutions(batchID int64, instanceResourceID stri
 }
 
 // Run starts the quality runner and blocks until ctx is cancelled. Manual batches
-// take precedence over the periodic due scan.
+// take precedence over the periodic due scan: the scan only plans and hands its
+// batches to the scheduled workers, so a long scheduled batch never delays a
+// manual request.
 func (r *Runner) Run(ctx context.Context) {
 	r.abandonStaleWork(ctx)
 	r.refreshSettings(ctx)
+
+	var workers sync.WaitGroup
+	workers.Add(maxConcurrentInstanceBatches)
+	for range maxConcurrentInstanceBatches {
+		go func() {
+			defer workers.Done()
+			r.runScheduledWorker(ctx)
+		}()
+	}
+	defer workers.Wait()
 
 	ticker := time.NewTicker(tickInterval)
 	defer ticker.Stop()
@@ -394,11 +453,41 @@ func (r *Runner) Run(ctx context.Context) {
 	}
 }
 
+// runScheduledWorker executes one instance group at a time. A worker is the only
+// place a scheduled batch runs, which keeps the runner loop free for manual work.
+func (r *Runner) runScheduledWorker(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case group := <-r.scheduled:
+			r.runScheduledGroup(ctx, group)
+		}
+	}
+}
+
+// runScheduledGroup executes one instance's plans in order and then releases the
+// instance's slot. A deferral or store failure stops the group: the remaining
+// targets stay due and are retried on a later tick.
+func (r *Runner) runScheduledGroup(ctx context.Context, group scheduledGroup) {
+	defer r.releaseScheduledInstance(group.instanceResourceID)
+	for _, plan := range group.plans {
+		if ctx.Err() != nil {
+			return
+		}
+		if !r.startScheduledBatch(ctx, plan) {
+			return
+		}
+	}
+}
+
 // abandonStaleWork closes the batches and executions a previous process left
-// PENDING or RUNNING. It is a startup-only sweep: work whose process is gone is
-// not retried, and its results are not invented; the rules run again on their
-// next schedule. Executions are swept explicitly as well as through their batch,
-// so a row whose batch write was lost still reaches a terminal state.
+// PENDING or RUNNING. It is a startup-only sweep: the abandoned attempts are not
+// resumed, and their results are not invented. A scheduled check counts the
+// abandoned attempt toward its cycle budget and is retried on a later tick; a
+// manual execution is not retried. Executions are swept explicitly as well as
+// through their batch, so a row whose batch write was lost still reaches a
+// terminal state.
 func (r *Runner) abandonStaleWork(ctx context.Context) {
 	cutoff := time.Now().UTC().Add(-staleExecutionCutoff)
 	abandonedExecutions, err := r.stores.AbandonStaleQualityExecutions(ctx, cutoff)
@@ -425,20 +514,22 @@ func (r *Runner) abandonStaleWork(ctx context.Context) {
 	}
 }
 
-// scanDue creates and executes one internal batch per instance for the targets
-// whose schedule is due. A due target may exceed the per-batch limit or span
-// several instances: its checks are grouped with the target, chunked into batches
-// of at most maxExecutionsPerBatch, and one instance's batches execute serially
-// while at most two instances execute at once.
+// scanDue plans one internal batch per instance for the targets whose schedule is
+// due and hands each instance's plans to a scheduled worker. The scan never
+// executes a batch itself, so the runner loop stays available for manual requests
+// while the workers run; a full scheduled queue leaves the rest of the pass due for
+// the next tick. A due target may exceed the per-batch limit: its checks are
+// grouped with the target, chunked into batches of at most maxExecutionsPerBatch,
+// and one instance's batches execute serially while at most two instances execute
+// at once.
 //
 // The store's due query selects whole targets in first-due order until the work
 // budget is met, so a target's enabled checks never straddle two scheduler ticks
 // just because the budget fell inside its group.
 func (r *Runner) scanDue(ctx context.Context) {
-	// The planning cost is settings refresh, the quota check, the due-target query,
-	// the chunking, the batch row and the planned execution rows. It deliberately
-	// stops before wp.Wait(): the scans below execute the batches, and including
-	// them would turn this histogram into a copy of batch duration.
+	// The planning cost is settings refresh, the quota check, the due-target query
+	// and the chunking. Executing the batches belongs to the workers, and including
+	// it would turn this histogram into a copy of batch duration.
 	planningStartedAt := time.Now()
 	observePlanning := func() { r.metrics.ObserveQualityDueScan(time.Since(planningStartedAt)) }
 
@@ -481,34 +572,100 @@ func (r *Runner) scanDue(ctx context.Context) {
 		return
 	}
 
-	plans := planDueBatches(pendingTargets, maxExecutionsPerBatch)
-	observePlanning()
-	if len(plans) == 0 {
+	// A target whose instance still has a queued or running group is planned after
+	// that group finishes, so an instance never executes two batches at once.
+	pendingTargets = r.dueTargetsWithoutBusyInstance(pendingTargets)
+	if len(pendingTargets) == 0 {
+		observePlanning()
 		return
 	}
 
-	wp := pool.New().WithMaxGoroutines(maxConcurrentInstanceBatches)
-	for start := 0; start < len(plans); {
-		end := start
-		for end < len(plans) && plans[end].instanceResourceID == plans[start].instanceResourceID {
-			end++
+	groups := groupDueBatchPlans(planDueBatches(pendingTargets, maxExecutionsPerBatch))
+	observePlanning()
+	for _, group := range groups {
+		if !r.submitScheduledGroup(group) {
+			return
 		}
-		// The slice is re-bound on every iteration so each goroutine sees its own
-		// instance's plans; one instance's plans run in order in that goroutine.
-		instancePlans := plans[start:end]
-		wp.Go(func() {
-			for _, plan := range instancePlans {
-				if !r.startScheduledBatch(ctx, plan) {
-					// The instance could not make progress; its remaining due targets
-					// stay due for the next tick instead of each paying another
-					// admission wait in this pass.
-					break
-				}
-			}
-		})
-		start = end
 	}
-	wp.Wait()
+}
+
+// dueTargetInstance attributes a due target to its instance the same way the
+// planner groups plans; a malformed GUID belongs to the empty instance.
+func dueTargetInstance(target *store.DueQualityTarget) string {
+	if target == nil {
+		return ""
+	}
+	instance, ok := common.GetInstanceFromGUID(target.TargetGUID)
+	if !ok {
+		return ""
+	}
+	return instance
+}
+
+// dueTargetsWithoutBusyInstance drops targets whose instance already has a queued
+// or running scheduled group. They stay due and are planned after that group
+// finishes.
+func (r *Runner) dueTargetsWithoutBusyInstance(targets []*store.DueQualityTarget) []*store.DueQualityTarget {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.scheduledInstances) == 0 {
+		return targets
+	}
+	ready := make([]*store.DueQualityTarget, 0, len(targets))
+	for _, target := range targets {
+		if _, busy := r.scheduledInstances[dueTargetInstance(target)]; busy {
+			continue
+		}
+		ready = append(ready, target)
+	}
+	return ready
+}
+
+// groupDueBatchPlans folds the planner's consecutive per-instance plans into the
+// groups a worker executes serially. planDueBatches already orders plans by
+// instance, so this only splits where the instance changes.
+func groupDueBatchPlans(plans []dueBatchPlan) []scheduledGroup {
+	groups := make([]scheduledGroup, 0, len(plans))
+	for _, plan := range plans {
+		if last := len(groups) - 1; last >= 0 && groups[last].instanceResourceID == plan.instanceResourceID {
+			groups[last].plans = append(groups[last].plans, plan)
+			continue
+		}
+		groups = append(groups, scheduledGroup{
+			instanceResourceID: plan.instanceResourceID,
+			plans:              []dueBatchPlan{plan},
+		})
+	}
+	return groups
+}
+
+// submitScheduledGroup reserves the group's instance and hands the group to a
+// worker. It reports false when the queue is full, which leaves the rest of the
+// pass due for the next tick.
+func (r *Runner) submitScheduledGroup(group scheduledGroup) bool {
+	r.mu.Lock()
+	if _, busy := r.scheduledInstances[group.instanceResourceID]; busy {
+		r.mu.Unlock()
+		return false
+	}
+	r.scheduledInstances[group.instanceResourceID] = struct{}{}
+	r.mu.Unlock()
+
+	select {
+	case r.scheduled <- group:
+		return true
+	default:
+		r.releaseScheduledInstance(group.instanceResourceID)
+		return false
+	}
+}
+
+// releaseScheduledInstance frees an instance after its group finished or could not
+// be queued, so the next tick may plan its remaining due targets.
+func (r *Runner) releaseScheduledInstance(instanceResourceID string) {
+	r.mu.Lock()
+	delete(r.scheduledInstances, instanceResourceID)
+	r.mu.Unlock()
 }
 
 // startScheduledBatch creates one internal batch and its planned execution rows,
@@ -516,11 +673,12 @@ func (r *Runner) scanDue(ctx context.Context) {
 // always names a batch; the execution rows themselves are the visible plan.
 //
 // It reports whether the caller may continue with the instance's remaining plans
-// in this pass. A deferral or a store failure returns false because the instance
+// in the group. A deferral or a store failure returns false because the instance
 // is not making progress: trying the next due target on the same instance would
-// only multiply the admission wait (up to scheduledAdmissionWait per target) and
-// hold the runner loop, including the manual queue. The skipped targets stay due
-// and are retried on the next tick.
+// only multiply the admission wait (up to scheduledAdmissionWait per target). The
+// skipped targets stay due and are retried on a later tick. A plan whose target is
+// no longer due (its cycle settled or the user postponed it while the plan waited
+// for a worker) is skipped without executing.
 func (r *Runner) startScheduledBatch(ctx context.Context, plan dueBatchPlan) bool {
 	rules := make([]*store.DueQualityRule, 0, len(plan.rules))
 	for _, rule := range plan.rules {
@@ -528,7 +686,25 @@ func (r *Runner) startScheduledBatch(ctx context.Context, plan dueBatchPlan) boo
 			rules = append(rules, rule)
 		}
 	}
-	if len(rules) == 0 {
+	if len(rules) == 0 || plan.target == nil {
+		return true
+	}
+
+	// The plan may have waited in the scheduled queue while another group finished
+	// its cycle and advanced this target's schedule, or while the user postponed it.
+	// The due query's snapshot is stale by then; executing it would duplicate a
+	// completed cycle or ignore the edit.
+	schedule, err := r.stores.GetQualityTargetSchedule(ctx, plan.target.TargetGUID, plan.target.TargetType)
+	if err != nil {
+		slog.Warn("failed to re-read a due target's schedule; leaving its rules due",
+			slog.String("target", plan.target.TargetGUID),
+			log.WithError(err))
+		return false
+	}
+	dueAt := time.Now().UTC()
+	if schedule == nil || schedule.NextRunAt == nil || schedule.NextRunAt.After(dueAt) {
+		slog.Debug("skipped a scheduled quality batch: its target is no longer due",
+			slog.String("target", plan.target.TargetGUID))
 		return true
 	}
 

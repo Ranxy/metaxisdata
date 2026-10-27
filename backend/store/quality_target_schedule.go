@@ -384,7 +384,6 @@ type dueQualityTargetRow struct {
 	metaType  storepb.MetaType
 	interval  time.Duration
 	firstDue  time.Time
-	firstID   int64
 	ruleCount int32
 }
 
@@ -409,6 +408,47 @@ func selectDueTargets(targets []dueQualityTargetRow, ruleBudget, targetBudget in
 	return selected
 }
 
+// dueQualityTargetsStatement selects the targets one tick may execute. The LIMIT
+// is what bounds the tick's read work after a backlog: the Go-side budget then
+// trims this prefix further, but it never has to aggregate every due target.
+const dueQualityTargetsStatement = `
+	SELECT s.target_guid, s.target_type, s.schedule_interval_seconds, s.next_run_at,
+		(COUNT(r.id))::INT
+	FROM quality_target_schedule s
+	JOIN quality_rule r
+		ON r.target_guid = s.target_guid AND r.target_type = s.target_type
+		AND r.state = $1 AND r.deleted = FALSE
+	WHERE s.next_run_at IS NOT NULL AND s.next_run_at <= $2
+	GROUP BY s.target_guid, s.target_type, s.schedule_interval_seconds, s.next_run_at
+	ORDER BY s.next_run_at ASC, s.target_guid ASC
+	LIMIT $3`
+
+// dueQualityTargetRulesStatement reads the pending rules of the selected targets.
+// It re-checks s.next_run_at <= $7 so a target the user postponed between the two
+// statements is not executed against its stale due snapshot.
+var dueQualityTargetRulesStatement = `
+	SELECT ` + qualifyQualityRuleColumns("r") + `, COALESCE(attempts.count, 0)::INT
+	FROM quality_rule r
+	JOIN unnest($1::text[], $2::int2[]) AS t(guid, object_type)
+		ON r.target_guid = t.guid AND r.target_type = t.object_type
+	JOIN quality_target_schedule s
+		ON s.target_guid = r.target_guid AND s.target_type = r.target_type
+	LEFT JOIN LATERAL (
+		SELECT (COUNT(*))::INT AS count,
+			BOOL_OR(e.state = $4) AS completed
+		FROM quality_execution e
+		WHERE e.rule_id = r.id
+			AND e.target_guid = r.target_guid
+			AND e.target_type = r.target_type
+			AND e.trigger = $5
+			AND e.started_at >= s.next_run_at
+	) AS attempts ON TRUE
+	WHERE r.state = $3 AND r.deleted = FALSE
+		AND s.next_run_at <= $7
+		AND NOT COALESCE(attempts.completed, FALSE)
+		AND COALESCE(attempts.count, 0) < $6
+	ORDER BY r.target_guid ASC, r.target_type ASC, r.id ASC`
+
 // FindDueQualityTargets returns the scheduled targets whose next_run_at has
 // arrived, oldest due first. Each target carries the enabled rules the current
 // cycle still has to attempt: a rule with a completed execution since the cycle
@@ -416,8 +456,9 @@ func selectDueTargets(targets []dueQualityTargetRow, ruleBudget, targetBudget in
 // exhausted. A target can therefore come back with no rules; that means its cycle
 // is settled and the caller only has to advance its schedule.
 //
-// ruleLimit and targetLimit are work budgets: whole targets are taken until
-// either is met, so a target's checks are never cut by a budget.
+// ruleLimit and targetLimit are work budgets: the due-target query returns at most
+// targetLimit rows and whole targets are then taken until either budget is met, so
+// a target's checks are never cut by a budget.
 func (s *Store) FindDueQualityTargets(ctx context.Context, now time.Time, ruleLimit, targetLimit, maxAttempts int) ([]*DueQualityTarget, error) {
 	if ruleLimit <= 0 {
 		return nil, common.Errorf(common.Invalid, "a positive due-rule limit is required")
@@ -429,17 +470,8 @@ func (s *Store) FindDueQualityTargets(ctx context.Context, now time.Time, ruleLi
 		return nil, common.Errorf(common.Invalid, "a positive scheduled-attempt limit is required")
 	}
 
-	targetRows, err := s.GetDB().QueryContext(ctx, `
-		SELECT s.target_guid, s.target_type, s.schedule_interval_seconds, s.next_run_at,
-			(MIN(r.id))::BIGINT, (COUNT(r.id))::INT
-		FROM quality_target_schedule s
-		JOIN quality_rule r
-			ON r.target_guid = s.target_guid AND r.target_type = s.target_type
-			AND r.state = $1 AND r.deleted = FALSE
-		WHERE s.next_run_at IS NOT NULL AND s.next_run_at <= $2
-		GROUP BY s.target_guid, s.target_type, s.schedule_interval_seconds, s.next_run_at
-		ORDER BY s.next_run_at ASC, s.target_guid ASC`,
-		storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED, now)
+	targetRows, err := s.GetDB().QueryContext(ctx, dueQualityTargetsStatement,
+		storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED, now, targetLimit)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to query due quality target schedules")
 	}
@@ -452,7 +484,7 @@ func (s *Store) FindDueQualityTargets(ctx context.Context, now time.Time, ruleLi
 			targetType      int16
 			intervalSeconds int32
 		)
-		if err := targetRows.Scan(&target.guid, &targetType, &intervalSeconds, &target.firstDue, &target.firstID, &target.ruleCount); err != nil {
+		if err := targetRows.Scan(&target.guid, &targetType, &intervalSeconds, &target.firstDue, &target.ruleCount); err != nil {
 			return nil, errors.Wrap(err, "failed to scan a due quality target schedule")
 		}
 		target.metaType = storepb.MetaType(targetType)
@@ -474,32 +506,12 @@ func (s *Store) FindDueQualityTargets(ctx context.Context, now time.Time, ruleLi
 		objectTypes = append(objectTypes, int16(target.metaType))
 	}
 
-	ruleRows, err := s.GetDB().QueryContext(ctx, `
-		SELECT `+qualifyQualityRuleColumns("r")+`, COALESCE(attempts.count, 0)::INT
-		FROM quality_rule r
-		JOIN unnest($1::text[], $2::int2[]) AS t(guid, object_type)
-			ON r.target_guid = t.guid AND r.target_type = t.object_type
-		JOIN quality_target_schedule s
-			ON s.target_guid = r.target_guid AND s.target_type = r.target_type
-		LEFT JOIN LATERAL (
-			SELECT (COUNT(*))::INT AS count,
-				BOOL_OR(e.state = $4) AS completed
-			FROM quality_execution e
-			WHERE e.rule_id = r.id
-				AND e.target_guid = r.target_guid
-				AND e.target_type = r.target_type
-				AND e.trigger = $5
-				AND e.started_at >= s.next_run_at
-		) AS attempts ON TRUE
-		WHERE r.state = $3 AND r.deleted = FALSE
-			AND NOT COALESCE(attempts.completed, FALSE)
-			AND COALESCE(attempts.count, 0) < $6
-		ORDER BY r.target_guid ASC, r.target_type ASC, r.id ASC`,
+	ruleRows, err := s.GetDB().QueryContext(ctx, dueQualityTargetRulesStatement,
 		pq.Array(guids), pq.Array(objectTypes),
 		storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
 		storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED,
 		storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED,
-		maxAttempts)
+		maxAttempts, now)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to query the due targets' quality rules")
 	}

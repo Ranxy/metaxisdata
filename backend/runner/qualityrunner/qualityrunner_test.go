@@ -220,6 +220,87 @@ func TestInflightGuardIsExclusivePerRule(t *testing.T) {
 	require.True(t, runner.acquireInflight(5))
 }
 
+// A due scan hands one group per instance to a worker; the group keeps the
+// planner's order, so an instance's batches run serially.
+func TestGroupDueBatchPlansKeepsInstanceOrder(t *testing.T) {
+	t.Parallel()
+
+	plans := planDueBatches([]*store.DueQualityTarget{
+		dueTargetStub("inst-a;db;public;t1", 1, 2),
+		dueTargetStub("inst-b;db;public;t2", 3),
+		dueTargetStub("inst-a;db;public;t3", 4),
+	}, 10)
+	groups := groupDueBatchPlans(plans)
+
+	require.Len(t, groups, 2)
+	require.Equal(t, "inst-a", groups[0].instanceResourceID)
+	require.Len(t, groups[0].plans, 2, "an instance's plans stay one serial group")
+	require.Equal(t, "inst-b", groups[1].instanceResourceID)
+	require.Empty(t, groupDueBatchPlans(nil))
+}
+
+// An instance whose group is queued or running must not be planned again while it
+// waits, or two of its batches could execute concurrently.
+func TestDueTargetsSkipAnInstanceThatAlreadyHasAGroup(t *testing.T) {
+	t.Parallel()
+
+	runner := &Runner{scheduledInstances: map[string]struct{}{"inst-a": {}}}
+	targets := []*store.DueQualityTarget{
+		dueTargetStub("inst-a;db;public;t1", 1),
+		dueTargetStub("inst-b;db;public;t2", 2),
+		dueTargetStub("not-a-guid", 3),
+	}
+	ready := runner.dueTargetsWithoutBusyInstance(targets)
+	require.Len(t, ready, 2)
+	require.Equal(t, "inst-b;db;public;t2", ready[0].TargetGUID)
+	require.Equal(t, "not-a-guid", ready[1].TargetGUID,
+		"an unattributable target belongs to the empty instance")
+
+	// The malformed target's empty instance can be busy too.
+	runner = &Runner{scheduledInstances: map[string]struct{}{"": {}}}
+	require.Equal(t, []string{"inst-a;db;public;t1", "inst-b;db;public;t2"},
+		func() []string {
+			guids := make([]string, 0, 2)
+			for _, target := range runner.dueTargetsWithoutBusyInstance(targets) {
+				guids = append(guids, target.TargetGUID)
+			}
+			return guids
+		}())
+}
+
+// Submitting reserves the instance; releasing it is what lets the next tick plan
+// its remaining due targets. A full queue must not lose the reservation.
+func TestSubmitScheduledGroupReservesAndReleasesTheInstance(t *testing.T) {
+	t.Parallel()
+
+	runner := &Runner{
+		scheduled:          make(chan scheduledGroup, 1),
+		scheduledInstances: make(map[string]struct{}),
+	}
+	group := scheduledGroup{instanceResourceID: "inst-a", plans: []dueBatchPlan{{instanceResourceID: "inst-a"}}}
+	require.True(t, runner.submitScheduledGroup(group))
+	require.False(t, runner.submitScheduledGroup(scheduledGroup{instanceResourceID: "inst-a"}),
+		"an instance with a queued group is not queued twice")
+	require.False(t, runner.submitScheduledGroup(scheduledGroup{instanceResourceID: "inst-b"}),
+		"a full queue reports failure")
+	require.Len(t, runner.scheduled, 1)
+
+	<-runner.scheduled
+	runner.releaseScheduledInstance("inst-a")
+	require.True(t, runner.submitScheduledGroup(scheduledGroup{instanceResourceID: "inst-a"}))
+}
+
+func TestHasQualityExecutionQueueRoom(t *testing.T) {
+	t.Parallel()
+
+	runner := &Runner{manual: make(chan manualRun, 2)}
+	require.True(t, runner.HasQualityExecutionQueueRoom(2))
+	runner.manual <- manualRun{}
+	require.False(t, runner.HasQualityExecutionQueueRoom(2))
+	require.True(t, runner.HasQualityExecutionQueueRoom(1))
+	require.True(t, runner.HasQualityExecutionQueueRoom(0), "nothing to queue is always fine")
+}
+
 func TestEnqueueQualityExecutionsReportsAFullQueue(t *testing.T) {
 	t.Parallel()
 

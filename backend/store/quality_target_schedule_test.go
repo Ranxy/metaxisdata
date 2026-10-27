@@ -73,3 +73,19 @@ func TestScanQualityTargetSchedule(t *testing.T) {
 	require.Equal(t, time.Hour, paused.ScheduleInterval)
 	require.Nil(t, paused.NextRunAt, "a target with no enabled check has no next run")
 }
+
+// The due scan's read work is bounded by SQL, not only by the Go budget: after a
+// backlog the store must not aggregate every due target, and a target the user
+// postponed between the two statements must not be executed.
+func TestDueQualityTargetStatementsBoundTheWork(t *testing.T) {
+	t.Parallel()
+
+	require.Contains(t, dueQualityTargetsStatement, "LIMIT $3",
+		"the due-target query must not read every due target")
+	require.Contains(t, dueQualityTargetsStatement, "ORDER BY s.next_run_at ASC",
+		"LIMIT is only a prefix of the documented first-due order")
+	require.Contains(t, dueQualityTargetRulesStatement, "s.next_run_at <= $7",
+		"the rule query must re-check that the target is still due")
+	require.Contains(t, dueQualityTargetRulesStatement, "e.started_at >= s.next_run_at",
+		"attempts belong to the target's current cycle")
+}
