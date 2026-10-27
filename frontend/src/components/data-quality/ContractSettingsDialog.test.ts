@@ -93,21 +93,14 @@ describe("ContractSettingsDialog", () => {
     );
   });
 
-  it("prefills the filter, the default schedule and the default severity", async () => {
+  it("prefills the filter and the default severity", async () => {
     const wrapper = mountDialog(
       create(QualityContractSettingsSchema, {
         filter: filterWithRegion(),
-        defaultScheduleIntervalSeconds: 6n * 3600n,
         defaultSeverity: QualitySeverity.ERROR,
       })
     );
     await flushPromises();
-
-    // The stored seconds come back as the largest whole unit the form can show.
-    const schedule = document.querySelector<HTMLInputElement>(
-      "#dq-contract-schedule"
-    );
-    expect(schedule?.value).toBe("6");
 
     // The filter is edited as the same clause rows the rule editor uses.
     const filterEditor = wrapper.findComponent(RuleFilterEditor);
@@ -123,7 +116,10 @@ describe("ContractSettingsDialog", () => {
       { settings: QualityContractSettings },
     ];
     expect(updated.settings.defaultSeverity).toBe(QualitySeverity.ERROR);
-    expect(updated.settings.defaultScheduleIntervalSeconds).toBe(21600n);
+    // Scheduling is the target's, not a contract default.
+    expect(updated.settings).not.toHaveProperty(
+      "defaultScheduleIntervalSeconds"
+    );
     wrapper.unmount();
   });
 
@@ -132,7 +128,6 @@ describe("ContractSettingsDialog", () => {
     mocks.updateQualityContract.mockResolvedValue(contract);
     const wrapper = mountDialog(
       create(QualityContractSettingsSchema, {
-        defaultScheduleIntervalSeconds: 5400n,
         defaultSeverity: QualitySeverity.WARNING,
       })
     );
@@ -151,8 +146,6 @@ describe("ContractSettingsDialog", () => {
     ];
     expect(request.targetGuid).toBe(TABLE);
     expect(request.metaType).toBe(MetaType.TABLE);
-    // 5400 seconds is 90 minutes, the unit the form normalized it into.
-    expect(request.settings.defaultScheduleIntervalSeconds).toBe(5400n);
     expect(request.settings.defaultSeverity).toBe(QualitySeverity.WARNING);
     expect(request.settings.filter?.clauses).toEqual([]);
 
@@ -174,8 +167,7 @@ describe("ContractSettingsDialog", () => {
     const [request] = mocks.updateQualityContract.mock.calls[0] as [
       { settings: QualityContractSettings },
     ];
-    // 0 seconds and UNSPECIFIED are the message's own "no default" values.
-    expect(request.settings.defaultScheduleIntervalSeconds).toBe(0n);
+    // UNSPECIFIED is the message's own "no default" value.
     expect(request.settings.defaultSeverity).toBe(QualitySeverity.UNSPECIFIED);
     wrapper.unmount();
   });

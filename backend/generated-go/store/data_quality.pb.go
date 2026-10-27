@@ -5172,9 +5172,6 @@ type QualityContractSettings struct {
 	// evaluated at compile time, so a contract change affects the next execution
 	// without rewriting the rules.
 	Filter *QualityFilter `protobuf:"bytes,1,opt,name=filter,proto3" json:"filter,omitempty"`
-	// The schedule a newly authored rule starts with; 0 means the workspace default.
-	// It does not rewrite existing rules.
-	DefaultScheduleIntervalSeconds int64 `protobuf:"varint,2,opt,name=default_schedule_interval_seconds,json=defaultScheduleIntervalSeconds,proto3" json:"default_schedule_interval_seconds,omitempty"`
 	// The severity a newly authored rule starts with; UNSPECIFIED means no default.
 	DefaultSeverity QualitySeverity `protobuf:"varint,3,opt,name=default_severity,json=defaultSeverity,proto3,enum=metaxisdata.store.QualitySeverity" json:"default_severity,omitempty"`
 	unknownFields   protoimpl.UnknownFields
@@ -5216,13 +5213,6 @@ func (x *QualityContractSettings) GetFilter() *QualityFilter {
 		return x.Filter
 	}
 	return nil
-}
-
-func (x *QualityContractSettings) GetDefaultScheduleIntervalSeconds() int64 {
-	if x != nil {
-		return x.DefaultScheduleIntervalSeconds
-	}
-	return 0
 }
 
 func (x *QualityContractSettings) GetDefaultSeverity() QualitySeverity {
@@ -5772,11 +5762,10 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"diagnostic\x12J\n" +
 	"\asummary\x18\v \x01(\v20.metaxisdata.store.QualitySuggestionQueueSummaryR\asummary\"f\n" +
 	"\x1bQualitySuggestionJobTargets\x12G\n" +
-	"\atargets\x18\x01 \x03(\v2-.metaxisdata.store.QualitySuggestionJobTargetR\atargets\"\xed\x01\n" +
+	"\atargets\x18\x01 \x03(\v2-.metaxisdata.store.QualitySuggestionJobTargetR\atargets\"\xcb\x01\n" +
 	"\x17QualityContractSettings\x128\n" +
-	"\x06filter\x18\x01 \x01(\v2 .metaxisdata.store.QualityFilterR\x06filter\x12I\n" +
-	"!default_schedule_interval_seconds\x18\x02 \x01(\x03R\x1edefaultScheduleIntervalSeconds\x12M\n" +
-	"\x10default_severity\x18\x03 \x01(\x0e2\".metaxisdata.store.QualitySeverityR\x0fdefaultSeverity\"\xc4\x01\n" +
+	"\x06filter\x18\x01 \x01(\v2 .metaxisdata.store.QualityFilterR\x06filter\x12M\n" +
+	"\x10default_severity\x18\x03 \x01(\x0e2\".metaxisdata.store.QualitySeverityR\x0fdefaultSeverityJ\x04\b\x02\x10\x03R!default_schedule_interval_seconds\"\xc4\x01\n" +
 	"\x17QualityContractSnapshot\x12F\n" +
 	"\bsettings\x18\x01 \x01(\v2*.metaxisdata.store.QualityContractSettingsR\bsettings\x12?\n" +
 	"\x06checks\x18\x02 \x03(\v2'.metaxisdata.store.QualityContractCheckR\x06checks\x12 \n" +

@@ -378,14 +378,6 @@
                     </div>
                     <div>
                       <dt class="text-xs text-muted-foreground">
-                        {{ t("dataQuality.schedule") }}
-                      </dt>
-                      <dd class="mt-0.5 tabular-nums">
-                        {{ formatScheduleInterval(rule.scheduleInterval) }}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt class="text-xs text-muted-foreground">
                         {{ t("dataQuality.editor.filter") }}
                       </dt>
                       <dd class="mt-0.5 break-words">
@@ -609,7 +601,6 @@ import {
   executionDurationSeconds,
   formatObservedValue,
   formatRowCount,
-  formatScheduleInterval,
   formatSeconds,
   formatTargetPath,
   qualityDimensionKey,

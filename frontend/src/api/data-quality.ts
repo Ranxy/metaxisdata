@@ -1,5 +1,5 @@
 import { create } from "@bufbuild/protobuf";
-import type { Timestamp } from "@bufbuild/protobuf/wkt";
+import type { Duration, Timestamp } from "@bufbuild/protobuf/wkt";
 import { FieldMaskSchema } from "@bufbuild/protobuf/wkt";
 import {
   type BatchCreateQualityRuleResult,
@@ -72,6 +72,7 @@ import {
   QualitySuggestionStatus,
   type QualityTarget,
   QualityTargetOrder,
+  type QualityTargetSchedule,
   type QualityTargetSummary,
   RunQualityRulesRequestSchema,
   SuggestColumnLabelsRequestSchema,
@@ -83,6 +84,7 @@ import {
   UpdateQualityIssueRequestSchema,
   UpdateQualityRuleRequestSchema,
   UpdateQualitySuggestionRequestSchema,
+  UpdateQualityTargetScheduleRequestSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { dataQualityClient } from "./client";
@@ -209,6 +211,25 @@ export async function getQualityTarget(options: {
   return await dataQualityClient.getQualityTarget(request, {
     signal: options.signal,
   });
+}
+
+/**
+ * Set a target's one schedule. Every enabled check on the target runs at this
+ * cadence; scheduling is rescheduled from now and does not run the checks.
+ */
+export async function updateQualityTargetSchedule(options: {
+  targetGuid: string;
+  /** UNSPECIFIED lets the server derive it from the target's rules. */
+  metaType?: MetaType;
+  scheduleInterval: Duration;
+}): Promise<QualityTargetSchedule> {
+  const request = create(UpdateQualityTargetScheduleRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    targetGuid: options.targetGuid,
+    metaType: options.metaType ?? MetaType.UNSPECIFIED,
+    scheduleInterval: options.scheduleInterval,
+  });
+  return await dataQualityClient.updateQualityTargetSchedule(request);
 }
 
 // ---- contract ----

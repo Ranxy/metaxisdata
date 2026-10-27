@@ -85,6 +85,12 @@ type QualityTargetMessage struct {
 	// ListQualityTargetRunSummaries.
 	LatestRun *QualityTargetRunSummaryMessage
 	RunCount  int32
+
+	// ScheduleInterval and NextRunAt are the target's own schedule: every enabled
+	// check on the target runs together on this cadence. NextRunAt is nil while
+	// the target has no enabled rule.
+	ScheduleInterval time.Duration
+	NextRunAt        *time.Time
 }
 
 // qualityTargetStatusRank maps a quality status onto the ordering used to pick a
@@ -290,11 +296,14 @@ func (s *Store) ListQualityTargets(ctx context.Context, find *FindQualityTargetM
 	SELECT t.target_guid, t.target_type, t.target_path, t.rule_count, t.enabled_count,
 		t.paused_count, t.column_count, COALESCE(r.worst_rank, 0), r.last_run_time,
 		COALESCE(i.open_issue_count, 0), COALESCE(d.pending_draft_count, 0),
-		COALESCE(d.pending_label_count, 0), COALESCE(t.schema_changed, FALSE)
+		COALESCE(d.pending_label_count, 0), COALESCE(t.schema_changed, FALSE),
+		sch.schedule_interval_seconds, sch.next_run_at
 	FROM targets t
 	LEFT JOIN results r ON r.target_guid = t.target_guid AND r.target_type = t.target_type
 	LEFT JOIN issues i ON i.target_guid = t.target_guid AND i.target_type = t.target_type
 	LEFT JOIN drafts d ON d.target_guid = t.target_guid AND d.target_type = t.target_type
+	LEFT JOIN quality_target_schedule sch
+		ON sch.target_guid = t.target_guid AND sch.target_type = t.target_type
 	WHERE ` + strings.Join(filter, " AND ") + `
 	ORDER BY ` + qualityTargetOrderClause(find.Order)
 	args = append(args, filterArgs...)
@@ -318,20 +327,22 @@ func (s *Store) ListQualityTargets(ctx context.Context, find *FindQualityTargetM
 	targets := []*QualityTargetMessage{}
 	for rows.Next() {
 		var (
-			message      QualityTargetMessage
-			targetGUID   string
-			targetType   int16
-			targetPath   []byte
-			worstRank    int32
-			lastRunTime  sql.NullTime
-			schemaChange bool
+			message         QualityTargetMessage
+			targetGUID      string
+			targetType      int16
+			targetPath      []byte
+			worstRank       int32
+			lastRunTime     sql.NullTime
+			schemaChange    bool
+			scheduleSeconds sql.NullInt32
+			scheduleNext    sql.NullTime
 		)
 		if err := rows.Scan(
 			&targetGUID, &targetType, &targetPath,
 			&message.RuleCount, &message.EnabledCount, &message.PausedCount, &message.ColumnCount,
 			&worstRank, &lastRunTime,
 			&message.OpenIssueCount, &message.PendingDraftCount, &message.PendingLabelCount,
-			&schemaChange,
+			&schemaChange, &scheduleSeconds, &scheduleNext,
 		); err != nil {
 			return nil, errors.Wrap(err, "failed to scan a quality target")
 		}
@@ -339,6 +350,10 @@ func (s *Store) ListQualityTargets(ctx context.Context, find *FindQualityTargetM
 		message.Type = storepb.MetaType(targetType)
 		message.WorstStatus = QualityTargetStatusFromRank(worstRank)
 		message.SchemaChanged = schemaChange
+		message.ScheduleInterval = time.Duration(scheduleSeconds.Int32) * time.Second
+		if scheduleNext.Valid {
+			message.NextRunAt = &scheduleNext.Time
+		}
 		if lastRunTime.Valid {
 			message.LastRunTime = &lastRunTime.Time
 		}

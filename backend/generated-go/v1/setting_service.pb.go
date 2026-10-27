@@ -183,8 +183,9 @@ type DataQualitySetting struct {
 	// How many failed rows a result keeps. Zero means the server default (20);
 	// capped at 100.
 	FailureSampleLimit int32 `protobuf:"varint,4,opt,name=failure_sample_limit,json=failureSampleLimit,proto3" json:"failure_sample_limit,omitempty"`
-	// The schedule interval new rules start with. Zero means the server default
-	// (one hour).
+	// The schedule interval a target starts with when it gets its first rule.
+	// Zero means the server default (one hour). Existing targets keep their own
+	// schedule.
 	DefaultScheduleInterval *durationpb.Duration `protobuf:"bytes,5,opt,name=default_schedule_interval,json=defaultScheduleInterval,proto3" json:"default_schedule_interval,omitempty"`
 	// The workspace's daily execution ceiling; 0 means the server default (10000).
 	DailyExecutionLimit int32 `protobuf:"varint,6,opt,name=daily_execution_limit,json=dailyExecutionLimit,proto3" json:"daily_execution_limit,omitempty"`

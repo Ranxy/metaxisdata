@@ -76,15 +76,6 @@ export declare type QualityRule = Message<"metaxisdata.v1.QualityRule"> & {
   owner: string;
 
   /**
-   * How often the rule runs, between 15m and 7d. Zero is rejected: pausing is
-   * how scheduling stops, and a newly created rule first runs on its next
-   * scheduled slot, not immediately.
-   *
-   * @generated from field: google.protobuf.Duration schedule_interval = 11;
-   */
-  scheduleInterval?: Duration;
-
-  /**
    * The current revision. Every semantic edit increments it and appends a
    * revision row.
    *
@@ -4886,6 +4877,36 @@ export declare type ListQualityTargetsResponse = Message<"metaxisdata.v1.ListQua
 export declare const ListQualityTargetsResponseSchema: GenMessage<ListQualityTargetsResponse>;
 
 /**
+ * QualityTargetSchedule is a target's one schedule: the cadence every enabled
+ * check of the target runs at, and when the target next comes due. Scheduling is
+ * per target, so all of its checks are planned and executed together.
+ *
+ * @generated from message metaxisdata.v1.QualityTargetSchedule
+ */
+export declare type QualityTargetSchedule = Message<"metaxisdata.v1.QualityTargetSchedule"> & {
+  /**
+   * How often the target's enabled checks run, between 15 minutes and 7 days.
+   *
+   * @generated from field: google.protobuf.Duration schedule_interval = 1;
+   */
+  scheduleInterval?: Duration;
+
+  /**
+   * When the scheduler next considers the target due. Unset while the target has
+   * no enabled check.
+   *
+   * @generated from field: google.protobuf.Timestamp next_run_time = 2;
+   */
+  nextRunTime?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityTargetSchedule.
+ * Use `create(QualityTargetScheduleSchema)` to create a new message.
+ */
+export declare const QualityTargetScheduleSchema: GenMessage<QualityTargetSchedule>;
+
+/**
  * QualityTargetSummary is one row of the target directory: the target identity
  * plus the counts and health the row and the workspace header render.
  *
@@ -4985,6 +5006,15 @@ export declare type QualityTargetSummary = Message<"metaxisdata.v1.QualityTarget
    * @generated from field: int32 run_count = 14;
    */
   runCount: number;
+
+  /**
+   * The target's schedule and next run. A target with rules always has a
+   * schedule; a target whose checks are all paused has an interval but no next
+   * run.
+   *
+   * @generated from field: metaxisdata.v1.QualityTargetSchedule schedule = 15;
+   */
+  schedule?: QualityTargetSchedule;
 };
 
 /**
@@ -4992,6 +5022,46 @@ export declare type QualityTargetSummary = Message<"metaxisdata.v1.QualityTarget
  * Use `create(QualityTargetSummarySchema)` to create a new message.
  */
 export declare const QualityTargetSummarySchema: GenMessage<QualityTargetSummary>;
+
+/**
+ * @generated from message metaxisdata.v1.UpdateQualityTargetScheduleRequest
+ */
+export declare type UpdateQualityTargetScheduleRequest = Message<"metaxisdata.v1.UpdateQualityTargetScheduleRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * The target's metadata GUID. Required.
+   *
+   * @generated from field: string target_guid = 2;
+   */
+  targetGuid: string;
+
+  /**
+   * The target's object type. Optional when rules already exist, because their
+   * own target carries it.
+   *
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 3;
+   */
+  metaType: MetaType;
+
+  /**
+   * How often the target's enabled checks run, between 15 minutes and 7 days.
+   *
+   * @generated from field: google.protobuf.Duration schedule_interval = 4;
+   */
+  scheduleInterval?: Duration;
+};
+
+/**
+ * Describes the message metaxisdata.v1.UpdateQualityTargetScheduleRequest.
+ * Use `create(UpdateQualityTargetScheduleRequestSchema)` to create a new message.
+ */
+export declare const UpdateQualityTargetScheduleRequestSchema: GenMessage<UpdateQualityTargetScheduleRequest>;
 
 /**
  * @generated from message metaxisdata.v1.GetQualityTargetRequest
@@ -5228,14 +5298,6 @@ export declare type QualityContractSettings = Message<"metaxisdata.v1.QualityCon
    * @generated from field: metaxisdata.v1.QualityFilter filter = 1;
    */
   filter?: QualityFilter;
-
-  /**
-   * The schedule a newly authored rule starts with; 0 means the workspace default.
-   * Existing rules keep their own interval.
-   *
-   * @generated from field: int64 default_schedule_interval_seconds = 2;
-   */
-  defaultScheduleIntervalSeconds: bigint;
 
   /**
    * The severity a newly authored rule starts with; UNSPECIFIED means no default.
@@ -6793,11 +6855,12 @@ export declare const QualityTargetOrderSchema: GenEnum<QualityTargetOrder>;
  * their executions.
  *
  * A rule observes one target — a table, or one column of it — with a typed
- * check (row count, null percent, uniqueness, accepted values, ...) on a
- * schedule or on demand. An execution is one rule checked once: it is planned
- * asynchronously, executed by the runner, and polled until it reaches a state
- * or an outcome. Batching rules for scheduling is an internal concern and is
- * not exposed as a resource.
+ * check (row count, null percent, uniqueness, accepted values, ...). Scheduling
+ * belongs to the target: every enabled check on a target runs together when the
+ * target's schedule comes due, and a check can also run on demand. An execution
+ * is one rule checked once: it is planned asynchronously, executed by the
+ * runner, and polled until it reaches a state or an outcome. Batching rules for
+ * scheduling is an internal concern and is not exposed as a resource.
  *
  * @generated from service metaxisdata.v1.DataQualityService
  */
@@ -7181,6 +7244,18 @@ export declare const DataQualityService: GenService<{
     output: typeof GetQualityTargetResponseSchema;
   },
   /**
+   * Update one target's schedule: how often its enabled checks run. Scheduling
+   * is per target, so this replaces the per-check schedule; a change takes
+   * effect from the next slot and never runs the target immediately.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.UpdateQualityTargetSchedule
+   */
+  updateQualityTargetSchedule: {
+    methodKind: "unary";
+    input: typeof UpdateQualityTargetScheduleRequestSchema;
+    output: typeof QualityTargetScheduleSchema;
+  },
+  /**
    * Read one target's contract: its target-level defaults, the published version,
    * and whether the live rules differ from that snapshot.
    *
@@ -7193,8 +7268,9 @@ export declare const DataQualityService: GenService<{
   },
   /**
    * Update the target-level defaults. The filter is ANDed into every rule on the
-   * target at compile time; the schedule and severity only seed newly authored
-   * rules and never rewrite an existing rule.
+   * target at compile time; the default severity only seeds newly authored rules
+   * and never rewrites an existing rule. The target's schedule is updated through
+   * UpdateQualityTargetSchedule.
    *
    * @generated from rpc metaxisdata.v1.DataQualityService.UpdateQualityContract
    */

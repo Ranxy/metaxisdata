@@ -22,7 +22,8 @@ const (
 	// MaxFailureSampleLimit is the hard ceiling of a result's sample rows.
 	MaxFailureSampleLimit = 100
 
-	// DefaultScheduleInterval is the interval new rules start with.
+	// DefaultScheduleInterval is the interval a target starts with when it gets
+	// its first rule.
 	DefaultScheduleInterval = time.Hour
 	// MinScheduleInterval and MaxScheduleInterval bound the schedule interval a
 	// workspace may configure.

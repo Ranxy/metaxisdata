@@ -1,5 +1,5 @@
 import { create } from "@bufbuild/protobuf";
-import { timestampFromDate } from "@bufbuild/protobuf/wkt";
+import { DurationSchema, timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
@@ -43,6 +43,8 @@ import {
   type QualityTargetColumn,
   QualityTargetColumnSchema,
   QualityTargetPathSchema,
+  type QualityTargetSchedule,
+  QualityTargetScheduleSchema,
   QualityTargetSchema,
   type QualityTargetSummary,
   QualityTargetSummarySchema,
@@ -51,6 +53,7 @@ import {
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
+import { formatRelativeTime } from "@/utils/datetime";
 import DataQualityTargetPage from "./DataQualityTargetPage.vue";
 
 // Radix opens a select on pointerdown and calls pointer-capture APIs that jsdom
@@ -69,6 +72,7 @@ const mocks = vi.hoisted(() => ({
   runQualityRules: vi.fn(),
   createQualityRule: vi.fn(),
   updateQualityRule: vi.fn(),
+  updateQualityTargetSchedule: vi.fn(),
   previewQualityRule: vi.fn(),
   listAllMetadata: vi.fn(),
   updateQualitySuggestion: vi.fn(),
@@ -86,6 +90,7 @@ vi.mock("@/api/data-quality", async (importOriginal) => ({
   runQualityRules: mocks.runQualityRules,
   createQualityRule: mocks.createQualityRule,
   updateQualityRule: mocks.updateQualityRule,
+  updateQualityTargetSchedule: mocks.updateQualityTargetSchedule,
   previewQualityRule: mocks.previewQualityRule,
   updateQualitySuggestion: mocks.updateQualitySuggestion,
   suggestQualityRule: mocks.suggestQualityRule,
@@ -148,7 +153,6 @@ function ruleFixture(options: {
     config: options.config,
     severity: QualitySeverity.ERROR,
     state: QualityRuleState.ENABLED,
-    scheduleInterval: { seconds: 3600n, nanos: 0 },
     lastResult:
       options.status === undefined
         ? undefined
@@ -209,7 +213,6 @@ function contractFixture(
   options: {
     version?: number;
     changes?: boolean;
-    scheduleSeconds?: bigint;
     severity?: QualitySeverity;
   } = {}
 ): QualityContract {
@@ -221,7 +224,6 @@ function contractFixture(
     checkCount: 3,
     changeSummary: { added: 1, modified: 1, removed: 0 },
     settings: {
-      defaultScheduleIntervalSeconds: options.scheduleSeconds ?? 0n,
       defaultSeverity: options.severity ?? QualitySeverity.UNSPECIFIED,
     },
   });
@@ -238,6 +240,7 @@ function summaryFixture(
     withPath?: boolean;
     latestRun?: QualityRunTarget;
     runCount?: number;
+    schedule?: QualityTargetSchedule;
   } = {}
 ): QualityTargetSummary {
   return create(QualityTargetSummarySchema, {
@@ -266,6 +269,7 @@ function summaryFixture(
     schemaChanged: options.schemaChanged ?? false,
     latestRun: options.latestRun,
     runCount: options.runCount ?? 0,
+    schedule: options.schedule,
   });
 }
 
@@ -294,6 +298,24 @@ function latestRunFixture(
     ruleRevisionMax: options.revision ?? 2,
     startTime: at,
     finishTime: at,
+  });
+}
+
+/** The target's one schedule, as the summary carries it. */
+function targetScheduleFixture(
+  options: { intervalSeconds?: bigint; nextRunInMinutes?: number } = {}
+): QualityTargetSchedule {
+  return create(QualityTargetScheduleSchema, {
+    scheduleInterval: create(DurationSchema, {
+      seconds: options.intervalSeconds ?? 3_600n,
+      nanos: 0,
+    }),
+    nextRunTime:
+      options.nextRunInMinutes === undefined
+        ? undefined
+        : timestampFromDate(
+            new Date(Date.now() + options.nextRunInMinutes * 60_000)
+          ),
   });
 }
 
@@ -557,6 +579,12 @@ describe("DataQualityTargetPage", () => {
       parameters: [],
     });
     mocks.listAllMetadata.mockResolvedValue([]);
+    mocks.updateQualityTargetSchedule.mockImplementation(async (options) =>
+      create(QualityTargetScheduleSchema, {
+        scheduleInterval: options.scheduleInterval,
+        nextRunTime: timestampFromDate(new Date(Date.now() + 3_600_000)),
+      })
+    );
     mocks.updateQualityRule.mockResolvedValue(
       create(QualityRuleSchema, {
         name: RULE_DATASET,
@@ -565,7 +593,6 @@ describe("DataQualityTargetPage", () => {
         target: target(),
         severity: QualitySeverity.ERROR,
         state: QualityRuleState.ENABLED,
-        scheduleInterval: { seconds: 3600n, nanos: 0 },
         config: create(QualityRuleConfigSchema, {
           config: {
             case: "rowCount",
@@ -1027,17 +1054,13 @@ describe("DataQualityTargetPage", () => {
     wrapper.unmount();
   });
 
-  it("hands the contract's defaults to the inline composer", async () => {
+  it("hands the contract's default severity to the inline composer", async () => {
     mocks.getQualityContract.mockResolvedValue(
-      contractFixture({
-        scheduleSeconds: 6n * 3600n,
-        severity: QualitySeverity.ERROR,
-      })
+      contractFixture({ severity: QualitySeverity.ERROR })
     );
     const { wrapper } = await mountPage();
 
     const composer = wrapper.findComponent(TargetRuleComposer);
-    expect(composer.props("defaultScheduleSeconds")).toBe(21600);
     expect(composer.props("defaultSeverity")).toBe(QualitySeverity.ERROR);
     wrapper.unmount();
   });
@@ -1219,7 +1242,6 @@ describe("DataQualityTargetPage", () => {
       target: target(),
       severity: QualitySeverity.ERROR,
       state: QualityRuleState.PAUSED,
-      scheduleInterval: { seconds: 3600n, nanos: 0 },
     });
     wrapper.findComponent(QualityCheckDrawer).vm.$emit("changed", changed);
     await flushPromises();
@@ -1480,6 +1502,120 @@ describe("DataQualityTargetPage", () => {
     );
     // The rest of the workspace is unaffected by the missing batch.
     expect(wrapper.text()).toContain("Row count floor");
+    wrapper.unmount();
+  });
+
+  it("shows the target's schedule and next run in the header", async () => {
+    mocks.getQualityTarget.mockResolvedValue(
+      response({
+        summary: summaryFixture({
+          schedule: targetScheduleFixture({ nextRunInMinutes: 30 }),
+        }),
+      })
+    );
+    const { wrapper } = await mountPage();
+
+    const text = wrapper.text();
+    expect(text).toContain(label("dataQuality.schedule"));
+    // The interval is the compact clock form the rest of the quality surfaces use.
+    expect(text).toContain("1h");
+    expect(text).toContain(
+      label("dataQuality.workspace.nextRun", {
+        time: formatRelativeTime(new Date(Date.now() + 30 * 60_000), "en-US"),
+      })
+    );
+    wrapper.unmount();
+  });
+
+  it("says there is no next run when every check is paused", async () => {
+    mocks.getQualityTarget.mockResolvedValue(
+      response({
+        summary: summaryFixture({
+          schedule: targetScheduleFixture({ intervalSeconds: 900n }),
+        }),
+      })
+    );
+    const { wrapper } = await mountPage();
+
+    expect(wrapper.text()).toContain("15m");
+    expect(wrapper.text()).toContain(label("dataQuality.workspace.noNextRun"));
+    wrapper.unmount();
+  });
+
+  it("edits the target schedule through the RPC and patches the summary", async () => {
+    mocks.getQualityTarget.mockResolvedValue(
+      response({
+        summary: summaryFixture({
+          schedule: targetScheduleFixture({ intervalSeconds: 3_600n }),
+        }),
+      })
+    );
+    const { wrapper } = await mountPage();
+
+    document.body
+      .querySelector<HTMLElement>(
+        `[aria-label="${label("dataQuality.workspace.editSchedule")}"]`
+      )
+      ?.click();
+    await flushPromises();
+    expect(document.body.textContent).toContain(
+      label("dataQuality.workspace.editSchedule")
+    );
+
+    setInput("#dq-target-schedule", "6");
+    await flushPromises();
+    dialogButton(label("common.save"))?.click();
+    await flushPromises();
+
+    // The request names the target and its meta type and carries the interval.
+    expect(mocks.updateQualityTargetSchedule).toHaveBeenCalledTimes(1);
+    const [request] = mocks.updateQualityTargetSchedule.mock.calls[0] as [
+      {
+        targetGuid: string;
+        metaType: MetaType;
+        scheduleInterval: { seconds?: bigint };
+      },
+    ];
+    expect(request.targetGuid).toBe(TARGET);
+    expect(request.metaType).toBe(MetaType.TABLE);
+    expect(Number(request.scheduleInterval.seconds)).toBe(21_600);
+
+    // The returned schedule patches the summary; the header shows the new cadence.
+    expect(wrapper.text()).toContain("6h");
+    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
+  it("rejects an interval outside 15 minutes to 7 days", async () => {
+    mocks.getQualityTarget.mockResolvedValue(
+      response({
+        summary: summaryFixture({
+          schedule: targetScheduleFixture({ intervalSeconds: 3_600n }),
+        }),
+      })
+    );
+    const { wrapper } = await mountPage();
+
+    document.body
+      .querySelector<HTMLElement>(
+        `[aria-label="${label("dataQuality.workspace.editSchedule")}"]`
+      )
+      ?.click();
+    await flushPromises();
+    // The editor opens on the stored unit (hours); zero is never a valid interval.
+    setInput("#dq-target-schedule", "0");
+    await flushPromises();
+
+    expect(document.body.textContent).toContain(
+      label("dataQuality.editor.validation.scheduleInvalid")
+    );
+    const save = dialogButton(label("common.save")) as
+      | HTMLButtonElement
+      | undefined;
+    expect(save?.disabled).toBe(true);
+    save?.click();
+    await flushPromises();
+    expect(mocks.updateQualityTargetSchedule).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 });

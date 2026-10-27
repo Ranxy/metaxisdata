@@ -54,6 +54,7 @@ const (
 	DataQualityService_GetQualityOverview_FullMethodName                 = "/metaxisdata.v1.DataQualityService/GetQualityOverview"
 	DataQualityService_ListQualityTargets_FullMethodName                 = "/metaxisdata.v1.DataQualityService/ListQualityTargets"
 	DataQualityService_GetQualityTarget_FullMethodName                   = "/metaxisdata.v1.DataQualityService/GetQualityTarget"
+	DataQualityService_UpdateQualityTargetSchedule_FullMethodName        = "/metaxisdata.v1.DataQualityService/UpdateQualityTargetSchedule"
 	DataQualityService_GetQualityContract_FullMethodName                 = "/metaxisdata.v1.DataQualityService/GetQualityContract"
 	DataQualityService_UpdateQualityContract_FullMethodName              = "/metaxisdata.v1.DataQualityService/UpdateQualityContract"
 	DataQualityService_PublishQualityContract_FullMethodName             = "/metaxisdata.v1.DataQualityService/PublishQualityContract"
@@ -70,11 +71,12 @@ const (
 // their executions.
 //
 // A rule observes one target — a table, or one column of it — with a typed
-// check (row count, null percent, uniqueness, accepted values, ...) on a
-// schedule or on demand. An execution is one rule checked once: it is planned
-// asynchronously, executed by the runner, and polled until it reaches a state
-// or an outcome. Batching rules for scheduling is an internal concern and is
-// not exposed as a resource.
+// check (row count, null percent, uniqueness, accepted values, ...). Scheduling
+// belongs to the target: every enabled check on a target runs together when the
+// target's schedule comes due, and a check can also run on demand. An execution
+// is one rule checked once: it is planned asynchronously, executed by the
+// runner, and polled until it reaches a state or an outcome. Batching rules for
+// scheduling is an internal concern and is not exposed as a resource.
 type DataQualityServiceClient interface {
 	// List rules, newest first.
 	ListQualityRules(ctx context.Context, in *ListQualityRulesRequest, opts ...grpc.CallOption) (*ListQualityRulesResponse, error)
@@ -182,12 +184,17 @@ type DataQualityServiceClient interface {
 	// part of the response (reading them needs the suggest permission). The target
 	// is named by GUID because a target is not a resource of its own.
 	GetQualityTarget(ctx context.Context, in *GetQualityTargetRequest, opts ...grpc.CallOption) (*GetQualityTargetResponse, error)
+	// Update one target's schedule: how often its enabled checks run. Scheduling
+	// is per target, so this replaces the per-check schedule; a change takes
+	// effect from the next slot and never runs the target immediately.
+	UpdateQualityTargetSchedule(ctx context.Context, in *UpdateQualityTargetScheduleRequest, opts ...grpc.CallOption) (*QualityTargetSchedule, error)
 	// Read one target's contract: its target-level defaults, the published version,
 	// and whether the live rules differ from that snapshot.
 	GetQualityContract(ctx context.Context, in *GetQualityContractRequest, opts ...grpc.CallOption) (*QualityContract, error)
 	// Update the target-level defaults. The filter is ANDed into every rule on the
-	// target at compile time; the schedule and severity only seed newly authored
-	// rules and never rewrite an existing rule.
+	// target at compile time; the default severity only seeds newly authored rules
+	// and never rewrites an existing rule. The target's schedule is updated through
+	// UpdateQualityTargetSchedule.
 	UpdateQualityContract(ctx context.Context, in *UpdateQualityContractRequest, opts ...grpc.CallOption) (*QualityContract, error)
 	// Publish the live rules and settings as the target's next contract version.
 	// Republishing an unchanged contract is a no-op that returns the existing
@@ -561,6 +568,16 @@ func (c *dataQualityServiceClient) GetQualityTarget(ctx context.Context, in *Get
 	return out, nil
 }
 
+func (c *dataQualityServiceClient) UpdateQualityTargetSchedule(ctx context.Context, in *UpdateQualityTargetScheduleRequest, opts ...grpc.CallOption) (*QualityTargetSchedule, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityTargetSchedule)
+	err := c.cc.Invoke(ctx, DataQualityService_UpdateQualityTargetSchedule_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *dataQualityServiceClient) GetQualityContract(ctx context.Context, in *GetQualityContractRequest, opts ...grpc.CallOption) (*QualityContract, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(QualityContract)
@@ -629,11 +646,12 @@ func (c *dataQualityServiceClient) GetQualityLLMUsage(ctx context.Context, in *G
 // their executions.
 //
 // A rule observes one target — a table, or one column of it — with a typed
-// check (row count, null percent, uniqueness, accepted values, ...) on a
-// schedule or on demand. An execution is one rule checked once: it is planned
-// asynchronously, executed by the runner, and polled until it reaches a state
-// or an outcome. Batching rules for scheduling is an internal concern and is
-// not exposed as a resource.
+// check (row count, null percent, uniqueness, accepted values, ...). Scheduling
+// belongs to the target: every enabled check on a target runs together when the
+// target's schedule comes due, and a check can also run on demand. An execution
+// is one rule checked once: it is planned asynchronously, executed by the
+// runner, and polled until it reaches a state or an outcome. Batching rules for
+// scheduling is an internal concern and is not exposed as a resource.
 type DataQualityServiceServer interface {
 	// List rules, newest first.
 	ListQualityRules(context.Context, *ListQualityRulesRequest) (*ListQualityRulesResponse, error)
@@ -741,12 +759,17 @@ type DataQualityServiceServer interface {
 	// part of the response (reading them needs the suggest permission). The target
 	// is named by GUID because a target is not a resource of its own.
 	GetQualityTarget(context.Context, *GetQualityTargetRequest) (*GetQualityTargetResponse, error)
+	// Update one target's schedule: how often its enabled checks run. Scheduling
+	// is per target, so this replaces the per-check schedule; a change takes
+	// effect from the next slot and never runs the target immediately.
+	UpdateQualityTargetSchedule(context.Context, *UpdateQualityTargetScheduleRequest) (*QualityTargetSchedule, error)
 	// Read one target's contract: its target-level defaults, the published version,
 	// and whether the live rules differ from that snapshot.
 	GetQualityContract(context.Context, *GetQualityContractRequest) (*QualityContract, error)
 	// Update the target-level defaults. The filter is ANDed into every rule on the
-	// target at compile time; the schedule and severity only seed newly authored
-	// rules and never rewrite an existing rule.
+	// target at compile time; the default severity only seeds newly authored rules
+	// and never rewrites an existing rule. The target's schedule is updated through
+	// UpdateQualityTargetSchedule.
 	UpdateQualityContract(context.Context, *UpdateQualityContractRequest) (*QualityContract, error)
 	// Publish the live rules and settings as the target's next contract version.
 	// Republishing an unchanged contract is a no-op that returns the existing
@@ -872,6 +895,9 @@ func (UnimplementedDataQualityServiceServer) ListQualityTargets(context.Context,
 }
 func (UnimplementedDataQualityServiceServer) GetQualityTarget(context.Context, *GetQualityTargetRequest) (*GetQualityTargetResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetQualityTarget not implemented")
+}
+func (UnimplementedDataQualityServiceServer) UpdateQualityTargetSchedule(context.Context, *UpdateQualityTargetScheduleRequest) (*QualityTargetSchedule, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateQualityTargetSchedule not implemented")
 }
 func (UnimplementedDataQualityServiceServer) GetQualityContract(context.Context, *GetQualityContractRequest) (*QualityContract, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetQualityContract not implemented")
@@ -1517,6 +1543,24 @@ func _DataQualityService_GetQualityTarget_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataQualityService_UpdateQualityTargetSchedule_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateQualityTargetScheduleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).UpdateQualityTargetSchedule(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_UpdateQualityTargetSchedule_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).UpdateQualityTargetSchedule(ctx, req.(*UpdateQualityTargetScheduleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DataQualityService_GetQualityContract_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetQualityContractRequest)
 	if err := dec(in); err != nil {
@@ -1763,6 +1807,10 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetQualityTarget",
 			Handler:    _DataQualityService_GetQualityTarget_Handler,
+		},
+		{
+			MethodName: "UpdateQualityTargetSchedule",
+			Handler:    _DataQualityService_UpdateQualityTargetSchedule_Handler,
 		},
 		{
 			MethodName: "GetQualityContract",

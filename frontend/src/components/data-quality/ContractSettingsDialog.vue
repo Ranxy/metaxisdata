@@ -41,47 +41,8 @@
             />
           </section>
 
-          <section class="grid gap-4 border-t pt-4 sm:grid-cols-2">
-            <div class="flex flex-col gap-1.5">
-              <Label for="dq-contract-schedule">
-                {{ t("dataQuality.contract.settingsSchedule") }}
-              </Label>
-              <div class="flex gap-2">
-                <FormField
-                  id="dq-contract-schedule"
-                  v-model="schedule.value"
-                  type="number"
-                  class="min-w-0 flex-1"
-                />
-                <Select
-                  :model-value="schedule.unit"
-                  @update:model-value="setScheduleUnit"
-                >
-                  <SelectTrigger
-                    id="dq-contract-schedule-unit"
-                    class="w-32"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="minutes">
-                      {{ t("dataQuality.editor.unitMinutes") }}
-                    </SelectItem>
-                    <SelectItem value="hours">
-                      {{ t("dataQuality.editor.unitHours") }}
-                    </SelectItem>
-                    <SelectItem value="days">
-                      {{ t("dataQuality.editor.unitDays") }}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <p class="text-sm text-muted-foreground">
-                {{ t("dataQuality.contract.settingsScheduleHint") }}
-              </p>
-            </div>
-
-            <div class="flex flex-col gap-1.5">
+          <section class="border-t pt-4">
+            <div class="flex flex-col gap-1.5 sm:max-w-xs">
               <Label for="dq-contract-severity">
                 {{ t("dataQuality.contract.settingsSeverity") }}
               </Label>
@@ -131,7 +92,6 @@
 
 <script setup lang="ts">
 import { create } from "@bufbuild/protobuf";
-import { DurationSchema } from "@bufbuild/protobuf/wkt";
 import { AlertTriangle } from "lucide-vue-next";
 import { ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -148,7 +108,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import FormField from "@/components/ui/form-field/FormField.vue";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -170,21 +129,17 @@ import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { qualitySeverityKey } from "@/utils/dataQuality";
 import {
   buildFilter,
-  durationToSchedule,
   type FilterClauseForm,
-  type ScheduleUnit,
-  scheduleToDuration,
   type TargetColumnDetail,
 } from "@/utils/dataQualityForm";
 
 /**
- * The target-level defaults: one filter ANDed into every rule, and the schedule
- * and severity a newly authored rule starts with.
+ * The target-level defaults: one filter ANDed into every rule, and the severity a
+ * newly authored check starts with. Scheduling is the target's own and is edited
+ * from the workspace, not here.
  *
  * The server replaces the whole settings message, so this dialog always sends a
  * complete one — a cleared field is a cleared default, not an untouched one.
- * Existing rules keep their own schedule and severity; only the filter changes
- * what they judge.
  */
 
 const props = defineProps<{
@@ -203,10 +158,6 @@ const { t } = useI18n();
 const { formatError } = useErrorMessage();
 
 const clauses = ref<FilterClauseForm[]>([]);
-const schedule = ref<{ value: string; unit: ScheduleUnit }>({
-  value: "",
-  unit: "hours",
-});
 const severity = ref<QualitySeverity>(QualitySeverity.UNSPECIFIED);
 const columns = ref<TargetColumnDetail[]>([]);
 const error = ref("");
@@ -233,20 +184,10 @@ function clausesFromFilter(
 function reset() {
   const settings = props.settings;
   clauses.value = clausesFromFilter(settings?.filter);
-  schedule.value = durationToSchedule(
-    create(DurationSchema, {
-      seconds: settings?.defaultScheduleIntervalSeconds ?? 0n,
-      nanos: 0,
-    })
-  );
   severity.value = settings?.defaultSeverity ?? QualitySeverity.UNSPECIFIED;
   columns.value = [];
   error.value = "";
   saving.value = false;
-}
-
-function setScheduleUnit(value: unknown) {
-  schedule.value.unit = String(value) as ScheduleUnit;
 }
 
 function setSeverity(value: unknown) {
@@ -315,8 +256,6 @@ async function save() {
   try {
     const settings = create(QualityContractSettingsSchema, {
       filter: buildFilter(clauses.value),
-      defaultScheduleIntervalSeconds: scheduleToDuration(schedule.value)
-        .seconds,
       defaultSeverity: severity.value,
     });
     const updated = await updateQualityContract({

@@ -42,8 +42,20 @@ CREATE TABLE IF NOT EXISTS quality_rule (
     deleted BOOLEAN NOT NULL DEFAULT FALSE
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_rule_resource_id ON quality_rule(resource_id);
-CREATE INDEX IF NOT EXISTS idx_quality_rule_due ON quality_rule(next_run_at)
-    WHERE state = 1 AND deleted = FALSE;
+-- The chain-replay gate applies this historical incremental on top of LATEST.sql,
+-- where scheduling has since moved to quality_target_schedule and the column is
+-- gone; only create the due index when the column still exists.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema() AND table_name = 'quality_rule'
+            AND column_name = 'next_run_at'
+    ) THEN
+        CREATE INDEX IF NOT EXISTS idx_quality_rule_due ON quality_rule(next_run_at)
+            WHERE state = 1 AND deleted = FALSE;
+    END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS idx_quality_rule_target ON quality_rule(target_guid, target_type);
 CREATE INDEX IF NOT EXISTS idx_quality_rule_owner ON quality_rule(owner_id);
 CREATE INDEX IF NOT EXISTS idx_quality_rule_tags ON quality_rule USING GIN(tags);

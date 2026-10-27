@@ -44,8 +44,6 @@ import {
   MAX_FILTER_CLAUSES,
   MAX_FILTER_VALUES,
   MAX_NULL_VALUES,
-  MAX_SCHEDULE_MINUTES,
-  MIN_SCHEDULE_MINUTES,
   ON_EMPTY_IRRELEVANT_RULE_TYPES,
   parseValueList,
   RULE_TYPE_GROUPS,
@@ -61,6 +59,7 @@ import {
   trimmed,
   VALIDATION_PREFIX,
   validateRuleForm,
+  validateScheduleInterval,
 } from "./dataQualityForm";
 
 // The representative values every config arm needs, so a round trip exercises
@@ -523,7 +522,6 @@ describe("config conversion", () => {
       expect(back.description).toBe(form.description);
       expect(back.owner).toBe("users/7");
       expect(back.tags).toBe("orders, revenue");
-      expect(back.schedule).toEqual({ value: "1", unit: "hours" });
       expect(back.filter).toEqual(form.filter);
       expect(rule.target?.columns).toEqual(columnsForConfig(form));
     }
@@ -547,7 +545,6 @@ describe("config conversion", () => {
       const rule = formToRule(emptyRuleForm(ruleType));
       const back = ruleToForm(rule);
       expect(back.config, String(ruleType)).toEqual(emptyConfig());
-      expect(back.schedule).toEqual({ value: "1", unit: "hours" });
     }
   });
 
@@ -642,10 +639,18 @@ describe("schema drift nullability", () => {
   });
 });
 
-describe("schedule defaults", () => {
-  it("keeps a new rule's default of one hour", () => {
-    expect(emptyRuleForm().schedule).toEqual({ value: "1", unit: "hours" });
-    expect(scheduleToDuration(emptyRuleForm().schedule).seconds).toBe(3_600n);
+describe("target schedule helpers", () => {
+  it("validates the interval bounds the server accepts", () => {
+    expect(validateScheduleInterval({ value: "14", unit: "minutes" })).toEqual([
+      { key: `${VALIDATION_PREFIX}scheduleInvalid` },
+    ]);
+    expect(validateScheduleInterval({ value: "15", unit: "minutes" })).toEqual(
+      []
+    );
+    expect(validateScheduleInterval({ value: "7", unit: "days" })).toEqual([]);
+    expect(validateScheduleInterval({ value: "8", unit: "days" })).toHaveLength(
+      1
+    );
   });
 });
 
@@ -708,11 +713,6 @@ describe("update mask", () => {
         form.tags = "only";
       })
     ).toEqual(["tags"]);
-    expect(
-      changed((form) => {
-        form.schedule = { value: "2", unit: "hours" };
-      })
-    ).toEqual(["schedule_interval"]);
   });
 
   it("treats a config, filter, metric or empty-behaviour edit as a config change", () => {
@@ -825,28 +825,12 @@ describe("validation", () => {
     }
   });
 
-  it("requires a title, a target and a usable schedule", () => {
+  it("requires a title and a target", () => {
     const form = validForm(QualityRuleType.ROW_COUNT);
     form.title = "  ";
     const issues = validateRuleForm(form, undefined).map((issue) => issue.key);
     expect(issues).toContain(`${VALIDATION_PREFIX}titleRequired`);
     expect(issues).toContain(`${VALIDATION_PREFIX}targetRequired`);
-
-    form.schedule = { value: "14", unit: "minutes" };
-    expect(validateRuleForm(form, TARGET).map((issue) => issue.key)).toContain(
-      `${VALIDATION_PREFIX}scheduleInvalid`
-    );
-    form.schedule = {
-      value: String(MAX_SCHEDULE_MINUTES + 1),
-      unit: "minutes",
-    };
-    expect(validateRuleForm(form, TARGET).map((issue) => issue.key)).toContain(
-      `${VALIDATION_PREFIX}scheduleInvalid`
-    );
-    form.schedule = { value: String(MIN_SCHEDULE_MINUTES), unit: "minutes" };
-    expect(
-      validateRuleForm(form, TARGET).map((issue) => issue.key)
-    ).not.toContain(`${VALIDATION_PREFIX}scheduleInvalid`);
   });
 
   it("requires each rule type's own parameters", () => {

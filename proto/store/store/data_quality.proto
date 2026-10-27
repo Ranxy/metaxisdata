@@ -842,11 +842,14 @@ message QualityContractSettings {
   // evaluated at compile time, so a contract change affects the next execution
   // without rewriting the rules.
   QualityFilter filter = 1;
-  // The schedule a newly authored rule starts with; 0 means the workspace default.
-  // It does not rewrite existing rules.
-  int64 default_schedule_interval_seconds = 2;
   // The severity a newly authored rule starts with; UNSPECIFIED means no default.
   QualitySeverity default_severity = 3;
+
+  // The per-rule default schedule was replaced by the target's own schedule
+  // (quality_target_schedule); stored payloads may still carry the old key and
+  // are read with unknown fields discarded.
+  reserved 2;
+  reserved "default_schedule_interval_seconds";
 }
 
 // QualityContractSnapshot is what a published contract version records: the

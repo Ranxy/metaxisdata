@@ -20,11 +20,12 @@ option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
 // their executions.
 //
 // A rule observes one target — a table, or one column of it — with a typed
-// check (row count, null percent, uniqueness, accepted values, ...) on a
-// schedule or on demand. An execution is one rule checked once: it is planned
-// asynchronously, executed by the runner, and polled until it reaches a state
-// or an outcome. Batching rules for scheduling is an internal concern and is
-// not exposed as a resource.
+// check (row count, null percent, uniqueness, accepted values, ...). Scheduling
+// belongs to the target: every enabled check on a target runs together when the
+// target's schedule comes due, and a check can also run on demand. An execution
+// is one rule checked once: it is planned asynchronously, executed by the
+// runner, and polled until it reaches a state or an outcome. Batching rules for
+// scheduling is an internal concern and is not exposed as a resource.
 service DataQualityService {
   // List rules, newest first.
   rpc ListQualityRules(ListQualityRulesRequest) returns (ListQualityRulesResponse) {
@@ -343,6 +344,18 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
   }
 
+  // Update one target's schedule: how often its enabled checks run. Scheduling
+  // is per target, so this replaces the per-check schedule; a change takes
+  // effect from the next slot and never runs the target immediately.
+  rpc UpdateQualityTargetSchedule(UpdateQualityTargetScheduleRequest) returns (QualityTargetSchedule) {
+    option (google.api.http) = {
+      post: "/v1/{parent=workspaces/*}/qualityTargets:updateSchedule"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.update";
+  }
+
   // Read one target's contract: its target-level defaults, the published version,
   // and whether the live rules differ from that snapshot.
   rpc GetQualityContract(GetQualityContractRequest) returns (QualityContract) {
@@ -351,8 +364,9 @@ service DataQualityService {
   }
 
   // Update the target-level defaults. The filter is ANDed into every rule on the
-  // target at compile time; the schedule and severity only seed newly authored
-  // rules and never rewrite an existing rule.
+  // target at compile time; the default severity only seeds newly authored rules
+  // and never rewrites an existing rule. The target's schedule is updated through
+  // UpdateQualityTargetSchedule.
   rpc UpdateQualityContract(UpdateQualityContractRequest) returns (QualityContract) {
     option (google.api.http) = {
       post: "/v1/{parent=workspaces/*}/qualityContracts:update"
@@ -689,11 +703,6 @@ message QualityRule {
   // Format: users/{user}. Empty when the rule has no owner.
   string owner = 10 [(google.api.resource_reference) = {type: "metaxisdata/User"}];
 
-  // How often the rule runs, between 15m and 7d. Zero is rejected: pausing is
-  // how scheduling stops, and a newly created rule first runs on its next
-  // scheduled slot, not immediately.
-  google.protobuf.Duration schedule_interval = 11;
-
   // The current revision. Every semantic edit increments it and appends a
   // revision row.
   int32 revision = 12 [(google.api.field_behavior) = OUTPUT_ONLY];
@@ -719,6 +728,11 @@ message QualityRule {
   google.protobuf.Timestamp mute_until = 18;
 
   repeated string tags = 19;
+
+  // Scheduling is a property of the target, not of one rule: see
+  // QualityTargetSchedule and UpdateQualityTargetSchedule.
+  reserved 11;
+  reserved "schedule_interval";
 }
 
 // QualityTarget is what a rule observes.
@@ -2387,6 +2401,18 @@ message ListQualityTargetsResponse {
   string next_page_token = 2;
 }
 
+// QualityTargetSchedule is a target's one schedule: the cadence every enabled
+// check of the target runs at, and when the target next comes due. Scheduling is
+// per target, so all of its checks are planned and executed together.
+message QualityTargetSchedule {
+  // How often the target's enabled checks run, between 15 minutes and 7 days.
+  google.protobuf.Duration schedule_interval = 1;
+
+  // When the scheduler next considers the target due. Unset while the target has
+  // no enabled check.
+  google.protobuf.Timestamp next_run_time = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
 // QualityTargetSummary is one row of the target directory: the target identity
 // plus the counts and health the row and the workspace header render.
 message QualityTargetSummary {
@@ -2428,6 +2454,26 @@ message QualityTargetSummary {
 
   // How many dispatch batches have planned at least one check for this target.
   int32 run_count = 14;
+
+  // The target's schedule and next run. A target with rules always has a
+  // schedule; a target whose checks are all paused has an interval but no next
+  // run.
+  QualityTargetSchedule schedule = 15;
+}
+
+message UpdateQualityTargetScheduleRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The target's metadata GUID. Required.
+  string target_guid = 2 [(google.api.field_behavior) = REQUIRED];
+
+  // The target's object type. Optional when rules already exist, because their
+  // own target carries it.
+  MetaType meta_type = 3;
+
+  // How often the target's enabled checks run, between 15 minutes and 7 days.
+  google.protobuf.Duration schedule_interval = 4 [(google.api.field_behavior) = REQUIRED];
 }
 
 message GetQualityTargetRequest {
@@ -2517,11 +2563,13 @@ message QualityContract {
 message QualityContractSettings {
   // Applied to every rule on the target, ANDed with the rule's own filter.
   QualityFilter filter = 1;
-  // The schedule a newly authored rule starts with; 0 means the workspace default.
-  // Existing rules keep their own interval.
-  int64 default_schedule_interval_seconds = 2;
   // The severity a newly authored rule starts with; UNSPECIFIED means no default.
   QualitySeverity default_severity = 3;
+
+  // The per-rule default schedule was replaced by the target's schedule; see
+  // UpdateQualityTargetSchedule.
+  reserved 2;
+  reserved "default_schedule_interval_seconds";
 }
 
 // QualityContractChangeSummary counts how the live rules differ from the

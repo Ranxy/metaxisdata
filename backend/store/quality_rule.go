@@ -21,7 +21,7 @@ import (
 // order scanQualityRule consumes it.
 const qualityRuleColumns = `id, resource_id, title, description, dimension, rule_type,
 	target_guid, target_type, target_path, target_meta_hash, config, severity, state,
-	owner_id, tags, schedule_interval_seconds, next_run_at, mute_until, revision,
+	owner_id, tags, mute_until, revision,
 	created_by, updated_by, created_at, updated_at, deleted`
 
 // qualityRuleRevisionColumns is the column list every quality_rule_revision read
@@ -51,12 +51,6 @@ type QualityRuleMessage struct {
 	// OwnerID is the principal id of the rule's owner; nil means unassigned.
 	OwnerID *int32
 	Tags    []string
-	// ScheduleInterval is how often a scheduled run considers the rule. The
-	// column stores whole seconds.
-	ScheduleInterval time.Duration
-	// NextRunAt is when the scheduler next considers the rule due; nil means the
-	// rule is not scheduled.
-	NextRunAt *time.Time
 	// MuteUntil suppresses rule-level issue notifications until it passes. The
 	// rule is still executed and its results are still recorded.
 	MuteUntil *time.Time
@@ -142,12 +136,10 @@ type UpdateQualityRuleMessage struct {
 	Severity       *storepb.QualitySeverity
 	State          *storepb.QualityRuleState
 	// OwnerID uses 0 to clear the owner (NULL); principals have ids above 0.
-	OwnerID          *int32
-	Tags             *[]string
-	ScheduleInterval *time.Duration
-	// NextRunAt and MuteUntil use a nil or zero time to clear the column to NULL,
-	// because the columns are nullable and an edit must be able to unset them.
-	NextRunAt *time.Time
+	OwnerID *int32
+	Tags    *[]string
+	// MuteUntil uses a nil or zero time to clear the column to NULL, because the
+	// column is nullable and an edit must be able to unset it.
 	MuteUntil *time.Time
 	UpdatedBy *int32
 	// ExpectedRevision is an optimistic-concurrency guard: when set and the head's
@@ -167,16 +159,14 @@ type qualityRuleScanner interface {
 // revision/state columns map straight onto the store enums.
 func scanQualityRule(row qualityRuleScanner) (*QualityRuleMessage, error) {
 	var (
-		msg             QualityRuleMessage
-		targetPathJSON  []byte
-		configJSON      []byte
-		ownerID         sql.NullInt32
-		tags            pq.StringArray
-		intervalSeconds int32
-		nextRunAt       sql.NullTime
-		muteUntil       sql.NullTime
-		createdBy       sql.NullInt32
-		updatedBy       sql.NullInt32
+		msg            QualityRuleMessage
+		targetPathJSON []byte
+		configJSON     []byte
+		ownerID        sql.NullInt32
+		tags           pq.StringArray
+		muteUntil      sql.NullTime
+		createdBy      sql.NullInt32
+		updatedBy      sql.NullInt32
 	)
 	if err := row.Scan(
 		&msg.ID,
@@ -194,8 +184,6 @@ func scanQualityRule(row qualityRuleScanner) (*QualityRuleMessage, error) {
 		&msg.State,
 		&ownerID,
 		&tags,
-		&intervalSeconds,
-		&nextRunAt,
 		&muteUntil,
 		&msg.Revision,
 		&createdBy,
@@ -217,8 +205,6 @@ func scanQualityRule(row qualityRuleScanner) (*QualityRuleMessage, error) {
 	}
 	msg.OwnerID = qualityRuleInt32(ownerID)
 	msg.Tags = []string(tags)
-	msg.ScheduleInterval = time.Duration(intervalSeconds) * time.Second
-	msg.NextRunAt = qualityRuleTime(nextRunAt)
 	msg.MuteUntil = qualityRuleTime(muteUntil)
 	msg.CreatedBy = qualityRuleInt32(createdBy)
 	msg.UpdatedBy = qualityRuleInt32(updatedBy)
@@ -310,8 +296,8 @@ func qualityRuleTime(v sql.NullTime) *time.Time {
 }
 
 // qualityRuleWriteTime maps a nullable timestamp patch to the driver argument.
-// nil and the zero time both write NULL so a caller can clear next_run_at or
-// mute_until through the same pointer field.
+// nil and the zero time both write NULL so a caller can clear mute_until through
+// the same pointer field.
 func qualityRuleWriteTime(t *time.Time) any {
 	if t == nil || t.IsZero() {
 		return nil
@@ -451,8 +437,8 @@ func buildQualityRuleWhere(find *FindQualityRuleMessage) (string, []any, error) 
 
 // qualityRuleSemanticChanged reports whether the patch changes the rule
 // definition. Only a definition change bumps the revision and appends a
-// revision row; display metadata, severity, state, owner, tags and schedule are
-// head-only edits.
+// revision row; display metadata, severity, state, owner and tags are head-only
+// edits.
 func qualityRuleSemanticChanged(current *QualityRuleMessage, patch *UpdateQualityRuleMessage) bool {
 	if patch.Dimension != nil && *patch.Dimension != current.Dimension {
 		return true
@@ -481,9 +467,11 @@ func qualityRuleSemanticChanged(current *QualityRuleMessage, patch *UpdateQualit
 // CreateQualityRule inserts a rule head and its first revision row in one
 // transaction. The caller provides the public resource id: it names the API
 // resource and is never reused, so the store must not derive it from the row id.
-// The returned message is the stored row, not the input, so database defaults
-// (timestamps, state) are reflected.
-func (s *Store) CreateQualityRule(ctx context.Context, rule *QualityRuleMessage) (*QualityRuleMessage, error) {
+// targetScheduleInterval seeds the target's schedule row when the target has no
+// schedule yet; an existing target keeps its cadence. The returned message is the
+// stored row, not the input, so database defaults (timestamps, state) are
+// reflected.
+func (s *Store) CreateQualityRule(ctx context.Context, rule *QualityRuleMessage, targetScheduleInterval time.Duration) (*QualityRuleMessage, error) {
 	if rule == nil {
 		return nil, common.Errorf(common.Invalid, "a quality rule is required")
 	}
@@ -506,8 +494,8 @@ func (s *Store) CreateQualityRule(ctx context.Context, rule *QualityRuleMessage)
 	if rule.TargetType == storepb.MetaType_UNSPECIFIED {
 		return nil, common.Errorf(common.Invalid, "quality rule target type is required")
 	}
-	if rule.ScheduleInterval < 0 {
-		return nil, common.Errorf(common.Invalid, "quality rule schedule interval must not be negative")
+	if targetScheduleInterval <= 0 {
+		return nil, common.Errorf(common.Invalid, "a target schedule interval is required")
 	}
 	state := rule.State
 	if state == storepb.QualityRuleState_QUALITY_RULE_STATE_UNSPECIFIED {
@@ -537,7 +525,6 @@ func (s *Store) CreateQualityRule(ctx context.Context, rule *QualityRuleMessage)
 	if tags == nil {
 		tags = []string{}
 	}
-	intervalSeconds := int32(rule.ScheduleInterval / time.Second)
 
 	tx, err := s.GetDB().BeginTx(ctx, nil)
 	if err != nil {
@@ -549,11 +536,10 @@ func (s *Store) CreateQualityRule(ctx context.Context, rule *QualityRuleMessage)
 		INSERT INTO quality_rule (
 			resource_id, title, description, dimension, rule_type, target_guid,
 			target_type, target_path, target_meta_hash, config, severity, state,
-			owner_id, tags, schedule_interval_seconds, next_run_at, mute_until,
-			revision, created_by, updated_by
+			owner_id, tags, mute_until, revision, created_by, updated_by
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-			$16, $17, $18, $19, $20
+			$16, $17, $18
 		) RETURNING `+qualityRuleColumns,
 		resourceID,
 		strings.TrimSpace(rule.Title),
@@ -569,8 +555,6 @@ func (s *Store) CreateQualityRule(ctx context.Context, rule *QualityRuleMessage)
 		state,
 		qualityRuleWriteInt32(rule.OwnerID),
 		pq.Array(tags),
-		intervalSeconds,
-		qualityRuleWriteTime(rule.NextRunAt),
 		qualityRuleWriteTime(rule.MuteUntil),
 		1,
 		qualityRuleWriteInt32(rule.CreatedBy),
@@ -595,6 +579,14 @@ func (s *Store) CreateQualityRule(ctx context.Context, rule *QualityRuleMessage)
 		created.Severity, configJSON, qualityRuleWriteInt32(rule.CreatedBy),
 	); err != nil {
 		return nil, errors.Wrap(err, "failed to create quality rule revision")
+	}
+
+	// The new rule is visible inside this transaction, so the target schedule sees
+	// it as enabled and starts its timer when the target had none. An existing
+	// target keeps its next slot: a new check joins the next run, it does not
+	// schedule one of its own.
+	if _, err := ensureQualityTargetSchedule(ctx, tx, created.TargetGUID, created.TargetType, targetScheduleInterval, time.Now().UTC()); err != nil {
+		return nil, err
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -700,9 +692,6 @@ func (s *Store) UpdateQualityRule(ctx context.Context, resourceID string, patch 
 	if patch.State != nil && !qualityRuleStateIsValid(*patch.State) {
 		return nil, common.Errorf(common.Invalid, "quality rule state %v is not valid", *patch.State)
 	}
-	if patch.ScheduleInterval != nil && *patch.ScheduleInterval < 0 {
-		return nil, common.Errorf(common.Invalid, "quality rule schedule interval must not be negative")
-	}
 
 	tx, err := s.GetDB().BeginTx(ctx, nil)
 	if err != nil {
@@ -795,14 +784,6 @@ func (s *Store) UpdateQualityRule(ctx context.Context, resourceID string, patch 
 		}
 		args = append(args, pq.Array(tags))
 		sets = append(sets, fmt.Sprintf("tags = $%d", len(args)))
-	}
-	if v := patch.ScheduleInterval; v != nil {
-		args = append(args, int32(*v/time.Second))
-		sets = append(sets, fmt.Sprintf("schedule_interval_seconds = $%d", len(args)))
-	}
-	if v := patch.NextRunAt; v != nil {
-		args = append(args, qualityRuleWriteTime(v))
-		sets = append(sets, fmt.Sprintf("next_run_at = $%d", len(args)))
 	}
 	if v := patch.MuteUntil; v != nil {
 		args = append(args, qualityRuleWriteTime(v))
@@ -905,142 +886,6 @@ func (s *Store) ArchiveQualityRule(ctx context.Context, resourceID string, updat
 		return nil, common.Errorf(common.NotFound, "quality rule %q not found", resourceID)
 	}
 	return existing, nil
-}
-
-// FindDueQualityRules returns the enabled, non-deleted rules whose next_run_at
-// has arrived, oldest due first. limit is required and bounds one scheduler tick.
-// dueQualityTarget is one target's due-rule aggregate: when its first rule is due,
-// how many rules are due, and the first rule id as a stable tie-breaker.
-type dueQualityTarget struct {
-	guid      string
-	metaType  storepb.MetaType
-	firstDue  time.Time
-	firstID   int64
-	ruleCount int32
-}
-
-// selectDueTargets takes whole targets in first-due order until the rule budget
-// is met. The target that crosses the budget is included whole, so the result may
-// exceed the budget by at most that target's due-rule count; a target's due rules
-// never straddle two scheduler ticks because of the budget.
-func selectDueTargets(targets []dueQualityTarget, budget int) []dueQualityTarget {
-	if budget <= 0 || len(targets) == 0 {
-		return nil
-	}
-	selected := make([]dueQualityTarget, 0, len(targets))
-	rules := 0
-	for _, target := range targets {
-		selected = append(selected, target)
-		rules += int(target.ruleCount)
-		if rules >= budget {
-			break
-		}
-	}
-	return selected
-}
-
-// FindDueQualityRules returns the enabled, non-deleted rules whose next_run_at
-// has arrived, oldest due first. limit is a target-complete work budget: targets
-// are taken in first-due order until the budget is met, and every due rule of a
-// selected target is returned. A target's rules are therefore never cut by the
-// budget; the result may exceed limit by at most one target's due-rule count.
-func (s *Store) FindDueQualityRules(ctx context.Context, now time.Time, limit int) ([]*QualityRuleMessage, error) {
-	if limit <= 0 {
-		return nil, common.Errorf(common.Invalid, "a positive due-rule limit is required")
-	}
-
-	targetRows, err := s.GetDB().QueryContext(ctx, `
-		SELECT target_guid, target_type, MIN(next_run_at), MIN(id), (COUNT(*))::INT
-		FROM quality_rule
-		WHERE state = $1 AND deleted = FALSE AND next_run_at IS NOT NULL AND next_run_at <= $2
-		GROUP BY target_guid, target_type
-		ORDER BY MIN(next_run_at) ASC, MIN(id) ASC`,
-		storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED, now)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to query due quality rule targets")
-	}
-	defer targetRows.Close()
-
-	targets := make([]dueQualityTarget, 0)
-	for targetRows.Next() {
-		var target dueQualityTarget
-		var targetType int16
-		if err := targetRows.Scan(&target.guid, &targetType, &target.firstDue, &target.firstID, &target.ruleCount); err != nil {
-			return nil, errors.Wrap(err, "failed to scan a due quality rule target")
-		}
-		target.metaType = storepb.MetaType(targetType)
-		targets = append(targets, target)
-	}
-	if err := targetRows.Err(); err != nil {
-		return nil, errors.Wrap(err, "rows iteration error for due quality rule targets")
-	}
-
-	selected := selectDueTargets(targets, limit)
-	if len(selected) == 0 {
-		return []*QualityRuleMessage{}, nil
-	}
-	guids := make([]string, 0, len(selected))
-	objectTypes := make([]int16, 0, len(selected))
-	for _, target := range selected {
-		guids = append(guids, target.guid)
-		objectTypes = append(objectTypes, int16(target.metaType))
-	}
-
-	rows, err := s.GetDB().QueryContext(ctx, `
-		SELECT `+qualityRuleColumns+`
-		FROM quality_rule r
-		JOIN unnest($1::text[], $2::int2[]) AS t(guid, object_type)
-			ON r.target_guid = t.guid AND r.target_type = t.object_type
-		WHERE r.state = $3 AND r.deleted = FALSE
-			AND r.next_run_at IS NOT NULL AND r.next_run_at <= $4
-		ORDER BY r.next_run_at ASC, r.id ASC`,
-		pq.Array(guids), pq.Array(objectTypes),
-		storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED, now)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to query due quality rules")
-	}
-	defer rows.Close()
-
-	var result []*QualityRuleMessage
-	for rows.Next() {
-		msg, err := scanQualityRule(rows)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to scan due quality rule")
-		}
-		result = append(result, msg)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, errors.Wrap(err, "rows iteration error for due quality rules")
-	}
-	return result, nil
-}
-
-// AdvanceQualityRuleNextRun stamps when the scheduler should consider the rule
-// next. Only the schedule columns change: execution never bumps the definition
-// revision.
-func (s *Store) AdvanceQualityRuleNextRun(ctx context.Context, ruleID int64, nextRunAt time.Time) error {
-	if ruleID <= 0 {
-		return common.Errorf(common.Invalid, "a quality rule id is required")
-	}
-	if nextRunAt.IsZero() {
-		return common.Errorf(common.Invalid, "a next run time is required")
-	}
-
-	result, err := s.GetDB().ExecContext(ctx, `
-		UPDATE quality_rule
-		SET next_run_at = $2, updated_at = NOW()
-		WHERE id = $1`, ruleID, nextRunAt)
-	if err != nil {
-		return errors.Wrap(err, "failed to advance quality rule next run")
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return errors.Wrap(err, "failed to get rows affected for the quality rule next run update")
-	}
-	if affected == 0 {
-		return common.Errorf(common.NotFound, "quality rule %d not found", ruleID)
-	}
-	return nil
 }
 
 // ListQualityRuleRevisions lists a rule's definition history, newest revision

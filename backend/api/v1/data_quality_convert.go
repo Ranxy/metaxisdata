@@ -179,16 +179,6 @@ func durationFromMilliseconds(milliseconds int32) *durationpb.Duration {
 	return durationpb.New(time.Duration(milliseconds) * time.Millisecond)
 }
 
-// resolveCreateScheduleInterval applies the workspace default to a new rule whose
-// request left schedule_interval unset. A rule always runs on a schedule; pausing
-// is how it stops, so there is no "no interval" state to store.
-func resolveCreateScheduleInterval(requested time.Duration, settings dataquality.Settings) time.Duration {
-	if requested > 0 {
-		return requested
-	}
-	return settings.DefaultScheduleInterval
-}
-
 // errLoadQualitySettings maps a settings read failure onto the RPC's error space.
 func errLoadQualitySettings(err error) error {
 	if common.ErrorCode(err) != common.Internal {
@@ -200,7 +190,7 @@ func errLoadQualitySettings(err error) error {
 // validateQualityScheduleInterval enforces the accepted scheduling range.
 func validateQualityScheduleInterval(interval time.Duration) error {
 	if interval == 0 {
-		return connectErrorInvalid("schedule_interval is required: a rule runs on a schedule between 15m and 7d")
+		return connectErrorInvalid("schedule_interval is required: a target runs its checks between 15m and 7d apart")
 	}
 	if interval < minQualityScheduleInterval || interval > maxQualityScheduleInterval {
 		return connectErrorInvalid("schedule_interval %s is outside the accepted range 15m–7d", interval)
@@ -323,6 +313,18 @@ func convertQualityTargetPathToV1(path *storepb.QualityTargetPath) *v1pb.Quality
 	}
 }
 
+// convertQualityTargetSchedule converts one target's schedule row. The next run
+// is read-only and stays unset while the target has no enabled rule.
+func convertQualityTargetSchedule(schedule *store.QualityTargetScheduleMessage) *v1pb.QualityTargetSchedule {
+	if schedule == nil {
+		return nil
+	}
+	return &v1pb.QualityTargetSchedule{
+		ScheduleInterval: durationpb.New(schedule.ScheduleInterval),
+		NextRunTime:      timeToProtoTimestampPtr(schedule.NextRunAt),
+	}
+}
+
 // convertQualityTargetFromRule builds the target a rule message exposes: the
 // identity from the rule head and the columns its config reads.
 func convertQualityTargetFromRule(rule *store.QualityRuleMessage) *v1pb.QualityTarget {
@@ -345,22 +347,21 @@ func convertQualityRule(workspaceID string, rule *store.QualityRuleMessage) *v1p
 		return nil
 	}
 	return &v1pb.QualityRule{
-		Name:             formatQualityRuleName(workspaceID, rule.ResourceID),
-		Title:            rule.Title,
-		Description:      rule.Description,
-		Dimension:        v1pb.QualityDimension(rule.Dimension),
-		RuleType:         v1pb.QualityRuleType(rule.RuleType),
-		Target:           convertQualityTargetFromRule(rule),
-		Config:           convertQualityRuleConfigToV1(rule.Config),
-		Severity:         v1pb.QualitySeverity(rule.Severity),
-		State:            v1pb.QualityRuleState(rule.State),
-		Owner:            formatQualityOwner(rule.OwnerID),
-		ScheduleInterval: durationpb.New(rule.ScheduleInterval),
-		Revision:         rule.Revision,
-		CreateTime:       timestamppb.New(rule.CreatedAt),
-		UpdateTime:       timestamppb.New(rule.UpdatedAt),
-		MuteUntil:        timestampOrNil(rule.MuteUntil),
-		Tags:             append([]string(nil), rule.Tags...),
+		Name:        formatQualityRuleName(workspaceID, rule.ResourceID),
+		Title:       rule.Title,
+		Description: rule.Description,
+		Dimension:   v1pb.QualityDimension(rule.Dimension),
+		RuleType:    v1pb.QualityRuleType(rule.RuleType),
+		Target:      convertQualityTargetFromRule(rule),
+		Config:      convertQualityRuleConfigToV1(rule.Config),
+		Severity:    v1pb.QualitySeverity(rule.Severity),
+		State:       v1pb.QualityRuleState(rule.State),
+		Owner:       formatQualityOwner(rule.OwnerID),
+		Revision:    rule.Revision,
+		CreateTime:  timestamppb.New(rule.CreatedAt),
+		UpdateTime:  timestamppb.New(rule.UpdatedAt),
+		MuteUntil:   timestampOrNil(rule.MuteUntil),
+		Tags:        append([]string(nil), rule.Tags...),
 	}
 }
 
@@ -541,9 +542,13 @@ type qualityRuleUpdate struct {
 	// or config: the merged definition must be revalidated and its path/hash
 	// refreshed.
 	DefinitionChanged bool
-	// ScheduleChanged and StateChanged decide whether next_run_at is recomputed.
-	ScheduleChanged bool
-	StateChanged    bool
+	// StateChanged decides whether the target's schedule must be reconciled after
+	// the update: pausing the last enabled rule clears its next run, and enabling
+	// the first one schedules it one interval out.
+	StateChanged bool
+	// TargetMoved is set when the mask changes target.meta_guid, so the schedule of
+	// both the old and the new target must be reconciled.
+	TargetMoved bool
 }
 
 // parseQualityRuleUpdate turns the update mask into a store patch. It is pure so
@@ -589,6 +594,7 @@ func parseQualityRuleUpdate(rule *v1pb.QualityRule, paths []string) (*qualityRul
 			update.Patch.TargetGUID = &guid
 			update.Patch.TargetType = &metaType
 			update.DefinitionChanged = true
+			update.TargetMoved = true
 		case "config":
 			config := convertQualityRuleConfigFromV1(rule.GetConfig())
 			if config == nil {
@@ -624,13 +630,6 @@ func parseQualityRuleUpdate(rule *v1pb.QualityRule, paths []string) (*qualityRul
 		case "tags":
 			tags := append([]string(nil), rule.GetTags()...)
 			update.Patch.Tags = &tags
-		case "schedule_interval":
-			interval := rule.GetScheduleInterval().AsDuration()
-			if err := validateQualityScheduleInterval(interval); err != nil {
-				return nil, err
-			}
-			update.Patch.ScheduleInterval = &interval
-			update.ScheduleChanged = true
 		case "mute_until":
 			mutedUntil := time.Time{}
 			if rule.GetMuteUntil() != nil {

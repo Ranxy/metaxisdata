@@ -46,26 +46,7 @@
             <div class="text-sm font-medium">
               {{ t("dataQuality.suggestions.batchCreate.commonTitle") }}
             </div>
-            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div class="flex flex-col gap-1.5">
-                <Label for="dq-batch-interval">
-                  {{ t("dataQuality.suggestions.batchCreate.interval") }}
-                </Label>
-                <Select v-model="interval">
-                  <SelectTrigger id="dq-batch-interval">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem
-                      v-for="value in INTERVAL_VALUES"
-                      :key="value"
-                      :value="value"
-                    >
-                      {{ intervalLabel(value) }}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <div class="flex flex-col gap-1.5">
                 <Label for="dq-batch-severity">
                   {{ t("dataQuality.suggestions.batchCreate.severity") }}
@@ -396,49 +377,6 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const { formatError } = useErrorMessage();
 
-type ScheduleInterval =
-  | "default"
-  | "900"
-  | "1800"
-  | "3600"
-  | "21600"
-  | "43200"
-  | "86400"
-  | "604800";
-
-const INTERVAL_VALUES: ScheduleInterval[] = [
-  "default",
-  "900",
-  "1800",
-  "3600",
-  "21600",
-  "43200",
-  "86400",
-  "604800",
-];
-
-/** The interval select's label; static t() keys so both i18n checks see them. */
-function intervalLabel(value: ScheduleInterval): string {
-  switch (value) {
-    case "default":
-      return t("dataQuality.suggestions.batchCreate.intervalDefault");
-    case "900":
-      return t("dataQuality.suggestions.batchCreate.interval15m");
-    case "1800":
-      return t("dataQuality.suggestions.batchCreate.interval30m");
-    case "3600":
-      return t("dataQuality.suggestions.batchCreate.interval1h");
-    case "21600":
-      return t("dataQuality.suggestions.batchCreate.interval6h");
-    case "43200":
-      return t("dataQuality.suggestions.batchCreate.interval12h");
-    case "86400":
-      return t("dataQuality.suggestions.batchCreate.interval1d");
-    case "604800":
-      return t("dataQuality.suggestions.batchCreate.interval7d");
-  }
-}
-
 const severityOptions: Array<{ value: QualitySeverity; key: string }> = [
   { value: Severity.WARNING, key: "dataQuality.severity.warning" },
   { value: Severity.ERROR, key: "dataQuality.severity.error" },
@@ -465,7 +403,6 @@ interface BatchRow {
   columns: TargetColumnDetail[];
 }
 
-const interval = ref<ScheduleInterval>("default");
 const severity = ref("keep");
 const dimension = ref("keep");
 const owner = ref("");
@@ -528,7 +465,6 @@ watch(
 );
 
 function reset() {
-  interval.value = "default";
   severity.value = "keep";
   dimension.value = "keep";
   owner.value = "";
@@ -620,9 +556,6 @@ function setRowSeverity(row: BatchRow, value: unknown) {
 /** The common overrides, minus severity (a row's own choice wins). */
 function commonOverrides(): SuggestionBatchOverrides {
   const overrides: SuggestionBatchOverrides = { owner: owner.value };
-  if (interval.value !== "default") {
-    overrides.scheduleIntervalSeconds = Number(interval.value);
-  }
   if (severity.value !== "keep") {
     overrides.severity = Number(severity.value);
   }

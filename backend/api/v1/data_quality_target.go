@@ -7,6 +7,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
@@ -125,6 +126,46 @@ func (s *DataQualityService) ListQualityTargets(ctx context.Context, req *connec
 		response.QualityTargets = append(response.QualityTargets, convertQualityTargetSummary(workspaceID, target))
 	}
 	return connect.NewResponse(response), nil
+}
+
+// UpdateQualityTargetSchedule replaces one target's schedule: every enabled
+// check on the target runs together on this cadence. A change reschedules the
+// target from now instead of running it immediately; a target with no enabled
+// check keeps the interval but no next run.
+func (s *DataQualityService) UpdateQualityTargetSchedule(ctx context.Context, req *connect.Request[v1pb.UpdateQualityTargetScheduleRequest]) (*connect.Response[v1pb.QualityTargetSchedule], error) {
+	if _, err := s.workspaceID(ctx, req.Msg.GetParent()); err != nil {
+		return nil, err
+	}
+	targetGUID := strings.TrimSpace(req.Msg.GetTargetGuid())
+	if targetGUID == "" {
+		return nil, connectErrorInvalid("target_guid is required")
+	}
+	interval := req.Msg.GetScheduleInterval().AsDuration()
+	if err := validateQualityScheduleInterval(interval); err != nil {
+		return nil, err
+	}
+	metaType := storepb.MetaType(req.Msg.GetMetaType())
+	if metaType == storepb.MetaType_UNSPECIFIED {
+		rules, err := s.store.ListQualityRules(ctx, &store.FindQualityRuleMessage{TargetGUID: &targetGUID})
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to read the target's quality rules")
+		}
+		if len(rules) == 0 {
+			return nil, connectErrorInvalid("meta_type is required when the target has no rules")
+		}
+		metaType = rules[0].TargetType
+	}
+	now := time.Now().UTC()
+	// A target with rules always has a schedule row; ensuring first keeps the
+	// update working for a target whose row predates this model.
+	if _, err := s.store.EnsureQualityTargetSchedule(ctx, targetGUID, metaType, interval, now); err != nil {
+		return nil, err
+	}
+	schedule, err := s.store.UpdateQualityTargetSchedule(ctx, targetGUID, metaType, interval, now)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(convertQualityTargetSchedule(schedule)), nil
 }
 
 // qualityTargetRequestedPageSize resolves the page size for a directory request:
@@ -286,6 +327,11 @@ func (s *DataQualityService) GetQualityTarget(ctx context.Context, req *connect.
 		}
 	}
 	summary.ColumnCount = int32(len(columns))
+	schedule, err := s.store.GetQualityTargetSchedule(ctx, targetGUID, metaType)
+	if err != nil {
+		return nil, err
+	}
+	summary.Schedule = convertQualityTargetSchedule(schedule)
 	runKey := store.MetaGUIDKey{GUID: targetGUID, ObjectType: metaType}
 	runSummaries, err := s.store.ListQualityTargetRunSummaries(ctx, []store.MetaGUIDKey{runKey})
 	if err != nil {
@@ -397,6 +443,12 @@ func convertQualityTargetSummary(workspaceID string, target *store.QualityTarget
 		SchemaChanged:     target.SchemaChanged,
 		Orphaned:          target.Orphaned,
 		RunCount:          target.RunCount,
+	}
+	if target.ScheduleInterval > 0 {
+		summary.Schedule = &v1pb.QualityTargetSchedule{
+			ScheduleInterval: durationpb.New(target.ScheduleInterval),
+			NextRunTime:      timeToProtoTimestampPtr(target.NextRunAt),
+		}
 	}
 	if target.LatestRun != nil {
 		summary.LatestRun = convertQualityRunTarget(workspaceID, target.LatestRun.Run, target.LatestRun.Slice)

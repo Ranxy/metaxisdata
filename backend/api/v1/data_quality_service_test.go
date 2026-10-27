@@ -8,7 +8,6 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
@@ -67,28 +66,27 @@ func TestParseQualityRuleUpdateFieldMapping(t *testing.T) {
 
 	mutedUntil := time.Date(2026, time.October, 10, 0, 0, 0, 0, time.UTC)
 	rule := &v1pb.QualityRule{
-		Title:            "new title",
-		Description:      "new description",
-		Dimension:        v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
-		RuleType:         v1pb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
-		Target:           &v1pb.QualityTarget{MetaGuid: "instance_1;shop;public;orders", MetaType: v1pb.MetaType_TABLE},
-		Config:           &v1pb.QualityRuleConfig{Config: &v1pb.QualityRuleConfig_NullPercent{NullPercent: &v1pb.NullPercentConfig{Column: "email", MaxNullPct: qualityTestPtr(0.5)}}},
-		Severity:         v1pb.QualitySeverity_QUALITY_SEVERITY_ERROR,
-		State:            v1pb.QualityRuleState_QUALITY_RULE_STATE_PAUSED,
-		Owner:            "users/7",
-		Tags:             []string{"pii"},
-		ScheduleInterval: durationpb.New(2 * time.Hour),
-		MuteUntil:        timestamppb.New(mutedUntil),
+		Title:       "new title",
+		Description: "new description",
+		Dimension:   v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+		RuleType:    v1pb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+		Target:      &v1pb.QualityTarget{MetaGuid: "instance_1;shop;public;orders", MetaType: v1pb.MetaType_TABLE},
+		Config:      &v1pb.QualityRuleConfig{Config: &v1pb.QualityRuleConfig_NullPercent{NullPercent: &v1pb.NullPercentConfig{Column: "email", MaxNullPct: qualityTestPtr(0.5)}}},
+		Severity:    v1pb.QualitySeverity_QUALITY_SEVERITY_ERROR,
+		State:       v1pb.QualityRuleState_QUALITY_RULE_STATE_PAUSED,
+		Owner:       "users/7",
+		Tags:        []string{"pii"},
+		MuteUntil:   timestamppb.New(mutedUntil),
 	}
 
 	update, err := parseQualityRuleUpdate(rule, []string{
 		"title", "description", "dimension", "rule_type", "target", "config",
-		"severity", "state", "owner", "tags", "schedule_interval", "mute_until",
+		"severity", "state", "owner", "tags", "mute_until",
 	})
 	require.NoError(t, err)
 	require.True(t, update.DefinitionChanged)
-	require.True(t, update.ScheduleChanged)
 	require.True(t, update.StateChanged)
+	require.True(t, update.TargetMoved, "the target mask names a new target")
 
 	require.Equal(t, "new title", *update.Patch.Title)
 	require.Equal(t, "new description", *update.Patch.Description)
@@ -102,7 +100,6 @@ func TestParseQualityRuleUpdateFieldMapping(t *testing.T) {
 	require.Equal(t, storepb.QualityRuleState_QUALITY_RULE_STATE_PAUSED, *update.Patch.State)
 	require.Equal(t, int32(7), *update.Patch.OwnerID)
 	require.Equal(t, []string{"pii"}, *update.Patch.Tags)
-	require.Equal(t, 2*time.Hour, *update.Patch.ScheduleInterval)
 	require.Equal(t, mutedUntil, *update.Patch.MuteUntil)
 }
 
@@ -112,7 +109,6 @@ func TestParseQualityRuleUpdateEmptyMaskChangesNothing(t *testing.T) {
 	update, err := parseQualityRuleUpdate(&v1pb.QualityRule{Name: "workspaces/ws1/qualityRules/rule1"}, nil)
 	require.NoError(t, err)
 	require.False(t, update.DefinitionChanged)
-	require.False(t, update.ScheduleChanged)
 	require.False(t, update.StateChanged)
 	require.Nil(t, update.Patch.Title)
 	require.Nil(t, update.Patch.Config)
@@ -168,16 +164,6 @@ func TestParseQualityRuleUpdateRejectsUnusableValues(t *testing.T) {
 			name:  "invalid owner",
 			rule:  &v1pb.QualityRule{Owner: "nobody"},
 			paths: []string{"owner"},
-		},
-		{
-			name:  "zero schedule interval",
-			rule:  &v1pb.QualityRule{ScheduleInterval: durationpb.New(0)},
-			paths: []string{"schedule_interval"},
-		},
-		{
-			name:  "schedule interval too short",
-			rule:  &v1pb.QualityRule{ScheduleInterval: durationpb.New(5 * time.Minute)},
-			paths: []string{"schedule_interval"},
 		},
 	}
 	for _, testCase := range cases {

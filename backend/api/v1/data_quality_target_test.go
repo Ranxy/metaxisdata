@@ -109,6 +109,7 @@ func TestConvertQualityTargetSummary(t *testing.T) {
 	t.Parallel()
 
 	finishedAt := time.Date(2026, time.October, 7, 9, 30, 0, 0, time.UTC)
+	nextRun := time.Date(2026, time.October, 7, 10, 0, 0, 0, time.UTC)
 	summary := convertQualityTargetSummary("ws1", &store.QualityTargetMessage{
 		GUID:              "instance-1;shop;public;orders",
 		Type:              storepb.MetaType_TABLE,
@@ -124,6 +125,8 @@ func TestConvertQualityTargetSummary(t *testing.T) {
 		SchemaChanged:     true,
 		Orphaned:          true,
 		RunCount:          2,
+		ScheduleInterval:  2 * time.Hour,
+		NextRunAt:         &nextRun,
 		LatestRun: &store.QualityTargetRunSummaryMessage{
 			TargetGUID: "instance-1;shop;public;orders",
 			TargetType: storepb.MetaType_TABLE,
@@ -166,6 +169,8 @@ func TestConvertQualityTargetSummary(t *testing.T) {
 	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_FAIL, summary.GetLatestRun().GetOutcome())
 	require.Equal(t, int32(1), summary.GetLatestRun().GetRuleRevisionMin())
 	require.Equal(t, int32(2), summary.GetLatestRun().GetRuleRevisionMax())
+	require.Equal(t, 2*time.Hour, summary.GetSchedule().GetScheduleInterval().AsDuration())
+	require.Equal(t, nextRun, summary.GetSchedule().GetNextRunTime().AsTime())
 
 	// A target that has never run carries zero values rather than an empty slice.
 	never := convertQualityTargetSummary("ws1", &store.QualityTargetMessage{
@@ -173,4 +178,5 @@ func TestConvertQualityTargetSummary(t *testing.T) {
 	})
 	require.Equal(t, int32(0), never.GetRunCount())
 	require.Nil(t, never.GetLatestRun())
+	require.Nil(t, never.GetSchedule(), "a target without a schedule row has no schedule")
 }

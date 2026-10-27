@@ -4568,8 +4568,9 @@ paths:
                 - DataQualityService
             description: |-
                 Update the target-level defaults. The filter is ANDed into every rule on the
-                 target at compile time; the schedule and severity only seed newly authored
-                 rules and never rewrite an existing rule.
+                 target at compile time; the default severity only seeds newly authored rules
+                 and never rewrites an existing rule. The target's schedule is updated through
+                 UpdateQualityTargetSchedule.
             operationId: DataQualityService_UpdateQualityContract
             parameters:
                 - name: workspace
@@ -6151,6 +6152,41 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/GetQualityTargetResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityTargets:updateSchedule:
+        post:
+            tags:
+                - DataQualityService
+            description: |-
+                Update one target's schedule: how often its enabled checks run. Scheduling
+                 is per target, so this replaces the per-check schedule; a change takes
+                 effect from the next slot and never runs the target immediately.
+            operationId: DataQualityService_UpdateQualityTargetSchedule
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UpdateQualityTargetScheduleRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityTargetSchedule'
                 default:
                     description: Default error response
                     content:
@@ -10743,11 +10779,6 @@ components:
                     allOf:
                         - $ref: '#/components/schemas/QualityFilter'
                     description: Applied to every rule on the target, ANDed with the rule's own filter.
-                defaultScheduleIntervalSeconds:
-                    type: string
-                    description: |-
-                        The schedule a newly authored rule starts with; 0 means the workspace default.
-                         Existing rules keep their own interval.
                 defaultSeverity:
                     enum:
                         - QUALITY_SEVERITY_UNSPECIFIED
@@ -11233,13 +11264,6 @@ components:
                 owner:
                     type: string
                     description: 'Format: users/{user}. Empty when the rule has no owner.'
-                scheduleInterval:
-                    pattern: ^-?(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,9})?s$
-                    type: string
-                    description: |-
-                        How often the rule runs, between 15m and 7d. Zero is rejected: pausing is
-                         how scheduling stops, and a newly created rule first runs on its next
-                         scheduled slot, not immediately.
                 revision:
                     readOnly: true
                     type: integer
@@ -11854,6 +11878,24 @@ components:
             description: |-
                 QualityTargetPath is the display snapshot of where a target lived when the
                  rule was saved.
+        QualityTargetSchedule:
+            type: object
+            properties:
+                scheduleInterval:
+                    pattern: ^-?(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,9})?s$
+                    type: string
+                    description: How often the target's enabled checks run, between 15 minutes and 7 days.
+                nextRunTime:
+                    readOnly: true
+                    type: string
+                    description: |-
+                        When the scheduler next considers the target due. Unset while the target has
+                         no enabled check.
+                    format: date-time
+            description: |-
+                QualityTargetSchedule is a target's one schedule: the cadence every enabled
+                 check of the target runs at, and when the target next comes due. Scheduling is
+                 per target, so all of its checks are planned and executed together.
         QualityTargetSummary:
             type: object
             properties:
@@ -11926,6 +11968,13 @@ components:
                     type: integer
                     description: How many dispatch batches have planned at least one check for this target.
                     format: int32
+                schedule:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityTargetSchedule'
+                    description: |-
+                        The target's schedule and next run. A target with rules always has a
+                         schedule; a target whose checks are all paused has an interval but no next
+                         run.
             description: |-
                 QualityTargetSummary is one row of the target directory: the target identity
                  plus the counts and health the row and the workspace header render.
@@ -13364,6 +13413,48 @@ components:
                 decisionNote:
                     type: string
                     description: Why it was decided, shown in the review history.
+        UpdateQualityTargetScheduleRequest:
+            required:
+                - parent
+                - targetGuid
+                - scheduleInterval
+            type: object
+            properties:
+                parent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
+                targetGuid:
+                    type: string
+                    description: The target's metadata GUID. Required.
+                metaType:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - APPLICATION_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - OPENLINEAGE
+                    type: string
+                    description: |-
+                        The target's object type. Optional when rules already exist, because their
+                         own target carries it.
+                    format: enum
+                scheduleInterval:
+                    pattern: ^-?(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,9})?s$
+                    type: string
+                    description: How often the target's enabled checks run, between 15 minutes and 7 days.
         User:
             type: object
             properties:
@@ -13576,11 +13667,12 @@ tags:
          their executions.
 
          A rule observes one target — a table, or one column of it — with a typed
-         check (row count, null percent, uniqueness, accepted values, ...) on a
-         schedule or on demand. An execution is one rule checked once: it is planned
-         asynchronously, executed by the runner, and polled until it reaches a state
-         or an outcome. Batching rules for scheduling is an internal concern and is
-         not exposed as a resource.
+         check (row count, null percent, uniqueness, accepted values, ...). Scheduling
+         belongs to the target: every enabled check on a target runs together when the
+         target's schedule comes due, and a check can also run on demand. An execution
+         is one rule checked once: it is planned asynchronously, executed by the
+         runner, and polled until it reaches a state or an outcome. Batching rules for
+         scheduling is an internal concern and is not exposed as a resource.
     - name: DatabaseService
     - name: EnvironmentService
       description: |-

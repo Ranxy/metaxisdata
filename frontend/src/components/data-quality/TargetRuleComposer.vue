@@ -146,8 +146,8 @@
               </div>
             </section>
 
-            <!-- How the check is scheduled and graded: the fields every check has,
-                 independent of its type. -->
+            <!-- How the check is graded: the fields every check has, independent
+                 of its type. Scheduling belongs to the target workspace. -->
             <section class="space-y-3 border-t pt-4">
               <h3 class="text-base font-medium">
                 {{ t("dataQuality.editor.basicsTitle") }}
@@ -199,44 +199,9 @@
                   </Select>
                 </div>
 
-                <div class="flex flex-col gap-1.5 sm:col-span-2">
-                  <Label for="dq-composer-schedule">
-                    {{ t("dataQuality.editor.schedule") }}
-                  </Label>
-                  <div class="flex gap-2">
-                    <FormField
-                      id="dq-composer-schedule"
-                      v-model="form.schedule.value"
-                      type="number"
-                      class="min-w-0 flex-1"
-                    />
-                    <Select
-                      :model-value="form.schedule.unit"
-                      @update:model-value="setScheduleUnit"
-                    >
-                      <SelectTrigger
-                        id="dq-composer-schedule-unit"
-                        class="w-32"
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="minutes">
-                          {{ t("dataQuality.editor.unitMinutes") }}
-                        </SelectItem>
-                        <SelectItem value="hours">
-                          {{ t("dataQuality.editor.unitHours") }}
-                        </SelectItem>
-                        <SelectItem value="days">
-                          {{ t("dataQuality.editor.unitDays") }}
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <p class="text-sm text-muted-foreground">
-                    {{ t("dataQuality.editor.scheduleHint") }}
-                  </p>
-                </div>
+                <p class="text-sm text-muted-foreground sm:col-span-2">
+                  {{ t("dataQuality.composer.targetScheduleHint") }}
+                </p>
               </div>
             </section>
 
@@ -351,8 +316,6 @@
 </template>
 
 <script setup lang="ts">
-import { create } from "@bufbuild/protobuf";
-import { DurationSchema } from "@bufbuild/protobuf/wkt";
 import { AlertTriangle } from "lucide-vue-next";
 import { computed, nextTick, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -408,7 +371,6 @@ import {
 import {
   allowedRuleTypes,
   computeUpdateMask,
-  durationToSchedule,
   emptyConfig,
   emptyRuleForm,
   formToRule,
@@ -416,7 +378,6 @@ import {
   isThresholdMetricType,
   type RuleFormState,
   ruleToForm,
-  type ScheduleUnit,
   suggestedDimension,
   type TargetColumnDetail,
   type TargetSelection,
@@ -524,11 +485,6 @@ const props = withDefaults(
     rule?: QualityRule;
     /** An AI draft to prefill from; saving accepts it in the same request. */
     suggestion?: QualitySuggestion;
-    /**
-     * The contract's default schedule for new rules, in seconds. 0 keeps the form's
-     * own default; existing rules are never affected, only this new one.
-     */
-    defaultScheduleSeconds?: number;
     /** The contract's default severity for new rules; UNSPECIFIED keeps the form's. */
     defaultSeverity?: QualitySeverity;
     /** Where the workspace opened the dialog from, which seeds the check type. */
@@ -542,7 +498,6 @@ const props = withDefaults(
     columnDetails?: TargetColumnDetail[];
   }>(),
   {
-    defaultScheduleSeconds: 0,
     defaultSeverity: QualitySeverity.UNSPECIFIED,
     initialColumn: "",
     columnDetails: () => [],
@@ -696,7 +651,6 @@ function initialRuleType(): QualityRuleType {
 function cloneForm(source: RuleFormState): RuleFormState {
   return {
     ...source,
-    schedule: { ...source.schedule },
     filter: source.filter.map((clause) => ({ ...clause })),
     config: {
       ...source.config,
@@ -711,14 +665,6 @@ function initialForm(): RuleFormState {
   const form = emptyRuleForm(initialRuleType());
   if (props.defaultSeverity !== QualitySeverity.UNSPECIFIED) {
     form.severity = props.defaultSeverity;
-  }
-  if (props.defaultScheduleSeconds > 0) {
-    form.schedule = durationToSchedule(
-      create(DurationSchema, {
-        seconds: BigInt(Math.round(props.defaultScheduleSeconds)),
-        nanos: 0,
-      })
-    );
   }
   return form;
 }
@@ -806,10 +752,6 @@ function setSeverity(value: unknown) {
 
 function setOnEmpty(value: unknown) {
   form.value.onEmpty = Number(value) as QualityEmptyBehavior;
-}
-
-function setScheduleUnit(value: unknown) {
-  form.value.schedule.unit = String(value) as ScheduleUnit;
 }
 
 function onDetailsToggle(event: Event) {
