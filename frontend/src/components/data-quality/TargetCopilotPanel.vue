@@ -17,6 +17,37 @@
         {{ disabledReason }}
       </p>
 
+      <!-- The intent path needs words; this one does not. A label pass is a
+           different output from a check draft, so it sits apart from the
+           drafting form and hands its result to the page's suggestion queue. -->
+      <div class="flex flex-wrap items-center justify-between gap-3 rounded-md border border-dashed px-3 py-2.5">
+        <div class="min-w-0 space-y-0.5">
+          <p class="text-xs font-medium">
+            {{ t("dataQuality.copilot.quickTitle") }}
+          </p>
+          <p class="text-xs text-muted-foreground">
+            {{ t("dataQuality.copilot.quickHint") }}
+          </p>
+        </div>
+        <SuggestLabelsButton
+          :target-guid="targetGuid"
+          :meta-type="metaType"
+          :columns="labelColumns"
+          :can-profile="canProfile"
+          size="sm"
+          :disabled="!!disabledReason"
+          @started="labelsError = ''"
+          @suggested="onLabelsSuggested"
+          @failed="labelsError = $event"
+        />
+      </div>
+      <p
+        v-if="labelsError"
+        class="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive break-words"
+      >
+        {{ labelsError }}
+      </p>
+
       <!-- An example fills the box; it does not submit, so the reader can edit
            the wording before asking. -->
       <div class="space-y-1.5">
@@ -126,6 +157,7 @@ import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink } from "vue-router";
 import { suggestQualityRule } from "@/api/data-quality";
+import SuggestLabelsButton from "@/components/data-quality/SuggestLabelsButton.vue";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -153,13 +185,20 @@ import { connectErrorCode } from "@/utils/dataQualityLlm";
  * the rule editor's workbench uses; the page owns where the returned drafts go.
  */
 
-const props = defineProps<{
-  targetGuid: string;
-  metaType: MetaType;
-  canSuggest: boolean;
-  /** Why drafting is unavailable right now; unset when it is available. */
-  disabledReason?: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    targetGuid: string;
+    metaType: MetaType;
+    canSuggest: boolean;
+    /** The columns a one-click label pass may propose labels for. */
+    labelColumns?: string[];
+    /** Whether the reader may profile columns before labeling them. */
+    canProfile?: boolean;
+    /** Why drafting is unavailable right now; unset when it is available. */
+    disabledReason?: string;
+  }>(),
+  { labelColumns: () => [], canProfile: false }
+);
 
 const emit = defineEmits<{
   drafted: [
@@ -167,6 +206,8 @@ const emit = defineEmits<{
     summary: QualitySuggestionQueueSummary | undefined,
     newNames: string[],
   ];
+  /** The label pass is done; the page re-reads the pending queue. */
+  labelsSuggested: [];
 }>();
 
 type CopilotErrorKind = "" | "needLlm" | "quota" | "permission" | "failed";
@@ -181,6 +222,8 @@ const { summaryText } = useSuggestionSummary();
 const intent = ref("");
 const generating = ref(false);
 const generated = ref(false);
+/** The one-click label pass reports its own failure beside its button. */
+const labelsError = ref("");
 const errorKind = ref<CopilotErrorKind>("");
 const errorDetail = ref("");
 const lastCount = ref(0);
@@ -285,6 +328,11 @@ async function submit() {
   } finally {
     generating.value = false;
   }
+}
+
+/** The label pass queued proposals; the page owns reading the queue back. */
+function onLabelsSuggested() {
+  emit("labelsSuggested");
 }
 
 defineExpose({ focus });

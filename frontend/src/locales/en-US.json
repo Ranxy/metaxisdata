@@ -313,12 +313,6 @@
       "rulesDescription": "Checks whose target is this table.",
       "rulesTitle": "Quality checks",
       "semanticLabel": "Semantic label",
-      "suggestFailed": "Failed to queue label suggestions.",
-      "suggestLabels": "Suggest labels",
-      "suggestLabelsHint": "Skips columns that already have a label or a proposal waiting for review.",
-      "suggestRegenerate": "Regenerate suggestions",
-      "suggestRegenerateHint": "Also re-analyzes labeled columns and proposals already queued or decided. An existing pending proposal is refreshed in place, never duplicated.",
-      "suggesting": "Queuing...",
       "tab": "Data Quality",
       "title": "Data quality"
     },
@@ -415,6 +409,8 @@
       "noPermission": "You do not have permission to draft with AI.",
       "openSettings": "Open settings",
       "placeholder": "e.g. ensure the dataset is not empty before use",
+      "quickHint": "No prompt needed: label the fields, then review the proposals in the suggestion center.",
+      "quickTitle": "Quick suggestions",
       "quotaExceeded": "The daily AI analysis limit is reached; try again after it resets.",
       "title": "AI copilot",
       "unavailable": "This target cannot be drafted for right now."
@@ -1019,6 +1015,17 @@
       "unspecified": "Unspecified",
       "warn": "Warn"
     },
+    "suggest": {
+      "failed": "Failed to queue label suggestions.",
+      "labels": "Suggest labels",
+      "labelsHint": "Skips columns that already have a label or a proposal waiting for review.",
+      "profileFailed": "Could not analyze the columns, so no label suggestions were generated.",
+      "profileRequired": "Label suggestions need a recent profile of each column. Analyze the columns on the metadata page first, or ask a member with that permission.",
+      "profiling": "Analyzing columns...",
+      "regenerate": "Regenerate suggestions",
+      "regenerateHint": "Also re-analyzes labeled columns and proposals already queued or decided. An existing pending proposal is refreshed in place, never duplicated.",
+      "suggesting": "Generating suggestions..."
+    },
     "suggestionJobStatus": {
       "canceled": "Canceled",
       "completed": "Completed",
@@ -1379,6 +1386,8 @@
       "kindMaterializedView": "Materialized view",
       "kindTable": "Table",
       "kindView": "View",
+      "labelSuggestionsHint": "{count} awaiting review.",
+      "labelSuggestionsTitle": "Label suggestions",
       "nextRun": "next {time}",
       "noNextRun": "no next run",
       "noRulesHint": "Add one below, or ask the copilot to draft a few.",

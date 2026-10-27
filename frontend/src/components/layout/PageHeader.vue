@@ -18,10 +18,10 @@
         </div>
 
         <p
-          v-if="description"
+          v-if="$slots.description || description"
           class="max-w-2xl text-sm text-muted-foreground"
         >
-          {{ description }}
+          <slot name="description">{{ description }}</slot>
         </p>
 
         <slot name="meta" />

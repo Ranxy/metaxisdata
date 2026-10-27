@@ -22,55 +22,17 @@
             {{ t("dataQuality.asset.openWorkspace") }}
           </RouterLink>
         </Button>
-        <div
+        <SuggestLabelsButton
           v-if="canSuggest"
-          class="flex"
-        >
-          <Button
-            variant="outline"
-            size="sm"
-            class="rounded-r-none"
-            :disabled="suggesting"
-            :title="t('dataQuality.asset.suggestLabelsHint')"
-            @click="suggestLabels(false)"
-          >
-            <Sparkles class="mr-1 h-4 w-4" />
-            {{ suggesting ? t("dataQuality.asset.suggesting") : t("dataQuality.asset.suggestLabels") }}
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger as-child>
-              <Button
-                variant="outline"
-                size="sm"
-                class="rounded-l-none border-l-0 px-2"
-                :disabled="suggesting"
-                :title="t('dataQuality.asset.suggestRegenerateHint')"
-                :aria-label="t('dataQuality.asset.suggestRegenerate')"
-              >
-                <ChevronDown class="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              class="max-w-72"
-            >
-              <DropdownMenuItem
-                :disabled="suggesting"
-                @select="suggestLabels(true)"
-              >
-                <div class="space-y-1">
-                  <div class="flex items-center gap-2">
-                    <RefreshCw class="h-4 w-4" />
-                    {{ t("dataQuality.asset.suggestRegenerate") }}
-                  </div>
-                  <p class="text-xs whitespace-normal text-muted-foreground">
-                    {{ t("dataQuality.asset.suggestRegenerateHint") }}
-                  </p>
-                </div>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+          :target-guid="tableGuid"
+          :meta-type="metaType"
+          :columns="sampleColumns()"
+          :can-profile="canProfile"
+          size="sm"
+          @started="onLabelsStarted"
+          @suggested="onLabelsSuggested"
+          @failed="onLabelsFailed"
+        />
         <Button
           v-if="canProfile"
           variant="outline"
@@ -443,15 +405,7 @@
 </template>
 
 <script setup lang="ts">
-import {
-  Activity,
-  ChevronDown,
-  RefreshCw,
-  ShieldCheck,
-  Sparkles,
-  Target,
-  X,
-} from "lucide-vue-next";
+import { Activity, ShieldCheck, Target, X } from "lucide-vue-next";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink } from "vue-router";
@@ -463,11 +417,11 @@ import {
   listQualityRules,
   listQualitySuggestions,
   profileColumns,
-  suggestColumnLabels,
   updateColumnLabel,
   updateQualitySuggestion,
 } from "@/api/data-quality";
 import EmptyState from "@/components/common/EmptyState.vue";
+import SuggestLabelsButton from "@/components/data-quality/SuggestLabelsButton.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -478,12 +432,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   Table,
   TableBody,
   TableCell,
@@ -492,7 +440,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useErrorMessage } from "@/composables/useErrorHandler";
-import { useSuggestionSummary } from "@/composables/useSuggestionSummary";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
 import {
@@ -552,7 +499,6 @@ const props = defineProps<{
 
 const { t, locale } = useI18n();
 const { formatError } = useErrorMessage();
-const { notifySummary } = useSuggestionSummary();
 const authStore = useAuthStore();
 
 const canView = computed(() =>
@@ -577,7 +523,6 @@ const pendingSuggestions = ref<QualitySuggestion[]>([]);
 const pendingSuggestionsTruncated = ref(false);
 const suggestionsLoadFailed = ref(false);
 const profiling = ref(false);
-const suggesting = ref(false);
 const decidingSuggestion = ref("");
 const decideError = ref("");
 const actionError = ref("");
@@ -846,37 +791,22 @@ async function analyzeColumns() {
 }
 
 /**
- * Queue label proposals for the sampled columns. `forceRegenerate` re-analyzes
- * columns that are already labeled or already have a proposal; either way the
- * server reconciles the queue, so the toast reports what the pass actually did.
+ * The label pass is shared with the target workspace; here its result only has
+ * to refresh this tab's pending-proposal card. A failure keeps its message in
+ * the section and reads the queue back too: a pass that fails part way keeps
+ * the proposals earlier batches queued.
  */
-async function suggestLabels(forceRegenerate: boolean) {
-  if (suggesting.value) {
-    return;
-  }
-  suggesting.value = true;
+function onLabelsStarted() {
   actionError.value = "";
-  try {
-    const response = await suggestColumnLabels({
-      tableGuid: props.tableGuid,
-      metaType: props.metaType,
-      columns: sampleColumns(),
-      language: locale.value,
-      forceRegenerate,
-    });
-    notifySummary(
-      response.summary,
-      "label",
-      response.qualitySuggestions.length
-    );
-  } catch (e: unknown) {
-    actionError.value = formatError(e, "dataQuality.asset.suggestFailed");
-  } finally {
-    suggesting.value = false;
-    // A pass that fails part way keeps the proposals earlier batches queued, so
-    // the card re-reads the queue on failure too instead of trusting the response.
-    await loadSuggestions();
-  }
+}
+
+function onLabelsSuggested() {
+  void loadSuggestions();
+}
+
+function onLabelsFailed(message: string) {
+  actionError.value = message;
+  void loadSuggestions();
 }
 
 /**

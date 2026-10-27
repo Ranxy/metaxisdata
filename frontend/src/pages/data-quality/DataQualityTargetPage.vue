@@ -1,9 +1,6 @@
 <template>
   <div class="space-y-4">
-    <PageHeader
-      :title="displayName"
-      :description="description"
-    >
+    <PageHeader :title="displayName">
       <template #breadcrumb>
         <nav class="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
           <RouterLink
@@ -37,6 +34,20 @@
         >
           {{ t("dataQuality.targetChanged") }}
         </Badge>
+      </template>
+
+      <template #description>
+        <RouterLink
+          v-if="metadataRoute"
+          :to="metadataRoute"
+          :title="t('dataQuality.viewMetadata')"
+          class="break-all transition-colors hover:text-primary hover:underline"
+        >
+          <ExternalLink class="mr-1 inline h-3.5 w-3.5 align-[-0.125em]" />{{ description }}
+        </RouterLink>
+        <template v-else>
+          {{ description }}
+        </template>
       </template>
 
       <template #actions>
@@ -192,6 +203,26 @@
             >
               {{ t("dataQuality.workspace.draftsLoadFailed") }}
             </p>
+            <div
+              v-if="pendingLabelSuggestions.length > 0"
+              class="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed px-3 py-2"
+            >
+              <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                <Sparkles class="h-3.5 w-3.5 shrink-0 text-primary" />
+                <span class="font-medium">
+                  {{ t("dataQuality.workspace.labelSuggestionsTitle") }}
+                </span>
+                <span class="text-muted-foreground">
+                  {{ t("dataQuality.workspace.labelSuggestionsHint", { count: pendingLabelSuggestions.length }) }}
+                </span>
+              </div>
+              <RouterLink
+                :to="{ name: 'DataQualitySuggestions' }"
+                class="text-xs text-primary hover:underline"
+              >
+                {{ t("dataQuality.workspace.draftsLink") }}
+              </RouterLink>
+            </div>
 
             <TargetCoverageCard
               :target-guid="targetGuid"
@@ -314,8 +345,11 @@
               :target-guid="targetGuid"
               :meta-type="effectiveMetaType"
               :can-suggest="canSuggest"
+              :label-columns="labelSuggestionsColumns"
+              :can-profile="canProfile"
               :disabled-reason="orphaned ? t('dataQuality.copilot.unavailable') : undefined"
               @drafted="onDrafted"
+              @labels-suggested="onLabelsSuggested"
             />
 
             <Card v-if="canListIssues">
@@ -524,6 +558,7 @@ import { create } from "@bufbuild/protobuf";
 import {
   ChevronRight,
   Clock,
+  ExternalLink,
   Loader2,
   Pencil,
   Plus,
@@ -601,6 +636,7 @@ import {
   formatScheduleInterval,
   qualityIssueStatusKey,
   qualityIssueStatusVariant,
+  qualityTargetMetadataRoute,
 } from "@/utils/dataQuality";
 import {
   durationToSchedule,
@@ -609,7 +645,10 @@ import {
   type TargetColumnDetail,
   validateScheduleInterval,
 } from "@/utils/dataQualityForm";
-import { isPendingDraft } from "@/utils/dataQualitySuggestion";
+import {
+  isLabelSuggestion,
+  isPendingDraft,
+} from "@/utils/dataQualitySuggestion";
 import {
   groupTargetChecks,
   type TargetCheckSection,
@@ -656,6 +695,10 @@ const canUpdate = computed(() =>
 );
 const canSuggest = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.suggest")
+);
+/** The one-click label pass profiles stale columns before asking the model. */
+const canProfile = computed(() =>
+  authStore.hasPermission("metaxisdata.dataQuality.profile.run")
 );
 const canListIssues = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.issues.list")
@@ -760,6 +803,15 @@ const kindLabel = computed(() => {
   }
 });
 
+/**
+ * The target's own page in the metadata browser. The description names the
+ * object, so it doubles as the way there; an orphaned target has lost its
+ * registry row and gets plain text instead of a dead link.
+ */
+const metadataRoute = computed(() =>
+  orphaned.value ? null : qualityTargetMetadataRoute(summary.value.target)
+);
+
 const sections = computed(() =>
   groupTargetChecks(rules.value, suggestions.value)
 );
@@ -790,6 +842,19 @@ async function scrollToHighlightedRule() {
 }
 
 const pendingDrafts = computed(() => suggestions.value.filter(isPendingDraft));
+
+/**
+ * Semantic-label proposals the one-click pass queued. They are not rendered
+ * beside the checks (a label is not a check); the strip points at the queue.
+ */
+const pendingLabelSuggestions = computed(() =>
+  suggestions.value.filter(isLabelSuggestion)
+);
+
+/** Label passes read at most 50 columns per request, like the asset tab. */
+const labelSuggestionsColumns = computed(() =>
+  targetColumns.value.slice(0, 50).map((column) => column.name)
+);
 
 const draftStripVisible = computed(
   () => canSuggest.value && pendingDrafts.value.length > 0
@@ -1108,6 +1173,15 @@ function onDrafted(
   // this pass actually added get the highlight.
   const addedNames = new Set(added.map((item) => item.name));
   newNames.value = new Set(names.filter((name) => addedNames.has(name)));
+}
+
+/**
+ * A one-click label pass reconciles the target's pending queue server-side, so
+ * the page reads it back rather than trusting the response: the strip and the
+ * centre's counts must agree with what is actually pending.
+ */
+function onLabelsSuggested() {
+  void loadDrafts();
 }
 
 function onDraftAccepted(draft: QualitySuggestion, rule: QualityRule) {
