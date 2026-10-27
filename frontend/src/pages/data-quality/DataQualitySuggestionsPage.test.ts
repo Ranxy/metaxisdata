@@ -3,7 +3,9 @@ import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { nextTick } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
+import { Select } from "@/components/ui/select";
 import { notify } from "@/lib/notify";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
@@ -166,18 +168,13 @@ async function mountPage(path = "/data-quality/suggestions") {
         component: Dummy,
       },
       {
-        path: "/data-quality/rules/new",
-        name: "DataQualityRuleNew",
+        path: "/data-quality/targets",
+        name: "DataQualityTargets",
         component: Dummy,
       },
       {
-        path: "/data-quality/rules/:ruleId+/detail",
-        name: "DataQualityRuleDetail",
-        component: Dummy,
-      },
-      {
-        path: "/data-quality/rules",
-        name: "DataQualityRules",
+        path: "/data-quality/targets/:targetGuid+",
+        name: "DataQualityTarget",
         component: Dummy,
       },
       {
@@ -773,6 +770,175 @@ describe("DataQualitySuggestionsPage", () => {
         status: QualitySuggestionStatus.PENDING,
       })
     );
+    wrapper.unmount();
+  });
+
+  it("writes the applied filters to the query and keeps the draft deep link", async () => {
+    const { wrapper, router } = await mountPage(
+      "/data-quality/suggestions?draft=1"
+    );
+
+    const selects = wrapper.findAllComponents(Select);
+    await selects[0]?.vm.$emit(
+      "update:modelValue",
+      String(QualitySuggestionStatus.ACCEPTED)
+    );
+    await selects[1]?.vm.$emit(
+      "update:modelValue",
+      String(QualitySuggestionKind.RULE_DRAFT)
+    );
+    await selects[2]?.vm.$emit(
+      "update:modelValue",
+      String(QualitySuggestionSource.PROFILE)
+    );
+    wrapper
+      .findComponent({ name: "TargetScopeFilter" })
+      .vm.$emit("update:modelValue", {
+        instance: "inst1",
+        database: "db1",
+        schema: "public",
+        table: "orders",
+        label: "inst1 > db1 > public > orders",
+      });
+    await nextTick();
+
+    buttonByText(label("common.apply"))?.click();
+    await flushPromises();
+
+    expect(router.currentRoute.value.query).toMatchObject({
+      draft: "1",
+      status: String(QualitySuggestionStatus.ACCEPTED),
+      kind: String(QualitySuggestionKind.RULE_DRAFT),
+      source: String(QualitySuggestionSource.PROFILE),
+      instance: "inst1",
+      database: "db1",
+      schema: "public",
+      table: "orders",
+    });
+    expect(mocks.listQualitySuggestions).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        status: QualitySuggestionStatus.ACCEPTED,
+        kind: QualitySuggestionKind.RULE_DRAFT,
+        source: QualitySuggestionSource.PROFILE,
+        instance: "inst1",
+      })
+    );
+    // Applying writes the URL without triggering a second request.
+    expect(mocks.listQualitySuggestions).toHaveBeenCalledTimes(2);
+    wrapper.unmount();
+  });
+
+  it("reads the filters from the URL on entry", async () => {
+    const { wrapper } = await mountPage(
+      "/data-quality/suggestions?status=2&kind=1&source=2&instance=inst1&database=db1"
+    );
+
+    expect(mocks.listQualitySuggestions).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        status: QualitySuggestionStatus.ACCEPTED,
+        kind: QualitySuggestionKind.RULE_DRAFT,
+        source: QualitySuggestionSource.PROFILE,
+        instance: "inst1",
+        database: "db1",
+      })
+    );
+    const selects = wrapper.findAllComponents(Select);
+    expect(selects[0]?.props("modelValue")).toBe(
+      String(QualitySuggestionStatus.ACCEPTED)
+    );
+    expect(selects[1]?.props("modelValue")).toBe(
+      String(QualitySuggestionKind.RULE_DRAFT)
+    );
+    expect(selects[2]?.props("modelValue")).toBe(
+      String(QualitySuggestionSource.PROFILE)
+    );
+    expect(
+      wrapper.findComponent({ name: "TargetScopeFilter" }).props("modelValue")
+    ).toMatchObject({ instance: "inst1", database: "db1" });
+    wrapper.unmount();
+  });
+
+  it("clears the URL filters but keeps the draft deep link", async () => {
+    mocks.listQualitySuggestions.mockResolvedValue({
+      items: [],
+      nextPageToken: "",
+    });
+    const { wrapper, router } = await mountPage(
+      "/data-quality/suggestions?draft=1&kind=1&status=2"
+    );
+
+    buttonByText(label("common.filter.clear"))?.click();
+    await flushPromises();
+
+    expect(router.currentRoute.value.query).toEqual({ draft: "1" });
+    expect(mocks.listQualitySuggestions).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        status: QualitySuggestionStatus.PENDING,
+        kind: QualitySuggestionKind.UNSPECIFIED,
+      })
+    );
+    wrapper.unmount();
+  });
+
+  it("retires the draft deep link when the workbench closes", async () => {
+    const { wrapper, router } = await mountPage(
+      "/data-quality/suggestions?draft=1&kind=1"
+    );
+    expect(router.currentRoute.value.query.draft).toBe("1");
+
+    wrapper
+      .findComponent({ name: "SuggestionWorkbench" })
+      .vm.$emit("update:open", false);
+    await flushPromises();
+
+    expect(router.currentRoute.value.query).toEqual({ kind: "1" });
+    wrapper.unmount();
+  });
+
+  it("opens a draft in its target workspace instead of an editor", async () => {
+    const { wrapper, router } = await mountPage();
+
+    const openTarget = [
+      ...document.body.querySelectorAll<HTMLElement>(
+        `button[aria-label="${label("dataQuality.targets.openWorkspace")}"]`
+      ),
+    ];
+    expect(openTarget).toHaveLength(2);
+
+    openTarget[0]?.click();
+    await flushPromises();
+
+    expect(router.currentRoute.value.name).toBe("DataQualityTarget");
+    expect(router.currentRoute.value.params.targetGuid).toEqual([
+      "inst1",
+      "db1",
+      "public",
+      "orders",
+    ]);
+    // The workspace finds the draft inline; no extra query parameter names it.
+    expect(router.currentRoute.value.query).toEqual({
+      metaType: String(MetaType.TABLE),
+    });
+    wrapper.unmount();
+  });
+
+  it("opens the target workspace from the draft's detail drawer", async () => {
+    const { wrapper, router } = await mountPage();
+
+    reviewButton(0)?.click();
+    await flushPromises();
+
+    const button = dialogButtonByText(
+      label("dataQuality.targets.openWorkspace")
+    );
+    expect(button).toBeTruthy();
+    button?.click();
+    await flushPromises();
+
+    expect(router.currentRoute.value.name).toBe("DataQualityTarget");
+    expect(router.currentRoute.value.query).toEqual({
+      metaType: String(MetaType.TABLE),
+    });
     wrapper.unmount();
   });
 });

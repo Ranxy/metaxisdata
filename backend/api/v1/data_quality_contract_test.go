@@ -16,8 +16,18 @@ func TestBuildQualityContractChecksIsDeterministic(t *testing.T) {
 	t.Parallel()
 
 	rules := []*store.QualityRuleMessage{
-		{ID: 2, ResourceID: "b", Revision: 1, TargetPath: &storepb.QualityTargetPath{Column: "email"}},
-		{ID: 1, ResourceID: "a", Revision: 2},
+		{
+			ID: 2, ResourceID: "b", Revision: 1,
+			Config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_NullPercent{
+				NullPercent: &storepb.NullPercentConfig{Column: "email"},
+			}},
+		},
+		{
+			ID: 1, ResourceID: "a", Revision: 2,
+			Config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_RowCount{
+				RowCount: &storepb.RowCountConfig{},
+			}},
+		},
 	}
 	checks := buildQualityContractChecks(rules)
 	require.Len(t, checks, 2)

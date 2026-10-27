@@ -11,6 +11,7 @@ import {
   type QualityIssue,
   QualityIssueStatus,
   type QualityRule,
+  type QualityRuleConfig,
   QualityRuleState,
   QualityStatus,
   type QualitySuggestion,
@@ -50,21 +51,53 @@ const CROSS_COLUMN_CASES = new Set([
 
 const RESOLVED_ISSUE = QualityIssueStatus.RESOLVED;
 
-/** The column a rule is filed under; empty for dataset-level rules. */
-export function ruleColumn(rule: QualityRule): string {
-  return rule.target?.path?.column?.trim() ?? "";
+/**
+ * The single column a typed config observes, or "" for table-level and
+ * multi-column checks.
+ *
+ * The config is authoritative (the target path's column is only a display
+ * snapshot and may be empty). Filter columns and schema-drift snapshots are
+ * deliberately excluded: they are read, not checked.
+ */
+function configColumn(config: QualityRuleConfig | undefined): string {
+  const arm = config?.config;
+  if (!arm) {
+    return "";
+  }
+  const value = arm.value as Record<string, unknown>;
+  switch (arm.case) {
+    case "nullPercent":
+    case "unique":
+    case "acceptedValues":
+    case "range":
+    case "regex":
+    case "stringLength":
+    case "aggregate":
+      return String(value.column ?? "").trim();
+    case "freshness":
+      return String(value.timestampColumn ?? "").trim();
+    case "referentialIntegrity":
+      return String(value.childColumn ?? "").trim();
+    default:
+      return "";
+  }
 }
 
-/** Whether a rule belongs in the cross-column section. */
+/** The column a rule is filed under; empty for dataset-level rules. */
+export function ruleColumn(rule: QualityRule): string {
+  return configColumn(rule.config) || (rule.target?.path?.column?.trim() ?? "");
+}
+
+/**
+ * Whether a rule belongs in the cross-column section. It is decided by the
+ * config arm only: `target.columns` also lists filter columns and the
+ * schema-drift snapshot, so it must not be read as the checked column set.
+ */
 export function isCrossColumnRule(rule: QualityRule): boolean {
   if (ruleColumn(rule)) {
     return false;
   }
-  const configCase = rule.config?.config.case ?? "";
-  if (CROSS_COLUMN_CASES.has(configCase)) {
-    return true;
-  }
-  return (rule.target?.columns.length ?? 0) > 1;
+  return CROSS_COLUMN_CASES.has(rule.config?.config.case ?? "");
 }
 
 /** The section a rule is filed under. */
@@ -84,27 +117,7 @@ export function ruleSectionKey(rule: QualityRule): string {
  * single column and is filed with the cross-column or dataset section.
  */
 export function draftColumn(suggestion: QualitySuggestion): string {
-  const config = ruleDraftOf(suggestion)?.config?.config;
-  if (!config) {
-    return "";
-  }
-  const value = config.value as Record<string, unknown>;
-  switch (config.case) {
-    case "nullPercent":
-    case "unique":
-    case "acceptedValues":
-    case "range":
-    case "regex":
-    case "stringLength":
-    case "aggregate":
-      return String(value.column ?? "").trim();
-    case "freshness":
-      return String(value.timestampColumn ?? "").trim();
-    case "referentialIntegrity":
-      return String(value.childColumn ?? "").trim();
-    default:
-      return "";
-  }
+  return configColumn(ruleDraftOf(suggestion)?.config);
 }
 
 /** The section a pending draft is filed under. */

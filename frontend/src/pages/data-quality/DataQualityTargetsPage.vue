@@ -10,6 +10,10 @@
         </p>
       </template>
       <template #actions>
+        <Button @click="startMonitoring">
+          <Plus class="mr-2 h-4 w-4" />
+          {{ t("dataQuality.targets.startMonitoring") }}
+        </Button>
         <Button
           variant="outline"
           :disabled="isLoading"
@@ -25,18 +29,9 @@
           variant="outline"
           as-child
         >
-          <RouterLink :to="{ name: 'DataQualityRules' }">
+          <RouterLink :to="{ name: 'DataQualityChecks' }">
             <ListChecks class="mr-2 h-4 w-4" />
             {{ t("dataQuality.targets.allRules") }}
-          </RouterLink>
-        </Button>
-        <Button
-          v-if="canCreate"
-          as-child
-        >
-          <RouterLink :to="{ name: 'DataQualityRuleNew' }">
-            <Plus class="mr-2 h-4 w-4" />
-            {{ t("dataQuality.targets.newRule") }}
           </RouterLink>
         </Button>
       </template>
@@ -131,23 +126,9 @@
           :title="t('dataQuality.targets.emptyTitle')"
           :description="t('dataQuality.targets.emptyDescription')"
         >
-          <Button
-            v-if="canCreate"
-            as-child
-          >
-            <RouterLink :to="{ name: 'DataQualityRuleNew' }">
-              <Plus class="mr-2 h-4 w-4" />
-              {{ t("dataQuality.targets.emptyAction") }}
-            </RouterLink>
-          </Button>
-          <Button
-            v-else
-            variant="outline"
-            as-child
-          >
-            <RouterLink :to="{ name: 'DataQualityRules' }">
-              {{ t("dataQuality.targets.allRules") }}
-            </RouterLink>
+          <Button @click="startMonitoring">
+            <Plus class="mr-2 h-4 w-4" />
+            {{ t("dataQuality.targets.startMonitoring") }}
           </Button>
         </EmptyState>
 
@@ -322,6 +303,14 @@
         </Table>
       </PageState>
     </Card>
+
+    <!-- The DQ section's own entry to the product: pick a table or view and go
+         straight to its contract workspace with the check dialog open. -->
+    <TargetPicker
+      :open="pickerOpen"
+      @update:open="onPickerOpen"
+      @select="onTargetPicked"
+    />
   </div>
 </template>
 
@@ -337,11 +326,12 @@ import {
 } from "lucide-vue-next";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { RouterLink } from "vue-router";
+import { RouterLink, useRoute, useRouter } from "vue-router";
 import { listQualityTargets } from "@/api/data-quality";
 import { listAll } from "@/api/list";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
+import TargetPicker from "@/components/data-quality/TargetPicker.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -364,7 +354,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useErrorMessage } from "@/composables/useErrorHandler";
-import { useAuthStore } from "@/store/modules/auth";
 import {
   QualityStatus,
   QualityTargetOrder,
@@ -372,6 +361,7 @@ import {
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { qualityStatusKey, qualityStatusVariant } from "@/utils/dataQuality";
+import type { TargetSelection } from "@/utils/dataQualityForm";
 import {
   sortQualityTargets,
   targetDisplayName,
@@ -393,17 +383,15 @@ import { metaTypeSingularLabel } from "@/utils/metaType";
  */
 
 const { t, locale } = useI18n();
+const route = useRoute();
+const router = useRouter();
 const { formatError } = useErrorMessage();
-const authStore = useAuthStore();
-
-const canCreate = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.rules.create")
-);
 
 /** The three "needs attention" filters, all off by default. */
 type TargetToggle = "failing" | "issues" | "drafts";
 
 const summaries = ref<QualityTargetSummary[]>([]);
+const pickerOpen = ref(false);
 const isLoading = ref(true);
 const error = ref("");
 const search = ref("");
@@ -521,5 +509,31 @@ async function load() {
   }
 }
 
-onMounted(load);
+onMounted(async () => {
+  if (route.query.new === "1") {
+    // A link from the overview asks the directory to open its picker; the flag
+    // is consumed so a refresh does not reopen it.
+    pickerOpen.value = true;
+    const query = { ...route.query };
+    delete query.new;
+    await router.replace({ query });
+  }
+  await load();
+});
+
+function startMonitoring() {
+  pickerOpen.value = true;
+}
+
+function onPickerOpen(open: boolean) {
+  pickerOpen.value = open;
+}
+
+function onTargetPicked(selection: TargetSelection) {
+  void router.push({
+    name: "DataQualityTarget",
+    params: { targetGuid: guidToRouteParams(selection.guid) },
+    query: { metaType: String(selection.metaType), add: "1" },
+  });
+}
 </script>

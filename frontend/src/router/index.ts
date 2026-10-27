@@ -261,53 +261,44 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
-        path: "rules",
-        name: "DataQualityRules",
+        // Every check across targets, for audit and search. It is a directory,
+        // not an authoring surface: a check is created and edited inside the
+        // target's contract workspace, where its column and siblings are visible.
+        path: "checks",
+        name: "DataQualityChecks",
         component: () =>
-          import("@/pages/data-quality/DataQualityRulesPage.vue"),
+          import("@/pages/data-quality/DataQualityChecksPage.vue"),
         meta: {
           requiresAuth: true,
           layout: "default",
           permission: "metaxisdata.dataQuality.rules.list",
         },
       },
+      // Old rule-centric URLs survive as redirects: the product no longer has a
+      // standalone rule directory or single-rule editor page.
+      {
+        path: "rules",
+        redirect: { name: "DataQualityChecks" },
+      },
       {
         path: "rules/new",
-        name: "DataQualityRuleNew",
-        component: () =>
-          import("@/pages/data-quality/DataQualityRuleEditorPage.vue"),
-        meta: {
-          requiresAuth: true,
-          layout: "default",
-          permission: "metaxisdata.dataQuality.rules.create",
-        },
+        redirect: { name: "DataQualityTargets" },
       },
       {
-        // Same resource-name-per-segment convention as the execution detail: a
-        // Get needs the real workspace, which the id alone does not carry.
         path: "rules/:ruleId+/edit",
-        name: "DataQualityRuleEdit",
+        name: "DataQualityRuleEditRedirect",
         component: () =>
-          import("@/pages/data-quality/DataQualityRuleEditorPage.vue"),
-        meta: {
-          requiresAuth: true,
-          layout: "default",
-          permission: "metaxisdata.dataQuality.rules.update",
-        },
+          import("@/pages/data-quality/RedirectQualityRulePage.vue"),
+        meta: { requiresAuth: true, layout: "default" },
       },
       {
-        // The rule's own page: what it last found and how it has behaved. The
-        // whole resource name is one param per name segment, like the execution
-        // and issue detail routes, because a Get needs the real workspace.
+        // The old per-rule page becomes the target workspace with the check
+        // drawer open, so existing links keep landing on the check.
         path: "rules/:ruleId+",
-        name: "DataQualityRuleDetail",
+        name: "DataQualityRuleRedirect",
         component: () =>
-          import("@/pages/data-quality/DataQualityRuleDetailPage.vue"),
-        meta: {
-          requiresAuth: true,
-          layout: "default",
-          permission: "metaxisdata.dataQuality.rules.get",
-        },
+          import("@/pages/data-quality/RedirectQualityRulePage.vue"),
+        meta: { requiresAuth: true, layout: "default" },
       },
       {
         path: "suggestions",

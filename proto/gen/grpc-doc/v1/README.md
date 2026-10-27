@@ -298,6 +298,7 @@
     - [QualityRule](#metaxisdata-v1-QualityRule)
     - [QualityRuleConfig](#metaxisdata-v1-QualityRuleConfig)
     - [QualityRuleDraftConfig](#metaxisdata-v1-QualityRuleDraftConfig)
+    - [QualityRuleHistory](#metaxisdata-v1-QualityRuleHistory)
     - [QualityStatusCounts](#metaxisdata-v1-QualityStatusCounts)
     - [QualitySuggestion](#metaxisdata-v1-QualitySuggestion)
     - [QualitySuggestionJob](#metaxisdata-v1-QualitySuggestionJob)
@@ -4659,6 +4660,7 @@ queries rather than paging through every result.
 
 AI drafts are deliberately absent: reading them needs the suggest permission, which this RPC does not require, so the client reads the queue separately when it holds it. |
 | orphaned_reason | [string](#string) |  | Why the target no longer resolves; empty while healthy. The rules stay readable when it is set, because their target path is a snapshot. |
+| rule_history | [QualityRuleHistory](#metaxisdata-v1-QualityRuleHistory) | repeated | Each rule&#39;s recent completed executions, newest first, so the workspace can draw a per-rule history strip without one request per rule. Rules with no completed execution are absent. |
 
 
 
@@ -5568,6 +5570,22 @@ typed config. It is never executed without a human saving it as a rule.
 | title | [string](#string) |  |  |
 | rationale | [string](#string) |  |  |
 | confidence | [double](#double) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityRuleHistory"></a>
+
+### QualityRuleHistory
+QualityRuleHistory is one rule&#39;s recent completed executions.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| rule | [string](#string) |  | Format: workspaces/{workspace}/qualityRules/{quality_rule} |
+| executions | [QualityExecutionSummary](#metaxisdata-v1-QualityExecutionSummary) | repeated | Newest first. At most 20 are returned. |
 
 
 

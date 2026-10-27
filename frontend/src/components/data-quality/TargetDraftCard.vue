@@ -60,14 +60,9 @@
           v-if="canEdit"
           variant="outline"
           size="sm"
-          as-child
+          @click="emit('edit')"
         >
-          <RouterLink
-            :to="editorTo"
-            @click="emit('edit')"
-          >
-            {{ t("dataQuality.workspace.draftEdit") }}
-          </RouterLink>
+          {{ t("dataQuality.workspace.draftEdit") }}
         </Button>
         <Button
           v-else
@@ -99,7 +94,6 @@
 import { Sparkles } from "lucide-vue-next";
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { RouterLink } from "vue-router";
 import { createQualityRule, updateQualitySuggestion } from "@/api/data-quality";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -129,8 +123,10 @@ import { draftColumn } from "@/utils/dataQualityTarget";
  * One AI-drafted rule, rendered inline in the section it would join.
  *
  * The draft is a proposal, not a rule: creating it accepts the suggestion
- * server-side, ignoring it only records the decision. The card keeps its own
- * busy state so one slow decision cannot fire twice or freeze its siblings.
+ * server-side, ignoring it only records the decision, and adjusting it hands the
+ * suggestion to the workspace composer so its typed config is reviewed in the
+ * same place every other check is authored. The card keeps its own busy state so
+ * one slow decision cannot fire twice or freeze its siblings.
  */
 
 const props = withDefaults(
@@ -187,11 +183,6 @@ const canBuild = computed(
 );
 const canPrefill = computed(() => prefill.value !== undefined);
 const canEdit = computed(() => props.canCreate && canPrefill.value);
-
-const editorTo = computed(() => ({
-  name: "DataQualityRuleNew",
-  query: { suggestion: props.suggestion.name },
-}));
 
 async function accept() {
   if (busy.value) {

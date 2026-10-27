@@ -2299,6 +2299,19 @@ message GetQualityTargetResponse {
   // Why the target no longer resolves; empty while healthy. The rules stay
   // readable when it is set, because their target path is a snapshot.
   string orphaned_reason = 4;
+
+  // Each rule's recent completed executions, newest first, so the workspace can
+  // draw a per-rule history strip without one request per rule. Rules with no
+  // completed execution are absent.
+  repeated QualityRuleHistory rule_history = 5;
+}
+
+// QualityRuleHistory is one rule's recent completed executions.
+message QualityRuleHistory {
+  // Format: workspaces/{workspace}/qualityRules/{quality_rule}
+  string rule = 1 [(google.api.resource_reference) = {type: "metaxisdata/QualityRule"}];
+  // Newest first. At most 20 are returned.
+  repeated QualityExecutionSummary executions = 2;
 }
 
 // QualityContract is the target-level layer above the rules: defaults, the

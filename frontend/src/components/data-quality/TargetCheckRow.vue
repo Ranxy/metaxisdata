@@ -1,5 +1,11 @@
 <template>
-  <li class="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
+  <li
+    :id="rowId"
+    class="flex flex-wrap items-start justify-between gap-3 px-4 py-3"
+    :class="{
+      'animate-in bg-primary/5 ring-2 ring-primary/50 fade-in': highlight,
+    }"
+  >
     <div class="flex min-w-0 flex-1 items-start gap-3">
       <Badge
         :variant="statusVariant"
@@ -9,12 +15,13 @@
       </Badge>
       <div class="min-w-0 space-y-1">
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <RouterLink
-            :to="detailTo"
-            class="min-w-0 truncate text-sm font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          <button
+            type="button"
+            class="min-w-0 truncate text-left text-sm font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            @click="emit('open')"
           >
             {{ ruleTitle }}
-          </RouterLink>
+          </button>
           <Badge variant="secondary">
             {{ t(qualityRuleTypeKey(rule.ruleType)) }}
           </Badge>
@@ -52,6 +59,11 @@
           <span aria-hidden="true">·</span>
           <span class="tabular-nums">{{ t("dataQuality.schedule") }} {{ schedule }}</span>
         </div>
+        <TargetRuleHistoryStrip
+          v-if="history.length > 0"
+          :executions="history"
+          :label="t('dataQuality.recentExecutions')"
+        />
       </div>
     </div>
 
@@ -84,29 +96,21 @@
           variant="ghost"
           size="icon"
           class="h-8 w-8"
-          as-child
+          :title="t('dataQuality.editRule')"
+          :aria-label="t('dataQuality.editRule')"
+          @click="emit('edit')"
         >
-          <RouterLink
-            :to="editTo"
-            :title="t('dataQuality.editRule')"
-            :aria-label="t('dataQuality.editRule')"
-          >
-            <Pencil class="h-4 w-4 text-muted-foreground" />
-          </RouterLink>
+          <Pencil class="h-4 w-4 text-muted-foreground" />
         </Button>
         <Button
           variant="ghost"
           size="icon"
           class="h-8 w-8"
-          as-child
+          :title="t('dataQuality.workspace.ruleDetails')"
+          :aria-label="t('dataQuality.workspace.openCheck')"
+          @click="emit('open')"
         >
-          <RouterLink
-            :to="detailTo"
-            :title="t('dataQuality.workspace.ruleDetails')"
-            :aria-label="t('dataQuality.workspace.ruleDetails')"
-          >
-            <Eye class="h-4 w-4 text-muted-foreground" />
-          </RouterLink>
+          <Eye class="h-4 w-4 text-muted-foreground" />
         </Button>
       </div>
     </div>
@@ -117,10 +121,11 @@
 import { Eye, Pencil, Zap } from "lucide-vue-next";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
-import { RouterLink } from "vue-router";
+import TargetRuleHistoryStrip from "@/components/data-quality/TargetRuleHistoryStrip.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  type QualityExecutionSummary,
   type QualityRule,
   QualityRuleState,
 } from "@/types/proto-es/v1/data_quality_service_pb";
@@ -140,17 +145,34 @@ import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
  * One rule as a row of its target workspace. The row is a flex list item, not a
  * table row: the title is the only navigation affordance, and the run/edit
  * controls stay reachable per row without a fake `<tr>`-sized click target.
+ *
+ * Edit opens the workspace's inline composer rather than leaving the page, and
+ * opening a check opens the workspace's own side sheet instead of navigating to
+ * a standalone rule page.
  */
 
-const props = defineProps<{
-  rule: QualityRule;
-  /** Unresolved issues the rule's latest failures opened. */
-  issueCount: number;
-  canRun: boolean;
-  canUpdate: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    rule: QualityRule;
+    /** Unresolved issues the rule's latest failures opened. */
+    issueCount: number;
+    canRun: boolean;
+    canUpdate: boolean;
+    /** Recent completed executions, newest first, for the row's history strip. */
+    history?: QualityExecutionSummary[];
+    /** True for the row a back-link from elsewhere pointed at. */
+    highlight?: boolean;
+  }>(),
+  { history: () => [], highlight: false }
+);
 
-const emit = defineEmits<{ run: [] }>();
+const emit = defineEmits<{
+  run: [];
+  /** Start editing this rule in place. */
+  edit: [];
+  /** Open the check's details in the workspace's side sheet. */
+  open: [];
+}>();
 
 const { t, locale } = useI18n();
 
@@ -185,12 +207,11 @@ const statusVariant = computed(() =>
     : ("outline" as const)
 );
 
-const detailTo = computed(() => ({
-  name: "DataQualityRuleDetail",
-  params: { ruleId: props.rule.name.split("/") },
-}));
-const editTo = computed(() => ({
-  name: "DataQualityRuleEdit",
-  params: { ruleId: props.rule.name.split("/") },
-}));
+/**
+ * The row's DOM id, addressable as `dq-rule-{id}`. The rule's resource name has
+ * slashes in it, so only its last segment is used; an id with slashes would be an
+ * invalid CSS selector for the page that scrolls to it.
+ */
+const resourceId = computed(() => props.rule.name.split("/").pop() ?? "");
+const rowId = computed(() => `dq-rule-${resourceId.value}`);
 </script>

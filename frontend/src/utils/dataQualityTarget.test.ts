@@ -50,6 +50,8 @@ import {
   unresolvedIssuesByRule,
 } from "./dataQualityTarget";
 
+// The server never writes the checked column into the target path snapshot; it
+// lives in the rule config and, for display, in the target's column list.
 function target(guid: string, object: string, column = "") {
   return create(QualityTargetSchema, {
     metaGuid: guid,
@@ -59,7 +61,6 @@ function target(guid: string, object: string, column = "") {
       database: "sales",
       schema: "public",
       object,
-      column,
     }),
     columns: column ? [column] : [],
   });
@@ -276,9 +277,12 @@ describe("ruleColumn / isCrossColumnRule / ruleSectionKey", () => {
     expect(ruleSectionKey(cross)).toBe("multi");
   });
 
-  it("files a rule that reads several columns as cross-column even without the case", () => {
-    const multi = rule({ guid: "g1", columns: ["a", "b"] });
-    expect(isCrossColumnRule(multi)).toBe(true);
+  it("does not read filter or snapshot columns as the checked column set", () => {
+    // A table-level check whose filter (or drift snapshot) references several
+    // columns is still a dataset-level check.
+    const filtered = rule({ guid: "g1", columns: ["email", "status"] });
+    expect(isCrossColumnRule(filtered)).toBe(false);
+    expect(ruleSectionKey(filtered)).toBe("dataset");
   });
 });
 

@@ -108,13 +108,18 @@ async function mountDialog(
     history: createMemoryHistory(),
     routes: [
       {
-        path: "/data-quality/rules/:ruleId+/detail",
-        name: "DataQualityRuleDetail",
+        path: "/data-quality/suggestions",
+        name: "DataQualitySuggestions",
+        component: { template: "<div />" },
+      },
+      {
+        path: "/data-quality/targets/:targetGuid+",
+        name: "DataQualityTarget",
         component: { template: "<div />" },
       },
     ],
   });
-  await router.push("/data-quality/rules/a/detail");
+  await router.push("/data-quality/suggestions");
   await router.isReady();
   return mount(BatchCreateRulesDialog, {
     attachTo: document.body,
@@ -168,6 +173,10 @@ describe("BatchCreateRulesDialog", () => {
         rule: create(QualityRuleSchema, {
           name: "workspaces/ws/qualityRules/rule-1",
           title: "Orders should have rows",
+          target: create(QualityTargetSchema, {
+            metaGuid: TABLE,
+            metaType: MetaType.TABLE,
+          }),
         }),
         error: "",
         suggestion: DRAFT_ONE,
@@ -331,6 +340,26 @@ describe("BatchCreateRulesDialog", () => {
     }>;
     expect(items[0]?.rule.severity).toBe(2);
     expect(items[0]?.rule.scheduleInterval).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it("links a created rule to its target workspace with the check selected", async () => {
+    const wrapper = await mountDialog();
+    await flushPromises();
+
+    buttonByText(
+      label("dataQuality.suggestions.batchCreate.submit", { count: 2 })
+    )?.click();
+    await flushPromises();
+
+    const link = document.body.querySelector<HTMLAnchorElement>(
+      'a[href*="/data-quality/targets/"]'
+    );
+    expect(link).toBeTruthy();
+    const href = decodeURIComponent(link?.getAttribute("href") ?? "");
+    expect(href).toContain("/data-quality/targets/inst1/db1/public/orders");
+    expect(href).toContain("metaType=4");
+    expect(href).toContain("check=workspaces/ws/qualityRules/rule-1");
     wrapper.unmount();
   });
 });

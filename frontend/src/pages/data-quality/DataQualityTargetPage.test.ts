@@ -5,6 +5,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
+import QualityCheckDrawer from "@/components/data-quality/QualityCheckDrawer.vue";
 import TargetContractCard from "@/components/data-quality/TargetContractCard.vue";
 import TargetDraftCard from "@/components/data-quality/TargetDraftCard.vue";
 import TargetRuleComposer from "@/components/data-quality/TargetRuleComposer.vue";
@@ -49,9 +50,13 @@ Element.prototype.releasePointerCapture ??= () => {};
 const mocks = vi.hoisted(() => ({
   getQualityTarget: vi.fn(),
   getQualityContract: vi.fn(),
+  getQualityRule: vi.fn(),
+  listQualityExecutions: vi.fn(),
+  deleteQualityRule: vi.fn(),
   listQualitySuggestions: vi.fn(),
   runQualityRules: vi.fn(),
   createQualityRule: vi.fn(),
+  updateQualityRule: vi.fn(),
   previewQualityRule: vi.fn(),
   listAllMetadata: vi.fn(),
   updateQualitySuggestion: vi.fn(),
@@ -62,9 +67,13 @@ vi.mock("@/api/data-quality", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/data-quality")>()),
   getQualityTarget: mocks.getQualityTarget,
   getQualityContract: mocks.getQualityContract,
+  getQualityRule: mocks.getQualityRule,
+  listQualityExecutions: mocks.listQualityExecutions,
+  deleteQualityRule: mocks.deleteQualityRule,
   listQualitySuggestions: mocks.listQualitySuggestions,
   runQualityRules: mocks.runQualityRules,
   createQualityRule: mocks.createQualityRule,
+  updateQualityRule: mocks.updateQualityRule,
   previewQualityRule: mocks.previewQualityRule,
   updateQualitySuggestion: mocks.updateQualitySuggestion,
   suggestQualityRule: mocks.suggestQualityRule,
@@ -91,6 +100,7 @@ const PERMISSIONS = [
   "metaxisdata.dataQuality.rules.create",
   "metaxisdata.dataQuality.rules.update",
   "metaxisdata.dataQuality.rules.run",
+  "metaxisdata.dataQuality.rules.delete",
   "metaxisdata.dataQuality.suggest",
   "metaxisdata.dataQuality.issues.list",
   "metaxisdata.dataQuality.issues.get",
@@ -105,7 +115,6 @@ function target(column = "", metaType = MetaType.TABLE) {
       database: "shop",
       schema: "public",
       object: "orders",
-      column,
     }),
     columns: column ? [column] : [],
   });
@@ -127,6 +136,7 @@ function ruleFixture(options: {
     config: options.config,
     severity: QualitySeverity.ERROR,
     state: QualityRuleState.ENABLED,
+    scheduleInterval: { seconds: 3600n, nanos: 0 },
     lastResult:
       options.status === undefined
         ? undefined
@@ -297,7 +307,10 @@ function draftSuggestion(
               : create(QualityRuleConfigSchema, {
                   config: {
                     case: "nullPercent",
-                    value: create(NullPercentConfigSchema, { column }),
+                    value: create(NullPercentConfigSchema, {
+                      column,
+                      maxNullPct: 0.01,
+                    }),
                   },
                 }),
         },
@@ -349,6 +362,16 @@ async function mountPage(
         component: Dummy,
       },
       {
+        path: "/data-quality/executions/:executionId+",
+        name: "DataQualityExecutionDetail",
+        component: Dummy,
+      },
+      {
+        path: "/metadata/:guid+",
+        name: "MetadataDetail",
+        component: Dummy,
+      },
+      {
         path: "/data-quality/rules/:ruleId+/edit",
         name: "DataQualityRuleEdit",
         component: Dummy,
@@ -387,7 +410,10 @@ async function mountPage(
   useAuthStore().user = create(UserSchema, { permissions });
   const wrapper = mount(DataQualityTargetPage, {
     attachTo: document.body,
-    global: { plugins: [router, i18n, pinia] },
+    global: {
+      plugins: [router, i18n, pinia],
+      stubs: { QualityExplainDrawer: true },
+    },
   });
   await flushPromises();
   return { wrapper, router };
@@ -400,6 +426,14 @@ function label(key: string, params: Record<string, unknown> = {}): string {
 function buttonByText(text: string): HTMLElement | undefined {
   return [...document.body.querySelectorAll<HTMLElement>("button")].find(
     (button) => button.textContent?.trim() === text
+  );
+}
+
+function confirmDialog(): HTMLElement | undefined {
+  return [
+    ...document.body.querySelectorAll<HTMLElement>('[role="dialog"]'),
+  ].find((dialog) =>
+    dialog.textContent?.includes(label("dataQuality.deleteRuleTitle"))
   );
 }
 
@@ -418,14 +452,23 @@ function setInput(selector: string, value: string) {
   element.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+const scrollSpy = vi.fn();
+
 describe("DataQualityTargetPage", () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
     document.body.innerHTML = "";
     i18n.global.locale.value = "en-US";
+    Element.prototype.scrollIntoView = scrollSpy;
     mocks.getQualityTarget.mockResolvedValue(response());
     mocks.getQualityContract.mockResolvedValue(contractFixture());
+    mocks.getQualityRule.mockResolvedValue(rulesFixture()[0]);
+    mocks.listQualityExecutions.mockResolvedValue({
+      items: [],
+      nextPageToken: "",
+    });
+    mocks.deleteQualityRule.mockResolvedValue(undefined);
     mocks.listQualitySuggestions.mockResolvedValue({
       items: [],
       nextPageToken: "",
@@ -437,6 +480,23 @@ describe("DataQualityTargetPage", () => {
       parameters: [],
     });
     mocks.listAllMetadata.mockResolvedValue([]);
+    mocks.updateQualityRule.mockResolvedValue(
+      create(QualityRuleSchema, {
+        name: RULE_DATASET,
+        title: "Row count floor, revised",
+        ruleType: QualityRuleType.ROW_COUNT,
+        target: target(),
+        severity: QualitySeverity.ERROR,
+        state: QualityRuleState.ENABLED,
+        scheduleInterval: { seconds: 3600n, nanos: 0 },
+        config: create(QualityRuleConfigSchema, {
+          config: {
+            case: "rowCount",
+            value: create(RowCountConfigSchema, { minRows: 5n }),
+          },
+        }),
+      })
+    );
     mocks.createQualityRule.mockResolvedValue(
       create(QualityRuleSchema, {
         name: RULE_CREATED,
@@ -828,6 +888,9 @@ describe("DataQualityTargetPage", () => {
       label("dataQuality.workspace.summaryRules", { count: 4 })
     );
     expect(mocks.getQualityTarget).toHaveBeenCalledTimes(1);
+    // The contract strip re-reads, so the live checks are no longer mistaken for
+    // the published version and Publish becomes available.
+    expect(mocks.getQualityContract.mock.calls.length).toBeGreaterThan(1);
     wrapper.unmount();
   });
 
@@ -921,6 +984,264 @@ describe("DataQualityTargetPage", () => {
     );
     // Local state only: neither event re-reads the contract.
     expect(mocks.getQualityContract).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
+  it("edits a rule inline and replaces its row without a re-read", async () => {
+    const { wrapper } = await mountPage();
+    const row = wrapper.find("#dq-rule-rule-dataset");
+    expect(row.exists()).toBe(true);
+
+    // The row's pencil opens the workspace composer, fixed to that rule.
+    await row
+      .find(`[aria-label="${label("dataQuality.editRule")}"]`)
+      .trigger("click");
+    await flushPromises();
+    expect(document.body.textContent).toContain(
+      label("dataQuality.composer.editTitle", { title: "Row count floor" })
+    );
+
+    setInput("#dq-composer-title", "Row count floor, revised");
+    setInput("#dq-field-minRows", "5");
+    await flushPromises();
+    dialogButton(label("dataQuality.editor.saveChanges"))?.click();
+    await flushPromises();
+
+    expect(mocks.updateQualityRule).toHaveBeenCalledTimes(1);
+    const [rule, mask] = mocks.updateQualityRule.mock.calls[0] as [
+      QualityRule,
+      string[],
+    ];
+    expect(rule.name).toBe(RULE_DATASET);
+    expect(rule.title).toBe("Row count floor, revised");
+    // The row's own target and state are untouched, so the mask names neither.
+    expect(mask).toContain("title");
+    expect(mask).toContain("config");
+    expect(mask).not.toContain("target");
+    expect(mask).not.toContain("state");
+
+    // The returned rule replaces its row in place; the counts and the read stand.
+    expect(wrapper.find("#dq-rule-rule-dataset").text()).toContain(
+      "Row count floor, revised"
+    );
+    expect(wrapper.text()).toContain(
+      label("dataQuality.workspace.summaryRules", { count: 3 })
+    );
+    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(1);
+    expect(wrapper.findComponent(TargetRuleComposer).props("open")).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("highlights and scrolls to the rule the query names", async () => {
+    const { wrapper } = await mountPage(
+      `/data-quality/targets/${TARGET.split(";").join("/")}?highlight=${encodeURIComponent(RULE_DATASET)}`
+    );
+    await flushPromises();
+
+    expect(wrapper.find("#dq-rule-rule-dataset").classes()).toContain("ring-2");
+    // Only the named row is marked.
+    expect(wrapper.find("#dq-rule-rule-multi").classes()).not.toContain(
+      "ring-2"
+    );
+    expect(scrollSpy).toHaveBeenCalledTimes(1);
+    expect(scrollSpy).toHaveBeenCalledWith({ block: "center" });
+    wrapper.unmount();
+  });
+
+  it("ignores a highlight that names no row on this target", async () => {
+    const { wrapper } = await mountPage(
+      `/data-quality/targets/${TARGET.split(";").join("/")}?highlight=${encodeURIComponent("workspaces/ws/qualityRules/elsewhere")}`
+    );
+    await flushPromises();
+
+    expect(scrollSpy).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain("Row count floor");
+    wrapper.unmount();
+  });
+
+  it("opens the check side sheet from a row and closes it", async () => {
+    const { wrapper } = await mountPage();
+    const row = wrapper.find("#dq-rule-rule-dataset");
+
+    await row.find("button").trigger("click");
+    await flushPromises();
+
+    expect(mocks.getQualityRule).toHaveBeenCalledWith(RULE_DATASET);
+    expect(document.body.textContent).toContain(
+      label("dataQuality.ruleDefinition")
+    );
+    expect(document.body.textContent).toContain("Row count floor");
+
+    dialogButton(label("common.close"))?.click();
+    await flushPromises();
+    expect(document.body.textContent).not.toContain(
+      label("dataQuality.ruleDefinition")
+    );
+    wrapper.unmount();
+  });
+
+  it("opens the drawer named by the check query and clears it on close", async () => {
+    const { wrapper, router } = await mountPage(
+      `/data-quality/targets/${TARGET.split(";").join("/")}?metaType=${MetaType.TABLE}&check=${encodeURIComponent(RULE_DATASET)}`
+    );
+
+    expect(mocks.getQualityRule).toHaveBeenCalledWith(RULE_DATASET);
+    expect(document.body.textContent).toContain(
+      label("dataQuality.ruleDefinition")
+    );
+
+    dialogButton(label("common.close"))?.click();
+    await flushPromises();
+    // The other query keys survive; only the check is removed.
+    expect(router.currentRoute.value.query.check).toBeUndefined();
+    expect(router.currentRoute.value.query.metaType).toBe(
+      String(MetaType.TABLE)
+    );
+    wrapper.unmount();
+  });
+
+  it("drops a check query that names no rule on this target", async () => {
+    const { wrapper, router } = await mountPage(
+      `/data-quality/targets/${TARGET.split(";").join("/")}?check=${encodeURIComponent("workspaces/ws/qualityRules/elsewhere")}`
+    );
+    await flushPromises();
+
+    expect(mocks.getQualityRule).not.toHaveBeenCalled();
+    expect(router.currentRoute.value.query.check).toBeUndefined();
+    expect(wrapper.text()).toContain("Row count floor");
+    wrapper.unmount();
+  });
+
+  it("edits a check from its side sheet in the workspace composer", async () => {
+    const { wrapper } = await mountPage();
+    await wrapper.find("#dq-rule-rule-dataset").find("button").trigger("click");
+    await flushPromises();
+
+    buttonByText(label("dataQuality.editRule"))?.click();
+    await flushPromises();
+
+    // The sheet closes and the composer opens fixed to that rule.
+    expect(document.body.textContent).not.toContain(
+      label("dataQuality.ruleDefinition")
+    );
+    const composer = wrapper.findComponent(TargetRuleComposer);
+    expect(composer.props("open")).toBe(true);
+    expect(composer.props("rule")?.name).toBe(RULE_DATASET);
+    wrapper.unmount();
+  });
+
+  it("keeps the row and counts in sync when the drawer reports a change", async () => {
+    const { wrapper } = await mountPage();
+
+    const changed = create(QualityRuleSchema, {
+      name: RULE_DATASET,
+      title: "Row count floor, paused",
+      ruleType: QualityRuleType.ROW_COUNT,
+      target: target(),
+      severity: QualitySeverity.ERROR,
+      state: QualityRuleState.PAUSED,
+      scheduleInterval: { seconds: 3600n, nanos: 0 },
+    });
+    wrapper.findComponent(QualityCheckDrawer).vm.$emit("changed", changed);
+    await flushPromises();
+
+    expect(wrapper.find("#dq-rule-rule-dataset").text()).toContain(
+      "Row count floor, paused"
+    );
+    // Pausing moves one rule from enabled to paused without re-reading.
+    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
+  it("drops a deleted check's row and decrements the summary", async () => {
+    const { wrapper } = await mountPage();
+    expect(wrapper.find("#dq-rule-rule-dataset").exists()).toBe(true);
+
+    wrapper.findComponent(QualityCheckDrawer).vm.$emit("deleted", RULE_DATASET);
+    await flushPromises();
+
+    expect(wrapper.find("#dq-rule-rule-dataset").exists()).toBe(false);
+    expect(wrapper.text()).toContain(
+      label("dataQuality.workspace.summaryRules", { count: 2 })
+    );
+    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
+  it("archives a check from the drawer after the confirmation", async () => {
+    const { wrapper } = await mountPage();
+    await wrapper.find("#dq-rule-rule-dataset").find("button").trigger("click");
+    await flushPromises();
+
+    buttonByText(label("common.delete"))?.click();
+    await flushPromises();
+    const dialog = confirmDialog();
+    expect(dialog).toBeDefined();
+    dialog?.querySelectorAll<HTMLElement>("button").forEach((button) => {
+      if (button.textContent?.trim() === label("common.delete")) {
+        button.click();
+      }
+    });
+    await flushPromises();
+
+    expect(mocks.deleteQualityRule).toHaveBeenCalledWith(RULE_DATASET);
+    expect(wrapper.find("#dq-rule-rule-dataset").exists()).toBe(false);
+    expect(wrapper.text()).toContain(
+      label("dataQuality.workspace.summaryRules", { count: 2 })
+    );
+    wrapper.unmount();
+  });
+
+  it("adjusts a draft in the workspace composer and accepts it on save", async () => {
+    mocks.getQualityTarget.mockResolvedValue(
+      response({ summary: summaryFixture({ pendingDraftCount: 1 }) })
+    );
+    mocks.listQualitySuggestions.mockResolvedValue(
+      draftPage([
+        draftSuggestion(DRAFT_EMAIL, "Emails must not be empty", "email"),
+      ])
+    );
+    const { wrapper } = await mountPage();
+
+    buttonByText(label("dataQuality.workspace.draftEdit"))?.click();
+    await flushPromises();
+
+    // The composer receives the draft, prefilled rather than blank.
+    const composer = wrapper.findComponent(TargetRuleComposer);
+    expect(composer.props("open")).toBe(true);
+    expect(composer.props("suggestion")?.name).toBe(DRAFT_EMAIL);
+    const titleInput =
+      document.querySelector<HTMLInputElement>("#dq-composer-title");
+    expect(titleInput?.value).toBe("Emails must not be empty");
+
+    dialogButton(label("dataQuality.editor.create"))?.click();
+    await flushPromises();
+
+    // Saving accepts the draft with the rule in one request.
+    expect(mocks.createQualityRule).toHaveBeenCalledTimes(1);
+    const [, suggestionName] = mocks.createQualityRule.mock.calls[0] as [
+      QualityRule,
+      string,
+    ];
+    expect(suggestionName).toBe(DRAFT_EMAIL);
+    expect(wrapper.findAllComponents(TargetDraftCard)).toHaveLength(0);
+    expect(wrapper.text()).toContain("Created from draft");
+    expect(wrapper.text()).toContain(
+      label("dataQuality.workspace.summaryDrafts", { count: 0 })
+    );
+    expect(wrapper.text()).toContain(
+      label("dataQuality.workspace.summaryRules", { count: 4 })
+    );
+    wrapper.unmount();
+  });
+
+  it("opens the check dialog when the directory sends add=1", async () => {
+    const { wrapper } = await mountPage(
+      `/data-quality/targets/${TARGET.split(";").join("/")}?metaType=${MetaType.TABLE}&add=1`
+    );
+
+    expect(wrapper.findComponent(TargetRuleComposer).props("open")).toBe(true);
+    expect(wrapper.vm.$route.query.add).toBeUndefined();
     wrapper.unmount();
   });
 });

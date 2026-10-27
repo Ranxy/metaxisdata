@@ -142,7 +142,20 @@
                 @click="openIssue(issue)"
               >
                 <TableCell>
+                  <!-- An issue names a check that failed on a target; both lines
+                       lead into that target's workspace, the check selected on
+                       the first one. -->
+                  <RouterLink
+                    v-if="hasTarget(issue)"
+                    :to="issueRuleRoute(issue)"
+                    class="block max-w-[14rem] truncate text-left font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:max-w-md"
+                    :title="ruleTitle(issue)"
+                    @click.stop
+                  >
+                    {{ ruleTitle(issue) }}
+                  </RouterLink>
                   <button
+                    v-else
                     type="button"
                     class="block max-w-[14rem] truncate text-left font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:max-w-md"
                     :title="ruleTitle(issue)"
@@ -150,7 +163,17 @@
                   >
                     {{ ruleTitle(issue) }}
                   </button>
+                  <RouterLink
+                    v-if="hasTarget(issue)"
+                    :to="issueTargetRoute(issue)"
+                    class="block max-w-[14rem] truncate font-mono text-xs text-muted-foreground hover:underline md:max-w-md"
+                    :title="targetLabel(issue)"
+                    @click.stop
+                  >
+                    {{ targetLabel(issue) }}
+                  </RouterLink>
                   <div
+                    v-else
                     class="max-w-[14rem] truncate font-mono text-xs text-muted-foreground md:max-w-md"
                     :title="targetLabel(issue)"
                   >
@@ -231,7 +254,14 @@
 import { CircleAlert, Eye, RefreshCcw } from "lucide-vue-next";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { useRouter } from "vue-router";
+import {
+  type LocationQuery,
+  type LocationQueryRaw,
+  type RouteLocationRaw,
+  RouterLink,
+  useRoute,
+  useRouter,
+} from "vue-router";
 import {
   listAllQualityRules,
   listQualityIssues,
@@ -268,6 +298,7 @@ import {
   type QualitySeverity,
   QualitySeverity as Severity,
 } from "@/types/proto-es/v1/data_quality_service_pb";
+import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
   formatTargetPath,
   qualityIssueStatusKey,
@@ -277,6 +308,7 @@ import {
   targetScopeLabel,
 } from "@/utils/dataQuality";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
+import { guidToRouteParams } from "@/utils/guid";
 
 /**
  * The issue directory. An issue is the persistent problem behind a rule's
@@ -286,6 +318,7 @@ import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
  */
 
 const { t, locale } = useI18n();
+const route = useRoute();
 const router = useRouter();
 const { handleError } = useErrorHandler();
 
@@ -319,6 +352,84 @@ const severityOptions: Array<{ value: QualitySeverity; key: string }> = [
   { value: Severity.CRITICAL, key: "dataQuality.severity.critical" },
 ];
 
+/** Every member each filter accepts, UNSPECIFIED included as "any". */
+const STATUS_FILTER_VALUES: QualityIssueStatus[] = [
+  QualityIssueStatus.UNSPECIFIED,
+  ...statusOptions.map((option) => option.value),
+];
+const SEVERITY_FILTER_VALUES: QualitySeverity[] = [
+  Severity.UNSPECIFIED,
+  ...severityOptions.map((option) => option.value),
+];
+
+/** The query parameter each filter travels under. */
+const FILTER_QUERY_KEYS = ["status", "severity"] as const;
+
+/** The filters as one value, so a URL and the applied set share a shape. */
+interface IssueFilters {
+  status: string;
+  severity: string;
+}
+
+function queryString(value: unknown): string {
+  if (Array.isArray(value)) {
+    return String(value[0] ?? "");
+  }
+  return value === undefined || value === null ? "" : String(value);
+}
+
+/** A numeric enum filter from the URL; anything the enum lacks reads as "any". */
+function enumFilter(value: unknown, members: readonly number[]): string {
+  const raw = queryString(value).trim();
+  if (!raw || raw === "-") {
+    return "-";
+  }
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 && members.includes(parsed)
+    ? String(parsed)
+    : "-";
+}
+
+/** The filters a URL carries: reload, shared link and back/forward. */
+function filtersFromQuery(query: LocationQuery): IssueFilters {
+  return {
+    status: enumFilter(query.status, STATUS_FILTER_VALUES),
+    severity: enumFilter(query.severity, SEVERITY_FILTER_VALUES),
+  };
+}
+
+/** Only non-default values are written, so the URL stays readable. */
+function queryFromFilters(filters: IssueFilters): Record<string, string> {
+  const query: Record<string, string> = {};
+  if (filters.status !== "-") {
+    query.status = filters.status;
+  }
+  if (filters.severity !== "-") {
+    query.severity = filters.severity;
+  }
+  return query;
+}
+
+function sameFilters(a: IssueFilters, b: IssueFilters): boolean {
+  return a.status === b.status && a.severity === b.severity;
+}
+
+/** The filters the request currently applies. */
+function appliedFilters(): IssueFilters {
+  return {
+    status: appliedStatus.value,
+    severity: appliedSeverity.value,
+  };
+}
+
+// Read the URL before the first request: a reloaded or shared link queries what
+// it carries instead of flashing the unfiltered directory first.
+const initialFilters = filtersFromQuery(route.query);
+status.value = initialFilters.status;
+severity.value = initialFilters.severity;
+appliedStatus.value = initialFilters.status;
+appliedSeverity.value = initialFilters.severity;
+
 const {
   items: issues,
   isLoading,
@@ -334,18 +445,8 @@ const {
     return await listQualityIssues({
       pageSize: pageSize.value,
       pageToken,
-      status: enumFromFilter(appliedStatus.value, [
-        QualityIssueStatus.UNSPECIFIED,
-        QualityIssueStatus.OPEN,
-        QualityIssueStatus.ACKNOWLEDGED,
-        QualityIssueStatus.RESOLVED,
-      ]),
-      severity: enumFromFilter(appliedSeverity.value, [
-        Severity.UNSPECIFIED,
-        Severity.WARNING,
-        Severity.ERROR,
-        Severity.CRITICAL,
-      ]),
+      status: enumFromFilter(appliedStatus.value, STATUS_FILTER_VALUES),
+      severity: enumFromFilter(appliedSeverity.value, SEVERITY_FILTER_VALUES),
       signal,
     });
   },
@@ -356,6 +457,53 @@ const {
 
 watch(pageSize, () => void resetPage());
 
+/**
+ * Write exactly the applied filters into the URL, preserving any parameter this
+ * page does not own. `replace` keeps history clean: applying a filter is not a
+ * navigation the back button should walk.
+ */
+function writeFiltersToUrl(filters: IssueFilters) {
+  const next: LocationQueryRaw = { ...route.query };
+  for (const key of FILTER_QUERY_KEYS) {
+    delete next[key];
+  }
+  Object.assign(next, queryFromFilters(filters));
+  if (sameQuery(next, route.query)) {
+    return;
+  }
+  void router.replace({ query: next });
+}
+
+/** Whether a query about to be written already reads like the current one. */
+function sameQuery(next: LocationQueryRaw, current: LocationQuery): boolean {
+  const keys = Object.keys(next);
+  if (keys.length !== Object.keys(current).length) {
+    return false;
+  }
+  return keys.every(
+    (key) => queryString(next[key]) === queryString(current[key])
+  );
+}
+
+// A reload, a shared link or back/forward changes the query from outside; the
+// page adopts those filters. The replace this page itself performs writes
+// exactly the applied filters, so the watcher recognizes it and stops — no loop,
+// no second request.
+watch(
+  () => route.query,
+  (query) => {
+    const next = filtersFromQuery(query);
+    if (sameFilters(next, appliedFilters())) {
+      return;
+    }
+    status.value = next.status;
+    severity.value = next.severity;
+    appliedStatus.value = next.status;
+    appliedSeverity.value = next.severity;
+    void resetPage();
+  }
+);
+
 function enumFromFilter<T extends number>(value: string, members: T[]): T {
   const parsed = Number(value);
   return members.includes(parsed as T) ? (parsed as T) : members[0];
@@ -364,6 +512,9 @@ function enumFromFilter<T extends number>(value: string, members: T[]): T {
 function applyFilters() {
   appliedStatus.value = status.value;
   appliedSeverity.value = severity.value;
+  // The URL is written first: the watcher then sees the applied set already
+  // agrees with it, so adopting the route costs no second request.
+  writeFiltersToUrl(appliedFilters());
   void resetPage();
 }
 
@@ -399,14 +550,59 @@ async function loadRuleTitles() {
   }
 }
 
+/** Whether the issue carries the target its rule watched. */
+function hasTarget(issue: QualityIssue): boolean {
+  return Boolean(issue.target?.metaGuid);
+}
+
+/**
+ * The target workspace for one issue, opening the check drawer when a check
+ * name is given. Undefined for the historical rows that carry no snapshot.
+ */
+function targetWorkspaceRoute(
+  issue: QualityIssue,
+  check = ""
+): RouteLocationRaw | undefined {
+  const target = issue.target;
+  if (!target?.metaGuid) {
+    return undefined;
+  }
+  const query: Record<string, string> = {};
+  if (target.metaType !== MetaType.UNSPECIFIED) {
+    query.metaType = String(target.metaType);
+  }
+  if (check) {
+    query.check = check;
+  }
+  return {
+    name: "DataQualityTarget",
+    params: { targetGuid: guidToRouteParams(target.metaGuid) },
+    query,
+  };
+}
+
+/** The failing check's destination: its target's workspace, check selected. */
+function issueRuleRoute(issue: QualityIssue): RouteLocationRaw {
+  return targetWorkspaceRoute(issue, issue.rule) ?? issueDetailRoute(issue);
+}
+
+/** The target itself, without selecting a check. */
+function issueTargetRoute(issue: QualityIssue): RouteLocationRaw {
+  return targetWorkspaceRoute(issue) ?? issueDetailRoute(issue);
+}
+
+function issueDetailRoute(issue: QualityIssue) {
+  return {
+    name: "DataQualityIssueDetail",
+    params: { issueId: issue.name.split("/") },
+  };
+}
+
 function openIssue(issue: QualityIssue) {
   if (window.getSelection()?.toString()) {
     return;
   }
-  void router.push({
-    name: "DataQualityIssueDetail",
-    params: { issueId: issue.name.split("/") },
-  });
+  void router.push(issueDetailRoute(issue));
 }
 
 onMounted(() => {

@@ -97,7 +97,9 @@ const ROUTES = [
   // The target workspace route needs a real target GUID, like the rule detail,
   // so it is not registered here; its layout invariants are exercised by its
   // page test instead.
-  { path: "/data-quality/rules", name: "data quality rules", tableTopMaxY: 260 },
+  // The cross-target directory replaced the old rule list; the target workspace
+  // is where checks are authored, so no "new rule" route is audited.
+  { path: "/data-quality/checks", name: "data quality checks", tableTopMaxY: 260 },
   {
     path: "/data-quality/executions",
     name: "data quality executions",
@@ -110,7 +112,6 @@ const ROUTES = [
   // measured ~274, and the always-visible live-job line adds the rest of this
   // budget. The history drawer is a dialog and stays closed during the audit.
   { path: "/data-quality/suggestions", name: "data quality suggestions", tableTopMaxY: 320 },
-  { path: "/data-quality/rules/new", name: "data quality rule editor" },
 ];
 
 const MEASURE = `(() => {

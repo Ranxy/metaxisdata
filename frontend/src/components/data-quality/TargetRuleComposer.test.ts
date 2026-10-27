@@ -4,19 +4,34 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
-import { createMemoryHistory, createRouter } from "vue-router";
+import UserSelect from "@/components/common/UserSelect.vue";
+import RuleFilterEditor from "@/components/data-quality/RuleFilterEditor.vue";
+import { Select } from "@/components/ui/select";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
+  QualityEmptyBehavior,
+  QualityFilterOperator,
   type QualityRule,
+  QualityRuleConfigSchema,
   QualityRuleSchema,
   QualityRuleState,
   QualityRuleType,
   QualitySeverity,
+  QualitySuggestionKind,
+  QualitySuggestionSchema,
+  QualitySuggestionStatus,
+  QualityTargetPathSchema,
+  QualityTargetSchema,
+  RowCountConfigSchema,
+  UniqueConfigSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
-import { qualityRuleTypeKey } from "@/utils/dataQuality";
+import {
+  qualityRuleTypeDescriptionKey,
+  qualityRuleTypeKey,
+} from "@/utils/dataQuality";
 import TargetRuleComposer from "./TargetRuleComposer.vue";
 
 // Radix opens a select on pointerdown and calls pointer-capture APIs that jsdom
@@ -27,12 +42,14 @@ Element.prototype.releasePointerCapture ??= () => {};
 
 const mocks = vi.hoisted(() => ({
   createQualityRule: vi.fn(),
+  updateQualityRule: vi.fn(),
   previewQualityRule: vi.fn(),
   listAllMetadata: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", () => ({
   createQualityRule: mocks.createQualityRule,
+  updateQualityRule: mocks.updateQualityRule,
   previewQualityRule: mocks.previewQualityRule,
 }));
 
@@ -42,10 +59,12 @@ vi.mock("@/api/database", () => ({
 
 const TABLE = "inst1;db1;public;orders";
 const CREATED = "workspaces/ws/qualityRules/rule-1";
+const SUGGESTION = "workspaces/ws/qualitySuggestions/draft-1";
 const TARGET_LABEL = "prod · shop · public · orders";
 
 const PERMISSIONS = [
   "metaxisdata.dataQuality.rules.create",
+  "metaxisdata.dataQuality.rules.update",
   "metaxisdata.dataQuality.rules.run",
 ];
 
@@ -69,18 +88,109 @@ function setInput(selector: string, value: string) {
   element.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-async function openRuleTypeSelect(): Promise<HTMLElement[]> {
-  const trigger = document.querySelector<HTMLElement>("#dq-composer-rule-type");
-  expect(trigger).not.toBeNull();
-  // Radix opens on a left-button pointerdown; a bare Event has no `button`.
-  trigger!.dispatchEvent(
-    new MouseEvent("pointerdown", { bubbles: true, button: 0 })
+/** The check-type entries of the left catalogue, in render order. */
+function typeButtons(): HTMLElement[] {
+  return [
+    ...document.body.querySelectorAll<HTMLElement>(
+      '[role="dialog"] [data-rule-type]'
+    ),
+  ];
+}
+
+/** The check name a catalogue entry renders as (the description is beneath it). */
+function typeButtonLabel(button: HTMLElement): string {
+  return button.querySelector("span")?.textContent?.trim() ?? "";
+}
+
+/** The catalogue entry a check type renders as. */
+function typeButton(ruleType: QualityRuleType): HTMLElement | undefined {
+  return (
+    document.body.querySelector<HTMLElement>(
+      `[role="dialog"] [data-rule-type="${ruleType}"]`
+    ) ?? undefined
   );
-  await nextTick();
-  await nextTick();
-  return Array.from(
-    document.body.querySelectorAll<HTMLElement>('[role="option"]')
-  );
+}
+
+/** A stored rule as the page hands it to the composer for editing. */
+function ruleFixture(
+  options: {
+    title?: string;
+    ruleType?: QualityRuleType;
+    state?: QualityRuleState;
+    owner?: string;
+    tags?: string[];
+    minRows?: bigint;
+    column?: string;
+  } = {}
+): QualityRule {
+  const ruleType = options.ruleType ?? QualityRuleType.ROW_COUNT;
+  const config =
+    ruleType === QualityRuleType.UNIQUE
+      ? {
+          case: "unique" as const,
+          value: create(UniqueConfigSchema, {
+            column: options.column ?? "email",
+          }),
+        }
+      : {
+          case: "rowCount" as const,
+          value: create(RowCountConfigSchema, {
+            minRows: options.minRows ?? 1n,
+          }),
+        };
+  return create(QualityRuleSchema, {
+    name: CREATED,
+    title: options.title ?? "Orders have rows",
+    description: "The fact table should not go empty.",
+    ruleType,
+    state: options.state ?? QualityRuleState.ENABLED,
+    severity: QualitySeverity.ERROR,
+    owner: options.owner ?? "",
+    tags: options.tags ?? [],
+    scheduleInterval: { seconds: 3600n, nanos: 0 },
+    target: create(QualityTargetSchema, {
+      metaGuid: TABLE,
+      metaType: MetaType.TABLE,
+      path: create(QualityTargetPathSchema, {
+        instance: "inst1",
+        database: "db1",
+        schema: "public",
+        object: "orders",
+      }),
+      columns: [],
+    }),
+    config: create(QualityRuleConfigSchema, { config }),
+  });
+}
+
+/** An AI draft for a row-count check on the same target. */
+function suggestionFixture() {
+  return create(QualitySuggestionSchema, {
+    name: SUGGESTION,
+    kind: QualitySuggestionKind.RULE_DRAFT,
+    status: QualitySuggestionStatus.PENDING,
+    target: create(QualityTargetSchema, {
+      metaGuid: TABLE,
+      metaType: MetaType.TABLE,
+    }),
+    payload: {
+      payload: {
+        case: "rule",
+        value: {
+          title: "Orders must have rows",
+          rationale: "The nightly load can leave the table empty.",
+          confidence: 0.8,
+          severity: QualitySeverity.WARNING,
+          config: create(QualityRuleConfigSchema, {
+            config: {
+              case: "rowCount",
+              value: create(RowCountConfigSchema, { minRows: 1n }),
+            },
+          }),
+        },
+      },
+    },
+  });
 }
 
 async function mountComposer(
@@ -89,6 +199,10 @@ async function mountComposer(
     permissions?: string[];
     defaultScheduleSeconds?: number;
     defaultSeverity?: QualitySeverity;
+    rule?: QualityRule;
+    suggestion?: ReturnType<typeof suggestionFixture>;
+    scope?: "dataset" | "column";
+    initialColumn?: string;
   } = {}
 ) {
   const pinia = createPinia();
@@ -96,19 +210,6 @@ async function mountComposer(
   useAuthStore().user = create(UserSchema, {
     permissions: options.permissions ?? PERMISSIONS,
   });
-  const router = createRouter({
-    history: createMemoryHistory(),
-    routes: [
-      { path: "/", name: "Home", component: { template: "<div />" } },
-      {
-        path: "/data-quality/rules/new",
-        name: "DataQualityRuleNew",
-        component: { template: "<div />" },
-      },
-    ],
-  });
-  await router.push("/");
-  await router.isReady();
   const wrapper = mount(TargetRuleComposer, {
     attachTo: document.body,
     props: {
@@ -118,8 +219,12 @@ async function mountComposer(
       targetLabel: TARGET_LABEL,
       defaultScheduleSeconds: options.defaultScheduleSeconds,
       defaultSeverity: options.defaultSeverity,
+      rule: options.rule,
+      suggestion: options.suggestion,
+      scope: options.scope,
+      initialColumn: options.initialColumn,
     },
-    global: { plugins: [i18n, pinia, router] },
+    global: { plugins: [i18n, pinia] },
   });
   await flushPromises();
   return wrapper;
@@ -155,7 +260,7 @@ describe("TargetRuleComposer", () => {
     );
   });
 
-  it("names the target it is fixed to and links to the full editor", async () => {
+  it("names the target it is fixed to and loads its columns", async () => {
     const wrapper = await mountComposer();
 
     // The title carries the page's label, not a target the reader must pick.
@@ -170,31 +275,47 @@ describe("TargetRuleComposer", () => {
       parentGuid: TABLE,
       metaType: MetaType.COLUMN,
     });
-
-    const advanced = [
-      ...document.body.querySelectorAll<HTMLAnchorElement>('[role="dialog"] a'),
-    ].find(
-      (link) =>
-        link.textContent?.trim() === label("dataQuality.composer.advanced")
-    );
-    expect(advanced).toBeDefined();
-    const href = advanced?.getAttribute("href") ?? "";
-    expect(href).toContain("/data-quality/rules/new");
-    expect(href).toContain("table_guid=");
-    expect(href).toContain("meta_type=");
     wrapper.unmount();
   });
 
-  it("offers only the five rule types a view can watch", async () => {
-    const wrapper = await mountComposer({ metaType: MetaType.VIEW });
-    expect(document.body.textContent).toContain(
-      label("dataQuality.editor.ruleTypeViewHint")
-    );
+  it("lists every allowed check in its catalogue section", async () => {
+    const wrapper = await mountComposer();
+    await nextTick();
 
-    const options = await openRuleTypeSelect();
-    const labels = options.map((option) => option.textContent?.trim() ?? "");
-    expect(options).toHaveLength(5);
-    expect(new Set(labels)).toEqual(
+    const buttons = typeButtons();
+    expect(buttons).toHaveLength(18);
+    expect(buttons.map(typeButtonLabel)).toContain(
+      label(qualityRuleTypeKey(QualityRuleType.ROW_COUNT))
+    );
+    // Each entry explains what the check observes.
+    expect(document.body.textContent).toContain(
+      label(qualityRuleTypeDescriptionKey(QualityRuleType.ROW_COUNT))
+    );
+    // All four sections have a member on a plain table.
+    for (const group of [
+      "commonGroup",
+      "datasetGroup",
+      "columnGroup",
+      "advancedGroup",
+    ]) {
+      expect(document.body.textContent).toContain(
+        label(`dataQuality.composer.${group}`)
+      );
+    }
+    // The default check is the one the catalogue marks as selected.
+    expect(
+      typeButton(QualityRuleType.ROW_COUNT)?.getAttribute("aria-pressed")
+    ).toBe("true");
+    wrapper.unmount();
+  });
+
+  it("offers only the checks a view can watch", async () => {
+    const wrapper = await mountComposer({ metaType: MetaType.VIEW });
+    await nextTick();
+
+    const buttons = typeButtons();
+    expect(buttons).toHaveLength(5);
+    expect(new Set(buttons.map(typeButtonLabel))).toEqual(
       new Set(
         [
           QualityRuleType.ROW_COUNT,
@@ -205,8 +326,16 @@ describe("TargetRuleComposer", () => {
         ].map((ruleType) => label(qualityRuleTypeKey(ruleType)))
       )
     );
-    expect(labels).not.toContain(label("dataQuality.ruleType.unique"));
-    expect(labels).not.toContain(label("dataQuality.ruleType.aggregate"));
+    expect(document.body.textContent).toContain(
+      label("dataQuality.editor.ruleTypeViewHint")
+    );
+    // The sections with no member for a view are not rendered.
+    expect(document.body.textContent).not.toContain(
+      label("dataQuality.composer.columnGroup")
+    );
+    expect(document.body.textContent).not.toContain(
+      label("dataQuality.composer.advancedGroup")
+    );
     wrapper.unmount();
   });
 
@@ -267,6 +396,95 @@ describe("TargetRuleComposer", () => {
     wrapper.unmount();
   });
 
+  it("seeds a column check from the column the workspace named", async () => {
+    const wrapper = await mountComposer({
+      scope: "column",
+      initialColumn: "email",
+    });
+    await nextTick();
+
+    expect(
+      typeButton(QualityRuleType.NULL_PERCENT)?.getAttribute("aria-pressed")
+    ).toBe("true");
+    // The named column reached the null-rate config, so the dialog opens on a
+    // check the reader can save without retyping the column.
+    setInput("#dq-composer-title", "Emails are present");
+    setInput("#dq-field-maxNullPct", "5");
+    await flushPromises();
+    dialogButton(label("dataQuality.editor.create"))?.click();
+    await flushPromises();
+
+    const [rule] = mocks.createQualityRule.mock.calls[0] as [QualityRule];
+    const config = rule.config?.config;
+    expect(config?.case).toBe("nullPercent");
+    expect((config?.value as { column?: string } | undefined)?.column).toBe(
+      "email"
+    );
+    wrapper.unmount();
+  });
+
+  it("starts a dataset check from the dataset scope", async () => {
+    const wrapper = await mountComposer({ scope: "dataset" });
+    await nextTick();
+
+    expect(
+      typeButton(QualityRuleType.ROW_COUNT)?.getAttribute("aria-pressed")
+    ).toBe("true");
+    wrapper.unmount();
+  });
+
+  it("carries the named column across a check-type change", async () => {
+    const wrapper = await mountComposer({
+      scope: "column",
+      initialColumn: "email",
+    });
+    await nextTick();
+
+    // Switching to another single-column check keeps the column the row named.
+    typeButton(QualityRuleType.UNIQUE)?.click();
+    await flushPromises();
+    setInput("#dq-composer-title", "Emails are unique");
+    await flushPromises();
+    dialogButton(label("dataQuality.editor.create"))?.click();
+    await flushPromises();
+
+    const [rule] = mocks.createQualityRule.mock.calls[0] as [QualityRule];
+    const config = rule.config?.config;
+    expect(config?.case).toBe("unique");
+    expect((config?.value as { column?: string } | undefined)?.column).toBe(
+      "email"
+    );
+    wrapper.unmount();
+  });
+
+  it("prefills from an AI draft and accepts it when creating", async () => {
+    const wrapper = await mountComposer({ suggestion: suggestionFixture() });
+    await nextTick();
+
+    // The draft's title and check type are the form's.
+    expect(
+      document.querySelector<HTMLInputElement>("#dq-composer-title")?.value
+    ).toBe("Orders must have rows");
+    expect(
+      typeButton(QualityRuleType.ROW_COUNT)?.getAttribute("aria-pressed")
+    ).toBe("true");
+
+    dialogButton(label("dataQuality.editor.create"))?.click();
+    await flushPromises();
+
+    // One request creates the rule and accepts the suggestion it came from.
+    expect(mocks.createQualityRule).toHaveBeenCalledTimes(1);
+    const [rule, suggestionName] = mocks.createQualityRule.mock.calls[0] as [
+      QualityRule,
+      string,
+    ];
+    expect(suggestionName).toBe(SUGGESTION);
+    expect(rule.title).toBe("Orders must have rows");
+    expect(rule.target?.metaGuid).toBe(TABLE);
+    expect(wrapper.emitted("update:open")).toEqual([[false]]);
+    wrapper.unmount();
+  });
+
   it("skips the dry run when the caller may not run rules", async () => {
     const wrapper = await mountComposer({
       permissions: ["metaxisdata.dataQuality.rules.create"],
@@ -320,6 +538,131 @@ describe("TargetRuleComposer", () => {
     // A rejected create is not a save: nothing is reported and the form stays.
     expect(wrapper.emitted("saved")).toBeUndefined();
     expect(wrapper.emitted("update:open")).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it("edits the rule in place and sends only the changed fields", async () => {
+    const original = ruleFixture();
+    const updated = ruleFixture({ title: "Orders have rows, revised" });
+    mocks.updateQualityRule.mockResolvedValue(updated);
+    const wrapper = await mountComposer({ rule: original });
+
+    // The dialog is fixed to the rule rather than to a blank create form.
+    expect(document.body.textContent).toContain(
+      label("dataQuality.composer.editTitle", { title: "Orders have rows" })
+    );
+    expect(dialogButton(label("dataQuality.editor.saveChanges"))).toBeDefined();
+
+    setInput("#dq-composer-title", "Orders have rows, revised");
+    setInput("#dq-field-minRows", "5");
+    await flushPromises();
+    dialogButton(label("dataQuality.editor.saveChanges"))?.click();
+    await flushPromises();
+
+    // The dry run still gates the write, exactly as it does for a new rule.
+    expect(mocks.previewQualityRule).toHaveBeenCalledTimes(1);
+    expect(mocks.updateQualityRule).toHaveBeenCalledTimes(1);
+    const [rule, mask] = mocks.updateQualityRule.mock.calls[0] as [
+      QualityRule,
+      string[],
+    ];
+    expect(rule.name).toBe(original.name);
+    expect(rule.title).toBe("Orders have rows, revised");
+    expect(
+      (rule.config?.config.value as { minRows?: bigint } | undefined)?.minRows
+    ).toBe(5n);
+    // Only what changed travels; target and state stay off the mask.
+    expect(mask).toContain("title");
+    expect(mask).toContain("config");
+    expect(mask).not.toContain("target");
+    expect(mask).not.toContain("state");
+
+    expect(wrapper.emitted("saved")).toEqual([[updated]]);
+    expect(wrapper.emitted("update:open")).toEqual([[false]]);
+    wrapper.unmount();
+  });
+
+  it("saves the filter, owner, tags and empty behaviour from the details", async () => {
+    const original = ruleFixture({ ruleType: QualityRuleType.UNIQUE });
+    mocks.updateQualityRule.mockResolvedValue(
+      ruleFixture({ ruleType: QualityRuleType.UNIQUE })
+    );
+    const wrapper = await mountComposer({ rule: original });
+    await nextTick();
+
+    wrapper
+      .findComponent(UserSelect)
+      .vm.$emit("update:modelValue", "users/alice");
+    wrapper
+      .findComponent(RuleFilterEditor)
+      .vm.$emit("update:modelValue", [
+        { column: "region", op: QualityFilterOperator.EQ, values: "EU" },
+      ]);
+    const onEmpty = wrapper
+      .findAllComponents(Select)
+      .find((candidate) => candidate.find("#dq-composer-on-empty").exists());
+    onEmpty?.vm.$emit("update:modelValue", String(QualityEmptyBehavior.FAIL));
+    setInput("#dq-composer-tags", "nightly, core");
+    await flushPromises();
+
+    dialogButton(label("dataQuality.editor.saveChanges"))?.click();
+    await flushPromises();
+
+    expect(mocks.updateQualityRule).toHaveBeenCalledTimes(1);
+    const [rule, mask] = mocks.updateQualityRule.mock.calls[0] as [
+      QualityRule,
+      string[],
+    ];
+    expect(rule.owner).toBe("users/alice");
+    expect(rule.tags).toEqual(["nightly", "core"]);
+    expect(rule.config?.onEmpty).toBe(QualityEmptyBehavior.FAIL);
+    expect(rule.config?.filter?.clauses).toHaveLength(1);
+    expect(rule.config?.filter?.clauses[0]?.column).toBe("region");
+    expect(mask).toContain("owner");
+    expect(mask).toContain("tags");
+    expect(mask).toContain("config");
+    wrapper.unmount();
+  });
+
+  it("keeps the state, owner and tags a rule was saved with", async () => {
+    const original = ruleFixture({
+      state: QualityRuleState.PAUSED,
+      owner: "users/alice",
+      tags: ["nightly"],
+    });
+    mocks.updateQualityRule.mockResolvedValue(
+      ruleFixture({ title: "Renamed", state: QualityRuleState.PAUSED })
+    );
+    const wrapper = await mountComposer({ rule: original });
+
+    setInput("#dq-composer-title", "Renamed");
+    await flushPromises();
+    dialogButton(label("dataQuality.editor.saveChanges"))?.click();
+    await flushPromises();
+
+    const [rule, mask] = mocks.updateQualityRule.mock.calls[0] as [
+      QualityRule,
+      string[],
+    ];
+    expect(rule.state).toBe(QualityRuleState.PAUSED);
+    expect(rule.owner).toBe("users/alice");
+    expect(rule.tags).toEqual(["nightly"]);
+    // A rename is a rename: nothing else is named by the mask.
+    expect(mask).toEqual(["title"]);
+    wrapper.unmount();
+  });
+
+  it("closes without a request when an edit changes nothing", async () => {
+    const wrapper = await mountComposer({ rule: ruleFixture() });
+
+    dialogButton(label("dataQuality.editor.saveChanges"))?.click();
+    await flushPromises();
+
+    expect(mocks.previewQualityRule).not.toHaveBeenCalled();
+    expect(mocks.updateQualityRule).not.toHaveBeenCalled();
+    expect(wrapper.emitted("saved")).toBeUndefined();
+    // The dialog still closes: there is nothing to save, not an error.
+    expect(wrapper.emitted("update:open")).toEqual([[false]]);
     wrapper.unmount();
   });
 });

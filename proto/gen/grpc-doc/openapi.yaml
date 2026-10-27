@@ -8425,6 +8425,14 @@ components:
                     description: |-
                         Why the target no longer resolves; empty while healthy. The rules stay
                          readable when it is set, because their target path is a snapshot.
+                ruleHistory:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityRuleHistory'
+                    description: |-
+                        Each rule's recent completed executions, newest first, so the workspace can
+                         draw a per-rule history strip without one request per rule. Rules with no
+                         completed execution are absent.
         GetUnreadNotificationCountResponse:
             type: object
             properties:
@@ -11203,6 +11211,18 @@ components:
             description: |-
                 QualityRuleDraftConfig is one model-proposed rule, already validated into the
                  typed config. It is never executed without a human saving it as a rule.
+        QualityRuleHistory:
+            type: object
+            properties:
+                rule:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityRules/{quality_rule}'
+                executions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityExecutionSummary'
+                    description: Newest first. At most 20 are returned.
+            description: QualityRuleHistory is one rule's recent completed executions.
         QualityStatusCounts:
             type: object
             properties:

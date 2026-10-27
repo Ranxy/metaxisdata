@@ -6,14 +6,18 @@ import { createMemoryHistory, createRouter } from "vue-router";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
-  QualityExecutionSchema,
-  QualityExecutionState,
   QualityIssueSchema,
   QualityRuleSchema,
   QualityStatus,
   QualityStatusCountsSchema,
+  QualityTargetOrder,
+  QualityTargetPathSchema,
+  QualityTargetSchema,
+  type QualityTargetSummary,
+  QualityTargetSummarySchema,
   QualityTrendPointSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
+import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
 import DataQualityOverviewPage from "./DataQualityOverviewPage.vue";
 
@@ -21,7 +25,7 @@ const mocks = vi.hoisted(() => ({
   getQualityOverview: vi.fn(),
   listAllQualityRules: vi.fn(),
   listQualityIssues: vi.fn(),
-  listQualityExecutions: vi.fn(),
+  listQualityTargets: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", async (importOriginal) => ({
@@ -29,22 +33,20 @@ vi.mock("@/api/data-quality", async (importOriginal) => ({
   getQualityOverview: mocks.getQualityOverview,
   listAllQualityRules: mocks.listAllQualityRules,
   listQualityIssues: mocks.listQualityIssues,
-  listQualityExecutions: mocks.listQualityExecutions,
+  listQualityTargets: mocks.listQualityTargets,
 }));
 
 const PERMISSIONS = [
   "metaxisdata.dataQuality.rules.list",
-  "metaxisdata.dataQuality.rules.create",
+  "metaxisdata.dataQuality.rules.get",
   "metaxisdata.dataQuality.issues.list",
-  "metaxisdata.dataQuality.executions.list",
-  "metaxisdata.dataQuality.executions.get",
 ];
 
 const Dummy = { template: "<div />" };
 
 const RULE = "workspaces/ws/qualityRules/rule-1";
-const EXECUTION = "workspaces/ws/qualityExecutions/exec-1";
 const ISSUE = "workspaces/ws/qualityIssues/issue-1";
+const TARGET_GUID = "inst1;shop;public;orders";
 
 function today(offsetDays = 0): string {
   return new Date(Date.now() - offsetDays * 86_400_000)
@@ -88,6 +90,39 @@ function overviewFixture(overrides = {}) {
   };
 }
 
+/** One directory row as the attention card receives it. */
+function targetFixture(
+  overrides: {
+    guid?: string;
+    object?: string;
+    worstStatus?: QualityStatus;
+    openIssueCount?: number;
+    ruleCount?: number;
+  } = {}
+): QualityTargetSummary {
+  return create(QualityTargetSummarySchema, {
+    target: create(QualityTargetSchema, {
+      metaGuid: overrides.guid ?? TARGET_GUID,
+      metaType: MetaType.TABLE,
+      path: create(QualityTargetPathSchema, {
+        instance: "prod",
+        database: "shop",
+        schema: "public",
+        object: overrides.object ?? "orders",
+      }),
+    }),
+    ruleCount: overrides.ruleCount ?? 3,
+    enabledRuleCount: overrides.ruleCount ?? 3,
+    pausedRuleCount: 0,
+    columnCount: 1,
+    openIssueCount: overrides.openIssueCount ?? 1,
+    pendingDraftCount: 0,
+    pendingLabelCount: 0,
+    worstStatus: overrides.worstStatus ?? QualityStatus.FAIL,
+    schemaChanged: false,
+  });
+}
+
 async function mountPage() {
   const router = createRouter({
     history: createMemoryHistory(),
@@ -104,23 +139,23 @@ async function mountPage() {
         component: Dummy,
       },
       {
-        path: "/data-quality/rules",
-        name: "DataQualityRules",
+        path: "/data-quality/targets/:targetGuid+",
+        name: "DataQualityTarget",
         component: Dummy,
       },
       {
-        path: "/data-quality/rules/new",
-        name: "DataQualityRuleNew",
+        path: "/data-quality/checks",
+        name: "DataQualityChecks",
+        component: Dummy,
+      },
+      {
+        path: "/data-quality/rules/:ruleId+",
+        name: "DataQualityRuleRedirect",
         component: Dummy,
       },
       {
         path: "/data-quality/executions",
         name: "DataQualityExecutions",
-        component: Dummy,
-      },
-      {
-        path: "/data-quality/executions/:executionId+",
-        name: "DataQualityExecutionDetail",
         component: Dummy,
       },
       {
@@ -158,19 +193,6 @@ describe("DataQualityOverviewPage", () => {
         title: "Null rate on orders.id",
       }),
     ]);
-    mocks.listQualityExecutions.mockResolvedValue({
-      items: [
-        create(QualityExecutionSchema, {
-          name: EXECUTION,
-          rule: RULE,
-          state: QualityExecutionState.COMPLETED,
-          outcome: QualityStatus.FAIL,
-          failedRows: 40n,
-          totalRows: 1000n,
-        }),
-      ],
-      nextPageToken: "",
-    });
     mocks.listQualityIssues.mockResolvedValue({
       items: [
         create(QualityIssueSchema, {
@@ -179,13 +201,37 @@ describe("DataQualityOverviewPage", () => {
           status: 1,
           severity: 2,
           occurrenceCount: 3,
+          target: create(QualityTargetSchema, {
+            metaGuid: TARGET_GUID,
+            metaType: MetaType.TABLE,
+            path: create(QualityTargetPathSchema, {
+              instance: "prod",
+              database: "shop",
+              schema: "public",
+              object: "orders",
+            }),
+          }),
+        }),
+      ],
+      nextPageToken: "",
+    });
+    mocks.listQualityTargets.mockResolvedValue({
+      items: [
+        targetFixture(),
+        // A healthy target is not an attention row even when the page returns it.
+        targetFixture({
+          guid: "inst1;shop;public;customers",
+          object: "customers",
+          worstStatus: QualityStatus.PASS,
+          openIssueCount: 0,
+          ruleCount: 1,
         }),
       ],
       nextPageToken: "",
     });
   });
 
-  it("renders the counts, the trend and the attention lists", async () => {
+  it("renders the counts, the trend and the targets needing attention", async () => {
     const wrapper = await mountPage();
     const text = wrapper.text();
 
@@ -197,13 +243,60 @@ describe("DataQualityOverviewPage", () => {
     );
     expect(text).toContain("3");
     expect(text).toContain("10");
-    // The failing rule and the open issue are both named by the rule's title.
+    expect(text).toContain(
+      i18n.global.t("dataQuality.overview.attentionTitle")
+    );
+    expect(text).toContain(
+      i18n.global.t("dataQuality.overview.attentionDescription")
+    );
+    // The failing target is the row; a healthy one from the same page is not.
+    expect(text).toContain("orders");
+    expect(text).not.toContain("customers");
+    expect(text).toContain(
+      i18n.global.t("dataQuality.targets.rulesCount", { count: 3 })
+    );
+    expect(text).toContain(i18n.global.t("dataQuality.status.fail"));
+    expect(text).toContain(
+      i18n.global.t("dataQuality.workspace.summaryIssues", { count: 1 })
+    );
+
+    // The attention read asks for the worst rows first, then filters.
+    expect(mocks.listQualityTargets).toHaveBeenCalledWith({
+      pageSize: 5,
+      orderBy: QualityTargetOrder.ATTENTION,
+    });
+
+    const attentionLink = wrapper
+      .findAll("a")
+      .find((link) =>
+        (link.attributes("href") ?? "").startsWith(
+          "/data-quality/targets/inst1/shop/public/orders"
+        )
+      );
+    expect(attentionLink).toBeDefined();
+    expect(attentionLink?.attributes("href")).toBe(
+      "/data-quality/targets/inst1/shop/public/orders?metaType=4"
+    );
+
+    // The open-issues block stays beside the attention card.
+    expect(text).toContain(
+      i18n.global.t("dataQuality.overview.openIssuesTitle")
+    );
     expect(text).toContain("Null rate on orders.id");
+
     // The chart is a labelled inline SVG, not an <img>.
     const svg = wrapper.find("svg[role='img']");
     expect(svg.exists()).toBe(true);
     expect(svg.attributes("aria-label")).toContain("7");
     expect(wrapper.findAll("rect").length).toBeGreaterThan(0);
+  });
+
+  it("links the enabled-check tile to the audit directory", async () => {
+    const wrapper = await mountPage();
+
+    const checks = wrapper.find('a[href="/data-quality/checks"]');
+    expect(checks.exists()).toBe(true);
+    expect(wrapper.find('a[href="/data-quality/targets"]').exists()).toBe(true);
   });
 
   it("asks for the other window when the 30-day toggle is used", async () => {
@@ -234,7 +327,42 @@ describe("DataQualityOverviewPage", () => {
     ).toBe("true");
   });
 
-  it("guides a workspace with no rules yet instead of showing empty charts", async () => {
+  it("says every target is healthy when none needs attention", async () => {
+    mocks.listQualityTargets.mockResolvedValue({
+      items: [
+        targetFixture({
+          worstStatus: QualityStatus.PASS,
+          openIssueCount: 0,
+        }),
+      ],
+      nextPageToken: "",
+    });
+    const wrapper = await mountPage();
+
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.overview.attentionEmpty")
+    );
+    wrapper.unmount();
+  });
+
+  it("degrades the attention card without losing the rest of the page", async () => {
+    mocks.listQualityTargets.mockRejectedValue(new Error("targets down"));
+    const wrapper = await mountPage();
+
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.overview.attentionEmpty")
+    );
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.overview.openIssuesTitle")
+    );
+    expect(wrapper.find("svg[role='img']").exists()).toBe(true);
+    expect(wrapper.text()).not.toContain(
+      i18n.global.t("dataQuality.overview.fetchError")
+    );
+    wrapper.unmount();
+  });
+
+  it("guides a workspace with no rules yet and never offers to create one here", async () => {
     mocks.getQualityOverview.mockResolvedValue(
       overviewFixture({
         ruleCount: 0,
@@ -249,7 +377,18 @@ describe("DataQualityOverviewPage", () => {
     expect(wrapper.text()).toContain(
       i18n.global.t("dataQuality.overview.emptyTitle")
     );
-    expect(wrapper.text()).toContain(i18n.global.t("dataQuality.newRule"));
+    expect(wrapper.text()).not.toContain(i18n.global.t("dataQuality.newRule"));
+    expect(wrapper.find('a[href="/data-quality/rules/new"]').exists()).toBe(
+      false
+    );
+    const targets = wrapper
+      .findAll("a")
+      .find(
+        (link) =>
+          link.text().trim() ===
+          i18n.global.t("dataQuality.targets.startMonitoring")
+      );
+    expect(targets?.attributes("href")).toBe("/data-quality/targets?new=1");
     expect(wrapper.find("svg[role='img']").exists()).toBe(false);
   });
 });

@@ -17,6 +17,7 @@ import {
   QualityTargetPathSchema,
   QualityTargetSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
+import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
 import DataQualityExecutionsPage from "./DataQualityExecutionsPage.vue";
 
@@ -53,6 +54,7 @@ function executionFixture(
     trigger: QualityExecutionTrigger.MANUAL,
     target: create(QualityTargetSchema, {
       metaGuid: "inst1;shop;public;orders",
+      metaType: MetaType.TABLE,
       path: create(QualityTargetPathSchema, {
         instance: "prod",
         database: "shop",
@@ -90,13 +92,18 @@ async function mountPage(path = "/data-quality/executions") {
         component: Dummy,
       },
       {
-        path: "/data-quality/rules",
-        name: "DataQualityRules",
+        path: "/data-quality/checks",
+        name: "DataQualityChecks",
+        component: Dummy,
+      },
+      {
+        path: "/data-quality/targets/:targetGuid+",
+        name: "DataQualityTarget",
         component: Dummy,
       },
       {
         path: "/data-quality/rules/:ruleId+",
-        name: "DataQualityRuleDetail",
+        name: "DataQualityRuleRedirect",
         component: Dummy,
       },
     ],
@@ -212,5 +219,57 @@ describe("DataQualityExecutionsPage", () => {
 
     expect(wrapper.text()).toContain(i18n.global.t("dataQuality.noExecutions"));
     expect(wrapper.text()).toContain(i18n.global.t("dataQuality.viewRules"));
+  });
+
+  it("links the rule into its target workspace with the check selected", async () => {
+    const { wrapper } = await mountPage();
+
+    const rule = wrapper
+      .findAll("a")
+      .find((link) => link.text().trim() === "Null rate on orders.id");
+    expect(rule).toBeDefined();
+    const href = rule?.attributes("href") ?? "";
+    expect(href).toContain("/data-quality/targets/inst1/shop/public/orders");
+    expect(href).toContain("metaType=4");
+    expect(href).toContain(`check=${RULE}`);
+  });
+
+  it("links the target path to the workspace without selecting a check", async () => {
+    const { wrapper } = await mountPage();
+
+    const target = wrapper
+      .findAll("a")
+      .find(
+        (link) =>
+          link.text().trim() === "public.orders" &&
+          (link.attributes("href") ?? "").startsWith("/data-quality/targets/")
+      );
+    expect(target).toBeDefined();
+    const href = target?.attributes("href") ?? "";
+    expect(href).toContain("/data-quality/targets/inst1/shop/public/orders");
+    expect(href).toContain("metaType=4");
+    expect(href).not.toContain("check=");
+  });
+
+  it("keeps the per-rule fallback for an execution with no target snapshot", async () => {
+    mocks.listQualityExecutions.mockResolvedValue(
+      page([executionFixture({ target: undefined })])
+    );
+    const { wrapper } = await mountPage();
+
+    const rule = wrapper
+      .findAll("a")
+      .find((link) => link.text().trim() === "Null rate on orders.id");
+    expect(rule?.attributes("href")).toContain("/data-quality/rules/");
+    // No target means no target link, but the path is still readable.
+    expect(wrapper.text()).toContain("-");
+    expect(
+      wrapper
+        .findAll("a")
+        .some((link) =>
+          (link.attributes("href") ?? "").startsWith("/data-quality/targets/")
+        )
+    ).toBe(false);
+    wrapper.unmount();
   });
 });

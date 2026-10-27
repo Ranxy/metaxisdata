@@ -1,10 +1,16 @@
 <template>
   <div class="space-y-4">
     <PageHeader
-      :title="t('dataQuality.rulesTitle')"
-      :description="t('dataQuality.rulesDescription')"
+      :title="t('dataQuality.checks.title')"
+      :description="t('dataQuality.checks.description')"
     >
       <template #actions>
+        <Button as-child>
+          <RouterLink :to="{ name: 'DataQualityTargets', query: { new: '1' } }">
+            <Plus class="mr-2 h-4 w-4" />
+            {{ t("dataQuality.targets.startMonitoring") }}
+          </RouterLink>
+        </Button>
         <Button
           variant="outline"
           :disabled="isLoading"
@@ -23,13 +29,6 @@
         >
           <Sparkles class="mr-2 h-4 w-4" />
           {{ t("dataQuality.llm.draft.openButton") }}
-        </Button>
-        <Button
-          v-if="canCreate"
-          @click="createRule"
-        >
-          <Plus class="mr-2 h-4 w-4" />
-          {{ t("dataQuality.newRule") }}
         </Button>
       </template>
     </PageHeader>
@@ -225,10 +224,10 @@
           :title="
             hasActiveFilters
               ? t('dataQuality.noFilteredRules')
-              : t('dataQuality.noRules')
+              : t('dataQuality.checks.emptyTitle')
           "
           :description="
-            hasActiveFilters ? '' : t('dataQuality.noRulesHint')
+            hasActiveFilters ? '' : t('dataQuality.checks.emptyDescription')
           "
         >
           <Button
@@ -240,11 +239,13 @@
             {{ t("common.filter.clear") }}
           </Button>
           <Button
-            v-else-if="canCreate"
-            @click="createRule"
+            v-else
+            variant="outline"
+            as-child
           >
-            <Plus class="mr-2 h-4 w-4" />
-            {{ t("dataQuality.newRule") }}
+            <RouterLink :to="{ name: 'DataQualityTargets' }">
+              {{ t("dataQuality.targets.title") }}
+            </RouterLink>
           </Button>
           <Button
             v-if="!hasActiveFilters && canSuggest"
@@ -261,6 +262,9 @@
             <TableHeader>
               <TableRow>
                 <TableHead>{{ t("dataQuality.rule") }}</TableHead>
+                <TableHead class="hidden md:table-cell">
+                  {{ t("dataQuality.ruleTarget") }}
+                </TableHead>
                 <TableHead class="hidden lg:table-cell">
                   {{ t("dataQuality.type") }}
                 </TableHead>
@@ -293,11 +297,10 @@
               >
                 <TableCell>
                   <div class="flex max-w-[14rem] min-w-0 items-center gap-2 md:max-w-md">
-                    <!-- The title is the way into the rule's own page; editing
-                         is the pencil action, so a reader-only caller still gets
-                         the destination. -->
+                    <!-- The title is the way into the check's target workspace,
+                         with this check selected there. -->
                     <RouterLink
-                      :to="ruleRoute(rule)"
+                      :to="ruleTargetRoute(rule)"
                       class="truncate text-left font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                       :title="rule.title"
                     >
@@ -318,10 +321,15 @@
                     </Badge>
                   </div>
                   <div
-                    class="max-w-[14rem] truncate font-mono text-xs text-muted-foreground md:max-w-md"
+                    class="max-w-[14rem] truncate font-mono text-xs text-muted-foreground md:hidden"
                     :title="targetTitle(rule)"
                   >
-                    {{ targetTitle(rule) }}
+                    <RouterLink
+                      :to="targetRoute(rule)"
+                      class="hover:underline"
+                    >
+                      {{ targetTitle(rule) }}
+                    </RouterLink>
                   </div>
                   <!-- Below md the type, severity, state, last result and
                        updated-at columns collapse in here, so the table never
@@ -358,6 +366,15 @@
                       {{ formatRelativeTime(rule.updateTime, locale) }}
                     </span>
                   </div>
+                </TableCell>
+                <TableCell class="hidden md:table-cell">
+                  <RouterLink
+                    :to="targetRoute(rule)"
+                    class="block max-w-[14rem] truncate text-xs hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    :title="targetTitle(rule)"
+                  >
+                    {{ targetTitle(rule) }}
+                  </RouterLink>
                 </TableCell>
                 <TableCell class="hidden lg:table-cell">
                   {{ t(qualityRuleTypeKey(rule.ruleType)) }}
@@ -425,17 +442,6 @@
                 <TableCell class="text-right">
                   <div class="flex items-center justify-end gap-1">
                     <Button
-                      v-if="canUpdate && rule.state !== QualityRuleState.ARCHIVED"
-                      variant="ghost"
-                      size="icon"
-                      class="h-8 w-8"
-                      :title="t('dataQuality.editRule')"
-                      :aria-label="t('dataQuality.editRule')"
-                      @click="editRule(rule)"
-                    >
-                      <Pencil class="h-4 w-4" />
-                    </Button>
-                    <Button
                       v-if="canRun"
                       variant="ghost"
                       size="icon"
@@ -448,41 +454,18 @@
                       <Zap class="h-4 w-4" />
                     </Button>
                     <Button
-                      v-if="canUpdate && rule.state !== QualityRuleState.ARCHIVED"
                       variant="ghost"
                       size="icon"
                       class="h-8 w-8"
-                      :title="
-                        rule.state === QualityRuleState.ENABLED
-                          ? t('dataQuality.pauseRule')
-                          : t('dataQuality.resumeRule')
-                      "
-                      :aria-label="
-                        rule.state === QualityRuleState.ENABLED
-                          ? t('dataQuality.pauseRule')
-                          : t('dataQuality.resumeRule')
-                      "
-                      @click="toggleRule(rule)"
+                      as-child
                     >
-                      <Pause
-                        v-if="rule.state === QualityRuleState.ENABLED"
-                        class="h-4 w-4"
-                      />
-                      <Play
-                        v-else
-                        class="h-4 w-4"
-                      />
-                    </Button>
-                    <Button
-                      v-if="canDelete && rule.state !== QualityRuleState.ARCHIVED"
-                      variant="ghost"
-                      size="icon"
-                      class="h-8 w-8 text-muted-foreground hover:text-destructive"
-                      :title="t('common.delete')"
-                      :aria-label="t('common.delete')"
-                      @click="askDelete(rule)"
-                    >
-                      <Trash2 class="h-4 w-4" />
+                      <RouterLink
+                        :to="targetRoute(rule)"
+                        :title="t('dataQuality.checks.openTarget')"
+                        :aria-label="t('dataQuality.checks.openTarget')"
+                      >
+                        <ExternalLink class="h-4 w-4" />
+                      </RouterLink>
                     </Button>
                   </div>
                 </TableCell>
@@ -504,42 +487,32 @@
         </div>
       </PageState>
     </Card>
-
-    <ConfirmDeleteDialog
-      v-model="deleteOpen"
-      :title="t('dataQuality.deleteRuleTitle')"
-      :message="t('dataQuality.deleteRuleMessage')"
-      :item-name="deleting?.title ?? ''"
-      :loading="saving"
-      @confirm="confirmDelete"
-    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { create } from "@bufbuild/protobuf";
 import {
-  Pause,
-  Pencil,
-  Play,
+  ExternalLink,
   Plus,
   RefreshCcw,
   ShieldCheck,
   Sparkles,
-  Trash2,
   Zap,
 } from "lucide-vue-next";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { RouterLink, useRouter } from "vue-router";
 import {
-  deleteQualityRule,
+  type LocationQuery,
+  type LocationQueryRaw,
+  RouterLink,
+  useRoute,
+  useRouter,
+} from "vue-router";
+import {
   listQualityRules,
   qualityRuleID,
   runQualityRules,
-  updateQualityRule,
 } from "@/api/data-quality";
-import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import TablePager from "@/components/common/TablePager.vue";
@@ -574,11 +547,11 @@ import { useAuthStore } from "@/store/modules/auth";
 import {
   QualityDimension,
   type QualityRule,
-  QualityRuleSchema,
   QualityRuleState,
   QualityRuleType,
   QualitySeverity,
 } from "@/types/proto-es/v1/data_quality_service_pb";
+import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
   formatTargetPath,
   type QualityTargetScope,
@@ -593,15 +566,21 @@ import {
 } from "@/utils/dataQuality";
 import { EDITABLE_RULE_TYPES } from "@/utils/dataQualityForm";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
+import { guidToRouteParams } from "@/utils/guid";
+
+/**
+ * The cross-target check directory: every check the workspace holds, for audit
+ * and search. It is read-only — a check is authored inside its target's
+ * contract workspace — so a row names its target and links there; the only
+ * action besides "run now" is opening that workspace.
+ */
 
 const { t, locale } = useI18n();
+const route = useRoute();
 const router = useRouter();
 const { handleError } = useErrorHandler();
 const authStore = useAuthStore();
 
-const canCreate = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.rules.create")
-);
 const canSuggest = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.suggest")
 );
@@ -610,12 +589,6 @@ const canRun = computed(() =>
 );
 const canViewExecution = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.executions.get")
-);
-const canUpdate = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.rules.update")
-);
-const canDelete = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.rules.delete")
 );
 // The directory feeds both the owner column and the filter picker, so the page
 // loads it once; the picker receives it and issues no request of its own.
@@ -651,9 +624,6 @@ const appliedOwner = ref("");
 
 const pageSize = ref(50);
 const error = ref("");
-const saving = ref(false);
-const deleteOpen = ref(false);
-const deleting = ref<QualityRule>();
 
 const hasActiveFilters = computed(
   () =>
@@ -714,6 +684,191 @@ const RULE_TYPE_FILTER_VALUES: QualityRuleType[] = [
   ...EDITABLE_RULE_TYPES,
 ];
 
+/** Every member each enum filter accepts, UNSPECIFIED included as "any". */
+const DIMENSION_FILTER_VALUES: QualityDimension[] = [
+  QualityDimension.UNSPECIFIED,
+  ...dimensionOptions.map((option) => option.value),
+];
+const SEVERITY_FILTER_VALUES: QualitySeverity[] = [
+  QualitySeverity.UNSPECIFIED,
+  ...severityOptions.map((option) => option.value),
+];
+const STATE_FILTER_VALUES: QualityRuleState[] = [
+  QualityRuleState.UNSPECIFIED,
+  ...stateOptions.map((option) => option.value),
+];
+
+/** The query parameter each filter travels under. */
+const FILTER_QUERY_KEYS = [
+  "q",
+  "instance",
+  "database",
+  "schema",
+  "table",
+  "owner",
+  "ownerUnassigned",
+  "dimension",
+  "ruleType",
+  "severity",
+  "state",
+] as const;
+
+/** The filters as one value, so a URL and the applied set share a shape. */
+interface RuleFilters {
+  search: string;
+  scope: QualityTargetScope | undefined;
+  owner: string;
+  dimension: string;
+  ruleType: string;
+  severity: string;
+  state: string;
+}
+
+function queryString(value: unknown): string {
+  if (Array.isArray(value)) {
+    return String(value[0] ?? "");
+  }
+  return value === undefined || value === null ? "" : String(value);
+}
+
+/** A numeric enum filter from the URL; anything the enum lacks reads as "any". */
+function enumFilter(value: unknown, members: readonly number[]): string {
+  const raw = queryString(value).trim();
+  if (!raw || raw === "-") {
+    return "-";
+  }
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 && members.includes(parsed)
+    ? String(parsed)
+    : "-";
+}
+
+/** The target-scope filter from the URL; no instance means no scope. */
+function scopeFromQuery(query: LocationQuery): QualityTargetScope | undefined {
+  const instance = queryString(query.instance).trim();
+  if (!instance) {
+    return undefined;
+  }
+  const database = queryString(query.database).trim();
+  const schema = queryString(query.schema).trim();
+  const table = queryString(query.table).trim();
+  return {
+    instance,
+    database,
+    schema,
+    table,
+    // The picker's label is "instance title > path"; a URL carries ids, so the
+    // id stands in until the reader picks the scope again.
+    label: [instance, database, schema, table].filter(Boolean).join(" > "),
+  };
+}
+
+/** The filters a URL carries: reload, shared link and back/forward. */
+function filtersFromQuery(query: LocationQuery): RuleFilters {
+  const owner = queryString(query.owner).trim();
+  return {
+    search: queryString(query.q).trim(),
+    scope: scopeFromQuery(query),
+    // A named member wins: the server rejects it combined with the flag.
+    owner:
+      owner ||
+      (queryString(query.ownerUnassigned) === "1" ? UNASSIGNED_OWNER : ""),
+    dimension: enumFilter(query.dimension, DIMENSION_FILTER_VALUES),
+    ruleType: enumFilter(query.ruleType, RULE_TYPE_FILTER_VALUES),
+    severity: enumFilter(query.severity, SEVERITY_FILTER_VALUES),
+    state: enumFilter(query.state, STATE_FILTER_VALUES),
+  };
+}
+
+/** Only non-default values are written, so the URL stays readable. */
+function queryFromFilters(filters: RuleFilters): Record<string, string> {
+  const query: Record<string, string> = {};
+  if (filters.search) {
+    query.q = filters.search;
+  }
+  if (filters.scope?.instance) {
+    query.instance = filters.scope.instance;
+    if (filters.scope.database) {
+      query.database = filters.scope.database;
+    }
+    if (filters.scope.schema) {
+      query.schema = filters.scope.schema;
+    }
+    if (filters.scope.table) {
+      query.table = filters.scope.table;
+    }
+  }
+  if (filters.owner === UNASSIGNED_OWNER) {
+    query.ownerUnassigned = "1";
+  } else if (filters.owner) {
+    query.owner = filters.owner;
+  }
+  if (filters.dimension !== "-") {
+    query.dimension = filters.dimension;
+  }
+  if (filters.ruleType !== "-") {
+    query.ruleType = filters.ruleType;
+  }
+  if (filters.severity !== "-") {
+    query.severity = filters.severity;
+  }
+  if (filters.state !== "-") {
+    query.state = filters.state;
+  }
+  return query;
+}
+
+function sameFilters(a: RuleFilters, b: RuleFilters): boolean {
+  const aScope = a.scope;
+  const bScope = b.scope;
+  return (
+    a.search === b.search &&
+    a.owner === b.owner &&
+    a.dimension === b.dimension &&
+    a.ruleType === b.ruleType &&
+    a.severity === b.severity &&
+    a.state === b.state &&
+    (aScope?.instance ?? "") === (bScope?.instance ?? "") &&
+    (aScope?.database ?? "") === (bScope?.database ?? "") &&
+    (aScope?.schema ?? "") === (bScope?.schema ?? "") &&
+    (aScope?.table ?? "") === (bScope?.table ?? "")
+  );
+}
+
+/** The filters the request currently applies. */
+function appliedFilters(): RuleFilters {
+  return {
+    search: appliedSearch.value,
+    scope: appliedScope.value,
+    owner: appliedOwner.value,
+    dimension: appliedDimension.value,
+    ruleType: appliedRuleType.value,
+    severity: appliedSeverity.value,
+    state: appliedState.value,
+  };
+}
+
+// Read the URL before the first request: a reloaded or shared link queries what
+// it carries instead of flashing the unfiltered directory first. Both the
+// controls and the applied set start there, so Apply has nothing pending.
+const initialFilters = filtersFromQuery(route.query);
+search.value = initialFilters.search;
+dimension.value = initialFilters.dimension;
+ruleType.value = initialFilters.ruleType;
+severity.value = initialFilters.severity;
+state.value = initialFilters.state;
+scope.value = initialFilters.scope;
+owner.value = initialFilters.owner;
+appliedSearch.value = initialFilters.search;
+appliedDimension.value = initialFilters.dimension;
+appliedRuleType.value = initialFilters.ruleType;
+appliedSeverity.value = initialFilters.severity;
+appliedState.value = initialFilters.state;
+appliedScope.value = initialFilters.scope
+  ? { ...initialFilters.scope }
+  : undefined;
+appliedOwner.value = initialFilters.owner;
+
 const {
   items: rules,
   isLoading,
@@ -734,28 +889,13 @@ const {
       database: appliedScope.value?.database,
       schema: appliedScope.value?.schema,
       table: appliedScope.value?.table,
-      dimension: enumFromFilter(appliedDimension.value, [
-        QualityDimension.UNSPECIFIED,
-        QualityDimension.COMPLETENESS,
-        QualityDimension.VALIDITY,
-        QualityDimension.UNIQUENESS,
-        QualityDimension.CONSISTENCY,
-        QualityDimension.TIMELINESS,
-        QualityDimension.ACCURACY,
-      ]),
+      dimension: enumFromFilter(
+        appliedDimension.value,
+        DIMENSION_FILTER_VALUES
+      ),
       ruleType: enumFromFilter(appliedRuleType.value, RULE_TYPE_FILTER_VALUES),
-      severity: enumFromFilter(appliedSeverity.value, [
-        QualitySeverity.UNSPECIFIED,
-        QualitySeverity.WARNING,
-        QualitySeverity.ERROR,
-        QualitySeverity.CRITICAL,
-      ]),
-      state: enumFromFilter(appliedState.value, [
-        QualityRuleState.UNSPECIFIED,
-        QualityRuleState.ENABLED,
-        QualityRuleState.PAUSED,
-        QualityRuleState.ARCHIVED,
-      ]),
+      severity: enumFromFilter(appliedSeverity.value, SEVERITY_FILTER_VALUES),
+      state: enumFromFilter(appliedState.value, STATE_FILTER_VALUES),
       // The sentinel cannot be sent: an empty owner plus `owner_unassigned` is
       // how the server reads "only rules nobody owns"; the two fields never both
       // apply.
@@ -772,6 +912,63 @@ const {
 // A cursor belongs to the query that produced it, so a new page size restarts
 // the walk at the first page.
 watch(pageSize, () => void resetPage());
+
+/**
+ * Write exactly the applied filters into the URL, preserving any parameter this
+ * page does not own. `replace` keeps history clean: applying a filter is not a
+ * navigation the back button should walk.
+ */
+function writeFiltersToUrl(filters: RuleFilters) {
+  const next: LocationQueryRaw = { ...route.query };
+  for (const key of FILTER_QUERY_KEYS) {
+    delete next[key];
+  }
+  Object.assign(next, queryFromFilters(filters));
+  if (sameQuery(next, route.query)) {
+    return;
+  }
+  void router.replace({ query: next });
+}
+
+/** Whether a query about to be written already reads like the current one. */
+function sameQuery(next: LocationQueryRaw, current: LocationQuery): boolean {
+  const keys = Object.keys(next);
+  if (keys.length !== Object.keys(current).length) {
+    return false;
+  }
+  return keys.every(
+    (key) => queryString(next[key]) === queryString(current[key])
+  );
+}
+
+// A reload, a shared link or back/forward changes the query from outside; the
+// page adopts those filters. The replace this page itself performs writes
+// exactly the applied filters, so the watcher recognizes it and stops — no loop,
+// no second request.
+watch(
+  () => route.query,
+  (query) => {
+    const next = filtersFromQuery(query);
+    if (sameFilters(next, appliedFilters())) {
+      return;
+    }
+    search.value = next.search;
+    dimension.value = next.dimension;
+    ruleType.value = next.ruleType;
+    severity.value = next.severity;
+    state.value = next.state;
+    scope.value = next.scope ? { ...next.scope } : undefined;
+    owner.value = next.owner;
+    appliedSearch.value = next.search;
+    appliedDimension.value = next.dimension;
+    appliedRuleType.value = next.ruleType;
+    appliedSeverity.value = next.severity;
+    appliedState.value = next.state;
+    appliedScope.value = next.scope ? { ...next.scope } : undefined;
+    appliedOwner.value = next.owner;
+    void resetPage();
+  }
+);
 
 /**
  * The Select's value as an enum member. `-` and any value the enum no longer
@@ -791,6 +988,9 @@ function applyFilters() {
   appliedState.value = state.value;
   appliedScope.value = scope.value ? { ...scope.value } : undefined;
   appliedOwner.value = owner.value;
+  // The URL is written first: the watcher then sees the applied set already
+  // agrees with it, so adopting the route costs no second request.
+  writeFiltersToUrl(appliedFilters());
   void resetPage();
 }
 
@@ -805,10 +1005,6 @@ function clearFilters() {
   applyFilters();
 }
 
-function createRule() {
-  void router.push({ name: "DataQualityRuleNew" });
-}
-
 /**
  * AI drafting lives in the suggestion center; this is a discovery path, not a
  * second implementation. `?draft=1` opens the workbench on arrival.
@@ -820,11 +1016,29 @@ function draftWithAi() {
   });
 }
 
-function ruleRoute(rule: QualityRule) {
+/**
+ * The target workspace route: the check's own target, opening the drawer on the
+ * check when one is named. A check lives inside its target, so the audit
+ * directory links there rather than to a standalone rule page.
+ */
+function targetWorkspaceRoute(target: QualityRule["target"], check = "") {
+  const guid = target?.metaGuid ?? "";
+  const metaType = String(target?.metaType ?? MetaType.UNSPECIFIED);
   return {
-    name: "DataQualityRuleDetail",
-    params: { ruleId: rule.name.split("/") },
+    name: "DataQualityTarget",
+    params: { targetGuid: guidToRouteParams(guid) },
+    query: check ? { metaType, check } : { metaType },
   };
+}
+
+/** The check's own destination: its target's workspace with the check open. */
+function ruleTargetRoute(rule: QualityRule) {
+  return targetWorkspaceRoute(rule.target, rule.name);
+}
+
+/** The target's destination, without selecting a check. */
+function targetRoute(rule: QualityRule) {
+  return targetWorkspaceRoute(rule.target);
 }
 
 function executionRoute(name: string) {
@@ -832,13 +1046,6 @@ function executionRoute(name: string) {
     name: "DataQualityExecutionDetail",
     params: { executionId: name.split("/") },
   };
-}
-
-function editRule(rule: QualityRule) {
-  void router.push({
-    name: "DataQualityRuleEdit",
-    params: { ruleId: rule.name.split("/") },
-  });
 }
 
 function targetTitle(rule: QualityRule): string {
@@ -873,53 +1080,6 @@ async function runRule(rule: QualityRule) {
     }
   } catch (e: unknown) {
     handleError(e, "dataQuality.executionError");
-  }
-}
-
-async function toggleRule(rule: QualityRule) {
-  const next =
-    rule.state === QualityRuleState.ENABLED
-      ? QualityRuleState.PAUSED
-      : QualityRuleState.ENABLED;
-  try {
-    // Send the whole rule but write only the state: a full update would append a
-    // revision for an edit nobody made.
-    const updated = create(QualityRuleSchema, rule);
-    updated.state = next;
-    await updateQualityRule(updated, ["state"]);
-    notify.success(
-      t(
-        next === QualityRuleState.ENABLED
-          ? "dataQuality.ruleEnabled"
-          : "dataQuality.rulePaused"
-      )
-    );
-    await refreshPage();
-  } catch (e: unknown) {
-    handleError(e, "dataQuality.updateError");
-  }
-}
-
-function askDelete(rule: QualityRule) {
-  deleting.value = rule;
-  deleteOpen.value = true;
-}
-
-async function confirmDelete() {
-  if (!deleting.value) {
-    return;
-  }
-  saving.value = true;
-  try {
-    await deleteQualityRule(deleting.value.name);
-    notify.success(t("dataQuality.ruleDeleted"));
-    deleteOpen.value = false;
-    deleting.value = undefined;
-    await refreshPage();
-  } catch (e: unknown) {
-    handleError(e, "dataQuality.deleteError");
-  } finally {
-    saving.value = false;
   }
 }
 

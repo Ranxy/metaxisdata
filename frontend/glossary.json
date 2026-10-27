@@ -889,12 +889,12 @@
       }
     },
     {
-      "id": "quality-rule",
+      "id": "quality-check",
       "category": "Data Quality",
-      "definition": "One typed check over one target table or column, run on a schedule or on demand.",
+      "definition": "One typed check over one target table or column, run on a schedule or on demand, authored inside its target contract.",
       "translations": {
-        "en-US": "quality rule",
-        "zh-CN": "质量规则"
+        "en-US": "check",
+        "zh-CN": "检查"
       },
       "scope": [
         "dataQuality.",
@@ -902,33 +902,33 @@
       ]
     },
     {
-      "id": "rule-type",
+      "id": "check-type",
       "category": "Data Quality",
-      "definition": "The category a quality rule belongs to; it decides which configuration the rule carries and how its verdict is read.",
+      "definition": "The category a check belongs to; it decides which configuration the check carries and how its verdict is read.",
       "translations": {
-        "en-US": "rule type",
-        "zh-CN": "规则类型"
+        "en-US": "check type",
+        "zh-CN": "检查类型"
       },
       "scope": [
         "dataQuality."
       ],
       "avoid": {
         "en-US": [
-          "/\\brule kinds?/i"
+          "/\\brule types?/i"
         ],
         "zh-CN": [
-          "规则种类",
-          "检查类型"
+          "规则类型",
+          "规则种类"
         ]
       }
     },
     {
-      "id": "rule-result",
+      "id": "check-result",
       "category": "Data Quality",
       "definition": "The verdict of an execution.",
       "translations": {
-        "en-US": "rule result",
-        "zh-CN": "规则结果"
+        "en-US": "check result",
+        "zh-CN": "检查结果"
       },
       "scope": [
         "dataQuality."
