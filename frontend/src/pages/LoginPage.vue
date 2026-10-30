@@ -45,6 +45,7 @@
                 type="button"
                 variant="ghost"
                 size="icon"
+                tabindex="-1"
                 class="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 :aria-label="
                   showResetPassword ? t('login.hidePassword') : t('login.showPassword')
@@ -79,6 +80,7 @@
                 type="button"
                 variant="ghost"
                 size="icon"
+                tabindex="-1"
                 class="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 :aria-label="
                   showResetPassword ? t('login.hidePassword') : t('login.showPassword')
@@ -113,6 +115,7 @@
                 type="button"
                 variant="ghost"
                 size="icon"
+                tabindex="-1"
                 class="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 :aria-label="
                   showResetPassword ? t('login.hidePassword') : t('login.showPassword')
@@ -215,6 +218,7 @@
                 type="button"
                 variant="ghost"
                 size="icon"
+                tabindex="-1"
                 class="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 :aria-label="
                   showLoginPassword ? t('login.hidePassword') : t('login.showPassword')
@@ -382,6 +386,7 @@
                 type="button"
                 variant="ghost"
                 size="icon"
+                tabindex="-1"
                 class="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 :aria-label="
                   showRegisterPassword ? t('login.hidePassword') : t('login.showPassword')
@@ -417,6 +422,7 @@
                 type="button"
                 variant="ghost"
                 size="icon"
+                tabindex="-1"
                 class="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 :aria-label="
                   showRegisterPassword ? t('login.hidePassword') : t('login.showPassword')
@@ -560,6 +566,10 @@ const loginForm = ref({
   email: "",
   password: "",
 });
+// These reveal toggles are out of the tab order (`tabindex="-1"` in the
+// template): Tab from a password field must reach the next field, not an
+// adornment inside the current one. Pointer and assistive-technology users can
+// still click or activate them.
 const showLoginPassword = ref(false);
 const showRegisterPassword = ref(false);
 const showResetPassword = ref(false);
